@@ -63,6 +63,7 @@ import {
   type Vm0ModelPriceTier,
 } from "./settings/provider-ui-config";
 import { ProviderIcon } from "./settings/provider-icons";
+import { settingsIconAssetUrl } from "./settings/settings-icon-assets";
 
 export interface ModelProviderSelection {
   selectedModel: SupportedRunModel;
@@ -83,6 +84,7 @@ export interface VideoModelPickerState {
   readonly onChange: (next: VideoModel | null) => void;
   readonly panelOpen: boolean;
   readonly onPanelOpenChange: (open: boolean) => void;
+  readonly contentAnchor?: Element | null;
 }
 
 interface ModelProviderPickerProps {
@@ -105,10 +107,19 @@ interface ModelProviderPickerProps {
    * the normal label on larger screens.
    */
   mobileIconTrigger?: boolean;
+  /** Optional desktop-only mode label shown before the selected model. */
+  desktopModeLabel?: string;
   /** Controlled open state for programmatic toggle (e.g. keyboard shortcut). */
   open?: boolean;
   /** Callback when the open state changes. */
-  onOpenChange?: (open: boolean) => void;
+  onOpenChange?: (
+    open: boolean,
+    eventDetails: { readonly event: Event; readonly cancel: () => void },
+  ) => void;
+  /** Whether the open picker blocks interaction with surrounding controls. */
+  modal?: boolean;
+  /** Whether this trigger is the control represented by the shared popup. */
+  triggerControlsPopup?: boolean;
   // When true, picker is read-only for the current caller state.
   disabled?: boolean;
   /**
@@ -119,10 +130,7 @@ interface ModelProviderPickerProps {
   resolveDefaultSelection?: boolean;
   /** Enables the inline Codex Fast choices in the model list. */
   codexFastModeEnabled?: boolean;
-  /**
-   * When provided, the dropdown gains a row that opens the video model panel.
-   * Omitted by callers that have nothing to pin the video model to.
-   */
+  /** Video-model panel state for callers that can pin a video model. */
   videoModel?: VideoModelPickerState;
 }
 
@@ -377,10 +385,44 @@ function ModelFirstTriggerLabel({
   );
 }
 
+function ModelFirstTriggerContent({
+  desktopModeLabel,
+  selection,
+  placeholder,
+  mobileIcon,
+  codexFastModeEnabled,
+  fastLabel,
+}: {
+  desktopModeLabel: string | undefined;
+  selection: ModelProviderSelection | null;
+  placeholder: string;
+  mobileIcon: boolean;
+  codexFastModeEnabled: boolean;
+  fastLabel: string;
+}) {
+  return (
+    <span className="flex min-w-0 items-center gap-1.5">
+      {desktopModeLabel && (
+        <span className="hidden shrink-0 sm:inline">
+          {desktopModeLabel} <span aria-hidden="true">·</span>
+        </span>
+      )}
+      <ModelFirstTriggerLabel
+        selection={selection}
+        placeholder={placeholder}
+        mobileIcon={mobileIcon}
+        codexFastModeEnabled={codexFastModeEnabled}
+        fastLabel={fastLabel}
+      />
+    </span>
+  );
+}
+
 function ModelFirstDisabledPickerLabel({
   value,
   placeholder,
   mobileIconTrigger,
+  desktopModeLabel,
   triggerClassName,
   userPreference,
   policies,
@@ -392,6 +434,7 @@ function ModelFirstDisabledPickerLabel({
   | "placeholder"
   | "compactTrigger"
   | "mobileIconTrigger"
+  | "desktopModeLabel"
   | "triggerClassName"
 > & {
   placeholder: string;
@@ -417,7 +460,8 @@ function ModelFirstDisabledPickerLabel({
         stripInteractiveClasses(triggerClassName),
       )}
     >
-      <ModelFirstTriggerLabel
+      <ModelFirstTriggerContent
+        desktopModeLabel={desktopModeLabel}
         selection={resolved}
         placeholder={placeholder}
         mobileIcon={mobileIconTrigger}
@@ -694,13 +738,169 @@ function ModelFirstPolicyItems({
 // Select's value space belongs to the run model, and a SelectItem here would
 // both join it and close the popover on click.
 const VIDEO_PANEL_ROW_CLASS =
-  "relative flex w-full cursor-pointer select-none items-center rounded-lg py-1.5 pl-2 pr-8 text-left text-sm outline-none transition-colors hover:bg-state-hover hover:text-accent-foreground";
+  "relative flex w-full cursor-pointer select-none items-center gap-2 rounded-lg py-1.5 pl-2 pr-8 text-left text-sm outline-none transition-colors hover:bg-state-hover hover:text-accent-foreground";
+
+const BYTEDANCE_ICON_PATH =
+  "M19.8772 1.4685 24 2.5326v18.9426l-4.1228 1.0563V1.4685zm-13.3481 9.428 4.115 1.0641v8.9786l-4.115 1.0642v-11.107zM0 2.572l4.115 1.0642v16.7354L0 21.428V2.572zm17.4553 5.6205v11.107l-4.1228-1.0642V9.2568l4.1228-1.0642z";
+
+const MINIMAX_ICON_URL = settingsIconAssetUrl("minimax");
+
+function VideoModelVeoIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={16}
+      height={16}
+      aria-hidden="true"
+      className="shrink-0"
+    >
+      <path
+        d="M5.988 1.622A8.539 8.539 0 0 0 3.45 8.446c.349 4.408 4.506 7.995 8.276 7.995 3.507 0 4.88-3.061 4.541-5.14a4.318 4.318 0 0 0-.95-2.073c.632.34 1.244.776 1.809 1.3 1.52 1.415 2.44 3.229 2.587 5.1C20.04 19.763 16.98 24 11.863 24c-1.695 0-3.48-.432-4.98-1.143C2.816 20.937 0 16.797 0 12.002 0 7.571 2.405 3.7 5.988 1.622zM12.136 0c1.696 0 3.481.432 4.98 1.143C21.186 3.063 24 7.203 24 11.998c0 4.431-2.405 8.303-5.988 10.38a8.539 8.539 0 0 0 2.538-6.824c-.349-4.408-4.506-7.995-8.276-7.995-3.507 0-4.88 3.061-4.541 5.14a4.3 4.3 0 0 0 .953 2.073 8.723 8.723 0 0 1-1.81-1.3c-1.52-1.415-2.44-3.227-2.589-5.1C3.96 4.237 7.02 0 12.137 0z"
+        fill="url(#video-model-veo-gradient)"
+        fillRule="evenodd"
+      />
+      <defs>
+        <linearGradient
+          id="video-model-veo-gradient"
+          x1="2"
+          x2="22"
+          y1="4"
+          y2="20"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop stopColor="#78b8ff" />
+          <stop offset="1" stopColor="#8d8cff" />
+        </linearGradient>
+      </defs>
+    </svg>
+  );
+}
+
+function VideoModelKlingIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={16}
+      height={16}
+      aria-hidden="true"
+      className="shrink-0"
+    >
+      <path
+        d="M5.412 13.775A23.193 23.193 0 0 1 7.41 9.32c3.17-5.492 7.795-8.757 10.33-7.294C12.038-1.266 4.598.944 1.122 6.964A13.378 13.378 0 0 0 .085 9.22c-.259.739.092 1.534.77 1.926l4.557 2.63z"
+        fill="url(#video-model-kling-outer-start)"
+      />
+      <path
+        d="M18.588 10.164a23.188 23.188 0 0 1-1.999 4.455c-3.17 5.492-7.795 8.758-10.33 7.294 5.703 3.293 13.143 1.082 16.619-4.938a13.392 13.392 0 0 0 1.037-2.255c.259-.738-.092-1.534-.77-1.925l-4.557-2.63z"
+        fill="url(#video-model-kling-outer-end)"
+      />
+      <path
+        d="M16.59 14.62c3.17-5.492 3.686-11.13 1.15-12.594C15.207.563 10.582 3.83 7.41 9.32c2.074-3.59 5.809-5.315 8.344-3.852 2.534 1.464 2.908 5.56.835 9.151z"
+        fill="url(#video-model-kling-inner-start)"
+      />
+      <path
+        d="M7.41 9.32c-3.17 5.492-3.686 11.13-1.15 12.593 2.534 1.464 7.159-1.802 10.33-7.294-2.074 3.591-5.809 5.316-8.344 3.852-2.534-1.463-2.908-5.56-.835-9.15z"
+        fill="url(#video-model-kling-inner-end)"
+      />
+      <defs>
+        <radialGradient
+          id="video-model-kling-outer-start"
+          cx="0"
+          cy="0"
+          r="1"
+          gradientTransform="matrix(7.47772 -12.51022 17.14368 10.24728 5.173 13.637)"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop offset=".095" stopColor="#fff959" />
+          <stop offset=".326" stopColor="#0df35e" />
+          <stop offset=".64" stopColor="#0bf2f9" />
+          <stop offset="1" stopColor="#04a6f0" />
+        </radialGradient>
+        <radialGradient
+          id="video-model-kling-outer-end"
+          cx="0"
+          cy="0"
+          r="1"
+          gradientTransform="rotate(120.868 6.491 10.491) scale(14.5747 19.9728)"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop offset=".095" stopColor="#fff959" />
+          <stop offset=".326" stopColor="#0df35e" />
+          <stop offset=".64" stopColor="#0bf2f9" />
+          <stop offset="1" stopColor="#04a6f0" />
+        </radialGradient>
+        <linearGradient
+          id="video-model-kling-inner-start"
+          x1="15.578"
+          x2="18.062"
+          y1="1.798"
+          y2="9.861"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop stopColor="#003eff" />
+          <stop offset="1" stopColor="#0bffe7" />
+        </linearGradient>
+        <linearGradient
+          id="video-model-kling-inner-end"
+          x1="8.422"
+          x2="5.938"
+          y1="22.142"
+          y2="14.079"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop stopColor="#003eff" />
+          <stop offset="1" stopColor="#0bffe7" />
+        </linearGradient>
+      </defs>
+    </svg>
+  );
+}
+
+function VideoModelBrandIcon({ model }: { model: VideoModel }) {
+  const config = VIDEO_MODEL_CONFIGS[model];
+  const brand =
+    config.provider === "byteplus"
+      ? "bytedance"
+      : config.provider === "minimax"
+        ? "minimax"
+        : config.requestFormat;
+  if (brand === "minimax") {
+    return (
+      <img
+        src={MINIMAX_ICON_URL}
+        width={16}
+        height={16}
+        alt=""
+        className="shrink-0"
+      />
+    );
+  }
+  if (brand === "veo") {
+    return <VideoModelVeoIcon />;
+  }
+  if (brand === "kling") {
+    return <VideoModelKlingIcon />;
+  }
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={16}
+      height={16}
+      fill="currentColor"
+      aria-hidden="true"
+      className="shrink-0"
+    >
+      <path d={BYTEDANCE_ICON_PATH} />
+    </svg>
+  );
+}
 
 function VideoModelPanelRow({
+  model,
   label,
   selected,
   onSelect,
 }: {
+  model: VideoModel;
   label: string;
   selected: boolean;
   onSelect: () => void;
@@ -713,6 +913,7 @@ function VideoModelPanelRow({
       className={VIDEO_PANEL_ROW_CLASS}
       onClick={onSelect}
     >
+      <VideoModelBrandIcon model={model} />
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {selected && (
         <Check size={15} className="absolute right-2 text-foreground" />
@@ -735,7 +936,7 @@ function VideoModelPanel({
     <>
       <button
         type="button"
-        className="flex w-full items-center gap-1 rounded-lg py-1.5 pl-1 pr-2 text-left text-xs font-medium text-muted-foreground outline-none transition-colors hover:bg-state-hover hover:text-foreground"
+        className="flex w-full items-center gap-1 rounded-lg py-1.5 pl-1 pr-2 text-left text-xs font-medium text-muted-foreground outline-none transition-colors hover:bg-state-hover hover:text-foreground sm:hidden"
         onClick={() => {
           videoModel.onPanelOpenChange(false);
         }}
@@ -747,18 +948,26 @@ function VideoModelPanel({
           })}
         </span>
       </button>
-      {PUBLIC_VIDEO_MODELS.map((candidate) => {
-        return (
-          <VideoModelPanelRow
-            key={candidate}
-            label={VIDEO_MODEL_CONFIGS[candidate].label}
-            selected={selectedVideoModel === candidate}
-            onSelect={() => {
-              videoModel.onChange(candidate);
-            }}
-          />
-        );
-      })}
+      <SelectGroup>
+        <SelectLabel className="hidden py-1.5 pl-2 pr-8 text-xs font-medium text-muted-foreground sm:block">
+          {t(($) => {
+            return $.settings.models.picker.models;
+          })}
+        </SelectLabel>
+        {PUBLIC_VIDEO_MODELS.map((candidate) => {
+          return (
+            <VideoModelPanelRow
+              key={candidate}
+              model={candidate}
+              label={VIDEO_MODEL_CONFIGS[candidate].label}
+              selected={selectedVideoModel === candidate}
+              onSelect={() => {
+                videoModel.onChange(candidate);
+              }}
+            />
+          );
+        })}
+      </SelectGroup>
     </>
   );
 }
@@ -771,10 +980,10 @@ function ManageMoreModelsRow({
   const { t } = useTranslation();
   return (
     <>
-      <SelectSeparator className="my-0" />
+      <SelectSeparator className="my-0 sm:hidden" />
       <button
         type="button"
-        className={VIDEO_PANEL_ROW_CLASS}
+        className={cn(VIDEO_PANEL_ROW_CLASS, "sm:hidden")}
         onClick={() => {
           videoModel.onPanelOpenChange(true);
         }}
@@ -816,8 +1025,12 @@ function ModelFirstModelPickerContentLayout({
   videoModel,
 }: ModelFirstModelPickerContentBaseProps) {
   const videoPanelOpen = videoModel?.panelOpen ?? false;
+  const contentAnchor = videoPanelOpen ? videoModel?.contentAnchor : undefined;
   return (
-    <SelectContent className="max-h-[280px] min-w-[260px]">
+    <SelectContent
+      anchor={contentAnchor}
+      className="max-h-[280px] min-w-[260px]"
+    >
       {/* The video panel replaces the model rows, so keep the selected run
           model measurable the same way a hidden select value is. */}
       {(videoPanelOpen || isHiddenModelFirstSelectValue(selectValue)) && (
@@ -919,12 +1132,15 @@ function ModelFirstSelectPicker({
   placeholder,
   triggerClassName,
   mobileIconTrigger,
+  desktopModeLabel,
   modelCapabilities,
   codexFastModeEnabled,
   fastLabel,
   videoModel,
   open,
   onOpenChange,
+  modal,
+  triggerControlsPopup,
   onValueChange,
 }: {
   state: ModelFirstModelPickerState;
@@ -932,12 +1148,20 @@ function ModelFirstSelectPicker({
   placeholder: string;
   triggerClassName: string | undefined;
   mobileIconTrigger: boolean;
+  desktopModeLabel: string | undefined;
   modelCapabilities: ModelPlanCapabilities;
   codexFastModeEnabled: boolean;
   fastLabel: string;
   videoModel: VideoModelPickerState | undefined;
   open: boolean | undefined;
-  onOpenChange: ((open: boolean) => void) | undefined;
+  onOpenChange:
+    | ((
+        open: boolean,
+        eventDetails: { readonly event: Event; readonly cancel: () => void },
+      ) => void)
+    | undefined;
+  modal: boolean | undefined;
+  triggerControlsPopup: boolean | undefined;
   onValueChange: (raw: string) => void;
 }) {
   return (
@@ -946,13 +1170,18 @@ function ModelFirstSelectPicker({
       onValueChange={onValueChange}
       open={open}
       onOpenChange={onOpenChange}
+      modal={modal}
     >
       <SelectTrigger
         aria-label={state.triggerAriaLabel}
         className={cn("h-9 w-full", triggerClassName)}
+        {...(triggerControlsPopup === false
+          ? { "aria-controls": undefined, "aria-expanded": false }
+          : {})}
       >
         <SelectValue placeholder={placeholder}>
-          <ModelFirstTriggerLabel
+          <ModelFirstTriggerContent
+            desktopModeLabel={desktopModeLabel}
             selection={state.selection}
             placeholder={placeholder}
             mobileIcon={mobileIconTrigger}
@@ -985,8 +1214,11 @@ function SubscribedModelFirstModelPicker({
   triggerClassName,
   compactTrigger,
   mobileIconTrigger,
+  desktopModeLabel,
   open,
   onOpenChange,
+  modal,
+  triggerControlsPopup,
   disabled,
   userPreference,
   resolveDefaultSelection,
@@ -1031,6 +1263,7 @@ function SubscribedModelFirstModelPicker({
         placeholder={placeholder}
         compactTrigger={compactTrigger}
         mobileIconTrigger={mobileIconTrigger}
+        desktopModeLabel={desktopModeLabel}
         triggerClassName={triggerClassName}
         userPreference={resolveDefaultSelection ? userPreference : null}
         policies={resolveDefaultSelection ? state.selectablePolicies : []}
@@ -1076,12 +1309,15 @@ function SubscribedModelFirstModelPicker({
       placeholder={placeholder}
       triggerClassName={triggerClassName}
       mobileIconTrigger={mobileIconTrigger}
+      desktopModeLabel={desktopModeLabel}
       modelCapabilities={modelCapabilities}
       codexFastModeEnabled={codexFastModeEnabled}
       fastLabel={fastLabel}
       videoModel={videoModel}
       open={open}
       onOpenChange={onOpenChange}
+      modal={modal}
+      triggerControlsPopup={triggerControlsPopup}
       onValueChange={handleRawValueChange}
     />
   );
@@ -1309,12 +1545,15 @@ function EnabledExplicitModelFirstModelPicker(
       placeholder={props.placeholder}
       triggerClassName={props.triggerClassName}
       mobileIconTrigger={props.mobileIconTrigger}
+      desktopModeLabel={props.desktopModeLabel}
       modelCapabilities={DEFAULT_MODEL_PLAN_CAPABILITIES}
       codexFastModeEnabled={props.codexFastModeEnabled ?? false}
       fastLabel={props.fastLabel}
       videoModel={props.videoModel}
       open={props.open}
       onOpenChange={props.onOpenChange}
+      modal={props.modal}
+      triggerControlsPopup={props.triggerControlsPopup}
       onValueChange={handleRawValueChange}
     />
   );
@@ -1335,6 +1574,7 @@ function ModelFirstModelPicker(
         placeholder={props.placeholder}
         compactTrigger={props.compactTrigger}
         mobileIconTrigger={props.mobileIconTrigger}
+        desktopModeLabel={props.desktopModeLabel}
         triggerClassName={props.triggerClassName}
         userPreference={null}
         policies={[]}
@@ -1371,8 +1611,11 @@ export function ModelProviderPicker({
   triggerClassName,
   compactTrigger = false,
   mobileIconTrigger = false,
+  desktopModeLabel,
   open,
   onOpenChange,
+  modal,
+  triggerControlsPopup,
   disabled = false,
   resolveDefaultSelection = true,
   codexFastModeEnabled = false,
@@ -1394,8 +1637,11 @@ export function ModelProviderPicker({
     triggerClassName,
     compactTrigger,
     mobileIconTrigger,
+    desktopModeLabel,
     open,
     onOpenChange,
+    modal,
+    triggerControlsPopup,
     disabled,
     codexFastModeEnabled,
     fastLabel,

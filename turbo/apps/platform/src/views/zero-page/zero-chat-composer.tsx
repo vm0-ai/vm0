@@ -27,11 +27,13 @@ import {
   ArrowUp,
   Bolt,
   Check,
+  ChevronDown,
   Download,
   Globe,
   Image as ImageIcon,
   LayoutTemplate,
   Loader2,
+  MessageCircle,
   Mic,
   Monitor,
   Paperclip,
@@ -7419,22 +7421,311 @@ function ModelConfigurationWarning({
   );
 }
 
+function ComposerModelConfigurationWarning({
+  signals,
+  selection,
+  oauthAvailable,
+}: {
+  signals: ComposerSignals;
+  selection: ModelProviderSelection | null;
+  oauthAvailable: boolean;
+}) {
+  const { t } = useTranslation();
+  const configureSelectedModel = useSet(signals.model.configureSelectedModel$);
+  const pageSignal = useGet(pageSignal$);
+  if (selection === null || oauthAvailable) {
+    return null;
+  }
+  return (
+    <ModelConfigurationWarning
+      blocker={{
+        message: t(($) => {
+          return $.chat.composer.selectedModelUnavailable;
+        }),
+        actionLabel: t(($) => {
+          return $.chat.composer.configureModel;
+        }),
+        onAction: () => {
+          detach(configureSelectedModel(pageSignal), Reason.DomCallback);
+        },
+      }}
+    />
+  );
+}
+
+function ComposerVideoModeContent({
+  expanded,
+  pinnedModel,
+}: {
+  expanded: boolean;
+  pinnedModel: VideoModel | null;
+}) {
+  const { t } = useTranslation();
+  const userPreference = useLastResolved(userModelPreference$);
+  const selectedVideoModel =
+    pinnedModel ?? userPreference?.selectedVideoModel ?? DEFAULT_VIDEO_MODEL;
+  return (
+    <span
+      aria-hidden={!expanded}
+      className={cn(
+        "hidden min-w-0 items-center gap-1.5 overflow-hidden opacity-0 transition-[max-width,opacity] duration-200 ease-out sm:flex",
+        expanded ? "max-w-[11rem] opacity-100" : "max-w-0",
+      )}
+    >
+      <span className="shrink-0">
+        {t(($) => {
+          return $.artifacts.kinds.video;
+        })}{" "}
+        <span aria-hidden="true">·</span>
+      </span>
+      <span className="min-w-0 truncate">
+        {getModelDisplayName(selectedVideoModel)}
+      </span>
+      <ChevronDown size={16} aria-hidden="true" />
+    </span>
+  );
+}
+
+interface ComposerVideoModelPickerState {
+  readonly value: VideoModel | null;
+  readonly onChange: (next: VideoModel | null) => void;
+  readonly mobilePanelOpen: boolean;
+  readonly onMobilePanelOpenChange: (open: boolean) => void;
+}
+
+function composerModelPickerTriggerClassName(
+  videoModeAvailable: boolean,
+  videoModeExpanded: boolean,
+): string {
+  return cn(
+    "h-8 w-8 max-w-none gap-0 overflow-hidden border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-3 sm:transition-[max-width,padding,background-color,color] sm:duration-200 sm:ease-out",
+    "[&>[data-slot=select-value]]:flex [&>[data-slot=select-value]]:items-center [&>[data-slot=select-value]]:justify-center [&>[data-slot=select-value]]:transition-opacity [&>[data-slot=select-value]]:duration-150 sm:[&>[data-slot=select-value]]:justify-start",
+    "[&>[data-slot=select-icon]]:hidden [&>[data-slot=select-icon]]:transition-opacity [&>[data-slot=select-icon]]:duration-150 sm:[&>[data-slot=select-icon]]:block",
+    "hover:bg-state-hover hover:text-foreground data-popup-open:bg-state-hover data-popup-open:text-foreground",
+    videoModeAvailable && "sm:text-foreground",
+    videoModeAvailable &&
+      !videoModeExpanded &&
+      "sm:bg-state-selected sm:hover:bg-state-selected-hover sm:data-popup-open:bg-state-selected-hover",
+    videoModeExpanded &&
+      "sm:max-w-8 sm:px-0 sm:[&>[data-slot=select-value]]:opacity-0 sm:[&>[data-slot=select-icon]]:opacity-0",
+    COMPOSER_CONTROL_FOCUS_CLASS,
+  );
+}
+
+function ComposerRunModelPickerControl({
+  signals,
+  value,
+  onChange,
+  codexFastModeEnabled,
+  desktopLayout,
+  videoModeExpanded,
+  pickerVideoModel,
+}: {
+  signals: ComposerSignals;
+  value: ModelProviderSelection;
+  onChange: (selection: ModelProviderSelection | null) => void;
+  codexFastModeEnabled: boolean;
+  desktopLayout: boolean;
+  videoModeExpanded: boolean;
+  pickerVideoModel: VideoModelPickerState | undefined;
+}) {
+  const { t } = useTranslation();
+  const setDesktopChatModeElement = useSet(
+    signals.model.setDesktopChatModeElement$,
+  );
+  const modelPickerOpen = useGet(signals.model.modelPickerOpen$);
+  const handleModelPickerOpenChange = useSet(
+    signals.model.handleModelPickerOpenChange$,
+  );
+  const desktopModeLabel = pickerVideoModel
+    ? t(($) => {
+        return $.appShell.sidebar.chat;
+      })
+    : undefined;
+  return (
+    <div
+      ref={setDesktopChatModeElement}
+      className="contents sm:relative sm:flex"
+    >
+      <ModelProviderPicker
+        value={value}
+        onChange={onChange}
+        placeholder={t(($) => {
+          return $.chat.composer.selectModel;
+        })}
+        triggerClassName={composerModelPickerTriggerClassName(
+          pickerVideoModel !== undefined,
+          videoModeExpanded,
+        )}
+        compactTrigger
+        mobileIconTrigger
+        desktopModeLabel={desktopModeLabel}
+        open={modelPickerOpen}
+        modal={pickerVideoModel ? !desktopLayout : undefined}
+        triggerControlsPopup={!videoModeExpanded}
+        onOpenChange={(open, eventDetails) => {
+          const shouldCancel = handleModelPickerOpenChange(
+            open,
+            eventDetails.event,
+            pickerVideoModel !== undefined,
+          );
+          if (shouldCancel) {
+            eventDetails.cancel();
+          }
+        }}
+        resolveDefaultSelection={false}
+        codexFastModeEnabled={codexFastModeEnabled}
+        {...(pickerVideoModel ? { videoModel: pickerVideoModel } : {})}
+      />
+      {pickerVideoModel && (
+        <MessageCircle
+          size={18}
+          aria-hidden="true"
+          className={cn(
+            "pointer-events-none absolute inset-0 m-auto hidden opacity-0 transition-opacity duration-150 sm:block",
+            videoModeExpanded && "opacity-100",
+          )}
+        />
+      )}
+    </div>
+  );
+}
+
+function ComposerVideoModelControl({
+  signals,
+  expanded,
+  pinnedModel,
+}: {
+  signals: ComposerSignals;
+  expanded: boolean;
+  pinnedModel: VideoModel | null;
+}) {
+  const { t } = useTranslation();
+  const modelPickerOpen = useGet(signals.model.modelPickerOpen$);
+  const setDesktopVideoModelAnchor = useSet(
+    signals.model.setDesktopVideoModelAnchor$,
+  );
+  const toggleDesktopVideoMode = useSet(signals.model.toggleDesktopVideoMode$);
+  const videoModelsLabel = t(($) => {
+    return $.settings.models.picker.videoModels;
+  });
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            ref={setDesktopVideoModelAnchor}
+            variant="quiet"
+            size="icon-sm"
+            className={cn(
+              "hidden shrink-0 overflow-hidden sm:inline-flex sm:w-auto sm:gap-0 sm:px-[7px] sm:transition-[gap,padding,background-color,color] sm:duration-200 sm:ease-out",
+              COMPOSER_CONTROL_ICON_CLASS,
+              expanded &&
+                "bg-state-selected text-foreground hover:bg-state-selected-hover sm:gap-1.5 sm:px-3",
+            )}
+            aria-label={videoModelsLabel}
+            aria-expanded={expanded && modelPickerOpen}
+            aria-haspopup="listbox"
+            aria-pressed={expanded}
+            onClick={() => {
+              toggleDesktopVideoMode();
+            }}
+          >
+            <Video size={18} aria-hidden="true" />
+            <ComposerVideoModeContent
+              expanded={expanded}
+              pinnedModel={pinnedModel}
+            />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs">
+          {videoModelsLabel}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function ComposerModelPickerControls({
+  signals,
+  value,
+  onChange,
+  codexFastModeEnabled,
+  videoModel,
+}: {
+  signals: ComposerSignals;
+  value: ModelProviderSelection;
+  onChange: (selection: ModelProviderSelection | null) => void;
+  codexFastModeEnabled: boolean;
+  videoModel: ComposerVideoModelPickerState | undefined;
+}) {
+  const desktopLayout = useGet(signals.model.desktopModelPickerLayout$);
+  const setLifecycleRef = useSet(signals.model.desktopModelPickerLifecycleRef$);
+  const desktopVideoModelAnchor = useGet(
+    signals.model.desktopVideoModelAnchor$,
+  );
+  const desktopModelMode = useGet(signals.model.desktopModelMode$);
+  const videoModeExpanded =
+    desktopLayout && videoModel !== undefined && desktopModelMode === "video";
+  const pickerVideoModel: VideoModelPickerState | undefined = videoModel
+    ? {
+        value: videoModel.value,
+        onChange: videoModel.onChange,
+        panelOpen: desktopLayout
+          ? videoModeExpanded
+          : videoModel.mobilePanelOpen,
+        onPanelOpenChange: videoModel.onMobilePanelOpenChange,
+        contentAnchor:
+          desktopLayout && videoModeExpanded
+            ? desktopVideoModelAnchor
+            : undefined,
+      }
+    : undefined;
+  return (
+    <>
+      <div
+        ref={setLifecycleRef}
+        className={cn(
+          "contents",
+          videoModel &&
+            "sm:flex sm:items-center sm:gap-0.5 sm:rounded-xl sm:bg-gray-50 sm:p-1",
+        )}
+      >
+        <ComposerRunModelPickerControl
+          signals={signals}
+          value={value}
+          onChange={onChange}
+          codexFastModeEnabled={codexFastModeEnabled}
+          desktopLayout={desktopLayout}
+          videoModeExpanded={videoModeExpanded}
+          pickerVideoModel={pickerVideoModel}
+        />
+        {videoModel && (
+          <ComposerVideoModelControl
+            signals={signals}
+            expanded={videoModeExpanded}
+            pinnedModel={videoModel.value}
+          />
+        )}
+      </div>
+      <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
+    </>
+  );
+}
+
 function ComposerModelPickerSlotBase({
   signals,
   videoModel,
 }: {
   signals: ComposerSignals;
-  videoModel: VideoModelPickerState | undefined;
+  videoModel: ComposerVideoModelPickerState | undefined;
 }) {
-  const { t } = useTranslation();
   const codexFastModeEnabled = useGet(codexFastModeEnabled$);
-  const modelPickerOpen = useGet(signals.model.modelPickerOpen$);
-  const setModelPickerOpen = useSet(signals.model.setModelPickerOpen$);
   const modelSelection = useLastLoadable(signals.model.modelSelection$);
   const selectedModelOauthAvailable =
     useLastResolved(signals.model.selectedModelOauthAvailable$) ?? true;
   const setModelSelection = useSet(signals.model.setModelSelection$);
-  const configureSelectedModel = useSet(signals.model.configureSelectedModel$);
   const attachments = useGet(signals.draft.attachments$);
   const imageRecognitionEnabled = useGet(imageRecognitionAvailable$);
   const pageSignal = useGet(pageSignal$);
@@ -7459,61 +7750,31 @@ function ComposerModelPickerSlotBase({
     }
     detach(setModelSelection(selection, pageSignal), Reason.DomCallback);
   };
-  const modelPicker: ComposerModelPicker = {
-    value,
-    onChange: onModelPickerChange,
-  };
-  const submitBlocker: ComposerSubmitBlocker | undefined =
-    value && !selectedModelOauthAvailable
-      ? {
-          message: t(($) => {
-            return $.chat.composer.selectedModelUnavailable;
-          }),
-          actionLabel: t(($) => {
-            return $.chat.composer.configureModel;
-          }),
-          onAction: () => {
-            detach(configureSelectedModel(pageSignal), Reason.DomCallback);
-          },
-        }
-      : undefined;
-  if (modelPickerLoading || modelPicker.value === null) {
+  if (modelPickerLoading || value === null) {
     return null;
   }
 
   return (
     <>
-      {submitBlocker && <ModelConfigurationWarning blocker={submitBlocker} />}
-      <ModelProviderPicker
-        value={modelPicker.value}
-        onChange={onModelPickerChange}
-        placeholder={t(($) => {
-          return $.chat.composer.selectModel;
-        })}
-        triggerClassName={cn(
-          "h-8 w-8 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-2",
-          "[&>[data-slot=select-value]]:flex [&>[data-slot=select-value]]:items-center [&>[data-slot=select-value]]:justify-center sm:[&>[data-slot=select-value]]:justify-start",
-          "[&>[data-slot=select-icon]]:hidden sm:[&>[data-slot=select-icon]]:block",
-          "hover:bg-state-hover hover:text-foreground data-popup-open:bg-state-hover data-popup-open:text-foreground",
-          COMPOSER_CONTROL_FOCUS_CLASS,
-        )}
-        compactTrigger
-        mobileIconTrigger
-        open={modelPickerOpen}
-        onOpenChange={setModelPickerOpen}
-        disabled={modelPicker.disabled}
-        resolveDefaultSelection={false}
-        codexFastModeEnabled={codexFastModeEnabled}
-        {...(videoModel ? { videoModel } : {})}
+      <ComposerModelConfigurationWarning
+        signals={signals}
+        selection={value}
+        oauthAvailable={selectedModelOauthAvailable}
       />
-      <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
+      <ComposerModelPickerControls
+        signals={signals}
+        value={value}
+        onChange={onModelPickerChange}
+        codexFastModeEnabled={codexFastModeEnabled}
+        videoModel={videoModel}
+      />
     </>
   );
 }
 
 /**
- * Choosing a video model writes the thread pin and closes the popover, which
- * also returns the picker to its run model panel.
+ * Choosing a video model writes the thread pin and closes the shared popover.
+ * Closing also resets the nested mobile panel; desktop keeps its active mode.
  */
 function ComposerVideoModelPickerSlot({
   signals,
@@ -7522,21 +7783,23 @@ function ComposerVideoModelPickerSlot({
   signals: ComposerSignals;
   videoModelSignals: ComposerVideoModelSignals;
 }) {
-  const panelOpen = useGet(signals.model.videoModelPanelOpen$);
-  const setPanelOpen = useSet(signals.model.setVideoModelPanelOpen$);
+  const mobilePanelOpen = useGet(signals.model.mobileVideoModelPanelOpen$);
+  const setMobilePanelOpen = useSet(
+    signals.model.setMobileVideoModelPanelOpen$,
+  );
   const setModelPickerOpen = useSet(signals.model.setModelPickerOpen$);
   const selectedVideoModel =
     useLastResolved(videoModelSignals.selectedVideoModel$) ?? null;
   const setVideoModel = useSet(videoModelSignals.setVideoModel$);
   const pageSignal = useGet(pageSignal$);
-  const videoModel: VideoModelPickerState = {
+  const videoModel: ComposerVideoModelPickerState = {
     value: selectedVideoModel,
     onChange: (next) => {
       detach(setVideoModel(next, pageSignal), Reason.DomCallback);
       setModelPickerOpen(false);
     },
-    panelOpen,
-    onPanelOpenChange: setPanelOpen,
+    mobilePanelOpen,
+    onMobilePanelOpenChange: setMobilePanelOpen,
   };
   return (
     <ComposerModelPickerSlotBase signals={signals} videoModel={videoModel} />

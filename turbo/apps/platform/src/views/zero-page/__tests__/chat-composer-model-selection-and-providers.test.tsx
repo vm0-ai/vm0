@@ -3302,6 +3302,25 @@ describe("chat composer models", () => {
 });
 
 describe("chat composer video model", () => {
+  function desktopVideoModelButton(): HTMLElement | undefined {
+    return queryAllByRoleFast("button").find((candidate) => {
+      return (
+        candidate.getAttribute("aria-label") === "Video models" &&
+        candidate.hasAttribute("aria-pressed")
+      );
+    });
+  }
+
+  function findDesktopVideoModelButton(): Promise<HTMLElement> {
+    return waitFor(() => {
+      const button = desktopVideoModelButton();
+      if (!button) {
+        throw new Error("Desktop video model button not found");
+      }
+      return button;
+    });
+  }
+
   function videoPanelButton(label: string): HTMLElement | undefined {
     return queryAllByRoleFast("button").find((candidate) => {
       return candidate.textContent?.replace(/\s+/g, " ").trim() === label;
@@ -3337,6 +3356,7 @@ describe("chat composer video model", () => {
 
   it("uses the live member default for an untouched new chat", async () => {
     const user = userEvent.setup({ delay: null });
+    context.mocks.browser.matchMedia(false);
     const initialPreference: UserModelPreferenceResponse = {
       selectedModel: null,
       serviceTier: null,
@@ -3401,6 +3421,7 @@ describe("chat composer video model", () => {
 
   it("writes a landing selection to the member default and new thread", async () => {
     const user = userEvent.setup({ delay: null });
+    context.mocks.browser.matchMedia(false);
     const updates: {
       selectedModel: string | null;
       serviceTier: ChatThreadServiceTier | null;
@@ -3513,6 +3534,7 @@ describe("chat composer video model", () => {
 
   it("pins a video model on the thread from the model picker", async () => {
     const user = userEvent.setup({ delay: null });
+    context.mocks.browser.matchMedia(true);
     const { bodies } = mockVideoModelThread(null);
 
     detachedSetupPage({
@@ -3521,11 +3543,20 @@ describe("chat composer video model", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
-    await user.click(await findComposerModel("Claude Fable 5"));
-    await user.click(await findVideoPanelButton("Manage more models"));
+    const videoModelButton = await findDesktopVideoModelButton();
+    expect(videoModelButton).toHaveAttribute("aria-pressed", "false");
+    await user.click(videoModelButton);
+    expect(videoModelButton).toHaveAttribute("aria-pressed", "true");
+    await expect(findComposerModel("Claude Fable 5")).resolves.toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    await user.click(videoModelButton);
 
     // Every public catalog model is offered, with no plan or provider filter.
     expect(videoPanelButton("Seedance 2.5")).toBeInTheDocument();
+    expect(videoPanelButton("Veo 3.1 fast")).toBeInTheDocument();
+    expect(videoPanelButton("Kling v3 4K")).toBeInTheDocument();
     expect(videoPanelButton("MiniMax H3")).toBeInTheDocument();
     expect(videoPanelButton("Seedance 2.0 fast")).toHaveAttribute(
       "aria-pressed",
@@ -3537,18 +3568,83 @@ describe("chat composer video model", () => {
     await waitFor(() => {
       expect(bodies).toStrictEqual([{ model: "fal-ai/veo3.1/fast" }]);
     });
-    // Choosing closes the popover, so the picker reopens on the model list.
+    // Choosing closes the shared popover. Switching back to Chat keeps it
+    // closed; clicking the expanded Chat mode opens the run-model list.
     await waitFor(() => {
       expect(videoPanelButton("Veo 3.1 fast")).toBeUndefined();
     });
+    await user.click(await findComposerModel("Claude Fable 5"));
+    await expect(findComposerModel("Claude Fable 5")).resolves.toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
     await user.click(await findComposerModel("Claude Fable 5"));
     await expect(
       findVideoPanelButton("Manage more models"),
     ).resolves.toBeInTheDocument();
   });
 
+  it("preserves the shared popup state while switching desktop model modes", async () => {
+    const user = userEvent.setup({ delay: null });
+    context.mocks.browser.matchMedia(true);
+    mockVideoModelThread(null);
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const chatModelButton = await findComposerModel("Claude Fable 5");
+    const videoModelButton = await findDesktopVideoModelButton();
+    expect(chatModelButton).toHaveAttribute("aria-expanded", "false");
+    expect(videoModelButton).toHaveAttribute("aria-expanded", "false");
+
+    await user.click(videoModelButton);
+
+    expect(videoModelButton).toHaveTextContent(
+      /Video\s*·\s*Seedance 2\.0 Fast/,
+    );
+    expect(videoModelButton).toHaveAttribute("aria-pressed", "true");
+    expect(chatModelButton).toHaveAttribute("aria-expanded", "false");
+    expect(videoModelButton).toHaveAttribute("aria-expanded", "false");
+
+    chatModelButton.focus();
+    await user.keyboard("{Enter}");
+    expect(videoModelButton).toHaveAttribute("aria-pressed", "false");
+    expect(chatModelButton).toHaveAttribute("aria-expanded", "false");
+    expect(videoModelButton).toHaveAttribute("aria-expanded", "false");
+
+    await user.click(chatModelButton);
+    await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ });
+    expect(chatModelButton).toHaveAttribute("aria-expanded", "true");
+    expect(videoModelButton).toHaveAttribute("aria-expanded", "false");
+
+    await user.click(videoModelButton);
+
+    await expect(findVideoPanelButton("Seedance 2.5")).resolves.toBeVisible();
+    expect(chatModelButton).toHaveAttribute("aria-expanded", "false");
+    expect(videoModelButton).toHaveAttribute("aria-expanded", "true");
+
+    await user.click(chatModelButton);
+
+    await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ });
+    expect(chatModelButton).toHaveAttribute("aria-expanded", "true");
+    expect(videoModelButton).toHaveAttribute("aria-expanded", "false");
+
+    await user.click(chatModelButton);
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("option", { name: /Claude Sonnet 4\.6/ }),
+      ).not.toBeInTheDocument();
+    });
+    expect(chatModelButton).toHaveAttribute("aria-expanded", "false");
+    expect(videoModelButton).toHaveAttribute("aria-expanded", "false");
+  });
+
   it("pins the visible fallback model to the current thread", async () => {
     const user = userEvent.setup({ delay: null });
+    context.mocks.browser.matchMedia(false);
     const { bodies } = mockVideoModelThread("MiniMax-H3");
 
     detachedSetupPage({
@@ -3575,6 +3671,7 @@ describe("chat composer video model", () => {
 
   it("checks the resolved member default when the thread has no pin", async () => {
     const user = userEvent.setup({ delay: null });
+    context.mocks.browser.matchMedia(false);
     context.mocks.data.userModelPreference({
       selectedModel: null,
       serviceTier: null,
@@ -3606,6 +3703,7 @@ describe("chat composer video model", () => {
 
     await user.click(await findComposerModel("Claude Fable 5"));
     await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ });
+    expect(desktopVideoModelButton()).toBeUndefined();
     expect(videoPanelButton("Manage more models")).toBeUndefined();
   });
 });
