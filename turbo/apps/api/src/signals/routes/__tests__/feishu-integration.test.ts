@@ -57,7 +57,7 @@ import {
   readCustomConnectorOAuthStorageState,
   setCustomConnectorCredentialStorageState,
 } from "./helpers/connector-credential-storage-state";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
+import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { agentsRoutes } from "../agents";
 import { chatThreadRoutes } from "../chat-threads";

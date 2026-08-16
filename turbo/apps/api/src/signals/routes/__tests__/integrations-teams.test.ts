@@ -24,7 +24,7 @@ import {
   teamsConnectFixture,
   teamsFixtureExternalId,
   type TeamsConnectFixture,
-} from "./helpers/zero-teams-connect";
+} from "./helpers/teams-connect";
 import { integrationsTeamsMessageRoutes } from "../integrations-teams-message";
 import { integrationsTeamsUploadCompleteRoutes } from "../integrations-teams-upload-complete";
 import { zeroTeamsConnectRoutes } from "../zero-teams-connect";

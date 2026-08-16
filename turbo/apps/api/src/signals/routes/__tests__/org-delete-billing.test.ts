@@ -27,7 +27,7 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
   findSlackOrgConnection$,
   seedSlackConnectOrg$,
-} from "./helpers/zero-slack-connect";
+} from "./helpers/slack-connect";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import {
   createBillingWebhookFixture,

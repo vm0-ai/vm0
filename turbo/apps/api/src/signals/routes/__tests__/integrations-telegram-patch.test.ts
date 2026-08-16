@@ -15,7 +15,7 @@ import {
   deleteTelegramFixture$,
   seedTelegramInstallation$,
   type TelegramFixture,
-} from "./helpers/zero-telegram";
+} from "./helpers/telegram";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { server } from "../../../mocks/server";

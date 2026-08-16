@@ -39,7 +39,7 @@ import {
   deleteSlackIntegrationFixture$,
   seedSlackOrgInstallation$,
   type SlackIntegrationFixture,
-} from "./helpers/zero-integrations-slack";
+} from "./helpers/integrations-slack";
 import {
   deleteUsageStateFixture$,
   type UsageStateFixture,

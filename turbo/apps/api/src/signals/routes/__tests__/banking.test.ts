@@ -15,7 +15,7 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { now } from "../../../lib/time";
 import { createBddApi } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
+import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import {
   readBankingAuditEventsState,
   seedBankingState,

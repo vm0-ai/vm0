@@ -28,7 +28,7 @@ import {
   zeroComputerUseToken,
 } from "./helpers/api-bdd-computer-use";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
+import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 
 /*

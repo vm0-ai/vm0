@@ -39,12 +39,12 @@ import {
   teamsConnectFixture,
   teamsFixtureExternalId,
   type TeamsConnectFixture,
-} from "./helpers/zero-teams-connect";
+} from "./helpers/teams-connect";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
+import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { chatThreadRoutes } from "../chat-threads";
 import { zeroTeamsConnectRoutes } from "../zero-teams-connect";
 
