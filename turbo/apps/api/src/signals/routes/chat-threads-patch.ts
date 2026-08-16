@@ -41,7 +41,7 @@ const patchInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 204 as const, body: undefined };
 });
 
-export const zeroChatThreadPatchRoutes: readonly RouteEntry[] = [
+export const chatThreadPatchRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadByIdContract.patch,
     handler: authRoute({}, patchInner$),

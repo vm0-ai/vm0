@@ -37,20 +37,20 @@ import {
   getChatThreadSnapshot,
 } from "../services/chat-thread-event.service";
 import type { RouteEntry } from "../route-entry";
-import { zeroChatThreadsArtifactsSyncRoutes } from "./zero-chat-threads-artifacts-sync";
-import { zeroChatThreadComputerUseHostRoutes } from "./zero-chat-threads-computer-use-host";
-import { zeroChatThreadCreateRoutes } from "./zero-chat-threads-create";
-import { zeroChatThreadDeleteRoutes } from "./zero-chat-threads-delete";
-import { zeroChatThreadDraftGetRoutes } from "./zero-chat-threads-draft-get";
-import { zeroChatThreadGetRoutes } from "./zero-chat-threads-get";
-import { zeroChatThreadMarkAgentReadRoutes } from "./zero-chat-threads-mark-agent-read";
-import { zeroChatThreadMarkReadRoutes } from "./zero-chat-threads-mark-read";
-import { zeroChatThreadModelSelectionRoutes } from "./zero-chat-threads-model-selection";
-import { zeroChatThreadVideoModelRoutes } from "./zero-chat-threads-video-model";
-import { zeroChatThreadPatchRoutes } from "./zero-chat-threads-patch";
-import { zeroChatThreadPinRoutes } from "./zero-chat-threads-pin";
-import { zeroChatThreadRenameRoutes } from "./zero-chat-threads-rename";
-import { zeroChatThreadUnpinRoutes } from "./zero-chat-threads-unpin";
+import { chatThreadsArtifactsSyncRoutes } from "./chat-threads-artifacts-sync";
+import { chatThreadComputerUseHostRoutes } from "./chat-threads-computer-use-host";
+import { chatThreadCreateRoutes } from "./chat-threads-create";
+import { chatThreadDeleteRoutes } from "./chat-threads-delete";
+import { chatThreadDraftGetRoutes } from "./chat-threads-draft-get";
+import { chatThreadGetRoutes } from "./chat-threads-get";
+import { chatThreadMarkAgentReadRoutes } from "./chat-threads-mark-agent-read";
+import { chatThreadMarkReadRoutes } from "./chat-threads-mark-read";
+import { chatThreadModelSelectionRoutes } from "./chat-threads-model-selection";
+import { chatThreadVideoModelRoutes } from "./chat-threads-video-model";
+import { chatThreadPatchRoutes } from "./chat-threads-patch";
+import { chatThreadPinRoutes } from "./chat-threads-pin";
+import { chatThreadRenameRoutes } from "./chat-threads-rename";
+import { chatThreadUnpinRoutes } from "./chat-threads-unpin";
 
 const chatThreadIdSchema = z.string().uuid();
 
@@ -129,7 +129,7 @@ const listChatThreadLifecycleEventsInner$ = computed(async (get) => {
   };
 });
 
-const listZeroIndicatorsInner$ = computed(async (get) => {
+const listChatIndicatorsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const indicators = await get(
     chatIndicators({
@@ -315,12 +315,12 @@ const searchChatInner$ = computed(async (get) => {
   };
 });
 
-export const zeroChatThreadRoutes: readonly RouteEntry[] = [
+export const chatThreadRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadsContract.indicators,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
-      listZeroIndicatorsInner$,
+      listChatIndicatorsInner$,
     ),
   },
   {
@@ -386,18 +386,18 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
       searchChatInner$,
     ),
   },
-  ...zeroChatThreadsArtifactsSyncRoutes,
-  ...zeroChatThreadComputerUseHostRoutes,
-  ...zeroChatThreadCreateRoutes,
-  ...zeroChatThreadDeleteRoutes,
-  ...zeroChatThreadDraftGetRoutes,
-  ...zeroChatThreadGetRoutes,
-  ...zeroChatThreadMarkAgentReadRoutes,
-  ...zeroChatThreadMarkReadRoutes,
-  ...zeroChatThreadModelSelectionRoutes,
-  ...zeroChatThreadPatchRoutes,
-  ...zeroChatThreadPinRoutes,
-  ...zeroChatThreadRenameRoutes,
-  ...zeroChatThreadUnpinRoutes,
-  ...zeroChatThreadVideoModelRoutes,
+  ...chatThreadsArtifactsSyncRoutes,
+  ...chatThreadComputerUseHostRoutes,
+  ...chatThreadCreateRoutes,
+  ...chatThreadDeleteRoutes,
+  ...chatThreadDraftGetRoutes,
+  ...chatThreadGetRoutes,
+  ...chatThreadMarkAgentReadRoutes,
+  ...chatThreadMarkReadRoutes,
+  ...chatThreadModelSelectionRoutes,
+  ...chatThreadPatchRoutes,
+  ...chatThreadPinRoutes,
+  ...chatThreadRenameRoutes,
+  ...chatThreadUnpinRoutes,
+  ...chatThreadVideoModelRoutes,
 ];

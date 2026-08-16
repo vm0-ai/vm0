@@ -149,7 +149,7 @@ const updateComputerUseHostInner$ = command(
   },
 );
 
-export const zeroChatThreadComputerUseHostRoutes: readonly RouteEntry[] = [
+export const chatThreadComputerUseHostRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadComputerUseHostContract.update,
     handler: authRoute(

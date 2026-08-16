@@ -60,7 +60,7 @@ import {
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { agentsRoutes } from "../agents";
-import { zeroChatThreadRoutes } from "../zero-chat-threads";
+import { chatThreadRoutes } from "../chat-threads";
 import { customConnectorsRoutes } from "../custom-connectors";
 import { customConnectorsDeleteRoutes } from "../custom-connectors-delete";
 import { customConnectorsGetRoutes } from "../custom-connectors-get";
@@ -2974,7 +2974,7 @@ describe("Feishu integration", () => {
 
     mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const threadEvents = await accept(
-      setupApp({ context, routes: zeroChatThreadRoutes })(
+      setupApp({ context, routes: chatThreadRoutes })(
         chatThreadsContract,
       ).events({
         headers: { authorization: "Bearer clerk-session" },
@@ -3179,7 +3179,7 @@ describe("Feishu integration", () => {
     const run = await findRun(actor, "do the Feishu task");
     mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const threadEvents = await accept(
-      setupApp({ context, routes: zeroChatThreadRoutes })(
+      setupApp({ context, routes: chatThreadRoutes })(
         chatThreadsContract,
       ).events({
         headers: { authorization: "Bearer clerk-session" },
@@ -3811,7 +3811,7 @@ describe("Feishu integration", () => {
 
     mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const threadEvents = await accept(
-      setupApp({ context, routes: zeroChatThreadRoutes })(
+      setupApp({ context, routes: chatThreadRoutes })(
         chatThreadsContract,
       ).events({
         headers: { authorization: "Bearer clerk-session" },

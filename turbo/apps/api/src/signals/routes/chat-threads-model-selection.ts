@@ -137,7 +137,7 @@ const updateModelSelectionInner$ = command(
   },
 );
 
-export const zeroChatThreadModelSelectionRoutes: readonly RouteEntry[] = [
+export const chatThreadModelSelectionRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadModelSelectionContract.update,
     handler: authRoute(

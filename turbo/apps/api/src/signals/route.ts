@@ -76,8 +76,8 @@ import { zeroBillingRestoreRoutes } from "./routes/zero-billing-restore";
 import { zeroBillingStatusRoutes } from "./routes/zero-billing-status";
 import { zeroBillingUsagePackCreditsRoutes } from "./routes/zero-billing-usage-pack-credits";
 import { zeroBankingRoutes } from "./routes/zero-banking";
-import { zeroChatThreadRoutes } from "./routes/zero-chat-threads";
-import { zeroChatEventsRoutes } from "./routes/zero-chat-events";
+import { chatThreadRoutes } from "./routes/chat-threads";
+import { chatEventsRoutes } from "./routes/chat-events";
 import { sharedThreadRoutes } from "./routes/shared-threads";
 import { claudeCodeDeviceAuthRoutes } from "./routes/claude-code-device-auth";
 import { zeroComposesRoutes } from "./routes/zero-composes";
@@ -268,8 +268,8 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroBillingStatusRoutes,
   ...zeroBillingUsagePackCreditsRoutes,
   ...zeroBankingRoutes,
-  ...zeroChatThreadRoutes,
-  ...zeroChatEventsRoutes,
+  ...chatThreadRoutes,
+  ...chatEventsRoutes,
   ...sharedThreadRoutes,
   ...claudeCodeDeviceAuthRoutes,
   ...zeroComposesRoutes,

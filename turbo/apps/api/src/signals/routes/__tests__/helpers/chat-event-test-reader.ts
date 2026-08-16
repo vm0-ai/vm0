@@ -13,7 +13,7 @@ import {
 
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { setupApp } from "../../../../__tests__/test-helpers";
-import { zeroChatThreadRoutes } from "../../zero-chat-threads";
+import { chatThreadRoutes } from "../../chat-threads";
 
 const MAX_EVENT_ROWS_PER_PAGE = 50;
 
@@ -41,7 +41,7 @@ export async function readProjectedChatEvents(
     | { readonly sinceSeqId: number; readonly sinceEventId: string }
   ),
 ): Promise<readonly ChatEvent[]> {
-  const client = setupApp({ context, routes: zeroChatThreadRoutes })(
+  const client = setupApp({ context, routes: chatThreadRoutes })(
     chatThreadEventsContract,
   );
   const limit = args.limit ?? MAX_EVENT_ROWS_PER_PAGE;

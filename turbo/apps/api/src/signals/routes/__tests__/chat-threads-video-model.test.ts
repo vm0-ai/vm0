@@ -17,9 +17,9 @@ import { createBddApi } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { seedOrgMembership$ } from "./helpers/org-membership";
-import { zeroChatThreadGetRoutes } from "../zero-chat-threads-get";
-import { zeroChatThreadRoutes } from "../zero-chat-threads";
-import { zeroChatThreadVideoModelRoutes } from "../zero-chat-threads-video-model";
+import { chatThreadGetRoutes } from "../chat-threads-get";
+import { chatThreadRoutes } from "../chat-threads";
+import { chatThreadVideoModelRoutes } from "../chat-threads-video-model";
 
 const context = testContext();
 const store = createStore();
@@ -84,19 +84,17 @@ function zeroToken(args: {
 }
 
 function videoModelClient() {
-  return setupApp({ context, routes: zeroChatThreadVideoModelRoutes })(
+  return setupApp({ context, routes: chatThreadVideoModelRoutes })(
     chatThreadVideoModelContract,
   );
 }
 
 function threadsClient() {
-  return setupApp({ context, routes: zeroChatThreadRoutes })(
-    chatThreadsContract,
-  );
+  return setupApp({ context, routes: chatThreadRoutes })(chatThreadsContract);
 }
 
 function metadataClient() {
-  return setupApp({ context, routes: zeroChatThreadGetRoutes })(
+  return setupApp({ context, routes: chatThreadGetRoutes })(
     chatThreadMetadataContract,
   );
 }
@@ -113,7 +111,7 @@ function rawVideoModelRequest(
 ) {
   return setupRawAppRequest({
     context,
-    routes: zeroChatThreadVideoModelRoutes,
+    routes: chatThreadVideoModelRoutes,
   })(`/api/okou/chat-threads/${threadId}/video-model`, {
     method: "POST",
     headers: {
