@@ -97,7 +97,7 @@ import { seoRoutes } from "./routes/seo";
 import { zeroGoalsRoutes } from "./routes/zero-goals";
 import { zeroHostRoutes } from "./routes/zero-host";
 import { builtInGenerationRoutes } from "./routes/built-in-generation";
-import { zeroImageIoGenerateRoutes } from "./routes/zero-image-io-generate";
+import { imageIoGenerateRoutes } from "./routes/image-io-generate";
 import { imageShareXRoutes } from "./routes/image-share-x";
 import { logsRoutes } from "./routes/logs";
 import { zeroMailRoutes } from "./routes/zero-mail";
@@ -177,19 +177,19 @@ import { zeroTeamsBotRoutes } from "./routes/zero-teams-bot";
 import { zeroTeamsConnectRoutes } from "./routes/zero-teams-connect";
 import { zeroTeamsOauthRoutes } from "./routes/zero-teams-oauth";
 import { zeroTeamRoutes } from "./routes/zero-team";
-import { zeroUploadsCompleteRoutes } from "./routes/zero-uploads-complete";
-import { zeroUploadsMultipartRoutes } from "./routes/zero-uploads-multipart";
-import { zeroUploadsPrepareRoutes } from "./routes/zero-uploads-prepare";
+import { uploadsCompleteRoutes } from "./routes/uploads-complete";
+import { uploadsMultipartRoutes } from "./routes/uploads-multipart";
+import { uploadsPrepareRoutes } from "./routes/uploads-prepare";
 import { zeroUsageMembersRoutes } from "./routes/zero-usage-members";
 import { usageRecordRoutes } from "./routes/usage-record";
 import { userPreferencesRoutes } from "./routes/user-preferences";
 import { zeroUserPermissionGrantsRoutes } from "./routes/zero-user-permission-grants";
 import { userModelPreferenceRoutes } from "./routes/user-model-preference";
-import { zeroAvatarVideoRoutes } from "./routes/zero-avatar-video";
+import { avatarVideoRoutes } from "./routes/avatar-video";
 import { voiceIoQuotaRoutes } from "./routes/voice-io-quota";
 import { voiceIoSpeechRoutes } from "./routes/voice-io-speech";
 import { voiceIoSttRoutes } from "./routes/voice-io-stt";
-import { zeroVideoIoGenerateRoutes } from "./routes/zero-video-io-generate";
+import { videoIoGenerateRoutes } from "./routes/video-io-generate";
 import { webDownloadRoutes } from "./routes/web-download";
 import { webFileUrlRoutes } from "./routes/web-file-url";
 
@@ -289,10 +289,10 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroGoalsRoutes,
   ...zeroHostRoutes,
   ...builtInGenerationRoutes,
-  ...zeroImageIoGenerateRoutes,
+  ...imageIoGenerateRoutes,
   ...imageShareXRoutes,
-  ...zeroAvatarVideoRoutes,
-  ...zeroVideoIoGenerateRoutes,
+  ...avatarVideoRoutes,
+  ...videoIoGenerateRoutes,
   ...logsRoutes,
   ...zeroMailRoutes,
   ...mapsRoutes,
@@ -378,9 +378,9 @@ export const ROUTES: readonly RouteEntry[] = [
   ...integrationsTelegramUploadCompleteRoutes,
   ...integrationsTelegramUploadInitRoutes,
   ...zeroTeamRoutes,
-  ...zeroUploadsCompleteRoutes,
-  ...zeroUploadsMultipartRoutes,
-  ...zeroUploadsPrepareRoutes,
+  ...uploadsCompleteRoutes,
+  ...uploadsMultipartRoutes,
+  ...uploadsPrepareRoutes,
   ...registryResourceDownloadRoutes,
   ...zeroUsageMembersRoutes,
   ...usageRecordRoutes,

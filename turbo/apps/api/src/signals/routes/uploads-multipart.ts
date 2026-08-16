@@ -111,7 +111,7 @@ const abortMultipartInner$ = command(
   },
 );
 
-export const zeroUploadsMultipartRoutes: readonly RouteEntry[] = [
+export const uploadsMultipartRoutes: readonly RouteEntry[] = [
   {
     route: zeroUploadsContract.completeMultipart,
     handler: authRoute(

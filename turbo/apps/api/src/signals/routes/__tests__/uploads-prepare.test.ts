@@ -18,14 +18,14 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { createBddApi } from "./helpers/api-bdd";
 import { seedOrgMembership$ } from "./helpers/org-membership";
-import { zeroUploadsCompleteRoutes } from "../zero-uploads-complete";
-import { zeroUploadsMultipartRoutes } from "../zero-uploads-multipart";
-import { zeroUploadsPrepareRoutes } from "../zero-uploads-prepare";
+import { uploadsCompleteRoutes } from "../uploads-complete";
+import { uploadsMultipartRoutes } from "../uploads-multipart";
+import { uploadsPrepareRoutes } from "../uploads-prepare";
 
 const zeroUploadsTestRoutes = Object.freeze([
-  ...zeroUploadsCompleteRoutes,
-  ...zeroUploadsMultipartRoutes,
-  ...zeroUploadsPrepareRoutes,
+  ...uploadsCompleteRoutes,
+  ...uploadsMultipartRoutes,
+  ...uploadsPrepareRoutes,
 ]);
 
 const context = testContext();

@@ -19,7 +19,7 @@ import { createDeferredPromise } from "../../utils";
 import { webhooksBuiltInGenerationRoutes } from "../webhooks-built-in-generations";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
 import { builtInGenerationRoutes } from "../built-in-generation";
-import { zeroImageIoGenerateRoutes } from "../zero-image-io-generate";
+import { imageIoGenerateRoutes } from "../image-io-generate";
 import { usageRecordRoutes } from "../usage-record";
 import {
   createUsagePricingFixture,
@@ -134,7 +134,7 @@ function createImageIoTestApp(
     signal: context.signal,
     routes: [
       ...builtInGenerationRoutes,
-      ...zeroImageIoGenerateRoutes,
+      ...imageIoGenerateRoutes,
       ...webhooksBuiltInGenerationRoutes,
       ...zeroBillingStatusRoutes,
       ...usageRecordRoutes,

@@ -20,7 +20,7 @@ import { now } from "../../../lib/time";
 import { webhooksBuiltInGenerationRoutes } from "../webhooks-built-in-generations";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
 import { builtInGenerationRoutes } from "../built-in-generation";
-import { zeroVideoIoGenerateRoutes } from "../zero-video-io-generate";
+import { videoIoGenerateRoutes } from "../video-io-generate";
 import {
   createUsagePricingFixture,
   seedOrgMetadata,
@@ -229,7 +229,7 @@ function createVideoIoTestApp(
     signal: context.signal,
     routes: [
       ...builtInGenerationRoutes,
-      ...zeroVideoIoGenerateRoutes,
+      ...videoIoGenerateRoutes,
       ...webhooksBuiltInGenerationRoutes,
       ...zeroBillingStatusRoutes,
     ],

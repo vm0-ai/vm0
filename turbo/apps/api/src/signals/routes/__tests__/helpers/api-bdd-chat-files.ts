@@ -82,8 +82,8 @@ import { zeroChatThreadUnpinRoutes } from "../../zero-chat-threads-unpin";
 import { zeroChatThreadsArtifactsSyncRoutes } from "../../zero-chat-threads-artifacts-sync";
 import { zeroHostRoutes } from "../../zero-host";
 import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
-import { zeroUploadsCompleteRoutes } from "../../zero-uploads-complete";
-import { zeroUploadsPrepareRoutes } from "../../zero-uploads-prepare";
+import { uploadsCompleteRoutes } from "../../uploads-complete";
+import { uploadsPrepareRoutes } from "../../uploads-prepare";
 import { userModelPreferenceRoutes } from "../../user-model-preference";
 import type { ApiTestUser } from "./api-bdd";
 import {
@@ -204,8 +204,8 @@ const chatFilesRoutes = [
   ...zeroChatThreadComputerUseHostRoutes,
   ...zeroChatThreadsArtifactsSyncRoutes,
   ...zeroChatEventsRoutes,
-  ...zeroUploadsPrepareRoutes,
-  ...zeroUploadsCompleteRoutes,
+  ...uploadsPrepareRoutes,
+  ...uploadsCompleteRoutes,
   ...zeroHostRoutes,
   ...zeroModelPoliciesRoutes,
   ...userModelPreferenceRoutes,

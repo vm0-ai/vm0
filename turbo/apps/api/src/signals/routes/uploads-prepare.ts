@@ -141,7 +141,7 @@ const prepareUploadInner$ = command(
   },
 );
 
-export const zeroUploadsPrepareRoutes: readonly RouteEntry[] = [
+export const uploadsPrepareRoutes: readonly RouteEntry[] = [
   {
     route: zeroUploadsContract.prepare,
     handler: authRoute(
