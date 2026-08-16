@@ -1981,16 +1981,11 @@ describe("zero sidebar", () => {
             chatThreadId: RESEARCH_THREAD_ID,
             agentName: "Research Agent",
             matchedMessage: {
-              messageId: `a0000000-0000-4000-a000-${String(index + 1).padStart(
-                12,
-                "0",
-              )}`,
               chatThreadId: RESEARCH_THREAD_ID,
               role: "user" as const,
               content: `Production deploy ${index + 1} finished successfully`,
               createdAt: "2026-03-10T00:10:00Z",
               seqId: index + 1,
-              sequenceNumber: null,
               runId: null,
             },
             matchedRanges: [{ start: 11, end: 17 }],
