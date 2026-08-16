@@ -10,7 +10,7 @@ import { zeroSlackOrgInstallation } from "../services/zero-slack-data.service";
 import {
   resolveCurrentUserSlackId,
   slackMessageSendFooterText,
-} from "../services/zero-integrations-slack-message.service";
+} from "../services/slack-message-context.service";
 import { buildFooterBlocks } from "../../lib/slack-blocks";
 import type { RouteEntry } from "../route-entry";
 
