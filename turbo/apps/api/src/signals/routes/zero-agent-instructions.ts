@@ -17,8 +17,8 @@ import { serverSideZeroAgentCompose$ } from "../services/agent-compose.service";
 import {
   agentResponse,
   defaultAgentResponse,
-} from "../services/zero-agent-data.service";
-import { zeroAgentInstructions } from "../services/zero-agent-instructions.service";
+} from "../services/agent-data.service";
+import { agentInstructions } from "../services/agent-instructions.service";
 import type { RouteEntry } from "../route-entry";
 
 const agentReadAuth = {
@@ -37,7 +37,7 @@ const getAgentInstructionsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(zeroAgentInstructionsContract.get));
   const result = await get(
-    zeroAgentInstructions({
+    agentInstructions({
       orgId: auth.orgId,
       userId: auth.userId,
       agentId: params.id,

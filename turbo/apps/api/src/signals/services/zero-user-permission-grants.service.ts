@@ -153,7 +153,7 @@ function validationError(message: string): ValidationErrorResponse {
   };
 }
 
-function visibleZeroAgentCondition(userId: string) {
+function visibleAgentCondition(userId: string) {
   return or(eq(zeroAgents.visibility, "public"), eq(zeroAgents.owner, userId));
 }
 
@@ -168,7 +168,7 @@ async function findVisibleAgent(
       and(
         eq(zeroAgents.orgId, scope.orgId),
         eq(zeroAgents.id, scope.agentId),
-        visibleZeroAgentCondition(scope.userId),
+        visibleAgentCondition(scope.userId),
       ),
     )
     .limit(1);
@@ -657,7 +657,7 @@ async function lockVisibleAgentForUpdate(
       and(
         eq(zeroAgents.orgId, scope.orgId),
         eq(zeroAgents.id, scope.agentId),
-        visibleZeroAgentCondition(scope.userId),
+        visibleAgentCondition(scope.userId),
       ),
     )
     .for("update")

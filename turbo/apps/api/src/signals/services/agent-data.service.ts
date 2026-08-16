@@ -31,7 +31,7 @@ export function agentResponse(row: {
 }): ZeroAgentResponse {
   const ownerId = row.owner ?? row.composeUserId;
   if (!ownerId) {
-    throw new Error(`Zero agent ${row.agentId} is missing an owner`);
+    throw new Error(`Agent ${row.agentId} is missing an owner`);
   }
 
   return {
@@ -66,11 +66,11 @@ export function defaultAgentResponse(args: {
   };
 }
 
-function visibleZeroAgentCondition(userId: string) {
+function visibleAgentCondition(userId: string) {
   return or(eq(zeroAgents.visibility, "public"), eq(zeroAgents.owner, userId));
 }
 
-export function visibleJoinedZeroAgentCondition(userId: string) {
+export function visibleJoinedAgentCondition(userId: string) {
   return or(
     isNull(zeroAgents.id),
     eq(zeroAgents.visibility, "public"),
@@ -78,7 +78,7 @@ export function visibleJoinedZeroAgentCondition(userId: string) {
   );
 }
 
-export function zeroAgentExists(args: {
+export function agentExists(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly agentId: string;
@@ -91,7 +91,7 @@ export function zeroAgentExists(args: {
         and(
           eq(zeroAgents.orgId, args.orgId),
           eq(zeroAgents.id, args.agentId),
-          visibleZeroAgentCondition(args.userId),
+          visibleAgentCondition(args.userId),
         ),
       )
       .limit(1);
@@ -100,7 +100,7 @@ export function zeroAgentExists(args: {
   });
 }
 
-export function zeroAgentList(
+export function agentList(
   orgId: string,
   userId: string,
 ): Computed<Promise<readonly ZeroAgentResponse[]>> {
@@ -120,16 +120,14 @@ export function zeroAgentList(
       })
       .from(zeroAgents)
       .innerJoin(agentComposes, eq(zeroAgents.id, agentComposes.id))
-      .where(
-        and(eq(zeroAgents.orgId, orgId), visibleZeroAgentCondition(userId)),
-      )
+      .where(and(eq(zeroAgents.orgId, orgId), visibleAgentCondition(userId)))
       .orderBy(desc(zeroAgents.updatedAt));
 
     return rows.map(agentResponse);
   });
 }
 
-export function zeroAgentDetail(args: {
+export function agentDetail(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly agentId: string;
@@ -155,7 +153,7 @@ export function zeroAgentDetail(args: {
         and(
           eq(zeroAgents.orgId, args.orgId),
           eq(zeroAgents.id, args.agentId),
-          visibleZeroAgentCondition(args.userId),
+          visibleAgentCondition(args.userId),
         ),
       )
       .limit(1);
@@ -164,7 +162,7 @@ export function zeroAgentDetail(args: {
   });
 }
 
-export function zeroAgentEnabledConnectorSlugs(args: {
+export function agentEnabledConnectorSlugs(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly agentId: string;
@@ -188,7 +186,7 @@ export function zeroAgentEnabledConnectorSlugs(args: {
   });
 }
 
-export function zeroAgentCustomConnectorGrants(args: {
+export function agentCustomConnectorGrants(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly agentId: string;
@@ -228,7 +226,7 @@ export function zeroAgentCustomConnectorGrants(args: {
   );
 }
 
-export function zeroTeam(
+export function teamComposeList(
   orgId: string,
   userId: string,
 ): Computed<Promise<readonly TeamComposeItem[]>> {
@@ -247,9 +245,7 @@ export function zeroTeam(
       })
       .from(agentComposes)
       .innerJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
-      .where(
-        and(eq(agentComposes.orgId, orgId), visibleZeroAgentCondition(userId)),
-      )
+      .where(and(eq(agentComposes.orgId, orgId), visibleAgentCondition(userId)))
       .orderBy(desc(agentComposes.updatedAt));
 
     return rows.map((row) => {
