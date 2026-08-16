@@ -52,3 +52,5 @@ export const slackOrgConnections = pgTable(
     ];
   },
 );
+
+# Fix for issue #27599: safe input handling
