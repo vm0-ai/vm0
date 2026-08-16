@@ -760,6 +760,96 @@ describe("POST /api/zero/video-io/generate", () => {
     });
   });
 
+  it("drops a request parameter the pinned model cannot honour", async () => {
+    // Reproduces the production failure: the caller sized its parameters for
+    // the model it asked for, enforcement swapped the model, and the request
+    // died on `Unsupported video resolution for minimax-h3: 720p` — an error
+    // naming a model the caller never sent. 720p is valid for
+    // dreamina-seedance-2.0-fast and invalid for the Kling pin.
+    const fixture = await seedVideoFixture();
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        triggerSource: "web",
+      },
+      context.signal,
+    );
+    await setRunVideoModelFixture({
+      runId,
+      selectedVideoModel: KLING_V3_4K_MODEL,
+    });
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.VideoModelSelection]: true,
+    });
+
+    let observedRequestUrl: string | null = null;
+    server.use(
+      http.post(KLING_V3_4K_QUEUE_URL, ({ request }) => {
+        observedRequestUrl = request.url;
+        return HttpResponse.json({
+          request_id: "reconciled-kling-request",
+          status_url: KLING_STATUS_URL,
+          response_url: KLING_RESPONSE_URL,
+        });
+      }),
+      http.get(KLING_VIDEO_URL, () => {
+        return new HttpResponse(VIDEO_BYTES, {
+          headers: { "content-type": "video/mp4" },
+        });
+      }),
+    );
+
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      runId,
+    });
+    const app = createVideoIoTestApp(fixture.pricingResolution);
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        prompt: "a fluffy golden retriever puppy",
+        model: "dreamina-seedance-2.0-fast",
+        resolution: "720p",
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "video",
+      fixture.userId,
+    );
+    await postFalWebhook(app, observedRequestUrl, {
+      video: {
+        url: KLING_VIDEO_URL,
+        content_type: "video/mp4",
+      },
+    });
+    await flushWaitUntilForTest();
+
+    const statusResponse = await app.request(
+      `/api/zero/built-in-generations/${generationId}`,
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(statusResponse.status).toBe(200);
+    // The pinned model's own resolution, not the one the caller sized for the
+    // model it named, and reported back so the caller can say what was used.
+    expect(readGenerationResult(await statusResponse.json())).toMatchObject({
+      model: KLING_V3_4K_MODEL,
+      resolution: "4k",
+    });
+  });
+
   it("keeps the request model when video model selection is disabled", async () => {
     const fixture = await seedVideoFixture();
     const { composeId } = await store.set(
