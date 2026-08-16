@@ -21,7 +21,7 @@ import {
 import {
   drainWorkflowQueueForThread$,
   type WorkflowQueueDrainResult,
-} from "./zero-workflow-queue-drain.service";
+} from "./workflow-queue-drain.service";
 import { expiredCancellationRecoveryThreads } from "./chat-active-run.service";
 import { drainGoalQueueForThread$ } from "./zero-goal-queue-drain.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
