@@ -19,7 +19,7 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { seedConnectorStorageRow } from "./helpers/connector-credential-storage-state";
 import { seedOrgMembership$ } from "./helpers/org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { zeroConnectorsRoutes } from "../zero-connectors";
+import { connectorsRoutes } from "../connectors";
 
 const context = testContext();
 const store = createStore();
@@ -60,7 +60,7 @@ async function seedSandboxJwtFixture(): Promise<AuthenticatedFixture> {
 async function connectOpenai(fixture: AuthenticatedFixture): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   await accept(
-    setupApp({ context, routes: zeroConnectorsRoutes })(
+    setupApp({ context, routes: connectorsRoutes })(
       zeroConnectorManualGrantContract,
     ).connect({
       params: { connectorSlug: "openai" },
@@ -77,7 +77,7 @@ async function connectOpenai(fixture: AuthenticatedFixture): Promise<void> {
 async function deleteOpenai(fixture: AuthenticatedFixture): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   await accept(
-    setupApp({ context, routes: zeroConnectorsRoutes })(
+    setupApp({ context, routes: connectorsRoutes })(
       zeroConnectorsBySlugContract,
     ).delete({
       params: { connectorSlug: "openai" },
@@ -100,7 +100,7 @@ describe("GET /api/zero/connectors/:connectorSlug", () => {
   });
 
   it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+    const client = setupApp({ context, routes: connectorsRoutes })(
       zeroConnectorsBySlugContract,
     );
     const response = await accept(
@@ -114,7 +114,7 @@ describe("GET /api/zero/connectors/:connectorSlug", () => {
   it("returns 401 when the authenticated session has no organization", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, null);
 
-    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+    const client = setupApp({ context, routes: connectorsRoutes })(
       zeroConnectorsBySlugContract,
     );
     const response = await accept(
@@ -132,7 +132,7 @@ describe("GET /api/zero/connectors/:connectorSlug", () => {
     const fixture = seedAuthenticatedFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+    const client = setupApp({ context, routes: connectorsRoutes })(
       zeroConnectorsBySlugContract,
     );
     const response = await accept(
@@ -152,7 +152,7 @@ describe("GET /api/zero/connectors/:connectorSlug", () => {
     await connectOpenai(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+    const client = setupApp({ context, routes: connectorsRoutes })(
       zeroConnectorsBySlugContract,
     );
     const response = await accept(
@@ -182,7 +182,7 @@ describe("GET /api/zero/connectors/:connectorSlug", () => {
     });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+    const client = setupApp({ context, routes: connectorsRoutes })(
       zeroConnectorsBySlugContract,
     );
     const response = await accept(
@@ -205,7 +205,7 @@ describe("GET /api/zero/connectors/:connectorSlug", () => {
     await deleteApiTestConnectorCatalogCompatibility();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+    const client = setupApp({ context, routes: connectorsRoutes })(
       zeroConnectorsBySlugContract,
     );
     const response = await accept(
@@ -235,7 +235,7 @@ describe("GET /api/zero/connectors/:connectorSlug", () => {
       exp: seconds + 60,
     });
 
-    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+    const client = setupApp({ context, routes: connectorsRoutes })(
       zeroConnectorsBySlugContract,
     );
     const response = await accept(

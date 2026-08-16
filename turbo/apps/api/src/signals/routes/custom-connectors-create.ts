@@ -53,7 +53,7 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
 });
 
-export const zeroCustomConnectorsCreateRoutes: readonly RouteEntry[] = [
+export const customConnectorsCreateRoutes: readonly RouteEntry[] = [
   {
     route: zeroCustomConnectorsContract.create,
     handler: authRoute(

@@ -16,7 +16,7 @@ import {
 } from "../../../test-fixtures/connector-catalog";
 import { seedConnectorStorageRow } from "./helpers/connector-credential-storage-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { zeroConnectorsRoutes } from "../zero-connectors";
+import { connectorsRoutes } from "../connectors";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -42,7 +42,7 @@ function seedAuthenticatedFixture(): AuthenticatedFixture {
 async function connectGitlab(fixture: AuthenticatedFixture): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   await accept(
-    setupApp({ context, routes: zeroConnectorsRoutes })(
+    setupApp({ context, routes: connectorsRoutes })(
       zeroConnectorManualGrantContract,
     ).connect({
       params: { connectorSlug: "gitlab" },
@@ -65,7 +65,7 @@ async function deleteConnector(
 ): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   await accept(
-    setupApp({ context, routes: zeroConnectorsRoutes })(
+    setupApp({ context, routes: connectorsRoutes })(
       zeroConnectorsBySlugContract,
     ).delete({
       params: { connectorSlug },
@@ -92,7 +92,7 @@ describe("GET /api/zero/connectors", () => {
     const fixture = seedAuthenticatedFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+    const client = setupApp({ context, routes: connectorsRoutes })(
       zeroConnectorsMainContract,
     );
     const response = await accept(
@@ -110,7 +110,7 @@ describe("GET /api/zero/connectors", () => {
     await connectGitlab(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+    const client = setupApp({ context, routes: connectorsRoutes })(
       zeroConnectorsMainContract,
     );
     const response = await accept(
@@ -147,7 +147,7 @@ describe("GET /api/zero/connectors", () => {
     });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+    const client = setupApp({ context, routes: connectorsRoutes })(
       zeroConnectorsMainContract,
     );
     const response = await accept(
@@ -171,7 +171,7 @@ describe("GET /api/zero/connectors", () => {
     await deleteApiTestConnectorCatalogCompatibility();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+    const client = setupApp({ context, routes: connectorsRoutes })(
       zeroConnectorsMainContract,
     );
     const response = await accept(
@@ -186,7 +186,7 @@ describe("GET /api/zero/connectors", () => {
   });
 
   it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+    const client = setupApp({ context, routes: connectorsRoutes })(
       zeroConnectorsMainContract,
     );
     const response = await accept(client.list({ headers: {} }), [401]);
@@ -197,7 +197,7 @@ describe("GET /api/zero/connectors", () => {
   it("returns 401 when the authenticated session has no organization", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, null);
 
-    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+    const client = setupApp({ context, routes: connectorsRoutes })(
       zeroConnectorsMainContract,
     );
     const response = await accept(

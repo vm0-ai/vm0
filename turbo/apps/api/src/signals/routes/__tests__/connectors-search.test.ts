@@ -12,7 +12,7 @@ import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { seedOrgMembership$ } from "./helpers/org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { zeroConnectorsRoutes } from "../zero-connectors";
+import { connectorsRoutes } from "../connectors";
 import { zeroFeatureSwitchesRoutes } from "../zero-feature-switches";
 
 const context = testContext();
@@ -75,7 +75,7 @@ describe("GET /api/zero/connectors/search", () => {
   });
 
   it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+    const client = setupApp({ context, routes: connectorsRoutes })(
       zeroConnectorsSearchContract,
     );
     const response = await accept(
@@ -89,7 +89,7 @@ describe("GET /api/zero/connectors/search", () => {
   it("returns connectors array with correct shape", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
-    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+    const client = setupApp({ context, routes: connectorsRoutes })(
       zeroConnectorsSearchContract,
     );
     const response = await accept(
@@ -118,7 +118,7 @@ describe("GET /api/zero/connectors/search", () => {
   it("filters connectors by keyword matching slug or label", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
-    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+    const client = setupApp({ context, routes: connectorsRoutes })(
       zeroConnectorsSearchContract,
     );
     const response = await accept(
@@ -140,7 +140,7 @@ describe("GET /api/zero/connectors/search", () => {
   it("does not search connector descriptions", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
-    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+    const client = setupApp({ context, routes: connectorsRoutes })(
       zeroConnectorsSearchContract,
     );
     const response = await accept(
@@ -157,7 +157,7 @@ describe("GET /api/zero/connectors/search", () => {
   it("does not search connector tags", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
-    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+    const client = setupApp({ context, routes: connectorsRoutes })(
       zeroConnectorsSearchContract,
     );
     const response = await accept(
@@ -174,7 +174,7 @@ describe("GET /api/zero/connectors/search", () => {
   it("returns empty array for non-matching keyword", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
-    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+    const client = setupApp({ context, routes: connectorsRoutes })(
       zeroConnectorsSearchContract,
     );
     const response = await accept(
@@ -191,7 +191,7 @@ describe("GET /api/zero/connectors/search", () => {
   it("performs case-insensitive keyword search", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
-    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+    const client = setupApp({ context, routes: connectorsRoutes })(
       zeroConnectorsSearchContract,
     );
 
@@ -216,7 +216,7 @@ describe("GET /api/zero/connectors/search", () => {
   it("hides the test OAuth device connector when the test OAuth feature is disabled", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
-    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+    const client = setupApp({ context, routes: connectorsRoutes })(
       zeroConnectorsSearchContract,
     );
     const response = await accept(
@@ -242,7 +242,7 @@ describe("GET /api/zero/connectors/search", () => {
     });
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+    const client = setupApp({ context, routes: connectorsRoutes })(
       zeroConnectorsSearchContract,
     );
     const response = await accept(
@@ -267,7 +267,7 @@ describe("GET /api/zero/connectors/search", () => {
     await enableFeatureSwitches(orgId, userId, {});
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+    const client = setupApp({ context, routes: connectorsRoutes })(
       zeroConnectorsSearchContract,
     );
     const response = await accept(
@@ -286,7 +286,7 @@ describe("GET /api/zero/connectors/search", () => {
   it("shows ungated api-token while hiding feature-gated oauth", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
-    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+    const client = setupApp({ context, routes: connectorsRoutes })(
       zeroConnectorsSearchContract,
     );
     const response = await accept(
@@ -308,7 +308,7 @@ describe("GET /api/zero/connectors/search", () => {
   it("exposes openai as api-token only", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
-    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+    const client = setupApp({ context, routes: connectorsRoutes })(
       zeroConnectorsSearchContract,
     );
     const response = await accept(
@@ -345,7 +345,7 @@ describe("GET /api/zero/connectors/search", () => {
       exp: seconds + 600,
     });
 
-    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+    const client = setupApp({ context, routes: connectorsRoutes })(
       zeroConnectorsSearchContract,
     );
     const response = await accept(
@@ -379,7 +379,7 @@ describe("GET /api/zero/connectors/search", () => {
       exp: seconds + 600,
     });
 
-    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
+    const client = setupApp({ context, routes: connectorsRoutes })(
       zeroConnectorsSearchContract,
     );
     const response = await accept(

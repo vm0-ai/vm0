@@ -73,7 +73,7 @@ const completeConnectorExternalCodeSessionInner$ = command(
   },
 );
 
-export const zeroConnectorsExternalCodeRoutes: readonly RouteEntry[] = [
+export const connectorsExternalCodeRoutes: readonly RouteEntry[] = [
   {
     route: zeroConnectorExternalCodeSessionContract.create,
     handler: authRoute(

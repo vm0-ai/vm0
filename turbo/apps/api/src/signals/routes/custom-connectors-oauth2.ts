@@ -361,7 +361,7 @@ const callbackOAuth2$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 200 as const, body: callbackResultFromRedirect(response) };
 });
 
-export const zeroCustomConnectorOAuth2Routes: readonly RouteEntry[] = [
+export const customConnectorOAuth2Routes: readonly RouteEntry[] = [
   {
     route: zeroCustomConnectorOAuth2Contract.start,
     handler: authRoute(

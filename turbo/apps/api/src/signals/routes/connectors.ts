@@ -600,7 +600,7 @@ const startConnectorOpenIdInner$ = command(
   },
 );
 
-export const zeroConnectorsRoutes: readonly RouteEntry[] = [
+export const connectorsRoutes: readonly RouteEntry[] = [
   {
     route: zeroConnectorManualGrantContract.connect,
     handler: authRoute(connectorWriteAuth, connectManualGrantConnectorInner$),

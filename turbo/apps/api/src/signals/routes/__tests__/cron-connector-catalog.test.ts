@@ -92,9 +92,9 @@ import { testSystemStoragePresignedUrlCacheStateRoutes } from "../test-system-st
 import { connectorsSlugCallbackRoutes } from "../connectors-slug-callback";
 import { cronConnectorCatalogRoutes } from "../cron-connector-catalog";
 import { runnersRoutes } from "../runners";
-import { zeroConnectorCatalogRoutes } from "../zero-connector-catalog";
+import { connectorCatalogRoutes } from "../connector-catalog";
 import { connectorCheckRoutes } from "../connector-check";
-import { zeroConnectorsRoutes } from "../zero-connectors";
+import { connectorsRoutes } from "../connectors";
 import { zeroFeatureSwitchesRoutes } from "../zero-feature-switches";
 import { steamPlayerRoutes } from "../steam-player";
 import { zeroUserPermissionGrantsRoutes } from "../zero-user-permission-grants";
@@ -106,9 +106,9 @@ const TEST_APP_ROUTES = Object.freeze([
   ...cronConnectorCatalogRoutes,
   ...runnersRoutes,
   ...testSystemStoragePresignedUrlCacheStateRoutes,
-  ...zeroConnectorCatalogRoutes,
+  ...connectorCatalogRoutes,
   ...connectorCheckRoutes,
-  ...zeroConnectorsRoutes,
+  ...connectorsRoutes,
   ...zeroFeatureSwitchesRoutes,
   ...steamPlayerRoutes,
   ...zeroUserPermissionGrantsRoutes,
@@ -1392,7 +1392,7 @@ function cronClient() {
 }
 
 function diagnosticsClient() {
-  return setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+  return setupApp({ context, routes: connectorCatalogRoutes })(
     zeroConnectorCatalogContract,
   );
 }
@@ -1717,7 +1717,7 @@ describe("connector catalog valid lifecycle", () => {
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const callsBeforePublicCatalog = context.mocks.s3.send.mock.calls.length;
     const publicCatalog = await accept(
-      setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      setupApp({ context, routes: connectorCatalogRoutes })(
         zeroConnectorCatalogContract,
       ).list({
         headers: { authorization: "Bearer clerk-session" },
@@ -1751,9 +1751,9 @@ describe("connector catalog valid lifecycle", () => {
     const headers = { authorization: "Bearer clerk-session" };
     const catalogClient = setupApp({
       context,
-      routes: zeroConnectorCatalogRoutes,
+      routes: connectorCatalogRoutes,
     })(zeroConnectorCatalogContract);
-    const searchClient = setupApp({ context, routes: zeroConnectorsRoutes })(
+    const searchClient = setupApp({ context, routes: connectorsRoutes })(
       zeroConnectorsSearchContract,
     );
     const callsBeforePublicReads = context.mocks.s3.send.mock.calls.length;
@@ -1912,7 +1912,7 @@ describe("connector catalog valid lifecycle", () => {
     await syncCatalog();
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const response = await accept(
-      setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      setupApp({ context, routes: connectorCatalogRoutes })(
         zeroConnectorCatalogContract,
       ).permissions({
         params: { connectorSlug: release.connectorSlug },
@@ -1937,7 +1937,7 @@ describe("connector catalog valid lifecycle", () => {
     const headers = { authorization: "Bearer clerk-session" };
     const catalogClient = setupApp({
       context,
-      routes: zeroConnectorCatalogRoutes,
+      routes: connectorCatalogRoutes,
     })(zeroConnectorCatalogContract);
     const callsBeforePublicReads = context.mocks.s3.send.mock.calls.length;
 
@@ -1975,7 +1975,7 @@ describe("connector catalog valid lifecycle", () => {
     });
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const digestResponse = await accept(
-      setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      setupApp({ context, routes: connectorCatalogRoutes })(
         zeroConnectorCatalogContract,
       ).list({
         headers: { authorization: "Bearer clerk-session" },
@@ -1996,7 +1996,7 @@ describe("connector catalog valid lifecycle", () => {
       catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
     });
     const jsonResponse = await accept(
-      setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      setupApp({ context, routes: connectorCatalogRoutes })(
         zeroConnectorCatalogContract,
       ).list({
         headers: { authorization: "Bearer clerk-session" },
@@ -2023,7 +2023,7 @@ describe("connector catalog valid lifecycle", () => {
       catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
     });
     const identityResponse = await accept(
-      setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      setupApp({ context, routes: connectorCatalogRoutes })(
         zeroConnectorCatalogContract,
       ).list({
         headers: { authorization: "Bearer clerk-session" },
@@ -2044,7 +2044,7 @@ describe("connector catalog valid lifecycle", () => {
       catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
     });
     const nonObjectResponse = await accept(
-      setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      setupApp({ context, routes: connectorCatalogRoutes })(
         zeroConnectorCatalogContract,
       ).list({
         headers: { authorization: "Bearer clerk-session" },
@@ -2068,7 +2068,7 @@ describe("connector catalog valid lifecycle", () => {
       catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
     });
     const schemaResponse = await accept(
-      setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      setupApp({ context, routes: connectorCatalogRoutes })(
         zeroConnectorCatalogContract,
       ).list({
         headers: { authorization: "Bearer clerk-session" },
@@ -2091,7 +2091,7 @@ describe("connector catalog valid lifecycle", () => {
       catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
     });
     const shapeResponse = await accept(
-      setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      setupApp({ context, routes: connectorCatalogRoutes })(
         zeroConnectorCatalogContract,
       ).list({
         headers: { authorization: "Bearer clerk-session" },
@@ -2121,7 +2121,7 @@ describe("connector catalog valid lifecycle", () => {
     });
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const semanticResponse = await accept(
-      setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      setupApp({ context, routes: connectorCatalogRoutes })(
         zeroConnectorCatalogContract,
       ).list({
         headers: { authorization: "Bearer clerk-session" },
@@ -2144,7 +2144,7 @@ describe("connector catalog valid lifecycle", () => {
       await readApiTestConnectorCatalogCompatibilityEvaluations();
     expect(corruptedEvaluations).toHaveLength(1);
     const compatibilityResponse = await accept(
-      setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      setupApp({ context, routes: connectorCatalogRoutes })(
         zeroConnectorCatalogContract,
       ).list({
         headers: { authorization: "Bearer clerk-session" },
@@ -2164,7 +2164,7 @@ describe("connector catalog valid lifecycle", () => {
       await readApiTestConnectorCatalogCompatibilityEvaluations();
     expect(remainingEvaluations).toHaveLength(0);
     const missingResponse = await accept(
-      setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      setupApp({ context, routes: connectorCatalogRoutes })(
         zeroConnectorCatalogContract,
       ).list({
         headers: { authorization: "Bearer clerk-session" },
@@ -2229,7 +2229,7 @@ describe("connector catalog valid lifecycle", () => {
     const headers = { authorization: "Bearer clerk-session" };
     const catalogClient = setupApp({
       context,
-      routes: zeroConnectorCatalogRoutes,
+      routes: connectorCatalogRoutes,
     })(zeroConnectorCatalogContract);
     const featureClient = setupApp({
       context,
@@ -3603,7 +3603,7 @@ describe("connector catalog valid lifecycle", () => {
     const headers = { authorization: "Bearer clerk-session" };
     const callsBeforeAction = context.mocks.s3.send.mock.calls.length;
     const start = await accept(
-      setupApp({ context, routes: zeroConnectorsRoutes })(
+      setupApp({ context, routes: connectorsRoutes })(
         zeroConnectorOpenIdStartContract,
       ).start({
         params: { connectorSlug: "steam" },
@@ -4425,7 +4425,7 @@ describe("connector catalog valid lifecycle", () => {
     const headers = { authorization: "Bearer clerk-session" };
     const catalogClient = setupApp({
       context,
-      routes: zeroConnectorCatalogRoutes,
+      routes: connectorCatalogRoutes,
     })(zeroConnectorCatalogContract);
     const connected = await accept(catalogClient.status({ headers }), [200]);
     expect(connected.body.connectors[0]).toMatchObject({
@@ -4486,7 +4486,7 @@ describe("connector catalog valid lifecycle", () => {
     const callsBeforeRead = context.mocks.s3.send.mock.calls.length;
     const catalogClient = setupApp({
       context,
-      routes: zeroConnectorCatalogRoutes,
+      routes: connectorCatalogRoutes,
     })(zeroConnectorCatalogContract);
     const headers = { authorization: "Bearer clerk-session" };
 
@@ -4499,7 +4499,7 @@ describe("connector catalog valid lifecycle", () => {
       [503],
     );
     const searchResponse = await accept(
-      setupApp({ context, routes: zeroConnectorsRoutes })(
+      setupApp({ context, routes: connectorsRoutes })(
         zeroConnectorsSearchContract,
       ).search({
         headers,
@@ -5277,7 +5277,7 @@ describe("connector catalog executable compatibility", () => {
     const headers = { authorization: "Bearer clerk-session" };
     const catalogClient = setupApp({
       context,
-      routes: zeroConnectorCatalogRoutes,
+      routes: connectorCatalogRoutes,
     })(zeroConnectorCatalogContract);
     const unavailable = await accept(catalogClient.list({ headers }), [503]);
     expect(unavailable.body.error.code).toBe("PROVIDER_UNAVAILABLE");
@@ -5512,7 +5512,7 @@ describe("connector catalog executable compatibility", () => {
     const headers = { authorization: "Bearer clerk-session" };
     const catalogClient = setupApp({
       context,
-      routes: zeroConnectorCatalogRoutes,
+      routes: connectorCatalogRoutes,
     })(zeroConnectorCatalogContract);
     const featureClient = setupApp({
       context,
@@ -5808,7 +5808,7 @@ describe("connector catalog executable compatibility", () => {
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const catalogClient = setupApp({
       context,
-      routes: zeroConnectorCatalogRoutes,
+      routes: connectorCatalogRoutes,
     })(zeroConnectorCatalogContract);
     const headers = { authorization: "Bearer clerk-session" };
     expect(

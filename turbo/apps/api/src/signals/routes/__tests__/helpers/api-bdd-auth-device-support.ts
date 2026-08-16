@@ -13,7 +13,7 @@ import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-pr
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import type { RouteEntry } from "../../../route-entry";
-import { zeroConnectorsRoutes } from "../../zero-connectors";
+import { connectorsRoutes } from "../../connectors";
 import { zeroFeatureSwitchesRoutes } from "../../zero-feature-switches";
 import { zeroMeModelProvidersDeleteRoutes } from "../../zero-me-model-providers-delete";
 import { zeroMeModelProviderAccountRoutes } from "../../zero-me-model-provider-accounts";
@@ -28,7 +28,7 @@ interface AuthHeaders {
 }
 
 const authDeviceSupportRoutes: readonly RouteEntry[] = [
-  ...zeroConnectorsRoutes,
+  ...connectorsRoutes,
   ...zeroFeatureSwitchesRoutes,
   ...zeroMeModelProviderAccountRoutes,
   ...zeroMeModelProvidersDeleteRoutes,
