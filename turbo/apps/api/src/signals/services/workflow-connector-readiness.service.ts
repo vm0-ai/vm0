@@ -21,7 +21,7 @@ import { generateText } from "../external/openrouter";
 import { safeJsonParse } from "../utils";
 import { loadAgentConnectorScope } from "./agent-connector-scope.service";
 import { readPublicConnectorCatalogStatus } from "./connector-catalog-reader.service";
-import { zeroConnectorList } from "./zero-connector-data.service";
+import { connectorList } from "./connector-data.service";
 
 const CONNECTOR_READINESS_MODEL = "google/gemini-3.1-flash-lite-preview";
 const CONNECTOR_READINESS_TIMEOUT_MS = 30_000;
@@ -285,7 +285,7 @@ export const detectWorkflowConnectorReadiness$ = command(
     const [connectorState, agentScope, automationDependencies] =
       await Promise.all([
         get(
-          zeroConnectorList({
+          connectorList({
             orgId: args.orgId,
             userId: args.userId,
           }),

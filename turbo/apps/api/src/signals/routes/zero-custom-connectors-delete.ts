@@ -4,7 +4,7 @@ import { zeroCustomConnectorByIdContract } from "@okouai/api-contracts/contracts
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf } from "../context/request";
-import { deleteCustomConnector$ } from "../services/zero-custom-connector.service";
+import { deleteCustomConnector$ } from "../services/custom-connector.service";
 import { isNotFoundResponse } from "../../lib/error";
 import type { RouteEntry } from "../route-entry";
 

@@ -30,7 +30,7 @@ import {
 import { safeUrlParse, settle } from "../utils";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { userFeatureSwitchContext } from "./feature-switches.service";
-import { zeroConnectorList } from "./zero-connector-data.service";
+import { connectorList } from "./connector-data.service";
 import { userSecrets, userVariables } from "./user-data.service";
 
 type TelegramBotListItem = TelegramBot;
@@ -272,17 +272,17 @@ function telegramEnvironment(args: {
       }
     }
 
-    const [secretList, variableList, connectorList] = await Promise.all([
+    const [secretList, variableList, connectorState] = await Promise.all([
       get(userSecrets({ orgId: args.orgId, userId: args.userId })),
       get(userVariables({ orgId: args.orgId, userId: args.userId })),
-      get(zeroConnectorList({ orgId: args.orgId, userId: args.userId })),
+      get(connectorList({ orgId: args.orgId, userId: args.userId })),
     ]);
     const existingSecretNames = new Set([
       ...secretList.secrets.map((secret) => {
         return secret.name;
       }),
       ...guaranteedConnectorProvidedBindingNames({
-        bindings: connectorList.connectorProvidedBindings,
+        bindings: connectorState.connectorProvidedBindings,
         namespace: "secrets",
       }),
     ]);
@@ -291,7 +291,7 @@ function telegramEnvironment(args: {
         return variable.name;
       }),
       ...guaranteedConnectorProvidedBindingNames({
-        bindings: connectorList.connectorProvidedBindings,
+        bindings: connectorState.connectorProvidedBindings,
         namespace: "vars",
       }),
     ]);

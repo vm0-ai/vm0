@@ -84,7 +84,7 @@ import {
   type StoredConnectorConnectionRow as StoredConnectorRow,
 } from "./connector-connection-write.service";
 
-const log = logger("api:zero-connector-data");
+const log = logger("api:connector-data");
 const oauthScopesSchema = z.array(z.string());
 const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 15 * 60;
 interface ExternalUserInfo {
@@ -446,7 +446,7 @@ async function encryptManualGrantSecrets(
   return encryptedSecrets;
 }
 
-export function zeroConnectorList(args: {
+export function connectorList(args: {
   readonly orgId: string;
   readonly userId: string;
 }): Computed<Promise<ConnectorListResponse>> {
@@ -483,7 +483,7 @@ export function zeroConnectorList(args: {
       loadStoredConnectorRuntimeSnapshot(db),
     ]);
     const now = nowDate();
-    const connectorList: ConnectorWithRuntimeMethod[] =
+    const storedConnectors: ConnectorWithRuntimeMethod[] =
       snapshot === null
         ? []
         : storedRows.flatMap((row) => {
@@ -496,10 +496,10 @@ export function zeroConnectorList(args: {
             return connector === null ? [] : [connector];
           });
     const connectorProvidedBindings =
-      connectorProvidedBindingsForStoredConnectors(connectorList);
+      connectorProvidedBindingsForStoredConnectors(storedConnectors);
 
     return {
-      connectors: connectorList.map((connector) => {
+      connectors: storedConnectors.map((connector) => {
         return connector.response;
       }),
       connectorProvidedBindings,
@@ -508,10 +508,10 @@ export function zeroConnectorList(args: {
 }
 
 function connectorProvidedBindingsForStoredConnectors(
-  connectorList: readonly ConnectorWithRuntimeMethod[],
+  storedConnectors: readonly ConnectorWithRuntimeMethod[],
 ): ConnectorProvidedBinding[] {
   const provided: ConnectorProvidedBinding[] = [];
-  for (const connector of connectorList) {
+  for (const connector of storedConnectors) {
     if (connector.response.connectionStatus !== "connected") {
       continue;
     }
@@ -598,7 +598,7 @@ function storedConnectorBySlug(args: {
   });
 }
 
-export function zeroConnectorBySlug(args: {
+export function connectorBySlug(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly connectorSlug: string;
@@ -730,7 +730,7 @@ async function cleanupConnectorWatchesForDisconnect(
   }
 }
 
-export const deleteZeroConnectorLocalState$ = command(
+export const deleteConnectorLocalState$ = command(
   async (
     { get, set },
     args: {
@@ -1887,7 +1887,7 @@ export const upsertConnectorTokenConnection$ = command(
   },
 );
 
-export function zeroConnectorScopeDiff(args: {
+export function connectorScopeDiff(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly connectorSlug: string;
@@ -1909,7 +1909,7 @@ export function zeroConnectorScopeDiff(args: {
   });
 }
 
-export function zeroConnectorSearch(args: {
+export function connectorSearch(args: {
   readonly orgId: string | undefined;
   readonly userId: string;
   readonly keyword: string | undefined;

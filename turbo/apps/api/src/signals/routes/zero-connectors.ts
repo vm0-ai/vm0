@@ -31,12 +31,12 @@ import {
 import {
   connectManualGrantConnector$,
   connectNoAuthConnector$,
-  deleteZeroConnectorLocalState$,
-  zeroConnectorBySlug,
-  zeroConnectorList,
-  zeroConnectorScopeDiff,
-  zeroConnectorSearch,
-} from "../services/zero-connector-data.service";
+  deleteConnectorLocalState$,
+  connectorBySlug,
+  connectorList,
+  connectorScopeDiff,
+  connectorSearch,
+} from "../services/connector-data.service";
 import {
   connectorActionResolver,
   type ConnectorActionMethodResolution,
@@ -155,7 +155,7 @@ function connectorMethodResolutionError(
 const getConnectorListInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const result = await get(
-    zeroConnectorList({ orgId: auth.orgId, userId: auth.userId }),
+    connectorList({ orgId: auth.orgId, userId: auth.userId }),
   );
   return { status: 200 as const, body: result };
 });
@@ -164,7 +164,7 @@ const getConnectorBySlugInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(zeroConnectorsBySlugContract.get));
   const connector = await get(
-    zeroConnectorBySlug({
+    connectorBySlug({
       orgId: auth.orgId,
       userId: auth.userId,
       connectorSlug: params.connectorSlug,
@@ -182,7 +182,7 @@ const deleteConnectorBySlugInner$ = command(
     const auth = get(organizationAuthContext$);
     const params = get(pathParamsOf(zeroConnectorsBySlugContract.delete));
     const deleted = await set(
-      deleteZeroConnectorLocalState$,
+      deleteConnectorLocalState$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
@@ -204,7 +204,7 @@ const getScopeDiffInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(zeroConnectorScopeDiffContract.getScopeDiff));
   const diff = await get(
-    zeroConnectorScopeDiff({
+    connectorScopeDiff({
       orgId: auth.orgId,
       userId: auth.userId,
       connectorSlug: params.connectorSlug,
@@ -222,7 +222,7 @@ const searchConnectorsInner$ = computed(async (get) => {
   const query = get(queryOf(zeroConnectorsSearchContract.search));
   const connectors = await settle(
     get(
-      zeroConnectorSearch({
+      connectorSearch({
         orgId: auth.orgId,
         userId: auth.userId,
         keyword: query.keyword,

@@ -189,7 +189,7 @@ import {
   renderCustomConnectorRuntimePrefix,
   renderTemplateForRuntime,
   type StoredValueRow,
-} from "./zero-custom-connector.service";
+} from "./custom-connector.service";
 import {
   loadCustomConnectorPermissionBundle,
   type CustomConnectorPermissionBundle,

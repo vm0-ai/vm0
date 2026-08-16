@@ -4,7 +4,7 @@ import { zeroCustomConnectorConnectionContract } from "@okouai/api-contracts/con
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf } from "../context/request";
-import { disconnectCustomConnector$ } from "../services/zero-custom-connector.service";
+import { disconnectCustomConnector$ } from "../services/custom-connector.service";
 import type { RouteEntry } from "../route-entry";
 
 const disconnectInner$ = command(async ({ get, set }, signal: AbortSignal) => {

@@ -48,8 +48,8 @@ import {
 } from "./connector-action-resolver.service";
 import {
   upsertConnectorTokenConnection$,
-  zeroConnectorBySlug,
-} from "./zero-connector-data.service";
+  connectorBySlug,
+} from "./connector-data.service";
 import { normalizeDeviceAuthStartOptionsWithMethod } from "./connector-catalog-form-fields.service";
 import {
   authorizeConnectedConnector$,
@@ -831,7 +831,7 @@ const completedDeviceSessionResponse$ = command(
       {
         connectorLoader: () => {
           return get(
-            zeroConnectorBySlug({
+            connectorBySlug({
               orgId: args.orgId,
               userId: args.userId,
               connectorSlug: args.method.connectorSlug,

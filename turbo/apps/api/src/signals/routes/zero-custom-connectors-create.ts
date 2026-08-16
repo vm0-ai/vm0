@@ -7,7 +7,7 @@ import { bodyResultOf } from "../context/request";
 import {
   createCustomConnector$,
   serialiseCustomConnector,
-} from "../services/zero-custom-connector.service";
+} from "../services/custom-connector.service";
 import type { RouteEntry } from "../route-entry";
 
 const adminRequired = Object.freeze({

@@ -4,7 +4,7 @@ import { zeroCustomConnectorValuesContract } from "@okouai/api-contracts/contrac
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
-import { setCustomConnectorValues$ } from "../services/zero-custom-connector.service";
+import { setCustomConnectorValues$ } from "../services/custom-connector.service";
 import type { RouteEntry } from "../route-entry";
 
 const setValuesInner$ = command(async ({ get, set }, signal: AbortSignal) => {

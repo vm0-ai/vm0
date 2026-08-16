@@ -113,7 +113,7 @@ import {
   CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
   customConnectorSecretKey,
   loadCustomConnectorRuntimeData,
-} from "./zero-custom-connector.service";
+} from "./custom-connector.service";
 
 type AccessSecretSource = SecretConnectorMetadata["sourceType"];
 type StorageSecretSource = Exclude<AccessSecretSource, "platform-secret">;

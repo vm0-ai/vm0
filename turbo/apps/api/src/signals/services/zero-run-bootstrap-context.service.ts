@@ -34,7 +34,7 @@ import {
   userFeatureSwitchOverridesFromRows,
   type UserFeatureSwitchOverrideRow,
 } from "./feature-switches.service";
-import { activeUserPermissionGrantCondition } from "./zero-user-permission-grants.service";
+import { activeUserPermissionGrantCondition } from "./user-permission-grants.service";
 import {
   workflowsForRunFromRows,
   type RunWorkflowRef,

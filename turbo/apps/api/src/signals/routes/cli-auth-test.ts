@@ -40,7 +40,7 @@ import {
   testUserOrgId,
   ensureTestOrg$,
 } from "../services/cli-auth.service";
-import { upsertConnectorTokenConnection$ } from "../services/zero-connector-data.service";
+import { upsertConnectorTokenConnection$ } from "../services/connector-data.service";
 import { connectorActionResolverForSnapshot } from "../services/connector-action-resolver.service";
 import {
   getConnectorRuntimeConnector,

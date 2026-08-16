@@ -48,7 +48,7 @@ import {
   normaliseCustomConnectorRow,
   type CustomConnectorOAuthConfigRow,
   type CustomConnectorRow,
-} from "./zero-custom-connector.service";
+} from "./custom-connector.service";
 import { customConnectorDefinitionSelection } from "./custom-connector-definition-selection";
 import type { StoredCustomConnectorOAuthState } from "./connector-oauth-state.service";
 import {

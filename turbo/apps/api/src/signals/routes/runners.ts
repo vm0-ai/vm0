@@ -96,7 +96,7 @@ import {
   networkPolicyRefreshConnectorSlugs,
   resolveActiveNetworkPolicyRefreshes,
   resolveActiveNetworkPolicyRefreshesFromBaseline,
-} from "../services/zero-user-permission-grants.service";
+} from "../services/user-permission-grants.service";
 import {
   type CompressedSessionHistoryBlobEncoding,
   resumeSessionHistoryBlobKey,

@@ -7,7 +7,7 @@ import { bodyResultOf, pathParamsOf } from "../context/request";
 import {
   getCustomConnectorResponse,
   updateCustomConnectorDefinition$,
-} from "../services/zero-custom-connector.service";
+} from "../services/custom-connector.service";
 import { notFound } from "../../lib/error";
 import type { RouteEntry } from "../route-entry";
 

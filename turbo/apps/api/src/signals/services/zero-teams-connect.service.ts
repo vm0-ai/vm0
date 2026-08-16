@@ -25,7 +25,7 @@ import {
   type TeamsAdaptiveCard,
 } from "../external/teams-bot-client";
 import { nowDate } from "../../lib/time";
-import { zeroConnectorList } from "./zero-connector-data.service";
+import { connectorList } from "./connector-data.service";
 import { userSecrets, userVariables } from "./user-data.service";
 
 type TeamsInstallation = typeof teamsOrgInstallations.$inferSelect;
@@ -673,7 +673,7 @@ export function zeroTeamsConnectStatus(args: {
           },
           loadConnectorBindings: async () => {
             const connectors = await get(
-              zeroConnectorList({ orgId: args.orgId, userId: args.userId }),
+              connectorList({ orgId: args.orgId, userId: args.userId }),
             );
             return connectors.connectorProvidedBindings;
           },
