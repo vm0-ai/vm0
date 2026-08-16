@@ -1,7 +1,7 @@
 import type { PublicConnectorCatalogAuthMethodDetail } from "@okouai/api-contracts/contracts/zero-connector-catalog";
-import type { ZeroConnectorCatalogStatus } from "../../lib/api/domains/zero-connectors";
+import type { ConnectorCatalogStatus } from "../../lib/api/domains/connectors";
 
-export type PublicConnectorStatus = ZeroConnectorCatalogStatus;
+export type PublicConnectorStatus = ConnectorCatalogStatus;
 
 interface ConnectorSearchItem {
   readonly slug: string;

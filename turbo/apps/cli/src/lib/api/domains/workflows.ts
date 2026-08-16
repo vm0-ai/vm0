@@ -13,13 +13,13 @@ import {
 } from "@okouai/api-contracts/contracts/zero-workflows";
 import { getClientConfig, handleError } from "../core/client-factory";
 
-export type ZeroWorkflowAutomationCreateRequest = ServerInferRequest<
+export type WorkflowAutomationCreateRequest = ServerInferRequest<
   typeof zeroWorkflowAutomationsContract.create
 >["body"];
-export type ZeroWorkflowAutomationUpdateRequest = ServerInferRequest<
+export type WorkflowAutomationUpdateRequest = ServerInferRequest<
   typeof zeroWorkflowAutomationsContract.update
 >["body"];
-export type ZeroWorkflowAutomationSummary = ServerInferResponseBody<
+export type WorkflowAutomationSummary = ServerInferResponseBody<
   typeof zeroWorkflowAutomationsContract.get,
   200
 >;
@@ -105,7 +105,7 @@ export async function copyWorkflow(
 
 export async function listWorkflowAutomations(
   workflowId: string,
-): Promise<readonly ZeroWorkflowAutomationSummary[]> {
+): Promise<readonly WorkflowAutomationSummary[]> {
   const config = await getClientConfig();
   const client = initClient(zeroWorkflowAutomationsContract, config);
   const result = await client.list({ params: { workflowId } });
@@ -128,8 +128,8 @@ export async function listWorkspaceWorkflowAutomations(): Promise<
 
 export async function createWorkflowAutomation(
   workflowId: string,
-  body: ZeroWorkflowAutomationCreateRequest,
-): Promise<ZeroWorkflowAutomationSummary> {
+  body: WorkflowAutomationCreateRequest,
+): Promise<WorkflowAutomationSummary> {
   const config = await getClientConfig();
   const client = initClient(zeroWorkflowAutomationsContract, config);
   const result = await client.create({ params: { workflowId }, body });
@@ -139,7 +139,7 @@ export async function createWorkflowAutomation(
 
 export async function getWorkflowAutomation(
   id: string,
-): Promise<ZeroWorkflowAutomationSummary> {
+): Promise<WorkflowAutomationSummary> {
   const config = await getClientConfig();
   const client = initClient(zeroWorkflowAutomationsContract, config);
   const result = await client.get({ params: { id } });
@@ -149,8 +149,8 @@ export async function getWorkflowAutomation(
 
 export async function updateWorkflowAutomation(
   id: string,
-  body: ZeroWorkflowAutomationUpdateRequest,
-): Promise<ZeroWorkflowAutomationSummary> {
+  body: WorkflowAutomationUpdateRequest,
+): Promise<WorkflowAutomationSummary> {
   const config = await getClientConfig();
   const client = initClient(zeroWorkflowAutomationsContract, config);
   const result = await client.update({ params: { id }, body });
@@ -168,7 +168,7 @@ export async function deleteWorkflowAutomation(id: string): Promise<void> {
 
 export async function enableWorkflowAutomation(
   id: string,
-): Promise<ZeroWorkflowAutomationSummary> {
+): Promise<WorkflowAutomationSummary> {
   const config = await getClientConfig();
   const client = initClient(zeroWorkflowAutomationsContract, config);
   const result = await client.enable({ params: { id } });
@@ -178,7 +178,7 @@ export async function enableWorkflowAutomation(
 
 export async function disableWorkflowAutomation(
   id: string,
-): Promise<ZeroWorkflowAutomationSummary> {
+): Promise<WorkflowAutomationSummary> {
   const config = await getClientConfig();
   const client = initClient(zeroWorkflowAutomationsContract, config);
   const result = await client.disable({ params: { id } });

@@ -144,7 +144,7 @@ describe("okou search --source slack", () => {
 
   describe("unconditional emission", () => {
     it("prints the recipe regardless of connector state (no branching)", async () => {
-      // The recipe path does not import getZeroConnector — emission cannot
+      // The recipe path does not import getConnector — emission cannot
       // depend on connector state. Calling twice yields identical output.
       await searchCommand.parseAsync([
         "node",

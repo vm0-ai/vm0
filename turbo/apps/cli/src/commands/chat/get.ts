@@ -1,7 +1,7 @@
 import chalk from "chalk";
 import { Command } from "commander";
 
-import { getZeroChatThread } from "../../lib/api/domains/zero-chat";
+import { getChatThread } from "../../lib/api/domains/chat";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { resolveChatThreadId } from "./shared";
 
@@ -35,7 +35,7 @@ Notes:
     withErrorHandler(async (options: GetOptions) => {
       const threadId = resolveChatThreadId(options.threadId);
 
-      const thread = await getZeroChatThread({ threadId });
+      const thread = await getChatThread({ threadId });
       if (options.json) {
         console.log(JSON.stringify(thread));
         return;

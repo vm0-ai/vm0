@@ -23,7 +23,7 @@ import {
   fetchComputerUsePluginContent,
   fetchComputerUseScreenshot,
   getComputerUseCommand,
-} from "../../lib/api/domains/zero-computer-use";
+} from "../../lib/api/domains/computer-use";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import {
   computerUseOutputDir,

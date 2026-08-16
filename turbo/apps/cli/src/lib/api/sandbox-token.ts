@@ -1,6 +1,6 @@
 import { getOkouToken } from "../okou-env.js";
 
-export interface ZeroTokenPayload {
+export interface SandboxTokenPayload {
   userId: string;
   runId: string;
   orgId: string;
@@ -16,9 +16,9 @@ export interface ZeroTokenPayload {
  * If no token is provided, reads OKOU_TOKEN.
  * Returns undefined if the token is missing, malformed, or has an unsupported scope.
  */
-export function decodeZeroTokenPayload(
+export function decodeSandboxTokenPayload(
   token?: string,
-): ZeroTokenPayload | undefined {
+): SandboxTokenPayload | undefined {
   const raw = token ?? getOkouToken();
   if (!raw) return undefined;
 
@@ -32,7 +32,7 @@ export function decodeZeroTokenPayload(
   try {
     const payload = JSON.parse(
       Buffer.from(parts[1]!, "base64url").toString(),
-    ) as ZeroTokenPayload;
+    ) as SandboxTokenPayload;
     if (payload.scope === "okou" && Array.isArray(payload.capabilities)) {
       return payload;
     }

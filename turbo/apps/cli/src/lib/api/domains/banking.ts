@@ -2,10 +2,10 @@ import { ApiRequestError, getBaseUrl } from "../core/client-factory";
 import { getActiveToken } from "../config";
 import { headersWithCliClientHeaders } from "../client-headers";
 
-export type ZeroBankingOperation = "accounts" | "balances" | "transactions";
+export type BankingOperation = "accounts" | "balances" | "transactions";
 
-export interface ZeroBankingResponse {
-  readonly operation: ZeroBankingOperation;
+export interface BankingResponse {
+  readonly operation: BankingOperation;
   readonly provider: "finicity";
   readonly accounts?: unknown[];
   readonly balance?: unknown;
@@ -53,10 +53,10 @@ async function parseErrorBody(
   return { message, code };
 }
 
-export async function callZeroBanking(
-  operation: ZeroBankingOperation,
+export async function callBanking(
+  operation: BankingOperation,
   body: Record<string, unknown>,
-): Promise<ZeroBankingResponse> {
+): Promise<BankingResponse> {
   const baseUrl = await getBaseUrl();
   const token = await getActiveToken();
   if (!token) {
@@ -77,5 +77,5 @@ export async function callZeroBanking(
     throw new ApiRequestError(message, code, response.status);
   }
 
-  return (await response.json()) as ZeroBankingResponse;
+  return (await response.json()) as BankingResponse;
 }

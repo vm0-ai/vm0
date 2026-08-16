@@ -1,4 +1,4 @@
-import { decodeZeroTokenPayload } from "./zero-token.js";
+import { decodeSandboxTokenPayload } from "./sandbox-token.js";
 import { getOkouToken } from "../okou-env.js";
 
 export async function getToken(): Promise<string | undefined> {
@@ -23,12 +23,12 @@ export async function getApiUrl(): Promise<string> {
   return "https://api.okou.ai";
 }
 
-export { decodeZeroTokenPayload };
+export { decodeSandboxTokenPayload };
 
 /**
  * Get the active organization for API requests.
  * The organization is carried by the run-scoped agent token.
  */
 export async function getActiveOrg(): Promise<string | undefined> {
-  return decodeZeroTokenPayload()?.orgId;
+  return decodeSandboxTokenPayload()?.orgId;
 }

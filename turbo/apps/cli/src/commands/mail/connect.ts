@@ -1,7 +1,7 @@
 import chalk from "chalk";
 import { Command } from "commander";
 
-import { listZeroConnectorCatalogStatus } from "../../lib/api/domains/zero-connectors";
+import { listConnectorCatalogStatus } from "../../lib/api/domains/connectors";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { getPlatformOrigin } from "../doctor/platform-url";
 import { resolveAgentContext } from "../connector/agent-context";
@@ -27,7 +27,7 @@ export const connectCommand = new Command()
       const agentId = currentAgentId();
       const connectorSlug = MAIL_CONNECTOR_SLUG_BY_PROVIDER[provider];
       const [{ connectors }, agent, origin] = await Promise.all([
-        listZeroConnectorCatalogStatus(),
+        listConnectorCatalogStatus(),
         resolveAgentContext(agentId),
         getPlatformOrigin(),
       ]);

@@ -6,7 +6,7 @@ import { getClientConfig, handleError } from "../core/client-factory";
 /**
  * Get current org info via zero API
  */
-export async function getZeroOrg(): Promise<OrgResponse> {
+export async function getOrg(): Promise<OrgResponse> {
   const config = await getClientConfig();
   const client = initClient(zeroOrgContract, config);
 

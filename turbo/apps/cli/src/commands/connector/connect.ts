@@ -1,9 +1,9 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import {
-  connectZeroConnectorManualGrant,
-  listZeroConnectorCatalogStatus,
-} from "../../lib/api/domains/zero-connectors";
+  connectConnectorManualGrant,
+  listConnectorCatalogStatus,
+} from "../../lib/api/domains/connectors";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import {
   availableConnectorSlugs,
@@ -67,7 +67,7 @@ export const connectCommand = new Command()
   .action(
     withErrorHandler(async (connectorSlug: string, options: ConnectOptions) => {
       const values = parseConnectorValues(options.value);
-      const catalog = await listZeroConnectorCatalogStatus();
+      const catalog = await listConnectorCatalogStatus();
       const connectorMetadata = findConnectorStatusItem(
         catalog.connectors,
         connectorSlug,
@@ -84,7 +84,7 @@ export const connectCommand = new Command()
         connectorMetadata,
         options.authMethod,
       );
-      const connector = await connectZeroConnectorManualGrant(
+      const connector = await connectConnectorManualGrant(
         connectorMetadata.slug,
         authMethod.id,
         values,

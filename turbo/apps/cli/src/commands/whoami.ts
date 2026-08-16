@@ -4,14 +4,14 @@ import {
   getApiUrl,
   getActiveOrg,
   getToken,
-  decodeZeroTokenPayload,
+  decodeSandboxTokenPayload,
 } from "../lib/api/config";
-import { listZeroConnectors } from "../lib/api/domains/zero-connectors";
+import { listConnectors } from "../lib/api/domains/connectors";
 import {
   getZeroAgentUserConnectors,
   listZeroUserPermissionGrants,
 } from "../lib/api/domains/zero-agents";
-import { getZeroOrg } from "../lib/api/domains/zero-orgs";
+import { getOrg } from "../lib/api/domains/orgs";
 import { withErrorHandler } from "../lib/command/with-error-handler";
 import { getOkouAgentId } from "../lib/okou-env";
 import { policyIcon } from "../lib/utils/format-utils";
@@ -92,7 +92,7 @@ function printConnectorPermissions(info: ConnectorPermissionInfo): void {
  */
 async function printWorkspace(): Promise<void> {
   try {
-    const org = await getZeroOrg();
+    const org = await getOrg();
     console.log(`Workspace:  ${org.name}`);
     if (org.tier) {
       console.log(`Tier:       ${org.tier}`);
@@ -104,7 +104,7 @@ async function printWorkspace(): Promise<void> {
 
 async function showSandboxInfo(showPermissions: boolean): Promise<void> {
   const agentId = getOkouAgentId();
-  const payload = decodeZeroTokenPayload();
+  const payload = decodeSandboxTokenPayload();
 
   console.log(`Agent ID:   ${agentId}`);
   console.log(`Run ID:     ${payload?.runId ?? chalk.dim("unavailable")}`);
@@ -124,7 +124,7 @@ async function showSandboxInfo(showPermissions: boolean): Promise<void> {
       // Full mode: fetch connector identities, current-user grants, and agent connector access.
       const [connectorsResult, grantsResult, enabledResult] =
         await Promise.allSettled([
-          listZeroConnectors(),
+          listConnectors(),
           listZeroUserPermissionGrants(agentId!),
           getZeroAgentUserConnectors(agentId!),
         ]);
@@ -173,7 +173,7 @@ async function showSandboxInfo(showPermissions: boolean): Promise<void> {
       }
     } else {
       // Default mode: only fetch connector identities (1 API call)
-      const connectors = await listZeroConnectors();
+      const connectors = await listConnectors();
       const identities = connectors.connectors.filter((c) => {
         return c.externalUsername !== null || c.externalEmail !== null;
       });
@@ -195,7 +195,7 @@ async function showSandboxInfo(showPermissions: boolean): Promise<void> {
 async function showLocalInfo(): Promise<void> {
   const token = await getToken();
   const apiUrl = await getApiUrl();
-  const payload = token ? decodeZeroTokenPayload(token) : undefined;
+  const payload = token ? decodeSandboxTokenPayload(token) : undefined;
   const isExpired = payload ? payload.exp * 1000 <= Date.now() : false;
   const activeOrg = !isExpired ? await getActiveOrg() : undefined;
 

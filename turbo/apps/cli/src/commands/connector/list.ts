@@ -1,9 +1,9 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import {
-  listZeroConnectorCatalogStatus,
-  listZeroCustomConnectors,
-} from "../../lib/api/domains/zero-connectors";
+  listConnectorCatalogStatus,
+  listCustomConnectors,
+} from "../../lib/api/domains/connectors";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { resolveConnectorDiscoveryAgentContext } from "./agent-context";
 import { padEndAnsi, stripAnsi } from "./connected-as";
@@ -21,8 +21,8 @@ export const listCommand = new Command()
   .action(
     withErrorHandler(async (options: { agent?: string }) => {
       const [{ connectors }, customConnectors, agentCtx] = await Promise.all([
-        listZeroConnectorCatalogStatus(),
-        listZeroCustomConnectors(),
+        listConnectorCatalogStatus(),
+        listCustomConnectors(),
         resolveConnectorDiscoveryAgentContext(options.agent),
       ]);
       const discoveredConnectors = connectorDiscoveryItems(

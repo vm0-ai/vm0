@@ -7,10 +7,10 @@ import type {
 } from "@okouai/api-contracts/contracts/model-providers";
 import { getModelDisplayName } from "@okouai/core/model-display-name";
 import {
-  getZeroChatThread,
-  updateZeroChatThreadModelSelection,
-} from "../../lib/api/domains/zero-chat";
-import { listZeroModelPolicies } from "../../lib/api/domains/zero-model-policies";
+  getChatThread,
+  updateChatThreadModelSelection,
+} from "../../lib/api/domains/chat";
+import { listModelPolicies } from "../../lib/api/domains/model-policies";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { formatModelProviderRoute } from "../../lib/domain/model-policy-display";
 import { isUuid } from "../../lib/utils/uuid";
@@ -80,7 +80,7 @@ function printCurrentModel(
 }
 
 async function printModelHelp(command: Command): Promise<void> {
-  const result = await listZeroModelPolicies();
+  const result = await listModelPolicies();
   console.log(command.helpInformation().trimEnd());
   console.log();
   console.log(chalk.bold("Switchable models:"));
@@ -92,8 +92,8 @@ async function printModelHelp(command: Command): Promise<void> {
 
 async function printCurrentModelAndChoices(threadId: string): Promise<void> {
   const [thread, result] = await Promise.all([
-    getZeroChatThread({ threadId }),
-    listZeroModelPolicies(),
+    getChatThread({ threadId }),
+    listModelPolicies(),
   ]);
 
   printCurrentModel(thread, result);
@@ -106,7 +106,7 @@ async function printCurrentModelAndChoices(threadId: string): Promise<void> {
 }
 
 async function switchModel(threadId: string, model: string): Promise<void> {
-  const result = await listZeroModelPolicies();
+  const result = await listModelPolicies();
   const policy = result.policies.find((candidate) => {
     return candidate.model === model;
   });
@@ -125,7 +125,7 @@ async function switchModel(threadId: string, model: string): Promise<void> {
     );
   }
 
-  const updated = await updateZeroChatThreadModelSelection({
+  const updated = await updateChatThreadModelSelection({
     threadId,
     model,
   });

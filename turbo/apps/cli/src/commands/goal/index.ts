@@ -9,7 +9,7 @@ import {
   getGoal,
   pauseGoal,
   resumeGoal,
-} from "../../lib/api/domains/zero-goals";
+} from "../../lib/api/domains/goals";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 
 interface CreateOptions {

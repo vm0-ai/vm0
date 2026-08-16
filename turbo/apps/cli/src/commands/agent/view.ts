@@ -6,9 +6,9 @@ import {
   getZeroAgentUserConnectors,
   listZeroUserPermissionGrants,
 } from "../../lib/api/domains/zero-agents";
-import { listZeroConnectors } from "../../lib/api/domains/zero-connectors";
+import { listConnectors } from "../../lib/api/domains/connectors";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
-import type { ZeroConnector } from "../../lib/api/domains/zero-connectors";
+import type { Connector } from "../../lib/api/domains/connectors";
 import { policyIcon } from "../../lib/utils/format-utils";
 import { formatAvatar } from "./avatar";
 import {
@@ -45,7 +45,7 @@ function printDetailedPermissions(info: ConnectorPermissionInfo): void {
   );
 }
 
-function formatConnectorIdentity(connector: ZeroConnector | undefined): string {
+function formatConnectorIdentity(connector: Connector | undefined): string {
   if (!connector) return "";
   if (connector.externalUsername) return `@${connector.externalUsername}`;
   if (connector.externalEmail) return connector.externalEmail;
@@ -54,7 +54,7 @@ function formatConnectorIdentity(connector: ZeroConnector | undefined): string {
 
 function formatConnectorSummary(
   info: ConnectorPermissionInfo,
-  identity?: ZeroConnector,
+  identity?: Connector,
 ): string {
   const id = formatConnectorIdentity(identity);
   const idStr = id ? ` ${id}` : "";
@@ -63,7 +63,7 @@ function formatConnectorSummary(
   return `${info.connectorSlug}${idStr} (${info.allowed}/${info.total} allowed)`;
 }
 
-function formatDetailIdentity(connector: ZeroConnector | undefined): string {
+function formatDetailIdentity(connector: Connector | undefined): string {
   if (!connector) return "";
   let identity = "";
   if (connector.externalUsername && connector.externalEmail) {
@@ -104,12 +104,12 @@ Examples:
         const [agent, connectorSlugs, connectorIdentities] = await Promise.all([
           getZeroAgent(agentId),
           getZeroAgentUserConnectors(agentId),
-          listZeroConnectors().catch(() => {
-            return { connectors: [] as ZeroConnector[] };
+          listConnectors().catch(() => {
+            return { connectors: [] as Connector[] };
           }),
         ]);
 
-        const identityMap = new Map<string, ZeroConnector>(
+        const identityMap = new Map<string, Connector>(
           connectorIdentities.connectors.map((c) => {
             return [c.slug, c];
           }),

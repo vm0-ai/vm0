@@ -1,7 +1,7 @@
 import chalk from "chalk";
 import { Command } from "commander";
 
-import { renameZeroChatThread } from "../../lib/api/domains/zero-chat";
+import { renameChatThread } from "../../lib/api/domains/chat";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { isUuid } from "../../lib/utils/uuid";
 import { getOkouChatThreadId } from "../../lib/okou-env";
@@ -62,7 +62,7 @@ Notes:
         );
       }
 
-      const result = await renameZeroChatThread({ threadId, title });
+      const result = await renameChatThread({ threadId, title });
       if (options.json) {
         console.log(JSON.stringify(result));
         return;

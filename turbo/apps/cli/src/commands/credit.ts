@@ -4,11 +4,11 @@ import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilitie
 import type { BillingStatusResponse } from "@okouai/api-contracts/contracts/zero-billing";
 
 import {
-  createZeroCreditCheckout,
-  getZeroBillingStatus,
-} from "../lib/api/domains/zero-billing";
+  createCreditCheckout,
+  getBillingStatus,
+} from "../lib/api/domains/billing";
 import { withErrorHandler } from "../lib/command/with-error-handler";
-import { decodeZeroTokenPayload } from "../lib/api/zero-token";
+import { decodeSandboxTokenPayload } from "../lib/api/sandbox-token";
 import { getPlatformOrigin } from "./doctor/platform-url";
 import {
   currentPlanAllowsVideo,
@@ -29,7 +29,7 @@ function requireCapabilityForCreditAction(
   capability: ZeroCapability,
   message: string,
 ): void {
-  const payload = decodeZeroTokenPayload();
+  const payload = decodeSandboxTokenPayload();
   if (payload && !payload.capabilities.includes(capability)) {
     throw new Error(message);
   }
@@ -123,7 +123,7 @@ async function showCreditStatus(options: CreditOptions): Promise<void> {
   ) {
     throw new Error("auto-recharge options require a credit amount");
   }
-  printCreditStatus(await getZeroBillingStatus());
+  printCreditStatus(await getBillingStatus());
 }
 
 async function buyCredits(
@@ -137,7 +137,7 @@ async function buyCredits(
   const autoRecharge = autoRechargeConfiguration(options);
   // Only workspace admins can buy credits; the checkout route enforces it.
   const billing = currentTokenCanReadBilling()
-    ? await getZeroBillingStatus()
+    ? await getBillingStatus()
     : null;
   const origin = await getPlatformOrigin();
   if (billing && !currentPlanCanBuyCredits(billing)) {
@@ -151,7 +151,7 @@ async function buyCredits(
     return;
   }
 
-  const result = await createZeroCreditCheckout({
+  const result = await createCreditCheckout({
     credits,
     successUrl: `${origin}/?settings=usage&credit=success`,
     cancelUrl: `${origin}/?settings=usage&credit=canceled`,

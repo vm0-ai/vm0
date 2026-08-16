@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { readFileSync } from "node:fs";
-import { updateWorkflow } from "../../lib/api/domains/zero-workflows";
+import { updateWorkflow } from "../../lib/api/domains/workflows";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { readSupplementaryFiles } from "../../lib/skill-directory";
 import {

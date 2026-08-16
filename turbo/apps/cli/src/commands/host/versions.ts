@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
 
-import { getHostedSiteDeployments } from "../../lib/api/domains/zero-host";
+import { getHostedSiteDeployments } from "../../lib/api/domains/host";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 
 interface VersionsOptions {

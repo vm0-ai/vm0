@@ -6,7 +6,7 @@ import { getClientConfig, handleError } from "../core/client-factory";
 /**
  * List the current organization's model-first policies.
  */
-export async function listZeroModelPolicies(): Promise<OrgModelPoliciesResponse> {
+export async function listModelPolicies(): Promise<OrgModelPoliciesResponse> {
   const config = await getClientConfig();
   const client = initClient(zeroModelPoliciesMainContract, config);
 

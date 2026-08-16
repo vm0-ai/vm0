@@ -1,6 +1,6 @@
 import chalk from "chalk";
 import type { CustomConnectorResponse } from "@okouai/api-contracts/contracts/zero-custom-connectors";
-import type { ZeroConnectorCatalogStatus } from "../../lib/api/domains/zero-connectors";
+import type { ConnectorCatalogStatus } from "../../lib/api/domains/connectors";
 import type { ConnectorDiscoveryAgentContext } from "./agent-context";
 import { renderConnectedAsCell } from "./connected-as";
 
@@ -12,8 +12,8 @@ interface CatalogConnectorDiscoveryItem {
   readonly category: string;
   readonly tags: readonly string[];
   readonly generation: readonly string[];
-  readonly authMethods: ZeroConnectorCatalogStatus["authMethods"];
-  readonly catalogConnector: ZeroConnectorCatalogStatus;
+  readonly authMethods: ConnectorCatalogStatus["authMethods"];
+  readonly catalogConnector: ConnectorCatalogStatus;
 }
 
 interface CustomConnectorDiscoveryItem {
@@ -33,7 +33,7 @@ type ConnectorDiscoveryItem =
   | CustomConnectorDiscoveryItem;
 
 export function connectorDiscoveryItems(
-  catalogConnectors: readonly ZeroConnectorCatalogStatus[],
+  catalogConnectors: readonly ConnectorCatalogStatus[],
   customConnectors: readonly CustomConnectorResponse[],
 ): readonly ConnectorDiscoveryItem[] {
   return [

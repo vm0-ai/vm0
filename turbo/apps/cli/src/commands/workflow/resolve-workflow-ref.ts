@@ -1,4 +1,4 @@
-import { listWorkflows } from "../../lib/api/domains/zero-workflows";
+import { listWorkflows } from "../../lib/api/domains/workflows";
 import { getOkouAgentId } from "../../lib/okou-env";
 
 const UUID_RE =

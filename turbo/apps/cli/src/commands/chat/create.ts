@@ -2,9 +2,9 @@ import chalk from "chalk";
 import { Command } from "commander";
 
 import {
-  createZeroChatThread,
-  getZeroChatThreadAgentId,
-} from "../../lib/api/domains/zero-chat";
+  createChatThread,
+  getChatThreadAgentId,
+} from "../../lib/api/domains/chat";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { isUuid } from "../../lib/utils/uuid";
 import { getOkouChatThreadId } from "../../lib/okou-env";
@@ -43,7 +43,7 @@ async function resolveAgentId(
     );
   }
 
-  return await getZeroChatThreadAgentId({ threadId: currentThreadId });
+  return await getChatThreadAgentId({ threadId: currentThreadId });
 }
 
 export const createCommand = new Command()
@@ -97,7 +97,7 @@ Notes:
       }
 
       const agentId = await resolveAgentId(options.agent);
-      const thread = await createZeroChatThread({
+      const thread = await createChatThread({
         agentId,
         title,
         ...(options.model === undefined ? {} : { model: options.model }),

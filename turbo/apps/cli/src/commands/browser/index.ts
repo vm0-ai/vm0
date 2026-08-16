@@ -9,11 +9,11 @@ import {
 } from "@okouai/api-contracts/contracts/zero-browser";
 
 import {
-  createZeroBrowser,
-  getCurrentZeroBrowser,
-  leaseZeroBrowser,
-  useZeroBrowser,
-} from "../../lib/api/domains/zero-browser";
+  createBrowser,
+  getCurrentBrowser,
+  leaseBrowser,
+  useBrowser,
+} from "../../lib/api/domains/browser";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 
 const DEFAULT_AGENT_BROWSER_SESSION = "zero-browser";
@@ -127,7 +127,7 @@ const useCommand = new Command()
   .option("--json", "Print machine-readable output without connection secrets")
   .action(
     withErrorHandler(async (options: ConnectionOptions) => {
-      await connectResponse(await useZeroBrowser(), options);
+      await connectResponse(await useBrowser(), options);
     }),
   );
 
@@ -139,7 +139,7 @@ const leaseCommand = new Command()
   .option("--json", "Print machine-readable output")
   .action(
     withErrorHandler(async (options: OutputOptions) => {
-      const browser = await leaseZeroBrowser();
+      const browser = await leaseBrowser();
       if (options.json) {
         console.log(JSON.stringify({ browser: browserJson(browser) }));
         return;
@@ -174,7 +174,7 @@ const newCommand = new Command()
         name: options.name,
         proxyCountryCode: options.country ?? null,
       });
-      await connectResponse(await createZeroBrowser(request), options);
+      await connectResponse(await createBrowser(request), options);
     }),
   );
 
@@ -184,7 +184,7 @@ const statusCommand = new Command()
   .option("--json", "Print machine-readable output")
   .action(
     withErrorHandler(async (options: OutputOptions) => {
-      const browser = await getCurrentZeroBrowser();
+      const browser = await getCurrentBrowser();
       if (options.json) {
         console.log(JSON.stringify({ browser: browserJson(browser) }));
         return;
@@ -198,7 +198,7 @@ const viewCommand = new Command()
   .description("Print the current thread browser's authenticated viewer link")
   .action(
     withErrorHandler(async () => {
-      console.log((await getCurrentZeroBrowser()).viewerUrl);
+      console.log((await getCurrentBrowser()).viewerUrl);
     }),
   );
 

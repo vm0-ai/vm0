@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { listZeroConnectorCatalogStatus } from "../../lib/api/domains/zero-connectors";
+import { listConnectorCatalogStatus } from "../../lib/api/domains/connectors";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { resolveAgentContext } from "./agent-context";
 import { getPlatformOrigin } from "../doctor/platform-url";
@@ -166,7 +166,7 @@ export const statusCommand = new Command()
     withErrorHandler(
       async (connectorSlug: string, options: { agent?: string }) => {
         const [catalog, agentCtx] = await Promise.all([
-          listZeroConnectorCatalogStatus(),
+          listConnectorCatalogStatus(),
           resolveAgentContext(options.agent),
         ]);
         const connector = findConnectorStatusItem(
