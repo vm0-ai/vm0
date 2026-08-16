@@ -9,7 +9,7 @@ import { bodyResultOf, pathParamsOf } from "../context/request";
 import { db$, writeDb$ } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { notFound } from "../../lib/error";
-import { zeroAgentExists } from "../services/zero-agent-data.service";
+import { agentExists } from "../services/agent-data.service";
 import type { RouteEntry } from "../route-entry";
 
 const agentReadAuth = {
@@ -26,14 +26,14 @@ const getAgentDraftInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(agentDraftContract.get));
 
-  const agentExists = await get(
-    zeroAgentExists({
+  const exists = await get(
+    agentExists({
       orgId: auth.orgId,
       userId: auth.userId,
       agentId: params.id,
     }),
   );
-  if (!agentExists) {
+  if (!exists) {
     return agentNotFound(params.id);
   }
 
@@ -72,15 +72,15 @@ const patchAgentDraftInner$ = command(
       return bodyResult.response;
     }
 
-    const agentExists = await get(
-      zeroAgentExists({
+    const exists = await get(
+      agentExists({
         orgId: auth.orgId,
         userId: auth.userId,
         agentId: params.id,
       }),
     );
     signal.throwIfAborted();
-    if (!agentExists) {
+    if (!exists) {
       return agentNotFound(params.id);
     }
 

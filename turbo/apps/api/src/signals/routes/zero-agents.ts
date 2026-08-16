@@ -32,13 +32,13 @@ import { deleteComposeById$ } from "../services/zero-compose-data.service";
 import {
   agentResponse,
   defaultAgentResponse,
-  zeroAgentDetail,
-  zeroAgentEnabledConnectorSlugs,
-  zeroAgentCustomConnectorGrants,
-  zeroAgentExists,
-  zeroAgentList,
-  visibleJoinedZeroAgentCondition,
-} from "../services/zero-agent-data.service";
+  agentDetail,
+  agentEnabledConnectorSlugs,
+  agentCustomConnectorGrants,
+  agentExists,
+  agentList,
+  visibleJoinedAgentCondition,
+} from "../services/agent-data.service";
 import { connectorActionResolver } from "../services/connector-action-resolver.service";
 import {
   updateUserConnectors,
@@ -451,7 +451,7 @@ const createAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 const listAgentsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const agents = await get(zeroAgentList(auth.orgId, auth.userId));
+  const agents = await get(agentList(auth.orgId, auth.userId));
   return { status: 200 as const, body: [...agents] };
 });
 
@@ -459,7 +459,7 @@ const getAgentInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(zeroAgentsByIdContract.get));
   const agent = await get(
-    zeroAgentDetail({
+    agentDetail({
       orgId: auth.orgId,
       userId: auth.userId,
       agentId: params.id,
@@ -475,7 +475,7 @@ const getAgentUserConnectorsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(zeroUserConnectorsContract.get));
   const exists = await get(
-    zeroAgentExists({
+    agentExists({
       orgId: auth.orgId,
       userId: auth.userId,
       agentId: params.id,
@@ -486,7 +486,7 @@ const getAgentUserConnectorsInner$ = computed(async (get) => {
   }
 
   const enabledConnectorSlugs = await get(
-    zeroAgentEnabledConnectorSlugs({
+    agentEnabledConnectorSlugs({
       orgId: auth.orgId,
       userId: auth.userId,
       agentId: params.id,
@@ -516,7 +516,7 @@ const getAgentCustomConnectorsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(zeroAgentCustomConnectorsContract.get));
   const exists = await get(
-    zeroAgentExists({
+    agentExists({
       orgId: auth.orgId,
       userId: auth.userId,
       agentId: params.id,
@@ -527,7 +527,7 @@ const getAgentCustomConnectorsInner$ = computed(async (get) => {
   }
 
   const grants = await get(
-    zeroAgentCustomConnectorGrants({
+    agentCustomConnectorGrants({
       orgId: auth.orgId,
       userId: auth.userId,
       agentId: params.id,
@@ -747,7 +747,7 @@ const updateAgentCustomConnectorsInner$ = command(
     }
 
     const exists = await get(
-      zeroAgentExists({
+      agentExists({
         orgId: auth.orgId,
         userId: auth.userId,
         agentId: params.id,
@@ -833,7 +833,7 @@ const updateAgentUserConnectorsInner$ = command(
         and(
           eq(agentComposes.orgId, auth.orgId),
           eq(agentComposes.id, params.id),
-          visibleJoinedZeroAgentCondition(auth.userId),
+          visibleJoinedAgentCondition(auth.userId),
         ),
       )
       .limit(1);

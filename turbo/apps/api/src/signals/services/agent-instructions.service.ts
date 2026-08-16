@@ -18,7 +18,7 @@ import { db$ } from "../external/db";
 import { downloadS3Buffer, downloadManifest } from "../external/s3";
 import { env } from "../../lib/env";
 import { extractFileFromTarGz } from "../../lib/tar";
-import { visibleJoinedZeroAgentCondition } from "./zero-agent-data.service";
+import { visibleJoinedAgentCondition } from "./agent-data.service";
 
 interface AgentInstructionsResult {
   readonly content: string | null;
@@ -26,13 +26,13 @@ interface AgentInstructionsResult {
 }
 
 /**
- * Retrieve the instructions content for a zero agent.
+ * Retrieve the instructions content for an agent.
  *
  * Looks up the agent by ID within the given org, locates the instructions
  * storage volume, and extracts the canonical instructions file from the
  * S3 archive. Returns null when the agent is not found.
  */
-export function zeroAgentInstructions(args: {
+export function agentInstructions(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly agentId: string;
@@ -54,7 +54,7 @@ export function zeroAgentInstructions(args: {
         and(
           eq(agentComposes.orgId, args.orgId),
           eq(agentComposes.id, args.agentId),
-          visibleJoinedZeroAgentCondition(args.userId),
+          visibleJoinedAgentCondition(args.userId),
         ),
       )
       .limit(1);
