@@ -44,7 +44,7 @@ import {
 import { workflowAutomationCanFire } from "./workflow-automation-access.service";
 import type { AutomationRow } from "./zero-workflow-automation-launch.service";
 import { runWorkflowAutomationNow$ } from "./workflow-automation-run.service";
-import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
+import { ensureWorkflowUserAutomationThread } from "./workflow-user-automation-thread.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 
 const log = logger("api:google-forms-automation-event");

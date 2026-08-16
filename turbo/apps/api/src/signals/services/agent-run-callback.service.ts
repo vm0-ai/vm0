@@ -33,7 +33,7 @@ import {
 import {
   handleWorkflowAutomationInternalCallback,
   handleWorkflowAutomationInternalCallback$,
-} from "./zero-workflow-automation-run-callback.service";
+} from "./workflow-automation-run-callback.service";
 import { handleTerminalGoalContinuation$ } from "./zero-goal-continuation.service";
 
 const L = logger("AgentRunCallback");

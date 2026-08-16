@@ -7,7 +7,7 @@ import type { RouteEntry } from "../route-entry";
 import { executeDueNotionAutomationEventsForAutomation$ } from "../services/notion-automation-event.service";
 import { executeDueStrapiAutomationEventsForAutomation$ } from "../services/strapi-automation-event.service";
 import { executeDueStripeAutomationEventsForAutomation$ } from "../services/stripe-automation-event.service";
-import { executeDueWorkflowAutomationsForAutomation$ } from "../services/zero-workflow-automation-poller.service";
+import { executeDueWorkflowAutomationsForAutomation$ } from "../services/workflow-automation-poller.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,

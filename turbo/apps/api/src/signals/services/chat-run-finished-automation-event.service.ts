@@ -21,7 +21,7 @@ import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import type { ChatRunFinishedEvent } from "./chat-run-finished-event";
 import { runWorkflowAutomationNow$ } from "./workflow-automation-run.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
-import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
+import { ensureWorkflowUserAutomationThread } from "./workflow-user-automation-thread.service";
 import { insertChatEvent } from "./chat-event.service";
 import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
 import { agentRunSourceTitleSnapshot } from "./chat-user-message.service";

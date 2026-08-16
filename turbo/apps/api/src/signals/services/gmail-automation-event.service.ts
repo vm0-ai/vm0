@@ -43,7 +43,7 @@ import { runWorkflowAutomationNow$ } from "./workflow-automation-run.service";
 import type { AutomationRow } from "./zero-workflow-automation-launch.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import { workflowAutomationCanFire } from "./workflow-automation-access.service";
-import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
+import { ensureWorkflowUserAutomationThread } from "./workflow-user-automation-thread.service";
 
 const log = logger("api:gmail-automation-event");
 

@@ -48,7 +48,7 @@ import { workflowDetail } from "../services/workflow-detail.service";
 import {
   ensureWorkflowUserAutomationThread,
   loadWorkflowUserAutomationThreadId,
-} from "../services/zero-workflow-user-automation-thread.service";
+} from "../services/workflow-user-automation-thread.service";
 import { updateWorkflow$ } from "../services/workflow-update.service";
 import { detectWorkflowConnectorReadiness$ } from "../services/workflow-connector-readiness.service";
 import { createUserMessageDocument } from "../services/chat-user-message.service";

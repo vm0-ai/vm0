@@ -25,9 +25,9 @@ import {
 } from "./zero-workflow-automation-launch.service";
 import { workflowAutomationCanFire } from "./workflow-automation-access.service";
 import { buildWorkflowScheduleAutomationBrief } from "./workflow-automation-brief.service";
-import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
+import { ensureWorkflowUserAutomationThread } from "./workflow-user-automation-thread.service";
 
-const log = logger("api:zero-workflow-automation-poller");
+const log = logger("WorkflowAutomationPoller");
 
 const MAX_CONSECUTIVE_FAILURES = 3;
 const DUE_BATCH_LIMIT = 200;
