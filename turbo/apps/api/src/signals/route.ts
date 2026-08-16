@@ -109,7 +109,7 @@ import { zeroModelProviderGatewayRoutes } from "./routes/zero-model-provider-gat
 import { zeroModelProvidersRoutes } from "./routes/zero-model-providers";
 import { onboardingCompleteRoutes } from "./routes/onboarding-complete";
 import { onboardingStatusRoutes } from "./routes/onboarding-status";
-import { zeroOrgInviteRoutes } from "./routes/zero-org-invite";
+import { orgInviteRoutes } from "./routes/org-invite";
 import { orgDeleteRoutes } from "./routes/org-delete";
 import { orgLogoRoutes } from "./routes/org-logo";
 import { orgMembersRoutes } from "./routes/org-members";
@@ -325,7 +325,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroRunsCancelRoutes,
   ...onboardingCompleteRoutes,
   ...onboardingStatusRoutes,
-  ...zeroOrgInviteRoutes,
+  ...orgInviteRoutes,
   ...orgDeleteRoutes,
   ...orgLogoRoutes,
   ...orgMembersRoutes,

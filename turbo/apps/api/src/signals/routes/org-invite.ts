@@ -280,7 +280,7 @@ const purchaseConfirmInner$ = command(
   },
 );
 
-export const zeroOrgInviteRoutes: readonly RouteEntry[] = [
+export const orgInviteRoutes: readonly RouteEntry[] = [
   {
     route: zeroOrgInviteContract.invite,
     handler: authRoute(

@@ -64,7 +64,7 @@ import { zeroBillingCreditCheckoutRoutes } from "../zero-billing-credit-checkout
 import { zeroBillingUsagePackCreditsRoutes } from "../zero-billing-usage-pack-credits";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
 import { orgMembersRoutes } from "../org-members";
-import { zeroOrgInviteRoutes } from "../zero-org-invite";
+import { orgInviteRoutes } from "../org-invite";
 import { orgReadRoutes } from "../org-read";
 import {
   testUsagePackSubscriptionStateContract,
@@ -3182,7 +3182,7 @@ describe("legacy subscription usage pack migration", () => {
     });
 
     await accept(
-      setupApp({ context, routes: zeroOrgInviteRoutes })(
+      setupApp({ context, routes: orgInviteRoutes })(
         zeroOrgInviteContract,
       ).revoke({
         headers: { authorization: "Bearer clerk-session" },
@@ -3356,7 +3356,7 @@ describe("legacy subscription usage pack migration", () => {
     );
 
     const revokeResponse = await accept(
-      setupApp({ context, routes: zeroOrgInviteRoutes })(
+      setupApp({ context, routes: orgInviteRoutes })(
         zeroOrgInviteContract,
       ).revoke({
         headers: { authorization: "Bearer clerk-session" },
@@ -3984,7 +3984,7 @@ describe("usage pack allocation management", () => {
     );
     mockUsagePackChangePreviews(1000, 2000);
     const preview = await accept(
-      setupApp({ context, routes: zeroOrgInviteRoutes })(
+      setupApp({ context, routes: orgInviteRoutes })(
         zeroOrgInviteContract,
       ).previewPurchase({
         headers: { authorization: "Bearer clerk-session" },
@@ -6719,7 +6719,7 @@ describe("usage pack allocation management", () => {
       const billing = await readBillingStatus(fixture);
       expect(billing.memberInviteUsagePackRequired).toBeTruthy();
 
-      const client = setupApp({ context, routes: zeroOrgInviteRoutes })(
+      const client = setupApp({ context, routes: orgInviteRoutes })(
         zeroOrgInviteContract,
       );
       const blocked = await accept(
@@ -6750,7 +6750,7 @@ describe("usage pack allocation management", () => {
         { id: `inv_${randomUUID()}` },
       );
       const invited = await accept(
-        setupApp({ context, routes: zeroOrgInviteRoutes })(
+        setupApp({ context, routes: orgInviteRoutes })(
           zeroOrgInviteContract,
         ).invite({
           headers: { authorization: "Bearer clerk-session" },
@@ -6766,7 +6766,7 @@ describe("usage pack allocation management", () => {
     const fixture = await seedManagedUsagePack([
       { userId: `user_${randomUUID()}`, usagePackUsd: 20 },
     ]);
-    const client = setupApp({ context, routes: zeroOrgInviteRoutes })(
+    const client = setupApp({ context, routes: orgInviteRoutes })(
       zeroOrgInviteContract,
     );
     const blocked = await accept(
@@ -6804,7 +6804,7 @@ describe("usage pack allocation management", () => {
     const fixture = await seedManagedUsagePack([
       { userId: `user_${randomUUID()}`, usagePackUsd: 20 },
     ]);
-    const client = setupApp({ context, routes: zeroOrgInviteRoutes })(
+    const client = setupApp({ context, routes: orgInviteRoutes })(
       zeroOrgInviteContract,
     );
 
@@ -6852,7 +6852,7 @@ describe("usage pack allocation management", () => {
     });
 
     const response = await accept(
-      setupApp({ context, routes: zeroOrgInviteRoutes })(
+      setupApp({ context, routes: orgInviteRoutes })(
         zeroOrgInviteContract,
       ).previewPurchase({
         headers: { authorization: "Bearer clerk-session" },
@@ -6913,7 +6913,7 @@ describe("usage pack allocation management", () => {
     mockUsagePackChangePreviews(1000, 2000);
     context.mocks.stripe.checkout.sessions.create.mockClear();
 
-    const client = setupApp({ context, routes: zeroOrgInviteRoutes })(
+    const client = setupApp({ context, routes: orgInviteRoutes })(
       zeroOrgInviteContract,
     );
     const previewBody = {
@@ -7669,7 +7669,7 @@ describe("usage pack allocation management", () => {
       id: `re_${randomUUID()}`,
       status: "succeeded",
     });
-    const client = setupApp({ context, routes: zeroOrgInviteRoutes })(
+    const client = setupApp({ context, routes: orgInviteRoutes })(
       zeroOrgInviteContract,
     );
     await accept(

@@ -96,7 +96,7 @@ import { customConnectorsValuesSetRoutes } from "../../custom-connectors-values-
 import { onboardingCompleteRoutes } from "../../onboarding-complete";
 import { onboardingStatusRoutes } from "../../onboarding-status";
 import { orgDeleteRoutes } from "../../org-delete";
-import { zeroOrgInviteRoutes } from "../../zero-org-invite";
+import { orgInviteRoutes } from "../../org-invite";
 import { orgLogoRoutes } from "../../org-logo";
 import { orgMembersRoutes } from "../../org-members";
 import { orgMembershipRequestsRoutes } from "../../org-membership-requests";
@@ -215,7 +215,7 @@ const authOrgRoutes = [
   ...orgReadRoutes,
   ...orgDeleteRoutes,
   ...orgMembersRoutes,
-  ...zeroOrgInviteRoutes,
+  ...orgInviteRoutes,
   ...orgMembershipRequestsRoutes,
   ...orgLogoRoutes,
   ...teamRoutes,
