@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.9](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.8...guest-contracts-v0.11.9) (2026-08-16)
+
+
+### Refactoring
+
+* **runner:** unify reuse-preparation exit status ownership ([#27559](https://github.com/vm0-ai/vm0/issues/27559)) ([54c4459](https://github.com/vm0-ai/vm0/commit/54c44592c0f9936f227d0e10a493085230f77350))
+
 ## [0.11.8](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.7...guest-contracts-v0.11.8) (2026-08-15)
 
 

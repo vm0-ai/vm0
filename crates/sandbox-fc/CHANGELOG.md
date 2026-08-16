@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.220](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.219...sandbox-fc-v0.37.220) (2026-08-16)
+
+
+### Documentation
+
+* **sandbox-fc:** document factory cleanup lifecycle ([#27560](https://github.com/vm0-ai/vm0/issues/27560)) ([f9640f2](https://github.com/vm0-ai/vm0/commit/f9640f2ed67c20c68a8006f6d9239a51438c72a6))
+
 ## [0.37.219](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.218...sandbox-fc-v0.37.219) (2026-08-15)
 
 

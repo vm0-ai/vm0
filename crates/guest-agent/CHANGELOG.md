@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.74.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.5...guest-agent-v0.74.6) (2026-08-16)
+
+
+### Documentation
+
+* **rust:** correct Codex auth refresh reference ([#27566](https://github.com/vm0-ai/vm0/issues/27566)) ([1d9d6e7](https://github.com/vm0-ai/vm0/commit/1d9d6e725a302f044efed3662e8f29745e2c6b34))
+
 ## [0.74.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.4...guest-agent-v0.74.5) (2026-08-16)
 
 

@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.168.18](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.17...runner-rs-v0.168.18) (2026-08-16)
+
+
+### Refactoring
+
+* **runner:** split trusted authority and auth base rewriting ([#27565](https://github.com/vm0-ai/vm0/issues/27565)) ([0c65a9f](https://github.com/vm0-ai/vm0/commit/0c65a9f223647008ae5c4c514c54020c5e678634))
+* **runner:** unify reuse-preparation exit status ownership ([#27559](https://github.com/vm0-ai/vm0/issues/27559)) ([54c4459](https://github.com/vm0-ai/vm0/commit/54c44592c0f9936f227d0e10a493085230f77350))
+* **rust:** centralize bounded object-download retry policy ([#27557](https://github.com/vm0-ai/vm0/issues/27557)) ([6b90ae3](https://github.com/vm0-ai/vm0/commit/6b90ae350361c662e88470fc1c8cbac0e31bc8ee))
+
 ## [0.168.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.16...runner-rs-v0.168.17) (2026-08-16)
 
 
