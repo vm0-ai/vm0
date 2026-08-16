@@ -1,10 +1,10 @@
 //! Factory-owned asynchronous cleanup.
 //!
 //! `FactoryCleanupGroup` owns destroy and create-rollback cleanup after it is
-//! registered, independently of the caller waiting for that cleanup. A tracked
-//! cleanup future is spawned once and its task handle stays under group or
-//! shutdown-batch ownership until completion, so dropping or cancelling the
-//! returned waiter does not cancel the cleanup.
+//! registered, independently of the caller waiting for that cleanup. Dropping
+//! or cancelling the returned waiter therefore does not cancel the spawned
+//! task. Its handle stays under group or shutdown-batch ownership until the task
+//! finishes, unless bounded abort processing explicitly detaches it.
 //!
 //! The group has three lifecycle conditions:
 //!
