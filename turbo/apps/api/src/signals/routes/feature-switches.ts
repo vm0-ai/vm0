@@ -94,7 +94,7 @@ const deleteFeatureSwitchesInner$ = command(
   },
 );
 
-export const zeroFeatureSwitchesRoutes: readonly RouteEntry[] = [
+export const featureSwitchesRoutes: readonly RouteEntry[] = [
   {
     route: zeroFeatureSwitchesContract.get,
     handler: authRoute(featureSwitchesAuthOptions, getFeatureSwitchesInner$),

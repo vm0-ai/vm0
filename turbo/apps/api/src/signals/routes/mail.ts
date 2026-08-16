@@ -195,7 +195,7 @@ const mailDraftHumanAuth = Object.freeze({
   accept: Object.freeze(["session"] as const),
 });
 
-export const zeroMailRoutes: readonly RouteEntry[] = [
+export const mailRoutes: readonly RouteEntry[] = [
   {
     route: zeroMailContract.linkDraft,
     handler: authRoute(mailDraftLinkAuth, linkDraftInner$),

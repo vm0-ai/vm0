@@ -22,7 +22,7 @@ import {
   setConnectorCredentialStorageState,
   setConnectorSecretOwner,
 } from "./helpers/connector-credential-storage-state";
-import { zeroMailRoutes } from "../zero-mail";
+import { mailRoutes } from "../mail";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -275,7 +275,7 @@ async function seedGmailMailCardFixture() {
 }
 
 function client() {
-  return setupApp({ context, routes: zeroMailRoutes })(zeroMailContract);
+  return setupApp({ context, routes: mailRoutes })(zeroMailContract);
 }
 
 function stateClient() {

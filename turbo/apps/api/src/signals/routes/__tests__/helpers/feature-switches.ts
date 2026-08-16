@@ -3,7 +3,7 @@ import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zer
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { setupApp } from "../../../../__tests__/test-helpers";
 import { createZeroRouteMocks } from "./zero-route-test";
-import { zeroFeatureSwitchesRoutes } from "../../zero-feature-switches";
+import { featureSwitchesRoutes } from "../../feature-switches";
 
 type ClerkOrgRole = "org:admin" | "org:member";
 
@@ -14,7 +14,7 @@ interface FeatureSwitchActor {
 }
 
 function featureSwitchesClient(context: TestContext) {
-  return setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
+  return setupApp({ context, routes: featureSwitchesRoutes })(
     zeroFeatureSwitchesContract,
   );
 }

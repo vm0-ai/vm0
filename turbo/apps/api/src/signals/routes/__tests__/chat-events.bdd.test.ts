@@ -122,14 +122,14 @@ import {
 import { cronSteerRunTimeBudgetRoutes } from "../cron-steer-run-time-budget";
 import { chatEventsRoutes } from "../chat-events";
 import { chatThreadRoutes } from "../chat-threads";
-import { zeroMailRoutes } from "../zero-mail";
+import { mailRoutes } from "../mail";
 import { modelProviderGatewayRoutes } from "../model-provider-gateways";
 import { zeroModelProvidersRoutes } from "../zero-model-providers";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...chatEventsRoutes,
   ...chatThreadRoutes,
-  ...zeroMailRoutes,
+  ...mailRoutes,
   ...modelProviderGatewayRoutes,
   ...zeroModelProvidersRoutes,
 ]);
@@ -3416,18 +3416,16 @@ describe("CHAT-02: Zero Mail link delivery", () => {
     );
 
     const linked = await accept(
-      setupApp({ context, routes: zeroMailRoutes })(zeroMailContract).linkDraft(
-        {
-          headers: {
-            authorization: `Bearer ${okouTokenFromClaim(claim)}`,
-          },
-          body: {
-            threadId: run.threadId,
-            agentId,
-            gmailDraftId,
-          },
+      setupApp({ context, routes: mailRoutes })(zeroMailContract).linkDraft({
+        headers: {
+          authorization: `Bearer ${okouTokenFromClaim(claim)}`,
         },
-      ),
+        body: {
+          threadId: run.threadId,
+          agentId,
+          gmailDraftId,
+        },
+      }),
       [200],
     );
     const beforeReply = await chat.listThreadEvents(actor, run.threadId);

@@ -75,7 +75,7 @@ import { billingRedeemRoutes } from "./routes/billing-redeem";
 import { billingRestoreRoutes } from "./routes/billing-restore";
 import { billingStatusRoutes } from "./routes/billing-status";
 import { billingUsagePackCreditsRoutes } from "./routes/billing-usage-pack-credits";
-import { zeroBankingRoutes } from "./routes/zero-banking";
+import { bankingRoutes } from "./routes/banking";
 import { chatThreadRoutes } from "./routes/chat-threads";
 import { chatEventsRoutes } from "./routes/chat-events";
 import { sharedThreadRoutes } from "./routes/shared-threads";
@@ -90,17 +90,17 @@ import { connectorsExternalCodeRoutes } from "./routes/connectors-external-code"
 import { connectorsOauthDeviceAuthRoutes } from "./routes/connectors-oauth-device-auth";
 import { connectorsRoutes } from "./routes/connectors";
 import { customConnectorsRoutes } from "./routes/custom-connectors";
-import { zeroEmailInboundRoutes } from "./routes/zero-email-inbound";
-import { zeroFeatureSwitchesRoutes } from "./routes/zero-feature-switches";
+import { emailInboundRoutes } from "./routes/email-inbound";
+import { featureSwitchesRoutes } from "./routes/feature-switches";
 import { financeRoutes } from "./routes/finance";
 import { seoRoutes } from "./routes/seo";
-import { zeroGoalsRoutes } from "./routes/zero-goals";
+import { goalsRoutes } from "./routes/goals";
 import { hostRoutes } from "./routes/host";
 import { builtInGenerationRoutes } from "./routes/built-in-generation";
 import { imageIoGenerateRoutes } from "./routes/image-io-generate";
 import { imageShareXRoutes } from "./routes/image-share-x";
 import { logsRoutes } from "./routes/logs";
-import { zeroMailRoutes } from "./routes/zero-mail";
+import { mailRoutes } from "./routes/mail";
 import { mapsRoutes } from "./routes/maps";
 import { mcpConnectorsRoutes } from "./routes/mcp-connectors";
 import { weatherRoutes } from "./routes/weather";
@@ -267,7 +267,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...billingRestoreRoutes,
   ...billingStatusRoutes,
   ...billingUsagePackCreditsRoutes,
-  ...zeroBankingRoutes,
+  ...bankingRoutes,
   ...chatThreadRoutes,
   ...chatEventsRoutes,
   ...sharedThreadRoutes,
@@ -282,11 +282,11 @@ export const ROUTES: readonly RouteEntry[] = [
   ...connectorsOauthDeviceAuthRoutes,
   ...connectorsRoutes,
   ...customConnectorsRoutes,
-  ...zeroEmailInboundRoutes,
-  ...zeroFeatureSwitchesRoutes,
+  ...emailInboundRoutes,
+  ...featureSwitchesRoutes,
   ...financeRoutes,
   ...seoRoutes,
-  ...zeroGoalsRoutes,
+  ...goalsRoutes,
   ...hostRoutes,
   ...builtInGenerationRoutes,
   ...imageIoGenerateRoutes,
@@ -294,7 +294,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...avatarVideoRoutes,
   ...videoIoGenerateRoutes,
   ...logsRoutes,
-  ...zeroMailRoutes,
+  ...mailRoutes,
   ...mapsRoutes,
   ...mcpConnectorsRoutes,
   ...weatherRoutes,

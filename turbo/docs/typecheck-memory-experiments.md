@@ -307,7 +307,7 @@ below the raw latest-main full `api` OOM peak. It is not sufficient to make the
 
 Change: migrate `zero-email.test.ts` from raw `createApp` to
 `createAppWithRoutes` using `zeroEmailCallbackRoutes` and
-`zeroEmailInboundRoutes`.
+`emailInboundRoutes`.
 
 - Command:
   `pnpm -F api exec tsc -p tsconfig.tests-pure-context-entries.json --noEmit`

@@ -83,13 +83,13 @@ import { cronCompactChatThreadSnapshotsRoutes } from "../cron-compact-chat-threa
 import { cronProjectChatEventSearchRoutes } from "../cron-project-chat-event-search";
 import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
 import { chatThreadRoutes } from "../chat-threads";
-import { zeroGoalsRoutes } from "../zero-goals";
+import { goalsRoutes } from "../goals";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...cronCompactChatThreadSnapshotsRoutes,
   ...cronProjectChatEventSearchRoutes,
   ...chatThreadRoutes,
-  ...zeroGoalsRoutes,
+  ...goalsRoutes,
 ]);
 
 /**
@@ -445,7 +445,7 @@ const CHAT_THREAD_READ_CAPABILITIES = [
 ] as const satisfies readonly ZeroCapability[];
 
 function goalsClient() {
-  return setupApp({ context, routes: zeroGoalsRoutes })(zeroGoalsContract);
+  return setupApp({ context, routes: goalsRoutes })(zeroGoalsContract);
 }
 
 function zeroCapabilityHeaders(

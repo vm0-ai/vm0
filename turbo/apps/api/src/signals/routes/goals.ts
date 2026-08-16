@@ -296,7 +296,7 @@ const clearGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return goalErrorResponse(result);
 });
 
-export const zeroGoalsRoutes: readonly RouteEntry[] = [
+export const goalsRoutes: readonly RouteEntry[] = [
   {
     route: zeroGoalsContract.create,
     handler: authRoute(goalUserControlWriteAuth, createGoalInner$),

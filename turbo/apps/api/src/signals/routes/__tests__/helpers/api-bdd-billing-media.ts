@@ -48,7 +48,7 @@ import { testUsageSettlementRoutes } from "../../test-usage-settlement";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 import { acquisitionAttributionRoutes } from "../../acquisition-attribution";
-import { zeroBankingRoutes } from "../../zero-banking";
+import { bankingRoutes } from "../../banking";
 import { billingAutoRechargeRoutes } from "../../billing-auto-recharge";
 import { billingCheckoutRoutes } from "../../billing-checkout";
 import { billingCreditCheckoutRoutes } from "../../billing-credit-checkout";
@@ -60,7 +60,7 @@ import { billingRedeemCodeRoutes } from "../../billing-redeem-code";
 import { billingRestoreRoutes } from "../../billing-restore";
 import { billingStatusRoutes } from "../../billing-status";
 import { builtInGenerationRoutes } from "../../built-in-generation";
-import { zeroFeatureSwitchesRoutes } from "../../zero-feature-switches";
+import { featureSwitchesRoutes } from "../../feature-switches";
 import { imageIoGenerateRoutes } from "../../image-io-generate";
 import { mapsRoutes } from "../../maps";
 import { usageMembersRoutes } from "../../usage-members";
@@ -589,7 +589,7 @@ export function createBillingMediaApi(context: TestContext) {
       actor: ApiTestUser,
       switches: Readonly<Record<string, boolean>>,
     ) {
-      const client = setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
+      const client = setupApp({ context, routes: featureSwitchesRoutes })(
         zeroFeatureSwitchesContract,
       );
       return await accept(
@@ -821,7 +821,7 @@ export function createBillingMediaApi(context: TestContext) {
       actor: ApiTestUser | null,
       statuses: readonly (200 | 400 | 401 | 403 | 502 | 503)[],
     ) {
-      const client = setupApp({ context, routes: zeroBankingRoutes })(
+      const client = setupApp({ context, routes: bankingRoutes })(
         zeroBankingContract,
       );
       return await accept(

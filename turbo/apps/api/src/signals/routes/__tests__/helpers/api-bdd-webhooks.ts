@@ -41,7 +41,7 @@ import { webhooksBuiltInGenerationRoutes } from "../../webhooks-built-in-generat
 import { webhooksClerkRoutes } from "../../webhooks-clerk";
 import { webhooksGithubRoutes } from "../../webhooks-github";
 import { webhooksStripeRoutes } from "../../webhooks-stripe";
-import { zeroEmailInboundRoutes } from "../../zero-email-inbound";
+import { emailInboundRoutes } from "../../email-inbound";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...webhooksAgentCheckpointsRoutes,
@@ -53,7 +53,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...webhooksClerkRoutes,
   ...webhooksGithubRoutes,
   ...webhooksStripeRoutes,
-  ...zeroEmailInboundRoutes,
+  ...emailInboundRoutes,
 ]);
 
 type AgentEventsBody = z.infer<(typeof webhookEventsContract.send)["body"]>;
@@ -404,7 +404,7 @@ export function createWebhookCallbackApi(context: TestContext) {
       statuses: readonly (200 | 401)[],
     ) {
       return await accept(
-        setupApp({ context, routes: zeroEmailInboundRoutes })(
+        setupApp({ context, routes: emailInboundRoutes })(
           zeroEmailInboundContract,
         ).post({
           headers,

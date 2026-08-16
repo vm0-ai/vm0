@@ -20,11 +20,11 @@ import {
 } from "./helpers/connector-credential-storage-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { connectorsRoutes } from "../connectors";
-import { zeroFeatureSwitchesRoutes } from "../zero-feature-switches";
+import { featureSwitchesRoutes } from "../feature-switches";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...connectorsRoutes,
-  ...zeroFeatureSwitchesRoutes,
+  ...featureSwitchesRoutes,
 ]);
 
 const context = testContext();
@@ -51,7 +51,7 @@ function authHeaders() {
 }
 
 function featureSwitchesClient() {
-  return setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
+  return setupApp({ context, routes: featureSwitchesRoutes })(
     zeroFeatureSwitchesContract,
   );
 }

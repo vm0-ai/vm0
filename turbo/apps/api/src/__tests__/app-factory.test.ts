@@ -21,10 +21,10 @@ import { mockEnv } from "../lib/env";
 import webClientCompatibility from "../lib/web-client-compatibility.json";
 import { flushWaitUntilForTest } from "../signals/context/wait-until";
 import { healthRoutes } from "../signals/routes/health";
-import { zeroMailRoutes } from "../signals/routes/zero-mail";
+import { mailRoutes } from "../signals/routes/mail";
 import { accept, testContext } from "./test-context";
 import { setupApp } from "./test-helpers";
-const TEST_APP_ROUTES = Object.freeze([...healthRoutes, ...zeroMailRoutes]);
+const TEST_APP_ROUTES = Object.freeze([...healthRoutes, ...mailRoutes]);
 
 const MINIMUM_WEB_CLIENT_VERSION =
   webClientCompatibility.minimumSupportedVersion;
