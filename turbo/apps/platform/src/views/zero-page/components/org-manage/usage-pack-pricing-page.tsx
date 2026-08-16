@@ -1793,14 +1793,20 @@ function SubscriptionComparisonTable({
 
 function SubscriptionChangeNotice({
   description,
+  downgrade = false,
   effectiveAt,
 }: {
   readonly description: string;
+  readonly downgrade?: boolean;
   readonly effectiveAt: string;
 }) {
   return (
     <div
-      className={`mb-5 mt-3 rounded-lg px-3 py-2 text-sm leading-relaxed ${USAGE_PACK_DOWNGRADE_NOTICE_CLASS}`}
+      className={
+        downgrade
+          ? `mb-5 mt-3 rounded-lg px-3 py-2 text-sm leading-relaxed ${USAGE_PACK_DOWNGRADE_NOTICE_CLASS}`
+          : "mt-3 rounded-lg border border-amber-200/70 bg-amber-50/70 px-3 py-2 text-sm leading-relaxed text-amber-700 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-300"
+      }
     >
       <p>{description}</p>
       <p className="mt-1 font-medium">
@@ -2246,6 +2252,7 @@ function ManagedSubscriptionOrderSummary({
             description={i18n.t(($) => {
               return $.billing.plans.usagePacks.management.downgradeDescription;
             })}
+            downgrade
             effectiveAt={management.currentPeriodEnd}
           />
         )

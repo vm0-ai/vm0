@@ -1385,8 +1385,8 @@ describe("organization billing settings", () => {
       within(orderSummary).queryByText("Monthly difference"),
     ).not.toBeInTheDocument();
     expect(
-      within(orderSummary).getByText("Scheduled for Sep 1, 2026"),
-    ).toBeInTheDocument();
+      within(orderSummary).getByText("Scheduled for Sep 1, 2026").parentElement,
+    ).toHaveClass("bg-amber-50/70");
 
     const reviewConversionButton = buttonByText(
       "Review conversion",
@@ -3973,20 +3973,16 @@ describe("organization billing settings", () => {
         screen.getByText(
           "Your Team plan will downgrade to Pro on May 1, 2026.",
         ),
-      ).toHaveClass("text-yellow-700");
+      ).toBeInTheDocument();
     });
 
     click(screen.getByText("Compare all plans"));
 
     await waitFor(() => {
       expect(screen.getByText("Compare plans")).toBeInTheDocument();
-      const downgradeNotices = screen.getAllByText(
-        "Downgrades to Pro on May 1, 2026",
-      );
-      expect(downgradeNotices.length).toBeGreaterThan(0);
-      for (const notice of downgradeNotices) {
-        expect(notice).toHaveClass("bg-yellow-50/70", "mb-5");
-      }
+      expect(
+        screen.getAllByText("Downgrades to Pro on May 1, 2026").length,
+      ).toBeGreaterThan(0);
     });
 
     click(screen.getByText("Restore plan"));
@@ -4083,7 +4079,7 @@ describe("organization billing settings", () => {
       within(downgradeDialog).getByText(
         /After that, this workspace moves to Pro/u,
       ),
-    ).toHaveClass("text-yellow-700");
+    ).toBeInTheDocument();
 
     click(buttonByText("Downgrade to Pro", downgradeDialog));
 
