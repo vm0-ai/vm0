@@ -340,14 +340,18 @@ describe("personal usage settings", () => {
     expect(
       within(card).getByTestId("usage-pack-credit-bonus"),
     ).toBeInTheDocument();
+    const grants = within(card).getByTestId("usage-pack-credit-grants-section");
+    expect(within(grants).getByText("Credit additions")).toBeInTheDocument();
+    expect(within(grants).getByText("Date")).toBeInTheDocument();
+    expect(within(grants).getByText("Credits")).toBeInTheDocument();
+    expect(within(grants).getByText("Left")).toBeInTheDocument();
     expect(
-      within(card).getByTestId("usage-pack-credit-grants-toggle"),
-    ).toBeInTheDocument();
+      within(card).queryByTestId("usage-pack-credit-grants-toggle"),
+    ).toBeNull();
     expect(within(card).getByText("20,400")).toBeInTheDocument();
-    expect(within(card).getAllByText("Purchased")).toHaveLength(2);
     expect(within(card).getByText("20,000")).toBeInTheDocument();
-    expect(within(card).getAllByText("Bonus")).toHaveLength(2);
-    expect(within(card).getAllByText("400")).toHaveLength(2);
+    expect(within(grants).getByText("+25,000")).toBeInTheDocument();
+    expect(within(grants).getByText("+400")).toBeInTheDocument();
     expect(screen.queryByTestId("credit-balance-info")).toBeNull();
     expect(screen.queryByText("Team usage")).toBeNull();
     expect(screen.queryByText("Today")).toBeNull();
@@ -361,18 +365,10 @@ describe("personal usage settings", () => {
       screen.findByText("Expires Apr 1, 2026"),
     ).resolves.toBeInTheDocument();
 
-    await user.click(
-      within(card).getByTestId("usage-pack-credit-grants-toggle"),
+    await user.hover(
+      within(grants).getByTestId("usage-pack-credit-grants-grant-purchased"),
     );
-    expect(
-      within(card).getByTestId("usage-pack-credit-grants-section"),
-    ).toHaveAttribute("open");
-    expect(
-      within(card).getByTestId("usage-pack-credit-grants-grant-purchased"),
-    ).toHaveTextContent("Purchased");
-    expect(
-      within(card).getByTestId("usage-pack-credit-grants-grant-purchased"),
-    ).toHaveTextContent("20,000 left");
+    await expect(screen.findByText("Purchased")).resolves.toBeInTheDocument();
   });
 
   it("hides usage pack credits when the organization has no active pack", async () => {
@@ -532,7 +528,7 @@ describe("personal usage settings", () => {
       within(card).getByTestId("usage-pack-credit-bar"),
     ).toBeInTheDocument();
     expect(
-      within(card).getByTestId("usage-pack-credit-grants-toggle"),
+      within(card).getByTestId("usage-pack-credit-grants-section"),
     ).toBeInTheDocument();
 
     await user.click(buttonByAriaLabel("View member balances", card));
