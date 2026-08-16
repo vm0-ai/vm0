@@ -8,6 +8,40 @@ import pytest
 import platform_api
 
 
+class TestNormalizeProxyUrl:
+    @pytest.mark.parametrize(
+        ("proxy_url", "expected"),
+        [
+            pytest.param(
+                "proxy-user:proxy-password@faß.proxy:8123",
+                "proxy-user:proxy-password@xn--fa-hia.proxy:8123",
+                id="authority",
+            ),
+            pytest.param(
+                "//proxy-user:proxy-password@faß.proxy:8123",
+                "//proxy-user:proxy-password@xn--fa-hia.proxy:8123",
+                id="prefixed-authority",
+            ),
+            pytest.param(
+                "http://proxy-user:proxy-password@faß.proxy:8123",
+                "http://proxy-user:proxy-password@xn--fa-hia.proxy:8123",
+                id="url",
+            ),
+            pytest.param(
+                "[2001:0DB8:0:0:0:0:0:1]:8443",
+                "[2001:db8::1]:8443",
+                id="ipv6-authority",
+            ),
+        ],
+    )
+    def test_canonicalizes_hostname_and_preserves_proxy_form(
+        self,
+        proxy_url: str,
+        expected: str,
+    ):
+        assert platform_api.normalize_proxy_url(proxy_url) == expected
+
+
 class TestMakeApiRequest:
     def test_builds_platform_api_request_with_standard_headers(self, mitm_ctx):
         with (

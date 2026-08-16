@@ -1568,7 +1568,7 @@ class TestFirewallAuthAsyncTransport:
         )
 
         with proxy.run():
-            proxy_url = proxy.api_url.replace(
+            proxy_url = proxy.api_url.removeprefix("http://").replace(
                 "127.0.0.1",
                 "proxy-user:proxy-password@faß.proxy",
             )
