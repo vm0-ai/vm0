@@ -270,7 +270,7 @@ const concurrencyCheckout$ = command(async ({ set }, signal: AbortSignal) => {
   );
 });
 
-export const zeroBillingConcurrencyCheckoutRoutes: readonly RouteEntry[] = [
+export const billingConcurrencyCheckoutRoutes: readonly RouteEntry[] = [
   {
     route: zeroBillingConcurrencyCheckoutContract.preview,
     handler: concurrencyCheckoutPreview$,

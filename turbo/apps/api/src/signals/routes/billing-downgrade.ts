@@ -86,7 +86,7 @@ const downgrade$ = command(async ({ set }, signal: AbortSignal) => {
   );
 });
 
-export const zeroBillingDowngradeRoutes: readonly RouteEntry[] = [
+export const billingDowngradeRoutes: readonly RouteEntry[] = [
   {
     route: zeroBillingDowngradeContract.create,
     handler: downgrade$,

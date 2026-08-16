@@ -8,7 +8,7 @@ import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { zeroBillingRedeemCodeRoutes } from "../zero-billing-redeem-code";
+import { billingRedeemCodeRoutes } from "../billing-redeem-code";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -58,7 +58,7 @@ describe("POST /api/zero/billing/redeem-code", () => {
   });
 
   it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context, routes: zeroBillingRedeemCodeRoutes })(
+    const client = setupApp({ context, routes: billingRedeemCodeRoutes })(
       zeroBillingRedeemCodeContract,
     );
 
@@ -92,7 +92,7 @@ describe("POST /api/zero/billing/redeem-code", () => {
       "org:member",
     );
 
-    const client = setupApp({ context, routes: zeroBillingRedeemCodeRoutes })(
+    const client = setupApp({ context, routes: billingRedeemCodeRoutes })(
       zeroBillingRedeemCodeContract,
     );
     const response = await accept(
@@ -118,7 +118,7 @@ describe("POST /api/zero/billing/redeem-code", () => {
     mockEnv("ENV", "production");
     setAdminSession();
 
-    const client = setupApp({ context, routes: zeroBillingRedeemCodeRoutes })(
+    const client = setupApp({ context, routes: billingRedeemCodeRoutes })(
       zeroBillingRedeemCodeContract,
     );
     const response = await accept(
@@ -142,7 +142,7 @@ describe("POST /api/zero/billing/redeem-code", () => {
     mockOptionalEnv("VM0_MACHINE_SECRET_KEY", undefined);
     setAdminSession();
 
-    const client = setupApp({ context, routes: zeroBillingRedeemCodeRoutes })(
+    const client = setupApp({ context, routes: billingRedeemCodeRoutes })(
       zeroBillingRedeemCodeContract,
     );
     const response = await accept(
@@ -175,7 +175,7 @@ describe("POST /api/zero/billing/redeem-code", () => {
     );
     setAdminSession();
 
-    const client = setupApp({ context, routes: zeroBillingRedeemCodeRoutes })(
+    const client = setupApp({ context, routes: billingRedeemCodeRoutes })(
       zeroBillingRedeemCodeContract,
     );
     const response = await accept(
@@ -203,7 +203,7 @@ describe("POST /api/zero/billing/redeem-code", () => {
     );
     setAdminSession();
 
-    const client = setupApp({ context, routes: zeroBillingRedeemCodeRoutes })(
+    const client = setupApp({ context, routes: billingRedeemCodeRoutes })(
       zeroBillingRedeemCodeContract,
     );
     const response = await accept(
@@ -230,7 +230,7 @@ describe("POST /api/zero/billing/redeem-code", () => {
     );
     setAdminSession();
 
-    const client = setupApp({ context, routes: zeroBillingRedeemCodeRoutes })(
+    const client = setupApp({ context, routes: billingRedeemCodeRoutes })(
       zeroBillingRedeemCodeContract,
     );
     const response = await accept(
@@ -284,7 +284,7 @@ describe("POST /api/zero/billing/redeem-code", () => {
       );
       setAdminSession();
 
-      const client = setupApp({ context, routes: zeroBillingRedeemCodeRoutes })(
+      const client = setupApp({ context, routes: billingRedeemCodeRoutes })(
         zeroBillingRedeemCodeContract,
       );
       const response = await accept(
@@ -315,7 +315,7 @@ describe("POST /api/zero/billing/redeem-code", () => {
     );
     setAdminSession();
 
-    const client = setupApp({ context, routes: zeroBillingRedeemCodeRoutes })(
+    const client = setupApp({ context, routes: billingRedeemCodeRoutes })(
       zeroBillingRedeemCodeContract,
     );
     const response = await accept(
@@ -346,7 +346,7 @@ describe("POST /api/zero/billing/redeem-code", () => {
       }),
     );
 
-    const client = setupApp({ context, routes: zeroBillingRedeemCodeRoutes })(
+    const client = setupApp({ context, routes: billingRedeemCodeRoutes })(
       zeroBillingRedeemCodeContract,
     );
     const response = await accept(

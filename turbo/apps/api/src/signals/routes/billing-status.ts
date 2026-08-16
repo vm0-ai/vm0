@@ -12,7 +12,7 @@ const getBillingStatusInner$ = computed(async (get) => {
   return { status: 200 as const, body };
 });
 
-export const zeroBillingStatusRoutes: readonly RouteEntry[] = [
+export const billingStatusRoutes: readonly RouteEntry[] = [
   {
     route: zeroBillingStatusContract.get,
     handler: authRoute(

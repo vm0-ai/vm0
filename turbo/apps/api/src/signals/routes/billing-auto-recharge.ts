@@ -71,7 +71,7 @@ const updateAutoRechargeInner$ = command(
   },
 );
 
-export const zeroBillingAutoRechargeRoutes: readonly RouteEntry[] = [
+export const billingAutoRechargeRoutes: readonly RouteEntry[] = [
   {
     route: zeroBillingAutoRechargeContract.get,
     handler: authRoute(

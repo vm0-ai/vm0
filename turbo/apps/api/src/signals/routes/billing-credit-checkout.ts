@@ -232,7 +232,7 @@ const creditPurchaseConfirm$ = command(async ({ set }, signal: AbortSignal) => {
   );
 });
 
-export const zeroBillingCreditCheckoutRoutes: readonly RouteEntry[] = [
+export const billingCreditCheckoutRoutes: readonly RouteEntry[] = [
   {
     route: zeroBillingCreditCheckoutContract.create,
     handler: creditCheckout$,

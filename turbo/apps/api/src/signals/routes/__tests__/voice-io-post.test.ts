@@ -16,7 +16,7 @@ import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { now } from "../../../lib/time";
-import { zeroBillingStatusRoutes } from "../zero-billing-status";
+import { billingStatusRoutes } from "../billing-status";
 import { voiceIoSpeechRoutes } from "../voice-io-speech";
 import { voiceIoSttRoutes } from "../voice-io-stt";
 import { voiceIoQuotaRoutes } from "../voice-io-quota";
@@ -78,7 +78,7 @@ function createVoiceIoTestApp(
       ...voiceIoQuotaRoutes,
       ...voiceIoSpeechRoutes,
       ...voiceIoSttRoutes,
-      ...zeroBillingStatusRoutes,
+      ...billingStatusRoutes,
     ],
     usagePricingResolution,
   });
