@@ -576,7 +576,12 @@ mod tests {
 
     #[test]
     fn bounded_outcome_serializes_fixed_dimensions() {
-        let mut telemetry = JobTelemetry::new(http_client(), RunId::nil(), "tok".to_string());
+        let mut telemetry = JobTelemetry::new(
+            http_client(),
+            RunId::nil(),
+            "tok".to_string(),
+            "test-runner".to_string(),
+        );
         telemetry.record_bounded_outcome(
             "storage_cache_fresh_delivery_scan_groups",
             true,
