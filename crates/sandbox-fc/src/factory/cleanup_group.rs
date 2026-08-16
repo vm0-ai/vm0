@@ -1,3 +1,46 @@
+//! Factory-owned asynchronous cleanup.
+//!
+//! While it is not closed, `FactoryCleanupGroup` owns registered destroy and
+//! create-rollback cleanup independently of the caller waiting for it. Dropping
+//! or cancelling the returned waiter therefore does not cancel the spawned task.
+//! Its handle stays under group or shutdown-batch ownership until the task
+//! finishes, unless bounded abort processing explicitly detaches it.
+//!
+//! The group has three lifecycle conditions:
+//!
+//! - **Accepting:** a new group starts here. Registrations are spawned and
+//!   tracked normally.
+//! - **Shutting down:** `shutdown` marks the lifecycle as shutting down while it
+//!   drains tracked tasks. Registrations made while this condition remains are
+//!   still spawned and tracked for the current shutdown, or for a later retry
+//!   if that shutdown is cancelled.
+//! - **Closed:** shutdown has exhausted tracked work. Later registrations are
+//!   not spawned; their cleanup future remains in the returned registration and
+//!   runs in the caller only when that registration is awaited. Calling
+//!   `start_accepting` after shutdown reopens the group.
+//!
+//! Cleanup registration is concurrency-safe, but shutdown attempts must be
+//! serialized. The factory enforces this through its mutable shutdown lifecycle;
+//! after a shutdown future is cancelled, callers may start a later retry.
+//!
+//! Shutdown has one 30-second production cleanup window shared across its
+//! initial and late-registration batches. If the shutdown future is cancelled,
+//! dropping its current batch puts unfinished task handles back into the group
+//! so a later shutdown can resume ownership. If the window expires, shutdown
+//! aborts unfinished tasks, briefly observes their cooperative cancellation,
+//! and detaches any task that still cannot finish. Tasks registered during that
+//! abort path are also aborted and passed through the bounded post-abort drain
+//! before the group closes. Factory shutdown then continues to leak cleanup and
+//! pool teardown; runner GC remains the final backstop for host resources left
+//! by detached cleanup.
+//!
+//! The caller chooses how a caught cleanup panic affects its own operation.
+//! `FirecrackerFactory::destroy` waits with panic propagation, while
+//! `rollback_create_transaction` waits with logging and suppression so the
+//! original create error remains authoritative. Dropping the group itself is an
+//! abnormal best-effort fallback that cannot await cleanup and does not replace
+//! an orderly `shutdown`.
+
 use std::{
     any::Any,
     future::Future,
@@ -129,12 +172,23 @@ impl FactoryCleanupWaiter {
     }
 }
 
+/// Owns tracked factory cleanup tasks and coordinates their bounded shutdown.
 pub(super) struct FactoryCleanupGroup {
     state: StdMutex<FactoryCleanupGroupState>,
 }
 
+/// Mutable task ownership and lifecycle state for `FactoryCleanupGroup`.
 struct FactoryCleanupGroupState {
+    /// Whether the group is in its normal accepting condition.
+    ///
+    /// When this and `closed` are both false, shutdown has begun but may have
+    /// been cancelled; new registrations remain tracked for the current or a
+    /// later shutdown attempt.
     accepting: bool,
+    /// Whether shutdown has exhausted tracked work.
+    ///
+    /// A closed group defers new cleanup to the caller until `start_accepting`
+    /// reopens it.
     closed: bool,
     tasks: Vec<FactoryCleanupTaskHandle>,
 }
@@ -149,6 +203,10 @@ impl FactoryCleanupGroupState {
     }
 }
 
+/// Tasks temporarily owned by one shutdown drain pass.
+///
+/// Dropping an unfinished batch returns its handles to the group, which keeps a
+/// cancelled shutdown retryable.
 struct FactoryCleanupBatch<'a> {
     group: &'a FactoryCleanupGroup,
     tasks: Vec<FactoryCleanupTaskHandle>,
@@ -227,15 +285,24 @@ impl Drop for FactoryCleanupBatch<'_> {
     }
 }
 
+/// Cleanup deferred to the caller because the group was already closed.
 pub(super) struct FactoryCleanupRejected<F> {
     kind: FactoryCleanupTaskKind,
     label: String,
     cleanup: F,
 }
 
+/// A completion waiter or caller-owned fallback returned by `FactoryCleanupGroup::spawn`.
+///
+/// `Waiter` only observes cleanup that is already group-owned, so dropping it
+/// does not cancel the task. `Rejected` still owns an unstarted closed-group
+/// cleanup future, so awaiting that variant is what runs cleanup in the caller
+/// task.
 #[must_use = "factory cleanup registrations must be awaited so closed-group cleanup can run"]
 pub(super) enum FactoryCleanupRegistration<F> {
+    /// Observes a cleanup task that has already been spawned and retained by the group.
     Waiter(FactoryCleanupWaiter),
+    /// Owns an unspawned cleanup future rejected from a closed group.
     Rejected(FactoryCleanupRejected<F>),
 }
 
@@ -243,10 +310,18 @@ impl<F> FactoryCleanupRegistration<F>
 where
     F: Future<Output = ()> + Send + 'static,
 {
+    /// Wait for cleanup and resume any caught panic in this caller.
+    ///
+    /// `FirecrackerFactory::destroy` uses this policy so destroy cleanup
+    /// failures remain visible to its caller.
     pub(super) async fn wait_propagating_panic(self) {
         self.wait(FactoryCleanupPanicPolicy::Propagate).await;
     }
 
+    /// Wait for cleanup while leaving any caught panic logged and suppressed.
+    ///
+    /// `rollback_create_transaction` uses this policy so a rollback panic does
+    /// not replace the original create error.
     pub(super) async fn wait_logging_panic(self) {
         self.wait(FactoryCleanupPanicPolicy::Log).await;
     }
@@ -303,6 +378,11 @@ impl FactoryCleanupGroup {
         }
     }
 
+    /// Put the group in its accepting lifecycle condition.
+    ///
+    /// A new group already accepts work, so the initial call is idempotent.
+    /// Calling this after shutdown has completed reaps completed handles and
+    /// reopens the closed group for tracked cleanup.
     pub(super) fn start_accepting(&self) {
         let mut state = self.lock_state();
         Self::reap_completed_locked(&mut state);
@@ -310,6 +390,13 @@ impl FactoryCleanupGroup {
         state.closed = false;
     }
 
+    /// Register cleanup for factory ownership and return its completion handle.
+    ///
+    /// In the accepting or shutting-down condition, this starts the cleanup in
+    /// a Tokio task and retains its handle in the group. Cancelling or dropping
+    /// the returned waiter does not cancel that task. Once the group is closed,
+    /// this instead returns a deferred registration whose cleanup runs in the
+    /// caller task only when awaited.
     pub(super) fn spawn<F>(
         &self,
         kind: FactoryCleanupTaskKind,
@@ -362,6 +449,16 @@ impl FactoryCleanupGroup {
         })
     }
 
+    /// Drain tracked cleanup and transition the group to closed.
+    ///
+    /// Callers must run only one shutdown attempt at a time. A cancelled attempt
+    /// may be followed by a new one after the first future has been dropped.
+    ///
+    /// Registrations accepted before the group closes are drained or aborted by
+    /// the same call. The graceful batches share one timeout; after it expires,
+    /// unfinished and late tasks are aborted, briefly observed, and detached if
+    /// necessary. Cancelling this future before completion returns unfinished
+    /// batch ownership to the group so a later shutdown can retry it.
     pub(super) async fn shutdown(&self) {
         let timeout = tokio::time::sleep(FACTORY_CLEANUP_SHUTDOWN_TIMEOUT);
         tokio::pin!(timeout);
