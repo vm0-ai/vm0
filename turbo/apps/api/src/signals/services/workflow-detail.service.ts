@@ -13,12 +13,12 @@ import {
   loadWorkflowOwnerProfile,
   workflowSummary,
   type WorkflowMember,
-} from "./zero-workflow-data.service";
+} from "./workflow-data.service";
 import {
   loadWorkflowVolumeFiles,
   SKILL_FILENAME,
 } from "./workflow-volume.service";
-import { loadWorkflowAutomations } from "./zero-workflow-automation.service";
+import { loadWorkflowAutomations } from "./workflow-automation.service";
 
 export function workflowDetail(args: {
   readonly orgId: string;

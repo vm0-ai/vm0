@@ -56,7 +56,7 @@ import {
   type ZeroRunBootstrapContext,
   type ZeroRunBootstrapSnapshotRows,
 } from "./zero-run-bootstrap-context.service";
-import type { RunWorkflowRef } from "./zero-workflow-data.service";
+import type { RunWorkflowRef } from "./workflow-data.service";
 import {
   loadConnectorRuntimeSnapshot,
   type ConnectorRuntimeSnapshot,

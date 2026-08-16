@@ -15,7 +15,7 @@ import {
 import type {
   RunWorkflowAutomationNowArgs,
   RunWorkflowAutomationResult,
-} from "./zero-workflow-automation-launch.service";
+} from "./workflow-automation-launch.service";
 
 /**
  * Durable automation-event ingress. Every event enters the chat thread queue

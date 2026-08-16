@@ -31,7 +31,7 @@ import type {
   RunFailure,
   RunWorkflowAutomationNowArgs,
   RunWorkflowAutomationResult,
-} from "./zero-workflow-automation-launch.service";
+} from "./workflow-automation-launch.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import type { Tx } from "../../lib/db-types";
 
