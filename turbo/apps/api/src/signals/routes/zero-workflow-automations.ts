@@ -20,7 +20,7 @@ import {
 import {
   loadVisibleWorkflowById,
   type WorkflowMember,
-} from "../services/zero-workflow-data.service";
+} from "../services/workflow-data.service";
 import {
   createWorkflowAutomation$,
   deleteWorkflowAutomation$,
@@ -34,7 +34,7 @@ import {
   runOwnedWorkflowAutomationNow$,
   updateWorkflowAutomation$,
   type AutomationResult,
-} from "../services/zero-workflow-automation.service";
+} from "../services/workflow-automation.service";
 import type { RouteEntry, SignalRouteHandler } from "../route-entry";
 
 const workflowAutomationReadAuth = {

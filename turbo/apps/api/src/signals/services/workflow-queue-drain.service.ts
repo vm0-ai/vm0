@@ -21,7 +21,7 @@ import { buildWorkflowAutomationQueuedLaunchMaterial } from "./workflow-automati
 import {
   launchQueuedWorkflowAutomation$,
   type RunWorkflowAutomationResult,
-} from "./zero-workflow-automation-launch.service";
+} from "./workflow-automation-launch.service";
 
 const log = logger("WorkflowQueueDrain");
 

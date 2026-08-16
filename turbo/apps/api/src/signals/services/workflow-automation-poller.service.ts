@@ -22,7 +22,7 @@ import {
   type AutomationRow,
   type RunWorkflowAutomationNowArgs,
   type RunWorkflowAutomationResult,
-} from "./zero-workflow-automation-launch.service";
+} from "./workflow-automation-launch.service";
 import { workflowAutomationCanFire } from "./workflow-automation-access.service";
 import { buildWorkflowScheduleAutomationBrief } from "./workflow-automation-brief.service";
 import { ensureWorkflowUserAutomationThread } from "./workflow-user-automation-thread.service";

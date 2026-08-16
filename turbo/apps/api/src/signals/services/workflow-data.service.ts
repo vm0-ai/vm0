@@ -441,7 +441,7 @@ export async function loadWorkflowOwnerProfile(
   return null;
 }
 
-export function zeroWorkflowList(args: {
+export function workflowList(args: {
   readonly orgId: string;
   readonly member: WorkflowMember;
   readonly agentId?: string;

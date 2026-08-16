@@ -10,7 +10,7 @@ import {
   buildChatOnlyWorkflowAutomationCallbacks,
   buildWorkflowAutomationCallbacks,
   type AutomationRow,
-} from "./zero-workflow-automation-launch.service";
+} from "./workflow-automation-launch.service";
 
 interface WorkflowAutomationQueuedLaunchMaterial {
   readonly prompt: string;

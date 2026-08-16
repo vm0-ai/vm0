@@ -1002,7 +1002,6 @@
           "comparisonDescription": "Tu suscripción actual y esta selección, una al lado de la otra",
           "comparisonTitle": "Comparación de suscripciones",
           "current": "Actual",
-          "downgradeDescription": "El paquete inferior comienza en la próxima fecha de facturación. Los créditos existentes seguirán disponibles hasta que caduquen.",
           "downgradesToDate": "Baja a {{package}} el {{date}}.",
           "downgradesToPeriod": "Baja a {{package}} en la próxima fecha de facturación.",
           "everyMonth": "Cada mes",

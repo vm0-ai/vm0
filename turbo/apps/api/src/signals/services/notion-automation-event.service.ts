@@ -50,7 +50,7 @@ import type {
   RunWorkflowAutomationNowArgs,
   RunWorkflowAutomationResult,
   AutomationRow,
-} from "./zero-workflow-automation-launch.service";
+} from "./workflow-automation-launch.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 
 const log = logger("api:notion-automation-event");

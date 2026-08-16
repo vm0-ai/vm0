@@ -40,7 +40,7 @@ import type {
   AutomationRow,
   RunWorkflowAutomationNowArgs,
   RunWorkflowAutomationResult,
-} from "./zero-workflow-automation-launch.service";
+} from "./workflow-automation-launch.service";
 import { runWorkflowAutomationNow$ } from "./workflow-automation-run.service";
 
 const log = logger("api:stripe-automation-event");
