@@ -26,7 +26,7 @@ import {
   AutomationEventSourceTiming,
   type AutomationEventRunTiming,
 } from "./automation-event-source-timing.service";
-import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
+import { runWorkflowAutomationNow$ } from "./workflow-automation-run.service";
 import type {
   RunWorkflowAutomationResult,
   AutomationRow,

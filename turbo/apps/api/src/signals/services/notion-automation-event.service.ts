@@ -45,7 +45,7 @@ import {
   decryptStoredSecretValue,
   encryptStoredSecretValue,
 } from "./crypto.utils";
-import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
+import { runWorkflowAutomationNow$ } from "./workflow-automation-run.service";
 import type {
   RunWorkflowAutomationNowArgs,
   RunWorkflowAutomationResult,

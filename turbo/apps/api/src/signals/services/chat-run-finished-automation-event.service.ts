@@ -19,7 +19,7 @@ import { loadRunAutonomyBudget } from "./autonomy-budget.service";
 import { workflowAutomationColumns } from "./autonomy-budget-schema.service";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import type { ChatRunFinishedEvent } from "./chat-run-finished-event";
-import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
+import { runWorkflowAutomationNow$ } from "./workflow-automation-run.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 import { insertChatEvent } from "./chat-event.service";
