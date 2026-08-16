@@ -208,11 +208,11 @@ impl ExecutorInvocation {
                 // Panic lost the in-flight telemetry buffer; substitute an
                 // empty collector so the post-complete flush path stays
                 // unconditional. `flush` early-returns on empty pending_ops.
-                let telemetry = JobTelemetry::new_with_runner_name(
+                let telemetry = JobTelemetry::new(
                     exec_config_for_panic.http.clone(),
                     run_id,
                     sandbox_token,
-                    Some(exec_config_for_panic.runner_name.clone()),
+                    exec_config_for_panic.runner_name.clone(),
                 );
                 let failure =
                     executor::ExecutionFailure::from_error(format!("executor task panicked: {e}"));
@@ -1032,7 +1032,12 @@ mod tests {
             },
             exit_code: 0,
             err: None,
-            telemetry: JobTelemetry::new(test_http_client(), run_id, "sandbox-token".into()),
+            telemetry: JobTelemetry::new(
+                test_http_client(),
+                run_id,
+                "sandbox-token".into(),
+                "test-runner".into(),
+            ),
         }
     }
 
@@ -1052,7 +1057,12 @@ mod tests {
             },
             exit_code: 1,
             err: Some("sandbox unavailable".into()),
-            telemetry: JobTelemetry::new(test_http_client(), run_id, "sandbox-token".into()),
+            telemetry: JobTelemetry::new(
+                test_http_client(),
+                run_id,
+                "sandbox-token".into(),
+                "test-runner".into(),
+            ),
         }
     }
 

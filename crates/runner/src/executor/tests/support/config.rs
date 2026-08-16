@@ -116,11 +116,11 @@ pub(in crate::executor::tests) fn test_telemetry(
     config: &ExecutorConfig,
     ctx: &ExecutionContext,
 ) -> JobTelemetry {
-    crate::telemetry::JobTelemetry::new_with_runner_name(
+    crate::telemetry::JobTelemetry::new(
         config.http.clone(),
         ctx.run_id,
         ctx.sandbox_token.clone(),
-        Some(config.runner_name.clone()),
+        config.runner_name.clone(),
     )
 }
 

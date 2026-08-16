@@ -600,11 +600,11 @@ pub(crate) async fn execute_job_with_prepared_notifier(
     } = hooks;
     let spawn_timing = RunnerSpawnTiming::start(pre_spawn_timing);
     let run_id = context.run_id;
-    let mut telemetry = JobTelemetry::new_with_runner_name(
+    let mut telemetry = JobTelemetry::new(
         config.http.clone(),
         run_id,
         context.sandbox_token.clone(),
-        Some(config.runner_name.clone()),
+        config.runner_name.clone(),
     );
     spawn_timing.record_claim_to_executor_start(&mut telemetry);
 
@@ -708,11 +708,11 @@ pub(crate) async fn execute_job_reuse_with_hooks(
     } = hooks;
     let spawn_timing = RunnerSpawnTiming::start(pre_spawn_timing);
     let run_id = context.run_id;
-    let mut telemetry = JobTelemetry::new_with_runner_name(
+    let mut telemetry = JobTelemetry::new(
         config.http.clone(),
         run_id,
         context.sandbox_token.clone(),
-        Some(config.runner_name.clone()),
+        config.runner_name.clone(),
     );
     spawn_timing.record_claim_to_executor_start(&mut telemetry);
 
