@@ -59,7 +59,7 @@ import { zeroChatThreadRoutes } from "../zero-chat-threads";
 import { connectorsRoutes } from "../connectors";
 import { zeroMeModelProvidersListRoutes } from "../zero-me-model-providers-list";
 import { zeroMeModelProvidersUpsertRoutes } from "../zero-me-model-providers-upsert";
-import { zeroOrgReadRoutes } from "../zero-org-read";
+import { orgReadRoutes } from "../org-read";
 import { userPreferencesRoutes } from "../user-preferences";
 
 const zeroPersonalModelProvidersMainTestRoutes = Object.freeze([
@@ -114,9 +114,7 @@ const billingStatusClient = setupApp({
   context,
   routes: zeroBillingStatusRoutes,
 })(zeroBillingStatusContract);
-const orgClient = setupApp({ context, routes: zeroOrgReadRoutes })(
-  zeroOrgContract,
-);
+const orgClient = setupApp({ context, routes: orgReadRoutes })(zeroOrgContract);
 const personalModelProvidersClient = setupApp({
   context,
   routes: zeroPersonalModelProvidersMainTestRoutes,

@@ -63,7 +63,7 @@ import { builtInGenerationRoutes } from "../../built-in-generation";
 import { zeroFeatureSwitchesRoutes } from "../../zero-feature-switches";
 import { imageIoGenerateRoutes } from "../../image-io-generate";
 import { mapsRoutes } from "../../maps";
-import { zeroUsageMembersRoutes } from "../../zero-usage-members";
+import { usageMembersRoutes } from "../../usage-members";
 import { usageRecordRoutes } from "../../usage-record";
 import { videoIoGenerateRoutes } from "../../video-io-generate";
 import { voiceIoQuotaRoutes } from "../../voice-io-quota";
@@ -495,7 +495,7 @@ export function createBillingMediaApi(context: TestContext) {
         readonly tz?: string;
       } = {},
     ) {
-      const client = setupApp({ context, routes: zeroUsageMembersRoutes })(
+      const client = setupApp({ context, routes: usageMembersRoutes })(
         zeroUsageMembersContract,
       );
       return await accept(
@@ -512,7 +512,7 @@ export function createBillingMediaApi(context: TestContext) {
       },
       statuses: readonly (200 | 400 | 401 | 403 | 500)[],
     ) {
-      const client = setupApp({ context, routes: zeroUsageMembersRoutes })(
+      const client = setupApp({ context, routes: usageMembersRoutes })(
         zeroUsageMembersContract,
       );
       return await accept(

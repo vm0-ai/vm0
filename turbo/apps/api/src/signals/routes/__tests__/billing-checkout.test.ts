@@ -63,9 +63,9 @@ import { zeroBillingConcurrencySubscriptionRoutes } from "../zero-billing-concur
 import { zeroBillingCreditCheckoutRoutes } from "../zero-billing-credit-checkout";
 import { zeroBillingUsagePackCreditsRoutes } from "../zero-billing-usage-pack-credits";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
-import { zeroOrgMembersRoutes } from "../zero-org-members";
+import { orgMembersRoutes } from "../org-members";
 import { zeroOrgInviteRoutes } from "../zero-org-invite";
-import { zeroOrgReadRoutes } from "../zero-org-read";
+import { orgReadRoutes } from "../org-read";
 import {
   testUsagePackSubscriptionStateContract,
   testUsagePackSubscriptionStateRoutes,
@@ -6424,7 +6424,7 @@ describe("usage pack allocation management", () => {
       status: "succeeded",
     });
 
-    const responsePromise = setupApp({ context, routes: zeroOrgMembersRoutes })(
+    const responsePromise = setupApp({ context, routes: orgMembersRoutes })(
       zeroOrgMembersContract,
     ).removeMember({
       headers: { authorization: "Bearer clerk-session" },
@@ -6654,7 +6654,7 @@ describe("usage pack allocation management", () => {
     });
 
     await accept(
-      setupApp({ context, routes: zeroOrgMembersRoutes })(
+      setupApp({ context, routes: orgMembersRoutes })(
         zeroOrgMembersContract,
       ).removeMember({
         headers: { authorization: "Bearer clerk-session" },
@@ -7121,7 +7121,7 @@ describe("usage pack allocation management", () => {
       ),
     );
     const members = await accept(
-      setupApp({ context, routes: zeroOrgReadRoutes })(
+      setupApp({ context, routes: orgReadRoutes })(
         zeroOrgMembersContract,
       ).members({
         headers: { authorization: "Bearer clerk-session" },

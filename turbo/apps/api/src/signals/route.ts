@@ -110,11 +110,11 @@ import { zeroModelProvidersRoutes } from "./routes/zero-model-providers";
 import { onboardingCompleteRoutes } from "./routes/onboarding-complete";
 import { onboardingStatusRoutes } from "./routes/onboarding-status";
 import { zeroOrgInviteRoutes } from "./routes/zero-org-invite";
-import { zeroOrgDeleteRoutes } from "./routes/zero-org-delete";
+import { orgDeleteRoutes } from "./routes/org-delete";
 import { orgLogoRoutes } from "./routes/org-logo";
-import { zeroOrgMembersRoutes } from "./routes/zero-org-members";
-import { zeroOrgMembershipRequestsRoutes } from "./routes/zero-org-membership-requests";
-import { zeroOrgReadRoutes } from "./routes/zero-org-read";
+import { orgMembersRoutes } from "./routes/org-members";
+import { orgMembershipRequestsRoutes } from "./routes/org-membership-requests";
+import { orgReadRoutes } from "./routes/org-read";
 import { pushSubscriptionsRoutes } from "./routes/push-subscriptions";
 import { queuePositionRoutes } from "./routes/queue-position";
 import { realtimeTokenRoutes } from "./routes/realtime-token";
@@ -176,14 +176,14 @@ import { zeroTeamsBrowserConnectRoutes } from "./routes/zero-teams-browser-conne
 import { zeroTeamsBotRoutes } from "./routes/zero-teams-bot";
 import { zeroTeamsConnectRoutes } from "./routes/zero-teams-connect";
 import { zeroTeamsOauthRoutes } from "./routes/zero-teams-oauth";
-import { zeroTeamRoutes } from "./routes/zero-team";
+import { teamRoutes } from "./routes/team";
 import { uploadsCompleteRoutes } from "./routes/uploads-complete";
 import { uploadsMultipartRoutes } from "./routes/uploads-multipart";
 import { uploadsPrepareRoutes } from "./routes/uploads-prepare";
-import { zeroUsageMembersRoutes } from "./routes/zero-usage-members";
+import { usageMembersRoutes } from "./routes/usage-members";
 import { usageRecordRoutes } from "./routes/usage-record";
 import { userPreferencesRoutes } from "./routes/user-preferences";
-import { zeroUserPermissionGrantsRoutes } from "./routes/zero-user-permission-grants";
+import { userPermissionGrantsRoutes } from "./routes/user-permission-grants";
 import { userModelPreferenceRoutes } from "./routes/user-model-preference";
 import { avatarVideoRoutes } from "./routes/avatar-video";
 import { voiceIoQuotaRoutes } from "./routes/voice-io-quota";
@@ -326,13 +326,13 @@ export const ROUTES: readonly RouteEntry[] = [
   ...onboardingCompleteRoutes,
   ...onboardingStatusRoutes,
   ...zeroOrgInviteRoutes,
-  ...zeroOrgDeleteRoutes,
+  ...orgDeleteRoutes,
   ...orgLogoRoutes,
-  ...zeroOrgMembersRoutes,
-  ...zeroOrgMembershipRequestsRoutes,
-  ...zeroOrgReadRoutes,
+  ...orgMembersRoutes,
+  ...orgMembershipRequestsRoutes,
+  ...orgReadRoutes,
   ...pushSubscriptionsRoutes,
-  ...zeroUserPermissionGrantsRoutes,
+  ...userPermissionGrantsRoutes,
   ...userPreferencesRoutes,
   ...userModelPreferenceRoutes,
   ...workflowsRoutes,
@@ -377,12 +377,12 @@ export const ROUTES: readonly RouteEntry[] = [
   ...integrationsTelegramMessageRoutes,
   ...integrationsTelegramUploadCompleteRoutes,
   ...integrationsTelegramUploadInitRoutes,
-  ...zeroTeamRoutes,
+  ...teamRoutes,
   ...uploadsCompleteRoutes,
   ...uploadsMultipartRoutes,
   ...uploadsPrepareRoutes,
   ...registryResourceDownloadRoutes,
-  ...zeroUsageMembersRoutes,
+  ...usageMembersRoutes,
   ...usageRecordRoutes,
   ...modelStatsRoutes,
   ...presentationImagesRoutes,

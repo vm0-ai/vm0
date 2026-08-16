@@ -19,7 +19,7 @@ import {
   type StripeSubscription,
 } from "../../external/stripe-client";
 import { agentsRoutes } from "../agents";
-import { zeroOrgDeleteRoutes } from "../zero-org-delete";
+import { orgDeleteRoutes } from "../org-delete";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
@@ -195,7 +195,7 @@ function mockOrgDeletion(fixture: OrgDeleteBillingFixture): void {
 }
 
 async function requestOrgDeletion() {
-  const client = setupApp({ context, routes: zeroOrgDeleteRoutes })(
+  const client = setupApp({ context, routes: orgDeleteRoutes })(
     zeroOrgDeleteContract,
   );
   return await client.delete({

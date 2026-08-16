@@ -94,13 +94,13 @@ import { customConnectorDisconnectRoutes } from "../../custom-connectors-disconn
 import { customConnectorsValuesSetRoutes } from "../../custom-connectors-values-set";
 import { onboardingCompleteRoutes } from "../../onboarding-complete";
 import { onboardingStatusRoutes } from "../../onboarding-status";
-import { zeroOrgDeleteRoutes } from "../../zero-org-delete";
+import { orgDeleteRoutes } from "../../org-delete";
 import { zeroOrgInviteRoutes } from "../../zero-org-invite";
 import { orgLogoRoutes } from "../../org-logo";
-import { zeroOrgMembersRoutes } from "../../zero-org-members";
-import { zeroOrgMembershipRequestsRoutes } from "../../zero-org-membership-requests";
-import { zeroOrgReadRoutes } from "../../zero-org-read";
-import { zeroTeamRoutes } from "../../zero-team";
+import { orgMembersRoutes } from "../../org-members";
+import { orgMembershipRequestsRoutes } from "../../org-membership-requests";
+import { orgReadRoutes } from "../../org-read";
+import { teamRoutes } from "../../team";
 import { userPreferencesRoutes } from "../../user-preferences";
 import { createBddApi, type OnboardingBootstrapOptions } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
@@ -211,13 +211,13 @@ const authOrgRoutes = [
   ...onboardingStatusRoutes,
   ...onboardingCompleteRoutes,
   ...userPreferencesRoutes,
-  ...zeroOrgReadRoutes,
-  ...zeroOrgDeleteRoutes,
-  ...zeroOrgMembersRoutes,
+  ...orgReadRoutes,
+  ...orgDeleteRoutes,
+  ...orgMembersRoutes,
   ...zeroOrgInviteRoutes,
-  ...zeroOrgMembershipRequestsRoutes,
+  ...orgMembershipRequestsRoutes,
   ...orgLogoRoutes,
-  ...zeroTeamRoutes,
+  ...teamRoutes,
   ...agentsRoutes,
   ...zeroComposesRoutes,
   ...customConnectorsRoutes,

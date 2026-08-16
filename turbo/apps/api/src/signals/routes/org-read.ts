@@ -113,7 +113,7 @@ const membersInner$ = computed(async (get) => {
   return { status: 200 as const, body };
 });
 
-export const zeroOrgReadRoutes: readonly RouteEntry[] = [
+export const orgReadRoutes: readonly RouteEntry[] = [
   {
     route: zeroOrgContract.get,
     handler: authRoute({ acceptAnySandboxCapability: true }, getOrgInner$),

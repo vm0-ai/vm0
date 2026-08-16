@@ -27,7 +27,7 @@ import { agentsRoutes } from "../../agents";
 import { agentInstructionsRoutes } from "../../agent-instructions";
 import { onboardingCompleteRoutes } from "../../onboarding-complete";
 import { onboardingStatusRoutes } from "../../onboarding-status";
-import { zeroOrgReadRoutes } from "../../zero-org-read";
+import { orgReadRoutes } from "../../org-read";
 import { userPreferencesRoutes } from "../../user-preferences";
 import { createZeroRouteMocks } from "./zero-route-test";
 
@@ -136,7 +136,7 @@ export function createBddApi(context: TestContext) {
   function orgClient() {
     return setupAppWithRoutes({
       context,
-      routes: zeroOrgReadRoutes,
+      routes: orgReadRoutes,
     })(zeroOrgContract);
   }
 
