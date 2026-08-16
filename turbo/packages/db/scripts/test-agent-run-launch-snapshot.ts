@@ -256,6 +256,8 @@ async function validateConstraintValues(
   );
 
   const invalidObjects: readonly unknown[] = [
+    { framework: "codex", runnerProfile: "vm0/default" },
+    { schemaVersion: 1, runnerProfile: "vm0/default" },
     { schemaVersion: 1, framework: "codex" },
     {
       schemaVersion: 1,
