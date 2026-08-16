@@ -289,6 +289,28 @@ describe("webhook telemetry contract", () => {
     ).toBe(false);
   });
 
+  it("accepts fresh delivery scan summary dimensions", () => {
+    const result = webhookTelemetryContract.send.body.parse({
+      runId: "00000000-0000-4000-8000-000000000000",
+      sandboxOperations: [
+        {
+          ts: "2026-01-15T10:00:00.000Z",
+          action_type: "storage_cache_fresh_delivery_scan_suffix",
+          duration_ms: 0,
+          success: true,
+          outcome: "5_8",
+          reason: "3_4",
+        },
+      ],
+    });
+
+    expect(result.sandboxOperations?.[0]).toMatchObject({
+      action_type: "storage_cache_fresh_delivery_scan_suffix",
+      outcome: "5_8",
+      reason: "3_4",
+    });
+  });
+
   it("accepts bounded startup outcomes and keeps them optional", () => {
     const startupOutcomes = [
       ["sandbox", "reused"],

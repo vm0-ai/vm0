@@ -15283,6 +15283,14 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
             outcome: "ineligible",
             reason: "source_within_guard",
           },
+          {
+            ts: nowDate().toISOString(),
+            action_type: "storage_cache_fresh_delivery_scan_suffix",
+            duration_ms: 0,
+            success: true,
+            outcome: "5_8",
+            reason: "3_4",
+          },
         ],
       },
       sandboxHeaders,
@@ -15413,6 +15421,20 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
         }),
       ],
     );
+    expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
+      "vm0-sandbox-op-log-dev",
+      [
+        expect.objectContaining({
+          op_type: "storage_cache_fresh_delivery_scan_suffix",
+          run_id: created.runId,
+          duration_ms: 0,
+          success: true,
+          outcome: "5_8",
+          reason: "3_4",
+          source: "sandbox",
+        }),
+      ],
+    );
     const sessionHistoryDownloadEvents = sandboxOperationEventsForRunByAction(
       created.runId,
       "session_history_download",
@@ -15425,6 +15447,23 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
       "runner_startup_path",
     );
     expect(sessionHistoryDownloadEvents[0]).not.toHaveProperty(
+      "sandbox_reuse_result",
+    );
+    const freshDeliveryScanEvents = sandboxOperationEventsForRunByAction(
+      created.runId,
+      "storage_cache_fresh_delivery_scan_suffix",
+    );
+    expect(freshDeliveryScanEvents).toHaveLength(1);
+    expect(freshDeliveryScanEvents[0]).toMatchObject({
+      duration_ms: 0,
+      success: true,
+      outcome: "5_8",
+      reason: "3_4",
+    });
+    expect(freshDeliveryScanEvents[0]).not.toHaveProperty(
+      "runner_startup_path",
+    );
+    expect(freshDeliveryScanEvents[0]).not.toHaveProperty(
       "sandbox_reuse_result",
     );
 

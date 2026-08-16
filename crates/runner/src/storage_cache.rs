@@ -142,6 +142,11 @@ const STORAGE_CACHE_FRESH_DELIVERY_SIZE_MANIFEST: &str =
 const STORAGE_CACHE_FRESH_DELIVERY_SIZE_RESPONSE: &str =
     "storage_cache_fresh_delivery_size_response";
 const STORAGE_CACHE_FRESH_DELIVERY_DRAINED: &str = "storage_cache_fresh_delivery_drained";
+const STORAGE_CACHE_FRESH_DELIVERY_SCAN_GROUPS: &str = "storage_cache_fresh_delivery_scan_groups";
+const STORAGE_CACHE_FRESH_DELIVERY_SCAN_SUFFIX: &str = "storage_cache_fresh_delivery_scan_suffix";
+const STORAGE_CACHE_FRESH_DELIVERY_SCAN_SUFFIX_UNKNOWN: &str =
+    "storage_cache_fresh_delivery_scan_suffix_unknown";
+const STORAGE_CACHE_FRESH_DELIVERY_SCAN_STOP: &str = "storage_cache_fresh_delivery_scan_stop";
 
 /// Guest-side filename for a cached archive.
 ///
@@ -170,6 +175,94 @@ struct CacheTarget {
 struct CacheTargetGroup {
     targets: Vec<CacheTarget>,
     archive_size: Option<u64>,
+}
+
+struct FreshDeliveryScanSummary {
+    group_count: usize,
+    cap_excess_count: usize,
+    static_eligible_count: usize,
+    unknown_size_count: usize,
+    per_run: bool,
+    runner_wide: bool,
+    scan_limit: bool,
+}
+
+impl FreshDeliveryScanSummary {
+    fn from_groups(groups: &[CacheTargetGroup], scan_limit: usize) -> Self {
+        let suffix = groups.iter().skip(scan_limit);
+        let static_eligible_count = suffix
+            .clone()
+            .filter(|group| {
+                group
+                    .archive_size
+                    .is_some_and(|size| size <= CACHE_MAX_SIZE)
+            })
+            .count();
+        let unknown_size_count = suffix.filter(|group| group.archive_size.is_none()).count();
+        Self {
+            group_count: groups.len(),
+            cap_excess_count: groups.len().saturating_sub(scan_limit),
+            static_eligible_count,
+            unknown_size_count,
+            per_run: false,
+            runner_wide: false,
+            scan_limit: false,
+        }
+    }
+
+    fn record(&self, telemetry: &mut JobTelemetry, success: bool) {
+        telemetry.record_bounded_outcome(
+            STORAGE_CACHE_FRESH_DELIVERY_SCAN_GROUPS,
+            success,
+            count_bucket_outcome(self.group_count),
+            Some(if success {
+                "prepared"
+            } else {
+                "prepare_failed"
+            }),
+        );
+        if self.cap_excess_count > 0 {
+            telemetry.record_bounded_outcome(
+                STORAGE_CACHE_FRESH_DELIVERY_SCAN_SUFFIX,
+                success,
+                count_bucket_outcome(self.cap_excess_count),
+                Some(count_bucket_outcome(self.static_eligible_count)),
+            );
+        }
+        if self.unknown_size_count > 0 {
+            telemetry.record_bounded_outcome(
+                STORAGE_CACHE_FRESH_DELIVERY_SCAN_SUFFIX_UNKNOWN,
+                success,
+                count_bucket_outcome(self.unknown_size_count),
+                None,
+            );
+        }
+
+        let mut recorded_stop = false;
+        for (observed, outcome) in [
+            (self.per_run, "per_run"),
+            (self.runner_wide, "runner_wide"),
+            (self.scan_limit, "scan_limit"),
+        ] {
+            if observed {
+                telemetry.record_bounded_outcome(
+                    STORAGE_CACHE_FRESH_DELIVERY_SCAN_STOP,
+                    success,
+                    outcome,
+                    None,
+                );
+                recorded_stop = true;
+            }
+        }
+        if !recorded_stop {
+            telemetry.record_bounded_outcome(
+                STORAGE_CACHE_FRESH_DELIVERY_SCAN_STOP,
+                success,
+                "none",
+                None,
+            );
+        }
+    }
 }
 
 /// Runner-wide admission control for fresh archive delivery.
@@ -1825,7 +1918,27 @@ pub(crate) async fn prepare_fresh_archive_delivery(
     cancel: &CancellationToken,
     telemetry: &mut JobTelemetry,
 ) -> RunnerResult<FreshArchiveDelivery> {
+    prepare_fresh_archive_delivery_with_scan_limit(
+        plan,
+        home,
+        admission,
+        cancel,
+        telemetry,
+        FRESH_DELIVERY_SCAN_LIMIT,
+    )
+    .await
+}
+
+async fn prepare_fresh_archive_delivery_with_scan_limit(
+    plan: &StoragePlan,
+    home: &HomePaths,
+    admission: &FreshArchiveDeliveryAdmission,
+    cancel: &CancellationToken,
+    telemetry: &mut JobTelemetry,
+    scan_limit: usize,
+) -> RunnerResult<FreshArchiveDelivery> {
     let groups = group_targets(collect_targets(plan));
+    let mut scan_summary = FreshDeliveryScanSummary::from_groups(&groups, scan_limit);
     let owner_cancel = cancel.child_token();
     let mut delivery = FreshArchiveDelivery {
         cancel: owner_cancel.clone(),
@@ -1834,6 +1947,7 @@ pub(crate) async fn prepare_fresh_archive_delivery(
         publications: JoinSet::new(),
     };
     if groups.is_empty() {
+        scan_summary.record(telemetry, true);
         return Ok(delivery);
     }
     let group_count = groups.len();
@@ -1847,8 +1961,9 @@ pub(crate) async fn prepare_fresh_archive_delivery(
             })?;
 
         let mut scanned = 0;
-        for group in groups.into_iter().take(FRESH_DELIVERY_SCAN_LIMIT) {
+        for group in groups.into_iter().take(scan_limit) {
             if delivery.apply.len() >= FRESH_DELIVERY_PER_RUN_LIMIT {
+                scan_summary.per_run = true;
                 telemetry.record(
                     STORAGE_CACHE_FRESH_DELIVERY_CAPACITY,
                     Duration::ZERO,
@@ -1871,6 +1986,7 @@ pub(crate) async fn prepare_fresh_archive_delivery(
             let permit = match Arc::clone(&admission.permits).try_acquire_owned() {
                 Ok(permit) => permit,
                 Err(_) => {
+                    scan_summary.runner_wide = true;
                     telemetry.record(
                         STORAGE_CACHE_FRESH_DELIVERY_CAPACITY,
                         Duration::ZERO,
@@ -1984,7 +2100,8 @@ pub(crate) async fn prepare_fresh_archive_delivery(
                 None,
             );
         }
-        if group_count > FRESH_DELIVERY_SCAN_LIMIT && scanned == FRESH_DELIVERY_SCAN_LIMIT {
+        if group_count > scan_limit && scanned == scan_limit {
+            scan_summary.scan_limit = true;
             telemetry.record(
                 STORAGE_CACHE_FRESH_DELIVERY_CAPACITY,
                 Duration::ZERO,
@@ -1995,6 +2112,7 @@ pub(crate) async fn prepare_fresh_archive_delivery(
         Ok(())
     }
     .await;
+    scan_summary.record(telemetry, prepare_result.is_ok());
     if let Err(error) = prepare_result {
         delivery.cancel_and_drain(telemetry).await;
         return Err(error);
@@ -3238,6 +3356,18 @@ fn count_bucket(count: usize) -> CountBucket {
     }
 }
 
+fn count_bucket_outcome(count: usize) -> &'static str {
+    match count_bucket(count) {
+        CountBucket::Zero => "0",
+        CountBucket::One => "1",
+        CountBucket::Two => "2",
+        CountBucket::ThreeToFour => "3_4",
+        CountBucket::FiveToEight => "5_8",
+        CountBucket::NineToSixteen => "9_16",
+        CountBucket::SeventeenPlus => "17_plus",
+    }
+}
+
 /// Resolve a planned archive to the guest `file://` stage path.
 ///
 /// Verifies the planned entry still has the expected `(name, version, source)`
@@ -3351,6 +3481,52 @@ mod tests {
             expected,
             "expected {expected} {action_type} ops in {ops:?}"
         );
+    }
+
+    fn assert_bounded_outcome(
+        ops: &[(String, bool, Option<String>, Option<String>)],
+        action_type: &str,
+        success: bool,
+        outcome: &str,
+        reason: Option<&str>,
+    ) {
+        assert!(
+            ops.iter()
+                .any(|(action, op_success, op_outcome, op_reason)| {
+                    action == action_type
+                        && *op_success == success
+                        && op_outcome.as_deref() == Some(outcome)
+                        && op_reason.as_deref() == reason
+                }),
+            "expected {action_type} success={success} outcome={outcome:?} reason={reason:?} in {ops:?}"
+        );
+    }
+
+    fn bounded_outcome_count(
+        ops: &[(String, bool, Option<String>, Option<String>)],
+        action_type: &str,
+    ) -> usize {
+        ops.iter()
+            .filter(|(action, _, _, _)| action == action_type)
+            .count()
+    }
+
+    #[test]
+    fn count_bucket_outcome_uses_stable_ranges() {
+        for (count, expected) in [
+            (0, "0"),
+            (1, "1"),
+            (2, "2"),
+            (3, "3_4"),
+            (4, "3_4"),
+            (5, "5_8"),
+            (8, "5_8"),
+            (9, "9_16"),
+            (16, "9_16"),
+            (17, "17_plus"),
+        ] {
+            assert_eq!(count_bucket_outcome(count), expected);
+        }
     }
 
     fn op_duration_ms(ops: &[(String, u64, bool, Option<String>)], action_type: &str) -> u64 {
@@ -3946,6 +4122,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn fresh_delivery_records_empty_scan_summary() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let plan = plan_from_entries(Vec::new(), Vec::new(), None);
+        let admission = FreshArchiveDeliveryAdmission::new();
+        let cancel = CancellationToken::new();
+        let mut telemetry = new_telemetry();
+
+        let delivery =
+            prepare_fresh_archive_delivery(&plan, &home, &admission, &cancel, &mut telemetry)
+                .await
+                .unwrap();
+
+        assert!(delivery.apply.is_empty());
+        let ops = telemetry.pending_ops_with_outcome_snapshot();
+        assert_bounded_outcome(
+            &ops,
+            STORAGE_CACHE_FRESH_DELIVERY_SCAN_GROUPS,
+            true,
+            "0",
+            Some("prepared"),
+        );
+        assert_bounded_outcome(
+            &ops,
+            STORAGE_CACHE_FRESH_DELIVERY_SCAN_STOP,
+            true,
+            "none",
+            None,
+        );
+        assert_eq!(
+            bounded_outcome_count(&ops, STORAGE_CACHE_FRESH_DELIVERY_SCAN_GROUPS),
+            1
+        );
+        assert_eq!(
+            bounded_outcome_count(&ops, STORAGE_CACHE_FRESH_DELIVERY_SCAN_SUFFIX),
+            0
+        );
+        assert_eq!(
+            bounded_outcome_count(&ops, STORAGE_CACHE_FRESH_DELIVERY_SCAN_SUFFIX_UNKNOWN),
+            0
+        );
+    }
+
+    #[tokio::test]
     async fn fresh_delivery_downloads_known_archive_once_and_stages_it() {
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
@@ -3999,6 +4219,21 @@ mod tests {
         assert_op(&ops, STORAGE_CACHE_FRESH_DELIVERY_PUBLISHED, true);
         assert_op(&ops, STORAGE_CACHE_FRESH_DELIVERY_STAGED, true);
         assert_no_op(&ops, STORAGE_CACHE_BACKGROUND_FILL_DEFERRED_DELAY);
+        let outcome_ops = telemetry.pending_ops_with_outcome_snapshot();
+        assert_bounded_outcome(
+            &outcome_ops,
+            STORAGE_CACHE_FRESH_DELIVERY_SCAN_GROUPS,
+            true,
+            "1",
+            Some("prepared"),
+        );
+        assert_bounded_outcome(
+            &outcome_ops,
+            STORAGE_CACHE_FRESH_DELIVERY_SCAN_STOP,
+            true,
+            "none",
+            None,
+        );
     }
 
     #[tokio::test]
@@ -4533,6 +4768,14 @@ mod tests {
         let ops = telemetry.pending_ops_snapshot();
         assert_op(&ops, STORAGE_CACHE_FRESH_DELIVERY_CANCELLED, true);
         assert_op(&ops, STORAGE_CACHE_FRESH_DELIVERY_DRAINED, true);
+        let outcome_ops = telemetry.pending_ops_with_outcome_snapshot();
+        assert_bounded_outcome(
+            &outcome_ops,
+            STORAGE_CACHE_FRESH_DELIVERY_SCAN_GROUPS,
+            true,
+            "1",
+            Some("prepared"),
+        );
     }
 
     #[tokio::test]
@@ -4668,7 +4911,340 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn fresh_delivery_scan_limit_does_not_reach_a_later_eligible_group() {
+    async fn fresh_delivery_scan_summary_marks_preparation_failure() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        fs::write(home.locks_dir(), b"not a directory")
+            .await
+            .unwrap();
+        let plan = fresh_storage_plan_with_archive_size(
+            "https://example.invalid/prepare-failure.tar.gz".to_string(),
+            "prepare-failure",
+            "v1",
+            1,
+        );
+        let admission = FreshArchiveDeliveryAdmission::new();
+        let cancel = CancellationToken::new();
+        let mut telemetry = new_telemetry();
+
+        let error =
+            prepare_fresh_archive_delivery(&plan, &home, &admission, &cancel, &mut telemetry)
+                .await
+                .err()
+                .unwrap();
+
+        assert!(error.to_string().contains("lock dir"));
+        assert_eq!(
+            admission.permits.available_permits(),
+            FRESH_DELIVERY_RUNNER_LIMIT
+        );
+        let outcome_ops = telemetry.pending_ops_with_outcome_snapshot();
+        assert_bounded_outcome(
+            &outcome_ops,
+            STORAGE_CACHE_FRESH_DELIVERY_SCAN_GROUPS,
+            false,
+            "1",
+            Some("prepare_failed"),
+        );
+        assert_bounded_outcome(
+            &outcome_ops,
+            STORAGE_CACHE_FRESH_DELIVERY_SCAN_STOP,
+            false,
+            "none",
+            None,
+        );
+    }
+
+    #[tokio::test]
+    async fn fresh_delivery_finite_scan_fixture_preserves_admission_bounds() {
+        fn scan_fixture_plan(base_url: &str, body_size: u64) -> StoragePlan {
+            let storages = (0..FRESH_DELIVERY_SCAN_LIMIT + 5)
+                .map(|index| {
+                    let archive_size = if index < FRESH_DELIVERY_SCAN_LIMIT {
+                        CACHE_MAX_SIZE + 1
+                    } else {
+                        body_size
+                    };
+                    storage_entry_with_archive_size(
+                        format!("/mnt/scan-{index}"),
+                        format!("{base_url}/scan-{index}.tar.gz"),
+                        &format!("scan-{index}"),
+                        "v1",
+                        Some(archive_size),
+                    )
+                })
+                .collect();
+            plan_from_entries(storages, Vec::new(), None)
+        }
+
+        let server = MockServer::start_async().await;
+        let body = tarball_bytes();
+        let mut gets = Vec::new();
+        for index in FRESH_DELIVERY_SCAN_LIMIT..FRESH_DELIVERY_SCAN_LIMIT + 5 {
+            gets.push(
+                server
+                    .mock_async(|when, then| {
+                        when.method(GET)
+                            .path(format!("/scan-{index}.tar.gz"))
+                            .header_missing("range");
+                        then.status(200).body(body.clone());
+                    })
+                    .await,
+            );
+        }
+
+        let current_temp = tempfile::tempdir().unwrap();
+        let current_home = home_at(&current_temp);
+        let current_plan = scan_fixture_plan(&server.base_url(), body.len() as u64);
+        let current_admission = FreshArchiveDeliveryAdmission::new();
+        let current_cancel = CancellationToken::new();
+        let mut current_telemetry = new_telemetry();
+        let current_started = Instant::now();
+        let current_delivery = prepare_fresh_archive_delivery_with_scan_limit(
+            &current_plan,
+            &current_home,
+            &current_admission,
+            &current_cancel,
+            &mut current_telemetry,
+            FRESH_DELIVERY_SCAN_LIMIT,
+        )
+        .await
+        .unwrap();
+        let current_elapsed = current_started.elapsed();
+
+        assert!(current_delivery.apply.is_empty());
+        for get in &gets {
+            get.assert_calls_async(0).await;
+        }
+        assert!(!current_home.storage_lock("scan-16", "v1").exists());
+        let current_ops = current_telemetry.pending_ops_snapshot();
+        assert_op_count(
+            &current_ops,
+            STORAGE_CACHE_FRESH_DELIVERY_OVERSIZED,
+            FRESH_DELIVERY_SCAN_LIMIT,
+        );
+        assert!(current_ops.iter().any(|(action, success, error)| {
+            action == STORAGE_CACHE_FRESH_DELIVERY_CAPACITY
+                && *success
+                && error.as_deref() == Some("scan-limit")
+        }));
+        assert_no_op(&current_ops, STORAGE_CACHE_FRESH_DELIVERY_ADMITTED);
+        let current_outcome_ops = current_telemetry.pending_ops_with_outcome_snapshot();
+        assert_bounded_outcome(
+            &current_outcome_ops,
+            STORAGE_CACHE_FRESH_DELIVERY_SCAN_GROUPS,
+            true,
+            "17_plus",
+            Some("prepared"),
+        );
+        assert_bounded_outcome(
+            &current_outcome_ops,
+            STORAGE_CACHE_FRESH_DELIVERY_SCAN_SUFFIX,
+            true,
+            "5_8",
+            Some("5_8"),
+        );
+        assert_bounded_outcome(
+            &current_outcome_ops,
+            STORAGE_CACHE_FRESH_DELIVERY_SCAN_STOP,
+            true,
+            "scan_limit",
+            None,
+        );
+        assert_eq!(
+            bounded_outcome_count(
+                &current_outcome_ops,
+                STORAGE_CACHE_FRESH_DELIVERY_SCAN_SUFFIX_UNKNOWN,
+            ),
+            0
+        );
+
+        let alternative_temp = tempfile::tempdir().unwrap();
+        let alternative_home = home_at(&alternative_temp);
+        let mut alternative_plan = scan_fixture_plan(&server.base_url(), body.len() as u64);
+        let alternative_admission = FreshArchiveDeliveryAdmission::new();
+        let alternative_cancel = CancellationToken::new();
+        let mut alternative_telemetry = new_telemetry();
+        let alternative_started = Instant::now();
+        let mut alternative_delivery = prepare_fresh_archive_delivery_with_scan_limit(
+            &alternative_plan,
+            &alternative_home,
+            &alternative_admission,
+            &alternative_cancel,
+            &mut alternative_telemetry,
+            FRESH_DELIVERY_SCAN_LIMIT * 2,
+        )
+        .await
+        .unwrap();
+        let alternative_prepare_elapsed = alternative_started.elapsed();
+
+        assert_eq!(
+            alternative_delivery.apply.len(),
+            FRESH_DELIVERY_PER_RUN_LIMIT
+        );
+        let sandbox = MockSandbox::new("test");
+        let deferred = populate_cache_with_fresh_delivery(
+            &mut alternative_plan,
+            &sandbox,
+            &alternative_home,
+            &mut alternative_telemetry,
+            Some(&mut alternative_delivery),
+        )
+        .await
+        .unwrap();
+        let alternative_total_elapsed = alternative_started.elapsed();
+
+        assert!(
+            deferred.is_some(),
+            "the fifth eligible group should remain deferred background work"
+        );
+        drop(deferred);
+        for get in gets.iter().take(FRESH_DELIVERY_PER_RUN_LIMIT) {
+            get.assert_calls_async(1).await;
+        }
+        gets[FRESH_DELIVERY_PER_RUN_LIMIT]
+            .assert_calls_async(0)
+            .await;
+        for index in
+            FRESH_DELIVERY_SCAN_LIMIT..FRESH_DELIVERY_SCAN_LIMIT + FRESH_DELIVERY_PER_RUN_LIMIT
+        {
+            assert!(
+                storage_archive_url(&alternative_plan, index)
+                    .is_some_and(|url| url.starts_with("file://")),
+                "scan fixture entry {index} should use the staged archive"
+            );
+        }
+        let untouched_index = FRESH_DELIVERY_SCAN_LIMIT + FRESH_DELIVERY_PER_RUN_LIMIT;
+        let untouched_url = server.url(format!("/scan-{untouched_index}.tar.gz"));
+        assert_eq!(
+            storage_archive_url(&alternative_plan, untouched_index),
+            Some(untouched_url.as_str())
+        );
+        let alternative_ops = alternative_telemetry.pending_ops_snapshot();
+        assert_op_count(
+            &alternative_ops,
+            STORAGE_CACHE_FRESH_DELIVERY_ADMITTED,
+            FRESH_DELIVERY_PER_RUN_LIMIT,
+        );
+        assert_op_count(
+            &alternative_ops,
+            STORAGE_CACHE_FRESH_DELIVERY_SINGLE_REQUEST,
+            FRESH_DELIVERY_PER_RUN_LIMIT,
+        );
+        assert_op_count(
+            &alternative_ops,
+            STORAGE_CACHE_FRESH_DELIVERY_COMPLETE,
+            FRESH_DELIVERY_PER_RUN_LIMIT,
+        );
+        assert_op_count(
+            &alternative_ops,
+            STORAGE_CACHE_FRESH_DELIVERY_PUBLISHED,
+            FRESH_DELIVERY_PER_RUN_LIMIT,
+        );
+        assert_op_count(
+            &alternative_ops,
+            STORAGE_CACHE_FRESH_DELIVERY_STAGED,
+            FRESH_DELIVERY_PER_RUN_LIMIT,
+        );
+        let alternative_outcome_ops = alternative_telemetry.pending_ops_with_outcome_snapshot();
+        assert_bounded_outcome(
+            &alternative_outcome_ops,
+            STORAGE_CACHE_FRESH_DELIVERY_SCAN_GROUPS,
+            true,
+            "17_plus",
+            Some("prepared"),
+        );
+        assert_eq!(
+            bounded_outcome_count(
+                &alternative_outcome_ops,
+                STORAGE_CACHE_FRESH_DELIVERY_SCAN_SUFFIX,
+            ),
+            0
+        );
+        assert_bounded_outcome(
+            &alternative_outcome_ops,
+            STORAGE_CACHE_FRESH_DELIVERY_SCAN_STOP,
+            true,
+            "per_run",
+            None,
+        );
+        eprintln!(
+            "fresh delivery finite scan fixture: current_scan={} prepare_ms={} alternative_scan={} prepare_ms={} total_ms={}",
+            FRESH_DELIVERY_SCAN_LIMIT,
+            current_elapsed.as_millis(),
+            FRESH_DELIVERY_SCAN_LIMIT * 2,
+            alternative_prepare_elapsed.as_millis(),
+            alternative_total_elapsed.as_millis(),
+        );
+    }
+
+    #[tokio::test]
+    async fn fresh_delivery_scan_summary_preserves_coexisting_capacity_stops() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let mut telemetry = new_telemetry();
+        let storages = (0..=FRESH_DELIVERY_SCAN_LIMIT)
+            .map(|index| {
+                storage_entry_with_archive_size(
+                    format!("/mnt/saturated-{index}"),
+                    format!("https://example.invalid/saturated-{index}.tar.gz"),
+                    &format!("saturated-{index}"),
+                    "v1",
+                    Some(1),
+                )
+            })
+            .collect();
+        let plan = plan_from_entries(storages, Vec::new(), None);
+        let admission = FreshArchiveDeliveryAdmission::new();
+        let held_permits = (0..FRESH_DELIVERY_RUNNER_LIMIT)
+            .map(|_| Arc::clone(&admission.permits).try_acquire_owned().unwrap())
+            .collect::<Vec<_>>();
+        let cancel = CancellationToken::new();
+
+        let delivery =
+            prepare_fresh_archive_delivery(&plan, &home, &admission, &cancel, &mut telemetry)
+                .await
+                .unwrap();
+
+        assert!(delivery.apply.is_empty());
+        let ops = telemetry.pending_ops_snapshot();
+        assert_eq!(
+            ops.iter()
+                .filter(|(action, _, error)| {
+                    action == STORAGE_CACHE_FRESH_DELIVERY_CAPACITY
+                        && error.as_deref() == Some("runner-wide")
+                })
+                .count(),
+            FRESH_DELIVERY_SCAN_LIMIT
+        );
+        assert!(ops.iter().any(|(action, _, error)| {
+            action == STORAGE_CACHE_FRESH_DELIVERY_CAPACITY
+                && error.as_deref() == Some("scan-limit")
+        }));
+        let outcome_ops = telemetry.pending_ops_with_outcome_snapshot();
+        assert_bounded_outcome(
+            &outcome_ops,
+            STORAGE_CACHE_FRESH_DELIVERY_SCAN_STOP,
+            true,
+            "runner_wide",
+            None,
+        );
+        assert_bounded_outcome(
+            &outcome_ops,
+            STORAGE_CACHE_FRESH_DELIVERY_SCAN_STOP,
+            true,
+            "scan_limit",
+            None,
+        );
+        assert_eq!(
+            bounded_outcome_count(&outcome_ops, STORAGE_CACHE_FRESH_DELIVERY_SCAN_STOP),
+            2
+        );
+        drop(held_permits);
+    }
+
+    #[tokio::test]
+    async fn fresh_delivery_scan_summary_buckets_unknown_suffix_sizes() {
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
         let mut telemetry = new_telemetry();
@@ -4679,23 +5255,45 @@ mod tests {
                 then.status(200).body(tarball_bytes());
             })
             .await;
-        let body_size = tarball_bytes().len() as u64;
-        let storages = (0..=FRESH_DELIVERY_SCAN_LIMIT)
+        let mut storages = (0..FRESH_DELIVERY_SCAN_LIMIT)
             .map(|index| {
-                let archive_size = if index < FRESH_DELIVERY_SCAN_LIMIT {
-                    CACHE_MAX_SIZE + 1
-                } else {
-                    body_size
-                };
                 storage_entry_with_archive_size(
-                    format!("/mnt/scan-{index}"),
-                    server.url(format!("/scan-{index}.tar.gz")),
-                    &format!("scan-{index}"),
+                    format!("/mnt/unknown-prefix-{index}"),
+                    server.url(format!("/unknown-prefix-{index}.tar.gz")),
+                    &format!("unknown-prefix-{index}"),
                     "v1",
-                    Some(archive_size),
+                    Some(CACHE_MAX_SIZE + 1),
                 )
             })
-            .collect();
+            .collect::<Vec<_>>();
+        storages.push(storage_entry_with_archive_size(
+            "/mnt/known-suffix".to_string(),
+            server.url("/known-suffix.tar.gz"),
+            "known-suffix",
+            "v1",
+            Some(1),
+        ));
+        storages.push(storage_entry_with_archive_size(
+            "/mnt/unknown-suffix".to_string(),
+            server.url("/unknown-suffix.tar.gz"),
+            "unknown-suffix",
+            "v1",
+            None,
+        ));
+        storages.push(storage_entry_with_archive_size(
+            "/mnt/conflicting-suffix-a".to_string(),
+            server.url("/conflicting-suffix.tar.gz"),
+            "conflicting-suffix",
+            "v1",
+            Some(1),
+        ));
+        storages.push(storage_entry_with_archive_size(
+            "/mnt/conflicting-suffix-b".to_string(),
+            server.url("/conflicting-suffix.tar.gz"),
+            "conflicting-suffix",
+            "v1",
+            Some(2),
+        ));
         let plan = plan_from_entries(storages, Vec::new(), None);
         let admission = FreshArchiveDeliveryAdmission::new();
         let cancel = CancellationToken::new();
@@ -4707,18 +5305,21 @@ mod tests {
 
         assert!(delivery.apply.is_empty());
         get.assert_calls_async(0).await;
-        let ops = telemetry.pending_ops_snapshot();
-        assert_op_count(
-            &ops,
-            STORAGE_CACHE_FRESH_DELIVERY_OVERSIZED,
-            FRESH_DELIVERY_SCAN_LIMIT,
+        let outcome_ops = telemetry.pending_ops_with_outcome_snapshot();
+        assert_bounded_outcome(
+            &outcome_ops,
+            STORAGE_CACHE_FRESH_DELIVERY_SCAN_SUFFIX,
+            true,
+            "3_4",
+            Some("1"),
         );
-        assert!(ops.iter().any(|(action, success, error)| {
-            action == STORAGE_CACHE_FRESH_DELIVERY_CAPACITY
-                && *success
-                && error.as_deref() == Some("scan-limit")
-        }));
-        assert_no_op(&ops, STORAGE_CACHE_FRESH_DELIVERY_ADMITTED);
+        assert_bounded_outcome(
+            &outcome_ops,
+            STORAGE_CACHE_FRESH_DELIVERY_SCAN_SUFFIX_UNKNOWN,
+            true,
+            "2",
+            None,
+        );
     }
 
     #[tokio::test]
@@ -4898,6 +5499,46 @@ mod tests {
         assert!(ops.iter().any(|(action, _, error)| {
             action == STORAGE_CACHE_FRESH_DELIVERY_CAPACITY
                 && error.as_deref() == Some("runner-wide")
+        }));
+        let outcome_ops = telemetry.pending_ops_with_outcome_snapshot();
+        assert_bounded_outcome(
+            &outcome_ops,
+            STORAGE_CACHE_FRESH_DELIVERY_SCAN_GROUPS,
+            true,
+            "5_8",
+            Some("prepared"),
+        );
+        assert_bounded_outcome(
+            &outcome_ops,
+            STORAGE_CACHE_FRESH_DELIVERY_SCAN_GROUPS,
+            true,
+            "1",
+            Some("prepared"),
+        );
+        assert_bounded_outcome(
+            &outcome_ops,
+            STORAGE_CACHE_FRESH_DELIVERY_SCAN_STOP,
+            true,
+            "per_run",
+            None,
+        );
+        assert_bounded_outcome(
+            &outcome_ops,
+            STORAGE_CACHE_FRESH_DELIVERY_SCAN_STOP,
+            true,
+            "runner_wide",
+            None,
+        );
+        assert_bounded_outcome(
+            &outcome_ops,
+            STORAGE_CACHE_FRESH_DELIVERY_SCAN_STOP,
+            true,
+            "none",
+            None,
+        );
+        assert!(!outcome_ops.iter().any(|(action, _, outcome, _)| {
+            action == STORAGE_CACHE_FRESH_DELIVERY_SCAN_STOP
+                && outcome.as_deref() == Some("scan_limit")
         }));
 
         first.cancel_and_drain(&mut telemetry).await;
