@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, onTestFinished } from "vitest";
 import { EVENT } from "@axiomhq/logging";
 import { flushLogs, logger, __resetForTest } from "../log";
 import { testContext } from "../../__tests__/test-context";
 
-const { axiomLogging } = testContext().mocks;
+const { axiom, axiomLogging, console: consoleOutput } = testContext().mocks;
 
 beforeEach(() => {
   __resetForTest();
@@ -256,6 +256,55 @@ describe("flushLogs", () => {
     __resetForTest();
     // flushLogs calls getAxiomLogger()?.flush() — optional chain handles null
     await expect(flushLogs()).resolves.toBeUndefined();
+  });
+
+  it("reports Axiom transport timeouts as contextual warnings", async () => {
+    const restoreConsole = consoleOutput.capture();
+    onTestFinished(restoreConsole);
+    await flushLogs();
+    const error = new Error("The operation was aborted due to timeout");
+    error.name = "TimeoutError";
+
+    expect(() => {
+      axiom.clientError(error);
+    }).not.toThrow();
+
+    expect(consoleOutput.warn).toHaveBeenCalledWith(
+      "Axiom application log delivery timed out",
+      {
+        client: "telemetry",
+        dataset: "vm0-web-logs-dev",
+        failureKind: "timeout",
+        error,
+      },
+    );
+    expect(consoleOutput.error).not.toHaveBeenCalled();
+    expect(axiomLogging.warn).not.toHaveBeenCalled();
+    expect(axiomLogging.error).not.toHaveBeenCalled();
+  });
+
+  it("reports other Axiom transport failures as contextual errors", async () => {
+    const restoreConsole = consoleOutput.capture();
+    onTestFinished(restoreConsole);
+    await flushLogs();
+    const error = new Error("connection refused");
+
+    expect(() => {
+      axiom.clientError(error);
+    }).not.toThrow();
+
+    expect(consoleOutput.error).toHaveBeenCalledWith(
+      "Axiom application log delivery failed",
+      {
+        client: "telemetry",
+        dataset: "vm0-web-logs-dev",
+        failureKind: "transport_error",
+        error,
+      },
+    );
+    expect(consoleOutput.warn).not.toHaveBeenCalled();
+    expect(axiomLogging.warn).not.toHaveBeenCalled();
+    expect(axiomLogging.error).not.toHaveBeenCalled();
   });
 });
 

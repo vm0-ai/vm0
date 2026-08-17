@@ -18,6 +18,9 @@ type AbortSignalTimeoutMock = Mock<
 >;
 type SyncMock = Mock<(...args: unknown[]) => void>;
 type UnknownMock = Mock<(...args: unknown[]) => unknown>;
+interface AxiomClientOptions {
+  readonly onError?: (error: Error) => void;
+}
 interface BrowserUseCdpCommand {
   readonly id: number;
   readonly method: string;
@@ -47,6 +50,7 @@ export interface ApiTestMocks {
     readonly timeout: AbortSignalTimeoutMock;
   };
   readonly axiom: {
+    readonly clientError: Mock<(error: Error) => void>;
     readonly flush: AsyncMock;
     readonly ingest: BooleanMock;
     readonly query: AsyncMock;
@@ -58,6 +62,11 @@ export interface ApiTestMocks {
     readonly warn: SyncMock;
     readonly error: SyncMock;
     readonly flush: AsyncMock;
+  };
+  readonly console: {
+    readonly capture: () => () => void;
+    readonly error: SyncMock;
+    readonly warn: SyncMock;
   };
   readonly ably: {
     readonly channelGet: Mock<(channelName: string) => void>;
@@ -261,10 +270,26 @@ export interface ApiTestMocks {
 
 const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
   const axiom = {
+    clientError: vi.fn<(error: Error) => void>(),
     flush: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     ingest: vi.fn<(...args: unknown[]) => boolean>(),
     query: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     sdkIngest: vi.fn<(...args: unknown[]) => unknown>(),
+  };
+
+  const consoleWarn = vi.fn<(...args: unknown[]) => void>();
+  const consoleError = vi.fn<(...args: unknown[]) => void>();
+  const consoleOutput = {
+    capture: (): (() => void) => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(consoleWarn);
+      const error = vi.spyOn(console, "error").mockImplementation(consoleError);
+      return () => {
+        warn.mockRestore();
+        error.mockRestore();
+      };
+    },
+    error: consoleError,
+    warn: consoleWarn,
   };
 
   const clerk = {
@@ -444,6 +469,7 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     },
     axiom,
     axiomLogging,
+    console: consoleOutput,
     browserUseCdp: {
       connect: vi.fn<(url: string) => void>(),
       command: vi.fn<(command: BrowserUseCdpCommand) => unknown>(),
@@ -1085,7 +1111,12 @@ vi.mock("../signals/external/axiom", async () => {
 
 vi.mock("@axiomhq/js", () => {
   return {
-    Axiom: vi.fn(function () {
+    Axiom: vi.fn<(options: AxiomClientOptions) => unknown>(function (
+      options: AxiomClientOptions,
+    ) {
+      apiTestMocks.axiom.clientError.mockImplementation((error: Error) => {
+        options.onError?.(error);
+      });
       return {
         flush: apiTestMocks.axiom.flush,
         ingest: apiTestMocks.axiom.sdkIngest,
@@ -1127,6 +1158,7 @@ export function resetApiTestMocks(): void {
   apiTestMocks.ably.requestToken.mockResolvedValue({
     token: "test-ably-token",
   });
+  apiTestMocks.axiom.clientError.mockReset();
   apiTestMocks.axiom.flush.mockReset();
   apiTestMocks.axiom.ingest.mockReset();
   apiTestMocks.axiom.ingest.mockReturnValue(true);
@@ -1137,6 +1169,8 @@ export function resetApiTestMocks(): void {
   apiTestMocks.axiomLogging.warn.mockReset();
   apiTestMocks.axiomLogging.error.mockReset();
   apiTestMocks.axiomLogging.flush.mockReset();
+  apiTestMocks.console.error.mockReset();
+  apiTestMocks.console.warn.mockReset();
   apiTestMocks.browserUseCdp.connect.mockReset();
   apiTestMocks.browserUseCdp.command.mockReset();
   apiTestMocks.clerk.authenticateRequest.mockReset();
