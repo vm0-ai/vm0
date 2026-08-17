@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.452.0](https://github.com/vm0-ai/vm0/compare/api-v1.451.18...api-v1.452.0) (2026-08-17)
+
+
+### Features
+
+* **api:** persist public brand for outbound delivery ([#27200](https://github.com/vm0-ai/vm0/issues/27200)) ([fa77b3e](https://github.com/vm0-ai/vm0/commit/fa77b3e80fae53c57168e8dc6d38e4b7a7d77c96))
+
+
+### Performance Improvements
+
+* **api:** bypass catalog for empty run scopes ([#27679](https://github.com/vm0-ai/vm0/issues/27679)) ([b14033b](https://github.com/vm0-ai/vm0/commit/b14033b9edf42357673a3eac329bd3122f0c257d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.334.0
+    * @okouai/core bumped to 8.563.0
+    * @okouai/db bumped to 1.201.0
+
 ## [1.451.18](https://github.com/vm0-ai/vm0/compare/api-v1.451.17...api-v1.451.18) (2026-08-17)
 
 

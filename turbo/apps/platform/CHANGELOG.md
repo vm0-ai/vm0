@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.763.0](https://github.com/vm0-ai/vm0/compare/app-v0.762.1...app-v0.763.0) (2026-08-17)
+
+
+### Features
+
+* **api:** persist public brand for outbound delivery ([#27200](https://github.com/vm0-ai/vm0/issues/27200)) ([fa77b3e](https://github.com/vm0-ai/vm0/commit/fa77b3e80fae53c57168e8dc6d38e4b7a7d77c96))
+* **platform:** attribute telemetry by public brand ([#27662](https://github.com/vm0-ai/vm0/issues/27662)) ([f251dd2](https://github.com/vm0-ai/vm0/commit/f251dd276eb7aa801a61d7f5559f1d801f22202e))
+
+
+### Bug Fixes
+
+* **platform:** allow lab access before onboarding ([#27702](https://github.com/vm0-ai/vm0/issues/27702)) ([085dbdb](https://github.com/vm0-ai/vm0/commit/085dbdb3656fce61c5502ce9487ab3956c230139))
+* **platform:** reduce chat mode icon size ([#27678](https://github.com/vm0-ai/vm0/issues/27678)) ([76c9de2](https://github.com/vm0-ai/vm0/commit/76c9de22109166d1bdbd019a2ee2a91602aa3977))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.334.0
+    * @okouai/core bumped to 8.563.0
+
 ## [0.762.1](https://github.com/vm0-ai/vm0/compare/app-v0.762.0...app-v0.762.1) (2026-08-17)
 
 

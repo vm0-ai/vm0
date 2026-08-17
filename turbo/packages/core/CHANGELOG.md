@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.563.0](https://github.com/vm0-ai/vm0/compare/core-v8.562.8...core-v8.563.0) (2026-08-17)
+
+
+### Features
+
+* **api:** persist public brand for outbound delivery ([#27200](https://github.com/vm0-ai/vm0/issues/27200)) ([fa77b3e](https://github.com/vm0-ai/vm0/commit/fa77b3e80fae53c57168e8dc6d38e4b7a7d77c96))
+* **core:** enable video model selection for staff ([#27696](https://github.com/vm0-ai/vm0/issues/27696)) ([7f487ba](https://github.com/vm0-ai/vm0/commit/7f487bad8b7f1c75909f0dd13515cf716bbd6f4c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.334.0
+
 ## [8.562.8](https://github.com/vm0-ai/vm0/compare/core-v8.562.7...core-v8.562.8) (2026-08-17)
 
 
