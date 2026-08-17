@@ -54,6 +54,10 @@ export async function createUnassociatedThreadBoundAgentRunFixture(
       },
       apiStartTime: now(),
       chatThreadId,
+      connectorScope: {
+        allowedConnectorSlugs: [],
+        allowedCustomConnectorIds: [],
+      },
     },
     new AbortController().signal,
   );

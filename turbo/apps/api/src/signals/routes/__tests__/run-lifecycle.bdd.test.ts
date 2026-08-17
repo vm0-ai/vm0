@@ -286,7 +286,6 @@ const API_DISPATCH_TIMING_ACTION_TYPES = [
   "api_dispatch_prepare_context_load_persisted_environment",
   "api_dispatch_prepare_context_build_resolved_body",
   "api_dispatch_prepare_context_resolve_framework",
-  "api_dispatch_prepare_context_resolve_connector_scope",
   "api_dispatch_prepare_context_resolve_model_provider",
   "api_dispatch_prepare_context_load_connector_contexts",
   "api_dispatch_prepare_context_load_stored_connectors",
@@ -1234,35 +1233,6 @@ async function entitledRunActor(): Promise<{
   return { actor, agentId: agent.agentId, runnerGroup, granted };
 }
 
-async function zeroBackedDirectRunActor(args?: {
-  readonly visibility?: "private" | "public";
-}): Promise<{
-  readonly actor: ApiTestUser;
-  readonly orgId: string;
-  readonly agentId: string;
-  readonly runnerGroup: string;
-}> {
-  const bdd = createBddApi(context);
-  const api = createRunsApi(context);
-  const actor = bdd.user();
-  if (!actor.orgId) {
-    throw new Error("Zero-backed direct run tests require an org-scoped actor");
-  }
-  bdd.acceptAgentStorageWrites();
-  api.acceptStorageDownloads();
-  api.acceptTelemetryIngest();
-  const runnerGroup = api.configureRunnerGroup();
-  await api.grantProEntitlement(actor);
-  await api.ensureOrgModelProvider(actor);
-
-  const agent = await bdd.createAgent(actor, {
-    displayName: "BDD zero-backed direct agent",
-    visibility: args?.visibility ?? "private",
-  });
-
-  return { actor, orgId: actor.orgId, agentId: agent.agentId, runnerGroup };
-}
-
 function zeroBackedDirectRunBody(args: {
   readonly agentId: string;
   readonly agentComposeVersionId?: string;
@@ -2007,7 +1977,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     expect(
       connectorCatalogLoadEvent.connector_catalog_requested_connector_count_bucket,
-    ).toBe("not_applicable");
+    ).toBe("0");
     expectApiDispatchActions(timingEvents, ["api_dispatch_check_org_tier"]);
     expectApiDispatchSpanKind(
       timingEvents,
@@ -7061,146 +7031,6 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("omits connected stored connectors when the Zero-backed direct run allowlist is empty", async () => {
-    const api = createRunsApi(context);
-    const fw = createFirewallApi(context);
-    const { actor, agentId, runnerGroup } = await zeroBackedDirectRunActor();
-
-    await fw.seedTestConnector(actor, {
-      connectorSlug: "x",
-      authMethod: "oauth",
-      accessToken: "x-bdd-direct-unallowed-access",
-      refreshToken: "x-bdd-direct-unallowed-refresh",
-    });
-
-    const run = await api.createDirectRun(
-      actor,
-      zeroBackedDirectRunBody({
-        agentId,
-        prompt: "direct run without enabled stored connectors",
-      }),
-    );
-    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
-    expectNoApiDispatchActions(
-      timingEvents,
-      API_DISPATCH_STORED_CONNECTOR_SUBSTEP_ACTION_TYPES,
-    );
-    expectNoApiDispatchActions(
-      timingEvents,
-      API_DISPATCH_CUSTOM_CONNECTOR_TIMING_ACTION_TYPES,
-    );
-    await api.heartbeatRunner(runnerGroup);
-    const claim = await api.claimRunnerJob(run.runId);
-
-    expect(claim.environment ?? {}).not.toHaveProperty("X_TOKEN");
-    expect(claim.secretConnectorMap ?? {}).not.toHaveProperty("X_TOKEN");
-    expect(findFirewallEntry(claim.firewalls, "x")).toBeUndefined();
-    expect(claim.billableFirewalls).not.toContain("x");
-    expect(claim.networkPolicies ?? {}).not.toHaveProperty("x");
-
-    await api.requestCancelRun(actor, run.runId, [200]);
-    const cancelled = await api.readRun(actor, run.runId);
-    expect(cancelled.status).toBe("cancelled");
-  });
-
-  it("omits connected stored connectors for pinned Zero-backed direct run versions", async () => {
-    const api = createRunsApi(context);
-    const fw = createFirewallApi(context);
-    const { actor, agentId, runnerGroup } = await zeroBackedDirectRunActor();
-    const compose = await readHistoricalAgentComposeHeadFixture(agentId);
-    const agentComposeVersionId = compose.headVersionId;
-    if (!agentComposeVersionId) {
-      throw new Error("Expected the Zero-backed agent compose to have a head");
-    }
-
-    await fw.seedTestConnector(actor, {
-      connectorSlug: "x",
-      authMethod: "oauth",
-      accessToken: "x-bdd-version-unallowed-access",
-      refreshToken: "x-bdd-version-unallowed-refresh",
-    });
-
-    const run = await api.createDirectRun(
-      actor,
-      zeroBackedDirectRunBody({
-        agentId,
-        agentComposeVersionId,
-        prompt: "direct run pinned to a zero agent version",
-      }),
-    );
-    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
-    expectNoApiDispatchActions(
-      timingEvents,
-      API_DISPATCH_STORED_CONNECTOR_SUBSTEP_ACTION_TYPES,
-    );
-    await api.heartbeatRunner(runnerGroup);
-    const claim = await api.claimRunnerJob(run.runId);
-
-    expect(claim.agentComposeVersionId).toBe(agentComposeVersionId);
-    expect(claim.environment ?? {}).not.toHaveProperty("X_TOKEN");
-    expect(findFirewallEntry(claim.firewalls, "x")).toBeUndefined();
-
-    await api.requestCancelRun(actor, run.runId, [200]);
-  });
-
-  it("rejects same-org non-owner Zero-backed direct runs for private agents", async () => {
-    const bdd = createBddApi(context);
-    const api = createRunsApi(context);
-    const { actor, agentId } = await zeroBackedDirectRunActor();
-    const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
-
-    const rejected = await api.requestDirectRun(
-      member,
-      zeroBackedDirectRunBody({
-        agentId,
-        prompt: "direct run someone else's private zero agent",
-      }),
-      [403],
-    );
-
-    expectApiError(rejected.body);
-    expect(rejected.body.error.message).toBe(
-      "Only the private agent owner can run this agent",
-    );
-  });
-
-  it("allows same-org non-owner Zero-backed direct runs for public agents without owner connector leakage", async () => {
-    const bdd = createBddApi(context);
-    const api = createRunsApi(context);
-    const fw = createFirewallApi(context);
-    const { actor, agentId, runnerGroup } = await zeroBackedDirectRunActor({
-      visibility: "public",
-    });
-    const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
-
-    await fw.seedTestConnector(actor, {
-      connectorSlug: "x",
-      authMethod: "oauth",
-      accessToken: "x-bdd-public-owner-access",
-      refreshToken: "x-bdd-public-owner-refresh",
-    });
-    const enabled = await api.enableAgentConnectors(actor, agentId, ["x"]);
-    expect(enabled).toContain("x");
-
-    const run = await api.createDirectRun(
-      member,
-      zeroBackedDirectRunBody({
-        agentId,
-        prompt: "direct run someone else's public zero agent",
-      }),
-    );
-    await api.heartbeatRunner(runnerGroup);
-    const claim = await api.claimRunnerJob(run.runId);
-
-    expect(claim.environment ?? {}).not.toHaveProperty("X_TOKEN");
-    expect(claim.secretConnectorMap ?? {}).not.toHaveProperty("X_TOKEN");
-    expect(findFirewallEntry(claim.firewalls, "x")).toBeUndefined();
-    expect(claim.billableFirewalls).not.toContain("x");
-    expect(claim.networkPolicies ?? {}).not.toHaveProperty("x");
-
-    await api.requestCancelRun(member, run.runId, [200]);
-  });
-
   it("injects oauth connector tokens with billable firewalls and resolvable secrets", async () => {
     const api = createRunsApi(context);
     const fw = createFirewallApi(context);
@@ -7352,6 +7182,10 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       agentComposeId: compose.composeId,
       prompt: "use overridden x connector secret",
       secrets: { X_TOKEN: "body-x-token" },
+      connectorScope: {
+        allowedConnectorSlugs: ["x"],
+        allowedCustomConnectorIds: [],
+      },
     });
     expect(kms.decryptCalls).toBe(0);
 
@@ -7369,7 +7203,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     );
     expect(buildStoredConnectorStateEvent).toStrictEqual(
       expect.objectContaining({
-        connector_scope_source: "legacy_all",
+        connector_scope_source: "explicit",
         stored_connector_count_bucket: "1",
         stored_connector_secret_count_bucket: "0",
       }),
@@ -7453,6 +7287,10 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const run = await api.createDirectRun(actor, {
       agentComposeId: compose.composeId,
       prompt: "use compose-overridden gitlab token",
+      connectorScope: {
+        allowedConnectorSlugs: ["gitlab"],
+        allowedCustomConnectorIds: [],
+      },
     });
     expect(kms.decryptCalls).toBe(0);
     const timingEvents = apiDispatchTimingEventsForRun(run.runId);
@@ -7499,6 +7337,10 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const run = await api.createDirectRun(actor, {
       agentComposeId: compose.composeId,
       prompt: "use stored connector variable aliases",
+      connectorScope: {
+        allowedConnectorSlugs: ["test-oauth"],
+        allowedCustomConnectorIds: [],
+      },
     });
 
     await api.heartbeatRunner(runnerGroup);
@@ -7548,6 +7390,10 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const compatibleRun = await api.createDirectRun(actor, {
       agentComposeId: compose.composeId,
       prompt: "materialize compatible connector state",
+      connectorScope: {
+        allowedConnectorSlugs: ["test-oauth"],
+        allowedCustomConnectorIds: [],
+      },
     });
     await api.heartbeatRunner(runnerGroup);
     const compatibleClaim = await api.claimRunnerJob(compatibleRun.runId);
@@ -7574,6 +7420,10 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const incompatibleRun = await api.createDirectRun(actor, {
       agentComposeId: compose.composeId,
       prompt: "do not materialize incompatible connector state",
+      connectorScope: {
+        allowedConnectorSlugs: ["test-oauth"],
+        allowedCustomConnectorIds: [],
+      },
     });
     const timingEvents = apiDispatchTimingEventsForRun(incompatibleRun.runId);
     expectApiDispatchActions(timingEvents, [
@@ -7589,7 +7439,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     );
     expect(loadSnapshotEvent).toStrictEqual(
       expect.objectContaining({
-        connector_scope_source: "legacy_all",
+        connector_scope_source: "explicit",
         stored_connector_candidate_count_bucket: "1",
       }),
     );
@@ -7599,7 +7449,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     );
     expect(materializeSnapshotEvent).toStrictEqual(
       expect.objectContaining({
-        connector_scope_source: "legacy_all",
+        connector_scope_source: "explicit",
         stored_connector_candidate_count_bucket: "1",
         stored_connector_count_bucket: "0",
         stored_connector_secret_count_bucket: "0",
@@ -7615,62 +7465,6 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     );
 
     await api.requestCancelRun(actor, incompatibleRun.runId, [200]);
-  });
-
-  it("injects only enabled stored connectors for Zero-backed direct runs", async () => {
-    const api = createRunsApi(context);
-    const fw = createFirewallApi(context);
-    const { actor, agentId, runnerGroup } = await zeroBackedDirectRunActor();
-
-    await fw.seedTestConnector(actor, {
-      connectorSlug: "x",
-      authMethod: "oauth",
-      accessToken: "x-bdd-direct-access",
-      refreshToken: "x-bdd-direct-refresh",
-    });
-    await fw.seedTestConnector(actor, {
-      connectorSlug: "slack",
-      authMethod: "oauth",
-      accessToken: "xoxb-bdd-direct-unenabled-access",
-    });
-    const enabled = await api.enableAgentConnectors(actor, agentId, ["x"]);
-    expect(enabled).toContain("x");
-
-    const run = await api.createDirectRun(
-      actor,
-      zeroBackedDirectRunBody({
-        agentId,
-        prompt: "direct run with the x connector",
-      }),
-    );
-    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
-    expectApiDispatchActions(
-      timingEvents,
-      API_DISPATCH_STORED_CONNECTOR_SNAPSHOT_ACTION_TYPES,
-    );
-    expectNoApiDispatchActions(timingEvents, [
-      "api_dispatch_prepare_context_decrypt_stored_connector_secrets",
-    ]);
-    await api.heartbeatRunner(runnerGroup);
-    const claim = await api.claimRunnerJob(run.runId);
-
-    expect(claim.environment?.X_TOKEN).toBe(
-      connectorPlaceholder("x", "X_TOKEN"),
-    );
-    expect(claim.secretConnectorMap).toMatchObject({ X_TOKEN: "x" });
-    expect(findFirewallEntry(claim.firewalls, "x")).toStrictEqual({
-      kind: "builtin",
-      name: "x",
-    });
-    expect(claim.billableFirewalls).toContain("x");
-    expect(claim.networkPolicies?.x?.unknownPolicy).toBe("allow");
-    expect(claim.environment).not.toHaveProperty("SLACK_TOKEN");
-    expect(claim.secretConnectorMap).not.toHaveProperty("SLACK_TOKEN");
-    expect(findFirewallEntry(claim.firewalls, "slack")).toBeUndefined();
-    expect(claim.billableFirewalls).not.toContain("slack");
-    expect(claim.networkPolicies ?? {}).not.toHaveProperty("slack");
-
-    await api.requestCancelRun(actor, run.runId, [200]);
   });
 
   it("injects manual-grant api-token connectors and their optional variables", async () => {
@@ -7968,6 +7762,10 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
         agentId,
         prompt: "use google ads with explicit developer token",
       }),
+      connectorScope: {
+        allowedConnectorSlugs: ["google-ads"],
+        allowedCustomConnectorIds: [],
+      },
       secrets: {
         OKOU_TOKEN: "bdd-okou-direct-token",
         GOOGLE_ADS_DEVELOPER_TOKEN: "body-developer-token",
@@ -10262,83 +10060,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
-  it("injects only enabled custom connector firewalls for Zero-backed direct runs", async () => {
-    const api = createRunsApi(context);
-    const connectors = createConnectorBddApi(context);
-    const { actor, agentId, runnerGroup } = await zeroBackedDirectRunActor();
-
-    const allowedSlug = `_bdd-direct-internal-${randomUUID().slice(0, 8)}`;
-    const allowed = await connectors.createCustomConnector(
-      actor,
-      manualHttpCustomConnectorCreateBody({
-        slug: allowedSlug,
-        displayName: "BDD Direct Internal API",
-        prefixTemplates: ["https://*.direct.internal.example.com/api/"],
-      }),
-    );
-    await connectors.setCustomConnectorSecret(
-      actor,
-      allowed.id,
-      "direct-custom-secret-value",
-    );
-
-    const blockedSlug = `_bdd-direct-blocked-${randomUUID().slice(0, 8)}`;
-    const blocked = await connectors.createCustomConnector(
-      actor,
-      manualHttpCustomConnectorCreateBody({
-        slug: blockedSlug,
-        displayName: "BDD Direct Blocked API",
-        prefixTemplates: ["https://*.blocked.internal.example.com/api/"],
-      }),
-    );
-    await connectors.setCustomConnectorSecret(
-      actor,
-      blocked.id,
-      "blocked-custom-secret-value",
-    );
-
-    await connectors.updateAgentCustomConnectors(actor, agentId, [allowed.id]);
-
-    const run = await api.createDirectRun(
-      actor,
-      zeroBackedDirectRunBody({
-        agentId,
-        prompt: "direct run with the custom connector",
-      }),
-    );
-    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
-    expectApiDispatchActions(
-      timingEvents,
-      API_DISPATCH_CUSTOM_CONNECTOR_TIMING_ACTION_TYPES,
-    );
-    expectCustomConnectorRuntimePhaseTimingEvents(timingEvents);
-    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
-      allowed.id,
-      allowedSlug,
-      "direct-custom-secret-value",
-      blocked.id,
-      blockedSlug,
-      "blocked-custom-secret-value",
-    ]);
-    await api.heartbeatRunner(runnerGroup);
-    const claim = await api.claimRunnerJob(run.runId);
-
-    const allowedInternalName = `custom_connector_${allowed.id.replaceAll("-", "")}`;
-    const blockedInternalName = `custom_connector_${blocked.id.replaceAll("-", "")}`;
-    expect(
-      findFirewallEntry(claim.firewalls, allowedInternalName),
-    ).toBeDefined();
-    expect(
-      findFirewallEntry(claim.firewalls, blockedInternalName),
-    ).toBeUndefined();
-    expect(claim.networkPolicies?.[allowedInternalName]?.unknownPolicy).toBe(
-      "allow",
-    );
-    expect(claim.networkPolicies ?? {}).not.toHaveProperty(blockedInternalName);
-
-    await api.requestCancelRun(actor, run.runId, [200]);
-  });
-
   it("injects proposed custom connector fields into headers, query, and host templates", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
@@ -12284,6 +12005,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const run = await api.createDirectRun(actor, {
       agentComposeId: compose.composeId,
       prompt: "direct run cloudflare defaults",
+      connectorScope: {
+        allowedConnectorSlugs: ["cloudflare"],
+        allowedCustomConnectorIds: [],
+      },
     });
     const timingEvents = apiDispatchTimingEventsForRun(run.runId);
     expectApiDispatchActions(
@@ -12370,7 +12095,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     const appUrl = "https://app.writer-stop.example.test";
     mockEnv("APP_URL", appUrl);
     const api = createRunsApi(context);
-    const { actor, agentId, runnerGroup } = await zeroBackedDirectRunActor();
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
     if (!actor.orgId) {
       throw new Error("The legacy compose fixture requires an organization");
     }

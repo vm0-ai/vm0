@@ -284,10 +284,6 @@ import {
   type ApiDispatchTimingDimensions,
 } from "./api-dispatch-timing.service";
 import {
-  loadAgentConnectorScope,
-  loadZeroBackedComposeAgent,
-} from "./agent-connector-scope.service";
-import {
   isCompressedSessionHistoryBlobEncoding,
   normalizeSessionHistoryBlobEncoding,
   type CompressedSessionHistoryBlobEncoding,
@@ -519,11 +515,11 @@ interface ResolvedCompose {
   readonly resumeSession?: StoredExecutionContext["resumeSession"];
 }
 
-type ConnectorScopeSource = "explicit" | "zero_agent" | "legacy_all" | "empty";
+type ConnectorScopeSource = "explicit" | "zero_agent" | "empty";
 
 interface EffectiveConnectorScope {
-  readonly allowedConnectorSlugs: readonly ConnectorSlug[] | undefined;
-  readonly allowedCustomConnectorIds: readonly string[] | undefined;
+  readonly allowedConnectorSlugs: readonly ConnectorSlug[];
+  readonly allowedCustomConnectorIds: readonly string[];
   readonly customConnectorGrants:
     | readonly AgentCustomConnectorGrant[]
     | undefined;
@@ -534,7 +530,7 @@ interface ExplicitConnectorScope {
   readonly allowedConnectorSlugs: readonly ConnectorSlug[];
   readonly allowedCustomConnectorIds: readonly string[];
   readonly customConnectorGrants?: readonly AgentCustomConnectorGrant[];
-  readonly source?: Exclude<ConnectorScopeSource, "legacy_all" | "empty">;
+  readonly source?: Exclude<ConnectorScopeSource, "empty">;
 }
 
 // Session naming in this service:
@@ -863,7 +859,7 @@ export interface CreateAgentRunArgs {
       readonly workflowId: string;
     }[];
   };
-  readonly connectorScope?: ExplicitConnectorScope;
+  readonly connectorScope: ExplicitConnectorScope;
   readonly validateEnvironmentReferences?: boolean;
   readonly zeroRunMetadata?: ZeroRunMetadata;
   readonly queueOnConcurrencyLimit?: boolean;
@@ -1112,7 +1108,7 @@ function buildCustomConnectorSkillVolumes(
 function buildInjectedSkillVolumes(
   args: {
     readonly injectSkillVolumes: CreateAgentRunArgs["injectSkillVolumes"];
-    readonly allowedConnectorSlugs: readonly ConnectorSlug[] | undefined;
+    readonly allowedConnectorSlugs: readonly ConnectorSlug[];
     readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   },
   skillsRoot: string,
@@ -1120,7 +1116,6 @@ function buildInjectedSkillVolumes(
   if (!args.injectSkillVolumes) {
     return undefined;
   }
-  const connectorSlugs = args.allowedConnectorSlugs ?? [];
   const seedSkillNames = [...SEED_SKILLS, GOAL_SKILL_NAME];
   // Connector rollout switches govern discovery only. Once a connector slug is
   // part of a run, its accepted catalog skill remains executable and mountable.
@@ -1130,7 +1125,7 @@ function buildInjectedSkillVolumes(
       "system_skill",
     ) ?? []),
     ...buildConnectorSkillVolumes(
-      connectorSlugs,
+      args.allowedConnectorSlugs,
       args.connectorCatalogSnapshot,
       skillsRoot,
     ),
@@ -2920,7 +2915,7 @@ function emptyConnectorRuntimeContext(): ConnectorRuntimeContext {
 
 function allowedStoredConnectorRows(
   rows: readonly StoredConnectorRuntimeRowCandidate[],
-  allowedConnectorSlugs: readonly ConnectorSlug[] | undefined,
+  allowedConnectorSlugs: readonly ConnectorSlug[],
   snapshot: ConnectorRuntimeSnapshot,
   now: Date,
 ): readonly StoredConnectorRuntimeRow[] {
@@ -2954,8 +2949,7 @@ function allowedStoredConnectorRows(
   });
   return validRows.filter((row) => {
     return (
-      (!allowedConnectorSlugs ||
-        allowedConnectorSlugs.includes(row.connectorSlug)) &&
+      allowedConnectorSlugs.includes(row.connectorSlug) &&
       storedConnectorRuntimeCredentialStatus(row, now) === "available"
     );
   });
@@ -3541,19 +3535,17 @@ async function loadStoredConnectorMaterializationPlan(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedConnectorSlugs: readonly ConnectorSlug[] | undefined;
+    readonly allowedConnectorSlugs: readonly ConnectorSlug[];
     readonly scopeSource: ConnectorScopeSource;
     readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   },
   timing?: ApiDispatchTimingCollector,
 ): Promise<StoredConnectorMaterializationSnapshot | null> {
-  if (args.allowedConnectorSlugs?.length === 0) {
+  if (args.allowedConnectorSlugs.length === 0) {
     return null;
   }
 
-  const allowedConnectorSlugs = args.allowedConnectorSlugs
-    ? [...new Set(args.allowedConnectorSlugs)]
-    : undefined;
+  const allowedConnectorSlugs = [...new Set(args.allowedConnectorSlugs)];
 
   const snapshot = await loadStoredConnectorMaterializationSnapshot(
     db,
@@ -3574,7 +3566,7 @@ function storedConnectorSnapshotQuery(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedConnectorSlugs: readonly ConnectorSlug[] | undefined;
+    readonly allowedConnectorSlugs: readonly ConnectorSlug[];
   },
 ) {
   const selectedConnectors = db.$with("stored_connector_candidates").as(
@@ -3603,9 +3595,7 @@ function storedConnectorSnapshotQuery(
           eq(connectors.orgId, args.orgId),
           eq(connectors.userId, args.userId),
           isNotNull(connectors.connectorSlug),
-          args.allowedConnectorSlugs
-            ? inArray(connectors.connectorSlug, args.allowedConnectorSlugs)
-            : undefined,
+          inArray(connectors.connectorSlug, args.allowedConnectorSlugs),
         ),
       ),
   );
@@ -3684,7 +3674,7 @@ async function loadStoredConnectorSnapshotRows(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedConnectorSlugs: readonly ConnectorSlug[] | undefined;
+    readonly allowedConnectorSlugs: readonly ConnectorSlug[];
     readonly timingDimensions: ApiDispatchTimingDimensions;
   },
   timing?: ApiDispatchTimingCollector,
@@ -3714,7 +3704,7 @@ async function loadStoredConnectorSnapshotRows(
 
 function buildStoredConnectorMaterializationPlan(args: {
   readonly connectorRows: readonly StoredConnectorRuntimeRowCandidate[];
-  readonly allowedConnectorSlugs: readonly ConnectorSlug[] | undefined;
+  readonly allowedConnectorSlugs: readonly ConnectorSlug[];
   readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
 }): StoredConnectorMaterializationPlan | null {
   const allowedConnectorRows = allowedStoredConnectorRows(
@@ -3737,7 +3727,7 @@ function buildStoredConnectorMaterializationPlan(args: {
 function materializeStoredConnectorSnapshotRows(
   args: {
     readonly rows: readonly StoredConnectorMaterializationSnapshotRow[];
-    readonly allowedConnectorSlugs: readonly ConnectorSlug[] | undefined;
+    readonly allowedConnectorSlugs: readonly ConnectorSlug[];
     readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
     readonly timingDimensions: ApiDispatchTimingDimensions;
   },
@@ -3821,7 +3811,7 @@ async function loadStoredConnectorMaterializationSnapshot(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedConnectorSlugs: readonly ConnectorSlug[] | undefined;
+    readonly allowedConnectorSlugs: readonly ConnectorSlug[];
     readonly scopeSource: ConnectorScopeSource;
     readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   },
@@ -4497,7 +4487,7 @@ async function loadCustomConnectorContext(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedCustomConnectorIds: readonly string[] | undefined;
+    readonly allowedCustomConnectorIds: readonly string[];
     readonly customConnectorGrants:
       | readonly AgentCustomConnectorGrant[]
       | undefined;
@@ -4507,7 +4497,7 @@ async function loadCustomConnectorContext(
   signal: AbortSignal,
   timing?: ApiDispatchTimingCollector,
 ): Promise<CustomConnectorRuntimeContext> {
-  if (args.allowedCustomConnectorIds?.length === 0) {
+  if (args.allowedCustomConnectorIds.length === 0) {
     return {
       firewalls: [],
       reservedSecretAliases: undefined,
@@ -7950,9 +7940,6 @@ function connectorScopeForRuntimeSnapshot(
   scope: EffectiveConnectorScope,
   snapshot: ConnectorRuntimeSnapshot,
 ): EffectiveConnectorScope {
-  if (scope.allowedConnectorSlugs === undefined) {
-    return scope;
-  }
   return {
     ...scope,
     allowedConnectorSlugs: scope.allowedConnectorSlugs.filter(
@@ -7971,10 +7958,7 @@ function connectorScopeForRuntimeSnapshot(
 
 function connectorScopeFromCreateArgs(
   args: CreateAgentRunArgs,
-): EffectiveConnectorScope | null {
-  if (!args.connectorScope) {
-    return null;
-  }
+): EffectiveConnectorScope {
   const source =
     args.connectorScope.allowedConnectorSlugs.length === 0 &&
     args.connectorScope.allowedCustomConnectorIds.length === 0
@@ -7985,53 +7969,6 @@ function connectorScopeFromCreateArgs(
     allowedCustomConnectorIds: args.connectorScope.allowedCustomConnectorIds,
     customConnectorGrants: args.connectorScope.customConnectorGrants,
     source,
-  };
-}
-
-async function resolveEffectiveConnectorScope(
-  args: {
-    readonly db: Db;
-    readonly createArgs: CreateAgentRunArgs;
-    readonly resolved: ResolvedCompose;
-  },
-  signal: AbortSignal,
-): Promise<EffectiveConnectorScope | CreateRunErrorResult> {
-  const createArgsScope = connectorScopeFromCreateArgs(args.createArgs);
-  if (createArgsScope) {
-    return createArgsScope;
-  }
-
-  const zeroBackedAgent = await loadZeroBackedComposeAgent(args.db, {
-    composeId: args.resolved.composeId,
-  });
-  signal.throwIfAborted();
-  if (zeroBackedAgent) {
-    if (
-      zeroBackedAgent.visibility === "private" &&
-      zeroBackedAgent.owner !== args.createArgs.userId
-    ) {
-      return forbidden("Only the private agent owner can run this agent");
-    }
-    const scope = await loadAgentConnectorScope(args.db, {
-      userId: args.createArgs.userId,
-      orgId: args.createArgs.orgId,
-      agentId: args.resolved.composeId,
-    });
-    return {
-      ...scope,
-      source:
-        scope.allowedConnectorSlugs.length === 0 &&
-        scope.allowedCustomConnectorIds.length === 0
-          ? "empty"
-          : "zero_agent",
-    };
-  }
-
-  return {
-    allowedConnectorSlugs: undefined,
-    allowedCustomConnectorIds: undefined,
-    customConnectorGrants: undefined,
-    source: "legacy_all",
   };
 }
 
@@ -8110,24 +8047,7 @@ async function prepareRunBodyContext(
   if (resolved.orgId !== args.createArgs.orgId) {
     return notFound("Resource not found");
   }
-  const connectorScope = await args.timing.measure(
-    "api_dispatch_prepare_context_resolve_connector_scope",
-    "nested",
-    async () => {
-      return await resolveEffectiveConnectorScope(
-        {
-          db: args.db,
-          createArgs: args.createArgs,
-          resolved,
-        },
-        signal,
-      );
-    },
-  );
-  signal.throwIfAborted();
-  if (isRouteError(connectorScope)) {
-    return connectorScope;
-  }
+  const connectorScope = connectorScopeFromCreateArgs(args.createArgs);
   const persistedEnvironment = await args.timing.measure(
     "api_dispatch_prepare_context_load_persisted_environment",
     "nested",
@@ -8388,8 +8308,7 @@ async function connectorCatalogSnapshotForRun(args: {
     args.preloadedConnectorCatalogSnapshot ??
     (await loadConnectorRuntimeSnapshot(args.db, {
       timing: args.timing,
-      requestedConnectorCount:
-        args.connectorScope.allowedConnectorSlugs?.length,
+      requestedConnectorCount: args.connectorScope.allowedConnectorSlugs.length,
     }))
   );
 }
