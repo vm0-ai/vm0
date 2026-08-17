@@ -172,6 +172,11 @@ import {
   type RunContextAxiomSnapshot,
 } from "./run-context-snapshot.service";
 import {
+  buildApplicationOwnedEnvironmentCandidate,
+  compareApplicationOwnedEnvironment,
+  type EnvironmentShadowObservation,
+} from "./agent-environment-shadow";
+import {
   decryptStoredSecretValue,
   encryptPersistentSecretValue,
   encryptPersistentSecretsMap,
@@ -824,6 +829,7 @@ interface BuiltStoredExecutionContext {
   readonly secretNames: readonly string[];
   // Plain secret values used for run-context redaction; values, not names.
   readonly secretValues: readonly string[];
+  readonly environmentShadowObservation?: EnvironmentShadowObservation;
 }
 
 type BuiltStoredExecutionContextDraft = Omit<
@@ -5939,6 +5945,43 @@ function websiteTemplateArchiveVersionForRun(
     : "previous";
 }
 
+function applicationOwnedEnvironmentShadow(args: {
+  readonly eligible: boolean | undefined;
+  readonly actualEnvironment: Readonly<Record<string, string>>;
+  readonly launch: {
+    readonly modelProvider: ResolvedModelProviderEnvironment | null;
+    readonly connectorContext: ConnectorRuntimeContext;
+    readonly body: CreateRunBody;
+    readonly permissionManifest: PermissionManifest | undefined;
+    readonly extraEnvironment: Record<string, string> | undefined;
+  };
+  readonly executionSecrets: StoredExecutionSecrets;
+  readonly runtimeOverrides: Readonly<Record<string, string>>;
+}): EnvironmentShadowObservation | undefined {
+  if (!args.eligible) {
+    return undefined;
+  }
+  const result = safeSync(() => {
+    const candidateEnvironment = buildApplicationOwnedEnvironmentCandidate({
+      modelProviderEnvironment: args.launch.modelProvider?.environment,
+      storedConnectorEnvironment:
+        args.launch.connectorContext.storedEnvironment,
+      vars: args.launch.body.vars,
+      connectorVars: args.launch.connectorContext.vars,
+      secrets: args.executionSecrets.secrets,
+      environmentSecretPlaceholders:
+        args.launch.permissionManifest?.environmentSecretPlaceholders,
+      systemAndRunEnvironment: args.launch.extraEnvironment,
+      runtimeOverrides: args.runtimeOverrides,
+    });
+    return compareApplicationOwnedEnvironment(
+      args.actualEnvironment,
+      candidateEnvironment,
+    );
+  });
+  return "ok" in result ? result.ok : { classification: "shadow_unavailable" };
+}
+
 async function buildStoredExecutionContextDraft(args: {
   readonly runId: string;
   readonly userId: string;
@@ -5996,6 +6039,17 @@ async function buildStoredExecutionContextDraft(args: {
   const environment = args.includeZeroTokenSecret
     ? (withoutLegacyZeroEntries(expandedEnvironment) ?? {})
     : expandedEnvironment;
+  const environmentShadowObservation = applicationOwnedEnvironmentShadow({
+    eligible: args.includeZeroTokenSecret,
+    actualEnvironment: environment,
+    launch: args,
+    executionSecrets,
+    runtimeOverrides: {
+      CLI_PKG_URL: expandedEnvironment.CLI_PKG_URL,
+      [WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]:
+        expandedEnvironment[WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV],
+    },
+  });
   const environmentKeyByValue = new Map<string, string>();
   for (const [key, value] of Object.entries(environment)) {
     if (!environmentKeyByValue.has(value)) {
@@ -6039,6 +6093,7 @@ async function buildStoredExecutionContextDraft(args: {
     },
     secretNames,
     secretValues,
+    environmentShadowObservation,
   };
 }
 
@@ -6095,6 +6150,31 @@ function buildRunContextSnapshot(args: {
   );
   const cliAgentSessionId =
     storedContext.piSessionId ?? storedContext.resumeSession?.sessionId ?? null;
+  const environmentShadow = args.builtContext.environmentShadowObservation;
+  let environmentShadowFields: Partial<
+    Pick<
+      RunContextAxiomSnapshot,
+      | "environmentShadowClassification"
+      | "environmentShadowLegacyOnlyCountBucket"
+      | "environmentShadowCandidateOnlyCountBucket"
+      | "environmentShadowSharedValueDifferenceCountBucket"
+    >
+  > = {};
+  if (environmentShadow?.classification === "shadow_unavailable") {
+    environmentShadowFields = {
+      environmentShadowClassification: environmentShadow.classification,
+    };
+  } else if (environmentShadow) {
+    environmentShadowFields = {
+      environmentShadowClassification: environmentShadow.classification,
+      environmentShadowLegacyOnlyCountBucket:
+        environmentShadow.legacyOnlyCountBucket,
+      environmentShadowCandidateOnlyCountBucket:
+        environmentShadow.candidateOnlyCountBucket,
+      environmentShadowSharedValueDifferenceCountBucket:
+        environmentShadow.sharedValueDifferenceCountBucket,
+    };
+  }
   const snapshot: RunContextAxiomSnapshot = {
     _time: nowDate().toISOString(),
     runId: args.runId,
@@ -6112,6 +6192,7 @@ function buildRunContextSnapshot(args: {
     volumes: args.builtContext.runContextStorage.volumes,
     artifact: args.builtContext.runContextStorage.artifact,
     featureFlagEntries: featureFlagsRecordToEntries(storedContext.featureFlags),
+    ...environmentShadowFields,
   };
   return snapshot;
 }

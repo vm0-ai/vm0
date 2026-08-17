@@ -817,6 +817,14 @@ function runContextSnapshotForRun(runId: string): Record<string, unknown> {
   throw new Error(`Expected a run-context snapshot for ${runId}`);
 }
 
+function environmentShadowFieldsForRun(runId: string): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(runContextSnapshotForRun(runId)).filter(([key]) => {
+      return key.startsWith("environmentShadow");
+    }),
+  );
+}
+
 function sandboxOperationEventsForRun(
   runId: string,
 ): readonly Record<string, unknown>[] {
@@ -7460,6 +7468,56 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
+  it("keeps a product launch authoritative when its environment shadow is unavailable", async () => {
+    const api = createRunsApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await fw.seedTestConnector(actor, {
+      connectorSlug: "github",
+      authMethod: "oauth",
+      accessToken: "github-shadow-unavailable",
+    });
+    await api.enableAgentConnectors(actor, agentId, ["github"]);
+    const canonicalCompose =
+      await readHistoricalAgentComposeHeadFixture(agentId);
+    await api.createHistoricalCompose(actor, {
+      version: "1",
+      agents: {
+        [canonicalCompose.name]: {
+          framework: "claude-code",
+          environment: {
+            OKOU_AGENT_ID: `\${{ vars.OKOU_AGENT_ID }}`,
+            OKOU_TOKEN: `\${{ secrets.OKOU_TOKEN }}`,
+            GH_TOKEN: "legacy-authoritative-token",
+          },
+        },
+      },
+    });
+    const kms = useSecretKmsProbe();
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "keep the real environment when the shadow is unavailable",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(kms.decryptCalls).toBe(0);
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.environment?.GH_TOKEN).toBe("legacy-authoritative-token");
+    expect(claim.environment?.GITHUB_TOKEN).toStrictEqual(expect.any(String));
+    expect(claim.environment?.GITHUB_TOKEN).not.toBe(
+      "github-shadow-unavailable",
+    );
+    expect(environmentShadowFieldsForRun(run.runId)).toStrictEqual({
+      environmentShadowClassification: "shadow_unavailable",
+    });
+    expect(JSON.stringify(claim)).not.toContain("environmentShadow");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
   it("maps stored connector variable sources to runtime aliases for permission manifests", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
@@ -12334,6 +12392,165 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 });
 
 describe("RUN-01: zero runner context, queue promotion, and skills", () => {
+  it("shadows the canonical environment without changing the Runner context", async () => {
+    const appUrl = "https://app.environment-shadow.example.test";
+    mockEnv("APP_URL", appUrl);
+    const api = createRunsApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error(
+        "The environment shadow fixture requires an organization",
+      );
+    }
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "compare the canonical application environment",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expectCanonicalOkouRunEnvironment({
+      environment: claim.environment,
+      secretValues: claim.secretValues,
+      appUrl,
+      agentId,
+      userId: actor.userId,
+      orgId: actor.orgId,
+      runId: run.runId,
+    });
+    const okouToken = claim.environment?.OKOU_TOKEN;
+    if (!okouToken) {
+      throw new Error(
+        "Expected the canonical environment to include its token",
+      );
+    }
+    expect(claim.environment).toStrictEqual({
+      ANTHROPIC_API_KEY: modelProviderPlaceholder(
+        "anthropic-api-key",
+        "ANTHROPIC_API_KEY",
+      ),
+      ANTHROPIC_MODEL: "claude-sonnet-5",
+      OKOU_AGENT_ID: agentId,
+      OKOU_TOKEN: okouToken,
+      OKOU_APP_URL: appUrl,
+      CLI_PKG_URL: "https://static.vm0.io/okou-cli/test-commit/package.tgz",
+      [WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]: "previous",
+    });
+    expect(environmentShadowFieldsForRun(run.runId)).toStrictEqual({
+      environmentShadowClassification: "exact",
+      environmentShadowLegacyOnlyCountBucket: "0",
+      environmentShadowCandidateOnlyCountBucket: "0",
+      environmentShadowSharedValueDifferenceCountBucket: "0",
+    });
+    expect(JSON.stringify(claim)).not.toContain("environmentShadow");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("classifies active legacy environment value shapes without exposing them", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("The legacy shadow fixture requires an organization");
+    }
+    const canonicalCompose =
+      await readHistoricalAgentComposeHeadFixture(agentId);
+    const legacyKey = "LEGACY_ENVIRONMENT_BINDING";
+    const userScope = { orgId: actor.orgId, userId: actor.userId };
+    await seedUserVariable(context, {
+      ...userScope,
+      name: "LEGACY_VARIABLE",
+      value: "legacy-variable-value",
+    });
+    await seedUserVariable(context, {
+      ...userScope,
+      name: "LEGACY_MIXED_VARIABLE",
+      value: "legacy-mixed-variable",
+    });
+    await seedUserSecret(context, {
+      ...userScope,
+      name: "LEGACY_SECRET",
+      value: "legacy-secret-value",
+    });
+    await seedUserSecret(context, {
+      ...userScope,
+      name: "LEGACY_MIXED_SECRET",
+      value: "legacy-mixed-secret",
+    });
+    const cases: readonly {
+      readonly name: string;
+      readonly value: string;
+      readonly expectedValue: string;
+    }[] = [
+      {
+        name: "variable reference",
+        value: `\${{ vars.LEGACY_VARIABLE }}`,
+        expectedValue: "legacy-variable-value",
+      },
+      {
+        name: "secret reference",
+        value: `\${{ secrets.LEGACY_SECRET }}`,
+        expectedValue: "legacy-secret-value",
+      },
+      {
+        name: "mixed references",
+        value: `\${{ vars.LEGACY_MIXED_VARIABLE }}:\${{ secrets.LEGACY_MIXED_SECRET }}`,
+        expectedValue: "legacy-mixed-variable:legacy-mixed-secret",
+      },
+      {
+        name: "literal value",
+        value: "legacy-literal-value",
+        expectedValue: "legacy-literal-value",
+      },
+    ];
+
+    for (const legacyCase of cases) {
+      await api.createHistoricalCompose(actor, {
+        version: "1",
+        agents: {
+          [canonicalCompose.name]: {
+            framework: "claude-code",
+            environment: {
+              OKOU_AGENT_ID: `\${{ vars.OKOU_AGENT_ID }}`,
+              OKOU_TOKEN: `\${{ secrets.OKOU_TOKEN }}`,
+              [legacyKey]: legacyCase.value,
+            },
+          },
+        },
+      });
+      const run = await api.createRun(actor, {
+        agentId,
+        prompt: `compare ${legacyCase.name}`,
+        modelProvider: "anthropic-api-key",
+      });
+      await api.heartbeatRunner(runnerGroup);
+      const claim = await api.claimRunnerJob(run.runId);
+      expect(claim.environment?.[legacyKey]).toBe(legacyCase.expectedValue);
+
+      const shadowFields = environmentShadowFieldsForRun(run.runId);
+      expect(shadowFields).toStrictEqual({
+        environmentShadowClassification: "legacy_only_bindings",
+        environmentShadowLegacyOnlyCountBucket: "1",
+        environmentShadowCandidateOnlyCountBucket: "0",
+        environmentShadowSharedValueDifferenceCountBucket: "0",
+      });
+      const serializedShadowFields = JSON.stringify(shadowFields);
+      for (const forbidden of [
+        legacyKey,
+        legacyCase.value,
+        legacyCase.expectedValue,
+        agentId,
+        run.runId,
+      ]) {
+        expect(serializedShadowFields).not.toContain(forbidden);
+      }
+      expect(JSON.stringify(claim)).not.toContain("environmentShadow");
+      await api.requestCancelRun(actor, run.runId, [200]);
+    }
+  });
+
   it("uses the commit-addressed R2 Okou CLI distribution", async () => {
     const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();

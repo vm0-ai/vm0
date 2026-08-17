@@ -10,6 +10,7 @@ export interface RuntimeContentConsumerManifest {
 }
 
 type RuntimeContentConsumerMode =
+  | "compose-independent-environment-shadow"
   | "first-plural-schema-parse"
   | "first-plural-framework-display"
   | "head-content-selection-and-type-projection"
@@ -44,6 +45,17 @@ const REVIEWED_CONSUMERS: readonly ReviewedConsumer[] = [
   {
     relativePath: "turbo/apps/api/src/signals/routes/integrations-slack.ts",
     mode: "raw-recursive-variable-secret-scan",
+  },
+  {
+    relativePath:
+      "turbo/apps/api/src/signals/services/agent-environment-shadow.ts",
+    mode: "compose-independent-environment-shadow",
+    interfaces: ["ApplicationOwnedEnvironmentCandidateInput"],
+    functions: [
+      "buildApplicationOwnedEnvironmentCandidate",
+      "compareApplicationOwnedEnvironment",
+    ],
+    variables: ["ENVIRONMENT_SHADOW_COUNT_BUCKETS"],
   },
   {
     relativePath:
@@ -179,6 +191,7 @@ export const EXPECTED_RUNTIME_CONTENT_CONSUMER_MANIFEST: RuntimeContentConsumerM
     ],
     reviewedConsumers: [
       "turbo/apps/api/src/signals/routes/integrations-slack.ts|raw-recursive-variable-secret-scan|1|0357a0f694d2882516d811fff5f28d57abb01a6df4f2bdcb1f8435d0827ea17f",
+      "turbo/apps/api/src/signals/services/agent-environment-shadow.ts|compose-independent-environment-shadow|4|bb1c66722499e90deb9a6471567a6d374aefe0f68b878249d0fc4822ddaf3f13",
       "turbo/apps/api/src/signals/services/agent-instructions.service.ts|first-plural-schema-parse|2|5e0e03733f7327b9e719691adccd8ef9e643f7945e7a2011884b50c17cd0d5ca",
       "turbo/apps/api/src/signals/services/agent-run-create.service.ts|singular-or-first-plural-launch|18|eff82337ee0438f35a74d19fda0fbe828ab087c7f1c5078df06d677e782932d4",
       "turbo/apps/api/src/signals/services/agent-run-storage.service.ts|singular-or-first-plural-storage-and-volumes|8|f892995687452b9c164950e90aab24e9da198326187dea19b646864d71d35cf9",
