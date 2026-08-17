@@ -73,6 +73,16 @@ def _clear_correlation_candidate(state: _OpenAIResponsesPrewarmState) -> None:
     state.active_response_id = None
 
 
+def _retain_ignored_response_id(
+    state: _OpenAIResponsesPrewarmState,
+    response_id: str,
+) -> None:
+    if state.ignored_response_id == response_id:
+        return
+    state.ignored_response_id = response_id
+    state.ignored_diagnostic_emitted = False
+
+
 def _lifecycle_ambiguity_reason(
     lifecycle: usage.OpenAIResponsesServerLifecycle,
 ) -> _WebSocketCorrelationReason:
@@ -130,8 +140,6 @@ def observe_client_event(
         _mark_correlation_ambiguous(flow, state, "overlapping_request")
         return
     state.pending_intent = "prewarm" if event.is_prewarm else "normal"
-    if event.is_prewarm:
-        state.ignored_diagnostic_emitted = False
 
 
 def _observe_server_lifecycle(
@@ -272,7 +280,7 @@ def feed_usage(
                 and prewarm_state.active_intent == "prewarm"
                 and prewarm_state.active_response_id == message_id
             ):
-                prewarm_state.ignored_response_id = message_id
+                _retain_ignored_response_id(prewarm_state, message_id)
                 suppressed = True
             elif not prewarm_state.ambiguous and prewarm_state.ignored_response_id == message_id:
                 suppressed = True
@@ -344,15 +352,18 @@ def feed_usage(
                 flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = usage_target
             usage.merge_openai_responses_usage_result(usage_target, usage_result)
 
+    if not isinstance(prewarm_state, _OpenAIResponsesPrewarmState):
+        return
+    active_response_id = prewarm_state.active_response_id
     if (
-        isinstance(prewarm_state, _OpenAIResponsesPrewarmState)
-        and lifecycle is not None
+        lifecycle is not None
         and lifecycle.is_terminal
         and lifecycle.is_valid
         and not prewarm_state.ambiguous
-        and prewarm_state.active_response_id == lifecycle.response_id
+        and active_response_id is not None
+        and active_response_id == lifecycle.response_id
     ):
         if prewarm_state.active_intent == "prewarm":
-            prewarm_state.ignored_response_id = lifecycle.response_id
+            _retain_ignored_response_id(prewarm_state, active_response_id)
         prewarm_state.active_intent = None
         prewarm_state.active_response_id = None

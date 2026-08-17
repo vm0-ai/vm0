@@ -141,6 +141,57 @@ class TestModelProviderWebSocketPrewarmUsage:
         assert ignored_entry["usage"] == {"tokens.input": 17}
         assert not _correlation_entries(flow)
 
+    def test_model_websocket_logs_each_prewarm_source_once_across_late_duplicate(
+        self,
+        tmp_path,
+        real_flow,
+    ):
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(flow)
+
+        with self._usage_webhook_api() as webhook:
+            feed_websocket_client_message(
+                flow,
+                json.dumps({"type": "response.create", "generate": False}).encode(),
+            )
+            feed_websocket_server_message(flow, _openai_websocket_created_frame("warm-first"))
+            first_usage = openai_websocket_usage_frame(
+                "warm-first",
+                input_tokens=5,
+                output_tokens=0,
+            )
+            feed_websocket_server_message(flow, first_usage)
+
+            feed_websocket_client_message(
+                flow,
+                json.dumps({"type": "response.create", "generate": False}).encode(),
+            )
+            feed_websocket_server_message(flow, _openai_websocket_created_frame("warm-second"))
+            feed_websocket_server_message(flow, first_usage)
+            feed_websocket_server_message(
+                flow,
+                openai_websocket_usage_frame(
+                    "warm-second",
+                    input_tokens=7,
+                    output_tokens=0,
+                ),
+            )
+            mitm_addon.websocket_end(flow)
+            usage.flush_usage_events(trigger="test")
+
+        assert webhook.usage_events() == []
+        assert webhook.model_usage_observation_events() == []
+        ignored_entries = [
+            entry
+            for entry in model_usage_source_entries(flow)
+            if entry.get("disposition") == "ignored"
+        ]
+        assert [entry["provider_response_id"] for entry in ignored_entries] == [
+            "warm-first",
+            "warm-second",
+        ]
+        assert not _correlation_entries(flow)
+
     def test_model_websocket_ignores_bound_prewarm_and_reports_normal_input_only_turn(
         self,
         tmp_path,
