@@ -1755,12 +1755,17 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
 
     const missingCompatibilityActor = await entitledRunActor();
     const missingCompatibilityPrompt = "missing connector compatibility";
-    const missingCompatibilityRun = await api.createRun(
+    const missingCompatibilityRun = await api.createDirectRun(
       missingCompatibilityActor.actor,
       {
-        agentId: missingCompatibilityActor.agentId,
-        prompt: missingCompatibilityPrompt,
-        modelProvider: "anthropic-api-key",
+        ...zeroBackedDirectRunBody({
+          agentId: missingCompatibilityActor.agentId,
+          prompt: missingCompatibilityPrompt,
+        }),
+        connectorScope: {
+          allowedConnectorSlugs: ["x"],
+          allowedCustomConnectorIds: [],
+        },
       },
     );
     const missingCompatibilityEvents = apiDispatchTimingEventsForRun(
