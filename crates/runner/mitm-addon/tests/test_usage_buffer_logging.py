@@ -54,6 +54,85 @@ def test_flush_logs_aggregate_summary_without_token(tmp_path):
     assert entries[1]["duration_ms"] >= 0
 
 
+def test_flush_logs_isolate_summaries_across_proxy_log_paths(tmp_path):
+    enqueue = RecordingEnqueue(return_value=False)
+    usage.reset_usage_buffer_for_tests(
+        enqueue_webhook=enqueue,
+        max_retained_batch_retries=0,
+    )
+    proxy_a_log_path = tmp_path / "proxy-a.jsonl"
+    proxy_b_log_path = tmp_path / "proxy-b.jsonl"
+
+    usage.buffer_usage_events(
+        "https://api-a-one.test/api/webhooks/agent/usage-event",
+        "token-a-one",
+        "run-a-1",
+        [
+            event(source_key="source-a-1", category="tokens.input", quantity=10),
+            event(source_key="source-a-2", category="tokens.output", quantity=5),
+        ],
+        str(proxy_a_log_path),
+    )
+    usage.buffer_usage_events(
+        "https://api-a-two.test/api/webhooks/agent/usage-event",
+        "token-a-two",
+        "run-a-2",
+        [event(source_key="source-a-3", category="tokens.input", quantity=7)],
+        str(proxy_a_log_path),
+    )
+    usage.buffer_usage_events(
+        "https://api-b.test/api/webhooks/agent/usage-event",
+        "token-b",
+        "run-b-1",
+        [event(source_key="source-b-1", category="tokens.output", quantity=3)],
+        str(proxy_b_log_path),
+    )
+
+    assert usage.flush_usage_events(trigger="test") == 0
+
+    enqueue.assert_called_once()
+    expected_summaries = {
+        proxy_a_log_path: {
+            "source_event_count": 3,
+            "aggregate_event_count": 3,
+            "webhook_batch_count": 2,
+            "run_count": 2,
+            "destination_count": 2,
+        },
+        proxy_b_log_path: {
+            "source_event_count": 1,
+            "aggregate_event_count": 1,
+            "webhook_batch_count": 1,
+            "run_count": 1,
+            "destination_count": 1,
+        },
+    }
+    all_entries = []
+    for proxy_log_path, expected_counts in expected_summaries.items():
+        entries = flush_log_entries(proxy_log_path)
+        all_entries.extend(entries)
+        assert [entry["phase"] for entry in entries] == ["started", "enqueued", "dropped"]
+        assert [entry["type"] for entry in entries] == [
+            "usage_event_buffer_flush",
+            "usage_event_buffer_flush",
+            "usage_underbilling",
+        ]
+        for entry in entries:
+            for field, expected_count in expected_counts.items():
+                assert entry[field] == expected_count
+        dropped_entry = entries[2]
+        assert dropped_entry["reason"] == "retry_budget_exhausted"
+        assert dropped_entry["underbilling_class"] == "confirmed"
+        assert dropped_entry["dropped_source_event_count"] == expected_counts["source_event_count"]
+        assert (
+            dropped_entry["dropped_webhook_batch_count"] == expected_counts["webhook_batch_count"]
+        )
+
+    serialized_entries = json.dumps(all_entries)
+    for token in ("token-a-one", "token-a-two", "token-b"):
+        assert token not in serialized_entries
+
+
 def test_flush_logs_retained_webhook_batches(tmp_path):
     enqueue = RecordingEnqueue(return_value=False)
     usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
