@@ -396,6 +396,40 @@ describe("personal usage settings", () => {
     expect(screen.queryByTestId("usage-pack-credit-card")).toBeNull();
   });
 
+  it("shows one-time credits without an active usage pack allocation", async () => {
+    mockPersonalUsageStory(usageRows(), "pro", false, "member");
+    context.mocks.api(
+      zeroBillingUsagePackCreditsContract.get,
+      ({ respond }) => {
+        return respond(200, {
+          totalCredits: 10_000,
+          purchasedCredits: 0,
+          bonusCredits: 10_000,
+          creditGrants: [
+            {
+              id: "grant-atom-bonus",
+              grantType: "bonus",
+              amount: 10_000,
+              remaining: 10_000,
+              createdAt: "2026-08-17T03:43:42.000Z",
+              expiresAt: "2026-09-17T03:43:37.000Z",
+            },
+          ],
+          hasUsagePack: false,
+        });
+      },
+    );
+
+    await openUsageSettings(true);
+
+    const card = await screen.findByTestId("usage-pack-credit-card");
+    expect(within(card).getByText("Usage pack credits")).toBeInTheDocument();
+    expect(
+      within(card).getByTestId("usage-pack-credit-bonus"),
+    ).toBeInTheDocument();
+    expect(within(card).getByText("+10,000")).toBeInTheDocument();
+  });
+
   it("hides member balances when the admin is the only member", async () => {
     mockPersonalUsageStory(usageRows(), "pro", false, "admin");
     context.mocks.data.orgMembers({
