@@ -17,8 +17,8 @@ use std::sync::Arc;
 
 use guest_contracts::diagnostics::WorkloadResourceLimitDiagnostic;
 use guest_contracts::process_containment::{
-    CGROUP_V2_MOUNT_PATH, CONTROL_CGROUP_NAME, EXEC_CGROUP_NAME_PREFIX,
-    MATERIAL_CPU_THROTTLED_USEC, WORKLOAD_CGROUP_NAME, WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
+    CGROUP_V2_MOUNT_PATH, CONTROL_CGROUP_NAME, EXEC_CGROUP_NAME_PREFIX, WORKLOAD_CGROUP_NAME,
+    WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV, WorkloadResourceEvents,
 };
 
 const CGROUP_PROCS_FILE: &str = "cgroup.procs";
@@ -110,30 +110,16 @@ impl WorkloadContainment {
 
     /// Read workload resource counters after CLI execution.
     pub fn resource_diagnostics(&self) -> io::Result<WorkloadResourceDiagnostics> {
-        let cpu = read_key_values(&self.workload_path.join("cpu.stat"))?;
-        let memory = read_key_values(&self.workload_path.join("memory.events"))?;
-        let pids = read_key_values(&self.workload_path.join("pids.events"))?;
-        let memory_max = value_or_zero(&memory, "max");
-        let memory_oom = value_or_zero(&memory, "oom");
-        let memory_oom_kill = value_or_zero(&memory, "oom_kill");
-        let memory_oom_group_kill = value_or_zero(&memory, "oom_group_kill");
-        let pids_max = value_or_zero(&pids, "max");
-        let cpu_nr_throttled = value_or_zero(&cpu, "nr_throttled");
-        let cpu_throttled_usec = value_or_zero(&cpu, "throttled_usec");
-        let memory_high = value_or_zero(&memory, "high");
+        let cpu = fs::read_to_string(self.workload_path.join("cpu.stat"))?;
+        let memory = fs::read_to_string(self.workload_path.join("memory.events"))?;
+        let pids = fs::read_to_string(self.workload_path.join("pids.events"))?;
+        let events = WorkloadResourceEvents::from_file_contents(&cpu, &memory, &pids)?;
 
-        let hard_limit = WorkloadResourceLimitDiagnostic {
-            memory_max_events: memory_max,
-            memory_oom_events: memory_oom,
-            memory_oom_kill_events: memory_oom_kill,
-            memory_oom_group_kill_events: memory_oom_group_kill,
-            pids_max_events: pids_max,
-        };
-        let hard_limit = hard_limit.has_events().then_some(hard_limit);
-        let pressure =
-            (cpu_throttled_usec >= MATERIAL_CPU_THROTTLED_USEC || memory_high > 0).then(|| {
+        let hard_limit = events.hard_limit_diagnostic();
+        let pressure = events.has_material_pressure().then(|| {
             format!(
-                "workload resource pressure observed (cpu_nr_throttled={cpu_nr_throttled}, cpu_throttled_usec={cpu_throttled_usec}, memory_high={memory_high})"
+                "workload resource pressure observed (cpu_nr_throttled={}, cpu_throttled_usec={}, memory_high={})",
+                events.cpu_nr_throttled, events.cpu_throttled_usec, events.memory_high
             )
         });
         Ok(WorkloadResourceDiagnostics {
@@ -235,36 +221,6 @@ fn validate_descriptor(placement: &OwnedFd) -> io::Result<PathBuf> {
         .ok_or_else(|| io::Error::other("workload cgroup.procs path has no parent"))
 }
 
-fn read_key_values(path: &Path) -> io::Result<std::collections::HashMap<String, u64>> {
-    fs::read_to_string(path)?
-        .lines()
-        .map(|line| {
-            let mut fields = line.split_ascii_whitespace();
-            let key = fields.next().ok_or_else(|| {
-                io::Error::new(io::ErrorKind::InvalidData, "missing cgroup counter name")
-            })?;
-            let value = fields
-                .next()
-                .ok_or_else(|| {
-                    io::Error::new(io::ErrorKind::InvalidData, "missing cgroup counter value")
-                })?
-                .parse::<u64>()
-                .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-            if fields.next().is_some() {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "unexpected cgroup counter field",
-                ));
-            }
-            Ok((key.to_string(), value))
-        })
-        .collect()
-}
-
-fn value_or_zero(values: &std::collections::HashMap<String, u64>, key: &str) -> u64 {
-    values.get(key).copied().unwrap_or(0)
-}
-
 fn expected_workload_procs_path() -> io::Result<PathBuf> {
     let content = fs::read_to_string(PROC_SELF_CGROUP)?;
     let relative = content
@@ -340,6 +296,8 @@ mod tests {
     use super::*;
     use std::io::{Read, Seek, SeekFrom};
     use std::process::Stdio;
+
+    use guest_contracts::process_containment::MATERIAL_CPU_THROTTLED_USEC;
 
     #[test]
     fn pre_exec_places_child_without_inheriting_descriptor() {
