@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { initContract, authHeadersSchema } from "./base";
 import { apiErrorSchema } from "./errors";
+import { imageModelIdSchema } from "./image-models";
 import { supportedRunModelSchema } from "./model-providers";
 import { videoModelIdSchema } from "./video-models";
 import { chatThreadServiceTierSchema } from "./chat-threads";
@@ -20,6 +21,12 @@ export const userModelPreferenceResponseSchema = z.object({
    * Follow-up: #26765.
    */
   selectedVideoModel: videoModelIdSchema.nullable().optional(),
+  /**
+   * Rollout fallback for an API rollback after the app starts reading image
+   * preferences. Keep optional until the pre-field API is outside the rollback
+   * window; the current API always returns the field.
+   */
+  selectedImageModel: imageModelIdSchema.nullable().optional(),
   updatedAt: z.string().nullable(),
 });
 
@@ -31,14 +38,16 @@ export const updateUserModelPreferenceRequestSchema = z.object({
   selectedModel: supportedRunModelSchema.nullable(),
   serviceTier: chatThreadServiceTierSchema.nullable(),
   /**
-   * Partial-update semantics, not a rollout fallback: the three preferences are
+   * Partial-update semantics, not a rollout fallback: the preferences are
    * independent, so absent means "leave it alone" and null clears it. This is
    * permanent — a caller that only changes the run model must never blank the
-   * video default — and it matches how `updateUserPreferences$` already treats
-   * its own optional fields. An older bundle keeping its stored default falls
+   * media defaults — and it matches how `updateUserPreferences$` already treats
+   * its own optional fields. An older bundle keeping its stored defaults falls
    * out of the same rule rather than needing its own branch.
    */
   selectedVideoModel: videoModelIdSchema.nullable().optional(),
+  /** Omitted preserves the image default; explicit null clears it. */
+  selectedImageModel: imageModelIdSchema.nullable().optional(),
 });
 
 export type UpdateUserModelPreferenceRequest = z.infer<

@@ -4,6 +4,7 @@ import { chatEventRowSchema } from "./chat-event-rows";
 import { CHAT_EVENT_SCHEMA_VERSION_HEADER } from "./chat-event-schema-version";
 import { CHAT_EVENT_TYPES } from "./chat-events";
 import { apiErrorSchema } from "./errors";
+import { imageModelIdSchema } from "./image-models";
 import { requireUserMessageForDraftAttachments } from "./draft-user-message";
 import { hostedArtifactKindSchema } from "./zero-host";
 import { runStatusSchema } from "./runs";
@@ -871,12 +872,23 @@ const chatThreadCreateBodySchema = z.object({
    * thread video model.
    */
   videoModel: videoModelIdSchema.optional(),
+  /**
+   * Image model for the new thread. Omit it to inherit the calling run's chat
+   * thread image model.
+   */
+  imageModel: imageModelIdSchema.optional(),
   title: z.string().optional(),
 });
 
 const chatThreadVideoModelUpdateBodySchema = z.object({
   /** Video model id, or null to fall back to the member and system defaults. */
   model: videoModelIdSchema.nullable(),
+  eventId: chatThreadEventIdSchema.optional(),
+});
+
+const chatThreadImageModelUpdateBodySchema = z.object({
+  /** Image model id, or null to fall back to the member and system defaults. */
+  model: imageModelIdSchema.nullable(),
   eventId: chatThreadEventIdSchema.optional(),
 });
 
@@ -1342,6 +1354,28 @@ export const chatThreadVideoModelContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Update a chat thread video model",
+  },
+});
+
+/**
+ * Update a chat thread's image model pin. Separate from model-selection and
+ * video-model because it has its own catalog and default resolution.
+ */
+export const chatThreadImageModelContract = c.router({
+  update: {
+    method: "POST",
+    path: "/api/okou/chat-threads/:id/image-model",
+    headers: authHeadersSchema,
+    pathParams: chatThreadIdPathParamsSchema,
+    body: chatThreadImageModelUpdateBodySchema,
+    responses: {
+      204: c.noBody(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Update a chat thread image model",
   },
 });
 

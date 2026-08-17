@@ -32,6 +32,7 @@ export type BrowserSessionChangedPayload = z.infer<
 export const userPreferenceKinds = [
   "defaultModel",
   "defaultVideoModel",
+  "defaultImageModel",
 ] as const;
 
 export type UserPreferenceKind = (typeof userPreferenceKinds)[number];
@@ -52,7 +53,8 @@ function isUserPreferenceKind(kind: string): kind is UserPreferenceKind {
  * (`docs/fallback.md` §7), so every future kind addition needs this.
  *
  * This does not retroactively fix bundles already in browsers — see the
- * `defaultVideoModel` note in `user-model-preference.ts`.
+ * `defaultVideoModel` and `defaultImageModel` notes in
+ * `user-model-preference.ts`.
  */
 export const userPreferenceChangedPayloadSchema = z.object({
   kinds: z.array(z.string()).transform((kinds) => {

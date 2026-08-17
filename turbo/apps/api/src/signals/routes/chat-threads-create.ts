@@ -5,6 +5,10 @@ import {
   chatThreadsContract,
   MODEL_FIRST_SELECTION_PROVIDER_ID,
 } from "@okouai/api-contracts/contracts/chat-threads";
+import {
+  isImageModelId,
+  type ImageModelId,
+} from "@okouai/api-contracts/contracts/image-models";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 
@@ -34,7 +38,7 @@ function modelFirstSelection(selectedModel: string) {
 }
 
 /**
- * Model, priority, and video model a caller inherits when it omits them. The
+ * Model, priority, and media models a caller inherits when it omits them. The
  * model belongs to the run that owns its token; the other settings belong to
  * that run's chat thread.
  */
@@ -45,12 +49,14 @@ async function inheritedRunChatSettings(
   readonly selectedModel: string | null;
   readonly codexServiceTier: CodexServiceTier | null;
   readonly selectedVideoModel: string | null;
+  readonly selectedImageModel: ImageModelId | null;
 }> {
   if (!runId) {
     return {
       selectedModel: null,
       codexServiceTier: null,
       selectedVideoModel: null,
+      selectedImageModel: null,
     };
   }
 
@@ -59,6 +65,7 @@ async function inheritedRunChatSettings(
       selectedModel: agentRuns.selectedModel,
       codexServiceTier: chatThreads.codexServiceTier,
       selectedVideoModel: chatThreads.selectedVideoModel,
+      selectedImageModel: chatThreads.selectedImageModel,
     })
     .from(agentRuns)
     .leftJoin(chatThreads, eq(agentRuns.chatThreadId, chatThreads.id))
@@ -68,6 +75,9 @@ async function inheritedRunChatSettings(
     selectedModel: run?.selectedModel ?? null,
     codexServiceTier: run?.codexServiceTier ?? null,
     selectedVideoModel: run?.selectedVideoModel ?? null,
+    selectedImageModel: isImageModelId(run?.selectedImageModel)
+      ? run.selectedImageModel
+      : null,
   };
 }
 
@@ -109,6 +119,8 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         : null;
   const selectedVideoModel =
     body.data.videoModel ?? inherited.selectedVideoModel;
+  const selectedImageModel =
+    body.data.imageModel ?? inherited.selectedImageModel;
 
   const pin = await resolveModelSelectionPin({
     db: writeDb,
@@ -144,6 +156,7 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       ...chatThreadModelPinColumns(pin),
       codexServiceTier,
       selectedVideoModel,
+      selectedImageModel,
     },
     signal,
   );

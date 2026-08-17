@@ -11,6 +11,7 @@ import {
 import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
 import { zeroModelProviderConnectionsMainContract } from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
 import { userModelPreferenceContract } from "@okouai/api-contracts/contracts/user-model-preference";
+import type { ImageModelId } from "@okouai/api-contracts/contracts/image-models";
 import type { VideoModelId } from "@okouai/api-contracts/contracts/video-models";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { createApp } from "../../../app-factory";
@@ -1152,6 +1153,139 @@ describe("GET/PUT /api/zero/model-policies", () => {
       }),
       [400],
     );
+  });
+
+  it("stores, preserves, and clears a member image default", async () => {
+    const fixture = await seedFixture();
+    useSession(fixture);
+    const preferenceClient = setupApp({
+      context,
+      routes: userModelPreferenceRoutes,
+    })(userModelPreferenceContract);
+
+    const stored = await accept(
+      preferenceClient.update({
+        headers: authHeaders(),
+        body: {
+          selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+          serviceTier: null,
+          selectedImageModel: "fal-ai/qwen-image",
+        },
+      }),
+      [200],
+    );
+    expect(stored.body).toMatchObject({
+      selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+      selectedImageModel: "fal-ai/qwen-image",
+    });
+    expect(stored.body.updatedAt).not.toBeNull();
+
+    const preserved = await accept(
+      preferenceClient.update({
+        headers: authHeaders(),
+        body: { selectedModel: null, serviceTier: null },
+      }),
+      [200],
+    );
+    expect(preserved.body).toMatchObject({
+      selectedModel: null,
+      selectedImageModel: "fal-ai/qwen-image",
+    });
+
+    const explicitlyCleared = await accept(
+      preferenceClient.update({
+        headers: authHeaders(),
+        body: {
+          selectedModel: null,
+          serviceTier: null,
+          selectedImageModel: null,
+        },
+      }),
+      [200],
+    );
+    expect(explicitlyCleared.body.selectedImageModel).toBeNull();
+  });
+
+  it("pushes the image-default kind whenever the request carries the field", async () => {
+    const fixture = await seedFixture();
+    useSession(fixture);
+    const preferenceClient = setupApp({
+      context,
+      routes: userModelPreferenceRoutes,
+    })(userModelPreferenceContract);
+
+    context.mocks.ably.publish.mockClear();
+    await accept(
+      preferenceClient.update({
+        headers: authHeaders(),
+        body: {
+          selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+          serviceTier: null,
+          selectedImageModel: "gpt-image-2",
+        },
+      }),
+      [200],
+    );
+    await flushWaitUntilForTest();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "userPreferenceChanged",
+      { kinds: ["defaultModel", "defaultImageModel"] },
+    );
+
+    context.mocks.ably.publish.mockClear();
+    await accept(
+      preferenceClient.update({
+        headers: authHeaders(),
+        body: {
+          selectedModel: null,
+          serviceTier: null,
+          selectedImageModel: null,
+        },
+      }),
+      [200],
+    );
+    await flushWaitUntilForTest();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "userPreferenceChanged",
+      { kinds: ["defaultModel", "defaultImageModel"] },
+    );
+
+    context.mocks.ably.publish.mockClear();
+    await accept(
+      preferenceClient.update({
+        headers: authHeaders(),
+        body: { selectedModel: null, serviceTier: null },
+      }),
+      [200],
+    );
+    await flushWaitUntilForTest();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "userPreferenceChanged",
+      { kinds: ["defaultModel"] },
+    );
+  });
+
+  it("rejects an image default outside the selectable catalog", async () => {
+    const fixture = await seedFixture();
+    useSession(fixture);
+    const preferenceClient = setupApp({
+      context,
+      routes: userModelPreferenceRoutes,
+    })(userModelPreferenceContract);
+    const outsideCatalog = "birefnet" as unknown as ImageModelId;
+
+    const response = await accept(
+      preferenceClient.update({
+        headers: authHeaders(),
+        body: {
+          selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+          serviceTier: null,
+          selectedImageModel: outsideCatalog,
+        },
+      }),
+      [400],
+    );
+    expect(response.status).toBe(400);
   });
 
   it("allows compatible member OAuth provider routes", async () => {

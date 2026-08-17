@@ -9,6 +9,7 @@ let mockUserModelPreference: UserModelPreferenceResponse = {
   selectedModel: null,
   serviceTier: null,
   selectedVideoModel: null,
+  selectedImageModel: null,
   updatedAt: null,
 };
 
@@ -17,6 +18,7 @@ export function resetMockUserModelPreference(): void {
     selectedModel: null,
     serviceTier: null,
     selectedVideoModel: null,
+    selectedImageModel: null,
     updatedAt: null,
   };
 }
@@ -40,6 +42,10 @@ export const apiUserModelPreferenceHandlers = [
         "selectedVideoModel" in body
           ? (body.selectedVideoModel ?? null)
           : mockUserModelPreference.selectedVideoModel,
+      selectedImageModel:
+        "selectedImageModel" in body
+          ? (body.selectedImageModel ?? null)
+          : mockUserModelPreference.selectedImageModel,
       updatedAt: nowDate().toISOString(),
     };
     return respond(200, mockUserModelPreference);

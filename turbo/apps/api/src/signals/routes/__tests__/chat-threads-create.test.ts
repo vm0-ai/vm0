@@ -31,6 +31,8 @@ const OTHER_WORKSPACE_MODEL = "claude-opus-4-8";
 const PRIORITY_MODEL = "gpt-5.6-sol";
 const EXPLICIT_VIDEO_MODEL = "fal-ai/veo3.1/fast";
 const INHERITED_VIDEO_MODEL = "MiniMax-H3";
+const EXPLICIT_IMAGE_MODEL = "fal-ai/qwen-image";
+const INHERITED_IMAGE_MODEL = "gpt-image-2";
 
 interface AgentFixture {
   readonly userId: string;
@@ -153,6 +155,7 @@ describe("POST /api/zero/chat-threads", () => {
           title: "Deep dive on P2",
           model: OTHER_WORKSPACE_MODEL,
           videoModel: EXPLICIT_VIDEO_MODEL,
+          imageModel: EXPLICIT_IMAGE_MODEL,
         },
       }),
       [201],
@@ -179,7 +182,10 @@ describe("POST /api/zero/chat-threads", () => {
     });
     await expect(
       readCreatedThreadEvent(response.body.id, token),
-    ).resolves.toMatchObject({ selectedVideoModel: EXPLICIT_VIDEO_MODEL });
+    ).resolves.toMatchObject({
+      selectedVideoModel: EXPLICIT_VIDEO_MODEL,
+      selectedImageModel: EXPLICIT_IMAGE_MODEL,
+    });
   });
 
   it("inherits the model of the run that owns the token when model is omitted", async () => {
@@ -222,7 +228,7 @@ describe("POST /api/zero/chat-threads", () => {
     expect(metadataResponse.body.serviceTier).toBeNull();
   });
 
-  it("inherits the video model from the run's chat thread when omitted", async () => {
+  it("inherits media models from the run's chat thread when omitted", async () => {
     const fixture = await seedAgent();
     const sourceToken = zeroToken({
       userId: fixture.userId,
@@ -237,6 +243,7 @@ describe("POST /api/zero/chat-threads", () => {
           title: "Video model source",
           model: OTHER_WORKSPACE_MODEL,
           videoModel: INHERITED_VIDEO_MODEL,
+          imageModel: INHERITED_IMAGE_MODEL,
         },
       }),
       [201],
@@ -265,7 +272,7 @@ describe("POST /api/zero/chat-threads", () => {
         headers: { authorization: `Bearer ${inheritedToken}` },
         body: {
           agentId: fixture.agentId,
-          title: "Inherited video model",
+          title: "Inherited media models",
         },
       }),
       [201],
@@ -273,7 +280,10 @@ describe("POST /api/zero/chat-threads", () => {
 
     await expect(
       readCreatedThreadEvent(inherited.body.id, inheritedToken),
-    ).resolves.toMatchObject({ selectedVideoModel: INHERITED_VIDEO_MODEL });
+    ).resolves.toMatchObject({
+      selectedVideoModel: INHERITED_VIDEO_MODEL,
+      selectedImageModel: INHERITED_IMAGE_MODEL,
+    });
   });
 
   it("inherits priority from the run's chat thread and allows an explicit standard override", async () => {

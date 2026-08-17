@@ -11,6 +11,7 @@ import type {
   UserModelPreferenceResponse,
 } from "@okouai/api-contracts/contracts/user-model-preference";
 import { isSupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
+import { isImageModelId } from "@okouai/api-contracts/contracts/image-models";
 import { isVideoModelId } from "@okouai/api-contracts/contracts/video-models";
 import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
@@ -160,6 +161,7 @@ export function userModelPreference({
         selectedModel: orgMembersMetadata.selectedModel,
         serviceTier: orgMembersMetadata.serviceTier,
         selectedVideoModel: orgMembersMetadata.selectedVideoModel,
+        selectedImageModel: orgMembersMetadata.selectedImageModel,
         updatedAt: orgMembersMetadata.updatedAt,
       })
       .from(orgMembersMetadata)
@@ -181,12 +183,16 @@ export function userModelPreference({
     const selectedVideoModel = isVideoModelId(row?.selectedVideoModel)
       ? row.selectedVideoModel
       : null;
+    const selectedImageModel = isImageModelId(row?.selectedImageModel)
+      ? row.selectedImageModel
+      : null;
     return {
       selectedModel,
       serviceTier,
       selectedVideoModel,
+      selectedImageModel,
       updatedAt:
-        selectedModel || selectedVideoModel
+        selectedModel || selectedVideoModel || selectedImageModel
           ? (row?.updatedAt.toISOString() ?? null)
           : null,
     };
@@ -342,9 +348,12 @@ function userModelPreferenceColumns(
           serviceTier: preference.serviceTier,
         }),
     // Absent means "leave it alone", so an older bundle that knows only the run
-    // model keeps its stored video default. Null clears it explicitly.
+    // model keeps its stored media defaults. Null clears one explicitly.
     ...("selectedVideoModel" in preference
       ? { selectedVideoModel: preference.selectedVideoModel ?? null }
+      : {}),
+    ...("selectedImageModel" in preference
+      ? { selectedImageModel: preference.selectedImageModel ?? null }
       : {}),
   };
 }

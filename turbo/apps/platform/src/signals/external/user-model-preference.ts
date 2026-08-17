@@ -110,6 +110,7 @@ const handleUserPreferenceChanged$ = command(
       payloadRequestsKindsReloadFor(payload, [
         "defaultModel",
         "defaultVideoModel",
+        "defaultImageModel",
       ])
     ) {
       set(reloadUserModelPreference$);
