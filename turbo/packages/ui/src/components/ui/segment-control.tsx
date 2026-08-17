@@ -53,8 +53,9 @@ const segmentControlItemVariants = cva(
     // Segment padding runs one step tighter than the matching button size,
     // because the segment already sits inside the track's 2px inset -- that
     // puts the label the same optical distance from the outer edge as a
-    // button of the same size. `xs` drops to `text-xs`: 14px text in a 22px
-    // segment leaves a 1px line box gap, which reads as clipped.
+    // button of the same size. `xs` drops to `text-xs`: the h-7 track leaves a
+    // 24px segment, where `text-sm`'s 20px line box would clear only 2px a
+    // side against the 4px an h-7 button gives it.
     variants: {
       size: {
         xs: "px-2 text-xs",
