@@ -173,11 +173,20 @@ function lastSend(sends: AgentPhoneSendCapture): AgentPhoneProviderSend {
   return send;
 }
 
-function expectExactSystemPromptSuffix(
+function expectIntegrationImmediatelyBeforeRestrictedContent(
   appendSystemPrompt: string,
-  expectedSuffix: string,
+  expectedIntegration: string,
 ): void {
-  expect(appendSystemPrompt.slice(-expectedSuffix.length)).toBe(expectedSuffix);
+  const restrictedContentIndex = appendSystemPrompt.lastIndexOf(
+    "# Restricted Explicit Content",
+  );
+  expect(restrictedContentIndex).toBeGreaterThan(-1);
+  expect(
+    appendSystemPrompt
+      .slice(0, restrictedContentIndex)
+      .trimEnd()
+      .endsWith(expectedIntegration),
+  ).toBeTruthy();
 }
 
 async function waitForTyping(
@@ -365,7 +374,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
 
     const run1 = await claimDispatchedRun(runnerGroup);
     expect(run1.prompt).toBe("summarize my inbox");
-    expectExactSystemPromptSuffix(
+    expectIntegrationImmediatelyBeforeRestrictedContent(
       run1.appendSystemPrompt,
       [
         "# Current Integration",
@@ -551,7 +560,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       agentphoneAgentId: AGENTPHONE_BDD_AGENT_ID,
     });
     const phoneRun1 = await claimDispatchedRun(runnerGroup);
-    expectExactSystemPromptSuffix(
+    expectIntegrationImmediatelyBeforeRestrictedContent(
       phoneRun1.appendSystemPrompt,
       [
         "# Current Integration",
@@ -974,7 +983,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     if (!groupThreadContext) {
       throw new Error("Expected AgentPhone group launch thread context");
     }
-    expectExactSystemPromptSuffix(
+    expectIntegrationImmediatelyBeforeRestrictedContent(
       run1.appendSystemPrompt,
       [
         "# Current Integration",

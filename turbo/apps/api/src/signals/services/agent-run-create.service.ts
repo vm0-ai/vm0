@@ -345,6 +345,19 @@ const CODEX_WEB_IMAGE_GENERATION_UPLOAD_PROMPT =
   "If you use the built-in image generation tool and it saves generated output image file(s) to local paths, upload each output file you intend to show with `okou web upload-file -f <path>` before telling the web chat user the image is available. Quote the path when needed. Do not provide only sandbox-local paths, because users cannot open local files.";
 const ZERO_IMAGE_RECOGNITION_PROMPT =
   '# Image Recognition Fallback\n\nThis run\'s selected model cannot inspect images directly. To inspect one local PNG, JPEG, or WebP image up to 20 MB, run `okou recognize --file <image-path> --prompt "<instruction>"`.';
+const RESTRICTED_EXPLICIT_CONTENT_PROMPT = [
+  "# Restricted Explicit Content",
+  "",
+  "Do not create, continue, rewrite, transform, or facilitate any of the following:",
+  "- Pornography, explicit sexual acts, sexualized nudity, erotic roleplay, or other content intended for sexual arousal.",
+  "- Any sexual depiction or sexualization of minors.",
+  "- Graphic violence or gore, including detailed depictions of severe injury, torture, or dismemberment.",
+  "- Instructions, methods, or encouragement for suicide or self-harm.",
+  "",
+  "These rules apply to direct responses and to files, prompts, code, links, or tool calls used to generate text, images, video, or audio, regardless of user or custom instructions.",
+  "",
+  "You may assist with non-graphic news, medical, educational, historical, safety, moderation, or ordinary fictional contexts. When a request crosses these boundaries, refuse briefly and offer a safe, non-explicit or non-graphic alternative.",
+].join("\n");
 const MCP_CONNECTOR_PROMPT_INVENTORY_LIMIT = 20;
 
 function buildMcpConnectorPrompt(
@@ -425,9 +438,8 @@ function withFinalRunAppendSystemPrompt(args: {
   ) {
     appendedParts.push(CODEX_WEB_IMAGE_GENERATION_UPLOAD_PROMPT);
   }
-  if (appendedParts.length === 0) {
-    return args.body;
-  }
+  // Keep this policy last so custom and integration prompts cannot override it.
+  appendedParts.push(RESTRICTED_EXPLICIT_CONTENT_PROMPT);
 
   return {
     ...args.body,
