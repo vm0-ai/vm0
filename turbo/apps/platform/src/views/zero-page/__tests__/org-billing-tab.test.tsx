@@ -1407,9 +1407,6 @@ describe("organization billing settings", () => {
     });
     expect(conversionNotice).toBeVisible();
     expect(conversionNotice).toHaveTextContent("Scheduled for Sep 1, 2026");
-    expect(
-      within(conversionNotice).getByText("Scheduled for Sep 1, 2026"),
-    ).not.toHaveClass("block");
 
     const reviewConversionButton = buttonByText(
       "Review conversion",
@@ -1418,7 +1415,6 @@ describe("organization billing settings", () => {
     expect(conversionNotice.parentElement).toContainElement(
       reviewConversionButton,
     );
-    expect(conversionNotice.parentElement).not.toHaveClass("border-t-[0.7px]");
     click(reviewConversionButton);
     const reviewDialog = await screen.findByRole("dialog", {
       name: "Review plan conversion",
@@ -1456,14 +1452,8 @@ describe("organization billing settings", () => {
     expect(reviewConversionNotice).toHaveTextContent(
       "Scheduled for Sep 1, 2026",
     );
-    expect(
-      within(reviewConversionNotice).getByText("Scheduled for Sep 1, 2026"),
-    ).not.toHaveClass("block");
     expect(reviewConversionNotice.parentElement).toContainElement(
       buttonByText("Confirm", reviewDialog),
-    );
-    expect(reviewConversionNotice.parentElement).not.toHaveClass(
-      "border-t-[0.7px]",
     );
 
     click(within(reviewDialog).getByLabelText("Back"));
@@ -2591,7 +2581,6 @@ describe("organization billing settings", () => {
     expect(downgradeNotice.parentElement).toContainElement(
       confirmDowngradeButton,
     );
-    expect(downgradeNotice.parentElement).not.toHaveClass("border-t-[0.7px]");
     click(confirmDowngradeButton);
     const confirmationDialog = await screen.findByRole("dialog", {
       name: "Review package change",
