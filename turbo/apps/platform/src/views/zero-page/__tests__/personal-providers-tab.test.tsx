@@ -119,14 +119,18 @@ function connectedPersonalClaudeCodeProvider(): ModelProviderResponse {
   };
 }
 
-function mockPersonalProvidersStory(role: "admin" | "member" = "member"): void {
+function mockPersonalProvidersStory(
+  role: "admin" | "member" = "member",
+  onCodexStart?: (body: unknown) => void,
+): void {
   context.mocks.data.org({
     id: "org_1",
     name: "Test Org",
     role,
   });
   context.mocks.data.personalModelProviders([stalePersonalCodexProvider()]);
-  context.mocks.api(codexDeviceAuthContract.start, ({ respond }) => {
+  context.mocks.api(codexDeviceAuthContract.start, ({ body, respond }) => {
+    onCodexStart?.(body);
     return respond(200, {
       sessionToken: "mock-personal-codex-device-session",
       type: "codex",
@@ -815,7 +819,10 @@ describe("personal model providers settings", () => {
   });
 
   it("opens reconnect login from a stale personal Codex credential", async () => {
-    mockPersonalProvidersStory();
+    let startBody: unknown;
+    mockPersonalProvidersStory("member", (body) => {
+      startBody = body;
+    });
     await openModelSettings();
 
     const codexRow = await screen.findByTestId("oauth-card-codex-oauth-token");
@@ -832,6 +839,11 @@ describe("personal model providers settings", () => {
       for (const deviceAuthCode of deviceAuthCodes) {
         expect(deviceAuthCode).toHaveTextContent("PERS-1234");
       }
+    });
+    expect(startBody).toStrictEqual({
+      scope: "personal",
+      mode: "reconnect",
+      modelProviderId: "00000000-0000-4000-a000-000000000301",
     });
   });
 

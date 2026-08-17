@@ -33,6 +33,7 @@ type PersonalModelProviderStatus =
       status: "needs_reconnect";
       providerType: PersonalOauthProviderType;
       modelLabel: string;
+      credentialId: string;
     };
 
 type PersonalModelProviderStatusByModel = Readonly<
@@ -66,17 +67,26 @@ function personalStatusForPolicy(
   }
 
   const provider = personalProviders.find((candidate) => {
-    return candidate.type === policy.defaultProviderType;
+    return (
+      candidate.type === policy.defaultProviderType &&
+      candidate.isActive !== false
+    );
   });
-  return {
+  const providerDetails = {
     providerType: policy.defaultProviderType,
     modelLabel: policy.modelLabel,
-    status: !provider
-      ? "missing"
-      : provider.needsReconnect
-        ? "needs_reconnect"
-        : "connected",
   };
+  if (!provider) {
+    return { ...providerDetails, status: "missing" };
+  }
+  if (provider.needsReconnect) {
+    return {
+      ...providerDetails,
+      status: "needs_reconnect",
+      credentialId: provider.id,
+    };
+  }
+  return { ...providerDetails, status: "connected" };
 }
 
 export const personalModelProvider$ = computed(

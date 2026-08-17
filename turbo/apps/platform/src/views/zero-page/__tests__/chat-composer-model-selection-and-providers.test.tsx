@@ -2410,8 +2410,9 @@ describe("chat composer models", () => {
     });
   });
 
-  it("opens reconnect login for a stale personal Codex routed model", async () => {
+  it("reconnects the active personal Codex account from a new chat", async () => {
     const user = userEvent.setup({ delay: null });
+    let startBody: unknown;
     mockBillingCapabilities(
       { supportByok: true, restrictedVm0Models: false },
       "limited-free-1",
@@ -2429,7 +2430,19 @@ describe("chat composer models", () => {
     ]);
     context.mocks.data.personalModelProviders([
       buildProvider({
+        id: "00000000-0000-4000-a000-000000000402",
+        modelProviderId: "00000000-0000-4000-a000-000000000400",
+        isActive: false,
+        type: "codex-oauth-token",
+        framework: "codex",
+        secretName: null,
+        authMethod: "auth_json",
+        secretNames: ["CODEX_AUTH_JSON"],
+      }),
+      buildProvider({
         id: "00000000-0000-4000-a000-000000000403",
+        modelProviderId: "00000000-0000-4000-a000-000000000400",
+        isActive: true,
         type: "codex-oauth-token",
         framework: "codex",
         secretName: null,
@@ -2440,7 +2453,8 @@ describe("chat composer models", () => {
       }),
     ]);
     mockAgent();
-    context.mocks.api(codexDeviceAuthContract.start, ({ respond }) => {
+    context.mocks.api(codexDeviceAuthContract.start, ({ body, respond }) => {
+      startBody = body;
       return respond(200, {
         sessionToken: "mock-stale-codex-device-session",
         type: "codex",
@@ -2476,6 +2490,67 @@ describe("chat composer models", () => {
       screen.findByTestId("codex-device-auth-code"),
     ).resolves.toHaveTextContent("RECO-NNECT");
     expect(screen.getByText("Re-connect Codex")).toBeInTheDocument();
+    expect(startBody).toStrictEqual({
+      scope: "personal",
+      mode: "reconnect",
+      modelProviderId: "00000000-0000-4000-a000-000000000403",
+    });
+  });
+
+  it("reconnects personal Claude Code from an existing chat", async () => {
+    const user = userEvent.setup({ delay: null });
+    let startBody: unknown;
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        model: "claude-opus-4-8",
+        modelLabel: "Claude Opus 4.8",
+        isDefault: true,
+        defaultProviderType: "claude-code-oauth-token",
+        credentialScope: "member",
+      }),
+    ]);
+    context.mocks.data.personalModelProviders([
+      buildProvider({
+        id: "00000000-0000-4000-a000-000000000404",
+        type: "claude-code-oauth-token",
+        framework: "claude-code",
+        secretName: "CLAUDE_CODE_OAUTH_TOKEN",
+        needsReconnect: true,
+        lastRefreshErrorCode: "refresh_token_expired",
+      }),
+    ]);
+    mockAgent();
+    mockThread({ selectedModel: "claude-opus-4-8" });
+    context.mocks.api(
+      claudeCodeDeviceAuthContract.start,
+      ({ body, respond }) => {
+        startBody = body;
+        return respond(200, {
+          sessionToken: "mock-stale-claude-code-device-session",
+          type: "claude-code",
+          status: "pending",
+          scope: "personal",
+          browserUrl: "https://claude.ai/oauth/authorize",
+          expiresIn: 30,
+        });
+      },
+    );
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+    await expectComposerModel("Claude Opus 4.8");
+
+    await screen.findByText("Configure model");
+    await user.click(buttonContainingText("Configure model"));
+
+    await expect(
+      screen.findByTestId("claude-code-device-auth-code"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByText("Re-connect Claude Code")).toBeInTheDocument();
+    expect(startBody).toStrictEqual({
+      scope: "personal",
+      mode: "reconnect",
+      modelProviderId: "00000000-0000-4000-a000-000000000404",
+    });
   });
 
   it("completes personal Claude Code auth from a routed model blocker", async () => {
