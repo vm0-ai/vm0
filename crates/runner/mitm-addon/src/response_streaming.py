@@ -4,23 +4,17 @@ Lifecycle:
 - ``mitm_addon.responseheaders()`` calls ``configure_response_stream()`` to
   install the streaming callback, exact byte accounting, optional capped body
   buffer, and incremental usage parsers.
-- ``mitm_addon.websocket_message()`` calls ``observe_model_websocket_client_event()``
-  for client request intent and ``feed_model_websocket_usage()`` for server-side
-  usage frames on model-provider WebSocket upgrades.
 - ``mitm_addon.response()`` finalizes HTTP model and connector usage before
   reporting it.
 - ``mitm_addon.error()`` may finalize partial SSE or opted-in connector usage
   before terminal cleanup.
-- ``mitm_addon.websocket_end()`` is terminal for model-provider WebSocket
-  upgrades. HTTP 101 responses defer tracked usage release until that hook.
 - hook cleanup paths call ``release_response_stream_state()`` to remove parser
   callbacks, byte accounting, and optional buffer metadata from
-  ``flow.metadata``. This cleanup is separate from tracked usage release.
+  ``flow.metadata``.
 """
 
 from collections.abc import Callable
-from dataclasses import dataclass
-from typing import Literal, NamedTuple
+from typing import NamedTuple
 
 from mitmproxy import http
 from wsproto.utilities import generate_accept_token
@@ -30,6 +24,7 @@ import body_decoding
 import claude_output_timing
 import flow_metadata
 import flow_metadata_keys as metadata_keys
+import model_websocket_usage
 import runtime_url_parsing
 import stream_capture
 import usage
@@ -46,8 +41,6 @@ _HTTP_STATUS_NOT_MODIFIED = 304
 
 _MODEL_JSON_USAGE_FINISH = "model_json_usage_finish"
 _MODEL_SSE_USAGE_FINISH = "model_sse_usage_finish"
-_MODEL_WEBSOCKET_USAGE_ENABLED = "model_websocket_usage_enabled"
-_MODEL_WEBSOCKET_PREWARM_STATE = "_model_websocket_prewarm_state"
 _CONNECTOR_RESPONSE_FINISH = "connector_response_finish"
 _CONNECTOR_RESPONSE_REPORT_ON_INTERRUPTION = "connector_response_report_on_interruption"
 _RESPONSE_STREAM_CALLBACK = "_vm0_response_stream_callback"
@@ -83,78 +76,6 @@ class _ResponseUsageStreamSetup(NamedTuple):
     needs_buffered_fallback: bool
 
 
-@dataclass(slots=True)
-class _OpenAIResponsesPrewarmState:
-    pending_intent: Literal["normal", "prewarm"] | None = None
-    active_intent: Literal["normal", "prewarm"] | None = None
-    active_response_id: str | None = None
-    ignored_response_id: str | None = None
-    ambiguous: bool = False
-    ambiguity_diagnostic_emitted: bool = False
-    ignored_diagnostic_emitted: bool = False
-
-
-_WebSocketCorrelationReason = Literal[
-    "overlapping_request",
-    "unknown_client_event",
-    "invalid_lifecycle",
-    "server_error",
-    "correlation_cap",
-]
-_WEBSOCKET_LIFECYCLE_EVENT_TYPES = frozenset(
-    (
-        "response.created",
-        "response.completed",
-        "response.done",
-        "response.incomplete",
-        "response.failed",
-        "error",
-    )
-)
-
-
-def _clear_websocket_correlation_candidate(state: _OpenAIResponsesPrewarmState) -> None:
-    state.pending_intent = None
-    state.active_intent = None
-    state.active_response_id = None
-
-
-def _lifecycle_ambiguity_reason(
-    lifecycle: usage.OpenAIResponsesServerLifecycle,
-) -> _WebSocketCorrelationReason:
-    if lifecycle.work_limit_exceeded:
-        return "correlation_cap"
-    return "invalid_lifecycle"
-
-
-def _mark_websocket_correlation_ambiguous(
-    flow: http.HTTPFlow,
-    state: _OpenAIResponsesPrewarmState,
-    reason: _WebSocketCorrelationReason,
-) -> None:
-    """Disable prewarm exclusion after ownership can no longer be proven."""
-    state.ambiguous = True
-    _clear_websocket_correlation_candidate(state)
-    # Fail-open is sticky for the rest of the flow.  A previously ignored ID
-    # must not remain capable of suppressing usage after that transition.
-    state.ignored_response_id = None
-    if state.ambiguity_diagnostic_emitted:
-        return
-    log_proxy_entry(
-        flow_metadata.proxy_log_path(flow.metadata),
-        "warn",
-        "Model provider WebSocket usage correlation became ambiguous",
-        type="model_usage_correlation",
-        disposition="ambiguous",
-        reason=reason,
-        run_id=flow_metadata.run_id(flow.metadata),
-        flow_id=flow.id,
-        transport="websocket",
-        firewall_name=flow_metadata.firewall_name(flow.metadata),
-    )
-    state.ambiguity_diagnostic_emitted = True
-
-
 def model_usage_protocol(flow: http.HTTPFlow) -> usage.ModelUsageProtocol:
     """Classify model usage from the observed request and CLI fallback."""
     request_target = flow_metadata.original_url(flow.metadata) or flow.request.path
@@ -186,117 +107,6 @@ def uses_model_json_fallback(flow: http.HTTPFlow) -> bool:
     if _response_has_event_stream_media_type(response):
         return False
     return not _is_confirmed_websocket_upgrade_response(flow)
-
-
-def is_model_websocket_usage_enabled(flow: http.HTTPFlow) -> bool:
-    """Return whether model-provider WebSocket usage extraction is active.
-
-    Read-only predicate used by ``websocket_message()`` feeding and terminal
-    response cleanup. Reads ``_MODEL_WEBSOCKET_USAGE_ENABLED``; true means an
-    HTTP 101 response is not terminal for tracked usage and reporting must wait
-    for ``websocket_end()``.
-    """
-    return bool(flow.metadata.get(_MODEL_WEBSOCKET_USAGE_ENABLED, False))
-
-
-def release_model_websocket_usage_state(flow: http.HTTPFlow) -> None:
-    """Disable WebSocket usage extraction after a terminal websocket/error hook."""
-    flow.metadata.pop(_MODEL_WEBSOCKET_USAGE_ENABLED, None)
-    flow.metadata.pop(_MODEL_WEBSOCKET_PREWARM_STATE, None)
-
-
-def observe_model_websocket_client_event(
-    flow: http.HTTPFlow,
-    event: usage.OpenAIResponsesClientEvent,
-) -> None:
-    """Track bounded request intent on one WebSocket flow."""
-    state = flow.metadata.get(_MODEL_WEBSOCKET_PREWARM_STATE)
-    if not isinstance(state, _OpenAIResponsesPrewarmState):
-        return
-
-    if event.request_kind == "unknown":
-        reason: _WebSocketCorrelationReason = (
-            "correlation_cap" if event.work_limit_exceeded else "unknown_client_event"
-        )
-        _mark_websocket_correlation_ambiguous(flow, state, reason)
-        return
-    if state.ambiguous:
-        return
-    if state.pending_intent is not None or state.active_intent is not None:
-        _mark_websocket_correlation_ambiguous(flow, state, "overlapping_request")
-        return
-    state.pending_intent = "prewarm" if event.is_prewarm else "normal"
-    if event.is_prewarm:
-        state.ignored_diagnostic_emitted = False
-
-
-def _observe_websocket_server_lifecycle(
-    flow: http.HTTPFlow,
-    state: _OpenAIResponsesPrewarmState,
-    lifecycle: usage.OpenAIResponsesServerLifecycle,
-) -> None:
-    """Advance request intent state at a server lifecycle boundary."""
-    if state.ambiguous:
-        return
-    if lifecycle.is_error:
-        reason = "server_error" if lifecycle.is_valid else _lifecycle_ambiguity_reason(lifecycle)
-        _mark_websocket_correlation_ambiguous(flow, state, reason)
-        return
-    if lifecycle.is_created:
-        if not lifecycle.is_valid:
-            _mark_websocket_correlation_ambiguous(
-                flow,
-                state,
-                _lifecycle_ambiguity_reason(lifecycle),
-            )
-            return
-        if lifecycle.response_id == state.ignored_response_id:
-            # A retained ID only proves duplicate terminal ownership. Reusing it
-            # at a new created boundary cannot be correlated safely.
-            _mark_websocket_correlation_ambiguous(flow, state, "invalid_lifecycle")
-            return
-        if state.pending_intent is None or state.active_intent is not None:
-            _mark_websocket_correlation_ambiguous(flow, state, "invalid_lifecycle")
-            return
-        state.active_intent = state.pending_intent
-        state.active_response_id = lifecycle.response_id
-        state.pending_intent = None
-        return
-    if lifecycle.is_terminal:
-        if not lifecycle.is_valid:
-            if state.pending_intent is not None or state.active_intent is not None:
-                _mark_websocket_correlation_ambiguous(
-                    flow,
-                    state,
-                    _lifecycle_ambiguity_reason(lifecycle),
-                )
-            return
-        if lifecycle.response_id == state.ignored_response_id:
-            # A pending request has no bound ID yet, so this could be either an
-            # old duplicate or that request's terminal after a missing created
-            # boundary. Only an idle flow or a differently bound active response
-            # can prove that the retained ID is an old duplicate.
-            if state.pending_intent is not None:
-                _mark_websocket_correlation_ambiguous(flow, state, "invalid_lifecycle")
-            return
-        if (
-            state.active_intent is None
-            and state.pending_intent is not None
-            and lifecycle.response_id != state.ignored_response_id
-        ):
-            _mark_websocket_correlation_ambiguous(flow, state, "invalid_lifecycle")
-            return
-        if state.active_intent is not None and lifecycle.response_id != state.active_response_id:
-            _mark_websocket_correlation_ambiguous(flow, state, "invalid_lifecycle")
-        return
-    if not lifecycle.is_valid and (
-        state.pending_intent is not None or state.active_intent is not None
-    ):
-        _mark_websocket_correlation_ambiguous(
-            flow,
-            state,
-            _lifecycle_ambiguity_reason(lifecycle),
-        )
 
 
 def _make_response_decode_session(
@@ -404,10 +214,7 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
         and model_protocol == "openai_responses"
         and _is_confirmed_websocket_upgrade_response(flow)
     ):
-        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {}
-        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {}
-        flow.metadata[_MODEL_WEBSOCKET_PREWARM_STATE] = _OpenAIResponsesPrewarmState()
-        flow.metadata[_MODEL_WEBSOCKET_USAGE_ENABLED] = True
+        model_websocket_usage.activate(flow)
         return _ResponseUsageStreamSetup(None, False)
     if not _response_can_have_body(flow, response):
         return _ResponseUsageStreamSetup(None, False)
@@ -708,157 +515,6 @@ def finalize_model_sse_usage(flow: http.HTTPFlow) -> None:
     finish = flow.metadata.pop(_MODEL_SSE_USAGE_FINISH, None)
     if finish is not None:
         finish()
-
-
-def feed_model_websocket_usage(
-    flow: http.HTTPFlow,
-    event: usage.OpenAIResponsesEvent,
-) -> None:
-    """Merge model-provider usage from one server WebSocket frame.
-
-    Called from ``websocket_message()`` only for server-originated frames after
-    provider event inspection. Reads ``_MODEL_WEBSOCKET_USAGE_ENABLED`` via
-    ``is_model_websocket_usage_enabled()`` and temporarily writes per-response sources to
-    ``metadata_keys.MODEL_PROVIDER_USAGE_SOURCES`` while attempting a
-    source-preserving report, then releases them from flow metadata. Frames
-    without a response id fall back to ``metadata_keys.MODEL_PROVIDER_USAGE``.
-    This helper is not idempotent for the same frame; callers must feed each
-    server frame once.
-    """
-    if not is_model_websocket_usage_enabled(flow):
-        return
-    prewarm_state = flow.metadata.get(_MODEL_WEBSOCKET_PREWARM_STATE)
-    lifecycle: usage.OpenAIResponsesServerLifecycle | None = None
-    should_inspect_lifecycle = (
-        isinstance(prewarm_state, _OpenAIResponsesPrewarmState)
-        and not prewarm_state.ambiguous
-        and (
-            prewarm_state.pending_intent is not None
-            or prewarm_state.active_intent is not None
-            or prewarm_state.ignored_response_id is not None
-            or event.event_type is None
-            or event.event_type in _WEBSOCKET_LIFECYCLE_EVENT_TYPES
-        )
-    )
-    if should_inspect_lifecycle and isinstance(prewarm_state, _OpenAIResponsesPrewarmState):
-        lifecycle = usage.inspect_openai_responses_server_lifecycle(event)
-        _observe_websocket_server_lifecycle(flow, prewarm_state, lifecycle)
-
-    usage_result, inspection_error = usage.extract_openai_responses_usage_from_event(event)
-    if inspection_error is not None:
-        if isinstance(prewarm_state, _OpenAIResponsesPrewarmState):
-            _mark_websocket_correlation_ambiguous(flow, prewarm_state, "correlation_cap")
-        log_proxy_entry(
-            flow_metadata.proxy_log_path(flow.metadata),
-            "warn",
-            "Model provider WebSocket usage extraction failed",
-            type="usage_event",
-            usage_protocol="openai_responses_websocket",
-            error=inspection_error,
-        )
-        return
-
-    message_id_value = usage_result.get("message_id") if usage_result else None
-    message_id = (
-        message_id_value if isinstance(message_id_value, str) and message_id_value else None
-    )
-    has_message_id = message_id is not None
-    suppressed = False
-    if isinstance(prewarm_state, _OpenAIResponsesPrewarmState):
-        if (
-            usage_result is not None
-            and has_message_id
-            and lifecycle is not None
-            and lifecycle.is_terminal
-            and lifecycle.is_valid
-            and lifecycle.response_id == message_id
-        ):
-            if (
-                not prewarm_state.ambiguous
-                and prewarm_state.active_intent == "prewarm"
-                and prewarm_state.active_response_id == message_id
-            ):
-                if (
-                    not prewarm_state.ignored_diagnostic_emitted
-                    and usage.has_positive_model_provider_usage(usage_result)
-                ):
-                    usage.log_ignored_model_provider_usage_source(
-                        flow,
-                        flow_metadata.run_id(flow.metadata),
-                        message_id,
-                        usage_result,
-                        reason="responses_generate_false",
-                    )
-                    prewarm_state.ignored_diagnostic_emitted = True
-                prewarm_state.ignored_response_id = message_id
-                suppressed = True
-            elif not prewarm_state.ambiguous and prewarm_state.ignored_response_id == message_id:
-                suppressed = True
-        if (
-            not suppressed
-            and usage_result is not None
-            and (
-                prewarm_state.pending_intent is not None or prewarm_state.active_intent is not None
-            )
-        ):
-            if not has_message_id:
-                if lifecycle is None or not lifecycle.is_terminal:
-                    _mark_websocket_correlation_ambiguous(
-                        flow,
-                        prewarm_state,
-                        "invalid_lifecycle",
-                    )
-            elif prewarm_state.active_intent is not None:
-                active_id = prewarm_state.active_response_id
-                if active_id != message_id or lifecycle is None or not lifecycle.is_terminal:
-                    _mark_websocket_correlation_ambiguous(
-                        flow,
-                        prewarm_state,
-                        "invalid_lifecycle",
-                    )
-            elif lifecycle is None or not lifecycle.is_terminal:
-                _mark_websocket_correlation_ambiguous(
-                    flow,
-                    prewarm_state,
-                    "invalid_lifecycle",
-                )
-
-    if not suppressed and usage_result:
-        if has_message_id:
-            usage_sources = flow.metadata.get(metadata_keys.MODEL_PROVIDER_USAGE_SOURCES)
-            if not isinstance(usage_sources, dict):
-                usage_sources = {}
-                flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = usage_sources
-            usage_target = usage_sources.get(message_id)
-            if not isinstance(usage_target, dict):
-                usage_target = {}
-                usage_sources[message_id] = usage_target
-            usage.merge_openai_responses_usage_result(usage_target, usage_result)
-            run_id = flow_metadata.run_id(flow.metadata)
-            usage.report_model_provider_usage_source(
-                flow,
-                run_id,
-                message_id,
-                usage_target,
-            )
-            usage_sources.pop(message_id, None)
-        else:
-            usage_target = flow.metadata.get(metadata_keys.MODEL_PROVIDER_USAGE)
-            if not isinstance(usage_target, dict):
-                usage_target = {}
-                flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = usage_target
-            usage.merge_openai_responses_usage_result(usage_target, usage_result)
-
-    if (
-        isinstance(prewarm_state, _OpenAIResponsesPrewarmState)
-        and lifecycle is not None
-        and lifecycle.is_terminal
-        and lifecycle.is_valid
-        and not prewarm_state.ambiguous
-        and prewarm_state.active_response_id == lifecycle.response_id
-    ):
-        prewarm_state.active_intent = None
-        prewarm_state.active_response_id = None
 
 
 def _finish_connector_response_state(flow: http.HTTPFlow) -> None:
