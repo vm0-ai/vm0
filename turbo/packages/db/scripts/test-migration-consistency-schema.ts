@@ -3559,6 +3559,7 @@ async function validatePermanentAgentRunMetadataState(
       "selected_model",
       "codex_service_tier",
       "selected_video_model",
+      "selected_image_model",
       "chat_thread_id",
       "api_started_at",
       "first_assistant_event_acknowledged_at",

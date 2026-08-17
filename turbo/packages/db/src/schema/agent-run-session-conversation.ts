@@ -122,6 +122,8 @@ export const agentRuns = pgTable(
       length: 20,
     }).$type<CodexServiceTier>(),
     selectedVideoModel: varchar("selected_video_model", { length: 255 }),
+    /** Built-in image model default snapshotted for this run. */
+    selectedImageModel: varchar("selected_image_model", { length: 255 }),
     chatThreadId: uuid("chat_thread_id").references(
       (): AnyPgColumn => {
         return chatThreads.id;
@@ -186,6 +188,7 @@ export const agentRuns = pgTable(
             ${table.selectedModel} IS NULL AND
             ${table.codexServiceTier} IS NULL AND
             ${table.selectedVideoModel} IS NULL AND
+            ${table.selectedImageModel} IS NULL AND
             ${table.chatThreadId} IS NULL AND
             ${table.apiStartedAt} IS NULL AND
             ${table.firstAssistantEventAcknowledgedAt} IS NULL AND

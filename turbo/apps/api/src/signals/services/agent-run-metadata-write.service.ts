@@ -16,6 +16,7 @@ type StoredRunMetadataValues = Pick<
   | "selectedModel"
   | "codexServiceTier"
   | "selectedVideoModel"
+  | "selectedImageModel"
   | "chatThreadId"
   | "apiStartedAt"
   | "firstAssistantEventAcknowledgedAt"
@@ -69,6 +70,7 @@ export function normalizeRunMetadata(
     selectedModel: input.selectedModel ?? null,
     codexServiceTier: input.codexServiceTier ?? null,
     selectedVideoModel: input.selectedVideoModel ?? null,
+    selectedImageModel: input.selectedImageModel ?? null,
     chatThreadId: input.chatThreadId ?? null,
     apiStartedAt: input.apiStartedAt ?? null,
     firstAssistantEventAcknowledgedAt:

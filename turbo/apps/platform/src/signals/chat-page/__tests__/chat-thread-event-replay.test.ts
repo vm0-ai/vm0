@@ -23,6 +23,7 @@ function snapshotThread(
     computerUseHostId: null,
     cloudBrowserEnabled: false,
     selectedVideoModel: null,
+    selectedImageModel: null,
     ...params,
   };
 }
@@ -37,6 +38,7 @@ function event(
     | "computerUseHostId"
     | "cloudBrowserEnabled"
     | "selectedVideoModel"
+    | "selectedImageModel"
   > & {
     readonly id: string;
     readonly createdAt: string;
@@ -45,6 +47,7 @@ function event(
     readonly computerUseHostId?: string | null;
     readonly cloudBrowserEnabled?: boolean;
     readonly selectedVideoModel?: string | null;
+    readonly selectedImageModel?: string | null;
   },
 ): ReplayChatThreadEvent {
   return {
@@ -54,6 +57,7 @@ function event(
     computerUseHostId: params.computerUseHostId ?? null,
     cloudBrowserEnabled: params.cloudBrowserEnabled ?? false,
     selectedVideoModel: params.selectedVideoModel ?? null,
+    selectedImageModel: params.selectedImageModel ?? null,
   };
 }
 
@@ -119,6 +123,7 @@ describe("replayChatThreadEvents", () => {
         computerUseHostId: null,
         cloudBrowserEnabled: false,
         selectedVideoModel: null,
+        selectedImageModel: null,
       },
     ]);
   });
@@ -357,6 +362,69 @@ describe("replayChatThreadEvents", () => {
     expect(thread).toMatchObject({ selectedVideoModel: "MiniMax-H3" });
   });
 
+  it("replays the image model without touching run or video models", () => {
+    const [thread] = replayChatThreadEvents(
+      [
+        snapshotThread({
+          id: "thread-a",
+          agentId: "agent-1",
+          selectedModel: "claude-sonnet-4-6",
+          selectedVideoModel: "MiniMax-H3",
+          sortAt: "2026-07-01T03:00:00.000Z",
+        }),
+      ],
+      [
+        event({
+          id: "event-1",
+          kind: "image_model_updated",
+          chatThreadId: "thread-a",
+          agentId: "agent-1",
+          title: null,
+          selectedImageModel: "fal-ai/qwen-image",
+          createdAt: "2026-07-01T06:00:00.000Z",
+        }),
+      ],
+    );
+
+    expect(thread).toMatchObject({
+      selectedModel: "claude-sonnet-4-6",
+      selectedVideoModel: "MiniMax-H3",
+      selectedImageModel: "fal-ai/qwen-image",
+      sortAt: "2026-07-01T03:00:00.000Z",
+      updatedAt: "2026-07-01T06:00:00.000Z",
+    });
+  });
+
+  it("defers a loose image model update that arrives before creation", () => {
+    const createdAt = "2026-07-01T04:00:00.000Z";
+    const [thread] = replayChatThreadEvents(
+      [],
+      [
+        event({
+          id: "event-1",
+          kind: "image_model_updated",
+          chatThreadId: "thread-a",
+          agentId: "agent-1",
+          title: null,
+          selectedImageModel: "retired-image-model",
+          createdAt,
+        }),
+        event({
+          id: "event-2",
+          kind: "created",
+          chatThreadId: "thread-a",
+          agentId: "agent-1",
+          title: "Created thread",
+          createdAt,
+        }),
+      ],
+    );
+
+    expect(thread).toMatchObject({
+      selectedImageModel: "retired-image-model",
+    });
+  });
+
   it("applies configuration updates that arrive before same-timestamp creation", () => {
     const sameTimestamp = "2026-07-01T05:00:00.000Z";
     const computerUseHostId = "11111111-1111-4111-8111-111111111111";
@@ -416,6 +484,7 @@ describe("replayChatThreadEvents", () => {
         computerUseHostId,
         cloudBrowserEnabled: false,
         selectedVideoModel: null,
+        selectedImageModel: null,
       },
     ]);
   });

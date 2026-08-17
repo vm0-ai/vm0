@@ -90,6 +90,7 @@ export interface ThreadMeta {
   readonly computerUseHostId: string | null;
   readonly cloudBrowserEnabled: boolean;
   readonly selectedVideoModel: string | null;
+  readonly selectedImageModel: string | null;
 }
 
 const optimisticChatThreadEventsState$ = state<
@@ -651,6 +652,7 @@ export const chatThreadMetaMap$ = computed((get) => {
           computerUseHostId: thread.computerUseHostId,
           cloudBrowserEnabled: thread.cloudBrowserEnabled,
           selectedVideoModel: thread.selectedVideoModel,
+          selectedImageModel: thread.selectedImageModel,
         },
       ];
     }),
@@ -758,6 +760,7 @@ export const touchOptimisticChatThreadSort$ = command(
       computerUseHostId: null,
       cloudBrowserEnabled: false,
       selectedVideoModel: null,
+      selectedImageModel: null,
       createdAt: args.createdAt,
     } satisfies OptimisticChatThreadEvent);
   },

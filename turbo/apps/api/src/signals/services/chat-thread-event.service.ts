@@ -6,6 +6,7 @@ import type {
   ChatThreadSnapshotProjection,
   CodexServiceTier,
 } from "@okouai/api-contracts/contracts/chat-threads";
+import type { ImageModelId } from "@okouai/api-contracts/contracts/image-models";
 import { agentComposes } from "@okouai/db/schema/agent-compose";
 import {
   chatThreadEventSequences,
@@ -67,6 +68,7 @@ export async function appendChatThreadEvent(
     readonly computerUseHostId?: string | null;
     readonly cloudBrowserEnabled?: boolean;
     readonly selectedVideoModel?: string | null;
+    readonly selectedImageModel?: ImageModelId | null;
     readonly createdAt?: Date;
   },
 ): Promise<void> {
@@ -102,6 +104,7 @@ export async function appendChatThreadEvent(
       computerUseHostId: args.computerUseHostId ?? null,
       cloudBrowserEnabled: args.cloudBrowserEnabled ?? false,
       selectedVideoModel: args.selectedVideoModel ?? null,
+      selectedImageModel: args.selectedImageModel ?? null,
       ...(args.createdAt !== undefined ? { createdAt: args.createdAt } : {}),
     })
     .onConflictDoNothing({ target: chatThreadEvents.id });
@@ -149,6 +152,11 @@ export async function getChatThreadSnapshot(
           // been recompacted. Follow-up:
           // https://github.com/vm0-ai/vm0/issues/26765
           selectedVideoModel: thread.selectedVideoModel ?? null,
+          // Snapshot rows compacted before image-model persistence have no key.
+          // Keep hydration compatible until those rows and older browser caches
+          // have been replaced. Follow-up:
+          // https://github.com/vm0-ai/vm0/issues/27688
+          selectedImageModel: thread.selectedImageModel ?? null,
         };
       }) ?? [],
     latestEventId: snapshot?.latestEventId ?? null,
@@ -168,6 +176,7 @@ type ChatThreadEventRow = {
   readonly computerUseHostId: string | null;
   readonly cloudBrowserEnabled: boolean;
   readonly selectedVideoModel: string | null;
+  readonly selectedImageModel: string | null;
   readonly createdAt: Date;
 };
 
@@ -190,6 +199,7 @@ function toApiChatThreadEvent(row: ChatThreadEventRow): ChatThreadEvent {
     computerUseHostId: row.computerUseHostId,
     cloudBrowserEnabled: row.cloudBrowserEnabled,
     selectedVideoModel: row.selectedVideoModel,
+    selectedImageModel: row.selectedImageModel,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -230,6 +240,7 @@ export async function getChatThreadEventsSince(
           computerUseHostId: pageChatThreadEvent.computerUseHostId,
           cloudBrowserEnabled: pageChatThreadEvent.cloudBrowserEnabled,
           selectedVideoModel: pageChatThreadEvent.selectedVideoModel,
+          selectedImageModel: pageChatThreadEvent.selectedImageModel,
           createdAt: pageChatThreadEvent.createdAt,
         },
       })
@@ -271,6 +282,7 @@ export async function getChatThreadEventsSince(
         computerUseHostId: chatThreadEvents.computerUseHostId,
         cloudBrowserEnabled: chatThreadEvents.cloudBrowserEnabled,
         selectedVideoModel: chatThreadEvents.selectedVideoModel,
+        selectedImageModel: chatThreadEvents.selectedImageModel,
         createdAt: chatThreadEvents.createdAt,
       })
       .from(chatThreadEvents)

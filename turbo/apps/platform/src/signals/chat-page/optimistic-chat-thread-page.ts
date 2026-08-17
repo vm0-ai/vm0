@@ -352,6 +352,7 @@ const mintOptimisticThreadWithEvent$ = command(
       computerUseHostId: args.computerUseHostId,
       cloudBrowserEnabled: args.cloudBrowserEnabled,
       selectedVideoModel: args.selectedVideoModel,
+      selectedImageModel: null,
       createdAt,
     } satisfies OptimisticChatThreadEvent);
   },

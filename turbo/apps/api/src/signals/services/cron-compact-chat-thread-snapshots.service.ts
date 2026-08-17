@@ -157,7 +157,8 @@ function rebuiltCte(db: Pick<Db, "select">): SQL {
             END,
             'computerUseHostId', thread.computer_use_host_id,
             'cloudBrowserEnabled', thread.cloud_browser_enabled,
-            'selectedVideoModel', thread.selected_video_model
+            'selectedVideoModel', thread.selected_video_model,
+            'selectedImageModel', thread.selected_image_model
           )
           ORDER BY
             ${asc(isNull(thread.pinnedAt))},
