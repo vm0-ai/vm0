@@ -165,7 +165,6 @@ export const EXPECTED_REPOSITORY_DEPENDENCIES = {
     "turbo/apps/api/src/signals/routes/workflows.ts|@okouai/db/schema/zero-agent|zeroAgents:zeroAgents",
     "turbo/apps/api/src/signals/services/agent-compose-provenance-lifecycle.service.ts|@okouai/db/schema/agent-compose|agentComposes:agentComposes",
     "turbo/apps/api/src/signals/services/agent-compose.service.ts|@okouai/db/schema/agent-compose|agentComposeVersions:agentComposeVersions,agentComposes:agentComposes",
-    "turbo/apps/api/src/signals/services/agent-connector-scope.service.ts|@okouai/db/schema/zero-agent|type:ZeroAgentVisibility:ZeroAgentVisibility,zeroAgents:zeroAgents",
     "turbo/apps/api/src/signals/services/agent-data.service.ts|@okouai/db/schema/agent-compose|agentComposes:agentComposes",
     "turbo/apps/api/src/signals/services/agent-data.service.ts|@okouai/db/schema/zero-agent|zeroAgents:zeroAgents",
     "turbo/apps/api/src/signals/services/agent-instructions.service.ts|@okouai/db/schema/agent-compose|agentComposeVersions:agentComposeVersions,agentComposes:agentComposes",
@@ -273,7 +272,6 @@ export const EXPECTED_REPOSITORY_DEPENDENCIES = {
     "turbo/apps/api/src/signals/routes/workflows.ts|agentComposeId,zeroAgents",
     "turbo/apps/api/src/signals/services/agent-compose-provenance-lifecycle.service.ts|agentComposes",
     "turbo/apps/api/src/signals/services/agent-compose.service.ts|agentComposeId,agentComposeVersions,agentComposes,headVersionId",
-    "turbo/apps/api/src/signals/services/agent-connector-scope.service.ts|zeroAgents",
     "turbo/apps/api/src/signals/services/agent-data.service.ts|agentComposes,headVersionId,zeroAgents",
     "turbo/apps/api/src/signals/services/agent-instructions.service.ts|agentComposeVersions,agentComposes,headVersionId,zeroAgents",
     "turbo/apps/api/src/signals/services/agent-run-create.service.ts|agentComposeId,agentComposeVersionId,agentComposeVersions,agentComposes,headVersionId",
@@ -397,7 +395,7 @@ export const EXPECTED_REPOSITORY_DEPENDENCIES = {
     "crates/api-contracts/src/generated/decode_paths.rs|agentComposeVersionId",
   ],
   transitionValidators: [
-    "#27613|agent-compose-consolidation-preflight|removal-owner:#26938-stage-8",
+    "#27613+#27656|agent-compose-consolidation-preflight|removal-owner:#26938-stage-8",
   ],
 } as const satisfies RepositoryDependencyManifest;
 
