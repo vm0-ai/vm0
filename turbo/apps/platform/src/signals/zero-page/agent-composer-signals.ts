@@ -34,6 +34,7 @@ import {
 } from "./composer-signals.ts";
 import type { ChatEvent } from "../chat-page/chat-event-types.ts";
 import {
+  chatPageEffectiveVideoModel$,
   chatPageModelSelection$,
   chatPageSelectedModelOauthAvailable$,
   chatPageVideoModelSelection$,
@@ -179,6 +180,9 @@ function createAgentComposerSignalsWithDraft(
           generationTemplate: submission.generationTemplate,
           editorDocument: submission.editorDocument,
           videoModel: videoModelSelection ?? DEFAULT_VIDEO_MODEL,
+          ...(submission.videoRunOptions === undefined
+            ? {}
+            : { videoRunOptions: submission.videoRunOptions }),
           ...(access.kind === "computerUse"
             ? { computerUseHostId: hostId }
             : {}),
@@ -215,6 +219,7 @@ function createAgentComposerSignalsWithDraft(
     configureSelectedModel$: configureChatPageSelectedModel$,
     videoModel: {
       selectedVideoModel$: chatPageVideoModelSelection$,
+      effectiveVideoModel$: chatPageEffectiveVideoModel$,
       setVideoModel$,
     },
     computerUseHostId$,

@@ -899,8 +899,26 @@ const chatThreadModelSelectionUpdateBodySchema = z.object({
   serviceTierEventId: chatThreadEventIdSchema.optional(),
 });
 
+/**
+ * Text-to-video parameters chosen for this send only.
+ *
+ * Deliberately not persisted anywhere: the API renders them into the run's
+ * system prompt and forgets them, so a reload starts from the effective
+ * model's defaults again. The model itself is absent because it is already
+ * resolved from the thread pin and the member default the run carries.
+ */
+const chatRunVideoOptionsRequestSchema = z
+  .object({
+    aspectRatio: z.enum(VIDEO_ASPECT_RATIOS),
+    duration: z.enum(VIDEO_DURATIONS),
+    resolution: z.enum(VIDEO_RESOLUTIONS),
+    generateAudio: z.boolean(),
+  })
+  .partial();
+
 const chatRunOptionsRequestSchema = z.object({
   codexServiceTier: codexServiceTierSchema.optional(),
+  video: chatRunVideoOptionsRequestSchema.optional(),
 });
 
 const chatNormalSendBodyShape = {
@@ -1677,6 +1695,9 @@ export {
 export type CodexServiceTier = z.infer<typeof codexServiceTierSchema>;
 export type ChatThreadServiceTier = z.infer<typeof chatThreadServiceTierSchema>;
 export type ChatRunOptionsRequest = z.infer<typeof chatRunOptionsRequestSchema>;
+export type ChatRunVideoOptionsRequest = z.infer<
+  typeof chatRunVideoOptionsRequestSchema
+>;
 export type GenerationTemplateRequest = z.infer<
   typeof generationTemplateRequestSchema
 >;

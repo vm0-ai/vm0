@@ -1,4 +1,5 @@
 import type {
+  ChatRunVideoOptionsRequest,
   GenerationTemplateRequest,
   PersistedAttachment,
 } from "@okouai/api-contracts/contracts/chat-threads";
@@ -43,6 +44,7 @@ import {
   createComposerUiSignals,
   type ComposerUiSignalGroups,
 } from "./zero-chat-composer.ts";
+import { videoRunOptionsForSend } from "./video-run-options.ts";
 import {
   CREATE_WORKFLOW_WITH_CHAT_PROMPT,
   replaceWorkflowPromptDraftTarget$,
@@ -86,19 +88,25 @@ type ComposerTemplateEditorSignals = Pick<
   | "templatePreview"
   | "hasTemplateAttachment$"
   | "insertTemplate$"
-  | "updateTemplateAt$"
   | "readSelectedTemplate$"
   | "prepareTemplateInsertion$"
   | "setTemplateAttachmentLifecycleRef$"
 >;
 
 type ComposerModelUiSignals = ComposerUiSignalGroups["model"];
+type ComposerVideoOptionsSignals = ComposerUiSignalGroups["videoOptions"];
 type ComposerTemplateUiSignals = ComposerUiSignalGroups["template"];
 
 export interface ComposerSubmission {
   readonly prompt: string;
   readonly generationTemplate: GenerationTemplateRequest | undefined;
   readonly editorDocument: WorkflowComposerSubmissionSnapshot["editorDocument"];
+  /**
+   * Video parameters for this send only. Absent unless the user moved one off
+   * the effective model's default; the send path forwards it as a run option
+   * rather than writing it anywhere.
+   */
+  readonly videoRunOptions: ChatRunVideoOptionsRequest | undefined;
 }
 
 export type ComposerSubmissionAction = "send" | "queue";
@@ -165,6 +173,14 @@ export interface ComposerVideoModelSignals {
   readonly selectedVideoModel$: Computed<
     VideoModel | null | Promise<VideoModel | null>
   >;
+  /**
+   * The model a video run started from this composer would actually use, with
+   * the thread pin, the member default and the system default already folded
+   * in. `selectedVideoModel$` is the pin alone, which is null far more often
+   * than the run is unconfigured, so it cannot answer "which values does the
+   * parameter panel offer".
+   */
+  readonly effectiveVideoModel$: Computed<VideoModel | Promise<VideoModel>>;
   readonly setVideoModel$: Command<
     Promise<void>,
     [VideoModel | null, AbortSignal]
@@ -234,6 +250,7 @@ export interface ComposerSignals {
   readonly draft: ComposerDraftSignals;
   readonly model: ComposerModelSignals;
   readonly videoModel?: ComposerVideoModelSignals;
+  readonly videoOptions: ComposerVideoOptionsSignals;
   readonly computer: ComposerComputerSignals;
   readonly submission: ComposerSubmissionSignals;
   readonly queue: ComposerQueueSignals;
@@ -337,7 +354,6 @@ function composerTemplateSignals(
     templatePreview: composer.templatePreview,
     hasTemplateAttachment$: composer.hasTemplateAttachment$,
     insertTemplate$: composer.insertTemplate$,
-    updateTemplateAt$: composer.updateTemplateAt$,
     readSelectedTemplate$: composer.readSelectedTemplate$,
     prepareTemplateInsertion$: composer.prepareTemplateInsertion$,
     setTemplateAttachmentLifecycleRef$:
@@ -476,17 +492,18 @@ export function createComposerSignals(
     },
     feedback,
   );
+  const ui = createComposerUiSignals();
   const submission = createComposerSubmissionSignals(
     options,
     eventSignals,
     workflowComposer,
+    ui.videoOptions,
   );
   const fileInput = createComposerFileInputSignals();
   const workflowPrompt = createComposerWorkflowPromptSignals(
     options,
     workflowComposer,
   );
-  const ui = createComposerUiSignals();
 
   return {
     agentId: options.agentId,
@@ -521,6 +538,7 @@ export function createComposerSignals(
       configureSelectedModel$: options.configureSelectedModel$,
     },
     ...(options.videoModel ? { videoModel: options.videoModel } : {}),
+    videoOptions: ui.videoOptions,
     computer: {
       ...createComputerUseUiSignals(),
       computerUseHostId$: options.computerUseHostId$,
@@ -636,51 +654,93 @@ function createComposerChatEventSignals(chatEvents$: Computed<ChatEvent[]>) {
   };
 }
 
+/**
+ * Resolved at send rather than held settled, so the parameters follow a video
+ * model the user changed after setting them. Nothing is sent when the run
+ * would use that model's defaults anyway.
+ */
+function createVideoRunOptionsSignal(
+  videoModel: ComposerVideoModelSignals | undefined,
+  videoOptions: ComposerVideoOptionsSignals,
+): Command<Promise<ChatRunVideoOptionsRequest | undefined>, [AbortSignal]> {
+  return command(async ({ get }, signal: AbortSignal) => {
+    if (!videoModel) {
+      return undefined;
+    }
+    const patch = get(videoOptions.videoRunOptions$);
+    if (Object.keys(patch).length === 0) {
+      return undefined;
+    }
+    const model = await get(videoModel.effectiveVideoModel$);
+    signal.throwIfAborted();
+    return videoRunOptionsForSend(patch, model);
+  });
+}
+
+function createComposerPrimaryActionSignal(args: {
+  readonly options: CreateComposerSignalsOptions;
+  readonly eventSignals: ReturnType<typeof createComposerChatEventSignals>;
+  readonly workflowComposer: WorkflowComposerSignals;
+  readonly submissionPending$: Computed<boolean>;
+}): Computed<Promise<ComposerPrimaryAction>> {
+  const { options, eventSignals, workflowComposer } = args;
+  const draft = options.draft.signals;
+  return computed(async (get): Promise<ComposerPrimaryAction> => {
+    if (await get(eventSignals.actionsLoading$)) {
+      return "disabled";
+    }
+
+    const uploadsReady = get(draft.attachmentUploadsReady$);
+    const attachments = get(draft.attachments$);
+    let hasContent = get(workflowComposer.hasInput$);
+    if (!hasContent && attachments.length > 0) {
+      const modelSelection = await get(options.modelSelection$);
+      const imageRecognitionEnabled = get(imageRecognitionAvailable$);
+      hasContent = hasVisibleAttachment(
+        modelSelection,
+        attachments,
+        imageRecognitionEnabled,
+      );
+    }
+    const canSend = uploadsReady && hasContent;
+    const sending = await get(eventSignals.sending$);
+    if (sending && !canSend) {
+      return "stop";
+    }
+    if (get(args.submissionPending$)) {
+      return "disabled";
+    }
+    if (!canSend) {
+      return "disabled";
+    }
+    if (!sending) {
+      return "send";
+    }
+    return "queue";
+  });
+}
+
 function createComposerSubmissionSignals(
   options: CreateComposerSignalsOptions,
   eventSignals: ReturnType<typeof createComposerChatEventSignals>,
   workflowComposer: WorkflowComposerSignals,
+  videoOptions: ComposerVideoOptionsSignals,
 ) {
   const draft = options.draft.signals;
+  const readVideoRunOptions$ = createVideoRunOptionsSignal(
+    options.videoModel,
+    videoOptions,
+  );
   const internalSubmissionPending$ = state(false);
   const submissionPending$ = computed((get): boolean => {
     return get(internalSubmissionPending$);
   });
-  const primaryAction$ = computed(
-    async (get): Promise<ComposerPrimaryAction> => {
-      if (await get(eventSignals.actionsLoading$)) {
-        return "disabled";
-      }
-
-      const uploadsReady = get(draft.attachmentUploadsReady$);
-      const attachments = get(draft.attachments$);
-      let hasContent = get(workflowComposer.hasInput$);
-      if (!hasContent && attachments.length > 0) {
-        const modelSelection = await get(options.modelSelection$);
-        const imageRecognitionEnabled = get(imageRecognitionAvailable$);
-        hasContent = hasVisibleAttachment(
-          modelSelection,
-          attachments,
-          imageRecognitionEnabled,
-        );
-      }
-      const canSend = uploadsReady && hasContent;
-      const sending = await get(eventSignals.sending$);
-      if (sending && !canSend) {
-        return "stop";
-      }
-      if (get(submissionPending$)) {
-        return "disabled";
-      }
-      if (!canSend) {
-        return "disabled";
-      }
-      if (!sending) {
-        return "send";
-      }
-      return "queue";
-    },
-  );
+  const primaryAction$ = createComposerPrimaryActionSignal({
+    options,
+    eventSignals,
+    workflowComposer,
+    submissionPending$,
+  });
   const submitCurrentInput$ = command(
     async (
       { get, set },
@@ -728,6 +788,7 @@ function createComposerSubmissionSignals(
           if (!get(draft.attachmentUploadsReady$)) {
             return false;
           }
+          const videoRunOptions = await set(readVideoRunOptions$, signal);
           return await set(
             options.submitMessage$,
             action,
@@ -735,6 +796,7 @@ function createComposerSubmissionSignals(
               prompt,
               generationTemplate: get(draft.generationTemplate$),
               editorDocument: submission.editorDocument,
+              videoRunOptions,
             },
             signal,
           );
