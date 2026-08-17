@@ -3322,7 +3322,7 @@ const BALLOON_SETTLE_FAST_POLL_INTERVALS: [Duration; 7] = [
     Duration::from_millis(200),
 ];
 /// Maximum poll interval while waiting for balloon inflation.
-const BALLOON_SETTLE_MAX_POLL: Duration = Duration::from_millis(500);
+const BALLOON_SETTLE_MAX_POLL: Duration = Duration::from_millis(200);
 /// Upper bound for accepting residual differences between requested and
 /// reported balloon size. Current 4 GiB production profiles commonly settle
 /// with low-hundreds MiB residuals when the guest reports little available
