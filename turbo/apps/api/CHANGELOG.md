@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.457.3](https://github.com/vm0-ai/vm0/compare/api-v1.457.2...api-v1.457.3) (2026-08-17)
+
+
+### Refactoring
+
+* remove expired deployment compatibility ([#27818](https://github.com/vm0-ai/vm0/issues/27818)) ([6e6d6f8](https://github.com/vm0-ai/vm0/commit/6e6d6f8c36c4e29f33746951636304ba51be7f80))
+
 ## [1.457.2](https://github.com/vm0-ai/vm0/compare/api-v1.457.1...api-v1.457.2) (2026-08-17)
 
 
