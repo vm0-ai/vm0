@@ -8,6 +8,7 @@ import { db } from "../lib/db";
 import { insertChatEvent } from "../signals/services/chat-event.service";
 import { touchChatThreadLastMessageAt } from "../signals/services/chat-event-shared.service";
 import { createUserMessageDocument } from "../signals/services/chat-user-message.service";
+import { webChatPublicBrandContextId } from "../signals/services/web-chat-public-brand-context.service";
 
 export async function readMorningBriefDeliveryFixture(args: {
   readonly orgId: string;
@@ -52,7 +53,8 @@ export async function setMorningBriefTriggeredAtFixture(args: {
 
 /**
  * Appends a normal web user message without invoking a drain. Product sends
- * persist this same event before draining, but cannot pause at that boundary.
+ * persist this same event, including its public-brand launch context, before
+ * draining, but cannot pause at that boundary.
  */
 export async function insertQueuedWebUserMessageFixture(args: {
   readonly threadId: string;
@@ -65,6 +67,7 @@ export async function insertQueuedWebUserMessageFixture(args: {
       id: messageId,
       chatThreadId: args.threadId,
       contextType: "web",
+      contextId: webChatPublicBrandContextId("vm0"),
       eventType: "input.prompt",
       userMessage: createUserMessageDocument({ text: args.content }),
       runId: null,
