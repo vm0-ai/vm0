@@ -726,39 +726,71 @@ function resolveRuntimeNormalSendBody(
   };
 }
 
+type NormalSendAttachmentCountBucket = "0" | "1" | "2_4" | "5_plus";
+
+function normalSendAttachmentCountBucket(
+  count: number,
+): NormalSendAttachmentCountBucket {
+  if (count === 0) {
+    return "0";
+  }
+  if (count === 1) {
+    return "1";
+  }
+  if (count <= 4) {
+    return "2_4";
+  }
+  return "5_plus";
+}
+
 const resolveIncomingAttachFileMetadata$ = command(
   async (
     { set },
     args: {
       readonly userId: string;
       readonly userMessage: UserMessageDocument;
+      readonly timing?: ApiDispatchTimingCollector;
     },
     signal: AbortSignal,
   ): Promise<ChatEventAttachFileMetadata[] | null> => {
     const files = userMessageFileParts(args.userMessage);
-    if (files.length === 0) {
-      return null;
-    }
-    const metadata: ChatEventAttachFileMetadata[] = [];
-    for (const file of files) {
-      const object = await set(
-        resolveArtifactObject$,
-        { userId: args.userId, id: file.fileId },
-        signal,
-      );
-      signal.throwIfAborted();
-      if (!object) {
-        throw new Error(`User-message attachment not found: ${file.fileId}`);
-      }
-      metadata.push({
-        id: file.fileId,
-        filename: file.filenameSnapshot,
-        contentType: file.contentType,
-        size: object.size,
-        objectKey: object.key,
-      });
-    }
-    return metadata;
+    return await measureApiDispatchTiming(
+      args.timing,
+      "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_attachment_metadata",
+      "nested",
+      async () => {
+        if (files.length === 0) {
+          return null;
+        }
+        const metadata: ChatEventAttachFileMetadata[] = [];
+        for (const file of files) {
+          const object = await set(
+            resolveArtifactObject$,
+            { userId: args.userId, id: file.fileId },
+            signal,
+          );
+          signal.throwIfAborted();
+          if (!object) {
+            throw new Error(
+              `User-message attachment not found: ${file.fileId}`,
+            );
+          }
+          metadata.push({
+            id: file.fileId,
+            filename: file.filenameSnapshot,
+            contentType: file.contentType,
+            size: object.size,
+            objectKey: object.key,
+          });
+        }
+        return metadata;
+      },
+      {
+        normal_send_attachment_count_bucket: normalSendAttachmentCountBucket(
+          files.length,
+        ),
+      },
+    );
   },
 );
 
@@ -2257,6 +2289,33 @@ async function resolveTimedPreflightClientEvent(
   return { prechecked, response };
 }
 
+function resolveTimedNormalSendAgentRunSource(
+  args: NormalSendArgs,
+  db: Db,
+): ReturnType<typeof resolveNormalSendAgentRunSource> {
+  return measureApiDispatchTiming(
+    args.timing,
+    "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_agent_run_source",
+    "nested",
+    () => {
+      return resolveNormalSendAgentRunSource({
+        db,
+        auth: args.auth,
+        userMessage: args.body.userMessage,
+        sourceRunId: args.body.sourceRunId,
+      });
+    },
+    {
+      normal_send_agent_run_source_kind:
+        args.body.sourceRunId !== undefined
+          ? "forward"
+          : args.auth.tokenType === "zero"
+            ? "agent"
+            : "none",
+    },
+  );
+}
+
 const prepareNormalSend$ = command(
   async (
     { set },
@@ -2285,12 +2344,10 @@ const prepareNormalSend$ = command(
       db,
     );
     signal.throwIfAborted();
-    const agentRunSourceResult = await resolveNormalSendAgentRunSource({
+    const agentRunSourceResult = await resolveTimedNormalSendAgentRunSource(
+      args,
       db,
-      auth: args.auth,
-      userMessage: args.body.userMessage,
-      sourceRunId: args.body.sourceRunId,
-    });
+    );
     signal.throwIfAborted();
     if ("response" in agentRunSourceResult) {
       return agentRunSourceResult.response;
@@ -2370,6 +2427,7 @@ const prepareNormalSend$ = command(
       {
         userId: args.userId,
         userMessage: runtimeBody.userMessage,
+        timing: args.timing,
       },
       signal,
     );

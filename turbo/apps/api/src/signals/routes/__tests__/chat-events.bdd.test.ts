@@ -180,17 +180,23 @@ An active goal allows unfinished work to continue in a later run. An existing go
 A normal completion provides a reliable handoff for the next run. The handoff includes completed work, current state, verification performed, remaining work, and blockers.
 
 Use the remaining time to leave the task in a resumable state and finish this turn normally.`;
+const API_DISPATCH_NORMAL_SEND_AGENT_RUN_SOURCE_ACTION_TYPE =
+  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_agent_run_source";
+const API_DISPATCH_NORMAL_SEND_ATTACHMENT_METADATA_ACTION_TYPE =
+  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_attachment_metadata";
 const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send",
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_load_and_authorize_agent",
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_validate_model_selection",
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_feature_switches",
+  API_DISPATCH_NORMAL_SEND_AGENT_RUN_SOURCE_ACTION_TYPE,
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_validate_codex_service_tier",
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_initial_thread_model_pin",
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_thread",
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_persist_explicit_model_selection",
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_persist_explicit_codex_service_tier",
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_computer_use_host_grant",
+  API_DISPATCH_NORMAL_SEND_ATTACHMENT_METADATA_ACTION_TYPE,
   "api_dispatch_pre_create_zero_web_chat_resolve_client_message",
   "api_dispatch_pre_create_zero_web_chat_validate_revocation",
   "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue",
@@ -1251,6 +1257,18 @@ describe("CHAT-02: web chat send and client ids", () => {
       timingEvents,
       API_DISPATCH_THREAD_SESSION_BINDING_ACTION_TYPES,
       "nested",
+    );
+    expect(timingEvents).toContainEqual(
+      expect.objectContaining({
+        op_type: API_DISPATCH_NORMAL_SEND_AGENT_RUN_SOURCE_ACTION_TYPE,
+        normal_send_agent_run_source_kind: "none",
+      }),
+    );
+    expect(timingEvents).toContainEqual(
+      expect.objectContaining({
+        op_type: API_DISPATCH_NORMAL_SEND_ATTACHMENT_METADATA_ACTION_TYPE,
+        normal_send_attachment_count_bucket: "0",
+      }),
     );
     expectApiDispatchSpanKind(
       timingEvents,
@@ -8199,6 +8217,19 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(created.prompt).toContain(`[ID] ${fileId}`);
     expect(created.appendSystemPrompt).toContain("okou web download-file -h");
     expect(created.appendSystemPrompt).toContain("okou web upload-file -h");
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expect(timingEvents).toContainEqual(
+      expect.objectContaining({
+        op_type: API_DISPATCH_NORMAL_SEND_ATTACHMENT_METADATA_ACTION_TYPE,
+        normal_send_attachment_count_bucket: "1",
+      }),
+    );
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      fileId,
+      filename,
+      "image/png",
+      "read this file",
+    ]);
 
     const messages = await waitForThreadMessages(
       actor,
@@ -9211,6 +9242,21 @@ describe("CHAT-02: shared user message queue", () => {
       throw new Error("Expected the forwarded prompt to launch a run");
     }
     const forwardedRunId = forwarded.body.runId;
+    const forwardedTimingEvents = apiDispatchTimingEventsForRun(forwardedRunId);
+    expect(forwardedTimingEvents).toContainEqual(
+      expect.objectContaining({
+        op_type: API_DISPATCH_NORMAL_SEND_AGENT_RUN_SOURCE_ACTION_TYPE,
+        normal_send_agent_run_source_kind: "forward",
+      }),
+    );
+    expectApiDispatchTimingEventsNotToLeak(forwardedTimingEvents, [
+      source.runId,
+      source.threadId,
+      targetThread.id,
+      forwardedEventId,
+      agentId,
+      "deployment window is fifteen minutes",
+    ]);
 
     const targetMessages = await waitForThreadMessages(
       actor,
@@ -9310,6 +9356,20 @@ describe("CHAT-02: shared user message queue", () => {
       throw new Error("Expected the first delegated prompt to launch a run");
     }
     const firstTargetRunId = firstSend.body.runId;
+    const firstTargetTimingEvents =
+      apiDispatchTimingEventsForRun(firstTargetRunId);
+    expect(firstTargetTimingEvents).toContainEqual(
+      expect.objectContaining({
+        op_type: API_DISPATCH_NORMAL_SEND_AGENT_RUN_SOURCE_ACTION_TYPE,
+        normal_send_agent_run_source_kind: "agent",
+      }),
+    );
+    expectApiDispatchTimingEventsNotToLeak(firstTargetTimingEvents, [
+      source.runId,
+      source.threadId,
+      agentId,
+      "first delegated prompt",
+    ]);
     await expect(
       readRunAutonomyBudgetFixture(context, source.runId),
     ).resolves.toBe(10);
