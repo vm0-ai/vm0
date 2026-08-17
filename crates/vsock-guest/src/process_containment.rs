@@ -17,8 +17,8 @@ use guest_contracts::exec_terminal::{
 };
 use guest_contracts::process_containment::{
     CGROUP_V2_MOUNT_PATH, CONTROL_CGROUP_NAME, CONTROL_CPU_WEIGHT, EXEC_CGROUP_BASE_PATH,
-    EXEC_CGROUP_NAME_PREFIX, MATERIAL_CPU_THROTTLED_USEC, REQUIRED_CGROUP_CONTROLLERS,
-    REQUIRED_CGROUP_SUBTREE_CONTROL, WORKLOAD_CGROUP_NAME, WorkloadResourcePolicy,
+    EXEC_CGROUP_NAME_PREFIX, REQUIRED_CGROUP_CONTROLLERS, REQUIRED_CGROUP_SUBTREE_CONTROL,
+    WORKLOAD_CGROUP_NAME, WorkloadResourceEvents, WorkloadResourcePolicy,
 };
 
 use crate::log::log;
@@ -568,18 +568,6 @@ fn open_placement(
         .map_err(|error| ProcessContainmentError::new(stage, error))
 }
 
-#[derive(Debug, Default)]
-struct ResourceEvents {
-    cpu_nr_throttled: u64,
-    cpu_throttled_usec: u64,
-    memory_high: u64,
-    memory_max: u64,
-    memory_oom: u64,
-    memory_oom_kill: u64,
-    memory_oom_group_kill: u64,
-    pids_max: u64,
-}
-
 fn log_resource_events(group_name: &str, workload_path: &Path) {
     let events = match read_resource_events(workload_path) {
         Ok(events) => events,
@@ -593,25 +581,20 @@ fn log_resource_events(group_name: &str, workload_path: &Path) {
             return;
         }
     };
-    if events.memory_max > 0
-        || events.memory_oom > 0
-        || events.memory_oom_kill > 0
-        || events.memory_oom_group_kill > 0
-        || events.pids_max > 0
-    {
+    if let Some(hard_limit) = events.hard_limit_diagnostic() {
         log(
             "WARN",
             &format!(
                 "exec workload hard resource limit reached group={group_name} memory_max={} memory_oom={} memory_oom_kill={} memory_oom_group_kill={} pids_max={}",
-                events.memory_max,
-                events.memory_oom,
-                events.memory_oom_kill,
-                events.memory_oom_group_kill,
-                events.pids_max
+                hard_limit.memory_max_events,
+                hard_limit.memory_oom_events,
+                hard_limit.memory_oom_kill_events,
+                hard_limit.memory_oom_group_kill_events,
+                hard_limit.pids_max_events
             ),
         );
     }
-    if events.cpu_throttled_usec >= MATERIAL_CPU_THROTTLED_USEC || events.memory_high > 0 {
+    if events.has_material_pressure() {
         log(
             "INFO",
             &format!(
@@ -622,39 +605,11 @@ fn log_resource_events(group_name: &str, workload_path: &Path) {
     }
 }
 
-fn read_resource_events(workload_path: &Path) -> io::Result<ResourceEvents> {
-    let cpu = read_key_value_file(&workload_path.join(CPU_STAT_FILE))?;
-    let memory = read_key_value_file(&workload_path.join(MEMORY_EVENTS_FILE))?;
-    let pids = read_key_value_file(&workload_path.join(PIDS_EVENTS_FILE))?;
-    Ok(ResourceEvents {
-        cpu_nr_throttled: value_or_zero(&cpu, "nr_throttled"),
-        cpu_throttled_usec: value_or_zero(&cpu, "throttled_usec"),
-        memory_high: value_or_zero(&memory, "high"),
-        memory_max: value_or_zero(&memory, "max"),
-        memory_oom: value_or_zero(&memory, "oom"),
-        memory_oom_kill: value_or_zero(&memory, "oom_kill"),
-        memory_oom_group_kill: value_or_zero(&memory, "oom_group_kill"),
-        pids_max: value_or_zero(&pids, "max"),
-    })
-}
-
-fn read_key_value_file(path: &Path) -> io::Result<std::collections::HashMap<String, u64>> {
-    fs::read_to_string(path)?
-        .lines()
-        .map(|line| {
-            let (key, value) = line.split_once(' ').ok_or_else(|| {
-                io::Error::new(io::ErrorKind::InvalidData, "invalid cgroup event line")
-            })?;
-            let value = value
-                .parse::<u64>()
-                .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-            Ok((key.to_string(), value))
-        })
-        .collect()
-}
-
-fn value_or_zero(values: &std::collections::HashMap<String, u64>, key: &str) -> u64 {
-    values.get(key).copied().unwrap_or(0)
+fn read_resource_events(workload_path: &Path) -> io::Result<WorkloadResourceEvents> {
+    let cpu = fs::read_to_string(workload_path.join(CPU_STAT_FILE))?;
+    let memory = fs::read_to_string(workload_path.join(MEMORY_EVENTS_FILE))?;
+    let pids = fs::read_to_string(workload_path.join(PIDS_EVENTS_FILE))?;
+    WorkloadResourceEvents::from_file_contents(&cpu, &memory, &pids)
 }
 
 #[derive(Debug)]

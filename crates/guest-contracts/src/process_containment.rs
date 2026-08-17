@@ -6,6 +6,11 @@
 //! empty so it can distribute cgroup v2 controllers and act as the recursive
 //! cleanup boundary.
 
+use std::collections::HashMap;
+use std::io;
+
+use crate::diagnostics::WorkloadResourceLimitDiagnostic;
+
 /// Canonical cgroup v2 mount inside the guest.
 pub const CGROUP_V2_MOUNT_PATH: &str = "/sys/fs/cgroup";
 
@@ -88,6 +93,103 @@ pub const WORKLOAD_PIDS_MAX: &str = "max";
 /// Highest cgroup v2 CPU weight, assigned to a controlled operation and its
 /// Guest Agent leaf so concurrent ordinary execs cannot dominate it.
 pub const CONTROL_CPU_WEIGHT: u64 = 10_000;
+
+/// Workload cgroup-v2 resource events shared by guest consumers.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct WorkloadResourceEvents {
+    /// Number of workload CPU periods that contained throttling.
+    pub cpu_nr_throttled: u64,
+    /// Total workload CPU time throttled, in microseconds.
+    pub cpu_throttled_usec: u64,
+    /// Number of workload `memory.high` events.
+    pub memory_high: u64,
+    /// Number of workload `memory.max` events.
+    pub memory_max: u64,
+    /// Number of workload OOM events.
+    pub memory_oom: u64,
+    /// Number of workload processes killed by the OOM killer.
+    pub memory_oom_kill: u64,
+    /// Number of workload cgroups killed as an OOM group.
+    pub memory_oom_group_kill: u64,
+    /// Number of workload forks or clones rejected by `pids.max`.
+    pub pids_max: u64,
+}
+
+impl WorkloadResourceEvents {
+    /// Parse the flat-keyed contents of `cpu.stat`, `memory.events`, and
+    /// `pids.events` for one workload cgroup.
+    ///
+    /// Missing known counters default to zero and unknown numeric counters are
+    /// ignored. Malformed lines return [`io::ErrorKind::InvalidData`].
+    pub fn from_file_contents(
+        cpu_stat: &str,
+        memory_events: &str,
+        pids_events: &str,
+    ) -> io::Result<Self> {
+        let cpu = parse_key_values(cpu_stat)?;
+        let memory = parse_key_values(memory_events)?;
+        let pids = parse_key_values(pids_events)?;
+        Ok(Self {
+            cpu_nr_throttled: value_or_zero(&cpu, "nr_throttled"),
+            cpu_throttled_usec: value_or_zero(&cpu, "throttled_usec"),
+            memory_high: value_or_zero(&memory, "high"),
+            memory_max: value_or_zero(&memory, "max"),
+            memory_oom: value_or_zero(&memory, "oom"),
+            memory_oom_kill: value_or_zero(&memory, "oom_kill"),
+            memory_oom_group_kill: value_or_zero(&memory, "oom_group_kill"),
+            pids_max: value_or_zero(&pids, "max"),
+        })
+    }
+
+    /// Build the canonical hard-limit diagnostic when any such event occurred.
+    #[must_use]
+    pub fn hard_limit_diagnostic(self) -> Option<WorkloadResourceLimitDiagnostic> {
+        let diagnostic = WorkloadResourceLimitDiagnostic {
+            memory_max_events: self.memory_max,
+            memory_oom_events: self.memory_oom,
+            memory_oom_kill_events: self.memory_oom_kill,
+            memory_oom_group_kill_events: self.memory_oom_group_kill,
+            pids_max_events: self.pids_max,
+        };
+        diagnostic.has_events().then_some(diagnostic)
+    }
+
+    /// Whether the snapshot contains material CPU or memory pressure.
+    #[must_use]
+    pub const fn has_material_pressure(self) -> bool {
+        self.cpu_throttled_usec >= MATERIAL_CPU_THROTTLED_USEC || self.memory_high > 0
+    }
+}
+
+fn parse_key_values(contents: &str) -> io::Result<HashMap<&str, u64>> {
+    contents
+        .lines()
+        .map(|line| {
+            let mut fields = line.split_ascii_whitespace();
+            let key = fields.next().ok_or_else(|| {
+                io::Error::new(io::ErrorKind::InvalidData, "missing cgroup counter name")
+            })?;
+            let value = fields
+                .next()
+                .ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::InvalidData, "missing cgroup counter value")
+                })?
+                .parse::<u64>()
+                .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+            if fields.next().is_some() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "unexpected cgroup counter field",
+                ));
+            }
+            Ok((key, value))
+        })
+        .collect()
+}
+
+fn value_or_zero(values: &HashMap<&str, u64>, key: &str) -> u64 {
+    values.get(key).copied().unwrap_or(0)
+}
 
 /// Calibrated cgroup v2 resource policy for one workload leaf.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
