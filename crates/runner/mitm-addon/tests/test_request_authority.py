@@ -1,8 +1,16 @@
 """Trusted request authority URL utility tests."""
 
 import pytest
+from mitmproxy import http
 
 from request_authority import get_trusted_authority
+
+_MAX_HOST_HEADER_BYTES = 4096
+
+
+class _DecodeGuardHost(bytes):
+    def decode(self, encoding: str = "utf-8", errors: str = "strict") -> str:
+        raise AssertionError("untrusted Host must not be decoded")
 
 
 class TestTrustedAuthorityUrl:
@@ -109,6 +117,24 @@ class TestTrustedAuthorityUrl:
         assert trusted.port == 80
         assert trusted.url == "http://203.0.113.10/v1/data"
 
+    def test_http_does_not_decode_host_header(self, real_flow):
+        request_headers = http.Headers(
+            [(b"Host", _DecodeGuardHost(b"x" * (_MAX_HOST_HEADER_BYTES + 1)))]
+        )
+        flow = real_flow(
+            scheme="http",
+            host="203.0.113.10",
+            port=80,
+            path="/v1/data",
+            request_headers=request_headers,
+        )
+
+        trusted = get_trusted_authority(flow)
+
+        assert trusted.host == "203.0.113.10"
+        assert trusted.port == 80
+        assert trusted.url == "http://203.0.113.10/v1/data"
+
     def test_http_brackets_ipv6_request_host(self, real_flow, headers):
         flow = real_flow(
             scheme="http",
@@ -137,6 +163,28 @@ class TestTrustedAuthorityUrl:
 
 
 class TestTrustedAuthoritySuccess:
+    def test_accepts_exact_raw_host_header_byte_budget(self, real_flow, headers):
+        host_prefix = "bücher.example:"
+        host_suffix = "443"
+        zero_padding = "0" * (
+            _MAX_HOST_HEADER_BYTES - len(host_prefix.encode()) - len(host_suffix.encode())
+        )
+        host_header = f"{host_prefix}{zero_padding}{host_suffix}"
+        assert len(host_header.encode()) == _MAX_HOST_HEADER_BYTES
+        flow = real_flow(
+            with_response=False,
+            host="203.0.113.10",
+            sni="xn--bcher-kva.example",
+            path="/repos",
+            request_headers=headers(("Host", host_header)),
+        )
+
+        trusted = get_trusted_authority(flow)
+
+        assert trusted.host == "xn--bcher-kva.example"
+        assert trusted.port == 443
+        assert trusted.url == "https://xn--bcher-kva.example/repos"
+
     @pytest.mark.parametrize(
         "host_header",
         [

@@ -1,11 +1,13 @@
 """Authority validation request hook integration tests."""
 
 import json
+from unittest.mock import patch
 
 import pytest
 
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import request_authority
 import upstream_destination_binding
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.request_handler_helpers import _write_github_firewall_registry
@@ -15,6 +17,12 @@ _BROWSER_USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) HeadlessChrome/126.0.0.0 Safari/537.36"
 )
+_MAX_HOST_HEADER_BYTES = 4096
+
+
+class _DecodeGuardHost(bytes):
+    def decode(self, encoding: str = "utf-8", errors: str = "strict") -> str:
+        raise AssertionError("over-budget Host must not be decoded")
 
 
 @pytest.mark.parametrize(
@@ -513,6 +521,134 @@ async def test_rejects_duplicate_host_authority_before_firewall_auth(
     assert flow.request.path == original_path
     auth_fetch.assert_not_called()
     assert "Authorization" not in flow.request.headers
+
+
+@pytest.mark.parametrize(
+    "host_values",
+    [
+        pytest.param(
+            (_DecodeGuardHost(b"a" * (_MAX_HOST_HEADER_BYTES + 1)),),
+            id="single-field",
+        ),
+        pytest.param(
+            (
+                _DecodeGuardHost(b"a" * 2048),
+                _DecodeGuardHost(b"b" * 2047),
+            ),
+            id="folded-duplicate-fields",
+        ),
+    ],
+)
+async def test_rejects_over_budget_host_without_decoding_logging_or_auth(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    host_values,
+):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    request_headers = mitm_addon.http.Headers(
+        [
+            *((b"Host", value) for value in host_values),
+            (b"Authorization", b"Bearer sandbox-token"),
+        ]
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="api.github.com",
+        path="/repos",
+        request_headers=request_headers,
+    )
+    original_headers = tuple(flow.request.headers.fields)
+    real_normalize_hostname = request_authority.normalize_hostname
+
+    def normalize_trusted_sni(host: str) -> str:
+        assert host == "api.github.com"
+        return real_normalize_hostname(host)
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+        patch.object(
+            request_authority,
+            "normalize_hostname",
+            side_effect=normalize_trusted_sni,
+        ),
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    body = json.loads(flow.response.content)
+    assert body["error"] == "invalid_authority"
+    assert body["sni"] == "api.github.com"
+    assert body["host_header"] is None
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_authority"
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == "https://api.github.com/repos"
+    assert flow.metadata[metadata_keys.NETWORK_LOG_TARGET] == {
+        "url": "https://api.github.com/repos",
+        "host": "api.github.com",
+        "port": 443,
+    }
+    assert tuple(flow.request.headers.fields) == original_headers
+    assert flow.request.headers["Authorization"] == "Bearer sandbox-token"
+    auth_fetch.assert_not_called()
+
+    [proxy_log_entry] = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
+    assert proxy_log_entry["type"] == "authority_validation"
+    assert proxy_log_entry["reason"] == "invalid_authority"
+    assert proxy_log_entry["host_header"] is None
+
+
+async def test_redacts_over_budget_host_from_network_log(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+):
+    reg_path = _write_github_firewall_registry(
+        tmp_path,
+        vm_fields={"captureNetworkBodies": True},
+    )
+    oversized_host = b"a" * (_MAX_HOST_HEADER_BYTES + 1)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="api.github.com",
+        path="/repos",
+        request_headers=mitm_addon.http.Headers(
+            [
+                (b"Host", oversized_host),
+                (b"Authorization", b"Bearer sandbox-token"),
+            ]
+        ),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert json.loads(flow.response.content)["host_header"] is None
+    auth_fetch.assert_not_called()
+
+    with mitm_ctx():
+        mitm_addon.response(flow)
+
+    [network_log_entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+    assert network_log_entry["action"] == "DENY"
+    assert network_log_entry["firewall_error"] == "invalid_authority"
+    assert network_log_entry["request_headers"] == {
+        "Host": "***",
+        "Authorization": "***",
+    }
+    assert "a" * 256 not in json.dumps(network_log_entry)
 
 
 async def test_rejects_host_authority_port_mismatch_before_firewall_auth(
