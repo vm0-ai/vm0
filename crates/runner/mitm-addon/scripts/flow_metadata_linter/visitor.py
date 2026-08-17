@@ -429,8 +429,14 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             return set(self._class_nested_scope_alias_scopes[-1])
         return set(self._metadata_aliases)
 
+    def _visit_statement(self, statement: ast.stmt) -> bool:
+        result = self.visit(statement)
+        if result is None:
+            raise TypeError(f"{type(statement).__name__} visitor must return statement flow")
+        return result
+
     def _visit_current_scope_body(self, body: list[ast.stmt]) -> bool:
-        return all(self.visit(statement) is not False for statement in body)
+        return all(self._visit_statement(statement) for statement in body)
 
     def _visit_branch_body(self, body: list[ast.stmt], aliases: set[str]) -> tuple[set[str], bool]:
         self._metadata_alias_scopes.append(set(aliases))
@@ -637,7 +643,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self._metadata_aliases.discard(node.name)
         return body_falls_through
 
-    def visit_TypeAlias(self, node: ast.AST) -> None:
+    def visit_TypeAlias(self, node: ast.AST) -> bool:
         type_param_names = _type_param_names(node)
         target_names = _type_alias_target_names(node)
         shadowed_names = type_param_names | target_names
@@ -648,6 +654,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             self._visit_deferred_expression(value, shadowed_names)
         for name in target_names:
             self._metadata_aliases.discard(name)
+        return True
 
     def _visit_type_parameter(self, node: ast.AST) -> None:
         for _field_name, value in ast.iter_fields(node):
@@ -669,7 +676,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
     def visit_TypeVarTuple(self, node: ast.AST) -> None:
         self._visit_type_parameter(node)
 
-    def visit_Assign(self, node: ast.Assign) -> None:
+    def visit_Assign(self, node: ast.Assign) -> bool:
         if any(_is_metadata_attribute(target) for target in node.targets):
             self._record_metadata_dict_key_violations(node.value)
         else:
@@ -683,8 +690,9 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
                     value_is_metadata_alias and isinstance(target, ast.Name)
                 ),
             )
+        return True
 
-    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> bool:
         if _is_metadata_attribute(node.target):
             self._record_metadata_dict_key_violations(node.value)
         elif node.value is not None:
@@ -703,8 +711,9 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         else:
             self._visit_annotation_target(node.target)
         self._visit_deferred_expression(node.annotation)
+        return True
 
-    def visit_AugAssign(self, node: ast.AugAssign) -> None:
+    def visit_AugAssign(self, node: ast.AugAssign) -> bool:
         target_is_metadata = self._is_metadata_reference(node.target)
         value_is_metadata_merge = self._is_metadata_merge_value(node.value)
         if target_is_metadata:
@@ -720,6 +729,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             and (target_is_metadata or value_is_metadata_merge)
         ):
             self._metadata_aliases.add(node.target.id)
+        return True
 
     def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
         if isinstance(node.target, ast.Name):
@@ -878,9 +888,10 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self._record_metadata_merge_key_violations(node.value)
         self.generic_visit(node)
 
-    def visit_Expr(self, node: ast.Expr) -> None:
+    def visit_Expr(self, node: ast.Expr) -> bool:
         self._record_metadata_merge_key_violations(node.value)
         self.generic_visit(node)
+        return True
 
     def visit_Return(self, node: ast.Return) -> bool:
         self._record_metadata_merge_key_violations(node.value)
@@ -938,9 +949,19 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         exit_snapshots.append(self._alias_scope_snapshot())
         self._merge_alias_scope_snapshots(exit_snapshots)
 
-    def visit_Delete(self, node: ast.Delete) -> None:
+    def visit_Delete(self, node: ast.Delete) -> bool:
         for target in node.targets:
             self._visit_delete_target(target)
+        return True
+
+    def visit_Pass(self, node: ast.Pass) -> bool:
+        return True
+
+    def visit_Global(self, node: ast.Global) -> bool:
+        return True
+
+    def visit_Nonlocal(self, node: ast.Nonlocal) -> bool:
+        return True
 
     def visit_Break(self, node: ast.Break) -> bool:
         return False
@@ -1306,16 +1327,18 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
     def visit_DictComp(self, node: ast.DictComp) -> None:
         self._visit_comprehension(node.generators, [node.key, node.value], deferred=False)
 
-    def visit_Import(self, node: ast.Import) -> None:
+    def visit_Import(self, node: ast.Import) -> bool:
         for alias in node.names:
             self._metadata_aliases.discard(alias.asname or alias.name.split(".", maxsplit=1)[0])
+        return True
 
-    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> bool:
         for alias in node.names:
             if alias.name == "*":
                 self._metadata_aliases.clear()
             else:
                 self._metadata_aliases.discard(alias.asname or alias.name)
+        return True
 
     def _visit_assignment_target(
         self, target: ast.AST, *, direct_value_is_metadata_alias: bool
