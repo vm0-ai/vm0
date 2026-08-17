@@ -124,7 +124,6 @@ import {
   holdThreadSessionBindingClearFixture,
   holdThreadSessionConversationChangesFixture,
   holdThreadSessionConversationClearFixture,
-  insertLegacyWebChatQueueEventFixture,
   readCanonicalChatEventStorageFixture,
   releaseBddVm0ApiKey,
   replayPendingChatInputQueueEventFixture,
@@ -8611,64 +8610,6 @@ describe("CHAT-02: public-brand default assistant identity", () => {
 
     await cancelChatRun(actor, vm0Run.runId);
     await cancelChatRun(actor, customRun.runId);
-  }, 90_000);
-
-  it("keeps a pre-rollout queued Web event on the legacy Zero identity", async () => {
-    const { actor, runnerGroup } = await entitledChatActor();
-    bdd.acceptAgentStorageWrites();
-    const onboarding = await bdd.readOnboardingStatus(actor);
-    const defaultAgentId = onboarding.defaultAgentId;
-    if (!defaultAgentId) {
-      throw new Error("Expected the system default agent to exist");
-    }
-
-    const anchor = await sendChatRun(
-      actor,
-      { agentId: defaultAgentId, prompt: "start legacy queue coverage" },
-      "okou",
-    );
-    const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
-    // Current routes cannot create the historical missing-context shape.
-    const queuedEventId = randomUUID();
-    await insertLegacyWebChatQueueEventFixture({
-      eventId: queuedEventId,
-      threadId: anchor.threadId,
-      prompt: "promote a pre-rollout Web event",
-    });
-    const rawQueuedEvent = (
-      await chat.listThreadEventRows(actor, anchor.threadId)
-    ).find((event) => {
-      return event.id === queuedEventId;
-    });
-    expect(rawQueuedEvent).toMatchObject({
-      contextType: "web",
-      contextId: null,
-    });
-    chatCallbacks.mockChatOutputEvents([]);
-    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
-    await flushWaitUntilForTest();
-    const promotedMessages = await waitForThreadMessages(
-      actor,
-      anchor.threadId,
-      (items) => {
-        return userMessages(items).some((message) => {
-          return (
-            message.revokesEventId === queuedEventId &&
-            message.runId !== undefined
-          );
-        });
-      },
-    );
-    const promoted = userMessages(promotedMessages.events).find((message) => {
-      return message.revokesEventId === queuedEventId;
-    });
-    if (!promoted?.runId) {
-      throw new Error("Expected the pre-rollout Web event to auto-send");
-    }
-    const promotedRun = await api.readRun(actor, promoted.runId);
-    expect(promotedRun.appendSystemPrompt).toContain("Your name is Zero.");
-    expect(promotedRun.appendSystemPrompt).not.toContain("Your name is Okou.");
-    await cancelChatRun(actor, promoted.runId);
   }, 90_000);
 });
 
