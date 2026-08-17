@@ -1358,7 +1358,6 @@ class TestFirewallAuthAsyncTransport:
                     "_FIREWALL_AUTH_CONNECTION_ATTEMPT_DELAY_SECONDS",
                     0.0,
                 ),
-                patch.object(auth_client, "FIREWALL_AUTH_FETCH_DEADLINE_SECONDS", 0.5),
                 patch.object(platform_api, "VERCEL_BYPASS", ""),
                 mitm_ctx(api_url=f"http://firewall-auth.invalid:{port}"),
             ):
