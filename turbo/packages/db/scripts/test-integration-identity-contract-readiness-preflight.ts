@@ -227,6 +227,28 @@ function databaseUrlFor(baseUrl: URL, database: string): string {
   return result.toString();
 }
 
+async function waitForApplicationLockWait(
+  observer: Client,
+  applicationName: string,
+): Promise<void> {
+  for (let attempt = 0; attempt < 1000; attempt += 1) {
+    const result = await observer.query<{ blocked: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1
+         FROM "pg_stat_activity"
+         WHERE "application_name" = $1
+           AND "wait_event_type" = 'Lock'
+       ) AS "blocked"`,
+      [applicationName],
+    );
+    if (result.rows[0]?.blocked) return;
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve);
+    });
+  }
+  throw new Error("preflight query did not reach the expected lock wait");
+}
+
 async function insertValidRows(client: Client): Promise<void> {
   await client.query(`
     SET session_replication_role = replica;
@@ -388,35 +410,40 @@ async function testDatabaseBoundaries(databaseUrl: string): Promise<void> {
         `LOCK TABLE "agentphone_user_links" IN ACCESS EXCLUSIVE MODE`,
       );
       const activeCancellation = new AbortController();
-      const abortTimer = setTimeout(() => {
-        activeCancellation.abort();
-      }, 25);
-      const releaseWriter = new Promise<void>((resolve, reject) => {
-        setTimeout(() => {
-          writer.query("ROLLBACK").then(() => {
-            resolve();
-          }, reject);
-        }, 125);
-      });
+      const cancellationApplicationName =
+        "integration-identity-preflight-cancellation-test";
+      const cancellationUrl = new URL(testUrl);
+      cancellationUrl.searchParams.set(
+        "application_name",
+        cancellationApplicationName,
+      );
+      const activePreflight =
+        executeIntegrationIdentityContractReadinessPreflight({
+          connectionString: cancellationUrl.toString(),
+          signal: activeCancellation.signal,
+          lockTimeoutMs: 1000,
+          statementTimeoutMs: 2000,
+        });
+      let synchronizationError: unknown;
       try {
-        await assert.rejects(
-          executeIntegrationIdentityContractReadinessPreflight({
-            connectionString: testUrl,
-            signal: activeCancellation.signal,
-            lockTimeoutMs: 1000,
-            statementTimeoutMs: 2000,
-          }),
-          (error: unknown) => {
-            return (
-              error instanceof SanitizedPreflightError &&
-              error.gate === "probe.cancelled"
-            );
-          },
-        );
-      } finally {
-        clearTimeout(abortTimer);
-        await releaseWriter;
+        await waitForApplicationLockWait(client, cancellationApplicationName);
+      } catch (error) {
+        synchronizationError = error;
       }
+      activeCancellation.abort();
+      await writer.query("ROLLBACK");
+      if (synchronizationError !== undefined) {
+        await activePreflight.catch(() => {
+          return undefined;
+        });
+        throw synchronizationError;
+      }
+      await assert.rejects(activePreflight, (error: unknown) => {
+        return (
+          error instanceof SanitizedPreflightError &&
+          error.gate === "probe.cancelled"
+        );
+      });
 
       await withReadOnlySnapshot(client, {}, async () => {
         const before = await client.query<{ count: string }>(
