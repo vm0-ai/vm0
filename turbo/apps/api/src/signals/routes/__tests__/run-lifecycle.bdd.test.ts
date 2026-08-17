@@ -9290,10 +9290,90 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, genericDirectRun.runId, [200]);
   });
 
-  it("hands off more than one runtime-sync batch without truncation", async () => {
+  it("reads a seeded canonical connector through runtime auth", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
     const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("Expected a custom connector actor with an organization");
+    }
+    const suffix = randomUUID().slice(0, 8);
+    const runtimeConnector = {
+      id: randomUUID(),
+      slug: `_bdd-canonical-${suffix}`,
+      displayName: "BDD Canonical Runtime",
+      prefixTemplate: `https://canonical-${suffix}.example.test/api/`,
+    };
+    await seedCustomConnectorRuntimeConnectors(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      customConnectors: [runtimeConnector],
+    });
+    const listedRuntimeConnectors =
+      await connectors.listCustomConnectors(actor);
+    expect(
+      listedRuntimeConnectors.find((connector) => {
+        return connector.id === runtimeConnector.id;
+      }),
+    ).toMatchObject({
+      prefixTemplates: [runtimeConnector.prefixTemplate],
+      headerInjections: [
+        {
+          name: "X-Connector",
+          valueTemplate: "runtime-batch {{secrets.optional_secret}}",
+        },
+      ],
+    });
+    await connectors.updateAgentCustomConnectors(actor, agentId, [
+      runtimeConnector.id,
+    ]);
+    await connectors.setCustomConnectorValues(actor, runtimeConnector.id, [
+      {
+        key: "optional_secret",
+        kind: "secret",
+        value: "canonical-runtime-secret",
+      },
+    ]);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the seeded canonical connector",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const [runtimeResult] = await api.syncConnectorRuntime(run.runId, {
+      targets: [
+        {
+          kind: "custom",
+          customConnectorId: runtimeConnector.id,
+          baseUrlVars: {},
+        },
+      ],
+    });
+    const runtime = availableCustomConnectorRuntime(runtimeResult);
+    const { body: authBody } = customConnectorRuntimeAuthBody(
+      runtime,
+      fw.encryptedSecretsBody({}),
+    );
+    const auth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      authBody,
+      [200],
+    );
+    expect(auth.body).toMatchObject({
+      headers: {
+        "X-Connector": "runtime-batch canonical-runtime-secret",
+      },
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("hands off more than one runtime-sync batch without truncation", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     if (!actor.orgId) {
       throw new Error("Expected a custom connector actor with an organization");
@@ -9316,25 +9396,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       userId: actor.userId,
       customConnectors: runtimeConnectors,
     });
-    const listedRuntimeConnectors =
-      await connectors.listCustomConnectors(actor);
-    const firstRuntimeConnector = runtimeConnectors[0];
-    if (!firstRuntimeConnector) {
-      throw new Error("Expected a canonical runtime connector fixture");
-    }
-    expect(
-      listedRuntimeConnectors.find((connector) => {
-        return connector.id === firstRuntimeConnector.id;
-      }),
-    ).toMatchObject({
-      prefixTemplates: [firstRuntimeConnector.prefixTemplate],
-      headerInjections: [
-        {
-          name: "X-Connector",
-          valueTemplate: "runtime-batch {{secrets.optional_secret}}",
-        },
-      ],
-    });
     const createdIds = runtimeConnectors.map((connector) => {
       return connector.id;
     });
@@ -9344,13 +9405,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       createdIds,
     );
     expect(authorizedConnectorIds).toHaveLength(connectorCount);
-    await connectors.setCustomConnectorValues(actor, firstRuntimeConnector.id, [
-      {
-        key: "optional_secret",
-        kind: "secret",
-        value: "canonical-runtime-secret",
-      },
-    ]);
 
     const run = await api.createRun(actor, {
       agentId,
@@ -9367,31 +9421,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         })
         .sort(),
     ).toStrictEqual(expectedIds);
-
-    const [firstRuntime] = await api.syncConnectorRuntime(run.runId, {
-      targets: [
-        {
-          kind: "custom",
-          customConnectorId: firstRuntimeConnector.id,
-          baseUrlVars: {},
-        },
-      ],
-    });
-    const availableFirstRuntime = availableCustomConnectorRuntime(firstRuntime);
-    const { body: firstAuthBody } = customConnectorRuntimeAuthBody(
-      availableFirstRuntime,
-      fw.encryptedSecretsBody({}),
-    );
-    const firstAuth = await fw.requestFirewallAuth(
-      { authorization: `Bearer ${claim.sandboxToken}` },
-      firstAuthBody,
-      [200],
-    );
-    expect(firstAuth.body).toMatchObject({
-      headers: {
-        "X-Connector": "runtime-batch canonical-runtime-secret",
-      },
-    });
 
     await api.requestCancelRun(actor, run.runId, [200]);
   });
