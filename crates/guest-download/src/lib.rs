@@ -32,6 +32,7 @@ mod download;
 mod error;
 mod instructions;
 mod manifest;
+mod path;
 mod plan;
 mod source;
 mod telemetry;

@@ -1,4 +1,5 @@
 use crate::LOG_TAG;
+use crate::path::normalize_path;
 use guest_common::{log_info, log_warn};
 use std::cell::OnceCell;
 use std::collections::HashSet;
@@ -14,6 +15,7 @@ use std::path::{Component, Path, PathBuf};
 /// to unchanged storages.
 ///
 /// For each path in `cleanup_paths`:
+/// - If the path is at or below a preserved path: skip it.
 /// - If a preserved path is a child: remove only top-level entries that don't
 ///   overlap with any preserved child path.
 /// - If no `preserved` path is a child and the path is a mountpoint: preserve
@@ -57,55 +59,97 @@ fn cleanup_stale_paths_with_options<M, R>(
     M: Fn(&Path) -> bool,
     R: Fn(&fs::DirEntry) -> io::Result<()>,
 {
-    // Sort cleanup paths shortest-first so parents are cleaned before children.
-    let mut sorted: Vec<&str> = cleanup_paths.iter().map(|s| s.as_str()).collect();
-    sorted.sort_by_key(|p| p.len());
+    let preserved = preserved
+        .iter()
+        .map(|path| normalize_path(Path::new(path)))
+        .collect::<HashSet<_>>();
+    let mut sorted = cleanup_paths
+        .iter()
+        .map(|path| {
+            let original = Path::new(path);
+            CleanupPath {
+                original,
+                logical: normalize_path(original),
+            }
+        })
+        .collect::<Vec<_>>();
+    sorted.sort_by_key(|path| path.logical.components().count());
 
     for path in sorted {
-        let cleanup_path = Path::new(path);
-        let preserved_child_count = count_preserved_children(cleanup_path, preserved);
+        if is_preserved_or_descendant(&path.logical, &preserved) {
+            continue;
+        }
+
+        let preserved_child_count = count_preserved_children(&path.logical, &preserved);
 
         if preserved_child_count > 0 {
-            if let Err(e) = clean_directory_contents(cleanup_path, preserved, &remove_entry) {
-                log_warn!(LOG_TAG, "Failed to safely clean {path}: {e}");
+            if let Err(e) =
+                clean_directory_contents(path.original, &path.logical, &preserved, &remove_entry)
+            {
+                log_warn!(
+                    LOG_TAG,
+                    "Failed to safely clean {}: {e}",
+                    path.original.display()
+                );
                 continue;
             }
             log_info!(
                 LOG_TAG,
-                "Selectively cleaned {path} (preserved {} children)",
+                "Selectively cleaned {} (preserved {} children)",
+                path.original.display(),
                 preserved_child_count
             );
-        } else if is_mount_point(cleanup_path) {
+        } else if is_mount_point(&path.logical) {
             // Removing a mounted filesystem root can fail on filesystem metadata
             // such as ext4 lost+found. Keep the mountpoint and remove entries.
-            if let Err(e) = clean_directory_contents(cleanup_path, preserved, &remove_entry) {
-                log_warn!(LOG_TAG, "Failed to safely clean {path}: {e}");
+            if let Err(e) =
+                clean_directory_contents(path.original, &path.logical, &preserved, &remove_entry)
+            {
+                log_warn!(
+                    LOG_TAG,
+                    "Failed to safely clean {}: {e}",
+                    path.original.display()
+                );
                 continue;
             }
-            log_info!(LOG_TAG, "Cleaned mountpoint contents: {path}");
+            log_info!(
+                LOG_TAG,
+                "Cleaned mountpoint contents: {}",
+                path.original.display()
+            );
         } else {
-            match remove_directory_tree(cleanup_path) {
+            match remove_directory_tree(path.original) {
                 Ok(RemoveOutcome::Removed) => {
-                    log_info!(LOG_TAG, "Cleaned stale path: {path}");
+                    log_info!(LOG_TAG, "Cleaned stale path: {}", path.original.display());
                 }
                 Ok(RemoveOutcome::Missing) => {}
                 Err(e) => {
-                    log_warn!(LOG_TAG, "Failed to safely clean {path}: {e}");
+                    log_warn!(
+                        LOG_TAG,
+                        "Failed to safely clean {}: {e}",
+                        path.original.display()
+                    );
                 }
             }
         }
     }
 }
 
+struct CleanupPath<'a> {
+    original: &'a Path,
+    logical: PathBuf,
+}
+
 fn clean_directory_contents<R>(
-    path: &Path,
-    preserved: &[String],
+    original_path: &Path,
+    logical_path: &Path,
+    preserved: &HashSet<PathBuf>,
     remove_entry: &R,
 ) -> io::Result<()>
 where
     R: Fn(&fs::DirEntry) -> io::Result<()>,
 {
-    let directory = match CleanupDirectory::open(path) {
+    let directory = match CleanupDirectory::open(original_path) {
         Ok(directory) => directory,
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
         Err(e) => return Err(e),
@@ -116,13 +160,18 @@ where
         let entry = match entry {
             Ok(entry) => entry,
             Err(e) => {
-                log_warn!(LOG_TAG, "Failed to read entry in {}: {e}", path.display());
+                log_warn!(
+                    LOG_TAG,
+                    "Failed to read entry in {}: {e}",
+                    original_path.display()
+                );
                 continue;
             }
         };
-        let entry_path = path.join(entry.file_name());
+        let entry_path = original_path.join(entry.file_name());
+        let logical_entry_path = logical_path.join(entry.file_name());
 
-        if entry_overlaps_preserved_path(&entry_path, preserved) {
+        if entry_overlaps_preserved_path(&logical_entry_path, preserved) {
             continue;
         }
 
@@ -245,19 +294,23 @@ impl CleanupDirectory {
     }
 }
 
-fn count_preserved_children(path: &Path, preserved: &[String]) -> usize {
+fn is_preserved_or_descendant(path: &Path, preserved: &HashSet<PathBuf>) -> bool {
+    preserved
+        .iter()
+        .any(|preserved_path| path.starts_with(preserved_path))
+}
+
+fn count_preserved_children(path: &Path, preserved: &HashSet<PathBuf>) -> usize {
     preserved
         .iter()
         .filter(|preserved_path| {
-            let preserved_path = Path::new(preserved_path);
-            preserved_path != path && preserved_path.starts_with(path)
+            preserved_path.as_path() != path && preserved_path.starts_with(path)
         })
         .count()
 }
 
-fn entry_overlaps_preserved_path(entry_path: &Path, preserved: &[String]) -> bool {
+fn entry_overlaps_preserved_path(entry_path: &Path, preserved: &HashSet<PathBuf>) -> bool {
     preserved.iter().any(|preserved_path| {
-        let preserved_path = Path::new(preserved_path);
         preserved_path == entry_path || preserved_path.starts_with(entry_path)
     })
 }
@@ -317,11 +370,12 @@ fn cleanup_mountinfo() -> io::Result<String> {
 }
 
 fn absolute_path_without_following_final_symlink(path: &Path) -> io::Result<PathBuf> {
-    if path.is_absolute() {
-        Ok(path.to_path_buf())
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
     } else {
-        Ok(std::env::current_dir()?.join(path))
-    }
+        std::env::current_dir()?.join(path)
+    };
+    Ok(normalize_path(&absolute))
 }
 
 fn mount_points_from_mountinfo(mountinfo: &str) -> HashSet<PathBuf> {
@@ -383,7 +437,7 @@ fn is_octal_digit(byte: u8) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::cell::Cell;
+    use std::cell::{Cell, RefCell};
     use std::ffi::OsStr;
 
     fn disable_system_log() {
@@ -572,11 +626,14 @@ mod tests {
         disable_system_log();
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("workspace");
+        let alias = dir.path().join("alias");
+        let cleanup_path = alias.join("..").join("workspace");
+        fs::create_dir_all(&alias).unwrap();
         fs::create_dir_all(path.join("old-dir")).unwrap();
         fs::write(path.join("old-dir").join("nested.txt"), "old").unwrap();
         fs::write(path.join("agent.txt"), "old").unwrap();
 
-        cleanup_stale_paths_with_mount_detector(&[path_string(&path)], &[], |candidate| {
+        cleanup_stale_paths_with_mount_detector(&[path_string(&cleanup_path)], &[], |candidate| {
             candidate == path
         });
 
@@ -672,16 +729,24 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let parent = dir.path().join("workspace");
         let child = parent.join("child");
+        let alias = dir.path().join("alias");
+        let parent_cleanup = alias.join("..").join("workspace");
+        let observed = RefCell::new(Vec::new());
+        fs::create_dir_all(&alias).unwrap();
         fs::create_dir_all(&child).unwrap();
         fs::write(child.join("stale.txt"), "old").unwrap();
         fs::write(parent.join("agent.txt"), "old").unwrap();
 
         cleanup_stale_paths_with_mount_detector(
-            &[path_string(&child), path_string(&parent)],
+            &[path_string(&child), path_string(&parent_cleanup)],
             &[],
-            |candidate| candidate == parent,
+            |candidate| {
+                observed.borrow_mut().push(candidate.to_path_buf());
+                candidate == parent
+            },
         );
 
+        assert_eq!(*observed.borrow(), [parent.clone(), child.clone()]);
         assert!(parent.exists());
         assert!(!parent.join("agent.txt").exists());
         assert!(!child.exists());
