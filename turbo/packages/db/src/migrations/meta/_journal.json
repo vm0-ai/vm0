@@ -904,6 +904,13 @@
       "when": 1786953067357,
       "tag": "0936_motionless_winter_soldier",
       "breakpoints": true
+    },
+    {
+      "idx": 937,
+      "version": "7",
+      "when": 1786972360577,
+      "tag": "0937_contract_integration_identity_runtime_schema",
+      "breakpoints": true
     }
   ]
 }

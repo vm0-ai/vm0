@@ -87,7 +87,6 @@ const updateOfficialBot$ = command(
       .insert(telegramUserAgentPreferences)
       .values({
         userId: args.auth.userId,
-        legacyUserId: args.auth.userId,
         orgId: args.auth.orgId,
         selectedComposeId: args.selectedAgentId,
       })

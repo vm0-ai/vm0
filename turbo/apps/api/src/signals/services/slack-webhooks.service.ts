@@ -521,7 +521,6 @@ async function setUserAgentPreference(args: {
     .insert(slackUserAgentPreferences)
     .values({
       userId: args.userId,
-      legacyUserId: args.userId,
       orgId: args.orgId,
       selectedComposeId: args.composeId,
     })

@@ -25,10 +25,6 @@ export const feishuOrgConnections = pgTable(
       ),
     feishuOpenId: varchar("feishu_open_id", { length: 255 }).notNull(),
     userId: text("user_id").notNull(),
-    // DB/API rollout fallback (observed maximum exposure: ~102 minutes).
-    // Remove in #27602 after the switched API is healthy, the previous API
-    // version has drained, and every transition invariant remains valid.
-    legacyUserId: text("vm0_user_id").notNull(),
     feishuUserName: varchar("feishu_user_name", { length: 255 }),
     dmWelcomeSent: boolean("dm_welcome_sent").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -38,10 +34,6 @@ export const feishuOrgConnections = pgTable(
     return [
       uniqueIndex("idx_feishu_org_connections_user_installation").on(
         table.feishuOpenId,
-        table.installationId,
-      ),
-      index("idx_feishu_org_connections_vm0_installation").on(
-        table.legacyUserId,
         table.installationId,
       ),
       index("idx_feishu_org_connections_user_id_installation").on(

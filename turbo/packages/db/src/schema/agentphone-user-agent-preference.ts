@@ -1,6 +1,5 @@
 import {
   pgTable,
-  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -17,10 +16,6 @@ export const agentphoneUserAgentPreferences = pgTable(
   "agentphone_user_agent_preferences",
   {
     userId: text("user_id").notNull(),
-    // DB/API rollout fallback (observed maximum exposure: ~102 minutes).
-    // Remove in #27602 after the switched API is healthy, the previous API
-    // version has drained, and every transition invariant remains valid.
-    legacyUserId: text("vm0_user_id").notNull(),
     orgId: text("org_id").notNull(),
     selectedComposeId: uuid("selected_compose_id").references(
       () => {
@@ -33,10 +28,6 @@ export const agentphoneUserAgentPreferences = pgTable(
   },
   (table) => {
     return [
-      primaryKey({
-        columns: [table.legacyUserId, table.orgId],
-        name: "agentphone_user_agent_preferences_pkey",
-      }),
       uniqueIndex("idx_agentphone_user_agent_preferences_user_org").on(
         table.userId,
         table.orgId,

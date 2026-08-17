@@ -341,7 +341,6 @@ async function setUserAgentPreference(args: {
     .insert(feishuUserAgentPreferences)
     .values({
       userId: args.userId,
-      legacyUserId: args.userId,
       orgId: args.orgId,
       selectedComposeId: args.composeId,
     })

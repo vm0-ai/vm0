@@ -340,7 +340,6 @@ export const linkTelegramUser$ = command(
         ),
         installationId: params.installationId,
         userId: params.userId,
-        legacyUserId: params.userId,
       })
       .onConflictDoNothing()
       .returning();
@@ -467,7 +466,6 @@ export const linkOfficialTelegramUser$ = command(
           params.telegramDisplayName,
         ),
         userId: params.userId,
-        legacyUserId: params.userId,
         orgId: params.orgId,
         publicBrand: params.publicBrand,
       })

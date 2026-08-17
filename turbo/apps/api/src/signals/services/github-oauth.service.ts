@@ -599,7 +599,6 @@ export async function linkGithubUser(
       githubUserId,
       installationId: args.installRecordId,
       userId: args.userId,
-      legacyUserId: args.userId,
     })
     .onConflictDoNothing()
     .returning({ githubUserId: githubUserLinks.githubUserId });

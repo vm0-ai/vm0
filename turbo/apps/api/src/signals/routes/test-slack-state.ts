@@ -155,7 +155,6 @@ async function insertSlackConnectionIfMissing(
       slackUserId: input.slackUserId,
       slackWorkspaceId: input.slackWorkspaceId,
       userId: input.userId,
-      legacyUserId: input.userId,
     })
     .onConflictDoNothing()
     .returning({ id: slackOrgConnections.id });

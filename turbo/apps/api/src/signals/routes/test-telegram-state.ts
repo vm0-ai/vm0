@@ -357,7 +357,6 @@ async function insertTelegramLinkIfMissing(
       installationId: params.installationId,
       telegramUserId: params.telegramUserId,
       userId: params.userId,
-      legacyUserId: params.userId,
     })
     .onConflictDoNothing()
     .returning({ id: telegramUserLinks.id });
@@ -589,7 +588,6 @@ async function seedOfficialUserLinkForAction(
     .values({
       orgId: required.org_id!,
       userId: required.user_id!,
-      legacyUserId: required.user_id!,
       telegramUserId: required.telegram_user_id!,
       telegramUsername: readActionNullableString(body, "telegram_username"),
       telegramDisplayName: readActionNullableString(
@@ -623,7 +621,6 @@ async function seedUserLinkForAction(
       installationId: required.installation_id!,
       telegramUserId: required.telegram_user_id!,
       userId: required.user_id!,
-      legacyUserId: required.user_id!,
       telegramUsername: readActionNullableString(body, "telegram_username"),
       telegramDisplayName: readActionNullableString(
         body,
@@ -653,7 +650,6 @@ async function seedUserAgentPreferenceForAction(
     .values({
       orgId: required.org_id!,
       userId: required.user_id!,
-      legacyUserId: required.user_id!,
       selectedComposeId: required.compose_id!,
     })
     .onConflictDoUpdate({
@@ -942,7 +938,6 @@ async function seedTelegramPostLinks(
       telegramUsername: "alice",
       telegramDisplayName: "Alice",
       userId: seed.userId,
-      legacyUserId: seed.userId,
     });
     signal.throwIfAborted();
   }
@@ -951,7 +946,6 @@ async function seedTelegramPostLinks(
     await db.insert(telegramOfficialUserLinks).values({
       orgId: seed.orgId,
       userId: seed.userId,
-      legacyUserId: seed.userId,
       telegramUserId: "99002",
       telegramUsername: "bob",
       telegramDisplayName: "Bob",
@@ -1531,7 +1525,6 @@ async function seedPendingUserLinkForAction(
     telegramUsername: null,
     telegramDisplayName: null,
     userId: required.user_id!,
-    legacyUserId: required.user_id!,
   });
   signal.throwIfAborted();
   return actionOk();

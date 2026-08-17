@@ -380,7 +380,6 @@ const handlePlatformInstall$ = command(
         slackUserId: args.authedUserId,
         slackWorkspaceId: args.installation.slackWorkspaceId,
         userId: args.state.userId,
-        legacyUserId: args.state.userId,
       })
       .onConflictDoNothing();
     signal.throwIfAborted();

@@ -27,10 +27,6 @@ export const teamsOrgConnections = pgTable(
         return teamsOrgInstallations.teamsTenantId;
       }),
     userId: text("user_id").notNull(),
-    // DB/API rollout fallback (observed maximum exposure: ~102 minutes).
-    // Remove in #27602 after the switched API is healthy, the previous API
-    // version has drained, and every transition invariant remains valid.
-    legacyUserId: text("vm0_user_id").notNull(),
     teamsUserDisplayName: varchar("teams_user_display_name", { length: 255 }),
     teamsUserPrincipalName: varchar("teams_user_principal_name", {
       length: 255,
@@ -47,10 +43,6 @@ export const teamsOrgConnections = pgTable(
       uniqueIndex("idx_teams_org_connections_aad_tenant")
         .on(table.teamsAadObjectId, table.teamsTenantId)
         .where(sql`teams_aad_object_id IS NOT NULL`),
-      index("idx_teams_org_connections_vm0_tenant").on(
-        table.legacyUserId,
-        table.teamsTenantId,
-      ),
       index("idx_teams_org_connections_user_id_tenant").on(
         table.userId,
         table.teamsTenantId,

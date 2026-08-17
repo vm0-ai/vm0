@@ -30,10 +30,6 @@ export const telegramUserLinks = pgTable(
         { onDelete: "cascade" },
       ),
     userId: text("user_id").notNull(),
-    // DB/API rollout fallback (observed maximum exposure: ~102 minutes).
-    // Remove in #27602 after the switched API is healthy, the previous API
-    // version has drained, and every transition invariant remains valid.
-    legacyUserId: text("vm0_user_id").notNull(),
     dmWelcomeSent: boolean("dm_welcome_sent").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -43,11 +39,6 @@ export const telegramUserLinks = pgTable(
       // Each Telegram user can only link to one internal user per bot
       uniqueIndex("idx_telegram_user_links_user_installation").on(
         table.telegramUserId,
-        table.installationId,
-      ),
-      // Each internal user can only link one Telegram account per bot
-      uniqueIndex("idx_telegram_user_links_vm0_installation").on(
-        table.legacyUserId,
         table.installationId,
       ),
       uniqueIndex("idx_telegram_user_links_user_id_installation").on(

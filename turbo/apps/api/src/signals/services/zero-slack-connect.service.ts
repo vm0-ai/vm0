@@ -62,7 +62,7 @@ async function upsertSlackConnection(
 ): Promise<string> {
   const [connection] = await writeDb
     .insert(slackOrgConnections)
-    .values({ ...args, legacyUserId: args.userId })
+    .values(args)
     .onConflictDoNothing({
       target: [
         slackOrgConnections.slackUserId,
