@@ -108,6 +108,7 @@ import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
 import { agentRuns } from "@okouai/db/schema/agent-run";
+import type { AgentRunLaunchSnapshot } from "@okouai/db/jsonb-contracts/agent-run-session-conversation";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { conversations } from "@okouai/db/schema/conversation";
 import { blobs } from "@okouai/db/schema/blob";
@@ -721,7 +722,7 @@ export function isThreadSessionSnapshotStale(
 interface CommitPreparedLaunchArgs {
   readonly db: Db;
   readonly createArgs: CreateAgentRunArgs;
-  readonly context: PreparedRunContext;
+  readonly context: FinalizedPreparedRunContext;
   readonly identity: LaunchRunIdentity;
   readonly callbackRows: readonly AgentRunCallbackInsert[];
   readonly launch: PreparedRunnerLaunch;
@@ -5732,6 +5733,7 @@ interface LaunchRunRowsArgs {
   readonly zeroRunMetadata: ZeroRunMetadata | undefined;
   readonly apiStartTime: number;
   readonly runnerGroup: string | undefined;
+  readonly launchSnapshot: AgentRunLaunchSnapshot;
   readonly error: string | undefined;
 }
 
@@ -5771,6 +5773,7 @@ function launchRunValues(
     sessionId: args.identity.sessionId,
     lastHeartbeatAt: createdAt,
     runnerGroup: args.runnerGroup ?? null,
+    launchSnapshot: args.launchSnapshot,
     completedAt: args.status === "failed" ? createdAt : null,
     error: args.error ?? null,
     ...metadata,
@@ -6310,6 +6313,7 @@ interface BuildRunnerJobPayloadInput {
   readonly body: CreateRunBody;
   readonly artifacts: readonly ContextArtifact[];
   readonly framework: SupportedFramework;
+  readonly launchSnapshot: AgentRunLaunchSnapshot;
   readonly piSandbox: PiModelConfig | undefined;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
   readonly connectorContext: ConnectorRuntimeContext;
@@ -6341,17 +6345,18 @@ function storedExecutionContextWithPiResources(
   context: StoredExecutionContext,
   resources: PreparedPiLaunchResources | undefined,
   chatThreadId: string | undefined,
+  launchFramework: AgentRunLaunchSnapshot["framework"],
 ): StoredExecutionContext {
+  const finalizedContext = { ...context, cliAgentType: launchFramework };
   if (resources === undefined) {
-    return context;
+    return finalizedContext;
   }
   if (chatThreadId === undefined) {
     throw new Error("Pi sandbox execution requires a chat thread");
   }
   return {
-    ...context,
+    ...finalizedContext,
     resumeSession: resources.resumeSession ?? null,
-    cliAgentType: "pi",
     piSessionId: chatThreadId,
     piLaunchConfig: resources.launchConfig,
     piModelConfig: resources.modelConfig,
@@ -6464,7 +6469,7 @@ function buildRunnerJobPayload(
             volumeVersionOverrides: body.volumeVersions,
             additionalVolumes: args.additionalVolumes,
             additionalVolumeSources: args.additionalVolumeSources,
-            framework: args.piSandbox === undefined ? args.framework : "pi",
+            framework: args.launchSnapshot.framework,
             persistedStorageMounts: args.resolved.persistedStorageMounts,
             timing: args.timing,
             stats: storageManifestStats,
@@ -6502,6 +6507,7 @@ function buildRunnerJobPayload(
       builtContext.context,
       piResources,
       args.chatThreadId,
+      args.launchSnapshot.framework,
     );
     const runContextSnapshot = buildRunContextSnapshot({
       runId: args.run.id,
@@ -6516,7 +6522,7 @@ function buildRunnerJobPayload(
     return {
       runnerJobPayload: queuedRunnerJobPayload({
         runnerGroup: group,
-        profile: runnerProfile(args.resolved.content),
+        profile: args.launchSnapshot.runnerProfile,
         cliAgentSessionId,
         reuseKey: runnerReuseKey(args.chatThreadId),
         executionContext: storedContext,
@@ -6553,6 +6559,7 @@ function preparedLaunchRowsArgs(args: {
     zeroRunMetadata: args.commit.createArgs.zeroRunMetadata,
     apiStartTime: args.commit.createArgs.apiStartTime,
     runnerGroup: args.runnerGroup,
+    launchSnapshot: args.commit.context.launchSnapshot,
     error: undefined,
   };
 }
@@ -6949,7 +6956,7 @@ async function claimQueueFirstAssociationForLaunch(args: {
 async function commitFailedLaunch(args: {
   readonly db: Db;
   readonly createArgs: CreateAgentRunArgs;
-  readonly context: PreparedRunContext;
+  readonly context: FinalizedPreparedRunContext;
   readonly identity: LaunchRunIdentity;
   readonly callbackRows: readonly AgentRunCallbackInsert[];
   readonly error: unknown;
@@ -6995,6 +7002,7 @@ async function commitFailedLaunch(args: {
         zeroRunMetadata: args.createArgs.zeroRunMetadata,
         apiStartTime: args.createArgs.apiStartTime,
         runnerGroup: undefined,
+        launchSnapshot: args.context.launchSnapshot,
         error: message,
       });
       if (queueFirstClaim) {
@@ -7460,7 +7468,7 @@ function buildAtomicLaunchPayload(
   db: Db,
   args: {
     readonly createArgs: CreateAgentRunArgs;
-    readonly context: PreparedRunContext;
+    readonly context: FinalizedPreparedRunContext;
     readonly run: Pick<RunRecord, "id" | "sessionId" | "shouldCreateSession">;
     readonly timing: ApiDispatchTimingCollector;
   },
@@ -7473,6 +7481,7 @@ function buildAtomicLaunchPayload(
     body: args.context.body,
     artifacts: args.context.artifacts,
     framework: args.context.framework,
+    launchSnapshot: args.context.launchSnapshot,
     piSandbox: args.context.piSandbox,
     modelProvider: args.context.modelProvider,
     connectorContext: args.context.connectorContext,
@@ -7550,6 +7559,10 @@ interface PreparedRunContext {
   readonly imageRecognitionAvailable: boolean;
   /** Snapshotted onto the run row; see `resolveVideoModelForRun`. */
   readonly selectedVideoModel: string;
+}
+
+interface FinalizedPreparedRunContext extends PreparedRunContext {
+  readonly launchSnapshot: AgentRunLaunchSnapshot;
 }
 
 function isPiSandboxEnabledForRun(
@@ -8719,7 +8732,7 @@ function flushQueueFirstClaimLostTiming(args: {
 interface AtomicLaunchRunInput {
   readonly db: Db;
   readonly args: CreateAgentRunArgs;
-  readonly context: PreparedRunContext;
+  readonly context: FinalizedPreparedRunContext;
   readonly timing: ApiDispatchTimingCollector;
   readonly phaseTiming: ApiDispatchPhaseCollector;
 }
@@ -8977,9 +8990,17 @@ interface CompleteAgentRunArgs {
 function finalizePreparedRunContext(
   prepared: PreparedAgentRun,
   finalAppendSystemPrompt: CreateRunBody["appendSystemPrompt"],
-): PreparedRunContext {
+): FinalizedPreparedRunContext {
   return {
     ...prepared.context,
+    launchSnapshot: {
+      schemaVersion: 1,
+      framework:
+        prepared.context.piSandbox === undefined
+          ? prepared.context.framework
+          : "pi",
+      runnerProfile: runnerProfile(prepared.context.resolved.content),
+    },
     body: withFinalRunAppendSystemPrompt({
       body: {
         ...prepared.context.body,
