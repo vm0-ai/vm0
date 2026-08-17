@@ -1390,7 +1390,9 @@ async fn execute_cli_inner(
                             // Extract tool info BEFORE masking (masker may replace tool names).
                             // Watchdog tracking is auxiliary state and must never make the
                             // ordinary event stream or the run fail.
-                            claude::track_claude_tool_events(&event, &mut stuck_tool_tracker);
+                            if matches!(runtime.framework, env::Framework::ClaudeCode) {
+                                claude::track_claude_tool_events(&event, &mut stuck_tool_tracker);
+                            }
                             termination_runtime.record_post_result_activity(
                                 post_result_cleanup_was_armed,
                                 termination_deadline.as_mut(),
