@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.762.0](https://github.com/vm0-ai/vm0/compare/app-v0.761.0...app-v0.762.0) (2026-08-17)
+
+
+### Features
+
+* **composer:** offer new-chat video model as an explicit default ([#27648](https://github.com/vm0-ai/vm0/issues/27648)) ([57f9504](https://github.com/vm0-ai/vm0/commit/57f9504c4bd1b596dcc4b6b6fba97d5e5f3186d4))
+
 ## [0.761.0](https://github.com/vm0-ai/vm0/compare/app-v0.760.2...app-v0.761.0) (2026-08-17)
 
 
