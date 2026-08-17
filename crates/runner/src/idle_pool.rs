@@ -63,6 +63,11 @@ pub struct IdlePoolSnapshot {
     pub idle_vms: Vec<IdleVm>,
 }
 
+pub(crate) enum TakenIdleEntryState {
+    Available,
+    Expired,
+}
+
 /// Pool of idle sandboxes keyed by reuse key.
 ///
 /// After a job reaches a terminal state that is proven reusable, its sandbox
@@ -141,6 +146,19 @@ impl IdlePool {
             self.bump_revision();
         }
         entry
+    }
+
+    pub(crate) fn take_for_reuse(
+        &mut self,
+        reuse_key: &str,
+    ) -> Option<(TakenIdleEntryState, IdleEntry)> {
+        let entry = self.take(reuse_key)?;
+        let state = if entry.is_expired_at(Instant::now()) {
+            TakenIdleEntryState::Expired
+        } else {
+            TakenIdleEntryState::Available
+        };
+        Some((state, entry))
     }
 
     pub fn has_reusable(

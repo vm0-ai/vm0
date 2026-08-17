@@ -12,10 +12,10 @@ pub(super) use self::env::{
 };
 pub(super) use self::idle_pool::{
     SpeculativeIdleSeedSpec, TestParkedIdleCandidateSpec, WorkspacePromotionSeedSpec,
-    seed_idle_pool, seed_idle_pool_expired, seed_idle_pool_with_history_generation,
-    seed_idle_pool_with_overrides, seed_idle_pool_with_speculative_timezone,
-    seed_idle_pool_with_timing, seed_idle_pool_with_workspace_promotion,
-    seed_workspace_cache_state,
+    seed_idle_pool, seed_idle_pool_expired, seed_idle_pool_expired_with_overrides,
+    seed_idle_pool_with_history_generation, seed_idle_pool_with_overrides,
+    seed_idle_pool_with_speculative_timezone, seed_idle_pool_with_timing,
+    seed_idle_pool_with_workspace_promotion, seed_workspace_cache_state,
 };
 pub(super) use self::jobs::{context_with_session, minimal_context, push_job, shutdown};
 pub(super) use self::status::{

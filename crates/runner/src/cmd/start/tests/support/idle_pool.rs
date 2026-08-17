@@ -352,6 +352,35 @@ pub(in super::super) async fn seed_idle_pool_expired(
     assert!(matches!(result, ParkResult::Parked));
 }
 
+pub(in super::super) async fn seed_idle_pool_expired_with_overrides(
+    pool: &SharedIdlePool,
+    budget: &Arc<ResourceBudget>,
+    overrides: &Arc<sandbox_mock::MockSandboxOverrides>,
+    reuse_key: &str,
+    profile_name: &str,
+    vcpu: u32,
+    memory_mb: u32,
+) -> SandboxId {
+    seed_idle_pool_with_overrides_and_generation(
+        pool,
+        budget,
+        overrides,
+        IdlePoolSeedSpec {
+            reuse_key,
+            profile_name,
+            vcpu,
+            memory_mb,
+            history_generation_run_id: None,
+            guest_timezone_intent: GuestTimezoneIntent::Unknown,
+            timing: Some((
+                std::time::Instant::now() - Duration::from_secs(400),
+                Duration::from_secs(300),
+            )),
+        },
+    )
+    .await
+}
+
 pub(in super::super) struct TestParkedIdleCandidateSpec<'a> {
     pub(in super::super) reuse_key: &'a str,
     pub(in super::super) profile_name: &'a str,

@@ -35,7 +35,7 @@ use crate::guest_timezone::{GuestTimezoneAssumption, GuestTimezoneIntent};
 use crate::idle_pool::{
     DestroyOutcome, IdlePoolSnapshot, IdleUnparkResult, ReservedIdleSandbox,
     RestoreReservedIdleResult, ReusableIdleSandbox, SpeculativeIdleSandbox,
-    SpeculativeIdleUnparkResult, SpeculativeReparkResult,
+    SpeculativeIdleUnparkResult, SpeculativeReparkResult, TakenIdleEntryState,
 };
 use crate::ids::RunId;
 use crate::lifecycle::RunnerMode;
@@ -1915,8 +1915,8 @@ async fn try_reuse_from_pool(
     // so unpark does not block other take/park operations.
     let (taken, snapshot) = {
         let mut pool = ctx.idle_pool.lock().await;
-        let taken = pool.take(reuse_key);
-        let snapshot = taken.as_ref().map(|_| pool.status_snapshot());
+        let taken = pool.take_for_reuse(reuse_key);
+        let snapshot = taken.is_some().then(|| pool.status_snapshot());
         (taken, snapshot)
     };
     let took_idle_session = taken.is_some();
@@ -1931,7 +1931,28 @@ async fn try_reuse_from_pool(
         .record_phase_elapsed(RunnerPreSpawnPhase::WorkspaceCacheStateLookup, started_at);
     let needs_reuse_state_refresh = took_idle_session || claimed_workspace_cache_reuse_key;
     match taken {
-        Some(entry)
+        Some((TakenIdleEntryState::Expired, expired)) => {
+            info!(
+                run_id = %run_id,
+                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
+                reuse_key_kind = reuse_key_kind(reuse_key),
+                profile = %expired.profile_name(),
+                "expired idle VM found after claim, destroying and falling through to fresh create"
+            );
+            spawn_idle_destroy_job(
+                ctx.destroy_tasks,
+                expired.into_destroy_job(),
+                "reuse_expired",
+            );
+            (
+                None,
+                job_lease,
+                SandboxReuseResult::PoolMiss,
+                snapshot,
+                needs_reuse_state_refresh,
+            )
+        }
+        Some((TakenIdleEntryState::Available, entry))
             if entry.profile_name() == profile_name
                 && entry.device_rate_limits() == device_rate_limits =>
         {
@@ -2014,7 +2035,7 @@ async fn try_reuse_from_pool(
                 }
             }
         }
-        Some(stale) if stale.profile_name() == profile_name => {
+        Some((TakenIdleEntryState::Available, stale)) if stale.profile_name() == profile_name => {
             info!(
                 run_id = %run_id,
                 reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
@@ -2035,7 +2056,7 @@ async fn try_reuse_from_pool(
                 needs_reuse_state_refresh,
             )
         }
-        Some(stale) => {
+        Some((TakenIdleEntryState::Available, stale)) => {
             info!(
                 run_id = %run_id,
                 reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
