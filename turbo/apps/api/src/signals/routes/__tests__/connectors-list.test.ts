@@ -11,7 +11,7 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
 import {
-  deleteApiTestConnectorCatalogCompatibility,
+  invalidateApiTestConnectorCatalogCompatibility,
   installApiTestConnectorCatalog,
 } from "../../../test-fixtures/connector-catalog";
 import { seedConnectorStorageRow } from "./helpers/connector-credential-storage-state";
@@ -168,7 +168,7 @@ describe("GET /api/zero/connectors", () => {
     await connectGitlab(fixture);
     mockOptionalEnv("BOX_OAUTH_CLIENT_ID", undefined);
     await installApiTestConnectorCatalog();
-    await deleteApiTestConnectorCatalogCompatibility();
+    await invalidateApiTestConnectorCatalogCompatibility();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context, routes: connectorsRoutes })(

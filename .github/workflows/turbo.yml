@@ -2599,6 +2599,7 @@ jobs:
           token=$(jq -er '.token | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-runner-real-claude.json)
           api_url=$(jq -er '.apiUrl | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-runner-real-claude.json)
           echo "::add-mask::$token"
+          claude_model="claude-sonnet-5"
 
           headers=(-H "Authorization: Bearer ${token}" -H "Content-Type: application/json")
           if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
@@ -2606,11 +2607,11 @@ jobs:
           fi
 
           policies=$(curl -fsS "${headers[@]}" "${api_url}/api/okou/model-policies")
-          policy_payload=$(jq -c '
+          policy_payload=$(jq -c --arg model "$claude_model" '
             {
               policies: (
                 [.policies[] |
-                  select(.model != "claude-sonnet-4-6") |
+                  select(.model != $model) |
                   {
                     model,
                     isDefault,
@@ -2620,7 +2621,7 @@ jobs:
                   }
                 ] + [
                   {
-                    model: "claude-sonnet-4-6",
+                    model: $model,
                     isDefault: false,
                     defaultProviderType: "vm0",
                     credentialScope: "org",

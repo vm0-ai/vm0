@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.451.17](https://github.com/vm0-ai/vm0/compare/api-v1.451.16...api-v1.451.17) (2026-08-17)
+
+
+### Refactoring
+
+* **run:** shadow application-owned agent execution plans ([#27664](https://github.com/vm0-ai/vm0/issues/27664)) ([4591090](https://github.com/vm0-ai/vm0/commit/4591090aee021414cdf19a076ab1ce7adc6ab4e9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/db bumped to 1.200.14
+
 ## [1.451.16](https://github.com/vm0-ai/vm0/compare/api-v1.451.15...api-v1.451.16) (2026-08-17)
 
 

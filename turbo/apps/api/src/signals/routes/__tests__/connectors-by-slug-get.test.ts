@@ -12,7 +12,7 @@ import { setupApp } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import {
-  deleteApiTestConnectorCatalogCompatibility,
+  invalidateApiTestConnectorCatalogCompatibility,
   installApiTestConnectorCatalog,
 } from "../../../test-fixtures/connector-catalog";
 import { signSandboxJwtForTests } from "../../auth/tokens";
@@ -202,7 +202,7 @@ describe("GET /api/zero/connectors/:connectorSlug", () => {
     await connectOpenai(fixture);
     mockOptionalEnv("DROPBOX_OAUTH_CLIENT_ID", undefined);
     await installApiTestConnectorCatalog();
-    await deleteApiTestConnectorCatalogCompatibility();
+    await invalidateApiTestConnectorCatalogCompatibility();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context, routes: connectorsRoutes })(

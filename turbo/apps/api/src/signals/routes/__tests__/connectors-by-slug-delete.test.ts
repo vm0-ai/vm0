@@ -9,7 +9,7 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
 import {
-  deleteApiTestConnectorCatalogCompatibility,
+  invalidateApiTestConnectorCatalogCompatibility,
   installApiTestConnectorCatalog,
 } from "../../../test-fixtures/connector-catalog";
 import {
@@ -238,7 +238,7 @@ describe("DELETE /api/zero/connectors/:connectorSlug", () => {
     await connectOpenai(fixture);
     mockOptionalEnv("CLOSE_OAUTH_CLIENT_ID", undefined);
     await installApiTestConnectorCatalog();
-    await deleteApiTestConnectorCatalogCompatibility();
+    await invalidateApiTestConnectorCatalogCompatibility();
 
     const response = await deleteConnector(fixture, "openai", [204]);
 
