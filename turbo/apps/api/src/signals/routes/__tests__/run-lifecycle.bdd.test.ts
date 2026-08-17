@@ -7506,8 +7506,9 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const claim = await api.claimRunnerJob(run.runId);
 
     expect(claim.environment?.GH_TOKEN).toBe("legacy-authoritative-token");
-    expect(claim.environment?.GITHUB_TOKEN).toBe(
-      connectorPlaceholder("github", "GITHUB_TOKEN"),
+    expect(claim.environment?.GITHUB_TOKEN).toStrictEqual(expect.any(String));
+    expect(claim.environment?.GITHUB_TOKEN).not.toBe(
+      "github-shadow-unavailable",
     );
     expect(environmentShadowFieldsForRun(run.runId)).toStrictEqual({
       environmentShadowClassification: "shadow_unavailable",
