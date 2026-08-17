@@ -56,6 +56,46 @@ type _TestServerHandler = Callable[
 ]
 type _SocketAddress = tuple[str, int] | tuple[str, int, int, int]
 type _SockConnect = Callable[[socket.socket, _SocketAddress], Coroutine[object, object, None]]
+_REAL_SOCKET = socket.socket
+
+
+class _LifecycleSocket(_REAL_SOCKET):
+    def __init__(
+        self,
+        family: int = -1,
+        socket_type: int = -1,
+        proto: int = -1,
+        fileno: int | None = None,
+    ) -> None:
+        super().__init__(family, socket_type, proto, fileno)
+        self.shutdown_calls: list[int] = []
+        self.close_call_count = 0
+
+    def shutdown(self, how: int) -> None:
+        self.shutdown_calls.append(how)
+        super().shutdown(how)
+
+    def close(self) -> None:
+        self.close_call_count += 1
+        super().close()
+
+
+@dataclass
+class _LifecycleSocketFactory:
+    sockets: list[_LifecycleSocket] = field(default_factory=list)
+
+    def __call__(
+        self,
+        family: int = -1,
+        socket_type: int = -1,
+        proto: int = -1,
+        fileno: int | None = None,
+    ) -> socket.socket:
+        if fileno is not None:
+            return _REAL_SOCKET(family, socket_type, proto, fileno)
+        created = _LifecycleSocket(family, socket_type, proto)
+        self.sockets.append(created)
+        return created
 
 
 @dataclass(frozen=True)
@@ -92,6 +132,27 @@ class _PendingSockConnect:
             raise
         finally:
             self.active_count -= 1
+
+
+@dataclass
+class _SimultaneousSockConnect:
+    real_connect: _SockConnect
+    target_address: _SocketAddress
+    participant_count: int
+    attempted_addresses: list[_SocketAddress] = field(default_factory=list)
+    completed_addresses: list[_SocketAddress] = field(default_factory=list)
+    sockets_by_address: dict[_SocketAddress, socket.socket] = field(default_factory=dict)
+    barrier: asyncio.Barrier = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.barrier = asyncio.Barrier(self.participant_count)
+
+    async def __call__(self, sock: socket.socket, address: _SocketAddress) -> None:
+        self.attempted_addresses.append(address)
+        self.sockets_by_address[address] = sock
+        await self.real_connect(sock, self.target_address)
+        await self.barrier.wait()
+        self.completed_addresses.append(address)
 
 
 @asynccontextmanager
@@ -1242,6 +1303,117 @@ class TestFirewallAuthAsyncTransport:
         assert len(requests) == 1
         assert len(client_sockets) == 2
         assert client_sockets[0].fileno() == -1
+
+    async def test_aborts_other_successful_connections_in_same_batch(self, mitm_ctx):
+        requests: list[_RawHttpRequest] = []
+
+        async def handle_client(
+            reader: asyncio.StreamReader,
+            writer: asyncio.StreamWriter,
+        ) -> None:
+            try:
+                request = await _read_raw_http_request(reader)
+            except asyncio.IncompleteReadError:
+                await _close_test_writer(writer)
+                return
+            requests.append(request)
+            await _write_success_response(writer)
+
+        loop = asyncio.get_running_loop()
+        socket_factory = _LifecycleSocketFactory()
+        resolver = _OrderedResolver(
+            expected_host="firewall-auth.invalid",
+            addresses=("192.0.2.2", "192.0.2.1"),
+        )
+        real_open_connection = asyncio.open_connection
+        handoff_states: list[tuple[_LifecycleSocket, list[int], int]] = []
+
+        async def record_open_connection(
+            *,
+            sock: socket.socket,
+            limit: int,
+        ) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+            assert isinstance(sock, _LifecycleSocket)
+            handoff_states.append((sock, list(sock.shutdown_calls), sock.close_call_count))
+            return await real_open_connection(sock=sock, limit=limit)
+
+        async with _run_test_server(handle_client) as port:
+            connect_probe = _SimultaneousSockConnect(
+                loop.sock_connect,
+                ("127.0.0.1", port),
+                participant_count=2,
+            )
+            expected_addresses: list[_SocketAddress] = [
+                ("192.0.2.2", port),
+                ("192.0.2.1", port),
+            ]
+            with (
+                patch.dict(os.environ, _EMPTY_PROXY_ENVIRONMENT),
+                patch.object(auth_client, "_dns_resolver", resolver),
+                patch.object(auth_client.socket, "socket", side_effect=socket_factory),
+                patch.object(loop, "sock_connect", new=connect_probe),
+                patch.object(auth_client.asyncio, "open_connection", new=record_open_connection),
+                patch.object(
+                    auth_client,
+                    "_FIREWALL_AUTH_CONNECTION_ATTEMPT_DELAY_SECONDS",
+                    0.0,
+                ),
+                patch.object(auth_client, "FIREWALL_AUTH_FETCH_DEADLINE_SECONDS", 0.5),
+                patch.object(platform_api, "VERCEL_BYPASS", ""),
+                mitm_ctx(api_url=f"http://firewall-auth.invalid:{port}"),
+            ):
+                result = await auth_client.fetch_firewall_headers(firewall_auth_request())
+
+        assert result.payload.headers == {}
+        assert len(requests) == 1
+        assert connect_probe.attempted_addresses == expected_addresses
+        assert set(connect_probe.completed_addresses) == set(expected_addresses)
+
+        winner_socket = connect_probe.sockets_by_address[expected_addresses[0]]
+        loser_socket = connect_probe.sockets_by_address[expected_addresses[1]]
+        assert isinstance(winner_socket, _LifecycleSocket)
+        assert isinstance(loser_socket, _LifecycleSocket)
+        assert handoff_states == [(winner_socket, [], 0)]
+        assert loser_socket.shutdown_calls == [socket.SHUT_RDWR]
+        assert loser_socket.close_call_count == 1
+
+    async def test_aborts_winner_when_stream_wrapping_fails(self, mitm_ctx):
+        async def handle_client(
+            reader: asyncio.StreamReader,
+            writer: asyncio.StreamWriter,
+        ) -> None:
+            await reader.read()
+            await _close_test_writer(writer)
+
+        socket_factory = _LifecycleSocketFactory()
+        handoff_states: list[tuple[_LifecycleSocket, list[int], int]] = []
+
+        async def fail_open_connection(
+            *,
+            sock: socket.socket,
+            limit: int,
+        ) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+            assert limit == auth_client._MAX_FIREWALL_AUTH_RESPONSE_HEADER_BYTES
+            assert isinstance(sock, _LifecycleSocket)
+            handoff_states.append((sock, list(sock.shutdown_calls), sock.close_call_count))
+            raise OSError("stream wrapping failed")
+
+        async with _run_test_server(handle_client) as port:
+            with (
+                patch.dict(os.environ, _EMPTY_PROXY_ENVIRONMENT),
+                patch.object(auth_client.socket, "socket", side_effect=socket_factory),
+                patch.object(auth_client.asyncio, "open_connection", new=fail_open_connection),
+                patch.object(platform_api, "VERCEL_BYPASS", ""),
+                mitm_ctx(api_url=f"http://127.0.0.1:{port}"),
+                pytest.raises(OSError, match=r"^stream wrapping failed$"),
+            ):
+                await auth_client.fetch_firewall_headers(firewall_auth_request())
+
+        assert len(socket_factory.sockets) == 1
+        winner_socket = socket_factory.sockets[0]
+        assert handoff_states == [(winner_socket, [], 0)]
+        assert winner_socket.shutdown_calls == [socket.SHUT_RDWR]
+        assert winner_socket.close_call_count == 1
 
     async def test_connects_to_second_address_while_first_connect_is_pending(self, mitm_ctx):
         requests: list[_RawHttpRequest] = []
