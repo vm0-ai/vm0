@@ -145,6 +145,7 @@ def _write_github_firewall_registry(
     *,
     client_ip: str = "10.200.0.5",
     base: str = "https://api.github.com",
+    source_id: str | None = None,
     vm_fields: dict[str, object] | None = None,
 ) -> Path:
     return _write_registry(
@@ -163,6 +164,7 @@ def _write_github_firewall_registry(
                 "ask": [],
                 "unknownPolicy": "allow",
             },
+            source_id=source_id,
             vm_fields=vm_fields,
         ),
     )

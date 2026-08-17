@@ -266,8 +266,10 @@ async def test_connector_sources_partition_firewall_auth_cache_identity(
 async def test_builtin_connector_routing_variables_are_forwarded_with_matched_firewall(
     tmp_path, real_flow, mitm_ctx
 ):
+    source_id = "550e8400-e29b-41d4-a716-446655440001"
     reg_path = _write_github_firewall_registry(
         tmp_path,
+        source_id=source_id,
         vm_fields={
             "connectorRoutingVariables": {"builtin:github": {"GITHUB_HOST": "münich.example.test"}}
         },
@@ -294,6 +296,7 @@ async def test_builtin_connector_routing_variables_are_forwarded_with_matched_fi
         "name": "github",
         "apiId": flow.metadata[metadata_keys.FIREWALL_API_ID],
         "connectorSlug": "github",
+        "sourceId": source_id,
         "routingVariables": {"GITHUB_HOST": "münich.example.test"},
     }
 

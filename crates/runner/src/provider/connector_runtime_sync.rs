@@ -3268,10 +3268,21 @@ mod tests {
         let (core, mut requests) = core_without_worker(&server);
         let run_id = RunId::nil();
         let target = builtin_target("slack");
+        let source_id = "550e8400-e29b-41d4-a716-446655440001";
+        let registration = ConnectorRuntimeTargetRegistration::Builtin {
+            connector_slug: "slack".to_string(),
+            base_url_vars: None,
+            source_id: Some(source_id.to_string()),
+        };
+        let sync_target = json!({
+            "kind": "builtin",
+            "connectorSlug": "slack",
+            "sourceId": source_id,
+        });
         let unresolved_sync = server.mock(|when, then| {
             when.method(POST)
                 .path(format!("/api/runners/runs/{run_id}/connector-runtime/sync"))
-                .json_body(json!({ "targets": [target.clone()] }));
+                .json_body(json!({ "targets": [sync_target.clone()] }));
             then.status(200)
                 .header("content-type", "application/json")
                 .json_body(json!({
@@ -3288,7 +3299,7 @@ mod tests {
                 "workspace".to_string(),
                 "acme".to_string(),
             )])),
-            source_id: None,
+            source_id: Some(source_id.to_string()),
         }];
         let policies = HashMap::from([(
             "slack".to_string(),
@@ -3313,7 +3324,7 @@ mod tests {
             run_id,
             source_ip: "10.200.0.2",
             registry,
-            targets: std::slice::from_ref(&builtin_runtime_target_registration("slack")),
+            targets: std::slice::from_ref(&registration),
             refreshes: Some(&refreshes),
         })
         .await;
@@ -3353,7 +3364,7 @@ mod tests {
         let available_sync = server.mock(|when, then| {
             when.method(POST)
                 .path(format!("/api/runners/runs/{run_id}/connector-runtime/sync"))
-                .json_body(json!({ "targets": [target.clone()] }));
+                .json_body(json!({ "targets": [sync_target.clone()] }));
             then.status(200)
                 .header("content-type", "application/json")
                 .json_body(json!({
@@ -3392,6 +3403,7 @@ mod tests {
                 "kind": "builtin",
                 "name": "slack",
                 "baseUrlVars": {"workspace": "acme"},
+                "sourceId": source_id,
             }])
         );
         assert_eq!(
@@ -3761,11 +3773,15 @@ mod tests {
         let (core, mut requests) = core_without_worker(&server);
         let run_id = RunId::nil();
         let custom_connector_id = "550e8400-e29b-41d4-a716-446655440000";
+        let source_id = "550e8400-e29b-41d4-a716-446655440001";
         let target = custom_target(custom_connector_id);
         let base_url_vars = HashMap::from([("subdomain".to_string(), "acme".to_string())]);
-        let registration =
-            custom_runtime_target_registration(custom_connector_id, base_url_vars.clone());
-        let firewall = custom_runtime_firewall(custom_connector_id);
+        let registration = ConnectorRuntimeTargetRegistration::Custom {
+            custom_connector_id: custom_connector_id.to_string(),
+            base_url_vars: base_url_vars.clone(),
+            source_id: Some(source_id.to_string()),
+        };
+        let firewall = custom_runtime_firewall_with_source(custom_connector_id, Some(source_id));
         let available_sync = server.mock(|when, then| {
             when.method(POST)
                 .path(format!("/api/runners/runs/{run_id}/connector-runtime/sync"))
@@ -3774,6 +3790,7 @@ mod tests {
                         "kind": "custom",
                         "customConnectorId": custom_connector_id,
                         "baseUrlVars": base_url_vars,
+                        "sourceId": source_id,
                     }],
                 }));
             then.status(200)
@@ -3830,6 +3847,10 @@ mod tests {
                 [format!("custom:{custom_connector_id}")],
             json!(base_url_vars)
         );
+        assert_eq!(
+            registry_json["vms"]["10.200.0.2"]["firewalls"][0]["sourceId"],
+            source_id
+        );
 
         available_sync.delete_async().await;
         let unresolved_sync = server.mock(|when, then| {
@@ -3840,6 +3861,7 @@ mod tests {
                         "kind": "custom",
                         "customConnectorId": custom_connector_id,
                         "baseUrlVars": base_url_vars,
+                        "sourceId": source_id,
                     }],
                 }));
             then.status(200)
