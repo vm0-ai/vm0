@@ -3395,6 +3395,10 @@ mod tests {
     use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
     use crate::storage_manifest::{ArtifactEntry, StorageEntry, StorageManifest};
     use crate::storage_plan::build_storage_plan;
+    use crate::test_fixtures::raw_http::{
+        RawHttpAction, RawHttpTestServer, accept_raw_http_request_text, json_response,
+        raw_http_response, status_response, write_raw_http_response,
+    };
 
     const CACHE_TEST_RUNTIME_DIR: &str = "/tmp/storage-cache-test-runtime";
 
@@ -3871,38 +3875,6 @@ mod tests {
         }
     }
 
-    async fn raw_http_url(
-        response: Vec<u8>,
-    ) -> (String, tokio::task::JoinHandle<std::io::Result<()>>) {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        let handle = tokio::spawn(async move {
-            let (mut socket, _) = listener.accept().await?;
-            let mut request = [0u8; 1024];
-            let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut request).await?;
-            socket.write_all(&response).await?;
-            Ok(())
-        });
-        (format!("http://{addr}/archive.tar.gz"), handle)
-    }
-
-    async fn raw_http_sequence_url(
-        responses: Vec<Vec<u8>>,
-    ) -> (String, tokio::task::JoinHandle<std::io::Result<()>>) {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        let handle = tokio::spawn(async move {
-            for response in responses {
-                let (mut socket, _) = listener.accept().await?;
-                let mut request = [0u8; 1024];
-                let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut request).await?;
-                socket.write_all(&response).await?;
-            }
-            Ok(())
-        });
-        (format!("http://{addr}/archive.tar.gz"), handle)
-    }
-
     struct GatedArchiveServer {
         url: String,
         requests: tokio::sync::mpsc::Receiver<usize>,
@@ -3924,14 +3896,13 @@ mod tests {
         let task = tokio::spawn(async move {
             let mut handlers = JoinSet::new();
             for index in 0..connections {
-                let (mut socket, _) = listener.accept().await?;
+                let (mut socket, _) = accept_raw_http_request_text(&listener).await;
                 let body = body.clone();
                 let request_tx = request_tx.clone();
                 let release = Arc::clone(&task_release);
                 let active = Arc::clone(&task_active);
                 let max_active = Arc::clone(&task_max_active);
                 handlers.spawn(async move {
-                    let _ = read_http_request(&mut socket).await;
                     let current = active.fetch_add(1, Ordering::SeqCst) + 1;
                     max_active.fetch_max(current, Ordering::SeqCst);
                     request_tx.send(index).await.map_err(|_| {
@@ -3940,7 +3911,8 @@ mod tests {
                     let permit = release.acquire_owned().await.map_err(|_| {
                         io::Error::new(io::ErrorKind::BrokenPipe, "release semaphore closed")
                     })?;
-                    socket.write_all(&ok_response(&body)).await?;
+                    write_raw_http_response(&mut socket, &raw_http_response("200 OK", &body))
+                        .await?;
                     drop(permit);
                     active.fetch_sub(1, Ordering::SeqCst);
                     Ok::<(), io::Error>(())
@@ -3960,88 +3932,6 @@ mod tests {
         }
     }
 
-    async fn telemetry_capture_server(
-        expected_requests: usize,
-    ) -> (String, tokio::task::JoinHandle<Vec<String>>) {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        let task = tokio::spawn(async move {
-            let mut requests = Vec::with_capacity(expected_requests);
-            for _ in 0..expected_requests {
-                let (mut socket, _) = listener.accept().await.unwrap();
-                requests.push(read_http_request(&mut socket).await);
-                socket
-                    .write_all(
-                        concat!(
-                            "HTTP/1.1 200 OK\r\n",
-                            "content-length: 16\r\n",
-                            "content-type: application/json\r\n",
-                            "connection: close\r\n",
-                            "\r\n",
-                            r#"{"success":true}"#
-                        )
-                        .as_bytes(),
-                    )
-                    .await
-                    .unwrap();
-            }
-            requests
-        });
-        (format!("http://{addr}"), task)
-    }
-
-    async fn await_raw_http_sequence(handle: tokio::task::JoinHandle<std::io::Result<()>>) {
-        tokio::time::timeout(Duration::from_secs(5), handle)
-            .await
-            .expect("raw HTTP sequence server should finish")
-            .expect("raw HTTP sequence server task should not panic")
-            .expect("raw HTTP sequence server should not fail");
-    }
-
-    fn http_headers_end(buf: &[u8]) -> Option<usize> {
-        buf.windows(4)
-            .position(|window| window == b"\r\n\r\n")
-            .map(|index| index + 4)
-    }
-
-    fn content_length(headers: &str) -> usize {
-        headers
-            .lines()
-            .filter_map(|line| line.split_once(':'))
-            .find_map(|(name, value)| {
-                name.eq_ignore_ascii_case("content-length")
-                    .then(|| value.trim().parse::<usize>().unwrap())
-            })
-            .unwrap_or(0)
-    }
-
-    async fn read_http_request(socket: &mut tokio::net::TcpStream) -> String {
-        use tokio::io::AsyncReadExt as _;
-
-        let mut buf = Vec::new();
-        let header_end = loop {
-            let mut chunk = [0; 1024];
-            let len = socket.read(&mut chunk).await.unwrap();
-            assert!(len > 0, "connection closed before HTTP headers completed");
-            buf.extend_from_slice(&chunk[..len]);
-
-            if let Some(header_end) = http_headers_end(&buf) {
-                break header_end;
-            }
-        };
-
-        let headers = String::from_utf8_lossy(&buf[..header_end]);
-        let body_len = content_length(&headers);
-        while buf.len() < header_end + body_len {
-            let mut chunk = [0; 1024];
-            let len = socket.read(&mut chunk).await.unwrap();
-            assert!(len > 0, "connection closed before HTTP body completed");
-            buf.extend_from_slice(&chunk[..len]);
-        }
-
-        String::from_utf8(buf).unwrap()
-    }
-
     async fn wait_cached_archive(home: &HomePaths, name: &str, version: &str) -> Vec<u8> {
         let lock_path = home.storage_lock(name, version);
         let path = home.storage_cache_dir(name, version).join("archive.tar.gz");
@@ -4054,22 +3944,11 @@ mod tests {
             .unwrap_or_else(|e| panic!("failed to read cached archive {}: {e}", path.display()))
     }
 
-    fn status_response(status: &str) -> Vec<u8> {
-        format!("HTTP/1.1 {status}\r\nContent-Length: 0\r\n\r\n").into_bytes()
-    }
-
     fn partial_content_response(total: usize) -> Vec<u8> {
         format!(
             "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 0-0/{total}\r\nContent-Length: 1\r\n\r\nx"
         )
         .into_bytes()
-    }
-
-    fn ok_response(body: &[u8]) -> Vec<u8> {
-        let mut response =
-            format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len()).into_bytes();
-        response.extend_from_slice(body);
-        response
     }
 
     fn background_fill_group(
@@ -4409,7 +4288,8 @@ mod tests {
         response.extend_from_slice(format!("{:x}\r\n", body.len()).as_bytes());
         response.extend_from_slice(&body);
         response.extend_from_slice(b"\r\n0\r\n\r\n");
-        let (url, server_task) = raw_http_url(response).await;
+        let mut server = RawHttpTestServer::spawn(vec![RawHttpAction::Respond(response)]).await;
+        let url = format!("{}/archive.tar.gz", server.url());
         let name = "fresh-no-size";
         let version = "v1";
         let mut plan = fresh_storage_plan(url.clone(), name, version);
@@ -4419,7 +4299,7 @@ mod tests {
                 .await
                 .unwrap();
 
-        server_task.await.unwrap().unwrap();
+        server.assert_complete().await;
         assert!(deferred.is_none());
         assert_eq!(storage_archive_url(&plan, 0), Some(url.as_str()));
         assert!(sandbox.write_files_calls().is_empty());
@@ -4657,7 +4537,8 @@ mod tests {
             response.extend_from_slice(format!("{:x}\r\n", delivered.len()).as_bytes());
             response.extend_from_slice(delivered);
             response.extend_from_slice(b"\r\n0\r\n\r\n");
-            let (url, server_task) = raw_http_url(response).await;
+            let mut server = RawHttpTestServer::spawn(vec![RawHttpAction::Respond(response)]).await;
+            let url = format!("{}/archive.tar.gz", server.url());
             let mut plan = fresh_storage_plan_with_archive_size(
                 url.clone(),
                 &format!("fresh-{case}"),
@@ -4670,7 +4551,7 @@ mod tests {
                     .await
                     .unwrap();
 
-            server_task.await.unwrap().unwrap();
+            server.assert_complete().await;
             assert!(deferred.is_none(), "case {case}");
             assert_eq!(storage_archive_url(&plan, 0), Some(url.as_str()));
             let ops = telemetry.pending_ops_snapshot();
@@ -5682,20 +5563,10 @@ mod tests {
         let home = home_at(&temp);
         let sandbox = MockSandbox::new("test");
         let mut telemetry = new_telemetry();
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        let (hit_tx, mut hit_rx) = tokio::sync::oneshot::channel();
-        let server_task = tokio::spawn(async move {
-            if let Ok((mut socket, _)) = listener.accept().await {
-                let _ = hit_tx.send(());
-                let _ = socket
-                    .write_all(b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n")
-                    .await;
-            }
-        });
+        let mut server = RawHttpTestServer::spawn(vec![RawHttpAction::Stall]).await;
         let name = "guarded-miss";
         let version = "v1";
-        let original = format!("http://{addr}/archive.tar.gz");
+        let original = format!("{}/archive.tar.gz", server.url());
         let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
         let deferred = populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
@@ -5706,11 +5577,10 @@ mod tests {
 
         assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(
-            hit_rx.try_recv().is_err(),
+            server.try_receive_request_text().unwrap().is_none(),
             "guarded miss should not contact the archive URL"
         );
-        server_task.abort();
-        let _ = server_task.await;
+        server.cancel().await;
         assert!(!home.storage_cache_dir(name, version).exists());
         assert!(!home.storage_lock(name, version).exists());
         assert!(sandbox.write_file_calls().is_empty());
@@ -5730,30 +5600,18 @@ mod tests {
         let mut telemetry = new_telemetry();
         let body = tarball_bytes();
         let expected_body = body.clone();
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        let (allow_tx, allow_rx) = tokio::sync::oneshot::channel();
-        let (request_tx, mut request_rx) = tokio::sync::oneshot::channel();
-        let server_task = tokio::spawn(async move {
-            let mut allow_rx = Some(allow_rx);
-            let mut request_tx = Some(request_tx);
-            for response in [partial_content_response(body.len()), ok_response(&body)] {
-                let (mut socket, _) = listener.accept().await?;
-                let mut request = [0u8; 1024];
-                let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut request).await?;
-                if let Some(request_tx) = request_tx.take() {
-                    let _ = request_tx.send(());
-                }
-                if let Some(allow_rx) = allow_rx.take() {
-                    let _ = allow_rx.await;
-                }
-                socket.write_all(&response).await?;
-            }
-            Ok::<(), std::io::Error>(())
-        });
+        let release = Arc::new(tokio::sync::Notify::new());
+        let mut server = RawHttpTestServer::spawn(vec![
+            RawHttpAction::WaitThenRespond {
+                release: Arc::clone(&release),
+                response: partial_content_response(body.len()),
+            },
+            RawHttpAction::Respond(raw_http_response("200 OK", &body)),
+        ])
+        .await;
         let name = "background-miss";
         let version = "v1";
-        let original = format!("http://{addr}/archive.tar.gz");
+        let original = format!("{}/archive.tar.gz", server.url());
         let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
         let deferred = populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
@@ -5762,10 +5620,7 @@ mod tests {
             .expect("cold miss should return deferred cache fill");
 
         assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
-        assert!(matches!(
-            request_rx.try_recv(),
-            Err(tokio::sync::oneshot::error::TryRecvError::Empty)
-        ));
+        assert!(server.try_receive_request_text().unwrap().is_none());
         assert!(
             !home
                 .storage_cache_dir(name, version)
@@ -5783,12 +5638,12 @@ mod tests {
 
         let coordinator = StorageCacheBackgroundFillCoordinator::new().unwrap();
         deferred.start(&coordinator, &mut telemetry);
-        tokio::time::timeout(Duration::from_secs(5), &mut request_rx)
+        tokio::time::timeout(Duration::from_secs(5), server.receive_request())
             .await
             .expect("started background fill should contact archive server")
-            .expect("archive request sender should remain available");
-        allow_tx.send(()).unwrap();
-        await_raw_http_sequence(server_task).await;
+            .expect("archive request should be captured");
+        release.notify_one();
+        server.assert_complete().await;
         assert_eq!(
             wait_cached_archive(&home, name, version).await,
             expected_body
@@ -5810,20 +5665,10 @@ mod tests {
         let home = home_at(&temp);
         let sandbox = MockSandbox::new("test");
         let mut telemetry = new_telemetry();
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        let (request_tx, mut request_rx) = tokio::sync::oneshot::channel();
-        let server_task = tokio::spawn(async move {
-            if let Ok((mut socket, _)) = listener.accept().await {
-                let _ = request_tx.send(());
-                let _ = socket
-                    .write_all(b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n")
-                    .await;
-            }
-        });
+        let mut server = RawHttpTestServer::spawn(vec![RawHttpAction::Stall]).await;
         let name = "dropped-background-miss";
         let version = "v1";
-        let original = format!("http://{addr}/archive.tar.gz");
+        let original = format!("{}/archive.tar.gz", server.url());
         let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
         let deferred = populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
@@ -5834,10 +5679,7 @@ mod tests {
         tokio::task::yield_now().await;
 
         assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
-        assert!(matches!(
-            request_rx.try_recv(),
-            Err(tokio::sync::oneshot::error::TryRecvError::Empty)
-        ));
+        assert!(server.try_receive_request_text().unwrap().is_none());
         assert!(!home.storage_cache_dir(name, version).exists());
         assert!(!home.storage_lock(name, version).exists());
         let ops = telemetry.pending_ops_snapshot();
@@ -5845,8 +5687,7 @@ mod tests {
         assert_no_op(&ops, "storage_cache_background_fill_scheduled_count_1");
         assert_no_op(&ops, STORAGE_CACHE_BACKGROUND_FILL_DEFERRED_DELAY);
 
-        server_task.abort();
-        let _ = server_task.await;
+        server.cancel().await;
     }
 
     #[tokio::test]
@@ -5854,34 +5695,18 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
         let body = tarball_bytes();
-        let (archive_url, archive_server) = raw_http_sequence_url(vec![
-            partial_content_response(body.len()),
-            ok_response(&body),
+        let mut archive_server = RawHttpTestServer::spawn(vec![
+            RawHttpAction::Respond(partial_content_response(body.len())),
+            RawHttpAction::Respond(raw_http_response("200 OK", &body)),
         ])
         .await;
-        let telemetry_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let telemetry_api_url = format!("http://{}", telemetry_listener.local_addr().unwrap());
-        let telemetry_server = tokio::spawn(async move {
-            let (mut socket, _) = telemetry_listener.accept().await.unwrap();
-            let request = read_http_request(&mut socket).await;
-            socket
-                .write_all(
-                    concat!(
-                        "HTTP/1.1 200 OK\r\n",
-                        "content-length: 16\r\n",
-                        "content-type: application/json\r\n",
-                        "connection: close\r\n",
-                        "\r\n",
-                        r#"{"success":true}"#
-                    )
-                    .as_bytes(),
-                )
-                .await
-                .unwrap();
-            request
-        });
+        let archive_url = format!("{}/archive.tar.gz", archive_server.url());
+        let mut telemetry_server = RawHttpTestServer::spawn(vec![RawHttpAction::Respond(
+            json_response("200 OK", br#"{"success":true}"#),
+        )])
+        .await;
         let sandbox = MockSandbox::new("test");
-        let mut telemetry = new_telemetry_for_api_url(&telemetry_api_url);
+        let mut telemetry = new_telemetry_for_api_url(&telemetry_server.url());
         let name = "background-report";
         let version = "v1";
         let mut plan = fresh_storage_plan(archive_url, name, version);
@@ -5891,12 +5716,16 @@ mod tests {
             .await
             .start(&coordinator, &mut telemetry);
 
-        await_raw_http_sequence(archive_server).await;
+        archive_server.assert_complete().await;
         assert_eq!(wait_cached_archive(&home, name, version).await, body);
-        let request = tokio::time::timeout(Duration::from_secs(1), telemetry_server)
-            .await
-            .expect("telemetry server should receive background fill payload")
-            .unwrap();
+        let request = tokio::time::timeout(
+            Duration::from_secs(1),
+            telemetry_server.receive_request_text(),
+        )
+        .await
+        .expect("telemetry server should receive background fill payload")
+        .expect("background fill telemetry should be captured");
+        telemetry_server.assert_complete().await;
         assert!(request.contains(r#""action_type":"storage_cache_background_fill_filled""#));
         assert!(
             request.contains(r#""action_type":"storage_cache_background_fill_size_lt_64_kib""#)
@@ -5958,11 +5787,20 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
         let body = tarball_bytes();
-        let (archive_url, archive_server) = raw_http_sequence_url(vec![ok_response(&body)]).await;
-        let (telemetry_url, telemetry_server) = telemetry_capture_server(2).await;
+        let mut archive_server = RawHttpTestServer::spawn(vec![RawHttpAction::Respond(
+            raw_http_response("200 OK", &body),
+        )])
+        .await;
+        let archive_url = format!("{}/archive.tar.gz", archive_server.url());
+        let telemetry_response = json_response("200 OK", br#"{"success":true}"#);
+        let mut telemetry_server = RawHttpTestServer::spawn(vec![
+            RawHttpAction::Respond(telemetry_response.clone()),
+            RawHttpAction::Respond(telemetry_response),
+        ])
+        .await;
         let coordinator = StorageCacheBackgroundFillCoordinator::new_with_limits(1, 4).unwrap();
-        let first_reporter = new_telemetry_for_api_url(&telemetry_url).reporter();
-        let second_reporter = new_telemetry_for_api_url(&telemetry_url).reporter();
+        let first_reporter = new_telemetry_for_api_url(&telemetry_server.url()).reporter();
+        let second_reporter = new_telemetry_for_api_url(&telemetry_server.url()).reporter();
         let group =
             background_fill_group(archive_url, "deduplicated", "v1", Some(body.len() as u64));
 
@@ -5975,15 +5813,15 @@ mod tests {
             BackgroundFillAdmission::Deduplicated
         );
 
-        await_raw_http_sequence(archive_server).await;
+        archive_server.assert_complete().await;
         assert_eq!(wait_cached_archive(&home, "deduplicated", "v1").await, body);
         coordinator.shutdown().await;
 
-        let reports = tokio::time::timeout(Duration::from_secs(5), telemetry_server)
-            .await
-            .expect("both deduplicated subscribers should receive terminal telemetry")
-            .expect("telemetry server task should not panic");
-        assert_eq!(reports.len(), 2);
+        telemetry_server.assert_complete().await;
+        let reports = [
+            telemetry_server.receive_request_text().await.unwrap(),
+            telemetry_server.receive_request_text().await.unwrap(),
+        ];
         assert!(reports.iter().all(|request| {
             request.contains(r#""action_type":"storage_cache_background_fill_filled""#)
         }));
@@ -6067,9 +5905,14 @@ mod tests {
         let home = home_at(&temp);
         let body = tarball_bytes();
         let mut server = gated_archive_server(body.clone(), 1).await;
-        let (telemetry_url, telemetry_server) = telemetry_capture_server(2).await;
+        let telemetry_response = json_response("200 OK", br#"{"success":true}"#);
+        let mut telemetry_server = RawHttpTestServer::spawn(vec![
+            RawHttpAction::Respond(telemetry_response.clone()),
+            RawHttpAction::Respond(telemetry_response),
+        ])
+        .await;
         let coordinator = StorageCacheBackgroundFillCoordinator::new_with_limits(1, 1).unwrap();
-        let reporter = new_telemetry_for_api_url(&telemetry_url).reporter();
+        let reporter = new_telemetry_for_api_url(&telemetry_server.url()).reporter();
 
         assert_eq!(
             coordinator.submit(
@@ -6126,10 +5969,11 @@ mod tests {
         );
         assert!(!home.storage_cache_dir("shutdown-queued", "v1").exists());
 
-        let reports = tokio::time::timeout(Duration::from_secs(5), telemetry_server)
-            .await
-            .expect("active and queued shutdown outcomes should be reported")
-            .expect("telemetry server task should not panic");
+        telemetry_server.assert_complete().await;
+        let reports = [
+            telemetry_server.receive_request_text().await.unwrap(),
+            telemetry_server.receive_request_text().await.unwrap(),
+        ];
         assert!(reports.iter().any(|request| {
             request.contains(r#""action_type":"storage_cache_background_fill_filled""#)
         }));
@@ -6705,9 +6549,12 @@ mod tests {
         let responses = vec![
             status_response("500 Internal Server Error"),
             partial_content_response(body.len()),
-            ok_response(&body),
+            raw_http_response("200 OK", &body),
         ];
-        let (url, handle) = raw_http_sequence_url(responses).await;
+        let mut server =
+            RawHttpTestServer::spawn(responses.into_iter().map(RawHttpAction::Respond).collect())
+                .await;
+        let url = format!("{}/archive.tar.gz", server.url());
         let name = "probe-retry-success";
         let version = "v1";
         let mut manifest = fresh_storage_plan(url, name, version);
@@ -6716,7 +6563,7 @@ mod tests {
             populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
                 .await
                 .unwrap();
-        await_raw_http_sequence(handle).await;
+        server.assert_complete().await;
 
         assert_eq!(
             storage_archive_url(&manifest, 0),
@@ -6812,9 +6659,12 @@ mod tests {
         let responses = vec![
             partial_content_response(body.len()),
             status_response("503 Service Unavailable"),
-            ok_response(&body),
+            raw_http_response("200 OK", &body),
         ];
-        let (url, handle) = raw_http_sequence_url(responses).await;
+        let mut server =
+            RawHttpTestServer::spawn(responses.into_iter().map(RawHttpAction::Respond).collect())
+                .await;
+        let url = format!("{}/archive.tar.gz", server.url());
         let name = "download-retry-success";
         let version = "v1";
         let mut manifest = fresh_storage_plan(url, name, version);
@@ -6823,7 +6673,7 @@ mod tests {
             populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
                 .await
                 .unwrap();
-        await_raw_http_sequence(handle).await;
+        server.assert_complete().await;
 
         assert_eq!(
             storage_archive_url(&manifest, 0),
@@ -6847,9 +6697,12 @@ mod tests {
         let responses = vec![
             partial_content_response(body.len()),
             truncated_ok_response(&body),
-            ok_response(&body),
+            raw_http_response("200 OK", &body),
         ];
-        let (url, handle) = raw_http_sequence_url(responses).await;
+        let mut server =
+            RawHttpTestServer::spawn(responses.into_iter().map(RawHttpAction::Respond).collect())
+                .await;
+        let url = format!("{}/archive.tar.gz", server.url());
         let name = "download-body-retry-success";
         let version = "v1";
         let mut manifest = fresh_storage_plan(url, name, version);
@@ -6858,7 +6711,7 @@ mod tests {
             populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
                 .await
                 .unwrap();
-        await_raw_http_sequence(handle).await;
+        server.assert_complete().await;
 
         assert_eq!(
             storage_archive_url(&manifest, 0),
@@ -7832,7 +7685,10 @@ mod tests {
         let sandbox = MockSandbox::new("test");
         let mut telemetry = new_telemetry();
         let responses = vec![Vec::new(); OBJECT_DOWNLOAD_MAX_ATTEMPTS * 2];
-        let (url, handle) = raw_http_sequence_url(responses).await;
+        let mut server =
+            RawHttpTestServer::spawn(responses.into_iter().map(RawHttpAction::Respond).collect())
+                .await;
+        let url = format!("{}/archive.tar.gz", server.url());
 
         let original = format!("{url}?X-Amz-Signature=secret&X-Amz-Credential=credential");
         let name = "transport-retry-exhausted";
@@ -7848,7 +7704,7 @@ mod tests {
             .await
             .unwrap_err()
             .to_string();
-        await_raw_http_sequence(handle).await;
+        server.assert_complete().await;
 
         assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(sandbox.write_file_calls().is_empty());
@@ -7878,9 +7734,7 @@ mod tests {
         let advertised_size = CACHE_MAX_SIZE + 1;
 
         let server_task = tokio::spawn(async move {
-            let (mut socket, _) = listener.accept().await?;
-            let mut request = [0u8; 1024];
-            let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut request).await?;
+            let (mut socket, _) = accept_raw_http_request_text(&listener).await;
             socket
                 .write_all(
                     format!("HTTP/1.1 200 OK\r\nContent-Length: {advertised_size}\r\n\r\n")
@@ -7908,12 +7762,13 @@ mod tests {
     #[tokio::test]
     async fn probe_200_rejects_malformed_content_length() {
         let response = b"HTTP/1.1 200 OK\r\nContent-Length: +7\r\n\r\n".to_vec();
-        let (url, handle) = raw_http_url(response).await;
+        let mut server = RawHttpTestServer::spawn(vec![RawHttpAction::Respond(response)]).await;
+        let url = format!("{}/archive.tar.gz", server.url());
 
         let http = Client::builder().build().unwrap();
         let result = probe_size(&http, &url).await;
 
-        handle.await.unwrap().unwrap();
+        server.assert_complete().await;
         match result {
             Ok(SizeProbe::Unknown(SizeProbeUnknown::InvalidSizeHeader)) => {}
             Err(err) => assert!(err.to_string().contains("probe GET"), "got: {err}"),
@@ -7928,7 +7783,8 @@ mod tests {
         let sandbox = MockSandbox::new("test");
         let mut telemetry = new_telemetry();
         let response = b"HTTP/1.1 200 OK\r\nContent-Length: +7\r\n\r\n".to_vec();
-        let (original, handle) = raw_http_url(response).await;
+        let mut server = RawHttpTestServer::spawn(vec![RawHttpAction::Respond(response)]).await;
+        let original = format!("{}/archive.tar.gz", server.url());
         let name = "malformed-length";
         let version = "v1";
         let mut manifest = fresh_storage_plan(original.clone(), name, version);
@@ -7938,7 +7794,7 @@ mod tests {
                 .await
                 .unwrap();
 
-        handle.await.unwrap().unwrap();
+        server.assert_complete().await;
         assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(
             !home
@@ -8064,9 +7920,7 @@ mod tests {
         let total_size = CACHE_MAX_SIZE;
 
         let server_task = tokio::spawn(async move {
-            let (mut socket, _) = listener.accept().await?;
-            let mut request = [0u8; 1024];
-            let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut request).await?;
+            let (mut socket, _) = accept_raw_http_request_text(&listener).await;
             socket
                 .write_all(
                     format!(
@@ -8197,15 +8051,14 @@ mod tests {
 
     #[tokio::test]
     async fn download_rejects_stream_without_content_length_over_limit() {
-        let (url, server_task) = raw_http_url(
-            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n4\r\nabcd\r\n3\r\nefg\r\n0\r\n\r\n"
-                .to_vec(),
-        )
-        .await;
+        let response = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n4\r\nabcd\r\n3\r\nefg\r\n0\r\n\r\n"
+            .to_vec();
+        let mut server = RawHttpTestServer::spawn(vec![RawHttpAction::Respond(response)]).await;
+        let url = format!("{}/archive.tar.gz", server.url());
         let http = Client::builder().build().unwrap();
 
         let result = download_tarball(&http, &url, Some(6), 6).await.unwrap();
-        server_task.await.unwrap().unwrap();
+        server.assert_complete().await;
 
         match result {
             DownloadBody::Complete(bytes) => {
@@ -8324,22 +8177,6 @@ mod tests {
 
     #[tokio::test]
     async fn multi_group_background_fill_precedes_later_warm_staging() {
-        async fn read_request(socket: &mut tokio::net::TcpStream) -> std::io::Result<String> {
-            let mut request = Vec::new();
-            let mut buf = [0u8; 1024];
-            loop {
-                let n = socket.read(&mut buf).await?;
-                if n == 0 {
-                    break;
-                }
-                request.extend_from_slice(&buf[..n]);
-                if request.windows(4).any(|window| window == b"\r\n\r\n") {
-                    break;
-                }
-            }
-            Ok(String::from_utf8_lossy(&request).into_owned())
-        }
-
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
         let sandbox = Arc::new(MockSandbox::new("test"));
@@ -8362,8 +8199,8 @@ mod tests {
         let (cold_full_seen_tx, cold_full_seen_rx) = tokio::sync::oneshot::channel::<()>();
 
         let ready_server_task = tokio::spawn(async move {
-            let (mut probe_socket, _) = ready_listener.accept().await?;
-            let probe_request = read_request(&mut probe_socket).await?;
+            let (mut probe_socket, probe_request) =
+                accept_raw_http_request_text(&ready_listener).await;
             assert!(
                 probe_request
                     .to_ascii_lowercase()
@@ -8371,41 +8208,28 @@ mod tests {
                 "expected range probe, got {probe_request:?}"
             );
             let _ = allow_ready_rx.await;
-            probe_socket
-                .write_all(
-                    format!(
-                        "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 0-0/{}\r\nContent-Length: 1\r\nConnection: close\r\n\r\nx",
-                        ready_body.len()
-                    )
-                    .as_bytes(),
-                )
-                .await?;
-            drop(probe_socket);
+            write_raw_http_response(
+                &mut probe_socket,
+                &partial_content_response(ready_body.len()),
+            )
+            .await?;
 
-            let (mut full_socket, _) = ready_listener.accept().await?;
-            let full_request = read_request(&mut full_socket).await?;
+            let (mut full_socket, full_request) =
+                accept_raw_http_request_text(&ready_listener).await;
             assert!(
                 !full_request
                     .to_ascii_lowercase()
                     .contains("range: bytes=0-0"),
                 "expected full download, got {full_request:?}"
             );
-            full_socket
-                .write_all(
-                    format!(
-                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-                        ready_body.len()
-                    )
-                    .as_bytes(),
-                )
+            write_raw_http_response(&mut full_socket, &raw_http_response("200 OK", &ready_body))
                 .await?;
-            full_socket.write_all(&ready_body).await?;
             Ok::<(), std::io::Error>(())
         });
 
         let cold_server_task = tokio::spawn(async move {
-            let (mut probe_socket, _) = cold_listener.accept().await?;
-            let probe_request = read_request(&mut probe_socket).await?;
+            let (mut probe_socket, probe_request) =
+                accept_raw_http_request_text(&cold_listener).await;
             assert!(
                 probe_request
                     .to_ascii_lowercase()
@@ -8414,35 +8238,22 @@ mod tests {
             );
             let _ = cold_probe_seen_tx.send(());
             let _ = release_cold_probe_rx.await;
-            probe_socket
-                .write_all(
-                    format!(
-                        "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 0-0/{}\r\nContent-Length: 1\r\nConnection: close\r\n\r\nx",
-                        cold_body.len()
-                    )
-                    .as_bytes(),
-                )
-                .await?;
-            drop(probe_socket);
+            write_raw_http_response(
+                &mut probe_socket,
+                &partial_content_response(cold_body.len()),
+            )
+            .await?;
 
-            let (mut full_socket, _) = cold_listener.accept().await?;
-            let full_request = read_request(&mut full_socket).await?;
+            let (mut full_socket, full_request) =
+                accept_raw_http_request_text(&cold_listener).await;
             assert!(
                 !full_request
                     .to_ascii_lowercase()
                     .contains("range: bytes=0-0"),
                 "expected full download, got {full_request:?}"
             );
-            full_socket
-                .write_all(
-                    format!(
-                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-                        cold_body.len()
-                    )
-                    .as_bytes(),
-                )
+            write_raw_http_response(&mut full_socket, &raw_http_response("200 OK", &cold_body))
                 .await?;
-            full_socket.write_all(&cold_body).await?;
             let _ = cold_full_seen_tx.send(());
             Ok::<(), std::io::Error>(())
         });

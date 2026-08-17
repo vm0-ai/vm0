@@ -504,8 +504,11 @@ async fn send_telemetry(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
     use crate::http::HttpClientConfig;
+    use crate::test_fixtures::raw_http::{RawHttpAction, RawHttpTestServer, json_response};
     use crate::types::{
         ResumeSessionHistoryDownloadSource, ResumeSessionHistoryEncoding, ResumeSessionHistoryRef,
         ResumeSessionHistoryRefKind,
@@ -534,50 +537,6 @@ mod tests {
             encoded_size: 16 * 1024,
             download_source: Some(ResumeSessionHistoryDownloadSource::ConfiguredPublicEndpoint),
         })
-    }
-
-    fn http_headers_end(buf: &[u8]) -> Option<usize> {
-        buf.windows(4)
-            .position(|window| window == b"\r\n\r\n")
-            .map(|index| index + 4)
-    }
-
-    fn content_length(headers: &str) -> usize {
-        headers
-            .lines()
-            .filter_map(|line| line.split_once(':'))
-            .find_map(|(name, value)| {
-                name.eq_ignore_ascii_case("content-length")
-                    .then(|| value.trim().parse::<usize>().unwrap())
-            })
-            .unwrap_or(0)
-    }
-
-    async fn read_http_request(socket: &mut tokio::net::TcpStream) -> String {
-        use tokio::io::AsyncReadExt;
-
-        let mut buf = Vec::new();
-        let header_end = loop {
-            let mut chunk = [0; 1024];
-            let len = socket.read(&mut chunk).await.unwrap();
-            assert!(len > 0, "connection closed before HTTP headers completed");
-            buf.extend_from_slice(&chunk[..len]);
-
-            if let Some(header_end) = http_headers_end(&buf) {
-                break header_end;
-            }
-        };
-
-        let headers = String::from_utf8_lossy(&buf[..header_end]);
-        let body_len = content_length(&headers);
-        while buf.len() < header_end + body_len {
-            let mut chunk = [0; 1024];
-            let len = socket.read(&mut chunk).await.unwrap();
-            assert!(len > 0, "connection closed before HTTP body completed");
-            buf.extend_from_slice(&chunk[..len]);
-        }
-
-        String::from_utf8(buf).unwrap()
     }
 
     #[test]
@@ -951,34 +910,15 @@ mod tests {
     #[tokio::test]
     async fn flush_waits_for_in_flight_auto_flush_after_buffer_is_drained() {
         use futures_util::FutureExt;
-        use tokio::io::AsyncWriteExt;
 
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let api_url = format!("http://{}", listener.local_addr().unwrap());
-        let (request_tx, request_rx) = tokio::sync::oneshot::channel();
-        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
-        let server = tokio::spawn(async move {
-            let (mut socket, _) = listener.accept().await.unwrap();
-            let request = read_http_request(&mut socket).await;
-            request_tx.send(request).unwrap();
-            release_rx.await.unwrap();
-            socket
-                .write_all(
-                    concat!(
-                        "HTTP/1.1 200 OK\r\n",
-                        "content-length: 16\r\n",
-                        "content-type: application/json\r\n",
-                        "connection: close\r\n",
-                        "\r\n",
-                        r#"{"success":true}"#
-                    )
-                    .as_bytes(),
-                )
-                .await
-                .unwrap();
-        });
+        let release = Arc::new(tokio::sync::Notify::new());
+        let mut server = RawHttpTestServer::spawn(vec![RawHttpAction::WaitThenRespond {
+            release: Arc::clone(&release),
+            response: json_response("200 OK", br#"{"success":true}"#),
+        }])
+        .await;
 
-        let http = http_client_for_api_url(&api_url);
+        let http = http_client_for_api_url(&server.url());
         let mut telemetry = JobTelemetry::new(
             http,
             RunId::nil(),
@@ -993,10 +933,10 @@ mod tests {
         assert!(telemetry.pending_ops_snapshot().is_empty());
         assert_eq!(telemetry.in_flight_flushes.len(), 1);
 
-        let request = tokio::time::timeout(Duration::from_secs(1), request_rx)
+        let request = tokio::time::timeout(Duration::from_secs(1), server.receive_request_text())
             .await
             .expect("auto flush request should reach the server")
-            .unwrap();
+            .expect("auto flush request should be captured");
         assert!(request.starts_with("POST /api/webhooks/agent/telemetry "));
         assert!(
             request
@@ -1013,44 +953,23 @@ mod tests {
             "flush returned before the held auto-flush response completed"
         );
 
-        release_tx.send(()).unwrap();
+        release.notify_one();
         tokio::time::timeout(Duration::from_secs(1), flush)
             .await
             .expect("flush should complete after the response is released");
-        tokio::time::timeout(Duration::from_secs(1), server)
-            .await
-            .expect("server should exit")
-            .unwrap();
+        server.assert_complete().await;
     }
 
     #[tokio::test]
     async fn detached_reporter_sends_sandbox_operations_payload() {
-        use tokio::io::AsyncWriteExt;
-
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let api_url = format!("http://{}", listener.local_addr().unwrap());
-        let server = tokio::spawn(async move {
-            let (mut socket, _) = listener.accept().await.unwrap();
-            let request = read_http_request(&mut socket).await;
-            socket
-                .write_all(
-                    concat!(
-                        "HTTP/1.1 200 OK\r\n",
-                        "content-length: 16\r\n",
-                        "content-type: application/json\r\n",
-                        "connection: close\r\n",
-                        "\r\n",
-                        r#"{"success":true}"#
-                    )
-                    .as_bytes(),
-                )
-                .await
-                .unwrap();
-            request
-        });
+        let mut server = RawHttpTestServer::spawn(vec![RawHttpAction::Respond(json_response(
+            "200 OK",
+            br#"{"success":true}"#,
+        ))])
+        .await;
 
         let telemetry = JobTelemetry::new(
-            http_client_for_api_url(&api_url),
+            http_client_for_api_url(&server.url()),
             RunId::nil(),
             "tok".to_string(),
             "test-runner".to_string(),
@@ -1066,10 +985,11 @@ mod tests {
             )])
             .await;
 
-        let request = tokio::time::timeout(Duration::from_secs(1), server)
+        let request = tokio::time::timeout(Duration::from_secs(1), server.receive_request_text())
             .await
             .expect("server should receive reporter request")
-            .unwrap();
+            .expect("reporter request should be captured");
+        server.assert_complete().await;
         assert!(request.starts_with("POST /api/webhooks/agent/telemetry "));
         assert!(
             request
@@ -1084,32 +1004,14 @@ mod tests {
 
     #[tokio::test]
     async fn required_runner_name_is_sent_by_direct_reporter() {
-        use tokio::io::AsyncWriteExt;
-
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let api_url = format!("http://{}", listener.local_addr().unwrap());
-        let server = tokio::spawn(async move {
-            let (mut socket, _) = listener.accept().await.unwrap();
-            let request = read_http_request(&mut socket).await;
-            socket
-                .write_all(
-                    concat!(
-                        "HTTP/1.1 200 OK\r\n",
-                        "content-length: 16\r\n",
-                        "content-type: application/json\r\n",
-                        "connection: close\r\n",
-                        "\r\n",
-                        r#"{"success":true}"#
-                    )
-                    .as_bytes(),
-                )
-                .await
-                .unwrap();
-            request
-        });
+        let mut server = RawHttpTestServer::spawn(vec![RawHttpAction::Respond(json_response(
+            "200 OK",
+            br#"{"success":true}"#,
+        ))])
+        .await;
 
         let telemetry = JobTelemetry::new(
-            http_client_for_api_url(&api_url),
+            http_client_for_api_url(&server.url()),
             RunId::nil(),
             "tok".to_string(),
             "v0.168.14".to_string(),
@@ -1124,10 +1026,11 @@ mod tests {
             )])
             .await;
 
-        let request = tokio::time::timeout(Duration::from_secs(1), server)
+        let request = tokio::time::timeout(Duration::from_secs(1), server.receive_request_text())
             .await
             .expect("server should receive configured reporter request")
-            .unwrap();
+            .expect("configured reporter request should be captured");
+        server.assert_complete().await;
         assert!(request.contains(r#""runnerName":"v0.168.14"#));
     }
 }
