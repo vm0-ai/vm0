@@ -26,6 +26,7 @@ expected_generator_files=(
   .github/actions/production-migration-smoke/action.yml
   .github/workflows/agent-compose-consolidation-preflight.yml
   .github/workflows/backfill-acquisition-attribution.yml
+  .github/workflows/integration-identity-contract-readiness-preflight.yml
   .github/workflows/release-please.yml
   .github/workflows/turbo.yml
 )
@@ -49,8 +50,8 @@ mapfile -t invocations < <(
     "${generator_files[@]}"
 )
 
-if [[ ${#invocations[@]} -ne 10 ]]; then
-  fail "expected ten reviewed Neon connection-string invocations"
+if [[ ${#invocations[@]} -ne 11 ]]; then
+  fail "expected eleven reviewed Neon connection-string invocations"
 fi
 
 mapfile -t raw_mask_variables <<'VARIABLES'
@@ -94,6 +95,7 @@ mapfile -t expected_raw_database_url_emissions <<'EMISSIONS'
 .github/actions/production-migration-smoke/action.yml:echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
 .github/workflows/agent-compose-consolidation-preflight.yml:echo "database-url=$database_url" >> "$GITHUB_OUTPUT"
 .github/workflows/backfill-acquisition-attribution.yml:echo "database_url=$database_url" >> "$GITHUB_OUTPUT"
+.github/workflows/integration-identity-contract-readiness-preflight.yml:echo "database-url=$database_url" >> "$GITHUB_OUTPUT"
 .github/workflows/release-please.yml:echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
 .github/workflows/turbo.yml:echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
 EMISSIONS
@@ -159,6 +161,7 @@ done <<'BOUNDARIES'
 .github/actions/production-migration-smoke/action.yml|Production migration smoke action|DATABASE_URL|DATABASE_URL=$(neonctl connection-string "$BRANCH_ID"|echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
 .github/workflows/backfill-acquisition-attribution.yml|Acquisition backfill workflow|database_url|database_url=$(|echo "database_url=$database_url" >> "$GITHUB_OUTPUT"
 .github/workflows/agent-compose-consolidation-preflight.yml|Agent-compose preflight workflow|database_url|if ! database_url=$(|echo "database-url=$database_url" >> "$GITHUB_OUTPUT"
+.github/workflows/integration-identity-contract-readiness-preflight.yml|Integration identity readiness preflight|database_url|if ! database_url=$(|echo "database-url=$database_url" >> "$GITHUB_OUTPUT"
 .github/workflows/turbo.yml|Turbo parent database|PARENT_DATABASE_URL|PARENT_DATABASE_URL=$(neonctl connection-string --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner --ssl verify-full)|(cd turbo && DATABASE_URL="$PARENT_DATABASE_URL" pnpm -F @okouai/db db:migrate)
 .github/workflows/turbo.yml|Turbo preview database|DATABASE_URL|DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner --ssl verify-full)|DATABASE_URL="$DATABASE_URL" pnpm -F @okouai/db db:migrate
 .github/workflows/release-please.yml|Production release database|DATABASE_URL|DATABASE_URL=$(neonctl connection-string production|echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
@@ -174,4 +177,4 @@ assert_ordered \
   'Production release database shell' \
   "${release_shell_patterns[@]}"
 
-echo "Neon credential masking checks passed (10 invocations, 7 resolved values)"
+echo "Neon credential masking checks passed (11 invocations, 8 resolved values)"
