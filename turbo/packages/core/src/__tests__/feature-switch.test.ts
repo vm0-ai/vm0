@@ -105,7 +105,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.VideoModelSelection]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.VideoModelSelection]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       true,
     );
