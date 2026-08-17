@@ -26,6 +26,7 @@ mod test_support;
 mod threading;
 mod user;
 mod wait;
+mod worker_ownership;
 mod writer;
 
 pub use connection::handle_connection_with_test_dns_readiness_program;
