@@ -36,29 +36,32 @@ for index in "${!expected_raw_database_url_emissions[@]}"; do
   fi
 done
 
-mapfile -t mask_commands < <(
+mapfile -t mask_and_output_commands < <(
   awk '
-    index($0, "WORKFLOW_COMMAND_DATA=") > 0 || index($0, "::add-mask::") > 0 {
+    index($0, "WORKFLOW_COMMAND_DATA=") > 0 ||
+    index($0, "::add-mask::") > 0 ||
+    index($0, "database-url=$DATABASE_URL") > 0 {
       sub(/^[[:space:]]+/, "")
       print
     }
   ' "$action"
 )
 
-mapfile -t expected_mask_commands <<'EXPECTED'
+mapfile -t expected_mask_and_output_commands <<'EXPECTED'
 WORKFLOW_COMMAND_DATA="${DATABASE_URL//%/%25}"
 WORKFLOW_COMMAND_DATA="${WORKFLOW_COMMAND_DATA//$'\r'/%0D}"
 WORKFLOW_COMMAND_DATA="${WORKFLOW_COMMAND_DATA//$'\n'/%0A}"
 printf '::add-mask::%s\n' "$WORKFLOW_COMMAND_DATA"
+echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
 EXPECTED
 
-if [[ ${#mask_commands[@]} -ne ${#expected_mask_commands[@]} ]]; then
-  fail "expected workflow-command escaping before the generated database URL is masked"
+if [[ ${#mask_and_output_commands[@]} -ne ${#expected_mask_and_output_commands[@]} ]]; then
+  fail "expected workflow-command escaping and masking before the database URL output"
 fi
 
-for index in "${!expected_mask_commands[@]}"; do
-  if [[ "${mask_commands[$index]}" != "${expected_mask_commands[$index]}" ]]; then
-    fail "database URL mask must escape percent, carriage return, and newline in order"
+for index in "${!expected_mask_and_output_commands[@]}"; do
+  if [[ "${mask_and_output_commands[$index]}" != "${expected_mask_and_output_commands[$index]}" ]]; then
+    fail "database URL must be escaped, masked, and output in order"
   fi
 done
 
