@@ -1860,6 +1860,29 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
       "turbo/apps/api/src/signals/services",
     );
     await fs.mkdir(runCreateDirectory, { recursive: true });
+    const environmentShadowConsumerPath = path.join(
+      runCreateDirectory,
+      "agent-environment-shadow.ts",
+    );
+    const environmentShadowConsumer = [
+      'const ENVIRONMENT_SHADOW_COUNT_BUCKETS = ["0", "1"] as const;',
+      "interface ApplicationOwnedEnvironmentCandidateInput {",
+      "  readonly runtimeOverrides: Readonly<Record<string, string>>;",
+      "}",
+      "function buildApplicationOwnedEnvironmentCandidate(",
+      "  args: ApplicationOwnedEnvironmentCandidateInput,",
+      ") {",
+      "  void args;",
+      "  return {};",
+      "}",
+      "function compareApplicationOwnedEnvironment() { return 'exact'; }",
+      "",
+    ].join("\n");
+    await fs.writeFile(
+      environmentShadowConsumerPath,
+      environmentShadowConsumer,
+      "utf8",
+    );
     const runCreateConsumerPath = path.join(
       runCreateDirectory,
       "agent-run-create.service.ts",
@@ -1924,6 +1947,29 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
 
     const semanticBaseline =
       await collectRuntimeContentConsumerManifest(fixtureRoot);
+
+    await fs.writeFile(
+      environmentShadowConsumerPath,
+      environmentShadowConsumer.replace(
+        "  return {};",
+        "  return firstAgent(args.content).environment;",
+      ),
+      "utf8",
+    );
+    const environmentShadowLegacyDrift =
+      await collectRuntimeContentConsumerManifest(fixtureRoot);
+    assert.equal(
+      runtimeContentConsumerManifestsEqual(
+        semanticBaseline,
+        environmentShadowLegacyDrift,
+      ),
+      false,
+    );
+    await fs.writeFile(
+      environmentShadowConsumerPath,
+      environmentShadowConsumer,
+      "utf8",
+    );
 
     const unrelatedZeroRunQueryChange = zeroRunConsumer
       .replace(
@@ -2129,7 +2175,7 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
       workflow.indexOf('>> "$GITHUB_OUTPUT"'),
   );
   assert.match(workflow, /scripts\/agent-compose-consolidation-preflight\.ts/u);
-  assert.match(workflow, /#27613 \+ #27656 \+ #27671/u);
+  assert.match(workflow, /#27613 \+ #27656 \+ #27671 \+ #27792/u);
   assert.match(workflow, /vm0\.agent-compose-consolidation-preflight\.v3/u);
   assert.equal(
     /vm0\.agent-compose-consolidation-preflight\.v[12]/u.test(workflow),

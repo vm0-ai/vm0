@@ -11,6 +11,11 @@ import {
 } from "@okouai/connectors/firewall-types";
 import { z } from "zod";
 
+import type {
+  EnvironmentShadowClassification,
+  EnvironmentShadowCountBucket,
+} from "./agent-environment-shadow";
+
 type UnknownRecord = Record<string, unknown>;
 type NetworkPolicy = NetworkPolicies[string];
 type NetworkPolicyValue = "allow" | "deny" | "ask";
@@ -94,6 +99,10 @@ export type RunContextAxiomSnapshot = Omit<
   readonly firewalls: readonly RunContextAxiomFirewall[];
   readonly networkPolicyEntries: readonly RunContextNetworkPolicyEntry[];
   readonly featureFlagEntries: readonly RunContextFeatureFlagEntry[];
+  readonly environmentShadowClassification?: EnvironmentShadowClassification;
+  readonly environmentShadowLegacyOnlyCountBucket?: EnvironmentShadowCountBucket;
+  readonly environmentShadowCandidateOnlyCountBucket?: EnvironmentShadowCountBucket;
+  readonly environmentShadowSharedValueDifferenceCountBucket?: EnvironmentShadowCountBucket;
 };
 
 interface NormalizedRunContextSnapshot {

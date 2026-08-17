@@ -2665,6 +2665,10 @@ describe("RUN-04: agent run telemetry families", () => {
             runId,
             cliAgentType: "claude-code",
             sessionId: "bdd-session-1",
+            environmentShadowClassification: "mixed_difference",
+            environmentShadowLegacyOnlyCountBucket: "2_4",
+            environmentShadowCandidateOnlyCountBucket: "1",
+            environmentShadowSharedValueDifferenceCountBucket: "5_8",
             environment: { LEGACY_IGNORED: "legacy-map" },
             environmentEntries: [
               { name: "NODE_ENV", value: "production" },
@@ -2822,6 +2826,9 @@ describe("RUN-04: agent run telemetry families", () => {
     expect(contextRead.body.environment).toStrictEqual({
       NODE_ENV: "production",
     });
+    expect(contextRead.body).not.toHaveProperty(
+      "environmentShadowClassification",
+    );
     expect(Object.keys(contextRead.body.networkPolicies ?? {})).toStrictEqual([
       "github",
     ]);
