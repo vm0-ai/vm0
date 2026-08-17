@@ -53,6 +53,7 @@ import {
   validateAgentRunLaunchSnapshotSchema,
 } from "./test-agent-run-launch-snapshot";
 import { validateAgentComposeConsolidationPreflight } from "./test-agent-compose-consolidation-preflight";
+import { validateIntegrationIdentityContractReadinessPreflight } from "./test-integration-identity-contract-readiness-preflight";
 import {
   AgentComposeProvenanceSchemaUnavailableError,
   deleteClerkAgentLifecycleData,
@@ -11655,6 +11656,7 @@ async function main(): Promise<void> {
     await validateChatEventSnapshotContraction();
     await validateAgentComposeProvenanceMigration();
     await validateAgentComposeConsolidationPreflight();
+    await validateIntegrationIdentityContractReadinessPreflight();
     await validateAgentRunMetadataStage2Preflight();
     await validateAgentRunMetadataStage2Lock();
     await validateAgentRunMetadataStage2Index();
