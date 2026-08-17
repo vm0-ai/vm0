@@ -385,7 +385,6 @@ async fn run_start_with_home(
     let config::SandboxConfig {
         max_concurrent,
         concurrency_factor: yaml_concurrency_factor,
-        idle_timeout_secs: _,
         max_idle,
     } = runner_config.sandbox;
     let (concurrency_factor, concurrency_factor_source) =

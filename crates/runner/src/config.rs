@@ -52,7 +52,6 @@ use guest_contracts::process_containment::{
 };
 
 use crate::error::{RunnerError, RunnerResult};
-use crate::idle_pool::DEFAULT_IDLE_TIMEOUT_SECS;
 use crate::paths::{HomePaths, RootfsPaths, SnapshotPaths};
 use crate::profile;
 
@@ -146,11 +145,6 @@ pub struct SandboxConfig {
     pub max_concurrent: usize,
     /// Overcommit factor applied to both CPU and memory budgets (default: 1.0).
     pub concurrency_factor: f64,
-    /// Legacy idle timeout retained for runner YAML compatibility.
-    ///
-    /// Idle VM lifetime is capacity-driven, so this value has no runtime
-    /// effect (default: [`DEFAULT_IDLE_TIMEOUT_SECS`]).
-    pub idle_timeout_secs: u64,
     /// Maximum number of idle VMs to keep (0 = no limit, default: 0).
     pub max_idle: usize,
 }
@@ -160,7 +154,6 @@ impl Default for SandboxConfig {
         Self {
             max_concurrent: DEFAULT_MAX_CONCURRENT,
             concurrency_factor: DEFAULT_CONCURRENCY_FACTOR,
-            idle_timeout_secs: DEFAULT_IDLE_TIMEOUT_SECS,
             max_idle: 0,
         }
     }

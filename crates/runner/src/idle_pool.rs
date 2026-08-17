@@ -28,12 +28,6 @@ pub(crate) use parking_gate::ParkingState;
 #[cfg(test)]
 pub(crate) mod test_support;
 
-/// Compatibility default for the legacy `idle_timeout_secs` config field.
-///
-/// Idle lifetime is capacity-driven; the field remains only so existing
-/// runner YAML continues to deserialize and round-trip during deployment.
-pub const DEFAULT_IDLE_TIMEOUT_SECS: u64 = 1800;
-
 /// Configuration for the idle sandbox pool.
 #[derive(Debug, Clone, Default)]
 pub struct IdlePoolConfig {
