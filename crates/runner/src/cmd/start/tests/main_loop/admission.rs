@@ -18,6 +18,7 @@ use crate::types::SandboxReuseResult;
 use crate::workspace_image_cache::WorkspaceImageCache;
 
 const NON_SELECTED_RUNNER_ID: u128 = 1;
+const FINALIZING_TEST_PREFERENCE_LIFETIME: Duration = Duration::from_secs(30);
 
 fn ranked_candidate(
     run_id: RunId,
@@ -783,7 +784,7 @@ async fn selected_ranked_finalizing_candidate_falls_back_at_deadline() {
     let run_id = RunId::new_v4();
     env.provider
         .set_claim_result(run_id, Some(context_with_reuse_key(run_id, reuse_key)));
-    let deadline = std::time::Instant::now() + Duration::from_millis(100);
+    let deadline = std::time::Instant::now() + FINALIZING_TEST_PREFERENCE_LIFETIME;
     env.handle
         .discover_tx
         .send(
@@ -814,7 +815,7 @@ async fn selected_ranked_finalizing_candidate_falls_back_at_deadline() {
     );
     assert_eq!(preference.deadline(), deadline);
 
-    tokio::time::advance(Duration::from_millis(101)).await;
+    tokio::time::advance(FINALIZING_TEST_PREFERENCE_LIFETIME + Duration::from_millis(1)).await;
     let completion = env
         .handle
         .wait_completion(run_id, Duration::from_secs(5))
@@ -965,7 +966,7 @@ async fn published_exact_remains_reusable_past_preference_deadline() {
                 RunnerPreferenceTier::FinalizingPredecessor,
                 TEST_RUNNER_ID,
                 TEST_HEARTBEAT_GENERATION,
-                std::time::Instant::now() + Duration::from_millis(100),
+                std::time::Instant::now() + FINALIZING_TEST_PREFERENCE_LIFETIME,
             )
             .with_history_generation_run_id(Some(history_generation_run_id)),
         )
@@ -993,7 +994,7 @@ async fn published_exact_remains_reusable_past_preference_deadline() {
         .await
         .expect("published exact sandbox should start before predecessor release");
 
-    tokio::time::advance(Duration::from_millis(101)).await;
+    tokio::time::advance(FINALIZING_TEST_PREFERENCE_LIFETIME + Duration::from_millis(1)).await;
     successor_gate.release_one();
     let completion = env
         .handle
@@ -1390,7 +1391,7 @@ async fn same_run_duplicate_does_not_renew_claimed_finalizing_deadline() {
     let run_id = RunId::new_v4();
     env.provider
         .set_claim_result(run_id, Some(context_with_reuse_key(run_id, reuse_key)));
-    let original_deadline = std::time::Instant::now() + Duration::from_millis(100);
+    let original_deadline = std::time::Instant::now() + FINALIZING_TEST_PREFERENCE_LIFETIME;
     env.handle
         .discover_tx
         .send(finalizing_candidate_until(
@@ -1421,7 +1422,7 @@ async fn same_run_duplicate_does_not_renew_claimed_finalizing_deadline() {
             history_generation_run_id,
             TEST_RUNNER_ID,
             TEST_HEARTBEAT_GENERATION,
-            std::time::Instant::now() + Duration::from_secs(30),
+            original_deadline + FINALIZING_TEST_PREFERENCE_LIFETIME,
         ))
         .unwrap();
     wait_discover_entered(&env, Duration::from_secs(2)).await;
@@ -1454,7 +1455,7 @@ async fn same_run_duplicate_does_not_renew_claimed_finalizing_deadline() {
         "a duplicate discovery must not renew the claimed finalizing deadline"
     );
 
-    tokio::time::advance(Duration::from_millis(101)).await;
+    tokio::time::advance(FINALIZING_TEST_PREFERENCE_LIFETIME + Duration::from_millis(1)).await;
     let completion = env
         .handle
         .wait_completion(run_id, Duration::from_secs(5))
