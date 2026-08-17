@@ -6,6 +6,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 WORKFLOW="${REPO_ROOT}/.github/workflows/turbo.yml"
 RUNNER_START_HELPER="${REPO_ROOT}/.github/scripts/reconcile-and-start-runner-groups.sh"
 RUNNER_TESTS="${REPO_ROOT}/e2e/tests/03-runner"
+REAL_CLAUDE_TEST="${RUNNER_TESTS}/run-t10-real-claude-smoke.bats"
 RUNNER_HELPERS=(
   "${REPO_ROOT}/e2e/helpers/runner-api.bash"
   "${REPO_ROOT}/e2e/helpers/runner-chat.bash"
@@ -38,6 +39,14 @@ if grep -Fq 'playwright-staging' "$WORKFLOW"; then
 fi
 if grep -R -Fq '/api/test/' "$RUNNER_TESTS" "${RUNNER_HELPERS[@]}"; then
   fail "runner E2E coverage must use supported public APIs"
+fi
+grep -Fq 'REAL_CLAUDE_MODEL="claude-sonnet-5"' "$REAL_CLAUDE_TEST" ||
+  fail "real Claude E2E must select Sonnet 5"
+if [[ "$(grep -Fc '"$REAL_CLAUDE_MODEL"' "$REAL_CLAUDE_TEST")" -ne 3 ]]; then
+  fail "real Claude E2E must use its model pin for policy, smoke, and steer coverage"
+fi
+if grep -Fq 'claude-sonnet-4-6' "$REAL_CLAUDE_TEST"; then
+  fail "real Claude E2E must not retain the Sonnet 4.6 pin"
 fi
 grep -Fq 'startVideoOnboardingCheckout' "$RUNNER_TOKEN" ||
   fail "real runner accounts must upgrade through public paid onboarding"
@@ -338,12 +347,20 @@ claude_script = claude_step.fetch("run")
 %w[
   /api/okou/model-policies
   /api/okou/feature-switches
-  claude-sonnet-4-6
   realAgentInPreview
 ].each do |required_fragment|
   unless claude_script.include?(required_fragment)
     raise "real Claude bootstrap must include #{required_fragment}"
   end
+end
+unless claude_script.include?('claude_model="claude-sonnet-5"') &&
+    claude_script.include?('--arg model "$claude_model"') &&
+    claude_script.include?('select(.model != $model)') &&
+    claude_script.include?('model: $model')
+  raise "real Claude bootstrap must configure Sonnet 5 consistently"
+end
+if claude_script.include?("claude-sonnet-4-6")
+  raise "real Claude bootstrap must not retain the Sonnet 4.6 pin"
 end
 unless claude_script.include?('defaultProviderType: "vm0"') &&
     claude_script.include?("modelProviderId: null")
