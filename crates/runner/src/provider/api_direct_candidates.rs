@@ -370,6 +370,7 @@ mod tests {
 
     use super::super::{RunnerNoPreferenceReason, RunnerPreference, RunnerPreferenceTier};
     use super::*;
+    use crate::runner_process_identity::RunnerProcessIdentity;
 
     fn run_id(value: u128) -> RunId {
         RunId::from(uuid::Uuid::from_u128(value))
@@ -392,8 +393,7 @@ mod tests {
         deadline: StdInstant,
     ) -> RunnerPreferenceContext {
         RunnerPreferenceContext::for_test(ActiveRunnerPreference::ranked_for_test(
-            uuid::Uuid::from_u128(runner_id),
-            7,
+            RunnerProcessIdentity::new(uuid::Uuid::from_u128(runner_id), 7).unwrap(),
             tier,
             deadline,
         ))
@@ -494,7 +494,9 @@ mod tests {
             .expect("updated canonical preference");
         assert_eq!(preference.tier(), RunnerPreferenceTier::ExactSandbox);
         assert_eq!(preference.deadline(), exact_deadline);
-        assert!(preference.targets(&uuid::Uuid::from_u128(20).to_string(), 7));
+        assert!(
+            preference.targets(RunnerProcessIdentity::new(uuid::Uuid::from_u128(20), 7).unwrap())
+        );
         let telemetry = candidate
             .runner_preference_claim_telemetry()
             .expect("canonical preference telemetry");
@@ -583,7 +585,9 @@ mod tests {
         let preference = candidate.runner_preference().expect("runner preference");
         assert_eq!(preference.tier(), RunnerPreferenceTier::WorkspaceCache);
         assert_eq!(preference.deadline(), first_deadline);
-        assert!(preference.targets(&uuid::Uuid::from_u128(10).to_string(), 7));
+        assert!(
+            preference.targets(RunnerProcessIdentity::new(uuid::Uuid::from_u128(10), 7).unwrap())
+        );
         let telemetry = candidate
             .runner_preference_claim_telemetry()
             .expect("retained canonical preference telemetry");

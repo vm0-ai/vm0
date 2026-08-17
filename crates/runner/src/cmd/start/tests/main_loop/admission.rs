@@ -13,6 +13,7 @@ use crate::paths::RunnerPaths;
 use crate::provider::{
     ActiveRunnerPreference, RunnerPreference, RunnerPreferenceClaimState, RunnerPreferenceTier,
 };
+use crate::runner_process_identity::RunnerProcessIdentity;
 use crate::types::SandboxReuseResult;
 use crate::workspace_image_cache::WorkspaceImageCache;
 
@@ -46,8 +47,7 @@ fn ranked_candidate_until(
     crate::provider::JobCandidate::new(run_id, "vm0/default".into())
         .with_reuse_key(reuse_key.map(str::to_owned))
         .with_runner_preference_for_test(ActiveRunnerPreference::ranked_for_test(
-            runner_id.parse().unwrap(),
-            heartbeat_generation,
+            RunnerProcessIdentity::new(runner_id.parse().unwrap(), heartbeat_generation).unwrap(),
             tier,
             deadline,
         ))
@@ -107,8 +107,7 @@ fn finalizing_candidate_until(
         .with_reuse_key(Some(reuse_key.to_owned()))
         .with_history_generation_run_id(Some(history_generation_run_id))
         .with_runner_preference_for_test(ActiveRunnerPreference::ranked_for_test(
-            runner_id.parse().unwrap(),
-            heartbeat_generation,
+            RunnerProcessIdentity::new(runner_id.parse().unwrap(), heartbeat_generation).unwrap(),
             RunnerPreferenceTier::FinalizingPredecessor,
             deadline,
         ))
@@ -1672,8 +1671,11 @@ async fn selected_finalizing_candidate_without_reuse_key_uses_ordinary_admission
             crate::provider::JobCandidate::new(run_id, "vm0/default".into())
                 .with_history_generation_run_id(Some(RunId::new_v4()))
                 .with_runner_preference_for_test(ActiveRunnerPreference::ranked_for_test(
-                    TEST_RUNNER_ID.parse().unwrap(),
-                    TEST_HEARTBEAT_GENERATION,
+                    RunnerProcessIdentity::new(
+                        TEST_RUNNER_ID.parse().unwrap(),
+                        TEST_HEARTBEAT_GENERATION,
+                    )
+                    .unwrap(),
                     RunnerPreferenceTier::FinalizingPredecessor,
                     std::time::Instant::now() + Duration::from_secs(30),
                 )),
