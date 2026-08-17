@@ -44,6 +44,7 @@ use crate::error::{ApiStatusError, RunnerError, RunnerResult};
 use crate::http::{ApiRequestBuilder, HttpClient};
 use crate::ids::RunId;
 use crate::run_cancellation::RunCancellationRegistry;
+use crate::runner_process_identity::RunnerProcessIdentity;
 use crate::types::{
     CompleteRequest, ConnectorRuntimeSyncBatchResponse, ConnectorRuntimeTargetRegistration,
     ExecutionContext, HeartbeatState, Job, PollResponse,
@@ -58,15 +59,8 @@ fn supports_thread_active_input(reuse_key: Option<&str>) -> bool {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ClaimRequestBody<'a> {
-    runner_identity: ClaimRunnerIdentity<'a>,
+    runner_identity: &'a RunnerProcessIdentity,
     telemetry: ClaimRequestTelemetry,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ClaimRunnerIdentity<'a> {
-    runner_id: &'a str,
-    heartbeat_generation: u64,
 }
 
 #[derive(Serialize)]
@@ -100,7 +94,7 @@ struct ClaimRequestTelemetry {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PollRequestBody<'a> {
-    runner_id: &'a str,
+    runner_id: uuid::Uuid,
     group: &'a str,
     supported_profiles: &'a [String],
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -238,8 +232,7 @@ enum DiscoveryWakeup {
 /// cooldown and defers all discovery before retrying.
 pub struct ApiProvider {
     api: ApiClient,
-    runner_id: String,
-    heartbeat_generation: u64,
+    runner_identity: RunnerProcessIdentity,
     group: String,
     /// Profile names this runner supports (e.g., ["vm0/default"]).
     /// Sent in poll requests so the server only returns jobs this runner can handle.
@@ -266,8 +259,7 @@ pub struct BuiltinFirewallCatalogCachePaths {
 }
 
 pub struct ApiProviderConfig {
-    pub runner_id: String,
-    pub heartbeat_generation: u64,
+    pub(crate) runner_identity: RunnerProcessIdentity,
     pub group: String,
     pub supported_profiles: Vec<String>,
 }
@@ -283,8 +275,7 @@ impl ApiProvider {
         cancel_tokens: RunCancellationRegistry,
     ) -> Arc<Self> {
         let ApiProviderConfig {
-            runner_id,
-            heartbeat_generation,
+            runner_identity,
             group,
             supported_profiles,
         } = config;
@@ -304,8 +295,7 @@ impl ApiProvider {
         let active_input_notifications = ActiveInputNotifications::new();
         Arc::new(Self {
             api,
-            runner_id,
-            heartbeat_generation,
+            runner_identity,
             group,
             supported_profiles,
             poll_wakeups,
@@ -540,7 +530,7 @@ impl JobProvider for ApiProvider {
                     return None;
                 }
                 result = self.api.poll(
-                    &self.runner_id,
+                    self.runner_identity.runner_id(),
                     &self.group,
                     &self.supported_profiles,
                     &excluded_run_ids,
@@ -641,11 +631,7 @@ impl JobProvider for ApiProvider {
 
     async fn claim(&self, candidate: JobCandidate) -> Option<ClaimedJob> {
         let run_id = candidate.run_id();
-        match self
-            .api
-            .claim(&candidate, &self.runner_id, self.heartbeat_generation)
-            .await
-        {
+        match self.api.claim(&candidate, &self.runner_identity).await {
             Ok(Some(ctx)) => {
                 let active_input_source = (ctx.cli_agent_type != "pi"
                     && supports_thread_active_input(ctx.reuse_key.as_deref()))
@@ -681,8 +667,8 @@ impl JobProvider for ApiProvider {
                 self.claim_cooldowns.remove(run_id).await;
                 info!(
                     run_id = %run_id,
-                    runner_id = %self.runner_id,
-                    heartbeat_generation = self.heartbeat_generation,
+                    runner_id = %self.runner_identity.runner_id(),
+                    heartbeat_generation = self.runner_identity.heartbeat_generation(),
                     "job claimed"
                 );
                 Some(claimed)
@@ -989,7 +975,7 @@ impl ApiClient {
     /// Poll for a pending job. The response contains `job: None` when no work is available.
     async fn poll(
         &self,
-        runner_id: &str,
+        runner_id: uuid::Uuid,
         group: &str,
         supported_profiles: &[String],
         excluded_run_ids: &[RunId],
@@ -1042,11 +1028,10 @@ impl ApiClient {
     async fn claim(
         &self,
         candidate: &JobCandidate,
-        runner_id: &str,
-        heartbeat_generation: u64,
+        runner_identity: &RunnerProcessIdentity,
     ) -> Result<Option<ExecutionContext>, ClaimApiError> {
         let run_id = candidate.run_id();
-        let body = claim_request_body(candidate, runner_id, heartbeat_generation);
+        let body = claim_request_body(candidate, runner_identity);
         let run_id = run_id.to_string();
         let resp = send_api(
             self.http
@@ -1082,8 +1067,10 @@ impl ApiClient {
         &self,
         candidate: &JobCandidate,
     ) -> Result<Option<ExecutionContext>, ClaimApiError> {
-        self.claim(candidate, "550e8400-e29b-41d4-a716-446655440000", 7)
-            .await
+        let runner_identity =
+            RunnerProcessIdentity::new("550e8400-e29b-41d4-a716-446655440000".parse().unwrap(), 7)
+                .unwrap();
+        self.claim(candidate, &runner_identity).await
     }
     /// Report job completion. Uses the per-job **sandbox token** for auth.
     async fn complete(&self, sandbox_token: &str, request: &CompleteRequest) -> RunnerResult<()> {
@@ -1190,8 +1177,7 @@ impl ApiClient {
 
 fn claim_request_body<'a>(
     candidate: &JobCandidate,
-    runner_id: &'a str,
-    heartbeat_generation: u64,
+    runner_identity: &'a RunnerProcessIdentity,
 ) -> ClaimRequestBody<'a> {
     let runner_preference_telemetry = candidate.runner_preference_claim_telemetry();
     let is_ably_candidate = candidate.discovery_source() == Some(JobDiscoverySource::Ably);
@@ -1220,10 +1206,7 @@ fn claim_request_body<'a>(
     };
 
     ClaimRequestBody {
-        runner_identity: ClaimRunnerIdentity {
-            runner_id,
-            heartbeat_generation,
-        },
+        runner_identity,
         telemetry: ClaimRequestTelemetry {
             discovery_source: candidate.discovery_source().map(JobDiscoverySource::as_str),
             job_discovered_to_claim_request_ms: claim_telemetry_duration_ms(
@@ -1259,7 +1242,7 @@ fn claim_telemetry_duration_ms(duration: Duration) -> u64 {
 }
 
 fn poll_request_body<'a>(
-    runner_id: &'a str,
+    runner_id: uuid::Uuid,
     group: &'a str,
     supported_profiles: &'a [String],
     excluded_run_ids: &'a [RunId],
@@ -1521,8 +1504,14 @@ mod tests {
 
     const TEST_HEARTBEAT_GENERATION: u64 = 7;
 
-    fn claim_request_body_for_test(candidate: &JobCandidate) -> ClaimRequestBody<'_> {
-        claim_request_body(candidate, TEST_RUNNER_ID, TEST_HEARTBEAT_GENERATION)
+    fn test_runner_identity() -> RunnerProcessIdentity {
+        RunnerProcessIdentity::new(TEST_RUNNER_ID.parse().unwrap(), TEST_HEARTBEAT_GENERATION)
+            .unwrap()
+    }
+
+    fn claim_request_body_for_test(candidate: &JobCandidate) -> serde_json::Value {
+        let runner_identity = test_runner_identity();
+        serde_json::to_value(claim_request_body(candidate, &runner_identity)).unwrap()
     }
 
     #[test]
@@ -1756,8 +1745,7 @@ mod tests {
             connector_runtime_sync: ConnectorRuntimeSyncHandle::new(api.clone()),
             builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshController::disabled(),
             api,
-            runner_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
-            heartbeat_generation: 7,
+            runner_identity: test_runner_identity(),
             group: "default".to_string(),
             supported_profiles: vec![crate::profile::DEFAULT_PROFILE.to_string()],
             poll_wakeups,
@@ -2051,8 +2039,9 @@ mod tests {
     #[test]
     fn poll_request_body_serializes_poll_reason_telemetry() {
         let profiles = vec![crate::profile::DEFAULT_PROFILE.to_string()];
+        let runner_id = TEST_RUNNER_ID.parse().unwrap();
         let body = serde_json::to_value(poll_request_body(
-            "550e8400-e29b-41d4-a716-446655440000",
+            runner_id,
             "vm0/test",
             &profiles,
             &[],
@@ -2070,7 +2059,7 @@ mod tests {
     }
 
     #[test]
-    fn claim_request_body_serializes_runner_timing() {
+    fn claim_request_body_serializes_validated_identity_and_runner_timing() {
         let now = std::time::Instant::now();
         let candidate = JobCandidate::new_with_timing_for_test(
             RunId::nil(),
@@ -2082,7 +2071,7 @@ mod tests {
         .with_poll_reason("deferred")
         .with_poll_timing(Duration::from_millis(19), Duration::from_millis(11));
 
-        let body = serde_json::to_value(claim_request_body_for_test(&candidate)).unwrap();
+        let body = claim_request_body_for_test(&candidate);
 
         assert_eq!(body["runnerIdentity"]["runnerId"], TEST_RUNNER_ID);
         assert_eq!(
@@ -2120,14 +2109,13 @@ mod tests {
     #[test]
     fn claim_request_body_serializes_canonical_preference_at_claim_time() {
         let active_preference = ActiveRunnerPreference::ranked_for_test(
-            TEST_RUNNER_ID.parse().unwrap(),
-            TEST_HEARTBEAT_GENERATION,
+            test_runner_identity(),
             RunnerPreferenceTier::WorkspaceCache,
             Instant::now() + Duration::from_secs(60),
         );
         let active = JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
             .with_runner_preference_for_test(active_preference);
-        let active_body = serde_json::to_value(claim_request_body_for_test(&active)).unwrap();
+        let active_body = claim_request_body_for_test(&active);
         assert_eq!(
             active_body["telemetry"]["runnerPreference"]["kind"],
             "preference"
@@ -2146,29 +2134,27 @@ mod tests {
         );
 
         let expired_preference = ActiveRunnerPreference::ranked_for_test(
-            TEST_RUNNER_ID.parse().unwrap(),
-            TEST_HEARTBEAT_GENERATION,
+            test_runner_identity(),
             RunnerPreferenceTier::ExactSandbox,
             Instant::now() - Duration::from_secs(1),
         );
         let expired = JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
             .with_runner_preference_for_test(expired_preference);
-        let expired_body = serde_json::to_value(claim_request_body_for_test(&expired)).unwrap();
+        let expired_body = claim_request_body_for_test(&expired);
         assert_eq!(
             expired_body["telemetry"]["runnerPreferenceClaimState"],
             "expired"
         );
 
         let cleared_preference = ActiveRunnerPreference::ranked_for_test(
-            Uuid::from_u128(8),
-            TEST_HEARTBEAT_GENERATION,
+            RunnerProcessIdentity::new(Uuid::from_u128(8), TEST_HEARTBEAT_GENERATION).unwrap(),
             RunnerPreferenceTier::FinalizingPredecessor,
             Instant::now() + Duration::from_secs(60),
         );
         let cleared = JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
             .with_runner_preference_for_test(cleared_preference)
             .without_runner_preference(RunnerPreferenceRemovalReason::Cleared);
-        let cleared_body = serde_json::to_value(claim_request_body_for_test(&cleared)).unwrap();
+        let cleared_body = claim_request_body_for_test(&cleared);
         assert_eq!(
             cleared_body["telemetry"]["runnerPreferenceClaimState"],
             "cleared"
@@ -2176,8 +2162,7 @@ mod tests {
         let no_preference =
             JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
                 .with_no_runner_preference_for_test(RunnerNoPreferenceReason::NoViableHolder);
-        let no_preference_body =
-            serde_json::to_value(claim_request_body_for_test(&no_preference)).unwrap();
+        let no_preference_body = claim_request_body_for_test(&no_preference);
         assert_eq!(
             no_preference_body["telemetry"]["runnerPreference"]["kind"],
             "noPreference"
@@ -2206,7 +2191,7 @@ mod tests {
         candidate.mark_main_loop_handling_started();
         candidate.mark_local_admission_started();
 
-        let body = serde_json::to_value(claim_request_body_for_test(&candidate)).unwrap();
+        let body = claim_request_body_for_test(&candidate);
 
         assert_eq!(body["telemetry"]["discoverySource"], "ably");
         assert_eq!(
@@ -2239,7 +2224,7 @@ mod tests {
         candidate.mark_main_loop_handling_started();
         candidate.mark_local_admission_started();
 
-        let body = serde_json::to_value(claim_request_body_for_test(&candidate)).unwrap();
+        let body = claim_request_body_for_test(&candidate);
 
         assert_eq!(body["telemetry"]["discoverySource"], "poll");
         assert!(
@@ -2273,7 +2258,7 @@ mod tests {
                     Duration::from_millis(CLAIM_TELEMETRY_DURATION_MS_MAX + 1),
                 );
 
-        let body = serde_json::to_value(claim_request_body_for_test(&candidate)).unwrap();
+        let body = claim_request_body_for_test(&candidate);
 
         assert_eq!(
             body["telemetry"]["pollDueToJobDiscoveredMs"],
@@ -2295,7 +2280,7 @@ mod tests {
             None,
         );
 
-        let body = serde_json::to_value(claim_request_body_for_test(&candidate)).unwrap();
+        let body = claim_request_body_for_test(&candidate);
 
         assert!(
             body["telemetry"]["jobDiscoveredToClaimRequestMs"]
@@ -2338,7 +2323,7 @@ mod tests {
             JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
                 .with_discovery_source(JobDiscoverySource::Ably);
 
-        let body = serde_json::to_value(claim_request_body_for_test(&candidate)).unwrap();
+        let body = claim_request_body_for_test(&candidate);
 
         assert_eq!(body["telemetry"]["discoverySource"], "ably");
         assert!(body["telemetry"].get("pollDueToJobDiscoveredMs").is_none());
@@ -2449,7 +2434,15 @@ mod tests {
             .runner_preference()
             .expect("canonical preference should be parsed");
         assert_eq!(preference.tier(), RunnerPreferenceTier::ExactSandbox);
-        assert!(preference.targets("00000000-0000-0000-0000-000000000005", 7));
+        assert!(
+            preference.targets(
+                RunnerProcessIdentity::new(
+                    "00000000-0000-0000-0000-000000000005".parse().unwrap(),
+                    7,
+                )
+                .unwrap()
+            )
+        );
         let telemetry = discovered
             .runner_preference_claim_telemetry()
             .expect("canonical preference telemetry");
@@ -3308,7 +3301,7 @@ mod tests {
 
         let err = api
             .poll(
-                "550e8400-e29b-41d4-a716-446655440000",
+                TEST_RUNNER_ID.parse().unwrap(),
                 "default",
                 &[],
                 &[],
@@ -3339,7 +3332,7 @@ mod tests {
 
         let err = api
             .poll(
-                "550e8400-e29b-41d4-a716-446655440000",
+                TEST_RUNNER_ID.parse().unwrap(),
                 "default",
                 &[],
                 &[],
@@ -3821,8 +3814,9 @@ mod tests {
             })
             .await;
         let api = api_client_for_server(&server);
+        let runner_id = TEST_RUNNER_ID.parse().unwrap();
         let error = api
-            .poll(TEST_RUNNER_ID, "default", &[], &[], PollReason::Immediate)
+            .poll(runner_id, "default", &[], &[], PollReason::Immediate)
             .await
             .unwrap_err();
         let RunnerError::Api(error) = error else {
@@ -3884,7 +3878,7 @@ mod tests {
 
         let err = api
             .poll(
-                "550e8400-e29b-41d4-a716-446655440000",
+                TEST_RUNNER_ID.parse().unwrap(),
                 "default",
                 &[crate::profile::DEFAULT_PROFILE.to_string()],
                 &[],

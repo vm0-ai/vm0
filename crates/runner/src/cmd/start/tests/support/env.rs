@@ -8,10 +8,15 @@ use crate::executor;
 use crate::lifecycle::LifecycleController;
 use crate::provider::mock::{MockJobProvider, MockProviderHandle};
 use crate::run_cancellation::RunCancellationRegistry;
+use crate::runner_process_identity::RunnerProcessIdentity;
 use sandbox_mock::MockSandboxRuntime;
 
 pub(in super::super) const TEST_RUNNER_ID: &str = "550e8400-e29b-41d4-a716-446655440000";
 pub(in super::super) const TEST_HEARTBEAT_GENERATION: u64 = 7;
+
+pub(in super::super) fn test_runner_identity() -> RunnerProcessIdentity {
+    RunnerProcessIdentity::new(TEST_RUNNER_ID.parse().unwrap(), TEST_HEARTBEAT_GENERATION).unwrap()
+}
 
 pub(in super::super) fn test_profiles() -> BTreeMap<String, config::ProfileConfig> {
     let mut m = BTreeMap::new();
@@ -207,10 +212,9 @@ fn build_mock_run_config_with_runtime(
 
     let config = RunConfig {
         runner: RunnerInfo {
-            id: TEST_RUNNER_ID.into(),
+            identity: test_runner_identity(),
             name: "test".into(),
             group: "test-group".into(),
-            heartbeat_generation: TEST_HEARTBEAT_GENERATION,
             profiles,
         },
         paths: RunPaths {

@@ -47,6 +47,7 @@ use crate::resource_budget::{BudgetLease, ResourceBudget};
 use crate::run_cancellation::{
     RunCancellationHandle, RunCancellationRegistration, RunCancellationRegistry,
 };
+use crate::runner_process_identity::RunnerProcessIdentity;
 use crate::status::StatusTracker;
 use crate::types::{
     CompleteRequest, ExecutionContext, HeldWorkspaceState, SandboxReuseResult,
@@ -58,8 +59,7 @@ pub(super) struct DiscoveredJob {
 }
 
 pub(super) struct DiscoveredJobContext<'a> {
-    pub(super) runner_id: &'a str,
-    pub(super) heartbeat_generation: u64,
+    pub(super) runner_identity: RunnerProcessIdentity,
     pub(super) profiles: &'a BTreeMap<String, ProfileConfig>,
     pub(super) factories: &'a BTreeMap<String, (SharedFactory, bool)>,
     pub(super) budget: &'a Arc<ResourceBudget>,
@@ -927,7 +927,7 @@ async fn prepare_ranked_preference_candidate(
         device_rate_limits,
         ctx,
     } = request;
-    let selected = preference.targets(ctx.runner_id, ctx.heartbeat_generation);
+    let selected = preference.targets(ctx.runner_identity);
     let history_generation_run_id = candidate.history_generation_run_id();
 
     if ranked_preference_allows(
