@@ -2355,6 +2355,71 @@ async function prepareApplicableSubscription(
   };
 }
 
+type ReplacementScheduleResolution =
+  | { readonly status: "ready"; readonly scheduleId: string | null }
+  | { readonly status: "conflict" };
+
+async function resolveReplacementSchedule(
+  db: Db,
+  stored: StoredSubscriptionChange,
+  subscription: StripeSubscription,
+  signal: AbortSignal,
+): Promise<ReplacementScheduleResolution> {
+  const allocationScheduleId = replacementScheduleId(
+    stored.root,
+    stored.allocationChanges,
+  );
+  const planScheduleId = await pendingPlanReplacementScheduleId(
+    db,
+    stored.root,
+  );
+  signal.throwIfAborted();
+  if (
+    allocationScheduleId &&
+    planScheduleId &&
+    allocationScheduleId !== planScheduleId
+  ) {
+    await failApplyingSubscriptionChange(
+      db,
+      stored.root,
+      "scheduled_replacement_conflict",
+    );
+    return { status: "conflict" };
+  }
+  const scheduleId = allocationScheduleId ?? planScheduleId;
+  if (!scheduleId) {
+    return { status: "ready", scheduleId: null };
+  }
+  const scheduledChanges = await db
+    .select()
+    .from(usagePackAllocationChanges)
+    .where(
+      and(
+        eq(
+          usagePackAllocationChanges.usagePackSubscriptionId,
+          stored.subscription.id,
+        ),
+        eq(usagePackAllocationChanges.status, "scheduled"),
+      ),
+    );
+  signal.throwIfAborted();
+  const ownsPlanSchedule = planScheduleId === scheduleId;
+  const ownsPackageSchedule =
+    restorableScheduleId(scheduledChanges) === scheduleId;
+  if (
+    stripeObjectId(subscription.schedule) !== scheduleId ||
+    (!ownsPlanSchedule && !ownsPackageSchedule)
+  ) {
+    await failApplyingSubscriptionChange(
+      db,
+      stored.root,
+      "scheduled_replacement_conflict",
+    );
+    return { status: "conflict" };
+  }
+  return { status: "ready", scheduleId };
+}
+
 async function applyStoredSubscriptionChange(
   db: Db,
   stored: StoredSubscriptionChange,
@@ -2394,58 +2459,16 @@ async function applyStoredSubscriptionChange(
       signal,
     );
   }
-  const allocationReplacementScheduleId = replacementScheduleId(
-    stored.root,
-    stored.allocationChanges,
-  );
-  const planReplacementScheduleId = await pendingPlanReplacementScheduleId(
+  const replacementSchedule = await resolveReplacementSchedule(
     db,
-    stored.root,
+    stored,
+    subscription,
+    signal,
   );
-  signal.throwIfAborted();
-  if (
-    allocationReplacementScheduleId &&
-    planReplacementScheduleId &&
-    allocationReplacementScheduleId !== planReplacementScheduleId
-  ) {
-    await failApplyingSubscriptionChange(
-      db,
-      stored.root,
-      "scheduled_replacement_conflict",
-    );
-    return { status: "conflict" };
+  if (replacementSchedule.status === "conflict") {
+    return replacementSchedule;
   }
-  const supersededScheduleId =
-    allocationReplacementScheduleId ?? planReplacementScheduleId;
-  if (supersededScheduleId) {
-    const scheduledChanges = await db
-      .select()
-      .from(usagePackAllocationChanges)
-      .where(
-        and(
-          eq(
-            usagePackAllocationChanges.usagePackSubscriptionId,
-            stored.subscription.id,
-          ),
-          eq(usagePackAllocationChanges.status, "scheduled"),
-        ),
-      );
-    signal.throwIfAborted();
-    const ownsPlanSchedule = planReplacementScheduleId === supersededScheduleId;
-    const ownsPackageSchedule =
-      restorableScheduleId(scheduledChanges) === supersededScheduleId;
-    if (
-      stripeObjectId(subscription.schedule) !== supersededScheduleId ||
-      (!ownsPlanSchedule && !ownsPackageSchedule)
-    ) {
-      await failApplyingSubscriptionChange(
-        db,
-        stored.root,
-        "scheduled_replacement_conflict",
-      );
-      return { status: "conflict" };
-    }
-  }
+  const supersededScheduleId = replacementSchedule.scheduleId;
   const hasPlanUpgrade = planIsUpgrade(
     stored.root.sourceTier,
     stored.root.targetTier,

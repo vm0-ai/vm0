@@ -5846,7 +5846,7 @@ describe("usage pack allocation management", () => {
     context.mocks.stripe.subscriptionSchedules.update.mockResolvedValue({
       id: scheduleId,
     });
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingUsagePackManagementContract,
     );
 
