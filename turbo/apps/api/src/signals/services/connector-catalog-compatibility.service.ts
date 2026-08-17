@@ -293,7 +293,7 @@ function evaluateMethod(args: {
   });
 }
 
-function evaluateConnectorCatalogCompatibility(args: {
+export function evaluateConnectorCatalogCompatibility(args: {
   readonly artifact: ConnectorCatalogArtifact;
   readonly capability: ExecutableCapabilityState;
 }): readonly ConnectorCatalogCompatibilityFilteredAuthMethod[] {

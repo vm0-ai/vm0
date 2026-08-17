@@ -55,7 +55,9 @@ import { createUniqueStaffOrgIdFixture } from "../../../test-fixtures/staff-org"
 import {
   API_TEST_CONNECTOR_FIREWALL_CONFIGS,
   apiTestConnectorCatalogValidationAuthority,
+  deleteApiTestConnectorCatalogCompatibility,
   installApiTestConnectorCatalog,
+  readApiTestConnectorCatalogCompatibilityEvaluations,
   readApiTestConnectorCatalogValidationAuthority,
   setApiTestConnectorCatalogValidationAuthority,
 } from "../../../test-fixtures/connector-catalog";
@@ -1042,7 +1044,10 @@ function expectConnectorCatalogLoadTiming(args: {
     | { readonly outcome: "attested" | "not_run" }
     | {
         readonly outcome: "full_fallback";
-        readonly fallbackReason: "missing_authority" | "different_authority";
+        readonly fallbackReason:
+          | "missing_authority"
+          | "different_authority"
+          | "missing_compatibility";
       };
 }): void {
   const event = singleApiDispatchEvent(
@@ -1768,6 +1773,61 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       missingCatalogVersion,
       missingAuthorityPrompt,
       missingAuthorityActor.agentId,
+      "test-oauth-secret",
+      "fixture-confidential-secret",
+    ]);
+  });
+
+  it("derives missing catalog compatibility without persisting it", async () => {
+    const api = createRunsApi(context);
+    mockEnv(
+      "R2_USER_STORAGES_BUCKET_NAME",
+      "test-run-lifecycle-missing-catalog-compatibility",
+    );
+
+    const missingCompatibilityVersion = `api-test-missing-compatibility-${randomUUID()}`;
+    await installApiTestConnectorCatalog({
+      catalogVersion: missingCompatibilityVersion,
+    });
+    await deleteApiTestConnectorCatalogCompatibility();
+    await expect(
+      readApiTestConnectorCatalogCompatibilityEvaluations(),
+    ).resolves.toHaveLength(0);
+
+    const missingCompatibilityActor = await entitledRunActor();
+    const missingCompatibilityPrompt = "missing connector compatibility";
+    const missingCompatibilityRun = await api.createRun(
+      missingCompatibilityActor.actor,
+      {
+        agentId: missingCompatibilityActor.agentId,
+        prompt: missingCompatibilityPrompt,
+        modelProvider: "anthropic-api-key",
+      },
+    );
+    const missingCompatibilityEvents = apiDispatchTimingEventsForRun(
+      missingCompatibilityRun.runId,
+    );
+    expectApiDispatchActions(
+      missingCompatibilityEvents,
+      API_DISPATCH_CONNECTOR_CATALOG_COMPLETE_VALIDATION_ACTION_TYPES,
+    );
+    expectConnectorCatalogLoadTiming({
+      events: missingCompatibilityEvents,
+      acceptedCacheOutcome: "miss",
+      runtimeCacheOutcome: "miss",
+      requestedConnectorCount: "known",
+      validation: {
+        outcome: "full_fallback",
+        fallbackReason: "missing_compatibility",
+      },
+    });
+    await expect(
+      readApiTestConnectorCatalogCompatibilityEvaluations(),
+    ).resolves.toHaveLength(0);
+    expectApiDispatchTimingEventsNotToLeak(missingCompatibilityEvents, [
+      missingCompatibilityVersion,
+      missingCompatibilityPrompt,
+      missingCompatibilityActor.agentId,
       "test-oauth-secret",
       "fixture-confidential-secret",
     ]);
