@@ -1481,10 +1481,9 @@ mod tests {
     use super::*;
     use httpmock::Method::POST;
     use httpmock::MockServer;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::io::AsyncWriteExt;
     use tokio::net::TcpListener;
     use tokio::sync::mpsc;
-    use tokio::task::JoinHandle;
     use tracing::{Level, instrument::WithSubscriber};
     use tracing_subscriber::prelude::*;
     use tracing_test_support::{CapturedEvent, CapturedEvents};
@@ -1494,6 +1493,10 @@ mod tests {
     use crate::provider::{
         ActiveRunnerPreference, RunnerNoPreferenceReason, RunnerPreference,
         RunnerPreferenceRemovalReason, RunnerPreferenceTier,
+    };
+    use crate::test_fixtures::raw_http::{
+        RawHttpAction, RawHttpTestServer, http_response, join_raw_http_task, json_response,
+        read_http_request,
     };
 
     const RUNNER_CLAIM_RESPONSE_FIXTURE: &str = include_str!(
@@ -1829,92 +1832,24 @@ mod tests {
         provider.direct_candidates.push(candidate).await;
     }
 
-    async fn read_http_request(socket: &mut tokio::net::TcpStream) {
-        let _ = read_http_request_text(socket).await;
-    }
-
-    async fn read_http_request_text(socket: &mut tokio::net::TcpStream) -> String {
-        let mut request = Vec::new();
-        let mut buf = [0_u8; 1024];
-        let header_end = loop {
-            let n = socket.read(&mut buf).await.unwrap();
-            if n == 0 {
-                break request.len();
-            }
-            request.extend_from_slice(&buf[..n]);
-            if let Some(header_end) = request
-                .windows(4)
-                .position(|window| window == b"\r\n\r\n")
-                .map(|position| position + 4)
-            {
-                break header_end;
-            }
-        };
-        let headers = String::from_utf8_lossy(&request[..header_end]);
-        let content_length = headers
-            .lines()
-            .find_map(|line| {
-                let (name, value) = line.split_once(':')?;
-                if name.eq_ignore_ascii_case("content-length") {
-                    value.trim().parse::<usize>().ok()
-                } else {
-                    None
-                }
-            })
-            .unwrap_or(0);
-        let request_len = header_end + content_length;
-        loop {
-            if request.len() >= request_len {
-                break;
-            }
-            let n = socket.read(&mut buf).await.unwrap();
-            if n == 0 {
-                break;
-            }
-            request.extend_from_slice(&buf[..n]);
-        }
-        String::from_utf8_lossy(&request).into_owned()
-    }
-
-    async fn write_http_status_response(socket: &mut tokio::net::TcpStream, status: u16) {
+    fn status_response(status: u16) -> Vec<u8> {
         let reason = match status {
             200 => "OK",
             500 => "Internal Server Error",
             _ => "Unknown",
         };
         let body = if status == 200 { "ok" } else { "failed" };
-        let response = format!(
-            "HTTP/1.1 {status} {reason}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-            body.len(),
-            body
-        );
-        socket.write_all(response.as_bytes()).await.unwrap();
+        http_response(&format!("{status} {reason}"), body.as_bytes())
     }
 
-    async fn write_json_response(socket: &mut tokio::net::TcpStream, body: &str) {
-        let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-            body.len(),
-            body
-        );
-        socket.write_all(response.as_bytes()).await.unwrap();
-    }
-
-    async fn complete_sequence_server(
-        statuses: Vec<u16>,
-    ) -> (String, mpsc::UnboundedReceiver<String>, JoinHandle<()>) {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let api_url = format!("http://{}", listener.local_addr().unwrap());
-        let (request_tx, request_rx) = mpsc::unbounded_channel();
-        let server_task = tokio::spawn(async move {
-            for status in statuses {
-                let (mut socket, _) = listener.accept().await.unwrap();
-                let request = read_http_request_text(&mut socket).await;
-                write_http_status_response(&mut socket, status).await;
-                request_tx.send(request).unwrap();
-            }
-        });
-        (api_url, request_rx, server_task)
+    async fn complete_sequence_server(statuses: Vec<u16>) -> RawHttpTestServer {
+        RawHttpTestServer::spawn(
+            statuses
+                .into_iter()
+                .map(|status| RawHttpAction::Respond(status_response(status)))
+                .collect(),
+        )
+        .await
     }
 
     async fn next_request(requests: &mut mpsc::UnboundedReceiver<String>) -> String {
@@ -1948,11 +1883,8 @@ mod tests {
 
     #[tokio::test]
     async fn heartbeat_send_failure_logs_transport_and_state_context_without_secrets() {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let api_url = format!("http://{}", listener.local_addr().unwrap());
-        let server_task = tokio::spawn(async move {
-            let (_socket, _) = listener.accept().await.unwrap();
-        });
+        let server = RawHttpTestServer::spawn(vec![RawHttpAction::Disconnect]).await;
+        let api_url = server.url();
         let provider = api_provider_for_test(
             api_url.clone(),
             CancellationToken::new(),
@@ -1961,8 +1893,7 @@ mod tests {
         let state = heartbeat_state_for_test();
 
         let (_, events) = capture_api_provider_events(provider.heartbeat(&state)).await;
-        server_task.abort();
-        let _ = server_task.await;
+        server.assert_finished().await;
         let event = captured_event(&events, "heartbeat failed");
 
         assert_eq!(event.level, Level::WARN);
@@ -2008,13 +1939,9 @@ mod tests {
 
     #[tokio::test]
     async fn heartbeat_status_failure_logs_held_state_counts_without_body() {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let api_url = format!("http://{}", listener.local_addr().unwrap());
-        let server_task = tokio::spawn(async move {
-            let (mut socket, _) = listener.accept().await.unwrap();
-            read_http_request(&mut socket).await;
-            write_http_status_response(&mut socket, 500).await;
-        });
+        let server =
+            RawHttpTestServer::spawn(vec![RawHttpAction::Respond(status_response(500))]).await;
+        let api_url = server.url();
         let provider = api_provider_for_test(
             api_url,
             CancellationToken::new(),
@@ -2023,7 +1950,7 @@ mod tests {
         let state = heartbeat_state_for_test();
 
         let (_, events) = capture_api_provider_events(provider.heartbeat(&state)).await;
-        server_task.await.unwrap();
+        server.assert_finished().await;
         let event = captured_event(&events, "heartbeat failed");
 
         assert_eq!(event.level, Level::WARN);
@@ -2331,7 +2258,7 @@ mod tests {
         assert!(body["telemetry"].get("pollReason").is_none());
     }
 
-    async fn write_poll_job_response(socket: &mut tokio::net::TcpStream, run_id: RunId) {
+    fn poll_job_response(run_id: RunId) -> Vec<u8> {
         let body = serde_json::json!({
             "job": {
                 "runId": run_id,
@@ -2339,26 +2266,17 @@ mod tests {
             }
         })
         .to_string();
-        let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-            body.len(),
-            body
-        );
-        socket.write_all(response.as_bytes()).await.unwrap();
+        json_response("200 OK", &body)
+    }
+
+    async fn write_poll_job_response(socket: &mut tokio::net::TcpStream, run_id: RunId) {
+        socket.write_all(&poll_job_response(run_id)).await.unwrap();
     }
 
     #[tokio::test]
     async fn discover_cancel_aborts_in_flight_poll() {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let api_url = format!("http://{}", listener.local_addr().unwrap());
-        let (accepted_tx, accepted_rx) = tokio::sync::oneshot::channel();
-        let server_task = tokio::spawn(async move {
-            let (mut socket, _) = listener.accept().await.unwrap();
-            let mut buf = [0_u8; 1024];
-            let _ = socket.read(&mut buf).await;
-            let _ = accepted_tx.send(());
-            std::future::pending::<()>().await;
-        });
+        let mut server = RawHttpTestServer::spawn(vec![RawHttpAction::Stall]).await;
+        let api_url = server.url();
 
         let cancel = CancellationToken::new();
         let provider =
@@ -2367,10 +2285,7 @@ mod tests {
         let provider_for_discover = Arc::clone(&provider);
         let discover_task = tokio::spawn(async move { provider_for_discover.discover().await });
 
-        tokio::time::timeout(Duration::from_secs(1), accepted_rx)
-            .await
-            .expect("poll request should reach the server")
-            .unwrap();
+        server.next_request("in-flight poll request").await;
 
         cancel.cancel();
 
@@ -2380,8 +2295,7 @@ mod tests {
             .unwrap();
         assert!(result.is_none());
 
-        server_task.abort();
-        let _ = server_task.await;
+        server.cancel_and_reap().await;
     }
 
     #[tokio::test]
@@ -2909,24 +2823,30 @@ mod tests {
         let (request_tx, mut requests) = mpsc::unbounded_channel();
         let server_task = tokio::spawn(async move {
             let (mut first_claim, _) = listener.accept().await.unwrap();
-            let request = read_http_request_text(&mut first_claim).await;
-            write_http_status_response(&mut first_claim, 503).await;
+            let request = read_http_request(&mut first_claim).await.unwrap();
+            first_claim.write_all(&status_response(503)).await.unwrap();
             request_tx.send(request).unwrap();
 
             let (mut excluded_poll, _) = listener.accept().await.unwrap();
-            let request = read_http_request_text(&mut excluded_poll).await;
+            let request = read_http_request(&mut excluded_poll).await.unwrap();
             request_tx.send(request).unwrap();
             tokio::time::sleep(CLAIM_TRANSIENT_COOLDOWN + Duration::from_millis(50)).await;
-            write_json_response(&mut excluded_poll, r#"{"job":null}"#).await;
+            excluded_poll
+                .write_all(&json_response("200 OK", r#"{"job":null}"#))
+                .await
+                .unwrap();
 
             let (mut retry_poll, _) = listener.accept().await.unwrap();
-            let request = read_http_request_text(&mut retry_poll).await;
+            let request = read_http_request(&mut retry_poll).await.unwrap();
             write_poll_job_response(&mut retry_poll, run_id).await;
             request_tx.send(request).unwrap();
 
             let (mut second_claim, _) = listener.accept().await.unwrap();
-            let request = read_http_request_text(&mut second_claim).await;
-            write_json_response(&mut second_claim, RUNNER_CLAIM_RESPONSE_FIXTURE).await;
+            let request = read_http_request(&mut second_claim).await.unwrap();
+            second_claim
+                .write_all(&json_response("200 OK", RUNNER_CLAIM_RESPONSE_FIXTURE))
+                .await
+                .unwrap();
             request_tx.send(request).unwrap();
         });
         let wakeups = Arc::new(PollWakeups::new(true));
@@ -2988,30 +2908,19 @@ mod tests {
             .expect("request channel should remain open");
         assert!(second_claim_request.contains(&format!("/api/runners/jobs/{run_id}/claim")));
 
-        tokio::time::timeout(Duration::from_secs(1), server_task)
-            .await
-            .expect("transient sequence server should finish")
-            .unwrap();
+        join_raw_http_task(server_task, "transient sequence server").await;
         assert!(requests.recv().await.is_none());
     }
 
     #[tokio::test]
     async fn old_api_returning_excluded_run_does_not_rediscover_it() {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let api_url = format!("http://{}", listener.local_addr().unwrap());
         let run_id: RunId = "00000000-0000-0000-0000-00000000001a".parse().unwrap();
-        let (request_tx, mut requests) = mpsc::unbounded_channel();
-        let server_task = tokio::spawn(async move {
-            let (mut claim, _) = listener.accept().await.unwrap();
-            let request = read_http_request_text(&mut claim).await;
-            write_http_status_response(&mut claim, 400).await;
-            request_tx.send(request).unwrap();
-
-            let (mut ignored_exclusion_poll, _) = listener.accept().await.unwrap();
-            let request = read_http_request_text(&mut ignored_exclusion_poll).await;
-            write_poll_job_response(&mut ignored_exclusion_poll, run_id).await;
-            request_tx.send(request).unwrap();
-        });
+        let mut server = RawHttpTestServer::spawn(vec![
+            RawHttpAction::Respond(status_response(400)),
+            RawHttpAction::Respond(poll_job_response(run_id)),
+        ])
+        .await;
+        let api_url = server.url();
         let wakeups = Arc::new(PollWakeups::new(true));
         let initial_poll = wakeups
             .wait_for_poll_due(&CancellationToken::new(), POLL_SLOW, POLL_FAST)
@@ -3030,12 +2939,12 @@ mod tests {
 
         let direct = provider.discover().await.unwrap();
         assert!(provider.claim(direct).await.is_none());
-        let claim_request = next_request(&mut requests).await;
+        let claim_request = server.next_request("old API claim request").await;
         assert!(claim_request.contains(&format!("/api/runners/jobs/{run_id}/claim")));
 
         let provider_for_discover = Arc::clone(&provider);
         let mut discover_task = tokio::spawn(async move { provider_for_discover.discover().await });
-        let ignored_exclusion_request = next_request(&mut requests).await;
+        let ignored_exclusion_request = server.next_request("old API poll request").await;
         assert!(ignored_exclusion_request.contains(r#""excludedRunIds":["#));
         assert!(ignored_exclusion_request.contains(&run_id.to_string()));
         assert!(
@@ -3044,12 +2953,11 @@ mod tests {
                 .is_err(),
             "an excluded run returned by an old API must not be rediscovered"
         );
-        assert!(requests.try_recv().is_err());
+        assert!(server.try_next_request().is_err());
 
         cancel.cancel();
         assert!(discover_task.await.unwrap().is_none());
-        server_task.await.unwrap();
-        assert!(requests.recv().await.is_none());
+        server.assert_finished().await;
     }
 
     #[tokio::test]
@@ -3191,13 +3099,13 @@ mod tests {
         let (release_first_poll_tx, release_first_poll_rx) = tokio::sync::oneshot::channel();
         let server_task = tokio::spawn(async move {
             let (mut first_socket, _) = listener.accept().await.unwrap();
-            read_http_request(&mut first_socket).await;
+            read_http_request(&mut first_socket).await.unwrap();
             let _ = poll_accepted_tx.send(());
             release_first_poll_rx.await.unwrap();
             drop(first_socket);
 
             let (mut second_socket, _) = listener.accept().await.unwrap();
-            read_http_request(&mut second_socket).await;
+            read_http_request(&mut second_socket).await.unwrap();
             write_poll_job_response(&mut second_socket, poll_run_id).await;
         });
         let provider = api_provider_for_test(
@@ -3239,39 +3147,30 @@ mod tests {
             rediscovered.discovery_source(),
             Some(JobDiscoverySource::Poll)
         );
-        server_task.await.unwrap();
+        join_raw_http_task(server_task, "direct candidate sequence server").await;
     }
 
     #[tokio::test]
     async fn discover_defers_job_return_when_deferred_poll_arrives_during_poll() {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let api_url = format!("http://{}", listener.local_addr().unwrap());
         let first_run_id: RunId = "00000000-0000-0000-0000-000000000004".parse().unwrap();
         let second_run_id: RunId = "00000000-0000-0000-0000-000000000005".parse().unwrap();
-        let (first_accepted_tx, first_accepted_rx) = tokio::sync::oneshot::channel();
         let (release_first_tx, release_first_rx) = tokio::sync::oneshot::channel();
-        let server_task = tokio::spawn(async move {
-            let (mut first_socket, _) = listener.accept().await.unwrap();
-            read_http_request(&mut first_socket).await;
-            let _ = first_accepted_tx.send(());
-            release_first_rx.await.unwrap();
-            write_poll_job_response(&mut first_socket, first_run_id).await;
-            drop(first_socket);
-
-            let (mut second_socket, _) = listener.accept().await.unwrap();
-            read_http_request(&mut second_socket).await;
-            write_poll_job_response(&mut second_socket, second_run_id).await;
-        });
+        let mut server = RawHttpTestServer::spawn(vec![
+            RawHttpAction::WaitThenRespond {
+                release: release_first_rx,
+                response: poll_job_response(first_run_id),
+            },
+            RawHttpAction::Respond(poll_job_response(second_run_id)),
+        ])
+        .await;
+        let api_url = server.url();
         let wakeups = Arc::new(PollWakeups::new(false));
         let provider =
             api_provider_for_test(api_url, CancellationToken::new(), Arc::clone(&wakeups));
         let provider_for_discover = Arc::clone(&provider);
         let discover_task = tokio::spawn(async move { provider_for_discover.discover().await });
 
-        tokio::time::timeout(Duration::from_secs(1), first_accepted_rx)
-            .await
-            .expect("first poll should reach the server")
-            .unwrap();
+        server.next_request("first deferred poll request").await;
         wakeups
             .request_deferred_poll_after_for_test(Duration::ZERO)
             .await;
@@ -3285,7 +3184,7 @@ mod tests {
 
         assert_eq!(discovered.run_id(), second_run_id);
         assert_eq!(discovered.profile_name(), "vm0/default");
-        server_task.await.unwrap();
+        server.assert_finished().await;
     }
 
     #[tokio::test]
@@ -4498,7 +4397,8 @@ mod tests {
 
     #[tokio::test]
     async fn api_provider_complete_does_not_retry_permanent_http_failure() {
-        let (api_url, mut requests, server_task) = complete_sequence_server(vec![400]).await;
+        let mut server = complete_sequence_server(vec![400]).await;
+        let api_url = server.url();
         let run_id = RunId::nil();
         let provider = api_provider_for_test(
             api_url,
@@ -4519,13 +4419,9 @@ mod tests {
         .await
         .expect("permanent completion failure should not wait for the retry delay");
 
-        let request = next_request(&mut requests).await;
+        let request = server.next_request("permanent completion request").await;
         assert_complete_authorization(&request, "sandbox-token");
-        server_task.await.unwrap();
-        assert!(
-            requests.recv().await.is_none(),
-            "permanent completion failure should send one request"
-        );
+        server.assert_finished().await;
 
         let run_id = run_id.to_string();
         assert_eq!(
@@ -4554,8 +4450,8 @@ mod tests {
             StatusCode::TOO_MANY_REQUESTS,
             StatusCode::INTERNAL_SERVER_ERROR,
         ] {
-            let (api_url, mut requests, server_task) =
-                complete_sequence_server(vec![status.as_u16(), 200]).await;
+            let mut server = complete_sequence_server(vec![status.as_u16(), 200]).await;
+            let api_url = server.url();
             let run_id = RunId::nil();
             let provider = api_provider_for_test(
                 api_url,
@@ -4571,38 +4467,34 @@ mod tests {
                     .await;
             });
 
-            let first_request = next_request(&mut requests).await;
+            let first_request = server
+                .next_request("first transient completion request")
+                .await;
             assert_complete_authorization(&first_request, "sandbox-token");
             tokio::task::yield_now().await;
             assert!(
-                requests.try_recv().is_err(),
+                server.try_next_request().is_err(),
                 "status {status} should wait before the retry"
             );
             tokio::time::advance(Duration::from_secs(2)).await;
-            let second_request = next_request(&mut requests).await;
+            let second_request = server
+                .next_request("retried transient completion request")
+                .await;
             assert_complete_authorization(&second_request, "sandbox-token");
 
             complete_task.await.unwrap();
-            server_task.await.unwrap();
+            server.assert_finished().await;
         }
     }
 
     #[tokio::test(start_paused = true)]
     async fn api_provider_complete_retries_transport_failure() {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let api_url = format!("http://{}", listener.local_addr().unwrap());
-        let (request_tx, mut requests) = mpsc::unbounded_channel();
-        let server_task = tokio::spawn(async move {
-            let (mut first_socket, _) = listener.accept().await.unwrap();
-            let first_request = read_http_request_text(&mut first_socket).await;
-            drop(first_socket);
-            request_tx.send(first_request).unwrap();
-
-            let (mut second_socket, _) = listener.accept().await.unwrap();
-            let second_request = read_http_request_text(&mut second_socket).await;
-            write_http_status_response(&mut second_socket, 200).await;
-            request_tx.send(second_request).unwrap();
-        });
+        let mut server = RawHttpTestServer::spawn(vec![
+            RawHttpAction::Disconnect,
+            RawHttpAction::Respond(status_response(200)),
+        ])
+        .await;
+        let api_url = server.url();
         let run_id = RunId::nil();
         let provider = api_provider_for_test(
             api_url,
@@ -4618,19 +4510,19 @@ mod tests {
                 .await;
         });
 
-        let first_request = next_request(&mut requests).await;
+        let first_request = server.next_request("first completion request").await;
         assert_complete_authorization(&first_request, "sandbox-token");
         tokio::task::yield_now().await;
         assert!(
-            requests.try_recv().is_err(),
+            server.try_next_request().is_err(),
             "transport failure should wait before the retry"
         );
         tokio::time::advance(Duration::from_secs(2)).await;
-        let second_request = next_request(&mut requests).await;
+        let second_request = server.next_request("retried completion request").await;
         assert_complete_authorization(&second_request, "sandbox-token");
 
         complete_task.await.unwrap();
-        server_task.await.unwrap();
+        server.assert_finished().await;
     }
 
     #[tokio::test(start_paused = true)]
@@ -4661,7 +4553,8 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn api_provider_complete_stops_after_two_transient_failures() {
-        let (api_url, mut requests, server_task) = complete_sequence_server(vec![500, 500]).await;
+        let mut server = complete_sequence_server(vec![500, 500]).await;
+        let api_url = server.url();
         let run_id = RunId::nil();
         let provider = api_provider_for_test(
             api_url,
@@ -4685,7 +4578,7 @@ mod tests {
 
         let first_request = tokio::select! {
             () = &mut completion => panic!("completion should wait before the retry"),
-            request = next_request(&mut requests) => request,
+            request = server.next_request("first failed completion request") => request,
         };
         assert_complete_authorization(&first_request, "sandbox-token");
         // Establish the retry timer before advancing paused time.
@@ -4707,18 +4600,16 @@ mod tests {
         })
         .await;
         assert!(
-            requests.try_recv().is_err(),
+            server.try_next_request().is_err(),
             "completion should wait before the retry"
         );
-
         tokio::time::advance(Duration::from_secs(2)).await;
-        let ((), second_request) = tokio::join!(&mut completion, next_request(&mut requests));
-        assert_complete_authorization(&second_request, "sandbox-token");
-        server_task.await.unwrap();
-        assert!(
-            requests.recv().await.is_none(),
-            "completion should stop after the retry"
+        let ((), second_request) = tokio::join!(
+            &mut completion,
+            server.next_request("second failed completion request")
         );
+        assert_complete_authorization(&second_request, "sandbox-token");
+        server.assert_finished().await;
 
         let events = captured.entries();
         let run_id = run_id.to_string();

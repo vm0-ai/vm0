@@ -1,8 +1,5 @@
 use std::sync::Arc;
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream};
-
 use crate::active_input::{
     API_ACTIVE_INPUT_RECHECK_INTERVAL, ActiveInputNotifications, ActiveInputSource,
     local_active_input_delivery_id,
@@ -15,109 +12,18 @@ use crate::executor::tests::support::{
 use crate::http::{HttpClient, HttpClientConfig};
 use crate::local_queue::{ActiveInputEntry, LocalQueue};
 use crate::provider::ApiClient;
+use crate::test_fixtures::raw_http::{RawHttpAction, RawHttpTestServer, json_response};
 use crate::types::SandboxReuseResult;
 
 const DELIVERY_ID: &str = "b1e2ad6d-930a-4d51-aa40-7952d54f978b";
 const EVENT_ID: &str = "e6bc287d-8c08-464e-831a-cad771610157";
 
-async fn read_http_request(socket: &mut TcpStream) -> String {
-    let mut request = Vec::new();
-    let mut buffer = [0_u8; 1024];
-    let header_end = loop {
-        let read = socket.read(&mut buffer).await.unwrap();
-        assert!(read > 0, "connection closed before HTTP headers completed");
-        request.extend_from_slice(&buffer[..read]);
-        if let Some(header_end) = request
-            .windows(4)
-            .position(|window| window == b"\r\n\r\n")
-            .map(|position| position + 4)
-        {
-            break header_end;
-        }
-    };
-    let headers = String::from_utf8_lossy(&request[..header_end]);
-    let body_len = headers
-        .lines()
-        .find_map(|line| {
-            let (name, value) = line.split_once(':')?;
-            name.eq_ignore_ascii_case("content-length")
-                .then(|| value.trim().parse::<usize>().unwrap())
-        })
-        .unwrap_or(0);
-    while request.len() < header_end + body_len {
-        let read = socket.read(&mut buffer).await.unwrap();
-        assert!(read > 0, "connection closed before HTTP body completed");
-        request.extend_from_slice(&buffer[..read]);
-    }
-    String::from_utf8(request).unwrap()
-}
-
-fn http_response(status: &str, body: &str) -> String {
-    format!(
-        "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-        body.len()
-    )
-}
-
-enum HttpServerAction {
-    Respond(String),
-    Disconnect,
-}
-
-async fn spawn_http_server(
-    responses: Vec<String>,
-) -> (
-    String,
-    tokio::sync::mpsc::UnboundedReceiver<String>,
-    tokio::task::JoinHandle<()>,
-) {
-    spawn_http_server_with_actions(
-        responses
-            .into_iter()
-            .map(HttpServerAction::Respond)
-            .collect(),
-    )
-    .await
-}
-
-async fn spawn_http_server_with_actions(
-    actions: Vec<HttpServerAction>,
-) -> (
-    String,
-    tokio::sync::mpsc::UnboundedReceiver<String>,
-    tokio::task::JoinHandle<()>,
-) {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let api_url = format!("http://{}", listener.local_addr().unwrap());
-    let (request_tx, request_rx) = tokio::sync::mpsc::unbounded_channel();
-    let server = tokio::spawn(async move {
-        for action in actions {
-            let (mut socket, _) = listener.accept().await.unwrap();
-            let request = read_http_request(&mut socket).await;
-            if let HttpServerAction::Respond(response) = action {
-                socket.write_all(response.as_bytes()).await.unwrap();
-                socket.shutdown().await.unwrap();
-                let mut closed = [0_u8; 1];
-                assert_eq!(socket.read(&mut closed).await.unwrap(), 0);
-            }
-            request_tx.send(request).unwrap();
-        }
-    });
-    (api_url, request_rx, server)
-}
-
 async fn receive_http_request_before(
     deadline: tokio::time::Instant,
-    request_rx: &mut tokio::sync::mpsc::UnboundedReceiver<String>,
+    server: &mut RawHttpTestServer,
     description: &str,
 ) -> Result<String, String> {
-    match tokio::time::timeout_at(deadline, request_rx.recv()).await {
-        Ok(Some(request)) => Ok(request),
-        Ok(None) => Err(format!(
-            "active-input request channel closed before {description}"
-        )),
-        Err(_) => Err(format!("timed out waiting for {description}")),
-    }
+    server.next_request_before(deadline, description).await
 }
 
 async fn reap_spawned_test_task<T>(
@@ -272,17 +178,21 @@ async fn run_in_sandbox_retries_api_active_input_after_transient_read_failure() 
     let run_id = ctx.run_id;
     let reserve_path = format!("/api/runners/runs/{run_id}/active-inputs/reserve");
 
-    let (api_url, mut request_rx, server) = spawn_http_server(vec![
-        http_response("200 OK", r#"{"outcome":"empty"}"#),
-        http_response("503 Service Unavailable", r#"{"error":"transient"}"#),
-        http_response(
+    let mut server = RawHttpTestServer::spawn(vec![
+        RawHttpAction::Respond(json_response("200 OK", r#"{"outcome":"empty"}"#)),
+        RawHttpAction::Respond(json_response(
+            "503 Service Unavailable",
+            r#"{"error":"transient"}"#,
+        )),
+        RawHttpAction::Respond(json_response(
             "200 OK",
             &format!(
                 r#"{{"outcome":"reserved","deliveryId":"{DELIVERY_ID}","eventIds":["{EVENT_ID}"],"prompt":"retry delivered"}}"#,
             ),
-        ),
+        )),
     ])
     .await;
+    let api_url = server.url();
 
     let notifications = ActiveInputNotifications::new();
     let source =
@@ -306,10 +216,9 @@ async fn run_in_sandbox_retries_api_active_input_after_transient_read_failure() 
         .await
     });
 
-    let initial_reserve = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, request_rx.recv())
-        .await
-        .expect("initial active-input reserve request should reach the server")
-        .expect("active-input request channel should remain open");
+    let initial_reserve = server
+        .next_request("initial active-input reserve request")
+        .await;
     assert!(initial_reserve.starts_with(&format!("POST {reserve_path} ")));
     notifications.notify(run_id);
 
@@ -327,14 +236,7 @@ async fn run_in_sandbox_retries_api_active_input_after_transient_read_failure() 
         .unwrap();
     assert!(result.failure.is_none());
 
-    tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, server)
-        .await
-        .expect("active-input server should finish")
-        .unwrap();
-    let mut remaining_requests = Vec::new();
-    while let Some(request) = request_rx.recv().await {
-        remaining_requests.push(request);
-    }
+    let remaining_requests = server.assert_finished_with_requests().await;
     assert_eq!(remaining_requests.len(), 2);
     assert!(remaining_requests[0].starts_with(&format!("POST {reserve_path} ")));
     assert!(remaining_requests[1].starts_with(&format!("POST {reserve_path} ")));
@@ -360,16 +262,17 @@ async fn run_in_sandbox_rechecks_api_active_input_without_notification() {
     let run_id = ctx.run_id;
     let reserve_path = format!("/api/runners/runs/{run_id}/active-inputs/reserve");
 
-    let (api_url, mut request_rx, server) = spawn_http_server(vec![
-        http_response("200 OK", r#"{"outcome":"empty"}"#),
-        http_response(
+    let mut server = RawHttpTestServer::spawn(vec![
+        RawHttpAction::Respond(json_response("200 OK", r#"{"outcome":"empty"}"#)),
+        RawHttpAction::Respond(json_response(
             "200 OK",
             &format!(
                 r#"{{"outcome":"reserved","deliveryId":"{DELIVERY_ID}","eventIds":["{EVENT_ID}"],"prompt":"recheck delivered"}}"#,
             ),
-        ),
+        )),
     ])
     .await;
+    let api_url = server.url();
 
     let notifications = ActiveInputNotifications::new();
     let source =
@@ -393,10 +296,9 @@ async fn run_in_sandbox_rechecks_api_active_input_without_notification() {
         .await
     });
 
-    let initial_reserve = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, request_rx.recv())
-        .await
-        .expect("initial active-input reserve request should reach the server")
-        .expect("active-input request channel should remain open");
+    let initial_reserve = server
+        .next_request("initial active-input reserve request")
+        .await;
     assert!(initial_reserve.starts_with(&format!("POST {reserve_path} ")));
 
     tokio::time::pause();
@@ -418,14 +320,7 @@ async fn run_in_sandbox_rechecks_api_active_input_without_notification() {
         .unwrap();
     assert!(result.failure.is_none());
 
-    tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, server)
-        .await
-        .expect("active-input server should finish")
-        .unwrap();
-    let mut remaining_requests = Vec::new();
-    while let Some(request) = request_rx.recv().await {
-        remaining_requests.push(request);
-    }
+    let remaining_requests = server.assert_finished_with_requests().await;
     assert_eq!(remaining_requests.len(), 1);
     assert!(remaining_requests[0].starts_with(&format!("POST {reserve_path} ")));
 
@@ -528,16 +423,17 @@ async fn run_in_sandbox_retries_reserve_when_first_request_is_not_found() {
     let ctx = minimal_context();
     let run_id = ctx.run_id;
     let reserve_path = format!("/api/runners/runs/{run_id}/active-inputs/reserve");
-    let (api_url, mut request_rx, server) = spawn_http_server(vec![
-        http_response("404 Not Found", r#"{"error":"not found"}"#),
-        http_response(
+    let server = RawHttpTestServer::spawn(vec![
+        RawHttpAction::Respond(json_response("404 Not Found", r#"{"error":"not found"}"#)),
+        RawHttpAction::Respond(json_response(
             "200 OK",
             &format!(
                 r#"{{"outcome":"reserved","deliveryId":"{DELIVERY_ID}","eventIds":["{EVENT_ID}"],"prompt":"reserve delivered"}}"#,
             ),
-        ),
+        )),
     ])
     .await;
+    let api_url = server.url();
     let notifications = ActiveInputNotifications::new();
     let source = api_active_input_source(
         api_url,
@@ -577,15 +473,7 @@ async fn run_in_sandbox_retries_reserve_when_first_request_is_not_found() {
         .unwrap()
         .unwrap();
     assert!(result.failure.is_none());
-    tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, server)
-        .await
-        .unwrap()
-        .unwrap();
-
-    let mut requests = Vec::new();
-    while let Some(request) = request_rx.recv().await {
-        requests.push(request);
-    }
+    let requests = server.assert_finished_with_requests().await;
     assert_eq!(requests.len(), 2);
     assert!(
         requests
@@ -612,17 +500,18 @@ async fn run_in_sandbox_retrieves_reservation_after_lost_first_response() {
     let ctx = minimal_context();
     let run_id = ctx.run_id;
     let reserve_path = format!("/api/runners/runs/{run_id}/active-inputs/reserve");
-    let reserved = http_response(
+    let reserved = json_response(
         "200 OK",
         &format!(
             r#"{{"outcome":"reserved","deliveryId":"{DELIVERY_ID}","eventIds":["{EVENT_ID}"],"prompt":"retrieved delivery"}}"#,
         ),
     );
-    let (api_url, mut request_rx, server) = spawn_http_server_with_actions(vec![
-        HttpServerAction::Disconnect,
-        HttpServerAction::Respond(reserved),
+    let server = RawHttpTestServer::spawn(vec![
+        RawHttpAction::Disconnect,
+        RawHttpAction::Respond(reserved),
     ])
     .await;
+    let api_url = server.url();
     let notifications = ActiveInputNotifications::new();
     let source = api_active_input_source(
         api_url,
@@ -662,12 +551,7 @@ async fn run_in_sandbox_retrieves_reservation_after_lost_first_response() {
         .unwrap()
         .unwrap();
     assert!(result.failure.is_none());
-    server.await.unwrap();
-
-    let mut requests = Vec::new();
-    while let Some(request) = request_rx.recv().await {
-        requests.push(request);
-    }
+    let requests = server.assert_finished_with_requests().await;
     assert_eq!(requests.len(), 2);
     assert!(
         requests
@@ -691,11 +575,15 @@ async fn run_in_sandbox_keeps_using_reserve_after_ambiguous_failure() {
     let ctx = minimal_context();
     let run_id = ctx.run_id;
     let reserve_path = format!("/api/runners/runs/{run_id}/active-inputs/reserve");
-    let (api_url, mut request_rx, server) = spawn_http_server(vec![
-        http_response("503 Service Unavailable", r#"{"error":"transient"}"#),
-        http_response("404 Not Found", r#"{"error":"not found"}"#),
+    let server = RawHttpTestServer::spawn(vec![
+        RawHttpAction::Respond(json_response(
+            "503 Service Unavailable",
+            r#"{"error":"transient"}"#,
+        )),
+        RawHttpAction::Respond(json_response("404 Not Found", r#"{"error":"not found"}"#)),
     ])
     .await;
+    let api_url = server.url();
     let notifications = ActiveInputNotifications::new();
     let source = api_active_input_source(
         api_url,
@@ -723,14 +611,7 @@ async fn run_in_sandbox_keeps_using_reserve_after_ambiguous_failure() {
         .await
     });
 
-    tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, server)
-        .await
-        .unwrap()
-        .unwrap();
-    let mut requests = Vec::new();
-    while let Some(request) = request_rx.recv().await {
-        requests.push(request);
-    }
+    let requests = server.assert_finished_with_requests().await;
     assert_eq!(requests.len(), 2);
     assert!(
         requests
@@ -758,8 +639,12 @@ async fn run_in_sandbox_stops_when_reserve_reports_terminal() {
     let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
     let ctx = minimal_context();
     let run_id = ctx.run_id;
-    let (api_url, _request_rx, server) =
-        spawn_http_server(vec![http_response("200 OK", r#"{"outcome":"terminal"}"#)]).await;
+    let server = RawHttpTestServer::spawn(vec![RawHttpAction::Respond(json_response(
+        "200 OK",
+        r#"{"outcome":"terminal"}"#,
+    ))])
+    .await;
+    let api_url = server.url();
     let notifications = ActiveInputNotifications::new();
     let source = api_active_input_source(
         api_url,
@@ -787,7 +672,7 @@ async fn run_in_sandbox_stops_when_reserve_reports_terminal() {
         .await
     });
 
-    server.await.unwrap();
+    server.assert_finished().await;
     wait_gate.notify_one();
     let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, run_task)
         .await
@@ -814,13 +699,14 @@ async fn run_in_sandbox_retries_not_written_delivery_with_same_id() {
     let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
     let ctx = minimal_context();
     let run_id = ctx.run_id;
-    let (api_url, _request_rx, server) = spawn_http_server(vec![http_response(
+    let server = RawHttpTestServer::spawn(vec![RawHttpAction::Respond(json_response(
         "200 OK",
         &format!(
             r#"{{"outcome":"reserved","deliveryId":"{DELIVERY_ID}","eventIds":["{EVENT_ID}"],"prompt":"retry exact delivery"}}"#,
         ),
-    )])
+    ))])
     .await;
+    let api_url = server.url();
     let notifications = ActiveInputNotifications::new();
     let source = api_active_input_source(
         api_url,
@@ -860,7 +746,7 @@ async fn run_in_sandbox_retries_not_written_delivery_with_same_id() {
         .unwrap()
         .unwrap();
     assert!(result.failure.is_none());
-    server.await.unwrap();
+    server.assert_finished().await;
     let calls = overrides.process_control_calls();
     assert_eq!(calls.len(), 2);
     assert!(calls.iter().all(|call| call.message_id == DELIVERY_ID));
@@ -887,13 +773,14 @@ async fn run_in_sandbox_retries_guest_backpressure_with_same_id() {
     let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
     let ctx = minimal_context();
     let run_id = ctx.run_id;
-    let (api_url, _request_rx, server) = spawn_http_server(vec![http_response(
+    let server = RawHttpTestServer::spawn(vec![RawHttpAction::Respond(json_response(
         "200 OK",
         &format!(
             r#"{{"outcome":"reserved","deliveryId":"{DELIVERY_ID}","eventIds":["{EVENT_ID}"],"prompt":"retry guest backpressure"}}"#,
         ),
-    )])
+    ))])
     .await;
+    let api_url = server.url();
     let notifications = ActiveInputNotifications::new();
     let source = api_active_input_source(
         api_url,
@@ -933,7 +820,7 @@ async fn run_in_sandbox_retries_guest_backpressure_with_same_id() {
         .unwrap()
         .unwrap();
     assert!(result.failure.is_none());
-    server.await.unwrap();
+    server.assert_finished().await;
     let calls = overrides.process_control_calls();
     assert_eq!(calls.len(), 3);
     assert!(calls.iter().all(|call| call.message_id == DELIVERY_ID));
@@ -959,18 +846,19 @@ async fn run_in_sandbox_suppresses_possibly_written_delivery() {
     let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
     let ctx = minimal_context();
     let run_id = ctx.run_id;
-    let reserve = http_response(
+    let reserve = json_response(
         "200 OK",
         &format!(
             r#"{{"outcome":"reserved","deliveryId":"{DELIVERY_ID}","eventIds":["{EVENT_ID}"],"prompt":"uncertain delivery"}}"#,
         ),
     );
-    let (api_url, mut request_rx, server) = spawn_http_server(vec![
-        reserve.clone(),
-        reserve,
-        http_response("200 OK", r#"{"outcome":"empty"}"#),
+    let server = RawHttpTestServer::spawn(vec![
+        RawHttpAction::Respond(reserve.clone()),
+        RawHttpAction::Respond(reserve),
+        RawHttpAction::Respond(json_response("200 OK", r#"{"outcome":"empty"}"#)),
     ])
     .await;
+    let api_url = server.url();
     let notifications = ActiveInputNotifications::new();
     let source = api_active_input_source(
         api_url,
@@ -1013,18 +901,27 @@ async fn run_in_sandbox_suppresses_possibly_written_delivery() {
         if !process_control_observed {
             return Err("timed out waiting for the first process-control delivery attempt".into());
         }
-        receive_http_request_before(deadline, &mut request_rx, "the first reserve request").await?;
+        let Some(server_fixture) = server.as_mut() else {
+            return Err("active-input server ownership was lost before the first request".into());
+        };
+        receive_http_request_before(deadline, server_fixture, "the first reserve request").await?;
         notifications.notify(run_id);
+        let Some(server_fixture) = server.as_mut() else {
+            return Err("active-input server ownership was lost before the second request".into());
+        };
         receive_http_request_before(
             deadline,
-            &mut request_rx,
+            server_fixture,
             "the second reserve request after the first notification",
         )
         .await?;
         notifications.notify(run_id);
+        let Some(server_fixture) = server.as_mut() else {
+            return Err("active-input server ownership was lost before the third request".into());
+        };
         receive_http_request_before(
             deadline,
-            &mut request_rx,
+            server_fixture,
             "the third reserve request after the second notification",
         )
         .await?;
@@ -1041,16 +938,10 @@ async fn run_in_sandbox_suppresses_possibly_written_delivery() {
             .map_err(|error| format!("runner task failed: {error}"))?
             .map_err(|error| format!("run_in_sandbox failed: {error}"))?;
 
-        let Some(server_handle) = server.as_mut() else {
+        let Some(server_fixture) = server.take() else {
             return Err("active-input server task ownership was lost before completion".into());
         };
-        let server_outcome = tokio::time::timeout_at(deadline, server_handle)
-            .await
-            .map_err(|_| {
-                "timed out waiting for the active-input server task to finish".to_string()
-            })?;
-        server.take();
-        server_outcome.map_err(|error| format!("active-input server task failed: {error}"))?;
+        server_fixture.assert_finished().await;
         Ok::<_, String>(result)
     }
     .await;
@@ -1060,16 +951,12 @@ async fn run_in_sandbox_suppresses_possibly_written_delivery() {
         Err(error) => {
             cancel.cancel();
             wait_gate.notify_one();
-            if let Some(server) = server.as_ref() {
-                server.abort();
+            if let Some(server_fixture) = server.take() {
+                server_fixture.cancel_and_reap().await;
             }
-            let (run_cleanup, server_cleanup) = tokio::join!(
-                reap_spawned_test_task(run_task.take(), "runner"),
-                reap_spawned_test_task(server.take(), "active-input server"),
-            );
-            let cleanup_errors = [run_cleanup, server_cleanup]
+            let cleanup_errors = reap_spawned_test_task(run_task.take(), "runner")
+                .await
                 .into_iter()
-                .flatten()
                 .collect::<Vec<_>>();
             if cleanup_errors.is_empty() {
                 panic!("{error}");
@@ -1103,16 +990,20 @@ async fn run_in_sandbox_carries_failed_journal_receipt_to_completion() {
     let reserve_path = format!("/api/runners/runs/{run_id}/active-inputs/reserve");
     let receipt_path =
         format!("/api/runners/runs/{run_id}/active-inputs/deliveries/{DELIVERY_ID}/receipt");
-    let (api_url, mut request_rx, server) = spawn_http_server(vec![
-        http_response(
+    let server = RawHttpTestServer::spawn(vec![
+        RawHttpAction::Respond(json_response(
             "200 OK",
             &format!(
                 r#"{{"outcome":"reserved","deliveryId":"{DELIVERY_ID}","eventIds":["{EVENT_ID}"],"prompt":"recover receipt"}}"#,
             ),
-        ),
-        http_response("503 Service Unavailable", r#"{"error":"transient"}"#),
+        )),
+        RawHttpAction::Respond(json_response(
+            "503 Service Unavailable",
+            r#"{"error":"transient"}"#,
+        )),
     ])
     .await;
+    let api_url = server.url();
     let notifications = ActiveInputNotifications::new();
     let source = api_active_input_source(
         api_url,
@@ -1156,9 +1047,9 @@ async fn run_in_sandbox_carries_failed_journal_receipt_to_completion() {
         result.active_input_delivery_ids,
         vec![DELIVERY_ID.to_string()]
     );
-    server.await.unwrap();
-    let first_request = request_rx.recv().await.unwrap();
-    let second_request = request_rx.recv().await.unwrap();
+    let requests = server.assert_finished_with_requests().await;
+    let first_request = &requests[0];
+    let second_request = &requests[1];
     assert!(first_request.starts_with(&format!("POST {reserve_path} ")));
     assert!(second_request.starts_with(&format!("POST {receipt_path} ")));
 }
