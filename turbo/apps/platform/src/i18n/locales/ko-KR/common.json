@@ -1342,6 +1342,7 @@
       "temporaryFastModeDisabledNotice": "이 실행에서는 빠른 모드가 일시적으로 비활성화되었습니다",
       "temporaryFastModeEnabledNotice": "이 실행에서는 빠른 모드가 일시적으로 활성화되었습니다",
       "temporaryModelNotice": "일시적으로 {{model}}(으)로 전환됨",
+      "temporaryVideoModelNotice": "동영상 모델을 일시적으로 {{model}}(으)로 전환함",
       "threadSuggestions": "채팅 스레드",
       "visualAttachmentsUnsupported": "{{modelName}}은 이미지나 비디오를 인식할 수 없습니다. 첨부하려면 비전 기능이 있는 모델로 전환하세요.",
       "workflows": {

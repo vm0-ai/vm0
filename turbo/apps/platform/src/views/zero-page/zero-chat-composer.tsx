@@ -7745,6 +7745,41 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
   );
 }
 
+function ComposerTemporaryModelNoticeRow({
+  notice,
+  updating,
+  onSetAsDefault,
+}: {
+  notice: string;
+  updating: boolean;
+  onSetAsDefault: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div
+      className="mt-1.5 flex flex-wrap items-center justify-end gap-x-1.5 gap-y-1 px-3 text-xs leading-5 text-muted-foreground sm:px-4"
+      aria-live="polite"
+      aria-atomic="true"
+    >
+      <span>{notice}</span>
+      <button
+        type="button"
+        className="inline-flex items-center gap-1 rounded-sm font-medium text-foreground underline-offset-2 transition-colors hover:text-foreground/70 hover:underline focus-visible:text-foreground/70 focus-visible:underline disabled:pointer-events-none disabled:opacity-70"
+        disabled={updating}
+        aria-busy={updating}
+        onClick={onSetAsDefault}
+      >
+        {updating && (
+          <Loader2 size={12} className="animate-spin" aria-hidden="true" />
+        )}
+        {t(($) => {
+          return $.chat.composer.setAsDefault;
+        })}
+      </button>
+    </div>
+  );
+}
+
 function ComposerTemporaryModelNotice({
   signals,
 }: {
@@ -7817,27 +7852,67 @@ function ComposerTemporaryModelNotice({
     );
   };
   return (
-    <div
-      className="mt-1.5 flex flex-wrap items-center justify-end gap-x-1.5 gap-y-1 px-3 text-xs leading-5 text-muted-foreground sm:px-4"
-      aria-live="polite"
-      aria-atomic="true"
-    >
-      <span>{notice}</span>
-      <button
-        type="button"
-        className="inline-flex items-center gap-1 rounded-sm font-medium text-foreground underline-offset-2 transition-colors hover:text-foreground/70 hover:underline focus-visible:text-foreground/70 focus-visible:underline disabled:pointer-events-none disabled:opacity-70"
-        disabled={updating}
-        aria-busy={updating}
-        onClick={setAsDefault}
-      >
-        {updating && (
-          <Loader2 size={12} className="animate-spin" aria-hidden="true" />
-        )}
-        {t(($) => {
-          return $.chat.composer.setAsDefault;
-        })}
-      </button>
-    </div>
+    <ComposerTemporaryModelNoticeRow
+      notice={notice}
+      updating={updating}
+      onSetAsDefault={setAsDefault}
+    />
+  );
+}
+
+function ComposerTemporaryVideoModelNotice({
+  videoModelSignals,
+}: {
+  videoModelSignals: ComposerVideoModelSignals;
+}) {
+  const { t } = useTranslation();
+  // The effective model, not the pin: the notice names the model a run would
+  // actually use, which is what the member default is being compared against.
+  const selection = useLastResolved(videoModelSignals.effectiveVideoModel$);
+  const userPreference = useLastResolved(userModelPreference$);
+  const [updateLoadable, updatePreference] = useLoadableSet(
+    updateUserModelPreference$,
+  );
+  const pageSignal = useGet(pageSignal$);
+  if (!userPreference) {
+    return null;
+  }
+  const defaultVideoModel =
+    userPreference.selectedVideoModel ?? DEFAULT_VIDEO_MODEL;
+  if (!selection || selection === defaultVideoModel) {
+    return null;
+  }
+  const updating = updateLoadable.state === "loading";
+  const setAsDefault = () => {
+    if (updating) {
+      return;
+    }
+    detach(
+      updatePreference(
+        {
+          // The run model is required by the request, so repeat what is already
+          // stored. Sending the resolved selection instead would pin the
+          // workspace default onto the member whose run model is still unset.
+          selectedModel: userPreference.selectedModel,
+          serviceTier: userPreference.serviceTier,
+          selectedVideoModel: selection,
+        },
+        pageSignal,
+      ),
+      Reason.DomCallback,
+    );
+  };
+  return (
+    <ComposerTemporaryModelNoticeRow
+      notice={t(
+        ($) => {
+          return $.chat.composer.temporaryVideoModelNotice;
+        },
+        { model: getModelDisplayName(selection) },
+      )}
+      updating={updating}
+      onSetAsDefault={setAsDefault}
+    />
   );
 }
 
@@ -7847,7 +7922,23 @@ function ComposerTemporaryModelNoticeSlot({
   signals: ComposerSignals;
 }) {
   const enabled = useGet(signals.model.temporaryModelNoticeEnabled$);
-  return enabled ? <ComposerTemporaryModelNotice signals={signals} /> : null;
+  const videoModelEnabled = useGet(videoModelSelectionEnabled$);
+  const desktopLayout = useGet(signals.model.desktopModelPickerLayout$);
+  const desktopModelMode = useGet(signals.model.desktopModelMode$);
+  const videoModelSignals = signals.videoModel;
+  if (!enabled) {
+    return null;
+  }
+  // One notice at a time: it belongs to whichever model the composer is
+  // currently pointed at, matching the pressed state of the two mode chips.
+  return videoModelEnabled &&
+    videoModelSignals &&
+    desktopLayout &&
+    desktopModelMode === "video" ? (
+    <ComposerTemporaryVideoModelNotice videoModelSignals={videoModelSignals} />
+  ) : (
+    <ComposerTemporaryModelNotice signals={signals} />
+  );
 }
 
 // ---------------------------------------------------------------------------

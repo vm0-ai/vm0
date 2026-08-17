@@ -1342,6 +1342,7 @@
       "temporaryFastModeDisabledNotice": "この実行では一時的に高速モードが無効です",
       "temporaryFastModeEnabledNotice": "この実行では一時的に高速モードが有効です",
       "temporaryModelNotice": "一時的に {{model}} に切り替えました",
+      "temporaryVideoModelNotice": "動画モデルを一時的に {{model}} に切り替えました",
       "threadSuggestions": "チャットスレッド",
       "visualAttachmentsUnsupported": "{{modelName}} は画像またはビデオを認識できません。ビジョン対応モデルに切り替えて取り付けてください。",
       "workflows": {
