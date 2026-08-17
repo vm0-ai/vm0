@@ -799,13 +799,20 @@ async fn selected_ranked_finalizing_candidate_falls_back_at_deadline() {
         )
         .unwrap();
     wait_discover_entered(&env, Duration::from_secs(2)).await;
-    assert!(
-        env.handle
-            .claim_candidates()
-            .iter()
-            .any(|candidate| candidate.run_id() == run_id),
-        "selected finalizing candidate should be claimed before its deadline"
+    let claimed = env
+        .handle
+        .claim_candidates()
+        .into_iter()
+        .find(|candidate| candidate.run_id() == run_id)
+        .expect("selected finalizing candidate should be claimed before its deadline");
+    let preference = claimed
+        .runner_preference()
+        .expect("claimed finalizing candidate should retain its preference");
+    assert_eq!(
+        preference.tier(),
+        RunnerPreferenceTier::FinalizingPredecessor
     );
+    assert_eq!(preference.deadline(), deadline);
 
     tokio::time::advance(Duration::from_millis(101)).await;
     let completion = env
@@ -814,23 +821,6 @@ async fn selected_ranked_finalizing_candidate_falls_back_at_deadline() {
         .await
         .expect("expired finalizing preference should enter ordinary admission");
     assert_ne!(completion.reuse_result, Some(SandboxReuseResult::Reused));
-    let claimed = env
-        .handle
-        .claim_candidates()
-        .into_iter()
-        .find(|candidate| candidate.run_id() == run_id)
-        .expect("expired candidate should reach claim");
-    let telemetry = claimed
-        .runner_preference_claim_telemetry()
-        .expect("decision observation should survive expiry");
-    assert!(matches!(
-        telemetry.runner_preference,
-        RunnerPreference::Preference {
-            tier: RunnerPreferenceTier::FinalizingPredecessor,
-            ..
-        }
-    ));
-    assert_eq!(telemetry.state, Some(RunnerPreferenceClaimState::Active));
 
     drop(predecessor_guard);
     shutdown(&env, run_handle).await;
@@ -1445,6 +1435,24 @@ async fn same_run_duplicate_does_not_renew_claimed_finalizing_deadline() {
         "a duplicate discovery must not claim the same run again"
     );
     assert!(env.handle.deferred_poll_deadlines().is_empty());
+    let claimed = env
+        .handle
+        .claim_candidates()
+        .into_iter()
+        .find(|candidate| candidate.run_id() == run_id)
+        .expect("claimed finalizing candidate should retain the first decision");
+    let preference = claimed
+        .runner_preference()
+        .expect("claimed finalizing candidate should retain its preference");
+    assert_eq!(
+        preference.tier(),
+        RunnerPreferenceTier::FinalizingPredecessor
+    );
+    assert_eq!(
+        preference.deadline(),
+        original_deadline,
+        "a duplicate discovery must not renew the claimed finalizing deadline"
+    );
 
     tokio::time::advance(Duration::from_millis(101)).await;
     let completion = env
@@ -1454,26 +1462,6 @@ async fn same_run_duplicate_does_not_renew_claimed_finalizing_deadline() {
     assert!(
         completion.is_some(),
         "the original deadline should start fallback despite a later duplicate"
-    );
-    let claimed = env
-        .handle
-        .claim_candidates()
-        .into_iter()
-        .find(|candidate| candidate.run_id() == run_id)
-        .expect("expired pending candidate should reach claim");
-    let preference_telemetry = claimed
-        .runner_preference_claim_telemetry()
-        .expect("finalizing observation should survive expiry");
-    assert!(matches!(
-        preference_telemetry.runner_preference,
-        RunnerPreference::Preference {
-            tier: RunnerPreferenceTier::FinalizingPredecessor,
-            ..
-        }
-    ));
-    assert_eq!(
-        preference_telemetry.state,
-        Some(RunnerPreferenceClaimState::Active)
     );
 
     drop(predecessor_guard);
