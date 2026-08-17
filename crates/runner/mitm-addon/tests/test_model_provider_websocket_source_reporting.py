@@ -18,6 +18,7 @@ from tests.model_provider_flow_helpers import (
 from tests.model_provider_websocket_helpers import (
     ScheduledWebSocketTrim,
     capture_deferred_websocket_trims,
+    capture_openai_responses_extractor_feeds,
     feed_websocket_server_message,
     feed_websocket_server_text_message,
     openai_websocket_usage_frame,
@@ -228,10 +229,12 @@ class TestModelProviderWebSocketSourceReporting:
         self,
         tmp_path,
         real_flow,
+        monkeypatch: pytest.MonkeyPatch,
     ):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
         proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        full_body_feeds = capture_openai_responses_extractor_feeds(monkeypatch)
         over_budget_frame = (
             b'{"type":"response.completed","response":{"id":"resp_partial",'
             b'"model":"gpt-5.5","usage":{"input_tokens":100,"output_tokens":40}},'
@@ -256,9 +259,11 @@ class TestModelProviderWebSocketSourceReporting:
             )
             usage.flush_usage_events(trigger="test")
 
+        assert full_body_feeds.count(over_budget_frame) == 1
+        proxy_entries = read_jsonl_entries_after_flush(proxy_log)
         warning_entries = [
             entry
-            for entry in read_jsonl_entries_after_flush(proxy_log)
+            for entry in proxy_entries
             if entry.get("message") == "Model provider WebSocket usage extraction failed"
         ]
         [warning] = warning_entries
@@ -266,6 +271,10 @@ class TestModelProviderWebSocketSourceReporting:
         assert warning["type"] == "usage_event"
         assert warning["usage_protocol"] == "openai_responses_websocket"
         assert warning["error"] == "work_limit_exceeded"
+        [correlation_entry] = [
+            entry for entry in proxy_entries if entry.get("type") == "model_usage_correlation"
+        ]
+        assert correlation_entry["reason"] == "correlation_cap"
         assert model_provider_usage_sources(flow) == {}
         expected_rows = [
             ("gpt-5.5", "tokens.input", 7),

@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from mitmproxy import connection
+from mitmproxy import connection, http
 from mitmproxy.addons.proxyserver import Proxyserver
 from mitmproxy.net.http import http1
 from mitmproxy.proxy import commands, events
@@ -15,6 +15,7 @@ from mitmproxy.test import taddons
 
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import request_authority
 from tests.mitmproxy_http_framing_helpers import (
     PLACEHOLDER_HOST,
     start_http2_request,
@@ -53,6 +54,110 @@ def _start_transparent_http1_absolute_request(
         command for command in commands if isinstance(command, HttpRequestHeadersHook)
     )
     return http_layer, request_headers_hook
+
+
+async def test_over_budget_http1_host_is_rejected_in_both_hooks_without_string_access(
+    tmp_path: Path,
+    fake_firewall_headers,
+) -> None:
+    registry_path = _write_github_firewall_registry(
+        tmp_path,
+        vm_fields={"captureNetworkBodies": True},
+    )
+    oversized_host = (b"a." * 2048) + b"a"
+    assert len(oversized_host) == 4097
+
+    with (
+        patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
+        taddons.context(Proxyserver(), mitm_addon) as addon_context,
+        fake_firewall_headers(headers={"Authorization": "Bearer managed-secret"}) as get_headers,
+    ):
+        addon_context.options.update(
+            vm0_api_url="https://api.vm0.ai",
+            vm0_proxy_registry_path=str(registry_path),
+        )
+        client, http_layer = start_http_layer(
+            addon_context,
+            alpn=b"http/1.1",
+            host="api.github.com",
+            server_host="203.0.113.10",
+            mode=HTTPMode.transparent,
+        )
+        initial_commands = list(
+            http_layer.handle_event(
+                events.DataReceived(
+                    client,
+                    b"GET /repos HTTP/1.1\r\nHost: " + oversized_host + b"\r\n\r\n",
+                )
+            )
+        )
+        request_headers_hook = next(
+            command for command in initial_commands if isinstance(command, HttpRequestHeadersHook)
+        )
+        flow = request_headers_hook.flow
+        original_headers = tuple(flow.request.headers.fields)
+        original_head = http1.assemble_request_head(flow.request)
+        assert flow.request.host == "203.0.113.10"
+        assert flow.request.port == 443
+        assert flow.client_conn.sni == "api.github.com"
+        assert [
+            value for name, value in flow.request.headers.fields if name.lower() == b"host"
+        ] == [oversized_host]
+
+        real_get_all = http.Headers.get_all
+        real_normalize_hostname = request_authority.normalize_hostname
+
+        def reject_host_string_access(headers: http.Headers, name: str) -> list[str]:
+            if name.lower() == "host":
+                raise AssertionError("over-budget Host must not reach string access")
+            return real_get_all(headers, name)
+
+        def normalize_trusted_sni(host: str) -> str:
+            assert host == "api.github.com"
+            return real_normalize_hostname(host)
+
+        with (
+            patch.object(http.Headers, "get_all", reject_host_string_access),
+            patch.object(
+                request_authority,
+                "normalize_hostname",
+                side_effect=normalize_trusted_sni,
+            ),
+        ):
+            await addon_context.master.addons.invoke_addon(mitm_addon, request_headers_hook)
+            get_headers.assert_not_awaited()
+            assert flow.response is None
+            assert tuple(flow.request.headers.fields) == original_headers
+            assert http1.assemble_request_head(flow.request) == original_head
+
+            header_commands = list(
+                http_layer.handle_event(events.HookCompleted(request_headers_hook, None))
+            )
+            request_hook = next(
+                command for command in header_commands if isinstance(command, HttpRequestHook)
+            )
+            await addon_context.master.addons.invoke_addon(mitm_addon, request_hook)
+            request_commands = list(
+                http_layer.handle_event(events.HookCompleted(request_hook, None))
+            )
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert flow.response.content is not None
+    body = json.loads(flow.response.content)
+    assert body["error"] == "invalid_authority"
+    assert body["host_header"] is None
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_authority"
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == "https://api.github.com/repos"
+    assert tuple(flow.request.headers.fields) == original_headers
+    assert http1.assemble_request_head(flow.request) == original_head
+    assert "Authorization" not in flow.request.headers
+    get_headers.assert_not_awaited()
+    assert not any(
+        isinstance(command, (commands.OpenConnection, commands.SendData))
+        and isinstance(command.connection, connection.Server)
+        for command in request_commands
+    )
 
 
 async def test_http2_duplicate_host_is_rejected_before_auth_or_http1_downgrade(

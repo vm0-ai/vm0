@@ -9,7 +9,7 @@ for firewall matching or credential injection.
 
 import ipaddress
 from dataclasses import dataclass
-from typing import Literal
+from typing import Final, Literal
 
 from mitmproxy import http
 
@@ -24,6 +24,9 @@ from host_normalization import normalize_hostname
 
 _FORBIDDEN_HOST_CHARS = frozenset("#%*,/<>?@[\\]^|{}")
 _DEFAULT_HTTPS_PORT = 443
+_RAW_HOST_HEADER_NAME: Final = b"host"
+_HOST_HEADER_FOLD_SEPARATOR_BYTES: Final = len(b", ")
+_MAX_HOST_HEADER_BYTES: Final = 4096
 
 
 @dataclass(frozen=True)
@@ -102,6 +105,27 @@ def _build_url(scheme: str, host: str, port: int, path: str) -> str:
     return f"{scheme}://{_host_with_port(scheme, host, port)}{uri_path}"
 
 
+def _host_headers_within_budget(headers: http.Headers) -> bool:
+    """Bound addon Host value work before dependency string access.
+
+    This is not a proxy request-head limit: mitmproxy has already buffered the
+    fields before addon hooks run. Separators match ``Headers`` folding so a
+    bounded result also bounds duplicate-field decoding and diagnostics.
+    """
+    host_header_bytes = 0
+    has_host_header = False
+    for name, value in headers.fields:
+        if name.lower() != _RAW_HOST_HEADER_NAME:
+            continue
+        if has_host_header:
+            host_header_bytes += _HOST_HEADER_FOLD_SEPARATOR_BYTES
+        host_header_bytes += len(value)
+        if host_header_bytes > _MAX_HOST_HEADER_BYTES:
+            return False
+        has_host_header = True
+    return True
+
+
 def _parse_host_authority(authority: str) -> tuple[str, int | None]:
     if not authority or has_ascii_space_or_control(authority):
         raise ValueError("invalid authority")
@@ -155,7 +179,6 @@ def get_trusted_authority(flow: http.HTTPFlow) -> TrustedAuthority:
     scheme = flow.request.scheme
     port = flow.request.port
     path = flow.request.path
-    host_header = flow.request.host_header
     request_host = flow.request.host
 
     if scheme != "https":
@@ -165,7 +188,13 @@ def get_trusted_authority(flow: http.HTTPFlow) -> TrustedAuthority:
             url=_build_url(scheme, request_host, port, path),
         )
 
-    raw_host_headers = flow.request.headers.get_all("Host")
+    host_headers_within_budget = _host_headers_within_budget(flow.request.headers)
+    if host_headers_within_budget:
+        host_header = flow.request.host_header
+        raw_host_headers = flow.request.headers.get_all("Host")
+    else:
+        host_header = None
+        raw_host_headers = []
     raw_sni = getattr(flow.client_conn, "sni", None)
     sni = raw_sni.strip() if isinstance(raw_sni, str) else None
 
@@ -202,6 +231,13 @@ def get_trusted_authority(flow: http.HTTPFlow) -> TrustedAuthority:
         ) from None
 
     trusted_url = _build_url(scheme, normalized_sni, port, path)
+    if not host_headers_within_budget:
+        raise _authority_validation_error(
+            "invalid_authority",
+            message="Request blocked: HTTPS request has invalid Host authority",
+            fallback_url=trusted_url,
+        )
+
     if len(raw_host_headers) > 1:
         raise _authority_validation_error(
             "invalid_authority",
@@ -217,14 +253,15 @@ def get_trusted_authority(flow: http.HTTPFlow) -> TrustedAuthority:
         )
 
     authority_assertions: list[tuple[str, int | None]] = [(host_header, None)]
-    if flow.request.authority:
+    request_authority = flow.request.authority
+    if request_authority:
         if flow.request.is_http2 or flow.request.is_http3:
             if raw_host_headers:
                 authority_assertions.append((raw_host_headers[0], None))
         else:
             # Unlike a Host field, an absolute HTTPS URI with no explicit port
             # identifies the default 443 origin.
-            authority_assertions.append((flow.request.authority, _DEFAULT_HTTPS_PORT))
+            authority_assertions.append((request_authority, _DEFAULT_HTTPS_PORT))
 
     for authority, implicit_port in authority_assertions:
         try:
