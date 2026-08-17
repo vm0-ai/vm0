@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.457.0](https://github.com/vm0-ai/vm0/compare/api-v1.456.0...api-v1.457.0) (2026-08-17)
+
+
+### Features
+
+* **api:** add thread and member image model preferences ([#27776](https://github.com/vm0-ai/vm0/issues/27776)) ([d3b0c0e](https://github.com/vm0-ai/vm0/commit/d3b0c0e020d2e79e5c89c56e9feaf462f0b5d0a6))
+
+
+### Bug Fixes
+
+* **api:** contextualize axiom log delivery failures ([#27788](https://github.com/vm0-ai/vm0/issues/27788)) ([ca981d3](https://github.com/vm0-ai/vm0/commit/ca981d3736225a8cbd4c71c43e270def4c982d9e))
+* **api:** preserve public brand in run context ([#27781](https://github.com/vm0-ai/vm0/issues/27781)) ([80558bc](https://github.com/vm0-ai/vm0/commit/80558bcc68edca9c65aaf1e54954083f1e1e8fa2))
+
+
+### Performance Improvements
+
+* **api:** attribute normal send preparation tail ([#27793](https://github.com/vm0-ai/vm0/issues/27793)) ([16a60bf](https://github.com/vm0-ai/vm0/commit/16a60bf547f6774f35009bc76e490fed6d9eb5cb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.338.0
+    * @okouai/core bumped to 8.565.3
+    * @okouai/db bumped to 1.203.0
+
 ## [1.456.0](https://github.com/vm0-ai/vm0/compare/api-v1.455.0...api-v1.456.0) (2026-08-17)
 
 
