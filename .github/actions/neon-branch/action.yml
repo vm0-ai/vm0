@@ -103,8 +103,8 @@ runs:
           echo "Attempting without --pooled flag..."
           DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name "$INPUT_DATABASE_NAME" --role-name "$INPUT_ROLE_NAME" --ssl verify-full)
         fi
-        echo "DATABASE_URL value: $DATABASE_URL"
-        echo "database-url=$DATABASE_URL" >> $GITHUB_OUTPUT
+        echo "::add-mask::$DATABASE_URL"
+        echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
         echo "Neon branch ready: $BRANCH_NAME"
 
         # Get branch ID for console URL
