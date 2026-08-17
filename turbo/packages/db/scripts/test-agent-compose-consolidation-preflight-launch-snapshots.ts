@@ -1237,6 +1237,22 @@ function testNullableLifecycleMetadataHistory(): void {
   );
   assertAllClosuresExact(reviewedTriggerSources);
 
+  const retiredTemplateImportTrigger = classify({
+    runs: [
+      run("retired-template-import-trigger", storedVersion.id, {
+        createdAt: new Date("2026-08-12T00:00:00.000Z"),
+        triggerSource: "template-import",
+      }),
+    ],
+    versions: [storedVersion],
+  });
+  assertSingleDisposition(retiredTemplateImportTrigger, "exactly_recoverable");
+  assert.equal(
+    retiredTemplateImportTrigger.output.reasons.trigger_source_unrecognized
+      .count,
+    0,
+  );
+
   const unrecognizedTriggerSource = classify({
     runs: [
       run("unrecognized-trigger", storedVersion.id, {

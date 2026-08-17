@@ -287,6 +287,9 @@ const HISTORICAL_TRIGGER_SOURCES: ReadonlySet<string> = new Set([
   "slack",
   "teams",
   "telegram",
+  // e785873209e4 introduced this persisted source and 54601f1aedeb
+  // retired it inside the reviewed live Run interval.
+  "template-import",
   "test",
   "voice-chat",
   "web",
