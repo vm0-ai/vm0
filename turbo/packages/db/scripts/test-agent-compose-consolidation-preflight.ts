@@ -35,9 +35,11 @@ import {
   classifyExceptionRefinements,
   type UnclassifiedPrimaryClass,
 } from "./agent-compose-consolidation-preflight-refinements";
+import { validateLaunchSnapshotRecoverabilityStatic } from "./test-agent-compose-consolidation-preflight-launch-snapshots";
 import {
   PREFLIGHT_OUTPUT_ALLOWLIST,
   SanitizedPreflightError,
+  assertPreflightOutputShape,
   classifyPreflightInventory,
   executeAgentComposeConsolidationPreflight,
   sanitizedFailureResult,
@@ -49,6 +51,7 @@ import {
   type PreflightCapabilities,
   type PreflightClassificationOptions,
   type PreflightInventory,
+  type RunInventoryRow,
   type VersionInventoryRow,
 } from "./agent-compose-consolidation-preflight";
 
@@ -96,6 +99,7 @@ function emptyInventory(
     heads: [],
     runs: [],
     checkpoints: [],
+    conversations: [],
     danglingStart: [],
     danglingEnd: [],
     agentExecutionPlans: [],
@@ -441,6 +445,83 @@ function canonicalVersion(
   };
 }
 
+function runRow(
+  id: string,
+  versionId: string | null,
+  versionPresent: boolean,
+  overrides: Partial<RunInventoryRow> = {},
+): RunInventoryRow {
+  return {
+    id,
+    versionId,
+    versionPresent,
+    createdAt: new Date("2026-06-01T00:00:00.000Z"),
+    launchSnapshot: null,
+    modelProvider: null,
+    selectedModel: null,
+    triggerSource: "api",
+    chatThreadPresent: false,
+    ...overrides,
+  };
+}
+
+function acceptedV3DomainProjection(
+  result: ReturnType<typeof classifyPreflightInventory>,
+) {
+  return {
+    capabilities: result.capabilities,
+    agentExecutionPlans: result.agentExecutionPlans,
+    identity: result.identity,
+    versions: result.versions,
+    heads: result.heads,
+    runs: result.runs,
+    checkpoints: result.checkpoints,
+    danglingHeads: result.danglingHeads,
+    dependencies: result.dependencies,
+  };
+}
+
+function testSchemaV3DomainsRemainByteStable(): void {
+  const version = canonicalVersion("v3-stability", null, false);
+  const runId = "00000000-0000-4000-8000-000000000199";
+  const options = classificationOptions();
+  const withoutSnapshot = classifyPreflightInventory(
+    capabilities,
+    emptyInventory({
+      versions: [version],
+      runs: [runRow(runId, version.id, true)],
+    }),
+    options,
+  );
+  const withInvalidSnapshot = classifyPreflightInventory(
+    capabilities,
+    emptyInventory({
+      versions: [version],
+      runs: [
+        runRow(runId, version.id, true, {
+          launchSnapshot: {
+            schemaVersion: 1,
+            framework: "claude-code",
+            runnerProfile: "vm0/default",
+            unexpected: true,
+          },
+          modelProvider: "future-provider",
+          selectedModel: "future-model",
+        }),
+      ],
+    }),
+    options,
+  );
+  assert.notDeepEqual(
+    withInvalidSnapshot.launchSnapshots,
+    withoutSnapshot.launchSnapshots,
+  );
+  assert.equal(
+    JSON.stringify(acceptedV3DomainProjection(withInvalidSnapshot)),
+    JSON.stringify(acceptedV3DomainProjection(withoutSnapshot)),
+  );
+}
+
 function testVersionHeadRunAndCheckpointClassifications(): void {
   const firstAgent = "00000000-0000-4000-8000-000000000201";
   const secondAgent = "00000000-0000-4000-8000-000000000202";
@@ -476,24 +557,18 @@ function testVersionHeadRunAndCheckpointClassifications(): void {
         }),
       ],
       runs: [
-        {
-          id: "00000000-0000-4000-8000-000000000211",
-          versionId: version.id,
-          versionPresent: true,
-        },
-        {
-          id: "00000000-0000-4000-8000-000000000212",
-          versionId: version.id,
-          versionPresent: true,
-        },
+        runRow("00000000-0000-4000-8000-000000000211", version.id, true),
+        runRow("00000000-0000-4000-8000-000000000212", version.id, true),
       ],
       checkpoints: [
         {
           id: "00000000-0000-4000-8000-000000000221",
+          runId: "00000000-0000-4000-8000-000000000211",
           snapshot: { agentComposeVersionId: version.id },
         },
         {
           id: "00000000-0000-4000-8000-000000000222",
+          runId: "00000000-0000-4000-8000-000000000212",
           snapshot: { agentComposeVersionId: version.id },
         },
       ],
@@ -514,19 +589,17 @@ function testVersionHeadRunAndCheckpointClassifications(): void {
     capabilities,
     emptyInventory({
       runs: [
-        {
-          id: "00000000-0000-4000-8000-000000000231",
-          versionId: missingHash,
-          versionPresent: false,
-        },
+        runRow("00000000-0000-4000-8000-000000000231", missingHash, false),
       ],
       checkpoints: [
         {
           id: "00000000-0000-4000-8000-000000000232",
+          runId: "00000000-0000-4000-8000-000000000231",
           snapshot: { agentComposeVersionId: missingHash },
         },
         {
           id: "00000000-0000-4000-8000-000000000233",
+          runId: "00000000-0000-4000-8000-000000000233",
           snapshot: { agentComposeVersionId: "invalid" },
         },
       ],
@@ -1723,9 +1796,38 @@ function testOutputRedaction(): void {
     "checkpoints",
     "danglingHeads",
     "dependencies",
+    "launchSnapshots",
   ]);
   assert.deepEqual(outputPaths(result), [...PREFLIGHT_OUTPUT_ALLOWLIST]);
   assertSafeAggregateValues(result);
+
+  const invalidOutput = {
+    ...result,
+    launchSnapshots: {
+      ...result.launchSnapshots,
+      unexpected: "never-emit-invalid-output-value",
+    },
+  };
+  assert.throws(
+    () => {
+      assertPreflightOutputShape(invalidOutput);
+    },
+    (error: unknown) => {
+      assert.ok(error instanceof SanitizedPreflightError);
+      assert.deepEqual(sanitizedFailureResult(error), {
+        schemaVersion: "vm0.agent-compose-consolidation-preflight.v4",
+        status: "failed",
+        failureGates: ["probe.output_shape"],
+      });
+      assert.equal(
+        JSON.stringify(sanitizedFailureResult(error)).includes(
+          "never-emit-invalid-output-value",
+        ),
+        false,
+      );
+      return true;
+    },
+  );
 }
 
 function assertSafeAggregateValues(value: unknown, pathPrefix = ""): void {
@@ -1756,7 +1858,7 @@ function assertSafeAggregateValues(value: unknown, pathPrefix = ""): void {
     return;
   }
   const allowedClassifications = new Set([
-    "vm0.agent-compose-consolidation-preflight.v3",
+    "vm0.agent-compose-consolidation-preflight.v4",
     "passed",
     "failed",
     "exact",
@@ -2176,9 +2278,9 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
   );
   assert.match(workflow, /scripts\/agent-compose-consolidation-preflight\.ts/u);
   assert.match(workflow, /#27613 \+ #27656 \+ #27671 \+ #27792/u);
-  assert.match(workflow, /vm0\.agent-compose-consolidation-preflight\.v3/u);
+  assert.match(workflow, /vm0\.agent-compose-consolidation-preflight\.v4/u);
   assert.equal(
-    /vm0\.agent-compose-consolidation-preflight\.v[12]/u.test(workflow),
+    /vm0\.agent-compose-consolidation-preflight\.v[123]/u.test(workflow),
     false,
   );
   assert.equal(
@@ -2186,6 +2288,29 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
     false,
   );
   assert.equal(/--apply|fallback|REPORT_PATH/iu.test(workflow), false);
+
+  const preflightSource = await fs.readFile(
+    path.join(
+      repositoryRoot,
+      "turbo/packages/db/scripts/agent-compose-consolidation-preflight.ts",
+    ),
+    "utf8",
+  );
+  assert.match(
+    preflightSource,
+    /BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY/u,
+  );
+  assert.match(preflightSource, /const DEFAULT_LOCK_TIMEOUT_MS = 1000;/u);
+  assert.match(
+    preflightSource,
+    /const DEFAULT_STATEMENT_TIMEOUT_MS = 30_000;/u,
+  );
+  assert.equal(
+    /\b(?:UPDATE|INSERT|DELETE|CREATE|ALTER|DROP|TRUNCATE|LOCK TABLE|pg_advisory_)\b/iu.test(
+      preflightSource,
+    ),
+    false,
+  );
 
   const service = await fs.readFile(
     path.join(
@@ -2230,6 +2355,21 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
   assert.equal(
     contentOwner.includes("APPLICATION_OWNED_AGENT_EXECUTION_PLAN"),
     true,
+  );
+}
+
+async function testConnectionFailureIsSanitized(): Promise<void> {
+  await assert.rejects(
+    executeAgentComposeConsolidationPreflight({
+      connectionString: "postgresql://127.0.0.1:1/preflight",
+      repositoryRoot,
+    }),
+    (error: unknown) => {
+      return (
+        error instanceof SanitizedPreflightError &&
+        error.gate === "probe.database_connection"
+      );
+    },
   );
 }
 
@@ -2343,23 +2483,30 @@ async function testDatabaseBoundariesForTimeZone(
         },
       );
 
+      const cancellationClient = new Client({ connectionString: testUrl });
+      await cancellationClient.connect();
       const abortController = new AbortController();
-      abortController.abort();
-      await assert.rejects(
-        withReadOnlySnapshot(
-          client,
-          { signal: abortController.signal },
-          async () => {
-            return undefined;
-          },
-        ),
-        (error: unknown) => {
-          return (
-            error instanceof SanitizedPreflightError &&
-            error.gate === "probe.cancelled"
-          );
+      let signalQueryStarted = (): void => {};
+      const queryStarted = new Promise<void>((resolve) => {
+        signalQueryStarted = resolve;
+      });
+      const cancelledQuery = withReadOnlySnapshot(
+        cancellationClient,
+        { signal: abortController.signal },
+        async () => {
+          signalQueryStarted();
+          await cancellationClient.query("SELECT pg_sleep(30)");
         },
       );
+      await queryStarted;
+      abortController.abort();
+      await assert.rejects(cancelledQuery, (error: unknown) => {
+        return (
+          error instanceof SanitizedPreflightError &&
+          error.gate === "probe.cancelled"
+        );
+      });
+      await cancellationClient.end().catch(() => {});
 
       const concurrentAgentId = "00000000-0000-4000-8000-000000027613";
       const firstHead = "a".repeat(64);
@@ -2736,6 +2883,8 @@ async function testDatabaseBoundaries(databaseUrl: string): Promise<void> {
 }
 
 export async function validateAgentComposeConsolidationPreflightStatic(): Promise<void> {
+  await validateLaunchSnapshotRecoverabilityStatic();
+  testSchemaV3DomainsRemainByteStable();
   testApplicationOwnedPlanAndCanonicalCompatibility();
   testIdentityAndApprovedArtifacts();
   testVersionHeadRunAndCheckpointClassifications();
@@ -2748,6 +2897,7 @@ export async function validateAgentComposeConsolidationPreflightStatic(): Promis
   testDependencyDriftAndDeterminism();
   testOutputRedaction();
   await testRepositoryAndWorkflowValidators();
+  await testConnectionFailureIsSanitized();
 }
 
 export async function validateAgentComposeConsolidationPreflight(): Promise<void> {

@@ -49,7 +49,7 @@ jobs:
               --ssl verify-full \
               2>/dev/null
           ); then
-            echo '{"schemaVersion":"vm0.agent-compose-consolidation-preflight.v3","status":"failed","failureGates":["probe.database_resolution"]}'
+            echo '{"schemaVersion":"vm0.agent-compose-consolidation-preflight.v4","status":"failed","failureGates":["probe.database_resolution"]}'
             exit 1
           fi
           if [[ -z "$database_url" ||
@@ -57,7 +57,7 @@ jobs:
                 "$database_url" == *$'\r'* ||
                 ( "$database_url" != postgres://* &&
                   "$database_url" != postgresql://* ) ]]; then
-            echo '{"schemaVersion":"vm0.agent-compose-consolidation-preflight.v3","status":"failed","failureGates":["probe.database_resolution"]}'
+            echo '{"schemaVersion":"vm0.agent-compose-consolidation-preflight.v4","status":"failed","failureGates":["probe.database_resolution"]}'
             exit 1
           fi
           WORKFLOW_COMMAND_DATA="${database_url//%/%25}"
