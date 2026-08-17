@@ -1,13 +1,14 @@
 use crate::LOG_TAG;
 use crate::archive;
 use crate::error::DownloadError;
+use crate::path::normalize_path;
 use crate::source;
 use crate::telemetry::{DownloadRunTelemetry, DownloadTaskTelemetry, RemoteArchiveTaskMetrics};
 use guest_common::{log_error, log_info, log_warn};
 use std::any::Any;
 use std::collections::VecDeque;
 use std::fs;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -33,7 +34,7 @@ impl DownloadTask {
         mount_path: String,
         has_instructions_target: bool,
     ) -> Self {
-        let normalized_mount_path = normalize_mount_path(&mount_path);
+        let normalized_mount_path = normalize_path(Path::new(&mount_path));
         let telemetry =
             DownloadTaskTelemetry::storage(&url, &normalized_mount_path, has_instructions_target);
         Self {
@@ -46,7 +47,7 @@ impl DownloadTask {
     }
 
     pub(crate) fn artifact(label: String, url: String, mount_path: String) -> Self {
-        let normalized_mount_path = normalize_mount_path(&mount_path);
+        let normalized_mount_path = normalize_path(Path::new(&mount_path));
         let telemetry = DownloadTaskTelemetry::artifact(&url, &normalized_mount_path);
         Self {
             label,
@@ -295,30 +296,6 @@ fn conflicting_mount_paths<'pending, 'active>(
     None
 }
 
-fn normalize_mount_path(path: &str) -> PathBuf {
-    let mut components = Vec::new();
-
-    for component in Path::new(path).components() {
-        match component {
-            Component::CurDir => {}
-            Component::ParentDir => match components.last() {
-                Some(Component::Normal(_)) => {
-                    components.pop();
-                }
-                Some(Component::RootDir | Component::Prefix(_)) => {}
-                _ => components.push(component),
-            },
-            _ => components.push(component),
-        }
-    }
-
-    let mut normalized = PathBuf::new();
-    for component in components {
-        normalized.push(component.as_os_str());
-    }
-    normalized
-}
-
 fn mount_paths_conflict(left: &Path, right: &Path) -> bool {
     left.starts_with(right) || right.starts_with(left)
 }
@@ -450,6 +427,10 @@ fn download_and_extract(
 mod tests {
     use super::*;
 
+    fn normalized_path(path: &str) -> PathBuf {
+        normalize_path(Path::new(path))
+    }
+
     fn task_at(path: &str) -> DownloadTask {
         DownloadTask::storage(
             format!("task {path}"),
@@ -462,7 +443,7 @@ mod tests {
     fn prepared_task_at(path: &str) -> PreparedDownloadTask {
         PreparedDownloadTask {
             task: task_at(path),
-            effective_mount_path: normalize_mount_path(path),
+            effective_mount_path: normalized_path(path),
         }
     }
 
@@ -473,40 +454,40 @@ mod tests {
     #[test]
     fn mount_paths_conflict_for_exact_and_parent_child_paths() {
         assert!(mount_paths_conflict(
-            &normalize_mount_path("/tmp/mount"),
-            &normalize_mount_path("/tmp/mount")
+            &normalized_path("/tmp/mount"),
+            &normalized_path("/tmp/mount")
         ));
         assert!(mount_paths_conflict(
-            &normalize_mount_path("/tmp/mount"),
-            &normalize_mount_path("/tmp/mount/child")
+            &normalized_path("/tmp/mount"),
+            &normalized_path("/tmp/mount/child")
         ));
         assert!(mount_paths_conflict(
-            &normalize_mount_path("/tmp/mount/child"),
-            &normalize_mount_path("/tmp/mount")
+            &normalized_path("/tmp/mount/child"),
+            &normalized_path("/tmp/mount")
         ));
     }
 
     #[test]
     fn mount_paths_do_not_conflict_for_siblings_or_prefix_traps() {
         assert!(!mount_paths_conflict(
-            &normalize_mount_path("/tmp/mount-a"),
-            &normalize_mount_path("/tmp/mount-b")
+            &normalized_path("/tmp/mount-a"),
+            &normalized_path("/tmp/mount-b")
         ));
         assert!(!mount_paths_conflict(
-            &normalize_mount_path("/tmp/foo/bar"),
-            &normalize_mount_path("/tmp/foo/barista")
+            &normalized_path("/tmp/foo/bar"),
+            &normalized_path("/tmp/foo/barista")
         ));
     }
 
     #[test]
     fn mount_path_conflicts_use_lexical_normalization() {
         assert!(mount_paths_conflict(
-            &normalize_mount_path("/tmp//foo/./bar/baz/.."),
-            &normalize_mount_path("/tmp/foo/bar")
+            &normalized_path("/tmp//foo/./bar/baz/.."),
+            &normalized_path("/tmp/foo/bar")
         ));
         assert!(!mount_paths_conflict(
-            &normalize_mount_path("/tmp/foo/bar/../barista"),
-            &normalize_mount_path("/tmp/foo/bar")
+            &normalized_path("/tmp/foo/bar/../barista"),
+            &normalized_path("/tmp/foo/bar")
         ));
     }
 
@@ -558,8 +539,8 @@ mod tests {
         ]);
         let active = vec![ActiveDownload {
             id: 2,
-            logical_mount_path: normalize_mount_path("/tmp/mount"),
-            effective_mount_path: normalize_mount_path("/tmp/mount"),
+            logical_mount_path: normalized_path("/tmp/mount"),
+            effective_mount_path: normalized_path("/tmp/mount"),
         }];
         let mut conflicts = Vec::new();
 
@@ -578,13 +559,13 @@ mod tests {
         let active = vec![
             ActiveDownload {
                 id: 2,
-                logical_mount_path: normalize_mount_path("/tmp/mount"),
-                effective_mount_path: normalize_mount_path("/tmp/mount"),
+                logical_mount_path: normalized_path("/tmp/mount"),
+                effective_mount_path: normalized_path("/tmp/mount"),
             },
             ActiveDownload {
                 id: 3,
-                logical_mount_path: normalize_mount_path("/tmp/mount/child"),
-                effective_mount_path: normalize_mount_path("/tmp/mount/child"),
+                logical_mount_path: normalized_path("/tmp/mount/child"),
+                effective_mount_path: normalized_path("/tmp/mount/child"),
             },
         ];
         let mut conflicts = Vec::new();

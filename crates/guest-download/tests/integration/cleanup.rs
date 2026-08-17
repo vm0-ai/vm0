@@ -140,3 +140,69 @@ fn selective_cleanup_preserves_cached_child_in_real_directory() {
     assert!(!cleanup_root.join("stale").exists());
     assert!(!cleanup_root.join("stale.txt").exists());
 }
+
+#[test]
+fn cleanup_preserves_cached_path_across_equivalent_manifest_spellings() {
+    let dir = tempfile::tempdir().unwrap();
+    let alias = dir.path().join("alias");
+    let cached = dir.path().join("cache");
+    let cleanup_path = alias.join("..").join("cache");
+
+    fs::create_dir_all(&alias).unwrap();
+    fs::create_dir_all(&cached).unwrap();
+    fs::write(cached.join("content.txt"), "keep").unwrap();
+
+    let manifest = cleanup_manifest(&[&cleanup_path], Some(&cached)).unwrap();
+    let success = run_guest_download_manifest_json(&manifest);
+
+    assert!(success);
+    assert_eq!(
+        fs::read_to_string(cached.join("content.txt")).unwrap(),
+        "keep"
+    );
+}
+
+#[test]
+fn cleanup_preserves_path_nested_below_cached_root() {
+    let dir = tempfile::tempdir().unwrap();
+    let alias = dir.path().join("alias");
+    let cached = dir.path().join("cache");
+    let nested = cached.join("nested");
+    let cleanup_path = alias.join("..").join("cache").join("nested");
+
+    fs::create_dir_all(&alias).unwrap();
+    fs::create_dir_all(&nested).unwrap();
+    fs::write(nested.join("content.txt"), "keep").unwrap();
+
+    let manifest = cleanup_manifest(&[&cleanup_path], Some(&cached)).unwrap();
+    let success = run_guest_download_manifest_json(&manifest);
+
+    assert!(success);
+    assert_eq!(
+        fs::read_to_string(nested.join("content.txt")).unwrap(),
+        "keep"
+    );
+}
+
+#[test]
+fn cleanup_normalization_does_not_bypass_intermediate_symlink() {
+    let dir = tempfile::tempdir().unwrap();
+    let alias = dir.path().join("alias");
+    let target = dir.path().join("target");
+    let cache = dir.path().join("cache");
+    let cleanup_path = alias.join("..").join("cache");
+
+    fs::create_dir_all(&target).unwrap();
+    fs::create_dir_all(&cache).unwrap();
+    fs::write(cache.join("content.txt"), "keep").unwrap();
+    symlink(&target, &alias).unwrap();
+
+    let manifest = cleanup_manifest(&[&cleanup_path], None).unwrap();
+    let success = run_guest_download_manifest_json(&manifest);
+
+    assert!(success);
+    assert_eq!(
+        fs::read_to_string(cache.join("content.txt")).unwrap(),
+        "keep"
+    );
+}
