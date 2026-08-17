@@ -1,5 +1,24 @@
 # Changelog
 
+## [8.564.0](https://github.com/vm0-ai/vm0/compare/core-v8.563.0...core-v8.564.0) (2026-08-17)
+
+
+### Features
+
+* **core:** add image model catalog and selection switch ([#27710](https://github.com/vm0-ai/vm0/issues/27710)) ([7087c6f](https://github.com/vm0-ai/vm0/commit/7087c6f37eabfce888341c9562ab2683659ebbb1)), closes [#27688](https://github.com/vm0-ai/vm0/issues/27688)
+
+
+### Refactoring
+
+* remove videoTemplateOptions feature switch ([#27706](https://github.com/vm0-ai/vm0/issues/27706)) ([dbb411f](https://github.com/vm0-ai/vm0/commit/dbb411f15a94a4fe20051f73d2b7a692fa8da77c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.335.0
+
 ## [8.563.0](https://github.com/vm0-ai/vm0/compare/core-v8.562.8...core-v8.563.0) (2026-08-17)
 
 
