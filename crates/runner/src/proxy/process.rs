@@ -199,6 +199,8 @@ impl MitmProxy {
             request_lock: Arc::clone(&self.jsonl_flush_request_lock),
             #[cfg(test)]
             request_lock_poll_tx: None,
+            #[cfg(test)]
+            request_published_tx: None,
         }
     }
 
