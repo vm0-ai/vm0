@@ -176,6 +176,7 @@ type ClaimRouteTimingSpanKind = "parent" | "top_level" | "nested";
 type ClaimNetworkPolicyRefreshPath =
   | "baseline"
   | "baseline_empty"
+  | "no_builtin_targets"
   | "full_missing_baseline"
   | "full_invalid_baseline"
   | "full_incompatible_baseline";
@@ -1325,15 +1326,32 @@ async function refreshClaimNetworkPolicies(args: {
   Pick<StoredExecutionContext, "networkPolicies" | "networkPolicyRefreshes">
 > {
   const storedNetworkPolicies = args.storedContext.networkPolicies ?? {};
-  const networkPolicyConnectorSlugs = Object.keys(storedNetworkPolicies);
-  if (networkPolicyConnectorSlugs.length === 0) {
+  if (Object.keys(storedNetworkPolicies).length === 0) {
     return {
       networkPolicies: args.storedContext.networkPolicies,
       networkPolicyRefreshes: undefined,
     };
   }
 
+  const builtinConnectorSlugs = [
+    ...new Set(
+      args.storedContext.connectorRuntimeTargets.flatMap((target) => {
+        return target.kind === "builtin" ? [target.connectorSlug] : [];
+      }),
+    ),
+  ];
+
   return await args.timing.measureNetworkPolicyRefresh(async () => {
+    if (builtinConnectorSlugs.length === 0) {
+      return {
+        value: {
+          networkPolicies: args.storedContext.networkPolicies,
+          networkPolicyRefreshes: undefined,
+        },
+        path: "no_builtin_targets",
+      };
+    }
+
     const scope = {
       orgId: args.run.orgId,
       userId: args.run.userId,
@@ -1347,7 +1365,7 @@ async function refreshClaimNetworkPolicies(args: {
       );
       const connectorSlugs = networkPolicyRefreshConnectorSlugs(
         connectorCatalogSnapshot.serverFirewalls,
-        networkPolicyConnectorSlugs,
+        builtinConnectorSlugs,
       );
       const refreshes =
         connectorSlugs.length === 0
