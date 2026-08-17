@@ -22,7 +22,13 @@ type UsagePackUsd = 20 | 50 | 100 | 200;
 
 interface BillingOwner {
   readonly organizationId: string;
+  readonly session: BillingSession;
   readonly userId: string;
+}
+
+interface BillingSession {
+  refreshedAt: number;
+  token: string;
 }
 
 interface ScheduledPlanChangeSummary {
@@ -63,6 +69,7 @@ const apiUrl = process.env.VM0_API_BACKEND_URL!;
 const appUrl = deriveAppUrl(apiUrl);
 const appOrigin = new URL(appUrl).origin;
 const STATE_TIMEOUT_MS = 60_000;
+const TOKEN_REUSE_MS = 30_000;
 const POLL_INTERVALS_MS = [500, 1_000, 2_000];
 const USAGE_PACK_OPTION_PATTERNS: Readonly<Record<UsagePackUsd, RegExp>> = {
   20: /^\$20(?:\s|·)/u,
@@ -330,13 +337,16 @@ async function withBillingOwner(
       userId,
       "paid-onboarding",
     );
-    await signInWithClerkTestingHelper(page, email, appUrl, {
+    const token = await signInWithClerkTestingHelper(page, email, appUrl, {
       activeOrganizationId: organizationId,
     });
     await completeExploreOnboarding(page, { appUrl });
-    const token = await currentToken(page, organizationId);
     await enableUsagePackPlans(page, token);
-    await run({ organizationId, userId });
+    await run({
+      organizationId,
+      session: { refreshedAt: Date.now(), token },
+      userId,
+    });
   } finally {
     await deleteClerkTestOwnerResources(
       email,
@@ -406,7 +416,7 @@ async function buyUsagePackPlan(
     timeout: 120_000,
     waitUntil: "domcontentloaded",
   });
-  return await currentToken(page, owner.organizationId);
+  return await currentToken(page, owner);
 }
 
 async function changeUsagePack(
@@ -417,13 +427,14 @@ async function changeUsagePack(
   action: "Confirm" | "Restore",
   cancelReviewOnce = false,
 ): Promise<string> {
+  const token = await currentToken(page, owner);
   const packages = await openUsagePackManagement(page, tier);
   await selectUsagePack(page, packages, target);
   return await submitUsagePackConfiguration(
     page,
-    owner,
     packages,
     action,
+    token,
     cancelReviewOnce,
   );
 }
@@ -464,9 +475,9 @@ async function selectUsagePack(
 
 async function submitUsagePackConfiguration(
   page: Page,
-  owner: BillingOwner,
   packages: Locator,
   action: "Confirm" | "Restore",
+  token: string,
   cancelReviewOnce = false,
 ): Promise<string> {
   const summary = packages.getByRole("region", { name: "Order summary" });
@@ -488,7 +499,6 @@ async function submitUsagePackConfiguration(
     await expect(review).toBeVisible();
   }
 
-  const token = await currentToken(page, owner.organizationId);
   await review.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(review).toBeHidden({ timeout: 30_000 });
   return token;
@@ -499,6 +509,7 @@ async function cancelPlan(
   owner: BillingOwner,
   tier: PaidTier,
 ): Promise<string> {
+  const token = await currentToken(page, owner);
   const settings = await openBillingSettings(page);
   const planLabel = tier === "pro" ? "Pro" : "Team";
   await expect(
@@ -512,7 +523,6 @@ async function cancelPlan(
   if (tier === "team") {
     await dialog.getByRole("button", { name: /^No plan/u }).click();
   }
-  const token = await currentToken(page, owner.organizationId);
   await dialog
     .getByRole("button", { name: "Cancel subscription", exact: true })
     .click();
@@ -525,6 +535,7 @@ async function restorePlan(
   owner: BillingOwner,
   tier: PaidTier,
 ): Promise<string> {
+  const token = await currentToken(page, owner);
   const settings = await openBillingSettings(page);
   const restore = settings.getByRole("button", {
     name: "Restore plan",
@@ -543,7 +554,6 @@ async function restorePlan(
   const dialog = page.getByRole("dialog", {
     name: `Restore ${planLabel} plan?`,
   });
-  const token = await currentToken(page, owner.organizationId);
   await dialog
     .getByRole("button", { name: "Restore plan", exact: true })
     .click();
@@ -555,19 +565,21 @@ async function upgradeProToTeam(
   page: Page,
   owner: BillingOwner,
 ): Promise<string> {
+  const token = await currentToken(page, owner);
   const settings = await openBillingSettings(page);
   await settings.getByRole("button", { name: "Upgrade", exact: true }).click();
   const packages = page.getByRole("dialog", {
     name: "Configure member packages",
   });
   await expect(packages).toBeVisible();
-  return await submitUsagePackConfiguration(page, owner, packages, "Confirm");
+  return await submitUsagePackConfiguration(page, packages, "Confirm", token);
 }
 
 async function downgradeTeamToPro(
   page: Page,
   owner: BillingOwner,
 ): Promise<string> {
+  const token = await currentToken(page, owner);
   const settings = await openBillingSettings(page);
   await settings
     .getByRole("button", { name: "Compare all plans", exact: true })
@@ -579,13 +591,14 @@ async function downgradeTeamToPro(
     name: "Configure member packages",
   });
   await expect(packages).toBeVisible();
-  return await submitUsagePackConfiguration(page, owner, packages, "Confirm");
+  return await submitUsagePackConfiguration(page, packages, "Confirm", token);
 }
 
 async function replaceTeamCancellationWithPro(
   page: Page,
   owner: BillingOwner,
 ): Promise<string> {
+  const token = await currentToken(page, owner);
   const settings = await openBillingSettings(page);
   await settings
     .getByRole("button", { name: "Compare all plans", exact: true })
@@ -595,7 +608,6 @@ async function replaceTeamCancellationWithPro(
   await pro.getByRole("button", { name: "Downgrade", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Downgrade plan" });
   await expect(dialog).toBeVisible();
-  const token = await currentToken(page, owner.organizationId);
   await dialog
     .getByRole("button", { name: "Downgrade to Pro", exact: true })
     .click();
@@ -608,7 +620,7 @@ async function buyConcurrency(
   owner: BillingOwner,
   quantity: number,
 ): Promise<string> {
-  const token = await currentToken(page, owner.organizationId);
+  const token = await currentToken(page, owner);
   const initial = await readBillingSummary(page, token);
   expect(initial.canBuyConcurrency).toBe(true);
   expect(initial.concurrencyPurchaseReviewAvailable).toBe(true);
@@ -625,18 +637,17 @@ async function buyConcurrency(
     await increase.click();
   }
   await dialog
-    .getByRole("button", {
-      name: `Buy $${quantity * 100}/month`,
-      exact: true,
-    })
+    .getByRole("button", { name: "Review purchase", exact: true })
     .click();
-  await expect(
-    dialog.getByRole("button", { name: "Confirm", exact: true }),
-  ).toBeVisible({ timeout: 30_000 });
-  const confirmationToken = await currentToken(page, owner.organizationId);
-  await dialog.getByRole("button", { name: "Confirm", exact: true }).click();
-  await expect(dialog).toBeHidden({ timeout: 30_000 });
-  return confirmationToken;
+  const review = page.getByRole("dialog", {
+    name: "Review concurrency purchase",
+  });
+  await expect(review).toBeVisible({ timeout: 30_000 });
+  await review
+    .getByRole("button", { name: "Pay and add slots", exact: true })
+    .click();
+  await expect(review).toBeHidden({ timeout: 30_000 });
+  return token;
 }
 
 async function changeConcurrency(
@@ -644,10 +655,11 @@ async function changeConcurrency(
   owner: BillingOwner,
   targetQuantity: number,
 ): Promise<string> {
+  const token = await currentToken(page, owner);
   const settings = await openBillingSettings(page);
   await settings.getByRole("button", { name: "Change", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Change concurrency" });
-  const input = dialog.getByLabel("New total slot quantity");
+  const input = dialog.getByRole("textbox", { name: "Slots" });
   const reviewButton = dialog.getByRole("button", {
     name: "Review change",
     exact: true,
@@ -661,8 +673,11 @@ async function changeConcurrency(
     name: "Review concurrency change",
   });
   await expect(review).toBeVisible({ timeout: 30_000 });
-  const token = await currentToken(page, owner.organizationId);
-  await review.getByRole("button", { name: "Confirm", exact: true }).click();
+  await review
+    .getByRole("button", {
+      name: /^(?:Pay and update|Schedule change|Update slots)$/u,
+    })
+    .click();
   await expect(review).toBeHidden({ timeout: 30_000 });
   return token;
 }
@@ -671,17 +686,22 @@ async function cancelConcurrency(
   page: Page,
   owner: BillingOwner,
 ): Promise<string> {
+  const token = await currentToken(page, owner);
   const settings = await openBillingSettings(page);
   await settings.getByRole("button", { name: "Change", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Change concurrency" });
-  await dialog
-    .getByRole("radio", { name: /Cancel entire subscription/u })
+  const changeDialog = page.getByRole("dialog", {
+    name: "Change concurrency",
+  });
+  await changeDialog
+    .getByRole("button", { name: "Cancel entire subscription", exact: true })
     .click();
-  const token = await currentToken(page, owner.organizationId);
-  await dialog
+  const cancelDialog = page.getByRole("dialog", {
+    name: "Cancel entire subscription",
+  });
+  await cancelDialog
     .getByRole("button", { name: "Cancel subscription", exact: true })
     .click();
-  await expect(dialog).toBeHidden({ timeout: 30_000 });
+  await expect(cancelDialog).toBeHidden({ timeout: 30_000 });
   return token;
 }
 
@@ -689,6 +709,7 @@ async function restoreConcurrency(
   page: Page,
   owner: BillingOwner,
 ): Promise<string> {
+  const token = await currentToken(page, owner);
   const settings = await openBillingSettings(page);
   await expect(
     settings.getByRole("button", { name: "Change", exact: true }),
@@ -702,7 +723,6 @@ async function restoreConcurrency(
   const dialog = page.getByRole("dialog", {
     name: "Restore concurrency subscription?",
   });
-  const token = await currentToken(page, owner.organizationId);
   await dialog
     .getByRole("button", { name: "Restore subscription", exact: true })
     .click();
@@ -719,13 +739,16 @@ async function openBillingSettings(page: Page): Promise<Locator> {
   return settings;
 }
 
-async function currentToken(
-  page: Page,
-  organizationId: string,
-): Promise<string> {
-  return await refreshClerkSessionToken(page, {
-    activeOrganizationId: organizationId,
+async function currentToken(page: Page, owner: BillingOwner): Promise<string> {
+  if (Date.now() - owner.session.refreshedAt < TOKEN_REUSE_MS) {
+    return owner.session.token;
+  }
+  const token = await refreshClerkSessionToken(page, {
+    activeOrganizationId: owner.organizationId,
   });
+  owner.session.refreshedAt = Date.now();
+  owner.session.token = token;
+  return token;
 }
 
 async function expectPlanState(
