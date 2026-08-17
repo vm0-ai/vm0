@@ -102,9 +102,13 @@ fn binary_records_download_scheduler_attribution() {
     );
 
     let actions = fixture.action_types().unwrap();
+    let ops = fixture.ops_entries().unwrap();
     assert_action_types_present(
         &actions,
         &[
+            "guest_download_plan_build",
+            "guest_download_cleanup",
+            "guest_download_target_prepare",
             "guest_download_task_count_2",
             "guest_download_remote_url_count_1",
             "guest_download_file_url_count_1",
@@ -122,8 +126,48 @@ fn binary_records_download_scheduler_attribution() {
             "storage_download_remote_compressed_bytes_consumed_lt_64_kib",
             "storage_download_remote_attempt_count_1",
             "artifact_download",
+            "guest_download_archive_scheduler",
+            "guest_download_instruction_normalize",
             "download_total",
         ],
+    );
+    for phase in [
+        "guest_download_plan_build",
+        "guest_download_cleanup",
+        "guest_download_target_prepare",
+        "guest_download_archive_scheduler",
+        "guest_download_instruction_normalize",
+    ] {
+        let entry = operation(&ops, phase).unwrap_or_else(|| panic!("missing {phase} in {ops:?}"));
+        assert_eq!(entry["success"], true, "unexpected {phase}: {entry:?}");
+        assert!(
+            entry.get("error").is_none(),
+            "unexpected {phase}: {entry:?}"
+        );
+    }
+    assert!(
+        action_precedes(
+            &actions,
+            "guest_download_plan_build",
+            "guest_download_cleanup"
+        ),
+        "expected plan build before cleanup in {actions:?}"
+    );
+    assert!(
+        action_precedes(
+            &actions,
+            "guest_download_cleanup",
+            "guest_download_target_prepare"
+        ),
+        "expected cleanup before target preparation in {actions:?}"
+    );
+    assert!(
+        action_precedes(
+            &actions,
+            "guest_download_target_prepare",
+            "guest_download_task_count_2"
+        ),
+        "expected target preparation before batch attribution in {actions:?}"
     );
     assert!(
         action_precedes(&actions, "guest_download_task_count_2", "storage_download"),
@@ -157,9 +201,25 @@ fn binary_records_download_scheduler_attribution() {
         action_precedes(
             &actions,
             "guest_download_mount_conflict_deferral_count_1",
+            "guest_download_archive_scheduler"
+        ),
+        "expected conflict totals before scheduler total in {actions:?}"
+    );
+    assert!(
+        action_precedes(
+            &actions,
+            "guest_download_archive_scheduler",
+            "guest_download_instruction_normalize"
+        ),
+        "expected scheduler total before instruction normalization in {actions:?}"
+    );
+    assert!(
+        action_precedes(
+            &actions,
+            "guest_download_instruction_normalize",
             "download_total"
         ),
-        "expected conflict totals before run total in {actions:?}"
+        "expected instruction normalization before run total in {actions:?}"
     );
     assert!(
         !actions
@@ -206,6 +266,26 @@ fn binary_records_scheduler_attribution_for_failed_download() {
     );
 
     let ops = fixture.ops_entries().unwrap();
+    for phase in [
+        "guest_download_plan_build",
+        "guest_download_cleanup",
+        "guest_download_target_prepare",
+    ] {
+        let entry = operation(&ops, phase).unwrap_or_else(|| panic!("missing {phase} in {ops:?}"));
+        assert_eq!(entry["success"], true, "unexpected {phase}: {entry:?}");
+        assert!(
+            entry.get("error").is_none(),
+            "unexpected {phase}: {entry:?}"
+        );
+    }
+    let scheduler = operation(&ops, "guest_download_archive_scheduler")
+        .unwrap_or_else(|| panic!("missing scheduler total in {ops:?}"));
+    assert_eq!(scheduler["success"], false);
+    assert!(scheduler.get("error").is_none());
+    assert!(
+        operation(&ops, "guest_download_instruction_normalize").is_none(),
+        "failed download normalized instructions: {ops:?}"
+    );
     let conflict = ops
         .iter()
         .find(|entry| entry["action_type"] == "guest_download_mount_conflict_deferral_count_1")
@@ -247,6 +327,74 @@ fn binary_records_scheduler_attribution_for_failed_download() {
         .unwrap()["duration_ms"],
         0
     );
+}
+
+#[test]
+fn binary_records_redacted_target_preparation_failure() {
+    let fixture = BinaryLoggingFixture::new("target-preparation-failure").unwrap();
+    let sensitive_target = fixture.dir.path().join("private-target-path");
+    std::fs::write(&sensitive_target, "not a directory").unwrap();
+    let missing_archive = fixture.dir.path().join("missing.tar.gz");
+    let url = format!("file://{}", missing_archive.display());
+    let manifest = write_manifest(
+        &fixture.dir,
+        &[(sensitive_target.to_str().unwrap(), Some(&url))],
+        None,
+    )
+    .unwrap();
+
+    let output = fixture.run_manifest_path(&manifest).unwrap();
+
+    assert!(
+        !output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let ops_log = fixture.read_ops_log().unwrap();
+    assert!(
+        !ops_log.contains(sensitive_target.to_str().unwrap()),
+        "sandbox operations leaked target path: {ops_log}"
+    );
+    let ops = fixture.ops_entries().unwrap();
+    for phase in ["guest_download_plan_build", "guest_download_cleanup"] {
+        let entry = operation(&ops, phase).unwrap_or_else(|| panic!("missing {phase} in {ops:?}"));
+        assert_eq!(entry["success"], true, "unexpected {phase}: {entry:?}");
+        assert!(
+            entry.get("error").is_none(),
+            "unexpected {phase}: {entry:?}"
+        );
+    }
+    assert_eq!(
+        ops.iter()
+            .filter(|entry| entry["action_type"] == "guest_download_target_prepare")
+            .count(),
+        1,
+        "unexpected target preparation operations: {ops:?}"
+    );
+    let target_prepare = operation(&ops, "guest_download_target_prepare")
+        .unwrap_or_else(|| panic!("missing target preparation in {ops:?}"));
+    assert_eq!(target_prepare["success"], false);
+    assert!(target_prepare.get("error").is_none());
+    let actions = fixture.action_types().unwrap();
+    assert!(
+        !actions
+            .iter()
+            .any(|action| action.starts_with("guest_download_task_count_")),
+        "target preparation failure reached scheduler attribution: {actions:?}"
+    );
+    for absent in [
+        "guest_download_archive_scheduler",
+        "guest_download_instruction_normalize",
+    ] {
+        assert!(
+            !actions.iter().any(|action| action == absent),
+            "unexpected {absent} in {actions:?}"
+        );
+    }
+    let total = operation(&ops, "download_total")
+        .unwrap_or_else(|| panic!("missing download_total in {ops:?}"));
+    assert_eq!(total["success"], false);
+    assert!(total.get("error").is_none());
 }
 
 #[test]
