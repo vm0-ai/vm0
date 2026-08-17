@@ -28,6 +28,7 @@ export type DirectRunFixtureRequest = Omit<
   "triggerSource"
 > & {
   readonly triggerSource?: TriggerSource;
+  readonly connectorScope?: CreateAgentRunArgs["connectorScope"];
   readonly ownedSystemStorageMounts?: readonly {
     readonly storageId: string;
     readonly version?: string;
@@ -87,7 +88,7 @@ export async function createDirectRunFixture(args: {
   readonly body: DirectRunFixtureRequest;
   readonly signal: AbortSignal;
 }) {
-  const { ownedSystemStorageMounts, ...body } = args.body;
+  const { connectorScope, ownedSystemStorageMounts, ...body } = args.body;
   const resolvedOwnedSystemStorageMounts =
     await resolveOwnedSystemStorageMounts(
       ownedSystemStorageMounts,
@@ -101,6 +102,10 @@ export async function createDirectRunFixture(args: {
       orgId: args.orgId,
       apiStartTime: now(),
       modelProviderType: body.modelProviderType,
+      connectorScope: connectorScope ?? {
+        allowedConnectorSlugs: [],
+        allowedCustomConnectorIds: [],
+      },
       body: {
         ...body,
         ...(resolvedOwnedSystemStorageMounts.length === 0
