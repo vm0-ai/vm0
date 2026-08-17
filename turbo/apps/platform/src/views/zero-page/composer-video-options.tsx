@@ -8,7 +8,7 @@ import {
 } from "@okouai/ui/components/ui/popover";
 import { Slider } from "@okouai/ui/components/ui/slider";
 import { Switch } from "@okouai/ui/components/ui/switch";
-import { cn } from "@okouai/ui";
+import { Button, cn } from "@okouai/ui";
 import {
   VIDEO_MODEL_CONFIGS,
   type ResolvedVideoGenerationOptions,
@@ -374,24 +374,28 @@ function ComposerVideoOptionsChipBody({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        type="button"
-        className={cn(
-          "inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2",
-          "text-[13px] leading-none text-muted-foreground transition-colors",
-          "hover:bg-state-hover hover:text-foreground",
-          "data-popup-open:bg-state-hover data-popup-open:text-foreground",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        )}
-        aria-label={t(
-          ($) => {
-            return $.chat.templates.videoOptionsLabel;
-          },
-          { spec },
-        )}
-      >
-        <span className="tabular-nums">{spec}</span>
-        <ChevronDown className="size-3 shrink-0 opacity-70" aria-hidden />
+      {/* The chip is a text control in the composer's icon row, so it is a
+          `quiet` `sm` Button: same h-8 height and radius as the icon buttons
+          beside it, with the regular weight the rest of the row reads at. */}
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="quiet"
+          size="sm"
+          className={cn(
+            "shrink-0 gap-1 font-normal",
+            "data-popup-open:bg-state-hover data-popup-open:text-foreground",
+          )}
+          aria-label={t(
+            ($) => {
+              return $.chat.templates.videoOptionsLabel;
+            },
+            { spec },
+          )}
+        >
+          <span className="tabular-nums">{spec}</span>
+          <ChevronDown className="shrink-0 opacity-50" aria-hidden />
+        </Button>
       </PopoverTrigger>
       <PopoverContent
         align="start"

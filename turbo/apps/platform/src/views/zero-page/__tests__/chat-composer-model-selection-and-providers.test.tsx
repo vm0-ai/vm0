@@ -3870,6 +3870,11 @@ describe("chat composer video model", () => {
     const chip = await screen.findByLabelText(
       "Video options 16:9 \u00b7 8s \u00b7 720p",
     );
+    // The chip renders through `Button`, so it stands the same 32px tall as
+    // the icon controls it shares the row with, at the same radius and weight,
+    // instead of hand-rolling its own size.
+    expect(chip).toHaveClass("h-8", "px-3", "rounded-lg", "font-normal");
+    expect(chip.className).not.toContain("h-7");
     await user.click(chip);
     await user.click(
       within(
