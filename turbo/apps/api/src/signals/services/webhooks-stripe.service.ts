@@ -30,10 +30,9 @@ import { getCampaign } from "./one-time-products";
 import {
   checkoutTierConflictMessage,
   checkoutWouldReplaceWithSameOrLowerTier,
-  knownPlanPriceItem,
-  type SubscriptionCheckoutTier,
-  tierForKnownPriceId,
-  tierFromPriceId,
+  knownBillingPlanPriceItem,
+  type BillingSubscriptionTier,
+  tierForKnownPlanPrice,
 } from "./zero-billing-checkout.service";
 import { isCurrentStripePreviewMetadata } from "./stripe-preview-metadata.service";
 import {
@@ -170,7 +169,10 @@ interface SubscriptionInput {
   readonly schedule?: string | { readonly id: string } | null;
   readonly items: {
     readonly data: readonly {
-      readonly price: { readonly id: string };
+      readonly price: {
+        readonly id: string;
+        readonly product?: string | { readonly id: string } | null;
+      };
       readonly quantity?: number | null;
       readonly current_period_start?: number | null;
       readonly current_period_end?: number | null;
@@ -227,7 +229,7 @@ interface LockedInvoicePaidOrg extends InvoicePaidOrg {
 
 interface SubscriptionInvoiceDetails {
   readonly subscription: SubscriptionInput;
-  readonly tier: SubscriptionCheckoutTier;
+  readonly tier: BillingSubscriptionTier;
   readonly priceId: string;
   readonly credits: number;
   readonly periodStartDate: Date | null;
@@ -2417,7 +2419,7 @@ async function shouldSkipSubscriptionBinding(
     readonly customerId: string;
     readonly subscriptionId: string;
     readonly subscriptionStatus: string;
-    readonly tier: SubscriptionCheckoutTier;
+    readonly tier: BillingSubscriptionTier;
   },
 ): Promise<boolean> {
   const [existing] = await db
@@ -2917,22 +2919,25 @@ async function bindSubscriptionToCustomerOrg(
     return [];
   }
 
-  const priceId =
-    knownPlanPriceItem(args.subscription.items.data)?.price.id ??
-    args.subscription.items.data[0]?.price.id;
-  if (!priceId) {
-    L.warn("subscription has no price ID", {
+  const planItem = knownBillingPlanPriceItem(args.subscription.items.data);
+  const tier = planItem ? tierForKnownPlanPrice(planItem.price) : null;
+  if (!planItem || !tier) {
+    const firstPriceId = args.subscription.items.data[0]?.price.id;
+    if (firstPriceId && isConcurrencyPriceId(firstPriceId)) {
+      return [];
+    }
+    L.debug("subscription has no known plan item", {
       subscriptionId: args.subscription.id,
       source: args.source,
     });
-  } else if (isConcurrencyPriceId(priceId)) {
     return [];
-  } else if (
+  }
+  if (
     await shouldSkipSubscriptionBinding(db, {
       customerId: args.customerId,
       subscriptionId: args.subscription.id,
       subscriptionStatus: args.subscription.status,
-      tier: tierFromPriceId(priceId),
+      tier,
     })
   ) {
     return [];
@@ -2965,7 +2970,7 @@ function invoiceWouldReplaceWithSameOrLowerTier(args: {
   readonly currentSubscriptionId: string | null;
   readonly subscriptionId: string;
   readonly currentTier: string;
-  readonly targetTier: SubscriptionCheckoutTier;
+  readonly targetTier: BillingSubscriptionTier;
 }): boolean {
   return (
     args.currentSubscriptionId !== null &&
@@ -2977,25 +2982,25 @@ function invoiceWouldReplaceWithSameOrLowerTier(args: {
   );
 }
 
-function replacedProSubscriptionId(args: {
+function replacedPlanSubscriptionId(args: {
   readonly currentSubscriptionId: string | null;
   readonly currentSubscriptionStatus: string | null;
   readonly currentTier: string;
   readonly newSubscriptionId: string;
-  readonly targetTier: SubscriptionCheckoutTier;
+  readonly targetTier: BillingSubscriptionTier;
 }): string | null {
   if (
-    args.targetTier !== "team" ||
     !args.currentSubscriptionId ||
     args.currentSubscriptionId === args.newSubscriptionId
   ) {
     return null;
   }
 
-  if (
-    args.currentTier === "pro" ||
-    args.currentSubscriptionStatus === "trialing"
-  ) {
+  const replacesPaidTier =
+    (args.targetTier === "team" && args.currentTier === "pro") ||
+    (args.targetTier === "custom" &&
+      (args.currentTier === "pro" || args.currentTier === "team"));
+  if (replacesPaidTier || args.currentSubscriptionStatus === "trialing") {
     return args.currentSubscriptionId;
   }
 
@@ -3003,35 +3008,40 @@ function replacedProSubscriptionId(args: {
 }
 
 function tierFromSubscription(subscription: StripeSubscription) {
-  const priceId = knownPlanPriceItem(subscription.items.data)?.price.id;
-  if (!priceId) {
+  const planItem = knownBillingPlanPriceItem(subscription.items.data);
+  if (!planItem) {
     return null;
   }
-
-  return tierForKnownPriceId(priceId);
+  return tierForKnownPlanPrice(planItem.price);
 }
 
-function isReplaceableProSubscription(args: {
+function isReplaceablePlanSubscription(args: {
   readonly orgId: string;
   readonly newSubscriptionId: string;
   readonly subscription: StripeSubscription;
+  readonly targetTier: BillingSubscriptionTier;
 }): boolean {
   const subscription = args.subscription;
+  const currentTier = tierFromSubscription(subscription);
+  const replacesTier =
+    (args.targetTier === "team" && currentTier === "pro") ||
+    (args.targetTier === "custom" &&
+      (currentTier === "pro" || currentTier === "team"));
   return (
     subscription.id !== args.newSubscriptionId &&
     subscription.metadata?.orgId === args.orgId &&
     (subscription.status === "active" || subscription.status === "trialing") &&
-    tierFromSubscription(subscription) === "pro"
+    replacesTier
   );
 }
 
-async function replacedProSubscriptionIdsForCustomer(args: {
+async function replacedPlanSubscriptionIdsForCustomer(args: {
   readonly orgId: string;
   readonly customerId: string;
   readonly newSubscriptionId: string;
-  readonly targetTier: SubscriptionCheckoutTier;
+  readonly targetTier: BillingSubscriptionTier;
 }): Promise<readonly string[]> {
-  if (args.targetTier !== "team") {
+  if (args.targetTier !== "team" && args.targetTier !== "custom") {
     return [];
   }
 
@@ -3044,10 +3054,11 @@ async function replacedProSubscriptionIdsForCustomer(args: {
 
   return subscriptions.data
     .filter((subscription) => {
-      return isReplaceableProSubscription({
+      return isReplaceablePlanSubscription({
         orgId: args.orgId,
         newSubscriptionId: args.newSubscriptionId,
         subscription,
+        targetTier: args.targetTier,
       });
     })
     .map((subscription) => {
@@ -3055,7 +3066,7 @@ async function replacedProSubscriptionIdsForCustomer(args: {
     });
 }
 
-async function cancelReplacedProSubscriptions(args: {
+async function cancelReplacedPlanSubscriptions(args: {
   readonly orgId: string;
   readonly invoiceId: string;
   readonly oldSubscriptionIds: readonly string[];
@@ -3073,7 +3084,7 @@ async function cancelReplacedProSubscriptions(args: {
       if (!isStripeResourceMissingError(cancelResult.error)) {
         throw cancelResult.error;
       }
-      L.warn("replaced Pro subscription already absent during Team upgrade", {
+      L.warn("replaced plan subscription is already absent", {
         orgId: args.orgId,
         invoiceId: args.invoiceId,
         oldSubscriptionId,
@@ -3081,7 +3092,7 @@ async function cancelReplacedProSubscriptions(args: {
       });
       continue;
     }
-    L.debug("canceled replaced Pro subscription after Team invoice paid", {
+    L.debug("canceled replaced plan subscription after invoice paid", {
       orgId: args.orgId,
       invoiceId: args.invoiceId,
       oldSubscriptionId,
@@ -3090,17 +3101,17 @@ async function cancelReplacedProSubscriptions(args: {
   }
 }
 
-async function cancelReplacedProSubscriptionsAfterTeamInvoice(args: {
+async function cancelReplacedPlanSubscriptionsAfterInvoice(args: {
   readonly orgId: string;
   readonly customerId: string;
   readonly invoiceId: string;
   readonly newSubscriptionId: string;
-  readonly targetTier: SubscriptionCheckoutTier;
+  readonly targetTier: BillingSubscriptionTier;
   readonly knownOldSubscriptionId: string | null;
 }): Promise<void> {
   const replacedSubscriptionIds = [
     ...(args.knownOldSubscriptionId ? [args.knownOldSubscriptionId] : []),
-    ...(await replacedProSubscriptionIdsForCustomer({
+    ...(await replacedPlanSubscriptionIdsForCustomer({
       orgId: args.orgId,
       customerId: args.customerId,
       newSubscriptionId: args.newSubscriptionId,
@@ -3111,7 +3122,7 @@ async function cancelReplacedProSubscriptionsAfterTeamInvoice(args: {
     return;
   }
 
-  await cancelReplacedProSubscriptions({
+  await cancelReplacedPlanSubscriptions({
     orgId: args.orgId,
     invoiceId: args.invoiceId,
     oldSubscriptionIds: replacedSubscriptionIds,
@@ -3315,16 +3326,15 @@ async function subscriptionInvoiceDetails(
 ): Promise<SubscriptionInvoiceDetails | null> {
   const stripe = getStripeClient();
   const subscription = await stripe.subscriptions.retrieve(args.subscriptionId);
-  const priceId = knownPlanPriceItem(subscription.items.data)?.price.id;
-  if (!priceId) {
-    L.warn("subscription has no price ID for credit grant", {
+  const planItem = knownBillingPlanPriceItem(subscription.items.data);
+  const tier = planItem ? tierForKnownPlanPrice(planItem.price) : null;
+  if (!planItem || !tier) {
+    L.debug("subscription has no known plan item", {
       subscriptionId: args.subscriptionId,
     });
     return null;
   }
-  if (isConcurrencyPriceId(priceId)) {
-    return null;
-  }
+  const priceId = planItem.price.id;
 
   const hasPlanInvoiceLine = invoice.lines.data.some((line) => {
     return (
@@ -3336,9 +3346,8 @@ async function subscriptionInvoiceDetails(
     return null;
   }
 
-  const tier = tierFromPriceId(priceId);
   const credits = monthlyCreditsForTier(tier);
-  if (credits <= 0) {
+  if (credits <= 0 && tier !== "custom") {
     L.warn("no credits to grant for tier", {
       tier,
       invoiceId: invoice.id,
@@ -3450,6 +3459,67 @@ function subscriptionPlanEntitlementIsCurrent(
   );
 }
 
+async function processCustomSubscriptionInvoicePaid(
+  tx: WriteTx,
+  args: {
+    readonly invoice: InvoiceInput;
+    readonly customerId: string;
+    readonly subscriptionId: string;
+    readonly orgId: string;
+    readonly details: SubscriptionInvoiceDetails;
+    readonly replacedSubscriptionId: string | null;
+  },
+): Promise<void> {
+  await expireCredits(tx, args.orgId);
+  await updateSubscriptionInvoiceMetadata(tx, {
+    orgId: args.orgId,
+    invoiceId: args.invoice.id,
+    subscriptionId: args.subscriptionId,
+    details: args.details,
+  });
+  await cancelReplacedPlanSubscriptionsAfterInvoice({
+    orgId: args.orgId,
+    customerId: args.customerId,
+    invoiceId: args.invoice.id,
+    newSubscriptionId: args.subscriptionId,
+    targetTier: args.details.tier,
+    knownOldSubscriptionId: args.replacedSubscriptionId,
+  });
+}
+
+async function reconcileAlreadyProcessedSubscriptionInvoice(
+  tx: WriteTx,
+  args: {
+    readonly customerId: string;
+    readonly details: SubscriptionInvoiceDetails;
+    readonly invoiceId: string;
+    readonly lockedOrg: LockedInvoicePaidOrg;
+    readonly orgId: string;
+    readonly replacedSubscriptionId: string | null;
+    readonly subscriptionId: string;
+  },
+): Promise<void> {
+  if (subscriptionPlanEntitlementIsCurrent(args.lockedOrg, args)) {
+    await upsertSubscriptionPlanEntitlement(tx, {
+      orgId: args.orgId,
+      subscriptionId: args.subscriptionId,
+      details: args.details,
+    });
+  }
+  await cancelReplacedPlanSubscriptionsAfterInvoice({
+    orgId: args.orgId,
+    customerId: args.customerId,
+    invoiceId: args.invoiceId,
+    newSubscriptionId: args.subscriptionId,
+    targetTier: args.details.tier,
+    knownOldSubscriptionId: args.replacedSubscriptionId,
+  });
+  L.debug("invoice.paid already processed by concurrent delivery", {
+    invoiceId: args.invoiceId,
+    orgId: args.orgId,
+  });
+}
+
 async function processSubscriptionInvoicePaid(
   tx: WriteTx,
   args: {
@@ -3464,7 +3534,7 @@ async function processSubscriptionInvoicePaid(
   if (!lockedOrg) {
     return false;
   }
-  const replacedSubscriptionId = replacedProSubscriptionId({
+  const replacedSubscriptionId = replacedPlanSubscriptionId({
     currentSubscriptionId: lockedOrg.stripeSubscriptionId,
     currentSubscriptionStatus: lockedOrg.subscriptionStatus,
     currentTier: lockedOrg.tier,
@@ -3473,24 +3543,11 @@ async function processSubscriptionInvoicePaid(
   });
 
   if (lockedOrg.lastProcessedInvoiceId === args.invoice.id) {
-    if (subscriptionPlanEntitlementIsCurrent(lockedOrg, args)) {
-      await upsertSubscriptionPlanEntitlement(tx, {
-        orgId: args.orgId,
-        subscriptionId: args.subscriptionId,
-        details: args.details,
-      });
-    }
-    await cancelReplacedProSubscriptionsAfterTeamInvoice({
-      orgId: args.orgId,
-      customerId: args.customerId,
+    await reconcileAlreadyProcessedSubscriptionInvoice(tx, {
+      ...args,
       invoiceId: args.invoice.id,
-      newSubscriptionId: args.subscriptionId,
-      targetTier: args.details.tier,
-      knownOldSubscriptionId: replacedSubscriptionId,
-    });
-    L.debug("invoice.paid already processed by concurrent delivery", {
-      invoiceId: args.invoice.id,
-      orgId: args.orgId,
+      lockedOrg,
+      replacedSubscriptionId,
     });
     return true;
   }
@@ -3516,6 +3573,14 @@ async function processSubscriptionInvoicePaid(
       }),
     });
     return false;
+  }
+
+  if (args.details.tier === "custom") {
+    await processCustomSubscriptionInvoicePaid(tx, {
+      ...args,
+      replacedSubscriptionId,
+    });
+    return true;
   }
 
   const trialingExistingSubscription =
@@ -3572,7 +3637,7 @@ async function processSubscriptionInvoicePaid(
     subscriptionId: args.subscriptionId,
     details: args.details,
   });
-  await cancelReplacedProSubscriptionsAfterTeamInvoice({
+  await cancelReplacedPlanSubscriptionsAfterInvoice({
     orgId: args.orgId,
     customerId: args.customerId,
     invoiceId: args.invoice.id,

@@ -169,6 +169,7 @@ const ACTIVE_USAGE_ALLOWANCE_STATUSES = [
 ] as const;
 export type SubscriptionCheckoutTier =
   (typeof STRIPE_SUBSCRIPTION_PRICE_TIERS)[number];
+export type BillingSubscriptionTier = SubscriptionCheckoutTier | "custom";
 
 export async function orgPlanSubscriptionId(
   db: ReadonlyDb,
@@ -360,6 +361,43 @@ interface PlanPriceItem {
   readonly price: { readonly id: string };
 }
 
+interface BillingPlanPriceItem {
+  readonly price: {
+    readonly id: string;
+    readonly product?: string | { readonly id: string } | null;
+  };
+}
+
+function stripeProductId(
+  product: BillingPlanPriceItem["price"]["product"],
+): string | null {
+  if (!product) {
+    return null;
+  }
+  return typeof product === "string" ? product : product.id;
+}
+
+export function tierForKnownPlanPrice(
+  price: BillingPlanPriceItem["price"],
+): BillingSubscriptionTier | null {
+  const checkoutTier = tierForKnownPriceId(price.id);
+  if (checkoutTier) {
+    return checkoutTier;
+  }
+  const customProductId = env("OKOU_PRODUCT_CUSTOM");
+  return customProductId && stripeProductId(price.product) === customProductId
+    ? "custom"
+    : null;
+}
+
+export function knownBillingPlanPriceItem<T extends BillingPlanPriceItem>(
+  items: readonly T[],
+): T | undefined {
+  return items.find((item) => {
+    return tierForKnownPlanPrice(item.price) !== null;
+  });
+}
+
 export function knownPlanPriceItem<T extends PlanPriceItem>(
   items: readonly T[],
 ): T | undefined {
@@ -368,7 +406,7 @@ export function knownPlanPriceItem<T extends PlanPriceItem>(
   });
 }
 
-export function tierFromPriceId(priceId: string): SubscriptionCheckoutTier {
+function tierFromPriceId(priceId: string): SubscriptionCheckoutTier {
   const tier = tierForKnownPriceId(priceId);
   if (tier) {
     return tier;
@@ -424,14 +462,14 @@ function billingTierLabel(tier: string | null | undefined): string {
 
 export function checkoutWouldReplaceWithSameOrLowerTier(args: {
   readonly currentTier: string | null | undefined;
-  readonly targetTier: SubscriptionCheckoutTier;
+  readonly targetTier: BillingSubscriptionTier;
 }): boolean {
   return billingTierRank(args.currentTier) >= billingTierRank(args.targetTier);
 }
 
 export function checkoutTierConflictMessage(args: {
   readonly currentTier: string | null | undefined;
-  readonly targetTier: SubscriptionCheckoutTier;
+  readonly targetTier: BillingSubscriptionTier;
 }): string {
   return `Cannot create ${billingTierLabel(args.targetTier)} checkout while current tier is ${billingTierLabel(args.currentTier)}; use billing management to change plans`;
 }

@@ -11,6 +11,8 @@ import { webhooksStripeRoutes } from "../../webhooks-stripe";
 
 const TEST_PRICE_PRO = "price_test_pro";
 const TEST_PRICE_TEAM = "price_test_team";
+const TEST_PRODUCT_CUSTOM = "prod_test_custom";
+const TEST_PRICE_CUSTOM = "price_test_custom";
 export const TEST_PRICE_CONCURRENCY = "price_test_concurrency";
 const TEST_PRICE_ATOM_GRANT = "price_test_atom_grant";
 const TEST_PRICE_USAGE_ALLOWANCE = "price_test_usage_allowance";
@@ -24,7 +26,7 @@ export interface BillingWebhookFixture {
 }
 
 interface SubscriptionWebhookInput extends BillingWebhookFixture {
-  readonly tier: "pro" | "team";
+  readonly tier: "pro" | "team" | "custom";
   readonly customerId: string;
   readonly subscriptionId: string;
   readonly status?: string;
@@ -77,6 +79,7 @@ function configureBillingWebhookEnv(): void {
   mockStripeClient(getApiTestMocks().stripe as unknown as StripeSDK);
   mockEnv("ZERO_PRICE_PRO", TEST_PRICE_PRO);
   mockEnv("ZERO_PRICE_TEAM", TEST_PRICE_TEAM);
+  mockEnv("OKOU_PRODUCT_CUSTOM", TEST_PRODUCT_CUSTOM);
   mockEnv("ZERO_PRICE_CONCURRENCY", TEST_PRICE_CONCURRENCY);
   mockEnv("ATOM_GRANT_PRICE", TEST_PRICE_ATOM_GRANT);
   mockEnv(
@@ -108,8 +111,19 @@ function defaultCreditExpiresAt(): Date {
   return new Date(now() + DEFAULT_CREDIT_EXPIRES_MS);
 }
 
-function subscriptionPriceId(tier: "pro" | "team"): string {
-  return tier === "team" ? TEST_PRICE_TEAM : TEST_PRICE_PRO;
+function subscriptionPriceId(tier: "pro" | "team" | "custom"): string {
+  return tier === "custom"
+    ? TEST_PRICE_CUSTOM
+    : tier === "team"
+      ? TEST_PRICE_TEAM
+      : TEST_PRICE_PRO;
+}
+
+function subscriptionPrice(tier: SubscriptionWebhookInput["tier"]) {
+  return {
+    id: subscriptionPriceId(tier),
+    ...(tier === "custom" ? { product: TEST_PRODUCT_CUSTOM } : {}),
+  };
 }
 
 async function postStripeEvent(
@@ -155,7 +169,7 @@ function stripeSubscription(args: SubscriptionWebhookInput) {
     items: {
       data: [
         {
-          price: { id: subscriptionPriceId(args.tier) },
+          price: subscriptionPrice(args.tier),
           current_period_start: periodStart,
           current_period_end: periodEnd,
         },

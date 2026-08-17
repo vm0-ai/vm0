@@ -3947,6 +3947,107 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     expect(settled.body.concurrency.active).toBe(0);
   });
 
+  it("recognizes an Atom Custom product as the main subscription without granting Plan credits", async () => {
+    const bdd = createBddApi(context);
+    const runs = createRunsApi(context);
+    const billing = createBillingMediaApi(context);
+    const actor = bdd.user();
+    const orgId = orgOf(actor);
+    const granted = await runs.grantProEntitlement(actor);
+    const creditsBefore = (await billing.readBillingStatus(actor)).credits;
+    const suffix = randomUUID().slice(0, 8);
+    const customProductId = `prod_bdd_custom_${suffix}`;
+    const customPriceId = `price_bdd_custom_${suffix}`;
+    const customSubscriptionId = `sub_bdd_custom_${suffix}`;
+    const customInvoiceId = `in_bdd_custom_${suffix}`;
+    const periodEnd = epochSeconds(30);
+    mockEnv("OKOU_PRODUCT_CUSTOM", customProductId);
+
+    const customSubscription = {
+      id: customSubscriptionId,
+      status: "active",
+      customer: granted.customerId,
+      cancel_at: periodEnd,
+      cancel_at_period_end: false,
+      schedule: null,
+      trial_end: null,
+      metadata: {
+        orgId,
+        purpose: "custom_plan_subscription",
+        tier: "custom",
+      },
+      items: {
+        data: [
+          {
+            price: { id: customPriceId, product: customProductId },
+          },
+        ],
+      },
+    };
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce(
+      customSubscription,
+    );
+    context.mocks.stripe.subscriptions.list.mockResolvedValueOnce({
+      data: [
+        customSubscription,
+        {
+          id: granted.subscriptionId,
+          status: "active",
+          metadata: { orgId },
+          items: { data: [{ price: { id: "price_bdd_pro" } }] },
+        },
+      ],
+    });
+    context.mocks.stripe.subscriptions.cancel.mockResolvedValueOnce({
+      id: granted.subscriptionId,
+    });
+
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: customInvoiceId,
+          customer: granted.customerId,
+          metadata: {},
+          parent: {
+            subscription_details: { subscription: customSubscriptionId },
+          },
+          lines: subscriptionLines(periodEnd, customPriceId),
+        },
+      }),
+      [200],
+    );
+
+    expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledWith(
+      granted.subscriptionId,
+      { invoice_now: false, prorate: false },
+    );
+    const customStatus = await billing.readBillingStatus(actor);
+    expect(customStatus.tier).toBe("custom");
+    expect(customStatus.credits).toBe(creditsBefore);
+    expect(customStatus.hasSubscription).toBeTruthy();
+    await expect(readOrgPlanEntitlementFixture(orgId)).resolves.toMatchObject({
+      planKey: "custom",
+      source: "stripe_subscription",
+      stripeSubscriptionId: customSubscriptionId,
+      stripePriceId: customPriceId,
+      currentPeriodEnd: isoOf(periodEnd),
+      cancelAt: isoOf(periodEnd),
+      expiresAt: isoOf(periodEnd),
+    });
+
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "customer.subscription.deleted",
+        object: { id: customSubscriptionId, metadata: {} },
+      }),
+      [200],
+    );
+    const canceled = await billing.readBillingStatus(actor);
+    expect(canceled.tier).toBe("limited-free-1");
+    expect(canceled.hasSubscription).toBeFalsy();
+  });
+
   it("keeps a team upgrade when the replaced pro subscription is already absent", async () => {
     const bdd = createBddApi(context);
     const runs = createRunsApi(context);

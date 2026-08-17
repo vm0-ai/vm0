@@ -124,6 +124,8 @@ const APP_ORIGIN = "http://localhost:3002";
 const TEST_STAFF_ORG_ID = "org_usage_pack_checkout_test_lgD7Q3";
 const TEST_PRICE_PRO = "price_test_pro";
 const TEST_PRICE_TEAM = "price_test_team";
+const TEST_PRODUCT_CUSTOM = "prod_test_custom";
+const TEST_PRICE_CUSTOM = "price_test_custom";
 const TEST_PRICE_USAGE_PACK_PLAN_PRO = "price_test_usage_pack_plan_pro";
 const TEST_PRICE_USAGE_PACK_PLAN_TEAM = "price_test_usage_pack_plan_team";
 const TEST_PRICE_USAGE_PACK_20 = "price_test_usage_pack_20";
@@ -344,7 +346,7 @@ async function createStripeCustomerOrgForFixture(
 }
 
 async function createSubscriptionOrg(args: {
-  readonly tier: "pro" | "team";
+  readonly tier: "pro" | "team" | "custom";
   readonly customerId?: string;
   readonly subscriptionId?: string;
   readonly subscriptionStatus?: string;
@@ -357,7 +359,19 @@ async function createSubscriptionOrg(args: {
     args.subscriptionId ?? `sub_${randomUUID().slice(0, 8)}`;
   const periodEndUnix =
     args.periodEndUnix ?? Math.floor(now() / 1000) + 30 * 86_400;
-  const priceId = args.tier === "team" ? TEST_PRICE_TEAM : TEST_PRICE_PRO;
+  const priceId =
+    args.tier === "custom"
+      ? TEST_PRICE_CUSTOM
+      : args.tier === "team"
+        ? TEST_PRICE_TEAM
+        : TEST_PRICE_PRO;
+  const price = {
+    id: priceId,
+    ...(args.tier === "custom" ? { product: TEST_PRODUCT_CUSTOM } : {}),
+  };
+  if (args.tier === "custom") {
+    mockEnv("OKOU_PRODUCT_CUSTOM", TEST_PRODUCT_CUSTOM);
+  }
   mockClerkOrganization(fixture);
   mockOptionalEnv("STRIPE_WEBHOOK_SECRET", STRIPE_WEBHOOK_SECRET);
   context.mocks.stripe.customers.retrieve.mockResolvedValueOnce({
@@ -376,7 +390,7 @@ async function createSubscriptionOrg(args: {
     items: {
       data: [
         {
-          price: { id: priceId },
+          price,
           current_period_end: periodEndUnix,
         },
       ],
@@ -10381,7 +10395,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
       data: [],
       has_more: false,
     });
-    const fixture = await createSubscriptionOrg({ tier: "team" });
+    const fixture = await createSubscriptionOrg({ tier: "custom" });
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce({
       id: fixture.subscriptionId,
@@ -10389,8 +10403,11 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
       items: {
         data: [
           {
-            id: `si_${TEST_PRICE_TEAM}`,
-            price: { id: TEST_PRICE_TEAM },
+            id: `si_${TEST_PRICE_CUSTOM}`,
+            price: {
+              id: TEST_PRICE_CUSTOM,
+              product: TEST_PRODUCT_CUSTOM,
+            },
             quantity: 1,
           },
         ],
@@ -12602,7 +12619,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
       data: [],
       has_more: false,
     });
-    const fixture = await createSubscriptionOrg({ tier: "team" });
+    const fixture = await createSubscriptionOrg({ tier: "custom" });
     await seedMemberRole({
       orgId: fixture.orgId,
       userId: fixture.userId,
@@ -12616,8 +12633,11 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
       items: {
         data: [
           {
-            id: `si_${TEST_PRICE_TEAM}`,
-            price: { id: TEST_PRICE_TEAM },
+            id: `si_${TEST_PRICE_CUSTOM}`,
+            price: {
+              id: TEST_PRICE_CUSTOM,
+              product: TEST_PRODUCT_CUSTOM,
+            },
             quantity: 1,
           },
         ],
@@ -12633,8 +12653,11 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
       items: {
         data: [
           {
-            id: `si_${TEST_PRICE_TEAM}`,
-            price: { id: TEST_PRICE_TEAM },
+            id: `si_${TEST_PRICE_CUSTOM}`,
+            price: {
+              id: TEST_PRICE_CUSTOM,
+              product: TEST_PRODUCT_CUSTOM,
+            },
             quantity: 1,
             current_period_end: 4_102_444_800,
           },

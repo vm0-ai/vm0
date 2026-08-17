@@ -31,8 +31,9 @@ import {
   writeOrgMetadataWithPlanEntitlements,
 } from "./org-plan-entitlements.service";
 import {
+  knownBillingPlanPriceItem,
   knownPlanPriceItem,
-  tierFromPriceId,
+  tierForKnownPlanPrice,
 } from "./zero-billing-checkout.service";
 import {
   reconcileUsagePackSubscriptions,
@@ -68,7 +69,10 @@ interface SubscriptionInput {
   readonly cancel_at_period_end: boolean;
   readonly items: {
     readonly data: readonly {
-      readonly price: { readonly id: string };
+      readonly price: {
+        readonly id: string;
+        readonly product?: string | { readonly id: string } | null;
+      };
       readonly quantity?: number | null;
       readonly current_period_end?: number | null;
     }[];
@@ -417,10 +421,11 @@ async function refreshRecoveredBillingCandidate(
   signal: AbortSignal,
 ): Promise<void> {
   const { db } = context;
-  const priceId =
-    knownPlanPriceItem(subscription.items.data)?.price.id ??
-    subscription.items.data[0]?.price.id;
-  const tier = priceId ? tierFromPriceId(priceId) : undefined;
+  const planItem = knownBillingPlanPriceItem(subscription.items.data);
+  const priceId = planItem?.price.id ?? subscription.items.data[0]?.price.id;
+  const tier = planItem
+    ? (tierForKnownPlanPrice(planItem.price) ?? undefined)
+    : undefined;
 
   await db.transaction(async (tx) => {
     await writeOrgMetadataWithPlanEntitlements(tx, {
