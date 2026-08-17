@@ -8,7 +8,7 @@ from typing import Literal
 from unittest.mock import patch
 
 import pytest
-from mitmproxy import connection
+from mitmproxy import connection, http
 from mitmproxy.flow import Error
 
 import codex_model_catalog_cache as catalog_cache
@@ -33,6 +33,11 @@ from tests.pending_helpers import assert_pending
 from tests.request_handler_helpers import _single_firewall_vm, _write_registry
 from tests.requestheaders_helpers import await_requestheaders_result
 from tests.upstream_connection_helpers import mark_connected_tls_upstream
+
+
+class _DecodeGuardPrefetchMarker(bytes):
+    def decode(self, encoding: str = "utf-8", errors: str = "strict") -> str:
+        raise AssertionError("Codex prefetch marker must not be decoded")
 
 
 async def test_request_bypasses_do_not_touch_unrelated_traffic(real_flow):
@@ -271,6 +276,84 @@ async def test_both_firewall_auth_paths_prepare_catalog_cache(
     assert header_flow.response.content == CATALOG_BODY
     assert header_flow.response.stream is False
     assert "X-VM0-Codex-Model-Catalog-Prefetch" not in header_flow.request.headers
+
+
+@pytest.mark.parametrize(
+    ("marker_values", "expected_prefetch"),
+    [
+        pytest.param((_DecodeGuardPrefetchMarker(b"1"),), True, id="exact"),
+        pytest.param(
+            (
+                _DecodeGuardPrefetchMarker(b"1"),
+                _DecodeGuardPrefetchMarker(b"1"),
+            ),
+            False,
+            id="repeated",
+        ),
+        pytest.param((_DecodeGuardPrefetchMarker(b""),), False, id="empty"),
+        pytest.param((_DecodeGuardPrefetchMarker(b"\xff"),), False, id="non-ascii"),
+        pytest.param(
+            (_DecodeGuardPrefetchMarker(b"x" * (1024 * 1024)),),
+            False,
+            id="oversized",
+        ),
+    ],
+)
+async def test_prefetch_marker_requires_one_exact_raw_value_across_request_hooks(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    marker_values: tuple[bytes, ...],
+    expected_prefetch: bool,
+):
+    registry_path = _write_codex_registry(tmp_path, capture=False)
+    request_headers = http.Headers(
+        [
+            (b"Host", b"chatgpt.com"),
+            (b"Accept-Encoding", b"identity"),
+            (b"Content-Length", b"0"),
+            *((b"x-VM0-Codex-Model-Catalog-Prefetch", value) for value in marker_values),
+        ]
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="chatgpt.com",
+        method="GET",
+        path="/backend-api/codex/models?client_version=0.145.0",
+        request_headers=request_headers,
+    )
+    flow.metadata["_vm0_request_end_stream"] = True
+
+    with (
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(
+            headers={
+                "Authorization": "Bearer resolved-token",
+                "ChatGPT-Account-ID": "resolved-account",
+            }
+        ),
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        assert requestheaders_result is None
+        assert all(
+            name.lower() != b"x-vm0-codex-model-catalog-prefetch"
+            for name, _ in flow.request.headers.fields
+        )
+        assert (
+            flow.metadata.get("_codex_model_catalog_prefetch_request") is True
+        ) is expected_prefetch
+
+        await mitm_addon.request(flow)
+
+    assert all(
+        name.lower() != b"x-vm0-codex-model-catalog-prefetch"
+        for name, _ in flow.request.headers.fields
+    )
+    assert (flow.metadata.get("_codex_model_catalog_prefetch_request") is True) is expected_prefetch
+    assert flow.request.headers["Accept-Encoding"] == ("br" if expected_prefetch else "identity")
+    catalog_cache.release_flow_state(flow)
 
 
 @pytest.mark.parametrize("entry_point", ["request", "requestheaders"])
