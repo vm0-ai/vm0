@@ -27,6 +27,15 @@ import {
   fingerprintSortedSet,
 } from "./agent-compose-consolidation-preflight-fingerprint";
 import {
+  EXPECTED_RUNTIME_CONTENT_CONSUMER_MANIFEST,
+  collectRuntimeContentConsumerManifest,
+  runtimeContentConsumerManifestsEqual,
+} from "./agent-compose-consolidation-preflight-consumers";
+import {
+  classifyExceptionRefinements,
+  type UnclassifiedPrimaryClass,
+} from "./agent-compose-consolidation-preflight-refinements";
+import {
   PREFLIGHT_OUTPUT_ALLOWLIST,
   SanitizedPreflightError,
   classifyPreflightInventory,
@@ -47,6 +56,7 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 const packageDirectory = path.resolve(dirname, "..");
 const repositoryRoot = path.resolve(dirname, "../../../..");
 const testDatabase = "agent_compose_consolidation_preflight_test";
+const ACTIVITY_TIME_ZONES = ["UTC", "Asia/Shanghai"] as const;
 
 const capabilities: PreflightCapabilities = {
   serverVersionClassification: "supported",
@@ -152,7 +162,7 @@ interface MutableAgentContent extends Record<string, unknown> {
   agents: Record<string, MutableAgentDefinition>;
   volumes?: Record<
     string,
-    { name: string; version: string; optional?: boolean }
+    { name: string; version: string; optional?: boolean; system?: unknown }
   >;
   artifacts?: { name: string; version?: string; mount_path?: string }[];
   futureField?: unknown;
@@ -171,6 +181,11 @@ function executionPlanRow(args: {
   readonly headVersionId?: string | null;
   readonly versionId?: string | null;
   readonly insertionComposeId?: string | null;
+  readonly activitySnapshotTime?: Date;
+  readonly latestAttributedRunAt?: Date | null;
+  readonly activeNonterminalRun?: boolean;
+  readonly currentHeadEverExercised?: boolean;
+  readonly unknownRunStatus?: boolean;
 }): AgentExecutionPlanInventoryRow {
   const content = Object.hasOwn(args, "content")
     ? args.content
@@ -192,6 +207,14 @@ function executionPlanRow(args: {
       ? (args.insertionComposeId ?? null)
       : args.id,
     content,
+    activitySnapshotTime:
+      args.activitySnapshotTime ?? new Date("2026-08-17T00:00:00.000Z"),
+    latestAttributedRunAt: Object.hasOwn(args, "latestAttributedRunAt")
+      ? (args.latestAttributedRunAt ?? null)
+      : null,
+    activeNonterminalRun: args.activeNonterminalRun ?? false,
+    currentHeadEverExercised: args.currentHeadEverExercised ?? false,
+    unknownRunStatus: args.unknownRunStatus ?? false,
   };
 }
 
@@ -1048,6 +1071,527 @@ function testAgentExecutionPlanClassifications(): void {
     duplicateIdentity.agentExecutionPlans.dimensionUnionClosure.classification,
     "drift",
   );
+  gatePresent(duplicate, "agentExecutionPlans.activity.partitionClosure");
+}
+
+function testEnvironmentExceptionRefinements(): void {
+  const id = (suffix: number): string => {
+    return `00000000-0000-4000-8000-${suffix.toString().padStart(12, "0")}`;
+  };
+  const environmentRow = (
+    suffix: number,
+    name: string,
+    environment: Record<string, string>,
+  ): AgentExecutionPlanInventoryRow => {
+    const content = mutableAgentContent(name);
+    content.agents[name]!.environment = environment;
+    return executionPlanRow({ id: id(suffix), agentName: name, content });
+  };
+  const rows = [
+    environmentRow(701, "variable-only-agent", {
+      ANTHROPIC_API_KEY: "${{ vars.PROVIDER_VALUE }}",
+    }),
+    environmentRow(702, "secret-only-agent", {
+      CUSTOM_SECRET: "${{ secrets.SECRET_VALUE }}",
+    }),
+    environmentRow(703, "mixed-reference-agent", {
+      FIRST_VALUE: "${{ vars.FIRST_VALUE }}",
+      SECOND_VALUE: "${{ secrets.SECOND_VALUE }}",
+    }),
+    environmentRow(704, "literal-agent", {
+      REFERENCE_VALUE: "${{ vars.REFERENCE_VALUE }}",
+      LITERAL_VALUE: "literal-${{ vars.LITERAL_VALUE }}",
+    }),
+    environmentRow(705, "malformed-agent", {
+      UNSUPPORTED_VALUE: "${{ env.UNSUPPORTED_VALUE }}",
+    }),
+  ];
+  const result = classifyPlanRows(rows);
+  const refinement =
+    result.agentExecutionPlans.refinements.systemEnvironmentDifferences;
+  assert.equal(
+    result.agentExecutionPlans.systemEnvironmentDifferences.count,
+    5,
+  );
+  assert.equal(refinement.primary.variableReferenceOnly.count, 1);
+  assert.equal(refinement.primary.secretReferenceOnly.count, 1);
+  assert.equal(refinement.primary.mixedVariableSecretReferenceOnly.count, 1);
+  assert.equal(refinement.primary.containsLiteralRuntimeValue.count, 1);
+  assert.equal(refinement.primary.malformedOrUnsupportedTemplate.count, 1);
+  assert.equal(refinement.primary.unclassifiedValueShape.count, 0);
+  assert.equal(
+    refinement.overlaps.officialModelProviderBindingCollision.count,
+    1,
+  );
+  assert.equal(refinement.overlaps.multipleSurvivingLegacyEntries.count, 2);
+  assert.equal(refinement.overlaps.mixedSourceOrValueSemantics.count, 3);
+  assert.equal(refinement.primaryPartitionClosure.classification, "exact");
+  assert.equal(refinement.primaryUnionClosure.classification, "exact");
+  assert.equal(refinement.overlapUnionClosure.classification, "exact");
+
+  const unclassifiedId = id(706);
+  const unclassifiedRow = executionPlanRow({
+    id: unclassifiedId,
+    agentName: "no-environment-agent",
+  });
+  const failureGates = new Set<string>();
+  const forced = classifyExceptionRefinements({
+    rowsById: new Map([[unclassifiedId, [unclassifiedRow]]]),
+    environmentIds: [unclassifiedId],
+    unsupportedIds: [],
+    unclassifiedIds: [],
+    failureGates,
+  });
+  assert.equal(
+    forced.systemEnvironmentDifferences.primary.unclassifiedValueShape.count,
+    1,
+  );
+  assert.ok(
+    failureGates.has(
+      "agentExecutionPlans.refinements.systemEnvironmentDifferences.unclassifiedValueShape",
+    ),
+  );
+}
+
+function testUnsupportedExceptionRefinements(): void {
+  const id = (suffix: number): string => {
+    return `00000000-0000-4000-8000-${suffix.toString().padStart(12, "0")}`;
+  };
+  const hashPriority = mutableAgentContent("hash-priority-agent");
+  (
+    hashPriority.agents["hash-priority-agent"] as { framework: string }
+  ).framework = "future-framework";
+  const singular = {
+    version: "1",
+    agent: { framework: "claude-code" },
+  };
+  const missing = { version: "1", agents: {} };
+  const framework = {
+    version: "1",
+    agents: { "framework-agent": { framework: "future-framework" } },
+  };
+  const environment = {
+    version: "1",
+    agents: {
+      "invalid-environment-agent": {
+        framework: "claude-code",
+        environment: { INVALID_VALUE: 1 },
+      },
+    },
+  };
+  const volume = {
+    version: "1",
+    agents: {
+      "invalid-volume-agent": {
+        framework: "claude-code",
+        volumes: ["missing-volume:/data"],
+      },
+    },
+  };
+  const other = {
+    version: "",
+    agents: { "other-invalid-agent": { framework: "claude-code" } },
+  };
+  const rows = [
+    executionPlanRow({
+      id: id(711),
+      agentName: "hash-priority-agent",
+      content: hashPriority,
+      headVersionId: "e".repeat(64),
+      versionId: "e".repeat(64),
+    }),
+    executionPlanRow({
+      id: id(712),
+      agentName: "non-object-agent",
+      content: "invalid-content",
+    }),
+    executionPlanRow({
+      id: id(713),
+      agentName: "singular-agent",
+      content: singular,
+    }),
+    executionPlanRow({
+      id: id(714),
+      agentName: "missing-agent",
+      content: missing,
+    }),
+    executionPlanRow({
+      id: id(715),
+      agentName: "framework-agent",
+      content: framework,
+    }),
+    executionPlanRow({
+      id: id(716),
+      agentName: "invalid-environment-agent",
+      content: environment,
+    }),
+    executionPlanRow({
+      id: id(717),
+      agentName: "invalid-volume-agent",
+      content: volume,
+    }),
+    executionPlanRow({
+      id: id(718),
+      agentName: "other-invalid-agent",
+      content: other,
+    }),
+  ];
+  const result = classifyPlanRows(rows);
+  const refinement =
+    result.agentExecutionPlans.refinements.unsupportedOrInvalidContent;
+  assert.equal(result.agentExecutionPlans.unsupportedOrInvalidContent.count, 8);
+  for (const reason of [
+    "contentHashMismatch",
+    "nonObjectNullOrArrayContent",
+    "runtimeResolvableLegacySingularAgent",
+    "missingOrAmbiguousActiveAgentDefinition",
+    "unsupportedOrMissingFramework",
+    "invalidEnvironmentContainerOrTemplateType",
+    "invalidActiveVolumeOrArtifactShapeOrReference",
+    "otherSchemaInvalidOrRuntimeUnresolvableContent",
+  ] as const) {
+    assert.equal(refinement.primary[reason].count, 1, reason);
+  }
+  assert.equal(refinement.primaryPartitionClosure.classification, "exact");
+  assert.equal(refinement.primaryUnionClosure.classification, "exact");
+}
+
+function testUnclassifiedExceptionRefinements(): void {
+  const id = (suffix: number): string => {
+    return `00000000-0000-4000-8000-${suffix.toString().padStart(12, "0")}`;
+  };
+  const ignored = mutableAgentContent("ignored-nested-agent");
+  ignored.volumes = {
+    unused: { name: "ignored-storage", version: "latest" },
+  };
+  Object.assign(ignored.volumes.unused!, { futureField: "ignored-value" });
+
+  const inactive = mutableAgentContent("selected-agent");
+  inactive.agents["inactive-agent"] = {
+    framework: "claude-code",
+    futureField: "inactive-value",
+  };
+
+  const active = mutableAgentContent("active-extra-agent");
+  active.agents["active-extra-agent"]!.futureField = "active-value";
+
+  const activeStorage = mutableAgentContent("active-storage-agent");
+  activeStorage.agents["active-storage-agent"]!.volumes = [
+    "active-storage:/storage",
+  ];
+  activeStorage.volumes = {
+    "active-storage": {
+      name: "active-storage",
+      version: "latest",
+      system: true,
+    },
+  };
+
+  const singularStorage = mutableAgentContent("plural-fallback-agent");
+  Object.assign(singularStorage, {
+    agent: {
+      framework: "claude-code",
+      volumes: ["singular-storage:/storage"],
+    },
+  });
+  singularStorage.volumes = {
+    "singular-storage": {
+      name: "singular-storage",
+      version: "latest",
+      system: true,
+    },
+  };
+
+  const inactiveStorage = mutableAgentContent("selected-storage-agent");
+  inactiveStorage.agents["inactive-storage-agent"] = {
+    framework: "claude-code",
+    volumes: ["inactive-storage:/storage"],
+  };
+  inactiveStorage.volumes = {
+    "inactive-storage": {
+      name: "inactive-storage",
+      version: "latest",
+      system: true,
+    },
+  };
+
+  const unreferencedStorage = mutableAgentContent("unreferenced-storage-agent");
+  unreferencedStorage.volumes = {
+    "unreferenced-storage": {
+      name: "unreferenced-storage",
+      version: "latest",
+      system: true,
+    },
+  };
+
+  const selectedAndInactiveStorage = mutableAgentContent(
+    "selected-and-inactive-storage-agent",
+  );
+  selectedAndInactiveStorage.agents[
+    "selected-and-inactive-storage-agent"
+  ]!.volumes = ["shared-storage:/storage"];
+  selectedAndInactiveStorage.agents["inactive-shared-storage-agent"] = {
+    framework: "claude-code",
+    volumes: ["shared-storage:/other-storage"],
+  };
+  selectedAndInactiveStorage.volumes = {
+    "shared-storage": {
+      name: "shared-storage",
+      version: "latest",
+      system: true,
+    },
+  };
+
+  const mixedStorage = mutableAgentContent("mixed-storage-agent");
+  mixedStorage.agents["mixed-storage-agent"]!.volumes = [
+    "selected-mixed-storage:/storage",
+  ];
+  mixedStorage.volumes = {
+    "selected-mixed-storage": {
+      name: "selected-mixed-storage",
+      version: "latest",
+      system: true,
+    },
+    "unreferenced-mixed-storage": {
+      name: "unreferenced-mixed-storage",
+      version: "latest",
+      system: true,
+    },
+  };
+
+  const singularTopLevel = mutableAgentContent("plural-agent");
+  Object.assign(singularTopLevel, {
+    agent: { framework: "claude-code" },
+  });
+
+  const mixed = mutableAgentContent("mixed-selected-agent");
+  mixed.agents["mixed-selected-agent"]!.futureField = "selected-value";
+  mixed.agents["mixed-inactive-agent"] = {
+    framework: "claude-code",
+    futureField: "inactive-value",
+  };
+
+  const future = mutableAgentContent("future-agent");
+  future.futureField = { payload: "unknown-future-value" };
+
+  const recursivelyScanned = mutableAgentContent("recursive-agent");
+  recursivelyScanned.futureField = {
+    payload: "${{ secrets.STATUS_REFERENCE }}",
+  };
+
+  const assertSystemVolumeClass = (
+    suffix: number,
+    agentName: string,
+    content: MutableAgentContent,
+    expected: UnclassifiedPrimaryClass,
+  ): void => {
+    const single = classifyPlanRows([
+      executionPlanRow({ id: id(suffix), agentName, content }),
+    ]).agentExecutionPlans.refinements.unclassifiedContent;
+    assert.equal(single.primary[expected].count, 1, expected);
+    assert.equal(single.primaryPartitionClosure.classification, "exact");
+  };
+  assertSystemVolumeClass(
+    728,
+    "active-storage-agent",
+    activeStorage,
+    "activeAgentOrTopLevelRuntimeReachable",
+  );
+  assertSystemVolumeClass(
+    729,
+    "plural-fallback-agent",
+    singularStorage,
+    "activeAgentOrTopLevelRuntimeReachable",
+  );
+  assertSystemVolumeClass(
+    730,
+    "selected-storage-agent",
+    inactiveStorage,
+    "inactiveAgentOnly",
+  );
+  assertSystemVolumeClass(
+    731,
+    "unreferenced-storage-agent",
+    unreferencedStorage,
+    "runtimeIgnoredOnly",
+  );
+  assertSystemVolumeClass(
+    732,
+    "selected-and-inactive-storage-agent",
+    selectedAndInactiveStorage,
+    "activeAgentOrTopLevelRuntimeReachable",
+  );
+  assertSystemVolumeClass(
+    733,
+    "mixed-storage-agent",
+    mixedStorage,
+    "mixedLocations",
+  );
+
+  const result = classifyPlanRows([
+    executionPlanRow({
+      id: id(721),
+      agentName: "ignored-nested-agent",
+      content: ignored,
+    }),
+    executionPlanRow({
+      id: id(722),
+      agentName: "selected-agent",
+      content: inactive,
+    }),
+    executionPlanRow({
+      id: id(723),
+      agentName: "active-extra-agent",
+      content: active,
+    }),
+    executionPlanRow({
+      id: id(724),
+      agentName: "plural-agent",
+      content: singularTopLevel,
+    }),
+    executionPlanRow({
+      id: id(725),
+      agentName: "mixed-selected-agent",
+      content: mixed,
+    }),
+    executionPlanRow({
+      id: id(726),
+      agentName: "future-agent",
+      content: future,
+    }),
+    executionPlanRow({
+      id: id(727),
+      agentName: "recursive-agent",
+      content: recursivelyScanned,
+    }),
+    executionPlanRow({
+      id: id(728),
+      agentName: "active-storage-agent",
+      content: activeStorage,
+    }),
+    executionPlanRow({
+      id: id(729),
+      agentName: "plural-fallback-agent",
+      content: singularStorage,
+    }),
+    executionPlanRow({
+      id: id(730),
+      agentName: "selected-storage-agent",
+      content: inactiveStorage,
+    }),
+    executionPlanRow({
+      id: id(731),
+      agentName: "unreferenced-storage-agent",
+      content: unreferencedStorage,
+    }),
+    executionPlanRow({
+      id: id(732),
+      agentName: "selected-and-inactive-storage-agent",
+      content: selectedAndInactiveStorage,
+    }),
+    executionPlanRow({
+      id: id(733),
+      agentName: "mixed-storage-agent",
+      content: mixedStorage,
+    }),
+  ]);
+  const refinement = result.agentExecutionPlans.refinements.unclassifiedContent;
+  assert.equal(result.agentExecutionPlans.unclassifiedContent.count, 13);
+  assert.equal(refinement.primary.runtimeIgnoredOnly.count, 2);
+  assert.equal(refinement.primary.inactiveAgentOnly.count, 2);
+  assert.equal(
+    refinement.primary.activeAgentOrTopLevelRuntimeReachable.count,
+    6,
+  );
+  assert.equal(refinement.primary.mixedLocations.count, 2);
+  assert.equal(refinement.primary.stillUnknown.count, 1);
+  assert.equal(refinement.primaryPartitionClosure.classification, "exact");
+  assert.equal(refinement.primaryUnionClosure.classification, "exact");
+}
+
+function testExceptionActivityRefinementsAtSnapshot(snapshot: Date): void {
+  const day = 24 * 60 * 60 * 1000;
+  const id = (suffix: number): string => {
+    return `00000000-0000-4000-8000-${suffix.toString().padStart(12, "0")}`;
+  };
+  const row = (
+    suffix: number,
+    age: number | null,
+    flags: {
+      readonly active?: boolean;
+      readonly exercised?: boolean;
+      readonly unknownStatus?: boolean;
+    } = {},
+  ): AgentExecutionPlanInventoryRow => {
+    const name = `activity-agent-${suffix}`;
+    const content = mutableAgentContent(name);
+    content.agents[name]!.environment = {
+      ACTIVITY_VALUE: "${{ vars.ACTIVITY_VALUE }}",
+    };
+    return executionPlanRow({
+      id: id(suffix),
+      agentName: name,
+      content,
+      activitySnapshotTime: snapshot,
+      latestAttributedRunAt:
+        age === null ? null : new Date(snapshot.getTime() - age),
+      activeNonterminalRun: flags.active,
+      currentHeadEverExercised: flags.exercised,
+      unknownRunStatus: flags.unknownStatus,
+    });
+  };
+  const result = classifyPlanRows([
+    row(731, 7 * day, { active: true }),
+    row(732, 30 * day, { exercised: true }),
+    row(733, 90 * day),
+    row(734, 91 * day),
+    row(735, null),
+  ]);
+  const refinement =
+    result.agentExecutionPlans.refinements.systemEnvironmentDifferences;
+  const parent = refinement.activity.parent;
+  assert.equal(parent.latestAttributedRun.within7Days.count, 1);
+  assert.equal(parent.latestAttributedRun.over7Through30Days.count, 1);
+  assert.equal(parent.latestAttributedRun.over30Through90Days.count, 1);
+  assert.equal(parent.latestAttributedRun.over90Days.count, 1);
+  assert.equal(parent.latestAttributedRun.noAttributedRun.count, 1);
+  assert.equal(
+    parent.latestAttributedRun.partitionClosure.classification,
+    "exact",
+  );
+  assert.equal(parent.activeNonterminalRun.count, 1);
+  assert.equal(parent.currentHeadEverExercised.count, 1);
+  const primaryActivity = refinement.activity.primary.variableReferenceOnly;
+  assert.ok(primaryActivity);
+  assert.equal(primaryActivity.latestAttributedRun.within7Days.count, 1);
+  assert.equal(primaryActivity.latestAttributedRun.over7Through30Days.count, 1);
+  assert.equal(
+    primaryActivity.latestAttributedRun.over30Through90Days.count,
+    1,
+  );
+  assert.equal(primaryActivity.latestAttributedRun.over90Days.count, 1);
+  assert.equal(primaryActivity.latestAttributedRun.noAttributedRun.count, 1);
+  assert.equal(
+    primaryActivity.latestAttributedRun.partitionClosure.classification,
+    "exact",
+  );
+
+  const unknownStatus = classifyPlanRows([
+    row(736, day, { unknownStatus: true }),
+  ]);
+  gatePresent(unknownStatus, "agentExecutionPlans.activity.unknownRunStatus");
+  const future = classifyPlanRows([row(737, -1)]);
+  gatePresent(future, "agentExecutionPlans.activity.partitionClosure");
+}
+
+function testExceptionActivityRefinements(): void {
+  for (const timeZone of ACTIVITY_TIME_ZONES) {
+    const snapshot =
+      timeZone === "UTC"
+        ? new Date("2026-08-17T00:00:00.000Z")
+        : new Date("2026-08-17T00:00:00.000+08:00");
+    testExceptionActivityRefinementsAtSnapshot(snapshot);
+  }
 }
 
 function testDependencyDriftAndDeterminism(): void {
@@ -1076,6 +1620,21 @@ function testDependencyDriftAndDeterminism(): void {
       observedRepositoryDependencies: observed,
     });
     gatePresent(result, `dependencies.repository.${kind}`);
+  }
+
+  for (const kind of ["discovery", "reviewedConsumers"] as const) {
+    const observedRuntimeContentConsumers = {
+      ...EXPECTED_RUNTIME_CONTENT_CONSUMER_MANIFEST,
+      [kind]: [
+        ...EXPECTED_RUNTIME_CONTENT_CONSUMER_MANIFEST[kind],
+        "unexpected-runtime-consumer",
+      ],
+    };
+    const result = classifyPreflightInventory(capabilities, emptyInventory(), {
+      ...classificationOptions(),
+      observedRuntimeContentConsumers,
+    });
+    gatePresent(result, `agentExecutionPlans.runtimeConsumerManifest.${kind}`);
   }
 
   const rows = [
@@ -1112,6 +1671,7 @@ function testOutputRedaction(): void {
           id: rawId,
           agentName: rawName,
           content: rawPlanContent,
+          latestAttributedRunAt: new Date("2026-08-16T12:34:56.000Z"),
         }),
       ],
       versions: [
@@ -1135,6 +1695,8 @@ function testOutputRedaction(): void {
     "never-emit-version-content",
     "never-emit-environment-value",
     "RAW_SECRET_KEY",
+    "2026-08-16T12:34:56.000Z",
+    "2026-08-17T00:00:00.000Z",
     "OKOU_TOKEN",
     "user_clerk_fixture",
     "postgresql://user:secret@host/database",
@@ -1194,7 +1756,7 @@ function assertSafeAggregateValues(value: unknown, pathPrefix = ""): void {
     return;
   }
   const allowedClassifications = new Set([
-    "vm0.agent-compose-consolidation-preflight.v2",
+    "vm0.agent-compose-consolidation-preflight.v3",
     "passed",
     "failed",
     "exact",
@@ -1222,6 +1784,15 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
   const observed = await collectRepositoryDependencyManifest(repositoryRoot);
   assert.equal(
     manifestsEqual(EXPECTED_REPOSITORY_DEPENDENCIES, observed),
+    true,
+  );
+  const observedRuntimeConsumers =
+    await collectRuntimeContentConsumerManifest(repositoryRoot);
+  assert.equal(
+    runtimeContentConsumerManifestsEqual(
+      EXPECTED_RUNTIME_CONTENT_CONSUMER_MANIFEST,
+      observedRuntimeConsumers,
+    ),
     true,
   );
 
@@ -1266,6 +1837,268 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
       drifted.nonTypeScriptConsumers.length,
       reviewed.nonTypeScriptConsumers.length + 1,
     );
+
+    const slackRouteDirectory = path.join(
+      fixtureRoot,
+      "turbo/apps/api/src/signals/routes",
+    );
+    await fs.mkdir(slackRouteDirectory, { recursive: true });
+    const slackConsumerPath = path.join(
+      slackRouteDirectory,
+      "integrations-slack.ts",
+    );
+    const semanticConsumer = [
+      "const selection = { content: agentComposeVersions.content };",
+      "const version = { content: selection.content, other: selection.content };",
+      "extractAndGroupVariables(version.content);",
+      "",
+    ].join("\n");
+    await fs.writeFile(slackConsumerPath, semanticConsumer, "utf8");
+
+    const runCreateDirectory = path.join(
+      fixtureRoot,
+      "turbo/apps/api/src/signals/services",
+    );
+    await fs.mkdir(runCreateDirectory, { recursive: true });
+    const runCreateConsumerPath = path.join(
+      runCreateDirectory,
+      "agent-run-create.service.ts",
+    );
+    const rawStorageForwarding = [
+      "interface AgentComposeContent { readonly agents?: unknown }",
+      "function buildRunnerJobPayload() {",
+      "  return prepareAgentRunStorage({ content: args.resolved.content });",
+      "}",
+      "",
+    ].join("\n");
+    await fs.writeFile(runCreateConsumerPath, rawStorageForwarding, "utf8");
+
+    const storageConsumerPath = path.join(
+      runCreateDirectory,
+      "agent-run-storage.service.ts",
+    );
+    const systemVolumeConsumer = [
+      "interface VolumeConfig { readonly system?: boolean }",
+      "interface ResolvedVolume { readonly system?: boolean }",
+      "interface AgentComposeContent { readonly volumes?: Record<string, VolumeConfig> }",
+      "function firstAgentEntry(content: AgentComposeContent) { return content; }",
+      "function resolveComposeVolumes() {",
+      "  return { system: config.system };",
+      "}",
+      "function resolveVolumeStorage() {",
+      "  if (args.volume.system) return SYSTEM_ORG_ID;",
+      "}",
+      "function resolveComposeStorageInput() { return resolveVolumeStorage(); }",
+      "function storageManifestRequests() {",
+      "  if (volume.system) return SYSTEM_ORG_ID;",
+      "}",
+      "",
+    ].join("\n");
+    await fs.writeFile(storageConsumerPath, systemVolumeConsumer, "utf8");
+
+    const zeroRunConsumerPath = path.join(
+      runCreateDirectory,
+      "zero-runs-create.service.ts",
+    );
+    const zeroRunConsumer = [
+      "interface ZeroAgentRunRecord {",
+      "  readonly content: ZeroAgentComposeContent;",
+      "}",
+      "interface ZeroAgentComposeContent { readonly agents?: unknown }",
+      "async function loadZeroAgent() {",
+      "  const [agent] = await db",
+      "    .select({ content: agentComposeVersions.content })",
+      "    .from(zeroAgents)",
+      "    .innerJoin(agentComposes, eq(agentComposes.id, zeroAgents.id))",
+      "    .innerJoin(",
+      "      agentComposeVersions,",
+      "      eq(agentComposeVersions.id, agentComposes.headVersionId),",
+      "    );",
+      "  return agent",
+      "    ? { content: agent.content as ZeroAgentComposeContent }",
+      "    : null;",
+      "}",
+      "",
+    ].join("\n");
+    await fs.writeFile(zeroRunConsumerPath, zeroRunConsumer, "utf8");
+
+    const semanticBaseline =
+      await collectRuntimeContentConsumerManifest(fixtureRoot);
+
+    const unrelatedZeroRunQueryChange = zeroRunConsumer
+      .replace(
+        ".select({ content: agentComposeVersions.content })",
+        ".select({ defaultAgentId: orgMetadata.defaultAgentId, content: agentComposeVersions.content })",
+      )
+      .replace(
+        "    .innerJoin(agentComposes, eq(agentComposes.id, zeroAgents.id))",
+        [
+          "    .leftJoin(orgMetadata, eq(orgMetadata.orgId, zeroAgents.orgId))",
+          "    .innerJoin(agentComposes, eq(agentComposes.id, zeroAgents.id))",
+        ].join("\n"),
+      );
+    await fs.writeFile(
+      zeroRunConsumerPath,
+      unrelatedZeroRunQueryChange,
+      "utf8",
+    );
+    const unrelatedZeroRunQuery =
+      await collectRuntimeContentConsumerManifest(fixtureRoot);
+    assert.equal(
+      runtimeContentConsumerManifestsEqual(
+        semanticBaseline,
+        unrelatedZeroRunQuery,
+      ),
+      true,
+    );
+    await fs.writeFile(zeroRunConsumerPath, zeroRunConsumer, "utf8");
+
+    const zeroRunSemanticDrifts = [
+      zeroRunConsumer.replace(
+        "eq(agentComposes.id, zeroAgents.id)",
+        "eq(agentComposes.id, zeroAgents.otherId)",
+      ),
+      zeroRunConsumer.replace(
+        "agentComposes.headVersionId",
+        "agentComposes.otherVersionId",
+      ),
+      zeroRunConsumer.replace(
+        "content: agentComposeVersions.content",
+        "content: agentComposeVersions.otherContent",
+      ),
+      zeroRunConsumer.replace(
+        "agent.content as ZeroAgentComposeContent",
+        "agent.content as UnknownComposeContent",
+      ),
+      zeroRunConsumer.replace(
+        "readonly content: ZeroAgentComposeContent",
+        "readonly content: unknown",
+      ),
+      zeroRunConsumer.replace(
+        "    .innerJoin(agentComposes, eq(agentComposes.id, zeroAgents.id))",
+        "",
+      ),
+      zeroRunConsumer.replace(
+        "    .innerJoin(agentComposes, eq(agentComposes.id, zeroAgents.id))",
+        [
+          "    .innerJoin(agentComposes, eq(agentComposes.id, zeroAgents.id))",
+          "    .innerJoin(agentComposes, eq(agentComposes.id, zeroAgents.id))",
+        ].join("\n"),
+      ),
+      zeroRunConsumer.replace(
+        "  return agent",
+        [
+          "  const duplicate = agent.content as ZeroAgentComposeContent;",
+          "  void duplicate;",
+          "  return agent",
+        ].join("\n"),
+      ),
+      zeroRunConsumer.replace(
+        "  return agent",
+        ["  void agent.content;", "  return agent"].join("\n"),
+      ),
+    ];
+    for (const driftedZeroRunConsumer of zeroRunSemanticDrifts) {
+      assert.notEqual(driftedZeroRunConsumer, zeroRunConsumer);
+      await fs.writeFile(zeroRunConsumerPath, driftedZeroRunConsumer, "utf8");
+      const zeroRunSemanticDrift =
+        await collectRuntimeContentConsumerManifest(fixtureRoot);
+      assert.equal(
+        runtimeContentConsumerManifestsEqual(
+          semanticBaseline,
+          zeroRunSemanticDrift,
+        ),
+        false,
+      );
+    }
+    await fs.writeFile(zeroRunConsumerPath, zeroRunConsumer, "utf8");
+
+    await fs.writeFile(
+      runCreateConsumerPath,
+      rawStorageForwarding.replace(
+        "content: args.resolved.content",
+        "content: args.parsed.content",
+      ),
+      "utf8",
+    );
+    const rawForwardingDrift =
+      await collectRuntimeContentConsumerManifest(fixtureRoot);
+    assert.equal(
+      runtimeContentConsumerManifestsEqual(
+        semanticBaseline,
+        rawForwardingDrift,
+      ),
+      false,
+    );
+    await fs.writeFile(runCreateConsumerPath, rawStorageForwarding, "utf8");
+
+    await fs.writeFile(
+      storageConsumerPath,
+      systemVolumeConsumer.replace("config.system", "config.optional"),
+      "utf8",
+    );
+    const systemPropagationDrift =
+      await collectRuntimeContentConsumerManifest(fixtureRoot);
+    assert.equal(
+      runtimeContentConsumerManifestsEqual(
+        semanticBaseline,
+        systemPropagationDrift,
+      ),
+      false,
+    );
+    await fs.writeFile(storageConsumerPath, systemVolumeConsumer, "utf8");
+
+    await fs.writeFile(
+      storageConsumerPath,
+      systemVolumeConsumer.replace("volume.system", "volume.optional"),
+      "utf8",
+    );
+    const systemPlanningDrift =
+      await collectRuntimeContentConsumerManifest(fixtureRoot);
+    assert.equal(
+      runtimeContentConsumerManifestsEqual(
+        semanticBaseline,
+        systemPlanningDrift,
+      ),
+      false,
+    );
+    await fs.writeFile(storageConsumerPath, systemVolumeConsumer, "utf8");
+
+    await fs.writeFile(
+      slackConsumerPath,
+      `${semanticConsumer}const unrelatedCardUrl = "https://example.invalid/card";\n`,
+      "utf8",
+    );
+    const unrelatedChange =
+      await collectRuntimeContentConsumerManifest(fixtureRoot);
+    assert.equal(
+      runtimeContentConsumerManifestsEqual(semanticBaseline, unrelatedChange),
+      true,
+    );
+    await fs.writeFile(
+      slackConsumerPath,
+      semanticConsumer.replace(
+        "extractAndGroupVariables(version.content)",
+        "extractAndGroupVariables(version.other)",
+      ),
+      "utf8",
+    );
+    const semanticDrift =
+      await collectRuntimeContentConsumerManifest(fixtureRoot);
+    assert.equal(
+      runtimeContentConsumerManifestsEqual(semanticBaseline, semanticDrift),
+      false,
+    );
+    await fs.writeFile(
+      path.join(sourceDirectory, "unexpected-content-consumer.ts"),
+      "interface AgentComposeContent { readonly future?: unknown }\n",
+      "utf8",
+    );
+    const exhaustiveDrift =
+      await collectRuntimeContentConsumerManifest(fixtureRoot);
+    assert.ok(
+      exhaustiveDrift.discovery.length > semanticDrift.discovery.length,
+    );
   } finally {
     await fs.rm(fixtureRoot, { recursive: true, force: true });
   }
@@ -1296,10 +2129,10 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
       workflow.indexOf('>> "$GITHUB_OUTPUT"'),
   );
   assert.match(workflow, /scripts\/agent-compose-consolidation-preflight\.ts/u);
-  assert.match(workflow, /#27613 \+ #27656/u);
-  assert.match(workflow, /vm0\.agent-compose-consolidation-preflight\.v2/u);
+  assert.match(workflow, /#27613 \+ #27656 \+ #27671/u);
+  assert.match(workflow, /vm0\.agent-compose-consolidation-preflight\.v3/u);
   assert.equal(
-    workflow.includes("vm0.agent-compose-consolidation-preflight.v1"),
+    /vm0\.agent-compose-consolidation-preflight\.v[12]/u.test(workflow),
     false,
   );
   assert.equal(
@@ -1360,6 +2193,16 @@ function databaseUrlFor(baseUrl: URL, database: string): string {
   return result.toString();
 }
 
+function databaseUrlForTimeZone(
+  baseUrl: URL,
+  database: string,
+  timeZone: (typeof ACTIVITY_TIME_ZONES)[number],
+): string {
+  const result = new URL(databaseUrlFor(baseUrl, database));
+  result.searchParams.set("options", `-c TimeZone=${timeZone}`);
+  return result.toString();
+}
+
 async function catalogRows(client: Client): Promise<CatalogDependencyRow[]> {
   const result = await client.query<CatalogDependencyRow>(
     CATALOG_DEPENDENCY_QUERY,
@@ -1376,7 +2219,10 @@ function catalogCount(
   }).length;
 }
 
-async function testDatabaseBoundaries(databaseUrl: string): Promise<void> {
+async function testDatabaseBoundariesForTimeZone(
+  databaseUrl: string,
+  timeZone: (typeof ACTIVITY_TIME_ZONES)[number],
+): Promise<void> {
   const sourceUrl = new URL(databaseUrl);
   const admin = new Client({
     connectionString: databaseUrlFor(sourceUrl, "postgres"),
@@ -1384,7 +2230,7 @@ async function testDatabaseBoundaries(databaseUrl: string): Promise<void> {
   await admin.connect();
   await admin.query(`DROP DATABASE IF EXISTS "${testDatabase}" WITH (FORCE)`);
   await admin.query(`CREATE DATABASE "${testDatabase}"`);
-  const testUrl = databaseUrlFor(sourceUrl, testDatabase);
+  const testUrl = databaseUrlForTimeZone(sourceUrl, testDatabase, timeZone);
 
   try {
     execFileSync("tsx", [path.join(dirname, "migrate.ts")], {
@@ -1397,6 +2243,14 @@ async function testDatabaseBoundaries(databaseUrl: string): Promise<void> {
     await client.connect();
     await writer.connect();
     try {
+      const sessionTimeZone = await client.query<{ timeZone: string }>(
+        `SELECT current_setting('TimeZone') AS "timeZone"`,
+      );
+      const writerTimeZone = await writer.query<{ timeZone: string }>(
+        `SELECT current_setting('TimeZone') AS "timeZone"`,
+      );
+      assert.equal(sessionTimeZone.rows[0]?.timeZone, timeZone);
+      assert.equal(writerTimeZone.rows[0]?.timeZone, timeZone);
       const emptyApprovedDigest = fingerprintSortedSet(
         "approved-artifact-set",
         [],
@@ -1476,6 +2330,9 @@ async function testDatabaseBoundaries(databaseUrl: string): Promise<void> {
         [concurrentAgentId],
       );
       await withReadOnlySnapshot(client, {}, async () => {
+        const snapshotStart = await client.query<{ observedAt: Date }>(
+          `SELECT transaction_timestamp() AS "observedAt"`,
+        );
         const start = await client.query<{ head: string }>(
           `SELECT "head_version_id" AS "head" FROM "agent_composes"
            WHERE "id" = $1`,
@@ -1490,8 +2347,17 @@ async function testDatabaseBoundaries(databaseUrl: string): Promise<void> {
            WHERE "id" = $1`,
           [concurrentAgentId],
         );
+        const snapshotEnd = await client.query<{ observedAt: Date }>(
+          `SELECT transaction_timestamp() AS "observedAt"`,
+        );
         assert.deepEqual(end.rows, start.rows);
         assert.equal(start.rows[0]?.head, firstHead);
+        assert.ok(snapshotStart.rows[0]?.observedAt instanceof Date);
+        assert.ok(snapshotEnd.rows[0]?.observedAt instanceof Date);
+        assert.equal(
+          snapshotEnd.rows[0]?.observedAt.getTime(),
+          snapshotStart.rows[0]?.observedAt.getTime(),
+        );
       });
       const live = await client.query<{ head: string }>(
         `SELECT "head_version_id" AS "head" FROM "agent_composes"
@@ -1499,6 +2365,152 @@ async function testDatabaseBoundaries(databaseUrl: string): Promise<void> {
         [concurrentAgentId],
       );
       assert.equal(live.rows[0]?.head, secondHead);
+
+      const provenanceOwnerAgentId = "00000000-0000-4000-8000-000000027621";
+      const exercisingAgentId = "00000000-0000-4000-8000-000000027622";
+      const exercisingSessionId = "00000000-0000-4000-8000-000000027623";
+      const exercisingRunId = "00000000-0000-4000-8000-000000027624";
+      const sharedContent = mutableAgentContent("shared-activity-agent");
+      sharedContent.agents["shared-activity-agent"]!.environment = {
+        SHARED_ACTIVITY_VALUE: "${{ vars.SHARED_ACTIVITY_VALUE }}",
+      };
+      const sharedVersionId = computeComposeVersionId(sharedContent);
+      await client.query(
+        `INSERT INTO "agent_composes" (
+           "id", "user_id", "name", "org_id"
+         ) VALUES
+           ($1, 'provenance-owner-user', 'shared-activity-agent', 'provenance-owner-org'),
+           ($2, 'exercising-agent-user', 'shared-activity-agent', 'exercising-agent-org')`,
+        [provenanceOwnerAgentId, exercisingAgentId],
+      );
+      await client.query(
+        `INSERT INTO "zero_agents" ("id", "org_id", "owner", "name")
+         VALUES
+           ($1, 'provenance-owner-org', 'provenance-owner-user', 'shared-activity-agent'),
+           ($2, 'exercising-agent-org', 'exercising-agent-user', 'shared-activity-agent')`,
+        [provenanceOwnerAgentId, exercisingAgentId],
+      );
+      await client.query(
+        `INSERT INTO "agent_compose_versions" (
+           "id", "compose_id", "content", "created_by"
+         ) VALUES ($1, $2, $3::jsonb, 'provenance-owner-user')`,
+        [sharedVersionId, provenanceOwnerAgentId, sharedContent],
+      );
+      await client.query(
+        `UPDATE "agent_composes" SET "head_version_id" = $1
+         WHERE "id" = ANY($2::uuid[])`,
+        [sharedVersionId, [provenanceOwnerAgentId, exercisingAgentId]],
+      );
+      await client.query(
+        `INSERT INTO "agent_sessions" (
+           "id", "user_id", "org_id", "agent_compose_id"
+         ) VALUES ($1, 'exercising-agent-user', 'exercising-agent-org', $2)`,
+        [exercisingSessionId, exercisingAgentId],
+      );
+      await client.query(
+        `INSERT INTO "agent_runs" (
+           "id", "user_id", "org_id", "session_id", "status", "prompt",
+           "agent_compose_version_id"
+         ) VALUES (
+           $1, 'exercising-agent-user', 'exercising-agent-org', $2,
+           'running', 'session-owned activity fixture', $3
+        )`,
+        [exercisingRunId, exercisingSessionId, sharedVersionId],
+      );
+      const ownershipProbe = await client.query<{
+        activeNonterminalRun: boolean;
+        agentComposeId: string;
+        activitySnapshotTime: Date;
+        currentHeadEverExercised: boolean;
+        latestAttributedRunAt: Date;
+      }>(
+        `SELECT
+           "session"."agent_compose_id"::text AS "agentComposeId",
+           max("run"."created_at") AT TIME ZONE current_setting('TimeZone')
+             AS "latestAttributedRunAt",
+           transaction_timestamp() AS "activitySnapshotTime",
+           bool_or("run"."status" = 'running') AS "activeNonterminalRun",
+           bool_or(
+             "run"."agent_compose_version_id" = "compose"."head_version_id"
+           ) AS "currentHeadEverExercised"
+         FROM "agent_sessions" AS "session"
+         INNER JOIN "agent_runs" AS "run"
+           ON "run"."session_id" = "session"."id"
+         INNER JOIN "agent_composes" AS "compose"
+           ON "compose"."id" = "session"."agent_compose_id"
+          AND "compose"."org_id" = "session"."org_id"
+          AND "compose"."org_id" = "run"."org_id"
+         WHERE "session"."id" = $1
+         GROUP BY "session"."agent_compose_id"`,
+        [exercisingSessionId],
+      );
+      const ownershipProbeRow = ownershipProbe.rows[0];
+      assert.deepEqual(
+        {
+          activeNonterminalRun: ownershipProbeRow?.activeNonterminalRun,
+          agentComposeMatch:
+            ownershipProbeRow?.agentComposeId === exercisingAgentId,
+          currentHeadEverExercised: ownershipProbeRow?.currentHeadEverExercised,
+          latestAttributedRunAtIsDate:
+            ownershipProbeRow?.latestAttributedRunAt instanceof Date,
+          latestAttributedRunIsNotFuture:
+            ownershipProbeRow?.latestAttributedRunAt instanceof Date &&
+            ownershipProbeRow.activitySnapshotTime instanceof Date &&
+            ownershipProbeRow.latestAttributedRunAt.getTime() <=
+              ownershipProbeRow.activitySnapshotTime.getTime(),
+          snapshotIsDate:
+            ownershipProbeRow?.activitySnapshotTime instanceof Date,
+          rowCount: ownershipProbe.rowCount,
+        },
+        {
+          activeNonterminalRun: true,
+          agentComposeMatch: true,
+          currentHeadEverExercised: true,
+          latestAttributedRunAtIsDate: true,
+          latestAttributedRunIsNotFuture: true,
+          snapshotIsDate: true,
+          rowCount: 1,
+        },
+      );
+      const attributed = await executeAgentComposeConsolidationPreflight({
+        connectionString: testUrl,
+        repositoryRoot,
+        classification: {
+          ...executionOptions,
+          expectedDanglingHeadCount: 1,
+        },
+      });
+      const activity =
+        attributed.agentExecutionPlans.refinements.systemEnvironmentDifferences
+          .activity.parent;
+      assert.equal(
+        attributed.agentExecutionPlans.systemEnvironmentDifferences.count,
+        2,
+      );
+      assert.equal(
+        activity.latestAttributedRun.within7Days.count,
+        1,
+        JSON.stringify({
+          within7Days: activity.latestAttributedRun.within7Days.count,
+          over7Through30Days:
+            activity.latestAttributedRun.over7Through30Days.count,
+          over30Through90Days:
+            activity.latestAttributedRun.over30Through90Days.count,
+          over90Days: activity.latestAttributedRun.over90Days.count,
+          noAttributedRun: activity.latestAttributedRun.noAttributedRun.count,
+          activeNonterminalRun: activity.activeNonterminalRun.count,
+          currentHeadEverExercised: activity.currentHeadEverExercised.count,
+          partitionClosure:
+            activity.latestAttributedRun.partitionClosure.classification,
+        }),
+      );
+      assert.equal(activity.latestAttributedRun.noAttributedRun.count, 1);
+      assert.equal(activity.activeNonterminalRun.count, 1);
+      assert.equal(activity.currentHeadEverExercised.count, 1);
+      assert.equal(
+        activity.latestAttributedRun.partitionClosure.classification,
+        "exact",
+      );
 
       const baselineCatalog = await catalogRows(client);
       for (const kind of CATALOG_DEPENDENCY_KINDS) {
@@ -1671,12 +2683,22 @@ async function testDatabaseBoundaries(databaseUrl: string): Promise<void> {
   }
 }
 
+async function testDatabaseBoundaries(databaseUrl: string): Promise<void> {
+  for (const timeZone of ACTIVITY_TIME_ZONES) {
+    await testDatabaseBoundariesForTimeZone(databaseUrl, timeZone);
+  }
+}
+
 export async function validateAgentComposeConsolidationPreflightStatic(): Promise<void> {
   testApplicationOwnedPlanAndCanonicalCompatibility();
   testIdentityAndApprovedArtifacts();
   testVersionHeadRunAndCheckpointClassifications();
   testDanglingClassifications();
   testAgentExecutionPlanClassifications();
+  testEnvironmentExceptionRefinements();
+  testUnsupportedExceptionRefinements();
+  testUnclassifiedExceptionRefinements();
+  testExceptionActivityRefinements();
   testDependencyDriftAndDeterminism();
   testOutputRedaction();
   await testRepositoryAndWorkflowValidators();
