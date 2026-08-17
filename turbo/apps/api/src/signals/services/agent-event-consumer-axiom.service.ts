@@ -8,7 +8,8 @@ import { getDatasetName, ingestAxiomDirect } from "../external/axiom";
 const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
 const AXIOM_EVENT_INGEST_TIMEOUT_MS = 10_000;
 const AXIOM_EVENT_DATA_MAX_BYTES = 900_000;
-const AXIOM_TRUNCATED_STRING_SUFFIX = "\n\n[truncated]";
+const AXIOM_TRUNCATED_STRING_VALUE = "[truncated]";
+const AXIOM_TRUNCATED_STRING_SUFFIX = `\n\n${AXIOM_TRUNCATED_STRING_VALUE}`;
 
 const L = logger("agent-event-consumer:axiom");
 
@@ -109,6 +110,9 @@ function truncatedStringPrefix(value: string, end: number): string {
   if (boundaryCodePoint !== undefined && boundaryCodePoint > 65_535) {
     safeEnd -= 1;
   }
+  if (safeEnd === 0) {
+    return AXIOM_TRUNCATED_STRING_VALUE;
+  }
   return `${value.slice(0, safeEnd)}${AXIOM_TRUNCATED_STRING_SUFFIX}`;
 }
 
@@ -122,10 +126,12 @@ function truncateStringSlotToFit(
   currentBytes: number,
   encoder: InstanceType<typeof TextEncoder>,
 ): StringTruncationResult {
-  const minimumValue = AXIOM_TRUNCATED_STRING_SUFFIX.trimStart();
-  const minimumSerializedBytes = serializedUtf8Bytes(minimumValue, encoder);
+  const minimumSerializedBytes = serializedUtf8Bytes(
+    AXIOM_TRUNCATED_STRING_VALUE,
+    encoder,
+  );
   const surroundingBytes = currentBytes - slot.serializedBytes;
-  setStringSlot(slot, minimumValue);
+  setStringSlot(slot, AXIOM_TRUNCATED_STRING_VALUE);
   if (surroundingBytes + minimumSerializedBytes > AXIOM_EVENT_DATA_MAX_BYTES) {
     return {
       bytes: surroundingBytes + minimumSerializedBytes,
@@ -179,13 +185,13 @@ function reducedEventData(
   };
   const stringSlots = collectMutableStringSlots(reducedEvent, encoder);
 
-  const suffixBytes = serializedUtf8Bytes(
-    AXIOM_TRUNCATED_STRING_SUFFIX,
+  const minimumReplacementBytes = serializedUtf8Bytes(
+    AXIOM_TRUNCATED_STRING_VALUE,
     encoder,
   );
   let currentBytes = serializedUtf8Bytes(reducedEvent, encoder);
   for (const slot of stringSlots) {
-    if (slot.serializedBytes <= suffixBytes) {
+    if (slot.serializedBytes <= minimumReplacementBytes) {
       continue;
     }
     const truncation = truncateStringSlotToFit(slot, currentBytes, encoder);
