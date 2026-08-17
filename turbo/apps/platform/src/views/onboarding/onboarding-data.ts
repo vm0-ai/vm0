@@ -366,7 +366,7 @@ function onboardingWorkflow(
 
 export function onboardingWorkflowCategories(
   t: TFunction<"common">,
-  assistantName: AssistantName = "Zero",
+  assistantName: AssistantName,
 ): readonly OnboardingWorkflowCategory[] {
   return WORKFLOW_CATEGORY_IDS.map((id) => {
     return {
@@ -410,7 +410,7 @@ export function hasOnboardingWorkflow(workflowIdValue: string | null): boolean {
 export function findOnboardingWorkflow(
   workflowIdValue: string | null,
   t: TFunction<"common">,
-  assistantName: AssistantName = "Zero",
+  assistantName: AssistantName,
 ): OnboardingWorkflow | null {
   const identity = onboardingWorkflowIdentity(workflowIdValue);
   if (!identity) {
@@ -432,7 +432,7 @@ export function buildWorkflowPrompt(
 
 export function buildCustomWorkflowPrompt(
   note: string,
-  assistantName: AssistantName = "Zero",
+  assistantName: AssistantName,
 ): string {
   const trimmedNote = note.trim();
   if (!trimmedNote) {

@@ -15,7 +15,7 @@ interface Category {
 }
 
 interface IdeationFilterOptions {
-  readonly brandName?: BrandName;
+  readonly brandName: BrandName;
   readonly features?: Partial<Record<FeatureSwitchKey, boolean>>;
   readonly visibleConnectorSlugs?: ReadonlySet<string>;
 }
@@ -561,7 +561,7 @@ function isEnabled(
   return !!features?.[useCase.featureFlag];
 }
 
-function brandUseCase(useCase: UseCase, brandName: BrandName = "VM0"): UseCase {
+function brandUseCase(useCase: UseCase, brandName: BrandName): UseCase {
   if (useCase.id !== "zapier-vm0-migration") {
     return useCase;
   }
