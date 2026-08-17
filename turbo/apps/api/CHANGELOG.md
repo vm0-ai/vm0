@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.451.18](https://github.com/vm0-ai/vm0/compare/api-v1.451.17...api-v1.451.18) (2026-08-17)
+
+
+### Bug Fixes
+
+* **api:** derive missing connector catalog compatibility ([#27661](https://github.com/vm0-ai/vm0/issues/27661)) ([94e9c55](https://github.com/vm0-ai/vm0/commit/94e9c554303c0b325c938d5ba0f4c1c582a87022))
+
 ## [1.451.17](https://github.com/vm0-ai/vm0/compare/api-v1.451.16...api-v1.451.17) (2026-08-17)
 
 
