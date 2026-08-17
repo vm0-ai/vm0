@@ -111,12 +111,17 @@ impl PiRpcProjection {
                 "Pi RPC message_end omitted its message".to_string(),
             ));
         };
-        if message.get("role").and_then(Value::as_str) != Some("assistant") {
-            return Ok(None);
+        match message.get("role").and_then(Value::as_str) {
+            Some("assistant") => self.project_assistant_message(message),
+            Some("toolResult") => self.project_tool_result_message(message),
+            _ => Ok(None),
         }
+    }
+
+    fn project_assistant_message(&mut self, message: &Value) -> Result<Option<Value>, AgentError> {
         self.final_assistant = Some(message.clone());
-        let text = assistant_text(message);
-        if text.is_empty() {
+        let content = assistant_content(message);
+        if content.is_empty() {
             return Ok(None);
         }
         let timestamp = message
@@ -137,7 +142,7 @@ impl PiRpcProjection {
             "message": {
                 "id": id,
                 "role": "assistant",
-                "content": [{ "type": "text", "text": text }],
+                "content": content,
                 "model": model,
                 "usage": {
                     "input_tokens": message.pointer("/usage/input").and_then(Value::as_u64).unwrap_or(0),
@@ -145,6 +150,39 @@ impl PiRpcProjection {
                     "cache_read_input_tokens": message.pointer("/usage/cacheRead").and_then(Value::as_u64).unwrap_or(0),
                     "cache_creation_input_tokens": message.pointer("/usage/cacheWrite").and_then(Value::as_u64).unwrap_or(0),
                 },
+            },
+        })))
+    }
+
+    fn project_tool_result_message(&self, message: &Value) -> Result<Option<Value>, AgentError> {
+        let tool_use_id = message
+            .get("toolCallId")
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                AgentError::Execution(
+                    "Pi RPC toolResult message omitted its tool call id".to_string(),
+                )
+            })?;
+        let content = message
+            .get("content")
+            .and_then(Value::as_array)
+            .ok_or_else(|| {
+                AgentError::Execution("Pi RPC toolResult message omitted its content".to_string())
+            })?
+            .iter()
+            .filter_map(project_tool_result_content)
+            .collect::<Vec<_>>();
+        Ok(Some(json!({
+            "type": "user",
+            "session_id": self.session_id,
+            "message": {
+                "role": "user",
+                "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": tool_use_id,
+                    "content": content,
+                    "is_error": message.get("isError").and_then(Value::as_bool).unwrap_or(false),
+                }],
             },
         })))
     }
@@ -174,6 +212,48 @@ impl PiRpcProjection {
             "session_id": self.session_id,
             "duration_ms": self.started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64,
         })
+    }
+}
+
+fn assistant_content(message: &Value) -> Vec<Value> {
+    message
+        .get("content")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|block| match block.get("type").and_then(Value::as_str) {
+            Some("text") => block
+                .get("text")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|text| !text.is_empty())
+                .map(|text| json!({ "type": "text", "text": text })),
+            Some("toolCall") => Some(json!({
+                "type": "tool_use",
+                "id": block.get("id")?.as_str()?,
+                "name": block.get("name")?.as_str()?,
+                "input": block.get("arguments")?,
+            })),
+            _ => None,
+        })
+        .collect()
+}
+
+fn project_tool_result_content(block: &Value) -> Option<Value> {
+    match block.get("type").and_then(Value::as_str) {
+        Some("text") => Some(json!({
+            "type": "text",
+            "text": block.get("text")?.as_str()?,
+        })),
+        Some("image") => Some(json!({
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": block.get("mimeType")?.as_str()?,
+                "data": block.get("data")?.as_str()?,
+            },
+        })),
+        _ => None,
     }
 }
 
