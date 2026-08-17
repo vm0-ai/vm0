@@ -10,6 +10,9 @@ use crate::handlers::{
 };
 use crate::log::log;
 use crate::quiesce::OperationGuard;
+use crate::worker_ownership::{
+    ShutdownConnectionOnDrop, SingleActiveAdmission, SingleActivePermit,
+};
 use crate::writer::GuestWriter;
 
 const THREAD_FILE_WRITE: &str = "vsock-file-write";
@@ -41,37 +44,19 @@ pub(crate) enum FileWriteSubmitError {
     Disconnected,
 }
 
-pub(crate) struct FileWriteAdmission {
-    active: Arc<AtomicBool>,
-}
-
-impl Drop for FileWriteAdmission {
-    fn drop(&mut self) {
-        self.active.store(false, Ordering::Release);
-    }
-}
-
 struct FileWriteRequest {
     kind: FileWriteKind,
     seq: u32,
     payload: Vec<u8>,
     operation_guard: OperationGuard,
-    admission: FileWriteAdmission,
+    admission: SingleActivePermit,
 }
 
 pub(crate) struct FileWriteWorker {
     sender: Option<SyncSender<FileWriteRequest>>,
     handle: Option<JoinHandle<()>>,
-    active: Arc<AtomicBool>,
+    admission: SingleActiveAdmission,
     connection_cancel: Arc<AtomicBool>,
-}
-
-struct ShutdownConnectionOnDrop(GuestWriter);
-
-impl Drop for ShutdownConnectionOnDrop {
-    fn drop(&mut self) {
-        self.0.shutdown();
-    }
 }
 
 impl FileWriteWorker {
@@ -90,7 +75,7 @@ impl FileWriteWorker {
                 // This worker exists for exactly one connection. Any exit,
                 // including an unwind, closes that connection so a pending
                 // host request cannot wait without a response producer.
-                let _shutdown_on_exit = ShutdownConnectionOnDrop(writer.clone());
+                let _shutdown_on_exit = ShutdownConnectionOnDrop::new(writer.clone());
                 while let Ok(request) = receiver.recv() {
                     if let Err(error) = handle_request(request, &writer, &worker_cancel) {
                         log("ERROR", &format!("file-write worker failed: {error}"));
@@ -102,18 +87,13 @@ impl FileWriteWorker {
         Ok(Self {
             sender: Some(sender),
             handle: Some(handle),
-            active: Arc::new(AtomicBool::new(false)),
+            admission: SingleActiveAdmission::new(),
             connection_cancel,
         })
     }
 
-    pub(crate) fn try_admit(&self) -> Option<FileWriteAdmission> {
-        self.active
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .ok()
-            .map(|_| FileWriteAdmission {
-                active: Arc::clone(&self.active),
-            })
+    pub(crate) fn try_admit(&self) -> Option<SingleActivePermit> {
+        self.admission.try_acquire()
     }
 
     pub(crate) fn submit(
@@ -122,7 +102,7 @@ impl FileWriteWorker {
         seq: u32,
         payload: &[u8],
         operation_guard: OperationGuard,
-        admission: FileWriteAdmission,
+        admission: SingleActivePermit,
     ) -> Result<(), FileWriteSubmitError> {
         let request = FileWriteRequest {
             kind,
