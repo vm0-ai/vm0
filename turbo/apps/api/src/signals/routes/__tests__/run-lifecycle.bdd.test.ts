@@ -33,7 +33,7 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { v5 as uuidv5 } from "uuid";
 
-import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -59,6 +59,7 @@ import {
   installApiTestConnectorCatalog,
   readApiTestConnectorCatalogCompatibilityEvaluations,
   readApiTestConnectorCatalogValidationAuthority,
+  replaceApiTestConnectorCatalogStoredBytes,
   setApiTestConnectorCatalogValidationAuthority,
 } from "../../../test-fixtures/connector-catalog";
 import { readStorageS3PrefixFixture } from "../../../test-fixtures/storage";
@@ -987,6 +988,7 @@ function expectClaimNetworkPolicyRefreshPath(
   path:
     | "baseline"
     | "baseline_empty"
+    | "no_builtin_targets"
     | "full_missing_baseline"
     | "full_invalid_baseline"
     | "full_incompatible_baseline",
@@ -1430,7 +1432,7 @@ async function setupSameThreadReuseScenario(sourceRunnerIdentity?: {
 }
 
 describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks", () => {
-  it("emits api dispatch timing for direct dispatch runs", async () => {
+  it("emits api dispatch timing for exact-empty direct dispatch runs", async () => {
     const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     const prompt = "api dispatch timing should not leak prompt";
@@ -1476,33 +1478,25 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       expect(finishedAt - Number(event.duration_ms)).toBe(previousBoundaryAt);
       previousBoundaryAt = finishedAt;
     }
-    expectApiDispatchActions(
+    expectNoApiDispatchActions(
       timingEvents,
       API_DISPATCH_CONNECTOR_CATALOG_ACTION_TYPES,
     );
-    expectApiDispatchSpanKind(
+    expectNoApiDispatchActions(
       timingEvents,
-      API_DISPATCH_CONNECTOR_CATALOG_ACTION_TYPES,
-      "nested",
+      API_DISPATCH_STORED_CONNECTOR_SUBSTEP_ACTION_TYPES,
     );
-    expectConnectorCatalogLoadTiming({
-      events: timingEvents,
-      acceptedCacheOutcome: "miss",
-      runtimeCacheOutcome: "miss",
-      requestedConnectorCount: "known",
-      validation: {
-        outcome: "full_fallback",
-        fallbackReason: "different_authority",
-      },
-    });
-    expectApiDispatchActions(
+    expectNoApiDispatchActions(
       timingEvents,
-      API_DISPATCH_CONNECTOR_CATALOG_COMPLETE_VALIDATION_ACTION_TYPES,
+      API_DISPATCH_CUSTOM_CONNECTOR_TIMING_ACTION_TYPES,
     );
-    expectApiDispatchSpanKind(
-      timingEvents,
-      API_DISPATCH_CONNECTOR_CATALOG_COMPLETE_VALIDATION_ACTION_TYPES,
-      "nested",
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_context_load_connector_contexts",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({ connector_scope_source: "empty" }),
     );
     expectNoApiDispatchActions(timingEvents, ["api_dispatch_check_org_tier"]);
     expectApiDispatchActions(
@@ -1646,39 +1640,29 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const claim = await api.claimRunnerJob(created.runId);
     expect(claim.appendSystemPrompt ?? "").toContain("Timezone: UTC");
     expect(claim.userTimezone).toBeUndefined();
+    expect(claim.networkPolicies).toHaveProperty(
+      "model-provider:anthropic-api-key",
+    );
+    expect(claim.connectorRuntimeTargets).toStrictEqual([]);
+    expect(claim).not.toHaveProperty("connectorPermissionBaseline");
+    expectClaimNetworkPolicyRefreshPath(created.runId, "no_builtin_targets");
 
     const {
       actor: warmActor,
       agentId: warmAgentId,
       runnerGroup: warmRunnerGroup,
     } = await entitledRunActor();
-    const warmPrompt = "warm catalog timing should not leak prompt";
+    const warmPrompt = "repeated empty timing should not leak prompt";
     const warmCreated = await api.createRun(warmActor, {
       agentId: warmAgentId,
       prompt: warmPrompt,
       modelProvider: "anthropic-api-key",
     });
     const warmTimingEvents = apiDispatchTimingEventsForRun(warmCreated.runId);
-    expectApiDispatchActions(
-      warmTimingEvents,
-      API_DISPATCH_CONNECTOR_CATALOG_ALWAYS_ACTION_TYPES,
-    );
     expectNoApiDispatchActions(
       warmTimingEvents,
-      API_DISPATCH_CONNECTOR_CATALOG_MISS_ACTION_TYPES,
+      API_DISPATCH_CONNECTOR_CATALOG_ACTION_TYPES,
     );
-    expectApiDispatchSpanKind(
-      warmTimingEvents,
-      API_DISPATCH_CONNECTOR_CATALOG_ALWAYS_ACTION_TYPES,
-      "nested",
-    );
-    expectConnectorCatalogLoadTiming({
-      events: warmTimingEvents,
-      acceptedCacheOutcome: "hit",
-      runtimeCacheOutcome: "hit",
-      requestedConnectorCount: "known",
-      validation: { outcome: "not_run" },
-    });
     for (const event of warmTimingEvents) {
       expect(event).toStrictEqual(
         expect.objectContaining({
@@ -1711,12 +1695,17 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const missingAuthorityActor = await entitledRunActor();
     const missingAuthorityPrompt =
       "legacy connector catalog validation authority";
-    const missingAuthorityRun = await api.createRun(
+    const missingAuthorityRun = await api.createDirectRun(
       missingAuthorityActor.actor,
       {
-        agentId: missingAuthorityActor.agentId,
-        prompt: missingAuthorityPrompt,
-        modelProvider: "anthropic-api-key",
+        ...zeroBackedDirectRunBody({
+          agentId: missingAuthorityActor.agentId,
+          prompt: missingAuthorityPrompt,
+        }),
+        connectorScope: {
+          allowedConnectorSlugs: ["x"],
+          allowedCustomConnectorIds: [],
+        },
       },
     );
     const missingAuthorityEvents = apiDispatchTimingEventsForRun(
@@ -1766,12 +1755,17 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
 
     const missingCompatibilityActor = await entitledRunActor();
     const missingCompatibilityPrompt = "missing connector compatibility";
-    const missingCompatibilityRun = await api.createRun(
+    const missingCompatibilityRun = await api.createDirectRun(
       missingCompatibilityActor.actor,
       {
-        agentId: missingCompatibilityActor.agentId,
-        prompt: missingCompatibilityPrompt,
-        modelProvider: "anthropic-api-key",
+        ...zeroBackedDirectRunBody({
+          agentId: missingCompatibilityActor.agentId,
+          prompt: missingCompatibilityPrompt,
+        }),
+        connectorScope: {
+          allowedConnectorSlugs: ["x"],
+          allowedCustomConnectorIds: [],
+        },
       },
     );
     const missingCompatibilityEvents = apiDispatchTimingEventsForRun(
@@ -1824,12 +1818,17 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const differentAuthorityActor = await entitledRunActor();
     const differentAuthorityPrompt =
       "different connector catalog validation authority";
-    const differentAuthorityRun = await api.createRun(
+    const differentAuthorityRun = await api.createDirectRun(
       differentAuthorityActor.actor,
       {
-        agentId: differentAuthorityActor.agentId,
-        prompt: differentAuthorityPrompt,
-        modelProvider: "anthropic-api-key",
+        ...zeroBackedDirectRunBody({
+          agentId: differentAuthorityActor.agentId,
+          prompt: differentAuthorityPrompt,
+        }),
+        connectorScope: {
+          allowedConnectorSlugs: ["x"],
+          allowedCustomConnectorIds: [],
+        },
       },
     );
     const differentAuthorityEvents = apiDispatchTimingEventsForRun(
@@ -1863,10 +1862,15 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
 
     const cachedActor = await entitledRunActor();
     const cachedPrompt = "cached connector catalog fallback";
-    const cachedRun = await api.createRun(cachedActor.actor, {
-      agentId: cachedActor.agentId,
-      prompt: cachedPrompt,
-      modelProvider: "anthropic-api-key",
+    const cachedRun = await api.createDirectRun(cachedActor.actor, {
+      ...zeroBackedDirectRunBody({
+        agentId: cachedActor.agentId,
+        prompt: cachedPrompt,
+      }),
+      connectorScope: {
+        allowedConnectorSlugs: ["x"],
+        allowedCustomConnectorIds: [],
+      },
     });
     const cachedEvents = apiDispatchTimingEventsForRun(cachedRun.runId);
     expectApiDispatchActions(
@@ -1913,15 +1917,25 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const firstConcurrentPrompt = "first concurrent attested catalog load";
     const secondConcurrentPrompt = "second concurrent attested catalog load";
     const [firstConcurrentRun, secondConcurrentRun] = await Promise.all([
-      api.createRun(concurrentActor.actor, {
-        agentId: concurrentActor.agentId,
-        prompt: firstConcurrentPrompt,
-        modelProvider: "anthropic-api-key",
+      api.createDirectRun(concurrentActor.actor, {
+        ...zeroBackedDirectRunBody({
+          agentId: concurrentActor.agentId,
+          prompt: firstConcurrentPrompt,
+        }),
+        connectorScope: {
+          allowedConnectorSlugs: ["x"],
+          allowedCustomConnectorIds: [],
+        },
       }),
-      api.createRun(concurrentActor.actor, {
-        agentId: concurrentActor.agentId,
-        prompt: secondConcurrentPrompt,
-        modelProvider: "anthropic-api-key",
+      api.createDirectRun(concurrentActor.actor, {
+        ...zeroBackedDirectRunBody({
+          agentId: concurrentActor.agentId,
+          prompt: secondConcurrentPrompt,
+        }),
+        connectorScope: {
+          allowedConnectorSlugs: ["x"],
+          allowedCustomConnectorIds: [],
+        },
       }),
     ]);
     const concurrentEvents = [
@@ -1975,6 +1989,80 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     }
   });
 
+  it("keeps exact-empty create and claim independent from catalog availability", async () => {
+    const api = createRunsApi(context);
+    const originalCatalogBucket = env("R2_USER_STORAGES_BUCKET_NAME");
+    const isolatedCatalogBucket = `test-run-lifecycle-empty-catalog-${randomUUID()}`;
+    mockEnv("R2_USER_STORAGES_BUCKET_NAME", isolatedCatalogBucket);
+    const catalogVersion = `api-test-empty-unavailable-${randomUUID()}`;
+    await installApiTestConnectorCatalog({ catalogVersion });
+    const restoreCatalogs = async (): Promise<void> => {
+      mockEnv("R2_USER_STORAGES_BUCKET_NAME", isolatedCatalogBucket);
+      await installApiTestConnectorCatalog({ catalogVersion });
+      mockEnv("R2_USER_STORAGES_BUCKET_NAME", originalCatalogBucket);
+      await installApiTestConnectorCatalog();
+    };
+    onTestFinished(restoreCatalogs);
+
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const catalogBackedScope = {
+      allowedConnectorSlugs: ["x"],
+      allowedCustomConnectorIds: [],
+    } as const;
+    const warmed = await api.createDirectRun(actor, {
+      ...zeroBackedDirectRunBody({
+        agentId,
+        prompt: "warm the exact catalog identity before corruption",
+      }),
+      connectorScope: catalogBackedScope,
+    });
+    await api.requestCancelRun(actor, warmed.runId, [200]);
+
+    await replaceApiTestConnectorCatalogStoredBytes({
+      catalogVersion: `${catalogVersion}-unavailable`,
+      rawBytes: Buffer.from("{"),
+      catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
+    });
+
+    const emptyRun = await api.createRun(actor, {
+      agentId,
+      prompt: "run without connectors while the catalog is unavailable",
+      modelProvider: "anthropic-api-key",
+    });
+    expectNoApiDispatchActions(
+      apiDispatchTimingEventsForRun(emptyRun.runId),
+      API_DISPATCH_CONNECTOR_CATALOG_ACTION_TYPES,
+    );
+    await api.heartbeatRunner(runnerGroup);
+    const emptyClaim = await api.claimRunnerJob(emptyRun.runId);
+    expect(emptyClaim.networkPolicies).toHaveProperty(
+      "model-provider:anthropic-api-key",
+    );
+    expect(emptyClaim).not.toHaveProperty("connectorPermissionBaseline");
+    expectClaimNetworkPolicyRefreshPath(emptyRun.runId, "no_builtin_targets");
+
+    const rejectedPrompt =
+      "reject catalog-backed creation while the catalog is unavailable";
+    await expect(
+      api.createDirectRun(actor, {
+        ...zeroBackedDirectRunBody({ agentId, prompt: rejectedPrompt }),
+        connectorScope: catalogBackedScope,
+      }),
+    ).rejects.toThrow("Accepted external connector catalog is unavailable");
+    const runs = await api.listAgentRuns(actor, {
+      status: "queued,pending,running,completed,failed,timeout,cancelled",
+      limit: 100,
+    });
+    expect(
+      runs.runs.filter((run) => {
+        return run.prompt === rejectedPrompt;
+      }),
+    ).toHaveLength(0);
+
+    await restoreCatalogs();
+    await api.requestCancelRun(actor, emptyRun.runId, [200]);
+  });
+
   it("retains direct plan admission and emits create timing", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
@@ -2001,43 +2089,26 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
 
     const timingEvents = apiDispatchTimingEventsForRun(created.runId);
     expectApiDispatchActions(timingEvents, API_DISPATCH_TIMING_ACTION_TYPES);
-    expectApiDispatchActions(
+    expectNoApiDispatchActions(
       timingEvents,
-      API_DISPATCH_CONNECTOR_CATALOG_ALWAYS_ACTION_TYPES,
+      API_DISPATCH_CONNECTOR_CATALOG_ACTION_TYPES,
     );
-    expectApiDispatchSpanKind(
+    expectNoApiDispatchActions(
       timingEvents,
-      API_DISPATCH_CONNECTOR_CATALOG_ALWAYS_ACTION_TYPES,
-      "nested",
+      API_DISPATCH_STORED_CONNECTOR_SUBSTEP_ACTION_TYPES,
     );
-    const connectorCatalogLoadEvent = singleApiDispatchEvent(
+    expectNoApiDispatchActions(
       timingEvents,
-      "api_dispatch_connector_catalog_load_runtime_snapshot",
-    );
-    expect(["hit", "miss", "in_flight"]).toContain(
-      connectorCatalogLoadEvent.connector_catalog_accepted_cache_outcome,
-    );
-    expect(["hit", "miss"]).toContain(
-      connectorCatalogLoadEvent.connector_catalog_runtime_cache_outcome,
-    );
-    expect(connectorCatalogLoadEvent.connector_catalog_validation_outcome).toBe(
-      connectorCatalogLoadEvent.connector_catalog_accepted_cache_outcome ===
-        "miss"
-        ? "attested"
-        : "not_run",
-    );
-    expect(connectorCatalogLoadEvent).not.toHaveProperty(
-      "connector_catalog_validation_fallback_reason",
-    );
-    expect(CONNECTOR_CATALOG_RAW_SIZE_BUCKETS).toContain(
-      connectorCatalogLoadEvent.connector_catalog_raw_size_bucket,
-    );
-    expect(CONNECTOR_CATALOG_COUNT_BUCKETS).toContain(
-      connectorCatalogLoadEvent.connector_catalog_connector_count_bucket,
+      API_DISPATCH_CUSTOM_CONNECTOR_TIMING_ACTION_TYPES,
     );
     expect(
-      connectorCatalogLoadEvent.connector_catalog_requested_connector_count_bucket,
-    ).toBe("0");
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_context_load_connector_contexts",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({ connector_scope_source: "empty" }),
+    );
     expectApiDispatchActions(timingEvents, ["api_dispatch_check_org_tier"]);
     expectApiDispatchSpanKind(
       timingEvents,
@@ -2100,6 +2171,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(created.runId);
     expect(claim.userTimezone).toBe("Asia/Shanghai");
+    expect(claim.connectorRuntimeTargets).toStrictEqual([]);
     await api.requestCancelRun(actor, created.runId, [200]);
 
     if (!actor.orgId) {
@@ -3342,7 +3414,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         resumedClaim.sandboxToken,
       ],
     });
-    expectClaimNetworkPolicyRefreshPath(resumed.runId, "baseline_empty");
+    expectClaimNetworkPolicyRefreshPath(resumed.runId, "no_builtin_targets");
 
     await api.requestCancelRun(actor, resumed.runId, [200]);
   });
@@ -5615,7 +5687,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     expect(thirdClaim.environment ?? {}).not.toHaveProperty("ZERO_TOKEN");
     expect(thirdClaim).not.toHaveProperty("secretValueEnvironmentKeys");
     expect(thirdClaim).not.toHaveProperty("runContextStorage");
-    expectClaimNetworkPolicyRefreshPath(third.runId, "baseline_empty");
+    expectClaimNetworkPolicyRefreshPath(third.runId, "no_builtin_targets");
     const apiToRunnerQueueMs = sandboxOperationDurationForRun(
       third.runId,
       "api_to_runner_queue",
@@ -7071,6 +7143,10 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const timingEvents = apiDispatchTimingEventsForRun(run.runId);
     expectNoApiDispatchActions(
       timingEvents,
+      API_DISPATCH_CONNECTOR_CATALOG_ACTION_TYPES,
+    );
+    expectNoApiDispatchActions(
+      timingEvents,
       API_DISPATCH_STORED_CONNECTOR_SUBSTEP_ACTION_TYPES,
     );
     expectNoApiDispatchActions(
@@ -7085,6 +7161,8 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(findFirewallEntry(claim.firewalls, "x")).toBeUndefined();
     expect(claim.billableFirewalls).not.toContain("x");
     expect(claim.networkPolicies ?? {}).not.toHaveProperty("x");
+    expect(claim).not.toHaveProperty("connectorPermissionBaseline");
+    expectClaimNetworkPolicyRefreshPath(run.runId, "no_builtin_targets");
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
@@ -7116,6 +7194,10 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       modelProvider: "anthropic-api-key",
     });
     const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_CONNECTOR_CATALOG_ALWAYS_ACTION_TYPES,
+    );
     expectApiDispatchActions(
       timingEvents,
       API_DISPATCH_STORED_CONNECTOR_SNAPSHOT_ACTION_TYPES,
@@ -7181,6 +7263,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(findFirewallEntry(claim.firewalls, "slack")).toBeUndefined();
     expect(claim.billableFirewalls).not.toContain("slack");
     expect(claim.networkPolicies ?? {}).not.toHaveProperty("slack");
+    expectClaimNetworkPolicyRefreshPath(run.runId, "baseline");
 
     // The stored access token is only readable through the firewall-auth
     // webhook with the claimed run's sandbox token.
@@ -9338,6 +9421,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       prompt: "use the reconnected custom connector",
       modelProvider: "anthropic-api-key",
     });
+    expectApiDispatchActions(
+      apiDispatchTimingEventsForRun(restoredRun.runId),
+      API_DISPATCH_CONNECTOR_CATALOG_ALWAYS_ACTION_TYPES,
+    );
     const restoredClaim = await api.claimRunnerJob(restoredRun.runId);
     const customApis = inlineFirewallApis(
       restoredClaim.firewalls,
@@ -9366,6 +9453,11 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       customConnectorId: custom.id,
       baseUrlVars: { workspace: "restored" },
     });
+    expect(restoredClaim).not.toHaveProperty("connectorPermissionBaseline");
+    expectClaimNetworkPolicyRefreshPath(
+      restoredRun.runId,
+      "no_builtin_targets",
+    );
     const restoredSkillMount = expectCanonicalStorageManifest(
       restoredClaim.storageManifest,
     )?.storageMounts.find((storage) => {
@@ -10201,7 +10293,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     ]);
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
-    expectClaimNetworkPolicyRefreshPath(run.runId, "baseline_empty");
+    expectClaimNetworkPolicyRefreshPath(run.runId, "no_builtin_targets");
 
     const idPart = saved.connector.id.replaceAll("-", "");
     const internalName = `custom_connector_${idPart}`;
@@ -11233,7 +11325,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       "model-provider:anthropic-api-key",
     );
     expect(claim).not.toHaveProperty("connectorPermissionBaseline");
-    expectClaimNetworkPolicyRefreshPath(run.runId, "baseline_empty");
+    expectClaimNetworkPolicyRefreshPath(run.runId, "no_builtin_targets");
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
@@ -13095,7 +13187,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       expectedActionTypes: ["claim_route_response_network_policy_refresh"],
       forbiddenValues: [firstPrompt, claimed.body.sandboxToken, apiKey.token],
     });
-    expectClaimNetworkPolicyRefreshPath(first.runId, "baseline_empty");
+    expectClaimNetworkPolicyRefreshPath(first.runId, "no_builtin_targets");
     const claimRouteTimingEvents = claimRouteTimingEventsForRun(first.runId);
     expect(claimRouteTimingEvents).toHaveLength(
       CLAIM_ROUTE_TIMING_ACTION_TYPES.length + 1,

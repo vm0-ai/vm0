@@ -538,6 +538,23 @@ interface EffectiveConnectorScope {
   readonly source: ConnectorScopeSource;
 }
 
+export type RunConnectorCatalogSelection =
+  | { readonly kind: "empty" }
+  | {
+      readonly kind: "complete";
+      readonly snapshot: ConnectorRuntimeSnapshot;
+    };
+
+export function isEmptyRunConnectorScope(scope: {
+  readonly allowedConnectorSlugs: readonly ConnectorSlug[];
+  readonly allowedCustomConnectorIds: readonly string[];
+}): boolean {
+  return (
+    scope.allowedConnectorSlugs.length === 0 &&
+    scope.allowedCustomConnectorIds.length === 0
+  );
+}
+
 interface ExplicitConnectorScope {
   readonly allowedConnectorSlugs: readonly ConnectorSlug[];
   readonly allowedCustomConnectorIds: readonly string[];
@@ -947,6 +964,18 @@ interface CustomConnectorRuntimeContext {
   }[];
 }
 
+function emptyCustomConnectorRuntimeContext(): CustomConnectorRuntimeContext {
+  return {
+    firewalls: [],
+    reservedSecretAliases: undefined,
+    permissionPolicies: undefined,
+    targets: [],
+    customConnectorIdByFirewallName: {},
+    mcpConnectorSlugs: [],
+    skills: [],
+  };
+}
+
 function forbidden(message: string): ApiErrorResponse<403, "FORBIDDEN"> {
   return {
     status: 403,
@@ -1121,7 +1150,7 @@ function buildInjectedSkillVolumes(
   args: {
     readonly injectSkillVolumes: CreateAgentRunArgs["injectSkillVolumes"];
     readonly allowedConnectorSlugs: readonly ConnectorSlug[];
-    readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+    readonly connectorCatalogSelection: RunConnectorCatalogSelection;
   },
   skillsRoot: string,
 ): readonly PreparedAdditionalVolume[] | undefined {
@@ -1136,11 +1165,13 @@ function buildInjectedSkillVolumes(
       buildLegacySystemSkillVolumes(seedSkillNames, skillsRoot),
       "system_skill",
     ) ?? []),
-    ...buildConnectorSkillVolumes(
-      args.allowedConnectorSlugs,
-      args.connectorCatalogSnapshot,
-      skillsRoot,
-    ),
+    ...(args.connectorCatalogSelection.kind === "complete"
+      ? buildConnectorSkillVolumes(
+          args.allowedConnectorSlugs,
+          args.connectorCatalogSelection.snapshot,
+          skillsRoot,
+        )
+      : []),
   ];
   return [
     ...systemSkillVolumes,
@@ -4510,15 +4541,7 @@ async function loadCustomConnectorContext(
   timing?: ApiDispatchTimingCollector,
 ): Promise<CustomConnectorRuntimeContext> {
   if (args.allowedCustomConnectorIds.length === 0) {
-    return {
-      firewalls: [],
-      reservedSecretAliases: undefined,
-      permissionPolicies: undefined,
-      targets: [],
-      customConnectorIdByFirewallName: {},
-      mcpConnectorSlugs: [],
-      skills: [],
-    };
+    return emptyCustomConnectorRuntimeContext();
   }
 
   const rows = await loadCustomConnectorRuntimeData(db, {
@@ -4539,15 +4562,7 @@ async function loadCustomConnectorContext(
     },
   });
   if (rows.length === 0) {
-    return {
-      firewalls: [],
-      reservedSecretAliases: undefined,
-      permissionPolicies: undefined,
-      targets: [],
-      customConnectorIdByFirewallName: {},
-      mcpConnectorSlugs: [],
-      skills: [],
-    };
+    return emptyCustomConnectorRuntimeContext();
   }
   signal.throwIfAborted();
   const newRunRows = rows.filter((row) => {
@@ -4941,7 +4956,7 @@ function builtinRuntimeTargetRegistration(
 }
 
 function mergePermissionManifests(args: {
-  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+  readonly connectorCatalogSelection: RunConnectorCatalogSelection;
   readonly builtinSources: readonly BuiltinConnectorManifestSource[];
   readonly connectorManifest: PermissionManifest;
   readonly customConnectorManifest: Pick<
@@ -4964,13 +4979,23 @@ function mergePermissionManifests(args: {
     return undefined;
   }
 
+  const connectorPermissionBaseline = (() => {
+    if (args.builtinSources.length === 0) {
+      return undefined;
+    }
+    if (args.connectorCatalogSelection.kind === "empty") {
+      throw new Error("Builtin connector sources require a complete catalog");
+    }
+    return buildConnectorPermissionBaseline(
+      args.connectorCatalogSelection.snapshot,
+      args.builtinSources,
+    );
+  })();
+
   return {
     firewalls,
     builtinRuntimeTargets,
-    connectorPermissionBaseline: buildConnectorPermissionBaseline(
-      args.connectorCatalogSnapshot,
-      args.builtinSources,
-    ),
+    ...(connectorPermissionBaseline ? { connectorPermissionBaseline } : {}),
     environmentSecretPlaceholders: mergeRecords(
       args.providerManifest?.environmentSecretPlaceholders,
       args.connectorManifest.environmentSecretPlaceholders,
@@ -4989,7 +5014,7 @@ function mergePermissionManifests(args: {
 }
 
 interface BuildPermissionManifestArgs {
-  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+  readonly connectorCatalogSelection: RunConnectorCatalogSelection;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
   readonly permissionPolicies: FirewallPolicies | undefined;
   readonly vars: Record<string, string> | undefined;
@@ -5004,30 +5029,34 @@ interface BuildPermissionManifestArgs {
 async function buildPermissionManifest(
   args: BuildPermissionManifestArgs,
 ): Promise<PermissionManifest | undefined> {
-  const connectorSlugs =
-    args.connectorSlugs ??
-    Object.keys(args.permissionPolicies ?? {}).filter((connectorSlug) => {
-      return args.connectorCatalogSnapshot.serverFirewalls.has(connectorSlug);
-    });
   const connectorBaseUrlVars = mergeRecords(args.vars, args.connectorVars);
   const customConnectorFirewalls = args.customConnectorFirewalls ?? [];
-  const builtinConnectorSlugs = connectorSlugs.filter((connectorSlug) => {
-    return args.connectorCatalogSnapshot.serverFirewalls.has(connectorSlug);
-  });
 
   const builtinSources = await measureApiDispatchTiming(
     args.timing,
     "api_dispatch_prepare_context_load_builtin_permission_indexes",
     "nested",
     async () => {
+      if (args.connectorCatalogSelection.kind === "empty") {
+        return [];
+      }
+      const snapshot = args.connectorCatalogSelection.snapshot;
+      const connectorSlugs =
+        args.connectorSlugs ??
+        Object.keys(args.permissionPolicies ?? {}).filter((connectorSlug) => {
+          return snapshot.serverFirewalls.has(connectorSlug);
+        });
+      const builtinConnectorSlugs = connectorSlugs.filter((connectorSlug) => {
+        return snapshot.serverFirewalls.has(connectorSlug);
+      });
       return await Promise.all(
         builtinConnectorSlugs.map(async (connectorSlug) => {
           const metadata = getRequiredFirewallExecutionMetadata(
-            args.connectorCatalogSnapshot,
+            snapshot,
             connectorSlug,
           );
           const permissionIndex = await loadRequiredFirewallPermissionIndex({
-            snapshot: args.connectorCatalogSnapshot,
+            snapshot,
             connectorSlug,
           });
           return { metadata, permissionIndex };
@@ -5093,7 +5122,7 @@ async function buildPermissionManifest(
     () => {
       return Promise.resolve(
         mergePermissionManifests({
-          connectorCatalogSnapshot: args.connectorCatalogSnapshot,
+          connectorCatalogSelection: args.connectorCatalogSelection,
           builtinSources,
           connectorManifest,
           customConnectorManifest,
@@ -7860,7 +7889,7 @@ function validateRunEnvironmentReferences(args: {
 }
 
 async function buildPreparedPermissionManifest(args: {
-  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+  readonly connectorCatalogSelection: RunConnectorCatalogSelection;
   readonly body: CreateRunBody;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
   readonly storedConnectorMetadataContext: ConnectorRuntimeContext;
@@ -7869,7 +7898,7 @@ async function buildPreparedPermissionManifest(args: {
 }): Promise<PermissionManifest | undefined | CreateRunErrorResult> {
   const result = await settle(
     buildPermissionManifest({
-      connectorCatalogSnapshot: args.connectorCatalogSnapshot,
+      connectorCatalogSelection: args.connectorCatalogSelection,
       modelProvider: args.modelProvider,
       permissionPolicies: args.body.permissionPolicies,
       vars: args.body.vars,
@@ -7895,7 +7924,7 @@ async function buildPreparedPermissionManifest(args: {
 function preparedRunAdditionalVolumes(args: {
   readonly createArgs: CreateAgentRunArgs;
   readonly connectorScope: EffectiveConnectorScope;
-  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+  readonly connectorCatalogSelection: RunConnectorCatalogSelection;
   readonly customConnectorContext: CustomConnectorRuntimeContext;
   readonly skillsRoot: string;
   readonly featureSwitchContext: FeatureSwitchContext;
@@ -7907,7 +7936,7 @@ function preparedRunAdditionalVolumes(args: {
     {
       injectSkillVolumes: args.createArgs.injectSkillVolumes,
       allowedConnectorSlugs: args.connectorScope.allowedConnectorSlugs,
-      connectorCatalogSnapshot: args.connectorCatalogSnapshot,
+      connectorCatalogSelection: args.connectorCatalogSelection,
     },
     args.skillsRoot,
   );
@@ -7945,7 +7974,7 @@ interface PreparedRuntimeContext {
   readonly billableFirewalls: readonly string[];
   readonly modelUsageProvider: SupportedRunModel | undefined;
   readonly connectorScope: EffectiveConnectorScope;
-  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+  readonly connectorCatalogSelection: RunConnectorCatalogSelection;
 }
 
 function connectorScopeForRuntimeSnapshot(
@@ -7971,11 +8000,9 @@ function connectorScopeForRuntimeSnapshot(
 function connectorScopeFromCreateArgs(
   args: CreateAgentRunArgs,
 ): EffectiveConnectorScope {
-  const source =
-    args.connectorScope.allowedConnectorSlugs.length === 0 &&
-    args.connectorScope.allowedCustomConnectorIds.length === 0
-      ? "empty"
-      : (args.connectorScope.source ?? "explicit");
+  const source = isEmptyRunConnectorScope(args.connectorScope)
+    ? "empty"
+    : (args.connectorScope.source ?? "explicit");
   return {
     allowedConnectorSlugs: args.connectorScope.allowedConnectorSlugs,
     allowedCustomConnectorIds: args.connectorScope.allowedCustomConnectorIds,
@@ -8123,7 +8150,7 @@ async function prepareRunConnectorContexts(
     readonly createArgs: CreateAgentRunArgs;
     readonly connectorScope: EffectiveConnectorScope;
     readonly featureSwitchContext: FeatureSwitchContext;
-    readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+    readonly connectorCatalogSelection: RunConnectorCatalogSelection;
     readonly timing: ApiDispatchTimingCollector;
   },
   signal: AbortSignal,
@@ -8135,13 +8162,42 @@ async function prepareRunConnectorContexts(
       "api_dispatch_prepare_context_load_connector_contexts",
       "nested",
       async () => {
+        if (args.connectorCatalogSelection.kind === "empty") {
+          const [storedConnectorSnapshot, customConnectorContext] =
+            await Promise.all([
+              measureApiDispatchTiming(
+                args.timing,
+                "api_dispatch_prepare_context_load_stored_connectors",
+                "nested",
+                () => {
+                  return null;
+                },
+                storedConnectorTimingDimensions({
+                  scopeSource: args.connectorScope.source,
+                }),
+              ),
+              measureApiDispatchTiming(
+                args.timing,
+                "api_dispatch_prepare_context_load_custom_connectors",
+                "nested",
+                () => {
+                  return emptyCustomConnectorRuntimeContext();
+                },
+              ),
+            ]);
+          return {
+            storedConnectorSnapshot,
+            storedConnectorMetadataContext: emptyConnectorRuntimeContext(),
+            customConnectorContext,
+          };
+        }
         return await loadRunConnectorContexts(
           args.db,
           {
             orgId: args.createArgs.orgId,
             userId: args.createArgs.userId,
             connectorScope: args.connectorScope,
-            connectorCatalogSnapshot: args.connectorCatalogSnapshot,
+            connectorCatalogSnapshot: args.connectorCatalogSelection.snapshot,
             featureSwitchContext: args.featureSwitchContext,
             timing: args.timing,
           },
@@ -8201,12 +8257,15 @@ async function prepareRunRuntimeContext(
 ): Promise<PreparedRuntimeContext | CreateRunErrorResult> {
   const { body, resolved, requestedFramework, featureSwitchContext } =
     args.bodyContext;
-  const connectorCatalogSnapshot = await connectorCatalogSnapshotForRun(args);
+  const connectorCatalogSelection = await connectorCatalogSelectionForRun(args);
   signal.throwIfAborted();
-  const connectorScope = connectorScopeForRuntimeSnapshot(
-    args.connectorScope,
-    connectorCatalogSnapshot,
-  );
+  const connectorScope =
+    connectorCatalogSelection.kind === "complete"
+      ? connectorScopeForRuntimeSnapshot(
+          args.connectorScope,
+          connectorCatalogSelection.snapshot,
+        )
+      : args.connectorScope;
   const modelProvider = await resolvePreparedRunModelProvider(args, signal);
   if (isRouteError(modelProvider)) {
     return modelProvider;
@@ -8219,7 +8278,7 @@ async function prepareRunRuntimeContext(
       ...args,
       connectorScope,
       featureSwitchContext,
-      connectorCatalogSnapshot,
+      connectorCatalogSelection,
     },
     signal,
   );
@@ -8255,7 +8314,7 @@ async function prepareRunRuntimeContext(
     "nested",
     async () => {
       return await buildPreparedPermissionManifest({
-        connectorCatalogSnapshot,
+        connectorCatalogSelection,
         body,
         modelProvider,
         storedConnectorMetadataContext,
@@ -8306,29 +8365,32 @@ async function prepareRunRuntimeContext(
     billableFirewalls: modelUsageContext.billableFirewalls,
     modelUsageProvider: modelUsageContext.modelUsageProvider,
     connectorScope,
-    connectorCatalogSnapshot,
+    connectorCatalogSelection,
   };
 }
 
-async function connectorCatalogSnapshotForRun(args: {
+async function connectorCatalogSelectionForRun(args: {
   readonly db: Db;
   readonly preloadedConnectorCatalogSnapshot?: ConnectorRuntimeSnapshot;
   readonly connectorScope: EffectiveConnectorScope;
   readonly timing: ApiDispatchTimingCollector;
-}): Promise<ConnectorRuntimeSnapshot> {
-  return (
+}): Promise<RunConnectorCatalogSelection> {
+  if (isEmptyRunConnectorScope(args.connectorScope)) {
+    return { kind: "empty" };
+  }
+  const snapshot =
     args.preloadedConnectorCatalogSnapshot ??
     (await loadConnectorRuntimeSnapshot(args.db, {
       timing: args.timing,
       requestedConnectorCount: args.connectorScope.allowedConnectorSlugs.length,
-    }))
-  );
+    }));
+  return { kind: "complete", snapshot };
 }
 
 function prepareRunOutputMetadata(args: {
   readonly createArgs: CreateAgentRunArgs;
   readonly connectorScope: EffectiveConnectorScope;
-  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+  readonly connectorCatalogSelection: RunConnectorCatalogSelection;
   readonly customConnectorContext: CustomConnectorRuntimeContext;
   readonly framework: SupportedFramework;
   readonly piSandbox: PiModelConfig | undefined;
@@ -8343,7 +8405,7 @@ function prepareRunOutputMetadata(args: {
   const additionalVolumes = preparedRunAdditionalVolumes({
     createArgs: args.createArgs,
     connectorScope: args.connectorScope,
-    connectorCatalogSnapshot: args.connectorCatalogSnapshot,
+    connectorCatalogSelection: args.connectorCatalogSelection,
     customConnectorContext: args.customConnectorContext,
     skillsRoot:
       args.piSandbox === undefined
@@ -8506,7 +8568,8 @@ function prepareRunContext(
             prepareRunOutputMetadata({
               createArgs: args,
               connectorScope: runtimeContext.connectorScope,
-              connectorCatalogSnapshot: runtimeContext.connectorCatalogSnapshot,
+              connectorCatalogSelection:
+                runtimeContext.connectorCatalogSelection,
               customConnectorContext: runtimeContext.customConnectorContext,
               framework: runtimeContext.framework,
               piSandbox,
