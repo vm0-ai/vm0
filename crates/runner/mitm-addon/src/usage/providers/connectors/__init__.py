@@ -1,8 +1,8 @@
 """Per-connector billing and response parser dispatch.
 
-Each billable connector has one coherent registration under this package. The
-registration combines a required usage reporter with optional focused
-response-inspection behavior. The capability implementations may live in
+Each supported billable connector has one coherent registration under this
+package. The registration combines a required usage reporter with optional
+focused response-inspection behavior. The capability implementations may live in
 separate modules. :func:`report_connector_usage` is the single entry point
 called by the addon response / error handlers; it applies the universal gates
 (``run_id`` present, firewall flagged billable by the web layer, firewall has a
