@@ -10,6 +10,7 @@ import {
   type UserMessageInputDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { morningBriefContract } from "@okouai/api-contracts/contracts/morning-brief";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { zeroModelProvidersByTypeContract } from "@okouai/api-contracts/contracts/zero-model-providers";
 import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-preferences";
 import { ILLUSTRATION_TEMPLATE_ITEMS } from "@okouai/core";
@@ -187,12 +188,12 @@ function expectedMorningBriefAppendSystemPrompt(args: {
     "# Morning Brief run",
     `You are generating the user's Morning Brief for ${args.briefDate} (timezone ${args.timezone}).`,
     "",
-    "1. Download the collected data (GitHub, Gmail, Google Calendar, unread vm0 chat threads) with an HTTP GET request to this URL (valid for 30 minutes):",
+    "1. Download the collected data (GitHub, Gmail, Google Calendar, unread VM0 chat threads) with an HTTP GET request to this URL (valid for 30 minutes):",
     args.inputUrl,
     "2. Analyze the data and write the brief. Only use predefined sections, omit empty ones, order by importance:",
     "   - `schedule`: today's meetings and events",
     "   - `needs_attention`: items that need the user's action or reply",
-    "   - `unread_threads`: vm0 chat threads with results the user has not read yet — summarize what each task produced while they were away",
+    "   - `unread_threads`: VM0 chat threads with results the user has not read yet — summarize what each task produced while they were away",
     "   - `github_updates`: PRs, reviews, CI, mentions involving the user",
     "   - `email_updates`: notable email threads",
     "   - `suggestions`: at most 3 suggestions, each grounded in today's data",
@@ -209,7 +210,7 @@ function expectedMorningBriefAppendSystemPrompt(args: {
     '     "headline": "natural opening derived from the final sections; begins with Good morning.",',
     '     "sections": [{"key": "schedule|needs_attention|unread_threads|github_updates|email_updates|suggestions", "title": "string", "items": [{"title": "string", "detail": "string (optional)", "url": "https source link (optional)"}]}]',
     "   }",
-    "   Item `url` values must point at the original Gmail message, Calendar event, GitHub page, or the vm0 chat thread `url` provided in the input.",
+    "   Item `url` values must point at the original Gmail message, Calendar event, GitHub page, or the VM0 chat thread `url` provided in the input.",
     "6. Also post the same brief as well-formatted Markdown in this chat so the user can read it here and ask follow-up questions.",
     "7. If a source in the input is marked failed, mention briefly in the brief that the source was unavailable.",
     "The email is assembled server-side from the uploaded JSON; do not try to send any email yourself.",
@@ -418,11 +419,18 @@ interface Scenario {
 }
 
 async function setupMorningBriefActor(
-  options: { readonly connectConnectors?: boolean } = {},
+  options: {
+    readonly connectConnectors?: boolean;
+    readonly publicBrand?: PublicBrand;
+  } = {},
 ): Promise<Scenario> {
+  const publicBrand = options.publicBrand ?? "vm0";
   mockEnv("CRON_SECRET", CRON_SECRET);
   mockEnv("RESEND_FROM_DOMAIN", "vm0.bot");
-  mockEnv("APP_URL", "https://app.vm0.test");
+  mockEnv(
+    "APP_URL",
+    publicBrand === "okou" ? "https://app.vm0.ai" : "https://app.vm0.test",
+  );
   mockOptionalEnv("EMAIL_OUTBOX_DRAIN_DELAY_MS", "0");
   mockNow(BEFORE_SEVEN_LOCAL);
 
@@ -462,7 +470,12 @@ async function setupMorningBriefActor(
 
   // Morning Brief is opt-in: the preference defaults to off for everyone.
   const initial = await accept(
-    preferencesClient().get({ headers: actorHeaders() }),
+    preferencesClient().get({
+      headers: actorHeaders(),
+      ...(publicBrand === "okou"
+        ? { extraHeaders: { origin: "https://app.okou.ai" } }
+        : {}),
+    }),
     [200],
   );
   expect(initial.body.morningBriefEnabled).toBeFalsy();
@@ -475,6 +488,9 @@ async function setupMorningBriefActor(
     preferencesClient().update({
       headers: actorHeaders(),
       body: { timezone: TIMEZONE, morningBriefEnabled: true },
+      ...(publicBrand === "okou"
+        ? { extraHeaders: { origin: "https://app.okou.ai" } }
+        : {}),
     }),
     [200],
   );
@@ -949,18 +965,28 @@ describe("cron execute morning briefs", () => {
     clearMockNow();
   });
 
-  it("delivers a brief from vm0 chat threads when no connectors are connected", async () => {
+  it("delivers an Okou brief from persisted schedule context when no connectors are connected", async () => {
     context.mocks.resend.send.mockResolvedValue({
       data: { id: "resend-threads-only-brief" },
       error: null,
     });
-    const scenario = await setupMorningBriefActor({ connectConnectors: false });
+    const scenario = await setupMorningBriefActor({
+      connectConnectors: false,
+      publicBrand: "okou",
+    });
     mockNow(AFTER_SEVEN_LOCAL);
     await executeMorningBriefsCron();
 
     // The brief runs on the internal chat-threads source alone; connector
     // sources are annotated as failed instead of gating the whole brief.
     const { runId } = await findMorningBriefThread(scenario);
+    await expect(
+      readMorningBriefDeliveryFixture({
+        orgId: scenario.actor.orgId,
+        userId: scenario.actor.userId,
+        briefDate: BRIEF_DATE,
+      }),
+    ).resolves.toMatchObject({ publicBrand: "okou", runId });
     const input = capturedMorningBriefInput();
     expect(input.sources.github?.ok).toBeFalsy();
     expect(input.sources.gmail?.ok).toBeFalsy();
@@ -979,7 +1005,7 @@ describe("cron execute morning briefs", () => {
               {
                 title: "Competitor research finished",
                 detail: "The report is ready in the thread.",
-                url: "https://app.vm0.test/chats/123e4567-e89b-12d3-a456-426614174000",
+                url: "https://app.okou.ai/chats/123e4567-e89b-12d3-a456-426614174000",
               },
               {
                 title: "Sketchy link that must be dropped",
@@ -990,8 +1016,15 @@ describe("cron execute morning briefs", () => {
         ],
       }),
     );
-    await completeMorningBriefRun(scenario, runId, 0);
+    const { appendSystemPrompt } = await completeMorningBriefRun(
+      scenario,
+      runId,
+      0,
+    );
     await drainMorningBriefOutbox(scenario);
+
+    expect(appendSystemPrompt).toContain("unread Okou chat threads");
+    expect(appendSystemPrompt).not.toContain("vm0 chat threads");
 
     const emails = sentMorningBriefEmails();
     expect(emails).toHaveLength(1);
@@ -999,11 +1032,13 @@ describe("cron execute morning briefs", () => {
     if (!email) {
       throw new Error("Expected a morning brief email");
     }
+    expect(email.from).toBe("Okou <okou@vm0.bot>");
     expect(email.html).toContain("Good morning. Here's your brief for today.");
     expect(email.html).toContain("Competitor research finished");
+    expect(email.html).toContain("Continue in Okou");
     // App-origin thread links survive sanitization; foreign hosts do not.
     expect(email.html).toContain(
-      "https://app.vm0.test/chats/123e4567-e89b-12d3-a456-426614174000",
+      "https://app.okou.ai/chats/123e4567-e89b-12d3-a456-426614174000",
     );
     expect(email.html).not.toContain("evil.example.com");
     clearMockNow();

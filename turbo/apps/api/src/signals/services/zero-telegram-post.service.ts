@@ -1,5 +1,10 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { command, computed } from "ccstate";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import {
+  appUrlForPublicBrand,
+  publicBrandPresentation,
+} from "@okouai/core/public-brand";
 import { v5 as uuidv5 } from "uuid";
 import {
   getCanonicalModelDisplayName,
@@ -502,6 +507,7 @@ const handleExistingInstallation$ = command(
       };
       readonly botInfo: { readonly username: string };
       readonly auth: OrganizationAuth;
+      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ) => {
@@ -570,6 +576,7 @@ const handleExistingInstallation$ = command(
         ),
         webhookSecret,
         defaultComposeId: resolvedAgent.agentId,
+        publicBrand: args.publicBrand,
         updatedAt: nowDate(),
       })
       .where(
@@ -600,7 +607,15 @@ function registerBodyError(message: string): ReturnType<typeof badRequest> {
 }
 
 export const registerTelegramBot$ = command(
-  async ({ get, set }, auth: OrganizationAuth, signal: AbortSignal) => {
+  async (
+    { get, set },
+    args: {
+      readonly auth: OrganizationAuth;
+      readonly publicBrand: PublicBrand;
+    },
+    signal: AbortSignal,
+  ) => {
+    const { auth } = args;
     const bodyResult = await get(
       bodyResultOf(zeroIntegrationsTelegramContract.register),
     );
@@ -644,6 +659,7 @@ export const registerTelegramBot$ = command(
           body: bodyResult.data,
           botInfo,
           auth,
+          publicBrand: args.publicBrand,
         },
         signal,
       );
@@ -682,6 +698,7 @@ export const registerTelegramBot$ = command(
         defaultComposeId: resolvedAgent.agentId,
         ownerUserId: auth.userId,
         orgId: auth.orgId,
+        publicBrand: args.publicBrand,
       })
       .returning();
     signal.throwIfAborted();
@@ -1184,6 +1201,7 @@ function buildConnectUrl(args: {
   readonly botToken: string;
   readonly telegramUsername?: string | null;
   readonly telegramDisplayName?: string | null;
+  readonly publicBrand: PublicBrand;
 }): string {
   const timestamp = Math.floor(now() / 1000);
   const params = new URLSearchParams({
@@ -1200,7 +1218,7 @@ function buildConnectUrl(args: {
   if (displayName) {
     params.set("tgDisplayName", displayName);
   }
-  return `${env("APP_URL")}/telegram/connect?${params.toString()}`;
+  return `${appUrlForPublicBrand(env("APP_URL"), args.publicBrand)}/telegram/connect?${params.toString()}`;
 }
 
 function buildTelegramConnectReplyMarkup(connectUrl: string) {
@@ -1414,6 +1432,7 @@ const resolveOfficialUserLink$ = command(
         telegramDisplayName: args.telegramDisplayName,
         userId: direct.userId,
         orgId: direct.orgId,
+        publicBrand: direct.publicBrand,
       },
       signal,
     );
@@ -1432,6 +1451,7 @@ async function sendConnectPrompt(args: {
   readonly telegramUsername?: string | null;
   readonly telegramDisplayName?: string | null;
   readonly agentName: string;
+  readonly publicBrand: PublicBrand;
   readonly replyToMessageId?: number;
 }): Promise<void> {
   if (args.chatType !== "private") {
@@ -1454,6 +1474,7 @@ async function sendConnectPrompt(args: {
     botToken: args.botToken,
     telegramUsername: args.telegramUsername,
     telegramDisplayName: args.telegramDisplayName,
+    publicBrand: args.publicBrand,
   });
   await postTelegramMessage({
     botToken: args.botToken,
@@ -1667,6 +1688,7 @@ interface TelegramAgentMessageArgs {
   readonly orgId: string;
   readonly userLink: TelegramUserLink | OfficialTelegramUserLink;
   readonly userLinkKind: "custom" | "official";
+  readonly publicBrand: PublicBrand;
   readonly composeId: string;
   readonly message: TelegramMessage;
   readonly isDM: boolean;
@@ -1947,7 +1969,7 @@ const handleTelegramAgentMessage$ = command(
         chatId,
         text:
           args.userLinkKind === "official"
-            ? "The workspace default agent is not configured. Please choose an agent in VM0 first."
+            ? `The workspace default agent is not configured. Please choose an agent in ${publicBrandPresentation(args.publicBrand).brandName} first.`
             : "The agent is not available. Please contact the admin.",
         replyToMessageId: args.isDM ? undefined : args.message.message_id,
       });
@@ -2416,6 +2438,9 @@ const handleOfficialCommand$ = command(
       signal,
     );
     signal.throwIfAborted();
+    const assistantName = userLink
+      ? publicBrandPresentation(userLink.publicBrand).assistantName
+      : "Zero";
     const reply = async (text: string, sig: AbortSignal): Promise<void> => {
       await postTelegramMessage({
         botToken: args.botToken,
@@ -2436,13 +2461,17 @@ const handleOfficialCommand$ = command(
         fromUserId,
         telegramUsername: args.message.from?.username ?? null,
         telegramDisplayName: displayName,
-        agentName: "Zero",
+        agentName: assistantName,
+        publicBrand: userLink?.publicBrand ?? "vm0",
         replyToMessageId,
       });
     };
 
     if (args.command === "help") {
-      await reply(formatTelegramHelpMessage(args.botUsername, "Zero"), signal);
+      await reply(
+        formatTelegramHelpMessage(args.botUsername, assistantName),
+        signal,
+      );
       return;
     }
 
@@ -2450,7 +2479,10 @@ const handleOfficialCommand$ = command(
       if (userLink) {
         await reply(
           formatTelegramCommandSuccess(
-            formatTelegramAlreadyConnectedMessage(args.botUsername, "Zero"),
+            formatTelegramAlreadyConnectedMessage(
+              args.botUsername,
+              assistantName,
+            ),
           ),
           signal,
         );
@@ -2472,7 +2504,7 @@ const handleOfficialCommand$ = command(
       signal.throwIfAborted();
       await reply(
         formatTelegramCommandSuccess(
-          "You have been disconnected from the official Zero bot.",
+          `You have been disconnected from the official ${assistantName} bot.`,
         ),
         signal,
       );
@@ -2575,6 +2607,7 @@ async function sendCustomConnectPrompt(args: {
     telegramUsername: args.message.from?.username ?? null,
     telegramDisplayName: args.displayName,
     agentName,
+    publicBrand: args.installation.publicBrand,
     replyToMessageId: args.replyToMessageId,
   });
 }
@@ -2610,6 +2643,7 @@ const handleCustomPrivateWebhookMessage$ = command(
         orgId: args.installation.orgId,
         userLink: resolved.userLink,
         userLinkKind: "custom",
+        publicBrand: args.installation.publicBrand,
         composeId: args.installation.defaultComposeId,
         message: args.message,
         isDM: true,
@@ -2666,6 +2700,7 @@ const handleCustomAddressedGroupWebhookMessage$ = command(
         orgId: args.installation.orgId,
         userLink: resolved.userLink,
         userLinkKind: "custom",
+        publicBrand: args.installation.publicBrand,
         composeId: args.installation.defaultComposeId,
         message: args.message,
         isDM: false,
@@ -2867,6 +2902,7 @@ const processOfficialWebhookMessage$ = command(
         telegramUsername: args.message.from?.username ?? null,
         telegramDisplayName: displayName,
         agentName: "Zero",
+        publicBrand: "vm0",
         replyToMessageId:
           args.message.chat.type === "private"
             ? undefined
@@ -2882,7 +2918,7 @@ const processOfficialWebhookMessage$ = command(
       await postTelegramMessage({
         botToken: config.botToken,
         chatId,
-        text: "The workspace default agent is not configured. Please choose an agent in VM0 first.",
+        text: `The workspace default agent is not configured. Please choose an agent in ${publicBrandPresentation(userLink.publicBrand).brandName} first.`,
         replyToMessageId:
           args.message.chat.type === "private"
             ? undefined
@@ -2902,6 +2938,7 @@ const processOfficialWebhookMessage$ = command(
         orgId: userLink.orgId,
         userLink,
         userLinkKind: "official",
+        publicBrand: userLink.publicBrand,
         composeId,
         message: args.message,
         isDM: args.message.chat.type === "private",

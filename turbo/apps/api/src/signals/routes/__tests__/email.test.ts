@@ -107,7 +107,7 @@ beforeEach(() => {
 });
 
 describe("low-credit email delivery", () => {
-  it("sends low-credit alerts from support@vm0.ai", async () => {
+  it("uses the configured sender domain for low-credit alerts", async () => {
     const actor = bdd.user();
     const billing = createBillingMediaApi(context);
     bdd.acceptAgentStorageWrites();
@@ -183,7 +183,7 @@ describe("low-credit email delivery", () => {
     expect(resendMocks.send).toHaveBeenCalledTimes(1);
     expect(context.mocks.resend.send).toHaveBeenCalledWith(
       expect.objectContaining({
-        from: "VM0 Team <support@vm0.ai>",
+        from: "VM0 Team <support@mail.example.com>",
         to: actor.email,
         subject: "Your credit balance is running low",
       }),

@@ -1,3 +1,6 @@
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { publicBrandPresentation } from "@okouai/core/public-brand";
+
 import type {
   SlackAnyBlock,
   SlackKnownBlock,
@@ -5,6 +8,7 @@ import type {
 } from "../signals/external/slack-block-kit";
 
 interface AppHomeViewOptions {
+  readonly publicBrand: PublicBrand;
   readonly appUrl: string;
   readonly isLinked: boolean;
   readonly userId?: string;
@@ -15,13 +19,14 @@ interface AppHomeViewOptions {
   readonly loginUrl?: string;
 }
 
-function appHomeIntroBlocks(): SlackAnyBlock[] {
+function appHomeIntroBlocks(publicBrand: PublicBrand): SlackAnyBlock[] {
+  const { assistantName } = publicBrandPresentation(publicBrand);
   return [
     {
       type: "header",
       text: {
         type: "plain_text",
-        text: "Welcome to Zero! :wave:",
+        text: `Welcome to ${assistantName}! :wave:`,
       },
     },
     {
@@ -68,11 +73,12 @@ function disconnectedAppHomeBlocks(
 }
 
 function connectedStatusBlock(options: AppHomeViewOptions): SlackKnownBlock {
+  const { assistantName } = publicBrandPresentation(options.publicBrand);
   return {
     type: "section",
     text: {
       type: "mrkdwn",
-      text: `:white_check_mark: *Connected to Zero*\nAccount: ${options.userEmail ?? options.userId}`,
+      text: `:white_check_mark: *Connected to ${assistantName}*\nAccount: ${options.userEmail ?? options.userId}`,
     },
   };
 }
@@ -136,7 +142,8 @@ function appHomeAgentBlocks(options: AppHomeViewOptions): SlackAnyBlock[] {
   return blocks;
 }
 
-function appHomeHelpBlocks(): SlackAnyBlock[] {
+function appHomeHelpBlocks(publicBrand: PublicBrand): SlackAnyBlock[] {
+  const { assistantName } = publicBrandPresentation(publicBrand);
   return [
     {
       type: "section",
@@ -149,7 +156,7 @@ function appHomeHelpBlocks(): SlackAnyBlock[] {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "*Commands*\n\u2022 `/zero connect` - Connect to Zero\n\u2022 `/zero disconnect` - Disconnect from Zero",
+        text: `*Commands*\n\u2022 \`/zero connect\` - Connect to ${assistantName}\n\u2022 \`/zero disconnect\` - Disconnect from ${assistantName}`,
       },
     },
     {
@@ -162,12 +169,13 @@ function appHomeHelpBlocks(): SlackAnyBlock[] {
   ];
 }
 
-function disconnectAccountBlock(): SlackKnownBlock {
+function disconnectAccountBlock(publicBrand: PublicBrand): SlackKnownBlock {
+  const { assistantName } = publicBrandPresentation(publicBrand);
   return {
     type: "section",
     text: {
       type: "mrkdwn",
-      text: "*Disconnect Zero Account*\nThis will remove your Zero account connection",
+      text: `*Disconnect ${assistantName} Account*\nThis will remove your ${assistantName} account connection`,
     },
     accessory: {
       type: "button",
@@ -178,10 +186,13 @@ function disconnectAccountBlock(): SlackKnownBlock {
       action_id: "home_disconnect",
       style: "danger",
       confirm: {
-        title: { type: "plain_text", text: "Disconnect Zero Account" },
+        title: {
+          type: "plain_text",
+          text: `Disconnect ${assistantName} Account`,
+        },
         text: {
           type: "plain_text",
-          text: "This will remove your Zero account connection",
+          text: `This will remove your ${assistantName} account connection`,
         },
         confirm: { type: "plain_text", text: "Disconnect" },
         deny: { type: "plain_text", text: "Cancel" },
@@ -191,7 +202,7 @@ function disconnectAccountBlock(): SlackKnownBlock {
 }
 
 export function buildAppHomeView(options: AppHomeViewOptions): SlackView {
-  const blocks = appHomeIntroBlocks();
+  const blocks = appHomeIntroBlocks(options.publicBrand);
 
   if (!options.isLinked) {
     return {
@@ -205,9 +216,9 @@ export function buildAppHomeView(options: AppHomeViewOptions): SlackView {
     { type: "divider" },
     ...appHomeAgentBlocks(options),
     { type: "divider" },
-    ...appHomeHelpBlocks(),
+    ...appHomeHelpBlocks(options.publicBrand),
     { type: "divider" },
-    disconnectAccountBlock(),
+    disconnectAccountBlock(options.publicBrand),
   );
 
   return {
@@ -216,13 +227,17 @@ export function buildAppHomeView(options: AppHomeViewOptions): SlackView {
   };
 }
 
-export function buildWelcomeMessage(agentName?: string): SlackAnyBlock[] {
+export function buildWelcomeMessage(
+  publicBrand: PublicBrand,
+  agentName?: string,
+): SlackAnyBlock[] {
+  const { assistantName } = publicBrandPresentation(publicBrand);
   const blocks: SlackAnyBlock[] = [
     {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: ":wave: *Hi! I'm Zero.*\n\nI can connect you to AI agents to help with your tasks.",
+        text: `:wave: *Hi! I'm ${assistantName}.*\n\nI can connect you to AI agents to help with your tasks.`,
       },
     },
     {

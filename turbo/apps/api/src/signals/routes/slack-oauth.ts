@@ -1,10 +1,12 @@
 import { command, computed } from "ccstate";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { zeroSlackOauthContract } from "@okouai/api-contracts/contracts/zero-slack-oauth";
+import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
 import { eq } from "drizzle-orm";
 
-import { request$ } from "../context/hono";
+import { publicBrand$, request$ } from "../context/hono";
 import { queryOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
 import { db$, writeDb$ } from "../external/db";
@@ -48,6 +50,7 @@ interface OAuthState {
   readonly flow: "install" | "connect";
   readonly reinstall: boolean;
   readonly prompt: string | null;
+  readonly publicBrand: PublicBrand;
 }
 
 function redirectResponse(url: string): Response {
@@ -71,19 +74,22 @@ function jsonErrorResponse(error: string, status: number): Response {
   });
 }
 
-function appUrl(path: string): string {
-  return `${env("APP_URL")}${path}`;
+function appUrl(path: string, publicBrand: PublicBrand): string {
+  return `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}${path}`;
 }
 
-function failedRedirect(message: string): Response {
+function failedRedirect(message: string, publicBrand: PublicBrand): Response {
   return redirectResponse(
-    appUrl(`/slack/failed?error=${encodeURIComponent(message)}`),
+    appUrl(`/slack/failed?error=${encodeURIComponent(message)}`, publicBrand),
   );
 }
 
-function settingsErrorRedirect(message: string): Response {
+function settingsErrorRedirect(
+  message: string,
+  publicBrand: PublicBrand,
+): Response {
   return redirectResponse(
-    appUrl(`/settings/slack?error=${encodeURIComponent(message)}`),
+    appUrl(`/settings/slack?error=${encodeURIComponent(message)}`, publicBrand),
   );
 }
 
@@ -107,6 +113,7 @@ function parseOAuthState(state: string | undefined): OAuthState | null {
       flow: "install",
       reinstall: false,
       prompt: null,
+      publicBrand: "vm0",
     };
   }
 
@@ -118,6 +125,7 @@ function parseOAuthState(state: string | undefined): OAuthState | null {
       flow: "install",
       reinstall: false,
       prompt: null,
+      publicBrand: "vm0",
     };
   }
 
@@ -142,6 +150,9 @@ function parseOAuthState(state: string | undefined): OAuthState | null {
     flow: record.flow === "connect" ? "connect" : "install",
     reinstall: optionalBoolean(record.reinstall),
     prompt: optionalString(record.prompt),
+    // Old web/app OAuth state can omit publicBrand for about two days.
+    // Remove this VM0 default in #27660 after legacy states have drained.
+    publicBrand: record.publicBrand === "okou" ? "okou" : "vm0",
   };
 }
 
@@ -163,6 +174,7 @@ function slackCredentials(): {
 
 const installOauth$ = computed((get) => {
   const request = get(request$).raw;
+  const publicBrand = get(publicBrand$);
   const canonicalRedirectUrl = getOAuthCanonicalRedirectUrl(request);
   if (canonicalRedirectUrl) {
     return noStoreRedirect(canonicalRedirectUrl);
@@ -181,14 +193,15 @@ const installOauth$ = computed((get) => {
     outcome: userId.outcome,
   });
   if (!userId.ok) {
-    return failedRedirect("Invalid OAuth identity.");
+    return failedRedirect("Invalid OAuth identity.", publicBrand);
   }
   const stateObj: {
     orgId?: string;
     userId?: string;
     reinstall?: boolean;
     prompt?: string;
-  } = {};
+    publicBrand: PublicBrand;
+  } = { publicBrand };
   if (query.orgId) {
     stateObj.orgId = query.orgId;
   }
@@ -217,6 +230,7 @@ const installOauth$ = computed((get) => {
 
 const connectOauth$ = command(async ({ get }, signal: AbortSignal) => {
   const request = get(request$).raw;
+  const publicBrand = get(publicBrand$);
   const canonicalRedirectUrl = getOAuthCanonicalRedirectUrl(request);
   if (canonicalRedirectUrl) {
     return noStoreRedirect(canonicalRedirectUrl);
@@ -261,10 +275,12 @@ const connectOauth$ = command(async ({ get }, signal: AbortSignal) => {
     userId: string;
     flow: "connect";
     prompt?: string;
+    publicBrand: PublicBrand;
   } = {
     orgId: query.orgId,
     userId: userId.userId,
     flow: "connect",
+    publicBrand,
   };
   if (query.prompt) {
     stateObj.prompt = truncatePrompt(query.prompt);
@@ -333,6 +349,7 @@ const handlePlatformInstall$ = command(
       return redirectResponse(
         appUrl(
           `/settings/slack?w=${encodeURIComponent(args.installation.slackWorkspaceId)}&u=${encodeURIComponent(args.authedUserId)}`,
+          args.state.publicBrand,
         ),
       );
     }
@@ -352,6 +369,7 @@ const handlePlatformInstall$ = command(
     if (member.role !== "admin") {
       return failedRedirect(
         "Only org admins can install Slack for an organization.",
+        args.state.publicBrand,
       );
     }
 
@@ -380,12 +398,15 @@ const handlePlatformInstall$ = command(
     );
 
     if (args.isReinstall && args.state.reinstall) {
-      return redirectResponse(appUrl("/?tab=works&updated=1"));
+      return redirectResponse(
+        appUrl("/?tab=works&updated=1", args.state.publicBrand),
+      );
     }
 
     return redirectResponse(
       appUrl(
         `/settings/slack?status=connected&workspace=${encodeURIComponent(args.teamName)}`,
+        args.state.publicBrand,
       ),
     );
   },
@@ -421,6 +442,7 @@ const handleInstallCallback$ = command(
     if (!oauthResult) {
       return failedRedirect(
         "Failed to complete Slack installation. Please try again.",
+        args.state.publicBrand,
       );
     }
 
@@ -463,6 +485,7 @@ const handleInstallCallback$ = command(
         });
         return settingsErrorRedirect(
           "This Slack workspace is already installed by another organization. Please contact the workspace admin to uninstall first.",
+          args.state.publicBrand,
         );
       }
 
@@ -473,6 +496,7 @@ const handleInstallCallback$ = command(
           botUserId: oauthResult.botUserId,
           slackWorkspaceName: oauthResult.teamName,
           botScopes,
+          publicBrand: args.state.publicBrand,
           updatedAt: nowDate(),
         })
         .where(eq(slackOrgInstallations.slackWorkspaceId, oauthResult.teamId));
@@ -487,6 +511,7 @@ const handleInstallCallback$ = command(
         botUserId: oauthResult.botUserId,
         installedByUserId: isPlatformFlow ? args.state.userId : null,
         botScopes,
+        publicBrand: args.state.publicBrand,
       });
       signal.throwIfAborted();
     }
@@ -519,6 +544,7 @@ const handleInstallCallback$ = command(
     return redirectResponse(
       appUrl(
         `/settings/slack?w=${encodeURIComponent(oauthResult.teamId)}&u=${encodeURIComponent(oauthResult.authedUserId)}`,
+        args.state.publicBrand,
       ),
     );
   },
@@ -539,7 +565,10 @@ const handleConnectCallback$ = command(
     signal: AbortSignal,
   ): Promise<Response> => {
     if (!args.state.orgId || !args.state.userId) {
-      return settingsErrorRedirect("Invalid connect state.");
+      return settingsErrorRedirect(
+        "Invalid connect state.",
+        args.state.publicBrand,
+      );
     }
 
     const oauthResult = await tapError(
@@ -558,6 +587,7 @@ const handleConnectCallback$ = command(
     if (!oauthResult) {
       return settingsErrorRedirect(
         "Failed to connect Slack account. Please try again.",
+        args.state.publicBrand,
       );
     }
 
@@ -572,12 +602,14 @@ const handleConnectCallback$ = command(
     if (!installation) {
       return settingsErrorRedirect(
         "No Slack workspace installed for this organization.",
+        args.state.publicBrand,
       );
     }
 
     if (oauthResult.teamId !== installation.slackWorkspaceId) {
       return settingsErrorRedirect(
         "You authenticated with a different Slack workspace. Please use the workspace connected to your organization.",
+        args.state.publicBrand,
       );
     }
 
@@ -607,8 +639,26 @@ const handleConnectCallback$ = command(
     signal.throwIfAborted();
 
     if (connectionResult.kind !== "ok") {
-      return settingsErrorRedirect(connectionResult.message);
+      return settingsErrorRedirect(
+        connectionResult.message,
+        args.state.publicBrand,
+      );
     }
+
+    await writeDb
+      .update(slackOrgInstallations)
+      .set({ publicBrand: args.state.publicBrand, updatedAt: nowDate() })
+      .where(
+        eq(
+          slackOrgInstallations.slackWorkspaceId,
+          installation.slackWorkspaceId,
+        ),
+      );
+    signal.throwIfAborted();
+    const brandedInstallation: SlackInstallation = {
+      ...installation,
+      publicBrand: args.state.publicBrand,
+    };
 
     await set(
       publishSlackAdminSignal$,
@@ -620,7 +670,7 @@ const handleConnectCallback$ = command(
     set(
       notifyAfterConnect$,
       {
-        installation,
+        installation: brandedInstallation,
         slackUserId: oauthResult.authedUserId,
         orgId: args.state.orgId,
         userId: args.state.userId,
@@ -632,6 +682,7 @@ const handleConnectCallback$ = command(
     return redirectResponse(
       appUrl(
         `/settings/slack?status=connected&workspace=${encodeURIComponent(installation.slackWorkspaceName ?? "")}`,
+        args.state.publicBrand,
       ),
     );
   },
@@ -650,18 +701,19 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const query = get(queryOf(zeroSlackOauthContract.callback));
+  const state = parseOAuthState(query.state);
+  const redirectBrand = state?.publicBrand ?? get(publicBrand$);
 
   if (query.error) {
-    return failedRedirect(query.error);
+    return failedRedirect(query.error, redirectBrand);
   }
 
   if (!query.code) {
     return jsonErrorResponse("Missing authorization code", 400);
   }
 
-  const state = parseOAuthState(query.state);
   if (!state) {
-    return failedRedirect("Invalid OAuth state.");
+    return failedRedirect("Invalid OAuth state.", redirectBrand);
   }
   if (state.flow === "connect") {
     return await set(

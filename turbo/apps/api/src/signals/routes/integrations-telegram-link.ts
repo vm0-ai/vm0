@@ -38,6 +38,9 @@ import {
 } from "../services/zero-telegram-link.service";
 import type { AuthContext } from "../../types/auth";
 import type { RouteEntry } from "../route-entry";
+import { publicBrand$ } from "../context/hono";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { publicBrandPresentation } from "@okouai/core/public-brand";
 
 const log = logger("api:telegram:link");
 
@@ -157,9 +160,10 @@ function sendConnectSuccessMessage(args: {
   readonly botToken: string;
   readonly telegramUserId: string;
   readonly official: boolean;
+  readonly publicBrand: PublicBrand;
 }): void {
   const text = args.official
-    ? "✅ Account linked.\nSend me a message to start chatting with Zero."
+    ? `✅ Account linked.\nSend me a message to start chatting with ${publicBrandPresentation(args.publicBrand).assistantName}.`
     : "✅ Account linked.\nSend me a message to start chatting with your agent.";
 
   waitUntil(
@@ -306,10 +310,11 @@ const unlinkInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 const linkOfficialInner$ = command(
   async (
-    { set },
+    { get, set },
     args: { readonly auth: OrganizationAuth; readonly body: TelegramLinkBody },
     signal: AbortSignal,
   ) => {
+    const publicBrand = get(publicBrand$);
     const config = getOfficialTelegramBotConfig();
     if (!config.botToken) {
       return errorResult(
@@ -341,6 +346,7 @@ const linkOfficialInner$ = command(
           telegramDisplayName: formatTelegramUserDisplayName(telegramAuth),
           userId: args.auth.userId,
           orgId: args.auth.orgId,
+          publicBrand,
         },
         signal,
       );
@@ -384,6 +390,7 @@ const linkOfficialInner$ = command(
           telegramDisplayName: connectSignature.telegramDisplayName,
           userId: args.auth.userId,
           orgId: args.auth.orgId,
+          publicBrand,
         },
         signal,
       );
@@ -397,6 +404,7 @@ const linkOfficialInner$ = command(
         botToken: config.botToken,
         telegramUserId: connectSignature.telegramUserId,
         official: true,
+        publicBrand,
       });
 
       return linkSuccessResponse(
@@ -503,6 +511,7 @@ const linkCustomWithConnectSignature$ = command(
       botToken: args.installation.botToken,
       telegramUserId: connectSignature.telegramUserId,
       official: false,
+      publicBrand: args.installation.publicBrand,
     });
 
     return linkSuccessResponse(

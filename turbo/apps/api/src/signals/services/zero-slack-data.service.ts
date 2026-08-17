@@ -1,4 +1,6 @@
 import { computed, type Computed } from "ccstate";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { apiUrlForPublicBrand } from "@okouai/core/public-brand";
 import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
@@ -45,12 +47,15 @@ function buildSlackInstallUrl(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly reinstall: boolean;
+  readonly publicBrand: PublicBrand;
 }): string | null {
   const clientId = env("SLACK_OAUTH_CLIENT_ID");
   if (!clientId) {
     return null;
   }
-  const url = new URL(`${env("VM0_WEB_URL")}/api/okou/slack/oauth/install`);
+  const url = new URL(
+    `${apiUrlForPublicBrand(env("VM0_WEB_URL"), args.publicBrand)}/api/okou/slack/oauth/install`,
+  );
   url.searchParams.set("orgId", args.orgId);
   url.searchParams.set("userId", args.userId);
   if (args.reinstall) {
@@ -62,12 +67,15 @@ function buildSlackInstallUrl(args: {
 function buildSlackConnectUrl(args: {
   readonly orgId: string;
   readonly userId: string;
+  readonly publicBrand: PublicBrand;
 }): string | null {
   const clientId = env("SLACK_OAUTH_CLIENT_ID");
   if (!clientId) {
     return null;
   }
-  const url = new URL(`${env("VM0_WEB_URL")}/api/okou/slack/oauth/connect`);
+  const url = new URL(
+    `${apiUrlForPublicBrand(env("VM0_WEB_URL"), args.publicBrand)}/api/okou/slack/oauth/connect`,
+  );
   url.searchParams.set("orgId", args.orgId);
   url.searchParams.set("userId", args.userId);
   return url.toString();
@@ -89,6 +97,7 @@ export function zeroSlackOrgStatus(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly orgRole?: ApiOrgRole;
+  readonly publicBrand: PublicBrand;
 }): Computed<Promise<SlackOrgStatusResult>> {
   return computed(async (get) => {
     const db = get(db$);
@@ -134,6 +143,7 @@ export function zeroSlackOrgStatus(args: {
             orgId: args.orgId,
             userId: args.userId,
             reinstall: true,
+            publicBrand: args.publicBrand,
           })
         : null;
       return { scopeMismatch, reinstallUrl };
@@ -145,6 +155,7 @@ export function zeroSlackOrgStatus(args: {
             orgId: args.orgId,
             userId: args.userId,
             reinstall: false,
+            publicBrand: args.publicBrand,
           })
         : null;
       return {
@@ -179,6 +190,7 @@ export function zeroSlackOrgStatus(args: {
       const connectUrl = buildSlackConnectUrl({
         orgId: args.orgId,
         userId: args.userId,
+        publicBrand: args.publicBrand,
       });
 
       return {

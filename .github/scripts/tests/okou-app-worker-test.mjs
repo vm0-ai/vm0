@@ -366,7 +366,10 @@ const preview = await requestSharedPage({
   apiOrigin: previewOrigin,
   query: "?x-vercel-protection-bypass=preview-secret",
   metaResponse() {
-    return Response.json({ title: "Preview conversation" });
+    return Response.json({
+      title: "Preview conversation",
+      publicBrand: "okou",
+    });
   },
 });
 assert.equal(preview.response.status, 200);
@@ -387,7 +390,7 @@ assert.equal(
 );
 assert.equal(
   metaContent(previewHtml, "property", "og:url"),
-  `https://pr-25304-app.omby.ai/share/threads/${sharedThreadId}`,
+  `https://app.okou.ai/share/threads/${sharedThreadId}`,
 );
 assert.equal(
   tagAttribute(previewHtml, "link", "rel", "canonical", "href"),
@@ -398,7 +401,10 @@ const production = await requestSharedPage({
   appOrigin: "https://app.okou.ai",
   query: "?x-vercel-protection-bypass=must-not-forward",
   metaResponse() {
-    return Response.json({ title: "Production conversation" });
+    return Response.json({
+      title: "Production conversation",
+      publicBrand: "okou",
+    });
   },
 });
 assert.equal(production.response.status, 200);
@@ -409,6 +415,39 @@ assert.equal(
 assert.equal(
   production.observedHeaders.get("x-vercel-protection-bypass"),
   null,
+);
+
+const vm0SharedOnOkouHost = await requestSharedPage({
+  appOrigin: "https://app.okou.ai",
+  metaResponse() {
+    return Response.json({
+      title: "Legacy conversation",
+      publicBrand: "vm0",
+    });
+  },
+});
+assert.equal(vm0SharedOnOkouHost.response.status, 200);
+const vm0SharedHtml = await vm0SharedOnOkouHost.response.text();
+assert.equal(documentTitle(vm0SharedHtml), "Legacy conversation | VM0");
+assert.equal(htmlAttribute(vm0SharedHtml, "data-app-brand-name"), "VM0");
+assert.equal(
+  metaContent(vm0SharedHtml, "property", "og:url"),
+  `https://app.vm0.ai/share/threads/${sharedThreadId}`,
+);
+
+const oldApiSharedOnOkouHost = await requestSharedPage({
+  appOrigin: "https://app.okou.ai",
+  metaResponse() {
+    return Response.json({ title: "Pre-brand conversation" });
+  },
+});
+assert.equal(oldApiSharedOnOkouHost.response.status, 200);
+const oldApiSharedHtml = await oldApiSharedOnOkouHost.response.text();
+assert.equal(documentTitle(oldApiSharedHtml), "Pre-brand conversation | VM0");
+assert.equal(htmlAttribute(oldApiSharedHtml, "data-app-brand-name"), "VM0");
+assert.equal(
+  metaContent(oldApiSharedHtml, "property", "og:url"),
+  `https://app.vm0.ai/share/threads/${sharedThreadId}`,
 );
 
 const missing = await requestSharedPage({
@@ -431,10 +470,7 @@ assert.equal(
 );
 assert.equal(missing.response.headers.get("x-robots-tag"), "noindex, nofollow");
 const missingHtml = await missing.response.text();
-assert.equal(
-  documentTitle(missingHtml),
-  "Shared conversation not found | Okou",
-);
+assert.equal(documentTitle(missingHtml), "Shared conversation not found | VM0");
 assert.equal(metaContent(missingHtml, "property", "og:title"), null);
 assert.equal(metaContent(missingHtml, "name", "twitter:title"), null);
 

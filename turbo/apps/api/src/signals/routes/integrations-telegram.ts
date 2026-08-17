@@ -40,6 +40,7 @@ import {
 import { inferMimetype } from "../../lib/mimetype";
 import { tapError } from "../utils";
 import type { RouteEntry } from "../route-entry";
+import { publicBrand$ } from "../context/hono";
 
 const c = initContract();
 
@@ -302,7 +303,11 @@ async function downloadTelegramFile(
 const registerTelegramBotInner$ = command(
   ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    return set(registerTelegramBot$, auth, signal);
+    return set(
+      registerTelegramBot$,
+      { auth, publicBrand: get(publicBrand$) },
+      signal,
+    );
   },
 );
 

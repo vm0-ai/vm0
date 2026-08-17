@@ -97,16 +97,13 @@ async function doSubscribe(
   // Check if already subscribed
   const existingSub = await registration.pushManager.getSubscription();
   signal.throwIfAborted();
-  if (existingSub) {
-    return;
-  }
-
-  // Subscribe with VAPID key
-  const subscription = await registration.pushManager.subscribe({
-    userVisibleOnly: true,
-    applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
-      .buffer as ArrayBuffer,
-  });
+  const subscription =
+    existingSub ??
+    (await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
+        .buffer as ArrayBuffer,
+    }));
   signal.throwIfAborted();
 
   // Send subscription to the backend. fetch$ injects the auth token and

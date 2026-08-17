@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { apiErrorSchema, type ApiErrorResponse } from "./errors";
 import { authHeadersSchema, initContract } from "./base";
+import { publicBrandSchema, type PublicBrand } from "./public-brand";
 import type {
   AnyRouteTypeSlots,
   AppRoute,
@@ -24,6 +25,7 @@ export interface SharedThreadResponse {
   readonly id: string;
   readonly title: string;
   readonly messages: readonly SharedMessage[];
+  readonly publicBrand: PublicBrand;
 }
 
 interface SharedThreadIdPathParams {
@@ -48,6 +50,7 @@ interface CreateSharedThreadResponse {
 
 interface SharedThreadMetaResponse {
   readonly title: string;
+  readonly publicBrand: PublicBrand;
 }
 
 interface SharedThreadRequestOptions {
@@ -153,11 +156,19 @@ const sharedThreadResponseSchema: ZodLikeSchema<SharedThreadResponse> =
     id: z.string().uuid(),
     title: z.string(),
     messages: z.array(sharedMessageZodSchema),
+    // On the web/app-to-API surface, an API rollback can omit this additive
+    // field while current browser clients remain live for about two days.
+    // Remove after that client/API window closes (tracked by #27660).
+    publicBrand: publicBrandSchema.default("vm0"),
   });
 
 const sharedThreadMetaResponseSchema: ZodLikeSchema<SharedThreadMetaResponse> =
   z.object({
     title: z.string(),
+    // The Pages worker may reach an API version from before publicBrand was
+    // added. Keep the old response legal for the same web/API rollback window
+    // of about two days, then remove it with #27660.
+    publicBrand: publicBrandSchema.default("vm0"),
   });
 
 const sharedThreadApiErrorSchema: ZodLikeSchema<ApiErrorResponse> =

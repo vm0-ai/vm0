@@ -7,6 +7,7 @@ import type {
   TestSlackStatePostResponse,
   TestSlackStateResponse,
 } from "@okouai/api-contracts/contracts/test-slack-state";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 import { createAppWithRoutes } from "../../../../app-factory-core";
 import { testSlackStateRoutes } from "../../test-slack-state";
@@ -47,6 +48,7 @@ interface SlackInstallation {
   readonly botUserId: string;
   readonly botScopes: string | null;
   readonly installedByUserId: string | null;
+  readonly publicBrand: PublicBrand;
   readonly createdAt: string;
 }
 

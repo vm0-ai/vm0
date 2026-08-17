@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { chatMorningBriefContext } from "@okouai/db/schema/chat-morning-brief-context";
 import {
   morningBriefDeliveries,
@@ -56,6 +57,7 @@ interface ExecuteMorningBriefsResult {
 interface DueMorningBriefRow {
   readonly orgId: string;
   readonly userId: string;
+  readonly publicBrand: PublicBrand;
   readonly chatThreadId: string | null;
   readonly nextRunAt: Date | null;
   readonly lastSuccessAt: Date | null;
@@ -155,6 +157,7 @@ async function admitMorningBriefDelivery(
     .values({
       orgId: row.orgId,
       userId: row.userId,
+      publicBrand: row.publicBrand,
       briefDate,
       status: "collecting",
       createdAt: currentTime,
@@ -206,6 +209,7 @@ const stageMorningBriefInput$ = command(
         db,
         orgId: row.orgId,
         userId: row.userId,
+        publicBrand: row.publicBrand,
         briefDate,
         timezone,
         since,
@@ -502,6 +506,7 @@ async function admitManualMorningBriefDelivery(
   args: {
     readonly orgId: string;
     readonly userId: string;
+    readonly publicBrand: PublicBrand;
     readonly briefDate: string;
     readonly chatThreadId: string | null;
     readonly currentTime: Date;
@@ -513,6 +518,7 @@ async function admitManualMorningBriefDelivery(
     .values({
       orgId: args.orgId,
       userId: args.userId,
+      publicBrand: args.publicBrand,
       briefDate: args.briefDate,
       status: "collecting",
       createdAt: args.currentTime,
@@ -575,6 +581,7 @@ async function admitManualMorningBriefDelivery(
       inputKey: null,
       outputKey: null,
       error: null,
+      publicBrand: args.publicBrand,
       updatedAt: args.currentTime,
     })
     .where(
@@ -608,7 +615,11 @@ async function admitManualMorningBriefDelivery(
 
 async function admitManualMorningBrief(
   db: Db,
-  args: { readonly orgId: string; readonly userId: string },
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly publicBrand: PublicBrand;
+  },
   currentTime: Date,
   signal: AbortSignal,
 ): Promise<ManualMorningBriefAdmission> {
@@ -650,10 +661,14 @@ async function admitManualMorningBrief(
     .values({
       orgId: args.orgId,
       userId: args.userId,
+      publicBrand: args.publicBrand,
       createdAt: currentTime,
       updatedAt: currentTime,
     })
-    .onConflictDoNothing();
+    .onConflictDoUpdate({
+      target: [morningBriefSchedules.orgId, morningBriefSchedules.userId],
+      set: { publicBrand: args.publicBrand, updatedAt: currentTime },
+    });
   signal.throwIfAborted();
 
   const [schedule] = await db
@@ -677,6 +692,7 @@ async function admitManualMorningBrief(
     {
       orgId: args.orgId,
       userId: args.userId,
+      publicBrand: args.publicBrand,
       briefDate,
       chatThreadId: schedule?.chatThreadId ?? null,
       currentTime,
@@ -693,6 +709,7 @@ async function admitManualMorningBrief(
       row: {
         orgId: args.orgId,
         userId: args.userId,
+        publicBrand: args.publicBrand,
         chatThreadId: schedule?.chatThreadId ?? null,
         nextRunAt: null,
         lastSuccessAt: schedule?.lastSuccessAt ?? null,
@@ -729,6 +746,7 @@ export const triggerMorningBriefNow$ = command(
     args: {
       readonly orgId: string;
       readonly userId: string;
+      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ): Promise<TriggerMorningBriefResult> => {
@@ -796,6 +814,7 @@ export const executeDueMorningBriefs$ = command(
       .select({
         orgId: morningBriefSchedules.orgId,
         userId: morningBriefSchedules.userId,
+        publicBrand: morningBriefSchedules.publicBrand,
         chatThreadId: morningBriefSchedules.chatThreadId,
         nextRunAt: morningBriefSchedules.nextRunAt,
         lastSuccessAt: morningBriefSchedules.lastSuccessAt,

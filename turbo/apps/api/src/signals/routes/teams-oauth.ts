@@ -1,10 +1,12 @@
 import { command } from "ccstate";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { zeroTeamsOauthContract } from "@okouai/api-contracts/contracts/zero-teams-oauth";
+import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { z } from "zod";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
-import { request$ } from "../context/hono";
+import { publicBrand$, request$ } from "../context/hono";
 import { queryOf } from "../context/request";
 import { getMemberRoleAndUpdateCache$ } from "../services/auth.service";
 import {
@@ -41,6 +43,7 @@ interface OAuthState {
   readonly orgId: string | null;
   readonly userId: string | null;
   readonly prompt: string | null;
+  readonly publicBrand: PublicBrand;
 }
 
 interface MicrosoftTeamsUserInfo {
@@ -82,19 +85,23 @@ function jsonErrorResponse(error: string, status: number): Response {
   });
 }
 
-function appUrl(path: string): string {
-  return `${env("APP_URL")}${path}`;
+function appUrl(path: string, publicBrand: PublicBrand): string {
+  return `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}${path}`;
 }
 
-function settingsErrorRedirect(message: string): Response {
+function settingsErrorRedirect(
+  message: string,
+  publicBrand: PublicBrand,
+): Response {
   return redirectResponse(
-    appUrl(`/settings/teams?error=${encodeURIComponent(message)}`),
+    appUrl(`/settings/teams?error=${encodeURIComponent(message)}`, publicBrand),
   );
 }
 
 function settingsSuccessRedirect(args: {
   readonly tenantName?: string | null;
   readonly teamName?: string | null;
+  readonly publicBrand: PublicBrand;
 }): Response {
   const params = new URLSearchParams({ status: "connected" });
   if (args.tenantName) {
@@ -103,14 +110,20 @@ function settingsSuccessRedirect(args: {
   if (args.teamName) {
     params.set("teamName", args.teamName);
   }
-  return redirectResponse(appUrl(`/settings/teams?${params.toString()}`));
+  return redirectResponse(
+    appUrl(`/settings/teams?${params.toString()}`, args.publicBrand),
+  );
 }
 
-function teamsInstallRedirect(tenantId: string): Response {
+function teamsInstallRedirect(
+  tenantId: string,
+  publicBrand: PublicBrand,
+): Response {
   const installUrl = buildTeamsInstallUrl(tenantId);
   if (!installUrl) {
     return settingsErrorRedirect(
       "Microsoft Teams integration is not configured.",
+      publicBrand,
     );
   }
   return noStoreRedirect(installUrl);
@@ -126,12 +139,22 @@ function optionalString(value: unknown): string | null {
 
 function parseOAuthState(state: string | undefined): OAuthState | null {
   if (!state) {
-    return { orgId: null, userId: null, prompt: null };
+    return {
+      orgId: null,
+      userId: null,
+      prompt: null,
+      publicBrand: "vm0",
+    };
   }
 
   const parsed = safeJsonParse(state);
   if (typeof parsed !== "object" || parsed === null) {
-    return { orgId: null, userId: null, prompt: null };
+    return {
+      orgId: null,
+      userId: null,
+      prompt: null,
+      publicBrand: "vm0",
+    };
   }
 
   const record = parsed as Record<string, unknown>;
@@ -153,6 +176,9 @@ function parseOAuthState(state: string | undefined): OAuthState | null {
     orgId: optionalString(record.orgId),
     userId: userId.userId,
     prompt: optionalString(record.prompt),
+    // Old web/app OAuth state can omit publicBrand for about two days.
+    // Remove this VM0 default in #27660 after legacy states have drained.
+    publicBrand: record.publicBrand === "okou" ? "okou" : "vm0",
   };
 }
 
@@ -302,6 +328,7 @@ const resolveTeamsOauthStateAuth$ = command(
 
 const connectOauth$ = command(({ get }) => {
   const request = get(request$).raw;
+  const publicBrand = get(publicBrand$);
   const origin = getOAuthApiOrigin(request);
   const credentials = microsoftCredentials();
   if (!credentials) {
@@ -329,9 +356,11 @@ const connectOauth$ = command(({ get }) => {
     orgId: string;
     userId: string;
     prompt?: string;
+    publicBrand: PublicBrand;
   } = {
     orgId: query.orgId,
     userId: userId.userId,
+    publicBrand,
   };
   if (query.prompt) {
     stateObj.prompt = truncatePrompt(query.prompt);
@@ -360,21 +389,25 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const query = get(queryOf(zeroTeamsOauthContract.callback));
+  const state = parseOAuthState(query.state);
+  const redirectBrand = state?.publicBrand ?? get(publicBrand$);
   if (query.error) {
-    return settingsErrorRedirect(query.error_description ?? query.error);
+    return settingsErrorRedirect(
+      query.error_description ?? query.error,
+      redirectBrand,
+    );
   }
   if (!query.code) {
     return jsonErrorResponse("Missing authorization code", 400);
   }
 
-  const state = parseOAuthState(query.state);
   if (!state?.orgId || !state.userId) {
-    return settingsErrorRedirect("Invalid connect state.");
+    return settingsErrorRedirect("Invalid connect state.", redirectBrand);
   }
 
   const auth = await set(resolveTeamsOauthStateAuth$, state, signal);
   if (!auth) {
-    return settingsErrorRedirect("Invalid connect state.");
+    return settingsErrorRedirect("Invalid connect state.", state.publicBrand);
   }
 
   const exchange = await tapError(
@@ -396,6 +429,7 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!exchange) {
     return settingsErrorRedirect(
       "Failed to connect Microsoft Teams account. Please try again.",
+      state.publicBrand,
     );
   }
 
@@ -404,6 +438,7 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
     orgId: auth.orgId,
     orgRole: auth.orgRole,
     tenantId: exchange.tenantId,
+    publicBrand: state.publicBrand,
     teamsAadObjectId: exchange.user.id,
     teamsUserDisplayName: exchange.user.displayName ?? undefined,
     teamsUserPrincipalName:
@@ -418,7 +453,7 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
     signal.throwIfAborted();
 
     if (prepared.kind !== "ok") {
-      return settingsErrorRedirect(prepared.message);
+      return settingsErrorRedirect(prepared.message, state.publicBrand);
     }
 
     await set(
@@ -428,11 +463,11 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
     );
     signal.throwIfAborted();
 
-    return teamsInstallRedirect(exchange.tenantId);
+    return teamsInstallRedirect(exchange.tenantId, state.publicBrand);
   }
 
   if (result.kind === "forbidden") {
-    return settingsErrorRedirect(result.message);
+    return settingsErrorRedirect(result.message, state.publicBrand);
   }
 
   await set(
@@ -443,12 +478,16 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   if (!isTeamsInstallationActive(result.installation)) {
-    return teamsInstallRedirect(result.installation.teamsTenantId);
+    return teamsInstallRedirect(
+      result.installation.teamsTenantId,
+      state.publicBrand,
+    );
   }
 
   return settingsSuccessRedirect({
     tenantName: result.installation.teamsTenantName,
     teamName: result.installation.teamsTeamName,
+    publicBrand: state.publicBrand,
   });
 });
 

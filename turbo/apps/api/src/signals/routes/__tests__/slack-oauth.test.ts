@@ -27,6 +27,7 @@ const store = createStore();
 const API_ORIGIN = "https://api.vm0.ai";
 const WEB_ORIGIN = "https://www.vm0.ai";
 const APP_ORIGIN = "https://app.vm0.ai";
+const OKOU_APP_ORIGIN = "https://app.okou.ai";
 
 async function appRequest(
   path: string,
@@ -144,7 +145,9 @@ describe("Slack OAuth API routes", () => {
       expect(scopes).toContain("users:read");
       expect(scopes).toContain("files:read");
       expect(scopes).toContain("files:write");
-      expect(redirectUrl.searchParams.get("state")).toBeNull();
+      expect(JSON.parse(redirectUrl.searchParams.get("state")!)).toStrictEqual({
+        publicBrand: "vm0",
+      });
       expect(response.headers.get("cache-control")).toBe("no-store");
       expect(
         integrationIdentityCompatibilityEvents(
@@ -190,7 +193,11 @@ describe("Slack OAuth API routes", () => {
       const state = JSON.parse(
         redirectUrl.searchParams.get("state")!,
       ) as Record<string, unknown>;
-      expect(state).toStrictEqual({ orgId: "org_1", userId: "user_1" });
+      expect(state).toStrictEqual({
+        orgId: "org_1",
+        publicBrand: "vm0",
+        userId: "user_1",
+      });
       expect(state).not.toHaveProperty("vm0UserId");
       expect(
         integrationIdentityCompatibilityEvents(
@@ -215,7 +222,11 @@ describe("Slack OAuth API routes", () => {
       const state = JSON.parse(
         redirectUrl.searchParams.get("state")!,
       ) as Record<string, unknown>;
-      expect(state).toStrictEqual({ orgId: "org_1", userId: "user_1" });
+      expect(state).toStrictEqual({
+        orgId: "org_1",
+        publicBrand: "vm0",
+        userId: "user_1",
+      });
       expect(state).not.toHaveProperty("vm0UserId");
       expect(
         integrationIdentityCompatibilityEvents(
@@ -267,6 +278,7 @@ describe("Slack OAuth API routes", () => {
       expect(state).toStrictEqual({
         orgId: "org_1",
         prompt: "summarize my inbox",
+        publicBrand: "vm0",
         userId: "user_1",
       });
     });
@@ -515,6 +527,7 @@ describe("Slack OAuth API routes", () => {
         flow: "connect",
         orgId: fixture.orgId,
         prompt: "summarize my inbox",
+        publicBrand: "vm0",
         userId: fixture.userId,
       });
     });
@@ -642,6 +655,7 @@ describe("Slack OAuth API routes", () => {
       });
       const state = JSON.stringify({
         orgId: fixture.orgId,
+        publicBrand: "okou",
         userId: fixture.userId,
       });
 
@@ -651,7 +665,7 @@ describe("Slack OAuth API routes", () => {
 
       expect(response.status).toBe(307);
       expect(response.headers.get("location")).toContain(
-        `${APP_ORIGIN}/settings/slack?status=connected`,
+        `${OKOU_APP_ORIGIN}/settings/slack?status=connected`,
       );
 
       const installation = await store.set(
@@ -664,6 +678,7 @@ describe("Slack OAuth API routes", () => {
         installedByUserId: fixture.userId,
         botUserId: "B_TEST",
         botScopes: JSON.stringify(["chat:write", "channels:read"]),
+        publicBrand: "okou",
       });
       expect(context.mocks.slack.oauth.v2.access).toHaveBeenCalledWith(
         expect.objectContaining({

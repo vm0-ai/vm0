@@ -10,6 +10,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type { ExportArtifactUrls } from "@okouai/db/jsonb-contracts/export-job";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 export type { ExportArtifactUrl } from "@okouai/db/jsonb-contracts/export-job";
 
 /**
@@ -24,6 +25,10 @@ export const exportJobs = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     userId: text("user_id").notNull(),
     orgId: text("org_id").notNull(),
+    publicBrand: text("public_brand")
+      .$type<PublicBrand>()
+      .default("vm0")
+      .notNull(),
     // pending -> running -> completed | failed
     status: varchar("status", { length: 20 }).notNull(),
     s3Key: text("s3_key"),

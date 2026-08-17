@@ -1,4 +1,5 @@
 import { command, computed } from "ccstate";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
 import {
   FEISHU_OAUTH_SCOPES,
@@ -229,6 +230,7 @@ export const feishuConnectStatus = (args: {
 interface ConfigureFeishuArgs {
   readonly orgId: string;
   readonly userId: string;
+  readonly publicBrand: PublicBrand;
   readonly appId: string;
   readonly appSecret: string;
   readonly verificationToken: string;
@@ -312,6 +314,7 @@ async function persistFeishuInstallation(
         encryptedVerificationToken: args.prepared.encryptedVerificationToken,
         encryptedEncryptKey: args.prepared.encryptedEncryptKey,
         defaultComposeId: args.input.defaultAgentId,
+        publicBrand: args.input.publicBrand,
         feishuTenantKey: null,
         feishuTenantName: null,
         encryptedTenantAccessToken: args.prepared.encryptedTenantAccessToken,
@@ -338,6 +341,7 @@ async function persistFeishuInstallation(
       encryptedVerificationToken: args.prepared.encryptedVerificationToken,
       encryptedEncryptKey: args.prepared.encryptedEncryptKey,
       defaultComposeId: args.input.defaultAgentId,
+      publicBrand: args.input.publicBrand,
       encryptedTenantAccessToken: args.prepared.encryptedTenantAccessToken,
       tenantAccessTokenExpiresAt: args.prepared.tokenExpiresAt,
     })

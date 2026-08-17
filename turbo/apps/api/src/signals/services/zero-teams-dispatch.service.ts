@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 
 import { command } from "ccstate";
+import { publicBrandPresentation } from "@okouai/core/public-brand";
 import { v5 as uuidv5 } from "uuid";
 import {
   getVm0VisibleModels,
@@ -79,17 +80,8 @@ import {
 } from "./chat-event-type.service";
 
 const L = logger("TeamsDispatch");
-const TEAMS_LOGIN_PROMPT_FALLBACK_TEXT =
-  "Please connect your account to use Okou in this Teams workspace.";
 const TEAMS_SUPPORTED_COMMANDS_TEXT =
   "`help`, `connect`, `disconnect`, `switch`, `model`";
-export const TEAMS_WELCOME_TEXT = [
-  "Hi, I'm Okou. I connect Teams conversations to AI agents for research, triage, reports, engineering work, operations, and support.",
-  "",
-  "To get started, use `connect` to link this Teams workspace to Okou. An org admin may need to complete workspace setup first.",
-  "",
-  `Commands: ${TEAMS_SUPPORTED_COMMANDS_TEXT}. Mention \`@Okou\` with a task or send a DM to work privately.`,
-].join("\n");
 const TEAMS_AGENT_PICKER_MAX_OPTIONS = 100;
 const TEAMS_MODEL_PICKER_MAX_OPTIONS = 100;
 const TEAMS_CARD_ACTION_KEY = "zeroTeamsAction";
@@ -113,6 +105,33 @@ type TeamsInstallation = typeof teamsOrgInstallations.$inferSelect;
 type BoundTeamsInstallation = TeamsInstallation & { readonly orgId: string };
 type TeamsConnection = typeof teamsOrgConnections.$inferSelect;
 type TeamsMessageActivity = Extract<TeamsInboundActivity, { kind: "message" }>;
+
+function teamsIdentity(installation?: TeamsInstallation | null): {
+  readonly assistantName: "Zero" | "Okou";
+  readonly brandName: "VM0" | "Okou";
+  readonly mentionName: string;
+} {
+  const presentation = publicBrandPresentation(
+    installation?.publicBrand ?? "vm0",
+  );
+  return {
+    ...presentation,
+    mentionName: installation?.botName ?? presentation.assistantName,
+  };
+}
+
+export function teamsWelcomeText(
+  installation?: TeamsInstallation | null,
+): string {
+  const { assistantName, brandName, mentionName } = teamsIdentity(installation);
+  return [
+    `Hi, I'm ${assistantName}. I connect Teams conversations to AI agents for research, triage, reports, engineering work, operations, and support.`,
+    "",
+    `To get started, use \`connect\` to link this Teams workspace to ${brandName}. An org admin may need to complete workspace setup first.`,
+    "",
+    `Commands: ${TEAMS_SUPPORTED_COMMANDS_TEXT}. Mention \`@${mentionName}\` with a task or send a DM to work privately.`,
+  ].join("\n");
+}
 
 interface TeamsContextMessage {
   readonly id: string | null;
@@ -256,7 +275,9 @@ function isTeamsBotGreeting(prompt: string): boolean {
 function commandHelpNotice(args: {
   readonly canSwitch: boolean;
   readonly canModel: boolean;
+  readonly installation?: TeamsInstallation | null;
 }): TeamsMessageDispatchResult {
+  const { assistantName, mentionName } = teamsIdentity(args.installation);
   const switchLine = args.canSwitch
     ? "\n- `switch` - Choose which agent responds to your messages"
     : "";
@@ -264,39 +285,45 @@ function commandHelpNotice(args: {
   return {
     kind: "notice",
     replyText: [
-      "**Okou Teams Bot Help**",
+      `**${assistantName} Teams Bot Help**`,
       "",
       "**Commands**",
-      `- \`connect\` - Connect to Okou${switchLine}${modelLine}`,
-      "- `disconnect` - Disconnect from Okou",
+      `- \`connect\` - Connect to ${assistantName}${switchLine}${modelLine}`,
+      `- \`disconnect\` - Disconnect from ${assistantName}`,
       "",
       "**Usage**",
-      "- `@Okou <message>` - Send a message to your agent",
-      "- Send a DM to Okou to chat without mentioning the bot",
+      `- \`@${mentionName} <message>\` - Send a message to your agent`,
+      `- Send a DM to ${mentionName} to chat without mentioning the bot`,
     ].join("\n"),
   };
 }
 
-function greetingNotice(): TeamsMessageDispatchResult {
+function greetingNotice(
+  installation?: TeamsInstallation | null,
+): TeamsMessageDispatchResult {
   return {
     kind: "notice",
-    replyText: TEAMS_WELCOME_TEXT,
+    replyText: teamsWelcomeText(installation),
   };
 }
 
-function connectedNotice(): TeamsMessageDispatchResult {
+function connectedNotice(
+  installation: TeamsInstallation,
+): TeamsMessageDispatchResult {
+  const { assistantName, mentionName } = teamsIdentity(installation);
   return {
     kind: "notice",
-    replyText:
-      "You're already connected. Mention @Okou in any channel or send a DM to start chatting with your agent.",
+    replyText: `You're already connected to ${assistantName}. Mention @${mentionName} in any channel or send a DM to start chatting with your agent.`,
   };
 }
 
-function notInstalledNotice(): TeamsMessageDispatchResult {
+function notInstalledNotice(
+  installation?: TeamsInstallation | null,
+): TeamsMessageDispatchResult {
+  const { assistantName, brandName } = teamsIdentity(installation);
   return {
     kind: "notice",
-    replyText:
-      "The Okou Teams app hasn't been set up for this workspace yet. An org admin can complete the setup in Okou.",
+    replyText: `The ${assistantName} Teams app hasn't been set up for this workspace yet. An org admin can complete the setup in ${brandName}.`,
   };
 }
 
@@ -1476,12 +1503,17 @@ function shouldDispatchTeamsMessage(activity: TeamsMessageActivity): boolean {
 function teamsValidationFallbackNotice(args: {
   readonly command: TeamsBotCommand | null;
   readonly isGreeting: boolean;
+  readonly installation?: TeamsInstallation | null;
 }): TeamsMessageDispatchResult | null {
   if (args.command === "help") {
-    return commandHelpNotice({ canSwitch: false, canModel: false });
+    return commandHelpNotice({
+      canSwitch: false,
+      canModel: false,
+      installation: args.installation,
+    });
   }
   if (args.isGreeting) {
-    return greetingNotice();
+    return greetingNotice(args.installation);
   }
   return null;
 }
@@ -1804,13 +1836,14 @@ function connectNotice(
   activity: TeamsMessageActivity,
   installation: TeamsInstallation | null,
 ): TeamsMessageDispatchResult {
+  const { assistantName } = teamsIdentity(installation);
   const connectUrl = buildTeamsConnectUrlForActivity({
     activity,
     installation,
   });
   return {
     kind: "notice",
-    replyText: TEAMS_LOGIN_PROMPT_FALLBACK_TEXT,
+    replyText: `Please connect your account to use ${assistantName} in this Teams workspace.`,
     ...(connectUrl ? { connectUrl } : {}),
   };
 }
@@ -1850,13 +1883,17 @@ function unboundInstallationNotice(args: {
   readonly installation: TeamsInstallation | null;
 }): TeamsMessageDispatchResult {
   if (args.command === "help") {
-    return commandHelpNotice({ canSwitch: false, canModel: false });
+    return commandHelpNotice({
+      canSwitch: false,
+      canModel: false,
+      installation: args.installation,
+    });
   }
   if (args.command === "connect" && !args.installation) {
-    return notInstalledNotice();
+    return notInstalledNotice(args.installation);
   }
   if (args.isGreeting) {
-    return greetingNotice();
+    return greetingNotice(args.installation);
   }
   return connectNotice(args.activity, args.installation);
 }
@@ -1868,10 +1905,14 @@ function missingConnectionNotice(args: {
   readonly installation: TeamsInstallation;
 }): TeamsMessageDispatchResult {
   if (args.command === "help") {
-    return commandHelpNotice({ canSwitch: true, canModel: false });
+    return commandHelpNotice({
+      canSwitch: true,
+      canModel: false,
+      installation: args.installation,
+    });
   }
   if (args.isGreeting) {
-    return greetingNotice();
+    return greetingNotice(args.installation);
   }
   return connectNotice(args.activity, args.installation);
 }
@@ -1889,10 +1930,14 @@ const connectedCommandBeforeCompose$ = command(
   ): Promise<TeamsMessageDispatchResult | null> => {
     switch (args.command) {
       case "help": {
-        return commandHelpNotice({ canSwitch: true, canModel: true });
+        return commandHelpNotice({
+          canSwitch: true,
+          canModel: true,
+          installation: args.installation,
+        });
       }
       case "connect": {
-        return connectedNotice();
+        return connectedNotice(args.installation);
       }
       case "disconnect": {
         const result = await set(
@@ -2227,7 +2272,11 @@ export const dispatchTeamsMessageToAgent$ = command(
     const isGreeting = !cardAction && isTeamsBotGreeting(prompt);
     if (!cardAction && !shouldDispatchTeamsMessage(activity)) {
       return (
-        teamsValidationFallbackNotice({ command, isGreeting }) ?? {
+        teamsValidationFallbackNotice({
+          command,
+          isGreeting,
+          installation: args.installation,
+        }) ?? {
           kind: "ignored",
         }
       );
@@ -2235,9 +2284,10 @@ export const dispatchTeamsMessageToAgent$ = command(
 
     const promptFiles = cardAction ? [] : teamsPromptFiles(activity);
     if (!prompt && promptFiles.length === 0 && !cardAction) {
+      const { assistantName } = teamsIdentity(args.installation);
       return {
         kind: "notice",
-        replyText: "Please include a message for Okou.",
+        replyText: `Please include a message for ${assistantName}.`,
       };
     }
 

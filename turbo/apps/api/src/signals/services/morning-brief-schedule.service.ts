@@ -1,5 +1,6 @@
 import { morningBriefSchedules } from "@okouai/db/schema/morning-brief";
 import { and, eq } from "drizzle-orm";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 import type { Db } from "../external/db";
 import { calculateNextRun } from "./time-automation";
@@ -58,6 +59,7 @@ interface SyncMorningBriefScheduleArgs {
   readonly timezone: string | null;
   readonly enabled: boolean;
   readonly currentTime: Date;
+  readonly publicBrand?: PublicBrand;
 }
 
 /**
@@ -81,13 +83,18 @@ export async function syncMorningBriefSchedule(
       .values({
         orgId: args.orgId,
         userId: args.userId,
+        publicBrand: args.publicBrand ?? "vm0",
         nextRunAt,
         createdAt: args.currentTime,
         updatedAt: args.currentTime,
       })
       .onConflictDoUpdate({
         target: [morningBriefSchedules.orgId, morningBriefSchedules.userId],
-        set: { nextRunAt, updatedAt: args.currentTime },
+        set: {
+          nextRunAt,
+          ...(args.publicBrand ? { publicBrand: args.publicBrand } : {}),
+          updatedAt: args.currentTime,
+        },
       });
     return;
   }

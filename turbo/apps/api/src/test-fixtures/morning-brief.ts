@@ -17,6 +17,7 @@ export async function readMorningBriefDeliveryFixture(args: {
   const [delivery] = await db()
     .select({
       id: morningBriefDeliveries.id,
+      publicBrand: morningBriefDeliveries.publicBrand,
       status: morningBriefDeliveries.status,
       runId: morningBriefDeliveries.runId,
       inputKey: morningBriefDeliveries.inputKey,

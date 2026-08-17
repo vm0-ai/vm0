@@ -5,6 +5,10 @@ import type {
 import type { Root } from "hast";
 import { MessageCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import {
+  appUrlForPublicBrand,
+  publicBrandPresentation,
+} from "@okouai/core/public-brand";
 
 import { MarkdownEventBody } from "../components/markdown.tsx";
 
@@ -133,6 +137,9 @@ export function SharedThreadPage({
 }) {
   const { t } = useTranslation();
   const groups = sharedThread ? groupSharedMessages(sharedThread.messages) : [];
+  const publicBrand = sharedThread?.publicBrand ?? "vm0";
+  const presentation = publicBrandPresentation(publicBrand);
+  const homeUrl = appUrlForPublicBrand(window.location.origin, publicBrand);
   return (
     <main
       className="flex h-full flex-col overflow-y-auto bg-background text-foreground"
@@ -141,7 +148,7 @@ export function SharedThreadPage({
       <header className="sticky top-0 z-20 border-b border-border/70 bg-background/95 backdrop-blur">
         <div className="mx-auto flex h-14 w-full max-w-[948px] items-center justify-between px-4 sm:px-6">
           <a
-            href="/"
+            href={homeUrl}
             className="inline-flex items-center gap-2 text-sm font-semibold text-foreground"
           >
             <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-[#ed4e01] text-white">
@@ -149,15 +156,15 @@ export function SharedThreadPage({
             </span>
             {t(($) => {
               return $.sharedThread.brand;
-            })}
+            }, presentation)}
           </a>
           <a
-            href="/"
+            href={homeUrl}
             className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover"
           >
             {t(($) => {
               return $.sharedThread.tryOkou;
-            })}
+            }, presentation)}
           </a>
         </div>
       </header>

@@ -584,7 +584,7 @@ describe("POST /api/zero/integrations/teams/connect", () => {
       kind: "activity",
       body: {
         type: "message",
-        summary: "You're connected!",
+        summary: "You're connected to Zero!",
         attachments: [
           {
             contentType: "application/vnd.microsoft.card.adaptive",
@@ -594,7 +594,7 @@ describe("POST /api/zero/integrations/teams/connect", () => {
               body: [
                 {
                   type: "TextBlock",
-                  text: "You're connected! 🎉\nMention `@Okou` in any channel or send a DM to start chatting with your agent.",
+                  text: "You're connected to Zero! 🎉\nMention `@Zero` in any channel or send a DM to start chatting with your agent.",
                   wrap: true,
                 },
               ],

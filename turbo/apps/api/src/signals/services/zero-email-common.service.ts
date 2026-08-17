@@ -11,6 +11,12 @@ import { Resend } from "resend";
 import { delay } from "signal-timers";
 import { Webhook } from "svix";
 import { z } from "zod";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import {
+  apiUrlForPublicBrand,
+  appUrlForPublicBrand,
+  publicBrandPresentation,
+} from "@okouai/core/public-brand";
 
 import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -108,6 +114,7 @@ const outboxRowSchema = z.object({
   subject: z.string(),
   reply_to: z.string().nullable(),
   headers: z.record(z.string(), z.string()).nullable(),
+  public_brand: z.enum(["vm0", "okou"]),
   template: emailTemplateSchema,
   attempts: z.int(),
 });
@@ -122,6 +129,7 @@ function outboxRowSelection() {
     subject: emailOutbox.subject,
     reply_to: emailOutbox.replyTo,
     headers: emailOutbox.headers,
+    public_brand: emailOutbox.publicBrand,
     template: emailOutbox.template,
     attempts: emailOutbox.attempts,
   };
@@ -135,12 +143,15 @@ function getResendClient(): Resend {
   return new Resend(apiKey);
 }
 
-function apiUrl(): string {
-  return env("VM0_API_BACKEND_URL") ?? env("VM0_WEB_URL");
+function apiUrl(publicBrand: PublicBrand): string {
+  return apiUrlForPublicBrand(
+    env("VM0_API_BACKEND_URL") ?? env("VM0_WEB_URL"),
+    publicBrand,
+  );
 }
 
-function appUrl(): string {
-  return env("APP_URL");
+function appUrl(publicBrand: PublicBrand): string {
+  return appUrlForPublicBrand(env("APP_URL"), publicBrand);
 }
 
 function getFromDomain(): string {
@@ -151,8 +162,18 @@ function getFromDomain(): string {
   return domain;
 }
 
-export function buildFromAddress(localPart: string): string {
-  return `Zero <${localPart}@${getFromDomain()}>`;
+export function buildFromAddress(
+  localPart: string,
+  publicBrand: PublicBrand = "vm0",
+): string {
+  return `${publicBrandPresentation(publicBrand).assistantName} <${localPart}@${getFromDomain()}>`;
+}
+
+export function buildTeamFromAddress(
+  localPart: string,
+  publicBrand: PublicBrand = "vm0",
+): string {
+  return `${publicBrandPresentation(publicBrand).brandName} Team <${localPart}@${getFromDomain()}>`;
 }
 
 function generateUnsubscribeToken(userId: string): string {
@@ -164,14 +185,20 @@ function generateUnsubscribeToken(userId: string): string {
   return `${userId}.${hmac}`;
 }
 
-export function buildUnsubscribeUrl(userId: string): string {
-  return `${appUrl()}/email/unsubscribe?token=${generateUnsubscribeToken(
+export function buildUnsubscribeUrl(
+  userId: string,
+  publicBrand: PublicBrand = "vm0",
+): string {
+  return `${appUrl(publicBrand)}/email/unsubscribe?token=${generateUnsubscribeToken(
     userId,
   )}`;
 }
 
-export function buildOneClickUnsubscribeUrl(userId: string): string {
-  return `${apiUrl()}/api/email/unsubscribe?token=${generateUnsubscribeToken(
+export function buildOneClickUnsubscribeUrl(
+  userId: string,
+  publicBrand: PublicBrand = "vm0",
+): string {
+  return `${apiUrl(publicBrand)}/api/email/unsubscribe?token=${generateUnsubscribeToken(
     userId,
   )}`;
 }
@@ -222,7 +249,10 @@ const MORNING_BRIEF_FALLBACK_HEADLINE =
 
 function renderMorningBriefTemplate(
   template: MorningBriefEmailTemplate,
+  publicBrand: PublicBrand,
 ): string {
+  const assistantName = publicBrandPresentation(publicBrand).assistantName;
+  const assistantMark = publicBrand === "okou" ? "O" : "0";
   const sections = template.props.sections
     .map((section) => {
       const items = section.items
@@ -248,16 +278,19 @@ function renderMorningBriefTemplate(
     template.props.preheader,
   )}</div><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="width:100%;border-collapse:collapse;background-color:#ffffff"><tr><td align="left" style="padding:24px 20px 40px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;text-align:left"><tr><td><p style="margin:0 0 1em">${escapeHtml(
     headline,
-  )}</p><hr style="height:1px;margin:28px 0;border:0;background-color:#e4e6e8">${sections}<p style="margin:0 0 1em">Continue in Zero if you&rsquo;d like to ask a follow-up or turn any item into a task.</p><p style="margin:0"><a href="${escapeHtml(
+  )}</p><hr style="height:1px;margin:28px 0;border:0;background-color:#e4e6e8">${sections}<p style="margin:0 0 1em">Continue in ${assistantName} if you&rsquo;d like to ask a follow-up or turn any item into a task.</p><p style="margin:0"><a href="${escapeHtml(
     template.props.continueUrl,
-  )}" style="${MORNING_BRIEF_LINK_STYLE};font-weight:600">Continue in Zero &rarr;</a></p><hr style="height:1px;margin:32px 0 24px;border:0;background-color:#e4e6e8"><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse"><tr><td width="40" height="40" align="center" valign="middle" bgcolor="#ed4e01" style="width:40px;height:40px;border-radius:10px;color:#ffffff;font-size:17px;font-weight:700;line-height:40px;mso-line-height-rule:exactly">0</td><td valign="middle" style="padding-left:12px;line-height:1.4"><div><strong>Zero</strong></div><div style="margin-top:3px;font-size:12px"><a href="${escapeHtml(
+  )}" style="${MORNING_BRIEF_LINK_STYLE};font-weight:600">Continue in ${assistantName} &rarr;</a></p><hr style="height:1px;margin:32px 0 24px;border:0;background-color:#e4e6e8"><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse"><tr><td width="40" height="40" align="center" valign="middle" bgcolor="#ed4e01" style="width:40px;height:40px;border-radius:10px;color:#ffffff;font-size:17px;font-weight:700;line-height:40px;mso-line-height-rule:exactly">${assistantMark}</td><td valign="middle" style="padding-left:12px;line-height:1.4"><div><strong>${assistantName}</strong></div><div style="margin-top:3px;font-size:12px"><a href="${escapeHtml(
     template.props.continueUrl,
   )}" style="${MORNING_BRIEF_LINK_STYLE}">Open this brief</a> &middot; <a href="${escapeHtml(
     template.props.manageUrl,
   )}" style="${MORNING_BRIEF_LINK_STYLE}">Turn off Morning Brief</a></div></td></tr></table><div style="margin-top:16px;color:#737373;font-size:12px;line-height:1.45">From your &ldquo;Morning Brief&rdquo; routine</div></td></tr></table></td></tr></table></body></html>`;
 }
 
-function renderTemplate(template: EmailTemplate): string {
+function renderTemplate(
+  template: EmailTemplate,
+  publicBrand: PublicBrand,
+): string {
   switch (template.template) {
     case "data-export-ready": {
       const unsubscribe = template.props.unsubscribeUrl
@@ -272,7 +305,7 @@ function renderTemplate(template: EmailTemplate): string {
       )}">Download export</a></p>${unsubscribe}</main>`;
     }
     case "morning-brief": {
-      return renderMorningBriefTemplate(template);
+      return renderMorningBriefTemplate(template, publicBrand);
     }
     case "credit-low-balance": {
       const remainingCredits =
@@ -305,6 +338,7 @@ async function sendEmailDirect(options: {
   readonly cc?: string | readonly string[];
   readonly replyTo?: string;
   readonly headers?: Record<string, string>;
+  readonly publicBrand: PublicBrand;
 }): Promise<
   | { readonly ok: true; readonly resendId: string }
   | { readonly ok: false; readonly error: string }
@@ -314,7 +348,7 @@ async function sendEmailDirect(options: {
     from: options.from,
     to: typeof options.to === "string" ? options.to : [...options.to],
     subject: options.subject,
-    html: renderTemplate(options.template),
+    html: renderTemplate(options.template, options.publicBrand),
     cc:
       options.cc === undefined
         ? undefined
@@ -396,6 +430,7 @@ async function processOutboxItem(
     cc: row.cc_addresses ?? undefined,
     replyTo: row.reply_to ?? undefined,
     headers: row.headers ?? undefined,
+    publicBrand: row.public_brand,
   });
 
   if (!result.ok) {

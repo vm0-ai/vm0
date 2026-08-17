@@ -1,5 +1,6 @@
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatMorningBriefContext } from "@okouai/db/schema/chat-morning-brief-context";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { morningBriefDeliveries } from "@okouai/db/schema/morning-brief";
 import { and, eq } from "drizzle-orm";
 
@@ -18,6 +19,7 @@ export interface MorningBriefQueuedLaunchMaterial {
 
 interface MorningBriefLaunchContextRow {
   readonly deliveryId: string;
+  readonly publicBrand: PublicBrand;
   readonly timezone: string | null;
   readonly triggeredAt: Date | null;
   readonly briefDate: string;
@@ -58,6 +60,7 @@ async function loadMorningBriefLaunchContext(
   const [row] = await db
     .select({
       deliveryId: chatMorningBriefContext.deliveryId,
+      publicBrand: morningBriefDeliveries.publicBrand,
       timezone: chatMorningBriefContext.timezone,
       triggeredAt: chatMorningBriefContext.triggeredAt,
       briefDate: morningBriefDeliveries.briefDate,
@@ -129,6 +132,7 @@ export async function loadMorningBriefQueuedLaunchMaterial(
       timezone: context.timezone,
       inputUrl,
       outputUrl,
+      publicBrand: context.publicBrand,
     }),
     deliveryId: context.deliveryId,
   };

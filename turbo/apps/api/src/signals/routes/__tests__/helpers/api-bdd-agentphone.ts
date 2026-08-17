@@ -6,6 +6,7 @@ import {
   type PhoneUploadCompleteBody,
   type PhoneUploadInitBody,
 } from "@okouai/api-contracts/contracts/integrations";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { logsByIdContract } from "@okouai/api-contracts/contracts/logs";
 import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
 import { zeroModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-model-providers";
@@ -268,6 +269,7 @@ export function createAgentPhoneBddApi(context: TestContext) {
       actor: ApiTestUser,
       phone: string,
       capture: AgentPhoneSendCapture,
+      publicBrand: PublicBrand = "vm0",
     ): Promise<void> {
       await postAgentPhoneInboundMessage({
         channel: "sms",
@@ -275,7 +277,12 @@ export function createAgentPhoneBddApi(context: TestContext) {
         body: "hi",
       });
       const connectBody = harvestConnectBody(capture);
-      await integrations.requestConnectAgentPhone(actor, connectBody, [200]);
+      await integrations.requestConnectAgentPhone(
+        actor,
+        connectBody,
+        [200],
+        publicBrand,
+      );
       const welcome = capture.messages.at(-1);
       if (
         welcome?.toNumber !== phone ||

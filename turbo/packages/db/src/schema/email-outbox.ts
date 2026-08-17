@@ -12,6 +12,7 @@ import type {
   EmailOutboxHeaders,
   EmailOutboxTemplate,
 } from "@okouai/db/jsonb-contracts/email-outbox";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 /**
  * Email Outbox table
@@ -35,6 +36,10 @@ export const emailOutbox = pgTable(
     subject: text("subject").notNull(),
     replyTo: text("reply_to"),
     headers: jsonb("headers").$type<EmailOutboxHeaders>(),
+    publicBrand: text("public_brand")
+      .$type<PublicBrand>()
+      .default("vm0")
+      .notNull(),
 
     // Template (discriminated union stored as JSONB)
     template: jsonb("template").$type<EmailOutboxTemplate>().notNull(),

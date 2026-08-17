@@ -6,6 +6,8 @@ import { agentphoneUserLinks } from "@okouai/db/schema/agentphone-user-link";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { eq } from "drizzle-orm";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 
 import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
@@ -60,15 +62,23 @@ export async function touchAgentPhoneUserLink(
   userLink: AgentPhoneUserLink,
   phoneHandle: string,
   channel: AgentPhoneChannel,
+  publicBrand?: PublicBrand,
 ): Promise<AgentPhoneUserLink> {
   const normalized = normalizeAgentPhoneHandle(phoneHandle, channel);
-  if (userLink.phoneHandle === normalized) {
+  if (
+    userLink.phoneHandle === normalized &&
+    (publicBrand === undefined || userLink.publicBrand === publicBrand)
+  ) {
     return userLink;
   }
 
   const [updated] = await db
     .update(agentphoneUserLinks)
-    .set({ phoneHandle: normalized, updatedAt: nowDate() })
+    .set({
+      phoneHandle: normalized,
+      ...(publicBrand ? { publicBrand } : {}),
+      updatedAt: nowDate(),
+    })
     .where(eq(agentphoneUserLinks.id, userLink.id))
     .returning();
 
@@ -254,6 +264,7 @@ export async function resolveAgentPhoneAuditLogsUrl(
     readonly orgId: string;
     readonly userId: string;
     readonly runId: string;
+    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<string | undefined> {
@@ -267,5 +278,5 @@ export async function resolveAgentPhoneAuditLogsUrl(
   if (!enabled) {
     return undefined;
   }
-  return `${env("APP_URL")}/activities/${encodeURIComponent(args.runId)}`;
+  return `${appUrlForPublicBrand(env("APP_URL"), args.publicBrand)}/activities/${encodeURIComponent(args.runId)}`;
 }

@@ -9,6 +9,7 @@ import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
+import { publicBrand$ } from "../context/hono";
 import { db$ } from "../external/db";
 import { InvalidFeishuCredentialsError } from "../external/feishu-client";
 import type { RouteEntry } from "../route-entry";
@@ -94,6 +95,7 @@ const setup$ = command(async ({ get, set }, signal: AbortSignal) => {
     return feishuIntegrationDisabled;
   }
   const auth = get(organizationAuthContext$);
+  const publicBrand = get(publicBrand$);
   if (auth.orgRole !== "admin") {
     return adminRequired();
   }
@@ -108,6 +110,7 @@ const setup$ = command(async ({ get, set }, signal: AbortSignal) => {
       {
         orgId: auth.orgId,
         userId: auth.userId,
+        publicBrand,
         ...bodyResult.data,
       },
       signal,

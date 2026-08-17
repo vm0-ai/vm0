@@ -1,4 +1,9 @@
 import crypto, { timingSafeEqual } from "node:crypto";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import {
+  apiUrlForPublicBrand,
+  appUrlForPublicBrand,
+} from "@okouai/core/public-brand";
 
 import { env } from "../../lib/env";
 
@@ -28,8 +33,13 @@ function buildToken(orgId: string, userId: string): string {
 export function buildMorningBriefUnsubscribeUrl(
   orgId: string,
   userId: string,
+  publicBrand: PublicBrand = "vm0",
 ): string {
-  return `${env("VM0_API_BACKEND_URL") ?? env("VM0_WEB_URL")}/api/email/morning-brief/unsubscribe?token=${buildToken(orgId, userId)}`;
+  const apiUrl = apiUrlForPublicBrand(
+    env("VM0_API_BACKEND_URL") ?? env("VM0_WEB_URL"),
+    publicBrand,
+  );
+  return `${apiUrl}/api/email/morning-brief/unsubscribe?token=${buildToken(orgId, userId)}`;
 }
 
 /**
@@ -39,8 +49,9 @@ export function buildMorningBriefUnsubscribeUrl(
 export function buildMorningBriefUnsubscribePageUrl(
   orgId: string,
   userId: string,
+  publicBrand: PublicBrand = "vm0",
 ): string {
-  return `${env("APP_URL")}/email/morning-brief/unsubscribe?token=${buildToken(orgId, userId)}`;
+  return `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}/email/morning-brief/unsubscribe?token=${buildToken(orgId, userId)}`;
 }
 
 export function verifyMorningBriefUnsubscribeToken(

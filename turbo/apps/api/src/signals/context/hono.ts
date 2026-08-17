@@ -1,4 +1,5 @@
 import type { AppRoute } from "@okouai/api-contracts/contracts/trpc-contract";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
   CLIENT_PRODUCT_HEADER,
   CLIENT_TYPE_DESKTOP,
@@ -15,10 +16,6 @@ import {
   previewAutomationBypassSecret,
   requestHasPreviewAutomationBypassHeaderOrCookie,
 } from "../../lib/preview-automation-bypass";
-
-// Presentation identity only. PublicBrand must not be used as an authorization,
-// tenancy, or billing boundary.
-export type PublicBrand = "vm0" | "okou";
 
 const VM0_PRODUCTION_DOMAIN = "vm0.ai";
 const OKOU_PRODUCTION_DOMAIN = "okou.ai";
