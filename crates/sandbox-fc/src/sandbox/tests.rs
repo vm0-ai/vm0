@@ -4551,7 +4551,7 @@ async fn wait_for_balloon_follows_exact_bounded_poll_schedule() {
             release: Arc::clone(&response_release),
             stats: MockBalloonStats::new(target_mib, 0),
         })
-        .take(16)
+        .take(28)
         .chain(std::iter::once(MockBalloonStatsReply::Status(500)))
         .collect(),
     );
@@ -4563,11 +4563,12 @@ async fn wait_for_balloon_follows_exact_bounded_poll_schedule() {
     let wait = wait_for_balloon_with_outcome(&client, target_mib, "bounded-schedule");
     tokio::pin!(wait);
 
-    for (index, delay_ms) in [
-        0_u64, 25, 50, 100, 100, 100, 200, 200, 500, 500, 500, 500, 500, 500, 500, 500,
-    ]
-    .into_iter()
-    .enumerate()
+    // Exercise through 4,775 ms. A 4,975 ms sample is not guaranteed because
+    // each interval starts after the previous Unix-socket response completes.
+    for (index, delay_ms) in std::iter::once(0_u64)
+        .chain([25, 50, 100, 100, 100, 200, 200])
+        .chain(std::iter::repeat_n(200, 20))
+        .enumerate()
     {
         if delay_ms > 0 {
             tokio::time::advance(Duration::from_millis(delay_ms - 1)).await;
@@ -4631,7 +4632,7 @@ async fn wait_for_balloon_follows_exact_bounded_poll_schedule() {
             .iter()
             .filter(|request| request.method == "GET" && request.path == "/balloon/statistics")
             .count(),
-        16
+        28
     );
 }
 
