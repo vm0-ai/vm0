@@ -9,6 +9,7 @@ export interface EventDrivenChatThread extends ChatThreadSnapshotProjection {
   readonly sortAt: string;
   readonly cloudBrowserEnabled: boolean;
   readonly selectedVideoModel: string | null;
+  readonly selectedImageModel: string | null;
 }
 
 function compareThreadOrder(
@@ -36,7 +37,8 @@ function isDeferrableUpdate(kind: ReplayChatThreadEvent["kind"]): boolean {
     kind === "model_selection_updated" ||
     kind === "service_tier_updated" ||
     kind === "computer_use_host_updated" ||
-    kind === "video_model_updated"
+    kind === "video_model_updated" ||
+    kind === "image_model_updated"
   );
 }
 
@@ -71,6 +73,9 @@ function updatedThreadFields(
   if (event.kind === "video_model_updated") {
     return { selectedVideoModel: event.selectedVideoModel ?? null };
   }
+  if (event.kind === "image_model_updated") {
+    return { selectedImageModel: event.selectedImageModel ?? null };
+  }
   return null;
 }
 
@@ -94,6 +99,7 @@ function applyEvent(
       computerUseHostId: event.computerUseHostId,
       cloudBrowserEnabled: event.cloudBrowserEnabled ?? false,
       selectedVideoModel: event.selectedVideoModel ?? null,
+      selectedImageModel: event.selectedImageModel ?? null,
     });
     const pendingUpdates = pendingThreadUpdates.get(event.chatThreadId) ?? [];
     pendingThreadUpdates.delete(event.chatThreadId);
@@ -142,6 +148,7 @@ function applyEvent(
  * ~2d) arrives without it and must replay as an unset pin. Remove with the
  * contract's optional marker once the client floor passes the build that
  * introduced the field. Follow-up: https://github.com/vm0-ai/vm0/issues/26765
+ * `selectedImageModel` has the same compatibility boundary for #27688.
  */
 export function replayChatThreadEvents(
   snapshot: readonly ChatThreadSnapshotProjection[],
@@ -156,6 +163,7 @@ export function replayChatThreadEvents(
       computerUseHostId: thread.computerUseHostId ?? null,
       cloudBrowserEnabled: thread.cloudBrowserEnabled ?? false,
       selectedVideoModel: thread.selectedVideoModel ?? null,
+      selectedImageModel: thread.selectedImageModel ?? null,
     });
   }
   const pendingThreadUpdates = new Map<string, ReplayChatThreadEvent[]>();

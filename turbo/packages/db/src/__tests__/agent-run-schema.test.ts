@@ -29,7 +29,11 @@ describe("agentRuns circular foreign keys", () => {
     const { schema } = await import("../index");
     const { agentRuns } =
       await import("../schema/agent-run-session-conversation");
+    const { chatThreadEvents, chatThreadEventKind } =
+      await import("../schema/chat-thread-event");
     const { chatThreads } = await import("../schema/chat-thread");
+    const { orgMembersMetadata } =
+      await import("../schema/org-members-metadata");
     const { threadGoals } = await import("../schema/thread-goal");
     const { workflowAutomations } = await import("../schema/workflow");
 
@@ -77,6 +81,17 @@ describe("agentRuns circular foreign keys", () => {
     expect(agentRuns.autonomyBudget.hasDefault).toBe(false);
     expect(agentRuns.launchSnapshot.notNull).toBe(false);
     expect(agentRuns.launchSnapshot.hasDefault).toBe(false);
+    for (const column of [
+      agentRuns.selectedImageModel,
+      chatThreadEvents.selectedImageModel,
+      chatThreads.selectedImageModel,
+      orgMembersMetadata.selectedImageModel,
+    ]) {
+      expect(column.name).toBe("selected_image_model");
+      expect(column.notNull).toBe(false);
+      expect(column.hasDefault).toBe(false);
+    }
+    expect(chatThreadEventKind.enumValues).toContain("image_model_updated");
 
     const metadataPresenceCheck = agentRunConfig.checks.find((check) => {
       return check.name === "agent_runs_metadata_presence_check";
@@ -99,6 +114,7 @@ describe("agentRuns circular foreign keys", () => {
       "selected_model",
       "codex_service_tier",
       "selected_video_model",
+      "selected_image_model",
       "chat_thread_id",
       "api_started_at",
       "first_assistant_event_acknowledged_at",
@@ -108,7 +124,7 @@ describe("agentRuns circular foreign keys", () => {
     for (const column of metadataColumns) {
       expect(metadataPresenceSql).toContain(`"agent_runs"."${column}" IS NULL`);
     }
-    expect(metadataPresenceSql.match(/ IS NULL/gu)).toHaveLength(15);
+    expect(metadataPresenceSql.match(/ IS NULL/gu)).toHaveLength(16);
     expect(metadataPresenceSql.match(/ IS NOT NULL/gu)).toHaveLength(2);
     expect(metadataPresenceSql).toContain(
       '"agent_runs"."trigger_source" IS NOT NULL',

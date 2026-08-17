@@ -185,7 +185,11 @@ async function readAgentDigest(client: Client): Promise<string> {
     `
       SELECT md5(COALESCE(
         string_agg(
-          (to_jsonb("run") - 'launch_snapshot')::text,
+          (
+            to_jsonb("run")
+            - 'launch_snapshot'
+            - 'selected_image_model'
+          )::text,
           ''
           ORDER BY "run"."id"
         ),

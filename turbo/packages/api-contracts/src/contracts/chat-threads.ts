@@ -160,6 +160,11 @@ const chatThreadSnapshotProjectionSchema = z.object({
   // chat-thread-event.service.ts and chat-thread-event-replay.ts.
   // Follow-up: https://github.com/vm0-ai/vm0/issues/26765
   selectedVideoModel: z.string().nullable().optional(),
+  // Keep this optional for pre-field browser rows and loose rather than
+  // imageModelIdSchema so a stored model that later leaves the catalog remains
+  // replayable. New write contracts validate against the shared schema.
+  // Follow-up: https://github.com/vm0-ai/vm0/issues/27688
+  selectedImageModel: z.string().nullable().optional(),
 });
 
 const chatThreadEventSchema = z.object({
@@ -176,6 +181,7 @@ const chatThreadEventSchema = z.object({
     "service_tier_updated",
     "computer_use_host_updated",
     "video_model_updated",
+    "image_model_updated",
     "sort_touched",
   ]),
   chatThreadId: z.string().uuid(),
@@ -186,6 +192,7 @@ const chatThreadEventSchema = z.object({
   computerUseHostId: z.string().uuid().nullable().default(null),
   cloudBrowserEnabled: z.boolean().optional(),
   selectedVideoModel: z.string().nullable().optional(),
+  selectedImageModel: z.string().nullable().optional(),
   createdAt: z.string(),
 });
 

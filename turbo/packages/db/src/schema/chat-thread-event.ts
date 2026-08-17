@@ -25,6 +25,7 @@ export const chatThreadEventKind = pgEnum("chat_thread_event_kind", [
   "service_tier_updated",
   "computer_use_host_updated",
   "video_model_updated",
+  "image_model_updated",
   "sort_touched",
 ]);
 
@@ -64,6 +65,7 @@ export const chatThreadEvents = pgTable(
       .default(false)
       .notNull(),
     selectedVideoModel: varchar("selected_video_model", { length: 255 }),
+    selectedImageModel: varchar("selected_image_model", { length: 255 }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {
