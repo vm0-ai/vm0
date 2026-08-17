@@ -1402,9 +1402,11 @@ describe("organization billing settings", () => {
     expect(
       within(orderSummary).queryByText("Monthly difference"),
     ).not.toBeInTheDocument();
-    expect(
-      within(orderSummary).getByText("Scheduled for Sep 1, 2026"),
-    ).toBeVisible();
+    const conversionNotice = within(orderSummary).getByRole("status", {
+      name: "Convert plan",
+    });
+    expect(conversionNotice).toBeVisible();
+    expect(conversionNotice).toHaveTextContent("Scheduled for Sep 1, 2026");
 
     const reviewConversionButton = buttonByText(
       "Review conversion",
@@ -1442,8 +1444,8 @@ describe("organization billing settings", () => {
       within(reviewDialog).getByText("Monthly total").closest("div"),
     ).toHaveTextContent("$229.50/month");
     expect(
-      within(reviewDialog).getByText("Scheduled for Sep 1, 2026"),
-    ).toBeInTheDocument();
+      within(reviewDialog).getByRole("status", { name: "Convert plan" }),
+    ).toHaveTextContent("Scheduled for Sep 1, 2026");
 
     click(within(reviewDialog).getByLabelText("Back"));
     const returnedPackagesDialog = await screen.findByRole("dialog", {

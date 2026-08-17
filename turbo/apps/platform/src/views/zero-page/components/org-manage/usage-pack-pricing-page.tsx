@@ -1793,6 +1793,36 @@ function SubscriptionComparisonTable({
   );
 }
 
+function ScheduledBillingChangeNotice({
+  className = "",
+  description,
+  title,
+}: {
+  readonly className?: string;
+  readonly description: ReactNode;
+  readonly title: string;
+}) {
+  return (
+    <div
+      role="status"
+      aria-label={title}
+      className={`flex items-center gap-3 rounded-xl p-3 ${USAGE_PACK_DOWNGRADE_NOTICE_CLASS} ${className}`}
+    >
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-yellow-100/80 text-yellow-700 dark:bg-yellow-400/15 dark:text-yellow-300">
+        <CalendarDays aria-hidden="true" className="size-4" />
+      </span>
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-yellow-900 dark:text-yellow-100">
+          {title}
+        </p>
+        <div className="mt-0.5 text-sm leading-snug text-yellow-800 dark:text-yellow-200">
+          {description}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SubscriptionChangeNotice({
   description,
   effectiveAt,
@@ -1801,17 +1831,25 @@ function SubscriptionChangeNotice({
   readonly effectiveAt: string;
 }) {
   return (
-    <div className="mt-3 rounded-lg border border-amber-200/70 bg-amber-50/70 px-3 py-2 text-sm leading-relaxed text-amber-700 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-300">
-      <p>{description}</p>
-      <p className="mt-1 font-medium">
-        {i18n.t(
-          ($) => {
-            return $.billing.plans.usagePacks.management.scheduledFor;
-          },
-          { date: formatBillingDate(effectiveAt) },
-        )}
-      </p>
-    </div>
+    <ScheduledBillingChangeNotice
+      className="mt-3"
+      title={i18n.t(($) => {
+        return $.billing.plans.usagePacks.migration.convertPlan;
+      })}
+      description={
+        <>
+          <span>{description}</span>
+          <span className="mt-0.5 block font-medium">
+            {i18n.t(
+              ($) => {
+                return $.billing.plans.usagePacks.management.scheduledFor;
+              },
+              { date: formatBillingDate(effectiveAt) },
+            )}
+          </span>
+        </>
+      }
+    />
   );
 }
 
@@ -1832,29 +1870,17 @@ function UsagePackDowngradeNotice({
         return $.billing.plans.downgrade;
       });
   return (
-    <div
-      role="status"
-      aria-label={title}
-      className={`flex items-center gap-3 rounded-xl p-3 ${USAGE_PACK_DOWNGRADE_NOTICE_CLASS} ${className}`}
-    >
-      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-yellow-100/80 text-yellow-700 dark:bg-yellow-400/15 dark:text-yellow-300">
-        <CalendarDays aria-hidden="true" className="size-4" />
-      </span>
-      <div className="min-w-0">
-        <p className="text-sm font-semibold text-yellow-900 dark:text-yellow-100">
-          {title}
-        </p>
-        <p className="mt-0.5 text-sm leading-snug text-yellow-800 dark:text-yellow-200">
-          {i18n.t(
-            ($) => {
-              return $.billing.plans.usagePacks.management
-                .scheduledDowngradeDescription;
-            },
-            { date: formatBillingDate(effectiveAt) },
-          )}
-        </p>
-      </div>
-    </div>
+    <ScheduledBillingChangeNotice
+      className={className}
+      title={title}
+      description={i18n.t(
+        ($) => {
+          return $.billing.plans.usagePacks.management
+            .scheduledDowngradeDescription;
+        },
+        { date: formatBillingDate(effectiveAt) },
+      )}
+    />
   );
 }
 
