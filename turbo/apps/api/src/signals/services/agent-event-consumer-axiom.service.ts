@@ -11,16 +11,23 @@ const AXIOM_EVENT_DATA_MAX_BYTES = 900_000;
 
 const L = logger("agent-event-consumer:axiom");
 
-function serializedUtf8Bytes(value: Record<string, unknown>): number {
+function serializedUtf8Bytes(
+  value: Record<string, unknown>,
+  encoder: InstanceType<typeof TextEncoder>,
+): number {
   const serialized = JSON.stringify(value);
   if (serialized === undefined) {
     throw new Error("Axiom event data must be JSON serializable");
   }
-  return new TextEncoder().encode(serialized).byteLength;
+  return encoder.encode(serialized).byteLength;
 }
 
-function eventDataForAxiom(runId: string, event: AgentEvent): AgentEvent {
-  const originalBytes = serializedUtf8Bytes(event);
+function eventDataForAxiom(
+  runId: string,
+  event: AgentEvent,
+  encoder: InstanceType<typeof TextEncoder>,
+): AgentEvent {
+  const originalBytes = serializedUtf8Bytes(event, encoder);
   if (originalBytes <= AXIOM_EVENT_DATA_MAX_BYTES) {
     return event;
   }
@@ -34,7 +41,7 @@ function eventDataForAxiom(runId: string, event: AgentEvent): AgentEvent {
       budgetBytes: AXIOM_EVENT_DATA_MAX_BYTES,
     },
   };
-  const deliveredBytes = serializedUtf8Bytes(reducedEvent);
+  const deliveredBytes = serializedUtf8Bytes(reducedEvent, encoder);
   L.warn("Reduced oversized agent event for Axiom", {
     runId,
     sequenceNumber: event.sequenceNumber,
@@ -51,13 +58,14 @@ export async function ingestAxiomEvents(
   signal: AbortSignal,
 ): Promise<void> {
   signal.throwIfAborted();
+  const encoder = new TextEncoder();
   const axiomEvents = payload.events.map((event) => {
     return {
       runId: payload.runId,
       userId: payload.context.userId,
       sequenceNumber: event.sequenceNumber,
       eventType: event.type,
-      eventData: eventDataForAxiom(payload.runId, event),
+      eventData: eventDataForAxiom(payload.runId, event, encoder),
     };
   });
   const ingestSignal = AbortSignal.any([
