@@ -118,6 +118,7 @@ import {
   holdThreadSessionConversationClearFixture,
   readCanonicalChatEventStorageFixture,
   releaseBddVm0ApiKey,
+  removeWebChatPublicBrandContextFixture,
   replayPendingChatInputQueueEventFixture,
   replaceThreadSessionBindingFixture,
   timeoutRunWithoutCallbacksFixture,
@@ -8435,6 +8436,22 @@ describe("CHAT-02: public-brand default assistant identity", () => {
     }
     expect(queued.body.runId).toBeNull();
 
+    const rawQueuedEvent = (
+      await chat.listThreadEventRows(actor, okouAnchor.threadId)
+    ).find((event) => {
+      return event.id === queuedEventId;
+    });
+    if (!rawQueuedEvent) {
+      throw new Error("Expected the queued Okou event in Raw Events");
+    }
+    expect(rawQueuedEvent).toMatchObject({
+      contextType: "web",
+      contextId: "public-brand:okou",
+    });
+    // The previous strict raw-row reader accepts this event because the new
+    // context uses existing outer fields and does not widen payload JSONB.
+    expect(rawQueuedEvent.payload).not.toHaveProperty("publicBrand");
+
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(okouAnchor.runId, anchorClaim.sandboxHeaders);
     await flushWaitUntilForTest();
@@ -8485,6 +8502,67 @@ describe("CHAT-02: public-brand default assistant identity", () => {
 
     await cancelChatRun(actor, vm0Run.runId);
     await cancelChatRun(actor, customRun.runId);
+  }, 90_000);
+
+  it("keeps a pre-rollout queued Web event on the legacy Zero identity", async () => {
+    const { actor, runnerGroup } = await entitledChatActor();
+    bdd.acceptAgentStorageWrites();
+    const onboarding = await bdd.readOnboardingStatus(actor);
+    const defaultAgentId = onboarding.defaultAgentId;
+    if (!defaultAgentId) {
+      throw new Error("Expected the system default agent to exist");
+    }
+
+    const anchor = await sendChatRun(
+      actor,
+      { agentId: defaultAgentId, prompt: "start legacy queue coverage" },
+      "okou",
+    );
+    const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
+    const queuedEventId = randomUUID();
+    const queued = await chat.requestSendEvent(
+      actor,
+      {
+        agentId: defaultAgentId,
+        threadId: anchor.threadId,
+        prompt: "promote a pre-rollout Web event",
+        clientEventId: queuedEventId,
+      },
+      [201],
+      undefined,
+      "okou",
+    );
+    if (queued.status !== 201 || queued.body.runId !== null) {
+      throw new Error("Expected the legacy-shape follow-up to enter the queue");
+    }
+
+    // Current routes cannot create the historical missing-context shape.
+    await removeWebChatPublicBrandContextFixture(queuedEventId);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
+    await flushWaitUntilForTest();
+    const promotedMessages = await waitForThreadMessages(
+      actor,
+      anchor.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.revokesEventId === queuedEventId &&
+            message.runId !== undefined
+          );
+        });
+      },
+    );
+    const promoted = userMessages(promotedMessages.events).find((message) => {
+      return message.revokesEventId === queuedEventId;
+    });
+    if (!promoted?.runId) {
+      throw new Error("Expected the pre-rollout Web event to auto-send");
+    }
+    const promotedRun = await api.readRun(actor, promoted.runId);
+    expect(promotedRun.appendSystemPrompt).toContain("Your name is Zero.");
+    expect(promotedRun.appendSystemPrompt).not.toContain("Your name is Okou.");
+    await cancelChatRun(actor, promoted.runId);
   }, 90_000);
 });
 

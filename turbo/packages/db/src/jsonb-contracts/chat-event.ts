@@ -1,5 +1,4 @@
 import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 export type ChatEventUserMessage = UserMessageDocument;
 
@@ -25,7 +24,6 @@ export interface ChatEventUsagePayload {
 export interface ChatEventPayload {
   readonly content?: string;
   readonly userMessage?: ChatEventUserMessage;
-  readonly publicBrand?: PublicBrand;
   readonly thinking?: string;
   readonly error?: string;
   readonly usage?: ChatEventUsagePayload;

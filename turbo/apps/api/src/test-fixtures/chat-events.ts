@@ -822,6 +822,31 @@ export async function replayPendingChatInputQueueEventFixture(args: {
 }
 
 /**
+ * Reproduce a queued Web row written before public-brand context existed.
+ * Current production APIs always write the context, so this historical rollout
+ * shape cannot be constructed through the current external route.
+ */
+export async function removeWebChatPublicBrandContextFixture(
+  eventId: string,
+): Promise<void> {
+  const updated = await db()
+    .update(chatEvents)
+    .set({ contextId: null })
+    .where(
+      and(
+        eq(chatEvents.id, eventId),
+        eq(chatEvents.eventType, "input.prompt"),
+        eq(chatEvents.contextType, "web"),
+        isNull(chatEvents.runId),
+      ),
+    )
+    .returning({ id: chatEvents.id });
+  if (updated.length !== 1) {
+    throw new Error("Expected one pending Web event with brand context");
+  }
+}
+
+/**
  * Move one exact automation event into historical state without waiting for real
  * time to pass. A string preserves PostgreSQL precision beyond JavaScript
  * milliseconds. Product APIs cannot construct an already-stale queue item.

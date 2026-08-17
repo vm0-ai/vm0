@@ -84,6 +84,7 @@ import {
   type NewChatEvent,
   replaceChatEvent,
 } from "./chat-event.service";
+import { webChatPublicBrandContextId } from "./web-chat-public-brand-context.service";
 import { chatThreadAdmissionBlocked } from "./chat-active-run.service";
 import {
   agentRunSourceTitleSnapshot,
@@ -1487,9 +1488,13 @@ function appendUnassociatedUserMessage(params: {
       chatThreadId: params.threadId,
       eventType: "input.prompt",
       userMessage: params.userMessage,
-      publicBrand: params.publicBrand,
       runId: null,
-      ...(params.triggerSource === "web" ? { contextType: "web" } : {}),
+      ...(params.triggerSource === "web"
+        ? {
+            contextType: "web",
+            contextId: webChatPublicBrandContextId(params.publicBrand),
+          }
+        : {}),
       ...(params.agentRunSource
         ? {
             agentRunContext: {

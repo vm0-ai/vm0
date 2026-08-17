@@ -2649,6 +2649,7 @@ interface QueuedLaunchLoaderArgs {
   readonly chatThreadId: string;
   readonly orgId: string;
   readonly userId: string;
+  readonly contextType: QueuedUserMessageContextType;
   readonly agentRunSource: ChatAgentRunSourceAnnotation | null;
   readonly userMessageProjection: ReturnType<typeof projectUserMessage>;
   readonly publicBrand: PublicBrand | null;
@@ -2663,6 +2664,21 @@ type LaunchLoader = (
   args: QueuedLaunchLoaderArgs,
 ) => Promise<QueuedLaunchMaterial | null>;
 
+function queuedWebPublicBrand(
+  args: QueuedLaunchLoaderArgs,
+): PublicBrand | undefined {
+  if (args.contextType !== "web") {
+    return args.publicBrand ?? undefined;
+  }
+  if (args.publicBrand !== null) {
+    return args.publicBrand;
+  }
+  // Queued Web events written before this API release have no brand context.
+  // Preserve their legacy VM0 identity while old runner/sandbox work drains
+  // (up to 2 hours). Remove after that rollout window; follow-up #27744.
+  return "vm0";
+}
+
 /**
  * Web is the only trigger source with no context table: the user typed the
  * message, so `chat_events.payload.userMessage` is the durable original fact
@@ -2670,6 +2686,7 @@ type LaunchLoader = (
  * place a launch loader reads it, and it is deliberate.
  */
 const loadWebQueuedLaunchMaterial: LaunchLoader = (_db, args) => {
+  const publicBrand = queuedWebPublicBrand(args);
   return Promise.resolve({
     prompt: args.userMessageProjection.agentPrompt,
     appendSystemPrompt: buildWebChatAppendSystemPrompt({
@@ -2687,7 +2704,7 @@ const loadWebQueuedLaunchMaterial: LaunchLoader = (_db, args) => {
       },
     }),
     delivery: {},
-    ...(args.publicBrand ? { publicBrand: args.publicBrand } : {}),
+    ...(publicBrand ? { publicBrand } : {}),
   });
 };
 
@@ -2798,6 +2815,7 @@ async function resolveQueuedLaunchMaterial(
     chatThreadId: args.threadId,
     orgId: args.agent.orgId,
     userId: args.userId,
+    contextType: args.queuedMessage.contextType,
     userMessageProjection: args.userMessageProjection,
     publicBrand: args.queuedMessage.publicBrand,
     agentRunSource: agentRunSourceAnnotation(args.queuedMessage.userMessage),

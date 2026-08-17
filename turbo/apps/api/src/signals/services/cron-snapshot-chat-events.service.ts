@@ -156,22 +156,6 @@ type ArchiveEventRow = Pick<
   | "createdAt"
 >;
 
-function chatEventRowPayload(
-  payload: ArchiveEventRow["payload"],
-): ChatEventRow["payload"] {
-  if (payload === null) {
-    return null;
-  }
-  const { content, userMessage, thinking, error, usage } = payload;
-  return {
-    ...(content === undefined ? {} : { content }),
-    ...(userMessage === undefined ? {} : { userMessage }),
-    ...(thinking === undefined ? {} : { thinking }),
-    ...(error === undefined ? {} : { error }),
-    ...(usage === undefined ? {} : { usage }),
-  };
-}
-
 function chatEventSnapshotThreadBatchSize(): number {
   const raw = optionalEnv("CHAT_EVENT_SNAPSHOT_BATCH_SIZE");
   if (raw === undefined) {
@@ -206,7 +190,7 @@ export function chatEventRowFromDbRow(row: ArchiveEventRow): ChatEventRow {
     runId: row.runId,
     revokesEventId: row.revokesEventId,
     eventType: row.eventType,
-    payload: chatEventRowPayload(row.payload),
+    payload: row.payload,
     contextType: row.contextType,
     contextId: row.contextId,
     runEventSequenceNumber: row.runEventSequenceNumber,

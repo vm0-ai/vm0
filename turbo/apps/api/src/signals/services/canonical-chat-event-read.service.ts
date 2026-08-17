@@ -1,5 +1,4 @@
 import { userMessageDocumentSchema } from "@okouai/api-contracts/contracts/chat-threads";
-import { publicBrandSchema } from "@okouai/api-contracts/contracts/public-brand";
 import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { sql, type SQLWrapper } from "drizzle-orm";
@@ -13,7 +12,6 @@ import {
 const chatEventUserMessageDecoder = zodDriverValueDecoder(
   userMessageDocumentSchema,
 );
-const publicBrandDecoder = zodDriverValueDecoder(publicBrandSchema);
 
 /** Canonical payload leaves projected from chat_events.payload. */
 export function canonicalChatEventContent(
@@ -29,14 +27,6 @@ export function canonicalChatEventUserMessage(
 ) {
   return sql`${payload}->'userMessage'`.mapWith(
     nullableDriverValueDecoder(chatEventUserMessageDecoder),
-  );
-}
-
-export function canonicalChatEventPublicBrand(
-  payload: SQLWrapper = chatEvents.payload,
-) {
-  return sql`${payload}->>'publicBrand'`.mapWith(
-    nullableDriverValueDecoder(publicBrandDecoder),
   );
 }
 

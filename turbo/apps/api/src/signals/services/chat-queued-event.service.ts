@@ -55,10 +55,8 @@ import {
   createUserMessageDocument,
   withRunModelAnnotation,
 } from "./chat-user-message.service";
-import {
-  canonicalChatEventPublicBrand,
-  canonicalChatEventUserMessage,
-} from "./canonical-chat-event-read.service";
+import { canonicalChatEventUserMessage } from "./canonical-chat-event-read.service";
+import { webChatPublicBrandFromContextId } from "./web-chat-public-brand-context.service";
 
 type DbTransaction = Tx;
 
@@ -272,12 +270,12 @@ export async function loadNextUnclaimedQueuedUserMessage(
       id: chatEvents.id,
       createdAt: chatEvents.createdAt,
       userMessage: canonicalChatEventUserMessage(),
-      publicBrand: canonicalChatEventPublicBrand(),
       modelProviderId: sql`NULL`.mapWith(pgNullDecoder),
       modelProviderType: sql`NULL`.mapWith(pgNullDecoder),
       modelProviderCredentialScope: sql`NULL`.mapWith(pgNullDecoder),
       selectedModel: chatThreads.selectedModel,
       contextType: chatEvents.contextType,
+      contextId: chatEvents.contextId,
       sourceAutonomyBudget: agentRuns.autonomyBudget,
     })
     .from(chatEvents)
@@ -305,6 +303,10 @@ export async function loadNextUnclaimedQueuedUserMessage(
     throw new Error("Queued input event is missing userMessage");
   }
   const contextType = requiredQueuedUserMessageContextType(event.contextType);
+  const publicBrand =
+    contextType === "web"
+      ? webChatPublicBrandFromContextId(event.contextId)
+      : null;
   const autonomyBudget: QueuedUserMessage["autonomyBudget"] =
     contextType !== "agent_run"
       ? { kind: "ok", autonomyBudget: INITIAL_AUTONOMY_BUDGET }
@@ -317,6 +319,7 @@ export async function loadNextUnclaimedQueuedUserMessage(
   return {
     ...event,
     userMessage: event.userMessage,
+    publicBrand,
     contextType,
     autonomyBudget,
   };
@@ -365,7 +368,6 @@ async function resolveUserQueueFirstClaimSnapshot(
     .select({
       ...queueFirstReplacementTargetFields,
       userMessage: canonicalChatEventUserMessage(),
-      publicBrand: canonicalChatEventPublicBrand(),
     })
     .from(chatEvents)
     .where(
@@ -402,7 +404,6 @@ async function resolveUserQueueFirstClaimSnapshot(
               args.selectedModel,
               args.serviceTier,
             ),
-      ...(head.publicBrand ? { publicBrand: head.publicBrand } : {}),
       runId: args.runId,
     },
   };
