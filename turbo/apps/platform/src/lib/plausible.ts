@@ -110,5 +110,11 @@ export function capturePlausibleEvent(
   options?: PlausibleEventOptions,
 ): void {
   const plausible = getPlausible();
-  plausible?.(eventName, options);
+  plausible?.(eventName, {
+    ...options,
+    props: {
+      ...options?.props,
+      public_brand: resolvePlatformRuntimeConfig().publicBrand,
+    },
+  });
 }

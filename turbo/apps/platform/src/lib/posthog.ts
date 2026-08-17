@@ -2,7 +2,8 @@ import { command, state } from "ccstate";
 import { posthog } from "posthog-js";
 import { resolvePlatformRuntimeConfig } from "./platform-host.ts";
 
-const POSTHOG_KEY = resolvePlatformRuntimeConfig().postHogKey;
+const RUNTIME_CONFIG = resolvePlatformRuntimeConfig();
+const POSTHOG_KEY = RUNTIME_CONFIG.postHogKey;
 
 function runPostHog(action: (key: string) => void): void {
   if (!POSTHOG_KEY) {
@@ -34,7 +35,7 @@ export function initPostHog(): void {
             "/:id",
           );
         }
-        return properties;
+        return { ...properties, public_brand: RUNTIME_CONFIG.publicBrand };
       },
     });
   });

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BrowserOptions } from "@sentry/browser";
+import type { PostHogConfig } from "posthog-js";
 import { isOkouProductionHostname } from "../lib/platform-host.ts";
 import { sentryLogContext } from "../lib/sentry-config.ts";
 import { initSharedDatabaseWorkerSentry } from "../shared-database/worker-sentry.ts";
@@ -27,7 +28,8 @@ const {
     browserSentryCaptureException: vi.fn(),
     browserSentryCaptureMessage: vi.fn(),
     browserSentryInit: vi.fn<(options: BrowserOptions) => void>(),
-    posthogInit: vi.fn(),
+    posthogInit:
+      vi.fn<(key: string, config?: Partial<PostHogConfig>) => void>(),
     sentryInit: vi.fn<(options: BrowserOptions) => void>(),
   };
 });
@@ -173,10 +175,33 @@ describe("portable platform runtime environment", () => {
     expect(isOkouProductionHostname("okou.ai.evil.example")).toBeFalsy();
     expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
       environment: "production",
+      publicBrand: "okou",
       clerkPublishableKey: PRODUCTION_CLERK_KEY,
       sentryDsn: SENTRY_DSN,
       vapidPublicKey: PRODUCTION_VAPID_KEY,
     });
+
+    const plausibleController = new AbortController();
+    await runtime.plausible.initPlausible(plausibleController.signal);
+    plausibleController.abort();
+    runtime.plausible.capturePlausibleEvent("runtime_environment_test");
+    runtime.posthog.initPostHog();
+    runtime.sentry.initSentry();
+
+    expect(window.plausible?.q).toStrictEqual([
+      ["runtime_environment_test", { props: { public_brand: "okou" } }],
+    ]);
+    const [, posthogConfig] = posthogInit.mock.lastCall ?? [];
+    expect(posthogConfig?.sanitize_properties?.({}, "$pageview")).toStrictEqual(
+      { public_brand: "okou" },
+    );
+    expect(sentryInit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialScope: {
+          tags: { app: "platform", public_brand: "okou" },
+        },
+      }),
+    );
   });
 
   it("selects canonical services and production telemetry on an alternate production host", async () => {
@@ -186,6 +211,7 @@ describe("portable platform runtime environment", () => {
     expect(runtime.apiBase.resolveApiBase()).toBe("https://api.vm0.ai");
     expect(runtime.auth.resolveWebOrigin()).toBe("https://www.vm0.ai");
     expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
+      publicBrand: "vm0",
       clerkPublishableKey: PRODUCTION_CLERK_KEY,
       vapidPublicKey: PRODUCTION_VAPID_KEY,
     });
@@ -204,18 +230,34 @@ describe("portable platform runtime environment", () => {
 
     expect(plausibleScriptSources()).toStrictEqual([PRODUCTION_PLAUSIBLE_URL]);
     expect(window.plausible?.q).toStrictEqual([
-      ["runtime_environment_test", undefined],
+      ["runtime_environment_test", { props: { public_brand: "vm0" } }],
     ]);
     expect(posthogInit).toHaveBeenCalledWith(
       POSTHOG_KEY,
       expect.objectContaining({ api_host: "https://j.vm0.ai" }),
     );
+    const [, posthogConfig] = posthogInit.mock.lastCall ?? [];
+    expect(
+      posthogConfig?.sanitize_properties?.(
+        {
+          $current_url:
+            "https://app.vm0.ai/agents/00000000-0000-0000-0000-000000000000",
+        },
+        "$pageview",
+      ),
+    ).toStrictEqual({
+      $current_url: "https://app.vm0.ai/agents/:id",
+      public_brand: "vm0",
+    });
     expect(sentryInit).toHaveBeenCalledWith(
       expect.objectContaining({
         dsn: SENTRY_DSN,
         enabled: true,
         enhanceFetchErrorMessages: false,
         environment: "production",
+        initialScope: {
+          tags: { app: "platform", public_brand: "vm0" },
+        },
       }),
     );
     const [pageSentryOptions] = sentryInit.mock.lastCall ?? [];
@@ -237,6 +279,7 @@ describe("portable platform runtime environment", () => {
     );
     expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
       environment: "preview",
+      publicBrand: "okou",
       clerkPublishableKey: PREVIEW_CLERK_KEY,
       vapidPublicKey: PREVIEW_VAPID_KEY,
     });
@@ -249,16 +292,28 @@ describe("portable platform runtime environment", () => {
     const plausibleController = new AbortController();
     await runtime.plausible.initPlausible(plausibleController.signal);
     plausibleController.abort();
+    runtime.plausible.capturePlausibleEvent("runtime_environment_test", {
+      props: { surface: "preview" },
+    });
     runtime.posthog.initPostHog();
     runtime.sentry.initSentry();
 
     expect(plausibleScriptSources()).toStrictEqual([PREVIEW_PLAUSIBLE_URL]);
+    expect(window.plausible?.q).toStrictEqual([
+      [
+        "runtime_environment_test",
+        { props: { public_brand: "okou", surface: "preview" } },
+      ],
+    ]);
     expect(posthogInit).not.toHaveBeenCalled();
     expect(sentryInit).toHaveBeenCalledWith(
       expect.objectContaining({
         dsn: undefined,
         enabled: false,
         environment: "preview",
+        initialScope: {
+          tags: { app: "platform", public_brand: "okou" },
+        },
       }),
     );
   });
@@ -277,6 +332,7 @@ describe("portable platform runtime environment", () => {
         initialScope: {
           tags: {
             app: "platform",
+            public_brand: "okou",
             runtime: "shared-worker",
             worker: "shared-database",
           },
@@ -370,6 +426,9 @@ describe("portable platform runtime environment", () => {
     expect(runtime.apiBase.resolveOAuthApiBase()).toBe(
       "https://pr-23364-api.vm6.ai",
     );
+    expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
+      publicBrand: "okou",
+    });
   });
 
   it("rejects an invalid API origin on an immutable Pages deployment", async () => {
