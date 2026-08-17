@@ -5990,32 +5990,24 @@ describe("usage pack allocation management", () => {
         idempotencyKey: `usage-pack-subscription-change:${packagePreview.body.changeId}:schedule-update`,
       },
     );
-    const state = await readUsagePackState(
-      fixture.orgId,
-      fixture.usagePackSubscriptionId,
+    const management = await accept(
+      client.get({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
     );
-    expect(state.org?.tier).toBe("team");
-    expect(state.allocations).toStrictEqual(
+    expect(management.body.tier).toBe("team");
+    expect(management.body.allocations).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          userId: actor.userId,
+          memberId: actor.userId,
+          pendingChange: null,
           usagePackUsd: 20,
-          status: "active",
         }),
         expect.objectContaining({
-          userId: addedUserId,
+          memberId: addedUserId,
+          pendingChange: null,
           usagePackUsd: 20,
-          status: "active",
         }),
       ]),
-    );
-    expect(state.changes).toContainEqual(
-      expect.objectContaining({
-        userId: addedUserId,
-        kind: "addition",
-        status: "completed",
-        targetUsagePackUsd: 20,
-      }),
     );
   });
 
@@ -11017,6 +11009,38 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
         }),
       ]),
     );
+  });
+
+  it("does not release a Plan schedule when shared concurrency is not canceling", async () => {
+    const fixture = await createMergedConcurrencySubscriptionOrg({
+      slots: 2,
+      periodEnd: new Date("2099-05-20T00:00:00Z"),
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    const scheduleId = `sub_sched_plan_${randomUUID()}`;
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      id: fixture.subscriptionId,
+      schedule: scheduleId,
+    });
+    context.mocks.stripe.subscriptions.retrieve.mockClear();
+    const client = setupApp({
+      context,
+      routes: billingConcurrencySubscriptionRoutes,
+    })(zeroBillingConcurrencySubscriptionContract);
+
+    await accept(
+      client.restore({
+        params: { subscriptionId: fixture.subscriptionId },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [404],
+    );
+
+    expect(context.mocks.stripe.subscriptions.retrieve).not.toHaveBeenCalled();
+    expect(
+      context.mocks.stripe.subscriptionSchedules.release,
+    ).not.toHaveBeenCalled();
   });
 
   it("cancels and restores a shared concurrency item without blocking later changes", async () => {

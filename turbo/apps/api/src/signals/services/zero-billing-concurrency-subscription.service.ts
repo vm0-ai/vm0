@@ -1187,7 +1187,7 @@ export const restoreConcurrencySubscription$ = command(
       args,
     );
     signal.throwIfAborted();
-    if (!subscription) {
+    if (!subscription || !subscription.cancelAtPeriodEnd) {
       return { ok: false, reason: "not_found" };
     }
 
