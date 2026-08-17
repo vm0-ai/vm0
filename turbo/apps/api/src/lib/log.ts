@@ -119,18 +119,43 @@ function writeError(...args: unknown[]): void {
 
 // ── Axiom integration ────────────────────────────────────────────────────
 
+function reportAxiomLogDeliveryError(dataset: string, error: Error): void {
+  if (error.name === "TimeoutError") {
+    console.warn("Axiom application log delivery timed out", {
+      client: "telemetry",
+      dataset,
+      failureKind: "timeout",
+      error,
+    });
+    return;
+  }
+
+  writeError("Axiom application log delivery failed", {
+    client: "telemetry",
+    dataset,
+    failureKind: "transport_error",
+    error,
+  });
+}
+
 const getAxiomLogger = singleton((): AxiomLogger | null => {
   const token = env("AXIOM_TOKEN_TELEMETRY");
   if (!token) {
     return null;
   }
 
-  const axiom = new Axiom({ token });
+  const dataset = `vm0-web-logs-${env("AXIOM_DATASET_SUFFIX")}`;
+  const axiom = new Axiom({
+    token,
+    onError: (error) => {
+      reportAxiomLogDeliveryError(dataset, error);
+    },
+  });
   return new AxiomLogger({
     transports: [
       new AxiomJSTransport({
         axiom,
-        dataset: `vm0-web-logs-${env("AXIOM_DATASET_SUFFIX")}`,
+        dataset,
       }),
     ],
   });
