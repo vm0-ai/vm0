@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.764.0](https://github.com/vm0-ai/vm0/compare/app-v0.763.0...app-v0.764.0) (2026-08-17)
+
+
+### Features
+
+* **billing:** support one-time atom usage-pack grants ([#26948](https://github.com/vm0-ai/vm0/issues/26948)) ([5221f39](https://github.com/vm0-ai/vm0/commit/5221f393c5fc221c8b794948578a674a1b5144bf))
+
+
+### Refactoring
+
+* remove videoTemplateOptions feature switch ([#27706](https://github.com/vm0-ai/vm0/issues/27706)) ([dbb411f](https://github.com/vm0-ai/vm0/commit/dbb411f15a94a4fe20051f73d2b7a692fa8da77c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.335.0
+    * @okouai/core bumped to 8.564.0
+
 ## [0.763.0](https://github.com/vm0-ai/vm0/compare/app-v0.762.1...app-v0.763.0) (2026-08-17)
 
 
