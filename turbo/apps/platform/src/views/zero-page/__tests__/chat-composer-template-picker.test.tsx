@@ -382,9 +382,6 @@ describe("chat composer templates", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: {
-        [FeatureSwitchKey.VideoTemplateOptions]: true,
-      },
       path: `/chats/${THREAD_ID}`,
     });
 
@@ -432,7 +429,7 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("leaves every video parameter to the composer when the switch is on", async () => {
+  it("leaves every video parameter to the composer in video mode", async () => {
     const user = userEvent.setup({ delay: null });
     const template = VIDEO_TEMPLATE_ITEMS[0]!;
     let submittedTemplate: GenerationTemplateRequest | undefined;
@@ -446,7 +443,6 @@ describe("chat composer templates", () => {
     detachedSetupPage({
       context,
       featureSwitches: {
-        [FeatureSwitchKey.VideoTemplateOptions]: true,
         [FeatureSwitchKey.VideoModelSelection]: true,
       },
       path: `/chats/${THREAD_ID}`,
@@ -3092,14 +3088,12 @@ describe("chat composer templates", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
-    // The chip appends its parameters when the video options switch is on, so
-    // this asserts the title is there rather than that it is all there is.
     await waitFor(() => {
       expect(
         composerInlineTemplates().map((node) => {
           return node.textContent;
         }),
-      ).toStrictEqual([expect.stringContaining(videoStyle.title)]);
+      ).toStrictEqual([videoStyle.title]);
     });
   });
 
