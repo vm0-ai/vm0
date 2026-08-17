@@ -525,7 +525,10 @@ function UsagePackCreditCard({ isAdmin }: { isAdmin: boolean }) {
   }
   const data =
     creditsLoadable.state === "hasData" ? creditsLoadable.data : null;
-  if (data?.hasUsagePack === false) {
+  const hasCredits =
+    data !== null &&
+    (data.totalCredits > 0 || (data.memberCredits?.length ?? 0) > 0);
+  if (data?.hasUsagePack === false && !hasCredits) {
     return null;
   }
 

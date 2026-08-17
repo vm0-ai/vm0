@@ -224,6 +224,47 @@ describe("GET /api/zero/billing/usage-pack-credits", () => {
     });
   });
 
+  it("returns active one-time credits without a usage pack allocation", async () => {
+    mockEnv("ENV", "development");
+    mockNow(new Date("2026-08-10T00:00:00.000Z"));
+    const actor = fixture();
+    registerCleanup(actor);
+
+    await createGrant({
+      actor,
+      grantType: "bonus",
+      amount: 10_000,
+      expiresAt: "2026-09-10T00:00:00.000Z",
+    });
+    await updateFeatureSwitchesForUser(context, actor, {
+      [FeatureSwitchKey.UsagePackPlans]: true,
+    });
+    authenticate(actor);
+
+    const response = await accept(
+      creditsClient().get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      totalCredits: 10_000,
+      purchasedCredits: 0,
+      bonusCredits: 10_000,
+      hasUsagePack: false,
+      creditGrants: [
+        expect.objectContaining({
+          grantType: "bonus",
+          amount: 10_000,
+          remaining: 10_000,
+          createdAt: expect.any(String),
+          expiresAt: "2026-09-10T00:00:00.000Z",
+        }),
+      ],
+    });
+  });
+
   it("returns only the current member's active purchased and bonus credits", async () => {
     mockEnv("ENV", "development");
     mockNow(new Date("2026-08-10T00:00:00.000Z"));

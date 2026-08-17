@@ -240,6 +240,7 @@ const readStateSchema = z.object({
       subscriptionStatus: z.string().nullable(),
       currentPeriodEnd: nullableDateSchema,
       cancelAtPeriodEnd: z.boolean(),
+      memberInviteUsagePackRequired: z.boolean(),
     })
     .nullable(),
 });
@@ -549,6 +550,7 @@ async function readUsagePackState(
   const refunds = await readUsagePackCreditRefunds(db, orgId);
   const { grants, migrations, legacyCredits, org } =
     await readOrgUsagePackStateRows(db, orgId);
+  const capabilities = await loadOrgPlanCapabilities(db, orgId);
   signal.throwIfAborted();
 
   return {
@@ -634,6 +636,8 @@ async function readUsagePackState(
           subscriptionStatus: org.subscriptionStatus,
           currentPeriodEnd: isoDate(org.currentPeriodEnd),
           cancelAtPeriodEnd: org.cancelAtPeriodEnd,
+          memberInviteUsagePackRequired:
+            capabilities?.memberInviteUsagePackRequired ?? false,
         }
       : null,
   };

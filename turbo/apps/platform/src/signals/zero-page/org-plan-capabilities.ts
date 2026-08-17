@@ -10,6 +10,7 @@ import {
 export interface OrgPlanCapabilities {
   readonly canBuyConcurrency: boolean;
   readonly canBuyCredits: boolean;
+  readonly memberInviteUsagePackRequired: boolean;
   readonly memberInvitationAllowed: boolean;
   readonly autoRechargeAllowed: boolean;
   readonly supportByok: boolean;
@@ -24,6 +25,7 @@ const LEGACY_TIER_CAPABILITIES: Readonly<
   free: {
     canBuyConcurrency: false,
     canBuyCredits: true,
+    memberInviteUsagePackRequired: false,
     memberInvitationAllowed: false,
     autoRechargeAllowed: false,
     supportByok: true,
@@ -34,6 +36,7 @@ const LEGACY_TIER_CAPABILITIES: Readonly<
   "limited-free-1": {
     canBuyConcurrency: false,
     canBuyCredits: false,
+    memberInviteUsagePackRequired: false,
     memberInvitationAllowed: false,
     autoRechargeAllowed: false,
     supportByok: false,
@@ -44,6 +47,7 @@ const LEGACY_TIER_CAPABILITIES: Readonly<
   "pro-suspend": {
     canBuyConcurrency: false,
     canBuyCredits: false,
+    memberInviteUsagePackRequired: false,
     memberInvitationAllowed: false,
     autoRechargeAllowed: false,
     // Preserve the model picker behavior of browsers talking to an older API.
@@ -56,6 +60,7 @@ const LEGACY_TIER_CAPABILITIES: Readonly<
   pro: {
     canBuyConcurrency: false,
     canBuyCredits: true,
+    memberInviteUsagePackRequired: false,
     memberInvitationAllowed: true,
     autoRechargeAllowed: true,
     supportByok: true,
@@ -66,6 +71,7 @@ const LEGACY_TIER_CAPABILITIES: Readonly<
   team: {
     canBuyConcurrency: true,
     canBuyCredits: true,
+    memberInviteUsagePackRequired: false,
     memberInvitationAllowed: true,
     autoRechargeAllowed: true,
     supportByok: true,
@@ -76,6 +82,7 @@ const LEGACY_TIER_CAPABILITIES: Readonly<
   custom: {
     canBuyConcurrency: true,
     canBuyCredits: true,
+    memberInviteUsagePackRequired: false,
     memberInvitationAllowed: true,
     autoRechargeAllowed: true,
     supportByok: true,
@@ -92,6 +99,9 @@ export function orgPlanCapabilitiesFromBilling(
   return {
     canBuyConcurrency: billing.canBuyConcurrency ?? fallback.canBuyConcurrency,
     canBuyCredits: billing.canBuyCredits ?? fallback.canBuyCredits,
+    memberInviteUsagePackRequired:
+      billing.memberInviteUsagePackRequired ??
+      fallback.memberInviteUsagePackRequired,
     memberInvitationAllowed:
       billing.memberInvitationAllowed ?? fallback.memberInvitationAllowed,
     autoRechargeAllowed:

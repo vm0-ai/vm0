@@ -2,6 +2,7 @@
 // oxlint-disable max-lines-per-function
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import type { ComponentProps } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Search,
@@ -41,6 +42,7 @@ import {
 } from "@okouai/api-contracts/contracts/org-members";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type {
+  UsagePackCatalogItem,
   UsagePackManagementResponse,
   UsagePackUsd,
 } from "@okouai/api-contracts/contracts/zero-billing";
@@ -342,6 +344,333 @@ export function OrgMembersTab() {
   );
 }
 
+type InviteDialogMode =
+  | "direct"
+  | "error"
+  | "loading"
+  | "purchase"
+  | "setup"
+  | "upgrade";
+
+function resolveInviteDialogMode(args: {
+  readonly usagePackPlansEnabled: boolean;
+  readonly capabilities:
+    | {
+        readonly memberInvitationAllowed: boolean;
+        readonly memberInviteUsagePackRequired: boolean;
+      }
+    | undefined;
+  readonly catalogLoading: boolean;
+  readonly catalogError: boolean;
+  readonly usagePackConfigured: boolean;
+}): InviteDialogMode {
+  if (!args.usagePackPlansEnabled) {
+    return "direct";
+  }
+  if (!args.capabilities) {
+    return "loading";
+  }
+  if (!args.capabilities.memberInvitationAllowed) {
+    return "upgrade";
+  }
+  if (!args.capabilities.memberInviteUsagePackRequired) {
+    return "direct";
+  }
+  if (args.catalogLoading) {
+    return "loading";
+  }
+  if (args.catalogError) {
+    return "error";
+  }
+  return args.usagePackConfigured ? "purchase" : "setup";
+}
+
+function InviteDialogFields({
+  email,
+  isValid,
+  role,
+  sending,
+  setEmail,
+  setRole,
+  setTouched,
+  setUsagePackUsd,
+  touched,
+  trimmed,
+  usagePacks,
+  usagePackUsd,
+}: {
+  readonly email: string;
+  readonly isValid: boolean;
+  readonly role: OrgRole;
+  readonly sending: boolean;
+  readonly setEmail: (value: string) => void;
+  readonly setRole: (value: OrgRole) => void;
+  readonly setTouched: (value: boolean) => void;
+  readonly setUsagePackUsd: (value: UsagePackUsd) => void;
+  readonly touched: boolean;
+  readonly trimmed: string;
+  readonly usagePacks: readonly UsagePackCatalogItem[] | null;
+  readonly usagePackUsd: UsagePackUsd;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1.5">
+        <Input
+          placeholder={t(($) => {
+            return $.settings.workspace.members.invite.emailPlaceholder;
+          })}
+          type="email"
+          value={email}
+          disabled={sending}
+          onChange={(event) => {
+            setEmail(event.target.value);
+            setTouched(false);
+          }}
+          onBlur={() => {
+            return setTouched(true);
+          }}
+        />
+        {touched && trimmed && !isValid && (
+          <p className="text-[13px] text-destructive">
+            {t(($) => {
+              return $.settings.workspace.members.invite.invalidEmail;
+            })}
+          </p>
+        )}
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium">
+          {t(($) => {
+            return $.settings.workspace.members.invite.roleLabel;
+          })}
+        </label>
+        <Select
+          value={role}
+          onValueChange={(value) => {
+            return setRole(orgRoleSchema.parse(value));
+          }}
+          disabled={sending}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="member">
+              {t(($) => {
+                return $.settings.workspace.members.member;
+              })}
+            </SelectItem>
+            <SelectItem value="admin">
+              {t(($) => {
+                return $.settings.workspace.members.admin;
+              })}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      {usagePacks && (
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium">
+            {t(($) => {
+              return $.billing.plans.usagePacks.memberPackages;
+            })}
+          </label>
+          <Select
+            value={String(usagePackUsd)}
+            onValueChange={(value) => {
+              return setUsagePackUsd(parseUsagePackOption(value, usagePacks));
+            }}
+            disabled={sending}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="w-max max-w-[calc(100vw-2rem)]">
+              {usagePacks.map((usagePack) => {
+                return (
+                  <SelectItem
+                    key={usagePack.usagePackUsd}
+                    value={String(usagePack.usagePackUsd)}
+                    className="whitespace-nowrap"
+                  >
+                    {usagePackOptionLabel(usagePack)}
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InviteDialogContent({
+  mode,
+  usagePacks,
+  ...fieldProps
+}: Omit<ComponentProps<typeof InviteDialogFields>, "usagePacks"> & {
+  readonly mode: InviteDialogMode;
+  readonly usagePacks: readonly UsagePackCatalogItem[] | null;
+}) {
+  const { t } = useTranslation();
+  if (mode === "upgrade") {
+    return (
+      <>
+        <DialogHeader>
+          <DialogTitle>
+            {t(($) => {
+              return $.settings.workspace.members.invite.upgrade.title;
+            })}
+          </DialogTitle>
+        </DialogHeader>
+        <DialogDescription className="py-2 leading-6">
+          {t(($) => {
+            return $.settings.workspace.members.invite.upgrade.description;
+          })}
+        </DialogDescription>
+      </>
+    );
+  }
+  if (mode === "setup") {
+    return (
+      <>
+        <DialogHeader>
+          <DialogTitle>
+            {t(($) => {
+              return $.settings.workspace.members.invite.title;
+            })}
+          </DialogTitle>
+        </DialogHeader>
+        <DialogDescription className="py-2 leading-6">
+          {t(($) => {
+            return $.billing.plans.usagePacks.packagePerMemberNote;
+          })}
+        </DialogDescription>
+      </>
+    );
+  }
+  if (mode === "loading" || mode === "error") {
+    return (
+      <>
+        <DialogHeader>
+          <DialogTitle>
+            {t(($) => {
+              return $.settings.workspace.members.invite.title;
+            })}
+          </DialogTitle>
+        </DialogHeader>
+        {mode === "loading" ? (
+          <div className="h-24 animate-pulse rounded-lg bg-muted/40" />
+        ) : (
+          <DialogDescription className="py-2 leading-6">
+            {t(($) => {
+              return $.billing.plans.loadError;
+            })}
+          </DialogDescription>
+        )}
+      </>
+    );
+  }
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>
+          {t(($) => {
+            return $.settings.workspace.members.invite.title;
+          })}
+        </DialogTitle>
+        <DialogDescription>
+          {t(($) => {
+            return $.settings.workspace.members.invite.description;
+          })}
+        </DialogDescription>
+      </DialogHeader>
+      <InviteDialogFields
+        {...fieldProps}
+        usagePacks={mode === "purchase" ? usagePacks : null}
+      />
+    </>
+  );
+}
+
+function InvitePrimaryActionLabel({
+  mode,
+  sending,
+}: {
+  readonly mode: InviteDialogMode;
+  readonly sending: boolean;
+}) {
+  const { t } = useTranslation();
+  if (mode === "upgrade") {
+    return t(($) => {
+      return $.settings.workspace.members.invite.upgrade.action;
+    });
+  }
+  if (mode === "loading") {
+    return t(($) => {
+      return $.billing.common.preparing;
+    });
+  }
+  if (mode === "error") {
+    return t(($) => {
+      return $.billing.common.unavailable;
+    });
+  }
+  if (sending) {
+    return t(($) => {
+      return $.settings.workspace.members.invite.progress;
+    });
+  }
+  if (mode === "setup") {
+    return t(($) => {
+      return $.billing.plans.usagePacks.configurePackages;
+    });
+  }
+  if (mode === "purchase") {
+    return t(($) => {
+      return $.chat.actions.continue;
+    });
+  }
+  return t(($) => {
+    return $.settings.workspace.members.invite.send;
+  });
+}
+
+function InviteDialogActions({
+  isValid,
+  mode,
+  onCancel,
+  onPrimary,
+  sending,
+}: {
+  readonly isValid: boolean;
+  readonly mode: InviteDialogMode;
+  readonly onCancel: () => void;
+  readonly onPrimary: () => void;
+  readonly sending: boolean;
+}) {
+  const { t } = useTranslation();
+  const submitsInvitation = mode === "direct" || mode === "purchase";
+  const primaryDisabled =
+    mode === "loading" ||
+    mode === "error" ||
+    (submitsInvitation && (!isValid || sending));
+  return (
+    <DialogFooter>
+      <Button variant="outline" size="sm" onClick={onCancel} disabled={sending}>
+        {t(($) => {
+          return $.settings.shared.cancel;
+        })}
+      </Button>
+      <Button size="sm" disabled={primaryDisabled} onClick={onPrimary}>
+        <InvitePrimaryActionLabel mode={mode} sending={sending} />
+      </Button>
+    </DialogFooter>
+  );
+}
+
 function InviteDialog() {
   const { t } = useTranslation();
   const email = useGet(inviteEmail$);
@@ -358,13 +687,13 @@ function InviteDialog() {
   const catalogLoadable = useLoadable(invitationUsagePackCatalog$);
   const usagePacks =
     catalogLoadable.state === "hasData" ? catalogLoadable.data : null;
-  const requiresUsagePack = usagePacks !== null;
-  const usagePackContextLoading = catalogLoadable.state === "loading";
-  const usagePackContextError = catalogLoadable.state === "hasError";
-  const upgradeRequired =
-    featureSwitches[FeatureSwitchKey.UsagePackPlans] &&
-    capabilities !== undefined &&
-    !capabilities.memberInvitationAllowed;
+  const mode = resolveInviteDialogMode({
+    usagePackPlansEnabled: featureSwitches[FeatureSwitchKey.UsagePackPlans],
+    capabilities,
+    catalogLoading: catalogLoadable.state === "loading",
+    catalogError: catalogLoadable.state === "hasError",
+    usagePackConfigured: usagePacks !== null,
+  });
   const [loadable, doInvite] = useLoadableSet(inviteMember$);
   const sending = loadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
@@ -380,16 +709,24 @@ function InviteDialog() {
       doInvite(
         trimmed,
         role,
-        requiresUsagePack ? usagePackUsd : null,
+        mode === "purchase" ? usagePackUsd : null,
         pageSignal,
       ),
       Reason.DomCallback,
     );
   };
 
-  const handleUpgrade = () => {
+  const openPackageConfiguration = () => {
     setOpen(false);
     openBillingPlans();
+  };
+
+  const handlePrimary = () => {
+    if (mode === "setup" || mode === "upgrade") {
+      openPackageConfiguration();
+      return;
+    }
+    handleSend();
   };
 
   return (
@@ -414,165 +751,30 @@ function InviteDialog() {
           return $.settings.shared.close;
         })}
       >
-        <DialogHeader>
-          <DialogTitle>
-            {upgradeRequired
-              ? t(($) => {
-                  return $.settings.workspace.members.invite.upgrade.title;
-                })
-              : t(($) => {
-                  return $.settings.workspace.members.invite.title;
-                })}
-          </DialogTitle>
-          {!upgradeRequired && (
-            <DialogDescription>
-              {t(($) => {
-                return $.settings.workspace.members.invite.description;
-              })}
-            </DialogDescription>
-          )}
-        </DialogHeader>
-        {upgradeRequired && (
-          <DialogDescription className="py-2 leading-6">
-            {t(($) => {
-              return $.settings.workspace.members.invite.upgrade.description;
-            })}
-          </DialogDescription>
-        )}
-        {!upgradeRequired && (
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Input
-                placeholder={t(($) => {
-                  return $.settings.workspace.members.invite.emailPlaceholder;
-                })}
-                type="email"
-                value={email}
-                disabled={sending}
-                onChange={(e) => {
-                  setEmail(e.target.value);
-                  setTouched(false);
-                }}
-                onBlur={() => {
-                  return setTouched(true);
-                }}
-              />
-              {touched && trimmed && !isValid && (
-                <p className="text-[13px] text-destructive">
-                  {t(($) => {
-                    return $.settings.workspace.members.invite.invalidEmail;
-                  })}
-                </p>
-              )}
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium">
-                {t(($) => {
-                  return $.settings.workspace.members.invite.roleLabel;
-                })}
-              </label>
-              <Select
-                value={role}
-                onValueChange={(v) => {
-                  return setRole(orgRoleSchema.parse(v));
-                }}
-                disabled={sending}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="member">
-                    {t(($) => {
-                      return $.settings.workspace.members.member;
-                    })}
-                  </SelectItem>
-                  <SelectItem value="admin">
-                    {t(($) => {
-                      return $.settings.workspace.members.admin;
-                    })}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {usagePacks && (
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium">
-                  {t(($) => {
-                    return $.billing.plans.usagePacks.memberPackages;
-                  })}
-                </label>
-                <Select
-                  value={String(usagePackUsd)}
-                  onValueChange={(value) => {
-                    return setUsagePackUsd(
-                      parseUsagePackOption(value, usagePacks),
-                    );
-                  }}
-                  disabled={sending}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="w-max max-w-[calc(100vw-2rem)]">
-                    {usagePacks.map((usagePack) => {
-                      return (
-                        <SelectItem
-                          key={usagePack.usagePackUsd}
-                          value={String(usagePack.usagePackUsd)}
-                          className="whitespace-nowrap"
-                        >
-                          {usagePackOptionLabel(usagePack)}
-                        </SelectItem>
-                      );
-                    })}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
-        )}
-        <DialogFooter>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              return setOpen(false);
-            }}
-            disabled={sending}
-          >
-            {t(($) => {
-              return $.settings.shared.cancel;
-            })}
-          </Button>
-          <Button
-            size="sm"
-            disabled={
-              !upgradeRequired &&
-              (!isValid ||
-                sending ||
-                usagePackContextLoading ||
-                usagePackContextError)
-            }
-            onClick={upgradeRequired ? handleUpgrade : handleSend}
-          >
-            {upgradeRequired
-              ? t(($) => {
-                  return $.settings.workspace.members.invite.upgrade.action;
-                })
-              : sending
-                ? t(($) => {
-                    return $.settings.workspace.members.invite.progress;
-                  })
-                : requiresUsagePack
-                  ? t(($) => {
-                      return $.chat.actions.continue;
-                    })
-                  : t(($) => {
-                      return $.settings.workspace.members.invite.send;
-                    })}
-          </Button>
-        </DialogFooter>
+        <InviteDialogContent
+          email={email}
+          isValid={isValid}
+          mode={mode}
+          role={role}
+          sending={sending}
+          setEmail={setEmail}
+          setRole={setRole}
+          setTouched={setTouched}
+          setUsagePackUsd={setUsagePackUsd}
+          touched={touched}
+          trimmed={trimmed}
+          usagePacks={usagePacks}
+          usagePackUsd={usagePackUsd}
+        />
+        <InviteDialogActions
+          isValid={isValid}
+          mode={mode}
+          onCancel={() => {
+            return setOpen(false);
+          }}
+          onPrimary={handlePrimary}
+          sending={sending}
+        />
       </DialogContent>
     </Dialog>
   );
