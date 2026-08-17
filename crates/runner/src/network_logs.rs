@@ -775,6 +775,21 @@ mod tests {
         (output, captured.entries())
     }
 
+    async fn await_with_frozen_time<F>(future: F) -> F::Output
+    where
+        F: std::future::Future,
+    {
+        let clock_guard = tokio::spawn(async {
+            loop {
+                tokio::task::yield_now().await;
+            }
+        });
+        let output = future.await;
+        clock_guard.abort();
+        let _ = clock_guard.await;
+        output
+    }
+
     fn captured_event<'a>(events: &'a [CapturedEvent], message: &str) -> &'a CapturedEvent {
         events
             .iter()
@@ -1092,7 +1107,7 @@ mod tests {
         assert_eq!(tokio::fs::read_to_string(&path).await.unwrap(), content);
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn upload_network_logs_allows_exact_batch_budget() {
         let dir = tempfile::tempdir().unwrap();
         let path = network_log_file(&dir);
@@ -1111,9 +1126,13 @@ mod tests {
             .await;
 
         let http = http_for_server(&server);
-        let (_, events) =
-            capture_async_log_events(upload_network_logs(&http, run_id, SANDBOX_TOKEN, &path))
-                .await;
+        let (_, events) = await_with_frozen_time(capture_async_log_events(upload_network_logs(
+            &http,
+            run_id,
+            SANDBOX_TOKEN,
+            &path,
+        )))
+        .await;
 
         upload
             .assert_calls_async(NETWORK_LOG_UPLOAD_MAX_BATCHES)
@@ -1178,16 +1197,13 @@ mod tests {
             client_session_id: "runner-session-test".to_string(),
         })
         .unwrap();
-        let clock_guard = tokio::spawn(async {
-            loop {
-                tokio::task::yield_now().await;
-            }
-        });
-        let (_, events) =
-            capture_async_log_events(upload_network_logs(&http, run_id, SANDBOX_TOKEN, &path))
-                .await;
-        clock_guard.abort();
-        let _ = clock_guard.await;
+        let (_, events) = await_with_frozen_time(capture_async_log_events(upload_network_logs(
+            &http,
+            run_id,
+            SANDBOX_TOKEN,
+            &path,
+        )))
+        .await;
         stop_server.notify_one();
         let (received_batch_count, received_entry_count) = server_task.await.unwrap();
         assert!(received_batch_count > 0);
@@ -1203,7 +1219,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn upload_network_logs_stops_at_batch_budget() {
         let dir = tempfile::tempdir().unwrap();
         let path = network_log_file(&dir);
@@ -1228,9 +1244,13 @@ mod tests {
             .await;
 
         let http = http_for_server(&server);
-        let (_, events) =
-            capture_async_log_events(upload_network_logs(&http, run_id, SANDBOX_TOKEN, &path))
-                .await;
+        let (_, events) = await_with_frozen_time(capture_async_log_events(upload_network_logs(
+            &http,
+            run_id,
+            SANDBOX_TOKEN,
+            &path,
+        )))
+        .await;
 
         upload
             .assert_calls_async(NETWORK_LOG_UPLOAD_MAX_BATCHES)
@@ -1386,7 +1406,7 @@ mod tests {
         assert_eq!(tokio::fs::read_to_string(&path).await.unwrap(), content);
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn upload_network_logs_stops_at_source_byte_budget() {
         let dir = tempfile::tempdir().unwrap();
         let path = network_log_file(&dir);
@@ -1403,12 +1423,12 @@ mod tests {
             .await;
 
         let http = http_for_server(&server);
-        let (_, events) = capture_async_log_events(upload_network_logs(
+        let (_, events) = await_with_frozen_time(capture_async_log_events(upload_network_logs(
             &http,
             RunId::nil(),
             SANDBOX_TOKEN,
             &path,
-        ))
+        )))
         .await;
 
         upload.assert_calls_async(0).await;
@@ -1432,7 +1452,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn upload_network_logs_allows_exact_source_byte_budget() {
         let dir = tempfile::tempdir().unwrap();
         let path = network_log_file(&dir);
@@ -1457,9 +1477,13 @@ mod tests {
             .await;
 
         let http = http_for_server(&server);
-        let (_, events) =
-            capture_async_log_events(upload_network_logs(&http, run_id, SANDBOX_TOKEN, &path))
-                .await;
+        let (_, events) = await_with_frozen_time(capture_async_log_events(upload_network_logs(
+            &http,
+            run_id,
+            SANDBOX_TOKEN,
+            &path,
+        )))
+        .await;
 
         upload.assert_calls_async(1).await;
         assert!(!has_captured_event(&events, "network log upload truncated"));
