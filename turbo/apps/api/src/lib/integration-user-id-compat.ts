@@ -2,14 +2,14 @@ import { logger } from "./log";
 
 const L = logger("IntegrationIdentityCompatibility");
 
-export type IntegrationUserIdResolutionOutcome =
+type IntegrationUserIdResolutionOutcome =
   | "empty"
   | "canonical_only"
   | "legacy_only_accepted"
   | "matching_dual_accepted"
   | "conflicting_dual_rejected";
 
-export type IntegrationUserIdResolution =
+type IntegrationUserIdResolution =
   | {
       readonly ok: true;
       readonly userId: null;
