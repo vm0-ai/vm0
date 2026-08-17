@@ -222,7 +222,11 @@ describe("Slack OAuth API routes", () => {
       const state = JSON.parse(
         redirectUrl.searchParams.get("state")!,
       ) as Record<string, unknown>;
-      expect(state).toStrictEqual({ orgId: "org_1", userId: "user_1" });
+      expect(state).toStrictEqual({
+        orgId: "org_1",
+        publicBrand: "vm0",
+        userId: "user_1",
+      });
       expect(state).not.toHaveProperty("vm0UserId");
       expect(
         integrationIdentityCompatibilityEvents(

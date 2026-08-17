@@ -4335,11 +4335,11 @@ describe("INT-01: Slack app deep webhook flows", () => {
   });
 
   it("delivers canonical Slack callbacks for progress, audit footers, failures, and Slack errors", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
     const actor = bdd.user();
     runs.acceptStorageDownloads();
     runs.acceptTelemetryIngest();
     integrations.configureSlackAppMocks();
+    mockEnv("APP_URL", "https://app.vm0.ai");
     integrations.acceptSlackSessionHistoryDownloads();
     const runnerGroup = runs.configureRunnerGroup();
     await runs.grantProEntitlement(actor);
