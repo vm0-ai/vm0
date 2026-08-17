@@ -10,6 +10,7 @@ from wsproto.frame_protocol import Opcode
 import deferred_callbacks
 import mitm_addon
 import model_websocket_usage
+from usage.json_selective import JsonSelectiveExtractor
 
 _WebSocketTrimCallback = Callable[[http.HTTPFlow], None]
 ScheduledWebSocketTrim = tuple[_WebSocketTrimCallback, http.HTTPFlow]
@@ -25,6 +26,21 @@ def capture_deferred_websocket_trims(
 
     monkeypatch.setattr(deferred_callbacks, "call_soon", call_soon)
     return scheduled
+
+
+def capture_openai_responses_extractor_feeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[bytes]:
+    """Record full-body extractor feeds while retaining the real parser."""
+    observed: list[bytes] = []
+    original_feed = JsonSelectiveExtractor.feed
+
+    def record_feed(extractor: JsonSelectiveExtractor, chunk: bytes) -> None:
+        observed.append(chunk)
+        original_feed(extractor, chunk)
+
+    monkeypatch.setattr(JsonSelectiveExtractor, "feed", record_feed)
+    return observed
 
 
 def run_deferred_websocket_trims(scheduled: list[ScheduledWebSocketTrim]) -> None:

@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 import {
-  cronRenewGmailWatchesContract,
   cronRenewGoogleCalendarWatchesContract,
   cronRenewGoogleFormsWatchesContract,
 } from "@okouai/api-contracts/contracts/cron";
+import { testGmailWatchRenewalContract } from "@okouai/api-contracts/contracts/test-gmail-watch-renewal";
 import {
   zeroWorkflowAutomationsContract,
   zeroWorkflowsDetailContract,
@@ -46,12 +46,10 @@ import {
 } from "./helpers/chat-event";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import {
-  cronRenewGmailWatchesRoutes,
-  cronRenewGmailWatchesRoutesForTest,
-} from "../cron-renew-gmail-watches";
+import { cronRenewGmailWatchesRoutes } from "../cron-renew-gmail-watches";
 import { cronRenewGoogleCalendarWatchesRoutes } from "../cron-renew-google-calendar-watches";
 import { cronRenewGoogleFormsWatchesRoutes } from "../cron-renew-google-forms-watches";
+import { testGmailWatchRenewalRoutes } from "../test-gmail-watch-renewal";
 import { workflowAutomationsRoutes } from "../workflow-automations";
 import { workflowsRoutes } from "../workflows";
 import { webhooksGoogleCalendarRoutes } from "../webhooks-google-calendar";
@@ -90,12 +88,10 @@ function detailClient() {
   );
 }
 
-function renewGmailWatchesClient(emailAddresses?: readonly string[]) {
-  const routes =
-    emailAddresses === undefined
-      ? cronRenewGmailWatchesRoutes
-      : cronRenewGmailWatchesRoutesForTest(emailAddresses);
-  return setupApp({ context, routes })(cronRenewGmailWatchesContract);
+function renewGmailWatchScopeClient() {
+  return setupApp({ context, routes: testGmailWatchRenewalRoutes })(
+    testGmailWatchRenewalContract,
+  );
 }
 
 function renewGoogleCalendarWatchesClient() {
@@ -2698,7 +2694,6 @@ describe("okou workflow automations", () => {
   });
 
   it("renews a shared Gmail mailbox through another healthy identity", async () => {
-    mockEnv("CRON_SECRET", CRON_SECRET);
     const startedAt = Date.parse("2026-08-05T08:00:00.000Z");
     mockNow(startedAt);
     const first = await setupFixture();
@@ -2761,8 +2756,11 @@ describe("okou workflow automations", () => {
     mockNow(startedAt + 6 * 24 * 60 * 60 * 1000 + 2000);
 
     const renewed = await accept(
-      renewGmailWatchesClient([sharedEmail]).renew({
-        headers: { authorization: `Bearer ${CRON_SECRET}` },
+      renewGmailWatchScopeClient().renew({
+        body: {
+          email_address: sharedEmail,
+          topic_name: GMAIL_TOPIC_NAME,
+        },
       }),
       [200],
     );
@@ -3006,10 +3004,9 @@ describe("okou workflow automations", () => {
   });
 
   it("keeps a failed Gmail stop retryable and repairs it in the renewal pass", async () => {
-    mockEnv("CRON_SECRET", CRON_SECRET);
     const scenario = await setupFixture();
-    const emailAddress = `retry-stop-${scenario.fixture.userId}@example.com`;
-    await connectGmail(scenario, emailAddress);
+    const email = `retry-stop-${scenario.fixture.userId}@example.com`;
+    await connectGmail(scenario, email);
     const watch = configureGmailWatchMock(["history-1", "history-2"]);
     const stop = configureGmailStopMock([500, 500, 204]);
 
@@ -3053,8 +3050,11 @@ describe("okou workflow automations", () => {
     expect(stop.calls).toBe(2);
 
     const reconciled = await accept(
-      renewGmailWatchesClient([emailAddress]).renew({
-        headers: { authorization: `Bearer ${CRON_SECRET}` },
+      renewGmailWatchScopeClient().renew({
+        body: {
+          email_address: email,
+          topic_name: GMAIL_TOPIC_NAME,
+        },
       }),
       [200],
     );

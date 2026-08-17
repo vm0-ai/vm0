@@ -19,6 +19,7 @@ from tests.model_provider_flow_helpers import (
 from tests.model_provider_websocket_helpers import (
     ScheduledWebSocketTrim,
     capture_deferred_websocket_trims,
+    capture_openai_responses_extractor_feeds,
     feed_websocket_client_message,
     feed_websocket_server_message,
     openai_websocket_usage_frame,
@@ -59,6 +60,48 @@ class TestModelProviderWebSocketPrewarmUsage:
     @pytest.fixture(autouse=True)
     def _sync_usage_delivery(self, sync_usage_executor, usage_webhook_api):
         self._usage_webhook_api = usage_webhook_api
+
+    def test_model_websocket_dense_terminal_uses_one_full_body_parse(
+        self,
+        tmp_path,
+        real_flow,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(flow)
+        full_body_feeds = capture_openai_responses_extractor_feeds(monkeypatch)
+        dense_terminal = (
+            b'{"type":"response.completed","padding":['
+            + b",".join([b"0"] * 20_000)
+            + b'],"response":{"id":"dense-prewarm","model":"gpt-5.5",'
+            b'"usage":{"input_tokens":9,"output_tokens":4}}}'
+        )
+
+        with self._usage_webhook_api() as webhook:
+            feed_websocket_client_message(
+                flow,
+                json.dumps({"type": "response.create", "generate": False}).encode(),
+            )
+            feed_websocket_server_message(
+                flow,
+                _openai_websocket_created_frame("dense-prewarm"),
+            )
+            full_body_feeds.clear()
+            feed_websocket_server_message(flow, dense_terminal)
+            mitm_addon.websocket_end(flow)
+            usage.flush_usage_events(trigger="test")
+
+        assert full_body_feeds.count(dense_terminal) == 1
+        assert webhook.usage_events() == []
+        assert webhook.model_usage_observation_events() == []
+        [ignored_entry] = [
+            entry
+            for entry in model_usage_source_entries(flow)
+            if entry.get("disposition") == "ignored"
+        ]
+        assert ignored_entry["provider_response_id"] == "dense-prewarm"
+        assert ignored_entry["reason"] == "responses_generate_false"
+        assert not _correlation_entries(flow)
 
     def test_model_websocket_ignores_bound_prewarm_and_reports_normal_input_only_turn(
         self,

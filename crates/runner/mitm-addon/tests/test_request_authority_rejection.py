@@ -1,6 +1,7 @@
 """Trusted request authority rejection URL utility tests."""
 
 import pytest
+from mitmproxy import http
 
 from request_authority import AuthorityValidationError, get_trusted_authority
 from tests.host_normalization_cases import (
@@ -13,6 +14,12 @@ _INVALID_TRUSTED_HOSTNAME_CASES = (
     pytest.param("*.github.com", id="wildcard-label"),
     pytest.param("api*.github.com", id="mixed-wildcard-label"),
 )
+_MAX_HOST_HEADER_BYTES = 4096
+
+
+class _DecodeGuardHost(bytes):
+    def decode(self, encoding: str = "utf-8", errors: str = "strict") -> str:
+        raise AssertionError("over-budget Host must not be decoded")
 
 
 def _request_headers(headers, host_header):
@@ -39,6 +46,65 @@ def _assert_authority_error(
 
 
 class TestTrustedAuthorityRejection:
+    def test_rejects_first_over_budget_host_byte_without_decoding(self, real_flow):
+        guarded_host = _DecodeGuardHost(b"a" * (_MAX_HOST_HEADER_BYTES + 1))
+        flow = real_flow(
+            with_response=False,
+            host="203.0.113.10",
+            sni="api.github.com",
+            path="/repos",
+            request_headers=http.Headers([(b"hOsT", guarded_host)]),
+        )
+
+        with pytest.raises(AuthorityValidationError) as exc_info:
+            get_trusted_authority(flow)
+
+        _assert_authority_error(
+            exc_info,
+            reason="invalid_authority",
+            sni="api.github.com",
+            request_host="203.0.113.10",
+            host_header=None,
+            request_port=443,
+            fallback_url="https://api.github.com/repos",
+        )
+
+    @pytest.mark.parametrize(
+        ("raw_sni", "expected_reason", "expected_sni"),
+        [
+            pytest.param(None, "missing_sni", None, id="missing"),
+            pytest.param("...", "invalid_sni", "...", id="invalid"),
+        ],
+    )
+    def test_oversized_host_preserves_sni_error_precedence_without_decoding(
+        self,
+        real_flow,
+        raw_sni,
+        expected_reason,
+        expected_sni,
+    ):
+        guarded_host = _DecodeGuardHost(b"a" * (_MAX_HOST_HEADER_BYTES + 1))
+        flow = real_flow(
+            with_response=False,
+            host="203.0.113.10",
+            path="/repos",
+            request_headers=http.Headers([(b"Host", guarded_host)]),
+        )
+        flow.client_conn.sni = raw_sni
+
+        with pytest.raises(AuthorityValidationError) as exc_info:
+            get_trusted_authority(flow)
+
+        _assert_authority_error(
+            exc_info,
+            reason=expected_reason,
+            sni=expected_sni,
+            request_host="203.0.113.10",
+            host_header=None,
+            request_port=443,
+            fallback_url="https://203.0.113.10/repos",
+        )
+
     def test_https_rejects_host_sni_mismatch(self, real_flow, headers):
         flow = real_flow(
             host="203.0.113.10",
