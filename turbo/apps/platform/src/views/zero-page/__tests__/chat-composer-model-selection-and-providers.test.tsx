@@ -3601,12 +3601,12 @@ describe("chat composer video model", () => {
     const videoModelButton = await findDesktopVideoModelButton();
     expect(chatModelButton).toHaveAttribute("aria-expanded", "false");
     expect(videoModelButton).toHaveAttribute("aria-expanded", "false");
-    const chatModeIcon = chatModelButton.querySelector(
+    const expandedChatModeIcon = chatModelButton.querySelector(
       ".lucide-message-circle",
     );
-    expect(chatModeIcon).toBeInTheDocument();
-    expect(chatModeIcon).toHaveAttribute("width", "16");
-    expect(chatModeIcon).toHaveAttribute("height", "16");
+    expect(expandedChatModeIcon).toBeInTheDocument();
+    expect(expandedChatModeIcon).toHaveAttribute("width", "16");
+    expect(expandedChatModeIcon).toHaveAttribute("height", "16");
     expect(chatModelButton).toHaveTextContent(/·\s*Claude Fable 5/);
     expect(chatModelButton).not.toHaveTextContent("Chat");
 
@@ -3617,6 +3617,16 @@ describe("chat composer video model", () => {
     expect(videoModelButton).toHaveAttribute("aria-pressed", "true");
     expect(chatModelButton).toHaveAttribute("aria-expanded", "false");
     expect(videoModelButton).toHaveAttribute("aria-expanded", "false");
+    const collapsedChatModeIcon = Array.from(
+      chatModelButton.parentElement?.querySelectorAll(
+        ".lucide-message-circle",
+      ) ?? [],
+    ).find((icon) => {
+      return !chatModelButton.contains(icon);
+    });
+    expect(collapsedChatModeIcon).toBeInTheDocument();
+    expect(collapsedChatModeIcon).toHaveAttribute("width", "16");
+    expect(collapsedChatModeIcon).toHaveAttribute("height", "16");
 
     chatModelButton.focus();
     await user.keyboard("{Enter}");
