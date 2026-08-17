@@ -208,6 +208,21 @@ def test_number_acceptance_matches_strict_json_across_streaming_boundaries(
     assert result.value_present == _SENTINEL_VALUE_PRESENT
 
 
+@pytest.mark.parametrize("feed_mode", _NUMBER_FEED_MODES)
+def test_rejects_exact_invalid_decimal_regression(feed_mode: _NumberFeedMode):
+    number = b"1.x"
+    prefix = b'{"x":'
+    payload = prefix + number + b"}"
+    extractor = JsonSelectiveExtractor()
+
+    for chunk in _number_chunks(payload, len(prefix), len(number), (1, 2), feed_mode):
+        extractor.feed(chunk)
+    result = extractor.finish()
+
+    assert result.complete is False
+    _assert_no_observations(result)
+
+
 def test_rejects_oversized_number():
     extractor = JsonSelectiveExtractor(
         scalar_fields={("usage", "input_tokens"): ScalarField("int")},
