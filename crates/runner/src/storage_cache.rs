@@ -8266,15 +8266,8 @@ mod tests {
                 "expected full download, got {full_request:?}"
             );
             full_socket
-                .write_all(
-                    format!(
-                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-                        ready_body.len()
-                    )
-                    .as_bytes(),
-                )
+                .write_all(&http_response("200 OK", &ready_body))
                 .await?;
-            full_socket.write_all(&ready_body).await?;
             Ok::<(), std::io::Error>(())
         });
 
@@ -8309,15 +8302,8 @@ mod tests {
                 "expected full download, got {full_request:?}"
             );
             full_socket
-                .write_all(
-                    format!(
-                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-                        cold_body.len()
-                    )
-                    .as_bytes(),
-                )
+                .write_all(&http_response("200 OK", &cold_body))
                 .await?;
-            full_socket.write_all(&cold_body).await?;
             let _ = cold_full_seen_tx.send(());
             Ok::<(), std::io::Error>(())
         });
