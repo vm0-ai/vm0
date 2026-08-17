@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.457.1](https://github.com/vm0-ai/vm0/compare/api-v1.457.0...api-v1.457.1) (2026-08-17)
+
+
+### Refactoring
+
+* **run:** shadow compose-independent environment assembly ([#27797](https://github.com/vm0-ai/vm0/issues/27797)) ([7dd7d69](https://github.com/vm0-ai/vm0/commit/7dd7d69ca6c0e254e42d2de33ece71ad43226f41))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/db bumped to 1.203.1
+
 ## [1.457.0](https://github.com/vm0-ai/vm0/compare/api-v1.456.0...api-v1.457.0) (2026-08-17)
 
 
