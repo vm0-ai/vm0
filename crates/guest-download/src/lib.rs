@@ -89,6 +89,13 @@ pub fn run_manifest_bytes(manifest_json: &[u8]) -> bool {
 
 fn run_manifest(manifest: Manifest) -> bool {
     let plan_start = Instant::now();
+    let plan = RunPlan::from_manifest(&manifest);
+    record_sandbox_op(
+        "guest_download_plan_build",
+        plan_start.elapsed(),
+        true,
+        None,
+    );
     let RunPlan {
         cleanup_paths,
         instruction_cleanups,
@@ -96,13 +103,7 @@ fn run_manifest(manifest: Manifest) -> bool {
         empty_artifacts,
         download_tasks,
         instruction_files,
-    } = RunPlan::from_manifest(&manifest);
-    record_sandbox_op(
-        "guest_download_plan_build",
-        plan_start.elapsed(),
-        true,
-        None,
-    );
+    } = plan;
 
     // Clean stale files from changed/removed storages before downloading.
     // This must run before parallel downloads to avoid race conditions with
