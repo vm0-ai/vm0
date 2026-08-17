@@ -56,10 +56,10 @@ import {
   API_TEST_CONNECTOR_FIREWALL_CONFIGS,
   apiTestConnectorCatalogValidationAuthority,
   deleteApiTestConnectorCatalogCompatibility,
-  deleteApiTestConnectorCatalogCompatibilityEvaluation,
   installApiTestConnectorCatalog,
   readApiTestConnectorCatalogCompatibilityEvaluations,
   readApiTestConnectorCatalogValidationAuthority,
+  replaceApiTestConnectorCatalogStoredBytes,
   setApiTestConnectorCatalogValidationAuthority,
 } from "../../../test-fixtures/connector-catalog";
 import { readStorageS3PrefixFixture } from "../../../test-fixtures/storage";
@@ -2013,15 +2013,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
     await api.requestCancelRun(actor, warmed.runId, [200]);
 
-    const evaluations =
-      await readApiTestConnectorCatalogCompatibilityEvaluations();
-    const matchingEvaluations = evaluations.filter((evaluation) => {
-      return evaluation.catalogVersion === catalogVersion;
+    await replaceApiTestConnectorCatalogStoredBytes({
+      catalogVersion: `${catalogVersion}-unavailable`,
+      rawBytes: Buffer.from("{"),
+      catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
     });
-    expect(matchingEvaluations).toHaveLength(1);
-    await deleteApiTestConnectorCatalogCompatibilityEvaluation(
-      matchingEvaluations[0]!.capabilityDigest,
-    );
 
     const emptyRun = await api.createRun(actor, {
       agentId,
