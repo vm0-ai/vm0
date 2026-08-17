@@ -156,6 +156,7 @@ interface FirewallAuthBody {
     readonly apiId: string;
     readonly connectorSlug?: ConnectorSlug;
     readonly customConnectorId?: string;
+    readonly sourceId?: string;
     readonly routingVariables: Record<string, string>;
   };
 }
@@ -662,7 +663,10 @@ function resolveRefreshMetadata(
     sourceType,
     sourceUserId:
       sourceType === "model-provider" ? metadata?.sourceUserId : undefined,
-    sourceId: sourceType === "model-provider" ? metadata?.sourceId : undefined,
+    sourceId:
+      sourceType === "model-provider" || sourceType === "connector"
+        ? metadata?.sourceId
+        : undefined,
     metadataKey:
       sourceType === "model-provider"
         ? (metadata?.metadataKey ??
@@ -5093,6 +5097,36 @@ function finalizeFirewallAuth(args: {
   };
 }
 
+function matchedConnectorSourceConflicts(args: {
+  readonly body: FirewallAuthBody;
+  readonly referencedSecretKeys: ReadonlySet<string>;
+}): boolean {
+  const matchedFirewall = args.body.matchedFirewall;
+  if (
+    matchedFirewall?.connectorSlug === undefined ||
+    matchedFirewall.sourceId === undefined
+  ) {
+    return false;
+  }
+  const connectorSlug = matchedFirewall.connectorSlug;
+  const sourceId = matchedFirewall.sourceId;
+  return [...args.referencedSecretKeys].some((key) => {
+    const accessSourceKey = args.body.secretConnectorMap?.[key];
+    if (accessSourceKey !== connectorSlug) {
+      return false;
+    }
+    const metadata = resolveRefreshMetadata(
+      accessSourceKey,
+      args.body.secretConnectorMetadataMap?.[key],
+    );
+    return (
+      metadata.sourceType === "connector" &&
+      metadata.sourceId !== undefined &&
+      metadata.sourceId !== sourceId
+    );
+  });
+}
+
 export async function resolveFirewallAuth(
   db: Db,
   auth: SandboxAuth,
@@ -5115,6 +5149,16 @@ export async function resolveFirewallAuth(
     body.authQuery,
     body.authAwsSigv4,
   );
+  if (
+    matchedConnectorSourceConflicts({
+      body,
+      referencedSecretKeys: referenced.secrets,
+    })
+  ) {
+    return badRequestMessage(
+      "Matched connector source does not match secret metadata",
+    );
+  }
   const preparation = customConnectorId
     ? await prepareCurrentCustomConnectorFirewallAuth({
         db,

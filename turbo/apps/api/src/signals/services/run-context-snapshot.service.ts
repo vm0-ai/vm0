@@ -1,5 +1,6 @@
 import type { RunContextResponse } from "@okouai/api-contracts/contracts/zero-runs";
 import {
+  executionFirewallBuiltinEntrySchema,
   executionFirewallInlineEntrySchema,
   firewallAwsSigv4AuthSchema,
   firewallBaseHostPolicySchema,
@@ -63,6 +64,7 @@ const runContextAxiomInlineFirewallSchema = z.object({
   kind: z.literal("inline"),
   name: z.string().min(1),
   customConnectorId: z.uuid().optional(),
+  sourceId: z.uuid().optional(),
   apis: z.array(
     z.object({
       id: z.string().min(1).optional(),
@@ -253,9 +255,17 @@ function builtinFirewallFromUnknown(
     return undefined;
   }
   const baseUrlVars = stringRecordValue(value.baseUrlVars);
-  return baseUrlVars
-    ? { kind: "builtin", name, baseUrlVars }
-    : { kind: "builtin", name };
+  const parsedSourceId =
+    executionFirewallBuiltinEntrySchema.shape.sourceId.safeParse(
+      value.sourceId,
+    );
+  const sourceId = parsedSourceId.success ? parsedSourceId.data : undefined;
+  return {
+    kind: "builtin",
+    name,
+    ...(baseUrlVars === undefined ? {} : { baseUrlVars }),
+    ...(sourceId === undefined ? {} : { sourceId }),
+  };
 }
 
 function sanitizedFirewallFromUnknown(
@@ -300,6 +310,9 @@ function executionInlineFirewallFromUnknown(
     ...(parsed.data.customConnectorId === undefined
       ? {}
       : { customConnectorId: parsed.data.customConnectorId }),
+    ...(parsed.data.sourceId === undefined
+      ? {}
+      : { sourceId: parsed.data.sourceId }),
     firewall: {
       name: parsed.data.name,
       apis: parsed.data.apis.map((api) => {
@@ -337,6 +350,9 @@ function executionInlineFirewallFromUnknown(
     ...(normalized.data.customConnectorId === undefined
       ? {}
       : { customConnectorId: normalized.data.customConnectorId }),
+    ...(normalized.data.sourceId === undefined
+      ? {}
+      : { sourceId: normalized.data.sourceId }),
   };
 }
 
@@ -478,6 +494,7 @@ function inlineFirewallToAxiomEntry(
     ...(entry.customConnectorId === undefined
       ? {}
       : { customConnectorId: entry.customConnectorId }),
+    ...(entry.sourceId === undefined ? {} : { sourceId: entry.sourceId }),
     apis: entry.firewall.apis.map((api) => {
       const headerEntries = authRecordToEntries(api.auth.headers);
       const queryEntries = authRecordToEntries(api.auth.query);

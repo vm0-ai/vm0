@@ -69,6 +69,7 @@ fn codex_oauth_context() -> crate::types::ExecutionContext {
     context.firewalls = Some(vec![FirewallEntry::Builtin {
         name: "model-provider:codex-oauth-token".into(),
         base_url_vars: None,
+        source_id: None,
     }]);
     context
 }

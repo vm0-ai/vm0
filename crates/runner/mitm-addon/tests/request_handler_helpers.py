@@ -26,6 +26,7 @@ def _single_firewall_vm(
     billable_firewalls: list[str] | None = None,
     include_encrypted_secrets: bool = True,
     custom_connector_id: str | None = None,
+    source_id: str | None = None,
     vm_fields: dict[str, object] | None = None,
 ) -> dict[str, object]:
     firewall_entry: dict[str, object] = {
@@ -34,6 +35,8 @@ def _single_firewall_vm(
     }
     if custom_connector_id is not None:
         firewall_entry["customConnectorId"] = custom_connector_id
+    if source_id is not None:
+        firewall_entry["sourceId"] = source_id
     vm_info: dict[str, object] = {
         "runId": run_id,
         "cliAgentType": "claude-code",
@@ -142,6 +145,7 @@ def _write_github_firewall_registry(
     *,
     client_ip: str = "10.200.0.5",
     base: str = "https://api.github.com",
+    source_id: str | None = None,
     vm_fields: dict[str, object] | None = None,
 ) -> Path:
     return _write_registry(
@@ -160,6 +164,7 @@ def _write_github_firewall_registry(
                 "ask": [],
                 "unknownPolicy": "allow",
             },
+            source_id=source_id,
             vm_fields=vm_fields,
         ),
     )

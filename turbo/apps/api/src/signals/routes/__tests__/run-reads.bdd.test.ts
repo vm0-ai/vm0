@@ -2674,9 +2674,16 @@ describe("RUN-04: agent run telemetry families", () => {
             ],
             firewalls: [
               {
+                kind: "builtin",
+                name: "catalog-fw",
+                baseUrlVars: { REGION: "us-east-1" },
+                sourceId: "33333333-3333-4333-8333-333333333333",
+              },
+              {
                 kind: "inline",
                 name: "test-fw",
                 customConnectorId: "11111111-1111-4111-8111-111111111111",
+                sourceId: "22222222-2222-4222-8222-222222222222",
                 apis: [
                   {
                     id: "test-fw:0",
@@ -2822,8 +2829,15 @@ describe("RUN-04: agent run telemetry families", () => {
     // already-loaded web clients can parse them as sanitized firewalls.
     expect(contextRead.body.firewalls).toStrictEqual([
       {
+        kind: "builtin",
+        name: "catalog-fw",
+        baseUrlVars: { REGION: "us-east-1" },
+        sourceId: "33333333-3333-4333-8333-333333333333",
+      },
+      {
         kind: "inline",
         customConnectorId: "11111111-1111-4111-8111-111111111111",
+        sourceId: "22222222-2222-4222-8222-222222222222",
         name: "test-fw",
         apis: [
           {

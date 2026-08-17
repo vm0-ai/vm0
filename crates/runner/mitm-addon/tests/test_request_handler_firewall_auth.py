@@ -139,6 +139,7 @@ async def test_custom_connector_id_is_forwarded_with_matched_firewall(
     tmp_path, real_flow, mitm_ctx
 ):
     custom_connector_id = "550e8400-e29b-41d4-a716-446655440000"
+    source_id = "550e8400-e29b-41d4-a716-446655440001"
     firewall_name = "custom_connector_550e8400e29b41d4a716446655440000"
     api_id = f"{firewall_name}:0"
     reg_path = _write_registry(
@@ -147,6 +148,7 @@ async def test_custom_connector_id_is_forwarded_with_matched_firewall(
             tmp_path,
             firewall_name=firewall_name,
             custom_connector_id=custom_connector_id,
+            source_id=source_id,
             api_entry={
                 "id": api_id,
                 "base": "https://custom.example.test/api/",
@@ -188,16 +190,86 @@ async def test_custom_connector_id_is_forwarded_with_matched_firewall(
         "name": firewall_name,
         "apiId": api_id,
         "customConnectorId": custom_connector_id,
+        "sourceId": source_id,
         "routingVariables": {"subdomain": "münich"},
     }
     assert flow.request.headers["Authorization"] == "Bearer resolved"
 
 
+async def test_connector_sources_partition_firewall_auth_cache_identity(
+    tmp_path, real_flow, mitm_ctx
+):
+    custom_connector_id = "550e8400-e29b-41d4-a716-446655440000"
+    firewall_name = "custom_connector_550e8400e29b41d4a716446655440000"
+    api_id = f"{firewall_name}:0"
+
+    def vm(source_id: str) -> dict[str, object]:
+        return _single_firewall_vm(
+            tmp_path,
+            run_id="run-source-cache",
+            firewall_name=firewall_name,
+            custom_connector_id=custom_connector_id,
+            source_id=source_id,
+            api_entry={
+                "id": api_id,
+                "base": "https://custom.example.test/api/",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.CUSTOM_TOKEN }}"}},
+            },
+            network_policy={
+                "allow": [],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+        )
+
+    reg_path = tmp_path / "registry.json"
+    reg_path.write_text(
+        json.dumps(
+            {
+                "vms": {
+                    "10.200.0.5": vm("550e8400-e29b-41d4-a716-446655440001"),
+                    "10.200.0.6": vm("550e8400-e29b-41d4-a716-446655440002"),
+                }
+            }
+        )
+    )
+    first_flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="custom.example.test",
+        path="/api/items",
+    )
+    second_flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.6",
+        host="custom.example.test",
+        path="/api/items",
+    )
+    auth_fetch = AsyncMock(return_value=_resolved_firewall_auth())
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth_cache, "fetch_firewall_headers", auth_fetch),
+    ):
+        await mitm_addon.request(first_flow)
+        await mitm_addon.request(second_flow)
+
+    first_key = first_flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]
+    second_key = second_flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]
+    assert first_key.run_id == second_key.run_id
+    assert first_key.api_id == second_key.api_id
+    assert first_key.auth_identity != second_key.auth_identity
+    assert auth_fetch.await_count == 2
+
+
 async def test_builtin_connector_routing_variables_are_forwarded_with_matched_firewall(
     tmp_path, real_flow, mitm_ctx
 ):
+    source_id = "550e8400-e29b-41d4-a716-446655440001"
     reg_path = _write_github_firewall_registry(
         tmp_path,
+        source_id=source_id,
         vm_fields={
             "connectorRoutingVariables": {"builtin:github": {"GITHUB_HOST": "münich.example.test"}}
         },
@@ -224,6 +296,7 @@ async def test_builtin_connector_routing_variables_are_forwarded_with_matched_fi
         "name": "github",
         "apiId": flow.metadata[metadata_keys.FIREWALL_API_ID],
         "connectorSlug": "github",
+        "sourceId": source_id,
         "routingVariables": {"GITHUB_HOST": "münich.example.test"},
     }
 

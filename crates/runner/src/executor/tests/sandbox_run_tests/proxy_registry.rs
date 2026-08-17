@@ -99,11 +99,13 @@ async fn proxy_registration_accepts_canonical_targets() {
     canonical_context.firewalls = Some(vec![FirewallEntry::Builtin {
         name: "zendesk".to_string(),
         base_url_vars: Some(canonical_routing_variables.clone()),
+        source_id: None,
     }]);
     canonical_context.connector_runtime_targets =
         vec![ConnectorRuntimeTargetRegistration::Builtin {
             connector_slug: "zendesk".to_string(),
             base_url_vars: Some(canonical_routing_variables),
+            source_id: None,
         }];
     canonical_context.vars = Some(HashMap::from([(
         "ZENDESK_SUBDOMAIN".to_string(),

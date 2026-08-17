@@ -302,10 +302,12 @@ describe("connector runtime synchronization contract", () => {
       kind: "custom" as const,
       customConnectorId,
       baseUrlVars: { subdomain: "first" },
+      sourceId: "10000000-0000-4000-8000-000000000001",
     };
     const secondTarget = {
       ...firstTarget,
       baseUrlVars: { subdomain: "second" },
+      sourceId: "10000000-0000-4000-8000-000000000002",
     };
 
     expect(
@@ -323,6 +325,7 @@ describe("connector runtime synchronization contract", () => {
       kind: "custom" as const,
       customConnectorId,
       baseUrlVars: { subdomain: "acme" },
+      sourceId: "10000000-0000-4000-8000-000000000001",
     };
 
     const execution = executionContextSchema.parse({
@@ -355,6 +358,7 @@ describe("connector runtime synchronization contract", () => {
       kind: "builtin" as const,
       connectorSlug: "zendesk",
       baseUrlVars: { ZENDESK_SUBDOMAIN: "xn--mnich-kva" },
+      sourceId: "10000000-0000-4000-8000-000000000001",
     };
 
     const execution = executionContextSchema.parse({
@@ -382,6 +386,7 @@ describe("connector runtime synchronization contract", () => {
           ],
         },
         customConnectorId,
+        sourceId: "10000000-0000-4000-8000-000000000001",
       },
       networkPolicy: {
         allow: [],
@@ -1647,6 +1652,7 @@ describe("runner firewall entry contract", () => {
         kind: "builtin",
         name: "zendesk",
         baseUrlVars: { ZENDESK_SUBDOMAIN: "acme" },
+        sourceId: "10000000-0000-4000-8000-000000000001",
       },
     ];
 
@@ -1662,6 +1668,7 @@ describe("runner firewall entry contract", () => {
     const firewalls = [
       {
         kind: "inline",
+        sourceId: "10000000-0000-4000-8000-000000000001",
         firewall: {
           name: "internal-api",
           apis: [
@@ -1681,6 +1688,21 @@ describe("runner firewall entry contract", () => {
     expect(
       executionContextSchema.shape.firewalls.safeParse(firewalls).success,
     ).toBe(true);
+  });
+
+  it("rejects malformed connector source identities", () => {
+    for (const firewall of [
+      { kind: "builtin", name: "github", sourceId: "not-a-uuid" },
+      {
+        kind: "inline",
+        sourceId: "not-a-uuid",
+        firewall: { name: "custom", apis: [] },
+      },
+    ]) {
+      expect(
+        executionContextSchema.shape.firewalls.safeParse([firewall]).success,
+      ).toBe(false);
+    }
   });
 
   it("rejects legacy expanded firewall entries in execution contexts", () => {

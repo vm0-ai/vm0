@@ -182,6 +182,8 @@ pub struct SecretConnectorMetadata {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_user_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata_key: Option<String>,
 }
 
@@ -195,6 +197,8 @@ pub enum FirewallEntry {
         name: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         base_url_vars: Option<HashMap<String, String>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        source_id: Option<String>,
     },
     /// Inline firewall body for org custom connectors.
     #[serde(rename = "inline", rename_all = "camelCase")]
@@ -202,6 +206,8 @@ pub enum FirewallEntry {
         firewall: Firewall,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         custom_connector_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        source_id: Option<String>,
     },
 }
 
@@ -1302,11 +1308,15 @@ pub enum ConnectorRuntimeTargetRegistration {
         connector_slug: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         base_url_vars: Option<HashMap<String, String>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        source_id: Option<String>,
     },
     #[serde(rename_all = "camelCase")]
     Custom {
         custom_connector_id: String,
         base_url_vars: HashMap<String, String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        source_id: Option<String>,
     },
 }
 
@@ -1329,6 +1339,14 @@ impl ConnectorRuntimeTargetRegistration {
         match self {
             Self::Custom { base_url_vars, .. } => Some(base_url_vars),
             Self::Builtin { .. } => None,
+        }
+    }
+
+    pub(crate) fn source_id(&self) -> Option<&str> {
+        match self {
+            Self::Builtin { source_id, .. } | Self::Custom { source_id, .. } => {
+                source_id.as_deref()
+            }
         }
     }
 }
@@ -2264,17 +2282,33 @@ mod tests {
             .is_err()
         );
 
-        let context = serde_json::from_value::<ExecutionContext>(execution_context(json!({
+        let legacy_context = serde_json::from_value::<ExecutionContext>(execution_context(json!({
             "kind": "custom",
             "customConnectorId": custom_connector_id,
             "baseUrlVars": {}
         })))
         .expect("empty custom connector routing values should be accepted");
         assert_eq!(
+            legacy_context
+                .connector_runtime_targets
+                .first()
+                .and_then(ConnectorRuntimeTargetRegistration::source_id),
+            None
+        );
+        let source_id = "550e8400-e29b-41d4-a716-446655440002";
+        let context = serde_json::from_value::<ExecutionContext>(execution_context(json!({
+            "kind": "custom",
+            "customConnectorId": custom_connector_id,
+            "baseUrlVars": {},
+            "sourceId": source_id
+        })))
+        .expect("custom connector source identity should be accepted");
+        assert_eq!(
             context.connector_runtime_targets,
             vec![ConnectorRuntimeTargetRegistration::Custom {
                 custom_connector_id: custom_connector_id.to_string(),
                 base_url_vars: HashMap::new(),
+                source_id: Some(source_id.to_string()),
             }]
         );
     }

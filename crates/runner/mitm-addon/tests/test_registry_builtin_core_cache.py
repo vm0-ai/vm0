@@ -36,11 +36,17 @@ class TestRegistryBuiltinCoreCache:
     def test_repeated_builtin_firewall_refs_share_core_but_keep_vm_api_ids(
         self, tmp_path, mitm_ctx
     ):
+        first_source_id = "550e8400-e29b-41d4-a716-446655440001"
+        second_source_id = "550e8400-e29b-41d4-a716-446655440002"
+        first_vm = builtin_vm("run-github-a", "github")
+        second_vm = builtin_vm("run-github-b", "github")
+        first_vm["firewalls"][0]["sourceId"] = first_source_id
+        second_vm["firewalls"][0]["sourceId"] = second_source_id
         path, cache_path = write_registry_with_cache(
             tmp_path,
             {
-                "10.200.0.1": builtin_vm("run-github-a", "github"),
-                "10.200.0.2": builtin_vm("run-github-b", "github"),
+                "10.200.0.1": first_vm,
+                "10.200.0.2": second_vm,
             },
             {"github": github_cache_firewall()},
         )
@@ -79,6 +85,8 @@ class TestRegistryBuiltinCoreCache:
         assert second_result.api_entry is second_vm_info["firewalls"][0]["apis"][0]
         assert first_result.api_entry["id"] == "run-github-a:0"
         assert second_result.api_entry["id"] == "run-github-b:0"
+        assert first_result.api_entry["sourceId"] == first_source_id
+        assert second_result.api_entry["sourceId"] == second_source_id
 
     @pytest.mark.parametrize("builtin_index", [0, 1], ids=["builtin-first", "inline-first"])
     def test_mixed_builtin_and_inline_firewalls_preserve_order_and_cache_semantics(

@@ -39,6 +39,31 @@ def _custom_connector_id(entry: dict) -> str | None:
     return custom_connector_id
 
 
+def _source_id(entry: dict) -> str | None:
+    source_id = entry.get("sourceId")
+    if source_id is None:
+        return None
+    if not isinstance(source_id, str):
+        raise FirewallEntryResolutionError("firewall sourceId must be a UUID")
+    try:
+        uuid.UUID(source_id)
+    except ValueError as error:
+        raise FirewallEntryResolutionError("firewall sourceId must be a UUID") from error
+    return source_id
+
+
+def _apply_source_id(firewall: dict, source_id: str | None) -> None:
+    if source_id is None:
+        return
+    firewall["sourceId"] = source_id
+    raw_apis = firewall.get("apis")
+    if not isinstance(raw_apis, list):
+        raise FirewallEntryResolutionError("firewall apis must be a list")
+    for api in raw_apis:
+        if isinstance(api, dict):
+            api["sourceId"] = source_id
+
+
 def _connector_runtime_target_ids(vm: dict) -> tuple[set[str], set[str]]:
     raw_targets = vm.get("connectorRuntimeTargets", [])
     if not isinstance(raw_targets, list):
@@ -327,6 +352,7 @@ def resolve_firewall_entries(
                 raise FirewallEntryResolutionError(
                     "builtin firewall entry name must be a non-empty string"
                 )
+            source_id = _source_id(entry)
             if builtin_firewall_catalog_snapshot is None:
                 builtin_firewall_catalog_snapshot = load_catalog_snapshot(
                     builtin_firewall_catalog_cache_path
@@ -340,6 +366,7 @@ def resolve_firewall_entries(
                 omitted_builtin_names.add(raw_name)
                 continue
             connector_runtime_metadata.clear_connector_runtime_kind(resolved_builtin.firewall)
+            _apply_source_id(resolved_builtin.firewall, source_id)
             if raw_name in builtin_target_slugs:
                 connector_runtime_metadata.mark_connector_runtime_kind(
                     resolved_builtin.firewall, "builtin"
@@ -355,6 +382,7 @@ def resolve_firewall_entries(
                 )
             resolved_firewall = copy.deepcopy(firewall)
             connector_runtime_metadata.clear_connector_runtime_kind(resolved_firewall)
+            _apply_source_id(resolved_firewall, _source_id(entry))
             custom_connector_id = _custom_connector_id(entry)
             if custom_connector_id is not None:
                 resolved_firewall["customConnectorId"] = custom_connector_id

@@ -2764,7 +2764,7 @@ describe("connector catalog valid lifecycle", () => {
       await cleanupConnector();
       await bdd.deleteVersionFreeAgent(actor, agent.agentId);
     });
-    await connectorsApi.connectManualGrant(
+    const connected = await connectorsApi.connectManualGrant(
       actor,
       connectorSlug,
       "api-token",
@@ -2853,6 +2853,7 @@ describe("connector catalog valid lifecycle", () => {
     expect(claim.firewalls).toContainEqual({
       kind: "builtin",
       name: connectorSlug,
+      sourceId: connected.id,
     });
     expect(claim.billableFirewalls).toContain(connectorSlug);
     expect(claim.networkPolicies?.[connectorSlug]).toStrictEqual({

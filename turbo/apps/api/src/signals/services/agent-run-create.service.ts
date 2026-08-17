@@ -927,6 +927,7 @@ interface ConnectorRuntimeContext {
     | Record<string, SecretConnectorMetadata>
     | undefined;
   readonly connectorSlugs: readonly ConnectorSlug[];
+  readonly connectorSourceIdBySlug: Readonly<Record<string, string>>;
   readonly storedEnvironment: Record<string, string> | undefined;
 }
 
@@ -957,6 +958,9 @@ interface CustomConnectorRuntimeContext {
   readonly permissionPolicies: FirewallPolicies | undefined;
   readonly targets: readonly ConnectorRuntimeTargetRegistration[];
   readonly customConnectorIdByFirewallName: Readonly<Record<string, string>>;
+  readonly customConnectorSourceIdByFirewallName: Readonly<
+    Record<string, string>
+  >;
   readonly mcpConnectorSlugs: readonly string[];
   readonly skills: readonly {
     readonly connectorId: string;
@@ -972,6 +976,7 @@ function emptyCustomConnectorRuntimeContext(): CustomConnectorRuntimeContext {
     permissionPolicies: undefined,
     targets: [],
     customConnectorIdByFirewallName: {},
+    customConnectorSourceIdByFirewallName: {},
     mcpConnectorSlugs: [],
     skills: [],
   };
@@ -2954,6 +2959,7 @@ function emptyConnectorRuntimeContext(): ConnectorRuntimeContext {
     secretConnectorMap: undefined,
     secretConnectorMetadataMap: undefined,
     connectorSlugs: [],
+    connectorSourceIdBySlug: {},
     storedEnvironment: undefined,
   };
 }
@@ -3283,6 +3289,16 @@ function storedConnectorRuntimeVariables(
   return vars;
 }
 
+function connectorSourceIdsBySlug(
+  bindingSets: readonly ConnectorEnvBindingSet[],
+): Readonly<Record<string, string>> {
+  return Object.fromEntries(
+    bindingSets.map((bindingSet) => {
+      return [bindingSet.connectorSlug, bindingSet.access.connectorId];
+    }),
+  );
+}
+
 function resolveStoredConnectorState(
   bindingSets: readonly ConnectorEnvBindingSet[],
   connectorSecrets: Record<string, string>,
@@ -3296,7 +3312,7 @@ function resolveStoredConnectorState(
     {};
   const environment: Record<string, string> = {};
 
-  for (const { connectorSlug, runtimeBindings } of bindingSets) {
+  for (const { access, connectorSlug, runtimeBindings } of bindingSets) {
     for (const { envName, valueRef, optional, source } of runtimeBindings) {
       switch (source.kind) {
         case "connector-secret": {
@@ -3335,6 +3351,10 @@ function resolveStoredConnectorState(
     for (const { envName, source } of runtimeBindings) {
       if (source.kind === "connector-secret") {
         secretConnectorMap[envName] = connectorSlug;
+        secretConnectorMetadataMap[envName] = {
+          sourceType: "connector",
+          sourceId: access.connectorId,
+        };
       } else if (source.kind === "platform-secret") {
         secretConnectorMap[envName] = connectorSlug;
         secretConnectorMetadataMap[envName] = { sourceType: "platform-secret" };
@@ -3370,6 +3390,7 @@ function storedConnectorContextFromSnapshot(
     connectorSlugs: snapshot.allowedConnectorRows.map((row) => {
       return row.connectorSlug;
     }),
+    connectorSourceIdBySlug: connectorSourceIdsBySlug(snapshot.bindingSets),
     storedEnvironment: undefined,
   };
 }
@@ -3452,6 +3473,7 @@ async function materializeStoredConnectorContext(
         connectorSlugs: snapshot.allowedConnectorRows.map((row) => {
           return row.connectorSlug;
         }),
+        connectorSourceIdBySlug: connectorSourceIdsBySlug(snapshot.bindingSets),
         storedEnvironment: compactRecord(resolved.environment),
       });
     },
@@ -4372,6 +4394,9 @@ async function buildCustomConnectorRuntimeRow(args: {
       kind: "custom",
       customConnectorId: args.row.connector.id,
       baseUrlVars: { ...baseUrlVars },
+      ...(args.row.credentialAccess.kind === "absent"
+        ? {}
+        : { sourceId: args.row.credentialAccess.memberConnectorId }),
     },
     skill,
     firewall: {
@@ -4396,6 +4421,7 @@ export async function buildCustomConnectorRuntimeContext(
   const permissionPolicies: FirewallPolicies = {};
   const targets: ConnectorRuntimeTargetRegistration[] = [];
   const customConnectorIdByFirewallName: Record<string, string> = {};
+  const customConnectorSourceIdByFirewallName: Record<string, string> = {};
   const mcpConnectorSlugs: string[] = [];
   const skills: {
     connectorId: string;
@@ -4426,6 +4452,10 @@ export async function buildCustomConnectorRuntimeContext(
     targets.push(built.registration);
     firewalls.push(built.firewall);
     customConnectorIdByFirewallName[built.firewall.name] = row.connector.id;
+    if (built.registration.sourceId !== undefined) {
+      customConnectorSourceIdByFirewallName[built.firewall.name] =
+        built.registration.sourceId;
+    }
     if (row.connector.kind === "mcp") {
       const slug = customConnectorSlugSchema.safeParse(row.connector.slug);
       if (slug.success) {
@@ -4448,6 +4478,7 @@ export async function buildCustomConnectorRuntimeContext(
     permissionPolicies: compactRecord(permissionPolicies),
     targets,
     customConnectorIdByFirewallName,
+    customConnectorSourceIdByFirewallName,
     mcpConnectorSlugs,
     skills,
   };
@@ -4733,9 +4764,14 @@ function baseUrlValidationAuth(
 function builtinFirewallEntryForMetadata(
   metadata: ConnectorServerFirewallExecutionMetadata,
   vars: Record<string, string> | undefined,
+  sourceId: string,
 ): ExecutionFirewallEntry {
   if (metadata.baseUrlVarNames.length === 0) {
-    return { kind: "builtin", name: metadata.connectorSlug };
+    return {
+      kind: "builtin",
+      name: metadata.connectorSlug,
+      sourceId,
+    };
   }
 
   const validationFirewall: Firewall = {
@@ -4755,7 +4791,12 @@ function builtinFirewallEntryForMetadata(
     [validationFirewall],
     vars,
   );
-  return { kind: "builtin", name: metadata.connectorSlug, baseUrlVars };
+  return {
+    kind: "builtin",
+    name: metadata.connectorSlug,
+    baseUrlVars,
+    sourceId,
+  };
 }
 
 function inlineFirewallEntry(
@@ -4767,6 +4808,7 @@ function inlineFirewallEntry(
 function customConnectorInlineFirewallEntry(
   firewall: ExpandedFirewallConfig,
   customConnectorIdByFirewallName: Readonly<Record<string, string>>,
+  customConnectorSourceIdByFirewallName: Readonly<Record<string, string>>,
 ): ExecutionFirewallEntry {
   const customConnectorId = customConnectorIdByFirewallName[firewall.name];
   if (!customConnectorId) {
@@ -4775,6 +4817,9 @@ function customConnectorInlineFirewallEntry(
   return {
     kind: "inline",
     customConnectorId,
+    ...(customConnectorSourceIdByFirewallName[firewall.name] === undefined
+      ? {}
+      : { sourceId: customConnectorSourceIdByFirewallName[firewall.name] }),
     firewall: customConnectorRuntimeFirewall(firewall),
   };
 }
@@ -4905,6 +4950,7 @@ function applyBuiltinConnectorMetadataPolicies(
   sources: readonly BuiltinConnectorManifestSource[],
   policies: FirewallPolicies | undefined,
   vars: Record<string, string> | undefined,
+  connectorSourceIdBySlug: Readonly<Record<string, string>>,
 ): PermissionManifest {
   const firewalls: ExecutionFirewalls = [];
   const networkPolicies: NetworkPolicies = {};
@@ -4918,7 +4964,13 @@ function applyBuiltinConnectorMetadataPolicies(
       source.permissionIndex,
     );
     const policy = policies?.[name];
-    firewalls.push(builtinFirewallEntryForMetadata(source.metadata, vars));
+    const sourceId = connectorSourceIdBySlug[name];
+    if (sourceId === undefined) {
+      throw new Error("Missing built-in connector source identity");
+    }
+    firewalls.push(
+      builtinFirewallEntryForMetadata(source.metadata, vars, sourceId),
+    );
     Object.assign(
       environmentSecretPlaceholders,
       source.metadata.placeholderValues,
@@ -4954,6 +5006,7 @@ function builtinRuntimeTargetRegistration(
     ...(firewall.baseUrlVars === undefined
       ? {}
       : { baseUrlVars: { ...firewall.baseUrlVars } }),
+    ...(firewall.sourceId === undefined ? {} : { sourceId: firewall.sourceId }),
   };
 }
 
@@ -5022,9 +5075,13 @@ interface BuildPermissionManifestArgs {
   readonly vars: Record<string, string> | undefined;
   readonly connectorVars?: Record<string, string>;
   readonly connectorSlugs?: readonly ConnectorSlug[];
+  readonly connectorSourceIdBySlug?: Readonly<Record<string, string>>;
   readonly customConnectorFirewalls?: readonly ExpandedFirewallConfig[];
   readonly customConnectorPermissionPolicies?: FirewallPolicies;
   readonly customConnectorIdByFirewallName?: Readonly<Record<string, string>>;
+  readonly customConnectorSourceIdByFirewallName?: Readonly<
+    Record<string, string>
+  >;
   readonly timing?: ApiDispatchTimingCollector;
 }
 
@@ -5077,6 +5134,7 @@ async function buildPermissionManifest(
           builtinSources,
           args.permissionPolicies,
           connectorBaseUrlVars,
+          args.connectorSourceIdBySlug ?? {},
         ),
       );
     },
@@ -5097,6 +5155,7 @@ async function buildPermissionManifest(
             return customConnectorInlineFirewallEntry(
               firewall,
               args.customConnectorIdByFirewallName ?? {},
+              args.customConnectorSourceIdByFirewallName ?? {},
             );
           },
           (_firewall, permissionNames) => {
@@ -7912,11 +7971,15 @@ async function buildPreparedPermissionManifest(args: {
       vars: args.body.vars,
       connectorVars: args.storedConnectorMetadataContext.vars,
       connectorSlugs: args.storedConnectorMetadataContext.connectorSlugs,
+      connectorSourceIdBySlug:
+        args.storedConnectorMetadataContext.connectorSourceIdBySlug,
       customConnectorFirewalls: args.customConnectorContext.firewalls,
       customConnectorPermissionPolicies:
         args.customConnectorContext.permissionPolicies,
       customConnectorIdByFirewallName:
         args.customConnectorContext.customConnectorIdByFirewallName,
+      customConnectorSourceIdByFirewallName:
+        args.customConnectorContext.customConnectorSourceIdByFirewallName,
       timing: args.timing,
     }),
   );
