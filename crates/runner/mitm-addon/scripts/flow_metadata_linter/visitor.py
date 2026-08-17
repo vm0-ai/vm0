@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import overload
 
 from flow_metadata_linter.ast_helpers import (
     _argument_annotations,
@@ -130,7 +131,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
 
     Sequential body traversal requires every concrete statement visitor to report
     its normal-exit result explicitly. Expression visitors return ``None`` outside
-    that contract, while a missing statement result fails at the statement boundary.
+    that contract, while a missing statement result fails in visitor dispatch.
 
     The mutable analysis state has these invariants:
 
@@ -214,6 +215,12 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         for violation in violations:
             self._add_violation(violation)
 
+    @overload
+    def visit(self, node: ast.stmt) -> bool: ...
+
+    @overload
+    def visit(self, node: ast.AST) -> None: ...
+
     def visit(self, node: ast.AST) -> bool | None:
         self._record_metadata_merge_key_violations(node)
         result = super().visit(node)
@@ -221,7 +228,11 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             node, (ast.Compare, ast.FormattedValue)
         ):
             self._record_implicit_exception_aliases()
-        return result if isinstance(result, bool) else None
+        if isinstance(node, ast.stmt):
+            if not isinstance(result, bool):
+                raise TypeError(f"{type(node).__name__} visitor must return statement flow")
+            return result
+        return None
 
     def _is_metadata_reference(self, node: ast.AST) -> bool:
         return (
@@ -428,14 +439,8 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             return set(self._class_nested_scope_alias_scopes[-1])
         return set(self._metadata_aliases)
 
-    def _visit_statement(self, statement: ast.stmt) -> bool:
-        result = self.visit(statement)
-        if result is None:
-            raise TypeError(f"{type(statement).__name__} visitor must return statement flow")
-        return result
-
     def _visit_current_scope_body(self, body: list[ast.stmt]) -> bool:
-        return all(self._visit_statement(statement) for statement in body)
+        return all(self.visit(statement) for statement in body)
 
     def _visit_branch_body(self, body: list[ast.stmt], aliases: set[str]) -> tuple[set[str], bool]:
         self._metadata_alias_scopes.append(set(aliases))
