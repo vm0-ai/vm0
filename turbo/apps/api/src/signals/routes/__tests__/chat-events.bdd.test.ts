@@ -8446,7 +8446,7 @@ describe("CHAT-02: public-brand default assistant identity", () => {
     }
     expect(rawQueuedEvent).toMatchObject({
       contextType: "web",
-      contextId: "public-brand:okou",
+      contextId: "0bdfae9e-63be-43dd-8193-a96e07787c20",
     });
     // The previous strict raw-row reader accepts this event because the new
     // context uses existing outer fields and does not widen payload JSONB.

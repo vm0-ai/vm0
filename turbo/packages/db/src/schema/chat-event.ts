@@ -78,7 +78,8 @@ export const chatEvents = pgTable(
     /**
      * Input source discriminator and optional polymorphic context pointer.
      *
-     * `web` identifies a source without a context row, so its contextId is null.
+     * `web` identifies a source without a context row; current rows use reserved
+     * UUID sentinels for public-brand launch identity, while legacy rows are null.
      * `goal` uses the goal ID as its canonical context pointer. For other values,
      * contextId selects the row in the table named by contextType. contextId is
      * not unique: when a pending event is claimed, the revoke + insert
