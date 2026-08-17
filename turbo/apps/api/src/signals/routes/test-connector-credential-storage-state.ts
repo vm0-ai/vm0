@@ -7,6 +7,7 @@ import { connectors } from "@okouai/db/schema/connector";
 import { connectorOauthStates } from "@okouai/db/schema/connector-oauth-state";
 import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
 import { secrets } from "@okouai/db/schema/secret";
+import { userCustomConnectors } from "@okouai/db/schema/user-custom-connector";
 import { variables } from "@okouai/db/schema/variable";
 import { and, asc, eq, inArray } from "drizzle-orm";
 
@@ -379,6 +380,20 @@ async function seedCustomRuntimeConnectors(
         };
       }),
     );
+    const agentId = body.agent_id;
+    if (agentId) {
+      await tx.insert(userCustomConnectors).values(
+        body.custom_connectors.map((connector) => {
+          return {
+            orgId: body.org_id,
+            userId: body.user_id,
+            agentId,
+            customConnectorId: connector.id,
+            permissionNames: [] as string[],
+          };
+        }),
+      );
+    }
   });
   signal.throwIfAborted();
   return actionOk();

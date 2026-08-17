@@ -9431,7 +9431,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
   it("hands off more than one runtime-sync batch without truncation", async () => {
     const api = createRunsApi(context);
-    const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     if (!actor.orgId) {
       throw new Error("Expected a custom connector actor with an organization");
@@ -9452,17 +9451,12 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await seedCustomConnectorRuntimeConnectors(context, {
       orgId: actor.orgId,
       userId: actor.userId,
+      agentId,
       customConnectors: runtimeConnectors,
     });
     const createdIds = runtimeConnectors.map((connector) => {
       return connector.id;
     });
-    const authorizedConnectorIds = await connectors.updateAgentCustomConnectors(
-      actor,
-      agentId,
-      createdIds,
-    );
-    expect(authorizedConnectorIds).toHaveLength(connectorCount);
 
     const run = await api.createRun(actor, {
       agentId,

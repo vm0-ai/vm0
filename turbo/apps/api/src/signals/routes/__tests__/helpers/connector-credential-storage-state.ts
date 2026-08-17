@@ -160,6 +160,7 @@ export async function seedCustomConnectorRuntimeConnectors(
   args: {
     readonly orgId: string;
     readonly userId: string;
+    readonly agentId?: string;
     readonly customConnectors: readonly {
       readonly id: string;
       readonly slug: string;
@@ -172,6 +173,7 @@ export async function seedCustomConnectorRuntimeConnectors(
     action: "seed-custom-runtime-connectors",
     org_id: args.orgId,
     user_id: args.userId,
+    ...(args.agentId === undefined ? {} : { agent_id: args.agentId }),
     custom_connectors: args.customConnectors.map((connector) => {
       return {
         id: connector.id,
