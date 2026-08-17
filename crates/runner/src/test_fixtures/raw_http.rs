@@ -136,6 +136,24 @@ impl Drop for RawHttpTestServer {
 }
 
 pub(crate) async fn read_http_request(socket: &mut TcpStream) -> io::Result<String> {
+    read_http_request_with_timeout(socket, RAW_HTTP_FIXTURE_TIMEOUT).await
+}
+
+async fn read_http_request_with_timeout(
+    socket: &mut TcpStream,
+    timeout: Duration,
+) -> io::Result<String> {
+    tokio::time::timeout(timeout, read_http_request_inner(socket))
+        .await
+        .map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::TimedOut,
+                "timed out reading raw HTTP request",
+            )
+        })?
+}
+
+async fn read_http_request_inner(socket: &mut TcpStream) -> io::Result<String> {
     let mut request = Vec::new();
     let mut buffer = [0_u8; 1024];
     let header_end = loop {
@@ -269,10 +287,13 @@ async fn serve(
 ) -> io::Result<()> {
     for (index, action) in actions.into_iter().enumerate() {
         let (mut socket, _) = listener.accept().await?;
-        let request =
-            tokio::time::timeout(RAW_HTTP_FIXTURE_TIMEOUT, read_http_request(&mut socket))
-                .await
-                .map_err(|_| fixture_timeout(index, "reading request"))??;
+        let request = read_http_request(&mut socket).await.map_err(|error| {
+            if error.kind() == io::ErrorKind::TimedOut {
+                fixture_timeout(index, "reading request")
+            } else {
+                error
+            }
+        })?;
         request_tx.send(request).await.map_err(|_| {
             io::Error::new(
                 io::ErrorKind::BrokenPipe,
@@ -392,6 +413,22 @@ mod tests {
             .await
             .unwrap_err();
         assert!(error.contains("connection closed before HTTP body completed"));
+    }
+
+    #[tokio::test]
+    async fn direct_reader_times_out_incomplete_request() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let mut client = TcpStream::connect(address).await.unwrap();
+        let (mut socket, _) = listener.accept().await.unwrap();
+        client.write_all(b"GET / HTTP/1.1\r\n").await.unwrap();
+
+        let error = read_http_request_with_timeout(&mut socket, Duration::from_millis(10))
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+        assert_eq!(error.to_string(), "timed out reading raw HTTP request");
     }
 
     #[tokio::test]
