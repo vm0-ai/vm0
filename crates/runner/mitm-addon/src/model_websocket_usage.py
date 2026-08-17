@@ -218,7 +218,6 @@ def feed_usage(
     if not is_enabled(flow):
         return
     prewarm_state = flow.metadata.get(_MODEL_WEBSOCKET_PREWARM_STATE)
-    lifecycle: usage.OpenAIResponsesServerLifecycle | None = None
     should_inspect_lifecycle = (
         isinstance(prewarm_state, _OpenAIResponsesPrewarmState)
         and not prewarm_state.ambiguous
@@ -230,11 +229,16 @@ def feed_usage(
             or event.event_type in _WEBSOCKET_LIFECYCLE_EVENT_TYPES
         )
     )
-    if should_inspect_lifecycle and isinstance(prewarm_state, _OpenAIResponsesPrewarmState):
-        lifecycle = usage.inspect_openai_responses_server_lifecycle(event)
+    inspection = usage.inspect_openai_responses_server_event(
+        event,
+        include_lifecycle=should_inspect_lifecycle,
+    )
+    lifecycle = inspection.lifecycle
+    if lifecycle is not None and isinstance(prewarm_state, _OpenAIResponsesPrewarmState):
         _observe_server_lifecycle(flow, prewarm_state, lifecycle)
 
-    usage_result, inspection_error = usage.extract_openai_responses_usage_from_event(event)
+    usage_result = inspection.usage
+    inspection_error = inspection.usage_error
     if inspection_error is not None:
         if isinstance(prewarm_state, _OpenAIResponsesPrewarmState):
             _mark_correlation_ambiguous(flow, prewarm_state, "correlation_cap")
