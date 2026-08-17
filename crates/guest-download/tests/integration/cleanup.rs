@@ -185,6 +185,31 @@ fn cleanup_preserves_path_nested_below_cached_root() {
 }
 
 #[test]
+fn selective_cleanup_preserves_cached_child_across_equivalent_parent_spelling() {
+    let dir = tempfile::tempdir().unwrap();
+    let alias = dir.path().join("alias");
+    let cleanup_root = dir.path().join("workspace");
+    let cleanup_path = alias.join("..").join("workspace");
+    let preserved = cleanup_root.join("keep");
+
+    fs::create_dir_all(&alias).unwrap();
+    fs::create_dir_all(&preserved).unwrap();
+    fs::create_dir_all(cleanup_root.join("stale")).unwrap();
+    fs::write(preserved.join("content.txt"), "keep").unwrap();
+    fs::write(cleanup_root.join("stale/content.txt"), "remove").unwrap();
+
+    let manifest = cleanup_manifest(&[&cleanup_path], Some(&preserved)).unwrap();
+    let success = run_guest_download_manifest_json(&manifest);
+
+    assert!(success);
+    assert_eq!(
+        fs::read_to_string(preserved.join("content.txt")).unwrap(),
+        "keep"
+    );
+    assert!(!cleanup_root.join("stale").exists());
+}
+
+#[test]
 fn cleanup_normalization_does_not_bypass_intermediate_symlink() {
     let dir = tempfile::tempdir().unwrap();
     let alias = dir.path().join("alias");
