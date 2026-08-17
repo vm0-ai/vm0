@@ -558,6 +558,7 @@ describe("usage pack subscription Stripe lifecycle", () => {
     const usagePackSubscriptionId = randomUUID();
     let cleanupUsagePackSubscriptionId: string = usagePackSubscriptionId;
     const grantedUserId = `user_${randomUUID()}`;
+    const delayedRedeemUserId = `user_${randomUUID()}`;
     const paidPeriod = period(0);
     const grantPeriod = {
       start: paidPeriod.start,
@@ -591,7 +592,7 @@ describe("usage pack subscription Stripe lifecycle", () => {
     const metadata = {
       type: "atom_grant",
       purpose: "atom_grant",
-      source: "atom_entitlement",
+      source: "atom_redeem_code",
       planVersion: "usagePack",
       operationId: `sub_${randomUUID()}`,
       orgId,
@@ -599,6 +600,9 @@ describe("usage pack subscription Stripe lifecycle", () => {
       planId: "pro",
       duration: "7d",
       atomGrantExpiresAt: new Date(grantPeriod.end * 1000).toISOString(),
+      userId: grantedUserId,
+      creditsAmount: "20000",
+      creditsExpiresAt: new Date(grantPeriod.end * 1000).toISOString(),
     };
     const planInvoice = {
       id: planInvoiceId,
@@ -660,6 +664,14 @@ describe("usage pack subscription Stripe lifecycle", () => {
     const planState = await readUsagePackState(fixture);
     expect(planState.subscription).toBeNull();
     expect(planState.allocations).toStrictEqual([]);
+    expect(planState.grants).toStrictEqual([
+      {
+        userId: grantedUserId,
+        grantType: "bonus",
+        originalAmount: 20_000,
+        expiresAt: new Date(grantPeriod.end * 1000).toISOString(),
+      },
+    ]);
     expect(planState.org).toStrictEqual(
       expect.objectContaining({
         tier: "pro",
@@ -688,7 +700,14 @@ describe("usage pack subscription Stripe lifecycle", () => {
       ...planInvoice,
       id: `in_atom_usage_pack_plan_${randomUUID()}`,
       metadata: {
-        ...metadata,
+        type: "atom_grant",
+        purpose: "atom_grant",
+        source: "atom_entitlement",
+        planVersion: "usagePack",
+        operationId: metadata.operationId,
+        orgId,
+        tier: "pro",
+        planId: "pro",
         duration: "14d",
         atomGrantExpiresAt: new Date(
           renewedGrantPeriod.end * 1000,
@@ -705,12 +724,46 @@ describe("usage pack subscription Stripe lifecycle", () => {
         ],
       },
     };
+    const delayedRedeemPlanInvoice = {
+      ...planInvoice,
+      id: `in_atom_usage_pack_plan_${randomUUID()}`,
+      metadata: {
+        ...metadata,
+        operationId: `sub_${randomUUID()}`,
+        userId: delayedRedeemUserId,
+      },
+      lines: {
+        has_more: false,
+        data: [
+          {
+            ...planInvoice.lines.data[0],
+            id: `il_${randomUUID()}`,
+          },
+        ],
+      },
+    };
     await postStripeEvent(stripeEvent("invoice.paid", renewedPlanInvoice), 200);
     await postStripeEvent(stripeEvent("invoice.paid", planInvoice), 200);
-    expect((await readUsagePackState(fixture)).org).toStrictEqual(
+    await postStripeEvent(
+      stripeEvent("invoice.paid", delayedRedeemPlanInvoice),
+      200,
+    );
+    await postStripeEvent(
+      stripeEvent("invoice.paid", delayedRedeemPlanInvoice),
+      200,
+    );
+    const renewedState = await readUsagePackState(fixture);
+    expect(renewedState.org).toStrictEqual(
       expect.objectContaining({
         currentPeriodEnd: new Date(renewedGrantPeriod.end * 1000).toISOString(),
       }),
+    );
+    expect(renewedState.grants).toHaveLength(2);
+    expect(renewedState.grants).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ userId: grantedUserId }),
+        expect.objectContaining({ userId: delayedRedeemUserId }),
+      ]),
     );
 
     await postStripeEvent(stripeEvent("invoice.paid", grantInvoice), 200);
@@ -718,14 +771,29 @@ describe("usage pack subscription Stripe lifecycle", () => {
 
     const grantedState = await readUsagePackState(fixture);
     expect(grantedState.allocations).toStrictEqual([]);
-    expect(grantedState.grants).toStrictEqual([
-      {
-        userId: grantedUserId,
-        grantType: "bonus",
-        originalAmount: 6000,
-        expiresAt: new Date(creditPeriod.end * 1000).toISOString(),
-      },
-    ]);
+    expect(grantedState.grants).toHaveLength(3);
+    expect(grantedState.grants).toStrictEqual(
+      expect.arrayContaining([
+        {
+          userId: grantedUserId,
+          grantType: "bonus",
+          originalAmount: 20_000,
+          expiresAt: new Date(grantPeriod.end * 1000).toISOString(),
+        },
+        {
+          userId: delayedRedeemUserId,
+          grantType: "bonus",
+          originalAmount: 20_000,
+          expiresAt: new Date(grantPeriod.end * 1000).toISOString(),
+        },
+        {
+          userId: grantedUserId,
+          grantType: "bonus",
+          originalAmount: 6000,
+          expiresAt: new Date(creditPeriod.end * 1000).toISOString(),
+        },
+      ]),
+    );
     expect(grantedState.org?.credits).toBe(0);
     expect(grantedState.legacyCredits).toStrictEqual([]);
     expect(grantedState.fulfillmentInvoiceIds).toStrictEqual([]);
