@@ -56,33 +56,6 @@ def _start_transparent_http1_absolute_request(
     return http_layer, request_headers_hook
 
 
-def _start_transparent_http1_origin_request(
-    addon_context: taddons.context,
-    *,
-    host_header: bytes,
-) -> tuple[HttpLayer, HttpRequestHeadersHook]:
-    client, http_layer = start_http_layer(
-        addon_context,
-        alpn=b"http/1.1",
-        host="api.github.com",
-        server_host="203.0.113.10",
-        mode=HTTPMode.transparent,
-    )
-
-    commands = list(
-        http_layer.handle_event(
-            events.DataReceived(
-                client,
-                b"GET /repos HTTP/1.1\r\nHost: " + host_header + b"\r\n\r\n",
-            )
-        )
-    )
-    request_headers_hook = next(
-        command for command in commands if isinstance(command, HttpRequestHeadersHook)
-    )
-    return http_layer, request_headers_hook
-
-
 async def test_over_budget_http1_host_is_rejected_in_both_hooks_without_string_access(
     tmp_path: Path,
     fake_firewall_headers,
@@ -103,9 +76,23 @@ async def test_over_budget_http1_host_is_rejected_in_both_hooks_without_string_a
             vm0_api_url="https://api.vm0.ai",
             vm0_proxy_registry_path=str(registry_path),
         )
-        http_layer, request_headers_hook = _start_transparent_http1_origin_request(
+        client, http_layer = start_http_layer(
             addon_context,
-            host_header=oversized_host,
+            alpn=b"http/1.1",
+            host="api.github.com",
+            server_host="203.0.113.10",
+            mode=HTTPMode.transparent,
+        )
+        initial_commands = list(
+            http_layer.handle_event(
+                events.DataReceived(
+                    client,
+                    b"GET /repos HTTP/1.1\r\nHost: " + oversized_host + b"\r\n\r\n",
+                )
+            )
+        )
+        request_headers_hook = next(
+            command for command in initial_commands if isinstance(command, HttpRequestHeadersHook)
         )
         flow = request_headers_hook.flow
         original_headers = tuple(flow.request.headers.fields)

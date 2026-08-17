@@ -539,7 +539,7 @@ async def test_rejects_duplicate_host_authority_before_firewall_auth(
         ),
     ],
 )
-async def test_rejects_over_budget_host_without_decoding_logging_or_auth(
+async def test_rejects_over_budget_host_without_decoding_or_auth(
     tmp_path,
     real_flow,
     mitm_ctx,
@@ -548,10 +548,7 @@ async def test_rejects_over_budget_host_without_decoding_logging_or_auth(
 ):
     reg_path = _write_github_firewall_registry(tmp_path)
     request_headers = mitm_addon.http.Headers(
-        [
-            *((b"Host", value) for value in host_values),
-            (b"Authorization", b"Bearer sandbox-token"),
-        ]
+        [(b"Host", value) for value in host_values] + [(b"Authorization", b"Bearer sandbox-token")]
     )
     flow = real_flow(
         with_response=False,
