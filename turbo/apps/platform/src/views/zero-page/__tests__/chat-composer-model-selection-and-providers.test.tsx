@@ -3599,6 +3599,11 @@ describe("chat composer video model", () => {
 
     const chatModelButton = await findComposerModel("Claude Fable 5");
     const videoModelButton = await findDesktopVideoModelButton();
+    expect(
+      queryAllByRoleFast("button").some((candidate) => {
+        return candidate.getAttribute("aria-label") === "Image models";
+      }),
+    ).toBeFalsy();
     expect(chatModelButton).toHaveAttribute("aria-expanded", "false");
     expect(videoModelButton).toHaveAttribute("aria-expanded", "false");
     const expandedChatModeIcon = chatModelButton.querySelector(
@@ -3673,11 +3678,19 @@ describe("chat composer video model", () => {
     });
 
     await user.click(await findComposerModel("Claude Fable 5"));
+    expect(videoPanelButton("Manage more models")).toBeInTheDocument();
+    expect(videoPanelButton("Image models")).toBeUndefined();
     await user.click(await findVideoPanelButton("Manage more models"));
+    expect(videoPanelButton("Video models")).toBeInTheDocument();
+    expect(videoPanelButton("Image models")).toBeUndefined();
     expect(videoPanelButton("MiniMax H3")).toHaveAttribute(
       "aria-pressed",
       "true",
     );
+    await user.click(await findVideoPanelButton("Video models"));
+    expect(videoPanelButton("Manage more models")).toBeInTheDocument();
+    expect(videoPanelButton("MiniMax H3")).toBeUndefined();
+    await user.click(await findVideoPanelButton("Manage more models"));
 
     await user.click(await findVideoPanelButton("Seedance 2.0 fast"));
 
