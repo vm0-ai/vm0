@@ -4,6 +4,7 @@ import { imageShareXContract } from "@okouai/api-contracts/contracts/image-share
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
+import { publicBrand$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
 import { shareImageToX$ } from "../services/image-share-x.service";
@@ -19,12 +20,14 @@ const postImageShareXInner$ = command(
     }
 
     const auth = get(organizationAuthContext$);
+    const publicBrand = get(publicBrand$);
     const result = await set(
       shareImageToX$,
       {
         caption: bodyResult.data.caption,
         imageUrl: bodyResult.data.imageUrl,
         orgId: auth.orgId,
+        publicBrand,
         userId: auth.userId,
       },
       signal,
