@@ -4563,6 +4563,8 @@ async fn wait_for_balloon_follows_exact_bounded_poll_schedule() {
     let wait = wait_for_balloon_with_outcome(&client, target_mib, "bounded-schedule");
     tokio::pin!(wait);
 
+    // Exercise through 4,775 ms. A 4,975 ms sample is not guaranteed because
+    // each interval starts after the previous Unix-socket response completes.
     for (index, delay_ms) in std::iter::once(0_u64)
         .chain([25, 50, 100, 100, 100, 200, 200])
         .chain(std::iter::repeat_n(200, 20))
