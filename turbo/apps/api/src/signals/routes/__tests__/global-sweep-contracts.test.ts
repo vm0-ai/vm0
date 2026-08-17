@@ -6,6 +6,7 @@ import { cronCleanupSandboxesRoutes } from "../cron-cleanup-sandboxes";
 import { cronConnectorOauthStateCleanupRoutes } from "../cron-connector-oauth-state-cleanup";
 import { cronDrainEmailOutboxRoutes } from "../cron-drain-email-outbox";
 import { cronExecuteWorkflowAutomationsRoutes } from "../cron-execute-workflow-automations";
+import { cronRenewGmailWatchesRoutes } from "../cron-renew-gmail-watches";
 import { modelStatsRoutes } from "../model-stats";
 import { cronReconcileBillingEntitlementsRoutes } from "../cron-reconcile-billing-entitlements";
 import { cronSyncSkillsRoutes } from "../cron-sync-skills";
@@ -83,6 +84,14 @@ describe("production-global sweep route contracts", () => {
       context,
       cronExecuteWorkflowAutomationsRoutes,
       "/api/cron/execute-workflow-automations",
+    );
+  });
+
+  it("rejects Gmail watch renewal without authorization", async () => {
+    await expectGlobalSweepMissingAuth(
+      context,
+      cronRenewGmailWatchesRoutes,
+      "/api/cron/renew-gmail-watches",
     );
   });
 
