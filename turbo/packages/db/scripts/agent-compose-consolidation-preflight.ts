@@ -27,6 +27,14 @@ import {
   type SetFingerprint,
 } from "./agent-compose-consolidation-preflight-fingerprint";
 import {
+  LAUNCH_SNAPSHOT_DISPOSITIONS,
+  LAUNCH_SNAPSHOT_REASONS,
+  classifyLaunchSnapshotRecoverability,
+  type LaunchSnapshotCheckpointInventoryRow,
+  type LaunchSnapshotConversationInventoryRow,
+  type LaunchSnapshotRunInventoryRow,
+} from "./agent-compose-consolidation-preflight-launch-snapshots";
+import {
   EXPECTED_RUNTIME_CONTENT_CONSUMER_MANIFEST,
   collectRuntimeContentConsumerManifest,
   type RuntimeContentConsumerManifest,
@@ -365,10 +373,29 @@ const PREFLIGHT_V3_OUTPUT_ALLOWLIST = [
   ),
 ];
 
-/** Every and only approved scalar/array path in a complete v3 result. */
+const PREFLIGHT_V4_OUTPUT_ALLOWLIST = [
+  "launchSnapshots.total",
+  ...setOutputPaths("launchSnapshots.population"),
+  ...LAUNCH_SNAPSHOT_DISPOSITIONS.flatMap((disposition) => {
+    return setOutputPaths(`launchSnapshots.dispositions.${disposition}`);
+  }),
+  ...LAUNCH_SNAPSHOT_REASONS.flatMap((reason) => {
+    return setOutputPaths(`launchSnapshots.reasons.${reason}`);
+  }),
+  ...comparisonOutputPaths("launchSnapshots.populationClosure"),
+  ...comparisonOutputPaths("launchSnapshots.dispositionPartitionClosure"),
+  ...comparisonOutputPaths("launchSnapshots.dispositionDisjointnessClosure"),
+  ...comparisonOutputPaths("launchSnapshots.dispositionUnionClosure"),
+  ...comparisonOutputPaths("launchSnapshots.reasonPartitionClosure"),
+  ...comparisonOutputPaths("launchSnapshots.reasonUnionClosure"),
+  ...comparisonOutputPaths("launchSnapshots.reasonCompatibilityClosure"),
+];
+
+/** Every and only approved scalar/array path in a complete v4 result. */
 export const PREFLIGHT_OUTPUT_ALLOWLIST = [
   ...PREFLIGHT_V2_OUTPUT_ALLOWLIST,
   ...PREFLIGHT_V3_OUTPUT_ALLOWLIST,
+  ...PREFLIGHT_V4_OUTPUT_ALLOWLIST,
 ].sort();
 
 export interface IdentityInventoryRow extends QueryResultRow {
@@ -397,16 +424,18 @@ export interface HeadInventoryRow extends QueryResultRow {
   readonly insertionComposeId: string | null;
 }
 
-export interface RunInventoryRow extends QueryResultRow {
-  readonly id: string;
-  readonly versionId: string | null;
+export interface RunInventoryRow
+  extends QueryResultRow, LaunchSnapshotRunInventoryRow {
   readonly versionPresent: boolean;
 }
 
-export interface CheckpointInventoryRow extends QueryResultRow {
+export interface CheckpointInventoryRow
+  extends QueryResultRow, LaunchSnapshotCheckpointInventoryRow {
   readonly id: string;
-  readonly snapshot: unknown;
 }
+
+export type ConversationInventoryRow = QueryResultRow &
+  LaunchSnapshotConversationInventoryRow;
 
 export interface DanglingInventoryRow extends QueryResultRow {
   readonly composeId: string;
@@ -434,6 +463,7 @@ export interface PreflightInventory {
   readonly heads: readonly HeadInventoryRow[];
   readonly runs: readonly RunInventoryRow[];
   readonly checkpoints: readonly CheckpointInventoryRow[];
+  readonly conversations: readonly ConversationInventoryRow[];
   readonly danglingStart: readonly DanglingInventoryRow[];
   readonly danglingEnd: readonly DanglingInventoryRow[];
   readonly agentExecutionPlans: readonly AgentExecutionPlanInventoryRow[];
@@ -479,6 +509,72 @@ export class SanitizedPreflightError extends Error {
   }
 }
 
+const SAFE_OUTPUT_LITERALS: ReadonlySet<string> = new Set([
+  PREFLIGHT_SCHEMA_VERSION,
+  "passed",
+  "failed",
+  "exact",
+  "drift",
+  "stable",
+  "supported",
+  "repeatable read",
+]);
+const SAFE_FAILURE_GATE_PATTERN = /^[A-Za-z]+(?:[._][A-Za-z]+)*$/u;
+const SAFE_DIGEST_PATTERN = /^[0-9a-f]{64}$/u;
+
+function aggregateOutputPaths(value: unknown, prefix = ""): string[] {
+  if (Array.isArray(value)) return [`${prefix}[]`];
+  if (value !== null && typeof value === "object") {
+    return Object.entries(value)
+      .flatMap(([key, child]) => {
+        return aggregateOutputPaths(child, prefix ? `${prefix}.${key}` : key);
+      })
+      .sort();
+  }
+  return [prefix];
+}
+
+function hasSafeAggregateValues(value: unknown, pathPrefix = ""): boolean {
+  if (Array.isArray(value)) {
+    return (
+      pathPrefix === "failureGates" &&
+      value.every((gate) => {
+        return typeof gate === "string" && SAFE_FAILURE_GATE_PATTERN.test(gate);
+      })
+    );
+  }
+  if (value !== null && typeof value === "object") {
+    return Object.entries(value).every(([key, child]) => {
+      return hasSafeAggregateValues(
+        child,
+        pathPrefix ? `${pathPrefix}.${key}` : key,
+      );
+    });
+  }
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) && value >= 0;
+  }
+  if (typeof value === "boolean") return true;
+  if (typeof value !== "string") return false;
+  if (pathPrefix.endsWith(".digest") || pathPrefix.endsWith("Digest")) {
+    return SAFE_DIGEST_PATTERN.test(value);
+  }
+  return SAFE_OUTPUT_LITERALS.has(value);
+}
+
+/** Fail closed before a dynamically constructed result reaches stdout. */
+export function assertPreflightOutputShape(value: unknown): void {
+  const paths = aggregateOutputPaths(value);
+  const exactPaths =
+    paths.length === PREFLIGHT_OUTPUT_ALLOWLIST.length &&
+    paths.every((path, index) => {
+      return path === PREFLIGHT_OUTPUT_ALLOWLIST[index];
+    });
+  if (!exactPaths || !hasSafeAggregateValues(value)) {
+    throw new SanitizedPreflightError("probe.output_shape");
+  }
+}
+
 function assertNotAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) throw new SanitizedPreflightError("probe.cancelled");
 }
@@ -518,7 +614,7 @@ interface CapabilityRow extends QueryResultRow {
   readonly statementTimeoutMs: number;
 }
 
-export async function withReadOnlySnapshot<Value>(
+async function executeReadOnlySnapshotTransaction<Value>(
   client: Client,
   options: ReadOnlySnapshotOptions,
   body: (capabilities: PreflightCapabilities) => Promise<Value>,
@@ -587,13 +683,44 @@ export async function withReadOnlySnapshot<Value>(
     try {
       await client.query("ROLLBACK");
     } catch {
+      if (options.signal?.aborted) {
+        throw new SanitizedPreflightError("probe.cancelled");
+      }
       throw new SanitizedPreflightError("probe.transaction_cleanup");
     }
+  }
+  if (options.signal?.aborted) {
+    throw new SanitizedPreflightError("probe.cancelled");
   }
   if (bodyError !== undefined)
     classifyThrownError(bodyError, "probe.inventory");
   if (!result) throw new SanitizedPreflightError("probe.transaction_start");
   return result;
+}
+
+export async function withReadOnlySnapshot<Value>(
+  client: Client,
+  options: ReadOnlySnapshotOptions,
+  body: (capabilities: PreflightCapabilities) => Promise<Value>,
+): Promise<{
+  readonly capabilities: PreflightCapabilities;
+  readonly value: Value;
+}> {
+  // node-postgres 8 does not accept AbortSignal in QueryConfig. Closing this
+  // probe-owned connection interrupts an in-flight query and aborts its
+  // read-only transaction; callers receive only the fixed cancellation gate.
+  const cancelInFlightQuery = (): void => {
+    void client.end().catch(() => {});
+  };
+  options.signal?.addEventListener("abort", cancelInFlightQuery, {
+    once: true,
+  });
+  if (options.signal?.aborted) cancelInFlightQuery();
+  try {
+    return await executeReadOnlySnapshotTransaction(client, options, body);
+  } finally {
+    options.signal?.removeEventListener("abort", cancelInFlightQuery);
+  }
 }
 
 function frameTuple(parts: readonly string[]): string {
@@ -1736,9 +1863,16 @@ export function classifyPreflightInventory(
     observedRepository,
     failureGates,
   );
+  const launchSnapshots = classifyLaunchSnapshotRecoverability({
+    runs: inventory.runs,
+    versions: inventory.versions,
+    checkpoints: inventory.checkpoints,
+    conversations: inventory.conversations,
+  });
+  for (const gate of launchSnapshots.failureGates) failureGates.add(gate);
   const sortedFailureGates = [...failureGates].sort();
 
-  return {
+  const result = {
     schemaVersion: PREFLIGHT_SCHEMA_VERSION,
     status:
       sortedFailureGates.length === 0
@@ -1754,7 +1888,10 @@ export function classifyPreflightInventory(
     checkpoints,
     danglingHeads,
     dependencies,
+    launchSnapshots: launchSnapshots.output,
   };
+  assertPreflightOutputShape(result);
+  return result;
 }
 
 const DANGLING_QUERY = `
@@ -1902,7 +2039,38 @@ async function collectDatabaseInventory(
     `SELECT
        "run"."id"::text AS "id",
        "run"."agent_compose_version_id" AS "versionId",
-       "version"."id" IS NOT NULL AS "versionPresent"
+       "version"."id" IS NOT NULL AS "versionPresent",
+       "run"."created_at" AT TIME ZONE 'UTC' AS "createdAt",
+       "run"."launch_snapshot" AS "launchSnapshot",
+       "run"."model_provider" AS "modelProvider",
+       "run"."selected_model" AS "selectedModel",
+       "run"."trigger_source" AS "triggerSource",
+       CASE
+         WHEN
+           "run"."trigger_source" IS NULL AND
+           "run"."autonomy_budget" IS NULL AND
+           "run"."workflow_automation_id" IS NULL AND
+           "run"."goal_id" IS NULL AND
+           "run"."model_provider" IS NULL AND
+           "run"."model_provider_id" IS NULL AND
+           "run"."model_provider_credential_scope" IS NULL AND
+           "run"."selected_model" IS NULL AND
+           "run"."codex_service_tier" IS NULL AND
+           "run"."selected_video_model" IS NULL AND
+           "run"."selected_image_model" IS NULL AND
+           "run"."chat_thread_id" IS NULL AND
+           "run"."api_started_at" IS NULL AND
+           "run"."first_assistant_event_acknowledged_at" IS NULL AND
+           "run"."summary" IS NULL AND
+           "run"."trigger_brief" IS NULL
+           THEN 'lifecycle_only'
+         WHEN
+           "run"."trigger_source" IS NOT NULL AND
+           "run"."autonomy_budget" IS NOT NULL
+           THEN 'product'
+         ELSE 'partial'
+       END AS "metadataShape",
+       "run"."chat_thread_id" IS NOT NULL AS "chatThreadPresent"
      FROM "agent_runs" AS "run"
      LEFT JOIN "agent_compose_versions" AS "version"
        ON "version"."id" = "run"."agent_compose_version_id"
@@ -1913,9 +2081,19 @@ async function collectDatabaseInventory(
     signal,
     `SELECT
        "checkpoint"."id"::text AS "id",
+       "checkpoint"."run_id"::text AS "runId",
        "checkpoint"."agent_compose_snapshot" AS "snapshot"
      FROM "checkpoints" AS "checkpoint"
      ORDER BY "checkpoint"."id"`,
+  );
+  const conversations = await safeQuery<ConversationInventoryRow>(
+    client,
+    signal,
+    `SELECT
+       "conversation"."run_id"::text AS "runId",
+       "conversation"."cli_agent_type" AS "framework"
+     FROM "conversations" AS "conversation"
+     ORDER BY "conversation"."run_id"`,
   );
   const catalogDependencies = await safeQuery<CatalogDependencyRow>(
     client,
@@ -1933,6 +2111,7 @@ async function collectDatabaseInventory(
     heads,
     runs,
     checkpoints,
+    conversations,
     danglingStart,
     danglingEnd,
     agentExecutionPlans,
