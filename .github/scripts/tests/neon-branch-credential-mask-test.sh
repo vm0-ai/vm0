@@ -13,7 +13,7 @@ if grep -Fq 'DATABASE_URL value:' "$action"; then
   fail "Neon branch action logs the generated database URL"
 fi
 
-mapfile -t database_url_emissions < <(
+mapfile -t raw_database_url_emissions < <(
   awk '
     /^[[:space:]]*(echo|printf)[[:space:]]/ && index($0, "$DATABASE_URL") > 0 {
       sub(/^[[:space:]]+/, "")
@@ -22,18 +22,43 @@ mapfile -t database_url_emissions < <(
   ' "$action"
 )
 
-expected_emissions=(
-  "echo \"::add-mask::\$DATABASE_URL\""
+expected_raw_database_url_emissions=(
   "echo \"database-url=\$DATABASE_URL\" >> \"\$GITHUB_OUTPUT\""
 )
 
-if [[ ${#database_url_emissions[@]} -ne ${#expected_emissions[@]} ]]; then
-  fail "expected only mask and output commands for the generated database URL"
+if [[ ${#raw_database_url_emissions[@]} -ne ${#expected_raw_database_url_emissions[@]} ]]; then
+  fail "expected only the existing output command to emit the raw database URL"
 fi
 
-for index in "${!expected_emissions[@]}"; do
-  if [[ "${database_url_emissions[$index]}" != "${expected_emissions[$index]}" ]]; then
-    fail "generated database URL must be masked before the existing output is written"
+for index in "${!expected_raw_database_url_emissions[@]}"; do
+  if [[ "${raw_database_url_emissions[$index]}" != "${expected_raw_database_url_emissions[$index]}" ]]; then
+    fail "raw database URL must only be written to the existing output"
+  fi
+done
+
+mapfile -t mask_commands < <(
+  awk '
+    index($0, "WORKFLOW_COMMAND_DATA=") > 0 || index($0, "::add-mask::") > 0 {
+      sub(/^[[:space:]]+/, "")
+      print
+    }
+  ' "$action"
+)
+
+mapfile -t expected_mask_commands <<'EXPECTED'
+WORKFLOW_COMMAND_DATA="${DATABASE_URL//%/%25}"
+WORKFLOW_COMMAND_DATA="${WORKFLOW_COMMAND_DATA//$'\r'/%0D}"
+WORKFLOW_COMMAND_DATA="${WORKFLOW_COMMAND_DATA//$'\n'/%0A}"
+printf '::add-mask::%s\n' "$WORKFLOW_COMMAND_DATA"
+EXPECTED
+
+if [[ ${#mask_commands[@]} -ne ${#expected_mask_commands[@]} ]]; then
+  fail "expected workflow-command escaping before the generated database URL is masked"
+fi
+
+for index in "${!expected_mask_commands[@]}"; do
+  if [[ "${mask_commands[$index]}" != "${expected_mask_commands[$index]}" ]]; then
+    fail "database URL mask must escape percent, carriage return, and newline in order"
   fi
 done
 
