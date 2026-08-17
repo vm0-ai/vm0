@@ -2769,6 +2769,32 @@ describe("chat composer models", () => {
     });
   });
 
+  it("limits the composer trigger to three icons while keeping Cloud browser visible", async () => {
+    mockOrgModelRoutes("claude-sonnet-4-6");
+    mockAgent();
+    mockManyConnectedConnectors();
+    mockAgentConnectorAuthorizations(["github", "slack", "asana"]);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    const composer = composerElementFrom(
+      await screen.findByPlaceholderText(PLACEHOLDER),
+    );
+    const connectorButton = within(composer).getByLabelText("Connectors");
+
+    await waitFor(() => {
+      expect(
+        connectorButton.querySelectorAll(":scope > span > span"),
+      ).toHaveLength(3);
+      expect(
+        connectorButton.querySelector(".lucide-globe"),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("keeps composer connector order independent of authorization state", async () => {
     mockOrgModelRoutes("claude-sonnet-4-6");
     mockAgent();
