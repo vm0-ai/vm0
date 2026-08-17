@@ -224,6 +224,7 @@ const redeemCodeAuthed$ = command(async ({ get }, signal: AbortSignal) => {
         code: bodyResult.data.code,
         email,
         org_id: auth.orgId,
+        user_id: auth.userId,
       }),
       signal,
     }),

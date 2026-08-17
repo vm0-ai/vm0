@@ -235,6 +235,12 @@ interface PaidWebhookOutcome {
 
 type AtomGrantTier = Extract<OrgTier, "pro" | "team" | "custom">;
 
+interface AtomMemberUsagePackDetails {
+  readonly userId: string;
+  readonly credits: number;
+  readonly expiresAt: Date;
+}
+
 interface AtomPlanGrantInvoiceDetails {
   readonly kind: "plan";
   readonly orgId: string;
@@ -243,6 +249,7 @@ interface AtomPlanGrantInvoiceDetails {
   readonly creditExpiresAt: Date;
   readonly customerId: string | null;
   readonly credits: number;
+  readonly memberUsagePack: AtomMemberUsagePackDetails | null;
 }
 
 interface AtomCreditGrantInvoiceDetails {
@@ -757,6 +764,47 @@ function atomUsagePackCreditGrantInvoiceDetails(
   };
 }
 
+function atomPlanMemberUsagePackDetails(
+  invoice: InvoiceInput,
+  metadata: Readonly<Record<string, string>>,
+  line: InvoiceLineInput,
+):
+  | { readonly valid: true; readonly value: AtomMemberUsagePackDetails | null }
+  | { readonly valid: false } {
+  const hasMetadata =
+    metadata.userId !== undefined ||
+    metadata.creditsAmount !== undefined ||
+    metadata.creditsExpiresAt !== undefined;
+  if (!hasMetadata) {
+    return { valid: true, value: null };
+  }
+
+  const expiresAt = atomUsagePackGrantExpiresAt(metadata, line);
+  const credits = Number(metadata.creditsAmount);
+  if (
+    metadata.planVersion !== "usagePack" ||
+    metadata.source !== "atom_redeem_code" ||
+    !metadata.userId ||
+    !Number.isSafeInteger(credits) ||
+    credits <= 0 ||
+    !expiresAt
+  ) {
+    L.warn("atom redeem plan grant has invalid member usage pack metadata", {
+      invoiceId: invoice.id,
+      orgId: metadata.orgId ?? null,
+      hasUserId: Boolean(metadata.userId),
+      creditsAmount: metadata.creditsAmount ?? null,
+      creditsExpiresAt: metadata.creditsExpiresAt ?? null,
+    });
+    return { valid: false };
+  }
+
+  return {
+    valid: true,
+    value: { userId: metadata.userId, credits, expiresAt },
+  };
+}
+
 function atomCreditGrantInvoiceDetails(
   invoice: InvoiceInput,
   metadata: Readonly<Record<string, string>>,
@@ -840,6 +888,14 @@ function atomGrantInvoiceDetails(
     });
     return null;
   }
+  const memberUsagePack = atomPlanMemberUsagePackDetails(
+    invoice,
+    metadata,
+    line,
+  );
+  if (!memberUsagePack.valid) {
+    return null;
+  }
 
   return {
     kind: "plan",
@@ -850,6 +906,7 @@ function atomGrantInvoiceDetails(
     customerId,
     credits:
       metadata.planVersion === "usagePack" ? 0 : monthlyCreditsForTier(tier),
+    memberUsagePack: memberUsagePack.value,
   };
 }
 
@@ -1614,6 +1671,25 @@ function rejectAtomGrantTierReplacement(args: {
   });
 }
 
+async function grantAtomRedeemMemberUsagePack(
+  tx: WriteTx,
+  invoice: InvoiceInput,
+  details: AtomPlanGrantInvoiceDetails,
+): Promise<void> {
+  if (!details.memberUsagePack) {
+    return;
+  }
+
+  await createUsagePackCreditGrant(tx, {
+    orgId: details.orgId,
+    userId: details.memberUsagePack.userId,
+    grantType: "bonus",
+    idempotencyKey: `atom-redeem-usage-pack:${invoice.id}:${details.memberUsagePack.userId}`,
+    amount: details.memberUsagePack.credits,
+    expiresAt: details.memberUsagePack.expiresAt,
+  });
+}
+
 async function processAtomPlanGrantInvoicePaid(
   db: Db,
   invoice: InvoiceInput,
@@ -1640,6 +1716,7 @@ async function processAtomPlanGrantInvoicePaid(
       ) {
         await upsertAtomGrantPlanEntitlement(tx, invoice, details);
       }
+      await grantAtomRedeemMemberUsagePack(tx, invoice, details);
       await cancelReplacedSubscriptionsAfterAtomGrant({
         orgId: details.orgId,
         customerId: details.customerId,
@@ -1731,6 +1808,7 @@ async function processAtomPlanGrantInvoicePaid(
         await upsertAtomGrantPlanEntitlement(writeTx, invoice, details);
       },
     });
+    await grantAtomRedeemMemberUsagePack(tx, invoice, details);
     await cancelReplacedSubscriptionsAfterAtomGrant({
       orgId: details.orgId,
       customerId: details.customerId,
@@ -1813,6 +1891,8 @@ async function handleAtomGrantInvoicePaid(
     tier: details.tier,
     grantExpiresAt: details.grantExpiresAt?.toISOString() ?? null,
     creditExpiresAt: details.creditExpiresAt.toISOString(),
+    memberUsagePackCredits: details.memberUsagePack?.credits ?? 0,
+    memberUsagePackUserId: details.memberUsagePack?.userId ?? null,
   });
   return { handled: true, drainOrgId: details.orgId };
 }

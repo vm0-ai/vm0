@@ -368,6 +368,7 @@ describe("POST /api/zero/billing/redeem-code", () => {
       code: "YUMA-123",
       email: fixture.email,
       org_id: fixture.orgId,
+      user_id: fixture.userId,
     });
   });
 });
