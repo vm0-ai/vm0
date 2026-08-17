@@ -507,13 +507,18 @@ function createModelSelection(
       if (status === undefined || status.status === "connected") {
         return;
       }
-      const mode =
-        status.status === "needs_reconnect" ? "reconnect" : "connect";
+      const authArgs =
+        status.status === "needs_reconnect"
+          ? {
+              mode: "reconnect" as const,
+              modelProviderId: status.credentialId,
+            }
+          : { mode: "connect" as const };
       if (status.providerType === "claude-code-oauth-token") {
-        await set(openClaudeCodeDeviceAuthDialogPersonal$, mode, signal);
+        await set(openClaudeCodeDeviceAuthDialogPersonal$, authArgs, signal);
         return;
       }
-      await set(openCodexDeviceAuthDialogPersonal$, mode, signal);
+      await set(openCodexDeviceAuthDialogPersonal$, authArgs, signal);
     },
   );
 

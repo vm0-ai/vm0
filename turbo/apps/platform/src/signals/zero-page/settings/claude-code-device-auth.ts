@@ -29,6 +29,10 @@ type OpenClaudeCodeDeviceAuthArgs =
       readonly modelProviderId?: string;
     };
 
+type OpenPersonalClaudeCodeDeviceAuthArgs =
+  | { readonly mode: "connect" }
+  | { readonly mode: "reconnect"; readonly modelProviderId: string };
+
 type ActiveClaudeCodeDeviceAuthFlowState = {
   readonly status: "pending";
   readonly requestId: string;
@@ -434,15 +438,28 @@ export const {
   run$: runClaudeCodeDeviceAuth$,
 } = createClaudeCodeDeviceAuthSignals("org", reloadOrgModelProviders$);
 
-export const {
-  dialogState$: claudeCodeDeviceAuthDialogStatePersonal$,
-  flowState$: claudeCodeDeviceAuthFlowStatePersonal$,
-  open$: openClaudeCodeDeviceAuthDialogPersonal$,
-  openApprovalPage$: openClaudeCodeDeviceAuthApprovalPagePersonal$,
-  setAuthorizationCode$: setClaudeCodeDeviceAuthAuthorizationCodePersonal$,
-  submit$: submitClaudeCodeDeviceAuthPersonal$,
-  close$: closeClaudeCodeDeviceAuthDialogPersonal$,
-  run$: runClaudeCodeDeviceAuthPersonal$,
-} = createClaudeCodeDeviceAuthSignals("personal", reloadPersonalModelProvider$);
+const personalClaudeCodeDeviceAuthSignals = createClaudeCodeDeviceAuthSignals(
+  "personal",
+  reloadPersonalModelProvider$,
+);
+
+export const claudeCodeDeviceAuthDialogStatePersonal$ =
+  personalClaudeCodeDeviceAuthSignals.dialogState$;
+export const claudeCodeDeviceAuthFlowStatePersonal$ =
+  personalClaudeCodeDeviceAuthSignals.flowState$;
+export const openClaudeCodeDeviceAuthDialogPersonal$: Command<
+  Promise<boolean>,
+  [OpenPersonalClaudeCodeDeviceAuthArgs, AbortSignal]
+> = personalClaudeCodeDeviceAuthSignals.open$;
+export const openClaudeCodeDeviceAuthApprovalPagePersonal$ =
+  personalClaudeCodeDeviceAuthSignals.openApprovalPage$;
+export const setClaudeCodeDeviceAuthAuthorizationCodePersonal$ =
+  personalClaudeCodeDeviceAuthSignals.setAuthorizationCode$;
+export const submitClaudeCodeDeviceAuthPersonal$ =
+  personalClaudeCodeDeviceAuthSignals.submit$;
+export const closeClaudeCodeDeviceAuthDialogPersonal$ =
+  personalClaudeCodeDeviceAuthSignals.close$;
+export const runClaudeCodeDeviceAuthPersonal$ =
+  personalClaudeCodeDeviceAuthSignals.run$;
 
 export type { ClaudeCodeDeviceAuthFlowState };
