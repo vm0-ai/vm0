@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.168.25](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.24...runner-rs-v0.168.25) (2026-08-17)
+
+
+### Bug Fixes
+
+* **python:** bound codex prefetch marker parsing ([#27725](https://github.com/vm0-ai/vm0/issues/27725)) ([44934b3](https://github.com/vm0-ai/vm0/commit/44934b36f181518713f0ed2ff86bb2967d0ab45c))
+
+
+### Documentation
+
+* **python:** correct connector module ownership guidance ([#27723](https://github.com/vm0-ai/vm0/issues/27723)) ([c77e793](https://github.com/vm0-ai/vm0/commit/c77e7937ca6c78d208eb0c25a79156832cc60e88))
+
 ## [0.168.24](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.23...runner-rs-v0.168.24) (2026-08-17)
 
 

@@ -27,6 +27,9 @@ pub const USAGE_FLUSH_TIMEOUT: Duration = Duration::from_secs(30);
 /// Maximum time to wait for mitmproxy JSONL writes to become visible before upload.
 pub const JSONL_FLUSH_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// Maximum time to wait to serialize a mitmproxy JSONL flush request.
+const JSONL_FLUSH_LOCK_TIMEOUT: Duration = Duration::from_secs(5);
+
 /// Poll interval when waiting for usage flush.
 const USAGE_FLUSH_POLL: Duration = Duration::from_millis(200);
 
@@ -189,6 +192,7 @@ pub struct MitmJsonlFlushHandle {
 pub(super) enum RequestLockPoll {
     Pending,
     Ready,
+    TimedOut,
 }
 
 pub(super) fn now_millis() -> u64 {
@@ -244,7 +248,15 @@ impl JsonlFlushRequest {
 
 impl MitmJsonlFlushHandle {
     pub async fn flush_path(&self, path: &Path) -> bool {
-        let _request_guard = self.acquire_request_lock().await;
+        let Some(_request_guard) = self.acquire_request_lock().await else {
+            warn!(
+                phase = "request_lock",
+                timeout_secs = JSONL_FLUSH_LOCK_TIMEOUT.as_secs(),
+                path = %path.display(),
+                "JSONL flush request lock timed out, proceeding with network log upload"
+            );
+            return false;
+        };
         let target = usage_flush_state_guard(&self.usage_state).clone();
         let request = match write_jsonl_flush_request(&self.addon_dir, &target, path).await {
             Ok(request) => request,
@@ -256,30 +268,48 @@ impl MitmJsonlFlushHandle {
         wait_jsonl_flush(&self.addon_dir, JSONL_FLUSH_TIMEOUT, &request).await
     }
 
-    async fn acquire_request_lock(&self) -> tokio::sync::MutexGuard<'_, ()> {
+    async fn acquire_request_lock(&self) -> Option<tokio::sync::MutexGuard<'_, ()>> {
         #[cfg(test)]
         if let Some(request_lock_poll_tx) = &self.request_lock_poll_tx {
             let request_lock = self.request_lock.lock();
             tokio::pin!(request_lock);
-            let mut request_lock_poll_tx = Some(request_lock_poll_tx);
-            return std::future::poll_fn(|context| {
-                let poll = request_lock.as_mut().poll(context);
-                if let Some(request_lock_poll_tx) = request_lock_poll_tx.take() {
-                    let first_poll = if matches!(&poll, Poll::Pending) {
-                        RequestLockPoll::Pending
-                    } else {
+            let mut first_poll_tx = Some(request_lock_poll_tx);
+            let mut first_poll_was_pending = false;
+            let request_guard = tokio::time::timeout(
+                JSONL_FLUSH_LOCK_TIMEOUT,
+                std::future::poll_fn(|context| {
+                    let poll = request_lock.as_mut().poll(context);
+                    if let Some(request_lock_poll_tx) = first_poll_tx.take() {
+                        first_poll_was_pending = matches!(&poll, Poll::Pending);
+                        let first_poll = if matches!(&poll, Poll::Pending) {
+                            RequestLockPoll::Pending
+                        } else {
+                            RequestLockPoll::Ready
+                        };
+                        request_lock_poll_tx
+                            .send(first_poll)
+                            .expect("request lock poll receiver dropped");
+                    }
+                    poll
+                }),
+            )
+            .await
+            .ok();
+            if first_poll_was_pending {
+                request_lock_poll_tx
+                    .send(if request_guard.is_some() {
                         RequestLockPoll::Ready
-                    };
-                    request_lock_poll_tx
-                        .send(first_poll)
-                        .expect("request lock poll receiver dropped");
-                }
-                poll
-            })
-            .await;
+                    } else {
+                        RequestLockPoll::TimedOut
+                    })
+                    .expect("request lock poll receiver dropped");
+            }
+            return request_guard;
         }
 
-        self.request_lock.lock().await
+        tokio::time::timeout(JSONL_FLUSH_LOCK_TIMEOUT, self.request_lock.lock())
+            .await
+            .ok()
     }
 }
 
@@ -791,7 +821,7 @@ mod tests {
     }
 
     async fn assert_request_lock_first_poll_pending(
-        mut request_lock_poll_rx: mpsc::UnboundedReceiver<RequestLockPoll>,
+        request_lock_poll_rx: &mut mpsc::UnboundedReceiver<RequestLockPoll>,
     ) {
         let first_poll = tokio::time::timeout(Duration::from_secs(1), request_lock_poll_rx.recv())
             .await
@@ -1198,7 +1228,8 @@ mod tests {
         let second_lock_poll_rx = observe_request_lock_first_poll(&mut second_handle);
         let second_path = second_log_path.clone();
         let second = tokio::spawn(async move { second_handle.flush_path(&second_path).await });
-        assert_request_lock_first_poll_pending(second_lock_poll_rx).await;
+        let mut second_lock_poll_rx = second_lock_poll_rx;
+        assert_request_lock_first_poll_pending(&mut second_lock_poll_rx).await;
         let marker_while_first_is_pending: serde_json::Value = serde_json::from_str(
             &std::fs::read_to_string(dir.path().join("jsonl-flush-request")).unwrap(),
         )
@@ -1244,6 +1275,92 @@ mod tests {
         assert!(second.await.unwrap());
     }
 
+    #[tokio::test(start_paused = true)]
+    async fn jsonl_flush_handle_bounds_concurrent_lock_waits() {
+        const QUEUED_FLUSH_COUNT: usize = 3;
+        const COMPLETION_ASSERTION_TIMEOUT: Duration = Duration::from_millis(1);
+
+        let dir = tempfile::tempdir().unwrap();
+        let first_log_path = dir.path().join("network-first.jsonl");
+        let handle = MitmJsonlFlushHandle {
+            addon_dir: dir.path().to_path_buf(),
+            usage_state: Arc::new(Mutex::new(usage_target())),
+            request_lock: Arc::new(AsyncMutex::new(())),
+            request_lock_poll_tx: None,
+        };
+
+        let first_handle = handle.clone();
+        let first_path = first_log_path.clone();
+        let first = tokio::spawn(async move { first_handle.flush_path(&first_path).await });
+        wait_for_jsonl_request(dir.path(), &first_log_path).await;
+
+        let mut queued = Vec::new();
+        for index in 0..QUEUED_FLUSH_COUNT {
+            let log_path = dir.path().join(format!("network-queued-{index}.jsonl"));
+            let mut queued_handle = handle.clone();
+            let lock_poll_rx = observe_request_lock_first_poll(&mut queued_handle);
+            let task_path = log_path.clone();
+            let task = tokio::spawn(async move { queued_handle.flush_path(&task_path).await });
+            let mut lock_poll_rx = lock_poll_rx;
+            assert_request_lock_first_poll_pending(&mut lock_poll_rx).await;
+            queued.push((log_path, task, lock_poll_rx));
+        }
+
+        tokio::time::advance(JSONL_FLUSH_TIMEOUT).await;
+        assert!(!first.await.unwrap());
+
+        let mut acquired_path = None;
+        for (log_path, _, lock_poll_rx) in &mut queued {
+            let outcome = tokio::time::timeout(COMPLETION_ASSERTION_TIMEOUT, lock_poll_rx.recv())
+                .await
+                .unwrap_or_else(|_| {
+                    panic!(
+                        "queued JSONL flush for {} did not reach a lock outcome",
+                        log_path.display()
+                    )
+                })
+                .expect("request lock poll observer closed before outcome");
+            match outcome {
+                RequestLockPoll::Ready => {
+                    assert!(acquired_path.replace(log_path.clone()).is_none());
+                }
+                RequestLockPoll::TimedOut => {}
+                RequestLockPoll::Pending => {
+                    panic!(
+                        "request lock reported pending twice for {}",
+                        log_path.display()
+                    );
+                }
+            }
+        }
+
+        if let Some(acquired_path) = acquired_path.as_ref() {
+            wait_for_jsonl_request(dir.path(), acquired_path).await;
+        }
+        tokio::time::advance(JSONL_FLUSH_TIMEOUT).await;
+
+        for (log_path, task, _) in queued {
+            let flushed = tokio::time::timeout(COMPLETION_ASSERTION_TIMEOUT, task)
+                .await
+                .unwrap_or_else(|_| {
+                    panic!(
+                        "queued JSONL flush for {} exceeded the fixed wait bound",
+                        log_path.display()
+                    )
+                })
+                .unwrap();
+            assert!(!flushed);
+        }
+
+        let final_marker: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(dir.path().join("jsonl-flush-request")).unwrap(),
+        )
+        .unwrap();
+        let final_marker_path = final_marker["path"].as_str().unwrap();
+        let expected_marker_path = acquired_path.as_ref().unwrap_or(&first_log_path);
+        assert_eq!(final_marker_path, expected_marker_path.to_string_lossy());
+    }
+
     #[tokio::test]
     async fn jsonl_flush_handles_from_same_proxy_serialize_concurrent_requests() {
         let dir = tempfile::tempdir().unwrap();
@@ -1266,7 +1383,8 @@ mod tests {
         let second_lock_poll_rx = observe_request_lock_first_poll(&mut second_handle);
         let second_path = second_log_path.clone();
         let second = tokio::spawn(async move { second_handle.flush_path(&second_path).await });
-        assert_request_lock_first_poll_pending(second_lock_poll_rx).await;
+        let mut second_lock_poll_rx = second_lock_poll_rx;
+        assert_request_lock_first_poll_pending(&mut second_lock_poll_rx).await;
         let marker_while_first_is_pending: serde_json::Value = serde_json::from_str(
             &std::fs::read_to_string(dir.path().join("jsonl-flush-request")).unwrap(),
         )

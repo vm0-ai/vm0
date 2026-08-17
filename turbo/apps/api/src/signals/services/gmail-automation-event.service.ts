@@ -1192,6 +1192,35 @@ function gmailPhysicalScopes(states: readonly GmailWatchStateRow[]): readonly {
   return [...scopes.values()];
 }
 
+async function renewGmailPhysicalScopes(
+  args: {
+    readonly db: Db;
+    readonly scopes: readonly {
+      readonly emailAddress: string;
+      readonly topicName: string;
+    }[];
+    readonly renewBefore: Date;
+  },
+  signal: AbortSignal,
+): Promise<{ readonly renewed: number; readonly failed: number }> {
+  let renewed = 0;
+  let failed = 0;
+  for (const scope of args.scopes) {
+    const result = await reconcileGmailPhysicalScope(
+      {
+        db: args.db,
+        ...scope,
+        renewBefore: args.renewBefore,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    renewed += result.kind === "renewed" ? 1 : 0;
+    failed += result.kind === "failed" ? 1 : 0;
+  }
+  return { renewed, failed };
+}
+
 export async function reconcileGmailWatchesForUser(
   args: {
     readonly db: Db;
@@ -2565,23 +2594,28 @@ export const renewGmailWatches$ = command(
     );
     const states = await db.select().from(gmailWatchStates);
     signal.throwIfAborted();
+    return await renewGmailPhysicalScopes(
+      { db, scopes: gmailPhysicalScopes(states), renewBefore },
+      signal,
+    );
+  },
+);
 
-    let renewed = 0;
-    let failed = 0;
-    for (const scope of gmailPhysicalScopes(states)) {
-      const result = await reconcileGmailPhysicalScope(
-        {
-          db,
-          ...scope,
-          renewBefore,
-        },
-        signal,
-      );
-      signal.throwIfAborted();
-      renewed += result.kind === "renewed" ? 1 : 0;
-      failed += result.kind === "failed" ? 1 : 0;
-    }
-
-    return { renewed, failed };
+export const renewGmailWatchScope$ = command(
+  async (
+    { set },
+    emailAddress: string,
+    topicName: string,
+    signal: AbortSignal,
+  ) => {
+    const currentTime = nowDate();
+    return await renewGmailPhysicalScopes(
+      {
+        db: set(writeDb$),
+        scopes: [{ emailAddress, topicName }],
+        renewBefore: new Date(currentTime.getTime() + WATCH_RENEWAL_WINDOW_MS),
+      },
+      signal,
+    );
   },
 );
