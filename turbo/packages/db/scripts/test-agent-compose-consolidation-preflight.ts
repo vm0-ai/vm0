@@ -10,6 +10,7 @@ import {
   buildZeroAgentComposeContent,
   computeComposeVersionId,
 } from "../../../apps/api/src/signals/services/agent-compose-content";
+import { APPLICATION_OWNED_AGENT_EXECUTION_PLAN } from "../../../apps/api/src/signals/services/agent-execution-plan";
 import {
   CATALOG_DEPENDENCY_KINDS,
   CATALOG_DEPENDENCY_QUERY,
@@ -32,6 +33,7 @@ import {
   executeAgentComposeConsolidationPreflight,
   sanitizedFailureResult,
   withReadOnlySnapshot,
+  type AgentExecutionPlanInventoryRow,
   type DanglingInventoryRow,
   type HeadInventoryRow,
   type IdentityInventoryRow,
@@ -86,6 +88,7 @@ function emptyInventory(
     checkpoints: [],
     danglingStart: [],
     danglingEnd: [],
+    agentExecutionPlans: [],
     catalogDependencies: [],
     ...overrides,
   };
@@ -131,6 +134,85 @@ function identityRow(
   };
 }
 
+interface MutableAgentDefinition {
+  description?: string;
+  framework: "claude-code" | "codex";
+  volumes?: string[];
+  environment?: Record<string, string>;
+  instructions?: string;
+  skills?: string[];
+  experimental_runner?: { group: string };
+  experimental_profile?: string;
+  firewalls?: unknown;
+  futureField?: unknown;
+}
+
+interface MutableAgentContent extends Record<string, unknown> {
+  version: string;
+  agents: Record<string, MutableAgentDefinition>;
+  volumes?: Record<
+    string,
+    { name: string; version: string; optional?: boolean }
+  >;
+  artifacts?: { name: string; version?: string; mount_path?: string }[];
+  futureField?: unknown;
+}
+
+function mutableAgentContent(name: string): MutableAgentContent {
+  return structuredClone(
+    buildZeroAgentComposeContent(name),
+  ) as MutableAgentContent;
+}
+
+function executionPlanRow(args: {
+  readonly id: string;
+  readonly agentName: string;
+  readonly content?: unknown;
+  readonly headVersionId?: string | null;
+  readonly versionId?: string | null;
+  readonly insertionComposeId?: string | null;
+}): AgentExecutionPlanInventoryRow {
+  const content = Object.hasOwn(args, "content")
+    ? args.content
+    : buildZeroAgentComposeContent(args.agentName);
+  const computedVersionId =
+    content !== null && typeof content === "object" && !Array.isArray(content)
+      ? computeComposeVersionId(content as Record<string, unknown>)
+      : "f".repeat(64);
+  return {
+    id: args.id,
+    agentName: args.agentName,
+    headVersionId: Object.hasOwn(args, "headVersionId")
+      ? (args.headVersionId ?? null)
+      : computedVersionId,
+    versionId: Object.hasOwn(args, "versionId")
+      ? (args.versionId ?? null)
+      : computedVersionId,
+    insertionComposeId: Object.hasOwn(args, "insertionComposeId")
+      ? (args.insertionComposeId ?? null)
+      : args.id,
+    content,
+  };
+}
+
+function classifyPlanRows(
+  rows: readonly AgentExecutionPlanInventoryRow[],
+  identityIds: readonly string[] = rows.map((row) => {
+    return row.id;
+  }),
+) {
+  return classifyPreflightInventory(
+    capabilities,
+    emptyInventory({
+      identity: [...new Set(identityIds)].map((id) => {
+        return identityRow(id);
+      }),
+      agentExecutionPlans: rows,
+    }),
+    classificationOptions(),
+  );
+}
+
 function gatePresent(
   result: { readonly failureGates: readonly string[] },
   gate: string,
@@ -138,11 +220,80 @@ function gatePresent(
   assert.ok(result.failureGates.includes(gate), `missing gate ${gate}`);
 }
 
+function testApplicationOwnedPlanAndCanonicalCompatibility(): void {
+  assert.deepEqual(APPLICATION_OWNED_AGENT_EXECUTION_PLAN, {
+    framework: { owner: "model-provider", fallback: "claude-code" },
+    environment: {
+      owners: ["system-identity", "model-provider", "connector", "run"],
+      legacyRemovedPrefixes: ["ZERO_"],
+      runtimeOverrideKeys: [
+        "CLI_PKG_URL",
+        "OKOU_AGENT_ID",
+        "OKOU_APP_URL",
+        "OKOU_TOKEN",
+        "OKOU_WEBSITE_TEMPLATE_ARCHIVE_VERSION",
+      ],
+      legacySerializedBindings: {
+        agentId: "OKOU_AGENT_ID",
+        token: "OKOU_TOKEN",
+      },
+    },
+    runner: {
+      group: {
+        owner: "execution-routing-policy",
+        fallback: null,
+      },
+      profile: {
+        owner: "resource-policy",
+        fallback: "vm0/default",
+      },
+    },
+    instructions: { owner: "agent-storage", enabled: true },
+    storage: {
+      owners: [
+        "system",
+        "connector",
+        "workflow",
+        "request",
+        "continuation",
+        "session-storage",
+      ],
+    },
+  });
+
+  const exact = buildZeroAgentComposeContent("agent-one");
+  assert.equal(
+    JSON.stringify(exact),
+    '{"version":"1","agents":{"agent-one":{"framework":"claude-code","instructions":"CLAUDE.md","environment":{"OKOU_AGENT_ID":"${{ vars.OKOU_AGENT_ID }}","OKOU_TOKEN":"${{ secrets.OKOU_TOKEN }}"}}}}',
+  );
+  for (const [name, hash] of [
+    ["abc", "95d80f7ce931ac6a5e34b5eb8929dee3244522bf859ac5f4c53e91e3cc3f6c6e"],
+    [
+      "agent-one",
+      "02345310e6913e03cb82d4c68a59f09a335ecd1bb2bf11b9ac4615eeac80ad53",
+    ],
+    [
+      "a".repeat(64),
+      "0c0c0c71cca0b457af4182ce1c1db5eab7289eb59e6135b90e46bb42412913bc",
+    ],
+  ] as const) {
+    assert.equal(
+      computeComposeVersionId(buildZeroAgentComposeContent(name)),
+      hash,
+    );
+  }
+}
+
 function testIdentityAndApprovedArtifacts(): void {
   const matched = identityRow("00000000-0000-4000-8000-000000000001");
   const exact = classifyPreflightInventory(
     capabilities,
-    emptyInventory({ identity: [matched] }),
+    emptyInventory({
+      identity: [matched],
+      agentExecutionPlans: [
+        executionPlanRow({ id: matched.id, agentName: "matched-agent" }),
+      ],
+    }),
     classificationOptions(),
   );
   assert.equal(exact.status, "passed");
@@ -287,6 +438,20 @@ function testVersionHeadRunAndCheckpointClassifications(): void {
       identity: [identityRow(firstAgent), identityRow(secondAgent)],
       versions: [version],
       heads,
+      agentExecutionPlans: [
+        executionPlanRow({
+          id: firstAgent,
+          agentName: "shared-agent",
+          content: version.content,
+          insertionComposeId: firstAgent,
+        }),
+        executionPlanRow({
+          id: secondAgent,
+          agentName: "shared-agent",
+          content: version.content,
+          insertionComposeId: firstAgent,
+        }),
+      ],
       runs: [
         {
           id: "00000000-0000-4000-8000-000000000211",
@@ -453,13 +618,23 @@ function testDanglingClassifications(): void {
     emptyInventory({
       identity: [identityRow(composeId)],
       heads: [head],
+      agentExecutionPlans: [
+        executionPlanRow({
+          id: composeId,
+          agentName: "dangling-agent",
+          content: null,
+          headVersionId: exactRow.recordedHash,
+          versionId: null,
+        }),
+      ],
       danglingStart: [exactRow],
       danglingEnd: [exactRow],
     }),
     classificationOptions({ expectedDanglingHeadCount: 1 }),
   );
-  assert.equal(exact.status, "passed");
+  assert.equal(exact.status, "failed");
   assert.equal(exact.danglingHeads.exact.count, 1);
+  assert.equal(exact.agentExecutionPlans.danglingOrMissingHeadVersion.count, 1);
 
   const nonExactRow = danglingRow({
     composeId,
@@ -497,6 +672,382 @@ function testDanglingClassifications(): void {
     classificationOptions({ expectedDanglingHeadCount: 1 }),
   );
   gatePresent(drift, "dangling.snapshot_drift");
+}
+
+function testAgentExecutionPlanClassifications(): void {
+  const id = (suffix: number): string => {
+    return `00000000-0000-4000-8000-${suffix.toString().padStart(12, "0")}`;
+  };
+
+  const canonical = classifyPlanRows([
+    executionPlanRow({ id: id(601), agentName: "canonical-agent" }),
+  ]);
+  assert.equal(canonical.status, "passed");
+  assert.equal(canonical.agentExecutionPlans.completeSemanticParity.count, 1);
+  assert.equal(canonical.agentExecutionPlans.exceptions.count, 0);
+  assert.equal(
+    canonical.agentExecutionPlans.inventoryClosure.classification,
+    "exact",
+  );
+  assert.equal(
+    canonical.agentExecutionPlans.partitionClosure.classification,
+    "exact",
+  );
+  assert.equal(
+    canonical.agentExecutionPlans.dimensionUnionClosure.classification,
+    "exact",
+  );
+
+  const injected = mutableAgentContent("injected-agent");
+  injected.agents["injected-agent"]!.environment = {
+    ZERO_AGENT_ID: "legacy-agent-id",
+    ZERO_TOKEN: "legacy-token",
+    CLI_PKG_URL: "legacy-cli-package",
+    OKOU_AGENT_ID: "legacy-okou-agent-id",
+    OKOU_APP_URL: "legacy-app-url",
+    OKOU_TOKEN: "legacy-okou-token",
+    OKOU_WEBSITE_TEMPLATE_ARCHIVE_VERSION: "legacy-template-version",
+  };
+  const injectedResult = classifyPlanRows([
+    executionPlanRow({
+      id: id(602),
+      agentName: "injected-agent",
+      content: injected,
+    }),
+  ]);
+  assert.equal(injectedResult.status, "passed");
+  assert.equal(
+    injectedResult.agentExecutionPlans.completeSemanticParity.count,
+    1,
+  );
+
+  const ignoredLegacyFields = mutableAgentContent("ignored-fields-agent");
+  ignoredLegacyFields.version = "legacy-version";
+  Object.assign(ignoredLegacyFields.agents["ignored-fields-agent"]!, {
+    description: "not used to launch",
+    skills: ["retired-skill"],
+    firewalls: { retired: { permissions: "all" } },
+  });
+  assert.equal(
+    classifyPlanRows([
+      executionPlanRow({
+        id: id(603),
+        agentName: "ignored-fields-agent",
+        content: ignoredLegacyFields,
+      }),
+    ]).status,
+    "passed",
+  );
+
+  const environment = mutableAgentContent("environment-agent");
+  environment.agents["environment-agent"]!.environment = {
+    CUSTOM_RUNTIME_VALUE: "raw-secret-value",
+  };
+  const environmentResult = classifyPlanRows([
+    executionPlanRow({
+      id: id(604),
+      agentName: "environment-agent",
+      content: environment,
+    }),
+  ]);
+  assert.equal(
+    environmentResult.agentExecutionPlans.systemEnvironmentDifferences.count,
+    1,
+  );
+
+  const framework = mutableAgentContent("framework-agent");
+  framework.agents["framework-agent"]!.framework = "codex";
+  const frameworkResult = classifyPlanRows([
+    executionPlanRow({
+      id: id(605),
+      agentName: "framework-agent",
+      content: framework,
+    }),
+  ]);
+  assert.equal(
+    frameworkResult.agentExecutionPlans.frameworkOrFallbackDifferences.count,
+    1,
+  );
+  assert.equal(
+    APPLICATION_OWNED_AGENT_EXECUTION_PLAN.framework.owner,
+    "model-provider",
+  );
+  assert.equal(
+    APPLICATION_OWNED_AGENT_EXECUTION_PLAN.framework.fallback,
+    "claude-code",
+  );
+
+  const explicitGroup = mutableAgentContent("runner-group-agent");
+  explicitGroup.agents["runner-group-agent"]!.experimental_runner = {
+    group: "vm0/default",
+  };
+  const explicitGroupResult = classifyPlanRows([
+    executionPlanRow({
+      id: id(606),
+      agentName: "runner-group-agent",
+      content: explicitGroup,
+    }),
+  ]);
+  assert.equal(
+    explicitGroupResult.agentExecutionPlans.runnerGroupPolicyDifferences.count,
+    1,
+  );
+
+  const explicitDefaultProfile = mutableAgentContent("default-profile-agent");
+  explicitDefaultProfile.agents["default-profile-agent"]!.experimental_profile =
+    "vm0/default";
+  assert.equal(
+    classifyPlanRows([
+      executionPlanRow({
+        id: id(607),
+        agentName: "default-profile-agent",
+        content: explicitDefaultProfile,
+      }),
+    ]).status,
+    "passed",
+  );
+  const customProfile = mutableAgentContent("custom-profile-agent");
+  customProfile.agents["custom-profile-agent"]!.experimental_profile =
+    "vm0/large";
+  assert.equal(
+    classifyPlanRows([
+      executionPlanRow({
+        id: id(608),
+        agentName: "custom-profile-agent",
+        content: customProfile,
+      }),
+    ]).agentExecutionPlans.runnerProfilePolicyDifferences.count,
+    1,
+  );
+
+  const alternateInstructionMarker = mutableAgentContent(
+    "instruction-marker-agent",
+  );
+  alternateInstructionMarker.agents["instruction-marker-agent"]!.instructions =
+    "AGENTS.md";
+  assert.equal(
+    classifyPlanRows([
+      executionPlanRow({
+        id: id(609),
+        agentName: "instruction-marker-agent",
+        content: alternateInstructionMarker,
+      }),
+    ]).status,
+    "passed",
+  );
+  const missingInstructions = mutableAgentContent("missing-instructions-agent");
+  delete missingInstructions.agents["missing-instructions-agent"]!.instructions;
+  assert.equal(
+    classifyPlanRows([
+      executionPlanRow({
+        id: id(610),
+        agentName: "missing-instructions-agent",
+        content: missingInstructions,
+      }),
+    ]).agentExecutionPlans.agentInstructionsMarkerOrMountDifferences.count,
+    1,
+  );
+
+  const artifact = mutableAgentContent("artifact-agent");
+  artifact.artifacts = [{ name: "legacy-artifact" }];
+  assert.equal(
+    classifyPlanRows([
+      executionPlanRow({
+        id: id(611),
+        agentName: "artifact-agent",
+        content: artifact,
+      }),
+    ]).agentExecutionPlans.composeArtifactOrVolumeDifferences.count,
+    1,
+  );
+  const volume = mutableAgentContent("volume-agent");
+  volume.agents["volume-agent"]!.volumes = ["legacy-volume:/data"];
+  volume.volumes = {
+    "legacy-volume": { name: "legacy-storage", version: "latest" },
+  };
+  assert.equal(
+    classifyPlanRows([
+      executionPlanRow({
+        id: id(612),
+        agentName: "volume-agent",
+        content: volume,
+      }),
+    ]).agentExecutionPlans.composeArtifactOrVolumeDifferences.count,
+    1,
+  );
+  const unreferencedVolume = mutableAgentContent("unreferenced-volume-agent");
+  unreferencedVolume.volumes = {
+    unused: { name: "legacy-storage", version: "latest" },
+  };
+  assert.equal(
+    classifyPlanRows([
+      executionPlanRow({
+        id: id(613),
+        agentName: "unreferenced-volume-agent",
+        content: unreferencedVolume,
+      }),
+    ]).status,
+    "passed",
+  );
+  const invalidVolume = mutableAgentContent("invalid-volume-agent");
+  invalidVolume.agents["invalid-volume-agent"]!.volumes = [
+    "missing-volume:/data",
+  ];
+  assert.equal(
+    classifyPlanRows([
+      executionPlanRow({
+        id: id(614),
+        agentName: "invalid-volume-agent",
+        content: invalidVolume,
+      }),
+    ]).agentExecutionPlans.unsupportedOrInvalidContent.count,
+    1,
+  );
+
+  const unknown = mutableAgentContent("unknown-agent");
+  unknown.futureField = { payload: "never-emit-unknown-payload" };
+  const unknownResult = classifyPlanRows([
+    executionPlanRow({
+      id: id(615),
+      agentName: "unknown-agent",
+      content: unknown,
+    }),
+  ]);
+  assert.equal(unknownResult.agentExecutionPlans.unclassifiedContent.count, 1);
+
+  const dangling = classifyPlanRows([
+    executionPlanRow({
+      id: id(616),
+      agentName: "dangling-plan-agent",
+      content: null,
+      headVersionId: "a".repeat(64),
+      versionId: null,
+    }),
+  ]);
+  assert.equal(
+    dangling.agentExecutionPlans.danglingOrMissingHeadVersion.count,
+    1,
+  );
+  const absent = classifyPlanRows([], [id(617)]);
+  assert.equal(
+    absent.agentExecutionPlans.danglingOrMissingHeadVersion.count,
+    1,
+  );
+  assert.equal(
+    absent.agentExecutionPlans.inventoryClosure.classification,
+    "drift",
+  );
+
+  const unsupported = executionPlanRow({
+    id: id(618),
+    agentName: "unsupported-agent",
+    content: { version: "1", agents: {} },
+  });
+  const hashMismatch = executionPlanRow({
+    id: id(619),
+    agentName: "hash-mismatch-agent",
+    headVersionId: "e".repeat(64),
+    versionId: "e".repeat(64),
+  });
+  const invalid = executionPlanRow({
+    id: id(620),
+    agentName: "invalid-agent",
+    content: "raw-invalid-payload",
+  });
+  const invalidResult = classifyPlanRows([unsupported, hashMismatch, invalid]);
+  assert.equal(
+    invalidResult.agentExecutionPlans.unsupportedOrInvalidContent.count,
+    3,
+  );
+
+  const crossProvenance = executionPlanRow({
+    id: id(621),
+    agentName: "cross-provenance-agent",
+    insertionComposeId: id(999),
+  });
+  assert.equal(classifyPlanRows([crossProvenance]).status, "passed");
+  const crossNameContent = mutableAgentContent("other-agent-name");
+  const crossName = classifyPlanRows([
+    executionPlanRow({
+      id: id(622),
+      agentName: "product-agent-name",
+      content: crossNameContent,
+      insertionComposeId: id(998),
+    }),
+  ]);
+  assert.equal(
+    crossName.agentExecutionPlans.otherLaunchAffectingLegacyFields.count,
+    1,
+  );
+  assert.equal(
+    crossName.agentExecutionPlans.agentInstructionsMarkerOrMountDifferences
+      .count,
+    1,
+  );
+  assert.equal(crossName.agentExecutionPlans.multiDimensionExceptions.count, 1);
+
+  const combined = mutableAgentContent("combined-agent");
+  const combinedAgent = combined.agents["combined-agent"]!;
+  combinedAgent.framework = "codex";
+  combinedAgent.environment = { CUSTOM_VALUE: "combined-sensitive-value" };
+  combinedAgent.experimental_runner = { group: "vm0/custom" };
+  combinedAgent.experimental_profile = "vm0/large";
+  delete combinedAgent.instructions;
+  combined.artifacts = [{ name: "combined-artifact" }];
+  const combinedResult = classifyPlanRows([
+    executionPlanRow({
+      id: id(623),
+      agentName: "combined-agent",
+      content: combined,
+    }),
+  ]);
+  assert.equal(combinedResult.agentExecutionPlans.exceptions.count, 1);
+  assert.equal(
+    combinedResult.agentExecutionPlans.multiDimensionExceptions.count,
+    1,
+  );
+  assert.equal(
+    combinedResult.agentExecutionPlans.dimensionUnionClosure.classification,
+    "exact",
+  );
+
+  const orderedRows = [
+    executionPlanRow({ id: id(624), agentName: "order-one" }),
+    executionPlanRow({ id: id(625), agentName: "order-two" }),
+  ];
+  assert.deepEqual(
+    classifyPlanRows([...orderedRows].reverse()),
+    classifyPlanRows(orderedRows),
+  );
+  const duplicate = classifyPlanRows([orderedRows[0]!, orderedRows[0]!]);
+  assert.equal(
+    duplicate.agentExecutionPlans.inventoryClosure.classification,
+    "drift",
+  );
+  assert.equal(duplicate.agentExecutionPlans.unclassifiedContent.count, 1);
+  const duplicateIdentity = classifyPreflightInventory(
+    capabilities,
+    emptyInventory({
+      identity: [identityRow(id(626)), identityRow(id(626))],
+      agentExecutionPlans: [
+        executionPlanRow({ id: id(626), agentName: "duplicate-identity" }),
+        executionPlanRow({ id: id(626), agentName: "duplicate-identity" }),
+      ],
+    }),
+    classificationOptions(),
+  );
+  assert.equal(
+    duplicateIdentity.agentExecutionPlans.inventoryClosure.classification,
+    "drift",
+  );
+  assert.equal(
+    duplicateIdentity.agentExecutionPlans.partitionClosure.classification,
+    "drift",
+  );
+  assert.equal(
+    duplicateIdentity.agentExecutionPlans.dimensionUnionClosure.classification,
+    "drift",
+  );
 }
 
 function testDependencyDriftAndDeterminism(): void {
@@ -548,9 +1099,21 @@ function testOutputRedaction(): void {
   const rawId = "00000000-0000-4000-8000-000000000501";
   const rawName = "never-emit-agent-name";
   const dangling = danglingRow({ composeId: rawId, name: rawName });
+  const rawPlanContent = mutableAgentContent(rawName);
+  rawPlanContent.agents[rawName]!.environment = {
+    RAW_SECRET_KEY: "never-emit-environment-value",
+  };
   const result = classifyPreflightInventory(
     capabilities,
     emptyInventory({
+      identity: [identityRow(rawId)],
+      agentExecutionPlans: [
+        executionPlanRow({
+          id: rawId,
+          agentName: rawName,
+          content: rawPlanContent,
+        }),
+      ],
       versions: [
         {
           id: "d".repeat(64),
@@ -570,6 +1133,8 @@ function testOutputRedaction(): void {
     rawId,
     rawName,
     "never-emit-version-content",
+    "never-emit-environment-value",
+    "RAW_SECRET_KEY",
     "OKOU_TOKEN",
     "user_clerk_fixture",
     "postgresql://user:secret@host/database",
@@ -588,6 +1153,7 @@ function testOutputRedaction(): void {
     "status",
     "failureGates",
     "capabilities",
+    "agentExecutionPlans",
     "identity",
     "versions",
     "heads",
@@ -628,7 +1194,7 @@ function assertSafeAggregateValues(value: unknown, pathPrefix = ""): void {
     return;
   }
   const allowedClassifications = new Set([
-    "vm0.agent-compose-consolidation-preflight.v1",
+    "vm0.agent-compose-consolidation-preflight.v2",
     "passed",
     "failed",
     "exact",
@@ -730,6 +1296,12 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
       workflow.indexOf('>> "$GITHUB_OUTPUT"'),
   );
   assert.match(workflow, /scripts\/agent-compose-consolidation-preflight\.ts/u);
+  assert.match(workflow, /#27613 \+ #27656/u);
+  assert.match(workflow, /vm0\.agent-compose-consolidation-preflight\.v2/u);
+  assert.equal(
+    workflow.includes("vm0.agent-compose-consolidation-preflight.v1"),
+    false,
+  );
   assert.equal(
     /pull_request:|schedule:|actions\/upload-artifact/iu.test(workflow),
     false,
@@ -750,6 +1322,13 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
     ),
     "utf8",
   );
+  const executionPlanOwner = await fs.readFile(
+    path.join(
+      repositoryRoot,
+      "turbo/apps/api/src/signals/services/agent-execution-plan.ts",
+    ),
+    "utf8",
+  );
   assert.equal(
     service.includes("function buildZeroAgentComposeContent"),
     false,
@@ -762,6 +1341,16 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
   assert.equal(
     contentOwner.match(/function computeComposeVersionId/gu)?.length,
     1,
+  );
+  assert.equal(
+    executionPlanOwner.match(/const APPLICATION_OWNED_AGENT_EXECUTION_PLAN/gu)
+      ?.length,
+    1,
+  );
+  assert.equal(executionPlanOwner.includes("agent-compose"), false);
+  assert.equal(
+    contentOwner.includes("APPLICATION_OWNED_AGENT_EXECUTION_PLAN"),
+    true,
   );
 }
 
@@ -1083,9 +1672,11 @@ async function testDatabaseBoundaries(databaseUrl: string): Promise<void> {
 }
 
 export async function validateAgentComposeConsolidationPreflightStatic(): Promise<void> {
+  testApplicationOwnedPlanAndCanonicalCompatibility();
   testIdentityAndApprovedArtifacts();
   testVersionHeadRunAndCheckpointClassifications();
   testDanglingClassifications();
+  testAgentExecutionPlanClassifications();
   testDependencyDriftAndDeterminism();
   testOutputRedaction();
   await testRepositoryAndWorkflowValidators();
