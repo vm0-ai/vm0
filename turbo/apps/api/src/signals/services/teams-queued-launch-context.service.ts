@@ -1,3 +1,4 @@
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatTeamsContext } from "@okouai/db/schema/chat-teams-context";
 import { teamsChatThreadRoutes } from "@okouai/db/schema/teams-chat-thread-route";
@@ -15,6 +16,7 @@ import { appendTeamsFilesToPrompt, buildTeamsPrompt } from "./teams-prompt";
 export interface TeamsQueuedLaunchMaterial {
   readonly prompt: string;
   readonly appendSystemPrompt: string;
+  readonly publicBrand: PublicBrand;
   readonly teamsDelivery: TeamsDeliveryTarget;
   readonly userInfoExtras: {
     readonly teamsUserDisplayName?: string;
@@ -46,6 +48,7 @@ type TeamsLaunchContextRow = Pick<
 > & {
   readonly installationBotId: string | null;
   readonly installationBotName: string | null;
+  readonly publicBrand: PublicBrand;
 };
 
 function requiredTeamsLaunchContext(row: TeamsLaunchContextRow | undefined) {
@@ -104,6 +107,7 @@ async function loadTeamsLaunchContext(
       messageFiles: chatTeamsContext.messageFiles,
       installationBotId: teamsOrgInstallations.botId,
       installationBotName: teamsOrgInstallations.botName,
+      publicBrand: teamsOrgInstallations.publicBrand,
     })
     .from(chatEvents)
     .innerJoin(
@@ -211,6 +215,7 @@ export async function loadTeamsQueuedLaunchMaterial(
       botName,
       threadContext: context.threadContext,
     }),
+    publicBrand: context.publicBrand,
     teamsDelivery: teamsDeliveryTargetSchema.parse({
       tenantId: context.tenantId,
       tenantName: context.tenantName,

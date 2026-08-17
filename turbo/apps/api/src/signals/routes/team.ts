@@ -3,6 +3,7 @@ import { zeroTeamContract } from "@okouai/api-contracts/contracts/zero-team";
 
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
+import { publicBrand$ } from "../context/hono";
 import { teamComposeList } from "../services/agent-data.service";
 import type { RouteEntry } from "../route-entry";
 
@@ -22,7 +23,9 @@ const listTeamInner$ = computed(async (get) => {
     return noActiveOrg;
   }
 
-  const team = await get(teamComposeList(auth.orgId, auth.userId));
+  const team = await get(
+    teamComposeList(auth.orgId, auth.userId, get(publicBrand$)),
+  );
   return { status: 200 as const, body: [...team] };
 });
 

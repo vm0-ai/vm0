@@ -447,6 +447,97 @@ describe("ORG-03 onboarding status mapping", () => {
     });
   });
 
+  it("projects only the system default assistant by public brand without rewriting storage", async () => {
+    const admin = api.user();
+    api.acceptAgentStorageWrites();
+
+    const okouOnboarding = await api.readOnboardingStatus(admin, "okou");
+    expect(okouOnboarding.defaultAgentMetadata?.displayName).toBe("Okou");
+    const defaultAgentId = okouOnboarding.defaultAgentId;
+    if (!defaultAgentId) {
+      throw new Error("Expected lazy onboarding to create the default agent");
+    }
+
+    const vm0Onboarding = await api.readOnboardingStatus(admin, "vm0");
+    expect(vm0Onboarding.defaultAgentMetadata?.displayName).toBe("Zero");
+    await expect(
+      api.readAgent(admin, defaultAgentId, "okou"),
+    ).resolves.toMatchObject({ displayName: "Okou" });
+    await expect(
+      api.readAgent(admin, defaultAgentId, "vm0"),
+    ).resolves.toMatchObject({ displayName: "Zero" });
+
+    const okouAgents = await api.listAgents(admin, "okou");
+    expect(
+      okouAgents.find((agent) => {
+        return agent.agentId === defaultAgentId;
+      })?.displayName,
+    ).toBe("Okou");
+    const okouTeam = await api.listTeam(admin, "okou");
+    expect(
+      okouTeam.find((agent) => {
+        return agent.id === defaultAgentId;
+      })?.displayName,
+    ).toBe("Okou");
+
+    const customZero = await api.createAgent(
+      admin,
+      { displayName: "Zero" },
+      "okou",
+    );
+    expect(customZero.displayName).toBe("Zero");
+    await expect(
+      api.readAgent(admin, customZero.agentId, "okou"),
+    ).resolves.toMatchObject({ displayName: "Zero" });
+
+    const patched = await api.updateAgentMetadata(
+      admin,
+      defaultAgentId,
+      { displayName: "Okou", description: "Patched from Okou" },
+      "okou",
+    );
+    expect(patched).toMatchObject({
+      displayName: "Okou",
+      description: "Patched from Okou",
+    });
+    await expect(
+      api.readAgent(admin, defaultAgentId, "vm0"),
+    ).resolves.toMatchObject({
+      displayName: "Zero",
+      description: "Patched from Okou",
+    });
+
+    const replaced = await api.updateAgent(
+      admin,
+      defaultAgentId,
+      { displayName: "Okou", description: "Replaced from Okou" },
+      "okou",
+    );
+    expect(replaced).toMatchObject({
+      displayName: "Okou",
+      description: "Replaced from Okou",
+    });
+    await expect(
+      api.readAgent(admin, defaultAgentId, "vm0"),
+    ).resolves.toMatchObject({
+      displayName: "Zero",
+      description: "Replaced from Okou",
+    });
+
+    await api.updateAgentMetadata(
+      admin,
+      defaultAgentId,
+      { displayName: "Research Lead" },
+      "okou",
+    );
+    await expect(
+      api.readAgent(admin, defaultAgentId, "okou"),
+    ).resolves.toMatchObject({ displayName: "Research Lead" });
+    await expect(
+      api.readAgent(admin, defaultAgentId, "vm0"),
+    ).resolves.toMatchObject({ displayName: "Research Lead" });
+  });
+
   it("maps onboarding status across the setup, payment, entitlement, and agent-deletion journey", async () => {
     const noOrg = api.user({ orgId: null });
     const admin = api.user();

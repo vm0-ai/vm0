@@ -1,6 +1,7 @@
 import type { ModelProviderCredentialScope } from "@okouai/api-contracts/contracts/model-providers";
 import type { ChatEventType } from "@okouai/api-contracts/contracts/chat-events";
 import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatAutomationContext } from "@okouai/db/schema/chat-automation-context";
 import {
@@ -55,6 +56,7 @@ import {
   withRunModelAnnotation,
 } from "./chat-user-message.service";
 import { canonicalChatEventUserMessage } from "./canonical-chat-event-read.service";
+import { webChatPublicBrandFromContextId } from "./web-chat-public-brand-context.service";
 
 type DbTransaction = Tx;
 
@@ -138,6 +140,7 @@ export interface QueuedUserMessage {
   readonly id: string;
   readonly createdAt: Date;
   readonly userMessage: ChatEventUserMessage;
+  readonly publicBrand: PublicBrand | null;
   readonly modelProviderId: string | null;
   readonly modelProviderType: string | null;
   readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
@@ -272,6 +275,7 @@ export async function loadNextUnclaimedQueuedUserMessage(
       modelProviderCredentialScope: sql`NULL`.mapWith(pgNullDecoder),
       selectedModel: chatThreads.selectedModel,
       contextType: chatEvents.contextType,
+      contextId: chatEvents.contextId,
       sourceAutonomyBudget: agentRuns.autonomyBudget,
     })
     .from(chatEvents)
@@ -299,6 +303,10 @@ export async function loadNextUnclaimedQueuedUserMessage(
     throw new Error("Queued input event is missing userMessage");
   }
   const contextType = requiredQueuedUserMessageContextType(event.contextType);
+  const publicBrand =
+    contextType === "web"
+      ? webChatPublicBrandFromContextId(event.contextId)
+      : null;
   const autonomyBudget: QueuedUserMessage["autonomyBudget"] =
     contextType !== "agent_run"
       ? { kind: "ok", autonomyBudget: INITIAL_AUTONOMY_BUDGET }
@@ -311,6 +319,7 @@ export async function loadNextUnclaimedQueuedUserMessage(
   return {
     ...event,
     userMessage: event.userMessage,
+    publicBrand,
     contextType,
     autonomyBudget,
   };

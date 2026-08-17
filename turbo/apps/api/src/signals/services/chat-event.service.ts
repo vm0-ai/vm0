@@ -227,6 +227,7 @@ type InputPromptEvent = ChatEventIdentity &
     readonly eventType: "input.prompt";
     readonly content?: null;
     readonly contextType?: "web";
+    readonly contextId?: string;
   };
 
 type InputAutomationEvent = ChatEventIdentity &
@@ -976,7 +977,11 @@ function canonicalChatEventValues(
       : "goal";
   const contextId =
     runGroupId === null || runGroupId === undefined
-      ? overrides?.contextId
+      ? overrides && "contextId" in overrides
+        ? overrides.contextId
+        : "contextId" in values
+          ? values.contextId
+          : undefined
       : runGroupId;
 
   return {

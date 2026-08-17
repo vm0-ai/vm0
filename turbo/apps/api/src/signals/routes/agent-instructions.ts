@@ -1,11 +1,13 @@
 import { command, computed } from "ccstate";
 import { zeroAgentInstructionsContract } from "@okouai/api-contracts/contracts/zero-agents";
 import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { and, eq } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
+import { publicBrand$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import { notFound } from "../../lib/error";
@@ -56,6 +58,7 @@ const updateAgentInstructionsBody$ = bodyResultOf(
 const updateAgentInstructionsInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
+    const publicBrand = get(publicBrand$);
     const member = { userId: auth.userId, role: auth.orgRole ?? "member" };
     const params = get(pathParamsOf(zeroAgentInstructionsContract.update));
     const body = await get(updateAgentInstructionsBody$);
@@ -115,6 +118,7 @@ const updateAgentInstructionsInner$ = command(
     const [agent] = await writeDb
       .select({
         agentId: zeroAgents.id,
+        defaultAgentId: orgMetadata.defaultAgentId,
         owner: zeroAgents.owner,
         displayName: zeroAgents.displayName,
         description: zeroAgents.description,
@@ -126,6 +130,7 @@ const updateAgentInstructionsInner$ = command(
         visibility: zeroAgents.visibility,
       })
       .from(zeroAgents)
+      .leftJoin(orgMetadata, eq(orgMetadata.orgId, zeroAgents.orgId))
       .where(
         and(
           eq(zeroAgents.orgId, auth.orgId),
@@ -138,7 +143,7 @@ const updateAgentInstructionsInner$ = command(
     return {
       status: 200 as const,
       body: agent
-        ? agentResponse(agent)
+        ? agentResponse(agent, publicBrand)
         : defaultAgentResponse({
             agentId: result.composeId,
             ownerId: auth.userId,

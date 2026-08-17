@@ -4,6 +4,7 @@ import { command } from "ccstate";
 import { logger } from "../../lib/log";
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
+import { publicBrand$ } from "../context/hono";
 import type { RouteEntry } from "../route-entry";
 import { ensureOrgLimitedFreeBootstrap$ } from "../services/org-limited-free-bootstrap.service";
 import { onboardingStatus } from "../services/onboarding.service";
@@ -14,7 +15,8 @@ const L = logger("onboarding-status.route");
 const getOnboardingStatusInner$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<unknown> => {
     const auth = get(authContext$);
-    const body = await get(onboardingStatus(auth));
+    const publicBrand = get(publicBrand$);
+    const body = await get(onboardingStatus(auth, publicBrand));
     signal.throwIfAborted();
 
     if (auth.orgId && body.isAdmin && !body.hasDefaultAgent) {
@@ -34,7 +36,7 @@ const getOnboardingStatusInner$ = command(
       signal.throwIfAborted();
 
       if (bootstrapResult !== undefined) {
-        const repairedBody = await get(onboardingStatus(auth));
+        const repairedBody = await get(onboardingStatus(auth, publicBrand));
         signal.throwIfAborted();
         return {
           status: 200 as const,

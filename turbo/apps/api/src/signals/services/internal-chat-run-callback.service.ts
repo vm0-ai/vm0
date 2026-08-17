@@ -10,6 +10,7 @@ import {
   serializeChatFollowupsContent,
   type ChatRecommendedFollowup,
 } from "@okouai/api-contracts/contracts/chat-threads";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
@@ -643,6 +644,7 @@ interface CreateQueuedChatRunInput {
   readonly agentId: string;
   readonly prompt: string;
   readonly appendSystemPrompt: string;
+  readonly publicBrand?: PublicBrand;
   readonly threadId: string;
   readonly queuedMessage: QueuedUserMessage;
   readonly modelPin: ModelFirstPin;
@@ -911,6 +913,7 @@ function buildQueuedCreateZeroRunArgs(
     triggerSource: input.triggerSource,
     zeroPreCreateSource: "chat_callback_auto_send" as const,
     appendSystemPrompt: input.appendSystemPrompt,
+    publicBrand: input.publicBrand,
     userInfoExtras: input.userInfoExtras,
     dispatchFailedCallbacks,
     queueFirstAssociation: {
@@ -2636,6 +2639,7 @@ type QueuedIntegrationDeliveries = Pick<
 interface QueuedLaunchMaterial {
   readonly prompt: string;
   readonly appendSystemPrompt: string;
+  readonly publicBrand?: PublicBrand;
   readonly delivery: QueuedIntegrationDeliveries;
   readonly userInfoExtras?: CreateQueuedChatRunInput["userInfoExtras"];
 }
@@ -2645,8 +2649,10 @@ interface QueuedLaunchLoaderArgs {
   readonly chatThreadId: string;
   readonly orgId: string;
   readonly userId: string;
+  readonly contextType: QueuedUserMessageContextType;
   readonly agentRunSource: ChatAgentRunSourceAnnotation | null;
   readonly userMessageProjection: ReturnType<typeof projectUserMessage>;
+  readonly publicBrand: PublicBrand | null;
   readonly resolveSignedUrls: (keys: {
     readonly inputKey: string;
     readonly outputKey: string;
@@ -2658,6 +2664,21 @@ type LaunchLoader = (
   args: QueuedLaunchLoaderArgs,
 ) => Promise<QueuedLaunchMaterial | null>;
 
+function queuedWebPublicBrand(
+  args: QueuedLaunchLoaderArgs,
+): PublicBrand | undefined {
+  if (args.contextType !== "web") {
+    return args.publicBrand ?? undefined;
+  }
+  if (args.publicBrand !== null) {
+    return args.publicBrand;
+  }
+  // Queued Web events written before this API release have no brand context.
+  // Preserve their legacy VM0 identity while old runner/sandbox work drains
+  // (up to 2 hours). Remove after that rollout window; follow-up #27744.
+  return "vm0";
+}
+
 /**
  * Web is the only trigger source with no context table: the user typed the
  * message, so `chat_events.payload.userMessage` is the durable original fact
@@ -2665,6 +2686,7 @@ type LaunchLoader = (
  * place a launch loader reads it, and it is deliberate.
  */
 const loadWebQueuedLaunchMaterial: LaunchLoader = (_db, args) => {
+  const publicBrand = queuedWebPublicBrand(args);
   return Promise.resolve({
     prompt: args.userMessageProjection.agentPrompt,
     appendSystemPrompt: buildWebChatAppendSystemPrompt({
@@ -2682,17 +2704,19 @@ const loadWebQueuedLaunchMaterial: LaunchLoader = (_db, args) => {
       },
     }),
     delivery: {},
+    ...(publicBrand ? { publicBrand } : {}),
   });
 };
 
-type NativeQueuedLaunchMaterial =
+type NativeQueuedLaunchMaterial = (
   | SlackQueuedLaunchMaterial
   | FeishuQueuedLaunchMaterial
   | TeamsQueuedLaunchMaterial
   | (GitHubQueuedLaunchMaterial & { readonly userInfoExtras?: undefined })
   | AgentPhoneQueuedLaunchMaterial
   | TelegramQueuedLaunchMaterial
-  | MorningBriefQueuedLaunchMaterial;
+  | MorningBriefQueuedLaunchMaterial
+) & { readonly publicBrand?: PublicBrand };
 
 function launchLoader<Material extends NativeQueuedLaunchMaterial>(
   load: (db: Db, args: QueuedLaunchLoaderArgs) => Promise<Material | null>,
@@ -2707,6 +2731,7 @@ function launchLoader<Material extends NativeQueuedLaunchMaterial>(
       prompt: material.prompt,
       appendSystemPrompt: material.appendSystemPrompt,
       delivery: delivery(material),
+      ...(material.publicBrand ? { publicBrand: material.publicBrand } : {}),
       ...(material.userInfoExtras
         ? { userInfoExtras: material.userInfoExtras }
         : {}),
@@ -2790,7 +2815,9 @@ async function resolveQueuedLaunchMaterial(
     chatThreadId: args.threadId,
     orgId: args.agent.orgId,
     userId: args.userId,
+    contextType: args.queuedMessage.contextType,
     userMessageProjection: args.userMessageProjection,
+    publicBrand: args.queuedMessage.publicBrand,
     agentRunSource: agentRunSourceAnnotation(args.queuedMessage.userMessage),
     resolveSignedUrls: (keys) => {
       return args.resolveMorningBriefSignedUrls(keys, signal);
@@ -3096,6 +3123,7 @@ async function buildCreateQueuedChatRunInput(
       generationTemplatePrompt,
       computerUseHostGrant?.displayName ?? null,
     ),
+    publicBrand: launchMaterial.publicBrand,
     threadId: args.threadId,
     queuedMessage: args.queuedMessage,
     modelPin: modelRoute.modelPin,

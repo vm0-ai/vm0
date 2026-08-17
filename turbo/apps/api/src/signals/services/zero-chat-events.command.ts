@@ -12,6 +12,7 @@ import {
   type UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import type { SupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import {
   chatEvents,
@@ -25,6 +26,7 @@ import { and, asc, eq, inArray, isNotNull, isNull, ne } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import { organizationAuthContext$ } from "../auth/auth-context";
+import { publicBrand$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import { writeDb$, type Db } from "../external/db";
 import {
@@ -82,6 +84,7 @@ import {
   type NewChatEvent,
   replaceChatEvent,
 } from "./chat-event.service";
+import { webChatPublicBrandContextId } from "./web-chat-public-brand-context.service";
 import { chatThreadAdmissionBlocked } from "./chat-active-run.service";
 import {
   agentRunSourceTitleSnapshot,
@@ -212,6 +215,7 @@ interface NormalSendArgs {
   readonly userId: string;
   readonly orgId: string;
   readonly apiStartTime: number;
+  readonly publicBrand: PublicBrand;
   readonly preloadedAgent?: AgentForChatSend;
   readonly timing?: ApiDispatchTimingCollector;
   readonly zeroPreCreateSource?: ZeroPreCreateSource;
@@ -1461,6 +1465,7 @@ function appendUnassociatedUserMessage(params: {
   readonly revokesEventId: string | undefined;
   readonly triggerSource: "web" | "agent";
   readonly agentRunSource: ChatAgentRunSourceAnnotation | null;
+  readonly publicBrand: PublicBrand;
 }): Promise<ClientEventIdResolution> {
   return params.db.transaction(async (tx) => {
     await tx
@@ -1484,7 +1489,12 @@ function appendUnassociatedUserMessage(params: {
       eventType: "input.prompt",
       userMessage: params.userMessage,
       runId: null,
-      ...(params.triggerSource === "web" ? { contextType: "web" } : {}),
+      ...(params.triggerSource === "web"
+        ? {
+            contextType: "web",
+            contextId: webChatPublicBrandContextId(params.publicBrand),
+          }
+        : {}),
       ...(params.agentRunSource
         ? {
             agentRunContext: {
@@ -2390,6 +2400,7 @@ async function queueUnassociatedNormalEvent(params: {
   readonly userId: string;
   readonly touchThreadSort: boolean;
   readonly orgId: string;
+  readonly publicBrand: PublicBrand;
 }): Promise<{
   readonly response:
     | CreatedChatEventResponse
@@ -2411,6 +2422,7 @@ async function queueUnassociatedNormalEvent(params: {
     revokesEventId: params.body.revokesEventId,
     triggerSource: params.prepared.triggerSource,
     agentRunSource: params.prepared.agentRunSource,
+    publicBrand: params.publicBrand,
   });
   if (resolution.kind === "queued" && resolution.inserted) {
     await publishThreadListChanged(params.userId);
@@ -2869,6 +2881,7 @@ function buildCreateZeroRunArgs(params: {
   return {
     auth: args.auth,
     apiStartTime: args.apiStartTime,
+    publicBrand: args.publicBrand,
     chatThreadId: prepared.thread.threadId,
     computerUseHostId: prepared.computerUseHostGrant?.hostId,
     modelProviderId: modelPin.modelProviderId ?? undefined,
@@ -3258,6 +3271,7 @@ const sendQueueFirstNormalEvent$ = command(
             prepared.thread.isNewThread,
           ),
           orgId: args.orgId,
+          publicBrand: args.publicBrand,
         });
       },
     );
@@ -3367,6 +3381,7 @@ export const handleSendChatEvent$ = command(
         userId: auth.userId,
         orgId: auth.orgId,
         apiStartTime,
+        publicBrand: get(publicBrand$),
         timing,
       },
       signal,

@@ -8,13 +8,17 @@ import {
   zeroAgentsMainContract,
   type ZeroAgentVisibility,
 } from "@okouai/api-contracts/contracts/zero-agents";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { randomPresetAvatar } from "@okouai/core/agent-avatar";
+import { publicBrandPresentation } from "@okouai/core/public-brand";
 import { agentComposes } from "@okouai/db/schema/agent-compose";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
+import { publicBrand$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../../lib/time";
@@ -40,6 +44,7 @@ import {
   visibleJoinedAgentCondition,
 } from "../services/agent-data.service";
 import { connectorActionResolver } from "../services/connector-action-resolver.service";
+import { DEFAULT_AGENT_DISPLAY_NAME } from "../services/default-agent-profile";
 import {
   updateUserConnectors,
   updateUserCustomConnectors,
@@ -64,6 +69,8 @@ interface ExistingAgentVisibility {
 interface ExistingAgentForUpdate extends ExistingAgentVisibility {
   readonly id: string;
   readonly name: string;
+  readonly displayName: string | null;
+  readonly defaultAgentId: string | null;
 }
 
 interface AgentMember {
@@ -133,6 +140,22 @@ function buildAgentUpsertConflictSet(body: AgentUpdateBody, updatedAt: Date) {
   };
 }
 
+function normalizeProjectedDefaultAgentName(
+  body: AgentUpdateBody,
+  existing: ExistingAgentForUpdate,
+  publicBrand: PublicBrand,
+): AgentUpdateBody {
+  if (
+    existing.id !== existing.defaultAgentId ||
+    existing.displayName !== DEFAULT_AGENT_DISPLAY_NAME ||
+    body.displayName !== publicBrandPresentation(publicBrand).assistantName
+  ) {
+    return body;
+  }
+
+  return { ...body, displayName: DEFAULT_AGENT_DISPLAY_NAME };
+}
+
 async function findAgentForUpdate(
   writeDb: Db,
   orgId: string,
@@ -144,9 +167,12 @@ async function findAgentForUpdate(
       name: agentComposes.name,
       owner: zeroAgents.owner,
       visibility: zeroAgents.visibility,
+      displayName: zeroAgents.displayName,
+      defaultAgentId: orgMetadata.defaultAgentId,
     })
     .from(agentComposes)
     .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
+    .leftJoin(orgMetadata, eq(orgMetadata.orgId, agentComposes.orgId))
     .where(and(eq(agentComposes.orgId, orgId), eq(agentComposes.id, agentId)))
     .limit(1);
   return rows[0] ?? null;
@@ -163,8 +189,11 @@ async function findAgentMetadataForUpdate(
       name: zeroAgents.name,
       owner: zeroAgents.owner,
       visibility: zeroAgents.visibility,
+      displayName: zeroAgents.displayName,
+      defaultAgentId: orgMetadata.defaultAgentId,
     })
     .from(zeroAgents)
+    .leftJoin(orgMetadata, eq(orgMetadata.orgId, zeroAgents.orgId))
     .where(and(eq(zeroAgents.orgId, orgId), eq(zeroAgents.id, agentId)))
     .limit(1);
   return rows[0] ?? null;
@@ -310,6 +339,7 @@ async function readAgentForResponse(
   const rows = await writeDb
     .select({
       agentId: zeroAgents.id,
+      defaultAgentId: orgMetadata.defaultAgentId,
       owner: zeroAgents.owner,
       displayName: zeroAgents.displayName,
       description: zeroAgents.description,
@@ -321,6 +351,7 @@ async function readAgentForResponse(
       visibility: zeroAgents.visibility,
     })
     .from(zeroAgents)
+    .leftJoin(orgMetadata, eq(orgMetadata.orgId, zeroAgents.orgId))
     .where(and(eq(zeroAgents.orgId, orgId), eq(zeroAgents.id, agentId)))
     .limit(1);
   return rows[0] ?? null;
@@ -330,6 +361,7 @@ const createAgentBody$ = bodyResultOf(zeroAgentsMainContract.create);
 
 const createAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
+  const publicBrand = get(publicBrand$);
   const body = await get(createAgentBody$);
   signal.throwIfAborted();
   if (!body.ok) {
@@ -446,12 +478,14 @@ const createAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     throw new Error(`Created zero agent not found: ${compose.composeId}`);
   }
 
-  return { status: 201 as const, body: agentResponse(agent) };
+  return { status: 201 as const, body: agentResponse(agent, publicBrand) };
 });
 
 const listAgentsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const agents = await get(agentList(auth.orgId, auth.userId));
+  const agents = await get(
+    agentList(auth.orgId, auth.userId, get(publicBrand$)),
+  );
   return { status: 200 as const, body: [...agents] };
 });
 
@@ -463,6 +497,7 @@ const getAgentInner$ = computed(async (get) => {
       orgId: auth.orgId,
       userId: auth.userId,
       agentId: params.id,
+      publicBrand: get(publicBrand$),
     }),
   );
   if (!agent) {
@@ -549,6 +584,7 @@ const updateAgentBody$ = bodyResultOf(zeroAgentsByIdContract.update);
 
 const updateAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
+  const publicBrand = get(publicBrand$);
   const member = { userId: auth.userId, role: auth.orgRole ?? "member" };
   const params = get(pathParamsOf(zeroAgentsByIdContract.update));
   const body = await get(updateAgentBody$);
@@ -563,6 +599,11 @@ const updateAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!existing) {
     return agentNotFound(params.id);
   }
+  const updateBody = normalizeProjectedDefaultAgentName(
+    body.data,
+    existing,
+    publicBrand,
+  );
 
   const permissionError = requireAgentConfigurationPermission(existing, member);
   if (permissionError) {
@@ -570,14 +611,14 @@ const updateAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const nextVisibility =
-    body.data.visibility ?? requireExistingAgentVisibility(existing);
+    updateBody.visibility ?? requireExistingAgentVisibility(existing);
   const visibilityError = await validateAgentVisibilityUpdate(
     {
       writeDb,
       orgId: auth.orgId,
       member,
       existing,
-      requestedVisibility: body.data.visibility,
+      requestedVisibility: updateBody.visibility,
       nextVisibility,
     },
     signal,
@@ -603,7 +644,7 @@ const updateAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     orgId: auth.orgId,
     name: result.composeName,
     owner: auth.userId,
-    body: body.data,
+    body: updateBody,
     visibility: nextVisibility,
   });
   signal.throwIfAborted();
@@ -614,7 +655,7 @@ const updateAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return {
     status: 200 as const,
     body: agent
-      ? agentResponse(agent)
+      ? agentResponse(agent, publicBrand)
       : defaultAgentResponse({ agentId: params.id, ownerId: auth.userId }),
   };
 });
@@ -626,6 +667,7 @@ const updateAgentMetadataBody$ = bodyResultOf(
 const updateAgentMetadataInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
+    const publicBrand = get(publicBrand$);
     const member = { userId: auth.userId, role: auth.orgRole ?? "member" };
     const params = get(pathParamsOf(zeroAgentsByIdContract.updateMetadata));
     const body = await get(updateAgentMetadataBody$);
@@ -644,6 +686,11 @@ const updateAgentMetadataInner$ = command(
     if (!existing) {
       return agentNotFound(params.id);
     }
+    const updateBody = normalizeProjectedDefaultAgentName(
+      body.data,
+      existing,
+      publicBrand,
+    );
 
     const permissionError = requireAgentPermission(
       existing.owner,
@@ -655,15 +702,15 @@ const updateAgentMetadataInner$ = command(
       return permissionError;
     }
 
-    if (body.data.visibility !== undefined) {
+    if (updateBody.visibility !== undefined) {
       const visibilityError = await validateAgentVisibilityUpdate(
         {
           writeDb,
           orgId: auth.orgId,
           member,
           existing,
-          requestedVisibility: body.data.visibility,
-          nextVisibility: body.data.visibility,
+          requestedVisibility: updateBody.visibility,
+          nextVisibility: updateBody.visibility,
         },
         signal,
       );
@@ -674,7 +721,7 @@ const updateAgentMetadataInner$ = command(
 
     await writeDb
       .update(zeroAgents)
-      .set(buildAgentUpsertConflictSet(body.data, nowDate()))
+      .set(buildAgentUpsertConflictSet(updateBody, nowDate()))
       .where(eq(zeroAgents.id, params.id));
     signal.throwIfAborted();
 
@@ -684,7 +731,7 @@ const updateAgentMetadataInner$ = command(
     return {
       status: 200 as const,
       body: agent
-        ? agentResponse(agent)
+        ? agentResponse(agent, publicBrand)
         : defaultAgentResponse({ agentId: params.id, ownerId: auth.userId }),
     };
   },
