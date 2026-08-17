@@ -8,6 +8,7 @@ import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { pathname } from "../../../signals/location.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -47,6 +48,29 @@ function maintainerFilterButton(label: string): HTMLElement {
 }
 
 describe("lab page", () => {
+  it("stays accessible when onboarding is required", async () => {
+    context.mocks.data.onboardingStatus({
+      needsOnboarding: true,
+      onboardingComplete: false,
+    });
+    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
+      const switches = { [FeatureSwitchKey.Banking]: true };
+      return respond(200, { switches, effectiveSwitches: switches });
+    });
+
+    detachedSetupPage({ context, path: "/_/lab" });
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Lab" })).toBeInTheDocument();
+      expect(featureSwitchControl(FeatureSwitchKey.Banking)).toHaveAttribute(
+        "aria-checked",
+        "true",
+      );
+      expect(screen.getByTestId("pinned-agent-card")).toBeInTheDocument();
+      expect(pathname()).toBe("/_/lab");
+    });
+  });
+
   it("lets users toggle and reset feature switches", async () => {
     let switches: Partial<Record<FeatureSwitchKey, boolean>> = {
       [FeatureSwitchKey.Lab]: true,

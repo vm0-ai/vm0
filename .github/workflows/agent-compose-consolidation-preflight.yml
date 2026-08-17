@@ -46,6 +46,7 @@ jobs:
               --database-name neondb \
               --role-name neondb_owner \
               --pooled \
+              --ssl verify-full \
               2>/dev/null
           ); then
             echo '{"schemaVersion":"vm0.agent-compose-consolidation-preflight.v2","status":"failed","failureGates":["probe.database_resolution"]}'

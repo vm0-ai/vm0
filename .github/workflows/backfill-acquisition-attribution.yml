@@ -72,7 +72,8 @@ jobs:
               --project-id "$NEON_PROJECT_ID" \
               --database-name neondb \
               --role-name neondb_owner \
-              --pooled
+              --pooled \
+              --ssl verify-full
           )
           echo "::add-mask::$database_url"
           echo "database_url=$database_url" >> "$GITHUB_OUTPUT"

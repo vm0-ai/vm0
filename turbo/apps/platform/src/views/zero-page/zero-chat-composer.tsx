@@ -7492,7 +7492,7 @@ function ComposerRunModelPickerControl({
       />
       {pickerVideoModel && (
         <MessageCircle
-          size={18}
+          size={16}
           aria-hidden="true"
           className={cn(
             "pointer-events-none absolute inset-0 m-auto hidden opacity-0 transition-opacity duration-150 sm:block",
