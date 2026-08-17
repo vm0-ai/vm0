@@ -826,23 +826,23 @@ export async function replayPendingChatInputQueueEventFixture(args: {
  * Current production APIs always write the context, so this historical rollout
  * shape cannot be constructed through the current external route.
  */
-export async function removeWebChatPublicBrandContextFixture(
-  eventId: string,
-): Promise<void> {
-  const updated = await db()
-    .update(chatEvents)
-    .set({ contextId: null })
-    .where(
-      and(
-        eq(chatEvents.id, eventId),
-        eq(chatEvents.eventType, "input.prompt"),
-        eq(chatEvents.contextType, "web"),
-        isNull(chatEvents.runId),
-      ),
-    )
-    .returning({ id: chatEvents.id });
-  if (updated.length !== 1) {
-    throw new Error("Expected one pending Web event with brand context");
+export async function insertLegacyWebChatQueueEventFixture(args: {
+  readonly eventId: string;
+  readonly threadId: string;
+  readonly prompt: string;
+}): Promise<void> {
+  const inserted = await db().transaction(async (tx) => {
+    return await insertChatEvent(tx, {
+      id: args.eventId,
+      chatThreadId: args.threadId,
+      eventType: "input.prompt",
+      userMessage: createUserMessageDocument({ text: args.prompt }),
+      runId: null,
+      contextType: "web",
+    });
+  });
+  if (!inserted) {
+    throw new Error("Expected one pre-rollout queued Web event");
   }
 }
 

@@ -116,9 +116,9 @@ import {
   holdThreadSessionBindingClearFixture,
   holdThreadSessionConversationChangesFixture,
   holdThreadSessionConversationClearFixture,
+  insertLegacyWebChatQueueEventFixture,
   readCanonicalChatEventStorageFixture,
   releaseBddVm0ApiKey,
-  removeWebChatPublicBrandContextFixture,
   replayPendingChatInputQueueEventFixture,
   replaceThreadSessionBindingFixture,
   timeoutRunWithoutCallbacksFixture,
@@ -8519,25 +8519,22 @@ describe("CHAT-02: public-brand default assistant identity", () => {
       "okou",
     );
     const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
-    const queuedEventId = randomUUID();
-    const queued = await chat.requestSendEvent(
-      actor,
-      {
-        agentId: defaultAgentId,
-        threadId: anchor.threadId,
-        prompt: "promote a pre-rollout Web event",
-        clientEventId: queuedEventId,
-      },
-      [201],
-      undefined,
-      "okou",
-    );
-    if (queued.status !== 201 || queued.body.runId !== null) {
-      throw new Error("Expected the legacy-shape follow-up to enter the queue");
-    }
-
     // Current routes cannot create the historical missing-context shape.
-    await removeWebChatPublicBrandContextFixture(queuedEventId);
+    const queuedEventId = randomUUID();
+    await insertLegacyWebChatQueueEventFixture({
+      eventId: queuedEventId,
+      threadId: anchor.threadId,
+      prompt: "promote a pre-rollout Web event",
+    });
+    const rawQueuedEvent = (
+      await chat.listThreadEventRows(actor, anchor.threadId)
+    ).find((event) => {
+      return event.id === queuedEventId;
+    });
+    expect(rawQueuedEvent).toMatchObject({
+      contextType: "web",
+      contextId: null,
+    });
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
     await flushWaitUntilForTest();
