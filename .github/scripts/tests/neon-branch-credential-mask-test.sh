@@ -15,7 +15,8 @@ fi
 
 mapfile -t raw_database_url_emissions < <(
   awk '
-    /^[[:space:]]*(echo|printf)[[:space:]]/ && index($0, "$DATABASE_URL") > 0 {
+    /^[[:space:]]*(echo|printf)[[:space:]]/ &&
+    (index($0, "$DATABASE_URL") > 0 || index($0, "${DATABASE_URL}") > 0) {
       sub(/^[[:space:]]+/, "")
       print
     }
