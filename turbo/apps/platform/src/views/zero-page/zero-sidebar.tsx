@@ -51,6 +51,13 @@ import { AccountDropdown } from "./zero-sidebar-account.tsx";
 import { ChatThreadsSection } from "./sidebar-threads.tsx";
 import { PinnedAgentListSection } from "./zero-sidebar-pinned.tsx";
 import { SidebarUpgradeCard } from "./zero-sidebar-upgrade.tsx";
+import { rootSignal$ } from "../../signals/root-signal.ts";
+import { detach, Reason } from "../../signals/utils.ts";
+import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
+import {
+  createNewChatThread$,
+  newChatThreadDisabled$,
+} from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 
@@ -730,9 +737,11 @@ function LabeledNavRail() {
 }
 
 function ChatListColumn() {
-  const onSelect = useNavSelect();
+  const currentChatAgentId = useLastResolved(currentChatAgentId$) ?? null;
+  const createNewChat = useSet(createNewChatThread$);
+  const newChatDisabled = useGet(newChatThreadDisabled$);
+  const rootSignal = useGet(rootSignal$);
   const openAgentList = useSet(openAgentListDialog$);
-  const activeId = useGet(activeRoute$);
   const { t } = useTranslation();
   const searchLabel = t(($) => {
     return $.appShell.sidebar.searchConversations;
@@ -740,11 +749,15 @@ function ChatListColumn() {
   const newChatLabel = t(($) => {
     return $.appShell.sidebar.navigation.newChat;
   });
-  const isNewChatActive =
-    activeId !== null &&
-    (["home", "agentChat", "agentIdeas", "chat"] as RouteKey[]).includes(
-      activeId,
+  const onNewChat = () => {
+    if (!currentChatAgentId) {
+      return;
+    }
+    detach(
+      createNewChat(currentChatAgentId, "main", rootSignal),
+      Reason.DomCallback,
     );
+  };
   return (
     <aside
       data-testid="chat-list-column"
@@ -777,21 +790,16 @@ function ChatListColumn() {
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Link
-                pathname="/"
-                onClick={(e) => {
-                  if (e.metaKey || e.ctrlKey || e.shiftKey) {
-                    return;
-                  }
-                  e.preventDefault();
-                  onSelect("chat");
-                }}
+              <Button
+                type="button"
+                onClick={onNewChat}
+                disabled={!currentChatAgentId || newChatDisabled}
                 aria-label={newChatLabel}
-                aria-current={isNewChatActive ? "page" : undefined}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground no-underline transition-colors hover:bg-state-hover hover:text-sidebar-foreground"
+                variant="quiet"
+                size="icon-sm"
               >
                 <Edit className="opacity-50" size={17} />
-              </Link>
+              </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
               <p className="text-xs">{newChatLabel}</p>

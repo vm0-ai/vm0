@@ -2819,6 +2819,49 @@ describe("zero sidebar", () => {
     ).toBeInTheDocument();
   });
 
+  it("creates a new chat thread from the three-column header", async () => {
+    prepareDefaultAgent();
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Existing conversation"),
+    ]);
+    let createdThreadId: string | undefined;
+    let createdAgentId: string | undefined;
+    context.mocks.api(chatThreadsContract.create, ({ body, respond }) => {
+      createdThreadId = body.clientThreadId ?? "created-thread-id";
+      createdAgentId = body.agentId;
+      return respond(201, {
+        id: createdThreadId,
+        title: null,
+        createdAt: "2026-03-10T00:00:00Z",
+        selectedModel: body.model ?? "claude-sonnet-4-6",
+        serviceTier: body.serviceTier ?? null,
+      });
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const list = await screen.findByTestId("chat-list-column");
+    const newChatButton = within(list).getByLabelText("New chat");
+    await waitFor(() => {
+      expect(newChatButton).toBeEnabled();
+    });
+    click(newChatButton);
+
+    expect(pathname()).not.toBe("/");
+    await waitFor(() => {
+      expect(createdAgentId).toBe(AGENT_ID);
+      expect(createdThreadId).toBeDefined();
+      expect(pathname()).toBe(`/chats/${createdThreadId}`);
+      expect(within(list).getByText("New chat")).toBeInTheDocument();
+    });
+  });
+
   it("keeps New fourth in the pinned agent navigation order", async () => {
     const team = prepareAgentTeam();
     const operationsAgentId = "c0000000-0000-4000-a000-000000000004";
