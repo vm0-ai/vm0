@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.10](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.9...guest-contracts-v0.11.10) (2026-08-17)
+
+
+### Refactoring
+
+* **rust:** centralize workload cgroup events ([#27747](https://github.com/vm0-ai/vm0/issues/27747)) ([e25a143](https://github.com/vm0-ai/vm0/commit/e25a1432fe660498f8a4de977c0c07a5ed969080))
+
 ## [0.11.9](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.8...guest-contracts-v0.11.9) (2026-08-16)
 
 

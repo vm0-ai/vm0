@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.90](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.89...vsock-guest-v0.19.90) (2026-08-17)
+
+
+### Refactoring
+
+* **rust:** centralize workload cgroup events ([#27747](https://github.com/vm0-ai/vm0/issues/27747)) ([e25a143](https://github.com/vm0-ai/vm0/commit/e25a1432fe660498f8a4de977c0c07a5ed969080))
+
 ## [0.19.89](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.88...vsock-guest-v0.19.89) (2026-08-17)
 
 

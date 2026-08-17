@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.454.0](https://github.com/vm0-ai/vm0/compare/api-v1.453.0...api-v1.454.0) (2026-08-17)
+
+
+### Features
+
+* **billing:** grant redeem-code member usage packs ([#27707](https://github.com/vm0-ai/vm0/issues/27707)) ([fce0a24](https://github.com/vm0-ai/vm0/commit/fce0a2423c8957cd37e212ba530fb32daa844249))
+* **db:** persist image model selection ([#27736](https://github.com/vm0-ai/vm0/issues/27736)) ([d28ca98](https://github.com/vm0-ai/vm0/commit/d28ca9819162ef98e5229f1413cb3d2686072f98)), closes [#27688](https://github.com/vm0-ai/vm0/issues/27688)
+
+
+### Bug Fixes
+
+* **api:** brand default x image-share captions ([#27729](https://github.com/vm0-ai/vm0/issues/27729)) ([8d31ee6](https://github.com/vm0-ai/vm0/commit/8d31ee63a9f478b7d22a5cc57ddb449ef0677a92))
+* **api:** preserve model capabilities through custom gateways ([#27753](https://github.com/vm0-ai/vm0/issues/27753)) ([d027db9](https://github.com/vm0-ai/vm0/commit/d027db95fdd14494d23168e2ba5e63606f851483))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.336.0
+    * @okouai/core bumped to 8.565.0
+    * @okouai/db bumped to 1.202.0
+
 ## [1.453.0](https://github.com/vm0-ai/vm0/compare/api-v1.452.0...api-v1.453.0) (2026-08-17)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.74.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.7...guest-agent-v0.74.8) (2026-08-17)
+
+
+### Refactoring
+
+* **rust:** centralize workload cgroup events ([#27747](https://github.com/vm0-ai/vm0/issues/27747)) ([e25a143](https://github.com/vm0-ai/vm0/commit/e25a1432fe660498f8a4de977c0c07a5ed969080))
+
 ## [0.74.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.6...guest-agent-v0.74.7) (2026-08-17)
 
 ## [0.74.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.5...guest-agent-v0.74.6) (2026-08-16)

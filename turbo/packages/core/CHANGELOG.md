@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.565.0](https://github.com/vm0-ai/vm0/compare/core-v8.564.0...core-v8.565.0) (2026-08-17)
+
+
+### Features
+
+* **db:** persist image model selection ([#27736](https://github.com/vm0-ai/vm0/issues/27736)) ([d28ca98](https://github.com/vm0-ai/vm0/commit/d28ca9819162ef98e5229f1413cb3d2686072f98)), closes [#27688](https://github.com/vm0-ai/vm0/issues/27688)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.336.0
+
 ## [8.564.0](https://github.com/vm0-ai/vm0/compare/core-v8.563.0...core-v8.564.0) (2026-08-17)
 
 
