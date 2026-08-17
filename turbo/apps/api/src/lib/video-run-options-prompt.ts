@@ -8,8 +8,13 @@ import { selectedRunOwnedVideoParameters } from "./generation-template-prompt";
  * These are defaults, and the wording has to say so. The user set them on a
  * chip before writing anything, so the message itself is the later and more
  * specific statement of intent: "make it square" has to win over a 16:9 chip
- * rather than fight it. Each parameter falls independently, so a message that
- * only names a ratio leaves the chosen duration and resolution in force.
+ * rather than fight it. Overrides land per parameter, so a message that names
+ * only a ratio leaves the chosen duration and resolution in force.
+ *
+ * Values only, never the generation flags they map to. A pre-assembled flag
+ * string is a ready-made answer that stops being correct the moment the
+ * message overrides one value, which is the same pull toward treating these as
+ * requirements that the wording above works to avoid.
  *
  * Returns "" unless the user actually changed something. Most runs never
  * generate a video, so the block has to be absent rather than merely quiet:
@@ -30,25 +35,12 @@ export function buildVideoRunOptionsPrompt(
   if (parameters.length === 0) {
     return "";
   }
-  const flags = parameters
-    .map((parameter) => {
-      return parameter.flag;
-    })
-    .filter((flag) => {
-      return flag.length > 0;
-    })
-    .join(" ");
   return [
     "# Video Generation Defaults",
-    "The user set these as the default video parameters for this run:",
+    "The user set these for videos generated in this run:",
     ...parameters.map((parameter) => {
       return `- ${parameter.label}`;
     }),
-    "They are defaults, not requirements. Use them for every video you generate in this run, except where the user's message asks for something else -- what the message says wins, for that parameter only, and the remaining defaults still apply.",
-    ...(flags.length > 0
-      ? [
-          `With nothing in the message to the contrary, that is \`${flags}\` on the final video generation command.`,
-        ]
-      : []),
+    "Where this run's message asks for something else, the message wins, for that parameter only.",
   ].join("\n");
 }

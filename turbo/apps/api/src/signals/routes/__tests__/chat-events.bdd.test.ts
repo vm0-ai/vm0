@@ -7754,15 +7754,12 @@ describe("CHAT-02: generation templates and attachments", () => {
     // Stated as defaults the message outranks, not as requirements: the chip
     // was set before the message was written, so "make it square" has to win.
     expect(videoRunOptionsPrompt).toContain(
-      "They are defaults, not requirements.",
+      "the message wins, for that parameter only",
     );
-    expect(videoRunOptionsPrompt).toContain(
-      "what the message says wins, for that parameter only",
-    );
-    expect(videoRunOptionsPrompt).toContain(
-      "With nothing in the message to the contrary, that is `--aspect-ratio 9:16 --duration 6s --resolution 480p --no-audio`",
-    );
-    expect(videoRunOptionsPrompt).not.toContain("verbatim to the final video");
+    // Values only. A pre-assembled flag string is a ready-made answer that
+    // stops being correct as soon as the message overrides one value.
+    expect(videoRunOptionsPrompt).not.toContain("--aspect-ratio");
+    expect(videoRunOptionsPrompt).not.toContain("--no-audio");
     await cancelChatRun(actor, videoRunOptions.runId);
 
     // Most runs never generate a video, so a send that set nothing carries no
