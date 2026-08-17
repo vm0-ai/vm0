@@ -46,19 +46,6 @@ const getUsagePackCredits$ = command(async ({ get }, signal: AbortSignal) => {
     ...(auth.orgRole === "admin" ? {} : { userId: auth.userId }),
   });
   signal.throwIfAborted();
-  if (!hasUsagePack) {
-    return {
-      status: 200 as const,
-      body: {
-        totalCredits: 0,
-        purchasedCredits: 0,
-        bonusCredits: 0,
-        creditGrants: [],
-        hasUsagePack: false,
-      },
-    };
-  }
-
   const body = await getUsagePackCreditBalance(db, {
     orgId: auth.orgId,
     userId: auth.userId,
@@ -71,10 +58,10 @@ const getUsagePackCredits$ = command(async ({ get }, signal: AbortSignal) => {
     signal.throwIfAborted();
     return {
       status: 200 as const,
-      body: { ...body, hasUsagePack: true, memberCredits },
+      body: { ...body, hasUsagePack, memberCredits },
     };
   }
-  return { status: 200 as const, body: { ...body, hasUsagePack: true } };
+  return { status: 200 as const, body: { ...body, hasUsagePack } };
 });
 
 export const billingUsagePackCreditsRoutes: readonly RouteEntry[] = [
