@@ -4,34 +4,33 @@ use tracing::info;
 use uuid::Uuid;
 
 use crate::error::{RunnerError, RunnerResult};
-
-const MAX_HEARTBEAT_ORDER_VALUE: u64 = 9_007_199_254_740_991;
+use crate::runner_process_identity::RunnerProcessIdentity;
 
 /// Load runner ID from `{base_dir}/runner_id`, or generate a new UUID and persist it.
-pub(super) async fn load_or_generate_runner_id(base_dir: &Path) -> RunnerResult<String> {
+async fn load_or_generate_runner_id(base_dir: &Path) -> RunnerResult<Uuid> {
     let path = base_dir.join("runner_id");
     match crate::private_fs::read_private_file_to_string(&path).await? {
-        Some(contents) => {
-            let id = contents.trim().to_string();
-            Uuid::parse_str(&id).map_err(|e| {
-                RunnerError::Config(format!("invalid runner_id in {}: {e}", path.display()))
-            })?;
-            Ok(id)
-        }
+        Some(contents) => Uuid::parse_str(contents.trim()).map_err(|e| {
+            RunnerError::Config(format!("invalid runner_id in {}: {e}", path.display()))
+        }),
         None => {
-            let id = Uuid::new_v4().to_string();
-            crate::private_fs::write_private_file(&path, id.as_bytes()).await?;
+            let id = Uuid::new_v4();
+            let id_text = id.to_string();
+            crate::private_fs::write_private_file(&path, id_text.as_bytes()).await?;
             info!(runner_id = %id, "generated new runner ID");
             Ok(id)
         }
     }
 }
 
-/// Increment and persist the process generation used to order heartbeat snapshots.
+/// Load the runner UUID and allocate its next process generation.
 ///
 /// The caller holds the exclusive runner base-directory lock, so generation
 /// allocation has one writer for the lifetime of this runner identity.
-pub(super) async fn next_heartbeat_generation(base_dir: &Path) -> RunnerResult<u64> {
+pub(super) async fn load_runner_process_identity(
+    base_dir: &Path,
+) -> RunnerResult<RunnerProcessIdentity> {
+    let runner_id = load_or_generate_runner_id(base_dir).await?;
     let path = base_dir.join("heartbeat_generation");
     let previous = match crate::private_fs::read_private_file_to_string(&path).await? {
         Some(contents) => contents.trim().parse::<u64>().map_err(|error| {
@@ -42,17 +41,22 @@ pub(super) async fn next_heartbeat_generation(base_dir: &Path) -> RunnerResult<u
         })?,
         None => 0,
     };
-    let generation = previous
-        .checked_add(1)
-        .filter(|generation| *generation <= MAX_HEARTBEAT_ORDER_VALUE)
-        .ok_or_else(|| {
+    let heartbeat_generation = previous.checked_add(1).ok_or_else(|| {
+        RunnerError::Config(format!(
+            "heartbeat generation in {} exceeds the wire safe-integer range",
+            path.display()
+        ))
+    })?;
+    let identity =
+        RunnerProcessIdentity::new(runner_id, heartbeat_generation).map_err(|error| {
             RunnerError::Config(format!(
-                "heartbeat generation in {} exceeds the wire safe-integer range",
-                path.display()
+                "invalid heartbeat generation in {}: {error}",
+                path.display(),
             ))
         })?;
-    crate::private_fs::write_private_file(&path, generation.to_string().as_bytes()).await?;
-    Ok(generation)
+    crate::private_fs::write_private_file(&path, heartbeat_generation.to_string().as_bytes())
+        .await?;
+    Ok(identity)
 }
 
 #[cfg(test)]
@@ -63,7 +67,6 @@ mod tests {
     async fn runner_id_generate_and_persist() {
         let dir = tempfile::tempdir().unwrap();
         let id1 = load_or_generate_runner_id(dir.path()).await.unwrap();
-        assert!(Uuid::parse_str(&id1).is_ok());
 
         // Second call reads the same ID
         let id2 = load_or_generate_runner_id(dir.path()).await.unwrap();
@@ -73,8 +76,8 @@ mod tests {
     #[tokio::test]
     async fn runner_id_reads_existing() {
         let dir = tempfile::tempdir().unwrap();
-        let expected = Uuid::new_v4().to_string();
-        tokio::fs::write(dir.path().join("runner_id"), &expected)
+        let expected = Uuid::new_v4();
+        tokio::fs::write(dir.path().join("runner_id"), expected.to_string())
             .await
             .unwrap();
         let id = load_or_generate_runner_id(dir.path()).await.unwrap();
@@ -113,7 +116,7 @@ mod tests {
     #[tokio::test]
     async fn runner_id_trims_whitespace() {
         let dir = tempfile::tempdir().unwrap();
-        let expected = Uuid::new_v4().to_string();
+        let expected = Uuid::new_v4();
         // Write with trailing newline (common with echo/editors)
         tokio::fs::write(dir.path().join("runner_id"), format!("  {expected}\n"))
             .await
@@ -136,8 +139,20 @@ mod tests {
     async fn heartbeat_generation_increments_across_starts() {
         let dir = tempfile::tempdir().unwrap();
 
-        assert_eq!(next_heartbeat_generation(dir.path()).await.unwrap(), 1);
-        assert_eq!(next_heartbeat_generation(dir.path()).await.unwrap(), 2);
+        assert_eq!(
+            load_runner_process_identity(dir.path())
+                .await
+                .unwrap()
+                .heartbeat_generation(),
+            1
+        );
+        assert_eq!(
+            load_runner_process_identity(dir.path())
+                .await
+                .unwrap()
+                .heartbeat_generation(),
+            2
+        );
         assert_eq!(
             tokio::fs::read_to_string(dir.path().join("heartbeat_generation"))
                 .await
@@ -160,7 +175,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            let result = next_heartbeat_generation(dir.path()).await;
+            let result = load_runner_process_identity(dir.path()).await;
 
             assert!(result.is_err(), "generation state {value:?} must fail");
         }
@@ -175,7 +190,7 @@ mod tests {
         tokio::fs::write(&target, "41").await.unwrap();
         std::os::unix::fs::symlink(&target, &link).unwrap();
 
-        let result = next_heartbeat_generation(dir.path()).await;
+        let result = load_runner_process_identity(dir.path()).await;
 
         assert!(result.is_err());
         assert_eq!(tokio::fs::read_to_string(&target).await.unwrap(), "41");

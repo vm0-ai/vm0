@@ -14,7 +14,7 @@ import {
  * on, so it earns its place in the settings popover but not in a summary the
  * user reads inside a prompt sentence.
  */
-export interface VideoTemplateSpec {
+interface VideoTemplateSpec {
   /** Aspect ratio and duration, which stay visible at any viewport width. */
   readonly core: readonly string[];
   readonly rest: readonly string[];
@@ -43,12 +43,20 @@ function regularVideoTemplate(
 /**
  * Talking-avatar templates share the "video" envelope but take none of these
  * parameters, so they have no spec.
+ *
+ * Neither does a template with nothing stored on it. The composer no longer
+ * writes these parameters — they belong to the run — so a message sent today
+ * carries none, and resolving the catalog defaults for it would advertise a
+ * duration and a resolution the run never actually agreed to.
  */
 export function videoTemplateSpec(
   template: GenerationTemplateRequest,
 ): VideoTemplateSpec | null {
   const videoTemplate = regularVideoTemplate(template);
   if (videoTemplate === null) {
+    return null;
+  }
+  if (videoTemplate.selection.videoOptions === undefined) {
     return null;
   }
   const resolved = resolveVideoGenerationOptions(
@@ -86,9 +94,4 @@ export function legacyVideoTemplateSpecText(
     resolved.duration,
     resolved.resolution,
   ].join(" · ");
-}
-
-/** Everything the chip's settings zone shows. */
-export function videoTemplateSettingsText(spec: VideoTemplateSpec): string {
-  return [...spec.core, ...spec.rest].join(" · ");
 }

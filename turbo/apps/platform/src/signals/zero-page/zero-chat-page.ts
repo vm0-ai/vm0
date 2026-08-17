@@ -140,6 +140,22 @@ export const chatPageVideoModelSelection$ = computed(
   },
 );
 
+/**
+ * What a video run started from the new-thread composer would use. The
+ * selection above is null when the user cleared it back to "follow my
+ * default", so the parameter panel resolves through the same member and system
+ * defaults the API would.
+ */
+export const chatPageEffectiveVideoModel$ = computed(
+  async (get): Promise<VideoModel> => {
+    return (
+      (await get(chatPageVideoModelSelection$)) ??
+      (await get(userModelPreference$)).selectedVideoModel ??
+      DEFAULT_VIDEO_MODEL
+    );
+  },
+);
+
 export const setChatPageVideoModelSelection$ = command(
   ({ set }, value: VideoModel | null) => {
     set(internalChatPageVideoModelOverride$, { kind: "set", value });

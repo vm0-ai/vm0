@@ -22,17 +22,15 @@ pub(crate) use connector_runtime_sync::{
 pub use local::LocalProvider;
 
 use chrono::{DateTime, FixedOffset, Utc};
-use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
+use serde::{Deserialize, Serialize, de::Error as _};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
-use uuid::Uuid;
 
 use crate::active_input::ActiveInputSource;
 use crate::error::RunnerResult;
 use crate::ids::RunId;
+use crate::runner_process_identity::RunnerProcessIdentity;
 use crate::types::{CompleteRequest, ExecutionContext, HeartbeatState};
-
-const JAVASCRIPT_MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -77,23 +75,6 @@ pub(crate) enum RunnerPreferenceRemovalReason {
     Cleared,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct RunnerProcessIdentity {
-    runner_id: Uuid,
-    #[serde(deserialize_with = "deserialize_heartbeat_generation")]
-    heartbeat_generation: u64,
-}
-
-impl RunnerProcessIdentity {
-    fn targets(self, runner_id: &str, heartbeat_generation: u64) -> bool {
-        runner_id
-            .parse::<Uuid>()
-            .is_ok_and(|runner_id| runner_id == self.runner_id)
-            && heartbeat_generation == self.heartbeat_generation
-    }
-}
-
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", deny_unknown_fields)]
 pub(crate) enum RunnerPreference {
@@ -133,23 +114,18 @@ impl ActiveRunnerPreference {
         self.deadline <= Instant::now()
     }
 
-    pub(crate) fn targets(&self, runner_id: &str, heartbeat_generation: u64) -> bool {
-        self.runner_identity
-            .targets(runner_id, heartbeat_generation)
+    pub(crate) fn targets(&self, runner_identity: RunnerProcessIdentity) -> bool {
+        self.runner_identity == runner_identity
     }
 
     #[cfg(test)]
     pub(crate) fn ranked_for_test(
-        runner_id: Uuid,
-        heartbeat_generation: u64,
+        runner_identity: RunnerProcessIdentity,
         tier: RunnerPreferenceTier,
         deadline: Instant,
     ) -> Self {
         Self {
-            runner_identity: RunnerProcessIdentity {
-                runner_id,
-                heartbeat_generation,
-            },
+            runner_identity,
             tier,
             deadline,
         }
@@ -189,19 +165,6 @@ fn preference_deadline(expires_at: DateTime<FixedOffset>) -> Result<Instant, ser
         .unwrap_or_default();
     now.checked_add(remaining)
         .ok_or_else(|| serde_json::Error::custom("runner preference expiry is out of range"))
-}
-
-fn deserialize_heartbeat_generation<'de, D>(deserializer: D) -> Result<u64, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let value = u64::deserialize(deserializer)?;
-    if value == 0 || value > JAVASCRIPT_MAX_SAFE_INTEGER {
-        return Err(D::Error::custom(
-            "heartbeat generation must be a positive JavaScript safe integer",
-        ));
-    }
-    Ok(value)
 }
 
 /// Low-cardinality source that first discovered a job candidate.
