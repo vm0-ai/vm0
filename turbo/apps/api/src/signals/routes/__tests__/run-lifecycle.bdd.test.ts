@@ -691,6 +691,9 @@ function customConnectorRuntimeAuthBody(
         name: runtime.firewall.firewall.name,
         apiId: api.id,
         customConnectorId: runtime.firewall.customConnectorId,
+        ...(runtime.firewall.sourceId === undefined
+          ? {}
+          : { sourceId: runtime.firewall.sourceId }),
         routingVariables: runtime.baseUrlVars,
       },
     },
@@ -7243,9 +7246,12 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(claim.environment).not.toHaveProperty("X_REFRESH_TOKEN");
     expect(claim.secretConnectorMap).toMatchObject({ X_TOKEN: "x" });
     expect(claim.secretConnectorMap).not.toHaveProperty("X_REFRESH_TOKEN");
-    expect(claim.secretConnectorMetadataMap ?? {}).not.toHaveProperty(
-      "X_TOKEN",
-    );
+    expect(claim.secretConnectorMetadataMap).toMatchObject({
+      X_TOKEN: {
+        sourceType: "connector",
+        sourceId: expect.any(String),
+      },
+    });
 
     expect(
       claim.firewalls?.map((firewall) => {
@@ -7255,6 +7261,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(findFirewallEntry(claim.firewalls, "x")).toStrictEqual({
       kind: "builtin",
       name: "x",
+      sourceId: expect.any(String),
     });
     expect(claim.billableFirewalls).toContain("x");
     expect(claim.networkPolicies?.x?.unknownPolicy).toBe("allow");
@@ -7371,6 +7378,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(findFirewallEntry(claim.firewalls, "x")).toStrictEqual({
       kind: "builtin",
       name: "x",
+      sourceId: expect.any(String),
     });
     expect(claim.billableFirewalls).toContain("x");
 
@@ -7491,6 +7499,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(findFirewallEntry(claim.firewalls, "test-oauth")).toStrictEqual({
       kind: "builtin",
       name: "test-oauth",
+      sourceId: expect.any(String),
       baseUrlVars: {
         TEST_OAUTH_TENANT_ID: "test-oauth-oauth-tenantid",
       },
@@ -7545,6 +7554,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     ).toStrictEqual({
       kind: "builtin",
       name: "test-oauth",
+      sourceId: expect.any(String),
       baseUrlVars: {
         TEST_OAUTH_TENANT_ID: "test-oauth-oauth-tenantid",
       },
@@ -7732,7 +7742,11 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(claim.secretConnectorMap).toMatchObject({ FIGMA_TOKEN: "figma" });
 
     const figmaEntry = findFirewallEntry(claim.firewalls, "figma");
-    expect(figmaEntry).toStrictEqual({ kind: "builtin", name: "figma" });
+    expect(figmaEntry).toStrictEqual({
+      kind: "builtin",
+      name: "figma",
+      sourceId: expect.any(String),
+    });
 
     if (!claim.encryptedSecrets) {
       throw new Error("Expected the figma claim to carry encrypted secrets");
@@ -7765,10 +7779,15 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
-    await connectors.connectManualGrant(actor, "lark", "api-token", {
-      appId: "lark-app-id",
-      appSecret: "lark-app-secret",
-    });
+    const connected = await connectors.connectManualGrant(
+      actor,
+      "lark",
+      "api-token",
+      {
+        appId: "lark-app-id",
+        appSecret: "lark-app-secret",
+      },
+    );
     await api.enableAgentConnectors(actor, agentId, ["lark"]);
 
     const run = await api.createRun(actor, {
@@ -7786,6 +7805,23 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(claim.environment).not.toHaveProperty("LARK_APP_SECRET");
     expect(claim.environment).not.toHaveProperty("LARK_ACCESS_TOKEN");
     expect(claim.secretConnectorMap).toMatchObject({ LARK_TOKEN: "lark" });
+    expect(claim.secretConnectorMetadataMap).toMatchObject({
+      LARK_TOKEN: {
+        sourceType: "connector",
+        sourceId: connected.id,
+      },
+    });
+    expect(findFirewallEntry(claim.firewalls, "lark")).toMatchObject({
+      kind: "builtin",
+      sourceId: connected.id,
+    });
+    expect(claim.connectorRuntimeTargets).toContainEqual(
+      expect.objectContaining({
+        kind: "builtin",
+        connectorSlug: "lark",
+        sourceId: connected.id,
+      }),
+    );
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
@@ -7823,13 +7859,19 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       GOOGLE_ADS_DEVELOPER_TOKEN: "google-ads",
     });
     expect(claim.secretConnectorMetadataMap).toMatchObject({
+      GOOGLE_ADS_TOKEN: {
+        sourceType: "connector",
+        sourceId: expect.any(String),
+      },
       GOOGLE_ADS_DEVELOPER_TOKEN: { sourceType: "platform-secret" },
     });
-    expect(
-      claim.firewalls?.map((firewall) => {
-        return firewallEntryName(firewall);
-      }),
-    ).toContain("google-ads");
+    const googleAdsFirewall = findFirewallEntry(claim.firewalls, "google-ads");
+    if (!googleAdsFirewall || googleAdsFirewall.kind !== "builtin") {
+      throw new Error("Expected the google ads built-in firewall");
+    }
+    expect(googleAdsFirewall.sourceId).toBe(
+      claim.secretConnectorMetadataMap?.GOOGLE_ADS_TOKEN?.sourceId,
+    );
     if (!claim.encryptedSecrets) {
       throw new Error(
         "Expected the google ads claim to carry encrypted secrets",
@@ -7880,6 +7922,33 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(missingWithoutMetadata.body.error.code).toBe(
       "CONNECTOR_NOT_CONFIGURED",
     );
+
+    const conflictingSource = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: {
+          Authorization: `Bearer \${{ secrets.GOOGLE_ADS_TOKEN }}`,
+        },
+        secretConnectorMap: claim.secretConnectorMap ?? undefined,
+        secretConnectorMetadataMap: {
+          ...claim.secretConnectorMetadataMap,
+          GOOGLE_ADS_TOKEN: {
+            sourceType: "connector",
+            sourceId: randomUUID(),
+          },
+        },
+        matchedFirewall: {
+          name: "google-ads",
+          apiId: "google-ads:0",
+          connectorSlug: "google-ads",
+          sourceId: googleAdsFirewall.sourceId,
+          routingVariables: googleAdsFirewall.baseUrlVars ?? {},
+        },
+      },
+      [400],
+    );
+    expect(conflictingSource.status).toBe(400);
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
@@ -8197,6 +8266,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       kind: "custom",
       customConnectorId: custom.id,
       baseUrlVars: {},
+      sourceId: expect.any(String),
     });
 
     await api.requestCancelRun(actor, run.runId, [200]);
@@ -8251,10 +8321,13 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         base: "https://api.figma.com/",
       },
     ]);
-    expect(claim.connectorRuntimeTargets).toContainEqual({
-      kind: "builtin",
-      connectorSlug: "figma",
-    });
+    expect(claim.connectorRuntimeTargets).toContainEqual(
+      expect.objectContaining({
+        kind: "builtin",
+        connectorSlug: "figma",
+        sourceId: expect.any(String),
+      }),
+    );
     expect(claim.connectorRuntimeTargets).toContainEqual(
       expect.objectContaining({
         kind: "custom",
@@ -8320,6 +8393,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(claim.connectorRuntimeTargets).toContainEqual({
       kind: "builtin",
       connectorSlug: "figma",
+      sourceId: expect.any(String),
     });
 
     await api.requestCancelRun(actor, run.runId, [200]);
@@ -8405,20 +8479,19 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       kind: "custom",
       customConnectorId: custom.id,
       baseUrlVars: { tenant: "acme" },
+      sourceId: expect.any(String),
     });
     const customFirewall = findFirewallEntry(claim.firewalls, internalName);
     if (!customFirewall || customFirewall.kind !== "inline") {
       throw new Error("Expected the custom connector firewall");
     }
     expect(customFirewall.customConnectorId).toBe(custom.id);
+    const target = customConnectorRuntimeRegistration(claim, custom.id);
+    expect(customFirewall.sourceId).toBe(target.sourceId);
 
     const targetIdentity = {
       kind: "custom" as const,
       customConnectorId: custom.id,
-    };
-    const target = {
-      ...targetIdentity,
-      baseUrlVars: { tenant: "acme" },
     };
     const [initialRuntime] = await api.syncConnectorRuntime(run.runId, {
       targets: [target],
@@ -8862,6 +8935,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       kind: "custom",
       customConnectorId: mcp.id,
       baseUrlVars: {},
+      sourceId: expect.any(String),
     });
     const mcpPrompt = mcpConnectorPromptSection(claim.appendSystemPrompt ?? "");
     expect(mcpPrompt).toContain(`- \`${mcp.slug}\``);
@@ -9452,6 +9526,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       kind: "custom",
       customConnectorId: custom.id,
       baseUrlVars: { workspace: "restored" },
+      sourceId: expect.any(String),
     });
     expect(restoredClaim).not.toHaveProperty("connectorPermissionBaseline");
     expectClaimNetworkPolicyRefreshPath(
@@ -10306,12 +10381,21 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       throw new Error("Expected the proposed custom connector firewall API");
     }
     expect(customApi.base).toBe(`https://xn--mnich-kva.${rand}.test/v1/`);
-    const pinnedTarget = {
-      kind: "custom" as const,
+    const pinnedTarget = claim.connectorRuntimeTargets.find((target) => {
+      return (
+        target.kind === "custom" &&
+        target.customConnectorId === saved.connector.id
+      );
+    });
+    expect(pinnedTarget).toStrictEqual({
+      kind: "custom",
       customConnectorId: saved.connector.id,
       baseUrlVars: { subdomain: "münich" },
-    };
-    expect(claim.connectorRuntimeTargets).toContainEqual(pinnedTarget);
+      sourceId: expect.any(String),
+    });
+    if (!pinnedTarget) {
+      throw new Error("Expected the proposed custom connector runtime target");
+    }
     expect(customApi.auth?.headers?.Authorization).toBe(
       `Bearer \${{ secrets.${secretKey} }}`,
     );
@@ -10431,6 +10515,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       kind: "custom",
       customConnectorId: saved.connector.id,
       baseUrlVars: { subdomain: "later-run" },
+      sourceId: expect.any(String),
     });
     expect(
       inlineFirewallApis(laterClaim.firewalls, internalName)[0]?.base,
@@ -11020,6 +11105,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       kind: "custom",
       customConnectorId: saved.connector.id,
       baseUrlVars: { subdomain: "version-two" },
+      sourceId: expect.any(String),
     });
     expect(
       inlineFirewallApis(recoveredClaim.firewalls, internalName)[0]?.base,
@@ -11197,16 +11283,19 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       kind: "builtin",
       name: "zendesk",
       baseUrlVars: { ZENDESK_SUBDOMAIN: "xn--mnich-kva" },
+      sourceId: expect.any(String),
     });
     expect(runContextSnapshotForRun(run.runId).firewalls).toContainEqual({
       kind: "builtin",
       name: "zendesk",
       baseUrlVars: { ZENDESK_SUBDOMAIN: "xn--mnich-kva" },
+      sourceId: expect.any(String),
     });
     expect(claim.connectorRuntimeTargets).toContainEqual({
       kind: "builtin",
       connectorSlug: "zendesk",
       baseUrlVars: { ZENDESK_SUBDOMAIN: "xn--mnich-kva" },
+      sourceId: expect.any(String),
     });
     expect(customApis[0]?.base).toBe("https://internal.example.com/api/");
 
@@ -11377,7 +11466,11 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     ] as const;
 
     const slackTargets = expect.arrayContaining([
-      { kind: "builtin", connectorSlug: "slack" },
+      {
+        kind: "builtin",
+        connectorSlug: "slack",
+        sourceId: expect.any(String),
+      },
     ]);
 
     for (const fallbackCase of cases) {
@@ -11556,6 +11649,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(grantedContext.claim.connectorRuntimeTargets).toContainEqual({
       kind: "builtin",
       connectorSlug: "slack",
+      sourceId: expect.any(String),
     });
     expect(granted.allow).toContain("chat:write");
     expect(granted.allow).toContain("files:read");
@@ -12185,6 +12279,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(findFirewallEntry(claim.firewalls, "cloudflare")).toStrictEqual({
       kind: "builtin",
       name: "cloudflare",
+      sourceId: expect.any(String),
     });
 
     const policy = claim.networkPolicies?.cloudflare;
@@ -12603,6 +12698,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(findFirewallEntry(claim.firewalls, "slack")).toStrictEqual({
       kind: "builtin",
       name: "slack",
+      sourceId: expect.any(String),
     });
     expect(claim.networkPolicies?.slack?.allow).toContain("chat:write");
     expect(claim.networkPolicies?.slack?.allow).toContain("conversations:read");

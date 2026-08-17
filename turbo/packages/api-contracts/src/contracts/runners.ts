@@ -198,11 +198,13 @@ export const connectorRuntimeTargetSchema = z.discriminatedUnion("kind", [
 export const connectorRuntimeCustomTargetRegistrationSchema =
   connectorRuntimeCustomTargetSchema.extend({
     baseUrlVars: z.record(z.string(), z.string()),
+    sourceId: z.uuid().optional(),
   });
 
 export const connectorRuntimeBuiltinTargetRegistrationSchema =
   connectorRuntimeBuiltinTargetSchema.extend({
     baseUrlVars: z.record(z.string(), z.string()).optional(),
+    sourceId: z.uuid().optional(),
   });
 
 export const connectorRuntimeTargetRegistrationSchema = z.discriminatedUnion(

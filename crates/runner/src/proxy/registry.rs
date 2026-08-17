@@ -274,6 +274,7 @@ fn apply_custom_connector_runtime_state(
             let FirewallEntry::Inline {
                 firewall: inline_firewall,
                 custom_connector_id: Some(entry_connector_id),
+                ..
             } = firewall
             else {
                 return Err(RunnerError::Internal(format!(
@@ -302,6 +303,7 @@ fn apply_custom_connector_runtime_state(
                     if let FirewallEntry::Inline {
                         firewall,
                         custom_connector_id: Some(existing_connector_id),
+                        ..
                     } = entry
                         && existing_connector_id == custom_connector_id
                     {
@@ -348,6 +350,7 @@ fn apply_custom_connector_runtime_state(
                     if let FirewallEntry::Inline {
                         firewall,
                         custom_connector_id: Some(existing_connector_id),
+                        ..
                     } = entry
                         && existing_connector_id == custom_connector_id
                     {
@@ -503,6 +506,7 @@ fn initial_connector_routing_variables(
         if let FirewallEntry::Builtin {
             name,
             base_url_vars,
+            ..
         } = firewall
         {
             if !builtin_connector_slugs.contains(name.as_str()) {
@@ -533,6 +537,7 @@ fn initial_connector_routing_variables(
         if let ConnectorRuntimeTargetRegistration::Custom {
             custom_connector_id,
             base_url_vars,
+            ..
         } = target
             && active_custom_connector_ids.contains(custom_connector_id.as_str())
         {
@@ -962,6 +967,7 @@ mod tests {
                     }],
                 },
                 custom_connector_id: None,
+                source_id: None,
             })
             .collect()
     }
@@ -975,6 +981,7 @@ mod tests {
                 |connector_slug| ConnectorRuntimeTargetRegistration::Builtin {
                     connector_slug: (*connector_slug).to_string(),
                     base_url_vars: None,
+                    source_id: None,
                 },
             )
             .collect()
@@ -1010,6 +1017,7 @@ mod tests {
                 }],
             },
             custom_connector_id: Some(custom_connector_id.to_string()),
+            source_id: None,
         }
     }
 
@@ -1019,10 +1027,12 @@ mod tests {
             FirewallEntry::Builtin {
                 name: "slack".to_string(),
                 base_url_vars: None,
+                source_id: None,
             },
             FirewallEntry::Builtin {
                 name: "github".to_string(),
                 base_url_vars: None,
+                source_id: None,
             },
             FirewallEntry::Builtin {
                 name: "slack".to_string(),
@@ -1030,6 +1040,7 @@ mod tests {
                     "SLACK_HOST".to_string(),
                     "stale.example.test".to_string(),
                 )])),
+                source_id: None,
             },
         ];
 
@@ -1041,6 +1052,7 @@ mod tests {
                     "SLACK_HOST".to_string(),
                     "current.example.test".to_string(),
                 )])),
+                source_id: None,
             },
             |entry| matches!(entry, FirewallEntry::Builtin { name, .. } if name == "slack"),
         );
@@ -1051,6 +1063,7 @@ mod tests {
             FirewallEntry::Builtin {
                 name,
                 base_url_vars: Some(vars),
+                ..
             } if name == "slack"
                 && vars.get("SLACK_HOST").is_some_and(|host| host == "current.example.test")
         ));
@@ -1276,10 +1289,12 @@ mod tests {
                     "SLACK_HOST".to_string(),
                     "xn--mnich-kva.example.test".to_string(),
                 )])),
+                source_id: None,
             },
             FirewallEntry::Builtin {
                 name: "model-provider:openai".to_string(),
                 base_url_vars: None,
+                source_id: None,
             },
             custom_runtime_firewall(available_custom_id, "custom_connector_available"),
         ];
@@ -1288,18 +1303,22 @@ mod tests {
             ConnectorRuntimeTargetRegistration::Builtin {
                 connector_slug: "slack".to_string(),
                 base_url_vars: None,
+                source_id: None,
             },
             ConnectorRuntimeTargetRegistration::Builtin {
                 connector_slug: "github".to_string(),
                 base_url_vars: None,
+                source_id: None,
             },
             ConnectorRuntimeTargetRegistration::Custom {
                 custom_connector_id: available_custom_id.to_string(),
                 base_url_vars: HashMap::new(),
+                source_id: None,
             },
             ConnectorRuntimeTargetRegistration::Custom {
                 custom_connector_id: omitted_custom_id.to_string(),
                 base_url_vars: HashMap::new(),
+                source_id: None,
             },
         ];
 
@@ -1364,6 +1383,7 @@ mod tests {
             FirewallEntry::Builtin {
                 name: "slack".to_string(),
                 base_url_vars: None,
+                source_id: None,
             },
             custom_runtime_firewall(custom_connector_id, "slack"),
         ];
@@ -1405,6 +1425,7 @@ mod tests {
             FirewallEntry::Builtin {
                 name: "slack".to_string(),
                 base_url_vars: None,
+                source_id: None,
             },
             custom_runtime_firewall(custom_connector_id, original_custom_name),
         ];
@@ -1423,10 +1444,12 @@ mod tests {
             ConnectorRuntimeTargetRegistration::Builtin {
                 connector_slug: "slack".to_string(),
                 base_url_vars: None,
+                source_id: None,
             },
             ConnectorRuntimeTargetRegistration::Custom {
                 custom_connector_id: custom_connector_id.to_string(),
                 base_url_vars: routing_variables.clone(),
+                source_id: None,
             },
         ];
         harness
@@ -1533,10 +1556,12 @@ mod tests {
             FirewallEntry::Builtin {
                 name: "github".to_string(),
                 base_url_vars: None,
+                source_id: None,
             },
             FirewallEntry::Builtin {
                 name: "slack".to_string(),
                 base_url_vars: None,
+                source_id: None,
             },
         ];
         let github_policy = policy(&["repos.read"], &[], &[], "ask");
@@ -1608,6 +1633,7 @@ mod tests {
             FirewallEntry::Builtin {
                 name: "slack".to_string(),
                 base_url_vars: None,
+                source_id: None,
             },
         ];
         let network_policies = HashMap::from([
@@ -1624,10 +1650,12 @@ mod tests {
             ConnectorRuntimeTargetRegistration::Builtin {
                 connector_slug: "slack".to_string(),
                 base_url_vars: None,
+                source_id: None,
             },
             ConnectorRuntimeTargetRegistration::Custom {
                 custom_connector_id: custom_connector_id.to_string(),
                 base_url_vars: HashMap::new(),
+                source_id: None,
             },
         ];
         harness
@@ -1691,6 +1719,7 @@ mod tests {
             FirewallEntry::Builtin {
                 name: "slack".to_string(),
                 base_url_vars: None,
+                source_id: None,
             },
         ];
         let network_policies = HashMap::from([
@@ -1709,10 +1738,12 @@ mod tests {
             ConnectorRuntimeTargetRegistration::Builtin {
                 connector_slug: "slack".to_string(),
                 base_url_vars: None,
+                source_id: None,
             },
             ConnectorRuntimeTargetRegistration::Custom {
                 custom_connector_id: custom_connector_id.to_string(),
                 base_url_vars: pinned_routing_variables.clone(),
+                source_id: None,
             },
         ];
         harness
@@ -2214,6 +2245,7 @@ mod tests {
             FirewallEntry::Builtin {
                 name: "slack".to_string(),
                 base_url_vars: None,
+                source_id: None,
             },
         ];
         let network_policies = HashMap::from([
@@ -2230,10 +2262,12 @@ mod tests {
             ConnectorRuntimeTargetRegistration::Custom {
                 custom_connector_id: custom_connector_id.to_string(),
                 base_url_vars: HashMap::new(),
+                source_id: None,
             },
             ConnectorRuntimeTargetRegistration::Builtin {
                 connector_slug: "slack".to_string(),
                 base_url_vars: None,
+                source_id: None,
             },
         ];
         harness
@@ -2260,6 +2294,7 @@ mod tests {
             .push(FirewallEntry::Builtin {
                 name: custom_firewall_name.to_string(),
                 base_url_vars: None,
+                source_id: None,
             });
         write_registry(harness.registry_path(), &registry)
             .await
@@ -2335,6 +2370,7 @@ mod tests {
     #[tokio::test]
     async fn registry_with_firewalls() {
         let harness = RegistryHarness::new().await;
+        let source_id = "550e8400-e29b-41d4-a716-446655440000";
 
         let firewall_entries = vec![FirewallEntry::Inline {
             firewall: Firewall {
@@ -2363,6 +2399,7 @@ mod tests {
                 }],
             },
             custom_connector_id: None,
+            source_id: Some(source_id.to_string()),
         }];
 
         let registration = VmRegistration {
@@ -2398,6 +2435,7 @@ mod tests {
         let vm_json = &value["vms"]["10.200.0.5"];
         let fw = &vm_json["firewalls"][0];
         assert_eq!(fw["kind"], "inline");
+        assert_eq!(fw["sourceId"], source_id);
         assert_eq!(fw["firewall"]["name"], "gmail");
         assert_eq!(
             fw["firewall"]["apis"][0]["base"],
@@ -2459,6 +2497,7 @@ mod tests {
             "CHATGPT_ACCESS_TOKEN".to_string(),
             SecretConnectorMetadata {
                 source_type: "model-provider".to_string(),
+                source_id: Some("550e8400-e29b-41d4-a716-446655440000".to_string()),
                 source_user_id: Some("user-123".to_string()),
                 metadata_key: Some("codex-oauth-token".to_string()),
             },
@@ -2494,6 +2533,10 @@ mod tests {
             value["vms"]["10.200.0.6"]["secretConnectorMetadataMap"]["CHATGPT_ACCESS_TOKEN"]["sourceUserId"],
             "user-123"
         );
+        assert_eq!(
+            value["vms"]["10.200.0.6"]["secretConnectorMetadataMap"]["CHATGPT_ACCESS_TOKEN"]["sourceId"],
+            "550e8400-e29b-41d4-a716-446655440000"
+        );
     }
 
     #[tokio::test]
@@ -2517,6 +2560,7 @@ mod tests {
                 }],
             },
             custom_connector_id: None,
+            source_id: None,
         }];
 
         let registration = VmRegistration {
@@ -2569,6 +2613,7 @@ mod tests {
                 }],
             },
             custom_connector_id: None,
+            source_id: None,
         }];
 
         let registration = VmRegistration {

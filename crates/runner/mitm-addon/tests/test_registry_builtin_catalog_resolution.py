@@ -163,9 +163,12 @@ class TestRegistryBuiltinCatalogResolution:
         assert compiled_firewalls is not None
 
     def test_builtin_firewall_entry_resolves_from_catalog_cache(self, tmp_path, mitm_ctx):
+        source_id = "550e8400-e29b-41d4-a716-446655440001"
+        vm = builtin_vm("run-github", "github")
+        vm["firewalls"][0]["sourceId"] = source_id
         registry_path, cache_path = write_registry_with_cache(
             tmp_path,
-            {"10.200.0.1": builtin_vm("run-github", "github")},
+            {"10.200.0.1": vm},
             {"github": github_cache_firewall()},
         )
 
@@ -181,6 +184,8 @@ class TestRegistryBuiltinCatalogResolution:
         assert vm_info["firewalls"][0]["name"] == "github"
         assert vm_info["firewalls"][0]["apis"][0]["base"] == "https://api.github.com"
         assert vm_info["firewalls"][0]["apis"][0]["id"] == "run-github:0"
+        assert vm_info["firewalls"][0]["sourceId"] == source_id
+        assert vm_info["firewalls"][0]["apis"][0]["sourceId"] == source_id
 
     def test_registered_custom_candidate_shadows_only_matching_builtin_api(
         self, tmp_path, mitm_ctx
@@ -521,6 +526,7 @@ class TestRegistryBuiltinCatalogResolution:
 
     def test_inline_custom_connector_id_is_preserved_on_firewall_and_apis(self):
         custom_connector_id = "550e8400-e29b-41d4-a716-446655440000"
+        source_id = "550e8400-e29b-41d4-a716-446655440001"
         resolved = registry_firewalls.resolve_firewall_entries(
             {
                 "runId": "run-custom-id",
@@ -528,6 +534,7 @@ class TestRegistryBuiltinCatalogResolution:
                     {
                         "kind": "inline",
                         "customConnectorId": custom_connector_id,
+                        "sourceId": source_id,
                         "firewall": {
                             "name": "custom_connector_test",
                             "apis": [
@@ -547,6 +554,8 @@ class TestRegistryBuiltinCatalogResolution:
         assert resolved.firewalls is not None
         assert resolved.firewalls[0]["customConnectorId"] == custom_connector_id
         assert resolved.firewalls[0]["apis"][0]["customConnectorId"] == custom_connector_id
+        assert resolved.firewalls[0]["sourceId"] == source_id
+        assert resolved.firewalls[0]["apis"][0]["sourceId"] == source_id
 
     def test_inline_custom_connector_id_rejects_invalid_identity(self):
         with pytest.raises(registry_firewalls.FirewallEntryResolutionError):
@@ -557,6 +566,28 @@ class TestRegistryBuiltinCatalogResolution:
                         {
                             "kind": "inline",
                             "customConnectorId": "not-a-uuid",
+                            "firewall": {
+                                "name": "custom_connector_test",
+                                "apis": [],
+                            },
+                        }
+                    ],
+                },
+                builtin_firewall_catalog_snapshot=None,
+            )
+
+    def test_firewall_source_rejects_invalid_identity(self):
+        with pytest.raises(
+            registry_firewalls.FirewallEntryResolutionError,
+            match="firewall sourceId must be a UUID",
+        ):
+            registry_firewalls.resolve_firewall_entries(
+                {
+                    "runId": "run-invalid-source",
+                    "firewalls": [
+                        {
+                            "kind": "inline",
+                            "sourceId": "not-a-uuid",
                             "firewall": {
                                 "name": "custom_connector_test",
                                 "apis": [],

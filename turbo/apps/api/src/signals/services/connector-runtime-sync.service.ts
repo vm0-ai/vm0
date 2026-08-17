@@ -202,7 +202,12 @@ async function resolveCustomTarget(args: {
   return {
     target,
     state: "available" as const,
-    firewall: state.firewall,
+    firewall: {
+      ...state.firewall,
+      ...(args.registration.sourceId === undefined
+        ? {}
+        : { sourceId: args.registration.sourceId }),
+    },
     networkPolicy: state.networkPolicy,
     baseUrlVars: { ...resolvedTarget.baseUrlVars },
   };

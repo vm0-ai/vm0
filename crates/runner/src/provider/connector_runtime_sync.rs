@@ -789,10 +789,18 @@ impl ConnectorRuntimeSyncCore {
                         } else {
                             HashMap::new()
                         };
+                    let Some(expected_source_id) = self
+                        .custom_source_id_for_publication(run_id, target, registration_cancel)
+                        .await
+                    else {
+                        retry_targets.push(target.clone());
+                        continue;
+                    };
                     let registry_state = match custom_connector_runtime_registry_state(
                         custom_connector_id,
                         state,
                         routing_variables,
+                        expected_source_id.as_deref(),
                     ) {
                         Ok(state) => state,
                         Err(error) => {
@@ -1093,12 +1101,15 @@ impl ConnectorRuntimeSyncCore {
                     return None;
                 }
                 let registration = match &connector.registration {
-                    ConnectorRuntimeTargetRegistration::Builtin { connector_slug, .. } => {
-                        ConnectorRuntimeTargetRegistration::Builtin {
-                            connector_slug: connector_slug.clone(),
-                            base_url_vars: None,
-                        }
-                    }
+                    ConnectorRuntimeTargetRegistration::Builtin {
+                        connector_slug,
+                        source_id,
+                        ..
+                    } => ConnectorRuntimeTargetRegistration::Builtin {
+                        connector_slug: connector_slug.clone(),
+                        base_url_vars: None,
+                        source_id: source_id.clone(),
+                    },
                     ConnectorRuntimeTargetRegistration::Custom { .. } => {
                         connector.registration.clone()
                     }
@@ -1193,6 +1204,24 @@ impl ConnectorRuntimeSyncCore {
             return None;
         }
         connector.registration.custom_base_url_vars().cloned()
+    }
+
+    async fn custom_source_id_for_publication(
+        &self,
+        run_id: RunId,
+        target: &ConnectorSyncTarget,
+        registration_cancel: &CancellationToken,
+    ) -> Option<Option<String>> {
+        let active_runs = self.inner.active_runs.lock().await;
+        let active = active_runs.get(&run_id)?;
+        if &active.cancel != registration_cancel {
+            return None;
+        }
+        let connector = active.connectors.get(&target.target)?;
+        if connector.generation != target.generation {
+            return None;
+        }
+        Some(connector.registration.source_id().map(str::to_string))
     }
 
     async fn complete_successful_sync(
@@ -1589,6 +1618,7 @@ fn custom_connector_runtime_registry_state(
     custom_connector_id: &str,
     state: &ConnectorRuntimeSyncState,
     routing_variables: HashMap<String, String>,
+    expected_source_id: Option<&str>,
 ) -> Result<CustomConnectorRuntimeRegistryState, &'static str> {
     match state {
         ConnectorRuntimeSyncState::Absent { .. } => Ok(CustomConnectorRuntimeRegistryState::Absent),
@@ -1599,6 +1629,7 @@ fn custom_connector_runtime_registry_state(
                     firewall @ FirewallEntry::Inline {
                         firewall: inline_firewall,
                         custom_connector_id: Some(entry_connector_id),
+                        source_id,
                     },
                 ),
             ..
@@ -1606,6 +1637,9 @@ fn custom_connector_runtime_registry_state(
             validate_connector_runtime_network_policy(network_policy)?;
             if entry_connector_id != custom_connector_id {
                 return Err("custom available result has a mismatched connector id");
+            }
+            if source_id.as_deref() != expected_source_id {
+                return Err("custom available result has a mismatched connector source");
             }
             inline_firewall
                 .validate_for_connector_runtime()
@@ -1783,6 +1817,7 @@ mod tests {
         ConnectorRuntimeTargetRegistration::Builtin {
             connector_slug: connector_slug.to_string(),
             base_url_vars: None,
+            source_id: None,
         }
     }
 
@@ -1793,10 +1828,18 @@ mod tests {
         ConnectorRuntimeTargetRegistration::Custom {
             custom_connector_id: custom_connector_id.to_string(),
             base_url_vars,
+            source_id: None,
         }
     }
 
     fn custom_runtime_firewall(custom_connector_id: &str) -> FirewallEntry {
+        custom_runtime_firewall_with_source(custom_connector_id, None)
+    }
+
+    fn custom_runtime_firewall_with_source(
+        custom_connector_id: &str,
+        source_id: Option<&str>,
+    ) -> FirewallEntry {
         FirewallEntry::Inline {
             firewall: Firewall {
                 name: format!("custom_connector_{}", custom_connector_id.replace('-', "")),
@@ -1817,7 +1860,71 @@ mod tests {
                 }],
             },
             custom_connector_id: Some(custom_connector_id.to_string()),
+            source_id: source_id.map(str::to_string),
         }
+    }
+
+    #[test]
+    fn custom_runtime_source_must_match_registration() {
+        let custom_connector_id = "550e8400-e29b-41d4-a716-446655440000";
+        let expected_source_id = "550e8400-e29b-41d4-a716-446655440001";
+        let firewall =
+            custom_runtime_firewall_with_source(custom_connector_id, Some(expected_source_id));
+        let state = ConnectorRuntimeSyncState::Available {
+            network_policy: NetworkPolicy {
+                allow: vec!["custom.read".to_string()],
+                deny: vec![],
+                ask: vec![],
+                unknown_policy: "deny".to_string(),
+            },
+            firewall: Some(firewall),
+        };
+
+        assert!(
+            custom_connector_runtime_registry_state(
+                custom_connector_id,
+                &state,
+                HashMap::new(),
+                Some(expected_source_id),
+            )
+            .is_ok()
+        );
+        assert!(matches!(
+            custom_connector_runtime_registry_state(
+                custom_connector_id,
+                &state,
+                HashMap::new(),
+                Some("550e8400-e29b-41d4-a716-446655440002"),
+            ),
+            Err("custom available result has a mismatched connector source")
+        ));
+        assert!(matches!(
+            custom_connector_runtime_registry_state(
+                custom_connector_id,
+                &state,
+                HashMap::new(),
+                None,
+            ),
+            Err("custom available result has a mismatched connector source")
+        ));
+        let source_less_state = ConnectorRuntimeSyncState::Available {
+            network_policy: NetworkPolicy {
+                allow: vec!["custom.read".to_string()],
+                deny: vec![],
+                ask: vec![],
+                unknown_policy: "deny".to_string(),
+            },
+            firewall: Some(custom_runtime_firewall(custom_connector_id)),
+        };
+        assert!(matches!(
+            custom_connector_runtime_registry_state(
+                custom_connector_id,
+                &source_less_state,
+                HashMap::new(),
+                Some(expected_source_id),
+            ),
+            Err("custom available result has a mismatched connector source")
+        ));
     }
 
     fn api_client_for_server(server: &MockServer) -> ApiClient {
@@ -1928,6 +2035,7 @@ mod tests {
                     |connector_slug| ConnectorRuntimeTargetRegistration::Builtin {
                         connector_slug: connector_slug.clone(),
                         base_url_vars: None,
+                        source_id: None,
                     },
                 )
                 .collect::<Vec<_>>();
@@ -1936,6 +2044,7 @@ mod tests {
                 .map(|connector_slug| FirewallEntry::Builtin {
                     name: connector_slug.clone(),
                     base_url_vars: None,
+                    source_id: None,
                 })
                 .collect::<Vec<_>>();
             let network_policies = connector_slugs
@@ -2144,6 +2253,7 @@ mod tests {
                     let registration = ConnectorRuntimeTargetRegistration::Builtin {
                         connector_slug: connector_slug.into(),
                         base_url_vars: None,
+                        source_id: None,
                     };
                     (
                         registration.target(),
@@ -2212,6 +2322,7 @@ mod tests {
         let firewalls = vec![FirewallEntry::Builtin {
             name: "slack".to_string(),
             base_url_vars: None,
+            source_id: None,
         }];
         let mut network_policies = HashMap::new();
         network_policies.insert(
@@ -2229,6 +2340,7 @@ mod tests {
         let runtime_targets = [ConnectorRuntimeTargetRegistration::Builtin {
             connector_slug: "slack".to_string(),
             base_url_vars: None,
+            source_id: None,
         }];
         registry
             .register_vm(
@@ -2267,16 +2379,20 @@ mod tests {
                 FirewallEntry::Builtin {
                     name,
                     base_url_vars,
+                    source_id,
                 } => Some(ConnectorRuntimeTargetRegistration::Builtin {
                     connector_slug: name.clone(),
                     base_url_vars: base_url_vars.clone(),
+                    source_id: source_id.clone(),
                 }),
                 FirewallEntry::Inline {
                     custom_connector_id: Some(custom_connector_id),
+                    source_id,
                     ..
                 } => Some(ConnectorRuntimeTargetRegistration::Custom {
                     custom_connector_id: custom_connector_id.clone(),
                     base_url_vars: HashMap::new(),
+                    source_id: source_id.clone(),
                 }),
                 FirewallEntry::Inline { .. } => None,
             })
@@ -2371,6 +2487,7 @@ mod tests {
             .map(|connector_slug| FirewallEntry::Builtin {
                 name: (*connector_slug).to_string(),
                 base_url_vars: None,
+                source_id: None,
             })
             .collect::<Vec<_>>();
         let policies = connector_slugs
@@ -3171,6 +3288,7 @@ mod tests {
                 "workspace".to_string(),
                 "acme".to_string(),
             )])),
+            source_id: None,
         }];
         let policies = HashMap::from([(
             "slack".to_string(),
@@ -3769,6 +3887,7 @@ mod tests {
         let registration = ConnectorRuntimeTargetRegistration::Custom {
             custom_connector_id: custom_connector_id.to_string(),
             base_url_vars: pinned_base_url_vars.clone(),
+            source_id: None,
         };
         let firewall = custom_runtime_firewall(custom_connector_id);
         server.mock(|when, then| {
@@ -3928,6 +4047,7 @@ mod tests {
         let firewalls = vec![FirewallEntry::Builtin {
             name: "slack".to_string(),
             base_url_vars: None,
+            source_id: None,
         }];
         let policies = HashMap::from([(
             "slack".to_string(),
@@ -4588,10 +4708,12 @@ mod tests {
             FirewallEntry::Builtin {
                 name: "slack".to_string(),
                 base_url_vars: None,
+                source_id: None,
             },
             FirewallEntry::Builtin {
                 name: "github".to_string(),
                 base_url_vars: None,
+                source_id: None,
             },
             custom_firewall,
         ];
@@ -4610,14 +4732,17 @@ mod tests {
             ConnectorRuntimeTargetRegistration::Builtin {
                 connector_slug: "slack".to_string(),
                 base_url_vars: None,
+                source_id: None,
             },
             ConnectorRuntimeTargetRegistration::Builtin {
                 connector_slug: "github".to_string(),
                 base_url_vars: None,
+                source_id: None,
             },
             ConnectorRuntimeTargetRegistration::Custom {
                 custom_connector_id: custom_connector_id.to_string(),
                 base_url_vars: HashMap::new(),
+                source_id: None,
             },
         ];
         let (_dir, registry, registry_path) =
