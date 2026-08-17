@@ -68,7 +68,7 @@ function PinnedAgentGridSkeletonCard() {
       className="flex w-full min-w-0 flex-col items-center gap-1.5 rounded-lg p-1.5"
     >
       <Skeleton className="h-9 w-9 shrink-0 rounded-full" />
-      <Skeleton className="h-3.5 w-10" />
+      <Skeleton className="h-[13.75px] w-10" />
     </div>
   );
 }
