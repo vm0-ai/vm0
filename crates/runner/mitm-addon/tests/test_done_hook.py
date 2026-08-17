@@ -1,7 +1,10 @@
 """Tests for mitm addon shutdown hooks."""
 
+import json
 import threading
+import time
 from collections.abc import Callable
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -9,7 +12,7 @@ import pytest
 import mitm_addon
 import runner_flush_lifecycle
 import usage
-from tests.pending_helpers import assert_current_pending
+from tests.pending_helpers import assert_current_pending, assert_pending
 from tests.thread_helpers import ThreadUnderTest, wait_for_event
 from tests.usage_buffer_helpers import RecordingEnqueue, event, flush_log_entries
 from tests.usage_helpers import UsageWebhookServer, install_recording_usage_timer
@@ -121,6 +124,144 @@ class TestDoneHook:
             "auth-base:shutdown:False",
             "jsonl:shutdown",
         ]
+
+    def test_done_folds_signal_received_during_shutdown_into_acknowledgements(
+        self, tmp_path: Path
+    ) -> None:
+        usage_state_id = "runner-state"
+        usage_flush_request_id = "request-1"
+        jsonl_flush_request_id = "jsonl-request-1"
+        requested_at_ms = 1_770_000_000_000
+        pending_path = tmp_path / "usage-pending"
+        usage_flush_request_path = tmp_path / "usage-flush-request"
+        jsonl_flush_request_path = tmp_path / "jsonl-flush-request"
+        jsonl_flush_state_path = tmp_path / "jsonl-flush-state"
+        network_log_path = tmp_path / "network.jsonl"
+        lifecycle_file = tmp_path / "runner_flush_lifecycle.py"
+        shutdown_flush_started = threading.Event()
+        release_shutdown_flush = threading.Event()
+        calls: list[str] = []
+
+        usage.set_pending_path(str(pending_path), usage_state_id=usage_state_id)
+        usage_flush_request_path.write_text(
+            json.dumps(
+                {
+                    "usageStateId": usage_state_id,
+                    "flushRequestId": usage_flush_request_id,
+                    "requestedAtMs": requested_at_ms,
+                }
+            )
+        )
+
+        def write_jsonl_flush_request() -> None:
+            jsonl_flush_request_path.write_text(
+                json.dumps(
+                    {
+                        "usageStateId": usage_state_id,
+                        "flushRequestId": jsonl_flush_request_id,
+                        "requestedAtMs": requested_at_ms,
+                        "path": str(network_log_path),
+                    }
+                )
+            )
+
+        def wait_for_jsonl_flush_state() -> dict[str, object]:
+            deadline = time.monotonic() + 1
+            while True:
+                try:
+                    state = json.loads(jsonl_flush_state_path.read_text())
+                except (OSError, json.JSONDecodeError):
+                    state = None
+                if (
+                    isinstance(state, dict)
+                    and state.get("flushRequestId") == jsonl_flush_request_id
+                ):
+                    return state
+
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise AssertionError(
+                        f"JSONL flush state did not acknowledge {jsonl_flush_request_id}"
+                    )
+                time.sleep(min(0.005, remaining))
+
+        def flush_usage_events(*, trigger: str) -> int:
+            calls.append(f"flush:{trigger}")
+            if trigger == "shutdown":
+                shutdown_flush_started.set()
+                assert release_shutdown_flush.wait(timeout=2)
+            return 0
+
+        def shutdown_usage_executor(*, wait: bool) -> None:
+            calls.append(f"executor:shutdown:{wait}")
+            assert_pending(
+                pending_path,
+                flows=0,
+                buffered=0,
+                reports=0,
+                flush_request_id=usage_flush_request_id,
+            )
+            state = json.loads(jsonl_flush_state_path.read_text())
+            assert state["flushRequestId"] == jsonl_flush_request_id
+            assert state["path"] == str(network_log_path)
+            assert state["pending"] == 0
+            assert not runner_flush_lifecycle._usage_flush_requested
+
+        mock_executor = MagicMock()
+        mock_executor.shutdown.side_effect = shutdown_usage_executor
+        done_thread = ThreadUnderTest(target=mitm_addon.done)
+
+        try:
+            with (
+                patch.object(runner_flush_lifecycle, "__file__", str(lifecycle_file)),
+                patch.object(usage, "flush_usage_events", side_effect=flush_usage_events),
+                patch.object(usage.webhook, "usage_executor", mock_executor),
+                patch.object(
+                    mitm_addon.auth_base_forwarder,
+                    "shutdown_forward_request_workers",
+                    lambda *, wait: calls.append(f"auth-base:shutdown:{wait}"),
+                ),
+                patch.object(
+                    mitm_addon,
+                    "shutdown_log_writer",
+                    lambda: calls.append("jsonl:shutdown"),
+                ),
+            ):
+                try:
+                    runner_flush_lifecycle.start_runner_jsonl_flush_worker()
+                    done_thread.start()
+                    wait_for_event(
+                        shutdown_flush_started,
+                        timeout=1,
+                        threads=(done_thread,),
+                        message="done did not start the shutdown usage flush",
+                    )
+
+                    runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
+                    write_jsonl_flush_request()
+                    state = wait_for_jsonl_flush_state()
+                    assert state["path"] == str(network_log_path)
+                    assert state["pending"] == 0
+                    state_before_release = json.loads(pending_path.read_text())
+                    assert "flushRequestId" not in state_before_release
+
+                    release_shutdown_flush.set()
+                    done_thread.join_and_raise(timeout=1)
+                finally:
+                    release_shutdown_flush.set()
+                    done_thread.join(timeout=1)
+
+            assert not done_thread.is_alive()
+            assert calls == [
+                "flush:shutdown",
+                "flush:runner",
+                "executor:shutdown:True",
+                "auth-base:shutdown:False",
+                "jsonl:shutdown",
+            ]
+            assert not runner_flush_lifecycle._usage_flush_requested
+        finally:
+            usage.set_pending_path("")
 
     def test_done_drains_repeated_signal_without_starting_another_worker(self):
         runner_flush_count = 0
