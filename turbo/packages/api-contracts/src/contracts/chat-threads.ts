@@ -236,21 +236,6 @@ const presentationGenerationTemplateRequestSchema = z.object({
 });
 
 /**
- * Text-to-video parameters the user chose explicitly. Everything is optional:
- * an omitted field means "let the generation service pick", so the defaults can
- * still move without rewriting messages that were authored earlier.
- */
-const videoGenerationOptionsSchema = z
-  .object({
-    model: videoModelIdSchema,
-    aspectRatio: z.enum(VIDEO_ASPECT_RATIOS),
-    duration: z.enum(VIDEO_DURATIONS),
-    resolution: z.enum(VIDEO_RESOLUTIONS),
-    generateAudio: z.boolean(),
-  })
-  .partial();
-
-/**
  * Talking-avatar parameters. Unrelated to text-to-video despite sharing the
  * "video" envelope, which older bundles rely on to parse newer messages.
  */
@@ -267,7 +252,6 @@ const videoGenerationTemplateRequestSchema = z.object({
   type: z.literal("video"),
   selection: z.object({
     stylePresetId: z.string().min(1),
-    videoOptions: videoGenerationOptionsSchema.optional(),
     avatarOptions: avatarGenerationOptionsSchema.optional(),
 
     /**
@@ -1729,9 +1713,6 @@ export type ThreadGenerationTemplates = Partial<
 >;
 export type PresentationGenerationTemplateRequest = z.infer<
   typeof presentationGenerationTemplateRequestSchema
->;
-export type VideoGenerationOptions = z.infer<
-  typeof videoGenerationOptionsSchema
 >;
 export type AvatarGenerationOptions = z.infer<
   typeof avatarGenerationOptionsSchema

@@ -2946,7 +2946,6 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
     | ReturnType<typeof projectUserMessage>
     | undefined;
   readonly latestWebsiteTemplatesEnabled: boolean;
-  readonly videoModelSelectionEnabled: boolean;
 }) {
   return measureChatCallbackPreCreateTiming(
     args.input.timing,
@@ -2957,7 +2956,6 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
         explicit: args.userMessageProjection?.primaryTemplate,
         explicitTemplates: args.userMessageProjection?.templates,
         latestWebsiteTemplatesEnabled: args.latestWebsiteTemplatesEnabled,
-        videoModelSelectionEnabled: args.videoModelSelectionEnabled,
       });
     },
   );
@@ -3061,10 +3059,6 @@ async function buildCreateQueuedChatRunInput(
       userMessageProjection,
       latestWebsiteTemplatesEnabled: isFeatureEnabled(
         FeatureSwitchKey.LatestWebsiteTemplates,
-        featureSwitchContext,
-      ),
-      videoModelSelectionEnabled: isFeatureEnabled(
-        FeatureSwitchKey.VideoModelSelection,
         featureSwitchContext,
       ),
     });

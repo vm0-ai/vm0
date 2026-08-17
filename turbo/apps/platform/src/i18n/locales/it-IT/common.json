@@ -1708,9 +1708,7 @@
       "videoOptionsLabel": "Opzioni video {{spec}}",
       "videoOptionsModel": "Modello",
       "videoOptionsRatio": "Proporzioni",
-      "videoOptionsResolution": "Risoluzione",
-      "videoSpecAudioOff": "Muto",
-      "videoSpecAudioOn": "Audio"
+      "videoOptionsResolution": "Risoluzione"
     },
     "thread": {
       "ariaLabel": "Discussione della chat",

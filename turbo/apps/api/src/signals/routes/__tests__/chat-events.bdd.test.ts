@@ -7673,43 +7673,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(videoPrompt).toContain(
       `okou generate video --provider built-in --template ${videoTemplate.id}`,
     );
-    expect(videoPrompt).not.toContain("Parameters the user set explicitly");
     await cancelChatRun(actor, video.runId);
-
-    const videoWithOptions = await sendChatRun(actor, {
-      agentId,
-      prompt: "make a vertical product video",
-      template: {
-        type: "video",
-        selection: {
-          stylePresetId: videoTemplate.id,
-          videoOptions: {
-            model: "fal-ai/veo3.1/fast",
-            aspectRatio: "9:16",
-            // Veo accepts only 4s, 6s, or 8s, so this one is dropped instead
-            // of being pinned into a request the service would reject.
-            duration: "5s",
-            resolution: "1080p",
-          },
-        },
-      },
-    });
-    const videoWithOptionsRun = await api.readRun(
-      actor,
-      videoWithOptions.runId,
-    );
-    const videoWithOptionsPrompt = videoWithOptionsRun.appendSystemPrompt ?? "";
-    expect(videoWithOptionsPrompt).toContain(
-      "Parameters the user set explicitly",
-    );
-    expect(videoWithOptionsPrompt).toContain("- Model: veo3.1-fast");
-    expect(videoWithOptionsPrompt).toContain("- Aspect ratio: 9:16");
-    expect(videoWithOptionsPrompt).toContain("- Resolution: 1080p");
-    expect(videoWithOptionsPrompt).not.toContain("Duration:");
-    expect(videoWithOptionsPrompt).toContain(
-      "`--model veo3.1-fast --aspect-ratio 9:16 --resolution 1080p` verbatim",
-    );
-    await cancelChatRun(actor, videoWithOptions.runId);
 
     if (!actor.orgId) {
       throw new Error("Expected an org-scoped actor");
@@ -7719,41 +7683,6 @@ describe("CHAT-02: generation templates and attachments", () => {
       { ...actor, orgId: actor.orgId },
       { [FeatureSwitchKey.VideoModelSelection]: true },
     );
-    const videoWithSelectionEnabled = await sendChatRun(actor, {
-      agentId,
-      prompt: "make another vertical product video",
-      template: {
-        type: "video",
-        selection: {
-          stylePresetId: videoTemplate.id,
-          videoOptions: {
-            // The run-owned prompt path ignores this historical template
-            // model. MiniMax accepts neither 720p nor silence.
-            model: "MiniMax-H3",
-            aspectRatio: "21:9",
-            duration: "5s",
-            resolution: "720p",
-            generateAudio: false,
-          },
-        },
-      },
-    });
-    const videoWithSelectionEnabledRun = await api.readRun(
-      actor,
-      videoWithSelectionEnabled.runId,
-    );
-    const videoWithSelectionEnabledPrompt =
-      videoWithSelectionEnabledRun.appendSystemPrompt ?? "";
-    expect(videoWithSelectionEnabledPrompt).not.toContain("- Model:");
-    expect(videoWithSelectionEnabledPrompt).toContain("- Aspect ratio: 21:9");
-    expect(videoWithSelectionEnabledPrompt).toContain("- Duration: 5s");
-    expect(videoWithSelectionEnabledPrompt).toContain("- Resolution: 720p");
-    expect(videoWithSelectionEnabledPrompt).toContain("- Audio: off");
-    expect(videoWithSelectionEnabledPrompt).toContain(
-      "`--aspect-ratio 21:9 --duration 5s --resolution 720p --no-audio` verbatim",
-    );
-    expect(videoWithSelectionEnabledPrompt).not.toContain("--model");
-    await cancelChatRun(actor, videoWithSelectionEnabled.runId);
 
     // Run options are the composer's channel for video parameters now. They
     // ride one message, reach no table, and only enter the prompt when the

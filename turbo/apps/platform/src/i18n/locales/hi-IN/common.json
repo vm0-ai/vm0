@@ -1668,9 +1668,7 @@
       "videoOptionsLabel": "वीडियो विकल्प {{spec}}",
       "videoOptionsModel": "मॉडल",
       "videoOptionsRatio": "अनुपात",
-      "videoOptionsResolution": "रिज़ॉल्यूशन",
-      "videoSpecAudioOff": "म्यूट",
-      "videoSpecAudioOn": "ऑडियो"
+      "videoOptionsResolution": "रिज़ॉल्यूशन"
     },
     "thread": {
       "ariaLabel": "चैट थ्रेड",
