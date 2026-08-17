@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from "node:util";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { agentComposeApiContentSchema } from "@okouai/api-contracts/contracts/composes";
+import { ALL_RUN_STATUSES } from "@okouai/api-contracts/contracts/runs";
 import { Client, type QueryResultRow } from "pg";
 import {
   buildZeroAgentComposeContent,
@@ -25,11 +26,25 @@ import {
   fingerprintSortedSet,
   type SetFingerprint,
 } from "./agent-compose-consolidation-preflight-fingerprint";
+import {
+  EXPECTED_RUNTIME_CONTENT_CONSUMER_MANIFEST,
+  collectRuntimeContentConsumerManifest,
+  type RuntimeContentConsumerManifest,
+} from "./agent-compose-consolidation-preflight-consumers";
+import {
+  ACTIVITY_BUCKETS,
+  ENVIRONMENT_OVERLAP_DIMENSIONS,
+  ENVIRONMENT_PRIMARY_CLASSES,
+  UNCLASSIFIED_PRIMARY_CLASSES,
+  UNSUPPORTED_PRIMARY_REASONS,
+  classifyExceptionRefinements,
+} from "./agent-compose-consolidation-preflight-refinements";
 
 const MINIMUM_SERVER_VERSION = 170000;
 const DEFAULT_LOCK_TIMEOUT_MS = 1000;
 const DEFAULT_STATEMENT_TIMEOUT_MS = 30_000;
 const DEFAULT_EXPECTED_DANGLING_HEAD_COUNT = 17;
+const ACTIVE_RUN_STATUSES = ["queued", "pending", "running"] as const;
 
 /** Safe digests of the six #26938-approved compose-only artifact IDs. */
 export const APPROVED_ARTIFACT_MEMBER_DIGESTS = [
@@ -45,7 +60,7 @@ export const APPROVED_ARTIFACT_SET_DIGEST =
   "a83a3c8751fa88778aca7ac93b7d595a7e4c8e9e79cb08c9696ed1dd9e943b5c";
 
 /** Exact scalar/array paths permitted in a complete production result. */
-export const PREFLIGHT_OUTPUT_ALLOWLIST = [
+const PREFLIGHT_V2_OUTPUT_ALLOWLIST = [
   "agentExecutionPlans.agentInstructionsMarkerOrMountDifferences.count",
   "agentExecutionPlans.agentInstructionsMarkerOrMountDifferences.digest",
   "agentExecutionPlans.completeSemanticParity.count",
@@ -281,6 +296,81 @@ export const PREFLIGHT_OUTPUT_ALLOWLIST = [
   "versions.total",
 ] as const;
 
+function setOutputPaths(prefix: string): string[] {
+  return [`${prefix}.count`, `${prefix}.digest`];
+}
+
+function comparisonOutputPaths(prefix: string): string[] {
+  return [
+    `${prefix}.classification`,
+    ...setOutputPaths(`${prefix}.expected`),
+    ...setOutputPaths(`${prefix}.observed`),
+  ];
+}
+
+function activityOutputPaths(prefix: string): string[] {
+  return [
+    ...ACTIVITY_BUCKETS.flatMap((bucket) => {
+      return setOutputPaths(`${prefix}.latestAttributedRun.${bucket}`);
+    }),
+    ...comparisonOutputPaths(`${prefix}.latestAttributedRun.partitionClosure`),
+    ...setOutputPaths(`${prefix}.activeNonterminalRun`),
+    ...setOutputPaths(`${prefix}.currentHeadEverExercised`),
+  ];
+}
+
+function refinementDomainOutputPaths(
+  prefix: string,
+  primaryClasses: readonly string[],
+): string[] {
+  return [
+    ...primaryClasses.flatMap((primaryClass) => {
+      return setOutputPaths(`${prefix}.primary.${primaryClass}`);
+    }),
+    ...comparisonOutputPaths(`${prefix}.primaryPartitionClosure`),
+    ...comparisonOutputPaths(`${prefix}.primaryUnionClosure`),
+    ...activityOutputPaths(`${prefix}.activity.parent`),
+    ...primaryClasses.flatMap((primaryClass) => {
+      return activityOutputPaths(`${prefix}.activity.primary.${primaryClass}`);
+    }),
+  ];
+}
+
+const PREFLIGHT_V3_OUTPUT_ALLOWLIST = [
+  ...refinementDomainOutputPaths(
+    "agentExecutionPlans.refinements.systemEnvironmentDifferences",
+    ENVIRONMENT_PRIMARY_CLASSES,
+  ),
+  ...ENVIRONMENT_OVERLAP_DIMENSIONS.flatMap((dimension) => {
+    return setOutputPaths(
+      `agentExecutionPlans.refinements.systemEnvironmentDifferences.overlaps.${dimension}`,
+    );
+  }),
+  ...comparisonOutputPaths(
+    "agentExecutionPlans.refinements.systemEnvironmentDifferences.overlapUnionClosure",
+  ),
+  ...refinementDomainOutputPaths(
+    "agentExecutionPlans.refinements.unsupportedOrInvalidContent",
+    UNSUPPORTED_PRIMARY_REASONS,
+  ),
+  ...refinementDomainOutputPaths(
+    "agentExecutionPlans.refinements.unclassifiedContent",
+    UNCLASSIFIED_PRIMARY_CLASSES,
+  ),
+  ...comparisonOutputPaths(
+    "agentExecutionPlans.runtimeConsumerManifest.discovery",
+  ),
+  ...comparisonOutputPaths(
+    "agentExecutionPlans.runtimeConsumerManifest.reviewedConsumers",
+  ),
+];
+
+/** Every and only approved scalar/array path in a complete v3 result. */
+export const PREFLIGHT_OUTPUT_ALLOWLIST = [
+  ...PREFLIGHT_V2_OUTPUT_ALLOWLIST,
+  ...PREFLIGHT_V3_OUTPUT_ALLOWLIST,
+].sort();
+
 export interface IdentityInventoryRow extends QueryResultRow {
   readonly id: string;
   readonly composePresent: boolean;
@@ -331,6 +421,11 @@ export interface AgentExecutionPlanInventoryRow extends QueryResultRow {
   readonly versionId: string | null;
   readonly insertionComposeId: string | null;
   readonly content: unknown;
+  readonly activitySnapshotTime: Date;
+  readonly latestAttributedRunAt: Date | null;
+  readonly activeNonterminalRun: boolean;
+  readonly currentHeadEverExercised: boolean;
+  readonly unknownRunStatus: boolean;
 }
 
 export interface PreflightInventory {
@@ -364,6 +459,8 @@ export interface PreflightClassificationOptions {
   >;
   readonly expectedRepositoryDependencies?: RepositoryDependencyManifest;
   readonly observedRepositoryDependencies?: RepositoryDependencyManifest;
+  readonly expectedRuntimeContentConsumers?: RuntimeContentConsumerManifest;
+  readonly observedRuntimeContentConsumers?: RuntimeContentConsumerManifest;
 }
 
 export interface ReadOnlySnapshotOptions {
@@ -958,6 +1055,8 @@ function dimensionsForAgentExecutionPlanRows(
 function classifyAgentExecutionPlans(
   identityRows: readonly IdentityInventoryRow[],
   rows: readonly AgentExecutionPlanInventoryRow[],
+  expectedRuntimeConsumers: RuntimeContentConsumerManifest,
+  observedRuntimeConsumers: RuntimeContentConsumerManifest,
   failureGates: Set<string>,
 ) {
   const expectedMatchedIds = identityRows
@@ -1042,6 +1141,32 @@ function classifyAgentExecutionPlans(
     failureGates.add("agentExecutionPlans.multiDimensionExceptions");
   }
 
+  const runtimeConsumerManifest = {
+    discovery: comparison(
+      "agent-execution-plans:runtime-consumer-manifest:discovery",
+      expectedRuntimeConsumers.discovery,
+      observedRuntimeConsumers.discovery,
+    ),
+    reviewedConsumers: comparison(
+      "agent-execution-plans:runtime-consumer-manifest:reviewed-consumers",
+      expectedRuntimeConsumers.reviewedConsumers,
+      observedRuntimeConsumers.reviewedConsumers,
+    ),
+  };
+  for (const [kind, result] of Object.entries(runtimeConsumerManifest)) {
+    if (result.classification === "drift") {
+      failureGates.add(`agentExecutionPlans.runtimeConsumerManifest.${kind}`);
+    }
+  }
+
+  const refinements = classifyExceptionRefinements({
+    rowsById,
+    environmentIds: [...dimensionIds.systemEnvironmentDifferences],
+    unsupportedIds: [...dimensionIds.unsupportedOrInvalidContent],
+    unclassifiedIds: [...dimensionIds.unclassifiedContent],
+    failureGates,
+  });
+
   const dimensionOutput = Object.fromEntries(
     AGENT_EXECUTION_PLAN_DIMENSIONS.map((dimension) => {
       return [
@@ -1074,6 +1199,8 @@ function classifyAgentExecutionPlans(
     inventoryClosure,
     partitionClosure,
     dimensionUnionClosure,
+    refinements,
+    runtimeConsumerManifest,
   };
 }
 
@@ -1555,6 +1682,11 @@ export function classifyPreflightInventory(
     options.expectedRepositoryDependencies ?? EXPECTED_REPOSITORY_DEPENDENCIES;
   const observedRepository =
     options.observedRepositoryDependencies ?? expectedRepository;
+  const expectedRuntimeConsumers =
+    options.expectedRuntimeContentConsumers ??
+    EXPECTED_RUNTIME_CONTENT_CONSUMER_MANIFEST;
+  const observedRuntimeConsumers =
+    options.observedRuntimeContentConsumers ?? expectedRuntimeConsumers;
   const failureGates = new Set<string>();
   const identity = classifyIdentity(
     {
@@ -1572,6 +1704,8 @@ export function classifyPreflightInventory(
   const agentExecutionPlans = classifyAgentExecutionPlans(
     inventory.identity,
     inventory.agentExecutionPlans,
+    expectedRuntimeConsumers,
+    observedRuntimeConsumers,
     failureGates,
   );
   const versions = classifyVersions(inventory.versions, failureGates);
@@ -1679,19 +1813,60 @@ async function collectDatabaseInventory(
   const agentExecutionPlans = await safeQuery<AgentExecutionPlanInventoryRow>(
     client,
     signal,
-    `SELECT
+    `WITH "attributedRunActivity" AS (
+       SELECT
+         "session"."agent_compose_id" AS "agentComposeId",
+         "session"."org_id" AS "orgId",
+         max("run"."created_at") AT TIME ZONE current_setting('TimeZone')
+           AS "latestAttributedRunAt",
+         coalesce(
+           bool_or("run"."status" = ANY($1::text[])),
+           false
+         ) AS "activeNonterminalRun",
+         coalesce(
+           bool_or(
+             "run"."agent_compose_version_id" = "ownedCompose"."head_version_id"
+           ),
+           false
+         ) AS "currentHeadEverExercised",
+         coalesce(
+           bool_or(NOT ("run"."status" = ANY($2::text[]))),
+           false
+         ) AS "unknownRunStatus"
+       FROM "agent_sessions" AS "session"
+       INNER JOIN "agent_runs" AS "run"
+         ON "run"."session_id" = "session"."id"
+       INNER JOIN "agent_composes" AS "ownedCompose"
+         ON "ownedCompose"."id" = "session"."agent_compose_id"
+        AND "ownedCompose"."org_id" = "session"."org_id"
+        AND "ownedCompose"."org_id" = "run"."org_id"
+       GROUP BY "session"."agent_compose_id", "session"."org_id"
+     )
+     SELECT
          "compose"."id"::text AS "id",
          "agent"."name" AS "agentName",
          "compose"."head_version_id" AS "headVersionId",
          "version"."id" AS "versionId",
          "version"."compose_id"::text AS "insertionComposeId",
-         "version"."content"
+         "version"."content",
+         transaction_timestamp() AS "activitySnapshotTime",
+         "activity"."latestAttributedRunAt",
+         coalesce("activity"."activeNonterminalRun", false)
+           AS "activeNonterminalRun",
+         coalesce("activity"."currentHeadEverExercised", false)
+           AS "currentHeadEverExercised",
+         coalesce("activity"."unknownRunStatus", false)
+           AS "unknownRunStatus"
        FROM "agent_composes" AS "compose"
        INNER JOIN "zero_agents" AS "agent"
          ON "agent"."id" = "compose"."id"
        LEFT JOIN "agent_compose_versions" AS "version"
          ON "version"."id" = "compose"."head_version_id"
+       LEFT JOIN "attributedRunActivity" AS "activity"
+         ON "activity"."agentComposeId" = "compose"."id"
+        AND "activity"."orgId" = "compose"."org_id"
        ORDER BY "compose"."id"`,
+    [ACTIVE_RUN_STATUSES, ALL_RUN_STATUSES],
   );
   const versions = await safeQuery<VersionInventoryRow>(
     client,
@@ -1774,10 +1949,12 @@ export async function executeAgentComposeConsolidationPreflight(args: {
   readonly statementTimeoutMs?: number;
 }) {
   let repositoryDependencies: RepositoryDependencyManifest;
+  let runtimeContentConsumers: RuntimeContentConsumerManifest;
   try {
-    repositoryDependencies = await collectRepositoryDependencyManifest(
-      args.repositoryRoot,
-    );
+    [repositoryDependencies, runtimeContentConsumers] = await Promise.all([
+      collectRepositoryDependencyManifest(args.repositoryRoot),
+      collectRuntimeContentConsumerManifest(args.repositoryRoot),
+    ]);
   } catch (error) {
     classifyThrownError(error, "probe.repository_inventory");
   }
@@ -1805,6 +1982,7 @@ export async function executeAgentComposeConsolidationPreflight(args: {
     return classifyPreflightInventory(snapshot.capabilities, snapshot.value, {
       ...args.classification,
       observedRepositoryDependencies: repositoryDependencies,
+      observedRuntimeContentConsumers: runtimeContentConsumers,
     });
   } catch (error) {
     classifyThrownError(error, "probe.inventory");
