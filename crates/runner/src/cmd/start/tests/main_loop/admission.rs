@@ -947,6 +947,99 @@ async fn finalizing_capacity_wait_rechecks_when_an_active_vm_parks_idle() {
     shutdown(&env, run_handle).await;
 }
 
+#[tokio::test(start_paused = true)]
+async fn finalizing_capacity_wait_reuses_matching_vm_parked_after_deadline() {
+    let destroy_gate = sandbox_mock::MockLifecycleGate::new();
+    let wait_gate = sandbox_mock::MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    let (config, env) = mock_run_config_with_overrides(test_profiles(), 2, 4096, 1, overrides);
+    let budget = Arc::clone(&config.capacity.budget);
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let reuse_key = "thread:matching-after-finalizing-deadline";
+    let predecessor_run_id = RunId::new_v4();
+    push_job(
+        &env,
+        predecessor_run_id,
+        "vm0/default",
+        Some(context_with_reuse_key(predecessor_run_id, reuse_key)),
+    );
+    wait_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("predecessor should hold the full budget while running");
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+
+    let successor_run_id = RunId::new_v4();
+    env.provider.set_claim_result(
+        successor_run_id,
+        Some(context_with_reuse_key(successor_run_id, reuse_key)),
+    );
+    env.handle
+        .discover_tx
+        .send(finalizing_candidate_until(
+            successor_run_id,
+            reuse_key,
+            predecessor_run_id,
+            TEST_RUNNER_ID,
+            TEST_HEARTBEAT_GENERATION,
+            std::time::Instant::now() + Duration::from_millis(100),
+        ))
+        .unwrap();
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+    assert!(
+        env.handle
+            .claim_candidates()
+            .iter()
+            .any(|candidate| candidate.run_id() == successor_run_id),
+        "finalizing successor should be claimed before its preference deadline"
+    );
+
+    tokio::time::advance(Duration::from_millis(101)).await;
+    env.start_observer
+        .wait_finalizing_capacity_wait_entered(successor_run_id, Duration::from_secs(5))
+        .await;
+
+    wait_gate.release_one();
+    let parked_reuse_key = env
+        .start_observer
+        .wait_vm_parked_for_reuse(predecessor_run_id, Duration::from_secs(5))
+        .await;
+    assert_eq!(parked_reuse_key, reuse_key);
+    wait_gate
+        .wait_entered(2, Duration::from_secs(5))
+        .await
+        .expect("matching idle publication should activate the successor");
+    assert_eq!(destroy_gate.entered_count(), 0);
+    assert_eq!(budget.allocated(), (2, 4096, 1));
+
+    wait_gate.release_one();
+    let predecessor_completion = env
+        .handle
+        .wait_completion(predecessor_run_id, Duration::from_secs(5))
+        .await
+        .expect("predecessor should complete after publishing its sandbox");
+    let successor_completion = env
+        .handle
+        .wait_completion(successor_run_id, Duration::from_secs(5))
+        .await
+        .expect("successor should complete with the matching sandbox");
+    assert_eq!(
+        successor_completion.reuse_result,
+        Some(SandboxReuseResult::Reused)
+    );
+    assert_eq!(
+        successor_completion.sandbox_id, predecessor_completion.sandbox_id,
+        "successor should reuse the predecessor sandbox after the deadline"
+    );
+
+    destroy_gate.release_one();
+    shutdown(&env, run_handle).await;
+}
+
 #[tokio::test]
 async fn ordinary_and_finalizing_pressure_admission_do_not_double_spend_idle_capacity() {
     let destroy_gate = sandbox_mock::MockLifecycleGate::new();

@@ -64,6 +64,18 @@ struct FinalizingPreparation<'a> {
     ctx: &'a SpawnContext,
 }
 
+struct FinalizingFallback<'a> {
+    run_id: RunId,
+    cancellation: &'a RunCancellationRegistration,
+    reuse_key: &'a str,
+    history_generation_run_id: RunId,
+    profile_name: &'a str,
+    vcpu: u32,
+    memory_mb: u32,
+    device_rate_limits: &'a Option<sandbox::DeviceRateLimits>,
+    ctx: &'a SpawnContext,
+}
+
 pub(super) fn spawn_finalizing_claim(
     request: FinalizingClaimRequest,
     ctx: &SpawnContext,
@@ -265,9 +277,18 @@ async fn prepare_finalizing_resource(
                 finalizing_fallback_reason = reason,
                 "finalizing successor entering workspace or cold fallback"
             );
-            acquire_fresh_capacity(run_id, cancellation, vcpu, memory_mb, ctx)
-                .await
-                .map(FinalizingResource::Fresh)
+            acquire_fallback_resource(FinalizingFallback {
+                run_id,
+                cancellation,
+                reuse_key: &admission.reuse_key,
+                history_generation_run_id: admission.history_generation_run_id,
+                profile_name,
+                vcpu,
+                memory_mb,
+                device_rate_limits,
+                ctx,
+            })
+            .await
         }
         FinalizingWaitOutcome::Cancelled => Err(ExecutionFailure::cancelled()),
     }
@@ -340,24 +361,58 @@ async fn wait_for_finalizing_resource(
     }
 }
 
-async fn acquire_fresh_capacity(
-    run_id: RunId,
-    cancellation: &RunCancellationRegistration,
-    vcpu: u32,
-    memory_mb: u32,
-    ctx: &SpawnContext,
-) -> Result<BudgetLease, ExecutionFailure> {
+async fn acquire_fallback_resource(
+    request: FinalizingFallback<'_>,
+) -> Result<FinalizingResource, ExecutionFailure> {
+    let FinalizingFallback {
+        run_id,
+        cancellation,
+        reuse_key,
+        history_generation_run_id,
+        profile_name,
+        vcpu,
+        memory_mb,
+        device_rate_limits,
+        ctx,
+    } = request;
     let mut idle_pool_changes = ctx.idle_pool.lock().await.subscribe_changes();
     let cancel = cancellation.token();
     let mut retiring_leases = Vec::new();
     loop {
+        if let Some(reservation) = reserve_fallback_exact(
+            cancellation,
+            reuse_key,
+            profile_name,
+            device_rate_limits,
+            history_generation_run_id,
+            ctx,
+        )
+        .await?
+        {
+            return Ok(FinalizingResource::Exact(Box::new(reservation)));
+        }
         match ResourceBudget::try_substitute_leases(
             &ctx.budget,
             std::mem::take(&mut retiring_leases),
             vcpu,
             memory_mb,
         ) {
-            Ok(lease) => return Ok(lease),
+            Ok(lease) => {
+                if let Some(reservation) = reserve_fallback_exact(
+                    cancellation,
+                    reuse_key,
+                    profile_name,
+                    device_rate_limits,
+                    history_generation_run_id,
+                    ctx,
+                )
+                .await?
+                {
+                    drop(lease);
+                    return Ok(FinalizingResource::Exact(Box::new(reservation)));
+                }
+                return Ok(FinalizingResource::Fresh(lease));
+            }
             Err(retained) => retiring_leases = retained,
         }
         if let Some(retiring) = retire_oldest_idle_entry(
@@ -393,11 +448,49 @@ async fn acquire_fresh_capacity(
                 vcpu,
                 memory_mb,
             ) => {
-                return Ok(lease);
+                if let Some(reservation) = reserve_fallback_exact(
+                    cancellation,
+                    reuse_key,
+                    profile_name,
+                    device_rate_limits,
+                    history_generation_run_id,
+                    ctx,
+                ).await? {
+                    drop(lease);
+                    return Ok(FinalizingResource::Exact(Box::new(reservation)));
+                }
+                return Ok(FinalizingResource::Fresh(lease));
             }
             _ = idle_pool_changes.changed() => {}
         }
     }
+}
+
+async fn reserve_fallback_exact(
+    cancellation: &RunCancellationRegistration,
+    reuse_key: &str,
+    profile_name: &str,
+    device_rate_limits: &Option<sandbox::DeviceRateLimits>,
+    history_generation_run_id: RunId,
+    ctx: &SpawnContext,
+) -> Result<Option<ReservedIdleSandbox>, ExecutionFailure> {
+    let Some(reservation) = reserve_reusable_idle_for_spawn(
+        reuse_key,
+        profile_name,
+        device_rate_limits,
+        Some(history_generation_run_id),
+        ctx,
+    )
+    .await
+    else {
+        return Ok(None);
+    };
+    if cancellation.token().is_cancelled() {
+        rollback_reserved_idle_for_spawn(reservation, ctx).await;
+        ctx.reuse_state_notify.notify_one();
+        return Err(ExecutionFailure::cancelled());
+    }
+    Ok(Some(reservation))
 }
 
 async fn complete_claimed_without_sandbox(
