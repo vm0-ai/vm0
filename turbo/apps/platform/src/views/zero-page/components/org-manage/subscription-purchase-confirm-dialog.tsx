@@ -1,4 +1,8 @@
 import { FeatureSwitchKey } from "@okouai/core";
+import type {
+  PlanPurchasePreviewResponse,
+  UsagePackPurchasePreviewResponse,
+} from "@okouai/api-contracts/contracts/zero-billing";
 import { Button } from "@okouai/ui";
 import {
   Dialog,
@@ -31,12 +35,70 @@ function formatAmount(amountCents: number, currency: string): string {
   });
 }
 
-export function SubscriptionPurchaseConfirmDialog() {
+type SubscriptionPurchasePreview =
+  | PlanPurchasePreviewResponse
+  | UsagePackPurchasePreviewResponse;
+
+function SubscriptionPurchaseSummary({
+  preview,
+  planName,
+}: {
+  readonly preview: SubscriptionPurchasePreview;
+  readonly planName: string;
+}) {
   const { t } = useTranslation();
-  const enabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.SavedBillingCreditPurchase] ??
-    false;
-  const state = useGet(subscriptionPurchasePreview$);
+  return (
+    <div className="mt-1">
+      <p className="pb-0.5 pt-1 text-xs font-medium text-muted-foreground">
+        {t(($) => {
+          return $.billing.credits.today;
+        })}
+      </p>
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t-[0.7px] border-border py-3.5">
+        <p className="text-sm font-medium text-foreground">
+          {t(($) => {
+            return $.billing.concurrency.dueNow;
+          })}
+        </p>
+        <p className="text-right text-3xl font-light tracking-tight tabular-nums text-foreground">
+          {formatAmount(preview.immediateAmountCents, preview.currency)}
+        </p>
+      </div>
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t-[0.7px] border-[hsl(var(--gray-100))] py-2.5">
+        <p className="text-sm font-medium text-foreground">
+          {t(($) => {
+            return $.billing.plans.usagePacks.planStep;
+          })}
+        </p>
+        <p className="text-right text-sm font-medium text-foreground">
+          {planName}
+        </p>
+      </div>
+      <p className="pb-0.5 pt-4 text-xs font-medium text-muted-foreground">
+        {t(($) => {
+          return $.billing.plans.usagePacks.management.everyMonth;
+        })}
+      </p>
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t-[0.7px] border-border py-3.5">
+        <p className="text-sm font-medium text-foreground">
+          {t(($) => {
+            return $.billing.concurrency.monthlyTotal;
+          })}
+        </p>
+        <p className="text-right text-3xl font-light tracking-tight tabular-nums text-foreground">
+          {formatAmount(preview.nextRecurringAmountCents, preview.currency)}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function SubscriptionPurchaseConfirmDialogContent({
+  preview,
+}: {
+  readonly preview: SubscriptionPurchasePreview;
+}) {
+  const { t } = useTranslation();
   const close = useSet(closeSubscriptionPurchasePreview$);
   const pageSignal = useGet(pageSignal$);
   const [confirmLoadable, confirm] = useLoadableSet(
@@ -44,111 +106,99 @@ export function SubscriptionPurchaseConfirmDialog() {
   );
   const confirming = confirmLoadable.state === "loading";
   const error = confirmLoadable.state === "hasError";
-  if (!enabled) {
-    return null;
-  }
-  const preview = state?.preview;
-  const planName = preview
-    ? preview.tier === "pro"
+  const planName =
+    preview.tier === "pro"
       ? t(($) => {
           return $.billing.plans.pro.name;
         })
       : t(($) => {
           return $.billing.plans.team.name;
-        })
-    : "";
-
+        });
+  const upgradeLabel = t(
+    ($) => {
+      return $.billing.plans.upgradeTo;
+    },
+    { plan: planName },
+  );
+  const confirmLabel =
+    preview.purchaseType === "plan"
+      ? upgradeLabel
+      : t(($) => {
+          return $.billing.common.confirm;
+        });
   return (
     <Dialog
-      open={state !== null}
+      open
       onOpenChange={(open) => {
         if (!open && !confirming) {
           close();
         }
       }}
     >
-      {preview && (
-        <DialogContent className="sm:max-w-[440px]">
-          <DialogHeader>
-            <DialogTitle>
-              {t(($) => {
-                return $.billing.plans.usagePacks.orderSummary;
-              })}
-            </DialogTitle>
-            <DialogDescription>
-              {t(($) => {
-                return $.billing.concurrency.reviewDescription;
-              })}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="mt-1 divide-y divide-border/70 border-y border-border/70">
-            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 py-4">
-              <p className="text-sm font-semibold text-foreground">
-                {t(($) => {
-                  return $.billing.plans.selectedPlan;
+      <DialogContent className="sm:max-w-[420px]">
+        <DialogHeader>
+          <DialogTitle>
+            {preview.purchaseType === "plan"
+              ? upgradeLabel
+              : t(($) => {
+                  return $.billing.plans.usagePacks.orderSummary;
                 })}
-              </p>
-              <p className="text-right text-sm font-semibold text-foreground">
-                {planName}
-              </p>
-            </div>
-            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 py-4">
-              <p className="text-sm font-semibold text-foreground">
-                {t(($) => {
-                  return $.billing.concurrency.dueNow;
-                })}
-              </p>
-              <p className="text-right text-2xl font-semibold tabular-nums tracking-tight text-primary">
-                {formatAmount(preview.immediateAmountCents, preview.currency)}
-              </p>
-            </div>
-            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 py-4">
-              <p className="text-sm font-semibold text-foreground">
-                {t(($) => {
-                  return $.billing.concurrency.monthlyTotal;
-                })}
-              </p>
-              <p className="text-right text-2xl font-semibold tabular-nums tracking-tight text-primary">
-                {formatAmount(
-                  preview.nextRecurringAmountCents,
-                  preview.currency,
-                )}
-              </p>
-            </div>
-          </div>
+          </DialogTitle>
+          <DialogDescription>
+            {t(($) => {
+              return $.billing.concurrency.reviewDescription;
+            })}
+          </DialogDescription>
+        </DialogHeader>
 
-          {error && (
-            <p className="text-sm text-destructive">
-              {t(($) => {
-                return $.billing.plans.usagePacks.planChangeError;
-              })}
-            </p>
-          )}
+        <SubscriptionPurchaseSummary preview={preview} planName={planName} />
 
-          <DialogFooter>
-            <Button variant="outline" disabled={confirming} onClick={close}>
-              {t(($) => {
-                return $.billing.common.cancel;
-              })}
-            </Button>
-            <Button
-              disabled={confirming}
-              onClick={() => {
-                detach(confirm(pageSignal), Reason.DomCallback);
-              }}
-            >
-              {confirming
-                ? t(($) => {
-                    return $.billing.common.updating;
-                  })
-                : t(($) => {
-                    return $.billing.common.confirm;
-                  })}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      )}
+        {error && (
+          <p className="text-sm text-destructive">
+            {t(($) => {
+              return $.billing.plans.usagePacks.planChangeError;
+            })}
+          </p>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" disabled={confirming} onClick={close}>
+            {t(($) => {
+              return $.billing.common.cancel;
+            })}
+          </Button>
+          <Button
+            disabled={confirming}
+            onClick={() => {
+              detach(confirm(pageSignal), Reason.DomCallback);
+            }}
+          >
+            {confirming
+              ? t(($) => {
+                  return $.billing.common.updating;
+                })
+              : confirmLabel}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
     </Dialog>
+  );
+}
+
+export function SubscriptionPurchaseConfirmDialog() {
+  const enabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.SavedBillingCreditPurchase] ??
+    false;
+  const state = useGet(subscriptionPurchasePreview$);
+
+  if (!enabled || !state) {
+    return null;
+  }
+
+  return (
+    <SubscriptionPurchaseConfirmDialogContent
+      key={state.preview.previewToken}
+      preview={state.preview}
+    />
   );
 }

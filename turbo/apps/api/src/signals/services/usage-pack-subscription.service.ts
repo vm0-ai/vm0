@@ -943,11 +943,19 @@ export const startUsagePackPurchase$ = command(
     );
     signal.throwIfAborted();
     const db = set(writeDb$);
-    const usagePackSubscriptionId = await createUsagePackPurchaseSnapshot(
+    const pending = await resolvePendingUsagePackCheckout(
       db,
       args,
       customerId,
+      signal,
     );
+    if (pending.kind === "redirect") {
+      return { status: "checkout", url: pending.url };
+    }
+    const usagePackSubscriptionId =
+      pending.kind === "reuse"
+        ? pending.usagePackSubscriptionId
+        : await createUsagePackPurchaseSnapshot(db, args, customerId);
     signal.throwIfAborted();
     const stripe = getStripeClient();
     const route = await resolveBillingPurchaseRoute(
@@ -1123,6 +1131,34 @@ async function existingUsagePackPurchaseResult(
 ): Promise<ConfirmUsagePackPurchaseResult | null> {
   const { db, orgId, preview, snapshot } = args;
   const stripe = getStripeClient();
+  if (snapshot.subscription.stripeCheckoutSessionId) {
+    const session = (await stripe.checkout.sessions.retrieve(
+      snapshot.subscription.stripeCheckoutSessionId,
+    )) as UsagePackCheckoutSessionInput;
+    signal.throwIfAborted();
+    if (session.status === "complete") {
+      return {
+        status: "confirmed",
+        response: {
+          status: "checkout_required",
+          checkoutUrl: preview.successUrl.replace(
+            "{CHECKOUT_SESSION_ID}",
+            session.id,
+          ),
+        },
+      };
+    }
+    if (session.status === "open" && session.url) {
+      return {
+        status: "confirmed",
+        response: {
+          status: "checkout_required",
+          checkoutUrl: session.url,
+        },
+      };
+    }
+    return { status: "invalid_preview" };
+  }
   if (snapshot.subscription.stripeSubscriptionId) {
     const existing = await stripe.subscriptions.retrieve(
       snapshot.subscription.stripeSubscriptionId,

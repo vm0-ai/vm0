@@ -446,6 +446,17 @@ function usagePackCheckoutTierConflicts(
   );
 }
 
+const confirmPlanPurchaseForOrg$ = command(
+  async ({ set }, orgId: string, previewToken: string, signal: AbortSignal) => {
+    const result = await set(confirmPlanPurchase$, orgId, previewToken, signal);
+    signal.throwIfAborted();
+    if (result.status === "invalid_preview") {
+      return conflict("Plan purchase preview is no longer valid");
+    }
+    return { status: 200 as const, body: result.response };
+  },
+);
+
 const checkoutAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   if (auth.orgRole !== "admin") {
@@ -459,6 +470,18 @@ const checkoutAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
   if (!bodyResult.ok) {
     return bodyResult.response;
+  }
+  if (bodyResult.data.previewToken) {
+    const confirmation = await set(
+      confirmPlanPurchase$,
+      auth.orgId,
+      bodyResult.data.previewToken,
+      signal,
+    );
+    signal.throwIfAborted();
+    if (confirmation.status !== "invalid_preview") {
+      return { status: 200 as const, body: confirmation.response };
+    }
   }
   const {
     tier,
@@ -582,17 +605,12 @@ const checkoutConfirmAuthed$ = command(
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
-    const result = await set(
-      confirmPlanPurchase$,
+    return await set(
+      confirmPlanPurchaseForOrg$,
       auth.orgId,
       bodyResult.data.previewToken,
       signal,
     );
-    signal.throwIfAborted();
-    if (result.status === "invalid_preview") {
-      return conflict("Plan purchase preview is no longer valid");
-    }
-    return { status: 200 as const, body: result.response };
   },
 );
 
@@ -609,11 +627,43 @@ const checkoutConfirm$ = command(async ({ set }, signal: AbortSignal) => {
   );
 });
 
+const confirmUsagePackPurchaseForOrg$ = command(
+  async ({ set }, orgId: string, previewToken: string, signal: AbortSignal) => {
+    const result = await set(
+      confirmUsagePackPurchase$,
+      orgId,
+      previewToken,
+      signal,
+    );
+    signal.throwIfAborted();
+    if (result.status === "invalid_preview") {
+      return conflict("Usage pack purchase preview is no longer valid");
+    }
+    return { status: 200 as const, body: result.response };
+  },
+);
+
 const usagePackCheckoutAuthed$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     if (auth.orgRole !== "admin") {
       return adminRequired;
+    }
+
+    const bodyResult = await get(
+      bodyResultOf(zeroBillingUsagePackCheckoutContract.create),
+    );
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+    if (bodyResult.data.previewToken) {
+      return await set(
+        confirmUsagePackPurchaseForOrg$,
+        auth.orgId,
+        bodyResult.data.previewToken,
+        signal,
+      );
     }
 
     const overrides = await get(
@@ -637,27 +687,13 @@ const usagePackCheckoutAuthed$ = command(
     }
     signal.throwIfAborted();
 
-    const bodyResult = await get(
-      bodyResultOf(zeroBillingUsagePackCheckoutContract.create),
-    );
-    signal.throwIfAborted();
-    if (!bodyResult.ok) {
-      return bodyResult.response;
-    }
-    const {
-      tier,
-      supportsInAppPreview,
-      memberUsagePacks,
-      successUrl,
-      cancelUrl,
-      adAttribution,
-    } = bodyResult.data;
+    const body = bodyResult.data;
     const previewEnabled = await set(
       billingPurchasePreviewEnabled$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
-        requested: supportsInAppPreview === true,
+        requested: body.supportsInAppPreview === true,
       },
       signal,
     );
@@ -665,20 +701,20 @@ const usagePackCheckoutAuthed$ = command(
     const resolvedAttribution = await checkoutAttribution(
       clerk,
       auth.userId,
-      adAttribution,
+      body.adAttribution,
       signal,
     );
 
-    if (!checkoutRedirectsAllowed(successUrl, cancelUrl)) {
+    if (!checkoutRedirectsAllowed(body.successUrl, body.cancelUrl)) {
       return badRequestMessage(
         "successUrl and cancelUrl must match the platform origin",
       );
     }
 
-    const planPriceId = activeUsagePackPlanPriceId(tier);
+    const planPriceId = activeUsagePackPlanPriceId(body.tier);
     if (!planPriceId) {
       return badRequestMessage(
-        `Usage pack plan price not configured for ${tier} tier`,
+        `Usage pack plan price not configured for ${body.tier} tier`,
       );
     }
 
@@ -702,7 +738,7 @@ const usagePackCheckoutAuthed$ = command(
       {
         clerk,
         orgId: auth.orgId,
-        selections: memberUsagePacks,
+        selections: body.memberUsagePacks,
       },
       signal,
     );
@@ -712,11 +748,11 @@ const usagePackCheckoutAuthed$ = command(
       );
     }
 
-    if (usagePackCheckoutTierConflicts(metadata, tier)) {
+    if (usagePackCheckoutTierConflicts(metadata, body.tier)) {
       return badRequestMessage(
         checkoutTierConflictMessage({
           currentTier: metadata?.tier,
-          targetTier: tier,
+          targetTier: body.tier,
         }),
       );
     }
@@ -725,11 +761,11 @@ const usagePackCheckoutAuthed$ = command(
       startUsagePackPurchase$,
       {
         orgId: auth.orgId,
-        tier,
+        tier: body.tier,
         planPriceId,
         allocations,
-        successUrl,
-        cancelUrl,
+        successUrl: body.successUrl,
+        cancelUrl: body.cancelUrl,
         adAttribution: resolvedAttribution,
         supportsInAppPreview: previewEnabled,
         sourceSubscriptionId: metadata?.stripeSubscriptionId ?? null,
@@ -757,17 +793,12 @@ const usagePackCheckoutConfirmAuthed$ = command(
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
-    const result = await set(
-      confirmUsagePackPurchase$,
+    return await set(
+      confirmUsagePackPurchaseForOrg$,
       auth.orgId,
       bodyResult.data.previewToken,
       signal,
     );
-    signal.throwIfAborted();
-    if (result.status === "invalid_preview") {
-      return conflict("Usage pack purchase preview is no longer valid");
-    }
-    return { status: 200 as const, body: result.response };
   },
 );
 

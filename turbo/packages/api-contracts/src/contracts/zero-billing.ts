@@ -191,6 +191,7 @@ const stripeRedirectUrlSchema = z.string().url().max(5000);
 const checkoutRequestSchema = z.object({
   tier: z.enum(["pro", "team"]),
   supportsInAppPreview: z.boolean().optional(),
+  previewToken: z.string().min(1).optional(),
   successUrl: stripeRedirectUrlSchema,
   cancelUrl: stripeRedirectUrlSchema,
   trialDays: z.literal(7).optional(),
@@ -256,6 +257,7 @@ export type UsagePackCatalogItem = z.infer<typeof usagePackCatalogItemSchema>;
 const usagePackCheckoutRequestSchema = z.object({
   tier: z.enum(["pro", "team"]),
   supportsInAppPreview: z.boolean().optional(),
+  previewToken: z.string().min(1).optional(),
   memberUsagePacks: z.array(memberUsagePackSchema).min(1).max(1000),
   successUrl: z.string().url(),
   cancelUrl: z.string().url(),
@@ -639,10 +641,15 @@ export const zeroBillingCheckoutContract = c.router({
     headers: authHeadersSchema,
     body: checkoutRequestSchema,
     responses: {
-      200: z.union([checkoutResponseSchema, planPurchasePreviewResponseSchema]),
+      200: z.union([
+        checkoutResponseSchema,
+        planPurchasePreviewResponseSchema,
+        billingPurchaseConfirmResponseSchema,
+      ]),
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
+      409: apiErrorSchema,
       500: apiErrorSchema,
       503: apiErrorSchema,
     },
@@ -696,10 +703,12 @@ export const zeroBillingUsagePackCheckoutContract = c.router({
       200: z.union([
         checkoutResponseSchema,
         usagePackPurchasePreviewResponseSchema,
+        billingPurchaseConfirmResponseSchema,
       ]),
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
+      409: apiErrorSchema,
       500: apiErrorSchema,
       503: apiErrorSchema,
     },
@@ -1408,6 +1417,10 @@ export type ZeroBillingRedeemCodeContract =
 export type BillingStatusResponse = z.infer<typeof billingStatusResponseSchema>;
 export type AutoRechargeConfig = z.infer<typeof autoRechargeSchema>;
 export type CheckoutResponse = z.infer<typeof checkoutResponseSchema>;
+export type CheckoutRequest = z.infer<typeof checkoutRequestSchema>;
+export type UsagePackCheckoutRequest = z.infer<
+  typeof usagePackCheckoutRequestSchema
+>;
 export type PlanPurchasePreviewResponse = z.infer<
   typeof planPurchasePreviewResponseSchema
 >;

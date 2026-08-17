@@ -1042,6 +1042,7 @@ async function createConfirmedPlanSubscription(
       expandedLatestInvoice(subscription),
       `plan:${preview.purchaseId}`,
       signal,
+      { payOpenInvoice: true },
     ),
   };
 }
@@ -1076,6 +1077,7 @@ async function confirmPlanPurchaseTransaction(
         expandedLatestInvoice(subscriptionState.existing),
         `plan:${preview.purchaseId}`,
         signal,
+        { payOpenInvoice: true },
       ),
     };
   }

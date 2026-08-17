@@ -16,11 +16,13 @@ import {
   zeroBillingDowngradeContract,
   zeroBillingRestoreContract,
   type BillingStatusResponse,
+  type CheckoutRequest,
   type ConcurrencySubscriptionChangePreviewResponse,
   type CreditPurchasePreviewResponse,
   type MemberUsagePack,
   type PlanPurchasePreviewResponse,
   type UsagePackCreditsResponse,
+  type UsagePackCheckoutRequest,
   type UsagePackPurchasePreviewResponse,
   type UsagePackMigrationStateResponse,
 } from "@okouai/api-contracts/contracts/zero-billing";
@@ -281,13 +283,19 @@ const internalConcurrencyConfirmDialog$ =
 const internalCreditPurchasePreview$ = state<CreditPurchasePreviewState | null>(
   null,
 );
-type SubscriptionPurchasePreview =
-  | PlanPurchasePreviewResponse
-  | UsagePackPurchasePreviewResponse;
-interface SubscriptionPurchasePreviewState {
-  readonly preview: SubscriptionPurchasePreview;
-  readonly newTab: boolean;
-}
+type SubscriptionPurchasePreviewState =
+  | {
+      readonly purchaseType: "plan";
+      readonly preview: PlanPurchasePreviewResponse;
+      readonly request: CheckoutRequest;
+      readonly newTab: boolean;
+    }
+  | {
+      readonly purchaseType: "usage_pack";
+      readonly preview: UsagePackPurchasePreviewResponse;
+      readonly request: UsagePackCheckoutRequest;
+      readonly newTab: boolean;
+    };
 const internalSubscriptionPurchasePreview$ =
   state<SubscriptionPurchasePreviewState | null>(null);
 
@@ -793,30 +801,36 @@ export const startCheckout$ = command(
 
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingCheckoutContract);
+    const request: CheckoutRequest = {
+      tier,
+      ...(supportsInAppPreview ? { supportsInAppPreview: true } : {}),
+      successUrl: stripeSuccessUrl,
+      cancelUrl: cancelUrl.toString(),
+      ...(options?.trialDays === undefined
+        ? {}
+        : { trialDays: options.trialDays }),
+      ...(adAttribution === undefined ? {} : { adAttribution }),
+    };
     const result = await accept(
       client.create({
-        body: {
-          tier,
-          ...(supportsInAppPreview ? { supportsInAppPreview: true } : {}),
-          successUrl: stripeSuccessUrl,
-          cancelUrl: cancelUrl.toString(),
-          ...(options?.trialDays === undefined
-            ? {}
-            : { trialDays: options.trialDays }),
-          ...(adAttribution === undefined ? {} : { adAttribution }),
-        },
+        body: request,
         fetchOptions: { signal },
       }),
       [200],
     );
     signal.throwIfAborted();
     set(capturePaidOnboardingCheckoutCreated$, "paywall");
-    if (!("url" in result.body)) {
+    if (!("url" in result.body) && result.body.status === "preview") {
       set(internalSubscriptionPurchasePreview$, {
+        purchaseType: "plan",
         preview: result.body,
+        request,
         newTab,
       });
       return;
+    }
+    if (!("url" in result.body)) {
+      throw new Error("Plan checkout returned an unexpected confirmation");
     }
     set(capturePaidOnboardingRedirectToStripe$, "paywall");
     if (newTab) {
@@ -858,27 +872,35 @@ export const startUsagePackCheckout$ = command(
 
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingUsagePackCheckoutContract);
+    const request: UsagePackCheckoutRequest = {
+      tier: args.tier,
+      ...(supportsInAppPreview ? { supportsInAppPreview: true } : {}),
+      memberUsagePacks: [...args.memberUsagePacks],
+      successUrl: stripeSuccessUrl,
+      cancelUrl: cancelUrl.toString(),
+      ...(adAttribution === undefined ? {} : { adAttribution }),
+    };
     const result = await accept(
       client.create({
-        body: {
-          tier: args.tier,
-          ...(supportsInAppPreview ? { supportsInAppPreview: true } : {}),
-          memberUsagePacks: [...args.memberUsagePacks],
-          successUrl: stripeSuccessUrl,
-          cancelUrl: cancelUrl.toString(),
-          ...(adAttribution === undefined ? {} : { adAttribution }),
-        },
+        body: request,
         fetchOptions: { signal },
       }),
       [200],
     );
     signal.throwIfAborted();
-    if (!("url" in result.body)) {
+    if (!("url" in result.body) && result.body.status === "preview") {
       set(internalSubscriptionPurchasePreview$, {
+        purchaseType: "usage_pack",
         preview: result.body,
+        request,
         newTab,
       });
       return;
+    }
+    if (!("url" in result.body)) {
+      throw new Error(
+        "Usage pack checkout returned an unexpected confirmation",
+      );
     }
     if (newTab) {
       window.open(result.body.url, "_blank");
@@ -896,22 +918,89 @@ export const confirmSubscriptionPurchase$ = command(
     }
     const createClient = get(zeroClient$);
     const response =
-      state.preview.purchaseType === "plan"
+      state.purchaseType === "plan"
         ? await accept(
-            createClient(zeroBillingCheckoutContract).confirm({
-              body: { previewToken: state.preview.previewToken },
+            createClient(zeroBillingCheckoutContract).create({
+              body: {
+                ...state.request,
+                previewToken: state.preview.previewToken,
+              },
               fetchOptions: { signal },
             }),
-            [200],
+            [200, 409],
           )
         : await accept(
-            createClient(zeroBillingUsagePackCheckoutContract).confirm({
-              body: { previewToken: state.preview.previewToken },
+            createClient(zeroBillingUsagePackCheckoutContract).create({
+              body: {
+                ...state.request,
+                previewToken: state.preview.previewToken,
+              },
               fetchOptions: { signal },
             }),
             [200],
           );
     signal.throwIfAborted();
+    if (response.status === 409) {
+      if (state.purchaseType !== "plan") {
+        throw new Error("Usage pack confirmation returned a conflict");
+      }
+      const refreshed = await accept(
+        createClient(zeroBillingCheckoutContract).create({
+          body: state.request,
+          fetchOptions: { signal },
+        }),
+        [200],
+      );
+      signal.throwIfAborted();
+      if ("url" in refreshed.body) {
+        set(capturePaidOnboardingRedirectToStripe$, "paywall");
+        if (state.newTab) {
+          window.open(refreshed.body.url, "_blank");
+        } else {
+          window.location.href = refreshed.body.url;
+        }
+        return;
+      }
+      if (refreshed.body.status !== "preview") {
+        throw new Error("Plan preview refresh returned a confirmation");
+      }
+      set(internalSubscriptionPurchasePreview$, {
+        ...state,
+        preview: refreshed.body,
+      });
+      return;
+    }
+    if ("url" in response.body) {
+      if (state.newTab) {
+        window.open(response.body.url, "_blank");
+      } else {
+        window.location.href = response.body.url;
+      }
+      return;
+    }
+    if (response.body.status === "preview") {
+      if (
+        state.purchaseType === "plan" &&
+        response.body.purchaseType === "plan"
+      ) {
+        set(internalSubscriptionPurchasePreview$, {
+          ...state,
+          preview: response.body,
+        });
+        return;
+      }
+      if (
+        state.purchaseType === "usage_pack" &&
+        response.body.purchaseType === "usage_pack"
+      ) {
+        set(internalSubscriptionPurchasePreview$, {
+          ...state,
+          preview: response.body,
+        });
+        return;
+      }
+      throw new Error("Subscription preview refresh changed purchase type");
+    }
     if (response.body.status === "pending_payment") {
       if (state.newTab) {
         window.open(response.body.hostedInvoiceUrl, "_blank");

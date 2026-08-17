@@ -418,6 +418,9 @@ const purchaseConfirmInner$ = command(
       );
     }
     if (result.status === "pending_payment") {
+      if (!body.data.paymentMethodPreviewToken) {
+        return conflict("Payment confirmation is required");
+      }
       return {
         status: 200 as const,
         body: {
