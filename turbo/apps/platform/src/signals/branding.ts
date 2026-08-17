@@ -1,20 +1,12 @@
 import { computed } from "ccstate";
+import { isOkouHostname } from "../lib/platform-host.ts";
 
 type Branding = "vm0" | "okou";
 export type BrandName = "VM0" | "Okou";
 export type AssistantName = "Zero" | "Okou";
 
-const OKOU_ROOT_DOMAINS = ["okou.ai", "omby.ai", "okou-app.pages.dev"] as const;
-
 export function resolveBrandNameForHostname(hostname: string): BrandName {
-  const normalizedHostname = hostname.toLowerCase().replace(/:\d+$/u, "");
-  const isOkou = OKOU_ROOT_DOMAINS.some((domain) => {
-    return (
-      normalizedHostname === domain || normalizedHostname.endsWith(`.${domain}`)
-    );
-  });
-
-  return isOkou ? "Okou" : "VM0";
+  return isOkouHostname(hostname) ? "Okou" : "VM0";
 }
 
 export function resolveAssistantNameForHostname(
