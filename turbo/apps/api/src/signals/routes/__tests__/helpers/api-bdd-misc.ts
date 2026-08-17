@@ -4,6 +4,7 @@ import {
 } from "@okouai/api-contracts/contracts/logs";
 import type { z } from "zod";
 import { emailUnsubscribeContract } from "@okouai/api-contracts/contracts/email-unsubscribe";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { pushSubscriptionsContract } from "@okouai/api-contracts/contracts/push-subscriptions";
 import { userExportContract } from "@okouai/api-contracts/contracts/user-export";
 import type {
@@ -298,12 +299,16 @@ export function createMiscRoutesApi(context: TestContext) {
     async requestEmailUnsubscribePage(
       token: string | undefined,
       statuses: readonly (302 | 400)[],
+      publicBrand: PublicBrand = "vm0",
     ) {
       return await accept(
         setupApp({ context, routes: emailUnsubscribeRoutes })(
           emailUnsubscribeContract,
         ).get({
           query: { token },
+          ...(publicBrand === "okou"
+            ? { extraHeaders: { origin: "https://app.okou.ai" } }
+            : {}),
         }),
         statuses,
       );

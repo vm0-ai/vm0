@@ -4,6 +4,7 @@ import { command } from "ccstate";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
+import { publicBrand$ } from "../context/hono";
 import type { RouteEntry } from "../route-entry";
 import {
   createZeroBrowser$,
@@ -39,12 +40,15 @@ const createBrowserInner$ = command(
       return body.response;
     }
     const auth = get(organizationAuthContext$);
+    const publicBrand =
+      auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
     const result = await set(
       createZeroBrowser$,
       {
         actor: {
           orgId: auth.orgId,
           userId: auth.userId,
+          publicBrand,
           ...("runId" in auth ? { runId: auth.runId } : {}),
         },
         input: body.data,
@@ -65,11 +69,14 @@ const useBrowserInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return body.response;
   }
   const auth = get(organizationAuthContext$);
+  const publicBrand =
+    auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
   const result = await set(
     useZeroBrowser$,
     {
       orgId: auth.orgId,
       userId: auth.userId,
+      publicBrand,
       ...("runId" in auth ? { runId: auth.runId } : {}),
     },
     signal,
@@ -88,11 +95,14 @@ const leaseBrowserInner$ = command(
       return body.response;
     }
     const auth = get(organizationAuthContext$);
+    const publicBrand =
+      auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
     const result = await set(
       leaseCurrentZeroBrowser$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
+        publicBrand,
         ...("runId" in auth ? { runId: auth.runId } : {}),
       },
       signal,
@@ -113,11 +123,14 @@ const leaseBrowserByThreadInner$ = command(
       return body.response;
     }
     const auth = get(organizationAuthContext$);
+    const publicBrand =
+      auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
     const result = await set(
       leaseZeroBrowserByThread$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
+        publicBrand,
         chatThreadId: get(leaseByThreadParams$).threadId,
         ...("runId" in auth ? { runId: auth.runId } : {}),
       },
@@ -138,11 +151,14 @@ const openBrowserInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return body.response;
   }
   const auth = get(organizationAuthContext$);
+  const publicBrand =
+    auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
   const result = await set(
     openZeroBrowserForThread$,
     {
       orgId: auth.orgId,
       userId: auth.userId,
+      publicBrand,
       chatThreadId: get(openParams$).threadId,
       lifecycleEventId: body.data.eventId,
       ...("runId" in auth ? { runId: auth.runId } : {}),
@@ -164,11 +180,14 @@ const closeBrowserInner$ = command(
       return body.response;
     }
     const auth = get(organizationAuthContext$);
+    const publicBrand =
+      auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
     const result = await set(
       closeZeroBrowserForThread$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
+        publicBrand,
         chatThreadId: get(closeParams$).threadId,
         lifecycleEventId: body.data.eventId,
         ...("runId" in auth ? { runId: auth.runId } : {}),
@@ -191,11 +210,14 @@ const resizeBrowserByThreadInner$ = command(
       return body.response;
     }
     const auth = get(organizationAuthContext$);
+    const publicBrand =
+      auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
     const result = await set(
       resizeZeroBrowserByThread$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
+        publicBrand,
         chatThreadId: get(resizeByThreadParams$).threadId,
         aspectRatio: body.data.aspectRatio,
         ...("runId" in auth ? { runId: auth.runId } : {}),
@@ -211,11 +233,14 @@ const resizeBrowserByThreadInner$ = command(
 const currentBrowserInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
+    const publicBrand =
+      auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
     const result = await set(
       getCurrentZeroBrowser$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
+        publicBrand,
         ...("runId" in auth ? { runId: auth.runId } : {}),
       },
       signal,
@@ -229,11 +254,14 @@ const currentBrowserInner$ = command(
 const getParams$ = pathParamsOf(zeroBrowserContract.get);
 const getBrowserInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
+  const publicBrand =
+    auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
   const result = await set(
     getZeroBrowser$,
     {
       orgId: auth.orgId,
       userId: auth.userId,
+      publicBrand,
       chatThreadId: get(getParams$).threadId,
       ...("runId" in auth ? { runId: auth.runId } : {}),
     },

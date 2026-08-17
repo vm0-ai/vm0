@@ -1,7 +1,9 @@
 import { command } from "ccstate";
 import { emailUnsubscribeContract } from "@okouai/api-contracts/contracts/email-unsubscribe";
+import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 
 import { env } from "../../lib/env";
+import { publicBrand$ } from "../context/hono";
 import { queryOf } from "../context/request";
 import {
   unsubscribeEmailUser$,
@@ -31,7 +33,7 @@ const getEmailUnsubscribe$ = command(async ({ get }, signal: AbortSignal) => {
     return invalidTokenResponse();
   }
 
-  const appUrl = env("APP_URL");
+  const appUrl = appUrlForPublicBrand(env("APP_URL"), get(publicBrand$));
   return new Response(null, {
     status: 302,
     headers: {

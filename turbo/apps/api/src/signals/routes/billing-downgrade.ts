@@ -1,5 +1,6 @@
 import { command } from "ccstate";
 import { zeroBillingDowngradeContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 
 import { env, optionalEnv } from "../../lib/env";
 import { billingRedirectAllowed } from "../../lib/billing-redirect";
@@ -10,6 +11,7 @@ import {
 } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
+import { publicBrand$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { downgradeSubscription$ } from "../services/zero-billing-downgrade.service";
 import type { RouteEntry } from "../route-entry";
@@ -39,7 +41,9 @@ const downgradeAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
     return bodyResult.response;
   }
   const { targetTier } = bodyResult.data;
-  const returnUrl = bodyResult.data.returnUrl ?? env("APP_URL");
+  const returnUrl =
+    bodyResult.data.returnUrl ??
+    appUrlForPublicBrand(env("APP_URL"), get(publicBrand$));
   if (!billingRedirectAllowed(returnUrl)) {
     return badRequestMessage("returnUrl must match the platform origin");
   }

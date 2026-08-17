@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 import { testBrowserReconcileContract } from "@okouai/api-contracts/contracts/test-browser-reconcile";
 import {
@@ -182,6 +183,21 @@ function acceptBrowserUseCdpSessions(
   }
 }
 
+function browserHeadersForRun(
+  runs: ReturnType<typeof createRunsApi>,
+  actor: ApiTestUser,
+  runId: string,
+  publicBrand?: PublicBrand,
+): { readonly authorization: string } {
+  const browserToken = runs.zeroTokenForRunWithCapabilities(
+    actor,
+    runId,
+    ["browser:read", "browser:write"],
+    publicBrand,
+  );
+  return { authorization: `Bearer ${browserToken}` };
+}
+
 async function claimChatRun(
   runs: ReturnType<typeof createRunsApi>,
   actor: ApiTestUser,
@@ -193,12 +209,8 @@ async function claimChatRun(
   if (!okouToken) {
     throw new Error("Expected the runner claim to include OKOU_TOKEN");
   }
-  const browserToken = runs.zeroTokenForRunWithCapabilities(actor, runId, [
-    "browser:read",
-    "browser:write",
-  ]);
   return {
-    browserHeaders: { authorization: `Bearer ${browserToken}` },
+    browserHeaders: browserHeadersForRun(runs, actor, runId),
     sandboxHeaders: {
       authorization: `Bearer ${claim.sandboxToken}`,
     },
@@ -411,10 +423,22 @@ describe("okou browser route", () => {
     if (sent.status !== 201 || sent.body.runId === null) {
       throw new Error("Expected a chat run");
     }
+    const legacySandboxToken = runs.sandboxTokenForRun(actor, sent.body.runId);
+    const legacyCreated = await accept(
+      authorizationClient().create({
+        headers: { authorization: `Bearer ${legacySandboxToken}` },
+        body: {},
+      }),
+      [200],
+    );
+    expect(new URL(legacyCreated.body.authorizationUrl).origin).toBe(
+      "https://app.vm0.ai",
+    );
     const runToken = runs.zeroTokenForRunWithCapabilities(
       actor,
       sent.body.runId,
       [],
+      "okou",
     );
     const created = await accept(
       authorizationClient().create({
@@ -422,6 +446,9 @@ describe("okou browser route", () => {
         body: {},
       }),
       [200],
+    );
+    expect(new URL(created.body.authorizationUrl).origin).toBe(
+      "https://app.okou.ai",
     );
     const requestToken = decodeURIComponent(
       new URL(created.body.authorizationUrl).pathname.split("/").at(-1) ?? "",
@@ -479,6 +506,12 @@ describe("okou browser route", () => {
       actor,
       agent.agentId,
       "Open a managed browser",
+    );
+    const firstBrowserHeaders = browserHeadersForRun(
+      runs,
+      actor,
+      first.runId,
+      "okou",
     );
     const other = await createClaimedChatRun(
       chat,
@@ -569,7 +602,7 @@ describe("okou browser route", () => {
     );
 
     const firstCreateRequest = client().create({
-      headers: first.claim.browserHeaders,
+      headers: firstBrowserHeaders,
       body: {
         name: "booking",
         proxyCountryCode: null,
@@ -593,7 +626,7 @@ describe("okou browser route", () => {
       // reclamation through the idle lease instead.
       timeoutMinutes: 240,
       idleExpiresAt: isoAt(10 * MINUTE_MS),
-      viewerUrl: `https://app.vm0.ai/browsers/${created.body.browser.threadId}`,
+      viewerUrl: `https://app.okou.ai/browsers/${created.body.browser.threadId}`,
       screen: {
         width: 1440,
         height: 900,
@@ -606,6 +639,7 @@ describe("okou browser route", () => {
     expect(createdInOtherThread.body.browser).toMatchObject({
       name: "research",
       status: "active",
+      viewerUrl: `https://app.vm0.ai/browsers/${createdInOtherThread.body.browser.threadId}`,
       screen: {
         width: 1440,
         height: 900,
@@ -646,7 +680,7 @@ describe("okou browser route", () => {
       {
         method: "POST",
         headers: {
-          ...first.claim.browserHeaders,
+          ...firstBrowserHeaders,
           "content-type": "application/json",
         },
         body: JSON.stringify({ aspectRatio: 0.75 }),
@@ -725,6 +759,7 @@ describe("okou browser route", () => {
     const restoredForAnotherViewer = await accept(
       client().get({
         headers: { authorization: "Bearer clerk-session" },
+        extraHeaders: { origin: "https://app.okou.ai" },
         params: { threadId: created.body.browser.threadId },
       }),
       [200],
@@ -734,6 +769,9 @@ describe("okou browser route", () => {
       height: 1920,
       resizable: true,
     });
+    expect(restoredForAnotherViewer.body.browser.viewerUrl).toBe(
+      `https://app.okou.ai/browsers/${created.body.browser.threadId}`,
+    );
 
     context.mocks.browserUseCdp.command.mockClear();
     const clampedTall = await accept(
@@ -786,13 +824,13 @@ describe("okou browser route", () => {
       signal: context.signal,
       routes: TEST_APP_ROUTES,
     }).request(`/api/zero/chat-threads/${randomUUID()}/browser`, {
-      headers: first.claim.browserHeaders,
+      headers: firstBrowserHeaders,
     });
     expect(copiedToAnotherThread.status).toBe(404);
 
     const duplicateNew = await accept(
       client().create({
-        headers: first.claim.browserHeaders,
+        headers: firstBrowserHeaders,
         body: {
           name: "another",
           proxyCountryCode: null,
@@ -833,7 +871,7 @@ describe("okou browser route", () => {
     expect(providerStops()).toBe(0);
     const stillLive = await accept(
       client().get({
-        headers: first.claim.browserHeaders,
+        headers: firstBrowserHeaders,
         params: { threadId: created.body.browser.threadId },
       }),
       [200],

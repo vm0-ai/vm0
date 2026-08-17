@@ -2,7 +2,7 @@ import { createHmac, randomUUID } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
-import { env } from "../../../lib/env";
+import { env, mockEnv } from "../../../lib/env";
 import { testContext } from "../../../__tests__/test-context";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
@@ -158,12 +158,21 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
     });
 
     const validToken = unsubscribeToken(`user_${randomUUID()}`);
+    mockEnv("APP_URL", "https://app.vm0.ai");
     const unsubscribePage = await api.requestEmailUnsubscribePage(
       validToken,
       [302],
     );
     expect(unsubscribePage.headers.get("Location")).toBe(
-      `http://localhost:3002/email/unsubscribe?token=${validToken}`,
+      `https://app.vm0.ai/email/unsubscribe?token=${validToken}`,
+    );
+    const okouUnsubscribePage = await api.requestEmailUnsubscribePage(
+      validToken,
+      [302],
+      "okou",
+    );
+    expect(okouUnsubscribePage.headers.get("Location")).toBe(
+      `https://app.okou.ai/email/unsubscribe?token=${validToken}`,
     );
 
     const unsubscribed = await api.requestEmailUnsubscribe(validToken, [200]);

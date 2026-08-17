@@ -20,7 +20,6 @@ import { convert } from "html-to-text";
 import { z } from "zod";
 
 import { pgTextDecoder } from "../../lib/db-structured-result";
-import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../../lib/time";
@@ -113,14 +112,12 @@ interface MailConnection extends ConnectorCredentialConnection {
 interface MailDraftResult {
   readonly kind: "ok";
   readonly mailDraftId: string;
-  readonly mailDraftUrl: string;
   readonly mailDraft: ZeroMailDraft;
 }
 
 interface MailDraftLinkResult {
   readonly kind: "ok";
   readonly mailDraftId: string;
-  readonly mailDraftUrl: string;
 }
 
 interface MailDraftAttachmentSuccess {
@@ -240,15 +237,10 @@ interface MailAccess {
   readonly connection: MailConnection;
 }
 
-function mailDraftUrl(mailDraftId: string): string {
-  return `${env("APP_URL").replace(/\/+$/u, "")}/mail/drafts/${mailDraftId}`;
-}
-
 function linkResult(mailDraftId: string): MailDraftLinkResult {
   return {
     kind: "ok",
     mailDraftId,
-    mailDraftUrl: mailDraftUrl(mailDraftId),
   };
 }
 

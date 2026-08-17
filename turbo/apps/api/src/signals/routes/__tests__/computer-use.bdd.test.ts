@@ -15,7 +15,9 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
+import { mockEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
+import { generateSandboxToken } from "../../auth/tokens";
 import { testContext } from "../../../__tests__/test-context";
 import { testComputerUseStateRoutes } from "../test-computer-use-state";
 import {
@@ -164,6 +166,7 @@ function requestTokenFromUrl(authorizationUrl: string): string {
 
 describe("FILE-03 desktop computer-use runtime", () => {
   it("creates a delegated authorization link and applies the selected host to the chat thread", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
     const orgId = `org_${randomUUID()}`;
     const actor = bdd.user({ orgId });
     const run = await seedZeroRun({ actor, triggerSource: "web" });
@@ -181,11 +184,19 @@ describe("FILE-03 desktop computer-use runtime", () => {
       hostName: "Studio Mac",
     });
     mockClerkMembership(context, actor, "org:admin");
+    const legacyToken = generateSandboxToken(actor.userId, run.runId, orgId);
+    const legacyCreated = await api.createComputerUseAuthorizationRequest({
+      bearer: legacyToken,
+    });
+    expect(new URL(legacyCreated.authorizationUrl).origin).toBe(
+      "https://app.vm0.ai",
+    );
     const token = zeroComputerUseToken({
       userId: actor.userId,
       orgId,
       runId: run.runId,
       capabilities: ["connector:read"],
+      publicBrand: "okou",
     }).token;
 
     const created = await api.createComputerUseAuthorizationRequest({
@@ -195,6 +206,9 @@ describe("FILE-03 desktop computer-use runtime", () => {
       source: "chat",
     });
     expect(created.authorizationUrl).toContain("/computer-use/authorize/");
+    expect(new URL(created.authorizationUrl).origin).toBe(
+      "https://app.okou.ai",
+    );
 
     const requestToken = requestTokenFromUrl(created.authorizationUrl);
     const readable = await api.readComputerUseAuthorizationRequest(

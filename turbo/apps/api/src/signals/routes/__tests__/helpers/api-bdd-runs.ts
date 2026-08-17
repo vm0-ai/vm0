@@ -8,6 +8,7 @@ import {
   cliAuthTokenContract,
 } from "@okouai/api-contracts/contracts/cli-auth";
 import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agentComposeApiContentSchema } from "@okouai/api-contracts/contracts/composes";
 import { webhookStripeContract } from "@okouai/api-contracts/contracts/webhooks";
 import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
@@ -687,6 +688,7 @@ export function createRunsApi(context: TestContext) {
       actor: ApiTestUser,
       runId: string,
       capabilities: readonly ZeroCapability[],
+      publicBrand?: PublicBrand,
     ): string {
       if (!actor.orgId) {
         throw new Error("Zero run tokens require an org-scoped actor");
@@ -698,6 +700,7 @@ export function createRunsApi(context: TestContext) {
         orgId: actor.orgId,
         runId,
         capabilities: [...capabilities],
+        ...(publicBrand === undefined ? {} : { publicBrand }),
         iat: seconds,
         exp: seconds + 3600,
       });

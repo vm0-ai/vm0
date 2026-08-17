@@ -24,7 +24,6 @@ import { billingStatusRoutes } from "../billing-status";
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
-const APP_ORIGIN = "http://app.localhost:3002";
 
 function mockSubscriptionWithPaymentMethod(
   subId: string,
@@ -271,10 +270,11 @@ describe("POST /api/zero/billing/restore", () => {
     expect(status.body.scheduledChange).toBeNull();
   });
 
-  it("returns setup checkout URL when restore requires a payment method", async () => {
+  it("uses the request brand fallback and preserves an explicit return URL when restore requires a payment method", async () => {
     const subId = `sub-restore-card-${randomUUID().slice(0, 8)}`;
     const customerId = `cus-restore-card-${randomUUID().slice(0, 8)}`;
-    const returnUrl = `${APP_ORIGIN}/settings/billing`;
+    const fallbackReturnUrl = "https://app.okou.ai";
+    const explicitReturnUrl = "https://app.vm0.ai/settings/billing";
     const checkoutUrl = "https://checkout.stripe.com/setup/restore";
     const fixture = await track(
       store.set(
@@ -289,7 +289,7 @@ describe("POST /api/zero/billing/restore", () => {
         context.signal,
       ),
     );
-    mockEnv("APP_URL", APP_ORIGIN);
+    mockEnv("APP_URL", "https://app.vm0.ai");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
       id: subId,
@@ -312,8 +312,9 @@ describe("POST /api/zero/billing/restore", () => {
     );
     const response = await accept(
       client.create({
-        body: { returnUrl },
+        body: {},
         headers: { authorization: "Bearer clerk-session" },
+        extraHeaders: { origin: "https://app.okou.ai" },
       }),
       [200],
     );
@@ -326,8 +327,8 @@ describe("POST /api/zero/billing/restore", () => {
       mode: "setup",
       customer: customerId,
       currency: "usd",
-      success_url: returnUrl,
-      cancel_url: returnUrl,
+      success_url: fallbackReturnUrl,
+      cancel_url: fallbackReturnUrl,
       metadata: {
         purpose: "billing_restore",
         orgId: fixture.orgId,
@@ -341,6 +342,22 @@ describe("POST /api/zero/billing/restore", () => {
         },
       },
     });
+    context.mocks.stripe.checkout.sessions.create.mockClear();
+    const explicitResponse = await accept(
+      client.create({
+        body: { returnUrl: explicitReturnUrl },
+        headers: { authorization: "Bearer clerk-session" },
+        extraHeaders: { origin: "https://app.okou.ai" },
+      }),
+      [200],
+    );
+    expect(explicitResponse.body).toStrictEqual(response.body);
+    expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success_url: explicitReturnUrl,
+        cancel_url: explicitReturnUrl,
+      }),
+    );
     expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
   });
 });
