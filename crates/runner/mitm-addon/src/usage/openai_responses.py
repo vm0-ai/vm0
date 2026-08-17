@@ -14,11 +14,11 @@ model-provider usage billing:
   ``inspect_openai_responses_client_event_json``,
   ``inspect_openai_responses_event_json``, and
   ``extract_openai_responses_usage_from_event``, consumed by
-  ``mitm_addon.py`` and ``response_streaming.py`` for client request intent,
+  ``mitm_addon.py`` and ``model_websocket_usage.py`` for client request intent,
   event-type timing, and server usage events received over upgrades.
 - Per-event usage aggregation via ``merge_openai_responses_usage_result``,
-  used by ``response_streaming.py`` to fold terminal SSE and WebSocket event
-  usage into a per-flow accumulator.
+  used by ``response_streaming.py`` for terminal SSE events and
+  ``model_websocket_usage.py`` for WebSocket events.
 """
 
 from collections.abc import Callable
@@ -498,12 +498,13 @@ def merge_openai_responses_usage_result(target: dict, source: dict) -> None:
     """Fold a Responses usage event into a per-flow usage accumulator.
 
     ``response_streaming.py`` uses this for terminal SSE events and
-    single-frame WebSocket event JSON, where multiple events may describe the
-    same upstream response. Output usage uses positive-wins semantics directly.
-    Input usage is first reconstructed into total input, cache reads, and cache
-    writes; those raw components use positive-wins semantics before being
-    repartitioned atomically. This preserves the input partition when a later
-    event reports a zero or omits one cache detail.
+    ``model_websocket_usage.py`` uses it for single-frame WebSocket event JSON,
+    where multiple events may describe the same upstream response. Output usage
+    uses positive-wins semantics directly. Input usage is first reconstructed
+    into total input, cache reads, and cache writes; those raw components use
+    positive-wins semantics before being repartitioned atomically. This
+    preserves the input partition when a later event reports a zero or omits one
+    cache detail.
 
     Metadata follows usage ownership. When the accumulator already has positive
     usage and the source has no positive usage quantity, source metadata is

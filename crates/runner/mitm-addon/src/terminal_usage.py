@@ -3,7 +3,7 @@
 from mitmproxy import http
 
 import flow_metadata_keys as metadata_keys
-import response_streaming
+import model_websocket_usage
 import usage
 
 _USAGE_FLOW_TRACKED = "_usage_flow_tracked"
@@ -57,15 +57,13 @@ def report_model_provider_usage_once(flow: http.HTTPFlow, run_id: str) -> None:
             include_observations=reported_observation,
             accepted_usage_keys=accepted_usage_keys,
             accepted_observation_keys=accepted_observation_keys,
-            transport=(
-                "websocket" if response_streaming.is_model_websocket_usage_enabled(flow) else "http"
-            ),
+            transport="websocket" if model_websocket_usage.is_enabled(flow) else "http",
         )
         flow.metadata[_MODEL_PROVIDER_USAGE_REPORTED] = True
 
 
 def release_model_websocket_terminal_state(flow: http.HTTPFlow) -> None:
-    if response_streaming.is_model_websocket_usage_enabled(flow):
+    if model_websocket_usage.is_enabled(flow):
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {}
         usage.release_model_provider_usage_tiers(flow)
-        response_streaming.release_model_websocket_usage_state(flow)
+        model_websocket_usage.release_state(flow)

@@ -8,7 +8,7 @@ from mitmproxy import http
 
 import flow_metadata_keys as metadata_keys
 import mitm_addon
-import response_streaming
+import model_websocket_usage
 import usage
 from tests.jsonl_log_helpers import jsonl_exists_after_flush, read_jsonl_entries_after_flush
 from tests.model_provider_flow_helpers import (
@@ -127,7 +127,7 @@ class TestModelProviderWebSocketPrewarmUsage:
         proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
         assert sensitive_marker not in proxy_log.read_text()
         assert model_provider_usage_sources(flow) == {}
-        assert response_streaming.is_model_websocket_usage_enabled(flow) is False
+        assert model_websocket_usage.is_enabled(flow) is False
         assert "_model_websocket_prewarm_state" not in flow.metadata
 
     def test_model_websocket_ignored_id_fails_open_after_ambiguity(self, tmp_path, real_flow):
