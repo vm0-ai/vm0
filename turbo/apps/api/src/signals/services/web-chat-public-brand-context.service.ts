@@ -12,13 +12,10 @@ export function webChatPublicBrandContextId(publicBrand: PublicBrand): string {
   return WEB_PUBLIC_BRAND_CONTEXT_IDS[publicBrand];
 }
 
-/** Decode current Web context while preserving null for pre-rollout events. */
+/** Decode Web launch identity; every Web input event carries this context. */
 export function webChatPublicBrandFromContextId(
   contextId: string | null,
-): PublicBrand | null {
-  if (contextId === null) {
-    return null;
-  }
+): PublicBrand {
   if (contextId === WEB_PUBLIC_BRAND_CONTEXT_IDS.vm0) {
     return "vm0";
   }

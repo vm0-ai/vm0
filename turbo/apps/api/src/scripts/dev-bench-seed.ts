@@ -24,6 +24,7 @@ import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { closeDbPool, db } from "../lib/db";
 import { optionalEnv } from "../lib/env";
 import { normalizeRunMetadata } from "../signals/services/agent-run-metadata-write.service";
+import { webChatPublicBrandContextId } from "../signals/services/web-chat-public-brand-context.service";
 import { onRejection } from "../signals/utils";
 
 const BULK_INSERT_CHUNK = 500;
@@ -877,6 +878,7 @@ function appendNullRunControlRows(args: {
       ...(isInputPrompt
         ? {
             contextType: "web",
+            contextId: webChatPublicBrandContextId("vm0"),
             payload: { userMessage },
           }
         : {

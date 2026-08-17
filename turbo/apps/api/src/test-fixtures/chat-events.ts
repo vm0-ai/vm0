@@ -822,31 +822,6 @@ export async function replayPendingChatInputQueueEventFixture(args: {
 }
 
 /**
- * Reproduce a queued Web row written before public-brand context existed.
- * Current production APIs always write the context, so this historical rollout
- * shape cannot be constructed through the current external route.
- */
-export async function insertLegacyWebChatQueueEventFixture(args: {
-  readonly eventId: string;
-  readonly threadId: string;
-  readonly prompt: string;
-}): Promise<void> {
-  const inserted = await db().transaction(async (tx) => {
-    return await insertChatEvent(tx, {
-      id: args.eventId,
-      chatThreadId: args.threadId,
-      eventType: "input.prompt",
-      userMessage: createUserMessageDocument({ text: args.prompt }),
-      runId: null,
-      contextType: "web",
-    });
-  });
-  if (!inserted) {
-    throw new Error("Expected one pre-rollout queued Web event");
-  }
-}
-
-/**
  * Move one exact automation event into historical state without waiting for real
  * time to pass. A string preserves PostgreSQL precision beyond JavaScript
  * milliseconds. Product APIs cannot construct an already-stale queue item.
