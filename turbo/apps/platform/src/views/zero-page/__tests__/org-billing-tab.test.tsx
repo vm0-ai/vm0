@@ -1407,6 +1407,9 @@ describe("organization billing settings", () => {
     });
     expect(conversionNotice).toBeVisible();
     expect(conversionNotice).toHaveTextContent("Scheduled for Sep 1, 2026");
+    expect(
+      within(conversionNotice).getByText("Scheduled for Sep 1, 2026"),
+    ).not.toHaveClass("block");
 
     const reviewConversionButton = buttonByText(
       "Review conversion",
@@ -1453,6 +1456,9 @@ describe("organization billing settings", () => {
     expect(reviewConversionNotice).toHaveTextContent(
       "Scheduled for Sep 1, 2026",
     );
+    expect(
+      within(reviewConversionNotice).getByText("Scheduled for Sep 1, 2026"),
+    ).not.toHaveClass("block");
     expect(reviewConversionNotice.parentElement).toContainElement(
       buttonByText("Confirm", reviewDialog),
     );

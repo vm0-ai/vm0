@@ -1849,8 +1849,8 @@ function SubscriptionChangeNotice({
       })}
       description={
         <>
-          <span>{description}</span>
-          <span className="mt-0.5 block font-medium">
+          <span>{description}</span>{" "}
+          <span className="font-medium">
             {i18n.t(
               ($) => {
                 return $.billing.plans.usagePacks.management.scheduledFor;
