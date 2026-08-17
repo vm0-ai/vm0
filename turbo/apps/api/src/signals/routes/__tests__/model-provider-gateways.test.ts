@@ -322,6 +322,8 @@ describe("custom model provider gateway routes", () => {
               authHeaderTemplate: "{{secret}}",
               modelMappings: {
                 "gpt-5.6-sol": "company-gpt-production",
+                "deepseek-v4-flash": "deepseek-v4-flash-0731",
+                "deepseek-v4-pro": "company-deepseek-pro-production",
               },
             },
           ],
@@ -471,6 +473,7 @@ describe("custom model provider gateway routes", () => {
       requiresOpenaiAuth: false,
       wireApi: "responses",
     });
+    expect(codexClaim.codexRuntimeConfig?.modelCatalog).toBeUndefined();
     expect(codexClaim.environment?.OPENAI_API_KEY).toBe(
       MODEL_PROVIDER_ENV_PLACEHOLDERS.OPENAI_API_KEY,
     );
@@ -501,5 +504,81 @@ describe("custom model provider gateway routes", () => {
     expect(codexClaim.secretValues).not.toContain("runtime-gateway-secret");
 
     await runs.requestCancelRun(actor, codexRunId, [200]);
+
+    const deepseekMappings = [
+      {
+        logicalModel: "deepseek-v4-flash",
+        upstreamModel: "deepseek-v4-flash-0731",
+      },
+      {
+        logicalModel: "deepseek-v4-pro",
+        upstreamModel: "company-deepseek-pro-production",
+      },
+    ] as const;
+    for (const { logicalModel, upstreamModel } of deepseekMappings) {
+      await runs.updateOrgModelPolicies(actor, [
+        {
+          model: logicalModel,
+          isDefault: true,
+          defaultProviderType: "vercel-ai-gateway-codex",
+          credentialScope: "org",
+          modelProviderId: null,
+          modelProviderSurfaceId: responsesSurface.id,
+        },
+      ]);
+      const deepseekSent = await chat.requestSendEvent(
+        actor,
+        {
+          clientEventId: randomUUID(),
+          agentId: agent.agentId,
+          prompt: `exercise the custom Responses gateway for ${logicalModel}`,
+          model: logicalModel,
+        },
+        [201],
+      );
+      if ("error" in deepseekSent.body) {
+        throw new Error(
+          `Expected the ${logicalModel} custom gateway chat send to succeed`,
+        );
+      }
+      const deepseekRunId = deepseekSent.body.runId;
+      if (!deepseekRunId) {
+        throw new Error(
+          `Expected the ${logicalModel} custom gateway chat send to create a run`,
+        );
+      }
+      await runs.heartbeatRunner(runnerGroup);
+      const deepseekClaim = await runs.claimRunnerJob(deepseekRunId);
+
+      expect(deepseekClaim.cliAgentType).toBe("codex");
+      expect(deepseekClaim.environment).toMatchObject({
+        OPENAI_BASE_URL: "https://gateway.example.com/openai/v1",
+        OPENAI_MODEL: upstreamModel,
+      });
+      const catalogModels =
+        deepseekClaim.codexRuntimeConfig?.modelCatalog?.models;
+      if (!Array.isArray(catalogModels) || catalogModels.length !== 1) {
+        throw new Error(`Expected one Codex catalog model for ${logicalModel}`);
+      }
+      const [catalogModel] = catalogModels;
+      if (!isRecord(catalogModel)) {
+        throw new Error(
+          `Expected a Codex catalog model record for ${logicalModel}`,
+        );
+      }
+      expect(catalogModel).toMatchObject({
+        slug: upstreamModel,
+        input_modalities: ["text"],
+        base_instructions: expect.stringContaining("You are Codex"),
+        model_messages: {
+          instructions_template: expect.stringContaining("You are Codex"),
+        },
+      });
+      expect(deepseekClaim.appendSystemPrompt).toContain(
+        'okou recognize --file <image-path> --prompt "<instruction>"',
+      );
+
+      await runs.requestCancelRun(actor, deepseekRunId, [200]);
+    }
   });
 });
