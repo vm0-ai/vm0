@@ -2,16 +2,19 @@ import { command } from "ccstate";
 import { cronRenewGmailWatchesContract } from "@okouai/api-contracts/contracts/cron";
 
 import type { RouteEntry } from "../route-entry";
-import { renewGmailWatches$ } from "../services/gmail-automation-event.service";
+import {
+  type GmailWatchRenewalOptions,
+  renewGmailWatches$,
+} from "../services/gmail-automation-event.service";
 import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 
-const renewGmailWatchesRoute$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
+function renewGmailWatchesRoute(options: GmailWatchRenewalOptions) {
+  return command(async ({ get, set }, signal: AbortSignal) => {
     if (!get(hasValidCronSecret$)) {
       return cronUnauthorized();
     }
 
-    const result = await set(renewGmailWatches$, signal);
+    const result = await set(renewGmailWatches$, options, signal);
     signal.throwIfAborted();
 
     return {
@@ -22,12 +25,24 @@ const renewGmailWatchesRoute$ = command(
         failed: result.failed,
       },
     };
-  },
-);
+  });
+}
 
-export const cronRenewGmailWatchesRoutes: readonly RouteEntry[] = [
-  {
-    route: cronRenewGmailWatchesContract.renew,
-    handler: renewGmailWatchesRoute$,
-  },
-];
+function renewGmailWatchesRoutes(
+  options: GmailWatchRenewalOptions,
+): readonly RouteEntry[] {
+  return [
+    {
+      route: cronRenewGmailWatchesContract.renew,
+      handler: renewGmailWatchesRoute(options),
+    },
+  ];
+}
+
+export function cronRenewGmailWatchesRoutesForTest(
+  emailAddresses: readonly string[],
+): readonly RouteEntry[] {
+  return renewGmailWatchesRoutes({ emailAddresses });
+}
+
+export const cronRenewGmailWatchesRoutes = renewGmailWatchesRoutes({});

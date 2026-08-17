@@ -2556,14 +2556,28 @@ export const dispatchGmailPubSubPush$ = command(
   },
 );
 
+export interface GmailWatchRenewalOptions {
+  readonly emailAddresses?: readonly string[];
+}
+
 export const renewGmailWatches$ = command(
-  async ({ set }, signal: AbortSignal) => {
+  async ({ set }, options: GmailWatchRenewalOptions, signal: AbortSignal) => {
     const db = set(writeDb$);
     const currentTime = nowDate();
     const renewBefore = new Date(
       currentTime.getTime() + WATCH_RENEWAL_WINDOW_MS,
     );
-    const states = await db.select().from(gmailWatchStates);
+    const states = await db
+      .select()
+      .from(gmailWatchStates)
+      .where(
+        options.emailAddresses === undefined
+          ? undefined
+          : inArray(
+              sql`lower(${gmailWatchStates.emailAddress})`,
+              options.emailAddresses.map(normalizeGmailAddress),
+            ),
+      );
     signal.throwIfAborted();
 
     let renewed = 0;
