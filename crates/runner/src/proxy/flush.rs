@@ -185,6 +185,8 @@ pub struct MitmJsonlFlushHandle {
     pub(super) request_lock: Arc<AsyncMutex<()>>,
     #[cfg(test)]
     pub(super) request_lock_poll_tx: Option<mpsc::UnboundedSender<RequestLockPoll>>,
+    #[cfg(test)]
+    pub(super) request_published_tx: Option<mpsc::UnboundedSender<PathBuf>>,
 }
 
 #[cfg(test)]
@@ -265,6 +267,12 @@ impl MitmJsonlFlushHandle {
                 return false;
             }
         };
+        #[cfg(test)]
+        if let Some(request_published_tx) = &self.request_published_tx {
+            request_published_tx
+                .send(path.to_path_buf())
+                .expect("JSONL flush request publication receiver dropped");
+        }
         wait_jsonl_flush(&self.addon_dir, JSONL_FLUSH_TIMEOUT, &request).await
     }
 
@@ -796,20 +804,60 @@ mod tests {
         }
     }
 
-    async fn wait_for_jsonl_request(addon_dir: &Path, expected_path: &Path) -> serde_json::Value {
-        tokio::time::timeout(Duration::from_secs(1), async {
-            loop {
-                if let Ok(content) = std::fs::read_to_string(addon_dir.join("jsonl-flush-request"))
-                    && let Ok(marker) = serde_json::from_str::<serde_json::Value>(&content)
-                    && marker["path"] == expected_path.to_string_lossy().as_ref()
-                {
-                    return marker;
-                }
-                tokio::task::yield_now().await;
-            }
-        })
-        .await
-        .expect("JSONL flush request was not published")
+    fn observe_request_publication(
+        handle: &mut MitmJsonlFlushHandle,
+    ) -> mpsc::UnboundedReceiver<PathBuf> {
+        let (request_published_tx, request_published_rx) = mpsc::unbounded_channel();
+        handle.request_published_tx = Some(request_published_tx);
+        request_published_rx
+    }
+
+    async fn assert_request_published(
+        addon_dir: &Path,
+        expected_path: &Path,
+        request_published_rx: &mut mpsc::UnboundedReceiver<PathBuf>,
+    ) -> serde_json::Value {
+        let published_path = tokio::time::timeout(JSONL_FLUSH_TIMEOUT, request_published_rx.recv())
+            .await
+            .unwrap_or_else(|_| {
+                panic!(
+                    "JSONL flush request for {} was not published",
+                    expected_path.display()
+                )
+            })
+            .unwrap_or_else(|| {
+                panic!(
+                    "JSONL flush request publication observer closed before {} was published",
+                    expected_path.display()
+                )
+            });
+        assert_eq!(
+            published_path,
+            expected_path,
+            "published JSONL flush request path mismatch for {}",
+            expected_path.display()
+        );
+
+        let content = std::fs::read_to_string(addon_dir.join("jsonl-flush-request"))
+            .unwrap_or_else(|error| {
+                panic!(
+                    "failed to read published JSONL flush request for {}: {error}",
+                    expected_path.display()
+                )
+            });
+        let marker = serde_json::from_str::<serde_json::Value>(&content).unwrap_or_else(|error| {
+            panic!(
+                "published JSONL flush request for {} was not valid JSON: {error}",
+                expected_path.display()
+            )
+        });
+        assert_eq!(
+            marker["path"],
+            expected_path.to_string_lossy().as_ref(),
+            "published JSONL flush request marker path mismatch for {}",
+            expected_path.display()
+        );
+        marker
     }
 
     fn observe_request_lock_first_poll(
@@ -1177,18 +1225,20 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let log_path = dir.path().join("network.jsonl");
         let usage_state = Arc::new(Mutex::new(usage_target()));
-        let handle = MitmJsonlFlushHandle {
+        let mut handle = MitmJsonlFlushHandle {
             addon_dir: dir.path().to_path_buf(),
             usage_state,
             request_lock: Arc::new(AsyncMutex::new(())),
             request_lock_poll_tx: None,
+            request_published_tx: None,
         };
+        let mut request_published_rx = observe_request_publication(&mut handle);
 
         let d = dir.path().to_path_buf();
         let l = log_path.clone();
         let waiter = tokio::spawn(async move { handle.flush_path(&l).await });
 
-        let marker = wait_for_jsonl_request(&d, &log_path).await;
+        let marker = assert_request_published(&d, &log_path, &mut request_published_rx).await;
         let state = serde_json::json!({
             "pid": 1234,
             "usageStateId": "state-test",
@@ -1212,20 +1262,20 @@ mod tests {
             usage_state: Arc::new(Mutex::new(usage_target())),
             request_lock: Arc::new(AsyncMutex::new(())),
             request_lock_poll_tx: None,
+            request_published_tx: None,
         };
 
-        let first_handle = handle.clone();
+        let mut first_handle = handle.clone();
+        let mut first_published_rx = observe_request_publication(&mut first_handle);
         let first_path = first_log_path.clone();
         let first = tokio::spawn(async move { first_handle.flush_path(&first_path).await });
 
-        let first_marker = wait_for_jsonl_request(dir.path(), &first_log_path).await;
-        assert_eq!(
-            first_marker["path"],
-            first_log_path.to_string_lossy().to_string()
-        );
+        let first_marker =
+            assert_request_published(dir.path(), &first_log_path, &mut first_published_rx).await;
 
         let mut second_handle = handle.clone();
         let second_lock_poll_rx = observe_request_lock_first_poll(&mut second_handle);
+        let mut second_published_rx = observe_request_publication(&mut second_handle);
         let second_path = second_log_path.clone();
         let second = tokio::spawn(async move { second_handle.flush_path(&second_path).await });
         let mut second_lock_poll_rx = second_lock_poll_rx;
@@ -1254,11 +1304,8 @@ mod tests {
         .unwrap();
         assert!(first.await.unwrap());
 
-        let second_marker = wait_for_jsonl_request(dir.path(), &second_log_path).await;
-        assert_eq!(
-            second_marker["path"],
-            second_log_path.to_string_lossy().to_string()
-        );
+        let second_marker =
+            assert_request_published(dir.path(), &second_log_path, &mut second_published_rx).await;
         let second_state = serde_json::json!({
             "pid": 1234,
             "usageStateId": "state-test",
@@ -1287,30 +1334,33 @@ mod tests {
             usage_state: Arc::new(Mutex::new(usage_target())),
             request_lock: Arc::new(AsyncMutex::new(())),
             request_lock_poll_tx: None,
+            request_published_tx: None,
         };
 
-        let first_handle = handle.clone();
+        let mut first_handle = handle.clone();
+        let mut first_published_rx = observe_request_publication(&mut first_handle);
         let first_path = first_log_path.clone();
         let first = tokio::spawn(async move { first_handle.flush_path(&first_path).await });
-        wait_for_jsonl_request(dir.path(), &first_log_path).await;
+        assert_request_published(dir.path(), &first_log_path, &mut first_published_rx).await;
 
         let mut queued = Vec::new();
         for index in 0..QUEUED_FLUSH_COUNT {
             let log_path = dir.path().join(format!("network-queued-{index}.jsonl"));
             let mut queued_handle = handle.clone();
             let lock_poll_rx = observe_request_lock_first_poll(&mut queued_handle);
+            let request_published_rx = observe_request_publication(&mut queued_handle);
             let task_path = log_path.clone();
             let task = tokio::spawn(async move { queued_handle.flush_path(&task_path).await });
             let mut lock_poll_rx = lock_poll_rx;
             assert_request_lock_first_poll_pending(&mut lock_poll_rx).await;
-            queued.push((log_path, task, lock_poll_rx));
+            queued.push((log_path, task, lock_poll_rx, request_published_rx));
         }
 
         tokio::time::advance(JSONL_FLUSH_TIMEOUT).await;
         assert!(!first.await.unwrap());
 
         let mut acquired_path = None;
-        for (log_path, _, lock_poll_rx) in &mut queued {
+        for (log_path, _, lock_poll_rx, request_published_rx) in &mut queued {
             let outcome = tokio::time::timeout(COMPLETION_ASSERTION_TIMEOUT, lock_poll_rx.recv())
                 .await
                 .unwrap_or_else(|_| {
@@ -1323,6 +1373,7 @@ mod tests {
             match outcome {
                 RequestLockPoll::Ready => {
                     assert!(acquired_path.replace(log_path.clone()).is_none());
+                    assert_request_published(dir.path(), log_path, request_published_rx).await;
                 }
                 RequestLockPoll::TimedOut => {}
                 RequestLockPoll::Pending => {
@@ -1334,12 +1385,9 @@ mod tests {
             }
         }
 
-        if let Some(acquired_path) = acquired_path.as_ref() {
-            wait_for_jsonl_request(dir.path(), acquired_path).await;
-        }
         tokio::time::advance(JSONL_FLUSH_TIMEOUT).await;
 
-        for (log_path, task, _) in queued {
+        for (log_path, task, _, _) in queued {
             let flushed = tokio::time::timeout(COMPLETION_ASSERTION_TIMEOUT, task)
                 .await
                 .unwrap_or_else(|_| {
@@ -1368,19 +1416,18 @@ mod tests {
         let second_log_path = dir.path().join("network-b.jsonl");
         let (mut proxy, _crash_rx) = MitmProxy::noop();
         proxy.set_addon_dir_for_test(dir.path().to_path_buf());
-        let first_handle = proxy.jsonl_flush_handle();
+        let mut first_handle = proxy.jsonl_flush_handle();
         let mut second_handle = proxy.jsonl_flush_handle();
 
+        let mut first_published_rx = observe_request_publication(&mut first_handle);
         let first_path = first_log_path.clone();
         let first = tokio::spawn(async move { first_handle.flush_path(&first_path).await });
 
-        let first_marker = wait_for_jsonl_request(dir.path(), &first_log_path).await;
-        assert_eq!(
-            first_marker["path"],
-            first_log_path.to_string_lossy().to_string()
-        );
+        let first_marker =
+            assert_request_published(dir.path(), &first_log_path, &mut first_published_rx).await;
 
         let second_lock_poll_rx = observe_request_lock_first_poll(&mut second_handle);
+        let mut second_published_rx = observe_request_publication(&mut second_handle);
         let second_path = second_log_path.clone();
         let second = tokio::spawn(async move { second_handle.flush_path(&second_path).await });
         let mut second_lock_poll_rx = second_lock_poll_rx;
@@ -1409,11 +1456,8 @@ mod tests {
         .unwrap();
         assert!(first.await.unwrap());
 
-        let second_marker = wait_for_jsonl_request(dir.path(), &second_log_path).await;
-        assert_eq!(
-            second_marker["path"],
-            second_log_path.to_string_lossy().to_string()
-        );
+        let second_marker =
+            assert_request_published(dir.path(), &second_log_path, &mut second_published_rx).await;
         let second_state = serde_json::json!({
             "pid": 1234,
             "usageStateId": second_marker["usageStateId"],
