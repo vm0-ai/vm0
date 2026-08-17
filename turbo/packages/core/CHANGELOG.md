@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.565.1](https://github.com/vm0-ai/vm0/compare/core-v8.565.0...core-v8.565.1) (2026-08-17)
+
+
+### Bug Fixes
+
+* **api:** present default assistant by public brand ([#27716](https://github.com/vm0-ai/vm0/issues/27716)) ([423fb0a](https://github.com/vm0-ai/vm0/commit/423fb0ae0d3e778e8e9662fb7c26ba3102568952))
+
 ## [8.565.0](https://github.com/vm0-ai/vm0/compare/core-v8.564.0...core-v8.565.0) (2026-08-17)
 
 

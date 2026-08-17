@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.455.0](https://github.com/vm0-ai/vm0/compare/api-v1.454.0...api-v1.455.0) (2026-08-17)
+
+
+### Features
+
+* **api:** snapshot the default image model on runs ([#27771](https://github.com/vm0-ai/vm0/issues/27771)) ([91a9f70](https://github.com/vm0-ai/vm0/commit/91a9f70ab5e7278131a602292a32881546d71145))
+
+
+### Bug Fixes
+
+* **api:** present default assistant by public brand ([#27716](https://github.com/vm0-ai/vm0/issues/27716)) ([423fb0a](https://github.com/vm0-ai/vm0/commit/423fb0ae0d3e778e8e9662fb7c26ba3102568952))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.565.1
+    * @okouai/db bumped to 1.202.1
+
 ## [1.454.0](https://github.com/vm0-ai/vm0/compare/api-v1.453.0...api-v1.454.0) (2026-08-17)
 
 
