@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.168.21](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.20...runner-rs-v0.168.21) (2026-08-17)
+
+
+### Refactoring
+
+* **python:** split runner flush tests by protocol lifecycle ([#27631](https://github.com/vm0-ai/vm0/issues/27631)) ([16dd3fb](https://github.com/vm0-ai/vm0/commit/16dd3fbf3ecb160336de737d487abac1da53d5d9))
+* **runner:** centralize process identity ([#27642](https://github.com/vm0-ai/vm0/issues/27642)) ([9b04c94](https://github.com/vm0-ai/vm0/commit/9b04c942804459bc408ccd0586a6008e7b263c06))
+
+
+### Performance Improvements
+
+* **python:** bound browser user-agent classification work ([#27639](https://github.com/vm0-ai/vm0/issues/27639)) ([7a008ec](https://github.com/vm0-ai/vm0/commit/7a008ec753aa66731385f4dcbd4410040355cf84))
+
 ## [0.168.20](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.19...runner-rs-v0.168.20) (2026-08-16)
 
 
