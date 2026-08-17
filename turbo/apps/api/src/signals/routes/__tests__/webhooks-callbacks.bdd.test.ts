@@ -1353,6 +1353,90 @@ describe("WHCB-04: internal callback and event-consumer boundaries", () => {
     expect(redirectTargetRequests).toBe(0);
   });
 
+  it("bounds oversized event data only in the optional Axiom trace", async () => {
+    const { actor, runId, headers } = await createEventWebhookRun(
+      "oversized optional Axiom trace",
+    );
+    const oversizedContent = "界".repeat(300_000);
+    const event = {
+      type: "result",
+      sequenceNumber: 0,
+      result: oversizedContent,
+    };
+    const originalBytes = Buffer.byteLength(JSON.stringify(event), "utf8");
+    expect(originalBytes).toBeGreaterThan(900_000);
+
+    const requests: unknown[] = [];
+    server.use(
+      http.post(
+        "https://api.axiom.co/v1/datasets/agent-run-events/ingest",
+        async ({ request }) => {
+          requests.push(await request.json());
+          return HttpResponse.json(successfulAxiomIngestStatus(1));
+        },
+      ),
+    );
+
+    const response = await api.requestAgentEvents(
+      { runId, events: [event] },
+      headers,
+      [200],
+    );
+    expect(response.body).toStrictEqual({
+      received: 1,
+      firstSequence: 0,
+      lastSequence: 0,
+    });
+    await flushWaitUntilForTest();
+
+    const reducedEventData = {
+      type: event.type,
+      sequenceNumber: event.sequenceNumber,
+      vm0AxiomReduction: {
+        reason: "field_size_limit",
+        originalBytes,
+        budgetBytes: 900_000,
+      },
+    };
+    const deliveredBytes = Buffer.byteLength(
+      JSON.stringify(reducedEventData),
+      "utf8",
+    );
+    expect(deliveredBytes).toBeLessThanOrEqual(900_000);
+    expect(requests).toStrictEqual([
+      [
+        {
+          runId,
+          userId: actor.userId,
+          sequenceNumber: event.sequenceNumber,
+          eventType: event.type,
+          eventData: reducedEventData,
+        },
+      ],
+    ]);
+
+    const reductionLogs = context.mocks.axiomLogging.warn.mock.calls.filter(
+      ([message]) => {
+        return message === "Reduced oversized agent event for Axiom";
+      },
+    );
+    expect(reductionLogs).toHaveLength(1);
+    const fields = reductionLogs[0]?.[1];
+    expect(fields).toStrictEqual(
+      expect.objectContaining({
+        context: "agent-event-consumer:axiom",
+        runId,
+        sequenceNumber: event.sequenceNumber,
+        eventType: event.type,
+        originalBytes,
+        deliveredBytes,
+        budgetBytes: 900_000,
+      }),
+    );
+    expect(fields).not.toHaveProperty("eventData");
+    expect(JSON.stringify(fields)).not.toContain(oversizedContent.slice(0, 64));
+  });
+
   it("acknowledges an event batch when its required DB run is missing", async () => {
     const runId = randomUUID();
     const headers = api.sandboxWebhookHeaders({ runId });
