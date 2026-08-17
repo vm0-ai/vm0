@@ -56,6 +56,7 @@ import {
 } from "./usage-pack-plan-change.service";
 import type { BillingReconciliationScope } from "./billing-reconciliation-scope";
 import { completeBillingOperationInvoice } from "./billing-operation-invoice.service";
+import { lockBillingPurchaseOrg } from "./billing-purchase-lock.service";
 import {
   billingPreviewExpiresAt,
   createBillingPreviewToken,
@@ -72,7 +73,7 @@ import {
 import {
   resolveBillingPurchaseRoute,
   stripeBillingPurchasePaymentParams,
-} from "./zero-billing-payment-method.service";
+} from "./billing-payment-method.service";
 
 export const USAGE_PACK_SUBSCRIPTION_PURPOSE = "usage_pack_subscription";
 const USAGE_PACK_SUBSCRIPTION_ID_METADATA_KEY = "usagePackSubscriptionId";
@@ -100,6 +101,7 @@ const L = logger("UsagePackSubscription");
 type UsagePackSubscriptionRow = typeof usagePackSubscriptions.$inferSelect;
 type UsagePackAllocationRow = typeof usagePackAllocations.$inferSelect;
 type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type UsagePackPurchaseDb = Pick<Db, "select" | "update">;
 
 interface ValidatedUsagePackPrice extends UsagePackCatalogItem {
   readonly stripePriceId: string;
@@ -730,7 +732,7 @@ async function createUsagePackPurchaseSnapshot(
 
 async function createUsagePackCheckoutForSnapshot(
   args: {
-    readonly db: Db;
+    readonly db: Pick<Db, "update">;
     readonly stripe: StripeClient;
     readonly purchase: CreateUsagePackCheckoutSessionArgs;
     readonly customerId: string;
@@ -972,19 +974,22 @@ function checkoutAllocationsFromRows(
   return allocations;
 }
 
+interface UsagePackPurchaseSnapshot {
+  readonly subscription: UsagePackSubscriptionRow;
+  readonly allocations: readonly UsagePackCheckoutAllocation[];
+}
+
 async function loadUsagePackPurchaseSnapshot(
-  db: Db,
+  db: Pick<Db, "select">,
   orgId: string,
   preview: UsagePackPurchasePreviewToken,
   signal: AbortSignal,
-): Promise<{
-  readonly subscription: UsagePackSubscriptionRow;
-  readonly allocations: readonly UsagePackCheckoutAllocation[];
-} | null> {
+): Promise<UsagePackPurchaseSnapshot | null> {
   const [subscription] = await db
     .select()
     .from(usagePackSubscriptions)
     .where(eq(usagePackSubscriptions.id, preview.usagePackSubscriptionId))
+    .for("update")
     .limit(1);
   const allocationRows = await db
     .select({
@@ -1016,21 +1021,20 @@ async function loadUsagePackPurchaseSnapshot(
   return { subscription, allocations };
 }
 
-async function confirmUsagePackPurchaseSnapshot(
-  db: Db,
-  orgId: string,
-  preview: UsagePackPurchasePreviewToken,
-  snapshot: {
-    readonly subscription: UsagePackSubscriptionRow;
-    readonly allocations: readonly UsagePackCheckoutAllocation[];
+async function existingUsagePackPurchaseResult(
+  args: {
+    readonly db: UsagePackPurchaseDb;
+    readonly orgId: string;
+    readonly preview: UsagePackPurchasePreviewToken;
+    readonly snapshot: UsagePackPurchaseSnapshot;
   },
   signal: AbortSignal,
-): Promise<ConfirmUsagePackPurchaseResult> {
-  const { subscription, allocations } = snapshot;
+): Promise<ConfirmUsagePackPurchaseResult | null> {
+  const { db, orgId, preview, snapshot } = args;
   const stripe = getStripeClient();
-  if (subscription.stripeSubscriptionId) {
+  if (snapshot.subscription.stripeSubscriptionId) {
     const existing = await stripe.subscriptions.retrieve(
-      subscription.stripeSubscriptionId,
+      snapshot.subscription.stripeSubscriptionId,
       { expand: ["latest_invoice"] },
     );
     signal.throwIfAborted();
@@ -1044,6 +1048,89 @@ async function confirmUsagePackPurchaseSnapshot(
       ),
     };
   }
+  const active = await activeUsagePackBillingContext(db, orgId);
+  signal.throwIfAborted();
+  if (
+    active &&
+    active.usagePackSubscriptionId !== preview.usagePackSubscriptionId
+  ) {
+    return { status: "invalid_preview" };
+  }
+  const subscriptions = await stripe.subscriptions.list({
+    customer: preview.customerId,
+    status: "all",
+    limit: 100,
+  });
+  signal.throwIfAborted();
+  const existingSummary = subscriptions.data.find((candidate) => {
+    return (
+      candidate.metadata?.[USAGE_PACK_SUBSCRIPTION_ID_METADATA_KEY] ===
+      preview.usagePackSubscriptionId
+    );
+  });
+  const competing = subscriptions.data.some((candidate) => {
+    return (
+      candidate.id !== preview.sourceSubscriptionId &&
+      candidate.metadata?.orgId === orgId &&
+      candidate.id !== existingSummary?.id &&
+      candidate.items.data.some((item) => {
+        return tierForKnownPriceId(item.price.id) !== null;
+      }) &&
+      candidate.status !== "canceled" &&
+      candidate.status !== "incomplete_expired"
+    );
+  });
+  if (competing) {
+    return { status: "invalid_preview" };
+  }
+  if (!existingSummary) {
+    return null;
+  }
+  const existing = await stripe.subscriptions.retrieve(existingSummary.id, {
+    expand: ["latest_invoice"],
+  });
+  signal.throwIfAborted();
+  await db
+    .update(usagePackSubscriptions)
+    .set({
+      stripeSubscriptionId: existing.id,
+      subscriptionStatus: existing.status,
+      updatedAt: nowDate(),
+    })
+    .where(eq(usagePackSubscriptions.id, preview.usagePackSubscriptionId));
+  signal.throwIfAborted();
+  return {
+    status: "confirmed",
+    response: await completeBillingOperationInvoice(
+      stripe,
+      expandedLatestInvoice(existing),
+      `usage-pack:${preview.usagePackSubscriptionId}`,
+      signal,
+    ),
+  };
+}
+
+async function confirmUsagePackPurchaseSnapshot(
+  db: UsagePackPurchaseDb,
+  orgId: string,
+  preview: UsagePackPurchasePreviewToken,
+  snapshot: UsagePackPurchaseSnapshot,
+  signal: AbortSignal,
+): Promise<ConfirmUsagePackPurchaseResult> {
+  const existingResult = await existingUsagePackPurchaseResult(
+    {
+      db,
+      orgId,
+      preview,
+      snapshot,
+    },
+    signal,
+  );
+  if (existingResult) {
+    return existingResult;
+  }
+  const { allocations } = snapshot;
+  const stripe = getStripeClient();
   const purchase: CreateUsagePackCheckoutSessionArgs = {
     orgId,
     tier: preview.tier,
@@ -1163,22 +1250,26 @@ export const confirmUsagePackPurchase$ = command(
       return { status: "invalid_preview" };
     }
     const db = set(writeDb$);
-    const snapshot = await loadUsagePackPurchaseSnapshot(
-      db,
-      orgId,
-      preview,
-      signal,
-    );
-    if (!snapshot) {
-      return { status: "invalid_preview" };
-    }
-    return await confirmUsagePackPurchaseSnapshot(
-      db,
-      orgId,
-      preview,
-      snapshot,
-      signal,
-    );
+    return await db.transaction(async (tx) => {
+      await lockBillingPurchaseOrg(tx, orgId);
+      signal.throwIfAborted();
+      const snapshot = await loadUsagePackPurchaseSnapshot(
+        tx,
+        orgId,
+        preview,
+        signal,
+      );
+      if (!snapshot) {
+        return { status: "invalid_preview" as const };
+      }
+      return await confirmUsagePackPurchaseSnapshot(
+        tx,
+        orgId,
+        preview,
+        snapshot,
+        signal,
+      );
+    });
   },
 );
 

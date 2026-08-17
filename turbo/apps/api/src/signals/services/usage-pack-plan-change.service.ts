@@ -49,6 +49,10 @@ import {
 } from "./usage-pack-allocation-change.service";
 import type { BillingReconciliationScope } from "./billing-reconciliation-scope";
 import { completeBillingOperationInvoice } from "./billing-operation-invoice.service";
+import {
+  stripeBillingPurchasePaymentParams,
+  type BillingPurchasePaymentMethod,
+} from "./billing-payment-method.service";
 import { subscriptionScheduleHasNoFutureChanges } from "./stripe-subscription-schedules.service";
 import {
   activeUsagePackPlanPriceId,
@@ -2197,6 +2201,7 @@ async function applyImmediateSubscriptionChange(
     readonly planItem: StripeSubscriptionItem;
     readonly hasPlanUpgrade: boolean;
     readonly immediatePackageChanges: readonly UsagePackAllocationChangeRow[];
+    readonly paymentMethod?: BillingPurchasePaymentMethod;
   },
   signal: AbortSignal,
 ): Promise<UsagePackSubscriptionChangeConfirmResult> {
@@ -2219,6 +2224,9 @@ async function applyImmediateSubscriptionChange(
         targetPlanPriceId,
         packageQuantities,
       ),
+      ...(args.paymentMethod
+        ? stripeBillingPurchasePaymentParams(args.paymentMethod)
+        : {}),
       payment_behavior: "pending_if_incomplete",
       proration_behavior: "always_invoice",
       proration_date: args.stored.root.prorationTimestamp,
@@ -2474,6 +2482,7 @@ async function resolveReplacementSchedule(
 async function applyStoredSubscriptionChange(
   db: Db,
   stored: StoredSubscriptionChange,
+  paymentMethod: BillingPurchasePaymentMethod | undefined,
   signal: AbortSignal,
 ): Promise<UsagePackSubscriptionChangeConfirmResult> {
   const subscriptionId = stored.subscription.stripeSubscriptionId;
@@ -2575,6 +2584,7 @@ async function applyStoredSubscriptionChange(
       planItem,
       hasPlanUpgrade,
       immediatePackageChanges,
+      paymentMethod,
     },
     signal,
   );
@@ -2585,6 +2595,7 @@ export async function confirmUsagePackSubscriptionChange(
   args: {
     readonly orgId: string;
     readonly changeId: string;
+    readonly paymentMethod?: BillingPurchasePaymentMethod;
   },
   signal: AbortSignal,
 ): Promise<UsagePackSubscriptionChangeConfirmResult> {
@@ -2596,7 +2607,12 @@ export async function confirmUsagePackSubscriptionChange(
   if (!preparation.ready) {
     return preparation.result;
   }
-  return await applyStoredSubscriptionChange(db, preparation.stored, signal);
+  return await applyStoredSubscriptionChange(
+    db,
+    preparation.stored,
+    args.paymentMethod,
+    signal,
+  );
 }
 
 function invoiceSubscriptionId(

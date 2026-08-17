@@ -1,4 +1,9 @@
+import { command } from "ccstate";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+
 import { getStripeClient } from "../external/stripe-client";
+import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import {
   billingPreviewExpiresAt,
   createBillingPaymentMethodPreviewToken,
@@ -100,27 +105,55 @@ export async function billingDefaultPaymentMethodStatus(args: {
   };
 }
 
+export interface BillingPurchasePaymentMethod {
+  readonly paymentMethodId: string;
+  readonly paymentMethodType: "payment_method" | "source";
+}
+
 type BillingPurchaseRoute =
   | {
       readonly kind: "checkout";
       readonly customerId: string | null;
     }
-  | {
+  | (BillingPurchasePaymentMethod & {
       readonly kind: "preview";
       readonly customerId: string;
-      readonly paymentMethodId: string;
-      readonly paymentMethodType: "payment_method" | "source";
-    };
+    });
 
 export function stripeBillingPurchasePaymentParams(
-  route: Extract<BillingPurchaseRoute, { readonly kind: "preview" }>,
+  paymentMethod: BillingPurchasePaymentMethod,
 ):
   | { readonly default_payment_method: string }
   | { readonly default_source: string } {
-  return route.paymentMethodType === "payment_method"
-    ? { default_payment_method: route.paymentMethodId }
-    : { default_source: route.paymentMethodId };
+  return paymentMethod.paymentMethodType === "payment_method"
+    ? { default_payment_method: paymentMethod.paymentMethodId }
+    : { default_source: paymentMethod.paymentMethodId };
 }
+
+export const billingPurchasePreviewEnabled$ = command(
+  async (
+    { get },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly requested: boolean;
+    },
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    if (!args.requested) {
+      return false;
+    }
+    const overrides = await get(
+      userFeatureSwitchOverrides(args.orgId, args.userId),
+    );
+    signal.throwIfAborted();
+    return isFeatureEnabled(FeatureSwitchKey.SavedBillingCreditPurchase, {
+      orgId: args.orgId,
+      userId: args.userId,
+      overrides,
+    });
+  },
+);
 
 type BillingPurchasePreviewRoute =
   | { readonly kind: "checkout"; readonly url: string }
@@ -263,7 +296,7 @@ export async function routeBillingPurchasePreview(
 }
 
 type RevalidatedBillingPurchase =
-  | { readonly kind: "preview"; readonly paymentMethodId: string }
+  | ({ readonly kind: "preview" } & BillingPurchasePaymentMethod)
   | { readonly kind: "checkout"; readonly url: string }
   | { readonly kind: "invalid_preview" };
 
@@ -307,7 +340,11 @@ export async function revalidateBillingPurchase(
     };
   }
   return route.paymentMethodId === args.paymentMethodId
-    ? { kind: "preview", paymentMethodId: route.paymentMethodId }
+    ? {
+        kind: "preview",
+        paymentMethodId: route.paymentMethodId,
+        paymentMethodType: route.paymentMethodType,
+      }
     : { kind: "invalid_preview" };
 }
 

@@ -57,7 +57,8 @@ import { activeUsagePackPriceId } from "./zero-billing-checkout.service";
 import {
   resolveBillingPurchaseRoute,
   stripeBillingPurchasePaymentParams,
-} from "./zero-billing-payment-method.service";
+  type BillingPurchasePaymentMethod,
+} from "./billing-payment-method.service";
 
 const PURPOSE = "usage_pack_invitation_purchase";
 const PURCHASE_ID_METADATA_KEY = "usagePackInvitationPurchaseId";
@@ -1257,15 +1258,20 @@ export async function handleUsagePackInvitationInvoicePaid(
   return { handled: true, orgId: purchase.orgId };
 }
 
-export async function confirmUsagePackInvitationPurchase(
-  db: Db,
-  clerk: ClerkClient,
-  args: { readonly orgId: string; readonly purchaseId: string },
-  signal: AbortSignal,
-): Promise<ConfirmUsagePackInvitationPurchaseResult> {
-  const purchase = await loadPurchase(db, args.purchaseId);
-  if (!purchase || purchase.orgId !== args.orgId) {
-    return { status: "not_found" };
+function invitationPurchaseConfirmState(
+  purchase: UsagePackInvitationPurchaseRow | null,
+  orgId: string,
+):
+  | {
+      readonly status: "ready";
+      readonly purchase: UsagePackInvitationPurchaseRow;
+    }
+  | {
+      readonly status: "complete";
+      readonly result: ConfirmUsagePackInvitationPurchaseResult;
+    } {
+  if (!purchase || purchase.orgId !== orgId) {
+    return { status: "complete", result: { status: "not_found" } };
   }
   if (
     purchase.status === "payment_succeeded" ||
@@ -1273,14 +1279,35 @@ export async function confirmUsagePackInvitationPurchase(
     purchase.status === "invitation_pending" ||
     ACCEPTED_PURCHASE_STATUSES.has(purchase.status)
   ) {
-    return { status: "confirmed" };
+    return { status: "complete", result: { status: "confirmed" } };
   }
   if (
     purchase.status !== "checkout_pending" ||
     purchase.stripeCheckoutSessionId
   ) {
-    return { status: "conflict" };
+    return { status: "complete", result: { status: "conflict" } };
   }
+  return { status: "ready", purchase };
+}
+
+export async function confirmUsagePackInvitationPurchase(
+  db: Db,
+  clerk: ClerkClient,
+  args: {
+    readonly orgId: string;
+    readonly purchaseId: string;
+    readonly paymentMethod?: BillingPurchasePaymentMethod;
+  },
+  signal: AbortSignal,
+): Promise<ConfirmUsagePackInvitationPurchaseResult> {
+  const purchaseState = invitationPurchaseConfirmState(
+    await loadPurchase(db, args.purchaseId),
+    args.orgId,
+  );
+  if (purchaseState.status === "complete") {
+    return purchaseState.result;
+  }
+  const { purchase } = purchaseState;
   const expiresAt = purchase.stripeCheckoutExpiresAt;
   if (!expiresAt || expiresAt <= nowDate()) {
     await db
@@ -1332,12 +1359,20 @@ export async function confirmUsagePackInvitationPurchase(
   if (route.kind === "checkout") {
     return { status: "conflict" };
   }
+  if (
+    args.paymentMethod &&
+    (args.paymentMethod.paymentMethodId !== route.paymentMethodId ||
+      args.paymentMethod.paymentMethodType !== route.paymentMethodType)
+  ) {
+    return { status: "conflict" };
+  }
+  const paymentMethod = args.paymentMethod ?? route;
   const metadata = checkoutMetadata(purchase.id);
   const invoice = await stripe.invoices.create(
     {
       customer: subscription.stripeCustomerId,
       auto_advance: false,
-      ...stripeBillingPurchasePaymentParams(route),
+      ...stripeBillingPurchasePaymentParams(paymentMethod),
       metadata,
     },
     { idempotencyKey: `usage-pack-invitation:${purchase.id}:invoice` },

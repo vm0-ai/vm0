@@ -23,9 +23,11 @@ import {
 import { getStripeClient } from "../external/stripe-client";
 import { parseBillingPaymentMethodPreviewToken } from "../services/billing-purchase-preview-token.service";
 import {
+  billingPurchasePreviewEnabled$,
   revalidateBillingPurchase,
   routeBillingPurchasePreview,
-} from "../services/zero-billing-payment-method.service";
+  type BillingPurchasePaymentMethod,
+} from "../services/billing-payment-method.service";
 import type { RouteEntry } from "../route-entry";
 
 const adminRequired = Object.freeze({
@@ -53,8 +55,17 @@ const previewConcurrencySubscriptionChangeAuthed$ = command(
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
+    const previewEnabled = await set(
+      billingPurchasePreviewEnabled$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        requested: bodyResult.data.supportsInAppPreview === true,
+      },
+      signal,
+    );
     if (
-      bodyResult.data.supportsInAppPreview === true &&
+      previewEnabled &&
       (!bodyResult.data.returnUrl ||
         !billingRedirectAllowed(bodyResult.data.returnUrl))
     ) {
@@ -104,10 +115,7 @@ const previewConcurrencySubscriptionChangeAuthed$ = command(
       }
     }
 
-    if (
-      bodyResult.data.supportsInAppPreview === true &&
-      bodyResult.data.returnUrl
-    ) {
+    if (previewEnabled && bodyResult.data.returnUrl) {
       const route = await routeBillingPurchasePreview(
         {
           stripe: getStripeClient(),
@@ -176,6 +184,7 @@ const confirmConcurrencySubscriptionChangeAuthed$ = command(
     const { subscriptionId } = get(
       pathParamsOf(zeroBillingConcurrencySubscriptionContract.confirmChange),
     );
+    let paymentMethod: BillingPurchasePaymentMethod | undefined;
     if (bodyResult.data.paymentMethodPreviewToken) {
       const preview = parseBillingPaymentMethodPreviewToken(
         bodyResult.data.paymentMethodPreviewToken,
@@ -216,6 +225,7 @@ const confirmConcurrencySubscriptionChangeAuthed$ = command(
           },
         };
       }
+      paymentMethod = revalidated;
     }
     const result = await set(
       changeConcurrencySubscription$,
@@ -223,6 +233,7 @@ const confirmConcurrencySubscriptionChangeAuthed$ = command(
         orgId: auth.orgId,
         subscriptionId,
         quantity: bodyResult.data.quantity,
+        paymentMethod,
       },
       signal,
     );

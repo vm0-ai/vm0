@@ -26,9 +26,11 @@ import {
 import { previewConcurrencySubscriptionChange$ } from "../services/zero-billing-concurrency-subscription.service";
 import { parseBillingPaymentMethodPreviewToken } from "../services/billing-purchase-preview-token.service";
 import {
+  billingPurchasePreviewEnabled$,
   revalidateBillingPurchase,
   routeBillingPurchasePreview,
-} from "../services/zero-billing-payment-method.service";
+  type BillingPurchasePaymentMethod,
+} from "../services/billing-payment-method.service";
 import { getStripeClient } from "../external/stripe-client";
 import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
 import type { RouteEntry } from "../route-entry";
@@ -157,7 +159,10 @@ async function revalidateConcurrencyPaymentPreview(
   },
   signal: AbortSignal,
 ): Promise<
-  | { readonly kind: "continue" }
+  | {
+      readonly kind: "continue";
+      readonly paymentMethod: BillingPurchasePaymentMethod;
+    }
   | { readonly kind: "invalid_preview" }
   | { readonly kind: "checkout"; readonly url: string }
 > {
@@ -200,7 +205,7 @@ async function revalidateConcurrencyPaymentPreview(
   }
   return revalidated.kind === "checkout"
     ? { kind: "checkout", url: revalidated.url }
-    : { kind: "continue" };
+    : { kind: "continue", paymentMethod: revalidated };
 }
 
 const concurrencyCheckoutPreviewAuthed$ = command(
@@ -219,10 +224,16 @@ const concurrencyCheckoutPreviewAuthed$ = command(
       return bodyResult.response;
     }
     const { supportsInAppPreview, returnUrl } = bodyResult.data;
-    if (
-      supportsInAppPreview === true &&
-      (!returnUrl || !billingRedirectAllowed(returnUrl))
-    ) {
+    const previewEnabled = await set(
+      billingPurchasePreviewEnabled$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        requested: supportsInAppPreview === true,
+      },
+      signal,
+    );
+    if (previewEnabled && (!returnUrl || !billingRedirectAllowed(returnUrl))) {
       return badRequestMessage(
         "returnUrl must match the platform origin for in-app billing",
       );
@@ -243,7 +254,7 @@ const concurrencyCheckoutPreviewAuthed$ = command(
         orgId: auth.orgId,
         target,
         quantity: bodyResult.data.quantity,
-        supportsInAppPreview: supportsInAppPreview === true,
+        supportsInAppPreview: previewEnabled,
         returnUrl,
       },
       signal,
@@ -374,6 +385,7 @@ const concurrencyCheckoutAuthed$ = command(
       return badRequestMessage(target.message);
     }
 
+    let paymentMethod: BillingPurchasePaymentMethod | undefined;
     if (paymentMethodPreviewToken) {
       const revalidated = await revalidateConcurrencyPaymentPreview(
         {
@@ -391,6 +403,7 @@ const concurrencyCheckoutAuthed$ = command(
       if (revalidated.kind === "checkout") {
         return { status: 200 as const, body: { url: revalidated.url } };
       }
+      paymentMethod = revalidated.paymentMethod;
     }
 
     const purchase = await set(
@@ -404,6 +417,7 @@ const concurrencyCheckoutAuthed$ = command(
           target.existingSubscription?.scheduledQuantity !== null &&
           target.existingSubscription?.scheduledQuantity !== undefined,
         successUrl,
+        paymentMethod,
       },
       signal,
     );

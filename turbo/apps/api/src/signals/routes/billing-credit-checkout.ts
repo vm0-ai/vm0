@@ -22,6 +22,7 @@ import {
 } from "../services/zero-billing-checkout.service";
 import { updateAutoRechargeConfig$ } from "../services/billing.service";
 import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
+import { billingPurchasePreviewEnabled$ } from "../services/billing-payment-method.service";
 import type { RouteEntry } from "../route-entry";
 
 const adminRequired = Object.freeze({
@@ -113,7 +114,17 @@ const creditCheckoutAuthed$ = command(
     // hosted Checkout, while old app builds can omit this opt-in for about two
     // days during rollout. Remove the rollout compatibility after #26842; keep
     // an explicit hosted-checkout contract for CLI before narrowing this field.
-    if (supportsInAppPreview === true || previewExistingBilling === true) {
+    const previewEnabled = await set(
+      billingPurchasePreviewEnabled$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        requested:
+          supportsInAppPreview === true || previewExistingBilling === true,
+      },
+      signal,
+    );
+    if (previewEnabled) {
       const preview = await set(
         previewExistingBillingCreditPurchase$,
         { orgId: auth.orgId, credits, successUrl, cancelUrl },

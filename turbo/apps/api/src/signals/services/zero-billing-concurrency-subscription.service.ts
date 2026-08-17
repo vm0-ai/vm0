@@ -33,6 +33,10 @@ import {
   isConcurrencyPriceId,
 } from "./org-concurrency-entitlements.service";
 import { completeBillingOperationInvoice } from "./billing-operation-invoice.service";
+import {
+  stripeBillingPurchasePaymentParams,
+  type BillingPurchasePaymentMethod,
+} from "./billing-payment-method.service";
 import { subscriptionScheduleHasNoFutureChanges } from "./stripe-subscription-schedules.service";
 
 const CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX = 1000;
@@ -47,6 +51,10 @@ interface ConcurrencySubscriptionChangeArgs extends ConcurrencySubscriptionArgs 
   readonly quantity: number;
 }
 
+interface ConfirmedConcurrencySubscriptionChangeArgs extends ConcurrencySubscriptionChangeArgs {
+  readonly paymentMethod?: BillingPurchasePaymentMethod;
+}
+
 interface ReduceConcurrencySubscriptionArgs extends ConcurrencySubscriptionChangeArgs {
   readonly successUrl: string;
 }
@@ -56,12 +64,14 @@ interface StripeConcurrencySubscriptionChangeArgs {
   readonly quantity: number;
   readonly mode: "absolute" | "increase" | "reduce";
   readonly hasScheduledConcurrencyChange: boolean;
+  readonly paymentMethod?: BillingPurchasePaymentMethod;
 }
 
 interface AddStripeConcurrencySubscriptionItemArgs {
   readonly subscriptionId: string;
   readonly priceId: string;
   readonly quantity: number;
+  readonly paymentMethod?: BillingPurchasePaymentMethod;
 }
 
 type CancelConcurrencySubscriptionResult =
@@ -504,6 +514,9 @@ export const addStripeConcurrencySubscriptionItem$ = command(
             ? { id: currentItem.id, quantity: args.quantity }
             : { price: args.priceId, quantity: args.quantity },
         ],
+        ...(args.paymentMethod
+          ? stripeBillingPurchasePaymentParams(args.paymentMethod)
+          : {}),
         payment_behavior: "pending_if_incomplete",
         proration_behavior: "always_invoice",
         proration_date: Math.floor(nowDate().getTime() / 1000),
@@ -879,6 +892,23 @@ export const previewStripeConcurrencySubscriptionChange$ = command(
   },
 );
 
+function concurrencyChangeTargetQuantity(
+  args: Pick<StripeConcurrencySubscriptionChangeArgs, "mode" | "quantity">,
+  currentQuantity: number,
+): number | null {
+  const targetQuantity =
+    args.mode === "increase" ? currentQuantity + args.quantity : args.quantity;
+  if (
+    !Number.isSafeInteger(targetQuantity) ||
+    targetQuantity < 1 ||
+    targetQuantity > CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX ||
+    (args.mode === "reduce" && targetQuantity > currentQuantity)
+  ) {
+    return null;
+  }
+  return targetQuantity;
+}
+
 export const applyStripeConcurrencySubscriptionChange$ = command(
   async (
     _,
@@ -897,16 +927,8 @@ export const applyStripeConcurrencySubscriptionChange$ = command(
         "Concurrency subscription has no active concurrency item",
       );
     }
-    const targetQuantity =
-      args.mode === "increase" ? item.quantity + args.quantity : args.quantity;
-    if (
-      !Number.isSafeInteger(targetQuantity) ||
-      targetQuantity < 1 ||
-      targetQuantity > CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX
-    ) {
-      return { ok: false, reason: "invalid_quantity" };
-    }
-    if (args.mode === "reduce" && targetQuantity > item.quantity) {
+    const targetQuantity = concurrencyChangeTargetQuantity(args, item.quantity);
+    if (targetQuantity === null) {
       return { ok: false, reason: "invalid_quantity" };
     }
 
@@ -977,6 +999,9 @@ export const applyStripeConcurrencySubscriptionChange$ = command(
       subscription.id,
       {
         items: [{ id: item.id, quantity: targetQuantity }],
+        ...(args.paymentMethod
+          ? stripeBillingPurchasePaymentParams(args.paymentMethod)
+          : {}),
         payment_behavior: "pending_if_incomplete",
         proration_behavior: "always_invoice",
         proration_date: Math.floor(nowDate().getTime() / 1000),
@@ -1029,7 +1054,7 @@ export const previewConcurrencySubscriptionChange$ = command(
 export const changeConcurrencySubscription$ = command(
   async (
     { get, set },
-    args: ConcurrencySubscriptionChangeArgs,
+    args: ConfirmedConcurrencySubscriptionChangeArgs,
     signal: AbortSignal,
   ): Promise<ChangeConcurrencySubscriptionResult> => {
     const subscription = await findActiveConcurrencySubscription(
@@ -1050,6 +1075,7 @@ export const changeConcurrencySubscription$ = command(
         quantity: args.quantity,
         mode: "absolute",
         hasScheduledConcurrencyChange: subscription.scheduledQuantity !== null,
+        paymentMethod: args.paymentMethod,
       },
       signal,
     );

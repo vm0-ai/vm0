@@ -48,6 +48,10 @@ import {
 } from "./usage-pack-credit-refund.service";
 import type { BillingReconciliationScope } from "./billing-reconciliation-scope";
 import { completeBillingOperationInvoice } from "./billing-operation-invoice.service";
+import {
+  stripeBillingPurchasePaymentParams,
+  type BillingPurchasePaymentMethod,
+} from "./billing-payment-method.service";
 import { downgradeSubscriptionForOrg } from "./zero-billing-downgrade.service";
 import {
   activeUsagePackPriceId,
@@ -3623,11 +3627,14 @@ async function confirmUsagePackDowngrade(
 
 async function confirmUsagePackUpgrade(
   db: Db,
-  context: UsagePackChangeContext,
-  change: UsagePackAllocationChangeRow,
-  subscription: StripeSubscription,
+  args: {
+    readonly change: UsagePackAllocationChangeRow;
+    readonly subscription: StripeSubscription;
+    readonly paymentMethod: BillingPurchasePaymentMethod | undefined;
+  },
   signal: AbortSignal,
 ): Promise<UsagePackChangeConfirmResult> {
+  const { change, subscription, paymentMethod } = args;
   if (
     !change.sourceStripePriceId ||
     !change.targetStripePriceId ||
@@ -3650,6 +3657,9 @@ async function confirmUsagePackUpgrade(
     subscription.id,
     {
       items,
+      ...(paymentMethod
+        ? stripeBillingPurchasePaymentParams(paymentMethod)
+        : {}),
       payment_behavior: "pending_if_incomplete",
       proration_behavior: "always_invoice",
       proration_date: change.prorationTimestamp,
@@ -3802,6 +3812,7 @@ export async function confirmUsagePackAllocationChange(
   args: {
     readonly orgId: string;
     readonly changeId: string;
+    readonly paymentMethod?: BillingPurchasePaymentMethod;
   },
   signal: AbortSignal,
 ): Promise<UsagePackChangeConfirmResult> {
@@ -3867,9 +3878,11 @@ export async function confirmUsagePackAllocationChange(
   }
   return await confirmUsagePackUpgrade(
     db,
-    context,
-    change,
-    subscription,
+    {
+      change,
+      subscription,
+      paymentMethod: args.paymentMethod,
+    },
     signal,
   );
 }

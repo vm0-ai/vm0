@@ -17,7 +17,7 @@ import { z } from "zod";
 
 import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
-import { db$, writeDb$, type ReadonlyDb } from "../external/db";
+import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import {
   getStripeClient,
   type StripeClient,
@@ -35,6 +35,7 @@ import {
 } from "./zero-billing-concurrency-subscription.service";
 import { stripePreviewMetadata } from "./stripe-preview-metadata.service";
 import { completeBillingOperationInvoice } from "./billing-operation-invoice.service";
+import { lockBillingPurchaseOrg } from "./billing-purchase-lock.service";
 import {
   createBillingPreviewToken,
   parseBillingPreviewToken,
@@ -42,7 +43,8 @@ import {
 import {
   resolveBillingPurchaseRoute,
   stripeBillingPurchasePaymentParams,
-} from "./zero-billing-payment-method.service";
+  type BillingPurchasePaymentMethod,
+} from "./billing-payment-method.service";
 
 interface CreateCheckoutSessionArgs {
   readonly orgId: string;
@@ -73,6 +75,8 @@ type ConfirmPlanPurchaseResult =
       readonly response: BillingPurchaseConfirmResponse;
     }
   | { readonly status: "invalid_preview" };
+
+type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 interface CompleteCheckoutSessionArgs {
   readonly orgId: string;
@@ -119,6 +123,7 @@ interface StartConcurrencyPurchaseArgs {
   readonly existingSubscriptionId?: string;
   readonly hasScheduledConcurrencyChange: boolean;
   readonly successUrl: string;
+  readonly paymentMethod?: BillingPurchasePaymentMethod;
 }
 
 type StartConcurrencyPurchaseResult =
@@ -840,29 +845,47 @@ function expandedLatestInvoice(
     : null;
 }
 
-async function planPurchaseSubscription(
-  stripe: StripeClient,
-  customerId: string,
-  purchaseId: string,
+async function planPurchaseSubscriptionState(
+  args: {
+    readonly stripe: StripeClient;
+    readonly orgId: string;
+    readonly customerId: string;
+    readonly purchaseId: string;
+    readonly sourceSubscriptionId: string | null;
+  },
   signal: AbortSignal,
-): Promise<StripeSubscription | null> {
-  const subscriptions = await stripe.subscriptions.list({
-    customer: customerId,
+): Promise<{
+  readonly existing: StripeSubscription | null;
+  readonly hasCompetingPurchase: boolean;
+}> {
+  const subscriptions = await args.stripe.subscriptions.list({
+    customer: args.customerId,
     status: "all",
     limit: 100,
   });
   signal.throwIfAborted();
-  const existing = subscriptions.data.find((subscription) => {
-    return subscription.metadata?.billingPurchaseId === purchaseId;
+  const existingSummary = subscriptions.data.find((subscription) => {
+    return subscription.metadata?.billingPurchaseId === args.purchaseId;
   });
-  if (!existing) {
-    return null;
+  const hasCompetingPurchase = subscriptions.data.some((subscription) => {
+    return (
+      subscription.id !== args.sourceSubscriptionId &&
+      subscription.metadata?.orgId === args.orgId &&
+      knownPlanPriceItem(subscription.items.data) !== undefined &&
+      subscription.metadata?.billingPurchaseId !== args.purchaseId &&
+      subscription.status !== "canceled" &&
+      subscription.status !== "incomplete_expired"
+    );
+  });
+  if (!existingSummary) {
+    return { existing: null, hasCompetingPurchase };
   }
-  const subscription = await stripe.subscriptions.retrieve(existing.id, {
-    expand: ["latest_invoice"],
-  });
+  const existing = await args.stripe.subscriptions.retrieve(
+    existingSummary.id,
+    { expand: ["latest_invoice"] },
+  );
   signal.throwIfAborted();
-  return subscription;
+  return { existing, hasCompetingPurchase };
 }
 
 export const startPlanPurchase$ = command(
@@ -960,6 +983,174 @@ export const startPlanPurchase$ = command(
   },
 );
 
+async function createConfirmedPlanSubscription(
+  args: {
+    readonly stripe: StripeClient;
+    readonly orgId: string;
+    readonly preview: PlanPurchasePreviewToken;
+    readonly paymentMethod: BillingPurchasePaymentMethod;
+  },
+  signal: AbortSignal,
+): Promise<ConfirmPlanPurchaseResult> {
+  const { stripe, orgId, preview, paymentMethod } = args;
+  const currentPreview = await stripe.invoices.createPreview({
+    customer: preview.customerId,
+    preview_mode: "next",
+    subscription_details: {
+      items: [{ price: preview.priceId, quantity: 1 }],
+    },
+  });
+  signal.throwIfAborted();
+  const nextRecurringAmountCents = creditPurchasePayableAmount(currentPreview);
+  if (
+    currentPreview.currency !== preview.currency ||
+    nextRecurringAmountCents !== preview.nextRecurringAmountCents ||
+    (preview.trialDays === undefined ? nextRecurringAmountCents : 0) !==
+      preview.immediateAmountCents
+  ) {
+    return { status: "invalid_preview" };
+  }
+
+  const metadata: StripeMetadataParam = {
+    ...checkoutSessionMetadata({
+      orgId,
+      tier: preview.tier,
+      priceId: preview.priceId,
+      adAttribution: preview.adAttribution,
+    }),
+    billingPurchaseId: preview.purchaseId,
+  };
+  const subscription = await stripe.subscriptions.create(
+    {
+      customer: preview.customerId,
+      items: [{ price: preview.priceId, quantity: 1 }],
+      ...stripeBillingPurchasePaymentParams(paymentMethod),
+      metadata,
+      payment_behavior: "default_incomplete",
+      ...(preview.trialDays === undefined
+        ? {}
+        : { trial_period_days: preview.trialDays }),
+      expand: ["latest_invoice"],
+    },
+    { idempotencyKey: `plan-purchase:${preview.purchaseId}:subscription` },
+  );
+  signal.throwIfAborted();
+  return {
+    status: "confirmed",
+    response: await completeBillingOperationInvoice(
+      stripe,
+      expandedLatestInvoice(subscription),
+      `plan:${preview.purchaseId}`,
+      signal,
+    ),
+  };
+}
+
+async function confirmPlanPurchaseTransaction(
+  args: {
+    readonly tx: WriteTx;
+    readonly orgId: string;
+    readonly preview: PlanPurchasePreviewToken;
+  },
+  signal: AbortSignal,
+): Promise<ConfirmPlanPurchaseResult> {
+  const { tx, orgId, preview } = args;
+  await lockBillingPurchaseOrg(tx, orgId);
+  signal.throwIfAborted();
+  const stripe = getStripeClient();
+  const subscriptionState = await planPurchaseSubscriptionState(
+    {
+      stripe,
+      orgId,
+      customerId: preview.customerId,
+      purchaseId: preview.purchaseId,
+      sourceSubscriptionId: preview.sourceSubscriptionId,
+    },
+    signal,
+  );
+  if (subscriptionState.existing) {
+    return {
+      status: "confirmed",
+      response: await completeBillingOperationInvoice(
+        stripe,
+        expandedLatestInvoice(subscriptionState.existing),
+        `plan:${preview.purchaseId}`,
+        signal,
+      ),
+    };
+  }
+
+  const [org] = await tx
+    .select({
+      customerId: orgMetadata.stripeCustomerId,
+      subscriptionId: orgMetadata.stripeSubscriptionId,
+      tier: orgMetadata.tier,
+    })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .for("update")
+    .limit(1);
+  signal.throwIfAborted();
+  if (
+    !org ||
+    org.customerId !== preview.customerId ||
+    org.subscriptionId !== preview.sourceSubscriptionId ||
+    checkoutWouldReplaceWithSameOrLowerTier({
+      currentTier: org.tier,
+      targetTier: preview.tier,
+    }) ||
+    subscriptionState.hasCompetingPurchase
+  ) {
+    return { status: "invalid_preview" };
+  }
+
+  const route = await resolveBillingPurchaseRoute(
+    {
+      stripe,
+      supportsInAppPreview: true,
+      customerId: preview.customerId,
+      subscriptionId: preview.sourceSubscriptionId,
+    },
+    signal,
+  );
+  if (route.kind === "checkout") {
+    const url = await createPlanCheckoutSession(
+      stripe,
+      preview.customerId,
+      {
+        orgId,
+        tier: preview.tier,
+        priceId: preview.priceId,
+        trialDays: preview.trialDays,
+        successUrl: preview.successUrl,
+        cancelUrl: preview.cancelUrl,
+        adAttribution: preview.adAttribution,
+        checkoutIdempotencyKey: `plan-purchase:${preview.purchaseId}:checkout`,
+      },
+      signal,
+    );
+    return {
+      status: "confirmed",
+      response: { status: "checkout_required", checkoutUrl: url },
+    };
+  }
+  if (
+    route.customerId !== preview.customerId ||
+    route.paymentMethodId !== preview.paymentMethodId
+  ) {
+    return { status: "invalid_preview" };
+  }
+  return await createConfirmedPlanSubscription(
+    {
+      stripe,
+      orgId,
+      preview,
+      paymentMethod: route,
+    },
+    signal,
+  );
+}
+
 export const confirmPlanPurchase$ = command(
   async (
     { set },
@@ -977,113 +1168,17 @@ export const confirmPlanPurchase$ = command(
       return { status: "invalid_preview" };
     }
 
-    const stripe = getStripeClient();
-    const existing = await planPurchaseSubscription(
-      stripe,
-      preview.customerId,
-      preview.purchaseId,
-      signal,
-    );
-    if (existing) {
-      return {
-        status: "confirmed",
-        response: await completeBillingOperationInvoice(
-          stripe,
-          expandedLatestInvoice(existing),
-          `plan:${preview.purchaseId}`,
-          signal,
-        ),
-      };
-    }
-
-    const route = await resolveBillingPurchaseRoute(
-      {
-        stripe,
-        supportsInAppPreview: true,
-        customerId: preview.customerId,
-        subscriptionId: preview.sourceSubscriptionId,
-      },
-      signal,
-    );
-    if (route.kind === "checkout") {
-      const url = await set(
-        createCheckoutSession$,
+    const db = set(writeDb$);
+    return await db.transaction(async (tx) => {
+      return await confirmPlanPurchaseTransaction(
         {
+          tx,
           orgId,
-          tier: preview.tier,
-          priceId: preview.priceId,
-          trialDays: preview.trialDays,
-          successUrl: preview.successUrl,
-          cancelUrl: preview.cancelUrl,
-          adAttribution: preview.adAttribution,
-          checkoutIdempotencyKey: `plan-purchase:${preview.purchaseId}:checkout`,
+          preview,
         },
         signal,
       );
-      return {
-        status: "confirmed",
-        response: { status: "checkout_required", checkoutUrl: url },
-      };
-    }
-    if (
-      route.customerId !== preview.customerId ||
-      route.paymentMethodId !== preview.paymentMethodId
-    ) {
-      return { status: "invalid_preview" };
-    }
-
-    const currentPreview = await stripe.invoices.createPreview({
-      customer: preview.customerId,
-      preview_mode: "next",
-      subscription_details: {
-        items: [{ price: preview.priceId, quantity: 1 }],
-      },
     });
-    signal.throwIfAborted();
-    const nextRecurringAmountCents =
-      creditPurchasePayableAmount(currentPreview);
-    if (
-      currentPreview.currency !== preview.currency ||
-      nextRecurringAmountCents !== preview.nextRecurringAmountCents ||
-      (preview.trialDays === undefined ? nextRecurringAmountCents : 0) !==
-        preview.immediateAmountCents
-    ) {
-      return { status: "invalid_preview" };
-    }
-
-    const metadata: StripeMetadataParam = {
-      ...checkoutSessionMetadata({
-        orgId,
-        tier: preview.tier,
-        priceId: preview.priceId,
-        adAttribution: preview.adAttribution,
-      }),
-      billingPurchaseId: preview.purchaseId,
-    };
-    const subscription = await stripe.subscriptions.create(
-      {
-        customer: preview.customerId,
-        items: [{ price: preview.priceId, quantity: 1 }],
-        ...stripeBillingPurchasePaymentParams(route),
-        metadata,
-        payment_behavior: "default_incomplete",
-        ...(preview.trialDays === undefined
-          ? {}
-          : { trial_period_days: preview.trialDays }),
-        expand: ["latest_invoice"],
-      },
-      { idempotencyKey: `plan-purchase:${preview.purchaseId}:subscription` },
-    );
-    signal.throwIfAborted();
-    return {
-      status: "confirmed",
-      response: await completeBillingOperationInvoice(
-        stripe,
-        expandedLatestInvoice(subscription),
-        `plan:${preview.purchaseId}`,
-        signal,
-      ),
-    };
   },
 );
 
@@ -1092,6 +1187,45 @@ export const confirmPlanPurchase$ = command(
  * checkout session URL. Mirrors apps/web's createCheckoutSession
  * (allow_promotion_codes + subscription metadata orgId tag).
  */
+async function createPlanCheckoutSession(
+  stripe: StripeClient,
+  customerId: string,
+  args: CreateCheckoutSessionArgs,
+  signal: AbortSignal,
+): Promise<string> {
+  const metadata = checkoutSessionMetadata({
+    orgId: args.orgId,
+    tier: args.tier,
+    priceId: args.priceId,
+    adAttribution: args.adAttribution,
+  });
+  const params: StripeCheckoutSessionCreateParams = {
+    mode: "subscription",
+    customer: customerId,
+    line_items: [{ price: args.priceId, quantity: 1 }],
+    allow_promotion_codes: true,
+    success_url: args.successUrl,
+    cancel_url: args.cancelUrl,
+    metadata,
+    subscription_data: {
+      metadata,
+      ...(args.trialDays === undefined
+        ? {}
+        : { trial_period_days: args.trialDays }),
+    },
+  };
+  const session = args.checkoutIdempotencyKey
+    ? await stripe.checkout.sessions.create(params, {
+        idempotencyKey: args.checkoutIdempotencyKey,
+      })
+    : await stripe.checkout.sessions.create(params);
+  signal.throwIfAborted();
+  if (!session.url) {
+    throw new Error("Stripe checkout session did not return a URL");
+  }
+  return session.url;
+}
+
 const createCheckoutSession$ = command(
   async (
     { set },
@@ -1105,12 +1239,6 @@ const createCheckoutSession$ = command(
     );
     signal.throwIfAborted();
 
-    const metadata = checkoutSessionMetadata({
-      orgId: args.orgId,
-      tier: args.tier,
-      priceId: args.priceId,
-      adAttribution: args.adAttribution,
-    });
     const customerId = await set(
       getOrCreateStripeCustomer$,
       { orgId: args.orgId, metadata: args.adAttribution },
@@ -1118,33 +1246,12 @@ const createCheckoutSession$ = command(
     );
     signal.throwIfAborted();
 
-    const stripe = getStripeClient();
-    const params: StripeCheckoutSessionCreateParams = {
-      mode: "subscription",
-      customer: customerId,
-      line_items: [{ price: args.priceId, quantity: 1 }],
-      allow_promotion_codes: true,
-      success_url: args.successUrl,
-      cancel_url: args.cancelUrl,
-      metadata,
-      subscription_data: {
-        metadata,
-        ...(args.trialDays === undefined
-          ? {}
-          : { trial_period_days: args.trialDays }),
-      },
-    };
-    const session = args.checkoutIdempotencyKey
-      ? await stripe.checkout.sessions.create(params, {
-          idempotencyKey: args.checkoutIdempotencyKey,
-        })
-      : await stripe.checkout.sessions.create(params);
-    signal.throwIfAborted();
-
-    if (!session.url) {
-      throw new Error("Stripe checkout session did not return a URL");
-    }
-    return session.url;
+    return await createPlanCheckoutSession(
+      getStripeClient(),
+      customerId,
+      args,
+      signal,
+    );
   },
 );
 
@@ -1354,6 +1461,7 @@ export const startConcurrencyPurchase$ = command(
           quantity: args.quantity,
           mode: "increase",
           hasScheduledConcurrencyChange: args.hasScheduledConcurrencyChange,
+          paymentMethod: args.paymentMethod,
         },
         signal,
       );
@@ -1390,6 +1498,7 @@ export const startConcurrencyPurchase$ = command(
         subscriptionId,
         priceId: args.priceId,
         quantity: args.quantity,
+        paymentMethod: args.paymentMethod,
       },
       signal,
     );

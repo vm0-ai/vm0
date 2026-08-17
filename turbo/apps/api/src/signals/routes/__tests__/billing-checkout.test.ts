@@ -210,6 +210,27 @@ function currentSecond(): number {
   return Math.floor(now() / 1000);
 }
 
+function stripeInputMetadata(input: unknown): Readonly<Record<string, string>> {
+  if (
+    typeof input !== "object" ||
+    input === null ||
+    !("metadata" in input) ||
+    typeof input.metadata !== "object" ||
+    input.metadata === null
+  ) {
+    throw new Error("Expected Stripe metadata");
+  }
+  const metadata = Object.entries(input.metadata);
+  if (
+    metadata.some(([, value]) => {
+      return typeof value !== "string";
+    })
+  ) {
+    throw new Error("Expected string Stripe metadata values");
+  }
+  return Object.fromEntries(metadata) as Readonly<Record<string, string>>;
+}
+
 function zeroToken(args: {
   readonly userId: string;
   readonly orgId: string;
@@ -239,6 +260,14 @@ function authenticateOrg(
   role: "org:admin" | "org:member" = "org:admin",
 ): void {
   mocks.clerk.session(fixture.userId, fixture.orgId, role);
+}
+
+async function enableSavedBillingPurchasePreview(
+  fixture: BillingOrgFixture,
+): Promise<void> {
+  await updateFeatureSwitchesForUser(context, fixture, {
+    [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
+  });
 }
 
 function mockClerkOrganization(fixture: BillingOrgFixture): void {
@@ -969,9 +998,46 @@ describe("POST /api/zero/billing/checkout", () => {
     });
   });
 
+  it("keeps saved-card Plan preview behind the server feature switch", async () => {
+    const fixture = await trackedSeed();
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    const customerId = `cus_${randomUUID().slice(0, 8)}`;
+    context.mocks.stripe.customers.create.mockResolvedValue({ id: customerId });
+    context.mocks.stripe.customers.retrieve.mockResolvedValue({
+      id: customerId,
+      invoice_settings: {
+        default_payment_method: `pm_${randomUUID().slice(0, 8)}`,
+      },
+    });
+    context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
+      url: "https://checkout.stripe.com/session/server-gated-preview",
+    });
+
+    const response = await accept(
+      setupApp({ context, routes: billingCheckoutRoutes })(
+        zeroBillingCheckoutContract,
+      ).create({
+        body: {
+          tier: "pro",
+          supportsInAppPreview: true,
+          successUrl: `${APP_ORIGIN}/billing?billing=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      url: "https://checkout.stripe.com/session/server-gated-preview",
+    });
+    expect(context.mocks.stripe.invoices.createPreview).not.toHaveBeenCalled();
+  });
+
   it("previews a saved-card plan purchase and routes its unpaid invoice", async () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    await enableSavedBillingPurchasePreview(fixture);
     const customerId = `cus_${randomUUID().slice(0, 8)}`;
     const paymentMethodId = `pm_${randomUUID().slice(0, 8)}`;
     const hostedInvoiceUrl =
@@ -1014,7 +1080,7 @@ describe("POST /api/zero/billing/checkout", () => {
       metadata: {},
       latest_invoice: operationInvoice,
     });
-    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingCheckoutContract,
     );
     const start = await accept(
@@ -1074,9 +1140,118 @@ describe("POST /api/zero/billing/checkout", () => {
     expect(context.mocks.stripe.invoices.pay).not.toHaveBeenCalled();
   });
 
+  it("allows only one of two Plan previews to create a subscription", async () => {
+    const fixture = await trackedSeed();
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    await enableSavedBillingPurchasePreview(fixture);
+    const customerId = `cus_${randomUUID().slice(0, 8)}`;
+    const paymentMethodId = `pm_${randomUUID().slice(0, 8)}`;
+    context.mocks.stripe.customers.create.mockResolvedValue({ id: customerId });
+    context.mocks.stripe.customers.retrieve.mockResolvedValue({
+      id: customerId,
+      invoice_settings: { default_payment_method: paymentMethodId },
+    });
+    context.mocks.stripe.invoices.createPreview.mockResolvedValue({
+      id: `in_preview_${randomUUID().slice(0, 8)}`,
+      hosted_invoice_url: null,
+      customer: customerId,
+      metadata: {},
+      amount_due: 2000,
+      currency: "usd",
+      status: null,
+      lines: { has_more: false, data: [] },
+      parent: null,
+    });
+    let createdSubscription:
+      | {
+          readonly id: string;
+          readonly customer: string;
+          readonly status: string;
+          readonly metadata: Readonly<Record<string, string>>;
+          readonly items: {
+            readonly data: readonly {
+              readonly price: { readonly id: string };
+            }[];
+          };
+        }
+      | undefined;
+    context.mocks.stripe.subscriptions.list.mockResolvedValue({
+      data: [],
+      has_more: false,
+    });
+    context.mocks.stripe.subscriptions.create.mockImplementation((input) => {
+      createdSubscription = {
+        id: `sub_${randomUUID().slice(0, 8)}`,
+        customer: customerId,
+        status: "active",
+        metadata: stripeInputMetadata(input),
+        items: { data: [{ price: { id: TEST_PRICE_PRO } }] },
+      };
+      context.mocks.stripe.subscriptions.list.mockResolvedValue({
+        data: [createdSubscription],
+        has_more: false,
+      });
+      return Promise.resolve({
+        ...createdSubscription,
+        latest_invoice: null,
+      });
+    });
+
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
+      zeroBillingCheckoutContract,
+    );
+    const purchaseBody = {
+      tier: "pro" as const,
+      supportsInAppPreview: true,
+      successUrl: `${APP_ORIGIN}/billing?billing=success`,
+      cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
+    };
+    const firstPreview = await accept(
+      client.create({
+        body: purchaseBody,
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    const secondPreview = await accept(
+      client.create({
+        body: purchaseBody,
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    if (
+      !("previewToken" in firstPreview.body) ||
+      !("previewToken" in secondPreview.body)
+    ) {
+      throw new Error("Expected two Plan purchase previews");
+    }
+
+    const confirmations = await Promise.all([
+      client.confirm({
+        body: { previewToken: firstPreview.body.previewToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      client.confirm({
+        body: { previewToken: secondPreview.body.previewToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+    ]);
+
+    expect(
+      confirmations
+        .map(({ status }) => {
+          return status;
+        })
+        .sort(),
+    ).toStrictEqual([200, 409]);
+    expect(context.mocks.stripe.subscriptions.create).toHaveBeenCalledTimes(1);
+  });
+
   it("uses hosted Checkout when an opted-in plan purchase has no saved card", async () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    await enableSavedBillingPurchasePreview(fixture);
     const customerId = `cus_${randomUUID().slice(0, 8)}`;
     context.mocks.stripe.customers.create.mockResolvedValue({ id: customerId });
     context.mocks.stripe.customers.retrieve.mockResolvedValue({
@@ -1090,7 +1265,7 @@ describe("POST /api/zero/billing/checkout", () => {
     });
 
     const response = await accept(
-      setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      setupApp({ context, routes: billingCheckoutRoutes })(
         zeroBillingCheckoutContract,
       ).create({
         body: {
@@ -2088,6 +2263,145 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
       });
     },
   );
+
+  it("allows only one of two usage pack previews to create a subscription", async () => {
+    const fixture = createOrgFixture();
+    const customerId = `cus_${randomUUID()}`;
+    const paymentMethodId = `pm_${randomUUID()}`;
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.UsagePackPlans]: true,
+      [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
+    });
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
+      {
+        data: [
+          {
+            role: "org:admin",
+            publicUserData: { userId: fixture.userId },
+            createdAt: now(),
+          },
+        ],
+      },
+    );
+    context.mocks.clerk.organizations.getOrganizationInvitationList.mockResolvedValue(
+      { data: [] },
+    );
+    context.mocks.stripe.customers.create.mockResolvedValue({ id: customerId });
+    context.mocks.stripe.customers.retrieve.mockResolvedValue({
+      id: customerId,
+      invoice_settings: { default_payment_method: paymentMethodId },
+    });
+    context.mocks.stripe.invoices.createPreview.mockResolvedValue({
+      id: `in_preview_${randomUUID()}`,
+      customer: customerId,
+      amount_due: 4000,
+      currency: "usd",
+      status: null,
+      metadata: {},
+      hosted_invoice_url: null,
+      lines: { has_more: false, data: [] },
+      parent: null,
+    });
+    let createdSubscription:
+      | {
+          readonly id: string;
+          readonly customer: string;
+          readonly status: string;
+          readonly metadata: Readonly<Record<string, string>>;
+          readonly items: {
+            readonly data: readonly {
+              readonly price: { readonly id: string };
+            }[];
+          };
+        }
+      | undefined;
+    context.mocks.stripe.subscriptions.list.mockResolvedValue({
+      data: [],
+      has_more: false,
+    });
+    context.mocks.stripe.subscriptions.create.mockImplementation((input) => {
+      createdSubscription = {
+        id: `sub_${randomUUID()}`,
+        customer: customerId,
+        status: "active",
+        metadata: stripeInputMetadata(input),
+        items: {
+          data: [
+            { price: { id: TEST_PRICE_USAGE_PACK_PLAN_PRO } },
+            { price: { id: TEST_PRICE_USAGE_PACK_20 } },
+          ],
+        },
+      };
+      context.mocks.stripe.subscriptions.list.mockResolvedValue({
+        data: [createdSubscription],
+        has_more: false,
+      });
+      return Promise.resolve({
+        ...createdSubscription,
+        latest_invoice: null,
+      });
+    });
+
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
+      zeroBillingUsagePackCheckoutContract,
+    );
+    const purchaseBody = {
+      tier: "pro" as const,
+      supportsInAppPreview: true,
+      memberUsagePacks: [
+        { memberId: fixture.userId, usagePackUsd: 20 as const },
+      ],
+      successUrl: `${APP_ORIGIN}/billing?billing=success`,
+      cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
+    };
+    const firstPreview = await accept(
+      client.create({
+        body: purchaseBody,
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    const secondPreview = await accept(
+      client.create({
+        body: purchaseBody,
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    if (
+      !("previewToken" in firstPreview.body) ||
+      !("previewToken" in secondPreview.body)
+    ) {
+      throw new Error("Expected two usage pack purchase previews");
+    }
+
+    const confirmations = await Promise.all([
+      client.confirm({
+        body: { previewToken: firstPreview.body.previewToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      client.confirm({
+        body: { previewToken: secondPreview.body.previewToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+    ]);
+
+    expect(
+      confirmations
+        .map(({ status }) => {
+          return status;
+        })
+        .sort(),
+    ).toStrictEqual([200, 409]);
+    expect(context.mocks.stripe.subscriptions.create).toHaveBeenCalledTimes(1);
+    expect(context.mocks.stripe.subscriptions.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customer: customerId,
+        default_payment_method: paymentMethodId,
+      }),
+      expect.any(Object),
+    );
+  });
 
   it("rejects stale member selections before creating checkout", async () => {
     const fixture = createOrgFixture();
@@ -5439,10 +5753,15 @@ describe("usage pack allocation management", () => {
     });
     const userId = `user_${randomUUID()}`;
     const fixture = await seedManagedUsagePack([{ userId, usagePackUsd: 20 }]);
-    const oldSubscription = managedUsagePackSubscription(
-      fixture,
-      new Map([[TEST_PRICE_USAGE_PACK_20, 1]]),
-    );
+    await enableSavedBillingPurchasePreview(fixture);
+    const paymentMethodId = `pm_${randomUUID()}`;
+    const oldSubscription = {
+      ...managedUsagePackSubscription(
+        fixture,
+        new Map([[TEST_PRICE_USAGE_PACK_20, 1]]),
+      ),
+      default_payment_method: paymentMethodId,
+    };
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
       oldSubscription,
     );
@@ -5461,6 +5780,8 @@ describe("usage pack allocation management", () => {
         body: {
           targetTier: "pro",
           memberUsagePacks: [{ memberId: userId, usagePackUsd: 50 }],
+          supportsInAppPreview: true,
+          returnUrl: `${APP_ORIGIN}/billing`,
         },
       }),
       [200],
@@ -5471,8 +5792,13 @@ describe("usage pack allocation management", () => {
         targetTier: "pro",
         immediateAmountCents: 1500,
         nextRecurringAmountCents: 5000,
+        paymentMethodPreviewToken: expect.any(String),
       }),
     );
+    const paymentMethodPreviewToken = preview.body.paymentMethodPreviewToken;
+    if (!paymentMethodPreviewToken) {
+      throw new Error("Expected a saved-payment-method preview token");
+    }
     const prorationTimestamp = Math.floor(
       new Date(preview.body.prorationDate).getTime() / 1000,
     );
@@ -5489,6 +5815,7 @@ describe("usage pack allocation management", () => {
     );
     context.mocks.stripe.subscriptions.retrieve
       .mockResolvedValueOnce(oldSubscription)
+      .mockResolvedValueOnce(oldSubscription)
       .mockResolvedValue(upgradedSubscription);
     context.mocks.stripe.subscriptions.update.mockResolvedValue({
       ...oldSubscription,
@@ -5499,7 +5826,10 @@ describe("usage pack allocation management", () => {
     const confirmed = await accept(
       client.confirmSubscriptionChange({
         headers: { authorization: "Bearer clerk-session" },
-        body: { changeId: preview.body.changeId },
+        body: {
+          changeId: preview.body.changeId,
+          paymentMethodPreviewToken,
+        },
       }),
       [200],
     );
@@ -5514,6 +5844,7 @@ describe("usage pack allocation management", () => {
         payment_behavior: "pending_if_incomplete",
         proration_behavior: "always_invoice",
         proration_date: prorationTimestamp,
+        default_payment_method: paymentMethodId,
       }),
       {
         idempotencyKey: `usage-pack-subscription-change:${preview.body.changeId}:apply`,
@@ -6676,10 +7007,15 @@ describe("usage pack allocation management", () => {
     });
     const userId = `user_${randomUUID()}`;
     const fixture = await seedManagedUsagePack([{ userId, usagePackUsd: 20 }]);
-    const oldSubscription = managedUsagePackSubscription(
-      fixture,
-      new Map([[TEST_PRICE_USAGE_PACK_20, 1]]),
-    );
+    await enableSavedBillingPurchasePreview(fixture);
+    const paymentMethodId = `pm_${randomUUID()}`;
+    const oldSubscription = {
+      ...managedUsagePackSubscription(
+        fixture,
+        new Map([[TEST_PRICE_USAGE_PACK_20, 1]]),
+      ),
+      default_payment_method: paymentMethodId,
+    };
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
       oldSubscription,
     );
@@ -6690,10 +7026,19 @@ describe("usage pack allocation management", () => {
     const preview = await accept(
       client.previewChange({
         headers: { authorization: "Bearer clerk-session" },
-        body: { memberId: userId, targetUsagePackUsd: 50 },
+        body: {
+          memberId: userId,
+          targetUsagePackUsd: 50,
+          supportsInAppPreview: true,
+          returnUrl: `${APP_ORIGIN}/billing`,
+        },
       }),
       [200],
     );
+    const paymentMethodPreviewToken = preview.body.paymentMethodPreviewToken;
+    if (!paymentMethodPreviewToken) {
+      throw new Error("Expected a saved-payment-method preview token");
+    }
     const prorationTimestamp = Math.floor(
       new Date(preview.body.prorationDate).getTime() / 1000,
     );
@@ -6711,6 +7056,7 @@ describe("usage pack allocation management", () => {
     );
     context.mocks.stripe.subscriptions.retrieve
       .mockResolvedValueOnce(oldSubscription)
+      .mockResolvedValueOnce(oldSubscription)
       .mockResolvedValue(upgradedSubscription);
     context.mocks.stripe.subscriptions.update.mockResolvedValue(
       upgradedSubscription,
@@ -6720,11 +7066,18 @@ describe("usage pack allocation management", () => {
       client.confirmChange({
         params: { changeId: preview.body.changeId },
         headers: { authorization: "Bearer clerk-session" },
-        body: {},
+        body: { paymentMethodPreviewToken },
       }),
       [200],
     );
     expect(confirmed.body.status).toBe("completed");
+    expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledWith(
+      fixture.subscriptionId,
+      expect.objectContaining({
+        default_payment_method: paymentMethodId,
+      }),
+      expect.any(Object),
+    );
     const state = await readUsagePackState(
       fixture.orgId,
       fixture.usagePackSubscriptionId,
@@ -8886,23 +9239,21 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
       expiresAt: periodEnd,
     });
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    await enableSavedBillingPurchasePreview(fixture);
+    const paymentMethodId = `pm_${randomUUID()}`;
     const allowanceItem = {
       id: `si_${TEST_PRICE_USAGE_ALLOWANCE}`,
       price: { id: TEST_PRICE_USAGE_ALLOWANCE },
       quantity: 1,
     };
-    context.mocks.stripe.subscriptions.retrieve
-      .mockResolvedValueOnce({
-        id: subscriptionId,
-        pending_update: null,
-        items: { data: [allowanceItem] },
-      })
-      .mockResolvedValueOnce({
-        id: subscriptionId,
-        latest_invoice: null,
-        pending_update: null,
-        items: { data: [allowanceItem] },
-      });
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      id: subscriptionId,
+      customer: customerId,
+      default_payment_method: paymentMethodId,
+      latest_invoice: null,
+      pending_update: null,
+      items: { data: [allowanceItem] },
+    });
     const recurringInvoice = recurringConcurrencyPreviewInvoice(3);
     const allowanceLine = {
       ...recurringInvoice.lines.data[0],
@@ -8976,16 +9327,25 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     })(zeroBillingConcurrencyCheckoutContract);
     const preview = await accept(
       client.preview({
-        body: { quantity: 3 },
+        body: {
+          quantity: 3,
+          supportsInAppPreview: true,
+          returnUrl: `${APP_ORIGIN}/billing`,
+        },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
     );
+    const paymentMethodPreviewToken = preview.body.paymentMethodPreviewToken;
+    if (!paymentMethodPreviewToken) {
+      throw new Error("Expected a saved-payment-method preview token");
+    }
     const successUrl = `${APP_ORIGIN}/billing?concurrency=success`;
     const purchase = await accept(
       client.create({
         body: {
           quantity: 3,
+          paymentMethodPreviewToken,
           successUrl,
           cancelUrl: `${APP_ORIGIN}/billing?concurrency=canceled`,
         },
@@ -9000,6 +9360,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
       immediateAmountCents: 5500,
       nextRecurringAmountCents: 30_000,
       currency: "usd",
+      paymentMethodPreviewToken: expect.any(String),
     });
     expect(purchase.body).toStrictEqual({ url: successUrl });
     expect(context.mocks.stripe.invoices.createPreview).toHaveBeenCalledWith({
@@ -9026,6 +9387,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
         proration_behavior: "always_invoice",
         proration_date: expect.any(Number),
         expand: ["latest_invoice"],
+        default_payment_method: paymentMethodId,
       },
     );
     expect(
@@ -9950,8 +10312,12 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
       tier: "team",
     });
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    await enableSavedBillingPurchasePreview(fixture);
+    const paymentMethodId = `pm_${randomUUID()}`;
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
       id: subscriptionId,
+      customer: fixture.customerId,
+      default_payment_method: paymentMethodId,
       pending_update: null,
       items: {
         data: [
@@ -10039,7 +10405,11 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     const preview = await accept(
       client.previewChange({
         params: { subscriptionId },
-        body: { quantity: 4 },
+        body: {
+          quantity: 4,
+          supportsInAppPreview: true,
+          returnUrl: `${APP_ORIGIN}/billing`,
+        },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -10051,6 +10421,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
       immediateAmountCents: 15_000,
       nextRecurringAmountCents: 40_000,
       currency: "usd",
+      paymentMethodPreviewToken: expect.any(String),
     });
     expect(context.mocks.stripe.invoices.createPreview).toHaveBeenCalledWith({
       subscription: subscriptionId,
@@ -10069,10 +10440,14 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
       },
     });
 
+    const paymentMethodPreviewToken = preview.body.paymentMethodPreviewToken;
+    if (!paymentMethodPreviewToken) {
+      throw new Error("Expected a saved-payment-method preview token");
+    }
     const confirmed = await accept(
       client.confirmChange({
         params: { subscriptionId },
-        body: { quantity: 4 },
+        body: { quantity: 4, paymentMethodPreviewToken },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -10090,6 +10465,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
         proration_behavior: "always_invoice",
         proration_date: expect.any(Number),
         expand: ["latest_invoice"],
+        default_payment_method: paymentMethodId,
       },
     );
     expect(
@@ -12151,6 +12527,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
 
   it("applies a customer coupon without including subscription renewal", async () => {
     const fixture = await createSubscriptionOrg({ tier: "pro" });
+    await enableSavedBillingPurchasePreview(fixture);
     const paymentMethodId = `pm_credit_${randomUUID().slice(0, 8)}`;
     const couponId = `coupon_${randomUUID().slice(0, 8)}`;
     const invoiceId = `in_credit_${randomUUID().slice(0, 8)}`;
@@ -12315,6 +12692,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
 
   it("uses a legacy subscription source when no higher-priority card exists", async () => {
     const fixture = await createSubscriptionOrg({ tier: "pro" });
+    await enableSavedBillingPurchasePreview(fixture);
     const subscriptionSourceId = `card_${randomUUID().slice(0, 8)}`;
     const customerSourceId = `card_${randomUUID().slice(0, 8)}`;
     const invoiceId = `in_credit_${randomUUID().slice(0, 8)}`;
@@ -12335,7 +12713,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
 
     const client = setupApp({
       context,
-      routes: zeroBillingCreditCheckoutRoutes,
+      routes: billingCreditCheckoutRoutes,
     })(zeroBillingCreditCheckoutContract);
     const preview = await accept(
       client.create({
@@ -12425,6 +12803,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
 
   it("rejects payment when the finalized invoice amount differs from the preview", async () => {
     const fixture = await createSubscriptionOrg({ tier: "pro" });
+    await enableSavedBillingPurchasePreview(fixture);
     const paymentMethodId = `pm_credit_${randomUUID().slice(0, 8)}`;
     const invoiceId = `in_credit_${randomUUID().slice(0, 8)}`;
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
@@ -12532,6 +12911,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
 
   it("returns completed when customer balance pays the invoice during finalization", async () => {
     const fixture = await createSubscriptionOrg({ tier: "pro" });
+    await enableSavedBillingPurchasePreview(fixture);
     const paymentMethodId = `pm_credit_${randomUUID().slice(0, 8)}`;
     const invoiceId = `in_credit_${randomUUID().slice(0, 8)}`;
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
@@ -12630,6 +13010,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
 
   it("returns the hosted invoice when saved-billing payment requires authentication", async () => {
     const fixture = await createSubscriptionOrg({ tier: "pro" });
+    await enableSavedBillingPurchasePreview(fixture);
     const paymentMethodId = `pm_credit_${randomUUID().slice(0, 8)}`;
     const invoiceId = `in_credit_${randomUUID().slice(0, 8)}`;
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
@@ -12747,6 +13128,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
 
   it("falls back to Stripe checkout when saved billing is unavailable", async () => {
     const fixture = await createSubscriptionOrg({ tier: "pro" });
+    await enableSavedBillingPurchasePreview(fixture);
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
       id: fixture.subscriptionId,
       default_payment_method: null,
@@ -12783,6 +13165,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
 
   it("returns Checkout when all saved cards are removed after preview", async () => {
     const fixture = await createSubscriptionOrg({ tier: "pro" });
+    await enableSavedBillingPurchasePreview(fixture);
     const paymentMethodId = `pm_credit_${randomUUID().slice(0, 8)}`;
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
       id: fixture.subscriptionId,
@@ -12796,7 +13179,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
     mockCreditPurchasePreview(fixture.customerId);
     const client = setupApp({
       context,
-      routes: zeroBillingCreditCheckoutRoutes,
+      routes: billingCreditCheckoutRoutes,
     })(zeroBillingCreditCheckoutContract);
     const preview = await accept(
       client.create({

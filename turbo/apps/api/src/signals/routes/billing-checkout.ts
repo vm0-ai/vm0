@@ -56,9 +56,11 @@ import {
 } from "../services/usage-pack-subscription.service";
 import { parseBillingPaymentMethodPreviewToken } from "../services/billing-purchase-preview-token.service";
 import {
+  billingPurchasePreviewEnabled$,
   revalidateBillingPurchase,
   routeBillingPurchasePreview,
-} from "../services/zero-billing-payment-method.service";
+  type BillingPurchasePaymentMethod,
+} from "../services/billing-payment-method.service";
 import {
   confirmUsagePackAllocationChange,
   discardUsagePackAllocationChangePreviewForPaymentSetup,
@@ -383,6 +385,45 @@ function usagePackCheckoutAllocations(
   });
 }
 
+async function loadUsagePackCheckoutAllocations(
+  args: {
+    readonly clerk: ClerkClient;
+    readonly orgId: string;
+    readonly selections: readonly MemberUsagePack[];
+  },
+  signal: AbortSignal,
+): Promise<readonly UsagePackCheckoutAllocation[] | null> {
+  const catalog = await loadUsagePackCatalog();
+  signal.throwIfAborted();
+  const [memberships, invitations] = await Promise.all([
+    listAllOrganizationMemberships(args.clerk.organizations, args.orgId),
+    listAllPendingOrganizationInvitations(args.clerk.organizations, args.orgId),
+  ]);
+  signal.throwIfAborted();
+  return usagePackCheckoutAllocations(
+    args.selections,
+    memberships,
+    invitations,
+    catalog,
+  );
+}
+
+function hasActiveLegacyPlanSubscription(
+  metadata:
+    | {
+        readonly tier: string | null;
+        readonly stripeSubscriptionId: string | null;
+        readonly subscriptionStatus: string | null;
+      }
+    | undefined,
+): boolean {
+  return Boolean(
+    metadata?.stripeSubscriptionId &&
+    metadata.subscriptionStatus === "active" &&
+    (metadata.tier === "pro" || metadata.tier === "team"),
+  );
+}
+
 const checkoutAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   if (auth.orgRole !== "admin") {
@@ -405,6 +446,15 @@ const checkoutAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
     trialDays,
     adAttribution,
   } = bodyResult.data;
+  const previewEnabled = await set(
+    billingPurchasePreviewEnabled$,
+    {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      requested: supportsInAppPreview === true,
+    },
+    signal,
+  );
   const clerk = get(clerk$);
   const resolvedAttribution = await checkoutAttribution(
     clerk,
@@ -471,7 +521,7 @@ const checkoutAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
       successUrl,
       cancelUrl,
       adAttribution: resolvedAttribution,
-      supportsInAppPreview: supportsInAppPreview === true,
+      supportsInAppPreview: previewEnabled,
       subscriptionId: metadata?.stripeSubscriptionId ?? null,
     },
     signal,
@@ -580,6 +630,15 @@ const usagePackCheckoutAuthed$ = command(
       cancelUrl,
       adAttribution,
     } = bodyResult.data;
+    const previewEnabled = await set(
+      billingPurchasePreviewEnabled$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        requested: supportsInAppPreview === true,
+      },
+      signal,
+    );
     const clerk = get(clerk$);
     const resolvedAttribution = await checkoutAttribution(
       clerk,
@@ -611,29 +670,19 @@ const usagePackCheckoutAuthed$ = command(
       .where(eq(orgMetadata.orgId, auth.orgId))
       .limit(1);
     signal.throwIfAborted();
-    if (
-      metadata?.stripeSubscriptionId &&
-      metadata.subscriptionStatus === "active" &&
-      (metadata.tier === "pro" || metadata.tier === "team")
-    ) {
+    if (hasActiveLegacyPlanSubscription(metadata)) {
       return badRequestMessage(
         "Existing subscriptions must migrate before starting usage pack checkout",
       );
     }
 
-    const catalog = await loadUsagePackCatalog();
-    signal.throwIfAborted();
-
-    const [memberships, invitations] = await Promise.all([
-      listAllOrganizationMemberships(clerk.organizations, auth.orgId),
-      listAllPendingOrganizationInvitations(clerk.organizations, auth.orgId),
-    ]);
-    signal.throwIfAborted();
-    const allocations = usagePackCheckoutAllocations(
-      memberUsagePacks,
-      memberships,
-      invitations,
-      catalog,
+    const allocations = await loadUsagePackCheckoutAllocations(
+      {
+        clerk,
+        orgId: auth.orgId,
+        selections: memberUsagePacks,
+      },
+      signal,
     );
     if (!allocations) {
       return badRequestMessage(
@@ -668,7 +717,7 @@ const usagePackCheckoutAuthed$ = command(
         successUrl,
         cancelUrl,
         adAttribution: resolvedAttribution,
-        supportsInAppPreview: supportsInAppPreview === true,
+        supportsInAppPreview: previewEnabled,
         sourceSubscriptionId: metadata?.stripeSubscriptionId ?? null,
       },
       signal,
@@ -846,8 +895,17 @@ const usagePackChangePreviewAuthed$ = command(
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
+    const previewEnabled = await set(
+      billingPurchasePreviewEnabled$,
+      {
+        orgId: access.auth.orgId,
+        userId: access.auth.userId,
+        requested: bodyResult.data.supportsInAppPreview === true,
+      },
+      signal,
+    );
     if (
-      bodyResult.data.supportsInAppPreview === true &&
+      previewEnabled &&
       (!bodyResult.data.returnUrl ||
         !billingRedirectAllowed(bodyResult.data.returnUrl))
     ) {
@@ -884,7 +942,7 @@ const usagePackChangePreviewAuthed$ = command(
     }
     if (
       result.preview.immediateAmountCents > 0 &&
-      bodyResult.data.supportsInAppPreview === true &&
+      previewEnabled &&
       bodyResult.data.returnUrl
     ) {
       const billing = await activeUsagePackBillingContext(
@@ -955,6 +1013,7 @@ const usagePackChangeConfirmAuthed$ = command(
     if (!subscriptionSchema || !changeSchema) {
       return providerUnavailable("Usage pack billing is not ready");
     }
+    let paymentMethod: BillingPurchasePaymentMethod | undefined;
     if (bodyResult.data.paymentMethodPreviewToken) {
       const preview = parseBillingPaymentMethodPreviewToken(
         bodyResult.data.paymentMethodPreviewToken,
@@ -1006,12 +1065,14 @@ const usagePackChangeConfirmAuthed$ = command(
           },
         };
       }
+      paymentMethod = revalidated;
     }
     const result = await confirmUsagePackAllocationChange(
       db,
       {
         orgId: access.auth.orgId,
         changeId,
+        paymentMethod,
       },
       signal,
     );
@@ -1366,8 +1427,17 @@ const usagePackSubscriptionChangePreviewAuthed$ = command(
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
+    const previewEnabled = await set(
+      billingPurchasePreviewEnabled$,
+      {
+        orgId: access.auth.orgId,
+        userId: access.auth.userId,
+        requested: bodyResult.data.supportsInAppPreview === true,
+      },
+      signal,
+    );
     if (
-      bodyResult.data.supportsInAppPreview === true &&
+      previewEnabled &&
       (!bodyResult.data.returnUrl ||
         !billingRedirectAllowed(bodyResult.data.returnUrl))
     ) {
@@ -1441,7 +1511,7 @@ const usagePackSubscriptionChangePreviewAuthed$ = command(
     }
     if (
       result.preview.immediateAmountCents > 0 &&
-      bodyResult.data.supportsInAppPreview === true &&
+      previewEnabled &&
       bodyResult.data.returnUrl
     ) {
       const paymentRoute = await routeUsagePackSubscriptionChangePayment(
@@ -1488,6 +1558,7 @@ const usagePackSubscriptionChangeConfirmAuthed$ = command(
     if (!subscriptionSchema || !changeSchema || !subscriptionChangeSchema) {
       return providerUnavailable("Usage pack billing is not ready");
     }
+    let paymentMethod: BillingPurchasePaymentMethod | undefined;
     if (bodyResult.data.paymentMethodPreviewToken) {
       const preview = parseBillingPaymentMethodPreviewToken(
         bodyResult.data.paymentMethodPreviewToken,
@@ -1539,12 +1610,14 @@ const usagePackSubscriptionChangeConfirmAuthed$ = command(
           },
         };
       }
+      paymentMethod = revalidated;
     }
     const result = await confirmUsagePackSubscriptionChange(
       db,
       {
         orgId: access.auth.orgId,
         changeId: bodyResult.data.changeId,
+        paymentMethod,
       },
       signal,
     );

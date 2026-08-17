@@ -813,6 +813,7 @@
       "concurrentRun_other": "{{value}} eksekusi concurrent",
       "continueToStripe": "Lanjutkan ke Stripe",
       "decreaseAria": "Kurangi jumlah concurrency tambahan",
+      "dueNow": "Jatuh tempo sekarang",
       "dueToday": "Jatuh tempo hari ini",
       "emptyDescription": "Beli eksekusi concurrent tambahan untuk ruang kerja ini.",
       "emptyTitle": "Tidak ada langganan concurrency",

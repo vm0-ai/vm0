@@ -29,9 +29,11 @@ import {
 } from "../services/usage-pack-invitation-purchase.service";
 import { activeUsagePackBillingContext } from "../services/usage-pack-subscription.service";
 import {
+  billingPurchasePreviewEnabled$,
   revalidateBillingPurchase,
   routeBillingPurchasePreview,
-} from "../services/zero-billing-payment-method.service";
+  type BillingPurchasePaymentMethod,
+} from "../services/billing-payment-method.service";
 import type { RouteEntry } from "../route-entry";
 
 const adminRequired = Object.freeze({
@@ -208,8 +210,17 @@ const purchasePreviewInner$ = command(
     if (!body.ok) {
       return body.response;
     }
+    const previewEnabled = await set(
+      billingPurchasePreviewEnabled$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        requested: body.data.supportsInAppPreview === true,
+      },
+      signal,
+    );
     if (
-      body.data.supportsInAppPreview === true &&
+      previewEnabled &&
       (!body.data.returnUrl || !billingRedirectAllowed(body.data.returnUrl))
     ) {
       return badRequestMessage(
@@ -236,7 +247,7 @@ const purchasePreviewInner$ = command(
         "This invitation cannot be purchased in the current billing state",
       );
     }
-    if (body.data.supportsInAppPreview === true && body.data.returnUrl) {
+    if (previewEnabled && body.data.returnUrl) {
       const billing = await activeUsagePackBillingContext(db, auth.orgId);
       signal.throwIfAborted();
       if (!billing) {
@@ -281,7 +292,10 @@ async function revalidateInvitationPurchasePreview(
   },
   signal: AbortSignal,
 ): Promise<
-  | { readonly kind: "continue" }
+  | {
+      readonly kind: "continue";
+      readonly paymentMethod: BillingPurchasePaymentMethod;
+    }
   | { readonly kind: "invalid_preview" }
   | { readonly kind: "checkout"; readonly url: string }
 > {
@@ -320,7 +334,7 @@ async function revalidateInvitationPurchasePreview(
   }
   return revalidated.kind === "checkout"
     ? { kind: "checkout", url: revalidated.url }
-    : { kind: "continue" };
+    : { kind: "continue", paymentMethod: revalidated };
 }
 
 const purchaseConfirmInner$ = command(
@@ -361,6 +375,7 @@ const purchaseConfirmInner$ = command(
     const { purchaseId } = get(
       pathParamsOf(zeroOrgInviteContract.confirmPurchase),
     );
+    let paymentMethod: BillingPurchasePaymentMethod | undefined;
     if (body.data.paymentMethodPreviewToken) {
       const revalidated = await revalidateInvitationPurchasePreview(
         {
@@ -383,11 +398,12 @@ const purchaseConfirmInner$ = command(
           },
         };
       }
+      paymentMethod = revalidated.paymentMethod;
     }
     const result = await confirmUsagePackInvitationPurchase(
       set(writeDb$),
       get(clerk$),
-      { orgId: auth.orgId, purchaseId },
+      { orgId: auth.orgId, purchaseId, paymentMethod },
       signal,
     );
     if (result.status === "not_found") {

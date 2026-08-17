@@ -833,6 +833,7 @@
       "concurrentRun_other": "{{value}} exécutions concurrentes",
       "continueToStripe": "Continuer vers Stripe",
       "decreaseAria": "Diminuer la quantité de concurrence supplémentaire",
+      "dueNow": "À payer maintenant",
       "dueToday": "À payer aujourd’hui",
       "emptyDescription": "Acheter des exécutions concurrentes supplémentaires pour cet espace de travail.",
       "emptyTitle": "Aucun abonnement de concurrence",
