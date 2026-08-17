@@ -3573,16 +3573,18 @@ describe("chat composer video model", () => {
 
     const videoModelButton = await findDesktopVideoModelButton();
     expect(videoModelButton).toHaveAttribute("aria-pressed", "false");
+    // The first category switch opens the list behind the category it lands on.
     await user.click(videoModelButton);
     expect(videoModelButton).toHaveAttribute("aria-pressed", "true");
     await expect(findComposerModel("Claude Fable 5")).resolves.toHaveAttribute(
       "aria-expanded",
       "false",
     );
-    await user.click(videoModelButton);
 
     // Every public catalog model is offered, with no plan or provider filter.
-    expect(videoPanelButton("Seedance 2.5")).toBeInTheDocument();
+    await expect(
+      findVideoPanelButton("Seedance 2.5"),
+    ).resolves.toBeInTheDocument();
     expect(videoPanelButton("Veo 3.1 fast")).toBeInTheDocument();
     expect(videoPanelButton("Kling v3 4K")).toBeInTheDocument();
     expect(videoPanelButton("MiniMax H3")).toBeInTheDocument();
@@ -3646,7 +3648,16 @@ describe("chat composer video model", () => {
     expect(videoModelButton).toHaveTextContent(/·\s*Seedance 2\.0 Fast/);
     expect(videoModelButton).not.toHaveTextContent("Video");
     expect(videoModelButton).toHaveAttribute("aria-pressed", "true");
+    // The first category switch opens the list behind the category it lands on.
+    await expect(findVideoPanelButton("Seedance 2.5")).resolves.toBeVisible();
     expect(chatModelButton).toHaveAttribute("aria-expanded", "false");
+    expect(videoModelButton).toHaveAttribute("aria-expanded", "true");
+
+    // Close it again so the rest of the walk starts from a closed popup.
+    await user.click(videoModelButton);
+    await waitFor(() => {
+      expect(videoPanelButton("Seedance 2.5")).toBeUndefined();
+    });
     expect(videoModelButton).toHaveAttribute("aria-expanded", "false");
     const collapsedChatModeIcon = Array.from(
       chatModelButton.parentElement?.querySelectorAll(
@@ -3690,6 +3701,69 @@ describe("chat composer video model", () => {
     });
     expect(chatModelButton).toHaveAttribute("aria-expanded", "false");
     expect(videoModelButton).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("styles the desktop category track like a segment control", async () => {
+    const user = userEvent.setup({ delay: null });
+    context.mocks.browser.matchMedia(true);
+    mockVideoModelThread(null);
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const chatModelButton = await findComposerModel("Claude Fable 5");
+    const videoModelButton = await findDesktopVideoModelButton();
+
+    // The track is `SegmentControl` at `sm`: an h-8 shell with a 2px inset
+    // around h-7 segments, so the whole group measures the same 32px as the
+    // icon-sm controls next to it instead of stretching the settings row.
+    expect(videoModelButton.parentElement).toHaveClass(
+      "sm:h-8",
+      "sm:rounded-lg",
+      "sm:p-0.5",
+      "sm:bg-muted",
+    );
+
+    // Both segments read at the regular weight, so neither category looks
+    // louder than the other inside the composer's quiet control row.
+    expect(chatModelButton).toHaveClass(
+      "sm:h-7",
+      "sm:rounded-md",
+      "sm:font-normal",
+    );
+    expect(videoModelButton).toHaveClass("h-7", "rounded-md", "font-normal");
+    expect(videoModelButton.className).not.toContain("font-medium");
+
+    // Only the selected segment carries the opaque lift, and it must never be
+    // the translucent state layer, which would erase the fill on hover.
+    expect(chatModelButton).toHaveClass(
+      "sm:bg-segment-selected",
+      "sm:shadow-segment-selected",
+    );
+    expect(videoModelButton).not.toHaveClass("bg-segment-selected");
+    expect(chatModelButton.className).not.toContain("bg-state-selected");
+
+    // Both category glyphs come from the same icon family at the same size, so
+    // the two segments carry the same stroke weight.
+    for (const icon of [
+      chatModelButton.querySelector(".lucide-message-circle"),
+      videoModelButton.querySelector(".lucide-video"),
+    ]) {
+      expect(icon).toHaveAttribute("width", "16");
+      expect(icon).toHaveAttribute("height", "16");
+      expect(icon).toHaveAttribute("stroke-width", "2");
+    }
+
+    await user.click(videoModelButton);
+
+    expect(videoModelButton).toHaveClass(
+      "bg-segment-selected",
+      "shadow-segment-selected",
+    );
+    expect(chatModelButton).not.toHaveClass("sm:bg-segment-selected");
   });
 
   it("pins the visible fallback model to the current thread", async () => {
@@ -3906,12 +3980,12 @@ describe("chat composer video model", () => {
     });
 
     // Entering video mode with the member default still selected says nothing.
+    // The first category switch also opens the video list.
     await user.click(await findDesktopVideoModelButton());
     expect(
       noticeText("Temporarily switched to MiniMax H3 for video"),
     ).toBeNull();
 
-    await user.click(await findDesktopVideoModelButton());
     await user.click(await findVideoPanelButton("Veo 3.1 fast"));
 
     await waitFor(() => {
@@ -3991,7 +4065,6 @@ describe("chat composer video model", () => {
     });
     expect(noticeText(videoNotice)).toBeNull();
 
-    await user.click(videoModelButton);
     await user.click(await findVideoPanelButton("Veo 3.1 fast"));
     await waitFor(() => {
       expect(noticeText(videoNotice)).toBeInTheDocument();
@@ -4064,7 +4137,6 @@ describe("chat composer video model", () => {
     // No `userPreferenceChanged` push is delivered, so the cached preference
     // still holds the pre-write run model. The video write must not resend it.
     const videoModelButton = await findDesktopVideoModelButton();
-    await user.click(videoModelButton);
     await user.click(videoModelButton);
     await user.click(await findVideoPanelButton("Veo 3.1 fast"));
     await waitFor(() => {

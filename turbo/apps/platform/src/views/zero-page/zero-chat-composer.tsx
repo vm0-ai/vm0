@@ -7421,12 +7421,24 @@ function composerModelPickerTriggerClassName(
     "[&>[data-slot=select-value]]:flex [&>[data-slot=select-value]]:items-center [&>[data-slot=select-value]]:justify-center [&>[data-slot=select-value]]:transition-opacity [&>[data-slot=select-value]]:duration-150 sm:[&>[data-slot=select-value]]:justify-start",
     "[&>[data-slot=select-icon]]:hidden [&>[data-slot=select-icon]]:transition-opacity [&>[data-slot=select-icon]]:duration-150 sm:[&>[data-slot=select-icon]]:block",
     "hover:bg-state-hover hover:text-foreground data-popup-open:bg-state-hover data-popup-open:text-foreground",
-    mediaModelCategoriesAvailable && "sm:text-foreground",
+    // Inside the category track this trigger is a segment, so it takes the
+    // `SegmentControl` `sm` geometry: h-7 inside an h-8 track, `rounded-md` to
+    // stay concentric with the track's 8px radius minus its 2px inset, and one
+    // padding step tighter than a standalone trigger because the track inset
+    // already carries part of the optical gap. The weight stays regular though
+    // -- the track sits in the composer's quiet control row, where segment
+    // `font-medium` reads as emphasis the model name does not need.
+    mediaModelCategoriesAvailable &&
+      "sm:h-7 sm:rounded-md sm:px-2.5 sm:font-normal",
+    // The selected segment takes the segment control's opaque lift -- white in
+    // light, a step up the grey ramp in dark -- and never the translucent
+    // state layer, which replaces a fill instead of sitting on it and would
+    // drop the segment back to the track colour.
     mediaModelCategoriesAvailable &&
       !mediaModelCategoryExpanded &&
-      "sm:bg-state-selected sm:hover:bg-state-selected-hover sm:data-popup-open:bg-state-selected-hover",
+      "sm:bg-segment-selected sm:text-foreground sm:shadow-segment-selected sm:hover:bg-segment-selected sm:data-popup-open:bg-segment-selected",
     mediaModelCategoryExpanded &&
-      "sm:max-w-8 sm:px-0 sm:[&>[data-slot=select-value]]:opacity-0 sm:[&>[data-slot=select-icon]]:opacity-0",
+      "sm:max-w-7 sm:px-0 sm:[&>[data-slot=select-value]]:opacity-0 sm:[&>[data-slot=select-icon]]:opacity-0",
     COMPOSER_CONTROL_FOCUS_CLASS,
   );
 }
@@ -7540,12 +7552,16 @@ function ComposerMediaModelControl({
             type="button"
             ref={setDesktopMediaModelAnchor}
             variant="quiet"
-            size="icon-sm"
+            size="icon-xs"
             className={cn(
-              "hidden shrink-0 overflow-hidden sm:inline-flex sm:w-auto sm:gap-0 sm:px-[7px] sm:transition-[gap,padding,background-color,color] sm:duration-200 sm:ease-out",
-              COMPOSER_CONTROL_ICON_CLASS,
+              // A media category is a segment inside the track, so it takes the
+              // same `SegmentControl` `sm` geometry as the chat segment beside
+              // it: h-7, `rounded-md`, a 16px glyph, and the regular weight
+              // `Button` would otherwise bump to medium. Collapsed padding
+              // keeps the resting state a 28px square.
+              "hidden shrink-0 overflow-hidden rounded-md font-normal sm:inline-flex sm:w-auto sm:gap-0 sm:px-1.5 sm:transition-[gap,padding,background-color,color] sm:duration-200 sm:ease-out",
               expanded &&
-                "bg-state-selected text-foreground hover:bg-state-selected-hover sm:gap-1.5 sm:px-3",
+                "bg-segment-selected text-foreground shadow-segment-selected hover:bg-segment-selected active:bg-segment-selected sm:gap-1.5 sm:px-2.5",
             )}
             aria-label={label}
             aria-expanded={expanded && modelPickerOpen}
@@ -7583,6 +7599,9 @@ function ComposerVideoModelControl({
   const videoModelsLabel = t(($) => {
     return $.settings.models.picker.videoModels;
   });
+  // The glyph comes from the same icon family and nominal size as the chat
+  // segment's `MessageCircle`, so the two categories carry the same stroke
+  // weight inside the track.
   return (
     <ComposerMediaModelControl
       signals={signals}
@@ -7590,20 +7609,7 @@ function ComposerVideoModelControl({
       label={videoModelsLabel}
       expanded={expanded}
       selectedModelLabel={getModelDisplayName(selectedModel)}
-      icon={
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M2 8a4 4 0 0 1 4 -4h12a4 4 0 0 1 4 4v8a4 4 0 0 1 -4 4h-12a4 4 0 0 1 -4 -4z" />
-          <path d="M10 9l5 3l-5 3z" />
-        </svg>
-      }
+      icon={<Video size={16} aria-hidden="true" />}
     />
   );
 }
@@ -7693,8 +7699,13 @@ function ComposerModelPickerControls({
         ref={setLifecycleRef}
         className={cn(
           "contents",
+          // The category track mirrors `SegmentControl` at `sm`: an h-8 shell
+          // with a 2px inset, so the whole group measures the same 32px as the
+          // icon-sm controls beside it instead of stretching the settings row.
+          // `bg-muted` is the segment track fill in both themes -- it has to be
+          // a recessed step, or the selected segment's opaque lift disappears.
           mediaModelPanel &&
-            "sm:flex sm:items-center sm:gap-0.5 sm:rounded-xl sm:bg-gray-50 sm:p-1",
+            "sm:flex sm:h-8 sm:items-center sm:gap-0.5 sm:rounded-lg sm:bg-muted sm:p-0.5",
         )}
       >
         <ComposerRunModelPickerControl
