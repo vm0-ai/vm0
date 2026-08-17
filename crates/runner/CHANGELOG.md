@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.168.26](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.25...runner-rs-v0.168.26) (2026-08-17)
+
+
+### Bug Fixes
+
+* **python:** retain prewarm ids across terminal frames ([#27755](https://github.com/vm0-ai/vm0/issues/27755)) ([b0fb20e](https://github.com/vm0-ai/vm0/commit/b0fb20e04461854068c133be7088714ef5f04702))
+
+
+### Refactoring
+
+* **python:** make metadata visitor own statement flow ([#27740](https://github.com/vm0-ai/vm0/issues/27740)) ([508b6a7](https://github.com/vm0-ai/vm0/commit/508b6a701d6f6303c0925be6a48c67793bb162bd))
+* **runner:** centralize raw http test fixture ([#27682](https://github.com/vm0-ai/vm0/issues/27682)) ([f2405f5](https://github.com/vm0-ai/vm0/commit/f2405f560cd4f5944b6b435569735912188c58ff))
+
 ## [0.168.25](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.24...runner-rs-v0.168.25) (2026-08-17)
 
 

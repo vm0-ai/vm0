@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.765.0](https://github.com/vm0-ai/vm0/compare/app-v0.764.0...app-v0.765.0) (2026-08-17)
+
+
+### Features
+
+* **db:** persist image model selection ([#27736](https://github.com/vm0-ai/vm0/issues/27736)) ([d28ca98](https://github.com/vm0-ai/vm0/commit/d28ca9819162ef98e5229f1413cb3d2686072f98)), closes [#27688](https://github.com/vm0-ai/vm0/issues/27688)
+
+
+### Bug Fixes
+
+* **app:** limit composer connector icons ([#27633](https://github.com/vm0-ai/vm0/issues/27633)) ([fc5b021](https://github.com/vm0-ai/vm0/commit/fc5b0211bb5d1605c588b8df49bae0460c9e0812))
+
+
+### Refactoring
+
+* **app:** generalize composer media-model panels ([#27742](https://github.com/vm0-ai/vm0/issues/27742)) ([ae9f378](https://github.com/vm0-ai/vm0/commit/ae9f378fb96552153ada9c037410f11abc9db8bc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.336.0
+    * @okouai/core bumped to 8.565.0
+
 ## [0.764.0](https://github.com/vm0-ai/vm0/compare/app-v0.763.0...app-v0.764.0) (2026-08-17)
 
 
