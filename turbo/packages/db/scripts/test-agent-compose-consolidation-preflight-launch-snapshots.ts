@@ -4,10 +4,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { computeComposeVersionId } from "../../../apps/api/src/signals/services/agent-compose-content";
 import {
+  LAUNCH_SNAPSHOT_DISPOSITIONS,
   LAUNCH_SNAPSHOT_REASONS,
   classifyLaunchSnapshotRecoverability,
   type LaunchSnapshotCheckpointInventoryRow,
   type LaunchSnapshotConversationInventoryRow,
+  type LaunchSnapshotDisposition,
   type LaunchSnapshotRunInventoryRow,
   type LaunchSnapshotVersionInventoryRow,
 } from "./agent-compose-consolidation-preflight-launch-snapshots";
@@ -50,10 +52,11 @@ function run(
     versionId,
     createdAt: new Date("2026-06-01T00:00:00.000Z"),
     launchSnapshot: null,
-    modelProvider: null,
+    modelProvider: "anthropic-api-key",
     selectedModel: null,
-    triggerSource: "api",
+    triggerSource: "slack",
     chatThreadPresent: false,
+    metadataShape: "product",
     ...overrides,
   };
 }
@@ -109,6 +112,20 @@ function assertAllClosuresExact(
     result.output.reasonCompatibilityClosure.classification,
     "exact",
   );
+}
+
+function assertSingleDisposition(
+  result: ReturnType<typeof classifyLaunchSnapshotRecoverability>,
+  expected: LaunchSnapshotDisposition,
+): void {
+  assert.equal(result.output.total, 1);
+  for (const disposition of LAUNCH_SNAPSHOT_DISPOSITIONS) {
+    assert.equal(
+      result.output.dispositions[disposition].count,
+      disposition === expected ? 1 : 0,
+    );
+  }
+  assertAllClosuresExact(result);
 }
 
 function testCompletePartitionAndStrictSnapshots(): void {
@@ -400,25 +417,43 @@ function testProviderAndProductionRolloutHistory(): void {
 function testExactProductionBoundaryEdges(): void {
   const claudeContent = agentContent({ framework: "claude-code" });
   const claudeVersion = version(claudeContent);
-  const providerBoundary = classify({
-    runs: [
-      run("provider-before", claudeVersion.id, {
+  const providerCases = [
+    {
+      row: run("provider-before", claudeVersion.id, {
         createdAt: new Date("2026-05-03T04:14:32.999Z"),
         modelProvider: "openai-api-key",
       }),
-      run("provider-start", claudeVersion.id, {
+      disposition: "exactly_recoverable",
+    },
+    {
+      row: run("provider-start", claudeVersion.id, {
         createdAt: new Date("2026-05-03T04:14:33.000Z"),
         modelProvider: "openai-api-key",
       }),
-      run("provider-end", claudeVersion.id, {
+      disposition: "historical_unknown",
+    },
+    {
+      row: run("provider-end", claudeVersion.id, {
         createdAt: new Date("2026-05-03T04:15:49.000Z"),
         modelProvider: "openai-api-key",
       }),
-      run("provider-after", claudeVersion.id, {
+      disposition: "historical_unknown",
+    },
+    {
+      row: run("provider-after", claudeVersion.id, {
         createdAt: new Date("2026-05-03T04:15:49.001Z"),
         modelProvider: "openai-api-key",
       }),
-    ],
+      disposition: "exactly_recoverable",
+    },
+  ] as const satisfies readonly {
+    readonly row: LaunchSnapshotRunInventoryRow;
+    readonly disposition: LaunchSnapshotDisposition;
+  }[];
+  const providerBoundary = classify({
+    runs: providerCases.map(({ row }) => {
+      return row;
+    }),
     versions: [claudeVersion],
   });
   assert.equal(
@@ -433,6 +468,97 @@ function testExactProductionBoundaryEdges(): void {
     providerBoundary.output.reasons.framework_provider_rollout_transition.count,
     2,
   );
+  for (const providerCase of providerCases) {
+    assertSingleDisposition(
+      classify({ runs: [providerCase.row], versions: [claudeVersion] }),
+      providerCase.disposition,
+    );
+  }
+
+  const missingProviderCases = [
+    {
+      row: run("missing-provider-before", claudeVersion.id, {
+        createdAt: new Date("2026-05-03T04:14:32.999Z"),
+        modelProvider: null,
+      }),
+      conversation: undefined,
+      disposition: "exactly_recoverable",
+    },
+    {
+      row: run("missing-provider-start", claudeVersion.id, {
+        createdAt: new Date("2026-05-03T04:14:33.000Z"),
+        modelProvider: null,
+      }),
+      conversation: undefined,
+      disposition: "historical_unknown",
+    },
+    {
+      row: run("missing-provider-end", claudeVersion.id, {
+        createdAt: new Date("2026-05-03T04:15:49.000Z"),
+        modelProvider: null,
+      }),
+      conversation: undefined,
+      disposition: "historical_unknown",
+    },
+    {
+      row: run("missing-provider-after", claudeVersion.id, {
+        createdAt: new Date("2026-05-03T04:15:49.001Z"),
+        modelProvider: null,
+      }),
+      conversation: undefined,
+      disposition: "historical_unknown",
+    },
+    {
+      row: run("missing-provider-conversation", claudeVersion.id, {
+        createdAt: new Date("2026-05-03T04:15:49.001Z"),
+        modelProvider: null,
+      }),
+      conversation: conversation("missing-provider-conversation", "codex"),
+      disposition: "exactly_recoverable",
+    },
+  ] as const satisfies readonly {
+    readonly row: LaunchSnapshotRunInventoryRow;
+    readonly conversation: LaunchSnapshotConversationInventoryRow | undefined;
+    readonly disposition: LaunchSnapshotDisposition;
+  }[];
+  const missingProviderBoundary = classify({
+    runs: missingProviderCases.map(({ row }) => {
+      return row;
+    }),
+    versions: [claudeVersion],
+    conversations: missingProviderCases.flatMap(({ conversation }) => {
+      return conversation ? [conversation] : [];
+    }),
+  });
+  assert.equal(
+    missingProviderBoundary.output.dispositions.exactly_recoverable.count,
+    2,
+  );
+  assert.equal(
+    missingProviderBoundary.output.dispositions.historical_unknown.count,
+    3,
+  );
+  assert.equal(
+    missingProviderBoundary.output.reasons.framework_provider_missing.count,
+    5,
+  );
+  assert.equal(
+    missingProviderBoundary.output.reasons.conversation_framework_valid.count,
+    1,
+  );
+  assertAllClosuresExact(missingProviderBoundary);
+  for (const providerCase of missingProviderCases) {
+    assertSingleDisposition(
+      classify({
+        runs: [providerCase.row],
+        versions: [claudeVersion],
+        conversations: providerCase.conversation
+          ? [providerCase.conversation]
+          : [],
+      }),
+      providerCase.disposition,
+    );
+  }
 
   const profileBoundary = classify({
     runs: [
@@ -637,6 +763,149 @@ function testPiAndConversationEvidence(): void {
   assert.equal(result.output.reasons.conversation_framework_invalid.count, 1);
 }
 
+function testPiEligibilityTriState(): void {
+  const codexContent = agentContent({ framework: "codex" });
+  const codexVersion = version(codexContent);
+  const piWindow = new Date("2026-08-11T00:00:00.000Z");
+  const common = {
+    createdAt: piWindow,
+    modelProvider: "deepseek",
+    selectedModel: "deepseek-v4-flash",
+    triggerSource: "web",
+    chatThreadPresent: true,
+  } as const;
+  const cases = [
+    {
+      row: run("provider-missing-conversation", codexVersion.id, {
+        ...common,
+        modelProvider: null,
+      }),
+      conversation: conversation("provider-missing-conversation", "pi"),
+      disposition: "exactly_recoverable",
+    },
+    {
+      row: run("provider-missing-no-conversation", codexVersion.id, {
+        ...common,
+        modelProvider: null,
+      }),
+      conversation: undefined,
+      disposition: "historical_unknown",
+    },
+    {
+      row: run("model-missing-conversation", codexVersion.id, {
+        ...common,
+        selectedModel: null,
+      }),
+      conversation: conversation("model-missing-conversation", "pi"),
+      disposition: "exactly_recoverable",
+    },
+    {
+      row: run("model-missing-no-conversation", codexVersion.id, {
+        ...common,
+        selectedModel: null,
+      }),
+      conversation: undefined,
+      disposition: "historical_unknown",
+    },
+    {
+      row: run("model-unknown-conversation", codexVersion.id, {
+        ...common,
+        selectedModel: "future-model",
+      }),
+      conversation: conversation("model-unknown-conversation", "pi"),
+      disposition: "exactly_recoverable",
+    },
+    {
+      row: run("model-unknown-no-conversation", codexVersion.id, {
+        ...common,
+        selectedModel: "future-model",
+      }),
+      conversation: undefined,
+      disposition: "historical_unknown",
+    },
+    {
+      row: run("known-non-pi-model-conversation", codexVersion.id, {
+        ...common,
+        selectedModel: "gpt-5.5",
+      }),
+      conversation: conversation("known-non-pi-model-conversation", "pi"),
+      disposition: "integrity_conflict",
+    },
+    {
+      row: run("known-non-pi-model-no-conversation", codexVersion.id, {
+        ...common,
+        selectedModel: "gpt-5.5",
+      }),
+      conversation: undefined,
+      disposition: "exactly_recoverable",
+    },
+    {
+      row: run("non-web-pi-conversation", codexVersion.id, {
+        ...common,
+        triggerSource: "slack",
+      }),
+      conversation: conversation("non-web-pi-conversation", "pi"),
+      disposition: "integrity_conflict",
+    },
+    {
+      row: run("no-chat-pi-conversation", codexVersion.id, {
+        ...common,
+        chatThreadPresent: false,
+      }),
+      conversation: conversation("no-chat-pi-conversation", "pi"),
+      disposition: "integrity_conflict",
+    },
+    {
+      row: run("claude-base-pi-conversation", codexVersion.id, {
+        ...common,
+        modelProvider: "anthropic-api-key",
+      }),
+      conversation: conversation("claude-base-pi-conversation", "pi"),
+      disposition: "integrity_conflict",
+    },
+    {
+      row: run("before-pi-conversation", codexVersion.id, {
+        ...common,
+        createdAt: new Date("2026-08-07T06:11:48.999Z"),
+      }),
+      conversation: conversation("before-pi-conversation", "pi"),
+      disposition: "integrity_conflict",
+    },
+  ] as const satisfies readonly {
+    readonly row: LaunchSnapshotRunInventoryRow;
+    readonly conversation: LaunchSnapshotConversationInventoryRow | undefined;
+    readonly disposition: LaunchSnapshotDisposition;
+  }[];
+  const result = classify({
+    runs: cases.map(({ row }) => {
+      return row;
+    }),
+    versions: [codexVersion],
+    conversations: cases.flatMap(({ conversation }) => {
+      return conversation ? [conversation] : [];
+    }),
+  });
+  assert.equal(result.output.dispositions.exactly_recoverable.count, 4);
+  assert.equal(result.output.dispositions.historical_unknown.count, 3);
+  assert.equal(result.output.dispositions.integrity_conflict.count, 5);
+  assert.equal(result.output.reasons.framework_provider_missing.count, 2);
+  assert.equal(result.output.reasons.framework_pi_model_missing.count, 1);
+  assert.equal(result.output.reasons.framework_pi_model_unknown.count, 1);
+  assert.equal(result.output.reasons.conversation_framework_conflict.count, 5);
+  assert.deepEqual(result.failureGates, ["launchSnapshots.integrity_conflict"]);
+  assertAllClosuresExact(result);
+  for (const piCase of cases) {
+    assertSingleDisposition(
+      classify({
+        runs: [piCase.row],
+        versions: [codexVersion],
+        conversations: piCase.conversation ? [piCase.conversation] : [],
+      }),
+      piCase.disposition,
+    );
+  }
+}
+
 function testProfilesLegacyContentAndBoundary(): void {
   const explicitContent = agentContent({
     profile: "vm0/custom",
@@ -687,8 +956,13 @@ function testProfilesLegacyContentAndBoundary(): void {
         createdAt: new Date("2026-03-18T08:41:13.330Z"),
       }),
       run("unsupported-content", unsupportedVersion.id),
-      run("invalid-content", invalidFrameworkVersion.id),
-      run("multi-agent", multiAgentVersion.id),
+      run("invalid-content", invalidFrameworkVersion.id, {
+        createdAt: new Date("2026-04-01T00:00:00.000Z"),
+        modelProvider: null,
+      }),
+      run("multi-agent", multiAgentVersion.id, {
+        modelProvider: "openai-api-key",
+      }),
       run("conflicting-agent-shapes", conflictingShapesVersion.id),
     ],
     versions: [
@@ -719,6 +993,7 @@ function testProfilesLegacyContentAndBoundary(): void {
   const matchingFirstAgent = classify({
     runs: [
       run("multi-agent-match", multiAgentVersion.id, {
+        modelProvider: "openai-api-key",
         launchSnapshot: {
           schemaVersion: 1,
           framework: "codex",
@@ -733,6 +1008,7 @@ function testProfilesLegacyContentAndBoundary(): void {
   const conflictingSecondAgent = classify({
     runs: [
       run("multi-agent-conflict", multiAgentVersion.id, {
+        modelProvider: "openai-api-key",
         launchSnapshot: {
           schemaVersion: 1,
           framework: "claude-code",
@@ -776,11 +1052,19 @@ function testProfilesLegacyContentAndBoundary(): void {
   );
   assert.deepEqual(
     classify({
-      runs: [run("multi-agent", multiAgentVersion.id)],
+      runs: [
+        run("multi-agent", multiAgentVersion.id, {
+          modelProvider: "openai-api-key",
+        }),
+      ],
       versions: [multiAgentVersion],
     }).output,
     classify({
-      runs: [run("multi-agent", multiAgentVersion.id)],
+      runs: [
+        run("multi-agent", multiAgentVersion.id, {
+          modelProvider: "openai-api-key",
+        }),
+      ],
       versions: [multiAgentVersion],
     }).output,
   );
@@ -852,6 +1136,130 @@ function testShapeClosureRedactionAndDomainSeparation(): void {
   );
 }
 
+function testNullableLifecycleMetadataHistory(): void {
+  const content = agentContent();
+  const storedVersion = version(content);
+  // This models the complete accepted field shape of the observed
+  // lifecycle-only population without encoding its moving production count.
+  const prePiLifecycle = classify({
+    runs: [
+      run("pre-pi-lifecycle", storedVersion.id, {
+        createdAt: new Date("2026-04-01T00:00:00.000Z"),
+        launchSnapshot: null,
+        modelProvider: null,
+        selectedModel: null,
+        triggerSource: null,
+        chatThreadPresent: false,
+        metadataShape: "lifecycle_only",
+      }),
+    ],
+    versions: [storedVersion],
+  });
+  assert.equal(prePiLifecycle.output.dispositions.exactly_recoverable.count, 1);
+  assert.equal(prePiLifecycle.output.dispositions.integrity_conflict.count, 0);
+  assert.equal(prePiLifecycle.output.reasons.complete_exact_evidence.count, 1);
+  assert.deepEqual(prePiLifecycle.failureGates, []);
+  assertAllClosuresExact(prePiLifecycle);
+
+  const triggerDependentLifecycle = classify({
+    runs: [
+      run("pi-window-lifecycle", storedVersion.id, {
+        createdAt: new Date("2026-08-07T06:11:49.000Z"),
+        launchSnapshot: null,
+        modelProvider: null,
+        selectedModel: null,
+        triggerSource: null,
+        chatThreadPresent: false,
+        metadataShape: "lifecycle_only",
+      }),
+    ],
+    versions: [storedVersion],
+  });
+  assert.equal(
+    triggerDependentLifecycle.output.dispositions.historical_unknown.count,
+    1,
+  );
+  assert.equal(
+    triggerDependentLifecycle.output.reasons.framework_provider_missing.count,
+    1,
+  );
+  assert.equal(
+    triggerDependentLifecycle.output.reasons.complete_exact_evidence.count,
+    0,
+  );
+  assert.deepEqual(triggerDependentLifecycle.failureGates, []);
+  assertAllClosuresExact(triggerDependentLifecycle);
+
+  const partialMetadata = classify({
+    runs: [
+      run("partial-metadata", storedVersion.id, {
+        modelProvider: "vm0",
+        triggerSource: null,
+        metadataShape: "partial",
+      }),
+    ],
+    versions: [storedVersion],
+  });
+  assert.equal(partialMetadata.output.dispositions.integrity_conflict.count, 1);
+  assert.equal(
+    partialMetadata.output.reasons.otherwise_unclassified_shape.count,
+    1,
+  );
+  assert.deepEqual(partialMetadata.failureGates, [
+    "launchSnapshots.integrity_conflict",
+  ]);
+  assertAllClosuresExact(partialMetadata);
+
+  const reviewedTriggerSources = classify({
+    runs: [
+      run("historical-non-web-trigger", storedVersion.id, {
+        createdAt: new Date("2026-08-13T00:00:00.000Z"),
+        triggerSource: "slack",
+      }),
+      run("agent-trigger", storedVersion.id, {
+        createdAt: new Date("2026-08-13T00:00:00.000Z"),
+        triggerSource: "agent",
+      }),
+      run("web-trigger", storedVersion.id, {
+        createdAt: new Date("2026-08-13T00:00:00.000Z"),
+        triggerSource: "web",
+      }),
+    ],
+    versions: [storedVersion],
+  });
+  assert.equal(
+    reviewedTriggerSources.output.dispositions.exactly_recoverable.count,
+    3,
+  );
+  assert.equal(
+    reviewedTriggerSources.output.reasons.trigger_source_unrecognized.count,
+    0,
+  );
+  assertAllClosuresExact(reviewedTriggerSources);
+
+  const unrecognizedTriggerSource = classify({
+    runs: [
+      run("unrecognized-trigger", storedVersion.id, {
+        createdAt: new Date("2026-08-13T00:00:00.000Z"),
+        triggerSource: "future-trigger",
+      }),
+    ],
+    versions: [storedVersion],
+  });
+  assert.equal(
+    unrecognizedTriggerSource.output.dispositions.integrity_conflict.count,
+    1,
+  );
+  assert.equal(
+    unrecognizedTriggerSource.output.reasons.trigger_source_unrecognized.count,
+    1,
+  );
+  assert.deepEqual(unrecognizedTriggerSource.failureGates, [
+    "launchSnapshots.integrity_conflict",
+  ]);
+  assertAllClosuresExact(unrecognizedTriggerSource);
+}
+
 async function testClassifierHasNoCurrentAuthorityLookup(): Promise<void> {
   const dirname = path.dirname(fileURLToPath(import.meta.url));
   const source = await fs.readFile(
@@ -883,8 +1291,10 @@ export async function validateLaunchSnapshotRecoverabilityStatic(): Promise<void
   testProviderAndProductionRolloutHistory();
   testExactProductionBoundaryEdges();
   testPiAndConversationEvidence();
+  testPiEligibilityTriState();
   testProfilesLegacyContentAndBoundary();
   testShapeClosureRedactionAndDomainSeparation();
+  testNullableLifecycleMetadataHistory();
   await testClassifierHasNoCurrentAuthorityLookup();
   assert.deepEqual(
     [...observedReasons].sort(),

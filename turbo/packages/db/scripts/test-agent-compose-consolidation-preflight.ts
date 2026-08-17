@@ -459,8 +459,9 @@ function runRow(
     launchSnapshot: null,
     modelProvider: null,
     selectedModel: null,
-    triggerSource: "api",
+    triggerSource: "slack",
     chatThreadPresent: false,
+    metadataShape: "product",
     ...overrides,
   };
 }
@@ -2673,6 +2674,18 @@ async function testDatabaseBoundariesForTimeZone(
           expectedDanglingHeadCount: 1,
         },
       });
+      assert.equal(
+        attributed.launchSnapshots.dispositions.historical_unknown.count,
+        1,
+      );
+      assert.equal(
+        attributed.launchSnapshots.dispositions.integrity_conflict.count,
+        0,
+      );
+      assert.equal(
+        attributed.launchSnapshots.reasons.framework_provider_missing.count,
+        1,
+      );
       const activity =
         attributed.agentExecutionPlans.refinements.systemEnvironmentDifferences
           .activity.parent;

@@ -2045,6 +2045,31 @@ async function collectDatabaseInventory(
        "run"."model_provider" AS "modelProvider",
        "run"."selected_model" AS "selectedModel",
        "run"."trigger_source" AS "triggerSource",
+       CASE
+         WHEN
+           "run"."trigger_source" IS NULL AND
+           "run"."autonomy_budget" IS NULL AND
+           "run"."workflow_automation_id" IS NULL AND
+           "run"."goal_id" IS NULL AND
+           "run"."model_provider" IS NULL AND
+           "run"."model_provider_id" IS NULL AND
+           "run"."model_provider_credential_scope" IS NULL AND
+           "run"."selected_model" IS NULL AND
+           "run"."codex_service_tier" IS NULL AND
+           "run"."selected_video_model" IS NULL AND
+           "run"."selected_image_model" IS NULL AND
+           "run"."chat_thread_id" IS NULL AND
+           "run"."api_started_at" IS NULL AND
+           "run"."first_assistant_event_acknowledged_at" IS NULL AND
+           "run"."summary" IS NULL AND
+           "run"."trigger_brief" IS NULL
+           THEN 'lifecycle_only'
+         WHEN
+           "run"."trigger_source" IS NOT NULL AND
+           "run"."autonomy_budget" IS NOT NULL
+           THEN 'product'
+         ELSE 'partial'
+       END AS "metadataShape",
        "run"."chat_thread_id" IS NOT NULL AS "chatThreadPresent"
      FROM "agent_runs" AS "run"
      LEFT JOIN "agent_compose_versions" AS "version"

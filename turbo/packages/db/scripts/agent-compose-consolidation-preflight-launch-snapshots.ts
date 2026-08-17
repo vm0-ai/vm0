@@ -29,6 +29,8 @@ export const LAUNCH_SNAPSHOT_REASONS = [
   "existing_snapshot_valid",
   "framework_evidence_conflict",
   "framework_legacy_exact",
+  "framework_pi_model_missing",
+  "framework_pi_model_unknown",
   "framework_pi_state_unproven",
   "framework_provider_exact",
   "framework_provider_missing",
@@ -58,6 +60,7 @@ export const LAUNCH_SNAPSHOT_REASONS = [
   "runner_profile_default_unproven",
   "runner_profile_explicit_exact",
   "runner_profile_invalid",
+  "trigger_source_unrecognized",
 ] as const;
 
 export type LaunchSnapshotReason = (typeof LAUNCH_SNAPSHOT_REASONS)[number];
@@ -88,6 +91,8 @@ const REASON_DISPOSITION_COMPATIBILITY = {
   existing_snapshot_valid: VALID_OR_CONFLICT,
   framework_evidence_conflict: CONFLICT_ONLY,
   framework_legacy_exact: ALL_DISPOSITIONS,
+  framework_pi_model_missing: VALID_OR_UNKNOWN,
+  framework_pi_model_unknown: VALID_OR_UNKNOWN,
   framework_pi_state_unproven: VALID_OR_UNKNOWN,
   framework_provider_exact: ALL_DISPOSITIONS,
   framework_provider_missing: ALL_DISPOSITIONS,
@@ -117,6 +122,7 @@ const REASON_DISPOSITION_COMPATIBILITY = {
   runner_profile_default_unproven: NOT_RECOVERABLE,
   runner_profile_explicit_exact: ALL_DISPOSITIONS,
   runner_profile_invalid: NOT_RECOVERABLE,
+  trigger_source_unrecognized: CONFLICT_ONLY,
 } as const satisfies Readonly<
   Record<LaunchSnapshotReason, readonly LaunchSnapshotDisposition[]>
 >;
@@ -128,8 +134,9 @@ export interface LaunchSnapshotRunInventoryRow {
   readonly launchSnapshot: unknown;
   readonly modelProvider: string | null;
   readonly selectedModel: string | null;
-  readonly triggerSource: string;
+  readonly triggerSource: string | null;
   readonly chatThreadPresent: boolean;
+  readonly metadataShape: "lifecycle_only" | "product" | "partial";
 }
 
 export interface LaunchSnapshotVersionInventoryRow {
@@ -259,6 +266,34 @@ const RETIRED_VM0_MODELS: ReadonlySet<string> = new Set([
 const DEFAULT_RUNNER_PROFILE = "vm0/default";
 const VERSION_ID_PATTERN = /^[0-9a-f]{64}$/u;
 const WEB_CHAT_TRIGGER_SOURCES: ReadonlySet<string> = new Set(["agent", "web"]);
+// Fixed union of triggerSourceSchema values reviewed from 55fd4bf4209f
+// (the first agent_runs trigger column) through cd91f26cd599 (the last
+// retirement in the live Run interval). Retired persisted values stay valid;
+// this must not import the live contract or treat a future label as non-web.
+const HISTORICAL_TRIGGER_SOURCES: ReadonlySet<string> = new Set([
+  "agent",
+  "agentphone",
+  "automation",
+  "automation-event",
+  "automation-schedule",
+  "cli",
+  "email",
+  "feishu",
+  "github",
+  "goal",
+  "imessage",
+  "phone",
+  "schedule",
+  "slack",
+  "teams",
+  "telegram",
+  "test",
+  "voice-chat",
+  "web",
+  "webhook",
+  "workflow-event",
+  "workflow-schedule",
+]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -769,13 +804,19 @@ function providerFramework(args: {
   readonly legacyFramework: ExactOrUnknown<BaseHistoricalFramework>;
   readonly reasons: Set<LaunchSnapshotReason>;
 }): ExactOrUnknown<BaseHistoricalFramework> {
-  if (args.run.modelProvider === null) {
-    addReason(args.reasons, "framework_provider_missing");
-    return args.legacyFramework;
-  }
   if (args.createdAtMs < PROVIDER_PRECEDENCE_ROLLOUT_START_MS) {
     addReason(args.reasons, "framework_provider_precedence_inactive");
+    if (args.run.modelProvider === null) {
+      addReason(args.reasons, "framework_provider_missing");
+    }
     return args.legacyFramework;
+  }
+  if (args.run.modelProvider === null) {
+    addReason(args.reasons, "framework_provider_missing");
+    return {
+      classification: "unknown",
+      reason: "framework_provider_missing",
+    };
   }
   const mapped = mappedProviderFramework(args);
   if (args.createdAtMs <= PROVIDER_PRECEDENCE_ROLLOUT_END_MS) {
@@ -825,21 +866,64 @@ function piHistoricalWindow(createdAtMs: number): PiHistoricalWindow {
   return "flash_and_pro";
 }
 
-function potentiallyPiEligible(args: {
+type HistoricalPiEligibility =
+  | { readonly classification: "possible" }
+  | { readonly classification: "definitively_ineligible" }
+  | {
+      readonly classification: "unknown";
+      readonly reason:
+        | "framework_pi_model_missing"
+        | "framework_pi_model_unknown"
+        | "framework_provider_missing";
+    };
+
+function isReviewedHistoricalModel(value: string): boolean {
+  return (
+    value === "deepseek-v4-flash" ||
+    value === "deepseek-v4-pro" ||
+    Object.hasOwn(HISTORICAL_VM0_MODEL_RULES, value) ||
+    RETIRED_VM0_MODELS.has(value)
+  );
+}
+
+function historicalPiEligibility(args: {
   readonly run: LaunchSnapshotRunInventoryRow;
   readonly createdAtMs: number;
   readonly baseFramework: ExactOrUnknown<BaseHistoricalFramework>;
-}): boolean {
+}): HistoricalPiEligibility {
   const window = piHistoricalWindow(args.createdAtMs);
+  if (window === "none") {
+    return { classification: "definitively_ineligible" };
+  }
   if (
-    window === "none" ||
-    !args.run.chatThreadPresent ||
-    !WEB_CHAT_TRIGGER_SOURCES.has(args.run.triggerSource) ||
-    args.run.modelProvider === null ||
-    (args.baseFramework.classification === "exact" &&
-      args.baseFramework.value === "claude-code")
+    args.run.triggerSource !== null &&
+    !WEB_CHAT_TRIGGER_SOURCES.has(args.run.triggerSource)
   ) {
-    return false;
+    return { classification: "definitively_ineligible" };
+  }
+  if (!args.run.chatThreadPresent) {
+    return { classification: "definitively_ineligible" };
+  }
+  if (
+    args.baseFramework.classification === "exact" &&
+    args.baseFramework.value === "claude-code"
+  ) {
+    return { classification: "definitively_ineligible" };
+  }
+  if (args.run.triggerSource === null) {
+    return {
+      classification: "unknown",
+      // A schema-consistent NULL trigger also has NULL provider metadata.
+      // The no-chat case returned above is exact; any future reachable case
+      // still lacks provider authority and must remain unknown.
+      reason: "framework_provider_missing",
+    };
+  }
+  if (args.run.modelProvider === null) {
+    return {
+      classification: "unknown",
+      reason: "framework_provider_missing",
+    };
   }
   if (
     window === "transient_callback" ||
@@ -850,14 +934,28 @@ function potentiallyPiEligible(args: {
     // Before the model predicate was persisted in code, provider config,
     // credentials, the feature switch, and (initially) the kickoff callback
     // were transient. A known Claude base is the only reviewed exclusion.
-    return true;
+    return { classification: "possible" };
   }
-  if (typeof args.run.selectedModel !== "string") return false;
-  if (args.run.selectedModel === "deepseek-v4-flash") return true;
-  return (
+  if (typeof args.run.selectedModel !== "string") {
+    return {
+      classification: "unknown",
+      reason: "framework_pi_model_missing",
+    };
+  }
+  if (args.run.selectedModel === "deepseek-v4-flash") {
+    return { classification: "possible" };
+  }
+  const possible =
     (window === "pro_transition" || window === "flash_and_pro") &&
-    args.run.selectedModel === "deepseek-v4-pro"
-  );
+    args.run.selectedModel === "deepseek-v4-pro";
+  if (possible) return { classification: "possible" };
+  if (isReviewedHistoricalModel(args.run.selectedModel)) {
+    return { classification: "definitively_ineligible" };
+  }
+  return {
+    classification: "unknown",
+    reason: "framework_pi_model_unknown",
+  };
 }
 
 type FrameworkResolution =
@@ -918,7 +1016,7 @@ function historicalFramework(args: {
       reason: "otherwise_unclassified_shape",
     };
   }
-  const piEligible = potentiallyPiEligible({
+  const piEligibility = historicalPiEligibility({
     run: args.run,
     createdAtMs: args.createdAtMs,
     baseFramework,
@@ -933,11 +1031,18 @@ function historicalFramework(args: {
   }
   if (!args.conversation) {
     addReason(args.reasons, "conversation_framework_missing");
-    if (piEligible) {
+    if (piEligibility.classification === "possible") {
       addReason(args.reasons, "framework_pi_state_unproven");
       return {
         classification: "unknown",
         reason: "framework_pi_state_unproven",
+      };
+    }
+    if (piEligibility.classification === "unknown") {
+      addReason(args.reasons, piEligibility.reason);
+      return {
+        classification: "unknown",
+        reason: piEligibility.reason,
       };
     }
     return baseFramework;
@@ -953,7 +1058,7 @@ function historicalFramework(args: {
   addReason(args.reasons, "conversation_framework_valid");
   const conversationFramework = args.conversation.framework;
   if (conversationFramework === "pi") {
-    if (!piEligible) {
+    if (piEligibility.classification === "definitively_ineligible") {
       addReason(args.reasons, "conversation_framework_conflict");
       addReason(args.reasons, "framework_evidence_conflict");
       return {
@@ -1010,10 +1115,30 @@ function isValidRunInventory(run: LaunchSnapshotRunInventoryRow): boolean {
     Number.isFinite(run.createdAt.getTime()) &&
     (run.modelProvider === null || typeof run.modelProvider === "string") &&
     (run.selectedModel === null || typeof run.selectedModel === "string") &&
-    typeof run.triggerSource === "string" &&
+    (run.triggerSource === null || typeof run.triggerSource === "string") &&
     typeof run.chatThreadPresent === "boolean" &&
+    (run.metadataShape === "lifecycle_only" ||
+      run.metadataShape === "product" ||
+      run.metadataShape === "partial") &&
     (run.launchSnapshot !== undefined || Object.hasOwn(run, "launchSnapshot"))
   );
+}
+
+function hasConsistentRunMetadataShape(
+  run: LaunchSnapshotRunInventoryRow,
+): boolean {
+  if (run.metadataShape === "product") {
+    return typeof run.triggerSource === "string";
+  }
+  if (run.metadataShape === "lifecycle_only") {
+    return (
+      run.triggerSource === null &&
+      run.modelProvider === null &&
+      run.selectedModel === null &&
+      !run.chatThreadPresent
+    );
+  }
+  return false;
 }
 
 function referenceEvidenceForRun(
@@ -1201,6 +1326,17 @@ function classifyRun(args: RunClassifierArgs): RunClassification {
   if (!isValidRunInventory(args.run)) {
     addReason(reasons, "otherwise_unclassified_shape");
     return integrityConflict("otherwise_unclassified_shape", reasons);
+  }
+  if (!hasConsistentRunMetadataShape(args.run)) {
+    addReason(reasons, "otherwise_unclassified_shape");
+    return integrityConflict("otherwise_unclassified_shape", reasons);
+  }
+  if (
+    args.run.triggerSource !== null &&
+    !HISTORICAL_TRIGGER_SOURCES.has(args.run.triggerSource)
+  ) {
+    addReason(reasons, "trigger_source_unrecognized");
+    return integrityConflict("trigger_source_unrecognized", reasons);
   }
   const createdAtMs = args.run.createdAt.getTime();
   if (createdAtMs < REVIEWED_RUN_LOWER_BOUND_MS) {
