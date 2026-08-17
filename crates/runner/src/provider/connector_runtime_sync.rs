@@ -107,6 +107,8 @@ struct ActiveConnectorSyncState {
     registration: ConnectorRuntimeTargetRegistration,
     generation: u64,
     consecutive_failures: u32,
+    #[cfg(test)]
+    successful_generation: tokio::sync::watch::Sender<Option<u64>>,
 }
 
 struct ScheduledSyncTask {
@@ -281,6 +283,8 @@ impl ConnectorRuntimeSyncCore {
                             registration: registration.clone(),
                             generation: 0,
                             consecutive_failures: 0,
+                            #[cfg(test)]
+                            successful_generation: tokio::sync::watch::channel(None).0,
                         },
                     )
                 })
@@ -1212,7 +1216,17 @@ impl ConnectorRuntimeSyncCore {
             return false;
         }
         connector.consecutive_failures = 0;
-        self.replace_schedule_locked(active, run_id, target, deadline)
+        let completed = self.replace_schedule_locked(active, run_id, target, deadline);
+        #[cfg(test)]
+        if completed {
+            active
+                .connectors
+                .get(&target.target)
+                .expect("completed connector should remain registered")
+                .successful_generation
+                .send_replace(Some(target.generation));
+        }
+        completed
     }
 
     async fn schedule_sync_retries_for_registration(
@@ -1682,6 +1696,7 @@ mod tests {
     use serde_json::json;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
+    use tokio::sync::watch;
     use tracing::instrument::WithSubscriber;
     use tracing_subscriber::prelude::*;
     use tracing_test_support::{CapturedEvent, CapturedEvents};
@@ -1692,6 +1707,51 @@ mod tests {
         RawHttpAction, RawHttpTestServer, join_raw_http_task, json_response, read_http_request,
     };
     use crate::types::{Firewall, FirewallApi, FirewallAuth, FirewallEntry};
+
+    const SYNC_PUBLICATION_TEST_TIMEOUT: Duration = Duration::from_secs(5);
+
+    struct SuccessfulSyncObserver {
+        run_id: RunId,
+        target: ConnectorRuntimeTarget,
+        generation: u64,
+        successful_generation: watch::Receiver<Option<u64>>,
+    }
+
+    impl SuccessfulSyncObserver {
+        async fn wait(mut self) {
+            tokio::time::timeout(SYNC_PUBLICATION_TEST_TIMEOUT, async {
+                loop {
+                    match *self.successful_generation.borrow_and_update() {
+                        Some(generation) if generation == self.generation => return,
+                        Some(generation) if generation > self.generation => panic!(
+                            "successful sync advanced past generation {} to {generation}",
+                            self.generation
+                        ),
+                        _ => {}
+                    }
+                    self.successful_generation
+                        .changed()
+                        .await
+                        .unwrap_or_else(|_| {
+                            panic!(
+                                "registration closed before generation {} completed",
+                                self.generation
+                            )
+                        });
+                }
+            })
+            .await
+            .unwrap_or_else(|_| {
+                panic!(
+                    "{} generation {} for run {} did not publish within {:?}",
+                    self.target.log_identity(),
+                    self.generation,
+                    self.run_id,
+                    SYNC_PUBLICATION_TEST_TIMEOUT
+                )
+            });
+        }
+    }
 
     fn api_client_for_url(api_url: String) -> ApiClient {
         ApiClient::new(
@@ -2091,6 +2151,7 @@ mod tests {
                             registration,
                             generation: 0,
                             consecutive_failures: 0,
+                            successful_generation: tokio::sync::watch::channel(None).0,
                         },
                     )
                 })
@@ -2339,19 +2400,23 @@ mod tests {
         (dir, registry_path, targets)
     }
 
+    async fn slack_policy(registry_path: &std::path::Path) -> serde_json::Value {
+        let registry_json: serde_json::Value = serde_json::from_str(
+            &tokio::fs::read_to_string(registry_path)
+                .await
+                .expect("registry should be readable"),
+        )
+        .expect("registry should be valid JSON");
+        registry_json["vms"]["10.200.0.2"]["networkPolicies"]["slack"].clone()
+    }
+
     async fn wait_until_slack_policy(
         registry_path: &std::path::Path,
         predicate: impl Fn(&serde_json::Value) -> bool,
     ) -> serde_json::Value {
         tokio::time::timeout(Duration::from_secs(1), async {
             loop {
-                let registry_json: serde_json::Value = serde_json::from_str(
-                    &tokio::fs::read_to_string(registry_path)
-                        .await
-                        .expect("registry should be readable"),
-                )
-                .expect("registry should be valid JSON");
-                let policy = registry_json["vms"]["10.200.0.2"]["networkPolicies"]["slack"].clone();
+                let policy = slack_policy(registry_path).await;
                 if predicate(&policy) {
                     return policy;
                 }
@@ -2360,6 +2425,27 @@ mod tests {
         })
         .await
         .expect("slack policy should match before timeout")
+    }
+
+    async fn observe_current_successful_sync(
+        handle: &ConnectorRuntimeSyncHandle,
+        run_id: RunId,
+        target: ConnectorRuntimeTarget,
+    ) -> SuccessfulSyncObserver {
+        let active_runs = handle.core.inner.active_runs.lock().await;
+        let active = active_runs
+            .get(&run_id)
+            .expect("run should remain registered");
+        let connector = active
+            .connectors
+            .get(&target)
+            .expect("connector should remain registered");
+        SuccessfulSyncObserver {
+            run_id,
+            target,
+            generation: connector.generation,
+            successful_generation: connector.successful_generation.subscribe(),
+        }
     }
 
     async fn register_slack_run(
@@ -2577,9 +2663,13 @@ mod tests {
         handle
             .notify_connector_runtime_sync(run_a, builtin_target("slack"))
             .await;
+        let run_a_sync =
+            observe_current_successful_sync(&handle, run_a, builtin_target("slack")).await;
         handle
             .notify_connector_runtime_sync(run_b, builtin_target("slack"))
             .await;
+        let run_b_sync =
+            observe_current_successful_sync(&handle, run_b, builtin_target("slack")).await;
 
         let (mut run_b_socket, run_b_request) =
             tokio::time::timeout(Duration::from_secs(1), accept_http_request(&listener))
@@ -2588,10 +2678,9 @@ mod tests {
         assert_connector_runtime_sync_request(&run_b_request, &run_b);
         write_connector_runtime_sync_response(&mut run_b_socket, &["run-b:read"]).await;
         drop(run_b_socket);
-        let run_b_policy = wait_until_slack_policy(&registry_b, |policy| {
-            policy["allow"] == json!(["run-b:read"])
-        })
-        .await;
+        run_b_sync.wait().await;
+        let run_b_policy = slack_policy(&registry_b).await;
+        assert_eq!(run_b_policy["allow"], json!(["run-b:read"]));
         assert_eq!(run_b_policy["unknownPolicy"], json!("allow"));
 
         assert!(
@@ -2610,9 +2699,9 @@ mod tests {
         assert_connector_runtime_sync_request(&run_a_follow_up_request, &run_a);
         write_connector_runtime_sync_response(&mut run_a_follow_up_socket, &["new:read"]).await;
         drop(run_a_follow_up_socket);
-        let run_a_policy =
-            wait_until_slack_policy(&registry_a, |policy| policy["allow"] == json!(["new:read"]))
-                .await;
+        run_a_sync.wait().await;
+        let run_a_policy = slack_policy(&registry_a).await;
+        assert_eq!(run_a_policy["allow"], json!(["new:read"]));
         assert_eq!(run_a_policy["unknownPolicy"], json!("allow"));
 
         handle.shutdown().await;
