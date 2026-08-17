@@ -105,6 +105,36 @@ describe("okou generate video command", () => {
     mockConsoleError.mockClear();
   });
 
+  it("should omit the model so the server picks the run's video model", async () => {
+    // A client-side default made every request look like an explicit seedance
+    // request, so a run pinned to another model produced a result the caller
+    // never asked for. Runs first so no earlier parse leaves option state.
+    let payload: unknown = null;
+    server.use(
+      http.post(VIDEO_URL, async ({ request }) => {
+        payload = await request.json();
+        return HttpResponse.json(VIDEO_RESULT);
+      }),
+    );
+
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "video",
+      "--prompt",
+      "A neon market tracking shot",
+    ]);
+
+    expect(payload).toEqual({
+      prompt: "A neon market tracking shot",
+      aspectRatio: "16:9",
+      duration: "8s",
+      generateAudio: true,
+      autoFix: true,
+      safetyTolerance: "4",
+    });
+  });
+
   it("should generate a video and print the /f file URL", async () => {
     server.use(
       stubBillingStatus(true),

@@ -21,7 +21,7 @@ interface VideoOptions {
   prompt?: string;
   provider?: string;
   template?: string;
-  model: string;
+  model?: string;
   aspectRatio: string;
   duration: string;
   resolution?: string;
@@ -312,7 +312,8 @@ async function validateFrameImageAspectRatio(
 }
 
 async function validateVideoOptions(options: VideoOptions): Promise<void> {
-  if (["minimax-h3", "h3"].includes(options.model.toLowerCase())) {
+  const model = options.model?.toLowerCase();
+  if (model !== undefined && ["minimax-h3", "h3"].includes(model)) {
     return;
   }
   await Promise.all([
@@ -350,7 +351,10 @@ function formatVideoToggle(enabled: boolean): string {
 
 function createVideoTemplateDetails(options: VideoOptions): readonly string[] {
   return [
-    `Model preference if direct video generation is used: ${options.model}`,
+    `Model preference if direct video generation is used: ${formatOptionalVideoParameter(
+      options.model,
+      "provider default",
+    )}`,
     `Requested aspect ratio: ${options.aspectRatio}`,
     `Requested duration: ${options.duration}`,
     `Requested resolution: ${formatOptionalVideoParameter(
@@ -395,8 +399,7 @@ export function createVideoGenerateCommand(
     .option("--json", "Print the complete generation result as JSON")
     .option(
       "--model <model>",
-      "Model: dreamina-seedance-2.0-fast, dreamina-seedance-2.5, dreamina-seedance-2.0, dreamina-seedance-2.0-mini, seedance-1.5-pro, minimax-h3, veo3.1-fast, or kling-v3-4k",
-      "dreamina-seedance-2.0-fast",
+      "Model: dreamina-seedance-2.0-fast, dreamina-seedance-2.5, dreamina-seedance-2.0, dreamina-seedance-2.0-mini, seedance-1.5-pro, minimax-h3, veo3.1-fast, or kling-v3-4k; omit to use the model this run is set to",
     )
     .option(
       "--aspect-ratio <ratio>",
