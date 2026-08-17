@@ -112,17 +112,17 @@ impl PiRpcProjection {
             ));
         };
         match message.get("role").and_then(Value::as_str) {
-            Some("assistant") => self.project_assistant_message(message),
-            Some("toolResult") => self.project_tool_result_message(message),
+            Some("assistant") => Ok(self.project_assistant_message(message)),
+            Some("toolResult") => self.project_tool_result_message(message).map(Some),
             _ => Ok(None),
         }
     }
 
-    fn project_assistant_message(&mut self, message: &Value) -> Result<Option<Value>, AgentError> {
+    fn project_assistant_message(&mut self, message: &Value) -> Option<Value> {
         self.final_assistant = Some(message.clone());
         let content = assistant_content(message);
         if content.is_empty() {
-            return Ok(None);
+            return None;
         }
         let timestamp = message
             .get("timestamp")
@@ -137,7 +137,7 @@ impl PiRpcProjection {
             .and_then(Value::as_str)
             .map(ToString::to_string)
             .unwrap_or_else(|| format!("{}:{timestamp}:{model}", self.run_id));
-        Ok(Some(json!({
+        Some(json!({
             "type": "assistant",
             "message": {
                 "id": id,
@@ -151,10 +151,10 @@ impl PiRpcProjection {
                     "cache_creation_input_tokens": message.pointer("/usage/cacheWrite").and_then(Value::as_u64).unwrap_or(0),
                 },
             },
-        })))
+        }))
     }
 
-    fn project_tool_result_message(&self, message: &Value) -> Result<Option<Value>, AgentError> {
+    fn project_tool_result_message(&self, message: &Value) -> Result<Value, AgentError> {
         let tool_use_id = message
             .get("toolCallId")
             .and_then(Value::as_str)
@@ -172,7 +172,7 @@ impl PiRpcProjection {
             .iter()
             .filter_map(project_tool_result_content)
             .collect::<Vec<_>>();
-        Ok(Some(json!({
+        Ok(json!({
             "type": "user",
             "session_id": self.session_id,
             "message": {
@@ -184,7 +184,7 @@ impl PiRpcProjection {
                     "is_error": message.get("isError").and_then(Value::as_bool).unwrap_or(false),
                 }],
             },
-        })))
+        }))
     }
 
     fn project_agent_settled(&mut self) -> Value {
