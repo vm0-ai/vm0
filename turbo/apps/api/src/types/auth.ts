@@ -1,4 +1,5 @@
 import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 export type ApiOrgRole = "admin" | "member";
 
@@ -46,12 +47,14 @@ export type ZeroAuthContext =
       readonly orgRole?: ApiOrgRole;
       readonly runId: string;
       readonly capabilities: readonly ZeroCapability[];
+      readonly publicBrand: PublicBrand;
       readonly computerUseHostId?: string;
     }
   | {
       readonly tokenType: "zero";
       readonly userId: string;
       readonly runId: string;
+      readonly publicBrand: PublicBrand;
       readonly orgId?: undefined;
       readonly orgRole?: undefined;
       readonly capabilities?: undefined;
@@ -81,6 +84,7 @@ export interface ZeroAuth {
   readonly runId: string;
   readonly orgId: string;
   readonly capabilities: readonly ZeroCapability[];
+  readonly publicBrand: PublicBrand;
   readonly computerUseHostId?: string;
   readonly cloudBrowserEnabled?: true;
 }

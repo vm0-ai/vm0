@@ -630,7 +630,7 @@ describe("AUTH-01 sandbox and zero bearers", () => {
       runId: sandbox.runId,
     });
 
-    const memberZero = cfg.zeroBearer(zeroMember, ["file:read"]);
+    const memberZero = cfg.zeroBearer(zeroMember, ["file:read"], "okou");
     cfg.mockMembership(zeroMember, "org:member");
     const memberProbe = await cfg.probeAuth(
       { authorization: `Bearer ${memberZero.token}` },
@@ -644,6 +644,7 @@ describe("AUTH-01 sandbox and zero bearers", () => {
       orgRole: "member",
       runId: memberZero.runId,
       capabilities: ["file:read"],
+      publicBrand: "okou",
     });
 
     const adminZero = cfg.zeroBearer(zeroAdmin, ["file:read", "file:write"]);
@@ -660,6 +661,7 @@ describe("AUTH-01 sandbox and zero bearers", () => {
       orgRole: "admin",
       runId: adminZero.runId,
       capabilities: ["file:read", "file:write"],
+      publicBrand: "vm0",
     });
 
     const orphanZero = cfg.zeroBearer(zeroOrphan, ["file:read"]);
@@ -673,6 +675,7 @@ describe("AUTH-01 sandbox and zero bearers", () => {
       tokenType: "zero",
       userId: zeroOrphan.userId,
       runId: orphanZero.runId,
+      publicBrand: "vm0",
     });
 
     const badSignature = await cfg.probeAuth(

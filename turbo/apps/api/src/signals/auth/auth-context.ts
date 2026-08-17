@@ -146,6 +146,7 @@ const zeroAuth$ = command(
       orgId: zeroAuth.orgId,
       runId: zeroAuth.runId,
       capabilities: [...zeroAuth.capabilities],
+      publicBrand: zeroAuth.publicBrand,
       ...(zeroAuth.computerUseHostId
         ? { computerUseHostId: zeroAuth.computerUseHostId }
         : {}),
@@ -162,6 +163,7 @@ const zeroAuth$ = command(
         tokenType: "zero" as const,
         userId: result.userId,
         runId: result.runId,
+        publicBrand: result.publicBrand,
       };
     }
 

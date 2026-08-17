@@ -2908,6 +2908,7 @@ function buildCreateZeroRunArgs(params: {
         payload: {
           threadId: prepared.thread.threadId,
           agentId: args.body.agentId,
+          publicBrand: args.publicBrand,
         },
       },
     ],

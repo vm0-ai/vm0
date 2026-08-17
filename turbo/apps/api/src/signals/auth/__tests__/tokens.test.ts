@@ -92,12 +92,14 @@ describe("auth tokens", () => {
       orgId: "org_zero",
       runId: "run_zero",
       capabilities: ["file:read"],
+      publicBrand: "vm0",
     });
     expect(verifyZeroToken(okouToken)).toStrictEqual({
       userId: "user_okou",
       orgId: "org_okou",
       runId: "run_okou",
       capabilities: ["file:write"],
+      publicBrand: "vm0",
     });
   });
 
@@ -115,9 +117,11 @@ describe("auth tokens", () => {
     expect(okouToken).toMatch(/^vm0_sandbox_/u);
     expect(decodeZeroTokenPayloadForTest(zeroToken)).toMatchObject({
       scope: "zero",
+      publicBrand: "vm0",
     });
     expect(decodeZeroTokenPayloadForTest(okouToken)).toMatchObject({
       scope: "okou",
+      publicBrand: "vm0",
     });
     expect(verifyZeroToken(okouToken)).toMatchObject({
       userId: "user_okou",
@@ -135,6 +139,7 @@ describe("auth tokens", () => {
       { [FeatureSwitchKey.Banking]: true },
       {
         scope: "okou",
+        publicBrand: "okou",
         computerUseHostId,
         cloudBrowserEnabled: true,
         imageRecognitionAvailable: true,
@@ -144,6 +149,7 @@ describe("auth tokens", () => {
     const okouPayload = decodeZeroTokenPayloadForTest(okouToken);
     expect(okouPayload).toMatchObject({
       scope: "okou",
+      publicBrand: "okou",
       userId: "user_shared",
       runId: "run_shared",
       orgId: "org_shared",
@@ -164,6 +170,7 @@ describe("auth tokens", () => {
       userId: "user_shared",
       runId: "run_shared",
       orgId: "org_shared",
+      publicBrand: "okou",
       computerUseHostId,
       cloudBrowserEnabled: true,
     });
@@ -186,6 +193,7 @@ describe("auth tokens", () => {
       orgId: "org_zero",
       runId: "run_zero",
       capabilities: ["file:read", "file:write"],
+      publicBrand: "vm0",
     });
   });
 

@@ -4,6 +4,10 @@ import {
   ZERO_CAPABILITIES,
   ZeroCapability,
 } from "@okouai/api-contracts/contracts/capabilities";
+import {
+  publicBrandSchema,
+  type PublicBrand,
+} from "@okouai/api-contracts/contracts/public-brand";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { z } from "zod";
@@ -35,6 +39,7 @@ const AGENT_EXCLUDED_CAPABILITIES = [
 
 interface ZeroTokenOptions {
   readonly scope?: "zero" | "okou";
+  readonly publicBrand?: PublicBrand;
   readonly computerUseHostId?: string;
   readonly cloudBrowserEnabled?: boolean;
   readonly imageRecognitionAvailable?: boolean;
@@ -74,6 +79,7 @@ const zeroTokenPayloadSchema = jwtBaseSchema.extend({
   runId: z.string().min(1),
   orgId: z.string().min(1),
   capabilities: zeroCapabilitiesSchema,
+  publicBrand: publicBrandSchema.optional(),
   computerUseHostId: z.string().uuid().optional(),
   cloudBrowserEnabled: z.literal(true).optional(),
 });
@@ -257,6 +263,7 @@ export function verifyZeroToken(token: string): ZeroAuth | null {
     runId: parsed.data.runId,
     orgId: parsed.data.orgId,
     capabilities: parsed.data.capabilities,
+    publicBrand: parsed.data.publicBrand ?? "vm0",
     ...(parsed.data.computerUseHostId
       ? { computerUseHostId: parsed.data.computerUseHostId }
       : {}),
@@ -350,6 +357,7 @@ function buildZeroTokenClaims(
     runId,
     orgId,
     capabilities,
+    publicBrand: options?.publicBrand ?? "vm0",
     ...(capabilities.includes("computer-use:write") &&
     options?.computerUseHostId
       ? { computerUseHostId: options.computerUseHostId }

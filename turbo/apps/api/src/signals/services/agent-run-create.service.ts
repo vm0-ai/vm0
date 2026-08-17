@@ -16,6 +16,7 @@ import {
 } from "@okouai/api-contracts/contracts/runners";
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 import { customConnectorSlugSchema } from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import {
@@ -875,6 +876,7 @@ export interface CreateAgentRunArgs {
   readonly chatThreadId?: string;
   readonly threadSessionResolution?: ChatThreadSessionResolution;
   readonly includeZeroTokenSecret?: boolean;
+  readonly zeroTokenPublicBrand?: PublicBrand;
   readonly zeroTokenComputerUseHostId?: string;
   readonly zeroTokenCloudBrowserEnabled?: boolean;
   readonly extraEnvironment?: Record<string, string>;
@@ -6357,6 +6359,7 @@ interface BuildRunnerJobPayloadInput {
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
   readonly additionalVolumeSources: AdditionalVolumeSources;
   readonly includeZeroTokenSecret: boolean | undefined;
+  readonly zeroTokenPublicBrand: PublicBrand | undefined;
   readonly zeroTokenComputerUseHostId: string | undefined;
   readonly zeroTokenCloudBrowserEnabled: boolean | undefined;
   readonly imageRecognitionAvailable: boolean;
@@ -6455,6 +6458,7 @@ function preparedRunnerJobBody(
     args.featureSwitchContext.overrides,
     {
       scope: "okou",
+      publicBrand: args.zeroTokenPublicBrand ?? "vm0",
       ...(args.zeroTokenComputerUseHostId
         ? { computerUseHostId: args.zeroTokenComputerUseHostId }
         : {}),
@@ -7525,6 +7529,7 @@ function buildAtomicLaunchPayload(
     additionalVolumes: args.context.additionalVolumes,
     additionalVolumeSources: args.context.additionalVolumeSources,
     includeZeroTokenSecret: args.createArgs.includeZeroTokenSecret,
+    zeroTokenPublicBrand: args.createArgs.zeroTokenPublicBrand,
     zeroTokenComputerUseHostId: args.createArgs.zeroTokenComputerUseHostId,
     zeroTokenCloudBrowserEnabled: args.createArgs.zeroTokenCloudBrowserEnabled,
     imageRecognitionAvailable: args.context.imageRecognitionAvailable,
