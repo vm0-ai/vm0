@@ -352,6 +352,7 @@ def resolve_firewall_entries(
                 raise FirewallEntryResolutionError(
                     "builtin firewall entry name must be a non-empty string"
                 )
+            source_id = _source_id(entry)
             if builtin_firewall_catalog_snapshot is None:
                 builtin_firewall_catalog_snapshot = load_catalog_snapshot(
                     builtin_firewall_catalog_cache_path
@@ -365,7 +366,7 @@ def resolve_firewall_entries(
                 omitted_builtin_names.add(raw_name)
                 continue
             connector_runtime_metadata.clear_connector_runtime_kind(resolved_builtin.firewall)
-            _apply_source_id(resolved_builtin.firewall, _source_id(entry))
+            _apply_source_id(resolved_builtin.firewall, source_id)
             if raw_name in builtin_target_slugs:
                 connector_runtime_metadata.mark_connector_runtime_kind(
                     resolved_builtin.firewall, "builtin"

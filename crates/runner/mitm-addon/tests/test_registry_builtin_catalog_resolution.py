@@ -576,7 +576,26 @@ class TestRegistryBuiltinCatalogResolution:
                 builtin_firewall_catalog_snapshot=None,
             )
 
-    def test_firewall_source_rejects_invalid_identity(self):
+    @pytest.mark.parametrize(
+        "entry",
+        [
+            {
+                "kind": "builtin",
+                "name": "missing-catalog-entry",
+                "sourceId": "not-a-uuid",
+            },
+            {
+                "kind": "inline",
+                "sourceId": "not-a-uuid",
+                "firewall": {
+                    "name": "custom_connector_test",
+                    "apis": [],
+                },
+            },
+        ],
+        ids=["builtin", "inline"],
+    )
+    def test_firewall_source_rejects_invalid_identity(self, entry: dict):
         with pytest.raises(
             registry_firewalls.FirewallEntryResolutionError,
             match="firewall sourceId must be a UUID",
@@ -584,16 +603,7 @@ class TestRegistryBuiltinCatalogResolution:
             registry_firewalls.resolve_firewall_entries(
                 {
                     "runId": "run-invalid-source",
-                    "firewalls": [
-                        {
-                            "kind": "inline",
-                            "sourceId": "not-a-uuid",
-                            "firewall": {
-                                "name": "custom_connector_test",
-                                "apis": [],
-                            },
-                        }
-                    ],
+                    "firewalls": [entry],
                 },
                 builtin_firewall_catalog_snapshot=None,
             )
