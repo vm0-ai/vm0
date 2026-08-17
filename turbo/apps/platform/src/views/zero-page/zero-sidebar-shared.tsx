@@ -1,9 +1,10 @@
-import { useLastResolved } from "ccstate-react";
+import { useGet, useLastResolved } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { agents$ } from "../../signals/agent.ts";
 import { currentChatAgentDisplayName$ } from "../../signals/agent-chat.ts";
 import { resolveAvatarUrl, resolveAvatarSvgConfig } from "./avatar-utils.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
+import { assistantName$ } from "../../signals/branding.ts";
 
 /**
  * Returns labels for the current agent-scoped chat thread list.
@@ -12,8 +13,9 @@ import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
  */
 export function useChatThreadsTitleLabels() {
   const { t } = useTranslation();
+  const assistantName = useGet(assistantName$);
   const agentDisplayName = useLastResolved(currentChatAgentDisplayName$);
-  const agentName = agentDisplayName ?? "Zero";
+  const agentName = agentDisplayName ?? assistantName;
   return {
     titleLabel: t(
       ($) => {

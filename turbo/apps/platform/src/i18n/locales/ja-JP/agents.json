@@ -122,7 +122,7 @@
       "engineering": {
         "cases": {
           "batch-create-issues": {
-            "description": "リストを貼り付けると、ZeroがIssueを一括作成します",
+            "description": "リストを貼り付けると、{{assistantName}}がIssueを一括作成します",
             "title": "Issueを一括作成"
           },
           "browserbase-web-testing": {
@@ -134,7 +134,7 @@
             "title": "Cloudflare トラフィックとセキュリティ レポート"
           },
           "codebase-investigation": {
-            "description": "URL を指定すると、Zero がリポジトリを通じてバグを追跡します。",
+            "description": "URL を指定すると、{{assistantName}} がリポジトリを通じてバグを追跡します。",
             "title": "コードベースの調査"
           },
           "daily-standup-report": {
@@ -178,8 +178,8 @@
             "title": "Vercel デプロイ ダイジェスト"
           },
           "zapier-vm0-migration": {
-            "description": "Zapier ワークフローを VM0 エージェントとして再作成します",
-            "title": "Zapier → VM0 の移行"
+            "description": "Zapier ワークフローを {{brandName}} エージェントとして再作成します",
+            "title": "Zapier → {{brandName}} の移行"
           }
         },
         "title": "エンジニアリング"

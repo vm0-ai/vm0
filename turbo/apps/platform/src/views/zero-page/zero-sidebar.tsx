@@ -34,6 +34,7 @@ import {
 import { activeRoute$ } from "../../signals/active-route.ts";
 import type { RouteKey } from "../../signals/route-paths.ts";
 import { defaultAgentName$ } from "../../signals/agent.ts";
+import { assistantName$ } from "../../signals/branding.ts";
 import {
   manageSectionCollapsed$,
   setManageSectionCollapsed$,
@@ -120,7 +121,9 @@ const FOOTER_NAV = [
 
 function useResolvedNavItems() {
   const { t } = useTranslation();
-  const defaultDisplayName = useLastResolved(defaultAgentName$) ?? "Zero";
+  const assistantName = useGet(assistantName$);
+  const defaultDisplayName =
+    useLastResolved(defaultAgentName$) ?? assistantName;
   const manageLabel = (id: ManageNavId): string => {
     switch (id) {
       case "agents": {

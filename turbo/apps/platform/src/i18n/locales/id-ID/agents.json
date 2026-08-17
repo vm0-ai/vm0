@@ -122,7 +122,7 @@
       "engineering": {
         "cases": {
           "batch-create-issues": {
-            "description": "Tempel daftar dan Zero akan membuka issue untuk Anda",
+            "description": "Tempel daftar dan {{assistantName}} akan membuka issue untuk Anda",
             "title": "Buat issue secara massal"
           },
           "browserbase-web-testing": {
@@ -134,7 +134,7 @@
             "title": "Laporan lalu lintas & keamanan Cloudflare"
           },
           "codebase-investigation": {
-            "description": "Berikan URL dan Zero menelusuri bug melalui repo",
+            "description": "Berikan URL dan {{assistantName}} menelusuri bug melalui repo",
             "title": "Investigasi basis kode"
           },
           "daily-standup-report": {
@@ -178,8 +178,8 @@
             "title": "Ringkasan deployment Vercel"
           },
           "zapier-vm0-migration": {
-            "description": "Ubah workflow Zapier Anda menjadi agen VM0",
-            "title": "Migrasi Zapier → VM0"
+            "description": "Ubah workflow Zapier Anda menjadi agen {{brandName}}",
+            "title": "Migrasi Zapier → {{brandName}}"
           }
         },
         "title": "Teknik"

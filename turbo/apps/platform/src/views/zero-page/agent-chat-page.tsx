@@ -41,6 +41,7 @@ import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
+import { assistantName$ } from "../../signals/branding.ts";
 import {
   typewriterDisplayed$,
   typewriterRef$,
@@ -80,7 +81,7 @@ function localizedAnonymousTaglines(t: TFunction<"common">): string[] {
 
 function localizedUserTaglines(
   t: TFunction<"common">,
-  agentName: string | null,
+  agentName: string,
   userName: string,
 ): string[] {
   return [
@@ -113,7 +114,7 @@ function localizedUserTaglines(
         return $.chat.agentPage.taglines.letsRoll;
       },
       {
-        agentName: agentName ?? "Zero",
+        agentName,
         userName,
       },
     ),
@@ -204,11 +205,12 @@ function useTagline(
   index: number,
 ): string {
   const { t } = useTranslation();
+  const assistantName = useGet(assistantName$);
   if (agentName === undefined) {
     return "";
   }
   const taglines = userName
-    ? localizedUserTaglines(t, agentName, userName)
+    ? localizedUserTaglines(t, agentName ?? assistantName, userName)
     : localizedAnonymousTaglines(t);
   return taglines[index % taglines.length];
 }

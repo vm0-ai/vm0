@@ -5,6 +5,7 @@ import {
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type { TFunction } from "i18next";
 import type { OnboardingChoice } from "../../signals/onboarding/onboarding-state.ts";
+import type { AssistantName } from "../../signals/branding.ts";
 
 interface OnboardingMakeOption {
   readonly id: OnboardingChoice;
@@ -307,10 +308,24 @@ function requiredConnectorSlugs(
   });
 }
 
+function workflowPromptForAssistant(
+  promptGuidance: string,
+  assistantName: AssistantName,
+): string {
+  if (assistantName === "Zero") {
+    return promptGuidance;
+  }
+  // Core workflow templates retain their legacy canonical token. Brand only
+  // this user-visible Platform projection, where every standalone Zero token
+  // denotes the assistant identity.
+  return promptGuidance.replace(/\bZero\b/gu, assistantName);
+}
+
 function onboardingWorkflow(
   id: OnboardingWorkflowId,
   categoryId: OnboardingWorkflowCategoryId,
   t: TFunction<"common">,
+  assistantName: AssistantName,
 ): OnboardingWorkflow {
   const template = ALL_WORKFLOW_TEMPLATES.find((candidate) => {
     return candidate.id === `workflow-template:${id}`;
@@ -327,7 +342,7 @@ function onboardingWorkflow(
     description: t(($) => {
       return $.onboarding.workflows[id].description;
     }),
-    prompt: template.promptGuidance,
+    prompt: workflowPromptForAssistant(template.promptGuidance, assistantName),
     connectorSlugs: template.connectorSlugs,
     requiredConnectorSlugs: requiredConnectorSlugs(
       template.promptGuidance,
@@ -351,6 +366,7 @@ function onboardingWorkflow(
 
 export function onboardingWorkflowCategories(
   t: TFunction<"common">,
+  assistantName: AssistantName,
 ): readonly OnboardingWorkflowCategory[] {
   return WORKFLOW_CATEGORY_IDS.map((id) => {
     return {
@@ -362,7 +378,7 @@ export function onboardingWorkflowCategories(
         return $.onboarding.categories[id].description;
       }),
       workflows: WORKFLOW_IDS_BY_CATEGORY[id].map((workflowId) => {
-        return onboardingWorkflow(workflowId, id, t);
+        return onboardingWorkflow(workflowId, id, t, assistantName);
       }),
     };
   });
@@ -394,12 +410,13 @@ export function hasOnboardingWorkflow(workflowIdValue: string | null): boolean {
 export function findOnboardingWorkflow(
   workflowIdValue: string | null,
   t: TFunction<"common">,
+  assistantName: AssistantName,
 ): OnboardingWorkflow | null {
   const identity = onboardingWorkflowIdentity(workflowIdValue);
   if (!identity) {
     return null;
   }
-  return onboardingWorkflow(identity.id, identity.categoryId, t);
+  return onboardingWorkflow(identity.id, identity.categoryId, t, assistantName);
 }
 
 export function buildWorkflowPrompt(
@@ -413,12 +430,17 @@ export function buildWorkflowPrompt(
   return `${workflow.prompt}\n\nAdditional context:\n${trimmedNote}`;
 }
 
-export function buildCustomWorkflowPrompt(note: string): string {
+export function buildCustomWorkflowPrompt(
+  note: string,
+  assistantName: AssistantName,
+): string {
   const trimmedNote = note.trim();
   if (!trimmedNote) {
     return "";
   }
-  return trimmedNote.startsWith("@Zero") ? trimmedNote : `@Zero ${trimmedNote}`;
+  return trimmedNote.startsWith("@")
+    ? trimmedNote
+    : `@${assistantName} ${trimmedNote}`;
 }
 
 const VIDEO_PROMPTS: Readonly<Record<string, string>> = {

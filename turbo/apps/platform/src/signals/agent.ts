@@ -19,6 +19,7 @@ import { accept } from "../lib/accept.ts";
 import { localStorageSignals } from "./external/local-storage.ts";
 import { retryTransientLoad } from "./utils.ts";
 import { rootSignal$ } from "./root-signal.ts";
+import { assistantName$ } from "./branding.ts";
 
 const LAST_USED_AGENT_STORAGE_KEY = "zero.lastUsedAgentId";
 
@@ -62,7 +63,7 @@ const defaultAgent$ = computed(async (get) => {
 
 export const defaultAgentName$ = computed(async (get) => {
   const defaultAgent = await get(defaultAgent$);
-  return defaultAgent?.displayName ?? "Zero";
+  return defaultAgent?.displayName ?? get(assistantName$);
 });
 
 export const currentAgentId$ = computed((get) => {

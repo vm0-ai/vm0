@@ -26,7 +26,7 @@ import {
   DialogTitle,
 } from "@okouai/ui/components/ui/dialog";
 import { currentChatAgentDisplayName$ } from "../../signals/agent-chat.ts";
-import { brandName$ } from "../../signals/branding.ts";
+import { assistantName$, brandName$ } from "../../signals/branding.ts";
 import {
   slackOrgData$,
   disconnectSlackOrg$,
@@ -894,6 +894,7 @@ function StrapiCard() {
 
 export function ZeroWorksPage() {
   const { t } = useTranslation();
+  const assistantName = useGet(assistantName$);
   const features = useGet(featureSwitch$);
   const teamsEnabled = features[FeatureSwitchKey.TeamsIntegration] ?? false;
   const feishuEnabled = features[FeatureSwitchKey.FeishuIntegration] ?? false;
@@ -901,8 +902,8 @@ export function ZeroWorksPage() {
   const displayNameLoadable = useLoadable(currentChatAgentDisplayName$);
   const displayName =
     displayNameLoadable.state === "hasData"
-      ? (displayNameLoadable.data ?? "Zero")
-      : "Zero";
+      ? (displayNameLoadable.data ?? assistantName)
+      : assistantName;
 
   return (
     <div className="flex flex-1 flex-col min-h-0">

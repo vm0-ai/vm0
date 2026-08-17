@@ -13,25 +13,16 @@ interface BrowserUpgradeCopy {
   readonly title: string;
 }
 
-function appBrandName(): "VM0" | "Okou" {
+function appAssistantName(): "Zero" | "Okou" {
   const brandName = document.documentElement.dataset.appBrandName;
   if (brandName !== "VM0" && brandName !== "Okou") {
     throw new Error("Invalid app brand name");
   }
-  return brandName;
+  return brandName === "Okou" ? "Okou" : "Zero";
 }
 
 function setMetaContent(selector: string, content: string): void {
   document.querySelector(selector)?.setAttribute("content", content);
-}
-
-function brandedBrowserUpgradeCopy(
-  copy: BrowserUpgradeCopy,
-): BrowserUpgradeCopy {
-  return {
-    ...copy,
-    description: copy.description.replace(/Zero/gu, appBrandName()),
-  };
 }
 
 function browserUpgradeTarget(): BrowserUpgradeTarget {
@@ -49,71 +40,72 @@ function browserUpgradeTarget(): BrowserUpgradeTarget {
 }
 
 function browserUpgradeCopy(target: BrowserUpgradeTarget): BrowserUpgradeCopy {
+  const variables = { assistantName: appAssistantName() };
   switch (target) {
     case "chrome": {
-      return brandedBrowserUpgradeCopy({
+      return {
         action: i18n.t(($) => {
           return $.appShell.browserUpgrade.chrome.action;
         }),
         description: i18n.t(($) => {
           return $.appShell.browserUpgrade.chrome.description;
-        }),
+        }, variables),
         title: i18n.t(($) => {
           return $.appShell.browserUpgrade.chrome.title;
         }),
-      });
+      };
     }
     case "chromium": {
-      return brandedBrowserUpgradeCopy({
+      return {
         action: i18n.t(($) => {
           return $.appShell.browserUpgrade.chromium.action;
         }),
         description: i18n.t(($) => {
           return $.appShell.browserUpgrade.chromium.description;
-        }),
+        }, variables),
         title: i18n.t(($) => {
           return $.appShell.browserUpgrade.chromium.title;
         }),
-      });
+      };
     }
     case "ios": {
-      return brandedBrowserUpgradeCopy({
+      return {
         action: i18n.t(($) => {
           return $.appShell.browserUpgrade.ios.action;
         }),
         description: i18n.t(($) => {
           return $.appShell.browserUpgrade.ios.description;
-        }),
+        }, variables),
         title: i18n.t(($) => {
           return $.appShell.browserUpgrade.ios.title;
         }),
-      });
+      };
     }
     case "safari": {
-      return brandedBrowserUpgradeCopy({
+      return {
         action: i18n.t(($) => {
           return $.appShell.browserUpgrade.safari.action;
         }),
         description: i18n.t(($) => {
           return $.appShell.browserUpgrade.safari.description;
-        }),
+        }, variables),
         title: i18n.t(($) => {
           return $.appShell.browserUpgrade.safari.title;
         }),
-      });
+      };
     }
     case "browser": {
-      return brandedBrowserUpgradeCopy({
+      return {
         action: i18n.t(($) => {
           return $.appShell.browserUpgrade.browser.action;
         }),
         description: i18n.t(($) => {
           return $.appShell.browserUpgrade.browser.description;
-        }),
+        }, variables),
         title: i18n.t(($) => {
           return $.appShell.browserUpgrade.browser.title;
         }),
-      });
+      };
     }
   }
 }

@@ -61,7 +61,7 @@
       "downloadRawData": "Unduh data mentah",
       "errorGuidance": {
         "computerUseAuthorizationRequired": {
-          "guidance": "Minta tautan otorisasi Computer Use yang didelegasikan, minta pengguna memilih host Zero Desktop untuk chat atau thread Slack ini, lalu jalankan run baru. Token run yang ada tidak dapat ditingkatkan di tempat.",
+          "guidance": "Minta tautan otorisasi Computer Use yang didelegasikan, minta pengguna memilih host {{assistantName}} Desktop untuk chat atau thread Slack ini, lalu jalankan run baru. Token run yang ada tidak dapat ditingkatkan di tempat.",
           "title": "Otorisasi Computer Use diperlukan"
         },
         "concurrentRunLimitReached": {
@@ -351,27 +351,27 @@
     "browserUpgrade": {
       "browser": {
         "action": "Perbarui browser",
-        "description": "Zero tidak mendukung versi browser Anda saat ini. Perbarui browser Anda untuk melanjutkan.",
+        "description": "{{assistantName}} tidak mendukung versi browser Anda saat ini. Perbarui browser Anda untuk melanjutkan.",
         "title": "Perbarui browser Anda untuk melanjutkan"
       },
       "chrome": {
         "action": "Perbarui Chrome",
-        "description": "Zero tidak mendukung versi Chrome Anda saat ini. Perbarui Chrome untuk melanjutkan.",
+        "description": "{{assistantName}} tidak mendukung versi Chrome Anda saat ini. Perbarui Chrome untuk melanjutkan.",
         "title": "Perbarui Chrome untuk melanjutkan"
       },
       "chromium": {
         "action": "Perbarui Chromium",
-        "description": "Zero tidak mendukung versi Chromium Anda saat ini. Perbarui Chromium untuk melanjutkan.",
+        "description": "{{assistantName}} tidak mendukung versi Chromium Anda saat ini. Perbarui Chromium untuk melanjutkan.",
         "title": "Perbarui Chromium untuk melanjutkan"
       },
       "ios": {
         "action": "Perbarui iOS",
-        "description": "Zero tidak mendukung versi iOS Anda saat ini. Perbarui iOS untuk melanjutkan.",
+        "description": "{{assistantName}} tidak mendukung versi iOS Anda saat ini. Perbarui iOS untuk melanjutkan.",
         "title": "Perbarui iOS untuk melanjutkan"
       },
       "safari": {
         "action": "Perbarui Safari",
-        "description": "Zero tidak mendukung versi Safari Anda saat ini. Perbarui Safari untuk melanjutkan.",
+        "description": "{{assistantName}} tidak mendukung versi Safari Anda saat ini. Perbarui Safari untuk melanjutkan.",
         "title": "Perbarui Safari untuk melanjutkan"
       }
     },
@@ -388,10 +388,10 @@
         "warmingNeurons": "Sedang memanaskan neuron..."
       }
     },
-    "logoAlt": "VM0",
+    "logoAlt": "{{brandName}}",
     "metadata": {
-      "description": "Zero adalah rekan kerja AI Anda dari vm0. Kirim pesan ke Zero atau chat di web — riset, email, dokumen, Slack, GitHub, Notion, dan 100+ alat.",
-      "title": "Zero — Rekan kerja AI Anda dari vm0"
+      "description": "{{assistantName}} adalah rekan kerja AI Anda dari {{brandName}}. Kirim pesan ke {{assistantName}} atau chat di web — riset, email, dokumen, Slack, GitHub, Notion, dan 100+ alat.",
+      "title": "{{assistantName}} — Rekan kerja AI Anda dari {{brandName}}"
     },
     "shortcutHelp": {
       "close": "Tutup pintasan keyboard",
@@ -692,7 +692,7 @@
   },
   "authorization": {
     "browser": {
-      "description": "Zero akan menggunakan profil browser cloud terisolasi untuk thread chat ini. Mengaktifkannya akan memutus Computer Use untuk thread ini.",
+      "description": "{{assistantName}} akan menggunakan profil browser cloud terisolasi untuk thread chat ini. Mengaktifkannya akan memutus Computer Use untuk thread ini.",
       "enable": "Aktifkan untuk thread ini",
       "enabled": "Browser cloud diaktifkan",
       "linkExpires": "Tautan kedaluwarsa pada {{date}}.",
@@ -704,7 +704,7 @@
       "authorize": "Otorisasi",
       "authorized": "Diotorisasi",
       "checkingCompatibility": "Memeriksa kompatibilitas",
-      "description": "Pilih komputer online untuk digunakan Zero di {{source}}.",
+      "description": "Pilih komputer online untuk digunakan {{assistantName}} di {{source}}.",
       "downloadMac": "Unduh untuk macOS",
       "lastSeen": "Terakhir terlihat {{date}}",
       "linkExpires": "Tautan kedaluwarsa pada {{date}}.",
@@ -1055,7 +1055,7 @@
       "concurrencyReduced": "Pengurangan concurrency dijadwalkan untuk tanggal penagihan berikutnya.",
       "concurrencyRestored": "Langganan kapasitas bersamaan dipulihkan.",
       "creditPurchaseConfirmed": "Pembayaran dikonfirmasi. Kredit akan muncul setelah Stripe memproses faktur.",
-      "creditsAdded": "Kredit ditambahkan. Anda dapat melanjutkan mengobrol dengan Zero.",
+      "creditsAdded": "Kredit ditambahkan. Anda dapat melanjutkan mengobrol dengan {{assistantName}}.",
       "downgradeScheduledDate": "Penurunan paket dijadwalkan. Paket Anda saat ini tetap aktif hingga {{date}}.",
       "downgradeScheduledPeriod": "Penurunan paket dijadwalkan. Paket Anda saat ini tetap aktif hingga periode tagihan berakhir.",
       "planRestored": "Paket dipulihkan. Langganan Anda akan diperbarui seperti biasa.",
@@ -1137,8 +1137,8 @@
       "startDescription": "Memulai akan memulihkan profil login dan penyimpanan yang tersimpan jika tersedia, serta membuka kembali tab yang tersimpan jika memungkinkan.",
       "starting": "Memulai…"
     },
-    "reclaimHint_one": "Zero mempertahankan browser ini selama panel ini terbuka, lalu mengambilnya kembali setelah {{formattedCount}} menit tidak aktif.",
-    "reclaimHint_other": "Zero mempertahankan browser ini selama panel ini terbuka, lalu mengambilnya kembali setelah {{formattedCount}} menit tidak aktif.",
+    "reclaimHint_one": "{{assistantName}} mempertahankan browser ini selama panel ini terbuka, lalu mengambilnya kembali setelah {{formattedCount}} menit tidak aktif.",
+    "reclaimHint_other": "{{assistantName}} mempertahankan browser ini selama panel ini terbuka, lalu mengambilnya kembali setelah {{formattedCount}} menit tidak aktif.",
     "status": {
       "live": "Live",
       "starting": "Memulai",
@@ -1310,23 +1310,23 @@
       "weeklyOnAt": "Setiap minggu pada {{days}} pukul {{time}}"
     },
     "billing": {
-      "addCreditsToContinue": "Tambahkan kredit untuk terus mengobrol dengan Zero.",
-      "askAdminCredits": "Minta admin ruang kerja untuk menambahkan kredit agar Anda bisa terus mengobrol dengan Zero.",
-      "askAdminUpgrade": "Minta admin ruang kerja untuk upgrade ke Pro agar Anda bisa terus mengobrol dengan Zero.",
+      "addCreditsToContinue": "Tambahkan kredit untuk terus mengobrol dengan {{assistantName}}.",
+      "askAdminCredits": "Minta admin ruang kerja untuk menambahkan kredit agar Anda bisa terus mengobrol dengan {{assistantName}}.",
+      "askAdminUpgrade": "Minta admin ruang kerja untuk upgrade ke Pro agar Anda bisa terus mengobrol dengan {{assistantName}}.",
       "buy": "Beli",
       "checkingPermissions": "Memeriksa izin penagihan...",
       "comparePlans": "Bandingkan paket",
       "comparePlansDescription": "Bandingkan paket untuk membuka fitur workspace berbayar dan kredit tambahan.",
-      "creditsAdded": "Kredit Anda telah ditambahkan. Anda bisa terus mengobrol dengan Zero.",
+      "creditsAdded": "Kredit Anda telah ditambahkan. Anda bisa terus mengobrol dengan {{assistantName}}.",
       "creditsAvailable": "Kredit tersedia",
       "custom": "Kustom",
       "customAmountError": "Masukkan antara $1 dan $10.000",
       "customDollarAmount": "Jumlah dolar kustom",
       "outOfCredits": "Kredit Anda habis",
       "redirecting": "Mengarahkan...",
-      "upgradeToContinue": "Upgrade ke Pro agar tetap bisa mengobrol dengan Zero.",
+      "upgradeToContinue": "Upgrade ke Pro agar tetap bisa mengobrol dengan {{assistantName}}.",
       "upgradeToPro": "Upgrade ke Pro",
-      "upgradeToRun": "Upgrade ke Pro untuk menjalankan Zero",
+      "upgradeToRun": "Upgrade ke Pro untuk menjalankan {{assistantName}}",
       "upgradeWorkspace": "Upgrade workspace Anda"
     },
     "composer": {
@@ -2085,7 +2085,7 @@
     "providerConnect": {
       "agentphone": {
         "back": "Kembali ke {{brandName}}",
-        "connectDescription": "Hubungkan nomor telepon ini ke akun {{brandName}} Anda agar Anda dapat berinteraksi dengan Zero lewat pesan teks.",
+        "connectDescription": "Hubungkan nomor telepon ini ke akun {{brandName}} Anda agar Anda dapat berinteraksi dengan {{assistantName}} lewat pesan teks.",
         "connectTitle": "Hubungkan nomor telepon",
         "documentTitle": "Hubungkan Pesan",
         "errorFallback": "Kami tidak dapat menghubungkan nomor telepon ini. Coba lagi dari pesan teks Anda.",
@@ -2095,7 +2095,7 @@
         "invalidTimestamp": "Stempel waktu pada tautan ini tidak valid.",
         "invalidTitle": "Tautan koneksi tidak valid",
         "risk": "Balasan SMS dan MMS mungkin tidak terkirim dengan andal. Untuk pengalaman paling andal, gunakan iMessage dengan nomor AgentPhone ini.",
-        "successDescription": "{{phone}} terhubung. Kirim pesan teks untuk mulai mengobrol dengan Zero.",
+        "successDescription": "{{phone}} terhubung. Kirim pesan teks untuk mulai mengobrol dengan {{assistantName}}.",
         "successTitle": "Nomor telepon terhubung"
       },
       "common": {
@@ -2207,7 +2207,7 @@
         "copyAria": "Salin {{phone}}",
         "copyError": "Gagal menyalin nomor telepon",
         "copySuccess": "Nomor telepon disalin",
-        "description": "Akses Zero lewat pesan teks",
+        "description": "Akses {{assistantName}} lewat pesan teks",
         "destination": "iMessage atau SMS ke",
         "normalized": "Kami akan mengirim SMS ke {{phone}}.",
         "options": "Opsi telepon",
@@ -2421,7 +2421,7 @@
         "adminRequired": "Minta admin organisasi untuk menambahkan atau memperbarui integrasi Strapi.",
         "authorizationHeader": "Header otorisasi",
         "copied": "{{label}} disalin",
-        "description": "Biarkan Zero bereaksi terhadap entri Strapi yang dipublikasikan dan mengotomatiskan pekerjaan lanjutan.",
+        "description": "Biarkan {{assistantName}} bereaksi terhadap entri Strapi yang dipublikasikan dan mengotomatiskan pekerjaan lanjutan.",
         "documentTitle": "Strapi",
         "empty": "Belum ada instance Strapi yang terhubung.",
         "form": {
@@ -2444,7 +2444,7 @@
           "testReceived": "Webhook tes Strapi diterima"
         },
         "webhookUrl": "Webhook URL",
-        "whereZeroWorks": "Tempat Zero bekerja"
+        "whereZeroWorks": "Tempat {{assistantName}} bekerja"
       },
       "telegram": {
         "addBot": "Tambahkan bot",
@@ -2483,7 +2483,7 @@
         "moreOptions": "Opsi lainnya untuk {{bot}}",
         "newBotToken": "Token bot baru",
         "notConnected": "Tidak terhubung",
-        "officialBot": "Bot resmi Zero",
+        "officialBot": "Bot resmi {{assistantName}}",
         "officialDescription": "Bot resmi yang disediakan oleh {{brandName}}.",
         "officialMissing": "Konfigurasi bot resmi tidak ada.",
         "pageDescription": "Kelola perutean bot untuk ruang kerja ini",
@@ -2610,16 +2610,16 @@
       "managePreferences": "Kelola preferensi"
     },
     "pwaInstall": {
-      "banner": "Instal Zero untuk pengalaman yang lebih baik",
-      "description": "Tambahkan Zero ke Layar Utama Anda agar akses lebih cepat.",
+      "banner": "Instal {{assistantName}} untuk pengalaman yang lebih baik",
+      "description": "Tambahkan {{assistantName}} ke Layar Utama Anda agar akses lebih cepat.",
       "dismiss": "Tutup banner instalasi",
       "gotIt": "Mengerti",
       "install": "Instal",
       "installApp": "Instal aplikasi",
       "stepOne": "Di Safari, ketuk tombol Bagikan.",
-      "stepThree": "Pastikan namanya Zero lalu ketuk Tambahkan.",
+      "stepThree": "Pastikan namanya {{assistantName}} lalu ketuk Tambahkan.",
       "stepTwo": "Pilih Tambahkan ke Layar Utama.",
-      "title": "Instal Zero"
+      "title": "Instal {{assistantName}}"
     },
     "redeemCampaign": {
       "actions": {
@@ -2751,7 +2751,7 @@
         }
       },
       "projectTypeLabel": "Jenis proyek pertama",
-      "promptDescription": "Sesuaikan di bawah atau jalankan apa adanya. Zero akan menanganinya dari sini. Alat Anda tetap dalam sandbox dan tidak ada yang keluar dari ruang kerja Anda.",
+      "promptDescription": "Sesuaikan di bawah atau jalankan apa adanya. {{assistantName}} akan menanganinya dari sini. Alat Anda tetap dalam sandbox dan tidak ada yang keluar dari ruang kerja Anda.",
       "promptLabel": "Prompt onboarding",
       "promptTitle": "Coba prompt ini",
       "title": "Apa yang ingin Anda buat terlebih dahulu"
@@ -2865,17 +2865,17 @@
       }
     },
     "workflowDiagram": {
-      "preparedDescription": "Zero menyiapkan langkah berikutnya dari alat Anda.",
+      "preparedDescription": "{{assistantName}} menyiapkan langkah berikutnya dari alat Anda.",
       "preparedTitle": "Alur kerja siap",
-      "reviewDescription": "Zero menyelesaikan alur kerja dan mengembalikan hasilnya.",
+      "reviewDescription": "{{assistantName}} menyelesaikan alur kerja dan mengembalikan hasilnya.",
       "reviewTitle": "Siap ditinjau",
       "source": "Sumber"
     },
     "workflowPicker": {
       "categoryDescription": "Pengaturan siap jalan yang bisa Anda sesuaikan dengan alat dan tujuan Anda.",
       "categoryTitle": "Alur kerja {{category}}",
-      "customDescription": "Jelaskan yang Anda inginkan dan Zero membangunnya bersama Anda.",
-      "customTitle": "Bicara dengan Zero dan buat sendiri",
+      "customDescription": "Jelaskan yang Anda inginkan dan {{assistantName}} membangunnya bersama Anda.",
+      "customTitle": "Bicara dengan {{assistantName}} dan buat sendiri",
       "description": "Pilih peran untuk melihat alur kerja yang sesuai. Anda bisa beralih kapan saja.",
       "title": "Apa yang Anda kerjakan?",
       "workflowCardLabel": "{{title}} {{description}}"
@@ -2885,10 +2885,10 @@
       "whatItDoes": "Yang dilakukan"
     },
     "workflowRun": {
-      "continueWithZero": "Lanjutkan dengan Zero",
+      "continueWithZero": "Lanjutkan dengan {{assistantName}}",
       "createDraft": "Buat draf",
       "customNoteLabel": "Jelaskan alur kerja Anda",
-      "customNotePlaceholder": "Jelaskan apa yang ingin Anda bangun dengan Zero",
+      "customNotePlaceholder": "Jelaskan apa yang ingin Anda bangun dengan {{assistantName}}",
       "customTitle": "Jelaskan alur kerja Anda",
       "noteLabel": "Ada hal lain yang ingin Anda tambahkan?",
       "notePlaceholder": "Ada hal lain yang ingin Anda tambahkan?",
@@ -2897,18 +2897,18 @@
     "workflows": {
       "alert-metric-moves-slack": {
         "description": "Pantau metrik utama Anda dan beri peringatan ke Slack saat salah satunya berubah tajam.",
-        "scenario": "Pada saat masalah metrik terlihat di tinjauan mingguan, masalah itu sudah berumur beberapa hari. Zero memantau metrik utama setiap jam dan mengirim ping ke Slack begitu nilainya keluar dari rentang normal.",
+        "scenario": "Pada saat masalah metrik terlihat di tinjauan mingguan, masalah itu sudah berumur beberapa hari. {{assistantName}} memantau metrik utama setiap jam dan mengirim ping ke Slack begitu nilainya keluar dari rentang normal.",
         "steps": {
           "one": {
-            "description": "Zero membaca metrik setiap jam.",
-            "title": "Zero memeriksa metrik"
+            "description": "{{assistantName}} membaca metrik setiap jam.",
+            "title": "{{assistantName}} memeriksa metrik"
           },
           "three": {
-            "description": "Zero mengirim peringatan dengan deviasi.",
+            "description": "{{assistantName}} mengirim peringatan dengan deviasi.",
             "title": "Peringatan dikirim ke Slack"
           },
           "two": {
-            "description": "Zero menandai nilai di luar rentang yang diharapkan.",
+            "description": "{{assistantName}} menandai nilai di luar rentang yang diharapkan.",
             "title": "Dibandingkan dengan rentang normal"
           }
         },
@@ -2916,37 +2916,37 @@
       },
       "auto-merge-github-prs": {
         "description": "Tinjau PR berlabel siap-merge, tunggu CI, lalu merge dan kirim ke Slack.",
-        "scenario": "Merge PR berarti mengawasi CI, memeriksa ulang diff, dan ingat untuk memberi tahu bahwa perubahan sudah tayang. Zero memantau label siap-merge, meninjau perubahan, menunggu pemeriksaan lolos, merge, lalu memberi tahu kanal.",
+        "scenario": "Merge PR berarti mengawasi CI, memeriksa ulang diff, dan ingat untuk memberi tahu bahwa perubahan sudah tayang. {{assistantName}} memantau label siap-merge, meninjau perubahan, menunggu pemeriksaan lolos, merge, lalu memberi tahu kanal.",
         "steps": {
           "one": {
-            "description": "Zero mengambil pull request segera setelah diberi label merge Anda.",
+            "description": "{{assistantName}} mengambil pull request segera setelah diberi label merge Anda.",
             "title": "Sebuah PR diberi label siap-merge"
           },
           "three": {
-            "description": "Zero merge PR dan mengirim hasilnya ke kanal Anda.",
+            "description": "{{assistantName}} merge PR dan mengirim hasilnya ke kanal Anda.",
             "title": "Di-merge dan dikirim ke Slack"
           },
           "two": {
-            "description": "Zero membaca diff dan menunggu sampai semua pemeriksaan wajib lolos.",
-            "title": "Zero meninjau dan menunggu CI"
+            "description": "{{assistantName}} membaca diff dan menunggu sampai semua pemeriksaan wajib lolos.",
+            "title": "{{assistantName}} meninjau dan menunggu CI"
           }
         },
         "title": "Auto-merge PR GitHub"
       },
       "blog-posts-to-x": {
-        "description": "Setiap hari Zero mengubah posting blog yang baru diterbitkan menjadi variasi sosial dan mengantrekan ke X lewat Buffer.",
-        "scenario": "Satu posting blog bisa jadi sepuluh posting sosial, tapi tak ada yang punya waktu untuk memecahnya. Zero mendeteksi posting yang baru terbit, menyusun beberapa variasi X, dan mengantrekan lewat Buffer untuk disetujui.",
+        "description": "Setiap hari {{assistantName}} mengubah posting blog yang baru diterbitkan menjadi variasi sosial dan mengantrekan ke X lewat Buffer.",
+        "scenario": "Satu posting blog bisa jadi sepuluh posting sosial, tapi tak ada yang punya waktu untuk memecahnya. {{assistantName}} mendeteksi posting yang baru terbit, menyusun beberapa variasi X, dan mengantrekan lewat Buffer untuk disetujui.",
         "steps": {
           "one": {
-            "description": "Zero mendeteksi posting baru yang diterbitkan di Strapi.",
-            "title": "Zero menemukan posting baru"
+            "description": "{{assistantName}} mendeteksi posting baru yang diterbitkan di Strapi.",
+            "title": "{{assistantName}} menemukan posting baru"
           },
           "three": {
-            "description": "Zero menjadwalkan variasi untuk ditinjau.",
+            "description": "{{assistantName}} menjadwalkan variasi untuk ditinjau.",
             "title": "Diantrekan di Buffer"
           },
           "two": {
-            "description": "Zero menyusun beberapa posting X dari tiap artikel.",
+            "description": "{{assistantName}} menyusun beberapa posting X dari tiap artikel.",
             "title": "Dipecah menjadi variasi sosial"
           }
         },
@@ -2954,18 +2954,18 @@
       },
       "build-weekly-deck-gamma": {
         "description": "Ubah metrik minggu ini menjadi deck siap presentasi di Gamma.",
-        "scenario": "Deck metrik mingguan selalu berupa slide yang sama dengan angka baru setiap kali. Zero mengambil datanya, membangun deck di Gamma, lalu mengirimnya ke Slack agar tinjauan siap sebelum rapat.",
+        "scenario": "Deck metrik mingguan selalu berupa slide yang sama dengan angka baru setiap kali. {{assistantName}} mengambil datanya, membangun deck di Gamma, lalu mengirimnya ke Slack agar tinjauan siap sebelum rapat.",
         "steps": {
           "one": {
-            "description": "Zero membaca metrik dari Sheets dan analitik.",
-            "title": "Zero mengumpulkan angkanya"
+            "description": "{{assistantName}} membaca metrik dari Sheets dan analitik.",
+            "title": "{{assistantName}} mengumpulkan angkanya"
           },
           "three": {
-            "description": "Zero membagikan deck yang sudah selesai.",
+            "description": "{{assistantName}} membagikan deck yang sudah selesai.",
             "title": "Dikirim ke Slack"
           },
           "two": {
-            "description": "Zero menyusun deck metrik berulang.",
+            "description": "{{assistantName}} menyusun deck metrik berulang.",
             "title": "Deck dibuat di Gamma"
           }
         },
@@ -2973,18 +2973,18 @@
       },
       "business-review-gamma": {
         "description": "Ubah metrik bulan ini menjadi deck tinjauan bisnis di Gamma.",
-        "scenario": "Tinjauan bisnis mingguan adalah deck berulang yang biasanya dibuat ulang secara manual. Zero mengambil pendapatan dan pertumbuhan, membangun deck di Gamma, dan menyiapkannya sebelum rapat.",
+        "scenario": "Tinjauan bisnis mingguan adalah deck berulang yang biasanya dibuat ulang secara manual. {{assistantName}} mengambil pendapatan dan pertumbuhan, membangun deck di Gamma, dan menyiapkannya sebelum rapat.",
         "steps": {
           "one": {
-            "description": "Zero membaca MRR, burn, dan pertumbuhan dari Stripe dan Clerk.",
-            "title": "Zero menarik angkanya"
+            "description": "{{assistantName}} membaca MRR, burn, dan pertumbuhan dari Stripe dan Clerk.",
+            "title": "{{assistantName}} menarik angkanya"
           },
           "three": {
-            "description": "Zero membagikan deck yang sudah selesai.",
+            "description": "{{assistantName}} membagikan deck yang sudah selesai.",
             "title": "Siap dipresentasikan"
           },
           "two": {
-            "description": "Zero menyusun tinjauan bisnis berulang.",
+            "description": "{{assistantName}} menyusun tinjauan bisnis berulang.",
             "title": "Deck dibuat di Gamma"
           }
         },
@@ -2992,18 +2992,18 @@
       },
       "catch-calendar-conflicts": {
         "description": "Pindai kalender Anda untuk jadwal ganda dan beri tahu lebih awal.",
-        "scenario": "Jadwal ganda baru ketahuan saat dua rapat dimulai bersamaan. Zero memeriksa setiap acara baru terhadap kalender Anda dan ketersediaan Cal.com, lalu memberi tahu Anda tentang konflik sebelum terjadi.",
+        "scenario": "Jadwal ganda baru ketahuan saat dua rapat dimulai bersamaan. {{assistantName}} memeriksa setiap acara baru terhadap kalender Anda dan ketersediaan Cal.com, lalu memberi tahu Anda tentang konflik sebelum terjadi.",
         "steps": {
           "one": {
-            "description": "Zero aktif saat acara baru masuk ke kalender Anda.",
+            "description": "{{assistantName}} aktif saat acara baru masuk ke kalender Anda.",
             "title": "Sebuah acara dibuat"
           },
           "three": {
-            "description": "Zero memberi tahu Anda tentang bentrokan dan opsinya.",
+            "description": "{{assistantName}} memberi tahu Anda tentang bentrokan dan opsinya.",
             "title": "Konflik ditandai di Slack"
           },
           "two": {
-            "description": "Zero membandingkan dengan acara dan ketersediaan yang ada.",
+            "description": "{{assistantName}} membandingkan dengan acara dan ketersediaan yang ada.",
             "title": "Diperiksa untuk konflik"
           }
         },
@@ -3011,18 +3011,18 @@
       },
       "catch-leads-gmail": {
         "description": "Temukan sinyal pembelian di email baru dan catat lead yang memenuhi syarat.",
-        "scenario": "Lead hangat tersembunyi di inbox yang sibuk dan bisa keburu dingin. Zero membaca email masuk untuk sinyal pembelian, memperkaya pengirim dengan Apollo, mencatat lead ke sheet, dan menyarankan langkah berikutnya di Slack.",
+        "scenario": "Lead hangat tersembunyi di inbox yang sibuk dan bisa keburu dingin. {{assistantName}} membaca email masuk untuk sinyal pembelian, memperkaya pengirim dengan Apollo, mencatat lead ke sheet, dan menyarankan langkah berikutnya di Slack.",
         "steps": {
           "one": {
-            "description": "Zero membaca Gmail masuk untuk sinyal pembelian.",
-            "title": "Zero memindai email baru"
+            "description": "{{assistantName}} membaca Gmail masuk untuk sinyal pembelian.",
+            "title": "{{assistantName}} memindai email baru"
           },
           "three": {
-            "description": "Zero mengirim lead dan langkah berikutnya yang disarankan ke Slack.",
+            "description": "{{assistantName}} mengirim lead dan langkah berikutnya yang disarankan ke Slack.",
             "title": "Langkah berikutnya disarankan"
           },
           "two": {
-            "description": "Zero memperkaya dengan Apollo dan menambahkan baris ke sheet Anda.",
+            "description": "{{assistantName}} memperkaya dengan Apollo dan menambahkan baris ke sheet Anda.",
             "title": "Lead diperkaya dan dicatat"
           }
         },
@@ -3030,18 +3030,18 @@
       },
       "chase-overdue-asana-tasks": {
         "description": "Temukan tugas Asana yang terlambat dan ingatkan pemiliknya di Slack.",
-        "scenario": "Tugas yang terlambat perlu ada yang menindaklanjuti, dan orang itu selalu sibuk. Zero memindai Asana setiap hari untuk apa pun yang sudah lewat tenggat dan menyentil tiap pemilik di Slack.",
+        "scenario": "Tugas yang terlambat perlu ada yang menindaklanjuti, dan orang itu selalu sibuk. {{assistantName}} memindai Asana setiap hari untuk apa pun yang sudah lewat tenggat dan menyentil tiap pemilik di Slack.",
         "steps": {
           "one": {
-            "description": "Zero membaca tugas yang sudah lewat tanggal tenggatnya.",
-            "title": "Zero memindai Asana"
+            "description": "{{assistantName}} membaca tugas yang sudah lewat tanggal tenggatnya.",
+            "title": "{{assistantName}} memindai Asana"
           },
           "three": {
-            "description": "Zero mengirim DM ke tiap pemilik daftar tugas terlambat mereka.",
+            "description": "{{assistantName}} mengirim DM ke tiap pemilik daftar tugas terlambat mereka.",
             "title": "Pengingat dikirim di Slack"
           },
           "two": {
-            "description": "Zero mengelompokkan pekerjaan terlambat berdasarkan penanggung jawab.",
+            "description": "{{assistantName}} mengelompokkan pekerjaan terlambat berdasarkan penanggung jawab.",
             "title": "Pemilik teridentifikasi"
           }
         },
@@ -3049,37 +3049,37 @@
       },
       "check-posthog-signup-funnel": {
         "description": "Pantau alur pendaftaran dan kirim penurunan terbesar ke Slack.",
-        "scenario": "Alur hanya berguna kalau ada yang menjalankannya. Zero menjalankan alur pendaftaran setiap minggu, menemukan langkah yang paling banyak kehilangan orang, dan mengirimnya ke Slack agar tim tahu harus fokus di mana.",
+        "scenario": "Alur hanya berguna kalau ada yang menjalankannya. {{assistantName}} menjalankan alur pendaftaran setiap minggu, menemukan langkah yang paling banyak kehilangan orang, dan mengirimnya ke Slack agar tim tahu harus fokus di mana.",
         "steps": {
           "one": {
-            "description": "Zero menjalankan alur pendaftaran di PostHog untuk minggu ini.",
-            "title": "Zero menjalankan alurnya"
+            "description": "{{assistantName}} menjalankan alur pendaftaran di PostHog untuk minggu ini.",
+            "title": "{{assistantName}} menjalankan alurnya"
           },
           "three": {
-            "description": "Zero mengirim penurunan dan trennya.",
+            "description": "{{assistantName}} mengirim penurunan dan trennya.",
             "title": "Diposting ke Slack"
           },
           "two": {
-            "description": "Zero menemukan langkah dengan penurunan terbesar.",
+            "description": "{{assistantName}} menemukan langkah dengan penurunan terbesar.",
             "title": "Penurunan terbesar teridentifikasi"
           }
         },
         "title": "Periksa alur pendaftaran PostHog"
       },
       "compare-google-ads-last-month": {
-        "description": "Setiap hari Zero membandingkan belanja, CPA, dan ROAS Google Ads serta Meta Ads dengan periode sebelumnya dan menandai anomali di Slack.",
-        "scenario": "Masalah pacing iklan merugikan uang setiap hari saat tak disadari. Zero membandingkan belanja, CPA, dan ROAS dengan periode sebelumnya setiap hari dan menandai apa pun yang menyimpang di Slack.",
+        "description": "Setiap hari {{assistantName}} membandingkan belanja, CPA, dan ROAS Google Ads serta Meta Ads dengan periode sebelumnya dan menandai anomali di Slack.",
+        "scenario": "Masalah pacing iklan merugikan uang setiap hari saat tak disadari. {{assistantName}} membandingkan belanja, CPA, dan ROAS dengan periode sebelumnya setiap hari dan menandai apa pun yang menyimpang di Slack.",
         "steps": {
           "one": {
-            "description": "Zero menarik data belanja, CPA, dan konversi dari Google dan Meta Ads.",
-            "title": "Zero membaca performa iklan"
+            "description": "{{assistantName}} menarik data belanja, CPA, dan konversi dari Google dan Meta Ads.",
+            "title": "{{assistantName}} membaca performa iklan"
           },
           "three": {
-            "description": "Zero memposting perbandingan dan menyorot penyimpangan.",
+            "description": "{{assistantName}} memposting perbandingan dan menyorot penyimpangan.",
             "title": "Anomali ditandai di Slack"
           },
           "two": {
-            "description": "Zero menghitung selisih dan pacing.",
+            "description": "{{assistantName}} menghitung selisih dan pacing.",
             "title": "Dibandingkan dengan periode sebelumnya"
           }
         },
@@ -3087,18 +3087,18 @@
       },
       "daily-company-brief-slack": {
         "description": "Tarik produk, pertumbuhan, dan pendapatan ke ringkasan harian di Slack.",
-        "scenario": "Gambaran lengkap tersebar di lima alat yang tak pernah dicek bersama. Zero menarik data pertumbuhan, pendapatan, kesehatan produk, dan engineering setiap pagi lalu mengirim satu pulse perusahaan ke Slack: kemenangan, risiko, dan hal yang perlu diperhatikan.",
+        "scenario": "Gambaran lengkap tersebar di lima alat yang tak pernah dicek bersama. {{assistantName}} menarik data pertumbuhan, pendapatan, kesehatan produk, dan engineering setiap pagi lalu mengirim satu pulse perusahaan ke Slack: kemenangan, risiko, dan hal yang perlu diperhatikan.",
         "steps": {
           "one": {
-            "description": "Zero membaca pertumbuhan, pendapatan, error, dan shipping di seluruh stack Anda.",
-            "title": "Zero mengumpulkan sinyal"
+            "description": "{{assistantName}} membaca pertumbuhan, pendapatan, error, dan shipping di seluruh stack Anda.",
+            "title": "{{assistantName}} mengumpulkan sinyal"
           },
           "three": {
-            "description": "Zero memposting ringkasan harian perusahaan.",
+            "description": "{{assistantName}} memposting ringkasan harian perusahaan.",
             "title": "Diposting ke Slack"
           },
           "two": {
-            "description": "Zero menulis kemenangan, risiko, dan hal yang perlu diperhatikan.",
+            "description": "{{assistantName}} menulis kemenangan, risiko, dan hal yang perlu diperhatikan.",
             "title": "Disusun menjadi pulse"
           }
         },
@@ -3106,18 +3106,18 @@
       },
       "daily-industry-news-slack": {
         "description": "Kumpulkan berita industri relevan hari ini menjadi ringkasan Slack.",
-        "scenario": "Tetap update berarti membuka belasan tab yang tak pernah Anda buka. Zero memindai berita AI dan kompetitor dari 24 jam terakhir setiap hari dan memposting ringkasan singkat ke Slack supaya Anda cukup membaca satu ringkasan saja.",
+        "scenario": "Tetap update berarti membuka belasan tab yang tak pernah Anda buka. {{assistantName}} memindai berita AI dan kompetitor dari 24 jam terakhir setiap hari dan memposting ringkasan singkat ke Slack supaya Anda cukup membaca satu ringkasan saja.",
         "steps": {
           "one": {
-            "description": "Zero mencari liputan AI dan kompetitor dari hari terakhir dengan Exa.",
-            "title": "Zero memindai berita"
+            "description": "{{assistantName}} mencari liputan AI dan kompetitor dari hari terakhir dengan Exa.",
+            "title": "{{assistantName}} memindai berita"
           },
           "three": {
-            "description": "Zero memposting ringkasan berita harian.",
+            "description": "{{assistantName}} memposting ringkasan berita harian.",
             "title": "Diposting ke Slack"
           },
           "two": {
-            "description": "Zero merangkum hal yang benar-benar penting.",
+            "description": "{{assistantName}} merangkum hal yang benar-benar penting.",
             "title": "Disarikan menjadi ringkasan"
           }
         },
@@ -3125,37 +3125,37 @@
       },
       "draft-github-release-notes-notion": {
         "description": "Ubah PR yang digabung sejak rilis terakhir menjadi catatan yang rapi di Notion.",
-        "scenario": "Menulis catatan rilis berarti menggulir riwayat PR dan menerjemahkan commit ke bahasa sederhana. Zero melakukannya saat Anda memberi label shipped pada PR: Zero mengumpulkan semua yang digabung sejak tag terakhir dan menyusun catatan yang mudah dibaca di Notion.",
+        "scenario": "Menulis catatan rilis berarti menggulir riwayat PR dan menerjemahkan commit ke bahasa sederhana. {{assistantName}} melakukannya saat Anda memberi label shipped pada PR: {{assistantName}} mengumpulkan semua yang digabung sejak tag terakhir dan menyusun catatan yang mudah dibaca di Notion.",
         "steps": {
           "one": {
-            "description": "Zero memicu dari label rilis Anda.",
+            "description": "{{assistantName}} memicu dari label rilis Anda.",
             "title": "Sebuah PR diberi label shipped"
           },
           "three": {
-            "description": "Zero menyusun catatan rilis yang rapi dan dikelompokkan di halaman Notion.",
+            "description": "{{assistantName}} menyusun catatan rilis yang rapi dan dikelompokkan di halaman Notion.",
             "title": "Catatan rilis disimpan ke Notion"
           },
           "two": {
-            "description": "Zero mengumpulkan semua yang digabung sejak tag rilis terakhir.",
-            "title": "Zero mengumpulkan PR yang digabung"
+            "description": "{{assistantName}} mengumpulkan semua yang digabung sejak tag rilis terakhir.",
+            "title": "{{assistantName}} mengumpulkan PR yang digabung"
           }
         },
         "title": "Susun catatan rilis GitHub di Notion"
       },
       "draft-newsletter-mailchimp": {
-        "description": "Setiap bulan Zero menyusun newsletter dari fitur yang sudah shipped dan menyiapkan draf di Mailchimp.",
-        "scenario": "Newsletter bulanan selalu dimulai dari halaman kosong. Zero mengumpulkan apa yang shipped dari GitHub, menyusun draf edisi, dan menyiapkannya di Mailchimp agar Anda mengedit, bukan menulis dari nol.",
+        "description": "Setiap bulan {{assistantName}} menyusun newsletter dari fitur yang sudah shipped dan menyiapkan draf di Mailchimp.",
+        "scenario": "Newsletter bulanan selalu dimulai dari halaman kosong. {{assistantName}} mengumpulkan apa yang shipped dari GitHub, menyusun draf edisi, dan menyiapkannya di Mailchimp agar Anda mengedit, bukan menulis dari nol.",
         "steps": {
           "one": {
-            "description": "Zero membaca fitur yang digabung dan highlight dari GitHub.",
-            "title": "Zero mengumpulkan yang sudah shipped"
+            "description": "{{assistantName}} membaca fitur yang digabung dan highlight dari GitHub.",
+            "title": "{{assistantName}} mengumpulkan yang sudah shipped"
           },
           "three": {
-            "description": "Zero membuat draf kampanye yang siap diedit.",
+            "description": "{{assistantName}} membuat draf kampanye yang siap diedit.",
             "title": "Disiapkan di Mailchimp"
           },
           "two": {
-            "description": "Zero menulis edisi dengan suara Anda.",
+            "description": "{{assistantName}} menulis edisi dengan suara Anda.",
             "title": "Newsletter didraf"
           }
         },
@@ -3163,37 +3163,37 @@
       },
       "draft-replies-notion-faq": {
         "description": "Buat draf balasan tiket berdasarkan FAQ Notion Anda.",
-        "scenario": "Sebagian besar pertanyaan sudah dijawab di docs. Zero membaca pertanyaan masuk, mencari FAQ di Notion, dan menyusun balasan berdasarkan docs Anda sendiri agar agen dapat menyetujuinya.",
+        "scenario": "Sebagian besar pertanyaan sudah dijawab di docs. {{assistantName}} membaca pertanyaan masuk, mencari FAQ di Notion, dan menyusun balasan berdasarkan docs Anda sendiri agar agen dapat menyetujuinya.",
         "steps": {
           "one": {
-            "description": "Zero membaca percakapan baru di Intercom atau Gmail.",
+            "description": "{{assistantName}} membaca percakapan baru di Intercom atau Gmail.",
             "title": "Ada pertanyaan masuk"
           },
           "three": {
-            "description": "Zero menyiapkan respons sesuai brand.",
+            "description": "{{assistantName}} menyiapkan respons sesuai brand.",
             "title": "Balasan didraf untuk ditinjau"
           },
           "two": {
-            "description": "Zero menemukan jawaban yang relevan di docs Anda.",
-            "title": "Zero memeriksa FAQ Notion"
+            "description": "{{assistantName}} menemukan jawaban yang relevan di docs Anda.",
+            "title": "{{assistantName}} memeriksa FAQ Notion"
           }
         },
         "title": "Buat draf balasan dari FAQ Notion Anda"
       },
       "file-gmail-invoices-drive": {
         "description": "Simpan email invoice ke Drive dan catat semuanya di Sheet.",
-        "scenario": "Invoice menumpuk di inbox dan rekonsiliasi jadi berantakan. Zero menyimpan setiap invoice berlabel ke folder Drive yang tepat dan mencatat jumlah serta tanggal jatuh tempo di sheet pengeluaran Anda saat masuk.",
+        "scenario": "Invoice menumpuk di inbox dan rekonsiliasi jadi berantakan. {{assistantName}} menyimpan setiap invoice berlabel ke folder Drive yang tepat dan mencatat jumlah serta tanggal jatuh tempo di sheet pengeluaran Anda saat masuk.",
         "steps": {
           "one": {
-            "description": "Zero memicu dari label Invoices Anda di Gmail.",
+            "description": "{{assistantName}} memicu dari label Invoices Anda di Gmail.",
             "title": "Sebuah invoice diberi label"
           },
           "three": {
-            "description": "Zero mencatat jumlah dan tanggal jatuh tempo di sheet pengeluaran.",
+            "description": "{{assistantName}} mencatat jumlah dan tanggal jatuh tempo di sheet pengeluaran.",
             "title": "Dicatat di sheet"
           },
           "two": {
-            "description": "Zero menyimpan lampiran ke folder yang benar.",
+            "description": "{{assistantName}} menyimpan lampiran ke folder yang benar.",
             "title": "Disimpan ke Google Drive"
           }
         },
@@ -3201,37 +3201,37 @@
       },
       "file-sentry-crashes-github": {
         "description": "Urutkan error baru di Sentry berdasarkan dampak ke pengguna dan ubah yang terburuk menjadi issue GitHub.",
-        "scenario": "Crash baru tersembunyi di Sentry sampai ada yang mencarinya. Zero memeriksa setiap jam, mengurutkan error berdasarkan jumlah pengguna yang terdampak, membuka issue GitHub untuk yang penting, dan memberi tahu pemilik kode tersebut.",
+        "scenario": "Crash baru tersembunyi di Sentry sampai ada yang mencarinya. {{assistantName}} memeriksa setiap jam, mengurutkan error berdasarkan jumlah pengguna yang terdampak, membuka issue GitHub untuk yang penting, dan memberi tahu pemilik kode tersebut.",
         "steps": {
           "one": {
-            "description": "Zero membaca error yang belum terselesaikan dan jumlah event-nya untuk satu jam terakhir.",
-            "title": "Zero menarik error baru dari Sentry"
+            "description": "{{assistantName}} membaca error yang belum terselesaikan dan jumlah event-nya untuk satu jam terakhir.",
+            "title": "{{assistantName}} menarik error baru dari Sentry"
           },
           "three": {
-            "description": "Zero membuka issue GitHub dengan stack trace dan memberi tahu pemiliknya di Slack.",
+            "description": "{{assistantName}} membuka issue GitHub dengan stack trace dan memberi tahu pemiliknya di Slack.",
             "title": "Issue dibuat dan pemilik diberi tahu"
           },
           "two": {
-            "description": "Zero mengurutkan berdasarkan pengguna terdampak dan menyaring noise berdampak rendah.",
+            "description": "{{assistantName}} mengurutkan berdasarkan pengguna terdampak dan menyaring noise berdampak rendah.",
             "title": "Diurutkan berdasarkan dampak ke pengguna"
           }
         },
         "title": "Ubah crash Sentry menjadi issue GitHub"
       },
       "fixes-to-notion-help-docs": {
-        "description": "Saat sebuah tiket ditandai selesai, Zero mengubah perbaikannya menjadi artikel bantuan yang bisa dipakai ulang di Notion.",
-        "scenario": "Pertanyaan yang sama terus muncul karena perbaikannya tak pernah didokumentasikan. Zero mengubah setiap tiket yang sudah selesai menjadi artikel bantuan yang rapi dan bisa dipakai ulang di Notion supaya jawabannya sudah ada lain kali.",
+        "description": "Saat sebuah tiket ditandai selesai, {{assistantName}} mengubah perbaikannya menjadi artikel bantuan yang bisa dipakai ulang di Notion.",
+        "scenario": "Pertanyaan yang sama terus muncul karena perbaikannya tak pernah didokumentasikan. {{assistantName}} mengubah setiap tiket yang sudah selesai menjadi artikel bantuan yang rapi dan bisa dipakai ulang di Notion supaya jawabannya sudah ada lain kali.",
         "steps": {
           "one": {
-            "description": "Zero memicu saat tiket ditutup.",
+            "description": "{{assistantName}} memicu saat tiket ditutup.",
             "title": "Sebuah tiket diselesaikan"
           },
           "three": {
-            "description": "Zero menambahkan artikel ke pusat bantuan Anda.",
+            "description": "{{assistantName}} menambahkan artikel ke pusat bantuan Anda.",
             "title": "Disimpan ke Notion"
           },
           "two": {
-            "description": "Zero menyusun how-to yang jelas dari penyelesaiannya.",
+            "description": "{{assistantName}} menyusun how-to yang jelas dari penyelesaiannya.",
             "title": "Perbaikan ditulis"
           }
         },
@@ -3239,18 +3239,18 @@
       },
       "flag-figma-designs-no-task": {
         "description": "Tandai desain Figma yang belum memiliki tugas Linear terhubung.",
-        "scenario": "Desain selesai diam-diam tanpa pernah menjadi tiket build. Zero memindai Figma setiap hari untuk frame berstatus ready yang belum memiliki tugas Linear terhubung dan menandai celahnya di Slack sebelum terlewat.",
+        "scenario": "Desain selesai diam-diam tanpa pernah menjadi tiket build. {{assistantName}} memindai Figma setiap hari untuk frame berstatus ready yang belum memiliki tugas Linear terhubung dan menandai celahnya di Slack sebelum terlewat.",
         "steps": {
           "one": {
-            "description": "Zero membaca frame dan tugas yang terhubung.",
-            "title": "Zero memindai frame Figma"
+            "description": "{{assistantName}} membaca frame dan tugas yang terhubung.",
+            "title": "{{assistantName}} memindai frame Figma"
           },
           "three": {
-            "description": "Zero mencantumkan desain yang belum terhubung di channel Anda.",
+            "description": "{{assistantName}} mencantumkan desain yang belum terhubung di channel Anda.",
             "title": "Celah diposting ke Slack"
           },
           "two": {
-            "description": "Zero menandai desain ready yang tidak punya tiket build.",
+            "description": "{{assistantName}} menandai desain ready yang tidak punya tiket build.",
             "title": "Menemukan frame tanpa tugas"
           }
         },
@@ -3258,56 +3258,56 @@
       },
       "flagged-gmail-todoist-tasks": {
         "description": "Ubah email yang Anda tandai menjadi tugas Todoist secara otomatis.",
-        "scenario": "Menandai email hanya memindahkan keputusan ke nanti. Zero mengambil email yang ditandai, meneliti topik dan utas sebelumnya, lalu membuat tugas Todoist dengan konteks yang sudah terlampir.",
+        "scenario": "Menandai email hanya memindahkan keputusan ke nanti. {{assistantName}} mengambil email yang ditandai, meneliti topik dan utas sebelumnya, lalu membuat tugas Todoist dengan konteks yang sudah terlampir.",
         "steps": {
           "one": {
-            "description": "Zero memicu dari label to-do Anda di Gmail.",
+            "description": "{{assistantName}} memicu dari label to-do Anda di Gmail.",
             "title": "Anda menandai email"
           },
           "three": {
-            "description": "Zero membuat tugas yang siap dikerjakan dengan tautan.",
+            "description": "{{assistantName}} membuat tugas yang siap dikerjakan dengan tautan.",
             "title": "Tugas disimpan di Todoist"
           },
           "two": {
-            "description": "Zero mengumpulkan konteks utas sebelumnya dan info web dengan Exa.",
-            "title": "Zero menelitinya"
+            "description": "{{assistantName}} mengumpulkan konteks utas sebelumnya dan info web dengan Exa.",
+            "title": "{{assistantName}} menelitinya"
           }
         },
         "title": "Ubah email Gmail yang ditandai menjadi tugas Todoist"
       },
       "github-idea-to-notion-spec": {
         "description": "Ubah issue GitHub berlabel menjadi spesifikasi produk terstruktur di Notion.",
-        "scenario": "Ide satu baris di issue belum jadi spec. Zero mengambil label needs-spec dan mengembangkan issue menjadi PRD terstruktur di Notion dengan problem, pengguna, kebutuhan, dan kriteria penerimaan siap untuk disempurnakan.",
+        "scenario": "Ide satu baris di issue belum jadi spec. {{assistantName}} mengambil label needs-spec dan mengembangkan issue menjadi PRD terstruktur di Notion dengan problem, pengguna, kebutuhan, dan kriteria penerimaan siap untuk disempurnakan.",
         "steps": {
           "one": {
-            "description": "Zero memicu dari label dan membaca issue.",
+            "description": "{{assistantName}} memicu dari label dan membaca issue.",
             "title": "Sebuah issue diberi label needs-spec"
           },
           "three": {
-            "description": "Zero membuat halaman PRD terstruktur di Notion.",
+            "description": "{{assistantName}} membuat halaman PRD terstruktur di Notion.",
             "title": "Disimpan ke Notion"
           },
           "two": {
-            "description": "Zero menyusun masalah, pengguna, kebutuhan, dan kriteria penerimaan.",
-            "title": "Zero mengembangkannya menjadi PRD"
+            "description": "{{assistantName}} menyusun masalah, pengguna, kebutuhan, dan kriteria penerimaan.",
+            "title": "{{assistantName}} mengembangkannya menjadi PRD"
           }
         },
         "title": "Ubah ide GitHub menjadi spesifikasi Notion"
       },
       "gmail-followups-auto": {
         "description": "Temukan kontak yang belum membalas dan susun tindak lanjut berikutnya.",
-        "scenario": "Follow-up adalah saat deal dimenangkan, dan saat deal dilupakan. Zero memajukan sequence Anda setiap hari dan menyusun sentuhan berikutnya untuk setiap yang belum membalas agar tidak ada yang basi.",
+        "scenario": "Follow-up adalah saat deal dimenangkan, dan saat deal dilupakan. {{assistantName}} memajukan sequence Anda setiap hari dan menyusun sentuhan berikutnya untuk setiap yang belum membalas agar tidak ada yang basi.",
         "steps": {
           "one": {
-            "description": "Zero membaca siapa yang belum membalas di Instantly dan Apollo.",
-            "title": "Zero memeriksa status sequence"
+            "description": "{{assistantName}} membaca siapa yang belum membalas di Instantly dan Apollo.",
+            "title": "{{assistantName}} memeriksa status sequence"
           },
           "three": {
-            "description": "Zero menyiapkan draf untuk persetujuan Anda.",
+            "description": "{{assistantName}} menyiapkan draf untuk persetujuan Anda.",
             "title": "Siap di Gmail"
           },
           "two": {
-            "description": "Zero menulis follow-up untuk setiap kontak.",
+            "description": "{{assistantName}} menulis follow-up untuk setiap kontak.",
             "title": "Sentuhan berikutnya sudah disusun"
           }
         },
@@ -3315,18 +3315,18 @@
       },
       "gmail-reconnect-reminders": {
         "description": "Tampilkan kontak penting yang sudah lama belum Anda email.",
-        "scenario": "Relasi memudar saat Anda sibuk fokus. Zero meninjau inbox dan kalender Anda setiap minggu, menampilkan kontak bermakna yang sudah lama tidak Anda hubungi, dan menyarankan pembuka yang alami untuk menyambung kembali.",
+        "scenario": "Relasi memudar saat Anda sibuk fokus. {{assistantName}} meninjau inbox dan kalender Anda setiap minggu, menampilkan kontak bermakna yang sudah lama tidak Anda hubungi, dan menyarankan pembuka yang alami untuk menyambung kembali.",
         "steps": {
           "one": {
-            "description": "Zero membaca riwayat email dan kalender terbaru.",
-            "title": "Zero meninjau kontak Anda"
+            "description": "{{assistantName}} membaca riwayat email dan kalender terbaru.",
+            "title": "{{assistantName}} meninjau kontak Anda"
           },
           "three": {
-            "description": "Zero memposting tiap kontak dengan pembuka yang disarankan.",
+            "description": "{{assistantName}} memposting tiap kontak dengan pembuka yang disarankan.",
             "title": "Pembuka disarankan"
           },
           "two": {
-            "description": "Zero menemukan kontak bermakna yang sudah lama tidak Anda hubungi.",
+            "description": "{{assistantName}} menemukan kontak bermakna yang sudah lama tidak Anda hubungi.",
             "title": "Relasi yang renggang ditampilkan"
           }
         },
@@ -3334,18 +3334,18 @@
       },
       "highlight-key-emails-gmail": {
         "description": "Tampilkan beberapa email yang benar-benar butuh perhatian Anda.",
-        "scenario": "Inbox yang penuh menenggelamkan tiga email yang penting. Zero membaca email Anda setiap pagi dan hanya menampilkan yang benar-benar butuh Anda, lalu mempostingnya ke Slack.",
+        "scenario": "Inbox yang penuh menenggelamkan tiga email yang penting. {{assistantName}} membaca email Anda setiap pagi dan hanya menampilkan yang benar-benar butuh Anda, lalu mempostingnya ke Slack.",
         "steps": {
           "one": {
-            "description": "Zero memindai email semalam di Gmail.",
-            "title": "Zero membaca inbox"
+            "description": "{{assistantName}} memindai email semalam di Gmail.",
+            "title": "{{assistantName}} membaca inbox"
           },
           "three": {
-            "description": "Zero memposting daftar pendek beserta alasan tiap email penting.",
+            "description": "{{assistantName}} memposting daftar pendek beserta alasan tiap email penting.",
             "title": "Diposting ke Slack"
           },
           "two": {
-            "description": "Zero menyaring beberapa yang butuh perhatian Anda.",
+            "description": "{{assistantName}} menyaring beberapa yang butuh perhatian Anda.",
             "title": "Prioritas diidentifikasi"
           }
         },
@@ -3353,18 +3353,18 @@
       },
       "investor-update-google-docs": {
         "description": "Kumpulkan metrik dan sorotan menjadi update investor di Docs.",
-        "scenario": "Update investor bulanan selalu terlambat dan dimulai dari nol. Zero mengumpulkan KPI dan sorotan lalu menyusun update di Google Docs agar Anda tinggal menyempurnakan, bukan merangkai.",
+        "scenario": "Update investor bulanan selalu terlambat dan dimulai dari nol. {{assistantName}} mengumpulkan KPI dan sorotan lalu menyusun update di Google Docs agar Anda tinggal menyempurnakan, bukan merangkai.",
         "steps": {
           "one": {
-            "description": "Zero menarik revenue dan pertumbuhan dari Stripe dan Sheets.",
-            "title": "Zero mengumpulkan KPI"
+            "description": "{{assistantName}} menarik revenue dan pertumbuhan dari Stripe dan Sheets.",
+            "title": "{{assistantName}} mengumpulkan KPI"
           },
           "three": {
-            "description": "Zero meninggalkan draf yang siap diedit.",
+            "description": "{{assistantName}} meninggalkan draf yang siap diedit.",
             "title": "Dapat diedit di Google Docs"
           },
           "two": {
-            "description": "Zero menulis narasi dan metrik.",
+            "description": "{{assistantName}} menulis narasi dan metrik.",
             "title": "Update sudah disusun"
           }
         },
@@ -3372,18 +3372,18 @@
       },
       "log-gong-calls-hubspot": {
         "description": "Ambil catatan dan langkah berikutnya dari panggilan Gong ke deal HubSpot.",
-        "scenario": "Catatan panggilan tidak pernah masuk ke CRM saat masih segar. Zero membaca transkrip Gong setelah tiap panggilan dan menulis ringkasan serta langkah berikutnya ke deal HubSpot secara otomatis.",
+        "scenario": "Catatan panggilan tidak pernah masuk ke CRM saat masih segar. {{assistantName}} membaca transkrip Gong setelah tiap panggilan dan menulis ringkasan serta langkah berikutnya ke deal HubSpot secara otomatis.",
         "steps": {
           "one": {
-            "description": "Setelah panggilan, Zero mengambil catatan rekaman dari Gong.",
-            "title": "Zero membaca transkrip"
+            "description": "Setelah panggilan, {{assistantName}} mengambil catatan rekaman dari Gong.",
+            "title": "{{assistantName}} membaca transkrip"
           },
           "three": {
-            "description": "Zero menulis catatan ke record deal.",
+            "description": "{{assistantName}} menulis catatan ke record deal.",
             "title": "Dicatat ke HubSpot"
           },
           "two": {
-            "description": "Zero mengekstrak keputusan dan tindak lanjut.",
+            "description": "{{assistantName}} mengekstrak keputusan dan tindak lanjut.",
             "title": "Ringkasan dan langkah berikutnya sudah disusun"
           }
         },
@@ -3391,18 +3391,18 @@
       },
       "meeting-notes-asana-tasks": {
         "description": "Ubah catatan rapat menjadi tugas Asana yang ditugaskan dan diberi tenggat.",
-        "scenario": "Item aksi mati di catatan rapat. Zero membaca transkrip setelah setiap rapat, mengambil to-do, dan membuat tugas Asana yang ditugaskan agar keputusan benar-benar menjadi pekerjaan.",
+        "scenario": "Item aksi mati di catatan rapat. {{assistantName}} membaca transkrip setelah setiap rapat, mengambil to-do, dan membuat tugas Asana yang ditugaskan agar keputusan benar-benar menjadi pekerjaan.",
         "steps": {
           "one": {
-            "description": "Setelah rapat, Zero mengambil catatan dari Fireflies.",
-            "title": "Zero membaca transkrip"
+            "description": "Setelah rapat, {{assistantName}} mengambil catatan dari Fireflies.",
+            "title": "{{assistantName}} membaca transkrip"
           },
           "three": {
-            "description": "Zero membuat tugas yang ditugaskan dengan tenggat.",
+            "description": "{{assistantName}} membuat tugas yang ditugaskan dengan tenggat.",
             "title": "Tugas dibuat di Asana"
           },
           "two": {
-            "description": "Zero mengidentifikasi to-do dan penanggung jawab.",
+            "description": "{{assistantName}} mengidentifikasi to-do dan penanggung jawab.",
             "title": "Item aksi diekstrak"
           }
         },
@@ -3410,37 +3410,37 @@
       },
       "meeting-recaps-slack": {
         "description": "Bagikan rangkuman berisi keputusan dan item aksi setelah setiap rapat.",
-        "scenario": "Detail rapat memudar sebelum rapat berikutnya. Zero membaca transkrip sesudahnya dan mengirim rangkuman yang rapi tentang keputusan dan item aksi agar tidak ada yang hilang.",
+        "scenario": "Detail rapat memudar sebelum rapat berikutnya. {{assistantName}} membaca transkrip sesudahnya dan mengirim rangkuman yang rapi tentang keputusan dan item aksi agar tidak ada yang hilang.",
         "steps": {
           "one": {
-            "description": "Setelah rapat, Zero mengambil catatan dari Fireflies.",
-            "title": "Zero membaca transkrip"
+            "description": "Setelah rapat, {{assistantName}} mengambil catatan dari Fireflies.",
+            "title": "{{assistantName}} membaca transkrip"
           },
           "three": {
-            "description": "Zero mengirim rangkuman ke Gmail atau Slack.",
+            "description": "{{assistantName}} mengirim rangkuman ke Gmail atau Slack.",
             "title": "Dikirim ke Anda"
           },
           "two": {
-            "description": "Zero merangkum keputusan dan item aksi.",
+            "description": "{{assistantName}} merangkum keputusan dan item aksi.",
             "title": "Rangkuman ditulis"
           }
         },
         "title": "Dapatkan rangkuman rapat di Slack"
       },
       "morning-brief-slack": {
-        "description": "Setiap pagi Zero mengirim brief berisi jadwal Anda dan email yang butuh perhatian, lalu mempostingnya ke Slack.",
-        "scenario": "Sepuluh menit pertama hari terbuang untuk memahami hari itu seperti apa. Zero menyusun jadwal dan email yang butuh perhatian, lalu memposting brief pagi ke Slack sebelum Anda duduk bekerja.",
+        "description": "Setiap pagi {{assistantName}} mengirim brief berisi jadwal Anda dan email yang butuh perhatian, lalu mempostingnya ke Slack.",
+        "scenario": "Sepuluh menit pertama hari terbuang untuk memahami hari itu seperti apa. {{assistantName}} menyusun jadwal dan email yang butuh perhatian, lalu memposting brief pagi ke Slack sebelum Anda duduk bekerja.",
         "steps": {
           "one": {
-            "description": "Zero menarik kalender hari ini dan email prioritas.",
-            "title": "Zero membaca hari Anda"
+            "description": "{{assistantName}} menarik kalender hari ini dan email prioritas.",
+            "title": "{{assistantName}} membaca hari Anda"
           },
           "three": {
-            "description": "Zero mengirim brief pagi.",
+            "description": "{{assistantName}} mengirim brief pagi.",
             "title": "Diposting ke Slack"
           },
           "two": {
-            "description": "Zero menulis jadwal Anda dan apa yang perlu diperhatikan.",
+            "description": "{{assistantName}} menulis jadwal Anda dan apa yang perlu diperhatikan.",
             "title": "Brief disusun"
           }
         },
@@ -3448,18 +3448,18 @@
       },
       "new-gmail-contacts-hubspot": {
         "description": "Tambahkan dan lengkapi pengirim email yang belum dikenal sebagai kontak HubSpot.",
-        "scenario": "Kontak terlewat saat tidak ada yang mencatatnya. Zero mendeteksi email dari seseorang yang belum ada di HubSpot, membuat record, dan melengkapinya dengan Apollo agar CRM tetap lengkap tanpa input manual.",
+        "scenario": "Kontak terlewat saat tidak ada yang mencatatnya. {{assistantName}} mendeteksi email dari seseorang yang belum ada di HubSpot, membuat record, dan melengkapinya dengan Apollo agar CRM tetap lengkap tanpa input manual.",
         "steps": {
           "one": {
-            "description": "Zero memeriksa email masuk terhadap CRM.",
-            "title": "Zero menemukan pengirim yang tidak dikenal"
+            "description": "{{assistantName}} memeriksa email masuk terhadap CRM.",
+            "title": "{{assistantName}} menemukan pengirim yang tidak dikenal"
           },
           "three": {
-            "description": "Zero mencatat kontak dan sumber di timeline.",
+            "description": "{{assistantName}} mencatat kontak dan sumber di timeline.",
             "title": "Dicatat untuk follow-up"
           },
           "two": {
-            "description": "Zero menambahkan orang itu ke HubSpot dan melengkapinya dengan Apollo.",
+            "description": "{{assistantName}} menambahkan orang itu ke HubSpot dan melengkapinya dengan Apollo.",
             "title": "Kontak dibuat dan dilengkapi"
           }
         },
@@ -3467,18 +3467,18 @@
       },
       "onboard-new-hires-asana": {
         "description": "Buat checklist tugas onboarding untuk setiap karyawan baru di Asana.",
-        "scenario": "Onboarding selalu checklist yang sama, dan selalu dilakukan manual. Zero mendeteksi karyawan baru, membuat project onboarding di Asana, dan menyiapkan dokumen awal mereka di Drive.",
+        "scenario": "Onboarding selalu checklist yang sama, dan selalu dilakukan manual. {{assistantName}} mendeteksi karyawan baru, membuat project onboarding di Asana, dan menyiapkan dokumen awal mereka di Drive.",
         "steps": {
           "one": {
-            "description": "Zero mendeteksi record baru di Deel.",
+            "description": "{{assistantName}} mendeteksi record baru di Deel.",
             "title": "Karyawan baru ditambahkan"
           },
           "three": {
-            "description": "Zero menyiapkan dokumen awal di Google Drive.",
+            "description": "{{assistantName}} menyiapkan dokumen awal di Google Drive.",
             "title": "Dokumen disiapkan"
           },
           "two": {
-            "description": "Zero memulai project onboarding dengan tugas yang ditugaskan.",
+            "description": "{{assistantName}} memulai project onboarding dengan tugas yang ditugaskan.",
             "title": "Checklist dibuat di Asana"
           }
         },
@@ -3486,37 +3486,37 @@
       },
       "post-daily-metrics-slack": {
         "description": "Posting jumlah pengunjung, signup, dan aktivasi harian ke Slack.",
-        "scenario": "Memeriksa tiga dashboard sebelum kopi bukan ritual favorit siapa pun. Zero menarik pengunjung, signup, dan aktivasi setiap pagi lalu memposting angkanya ke Slack supaya hari dimulai dengan KPI sudah ada di channel.",
+        "scenario": "Memeriksa tiga dashboard sebelum kopi bukan ritual favorit siapa pun. {{assistantName}} menarik pengunjung, signup, dan aktivasi setiap pagi lalu memposting angkanya ke Slack supaya hari dimulai dengan KPI sudah ada di channel.",
         "steps": {
           "one": {
-            "description": "Zero membaca traffic, signup, dan aktivasi dari alat analitik Anda.",
-            "title": "Zero menarik metrik"
+            "description": "{{assistantName}} membaca traffic, signup, dan aktivasi dari alat analitik Anda.",
+            "title": "{{assistantName}} menarik metrik"
           },
           "three": {
-            "description": "Zero memposting update KPI pagi.",
+            "description": "{{assistantName}} memposting update KPI pagi.",
             "title": "Diposting ke Slack"
           },
           "two": {
-            "description": "Zero memformat angka penting dengan konteks hari-ke-hari.",
+            "description": "{{assistantName}} memformat angka penting dengan konteks hari-ke-hari.",
             "title": "Disusun menjadi snapshot KPI"
           }
         },
         "title": "Posting metrik harian ke Slack"
       },
       "post-github-updates-slack": {
-        "description": "Setiap pagi hari kerja Zero mengompilasi pekerjaan Anda yang sudah digabung dan yang masih berjalan dari GitHub dan Linear menjadi update progres untuk Slack.",
-        "scenario": "Standup memakan waktu dan separuhnya hanya untuk mengingat apa yang sudah Anda kerjakan. Zero mengompilasi PR GitHub yang sudah digabung dan tiket Linear yang masih berjalan setiap pagi, lalu memposting update progres yang rapi agar standup async tersusun sendiri.",
+        "description": "Setiap pagi hari kerja {{assistantName}} mengompilasi pekerjaan Anda yang sudah digabung dan yang masih berjalan dari GitHub dan Linear menjadi update progres untuk Slack.",
+        "scenario": "Standup memakan waktu dan separuhnya hanya untuk mengingat apa yang sudah Anda kerjakan. {{assistantName}} mengompilasi PR GitHub yang sudah digabung dan tiket Linear yang masih berjalan setiap pagi, lalu memposting update progres yang rapi agar standup async tersusun sendiri.",
         "steps": {
           "one": {
-            "description": "Zero membaca pekerjaan Anda yang sudah digabung dan terbuka dari GitHub dan Linear.",
-            "title": "Zero mengumpulkan aktivitas Anda"
+            "description": "{{assistantName}} membaca pekerjaan Anda yang sudah digabung dan terbuka dari GitHub dan Linear.",
+            "title": "{{assistantName}} mengumpulkan aktivitas Anda"
           },
           "three": {
-            "description": "Zero memposting update ke channel standup Anda setiap hari kerja.",
+            "description": "{{assistantName}} memposting update ke channel standup Anda setiap hari kerja.",
             "title": "Diposting ke Slack"
           },
           "two": {
-            "description": "Zero menulis ringkasan progres yang singkat dan mudah dibaca.",
+            "description": "{{assistantName}} menulis ringkasan progres yang singkat dan mudah dibaca.",
             "title": "Dirangkum menjadi update"
           }
         },
@@ -3524,75 +3524,75 @@
       },
       "post-release-notes-slack": {
         "description": "Susun changelog dari pekerjaan yang baru dirilis dan posting ke Slack.",
-        "scenario": "Changelog yang dilihat pengguna berbeda dari log commit. Zero memicu pada label release, menyusun ringkasan ramah untuk pengguna tentang apa yang dirilis, dan mempostingnya ke Slack serta Notion.",
+        "scenario": "Changelog yang dilihat pengguna berbeda dari log commit. {{assistantName}} memicu pada label release, menyusun ringkasan ramah untuk pengguna tentang apa yang dirilis, dan mempostingnya ke Slack serta Notion.",
         "steps": {
           "one": {
-            "description": "Zero memicu pada label release.",
+            "description": "{{assistantName}} memicu pada label release.",
             "title": "Sebuah PR diberi label release"
           },
           "three": {
-            "description": "Zero membagikan pengumuman di kedua tempat.",
+            "description": "{{assistantName}} membagikan pengumuman di kedua tempat.",
             "title": "Diposting ke Slack dan Notion"
           },
           "two": {
-            "description": "Zero menulis ringkasan yang ditujukan untuk pengguna tentang apa yang berubah.",
-            "title": "Zero menyusun draf changelog"
+            "description": "{{assistantName}} menulis ringkasan yang ditujukan untuk pengguna tentang apa yang berubah.",
+            "title": "{{assistantName}} menyusun draf changelog"
           }
         },
         "title": "Posting catatan rilis ke Slack"
       },
       "prep-google-calendar-meetings": {
         "description": "Teliti peserta eksternal dan kirim brief persiapan sebelum meeting.",
-        "scenario": "Masuk ke panggilan tanpa persiapan berarti harus mengandalkan improvisasi. Zero mendeteksi meeting eksternal baru, meneliti peserta dan perusahaannya dengan Apollo, menarik konteks panggilan sebelumnya dari Gong, lalu mengirim brief satu halaman lewat DM sebelum dimulai.",
+        "scenario": "Masuk ke panggilan tanpa persiapan berarti harus mengandalkan improvisasi. {{assistantName}} mendeteksi meeting eksternal baru, meneliti peserta dan perusahaannya dengan Apollo, menarik konteks panggilan sebelumnya dari Gong, lalu mengirim brief satu halaman lewat DM sebelum dimulai.",
         "steps": {
           "one": {
-            "description": "Zero dipicu saat peserta eksternal bergabung ke kalender Anda.",
+            "description": "{{assistantName}} dipicu saat peserta eksternal bergabung ke kalender Anda.",
             "title": "Meeting ditambahkan"
           },
           "three": {
-            "description": "Zero mengirim dossier satu halaman lewat DM sebelum panggilan.",
+            "description": "{{assistantName}} mengirim dossier satu halaman lewat DM sebelum panggilan.",
             "title": "Brief persiapan dikirim ke Slack"
           },
           "two": {
-            "description": "Zero memperkaya orang dan perusahaan dengan Apollo dan Gong.",
+            "description": "{{assistantName}} memperkaya orang dan perusahaan dengan Apollo dan Gong.",
             "title": "Peserta diteliti"
           }
         },
         "title": "Siapkan meeting Google Calendar"
       },
       "publish-scheduled-posts-buffer": {
-        "description": "Setiap hari Zero mempublikasikan konten yang dijadwalkan untuk hari ini dari kalender Notion ke Strapi dan mengantrekan posting sosial di Buffer.",
-        "scenario": "Kalender konten hanya berfungsi jika ada yang menekan publish. Zero membaca item terjadwal hari ini dari Notion, mempublikasikannya ke Strapi, dan mengantrekan posting sosial yang sesuai di Buffer.",
+        "description": "Setiap hari {{assistantName}} mempublikasikan konten yang dijadwalkan untuk hari ini dari kalender Notion ke Strapi dan mengantrekan posting sosial di Buffer.",
+        "scenario": "Kalender konten hanya berfungsi jika ada yang menekan publish. {{assistantName}} membaca item terjadwal hari ini dari Notion, mempublikasikannya ke Strapi, dan mengantrekan posting sosial yang sesuai di Buffer.",
         "steps": {
           "one": {
-            "description": "Zero mengambil item yang dijadwalkan untuk hari ini dari Notion.",
-            "title": "Zero membaca kalender hari ini"
+            "description": "{{assistantName}} mengambil item yang dijadwalkan untuk hari ini dari Notion.",
+            "title": "{{assistantName}} membaca kalender hari ini"
           },
           "three": {
-            "description": "Zero menjadwalkan posting promo di Buffer.",
+            "description": "{{assistantName}} menjadwalkan posting promo di Buffer.",
             "title": "Konten sosial diantrekan di Buffer"
           },
           "two": {
-            "description": "Zero mempublikasikan konten ke Strapi.",
+            "description": "{{assistantName}} mempublikasikan konten ke Strapi.",
             "title": "Dipublikasikan ke CMS"
           }
         },
         "title": "Publikasikan posting terjadwal ke Buffer"
       },
       "report-ai-model-costs-slack": {
-        "description": "Setiap hari Zero melaporkan pengeluaran token LLM dan latensi p95 per model dan rute dari Langfuse ke Slack.",
-        "scenario": "Biaya model naik perlahan di berbagai rute dan model. Zero membaca Langfuse setiap hari dan memposting rincian pengeluaran token serta latensi p95 per model dan rute agar kejutan biaya tidak datang terlambat saat tagihan.",
+        "description": "Setiap hari {{assistantName}} melaporkan pengeluaran token LLM dan latensi p95 per model dan rute dari Langfuse ke Slack.",
+        "scenario": "Biaya model naik perlahan di berbagai rute dan model. {{assistantName}} membaca Langfuse setiap hari dan memposting rincian pengeluaran token serta latensi p95 per model dan rute agar kejutan biaya tidak datang terlambat saat tagihan.",
         "steps": {
           "one": {
-            "description": "Zero mengambil data pengeluaran token dan jejak latensi untuk hari ini.",
-            "title": "Zero membaca Langfuse"
+            "description": "{{assistantName}} mengambil data pengeluaran token dan jejak latensi untuk hari ini.",
+            "title": "{{assistantName}} membaca Langfuse"
           },
           "three": {
-            "description": "Zero memposting laporan biaya dan latensi harian.",
+            "description": "{{assistantName}} memposting laporan biaya dan latensi harian.",
             "title": "Diposting ke Slack"
           },
           "two": {
-            "description": "Zero mengagregasi pengeluaran dan p95 per model dan per rute.",
+            "description": "{{assistantName}} mengagregasi pengeluaran dan p95 per model dan per rute.",
             "title": "Diuraikan per model dan rute"
           }
         },
@@ -3600,18 +3600,18 @@
       },
       "research-calendar-meetings": {
         "description": "Teliti orang yang akan Anda temui sebelum setiap event kalender.",
-        "scenario": "Datang dengan persiapan berarti riset yang jarang sempat Anda lakukan. Zero mendeteksi meeting baru, mencari tahu peserta dan perusahaannya, lalu mengirim dossier satu halaman sebelum dimulai.",
+        "scenario": "Datang dengan persiapan berarti riset yang jarang sempat Anda lakukan. {{assistantName}} mendeteksi meeting baru, mencari tahu peserta dan perusahaannya, lalu mengirim dossier satu halaman sebelum dimulai.",
         "steps": {
           "one": {
-            "description": "Zero dipicu pada event kalender baru.",
+            "description": "{{assistantName}} dipicu pada event kalender baru.",
             "title": "Meeting ditambahkan"
           },
           "three": {
-            "description": "Zero mengirim brief satu halaman ke Slack sebelum panggilan.",
+            "description": "{{assistantName}} mengirim brief satu halaman ke Slack sebelum panggilan.",
             "title": "Dossier terkirim"
           },
           "two": {
-            "description": "Zero mencari orang dan perusahaan dengan Exa.",
+            "description": "{{assistantName}} mencari orang dan perusahaan dengan Exa.",
             "title": "Peserta diteliti"
           }
         },
@@ -3619,18 +3619,18 @@
       },
       "research-new-signups-apollo": {
         "description": "Teliti setiap pendaftaran baru dan kirim snapshot singkat.",
-        "scenario": "Pendaftaran baru hanya jadi peluang kalau ada yang menyadarinya tepat waktu. Zero memeriksa Clerk setiap jam, meneliti tiap pengguna baru dan perusahaannya dengan Apollo, lalu memposting snapshot latar belakang ke Slack.",
+        "scenario": "Pendaftaran baru hanya jadi peluang kalau ada yang menyadarinya tepat waktu. {{assistantName}} memeriksa Clerk setiap jam, meneliti tiap pengguna baru dan perusahaannya dengan Apollo, lalu memposting snapshot latar belakang ke Slack.",
         "steps": {
           "one": {
-            "description": "Zero mengambil pengguna baru dari Clerk setiap jam.",
-            "title": "Zero membaca pendaftaran baru"
+            "description": "{{assistantName}} mengambil pengguna baru dari Clerk setiap jam.",
+            "title": "{{assistantName}} membaca pendaftaran baru"
           },
           "three": {
-            "description": "Zero memposting profil setiap pendaftar ke channel.",
+            "description": "{{assistantName}} memposting profil setiap pendaftar ke channel.",
             "title": "Snapshot diposting ke Slack"
           },
           "two": {
-            "description": "Zero memperkaya konteks latar belakang dan perusahaan.",
+            "description": "{{assistantName}} memperkaya konteks latar belakang dan perusahaan.",
             "title": "Diteliti dengan Apollo"
           }
         },
@@ -3638,18 +3638,18 @@
       },
       "run-daily-query-sheets": {
         "description": "Jalankan SQL tersimpan Anda sesuai jadwal dan tambahkan hasilnya ke Sheet.",
-        "scenario": "Laporan yang Anda buat ulang setiap pagi selalu berisi query yang sama dan tempel yang sama ke sheet. Zero menjalankan query untuk Anda setiap hari dan menulis hasil yang diformat langsung ke Google Sheets.",
+        "scenario": "Laporan yang Anda buat ulang setiap pagi selalu berisi query yang sama dan tempel yang sama ke sheet. {{assistantName}} menjalankan query untuk Anda setiap hari dan menulis hasil yang diformat langsung ke Google Sheets.",
         "steps": {
           "one": {
-            "description": "Zero mengeksekusi query baca-saja tersimpan Anda ke warehouse.",
-            "title": "Zero menjalankan query"
+            "description": "{{assistantName}} mengeksekusi query baca-saja tersimpan Anda ke warehouse.",
+            "title": "{{assistantName}} menjalankan query"
           },
           "three": {
-            "description": "Zero menambahkan hasilnya ke sheet pelacakan Anda.",
+            "description": "{{assistantName}} menambahkan hasilnya ke sheet pelacakan Anda.",
             "title": "Ditulis ke Google Sheets"
           },
           "two": {
-            "description": "Zero menyusun output menjadi kolom yang rapi.",
+            "description": "{{assistantName}} menyusun output menjadi kolom yang rapi.",
             "title": "Hasil diformat"
           }
         },
@@ -3657,18 +3657,18 @@
       },
       "send-bugs-github-slack": {
         "description": "Arsipkan laporan bertanda bug sebagai issue GitHub dan beri tahu tim di Slack.",
-        "scenario": "Laporan bug hanya berguna bagi engineer jika lengkap. Zero mengambil label bug, menyusun langkah reproduksi dan dampak ke pelanggan, mengarsipkannya dengan rapi, lalu mempostingnya ke channel engineering.",
+        "scenario": "Laporan bug hanya berguna bagi engineer jika lengkap. {{assistantName}} mengambil label bug, menyusun langkah reproduksi dan dampak ke pelanggan, mengarsipkannya dengan rapi, lalu mempostingnya ke channel engineering.",
         "steps": {
           "one": {
-            "description": "Zero dipicu oleh label bug.",
+            "description": "{{assistantName}} dipicu oleh label bug.",
             "title": "Issue diberi label bug"
           },
           "three": {
-            "description": "Zero memposting laporan terstruktur ke Slack.",
+            "description": "{{assistantName}} memposting laporan terstruktur ke Slack.",
             "title": "Dikirim ke engineering"
           },
           "two": {
-            "description": "Zero menyusun langkah, dampak, dan konteks.",
+            "description": "{{assistantName}} menyusun langkah, dampak, dan konteks.",
             "title": "Repro dan dampak dikemas"
           }
         },
@@ -3676,37 +3676,37 @@
       },
       "sort-gmail-draft-replies": {
         "description": "Sortir inbox Anda dan buat draf balasan untuk email yang membutuhkannya.",
-        "scenario": "Inbox yang penuh adalah pekerjaan penuh waktu. Zero menyortir email masuk berdasarkan urgensi dan menyusun draf balasan dengan gaya Anda sendiri sehingga Anda cukup meninjau dan menyetujui, bukan mengetik dari nol.",
+        "scenario": "Inbox yang penuh adalah pekerjaan penuh waktu. {{assistantName}} menyortir email masuk berdasarkan urgensi dan menyusun draf balasan dengan gaya Anda sendiri sehingga Anda cukup meninjau dan menyetujui, bukan mengetik dari nol.",
         "steps": {
           "one": {
-            "description": "Zero memindai pesan Gmail masuk.",
-            "title": "Zero membaca email baru"
+            "description": "{{assistantName}} memindai pesan Gmail masuk.",
+            "title": "{{assistantName}} membaca email baru"
           },
           "three": {
-            "description": "Zero menyiapkan balasan untuk persetujuan Anda.",
+            "description": "{{assistantName}} menyiapkan balasan untuk persetujuan Anda.",
             "title": "Balasan dibuat draf"
           },
           "two": {
-            "description": "Zero menandai apa yang perlu Anda tangani sekarang versus nanti.",
+            "description": "{{assistantName}} menandai apa yang perlu Anda tangani sekarang versus nanti.",
             "title": "Disortir berdasarkan urgensi"
           }
         },
         "title": "Sortir Gmail dan buat draf balasan"
       },
       "sort-route-zendesk-tickets": {
-        "description": "Saat tiket support masuk, Zero menetapkan tingkat keparahan, mengarahkannya ke tim yang tepat, dan membuat draf balasan pertama.",
-        "scenario": "Setiap tiket perlu triase sebelum bisa dijawab. Zero membaca setiap tiket baru, menetapkan tingkat keparahan, mengarahkannya ke antrean yang tepat, dan membuat draf balasan pertama agar agen memulai dari draf, bukan kotak kosong.",
+        "description": "Saat tiket support masuk, {{assistantName}} menetapkan tingkat keparahan, mengarahkannya ke tim yang tepat, dan membuat draf balasan pertama.",
+        "scenario": "Setiap tiket perlu triase sebelum bisa dijawab. {{assistantName}} membaca setiap tiket baru, menetapkan tingkat keparahan, mengarahkannya ke antrean yang tepat, dan membuat draf balasan pertama agar agen memulai dari draf, bukan kotak kosong.",
         "steps": {
           "one": {
-            "description": "Zero membaca tiket Zendesk baru.",
+            "description": "{{assistantName}} membaca tiket Zendesk baru.",
             "title": "Tiket masuk"
           },
           "three": {
-            "description": "Zero menyiapkan respons awal yang sesuai brand.",
+            "description": "{{assistantName}} menyiapkan respons awal yang sesuai brand.",
             "title": "Balasan pertama dibuat draf"
           },
           "two": {
-            "description": "Zero mengklasifikasikan urgensi dan mengirimnya ke tim yang tepat.",
+            "description": "{{assistantName}} mengklasifikasikan urgensi dan mengirimnya ke tim yang tepat.",
             "title": "Tingkat keparahan ditetapkan dan diarahkan"
           }
         },
@@ -3714,18 +3714,18 @@
       },
       "spot-churn-risk-stripe-zendesk": {
         "description": "Tandai akun yang berisiko churn dan buat draf email pemulihan.",
-        "scenario": "Churn baru terlihat setelah terjadi. Zero memeriksa Stripe dan Zendesk setiap hari untuk masalah penagihan atau lonjakan tiket, menandai akun yang berisiko, dan membuat draf email pemulihan agar seseorang bisa turun tangan lebih awal.",
+        "scenario": "Churn baru terlihat setelah terjadi. {{assistantName}} memeriksa Stripe dan Zendesk setiap hari untuk masalah penagihan atau lonjakan tiket, menandai akun yang berisiko, dan membuat draf email pemulihan agar seseorang bisa turun tangan lebih awal.",
         "steps": {
           "one": {
-            "description": "Zero membaca status penagihan dari Stripe dan volume tiket dari Zendesk.",
-            "title": "Zero memindai akun"
+            "description": "{{assistantName}} membaca status penagihan dari Stripe dan volume tiket dari Zendesk.",
+            "title": "{{assistantName}} memindai akun"
           },
           "three": {
-            "description": "Zero membuat draf email tindak lanjut untuk ditinjau.",
+            "description": "{{assistantName}} membuat draf email tindak lanjut untuk ditinjau.",
             "title": "Email pemulihan dibuat draf"
           },
           "two": {
-            "description": "Zero menampilkan akun yang menunjukkan sinyal churn.",
+            "description": "{{assistantName}} menampilkan akun yang menunjukkan sinyal churn.",
             "title": "Akun berisiko ditandai"
           }
         },
@@ -3733,37 +3733,37 @@
       },
       "summarize-gmail-newsletters": {
         "description": "Ringkas newsletter di inbox Anda menjadi satu ringkasan singkat.",
-        "scenario": "Anda berlangganan dua puluh newsletter dan tidak membaca satu pun. Zero mengumpulkan semua yang Anda beri label newsletter dan memposting satu digest mingguan yang rapi agar Anda mendapat intinya tanpa tumpukan.",
+        "scenario": "Anda berlangganan dua puluh newsletter dan tidak membaca satu pun. {{assistantName}} mengumpulkan semua yang Anda beri label newsletter dan memposting satu digest mingguan yang rapi agar Anda mendapat intinya tanpa tumpukan.",
         "steps": {
           "one": {
-            "description": "Zero membaca pesan di bawah label Newsletter Anda.",
-            "title": "Zero mengumpulkan newsletter"
+            "description": "{{assistantName}} membaca pesan di bawah label Newsletter Anda.",
+            "title": "{{assistantName}} mengumpulkan newsletter"
           },
           "three": {
-            "description": "Zero mengirim digest mingguan.",
+            "description": "{{assistantName}} mengirim digest mingguan.",
             "title": "Diposting ke Slack"
           },
           "two": {
-            "description": "Zero mengambil poin utama dari masing-masing.",
+            "description": "{{assistantName}} mengambil poin utama dari masing-masing.",
             "title": "Diringkas menjadi satu ringkasan"
           }
         },
         "title": "Ringkas newsletter Gmail"
       },
       "summarize-user-feedback-notion": {
-        "description": "Setiap minggu Zero mengumpulkan feedback dari Productlane, Typeform, Intercom, dan GitHub, mengelompokkannya ke dalam tema, lalu memberi peringkat di Notion.",
-        "scenario": "Feedback tersebar di empat alat dan tak ada yang sempat membacanya semua. Zero mengambil dari setiap sumber setiap minggu, mengelompokkan komentar ke dalam tema, dan menulis ringkasan berperingkat di Notion agar permintaan teratas langsung terlihat.",
+        "description": "Setiap minggu {{assistantName}} mengumpulkan feedback dari Productlane, Typeform, Intercom, dan GitHub, mengelompokkannya ke dalam tema, lalu memberi peringkat di Notion.",
+        "scenario": "Feedback tersebar di empat alat dan tak ada yang sempat membacanya semua. {{assistantName}} mengambil dari setiap sumber setiap minggu, mengelompokkan komentar ke dalam tema, dan menulis ringkasan berperingkat di Notion agar permintaan teratas langsung terlihat.",
         "steps": {
           "one": {
-            "description": "Zero membaca feedback baru dari Productlane, Typeform, Intercom, dan GitHub.",
-            "title": "Zero mengambil feedback"
+            "description": "{{assistantName}} membaca feedback baru dari Productlane, Typeform, Intercom, dan GitHub.",
+            "title": "{{assistantName}} mengambil feedback"
           },
           "three": {
-            "description": "Zero menulis digest berperingkat ke halaman Notion.",
+            "description": "{{assistantName}} menulis digest berperingkat ke halaman Notion.",
             "title": "Ringkasan disimpan ke Notion"
           },
           "two": {
-            "description": "Zero mengelompokkan feedback yang terkait dan memberi peringkat tema berdasarkan frekuensi.",
+            "description": "{{assistantName}} mengelompokkan feedback yang terkait dan memberi peringkat tema berdasarkan frekuensi.",
             "title": "Dikelompokkan ke dalam tema"
           }
         },
@@ -3771,18 +3771,18 @@
       },
       "summarize-zendesk-tickets-daily": {
         "description": "Ringkas tiket Zendesk 24 jam terakhir dan posting ke Slack.",
-        "scenario": "Backlog support sulit terlihat sampai menjadi kebakaran. Zero meringkas tiket 24 jam terakhir berdasarkan tingkat keparahan dan usia setiap pagi dan mempostingnya ke Slack agar tidak ada yang basi tanpa terlihat.",
+        "scenario": "Backlog support sulit terlihat sampai menjadi kebakaran. {{assistantName}} meringkas tiket 24 jam terakhir berdasarkan tingkat keparahan dan usia setiap pagi dan mempostingnya ke Slack agar tidak ada yang basi tanpa terlihat.",
         "steps": {
           "one": {
-            "description": "Zero mengambil tiket Zendesk 24 jam terakhir.",
-            "title": "Zero membaca antrean"
+            "description": "{{assistantName}} mengambil tiket Zendesk 24 jam terakhir.",
+            "title": "{{assistantName}} membaca antrean"
           },
           "three": {
-            "description": "Zero memposting digest support harian.",
+            "description": "{{assistantName}} memposting digest support harian.",
             "title": "Diposting ke Slack"
           },
           "two": {
-            "description": "Zero menata tiket yang terbuka dan menandai yang sudah lama.",
+            "description": "{{assistantName}} menata tiket yang terbuka dan menandai yang sudah lama.",
             "title": "Dikelompokkan berdasarkan tingkat keparahan dan usia"
           }
         },
@@ -3790,18 +3790,18 @@
       },
       "sync-asana-projects-notion": {
         "description": "Gabungkan status proyek Asana ke satu board di Notion.",
-        "scenario": "Status ada di Asana, tetapi pimpinan membaca Notion. Zero merangkum status tugas setiap hari ke satu papan Notion dan memposting ringkasan agar semua orang melihat gambaran yang sama tanpa rapat status.",
+        "scenario": "Status ada di Asana, tetapi pimpinan membaca Notion. {{assistantName}} merangkum status tugas setiap hari ke satu papan Notion dan memposting ringkasan agar semua orang melihat gambaran yang sama tanpa rapat status.",
         "steps": {
           "one": {
-            "description": "Zero menarik status tugas dan proyek di seluruh tim.",
-            "title": "Zero membaca Asana"
+            "description": "{{assistantName}} menarik status tugas dan proyek di seluruh tim.",
+            "title": "{{assistantName}} membaca Asana"
           },
           "three": {
-            "description": "Zero memposting ringkasan ke Slack.",
+            "description": "{{assistantName}} memposting ringkasan ke Slack.",
             "title": "Ringkasan diposting"
           },
           "two": {
-            "description": "Zero memperbarui satu papan status Notion.",
+            "description": "{{assistantName}} memperbarui satu papan status Notion.",
             "title": "Dirangkum ke satu papan"
           }
         },
@@ -3809,18 +3809,18 @@
       },
       "sync-linear-roadmap-notion": {
         "description": "Jaga roadmap Notion tetap sinkron dengan status isu Linear Anda.",
-        "scenario": "Roadmap cepat usang begitu tiket berpindah. Zero menyinkronkan status Linear ke papan Now / Next / Later di Notion setiap hari agar roadmap yang dibaca para pemangku kepentingan selalu sesuai kenyataan.",
+        "scenario": "Roadmap cepat usang begitu tiket berpindah. {{assistantName}} menyinkronkan status Linear ke papan Now / Next / Later di Notion setiap hari agar roadmap yang dibaca para pemangku kepentingan selalu sesuai kenyataan.",
         "steps": {
           "one": {
-            "description": "Zero menarik status tiket dan milestone terkini.",
-            "title": "Zero membaca status Linear"
+            "description": "{{assistantName}} menarik status tiket dan milestone terkini.",
+            "title": "{{assistantName}} membaca status Linear"
           },
           "three": {
-            "description": "Zero memperbarui papan roadmap Notion.",
+            "description": "{{assistantName}} memperbarui papan roadmap Notion.",
             "title": "Papan diperbarui di Notion"
           },
           "two": {
-            "description": "Zero mengelompokkan pekerjaan ke kolom roadmap.",
+            "description": "{{assistantName}} mengelompokkan pekerjaan ke kolom roadmap.",
             "title": "Dipetakan ke Now / Next / Later"
           }
         },
@@ -3828,37 +3828,37 @@
       },
       "track-feature-usage-posthog": {
         "description": "Tampilkan pergeseran mingguan terbesar dalam penggunaan fitur dari PostHog.",
-        "scenario": "Tak ada yang menyadari fitur yang perlahan kehilangan penggunaan sampai jadi masalah. Zero memeriksa PostHog setiap minggu dan memposting fitur mana yang naik atau turun agar tim melihat perubahan adopsi lebih awal.",
+        "scenario": "Tak ada yang menyadari fitur yang perlahan kehilangan penggunaan sampai jadi masalah. {{assistantName}} memeriksa PostHog setiap minggu dan memposting fitur mana yang naik atau turun agar tim melihat perubahan adopsi lebih awal.",
         "steps": {
           "one": {
-            "description": "Zero menarik penggunaan fitur untuk minggu ini.",
-            "title": "Zero membaca PostHog"
+            "description": "{{assistantName}} menarik penggunaan fitur untuk minggu ini.",
+            "title": "{{assistantName}} membaca PostHog"
           },
           "three": {
-            "description": "Zero memposting perubahan adopsi ke kanal Anda.",
+            "description": "{{assistantName}} memposting perubahan adopsi ke kanal Anda.",
             "title": "Perubahan diposting ke Slack"
           },
           "two": {
-            "description": "Zero menemukan fitur yang paling naik dan paling turun.",
+            "description": "{{assistantName}} menemukan fitur yang paling naik dan paling turun.",
             "title": "Dibandingkan dari minggu ke minggu"
           }
         },
         "title": "Lacak penggunaan fitur dengan PostHog"
       },
       "track-keyword-ranks-ahrefs": {
-        "description": "Setiap minggu Zero melacak peringkat kata kunci target di Ahrefs dan melaporkan pergerakannya di Notion.",
-        "scenario": "Pelacakan peringkat adalah pekerjaan ekspor dan bandingkan manual. Zero menarik kata kunci target Anda setiap minggu, membandingkan posisi, lalu menuliskan pergerakan terbesar ke Notion agar kemenangan dan penurunan SEO terlihat jelas.",
+        "description": "Setiap minggu {{assistantName}} melacak peringkat kata kunci target di Ahrefs dan melaporkan pergerakannya di Notion.",
+        "scenario": "Pelacakan peringkat adalah pekerjaan ekspor dan bandingkan manual. {{assistantName}} menarik kata kunci target Anda setiap minggu, membandingkan posisi, lalu menuliskan pergerakan terbesar ke Notion agar kemenangan dan penurunan SEO terlihat jelas.",
         "steps": {
           "one": {
-            "description": "Zero menarik peringkat terkini dari Ahrefs.",
-            "title": "Zero membaca posisi kata kunci"
+            "description": "{{assistantName}} menarik peringkat terkini dari Ahrefs.",
+            "title": "{{assistantName}} membaca posisi kata kunci"
           },
           "three": {
-            "description": "Zero menuliskan pergerakan dan tren ke Notion.",
+            "description": "{{assistantName}} menuliskan pergerakan dan tren ke Notion.",
             "title": "Dilaporkan di Notion"
           },
           "two": {
-            "description": "Zero membandingkan dengan minggu lalu dan menemukan perubahan terbesar.",
+            "description": "{{assistantName}} membandingkan dengan minggu lalu dan menemukan perubahan terbesar.",
             "title": "Pergerakan teridentifikasi"
           }
         },
@@ -3866,56 +3866,56 @@
       },
       "track-signup-sources-sheets": {
         "description": "Atribusikan setiap pendaftaran baru ke sumbernya di Sheet pelacakan.",
-        "scenario": "Mengetahui asal pendaftaran berarti menggabungkan Clerk dan analitik secara manual. Zero mengatribusikan setiap pendaftaran baru ke kanal dan kampanyenya setiap hari dan mencatatnya ke Google Sheet yang bisa Anda pivot.",
+        "scenario": "Mengetahui asal pendaftaran berarti menggabungkan Clerk dan analitik secara manual. {{assistantName}} mengatribusikan setiap pendaftaran baru ke kanal dan kampanyenya setiap hari dan mencatatnya ke Google Sheet yang bisa Anda pivot.",
         "steps": {
           "one": {
-            "description": "Zero menarik pengguna baru dari Clerk.",
-            "title": "Zero membaca pendaftaran baru"
+            "description": "{{assistantName}} menarik pengguna baru dari Clerk.",
+            "title": "{{assistantName}} membaca pendaftaran baru"
           },
           "three": {
-            "description": "Zero menambahkan baris yang sudah diatribusikan ke sheet Anda.",
+            "description": "{{assistantName}} menambahkan baris yang sudah diatribusikan ke sheet Anda.",
             "title": "Dicatat ke Google Sheets"
           },
           "two": {
-            "description": "Zero mencocokkan setiap pendaftaran ke sumber dan kampanyenya melalui Plausible.",
+            "description": "{{assistantName}} mencocokkan setiap pendaftaran ke sumber dan kampanyenya melalui Plausible.",
             "title": "Diatribusikan ke kanal"
           }
         },
         "title": "Lacak sumber pendaftaran di Google Sheets"
       },
       "watch-brand-mentions": {
-        "description": "Setiap jam Zero mencari web, Hacker News, dan X untuk penyebutan produk Anda lalu mempostingnya ke Slack.",
-        "scenario": "Saat Anda menemukan thread tentang produk Anda, percakapannya sudah bergeser. Zero mencari web, Reddit, dan X setiap jam dan memposting penyebutan baru ke Slack agar Anda bisa ikut saat masih berlangsung.",
+        "description": "Setiap jam {{assistantName}} mencari web, Hacker News, dan X untuk penyebutan produk Anda lalu mempostingnya ke Slack.",
+        "scenario": "Saat Anda menemukan thread tentang produk Anda, percakapannya sudah bergeser. {{assistantName}} mencari web, Reddit, dan X setiap jam dan memposting penyebutan baru ke Slack agar Anda bisa ikut saat masih berlangsung.",
         "steps": {
           "one": {
-            "description": "Zero memindai web, Reddit, dan X dengan Exa.",
-            "title": "Zero mencari penyebutan"
+            "description": "{{assistantName}} memindai web, Reddit, dan X dengan Exa.",
+            "title": "{{assistantName}} mencari penyebutan"
           },
           "three": {
-            "description": "Zero memposting setiap penyebutan dengan tautan dan konteks.",
+            "description": "{{assistantName}} memposting setiap penyebutan dengan tautan dan konteks.",
             "title": "Diposting ke Slack"
           },
           "two": {
-            "description": "Zero hanya menyimpan hasil yang baru dan relevan.",
+            "description": "{{assistantName}} hanya menyimpan hasil yang baru dan relevan.",
             "title": "Penyebutan baru difilter"
           }
         },
         "title": "Pantau HN dan X untuk penyebutan merek"
       },
       "watch-sentry-after-release": {
-        "description": "Setelah setiap rilis Zero membandingkan tingkat crash-free versi baru terhadap baseline dan menandai regresi dengan saran rollback.",
-        "scenario": "Masa paling berisiko adalah tepat setelah deploy. Zero memantau crash-free rate dan error rate rilis baru terhadap baseline sebelumnya, dan jika memburuk Zero menandai regresi dan menyarankan rollback.",
+        "description": "Setelah setiap rilis {{assistantName}} membandingkan tingkat crash-free versi baru terhadap baseline dan menandai regresi dengan saran rollback.",
+        "scenario": "Masa paling berisiko adalah tepat setelah deploy. {{assistantName}} memantau crash-free rate dan error rate rilis baru terhadap baseline sebelumnya, dan jika memburuk {{assistantName}} menandai regresi dan menyarankan rollback.",
         "steps": {
           "one": {
-            "description": "Setelah deploy, Zero melacak crash-free rate dan error rate rilis di Sentry.",
-            "title": "Zero memantau rilis baru"
+            "description": "Setelah deploy, {{assistantName}} melacak crash-free rate dan error rate rilis di Sentry.",
+            "title": "{{assistantName}} memantau rilis baru"
           },
           "three": {
-            "description": "Jika rilis mengalami regresi, Zero memberi tahu Slack dan menyarankan rollback.",
+            "description": "Jika rilis mengalami regresi, {{assistantName}} memberi tahu Slack dan menyarankan rollback.",
             "title": "Regresi ditandai dengan saran rollback"
           },
           "two": {
-            "description": "Zero membandingkan angka langsung dengan baseline rilis sebelumnya.",
+            "description": "{{assistantName}} membandingkan angka langsung dengan baseline rilis sebelumnya.",
             "title": "Dibandingkan dengan baseline"
           }
         },
@@ -4064,8 +4064,8 @@
         "start": "Ekspor data saya",
         "starting": "Memulai ekspor"
       },
-      "backToZero": "Kembali ke Zero",
-      "description": "Unduh file dan catatan teks yang Anda buat di Zero.",
+      "backToZero": "Kembali ke {{assistantName}}",
+      "description": "Unduh file dan catatan teks yang Anda buat di {{assistantName}}.",
       "documentTitle": "Ekspor data",
       "duration": {
         "soon": "segera"
@@ -4622,10 +4622,10 @@
     }
   },
   "sharedThread": {
-    "brand": "Okou",
+    "brand": "{{brandName}}",
     "notFoundDescription": "Percakapan yang dibagikan ini tidak ada.",
     "notFoundTitle": "Percakapan yang dibagikan tidak ditemukan",
-    "tryOkou": "Coba Okou"
+    "tryOkou": "Coba {{assistantName}}"
   },
   "usage": {
     "displayNames": {

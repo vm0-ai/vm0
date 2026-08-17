@@ -116,7 +116,7 @@ describe("bootstrap locale", () => {
         ariaLabel: "ワークスペースを読み込み中",
       },
       metadata: {
-        title: "Zero — vm0のAIコワーカー",
+        title: "Zero — VM0のAIコワーカー",
       },
     });
   });
@@ -134,7 +134,7 @@ describe("bootstrap locale", () => {
         messages: expect.arrayContaining(["न्यूरॉन्स को सक्रिय कर रहे हैं..."]),
       },
       metadata: {
-        title: "Zero — vm0 से आपका AI सहकर्मी",
+        title: "Zero — VM0 से आपका AI सहकर्मी",
       },
     });
   });
@@ -151,7 +151,7 @@ describe("bootstrap locale", () => {
         ariaLabel: "Cargando tu espacio de trabajo",
       },
       metadata: {
-        title: "Zero — Tu compañero de IA de vm0",
+        title: "Zero — Tu compañero de IA de VM0",
       },
     });
   });
@@ -188,6 +188,9 @@ describe("bootstrap locale", () => {
             "Okou does not support your current browser version. Update Chrome to continue.",
         },
       },
+      metadata: {
+        title: "Okou — Your AI coworker from Okou",
+      },
     });
 
     await setupPage({
@@ -219,7 +222,7 @@ describe("bootstrap locale", () => {
         messages: expect.arrayContaining(["뉴런을 예열하는 중..."]),
       },
       metadata: {
-        title: "Zero — vm0의 AI 팀원",
+        title: "Zero — VM0의 AI 팀원",
       },
     });
 
@@ -250,7 +253,7 @@ describe("bootstrap locale", () => {
         messages: expect.arrayContaining(["Sedang memanaskan neuron..."]),
       },
       metadata: {
-        title: "Zero — Rekan kerja AI Anda dari vm0",
+        title: "Zero — Rekan kerja AI Anda dari VM0",
       },
     });
 
@@ -334,11 +337,11 @@ describe("bootstrap locale", () => {
     expect(document.documentElement.lang).toBe(DEFAULT_LOCALE);
     expect(metadata).toHaveAttribute(
       "content",
-      expect.stringContaining("Zero is your AI coworker from vm0"),
+      expect.stringContaining("Zero is your AI coworker from VM0"),
     );
     expect(upgradeTitle).toHaveTextContent("Update Chrome to continue");
     expect(upgradeDescription).toHaveTextContent(
-      "VM0 does not support your current browser version.",
+      "Zero does not support your current browser version.",
     );
     expect(upgradeAction).toHaveTextContent("Update Chrome");
   });
@@ -354,7 +357,7 @@ describe("bootstrap locale", () => {
         ariaLabel: "Ihr Arbeitsbereich wird geladen",
       },
       metadata: {
-        title: "Zero — Ihr KI-Kollege von vm0",
+        title: "Zero — Ihr KI-Kollege von VM0",
       },
     });
   });
@@ -369,7 +372,7 @@ describe("bootstrap locale", () => {
         ariaLabel: "Chargement de votre espace de travail",
       },
       metadata: {
-        title: "Zero — Votre coéquipier IA créé par vm0",
+        title: "Zero — Votre coéquipier IA créé par VM0",
       },
     });
 
@@ -455,7 +458,7 @@ describe("bootstrap locale", () => {
     });
     expect(metadata).toHaveAttribute(
       "content",
-      expect.stringContaining("Zero adalah rekan kerja AI Anda dari vm0"),
+      expect.stringContaining("Zero adalah rekan kerja AI Anda dari VM0"),
     );
     expect(window.__vm0PreBundleCopy).toMatchObject({
       browserUpgrade: {
@@ -469,7 +472,7 @@ describe("bootstrap locale", () => {
         messages: expect.arrayContaining(["Sedang memanaskan neuron..."]),
       },
       metadata: {
-        title: "Zero — Rekan kerja AI Anda dari vm0",
+        title: "Zero — Rekan kerja AI Anda dari VM0",
       },
     });
 
@@ -513,7 +516,7 @@ describe("bootstrap locale", () => {
         messages: expect.arrayContaining(["Neuronen werden aufgewärmt..."]),
       },
       metadata: {
-        title: "Zero — Ihr KI-Kollege von vm0",
+        title: "Zero — Ihr KI-Kollege von VM0",
       },
     });
 
@@ -620,7 +623,7 @@ describe("bootstrap locale", () => {
     });
     expect(metadata).toHaveAttribute(
       "content",
-      expect.stringContaining("Zero es tu compañero de IA de vm0"),
+      expect.stringContaining("Zero es tu compañero de IA de VM0"),
     );
     expect(window.__vm0PreBundleCopy).toMatchObject({
       browserUpgrade: {
@@ -634,7 +637,7 @@ describe("bootstrap locale", () => {
         messages: expect.arrayContaining(["Activando las neuronas..."]),
       },
       metadata: {
-        title: "Zero — Tu compañero de IA de vm0",
+        title: "Zero — Tu compañero de IA de VM0",
       },
     });
 
@@ -652,7 +655,7 @@ describe("bootstrap locale", () => {
         messages: expect.arrayContaining(["Riscaldamento dei neuroni..."]),
       },
       metadata: {
-        title: "Zero — Il tuo collega AI di vm0",
+        title: "Zero — Il tuo collega AI di VM0",
       },
     });
 
@@ -755,7 +758,7 @@ describe("bootstrap locale", () => {
     });
     expect(metadata).toHaveAttribute(
       "content",
-      expect.stringContaining("Zero, vm0 से आपका AI सहकर्मी है"),
+      expect.stringContaining("Zero, VM0 से आपका AI सहकर्मी है"),
     );
     expect(window.__vm0PreBundleCopy).toMatchObject({
       browserUpgrade: {
