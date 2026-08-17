@@ -13,6 +13,7 @@ import {
 export interface MorningBriefQueuedLaunchMaterial {
   readonly prompt: string;
   readonly appendSystemPrompt: string;
+  readonly publicBrand: PublicBrand;
   readonly deliveryId: string;
   readonly userInfoExtras?: never;
 }
@@ -134,6 +135,7 @@ export async function loadMorningBriefQueuedLaunchMaterial(
       outputUrl,
       publicBrand: context.publicBrand,
     }),
+    publicBrand: context.publicBrand,
     deliveryId: context.deliveryId,
   };
 }

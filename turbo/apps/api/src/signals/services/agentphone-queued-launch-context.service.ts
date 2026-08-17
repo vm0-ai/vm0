@@ -1,3 +1,5 @@
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { agentphoneUserLinks } from "@okouai/db/schema/agentphone-user-link";
 import { chatAgentphoneContext } from "@okouai/db/schema/chat-agentphone-context";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
@@ -14,6 +16,7 @@ import { buildAgentPhonePrompt } from "./agentphone-prompt";
 export interface AgentPhoneQueuedLaunchMaterial {
   readonly prompt: string;
   readonly appendSystemPrompt: string;
+  readonly publicBrand: PublicBrand;
   readonly agentphoneDelivery: AgentPhoneDeliveryTarget;
   readonly userInfoExtras: {
     readonly agentphoneHandle: string;
@@ -34,7 +37,10 @@ type AgentPhoneLaunchContextRow = Pick<
   | "toNumber"
   | "userLinkId"
   | "agentphoneAgentId"
-> & { readonly agentId: string };
+> & {
+  readonly agentId: string;
+  readonly publicBrand: PublicBrand;
+};
 
 function requiredAgentPhoneLaunchContext(
   row: AgentPhoneLaunchContextRow | undefined,
@@ -76,6 +82,7 @@ async function loadAgentPhoneLaunchContext(
   args: {
     readonly eventId: string;
     readonly chatThreadId: string;
+    readonly orgId: string;
     readonly userId: string;
   },
 ) {
@@ -94,6 +101,7 @@ async function loadAgentPhoneLaunchContext(
       userLinkId: chatAgentphoneContext.userLinkId,
       agentphoneAgentId: chatAgentphoneContext.agentphoneAgentId,
       agentId: chatThreads.agentComposeId,
+      publicBrand: agentphoneUserLinks.publicBrand,
     })
     .from(chatEvents)
     .innerJoin(
@@ -108,6 +116,14 @@ async function loadAgentPhoneLaunchContext(
       and(
         eq(chatThreads.id, chatEvents.chatThreadId),
         eq(chatThreads.userId, args.userId),
+      ),
+    )
+    .innerJoin(
+      agentphoneUserLinks,
+      and(
+        eq(agentphoneUserLinks.id, chatAgentphoneContext.userLinkId),
+        eq(agentphoneUserLinks.userId, args.userId),
+        eq(agentphoneUserLinks.orgId, args.orgId),
       ),
     )
     .where(
@@ -148,6 +164,7 @@ export async function loadAgentPhoneQueuedLaunchMaterial(
       },
       context.threadContext,
     ),
+    publicBrand: context.publicBrand,
     agentphoneDelivery: agentphoneDeliveryTargetSchema.parse({
       messageId: context.messageId,
       conversationId: context.conversationId,

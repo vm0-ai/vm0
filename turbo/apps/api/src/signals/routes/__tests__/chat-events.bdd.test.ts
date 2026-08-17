@@ -36,6 +36,7 @@ import {
   type ModelProviderType,
   type SupportedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
   zeroModelProviderConnectionsByIdContract,
   zeroModelProviderConnectionsMainContract,
@@ -415,6 +416,7 @@ async function seedVm0ManagedModelKey(selectedModel: string): Promise<string> {
 async function sendChatRun(
   actor: ApiTestUser,
   body: ChatRunSendBody,
+  publicBrand: PublicBrand = "vm0",
 ): Promise<{ readonly runId: string; readonly threadId: string }> {
   const { template, ...canonicalBody } = body;
   const requestBody = {
@@ -424,7 +426,13 @@ async function sendChatRun(
       : { userMessage: userMessageWithTemplate(body.prompt, template) }),
     clientEventId: body.clientEventId ?? randomUUID(),
   };
-  const sent = await chat.requestSendEvent(actor, requestBody, [201]);
+  const sent = await chat.requestSendEvent(
+    actor,
+    requestBody,
+    [201],
+    undefined,
+    publicBrand,
+  );
   if (sent.status !== 201) {
     throw new Error("Expected the entitled chat send to create a run");
   }
@@ -8455,6 +8463,99 @@ describe("CHAT-02: queued attachments on auto-send", () => {
     );
     expect(followUp.prompt).toContain(`[ID] ${secondFileId}`);
     await cancelChatRun(actor, promoted.runId);
+  }, 90_000);
+});
+
+describe("CHAT-02: public-brand default assistant identity", () => {
+  it("uses the request brand for immediate and auto-sent runs without renaming custom agents", async () => {
+    const { actor, runnerGroup } = await entitledChatActor();
+    bdd.acceptAgentStorageWrites();
+    const onboarding = await bdd.readOnboardingStatus(actor);
+    const defaultAgentId = onboarding.defaultAgentId;
+    if (!defaultAgentId) {
+      throw new Error("Expected the system default agent to exist");
+    }
+
+    const okouAnchor = await sendChatRun(
+      actor,
+      { agentId: defaultAgentId, prompt: "start an Okou-branded run" },
+      "okou",
+    );
+    const okouAnchorRun = await api.readRun(actor, okouAnchor.runId);
+    expect(okouAnchorRun.appendSystemPrompt).toContain("Your name is Okou.");
+    expect(okouAnchorRun.appendSystemPrompt).not.toContain(
+      "Your name is Zero.",
+    );
+
+    const anchorClaim = await claimChatRun(runnerGroup, okouAnchor.runId);
+    const queuedEventId = randomUUID();
+    const queued = await chat.requestSendEvent(
+      actor,
+      {
+        agentId: defaultAgentId,
+        threadId: okouAnchor.threadId,
+        prompt: "continue from the Okou domain",
+        clientEventId: queuedEventId,
+      },
+      [201],
+      undefined,
+      "okou",
+    );
+    if (queued.status !== 201) {
+      throw new Error("Expected the Okou follow-up to enter the chat queue");
+    }
+    expect(queued.body.runId).toBeNull();
+
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(okouAnchor.runId, anchorClaim.sandboxHeaders);
+    await flushWaitUntilForTest();
+    const promotedMessages = await waitForThreadMessages(
+      actor,
+      okouAnchor.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.revokesEventId === queuedEventId &&
+            message.runId !== undefined
+          );
+        });
+      },
+    );
+    const promoted = userMessages(promotedMessages.events).find((message) => {
+      return message.revokesEventId === queuedEventId;
+    });
+    if (!promoted?.runId) {
+      throw new Error("Expected the queued Okou message to auto-send");
+    }
+    const promotedRun = await api.readRun(actor, promoted.runId);
+    expect(promotedRun.appendSystemPrompt).toContain("Your name is Okou.");
+    expect(promotedRun.appendSystemPrompt).not.toContain("Your name is Zero.");
+    await cancelChatRun(actor, promoted.runId);
+
+    const vm0Run = await sendChatRun(actor, {
+      agentId: defaultAgentId,
+      prompt: "start a VM0-branded run",
+    });
+    expect(
+      (await api.readRun(actor, vm0Run.runId)).appendSystemPrompt,
+    ).toContain("Your name is Zero.");
+
+    const customZero = await bdd.createAgent(actor, {
+      displayName: "Zero",
+      visibility: "private",
+    });
+    const customRun = await sendChatRun(
+      actor,
+      { agentId: customZero.agentId, prompt: "keep my custom name" },
+      "okou",
+    );
+    const customPrompt = (await api.readRun(actor, customRun.runId))
+      .appendSystemPrompt;
+    expect(customPrompt).toContain("Your name is Zero.");
+    expect(customPrompt).not.toContain("Your name is Okou.");
+
+    await cancelChatRun(actor, vm0Run.runId);
+    await cancelChatRun(actor, customRun.runId);
   }, 90_000);
 });
 

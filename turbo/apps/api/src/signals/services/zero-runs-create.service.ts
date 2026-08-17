@@ -6,14 +6,17 @@ import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-thre
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 import type { ModelProviderCredentialScope } from "@okouai/api-contracts/contracts/model-providers";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { permissionGrantsToFirewallPolicies } from "@okouai/connectors/firewall-metadata/policy";
 import type { FirewallPolicies } from "@okouai/connectors/firewall-types";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
+import { agentDisplayNameForPublicBrand } from "@okouai/core/public-brand";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import {
   agentComposeVersions,
   agentComposes,
 } from "@okouai/db/schema/agent-compose";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
@@ -97,6 +100,7 @@ const TONE_INSTRUCTIONS: Readonly<Record<string, string>> = {
 interface ZeroAgentRunRecord {
   readonly id: string;
   readonly orgId: string;
+  readonly defaultAgentId: string | null;
   readonly owner: string;
   readonly visibility: "public" | "private";
   readonly displayName: string | null;
@@ -146,6 +150,7 @@ interface CreateZeroRunCommandArgs {
   readonly body: ZeroRunCreateBody;
   readonly apiStartTime: number;
   readonly triggerSource?: TriggerSource;
+  readonly publicBrand?: PublicBrand;
   readonly appendSystemPrompt?: string;
   readonly userInfoExtras?: Pick<
     UserInfo,
@@ -221,11 +226,22 @@ function forbidden(message: string) {
   };
 }
 
-function buildAgentIdentityPrompt(agent: ZeroAgentRunRecord): string | null {
+function buildAgentIdentityPrompt(
+  agent: ZeroAgentRunRecord,
+  publicBrand: PublicBrand | undefined,
+): string | null {
   const parts: string[] = [];
 
-  if (agent.displayName) {
-    parts.push(`Your name is ${agent.displayName}.`);
+  const displayName = publicBrand
+    ? agentDisplayNameForPublicBrand({
+        agentId: agent.id,
+        defaultAgentId: agent.defaultAgentId,
+        displayName: agent.displayName,
+        publicBrand,
+      })
+    : agent.displayName;
+  if (displayName) {
+    parts.push(`Your name is ${displayName}.`);
   }
 
   if (agent.description) {
@@ -434,11 +450,12 @@ function buildCurrentUserPrompt(userInfo: UserInfo): string {
 
 function buildAppendSystemPrompt(args: {
   readonly agent: ZeroAgentRunRecord;
+  readonly publicBrand: PublicBrand | undefined;
   readonly userInfo: UserInfo;
   readonly triggerSource: TriggerSource;
   readonly cloudBrowserEnabled: boolean | undefined;
 }): string {
-  const identity = buildAgentIdentityPrompt(args.agent);
+  const identity = buildAgentIdentityPrompt(args.agent, args.publicBrand);
   return [
     identity,
     buildAgentToolsPrompt({
@@ -484,6 +501,7 @@ async function loadZeroAgent(
     .select({
       id: zeroAgents.id,
       orgId: zeroAgents.orgId,
+      defaultAgentId: orgMetadata.defaultAgentId,
       owner: zeroAgents.owner,
       visibility: zeroAgents.visibility,
       displayName: zeroAgents.displayName,
@@ -494,6 +512,7 @@ async function loadZeroAgent(
       content: agentComposeVersions.content,
     })
     .from(zeroAgents)
+    .leftJoin(orgMetadata, eq(orgMetadata.orgId, zeroAgents.orgId))
     .innerJoin(agentComposes, eq(agentComposes.id, zeroAgents.id))
     .innerJoin(
       agentComposeVersions,
@@ -619,12 +638,14 @@ function createRunBody(args: {
   readonly userInfo: UserInfo;
   readonly permissionPolicies: FirewallPolicies | null | undefined;
   readonly triggerSource: TriggerSource | undefined;
+  readonly publicBrand: PublicBrand | undefined;
   readonly appendSystemPrompt: string | undefined;
   readonly cloudBrowserEnabled: boolean | undefined;
 }) {
   const triggerSource = args.triggerSource ?? "web";
   const baseAppendSystemPrompt = buildAppendSystemPrompt({
     agent: args.agent,
+    publicBrand: args.publicBrand,
     userInfo: args.userInfo,
     triggerSource,
     cloudBrowserEnabled: args.cloudBrowserEnabled,
@@ -815,6 +836,7 @@ function buildZeroCreateAgentRunArgs(args: {
       userInfo: { ...args.userInfo, ...command.userInfoExtras },
       permissionPolicies: args.runPermissionPolicies,
       triggerSource: command.triggerSource,
+      publicBrand: command.publicBrand,
       appendSystemPrompt: command.appendSystemPrompt,
       cloudBrowserEnabled: args.cloudBrowserEnabled,
     }),

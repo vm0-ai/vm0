@@ -709,6 +709,7 @@ describe("Feishu integration", () => {
     options: {
       readonly publicBrand?: PublicBrand;
       readonly useAlternateInstallationDefault?: boolean;
+      readonly useSystemDefaultIdentity?: boolean;
     } = {},
   ): Promise<FeishuRunFixture> {
     const publicBrand = options.publicBrand ?? "vm0";
@@ -728,13 +729,21 @@ describe("Feishu integration", () => {
     authOrgApi.acceptAgentStorageWrites();
     runsApi.acceptStorageDownloads();
     runsApi.acceptTelemetryIngest();
-    const defaultAgentBootstrap =
-      await authOrgApi.bootstrapLimitedFreeOnboarding(actor, {
-        displayName: "Feishu default agent",
-      });
+    const defaultAgentBootstrap = options.useSystemDefaultIdentity
+      ? await authOrgApi.readOnboardingStatus(actor)
+      : await authOrgApi.bootstrapLimitedFreeOnboarding(actor, {
+          displayName: "Feishu default agent",
+        });
+    const defaultAgentId =
+      "body" in defaultAgentBootstrap
+        ? defaultAgentBootstrap.body.agentId
+        : defaultAgentBootstrap.defaultAgentId;
+    if (!defaultAgentId) {
+      throw new Error("Expected Feishu fixture to create a default agent");
+    }
     const defaultAgent = await authOrgApi.updateAgentMetadata(
       actor,
-      defaultAgentBootstrap.body.agentId,
+      defaultAgentId,
       { visibility: "public" },
     );
     const alternateAgent = await authOrgApi.createAgent(actor, {
@@ -2469,6 +2478,28 @@ describe("Feishu integration", () => {
       }),
       [200],
     );
+  });
+
+  it("uses the Okou identity for the system default agent run", async () => {
+    const fixture = await setupFeishuRunFixture({
+      publicBrand: "okou",
+      useSystemDefaultIdentity: true,
+    });
+    await connectFixtureUser(fixture);
+    const prompt = "run with the Okou default identity";
+
+    await postEvent(fixture.callbackUrl, directMessage(fixture.appId, prompt), {
+      encrypted: true,
+    });
+    await flushWaitUntilForTest();
+
+    const run = await findRun(fixture.actor, prompt);
+    await runsApi.heartbeatRunner(fixture.runnerGroup);
+    const claim = await runsApi.claimRunnerJob(run.id);
+    expect(claim.appendSystemPrompt).toContain("Your name is Okou.");
+    expect(claim.appendSystemPrompt).not.toContain("Your name is Zero.");
+    await runsApi.requestCancelRun(fixture.actor, run.id, [200]);
+    await flushWaitUntilForTest();
   });
 
   it("deduplicates unconnected messages, connects, welcomes, and rejects account rebinding", async () => {

@@ -47,6 +47,7 @@ import {
   isSupportedRunModel,
   type SupportedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
 import {
   zeroAgentsMainContract,
@@ -1229,6 +1230,7 @@ export function createChatFilesBddApi(context: TestContext) {
         | 429
       )[],
       signal?: AbortSignal,
+      publicBrand: PublicBrand = "vm0",
     ) {
       const client = signal
         ? setupAppWithRoutes({ context, routes: chatFilesRoutes, signal })(
@@ -1317,6 +1319,9 @@ export function createChatFilesBddApi(context: TestContext) {
       return await accept(
         client.send({
           headers: authenticate(context, actor),
+          ...(publicBrand === "okou"
+            ? { extraHeaders: { origin: "https://app.okou.ai" } }
+            : {}),
           body: requestBody,
         }),
         statuses,

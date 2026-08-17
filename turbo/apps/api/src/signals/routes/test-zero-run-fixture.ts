@@ -8,6 +8,7 @@ import { createRunResponseSchema } from "@okouai/api-contracts/contracts/runs";
 import { zeroRunCreateBodySchema } from "@okouai/api-contracts/contracts/zero-runs";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
+import { publicBrand$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { now } from "../../lib/time";
 import type { RouteEntry } from "../route-entry";
@@ -58,7 +59,13 @@ const createZeroRunFixture$ = command(
       "nested",
       () => {
         const auth = get(organizationAuthContext$);
-        return { auth, body: body.data, apiStartTime, timing };
+        return {
+          auth,
+          body: body.data,
+          apiStartTime,
+          publicBrand: get(publicBrand$),
+          timing,
+        };
       },
     );
     signal.throwIfAborted();

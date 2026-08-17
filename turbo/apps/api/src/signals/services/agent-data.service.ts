@@ -1,6 +1,7 @@
 import { computed, type Computed } from "ccstate";
 import type { ZeroAgentResponse } from "@okouai/api-contracts/contracts/zero-agents";
 import type { TeamComposeItem } from "@okouai/api-contracts/contracts/zero-team";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
   connectorSlugSchema,
   type ConnectorSlug,
@@ -10,25 +11,31 @@ import { agentComposes } from "@okouai/db/schema/agent-compose";
 import { userConnectors } from "@okouai/db/schema/user-connector";
 import { userCustomConnectors } from "@okouai/db/schema/user-custom-connector";
 import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { and, asc, desc, eq, isNull, or } from "drizzle-orm";
+import { agentDisplayNameForPublicBrand } from "@okouai/core/public-brand";
 
 import { db$ } from "../external/db";
 import { DEFAULT_AGENT_AVATAR_URL } from "./default-agent-profile";
 
-export function agentResponse(row: {
-  readonly agentId: string;
-  readonly owner: string | null;
-  readonly composeUserId?: string;
-  readonly displayName: string | null;
-  readonly description: string | null;
-  readonly sound: string | null;
-  readonly avatarUrl: string | null;
-  readonly modelProviderId: string | null;
-  readonly selectedModel: string | null;
-  readonly preferPersonalProvider: boolean;
-  readonly visibility: "public" | "private";
-}): ZeroAgentResponse {
+export function agentResponse(
+  row: {
+    readonly agentId: string;
+    readonly defaultAgentId: string | null;
+    readonly owner: string | null;
+    readonly composeUserId?: string;
+    readonly displayName: string | null;
+    readonly description: string | null;
+    readonly sound: string | null;
+    readonly avatarUrl: string | null;
+    readonly modelProviderId: string | null;
+    readonly selectedModel: string | null;
+    readonly preferPersonalProvider: boolean;
+    readonly visibility: "public" | "private";
+  },
+  publicBrand: PublicBrand,
+): ZeroAgentResponse {
   const ownerId = row.owner ?? row.composeUserId;
   if (!ownerId) {
     throw new Error(`Agent ${row.agentId} is missing an owner`);
@@ -37,7 +44,12 @@ export function agentResponse(row: {
   return {
     agentId: row.agentId,
     ownerId,
-    displayName: row.displayName,
+    displayName: agentDisplayNameForPublicBrand({
+      agentId: row.agentId,
+      defaultAgentId: row.defaultAgentId,
+      displayName: row.displayName,
+      publicBrand,
+    }),
     description: row.description,
     sound: row.sound,
     avatarUrl: row.avatarUrl,
@@ -103,11 +115,13 @@ export function agentExists(args: {
 export function agentList(
   orgId: string,
   userId: string,
+  publicBrand: PublicBrand,
 ): Computed<Promise<readonly ZeroAgentResponse[]>> {
   return computed(async (get): Promise<readonly ZeroAgentResponse[]> => {
     const rows = await get(db$)
       .select({
         agentId: zeroAgents.id,
+        defaultAgentId: orgMetadata.defaultAgentId,
         owner: zeroAgents.owner,
         displayName: zeroAgents.displayName,
         description: zeroAgents.description,
@@ -120,10 +134,13 @@ export function agentList(
       })
       .from(zeroAgents)
       .innerJoin(agentComposes, eq(zeroAgents.id, agentComposes.id))
+      .leftJoin(orgMetadata, eq(orgMetadata.orgId, zeroAgents.orgId))
       .where(and(eq(zeroAgents.orgId, orgId), visibleAgentCondition(userId)))
       .orderBy(desc(zeroAgents.updatedAt));
 
-    return rows.map(agentResponse);
+    return rows.map((row) => {
+      return agentResponse(row, publicBrand);
+    });
   });
 }
 
@@ -131,11 +148,13 @@ export function agentDetail(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly agentId: string;
+  readonly publicBrand: PublicBrand;
 }): Computed<Promise<ZeroAgentResponse | null>> {
   return computed(async (get): Promise<ZeroAgentResponse | null> => {
     const [row] = await get(db$)
       .select({
         agentId: zeroAgents.id,
+        defaultAgentId: orgMetadata.defaultAgentId,
         owner: zeroAgents.owner,
         composeUserId: agentComposes.userId,
         displayName: zeroAgents.displayName,
@@ -149,6 +168,7 @@ export function agentDetail(args: {
       })
       .from(zeroAgents)
       .innerJoin(agentComposes, eq(zeroAgents.id, agentComposes.id))
+      .leftJoin(orgMetadata, eq(orgMetadata.orgId, zeroAgents.orgId))
       .where(
         and(
           eq(zeroAgents.orgId, args.orgId),
@@ -158,7 +178,7 @@ export function agentDetail(args: {
       )
       .limit(1);
 
-    return row ? agentResponse(row) : null;
+    return row ? agentResponse(row, args.publicBrand) : null;
   });
 }
 
@@ -229,11 +249,13 @@ export function agentCustomConnectorGrants(args: {
 export function teamComposeList(
   orgId: string,
   userId: string,
+  publicBrand: PublicBrand,
 ): Computed<Promise<readonly TeamComposeItem[]>> {
   return computed(async (get): Promise<readonly TeamComposeItem[]> => {
     const rows = await get(db$)
       .select({
         id: agentComposes.id,
+        defaultAgentId: orgMetadata.defaultAgentId,
         headVersionId: agentComposes.headVersionId,
         updatedAt: agentComposes.updatedAt,
         owner: zeroAgents.owner,
@@ -245,6 +267,7 @@ export function teamComposeList(
       })
       .from(agentComposes)
       .innerJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
+      .leftJoin(orgMetadata, eq(orgMetadata.orgId, agentComposes.orgId))
       .where(and(eq(agentComposes.orgId, orgId), visibleAgentCondition(userId)))
       .orderBy(desc(agentComposes.updatedAt));
 
@@ -252,7 +275,12 @@ export function teamComposeList(
       return {
         id: row.id,
         ownerId: row.owner,
-        displayName: row.displayName,
+        displayName: agentDisplayNameForPublicBrand({
+          agentId: row.id,
+          defaultAgentId: row.defaultAgentId,
+          displayName: row.displayName,
+          publicBrand,
+        }),
         description: row.description,
         sound: row.sound,
         avatarUrl: row.avatarUrl,

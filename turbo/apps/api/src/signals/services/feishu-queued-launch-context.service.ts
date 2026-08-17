@@ -1,3 +1,4 @@
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatFeishuContext } from "@okouai/db/schema/chat-feishu-context";
 import { feishuChatThreadRoutes } from "@okouai/db/schema/feishu-chat-thread-route";
@@ -12,6 +13,7 @@ import { buildFeishuSystemPrompt } from "./feishu-dispatch.service";
 export interface FeishuQueuedLaunchMaterial {
   readonly prompt: string;
   readonly appendSystemPrompt: string;
+  readonly publicBrand: PublicBrand;
   readonly feishuDelivery: FeishuDeliveryTarget;
   readonly userInfoExtras: {
     readonly feishuDisplayName?: string;
@@ -37,6 +39,7 @@ type FeishuLaunchContextRow = Pick<
   readonly tenantKey: string | null;
   readonly routeThreadId: string;
   readonly feishuDisplayName: string | null;
+  readonly publicBrand: PublicBrand;
 };
 
 function requiredFeishuLaunchContext(row: FeishuLaunchContextRow | undefined) {
@@ -100,6 +103,7 @@ async function loadFeishuLaunchContext(
       installationId: chatFeishuContext.installationId,
       routeThreadId: feishuChatThreadRoutes.threadId,
       feishuDisplayName: feishuOrgConnections.feishuUserName,
+      publicBrand: feishuOrgInstallations.publicBrand,
     })
     .from(chatEvents)
     .innerJoin(
@@ -172,6 +176,7 @@ export async function loadFeishuQueuedLaunchMaterial(
       senderOpenId: context.senderOpenId,
       history: context.conversationHistory,
     }),
+    publicBrand: context.publicBrand,
     feishuDelivery: {
       installationId: context.installationId,
       connectionId: context.connectionId,

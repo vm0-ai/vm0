@@ -1,4 +1,5 @@
 import { OFFICIAL_TELEGRAM_BOT_ID } from "@okouai/api-contracts/contracts/zero-integrations-telegram";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatTelegramContext } from "@okouai/db/schema/chat-telegram-context";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
@@ -18,6 +19,7 @@ import { buildTelegramPrompt } from "./telegram-prompt";
 export interface TelegramQueuedLaunchMaterial {
   readonly prompt: string;
   readonly appendSystemPrompt: string;
+  readonly publicBrand: PublicBrand;
   readonly telegramDelivery: TelegramDeliveryTarget;
   readonly userInfoExtras: {
     readonly telegramDisplayName?: string;
@@ -48,7 +50,9 @@ type TelegramLaunchContextRow = Pick<
   readonly customUserLinkId: string | null;
   readonly customInstallationId: string | null;
   readonly customBotUsername: string | null;
+  readonly customPublicBrand: PublicBrand | null;
   readonly officialUserLinkId: string | null;
+  readonly officialPublicBrand: PublicBrand | null;
 };
 
 function requiredTelegramLaunchContext(
@@ -112,7 +116,9 @@ async function loadTelegramLaunchContext(
       customUserLinkId: telegramUserLinks.id,
       customInstallationId: telegramInstallations.telegramBotId,
       customBotUsername: telegramInstallations.botUsername,
+      customPublicBrand: telegramInstallations.publicBrand,
       officialUserLinkId: telegramOfficialUserLinks.id,
+      officialPublicBrand: telegramOfficialUserLinks.publicBrand,
     })
     .from(chatEvents)
     .innerJoin(
@@ -211,6 +217,13 @@ export async function loadTelegramQueuedLaunchMaterial(
     context.userLinkKind === "custom"
       ? context.customBotUsername
       : officialBotConfig.botUsername;
+  const publicBrand =
+    context.userLinkKind === "custom"
+      ? context.customPublicBrand
+      : context.officialPublicBrand;
+  if (!publicBrand) {
+    return null;
+  }
   return {
     prompt: context.messageText,
     appendSystemPrompt: buildTelegramPrompt(
@@ -225,6 +238,7 @@ export async function loadTelegramQueuedLaunchMaterial(
       },
       context.threadContext,
     ),
+    publicBrand,
     telegramDelivery: telegramDeliveryTargetSchema.parse({
       installationId,
       chatId: context.chatId,

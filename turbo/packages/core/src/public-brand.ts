@@ -17,6 +17,22 @@ export function publicBrandPresentation(
   return PUBLIC_BRAND_PRESENTATION[publicBrand];
 }
 
+export function agentDisplayNameForPublicBrand(args: {
+  readonly agentId: string;
+  readonly defaultAgentId: string | null;
+  readonly displayName: string | null;
+  readonly publicBrand: PublicBrand;
+}): string | null {
+  if (
+    args.agentId !== args.defaultAgentId ||
+    args.displayName !== PUBLIC_BRAND_PRESENTATION.vm0.assistantName
+  ) {
+    return args.displayName;
+  }
+
+  return PUBLIC_BRAND_PRESENTATION[args.publicBrand].assistantName;
+}
+
 export function appUrlForPublicBrand(
   configuredAppUrl: string,
   publicBrand: PublicBrand,

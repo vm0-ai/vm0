@@ -1,6 +1,7 @@
 import type { ModelProviderCredentialScope } from "@okouai/api-contracts/contracts/model-providers";
 import type { ChatEventType } from "@okouai/api-contracts/contracts/chat-events";
 import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatAutomationContext } from "@okouai/db/schema/chat-automation-context";
 import {
@@ -54,7 +55,10 @@ import {
   createUserMessageDocument,
   withRunModelAnnotation,
 } from "./chat-user-message.service";
-import { canonicalChatEventUserMessage } from "./canonical-chat-event-read.service";
+import {
+  canonicalChatEventPublicBrand,
+  canonicalChatEventUserMessage,
+} from "./canonical-chat-event-read.service";
 
 type DbTransaction = Tx;
 
@@ -138,6 +142,7 @@ export interface QueuedUserMessage {
   readonly id: string;
   readonly createdAt: Date;
   readonly userMessage: ChatEventUserMessage;
+  readonly publicBrand: PublicBrand | null;
   readonly modelProviderId: string | null;
   readonly modelProviderType: string | null;
   readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
@@ -267,6 +272,7 @@ export async function loadNextUnclaimedQueuedUserMessage(
       id: chatEvents.id,
       createdAt: chatEvents.createdAt,
       userMessage: canonicalChatEventUserMessage(),
+      publicBrand: canonicalChatEventPublicBrand(),
       modelProviderId: sql`NULL`.mapWith(pgNullDecoder),
       modelProviderType: sql`NULL`.mapWith(pgNullDecoder),
       modelProviderCredentialScope: sql`NULL`.mapWith(pgNullDecoder),
@@ -359,6 +365,7 @@ async function resolveUserQueueFirstClaimSnapshot(
     .select({
       ...queueFirstReplacementTargetFields,
       userMessage: canonicalChatEventUserMessage(),
+      publicBrand: canonicalChatEventPublicBrand(),
     })
     .from(chatEvents)
     .where(
@@ -395,6 +402,7 @@ async function resolveUserQueueFirstClaimSnapshot(
               args.selectedModel,
               args.serviceTier,
             ),
+      ...(head.publicBrand ? { publicBrand: head.publicBrand } : {}),
       runId: args.runId,
     },
   };

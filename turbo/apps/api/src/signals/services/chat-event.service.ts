@@ -1,6 +1,7 @@
 /** Typed append-only commands for the canonical ChatEvent stream. */
 import { randomUUID } from "node:crypto";
 import { isValidChatEventRevocation } from "@okouai/api-contracts/contracts/chat-events";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { ChatFeishuMessageFiles } from "@okouai/db/jsonb-contracts/chat-feishu-context";
 import type {
   ChatSlackMentionDisplayNames,
@@ -205,6 +206,7 @@ type ChatEventDisplayContext =
 
 type ChatEventInputPayload = {
   readonly userMessage: NonNullable<ChatEventPayload["userMessage"]>;
+  readonly publicBrand?: PublicBrand;
 };
 
 interface ChatAgentRunDisplayContext {
@@ -943,6 +945,7 @@ function canonicalChatEventPayload(
 ): ChatEventPayload | null {
   const content = "content" in values ? values.content : undefined;
   const userMessage = "userMessage" in values ? values.userMessage : undefined;
+  const publicBrand = "publicBrand" in values ? values.publicBrand : undefined;
   const thinking = "thinking" in values ? values.thinking : undefined;
   const error = "error" in values ? values.error : undefined;
   const usagePayload =
@@ -952,6 +955,9 @@ function canonicalChatEventPayload(
     ...(userMessage === null || userMessage === undefined
       ? {}
       : { userMessage }),
+    ...(publicBrand === null || publicBrand === undefined
+      ? {}
+      : { publicBrand }),
     ...(thinking === null || thinking === undefined ? {} : { thinking }),
     ...(error === null || error === undefined ? {} : { error }),
     ...(usagePayload === null || usagePayload === undefined
