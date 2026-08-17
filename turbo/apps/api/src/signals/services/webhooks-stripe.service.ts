@@ -209,7 +209,13 @@ interface InvoicePaidOrg {
   readonly tier: string;
 }
 
-type LockedInvoicePaidOrg = InvoicePaidOrg;
+interface LockedInvoicePaidOrg extends InvoicePaidOrg {
+  readonly planEntitlementSource: string | null;
+  readonly planEntitlementPeriodEnd: Date | null;
+  readonly planEntitlementSourceMetadata: Readonly<
+    Record<string, string>
+  > | null;
+}
 
 interface SubscriptionInvoiceDetails {
   readonly subscription: SubscriptionInput;
@@ -864,6 +870,31 @@ function atomGrantWouldReplaceWithSameOrLowerTier(args: {
   );
 }
 
+function atomUsagePackGrantWouldNotExtendEntitlement(args: {
+  readonly invoice: InvoiceInput;
+  readonly details: AtomPlanGrantInvoiceDetails;
+  readonly lockedOrg: LockedInvoicePaidOrg;
+}): boolean {
+  if (
+    args.invoice.metadata?.planVersion !== "usagePack" ||
+    args.lockedOrg.planEntitlementSource !== "stripe_atom_grant" ||
+    args.lockedOrg.planEntitlementSourceMetadata?.planVersion !== "usagePack" ||
+    args.lockedOrg.tier !== args.details.tier
+  ) {
+    return false;
+  }
+
+  const currentPeriodEnd = args.lockedOrg.planEntitlementPeriodEnd;
+  if (currentPeriodEnd === null) {
+    return true;
+  }
+
+  return (
+    args.details.grantExpiresAt !== null &&
+    args.details.grantExpiresAt <= currentPeriodEnd
+  );
+}
+
 function positiveMetadataInteger(
   metadata: Readonly<Record<string, string>>,
   key: string,
@@ -1263,10 +1294,17 @@ async function lockInvoicePaidOrg(
       stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
       subscriptionStatus: orgMetadata.subscriptionStatus,
       tier: orgMetadata.tier,
+      planEntitlementSource: orgPlanEntitlements.source,
+      planEntitlementPeriodEnd: orgPlanEntitlements.currentPeriodEnd,
+      planEntitlementSourceMetadata: orgPlanEntitlements.sourceMetadata,
     })
     .from(orgMetadata)
+    .leftJoin(
+      orgPlanEntitlements,
+      eq(orgPlanEntitlements.orgId, orgMetadata.orgId),
+    )
     .where(eq(orgMetadata.orgId, orgId))
-    .for("update")
+    .for("update", { of: orgMetadata })
     .limit(1);
 
   return org ?? null;
@@ -1612,6 +1650,15 @@ async function processAtomPlanGrantInvoicePaid(
         invoiceId: invoice.id,
         orgId: details.orgId,
       });
+      return true;
+    }
+    if (
+      atomUsagePackGrantWouldNotExtendEntitlement({
+        invoice,
+        details,
+        lockedOrg,
+      })
+    ) {
       return true;
     }
     if (

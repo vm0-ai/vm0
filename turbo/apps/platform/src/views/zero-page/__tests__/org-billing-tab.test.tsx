@@ -2725,6 +2725,7 @@ describe("organization billing settings", () => {
     let billingStatus: BillingStatusResponse = {
       ...activeTeamBillingStatus(),
       cancelAtPeriodEnd: true,
+      canRestorePlan: true,
       scheduledChange: {
         type: "cancel",
         targetTier: "limited-free-1",

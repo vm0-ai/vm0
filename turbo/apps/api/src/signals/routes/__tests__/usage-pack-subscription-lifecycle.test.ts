@@ -680,6 +680,39 @@ describe("usage pack subscription Stripe lifecycle", () => {
     });
     expect(atomBillingStatus.canRestorePlan).toBeFalsy();
 
+    const renewedGrantPeriod = {
+      start: grantPeriod.start,
+      end: grantPeriod.start + 14 * 86_400,
+    };
+    const renewedPlanInvoice = {
+      ...planInvoice,
+      id: `in_atom_usage_pack_plan_${randomUUID()}`,
+      metadata: {
+        ...metadata,
+        duration: "14d",
+        atomGrantExpiresAt: new Date(
+          renewedGrantPeriod.end * 1000,
+        ).toISOString(),
+      },
+      lines: {
+        has_more: false,
+        data: [
+          {
+            ...planInvoice.lines.data[0],
+            id: `il_${randomUUID()}`,
+            period: renewedGrantPeriod,
+          },
+        ],
+      },
+    };
+    await postStripeEvent(stripeEvent("invoice.paid", renewedPlanInvoice), 200);
+    await postStripeEvent(stripeEvent("invoice.paid", planInvoice), 200);
+    expect((await readUsagePackState(fixture)).org).toStrictEqual(
+      expect.objectContaining({
+        currentPeriodEnd: new Date(renewedGrantPeriod.end * 1000).toISOString(),
+      }),
+    );
+
     await postStripeEvent(stripeEvent("invoice.paid", grantInvoice), 200);
     await postStripeEvent(stripeEvent("invoice.paid", grantInvoice), 200);
 
