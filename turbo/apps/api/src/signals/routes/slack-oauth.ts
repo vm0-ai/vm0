@@ -150,6 +150,8 @@ function parseOAuthState(state: string | undefined): OAuthState | null {
     flow: record.flow === "connect" ? "connect" : "install",
     reinstall: optionalBoolean(record.reinstall),
     prompt: optionalString(record.prompt),
+    // Old web/app OAuth state can omit publicBrand for about two days.
+    // Remove this VM0 default in #27660 after legacy states have drained.
     publicBrand: record.publicBrand === "okou" ? "okou" : "vm0",
   };
 }

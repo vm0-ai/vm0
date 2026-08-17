@@ -2,7 +2,6 @@ import type {
   SharedMessage,
   SharedThreadResponse,
 } from "@okouai/api-contracts/contracts/shared-threads";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { Root } from "hast";
 import { MessageCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -131,13 +130,6 @@ function SharedThreadNotFound() {
   );
 }
 
-export function sharedThreadHomeUrl(
-  currentOrigin: string,
-  publicBrand: PublicBrand,
-): string {
-  return appUrlForPublicBrand(currentOrigin, publicBrand);
-}
-
 export function SharedThreadPage({
   sharedThread,
 }: {
@@ -147,7 +139,7 @@ export function SharedThreadPage({
   const groups = sharedThread ? groupSharedMessages(sharedThread.messages) : [];
   const publicBrand = sharedThread?.publicBrand ?? "vm0";
   const presentation = publicBrandPresentation(publicBrand);
-  const homeUrl = sharedThreadHomeUrl(window.location.origin, publicBrand);
+  const homeUrl = appUrlForPublicBrand(window.location.origin, publicBrand);
   return (
     <main
       className="flex h-full flex-col overflow-y-auto bg-background text-foreground"

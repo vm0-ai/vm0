@@ -176,6 +176,8 @@ function parseOAuthState(state: string | undefined): OAuthState | null {
     orgId: optionalString(record.orgId),
     userId: userId.userId,
     prompt: optionalString(record.prompt),
+    // Old web/app OAuth state can omit publicBrand for about two days.
+    // Remove this VM0 default in #27660 after legacy states have drained.
     publicBrand: record.publicBrand === "okou" ? "okou" : "vm0",
   };
 }

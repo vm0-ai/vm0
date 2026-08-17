@@ -7,21 +7,11 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { sharedThreadHomeUrl } from "../shared-thread-page.tsx";
 
 const context = testContext();
 const SHARED_THREAD_ID = "30000000-0000-4000-8000-000000000702";
 
 describe("shared thread page", () => {
-  it("maps production navigation to the persisted brand host", () => {
-    expect(sharedThreadHomeUrl("https://app.vm0.ai", "okou")).toBe(
-      "https://app.okou.ai",
-    );
-    expect(sharedThreadHomeUrl("https://app.okou.ai", "vm0")).toBe(
-      "https://app.vm0.ai",
-    );
-  });
-
   it("renders the immutable public DTO without owner or agent identity", async () => {
     context.mocks.api(sharedThreadsContract.get, ({ params, respond }) => {
       expect(params.id).toBe(SHARED_THREAD_ID);
@@ -63,11 +53,11 @@ describe("shared thread page", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText("Agent")).not.toBeInTheDocument();
     expect(screen.queryByText("Owner")).not.toBeInTheDocument();
-    expect(
-      queryAllByRoleFast("link").find((link) => {
-        return link.textContent === "Try Okou";
-      }),
-    ).toBeInTheDocument();
+    const tryOkouLink = queryAllByRoleFast("link").find((link) => {
+      return link.textContent === "Try Okou";
+    });
+    expect(tryOkouLink).toBeInTheDocument();
+    expect(tryOkouLink).toHaveAttribute("href", window.location.origin);
   });
 
   it("owns its scrolling because the app shell clips overflow", async () => {
