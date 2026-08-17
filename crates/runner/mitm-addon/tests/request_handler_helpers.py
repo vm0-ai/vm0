@@ -54,7 +54,12 @@ def _single_firewall_vm(
     return vm_info
 
 
-def _shared_route_vm(tmp_path: Path, *, reverse: bool = False) -> dict[str, object]:
+def _shared_route_vm(
+    tmp_path: Path,
+    *,
+    reverse: bool = False,
+    primary_name: str = "primary",
+) -> dict[str, object]:
     """Build two credential owners for the same exact route."""
 
     def firewall(name: str, token: str, permission: str) -> dict[str, object]:
@@ -80,7 +85,7 @@ def _shared_route_vm(tmp_path: Path, *, reverse: bool = False) -> dict[str, obje
         }
 
     firewalls = [
-        firewall("primary", "PRIMARY_TOKEN", "items-read"),
+        firewall(primary_name, "PRIMARY_TOKEN", "items-read"),
         firewall("auditor", "AUDITOR_TOKEN", "audit-read"),
     ]
     if reverse:
@@ -96,7 +101,7 @@ def _shared_route_vm(tmp_path: Path, *, reverse: bool = False) -> dict[str, obje
         "captureNetworkBodies": True,
         "firewalls": firewalls,
         "networkPolicies": {
-            "primary": {
+            primary_name: {
                 "allow": ["items-read"],
                 "deny": [],
                 "ask": [],

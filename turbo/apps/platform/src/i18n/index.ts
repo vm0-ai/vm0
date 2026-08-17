@@ -1,6 +1,10 @@
 import { createInstance } from "i18next";
 import { initReactI18next } from "react-i18next";
 import {
+  resolveAssistantNameForHostname,
+  resolveBrandNameForHostname,
+} from "../signals/branding.ts";
+import {
   DEFAULT_LOCALE,
   DEFAULT_NAMESPACE,
   resources,
@@ -18,11 +22,16 @@ export function currentLocale(): string {
 export async function initializeI18n(
   locale: SupportedLocale = DEFAULT_LOCALE,
 ): Promise<void> {
+  const hostname = location.hostname;
   await i18n.init({
     defaultNS: DEFAULT_NAMESPACE,
     enableSelector: true,
     fallbackLng: DEFAULT_LOCALE,
     interpolation: {
+      defaultVariables: {
+        assistantName: resolveAssistantNameForHostname(hostname),
+        brandName: resolveBrandNameForHostname(hostname),
+      },
       escapeValue: false,
     },
     lng: locale,

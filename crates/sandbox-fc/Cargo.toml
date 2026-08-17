@@ -1,6 +1,6 @@
 [package]
 name = "sandbox-fc"
-version = "0.37.221"
+version = "0.37.223"
 edition.workspace = true
 
 [dependencies]
@@ -19,7 +19,7 @@ sha2.workspace = true
 thiserror.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["process", "fs", "rt", "rt-multi-thread", "macros", "sync", "io-util", "net", "time"] }
-tokio-util.workspace = true
+tokio-util = { workspace = true, features = ["rt"] }
 tracing.workspace = true
 uuid = { workspace = true, features = ["v4"] }
 vsock-host.workspace = true

@@ -12,6 +12,7 @@ use crate::idle_pool::IdlePool;
 use crate::lifecycle::RunnerMode;
 use crate::provider::JobProvider;
 use crate::resource_budget::ResourceBudget;
+use crate::runner_process_identity::RunnerProcessIdentity;
 use crate::types::{
     HeartbeatState, HeldSandboxState, HeldWorkspaceState, MAX_HELD_SANDBOX_STATES,
     MAX_WORKSPACE_CACHES_PER_REUSE_KEY,
@@ -31,10 +32,9 @@ const WORKSPACE_CACHE_COMMIT_WAIT: Duration = Duration::from_secs(2);
 #[derive(Clone)]
 pub(super) struct HeartbeatContext<'a> {
     idle_pool: &'a Arc<tokio::sync::Mutex<IdlePool>>,
-    runner_id: &'a str,
+    runner_identity: RunnerProcessIdentity,
     name: &'a str,
     group: &'a str,
-    snapshot_generation: u64,
     profiles: &'a BTreeMap<String, ProfileConfig>,
     budget: &'a ResourceBudget,
     provider: &'a dyn JobProvider,
@@ -45,10 +45,9 @@ pub(super) struct HeartbeatContext<'a> {
 
 pub(super) struct HeartbeatContextInit<'a> {
     pub(super) idle_pool: &'a Arc<tokio::sync::Mutex<IdlePool>>,
-    pub(super) runner_id: &'a str,
+    pub(super) runner_identity: RunnerProcessIdentity,
     pub(super) name: &'a str,
     pub(super) group: &'a str,
-    pub(super) snapshot_generation: u64,
     pub(super) profiles: &'a BTreeMap<String, ProfileConfig>,
     pub(super) budget: &'a ResourceBudget,
     pub(super) provider: &'a dyn JobProvider,
@@ -61,10 +60,9 @@ impl<'a> HeartbeatContext<'a> {
     pub(super) fn new(init: HeartbeatContextInit<'a>) -> Self {
         Self {
             idle_pool: init.idle_pool,
-            runner_id: init.runner_id,
+            runner_identity: init.runner_identity,
             name: init.name,
             group: init.group,
-            snapshot_generation: init.snapshot_generation,
             profiles: init.profiles,
             budget: init.budget,
             provider: init.provider,
@@ -435,10 +433,9 @@ async fn send_heartbeat(
     let pool = hb.idle_pool.lock().await;
     let mut state = collect_heartbeat_state(
         HeartbeatSnapshotMetadata {
-            runner_id: hb.runner_id,
+            runner_identity: hb.runner_identity,
             runner_name: hb.name,
             group: hb.group,
-            generation: hb.snapshot_generation,
             sequence: snapshot_sequence,
         },
         hb.profiles,
@@ -746,10 +743,9 @@ fn admittable_profiles_for_heartbeat(
 
 /// Collect current runner state for heartbeat reporting.
 pub(super) struct HeartbeatSnapshotMetadata<'a> {
-    pub(super) runner_id: &'a str,
+    pub(super) runner_identity: RunnerProcessIdentity,
     pub(super) runner_name: &'a str,
     pub(super) group: &'a str,
-    pub(super) generation: u64,
     pub(super) sequence: u64,
 }
 
@@ -778,10 +774,10 @@ pub(super) fn collect_heartbeat_state(
     let running_count = budget_running.saturating_sub(idle_count);
     let admittable_profiles = admittable_profiles_for_heartbeat(profiles, budget, mode);
     HeartbeatState {
-        runner_id: snapshot.runner_id.to_string(),
+        runner_id: snapshot.runner_identity.runner_id().to_string(),
         runner_name: snapshot.runner_name.to_string(),
         group: snapshot.group.to_string(),
-        snapshot_generation: snapshot.generation,
+        snapshot_generation: snapshot.runner_identity.heartbeat_generation(),
         snapshot_sequence: snapshot.sequence,
         total_vcpu: budget.effective_vcpu(),
         total_memory_mb: budget.effective_memory_mb(),
@@ -820,6 +816,10 @@ mod tests {
     use tracing_subscriber::prelude::*;
     use tracing_test_support::{CapturedEvent, CapturedEvents};
 
+    fn test_runner_identity() -> RunnerProcessIdentity {
+        RunnerProcessIdentity::new(uuid::Uuid::from_u128(1), 7).unwrap()
+    }
+
     fn test_profiles() -> BTreeMap<String, config::ProfileConfig> {
         let mut m = BTreeMap::new();
         m.insert(
@@ -838,10 +838,9 @@ mod tests {
 
     fn test_snapshot_metadata() -> HeartbeatSnapshotMetadata<'static> {
         HeartbeatSnapshotMetadata {
-            runner_id: "r1",
+            runner_identity: test_runner_identity(),
             runner_name: "runner-1",
             group: "vm0/test",
-            generation: 7,
             sequence: 42,
         }
     }
@@ -1133,10 +1132,9 @@ mod tests {
         let workspace_cache_snapshot = WorkspaceCacheStateSnapshot::new();
         let hb = HeartbeatContext::new(HeartbeatContextInit {
             idle_pool: &idle_pool,
-            runner_id: "runner-1",
+            runner_identity: test_runner_identity(),
             name: "test-runner",
             group: "vm0/test",
-            snapshot_generation: 7,
             profiles: &profiles,
             budget: &budget,
             provider: provider.as_ref(),
@@ -1226,10 +1224,9 @@ mod tests {
         tokio::fs::remove_file(metadata).await.unwrap();
         let hb = HeartbeatContext::new(HeartbeatContextInit {
             idle_pool: &idle_pool,
-            runner_id: "runner-1",
+            runner_identity: test_runner_identity(),
             name: "test-runner",
             group: "vm0/test",
-            snapshot_generation: 7,
             profiles: &profiles,
             budget: &budget,
             provider: provider.as_ref(),

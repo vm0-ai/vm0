@@ -14,6 +14,7 @@ import {
   currentPlanAllowsVideo,
   currentTokenCanReadBilling,
 } from "./billing-capabilities";
+import { decodeSandboxTokenPayload } from "../../lib/api/sandbox-token";
 import { dispatchGenerate } from "../generate/lib/dispatch";
 import type { GenerationType } from "../generate/lib/lister";
 
@@ -21,7 +22,7 @@ interface VideoOptions {
   prompt?: string;
   provider?: string;
   template?: string;
-  model: string;
+  model?: string;
   aspectRatio: string;
   duration: string;
   resolution?: string;
@@ -312,7 +313,8 @@ async function validateFrameImageAspectRatio(
 }
 
 async function validateVideoOptions(options: VideoOptions): Promise<void> {
-  if (["minimax-h3", "h3"].includes(options.model.toLowerCase())) {
+  const model = options.model?.toLowerCase();
+  if (model !== undefined && ["minimax-h3", "h3"].includes(model)) {
     return;
   }
   await Promise.all([
@@ -327,6 +329,14 @@ async function validateVideoOptions(options: VideoOptions): Promise<void> {
       options.aspectRatio,
     ),
   ]);
+}
+
+/**
+ * An agent run authenticates with a run-scoped token, so the token payload
+ * itself says whether this process belongs to a run.
+ */
+function insideAgentRun(): boolean {
+  return decodeSandboxTokenPayload() !== undefined;
 }
 
 function formatOptionalVideoParameter(
@@ -350,7 +360,10 @@ function formatVideoToggle(enabled: boolean): string {
 
 function createVideoTemplateDetails(options: VideoOptions): readonly string[] {
   return [
-    `Model preference if direct video generation is used: ${options.model}`,
+    `Model preference if direct video generation is used: ${formatOptionalVideoParameter(
+      options.model,
+      "provider default",
+    )}`,
     `Requested aspect ratio: ${options.aspectRatio}`,
     `Requested duration: ${options.duration}`,
     `Requested resolution: ${formatOptionalVideoParameter(
@@ -395,8 +408,7 @@ export function createVideoGenerateCommand(
     .option("--json", "Print the complete generation result as JSON")
     .option(
       "--model <model>",
-      "Model: dreamina-seedance-2.0-fast, dreamina-seedance-2.5, dreamina-seedance-2.0, dreamina-seedance-2.0-mini, seedance-1.5-pro, minimax-h3, veo3.1-fast, or kling-v3-4k",
-      "dreamina-seedance-2.0-fast",
+      "Model: dreamina-seedance-2.0-fast, dreamina-seedance-2.5, dreamina-seedance-2.0, dreamina-seedance-2.0-mini, seedance-1.5-pro, minimax-h3, veo3.1-fast, or kling-v3-4k; ignored inside an agent run, which generates with the model the run is set to",
     )
     .option(
       "--aspect-ratio <ratio>",
@@ -473,7 +485,14 @@ Models:
     4k output, negative prompts, and optional audio.`,
     )
     .action(
-      withErrorHandler(async (options: VideoOptions) => {
+      withErrorHandler(async (rawOptions: VideoOptions) => {
+        // Inside an agent run the server generates with the model the run is
+        // set to and ignores whatever the request names, so keep `--model` out
+        // of everything downstream rather than reporting a model that will not
+        // be used. Outside a run the flag is the only way to choose.
+        const options: VideoOptions = insideAgentRun()
+          ? { ...rawOptions, model: undefined }
+          : rawOptions;
         const dispatch = await dispatchGenerate({
           generationType: config.generationType,
           provider: options.provider,

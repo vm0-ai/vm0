@@ -1,12 +1,33 @@
-export function VM0Logo() {
+import { useGet } from "ccstate-react";
+
+import { brandName$ } from "../../signals/branding.ts";
+
+type ProductBrandMarkSize = "default" | "compact" | "small";
+
+function Vm0BrandMark({
+  size,
+  label,
+}: {
+  size: ProductBrandMarkSize;
+  label: string;
+}) {
+  const dimensions =
+    size === "default"
+      ? { width: 80, height: 24 }
+      : size === "compact"
+        ? { width: 82, height: 20 }
+        : { width: 53, height: 16 };
+
   return (
     <svg
-      width="80"
-      height="24"
+      width={dimensions.width}
+      height={dimensions.height}
       viewBox="0 0 100 30"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       className="text-foreground"
+      role="img"
+      aria-label={label}
     >
       <path
         d="M13.3915 0.0627979C13.2455 -0.0209506 13.0657 -0.020839 12.9198 0.0630906L1.0053 6.91543C0.692394 7.09539 0.690093 7.54442 1.00114 7.72755L12.9156 14.7423C13.0636 14.8295 13.2475 14.8296 13.3957 14.7426L25.3445 7.72785C25.6562 7.54485 25.6539 7.09497 25.3404 6.91514L13.3915 0.0627979Z"
@@ -41,5 +62,32 @@ export function VM0Logo() {
         fill="currentColor"
       />
     </svg>
+  );
+}
+
+export function ProductBrandMark({
+  size = "default",
+}: {
+  size?: ProductBrandMarkSize;
+}) {
+  const brandName = useGet(brandName$);
+
+  if (brandName === "VM0") {
+    return <Vm0BrandMark size={size} label={brandName} />;
+  }
+
+  const sizeClassName =
+    size === "default"
+      ? "text-xl leading-6"
+      : size === "compact"
+        ? "text-xl leading-5"
+        : "text-base leading-4";
+
+  return (
+    <span
+      className={`${sizeClassName} font-semibold tracking-tight text-foreground`}
+    >
+      {brandName}
+    </span>
   );
 }

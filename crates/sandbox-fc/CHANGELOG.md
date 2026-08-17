@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.37.223](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.222...sandbox-fc-v0.37.223) (2026-08-17)
+
+
+### Performance Improvements
+
+* **sandbox-fc:** reduce balloon settle polling latency ([#27647](https://github.com/vm0-ai/vm0/issues/27647)) ([4553067](https://github.com/vm0-ai/vm0/commit/4553067a22a48cd9deb35d2808e237936fc17c53))
+
+## [0.37.222](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.221...sandbox-fc-v0.37.222) (2026-08-17)
+
+
+### Refactoring
+
+* **sandbox-fc:** use upstream abort-on-drop handle ([#27638](https://github.com/vm0-ai/vm0/issues/27638)) ([a345549](https://github.com/vm0-ai/vm0/commit/a34554988eaebfc2c3a8646620263e5181f93498))
+
 ## [0.37.221](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.220...sandbox-fc-v0.37.221) (2026-08-16)
 
 

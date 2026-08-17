@@ -1,8 +1,8 @@
 use super::super::super::*;
 use super::super::support::{
-    SpeculativeIdleSeedSpec, TEST_HEARTBEAT_GENERATION, TEST_RUNNER_ID, context_with_session,
-    mock_run_config, seed_idle_pool_with_speculative_timezone, shutdown,
-    status_idle_reuse_keys_and_active_runs, test_profiles, wait_budget_count, wait_cancel_handle,
+    SpeculativeIdleSeedSpec, context_with_session, mock_run_config,
+    seed_idle_pool_with_speculative_timezone, shutdown, status_idle_reuse_keys_and_active_runs,
+    test_profiles, test_runner_identity, wait_budget_count, wait_cancel_handle,
     wait_cancel_token_removed, wait_discover_entered, wait_idle_pool_len,
     wait_idle_pool_reuse_keys,
 };
@@ -26,8 +26,7 @@ fn exact_generation_candidate(
         .with_reuse_key(Some(reuse_key.to_owned()))
         .with_history_generation_run_id(Some(history_generation_run_id))
         .with_runner_preference_for_test(ActiveRunnerPreference::ranked_for_test(
-            TEST_RUNNER_ID.parse().unwrap(),
-            TEST_HEARTBEAT_GENERATION,
+            test_runner_identity(),
             RunnerPreferenceTier::ExactSandbox,
             std::time::Instant::now() + Duration::from_secs(30),
         ))

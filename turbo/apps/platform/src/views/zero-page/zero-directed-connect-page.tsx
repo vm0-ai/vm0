@@ -62,10 +62,11 @@ import {
 } from "../../signals/connectors-page/directed-connect-slug.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { Check, Loader2 } from "lucide-react";
-import { Vm0LogoLink } from "./zero-directed-shared.tsx";
+import { ProductBrandMarkLink } from "./zero-directed-shared.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import type { FormEvent, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { assistantName$ } from "../../signals/branding.ts";
 import { ConnectorHelpText } from "./components/settings/connector-help-text.tsx";
 import {
   routeChatActionCallback$,
@@ -570,7 +571,7 @@ function DirectedConnectCardContent({
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
       <div className="pointer-events-auto flex w-[430px] max-w-[calc(100%-48px)] flex-col items-center gap-12 rounded-[20px] border border-border bg-background px-6 py-12 text-center">
-        <Vm0LogoLink />
+        <ProductBrandMarkLink />
         <div className="flex w-full flex-col gap-4">
           <div className="flex flex-col items-center gap-2.5">
             {isLoading ? (
@@ -619,6 +620,7 @@ function DirectedConnectCardContent({
 
 function DirectedConnectCard() {
   const connectorSlug = useDirectedConnectConnectorSlug();
+  const assistantName = useGet(assistantName$);
   const agentId = useGet(directedConnectAgentId$);
   const agentNameLoadable = useLastLoadable(directedConnectAgentName$);
   const pollingAuthCodeSlug = useGet(pollingOAuthAuthCodeConnectorSlug$);
@@ -645,7 +647,7 @@ function DirectedConnectCard() {
     agentNameLoadable.data.agentId === agentId &&
     agentNameLoadable.data.displayName
       ? agentNameLoadable.data.displayName
-      : "Zero";
+      : assistantName;
   const isConnecting =
     pollingAuthCodeSlug === connectorSlug ||
     pollingDeviceAuthSlug === connectorSlug ||
@@ -760,6 +762,7 @@ function CustomDirectedConnectCard({
 }: {
   readonly connectorSlug: CustomConnectorSlug;
 }) {
+  const assistantName = useGet(assistantName$);
   const agentId = useGet(directedConnectAgentId$);
   const agentNameLoadable = useLastLoadable(directedConnectAgentName$);
   const connectorsLoadable = useLastLoadable(customConnectors$);
@@ -791,7 +794,7 @@ function CustomDirectedConnectCard({
     agentNameLoadable.data.agentId === agentId &&
     agentNameLoadable.data.displayName
       ? agentNameLoadable.data.displayName
-      : "Zero";
+      : assistantName;
   const handleConnectSuccess = async () => {
     if (actionCallback.callbackPrompt && actionCallback.threadId && agentId) {
       await runCallback(

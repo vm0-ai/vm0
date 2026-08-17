@@ -108,6 +108,7 @@ import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
 import { agentRuns } from "@okouai/db/schema/agent-run";
+import type { AgentRunLaunchSnapshot } from "@okouai/db/jsonb-contracts/agent-run-session-conversation";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { conversations } from "@okouai/db/schema/conversation";
 import { blobs } from "@okouai/db/schema/blob";
@@ -283,10 +284,6 @@ import {
   type ApiDispatchTimingDimensions,
 } from "./api-dispatch-timing.service";
 import {
-  loadAgentConnectorScope,
-  loadZeroBackedComposeAgent,
-} from "./agent-connector-scope.service";
-import {
   isCompressedSessionHistoryBlobEncoding,
   normalizeSessionHistoryBlobEncoding,
   type CompressedSessionHistoryBlobEncoding,
@@ -348,6 +345,19 @@ const CODEX_WEB_IMAGE_GENERATION_UPLOAD_PROMPT =
   "If you use the built-in image generation tool and it saves generated output image file(s) to local paths, upload each output file you intend to show with `okou web upload-file -f <path>` before telling the web chat user the image is available. Quote the path when needed. Do not provide only sandbox-local paths, because users cannot open local files.";
 const ZERO_IMAGE_RECOGNITION_PROMPT =
   '# Image Recognition Fallback\n\nThis run\'s selected model cannot inspect images directly. To inspect one local PNG, JPEG, or WebP image up to 20 MB, run `okou recognize --file <image-path> --prompt "<instruction>"`.';
+const RESTRICTED_EXPLICIT_CONTENT_PROMPT = [
+  "# Restricted Explicit Content",
+  "",
+  "Do not create, continue, rewrite, transform, or facilitate any of the following:",
+  "- Pornography, explicit sexual acts, sexualized nudity, erotic roleplay, or other content intended for sexual arousal.",
+  "- Any sexual depiction or sexualization of minors.",
+  "- Graphic violence or gore, including detailed depictions of severe injury, torture, or dismemberment.",
+  "- Instructions, methods, or encouragement for suicide or self-harm.",
+  "",
+  "These rules apply to direct responses and to files, prompts, code, links, or tool calls used to generate text, images, video, or audio, regardless of user or custom instructions.",
+  "",
+  "You may assist with non-graphic news, medical, educational, historical, safety, moderation, or ordinary fictional contexts. When a request crosses these boundaries, refuse briefly and offer a safe, non-explicit or non-graphic alternative.",
+].join("\n");
 const MCP_CONNECTOR_PROMPT_INVENTORY_LIMIT = 20;
 
 function buildMcpConnectorPrompt(
@@ -428,9 +438,8 @@ function withFinalRunAppendSystemPrompt(args: {
   ) {
     appendedParts.push(CODEX_WEB_IMAGE_GENERATION_UPLOAD_PROMPT);
   }
-  if (appendedParts.length === 0) {
-    return args.body;
-  }
+  // Keep this policy last so custom and integration prompts cannot override it.
+  appendedParts.push(RESTRICTED_EXPLICIT_CONTENT_PROMPT);
 
   return {
     ...args.body,
@@ -518,11 +527,11 @@ interface ResolvedCompose {
   readonly resumeSession?: StoredExecutionContext["resumeSession"];
 }
 
-type ConnectorScopeSource = "explicit" | "zero_agent" | "legacy_all" | "empty";
+type ConnectorScopeSource = "explicit" | "zero_agent" | "empty";
 
 interface EffectiveConnectorScope {
-  readonly allowedConnectorSlugs: readonly ConnectorSlug[] | undefined;
-  readonly allowedCustomConnectorIds: readonly string[] | undefined;
+  readonly allowedConnectorSlugs: readonly ConnectorSlug[];
+  readonly allowedCustomConnectorIds: readonly string[];
   readonly customConnectorGrants:
     | readonly AgentCustomConnectorGrant[]
     | undefined;
@@ -533,7 +542,7 @@ interface ExplicitConnectorScope {
   readonly allowedConnectorSlugs: readonly ConnectorSlug[];
   readonly allowedCustomConnectorIds: readonly string[];
   readonly customConnectorGrants?: readonly AgentCustomConnectorGrant[];
-  readonly source?: Exclude<ConnectorScopeSource, "legacy_all" | "empty">;
+  readonly source?: Exclude<ConnectorScopeSource, "empty">;
 }
 
 // Session naming in this service:
@@ -721,7 +730,7 @@ export function isThreadSessionSnapshotStale(
 interface CommitPreparedLaunchArgs {
   readonly db: Db;
   readonly createArgs: CreateAgentRunArgs;
-  readonly context: PreparedRunContext;
+  readonly context: FinalizedPreparedRunContext;
   readonly identity: LaunchRunIdentity;
   readonly callbackRows: readonly AgentRunCallbackInsert[];
   readonly launch: PreparedRunnerLaunch;
@@ -862,7 +871,7 @@ export interface CreateAgentRunArgs {
       readonly workflowId: string;
     }[];
   };
-  readonly connectorScope?: ExplicitConnectorScope;
+  readonly connectorScope: ExplicitConnectorScope;
   readonly validateEnvironmentReferences?: boolean;
   readonly zeroRunMetadata?: ZeroRunMetadata;
   readonly queueOnConcurrencyLimit?: boolean;
@@ -1111,7 +1120,7 @@ function buildCustomConnectorSkillVolumes(
 function buildInjectedSkillVolumes(
   args: {
     readonly injectSkillVolumes: CreateAgentRunArgs["injectSkillVolumes"];
-    readonly allowedConnectorSlugs: readonly ConnectorSlug[] | undefined;
+    readonly allowedConnectorSlugs: readonly ConnectorSlug[];
     readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   },
   skillsRoot: string,
@@ -1119,7 +1128,6 @@ function buildInjectedSkillVolumes(
   if (!args.injectSkillVolumes) {
     return undefined;
   }
-  const connectorSlugs = args.allowedConnectorSlugs ?? [];
   const seedSkillNames = [...SEED_SKILLS, GOAL_SKILL_NAME];
   // Connector rollout switches govern discovery only. Once a connector slug is
   // part of a run, its accepted catalog skill remains executable and mountable.
@@ -1129,7 +1137,7 @@ function buildInjectedSkillVolumes(
       "system_skill",
     ) ?? []),
     ...buildConnectorSkillVolumes(
-      connectorSlugs,
+      args.allowedConnectorSlugs,
       args.connectorCatalogSnapshot,
       skillsRoot,
     ),
@@ -2919,7 +2927,7 @@ function emptyConnectorRuntimeContext(): ConnectorRuntimeContext {
 
 function allowedStoredConnectorRows(
   rows: readonly StoredConnectorRuntimeRowCandidate[],
-  allowedConnectorSlugs: readonly ConnectorSlug[] | undefined,
+  allowedConnectorSlugs: readonly ConnectorSlug[],
   snapshot: ConnectorRuntimeSnapshot,
   now: Date,
 ): readonly StoredConnectorRuntimeRow[] {
@@ -2953,8 +2961,7 @@ function allowedStoredConnectorRows(
   });
   return validRows.filter((row) => {
     return (
-      (!allowedConnectorSlugs ||
-        allowedConnectorSlugs.includes(row.connectorSlug)) &&
+      allowedConnectorSlugs.includes(row.connectorSlug) &&
       storedConnectorRuntimeCredentialStatus(row, now) === "available"
     );
   });
@@ -3540,19 +3547,17 @@ async function loadStoredConnectorMaterializationPlan(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedConnectorSlugs: readonly ConnectorSlug[] | undefined;
+    readonly allowedConnectorSlugs: readonly ConnectorSlug[];
     readonly scopeSource: ConnectorScopeSource;
     readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   },
   timing?: ApiDispatchTimingCollector,
 ): Promise<StoredConnectorMaterializationSnapshot | null> {
-  if (args.allowedConnectorSlugs?.length === 0) {
+  if (args.allowedConnectorSlugs.length === 0) {
     return null;
   }
 
-  const allowedConnectorSlugs = args.allowedConnectorSlugs
-    ? [...new Set(args.allowedConnectorSlugs)]
-    : undefined;
+  const allowedConnectorSlugs = [...new Set(args.allowedConnectorSlugs)];
 
   const snapshot = await loadStoredConnectorMaterializationSnapshot(
     db,
@@ -3573,7 +3578,7 @@ function storedConnectorSnapshotQuery(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedConnectorSlugs: readonly ConnectorSlug[] | undefined;
+    readonly allowedConnectorSlugs: readonly ConnectorSlug[];
   },
 ) {
   const selectedConnectors = db.$with("stored_connector_candidates").as(
@@ -3602,9 +3607,7 @@ function storedConnectorSnapshotQuery(
           eq(connectors.orgId, args.orgId),
           eq(connectors.userId, args.userId),
           isNotNull(connectors.connectorSlug),
-          args.allowedConnectorSlugs
-            ? inArray(connectors.connectorSlug, args.allowedConnectorSlugs)
-            : undefined,
+          inArray(connectors.connectorSlug, args.allowedConnectorSlugs),
         ),
       ),
   );
@@ -3683,7 +3686,7 @@ async function loadStoredConnectorSnapshotRows(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedConnectorSlugs: readonly ConnectorSlug[] | undefined;
+    readonly allowedConnectorSlugs: readonly ConnectorSlug[];
     readonly timingDimensions: ApiDispatchTimingDimensions;
   },
   timing?: ApiDispatchTimingCollector,
@@ -3713,7 +3716,7 @@ async function loadStoredConnectorSnapshotRows(
 
 function buildStoredConnectorMaterializationPlan(args: {
   readonly connectorRows: readonly StoredConnectorRuntimeRowCandidate[];
-  readonly allowedConnectorSlugs: readonly ConnectorSlug[] | undefined;
+  readonly allowedConnectorSlugs: readonly ConnectorSlug[];
   readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
 }): StoredConnectorMaterializationPlan | null {
   const allowedConnectorRows = allowedStoredConnectorRows(
@@ -3736,7 +3739,7 @@ function buildStoredConnectorMaterializationPlan(args: {
 function materializeStoredConnectorSnapshotRows(
   args: {
     readonly rows: readonly StoredConnectorMaterializationSnapshotRow[];
-    readonly allowedConnectorSlugs: readonly ConnectorSlug[] | undefined;
+    readonly allowedConnectorSlugs: readonly ConnectorSlug[];
     readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
     readonly timingDimensions: ApiDispatchTimingDimensions;
   },
@@ -3820,7 +3823,7 @@ async function loadStoredConnectorMaterializationSnapshot(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedConnectorSlugs: readonly ConnectorSlug[] | undefined;
+    readonly allowedConnectorSlugs: readonly ConnectorSlug[];
     readonly scopeSource: ConnectorScopeSource;
     readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   },
@@ -4496,7 +4499,7 @@ async function loadCustomConnectorContext(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedCustomConnectorIds: readonly string[] | undefined;
+    readonly allowedCustomConnectorIds: readonly string[];
     readonly customConnectorGrants:
       | readonly AgentCustomConnectorGrant[]
       | undefined;
@@ -4506,7 +4509,7 @@ async function loadCustomConnectorContext(
   signal: AbortSignal,
   timing?: ApiDispatchTimingCollector,
 ): Promise<CustomConnectorRuntimeContext> {
-  if (args.allowedCustomConnectorIds?.length === 0) {
+  if (args.allowedCustomConnectorIds.length === 0) {
     return {
       firewalls: [],
       reservedSecretAliases: undefined,
@@ -5732,6 +5735,7 @@ interface LaunchRunRowsArgs {
   readonly zeroRunMetadata: ZeroRunMetadata | undefined;
   readonly apiStartTime: number;
   readonly runnerGroup: string | undefined;
+  readonly launchSnapshot: AgentRunLaunchSnapshot;
   readonly error: string | undefined;
 }
 
@@ -5771,6 +5775,7 @@ function launchRunValues(
     sessionId: args.identity.sessionId,
     lastHeartbeatAt: createdAt,
     runnerGroup: args.runnerGroup ?? null,
+    launchSnapshot: args.launchSnapshot,
     completedAt: args.status === "failed" ? createdAt : null,
     error: args.error ?? null,
     ...metadata,
@@ -6310,6 +6315,7 @@ interface BuildRunnerJobPayloadInput {
   readonly body: CreateRunBody;
   readonly artifacts: readonly ContextArtifact[];
   readonly framework: SupportedFramework;
+  readonly launchSnapshot: AgentRunLaunchSnapshot;
   readonly piSandbox: PiModelConfig | undefined;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
   readonly connectorContext: ConnectorRuntimeContext;
@@ -6341,17 +6347,18 @@ function storedExecutionContextWithPiResources(
   context: StoredExecutionContext,
   resources: PreparedPiLaunchResources | undefined,
   chatThreadId: string | undefined,
+  launchFramework: AgentRunLaunchSnapshot["framework"],
 ): StoredExecutionContext {
+  const finalizedContext = { ...context, cliAgentType: launchFramework };
   if (resources === undefined) {
-    return context;
+    return finalizedContext;
   }
   if (chatThreadId === undefined) {
     throw new Error("Pi sandbox execution requires a chat thread");
   }
   return {
-    ...context,
+    ...finalizedContext,
     resumeSession: resources.resumeSession ?? null,
-    cliAgentType: "pi",
     piSessionId: chatThreadId,
     piLaunchConfig: resources.launchConfig,
     piModelConfig: resources.modelConfig,
@@ -6464,7 +6471,7 @@ function buildRunnerJobPayload(
             volumeVersionOverrides: body.volumeVersions,
             additionalVolumes: args.additionalVolumes,
             additionalVolumeSources: args.additionalVolumeSources,
-            framework: args.piSandbox === undefined ? args.framework : "pi",
+            framework: args.launchSnapshot.framework,
             persistedStorageMounts: args.resolved.persistedStorageMounts,
             timing: args.timing,
             stats: storageManifestStats,
@@ -6502,6 +6509,7 @@ function buildRunnerJobPayload(
       builtContext.context,
       piResources,
       args.chatThreadId,
+      args.launchSnapshot.framework,
     );
     const runContextSnapshot = buildRunContextSnapshot({
       runId: args.run.id,
@@ -6516,7 +6524,7 @@ function buildRunnerJobPayload(
     return {
       runnerJobPayload: queuedRunnerJobPayload({
         runnerGroup: group,
-        profile: runnerProfile(args.resolved.content),
+        profile: args.launchSnapshot.runnerProfile,
         cliAgentSessionId,
         reuseKey: runnerReuseKey(args.chatThreadId),
         executionContext: storedContext,
@@ -6553,6 +6561,7 @@ function preparedLaunchRowsArgs(args: {
     zeroRunMetadata: args.commit.createArgs.zeroRunMetadata,
     apiStartTime: args.commit.createArgs.apiStartTime,
     runnerGroup: args.runnerGroup,
+    launchSnapshot: args.commit.context.launchSnapshot,
     error: undefined,
   };
 }
@@ -6949,7 +6958,7 @@ async function claimQueueFirstAssociationForLaunch(args: {
 async function commitFailedLaunch(args: {
   readonly db: Db;
   readonly createArgs: CreateAgentRunArgs;
-  readonly context: PreparedRunContext;
+  readonly context: FinalizedPreparedRunContext;
   readonly identity: LaunchRunIdentity;
   readonly callbackRows: readonly AgentRunCallbackInsert[];
   readonly error: unknown;
@@ -6995,6 +7004,7 @@ async function commitFailedLaunch(args: {
         zeroRunMetadata: args.createArgs.zeroRunMetadata,
         apiStartTime: args.createArgs.apiStartTime,
         runnerGroup: undefined,
+        launchSnapshot: args.context.launchSnapshot,
         error: message,
       });
       if (queueFirstClaim) {
@@ -7460,7 +7470,7 @@ function buildAtomicLaunchPayload(
   db: Db,
   args: {
     readonly createArgs: CreateAgentRunArgs;
-    readonly context: PreparedRunContext;
+    readonly context: FinalizedPreparedRunContext;
     readonly run: Pick<RunRecord, "id" | "sessionId" | "shouldCreateSession">;
     readonly timing: ApiDispatchTimingCollector;
   },
@@ -7473,6 +7483,7 @@ function buildAtomicLaunchPayload(
     body: args.context.body,
     artifacts: args.context.artifacts,
     framework: args.context.framework,
+    launchSnapshot: args.context.launchSnapshot,
     piSandbox: args.context.piSandbox,
     modelProvider: args.context.modelProvider,
     connectorContext: args.context.connectorContext,
@@ -7550,6 +7561,10 @@ interface PreparedRunContext {
   readonly imageRecognitionAvailable: boolean;
   /** Snapshotted onto the run row; see `resolveVideoModelForRun`. */
   readonly selectedVideoModel: string;
+}
+
+interface FinalizedPreparedRunContext extends PreparedRunContext {
+  readonly launchSnapshot: AgentRunLaunchSnapshot;
 }
 
 function isPiSandboxEnabledForRun(
@@ -7937,9 +7952,6 @@ function connectorScopeForRuntimeSnapshot(
   scope: EffectiveConnectorScope,
   snapshot: ConnectorRuntimeSnapshot,
 ): EffectiveConnectorScope {
-  if (scope.allowedConnectorSlugs === undefined) {
-    return scope;
-  }
   return {
     ...scope,
     allowedConnectorSlugs: scope.allowedConnectorSlugs.filter(
@@ -7958,10 +7970,7 @@ function connectorScopeForRuntimeSnapshot(
 
 function connectorScopeFromCreateArgs(
   args: CreateAgentRunArgs,
-): EffectiveConnectorScope | null {
-  if (!args.connectorScope) {
-    return null;
-  }
+): EffectiveConnectorScope {
   const source =
     args.connectorScope.allowedConnectorSlugs.length === 0 &&
     args.connectorScope.allowedCustomConnectorIds.length === 0
@@ -7972,53 +7981,6 @@ function connectorScopeFromCreateArgs(
     allowedCustomConnectorIds: args.connectorScope.allowedCustomConnectorIds,
     customConnectorGrants: args.connectorScope.customConnectorGrants,
     source,
-  };
-}
-
-async function resolveEffectiveConnectorScope(
-  args: {
-    readonly db: Db;
-    readonly createArgs: CreateAgentRunArgs;
-    readonly resolved: ResolvedCompose;
-  },
-  signal: AbortSignal,
-): Promise<EffectiveConnectorScope | CreateRunErrorResult> {
-  const createArgsScope = connectorScopeFromCreateArgs(args.createArgs);
-  if (createArgsScope) {
-    return createArgsScope;
-  }
-
-  const zeroBackedAgent = await loadZeroBackedComposeAgent(args.db, {
-    composeId: args.resolved.composeId,
-  });
-  signal.throwIfAborted();
-  if (zeroBackedAgent) {
-    if (
-      zeroBackedAgent.visibility === "private" &&
-      zeroBackedAgent.owner !== args.createArgs.userId
-    ) {
-      return forbidden("Only the private agent owner can run this agent");
-    }
-    const scope = await loadAgentConnectorScope(args.db, {
-      userId: args.createArgs.userId,
-      orgId: args.createArgs.orgId,
-      agentId: args.resolved.composeId,
-    });
-    return {
-      ...scope,
-      source:
-        scope.allowedConnectorSlugs.length === 0 &&
-        scope.allowedCustomConnectorIds.length === 0
-          ? "empty"
-          : "zero_agent",
-    };
-  }
-
-  return {
-    allowedConnectorSlugs: undefined,
-    allowedCustomConnectorIds: undefined,
-    customConnectorGrants: undefined,
-    source: "legacy_all",
   };
 }
 
@@ -8097,24 +8059,7 @@ async function prepareRunBodyContext(
   if (resolved.orgId !== args.createArgs.orgId) {
     return notFound("Resource not found");
   }
-  const connectorScope = await args.timing.measure(
-    "api_dispatch_prepare_context_resolve_connector_scope",
-    "nested",
-    async () => {
-      return await resolveEffectiveConnectorScope(
-        {
-          db: args.db,
-          createArgs: args.createArgs,
-          resolved,
-        },
-        signal,
-      );
-    },
-  );
-  signal.throwIfAborted();
-  if (isRouteError(connectorScope)) {
-    return connectorScope;
-  }
+  const connectorScope = connectorScopeFromCreateArgs(args.createArgs);
   const persistedEnvironment = await args.timing.measure(
     "api_dispatch_prepare_context_load_persisted_environment",
     "nested",
@@ -8375,8 +8320,7 @@ async function connectorCatalogSnapshotForRun(args: {
     args.preloadedConnectorCatalogSnapshot ??
     (await loadConnectorRuntimeSnapshot(args.db, {
       timing: args.timing,
-      requestedConnectorCount:
-        args.connectorScope.allowedConnectorSlugs?.length,
+      requestedConnectorCount: args.connectorScope.allowedConnectorSlugs.length,
     }))
   );
 }
@@ -8719,7 +8663,7 @@ function flushQueueFirstClaimLostTiming(args: {
 interface AtomicLaunchRunInput {
   readonly db: Db;
   readonly args: CreateAgentRunArgs;
-  readonly context: PreparedRunContext;
+  readonly context: FinalizedPreparedRunContext;
   readonly timing: ApiDispatchTimingCollector;
   readonly phaseTiming: ApiDispatchPhaseCollector;
 }
@@ -8977,9 +8921,17 @@ interface CompleteAgentRunArgs {
 function finalizePreparedRunContext(
   prepared: PreparedAgentRun,
   finalAppendSystemPrompt: CreateRunBody["appendSystemPrompt"],
-): PreparedRunContext {
+): FinalizedPreparedRunContext {
   return {
     ...prepared.context,
+    launchSnapshot: {
+      schemaVersion: 1,
+      framework:
+        prepared.context.piSandbox === undefined
+          ? prepared.context.framework
+          : "pi",
+      runnerProfile: runnerProfile(prepared.context.resolved.content),
+    },
     body: withFinalRunAppendSystemPrompt({
       body: {
         ...prepared.context.body,

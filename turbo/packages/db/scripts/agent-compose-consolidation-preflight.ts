@@ -8,6 +8,7 @@ import {
   buildZeroAgentComposeContent,
   computeComposeVersionId,
 } from "../../../apps/api/src/signals/services/agent-compose-content";
+import { APPLICATION_OWNED_AGENT_EXECUTION_PLAN } from "../../../apps/api/src/signals/services/agent-execution-plan";
 import {
   CATALOG_DEPENDENCY_KINDS,
   CATALOG_DEPENDENCY_QUERY,
@@ -45,6 +46,49 @@ export const APPROVED_ARTIFACT_SET_DIGEST =
 
 /** Exact scalar/array paths permitted in a complete production result. */
 export const PREFLIGHT_OUTPUT_ALLOWLIST = [
+  "agentExecutionPlans.agentInstructionsMarkerOrMountDifferences.count",
+  "agentExecutionPlans.agentInstructionsMarkerOrMountDifferences.digest",
+  "agentExecutionPlans.completeSemanticParity.count",
+  "agentExecutionPlans.completeSemanticParity.digest",
+  "agentExecutionPlans.composeArtifactOrVolumeDifferences.count",
+  "agentExecutionPlans.composeArtifactOrVolumeDifferences.digest",
+  "agentExecutionPlans.danglingOrMissingHeadVersion.count",
+  "agentExecutionPlans.danglingOrMissingHeadVersion.digest",
+  "agentExecutionPlans.dimensionUnionClosure.classification",
+  "agentExecutionPlans.dimensionUnionClosure.expected.count",
+  "agentExecutionPlans.dimensionUnionClosure.expected.digest",
+  "agentExecutionPlans.dimensionUnionClosure.observed.count",
+  "agentExecutionPlans.dimensionUnionClosure.observed.digest",
+  "agentExecutionPlans.exceptions.count",
+  "agentExecutionPlans.exceptions.digest",
+  "agentExecutionPlans.frameworkOrFallbackDifferences.count",
+  "agentExecutionPlans.frameworkOrFallbackDifferences.digest",
+  "agentExecutionPlans.inventoryClosure.classification",
+  "agentExecutionPlans.inventoryClosure.expected.count",
+  "agentExecutionPlans.inventoryClosure.expected.digest",
+  "agentExecutionPlans.inventoryClosure.observed.count",
+  "agentExecutionPlans.inventoryClosure.observed.digest",
+  "agentExecutionPlans.matched.count",
+  "agentExecutionPlans.matched.digest",
+  "agentExecutionPlans.multiDimensionExceptions.count",
+  "agentExecutionPlans.multiDimensionExceptions.digest",
+  "agentExecutionPlans.otherLaunchAffectingLegacyFields.count",
+  "agentExecutionPlans.otherLaunchAffectingLegacyFields.digest",
+  "agentExecutionPlans.partitionClosure.classification",
+  "agentExecutionPlans.partitionClosure.expected.count",
+  "agentExecutionPlans.partitionClosure.expected.digest",
+  "agentExecutionPlans.partitionClosure.observed.count",
+  "agentExecutionPlans.partitionClosure.observed.digest",
+  "agentExecutionPlans.runnerGroupPolicyDifferences.count",
+  "agentExecutionPlans.runnerGroupPolicyDifferences.digest",
+  "agentExecutionPlans.runnerProfilePolicyDifferences.count",
+  "agentExecutionPlans.runnerProfilePolicyDifferences.digest",
+  "agentExecutionPlans.systemEnvironmentDifferences.count",
+  "agentExecutionPlans.systemEnvironmentDifferences.digest",
+  "agentExecutionPlans.unclassifiedContent.count",
+  "agentExecutionPlans.unclassifiedContent.digest",
+  "agentExecutionPlans.unsupportedOrInvalidContent.count",
+  "agentExecutionPlans.unsupportedOrInvalidContent.digest",
   "capabilities.isolationLevel",
   "capabilities.lockTimeoutMs",
   "capabilities.requiredExtensionCount",
@@ -280,6 +324,15 @@ export interface DanglingInventoryRow extends QueryResultRow {
   readonly agentName: string | null;
 }
 
+export interface AgentExecutionPlanInventoryRow extends QueryResultRow {
+  readonly id: string;
+  readonly agentName: string;
+  readonly headVersionId: string | null;
+  readonly versionId: string | null;
+  readonly insertionComposeId: string | null;
+  readonly content: unknown;
+}
+
 export interface PreflightInventory {
   readonly identity: readonly IdentityInventoryRow[];
   readonly versions: readonly VersionInventoryRow[];
@@ -288,6 +341,7 @@ export interface PreflightInventory {
   readonly checkpoints: readonly CheckpointInventoryRow[];
   readonly danglingStart: readonly DanglingInventoryRow[];
   readonly danglingEnd: readonly DanglingInventoryRow[];
+  readonly agentExecutionPlans: readonly AgentExecutionPlanInventoryRow[];
   readonly catalogDependencies: readonly CatalogDependencyRow[];
 }
 
@@ -672,6 +726,354 @@ function classifyIdentity(
       ),
       classification: approvedClassification,
     },
+  };
+}
+
+const AGENT_EXECUTION_PLAN_DIMENSIONS = [
+  "danglingOrMissingHeadVersion",
+  "unsupportedOrInvalidContent",
+  "frameworkOrFallbackDifferences",
+  "systemEnvironmentDifferences",
+  "runnerGroupPolicyDifferences",
+  "runnerProfilePolicyDifferences",
+  "agentInstructionsMarkerOrMountDifferences",
+  "composeArtifactOrVolumeDifferences",
+  "otherLaunchAffectingLegacyFields",
+  "unclassifiedContent",
+] as const;
+
+type AgentExecutionPlanDimension =
+  (typeof AGENT_EXECUTION_PLAN_DIMENSIONS)[number];
+
+function cardinalityAwareComparison(
+  domain: string,
+  expected: readonly string[],
+  observed: readonly string[],
+): ReturnType<typeof comparison> {
+  const result = comparison(domain, expected, observed);
+  return {
+    ...result,
+    classification:
+      expected.length === result.expected.count &&
+      observed.length === result.observed.count &&
+      expected.length === observed.length &&
+      result.classification === "exact"
+        ? "exact"
+        : "drift",
+  };
+}
+
+function hasInvalidActiveVolumeReference(args: {
+  readonly declarations: readonly string[] | undefined;
+  readonly volumeNames: ReadonlySet<string>;
+}): boolean {
+  return (args.declarations ?? []).some((declaration) => {
+    const [name, mountPath, extra] = declaration.split(":");
+    return (
+      extra !== undefined ||
+      !name?.trim() ||
+      !mountPath?.trim() ||
+      !args.volumeNames.has(name.trim())
+    );
+  });
+}
+
+function hasLegacyEnvironmentInfluence(
+  environment: Readonly<Record<string, string>> | undefined,
+): boolean {
+  if (!environment) return false;
+  const plan = APPLICATION_OWNED_AGENT_EXECUTION_PLAN.environment;
+  const runtimeOverrideKeys = new Set<string>(plan.runtimeOverrideKeys);
+  return Object.keys(environment).some((key) => {
+    return (
+      !runtimeOverrideKeys.has(key) &&
+      !plan.legacyRemovedPrefixes.some((prefix) => {
+        return key.startsWith(prefix);
+      })
+    );
+  });
+}
+
+type ParsedAgentComposeContent = ReturnType<
+  typeof agentComposeApiContentSchema.parse
+>;
+type ParsedAgentDefinition = ParsedAgentComposeContent["agents"][string];
+
+type ValidatedAgentExecutionPlan =
+  | {
+      readonly classification: "exception";
+      readonly dimension: AgentExecutionPlanDimension;
+    }
+  | {
+      readonly classification: "supported";
+      readonly content: ParsedAgentComposeContent;
+      readonly activeAgentName: string;
+      readonly activeAgent: ParsedAgentDefinition;
+    };
+
+function isMissingCurrentPlanHead(
+  row: AgentExecutionPlanInventoryRow,
+): boolean {
+  return (
+    row.headVersionId === null || row.versionId === null || row.content === null
+  );
+}
+
+function hasValidCurrentPlanHash(
+  row: AgentExecutionPlanInventoryRow,
+): row is AgentExecutionPlanInventoryRow & {
+  readonly headVersionId: string;
+  readonly versionId: string;
+  readonly content: Record<string, unknown>;
+} {
+  return (
+    row.versionId !== null &&
+    row.versionId === row.headVersionId &&
+    typeof row.content === "object" &&
+    row.content !== null &&
+    !Array.isArray(row.content) &&
+    computeComposeVersionId(row.content as Record<string, unknown>) ===
+      row.versionId
+  );
+}
+
+function validateAgentExecutionPlanRow(
+  row: AgentExecutionPlanInventoryRow,
+): ValidatedAgentExecutionPlan {
+  if (isMissingCurrentPlanHead(row)) {
+    return {
+      classification: "exception",
+      dimension: "danglingOrMissingHeadVersion",
+    };
+  }
+  if (!hasValidCurrentPlanHash(row)) {
+    return {
+      classification: "exception",
+      dimension: "unsupportedOrInvalidContent",
+    };
+  }
+  const parsed = agentComposeApiContentSchema.safeParse(row.content);
+  if (!parsed.success) {
+    return {
+      classification: "exception",
+      dimension: "unsupportedOrInvalidContent",
+    };
+  }
+  if (!isDeepStrictEqual(row.content, parsed.data)) {
+    // Zod strips unknown object keys. Any such key could acquire runtime
+    // meaning later, so the shadow must not silently call it parity.
+    return { classification: "exception", dimension: "unclassifiedContent" };
+  }
+  const firstEntry = Object.entries(parsed.data.agents)[0];
+  const activeAgentName = firstEntry?.[0];
+  const activeAgent = firstEntry?.[1];
+  if (!activeAgentName || !activeAgent) {
+    return {
+      classification: "exception",
+      dimension: "unsupportedOrInvalidContent",
+    };
+  }
+  if (
+    hasInvalidActiveVolumeReference({
+      declarations: activeAgent.volumes,
+      volumeNames: new Set(Object.keys(parsed.data.volumes ?? {})),
+    })
+  ) {
+    return {
+      classification: "exception",
+      dimension: "unsupportedOrInvalidContent",
+    };
+  }
+  return {
+    classification: "supported",
+    content: parsed.data,
+    activeAgentName,
+    activeAgent,
+  };
+}
+
+function semanticAgentExecutionPlanDimensions(
+  row: AgentExecutionPlanInventoryRow,
+  validated: Extract<
+    ValidatedAgentExecutionPlan,
+    { readonly classification: "supported" }
+  >,
+): Set<AgentExecutionPlanDimension> {
+  const dimensions = new Set<AgentExecutionPlanDimension>();
+  const plan = APPLICATION_OWNED_AGENT_EXECUTION_PLAN;
+  const { activeAgent, activeAgentName, content } = validated;
+  // Selected providers supply the same effective framework to both plans.
+  // Compare only the legacy value that remains capable of acting as fallback.
+  if (activeAgent.framework !== plan.framework.fallback) {
+    dimensions.add("frameworkOrFallbackDifferences");
+  }
+  if (hasLegacyEnvironmentInfluence(activeAgent.environment)) {
+    dimensions.add("systemEnvironmentDifferences");
+  }
+  if (activeAgent.experimental_runner !== undefined) {
+    dimensions.add("runnerGroupPolicyDifferences");
+  }
+  if (
+    activeAgent.experimental_profile !== undefined &&
+    activeAgent.experimental_profile !== plan.runner.profile.fallback
+  ) {
+    dimensions.add("runnerProfilePolicyDifferences");
+  }
+  if (
+    plan.instructions.enabled &&
+    (activeAgent.instructions === undefined ||
+      activeAgentName !== row.agentName)
+  ) {
+    dimensions.add("agentInstructionsMarkerOrMountDifferences");
+  }
+  if (
+    (content.artifacts?.length ?? 0) > 0 ||
+    (activeAgent.volumes?.length ?? 0) > 0
+  ) {
+    dimensions.add("composeArtifactOrVolumeDifferences");
+  }
+  if (activeAgentName !== row.agentName) {
+    dimensions.add("otherLaunchAffectingLegacyFields");
+  }
+  return dimensions;
+}
+
+function dimensionsForAgentExecutionPlanRows(
+  rows: readonly AgentExecutionPlanInventoryRow[],
+): Set<AgentExecutionPlanDimension> {
+  if (rows.length === 0) {
+    return new Set(["danglingOrMissingHeadVersion"]);
+  }
+  const row = rows[0];
+  if (rows.length !== 1 || !row) {
+    return new Set(["unclassifiedContent"]);
+  }
+  const validated = validateAgentExecutionPlanRow(row);
+  if (validated.classification === "exception") {
+    return new Set([validated.dimension]);
+  }
+  return semanticAgentExecutionPlanDimensions(row, validated);
+}
+
+function classifyAgentExecutionPlans(
+  identityRows: readonly IdentityInventoryRow[],
+  rows: readonly AgentExecutionPlanInventoryRow[],
+  failureGates: Set<string>,
+) {
+  const expectedMatchedIds = identityRows
+    .filter((row) => {
+      return row.composePresent && row.zeroPresent;
+    })
+    .map((row) => {
+      return row.id;
+    });
+  const observedMatchedIds = rows.map((row) => {
+    return row.id;
+  });
+  const rowsById = new Map<string, AgentExecutionPlanInventoryRow[]>();
+  for (const row of rows) {
+    const existing = rowsById.get(row.id);
+    if (existing) existing.push(row);
+    else rowsById.set(row.id, [row]);
+  }
+
+  const dimensionIds = Object.fromEntries(
+    AGENT_EXECUTION_PLAN_DIMENSIONS.map((dimension) => {
+      return [dimension, new Set<string>()];
+    }),
+  ) as Record<AgentExecutionPlanDimension, Set<string>>;
+  const parityIds: string[] = [];
+  const exceptionIds: string[] = [];
+  const multiDimensionIds: string[] = [];
+
+  for (const id of expectedMatchedIds) {
+    const matches = rowsById.get(id) ?? [];
+    const dimensions = dimensionsForAgentExecutionPlanRows(matches);
+
+    if (dimensions.size === 0) {
+      parityIds.push(id);
+      continue;
+    }
+    exceptionIds.push(id);
+    if (dimensions.size > 1) multiDimensionIds.push(id);
+    for (const dimension of dimensions) {
+      dimensionIds[dimension].add(id);
+    }
+  }
+
+  const inventoryClosure = cardinalityAwareComparison(
+    "agent-execution-plans:inventory-closure",
+    expectedMatchedIds,
+    observedMatchedIds,
+  );
+  const partitionClosure = cardinalityAwareComparison(
+    "agent-execution-plans:partition-closure",
+    expectedMatchedIds,
+    [...parityIds, ...exceptionIds],
+  );
+  const dimensionUnionIds = [
+    ...new Set(
+      AGENT_EXECUTION_PLAN_DIMENSIONS.flatMap((dimension) => {
+        return [...dimensionIds[dimension]];
+      }),
+    ),
+  ];
+  const dimensionUnionClosure = cardinalityAwareComparison(
+    "agent-execution-plans:dimension-union-closure",
+    exceptionIds,
+    dimensionUnionIds,
+  );
+
+  for (const [name, closure] of [
+    ["inventoryClosure", inventoryClosure],
+    ["partitionClosure", partitionClosure],
+    ["dimensionUnionClosure", dimensionUnionClosure],
+  ] as const) {
+    if (closure.classification === "drift") {
+      failureGates.add(`agentExecutionPlans.${name}`);
+    }
+  }
+  for (const dimension of AGENT_EXECUTION_PLAN_DIMENSIONS) {
+    if (dimensionIds[dimension].size > 0) {
+      failureGates.add(`agentExecutionPlans.${dimension}`);
+    }
+  }
+  if (multiDimensionIds.length > 0) {
+    failureGates.add("agentExecutionPlans.multiDimensionExceptions");
+  }
+
+  const dimensionOutput = Object.fromEntries(
+    AGENT_EXECUTION_PLAN_DIMENSIONS.map((dimension) => {
+      return [
+        dimension,
+        fingerprintSortedSet(`agent-execution-plans:${dimension}:agent-ids`, [
+          ...dimensionIds[dimension],
+        ]),
+      ];
+    }),
+  ) as Record<AgentExecutionPlanDimension, SetFingerprint>;
+
+  return {
+    matched: fingerprintSortedSet(
+      "agent-execution-plans:matched-agent-ids",
+      expectedMatchedIds,
+    ),
+    completeSemanticParity: fingerprintSortedSet(
+      "agent-execution-plans:complete-semantic-parity-agent-ids",
+      parityIds,
+    ),
+    exceptions: fingerprintSortedSet(
+      "agent-execution-plans:exception-agent-ids",
+      exceptionIds,
+    ),
+    ...dimensionOutput,
+    multiDimensionExceptions: fingerprintSortedSet(
+      "agent-execution-plans:multi-dimension-exception-agent-ids",
+      multiDimensionIds,
+    ),
+    inventoryClosure,
+    partitionClosure,
+    dimensionUnionClosure,
   };
 }
 
@@ -1167,6 +1569,11 @@ export function classifyPreflightInventory(
     },
     failureGates,
   );
+  const agentExecutionPlans = classifyAgentExecutionPlans(
+    inventory.identity,
+    inventory.agentExecutionPlans,
+    failureGates,
+  );
   const versions = classifyVersions(inventory.versions, failureGates);
   const heads = classifyHeads(inventory.heads);
   const headHashSet = new Set(heads.distinctHashes);
@@ -1205,6 +1612,7 @@ export function classifyPreflightInventory(
         : ("failed" as const),
     failureGates: sortedFailureGates,
     capabilities,
+    agentExecutionPlans,
     identity,
     versions,
     heads: heads.output,
@@ -1267,6 +1675,23 @@ async function collectDatabaseInventory(
      FULL OUTER JOIN "zero_agents" AS "agent"
        ON "agent"."id" = "compose"."id"
      ORDER BY coalesce("compose"."id", "agent"."id")`,
+  );
+  const agentExecutionPlans = await safeQuery<AgentExecutionPlanInventoryRow>(
+    client,
+    signal,
+    `SELECT
+         "compose"."id"::text AS "id",
+         "agent"."name" AS "agentName",
+         "compose"."head_version_id" AS "headVersionId",
+         "version"."id" AS "versionId",
+         "version"."compose_id"::text AS "insertionComposeId",
+         "version"."content"
+       FROM "agent_composes" AS "compose"
+       INNER JOIN "zero_agents" AS "agent"
+         ON "agent"."id" = "compose"."id"
+       LEFT JOIN "agent_compose_versions" AS "version"
+         ON "version"."id" = "compose"."head_version_id"
+       ORDER BY "compose"."id"`,
   );
   const versions = await safeQuery<VersionInventoryRow>(
     client,
@@ -1335,6 +1760,7 @@ async function collectDatabaseInventory(
     checkpoints,
     danglingStart,
     danglingEnd,
+    agentExecutionPlans,
     catalogDependencies,
   };
 }

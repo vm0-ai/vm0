@@ -81,12 +81,6 @@ import {
 import { createComposerWorkflows } from "./composer-workflows.ts";
 import { reloadWorkflowData$ } from "../workflows-page/workflow-reload.ts";
 import { i18n } from "../../i18n/index.ts";
-import { videoTemplateOptionsEnabled$ } from "../external/feature-switch.ts";
-import {
-  videoTemplateSettingsText,
-  videoTemplateSpec,
-  type VideoTemplateSpec,
-} from "./video-template-spec.ts";
 
 type AgentIdValue = string | null | Promise<string | null>;
 type WorkflowNamesSyncCommand = Command<
@@ -209,10 +203,6 @@ export interface WorkflowComposerSignals {
     void,
     [GenerationTemplateRequest, ComposerTemplateAttachment]
   >;
-  readonly updateTemplateAt$: Command<
-    void,
-    [number, GenerationTemplateRequest, ComposerTemplateAttachment]
-  >;
   readonly readSelectedTemplate$: Command<
     GenerationTemplateRequest | undefined,
     []
@@ -314,16 +304,6 @@ const INLINE_TEMPLATE_NAME_ZONE_CLASS =
   "hover:bg-orange-500/15 focus-visible:outline-none focus-visible:ring-1 " +
   "focus-visible:ring-inset focus-visible:ring-orange-500/40 " +
   "dark:hover:bg-orange-400/20 dark:focus-visible:ring-orange-300/40";
-
-const INLINE_TEMPLATE_ZONE_CLASS =
-  "h-full shrink-0 items-center gap-1 border-l border-orange-500/25 " +
-  "text-[12px] font-normal text-orange-600/75 transition-colors " +
-  "hover:bg-orange-500/15 focus-visible:outline-none focus-visible:ring-1 " +
-  "focus-visible:ring-inset focus-visible:ring-orange-500/40 " +
-  "dark:border-orange-300/25 dark:text-orange-300/75 " +
-  "dark:hover:bg-orange-400/20 dark:focus-visible:ring-orange-300/40";
-
-const INLINE_TEMPLATE_SPEC_ZONE_CLASS = `flex pl-2 pr-1.5 ${INLINE_TEMPLATE_ZONE_CLASS}`;
 
 interface ChatThreadMentionAttributes {
   readonly threadId: string;
@@ -929,53 +909,13 @@ function createTemplateAttachmentNodeView(
   };
 }
 
+/**
+ * A template chip names the template and nothing else. Every text-to-video
+ * parameter is owned by the run now and is set from the composer's own
+ * settings chip, so there is no second zone to edit here.
+ */
 interface InlineTemplateNodeActions {
   readonly openTemplate: (category: string) => void;
-  readonly openOptions: (anchor: DOMRect) => void;
-  /** Read per render so a chip picks the switch up on its next update. */
-  readonly optionsEnabled: () => boolean;
-}
-
-function inlineTemplateSpec(node: ProseMirrorNode): VideoTemplateSpec | null {
-  const parsed = generationTemplateRequestSchema.safeParse(node.attrs.template);
-  return parsed.success ? videoTemplateSpec(parsed.data) : null;
-}
-
-function createInlineTemplateSpecZone(): {
-  readonly zone: HTMLButtonElement;
-  readonly render: (spec: VideoTemplateSpec) => void;
-} {
-  const zone = document.createElement("button");
-  zone.type = "button";
-  zone.className = INLINE_TEMPLATE_SPEC_ZONE_CLASS;
-  // Everything after the duration is dropped on narrow viewports so the chip
-  // stays readable inside a prompt sentence.
-  const core = document.createElement("span");
-  const rest = document.createElement("span");
-  rest.className = "hidden sm:inline";
-  const chevron = createComposerIcon(11, 1.7, ["M6 9l6 6 6 -6"]);
-  chevron.setAttribute("class", "shrink-0 opacity-70");
-  zone.append(core, rest, chevron);
-  return {
-    zone,
-    render(spec) {
-      core.textContent = spec.core.join(" \u00b7 ");
-      rest.textContent = spec.rest
-        .map((segment) => {
-          return ` \u00b7 ${segment}`;
-        })
-        .join("");
-      zone.setAttribute(
-        "aria-label",
-        i18n.t(
-          ($) => {
-            return $.chat.templates.videoOptionsLabel;
-          },
-          { spec: videoTemplateSettingsText(spec) },
-        ),
-      );
-    },
-  };
 }
 
 function createInlineTemplateNodeView(
@@ -1008,7 +948,6 @@ function createInlineTemplateNodeView(
     "dark:text-orange-300";
   openButton.append(icon, title);
   dom.append(openButton);
-  const spec = createInlineTemplateSpecZone();
 
   let currentNode = node;
   function render(nextNode: ProseMirrorNode): void {
@@ -1018,17 +957,6 @@ function createInlineTemplateNodeView(
       "aria-label",
       templateAttachmentPreviewLabel(attachment),
     );
-    const nextSpec = actions.optionsEnabled()
-      ? inlineTemplateSpec(nextNode)
-      : null;
-    if (nextSpec) {
-      spec.render(nextSpec);
-      if (spec.zone.parentNode === null) {
-        dom.append(spec.zone);
-      }
-    } else {
-      spec.zone.remove();
-    }
   }
   // The zone labels are localized, so a locale switch has to re-render the
   // chip rather than only refresh its labels.
@@ -1042,13 +970,6 @@ function createInlineTemplateNodeView(
     actions.openTemplate(
       templateAttachmentNodeAttributes(currentNode).category,
     );
-  });
-  spec.zone.addEventListener("mousedown", (event) => {
-    event.preventDefault();
-  });
-  spec.zone.addEventListener("click", () => {
-    // Anchored to the zone, so the popover opens under the words it edits.
-    actions.openOptions(spec.zone.getBoundingClientRect());
   });
   localizedUi.add(localize);
   render(currentNode);
@@ -1570,9 +1491,6 @@ interface WorkflowComposerRuntime {
   blur(): void;
   templateAttachment: ComposerTemplateAttachment | undefined;
   openTemplate(category: string): void;
-  /** Resolved when the lifecycle bridge mounts; false until then. */
-  videoOptionsEnabled: boolean;
-  openTemplateOptions(anchor: DOMRect, position: number): void;
   removeTemplate(): void;
   templateRemoved(): void;
   replaceFeedbackItems(items: readonly FeedbackItem[]): void;
@@ -1701,15 +1619,6 @@ function createInlineTemplateNode(
               if (selectSelf()) {
                 runtime.openTemplate(category);
               }
-            },
-            openOptions: (anchor) => {
-              const position = getPos();
-              if (typeof position === "number" && selectSelf()) {
-                runtime.openTemplateOptions(anchor, position);
-              }
-            },
-            optionsEnabled: () => {
-              return runtime.videoOptionsEnabled;
             },
           },
           runtime.localizedUi,
@@ -2429,33 +2338,6 @@ function createInsertTemplateCommand(editor: Editor) {
  * so a selection-based update only works once; every later edit would fall
  * through to inserting another chip.
  */
-function createUpdateTemplateAtCommand(editor: Editor) {
-  return command(
-    (
-      _context,
-      position: number,
-      request: GenerationTemplateRequest,
-      attachment: ComposerTemplateAttachment,
-    ) => {
-      const target = editor.state.doc.nodeAt(position);
-      if (target?.type.name !== INLINE_TEMPLATE_NODE_NAME) {
-        return;
-      }
-      const node = inlineTemplateNode(editor, request, attachment);
-      const transaction = editor.state.tr.setNodeMarkup(
-        position,
-        undefined,
-        node.attrs,
-      );
-      editor.view.dispatch(
-        transaction.setSelection(
-          NodeSelection.create(transaction.doc, position),
-        ),
-      );
-    },
-  );
-}
-
 function createPrepareTemplateInsertionCommand(editor: Editor) {
   return command(() => {
     const { selection } = editor.state;
@@ -2487,7 +2369,6 @@ function createReadSelectedTemplateCommand(editor: Editor) {
 function createTemplateInsertionCommands(editor: Editor) {
   return {
     insertTemplate$: createInsertTemplateCommand(editor),
-    updateTemplateAt$: createUpdateTemplateAtCommand(editor),
     readSelectedTemplate$: createReadSelectedTemplateCommand(editor),
     prepareTemplateInsertion$: createPrepareTemplateInsertionCommand(editor),
   };
@@ -2557,8 +2438,6 @@ function createWorkflowComposerRuntime(): WorkflowComposerRuntime {
     blur(): void {},
     templateAttachment: undefined,
     openTemplate(_category: string): void {},
-    videoOptionsEnabled: false,
-    openTemplateOptions(_anchor: DOMRect, _position: number): void {},
     removeTemplate(): void {},
     templateRemoved(): void {},
     replaceFeedbackItems(_items: readonly FeedbackItem[]): void {},
@@ -2581,7 +2460,7 @@ function createTemplateAttachmentControls(
     runtime.templateRemoved();
   };
   const setLifecycleRef$ = onRef(
-    command(({ get, set }, element: HTMLButtonElement, signal: AbortSignal) => {
+    command(({ set }, element: HTMLButtonElement, signal: AbortSignal) => {
       const attachment = templateAttachmentFromLifecycleElement(element);
       runtime.templateAttachment = attachment;
       set(activeState$, attachment !== undefined);
@@ -2591,18 +2470,6 @@ function createTemplateAttachmentControls(
         element.dataset.templateCategory = category;
         element.click();
       };
-      runtime.videoOptionsEnabled = get(videoTemplateOptionsEnabled$);
-      runtime.openTemplateOptions = (anchor, position) => {
-        element.dataset.templateAction = "options";
-        element.dataset.templateAnchor = [
-          anchor.left,
-          anchor.top,
-          anchor.width,
-          anchor.height,
-        ].join(",");
-        element.dataset.templatePosition = String(position);
-        element.click();
-      };
       runtime.templateRemoved = () => {
         element.dataset.templateAction = "remove";
         element.click();
@@ -2610,7 +2477,6 @@ function createTemplateAttachmentControls(
       signal.addEventListener("abort", () => {
         runtime.templateAttachment = undefined;
         runtime.openTemplate = () => {};
-        runtime.openTemplateOptions = () => {};
         runtime.templateRemoved = () => {};
         set(activeState$, false);
         setTemplateAttachmentNode(editor, undefined);

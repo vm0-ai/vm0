@@ -52,6 +52,7 @@ mod retry;
 mod run_cancellation;
 mod run_resolution;
 mod runner_dirname;
+mod runner_process_identity;
 mod runtime_overrides;
 mod state_file;
 mod status;

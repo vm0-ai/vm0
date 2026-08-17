@@ -11,10 +11,7 @@ import {
 } from "../../views/zero-page/presentation-html-preview.ts";
 import { readableAttachmentResourceUrl } from "../../views/zero-page/zero-attachment-url.ts";
 import { createAvatarTemplatePickerSignals } from "./avatar-template-picker.ts";
-import {
-  DEFAULT_VIDEO_MODEL,
-  type VideoModel,
-} from "@okouai/core/video-model-catalog";
+import type { VideoRunOptionsPatch } from "./video-run-options.ts";
 
 // ---------------------------------------------------------------------------
 // Composer UI state — search, dialogs, loading indicators
@@ -394,12 +391,32 @@ function createBasicComposerUiSignals() {
   };
 }
 
-/** Viewport-space box of the chip a video options popover is anchored to. */
-export interface VideoTemplateOptionsAnchor {
-  readonly left: number;
-  readonly top: number;
-  readonly width: number;
-  readonly height: number;
+/**
+ * Parameters for the next video this composer generates. Run-scoped by design:
+ * they travel with the message and are never written anywhere, so they start
+ * over with the composer rather than following the thread.
+ */
+function createVideoRunOptionsUiSignals() {
+  const internalVideoOptionsOpen$ = state(false);
+  const internalVideoRunOptions$ = state<VideoRunOptionsPatch>({});
+  const videoOptionsOpen$ = computed((get) => {
+    return get(internalVideoOptionsOpen$);
+  });
+  const setVideoOptionsOpen$ = command(({ set }, open: boolean) => {
+    set(internalVideoOptionsOpen$, open);
+  });
+  const videoRunOptions$ = computed((get) => {
+    return get(internalVideoRunOptions$);
+  });
+  const setVideoRunOptions$ = command(({ set }, next: VideoRunOptionsPatch) => {
+    set(internalVideoRunOptions$, next);
+  });
+  return {
+    videoOptionsOpen$,
+    setVideoOptionsOpen$,
+    videoRunOptions$,
+    setVideoRunOptions$,
+  };
 }
 
 function createTemplatePickerDialogSignals() {
@@ -432,59 +449,6 @@ function createTemplatePickerDialogSignals() {
     },
   );
 
-  /**
-   * The video model the next template pick will use. Video generation is the
-   * most expensive thing the composer can start, so the choice is made up
-   * front on the template picker rather than inside the chip after the fact.
-   */
-  const internalVideoTemplateModel$ = state<VideoModel>(DEFAULT_VIDEO_MODEL);
-  const videoTemplateModel$ = computed((get) => {
-    return get(internalVideoTemplateModel$);
-  });
-  const setVideoTemplateModel$ = command(({ set }, model: VideoModel) => {
-    set(internalVideoTemplateModel$, model);
-  });
-
-  const internalVideoOptionsAnchor$ = state<VideoTemplateOptionsAnchor | null>(
-    null,
-  );
-  const internalVideoOptionsValue$ = state<GenerationTemplateRequest | null>(
-    null,
-  );
-  const internalVideoOptionsPosition$ = state<number | null>(null);
-  const videoTemplateOptionsAnchor$ = computed((get) => {
-    return get(internalVideoOptionsAnchor$);
-  });
-  const videoTemplateOptionsValue$ = computed((get) => {
-    return get(internalVideoOptionsValue$);
-  });
-  const videoTemplateOptionsPosition$ = computed((get) => {
-    return get(internalVideoOptionsPosition$);
-  });
-  const openVideoTemplateOptions$ = command(
-    (
-      { set },
-      anchor: VideoTemplateOptionsAnchor,
-      value: GenerationTemplateRequest,
-      position: number,
-    ) => {
-      set(internalVideoOptionsValue$, value);
-      set(internalVideoOptionsPosition$, position);
-      set(internalVideoOptionsAnchor$, anchor);
-    },
-  );
-  /** Keeps the open popover in step with the node it just rewrote. */
-  const setVideoTemplateOptionsValue$ = command(
-    ({ set }, value: GenerationTemplateRequest) => {
-      set(internalVideoOptionsValue$, value);
-    },
-  );
-  const closeVideoTemplateOptions$ = command(({ set }) => {
-    set(internalVideoOptionsAnchor$, null);
-    set(internalVideoOptionsValue$, null);
-    set(internalVideoOptionsPosition$, null);
-  });
-
   const websiteTemplatePreviewId$ = computed((get) => {
     return get(internalWebsiteTemplatePreviewId$);
   });
@@ -511,14 +475,6 @@ function createTemplatePickerDialogSignals() {
     setTemplatePickerOpen$,
     templatePickerReferenceValue$,
     setTemplatePickerReferenceValue$,
-    videoTemplateModel$,
-    setVideoTemplateModel$,
-    videoTemplateOptionsAnchor$,
-    videoTemplateOptionsValue$,
-    videoTemplateOptionsPosition$,
-    openVideoTemplateOptions$,
-    setVideoTemplateOptionsValue$,
-    closeVideoTemplateOptions$,
     websiteTemplatePreviewId$,
     websiteTemplatePreviewLoaded$,
     markWebsiteTemplatePreviewLoaded$,
@@ -1009,6 +965,7 @@ export function createComposerUiSignals() {
 
   return {
     model: basic.model,
+    videoOptions: createVideoRunOptionsUiSignals(),
     template: {
       ...createTemplatePickerDialogSignals(),
       ...list.signals,

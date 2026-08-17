@@ -26,6 +26,10 @@ describe("browser authorization page", () => {
     const user = userEvent.setup({ delay: null });
     let enabled = false;
 
+    context.mocks.browser.url(
+      "https://app.vm0.ai/browser/authorize/vm0_browser_authorization_request_test",
+    );
+
     context.mocks.api(
       zeroBrowserAuthorizationRequestsContract.get,
       ({ respond }) => {
@@ -53,6 +57,9 @@ describe("browser authorization page", () => {
       screen.findByRole("heading", { name: "Enable cloud browser" }),
     ).resolves.toBeInTheDocument();
     expect(
+      screen.getByRole("img", { name: "VM0" }).closest("a"),
+    ).toBeInTheDocument();
+    expect(
       screen.getByText(
         "Zero will use an isolated cloud browser profile for this chat thread. Enabling it disconnects Computer Use for the thread.",
       ),
@@ -64,5 +71,32 @@ describe("browser authorization page", () => {
       expect(enabled).toBeTruthy();
       expect(getButtonByText("Cloud browser enabled")).toBeDisabled();
     });
+  });
+
+  it("shows the Okou brand on the Okou app host", async () => {
+    context.mocks.browser.url(
+      "https://app.okou.ai/browser/authorize/vm0_browser_authorization_request_test",
+    );
+    context.mocks.api(
+      zeroBrowserAuthorizationRequestsContract.get,
+      ({ respond }) => {
+        return respond(200, {
+          expiresAt: "2026-07-27T12:00:00Z",
+          completedAt: null,
+          cloudBrowserEnabled: false,
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/browser/authorize/vm0_browser_authorization_request_test",
+    });
+
+    await expect(
+      screen.findByRole("heading", { name: "Enable cloud browser" }),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByText("Okou").closest("a")).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "VM0" })).not.toBeInTheDocument();
   });
 });

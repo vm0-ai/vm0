@@ -15,6 +15,7 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { currentWorkflowDetail$ } from "../workflows-page/workflows-signals.ts";
 import { i18n } from "../../i18n/index.ts";
 import { locale$ } from "../locale.ts";
+import { assistantName$ } from "../branding.ts";
 
 interface MobileBreadcrumb {
   section: string;
@@ -119,6 +120,7 @@ const chatBreadcrumb$ = computed(async (get): Promise<MobileBreadcrumb> => {
   const defaultId = await get(defaultAgentId$);
   const threadId = get(currentChatThreadId$);
   const urlAgentId = getStringParam(params, "agentId");
+  const assistantName = get(assistantName$);
 
   if (threadId !== null || urlAgentId !== null) {
     const subagentId = await get(currentChatAgentId$);
@@ -128,7 +130,7 @@ const chatBreadcrumb$ = computed(async (get): Promise<MobileBreadcrumb> => {
         return a.id === subagentId;
       });
       return {
-        section: subagent?.displayName ?? displayName ?? "Zero",
+        section: subagent?.displayName ?? displayName ?? assistantName,
         sectionPath: CHAT_PATH,
         avatarAgentId: subagentId,
       };
@@ -136,7 +138,7 @@ const chatBreadcrumb$ = computed(async (get): Promise<MobileBreadcrumb> => {
   }
 
   return {
-    section: displayName ?? "Zero",
+    section: displayName ?? assistantName,
     sectionPath: CHAT_PATH,
     avatarAgentId: defaultId ?? undefined,
   };
@@ -177,7 +179,7 @@ export const mobileBreadcrumb$ = computed(
           ($) => {
             return $.appShell.sidebar.navigation.works;
           },
-          { agentName: displayName ?? "Zero" },
+          { agentName: displayName ?? get(assistantName$) },
         ),
         sectionPath: ROUTES.works,
       };

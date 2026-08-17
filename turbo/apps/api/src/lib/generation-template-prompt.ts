@@ -348,7 +348,7 @@ function honoursGenerateAudio(
  * Once the run owns the model, the persisted template model is ignored and the
  * remaining values are validated only against their shared contract domains.
  */
-function selectedRunOwnedVideoParameters(
+export function selectedRunOwnedVideoParameters(
   options: VideoGenerationOptions,
 ): readonly SelectedVideoParameter[] {
   const parameters: SelectedVideoParameter[] = [];

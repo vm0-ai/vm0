@@ -32,7 +32,10 @@ import {
   getOAuthCanonicalRedirectUrl,
   getOAuthWebOrigin,
 } from "../../lib/oauth-origin";
-import { resolveIntegrationUserId } from "../../lib/integration-user-id-compat";
+import {
+  logIntegrationIdentityCompatibility,
+  resolveIntegrationUserId,
+} from "../../lib/integration-user-id-compat";
 
 const L = logger("SlackOAuth");
 const SLACK_OAUTH_URL = "https://slack.com/oauth/v2/authorize";
@@ -133,6 +136,11 @@ function parseOAuthState(state: string | undefined): OAuthState | null {
     // Remove in #27602 after legacy producers and callbacks have drained.
     optionalString(record.vm0UserId),
   );
+  logIntegrationIdentityCompatibility({
+    provider: "slack",
+    surface: "state",
+    outcome: userId.outcome,
+  });
   if (!userId.ok) {
     return null;
   }
@@ -177,6 +185,11 @@ const installOauth$ = computed((get) => {
 
   const query = get(queryOf(zeroSlackOauthContract.install));
   const userId = resolveIntegrationUserId(query.userId, query.vm0UserId);
+  logIntegrationIdentityCompatibility({
+    provider: "slack",
+    surface: "query",
+    outcome: userId.outcome,
+  });
   if (!userId.ok) {
     return failedRedirect("Invalid OAuth identity.", publicBrand);
   }
@@ -228,6 +241,11 @@ const connectOauth$ = command(async ({ get }, signal: AbortSignal) => {
 
   const query = get(queryOf(zeroSlackOauthContract.connect));
   const userId = resolveIntegrationUserId(query.userId, query.vm0UserId);
+  logIntegrationIdentityCompatibility({
+    provider: "slack",
+    surface: "query",
+    outcome: userId.outcome,
+  });
   if (!userId.ok) {
     return jsonErrorResponse("Conflicting userId values", 400);
   }

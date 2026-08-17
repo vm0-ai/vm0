@@ -3,14 +3,18 @@ import { onboardingCompleteContract } from "@okouai/api-contracts/contracts/onbo
 import {
   zeroBillingCheckoutContract,
   zeroBillingRedeemCodeContract,
+  zeroBillingUsagePackCheckoutContract,
 } from "@okouai/api-contracts/contracts/zero-billing";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { accept } from "../../lib/accept.ts";
 import { IN_VITEST } from "../../env.ts";
 import { zeroClient$ } from "../api-client.ts";
+import { authenticatedIdentity$ } from "../auth.ts";
 import { ROUTES } from "../route-paths.ts";
 import { setLoop } from "../utils.ts";
 import { billingStatusAsync$ } from "../zero-page/billing.ts";
 import { readStoredAdAttributionMetadata$ } from "../bootstrap/ad-attribution.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 import { reloadOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
 import {
   ONBOARDING_CHECKOUT_STATE_PARAM,
@@ -106,24 +110,49 @@ export const prepareOnboardingVideoRun$ = command(
       prompt: input.prompt,
       note: input.note,
     });
-    const client = get(zeroClient$)(zeroBillingCheckoutContract);
     const adAttribution = set(readStoredAdAttributionMetadata$);
-    const result = await accept(
-      client.create({
-        body: {
-          tier: "pro",
-          successUrl: checkoutReturnUrl(input, "pro", checkoutState),
-          cancelUrl: checkoutReturnUrl(input, "canceled", checkoutState),
-          ...(adAttribution === undefined ? {} : { adAttribution }),
-        },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
+    const successUrl = checkoutReturnUrl(input, "pro", checkoutState);
+    const cancelUrl = checkoutReturnUrl(input, "canceled", checkoutState);
+    let checkoutUrl: string;
+    if (get(featureSwitch$)[FeatureSwitchKey.UsagePackPlans]) {
+      const { userId } = await get(authenticatedIdentity$);
+      signal.throwIfAborted();
+      const client = get(zeroClient$)(zeroBillingUsagePackCheckoutContract);
+      const result = await accept(
+        client.create({
+          body: {
+            tier: "pro",
+            memberUsagePacks: [{ memberId: userId, usagePackUsd: 20 }],
+            successUrl,
+            cancelUrl,
+            ...(adAttribution === undefined ? {} : { adAttribution }),
+          },
+          fetchOptions: { signal },
+        }),
+        [200],
+      );
+      signal.throwIfAborted();
+      checkoutUrl = result.body.url;
+    } else {
+      const client = get(zeroClient$)(zeroBillingCheckoutContract);
+      const result = await accept(
+        client.create({
+          body: {
+            tier: "pro",
+            successUrl,
+            cancelUrl,
+            ...(adAttribution === undefined ? {} : { adAttribution }),
+          },
+          fetchOptions: { signal },
+        }),
+        [200],
+      );
+      signal.throwIfAborted();
+      checkoutUrl = result.body.url;
+    }
     set(capturePaidOnboardingCheckoutCreated$, "onboarding_video");
     set(capturePaidOnboardingRedirectToStripe$, "onboarding_video");
-    window.location.href = result.body.url;
+    window.location.href = checkoutUrl;
     return "checkout";
   },
 );

@@ -1880,7 +1880,15 @@ mod tests {
             .runner_preference()
             .expect("canonical preference should be parsed");
         assert_eq!(preference.tier(), RunnerPreferenceTier::ReusableSandbox);
-        assert!(preference.targets("00000000-0000-0000-0000-000000000005", 7));
+        assert!(
+            preference.targets(
+                crate::runner_process_identity::RunnerProcessIdentity::new(
+                    "00000000-0000-0000-0000-000000000005".parse().unwrap(),
+                    7,
+                )
+                .unwrap()
+            )
+        );
         let telemetry = candidate
             .runner_preference_claim_telemetry()
             .expect("canonical preference telemetry");

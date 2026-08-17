@@ -177,6 +177,7 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import { orgModelPolicies$ } from "../../signals/external/org-model-policies.ts";
 import {
+  updateDefaultVideoModel$,
   updateUserModelPreference$,
   userModelPreference$,
 } from "../../signals/external/user-model-preference.ts";
@@ -186,7 +187,6 @@ import {
   avatarTemplatesEnabled$,
   imageRecognitionAvailable$,
   videoModelSelectionEnabled$,
-  videoTemplateOptionsEnabled$,
 } from "../../signals/external/feature-switch.ts";
 import {
   computerUseHosts$,
@@ -202,10 +202,7 @@ import { activeUserPermissionGrantSnapshot } from "../../signals/user-permission
 import { savePermissionDraftPolicies } from "../../signals/zero-page/settings/permission-grant-save.ts";
 import { PermissionsDialog } from "./components/settings/permissions-dialog.tsx";
 import { toast } from "@okouai/ui/components/ui/sonner";
-import type {
-  TemplateCardHtmlPreviewState,
-  VideoTemplateOptionsAnchor,
-} from "../../signals/zero-page/zero-chat-composer.ts";
+import type { TemplateCardHtmlPreviewState } from "../../signals/zero-page/zero-chat-composer.ts";
 import type {
   ComposerPendingEvent,
   ComposerPrimaryAction,
@@ -231,10 +228,7 @@ import {
   AvatarTemplatePickerContent,
   AvatarTemplatePickerToolbar,
 } from "./avatar-template-picker.tsx";
-import {
-  VideoModelPickerRow,
-  VideoTemplateOptionsPopover,
-} from "./video-template-options-popover.tsx";
+import { ComposerVideoOptionsChip } from "./composer-video-options.tsx";
 import {
   DEFAULT_VIDEO_MODEL,
   type VideoModel,
@@ -877,15 +871,19 @@ function isSelectedVideoTemplate(
   );
 }
 
+/**
+ * A template names the look, and nothing else. Every text-to-video parameter,
+ * the model included, now belongs to the run: the model comes from the thread
+ * pin and the member default, and the rest from the composer's own settings
+ * chip, so nothing about a run is frozen into the message that started it.
+ */
 function toVideoGenerationTemplate(
   item: VideoTemplateItem,
-  model: VideoModel,
 ): GenerationTemplateRequest {
   return {
     type: "video",
     selection: {
       stylePresetId: item.id,
-      ...(model !== DEFAULT_VIDEO_MODEL ? { videoOptions: { model } } : {}),
     },
   };
 }
@@ -4884,10 +4882,6 @@ function TemplatePickerDialog({
     signals.template.openWebsiteTemplatePreview$,
   );
   const cardThemeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
-  const videoModel = useGet(signals.template.videoTemplateModel$);
-  const setVideoModel = useSet(signals.template.setVideoTemplateModel$);
-  const videoOptionsEnabled = useGet(videoTemplateOptionsEnabled$);
-  const videoModelSelectionEnabled = useGet(videoModelSelectionEnabled$);
   const illustrationVariantIndex = useGet(
     signals.template.illustrationVariantIndex$,
   );
@@ -4931,13 +4925,6 @@ function TemplatePickerDialog({
   });
   const showTemplatePickerSearch = selectedCategory === "workflow";
   const showAvatarPickerToolbar = selectedCategory === "avatar" && hasAvatarTab;
-  // Preserve the old template-level picker only while the run-model switch is
-  // disabled. The enabled experience owns the model in the composer picker.
-  const showVideoModelPicker =
-    selectedCategory === "video" &&
-    hasVideoTab &&
-    videoOptionsEnabled &&
-    !videoModelSelectionEnabled;
 
   const previewImageUrlsForCategory = (targetCategory: string) => {
     if (targetCategory === "slides" && hasPptTab) {
@@ -4985,7 +4972,7 @@ function TemplatePickerDialog({
   };
 
   const handleSelectVideo = (item: VideoTemplateItem) => {
-    onChange(toVideoGenerationTemplate(item, videoModel));
+    onChange(toVideoGenerationTemplate(item));
     closeTemplatePicker();
   };
 
@@ -5194,9 +5181,7 @@ function TemplatePickerDialog({
                 <div
                   className={cn(
                     "relative h-[68px] shrink-0 items-center px-6 pr-14",
-                    showTemplatePickerSearch ||
-                      showAvatarPickerToolbar ||
-                      showVideoModelPicker
+                    showTemplatePickerSearch || showAvatarPickerToolbar
                       ? "flex"
                       : "hidden sm:flex",
                   )}
@@ -5209,12 +5194,6 @@ function TemplatePickerDialog({
                   ) : null}
                   {showAvatarPickerToolbar ? (
                     <AvatarTemplatePickerToolbar signals={signals} />
-                  ) : null}
-                  {showVideoModelPicker ? (
-                    <VideoModelPickerRow
-                      model={videoModel}
-                      onChange={setVideoModel}
-                    />
                   ) : null}
                 </div>
                 <TemplatePickerCategoryContent
@@ -5568,23 +5547,6 @@ function composerTemplateAttachmentLifecycleKey(
     : "none";
 }
 
-/** Serialized by the inline chip node view as "left,top,width,height". */
-function parseTemplateAnchor(
-  serialized: string | undefined,
-): VideoTemplateOptionsAnchor | undefined {
-  const parts = serialized?.split(",").map(Number);
-  if (parts?.length !== 4 || parts.some(Number.isNaN)) {
-    return undefined;
-  }
-  const [left, top, width, height] = parts;
-  return left === undefined ||
-    top === undefined ||
-    width === undefined ||
-    height === undefined
-    ? undefined
-    : { left, top, width, height };
-}
-
 function ComposerTemplateAttachmentSync({
   signals,
 }: {
@@ -5604,14 +5566,6 @@ function ComposerTemplateAttachmentSync({
     signals.template.setTemplatePickerReferenceValue$,
   );
   const readSelectedTemplate = useSet(signals.template.readSelectedTemplate$);
-  const openVideoOptions = useSet(signals.template.openVideoTemplateOptions$);
-  const videoOptionsPosition = useGet(
-    signals.template.videoTemplateOptionsPosition$,
-  );
-  const updateTemplateAt = useSet(signals.template.updateTemplateAt$);
-  const setVideoOptionsValue = useSet(
-    signals.template.setVideoTemplateOptionsValue$,
-  );
   const cardThemeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
   const attachment = selectedComposerTemplateAttachment(picker?.value);
   const openPicker = (category: string) => {
@@ -5634,60 +5588,25 @@ function ComposerTemplateAttachmentSync({
   };
 
   return (
-    <>
-      <VideoTemplateOptionsPopover
-        signals={signals}
-        onChange={(next) => {
-          const nextAttachment = selectedComposerTemplateAttachment(next);
-          if (videoOptionsPosition === null || !nextAttachment) {
-            return;
-          }
-          // Addressed by position: the editor selection does not survive
-          // repeated in-place updates, and the popover can outlive it.
-          updateTemplateAt(videoOptionsPosition, next, nextAttachment);
-          // The popover holds a snapshot; without this a second edit would be
-          // computed from the pre-edit value and undo the first one.
-          setVideoOptionsValue(next);
+    <button
+      key={composerTemplateAttachmentLifecycleKey(attachment)}
+      ref={setLifecycleRef}
+      type="button"
+      hidden
+      data-template-type={attachment?.type}
+      data-template-title={attachment?.title}
+      data-template-category={attachment?.category}
+      data-template-preview-url={attachment?.previewImageUrl}
+      onClick={(event) => {
+        const action = event.currentTarget.dataset.templateAction;
+        if (action === "open") {
+          openPicker(event.currentTarget.dataset.templateCategory ?? "slides");
+        } else if (action === "remove") {
+          picker?.onChange(undefined);
           onDraftChange?.();
-        }}
-      />
-      <button
-        key={composerTemplateAttachmentLifecycleKey(attachment)}
-        ref={setLifecycleRef}
-        type="button"
-        hidden
-        data-template-type={attachment?.type}
-        data-template-title={attachment?.title}
-        data-template-category={attachment?.category}
-        data-template-preview-url={attachment?.previewImageUrl}
-        onClick={(event) => {
-          const action = event.currentTarget.dataset.templateAction;
-          if (action === "open") {
-            openPicker(
-              event.currentTarget.dataset.templateCategory ?? "slides",
-            );
-          } else if (action === "remove") {
-            picker?.onChange(undefined);
-            onDraftChange?.();
-          } else if (action === "options") {
-            const anchor = parseTemplateAnchor(
-              event.currentTarget.dataset.templateAnchor,
-            );
-            const position = Number(
-              event.currentTarget.dataset.templatePosition,
-            );
-            const selected = readSelectedTemplate();
-            if (anchor && selected && Number.isInteger(position)) {
-              // Base UI dismisses a popover mounted during the same external
-              // click as an outside press. Mount after that click dispatches.
-              queueMicrotask(() => {
-                openVideoOptions(anchor, selected, position);
-              });
-            }
-          }
-        }}
-      />
-    </>
+        }
+      }}
+    />
   );
 }
 
@@ -7460,7 +7379,6 @@ function ComposerVideoModeContent({
   expanded: boolean;
   pinnedModel: VideoModel | null;
 }) {
-  const { t } = useTranslation();
   const userPreference = useLastResolved(userModelPreference$);
   const selectedVideoModel =
     pinnedModel ?? userPreference?.selectedVideoModel ?? DEFAULT_VIDEO_MODEL;
@@ -7472,12 +7390,7 @@ function ComposerVideoModeContent({
         expanded ? "max-w-[11rem] opacity-100" : "max-w-0",
       )}
     >
-      <span className="shrink-0">
-        {t(($) => {
-          return $.artifacts.kinds.video;
-        })}{" "}
-        <span aria-hidden="true">·</span>
-      </span>
+      <span aria-hidden="true">·</span>
       <span className="min-w-0 truncate">
         {getModelDisplayName(selectedVideoModel)}
       </span>
@@ -7632,7 +7545,18 @@ function ComposerVideoModelControl({
               toggleDesktopVideoMode();
             }}
           >
-            <Video size={18} aria-hidden="true" />
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M2 8a4 4 0 0 1 4 -4h12a4 4 0 0 1 4 4v8a4 4 0 0 1 -4 4h-12a4 4 0 0 1 -4 -4z" />
+              <path d="M10 9l5 3l-5 3z" />
+            </svg>
             <ComposerVideoModeContent
               expanded={expanded}
               pinnedModel={pinnedModel}
@@ -7822,6 +7746,41 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
   );
 }
 
+function ComposerTemporaryModelNoticeRow({
+  notice,
+  updating,
+  onSetAsDefault,
+}: {
+  notice: string;
+  updating: boolean;
+  onSetAsDefault: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div
+      className="mt-1.5 flex flex-wrap items-center justify-end gap-x-1.5 gap-y-1 px-3 text-xs leading-5 text-muted-foreground sm:px-4"
+      aria-live="polite"
+      aria-atomic="true"
+    >
+      <span>{notice}</span>
+      <button
+        type="button"
+        className="inline-flex items-center gap-1 rounded-sm font-medium text-foreground underline-offset-2 transition-colors hover:text-foreground/70 hover:underline focus-visible:text-foreground/70 focus-visible:underline disabled:pointer-events-none disabled:opacity-70"
+        disabled={updating}
+        aria-busy={updating}
+        onClick={onSetAsDefault}
+      >
+        {updating && (
+          <Loader2 size={12} className="animate-spin" aria-hidden="true" />
+        )}
+        {t(($) => {
+          return $.chat.composer.setAsDefault;
+        })}
+      </button>
+    </div>
+  );
+}
+
 function ComposerTemporaryModelNotice({
   signals,
 }: {
@@ -7894,27 +7853,54 @@ function ComposerTemporaryModelNotice({
     );
   };
   return (
-    <div
-      className="mt-1.5 flex flex-wrap items-center justify-end gap-x-1.5 gap-y-1 px-3 text-xs leading-5 text-muted-foreground sm:px-4"
-      aria-live="polite"
-      aria-atomic="true"
-    >
-      <span>{notice}</span>
-      <button
-        type="button"
-        className="inline-flex items-center gap-1 rounded-sm font-medium text-foreground underline-offset-2 transition-colors hover:text-foreground/70 hover:underline focus-visible:text-foreground/70 focus-visible:underline disabled:pointer-events-none disabled:opacity-70"
-        disabled={updating}
-        aria-busy={updating}
-        onClick={setAsDefault}
-      >
-        {updating && (
-          <Loader2 size={12} className="animate-spin" aria-hidden="true" />
-        )}
-        {t(($) => {
-          return $.chat.composer.setAsDefault;
-        })}
-      </button>
-    </div>
+    <ComposerTemporaryModelNoticeRow
+      notice={notice}
+      updating={updating}
+      onSetAsDefault={setAsDefault}
+    />
+  );
+}
+
+function ComposerTemporaryVideoModelNotice({
+  videoModelSignals,
+}: {
+  videoModelSignals: ComposerVideoModelSignals;
+}) {
+  const { t } = useTranslation();
+  // The effective model, not the pin: the notice names the model a run would
+  // actually use, which is what the member default is being compared against.
+  const selection = useLastResolved(videoModelSignals.effectiveVideoModel$);
+  const userPreference = useLastResolved(userModelPreference$);
+  const [updateLoadable, updateDefaultVideoModel] = useLoadableSet(
+    updateDefaultVideoModel$,
+  );
+  const pageSignal = useGet(pageSignal$);
+  if (!userPreference) {
+    return null;
+  }
+  const defaultVideoModel =
+    userPreference.selectedVideoModel ?? DEFAULT_VIDEO_MODEL;
+  if (!selection || selection === defaultVideoModel) {
+    return null;
+  }
+  const updating = updateLoadable.state === "loading";
+  const setAsDefault = () => {
+    if (updating) {
+      return;
+    }
+    detach(updateDefaultVideoModel(selection, pageSignal), Reason.DomCallback);
+  };
+  return (
+    <ComposerTemporaryModelNoticeRow
+      notice={t(
+        ($) => {
+          return $.chat.composer.temporaryVideoModelNotice;
+        },
+        { model: getModelDisplayName(selection) },
+      )}
+      updating={updating}
+      onSetAsDefault={setAsDefault}
+    />
   );
 }
 
@@ -7924,7 +7910,23 @@ function ComposerTemporaryModelNoticeSlot({
   signals: ComposerSignals;
 }) {
   const enabled = useGet(signals.model.temporaryModelNoticeEnabled$);
-  return enabled ? <ComposerTemporaryModelNotice signals={signals} /> : null;
+  const videoModelEnabled = useGet(videoModelSelectionEnabled$);
+  const desktopLayout = useGet(signals.model.desktopModelPickerLayout$);
+  const desktopModelMode = useGet(signals.model.desktopModelMode$);
+  const videoModelSignals = signals.videoModel;
+  if (!enabled) {
+    return null;
+  }
+  // One notice at a time: it belongs to whichever model the composer is
+  // currently pointed at, matching the pressed state of the two mode chips.
+  return videoModelEnabled &&
+    videoModelSignals &&
+    desktopLayout &&
+    desktopModelMode === "video" ? (
+    <ComposerTemporaryVideoModelNotice videoModelSignals={videoModelSignals} />
+  ) : (
+    <ComposerTemporaryModelNotice signals={signals} />
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -8545,6 +8547,10 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
               <ComposerTemplatePickerSlot signals={signals} />
               <ComposerWorkflowPromptSlot signals={signals} />
               <ComposerConnectorsSlot signals={signals} />
+              {/* Sits with the other input-scoped controls rather than beside
+                  the model picker: it configures the message being written,
+                  not which model the composer points at. */}
+              <ComposerVideoOptionsChip signals={signals} />
             </div>
             <div className="flex items-center gap-1 sm:gap-2">
               <ComposerModelPickerSlot signals={signals} />

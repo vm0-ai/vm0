@@ -29,6 +29,7 @@ import {
 } from "./helpers/api-bdd-computer-use";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
+import { readRunLaunchSnapshotFixture } from "./helpers/runtime-state";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 
 /*
@@ -166,6 +167,12 @@ describe("FILE-03 desktop computer-use runtime", () => {
     const orgId = `org_${randomUUID()}`;
     const actor = bdd.user({ orgId });
     const run = await seedZeroRun({ actor, triggerSource: "web" });
+    await expect(
+      readRunLaunchSnapshotFixture(context, run.runId),
+    ).resolves.toStrictEqual({
+      exists: true,
+      launch_snapshot: null,
+    });
     if (!run.threadId) {
       throw new Error("Expected web run fixture to create a chat thread");
     }

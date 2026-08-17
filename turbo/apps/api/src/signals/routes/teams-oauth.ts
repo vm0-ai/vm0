@@ -19,7 +19,10 @@ import {
 import { safeJsonParse, tapError } from "../utils";
 import type { RouteEntry } from "../route-entry";
 import { getOAuthApiOrigin } from "../../lib/oauth-origin";
-import { resolveIntegrationUserId } from "../../lib/integration-user-id-compat";
+import {
+  logIntegrationIdentityCompatibility,
+  resolveIntegrationUserId,
+} from "../../lib/integration-user-id-compat";
 
 const L = logger("TeamsOAuth");
 const MICROSOFT_AUTHORIZATION_URL =
@@ -161,6 +164,11 @@ function parseOAuthState(state: string | undefined): OAuthState | null {
     // Remove in #27602 after legacy producers and callbacks have drained.
     optionalString(record.vm0UserId),
   );
+  logIntegrationIdentityCompatibility({
+    provider: "teams",
+    surface: "state",
+    outcome: userId.outcome,
+  });
   if (!userId.ok) {
     return null;
   }
@@ -330,6 +338,11 @@ const connectOauth$ = command(({ get }) => {
 
   const query = get(queryOf(zeroTeamsOauthContract.connect));
   const userId = resolveIntegrationUserId(query.userId, query.vm0UserId);
+  logIntegrationIdentityCompatibility({
+    provider: "teams",
+    surface: "query",
+    outcome: userId.outcome,
+  });
   if (!userId.ok) {
     return jsonErrorResponse("Conflicting userId values", 400);
   }

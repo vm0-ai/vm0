@@ -55,7 +55,10 @@ import {
   getOAuthCanonicalRedirectUrl,
   getOAuthWebOrigin,
 } from "../../lib/oauth-origin";
-import { resolveIntegrationUserId } from "../../lib/integration-user-id-compat";
+import {
+  logIntegrationIdentityCompatibility,
+  resolveIntegrationUserId,
+} from "../../lib/integration-user-id-compat";
 
 const REDIRECT_STATUS = 307;
 const GITHUB_CONNECTOR_SLUG = "github";
@@ -574,6 +577,11 @@ const installGithubOauth$ = command(
 
     const query = get(queryOf(githubOauthContract.install));
     const userId = resolveIntegrationUserId(query.userId, query.vm0UserId);
+    logIntegrationIdentityCompatibility({
+      provider: "github",
+      surface: "query",
+      outcome: userId.outcome,
+    });
     if (!userId.ok) {
       return worksErrorRedirect("Invalid OAuth identity.");
     }

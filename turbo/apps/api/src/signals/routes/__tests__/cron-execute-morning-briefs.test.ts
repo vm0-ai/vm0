@@ -1618,8 +1618,15 @@ describe("cron execute morning briefs", () => {
       inputUrl: "<input-url>",
       outputUrl: "<output-url>",
     });
+    const restrictedContentIndex = normalizedAppendSystemPrompt.lastIndexOf(
+      "# Restricted Explicit Content",
+    );
+    expect(restrictedContentIndex).toBeGreaterThan(-1);
     expect(
-      normalizedAppendSystemPrompt.slice(-expectedAppendSystemPrompt.length),
+      normalizedAppendSystemPrompt
+        .slice(0, restrictedContentIndex)
+        .trimEnd()
+        .slice(-expectedAppendSystemPrompt.length),
     ).toBe(expectedAppendSystemPrompt);
     clearMockNow();
   }, 90_000);

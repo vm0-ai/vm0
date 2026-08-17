@@ -735,6 +735,10 @@ type ReadRunClaimOwnerAction = Extract<
   TestRuntimeStateActionBody,
   { action: "read-run-claim-owner" }
 >;
+type ReadRunLaunchSnapshotAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "read-run-launch-snapshot" }
+>;
 type ReadBrowserScreenshotSchemaStateAction = Extract<
   TestRuntimeStateActionBody,
   { action: "read-browser-screenshot-schema-state" }
@@ -752,6 +756,7 @@ type PersistenceStateAction =
   | ReadStorageStateAction
   | ReadRunnerJobStorageStateAction
   | ReadRunClaimOwnerAction
+  | ReadRunLaunchSnapshotAction
   | ReadBrowserScreenshotSchemaStateAction
   | ReadUsagePackInvitationSchemaStateAction
   | ResetDatabasePoolAction;
@@ -765,7 +770,8 @@ function isPersistenceStateAction(
       return true;
     }
     case "read-runner-job-storage-state":
-    case "read-run-claim-owner": {
+    case "read-run-claim-owner":
+    case "read-run-launch-snapshot": {
       return true;
     }
     case "read-browser-screenshot-schema-state": {
@@ -830,6 +836,24 @@ async function persistenceStateActionResponse(
     }
     case "read-run-claim-owner": {
       return await readRunClaimOwnerActionResponse(db, body, signal);
+    }
+    case "read-run-launch-snapshot": {
+      const [run] = await db
+        .select({ launchSnapshot: agentRuns.launchSnapshot })
+        .from(agentRuns)
+        .where(eq(agentRuns.id, body.run_id))
+        .limit(1);
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          run_launch_snapshot: {
+            exists: run !== undefined,
+            launch_snapshot: run?.launchSnapshot ?? null,
+          },
+        },
+      };
     }
     case "read-browser-screenshot-schema-state": {
       const available = await browserScreenshotSchemaAvailable(db);

@@ -2587,6 +2587,112 @@ describe("organization billing settings", () => {
     });
   });
 
+  it("replaces a managed Team cancellation without previewing packages", async () => {
+    let requestedTargetTier: string | null = null;
+    let packagePreviewCalls = 0;
+    let billingStatus: BillingStatusResponse = {
+      ...activeTeamBillingStatus(),
+      cancelAtPeriodEnd: true,
+      scheduledChange: {
+        type: "cancel",
+        targetTier: "limited-free-1",
+        effectiveDate: "2026-05-01T00:00:00Z",
+      },
+    };
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Managed Team Cancel Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, billingStatus);
+    });
+    context.mocks.api(
+      zeroBillingUsagePackCatalogContract.get,
+      ({ respond }) => {
+        return respond(200, usagePackCatalogResponse());
+      },
+    );
+    context.mocks.api(
+      zeroBillingUsagePackManagementContract.get,
+      ({ respond }) => {
+        return respond(200, {
+          tier: "team",
+          currentPeriodEnd: "2026-05-01T00:00:00Z",
+          allocations: [
+            {
+              id: "3a9138ff-bb8c-4476-95c2-64775cc50ceb",
+              memberId: "user_1",
+              usagePackUsd: 20,
+              currentPeriodEnd: "2026-05-01T00:00:00Z",
+              pendingChange: null,
+            },
+          ],
+        });
+      },
+    );
+    context.mocks.api(
+      zeroBillingUsagePackManagementContract.previewSubscriptionChange,
+      () => {
+        packagePreviewCalls += 1;
+        throw new Error("Package preview must not replace a Plan cancellation");
+      },
+    );
+    context.mocks.api(
+      zeroBillingDowngradeContract.create,
+      ({ body, respond }) => {
+        requestedTargetTier = body.targetTier;
+        billingStatus = {
+          ...billingStatus,
+          cancelAtPeriodEnd: false,
+          scheduledChange: {
+            type: "downgrade",
+            targetTier: "pro",
+            effectiveDate: "2026-05-01T00:00:00Z",
+          },
+        };
+        return respond(200, {
+          success: true,
+          effectiveDate: "2026-05-01T00:00:00Z",
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/?settings=billing",
+      user: {
+        id: "user_1",
+        fullName: "Alex Chen",
+        email: "alex@example.com",
+      },
+      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Restore plan")).toBeInTheDocument();
+    });
+    click(buttonByText("Compare all plans"));
+    const proPlan = await screen.findByRole("article", { name: "Pro plan" });
+    click(buttonByText("Downgrade", proPlan));
+
+    const downgradeDialog = await screen.findByRole("dialog", {
+      name: "Downgrade plan",
+    });
+    expect(
+      within(downgradeDialog).getByText("Downgrade to Pro?"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Configure member packages" }),
+    ).not.toBeInTheDocument();
+    click(buttonByText("Downgrade to Pro", downgradeDialog));
+
+    await waitFor(() => {
+      expect(requestedTargetTier).toBe("pro");
+    });
+    expect(packagePreviewCalls).toBe(0);
+  });
+
   it("scrolls to buy credits from the credits billing deep link", async () => {
     const scrollIntoView = installScrollIntoViewMock();
     context.mocks.data.org({

@@ -38,9 +38,10 @@ import {
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { reloadAgentConnectorAuthorizations$ } from "../../signals/zero-page/agent-connector-authorizations.ts";
 import { Check, Loader2 } from "lucide-react";
-import { Vm0LogoLink } from "./zero-directed-shared.tsx";
+import { ProductBrandMarkLink } from "./zero-directed-shared.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { useTranslation } from "react-i18next";
+import { assistantName$ } from "../../signals/branding.ts";
 
 // ---------------------------------------------------------------------------
 // Action button / authorized badge
@@ -169,12 +170,13 @@ function useDirectedAuthorizePermissionState(
 
 function useDirectedAuthorizeAgentName(agentId: string | null): string {
   const agentNameLoadable = useLastLoadable(directedAuthorizeAgentName$);
+  const assistantName = useGet(assistantName$);
   if (
     agentNameLoadable.state !== "hasData" ||
     agentNameLoadable.data.agentId !== agentId ||
     !agentNameLoadable.data.displayName
   ) {
-    return "Zero";
+    return assistantName;
   }
   return agentNameLoadable.data.displayName;
 }
@@ -224,7 +226,7 @@ function DirectedAuthorizeCardContent({
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
       <div className="pointer-events-auto flex w-[430px] max-w-[calc(100%-48px)] flex-col items-center gap-12 rounded-[20px] border border-border bg-background px-6 py-12 text-center">
-        <Vm0LogoLink />
+        <ProductBrandMarkLink />
         <div className="flex w-full flex-col gap-4">
           <div className="flex flex-col items-center gap-2.5">
             {isLoading ? (

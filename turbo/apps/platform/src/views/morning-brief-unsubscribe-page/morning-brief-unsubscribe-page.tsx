@@ -10,7 +10,7 @@ import {
 } from "../../signals/morning-brief-unsubscribe/morning-brief-unsubscribe-signals.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { Link } from "../router/link.tsx";
-import { VM0Logo } from "../components/vm0-logo.tsx";
+import { ProductBrandMark } from "../components/product-brand-mark.tsx";
 
 interface CardInfo {
   title: string;
@@ -74,7 +74,7 @@ export function MorningBriefUnsubscribePage() {
   return (
     <div className="flex min-h-0 flex-1 items-center justify-center px-6">
       <div className="flex w-[500px] max-w-full flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-[50px] py-12">
-        <VM0Logo />
+        <ProductBrandMark />
         <div className="flex flex-col items-center gap-4">
           <CardIcon status={status} />
           <p className="text-center text-lg font-medium leading-7 text-foreground">
