@@ -1689,7 +1689,7 @@ mod tests {
     use crate::http::{HttpClient, HttpClientConfig};
     use crate::proxy::{ProxyRegistryHandle, VmRegistration};
     use crate::test_fixtures::raw_http::{
-        RawHttpAction, RawHttpTestServer, json_response, read_http_request,
+        RawHttpAction, RawHttpTestServer, join_raw_http_task, json_response, read_http_request,
     };
     use crate::types::{Firewall, FirewallApi, FirewallAuth, FirewallEntry};
 
@@ -4841,10 +4841,7 @@ mod tests {
         .await
         .expect("connector runtime sync retry should complete");
         let (first_request, second_request, policy_before_retry_response) =
-            tokio::time::timeout(Duration::from_secs(1), server_task)
-                .await
-                .expect("connector runtime sync server should finish")
-                .expect("connector runtime sync server task should succeed");
+            join_raw_http_task(server_task, "connector runtime sync retry server").await;
 
         assert_connector_runtime_sync_request(&first_request, &run_id);
         assert_connector_runtime_sync_request(&second_request, &run_id);

@@ -3396,7 +3396,8 @@ mod tests {
     use crate::storage_manifest::{ArtifactEntry, StorageEntry, StorageManifest};
     use crate::storage_plan::build_storage_plan;
     use crate::test_fixtures::raw_http::{
-        RawHttpAction, RawHttpTestServer, http_response, json_response, read_http_request,
+        RawHttpAction, RawHttpTestServer, http_response, join_raw_http_task, json_response,
+        read_http_request,
     };
 
     const CACHE_TEST_RUNTIME_DIR: &str = "/tmp/storage-cache-test-runtime";
@@ -5817,10 +5818,8 @@ mod tests {
         assert_eq!(server.max_active.load(Ordering::SeqCst), 2);
 
         server.release.add_permits(3);
-        tokio::time::timeout(Duration::from_secs(5), server.task)
+        join_raw_http_task(server.task, "archive server after all workers are released")
             .await
-            .expect("archive server should finish after all workers are released")
-            .expect("archive server task should not panic")
             .expect("archive server should not fail");
         coordinator.shutdown().await;
     }
@@ -5985,10 +5984,8 @@ mod tests {
         .expect("shutdown should close admissions before draining workers");
         server.release.add_permits(1);
         shutdown_task.await.expect("shutdown task should not panic");
-        tokio::time::timeout(Duration::from_secs(5), server.task)
+        join_raw_http_task(server.task, "active archive server during shutdown")
             .await
-            .expect("active archive server should finish during shutdown")
-            .expect("archive server task should not panic")
             .expect("archive server should not fail");
         assert_eq!(
             wait_cached_archive(&home, "shutdown-active", "v1").await,
@@ -7768,7 +7765,9 @@ mod tests {
         .unwrap();
 
         let _ = release_tx.send(());
-        server_task.await.unwrap().unwrap();
+        join_raw_http_task(server_task, "ignored range probe server")
+            .await
+            .unwrap();
         assert_eq!(result, SizeProbe::Known(advertised_size));
     }
 
@@ -7957,7 +7956,9 @@ mod tests {
         .unwrap();
 
         let _ = release_tx.send(());
-        server_task.await.unwrap().unwrap();
+        join_raw_http_task(server_task, "partial content probe server")
+            .await
+            .unwrap();
         assert_eq!(result, SizeProbe::Known(total_size));
     }
 
@@ -8332,8 +8333,12 @@ mod tests {
         gate.wait_entered(1, Duration::from_secs(5)).await.unwrap();
         gate.release_one();
         let manifest = task.await.unwrap().unwrap();
-        ready_server_task.await.unwrap().unwrap();
-        cold_server_task.await.unwrap().unwrap();
+        join_raw_http_task(ready_server_task, "ready storage archive server")
+            .await
+            .unwrap();
+        join_raw_http_task(cold_server_task, "cold storage archive server")
+            .await
+            .unwrap();
 
         let batches = sandbox.write_files_calls();
         assert_eq!(batches.len(), 1);

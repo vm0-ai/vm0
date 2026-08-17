@@ -1495,7 +1495,8 @@ mod tests {
         RunnerPreferenceRemovalReason, RunnerPreferenceTier,
     };
     use crate::test_fixtures::raw_http::{
-        RawHttpAction, RawHttpTestServer, http_response, json_response, read_http_request,
+        RawHttpAction, RawHttpTestServer, http_response, join_raw_http_task, json_response,
+        read_http_request,
     };
 
     const RUNNER_CLAIM_RESPONSE_FIXTURE: &str = include_str!(
@@ -2907,10 +2908,7 @@ mod tests {
             .expect("request channel should remain open");
         assert!(second_claim_request.contains(&format!("/api/runners/jobs/{run_id}/claim")));
 
-        tokio::time::timeout(Duration::from_secs(1), server_task)
-            .await
-            .expect("transient sequence server should finish")
-            .unwrap();
+        join_raw_http_task(server_task, "transient sequence server").await;
         assert!(requests.recv().await.is_none());
     }
 
@@ -3149,7 +3147,7 @@ mod tests {
             rediscovered.discovery_source(),
             Some(JobDiscoverySource::Poll)
         );
-        server_task.await.unwrap();
+        join_raw_http_task(server_task, "direct candidate sequence server").await;
     }
 
     #[tokio::test]

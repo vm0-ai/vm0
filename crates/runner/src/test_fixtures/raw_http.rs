@@ -6,7 +6,7 @@ use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, oneshot};
-use tokio::task::{JoinError, JoinHandle};
+use tokio::task::JoinHandle;
 
 const RAW_HTTP_FIXTURE_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_REQUEST_HEADER_BYTES: usize = 64 * 1024;
@@ -104,26 +104,13 @@ impl RawHttpTestServer {
     }
 
     async fn finish_with_timeout(&mut self, timeout: Duration) -> Result<(), String> {
-        let mut task = self
+        let task = self
             .task
             .take()
             .expect("raw HTTP fixture task should be present");
-        match tokio::time::timeout(timeout, &mut task).await {
-            Ok(result) => flatten_task_result(result),
-            Err(_) => {
-                task.abort();
-                let reap_result = tokio::time::timeout(RAW_HTTP_FIXTURE_TIMEOUT, task).await;
-                match reap_result {
-                    Ok(Err(error)) if error.is_cancelled() => {
-                        Err("timed out; task reaped after abort".to_string())
-                    }
-                    Ok(result) => Err(format!(
-                        "timed out; unexpected task result while reaping after abort: {result:?}"
-                    )),
-                    Err(_) => Err("timed out reaping task after abort".to_string()),
-                }
-            }
-        }
+        finish_task_with_timeout(task, timeout)
+            .await?
+            .map_err(|error| format!("server failed: {error}"))
     }
 }
 
@@ -137,6 +124,36 @@ impl Drop for RawHttpTestServer {
 
 pub(crate) async fn read_http_request(socket: &mut TcpStream) -> io::Result<String> {
     read_http_request_with_timeout(socket, RAW_HTTP_FIXTURE_TIMEOUT).await
+}
+
+pub(crate) async fn join_raw_http_task<T>(task: JoinHandle<T>, description: &str) -> T {
+    finish_task_with_timeout(task, RAW_HTTP_FIXTURE_TIMEOUT)
+        .await
+        .unwrap_or_else(|error| panic!("{description} should finish: {error}"))
+}
+
+async fn finish_task_with_timeout<T>(
+    mut task: JoinHandle<T>,
+    timeout: Duration,
+) -> Result<T, String> {
+    match tokio::time::timeout(timeout, &mut task).await {
+        Ok(Ok(output)) => Ok(output),
+        Ok(Err(error)) if error.is_cancelled() => Err("server task was cancelled".to_string()),
+        Ok(Err(error)) => Err(format!("server task failed: {error}")),
+        Err(_) => {
+            task.abort();
+            match tokio::time::timeout(RAW_HTTP_FIXTURE_TIMEOUT, task).await {
+                Ok(Err(error)) if error.is_cancelled() => {
+                    Err("timed out; task reaped after abort".to_string())
+                }
+                Ok(Ok(_)) => Err("timed out; task completed while reaping after abort".to_string()),
+                Ok(Err(error)) => Err(format!(
+                    "timed out; task cleanup failed while reaping after abort: {error}"
+                )),
+                Err(_) => Err("timed out reaping task after abort".to_string()),
+            }
+        }
+    }
 }
 
 async fn read_http_request_with_timeout(
@@ -333,15 +350,6 @@ fn fixture_timeout(index: usize, stage: &str) -> io::Error {
         io::ErrorKind::TimedOut,
         format!("timed out {stage} for raw HTTP action {}", index + 1),
     )
-}
-
-fn flatten_task_result(result: Result<io::Result<()>, JoinError>) -> Result<(), String> {
-    match result {
-        Ok(Ok(())) => Ok(()),
-        Ok(Err(error)) => Err(format!("server failed: {error}")),
-        Err(error) if error.is_cancelled() => Err("server task was cancelled".to_string()),
-        Err(error) => Err(format!("server task failed: {error}")),
-    }
 }
 
 #[cfg(test)]
