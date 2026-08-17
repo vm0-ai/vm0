@@ -578,12 +578,12 @@ function createVideoModelSelection(
     if (pinned !== null) {
       return pinned;
     }
-    const preferred = (await get(userModelPreference$)).selectedVideoModel;
-    return preferred !== null &&
-      preferred !== undefined &&
-      isVideoModelId(preferred)
-      ? preferred
-      : DEFAULT_VIDEO_MODEL;
+    // The member default is contract-typed to the catalog enum, unlike the
+    // loose thread pin above, so it needs no narrowing of its own.
+    return (
+      (await get(userModelPreference$)).selectedVideoModel ??
+      DEFAULT_VIDEO_MODEL
+    );
   });
 
   const setVideoModelSelection$ = command(
