@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.457.2](https://github.com/vm0-ai/vm0/compare/api-v1.457.1...api-v1.457.2) (2026-08-17)
+
+
+### Bug Fixes
+
+* **api:** refresh API release marker comment ([#27803](https://github.com/vm0-ai/vm0/issues/27803)) ([c28f779](https://github.com/vm0-ai/vm0/commit/c28f7791949d1cd36b6b0a834fa4a2bae94efefd))
+
+
+### Refactoring
+
+* **db:** remove legacy integration runtime dependencies ([#27800](https://github.com/vm0-ai/vm0/issues/27800)) ([e1ac8a3](https://github.com/vm0-ai/vm0/commit/e1ac8a382dfddc61d850d0e2e8bcdcbc362937e6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/db bumped to 1.203.2
+
 ## [1.457.1](https://github.com/vm0-ai/vm0/compare/api-v1.457.0...api-v1.457.1) (2026-08-17)
 
 

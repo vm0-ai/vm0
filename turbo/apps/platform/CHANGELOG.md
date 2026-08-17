@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.766.1](https://github.com/vm0-ai/vm0/compare/app-v0.766.0...app-v0.766.1) (2026-08-17)
+
+
+### Bug Fixes
+
+* **platform:** align the composer control row with the design system ([#27726](https://github.com/vm0-ai/vm0/issues/27726)) ([f1a3f02](https://github.com/vm0-ai/vm0/commit/f1a3f02daff088f8b65ea8fc4274c359be45fbd0))
+* **platform:** pass credential id for personal model reconnect ([#27812](https://github.com/vm0-ai/vm0/issues/27812)) ([a172154](https://github.com/vm0-ai/vm0/commit/a1721545aff43ebc73d0e9d048a512d8777a36b8))
+
 ## [0.766.0](https://github.com/vm0-ai/vm0/compare/app-v0.765.2...app-v0.766.0) (2026-08-17)
 
 
