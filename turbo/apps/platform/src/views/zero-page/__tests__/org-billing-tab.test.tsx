@@ -1402,13 +1402,18 @@ describe("organization billing settings", () => {
     expect(
       within(orderSummary).queryByText("Monthly difference"),
     ).not.toBeInTheDocument();
-    expect(
-      within(orderSummary).getByText("Scheduled for Sep 1, 2026"),
-    ).toBeVisible();
+    const conversionNotice = within(orderSummary).getByRole("status", {
+      name: "Convert plan",
+    });
+    expect(conversionNotice).toBeVisible();
+    expect(conversionNotice).toHaveTextContent("Scheduled for Sep 1, 2026");
 
     const reviewConversionButton = buttonByText(
       "Review conversion",
       orderSummary,
+    );
+    expect(conversionNotice.parentElement).toContainElement(
+      reviewConversionButton,
     );
     click(reviewConversionButton);
     const reviewDialog = await screen.findByRole("dialog", {
@@ -1441,9 +1446,15 @@ describe("organization billing settings", () => {
     expect(
       within(reviewDialog).getByText("Monthly total").closest("div"),
     ).toHaveTextContent("$229.50/month");
-    expect(
-      within(reviewDialog).getByText("Scheduled for Sep 1, 2026"),
-    ).toBeInTheDocument();
+    const reviewConversionNotice = within(reviewDialog).getByRole("status", {
+      name: "Convert plan",
+    });
+    expect(reviewConversionNotice).toHaveTextContent(
+      "Scheduled for Sep 1, 2026",
+    );
+    expect(reviewConversionNotice.parentElement).toContainElement(
+      buttonByText("Confirm", reviewDialog),
+    );
 
     click(within(reviewDialog).getByLabelText("Back"));
     const returnedPackagesDialog = await screen.findByRole("dialog", {
@@ -2566,7 +2577,11 @@ describe("organization billing settings", () => {
     expect(
       within(orderSummary).queryByText("Scheduled for Apr 1, 2026"),
     ).not.toBeInTheDocument();
-    click(buttonByText("Confirm", orderSummary));
+    const confirmDowngradeButton = buttonByText("Confirm", orderSummary);
+    expect(downgradeNotice.parentElement).toContainElement(
+      confirmDowngradeButton,
+    );
+    click(confirmDowngradeButton);
     const confirmationDialog = await screen.findByRole("dialog", {
       name: "Review package change",
     });
