@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.762.1](https://github.com/vm0-ai/vm0/compare/app-v0.762.0...app-v0.762.1) (2026-08-17)
+
+
+### Bug Fixes
+
+* **billing:** align legacy migration notice ([#27640](https://github.com/vm0-ai/vm0/issues/27640)) ([ac57885](https://github.com/vm0-ai/vm0/commit/ac578856ee5c00b97659528a5ee1ccfd0e9aae80))
+
 ## [0.762.0](https://github.com/vm0-ai/vm0/compare/app-v0.761.0...app-v0.762.0) (2026-08-17)
 
 
