@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.451.16](https://github.com/vm0-ai/vm0/compare/api-v1.451.15...api-v1.451.16) (2026-08-17)
+
+
+### Bug Fixes
+
+* **api:** restrict explicit content in agent system prompts ([#27652](https://github.com/vm0-ai/vm0/issues/27652)) ([029329b](https://github.com/vm0-ai/vm0/commit/029329ba3330f8de8f1912af59fe4086e5192b0b))
+
+
+### Refactoring
+
+* **api:** remove legacy-all connector scope ([#27655](https://github.com/vm0-ai/vm0/issues/27655)) ([4618ea5](https://github.com/vm0-ai/vm0/commit/4618ea5631eebb765cccbd09d6e1ccd008640a52))
+
 ## [1.451.15](https://github.com/vm0-ai/vm0/compare/api-v1.451.14...api-v1.451.15) (2026-08-17)
 
 

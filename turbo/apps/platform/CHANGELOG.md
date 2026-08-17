@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.761.0](https://github.com/vm0-ai/vm0/compare/app-v0.760.2...app-v0.761.0) (2026-08-17)
+
+
+### Features
+
+* **platform:** parameterize assistant brand copy ([#27214](https://github.com/vm0-ai/vm0/issues/27214)) ([205e9c5](https://github.com/vm0-ai/vm0/commit/205e9c5b56aec85022c7e46a5817d8143baddb63))
+
+
+### Bug Fixes
+
+* **platform:** brand standalone surfaces by hostname ([#27654](https://github.com/vm0-ai/vm0/issues/27654)) ([d68c64c](https://github.com/vm0-ai/vm0/commit/d68c64cf265108e8cc5c59bedec3a52d0a19f121))
+
 ## [0.760.2](https://github.com/vm0-ai/vm0/compare/app-v0.760.1...app-v0.760.2) (2026-08-17)
 
 
