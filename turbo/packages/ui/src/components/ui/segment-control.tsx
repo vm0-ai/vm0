@@ -23,7 +23,7 @@ const SegmentControlSizeContext =
  * step under the selected segment in both themes.
  */
 const segmentControlVariants = cva(
-  "inline-flex items-center gap-0.5 rounded-lg bg-muted p-[3px]",
+  "inline-flex items-center gap-0.5 rounded-lg bg-muted p-0.5",
   {
     variants: {
       size: {
@@ -40,18 +40,18 @@ const segmentControlVariants = cva(
 );
 
 /**
- * `rounded-[5px]` keeps the segment concentric with the track: the 8px outer
- * radius minus the 3px of track padding it sits inside.
+ * `rounded-md` keeps the segment concentric with the track: the 8px outer
+ * radius minus the 2px of track padding it sits inside.
  *
  * The selected segment carries an opaque fill, so it must not take the
  * translucent `state-hover` layer -- the layer replaces a fill instead of
  * sitting on it, which would drop the segment back to the track colour.
  */
 const segmentControlItemVariants = cva(
-  "inline-flex h-full shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-[5px] font-medium whitespace-nowrap text-muted-foreground outline-none transition-colors select-none not-data-checked:hover:bg-state-hover not-data-checked:hover:text-foreground data-checked:bg-segment-selected data-checked:text-foreground data-checked:shadow-segment-selected data-disabled:pointer-events-none data-disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-ring [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex h-full shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-md font-medium whitespace-nowrap text-muted-foreground outline-none transition-colors select-none not-data-checked:hover:bg-state-hover not-data-checked:hover:text-foreground data-checked:bg-segment-selected data-checked:text-foreground data-checked:shadow-segment-selected data-disabled:pointer-events-none data-disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-ring [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     // Segment padding runs one step tighter than the matching button size,
-    // because the segment already sits inside the track's 3px inset -- that
+    // because the segment already sits inside the track's 2px inset -- that
     // puts the label the same optical distance from the outer edge as a
     // button of the same size. `xs` drops to `text-xs`: 14px text in a 22px
     // segment leaves a 1px line box gap, which reads as clipped.
