@@ -60,7 +60,10 @@ jobs:
             echo '{"schemaVersion":"vm0.agent-compose-consolidation-preflight.v2","status":"failed","failureGates":["probe.database_resolution"]}'
             exit 1
           fi
-          echo "::add-mask::$database_url"
+          WORKFLOW_COMMAND_DATA="${database_url//%/%25}"
+          WORKFLOW_COMMAND_DATA="${WORKFLOW_COMMAND_DATA//$'\r'/%0D}"
+          WORKFLOW_COMMAND_DATA="${WORKFLOW_COMMAND_DATA//$'\n'/%0A}"
+          printf '::add-mask::%s\n' "$WORKFLOW_COMMAND_DATA"
           echo "database-url=$database_url" >> "$GITHUB_OUTPUT"
 
       - name: Run aggregate-only preflight
