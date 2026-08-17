@@ -7378,7 +7378,6 @@ function ComposerVideoModeContent({
   expanded: boolean;
   pinnedModel: VideoModel | null;
 }) {
-  const { t } = useTranslation();
   const userPreference = useLastResolved(userModelPreference$);
   const selectedVideoModel =
     pinnedModel ?? userPreference?.selectedVideoModel ?? DEFAULT_VIDEO_MODEL;
@@ -7390,12 +7389,7 @@ function ComposerVideoModeContent({
         expanded ? "max-w-[11rem] opacity-100" : "max-w-0",
       )}
     >
-      <span className="shrink-0">
-        {t(($) => {
-          return $.artifacts.kinds.video;
-        })}{" "}
-        <span aria-hidden="true">·</span>
-      </span>
+      <span aria-hidden="true">·</span>
       <span className="min-w-0 truncate">
         {getModelDisplayName(selectedVideoModel)}
       </span>
@@ -7550,7 +7544,18 @@ function ComposerVideoModelControl({
               toggleDesktopVideoMode();
             }}
           >
-            <Video size={18} aria-hidden="true" />
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M2 8a4 4 0 0 1 4 -4h12a4 4 0 0 1 4 4v8a4 4 0 0 1 -4 4h-12a4 4 0 0 1 -4 -4z" />
+              <path d="M10 9l5 3l-5 3z" />
+            </svg>
             <ComposerVideoModeContent
               expanded={expanded}
               pinnedModel={pinnedModel}

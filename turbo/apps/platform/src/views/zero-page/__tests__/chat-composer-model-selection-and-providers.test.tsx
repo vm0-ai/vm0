@@ -3600,12 +3600,16 @@ describe("chat composer video model", () => {
     const videoModelButton = await findDesktopVideoModelButton();
     expect(chatModelButton).toHaveAttribute("aria-expanded", "false");
     expect(videoModelButton).toHaveAttribute("aria-expanded", "false");
+    expect(
+      chatModelButton.querySelector(".lucide-message-circle"),
+    ).toBeInTheDocument();
+    expect(chatModelButton).toHaveTextContent(/·\s*Claude Fable 5/);
+    expect(chatModelButton).not.toHaveTextContent("Chat");
 
     await user.click(videoModelButton);
 
-    expect(videoModelButton).toHaveTextContent(
-      /Video\s*·\s*Seedance 2\.0 Fast/,
-    );
+    expect(videoModelButton).toHaveTextContent(/·\s*Seedance 2\.0 Fast/);
+    expect(videoModelButton).not.toHaveTextContent("Video");
     expect(videoModelButton).toHaveAttribute("aria-pressed", "true");
     expect(chatModelButton).toHaveAttribute("aria-expanded", "false");
     expect(videoModelButton).toHaveAttribute("aria-expanded", "false");
