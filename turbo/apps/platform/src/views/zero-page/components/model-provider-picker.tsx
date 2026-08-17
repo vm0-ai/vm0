@@ -411,7 +411,7 @@ function ModelFirstTriggerContent({
     <span className="flex min-w-0 items-center gap-1.5">
       {desktopModeLabel && (
         <span className="hidden shrink-0 sm:inline-flex sm:items-center sm:gap-1.5">
-          <MessageCircle size={18} aria-hidden="true" />
+          <MessageCircle size={16} aria-hidden="true" />
           <span aria-hidden="true">·</span>
         </span>
       )}
