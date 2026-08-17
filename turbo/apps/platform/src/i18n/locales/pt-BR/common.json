@@ -1708,9 +1708,7 @@
       "videoOptionsLabel": "Opções de vídeo {{spec}}",
       "videoOptionsModel": "Modelo",
       "videoOptionsRatio": "Proporção",
-      "videoOptionsResolution": "Resolução",
-      "videoSpecAudioOff": "Sem áudio",
-      "videoSpecAudioOn": "Áudio"
+      "videoOptionsResolution": "Resolução"
     },
     "thread": {
       "ariaLabel": "Conversa",

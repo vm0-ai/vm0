@@ -942,7 +942,6 @@ function validateGenerationTemplatePrompt(
     const validation = buildGenerationTemplatePrompt(template, {
       latestWebsiteTemplatesEnabled:
         featureSwitches.latestWebsiteTemplatesEnabled,
-      videoModelSelectionEnabled: featureSwitches.videoModelSelectionEnabled,
     });
     if (validation.status === "invalid") {
       return badRequestMessage(validation.message);
@@ -2341,7 +2340,6 @@ const prepareNormalSend$ = command(
       explicitTemplates: runtimeBody.templates,
       latestWebsiteTemplatesEnabled:
         featureSwitches.latestWebsiteTemplatesEnabled,
-      videoModelSelectionEnabled: featureSwitches.videoModelSelectionEnabled,
     });
     // Gated with the composer control that produces it, so a client that keeps
     // sending the field after the switch is turned off stops being honoured.

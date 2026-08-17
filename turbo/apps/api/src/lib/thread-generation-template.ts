@@ -15,12 +15,10 @@ export function resolveThreadGenerationTemplatePrompt(args: {
   readonly explicit: GenerationTemplateRequest | null | undefined;
   readonly explicitTemplates?: readonly GenerationTemplateRequest[];
   readonly latestWebsiteTemplatesEnabled: boolean;
-  readonly videoModelSelectionEnabled: boolean;
 }): string {
   if (args.explicitTemplates && args.explicitTemplates.length > 0) {
     const built = buildGenerationTemplatesPrompt(args.explicitTemplates, {
       latestWebsiteTemplatesEnabled: args.latestWebsiteTemplatesEnabled,
-      videoModelSelectionEnabled: args.videoModelSelectionEnabled,
     });
     return built.status === "resolved" ? built.prompt : "";
   }
@@ -29,7 +27,6 @@ export function resolveThreadGenerationTemplatePrompt(args: {
   }
   const built = buildGenerationTemplatePrompt(args.explicit, {
     latestWebsiteTemplatesEnabled: args.latestWebsiteTemplatesEnabled,
-    videoModelSelectionEnabled: args.videoModelSelectionEnabled,
   });
   return built.status === "resolved" ? built.prompt : "";
 }

@@ -1,5 +1,23 @@
 import type { ChatRunVideoOptionsRequest } from "@okouai/api-contracts/contracts/chat-threads";
-import { selectedRunOwnedVideoParameters } from "./generation-template-prompt";
+
+function selectedVideoParameterLabels(
+  options: ChatRunVideoOptionsRequest,
+): readonly string[] {
+  const labels: string[] = [];
+  if (options.aspectRatio !== undefined) {
+    labels.push(`Aspect ratio: ${options.aspectRatio}`);
+  }
+  if (options.duration !== undefined) {
+    labels.push(`Duration: ${options.duration}`);
+  }
+  if (options.resolution !== undefined) {
+    labels.push(`Resolution: ${options.resolution}`);
+  }
+  if (options.generateAudio !== undefined) {
+    labels.push(`Audio: ${options.generateAudio ? "on" : "off"}`);
+  }
+  return labels;
+}
 
 /**
  * The video parameters the composer sent with this message, as a system-prompt
@@ -31,15 +49,15 @@ export function buildVideoRunOptionsPrompt(
   if (!options) {
     return "";
   }
-  const parameters = selectedRunOwnedVideoParameters(options);
-  if (parameters.length === 0) {
+  const labels = selectedVideoParameterLabels(options);
+  if (labels.length === 0) {
     return "";
   }
   return [
     "# Video Generation Defaults",
     "The user set these for videos generated in this run:",
-    ...parameters.map((parameter) => {
-      return `- ${parameter.label}`;
+    ...labels.map((label) => {
+      return `- ${label}`;
     }),
     "Where this run's message asks for something else, the message wins, for that parameter only.",
   ].join("\n");

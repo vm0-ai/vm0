@@ -3,6 +3,11 @@ import { Buffer } from "node:buffer";
 import { command, computed, type Computed } from "ccstate";
 import { usageEvent } from "@okouai/db/schema/usage-event";
 import { usagePricing } from "@okouai/db/schema/usage-pricing";
+import {
+  DEFAULT_IMAGE_MODEL,
+  IMAGE_MODEL_ALIASES as SELECTABLE_IMAGE_MODEL_ALIASES,
+  type ImageModel as SelectableImageModel,
+} from "@okouai/core/image-model-catalog";
 import { r2ImageTransformUrl } from "@okouai/core/r2-image-transform";
 import { and, eq, inArray } from "drizzle-orm";
 
@@ -25,7 +30,6 @@ import {
 } from "./built-in-generation-usage-idempotency";
 
 const FAL_IMAGE_QUEUE_URL_PREFIX = "https://queue.fal.run";
-const IMAGE_IO_MODEL = "gpt-image-1";
 const IMAGE_IO_MAX_PROMPT_LENGTH = 32_000;
 const IMAGE_IO_MIN_PIXELS = 655_360;
 const IMAGE_IO_MAX_PIXELS = 8_294_400;
@@ -81,21 +85,12 @@ const FAL_IMAGE_ASPECT_RATIOS = [
 ] as const;
 
 const IMAGE_MODEL_ALIASES = {
-  "gpt-image-2": "gpt-image-2",
-  "gpt-image-1.5": "gpt-image-1.5",
-  "gpt-image-1": "gpt-image-1",
-  "gpt-image-1-mini": "gpt-image-1-mini",
-  "flux-pro-1.1": "fal-ai/flux-pro/v1.1",
-  "flux-pro-1.1-ultra": "fal-ai/flux-pro/v1.1-ultra",
-  "qwen-image": "fal-ai/qwen-image",
-  seedream4: "fal-ai/bytedance/seedream/v4/text-to-image",
-  "nano-banana-2": NANO_BANANA_2_MODEL,
-  "nano-banana2": NANO_BANANA_2_MODEL,
+  ...SELECTABLE_IMAGE_MODEL_ALIASES,
   birefnet: BIREFNET_MODEL,
   "clarity-upscaler": CLARITY_UPSCALER_MODEL,
 } as const;
 
-const IMAGE_MODEL_CONFIGS = {
+const IMAGE_GENERATION_MODEL_CONFIGS = {
   "gpt-image-2": {
     alias: "gpt-image-2",
     promptless: false,
@@ -321,6 +316,9 @@ const IMAGE_MODEL_CONFIGS = {
     supportsInputFidelity: false,
     supportsImagePromptStrength: false,
   },
+} as const satisfies Record<SelectableImageModel, unknown>;
+
+const IMAGE_TRANSFORM_MODEL_CONFIGS = {
   [BIREFNET_MODEL]: {
     alias: "birefnet",
     promptless: true,
@@ -371,6 +369,11 @@ const IMAGE_MODEL_CONFIGS = {
     supportsInputFidelity: false,
     supportsImagePromptStrength: false,
   },
+} as const;
+
+const IMAGE_MODEL_CONFIGS = {
+  ...IMAGE_GENERATION_MODEL_CONFIGS,
+  ...IMAGE_TRANSFORM_MODEL_CONFIGS,
 } as const;
 
 const IMAGE_MODELS = Object.keys(IMAGE_MODEL_CONFIGS) as ImageModel[];
@@ -765,7 +768,7 @@ function parsePrompt(
 function parseImageModel(
   body: Record<string, unknown>,
 ): ImageModel | ErrorResponse {
-  const rawModel = readString(body, "model", IMAGE_IO_MODEL);
+  const rawModel = readString(body, "model", DEFAULT_IMAGE_MODEL);
   const model = normalizeImageModel(rawModel);
   if (!model) {
     return badRequest(
