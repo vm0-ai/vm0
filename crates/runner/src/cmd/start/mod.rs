@@ -23,13 +23,13 @@
 //! Important invariants:
 //! - one process owns the canonical `base_dir` lock;
 //! - lifecycle signals are registered before slow startup work;
-//! - discovery is pinned across `select!` ticks so heartbeat and cleanup
+//! - discovery is pinned across `select!` ticks so heartbeat and lifecycle
 //!   branches do not restart polling;
 //! - heartbeat work is pinned and single-flight so its I/O does not stall the
 //!   main reactor or overlap a newer snapshot;
 //! - workspace-cache watcher work is pinned across reactor turns so async
 //!   metadata classification cannot lose already-drained kernel events;
-//! - the first routine heartbeat and idle-cleanup ticks are deferred;
+//! - the first routine heartbeat tick is deferred;
 //! - teardown drains heartbeat work and drops discovery before provider
 //!   shutdown.
 
@@ -1722,8 +1722,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             .map(crate::provider::ActiveRunnerPreference::deadline);
         tokio::select! {
             // Job discovery via provider (Ably wakeups + HTTP poll).
-            // The future is pinned outside the loop so heartbeat/cleanup
-            // ticks don't cancel and restart its internal poll timer. See #8747.
+            // The future is pinned outside the loop so other reactor branches
+            // do not cancel and restart its internal poll timer. See #8747.
             discovered = &mut discover_fut, if can_discover => {
                 let Some(candidate) = discovered else { break };
                 // Future completed — create a new one for the next discovery.

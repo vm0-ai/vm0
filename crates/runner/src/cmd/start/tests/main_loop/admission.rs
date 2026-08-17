@@ -849,6 +849,103 @@ async fn finalizing_fallback_starts_fresh_vm_before_idle_destroy_finishes() {
 }
 
 #[tokio::test]
+async fn ordinary_and_finalizing_pressure_admission_do_not_double_spend_idle_capacity() {
+    let destroy_gate = sandbox_mock::MockLifecycleGate::new();
+    let wait_gate = sandbox_mock::MockLifecycleGate::new();
+    let idle_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    idle_overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
+    let fresh_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    fresh_overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    let (config, env) =
+        mock_run_config_with_overrides(test_profiles(), 4, 8192, 2, fresh_overrides);
+    let budget = Arc::clone(&config.capacity.budget);
+    for reuse_key in ["thread:pressure-idle-first", "thread:pressure-idle-second"] {
+        seed_idle_pool_with_overrides(
+            &env.idle_pool,
+            &budget,
+            &idle_overrides,
+            reuse_key,
+            "vm0/default",
+            2,
+            4096,
+        )
+        .await;
+    }
+
+    let finalizing_reuse_key = "thread:concurrent-finalizing-pressure";
+    let history_generation_run_id = RunId::new_v4();
+    let predecessor_guard = env.active_runs.register(
+        history_generation_run_id,
+        Some(finalizing_reuse_key.to_owned()),
+        "vm0/default".into(),
+    );
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let finalizing_run_id = RunId::new_v4();
+    env.provider.set_claim_result(
+        finalizing_run_id,
+        Some(context_with_reuse_key(
+            finalizing_run_id,
+            finalizing_reuse_key,
+        )),
+    );
+    env.handle
+        .discover_tx
+        .send(finalizing_candidate(
+            finalizing_run_id,
+            finalizing_reuse_key,
+            history_generation_run_id,
+            TEST_RUNNER_ID,
+            TEST_HEARTBEAT_GENERATION,
+        ))
+        .unwrap();
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+    assert!(
+        env.handle
+            .claim_candidates()
+            .iter()
+            .any(|candidate| candidate.run_id() == finalizing_run_id)
+    );
+
+    let ordinary_run_id = RunId::new_v4();
+    drop(predecessor_guard);
+    push_job(
+        &env,
+        ordinary_run_id,
+        "vm0/default",
+        Some(minimal_context(ordinary_run_id)),
+    );
+
+    destroy_gate
+        .wait_entered(2, Duration::from_secs(5))
+        .await
+        .expect("ordinary and finalizing admission should each retire one idle VM");
+    wait_gate
+        .wait_entered(2, Duration::from_secs(5))
+        .await
+        .expect("both fresh runs should activate while old destroys remain blocked");
+    assert_eq!(budget.allocated(), (4, 8192, 2));
+    assert_eq!(env.idle_pool.lock().await.len(), 0);
+
+    wait_gate.release_one();
+    wait_gate.release_one();
+    for run_id in [ordinary_run_id, finalizing_run_id] {
+        let completion = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await
+            .expect("both admitted runs should complete before old idle teardown");
+        assert_eq!(completion.exit_code, 0);
+    }
+    assert_eq!(destroy_gate.entered_count(), 2);
+
+    destroy_gate.release_one();
+    destroy_gate.release_one();
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
 async fn cancelled_finalizing_capacity_wait_releases_retiring_leases_but_keeps_cleanup_owned() {
     let destroy_gate = sandbox_mock::MockLifecycleGate::new();
     let idle_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());

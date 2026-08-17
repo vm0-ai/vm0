@@ -173,18 +173,18 @@ async fn reserved_restore_rejects_after_parking_closes() {
 fn reserved_restore_accepts_an_entry_regardless_of_original_age() {
     let mut pool = IdlePool::new(pool_config(0));
     let now = Instant::now();
-    let candidate = make_candidate_for("session-expired-reservation", 2, 2048);
+    let candidate = make_candidate_for("session-aged-reservation", 2, 2048);
     assert!(matches!(
         park_at(
             &mut pool,
-            "session-expired-reservation",
+            "session-aged-reservation",
             candidate,
             now - Duration::from_secs(301),
         ),
         ParkResult::Parked
     ));
     let reservation = pool
-        .reserve_reusable("session-expired-reservation", "vm0/default", &None)
+        .reserve_reusable("session-aged-reservation", "vm0/default", &None)
         .expect("idle age must not prevent reservation");
 
     assert!(matches!(

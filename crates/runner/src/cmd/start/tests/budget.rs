@@ -263,6 +263,58 @@ async fn budget_pressure_starts_fresh_vm_before_idle_destroy_finishes() {
 }
 
 #[tokio::test]
+async fn fresh_create_failure_does_not_cancel_retired_idle_destroy() {
+    let destroy_gate = sandbox_mock::MockLifecycleGate::new();
+    let idle_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    idle_overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
+    let fresh_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    fresh_overrides.push_create_result(Err(sandbox::SandboxError::Initialization {
+        phase: sandbox::SandboxInitializationPhase::SandboxAllocation,
+        message: "create failed after idle retirement".into(),
+    }));
+    let (config, env) =
+        mock_run_config_with_overrides(test_profiles(), 2, 4096, 1, fresh_overrides);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
+    seed_idle_pool_with_overrides(
+        &idle_pool,
+        &budget,
+        &idle_overrides,
+        "sess-create-failure-retirement",
+        "vm0/default",
+        2,
+        4096,
+    )
+    .await;
+    let run_handle = tokio::spawn(run(config));
+
+    let run_id = RunId::new_v4();
+    push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+
+    destroy_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("idle destroy should remain tracked before fresh creation");
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("fresh create failure should report completion without waiting for old destroy");
+    assert_eq!(completion.exit_code, 1);
+    assert!(
+        completion
+            .error
+            .is_some_and(|error| error.contains("create failed after idle retirement"))
+    );
+    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
+    assert_eq!(idle_pool.lock().await.len(), 0);
+    assert_eq!(destroy_gate.entered_count(), 1);
+
+    destroy_gate.release_one();
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
 async fn smaller_fresh_profile_releases_only_net_idle_capacity() {
     let destroy_gate = sandbox_mock::MockLifecycleGate::new();
     let wait_gate = sandbox_mock::MockLifecycleGate::new();
