@@ -27,10 +27,6 @@ export const slackOrgConnections = pgTable(
         return slackOrgInstallations.slackWorkspaceId;
       }),
     userId: text("user_id").notNull(),
-    // DB/API rollout fallback (observed maximum exposure: ~102 minutes).
-    // Remove in #27602 after the switched API is healthy, the previous API
-    // version has drained, and every transition invariant remains valid.
-    legacyUserId: text("vm0_user_id").notNull(),
     dmWelcomeSent: boolean("dm_welcome_sent").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
@@ -41,10 +37,6 @@ export const slackOrgConnections = pgTable(
         table.slackWorkspaceId,
       ),
       index("idx_slack_org_connections_workspace").on(table.slackWorkspaceId),
-      index("idx_slack_org_connections_vm0_user_workspace").on(
-        table.legacyUserId,
-        table.slackWorkspaceId,
-      ),
       index("idx_slack_org_connections_user_id_workspace").on(
         table.userId,
         table.slackWorkspaceId,

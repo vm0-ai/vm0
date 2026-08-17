@@ -184,7 +184,6 @@ async function upsertTeamsConnection(
       teamsUserId: args.teamsUserId ?? null,
       teamsAadObjectId: args.teamsAadObjectId ?? null,
       userId: args.userId,
-      legacyUserId: args.userId,
       teamsUserDisplayName: args.displayName ?? null,
       teamsUserPrincipalName: args.principalName ?? null,
     })
@@ -205,7 +204,6 @@ async function upsertTeamsConnection(
       teamsUserId: args.teamsUserId ?? existing.teamsUserId,
       teamsAadObjectId: args.teamsAadObjectId ?? existing.teamsAadObjectId,
       userId: args.userId,
-      legacyUserId: args.userId,
       teamsUserDisplayName: args.displayName ?? existing.teamsUserDisplayName,
       teamsUserPrincipalName:
         args.principalName ?? existing.teamsUserPrincipalName,

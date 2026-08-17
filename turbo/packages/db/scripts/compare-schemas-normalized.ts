@@ -32,6 +32,53 @@ interface ConstraintInfo {
   constraint_def: string;
 }
 
+// #27796 intentionally removes these legacy identities from the live Drizzle
+// configurations one release before #27602 removes their physical database
+// objects. Keep this exception exact so every other migration/schema drift
+// remains a hard failure during the drain window.
+const INTEGRATION_IDENTITY_LEGACY_TABLES = [
+  "agentphone_user_agent_preferences",
+  "agentphone_user_links",
+  "feishu_org_connections",
+  "feishu_user_agent_preferences",
+  "github_user_links",
+  "slack_org_connections",
+  "slack_user_agent_preferences",
+  "teams_org_connections",
+  "teams_user_agent_preferences",
+  "telegram_official_user_links",
+  "telegram_user_agent_preferences",
+  "telegram_user_links",
+] as const;
+
+const INTENTIONAL_PHYSICAL_COLUMN_RESIDUALS = new Set(
+  INTEGRATION_IDENTITY_LEGACY_TABLES.map((tableName) => {
+    return `${tableName}.vm0_user_id|text|NO|<null>`;
+  }),
+);
+
+const INTENTIONAL_PHYSICAL_INDEX_RESIDUALS = new Set([
+  "agentphone_user_agent_preferences_pkey|CREATE UNIQUE INDEX agentphone_user_agent_preferences_pkey ON agentphone_user_agent_preferences USING btree (vm0_user_id, org_id)",
+  "idx_agentphone_user_links_vm0_org|CREATE UNIQUE INDEX idx_agentphone_user_links_vm0_org ON agentphone_user_links USING btree (vm0_user_id, org_id)",
+  "idx_feishu_org_connections_vm0_installation|CREATE INDEX idx_feishu_org_connections_vm0_installation ON feishu_org_connections USING btree (vm0_user_id, installation_id)",
+  "feishu_user_agent_preferences_pkey|CREATE UNIQUE INDEX feishu_user_agent_preferences_pkey ON feishu_user_agent_preferences USING btree (vm0_user_id, org_id)",
+  "idx_slack_org_connections_vm0_user_workspace|CREATE INDEX idx_slack_org_connections_vm0_user_workspace ON slack_org_connections USING btree (vm0_user_id, slack_workspace_id)",
+  "slack_user_agent_preferences_pkey|CREATE UNIQUE INDEX slack_user_agent_preferences_pkey ON slack_user_agent_preferences USING btree (vm0_user_id, org_id)",
+  "idx_teams_org_connections_vm0_tenant|CREATE INDEX idx_teams_org_connections_vm0_tenant ON teams_org_connections USING btree (vm0_user_id, teams_tenant_id)",
+  "teams_user_agent_preferences_pkey|CREATE UNIQUE INDEX teams_user_agent_preferences_pkey ON teams_user_agent_preferences USING btree (vm0_user_id, org_id)",
+  "idx_telegram_official_user_links_vm0_org|CREATE UNIQUE INDEX idx_telegram_official_user_links_vm0_org ON telegram_official_user_links USING btree (vm0_user_id, org_id)",
+  "telegram_user_agent_preferences_pkey|CREATE UNIQUE INDEX telegram_user_agent_preferences_pkey ON telegram_user_agent_preferences USING btree (vm0_user_id, org_id)",
+  "idx_telegram_user_links_vm0_installation|CREATE UNIQUE INDEX idx_telegram_user_links_vm0_installation ON telegram_user_links USING btree (vm0_user_id, installation_id)",
+]);
+
+const INTENTIONAL_PHYSICAL_CONSTRAINT_RESIDUALS = new Set([
+  "agentphone_user_agent_preferences.agentphone_user_agent_preferences_pkey|PRIMARY KEY|PRIMARY KEY (vm0_user_id, org_id)",
+  "feishu_user_agent_preferences.feishu_user_agent_preferences_pkey|PRIMARY KEY|PRIMARY KEY (vm0_user_id, org_id)",
+  "slack_user_agent_preferences.slack_user_agent_preferences_pkey|PRIMARY KEY|PRIMARY KEY (vm0_user_id, org_id)",
+  "teams_user_agent_preferences.teams_user_agent_preferences_pkey|PRIMARY KEY|PRIMARY KEY (vm0_user_id, org_id)",
+  "telegram_user_agent_preferences.telegram_user_agent_preferences_pkey|PRIMARY KEY|PRIMARY KEY (vm0_user_id, org_id)",
+]);
+
 // Get database URLs from command line args
 const db1Url = process.argv[2];
 const db2Url = process.argv[3];
@@ -312,6 +359,66 @@ function compareConstraints(
   return { added, removed, modified };
 }
 
+function splitIntentionalPhysicalResiduals<T>(
+  values: T[],
+  serialize: (value: T) => string,
+  intentionalResiduals: ReadonlySet<string>,
+): { intentional: T[]; unexpected: T[] } {
+  const intentional: T[] = [];
+  const unexpected: T[] = [];
+
+  for (const value of values) {
+    if (intentionalResiduals.has(serialize(value))) {
+      intentional.push(value);
+    } else {
+      unexpected.push(value);
+    }
+  }
+
+  return { intentional, unexpected };
+}
+
+function serializeColumnResidual(column: TableColumn): string {
+  return [
+    `${column.table_name}.${column.column_name}`,
+    column.data_type,
+    column.is_nullable,
+    normalizeColumnDefault(column.column_default) ?? "<null>",
+  ].join("|");
+}
+
+function serializeIndexResidual(index: IndexInfo): string {
+  return `${index.index_name}|${normalizeIndexDef(index.index_def)}`;
+}
+
+function serializeConstraintResidual(constraint: ConstraintInfo): string {
+  return [
+    `${constraint.table_name}.${constraint.constraint_name}`,
+    constraint.constraint_type,
+    constraint.constraint_def,
+  ].join("|");
+}
+
+function printIntentionalPhysicalResiduals({
+  columns,
+  indexes,
+  constraints,
+}: {
+  columns: TableColumn[];
+  indexes: IndexInfo[];
+  constraints: ConstraintInfo[];
+}): void {
+  const total = columns.length + indexes.length + constraints.length;
+  if (total === 0) {
+    return;
+  }
+
+  console.log("=== Intentional Physical Rollout Residuals ===\n");
+  console.log(
+    `ℹ️  Ignoring ${columns.length} legacy columns, ${indexes.length} indexes, and ${constraints.length} constraints retained by #27796 until #27602.\n`,
+  );
+}
+
 function printColumnDiff(columnDiff: ReturnType<typeof compareColumns>): void {
   if (columnDiff.added.length > 0) {
     console.log(`✨ Added columns (${columnDiff.added.length}):`);
@@ -444,7 +551,16 @@ async function main() {
       getTableColumns(client1),
       getTableColumns(client2),
     ]);
-    const columnDiff = compareColumns(cols1, cols2);
+    const rawColumnDiff = compareColumns(cols1, cols2);
+    const columnResiduals = splitIntentionalPhysicalResiduals(
+      rawColumnDiff.removed,
+      serializeColumnResidual,
+      INTENTIONAL_PHYSICAL_COLUMN_RESIDUALS,
+    );
+    const columnDiff = {
+      ...rawColumnDiff,
+      removed: columnResiduals.unexpected,
+    };
     printColumnDiff(columnDiff);
 
     console.log("=== 2. Comparing Indexes ===\n");
@@ -452,7 +568,16 @@ async function main() {
       getIndexes(client1),
       getIndexes(client2),
     ]);
-    const indexDiff = compareIndexes(indexes1, indexes2);
+    const rawIndexDiff = compareIndexes(indexes1, indexes2);
+    const indexResiduals = splitIntentionalPhysicalResiduals(
+      rawIndexDiff.removed,
+      serializeIndexResidual,
+      INTENTIONAL_PHYSICAL_INDEX_RESIDUALS,
+    );
+    const indexDiff = {
+      ...rawIndexDiff,
+      removed: indexResiduals.unexpected,
+    };
     printIndexDiff(indexDiff);
 
     console.log("=== 3. Comparing Constraints (excluding CHECK) ===\n");
@@ -460,8 +585,23 @@ async function main() {
       getConstraints(client1),
       getConstraints(client2),
     ]);
-    const constraintDiff = compareConstraints(constraints1, constraints2);
+    const rawConstraintDiff = compareConstraints(constraints1, constraints2);
+    const constraintResiduals = splitIntentionalPhysicalResiduals(
+      rawConstraintDiff.removed,
+      serializeConstraintResidual,
+      INTENTIONAL_PHYSICAL_CONSTRAINT_RESIDUALS,
+    );
+    const constraintDiff = {
+      ...rawConstraintDiff,
+      removed: constraintResiduals.unexpected,
+    };
     printConstraintDiff(constraintDiff);
+
+    printIntentionalPhysicalResiduals({
+      columns: columnResiduals.intentional,
+      indexes: indexResiduals.intentional,
+      constraints: constraintResiduals.intentional,
+    });
 
     console.log("=== Summary ===\n");
     const totalDiffs =

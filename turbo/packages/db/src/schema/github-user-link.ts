@@ -27,10 +27,6 @@ export const githubUserLinks = pgTable(
         { onDelete: "cascade" },
       ),
     userId: text("user_id").notNull(),
-    // DB/API rollout fallback (observed maximum exposure: ~102 minutes).
-    // Remove in #27602 after the switched API is healthy, the previous API
-    // version has drained, and every transition invariant remains valid.
-    legacyUserId: text("vm0_user_id").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {

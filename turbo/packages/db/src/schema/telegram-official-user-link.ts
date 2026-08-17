@@ -25,10 +25,6 @@ export const telegramOfficialUserLinks = pgTable(
     telegramUsername: varchar("telegram_username", { length: 255 }),
     telegramDisplayName: varchar("telegram_display_name", { length: 255 }),
     userId: text("user_id").notNull(),
-    // DB/API rollout fallback (observed maximum exposure: ~102 minutes).
-    // Remove in #27602 after the switched API is healthy, the previous API
-    // version has drained, and every transition invariant remains valid.
-    legacyUserId: text("vm0_user_id").notNull(),
     orgId: text("org_id").notNull(),
     publicBrand: text("public_brand")
       .$type<PublicBrand>()
@@ -42,10 +38,6 @@ export const telegramOfficialUserLinks = pgTable(
     return [
       uniqueIndex("idx_telegram_official_user_links_tg_user").on(
         table.telegramUserId,
-      ),
-      uniqueIndex("idx_telegram_official_user_links_vm0_org").on(
-        table.legacyUserId,
-        table.orgId,
       ),
       uniqueIndex("idx_telegram_official_user_links_user_org").on(
         table.userId,

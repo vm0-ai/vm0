@@ -291,7 +291,6 @@ async function upsertTeamsConnection(
       teamsAadObjectId: args.teamsAadObjectId,
       teamsTenantId: args.teamsTenantId,
       userId: args.userId,
-      legacyUserId: args.userId,
       teamsUserDisplayName: args.teamsUserDisplayName,
       teamsUserPrincipalName: args.teamsUserPrincipalName,
     })

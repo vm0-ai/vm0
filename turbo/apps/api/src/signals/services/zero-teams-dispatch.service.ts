@@ -784,7 +784,6 @@ async function setUserAgentPreference(args: {
     .insert(teamsUserAgentPreferences)
     .values({
       userId: args.userId,
-      legacyUserId: args.userId,
       orgId: args.orgId,
       selectedComposeId: args.composeId,
     })

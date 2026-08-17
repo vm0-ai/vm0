@@ -290,7 +290,6 @@ async function upsertFeishuConnection(
         installationId: args.state.installationId,
         feishuOpenId: args.userInfo.openId,
         userId: args.state.userId,
-        legacyUserId: args.state.userId,
         feishuUserName: args.userInfo.name,
       })
       .onConflictDoNothing({

@@ -4382,10 +4382,66 @@ async function validateCustomConnectorSkillVersionPair(
   );
 }
 
-async function extractSchemaFromDb(dbUrl: string): Promise<{
+interface ExtractedSchema {
   tables: Set<string>;
   columns: Map<string, Set<string>>;
-}> {
+  indexes: Map<string, Set<string>>;
+  constraints: Map<string, Set<string>>;
+}
+
+// Migration 0930 physically retains these rollback objects while migration
+// 0937 advances the runtime/current-snapshot contract past them. #27602 owns
+// their eventual physical removal and these temporary assertions.
+const TRANSITIONAL_INTEGRATION_IDENTITY_COLUMNS = new Set([
+  "agentphone_user_agent_preferences.vm0_user_id",
+  "agentphone_user_links.vm0_user_id",
+  "feishu_org_connections.vm0_user_id",
+  "feishu_user_agent_preferences.vm0_user_id",
+  "github_user_links.vm0_user_id",
+  "slack_org_connections.vm0_user_id",
+  "slack_user_agent_preferences.vm0_user_id",
+  "teams_org_connections.vm0_user_id",
+  "teams_user_agent_preferences.vm0_user_id",
+  "telegram_official_user_links.vm0_user_id",
+  "telegram_user_agent_preferences.vm0_user_id",
+  "telegram_user_links.vm0_user_id",
+]);
+
+const TRANSITIONAL_INTEGRATION_IDENTITY_INDEXES = new Set([
+  "agentphone_user_agent_preferences.agentphone_user_agent_preferences_pkey",
+  "agentphone_user_links.idx_agentphone_user_links_vm0_org",
+  "feishu_org_connections.idx_feishu_org_connections_vm0_installation",
+  "feishu_user_agent_preferences.feishu_user_agent_preferences_pkey",
+  "slack_org_connections.idx_slack_org_connections_vm0_user_workspace",
+  "slack_user_agent_preferences.slack_user_agent_preferences_pkey",
+  "teams_org_connections.idx_teams_org_connections_vm0_tenant",
+  "teams_user_agent_preferences.teams_user_agent_preferences_pkey",
+  "telegram_official_user_links.idx_telegram_official_user_links_vm0_org",
+  "telegram_user_agent_preferences.telegram_user_agent_preferences_pkey",
+  "telegram_user_links.idx_telegram_user_links_vm0_installation",
+]);
+
+const TRANSITIONAL_INTEGRATION_IDENTITY_CONSTRAINTS = new Set([
+  "agentphone_user_agent_preferences.agentphone_user_agent_preferences_pkey",
+  "feishu_user_agent_preferences.feishu_user_agent_preferences_pkey",
+  "slack_user_agent_preferences.slack_user_agent_preferences_pkey",
+  "teams_user_agent_preferences.teams_user_agent_preferences_pkey",
+  "telegram_user_agent_preferences.telegram_user_agent_preferences_pkey",
+]);
+
+function groupSchemaObjects(
+  rows: Array<{ object_name: string; table_name: string }>,
+): Map<string, Set<string>> {
+  const objects = new Map<string, Set<string>>();
+  for (const row of rows) {
+    const tableObjects = objects.get(row.table_name) ?? new Set<string>();
+    tableObjects.add(row.object_name);
+    objects.set(row.table_name, tableObjects);
+  }
+  return objects;
+}
+
+async function extractSchemaFromDb(dbUrl: string): Promise<ExtractedSchema> {
   const client = new Client({ connectionString: dbUrl });
   await client.connect();
 
@@ -4432,7 +4488,40 @@ async function extractSchemaFromDb(dbUrl: string): Promise<{
       );
     }
 
-    return { tables, columns };
+    const indexesResult = await client.query<{
+      object_name: string;
+      table_name: string;
+    }>(`
+      SELECT
+        "tablename" AS "table_name",
+        "indexname" AS "object_name"
+      FROM "pg_indexes"
+      WHERE "schemaname" = 'public'
+      ORDER BY "tablename", "indexname"
+    `);
+    const constraintsResult = await client.query<{
+      object_name: string;
+      table_name: string;
+    }>(`
+      SELECT
+        "relation"."relname" AS "table_name",
+        "constraint"."conname" AS "object_name"
+      FROM "pg_constraint" AS "constraint"
+      JOIN "pg_class" AS "relation"
+        ON "relation"."oid" = "constraint"."conrelid"
+      JOIN "pg_namespace" AS "namespace"
+        ON "namespace"."oid" = "relation"."relnamespace"
+      WHERE "namespace"."nspname" = 'public'
+        AND "constraint"."contype" = 'p'
+      ORDER BY "relation"."relname", "constraint"."conname"
+    `);
+
+    return {
+      tables,
+      columns,
+      indexes: groupSchemaObjects(indexesResult.rows),
+      constraints: groupSchemaObjects(constraintsResult.rows),
+    };
   } finally {
     await client.end();
   }
@@ -4441,17 +4530,18 @@ async function extractSchemaFromDb(dbUrl: string): Promise<{
 interface SnapshotTable {
   name?: string;
   columns?: Record<string, unknown>;
+  indexes?: Record<string, unknown>;
+  compositePrimaryKeys?: Record<string, unknown>;
 }
 
-function extractSchemaFromSnapshot(snapshotPath: string): {
-  tables: Set<string>;
-  columns: Map<string, Set<string>>;
-} {
+function extractSchemaFromSnapshot(snapshotPath: string): ExtractedSchema {
   const snapshot = JSON.parse(readFileSync(snapshotPath, "utf-8")) as {
     tables?: Record<string, SnapshotTable>;
   };
   const tables = new Set<string>();
   const columns = new Map<string, Set<string>>();
+  const indexes = new Map<string, Set<string>>();
+  const constraints = new Map<string, Set<string>>();
 
   for (const [tableKey, tableData] of Object.entries(snapshot.tables || {})) {
     // Normalize table name: extract actual table name from the key
@@ -4461,9 +4551,15 @@ function extractSchemaFromSnapshot(snapshotPath: string): {
 
     const tableColumns = new Set<string>(Object.keys(tableData.columns || {}));
     columns.set(tableName, tableColumns);
+    const primaryKeys = Object.keys(tableData.compositePrimaryKeys || {});
+    indexes.set(
+      tableName,
+      new Set([...Object.keys(tableData.indexes || {}), ...primaryKeys]),
+    );
+    constraints.set(tableName, new Set(primaryKeys));
   }
 
-  return { tables, columns };
+  return { tables, columns, indexes, constraints };
 }
 
 function compareSchemas(
@@ -4505,7 +4601,10 @@ function compareSchemas(
     ).sort();
 
     const missingCols = dbCols.filter((column) => {
-      return !snapshotCols.includes(column);
+      return (
+        !snapshotCols.includes(column) &&
+        !TRANSITIONAL_INTEGRATION_IDENTITY_COLUMNS.has(`${tableName}.${column}`)
+      );
     });
     const extraCols = snapshotCols.filter((c) => {
       return !dbCols.includes(c);
@@ -4527,6 +4626,56 @@ function compareSchemas(
     matches: differences.length === 0,
     differences,
   };
+}
+
+function assertDirectionalSnapshotResiduals(
+  dbSchema: ExtractedSchema,
+  snapshotSchema: ExtractedSchema,
+): void {
+  const assertPhysicalAndSnapshotOmission = (
+    expectedObjects: ReadonlySet<string>,
+    dbObjects: Map<string, Set<string>>,
+    snapshotObjects: Map<string, Set<string>>,
+    objectKind: string,
+  ): void => {
+    for (const qualifiedName of expectedObjects) {
+      const separator = qualifiedName.indexOf(".");
+      const tableName = qualifiedName.slice(0, separator);
+      const objectName = qualifiedName.slice(separator + 1);
+      assert.equal(
+        dbObjects.get(tableName)?.has(objectName),
+        true,
+        `${qualifiedName} ${objectKind} must remain physical during #27796`,
+      );
+      assert.equal(
+        snapshotObjects.get(tableName)?.has(objectName),
+        false,
+        `${qualifiedName} ${objectKind} must be absent from the current snapshot`,
+      );
+    }
+  };
+
+  assert.equal(TRANSITIONAL_INTEGRATION_IDENTITY_COLUMNS.size, 12);
+  assert.equal(TRANSITIONAL_INTEGRATION_IDENTITY_INDEXES.size, 11);
+  assert.equal(TRANSITIONAL_INTEGRATION_IDENTITY_CONSTRAINTS.size, 5);
+  assertPhysicalAndSnapshotOmission(
+    TRANSITIONAL_INTEGRATION_IDENTITY_COLUMNS,
+    dbSchema.columns,
+    snapshotSchema.columns,
+    "column",
+  );
+  assertPhysicalAndSnapshotOmission(
+    TRANSITIONAL_INTEGRATION_IDENTITY_INDEXES,
+    dbSchema.indexes,
+    snapshotSchema.indexes,
+    "index",
+  );
+  assertPhysicalAndSnapshotOmission(
+    TRANSITIONAL_INTEGRATION_IDENTITY_CONSTRAINTS,
+    dbSchema.constraints,
+    snapshotSchema.constraints,
+    "constraint",
+  );
 }
 
 async function validateTimestampOrdering(): Promise<void> {
@@ -6852,6 +7001,14 @@ async function validateLatestSnapshotAccuracy(): Promise<void> {
       `${String(latestIdx).padStart(4, "0")}_snapshot.json`,
     );
     const snapshotSchema = extractSchemaFromSnapshot(snapshotPath);
+
+    // Keep the code-only contraction directional: migrations still install
+    // every rollback object, while the new baseline cannot teach future
+    // db:generate runs to emit these destructive drops implicitly.
+    assertDirectionalSnapshotResiduals(dbSchema, snapshotSchema);
+    console.log(
+      "   ✅ 12 legacy columns, 11 indexes, and 5 constraints remain physical but absent from the current snapshot",
+    );
 
     // Compare
     const { matches, differences } = compareSchemas(

@@ -22,10 +22,6 @@ export const agentphoneUserLinks = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     phoneHandle: varchar("phone_handle", { length: 254 }).notNull(),
     userId: text("user_id").notNull(),
-    // DB/API rollout fallback (observed maximum exposure: ~102 minutes).
-    // Remove in #27602 after the switched API is healthy, the previous API
-    // version has drained, and every transition invariant remains valid.
-    legacyUserId: text("vm0_user_id").notNull(),
     orgId: text("org_id").notNull(),
     publicBrand: text("public_brand")
       .$type<PublicBrand>()
@@ -38,10 +34,6 @@ export const agentphoneUserLinks = pgTable(
     return [
       uniqueIndex("idx_agentphone_user_links_phone_handle").on(
         table.phoneHandle,
-      ),
-      uniqueIndex("idx_agentphone_user_links_vm0_org").on(
-        table.legacyUserId,
-        table.orgId,
       ),
       uniqueIndex("idx_agentphone_user_links_user_org").on(
         table.userId,

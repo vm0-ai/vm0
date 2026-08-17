@@ -386,7 +386,6 @@ export async function linkAgentPhoneUser(
     .values({
       phoneHandle,
       userId: params.userId,
-      legacyUserId: params.userId,
       orgId: params.orgId,
       publicBrand: params.publicBrand ?? "vm0",
     })
