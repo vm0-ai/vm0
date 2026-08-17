@@ -1368,6 +1368,7 @@
       "temporaryFastModeDisabledNotice": "Le mode rapide est temporairement désactivé pour cette exécution",
       "temporaryFastModeEnabledNotice": "Le mode rapide est temporairement activé pour cette exécution",
       "temporaryModelNotice": "Passage temporaire à {{model}}",
+      "temporaryVideoModelNotice": "Passage temporaire à {{model}} pour la vidéo",
       "threadSuggestions": "Conversations",
       "visualAttachmentsUnsupported": "{{modelName}} ne peut pas reconnaître les images ou les vidéos. Passez à un modèle capable de vision pour les joindre.",
       "workflows": {
