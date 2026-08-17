@@ -1374,8 +1374,17 @@ const REVIEW_RULE = "border-t-[0.7px] border-border";
    scrolling away with the body they belong to: a long member list must never
    put the decision out of reach or leave its consequence detached above it.
    The bar spans the full frame width, so it cancels the body's inset and
-   restores it inside, and its gap keeps the notice-to-button spacing stable. */
-const STEP_ACTION_BAR = `sticky bottom-0 -mx-5 mt-auto flex flex-col gap-3 bg-card px-5 py-4 ${REVIEW_RULE}`;
+   restores it inside, and its gap keeps the notice-to-button spacing stable.
+   A notice already provides its own visual boundary, so only a bare action bar
+   needs the rule that separates it from the scrolling content. */
+const STEP_ACTION_BAR_BASE =
+  "sticky bottom-0 -mx-5 mt-auto flex flex-col gap-3 bg-card px-5 py-4";
+const STEP_ACTION_BAR = `${STEP_ACTION_BAR_BASE} ${REVIEW_RULE}`;
+const STEP_ACTION_BAR_WITH_NOTICE = STEP_ACTION_BAR_BASE;
+
+function stepActionBarClass(hasNotice: boolean): string {
+  return hasNotice ? STEP_ACTION_BAR_WITH_NOTICE : STEP_ACTION_BAR;
+}
 
 function ReviewSectionLabel({ label }: { readonly label: string }) {
   return (
@@ -2294,7 +2303,7 @@ function ManagedSubscriptionOrderSummary({
         </p>
       )}
       {hasSubscriptionAction && (
-        <div className={STEP_ACTION_BAR}>
+        <div className={stepActionBarClass(Boolean(downgradeNotice))}>
           {downgradeNotice}
           {error && <p className="text-sm text-destructive">{error}</p>}
           <Button
@@ -2456,7 +2465,7 @@ function MigrationOrderSummary({
           />
         </>
       )}
-      <div className={inDialog ? STEP_ACTION_BAR : undefined}>
+      <div className={inDialog ? STEP_ACTION_BAR_WITH_NOTICE : undefined}>
         <SubscriptionChangeNotice
           className={inDialog ? "" : undefined}
           description={i18n.t(($) => {
@@ -2561,7 +2570,7 @@ function MigrationRevisionOrderSummary({
         />
       )}
       {hasConfigurationChange && (
-        <div className={inDialog ? STEP_ACTION_BAR : undefined}>
+        <div className={inDialog ? STEP_ACTION_BAR_WITH_NOTICE : undefined}>
           <SubscriptionChangeNotice
             className={inDialog ? "" : undefined}
             description={i18n.t(($) => {
@@ -2847,7 +2856,7 @@ function MigrationReviewStepContent({
         showChangeNotice={false}
         totals={totals}
       />
-      <div className={STEP_ACTION_BAR}>
+      <div className={STEP_ACTION_BAR_WITH_NOTICE}>
         <SubscriptionChangeNotice
           className=""
           description={i18n.t(($) => {
