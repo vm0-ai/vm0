@@ -5912,6 +5912,8 @@ function ConnectorTriggerIcons({
   const enabledCustomConnectors = customConnectors.filter((connector) => {
     return connector.authorized;
   });
+  const connectorIconLimit =
+    3 - Number(hasComputerUse) - Number(hasCloudBrowser);
   const enabled = [
     ...enabledConnectors.map((connector) => {
       return { kind: "builtin" as const, connector };
@@ -5919,7 +5921,7 @@ function ConnectorTriggerIcons({
     ...enabledCustomConnectors.map((connector) => {
       return { kind: "custom" as const, connector };
     }),
-  ].slice(0, 3);
+  ].slice(0, connectorIconLimit);
   const hasComputerAccess = hasComputerUse || hasCloudBrowser;
   if (enabled.length === 0 && !hasComputerUse && !hasCloudBrowser) {
     return <Plug size={18} />;
