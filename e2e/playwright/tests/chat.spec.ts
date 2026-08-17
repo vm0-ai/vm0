@@ -1172,7 +1172,7 @@ test("chat composer keeps the Send button inside on narrow screens", async ({
   });
   const sendButton = composer.getByRole("button", { name: "Send" });
 
-  await expect(connectorsButton.locator("img")).toHaveCount(3);
+  await expect(connectorsButton.locator("img")).toHaveCount(2);
   await connectorsButton.click();
   await expect(
     page.getByRole("switch", { name: "Disable Cloud browser" }),
@@ -1194,10 +1194,10 @@ test("chat composer keeps the Send button inside on narrow screens", async ({
 
   await page.setViewportSize({ width: 1024, height: 768 });
   await expect(workflowButton).toBeVisible();
-  await expect(connectorsButton.locator("img:visible")).toHaveCount(3);
+  await expect(connectorsButton.locator("img:visible")).toHaveCount(2);
   await expect(
     connectorsButton.locator("img:visible, svg:visible"),
-  ).toHaveCount(4);
+  ).toHaveCount(3);
   await expectInside(sendButton, composer);
 
   await waitForAgentDraftClear(page, async () => {
@@ -1229,9 +1229,7 @@ test("forward composer stays inside the modal on narrow screens", async ({
   await page.getByRole("button", { name: /^Forward\b/ }).click();
 
   const dialog = page.getByRole("dialog", { name: "Forward to" });
-  await dialog
-    .getByRole("option", { name: forwardLayoutThreadTitle })
-    .click();
+  await dialog.getByRole("option", { name: forwardLayoutThreadTitle }).click();
   const composerDialog = page.getByRole("dialog", {
     name: forwardLayoutThreadTitle,
   });
