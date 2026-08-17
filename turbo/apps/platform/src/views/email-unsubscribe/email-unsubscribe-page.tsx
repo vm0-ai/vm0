@@ -10,7 +10,7 @@ import {
   emailUnsubscribeToken$,
 } from "../../signals/email-unsubscribe/email-unsubscribe-signals.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { VM0Logo } from "../components/vm0-logo.tsx";
+import { ProductBrandMark } from "../components/product-brand-mark.tsx";
 
 export function EmailUnsubscribePage() {
   const { t } = useTranslation();
@@ -23,7 +23,7 @@ export function EmailUnsubscribePage() {
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center bg-background">
       <div className="flex w-[430px] max-w-[calc(100%-48px)] flex-col items-center gap-8 rounded-[20px] border border-border bg-background px-6 py-12 text-center">
-        <VM0Logo />
+        <ProductBrandMark />
         {status === "done" ? (
           <div className="flex flex-col items-center gap-2.5">
             <Check size={20} className="" />
