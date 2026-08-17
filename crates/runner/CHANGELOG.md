@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.168.24](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.23...runner-rs-v0.168.24) (2026-08-17)
+
+
+### Refactoring
+
+* **python:** extract model websocket usage lifecycle ([#27684](https://github.com/vm0-ai/vm0/issues/27684)) ([2b83830](https://github.com/vm0-ai/vm0/commit/2b83830a2b06b6b38e3a2c550f723bd4a703794d))
+
 ## [0.168.23](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.22...runner-rs-v0.168.23) (2026-08-17)
 
 ## [0.168.22](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.21...runner-rs-v0.168.22) (2026-08-17)

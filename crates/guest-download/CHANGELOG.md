@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.23.11](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.10...guest-download-v0.23.11) (2026-08-17)
+
+
+### Bug Fixes
+
+* **guest-download:** preserve normalized cleanup paths ([#27675](https://github.com/vm0-ai/vm0/issues/27675)) ([d026447](https://github.com/vm0-ai/vm0/commit/d026447869678e4a35c9efd0c842fcd2f0d01371))
+
+
+### Performance Improvements
+
+* **guest-download:** attribute manifest application phases ([#27699](https://github.com/vm0-ai/vm0/issues/27699)) ([468ad06](https://github.com/vm0-ai/vm0/commit/468ad064916dfa42cba4eb1d779f64df7e4adcd3))
+
 ## [0.23.10](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.9...guest-download-v0.23.10) (2026-08-16)
 
 ## [0.23.9](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.8...guest-download-v0.23.9) (2026-08-15)
