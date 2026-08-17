@@ -1,5 +1,104 @@
 # Changelog
 
+## [1.453.0](https://github.com/vm0-ai/vm0/compare/api-v1.452.0...api-v1.453.0) (2026-08-17)
+
+
+### Features
+
+* **billing:** support one-time atom usage-pack grants ([#26948](https://github.com/vm0-ai/vm0/issues/26948)) ([5221f39](https://github.com/vm0-ai/vm0/commit/5221f393c5fc221c8b794948578a674a1b5144bf))
+* **core:** add image model catalog and selection switch ([#27710](https://github.com/vm0-ai/vm0/issues/27710)) ([7087c6f](https://github.com/vm0-ai/vm0/commit/7087c6f37eabfce888341c9562ab2683659ebbb1)), closes [#27688](https://github.com/vm0-ai/vm0/issues/27688)
+
+
+### Refactoring
+
+* remove videoTemplateOptions feature switch ([#27706](https://github.com/vm0-ai/vm0/issues/27706)) ([dbb411f](https://github.com/vm0-ai/vm0/commit/dbb411f15a94a4fe20051f73d2b7a692fa8da77c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.335.0
+    * @okouai/core bumped to 8.564.0
+    * @okouai/db bumped to 1.201.1
+
+## [1.452.0](https://github.com/vm0-ai/vm0/compare/api-v1.451.18...api-v1.452.0) (2026-08-17)
+
+
+### Features
+
+* **api:** persist public brand for outbound delivery ([#27200](https://github.com/vm0-ai/vm0/issues/27200)) ([fa77b3e](https://github.com/vm0-ai/vm0/commit/fa77b3e80fae53c57168e8dc6d38e4b7a7d77c96))
+
+
+### Performance Improvements
+
+* **api:** bypass catalog for empty run scopes ([#27679](https://github.com/vm0-ai/vm0/issues/27679)) ([b14033b](https://github.com/vm0-ai/vm0/commit/b14033b9edf42357673a3eac329bd3122f0c257d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.334.0
+    * @okouai/core bumped to 8.563.0
+    * @okouai/db bumped to 1.201.0
+
+## [1.451.18](https://github.com/vm0-ai/vm0/compare/api-v1.451.17...api-v1.451.18) (2026-08-17)
+
+
+### Bug Fixes
+
+* **api:** derive missing connector catalog compatibility ([#27661](https://github.com/vm0-ai/vm0/issues/27661)) ([94e9c55](https://github.com/vm0-ai/vm0/commit/94e9c554303c0b325c938d5ba0f4c1c582a87022))
+
+## [1.451.17](https://github.com/vm0-ai/vm0/compare/api-v1.451.16...api-v1.451.17) (2026-08-17)
+
+
+### Refactoring
+
+* **run:** shadow application-owned agent execution plans ([#27664](https://github.com/vm0-ai/vm0/issues/27664)) ([4591090](https://github.com/vm0-ai/vm0/commit/4591090aee021414cdf19a076ab1ce7adc6ab4e9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/db bumped to 1.200.14
+
+## [1.451.16](https://github.com/vm0-ai/vm0/compare/api-v1.451.15...api-v1.451.16) (2026-08-17)
+
+
+### Bug Fixes
+
+* **api:** restrict explicit content in agent system prompts ([#27652](https://github.com/vm0-ai/vm0/issues/27652)) ([029329b](https://github.com/vm0-ai/vm0/commit/029329ba3330f8de8f1912af59fe4086e5192b0b))
+
+
+### Refactoring
+
+* **api:** remove legacy-all connector scope ([#27655](https://github.com/vm0-ai/vm0/issues/27655)) ([4618ea5](https://github.com/vm0-ai/vm0/commit/4618ea5631eebb765cccbd09d6e1ccd008640a52))
+
+## [1.451.15](https://github.com/vm0-ai/vm0/compare/api-v1.451.14...api-v1.451.15) (2026-08-17)
+
+
+### Bug Fixes
+
+* **billing:** unblock scheduled subscription transitions ([#27083](https://github.com/vm0-ai/vm0/issues/27083)) ([a9d6aaa](https://github.com/vm0-ai/vm0/commit/a9d6aaaedf36eff09108427c99ed5218dc5a955b))
+
+## [1.451.14](https://github.com/vm0-ai/vm0/compare/api-v1.451.13...api-v1.451.14) (2026-08-17)
+
+
+### Refactoring
+
+* **run:** persist immutable launch snapshots ([#27641](https://github.com/vm0-ai/vm0/issues/27641)) ([d2e3cdf](https://github.com/vm0-ai/vm0/commit/d2e3cdf15de07ebbff11cfc493abf7056042426a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.11
+    * @okouai/core bumped to 8.562.8
+    * @okouai/db bumped to 1.200.13
+
 ## [1.451.13](https://github.com/vm0-ai/vm0/compare/api-v1.451.12...api-v1.451.13) (2026-08-16)
 
 

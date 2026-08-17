@@ -12,10 +12,6 @@ import {
 import type { UserExportStatusResponse } from "@okouai/api-contracts/contracts/user-export";
 import { Button } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
-import {
-  platformVm0LogoDarkImg,
-  platformVm0LogoImg,
-} from "../../lib/static-assets.ts";
 import { now } from "../../lib/time.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
@@ -25,6 +21,7 @@ import {
   userExportStatusPollingRef$,
 } from "../../signals/export-page/export-page-signals.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import { ProductBrandMark } from "../components/product-brand-mark.tsx";
 import { Link } from "../router/link.tsx";
 
 type ExportViewState =
@@ -447,20 +444,7 @@ export function ExportPage() {
                 return $.settings.export.backToZero;
               })}
             </Link>
-            <img
-              src={platformVm0LogoDarkImg}
-              alt={t(($) => {
-                return $.appShell.logoAlt;
-              })}
-              className="h-4 w-auto dark:hidden"
-            />
-            <img
-              src={platformVm0LogoImg}
-              alt={t(($) => {
-                return $.appShell.logoAlt;
-              })}
-              className="hidden h-4 w-auto dark:block"
-            />
+            <ProductBrandMark size="small" />
           </div>
 
           <div className="space-y-6">

@@ -6,6 +6,8 @@ import { telegramChatThreadRoutes } from "@okouai/db/schema/telegram-chat-thread
 import { telegramInstallations } from "@okouai/db/schema/telegram-installation";
 import { telegramOfficialUserLinks } from "@okouai/db/schema/telegram-official-user-link";
 import { telegramUserLinks } from "@okouai/db/schema/telegram-user-link";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { and, eq, isNotNull } from "drizzle-orm";
@@ -60,6 +62,7 @@ interface TelegramChatRunContext {
 interface TelegramOwnerBinding {
   readonly botToken: string;
   readonly ownerLink: TelegramOwnerLink;
+  readonly publicBrand: PublicBrand;
 }
 
 async function markDelivered(db: Db, callbackId: string): Promise<void> {
@@ -138,7 +141,10 @@ async function loadTelegramOwnerBinding(
       return undefined;
     }
     const [link] = await args.db
-      .select({ id: telegramOfficialUserLinks.id })
+      .select({
+        id: telegramOfficialUserLinks.id,
+        publicBrand: telegramOfficialUserLinks.publicBrand,
+      })
       .from(telegramOfficialUserLinks)
       .where(
         and(
@@ -154,6 +160,7 @@ async function loadTelegramOwnerBinding(
       ? {
           botToken,
           ownerLink: { kind: "official", id: link.id },
+          publicBrand: link.publicBrand,
         }
       : undefined;
   }
@@ -166,6 +173,7 @@ async function loadTelegramOwnerBinding(
       id: telegramUserLinks.id,
       encryptedBotToken: telegramInstallations.encryptedBotToken,
       ownerUserId: telegramInstallations.ownerUserId,
+      publicBrand: telegramInstallations.publicBrand,
     })
     .from(telegramUserLinks)
     .innerJoin(
@@ -195,6 +203,7 @@ async function loadTelegramOwnerBinding(
       ),
     ),
     ownerLink: { kind: "custom", id: binding.id },
+    publicBrand: binding.publicBrand,
   };
 }
 
@@ -424,6 +433,7 @@ async function resolveTelegramPresentation(
     readonly run: TelegramChatRunContext;
     readonly runId: string;
     readonly installationId: string;
+    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<{
@@ -443,7 +453,7 @@ async function resolveTelegramPresentation(
   signal.throwIfAborted();
   return {
     logsUrl: isFeatureEnabled(FeatureSwitchKey.ZeroDebug, featureContext)
-      ? `${env("APP_URL")}/activities/${encodeURIComponent(args.runId)}`
+      ? `${appUrlForPublicBrand(env("APP_URL"), args.publicBrand)}/activities/${encodeURIComponent(args.runId)}`
       : undefined,
     footerText,
   };
@@ -532,6 +542,7 @@ async function deliverClaimedTelegramChatCallback(
       run,
       runId: args.callback.runId,
       installationId: payload.installationId,
+      publicBrand: binding.publicBrand,
     },
     signal,
   );

@@ -1,32 +1,36 @@
 import { computed } from "ccstate";
+import { isOkouHostname } from "../lib/platform-host.ts";
 
 type Branding = "vm0" | "okou";
 export type BrandName = "VM0" | "Okou";
-type ComputerUseProductName = "Zero" | "Okou";
-
-const OKOU_ROOT_DOMAINS = ["okou.ai", "omby.ai", "okou-app.pages.dev"] as const;
+export type AssistantName = "Zero" | "Okou";
 
 export function resolveBrandNameForHostname(hostname: string): BrandName {
-  const normalizedHostname = hostname.toLowerCase().replace(/:\d+$/u, "");
-  const isOkou = OKOU_ROOT_DOMAINS.some((domain) => {
-    return (
-      normalizedHostname === domain || normalizedHostname.endsWith(`.${domain}`)
-    );
-  });
+  return isOkouHostname(hostname) ? "Okou" : "VM0";
+}
 
-  return isOkou ? "Okou" : "VM0";
+export function resolveAssistantNameForHostname(
+  hostname: string,
+): AssistantName {
+  return resolveBrandNameForHostname(hostname) === "Okou" ? "Okou" : "Zero";
 }
 
 const branding$ = computed<Branding>(() => {
-  return resolveBrandNameForHostname(location.host) === "Okou" ? "okou" : "vm0";
+  return resolveBrandNameForHostname(location.hostname) === "Okou"
+    ? "okou"
+    : "vm0";
 });
 
 export const brandName$ = computed<BrandName>((get) => {
   return get(branding$) === "okou" ? "Okou" : "VM0";
 });
 
-export const computerUseProductName$ = computed<ComputerUseProductName>(
-  (get) => {
-    return get(branding$) === "okou" ? "Okou" : "Zero";
-  },
-);
+export const assistantName$ = computed<AssistantName>((get) => {
+  return get(branding$) === "okou" ? "Okou" : "Zero";
+});
+
+// Computer Use currently follows the public assistant identity. Keep the
+// domain-specific signal name for its existing consumers.
+export const computerUseProductName$ = computed<AssistantName>((get) => {
+  return get(assistantName$);
+});

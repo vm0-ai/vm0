@@ -1,18 +1,30 @@
 import webpush, { WebPushError } from "web-push";
 import { eq } from "drizzle-orm";
 import { pushSubscriptions } from "@okouai/db/schema/push-subscription";
+import {
+  appUrlForPublicBrand,
+  publicBrandPresentation,
+} from "@okouai/core/public-brand";
 
+import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
-import { optionalEnv } from "../../lib/env";
 import type { Db } from "../external/db";
 import { settle } from "../utils";
 
 const log = logger("api:push");
 
 interface PushNotification {
-  readonly title: string;
+  readonly title?: string;
   readonly body: string;
   readonly url: string;
+}
+
+function notificationUrl(pathOrUrl: string, publicBrand: "vm0" | "okou") {
+  if (/^https?:\/\//u.test(pathOrUrl)) {
+    return appUrlForPublicBrand(pathOrUrl, publicBrand);
+  }
+  const path = pathOrUrl.startsWith("/") ? pathOrUrl : `/${pathOrUrl}`;
+  return `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}${path}`;
 }
 
 /**
@@ -41,9 +53,15 @@ export async function sendUserPushNotifications(args: {
     return;
   }
 
-  const payload = JSON.stringify(args.notification);
   await Promise.all(
     subscriptions.map(async (subscription) => {
+      const payload = JSON.stringify({
+        ...args.notification,
+        title:
+          args.notification.title ??
+          publicBrandPresentation(subscription.publicBrand).assistantName,
+        url: notificationUrl(args.notification.url, subscription.publicBrand),
+      });
       const result = await settle(
         webpush.sendNotification(
           {

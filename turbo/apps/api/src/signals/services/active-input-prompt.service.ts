@@ -202,10 +202,6 @@ export async function materializePendingActiveInputPrompts(
           FeatureSwitchKey.LatestWebsiteTemplates,
           featureSwitchContext,
         ),
-        videoModelSelectionEnabled: isFeatureEnabled(
-          FeatureSwitchKey.VideoModelSelection,
-          featureSwitchContext,
-        ),
       }),
     );
     signal.throwIfAborted();
@@ -274,7 +270,6 @@ async function materializeActiveInputPrompt(
     readonly orgId: string;
     readonly userId: string;
     readonly latestWebsiteTemplatesEnabled: boolean;
-    readonly videoModelSelectionEnabled: boolean;
   },
 ): Promise<string> {
   const userMessage = requiredUserMessageForEvent(
@@ -295,7 +290,6 @@ async function materializeActiveInputPrompt(
     explicit: projection.primaryTemplate,
     explicitTemplates: projection.templates,
     latestWebsiteTemplatesEnabled: args.latestWebsiteTemplatesEnabled,
-    videoModelSelectionEnabled: args.videoModelSelectionEnabled,
   });
   const prompt = integration?.prompt ?? projection.agentPrompt;
   const parts = [

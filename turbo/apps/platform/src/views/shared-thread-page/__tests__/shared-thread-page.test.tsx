@@ -2,7 +2,10 @@ import { sharedThreadsContract } from "@okouai/api-contracts/contracts/shared-th
 import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -15,6 +18,7 @@ describe("shared thread page", () => {
       return respond(200, {
         id: SHARED_THREAD_ID,
         title: "Public launch plan",
+        publicBrand: "okou",
         messages: [
           {
             messageIndex: 0,
@@ -49,6 +53,11 @@ describe("shared thread page", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText("Agent")).not.toBeInTheDocument();
     expect(screen.queryByText("Owner")).not.toBeInTheDocument();
+    const tryOkouLink = queryAllByRoleFast("link").find((link) => {
+      return link.textContent === "Try Okou";
+    });
+    expect(tryOkouLink).toBeInTheDocument();
+    expect(tryOkouLink).toHaveAttribute("href", window.location.origin);
   });
 
   it("owns its scrolling because the app shell clips overflow", async () => {
@@ -56,6 +65,7 @@ describe("shared thread page", () => {
       return respond(200, {
         id: SHARED_THREAD_ID,
         title: "Long thread",
+        publicBrand: "vm0",
         messages: [
           {
             messageIndex: 0,
@@ -82,6 +92,7 @@ describe("shared thread page", () => {
       return respond(200, {
         id: SHARED_THREAD_ID,
         title: "VM0",
+        publicBrand: "vm0",
         messages: [],
       });
     });
@@ -96,5 +107,34 @@ describe("shared thread page", () => {
       screen.findByRole("heading", { name: "VM0" }),
     ).resolves.toBeInTheDocument();
     expect(document.title).toBe("VM0");
+  });
+
+  it("defaults an ambiguous not-found page to VM0 presentation", async () => {
+    context.mocks.api(sharedThreadsContract.get, ({ respond }) => {
+      return respond(404, {
+        error: { code: "NOT_FOUND", message: "Not found" },
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/share/threads/${SHARED_THREAD_ID}`,
+      user: null,
+    });
+
+    await expect(
+      screen.findByRole("heading", { name: "Shared conversation not found" }),
+    ).resolves.toBeInTheDocument();
+    const links = queryAllByRoleFast("link");
+    expect(
+      links.find((link) => {
+        return link.textContent === "VM0";
+      }),
+    ).toBeInTheDocument();
+    expect(
+      links.find((link) => {
+        return link.textContent === "Try Zero";
+      }),
+    ).toBeInTheDocument();
   });
 });

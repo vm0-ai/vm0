@@ -9,6 +9,7 @@ import userEvent from "@testing-library/user-event";
 import {
   chatThreadsContract,
   chatThreadVideoModelContract,
+  type ChatRunOptionsRequest,
   type ChatThreadEvent,
   type ChatThreadServiceTier,
 } from "@okouai/api-contracts/contracts/chat-threads";
@@ -28,6 +29,7 @@ import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/z
 import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
 import {
   userModelPreferenceContract,
+  type UpdateUserModelPreferenceRequest,
   type UserModelPreferenceResponse,
 } from "@okouai/api-contracts/contracts/user-model-preference";
 import { zeroWorkflowsCollectionContract } from "@okouai/api-contracts/contracts/zero-workflows";
@@ -3625,15 +3627,32 @@ describe("chat composer video model", () => {
     const videoModelButton = await findDesktopVideoModelButton();
     expect(chatModelButton).toHaveAttribute("aria-expanded", "false");
     expect(videoModelButton).toHaveAttribute("aria-expanded", "false");
+    const expandedChatModeIcon = chatModelButton.querySelector(
+      ".lucide-message-circle",
+    );
+    expect(expandedChatModeIcon).toBeInTheDocument();
+    expect(expandedChatModeIcon).toHaveAttribute("width", "16");
+    expect(expandedChatModeIcon).toHaveAttribute("height", "16");
+    expect(chatModelButton).toHaveTextContent(/·\s*Claude Fable 5/);
+    expect(chatModelButton).not.toHaveTextContent("Chat");
 
     await user.click(videoModelButton);
 
-    expect(videoModelButton).toHaveTextContent(
-      /Video\s*·\s*Seedance 2\.0 Fast/,
-    );
+    expect(videoModelButton).toHaveTextContent(/·\s*Seedance 2\.0 Fast/);
+    expect(videoModelButton).not.toHaveTextContent("Video");
     expect(videoModelButton).toHaveAttribute("aria-pressed", "true");
     expect(chatModelButton).toHaveAttribute("aria-expanded", "false");
     expect(videoModelButton).toHaveAttribute("aria-expanded", "false");
+    const collapsedChatModeIcon = Array.from(
+      chatModelButton.parentElement?.querySelectorAll(
+        ".lucide-message-circle",
+      ) ?? [],
+    ).find((icon) => {
+      return !chatModelButton.contains(icon);
+    });
+    expect(collapsedChatModeIcon).toBeInTheDocument();
+    expect(collapsedChatModeIcon).toHaveAttribute("width", "16");
+    expect(collapsedChatModeIcon).toHaveAttribute("height", "16");
 
     chatModelButton.focus();
     await user.keyboard("{Enter}");
@@ -3731,5 +3750,326 @@ describe("chat composer video model", () => {
     await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ });
     expect(desktopVideoModelButton()).toBeUndefined();
     expect(videoPanelButton("Manage more models")).toBeUndefined();
+  });
+
+  it("sends the video parameters chosen on the composer chip", async () => {
+    const user = userEvent.setup({ delay: null });
+    context.mocks.browser.matchMedia(true);
+    let runOptions: ChatRunOptionsRequest | undefined;
+    mockOrgModelRoutes("claude-fable-5");
+    mockAgent();
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      selectedModel: "claude-fable-5",
+      onRunCreate(body) {
+        runOptions = body.runOptions;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    // Chat mode owns the composer until the video control is chosen.
+    await screen.findByPlaceholderText(PLACEHOLDER);
+    expect(screen.queryByLabelText(/^Video options /)).not.toBeInTheDocument();
+
+    await user.click(await findDesktopVideoModelButton());
+
+    // Seedance 2.0 fast is the system default, and the chip states what that
+    // model would use before anything is touched.
+    const chip = await screen.findByLabelText(
+      "Video options 16:9 \u00b7 8s \u00b7 720p",
+    );
+    await user.click(chip);
+    await user.click(
+      within(
+        await screen.findByRole("radiogroup", { name: "Ratio" }),
+      ).getByRole("radio", { name: "9:16" }),
+    );
+    await user.click(
+      within(
+        await screen.findByRole("radiogroup", { name: "Resolution" }),
+      ).getByRole("radio", { name: "480p" }),
+    );
+    await screen.findByLabelText("Video options 9:16 \u00b7 8s \u00b7 480p");
+    await user.keyboard("{Escape}");
+
+    await sendMessageInUI(
+      user,
+      screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+      "Make me a clip",
+    );
+
+    // Only what the user moved off the model's default travels with the send,
+    // and it travels as a run option rather than as persisted state.
+    await waitFor(() => {
+      expect(runOptions).toStrictEqual({
+        video: { aspectRatio: "9:16", resolution: "480p" },
+      });
+    });
+  });
+
+  it("offers the pinned model's own values on the composer chip", async () => {
+    const user = userEvent.setup({ delay: null });
+    context.mocks.browser.matchMedia(true);
+    mockVideoModelThread("MiniMax-H3");
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await user.click(await findDesktopVideoModelButton());
+
+    // MiniMax H3 accepts neither 720p nor 1080p, so the chip reads its own
+    // default instead and the panel never offers a value it would reject.
+    const chip = await screen.findByLabelText(
+      "Video options 16:9 \u00b7 8s \u00b7 2k",
+    );
+    await user.click(chip);
+    const resolutions = await screen.findByRole("radiogroup", {
+      name: "Resolution",
+    });
+    expect(
+      within(resolutions)
+        .getAllByRole("radio")
+        .map((option) => {
+          return option.textContent;
+        }),
+    ).toStrictEqual(["768p", "2k"]);
+    expect(
+      within(resolutions).queryByRole("radio", { name: "720p" }),
+    ).not.toBeInTheDocument();
+  });
+
+  function mockNewChatVideoDefaultAction(
+    preference: UserModelPreferenceResponse,
+  ): {
+    readonly updates: UpdateUserModelPreferenceRequest[];
+  } {
+    const updates: UpdateUserModelPreferenceRequest[] = [];
+    let stored = preference;
+    context.mocks.browser.matchMedia(true);
+    mockOrgModelRoutes("claude-fable-5");
+    context.mocks.api(userModelPreferenceContract.get, ({ respond }) => {
+      return respond(200, stored);
+    });
+    context.mocks.api(
+      userModelPreferenceContract.update,
+      ({ body, respond }) => {
+        updates.push(body);
+        stored = { ...stored, ...body, updatedAt: "2026-08-14T00:01:00Z" };
+        return respond(200, stored);
+      },
+    );
+    mockAgent();
+    return { updates };
+  }
+
+  function noticeText(text: string): HTMLElement | null {
+    return screen.queryByText(text);
+  }
+
+  it("keeps a new-chat video pick temporary and offers it as the default", async () => {
+    const user = userEvent.setup({ delay: null });
+    const { updates } = mockNewChatVideoDefaultAction({
+      selectedModel: null,
+      serviceTier: null,
+      selectedVideoModel: "MiniMax-H3",
+      updatedAt: "2026-08-14T00:00:00Z",
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.VideoModelSelection]: true,
+        [FeatureSwitchKey.NewChatDefaultModelAction]: true,
+      },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    // Entering video mode with the member default still selected says nothing.
+    await user.click(await findDesktopVideoModelButton());
+    expect(
+      noticeText("Temporarily switched to MiniMax H3 for video"),
+    ).toBeNull();
+
+    await user.click(await findDesktopVideoModelButton());
+    await user.click(await findVideoPanelButton("Veo 3.1 fast"));
+
+    await waitFor(() => {
+      expect(
+        noticeText("Temporarily switched to Veo 3.1 Fast for video"),
+      ).toBeInTheDocument();
+    });
+    // Picking alone must not touch the member default any more.
+    expect(updates).toStrictEqual([]);
+
+    await user.click(buttonContainingText("Set as default", document.body));
+
+    await waitFor(() => {
+      expect(updates).toStrictEqual([
+        {
+          // The run model is untouched, so the stored null is repeated rather
+          // than pinning the workspace default onto the member.
+          selectedModel: null,
+          serviceTier: null,
+          selectedVideoModel: "fal-ai/veo3.1/fast",
+        },
+      ]);
+    });
+
+    // The write is reflected through the realtime topic, like the run model.
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("userPreferenceChanged"),
+      ).toBeTruthy();
+    });
+    act(() => {
+      triggerAblyEvent("userPreferenceChanged", {
+        kinds: ["defaultVideoModel"],
+      });
+    });
+    await waitFor(() => {
+      expect(
+        noticeText("Temporarily switched to Veo 3.1 Fast for video"),
+      ).toBeNull();
+    });
+  });
+
+  it("shows only the notice for the model mode the composer is in", async () => {
+    const user = userEvent.setup({ delay: null });
+    const { updates } = mockNewChatVideoDefaultAction({
+      selectedModel: "claude-fable-5",
+      serviceTier: null,
+      selectedVideoModel: "MiniMax-H3",
+      updatedAt: "2026-08-14T00:00:00Z",
+    });
+    const chatNotice = "Temporarily switched to Claude Sonnet 4.6";
+    const videoNotice = "Temporarily switched to Veo 3.1 Fast for video";
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.VideoModelSelection]: true,
+        [FeatureSwitchKey.NewChatDefaultModelAction]: true,
+      },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await user.click(await findComposerModel("Claude Fable 5"));
+    await user.click(
+      await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
+    );
+    await waitFor(() => {
+      expect(noticeText(chatNotice)).toBeInTheDocument();
+    });
+
+    // Video mode, video model still on the member default: nothing pending.
+    const videoModelButton = await findDesktopVideoModelButton();
+    await user.click(videoModelButton);
+    expect(videoModelButton).toHaveAttribute("aria-pressed", "true");
+    await waitFor(() => {
+      expect(noticeText(chatNotice)).toBeNull();
+    });
+    expect(noticeText(videoNotice)).toBeNull();
+
+    await user.click(videoModelButton);
+    await user.click(await findVideoPanelButton("Veo 3.1 fast"));
+    await waitFor(() => {
+      expect(noticeText(videoNotice)).toBeInTheDocument();
+    });
+    expect(noticeText(chatNotice)).toBeNull();
+
+    // Back to chat mode: the run-model notice returns, the video one leaves.
+    const chatModelButton = await findComposerModel("Claude Sonnet 4.6");
+    chatModelButton.focus();
+    await user.keyboard("{Enter}");
+    expect(videoModelButton).toHaveAttribute("aria-pressed", "false");
+    await waitFor(() => {
+      expect(noticeText(chatNotice)).toBeInTheDocument();
+    });
+    expect(noticeText(videoNotice)).toBeNull();
+
+    // And back again — still one at a time, still the current mode's.
+    await user.click(videoModelButton);
+    await waitFor(() => {
+      expect(noticeText(videoNotice)).toBeInTheDocument();
+    });
+    expect(noticeText(chatNotice)).toBeNull();
+
+    // Setting the default in video mode writes the video model only.
+    await user.click(buttonContainingText("Set as default", document.body));
+
+    await waitFor(() => {
+      expect(updates).toStrictEqual([
+        {
+          selectedModel: "claude-fable-5",
+          serviceTier: null,
+          selectedVideoModel: "fal-ai/veo3.1/fast",
+        },
+      ]);
+    });
+  });
+
+  it("keeps a just-written run model when the video default follows it", async () => {
+    const user = userEvent.setup({ delay: null });
+    const { updates } = mockNewChatVideoDefaultAction({
+      selectedModel: "claude-fable-5",
+      serviceTier: null,
+      selectedVideoModel: "MiniMax-H3",
+      updatedAt: "2026-08-14T00:00:00Z",
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.VideoModelSelection]: true,
+        [FeatureSwitchKey.NewChatDefaultModelAction]: true,
+      },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await user.click(await findComposerModel("Claude Fable 5"));
+    await user.click(
+      await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
+    );
+    await waitFor(() => {
+      expect(
+        noticeText("Temporarily switched to Claude Sonnet 4.6"),
+      ).toBeInTheDocument();
+    });
+    await user.click(buttonContainingText("Set as default", document.body));
+    await waitFor(() => {
+      expect(updates).toHaveLength(1);
+    });
+
+    // No `userPreferenceChanged` push is delivered, so the cached preference
+    // still holds the pre-write run model. The video write must not resend it.
+    const videoModelButton = await findDesktopVideoModelButton();
+    await user.click(videoModelButton);
+    await user.click(videoModelButton);
+    await user.click(await findVideoPanelButton("Veo 3.1 fast"));
+    await waitFor(() => {
+      expect(
+        noticeText("Temporarily switched to Veo 3.1 Fast for video"),
+      ).toBeInTheDocument();
+    });
+    await user.click(buttonContainingText("Set as default", document.body));
+
+    await waitFor(() => {
+      expect(updates).toStrictEqual([
+        { selectedModel: "claude-sonnet-4-6", serviceTier: null },
+        {
+          selectedModel: "claude-sonnet-4-6",
+          serviceTier: null,
+          selectedVideoModel: "fal-ai/veo3.1/fast",
+        },
+      ]);
+    });
   });
 });

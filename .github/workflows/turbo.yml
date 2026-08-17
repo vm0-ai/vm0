@@ -988,9 +988,9 @@ jobs:
           # NEON_PROJECT_ID resolves to the Neon TEST project, never production.
           if [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$GITHUB_REF" = "refs/heads/main" ]; then
             echo "main push: pre-migrating test project default (parent) branch"
-            PARENT_DATABASE_URL=$(neonctl connection-string --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner --pooled)
+            PARENT_DATABASE_URL=$(neonctl connection-string --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner --pooled --ssl verify-full)
             if [ -z "$PARENT_DATABASE_URL" ]; then
-              PARENT_DATABASE_URL=$(neonctl connection-string --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner)
+              PARENT_DATABASE_URL=$(neonctl connection-string --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner --ssl verify-full)
             fi
             (cd turbo && DATABASE_URL="$PARENT_DATABASE_URL" pnpm -F @okouai/db db:migrate)
           fi
@@ -1010,9 +1010,9 @@ jobs:
             neonctl branches create --name "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID"
           fi
 
-          DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner --pooled)
+          DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner --pooled --ssl verify-full)
           if [ -z "$DATABASE_URL" ]; then
-            DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner)
+            DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner --ssl verify-full)
           fi
 
           cd turbo
@@ -2599,6 +2599,7 @@ jobs:
           token=$(jq -er '.token | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-runner-real-claude.json)
           api_url=$(jq -er '.apiUrl | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-runner-real-claude.json)
           echo "::add-mask::$token"
+          claude_model="claude-sonnet-5"
 
           headers=(-H "Authorization: Bearer ${token}" -H "Content-Type: application/json")
           if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
@@ -2606,11 +2607,11 @@ jobs:
           fi
 
           policies=$(curl -fsS "${headers[@]}" "${api_url}/api/okou/model-policies")
-          policy_payload=$(jq -c '
+          policy_payload=$(jq -c --arg model "$claude_model" '
             {
               policies: (
                 [.policies[] |
-                  select(.model != "claude-sonnet-4-6") |
+                  select(.model != $model) |
                   {
                     model,
                     isDefault,
@@ -2620,7 +2621,7 @@ jobs:
                   }
                 ] + [
                   {
-                    model: "claude-sonnet-4-6",
+                    model: $model,
                     isDefault: false,
                     defaultProviderType: "vm0",
                     credentialScope: "org",

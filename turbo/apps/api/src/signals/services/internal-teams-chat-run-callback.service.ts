@@ -9,6 +9,8 @@ import { teamsOrgInstallations } from "@okouai/db/schema/teams-org-installation"
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { and, countDistinct, eq, isNotNull } from "drizzle-orm";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -148,6 +150,7 @@ async function loadTeamsChatDeliveryContext(
   const [binding] = await args.db
     .select({
       serviceUrl: teamsOrgInstallations.serviceUrl,
+      publicBrand: teamsOrgInstallations.publicBrand,
     })
     .from(teamsChatThreadRoutes)
     .innerJoin(
@@ -294,6 +297,7 @@ async function deliverClaimedTeamsChatCallback(
       userId: run.userId,
       runId: args.callback.runId,
       agentId: run.agentId,
+      publicBrand: binding.publicBrand,
       replyToMention:
         payload.conversationType !== "personal" && mentionerCount > 1
           ? replyTo
@@ -407,6 +411,7 @@ interface TeamsChatAdmissionFailureArgs {
 interface TeamsAdmissionFailureContext {
   readonly messageContent: string;
   readonly installationServiceUrl: string | null;
+  readonly publicBrand: PublicBrand;
 }
 
 async function loadTeamsAdmissionFailureContext(
@@ -427,7 +432,10 @@ async function loadTeamsAdmissionFailureContext(
       )
       .limit(1),
     args.db
-      .select({ serviceUrl: teamsOrgInstallations.serviceUrl })
+      .select({
+        serviceUrl: teamsOrgInstallations.serviceUrl,
+        publicBrand: teamsOrgInstallations.publicBrand,
+      })
       .from(teamsChatThreadRoutes)
       .innerJoin(
         teamsOrgConnections,
@@ -462,6 +470,7 @@ async function loadTeamsAdmissionFailureContext(
   return {
     messageContent: event.content,
     installationServiceUrl: binding.serviceUrl,
+    publicBrand: binding.publicBrand,
   };
 }
 
@@ -472,6 +481,7 @@ interface TeamsAdmissionFailurePresentation {
 
 async function resolveTeamsAdmissionFailurePresentation(
   args: TeamsChatAdmissionFailureArgs,
+  publicBrand: PublicBrand,
   signal: AbortSignal,
 ): Promise<TeamsAdmissionFailurePresentation> {
   const [mentionerCount, featureContext, orgRows, agentRows] =
@@ -511,7 +521,7 @@ async function resolveTeamsAdmissionFailurePresentation(
     );
   }
   const logsUrl = isFeatureEnabled(FeatureSwitchKey.ZeroDebug, featureContext)
-    ? `${env("APP_URL").replace(/\/$/u, "")}/activities`
+    ? `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}/activities`
     : undefined;
   return {
     logsUrl,
@@ -559,6 +569,7 @@ export async function deliverTeamsChatAdmissionFailure(
   }
   const presentation = await resolveTeamsAdmissionFailurePresentation(
     args,
+    context.publicBrand,
     signal,
   );
   const serviceUrl =

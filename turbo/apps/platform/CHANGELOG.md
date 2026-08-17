@@ -1,5 +1,90 @@
 # Changelog
 
+## [0.764.0](https://github.com/vm0-ai/vm0/compare/app-v0.763.0...app-v0.764.0) (2026-08-17)
+
+
+### Features
+
+* **billing:** support one-time atom usage-pack grants ([#26948](https://github.com/vm0-ai/vm0/issues/26948)) ([5221f39](https://github.com/vm0-ai/vm0/commit/5221f393c5fc221c8b794948578a674a1b5144bf))
+
+
+### Refactoring
+
+* remove videoTemplateOptions feature switch ([#27706](https://github.com/vm0-ai/vm0/issues/27706)) ([dbb411f](https://github.com/vm0-ai/vm0/commit/dbb411f15a94a4fe20051f73d2b7a692fa8da77c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.335.0
+    * @okouai/core bumped to 8.564.0
+
+## [0.763.0](https://github.com/vm0-ai/vm0/compare/app-v0.762.1...app-v0.763.0) (2026-08-17)
+
+
+### Features
+
+* **api:** persist public brand for outbound delivery ([#27200](https://github.com/vm0-ai/vm0/issues/27200)) ([fa77b3e](https://github.com/vm0-ai/vm0/commit/fa77b3e80fae53c57168e8dc6d38e4b7a7d77c96))
+* **platform:** attribute telemetry by public brand ([#27662](https://github.com/vm0-ai/vm0/issues/27662)) ([f251dd2](https://github.com/vm0-ai/vm0/commit/f251dd276eb7aa801a61d7f5559f1d801f22202e))
+
+
+### Bug Fixes
+
+* **platform:** allow lab access before onboarding ([#27702](https://github.com/vm0-ai/vm0/issues/27702)) ([085dbdb](https://github.com/vm0-ai/vm0/commit/085dbdb3656fce61c5502ce9487ab3956c230139))
+* **platform:** reduce chat mode icon size ([#27678](https://github.com/vm0-ai/vm0/issues/27678)) ([76c9de2](https://github.com/vm0-ai/vm0/commit/76c9de22109166d1bdbd019a2ee2a91602aa3977))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.334.0
+    * @okouai/core bumped to 8.563.0
+
+## [0.762.1](https://github.com/vm0-ai/vm0/compare/app-v0.762.0...app-v0.762.1) (2026-08-17)
+
+
+### Bug Fixes
+
+* **billing:** align legacy migration notice ([#27640](https://github.com/vm0-ai/vm0/issues/27640)) ([ac57885](https://github.com/vm0-ai/vm0/commit/ac578856ee5c00b97659528a5ee1ccfd0e9aae80))
+
+## [0.762.0](https://github.com/vm0-ai/vm0/compare/app-v0.761.0...app-v0.762.0) (2026-08-17)
+
+
+### Features
+
+* **composer:** offer new-chat video model as an explicit default ([#27648](https://github.com/vm0-ai/vm0/issues/27648)) ([57f9504](https://github.com/vm0-ai/vm0/commit/57f9504c4bd1b596dcc4b6b6fba97d5e5f3186d4))
+
+## [0.761.0](https://github.com/vm0-ai/vm0/compare/app-v0.760.2...app-v0.761.0) (2026-08-17)
+
+
+### Features
+
+* **platform:** parameterize assistant brand copy ([#27214](https://github.com/vm0-ai/vm0/issues/27214)) ([205e9c5](https://github.com/vm0-ai/vm0/commit/205e9c5b56aec85022c7e46a5817d8143baddb63))
+
+
+### Bug Fixes
+
+* **platform:** brand standalone surfaces by hostname ([#27654](https://github.com/vm0-ai/vm0/issues/27654)) ([d68c64c](https://github.com/vm0-ai/vm0/commit/d68c64cf265108e8cc5c59bedec3a52d0a19f121))
+
+## [0.760.2](https://github.com/vm0-ai/vm0/compare/app-v0.760.1...app-v0.760.2) (2026-08-17)
+
+
+### Bug Fixes
+
+* **billing:** unblock scheduled subscription transitions ([#27083](https://github.com/vm0-ai/vm0/issues/27083)) ([a9d6aaa](https://github.com/vm0-ai/vm0/commit/a9d6aaaedf36eff09108427c99ed5218dc5a955b))
+
+## [0.760.1](https://github.com/vm0-ai/vm0/compare/app-v0.760.0...app-v0.760.1) (2026-08-17)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.11
+    * @okouai/core bumped to 8.562.8
+
 ## [0.760.0](https://github.com/vm0-ai/vm0/compare/app-v0.759.2...app-v0.760.0) (2026-08-16)
 
 

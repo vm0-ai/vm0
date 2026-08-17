@@ -1,5 +1,46 @@
 # Changelog
 
+## [0.168.25](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.24...runner-rs-v0.168.25) (2026-08-17)
+
+
+### Bug Fixes
+
+* **python:** bound codex prefetch marker parsing ([#27725](https://github.com/vm0-ai/vm0/issues/27725)) ([44934b3](https://github.com/vm0-ai/vm0/commit/44934b36f181518713f0ed2ff86bb2967d0ab45c))
+
+
+### Documentation
+
+* **python:** correct connector module ownership guidance ([#27723](https://github.com/vm0-ai/vm0/issues/27723)) ([c77e793](https://github.com/vm0-ai/vm0/commit/c77e7937ca6c78d208eb0c25a79156832cc60e88))
+
+## [0.168.24](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.23...runner-rs-v0.168.24) (2026-08-17)
+
+
+### Refactoring
+
+* **python:** extract model websocket usage lifecycle ([#27684](https://github.com/vm0-ai/vm0/issues/27684)) ([2b83830](https://github.com/vm0-ai/vm0/commit/2b83830a2b06b6b38e3a2c550f723bd4a703794d))
+
+## [0.168.23](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.22...runner-rs-v0.168.23) (2026-08-17)
+
+## [0.168.22](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.21...runner-rs-v0.168.22) (2026-08-17)
+
+
+### Performance Improvements
+
+* **python:** bound connector-intent header capture ([#27649](https://github.com/vm0-ai/vm0/issues/27649)) ([9c60e64](https://github.com/vm0-ai/vm0/commit/9c60e64ce8ca7d63b4a80b7125fef72b583e6fda))
+
+## [0.168.21](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.20...runner-rs-v0.168.21) (2026-08-17)
+
+
+### Refactoring
+
+* **python:** split runner flush tests by protocol lifecycle ([#27631](https://github.com/vm0-ai/vm0/issues/27631)) ([16dd3fb](https://github.com/vm0-ai/vm0/commit/16dd3fbf3ecb160336de737d487abac1da53d5d9))
+* **runner:** centralize process identity ([#27642](https://github.com/vm0-ai/vm0/issues/27642)) ([9b04c94](https://github.com/vm0-ai/vm0/commit/9b04c942804459bc408ccd0586a6008e7b263c06))
+
+
+### Performance Improvements
+
+* **python:** bound browser user-agent classification work ([#27639](https://github.com/vm0-ai/vm0/issues/27639)) ([7a008ec](https://github.com/vm0-ai/vm0/commit/7a008ec753aa66731385f4dcbd4410040355cf84))
+
 ## [0.168.20](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.19...runner-rs-v0.168.20) (2026-08-16)
 
 

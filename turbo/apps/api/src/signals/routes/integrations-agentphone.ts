@@ -1,6 +1,7 @@
 import { zeroIntegrationsAgentPhoneContract } from "@okouai/api-contracts/contracts/zero-integrations-agentphone";
 import { agentphoneVerificationSendCooldowns } from "@okouai/db/schema/agentphone-verification-send-cooldown";
 import { agentphoneUserLinks } from "@okouai/db/schema/agentphone-user-link";
+import { publicBrandPresentation } from "@okouai/core/public-brand";
 import { command, computed } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
@@ -12,7 +13,7 @@ import { now } from "../../lib/time";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
-import { request$ } from "../context/hono";
+import { publicBrand$, request$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import { db$, writeDb$ } from "../external/db";
 import { sendAgentPhoneMessage } from "../external/agentphone-client";
@@ -256,6 +257,7 @@ const sendAgentPhoneVerificationText$ = command(
       readonly cooldownKeys: readonly VerificationSendCooldownKey[];
       readonly phoneHandle: string;
       readonly connectUrl: string;
+      readonly publicBrand: "vm0" | "okou";
     },
     signal: AbortSignal,
   ) => {
@@ -301,7 +303,7 @@ const sendAgentPhoneVerificationText$ = command(
             {
               config: params.config,
               toNumber: params.phoneHandle,
-              body: `Confirm this phone number for VM0: ${params.connectUrl}`,
+              body: `Confirm this phone number for ${publicBrandPresentation(params.publicBrand).brandName}: ${params.connectUrl}`,
             },
             signal,
           ),
@@ -341,6 +343,7 @@ const sendAgentPhoneVerificationText$ = command(
 
 const startLink$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
+  const publicBrand = get(publicBrand$);
 
   const bodyResult = await get(startLinkBody$);
   signal.throwIfAborted();
@@ -402,6 +405,7 @@ const startLink$ = command(async ({ get, set }, signal: AbortSignal) => {
     agentphoneAgentId,
     channel: APPS_API_CONNECT_CHANNEL,
     secret: env("SECRETS_ENCRYPTION_KEY"),
+    publicBrand,
   });
 
   const cooldownKeys = agentPhoneCooldownKeys({
@@ -421,6 +425,7 @@ const startLink$ = command(async ({ get, set }, signal: AbortSignal) => {
       cooldownKeys,
       phoneHandle,
       connectUrl,
+      publicBrand,
     },
     signal,
   );
@@ -475,6 +480,7 @@ type LinkConflictReason = "phone-handle-linked" | "vm0-org-linked" | "conflict";
 const connectAgentPhone$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
+    const publicBrand = get(publicBrand$);
     const bodyResult = await get(connectBody$);
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -507,6 +513,7 @@ const connectAgentPhone$ = command(
       channel,
       userId: auth.userId,
       orgId: auth.orgId,
+      publicBrand,
     });
     signal.throwIfAborted();
 
@@ -522,7 +529,7 @@ const connectAgentPhone$ = command(
         {
           agentphoneAgentId: body.agentphoneAgentId,
           toNumber: phoneHandle,
-          body: `Hi, I'm Zero, your AI coworker from vm0.
+          body: `Hi, I'm ${publicBrandPresentation(publicBrand).assistantName}, your AI coworker from ${publicBrandPresentation(publicBrand).brandName}.
 
 You can text me like a teammate and I'll actually do the work: research something, draft and send emails, summarize long documents, update a spreadsheet, file or triage tickets, post to Slack, dig through your GitHub or Notion, and a lot more.
 

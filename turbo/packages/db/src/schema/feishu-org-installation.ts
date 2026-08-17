@@ -9,6 +9,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { agentComposes } from "./agent-compose";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 export const feishuOrgInstallations = pgTable(
   "feishu_org_installations",
@@ -20,6 +21,10 @@ export const feishuOrgInstallations = pgTable(
     botOpenId: varchar("bot_open_id", { length: 255 }),
     botName: varchar("bot_name", { length: 255 }),
     botAvatarUrl: text("bot_avatar_url"),
+    publicBrand: text("public_brand")
+      .$type<PublicBrand>()
+      .default("vm0")
+      .notNull(),
     encryptedAppSecret: text("encrypted_app_secret").notNull(),
     encryptedVerificationToken: text("encrypted_verification_token").notNull(),
     encryptedEncryptKey: text("encrypted_encrypt_key").notNull(),

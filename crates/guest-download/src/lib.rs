@@ -32,6 +32,7 @@ mod download;
 mod error;
 mod instructions;
 mod manifest;
+mod path;
 mod plan;
 mod source;
 mod telemetry;
@@ -88,6 +89,14 @@ pub fn run_manifest_bytes(manifest_json: &[u8]) -> bool {
 }
 
 fn run_manifest(manifest: Manifest) -> bool {
+    let plan_start = Instant::now();
+    let plan = RunPlan::from_manifest(&manifest);
+    record_sandbox_op(
+        "guest_download_plan_build",
+        plan_start.elapsed(),
+        true,
+        None,
+    );
     let RunPlan {
         cleanup_paths,
         instruction_cleanups,
@@ -95,23 +104,45 @@ fn run_manifest(manifest: Manifest) -> bool {
         empty_artifacts,
         download_tasks,
         instruction_files,
-    } = RunPlan::from_manifest(&manifest);
+    } = plan;
 
     // Clean stale files from changed/removed storages before downloading.
     // This must run before parallel downloads to avoid race conditions with
     // parent-child mount path overlaps.
+    let cleanup_start = Instant::now();
     if !cleanup_paths.is_empty() {
         cleanup::cleanup_stale_paths(&cleanup_paths, &preserved_paths);
     }
     if !instruction_cleanups.is_empty() {
         instructions::cleanup_instruction_files(&instruction_cleanups);
     }
+    record_sandbox_op(
+        "guest_download_cleanup",
+        cleanup_start.elapsed(),
+        true,
+        None,
+    );
 
     // Resolve all logical and physical target identities before downloads.
     // The scheduler uses both identities to serialize overlapping extraction.
+    let target_prepare_start = Instant::now();
     let download_tasks = match download::prepare_download_tasks(download_tasks) {
-        Ok(download_tasks) => download_tasks,
+        Ok(download_tasks) => {
+            record_sandbox_op(
+                "guest_download_target_prepare",
+                target_prepare_start.elapsed(),
+                true,
+                None,
+            );
+            download_tasks
+        }
         Err(e) => {
+            record_sandbox_op(
+                "guest_download_target_prepare",
+                target_prepare_start.elapsed(),
+                false,
+                None,
+            );
             log_error!(LOG_TAG, "{e}");
             instructions::cleanup_staged_instruction_sources(&instruction_files);
             return false;
@@ -122,9 +153,23 @@ fn run_manifest(manifest: Manifest) -> bool {
         return false;
     }
 
+    let scheduler_start = Instant::now();
     let success = download::download_all_parallel(download_tasks);
+    record_sandbox_op(
+        "guest_download_archive_scheduler",
+        scheduler_start.elapsed(),
+        success,
+        None,
+    );
     if success {
+        let normalize_start = Instant::now();
         instructions::normalize_instruction_files(&instruction_files);
+        record_sandbox_op(
+            "guest_download_instruction_normalize",
+            normalize_start.elapsed(),
+            true,
+            None,
+        );
     } else {
         instructions::cleanup_staged_instruction_sources(&instruction_files);
     }

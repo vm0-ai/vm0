@@ -2673,6 +2673,10 @@ const loadWebQueuedLaunchMaterial: LaunchLoader = (_db, args) => {
       priorContext: "",
       context: {
         generationTemplatePrompt: "",
+        // A queued message is dispatched from its persisted chat event, and
+        // run options are deliberately never persisted, so there is nothing to
+        // replay here.
+        videoRunOptions: null,
         computerUseHostDisplayName: null,
         agentRunSource: args.agentRunSource,
       },
@@ -2942,7 +2946,6 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
     | ReturnType<typeof projectUserMessage>
     | undefined;
   readonly latestWebsiteTemplatesEnabled: boolean;
-  readonly videoModelSelectionEnabled: boolean;
 }) {
   return measureChatCallbackPreCreateTiming(
     args.input.timing,
@@ -2953,7 +2956,6 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
         explicit: args.userMessageProjection?.primaryTemplate,
         explicitTemplates: args.userMessageProjection?.templates,
         latestWebsiteTemplatesEnabled: args.latestWebsiteTemplatesEnabled,
-        videoModelSelectionEnabled: args.videoModelSelectionEnabled,
       });
     },
   );
@@ -3057,10 +3059,6 @@ async function buildCreateQueuedChatRunInput(
       userMessageProjection,
       latestWebsiteTemplatesEnabled: isFeatureEnabled(
         FeatureSwitchKey.LatestWebsiteTemplates,
-        featureSwitchContext,
-      ),
-      videoModelSelectionEnabled: isFeatureEnabled(
-        FeatureSwitchKey.VideoModelSelection,
         featureSwitchContext,
       ),
     });

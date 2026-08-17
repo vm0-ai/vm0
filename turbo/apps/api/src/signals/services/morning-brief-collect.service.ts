@@ -9,6 +9,8 @@
  */
 import { z } from "zod";
 import { chatEventCompatibilityRole } from "@okouai/api-contracts/contracts/chat-events";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { agentComposes } from "@okouai/db/schema/agent-compose";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
@@ -573,11 +575,12 @@ async function collectUnreadChatThreads(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
+  readonly publicBrand: PublicBrand;
   readonly since: Date;
   readonly until: Date;
   readonly excludeChatThreadId: string | null;
 }): Promise<MorningBriefChatThreadsData> {
-  const appUrl = env("APP_URL");
+  const appUrl = appUrlForPublicBrand(env("APP_URL"), args.publicBrand);
   const rows = await args.db
     .select({
       id: chatThreads.id,
@@ -691,6 +694,7 @@ interface CollectMorningBriefInputArgs {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
+  readonly publicBrand: PublicBrand;
   readonly briefDate: string;
   readonly timezone: string;
   readonly since: Date;
@@ -745,6 +749,7 @@ export async function collectMorningBriefInput(
         db: args.db,
         orgId: args.orgId,
         userId: args.userId,
+        publicBrand: args.publicBrand,
         since: args.since,
         until: args.until,
         excludeChatThreadId: args.excludeChatThreadId,

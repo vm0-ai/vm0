@@ -19,6 +19,7 @@ import {
 import { zeroAgentCustomConnectorsContract } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 import { zeroFeishuConnectContract } from "@okouai/api-contracts/contracts/zero-feishu-connect";
 import { zeroFeishuOauthContract } from "@okouai/api-contracts/contracts/zero-feishu-oauth";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { getCustomConnectorSkillStorageName } from "@okouai/core/storage-names";
 
@@ -705,8 +706,15 @@ describe("Feishu integration", () => {
   });
 
   async function setupFeishuRunFixture(
-    options: { readonly useAlternateInstallationDefault?: boolean } = {},
+    options: {
+      readonly publicBrand?: PublicBrand;
+      readonly useAlternateInstallationDefault?: boolean;
+    } = {},
   ): Promise<FeishuRunFixture> {
+    const publicBrand = options.publicBrand ?? "vm0";
+    if (publicBrand === "okou") {
+      mockEnv("APP_URL", "https://app.vm0.ai");
+    }
     const appId = `cli_${randomUUID()}`;
     const actor = authOrgApi.user({
       userId: `user_${randomUUID()}`,
@@ -748,6 +756,9 @@ describe("Feishu integration", () => {
     const configured = await accept(
       client.setup({
         headers: { authorization: "Bearer clerk-session" },
+        ...(publicBrand === "okou"
+          ? { extraHeaders: { origin: "https://app.okou.ai" } }
+          : {}),
         body: {
           appId,
           appSecret: APP_SECRET,
@@ -2402,6 +2413,64 @@ describe("Feishu integration", () => {
     expect(loginReplies).toHaveLength(1);
   });
 
+  it("brands unconnected and connected output from an Okou installation", async () => {
+    const fixture = await setupFeishuRunFixture({ publicBrand: "okou" });
+
+    await postEvent(
+      fixture.callbackUrl,
+      directMessage(fixture.appId, "/help", "ou_feishu_unconnected"),
+      { encrypted: true },
+    );
+    await postEvent(
+      fixture.callbackUrl,
+      directMessage(fixture.appId, "hello", "ou_feishu_unconnected"),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    const unconnectedContent = outboundMessages.map(messageContent).join("\n");
+    expect(unconnectedContent).toContain("Okou commands");
+    expect(unconnectedContent).toContain("To use Okou in Feishu");
+    const connectUrl = requireValue(
+      unconnectedContent.match(/https:\/\/[^"\\]+/u)?.[0],
+      "Expected branded Feishu connect URL",
+    );
+    expect(new URL(connectUrl).hostname).toBe("app.okou.ai");
+
+    outboundMessages = [];
+    await connectFixtureUser(fixture);
+    await postEvent(
+      fixture.callbackUrl,
+      directMessage(fixture.appId, "/help"),
+      { encrypted: true },
+    );
+    await postEvent(
+      fixture.callbackUrl,
+      directMessage(fixture.appId, "/connect"),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    const connectedContent = outboundMessages.map(messageContent).join("\n");
+    expect(connectedContent).toContain("Okou commands");
+    expect(connectedContent).toContain(
+      "Your Feishu account is already connected to Okou",
+    );
+
+    mocks.clerk.session(
+      fixture.actor.userId,
+      fixture.actor.orgId,
+      fixture.actor.orgRole,
+    );
+    await accept(
+      setupApp({ context, routes: feishuConnectRoutes })(
+        zeroFeishuConnectContract,
+      ).removeInstallation({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { installationId: fixture.installationId },
+      }),
+      [200],
+    );
+  });
+
   it("deduplicates unconnected messages, connects, welcomes, and rejects account rebinding", async () => {
     const fixture = await setupFeishuRunFixture();
     const { actor, appId, callbackUrl, defaultAgentId } = fixture;
@@ -3115,6 +3184,7 @@ describe("Feishu integration", () => {
 
   it("builds Feishu DM context and canonical response metadata", async () => {
     const fixture = await setupFeishuRunFixture({
+      publicBrand: "okou",
       useAlternateInstallationDefault: true,
     });
     const { actor, runnerGroup, appId, callbackUrl, alternateAgentId } =
@@ -3336,6 +3406,10 @@ describe("Feishu integration", () => {
       ? messageContent(completedReply)
       : "";
     expect(completedReplyContent).toContain("Audit");
+    expect(completedReplyContent).toContain("Okou");
+    expect(completedReplyContent).toContain(
+      `https://app.okou.ai/activities/${run.id}`,
+    );
     expect(completedReplyContent).toContain("Claude Sonnet");
     expect(completedReplyContent).toContain(
       "Responded by Feishu default agent",

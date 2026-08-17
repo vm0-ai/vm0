@@ -1,9 +1,10 @@
 use crate::LOG_TAG;
 use crate::error::DownloadError;
+use crate::path::normalize_path;
 use crate::source::{ArchiveSource, HttpBodyReadFailure};
 use guest_common::log_warn;
 use std::io;
-use std::path::{Component, Path, PathBuf};
+use std::path::Path;
 
 /// Extract a gzip-compressed tar archive into an existing target directory.
 ///
@@ -161,25 +162,6 @@ fn archive_error(
     }
 }
 
-/// Lexically normalize a path by collapsing `.` and `..` components.
-/// Unlike `canonicalize()`, this does not touch the filesystem.
-fn normalize_path(path: &Path) -> PathBuf {
-    let mut components: Vec<Component> = Vec::new();
-    for component in path.components() {
-        match component {
-            Component::ParentDir => {
-                // Only pop Normal components; don't pop RootDir or Prefix
-                if matches!(components.last(), Some(Component::Normal(_))) {
-                    components.pop();
-                }
-            }
-            Component::CurDir => {}
-            c => components.push(c),
-        }
-    }
-    components.iter().collect()
-}
-
 /// Check whether `path` stays within `target` after lexical normalization.
 fn is_within(path: &Path, target: &Path) -> bool {
     normalize_path(path).starts_with(target)
@@ -219,6 +201,7 @@ mod tests {
     use flate2::Compression;
     use flate2::write::GzEncoder;
     use std::io::{Cursor, Write};
+    use std::path::PathBuf;
 
     enum TarEntry<'a> {
         File(&'a str, &'a [u8]),

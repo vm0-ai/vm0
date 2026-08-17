@@ -74,6 +74,7 @@ use crate::proxy;
 use crate::resource_budget::ResourceBudget;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::run_cancellation::{RunCancellationRegistration, RunCancellationRegistry};
+use crate::runner_process_identity::RunnerProcessIdentity;
 use crate::status::{StatusTracker, remove_stale_status_file};
 use crate::workspace_image_cache::WorkspaceCacheWatcher;
 use crate::workspace_image_cache::WorkspaceImageCache;
@@ -101,7 +102,7 @@ use heartbeat::{
     HeartbeatSnapshotMetadata, WorkspaceCacheStateSnapshot, collect_heartbeat_state,
     refresh_initial_workspace_cache_snapshot,
 };
-use identity::{load_or_generate_runner_id, next_heartbeat_generation};
+use identity::load_runner_process_identity;
 use idle_lifecycle::{
     SharedIdlePool, cleanup_expired_idle_entries, destroy_idle_jobs_and_wait, drain_idle_pool,
     evict_expired_idle_entries, spawn_idle_destroy_job,
@@ -444,10 +445,12 @@ async fn run_start_with_home(
     let paths = RunnerPaths::new(runner_config.base_dir.clone());
     remove_stale_status_file(&paths.status()).await?;
 
-    // Load or generate a persistent runner identity (UUID).
-    let runner_id = load_or_generate_runner_id(&runner_config.base_dir).await?;
-    let heartbeat_generation = next_heartbeat_generation(&runner_config.base_dir).await?;
-    info!(runner_id = %runner_id, runner_name = %runner_config.name, "runner identity");
+    let runner_identity = load_runner_process_identity(&runner_config.base_dir).await?;
+    info!(
+        runner_id = %runner_identity.runner_id(),
+        runner_name = %runner_config.name,
+        "runner identity"
+    );
 
     // Shared locks on rootfs + snapshot per profile — allows `runner gc` to detect in-use resources.
     let resource_locks =
@@ -726,8 +729,7 @@ async fn run_start_with_home(
             http.clone(),
             server.token,
             ApiProviderConfig {
-                runner_id: runner_id.clone(),
-                heartbeat_generation,
+                runner_identity,
                 group,
                 supported_profiles: profiles,
             },
@@ -792,10 +794,9 @@ async fn run_start_with_home(
     let active_runs = ActiveRuns::new(Arc::clone(&reuse_state_notify));
     let config = RunConfig {
         runner: RunnerInfo {
-            id: runner_id,
+            identity: runner_identity,
             name,
             group: group_name,
-            heartbeat_generation,
             profiles: runner_config.profiles,
         },
         paths: RunPaths {
@@ -878,10 +879,9 @@ struct RunConfig {
 }
 
 struct RunnerInfo {
-    id: String,
+    identity: RunnerProcessIdentity,
     name: String,
     group: String,
-    heartbeat_generation: u64,
     profiles: BTreeMap<String, ProfileConfig>,
 }
 
@@ -1598,10 +1598,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     }
     let hb_ctx = HeartbeatContext::new(HeartbeatContextInit {
         idle_pool: &shared.idle_pool,
-        runner_id: &runner.id,
+        runner_identity: runner.identity,
         name: &runner.name,
         group: &runner.group,
-        snapshot_generation: runner.heartbeat_generation,
         profiles: &runner.profiles,
         budget: &capacity.budget,
         provider: &*provider_state.provider,
@@ -1672,7 +1671,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
 
     let mut current_mode = startup_mode;
     let spawn_ctx = SpawnContext {
-        runner_id: runner.id.clone(),
+        runner_id: runner.identity.runner_id().to_string(),
         provider: Arc::clone(&provider_state.provider),
         exec_config: Arc::clone(&exec_config),
         idle_pool: Arc::clone(&shared.idle_pool),
@@ -1792,8 +1791,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 let result = handle_discovered_job(
                     DiscoveredJob { candidate },
                     DiscoveredJobContext {
-                        runner_id: &runner.id,
-                        heartbeat_generation: runner.heartbeat_generation,
+                        runner_identity: runner.identity,
                         profiles: &runner.profiles,
                         factories: &factories,
                         budget: &capacity.budget,
@@ -1838,8 +1836,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     let result = handle_discovered_job(
                         DiscoveredJob { candidate },
                         DiscoveredJobContext {
-                            runner_id: &runner.id,
-                            heartbeat_generation: runner.heartbeat_generation,
+                            runner_identity: runner.identity,
                             profiles: &runner.profiles,
                             factories: &factories,
                             budget: &capacity.budget,
@@ -2025,8 +2022,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 let result = handle_discovered_job(
                     DiscoveredJob { candidate },
                     DiscoveredJobContext {
-                        runner_id: &runner.id,
-                        heartbeat_generation: runner.heartbeat_generation,
+                        runner_identity: runner.identity,
                         profiles: &runner.profiles,
                         factories: &factories,
                         budget: &capacity.budget,
@@ -2059,8 +2055,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     let result = handle_discovered_job(
                         DiscoveredJob { candidate },
                         DiscoveredJobContext {
-                            runner_id: &runner.id,
-                            heartbeat_generation: runner.heartbeat_generation,
+                            runner_identity: runner.identity,
                             profiles: &runner.profiles,
                             factories: &factories,
                             budget: &capacity.budget,
@@ -2134,10 +2129,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         let pool = shared.idle_pool.lock().await;
         let state = collect_heartbeat_state(
             HeartbeatSnapshotMetadata {
-                runner_id: &runner.id,
+                runner_identity: runner.identity,
                 runner_name: &runner.name,
                 group: &runner.group,
-                generation: runner.heartbeat_generation,
                 sequence: final_heartbeat_sequence,
             },
             &runner.profiles,

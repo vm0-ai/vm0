@@ -27,6 +27,7 @@ export async function notifyFeishuConnect(
     .select({
       agentName: zeroAgents.name,
       agentDisplayName: zeroAgents.displayName,
+      publicBrand: feishuOrgInstallations.publicBrand,
     })
     .from(feishuOrgInstallations)
     .leftJoin(
@@ -47,6 +48,7 @@ export async function notifyFeishuConnect(
       receiveId: args.openId,
       message: buildFeishuWelcomeMessage({
         agentName: installation.agentDisplayName ?? installation.agentName,
+        publicBrand: installation.publicBrand,
       }),
       idempotencyKey: args.connectionId,
     },

@@ -28,6 +28,7 @@ import { cronSteerRunTimeBudgetContract } from "@okouai/api-contracts/contracts/
 import {
   ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES,
   CANCELLATION_RECOVERY_STALE_AFTER_MS,
+  DEFAULT_PROFILE,
 } from "@okouai/api-contracts/contracts/runners";
 import { zeroMailContract } from "@okouai/api-contracts/contracts/zero-mail";
 import {
@@ -89,6 +90,7 @@ import { chatEventDisplayText } from "./helpers/chat-event";
 import {
   clearThreadSessionBinding,
   readRunAutonomyBudgetFixture,
+  readRunLaunchSnapshotFixture,
   readThreadSessionBinding,
   seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
   setRunAutonomyBudgetFixture,
@@ -3720,6 +3722,16 @@ describe("CHAT-02: model-first provider policies", () => {
       const firstContext = firstClaim.claim;
 
       expect(firstContext.cliAgentType).toBe("pi");
+      await expect(
+        readRunLaunchSnapshotFixture(context, first.runId),
+      ).resolves.toStrictEqual({
+        exists: true,
+        launch_snapshot: {
+          schemaVersion: 1,
+          framework: firstContext.cliAgentType,
+          runnerProfile: DEFAULT_PROFILE,
+        },
+      });
       expect(firstContext.piSessionId).toBe(first.threadId);
       expect(firstContext.prompt).toBe(firstPrompt);
       expect(firstContext.piLaunchConfig).not.toHaveProperty(
@@ -5541,6 +5553,12 @@ describe("CHAT-02: run-level model overrides", () => {
     if (typeof discardedRunId !== "string") {
       throw new Error("Expected blocked admission timing to identify its run");
     }
+    await expect(
+      readRunLaunchSnapshotFixture(context, discardedRunId),
+    ).resolves.toStrictEqual({
+      exists: false,
+      launch_snapshot: null,
+    });
     const lostTimingEvents = apiDispatchTimingEventsForRun(discardedRunId);
     for (const actionType of [
       "api_dispatch_prepare_run_context",
@@ -5725,6 +5743,16 @@ describe("CHAT-02: run-level model overrides", () => {
       run_session_id: firstBinding.agent_session_id,
     });
     const secondClaim = await claimChatRun(runnerGroup, second.runId);
+    await expect(
+      readRunLaunchSnapshotFixture(context, second.runId),
+    ).resolves.toStrictEqual({
+      exists: true,
+      launch_snapshot: {
+        schemaVersion: 1,
+        framework: secondClaim.claim.cliAgentType,
+        runnerProfile: DEFAULT_PROFILE,
+      },
+    });
     expect(secondClaim.claim.resumeSession?.sessionId).toBe(
       `bdd-cli-${first.runId}`,
     );
@@ -7645,43 +7673,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(videoPrompt).toContain(
       `okou generate video --provider built-in --template ${videoTemplate.id}`,
     );
-    expect(videoPrompt).not.toContain("Parameters the user set explicitly");
     await cancelChatRun(actor, video.runId);
-
-    const videoWithOptions = await sendChatRun(actor, {
-      agentId,
-      prompt: "make a vertical product video",
-      template: {
-        type: "video",
-        selection: {
-          stylePresetId: videoTemplate.id,
-          videoOptions: {
-            model: "fal-ai/veo3.1/fast",
-            aspectRatio: "9:16",
-            // Veo accepts only 4s, 6s, or 8s, so this one is dropped instead
-            // of being pinned into a request the service would reject.
-            duration: "5s",
-            resolution: "1080p",
-          },
-        },
-      },
-    });
-    const videoWithOptionsRun = await api.readRun(
-      actor,
-      videoWithOptions.runId,
-    );
-    const videoWithOptionsPrompt = videoWithOptionsRun.appendSystemPrompt ?? "";
-    expect(videoWithOptionsPrompt).toContain(
-      "Parameters the user set explicitly",
-    );
-    expect(videoWithOptionsPrompt).toContain("- Model: veo3.1-fast");
-    expect(videoWithOptionsPrompt).toContain("- Aspect ratio: 9:16");
-    expect(videoWithOptionsPrompt).toContain("- Resolution: 1080p");
-    expect(videoWithOptionsPrompt).not.toContain("Duration:");
-    expect(videoWithOptionsPrompt).toContain(
-      "`--model veo3.1-fast --aspect-ratio 9:16 --resolution 1080p` verbatim",
-    );
-    await cancelChatRun(actor, videoWithOptions.runId);
 
     if (!actor.orgId) {
       throw new Error("Expected an org-scoped actor");
@@ -7691,41 +7683,53 @@ describe("CHAT-02: generation templates and attachments", () => {
       { ...actor, orgId: actor.orgId },
       { [FeatureSwitchKey.VideoModelSelection]: true },
     );
-    const videoWithSelectionEnabled = await sendChatRun(actor, {
+
+    // Run options are the composer's channel for video parameters now. They
+    // ride one message, reach no table, and only enter the prompt when the
+    // user moved a value off the effective model's default -- and they enter
+    // it as defaults this run's message can override, not as instructions.
+    const videoRunOptions = await sendChatRun(actor, {
       agentId,
-      prompt: "make another vertical product video",
-      template: {
-        type: "video",
-        selection: {
-          stylePresetId: videoTemplate.id,
-          videoOptions: {
-            // The run-owned prompt path ignores this historical template
-            // model. MiniMax accepts neither 720p nor silence.
-            model: "MiniMax-H3",
-            aspectRatio: "21:9",
-            duration: "5s",
-            resolution: "720p",
-            generateAudio: false,
-          },
+      prompt: "make a clip from this brief",
+      runOptions: {
+        video: {
+          aspectRatio: "9:16",
+          duration: "6s",
+          resolution: "480p",
+          generateAudio: false,
         },
       },
     });
-    const videoWithSelectionEnabledRun = await api.readRun(
-      actor,
-      videoWithSelectionEnabled.runId,
+    const videoRunOptionsPrompt =
+      (await api.readRun(actor, videoRunOptions.runId)).appendSystemPrompt ??
+      "";
+    expect(videoRunOptionsPrompt).toContain("# Video Generation Defaults");
+    expect(videoRunOptionsPrompt).toContain("- Aspect ratio: 9:16");
+    expect(videoRunOptionsPrompt).toContain("- Duration: 6s");
+    expect(videoRunOptionsPrompt).toContain("- Resolution: 480p");
+    expect(videoRunOptionsPrompt).toContain("- Audio: off");
+    // Stated as defaults the message outranks, not as requirements: the chip
+    // was set before the message was written, so "make it square" has to win.
+    expect(videoRunOptionsPrompt).toContain(
+      "the message wins, for that parameter only",
     );
-    const videoWithSelectionEnabledPrompt =
-      videoWithSelectionEnabledRun.appendSystemPrompt ?? "";
-    expect(videoWithSelectionEnabledPrompt).not.toContain("- Model:");
-    expect(videoWithSelectionEnabledPrompt).toContain("- Aspect ratio: 21:9");
-    expect(videoWithSelectionEnabledPrompt).toContain("- Duration: 5s");
-    expect(videoWithSelectionEnabledPrompt).toContain("- Resolution: 720p");
-    expect(videoWithSelectionEnabledPrompt).toContain("- Audio: off");
-    expect(videoWithSelectionEnabledPrompt).toContain(
-      "`--aspect-ratio 21:9 --duration 5s --resolution 720p --no-audio` verbatim",
-    );
-    expect(videoWithSelectionEnabledPrompt).not.toContain("--model");
-    await cancelChatRun(actor, videoWithSelectionEnabled.runId);
+    // Values only. A pre-assembled flag string is a ready-made answer that
+    // stops being correct as soon as the message overrides one value.
+    expect(videoRunOptionsPrompt).not.toContain("--aspect-ratio");
+    expect(videoRunOptionsPrompt).not.toContain("--no-audio");
+    await cancelChatRun(actor, videoRunOptions.runId);
+
+    // Most runs never generate a video, so a send that set nothing carries no
+    // trace of the block at all.
+    const withoutVideoRunOptions = await sendChatRun(actor, {
+      agentId,
+      prompt: "answer a plain question",
+    });
+    expect(
+      (await api.readRun(actor, withoutVideoRunOptions.runId))
+        .appendSystemPrompt ?? "",
+    ).not.toContain("# Video Generation Defaults");
+    await cancelChatRun(actor, withoutVideoRunOptions.runId);
 
     const avatarId = 81;
     const avatarVoiceId = "en-US-ChristopherNeural";

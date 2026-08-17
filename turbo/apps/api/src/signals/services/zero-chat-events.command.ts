@@ -5,6 +5,7 @@ import type { ChatEventType } from "@okouai/api-contracts/contracts/chat-events"
 import {
   chatEventsContract,
   resolveChatEventRecommendedFollowups,
+  type ChatRunVideoOptionsRequest,
   type ChatThreadServiceTier,
   type CodexServiceTier,
   type GenerationTemplateRequest,
@@ -141,6 +142,7 @@ interface NormalSendBody {
   } | null;
   readonly runOptions?: {
     readonly codexServiceTier?: CodexServiceTier;
+    readonly video?: ChatRunVideoOptionsRequest;
   };
   readonly userMessage: UserMessageDocument;
   readonly hasTextContent: boolean;
@@ -221,6 +223,7 @@ interface PreparedNormalSend {
   readonly thread: ResolvedThread;
   readonly body: RuntimeNormalSendBody;
   readonly generationTemplatePrompt: string;
+  readonly videoRunOptions: ChatRunVideoOptionsRequest | null;
   readonly computerUseHostGrant: ResolvedComputerUseHostGrant | null;
   readonly persistedExplicitSelection: boolean;
   readonly initialThinkingEnabled: boolean;
@@ -936,7 +939,6 @@ function validateGenerationTemplatePrompt(
     const validation = buildGenerationTemplatePrompt(template, {
       latestWebsiteTemplatesEnabled:
         featureSwitches.latestWebsiteTemplatesEnabled,
-      videoModelSelectionEnabled: featureSwitches.videoModelSelectionEnabled,
     });
     if (validation.status === "invalid") {
       return badRequestMessage(validation.message);
@@ -2333,8 +2335,12 @@ const prepareNormalSend$ = command(
       explicitTemplates: runtimeBody.templates,
       latestWebsiteTemplatesEnabled:
         featureSwitches.latestWebsiteTemplatesEnabled,
-      videoModelSelectionEnabled: featureSwitches.videoModelSelectionEnabled,
     });
+    // Gated with the composer control that produces it, so a client that keeps
+    // sending the field after the switch is turned off stops being honoured.
+    const videoRunOptions = featureSwitches.videoModelSelectionEnabled
+      ? (runtimeBody.runOptions?.video ?? null)
+      : null;
     const persistedExplicitSelection =
       await maybePersistTimedExplicitModelFirstSelection(
         args,
@@ -2364,6 +2370,7 @@ const prepareNormalSend$ = command(
       thread,
       body: runtimeBody,
       generationTemplatePrompt,
+      videoRunOptions,
       computerUseHostGrant: computerAccess.computerUseHostGrant,
       persistedExplicitSelection,
       initialThinkingEnabled: args.zeroPreCreateSource === undefined,
@@ -2854,6 +2861,7 @@ function buildCreateZeroRunArgs(params: {
     prepared.runConfiguration;
   const webChatSessionPromptContext: WebChatSessionPromptContext = {
     generationTemplatePrompt: prepared.generationTemplatePrompt,
+    videoRunOptions: prepared.videoRunOptions,
     computerUseHostDisplayName:
       prepared.computerUseHostGrant?.displayName ?? null,
     agentRunSource: prepared.agentRunSource,

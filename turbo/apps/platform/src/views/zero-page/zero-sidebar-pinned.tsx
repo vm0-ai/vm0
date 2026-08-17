@@ -46,6 +46,7 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { equalSets } from "../../lib/equality.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
+import { assistantName$ } from "../../signals/branding.ts";
 import { AgentListDialog } from "./zero-sidebar-dialogs.tsx";
 import { AgentRowSideActions } from "./zero-sidebar-agent-row-actions.tsx";
 
@@ -155,11 +156,12 @@ function OpenAgentListDialog({
 }: {
   onOpenChange: (open: boolean) => void;
 }) {
+  const assistantName = useGet(assistantName$);
   const displayNameLoadable = useLastLoadable(defaultAgentName$);
   const displayName =
     displayNameLoadable.state === "hasData"
-      ? (displayNameLoadable.data ?? "Zero")
-      : "Zero";
+      ? (displayNameLoadable.data ?? assistantName)
+      : assistantName;
   const subagents = useLastResolved(subagents$) ?? [];
   const defaultAgentId = useLastResolved(defaultAgentId$);
   const navigate = useSet(detachedNavigateTo$);

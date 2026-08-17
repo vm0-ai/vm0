@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { getInstructionsFilename } from "@okouai/core/frameworks";
+import { APPLICATION_OWNED_AGENT_EXECUTION_PLAN } from "./agent-execution-plan";
 
 /**
  * Canonical application-owned content for a Zero Agent compose.
@@ -11,14 +12,17 @@ import { getInstructionsFilename } from "@okouai/core/frameworks";
 export function buildZeroAgentComposeContent(
   agentName: string,
 ): Record<string, unknown> {
+  const plan = APPLICATION_OWNED_AGENT_EXECUTION_PLAN;
   const environment: Record<string, string> = {
-    OKOU_AGENT_ID: `\${{ vars.OKOU_AGENT_ID }}`,
-    OKOU_TOKEN: `\${{ secrets.OKOU_TOKEN }}`,
+    [plan.environment.legacySerializedBindings.agentId]:
+      `\${{ vars.OKOU_AGENT_ID }}`,
+    [plan.environment.legacySerializedBindings.token]:
+      `\${{ secrets.OKOU_TOKEN }}`,
   };
 
   const agentDef: Record<string, unknown> = {
-    framework: "claude-code",
-    instructions: getInstructionsFilename("claude-code"),
+    framework: plan.framework.fallback,
+    instructions: getInstructionsFilename(plan.framework.fallback),
     environment,
   };
 

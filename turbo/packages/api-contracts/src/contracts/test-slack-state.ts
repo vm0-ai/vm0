@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { initContract } from "./base";
+import { publicBrandSchema } from "./public-brand";
 
 const c = initContract();
 
@@ -52,6 +53,7 @@ export const testSlackStateResponseSchema = z.object({
       botUserId: z.string(),
       botScopes: z.string().nullable(),
       installedByUserId: z.string().nullable(),
+      publicBrand: publicBrandSchema,
       createdAt: z.string(),
     })
     .nullable(),

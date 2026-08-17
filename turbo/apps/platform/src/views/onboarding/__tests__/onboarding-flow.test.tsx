@@ -6,7 +6,11 @@ import {
   VIDEO_TEMPLATE_ITEMS,
   WEBSITE_TEMPLATE_ITEMS,
 } from "@okouai/core";
-import { zeroBillingCheckoutContract } from "@okouai/api-contracts/contracts/zero-billing";
+import {
+  zeroBillingCheckoutContract,
+  zeroBillingUsagePackCheckoutContract,
+} from "@okouai/api-contracts/contracts/zero-billing";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   zeroConnectorCatalogContract,
@@ -510,6 +514,75 @@ describe("onboarding flow", () => {
     });
   });
 
+  it.each([
+    ["https://app.okou.ai/", "Okou"],
+    ["https://pr-27200-app.omby.ai/", "Okou"],
+    ["https://app.vm0.ai/", "Zero"],
+  ])(
+    "uses the %s assistant identity throughout custom workflow onboarding",
+    async (url, assistantName) => {
+      context.mocks.browser.url(url);
+      let runPrompt: string | undefined;
+      mockChatLifecycle(context, {
+        onRunCreate: (body) => {
+          runPrompt = body.prompt;
+        },
+      });
+      mockOnboardingNeeded();
+
+      detachedSetupPage({
+        context,
+        path: "/onboarding/workflow-run?choice=workflow&category=engineering&workflow=talk-to-zero",
+      });
+
+      await expect(
+        screen.findByRole("heading", { name: "Describe your workflow" }),
+      ).resolves.toBeInTheDocument();
+      expect(
+        screen.getByPlaceholderText(
+          `Describe what you want ${assistantName} to build`,
+        ),
+      ).toBeInTheDocument();
+      await fill(
+        screen.getByLabelText("Describe your workflow"),
+        "Build a daily brief",
+      );
+      click(buttonByText(`Continue with ${assistantName}`));
+
+      await waitFor(() => {
+        expect(runPrompt).toBe(`@${assistantName} Build a daily brief`);
+        expect(pathname()).toMatch(/^\/chats\//u);
+      });
+    },
+  );
+
+  it("preserves an explicit custom agent mention on an Okou host", async () => {
+    context.mocks.browser.url("https://app.okou.ai/");
+    let runPrompt: string | undefined;
+    mockChatLifecycle(context, {
+      onRunCreate: (body) => {
+        runPrompt = body.prompt;
+      },
+    });
+    mockOnboardingNeeded();
+
+    detachedSetupPage({
+      context,
+      path: "/onboarding/workflow-run?choice=workflow&category=engineering&workflow=talk-to-zero",
+    });
+
+    await fill(
+      await screen.findByLabelText("Describe your workflow"),
+      "@Researcher build a daily brief",
+    );
+    click(buttonByText("Continue with Okou"));
+
+    await waitFor(() => {
+      expect(runPrompt).toBe("@Researcher build a daily brief");
+      expect(pathname()).toMatch(/^\/chats\//u);
+    });
+  });
+
   it("starts the standard connector flow from onboarding", async () => {
     const authWindow = context.mocks.browser.authWindow();
     Object.defineProperty(authWindow, "location", {
@@ -954,6 +1027,73 @@ describe("onboarding flow", () => {
       expect(runPrompt).toContain(videoBrief);
       expect(generationType).toBe("video");
       expect(pathname()).toMatch(/^\/chats\//u);
+    });
+  });
+
+  it("uses the new Pro plan with a $20 usage pack when enabled", async () => {
+    const template = firstItem(VIDEO_TEMPLATE_ITEMS);
+    let legacyCheckoutCalled = false;
+    let usagePackCheckoutBody:
+      | {
+          readonly tier: "pro" | "team";
+          readonly memberUsagePacks: readonly {
+            readonly memberId: string;
+            readonly usagePackUsd: 20 | 50 | 100 | 200;
+          }[];
+        }
+      | undefined;
+    context.mocks.api(zeroBillingCheckoutContract.create, ({ respond }) => {
+      legacyCheckoutCalled = true;
+      return respond(200, {
+        url: "https://checkout.stripe.com/test/legacy-onboarding-video",
+      });
+    });
+    context.mocks.api(
+      zeroBillingUsagePackCheckoutContract.create,
+      ({ body, respond }) => {
+        usagePackCheckoutBody = body;
+        return respond(200, {
+          url: "https://checkout.stripe.com/test/usage-pack-onboarding-video",
+        });
+      },
+    );
+
+    mockOnboardingNeeded();
+    detachedSetupPage({
+      context,
+      path: "/onboarding",
+      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
+    });
+    await expect(
+      screen.findByRole("heading", {
+        name: "What do you want to make first",
+      }),
+    ).resolves.toBeInTheDocument();
+    chooseMakeOption("Video production");
+    await expect(
+      screen.findByRole("heading", {
+        name: "Pick a video template to start from",
+      }),
+    ).resolves.toBeInTheDocument();
+    chooseTemplate(template.title, "video");
+    await expect(
+      screen.findByRole("heading", { name: "Customize your video" }),
+    ).resolves.toBeInTheDocument();
+    await fill(
+      screen.getByLabelText("Custom video prompt"),
+      "A product launch video with a fast-paced opening.",
+    );
+    click(buttonByText("Upgrade Pro to run"));
+
+    await waitFor(() => {
+      expect(window.location.href).toBe(
+        "https://checkout.stripe.com/test/usage-pack-onboarding-video",
+      );
+    });
+    expect(legacyCheckoutCalled).toBeFalsy();
+    expect(usagePackCheckoutBody).toMatchObject({
+      tier: "pro",
+      memberUsagePacks: [{ memberId: "test-user-123", usagePackUsd: 20 }],
     });
   });
 

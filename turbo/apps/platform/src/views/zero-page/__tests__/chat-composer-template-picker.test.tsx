@@ -369,7 +369,7 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("picks the video model above the templates and the rest from the chip", async () => {
+  it("sends a video template without any run parameters on it", async () => {
     const user = userEvent.setup({ delay: null });
     const template = VIDEO_TEMPLATE_ITEMS[0]!;
     let submittedUserMessage: UserMessageDocument | undefined;
@@ -382,9 +382,6 @@ describe("chat composer templates", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: {
-        [FeatureSwitchKey.VideoTemplateOptions]: true,
-      },
       path: `/chats/${THREAD_ID}`,
     });
 
@@ -398,67 +395,23 @@ describe("chat composer templates", () => {
     });
     await user.click(tabByText("Video"));
 
-    // Video generation is the expensive decision, so the model is chosen above
-    // the templates rather than inside the chip afterwards.
-    await user.click(
-      await screen.findByLabelText("Video model Seedance 2.0 fast"),
-    );
-    const modelOption = await waitFor(() => {
-      const found = queryAllByRoleFast("menuitem").find((item) => {
-        return item.getAttribute("aria-label") === "Seedance 2.0";
-      });
-      expect(found).toBeDefined();
-      return found!;
-    });
-    await user.click(modelOption);
+    // The model belongs to the run now, so the picker offers no model row.
+    expect(
+      screen.queryByLabelText("Video model Seedance 2.0 fast"),
+    ).not.toBeInTheDocument();
 
     await user.click(
       await screen.findByLabelText(`Select video template ${template.title}`),
     );
 
-    // The chip carries the parameters only; catalog defaults are filled in even
-    // though nothing but the model is stored yet. Audio is left to the popover
-    // so the chip stays readable inside a prompt sentence.
-    const spec = await screen.findByLabelText(
-      "Video options 16:9 \u00b7 8s \u00b7 720p",
-    );
-    const chip = document.querySelector("[data-composer-inline-template]");
-    expect(chip?.querySelectorAll("button")).toHaveLength(2);
-
-    spec.focus();
-    await user.keyboard("{Enter}");
-
-    // Every value is expanded in place, so changing one is a single click.
-    await user.click(
-      within(
-        await screen.findByRole("radiogroup", { name: "Ratio" }),
-      ).getByRole("radio", { name: "9:16" }),
-    );
-
-    await waitFor(() => {
-      expect(
-        screen.getByLabelText("Video options 9:16 \u00b7 8s \u00b7 720p"),
-      ).toBeInTheDocument();
+    // One zone: the template name. Parameters moved to the composer's own
+    // settings chip, so the inline chip no longer splits in two.
+    const chip = await waitFor(() => {
+      const found = document.querySelector("[data-composer-inline-template]");
+      expect(found).not.toBeNull();
+      return found!;
     });
-
-    // Duration is a scale rather than a set, so it is a slider over the values
-    // the model accepts — index 2 of Seedance 2.0's 4s-15s range.
-    const duration = await screen.findByRole("slider", { name: "Duration" });
-    expect(duration).toHaveAttribute("aria-valuetext", "8s");
-
-    // A second edit has to land in place too: setNodeMarkup drops the node
-    // selection, so a selection-based update would insert another chip here.
-    // The popover also stays open, so no reopening between two edits.
-    fireEvent.change(duration, { target: { value: "2" } });
-
-    await waitFor(() => {
-      expect(
-        screen.getByLabelText("Video options 9:16 \u00b7 6s \u00b7 720p"),
-      ).toBeInTheDocument();
-    });
-    expect(
-      document.querySelectorAll("[data-composer-inline-template]"),
-    ).toHaveLength(1);
+    expect(chip.querySelectorAll("button")).toHaveLength(1);
 
     await user.click(screen.getByLabelText("Send"));
     await waitFor(() => {
@@ -466,21 +419,17 @@ describe("chat composer templates", () => {
         type: "template",
         template: {
           type: "video",
-          selection: {
-            stylePresetId: template.id,
-            // Only the changed values are persisted.
-            videoOptions: {
-              model: "dreamina-seedance-2-0-260128",
-              aspectRatio: "9:16",
-              duration: "6s",
-            },
-          },
+          selection: { stylePresetId: template.id },
         },
       });
     });
+    expect(sentInlineTemplate(submittedUserMessage)).toStrictEqual({
+      type: "video",
+      selection: { stylePresetId: template.id },
+    });
   });
 
-  it("leaves the video model to the run picker when its switch is enabled", async () => {
+  it("leaves every video parameter to the composer in video mode", async () => {
     const user = userEvent.setup({ delay: null });
     const template = VIDEO_TEMPLATE_ITEMS[0]!;
     let submittedTemplate: GenerationTemplateRequest | undefined;
@@ -494,7 +443,6 @@ describe("chat composer templates", () => {
     detachedSetupPage({
       context,
       featureSwitches: {
-        [FeatureSwitchKey.VideoTemplateOptions]: true,
         [FeatureSwitchKey.VideoModelSelection]: true,
       },
       path: `/chats/${THREAD_ID}`,
@@ -514,36 +462,23 @@ describe("chat composer templates", () => {
       await screen.findByLabelText(`Select video template ${template.title}`),
     );
 
-    const spec = await screen.findByLabelText(
-      "Video options 16:9 \u00b7 8s \u00b7 720p",
-    );
-    spec.focus();
-    await user.keyboard("{Enter}");
+    // The chip is the template name and nothing else: ratio, duration,
+    // resolution and audio are set from the composer's own settings chip, so
+    // there is no second zone here and nothing to write onto the selection.
+    const chip = await waitFor(() => {
+      const found = document.querySelector("[data-composer-inline-template]");
+      expect(found).not.toBeNull();
+      return found!;
+    });
+    expect(chip.querySelectorAll("button")).toHaveLength(1);
+    expect(screen.queryByLabelText(/^Video options /)).not.toBeInTheDocument();
 
-    const popover = await screen.findByLabelText("Video options");
-    expect(within(popover).queryByText("Model")).not.toBeInTheDocument();
-    expect(
-      within(popover).getByRole("radiogroup", { name: "Ratio" }),
-    ).toBeInTheDocument();
-    expect(
-      within(popover).getByRole("slider", { name: "Duration" }),
-    ).toBeInTheDocument();
-    expect(within(popover).getByText("Resolution")).toBeInTheDocument();
-    expect(
-      within(popover).getByRole("switch", { name: "Generate audio" }),
-    ).toBeInTheDocument();
-
-    const ratio = within(popover).getByRole("radiogroup", { name: "Ratio" });
-    await user.click(within(ratio).getByRole("radio", { name: "9:16" }));
     await user.click(screen.getByLabelText("Send"));
 
     await waitFor(() => {
       expect(submittedTemplate).toStrictEqual({
         type: "video",
-        selection: {
-          stylePresetId: template.id,
-          videoOptions: { aspectRatio: "9:16" },
-        },
+        selection: { stylePresetId: template.id },
       });
     });
   });
@@ -3153,14 +3088,12 @@ describe("chat composer templates", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
-    // The chip appends its parameters when the video options switch is on, so
-    // this asserts the title is there rather than that it is all there is.
     await waitFor(() => {
       expect(
         composerInlineTemplates().map((node) => {
           return node.textContent;
         }),
-      ).toStrictEqual([expect.stringContaining(videoStyle.title)]);
+      ).toStrictEqual([videoStyle.title]);
     });
   });
 

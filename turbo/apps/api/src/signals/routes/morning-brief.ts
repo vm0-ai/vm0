@@ -6,13 +6,15 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import type { RouteEntry } from "../route-entry";
 import { triggerMorningBriefNow$ } from "../services/morning-brief-run.service";
+import { publicBrand$ } from "../context/hono";
 
 const triggerMorningBriefInner$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<unknown> => {
     const auth = get(organizationAuthContext$);
+    const publicBrand = get(publicBrand$);
     const result = await set(
       triggerMorningBriefNow$,
-      { orgId: auth.orgId, userId: auth.userId },
+      { orgId: auth.orgId, userId: auth.userId, publicBrand },
       signal,
     );
 

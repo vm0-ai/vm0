@@ -35,11 +35,11 @@ expired transition validator must be deleted.
 The repository inventory below is machine-checked. The removal owner must
 delete the workflow, probe, focused validator, and this entry together.
 
-| Issue  | Validator                                        | Removal owner  |
-| ------ | ------------------------------------------------ | -------------- |
-| #27613 | Agent/Compose consolidation production preflight | #26938 Stage 8 |
+| Issue           | Validator                                        | Removal owner  |
+| --------------- | ------------------------------------------------ | -------------- |
+| #27613 / #27656 | Agent/Compose consolidation production preflight | #26938 Stage 8 |
 
-<!-- vm0-transition-validator:#27613|agent-compose-consolidation-preflight|removal-owner:#26938-stage-8 -->
+<!-- vm0-transition-validator:#27613+#27656|agent-compose-consolidation-preflight|removal-owner:#26938-stage-8 -->
 
 ## Migration patterns
 

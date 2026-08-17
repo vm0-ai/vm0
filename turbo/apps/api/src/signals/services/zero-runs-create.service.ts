@@ -26,6 +26,7 @@ import type { AuthContext } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
 import {
   completeAgentRun$,
+  isEmptyRunConnectorScope,
   isQueueFirstRunClaimLost,
   isThreadSessionSnapshotStale,
   prepareAgentRun$,
@@ -33,6 +34,7 @@ import {
   type CreateAgentRunArgs,
   type DispatchFailedRunCallbacks,
   type QueueFirstRunClaimLost,
+  type RunConnectorCatalogSelection,
   type ZeroRunModelPin,
 } from "./agent-run-create.service";
 import {
@@ -57,10 +59,7 @@ import {
   type ZeroRunBootstrapSnapshotRows,
 } from "./zero-run-bootstrap-context.service";
 import type { RunWorkflowRef } from "./workflow-data.service";
-import {
-  loadConnectorRuntimeSnapshot,
-  type ConnectorRuntimeSnapshot,
-} from "./connector-catalog-runtime.service";
+import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
 import { expandConnectorServerFirewallPolicies } from "./connector-server-firewall-catalog.service";
 import type { QueueFirstRunAssociation } from "./chat-queued-event.service";
 import {
@@ -753,20 +752,31 @@ async function loadZeroRunPostAuthorizationContext(
   );
   signal.throwIfAborted();
 
-  const connectorCatalogSnapshot = await loadConnectorRuntimeSnapshot(db, {
-    timing: args.timing,
-    requestedConnectorCount: bootstrapContext.allowedConnectorSlugs.length,
-  });
+  const connectorCatalogSelection: RunConnectorCatalogSelection =
+    isEmptyRunConnectorScope(bootstrapContext)
+      ? { kind: "empty" }
+      : {
+          kind: "complete",
+          snapshot: await loadConnectorRuntimeSnapshot(db, {
+            timing: args.timing,
+            requestedConnectorCount:
+              bootstrapContext.allowedConnectorSlugs.length,
+          }),
+        };
   signal.throwIfAborted();
   const runPermissionPolicies = await measureZeroPreCreate(
     args.timing,
     "api_dispatch_pre_create_zero_resolve_firewall_metadata",
     async () => {
+      const storedPermissionPolicies = permissionGrantsToFirewallPolicies(
+        bootstrapContext.permissionGrants,
+      );
+      if (connectorCatalogSelection.kind === "empty") {
+        return storedPermissionPolicies;
+      }
       return await expandConnectorServerFirewallPolicies({
-        catalog: connectorCatalogSnapshot.serverFirewalls,
-        stored: permissionGrantsToFirewallPolicies(
-          bootstrapContext.permissionGrants,
-        ),
+        catalog: connectorCatalogSelection.snapshot.serverFirewalls,
+        stored: storedPermissionPolicies,
         connectorSlugs: [...bootstrapContext.allowedConnectorSlugs],
       });
     },
@@ -775,7 +785,7 @@ async function loadZeroRunPostAuthorizationContext(
 
   return {
     ...bootstrapContext,
-    connectorCatalogSnapshot,
+    connectorCatalogSelection,
     runPermissionPolicies,
   };
 }
@@ -866,7 +876,7 @@ interface ZeroRunAfterPreCreate {
   readonly userInfo: UserInfo;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
-  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+  readonly connectorCatalogSelection: RunConnectorCatalogSelection;
   readonly workflows: readonly RunWorkflowRef[];
   readonly allowedConnectorSlugs: readonly ConnectorSlug[];
   readonly allowedCustomConnectorIds: readonly string[];
@@ -977,7 +987,12 @@ const createAgentRunAfterZeroPreCreate$ = command(
           checkOrgPlanStatusBeforeContext: false,
           preloadedFeatureSwitchContext: input.featureSwitchContext,
           preloadedUserTimezone: input.userInfo.timezone,
-          preloadedConnectorCatalogSnapshot: input.connectorCatalogSnapshot,
+          ...(input.connectorCatalogSelection.kind === "complete"
+            ? {
+                preloadedConnectorCatalogSnapshot:
+                  input.connectorCatalogSelection.snapshot,
+              }
+            : {}),
         },
         signal,
       );
@@ -1052,7 +1067,7 @@ const createZeroRunInternal$ = command(
       customConnectorGrants,
       workflows,
       runPermissionPolicies,
-      connectorCatalogSnapshot,
+      connectorCatalogSelection,
     } = await loadZeroRunPostAuthorizationContext(
       db,
       {
@@ -1073,7 +1088,7 @@ const createZeroRunInternal$ = command(
         userInfo,
         featureSwitchContext,
         runPermissionPolicies,
-        connectorCatalogSnapshot,
+        connectorCatalogSelection,
         workflows,
         allowedConnectorSlugs,
         allowedCustomConnectorIds,

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.89](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.88...vsock-guest-v0.19.89) (2026-08-17)
+
+
+### Refactoring
+
+* **vsock-guest:** share worker ownership guards ([#27673](https://github.com/vm0-ai/vm0/issues/27673)) ([a071a89](https://github.com/vm0-ai/vm0/commit/a071a8916304e393dc58ffc763b9e42cdb2fa80b))
+
 ## [0.19.88](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.87...vsock-guest-v0.19.88) (2026-08-16)
 
 ## [0.19.87](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.86...vsock-guest-v0.19.87) (2026-08-15)

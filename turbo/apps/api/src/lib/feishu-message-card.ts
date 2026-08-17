@@ -1,3 +1,6 @@
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { publicBrandPresentation } from "@okouai/core/public-brand";
+
 import type { FeishuOutboundMessage } from "../signals/external/feishu-client";
 
 const MARKDOWN_ELEMENT_MAX_LENGTH = 12_000;
@@ -44,24 +47,26 @@ function cardMessage(args: {
   };
 }
 
-export function buildFeishuLoginMessage(
-  connectUrl: string,
-): FeishuOutboundMessage {
+export function buildFeishuLoginMessage(args: {
+  readonly connectUrl: string;
+  readonly publicBrand: PublicBrand;
+}): FeishuOutboundMessage {
+  const { assistantName } = publicBrandPresentation(args.publicBrand);
   return cardMessage({
     title: "Connect your account",
     template: "blue",
-    summary: "Connect your account to use Zero in Feishu.",
+    summary: `Connect your account to use ${assistantName} in Feishu.`,
     elements: [
       {
         tag: "markdown",
-        content: "To use Zero in Feishu, please connect your account first.",
+        content: `To use ${assistantName} in Feishu, please connect your account first.`,
       },
       {
         tag: "button",
         text: { tag: "plain_text", content: "Connect" },
         type: "primary_filled",
         width: "fill",
-        behaviors: [{ type: "open_url", default_url: connectUrl }],
+        behaviors: [{ type: "open_url", default_url: args.connectUrl }],
       },
     ],
   });
@@ -69,18 +74,22 @@ export function buildFeishuLoginMessage(
 
 export function buildFeishuWelcomeMessage(args: {
   readonly agentName: string | null;
+  readonly publicBrand: PublicBrand;
 }): FeishuOutboundMessage {
+  const { assistantName, brandName } = publicBrandPresentation(
+    args.publicBrand,
+  );
   const agentLine = args.agentName
     ? `\n\nYour current agent is **${args.agentName}**.`
     : "";
   return cardMessage({
     title: "You're connected! 🎉",
     template: "green",
-    summary: "Your Feishu account is connected to VM0.",
+    summary: `Your Feishu account is connected to ${brandName}.`,
     elements: [
       {
         tag: "markdown",
-        content: `👋 **Hi! I'm Zero.**\n\nI connect Feishu conversations to AI agents to help with your tasks.${agentLine}`,
+        content: `👋 **Hi! I'm ${assistantName}.**\n\nI connect Feishu conversations to AI agents to help with your tasks.${agentLine}`,
       },
       {
         tag: "hr",
@@ -94,16 +103,19 @@ export function buildFeishuWelcomeMessage(args: {
   });
 }
 
-export function buildFeishuHelpMessage(): FeishuOutboundMessage {
+export function buildFeishuHelpMessage(
+  publicBrand: PublicBrand,
+): FeishuOutboundMessage {
+  const { assistantName, brandName } = publicBrandPresentation(publicBrand);
   return {
     msgType: "text",
     content: {
       text: [
-        "Zero commands",
+        `${assistantName} commands`,
         "",
         "/help — Show this help",
-        "/connect — Connect your VM0 account",
-        "/disconnect — Disconnect your VM0 account",
+        `/connect — Connect your ${brandName} account`,
+        `/disconnect — Disconnect your ${brandName} account`,
         "/switch — Choose which agent responds",
         "/model — Choose your model",
         "",
@@ -134,9 +146,11 @@ export function buildFeishuNoticeMessage(args: {
 
 export function buildFeishuAgentResponseMessage(args: {
   readonly text: string;
+  readonly publicBrand: PublicBrand;
   readonly auditUrl?: string;
   readonly footerText?: string;
 }): FeishuOutboundMessage {
+  const { assistantName } = publicBrandPresentation(args.publicBrand);
   const footerElements: Readonly<Record<string, unknown>>[] =
     args.auditUrl || args.footerText
       ? [
@@ -156,7 +170,7 @@ export function buildFeishuAgentResponseMessage(args: {
         ]
       : [];
   return cardMessage({
-    title: "Zero",
+    title: assistantName,
     template: "blue",
     summary: args.text.slice(0, 200),
     elements: [...markdownElements(args.text), ...footerElements],

@@ -35,6 +35,19 @@ interface RestoreSubscriptionForOrgArgs {
   readonly requirePaymentMethod?: boolean;
 }
 
+interface PlanRestoreState {
+  readonly stripeSubscriptionId: string | null;
+  readonly cancelAtPeriodEnd: boolean;
+  readonly pendingSubscriptionScheduleId: string | null;
+}
+
+export function canRestorePlanSubscription(state: PlanRestoreState): boolean {
+  return (
+    state.stripeSubscriptionId !== null &&
+    (state.cancelAtPeriodEnd || state.pendingSubscriptionScheduleId !== null)
+  );
+}
+
 export async function restoreSubscriptionForOrg(
   db: Db,
   args: RestoreSubscriptionForOrgArgs,
@@ -56,7 +69,7 @@ export async function restoreSubscriptionForOrg(
   }
 
   const pendingScheduleId = org.pendingSubscriptionScheduleId;
-  if (!org.cancelAtPeriodEnd && !pendingScheduleId) {
+  if (!canRestorePlanSubscription(org)) {
     return { ok: false, reason: "not_scheduled" };
   }
 

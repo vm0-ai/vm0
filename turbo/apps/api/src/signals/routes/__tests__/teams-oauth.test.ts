@@ -21,6 +21,10 @@ import {
   teamsConnectFixture,
   type TeamsConnectFixture,
 } from "./helpers/teams-connect";
+import {
+  expectedIntegrationIdentityCompatibilityEvent,
+  integrationIdentityCompatibilityEvents,
+} from "./helpers/integration-identity-compatibility";
 import { teamsConnectRoutes } from "../teams-connect";
 
 const context = testContext();
@@ -178,9 +182,14 @@ describe("Teams OAuth API routes", () => {
     );
     const state = JSON.parse(redirectUrl.searchParams.get("state")!) as {
       readonly orgId: string;
+      readonly publicBrand: string;
       readonly userId: string;
     };
-    expect(state).toStrictEqual({ orgId: "org_1", userId: "user_1" });
+    expect(state).toStrictEqual({
+      orgId: "org_1",
+      publicBrand: "vm0",
+      userId: "user_1",
+    });
   });
 
   it("accepts the legacy query key but writes only canonical state", async () => {
@@ -194,8 +203,23 @@ describe("Teams OAuth API routes", () => {
       string,
       unknown
     >;
-    expect(state).toStrictEqual({ orgId: "org_1", userId: "user_1" });
+    expect(state).toStrictEqual({
+      orgId: "org_1",
+      publicBrand: "vm0",
+      userId: "user_1",
+    });
     expect(state).not.toHaveProperty("vm0UserId");
+    expect(
+      integrationIdentityCompatibilityEvents(
+        context.mocks.axiomLogging.warn.mock.calls,
+      ),
+    ).toStrictEqual([
+      expectedIntegrationIdentityCompatibilityEvent({
+        provider: "teams",
+        surface: "query",
+        outcome: "legacy_only_accepted",
+      }),
+    ]);
   });
 
   it("fails closed when canonical and legacy query keys conflict", async () => {
@@ -207,6 +231,17 @@ describe("Teams OAuth API routes", () => {
     await expect(response.json()).resolves.toStrictEqual({
       error: "Conflicting userId values",
     });
+    expect(
+      integrationIdentityCompatibilityEvents(
+        context.mocks.axiomLogging.warn.mock.calls,
+      ),
+    ).toStrictEqual([
+      expectedIntegrationIdentityCompatibilityEvent({
+        provider: "teams",
+        surface: "query",
+        outcome: "conflicting_dual_rejected",
+      }),
+    ]);
   });
 
   it("keeps API-host connect requests on the API callback origin", async () => {
@@ -272,6 +307,17 @@ describe("Teams OAuth API routes", () => {
       isConnected: false,
       installUrl: teamsInstallUrl(fixture.teamsTenantId),
     });
+    expect(
+      integrationIdentityCompatibilityEvents(
+        context.mocks.axiomLogging.warn.mock.calls,
+      ),
+    ).toStrictEqual([
+      expectedIntegrationIdentityCompatibilityEvent({
+        provider: "teams",
+        surface: "state",
+        outcome: "legacy_only_accepted",
+      }),
+    ]);
 
     await installTeamsForTest(context.signal, fixture);
     const installedStatus = await accept(
@@ -412,5 +458,16 @@ describe("Teams OAuth API routes", () => {
     expect(new URL(location!).searchParams.get("error")).toBe(
       "Invalid connect state.",
     );
+    expect(
+      integrationIdentityCompatibilityEvents(
+        context.mocks.axiomLogging.warn.mock.calls,
+      ),
+    ).toStrictEqual([
+      expectedIntegrationIdentityCompatibilityEvent({
+        provider: "teams",
+        surface: "state",
+        outcome: "conflicting_dual_rejected",
+      }),
+    ]);
   });
 });

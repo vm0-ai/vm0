@@ -305,7 +305,15 @@ function validateCallerIsolation(): void {
       "e2e",
     ],
   );
-  assert.deepEqual(runtimeFiles, []);
+  assert.deepEqual(runtimeFiles, [
+    "turbo/apps/api/src/signals/routes/__tests__/chat-events.bdd.test.ts",
+    "turbo/apps/api/src/signals/routes/__tests__/computer-use.bdd.test.ts",
+    "turbo/apps/api/src/signals/routes/__tests__/helpers/runtime-state.ts",
+    "turbo/apps/api/src/signals/routes/__tests__/run-lifecycle.bdd.test.ts",
+    "turbo/apps/api/src/signals/routes/test-runtime-state.ts",
+    "turbo/apps/api/src/signals/services/agent-run-create.service.ts",
+    "turbo/packages/api-contracts/src/contracts/test-runtime-state.ts",
+  ]);
 
   const databaseSourceFiles = trackedFilesWithPattern(
     "AgentRunLaunchSnapshot|launchSnapshot|launch_snapshot",

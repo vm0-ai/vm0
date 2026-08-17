@@ -1,63 +1,32 @@
 import type { ReactNode } from "react";
-import { useGet, useSet } from "ccstate-react";
-import { Check, ChevronDown } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@okouai/ui/components/ui/dropdown-menu";
+import { useGet, useLastResolved, useSet } from "ccstate-react";
+import { ChevronDown } from "lucide-react";
 import {
   Popover,
-  PopoverAnchor,
   PopoverContent,
+  PopoverTrigger,
 } from "@okouai/ui/components/ui/popover";
 import { Slider } from "@okouai/ui/components/ui/slider";
 import { Switch } from "@okouai/ui/components/ui/switch";
 import { cn } from "@okouai/ui";
-import type {
-  GenerationTemplateRequest,
-  VideoGenerationOptions,
-} from "@okouai/api-contracts/contracts/chat-threads";
 import {
-  DEFAULT_VIDEO_MODEL,
-  PUBLIC_VIDEO_MODELS,
   VIDEO_MODEL_CONFIGS,
-  resolveVideoGenerationOptions,
   type ResolvedVideoGenerationOptions,
   type VideoAspectRatio,
   type VideoDuration,
-  type VideoModel,
   type VideoModelConfig,
 } from "@okouai/core/video-model-catalog";
 import { useTranslation } from "react-i18next";
-import type { ComposerSignals } from "../../signals/zero-page/composer-signals.ts";
+import type {
+  ComposerSignals,
+  ComposerVideoModelSignals,
+} from "../../signals/zero-page/composer-signals.ts";
+import {
+  resolveVideoRunOptions,
+  videoRunOptionsPatch,
+  videoRunOptionsText,
+} from "../../signals/zero-page/video-run-options.ts";
 import { videoModelSelectionEnabled$ } from "../../signals/external/feature-switch.ts";
-
-/**
- * Only the values the user actually chose are persisted, so a template written
- * today follows a later change of default instead of pinning the current one.
- */
-function toVideoOptionsPatch(
-  next: ResolvedVideoGenerationOptions,
-  modelDefaults: ResolvedVideoGenerationOptions,
-): VideoGenerationOptions {
-  return {
-    ...(next.model !== DEFAULT_VIDEO_MODEL ? { model: next.model } : {}),
-    ...(next.aspectRatio === modelDefaults.aspectRatio
-      ? {}
-      : { aspectRatio: next.aspectRatio }),
-    ...(next.duration === modelDefaults.duration
-      ? {}
-      : { duration: next.duration }),
-    ...(next.resolution === modelDefaults.resolution
-      ? {}
-      : { resolution: next.resolution }),
-    ...(next.generateAudio === modelDefaults.generateAudio
-      ? {}
-      : { generateAudio: next.generateAudio }),
-  };
-}
 
 /**
  * Groups the settings so the pane reads as blocks rather than a run of loose
@@ -295,111 +264,30 @@ function VideoDurationField({
   );
 }
 
-/**
- * Model choice for the whole video tab. Video generation is the most expensive
- * thing the composer can start, so the decision sits in the template dialog's
- * header band rather than hiding inside a chip the user edits after committing
- * to a template.
- *
- * It is the app's DropdownMenu, so item radius, padding, text size, the state
- * layer hover and keyboard navigation all come from the component.
- */
-export function VideoModelPickerRow({
-  model,
-  onChange,
-}: {
-  readonly model: VideoModel;
-  readonly onChange: (next: VideoModel) => void;
-}) {
-  const { t } = useTranslation();
-  const config: VideoModelConfig = VIDEO_MODEL_CONFIGS[model];
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          aria-label={t(
-            ($) => {
-              return $.chat.templates.videoModelLabel;
-            },
-            { model: config.label },
-          )}
-          className={cn(
-            "flex h-9 items-center gap-2 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))]",
-            "bg-input px-3 text-sm text-foreground outline-none transition-colors",
-            "hover:bg-input-hover focus-visible:ring-2 focus-visible:ring-ring",
-          )}
-        >
-          <span className="font-medium">{config.label}</span>
-          <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="start"
-        side="bottom"
-        sideOffset={6}
-        // Left edge on the trigger's, and never narrower than it — the same
-        // `--anchor-width` contract Select's menu already uses.
-        className="min-w-[var(--anchor-width)]"
-      >
-        {PUBLIC_VIDEO_MODELS.map((candidate) => {
-          const candidateConfig: VideoModelConfig =
-            VIDEO_MODEL_CONFIGS[candidate];
-          const selected = candidate === model;
-          return (
-            <DropdownMenuItem
-              key={candidate}
-              aria-label={candidateConfig.label}
-              className="pr-8"
-              onClick={() => {
-                onChange(candidate);
-              }}
-            >
-              <span
-                className={cn(
-                  "min-w-0 flex-1 truncate",
-                  selected && "font-medium text-primary",
-                )}
-              >
-                {candidateConfig.label}
-              </span>
-              {selected && (
-                <Check className="absolute right-2 text-primary" aria-hidden />
-              )}
-            </DropdownMenuItem>
-          );
-        })}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
 function VideoSettingsPane({
   resolved,
   config,
-  showLegacyModel,
   onChange,
 }: {
   readonly resolved: ResolvedVideoGenerationOptions;
   readonly config: VideoModelConfig;
-  readonly showLegacyModel: boolean;
   readonly onChange: (next: ResolvedVideoGenerationOptions) => void;
 }) {
   const { t } = useTranslation();
   return (
     <div className="flex flex-col gap-1.5">
-      {showLegacyModel && (
-        <div className="flex items-baseline justify-between gap-3 px-2.5 pb-0.5 pt-1">
-          <span className="text-[13px] text-muted-foreground">
-            {t(($) => {
-              return $.chat.templates.videoOptionsModel;
-            })}
-          </span>
-          <span className="truncate text-[13px] font-medium text-foreground">
-            {config.label}
-          </span>
-        </div>
-      )}
+      {/* The model these values belong to, as context. It is chosen from the
+          composer's own video control, so this pane never nests a picker. */}
+      <div className="flex items-baseline justify-between gap-3 px-2.5 pb-0.5 pt-1">
+        <span className="text-[13px] text-muted-foreground">
+          {t(($) => {
+            return $.chat.templates.videoOptionsModel;
+          })}
+        </span>
+        <span className="truncate text-[13px] font-medium text-foreground">
+          {config.label}
+        </span>
+      </div>
       <SettingsPanel>
         <VideoOptionField
           label={t(($) => {
@@ -462,69 +350,52 @@ function VideoSettingsPane({
   );
 }
 
-interface VideoTemplateOptionsPopoverProps {
-  readonly signals: ComposerSignals;
-  readonly onChange: (next: GenerationTemplateRequest) => void;
-}
-
-function VideoTemplateOptionsPopoverContent({
+function ComposerVideoOptionsChipBody({
   signals,
-  onChange,
-  showLegacyModel,
-}: VideoTemplateOptionsPopoverProps & {
-  readonly showLegacyModel: boolean;
+  videoModelSignals,
+}: {
+  readonly signals: ComposerSignals;
+  readonly videoModelSignals: ComposerVideoModelSignals;
 }) {
   const { t } = useTranslation();
-  const anchor = useGet(signals.template.videoTemplateOptionsAnchor$);
-  const value = useGet(signals.template.videoTemplateOptionsValue$);
-  const close = useSet(signals.template.closeVideoTemplateOptions$);
+  const open = useGet(signals.videoOptions.videoOptionsOpen$);
+  const setOpen = useSet(signals.videoOptions.setVideoOptionsOpen$);
+  const patch = useGet(signals.videoOptions.videoRunOptions$);
+  const setPatch = useSet(signals.videoOptions.setVideoRunOptions$);
+  const model = useLastResolved(videoModelSignals.effectiveVideoModel$);
 
-  if (!anchor || !value || value.type !== "video") {
+  if (model === undefined) {
     return null;
   }
 
-  const resolved = resolveVideoGenerationOptions(value.selection.videoOptions);
-  const config: VideoModelConfig = VIDEO_MODEL_CONFIGS[resolved.model];
-  const apply = (next: ResolvedVideoGenerationOptions): void => {
-    // Re-resolve so a value the newly chosen model rejects falls back the same
-    // way the generation service would.
-    const settled = resolveVideoGenerationOptions(next);
-    const modelDefaults = resolveVideoGenerationOptions({
-      model: settled.model,
-    });
-    onChange({
-      ...value,
-      selection: {
-        ...value.selection,
-        videoOptions: toVideoOptionsPatch(settled, modelDefaults),
-      },
-    });
-  };
+  const resolved = resolveVideoRunOptions(patch, model);
+  const config: VideoModelConfig = VIDEO_MODEL_CONFIGS[model];
+  const spec = videoRunOptionsText(resolved);
 
   return (
-    <Popover
-      open
-      onOpenChange={(open) => {
-        if (!open) {
-          close();
-        }
-      }}
-    >
-      <PopoverAnchor asChild>
-        <span
-          aria-hidden="true"
-          className="pointer-events-none fixed"
-          style={{
-            left: `${String(anchor.left)}px`,
-            top: `${String(anchor.top)}px`,
-            width: `${String(anchor.width)}px`,
-            height: `${String(anchor.height)}px`,
-          }}
-        />
-      </PopoverAnchor>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        type="button"
+        className={cn(
+          "inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2",
+          "text-[13px] leading-none text-muted-foreground transition-colors",
+          "hover:bg-state-hover hover:text-foreground",
+          "data-popup-open:bg-state-hover data-popup-open:text-foreground",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        )}
+        aria-label={t(
+          ($) => {
+            return $.chat.templates.videoOptionsLabel;
+          },
+          { spec },
+        )}
+      >
+        <span className="tabular-nums">{spec}</span>
+        <ChevronDown className="size-3 shrink-0 opacity-70" aria-hidden />
+      </PopoverTrigger>
       <PopoverContent
         align="start"
-        side="bottom"
+        side="top"
         sideOffset={6}
         // The gap between panels matches this padding, so the pane is evenly
         // spaced on every side; that 6px is also what sets the panel radius.
@@ -536,22 +407,48 @@ function VideoTemplateOptionsPopoverContent({
         <VideoSettingsPane
           resolved={resolved}
           config={config}
-          showLegacyModel={showLegacyModel}
-          onChange={apply}
+          onChange={(next) => {
+            setPatch(videoRunOptionsPatch(next, model));
+          }}
         />
       </PopoverContent>
     </Popover>
   );
 }
 
-export function VideoTemplateOptionsPopover(
-  props: VideoTemplateOptionsPopoverProps,
-) {
-  const videoModelSelectionEnabled = useGet(videoModelSelectionEnabled$);
+/**
+ * Parameters for the next video the run generates, on a chip under the input.
+ *
+ * The chip states the four values the run would use even before the user
+ * touches any of them, because "what will this cost me" is the question the
+ * control exists to answer. Its value domains come from the model that is
+ * actually in effect, so an illegal combination — the one the generation
+ * endpoint has to reject with a 400 — cannot be selected here.
+ *
+ * It follows the composer's desktop mode: the settings only mean anything for
+ * a video run, and only the desktop control can switch to one.
+ */
+export function ComposerVideoOptionsChip({
+  signals,
+}: {
+  readonly signals: ComposerSignals;
+}) {
+  const enabled = useGet(videoModelSelectionEnabled$);
+  const desktopLayout = useGet(signals.model.desktopModelPickerLayout$);
+  const desktopModelMode = useGet(signals.model.desktopModelMode$);
+  const videoModelSignals = signals.videoModel;
+  if (
+    !enabled ||
+    !desktopLayout ||
+    desktopModelMode !== "video" ||
+    !videoModelSignals
+  ) {
+    return null;
+  }
   return (
-    <VideoTemplateOptionsPopoverContent
-      {...props}
-      showLegacyModel={!videoModelSelectionEnabled}
+    <ComposerVideoOptionsChipBody
+      signals={signals}
+      videoModelSignals={videoModelSignals}
     />
   );
 }

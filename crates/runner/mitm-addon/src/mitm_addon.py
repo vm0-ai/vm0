@@ -27,15 +27,16 @@ from mitmproxy.addonmanager import Loader
 # --- Sub-module imports ---
 #
 # auth_base_forwarder/body_capture/connector_diagnostics/connector_intent/content_length/
-# matching/registry/response_encoding_negotiation/response_streaming/runner_flush_lifecycle/
-# terminal_usage/upstream_admission/usage/websocket_retention are imported by module (not selective
-# `from X import ...`) so that:
+# matching/model_websocket_usage/registry/response_encoding_negotiation/response_streaming/
+# runner_flush_lifecycle/terminal_usage/upstream_admission/usage/websocket_retention are imported
+# by module (not selective `from X import ...`) so that:
 #   1. Cross-module calls read as ``auth_base_forwarder.X(...)`` /
 #      ``body_capture.X(...)`` / ``connector_diagnostics.X(...)`` /
 #      ``connector_intent.X(...)`` /
 #      ``content_length.X(...)`` /
-#      ``matching.X(...)`` / ``registry.X(...)`` / ``response_streaming.X(...)`` /
-#      ``runner_flush_lifecycle.X(...)`` / ``terminal_usage.X(...)`` /
+#      ``matching.X(...)`` / ``model_websocket_usage.X(...)`` / ``registry.X(...)`` /
+#      ``response_streaming.X(...)`` / ``runner_flush_lifecycle.X(...)`` /
+#      ``terminal_usage.X(...)`` /
 #      ``upstream_admission.X(...)`` / ``usage.X(...)`` /
 #      ``websocket_retention.X(...)``, making the module boundary visible at call sites.
 #   2. Tests can patch names on the owning module object and affect all
@@ -55,6 +56,7 @@ import http_local_responses
 import http_network_log
 import matching
 import mitmproxy_compat
+import model_websocket_usage
 import platform_api
 import registry
 import request_classification
@@ -1571,21 +1573,18 @@ def websocket_message(flow: http.HTTPFlow) -> None:
 
     message = flow.websocket.messages[-1]
     websocket_retention.schedule_message_trim(flow)
-    if not response_streaming.is_model_websocket_usage_enabled(flow):
+    if not model_websocket_usage.is_enabled(flow):
         return
-    uses_openai_responses = response_streaming.model_usage_protocol(flow) == "openai_responses"
     if getattr(message, "from_client", False):
-        if uses_openai_responses:
-            body = message.content.encode() if isinstance(message.content, str) else message.content
-            event = usage.inspect_openai_responses_client_event_json(body)
-            codex_output_timing.observe_client_event(flow, event.event_type, message.timestamp)
-            response_streaming.observe_model_websocket_client_event(flow, event)
+        body = message.content.encode() if isinstance(message.content, str) else message.content
+        event = usage.inspect_openai_responses_client_event_json(body)
+        codex_output_timing.observe_client_event(flow, event.event_type, message.timestamp)
+        model_websocket_usage.observe_client_event(flow, event)
         return
     body = message.content.encode() if isinstance(message.content, str) else message.content
     event = usage.inspect_openai_responses_event_json(body)
-    if uses_openai_responses:
-        codex_output_timing.observe_server_event(flow, event.event_type)
-    response_streaming.feed_model_websocket_usage(flow, event)
+    codex_output_timing.observe_server_event(flow, event.event_type)
+    model_websocket_usage.feed_usage(flow, event)
 
 
 def _response_size(flow: http.HTTPFlow) -> int:
@@ -1662,7 +1661,7 @@ def response(flow: http.HTTPFlow) -> Awaitable[None] | None:
 
     release_tracking = True
     try:
-        release_tracking = not response_streaming.is_model_websocket_usage_enabled(flow)
+        release_tracking = not model_websocket_usage.is_enabled(flow)
     finally:
         _release_terminal_flow_state(
             flow,
@@ -1679,7 +1678,7 @@ async def _complete_response(
     release_tracking = True
     try:
         await continuation
-        release_tracking = not response_streaming.is_model_websocket_usage_enabled(flow)
+        release_tracking = not model_websocket_usage.is_enabled(flow)
     finally:
         _release_terminal_flow_state(
             flow,

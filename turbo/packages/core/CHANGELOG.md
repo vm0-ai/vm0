@@ -1,5 +1,48 @@
 # Changelog
 
+## [8.564.0](https://github.com/vm0-ai/vm0/compare/core-v8.563.0...core-v8.564.0) (2026-08-17)
+
+
+### Features
+
+* **core:** add image model catalog and selection switch ([#27710](https://github.com/vm0-ai/vm0/issues/27710)) ([7087c6f](https://github.com/vm0-ai/vm0/commit/7087c6f37eabfce888341c9562ab2683659ebbb1)), closes [#27688](https://github.com/vm0-ai/vm0/issues/27688)
+
+
+### Refactoring
+
+* remove videoTemplateOptions feature switch ([#27706](https://github.com/vm0-ai/vm0/issues/27706)) ([dbb411f](https://github.com/vm0-ai/vm0/commit/dbb411f15a94a4fe20051f73d2b7a692fa8da77c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.335.0
+
+## [8.563.0](https://github.com/vm0-ai/vm0/compare/core-v8.562.8...core-v8.563.0) (2026-08-17)
+
+
+### Features
+
+* **api:** persist public brand for outbound delivery ([#27200](https://github.com/vm0-ai/vm0/issues/27200)) ([fa77b3e](https://github.com/vm0-ai/vm0/commit/fa77b3e80fae53c57168e8dc6d38e4b7a7d77c96))
+* **core:** enable video model selection for staff ([#27696](https://github.com/vm0-ai/vm0/issues/27696)) ([7f487ba](https://github.com/vm0-ai/vm0/commit/7f487bad8b7f1c75909f0dd13515cf716bbd6f4c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.334.0
+
+## [8.562.8](https://github.com/vm0-ai/vm0/compare/core-v8.562.7...core-v8.562.8) (2026-08-17)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.11
+
 ## [8.562.7](https://github.com/vm0-ai/vm0/compare/core-v8.562.6...core-v8.562.7) (2026-08-16)
 
 

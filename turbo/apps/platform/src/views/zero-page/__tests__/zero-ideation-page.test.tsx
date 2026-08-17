@@ -3,6 +3,7 @@ import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
 } from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -85,6 +86,33 @@ async function suggestedPromptGrid(): Promise<HTMLElement> {
 }
 
 describe("zero ideation page", () => {
+  it.each([
+    ["https://app.okou.ai/", "Okou"],
+    ["https://pr-27200-app.omby.ai/", "Okou"],
+    ["https://app.vm0.ai/", "VM0"],
+  ])(
+    "uses the %s product identity in the Zapier migration idea",
+    async (url, brandName) => {
+      context.mocks.browser.url(url);
+      mockConnectorCatalogStatus(["zapier", "slack", "notion"]);
+
+      detachedSetupPage({
+        context,
+        path: `/agents/${agentId}/ideas`,
+        featureSwitches: { [FeatureSwitchKey.ZapierConnector]: true },
+      });
+
+      click(await screen.findByText(`Zapier → ${brandName} migration`));
+
+      const composer = (await screen.findByPlaceholderText(
+        PLACEHOLDER,
+      )) as HTMLTextAreaElement;
+      expect(composer).toHaveTextContent(
+        `Help me migrate my Zapier workflows to ${brandName}.`,
+      );
+    },
+  );
+
   it("filters use cases and starts an agent chat from a selected idea", async () => {
     detachedSetupPage({
       context,

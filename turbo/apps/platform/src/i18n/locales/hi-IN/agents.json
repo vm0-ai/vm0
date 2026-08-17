@@ -122,7 +122,7 @@
       "engineering": {
         "cases": {
           "batch-create-issues": {
-            "description": "एक सूची चिपकाएँ और Zero आपके लिए मुद्दे खोल देगा",
+            "description": "एक सूची चिपकाएँ और {{assistantName}} आपके लिए मुद्दे खोल देगा",
             "title": "बैच-निर्माण मुद्दे"
           },
           "browserbase-web-testing": {
@@ -134,7 +134,7 @@
             "title": "क्लाउडफ्लेयर ट्रैफ़िक और सुरक्षा रिपोर्ट"
           },
           "codebase-investigation": {
-            "description": "एक URL दें और Zero रेपो के माध्यम से बग का पता लगाता है",
+            "description": "एक URL दें और {{assistantName}} रेपो के माध्यम से बग का पता लगाता है",
             "title": "कोडबेस जांच"
           },
           "daily-standup-report": {
@@ -178,8 +178,8 @@
             "title": "वर्सेल परिनियोजन डाइजेस्ट"
           },
           "zapier-vm0-migration": {
-            "description": "अपने जैपियर वर्कफ़्लोज़ को VM0 एजेंटों के रूप में पुनः बनाएँ",
-            "title": "जैपियर → VM0 माइग्रेशन"
+            "description": "अपने जैपियर वर्कफ़्लोज़ को {{brandName}} एजेंटों के रूप में पुनः बनाएँ",
+            "title": "जैपियर → {{brandName}} माइग्रेशन"
           }
         },
         "title": "इंजीनियरिंग"

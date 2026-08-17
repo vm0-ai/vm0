@@ -476,6 +476,7 @@ async function slackInstallation(db: ReadonlyDb, teamId: string) {
           botUserId: slackOrgInstallations.botUserId,
           botScopes: slackOrgInstallations.botScopes,
           installedByUserId: slackOrgInstallations.installedByUserId,
+          publicBrand: slackOrgInstallations.publicBrand,
           createdAt: slackOrgInstallations.createdAt,
         })
         .from(slackOrgInstallations)

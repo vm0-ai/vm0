@@ -6,6 +6,8 @@ import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
 import { and, asc, eq, inArray, lt, or } from "drizzle-orm";
 import { z } from "zod";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { logger } from "../../lib/log";
 import { env } from "../../lib/env";
 import { buildFeishuNoticeMessage } from "../../lib/feishu-message-card";
@@ -141,6 +143,7 @@ async function loadClaimedIngress(db: Db, ingressId: string) {
       appId: feishuOrgInstallations.appId,
       defaultAgentId: feishuOrgInstallations.defaultComposeId,
       messageReceivedAt: feishuOrgInstallations.messageReceivedAt,
+      publicBrand: feishuOrgInstallations.publicBrand,
     })
     .from(feishuChatIngress)
     .innerJoin(
@@ -242,6 +245,7 @@ interface PersistedCanonicalFeishuIngress {
   readonly chatThreadId: string;
   readonly message: FeishuInboundMessage;
   readonly receivedAt: Date;
+  readonly publicBrand: PublicBrand;
 }
 
 interface CanonicalFeishuLaunchContext {
@@ -401,6 +405,7 @@ async function persistCanonicalFeishuIngress(
     chatThreadId: route.chatThreadId,
     message: args.message,
     receivedAt: args.ingress.createdAt,
+    publicBrand: args.installation.publicBrand,
   };
 }
 
@@ -409,6 +414,7 @@ async function notifyQueuedFeishuRun(
     readonly db: Db;
     readonly ingressId: string;
     readonly message: FeishuInboundMessage;
+    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -424,7 +430,7 @@ async function notifyQueuedFeishuRun(
   }
   const message = buildFeishuNoticeMessage({
     title: "Run queued",
-    text: `Concurrency limit reached. Will start automatically when a slot is available.\n\n[View queue](${env("APP_URL")}/?queue=1)`,
+    text: `Concurrency limit reached. Will start automatically when a slot is available.\n\n[View queue](${appUrlForPublicBrand(env("APP_URL"), args.publicBrand)}/?queue=1)`,
     kind: "warning",
   });
   if (!shouldReplyInFeishuThread(args.message)) {
@@ -458,11 +464,16 @@ async function finishUnconnectedFeishuIngress(
     readonly db: Db;
     readonly ingressId: string;
     readonly message: FeishuInboundMessage;
+    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<void> {
   await replyToUnconnectedFeishuMessage(
-    { db: args.db, message: args.message },
+    {
+      db: args.db,
+      message: args.message,
+      publicBrand: args.publicBrand,
+    },
     signal,
   );
   signal.throwIfAborted();
@@ -486,6 +497,30 @@ async function finishUnavailableAgentFeishuIngress(
   await markIngressProcessed(args.db, args.ingressId);
 }
 
+async function loadFeishuIngressDispatchContext(
+  db: Db,
+  ingressId: string,
+  signal: AbortSignal,
+) {
+  const ingress = await loadClaimedIngress(db, ingressId);
+  signal.throwIfAborted();
+  if (!ingress) {
+    throw new Error("Canonical Feishu ingress is unavailable");
+  }
+  const message = parseMatchingMessage(ingress);
+  const installation: FeishuDispatchInstallation = {
+    orgId: ingress.orgId,
+    ownerUserId: ingress.ownerUserId,
+    defaultAgentId: ingress.defaultAgentId,
+    messageReceivedAt: ingress.messageReceivedAt,
+    publicBrand: ingress.publicBrand,
+  };
+  await markFeishuMessageReceived({ db, installation, message }, signal);
+  const connection = await loadConnection(db, ingress.orgId, message);
+  signal.throwIfAborted();
+  return { ingress, message, installation, connection };
+}
+
 async function processClaimedIngress(
   args: {
     readonly db: Db;
@@ -507,31 +542,16 @@ async function processClaimedIngress(
   },
   signal: AbortSignal,
 ): Promise<PersistedCanonicalFeishuIngress | null> {
-  const ingress = await loadClaimedIngress(args.db, args.ingressId);
-  signal.throwIfAborted();
-  if (!ingress) {
-    throw new Error("Canonical Feishu ingress is unavailable");
-  }
-  const message = parseMatchingMessage(ingress);
-  const installation: FeishuDispatchInstallation = {
-    orgId: ingress.orgId,
-    ownerUserId: ingress.ownerUserId,
-    defaultAgentId: ingress.defaultAgentId,
-    messageReceivedAt: ingress.messageReceivedAt,
-  };
-  await markFeishuMessageReceived(
-    {
-      db: args.db,
-      installation,
-      message,
-    },
-    signal,
-  );
-  const connection = await loadConnection(args.db, ingress.orgId, message);
-  signal.throwIfAborted();
+  const { ingress, message, installation, connection } =
+    await loadFeishuIngressDispatchContext(args.db, args.ingressId, signal);
   if (!connection) {
     await finishUnconnectedFeishuIngress(
-      { db: args.db, ingressId: ingress.ingressId, message },
+      {
+        db: args.db,
+        ingressId: ingress.ingressId,
+        message,
+        publicBrand: installation.publicBrand,
+      },
       signal,
     );
     return null;
@@ -695,6 +715,7 @@ export const processCanonicalFeishuIngress$ = command(
         db,
         ingressId: args.ingressId,
         message: result.value.message,
+        publicBrand: result.value.publicBrand,
       },
       signal,
     );

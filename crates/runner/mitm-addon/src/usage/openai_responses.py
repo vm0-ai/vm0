@@ -13,12 +13,13 @@ model-provider usage billing:
 - Single-frame WebSocket event JSON via
   ``inspect_openai_responses_client_event_json``,
   ``inspect_openai_responses_event_json``, and
-  ``extract_openai_responses_usage_from_event``, consumed by
-  ``mitm_addon.py`` and ``response_streaming.py`` for client request intent,
-  event-type timing, and server usage events received over upgrades.
+  ``inspect_openai_responses_server_event``, consumed by ``mitm_addon.py`` and
+  ``model_websocket_usage.py`` for client request intent, event-type timing,
+  shared server lifecycle correlation, and usage received over upgrades.
+  ``extract_openai_responses_usage_from_event`` retains the usage-only facade.
 - Per-event usage aggregation via ``merge_openai_responses_usage_result``,
-  used by ``response_streaming.py`` to fold terminal SSE and WebSocket event
-  usage into a per-flow accumulator.
+  used by ``response_streaming.py`` for terminal SSE events and
+  ``model_websocket_usage.py`` for WebSocket events.
 """
 
 from collections.abc import Callable
@@ -33,6 +34,7 @@ from body_limits import LARGE_RESPONSE_DECOMPRESS_LIMIT
 from .json_probe import TopLevelStringFieldProbeResult, probe_top_level_string_field
 from .json_selective import (
     JSON_WORK_LIMIT_EXCEEDED,
+    JsonExtractionResult,
     JsonSelectiveExtractor,
     ScalarField,
 )
@@ -140,6 +142,10 @@ _RESPONSES_WEBSOCKET_WORK_LIMIT_ERROR = "work_limit_exceeded"
 _RESPONSES_CREATE_EVENT = "response.create"
 _RESPONSES_CREATED_EVENT = "response.created"
 _RESPONSES_ERROR_EVENT = "error"
+_RESPONSES_SERVER_LIFECYCLE_EVENTS = _RESPONSES_TERMINAL_USAGE_EVENTS | {
+    _RESPONSES_CREATED_EVENT,
+    _RESPONSES_ERROR_EVENT,
+}
 
 
 @dataclass(frozen=True)
@@ -172,6 +178,15 @@ class OpenAIResponsesServerLifecycle:
     @property
     def is_error(self) -> bool:
         return self.event_type == _RESPONSES_ERROR_EVENT
+
+
+@dataclass(frozen=True)
+class OpenAIResponsesServerEventInspection:
+    """Shared lifecycle and usage observations from one server frame."""
+
+    lifecycle: OpenAIResponsesServerLifecycle | None
+    usage: dict | None
+    usage_error: str | None
 
 
 @dataclass(frozen=True)
@@ -258,8 +273,9 @@ def inspect_openai_responses_event_json(body: bytes) -> OpenAIResponsesEvent:
 
     The returned ``event_type`` is only the bounded-prefix observation; this
     function does not fully parse or validate the frame. Pass the returned event
-    to ``extract_openai_responses_usage_from_event`` for selective full-frame
-    usage inspection.
+    to ``inspect_openai_responses_server_event`` for shared lifecycle and usage
+    inspection, or to ``extract_openai_responses_usage_from_event`` when only
+    usage is needed.
     """
     result = _probe_responses_event_type(body)
     return OpenAIResponsesEvent(
@@ -274,24 +290,11 @@ def _inspect_openai_responses_event_type_json(body: bytes) -> str | None:
     return _observed_responses_event_type(_probe_responses_event_type(body))
 
 
-def inspect_openai_responses_server_lifecycle(
+def _lifecycle_from_extraction(
     event: OpenAIResponsesEvent,
+    extractor: JsonSelectiveExtractor,
+    result: JsonExtractionResult,
 ) -> OpenAIResponsesServerLifecycle:
-    """Inspect a bounded lifecycle boundary for WebSocket correlation."""
-    relevant_event_types = _RESPONSES_TERMINAL_USAGE_EVENTS | {
-        _RESPONSES_CREATED_EVENT,
-        _RESPONSES_ERROR_EVENT,
-    }
-    if event.event_type is not None and event.event_type not in relevant_event_types:
-        return OpenAIResponsesServerLifecycle(event.event_type, None, True)
-
-    extractor = JsonSelectiveExtractor(
-        scalar_fields=_RESPONSES_LIFECYCLE_SCALAR_FIELDS,
-        scalar_consistency_paths={("type",), ("response", "id")},
-        max_work_units=_RESPONSES_MAX_WORK_UNITS,
-    )
-    extractor.feed(event._body)
-    result = extractor.finish()
     if not result.complete:
         return OpenAIResponsesServerLifecycle(
             event.event_type,
@@ -306,7 +309,7 @@ def inspect_openai_responses_server_lifecycle(
         return OpenAIResponsesServerLifecycle(event.event_type, None, False)
     if event_type == _RESPONSES_ERROR_EVENT:
         return OpenAIResponsesServerLifecycle(event_type, None, True)
-    if event_type not in relevant_event_types:
+    if event_type not in _RESPONSES_SERVER_LIFECYCLE_EVENTS:
         return OpenAIResponsesServerLifecycle(event_type, None, True)
     response_id = result.values.get(("response", "id"))
     if (
@@ -316,6 +319,77 @@ def inspect_openai_responses_server_lifecycle(
     ):
         return OpenAIResponsesServerLifecycle(event_type, None, False)
     return OpenAIResponsesServerLifecycle(event_type, response_id, True)
+
+
+def _usage_from_extraction(
+    result: JsonExtractionResult,
+    data_event_type: _ResponsesEventTypeClassification | None,
+) -> tuple[dict | None, str | None]:
+    if not result.complete:
+        error = (
+            _RESPONSES_WEBSOCKET_WORK_LIMIT_ERROR
+            if result.error == JSON_WORK_LIMIT_EXCEEDED
+            else None
+        )
+        return None, error
+
+    extracted_usage: dict = {}
+    _store_sse_result_values(
+        result.values,
+        extracted_usage,
+        event_name=None,
+        data_event_type=data_event_type,
+    )
+    if not any(category in extracted_usage for category in MODEL_USAGE_CATEGORIES):
+        return None, None
+    return extracted_usage, None
+
+
+def inspect_openai_responses_server_event(
+    event: OpenAIResponsesEvent,
+    *,
+    include_lifecycle: bool,
+) -> OpenAIResponsesServerEventInspection:
+    """Inspect one server frame with at most one bounded full-body parse."""
+    lifecycle: OpenAIResponsesServerLifecycle | None = None
+    needs_lifecycle_parse = include_lifecycle
+    if (
+        include_lifecycle
+        and event.event_type is not None
+        and event.event_type not in _RESPONSES_SERVER_LIFECYCLE_EVENTS
+    ):
+        lifecycle = OpenAIResponsesServerLifecycle(event.event_type, None, True)
+        needs_lifecycle_parse = False
+
+    needs_usage_parse = event._classification != _RESPONSES_EVENT_KNOWN_NON_USAGE
+    if not needs_lifecycle_parse and not needs_usage_parse:
+        return OpenAIResponsesServerEventInspection(lifecycle, None, None)
+
+    data_event_type = _resolved_data_event_type(event._classification)
+    if needs_usage_parse:
+        scalar_fields = (
+            _RESPONSES_SSE_SCALAR_FIELDS
+            if data_event_type is None or needs_lifecycle_parse
+            else _RESPONSES_SSE_RESPONSE_SCALAR_FIELDS
+        )
+    else:
+        scalar_fields = _RESPONSES_LIFECYCLE_SCALAR_FIELDS
+
+    consistency_paths = {("type",), ("response", "id")} if needs_lifecycle_parse else None
+    extractor = JsonSelectiveExtractor(
+        scalar_fields=scalar_fields,
+        scalar_consistency_paths=consistency_paths,
+        max_work_units=_RESPONSES_MAX_WORK_UNITS,
+    )
+    extractor.feed(event._body)
+    result = extractor.finish()
+
+    if needs_lifecycle_parse:
+        lifecycle = _lifecycle_from_extraction(event, extractor, result)
+    usage_result, usage_error = (
+        _usage_from_extraction(result, data_event_type) if needs_usage_parse else (None, None)
+    )
+    return OpenAIResponsesServerEventInspection(lifecycle, usage_result, usage_error)
 
 
 def _probe_responses_event_type(body: bytes) -> TopLevelStringFieldProbeResult:
@@ -498,12 +572,13 @@ def merge_openai_responses_usage_result(target: dict, source: dict) -> None:
     """Fold a Responses usage event into a per-flow usage accumulator.
 
     ``response_streaming.py`` uses this for terminal SSE events and
-    single-frame WebSocket event JSON, where multiple events may describe the
-    same upstream response. Output usage uses positive-wins semantics directly.
-    Input usage is first reconstructed into total input, cache reads, and cache
-    writes; those raw components use positive-wins semantics before being
-    repartitioned atomically. This preserves the input partition when a later
-    event reports a zero or omits one cache detail.
+    ``model_websocket_usage.py`` uses it for single-frame WebSocket event JSON,
+    where multiple events may describe the same upstream response. Output usage
+    uses positive-wins semantics directly. Input usage is first reconstructed
+    into total input, cache reads, and cache writes; those raw components use
+    positive-wins semantics before being repartitioned atomically. This
+    preserves the input partition when a later event reports a zero or omits one
+    cache detail.
 
     Metadata follows usage ownership. When the accumulator already has positive
     usage and the source has no positive usage quantity, source metadata is
@@ -913,37 +988,5 @@ def extract_openai_responses_usage_from_event(
     inspection failure is surfaced. Known non-usage events, other incomplete or
     malformed frames, and frames without extractable usage return ``(None, None)``.
     """
-    event_type = event._classification
-    if event_type == _RESPONSES_EVENT_KNOWN_NON_USAGE:
-        return None, None
-
-    data_event_type = _resolved_data_event_type(event_type)
-    scalar_fields = (
-        _RESPONSES_SSE_SCALAR_FIELDS
-        if data_event_type is None
-        else _RESPONSES_SSE_RESPONSE_SCALAR_FIELDS
-    )
-    extractor = JsonSelectiveExtractor(
-        scalar_fields=scalar_fields,
-        max_work_units=_RESPONSES_MAX_WORK_UNITS,
-    )
-    extractor.feed(event._body)
-    result = extractor.finish()
-    if not result.complete:
-        error = (
-            _RESPONSES_WEBSOCKET_WORK_LIMIT_ERROR
-            if result.error == JSON_WORK_LIMIT_EXCEEDED
-            else None
-        )
-        return None, error
-
-    usage: dict = {}
-    _store_sse_result_values(
-        result.values,
-        usage,
-        event_name=None,
-        data_event_type=data_event_type,
-    )
-    if not any(category in usage for category in MODEL_USAGE_CATEGORIES):
-        return None, None
-    return usage, None
+    inspection = inspect_openai_responses_server_event(event, include_lifecycle=False)
+    return inspection.usage, inspection.usage_error

@@ -6,7 +6,14 @@ import {
   useLoadable,
   useSet,
 } from "ccstate-react";
-import { Check, ChevronLeft, ChevronRight, Cpu, Zap } from "lucide-react";
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Cpu,
+  MessageCircle,
+  Zap,
+} from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -403,8 +410,9 @@ function ModelFirstTriggerContent({
   return (
     <span className="flex min-w-0 items-center gap-1.5">
       {desktopModeLabel && (
-        <span className="hidden shrink-0 sm:inline">
-          {desktopModeLabel} <span aria-hidden="true">·</span>
+        <span className="hidden shrink-0 sm:inline-flex sm:items-center sm:gap-1.5">
+          <MessageCircle size={16} aria-hidden="true" />
+          <span aria-hidden="true">·</span>
         </span>
       )}
       <ModelFirstTriggerLabel

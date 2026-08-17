@@ -52,6 +52,7 @@ export function createPlatformSentryOptions(
     initialScope: {
       tags: {
         app: "platform",
+        public_brand: runtimeConfig.publicBrand,
         ...(runtime === "shared-worker"
           ? { runtime: "shared-worker", worker: "shared-database" }
           : {}),

@@ -1,17 +1,19 @@
 """Per-connector billing and response parser dispatch.
 
-One file per billable connector under this package owns the connector's
-domain-specific request / response parsing.  :func:`report_connector_usage`
-is the single entry point called by the addon response / error handlers;
-it applies the universal gates (``run_id`` present, firewall flagged
-billable by the web layer, firewall has a registered handler) and
-delegates to the matching per-connector ``report_usage`` function.
+Each supported billable connector has one coherent registration under this
+package. The registration combines a required usage reporter with optional
+focused response-inspection behavior. The capability implementations may live in
+separate modules. :func:`report_connector_usage` is the single entry point
+called by the addon response / error handlers; it applies the universal gates
+(``run_id`` present, firewall flagged billable by the web layer, firewall has a
+registered handler) and delegates to the matching per-connector ``report_usage``
+function.
 
 Billable connector metadata comes from the accepted connector catalog and
 reaches the runner through the claim's ``billableFirewalls`` list. Adding a new
-billable connector means marking its catalog firewall billable, adding its
-reporter and any focused response-inspection owner here, and registering those
-capabilities in :data:`_REGISTRATIONS`.
+billable connector means marking its catalog firewall billable, adding a
+reporter and any focused response-inspection implementation under this package,
+and composing those capabilities in :data:`_REGISTRATIONS`.
 Response inspection owns both parser creation and buffered-fallback selection,
 so those decisions cannot drift across independent registries.
 """

@@ -77,6 +77,10 @@ export default defineConfig({
       testMatch: "paid-onboarding.spec.ts",
     },
     {
+      name: "billing-transitions",
+      testMatch: "billing-transitions.spec.ts",
+    },
+    {
       name: "features",
       testMatch: [
         "agents.spec.ts",

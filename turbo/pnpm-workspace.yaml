@@ -2,6 +2,17 @@ packages:
   - apps/*
   - packages/*
 
+# Keep native optional dependencies usable from both the macOS host and the
+# Linux devcontainer when they share the same node_modules directory.
+supportedArchitectures:
+  os:
+    - current
+    - darwin
+    - linux
+  cpu:
+    - current
+    - arm64
+
 peerDependencyRules:
   ignoreMissing:
     - react-native

@@ -273,6 +273,7 @@ jobs:
             .github/scripts/tests/download-verified-test.sh \
             .github/scripts/tests/fetch-okou-desktop-artifact-test.sh \
             .github/scripts/tests/list-okou-pages-preview-pr-numbers-test.sh \
+            .github/scripts/tests/neon-connection-string-ssl-test.sh \
             .github/scripts/tests/okou-desktop-artifact-test.sh \
             .github/scripts/tests/provision-runner-kvm-test.sh \
             .github/scripts/tests/release-tool-downloads-test.sh \

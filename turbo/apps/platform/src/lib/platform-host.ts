@@ -1,9 +1,11 @@
 type PlatformEnvironment = "development" | "preview" | "production";
+type PlatformPublicBrand = "vm0" | "okou";
 
 export type PlatformService = "api" | "www" | "app" | "platform";
 
 interface PlatformRuntimeConfig {
   readonly environment: PlatformEnvironment;
+  readonly publicBrand: PlatformPublicBrand;
   readonly clerkPublishableKey: string;
   readonly publicArtifactsBaseUrl: "https://cdn.vm0.io" | "https://cdn.vm7.io";
   readonly zeroHostDomain: "sites.vm0.io" | "sites.vm7.io";
@@ -16,6 +18,12 @@ interface PlatformRuntimeConfig {
 const PRODUCTION_DOMAIN = "vm0.ai";
 const OKOU_PRODUCTION_DOMAIN = "okou.ai";
 const OKOU_PREVIEW_DOMAIN = "omby.ai";
+const OKOU_PAGES_DOMAIN = "okou-app.pages.dev";
+const OKOU_ROOT_DOMAINS = [
+  OKOU_PRODUCTION_DOMAIN,
+  OKOU_PREVIEW_DOMAIN,
+  OKOU_PAGES_DOMAIN,
+] as const;
 const PREVIEW_API_DOMAIN = "vm6.ai";
 export const PRODUCTION_SATELLITE_HOSTNAME = "app.okou.ai";
 const PLATFORM_SERVICE_LABELS = ["platform", "app", "www", "api"] as const;
@@ -27,12 +35,29 @@ function browserHostname(): string | null {
   return location.hostname.toLowerCase();
 }
 
+function isDomainOrSubdomain(hostname: string, domain: string): boolean {
+  return hostname === domain || hostname.endsWith(`.${domain}`);
+}
+
+export function isOkouHostname(hostname: string): boolean {
+  const normalizedHostname = hostname.toLowerCase().replace(/:\d+$/u, "");
+  return OKOU_ROOT_DOMAINS.some((domain) => {
+    return isDomainOrSubdomain(normalizedHostname, domain);
+  });
+}
+
+function resolvePlatformPublicBrand(
+  hostname: string | null,
+): PlatformPublicBrand {
+  if (!hostname) {
+    return "vm0";
+  }
+  return isOkouHostname(hostname) ? "okou" : "vm0";
+}
+
 export function isOkouProductionHostname(hostname: string): boolean {
   const normalizedHostname = hostname.toLowerCase();
-  return (
-    normalizedHostname === OKOU_PRODUCTION_DOMAIN ||
-    normalizedHostname.endsWith(`.${OKOU_PRODUCTION_DOMAIN}`)
-  );
+  return isDomainOrSubdomain(normalizedHostname, OKOU_PRODUCTION_DOMAIN);
 }
 
 export function isProductionSatelliteHostname(hostname: string): boolean {
@@ -146,10 +171,12 @@ function requiredBuildValue(value: unknown, name: string): string {
 
 export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
   const environment = resolvePlatformEnvironment();
+  const publicBrand = resolvePlatformPublicBrand(browserHostname());
 
   if (environment === "production") {
     return {
       environment,
+      publicBrand,
       clerkPublishableKey: requiredBuildValue(
         import.meta.env.VITE_CLERK_PUBLISHABLE_KEY_PROD,
         "VITE_CLERK_PUBLISHABLE_KEY_PROD",
@@ -169,6 +196,7 @@ export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
 
   return {
     environment,
+    publicBrand,
     clerkPublishableKey: requiredBuildValue(
       import.meta.env.VITE_CLERK_PUBLISHABLE_KEY_PREVIEW,
       "VITE_CLERK_PUBLISHABLE_KEY_PREVIEW",

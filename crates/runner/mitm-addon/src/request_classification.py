@@ -63,6 +63,9 @@ _BROWSER_USER_AGENT_MARKERS = (
     " opr/",
     " safari/",
 )
+# User-Agent is only a spoofable business passthrough signal. Values above this
+# budget conservatively continue through ordinary firewall classification.
+_MAX_BROWSER_USER_AGENT_BYTES = 4096
 
 type StaleTlsAdmissionReason = Literal[
     "client_ip_missing",
@@ -559,7 +562,27 @@ def current_public_destination_denial(
     )
 
 
-def is_browser_user_agent(user_agent: str | None) -> bool:
+def is_browser_passthrough_heuristic(flow: http.HTTPFlow) -> bool:
+    # Short-term business passthrough heuristic for browser-originated traffic.
+    # This is not trusted browser provenance: any sandbox client can set this
+    # header. The spoofable User-Agent heuristic is currently accepted as a
+    # known tradeoff until runner-owned browser provenance is prioritized again.
+    user_agent_bytes = 0
+    has_user_agent = False
+    for name, value in flow.request.headers.fields:
+        if name.lower() != b"user-agent":
+            continue
+        if has_user_agent:
+            user_agent_bytes += len(b", ")
+        user_agent_bytes += len(value)
+        if user_agent_bytes > _MAX_BROWSER_USER_AGENT_BYTES:
+            return False
+        has_user_agent = True
+
+    if not has_user_agent:
+        return False
+
+    user_agent = flow.request.headers.get("User-Agent")
     if not user_agent:
         return False
 
@@ -567,14 +590,6 @@ def is_browser_user_agent(user_agent: str | None) -> bool:
     return "mozilla/" in normalized and any(
         marker in normalized for marker in _BROWSER_USER_AGENT_MARKERS
     )
-
-
-def is_browser_passthrough_heuristic(flow: http.HTTPFlow) -> bool:
-    # Short-term business passthrough heuristic for browser-originated traffic.
-    # This is not trusted browser provenance: any sandbox client can set this
-    # header. The spoofable User-Agent heuristic is currently accepted as a
-    # known tradeoff until runner-owned browser provenance is prioritized again.
-    return is_browser_user_agent(flow.request.headers.get("User-Agent"))
 
 
 def restore_request_headers_probe_metadata(

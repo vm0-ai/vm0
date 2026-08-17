@@ -13,7 +13,7 @@ import { ROUTES } from "../../signals/route-paths.ts";
 import { clerk$ } from "../../signals/auth.ts";
 import { brandName$ } from "../../signals/branding.ts";
 import { Link } from "../router/link.tsx";
-import { VM0Logo } from "../components/vm0-logo.tsx";
+import { ProductBrandMark } from "../components/product-brand-mark.tsx";
 
 type CardKind = "ready" | "granted" | "processing" | "auth" | "broken";
 
@@ -219,7 +219,7 @@ export function RedeemCampaignPage() {
   return (
     <div className="flex min-h-0 flex-1 items-center justify-center px-6 md:-translate-x-[128px]">
       <div className="flex w-[500px] max-w-full flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-[50px] py-12">
-        <VM0Logo />
+        <ProductBrandMark />
         <div className="flex flex-col items-center gap-4">
           <CardIcon kind={info.kind} />
           <p className="text-center text-lg font-medium leading-7 text-foreground">

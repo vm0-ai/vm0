@@ -96,6 +96,9 @@ const billingStatusResponseSchema = z.object({
   currentPeriodEnd: z.string().nullable(),
   cancelAtPeriodEnd: z.boolean(),
   scheduledChange: scheduledBillingChangeSchema.nullable(),
+  // Optional while older API deployments can still serve an already-loaded
+  // web/app client during rollout.
+  canRestorePlan: z.boolean().optional(),
   hasSubscription: z.boolean(),
   autoRecharge: autoRechargeSchema,
   creditExpiry: creditExpirySchema,

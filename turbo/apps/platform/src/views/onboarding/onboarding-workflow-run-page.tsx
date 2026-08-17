@@ -27,6 +27,7 @@ import {
   WorkflowConnectorPills,
   WorkflowPreview,
 } from "./onboarding-workflow-picker-page.tsx";
+import { assistantName$ } from "../../signals/branding.ts";
 
 function workflowRunTitle(custom: boolean, t: TFunction<"common">): string {
   return custom
@@ -45,11 +46,12 @@ export function OnboardingWorkflowRunPage() {
   const setDraft = useSet(updateOnboardingDraft$);
   const setUi = useSet(updateOnboardingUi$);
   const { navigateTo } = useOnboardingNavigation();
+  const assistantName = useGet(assistantName$);
   const custom = draft.workflowId === CUSTOM_WORKFLOW_ID;
-  const workflow = findOnboardingWorkflow(draft.workflowId, t);
+  const workflow = findOnboardingWorkflow(draft.workflowId, t, assistantName);
   const previewOpen = ui.workflowPreviewId === workflow?.id;
   const prompt = custom
-    ? buildCustomWorkflowPrompt(draft.workflowNote)
+    ? buildCustomWorkflowPrompt(draft.workflowNote, assistantName)
     : workflow
       ? buildWorkflowPrompt(workflow, draft.workflowNote)
       : "";
@@ -64,14 +66,12 @@ export function OnboardingWorkflowRunPage() {
     });
   };
 
-  const title = workflowRunTitle(custom, t);
-
   return (
     <>
       <OnboardingShell
         currentStep={3}
         totalSteps={3}
-        title={title}
+        title={workflowRunTitle(custom, t)}
         description=""
         footer={
           <OnboardingRunAction

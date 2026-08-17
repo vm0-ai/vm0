@@ -36,6 +36,7 @@ import {
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
+import { assistantName$ } from "../../signals/branding.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 
 function ForwardContent({ text }: { readonly text: string }) {
@@ -80,8 +81,9 @@ function ForwardTargetPicker({
   const { t } = useTranslation();
   const query = useGet(chatListQuery$);
   const setQuery = useSet(setChatListQuery$);
+  const assistantName = useGet(assistantName$);
   const defaultAgentId = useLastResolved(defaultAgentId$);
-  const defaultAgentName = useLastResolved(defaultAgentName$) ?? "Zero";
+  const defaultAgentName = useLastResolved(defaultAgentName$) ?? assistantName;
   const subagents = useLastResolved(subagents$) ?? [];
   const threadResult = useGet(agentListDialogChatThreads$);
   const normalizedQuery = query.trim().toLowerCase();

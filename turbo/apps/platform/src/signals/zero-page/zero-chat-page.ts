@@ -19,6 +19,7 @@ import type { ModelProviderSelection } from "../../views/zero-page/components/mo
 import { personalModelProvider$ } from "./model-first-personal-oauth.ts";
 import { openClaudeCodeDeviceAuthDialogPersonal$ } from "./settings/claude-code-device-auth.ts";
 import { openCodexDeviceAuthDialogPersonal$ } from "./settings/codex-device-auth.ts";
+import { brandName$ } from "../branding.ts";
 
 const internalTaglineIndex$ = state(Math.floor(Math.random() * 18));
 export const reloadTagline$ = command(({ set }) => {
@@ -35,13 +36,14 @@ export const chatPageTaglineIndex$ = computed((get) => {
 
 export const unfilteredSuggestedPrompts$ = computed((get) => {
   const features = get(featureSwitch$);
-  return getRandomPrompts(2, { features });
+  return getRandomPrompts(2, { brandName: get(brandName$), features });
 });
 
 export const suggestedPrompts$ = computed(async (get) => {
   const features = await get(featureSwitch$);
   const relatedCatalogItems = await get(relatedCatalogItems$);
   return getRandomPrompts(2, {
+    brandName: get(brandName$),
     features,
     visibleConnectorSlugs: new Set(
       relatedCatalogItems.map((connector) => {
@@ -137,6 +139,22 @@ export const chatPageVideoModelSelection$ = computed(
     }
     const userPreference = await get(userModelPreference$);
     return userPreference.selectedVideoModel ?? DEFAULT_VIDEO_MODEL;
+  },
+);
+
+/**
+ * What a video run started from the new-thread composer would use. The
+ * selection above is null when the user cleared it back to "follow my
+ * default", so the parameter panel resolves through the same member and system
+ * defaults the API would.
+ */
+export const chatPageEffectiveVideoModel$ = computed(
+  async (get): Promise<VideoModel> => {
+    return (
+      (await get(chatPageVideoModelSelection$)) ??
+      (await get(userModelPreference$)).selectedVideoModel ??
+      DEFAULT_VIDEO_MODEL
+    );
   },
 );
 

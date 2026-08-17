@@ -2,6 +2,8 @@ import { randomBytes } from "node:crypto";
 import { command } from "ccstate";
 import { and, desc, eq, isNull, or } from "drizzle-orm";
 import { z } from "zod";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { publicBrandPresentation } from "@okouai/core/public-brand";
 import {
   getVm0VisibleModels,
   isSupportedRunModel,
@@ -95,6 +97,7 @@ export interface FeishuDispatchInstallation {
   readonly ownerUserId: string | null;
   readonly defaultAgentId: string;
   readonly messageReceivedAt: Date | null;
+  readonly publicBrand: PublicBrand;
 }
 
 export interface FeishuDispatchConnection {
@@ -206,6 +209,7 @@ export async function replyToUnconnectedFeishuMessage(
   args: {
     readonly db: Db;
     readonly message: FeishuInboundMessage;
+    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -215,7 +219,7 @@ export async function replyToUnconnectedFeishuMessage(
       {
         db: args.db,
         message: args.message,
-        outbound: buildFeishuHelpMessage(),
+        outbound: buildFeishuHelpMessage(args.publicBrand),
       },
       signal,
     );
@@ -240,12 +244,16 @@ export async function replyToUnconnectedFeishuMessage(
     installationId: args.message.installationId,
     openId: args.message.openId,
     chatId: args.message.chatId,
+    publicBrand: args.publicBrand,
   });
   await reply(
     {
       db: args.db,
       message: args.message,
-      outbound: buildFeishuLoginMessage(connectUrl),
+      outbound: buildFeishuLoginMessage({
+        connectUrl,
+        publicBrand: args.publicBrand,
+      }),
     },
     signal,
   );
@@ -1076,7 +1084,7 @@ const handleConnectedCommand$ = command(
           {
             db: args.db,
             message: args.message,
-            outbound: buildFeishuHelpMessage(),
+            outbound: buildFeishuHelpMessage(args.installation.publicBrand),
           },
           signal,
         );
@@ -1088,7 +1096,7 @@ const handleConnectedCommand$ = command(
             db: args.db,
             message: args.message,
             title: "Already connected",
-            text: "Your Feishu account is already connected to VM0. Send a task to start working with your agent.",
+            text: `Your Feishu account is already connected to ${publicBrandPresentation(args.installation.publicBrand).brandName}. Send a task to start working with your agent.`,
             kind: "success",
           },
           signal,
@@ -1112,7 +1120,7 @@ const handleConnectedCommand$ = command(
           {
             db: args.db,
             message: args.message,
-            outbound: buildFeishuHelpMessage(),
+            outbound: buildFeishuHelpMessage(args.installation.publicBrand),
           },
           signal,
         );

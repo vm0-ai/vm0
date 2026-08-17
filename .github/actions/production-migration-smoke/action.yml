@@ -58,7 +58,7 @@ runs:
           exit 1
         fi
 
-        DATABASE_URL=$(neonctl connection-string "$BRANCH_ID" --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner --pooled)
+        DATABASE_URL=$(neonctl connection-string "$BRANCH_ID" --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner --pooled --ssl verify-full)
         echo "::add-mask::$DATABASE_URL"
         echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
 

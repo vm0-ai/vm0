@@ -68,6 +68,7 @@ from .openai_chat_completions import (
 from .openai_responses import (
     OpenAIResponsesClientEvent,
     OpenAIResponsesEvent,
+    OpenAIResponsesServerEventInspection,
     OpenAIResponsesServerLifecycle,
     create_openai_responses_json_usage_extractor,
     create_openai_responses_sse_usage_extractor,
@@ -75,7 +76,7 @@ from .openai_responses import (
     extract_openai_responses_usage_with_error_from_json,
     inspect_openai_responses_client_event_json,
     inspect_openai_responses_event_json,
-    inspect_openai_responses_server_lifecycle,
+    inspect_openai_responses_server_event,
     merge_openai_responses_usage_result,
 )
 from .providers.connectors import (
@@ -101,6 +102,7 @@ __all__ = [
     "ModelUsageProtocol",
     "OpenAIResponsesClientEvent",
     "OpenAIResponsesEvent",
+    "OpenAIResponsesServerEventInspection",
     "OpenAIResponsesServerLifecycle",
     "admit_buffered_report",
     "buffer_model_usage_observations",
@@ -130,7 +132,7 @@ __all__ = [
     "increment_in_flight_flows",
     "inspect_openai_responses_client_event_json",
     "inspect_openai_responses_event_json",
-    "inspect_openai_responses_server_lifecycle",
+    "inspect_openai_responses_server_event",
     "is_model_provider_usage_observable",
     "log_ignored_model_provider_usage_source",
     "log_terminal_model_provider_usage_sources",

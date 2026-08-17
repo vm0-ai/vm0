@@ -6,10 +6,6 @@ import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/
 import { userCustomConnectors } from "@okouai/db/schema/user-custom-connector";
 import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
 import { userConnectors } from "@okouai/db/schema/user-connector";
-import {
-  zeroAgents,
-  type ZeroAgentVisibility,
-} from "@okouai/db/schema/zero-agent";
 import { and, eq } from "drizzle-orm";
 
 import type { ReadonlyDb } from "../external/db";
@@ -27,11 +23,6 @@ export interface AgentConnectorSlugRow {
 export interface AgentCustomConnectorRow {
   readonly customConnectorId: string;
   readonly permissionNames: readonly string[];
-}
-
-interface ZeroBackedComposeAgent {
-  readonly owner: string;
-  readonly visibility: ZeroAgentVisibility;
 }
 
 async function loadAgentAllowedConnectorSlugRows(
@@ -122,27 +113,4 @@ export async function loadAgentConnectorScope(
     loadAgentAllowedCustomConnectorRows(db, args),
   ]);
   return agentConnectorScopeFromRows({ connectorRows, customConnectorRows });
-}
-
-export async function loadZeroBackedComposeAgent(
-  db: ReadonlyDb,
-  args: {
-    readonly composeId: string;
-  },
-): Promise<ZeroBackedComposeAgent | null> {
-  // The caller must verify agent_composes.org_id first. zero_agents.org_id is
-  // denormalized and must not decide whether a resolved compose is Zero-backed.
-  const [agent] = await db
-    .select({
-      id: zeroAgents.id,
-      owner: zeroAgents.owner,
-      visibility: zeroAgents.visibility,
-    })
-    .from(zeroAgents)
-    .where(eq(zeroAgents.id, args.composeId))
-    .limit(1);
-  if (!agent) {
-    return null;
-  }
-  return { owner: agent.owner, visibility: agent.visibility };
 }

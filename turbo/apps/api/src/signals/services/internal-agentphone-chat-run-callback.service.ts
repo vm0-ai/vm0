@@ -2,6 +2,7 @@ import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentphoneChatThreadRoutes } from "@okouai/db/schema/agentphone-chat-thread-route";
 import { agentphoneUserLinks } from "@okouai/db/schema/agentphone-user-link";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { and, eq, isNotNull } from "drizzle-orm";
@@ -104,9 +105,9 @@ async function loadAgentPhoneRouteBinding(
     readonly run: AgentPhoneChatRunContext;
   },
   signal: AbortSignal,
-): Promise<boolean> {
+): Promise<{ readonly publicBrand: PublicBrand } | undefined> {
   const [route] = await args.db
-    .select({ id: agentphoneChatThreadRoutes.id })
+    .select({ publicBrand: agentphoneUserLinks.publicBrand })
     .from(agentphoneChatThreadRoutes)
     .innerJoin(
       agentphoneUserLinks,
@@ -129,7 +130,7 @@ async function loadAgentPhoneRouteBinding(
     )
     .limit(1);
   signal.throwIfAborted();
-  return route !== undefined;
+  return route;
 }
 
 async function loadAgentPhoneChatDeliveryContext(
@@ -253,6 +254,7 @@ async function resolveAgentPhonePresentation(
     readonly db: Db;
     readonly runId: string;
     readonly run: AgentPhoneChatRunContext;
+    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<{
@@ -271,6 +273,7 @@ async function resolveAgentPhonePresentation(
         orgId: args.run.orgId,
         userId: args.run.userId,
         runId: args.runId,
+        publicBrand: args.publicBrand,
         getFeatureOverrides: () => {
           return Promise.resolve(featureContext.overrides ?? {});
         },
@@ -326,6 +329,7 @@ async function deliverClaimedAgentPhoneChatCallback(
       db: args.db,
       runId: args.callback.runId,
       run,
+      publicBrand: binding.publicBrand,
     },
     signal,
   );

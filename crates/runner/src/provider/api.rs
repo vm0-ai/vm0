@@ -44,6 +44,7 @@ use crate::error::{ApiStatusError, RunnerError, RunnerResult};
 use crate::http::{ApiRequestBuilder, HttpClient};
 use crate::ids::RunId;
 use crate::run_cancellation::RunCancellationRegistry;
+use crate::runner_process_identity::RunnerProcessIdentity;
 use crate::types::{
     CompleteRequest, ConnectorRuntimeSyncBatchResponse, ConnectorRuntimeTargetRegistration,
     ExecutionContext, HeartbeatState, Job, PollResponse,
@@ -58,15 +59,8 @@ fn supports_thread_active_input(reuse_key: Option<&str>) -> bool {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ClaimRequestBody<'a> {
-    runner_identity: ClaimRunnerIdentity<'a>,
+    runner_identity: &'a RunnerProcessIdentity,
     telemetry: ClaimRequestTelemetry,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ClaimRunnerIdentity<'a> {
-    runner_id: &'a str,
-    heartbeat_generation: u64,
 }
 
 #[derive(Serialize)]
@@ -100,7 +94,7 @@ struct ClaimRequestTelemetry {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PollRequestBody<'a> {
-    runner_id: &'a str,
+    runner_id: uuid::Uuid,
     group: &'a str,
     supported_profiles: &'a [String],
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -238,8 +232,7 @@ enum DiscoveryWakeup {
 /// cooldown and defers all discovery before retrying.
 pub struct ApiProvider {
     api: ApiClient,
-    runner_id: String,
-    heartbeat_generation: u64,
+    runner_identity: RunnerProcessIdentity,
     group: String,
     /// Profile names this runner supports (e.g., ["vm0/default"]).
     /// Sent in poll requests so the server only returns jobs this runner can handle.
@@ -266,8 +259,7 @@ pub struct BuiltinFirewallCatalogCachePaths {
 }
 
 pub struct ApiProviderConfig {
-    pub runner_id: String,
-    pub heartbeat_generation: u64,
+    pub(crate) runner_identity: RunnerProcessIdentity,
     pub group: String,
     pub supported_profiles: Vec<String>,
 }
@@ -283,8 +275,7 @@ impl ApiProvider {
         cancel_tokens: RunCancellationRegistry,
     ) -> Arc<Self> {
         let ApiProviderConfig {
-            runner_id,
-            heartbeat_generation,
+            runner_identity,
             group,
             supported_profiles,
         } = config;
@@ -304,8 +295,7 @@ impl ApiProvider {
         let active_input_notifications = ActiveInputNotifications::new();
         Arc::new(Self {
             api,
-            runner_id,
-            heartbeat_generation,
+            runner_identity,
             group,
             supported_profiles,
             poll_wakeups,
@@ -540,7 +530,7 @@ impl JobProvider for ApiProvider {
                     return None;
                 }
                 result = self.api.poll(
-                    &self.runner_id,
+                    self.runner_identity.runner_id(),
                     &self.group,
                     &self.supported_profiles,
                     &excluded_run_ids,
@@ -641,11 +631,7 @@ impl JobProvider for ApiProvider {
 
     async fn claim(&self, candidate: JobCandidate) -> Option<ClaimedJob> {
         let run_id = candidate.run_id();
-        match self
-            .api
-            .claim(&candidate, &self.runner_id, self.heartbeat_generation)
-            .await
-        {
+        match self.api.claim(&candidate, &self.runner_identity).await {
             Ok(Some(ctx)) => {
                 let active_input_source = (ctx.cli_agent_type != "pi"
                     && supports_thread_active_input(ctx.reuse_key.as_deref()))
@@ -681,8 +667,8 @@ impl JobProvider for ApiProvider {
                 self.claim_cooldowns.remove(run_id).await;
                 info!(
                     run_id = %run_id,
-                    runner_id = %self.runner_id,
-                    heartbeat_generation = self.heartbeat_generation,
+                    runner_id = %self.runner_identity.runner_id(),
+                    heartbeat_generation = self.runner_identity.heartbeat_generation(),
                     "job claimed"
                 );
                 Some(claimed)
@@ -989,7 +975,7 @@ impl ApiClient {
     /// Poll for a pending job. The response contains `job: None` when no work is available.
     async fn poll(
         &self,
-        runner_id: &str,
+        runner_id: uuid::Uuid,
         group: &str,
         supported_profiles: &[String],
         excluded_run_ids: &[RunId],
@@ -1042,11 +1028,10 @@ impl ApiClient {
     async fn claim(
         &self,
         candidate: &JobCandidate,
-        runner_id: &str,
-        heartbeat_generation: u64,
+        runner_identity: &RunnerProcessIdentity,
     ) -> Result<Option<ExecutionContext>, ClaimApiError> {
         let run_id = candidate.run_id();
-        let body = claim_request_body(candidate, runner_id, heartbeat_generation);
+        let body = claim_request_body(candidate, runner_identity);
         let run_id = run_id.to_string();
         let resp = send_api(
             self.http
@@ -1082,8 +1067,10 @@ impl ApiClient {
         &self,
         candidate: &JobCandidate,
     ) -> Result<Option<ExecutionContext>, ClaimApiError> {
-        self.claim(candidate, "550e8400-e29b-41d4-a716-446655440000", 7)
-            .await
+        let runner_identity =
+            RunnerProcessIdentity::new("550e8400-e29b-41d4-a716-446655440000".parse().unwrap(), 7)
+                .unwrap();
+        self.claim(candidate, &runner_identity).await
     }
     /// Report job completion. Uses the per-job **sandbox token** for auth.
     async fn complete(&self, sandbox_token: &str, request: &CompleteRequest) -> RunnerResult<()> {
@@ -1190,8 +1177,7 @@ impl ApiClient {
 
 fn claim_request_body<'a>(
     candidate: &JobCandidate,
-    runner_id: &'a str,
-    heartbeat_generation: u64,
+    runner_identity: &'a RunnerProcessIdentity,
 ) -> ClaimRequestBody<'a> {
     let runner_preference_telemetry = candidate.runner_preference_claim_telemetry();
     let is_ably_candidate = candidate.discovery_source() == Some(JobDiscoverySource::Ably);
@@ -1220,10 +1206,7 @@ fn claim_request_body<'a>(
     };
 
     ClaimRequestBody {
-        runner_identity: ClaimRunnerIdentity {
-            runner_id,
-            heartbeat_generation,
-        },
+        runner_identity,
         telemetry: ClaimRequestTelemetry {
             discovery_source: candidate.discovery_source().map(JobDiscoverySource::as_str),
             job_discovered_to_claim_request_ms: claim_telemetry_duration_ms(
@@ -1259,7 +1242,7 @@ fn claim_telemetry_duration_ms(duration: Duration) -> u64 {
 }
 
 fn poll_request_body<'a>(
-    runner_id: &'a str,
+    runner_id: uuid::Uuid,
     group: &'a str,
     supported_profiles: &'a [String],
     excluded_run_ids: &'a [RunId],
@@ -1498,10 +1481,9 @@ mod tests {
     use super::*;
     use httpmock::Method::POST;
     use httpmock::MockServer;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::io::AsyncWriteExt;
     use tokio::net::TcpListener;
     use tokio::sync::mpsc;
-    use tokio::task::JoinHandle;
     use tracing::{Level, instrument::WithSubscriber};
     use tracing_subscriber::prelude::*;
     use tracing_test_support::{CapturedEvent, CapturedEvents};
@@ -1512,6 +1494,10 @@ mod tests {
         ActiveRunnerPreference, RunnerNoPreferenceReason, RunnerPreference,
         RunnerPreferenceRemovalReason, RunnerPreferenceTier,
     };
+    use crate::test_fixtures::raw_http::{
+        RawHttpAction, RawHttpTestServer, http_response, join_raw_http_task, json_response,
+        read_http_request,
+    };
 
     const RUNNER_CLAIM_RESPONSE_FIXTURE: &str = include_str!(
         "../../../../turbo/packages/api-contracts/src/contracts/__tests__/fixtures/runner-claim-response.json"
@@ -1521,8 +1507,14 @@ mod tests {
 
     const TEST_HEARTBEAT_GENERATION: u64 = 7;
 
-    fn claim_request_body_for_test(candidate: &JobCandidate) -> ClaimRequestBody<'_> {
-        claim_request_body(candidate, TEST_RUNNER_ID, TEST_HEARTBEAT_GENERATION)
+    fn test_runner_identity() -> RunnerProcessIdentity {
+        RunnerProcessIdentity::new(TEST_RUNNER_ID.parse().unwrap(), TEST_HEARTBEAT_GENERATION)
+            .unwrap()
+    }
+
+    fn claim_request_body_for_test(candidate: &JobCandidate) -> serde_json::Value {
+        let runner_identity = test_runner_identity();
+        serde_json::to_value(claim_request_body(candidate, &runner_identity)).unwrap()
     }
 
     #[test]
@@ -1756,8 +1748,7 @@ mod tests {
             connector_runtime_sync: ConnectorRuntimeSyncHandle::new(api.clone()),
             builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshController::disabled(),
             api,
-            runner_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
-            heartbeat_generation: 7,
+            runner_identity: test_runner_identity(),
             group: "default".to_string(),
             supported_profiles: vec![crate::profile::DEFAULT_PROFILE.to_string()],
             poll_wakeups,
@@ -1841,92 +1832,24 @@ mod tests {
         provider.direct_candidates.push(candidate).await;
     }
 
-    async fn read_http_request(socket: &mut tokio::net::TcpStream) {
-        let _ = read_http_request_text(socket).await;
-    }
-
-    async fn read_http_request_text(socket: &mut tokio::net::TcpStream) -> String {
-        let mut request = Vec::new();
-        let mut buf = [0_u8; 1024];
-        let header_end = loop {
-            let n = socket.read(&mut buf).await.unwrap();
-            if n == 0 {
-                break request.len();
-            }
-            request.extend_from_slice(&buf[..n]);
-            if let Some(header_end) = request
-                .windows(4)
-                .position(|window| window == b"\r\n\r\n")
-                .map(|position| position + 4)
-            {
-                break header_end;
-            }
-        };
-        let headers = String::from_utf8_lossy(&request[..header_end]);
-        let content_length = headers
-            .lines()
-            .find_map(|line| {
-                let (name, value) = line.split_once(':')?;
-                if name.eq_ignore_ascii_case("content-length") {
-                    value.trim().parse::<usize>().ok()
-                } else {
-                    None
-                }
-            })
-            .unwrap_or(0);
-        let request_len = header_end + content_length;
-        loop {
-            if request.len() >= request_len {
-                break;
-            }
-            let n = socket.read(&mut buf).await.unwrap();
-            if n == 0 {
-                break;
-            }
-            request.extend_from_slice(&buf[..n]);
-        }
-        String::from_utf8_lossy(&request).into_owned()
-    }
-
-    async fn write_http_status_response(socket: &mut tokio::net::TcpStream, status: u16) {
+    fn status_response(status: u16) -> Vec<u8> {
         let reason = match status {
             200 => "OK",
             500 => "Internal Server Error",
             _ => "Unknown",
         };
         let body = if status == 200 { "ok" } else { "failed" };
-        let response = format!(
-            "HTTP/1.1 {status} {reason}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-            body.len(),
-            body
-        );
-        socket.write_all(response.as_bytes()).await.unwrap();
+        http_response(&format!("{status} {reason}"), body.as_bytes())
     }
 
-    async fn write_json_response(socket: &mut tokio::net::TcpStream, body: &str) {
-        let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-            body.len(),
-            body
-        );
-        socket.write_all(response.as_bytes()).await.unwrap();
-    }
-
-    async fn complete_sequence_server(
-        statuses: Vec<u16>,
-    ) -> (String, mpsc::UnboundedReceiver<String>, JoinHandle<()>) {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let api_url = format!("http://{}", listener.local_addr().unwrap());
-        let (request_tx, request_rx) = mpsc::unbounded_channel();
-        let server_task = tokio::spawn(async move {
-            for status in statuses {
-                let (mut socket, _) = listener.accept().await.unwrap();
-                let request = read_http_request_text(&mut socket).await;
-                write_http_status_response(&mut socket, status).await;
-                request_tx.send(request).unwrap();
-            }
-        });
-        (api_url, request_rx, server_task)
+    async fn complete_sequence_server(statuses: Vec<u16>) -> RawHttpTestServer {
+        RawHttpTestServer::spawn(
+            statuses
+                .into_iter()
+                .map(|status| RawHttpAction::Respond(status_response(status)))
+                .collect(),
+        )
+        .await
     }
 
     async fn next_request(requests: &mut mpsc::UnboundedReceiver<String>) -> String {
@@ -1960,11 +1883,8 @@ mod tests {
 
     #[tokio::test]
     async fn heartbeat_send_failure_logs_transport_and_state_context_without_secrets() {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let api_url = format!("http://{}", listener.local_addr().unwrap());
-        let server_task = tokio::spawn(async move {
-            let (_socket, _) = listener.accept().await.unwrap();
-        });
+        let server = RawHttpTestServer::spawn(vec![RawHttpAction::Disconnect]).await;
+        let api_url = server.url();
         let provider = api_provider_for_test(
             api_url.clone(),
             CancellationToken::new(),
@@ -1973,8 +1893,7 @@ mod tests {
         let state = heartbeat_state_for_test();
 
         let (_, events) = capture_api_provider_events(provider.heartbeat(&state)).await;
-        server_task.abort();
-        let _ = server_task.await;
+        server.assert_finished().await;
         let event = captured_event(&events, "heartbeat failed");
 
         assert_eq!(event.level, Level::WARN);
@@ -2020,13 +1939,9 @@ mod tests {
 
     #[tokio::test]
     async fn heartbeat_status_failure_logs_held_state_counts_without_body() {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let api_url = format!("http://{}", listener.local_addr().unwrap());
-        let server_task = tokio::spawn(async move {
-            let (mut socket, _) = listener.accept().await.unwrap();
-            read_http_request(&mut socket).await;
-            write_http_status_response(&mut socket, 500).await;
-        });
+        let server =
+            RawHttpTestServer::spawn(vec![RawHttpAction::Respond(status_response(500))]).await;
+        let api_url = server.url();
         let provider = api_provider_for_test(
             api_url,
             CancellationToken::new(),
@@ -2035,7 +1950,7 @@ mod tests {
         let state = heartbeat_state_for_test();
 
         let (_, events) = capture_api_provider_events(provider.heartbeat(&state)).await;
-        server_task.await.unwrap();
+        server.assert_finished().await;
         let event = captured_event(&events, "heartbeat failed");
 
         assert_eq!(event.level, Level::WARN);
@@ -2051,8 +1966,9 @@ mod tests {
     #[test]
     fn poll_request_body_serializes_poll_reason_telemetry() {
         let profiles = vec![crate::profile::DEFAULT_PROFILE.to_string()];
+        let runner_id = TEST_RUNNER_ID.parse().unwrap();
         let body = serde_json::to_value(poll_request_body(
-            "550e8400-e29b-41d4-a716-446655440000",
+            runner_id,
             "vm0/test",
             &profiles,
             &[],
@@ -2070,7 +1986,7 @@ mod tests {
     }
 
     #[test]
-    fn claim_request_body_serializes_runner_timing() {
+    fn claim_request_body_serializes_validated_identity_and_runner_timing() {
         let now = std::time::Instant::now();
         let candidate = JobCandidate::new_with_timing_for_test(
             RunId::nil(),
@@ -2082,7 +1998,7 @@ mod tests {
         .with_poll_reason("deferred")
         .with_poll_timing(Duration::from_millis(19), Duration::from_millis(11));
 
-        let body = serde_json::to_value(claim_request_body_for_test(&candidate)).unwrap();
+        let body = claim_request_body_for_test(&candidate);
 
         assert_eq!(body["runnerIdentity"]["runnerId"], TEST_RUNNER_ID);
         assert_eq!(
@@ -2120,14 +2036,13 @@ mod tests {
     #[test]
     fn claim_request_body_serializes_canonical_preference_at_claim_time() {
         let active_preference = ActiveRunnerPreference::ranked_for_test(
-            TEST_RUNNER_ID.parse().unwrap(),
-            TEST_HEARTBEAT_GENERATION,
+            test_runner_identity(),
             RunnerPreferenceTier::WorkspaceCache,
             Instant::now() + Duration::from_secs(60),
         );
         let active = JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
             .with_runner_preference_for_test(active_preference);
-        let active_body = serde_json::to_value(claim_request_body_for_test(&active)).unwrap();
+        let active_body = claim_request_body_for_test(&active);
         assert_eq!(
             active_body["telemetry"]["runnerPreference"]["kind"],
             "preference"
@@ -2146,29 +2061,27 @@ mod tests {
         );
 
         let expired_preference = ActiveRunnerPreference::ranked_for_test(
-            TEST_RUNNER_ID.parse().unwrap(),
-            TEST_HEARTBEAT_GENERATION,
+            test_runner_identity(),
             RunnerPreferenceTier::ExactSandbox,
             Instant::now() - Duration::from_secs(1),
         );
         let expired = JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
             .with_runner_preference_for_test(expired_preference);
-        let expired_body = serde_json::to_value(claim_request_body_for_test(&expired)).unwrap();
+        let expired_body = claim_request_body_for_test(&expired);
         assert_eq!(
             expired_body["telemetry"]["runnerPreferenceClaimState"],
             "expired"
         );
 
         let cleared_preference = ActiveRunnerPreference::ranked_for_test(
-            Uuid::from_u128(8),
-            TEST_HEARTBEAT_GENERATION,
+            RunnerProcessIdentity::new(Uuid::from_u128(8), TEST_HEARTBEAT_GENERATION).unwrap(),
             RunnerPreferenceTier::FinalizingPredecessor,
             Instant::now() + Duration::from_secs(60),
         );
         let cleared = JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
             .with_runner_preference_for_test(cleared_preference)
             .without_runner_preference(RunnerPreferenceRemovalReason::Cleared);
-        let cleared_body = serde_json::to_value(claim_request_body_for_test(&cleared)).unwrap();
+        let cleared_body = claim_request_body_for_test(&cleared);
         assert_eq!(
             cleared_body["telemetry"]["runnerPreferenceClaimState"],
             "cleared"
@@ -2176,8 +2089,7 @@ mod tests {
         let no_preference =
             JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
                 .with_no_runner_preference_for_test(RunnerNoPreferenceReason::NoViableHolder);
-        let no_preference_body =
-            serde_json::to_value(claim_request_body_for_test(&no_preference)).unwrap();
+        let no_preference_body = claim_request_body_for_test(&no_preference);
         assert_eq!(
             no_preference_body["telemetry"]["runnerPreference"]["kind"],
             "noPreference"
@@ -2206,7 +2118,7 @@ mod tests {
         candidate.mark_main_loop_handling_started();
         candidate.mark_local_admission_started();
 
-        let body = serde_json::to_value(claim_request_body_for_test(&candidate)).unwrap();
+        let body = claim_request_body_for_test(&candidate);
 
         assert_eq!(body["telemetry"]["discoverySource"], "ably");
         assert_eq!(
@@ -2239,7 +2151,7 @@ mod tests {
         candidate.mark_main_loop_handling_started();
         candidate.mark_local_admission_started();
 
-        let body = serde_json::to_value(claim_request_body_for_test(&candidate)).unwrap();
+        let body = claim_request_body_for_test(&candidate);
 
         assert_eq!(body["telemetry"]["discoverySource"], "poll");
         assert!(
@@ -2273,7 +2185,7 @@ mod tests {
                     Duration::from_millis(CLAIM_TELEMETRY_DURATION_MS_MAX + 1),
                 );
 
-        let body = serde_json::to_value(claim_request_body_for_test(&candidate)).unwrap();
+        let body = claim_request_body_for_test(&candidate);
 
         assert_eq!(
             body["telemetry"]["pollDueToJobDiscoveredMs"],
@@ -2295,7 +2207,7 @@ mod tests {
             None,
         );
 
-        let body = serde_json::to_value(claim_request_body_for_test(&candidate)).unwrap();
+        let body = claim_request_body_for_test(&candidate);
 
         assert!(
             body["telemetry"]["jobDiscoveredToClaimRequestMs"]
@@ -2338,7 +2250,7 @@ mod tests {
             JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
                 .with_discovery_source(JobDiscoverySource::Ably);
 
-        let body = serde_json::to_value(claim_request_body_for_test(&candidate)).unwrap();
+        let body = claim_request_body_for_test(&candidate);
 
         assert_eq!(body["telemetry"]["discoverySource"], "ably");
         assert!(body["telemetry"].get("pollDueToJobDiscoveredMs").is_none());
@@ -2346,7 +2258,7 @@ mod tests {
         assert!(body["telemetry"].get("pollReason").is_none());
     }
 
-    async fn write_poll_job_response(socket: &mut tokio::net::TcpStream, run_id: RunId) {
+    fn poll_job_response(run_id: RunId) -> Vec<u8> {
         let body = serde_json::json!({
             "job": {
                 "runId": run_id,
@@ -2354,26 +2266,17 @@ mod tests {
             }
         })
         .to_string();
-        let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-            body.len(),
-            body
-        );
-        socket.write_all(response.as_bytes()).await.unwrap();
+        json_response("200 OK", &body)
+    }
+
+    async fn write_poll_job_response(socket: &mut tokio::net::TcpStream, run_id: RunId) {
+        socket.write_all(&poll_job_response(run_id)).await.unwrap();
     }
 
     #[tokio::test]
     async fn discover_cancel_aborts_in_flight_poll() {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let api_url = format!("http://{}", listener.local_addr().unwrap());
-        let (accepted_tx, accepted_rx) = tokio::sync::oneshot::channel();
-        let server_task = tokio::spawn(async move {
-            let (mut socket, _) = listener.accept().await.unwrap();
-            let mut buf = [0_u8; 1024];
-            let _ = socket.read(&mut buf).await;
-            let _ = accepted_tx.send(());
-            std::future::pending::<()>().await;
-        });
+        let mut server = RawHttpTestServer::spawn(vec![RawHttpAction::Stall]).await;
+        let api_url = server.url();
 
         let cancel = CancellationToken::new();
         let provider =
@@ -2382,10 +2285,7 @@ mod tests {
         let provider_for_discover = Arc::clone(&provider);
         let discover_task = tokio::spawn(async move { provider_for_discover.discover().await });
 
-        tokio::time::timeout(Duration::from_secs(1), accepted_rx)
-            .await
-            .expect("poll request should reach the server")
-            .unwrap();
+        server.next_request("in-flight poll request").await;
 
         cancel.cancel();
 
@@ -2395,8 +2295,7 @@ mod tests {
             .unwrap();
         assert!(result.is_none());
 
-        server_task.abort();
-        let _ = server_task.await;
+        server.cancel_and_reap().await;
     }
 
     #[tokio::test]
@@ -2449,7 +2348,15 @@ mod tests {
             .runner_preference()
             .expect("canonical preference should be parsed");
         assert_eq!(preference.tier(), RunnerPreferenceTier::ExactSandbox);
-        assert!(preference.targets("00000000-0000-0000-0000-000000000005", 7));
+        assert!(
+            preference.targets(
+                RunnerProcessIdentity::new(
+                    "00000000-0000-0000-0000-000000000005".parse().unwrap(),
+                    7,
+                )
+                .unwrap()
+            )
+        );
         let telemetry = discovered
             .runner_preference_claim_telemetry()
             .expect("canonical preference telemetry");
@@ -2916,24 +2823,30 @@ mod tests {
         let (request_tx, mut requests) = mpsc::unbounded_channel();
         let server_task = tokio::spawn(async move {
             let (mut first_claim, _) = listener.accept().await.unwrap();
-            let request = read_http_request_text(&mut first_claim).await;
-            write_http_status_response(&mut first_claim, 503).await;
+            let request = read_http_request(&mut first_claim).await.unwrap();
+            first_claim.write_all(&status_response(503)).await.unwrap();
             request_tx.send(request).unwrap();
 
             let (mut excluded_poll, _) = listener.accept().await.unwrap();
-            let request = read_http_request_text(&mut excluded_poll).await;
+            let request = read_http_request(&mut excluded_poll).await.unwrap();
             request_tx.send(request).unwrap();
             tokio::time::sleep(CLAIM_TRANSIENT_COOLDOWN + Duration::from_millis(50)).await;
-            write_json_response(&mut excluded_poll, r#"{"job":null}"#).await;
+            excluded_poll
+                .write_all(&json_response("200 OK", r#"{"job":null}"#))
+                .await
+                .unwrap();
 
             let (mut retry_poll, _) = listener.accept().await.unwrap();
-            let request = read_http_request_text(&mut retry_poll).await;
+            let request = read_http_request(&mut retry_poll).await.unwrap();
             write_poll_job_response(&mut retry_poll, run_id).await;
             request_tx.send(request).unwrap();
 
             let (mut second_claim, _) = listener.accept().await.unwrap();
-            let request = read_http_request_text(&mut second_claim).await;
-            write_json_response(&mut second_claim, RUNNER_CLAIM_RESPONSE_FIXTURE).await;
+            let request = read_http_request(&mut second_claim).await.unwrap();
+            second_claim
+                .write_all(&json_response("200 OK", RUNNER_CLAIM_RESPONSE_FIXTURE))
+                .await
+                .unwrap();
             request_tx.send(request).unwrap();
         });
         let wakeups = Arc::new(PollWakeups::new(true));
@@ -2995,30 +2908,19 @@ mod tests {
             .expect("request channel should remain open");
         assert!(second_claim_request.contains(&format!("/api/runners/jobs/{run_id}/claim")));
 
-        tokio::time::timeout(Duration::from_secs(1), server_task)
-            .await
-            .expect("transient sequence server should finish")
-            .unwrap();
+        join_raw_http_task(server_task, "transient sequence server").await;
         assert!(requests.recv().await.is_none());
     }
 
     #[tokio::test]
     async fn old_api_returning_excluded_run_does_not_rediscover_it() {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let api_url = format!("http://{}", listener.local_addr().unwrap());
         let run_id: RunId = "00000000-0000-0000-0000-00000000001a".parse().unwrap();
-        let (request_tx, mut requests) = mpsc::unbounded_channel();
-        let server_task = tokio::spawn(async move {
-            let (mut claim, _) = listener.accept().await.unwrap();
-            let request = read_http_request_text(&mut claim).await;
-            write_http_status_response(&mut claim, 400).await;
-            request_tx.send(request).unwrap();
-
-            let (mut ignored_exclusion_poll, _) = listener.accept().await.unwrap();
-            let request = read_http_request_text(&mut ignored_exclusion_poll).await;
-            write_poll_job_response(&mut ignored_exclusion_poll, run_id).await;
-            request_tx.send(request).unwrap();
-        });
+        let mut server = RawHttpTestServer::spawn(vec![
+            RawHttpAction::Respond(status_response(400)),
+            RawHttpAction::Respond(poll_job_response(run_id)),
+        ])
+        .await;
+        let api_url = server.url();
         let wakeups = Arc::new(PollWakeups::new(true));
         let initial_poll = wakeups
             .wait_for_poll_due(&CancellationToken::new(), POLL_SLOW, POLL_FAST)
@@ -3037,12 +2939,12 @@ mod tests {
 
         let direct = provider.discover().await.unwrap();
         assert!(provider.claim(direct).await.is_none());
-        let claim_request = next_request(&mut requests).await;
+        let claim_request = server.next_request("old API claim request").await;
         assert!(claim_request.contains(&format!("/api/runners/jobs/{run_id}/claim")));
 
         let provider_for_discover = Arc::clone(&provider);
         let mut discover_task = tokio::spawn(async move { provider_for_discover.discover().await });
-        let ignored_exclusion_request = next_request(&mut requests).await;
+        let ignored_exclusion_request = server.next_request("old API poll request").await;
         assert!(ignored_exclusion_request.contains(r#""excludedRunIds":["#));
         assert!(ignored_exclusion_request.contains(&run_id.to_string()));
         assert!(
@@ -3051,12 +2953,11 @@ mod tests {
                 .is_err(),
             "an excluded run returned by an old API must not be rediscovered"
         );
-        assert!(requests.try_recv().is_err());
+        assert!(server.try_next_request().is_err());
 
         cancel.cancel();
         assert!(discover_task.await.unwrap().is_none());
-        server_task.await.unwrap();
-        assert!(requests.recv().await.is_none());
+        server.assert_finished().await;
     }
 
     #[tokio::test]
@@ -3198,13 +3099,13 @@ mod tests {
         let (release_first_poll_tx, release_first_poll_rx) = tokio::sync::oneshot::channel();
         let server_task = tokio::spawn(async move {
             let (mut first_socket, _) = listener.accept().await.unwrap();
-            read_http_request(&mut first_socket).await;
+            read_http_request(&mut first_socket).await.unwrap();
             let _ = poll_accepted_tx.send(());
             release_first_poll_rx.await.unwrap();
             drop(first_socket);
 
             let (mut second_socket, _) = listener.accept().await.unwrap();
-            read_http_request(&mut second_socket).await;
+            read_http_request(&mut second_socket).await.unwrap();
             write_poll_job_response(&mut second_socket, poll_run_id).await;
         });
         let provider = api_provider_for_test(
@@ -3246,39 +3147,30 @@ mod tests {
             rediscovered.discovery_source(),
             Some(JobDiscoverySource::Poll)
         );
-        server_task.await.unwrap();
+        join_raw_http_task(server_task, "direct candidate sequence server").await;
     }
 
     #[tokio::test]
     async fn discover_defers_job_return_when_deferred_poll_arrives_during_poll() {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let api_url = format!("http://{}", listener.local_addr().unwrap());
         let first_run_id: RunId = "00000000-0000-0000-0000-000000000004".parse().unwrap();
         let second_run_id: RunId = "00000000-0000-0000-0000-000000000005".parse().unwrap();
-        let (first_accepted_tx, first_accepted_rx) = tokio::sync::oneshot::channel();
         let (release_first_tx, release_first_rx) = tokio::sync::oneshot::channel();
-        let server_task = tokio::spawn(async move {
-            let (mut first_socket, _) = listener.accept().await.unwrap();
-            read_http_request(&mut first_socket).await;
-            let _ = first_accepted_tx.send(());
-            release_first_rx.await.unwrap();
-            write_poll_job_response(&mut first_socket, first_run_id).await;
-            drop(first_socket);
-
-            let (mut second_socket, _) = listener.accept().await.unwrap();
-            read_http_request(&mut second_socket).await;
-            write_poll_job_response(&mut second_socket, second_run_id).await;
-        });
+        let mut server = RawHttpTestServer::spawn(vec![
+            RawHttpAction::WaitThenRespond {
+                release: release_first_rx,
+                response: poll_job_response(first_run_id),
+            },
+            RawHttpAction::Respond(poll_job_response(second_run_id)),
+        ])
+        .await;
+        let api_url = server.url();
         let wakeups = Arc::new(PollWakeups::new(false));
         let provider =
             api_provider_for_test(api_url, CancellationToken::new(), Arc::clone(&wakeups));
         let provider_for_discover = Arc::clone(&provider);
         let discover_task = tokio::spawn(async move { provider_for_discover.discover().await });
 
-        tokio::time::timeout(Duration::from_secs(1), first_accepted_rx)
-            .await
-            .expect("first poll should reach the server")
-            .unwrap();
+        server.next_request("first deferred poll request").await;
         wakeups
             .request_deferred_poll_after_for_test(Duration::ZERO)
             .await;
@@ -3292,7 +3184,7 @@ mod tests {
 
         assert_eq!(discovered.run_id(), second_run_id);
         assert_eq!(discovered.profile_name(), "vm0/default");
-        server_task.await.unwrap();
+        server.assert_finished().await;
     }
 
     #[tokio::test]
@@ -3308,7 +3200,7 @@ mod tests {
 
         let err = api
             .poll(
-                "550e8400-e29b-41d4-a716-446655440000",
+                TEST_RUNNER_ID.parse().unwrap(),
                 "default",
                 &[],
                 &[],
@@ -3339,7 +3231,7 @@ mod tests {
 
         let err = api
             .poll(
-                "550e8400-e29b-41d4-a716-446655440000",
+                TEST_RUNNER_ID.parse().unwrap(),
                 "default",
                 &[],
                 &[],
@@ -3821,8 +3713,9 @@ mod tests {
             })
             .await;
         let api = api_client_for_server(&server);
+        let runner_id = TEST_RUNNER_ID.parse().unwrap();
         let error = api
-            .poll(TEST_RUNNER_ID, "default", &[], &[], PollReason::Immediate)
+            .poll(runner_id, "default", &[], &[], PollReason::Immediate)
             .await
             .unwrap_err();
         let RunnerError::Api(error) = error else {
@@ -3884,7 +3777,7 @@ mod tests {
 
         let err = api
             .poll(
-                "550e8400-e29b-41d4-a716-446655440000",
+                TEST_RUNNER_ID.parse().unwrap(),
                 "default",
                 &[crate::profile::DEFAULT_PROFILE.to_string()],
                 &[],
@@ -4504,7 +4397,8 @@ mod tests {
 
     #[tokio::test]
     async fn api_provider_complete_does_not_retry_permanent_http_failure() {
-        let (api_url, mut requests, server_task) = complete_sequence_server(vec![400]).await;
+        let mut server = complete_sequence_server(vec![400]).await;
+        let api_url = server.url();
         let run_id = RunId::nil();
         let provider = api_provider_for_test(
             api_url,
@@ -4525,13 +4419,9 @@ mod tests {
         .await
         .expect("permanent completion failure should not wait for the retry delay");
 
-        let request = next_request(&mut requests).await;
+        let request = server.next_request("permanent completion request").await;
         assert_complete_authorization(&request, "sandbox-token");
-        server_task.await.unwrap();
-        assert!(
-            requests.recv().await.is_none(),
-            "permanent completion failure should send one request"
-        );
+        server.assert_finished().await;
 
         let run_id = run_id.to_string();
         assert_eq!(
@@ -4560,8 +4450,8 @@ mod tests {
             StatusCode::TOO_MANY_REQUESTS,
             StatusCode::INTERNAL_SERVER_ERROR,
         ] {
-            let (api_url, mut requests, server_task) =
-                complete_sequence_server(vec![status.as_u16(), 200]).await;
+            let mut server = complete_sequence_server(vec![status.as_u16(), 200]).await;
+            let api_url = server.url();
             let run_id = RunId::nil();
             let provider = api_provider_for_test(
                 api_url,
@@ -4577,38 +4467,34 @@ mod tests {
                     .await;
             });
 
-            let first_request = next_request(&mut requests).await;
+            let first_request = server
+                .next_request("first transient completion request")
+                .await;
             assert_complete_authorization(&first_request, "sandbox-token");
             tokio::task::yield_now().await;
             assert!(
-                requests.try_recv().is_err(),
+                server.try_next_request().is_err(),
                 "status {status} should wait before the retry"
             );
             tokio::time::advance(Duration::from_secs(2)).await;
-            let second_request = next_request(&mut requests).await;
+            let second_request = server
+                .next_request("retried transient completion request")
+                .await;
             assert_complete_authorization(&second_request, "sandbox-token");
 
             complete_task.await.unwrap();
-            server_task.await.unwrap();
+            server.assert_finished().await;
         }
     }
 
     #[tokio::test(start_paused = true)]
     async fn api_provider_complete_retries_transport_failure() {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let api_url = format!("http://{}", listener.local_addr().unwrap());
-        let (request_tx, mut requests) = mpsc::unbounded_channel();
-        let server_task = tokio::spawn(async move {
-            let (mut first_socket, _) = listener.accept().await.unwrap();
-            let first_request = read_http_request_text(&mut first_socket).await;
-            drop(first_socket);
-            request_tx.send(first_request).unwrap();
-
-            let (mut second_socket, _) = listener.accept().await.unwrap();
-            let second_request = read_http_request_text(&mut second_socket).await;
-            write_http_status_response(&mut second_socket, 200).await;
-            request_tx.send(second_request).unwrap();
-        });
+        let mut server = RawHttpTestServer::spawn(vec![
+            RawHttpAction::Disconnect,
+            RawHttpAction::Respond(status_response(200)),
+        ])
+        .await;
+        let api_url = server.url();
         let run_id = RunId::nil();
         let provider = api_provider_for_test(
             api_url,
@@ -4624,19 +4510,19 @@ mod tests {
                 .await;
         });
 
-        let first_request = next_request(&mut requests).await;
+        let first_request = server.next_request("first completion request").await;
         assert_complete_authorization(&first_request, "sandbox-token");
         tokio::task::yield_now().await;
         assert!(
-            requests.try_recv().is_err(),
+            server.try_next_request().is_err(),
             "transport failure should wait before the retry"
         );
         tokio::time::advance(Duration::from_secs(2)).await;
-        let second_request = next_request(&mut requests).await;
+        let second_request = server.next_request("retried completion request").await;
         assert_complete_authorization(&second_request, "sandbox-token");
 
         complete_task.await.unwrap();
-        server_task.await.unwrap();
+        server.assert_finished().await;
     }
 
     #[tokio::test(start_paused = true)]
@@ -4667,7 +4553,8 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn api_provider_complete_stops_after_two_transient_failures() {
-        let (api_url, mut requests, server_task) = complete_sequence_server(vec![500, 500]).await;
+        let mut server = complete_sequence_server(vec![500, 500]).await;
+        let api_url = server.url();
         let run_id = RunId::nil();
         let provider = api_provider_for_test(
             api_url,
@@ -4691,7 +4578,7 @@ mod tests {
 
         let first_request = tokio::select! {
             () = &mut completion => panic!("completion should wait before the retry"),
-            request = next_request(&mut requests) => request,
+            request = server.next_request("first failed completion request") => request,
         };
         assert_complete_authorization(&first_request, "sandbox-token");
         // Establish the retry timer before advancing paused time.
@@ -4713,18 +4600,16 @@ mod tests {
         })
         .await;
         assert!(
-            requests.try_recv().is_err(),
+            server.try_next_request().is_err(),
             "completion should wait before the retry"
         );
-
         tokio::time::advance(Duration::from_secs(2)).await;
-        let ((), second_request) = tokio::join!(&mut completion, next_request(&mut requests));
-        assert_complete_authorization(&second_request, "sandbox-token");
-        server_task.await.unwrap();
-        assert!(
-            requests.recv().await.is_none(),
-            "completion should stop after the retry"
+        let ((), second_request) = tokio::join!(
+            &mut completion,
+            server.next_request("second failed completion request")
         );
+        assert_complete_authorization(&second_request, "sandbox-token");
+        server.assert_finished().await;
 
         let events = captured.entries();
         let run_id = run_id.to_string();

@@ -34,6 +34,7 @@ import {
 } from "./composer-signals.ts";
 import type { ChatEvent } from "../chat-page/chat-event-types.ts";
 import {
+  chatPageEffectiveVideoModel$,
   chatPageModelSelection$,
   chatPageSelectedModelOauthAvailable$,
   chatPageVideoModelSelection$,
@@ -91,6 +92,13 @@ const setVideoModel$ = command(
       return;
     }
     set(setChatPageVideoModelSelection$, videoModel);
+    const explicitDefaultActionEnabled =
+      get(featureSwitch$)[FeatureSwitchKey.NewChatDefaultModelAction] ?? false;
+    if (explicitDefaultActionEnabled) {
+      // The composer notice carries an explicit "Set as default" instead, so
+      // picking a video model only scopes the next new chat.
+      return;
+    }
     const userPreference = await get(userModelPreference$);
     signal.throwIfAborted();
     await set(
@@ -179,6 +187,9 @@ function createAgentComposerSignalsWithDraft(
           generationTemplate: submission.generationTemplate,
           editorDocument: submission.editorDocument,
           videoModel: videoModelSelection ?? DEFAULT_VIDEO_MODEL,
+          ...(submission.videoRunOptions === undefined
+            ? {}
+            : { videoRunOptions: submission.videoRunOptions }),
           ...(access.kind === "computerUse"
             ? { computerUseHostId: hostId }
             : {}),
@@ -215,6 +226,7 @@ function createAgentComposerSignalsWithDraft(
     configureSelectedModel$: configureChatPageSelectedModel$,
     videoModel: {
       selectedVideoModel$: chatPageVideoModelSelection$,
+      effectiveVideoModel$: chatPageEffectiveVideoModel$,
       setVideoModel$,
     },
     computerUseHostId$,

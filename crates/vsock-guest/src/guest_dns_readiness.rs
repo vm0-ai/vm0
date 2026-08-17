@@ -22,6 +22,9 @@ use crate::user::apply_command_identity;
 use crate::wait::{
     WaitOutcome, await_drain_deadline, wait_with_kill_timeout_or_connection_cancelled,
 };
+use crate::worker_ownership::{
+    ShutdownConnectionOnDrop, SingleActiveAdmission, SingleActivePermit,
+};
 use crate::writer::GuestWriter;
 
 const PRODUCTION_PROGRAM: &str = "/usr/bin/getent";
@@ -61,43 +64,25 @@ pub(crate) enum GuestDnsReadinessSubmitError {
     Start(io::Error),
 }
 
-pub(crate) struct GuestDnsReadinessAdmission {
-    active: Arc<AtomicBool>,
-}
-
-impl Drop for GuestDnsReadinessAdmission {
-    fn drop(&mut self) {
-        self.active.store(false, Ordering::Release);
-    }
-}
-
 struct GuestDnsReadinessRequest {
     seq: u32,
     timeout_ms: u32,
     hostname: String,
     operation_guard: OperationGuard,
-    admission: GuestDnsReadinessAdmission,
+    admission: SingleActivePermit,
 }
 
 pub(crate) struct GuestDnsReadinessWorker {
     state: Mutex<GuestDnsReadinessWorkerState>,
     writer: GuestWriter,
     program: GuestDnsReadinessProgram,
-    active: Arc<AtomicBool>,
+    admission: SingleActiveAdmission,
     connection_cancel: Arc<AtomicBool>,
 }
 
 struct GuestDnsReadinessWorkerState {
     sender: Option<SyncSender<GuestDnsReadinessRequest>>,
     handle: Option<JoinHandle<()>>,
-}
-
-struct ShutdownConnectionOnDrop(GuestWriter);
-
-impl Drop for ShutdownConnectionOnDrop {
-    fn drop(&mut self) {
-        self.0.shutdown();
-    }
 }
 
 impl GuestDnsReadinessWorker {
@@ -113,18 +98,13 @@ impl GuestDnsReadinessWorker {
             }),
             writer,
             program,
-            active: Arc::new(AtomicBool::new(false)),
+            admission: SingleActiveAdmission::new(),
             connection_cancel,
         }
     }
 
-    pub(crate) fn try_admit(&self) -> Option<GuestDnsReadinessAdmission> {
-        self.active
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .ok()
-            .map(|_| GuestDnsReadinessAdmission {
-                active: Arc::clone(&self.active),
-            })
+    pub(crate) fn try_admit(&self) -> Option<SingleActivePermit> {
+        self.admission.try_acquire()
     }
 
     pub(crate) fn submit(
@@ -133,7 +113,7 @@ impl GuestDnsReadinessWorker {
         timeout_ms: u32,
         hostname: &str,
         operation_guard: OperationGuard,
-        admission: GuestDnsReadinessAdmission,
+        admission: SingleActivePermit,
     ) -> Result<(), GuestDnsReadinessSubmitError> {
         let sender = self.sender()?;
         let request = GuestDnsReadinessRequest {
@@ -163,7 +143,7 @@ impl GuestDnsReadinessWorker {
         let handle = thread::Builder::new()
             .name(THREAD_WORKER.to_string())
             .spawn(move || {
-                let _shutdown_on_exit = ShutdownConnectionOnDrop(writer.clone());
+                let _shutdown_on_exit = ShutdownConnectionOnDrop::new(writer.clone());
                 while let Ok(request) = receiver.recv() {
                     if let Err(error) = handle_request(request, &writer, &worker_cancel, &program) {
                         log(

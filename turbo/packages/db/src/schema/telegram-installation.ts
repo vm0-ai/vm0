@@ -7,6 +7,7 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 import { agentComposes } from "./agent-compose";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 /**
  * Telegram Installations table
@@ -39,6 +40,10 @@ export const telegramInstallations = pgTable(
     ownerUserId: text("owner_user_id").notNull(),
     // Org anchor: snapshot of the owner's current org at registration time.
     orgId: text("org_id").notNull(),
+    publicBrand: text("public_brand")
+      .$type<PublicBrand>()
+      .default("vm0")
+      .notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

@@ -10,6 +10,7 @@ import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { connectorCatalogStatusBySlug$ } from "../../signals/external/connectors.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { currentAgentId$ } from "../../signals/agent.ts";
+import { brandName$ } from "../../signals/branding.ts";
 import {
   ideationActiveTab$,
   setIdeationActiveTab$,
@@ -23,6 +24,7 @@ import {
 
 export function ZeroIdeationPage() {
   const { t } = useTranslation("agents");
+  const brandName = useGet(brandName$);
   const features = useLastResolved(featureSwitch$);
   const connectorStatusLoadable = useLoadable(connectorCatalogStatusBySlug$);
   const lastConnectorStatusBySlug = useLastResolved(
@@ -47,7 +49,7 @@ export function ZeroIdeationPage() {
     { returnObjects: true },
   );
   const categories = localizeIdeationCategories(
-    getCategories({ features, visibleConnectorSlugs }).slice(0, 8),
+    getCategories({ brandName, features, visibleConnectorSlugs }).slice(0, 8),
     catalogCopy,
   );
   const activeTab = useGet(ideationActiveTab$);
