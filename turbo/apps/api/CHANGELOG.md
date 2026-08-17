@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.456.0](https://github.com/vm0-ai/vm0/compare/api-v1.455.0...api-v1.456.0) (2026-08-17)
+
+
+### Features
+
+* preserve exact connector source identity ([#27754](https://github.com/vm0-ai/vm0/issues/27754)) ([9421173](https://github.com/vm0-ai/vm0/commit/9421173e27901f8e0d892290e806accb31138a95))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.337.0
+    * @okouai/connectors bumped to 1.207.0
+    * @okouai/core bumped to 8.565.2
+    * @okouai/db bumped to 1.202.2
+
 ## [1.455.0](https://github.com/vm0-ai/vm0/compare/api-v1.454.0...api-v1.455.0) (2026-08-17)
 
 

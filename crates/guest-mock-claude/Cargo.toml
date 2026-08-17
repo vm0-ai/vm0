@@ -1,6 +1,6 @@
 [package]
 name = "guest-mock-claude"
-version = "0.21.65"
+version = "0.21.66"
 edition.workspace = true
 
 [dependencies]

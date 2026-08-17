@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.169.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.26...runner-rs-v0.169.0) (2026-08-17)
+
+
+### Features
+
+* preserve exact connector source identity ([#27754](https://github.com/vm0-ai/vm0/issues/27754)) ([9421173](https://github.com/vm0-ai/vm0/commit/9421173e27901f8e0d892290e806accb31138a95))
+
 ## [0.168.26](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.25...runner-rs-v0.168.26) (2026-08-17)
 
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.765.2](https://github.com/vm0-ai/vm0/compare/app-v0.765.1...app-v0.765.2) (2026-08-17)
+
+
+### Bug Fixes
+
+* **platform:** create chat from three-column header ([#27769](https://github.com/vm0-ai/vm0/issues/27769)) ([5c1f9eb](https://github.com/vm0-ai/vm0/commit/5c1f9ebec70e9544dc296fe80fc49314991f39d0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.337.0
+    * @okouai/connectors bumped to 1.207.0
+    * @okouai/core bumped to 8.565.2
+
 ## [0.765.1](https://github.com/vm0-ai/vm0/compare/app-v0.765.0...app-v0.765.1) (2026-08-17)
 
 
