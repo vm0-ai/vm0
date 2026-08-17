@@ -23,6 +23,13 @@ from tests.request_handler_helpers import (
 )
 from tests.upstream_connection_helpers import seed_server_binding
 
+_MAX_CONNECTOR_INTENT_BYTES = 64
+
+
+class _DecodeGuardConnectorIntent(bytes):
+    def decode(self, encoding: str = "utf-8", errors: str = "strict") -> str:
+        raise AssertionError("oversized connector intent must not be decoded")
+
 
 @contextmanager
 def _observe_local_response_parser_inputs() -> Iterator[list[str]]:
@@ -67,13 +74,20 @@ async def test_firewall_match_calls_handler(
     assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == "full-access"
 
 
+@pytest.mark.parametrize(
+    "primary_name",
+    [
+        pytest.param("primary", id="ordinary"),
+        pytest.param("p" * _MAX_CONNECTOR_INTENT_BYTES, id="at-limit"),
+    ],
+)
 @pytest.mark.parametrize("reverse", [False, True])
 async def test_connector_intent_selects_auth_template_in_both_firewall_orders(
-    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, reverse
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, reverse, primary_name
 ):
     reg_path = _write_registry(
         tmp_path,
-        vm_info=_shared_route_vm(tmp_path, reverse=reverse),
+        vm_info=_shared_route_vm(tmp_path, reverse=reverse, primary_name=primary_name),
     )
     flow = real_flow(
         with_response=False,
@@ -82,7 +96,7 @@ async def test_connector_intent_selects_auth_template_in_both_firewall_orders(
         path="/items/123",
         request_headers=headers(
             ("Host", "shared.example.com"),
-            ("X-VM0-Connector-Intent", "primary"),
+            ("X-VM0-Connector-Intent", primary_name),
         ),
     )
 
@@ -98,7 +112,7 @@ async def test_connector_intent_selects_auth_template_in_both_firewall_orders(
     assert flow.response is None
     assert flow.request.headers["Authorization"] == "Bearer resolved-primary"
     assert "X-VM0-Connector-Intent" not in flow.request.headers
-    assert flow.metadata[metadata_keys.FIREWALL_NAME] == "primary"
+    assert flow.metadata[metadata_keys.FIREWALL_NAME] == primary_name
     assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == "items-read"
 
 
@@ -229,6 +243,50 @@ async def test_ambiguous_connector_route_fails_before_auth_and_logs_candidates(
     assert network_log_entry["firewall_error"] == "ambiguous_connector_route"
     assert network_log_entry["connector_route_reason"] == reason
     assert network_log_entry["connector_route_candidates"] == ["auditor", "primary"]
+    assert "firewall_name" not in network_log_entry
+
+
+async def test_oversized_connector_intent_is_malformed_without_decoding_or_auth(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+):
+    reg_path = _write_registry(tmp_path, vm_info=_shared_route_vm(tmp_path))
+    oversized_intent = _DecodeGuardConnectorIntent(b"x" * (1024 * 1024))
+    request_headers = mitm_addon.http.Headers(
+        [
+            (b"Host", b"shared.example.com"),
+            (b"x-VM0-Connector-Intent", oversized_intent),
+        ]
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="shared.example.com",
+        path="/items/123?sensitive=query",
+        request_headers=request_headers,
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+        mitm_addon.response(flow)
+
+    auth_fetch.assert_not_awaited()
+    assert flow.response is not None
+    assert flow.response.status_code == 409
+    assert all(name.lower() != b"x-vm0-connector-intent" for name, _ in flow.request.headers.fields)
+    assert connector_intent.from_flow(flow) == connector_intent.MALFORMED
+    assert connector_intent._VALUE_METADATA_KEY not in flow.metadata
+    body = json.loads(flow.response.content)
+    assert body["reason"] == "malformed_connector_intent"
+    proxy_log_entry = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")[0]
+    assert "intent" not in proxy_log_entry
+    network_log_entry = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")[0]
+    assert network_log_entry["connector_route_reason"] == "malformed_connector_intent"
     assert "firewall_name" not in network_log_entry
 
 
