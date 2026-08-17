@@ -1736,6 +1736,7 @@ async function processAtomPlanGrantInvoicePaid(
         lockedOrg,
       })
     ) {
+      await grantAtomRedeemMemberUsagePack(tx, invoice, details);
       return true;
     }
     if (
