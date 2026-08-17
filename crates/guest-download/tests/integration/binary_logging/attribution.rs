@@ -364,6 +364,13 @@ fn binary_records_redacted_target_preparation_failure() {
             "unexpected {phase}: {entry:?}"
         );
     }
+    assert_eq!(
+        ops.iter()
+            .filter(|entry| entry["action_type"] == "guest_download_target_prepare")
+            .count(),
+        1,
+        "unexpected target preparation operations: {ops:?}"
+    );
     let target_prepare = operation(&ops, "guest_download_target_prepare")
         .unwrap_or_else(|| panic!("missing target preparation in {ops:?}"));
     assert_eq!(target_prepare["success"], false);
