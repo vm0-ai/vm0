@@ -7,6 +7,7 @@ from unittest.mock import patch
 import pytest
 from mitmproxy.flow import Error
 from mitmproxy.test import tutils
+from mitmproxy.websocket import WebSocketData
 
 import builtin_connector_diagnostics
 import flow_metadata_keys as metadata_keys
@@ -20,6 +21,9 @@ from tests.connector_diagnostic_helpers import (
 from tests.flow_helpers import header_map, response_stream
 from tests.request_handler_helpers import _vm_without_firewalls, _write_registry
 from tests.requestheaders_helpers import await_requestheaders_result
+
+_CONNECTOR_DIAGNOSTIC_PRIVATE_PREFIX = "_connector_diagnostic_"
+_CONNECTOR_DIAGNOSTIC_CATALOG_SNAPSHOT_KEY = "_connector_diagnostic_catalog_snapshot"
 
 
 def _catalog_firewall(
@@ -84,6 +88,29 @@ def _response_connector(flow) -> str:
     return connector
 
 
+def _connector_diagnostic_private_keys(flow) -> list[str]:
+    return sorted(
+        key for key in flow.metadata if key.startswith(_CONNECTOR_DIAGNOSTIC_PRIVATE_PREFIX)
+    )
+
+
+def _assert_connector_diagnostic_state_released(flow) -> None:
+    assert _connector_diagnostic_private_keys(flow) == []
+
+
+def _assert_catalog_a_public_diagnostic_metadata(flow) -> None:
+    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG] == "catalog-a"
+    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_REASON] == "not_configured_for_run"
+    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES] == ["CATALOG_A_TOKEN"]
+    assert flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_BASE] == "https://catalog.example.com"
+    assert flow.metadata[metadata_keys.FIREWALL_NAME] == "catalog-a"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://catalog.example.com"
+    assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == ""
+    assert flow.metadata[metadata_keys.FIREWALL_RULE_MATCH] == ""
+    assert flow.metadata[metadata_keys.FIREWALL_BILLABLE] is False
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "connector_not_configured_for_run"
+
+
 def test_unchanged_cache_reuses_compiled_diagnostic_snapshot(tmp_path, mitm_ctx):
     cache_path = write_connector_diagnostic_catalog_cache(
         tmp_path,
@@ -128,6 +155,7 @@ def test_pinned_flow_finishes_with_catalog_a_after_atomic_b_replacement(
             version="catalog-b",
         )
 
+        diagnostic_stream = None
         streamed_body: bytes | None = None
         if terminal_hook == "error":
             flow.error = Error("connection reset by peer")
@@ -140,9 +168,9 @@ def test_pinned_flow_finishes_with_catalog_a_after_atomic_b_replacement(
             )
             if terminal_hook == "stream":
                 mitm_addon.responseheaders(flow)
-                stream = response_stream(flow)
-                assert stream(b"upstream auth error") == ()
-                stream_result = stream(b"")
+                diagnostic_stream = response_stream(flow)
+                assert diagnostic_stream(b"upstream auth error") == ()
+                stream_result = diagnostic_stream(b"")
                 assert isinstance(stream_result, bytes)
                 streamed_body = stream_result
             mitm_addon.response(flow)
@@ -151,6 +179,41 @@ def test_pinned_flow_finishes_with_catalog_a_after_atomic_b_replacement(
         assert json.loads(streamed_body)["connector"] == "catalog-a"
     else:
         assert _response_connector(flow) == "catalog-a"
+    _assert_connector_diagnostic_state_released(flow)
+    _assert_catalog_a_public_diagnostic_metadata(flow)
+    if diagnostic_stream is not None:
+        assert flow.response is not None
+        assert flow.response.stream is False
+
+
+def test_websocket_end_releases_pinned_connector_diagnostic_state_at_entry(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+):
+    cache_path = write_connector_diagnostic_catalog_cache(
+        tmp_path,
+        firewalls=_catalog("catalog-a", "CATALOG_A_TOKEN"),
+        version="catalog-a",
+    )
+    registry_path = _capture_registry(tmp_path)
+    flow = _flow(real_flow)
+
+    with mitm_ctx(
+        registry_path=str(registry_path),
+        builtin_firewall_catalog_cache_path=str(cache_path),
+    ):
+        record_connector_diagnostic_requestheaders_context(flow)
+        assert _CONNECTOR_DIAGNOSTIC_CATALOG_SNAPSHOT_KEY in (
+            _connector_diagnostic_private_keys(flow)
+        )
+
+        # Normal WebSocket response cleanup releases this state first. Invoke
+        # websocket_end with pinned state present to isolate its terminal contract.
+        flow.websocket = WebSocketData()
+        mitm_addon.websocket_end(flow)
+
+    _assert_connector_diagnostic_state_released(flow)
 
 
 async def test_later_flow_observes_atomic_catalog_replacement(
