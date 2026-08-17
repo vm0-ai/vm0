@@ -272,22 +272,23 @@ def feed_usage(
                 and prewarm_state.active_intent == "prewarm"
                 and prewarm_state.active_response_id == message_id
             ):
-                if (
-                    not prewarm_state.ignored_diagnostic_emitted
-                    and usage.has_positive_model_provider_usage(usage_result)
-                ):
-                    usage.log_ignored_model_provider_usage_source(
-                        flow,
-                        flow_metadata.run_id(flow.metadata),
-                        message_id,
-                        usage_result,
-                        reason="responses_generate_false",
-                    )
-                    prewarm_state.ignored_diagnostic_emitted = True
                 prewarm_state.ignored_response_id = message_id
                 suppressed = True
             elif not prewarm_state.ambiguous and prewarm_state.ignored_response_id == message_id:
                 suppressed = True
+            if (
+                suppressed
+                and not prewarm_state.ignored_diagnostic_emitted
+                and usage.has_positive_model_provider_usage(usage_result)
+            ):
+                usage.log_ignored_model_provider_usage_source(
+                    flow,
+                    flow_metadata.run_id(flow.metadata),
+                    message_id,
+                    usage_result,
+                    reason="responses_generate_false",
+                )
+                prewarm_state.ignored_diagnostic_emitted = True
         if (
             not suppressed
             and usage_result is not None
@@ -351,5 +352,7 @@ def feed_usage(
         and not prewarm_state.ambiguous
         and prewarm_state.active_response_id == lifecycle.response_id
     ):
+        if prewarm_state.active_intent == "prewarm":
+            prewarm_state.ignored_response_id = lifecycle.response_id
         prewarm_state.active_intent = None
         prewarm_state.active_response_id = None
