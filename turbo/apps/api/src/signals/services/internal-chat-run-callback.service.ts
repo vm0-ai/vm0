@@ -10,7 +10,10 @@ import {
   serializeChatFollowupsContent,
   type ChatRecommendedFollowup,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import {
+  publicBrandSchema,
+  type PublicBrand,
+} from "@okouai/api-contracts/contracts/public-brand";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
@@ -364,6 +367,9 @@ const chatCallbackPayloadSchema = z
   .object({
     threadId: z.string(),
     agentId: z.string(),
+    // Missing is the permanent VM0 presentation contract for callbacks
+    // persisted before branding and for current unbranded run producers.
+    publicBrand: publicBrandSchema.optional(),
     slackDelivery: z
       .object({
         channelId: z.string(),
@@ -493,6 +499,7 @@ interface ChatCallbackDependencies {
       readonly chatThreadId: string;
       readonly runId: string;
       readonly errorMessage: string;
+      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ) => Promise<string>;
@@ -514,6 +521,7 @@ interface ChatCallbackDependencies {
       readonly userId: string;
       readonly code: string;
       readonly message: string;
+      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ) => Promise<string>;
@@ -697,6 +705,7 @@ interface SlackQueuedMessageAdmissionFailure {
   readonly agentId: string;
   readonly threadId: string;
   readonly queuedMessage: QueuedUserMessage;
+  readonly publicBrand: PublicBrand;
   readonly slackDelivery: {
     readonly channelId: string;
     readonly threadTs: string;
@@ -711,6 +720,7 @@ interface WebQueuedMessageAdmissionFailure {
   readonly userId: string;
   readonly threadId: string;
   readonly queuedMessage: QueuedUserMessage;
+  readonly publicBrand: PublicBrand;
   readonly error: QueuedMessageModelRouteError;
 }
 
@@ -720,6 +730,7 @@ interface FeishuQueuedMessageAdmissionFailure {
   readonly userId: string;
   readonly threadId: string;
   readonly queuedMessage: QueuedUserMessage;
+  readonly publicBrand: PublicBrand;
   readonly feishuDelivery: FeishuDeliveryTarget;
   readonly error: QueuedMessageModelRouteError;
 }
@@ -731,6 +742,7 @@ interface TeamsQueuedMessageAdmissionFailure {
   readonly agentId: string;
   readonly threadId: string;
   readonly queuedMessage: QueuedUserMessage;
+  readonly publicBrand: PublicBrand;
   readonly teamsDelivery: TeamsDeliveryTarget;
   readonly error: QueuedMessageModelRouteError;
 }
@@ -741,6 +753,7 @@ interface MorningBriefQueuedMessageAdmissionFailure {
   readonly userId: string;
   readonly threadId: string;
   readonly queuedMessage: QueuedUserMessage;
+  readonly publicBrand: PublicBrand;
   readonly morningBriefDelivery: NonNullable<
     CreateQueuedChatRunInput["morningBriefDelivery"]
   >;
@@ -754,6 +767,7 @@ interface TelegramQueuedMessageAdmissionFailure {
   readonly agentId: string;
   readonly threadId: string;
   readonly queuedMessage: QueuedUserMessage;
+  readonly publicBrand: PublicBrand;
   readonly telegramDelivery: TelegramDeliveryTarget;
   readonly error: QueuedMessageModelRouteError;
 }
@@ -765,6 +779,7 @@ interface AgentPhoneQueuedMessageAdmissionFailure {
   readonly agentId: string;
   readonly threadId: string;
   readonly queuedMessage: QueuedUserMessage;
+  readonly publicBrand: PublicBrand;
   readonly agentphoneDelivery: AgentPhoneDeliveryTarget;
   readonly error: QueuedMessageModelRouteError;
 }
@@ -776,6 +791,7 @@ interface GitHubQueuedMessageAdmissionFailure {
   readonly agentId: string;
   readonly threadId: string;
   readonly queuedMessage: QueuedUserMessage;
+  readonly publicBrand: PublicBrand;
   readonly githubDelivery: GitHubDeliveryTarget;
   readonly error: QueuedMessageModelRouteError;
 }
@@ -880,6 +896,7 @@ function buildQueuedCreateZeroRunArgs(
         payload: {
           threadId: input.threadId,
           agentId: input.agentId,
+          publicBrand: input.publicBrand ?? "vm0",
           queuedMessageId: input.queuedMessage.id,
           slackDelivery: input.slackDelivery,
           feishuDelivery: input.feishuDelivery,
@@ -2866,6 +2883,7 @@ function queuedMessageAdmissionFailure(
     agentId: args.agent.id,
     threadId: args.threadId,
     queuedMessage: args.queuedMessage,
+    publicBrand: launchMaterial.publicBrand ?? "vm0",
     error,
   };
   const contextType = args.queuedMessage.contextType;
@@ -3275,6 +3293,7 @@ async function handleWebQueuedMessageAdmissionFailure(
       userId: args.failure.userId,
       code: args.failure.error.code,
       message: args.failure.error.message,
+      publicBrand: args.failure.publicBrand,
     },
     signal,
   );
@@ -3317,6 +3336,7 @@ async function handleFeishuQueuedMessageAdmissionFailure(
       userId: args.failure.userId,
       code: args.failure.error.code,
       message: args.failure.error.message,
+      publicBrand: args.failure.publicBrand,
     },
     signal,
   );
@@ -3385,6 +3405,7 @@ async function handleSlackQueuedMessageAdmissionFailure(
       userId: args.failure.userId,
       code: args.failure.error.code,
       message: args.failure.error.message,
+      publicBrand: args.failure.publicBrand,
     },
     signal,
   );
@@ -3449,6 +3470,7 @@ async function handleTeamsQueuedMessageAdmissionFailure(
       userId: args.failure.userId,
       code: args.failure.error.code,
       message: args.failure.error.message,
+      publicBrand: args.failure.publicBrand,
     },
     signal,
   );
@@ -3509,6 +3531,7 @@ async function handleTelegramQueuedMessageAdmissionFailure(
       userId: args.failure.userId,
       code: args.failure.error.code,
       message: args.failure.error.message,
+      publicBrand: args.failure.publicBrand,
     },
     signal,
   );
@@ -3569,6 +3592,7 @@ async function handleAgentPhoneQueuedMessageAdmissionFailure(
       userId: args.failure.userId,
       code: args.failure.error.code,
       message: args.failure.error.message,
+      publicBrand: args.failure.publicBrand,
     },
     signal,
   );
@@ -3629,6 +3653,7 @@ async function handleGitHubQueuedMessageAdmissionFailure(
       userId: args.failure.userId,
       code: args.failure.error.code,
       message: args.failure.error.message,
+      publicBrand: args.failure.publicBrand,
     },
     signal,
   );
@@ -3688,6 +3713,7 @@ async function handleMorningBriefQueuedMessageAdmissionFailure(
       userId: args.failure.userId,
       code: args.failure.error.code,
       message: args.failure.error.message,
+      publicBrand: args.failure.publicBrand,
     },
     signal,
   );
@@ -4220,6 +4246,7 @@ async function prepareFailedTerminalChatCallbackWork(
     readonly chatThread: ChatThreadForRunRow;
     readonly suppressWebPushForActiveGoal: boolean;
     readonly errorMessage: string;
+    readonly publicBrand: PublicBrand;
     readonly dependencies: ChatCallbackDependencies;
     readonly timing: ChatCallbackPreCreateTimingCollector;
     readonly slackDelivery?: SlackDeliveryTarget;
@@ -4250,6 +4277,7 @@ async function prepareFailedTerminalChatCallbackWork(
               chatThreadId: args.chatThread.chatThreadId,
               runId: args.runId,
               errorMessage: args.errorMessage,
+              publicBrand: args.publicBrand,
             },
             signal,
           );
@@ -4669,6 +4697,7 @@ async function processTerminalChatCallback(
               args.callback.error,
               run.error,
             ),
+            publicBrand: args.payload.publicBrand ?? "vm0",
             dependencies: args.dependencies,
             timing,
             ...terminalIntegrationDeliveries(args.payload),

@@ -10,7 +10,10 @@ import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { permissionGrantsToFirewallPolicies } from "@okouai/connectors/firewall-metadata/policy";
 import type { FirewallPolicies } from "@okouai/connectors/firewall-types";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
-import { agentDisplayNameForPublicBrand } from "@okouai/core/public-brand";
+import {
+  agentDisplayNameForPublicBrand,
+  appUrlForPublicBrand,
+} from "@okouai/core/public-brand";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import {
   agentComposeVersions,
@@ -533,9 +536,15 @@ function buildZeroRunExtraEnvironment(args: {
   readonly agentId: string;
   readonly chatThreadId: string | undefined;
   readonly codexServiceTier: "fast" | undefined;
+  readonly publicBrand: PublicBrand | undefined;
 }): Record<string, string> {
   return {
-    OKOU_APP_URL: env("APP_URL"),
+    // A run source that supplies no presentation brand is a VM0 run by
+    // contract; this does not derive brand identity from token scope.
+    OKOU_APP_URL: appUrlForPublicBrand(
+      env("APP_URL"),
+      args.publicBrand ?? "vm0",
+    ),
     OKOU_AGENT_ID: args.agentId,
     // Chat-mode automation (and web) runs carry their thread id so the
     // in-sandbox CLI can bind a newly created automation to it (the create
@@ -856,9 +865,11 @@ function buildZeroCreateAgentRunArgs(args: {
       agentId: args.agent.id,
       chatThreadId: command.chatThreadId,
       codexServiceTier: command.codexServiceTier,
+      publicBrand: command.publicBrand,
     }),
     callbacks: command.callbacks,
     includeZeroTokenSecret: true,
+    zeroTokenPublicBrand: command.publicBrand,
     zeroTokenComputerUseHostId: command.computerUseHostId,
     zeroTokenCloudBrowserEnabled: args.cloudBrowserEnabled,
     enforceVm0Credits: true,

@@ -9,6 +9,8 @@ import {
   type ModelProviderCredentialScope,
   type ModelProviderType,
 } from "@okouai/api-contracts/contracts/model-providers";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { eq } from "drizzle-orm";
 
@@ -31,23 +33,25 @@ interface FormatRunErrorLikeWebMessageParams {
   readonly chatThreadId?: string | null;
   readonly runId: string;
   readonly errorMessage: string;
+  readonly publicBrand: PublicBrand;
   readonly modelProviderType?: ModelProviderType | null;
   readonly modelProviderCredentialScope?: ModelProviderCredentialScope | null;
   readonly selectedModel?: string | null;
   readonly canManageOrgModelProviders?: boolean;
 }
 
-function buildModelProvidersUrl(): string {
-  const appUrl = env("APP_URL").replace(/\/$/u, "");
+function buildModelProvidersUrl(publicBrand: PublicBrand): string {
+  const appUrl = appUrlForPublicBrand(env("APP_URL"), publicBrand);
   return `${appUrl}/?settings=model`;
 }
 
-function buildPersonalModelProvidersUrl(): string {
-  const appUrl = env("APP_URL").replace(/\/$/u, "");
+function buildPersonalModelProvidersUrl(publicBrand: PublicBrand): string {
+  const appUrl = appUrlForPublicBrand(env("APP_URL"), publicBrand);
   return `${appUrl}/?settings=model`;
 }
 
 function buildClaudeCodeCredentialRecoveryUrl(params: {
+  readonly publicBrand: PublicBrand;
   readonly modelProviderType: ModelProviderType | null | undefined;
   readonly modelProviderCredentialScope:
     | ModelProviderCredentialScope
@@ -58,9 +62,9 @@ function buildClaudeCodeCredentialRecoveryUrl(params: {
     params.modelProviderType === "claude-code-oauth-token" &&
     params.modelProviderCredentialScope === "member"
   ) {
-    return buildPersonalModelProvidersUrl();
+    return buildPersonalModelProvidersUrl(params.publicBrand);
   }
-  return buildModelProvidersUrl();
+  return buildModelProvidersUrl(params.publicBrand);
 }
 
 function isProRequiredRunError(message: string): boolean {
@@ -166,6 +170,7 @@ function formatRunErrorLikeWebMessage(
         modelProviderCredentialScope,
         canManageOrgModelProviders: params.canManageOrgModelProviders ?? false,
         modelProvidersUrl: buildClaudeCodeCredentialRecoveryUrl({
+          publicBrand: params.publicBrand,
           modelProviderType,
           modelProviderCredentialScope,
         }),

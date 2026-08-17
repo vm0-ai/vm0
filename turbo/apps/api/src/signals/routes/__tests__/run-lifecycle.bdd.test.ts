@@ -16,6 +16,7 @@ import {
   type Job as RunnerJob,
 } from "@okouai/api-contracts/contracts/runners";
 import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { testCustomConnectorSkillVersionAssociationContract } from "@okouai/api-contracts/contracts/test-custom-connector-skill-version-association";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV } from "@okouai/core/resource-registry";
@@ -762,6 +763,7 @@ function expectCanonicalOkouRunEnvironment(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly runId: string;
+  readonly publicBrand?: PublicBrand;
   readonly chatThreadId?: string;
 }): void {
   expect(args.environment?.OKOU_APP_URL).toBe(args.appUrl);
@@ -788,6 +790,7 @@ function expectCanonicalOkouRunEnvironment(args: {
     userId: args.userId,
     orgId: args.orgId,
     runId: args.runId,
+    publicBrand: args.publicBrand ?? "vm0",
     capabilities: expect.any(Array),
     iat: expect.any(Number),
     exp: expect.any(Number),

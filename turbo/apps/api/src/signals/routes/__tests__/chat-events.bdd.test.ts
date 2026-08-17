@@ -108,6 +108,7 @@ import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { overwriteModelProviderSecretForTests } from "./helpers/model-provider-state";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
+import { verifyZeroToken } from "../../auth/tokens";
 import {
   createUnassociatedThreadBoundAgentRunFixture,
   createUnassociatedThreadBoundZeroRunFixture,
@@ -525,6 +526,43 @@ async function claimChatRun(
     claim,
     sandboxHeaders,
   };
+}
+
+async function expectRunPublicBrandTransport(args: {
+  readonly actor: ApiTestUser;
+  readonly runId: string;
+  readonly claim: RunnerClaim;
+  readonly publicBrand: PublicBrand;
+  readonly appUrl: string;
+}): Promise<void> {
+  if (!args.actor.orgId) {
+    throw new Error("Expected an organization-scoped chat actor");
+  }
+  expect(args.claim.environment?.OKOU_APP_URL).toBe(args.appUrl);
+  const token = args.claim.environment?.OKOU_TOKEN;
+  if (!token) {
+    throw new Error("Expected the run context to contain an Okou token");
+  }
+  expect(verifyZeroToken(token)).toMatchObject({
+    runId: args.runId,
+    publicBrand: args.publicBrand,
+  });
+  const state = await runStateStore.set(
+    readAgentRunState$,
+    {
+      orgId: args.actor.orgId,
+      userId: args.actor.userId,
+      runId: args.runId,
+    },
+    context.signal,
+  );
+  expect(
+    state.callbacks.find((callback) => {
+      return callback.internalKind === "chat";
+    }),
+  ).toMatchObject({
+    payload: { publicBrand: args.publicBrand },
+  });
 }
 
 /**
@@ -8405,6 +8443,7 @@ describe("CHAT-02: queued attachments on auto-send", () => {
 
 describe("CHAT-02: public-brand default assistant identity", () => {
   it("uses the request brand for immediate and auto-sent runs without renaming custom agents", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
     const { actor, runnerGroup } = await entitledChatActor();
     bdd.acceptAgentStorageWrites();
     const onboarding = await bdd.readOnboardingStatus(actor);
@@ -8425,6 +8464,13 @@ describe("CHAT-02: public-brand default assistant identity", () => {
     );
 
     const anchorClaim = await claimChatRun(runnerGroup, okouAnchor.runId);
+    await expectRunPublicBrandTransport({
+      actor,
+      runId: okouAnchor.runId,
+      claim: anchorClaim.claim,
+      publicBrand: "okou",
+      appUrl: "https://app.okou.ai",
+    });
     const queuedEventId = randomUUID();
     const queued = await chat.requestSendEvent(
       actor,
@@ -8483,6 +8529,14 @@ describe("CHAT-02: public-brand default assistant identity", () => {
     const promotedRun = await api.readRun(actor, promoted.runId);
     expect(promotedRun.appendSystemPrompt).toContain("Your name is Okou.");
     expect(promotedRun.appendSystemPrompt).not.toContain("Your name is Zero.");
+    const promotedClaim = await claimChatRun(runnerGroup, promoted.runId);
+    await expectRunPublicBrandTransport({
+      actor,
+      runId: promoted.runId,
+      claim: promotedClaim.claim,
+      publicBrand: "okou",
+      appUrl: "https://app.okou.ai",
+    });
     await cancelChatRun(actor, promoted.runId);
 
     const vm0Run = await sendChatRun(actor, {
@@ -8492,7 +8546,16 @@ describe("CHAT-02: public-brand default assistant identity", () => {
     expect(
       (await api.readRun(actor, vm0Run.runId)).appendSystemPrompt,
     ).toContain("Your name is Zero.");
+    const vm0Claim = await claimChatRun(runnerGroup, vm0Run.runId);
+    await expectRunPublicBrandTransport({
+      actor,
+      runId: vm0Run.runId,
+      claim: vm0Claim.claim,
+      publicBrand: "vm0",
+      appUrl: "https://app.vm0.ai",
+    });
 
+    mockEnv("APP_URL", "https://preview.example.test");
     const customZero = await bdd.createAgent(actor, {
       displayName: "Zero",
       visibility: "private",
@@ -8506,6 +8569,14 @@ describe("CHAT-02: public-brand default assistant identity", () => {
       .appendSystemPrompt;
     expect(customPrompt).toContain("Your name is Zero.");
     expect(customPrompt).not.toContain("Your name is Okou.");
+    const customClaim = await claimChatRun(runnerGroup, customRun.runId);
+    await expectRunPublicBrandTransport({
+      actor,
+      runId: customRun.runId,
+      claim: customClaim.claim,
+      publicBrand: "okou",
+      appUrl: "https://preview.example.test",
+    });
 
     await cancelChatRun(actor, vm0Run.runId);
     await cancelChatRun(actor, customRun.runId);

@@ -9,6 +9,7 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { testBrowserReconcileContract } from "@okouai/api-contracts/contracts/test-browser-reconcile";
 import type { SupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@okouai/api-contracts/contracts/runners";
 import { zeroGoalsContract } from "@okouai/api-contracts/contracts/zero-goals";
 import {
@@ -30,6 +31,7 @@ import {
   insertQueuedSlackMissingContextFixture,
   readChatEventContextFixture,
   removeAcknowledgedCancellationLifecycleFixture,
+  removeChatCallbackPublicBrandFixture,
 } from "../../../test-fixtures/chat-events";
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
@@ -235,6 +237,7 @@ async function startChatRun(
   },
   options?: {
     readonly onMessageAccepted?: () => void;
+    readonly publicBrand?: PublicBrand;
   },
 ): Promise<{
   readonly runId: string;
@@ -258,7 +261,13 @@ async function startChatRun(
       : { revokesEventId: body.revokesEventId }),
     ...(selectedModel === undefined ? {} : { model: selectedModel }),
   };
-  const sent = await chat.requestSendEvent(actor, requestBody, [201]);
+  const sent = await chat.requestSendEvent(
+    actor,
+    requestBody,
+    [201],
+    undefined,
+    options?.publicBrand,
+  );
   if (sent.status !== 201) {
     throw new Error("Expected the entitled chat send to create a run");
   }
@@ -3908,6 +3917,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
 
 describe("CHAT-02: drain-time admission failure", () => {
   it("terminalizes a queued Web message when credits are lost before drain", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     if (!actor.orgId) {
       throw new Error("Expected an org-scoped Web chat actor");
@@ -3919,10 +3929,14 @@ describe("CHAT-02: drain-time admission failure", () => {
     });
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
-    const anchor = await startChatRun(actor, {
-      agentId,
-      prompt: "finish after queued Web credit loss",
-    });
+    const anchor = await startChatRun(
+      actor,
+      {
+        agentId,
+        prompt: "finish after queued Web credit loss",
+      },
+      { publicBrand: "okou" },
+    );
     const anchorHeaders = await claimChatRun(runnerGroup, anchor.runId);
     const queuedEventId = randomUUID();
     const queuedPrompt = "reject this queued Web message after credit loss";
@@ -3935,6 +3949,8 @@ describe("CHAT-02: drain-time admission failure", () => {
         clientEventId: queuedEventId,
       },
       [201],
+      undefined,
+      "okou",
     );
     if ("error" in queued.body) {
       throw new Error(queued.body.error.message);
@@ -4004,7 +4020,10 @@ describe("CHAT-02: drain-time admission failure", () => {
     });
     expect(errors).toHaveLength(1);
     expect(errors[0]?.content).toContain("Add credits");
-    expect(errors[0]?.content).toContain("settings=billing");
+    expect(errors[0]?.content).toContain(
+      "https://app.okou.ai/?settings=billing&billingView=credits",
+    );
+    expect(errors[0]?.content).not.toContain("https://app.vm0.ai");
     expect(
       (await api.listAgentRuns(actor, { limit: 20 })).runs.filter((run) => {
         return run.prompt === queuedPrompt;
@@ -4234,6 +4253,7 @@ describe("CHAT-02: failed chat callbacks", () => {
   }, 90_000);
 
   it("shows Claude Code credential recovery guidance for upstream auth 401s", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const upstreamAuthError =
       "Failed to authenticate. API Error: 401 Invalid authentication credentials";
@@ -4242,6 +4262,8 @@ describe("CHAT-02: failed chat callbacks", () => {
       readonly prompt: string;
       readonly selectedModel?: SupportedRunModel;
       readonly orgRole?: TestOrgRole;
+      readonly publicBrand?: PublicBrand;
+      readonly removeCallbackPublicBrand?: boolean;
       readonly configureProvider?: (
         fixture: EntitledChatActor,
       ) => Promise<void>;
@@ -4251,14 +4273,21 @@ describe("CHAT-02: failed chat callbacks", () => {
           ? await entitledChatMemberActor()
           : await entitledChatActor();
       await params.configureProvider?.(fixture);
-      const run = await startChatRun(fixture.actor, {
-        agentId: fixture.agentId,
-        prompt: params.prompt,
-        ...(params.selectedModel === undefined
-          ? {}
-          : { selectedModel: params.selectedModel }),
-      });
+      const run = await startChatRun(
+        fixture.actor,
+        {
+          agentId: fixture.agentId,
+          prompt: params.prompt,
+          ...(params.selectedModel === undefined
+            ? {}
+            : { selectedModel: params.selectedModel }),
+        },
+        { publicBrand: params.publicBrand },
+      );
       const sandboxHeaders = await claimChatRun(fixture.runnerGroup, run.runId);
+      if (params.removeCallbackPublicBrand) {
+        await removeChatCallbackPublicBrandFixture(run.runId);
+      }
       if (params.orgRole !== undefined) {
         mockClerkMembership(
           context,
@@ -4292,6 +4321,7 @@ describe("CHAT-02: failed chat callbacks", () => {
       failAndReadError({
         prompt: "subscription credential failed",
         selectedModel: "claude-opus-4-8",
+        publicBrand: "okou",
         async configureProvider(fixture) {
           await misc.upsertPersonalModelProvider(
             fixture.actor,
@@ -4317,15 +4347,17 @@ describe("CHAT-02: failed chat callbacks", () => {
         },
       }),
     ).resolves.toBe(
-      "Claude Code subscription authentication failed. Reconnect Claude Code in Model Providers, then retry.\n\nReconnect Claude Code: http://localhost:3002/?settings=model",
+      "Claude Code subscription authentication failed. Reconnect Claude Code in Model Providers, then retry.\n\nReconnect Claude Code: https://app.okou.ai/?settings=model",
     );
     await expect(
       failAndReadError({
-        prompt: "org key failed for admin",
+        prompt: "legacy callback without public brand failed for admin",
         orgRole: "admin",
+        publicBrand: "okou",
+        removeCallbackPublicBrand: true,
       }),
     ).resolves.toBe(
-      "Claude Code could not authenticate with the configured Anthropic API key. Update or replace the API key in Model Providers, then retry.\n\nOpen Model Providers: http://localhost:3002/?settings=model",
+      "Claude Code could not authenticate with the configured Anthropic API key. Update or replace the API key in Model Providers, then retry.\n\nOpen Model Providers: https://app.vm0.ai/?settings=model",
     );
     await expect(
       failAndReadError({
@@ -4333,7 +4365,7 @@ describe("CHAT-02: failed chat callbacks", () => {
         orgRole: "member",
       }),
     ).resolves.toBe(
-      "Claude Code could not authenticate with the configured Anthropic API key. Ask a workspace admin to update or replace the API key.\n\nShare with an admin: http://localhost:3002/?settings=model",
+      "Claude Code could not authenticate with the configured Anthropic API key. Ask a workspace admin to update or replace the API key.\n\nShare with an admin: https://app.vm0.ai/?settings=model",
     );
   }, 90_000);
 });
