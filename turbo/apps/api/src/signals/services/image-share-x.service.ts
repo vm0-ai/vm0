@@ -1,6 +1,8 @@
 import { command } from "ccstate";
 import { randomUUID } from "node:crypto";
 import type { ApiErrorKey } from "@okouai/api-contracts/contracts/errors";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { publicBrandPresentation } from "@okouai/core/public-brand";
 import { usageEvent } from "@okouai/db/schema/usage-event";
 import { z } from "zod";
 
@@ -22,7 +24,6 @@ const X_CONNECTOR_SLUG = "x";
 const X_ACCESS_TOKEN_ENVIRONMENT_NAME = "X_TOKEN";
 const X_TOKEN_REFRESH_SKEW_MS = 60_000;
 const DEFAULT_X_ACCESS_TOKEN_EXPIRES_IN_MS = 2 * 60 * 60 * 1000;
-const DEFAULT_X_CAPTION = "Made with Zero";
 const MAX_X_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 const MAX_X_IMAGE_SIZE_LABEL = "5 MB";
 const ARTIFACTS_PATH_PREFIX = "/artifacts/";
@@ -354,10 +355,13 @@ async function createXPost(
     readonly accessToken: string;
     readonly caption: string | undefined;
     readonly mediaId: string;
+    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<string> {
-  const text = args.caption?.trim() || DEFAULT_X_CAPTION;
+  const text =
+    args.caption?.trim() ||
+    `Made with ${publicBrandPresentation(args.publicBrand).assistantName}`;
   const body = await xApiJson(
     {
       accessToken: args.accessToken,
@@ -395,6 +399,7 @@ export const shareImageToX$ = command(
       readonly caption: string | undefined;
       readonly imageUrl: string;
       readonly orgId: string;
+      readonly publicBrand: PublicBrand;
       readonly userId: string;
     },
     signal: AbortSignal,
@@ -462,6 +467,7 @@ export const shareImageToX$ = command(
             accessToken: accessTokenResult.accessToken,
             caption: args.caption,
             mediaId,
+            publicBrand: args.publicBrand,
           },
           signal,
         );
