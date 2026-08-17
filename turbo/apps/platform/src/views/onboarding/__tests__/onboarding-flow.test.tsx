@@ -6,7 +6,11 @@ import {
   VIDEO_TEMPLATE_ITEMS,
   WEBSITE_TEMPLATE_ITEMS,
 } from "@okouai/core";
-import { zeroBillingCheckoutContract } from "@okouai/api-contracts/contracts/zero-billing";
+import {
+  zeroBillingCheckoutContract,
+  zeroBillingUsagePackCheckoutContract,
+} from "@okouai/api-contracts/contracts/zero-billing";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   zeroConnectorCatalogContract,
@@ -954,6 +958,73 @@ describe("onboarding flow", () => {
       expect(runPrompt).toContain(videoBrief);
       expect(generationType).toBe("video");
       expect(pathname()).toMatch(/^\/chats\//u);
+    });
+  });
+
+  it("uses the new Pro plan with a $20 usage pack when enabled", async () => {
+    const template = firstItem(VIDEO_TEMPLATE_ITEMS);
+    let legacyCheckoutCalled = false;
+    let usagePackCheckoutBody:
+      | {
+          readonly tier: "pro" | "team";
+          readonly memberUsagePacks: readonly {
+            readonly memberId: string;
+            readonly usagePackUsd: 20 | 50 | 100 | 200;
+          }[];
+        }
+      | undefined;
+    context.mocks.api(zeroBillingCheckoutContract.create, ({ respond }) => {
+      legacyCheckoutCalled = true;
+      return respond(200, {
+        url: "https://checkout.stripe.com/test/legacy-onboarding-video",
+      });
+    });
+    context.mocks.api(
+      zeroBillingUsagePackCheckoutContract.create,
+      ({ body, respond }) => {
+        usagePackCheckoutBody = body;
+        return respond(200, {
+          url: "https://checkout.stripe.com/test/usage-pack-onboarding-video",
+        });
+      },
+    );
+
+    mockOnboardingNeeded();
+    detachedSetupPage({
+      context,
+      path: "/onboarding",
+      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
+    });
+    await expect(
+      screen.findByRole("heading", {
+        name: "What do you want to make first",
+      }),
+    ).resolves.toBeInTheDocument();
+    chooseMakeOption("Video production");
+    await expect(
+      screen.findByRole("heading", {
+        name: "Pick a video template to start from",
+      }),
+    ).resolves.toBeInTheDocument();
+    chooseTemplate(template.title, "video");
+    await expect(
+      screen.findByRole("heading", { name: "Customize your video" }),
+    ).resolves.toBeInTheDocument();
+    await fill(
+      screen.getByLabelText("Custom video prompt"),
+      "A product launch video with a fast-paced opening.",
+    );
+    click(buttonByText("Upgrade Pro to run"));
+
+    await waitFor(() => {
+      expect(window.location.href).toBe(
+        "https://checkout.stripe.com/test/usage-pack-onboarding-video",
+      );
+    });
+    expect(legacyCheckoutCalled).toBeFalsy();
+    expect(usagePackCheckoutBody).toMatchObject({
+      tier: "pro",
+      memberUsagePacks: [{ memberId: "test-user-123", usagePackUsd: 20 }],
     });
   });
 
