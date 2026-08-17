@@ -3956,14 +3956,6 @@ mod tests {
         server.assert_finished().await;
     }
 
-    async fn await_raw_http_task(handle: tokio::task::JoinHandle<std::io::Result<()>>) {
-        tokio::time::timeout(Duration::from_secs(5), handle)
-            .await
-            .expect("raw HTTP server should finish")
-            .expect("raw HTTP server task should not panic")
-            .expect("raw HTTP server should not fail");
-    }
-
     async fn wait_cached_archive(home: &HomePaths, name: &str, version: &str) -> Vec<u8> {
         let lock_path = home.storage_lock(name, version);
         let path = home.storage_cache_dir(name, version).join("archive.tar.gz");
@@ -5641,33 +5633,18 @@ mod tests {
         let mut telemetry = new_telemetry();
         let body = tarball_bytes();
         let expected_body = body.clone();
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
         let (allow_tx, allow_rx) = tokio::sync::oneshot::channel();
-        let (request_tx, mut request_rx) = tokio::sync::oneshot::channel();
-        let server_task = tokio::spawn(async move {
-            let mut allow_rx = Some(allow_rx);
-            let mut request_tx = Some(request_tx);
-            for response in [
-                partial_content_response(body.len()),
-                http_response("200 OK", &body),
-            ] {
-                let (mut socket, _) = listener.accept().await?;
-                let mut request = [0u8; 1024];
-                let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut request).await?;
-                if let Some(request_tx) = request_tx.take() {
-                    let _ = request_tx.send(());
-                }
-                if let Some(allow_rx) = allow_rx.take() {
-                    let _ = allow_rx.await;
-                }
-                socket.write_all(&response).await?;
-            }
-            Ok::<(), std::io::Error>(())
-        });
+        let mut server = RawHttpTestServer::spawn(vec![
+            RawHttpAction::WaitThenRespond {
+                release: allow_rx,
+                response: partial_content_response(body.len()),
+            },
+            RawHttpAction::Respond(http_response("200 OK", &body)),
+        ])
+        .await;
+        let original = format!("{}/archive.tar.gz", server.url());
         let name = "background-miss";
         let version = "v1";
-        let original = format!("http://{addr}/archive.tar.gz");
         let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
         let deferred = populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
@@ -5677,8 +5654,8 @@ mod tests {
 
         assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(matches!(
-            request_rx.try_recv(),
-            Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+            server.try_next_request(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
         ));
         assert!(
             !home
@@ -5697,12 +5674,11 @@ mod tests {
 
         let coordinator = StorageCacheBackgroundFillCoordinator::new().unwrap();
         deferred.start(&coordinator, &mut telemetry);
-        tokio::time::timeout(Duration::from_secs(5), &mut request_rx)
-            .await
-            .expect("started background fill should contact archive server")
-            .expect("archive request sender should remain available");
+        server
+            .next_request("started background fill archive request")
+            .await;
         allow_tx.send(()).unwrap();
-        await_raw_http_task(server_task).await;
+        server.assert_finished().await;
         assert_eq!(
             wait_cached_archive(&home, name, version).await,
             expected_body

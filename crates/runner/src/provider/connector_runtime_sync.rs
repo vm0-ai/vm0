@@ -1688,7 +1688,9 @@ mod tests {
 
     use crate::http::{HttpClient, HttpClientConfig};
     use crate::proxy::{ProxyRegistryHandle, VmRegistration};
-    use crate::test_fixtures::raw_http::{json_response, read_http_request};
+    use crate::test_fixtures::raw_http::{
+        RawHttpAction, RawHttpTestServer, json_response, read_http_request,
+    };
     use crate::types::{Firewall, FirewallApi, FirewallAuth, FirewallEntry};
 
     fn api_client_for_url(api_url: String) -> ApiClient {
@@ -4699,72 +4701,54 @@ mod tests {
 
     #[tokio::test]
     async fn newer_notification_survives_older_in_flight_sync() {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let api_url = format!("http://{}", listener.local_addr().unwrap());
         let run_id = RunId::nil();
+        let first_body = json!({
+            "results": [{
+                "target": { "kind": "builtin", "connectorSlug": "slack" },
+                "state": "available",
+                "networkPolicy": {
+                    "allow": ["old:read"],
+                    "deny": [],
+                    "ask": [],
+                    "unknownPolicy": "allow",
+                },
+            }],
+        })
+        .to_string();
+        let second_body = json!({
+            "results": [{
+                "target": { "kind": "builtin", "connectorSlug": "slack" },
+                "state": "available",
+                "networkPolicy": {
+                    "allow": ["new:read"],
+                    "deny": [],
+                    "ask": [],
+                    "unknownPolicy": "allow",
+                },
+            }],
+        })
+        .to_string();
+        let (release_first_tx, release_first_rx) = tokio::sync::oneshot::channel();
+        let mut server = RawHttpTestServer::spawn(vec![
+            RawHttpAction::WaitThenRespond {
+                release: release_first_rx,
+                response: json_response("200 OK", &first_body),
+            },
+            RawHttpAction::Respond(json_response("200 OK", &second_body)),
+        ])
+        .await;
         let harness = ConnectorRuntimeSyncHarness::new_with_api(
-            api_client_for_url(api_url),
+            api_client_for_url(server.url()),
             run_id,
             &["slack"],
         )
         .await;
-        let (first_received_tx, first_received_rx) = tokio::sync::oneshot::channel();
-        let (release_first_tx, release_first_rx) = tokio::sync::oneshot::channel();
-        let server_task = tokio::spawn(async move {
-            let (mut first_socket, first_request) = accept_http_request(&listener).await;
-            first_received_tx
-                .send(())
-                .expect("first request receiver should remain available");
-            release_first_rx
-                .await
-                .expect("first response should be released");
-            let first_body = json!({
-                "results": [{
-                    "target": { "kind": "builtin", "connectorSlug": "slack" },
-                    "state": "available",
-                    "networkPolicy": {
-                        "allow": ["old:read"],
-                        "deny": [],
-                        "ask": [],
-                        "unknownPolicy": "allow",
-                    },
-                }],
-            })
-            .to_string();
-            first_socket
-                .write_all(&json_response("200 OK", &first_body))
-                .await
-                .unwrap();
-
-            let (mut second_socket, second_request) = accept_http_request(&listener).await;
-            let second_body = json!({
-                "results": [{
-                    "target": { "kind": "builtin", "connectorSlug": "slack" },
-                    "state": "available",
-                    "networkPolicy": {
-                        "allow": ["new:read"],
-                        "deny": [],
-                        "ask": [],
-                        "unknownPolicy": "allow",
-                    },
-                }],
-            })
-            .to_string();
-            second_socket
-                .write_all(&json_response("200 OK", &second_body))
-                .await
-                .unwrap();
-            [first_request, second_request]
-        });
 
         harness
             .handle
             .notify_connector_runtime_sync(run_id, builtin_target("slack"))
             .await;
-        tokio::time::timeout(Duration::from_secs(1), first_received_rx)
-            .await
-            .expect("first refresh should reach the API")
-            .expect("first request sender should remain available");
+        server.next_request("older generation sync request").await;
 
         harness
             .handle
@@ -4785,10 +4769,7 @@ mod tests {
         })
         .await;
         assert_eq!(policy["unknownPolicy"], json!("allow"));
-        let requests = tokio::time::timeout(Duration::from_secs(1), server_task)
-            .await
-            .expect("both generations should reach the API")
-            .expect("API task should succeed");
+        let requests = server.assert_finished_with_requests().await;
         for request in &requests {
             assert_connector_runtime_sync_request(request, &run_id);
         }
@@ -4921,32 +4902,24 @@ mod tests {
 
     #[tokio::test]
     async fn persistent_transport_failure_retains_policy_and_scheduled_retry_recovers() {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let api_url = format!("http://{}", listener.local_addr().unwrap());
         let run_id = RunId::nil();
-        let harness = ConnectorRuntimeSyncHarness::new_with_api(
-            api_client_for_url(api_url),
-            run_id,
-            &["slack"],
-        )
-        .await;
         let response_body = connector_runtime_sync_response(json!({
             "kind": "builtin",
             "connectorSlug": "slack",
         }))
         .to_string();
-        let server_task = tokio::spawn(async move {
-            let (first_socket, first_request) = accept_http_request(&listener).await;
-            drop(first_socket);
-            let (second_socket, second_request) = accept_http_request(&listener).await;
-            drop(second_socket);
-            let (mut third_socket, third_request) = accept_http_request(&listener).await;
-            third_socket
-                .write_all(&json_response("200 OK", &response_body))
-                .await
-                .unwrap();
-            [first_request, second_request, third_request]
-        });
+        let server = RawHttpTestServer::spawn(vec![
+            RawHttpAction::Disconnect,
+            RawHttpAction::Disconnect,
+            RawHttpAction::Respond(json_response("200 OK", &response_body)),
+        ])
+        .await;
+        let harness = ConnectorRuntimeSyncHarness::new_with_api(
+            api_client_for_url(server.url()),
+            run_id,
+            &["slack"],
+        )
+        .await;
 
         let (_, events) = tokio::time::timeout(
             Duration::from_secs(1),
@@ -4992,11 +4965,11 @@ mod tests {
         })
         .await;
         assert_eq!(recovered_policy["unknownPolicy"], json!("allow"));
-        let [first_request, second_request, third_request] =
-            tokio::time::timeout(Duration::from_secs(1), server_task)
-                .await
-                .expect("connector runtime sync server should finish after scheduled retry")
-                .expect("connector runtime sync server task should succeed");
+        let [first_request, second_request, third_request] = server
+            .assert_finished_with_requests()
+            .await
+            .try_into()
+            .expect("connector runtime sync server should capture three requests");
         for request in [&first_request, &second_request, &third_request] {
             assert_connector_runtime_sync_request(request, &run_id);
         }
