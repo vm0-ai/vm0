@@ -103,6 +103,7 @@ _FLOW_STATE = "_codex_model_catalog_cache_state"
 _FLOW_TELEMETRY = "_codex_model_catalog_cache_telemetry"
 _PREFETCH_REQUEST = "_codex_model_catalog_prefetch_request"
 _PREFETCH_HEADER = "X-VM0-Codex-Model-Catalog-Prefetch"
+_RAW_PREFETCH_HEADER = b"x-vm0-codex-model-catalog-prefetch"
 _BROTLI_ENCODING = "br"
 _IDENTITY_ENCODING = "identity"
 _REQUEST_CONDITIONAL_HEADERS = (
@@ -549,11 +550,20 @@ def _request_bypass_reason(
 
 def capture_and_strip_prefetch_marker(flow: http.HTTPFlow) -> None:
     """Capture the runner-only prefetch marker without forwarding it upstream."""
-    values = flow.request.headers.get_all(_PREFETCH_HEADER)
-    if not values:
+    raw_value: bytes | None = None
+    repeated = False
+    for name, value in flow.request.headers.fields:
+        if name.lower() != _RAW_PREFETCH_HEADER:
+            continue
+        if raw_value is not None:
+            repeated = True
+            break
+        raw_value = value
+
+    if raw_value is None:
         return
-    flow.request.headers.pop(_PREFETCH_HEADER, None)
-    if values == ["1"]:
+    flow.request.headers.set_all(_PREFETCH_HEADER, [])
+    if not repeated and len(raw_value) == 1 and raw_value == b"1":
         flow.metadata[_PREFETCH_REQUEST] = True
 
 
