@@ -31,6 +31,7 @@ import {
   insertQueuedSlackMissingContextFixture,
   readChatEventContextFixture,
   removeAcknowledgedCancellationLifecycleFixture,
+  removeChatCallbackPublicBrandFixture,
 } from "../../../test-fixtures/chat-events";
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
@@ -4262,6 +4263,7 @@ describe("CHAT-02: failed chat callbacks", () => {
       readonly selectedModel?: SupportedRunModel;
       readonly orgRole?: TestOrgRole;
       readonly publicBrand?: PublicBrand;
+      readonly removeCallbackPublicBrand?: boolean;
       readonly configureProvider?: (
         fixture: EntitledChatActor,
       ) => Promise<void>;
@@ -4283,6 +4285,9 @@ describe("CHAT-02: failed chat callbacks", () => {
         { publicBrand: params.publicBrand },
       );
       const sandboxHeaders = await claimChatRun(fixture.runnerGroup, run.runId);
+      if (params.removeCallbackPublicBrand) {
+        await removeChatCallbackPublicBrandFixture(run.runId);
+      }
       if (params.orgRole !== undefined) {
         mockClerkMembership(
           context,
@@ -4346,8 +4351,10 @@ describe("CHAT-02: failed chat callbacks", () => {
     );
     await expect(
       failAndReadError({
-        prompt: "org key failed for admin",
+        prompt: "legacy callback without public brand failed for admin",
         orgRole: "admin",
+        publicBrand: "okou",
+        removeCallbackPublicBrand: true,
       }),
     ).resolves.toBe(
       "Claude Code could not authenticate with the configured Anthropic API key. Update or replace the API key in Model Providers, then retry.\n\nOpen Model Providers: https://app.vm0.ai/?settings=model",

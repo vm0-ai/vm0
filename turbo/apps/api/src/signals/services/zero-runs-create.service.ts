@@ -539,6 +539,8 @@ function buildZeroRunExtraEnvironment(args: {
   readonly publicBrand: PublicBrand | undefined;
 }): Record<string, string> {
   return {
+    // A run source that supplies no presentation brand is a VM0 run by
+    // contract; this does not derive brand identity from token scope.
     OKOU_APP_URL: appUrlForPublicBrand(
       env("APP_URL"),
       args.publicBrand ?? "vm0",

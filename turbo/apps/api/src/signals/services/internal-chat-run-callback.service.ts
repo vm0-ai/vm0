@@ -367,6 +367,8 @@ const chatCallbackPayloadSchema = z
   .object({
     threadId: z.string(),
     agentId: z.string(),
+    // Missing is the permanent VM0 presentation contract for callbacks
+    // persisted before branding and for current unbranded run producers.
     publicBrand: publicBrandSchema.optional(),
     slackDelivery: z
       .object({

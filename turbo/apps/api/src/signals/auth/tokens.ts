@@ -79,6 +79,8 @@ const zeroTokenPayloadSchema = jwtBaseSchema.extend({
   runId: z.string().min(1),
   orgId: z.string().min(1),
   capabilities: zeroCapabilitiesSchema,
+  // The public brand is presentation-only. Tokens from before this claim and
+  // intentionally unbranded callers keep the permanent VM0 presentation.
   publicBrand: publicBrandSchema.optional(),
   computerUseHostId: z.string().uuid().optional(),
   cloudBrowserEnabled: z.literal(true).optional(),
