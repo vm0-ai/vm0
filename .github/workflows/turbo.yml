@@ -988,9 +988,9 @@ jobs:
           # NEON_PROJECT_ID resolves to the Neon TEST project, never production.
           if [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$GITHUB_REF" = "refs/heads/main" ]; then
             echo "main push: pre-migrating test project default (parent) branch"
-            PARENT_DATABASE_URL=$(neonctl connection-string --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner --pooled)
+            PARENT_DATABASE_URL=$(neonctl connection-string --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner --pooled --ssl verify-full)
             if [ -z "$PARENT_DATABASE_URL" ]; then
-              PARENT_DATABASE_URL=$(neonctl connection-string --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner)
+              PARENT_DATABASE_URL=$(neonctl connection-string --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner --ssl verify-full)
             fi
             (cd turbo && DATABASE_URL="$PARENT_DATABASE_URL" pnpm -F @okouai/db db:migrate)
           fi
@@ -1010,9 +1010,9 @@ jobs:
             neonctl branches create --name "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID"
           fi
 
-          DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner --pooled)
+          DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner --pooled --ssl verify-full)
           if [ -z "$DATABASE_URL" ]; then
-            DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner)
+            DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner --ssl verify-full)
           fi
 
           cd turbo
