@@ -301,6 +301,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ImageModelSelection]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Let the chat composer model picker choose the default built-in image model for a chat thread.",
+    enabled: false,
+  },
   [FeatureSwitchKey.PiLoop]: {
     maintainer: "ethan@vm0.ai",
     description:
