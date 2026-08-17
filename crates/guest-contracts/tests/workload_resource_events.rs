@@ -40,23 +40,40 @@ fn parses_one_snapshot_for_both_guest_consumers() {
 
 #[test]
 fn missing_counters_default_to_no_resource_events() {
-    let events = WorkloadResourceEvents::from_file_contents(
-        &format!(
-            "nr_throttled 2\nthrottled_usec {}\n",
-            MATERIAL_CPU_THROTTLED_USEC - 1
-        ),
-        "high 0\n",
-        "",
-    )
-    .unwrap();
+    let events = WorkloadResourceEvents::from_file_contents("", "", "").unwrap();
 
-    assert_eq!(events.memory_max, 0);
-    assert_eq!(events.memory_oom, 0);
-    assert_eq!(events.memory_oom_kill, 0);
-    assert_eq!(events.memory_oom_group_kill, 0);
-    assert_eq!(events.pids_max, 0);
+    assert_eq!(
+        events,
+        WorkloadResourceEvents {
+            cpu_nr_throttled: 0,
+            cpu_throttled_usec: 0,
+            memory_high: 0,
+            memory_max: 0,
+            memory_oom: 0,
+            memory_oom_kill: 0,
+            memory_oom_group_kill: 0,
+            pids_max: 0,
+        }
+    );
     assert_eq!(events.hard_limit_diagnostic(), None);
     assert!(!events.has_material_pressure());
+}
+
+#[test]
+fn material_cpu_pressure_starts_at_threshold() {
+    for (throttled_usec, expected) in [
+        (MATERIAL_CPU_THROTTLED_USEC - 1, false),
+        (MATERIAL_CPU_THROTTLED_USEC, true),
+    ] {
+        let events = WorkloadResourceEvents::from_file_contents(
+            &format!("throttled_usec {throttled_usec}\n"),
+            "high 0\n",
+            "",
+        )
+        .unwrap();
+
+        assert_eq!(events.has_material_pressure(), expected);
+    }
 }
 
 #[test]
@@ -65,6 +82,7 @@ fn rejects_malformed_flat_keyed_contents() {
         ("\n", "", ""),
         ("nr_throttled", "", ""),
         ("nr_throttled 1 extra", "", ""),
+        ("nr_throttled -1", "", ""),
         ("", "max invalid", ""),
         ("", "", "max 18446744073709551616"),
     ] {
