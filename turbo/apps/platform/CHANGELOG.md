@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.760.2](https://github.com/vm0-ai/vm0/compare/app-v0.760.1...app-v0.760.2) (2026-08-17)
+
+
+### Bug Fixes
+
+* **billing:** unblock scheduled subscription transitions ([#27083](https://github.com/vm0-ai/vm0/issues/27083)) ([a9d6aaa](https://github.com/vm0-ai/vm0/commit/a9d6aaaedf36eff09108427c99ed5218dc5a955b))
+
 ## [0.760.1](https://github.com/vm0-ai/vm0/compare/app-v0.760.0...app-v0.760.1) (2026-08-17)
 
 
