@@ -1,4 +1,6 @@
 import {
+  getModelProviderCodexRuntimeConfig,
+  getVm0ConcreteProviderType,
   MODEL_PROVIDER_ENV_PLACEHOLDERS,
   type ModelProviderCodexRuntimeConfig,
   type ModelProviderType,
@@ -18,6 +20,7 @@ interface CompileModelProviderGatewayRuntimeArgs {
   readonly displayName: string;
   readonly authHeaderName: string;
   readonly authHeaderTemplate: string;
+  readonly logicalModel: string;
   readonly upstreamModel: string;
 }
 
@@ -78,6 +81,29 @@ export function compileModelProviderGatewayRuntime(
     };
   }
 
+  const sourceCatalog = getModelProviderCodexRuntimeConfig(
+    getVm0ConcreteProviderType(args.logicalModel),
+  )?.modelCatalog;
+  const sourceModels = sourceCatalog?.models;
+  const sourceModel = Array.isArray(sourceModels)
+    ? sourceModels.find((model: unknown): model is Record<string, unknown> => {
+        return (
+          typeof model === "object" &&
+          model !== null &&
+          !Array.isArray(model) &&
+          "slug" in model &&
+          model.slug === args.logicalModel
+        );
+      })
+    : undefined;
+  const modelCatalog =
+    sourceCatalog && sourceModel
+      ? {
+          ...sourceCatalog,
+          models: [{ ...sourceModel, slug: args.upstreamModel }],
+        }
+      : undefined;
+
   return {
     type,
     firewall,
@@ -95,6 +121,7 @@ export function compileModelProviderGatewayRuntime(
       requiresOpenaiAuth: false,
       wireApi: "responses",
       supportsWebsockets: false,
+      ...(modelCatalog ? { modelCatalog } : {}),
     },
   };
 }
