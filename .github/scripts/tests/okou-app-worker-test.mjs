@@ -435,6 +435,21 @@ assert.equal(
   `https://app.vm0.ai/share/threads/${sharedThreadId}`,
 );
 
+const oldApiSharedOnOkouHost = await requestSharedPage({
+  appOrigin: "https://app.okou.ai",
+  metaResponse() {
+    return Response.json({ title: "Pre-brand conversation" });
+  },
+});
+assert.equal(oldApiSharedOnOkouHost.response.status, 200);
+const oldApiSharedHtml = await oldApiSharedOnOkouHost.response.text();
+assert.equal(documentTitle(oldApiSharedHtml), "Pre-brand conversation | VM0");
+assert.equal(htmlAttribute(oldApiSharedHtml, "data-app-brand-name"), "VM0");
+assert.equal(
+  metaContent(oldApiSharedHtml, "property", "og:url"),
+  `https://app.vm0.ai/share/threads/${sharedThreadId}`,
+);
+
 const missing = await requestSharedPage({
   appOrigin: "https://app.vm0.ai",
   metaResponse() {

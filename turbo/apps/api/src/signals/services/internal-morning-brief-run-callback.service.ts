@@ -178,7 +178,6 @@ async function enqueueMorningBriefEmail(
   const [schedule] = await db
     .select({
       chatThreadId: morningBriefSchedules.chatThreadId,
-      publicBrand: morningBriefSchedules.publicBrand,
     })
     .from(morningBriefSchedules)
     .where(
@@ -190,7 +189,7 @@ async function enqueueMorningBriefEmail(
     .limit(1);
 
   const dateLabel = morningBriefDateLabel(delivery.briefDate);
-  const publicBrand = schedule?.publicBrand ?? "vm0";
+  const publicBrand = delivery.publicBrand;
   const manageUrl = buildMorningBriefUnsubscribePageUrl(
     delivery.orgId,
     delivery.userId,

@@ -7,11 +7,21 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { sharedThreadHomeUrl } from "../shared-thread-page.tsx";
 
 const context = testContext();
 const SHARED_THREAD_ID = "30000000-0000-4000-8000-000000000702";
 
 describe("shared thread page", () => {
+  it("maps production navigation to the persisted brand host", () => {
+    expect(sharedThreadHomeUrl("https://app.vm0.ai", "okou")).toBe(
+      "https://app.okou.ai",
+    );
+    expect(sharedThreadHomeUrl("https://app.okou.ai", "vm0")).toBe(
+      "https://app.vm0.ai",
+    );
+  });
+
   it("renders the immutable public DTO without owner or agent identity", async () => {
     context.mocks.api(sharedThreadsContract.get, ({ params, respond }) => {
       expect(params.id).toBe(SHARED_THREAD_ID);
@@ -107,5 +117,34 @@ describe("shared thread page", () => {
       screen.findByRole("heading", { name: "VM0" }),
     ).resolves.toBeInTheDocument();
     expect(document.title).toBe("VM0");
+  });
+
+  it("defaults an ambiguous not-found page to VM0 presentation", async () => {
+    context.mocks.api(sharedThreadsContract.get, ({ respond }) => {
+      return respond(404, {
+        error: { code: "NOT_FOUND", message: "Not found" },
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/share/threads/${SHARED_THREAD_ID}`,
+      user: null,
+    });
+
+    await expect(
+      screen.findByRole("heading", { name: "Shared conversation not found" }),
+    ).resolves.toBeInTheDocument();
+    const links = queryAllByRoleFast("link");
+    expect(
+      links.find((link) => {
+        return link.textContent === "VM0";
+      }),
+    ).toBeInTheDocument();
+    expect(
+      links.find((link) => {
+        return link.textContent === "Try Zero";
+      }),
+    ).toBeInTheDocument();
   });
 });

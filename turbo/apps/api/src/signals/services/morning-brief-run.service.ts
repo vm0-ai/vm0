@@ -57,6 +57,7 @@ interface ExecuteMorningBriefsResult {
 interface DueMorningBriefRow {
   readonly orgId: string;
   readonly userId: string;
+  readonly publicBrand: PublicBrand;
   readonly chatThreadId: string | null;
   readonly nextRunAt: Date | null;
   readonly lastSuccessAt: Date | null;
@@ -156,6 +157,7 @@ async function admitMorningBriefDelivery(
     .values({
       orgId: row.orgId,
       userId: row.userId,
+      publicBrand: row.publicBrand,
       briefDate,
       status: "collecting",
       createdAt: currentTime,
@@ -207,6 +209,7 @@ const stageMorningBriefInput$ = command(
         db,
         orgId: row.orgId,
         userId: row.userId,
+        publicBrand: row.publicBrand,
         briefDate,
         timezone,
         since,
@@ -503,6 +506,7 @@ async function admitManualMorningBriefDelivery(
   args: {
     readonly orgId: string;
     readonly userId: string;
+    readonly publicBrand: PublicBrand;
     readonly briefDate: string;
     readonly chatThreadId: string | null;
     readonly currentTime: Date;
@@ -514,6 +518,7 @@ async function admitManualMorningBriefDelivery(
     .values({
       orgId: args.orgId,
       userId: args.userId,
+      publicBrand: args.publicBrand,
       briefDate: args.briefDate,
       status: "collecting",
       createdAt: args.currentTime,
@@ -576,6 +581,7 @@ async function admitManualMorningBriefDelivery(
       inputKey: null,
       outputKey: null,
       error: null,
+      publicBrand: args.publicBrand,
       updatedAt: args.currentTime,
     })
     .where(
@@ -686,6 +692,7 @@ async function admitManualMorningBrief(
     {
       orgId: args.orgId,
       userId: args.userId,
+      publicBrand: args.publicBrand,
       briefDate,
       chatThreadId: schedule?.chatThreadId ?? null,
       currentTime,
@@ -702,6 +709,7 @@ async function admitManualMorningBrief(
       row: {
         orgId: args.orgId,
         userId: args.userId,
+        publicBrand: args.publicBrand,
         chatThreadId: schedule?.chatThreadId ?? null,
         nextRunAt: null,
         lastSuccessAt: schedule?.lastSuccessAt ?? null,
@@ -806,6 +814,7 @@ export const executeDueMorningBriefs$ = command(
       .select({
         orgId: morningBriefSchedules.orgId,
         userId: morningBriefSchedules.userId,
+        publicBrand: morningBriefSchedules.publicBrand,
         chatThreadId: morningBriefSchedules.chatThreadId,
         nextRunAt: morningBriefSchedules.nextRunAt,
         lastSuccessAt: morningBriefSchedules.lastSuccessAt,

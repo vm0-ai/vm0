@@ -533,10 +533,11 @@ function telegramDomainProbe() {
   });
 }
 
-function telegramSendMessage() {
+function telegramSendMessage(onBody?: (body: unknown) => void) {
   return http.post(
     `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
-    () => {
+    async ({ request }) => {
+      onBody?.(await request.json());
       return HttpResponse.json({
         ok: true,
         result: {
@@ -4321,6 +4322,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
   });
 
   it("delivers canonical Slack callbacks for progress, audit footers, failures, and Slack errors", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
     const actor = bdd.user();
     runs.acceptStorageDownloads();
     runs.acceptTelemetryIngest();
@@ -4334,6 +4336,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const slackUser1 = uniqueSlackUserId();
     const { teamId } = await integrations.installSlackWorkspace(actor, {
       installerSlackUserId: slackUser1,
+      publicBrand: "okou",
     });
     integrations.clearSlackCallHistory();
 
@@ -4400,9 +4403,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     context.mocks.ably.publish.mockResolvedValue(undefined);
     const auditedBlocks = slackPostMessageCallsJson();
     expect(auditedBlocks).toContain("Audit");
-    expect(auditedBlocks).toContain(
-      `https://app.vm0.test/activities/${run1Id}`,
-    );
+    expect(auditedBlocks).toContain(`https://app.okou.ai/activities/${run1Id}`);
     expect(auditedBlocks).toContain("Claude Sonnet 5");
     await flushWaitUntilAndAssert(() => {
       expect(
@@ -4771,8 +4772,89 @@ describe("INT-02: Telegram integration", () => {
     expect(noContentMessage.body).toBe("OK");
   });
 
+  it("keeps official Telegram missing-agent guidance on the persisted Okou brand", async () => {
+    const officialToken = "123456:bdd-official-okou-token";
+    const officialUsername = "bdd_official_okou_bot";
+    mockEnv("TELEGRAM_OFFICIAL_BOT_TOKEN", officialToken);
+    mockEnv(
+      "TELEGRAM_OFFICIAL_WEBHOOK_SECRET",
+      TELEGRAM_OFFICIAL_WEBHOOK_SECRET,
+    );
+    mockEnv("TELEGRAM_OFFICIAL_BOT_USERNAME", officialUsername);
+    const sentMessages: unknown[] = [];
+    server.use(
+      http.post(
+        `https://api.telegram.org/bot${officialToken}/sendMessage`,
+        async ({ request }) => {
+          sentMessages.push(await request.json());
+          return HttpResponse.json({
+            ok: true,
+            result: { message_id: 301, chat: { id: 91_234_567 } },
+          });
+        },
+      ),
+    );
+
+    const actor = integrations.user();
+    bdd.acceptAgentStorageWrites();
+    await bdd.bootstrapLimitedFreeOnboarding(actor, {
+      displayName: "BDD Telegram Missing Agent",
+    });
+    const onboarding = await bdd.readOnboardingStatus(actor);
+    if (!onboarding.defaultAgentId) {
+      throw new Error("Expected Telegram onboarding to configure an agent");
+    }
+
+    const telegramUserId = 91_234_567;
+    await integrations.requestLinkTelegram(
+      actor,
+      {
+        telegramBotId: OFFICIAL_TELEGRAM_BOT_ID,
+        telegramAuth: telegramLoginAuth(officialToken, {
+          id: telegramUserId,
+          first_name: "BDD",
+          username: "bdd_official_okou_user",
+        }),
+      },
+      [200],
+      "okou",
+    );
+    await bdd.deleteVersionFreeAgent(actor, onboarding.defaultAgentId);
+
+    const inbound = await integrations.requestTelegramWebhook(
+      OFFICIAL_TELEGRAM_BOT_ID,
+      JSON.stringify({
+        update_id: 2100,
+        message: {
+          message_id: 88,
+          chat: { id: telegramUserId, type: "private" },
+          from: {
+            id: telegramUserId,
+            first_name: "BDD",
+            username: "bdd_official_okou_user",
+          },
+          text: "hello",
+        },
+      }),
+      { "x-telegram-bot-api-secret-token": TELEGRAM_OFFICIAL_WEBHOOK_SECRET },
+      [200],
+    );
+    expect(inbound.body).toBe("OK");
+    await flushWaitUntilForTest();
+    expect(JSON.stringify(sentMessages)).toContain(
+      "Please choose an agent in Okou first.",
+    );
+  });
+
   it("registers and manages a Telegram bot through API-visible state", async () => {
-    server.use(telegramDomainProbe(), telegramSendMessage());
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    const telegramProviderBodies: unknown[] = [];
+    server.use(
+      telegramDomainProbe(),
+      telegramSendMessage((body) => {
+        telegramProviderBodies.push(body);
+      }),
+    );
     bdd.acceptAgentStorageWrites();
 
     const actor = integrations.user();
@@ -4911,6 +4993,7 @@ describe("INT-02: Telegram integration", () => {
         defaultAgentId: agent.agentId,
       },
       [201],
+      "okou",
     );
     expect(registered.body).toMatchObject({
       id: botId,
@@ -4960,6 +5043,28 @@ describe("INT-02: Telegram integration", () => {
         [200],
       );
     expect(customWebhookNoContentMessage.body).toBe("OK");
+
+    const customConnectPrompt = await integrations.requestTelegramWebhook(
+      botId,
+      JSON.stringify({
+        update_id: 2003,
+        message: {
+          message_id: 78,
+          chat: { id: 12_345, type: "private" },
+          from: { id: 54_321, first_name: "BDD" },
+          text: "hello",
+        },
+      }),
+      {
+        "x-telegram-bot-api-secret-token": registeredTelegramWebhookSecret,
+      },
+      [200],
+    );
+    expect(customConnectPrompt.body).toBe("OK");
+    await flushWaitUntilForTest();
+    expect(JSON.stringify(telegramProviderBodies)).toContain(
+      "https://app.okou.ai/telegram/connect?",
+    );
 
     const listed = await integrations.requestListTelegramIntegrations(
       actor,
@@ -5196,11 +5301,13 @@ describe("INT-02: Telegram integration", () => {
   });
 
   it("keeps Telegram Fast footers bound to the originating run", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
     bdd.acceptAgentStorageWrites();
     runs.acceptStorageDownloads();
     runs.acceptTelemetryIngest();
     const runnerGroup = runs.configureRunnerGroup();
     const actor = integrations.user();
+    await integrations.enableAuditLinkSwitch(actor);
     await configureFastCodexPreference(actor);
     const agent = await bdd.createAgent(actor, {
       displayName: "BDD Telegram Fast agent",
@@ -5248,6 +5355,7 @@ describe("INT-02: Telegram integration", () => {
       actor,
       { botToken: telegramBotToken, defaultAgentId: agent.agentId },
       [201],
+      "okou",
     );
     if (!webhookSecret) {
       throw new Error(
@@ -5326,6 +5434,9 @@ describe("INT-02: Telegram integration", () => {
       const providerOutput = JSON.stringify(sentMessages);
       expect(providerOutput).toContain("telegram fast reply");
       expect(providerOutput).toContain("GPT 5.6 Sol Fast");
+      expect(providerOutput).toContain(
+        `https://app.okou.ai/activities/${runId}`,
+      );
     });
   });
 

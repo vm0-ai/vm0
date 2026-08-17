@@ -2,10 +2,14 @@ import type {
   SharedMessage,
   SharedThreadResponse,
 } from "@okouai/api-contracts/contracts/shared-threads";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { Root } from "hast";
 import { MessageCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { publicBrandPresentation } from "@okouai/core/public-brand";
+import {
+  appUrlForPublicBrand,
+  publicBrandPresentation,
+} from "@okouai/core/public-brand";
 
 import { MarkdownEventBody } from "../components/markdown.tsx";
 
@@ -127,6 +131,13 @@ function SharedThreadNotFound() {
   );
 }
 
+export function sharedThreadHomeUrl(
+  currentOrigin: string,
+  publicBrand: PublicBrand,
+): string {
+  return appUrlForPublicBrand(currentOrigin, publicBrand);
+}
+
 export function SharedThreadPage({
   sharedThread,
 }: {
@@ -134,9 +145,9 @@ export function SharedThreadPage({
 }) {
   const { t } = useTranslation();
   const groups = sharedThread ? groupSharedMessages(sharedThread.messages) : [];
-  const presentation = sharedThread
-    ? publicBrandPresentation(sharedThread.publicBrand)
-    : null;
+  const publicBrand = sharedThread?.publicBrand ?? "vm0";
+  const presentation = publicBrandPresentation(publicBrand);
+  const homeUrl = sharedThreadHomeUrl(window.location.origin, publicBrand);
   return (
     <main
       className="flex h-full flex-col overflow-y-auto bg-background text-foreground"
@@ -145,7 +156,7 @@ export function SharedThreadPage({
       <header className="sticky top-0 z-20 border-b border-border/70 bg-background/95 backdrop-blur">
         <div className="mx-auto flex h-14 w-full max-w-[948px] items-center justify-between px-4 sm:px-6">
           <a
-            href="/"
+            href={homeUrl}
             className="inline-flex items-center gap-2 text-sm font-semibold text-foreground"
           >
             <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-[#ed4e01] text-white">
@@ -153,15 +164,15 @@ export function SharedThreadPage({
             </span>
             {t(($) => {
               return $.sharedThread.brand;
-            }, presentation ?? undefined)}
+            }, presentation)}
           </a>
           <a
-            href="/"
+            href={homeUrl}
             className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover"
           >
             {t(($) => {
               return $.sharedThread.tryOkou;
-            }, presentation ?? undefined)}
+            }, presentation)}
           </a>
         </div>
       </header>

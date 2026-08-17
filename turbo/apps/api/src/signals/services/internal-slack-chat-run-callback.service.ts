@@ -9,6 +9,7 @@ import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation"
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { and, countDistinct, eq, isNotNull } from "drizzle-orm";
 import { buildAgentResponseMessage } from "../../lib/slack-blocks";
 import { env } from "../../lib/env";
@@ -146,6 +147,7 @@ async function loadSlackChatDeliveryContext(
       slackUserId: slackOrgConnections.slackUserId,
       workspaceId: slackOrgConnections.slackWorkspaceId,
       encryptedBotToken: slackOrgInstallations.encryptedBotToken,
+      publicBrand: slackOrgInstallations.publicBrand,
     })
     .from(slackChatThreadRoutes)
     .innerJoin(
@@ -232,6 +234,7 @@ async function deliverClaimedSlackChatCallback(
         userId: run.userId,
         runId: args.callback.runId,
         agentId: run.agentId,
+        publicBrand: binding.publicBrand,
         replyToMention:
           mentionerCount > 1 ? `<@${binding.slackUserId}>` : undefined,
         getFeatureOverrides: () => {
@@ -349,6 +352,7 @@ export async function deliverSlackChatAdmissionFailure(
         slackUserId: slackOrgConnections.slackUserId,
         workspaceId: slackOrgConnections.slackWorkspaceId,
         encryptedBotToken: slackOrgInstallations.encryptedBotToken,
+        publicBrand: slackOrgInstallations.publicBrand,
       })
       .from(slackChatThreadRoutes)
       .innerJoin(
@@ -417,7 +421,7 @@ export async function deliverSlackChatAdmissionFailure(
     footerParts.push(`Reply to <@${binding.slackUserId}>`);
   }
   const logsUrl = isFeatureEnabled(FeatureSwitchKey.ZeroDebug, featureContext)
-    ? `${env("APP_URL").replace(/\/$/, "")}/activities`
+    ? `${appUrlForPublicBrand(env("APP_URL"), binding.publicBrand)}/activities`
     : undefined;
   const botToken = await decryptPersistentSecretValue(
     binding.encryptedBotToken,

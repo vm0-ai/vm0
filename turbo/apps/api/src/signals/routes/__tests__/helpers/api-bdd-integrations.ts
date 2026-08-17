@@ -35,6 +35,7 @@ import {
   type GithubOauthInstallQuery,
 } from "@okouai/api-contracts/contracts/github-oauth";
 import type { SupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { testSlackStateContract } from "@okouai/api-contracts/contracts/test-slack-state";
 import { zeroIntegrationsAgentPhoneContract } from "@okouai/api-contracts/contracts/zero-integrations-agentphone";
 import { zeroIntegrationsSlackContract } from "@okouai/api-contracts/contracts/zero-integrations-slack";
@@ -239,6 +240,7 @@ interface ForwardedInternalCallback {
 interface SlackAppInstallOptions {
   readonly teamId?: string;
   readonly installerSlackUserId?: string;
+  readonly publicBrand?: PublicBrand;
 }
 
 interface SlackAppInstallation {
@@ -1052,6 +1054,7 @@ export function createBddIntegrationApi(context: TestContext) {
               ? JSON.stringify({
                   orgId: actor.orgId,
                   userId: actor.userId,
+                  publicBrand: options.publicBrand ?? "vm0",
                 })
               : undefined,
           },
@@ -1420,6 +1423,7 @@ export function createBddIntegrationApi(context: TestContext) {
       actor: ApiTestUser | null,
       body: TelegramLinkBody,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 409)[],
+      publicBrand: PublicBrand = "vm0",
     ) {
       const client = setupApp({
         context,
@@ -1428,6 +1432,9 @@ export function createBddIntegrationApi(context: TestContext) {
       return await accept(
         client.link({
           headers: authenticate(context, routeMocks, actor),
+          ...(publicBrand === "okou"
+            ? { extraHeaders: { origin: "https://app.okou.ai" } }
+            : {}),
           body,
         }),
         statuses,
@@ -1504,6 +1511,7 @@ export function createBddIntegrationApi(context: TestContext) {
         | 500
         | 502
       )[],
+      publicBrand: PublicBrand = "vm0",
     ) {
       const client = setupApp({
         context,
@@ -1512,6 +1520,9 @@ export function createBddIntegrationApi(context: TestContext) {
       return await accept(
         client.register({
           headers: authenticate(context, routeMocks, actor),
+          ...(publicBrand === "okou"
+            ? { extraHeaders: { origin: "https://app.okou.ai" } }
+            : {}),
           body,
         }),
         statuses,
@@ -1714,6 +1725,7 @@ export function createBddIntegrationApi(context: TestContext) {
         readonly channel?: string;
       },
       statuses: readonly (200 | 400 | 401 | 409)[],
+      publicBrand: PublicBrand = "vm0",
     ) {
       const client = setupApp({
         context,
@@ -1722,6 +1734,9 @@ export function createBddIntegrationApi(context: TestContext) {
       return await accept(
         client.connectAgentPhone({
           headers: authenticate(context, routeMocks, actor),
+          ...(publicBrand === "okou"
+            ? { extraHeaders: { origin: "https://app.okou.ai" } }
+            : {}),
           body,
         }),
         statuses,

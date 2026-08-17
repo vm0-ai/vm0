@@ -67,6 +67,10 @@ export const morningBriefDeliveries = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
+    publicBrand: text("public_brand")
+      .$type<PublicBrand>()
+      .default("vm0")
+      .notNull(),
     // Member-local calendar date (YYYY-MM-DD) the brief covers.
     briefDate: varchar("brief_date", { length: 10 }).notNull(),
     status: varchar("status", { length: 20 }).notNull().default("collecting"),

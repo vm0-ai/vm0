@@ -10,6 +10,7 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
+import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import {
   findAgentphoneChatEventByPromptFixture,
@@ -53,7 +54,9 @@ interface LinkedAgentPhoneActor {
   };
 }
 
-async function entitledLinkedActor(): Promise<LinkedAgentPhoneActor> {
+async function entitledLinkedActor(
+  publicBrand: "vm0" | "okou" = "vm0",
+): Promise<LinkedAgentPhoneActor> {
   const bdd = createBddApi(context);
   const runs = createRunsApi(context);
   const integrations = createBddIntegrationApi(context);
@@ -72,7 +75,7 @@ async function entitledLinkedActor(): Promise<LinkedAgentPhoneActor> {
   await runs.grantProEntitlement(actor);
   await runs.ensureOrgModelProvider(actor);
   const phone = uniquePhoneHandle();
-  await ap.linkViaWebhookConnectPrompt(actor, phone, sends);
+  await ap.linkViaWebhookConnectPrompt(actor, phone, sends, publicBrand);
   return { actor, phone, runnerGroup, sends, storage };
 }
 
@@ -303,10 +306,14 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
   });
 
   it("dispatches linked iMessage DMs, refreshes typing, and replies with plain-text completions", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
     const webhooks = createWebhookCallbackApi(context);
     const ap = createAgentPhoneBddApi(context);
     const chat = createChatFilesBddApi(context);
-    const { actor, phone, runnerGroup, sends } = await entitledLinkedActor();
+    const integrations = createBddIntegrationApi(context);
+    const { actor, phone, runnerGroup, sends } =
+      await entitledLinkedActor("okou");
+    await integrations.enableAuditLinkSwitch(actor);
     const conversationId = uniqueConversationId();
 
     // Linked DM creates a run and sends a typing indicator.
@@ -410,8 +417,8 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       conversationId,
     ]);
 
-    // Completion converts markdown output to iMessage plain text, without
-    // an audit link or a non-default-agent footer.
+    // Completion converts markdown output to iMessage plain text and binds
+    // the delayed audit link to the brand persisted on the phone link.
     const beforeCompletion = sends.messages.length;
     await completeSandboxRun(run1.sandboxToken, run1.runId, 0, {
       resultText: MARKDOWN_RUN_OUTPUT,
@@ -420,8 +427,10 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     const completionReply = lastSend(sends);
     expect(completionReply.toNumber).toBe(phone);
     expect(completionReply.conversationId).toBeUndefined();
-    expect(completionReply.body).toBe(EXPECTED_PLAIN_RUN_OUTPUT);
-    expect(completionReply.body).not.toContain("Audit:");
+    expect(completionReply.body).toContain(EXPECTED_PLAIN_RUN_OUTPUT);
+    expect(completionReply.body).toContain(
+      `Audit: https://app.okou.ai/activities/${run1.runId}`,
+    );
     expect(completionReply.body).not.toContain("Responded by");
   });
 
@@ -848,7 +857,8 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     await runs.grantProEntitlement(actor);
     await runs.ensureOrgModelProvider(actor);
     const phone = uniquePhoneHandle();
-    await ap.linkViaWebhookConnectPrompt(actor, phone, sends);
+    await ap.linkViaWebhookConnectPrompt(actor, phone, sends, "okou");
+    expect(lastSend(sends).body).toContain("Hi, I'm Okou");
 
     const SMS_RISK_WARNING =
       "Note: SMS and MMS replies may not be delivered reliably.";
@@ -866,12 +876,14 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     }
 
     const help = await commandReply("/help");
-    expect(help).toContain("/connect - Connect this phone number to VM0");
+    expect(help).toContain("Okou text message commands");
+    expect(help).toContain("/connect - Connect this phone number to Okou");
     expect(help).toContain("/model - Choose your model");
     expect(help).toContain(SMS_RISK_WARNING);
 
     const alreadyConnected = await commandReply("/connect");
     expect(alreadyConnected).toContain("You are already connected");
+    expect(alreadyConnected).toContain("chatting with Okou");
     expect(alreadyConnected).toContain(SMS_RISK_WARNING);
 
     const modelOptions = await commandReply("/model");
@@ -892,7 +904,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
 
     const disconnected = await commandReply("/disconnect");
     expect(disconnected).toContain(
-      "This phone number has been disconnected from VM0.",
+      "This phone number has been disconnected from Okou.",
     );
     const unlinkedStatus = await integrations.getAgentPhoneLinkStatus(actor);
     expect(unlinkedStatus.linked).toBeFalsy();

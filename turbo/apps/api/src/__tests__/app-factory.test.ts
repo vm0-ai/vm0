@@ -17,6 +17,7 @@ import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { vi } from "vitest";
 import { createApp } from "../app-factory";
+import { createAppWithRoutes } from "../app-factory-core";
 import { mockEnv } from "../lib/env";
 import webClientCompatibility from "../lib/web-client-compatibility.json";
 import { flushWaitUntilForTest } from "../signals/context/wait-until";
@@ -112,6 +113,25 @@ const errorTestContract = c.router({
 
 describe("createApp", () => {
   const context = testContext();
+
+  it("holds traffic until the public-brand schema is ready", async () => {
+    const app = createAppWithRoutes({
+      routes: healthRoutes,
+      schemaReadiness: () => {
+        return Promise.resolve(false);
+      },
+      signal: context.signal,
+    });
+
+    const response = await app.request("http://api.test/health");
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("retry-after")).toBe("1");
+    await expect(response.json()).resolves.toStrictEqual({
+      error: "Service unavailable",
+    });
+  });
 
   it("captures unhandled errors and returns a sanitized response", async () => {
     const error = new Error("boom");

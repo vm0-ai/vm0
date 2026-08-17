@@ -317,12 +317,18 @@ export default {
       if (
         typeof metadata.title !== "string" ||
         metadata.title.length === 0 ||
-        (metadata.publicBrand !== "vm0" && metadata.publicBrand !== "okou")
+        (metadata.publicBrand !== undefined &&
+          metadata.publicBrand !== "vm0" &&
+          metadata.publicBrand !== "okou")
       ) {
         return gatewayResponse(502);
       }
+      // On the web/API surface, the Pages worker can reach a rolled-back API
+      // response without publicBrand while current clients remain live for
+      // about two days. Remove after that window closes (tracked by #27660).
+      const publicBrand = metadata.publicBrand ?? "vm0";
       const sharedAppMetadata =
-        metadata.publicBrand === "okou" ? OKOU_APP_METADATA : VM0_APP_METADATA;
+        publicBrand === "okou" ? OKOU_APP_METADATA : VM0_APP_METADATA;
       const canonicalUrl = new URL(
         requestUrl.pathname,
         sharedAppMetadata.canonicalUrl,

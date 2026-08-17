@@ -156,13 +156,19 @@ const sharedThreadResponseSchema: ZodLikeSchema<SharedThreadResponse> =
     id: z.string().uuid(),
     title: z.string(),
     messages: z.array(sharedMessageZodSchema),
-    publicBrand: publicBrandSchema,
+    // On the web/app-to-API surface, an API rollback can omit this additive
+    // field while current browser clients remain live for about two days.
+    // Remove after that client/API window closes (tracked by #27660).
+    publicBrand: publicBrandSchema.default("vm0"),
   });
 
 const sharedThreadMetaResponseSchema: ZodLikeSchema<SharedThreadMetaResponse> =
   z.object({
     title: z.string(),
-    publicBrand: publicBrandSchema,
+    // The Pages worker may reach an API version from before publicBrand was
+    // added. Keep the old response legal for the same web/API rollback window
+    // of about two days, then remove it with #27660.
+    publicBrand: publicBrandSchema.default("vm0"),
   });
 
 const sharedThreadApiErrorSchema: ZodLikeSchema<ApiErrorResponse> =

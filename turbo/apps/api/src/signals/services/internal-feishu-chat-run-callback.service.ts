@@ -5,6 +5,7 @@ import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { feishuChatThreadRoutes } from "@okouai/db/schema/feishu-chat-thread-route";
 import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { and, countDistinct, eq, isNotNull } from "drizzle-orm";
 import { buildFeishuAgentResponseMessage } from "../../lib/feishu-message-card";
 import { logger } from "../../lib/log";
@@ -145,6 +146,7 @@ async function loadFeishuChatDeliveryContext(
     .select({
       feishuOpenId: feishuOrgConnections.feishuOpenId,
       defaultAgentId: feishuOrgInstallations.defaultComposeId,
+      publicBrand: feishuOrgInstallations.publicBrand,
     })
     .from(feishuChatThreadRoutes)
     .innerJoin(
@@ -205,7 +207,10 @@ async function loadFeishuAdmissionFailureContext(
     readonly chatEventId: string;
   },
   signal: AbortSignal,
-): Promise<{ readonly messageContent: string }> {
+): Promise<{
+  readonly messageContent: string;
+  readonly publicBrand: PublicBrand;
+}> {
   const [eventRows, bindingRows] = await Promise.all([
     args.db
       .select({ content: canonicalChatEventContent() })
@@ -220,7 +225,7 @@ async function loadFeishuAdmissionFailureContext(
       )
       .limit(1),
     args.db
-      .select({ id: feishuChatThreadRoutes.id })
+      .select({ publicBrand: feishuOrgInstallations.publicBrand })
       .from(feishuChatThreadRoutes)
       .innerJoin(
         feishuOrgConnections,
@@ -250,7 +255,10 @@ async function loadFeishuAdmissionFailureContext(
   if (!event?.content || !bindingRows[0]) {
     throw new Error("Feishu admission failure delivery context is unavailable");
   }
-  return { messageContent: event.content };
+  return {
+    messageContent: event.content,
+    publicBrand: bindingRows[0].publicBrand,
+  };
 }
 
 export async function deliverFeishuChatAdmissionFailure(
@@ -267,6 +275,7 @@ export async function deliverFeishuChatAdmissionFailure(
   const context = await loadFeishuAdmissionFailureContext(args, signal);
   const message = buildFeishuAgentResponseMessage({
     text: context.messageContent,
+    publicBrand: context.publicBrand,
   });
   if (args.target.replyInThread) {
     await replyWithFeishuMessage(
@@ -324,6 +333,7 @@ async function deliverClaimedFeishuChatCallback(
       userId: run.userId,
       runId: args.callback.runId,
       agentId: run.agentId,
+      publicBrand: binding.publicBrand,
       defaultAgentId: binding.defaultAgentId,
       replyToMention:
         payload.replyInThread && mentionerCount > 1
@@ -338,6 +348,7 @@ async function deliverClaimedFeishuChatCallback(
   signal.throwIfAborted();
   const message = buildFeishuAgentResponseMessage({
     text: messageContent,
+    publicBrand: binding.publicBrand,
     auditUrl: presentation.logsUrl,
     footerText: presentation.footerText,
   });
