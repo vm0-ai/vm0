@@ -425,7 +425,7 @@ async function changeUsagePack(
   tier: PaidTier,
   target: UsagePackUsd,
   action: "Confirm" | "Restore",
-  cancelReviewOnce = false,
+  backFromReviewOnce = false,
 ): Promise<string> {
   const token = await currentToken(page, owner);
   const packages = await openUsagePackManagement(page, tier);
@@ -435,7 +435,7 @@ async function changeUsagePack(
     packages,
     action,
     token,
-    cancelReviewOnce,
+    backFromReviewOnce,
   );
 }
 
@@ -478,7 +478,7 @@ async function submitUsagePackConfiguration(
   packages: Locator,
   action: "Confirm" | "Restore",
   token: string,
-  cancelReviewOnce = false,
+  backFromReviewOnce = false,
 ): Promise<string> {
   const summary = packages.getByRole("region", { name: "Order summary" });
   const actionButton = summary.getByRole("button", {
@@ -490,8 +490,8 @@ async function submitUsagePackConfiguration(
 
   let review = page.getByRole("dialog", { name: "Review package change" });
   await expect(review).toBeVisible();
-  if (cancelReviewOnce) {
-    await review.getByRole("button", { name: "Cancel", exact: true }).click();
+  if (backFromReviewOnce) {
+    await review.getByRole("button", { name: "Back", exact: true }).click();
     await expect(review).toBeHidden();
     await expect(actionButton).toBeEnabled();
     await actionButton.click();
