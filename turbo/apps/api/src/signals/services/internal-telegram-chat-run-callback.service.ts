@@ -143,7 +143,7 @@ async function loadTelegramOwnerBinding(
       .where(
         and(
           eq(telegramOfficialUserLinks.id, args.target.userLinkId),
-          eq(telegramOfficialUserLinks.vm0UserId, args.userId),
+          eq(telegramOfficialUserLinks.userId, args.userId),
           eq(telegramOfficialUserLinks.orgId, args.orgId),
         ),
       )
@@ -175,7 +175,7 @@ async function loadTelegramOwnerBinding(
     .where(
       and(
         eq(telegramUserLinks.id, args.target.userLinkId),
-        eq(telegramUserLinks.vm0UserId, args.userId),
+        eq(telegramUserLinks.userId, args.userId),
         eq(telegramUserLinks.installationId, args.target.installationId),
         eq(telegramInstallations.orgId, args.orgId),
       ),

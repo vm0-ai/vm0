@@ -23,7 +23,7 @@ import {
   handleAgentPhoneMessage$,
   isAgentPhoneChannel,
   isValidAgentPhoneHandle,
-  linkAgentPhoneUserToVm0User,
+  linkAgentPhoneUser,
   normalizeAgentPhoneHandle,
   publishAgentPhoneUserChanged,
   resolveAgentPhoneUserLinkForEvent,
@@ -220,7 +220,7 @@ const getLinkStatus$ = computed(async (get) => {
     .from(agentphoneUserLinks)
     .where(
       and(
-        eq(agentphoneUserLinks.vm0UserId, auth.userId),
+        eq(agentphoneUserLinks.userId, auth.userId),
         eq(agentphoneUserLinks.orgId, auth.orgId),
       ),
     )
@@ -371,7 +371,7 @@ const startLink$ = command(async ({ get, set }, signal: AbortSignal) => {
     .from(agentphoneUserLinks)
     .where(
       and(
-        eq(agentphoneUserLinks.vm0UserId, auth.userId),
+        eq(agentphoneUserLinks.userId, auth.userId),
         eq(agentphoneUserLinks.orgId, auth.orgId),
       ),
     )
@@ -442,7 +442,7 @@ const unlink$ = command(async ({ get, set }, signal: AbortSignal) => {
     .delete(agentphoneUserLinks)
     .where(
       and(
-        eq(agentphoneUserLinks.vm0UserId, auth.userId),
+        eq(agentphoneUserLinks.userId, auth.userId),
         eq(agentphoneUserLinks.orgId, auth.orgId),
       ),
     )
@@ -502,10 +502,10 @@ const connectAgentPhone$ = command(
     }
 
     const writeDb = set(writeDb$);
-    const result = await linkAgentPhoneUserToVm0User(writeDb, {
+    const result = await linkAgentPhoneUser(writeDb, {
       phoneHandle,
       channel,
-      vm0UserId: auth.userId,
+      userId: auth.userId,
       orgId: auth.orgId,
     });
     signal.throwIfAborted();
@@ -546,7 +546,7 @@ What would you like to start with?`,
       (error) => {
         log.warn("Connected AgentPhone user but failed to send confirmation", {
           phoneHandle,
-          vm0UserId: auth.userId,
+          userId: auth.userId,
           orgId: auth.orgId,
           error,
         });

@@ -9,12 +9,17 @@ use support::dispatch_client::{
     create_cow_with_full_device, create_test_cow, request, request_with_type_flags, spawn_dispatch,
     spawn_dispatch_with_shutdown, wait_for_dispatch,
 };
+use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
 
 const OVERSIZED_LENGTH: u32 = 33 * 1024 * 1024;
 
+// Keep sibling temporary-file syncs from consuming the bounded dispatch-exit window.
+static COW_FILE_PERSISTENCE: Semaphore = Semaphore::const_new(1);
+
 #[tokio::test]
 async fn dispatch_read_write_disconnect() -> TestResult<()> {
+    let _persistence_permit = COW_FILE_PERSISTENCE.acquire().await?;
     let base_data = vec![0xAA; 2 * BLOCK_SIZE];
     let (_base, _cow_file, cow) = create_test_cow(&base_data)?;
     let cow = CowIo::new(cow);
@@ -38,6 +43,7 @@ async fn dispatch_read_write_disconnect() -> TestResult<()> {
 
 #[tokio::test]
 async fn dispatch_flush_persists_to_cow_file() -> TestResult<()> {
+    let _persistence_permit = COW_FILE_PERSISTENCE.acquire().await?;
     let base_data = vec![0x00; 2 * BLOCK_SIZE];
     let (_base, cow_file, cow) = create_test_cow(&base_data)?;
     let cow = CowIo::new(cow);
@@ -92,6 +98,7 @@ async fn dispatch_trim_succeeds() -> TestResult<()> {
 async fn dispatch_masks_request_type_flags_from_command() -> TestResult<()> {
     const REQUEST_TYPE_HIGH_FLAG: u32 = 1 << 16;
 
+    let _persistence_permit = COW_FILE_PERSISTENCE.acquire().await?;
     let base_data = vec![0xAA; 2 * BLOCK_SIZE];
     let (_base, _cow_file, cow) = create_test_cow(&base_data)?;
     let cow = CowIo::new(cow);
@@ -245,6 +252,7 @@ async fn dispatch_sync_failure_returns_error() -> TestResult<()> {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn dispatch_concurrent_read_write() -> TestResult<()> {
+    let _persistence_permit = COW_FILE_PERSISTENCE.acquire().await?;
     let base_data = vec![0xAA; 2 * BLOCK_SIZE];
     let (_base, _cow_file, cow) = create_test_cow(&base_data)?;
     let cow = CowIo::new(cow);

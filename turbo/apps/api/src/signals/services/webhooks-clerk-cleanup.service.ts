@@ -823,11 +823,11 @@ async function deleteUserData(
 
   await db
     .delete(slackOrgConnections)
-    .where(eq(slackOrgConnections.vm0UserId, userId));
-  await db.delete(githubUserLinks).where(eq(githubUserLinks.vm0UserId, userId));
+    .where(eq(slackOrgConnections.userId, userId));
+  await db.delete(githubUserLinks).where(eq(githubUserLinks.userId, userId));
   await db
     .delete(telegramUserLinks)
-    .where(eq(telegramUserLinks.vm0UserId, userId));
+    .where(eq(telegramUserLinks.userId, userId));
   await db
     .delete(telegramInstallations)
     .where(eq(telegramInstallations.ownerUserId, userId));

@@ -70,7 +70,7 @@ async function loadCanonicalSlackThreadStatusBinding(
           slackChatThreadRoutes.threadTs,
           target.routeThreadTs ?? target.threadTs,
         ),
-        eq(slackOrgConnections.vm0UserId, slackChatThreadRoutes.userId),
+        eq(slackOrgConnections.userId, slackChatThreadRoutes.userId),
       ),
     )
     .limit(1);

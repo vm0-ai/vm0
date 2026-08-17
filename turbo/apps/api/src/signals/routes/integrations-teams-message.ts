@@ -66,7 +66,7 @@ function teamsErrorResponse(result: {
 async function resolveConnectedTeamsUser(args: {
   readonly db: ReadonlyDb;
   readonly tenantId: string;
-  readonly vm0UserId: string;
+  readonly userId: string;
 }): Promise<
   | {
       readonly kind: "ok";
@@ -84,7 +84,7 @@ async function resolveConnectedTeamsUser(args: {
     .where(
       and(
         eq(teamsOrgConnections.teamsTenantId, args.tenantId),
-        eq(teamsOrgConnections.vm0UserId, args.vm0UserId),
+        eq(teamsOrgConnections.userId, args.userId),
       ),
     )
     .limit(1);
@@ -143,7 +143,7 @@ async function resolveTeamsMessageTarget(
       ? await resolveConnectedTeamsUser({
           db: args.db,
           tenantId: args.installation.teamsTenantId,
-          vm0UserId: args.userId,
+          userId: args.userId,
         })
       : {
           kind: "ok" as const,

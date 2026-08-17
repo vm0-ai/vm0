@@ -41,7 +41,7 @@ export async function deleteConnectorOwnerState(
   if (owner.kind === "user") {
     await db
       .delete(feishuOrgConnections)
-      .where(eq(feishuOrgConnections.vm0UserId, owner.userId));
+      .where(eq(feishuOrgConnections.userId, owner.userId));
     signal.throwIfAborted();
   }
 

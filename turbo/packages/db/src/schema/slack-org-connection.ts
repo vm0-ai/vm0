@@ -12,7 +12,7 @@ import { slackOrgInstallations } from "./slack-org-installation";
 
 /**
  * Org-aware Slack connections table.
- * Maps a Slack user to a VM0 user within a specific workspace.
+ * Maps a Slack user to an internal user within a specific workspace.
  * Each Slack user can only be connected once per workspace.
  * orgId is derived from slackOrgInstallations via slackWorkspaceId.
  */
@@ -26,8 +26,11 @@ export const slackOrgConnections = pgTable(
       .references(() => {
         return slackOrgInstallations.slackWorkspaceId;
       }),
-    vm0UserId: text("vm0_user_id").notNull(),
-    userId: text("user_id"),
+    userId: text("user_id").notNull(),
+    // DB/API rollout fallback (observed maximum exposure: ~102 minutes).
+    // Remove in #27602 after the switched API is healthy, the previous API
+    // version has drained, and every transition invariant remains valid.
+    legacyUserId: text("vm0_user_id").notNull(),
     dmWelcomeSent: boolean("dm_welcome_sent").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
@@ -39,7 +42,7 @@ export const slackOrgConnections = pgTable(
       ),
       index("idx_slack_org_connections_workspace").on(table.slackWorkspaceId),
       index("idx_slack_org_connections_vm0_user_workspace").on(
-        table.vm0UserId,
+        table.legacyUserId,
         table.slackWorkspaceId,
       ),
       index("idx_slack_org_connections_user_id_workspace").on(

@@ -7,7 +7,7 @@ import type {
 interface AppHomeViewOptions {
   readonly appUrl: string;
   readonly isLinked: boolean;
-  readonly vm0UserId?: string;
+  readonly userId?: string;
   readonly userEmail?: string;
   readonly agentName?: string;
   readonly isOverrideActive?: boolean;
@@ -72,7 +72,7 @@ function connectedStatusBlock(options: AppHomeViewOptions): SlackKnownBlock {
     type: "section",
     text: {
       type: "mrkdwn",
-      text: `:white_check_mark: *Connected to Zero*\nAccount: ${options.userEmail ?? options.vm0UserId}`,
+      text: `:white_check_mark: *Connected to Zero*\nAccount: ${options.userEmail ?? options.userId}`,
     },
   };
 }

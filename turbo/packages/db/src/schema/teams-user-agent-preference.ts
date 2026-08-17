@@ -10,14 +10,17 @@ import { agentComposes } from "./agent-compose";
 
 /**
  * Per-user Microsoft Teams agent preference.
- * Overrides the org default agent for a single VM0 user across the Teams
+ * Overrides the org default agent for a single user across the Teams
  * tenant connected to that org. A missing row means "use org default".
  */
 export const teamsUserAgentPreferences = pgTable(
   "teams_user_agent_preferences",
   {
-    vm0UserId: text("vm0_user_id").notNull(),
-    userId: text("user_id"),
+    userId: text("user_id").notNull(),
+    // DB/API rollout fallback (observed maximum exposure: ~102 minutes).
+    // Remove in #27602 after the switched API is healthy, the previous API
+    // version has drained, and every transition invariant remains valid.
+    legacyUserId: text("vm0_user_id").notNull(),
     orgId: text("org_id").notNull(),
     selectedComposeId: uuid("selected_compose_id").references(
       () => {
@@ -31,7 +34,7 @@ export const teamsUserAgentPreferences = pgTable(
   (table) => {
     return [
       primaryKey({
-        columns: [table.vm0UserId, table.orgId],
+        columns: [table.legacyUserId, table.orgId],
         name: "teams_user_agent_preferences_pkey",
       }),
       uniqueIndex("idx_teams_user_agent_preferences_user_org").on(

@@ -174,7 +174,7 @@ async function seedSlackFixture(
     teamId: body.team_id,
     slackUserId,
     orgId: body.org_id,
-    userId: body.vm0_user_id,
+    userId: body.user_id,
     connectionId: body.connection_id,
     defaultAgentId: body.default_agent_id,
   };
@@ -210,7 +210,7 @@ async function seedTelegramFixture(options: {
     botId: body.bot_id,
     telegramUserId,
     orgId: body.org_id,
-    userId: body.vm0_user_id,
+    userId: body.user_id,
     defaultAgentId: body.default_agent_id,
   };
   await trackTelegramFixture(Promise.resolve(fixture));
@@ -335,7 +335,7 @@ describe("GET /api/test/slack-state", () => {
         expect.objectContaining({
           id: fixture.connectionId,
           slackUserId: fixture.slackUserId,
-          vm0UserId: fixture.userId,
+          userId: fixture.userId,
           dmWelcomeSent: false,
         }),
       ]),
@@ -432,7 +432,7 @@ describe("POST /api/test/slack-state", () => {
       expect.objectContaining({
         id: fixture.connectionId,
         slackUserId: fixture.slackUserId,
-        vm0UserId: fixture.userId,
+        userId: fixture.userId,
         dmWelcomeSent: false,
       }),
     ]);

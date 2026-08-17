@@ -38,7 +38,7 @@ import {
   getGithubOAuthAuthMethod,
   githubUserConnectCallbackRedirectUri,
   isGithubOauthStateSignatureValid,
-  linkGithubVm0User,
+  linkGithubUser,
   loadActiveGithubInstallationForOrg,
   loadComposeFeatureSwitchContext,
   parseGithubOauthState,
@@ -55,6 +55,7 @@ import {
   getOAuthCanonicalRedirectUrl,
   getOAuthWebOrigin,
 } from "../../lib/oauth-origin";
+import { resolveIntegrationUserId } from "../../lib/integration-user-id-compat";
 
 const REDIRECT_STATUS = 307;
 const GITHUB_CONNECTOR_SLUG = "github";
@@ -209,16 +210,16 @@ type GithubSetupUserConnectionArgs = {
 
 function githubSetupCodeExchangeLogContext(
   args: GithubSetupUserConnectionArgs,
-  vm0UserId: string,
+  userId: string,
 ): {
   readonly orgId: string;
-  readonly vm0UserId: string;
+  readonly userId: string;
   readonly ghInstallationId: string | null;
   readonly installRecordId: string;
 } {
   return {
     orgId: args.orgId,
-    vm0UserId,
+    userId,
     ghInstallationId: args.ghInstallationId,
     installRecordId: args.installRecordId,
   };
@@ -309,10 +310,10 @@ const resolveGithubCallbackAccess$ = command(
   ): Promise<GithubCallbackAccessResolution> => {
     if (
       args.state.orgId &&
-      args.state.vm0UserId &&
+      args.state.userId &&
       !(await set(
         isGithubInstallOrgAdmin$,
-        { orgId: args.state.orgId, userId: args.state.vm0UserId },
+        { orgId: args.state.orgId, userId: args.state.userId },
         signal,
       ))
     ) {
@@ -335,21 +336,21 @@ const resolveGithubCallbackAccess$ = command(
 
 async function linkGithubUserWithoutSetupCode(
   args: GithubSetupUserConnectionArgs,
-  vm0UserId: string,
+  userId: string,
   signal: AbortSignal,
 ): Promise<GithubSetupUserConnectionResolution> {
-  const githubUserId = await linkGithubVm0User(
+  const githubUserId = await linkGithubUser(
     {
       db: args.db,
       installRecordId: args.installRecordId,
-      vm0UserId,
+      userId,
       knownGithubUserId: args.knownGithubUserId,
     },
     signal,
   );
   signal.throwIfAborted();
   if (githubUserId) {
-    await publishUserSignal([vm0UserId], "github:changed");
+    await publishUserSignal([userId], "github:changed");
     signal.throwIfAborted();
   }
   return { ok: true, connected: githubUserId !== null };
@@ -361,8 +362,8 @@ const connectGithubUserAfterSetup$ = command(
     args: GithubSetupUserConnectionArgs,
     signal: AbortSignal,
   ): Promise<GithubSetupUserConnectionResolution> => {
-    const vm0UserId = args.state.vm0UserId;
-    if (!vm0UserId) {
+    const userId = args.state.userId;
+    if (!userId) {
       return { ok: true, connected: false };
     }
 
@@ -370,7 +371,7 @@ const connectGithubUserAfterSetup$ = command(
     if (code) {
       const codeExchangeLogContext = githubSetupCodeExchangeLogContext(
         args,
-        vm0UserId,
+        userId,
       );
       const credentials = githubAppUserOauthCredentials();
       if (!credentials) {
@@ -443,7 +444,7 @@ const connectGithubUserAfterSetup$ = command(
         upsertConnectorTokenConnection$,
         {
           orgId: args.orgId,
-          userId: vm0UserId,
+          userId: userId,
           runtimeMethod: resolvedMethod.runtimeMethod,
           snapshot: resolvedMethod.snapshot,
           outputs: { accessToken },
@@ -457,11 +458,11 @@ const connectGithubUserAfterSetup$ = command(
       );
       signal.throwIfAborted();
 
-      const githubUserId = await linkGithubVm0User(
+      const githubUserId = await linkGithubUser(
         {
           db: args.db,
           installRecordId: args.installRecordId,
-          vm0UserId,
+          userId,
           knownGithubUserId: userInfo.id,
         },
         signal,
@@ -477,13 +478,13 @@ const connectGithubUserAfterSetup$ = command(
         };
       }
 
-      await publishUserSignal([vm0UserId], "github:changed");
+      await publishUserSignal([userId], "github:changed");
       signal.throwIfAborted();
 
       return { ok: true, connected: true };
     }
 
-    return await linkGithubUserWithoutSetupCode(args, vm0UserId, signal);
+    return await linkGithubUserWithoutSetupCode(args, userId, signal);
   },
 );
 
@@ -535,7 +536,7 @@ async function createActiveGithubInstallationFromCallback(
     {
       db: args.db,
       composeId: args.composeId,
-      userId: args.state.vm0UserId,
+      userId: args.state.userId,
     },
     signal,
   );
@@ -572,29 +573,33 @@ const installGithubOauth$ = command(
     }
 
     const query = get(queryOf(githubOauthContract.install));
+    const userId = resolveIntegrationUserId(query.userId, query.vm0UserId);
+    if (!userId.ok) {
+      return worksErrorRedirect("Invalid OAuth identity.");
+    }
     const appId = optionalEnv("GITHUB_APP_ID");
     const privateKey = optionalEnv("GITHUB_APP_PRIVATE_KEY");
 
     if (
       query.orgId &&
-      query.vm0UserId &&
+      userId.userId &&
       !(await set(
         isGithubInstallOrgAdmin$,
-        { orgId: query.orgId, userId: query.vm0UserId },
+        { orgId: query.orgId, userId: userId.userId },
         signal,
       ))
     ) {
       return worksErrorRedirect(GITHUB_INSTALL_ADMIN_REQUIRED);
     }
 
-    if (appId && privateKey && query.vm0UserId) {
+    if (appId && privateKey && userId.userId) {
       const db = set(writeDb$);
       const linkedFromLocal = query.orgId
         ? await tryLinkGithubFromLocalRecord(
             {
               db,
               orgId: query.orgId,
-              vm0UserId: query.vm0UserId,
+              userId: userId.userId,
             },
             signal,
           )
@@ -611,7 +616,7 @@ const installGithubOauth$ = command(
           appId,
           privateKey,
           orgId: query.orgId ?? null,
-          vm0UserId: query.vm0UserId,
+          userId: userId.userId,
           composeId: query.composeId ?? null,
         },
         signal,
@@ -625,7 +630,7 @@ const installGithubOauth$ = command(
 
     const installUrl = await buildGithubAppInstallUrl({
       appSlug,
-      vm0UserId: query.vm0UserId,
+      userId: userId.userId ?? undefined,
       orgId: query.orgId,
       composeId: query.composeId,
       origin,
@@ -709,11 +714,11 @@ const connectGithubUserOauth$ = command(
         );
       }
 
-      const githubUserId = await linkGithubVm0User(
+      const githubUserId = await linkGithubUser(
         {
           db,
           installRecordId: installation.id,
-          vm0UserId: auth.userId,
+          userId: auth.userId,
           knownGithubUserId: query.ghUser,
         },
         signal,
@@ -744,7 +749,7 @@ const connectGithubUserOauth$ = command(
     const authorizationUrl = await buildGithubUserConnectAuthorizationUrl(
       {
         db,
-        vm0UserId: auth.userId,
+        userId: auth.userId,
         orgId,
         origin,
         authMethodId: resolvedMethod.authMethodId,
@@ -782,7 +787,7 @@ const callbackGithubUserOauth$ = command(
     }
 
     const state = parseGithubOauthState(query.state);
-    if (!state?.vm0UserId || !state.orgId) {
+    if (!state?.userId || !state.orgId) {
       return worksErrorRedirect(
         "Invalid OAuth state. Please try connecting again from the Platform.",
       );
@@ -842,7 +847,7 @@ const callbackGithubUserOauth$ = command(
       upsertConnectorTokenConnection$,
       {
         orgId: state.orgId,
-        userId: state.vm0UserId,
+        userId: state.userId,
         runtimeMethod: resolvedMethod.runtimeMethod,
         snapshot: resolvedMethod.snapshot,
         outputs: token.outputs,
@@ -854,11 +859,11 @@ const callbackGithubUserOauth$ = command(
     );
     signal.throwIfAborted();
 
-    const githubUserId = await linkGithubVm0User(
+    const githubUserId = await linkGithubUser(
       {
         db,
         installRecordId: installation.id,
-        vm0UserId: state.vm0UserId,
+        userId: state.userId,
         knownGithubUserId: token.userInfo.id,
       },
       signal,
@@ -871,7 +876,7 @@ const callbackGithubUserOauth$ = command(
       );
     }
 
-    await publishUserSignal([state.vm0UserId], "github:changed");
+    await publishUserSignal([state.userId], "github:changed");
     signal.throwIfAborted();
 
     return redirectResponse(appUrl("/workflows"));

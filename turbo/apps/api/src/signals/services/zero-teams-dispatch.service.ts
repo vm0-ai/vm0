@@ -731,7 +731,7 @@ async function sendTeamsRunStartIndicator(
 
 async function getUserAgentPreference(
   db: Db,
-  vm0UserId: string,
+  userId: string,
   orgId: string,
 ): Promise<string | null> {
   const [preference] = await db
@@ -739,7 +739,7 @@ async function getUserAgentPreference(
     .from(teamsUserAgentPreferences)
     .where(
       and(
-        eq(teamsUserAgentPreferences.vm0UserId, vm0UserId),
+        eq(teamsUserAgentPreferences.userId, userId),
         eq(teamsUserAgentPreferences.orgId, orgId),
       ),
     )
@@ -749,20 +749,21 @@ async function getUserAgentPreference(
 
 async function setUserAgentPreference(args: {
   readonly db: Db;
-  readonly vm0UserId: string;
+  readonly userId: string;
   readonly orgId: string;
   readonly composeId: string | null;
 }): Promise<void> {
   await args.db
     .insert(teamsUserAgentPreferences)
     .values({
-      vm0UserId: args.vm0UserId,
+      userId: args.userId,
+      legacyUserId: args.userId,
       orgId: args.orgId,
       selectedComposeId: args.composeId,
     })
     .onConflictDoUpdate({
       target: [
-        teamsUserAgentPreferences.vm0UserId,
+        teamsUserAgentPreferences.userId,
         teamsUserAgentPreferences.orgId,
       ],
       set: {
@@ -849,12 +850,12 @@ async function getVisibleAgentPickerOptions(args: {
 
 async function resolveEffectiveCompose(args: {
   readonly db: Db;
-  readonly vm0UserId: string;
+  readonly userId: string;
   readonly orgId: string;
 }): Promise<EffectiveComposeResolution> {
   const override = await getUserAgentPreference(
     args.db,
-    args.vm0UserId,
+    args.userId,
     args.orgId,
   );
   if (override) {
@@ -862,7 +863,7 @@ async function resolveEffectiveCompose(args: {
       db: args.db,
       composeId: override,
       orgId: args.orgId,
-      userId: args.vm0UserId,
+      userId: args.userId,
     });
     if (agent) {
       return { status: "resolved", composeId: override, agent };
@@ -885,7 +886,7 @@ async function resolveEffectiveCompose(args: {
     db: args.db,
     composeId: defaultComposeId,
     orgId: args.orgId,
-    userId: args.vm0UserId,
+    userId: args.userId,
   });
   if (!visibleDefaultAgent) {
     return { status: "not_accessible" };
@@ -1617,7 +1618,7 @@ async function persistTeamsChatMessage(
     connectionId: args.connection.id,
     conversationId: args.activity.conversationId,
     threadId,
-    userId: args.connection.vm0UserId,
+    userId: args.connection.userId,
     orgId: args.installation.orgId,
     agentComposeId: args.composeId,
     selectedModel: args.modelRoute?.selectedModel ?? null,
@@ -1780,11 +1781,11 @@ const runAgentForTeams$ = command(
     }
 
     await publishChatThreadMessageCreatedSafely(
-      args.connection.vm0UserId,
+      args.connection.userId,
       persisted.chatThreadId,
     );
     signal.throwIfAborted();
-    await publishThreadListChangedSafely(args.connection.vm0UserId);
+    await publishThreadListChangedSafely(args.connection.userId);
     signal.throwIfAborted();
     await set(
       drainChatThreadQueueForThread$,
@@ -1898,7 +1899,7 @@ const connectedCommandBeforeCompose$ = command(
           disconnectTeamsConnection$,
           {
             orgId: args.installation.orgId,
-            userId: args.connection.vm0UserId,
+            userId: args.connection.userId,
           },
           signal,
         );
@@ -1926,7 +1927,7 @@ const connectedCommandBeforeCompose$ = command(
         const options = await getVisibleAgentPickerOptions({
           db: args.db,
           orgId: args.installation.orgId,
-          userId: args.connection.vm0UserId,
+          userId: args.connection.userId,
           defaultComposeId,
         });
         signal.throwIfAborted();
@@ -1935,7 +1936,7 @@ const connectedCommandBeforeCompose$ = command(
               db: args.db,
               composeId: defaultComposeId,
               orgId: args.installation.orgId,
-              userId: args.connection.vm0UserId,
+              userId: args.connection.userId,
             })
           : undefined;
         signal.throwIfAborted();
@@ -1947,7 +1948,7 @@ const connectedCommandBeforeCompose$ = command(
         }
         const currentOverride = await getUserAgentPreference(
           args.db,
-          args.connection.vm0UserId,
+          args.connection.userId,
           args.installation.orgId,
         );
         signal.throwIfAborted();
@@ -1969,7 +1970,7 @@ const connectedCommandBeforeCompose$ = command(
         const picker = await set(
           teamsModelPickerState$,
           args.installation.orgId,
-          args.connection.vm0UserId,
+          args.connection.userId,
           signal,
         );
         signal.throwIfAborted();
@@ -2036,7 +2037,7 @@ const connectedTeamsCardAction$ = command(
               db: args.db,
               composeId: defaultComposeId,
               orgId: args.installation.orgId,
-              userId: args.connection.vm0UserId,
+              userId: args.connection.userId,
             })
           : undefined;
         signal.throwIfAborted();
@@ -2048,7 +2049,7 @@ const connectedTeamsCardAction$ = command(
         }
         await setUserAgentPreference({
           db: args.db,
-          vm0UserId: args.connection.vm0UserId,
+          userId: args.connection.userId,
           orgId: args.installation.orgId,
           composeId: null,
         });
@@ -2063,7 +2064,7 @@ const connectedTeamsCardAction$ = command(
         db: args.db,
         composeId: selected,
         orgId: args.installation.orgId,
-        userId: args.connection.vm0UserId,
+        userId: args.connection.userId,
       });
       signal.throwIfAborted();
       if (!agent || agent.id !== selected) {
@@ -2074,7 +2075,7 @@ const connectedTeamsCardAction$ = command(
       }
       await setUserAgentPreference({
         db: args.db,
-        vm0UserId: args.connection.vm0UserId,
+        userId: args.connection.userId,
         orgId: args.installation.orgId,
         composeId: agent.id,
       });
@@ -2099,7 +2100,7 @@ const connectedTeamsCardAction$ = command(
     const picker = await set(
       teamsModelPickerState$,
       args.installation.orgId,
-      args.connection.vm0UserId,
+      args.connection.userId,
       signal,
     );
     signal.throwIfAborted();
@@ -2116,7 +2117,7 @@ const connectedTeamsCardAction$ = command(
       updateUserModelPreference$,
       {
         orgId: args.installation.orgId,
-        userId: args.connection.vm0UserId,
+        userId: args.connection.userId,
         preference: { selectedModel: option.model, serviceTier: null },
       },
       signal,
@@ -2172,7 +2173,7 @@ const runResolvedTeamsAgentForActivity$ = command(
       resolveIntegrationModelRouteForUser$,
       {
         orgId: args.installation.orgId,
-        userId: args.connection.vm0UserId,
+        userId: args.connection.userId,
       },
       signal,
     );
@@ -2308,7 +2309,7 @@ export const dispatchTeamsMessageToAgent$ = command(
 
     const effectiveCompose = await resolveEffectiveCompose({
       db,
-      vm0UserId: connection.vm0UserId,
+      userId: connection.userId,
       orgId: boundInstallation.orgId,
     });
     signal.throwIfAborted();

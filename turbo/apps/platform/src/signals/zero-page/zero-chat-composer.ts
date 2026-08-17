@@ -373,7 +373,6 @@ function createBasicComposerUiSignals() {
       return false;
     },
   );
-
   return {
     model: {
       modelPickerOpen$,

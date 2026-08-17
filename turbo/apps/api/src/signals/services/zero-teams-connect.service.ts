@@ -145,7 +145,7 @@ function buildTeamsOauthConnectUrl(args: {
 }): string {
   const url = new URL("/api/okou/teams/oauth/connect", internalApiBaseUrl());
   url.searchParams.set("orgId", args.orgId);
-  url.searchParams.set("vm0UserId", args.userId);
+  url.searchParams.set("userId", args.userId);
   return url.toString();
 }
 
@@ -209,7 +209,7 @@ async function upsertTeamsConnection(
     readonly teamsUserId?: string;
     readonly teamsAadObjectId?: string;
     readonly teamsTenantId: string;
-    readonly vm0UserId: string;
+    readonly userId: string;
     readonly teamsUserDisplayName?: string;
     readonly teamsUserPrincipalName?: string;
   },
@@ -278,7 +278,8 @@ async function upsertTeamsConnection(
       teamsUserId: args.teamsUserId,
       teamsAadObjectId: args.teamsAadObjectId,
       teamsTenantId: args.teamsTenantId,
-      vm0UserId: args.vm0UserId,
+      userId: args.userId,
+      legacyUserId: args.userId,
       teamsUserDisplayName: args.teamsUserDisplayName,
       teamsUserPrincipalName: args.teamsUserPrincipalName,
     })
@@ -338,7 +339,7 @@ async function resolveDefaultComposeId(
 
 async function getUserAgentPreference(
   db: ReadonlyDb,
-  vm0UserId: string,
+  userId: string,
   orgId: string,
 ): Promise<string | null> {
   const [preference] = await db
@@ -346,7 +347,7 @@ async function getUserAgentPreference(
     .from(teamsUserAgentPreferences)
     .where(
       and(
-        eq(teamsUserAgentPreferences.vm0UserId, vm0UserId),
+        eq(teamsUserAgentPreferences.userId, userId),
         eq(teamsUserAgentPreferences.orgId, orgId),
       ),
     )
@@ -356,10 +357,10 @@ async function getUserAgentPreference(
 
 async function resolveEffectiveComposeId(
   db: ReadonlyDb,
-  vm0UserId: string,
+  userId: string,
   orgId: string,
 ): Promise<string | null> {
-  const override = await getUserAgentPreference(db, vm0UserId, orgId);
+  const override = await getUserAgentPreference(db, userId, orgId);
   if (override) {
     const [agent] = await db
       .select({ id: zeroAgents.id })
@@ -535,7 +536,7 @@ async function teamsConnectionForStatus(args: {
     .from(teamsOrgConnections)
     .where(
       and(
-        eq(teamsOrgConnections.vm0UserId, args.userId),
+        eq(teamsOrgConnections.userId, args.userId),
         eq(teamsOrgConnections.teamsTenantId, args.tenantId),
       ),
     )
@@ -930,7 +931,7 @@ async function finalizeTeamsConnection(
     teamsUserId: connectArgs.teamsUserId,
     teamsAadObjectId: connectArgs.teamsAadObjectId,
     teamsTenantId: connectArgs.tenantId,
-    vm0UserId: connectArgs.userId,
+    userId: connectArgs.userId,
     teamsUserDisplayName: connectArgs.teamsUserDisplayName,
     teamsUserPrincipalName: connectArgs.teamsUserPrincipalName,
   });
@@ -1023,7 +1024,7 @@ export const prepareTeamsInstallation$ = command(
       teamsUserId: args.teamsUserId,
       teamsAadObjectId: args.teamsAadObjectId,
       teamsTenantId: args.tenantId,
-      vm0UserId: args.userId,
+      userId: args.userId,
       teamsUserDisplayName: args.teamsUserDisplayName,
       teamsUserPrincipalName: args.teamsUserPrincipalName,
     });
@@ -1136,7 +1137,7 @@ export const disconnectTeamsConnection$ = command(
       .from(teamsOrgConnections)
       .where(
         and(
-          eq(teamsOrgConnections.vm0UserId, args.userId),
+          eq(teamsOrgConnections.userId, args.userId),
           eq(teamsOrgConnections.teamsTenantId, installation.teamsTenantId),
         ),
       )
@@ -1177,7 +1178,7 @@ export const uninstallTeamsInstallation$ = command(
     }
 
     const connections = await writeDb
-      .select({ userId: teamsOrgConnections.vm0UserId })
+      .select({ userId: teamsOrgConnections.userId })
       .from(teamsOrgConnections)
       .where(eq(teamsOrgConnections.teamsTenantId, installation.teamsTenantId));
     signal.throwIfAborted();
@@ -1295,7 +1296,7 @@ export const recordTeamsInstallationActivity$ = command(
       }
 
       const connections = await writeDb
-        .select({ userId: teamsOrgConnections.vm0UserId })
+        .select({ userId: teamsOrgConnections.userId })
         .from(teamsOrgConnections)
         .where(eq(teamsOrgConnections.teamsTenantId, activity.tenantId));
       signal.throwIfAborted();

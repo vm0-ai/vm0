@@ -26,6 +26,7 @@ import {
 } from "../../lib/connector-oauth-state";
 import { now } from "../../lib/time";
 import { logger } from "../../lib/log";
+import { resolveIntegrationUserId } from "../../lib/integration-user-id-compat";
 import { encryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 
@@ -50,7 +51,7 @@ interface GitHubInstallationInfo {
 }
 
 interface GithubOAuthState {
-  readonly vm0UserId: string | null;
+  readonly userId: string | null;
   readonly orgId: string | null;
   readonly composeId: string | null;
   readonly sig: string | null;
@@ -225,7 +226,7 @@ export async function getGithubInstallationAccessToken(
 }
 
 async function createGithubOauthStateSignature(args: {
-  readonly vm0UserId: string;
+  readonly userId: string;
   readonly orgId: string | null;
   readonly composeId: string | null;
   readonly secretsEncryptionKey: string;
@@ -238,7 +239,7 @@ async function createGithubOauthStateSignature(args: {
     false,
     ["sign"],
   );
-  const payload = `${args.vm0UserId}:${args.orgId ?? ""}:${args.composeId ?? ""}`;
+  const payload = `${args.userId}:${args.orgId ?? ""}:${args.composeId ?? ""}`;
   const signature = await crypto.subtle.sign(
     "HMAC",
     key,
@@ -249,7 +250,7 @@ async function createGithubOauthStateSignature(args: {
 }
 
 async function createLegacyGithubOauthStateSignature(args: {
-  readonly vm0UserId: string;
+  readonly userId: string;
   readonly composeId: string | null;
   readonly secretsEncryptionKey: string;
 }): Promise<string> {
@@ -261,7 +262,7 @@ async function createLegacyGithubOauthStateSignature(args: {
     false,
     ["sign"],
   );
-  const payload = `${args.vm0UserId}:${args.composeId ?? ""}`;
+  const payload = `${args.userId}:${args.composeId ?? ""}`;
   const signature = await crypto.subtle.sign(
     "HMAC",
     key,
@@ -330,19 +331,19 @@ export function verifyGithubConnectSignature(args: {
 }
 
 async function buildGithubOauthState(args: {
-  readonly vm0UserId?: string;
+  readonly userId?: string;
   readonly orgId?: string;
   readonly composeId?: string;
   readonly secretsEncryptionKey: string;
 }): Promise<string> {
   const state: {
-    vm0UserId?: string;
+    userId?: string;
     orgId?: string;
     composeId?: string;
     sig?: string;
   } = {};
-  if (args.vm0UserId) {
-    state.vm0UserId = args.vm0UserId;
+  if (args.userId) {
+    state.userId = args.userId;
   }
   if (args.orgId) {
     state.orgId = args.orgId;
@@ -350,9 +351,9 @@ async function buildGithubOauthState(args: {
   if (args.composeId) {
     state.composeId = args.composeId;
   }
-  if (state.vm0UserId) {
+  if (state.userId) {
     state.sig = await createGithubOauthStateSignature({
-      vm0UserId: state.vm0UserId,
+      userId: state.userId,
       orgId: state.orgId ?? null,
       composeId: state.composeId ?? null,
       secretsEncryptionKey: args.secretsEncryptionKey,
@@ -372,14 +373,14 @@ function githubAppSetupCallbackRedirectUri(origin: string): string {
 
 export async function buildGithubAppInstallUrl(args: {
   readonly appSlug: string;
-  readonly vm0UserId?: string;
+  readonly userId?: string;
   readonly orgId?: string;
   readonly composeId?: string;
   readonly origin: string;
   readonly secretsEncryptionKey: string;
 }): Promise<string> {
   const state = await buildGithubOauthState({
-    vm0UserId: args.vm0UserId,
+    userId: args.userId,
     orgId: args.orgId,
     composeId: args.composeId,
     secretsEncryptionKey: args.secretsEncryptionKey,
@@ -405,7 +406,7 @@ function normalizeAuthUrlResult(result: string | AuthUrlResult): AuthUrlResult {
 export async function buildGithubUserConnectAuthorizationUrl(
   args: {
     readonly db: Db;
-    readonly vm0UserId: string;
+    readonly userId: string;
     readonly orgId: string;
     readonly origin: string;
     readonly authMethodId: ConnectorAuthMethodId;
@@ -442,7 +443,7 @@ export async function buildGithubUserConnectAuthorizationUrl(
     state,
     connectorSlug: "github",
     authMethod: args.authMethodId,
-    userId: args.vm0UserId,
+    userId: args.userId,
     orgId: args.orgId,
     redirectUri,
     codeVerifier: authResult.codeVerifier,
@@ -459,7 +460,7 @@ export function parseGithubOauthState(
 ): GithubOAuthState | null {
   if (!state) {
     return {
-      vm0UserId: null,
+      userId: null,
       orgId: null,
       composeId: null,
       sig: null,
@@ -472,15 +473,25 @@ export function parseGithubOauthState(
   }
 
   const stateObject = parsed as {
+    readonly userId?: unknown;
     readonly vm0UserId?: unknown;
     readonly orgId?: unknown;
     readonly composeId?: unknown;
     readonly sig?: unknown;
   };
 
+  const userId = resolveIntegrationUserId(
+    typeof stateObject.userId === "string" ? stateObject.userId : null,
+    // Old web/app OAuth state fallback (observed maximum: ~2 days).
+    // Remove in #27602 after legacy producers and callbacks have drained.
+    typeof stateObject.vm0UserId === "string" ? stateObject.vm0UserId : null,
+  );
+  if (!userId.ok) {
+    return null;
+  }
+
   return {
-    vm0UserId:
-      typeof stateObject.vm0UserId === "string" ? stateObject.vm0UserId : null,
+    userId: userId.userId,
     orgId: typeof stateObject.orgId === "string" ? stateObject.orgId : null,
     composeId:
       typeof stateObject.composeId === "string" ? stateObject.composeId : null,
@@ -492,12 +503,12 @@ export async function isGithubOauthStateSignatureValid(args: {
   readonly state: GithubOAuthState;
   readonly secretsEncryptionKey: string;
 }): Promise<boolean> {
-  if (!args.state.vm0UserId) {
+  if (!args.state.userId) {
     return true;
   }
 
   const expectedSig = await createGithubOauthStateSignature({
-    vm0UserId: args.state.vm0UserId,
+    userId: args.state.userId,
     orgId: args.state.orgId,
     composeId: args.state.composeId,
     secretsEncryptionKey: args.secretsEncryptionKey,
@@ -511,8 +522,10 @@ export async function isGithubOauthStateSignatureValid(args: {
     return false;
   }
 
+  // Old web/app OAuth signature fallback (observed maximum: ~2 days).
+  // Remove in #27602 after legacy states and callbacks have drained.
   const legacyExpectedSig = await createLegacyGithubOauthStateSignature({
-    vm0UserId: args.state.vm0UserId,
+    userId: args.state.userId,
     composeId: args.state.composeId,
     secretsEncryptionKey: args.secretsEncryptionKey,
   });
@@ -520,11 +533,11 @@ export async function isGithubOauthStateSignatureValid(args: {
   return signaturesMatch(args.state.sig, legacyExpectedSig);
 }
 
-export async function linkGithubVm0User(
+export async function linkGithubUser(
   args: {
     readonly db: Db;
     readonly installRecordId: string;
-    readonly vm0UserId: string;
+    readonly userId: string;
     readonly knownGithubUserId?: string | null;
   },
   signal: AbortSignal,
@@ -537,7 +550,7 @@ export async function linkGithubVm0User(
       .from(connectors)
       .where(
         and(
-          eq(connectors.userId, args.vm0UserId),
+          eq(connectors.userId, args.userId),
           eq(connectors.connectorSlug, "github"),
         ),
       )
@@ -556,7 +569,7 @@ export async function linkGithubVm0User(
     .where(
       and(
         eq(githubUserLinks.installationId, args.installRecordId),
-        eq(githubUserLinks.vm0UserId, args.vm0UserId),
+        eq(githubUserLinks.userId, args.userId),
       ),
     );
   signal.throwIfAborted();
@@ -566,7 +579,8 @@ export async function linkGithubVm0User(
     .values({
       githubUserId,
       installationId: args.installRecordId,
-      vm0UserId: args.vm0UserId,
+      userId: args.userId,
+      legacyUserId: args.userId,
     })
     .onConflictDoNothing()
     .returning({ githubUserId: githubUserLinks.githubUserId });
@@ -601,7 +615,7 @@ export async function tryLinkGithubFromLocalRecord(
   args: {
     readonly db: Db;
     readonly orgId: string;
-    readonly vm0UserId: string;
+    readonly userId: string;
   },
   signal: AbortSignal,
 ): Promise<boolean> {
@@ -624,11 +638,11 @@ export async function tryLinkGithubFromLocalRecord(
     return false;
   }
 
-  const githubUserId = await linkGithubVm0User(
+  const githubUserId = await linkGithubUser(
     {
       db: args.db,
       installRecordId: existing.id,
-      vm0UserId: args.vm0UserId,
+      userId: args.userId,
     },
     signal,
   );
@@ -706,7 +720,7 @@ export async function tryLinkGithubFromRemoteInstallations(
     readonly appId: string;
     readonly privateKey: string;
     readonly orgId: string | null;
-    readonly vm0UserId: string;
+    readonly userId: string;
     readonly composeId: string | null;
   },
   signal: AbortSignal,
@@ -749,11 +763,11 @@ export async function tryLinkGithubFromRemoteInstallations(
       if (args.orgId && existing.orgId !== args.orgId) {
         continue;
       }
-      const linked = await linkGithubVm0User(
+      const linked = await linkGithubUser(
         {
           db: args.db,
           installRecordId: existing.id,
-          vm0UserId: args.vm0UserId,
+          userId: args.userId,
         },
         signal,
       );
@@ -783,7 +797,7 @@ export async function tryLinkGithubFromRemoteInstallations(
     {
       db: args.db,
       composeId: args.composeId,
-      userId: args.vm0UserId,
+      userId: args.userId,
     },
     signal,
   );
@@ -828,11 +842,11 @@ export async function tryLinkGithubFromRemoteInstallations(
     return false;
   }
 
-  await linkGithubVm0User(
+  await linkGithubUser(
     {
       db: args.db,
       installRecordId: newInstall.id,
-      vm0UserId: args.vm0UserId,
+      userId: args.userId,
       knownGithubUserId: adminGithubUserId,
     },
     signal,

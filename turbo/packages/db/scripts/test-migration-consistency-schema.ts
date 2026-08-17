@@ -49,6 +49,11 @@ import {
 import { validateAgentRunMetadataStage2Lock } from "./test-agent-run-metadata-stage-2-lock";
 import { validateAgentRunMetadataStage2Preflight } from "./test-agent-run-metadata-stage-2-preflight";
 import {
+  validateAgentRunLaunchSnapshotMigration,
+  validateAgentRunLaunchSnapshotSchema,
+} from "./test-agent-run-launch-snapshot";
+import { validateAgentComposeConsolidationPreflight } from "./test-agent-compose-consolidation-preflight";
+import {
   AgentComposeProvenanceSchemaUnavailableError,
   deleteClerkAgentLifecycleData,
 } from "../../../apps/api/src/signals/services/agent-compose-provenance-lifecycle.service";
@@ -1039,6 +1044,7 @@ async function expectDatabaseError(
 
 const INTEGRATION_USER_ID_EXPANSION_PREVIOUS_MIGRATION = "0929_cold_azazel";
 const INTEGRATION_USER_ID_EXPANSION_MIGRATION = "0930_past_jetstream";
+const INTEGRATION_USER_ID_SWITCH_MIGRATION = "0932_lovely_red_wolf";
 const INTEGRATION_USER_ID_SYNC_FUNCTION = "sync_integration_user_identity_0930";
 
 const INTEGRATION_USER_ID_TABLES = [
@@ -1192,9 +1198,9 @@ async function assertIntegrationIdentityInvariant(
   }
 }
 
-async function validateIntegrationUserIdExpansion(): Promise<void> {
-  console.log("=== Validate integration user identity expansion ===\n");
-  const testDb = "migration_integration_user_identity_expand_test";
+async function validateIntegrationUserIdTransition(): Promise<void> {
+  console.log("=== Validate integration user identity transition ===\n");
+  const testDb = "migration_integration_user_identity_transition_test";
   await createDatabase(testDb);
   const client = new Client({ connectionString: createTestDbUrl(testDb) });
   await client.connect();
@@ -1211,6 +1217,32 @@ async function validateIntegrationUserIdExpansion(): Promise<void> {
     assert.doesNotMatch(migrationSql, /\bLOCK\s+TABLE\b/iu);
     assert.doesNotMatch(migrationSql, /\bRENAME\s+COLUMN\b/iu);
     assert.doesNotMatch(migrationSql, /\bSET\s+LOCAL\b/iu);
+
+    const switchMigrationSql = await fs.readFile(
+      path.join(MIGRATIONS_DIR, `${INTEGRATION_USER_ID_SWITCH_MIGRATION}.sql`),
+      "utf8",
+    );
+    assert.ok(!switchMigrationSql.includes(NON_TRANSACTIONAL_MIGRATION_MARKER));
+    assert.doesNotMatch(switchMigrationSql, /\bLOCK\s+TABLE\b/iu);
+    assert.doesNotMatch(switchMigrationSql, /\bRENAME\s+COLUMN\b/iu);
+    assert.doesNotMatch(switchMigrationSql, /\bDROP\s+COLUMN\b/iu);
+    assert.doesNotMatch(
+      switchMigrationSql,
+      /\bDROP\s+(?:FUNCTION|INDEX|TRIGGER)\b/iu,
+    );
+    assert.match(switchMigrationSql, /\bIS\s+DISTINCT\s+FROM\b/iu);
+    for (const { tableName } of INTEGRATION_USER_ID_TABLES) {
+      assert.ok(
+        switchMigrationSql.includes(
+          `UPDATE "${tableName}" SET "user_id" = "vm0_user_id" WHERE "user_id" IS NULL`,
+        ),
+      );
+      assert.ok(
+        switchMigrationSql.includes(
+          `ALTER TABLE "${tableName}" ALTER COLUMN "user_id" SET NOT NULL`,
+        ),
+      );
+    }
 
     await applyMigrationsUpToTag(
       client,
@@ -1377,6 +1409,82 @@ async function validateIntegrationUserIdExpansion(): Promise<void> {
       INTEGRATION_USER_ID_TABLES.flatMap(({ tableName }) => {
         return [
           { columnName: "user_id", isNullable: "YES", tableName },
+          { columnName: "vm0_user_id", isNullable: "NO", tableName },
+        ];
+      }),
+    );
+
+    // Bypass the compatibility trigger to prove the Switch migration itself
+    // rejects a pre-existing mismatch before changing nullability.
+    await client.query(`
+      ALTER TABLE "agentphone_user_links"
+      DISABLE TRIGGER "sync_agentphone_user_links_identity_0930";
+      UPDATE "agentphone_user_links"
+      SET "user_id" = 'mismatched-before-switch'
+      WHERE "id" = '00000000-0000-4000-8000-000000093101';
+      ALTER TABLE "agentphone_user_links"
+      ENABLE TRIGGER "sync_agentphone_user_links_identity_0930";
+    `);
+    await assert.rejects(
+      applyMigrationsUpToTag(client, INTEGRATION_USER_ID_SWITCH_MIGRATION),
+      (error: unknown) => {
+        return (
+          databaseErrorCode(error) === "23514" &&
+          error instanceof Error &&
+          error.message.includes("null or mismatched values")
+        );
+      },
+    );
+
+    // Repair the deliberate mismatch, then leave a canonical null to prove
+    // the idempotent backfill runs before SET NOT NULL.
+    await client.query(`
+      ALTER TABLE "agentphone_user_links"
+      DISABLE TRIGGER "sync_agentphone_user_links_identity_0930";
+      UPDATE "agentphone_user_links"
+      SET "user_id" = "vm0_user_id"
+      WHERE "id" = '00000000-0000-4000-8000-000000093101';
+      ALTER TABLE "agentphone_user_links"
+      ENABLE TRIGGER "sync_agentphone_user_links_identity_0930";
+
+      ALTER TABLE "feishu_org_connections"
+      DISABLE TRIGGER "sync_feishu_org_connections_identity_0930";
+      UPDATE "feishu_org_connections"
+      SET "user_id" = NULL
+      WHERE "id" = '00000000-0000-4000-8000-000000093102';
+      ALTER TABLE "feishu_org_connections"
+      ENABLE TRIGGER "sync_feishu_org_connections_identity_0930";
+    `);
+    await applyMigrationsUpToTag(client, INTEGRATION_USER_ID_SWITCH_MIGRATION);
+    await assertIntegrationIdentityInvariant(client);
+
+    const switchedColumns = await client.query<{
+      columnName: string;
+      isNullable: "NO" | "YES";
+      tableName: string;
+    }>(
+      `
+      SELECT
+        "table_name" AS "tableName",
+        "column_name" AS "columnName",
+        "is_nullable" AS "isNullable"
+      FROM "information_schema"."columns"
+      WHERE "table_schema" = 'public'
+        AND "table_name" = ANY($1::text[])
+        AND "column_name" IN ('user_id', 'vm0_user_id')
+      ORDER BY "table_name", "column_name"
+    `,
+      [
+        INTEGRATION_USER_ID_TABLES.map(({ tableName }) => {
+          return tableName;
+        }),
+      ],
+    );
+    assert.deepEqual(
+      switchedColumns.rows,
+      INTEGRATION_USER_ID_TABLES.flatMap(({ tableName }) => {
+        return [
+          { columnName: "user_id", isNullable: "NO", tableName },
           { columnName: "vm0_user_id", isNullable: "NO", tableName },
         ];
       }),
@@ -1590,16 +1698,16 @@ async function validateIntegrationUserIdExpansion(): Promise<void> {
     `);
     let updated = await client.query<{
       userId: string;
-      vm0UserId: string;
+      legacyUserId: string;
     }>(`
-      SELECT "user_id" AS "userId", "vm0_user_id" AS "vm0UserId"
+      SELECT "user_id" AS "userId", "vm0_user_id" AS "legacyUserId"
       FROM "agentphone_user_links"
       WHERE "id" = '00000000-0000-4000-8000-000000093101'
     `);
     assert.deepEqual(updated.rows, [
       {
         userId: "legacy-update-agentphone-link",
-        vm0UserId: "legacy-update-agentphone-link",
+        legacyUserId: "legacy-update-agentphone-link",
       },
     ]);
 
@@ -1610,16 +1718,16 @@ async function validateIntegrationUserIdExpansion(): Promise<void> {
     `);
     updated = await client.query<{
       userId: string;
-      vm0UserId: string;
+      legacyUserId: string;
     }>(`
-      SELECT "user_id" AS "userId", "vm0_user_id" AS "vm0UserId"
+      SELECT "user_id" AS "userId", "vm0_user_id" AS "legacyUserId"
       FROM "agentphone_user_links"
       WHERE "id" = '00000000-0000-4000-8000-000000093101'
     `);
     assert.deepEqual(updated.rows, [
       {
         userId: "canonical-update-agentphone-link",
-        vm0UserId: "canonical-update-agentphone-link",
+        legacyUserId: "canonical-update-agentphone-link",
       },
     ]);
 
@@ -1716,7 +1824,8 @@ async function validateIntegrationUserIdExpansion(): Promise<void> {
     }
 
     await assertIntegrationIdentityInvariant(client);
-    console.log("   ✅ all 12 legacy identity columns backfill canonically");
+    console.log("   ✅ all 12 canonical identity columns are non-null");
+    console.log("   ✅ Switch backfill repairs nulls and rejects mismatches");
     console.log(
       "   ✅ legacy and canonical writes synchronize both directions",
     );
@@ -11524,7 +11633,7 @@ async function main(): Promise<void> {
     // Step 0.5: Validate timestamp ordering
     await validateTimestampOrdering();
 
-    await validateIntegrationUserIdExpansion();
+    await validateIntegrationUserIdTransition();
     await validateRunEventSequenceNumberRollout();
     await validateGoalOnlyRunGroupsCleanup();
     await validateTeamsMessageFileScopeBackfill();
@@ -11544,11 +11653,13 @@ async function main(): Promise<void> {
     await validateCustomConnectorSecretPlaceholderCanonicalization();
     await validateChatEventSnapshotContraction();
     await validateAgentComposeProvenanceMigration();
+    await validateAgentComposeConsolidationPreflight();
     await validateAgentRunMetadataStage2Preflight();
     await validateAgentRunMetadataStage2Lock();
     await validateAgentRunMetadataStage2Index();
     await validateAgentRunMetadataStage2Final();
     await validateAgentRunMetadataStage2Runner();
+    await validateAgentRunLaunchSnapshotMigration();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
@@ -11571,6 +11682,7 @@ async function main(): Promise<void> {
     await validateZeroAgentDefaultAvatarCompatibility(dbUrl1);
     await validatePermanentArtifactTriggerBehavior(dbUrl1);
     await validatePermanentAgentRunMetadataState(dbUrl1);
+    await validateAgentRunLaunchSnapshotSchema(dbUrl1);
     await validateExpandedBrowserSchema(dbUrl1);
     await validateChatEventSourcesAreAppendOnly(dbUrl1);
     await validateChatEventContextPointerConstraints(dbUrl1);
@@ -11589,6 +11701,7 @@ async function main(): Promise<void> {
     const dbUrl2 = createTestDbUrl(TEST_DB_2);
     await runMigrations(dbUrl2);
     console.log("   ✅ Fresh migrations applied successfully\n");
+    await validateAgentRunLaunchSnapshotSchema(dbUrl2);
 
     // Step 4: Restore original migrations
     await restoreMigrations();

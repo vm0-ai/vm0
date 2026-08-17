@@ -41,7 +41,7 @@ import {
 } from "../services/connector-catalog-runtime.service";
 import { upsertConnectorTokenConnection$ } from "../services/connector-data.service";
 import {
-  linkGithubVm0User,
+  linkGithubUser,
   loadActiveGithubInstallationForOrg,
 } from "../services/github-oauth.service";
 import { safeJsonParse, tapError } from "../utils";
@@ -439,11 +439,11 @@ async function linkGithubIntegrationAfterConnectorConnect(
     return;
   }
 
-  const githubUserId = await linkGithubVm0User(
+  const githubUserId = await linkGithubUser(
     {
       db: args.db,
       installRecordId: installation.id,
-      vm0UserId: args.identity.userId,
+      userId: args.identity.userId,
       knownGithubUserId: args.token.userInfo.id,
     },
     signal,

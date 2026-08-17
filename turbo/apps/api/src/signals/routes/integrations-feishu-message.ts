@@ -79,7 +79,7 @@ const sendMessage$ = command(async ({ get, set }, signal: AbortSignal) => {
       .where(
         and(
           eq(feishuOrgConnections.installationId, installation.id),
-          eq(feishuOrgConnections.vm0UserId, auth.userId),
+          eq(feishuOrgConnections.userId, auth.userId),
         ),
       )
       .limit(1);

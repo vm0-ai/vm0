@@ -1,5 +1,4 @@
 import { command } from "ccstate";
-import { createHash } from "node:crypto";
 import {
   getInstructionsFilename,
   SUPPORTED_FRAMEWORKS,
@@ -13,34 +12,11 @@ import { eq } from "drizzle-orm";
 
 import { writeDb$ } from "../external/db";
 import { nowDate } from "../../lib/time";
+import {
+  buildZeroAgentComposeContent,
+  computeComposeVersionId,
+} from "./agent-compose-content";
 import { uploadVolumeServerSide$ } from "./storage-volume-upload.service";
-
-/**
- * Build canonical compose content for a zero agent. Pure function — same
- * inputs always yield the same output. The API owns this zero-agent compose
- * shape now; keep it stable because existing compose version hashes depend on
- * the canonical content. Connector environment is injected later from the
- * authorized run context.
- */
-function buildZeroAgentComposeContent(
-  agentName: string,
-): Record<string, unknown> {
-  const environment: Record<string, string> = {
-    OKOU_AGENT_ID: `\${{ vars.OKOU_AGENT_ID }}`,
-    OKOU_TOKEN: `\${{ secrets.OKOU_TOKEN }}`,
-  };
-
-  const agentDef: Record<string, unknown> = {
-    framework: "claude-code",
-    instructions: getInstructionsFilename("claude-code"),
-    environment,
-  };
-
-  return {
-    version: "1",
-    agents: { [agentName]: agentDef },
-  };
-}
 
 function instructionFilesForFramework(args: {
   readonly content: string;
@@ -58,31 +34,6 @@ function instructionFilesForFramework(args: {
   return filenames.map((path) => {
     return { path, content: args.content };
   });
-}
-
-function sortObjectKeys(obj: unknown): unknown {
-  if (obj === null || typeof obj !== "object") {
-    return obj;
-  }
-  if (Array.isArray(obj)) {
-    return obj.map(sortObjectKeys);
-  }
-  const sorted: Record<string, unknown> = {};
-  const keys = Object.keys(obj as Record<string, unknown>).sort();
-  for (const key of keys) {
-    sorted[key] = sortObjectKeys((obj as Record<string, unknown>)[key]);
-  }
-  return sorted;
-}
-
-/**
- * SHA-256 of the canonical-JSON form of `content`. This matches the compose
- * create service so API-authored compose versions use the same content
- * addressing.
- */
-function computeComposeVersionId(content: Record<string, unknown>): string {
-  const canonical = JSON.stringify(sortObjectKeys(content));
-  return createHash("sha256").update(canonical).digest("hex");
 }
 
 type RecomposeAgentIfStaleResult =

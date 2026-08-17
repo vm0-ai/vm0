@@ -47,7 +47,7 @@ const download$ = command(async ({ get }, signal: AbortSignal) => {
       and(
         eq(agentphoneMessages.agentphoneMessageId, query.file_id),
         isNotNull(agentphoneMessages.mediaUrl),
-        eq(agentphoneUserLinks.vm0UserId, auth.userId),
+        eq(agentphoneUserLinks.userId, auth.userId),
         eq(agentphoneUserLinks.orgId, auth.orgId),
       ),
     )

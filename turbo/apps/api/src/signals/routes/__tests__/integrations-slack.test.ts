@@ -90,7 +90,7 @@ async function seedSlackFixture(
     team_id: workspaceId,
     slack_user_id: "U_USER123",
     org_id: orgId,
-    vm0_user_id: userId,
+    user_id: userId,
     workspace_name: "Test Workspace",
     bot_user_id: "U_BOT123",
     bot_scopes: null,
@@ -105,7 +105,7 @@ async function seedSlackFixture(
     throw new Error("Expected Slack fixture to include a default agent");
   }
   return {
-    userId: seeded.vm0_user_id,
+    userId: seeded.user_id,
     orgId: seeded.org_id,
     composeId: seeded.default_agent_id,
     workspaceId: seeded.team_id,
@@ -127,7 +127,7 @@ async function deleteSlackConnection(fixture: SlackFixture): Promise<void> {
   await postSlackState({
     team_id: fixture.workspaceId,
     org_id: fixture.orgId,
-    vm0_user_id: fixture.userId,
+    user_id: fixture.userId,
     delete_connection: true,
   });
 }
@@ -260,7 +260,7 @@ describe("GET /api/zero/integrations/slack", () => {
     async function seedEnvironmentVersion(): Promise<void> {
       await postSlackState({
         org_id: fixture.orgId,
-        vm0_user_id: fixture.userId,
+        user_id: fixture.userId,
         seed_default_agent: true,
         default_agent_name: "slack-bot",
         default_agent_display_name: "Slack Bot",
@@ -271,7 +271,7 @@ describe("GET /api/zero/integrations/slack", () => {
     async function seedUserSecret(name: string): Promise<void> {
       await postSlackState({
         org_id: fixture.orgId,
-        vm0_user_id: fixture.userId,
+        user_id: fixture.userId,
         seed_secret_names: [name],
       });
     }
@@ -282,7 +282,7 @@ describe("GET /api/zero/integrations/slack", () => {
     ): Promise<void> {
       await postSlackState({
         org_id: fixture.orgId,
-        vm0_user_id: fixture.userId,
+        user_id: fixture.userId,
         seed_variables: { [name]: value },
       });
     }
@@ -386,7 +386,7 @@ async function findSlackConnection(args: {
 }): Promise<TestSlackStateResponse["connections"][number] | undefined> {
   const state = await getSlackState(args.workspaceId);
   return state.connections.find((connection) => {
-    return connection.vm0UserId === args.userId;
+    return connection.userId === args.userId;
   });
 }
 
@@ -440,7 +440,7 @@ describe("DELETE /api/zero/integrations/slack", () => {
             seedSlackOrgConnection$,
             {
               slackWorkspaceId: fixture.slackWorkspaceId,
-              vm0UserId: userId,
+              userId: userId,
             },
             context.signal,
           );
@@ -492,7 +492,7 @@ describe("DELETE /api/zero/integrations/slack", () => {
       seedSlackOrgConnection$,
       {
         slackWorkspaceId: seeded.workspaceId,
-        vm0UserId: otherUserId,
+        userId: otherUserId,
       },
       context.signal,
     );
@@ -582,7 +582,7 @@ describe("DELETE /api/zero/integrations/slack?action=uninstall", () => {
       seedSlackOrgConnection$,
       {
         slackWorkspaceId: fixture.slackWorkspaceId,
-        vm0UserId: userId,
+        userId: userId,
       },
       context.signal,
     );
@@ -590,7 +590,7 @@ describe("DELETE /api/zero/integrations/slack?action=uninstall", () => {
       seedSlackOrgConnection$,
       {
         slackWorkspaceId: fixture.slackWorkspaceId,
-        vm0UserId: `user_${randomUUID()}`,
+        userId: `user_${randomUUID()}`,
       },
       context.signal,
     );

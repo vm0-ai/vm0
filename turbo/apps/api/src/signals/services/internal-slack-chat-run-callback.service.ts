@@ -168,7 +168,7 @@ async function loadSlackChatDeliveryContext(
           payload.routeThreadTs ?? payload.threadTs,
         ),
         eq(slackChatThreadRoutes.userId, run.userId),
-        eq(slackOrgConnections.vm0UserId, run.userId),
+        eq(slackOrgConnections.userId, run.userId),
         eq(slackOrgInstallations.orgId, run.orgId),
       ),
     )
@@ -371,7 +371,7 @@ export async function deliverSlackChatAdmissionFailure(
             args.routeThreadTs ?? args.threadTs,
           ),
           eq(slackChatThreadRoutes.userId, args.userId),
-          eq(slackOrgConnections.vm0UserId, args.userId),
+          eq(slackOrgConnections.userId, args.userId),
           eq(slackOrgInstallations.orgId, args.orgId),
         ),
       )

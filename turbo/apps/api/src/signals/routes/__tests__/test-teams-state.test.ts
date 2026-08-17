@@ -121,7 +121,7 @@ async function seedTeamsFixture(
     teamsUserId,
     teamsAadObjectId,
     orgId: body.org_id,
-    userId: body.vm0_user_id,
+    userId: body.user_id,
     connectionId: body.connection_id,
     defaultAgentId: body.default_agent_id,
   };
@@ -245,7 +245,7 @@ describe("GET /api/test/teams-state", () => {
           id: fixture.connectionId,
           teamsUserId: fixture.teamsUserId,
           teamsAadObjectId: fixture.teamsAadObjectId,
-          vm0UserId: fixture.userId,
+          userId: fixture.userId,
           dmWelcomeSent: false,
         }),
       ]),

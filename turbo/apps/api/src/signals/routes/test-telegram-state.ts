@@ -127,7 +127,7 @@ function loadLinks(db: ReadonlyDb, botId: string) {
       id: telegramUserLinks.id,
       telegramUserId: telegramUserLinks.telegramUserId,
       telegramUsername: telegramUserLinks.telegramUsername,
-      vm0UserId: telegramUserLinks.vm0UserId,
+      userId: telegramUserLinks.userId,
       dmWelcomeSent: telegramUserLinks.dmWelcomeSent,
       createdAt: telegramUserLinks.createdAt,
     })
@@ -332,7 +332,7 @@ async function insertTelegramLinkIfMissing(
   params: {
     readonly installationId: string;
     readonly telegramUserId: string;
-    readonly vm0UserId: string;
+    readonly userId: string;
   },
   signal: AbortSignal,
 ): Promise<string | null> {
@@ -356,7 +356,8 @@ async function insertTelegramLinkIfMissing(
     .values({
       installationId: params.installationId,
       telegramUserId: params.telegramUserId,
-      vm0UserId: params.vm0UserId,
+      userId: params.userId,
+      legacyUserId: params.userId,
     })
     .onConflictDoNothing()
     .returning({ id: telegramUserLinks.id });
@@ -587,7 +588,8 @@ async function seedOfficialUserLinkForAction(
     .insert(telegramOfficialUserLinks)
     .values({
       orgId: required.org_id!,
-      vm0UserId: required.user_id!,
+      userId: required.user_id!,
+      legacyUserId: required.user_id!,
       telegramUserId: required.telegram_user_id!,
       telegramUsername: readActionNullableString(body, "telegram_username"),
       telegramDisplayName: readActionNullableString(
@@ -608,11 +610,11 @@ async function seedUserLinkForAction(
   const required = requiredActionStrings(body, [
     "installation_id",
     "telegram_user_id",
-    "vm0_user_id",
+    "user_id",
   ]);
   if (!required) {
     return actionBadRequest(
-      "installation_id, telegram_user_id, and vm0_user_id are required",
+      "installation_id, telegram_user_id, and user_id are required",
     );
   }
   const [row] = await db
@@ -620,7 +622,8 @@ async function seedUserLinkForAction(
     .values({
       installationId: required.installation_id!,
       telegramUserId: required.telegram_user_id!,
-      vm0UserId: required.vm0_user_id!,
+      userId: required.user_id!,
+      legacyUserId: required.user_id!,
       telegramUsername: readActionNullableString(body, "telegram_username"),
       telegramDisplayName: readActionNullableString(
         body,
@@ -649,12 +652,13 @@ async function seedUserAgentPreferenceForAction(
     .insert(telegramUserAgentPreferences)
     .values({
       orgId: required.org_id!,
-      vm0UserId: required.user_id!,
+      userId: required.user_id!,
+      legacyUserId: required.user_id!,
       selectedComposeId: required.compose_id!,
     })
     .onConflictDoUpdate({
       target: [
-        telegramUserAgentPreferences.vm0UserId,
+        telegramUserAgentPreferences.userId,
         telegramUserAgentPreferences.orgId,
       ],
       set: { selectedComposeId: required.compose_id! },
@@ -937,7 +941,8 @@ async function seedTelegramPostLinks(
       telegramUserId,
       telegramUsername: "alice",
       telegramDisplayName: "Alice",
-      vm0UserId: seed.userId,
+      userId: seed.userId,
+      legacyUserId: seed.userId,
     });
     signal.throwIfAborted();
   }
@@ -945,7 +950,8 @@ async function seedTelegramPostLinks(
   if (readActionBoolean(body, "seed_official_link", false)) {
     await db.insert(telegramOfficialUserLinks).values({
       orgId: seed.orgId,
-      vm0UserId: seed.userId,
+      userId: seed.userId,
+      legacyUserId: seed.userId,
       telegramUserId: "99002",
       telegramUsername: "bob",
       telegramDisplayName: "Bob",
@@ -1209,7 +1215,7 @@ async function getTelegramLinkIdForAction(
       .where(
         and(
           eq(telegramOfficialUserLinks.orgId, required.org_id!),
-          eq(telegramOfficialUserLinks.vm0UserId, required.user_id!),
+          eq(telegramOfficialUserLinks.userId, required.user_id!),
         ),
       )
       .limit(1);
@@ -1227,7 +1233,7 @@ async function getTelegramLinkIdForAction(
     .where(
       and(
         eq(telegramUserLinks.installationId, required.installation_id!),
-        eq(telegramUserLinks.vm0UserId, required.user_id!),
+        eq(telegramUserLinks.userId, required.user_id!),
       ),
     )
     .limit(1);
@@ -1524,7 +1530,8 @@ async function seedPendingUserLinkForAction(
     telegramUserId: "pending",
     telegramUsername: null,
     telegramDisplayName: null,
-    vm0UserId: required.user_id!,
+    userId: required.user_id!,
+    legacyUserId: required.user_id!,
   });
   signal.throwIfAborted();
   return actionOk();
@@ -1930,7 +1937,7 @@ const postTestTelegramState$ = command(
             {
               installationId: botId,
               telegramUserId,
-              vm0UserId: userId,
+              userId: userId,
             },
             signal,
           );
@@ -1942,7 +1949,7 @@ const postTestTelegramState$ = command(
         ok: true,
         bot_id: botId,
         org_id: orgId,
-        vm0_user_id: userId,
+        user_id: userId,
         user_link_id: linkId,
         default_agent_id: defaultAgent.composeId,
       },

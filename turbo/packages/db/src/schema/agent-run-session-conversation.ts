@@ -20,6 +20,7 @@ import { chatThreads } from "./chat-thread";
 import { threadGoals } from "./thread-goal";
 import { workflowAutomations } from "./workflow";
 import type {
+  AgentRunLaunchSnapshot,
   AgentRunResult,
   AgentRunSecretNames,
   AgentRunStorageMounts,
@@ -62,6 +63,7 @@ export const agentRuns = pgTable(
     secretNames: jsonb("secret_names").$type<AgentRunSecretNames>(),
     // Canonical resolved mounts used by new run writers.
     storageMounts: jsonb("storage_mounts").$type<AgentRunStorageMounts>(),
+    launchSnapshot: jsonb("launch_snapshot").$type<AgentRunLaunchSnapshot>(),
     sandboxId: varchar("sandbox_id", { length: 255 }),
     // One of: "reused" | "featureDisabled" | "noSessionId" | "noReuseKey" |
     // "poolMiss" | "profileMismatch" | "deviceLimitMismatch" | "unparkFailed".
@@ -192,6 +194,35 @@ export const agentRuns = pgTable(
           ) OR (
             ${table.triggerSource} IS NOT NULL AND
             ${table.autonomyBudget} IS NOT NULL
+          )
+        )`,
+      ),
+      check(
+        "agent_runs_launch_snapshot_check",
+        sql`(
+          ${table.launchSnapshot} IS NULL OR (
+            jsonb_typeof(${table.launchSnapshot}) = 'object' AND
+            ${table.launchSnapshot} ?& ARRAY[
+              'schemaVersion',
+              'framework',
+              'runnerProfile'
+            ] AND
+            (
+              ${table.launchSnapshot} -
+              'schemaVersion' -
+              'framework' -
+              'runnerProfile'
+            ) = '{}'::jsonb AND
+            ${table.launchSnapshot} -> 'schemaVersion' = '1'::jsonb AND
+            jsonb_typeof(${table.launchSnapshot} -> 'framework') = 'string' AND
+            ${table.launchSnapshot} ->> 'framework' = ANY (
+              ARRAY['claude-code', 'codex', 'pi']
+            ) AND
+            jsonb_typeof(
+              ${table.launchSnapshot} -> 'runnerProfile'
+            ) = 'string' AND
+            char_length(${table.launchSnapshot} ->> 'runnerProfile') >= 1 AND
+            char_length(${table.launchSnapshot} ->> 'runnerProfile') <= 255
           )
         )`,
       ),

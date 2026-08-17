@@ -30,6 +30,7 @@ import {
   getOAuthCanonicalRedirectUrl,
   getOAuthWebOrigin,
 } from "../../lib/oauth-origin";
+import { resolveIntegrationUserId } from "../../lib/integration-user-id-compat";
 
 const L = logger("SlackOAuth");
 const SLACK_OAUTH_URL = "https://slack.com/oauth/v2/authorize";
@@ -40,7 +41,7 @@ type SlackInstallation = typeof slackOrgInstallations.$inferSelect;
 
 interface OAuthState {
   readonly orgId: string | null;
-  readonly vm0UserId: string | null;
+  readonly userId: string | null;
   readonly flow: "install" | "connect";
   readonly reinstall: boolean;
   readonly prompt: string | null;
@@ -95,11 +96,11 @@ function optionalBoolean(value: unknown): boolean {
   return value === true;
 }
 
-function parseOAuthState(state: string | undefined): OAuthState {
+function parseOAuthState(state: string | undefined): OAuthState | null {
   if (!state) {
     return {
       orgId: null,
-      vm0UserId: null,
+      userId: null,
       flow: "install",
       reinstall: false,
       prompt: null,
@@ -110,7 +111,7 @@ function parseOAuthState(state: string | undefined): OAuthState {
   if (typeof parsed !== "object" || parsed === null) {
     return {
       orgId: null,
-      vm0UserId: null,
+      userId: null,
       flow: "install",
       reinstall: false,
       prompt: null,
@@ -118,9 +119,18 @@ function parseOAuthState(state: string | undefined): OAuthState {
   }
 
   const record = parsed as Record<string, unknown>;
+  const userId = resolveIntegrationUserId(
+    optionalString(record.userId),
+    // Old web/app OAuth state fallback (observed maximum: ~2 days).
+    // Remove in #27602 after legacy producers and callbacks have drained.
+    optionalString(record.vm0UserId),
+  );
+  if (!userId.ok) {
+    return null;
+  }
   return {
     orgId: optionalString(record.orgId),
-    vm0UserId: optionalString(record.vm0UserId),
+    userId: userId.userId,
     flow: record.flow === "connect" ? "connect" : "install",
     reinstall: optionalBoolean(record.reinstall),
     prompt: optionalString(record.prompt),
@@ -156,17 +166,21 @@ const installOauth$ = computed((get) => {
   }
 
   const query = get(queryOf(zeroSlackOauthContract.install));
+  const userId = resolveIntegrationUserId(query.userId, query.vm0UserId);
+  if (!userId.ok) {
+    return failedRedirect("Invalid OAuth identity.");
+  }
   const stateObj: {
     orgId?: string;
-    vm0UserId?: string;
+    userId?: string;
     reinstall?: boolean;
     prompt?: string;
   } = {};
   if (query.orgId) {
     stateObj.orgId = query.orgId;
   }
-  if (query.vm0UserId) {
-    stateObj.vm0UserId = query.vm0UserId;
+  if (userId.userId) {
+    stateObj.userId = userId.userId;
   }
   if (query.reinstall === "1") {
     stateObj.reinstall = true;
@@ -201,8 +215,12 @@ const connectOauth$ = command(async ({ get }, signal: AbortSignal) => {
   }
 
   const query = get(queryOf(zeroSlackOauthContract.connect));
-  if (!query.orgId || !query.vm0UserId) {
-    return jsonErrorResponse("Missing orgId or vm0UserId", 400);
+  const userId = resolveIntegrationUserId(query.userId, query.vm0UserId);
+  if (!userId.ok) {
+    return jsonErrorResponse("Conflicting userId values", 400);
+  }
+  if (!query.orgId || !userId.userId) {
+    return jsonErrorResponse("Missing orgId or userId", 400);
   }
 
   const db = get(db$);
@@ -222,12 +240,12 @@ const connectOauth$ = command(async ({ get }, signal: AbortSignal) => {
 
   const stateObj: {
     orgId: string;
-    vm0UserId: string;
+    userId: string;
     flow: "connect";
     prompt?: string;
   } = {
     orgId: query.orgId,
-    vm0UserId: query.vm0UserId,
+    userId: userId.userId,
     flow: "connect",
   };
   if (query.prompt) {
@@ -293,7 +311,7 @@ const handlePlatformInstall$ = command(
     },
     signal: AbortSignal,
   ): Promise<Response> => {
-    if (!args.state.orgId || !args.state.vm0UserId) {
+    if (!args.state.orgId || !args.state.userId) {
       return redirectResponse(
         appUrl(
           `/settings/slack?w=${encodeURIComponent(args.installation.slackWorkspaceId)}&u=${encodeURIComponent(args.authedUserId)}`,
@@ -304,7 +322,7 @@ const handlePlatformInstall$ = command(
     const member = await set(
       getMemberRoleAndUpdateCache$,
       args.state.orgId,
-      args.state.vm0UserId,
+      args.state.userId,
       signal,
     );
     signal.throwIfAborted();
@@ -325,7 +343,8 @@ const handlePlatformInstall$ = command(
       .values({
         slackUserId: args.authedUserId,
         slackWorkspaceId: args.installation.slackWorkspaceId,
-        vm0UserId: args.state.vm0UserId,
+        userId: args.state.userId,
+        legacyUserId: args.state.userId,
       })
       .onConflictDoNothing();
     signal.throwIfAborted();
@@ -336,7 +355,7 @@ const handlePlatformInstall$ = command(
         installation: args.installation,
         slackUserId: args.authedUserId,
         orgId: args.state.orgId,
-        userId: args.state.vm0UserId,
+        userId: args.state.userId,
         pendingPrompt: args.state.prompt,
       },
       signal,
@@ -389,11 +408,11 @@ const handleInstallCallback$ = command(
 
     const writeDb = set(writeDb$);
     const featureSwitchContext =
-      args.state.orgId && args.state.vm0UserId
+      args.state.orgId && args.state.userId
         ? await loadUserFeatureSwitchContext(
             writeDb,
             args.state.orgId,
-            args.state.vm0UserId,
+            args.state.userId,
           )
         : {};
     const encryptedBotToken = await encryptPersistentSecretValue(
@@ -441,14 +460,14 @@ const handleInstallCallback$ = command(
         .where(eq(slackOrgInstallations.slackWorkspaceId, oauthResult.teamId));
       signal.throwIfAborted();
     } else {
-      const isPlatformFlow = Boolean(args.state.orgId && args.state.vm0UserId);
+      const isPlatformFlow = Boolean(args.state.orgId && args.state.userId);
       await writeDb.insert(slackOrgInstallations).values({
         slackWorkspaceId: oauthResult.teamId,
         slackWorkspaceName: oauthResult.teamName,
         orgId: isPlatformFlow ? args.state.orgId : null,
         encryptedBotToken,
         botUserId: oauthResult.botUserId,
-        installedByUserId: isPlatformFlow ? args.state.vm0UserId : null,
+        installedByUserId: isPlatformFlow ? args.state.userId : null,
         botScopes,
       });
       signal.throwIfAborted();
@@ -465,7 +484,7 @@ const handleInstallCallback$ = command(
       throw new Error("Slack installation upsert did not return a row");
     }
 
-    if (args.state.orgId && args.state.vm0UserId) {
+    if (args.state.orgId && args.state.userId) {
       return await set(
         handlePlatformInstall$,
         {
@@ -501,7 +520,7 @@ const handleConnectCallback$ = command(
     },
     signal: AbortSignal,
   ): Promise<Response> => {
-    if (!args.state.orgId || !args.state.vm0UserId) {
+    if (!args.state.orgId || !args.state.userId) {
       return settingsErrorRedirect("Invalid connect state.");
     }
 
@@ -547,7 +566,7 @@ const handleConnectCallback$ = command(
     const member = await set(
       getMemberRoleAndUpdateCache$,
       args.state.orgId,
-      args.state.vm0UserId,
+      args.state.userId,
       signal,
     );
     signal.throwIfAborted();
@@ -559,7 +578,7 @@ const handleConnectCallback$ = command(
     const connectionResult = await set(
       connectSlackWorkspace$,
       {
-        userId: args.state.vm0UserId,
+        userId: args.state.userId,
         orgId: args.state.orgId,
         orgRole: member.role,
         workspaceId: installation.slackWorkspaceId,
@@ -586,7 +605,7 @@ const handleConnectCallback$ = command(
         installation,
         slackUserId: oauthResult.authedUserId,
         orgId: args.state.orgId,
-        userId: args.state.vm0UserId,
+        userId: args.state.userId,
         pendingPrompt: args.state.prompt,
       },
       signal,
@@ -623,6 +642,9 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const state = parseOAuthState(query.state);
+  if (!state) {
+    return failedRedirect("Invalid OAuth state.");
+  }
   if (state.flow === "connect") {
     return await set(
       handleConnectCallback$,

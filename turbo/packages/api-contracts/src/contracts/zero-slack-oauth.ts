@@ -8,6 +8,9 @@ const jsonErrorSchema = z.object({ error: z.string() });
 
 export const zeroSlackOauthInstallQuerySchema = z.object({
   orgId: z.string().optional(),
+  userId: z.string().optional(),
+  // Old web/app OAuth fallback (observed maximum: ~2 days).
+  // Remove in #27602 after legacy query inputs have drained.
   vm0UserId: z.string().optional(),
   reinstall: z.string().optional(),
   prompt: z.string().optional(),
@@ -15,6 +18,9 @@ export const zeroSlackOauthInstallQuerySchema = z.object({
 
 export const zeroSlackOauthConnectQuerySchema = z.object({
   orgId: z.string().optional(),
+  userId: z.string().optional(),
+  // Old web/app OAuth fallback (observed maximum: ~2 days).
+  // Remove in #27602 after legacy query inputs have drained.
   vm0UserId: z.string().optional(),
   prompt: z.string().optional(),
 });

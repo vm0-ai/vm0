@@ -123,7 +123,7 @@ async function loadSlackLaunchContext(
       slackOrgConnections,
       and(
         eq(slackOrgConnections.id, slackChatThreadRoutes.connectionId),
-        eq(slackOrgConnections.vm0UserId, args.userId),
+        eq(slackOrgConnections.userId, args.userId),
       ),
     )
     .innerJoin(

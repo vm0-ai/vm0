@@ -1,5 +1,44 @@
 # Changelog
 
+## [1.451.13](https://github.com/vm0-ai/vm0/compare/api-v1.451.12...api-v1.451.13) (2026-08-16)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/db bumped to 1.200.12
+
+## [1.451.12](https://github.com/vm0-ai/vm0/compare/api-v1.451.11...api-v1.451.12) (2026-08-16)
+
+
+### Refactoring
+
+* **compose:** add aggregate-only consolidation preflight ([#27617](https://github.com/vm0-ai/vm0/issues/27617)) ([99a515a](https://github.com/vm0-ai/vm0/commit/99a515aa702f44adbbe6a3f10391512f129890f8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/db bumped to 1.200.11
+
+## [1.451.11](https://github.com/vm0-ai/vm0/compare/api-v1.451.10...api-v1.451.11) (2026-08-16)
+
+
+### Refactoring
+
+* **identity:** switch integration ownership to user id ([#27618](https://github.com/vm0-ai/vm0/issues/27618)) ([1900732](https://github.com/vm0-ai/vm0/commit/1900732575de90a2e3a5169e819f6a9f60d025a2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.333.10
+    * @okouai/core bumped to 8.562.7
+    * @okouai/db bumped to 1.200.10
+
 ## [1.451.10](https://github.com/vm0-ai/vm0/compare/api-v1.451.9...api-v1.451.10) (2026-08-16)
 
 

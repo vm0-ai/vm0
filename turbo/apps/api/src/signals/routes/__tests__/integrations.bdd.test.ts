@@ -1105,7 +1105,7 @@ describe("INT-01: Slack integration and Slack app routes", () => {
     const slackInstall = await integrations.requestSlackOauthInstall(
       {
         orgId: admin.orgId ?? undefined,
-        vm0UserId: admin.userId,
+        userId: admin.userId,
         reinstall: "1",
         prompt: "x".repeat(700),
       },
@@ -1126,11 +1126,11 @@ describe("INT-01: Slack integration and Slack app routes", () => {
       [400],
     );
     expect(missingConnectParams.body).toStrictEqual({
-      error: "Missing orgId or vm0UserId",
+      error: "Missing orgId or userId",
     });
 
     const missingConnectInstall = await integrations.requestSlackOauthConnect(
-      { orgId: admin.orgId ?? "org_bdd_slack", vm0UserId: admin.userId },
+      { orgId: admin.orgId ?? "org_bdd_slack", userId: admin.userId },
       [404],
     );
     expect(missingConnectInstall.body).toStrictEqual({
@@ -1184,7 +1184,7 @@ describe("INT-01: Slack integration and Slack app routes", () => {
     const initialInstall = await integrations.requestSlackOauthInstall(
       {
         orgId,
-        vm0UserId: admin.userId,
+        userId: admin.userId,
         prompt: "install prompt",
       },
       [307],
@@ -1221,7 +1221,7 @@ describe("INT-01: Slack integration and Slack app routes", () => {
         code: "install-code",
         state: JSON.stringify({
           orgId,
-          vm0UserId: admin.userId,
+          userId: admin.userId,
           prompt: "install prompt",
         }),
       },
@@ -1273,7 +1273,7 @@ describe("INT-01: Slack integration and Slack app routes", () => {
     const connectStart = await integrations.requestSlackOauthConnect(
       {
         orgId,
-        vm0UserId: member.userId,
+        userId: member.userId,
         prompt: "p".repeat(700),
       },
       [307],
@@ -1291,7 +1291,7 @@ describe("INT-01: Slack integration and Slack app routes", () => {
     }
     expect(connectState).toMatchObject({
       orgId,
-      vm0UserId: member.userId,
+      userId: member.userId,
       flow: "connect",
     });
     expect(String(connectState.prompt ?? "")).toHaveLength(500);
@@ -1307,7 +1307,7 @@ describe("INT-01: Slack integration and Slack app routes", () => {
         code: "member-connect-code",
         state: JSON.stringify({
           orgId,
-          vm0UserId: member.userId,
+          userId: member.userId,
           flow: "connect",
           prompt: "member prompt",
         }),
@@ -1347,7 +1347,7 @@ describe("INT-01: Slack integration and Slack app routes", () => {
         code: "wrong-team-code",
         state: JSON.stringify({
           orgId,
-          vm0UserId: disconnectedMember.userId,
+          userId: disconnectedMember.userId,
           flow: "connect",
         }),
       },
@@ -5518,6 +5518,26 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     ).toBeTruthy();
     expect(install.headers.get("Cache-Control")).toBe("no-store");
 
+    const legacyInstall = await integrations.requestGithubOauthInstall(
+      { vm0UserId: "user_legacy_query" },
+      [307],
+    );
+    const legacyInstallState = JSON.parse(
+      new URL(legacyInstall.headers.get("location") ?? "").searchParams.get(
+        "state",
+      ) ?? "{}",
+    ) as Record<string, unknown>;
+    expect(legacyInstallState.userId).toBe("user_legacy_query");
+    expect(legacyInstallState).not.toHaveProperty("vm0UserId");
+
+    const conflictingInstall = await integrations.requestGithubOauthInstall(
+      { userId: "user_canonical", vm0UserId: "user_legacy" },
+      [307],
+    );
+    expect(conflictingInstall.headers.get("location") ?? "").toContain(
+      "Invalid%20OAuth%20identity",
+    );
+
     const admin = integrations.user();
     const orgId = admin.orgId;
     if (!orgId) {
@@ -5531,7 +5551,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     const nonAdminInstall = await integrations.requestGithubOauthInstall(
       {
         orgId,
-        vm0UserId: member.userId,
+        userId: member.userId,
       },
       [307],
     );
@@ -5725,7 +5745,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     const installWithState = await integrations.requestGithubOauthInstall(
       {
         orgId,
-        vm0UserId: admin.userId,
+        userId: admin.userId,
         composeId: agent.agentId,
       },
       [307],
@@ -5740,6 +5760,43 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     if (!isRecord(parsedSignedState)) {
       throw new Error("Expected signed GitHub state to be an object");
     }
+    const { userId: signedUserId, ...signedStateWithoutUserId } =
+      parsedSignedState;
+    if (typeof signedUserId !== "string") {
+      throw new Error("Expected signed GitHub state to contain userId");
+    }
+    const legacySignedState = JSON.stringify({
+      ...signedStateWithoutUserId,
+      vm0UserId: signedUserId,
+    });
+    const setupLegacyState = await integrations.requestGithubAppSetupCallback(
+      {
+        setup_action: "request",
+        state: legacySignedState,
+      },
+      [307],
+    );
+    expect(setupLegacyState.headers.get("location") ?? "").toContain(
+      "permission%20to%20install%20this%20GitHub%20App",
+    );
+
+    const conflictingSignedState = JSON.stringify({
+      ...parsedSignedState,
+      vm0UserId: "user_conflict",
+    });
+    const setupConflictingState =
+      await integrations.requestGithubAppSetupCallback(
+        {
+          installation_id: "12345",
+          setup_action: "install",
+          state: conflictingSignedState,
+        },
+        [307],
+      );
+    expect(setupConflictingState.headers.get("location") ?? "").toContain(
+      "Invalid%20OAuth%20state",
+    );
+
     const tamperedState = JSON.stringify({
       ...parsedSignedState,
       sig: "0".repeat(64),
@@ -5759,7 +5816,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     const installWithoutAgent = await integrations.requestGithubOauthInstall(
       {
         orgId,
-        vm0UserId: admin.userId,
+        userId: admin.userId,
       },
       [307],
     );

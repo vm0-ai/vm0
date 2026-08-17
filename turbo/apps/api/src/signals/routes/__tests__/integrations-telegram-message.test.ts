@@ -54,7 +54,7 @@ function zeroToken(args: {
 
 async function linkTelegramUser(values: {
   readonly installationId: string;
-  readonly vm0UserId: string;
+  readonly userId: string;
   readonly telegramUserId: string;
   readonly telegramUsername?: string | null;
   readonly telegramDisplayName?: string | null;
@@ -246,7 +246,7 @@ describe("POST /api/zero/integrations/telegram/message", () => {
     });
     await linkTelegramUser({
       installationId: fixture.telegramBotId,
-      vm0UserId: fixture.userId,
+      userId: fixture.userId,
       telegramUserId: "777000",
       telegramUsername: "ada_telegram",
       telegramDisplayName: "Ada Lovelace",
@@ -317,7 +317,7 @@ describe("POST /api/zero/integrations/telegram/message", () => {
     const fixture = await seedSendableContext({});
     await linkTelegramUser({
       installationId: fixture.telegramBotId,
-      vm0UserId: fixture.userId,
+      userId: fixture.userId,
       telegramUserId: "777001",
       telegramUsername: null,
       telegramDisplayName: "Ada Lovelace",

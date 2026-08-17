@@ -20,7 +20,7 @@ import {
   buildGithubUserConnectAuthorizationUrl,
   findGithubInstallationByInstallationId,
   getGithubOAuthAuthMethod,
-  linkGithubVm0User,
+  linkGithubUser,
   verifyGithubConnectSignature,
 } from "./github-oauth.service";
 import { connectorActionResolver } from "./connector-action-resolver.service";
@@ -52,7 +52,7 @@ async function githubInstallUrl(
 
   return await buildGithubAppInstallUrl({
     appSlug,
-    vm0UserId: args.userId,
+    userId: args.userId,
     orgId: args.orgId,
     composeId: composeId ?? undefined,
     origin: args.origin,
@@ -123,7 +123,7 @@ async function loadUserGithubLink(args: {
     .where(
       and(
         eq(githubUserLinks.installationId, args.installationId),
-        eq(githubUserLinks.vm0UserId, args.userId),
+        eq(githubUserLinks.userId, args.userId),
       ),
     )
     .limit(1);
@@ -190,11 +190,11 @@ export const connectGithubUser$ = command(
       return errorResponse(404, "No GitHub installation found", "NOT_FOUND");
     }
 
-    const githubUserId = await linkGithubVm0User(
+    const githubUserId = await linkGithubUser(
       {
         db,
         installRecordId: installation.id,
-        vm0UserId: auth.userId,
+        userId: auth.userId,
         knownGithubUserId: connectSignature?.githubUserId,
       },
       signal,
@@ -286,7 +286,7 @@ export const getGithubInstallation$ = command(
         ? ((await buildGithubUserConnectAuthorizationUrl(
             {
               db,
-              vm0UserId: auth.userId,
+              userId: auth.userId,
               orgId: auth.orgId,
               origin,
               authMethodId: resolvedMethod.authMethodId,

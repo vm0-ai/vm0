@@ -184,7 +184,11 @@ async function readAgentDigest(client: Client): Promise<string> {
   const result = await client.query<{ digest: string }>(
     `
       SELECT md5(COALESCE(
-        string_agg(to_jsonb("run")::text, '' ORDER BY "run"."id"),
+        string_agg(
+          (to_jsonb("run") - 'launch_snapshot')::text,
+          ''
+          ORDER BY "run"."id"
+        ),
         ''
       )) AS "digest"
       FROM "agent_runs" AS "run"

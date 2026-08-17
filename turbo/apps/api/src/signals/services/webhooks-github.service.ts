@@ -414,7 +414,7 @@ async function loadGithubChangedUserIds(
   signal: AbortSignal,
 ): Promise<readonly string[]> {
   const links = await args.db
-    .select({ userId: githubUserLinks.vm0UserId })
+    .select({ userId: githubUserLinks.userId })
     .from(githubUserLinks)
     .where(eq(githubUserLinks.installationId, args.installationId));
   signal.throwIfAborted();
