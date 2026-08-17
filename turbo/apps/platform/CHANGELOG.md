@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.766.0](https://github.com/vm0-ai/vm0/compare/app-v0.765.2...app-v0.766.0) (2026-08-17)
+
+
+### Features
+
+* **api:** add thread and member image model preferences ([#27776](https://github.com/vm0-ai/vm0/issues/27776)) ([d3b0c0e](https://github.com/vm0-ai/vm0/commit/d3b0c0e020d2e79e5c89c56e9feaf462f0b5d0a6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.338.0
+    * @okouai/core bumped to 8.565.3
+
 ## [0.765.2](https://github.com/vm0-ai/vm0/compare/app-v0.765.1...app-v0.765.2) (2026-08-17)
 
 
