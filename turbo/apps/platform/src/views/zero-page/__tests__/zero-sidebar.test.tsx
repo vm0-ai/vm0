@@ -14,6 +14,7 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { zeroAgentsByIdContract } from "@okouai/api-contracts/contracts/zero-agents";
+import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-preferences";
 import {
   zeroTeamContract,
   type TeamComposeItem,
@@ -35,6 +36,8 @@ import { pathname } from "../../../signals/location.ts";
 import {
   CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
   getChatThreadVirtualListScrollMargin,
+  pinnedAgentGridRows$,
+  setPinnedAgentGridRows$,
 } from "../../../signals/zero-page/zero-sidebar-state.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 import { mockChatEventRows } from "./chat-event-test-helpers.ts";
@@ -2859,6 +2862,71 @@ describe("zero sidebar", () => {
       expect(createdThreadId).toBeDefined();
       expect(pathname()).toBe(`/chats/${createdThreadId}`);
       expect(within(list).getByText("New chat")).toBeInTheDocument();
+    });
+  });
+
+  it("reserves cached pinned agent rows while preferences load", async () => {
+    const team = prepareAgentTeam();
+    const operationsAgentId = "c0000000-0000-4000-a000-000000000004";
+    context.mocks.data.team([
+      ...team,
+      {
+        ...team[1]!,
+        id: operationsAgentId,
+        displayName: "Operations Agent",
+        headVersionId: "version_4",
+      },
+    ]);
+    const preferencesGate = context.mocks.deferred<void>();
+    context.mocks.api(userPreferencesContract.get, async ({ respond }) => {
+      await preferencesGate.promise;
+      return respond(200, {
+        timezone: null,
+        locale: null,
+        supportedLocales: [
+          "en-US",
+          "pt-BR",
+          "ja-JP",
+          "ko-KR",
+          "id-ID",
+          "de-DE",
+          "es-ES",
+          "it-IT",
+          "fr-FR",
+          "hi-IN",
+        ],
+        pinnedAgentIds: [
+          RESEARCH_AGENT_ID,
+          SUPPORT_AGENT_ID,
+          operationsAgentId,
+        ],
+        sendMode: "enter",
+        morningBriefEnabled: false,
+        morningBriefNextRunAt: null,
+        captureNetworkBodiesRemaining: 0,
+      });
+    });
+    context.store.set(setPinnedAgentGridRows$, 2);
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    expect(within(grid).getAllByTestId("pinned-agent-skeleton")).toHaveLength(
+      7,
+    );
+
+    preferencesGate.resolve();
+
+    await waitFor(() => {
+      expect(within(grid).queryByTestId("pinned-agent-skeleton")).toBeNull();
+      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(4);
+      expect(context.store.get(pinnedAgentGridRows$)).toBe(2);
     });
   });
 
