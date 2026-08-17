@@ -61,6 +61,7 @@ const resolveSessionPromptFixturesRoute$ = command(
       sessionAction: "rotated",
       context: {
         generationTemplatePrompt: "",
+        videoRunOptions: null,
         computerUseHostDisplayName: null,
         agentRunSource: null,
       },

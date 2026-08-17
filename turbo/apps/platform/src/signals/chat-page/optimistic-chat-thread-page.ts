@@ -7,6 +7,7 @@ import {
 import {
   chatThreadModelSelectionContract,
   chatThreadsContract,
+  type ChatRunVideoOptionsRequest,
   type GenerationTemplateRequest,
   type ResolvedAttachFile,
   type UserMessageDocument,
@@ -83,6 +84,7 @@ interface SendNewThreadMessageRequest {
   computerUseHostId?: string | null;
   cloudBrowserEnabled?: boolean;
   videoModel?: VideoModel;
+  videoRunOptions?: ChatRunVideoOptionsRequest;
   routeSearchParams?: URLSearchParams;
   forward?: ChatForwardContext;
   onOptimisticSend?: () => void;
@@ -166,6 +168,7 @@ function newThreadSendBody({
   userMessage,
   computerUseHostId,
   cloudBrowserEnabled,
+  videoRunOptions,
   sourceRunId,
 }: {
   agentId: string;
@@ -178,11 +181,13 @@ function newThreadSendBody({
   userMessage: UserMessageDocument;
   computerUseHostId?: string | null;
   cloudBrowserEnabled?: boolean;
+  videoRunOptions?: ChatRunVideoOptionsRequest;
   sourceRunId?: string;
 }) {
   const runOptions = runOptionsFromModelProviderSelection(
     modelSelection,
     codexFastModeEnabled,
+    videoRunOptions,
   );
   return {
     agentId,
@@ -489,6 +494,18 @@ export const createNewChatThread$ = command(
   },
 );
 
+/** The thread row, created alongside the send it is about to carry. */
+async function createNewThreadRecord(
+  args: Parameters<typeof createChatThread>[0],
+  signal: AbortSignal,
+): Promise<void> {
+  await createChatThread(args, signal);
+  L.debug("sendNewThreadMessage$ POST chat-threads 201", {
+    threadId: args.clientThreadId,
+  });
+  signal.throwIfAborted();
+}
+
 const sendNewThreadMessage$ = command(
   async (
     { get, set },
@@ -575,22 +592,18 @@ const sendNewThreadMessage$ = command(
       : set(clearAgentDraftById$, agentId, signal);
     const createClient = get(zeroClient$);
     L.debug("sendNewThreadMessage$ POST chat-threads start", { threadId });
-    const createResult = (async (): Promise<void> => {
-      await createChatThread(
-        {
-          createClient,
-          agentId,
-          title: undefined,
-          clientThreadId: threadId,
-          eventId: chatThreadEventId,
-          modelSelection: resolvedModelSelection,
-          videoModel,
-        },
-        signal,
-      );
-      L.debug("sendNewThreadMessage$ POST chat-threads 201", { threadId });
-      signal.throwIfAborted();
-    })();
+    const createResult = createNewThreadRecord(
+      {
+        createClient,
+        agentId,
+        title: undefined,
+        clientThreadId: threadId,
+        eventId: chatThreadEventId,
+        modelSelection: resolvedModelSelection,
+        videoModel,
+      },
+      signal,
+    );
     const sendBody = newThreadSendBody({
       agentId,
       threadId,
@@ -603,6 +616,9 @@ const sendNewThreadMessage$ = command(
       userMessage: annotatedUserMessage,
       computerUseHostId,
       cloudBrowserEnabled,
+      // Gated with the control that produces them, like the pin above.
+      videoRunOptions:
+        videoModel === undefined ? undefined : request.videoRunOptions,
       sourceRunId: request.forward?.runId,
     });
     const sendResult = (async (): Promise<SendNewThreadMessageResult> => {
