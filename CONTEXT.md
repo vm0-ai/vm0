@@ -26,3 +26,12 @@ rules as a newer message.
 
 The best-effort recent chat context supplied automatically when a new session
 starts. It is distinct from explicit retrieval of a thread's complete history.
+
+## Restricted explicit content
+
+Content intended for sexual arousal, sexual depictions involving minors,
+graphic violence or gore, or instructions or encouragement for suicide or
+self-harm. It excludes non-graphic news, medical, educational, historical,
+safety, moderation, and ordinary fictional discussion.
+
+_Avoid_: 18+ content, adult content

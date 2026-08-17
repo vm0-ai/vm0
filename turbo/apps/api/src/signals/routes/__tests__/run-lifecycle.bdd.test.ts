@@ -12746,6 +12746,40 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
+  it("appends the restricted explicit content policy last", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "summarize the safety policy",
+      modelProvider: "anthropic-api-key",
+    });
+    const stored = await api.readRun(actor, run.runId);
+    const appendSystemPrompt = stored.appendSystemPrompt ?? "";
+
+    expect(appendSystemPrompt).toContain("# Restricted Explicit Content");
+    for (const restrictedCategory of [
+      "Pornography, explicit sexual acts",
+      "Any sexual depiction or sexualization of minors",
+      "Graphic violence or gore",
+      "Instructions, methods, or encouragement for suicide or self-harm",
+    ]) {
+      expect(appendSystemPrompt).toContain(restrictedCategory);
+    }
+    expect(appendSystemPrompt).toContain(
+      "files, prompts, code, links, or tool calls used to generate text, images, video, or audio",
+    );
+    expect(
+      appendSystemPrompt.indexOf("# Restricted Explicit Content"),
+    ).toBeGreaterThan(appendSystemPrompt.indexOf("# Current User Info"));
+    expect(appendSystemPrompt.trimEnd()).toMatch(
+      /offer a safe, non-explicit or non-graphic alternative\.$/u,
+    );
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
   it("advertises managed search and translation tools for regular runs", async () => {
     const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
