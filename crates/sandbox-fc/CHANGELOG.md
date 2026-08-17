@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.222](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.221...sandbox-fc-v0.37.222) (2026-08-17)
+
+
+### Refactoring
+
+* **sandbox-fc:** use upstream abort-on-drop handle ([#27638](https://github.com/vm0-ai/vm0/issues/27638)) ([a345549](https://github.com/vm0-ai/vm0/commit/a34554988eaebfc2c3a8646620263e5181f93498))
+
 ## [0.37.221](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.220...sandbox-fc-v0.37.221) (2026-08-16)
 
 
