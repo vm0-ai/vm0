@@ -11,6 +11,7 @@ import {
 import { replayChatThreadEvents } from "@okouai/core/chat-thread-event-replay";
 import { avatarTemplateStylePresetId } from "@okouai/core/avatar-template";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { DEFAULT_IMAGE_MODEL } from "@okouai/core/image-model-catalog";
 import { DEFAULT_VIDEO_MODEL } from "@okouai/core/video-model-catalog";
 import {
   chatEventsContract,
@@ -64,6 +65,12 @@ import {
   readRunVideoModelFixture,
   setOrgMemberVideoModelFixture,
 } from "../../../test-fixtures/run-video-model";
+import {
+  readImageModelRunChatThreadIdFixture,
+  readRunImageModelFixture,
+  setChatThreadImageModelFixture,
+  setOrgMemberImageModelFixture,
+} from "../../../test-fixtures/run-image-model";
 import {
   createBddApi,
   expectApiError,
@@ -10962,5 +10969,266 @@ describe("CHAT-02: run video model snapshot", () => {
       readRunVideoModelFixture(withMemberDefault.runId),
     ).resolves.toBe("MiniMax-H3");
     await cancelChatRun(actor, withMemberDefault.runId);
+  }, 90_000);
+});
+
+async function imageModelSnapshotActor(args: {
+  readonly selectionEnabled: boolean;
+}): Promise<{
+  readonly actor: ApiTestUser;
+  readonly agentId: string;
+  readonly orgId: string;
+}> {
+  const { actor, agentId } = await entitledChatActor();
+  const orgId = actor.orgId;
+  if (!orgId) {
+    throw new Error("Expected an entitled chat actor to own an org");
+  }
+  await updateFeatureSwitchesForUser(
+    context,
+    { ...actor, orgId },
+    { [FeatureSwitchKey.ImageModelSelection]: args.selectionEnabled },
+  );
+  return { actor, agentId, orgId };
+}
+
+describe("CHAT-02: run image model snapshot", () => {
+  it("keeps the run snapshot null while image model selection is disabled", async () => {
+    const { actor, agentId, orgId } = await imageModelSnapshotActor({
+      selectionEnabled: false,
+    });
+
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "image snapshot stays dormant for a new thread",
+    });
+    await expect(readRunImageModelFixture(anchor.runId)).resolves.toBeNull();
+    await cancelChatRun(actor, anchor.runId);
+
+    await setOrgMemberImageModelFixture({
+      orgId,
+      userId: actor.userId,
+      selectedImageModel: "gpt-image-2",
+    });
+    await setChatThreadImageModelFixture(anchor.threadId, "fal-ai/qwen-image");
+    const continued = await sendChatRun(actor, {
+      agentId,
+      threadId: anchor.threadId,
+      prompt: "image snapshot stays dormant for a continued thread",
+    });
+    await expect(readRunImageModelFixture(continued.runId)).resolves.toBeNull();
+    await cancelChatRun(actor, continued.runId);
+  }, 90_000);
+
+  it("resolves thread, member, and global image defaults into stable snapshots", async () => {
+    const { actor, agentId, orgId } = await imageModelSnapshotActor({
+      selectionEnabled: true,
+    });
+
+    const globalDefault = await sendChatRun(actor, {
+      agentId,
+      prompt: "image model comes from the vm0 global default",
+    });
+    await expect(readRunImageModelFixture(globalDefault.runId)).resolves.toBe(
+      DEFAULT_IMAGE_MODEL,
+    );
+    await cancelChatRun(actor, globalDefault.runId);
+
+    await setOrgMemberImageModelFixture({
+      orgId,
+      userId: actor.userId,
+      selectedImageModel: "fal-ai/qwen-image",
+    });
+    const memberDefault = await sendChatRun(actor, {
+      agentId,
+      threadId: globalDefault.threadId,
+      prompt: "image model comes from the member default",
+    });
+    await expect(readRunImageModelFixture(memberDefault.runId)).resolves.toBe(
+      "fal-ai/qwen-image",
+    );
+    await cancelChatRun(actor, memberDefault.runId);
+
+    const initialThreadPin = "fal-ai/bytedance/seedream/v4/text-to-image";
+    await setChatThreadImageModelFixture(
+      globalDefault.threadId,
+      initialThreadPin,
+    );
+    const threadPinned = await sendChatRun(actor, {
+      agentId,
+      threadId: globalDefault.threadId,
+      prompt: "image model comes from the thread pin",
+    });
+    await expect(readRunImageModelFixture(threadPinned.runId)).resolves.toBe(
+      initialThreadPin,
+    );
+
+    const nextThreadPin = "fal-ai/nano-banana-2";
+    await setChatThreadImageModelFixture(globalDefault.threadId, nextThreadPin);
+    await expect(readRunImageModelFixture(threadPinned.runId)).resolves.toBe(
+      initialThreadPin,
+    );
+    await cancelChatRun(actor, threadPinned.runId);
+
+    const rePinned = await sendChatRun(actor, {
+      agentId,
+      threadId: globalDefault.threadId,
+      prompt: "the next run sees the updated image model pin",
+    });
+    await expect(readRunImageModelFixture(rePinned.runId)).resolves.toBe(
+      nextThreadPin,
+    );
+    await cancelChatRun(actor, rePinned.runId);
+  }, 90_000);
+
+  it("falls through image model IDs that the catalog no longer supports", async () => {
+    const { actor, agentId, orgId } = await imageModelSnapshotActor({
+      selectionEnabled: true,
+    });
+    const retiredImageModel = "fal-ai/retired-image-model";
+
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "anchor run for retired image model storage",
+    });
+    await cancelChatRun(actor, anchor.runId);
+
+    await setOrgMemberImageModelFixture({
+      orgId,
+      userId: actor.userId,
+      selectedImageModel: "gpt-image-2",
+    });
+    await setChatThreadImageModelFixture(anchor.threadId, retiredImageModel);
+    const retiredThreadPin = await sendChatRun(actor, {
+      agentId,
+      threadId: anchor.threadId,
+      prompt: "retired thread image model falls through to the member",
+    });
+    await expect(
+      readRunImageModelFixture(retiredThreadPin.runId),
+    ).resolves.toBe("gpt-image-2");
+    await cancelChatRun(actor, retiredThreadPin.runId);
+
+    await setOrgMemberImageModelFixture({
+      orgId,
+      userId: actor.userId,
+      selectedImageModel: retiredImageModel,
+    });
+    const retiredEverywhere = await sendChatRun(actor, {
+      agentId,
+      threadId: anchor.threadId,
+      prompt: "retired image defaults fall through to the vm0 default",
+    });
+    await expect(
+      readRunImageModelFixture(retiredEverywhere.runId),
+    ).resolves.toBe(DEFAULT_IMAGE_MODEL);
+    await cancelChatRun(actor, retiredEverywhere.runId);
+  }, 90_000);
+
+  it("persists the image snapshot when dispatch fails before runner start", async () => {
+    const { actor, agentId, orgId } = await imageModelSnapshotActor({
+      selectionEnabled: true,
+    });
+    await setOrgMemberImageModelFixture({
+      orgId,
+      userId: actor.userId,
+      selectedImageModel: "gpt-image-2",
+    });
+    mockOptionalEnv("RUNNER_DEFAULT_GROUP", undefined);
+
+    const sent = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        prompt: "image snapshot survives pre-runner dispatch failure",
+        clientEventId: randomUUID(),
+      },
+      [201],
+    );
+    if (sent.status !== 201 || sent.body.runId === null) {
+      throw new Error("Expected the failed dispatch to create a run");
+    }
+    expect(sent.body.status).toBe("failed");
+    await expect(readRunImageModelFixture(sent.body.runId)).resolves.toBe(
+      "gpt-image-2",
+    );
+  }, 90_000);
+
+  it("persists the resolved image model on a queued run", async () => {
+    const { actor, agentId, orgId } = await imageModelSnapshotActor({
+      selectionEnabled: true,
+    });
+    await setOrgMemberImageModelFixture({
+      orgId,
+      userId: actor.userId,
+      selectedImageModel: "fal-ai/qwen-image",
+    });
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+
+    const blocker = await chat.requestSendEvent(
+      actor,
+      { agentId, prompt: "occupy image snapshot concurrency" },
+      [201],
+    );
+    if (blocker.status !== 201 || blocker.body.runId === null) {
+      throw new Error("Expected the blocking send to create a run");
+    }
+    expect(blocker.body.status).toBe("pending");
+
+    const queued = await chat.requestSendEvent(
+      actor,
+      { agentId, prompt: "queue an image model snapshot" },
+      [201],
+    );
+    if (queued.status !== 201 || queued.body.runId === null) {
+      throw new Error("Expected the second send to create a queued run");
+    }
+    expect(queued.body.status).toBe("queued");
+    await expect(readRunImageModelFixture(queued.body.runId)).resolves.toBe(
+      "fal-ai/qwen-image",
+    );
+
+    await cancelChatRun(actor, queued.body.runId);
+    await cancelChatRun(actor, blocker.body.runId);
+  }, 90_000);
+
+  it("snapshots direct runs and re-resolves on session continuation", async () => {
+    const { actor, agentId, orgId } = await imageModelSnapshotActor({
+      selectionEnabled: true,
+    });
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "direct image model snapshot",
+      modelProvider: "anthropic-api-key",
+    });
+    await expect(
+      readImageModelRunChatThreadIdFixture(first.runId),
+    ).resolves.toBeNull();
+    await expect(readRunImageModelFixture(first.runId)).resolves.toBe(
+      DEFAULT_IMAGE_MODEL,
+    );
+
+    await setOrgMemberImageModelFixture({
+      orgId,
+      userId: actor.userId,
+      selectedImageModel: "fal-ai/flux-pro/v1.1",
+    });
+    const resumed = await api.createRun(actor, {
+      agentId,
+      sessionId: first.sessionId,
+      prompt: "continued session image model snapshot",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(resumed.sessionId).toBe(first.sessionId);
+    await expect(readRunImageModelFixture(resumed.runId)).resolves.toBe(
+      "fal-ai/flux-pro/v1.1",
+    );
+    await expect(readRunImageModelFixture(first.runId)).resolves.toBe(
+      DEFAULT_IMAGE_MODEL,
+    );
+
+    await cancelChatRun(actor, first.runId);
+    await cancelChatRun(actor, resumed.runId);
   }, 90_000);
 });
