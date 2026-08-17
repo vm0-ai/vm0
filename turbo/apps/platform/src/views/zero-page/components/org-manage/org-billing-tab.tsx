@@ -2510,6 +2510,12 @@ function canStartUsagePackCheckout(
   return status?.hasSubscription === false;
 }
 
+function canConfigureGrantedUsagePackPlan(
+  status: BillingStatusResponse | null,
+): boolean {
+  return status?.subscriptionStatus === "atom_grant";
+}
+
 function usagePackMigrationInProgress(
   migration: UsagePackMigrationStateResponse | null,
 ): boolean {
@@ -2614,6 +2620,7 @@ function CurrentPlanTitle({
 function UsagePackPricingFlowDialogs({
   checkoutAllowed,
   currentTier,
+  grantedPlanCheckoutAllowed,
   migration,
   migrationOpen,
   migrationTargetTier,
@@ -2624,6 +2631,7 @@ function UsagePackPricingFlowDialogs({
 }: {
   readonly checkoutAllowed: boolean;
   readonly currentTier: BillingTier;
+  readonly grantedPlanCheckoutAllowed: boolean;
   readonly migration: UsagePackMigrationStateResponse | null;
   readonly migrationOpen: boolean;
   readonly migrationTargetTier: "pro" | "team" | null;
@@ -2648,6 +2656,7 @@ function UsagePackPricingFlowDialogs({
     <UsagePackPricingDialogs
       checkoutAllowed={checkoutAllowed}
       currentTier={currentTier}
+      grantedPlanCheckoutAllowed={grantedPlanCheckoutAllowed}
       onClose={onClose}
       onReplaceCancellationWithPro={onReplaceCancellationWithPro}
     />
@@ -2955,6 +2964,7 @@ export function OrgBillingTab() {
         <UsagePackPricingFlowDialogs
           checkoutAllowed={canStartUsagePackCheckout(status)}
           currentTier={currentTier}
+          grantedPlanCheckoutAllowed={canConfigureGrantedUsagePackPlan(status)}
           migration={migration}
           migrationOpen={migrationOpen}
           migrationTargetTier={migrationTargetTier}

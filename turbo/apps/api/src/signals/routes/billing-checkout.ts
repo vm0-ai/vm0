@@ -470,7 +470,10 @@ const usagePackCheckoutAuthed$ = command(
       );
     }
 
+    const configuresGrantedPlan =
+      metadata?.subscriptionStatus === "atom_grant" && metadata.tier === tier;
     if (
+      !configuresGrantedPlan &&
       checkoutWouldReplaceWithSameOrLowerTier({
         currentTier: metadata?.tier,
         targetTier: tier,
