@@ -26,7 +26,10 @@ import {
 } from "../../lib/connector-oauth-state";
 import { now } from "../../lib/time";
 import { logger } from "../../lib/log";
-import { resolveIntegrationUserId } from "../../lib/integration-user-id-compat";
+import {
+  logIntegrationIdentityCompatibility,
+  resolveIntegrationUserId,
+} from "../../lib/integration-user-id-compat";
 import { encryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 
@@ -486,6 +489,11 @@ export function parseGithubOauthState(
     // Remove in #27602 after legacy producers and callbacks have drained.
     typeof stateObject.vm0UserId === "string" ? stateObject.vm0UserId : null,
   );
+  logIntegrationIdentityCompatibility({
+    provider: "github",
+    surface: "state",
+    outcome: userId.outcome,
+  });
   if (!userId.ok) {
     return null;
   }
@@ -530,7 +538,18 @@ export async function isGithubOauthStateSignatureValid(args: {
     secretsEncryptionKey: args.secretsEncryptionKey,
   });
 
-  return signaturesMatch(args.state.sig, legacyExpectedSig);
+  const legacySignatureValid = signaturesMatch(
+    args.state.sig,
+    legacyExpectedSig,
+  );
+  if (legacySignatureValid) {
+    logIntegrationIdentityCompatibility({
+      provider: "github",
+      surface: "signature",
+      outcome: "legacy_signature_accepted",
+    });
+  }
+  return legacySignatureValid;
 }
 
 export async function linkGithubUser(
