@@ -3976,4 +3976,61 @@ describe("chat composer video model", () => {
       ]);
     });
   });
+
+  it("keeps a just-written run model when the video default follows it", async () => {
+    const user = userEvent.setup({ delay: null });
+    const { updates } = mockNewChatVideoDefaultAction({
+      selectedModel: "claude-fable-5",
+      serviceTier: null,
+      selectedVideoModel: "MiniMax-H3",
+      updatedAt: "2026-08-14T00:00:00Z",
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.VideoModelSelection]: true,
+        [FeatureSwitchKey.NewChatDefaultModelAction]: true,
+      },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await user.click(await findComposerModel("Claude Fable 5"));
+    await user.click(
+      await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
+    );
+    await waitFor(() => {
+      expect(
+        noticeText("Temporarily switched to Claude Sonnet 4.6"),
+      ).toBeInTheDocument();
+    });
+    await user.click(buttonContainingText("Set as default", document.body));
+    await waitFor(() => {
+      expect(updates).toHaveLength(1);
+    });
+
+    // No `userPreferenceChanged` push is delivered, so the cached preference
+    // still holds the pre-write run model. The video write must not resend it.
+    const videoModelButton = await findDesktopVideoModelButton();
+    await user.click(videoModelButton);
+    await user.click(videoModelButton);
+    await user.click(await findVideoPanelButton("Veo 3.1 fast"));
+    await waitFor(() => {
+      expect(
+        noticeText("Temporarily switched to Veo 3.1 Fast for video"),
+      ).toBeInTheDocument();
+    });
+    await user.click(buttonContainingText("Set as default", document.body));
+
+    await waitFor(() => {
+      expect(updates).toStrictEqual([
+        { selectedModel: "claude-sonnet-4-6", serviceTier: null },
+        {
+          selectedModel: "claude-sonnet-4-6",
+          serviceTier: null,
+          selectedVideoModel: "fal-ai/veo3.1/fast",
+        },
+      ]);
+    });
+  });
 });

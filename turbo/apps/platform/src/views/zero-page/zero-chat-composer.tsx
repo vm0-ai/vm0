@@ -177,6 +177,7 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import { orgModelPolicies$ } from "../../signals/external/org-model-policies.ts";
 import {
+  updateDefaultVideoModel$,
   updateUserModelPreference$,
   userModelPreference$,
 } from "../../signals/external/user-model-preference.ts";
@@ -7870,8 +7871,8 @@ function ComposerTemporaryVideoModelNotice({
   // actually use, which is what the member default is being compared against.
   const selection = useLastResolved(videoModelSignals.effectiveVideoModel$);
   const userPreference = useLastResolved(userModelPreference$);
-  const [updateLoadable, updatePreference] = useLoadableSet(
-    updateUserModelPreference$,
+  const [updateLoadable, updateDefaultVideoModel] = useLoadableSet(
+    updateDefaultVideoModel$,
   );
   const pageSignal = useGet(pageSignal$);
   if (!userPreference) {
@@ -7887,20 +7888,7 @@ function ComposerTemporaryVideoModelNotice({
     if (updating) {
       return;
     }
-    detach(
-      updatePreference(
-        {
-          // The run model is required by the request, so repeat what is already
-          // stored. Sending the resolved selection instead would pin the
-          // workspace default onto the member whose run model is still unset.
-          selectedModel: userPreference.selectedModel,
-          serviceTier: userPreference.serviceTier,
-          selectedVideoModel: selection,
-        },
-        pageSignal,
-      ),
-      Reason.DomCallback,
-    );
+    detach(updateDefaultVideoModel(selection, pageSignal), Reason.DomCallback);
   };
   return (
     <ComposerTemporaryModelNoticeRow

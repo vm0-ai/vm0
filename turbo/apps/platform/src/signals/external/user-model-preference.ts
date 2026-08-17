@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import type { VideoModel } from "@okouai/core/video-model-catalog";
 import {
   type UserPreferenceChangedPayload,
   userPreferenceChangedPayloadSchema,
@@ -52,6 +53,36 @@ export const updateUserModelPreference$ = command(
     // `userPreferenceChanged` realtime topic; do not reload the local cache
     // here (the initiating session receives the push like any other).
     return result.body;
+  },
+);
+
+/**
+ * Makes a video model the member default without disturbing the run model.
+ *
+ * The request must carry the run model, so this reads the stored one back
+ * instead of echoing the cached copy: the sibling run-model notice writes
+ * through the same resource, and `updateUserModelPreference$` leaves the cache
+ * to the `userPreferenceChanged` push rather than refreshing it. Echoing the
+ * cache would resend a run model that a moments-old write already replaced.
+ */
+export const updateDefaultVideoModel$ = command(
+  async (
+    { get, set },
+    videoModel: VideoModel,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    set(reloadUserModelPreference$);
+    const preference = await get(userModelPreference$);
+    signal.throwIfAborted();
+    await set(
+      updateUserModelPreference$,
+      {
+        selectedModel: preference.selectedModel,
+        serviceTier: preference.serviceTier,
+        selectedVideoModel: videoModel,
+      },
+      signal,
+    );
   },
 );
 
