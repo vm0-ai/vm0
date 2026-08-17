@@ -41,8 +41,6 @@ import {
 } from "@okouai/api-contracts/contracts/model-providers";
 import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import {
-  DEFAULT_VIDEO_MODEL,
-  PUBLIC_VIDEO_MODELS,
   VIDEO_MODEL_CONFIGS,
   type VideoModel,
 } from "@okouai/core/video-model-catalog";
@@ -77,20 +75,34 @@ export interface ModelProviderSelection {
   codexServiceTier?: CodexServiceTier;
 }
 
+export type MediaModelCategoryId = "video";
+
+export interface MediaModelPanelOption {
+  readonly key: string;
+  readonly label: string;
+  readonly icon: ReactNode;
+  readonly selected: boolean;
+  readonly onSelect: () => void;
+}
+
+export interface MediaModelPanelCategory {
+  readonly id: MediaModelCategoryId;
+  readonly label: string;
+  readonly menuLabel: string;
+  readonly options: readonly MediaModelPanelOption[];
+}
+
 /**
- * Video model side of the picker. The run model list and this one share a
- * popover but nothing else: video models carry no provider routing, no price
- * tier, and no plan gate, so every catalog model is offered to everyone.
- *
- * `value` is `null` when the caller has pinned nothing. The panel represents
- * that state by selecting the effective member or catalog default, while any
- * model click pins that concrete model to the current thread.
+ * Media-model categories share the run-model popover without joining its
+ * Select value space. Mobile opens one nested category at a time; desktop
+ * supplies the active mode and its control anchor through the same state.
  */
-export interface VideoModelPickerState {
-  readonly value: VideoModel | null;
-  readonly onChange: (next: VideoModel | null) => void;
-  readonly panelOpen: boolean;
-  readonly onPanelOpenChange: (open: boolean) => void;
+export interface MediaModelPanelState {
+  readonly activeCategory: MediaModelCategoryId | null;
+  readonly categories: readonly MediaModelPanelCategory[];
+  readonly onActiveCategoryChange: (
+    category: MediaModelCategoryId | null,
+  ) => void;
   readonly contentAnchor?: Element | null;
 }
 
@@ -137,8 +149,8 @@ interface ModelProviderPickerProps {
   resolveDefaultSelection?: boolean;
   /** Enables the inline Codex Fast choices in the model list. */
   codexFastModeEnabled?: boolean;
-  /** Video-model panel state for callers that can pin a video model. */
-  videoModel?: VideoModelPickerState;
+  /** Media-model category panel state for composer callers. */
+  mediaModelPanel?: MediaModelPanelState;
 }
 
 // Keep the inherit option distinct from an empty model identifier at the UI
@@ -742,10 +754,10 @@ function ModelFirstPolicyItems({
   );
 }
 
-// Rows in the video panel are plain buttons rather than SelectItems: the
+// Rows in media-model panels are plain buttons rather than SelectItems: the
 // Select's value space belongs to the run model, and a SelectItem here would
 // both join it and close the popover on click.
-const VIDEO_PANEL_ROW_CLASS =
+const MEDIA_MODEL_PANEL_ROW_CLASS =
   "relative flex w-full cursor-pointer select-none items-center gap-2 rounded-lg py-1.5 pl-2 pr-8 text-left text-sm outline-none transition-colors hover:bg-state-hover hover:text-accent-foreground";
 
 const BYTEDANCE_ICON_PATH =
@@ -863,7 +875,7 @@ function VideoModelKlingIcon() {
   );
 }
 
-function VideoModelBrandIcon({ model }: { model: VideoModel }) {
+export function VideoModelBrandIcon({ model }: { model: VideoModel }) {
   const config = VIDEO_MODEL_CONFIGS[model];
   const brand =
     config.provider === "byteplus"
@@ -902,59 +914,43 @@ function VideoModelBrandIcon({ model }: { model: VideoModel }) {
   );
 }
 
-function VideoModelPanelRow({
-  model,
-  label,
-  selected,
-  onSelect,
-}: {
-  model: VideoModel;
-  label: string;
-  selected: boolean;
-  onSelect: () => void;
-}) {
+function MediaModelPanelRow({ option }: { option: MediaModelPanelOption }) {
   return (
     <button
       type="button"
-      aria-label={label}
-      aria-pressed={selected}
-      className={VIDEO_PANEL_ROW_CLASS}
-      onClick={onSelect}
+      aria-label={option.label}
+      aria-pressed={option.selected}
+      className={MEDIA_MODEL_PANEL_ROW_CLASS}
+      onClick={option.onSelect}
     >
-      <VideoModelBrandIcon model={model} />
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      {selected && (
+      {option.icon}
+      <span className="min-w-0 flex-1 truncate">{option.label}</span>
+      {option.selected && (
         <Check size={15} className="absolute right-2 text-foreground" />
       )}
     </button>
   );
 }
 
-function VideoModelPanel({
-  videoModel,
+function MediaModelPanel({
+  panel,
+  category,
 }: {
-  videoModel: VideoModelPickerState;
+  panel: MediaModelPanelState;
+  category: MediaModelPanelCategory;
 }) {
   const { t } = useTranslation();
-  const userPreference = useLastResolved(userModelPreference$);
-  const automaticVideoModel =
-    userPreference?.selectedVideoModel ?? DEFAULT_VIDEO_MODEL;
-  const selectedVideoModel = videoModel.value ?? automaticVideoModel;
   return (
     <>
       <button
         type="button"
         className="flex w-full items-center gap-1 rounded-lg py-1.5 pl-1 pr-2 text-left text-xs font-medium text-muted-foreground outline-none transition-colors hover:bg-state-hover hover:text-foreground sm:hidden"
         onClick={() => {
-          videoModel.onPanelOpenChange(false);
+          panel.onActiveCategoryChange(null);
         }}
       >
         <ChevronLeft size={14} className="shrink-0" aria-hidden="true" />
-        <span className="min-w-0 truncate">
-          {t(($) => {
-            return $.settings.models.picker.videoModels;
-          })}
-        </span>
+        <span className="min-w-0 truncate">{category.label}</span>
       </button>
       <SelectGroup>
         <SelectLabel className="hidden py-1.5 pl-2 pr-8 text-xs font-medium text-muted-foreground sm:block">
@@ -962,51 +958,39 @@ function VideoModelPanel({
             return $.settings.models.picker.models;
           })}
         </SelectLabel>
-        {PUBLIC_VIDEO_MODELS.map((candidate) => {
-          return (
-            <VideoModelPanelRow
-              key={candidate}
-              model={candidate}
-              label={VIDEO_MODEL_CONFIGS[candidate].label}
-              selected={selectedVideoModel === candidate}
-              onSelect={() => {
-                videoModel.onChange(candidate);
-              }}
-            />
-          );
+        {category.options.map((option) => {
+          return <MediaModelPanelRow key={option.key} option={option} />;
         })}
       </SelectGroup>
     </>
   );
 }
 
-function ManageMoreModelsRow({
-  videoModel,
-}: {
-  videoModel: VideoModelPickerState;
-}) {
-  const { t } = useTranslation();
+function MediaModelPanelMenu({ panel }: { panel: MediaModelPanelState }) {
   return (
     <>
       <SelectSeparator className="my-0 sm:hidden" />
-      <button
-        type="button"
-        className={cn(VIDEO_PANEL_ROW_CLASS, "sm:hidden")}
-        onClick={() => {
-          videoModel.onPanelOpenChange(true);
-        }}
-      >
-        <span className="min-w-0 flex-1 truncate">
-          {t(($) => {
-            return $.settings.models.picker.manageMoreModels;
-          })}
-        </span>
-        <ChevronRight
-          size={15}
-          className="absolute right-2 text-muted-foreground"
-          aria-hidden="true"
-        />
-      </button>
+      {panel.categories.map((category) => {
+        return (
+          <button
+            key={category.id}
+            type="button"
+            className={cn(MEDIA_MODEL_PANEL_ROW_CLASS, "sm:hidden")}
+            onClick={() => {
+              panel.onActiveCategoryChange(category.id);
+            }}
+          >
+            <span className="min-w-0 flex-1 truncate">
+              {category.menuLabel}
+            </span>
+            <ChevronRight
+              size={15}
+              className="absolute right-2 text-muted-foreground"
+              aria-hidden="true"
+            />
+          </button>
+        );
+      })}
     </>
   );
 }
@@ -1019,7 +1003,7 @@ interface ModelFirstModelPickerContentBaseProps {
   modelCapabilities: ModelPlanCapabilities;
   codexFastModeEnabled: boolean;
   fastLabel: string;
-  videoModel: VideoModelPickerState | undefined;
+  mediaModelPanel: MediaModelPanelState | undefined;
 }
 
 function ModelFirstModelPickerContentLayout({
@@ -1030,18 +1014,26 @@ function ModelFirstModelPickerContentLayout({
   modelCapabilities,
   codexFastModeEnabled,
   fastLabel,
-  videoModel,
+  mediaModelPanel,
 }: ModelFirstModelPickerContentBaseProps) {
-  const videoPanelOpen = videoModel?.panelOpen ?? false;
-  const contentAnchor = videoPanelOpen ? videoModel?.contentAnchor : undefined;
+  const activeMediaModelCategoryId = mediaModelPanel?.activeCategory;
+  const activeMediaModelCategory = mediaModelPanel?.categories.find(
+    (category) => {
+      return category.id === activeMediaModelCategoryId;
+    },
+  );
+  const mediaModelPanelOpen = activeMediaModelCategory !== undefined;
+  const contentAnchor = mediaModelPanelOpen
+    ? mediaModelPanel?.contentAnchor
+    : undefined;
   return (
     <SelectContent
       anchor={contentAnchor}
       className="max-h-[280px] min-w-[260px]"
     >
-      {/* The video panel replaces the model rows, so keep the selected run
+      {/* A media-model panel replaces the model rows, so keep the selected run
           model measurable the same way a hidden select value is. */}
-      {(videoPanelOpen || isHiddenModelFirstSelectValue(selectValue)) && (
+      {(mediaModelPanelOpen || isHiddenModelFirstSelectValue(selectValue)) && (
         <SelectItem
           value={selectValue}
           className={MEASURABLE_HIDDEN_SELECT_ITEM_CLASS}
@@ -1056,8 +1048,11 @@ function ModelFirstModelPickerContentLayout({
           })}
         </SelectItem>
       )}
-      {videoModel && videoPanelOpen ? (
-        <VideoModelPanel videoModel={videoModel} />
+      {mediaModelPanel && activeMediaModelCategory ? (
+        <MediaModelPanel
+          panel={mediaModelPanel}
+          category={activeMediaModelCategory}
+        />
       ) : (
         <>
           <ModelFirstPolicyItems
@@ -1067,7 +1062,7 @@ function ModelFirstModelPickerContentLayout({
             codexFastModeEnabled={codexFastModeEnabled}
             showSeparator={false}
           />
-          {videoModel && <ManageMoreModelsRow videoModel={videoModel} />}
+          {mediaModelPanel && <MediaModelPanelMenu panel={mediaModelPanel} />}
         </>
       )}
     </SelectContent>
@@ -1144,7 +1139,7 @@ function ModelFirstSelectPicker({
   modelCapabilities,
   codexFastModeEnabled,
   fastLabel,
-  videoModel,
+  mediaModelPanel,
   open,
   onOpenChange,
   modal,
@@ -1160,7 +1155,7 @@ function ModelFirstSelectPicker({
   modelCapabilities: ModelPlanCapabilities;
   codexFastModeEnabled: boolean;
   fastLabel: string;
-  videoModel: VideoModelPickerState | undefined;
+  mediaModelPanel: MediaModelPanelState | undefined;
   open: boolean | undefined;
   onOpenChange:
     | ((
@@ -1208,7 +1203,7 @@ function ModelFirstSelectPicker({
             modelCapabilities={modelCapabilities}
             codexFastModeEnabled={codexFastModeEnabled}
             fastLabel={fastLabel}
-            videoModel={videoModel}
+            mediaModelPanel={mediaModelPanel}
           />
         ))}
     </Select>
@@ -1232,7 +1227,7 @@ function SubscribedModelFirstModelPicker({
   resolveDefaultSelection,
   codexFastModeEnabled = false,
   fastLabel,
-  videoModel,
+  mediaModelPanel,
 }: ModelProviderPickerProps & {
   placeholder: string;
   compactTrigger: boolean;
@@ -1321,7 +1316,7 @@ function SubscribedModelFirstModelPicker({
       modelCapabilities={modelCapabilities}
       codexFastModeEnabled={codexFastModeEnabled}
       fastLabel={fastLabel}
-      videoModel={videoModel}
+      mediaModelPanel={mediaModelPanel}
       open={open}
       onOpenChange={onOpenChange}
       modal={modal}
@@ -1436,13 +1431,13 @@ function SubscribedExplicitModelFirstModelPickerContent({
   placeholder,
   codexFastModeEnabled,
   fastLabel,
-  videoModel,
+  mediaModelPanel,
 }: {
   value: ModelProviderSelection | null;
   placeholder: string;
   codexFastModeEnabled: boolean;
   fastLabel: string;
-  videoModel: VideoModelPickerState | undefined;
+  mediaModelPanel: MediaModelPanelState | undefined;
 }) {
   const policiesLoadable = useLastLoadable(orgModelPolicies$);
   const modelCapabilities =
@@ -1486,7 +1481,7 @@ function SubscribedExplicitModelFirstModelPickerContent({
       modelCapabilities={modelCapabilities}
       codexFastModeEnabled={codexFastModeEnabled}
       fastLabel={fastLabel}
-      videoModel={videoModel}
+      mediaModelPanel={mediaModelPanel}
     />
   );
 }
@@ -1546,7 +1541,7 @@ function EnabledExplicitModelFirstModelPicker(
             placeholder={props.placeholder}
             codexFastModeEnabled={props.codexFastModeEnabled ?? false}
             fastLabel={props.fastLabel}
-            videoModel={props.videoModel}
+            mediaModelPanel={props.mediaModelPanel}
           />
         ) : undefined
       }
@@ -1557,7 +1552,7 @@ function EnabledExplicitModelFirstModelPicker(
       modelCapabilities={DEFAULT_MODEL_PLAN_CAPABILITIES}
       codexFastModeEnabled={props.codexFastModeEnabled ?? false}
       fastLabel={props.fastLabel}
-      videoModel={props.videoModel}
+      mediaModelPanel={props.mediaModelPanel}
       open={props.open}
       onOpenChange={props.onOpenChange}
       modal={props.modal}
@@ -1627,7 +1622,7 @@ export function ModelProviderPicker({
   disabled = false,
   resolveDefaultSelection = true,
   codexFastModeEnabled = false,
-  videoModel,
+  mediaModelPanel,
 }: ModelProviderPickerProps) {
   const { t } = useTranslation();
   const resolvedPlaceholder =
@@ -1653,7 +1648,7 @@ export function ModelProviderPicker({
     disabled,
     codexFastModeEnabled,
     fastLabel,
-    ...(videoModel ? { videoModel } : {}),
+    ...(mediaModelPanel ? { mediaModelPanel } : {}),
   };
   if (resolveDefaultSelection) {
     return <ModelFirstModelPickerWithDefaultSelection {...props} />;

@@ -1,4 +1,4 @@
-import { command, computed, state } from "ccstate";
+import { command, computed, state, type State } from "ccstate";
 import type { GenerationTemplateRequest } from "@okouai/api-contracts/contracts/chat-threads";
 import type { PresentationTemplateItem } from "@okouai/core/presentation-template-items";
 import { localStorageSignals } from "../external/local-storage.ts";
@@ -12,6 +12,7 @@ import {
 import { readableAttachmentResourceUrl } from "../../views/zero-page/zero-attachment-url.ts";
 import { createAvatarTemplatePickerSignals } from "./avatar-template-picker.ts";
 import type { VideoRunOptionsPatch } from "./video-run-options.ts";
+import type { MediaModelCategoryId } from "../../views/zero-page/components/model-provider-picker.tsx";
 
 // ---------------------------------------------------------------------------
 // Composer UI state — search, dialogs, loading indicators
@@ -266,40 +267,83 @@ function eventTouchesElement(
   );
 }
 
+type DesktopModelCategory = "chat" | MediaModelCategoryId;
+
+function createDesktopMediaModelAnchorSignals(
+  desktopModelCategory$: State<DesktopModelCategory>,
+) {
+  const internalAnchors$ = state<
+    Readonly<Record<MediaModelCategoryId, HTMLElement | null>>
+  >({ video: null });
+  const activeAnchor$ = computed((get) => {
+    const category = get(desktopModelCategory$);
+    if (category === "chat") {
+      return null;
+    }
+    return get(internalAnchors$)[category];
+  });
+  const createAnchorRef = (category: MediaModelCategoryId) => {
+    return onRef(
+      command(({ set }, element: HTMLElement, signal: AbortSignal) => {
+        set(internalAnchors$, (anchors) => {
+          return { ...anchors, [category]: element };
+        });
+        signal.addEventListener("abort", () => {
+          set(internalAnchors$, (anchors) => {
+            return { ...anchors, [category]: null };
+          });
+        });
+      }),
+    );
+  };
+  const anchorRefs = {
+    video: createAnchorRef("video"),
+  } satisfies Record<MediaModelCategoryId, ReturnType<typeof createAnchorRef>>;
+  return { internalAnchors$, activeAnchor$, anchorRefs };
+}
+
 function createBasicComposerUiSignals() {
   const internalModelPickerOpen$ = state(false);
-  const internalDesktopModelMode$ = state<"chat" | "video">("chat");
+  const internalDesktopModelCategory$ = state<DesktopModelCategory>("chat");
   const internalDesktopModelPickerLayout$ = state(false);
   const internalDesktopChatModeElement$ = state<HTMLElement | null>(null);
-  const internalDesktopVideoModelAnchor$ = state<HTMLElement | null>(null);
-  // Mobile reaches video models through a nested panel. Desktop derives the
-  // visible panel from its persistent active mode instead.
-  const internalMobileVideoModelPanelOpen$ = state(false);
+  const desktopMediaModelAnchors = createDesktopMediaModelAnchorSignals(
+    internalDesktopModelCategory$,
+  );
+  // Mobile reaches media models through a nested category. Desktop derives
+  // the visible category from its persistent selection instead.
+  const internalMobileMediaModelCategory$ = state<MediaModelCategoryId | null>(
+    null,
+  );
   const modelPickerOpen$ = computed((get) => {
     return get(internalModelPickerOpen$);
   });
   const setModelPickerOpen$ = command(({ set }, open: boolean) => {
     set(internalModelPickerOpen$, open);
     if (!open) {
-      set(internalMobileVideoModelPanelOpen$, false);
+      set(internalMobileMediaModelCategory$, null);
     }
   });
-  const mobileVideoModelPanelOpen$ = computed((get) => {
-    return get(internalMobileVideoModelPanelOpen$);
+  const mobileMediaModelCategory$ = computed((get) => {
+    return get(internalMobileMediaModelCategory$);
   });
-  const setMobileVideoModelPanelOpen$ = command(({ set }, open: boolean) => {
-    set(internalMobileVideoModelPanelOpen$, open);
+  const setMobileMediaModelCategory$ = command(
+    ({ set }, category: MediaModelCategoryId | null) => {
+      set(internalMobileMediaModelCategory$, category);
+    },
+  );
+  const desktopModelCategory$ = computed((get) => {
+    return get(internalDesktopModelCategory$);
   });
-  const desktopModelMode$ = computed((get) => {
-    return get(internalDesktopModelMode$);
-  });
-  const toggleDesktopVideoMode$ = command(({ get, set }) => {
-    if (get(internalDesktopModelMode$) === "video") {
-      set(setModelPickerOpen$, !get(internalModelPickerOpen$));
-      return;
-    }
-    set(internalDesktopModelMode$, "video");
-  });
+  const toggleDesktopMediaModelCategory$ = command(
+    ({ get, set }, category: MediaModelCategoryId) => {
+      if (get(internalDesktopModelCategory$) === category) {
+        set(setModelPickerOpen$, !get(internalModelPickerOpen$));
+        return;
+      }
+      set(internalDesktopModelCategory$, category);
+    },
+  );
   const desktopModelPickerLayout$ = computed((get) => {
     return get(internalDesktopModelPickerLayout$);
   });
@@ -316,9 +360,6 @@ function createBasicComposerUiSignals() {
       syncLayout();
     }),
   );
-  const desktopVideoModelAnchor$ = computed((get) => {
-    return get(internalDesktopVideoModelAnchor$);
-  });
   const setDesktopChatModeElement$ = onRef(
     command(({ set }, element: HTMLElement, signal: AbortSignal) => {
       signal.addEventListener("abort", () => {
@@ -327,46 +368,44 @@ function createBasicComposerUiSignals() {
       set(internalDesktopChatModeElement$, element);
     }),
   );
-  const setDesktopVideoModelAnchor$ = onRef(
-    command(({ set }, element: HTMLElement, signal: AbortSignal) => {
-      signal.addEventListener("abort", () => {
-        set(internalDesktopVideoModelAnchor$, null);
-      });
-      set(internalDesktopVideoModelAnchor$, element);
-    }),
-  );
   const handleModelPickerOpenChange$ = command(
     (
       { get, set },
       open: boolean,
       event: Event,
-      videoModeAvailable: boolean,
+      mediaModelCategoriesAvailable: boolean,
     ): boolean => {
       const touchesChatMode = eventTouchesElement(
         event,
         get(internalDesktopChatModeElement$),
       );
-      const touchesVideoMode = eventTouchesElement(
-        event,
-        get(internalDesktopVideoModelAnchor$),
-      );
-      const desktopVideoModeAvailable =
-        videoModeAvailable && get(internalDesktopModelPickerLayout$);
+      const touchesMediaModelCategory = Object.values(
+        get(desktopMediaModelAnchors.internalAnchors$),
+      ).some((element) => {
+        return eventTouchesElement(event, element);
+      });
+      const desktopMediaModelCategoriesAvailable =
+        mediaModelCategoriesAvailable && get(internalDesktopModelPickerLayout$);
       if (
-        desktopVideoModeAvailable &&
+        desktopMediaModelCategoriesAvailable &&
         !open &&
         event.type === "focusout" &&
-        (touchesChatMode || touchesVideoMode)
+        (touchesChatMode || touchesMediaModelCategory)
       ) {
         return true;
       }
-      if (desktopVideoModeAvailable && !open && touchesVideoMode) {
+      if (
+        desktopMediaModelCategoriesAvailable &&
+        !open &&
+        touchesMediaModelCategory
+      ) {
         return true;
       }
-      const videoModeExpanded =
-        desktopVideoModeAvailable && get(internalDesktopModelMode$) === "video";
-      if (videoModeExpanded && touchesChatMode) {
-        set(internalDesktopModelMode$, "chat");
+      const mediaModelCategoryExpanded =
+        desktopMediaModelCategoriesAvailable &&
+        get(internalDesktopModelCategory$) !== "chat";
+      if (mediaModelCategoryExpanded && touchesChatMode) {
+        set(internalDesktopModelCategory$, "chat");
         return true;
       }
       set(setModelPickerOpen$, open);
@@ -377,15 +416,15 @@ function createBasicComposerUiSignals() {
     model: {
       modelPickerOpen$,
       setModelPickerOpen$,
-      mobileVideoModelPanelOpen$,
-      setMobileVideoModelPanelOpen$,
-      desktopModelMode$,
-      toggleDesktopVideoMode$,
+      mobileMediaModelCategory$,
+      setMobileMediaModelCategory$,
+      desktopModelCategory$,
+      toggleDesktopMediaModelCategory$,
       desktopModelPickerLayout$,
       desktopModelPickerLifecycleRef$,
       setDesktopChatModeElement$,
-      desktopVideoModelAnchor$,
-      setDesktopVideoModelAnchor$,
+      desktopActiveMediaModelAnchor$: desktopMediaModelAnchors.activeAnchor$,
+      desktopMediaModelAnchorRefs: desktopMediaModelAnchors.anchorRefs,
       handleModelPickerOpenChange$,
     },
   };
