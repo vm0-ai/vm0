@@ -2101,7 +2101,7 @@ describe("connector catalog valid lifecycle", () => {
     expect(shapeResponse.body.error.code).toBe("PROVIDER_UNAVAILABLE");
   });
 
-  it("keeps stale semantic and compatibility corruption fail closed", async () => {
+  it("keeps corruption fail closed and derives missing compatibility", async () => {
     configureSource();
     const semanticRelease = buildRelease({
       version: "2026-07-27.stale-semantic-corruption",
@@ -2169,9 +2169,16 @@ describe("connector catalog valid lifecycle", () => {
       ).list({
         headers: { authorization: "Bearer clerk-session" },
       }),
-      [503],
+      [200],
     );
-    expect(missingResponse.body.error.code).toBe("PROVIDER_UNAVAILABLE");
+    expect(missingResponse.body).toMatchObject({
+      connectors: [
+        expect.objectContaining({ slug: missingRelease.connectorSlug }),
+      ],
+    });
+    await expect(
+      readApiTestConnectorCatalogCompatibilityEvaluations(),
+    ).resolves.toHaveLength(0);
   });
 
   it("applies compatibility, authored visibility, and request rollout filters", async () => {
@@ -5250,7 +5257,7 @@ describe("connector catalog executable compatibility", () => {
     expect(wireMethods).toStrictEqual(expectedMethods);
   });
 
-  it("fails closed and reconciles a missing compatibility evaluation", async () => {
+  it("derives and reconciles a missing compatibility evaluation", async () => {
     configureSource();
     mockApiTestConnectorProviderConfiguration();
     const release = buildRelease({
@@ -5279,8 +5286,16 @@ describe("connector catalog executable compatibility", () => {
       context,
       routes: connectorCatalogRoutes,
     })(zeroConnectorCatalogContract);
-    const unavailable = await accept(catalogClient.list({ headers }), [503]);
-    expect(unavailable.body.error.code).toBe("PROVIDER_UNAVAILABLE");
+    const beforeReconciliation = await accept(
+      catalogClient.list({ headers }),
+      [200],
+    );
+    expect(beforeReconciliation.body).toMatchObject({
+      connectors: [expect.objectContaining({ slug: release.connectorSlug })],
+    });
+    await expect(
+      readApiTestConnectorCatalogCompatibilityEvaluations(),
+    ).resolves.toHaveLength(0);
 
     mockNow(new Date("2026-07-31T08:01:00.000Z"));
     const reconciled = await syncCatalog();
@@ -5827,14 +5842,11 @@ describe("connector catalog executable compatibility", () => {
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeStaleStatus);
     const stalePublicRead = await accept(
       catalogClient.list({ headers }),
-      [503],
+      [200],
     );
-    expect(stalePublicRead.body).toStrictEqual({
-      error: {
-        code: "PROVIDER_UNAVAILABLE",
-        message: "Connector catalog is temporarily unavailable",
-      },
-    });
+    expect(stalePublicRead.body.connectors).toStrictEqual([
+      expect.objectContaining({ slug: "steam" }),
+    ]);
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeStaleStatus);
 
     mockNow(new Date("2026-07-15T08:20:00.000Z"));
@@ -5903,6 +5915,30 @@ describe("connector catalog executable compatibility", () => {
       stale: true,
       filteredAuthMethods: [],
     });
+    expect(
+      (await accept(catalogClient.list({ headers }), [200])).body.connectors,
+    ).toStrictEqual([]);
+
+    mockNow(new Date("2026-07-15T08:40:00.000Z"));
+    const rolledBack = await syncCatalog();
+    expect(rolledBack.body).toMatchObject({
+      outcome: "unchanged",
+      filtering: {
+        capabilityDigest: firstDigest,
+        evaluatedAt: "2026-07-15T08:40:00.000Z",
+        stale: false,
+        filteredAuthMethods: [
+          {
+            connectorSlug: "steam",
+            authMethodId: "openid",
+            reasons: ["missing-platform-configuration"],
+          },
+        ],
+      },
+    });
+    expect(
+      (await accept(catalogClient.list({ headers }), [200])).body.connectors,
+    ).toStrictEqual([]);
   });
 
   it("reports a known provider contract mismatch without private details", async () => {
