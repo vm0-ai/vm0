@@ -1370,11 +1370,11 @@ const REVIEW_ROW = "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3";
 const REVIEW_HAIRLINE = "border-t-[0.7px] border-[hsl(var(--gray-100))]";
 const REVIEW_RULE = "border-t-[0.7px] border-border";
 
-/* A step's action stays on the frame's foot instead of scrolling away with the
-   body it belongs to: a long member list must never put the decision out of
-   reach. The bar spans the full frame width, so it cancels the body's inset and
-   restores it inside, and it carries the frame's own surface so the rows pass
-   underneath it rather than through it. */
+/* A step's notice and action stay together on the frame's foot instead of
+   scrolling away with the body they belong to: a long member list must never
+   put the decision out of reach or leave its consequence detached above it.
+   The bar spans the full frame width, so it cancels the body's inset and
+   restores it inside, and its gap keeps the notice-to-button spacing stable. */
 const STEP_ACTION_BAR = `sticky bottom-0 -mx-5 mt-auto flex flex-col gap-3 bg-card px-5 py-4 ${REVIEW_RULE}`;
 
 function ReviewSectionLabel({ label }: { readonly label: string }) {
@@ -1824,15 +1824,17 @@ function ScheduledBillingChangeNotice({
 }
 
 function SubscriptionChangeNotice({
+  className = "mt-3",
   description,
   effectiveAt,
 }: {
+  readonly className?: string;
   readonly description: string;
   readonly effectiveAt: string;
 }) {
   return (
     <ScheduledBillingChangeNotice
-      className="mt-3"
+      className={className}
       title={i18n.t(($) => {
         return $.billing.plans.usagePacks.migration.convertPlan;
       })}
@@ -2250,6 +2252,20 @@ function ManagedSubscriptionOrderSummary({
     hasScheduledDowngrade && !hasConfigurationChange
       ? management.currentPeriodEnd
       : null;
+  const downgradeNotice = scheduledDowngradeEffectiveAt ? (
+    <UsagePackDowngradeNotice
+      effectiveAt={scheduledDowngradeEffectiveAt}
+      scheduled
+    />
+  ) : (
+    hasDowngrade &&
+    management.currentPeriodEnd && (
+      <UsagePackDowngradeNotice
+        className={hasSubscriptionAction ? "" : "mb-5 mt-3"}
+        effectiveAt={management.currentPeriodEnd}
+      />
+    )
+  );
   const openPreview = async (): Promise<void> => {
     if (!members) {
       return;
@@ -2269,20 +2285,7 @@ function ManagedSubscriptionOrderSummary({
       })}
       className={scheduledDowngradeEffectiveAt ? "pb-5" : undefined}
     >
-      {scheduledDowngradeEffectiveAt ? (
-        <UsagePackDowngradeNotice
-          effectiveAt={scheduledDowngradeEffectiveAt}
-          scheduled
-        />
-      ) : (
-        hasDowngrade &&
-        management.currentPeriodEnd && (
-          <UsagePackDowngradeNotice
-            className="mb-5 mt-3"
-            effectiveAt={management.currentPeriodEnd}
-          />
-        )
-      )}
+      {!hasSubscriptionAction && downgradeNotice}
       {hasPendingChange && !hasScheduledDowngrade && (
         <p className="mt-3 text-sm text-muted-foreground">
           {i18n.t(($) => {
@@ -2292,6 +2295,7 @@ function ManagedSubscriptionOrderSummary({
       )}
       {hasSubscriptionAction && (
         <div className={STEP_ACTION_BAR}>
+          {downgradeNotice}
           {error && <p className="text-sm text-destructive">{error}</p>}
           <Button
             type="button"
@@ -2452,13 +2456,14 @@ function MigrationOrderSummary({
           />
         </>
       )}
-      <SubscriptionChangeNotice
-        description={i18n.t(($) => {
-          return $.billing.plans.usagePacks.migration.confirmDescription;
-        })}
-        effectiveAt={effectiveAt}
-      />
       <div className={inDialog ? STEP_ACTION_BAR : undefined}>
+        <SubscriptionChangeNotice
+          className={inDialog ? "" : undefined}
+          description={i18n.t(($) => {
+            return $.billing.plans.usagePacks.migration.confirmDescription;
+          })}
+          effectiveAt={effectiveAt}
+        />
         {previewError && (
           <p
             className={
@@ -2547,14 +2552,23 @@ function MigrationRevisionOrderSummary({
           <SubscriptionComparisonTable rows={rows} />
         </>
       )}
-      <SubscriptionChangeNotice
-        description={i18n.t(($) => {
-          return $.billing.plans.usagePacks.migration.confirmDescription;
-        })}
-        effectiveAt={effectiveAt}
-      />
+      {!hasConfigurationChange && (
+        <SubscriptionChangeNotice
+          description={i18n.t(($) => {
+            return $.billing.plans.usagePacks.migration.confirmDescription;
+          })}
+          effectiveAt={effectiveAt}
+        />
+      )}
       {hasConfigurationChange && (
         <div className={inDialog ? STEP_ACTION_BAR : undefined}>
+          <SubscriptionChangeNotice
+            className={inDialog ? "" : undefined}
+            description={i18n.t(($) => {
+              return $.billing.plans.usagePacks.migration.confirmDescription;
+            })}
+            effectiveAt={effectiveAt}
+          />
           {previewError && (
             <p
               className={
@@ -2828,8 +2842,19 @@ function MigrationReviewStepContent({
           return $.billing.plans.usagePacks.migration.reviewDescription;
         })}
       </p>
-      <MigrationPreviewDetails preview={preview} totals={totals} />
+      <MigrationPreviewDetails
+        preview={preview}
+        showChangeNotice={false}
+        totals={totals}
+      />
       <div className={STEP_ACTION_BAR}>
+        <SubscriptionChangeNotice
+          className=""
+          description={i18n.t(($) => {
+            return $.billing.plans.usagePacks.migration.confirmDescription;
+          })}
+          effectiveAt={preview.effectiveAt}
+        />
         {error && (
           <p className="text-sm text-destructive">
             {i18n.t(($) => {
@@ -2860,11 +2885,13 @@ function MigrationReviewStepContent({
 
 function MigrationPreviewDetails({
   preview,
+  showChangeNotice = true,
   totals,
 }: {
   readonly preview:
     | UsagePackMigrationPreviewResponse
     | UsagePackMigrationRevisionPreviewResponse;
+  readonly showChangeNotice?: boolean;
   readonly totals: MemberUsageTotals;
 }) {
   const previewTotals: MemberUsageTotals = {
@@ -2879,12 +2906,14 @@ function MigrationPreviewDetails({
         plan={usagePackPlan(preview.targetTier)}
         totals={previewTotals}
       />
-      <SubscriptionChangeNotice
-        description={i18n.t(($) => {
-          return $.billing.plans.usagePacks.migration.confirmDescription;
-        })}
-        effectiveAt={preview.effectiveAt}
-      />
+      {showChangeNotice && (
+        <SubscriptionChangeNotice
+          description={i18n.t(($) => {
+            return $.billing.plans.usagePacks.migration.confirmDescription;
+          })}
+          effectiveAt={preview.effectiveAt}
+        />
+      )}
     </>
   );
 }

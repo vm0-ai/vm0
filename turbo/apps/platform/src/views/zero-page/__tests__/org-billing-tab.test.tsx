@@ -1412,6 +1412,9 @@ describe("organization billing settings", () => {
       "Review conversion",
       orderSummary,
     );
+    expect(conversionNotice.parentElement).toContainElement(
+      reviewConversionButton,
+    );
     click(reviewConversionButton);
     const reviewDialog = await screen.findByRole("dialog", {
       name: "Review plan conversion",
@@ -1443,9 +1446,15 @@ describe("organization billing settings", () => {
     expect(
       within(reviewDialog).getByText("Monthly total").closest("div"),
     ).toHaveTextContent("$229.50/month");
-    expect(
-      within(reviewDialog).getByRole("status", { name: "Convert plan" }),
-    ).toHaveTextContent("Scheduled for Sep 1, 2026");
+    const reviewConversionNotice = within(reviewDialog).getByRole("status", {
+      name: "Convert plan",
+    });
+    expect(reviewConversionNotice).toHaveTextContent(
+      "Scheduled for Sep 1, 2026",
+    );
+    expect(reviewConversionNotice.parentElement).toContainElement(
+      buttonByText("Confirm", reviewDialog),
+    );
 
     click(within(reviewDialog).getByLabelText("Back"));
     const returnedPackagesDialog = await screen.findByRole("dialog", {
@@ -2568,7 +2577,11 @@ describe("organization billing settings", () => {
     expect(
       within(orderSummary).queryByText("Scheduled for Apr 1, 2026"),
     ).not.toBeInTheDocument();
-    click(buttonByText("Confirm", orderSummary));
+    const confirmDowngradeButton = buttonByText("Confirm", orderSummary);
+    expect(downgradeNotice.parentElement).toContainElement(
+      confirmDowngradeButton,
+    );
+    click(confirmDowngradeButton);
     const confirmationDialog = await screen.findByRole("dialog", {
       name: "Review package change",
     });
