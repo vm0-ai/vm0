@@ -8,6 +8,7 @@ import {
   type SupportedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
 import {
+  DEFAULT_PROFILE,
   CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
   CONNECTOR_RUNTIME_SYNC_TARGETS_MAX,
   type ConnectorRuntimeSyncResult,
@@ -110,6 +111,7 @@ import {
   readRunAutonomyBudgetFixture,
   readRunApiStart,
   readRunClaimOwner,
+  readRunLaunchSnapshotFixture,
   readRunnerJobStorageState,
   readStoragePersistenceState,
   releaseOrgAdmissionLock,
@@ -3611,6 +3613,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       agentComposeVersionId: compose.versionId,
       prompt: "poll with explicit support list",
     });
+    expect(created.status).toBe("pending");
 
     const incompatiblePoll = await api.requestPollRunner(
       true,
@@ -3643,7 +3646,25 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(compatiblePoll.body.job?.runId).toBe(created.runId);
     expect(compatiblePoll.body.job?.experimentalProfile).toBe("vm0/large");
 
+    const launchSnapshot = await readRunLaunchSnapshotFixture(
+      context,
+      created.runId,
+    );
+    expect(launchSnapshot).toStrictEqual({
+      exists: true,
+      launch_snapshot: {
+        schemaVersion: 1,
+        framework: "claude-code",
+        runnerProfile: compatiblePoll.body.job?.experimentalProfile,
+      },
+    });
+    const claim = await api.claimRunnerJob(created.runId);
+    expect(launchSnapshot.launch_snapshot?.framework).toBe(claim.cliAgentType);
+
     await api.requestCancelRun(actor, created.runId, [200]);
+    await expect(
+      readRunLaunchSnapshotFixture(context, created.runId),
+    ).resolves.toStrictEqual(launchSnapshot);
   });
 
   it("skips runner-local exclusions without mutating shared queue state", async () => {
@@ -3749,6 +3770,16 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(resumed.sessionId).toBe(first.sessionId);
     const resumedClaim = await api.claimRunnerJob(resumed.runId);
     expect(resumedClaim.resumeSession).toBeNull();
+    await expect(
+      readRunLaunchSnapshotFixture(context, resumed.runId),
+    ).resolves.toStrictEqual({
+      exists: true,
+      launch_snapshot: {
+        schemaVersion: 1,
+        framework: resumedClaim.cliAgentType,
+        runnerProfile: DEFAULT_PROFILE,
+      },
+    });
 
     if (!actor.orgId) {
       throw new Error("Expected session owner to have an organization");
@@ -6222,9 +6253,24 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     }
 
     await api.heartbeatRunner(runnerGroup);
+    const poll = await api.pollRunner(runnerGroup);
+    expect(poll.body.job).toMatchObject({
+      runId: sent.body.runId,
+      experimentalProfile: DEFAULT_PROFILE,
+    });
     const claim = await api.claimRunnerJob(sent.body.runId);
 
     expect(claim.cliAgentType).toBe("codex");
+    await expect(
+      readRunLaunchSnapshotFixture(context, sent.body.runId),
+    ).resolves.toStrictEqual({
+      exists: true,
+      launch_snapshot: {
+        schemaVersion: 1,
+        framework: claim.cliAgentType,
+        runnerProfile: poll.body.job?.experimentalProfile,
+      },
+    });
     expect(claim.environment).toMatchObject({
       OPENAI_API_KEY: modelProviderPlaceholder(
         "openai-api-key",
@@ -12883,6 +12929,18 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       modelProvider: "anthropic-api-key",
     });
     expect(queued.status).toBe("queued");
+    const queuedLaunchSnapshot = await readRunLaunchSnapshotFixture(
+      context,
+      queued.runId,
+    );
+    expect(queuedLaunchSnapshot).toStrictEqual({
+      exists: true,
+      launch_snapshot: {
+        schemaVersion: 1,
+        framework: "claude-code",
+        runnerProfile: DEFAULT_PROFILE,
+      },
+    });
     await expect(
       readRunAutonomyBudgetFixture(context, queued.runId),
     ).resolves.toBe(10);
@@ -12908,6 +12966,9 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
 
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(queued.runId);
+    expect(claim.cliAgentType).toBe(
+      queuedLaunchSnapshot.launch_snapshot?.framework,
+    );
     expect(claim.featureFlags).toMatchObject({
       [FeatureSwitchKey.ManualMorningBrief]: true,
     });
@@ -13656,6 +13717,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
           framework: "claude-code",
           environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
           experimental_runner: { group: "other/test" },
+          experimental_profile: "vm0/large",
         },
       },
     });
@@ -13665,6 +13727,16 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     });
     expect(failedRun.status).toBe("failed");
     expect(failedRun.error).toBe("Only vm0/* runner groups are supported");
+    await expect(
+      readRunLaunchSnapshotFixture(context, failedRun.runId),
+    ).resolves.toStrictEqual({
+      exists: true,
+      launch_snapshot: {
+        schemaVersion: 1,
+        framework: "claude-code",
+        runnerProfile: "vm0/large",
+      },
+    });
     const storedFailedRun = await api.readRun(actor, failedRun.runId);
     expect(storedFailedRun.status).toBe("failed");
     const failedClaim = await api.requestClaimRunnerJob(

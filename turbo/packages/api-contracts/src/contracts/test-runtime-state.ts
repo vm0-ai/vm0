@@ -139,6 +139,10 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     run_id: z.uuid(),
   }),
   z.object({
+    action: z.literal("read-run-launch-snapshot"),
+    run_id: z.uuid(),
+  }),
+  z.object({
     action: z.literal("read-thread-session-binding"),
     thread_id: z.uuid(),
   }),
@@ -225,6 +229,19 @@ export const testRuntimeStateActionResponseSchema = z.object({
     .nullable()
     .optional(),
   api_started_at: z.string().nullable().optional(),
+  run_launch_snapshot: z
+    .object({
+      exists: z.boolean(),
+      launch_snapshot: z
+        .object({
+          schemaVersion: z.literal(1),
+          framework: z.enum(["claude-code", "codex", "pi"]),
+          runnerProfile: z.string().min(1).max(255),
+        })
+        .strict()
+        .nullable(),
+    })
+    .optional(),
   thread_session_binding: z
     .object({
       agent_session_id: z.uuid().nullable(),

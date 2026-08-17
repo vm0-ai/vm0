@@ -28,6 +28,7 @@ import { cronSteerRunTimeBudgetContract } from "@okouai/api-contracts/contracts/
 import {
   ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES,
   CANCELLATION_RECOVERY_STALE_AFTER_MS,
+  DEFAULT_PROFILE,
 } from "@okouai/api-contracts/contracts/runners";
 import { zeroMailContract } from "@okouai/api-contracts/contracts/zero-mail";
 import {
@@ -89,6 +90,7 @@ import { chatEventDisplayText } from "./helpers/chat-event";
 import {
   clearThreadSessionBinding,
   readRunAutonomyBudgetFixture,
+  readRunLaunchSnapshotFixture,
   readThreadSessionBinding,
   seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
   setRunAutonomyBudgetFixture,
@@ -3720,6 +3722,16 @@ describe("CHAT-02: model-first provider policies", () => {
       const firstContext = firstClaim.claim;
 
       expect(firstContext.cliAgentType).toBe("pi");
+      await expect(
+        readRunLaunchSnapshotFixture(context, first.runId),
+      ).resolves.toStrictEqual({
+        exists: true,
+        launch_snapshot: {
+          schemaVersion: 1,
+          framework: firstContext.cliAgentType,
+          runnerProfile: DEFAULT_PROFILE,
+        },
+      });
       expect(firstContext.piSessionId).toBe(first.threadId);
       expect(firstContext.prompt).toBe(firstPrompt);
       expect(firstContext.piLaunchConfig).not.toHaveProperty(
@@ -5541,6 +5553,12 @@ describe("CHAT-02: run-level model overrides", () => {
     if (typeof discardedRunId !== "string") {
       throw new Error("Expected blocked admission timing to identify its run");
     }
+    await expect(
+      readRunLaunchSnapshotFixture(context, discardedRunId),
+    ).resolves.toStrictEqual({
+      exists: false,
+      launch_snapshot: null,
+    });
     const lostTimingEvents = apiDispatchTimingEventsForRun(discardedRunId);
     for (const actionType of [
       "api_dispatch_prepare_run_context",
@@ -5725,6 +5743,16 @@ describe("CHAT-02: run-level model overrides", () => {
       run_session_id: firstBinding.agent_session_id,
     });
     const secondClaim = await claimChatRun(runnerGroup, second.runId);
+    await expect(
+      readRunLaunchSnapshotFixture(context, second.runId),
+    ).resolves.toStrictEqual({
+      exists: true,
+      launch_snapshot: {
+        schemaVersion: 1,
+        framework: secondClaim.claim.cliAgentType,
+        runnerProfile: DEFAULT_PROFILE,
+      },
+    });
     expect(secondClaim.claim.resumeSession?.sessionId).toBe(
       `bdd-cli-${first.runId}`,
     );
