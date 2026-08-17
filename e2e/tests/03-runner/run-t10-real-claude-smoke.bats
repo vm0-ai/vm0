@@ -7,6 +7,7 @@ load '../../helpers/runner-chat'
 load '../../helpers/runner-api'
 
 BATS_TEST_TIMEOUT=600
+REAL_CLAUDE_MODEL="claude-sonnet-5"
 
 setup_file() {
     local credentials="/tmp/e2e-api-credentials-runner-real-claude.json"
@@ -90,7 +91,7 @@ run_real_claude_steer() {
         "$RUNNER_AGENT_ID" \
         "$initial_prompt" \
         "$steer_prompt" \
-        "claude-sonnet-4-6" \
+        "$REAL_CLAUDE_MODEL" \
         "$expected_output" \
         150)" || return 1
     run_id="$(jq -er '.runId' <<< "$steer_result")" || return 1
@@ -128,9 +129,9 @@ run_real_claude_steer() {
 @test "vm0-managed real claude returns a successful answer" {
     run runner_api_curl "/api/okou/model-policies"
     assert_success
-    run jq -e '
+    run jq -e --arg model "$REAL_CLAUDE_MODEL" '
         any(.policies[]?;
-            .model == "claude-sonnet-4-6" and
+            .model == $model and
             .defaultProviderType == "vm0" and
             .credentialScope == "org" and
             .modelProviderId == null
@@ -141,7 +142,7 @@ run_real_claude_steer() {
     run run_real_chat \
         "123+456. Reply only RESULT=<answer>." \
         "RESULT=579" \
-        "claude-sonnet-4-6"
+        "$REAL_CLAUDE_MODEL"
 
     assert_success
     assert_output --partial '"status":"completed"'
