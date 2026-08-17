@@ -127,7 +127,7 @@ async function setupAuthenticatedXActor() {
 }
 
 describe("POST /api/zero/image-share/x", () => {
-  it("posts an image to X and records connector usage billing", async () => {
+  it("preserves an explicit caption for an Okou request and records connector usage billing", async () => {
     const billing = createBillingMediaApi(context);
     const actor = await setupAuthenticatedXActor();
     await seedOrgMetadata({ orgId: actor.orgId, tier: "pro", credits: 1000 });
@@ -140,6 +140,7 @@ describe("POST /api/zero/image-share/x", () => {
     const response = await accept(
       client(pricing.resolution).post({
         headers: authHeaders(),
+        extraHeaders: { origin: "https://app.okou.ai" },
         body: {
           caption: "Edited with Zero",
           imageUrl: IMAGE_URL,
@@ -170,6 +171,55 @@ describe("POST /api/zero/image-share/x", () => {
       credits: 985,
     });
   });
+
+  it.each([
+    {
+      brand: "Okou",
+      caption: undefined,
+      expectedCaption: "Made with Okou",
+      origin: "https://app.okou.ai",
+    },
+    {
+      brand: "VM0",
+      caption: "   ",
+      expectedCaption: "Made with Zero",
+      origin: undefined,
+    },
+  ] as const)(
+    "uses the $brand default caption when the caption is missing or blank",
+    async ({ caption, expectedCaption, origin }) => {
+      const actor = await setupAuthenticatedXActor();
+      await seedOrgMetadata({ orgId: actor.orgId, tier: "pro", credits: 1000 });
+      const pricing = await createUsagePricingFixture({
+        configured: X_IMAGE_SHARE_PRICING_ROWS,
+      });
+      onTestFinished(pricing.cleanup);
+      const provider = mockXImageShareProvider();
+
+      const response = await accept(
+        client(pricing.resolution).post({
+          headers: authHeaders(),
+          ...(origin === undefined ? {} : { extraHeaders: { origin } }),
+          body: {
+            ...(caption === undefined ? {} : { caption }),
+            imageUrl: IMAGE_URL,
+          },
+        }),
+        [200],
+      );
+
+      expect(response.body).toStrictEqual({
+        tweetId: "tweet-123",
+        tweetUrl: "https://x.com/i/web/status/tweet-123",
+      });
+      expect(provider.createPostBodies).toStrictEqual([
+        {
+          text: expectedCaption,
+          media: { media_ids: ["media-123"] },
+        },
+      ]);
+    },
+  );
 
   it("rejects an oversized image without a content-length header", async () => {
     await setupAuthenticatedXActor();

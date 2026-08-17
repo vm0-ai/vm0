@@ -44,6 +44,7 @@ import {
 import {
   holdChatThreadEventInsertTransactionFixture,
   insertChatThreadEventTransactionFixture,
+  setChatThreadImageModelFixture,
   setChatThreadVideoModelFixture,
 } from "../../../test-fixtures/chat-thread-events";
 import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
@@ -1021,6 +1022,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       { eventId: modelSelectionEventId },
     );
     await setChatThreadVideoModelFixture(liveThread.id, "fal-ai/veo3.1/fast");
+    await setChatThreadImageModelFixture(liveThread.id, "fal-ai/qwen-image");
 
     const incrementalSnapshotAt = initialSnapshotAt + 1000;
     mockNow(incrementalSnapshotAt);
@@ -1055,6 +1057,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
         // The compaction projection is hand-written SQL, so a column missing
         // from it survives every read until compaction runs and drops it.
         selectedVideoModel: "fal-ai/veo3.1/fast",
+        selectedImageModel: "fal-ai/qwen-image",
       }),
     ]);
 

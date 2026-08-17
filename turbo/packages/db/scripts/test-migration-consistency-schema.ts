@@ -53,6 +53,7 @@ import {
   validateAgentRunLaunchSnapshotSchema,
 } from "./test-agent-run-launch-snapshot";
 import { validateAgentComposeConsolidationPreflight } from "./test-agent-compose-consolidation-preflight";
+import { validateIntegrationIdentityContractReadinessPreflight } from "./test-integration-identity-contract-readiness-preflight";
 import {
   AgentComposeProvenanceSchemaUnavailableError,
   deleteClerkAgentLifecycleData,
@@ -3559,6 +3560,7 @@ async function validatePermanentAgentRunMetadataState(
       "selected_model",
       "codex_service_tier",
       "selected_video_model",
+      "selected_image_model",
       "chat_thread_id",
       "api_started_at",
       "first_assistant_event_acknowledged_at",
@@ -11654,6 +11656,7 @@ async function main(): Promise<void> {
     await validateChatEventSnapshotContraction();
     await validateAgentComposeProvenanceMigration();
     await validateAgentComposeConsolidationPreflight();
+    await validateIntegrationIdentityContractReadinessPreflight();
     await validateAgentRunMetadataStage2Preflight();
     await validateAgentRunMetadataStage2Lock();
     await validateAgentRunMetadataStage2Index();

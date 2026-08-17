@@ -1,0 +1,74 @@
+name: Integration Identity Contract Readiness Preflight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-integration-identity-contract-readiness-preflight
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
+    environment: production
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # transition-validator: #27665; removal-owner: #27602
+      # The workflow definition and implementation always come from main.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+
+      - name: Initialize toolchain
+        uses: ./.github/actions/toolchain-init
+
+      - name: Install neonctl
+        run: npm install -g neonctl@2.15.0
+
+      - name: Resolve production database
+        id: database
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          if ! database_url=$(
+            neonctl connection-string production \
+              --project-id "$NEON_PROJECT_ID" \
+              --database-name neondb \
+              --role-name neondb_owner \
+              --pooled \
+              --ssl verify-full \
+              2>/dev/null
+          ); then
+            echo '{"schemaVersion":"vm0.integration-identity-contract-readiness-preflight.v1","status":"failed","failureGates":["probe.database_resolution"]}'
+            exit 1
+          fi
+          if [[ -z "$database_url" ||
+                "$database_url" == *$'\n'* ||
+                "$database_url" == *$'\r'* ||
+                ( "$database_url" != postgres://* &&
+                  "$database_url" != postgresql://* ) ]]; then
+            echo '{"schemaVersion":"vm0.integration-identity-contract-readiness-preflight.v1","status":"failed","failureGates":["probe.database_resolution"]}'
+            exit 1
+          fi
+          echo "::add-mask::$database_url"
+          echo "database-url=$database_url" >> "$GITHUB_OUTPUT"
+
+      - name: Run aggregate-only preflight
+        env:
+          DATABASE_URL: ${{ steps.database.outputs.database-url }}
+        working-directory: turbo
+        run: |
+          set -euo pipefail
+          pnpm --filter @okouai/db exec tsx \
+            scripts/integration-identity-contract-readiness-preflight.ts

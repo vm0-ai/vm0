@@ -122,6 +122,7 @@ export const patchChatThreadModelSelection$ = command(
         computerUseHostId: null,
         cloudBrowserEnabled: false,
         selectedVideoModel: null,
+        selectedImageModel: null,
         createdAt,
       } satisfies OptimisticChatThreadEvent);
       set(registerOptimisticChatThreadEvent$, {
@@ -136,6 +137,7 @@ export const patchChatThreadModelSelection$ = command(
         computerUseHostId: null,
         cloudBrowserEnabled: false,
         selectedVideoModel: null,
+        selectedImageModel: null,
         createdAt,
       } satisfies OptimisticChatThreadEvent);
     }
@@ -181,6 +183,7 @@ export const patchChatThreadComputerUseHost$ = command(
         computerUseHostId,
         cloudBrowserEnabled,
         selectedVideoModel: null,
+        selectedImageModel: null,
         createdAt: nowDate().toISOString(),
       } satisfies OptimisticChatThreadEvent);
     }
@@ -216,6 +219,7 @@ export const patchChatThreadVideoModel$ = command(
         computerUseHostId: null,
         cloudBrowserEnabled: false,
         selectedVideoModel: videoModel,
+        selectedImageModel: null,
         createdAt: nowDate().toISOString(),
       } satisfies OptimisticChatThreadEvent);
     }

@@ -1,12 +1,17 @@
 import { Command, InvalidArgumentError } from "commander";
 import chalk from "chalk";
 import { generateWebImage } from "../../lib/api/domains/web";
+import { decodeSandboxTokenPayload } from "../../lib/api/sandbox-token";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { createStyledImageCompilationPacket } from "./image-style-authoring";
 import {
   findImageStyle,
   listImageStyles,
 } from "@okouai/core/resource-registry";
+import {
+  DEFAULT_IMAGE_MODEL,
+  IMAGE_MODEL_CONFIGS,
+} from "@okouai/core/image-model-catalog";
 import { formatRegistryListing } from "./resource-listing";
 import { dispatchGenerate } from "../generate/lib/dispatch";
 import type { GenerationType } from "../generate/lib/lister";
@@ -135,6 +140,15 @@ function resolvePromptInput(options: ImageOptions): string | undefined {
   return options.compiledPrompt ?? options.rawPrompt ?? options.prompt;
 }
 
+function resolveImageRequestModel(
+  command: Command,
+  model: string,
+): string | undefined {
+  const hasRunScopedToken = decodeSandboxTokenPayload() !== undefined;
+  const modelSource = command.getOptionValueSource("model");
+  return hasRunScopedToken && modelSource === "default" ? undefined : model;
+}
+
 function hasImagePromptModeRequest(options: ImageOptions): boolean {
   return (
     options.style !== undefined ||
@@ -213,7 +227,7 @@ export function createImageGenerateCommand(
     .option(
       "--model <model>",
       "Model: gpt-image-1 (default), gpt-image-2, gpt-image-1.5, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4, or nano-banana-2",
-      "gpt-image-1",
+      IMAGE_MODEL_CONFIGS[DEFAULT_IMAGE_MODEL].alias,
     )
     .option(
       "--size <size>",
@@ -393,7 +407,7 @@ ${formatRegistryListing(styles, "image styles")}`;
             : options.size;
         const result = await generateWebImage({
           prompt: resolvedPrompt,
-          model: options.model,
+          model: resolveImageRequestModel(command, options.model),
           size,
           quality: options.quality,
           background: options.background,

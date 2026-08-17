@@ -2280,6 +2280,7 @@ async function customGatewayModelProviderEnvironment(
     displayName: row.displayName,
     authHeaderName: row.authHeaderName,
     authHeaderTemplate: row.authHeaderTemplate,
+    logicalModel: args.selectedModelOverride,
     upstreamModel,
   });
   if (

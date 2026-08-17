@@ -33,6 +33,24 @@ const IMAGE_RESULT = {
   moderation: "auto",
 };
 
+function buildRunToken(): string {
+  const header = Buffer.from(JSON.stringify({ alg: "HS256" })).toString(
+    "base64url",
+  );
+  const body = Buffer.from(
+    JSON.stringify({
+      userId: "user-image",
+      runId: "run-image",
+      orgId: "org-image",
+      scope: "okou",
+      capabilities: ["file:write"],
+      iat: 1000,
+      exp: 2000,
+    }),
+  ).toString("base64url");
+  return `vm0_sandbox_${header}.${body}.test-signature`;
+}
+
 describe("okou generate image command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
@@ -115,6 +133,71 @@ describe("okou generate image command", () => {
     expect(stdout).toContain("Model: gpt-image-1");
     expect(stdout).toContain("Provider: fal");
   });
+
+  it.each([
+    {
+      name: "outside a run with an implicit model",
+      insideRun: false,
+      modelArguments: [],
+      expectedModel: "gpt-image-1",
+    },
+    {
+      name: "outside a run with an explicit model",
+      insideRun: false,
+      modelArguments: ["--model", "qwen-image"],
+      expectedModel: "qwen-image",
+    },
+    {
+      name: "inside a run with an implicit model",
+      insideRun: true,
+      modelArguments: [],
+      expectedModel: undefined,
+    },
+    {
+      name: "inside a run with an explicit model",
+      insideRun: true,
+      modelArguments: ["--model", "qwen-image"],
+      expectedModel: "qwen-image",
+    },
+    {
+      name: "inside a run with an explicit value equal to the CLI default",
+      insideRun: true,
+      modelArguments: ["--model", "gpt-image-1"],
+      expectedModel: "gpt-image-1",
+    },
+  ])(
+    "should serialize image model precedence for $name",
+    async ({ insideRun, modelArguments, expectedModel }) => {
+      vi.stubEnv("OKOU_TOKEN", insideRun ? buildRunToken() : "test-token");
+      let capturedBody: unknown;
+      server.use(
+        http.post(IMAGE_URL, async ({ request }) => {
+          capturedBody = await request.json();
+          return HttpResponse.json(IMAGE_RESULT);
+        }),
+      );
+
+      await generateCommand.parseAsync([
+        "node",
+        "cli",
+        "image",
+        "--raw-prompt",
+        "Model precedence",
+        ...modelArguments,
+      ]);
+
+      expect(capturedBody).toEqual({
+        prompt: "Model precedence",
+        ...(expectedModel === undefined ? {} : { model: expectedModel }),
+        size: "1024x1024",
+        quality: "medium",
+        background: "auto",
+        outputFormat: "png",
+        moderation: "auto",
+        safetyTolerance: "4",
+      });
+    },
+  );
 
   it("should surface the CDN embed URL when it differs from the file URL", async () => {
     const embedUrl =

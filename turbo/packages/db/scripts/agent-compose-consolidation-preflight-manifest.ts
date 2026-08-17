@@ -396,6 +396,7 @@ export const EXPECTED_REPOSITORY_DEPENDENCIES = {
   ],
   transitionValidators: [
     "#27613+#27656|agent-compose-consolidation-preflight|removal-owner:#26938-stage-8",
+    "#27665|integration-identity-contract-readiness-preflight|removal-owner:#27602",
   ],
 } as const satisfies RepositoryDependencyManifest;
 

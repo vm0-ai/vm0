@@ -60,6 +60,7 @@ function runMetadata(row: ProfileRunMetadataRow) {
     selectedModel: row.selectedModel,
     codexServiceTier: row.codexServiceTier,
     selectedVideoModel: row.selectedVideoModel,
+    selectedImageModel: row.selectedImageModel,
     chatThreadId: row.chatThreadId,
     apiStartedAt: row.apiStartedAt,
     firstAssistantEventAcknowledgedAt: row.firstAssistantEventAcknowledgedAt,
@@ -93,6 +94,7 @@ describe("dev bench seed profile rows", () => {
           expect.objectContaining({
             triggerSource: expect.any(String),
             autonomyBudget: 10,
+            selectedImageModel: null,
           }),
         );
       }
