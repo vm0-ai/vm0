@@ -537,9 +537,14 @@ function LegacyOAuthCredentialsSection() {
       openBillingPlans();
       return;
     }
-    const mode = claudeCode?.needsReconnect ? "reconnect" : "connect";
+    const args = claudeCode?.needsReconnect
+      ? {
+          mode: "reconnect" as const,
+          modelProviderId: claudeCode.id,
+        }
+      : { mode: "connect" as const };
     detach(
-      openClaudeCodeDeviceAuthDialog({ mode }, pageSignal),
+      openClaudeCodeDeviceAuthDialog(args, pageSignal),
       Reason.DomCallback,
     );
   };
@@ -548,8 +553,13 @@ function LegacyOAuthCredentialsSection() {
       openBillingPlans();
       return;
     }
-    const mode = openAI?.needsReconnect ? "reconnect" : "connect";
-    detach(openCodexDeviceAuthDialog({ mode }, pageSignal), Reason.DomCallback);
+    const args = openAI?.needsReconnect
+      ? {
+          mode: "reconnect" as const,
+          modelProviderId: openAI.id,
+        }
+      : { mode: "connect" as const };
+    detach(openCodexDeviceAuthDialog(args, pageSignal), Reason.DomCallback);
   };
 
   return (

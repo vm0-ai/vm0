@@ -32,6 +32,10 @@ type OpenCodexDeviceAuthArgs =
       readonly modelProviderId?: string;
     };
 
+type OpenPersonalCodexDeviceAuthArgs =
+  | { readonly mode: "connect" }
+  | { readonly mode: "reconnect"; readonly modelProviderId: string };
+
 type ActiveCodexDeviceAuthFlowState = {
   readonly status: "pending" | "polling";
   readonly requestId: string;
@@ -517,13 +521,23 @@ export const {
   run$: runCodexDeviceAuth$,
 } = createCodexDeviceAuthSignals("org", reloadOrgModelProviders$);
 
-export const {
-  dialogState$: codexDeviceAuthDialogStatePersonal$,
-  flowState$: codexDeviceAuthFlowStatePersonal$,
-  open$: openCodexDeviceAuthDialogPersonal$,
-  openApprovalPage$: openCodexDeviceAuthApprovalPagePersonal$,
-  close$: closeCodexDeviceAuthDialogPersonal$,
-  run$: runCodexDeviceAuthPersonal$,
-} = createCodexDeviceAuthSignals("personal", reloadPersonalModelProvider$);
+const personalCodexDeviceAuthSignals = createCodexDeviceAuthSignals(
+  "personal",
+  reloadPersonalModelProvider$,
+);
+
+export const codexDeviceAuthDialogStatePersonal$ =
+  personalCodexDeviceAuthSignals.dialogState$;
+export const codexDeviceAuthFlowStatePersonal$ =
+  personalCodexDeviceAuthSignals.flowState$;
+export const openCodexDeviceAuthDialogPersonal$: Command<
+  Promise<boolean>,
+  [OpenPersonalCodexDeviceAuthArgs, AbortSignal]
+> = personalCodexDeviceAuthSignals.open$;
+export const openCodexDeviceAuthApprovalPagePersonal$ =
+  personalCodexDeviceAuthSignals.openApprovalPage$;
+export const closeCodexDeviceAuthDialogPersonal$ =
+  personalCodexDeviceAuthSignals.close$;
+export const runCodexDeviceAuthPersonal$ = personalCodexDeviceAuthSignals.run$;
 
 export type { CodexDeviceAuthFlowState };
