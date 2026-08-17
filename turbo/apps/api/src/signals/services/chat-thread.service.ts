@@ -11,6 +11,7 @@ import {
   persistedAttachmentSchema,
   zeroIndicatorSchema,
 } from "@okouai/api-contracts/contracts/chat-threads";
+import type { ImageModelId } from "@okouai/api-contracts/contracts/image-models";
 import {
   modelProviderCredentialScopeSchema,
   modelProviderTypeSchema,
@@ -633,6 +634,7 @@ export const createChatThread$ = command(
       readonly selectedModel: string | null;
       readonly codexServiceTier: CodexServiceTier | null;
       readonly selectedVideoModel: string | null;
+      readonly selectedImageModel: ImageModelId | null;
     },
     signal: AbortSignal,
   ): Promise<{ id: string; createdAt: Date }> => {
@@ -654,6 +656,7 @@ export const createChatThread$ = command(
           selectedModel: args.selectedModel,
           codexServiceTier: args.codexServiceTier,
           selectedVideoModel: args.selectedVideoModel,
+          selectedImageModel: args.selectedImageModel,
         })
         .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
       if (!createdThread) {
@@ -672,6 +675,7 @@ export const createChatThread$ = command(
         computerUseHostId: null,
         cloudBrowserEnabled: false,
         selectedVideoModel: args.selectedVideoModel,
+        selectedImageModel: args.selectedImageModel,
         createdAt: createdThread.createdAt,
       });
       return createdThread;

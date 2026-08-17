@@ -323,6 +323,7 @@ describe("AUTH-03 user model preference", () => {
       selectedModel: null,
       serviceTier: null,
       selectedVideoModel: null,
+      selectedImageModel: null,
       updatedAt: null,
     });
 
@@ -344,6 +345,7 @@ describe("AUTH-03 user model preference", () => {
       selectedModel: null,
       serviceTier: null,
       selectedVideoModel: null,
+      selectedImageModel: null,
       updatedAt: null,
     });
     const readCleared = await cfg.readModelPreference(admin);
@@ -351,6 +353,7 @@ describe("AUTH-03 user model preference", () => {
       selectedModel: null,
       serviceTier: null,
       selectedVideoModel: null,
+      selectedImageModel: null,
       updatedAt: null,
     });
   });

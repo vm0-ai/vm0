@@ -94,6 +94,9 @@ const updateUserModelPreferenceInner$ = command(
       ...("selectedVideoModel" in body.data
         ? (["defaultVideoModel"] as const)
         : []),
+      ...("selectedImageModel" in body.data
+        ? (["defaultImageModel"] as const)
+        : []),
     ];
     await publishUserPreferenceChangedForUserSafely(auth.userId, kinds);
     signal.throwIfAborted();
