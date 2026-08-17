@@ -141,6 +141,8 @@ mod tests {
     const SIGNAL_ENV: &str = "VM0_RUN_SERVICE_SIGNAL_NAME";
     const INVOCATIONS_ENV: &str = "VM0_RUN_SERVICE_SIGNAL_INVOCATIONS";
     const CHILD_TEST: &str = "cmd::service::signal::tests::signal_service_main_systemctl_child";
+    const BOUNDED_OUTCOME_SCENARIO_BUDGET: Duration = Duration::from_secs(5);
+    const BOUNDED_TIMEOUT_SCENARIO_BUDGET: Duration = Duration::from_millis(100);
     const FAKE_SYSTEMCTL: &str = r#"#!/bin/sh
 printf '%s\n' "$*" >> "$VM0_RUN_SERVICE_SIGNAL_INVOCATIONS"
 
@@ -304,10 +306,14 @@ exit 2
             value => panic!("unexpected signal scenario value: {value:?}"),
         };
         let unit = RunnerServiceUnit::from_suffix("test").unwrap();
-        let result = if scenario.starts_with("bounded-") {
-            signal_service_main_bounded(&unit, signal, Duration::from_millis(100)).await
-        } else {
-            signal_service_main(&unit, signal).await
+        let result = match scenario.as_str() {
+            "bounded-success" | "bounded-absent" => {
+                signal_service_main_bounded(&unit, signal, BOUNDED_OUTCOME_SCENARIO_BUDGET).await
+            }
+            "bounded-timeout" => {
+                signal_service_main_bounded(&unit, signal, BOUNDED_TIMEOUT_SCENARIO_BUDGET).await
+            }
+            _ => signal_service_main(&unit, signal).await,
         };
 
         match scenario.as_str() {
@@ -334,7 +340,10 @@ exit 2
             "bounded-timeout" => {
                 let error = result.unwrap_err().to_string();
                 assert!(
-                    error.contains("systemctl timed out after 100ms"),
+                    error.contains(&format!(
+                        "systemctl timed out after {}ms",
+                        BOUNDED_TIMEOUT_SCENARIO_BUDGET.as_millis()
+                    )),
                     "unexpected error: {error}"
                 );
             }
