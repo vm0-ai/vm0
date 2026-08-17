@@ -34,6 +34,24 @@ const VIDEO_RESULT = {
   requestId: "video-request",
 };
 
+function buildRunToken(): string {
+  const header = Buffer.from(JSON.stringify({ alg: "HS256" })).toString(
+    "base64url",
+  );
+  const body = Buffer.from(
+    JSON.stringify({
+      userId: "user-video",
+      runId: "run-video",
+      orgId: "org-video",
+      scope: "okou",
+      capabilities: ["file:write", "billing:read"],
+      iat: 1000,
+      exp: 2000,
+    }),
+  ).toString("base64url");
+  return `vm0_sandbox_${header}.${body}.test-signature`;
+}
+
 function pngWithDimensions(width: number, height: number): Buffer {
   const buffer = Buffer.alloc(24);
   buffer.write("\x89PNG\r\n\x1a\n", 0, "latin1");
@@ -133,6 +151,32 @@ describe("okou generate video command", () => {
       autoFix: true,
       safetyTolerance: "4",
     });
+  });
+
+  it("should ignore an explicit model inside an agent run", async () => {
+    // The server generates with the model the run is set to and drops whatever
+    // the request names, so sending one would only misreport what was used.
+    vi.stubEnv("OKOU_TOKEN", buildRunToken());
+    let payload: unknown = null;
+    server.use(
+      http.post(VIDEO_URL, async ({ request }) => {
+        payload = await request.json();
+        return HttpResponse.json(VIDEO_RESULT);
+      }),
+    );
+
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "video",
+      "--prompt",
+      "A neon market tracking shot",
+      "--model",
+      "kling-v3-4k",
+    ]);
+
+    expect(payload).not.toHaveProperty("model");
+    expect(payload).toMatchObject({ prompt: "A neon market tracking shot" });
   });
 
   it("should generate a video and print the /f file URL", async () => {
