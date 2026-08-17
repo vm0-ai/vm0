@@ -9,6 +9,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import chalk from "chalk";
+import { DEFAULT_IMAGE_MODEL_ENV } from "@okouai/core/image-model-catalog";
 import { generateCommand } from "../index";
 import { spriteCommand } from "../sprite";
 
@@ -77,6 +78,44 @@ describe("okou generate sprite command", () => {
     expect(stdout).toContain("- Asset type: agent decides");
     expect(stdout).toContain("- Sheet / grid: auto");
     expect(stdout).toContain("Use `gpt-image-2`");
+    expect(stdout).toContain("--model gpt-image-2 --raw-prompt");
+  });
+
+  it("should keep Sprite's implicit model inside a run with a default image model", async () => {
+    vi.stubEnv(DEFAULT_IMAGE_MODEL_ENV, "qwen-image");
+
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "sprite",
+      "--prompt",
+      "A fireball projectile",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain("Use `gpt-image-2`");
+    expect(stdout).toContain("--model gpt-image-2 --raw-prompt");
+    expect(stdout).not.toContain("Use the run default");
+    expect(stdout).not.toContain("--model qwen-image --raw-prompt");
+  });
+
+  it("should preserve Sprite's explicit model inside a gated run", async () => {
+    vi.stubEnv(DEFAULT_IMAGE_MODEL_ENV, "qwen-image");
+
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "sprite",
+      "--prompt",
+      "A fireball projectile",
+      "--model",
+      "seedream4",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain("Use `seedream4`");
+    expect(stdout).toContain("--model seedream4 --raw-prompt");
+    expect(stdout).not.toContain("Use the run default `qwen-image`");
   });
 
   it("should reject an unknown asset type", async () => {

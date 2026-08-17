@@ -13,6 +13,7 @@ import chalk from "chalk";
 import { server } from "../../../mocks/server";
 import { generateCommand } from "../index";
 import { imageCommand } from "../image";
+import { DEFAULT_IMAGE_MODEL_ENV } from "@okouai/core/image-model-catalog";
 
 const IMAGE_URL = "http://localhost:3000/api/okou/image-io/generate";
 const IMAGE_GENERATION_ID = "00000000-0000-4000-8000-000000000001";
@@ -138,37 +139,57 @@ describe("okou generate image command", () => {
     {
       name: "outside a run with an implicit model",
       insideRun: false,
+      runDefaultImageModel: undefined,
       modelArguments: [],
       expectedModel: "gpt-image-1",
     },
     {
       name: "outside a run with an explicit model",
       insideRun: false,
+      runDefaultImageModel: undefined,
       modelArguments: ["--model", "qwen-image"],
       expectedModel: "qwen-image",
     },
     {
       name: "inside a run with an implicit model",
       insideRun: true,
+      runDefaultImageModel: undefined,
       modelArguments: [],
       expectedModel: undefined,
     },
     {
-      name: "inside a run with an explicit model",
+      name: "inside a gated run with an implicit model",
       insideRun: true,
+      runDefaultImageModel: "qwen-image",
+      modelArguments: [],
+      expectedModel: undefined,
+    },
+    {
+      name: "inside a gated run with an explicit model",
+      insideRun: true,
+      runDefaultImageModel: "seedream4",
       modelArguments: ["--model", "qwen-image"],
       expectedModel: "qwen-image",
     },
     {
-      name: "inside a run with an explicit value equal to the CLI default",
+      name: "inside a gated run with an explicit value equal to the CLI default",
       insideRun: true,
+      runDefaultImageModel: "qwen-image",
       modelArguments: ["--model", "gpt-image-1"],
       expectedModel: "gpt-image-1",
     },
   ])(
     "should serialize image model precedence for $name",
-    async ({ insideRun, modelArguments, expectedModel }) => {
+    async ({
+      insideRun,
+      runDefaultImageModel,
+      modelArguments,
+      expectedModel,
+    }) => {
       vi.stubEnv("OKOU_TOKEN", insideRun ? buildRunToken() : "test-token");
+      if (runDefaultImageModel !== undefined) {
+        vi.stubEnv(DEFAULT_IMAGE_MODEL_ENV, runDefaultImageModel);
+      }
       let capturedBody: unknown;
       server.use(
         http.post(IMAGE_URL, async ({ request }) => {
@@ -499,6 +520,50 @@ describe("okou generate image command", () => {
       "`--background` accepts only `auto`, `opaque`, or `transparent`",
     );
     expect(stdout).toContain("--compiled-prompt");
+  });
+
+  it("should keep style compilation on the run default unless a model is explicit", async () => {
+    vi.stubEnv(DEFAULT_IMAGE_MODEL_ENV, "seedream4");
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "image",
+      "--style",
+      "image-style:ink-storefront",
+      "--prompt",
+      "A florist named Luna Floral",
+      "--compile",
+    ]);
+
+    const implicitStdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(implicitStdout).toContain(
+      "Run default model if direct image generation is used: seedream4; omit --model so the server applies it",
+    );
+    expect(implicitStdout).not.toContain(
+      "Model preference if direct image generation is used: gpt-image-1",
+    );
+
+    mockConsoleLog.mockClear();
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "image",
+      "--style",
+      "image-style:ink-storefront",
+      "--prompt",
+      "A florist named Luna Floral",
+      "--compile",
+      "--model",
+      "qwen-image",
+    ]);
+
+    const explicitStdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(explicitStdout).toContain(
+      "Explicit model if direct image generation is used: qwen-image",
+    );
+    expect(explicitStdout).not.toContain(
+      "Run default model if direct image generation is used",
+    );
   });
 
   it("should print an R2-backed style packet when --style-source r2 is selected", async () => {
