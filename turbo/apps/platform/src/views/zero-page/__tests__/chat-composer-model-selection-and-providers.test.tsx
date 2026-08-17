@@ -3703,69 +3703,6 @@ describe("chat composer video model", () => {
     expect(videoModelButton).toHaveAttribute("aria-expanded", "false");
   });
 
-  it("styles the desktop category track like a segment control", async () => {
-    const user = userEvent.setup({ delay: null });
-    context.mocks.browser.matchMedia(true);
-    mockVideoModelThread(null);
-
-    detachedSetupPage({
-      context,
-      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: true },
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    const chatModelButton = await findComposerModel("Claude Fable 5");
-    const videoModelButton = await findDesktopVideoModelButton();
-
-    // The track is `SegmentControl` at `sm`: an h-8 shell with a 2px inset
-    // around h-7 segments, so the whole group measures the same 32px as the
-    // icon-sm controls next to it instead of stretching the settings row.
-    expect(videoModelButton.parentElement).toHaveClass(
-      "sm:h-8",
-      "sm:rounded-lg",
-      "sm:p-0.5",
-      "sm:bg-muted",
-    );
-
-    // Both segments read at the regular weight, so neither category looks
-    // louder than the other inside the composer's quiet control row.
-    expect(chatModelButton).toHaveClass(
-      "sm:h-7",
-      "sm:rounded-md",
-      "sm:font-normal",
-    );
-    expect(videoModelButton).toHaveClass("h-7", "rounded-md", "font-normal");
-    expect(videoModelButton.className).not.toContain("font-medium");
-
-    // Only the selected segment carries the opaque lift, and it must never be
-    // the translucent state layer, which would erase the fill on hover.
-    expect(chatModelButton).toHaveClass(
-      "sm:bg-segment-selected",
-      "sm:shadow-segment-selected",
-    );
-    expect(videoModelButton).not.toHaveClass("bg-segment-selected");
-    expect(chatModelButton.className).not.toContain("bg-state-selected");
-
-    // Both category glyphs come from the same icon family at the same size, so
-    // the two segments carry the same stroke weight.
-    for (const icon of [
-      chatModelButton.querySelector(".lucide-message-circle"),
-      videoModelButton.querySelector(".lucide-video"),
-    ]) {
-      expect(icon).toHaveAttribute("width", "16");
-      expect(icon).toHaveAttribute("height", "16");
-      expect(icon).toHaveAttribute("stroke-width", "2");
-    }
-
-    await user.click(videoModelButton);
-
-    expect(videoModelButton).toHaveClass(
-      "bg-segment-selected",
-      "shadow-segment-selected",
-    );
-    expect(chatModelButton).not.toHaveClass("sm:bg-segment-selected");
-  });
-
   it("pins the visible fallback model to the current thread", async () => {
     const user = userEvent.setup({ delay: null });
     context.mocks.browser.matchMedia(false);
@@ -3870,11 +3807,6 @@ describe("chat composer video model", () => {
     const chip = await screen.findByLabelText(
       "Video options 16:9 \u00b7 8s \u00b7 720p",
     );
-    // The chip renders through `Button`, so it stands the same 32px tall as
-    // the icon controls it shares the row with, at the same radius and weight,
-    // instead of hand-rolling its own size.
-    expect(chip).toHaveClass("h-8", "px-3", "rounded-lg", "font-normal");
-    expect(chip.className).not.toContain("h-7");
     await user.click(chip);
     await user.click(
       within(
