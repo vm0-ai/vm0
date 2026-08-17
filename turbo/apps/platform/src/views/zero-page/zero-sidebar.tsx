@@ -29,6 +29,7 @@ import {
   setSidebarExpanded$,
   handleZeroNavSelect$,
   handleZeroAccountAction$,
+  navigateToNewChat$,
   type SidebarNavId,
 } from "../../signals/zero-page/zero-nav.ts";
 import { activeRoute$ } from "../../signals/active-route.ts";
@@ -51,6 +52,8 @@ import { AccountDropdown } from "./zero-sidebar-account.tsx";
 import { ChatThreadsSection } from "./sidebar-threads.tsx";
 import { PinnedAgentListSection } from "./zero-sidebar-pinned.tsx";
 import { SidebarUpgradeCard } from "./zero-sidebar-upgrade.tsx";
+import { rootSignal$ } from "../../signals/root-signal.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 
@@ -730,7 +733,8 @@ function LabeledNavRail() {
 }
 
 function ChatListColumn() {
-  const onSelect = useNavSelect();
+  const navigateToNewChat = useSet(navigateToNewChat$);
+  const rootSignal = useGet(rootSignal$);
   const openAgentList = useSet(openAgentListDialog$);
   const activeId = useGet(activeRoute$);
   const { t } = useTranslation();
@@ -784,7 +788,7 @@ function ChatListColumn() {
                     return;
                   }
                   e.preventDefault();
-                  onSelect("chat");
+                  detach(navigateToNewChat(rootSignal), Reason.DomCallback);
                 }}
                 aria-label={newChatLabel}
                 aria-current={isNewChatActive ? "page" : undefined}

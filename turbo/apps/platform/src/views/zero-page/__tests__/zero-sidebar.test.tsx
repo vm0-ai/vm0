@@ -2819,6 +2819,29 @@ describe("zero sidebar", () => {
     ).toBeInTheDocument();
   });
 
+  it("opens a new chat from the three-column header without visiting home", async () => {
+    prepareDefaultAgent();
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Existing conversation"),
+    ]);
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const list = await screen.findByTestId("chat-list-column");
+    click(within(list).getByLabelText("New chat"));
+
+    expect(pathname()).not.toBe("/");
+    await waitFor(() => {
+      expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
+    });
+  });
+
   it("keeps New fourth in the pinned agent navigation order", async () => {
     const team = prepareAgentTeam();
     const operationsAgentId = "c0000000-0000-4000-a000-000000000004";

@@ -21,7 +21,7 @@ export const navigateToChat$ = command(({ set }, chatThreadId: string) => {
   });
 });
 
-const navigateToNewChat$ = command(
+export const navigateToNewChat$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const agentId = await get(currentChatAgentId$);
     signal.throwIfAborted();
