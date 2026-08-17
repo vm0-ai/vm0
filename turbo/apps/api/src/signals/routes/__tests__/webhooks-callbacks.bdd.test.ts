@@ -60,6 +60,10 @@ const store = createStore();
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 const DEFAULT_AGENT_AVATAR_URL = "svg:r1s0h1c5f4h";
 
+function isUnknownRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function successfulAxiomIngestStatus(ingested: number) {
   return {
     ingested,
@@ -1362,6 +1366,9 @@ describe("WHCB-04: internal callback and event-consumer boundaries", () => {
       type: "result",
       sequenceNumber: 0,
       result: oversizedContent,
+      duration_ms: 123,
+      num_turns: 4,
+      modelUsage: { inputTokens: 100, outputTokens: 200 },
     };
     const originalBytes = Buffer.byteLength(JSON.stringify(event), "utf8");
     expect(originalBytes).toBeGreaterThan(900_000);
@@ -1389,31 +1396,51 @@ describe("WHCB-04: internal callback and event-consumer boundaries", () => {
     });
     await flushWaitUntilForTest();
 
-    const reducedEventData = {
-      type: event.type,
-      sequenceNumber: event.sequenceNumber,
-      vm0AxiomReduction: {
-        reason: "field_size_limit",
-        originalBytes,
-        budgetBytes: 900_000,
-      },
-    };
-    const deliveredBytes = Buffer.byteLength(
-      JSON.stringify(reducedEventData),
-      "utf8",
+    expect(requests).toHaveLength(1);
+    const requestBatch = requests[0];
+    if (!Array.isArray(requestBatch)) {
+      throw new Error("Expected an Axiom request batch");
+    }
+    const requestEvent: unknown = requestBatch[0];
+    expect(requestEvent).toStrictEqual(
+      expect.objectContaining({
+        runId,
+        userId: actor.userId,
+        sequenceNumber: event.sequenceNumber,
+        eventType: event.type,
+      }),
     );
-    expect(deliveredBytes).toBeLessThanOrEqual(900_000);
-    expect(requests).toStrictEqual([
-      [
-        {
-          runId,
-          userId: actor.userId,
-          sequenceNumber: event.sequenceNumber,
-          eventType: event.type,
-          eventData: reducedEventData,
+    if (!isUnknownRecord(requestEvent)) {
+      throw new Error("Expected an Axiom request event");
+    }
+    const eventData = requestEvent.eventData;
+    expect(eventData).toStrictEqual(
+      expect.objectContaining({
+        type: event.type,
+        sequenceNumber: event.sequenceNumber,
+        duration_ms: event.duration_ms,
+        num_turns: event.num_turns,
+        modelUsage: event.modelUsage,
+        axiomReduction: {
+          reason: "field_size_limit",
+          originalBytes,
+          budgetBytes: 900_000,
         },
-      ],
-    ]);
+      }),
+    );
+    if (!isUnknownRecord(eventData)) {
+      throw new Error("Expected Axiom event data");
+    }
+    const reducedResult = eventData.result;
+    if (typeof reducedResult !== "string") {
+      throw new Error("Expected a retained result prefix");
+    }
+    expect(reducedResult).not.toBe(oversizedContent);
+    expect(reducedResult.startsWith("界")).toBeTruthy();
+    expect(reducedResult.endsWith("[truncated]")).toBeTruthy();
+
+    const deliveredBytes = Buffer.byteLength(JSON.stringify(eventData), "utf8");
+    expect(deliveredBytes).toBeLessThanOrEqual(900_000);
 
     const reductionLogs = context.mocks.axiomLogging.warn.mock.calls.filter(
       ([message]) => {
