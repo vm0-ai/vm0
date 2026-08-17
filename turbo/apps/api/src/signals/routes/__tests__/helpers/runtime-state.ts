@@ -163,6 +163,11 @@ export async function readRunAutonomyBudgetFixture(
   return response.autonomy_budget ?? null;
 }
 
+/**
+ * Launch snapshots are intentionally writer-only in Stage 2, so persistence
+ * cannot be observed through a production API. Keep this test-only exception
+ * bounded to snapshot, historical-NULL, and no-row retry assertions.
+ */
 export async function readRunLaunchSnapshotFixture(
   context: TestContext,
   runId: string,
