@@ -17,7 +17,6 @@ from flow_metadata_linter.ast_helpers import (
     _pattern_is_exhaustive,
     _pattern_names,
     _scope_bound_name_visitor,
-    _statement_can_fall_through,
     _static_first_call_argument_nodes,
     _static_truth_value,
     _target_names,
@@ -129,6 +128,11 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
     that can fall through, while loops also retain zero-iteration and possible body
     or ``else`` exits.
 
+    Sequential body traversal treats an explicit ``False`` visitor result as a
+    terminal statement. Control-flow-bearing statement methods return their normal
+    exit result, while the default ``None`` result means an ordinary statement falls
+    through.
+
     The mutable analysis state has these invariants:
 
     * ``_metadata_alias_scopes`` is never empty. Its last set is the alias state for
@@ -211,13 +215,14 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         for violation in violations:
             self._add_violation(violation)
 
-    def visit(self, node: ast.AST) -> None:
+    def visit(self, node: ast.AST) -> bool | None:
         self._record_metadata_merge_key_violations(node)
-        super().visit(node)
+        result = super().visit(node)
         if _is_modeled_implicit_exception_operation(node) and not isinstance(
             node, (ast.Compare, ast.FormattedValue)
         ):
             self._record_implicit_exception_aliases()
+        return result if isinstance(result, bool) else None
 
     def _is_metadata_reference(self, node: ast.AST) -> bool:
         return (
@@ -425,11 +430,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         return set(self._metadata_aliases)
 
     def _visit_current_scope_body(self, body: list[ast.stmt]) -> bool:
-        for statement in body:
-            self.visit(statement)
-            if not _statement_can_fall_through(statement):
-                return False
-        return True
+        return all(self.visit(statement) is not False for statement in body)
 
     def _visit_branch_body(self, body: list[ast.stmt], aliases: set[str]) -> tuple[set[str], bool]:
         self._metadata_alias_scopes.append(set(aliases))
@@ -507,7 +508,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         shadowed: set[str] | None = None,
         added: set[str] | None = None,
         base_aliases: set[str] | None = None,
-    ) -> None:
+    ) -> bool:
         aliases = set(self._metadata_aliases if base_aliases is None else base_aliases)
         if shadowed is not None:
             aliases.difference_update(shadowed)
@@ -516,9 +517,10 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self._metadata_alias_scopes.append(aliases)
         previous_named_expr_target_scope_indexes = self._named_expr_target_scope_indexes
         self._named_expr_target_scope_indexes = []
-        self._visit_current_scope_body(body)
+        falls_through = self._visit_current_scope_body(body)
         self._named_expr_target_scope_indexes = previous_named_expr_target_scope_indexes
         self._metadata_alias_scopes.pop()
+        return falls_through
 
     def _visit_scoped_expression(
         self,
@@ -540,7 +542,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self._named_expr_target_scope_indexes = previous_named_expr_target_scope_indexes
         self._metadata_alias_scopes.pop()
 
-    def _visit_function_definition(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+    def _visit_function_definition(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
         for decorator in node.decorator_list:
             self._visit_definition_expression(decorator, set(), check_metadata_merge=True)
         type_param_names = _type_param_names(node)
@@ -573,12 +575,13 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         if node.decorator_list:
             self._record_implicit_exception_aliases()
         self._metadata_aliases.discard(node.name)
+        return True
 
-    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        self._visit_function_definition(node)
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> bool:
+        return self._visit_function_definition(node)
 
-    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
-        self._visit_function_definition(node)
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> bool:
+        return self._visit_function_definition(node)
 
     def visit_Lambda(self, node: ast.Lambda) -> None:
         metadata_defaults = self._metadata_default_argument_names(node.args)
@@ -594,7 +597,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         )
         self._exception_alias_scopes.pop()
 
-    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+    def visit_ClassDef(self, node: ast.ClassDef) -> bool:
         for decorator in node.decorator_list:
             self._visit_definition_expression(decorator, set(), check_metadata_merge=True)
         type_param_names = _type_param_names(node)
@@ -616,7 +619,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         class_exception_state = _ExceptionAliasState()
         self._exception_alias_scopes.append(class_exception_state)
         self._class_nested_scope_alias_scopes.append(outer_aliases)
-        self._visit_scoped_body(node.body, base_aliases=class_body_aliases)
+        body_falls_through = self._visit_scoped_body(node.body, base_aliases=class_body_aliases)
         self._class_nested_scope_alias_scopes.pop()
         self._exception_alias_scopes.pop()
         if class_exception_state.may_raise:
@@ -632,6 +635,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         if node.decorator_list:
             self._record_implicit_exception_aliases()
         self._metadata_aliases.discard(node.name)
+        return body_falls_through
 
     def visit_TypeAlias(self, node: ast.AST) -> None:
         type_param_names = _type_param_names(node)
@@ -878,11 +882,12 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self._record_metadata_merge_key_violations(node.value)
         self.generic_visit(node)
 
-    def visit_Return(self, node: ast.Return) -> None:
+    def visit_Return(self, node: ast.Return) -> bool:
         self._record_metadata_merge_key_violations(node.value)
         self.generic_visit(node)
+        return False
 
-    def visit_Assert(self, node: ast.Assert) -> None:
+    def visit_Assert(self, node: ast.Assert) -> bool:
         self._record_metadata_merge_key_violations(node.test)
         self._record_metadata_merge_key_violations(node.msg)
         self.visit(node.test)
@@ -895,12 +900,14 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             self._record_implicit_exception_aliases()
         if test_truth is not False:
             self._restore_alias_scope_snapshot(normal_aliases)
+        return test_truth is not False
 
-    def visit_Raise(self, node: ast.Raise) -> None:
+    def visit_Raise(self, node: ast.Raise) -> bool:
         self._record_metadata_merge_key_violations(node.exc)
         self._record_metadata_merge_key_violations(node.cause)
         self.generic_visit(node)
         self._record_exception_aliases()
+        return False
 
     def visit_Yield(self, node: ast.Yield) -> None:
         self._record_metadata_merge_key_violations(node.value)
@@ -935,9 +942,13 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         for target in node.targets:
             self._visit_delete_target(target)
 
-    def visit_Continue(self, node: ast.Continue) -> None:
+    def visit_Break(self, node: ast.Break) -> bool:
+        return False
+
+    def visit_Continue(self, node: ast.Continue) -> bool:
         if self._continue_alias_scopes:
             self._continue_alias_scopes[-1].record(self._metadata_aliases)
+        return False
 
     def _visit_delete_target(self, target: ast.AST) -> None:
         if isinstance(target, (ast.List, ast.Tuple)):
@@ -948,7 +959,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         for name in _target_names(target):
             self._metadata_aliases.discard(name)
 
-    def visit_If(self, node: ast.If) -> None:
+    def visit_If(self, node: ast.If) -> bool:
         self._record_metadata_merge_key_violations(node.test)
         self.visit(node.test)
         self._record_truth_test_exception(node.test)
@@ -974,8 +985,9 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         if orelse_falls_through:
             exit_aliases.update(orelse_aliases)
         self._replace_current_aliases(exit_aliases)
+        return body_falls_through or orelse_falls_through
 
-    def _visit_for_statement(self, node: ast.For | ast.AsyncFor) -> None:
+    def _visit_for_statement(self, node: ast.For | ast.AsyncFor) -> bool:
         self._record_metadata_merge_key_violations(node.iter)
         self.visit(node.iter)
         iteration_may_raise = isinstance(node, ast.AsyncFor) or _iteration_may_raise(node.iter)
@@ -983,13 +995,15 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             self._record_implicit_exception_aliases()
         base_aliases = set(self._metadata_aliases)
         if isinstance(node, ast.For) and _iterable_is_statically_empty(node.iter):
-            orelse_aliases = (
-                self._visit_branch_body(node.orelse, base_aliases)[0]
-                if node.orelse
-                else base_aliases
-            )
+            if node.orelse:
+                orelse_aliases, orelse_falls_through = self._visit_branch_body(
+                    node.orelse, base_aliases
+                )
+            else:
+                orelse_aliases = base_aliases
+                orelse_falls_through = True
             self._replace_current_aliases(orelse_aliases)
-            return
+            return orelse_falls_through
         self._visit_assignment_target(node.target, direct_value_is_metadata_alias=False)
         continue_state = _LoopContinueAliasState()
         self._continue_alias_scopes.append(continue_state)
@@ -1009,26 +1023,29 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             else loop_exit_aliases
         )
         self._replace_current_aliases(loop_exit_aliases | orelse_aliases)
+        return True
 
-    def visit_For(self, node: ast.For) -> None:
-        self._visit_for_statement(node)
+    def visit_For(self, node: ast.For) -> bool:
+        return self._visit_for_statement(node)
 
-    def visit_AsyncFor(self, node: ast.AsyncFor) -> None:
-        self._visit_for_statement(node)
+    def visit_AsyncFor(self, node: ast.AsyncFor) -> bool:
+        return self._visit_for_statement(node)
 
-    def visit_While(self, node: ast.While) -> None:
+    def visit_While(self, node: ast.While) -> bool:
         self._record_metadata_merge_key_violations(node.test)
         self.visit(node.test)
         self._record_truth_test_exception(node.test)
         base_aliases = set(self._metadata_aliases)
         if _static_truth_value(node.test) is False:
-            orelse_aliases = (
-                self._visit_branch_body(node.orelse, base_aliases)[0]
-                if node.orelse
-                else base_aliases
-            )
+            if node.orelse:
+                orelse_aliases, orelse_falls_through = self._visit_branch_body(
+                    node.orelse, base_aliases
+                )
+            else:
+                orelse_aliases = base_aliases
+                orelse_falls_through = True
             self._replace_current_aliases(orelse_aliases)
-            return
+            return orelse_falls_through
         continue_state = _LoopContinueAliasState()
         self._continue_alias_scopes.append(continue_state)
         body_aliases, body_falls_through = self._visit_branch_body(node.body, base_aliases)
@@ -1049,6 +1066,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             else loop_exit_aliases
         )
         self._replace_current_aliases(loop_exit_aliases | orelse_aliases)
+        return True
 
     def _visit_with_items(self, items: list[ast.withitem], body: list[ast.stmt]) -> bool:
         item, *remaining_items = items
@@ -1076,14 +1094,14 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self._record_exception_state(exception_state)
         return protected_region_falls_through or exception_state.may_raise
 
-    def _visit_with_statement(self, node: ast.With | ast.AsyncWith) -> None:
-        self._visit_with_items(node.items, node.body)
+    def _visit_with_statement(self, node: ast.With | ast.AsyncWith) -> bool:
+        return self._visit_with_items(node.items, node.body)
 
-    def visit_With(self, node: ast.With) -> None:
-        self._visit_with_statement(node)
+    def visit_With(self, node: ast.With) -> bool:
+        return self._visit_with_statement(node)
 
-    def visit_AsyncWith(self, node: ast.AsyncWith) -> None:
-        self._visit_with_statement(node)
+    def visit_AsyncWith(self, node: ast.AsyncWith) -> bool:
+        return self._visit_with_statement(node)
 
     def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
         if node.type is not None:
@@ -1098,7 +1116,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self._metadata_alias_scopes.pop()
         self._replace_current_aliases(base_aliases | result_aliases)
 
-    def _visit_try_statement(self, node: ast.Try) -> None:
+    def _visit_try_statement(self, node: ast.Try) -> bool:
         outer_continue_state = (
             self._continue_alias_scopes[-1] if self._continue_alias_scopes else None
         )
@@ -1161,6 +1179,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             if falls_through:
                 exit_aliases.update(aliases)
                 has_normal_exit = True
+        falls_through = has_normal_exit
         if node.finalbody:
             finalbody_scan_aliases = (
                 base_aliases
@@ -1177,6 +1196,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             finalbody_scan_result, finalbody_falls_through = self._visit_branch_body(
                 node.finalbody, finalbody_scan_aliases
             )
+            falls_through = has_normal_exit and finalbody_falls_through
             if finalbody_scan_aliases == exit_aliases:
                 exit_aliases = finalbody_scan_result
             elif has_normal_exit:
@@ -1209,19 +1229,21 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             outer_continue_state.merge(try_continue_state)
         self._replace_current_aliases(exit_aliases)
         self._record_exception_state(exception_state)
+        return falls_through
 
-    def visit_Try(self, node: ast.Try) -> None:
-        self._visit_try_statement(node)
+    def visit_Try(self, node: ast.Try) -> bool:
+        return self._visit_try_statement(node)
 
-    def visit_TryStar(self, node: ast.Try) -> None:
-        self._visit_try_statement(node)
+    def visit_TryStar(self, node: ast.Try) -> bool:
+        return self._visit_try_statement(node)
 
-    def visit_Match(self, node: ast.Match) -> None:
+    def visit_Match(self, node: ast.Match) -> bool:
         subject_is_metadata = self._is_metadata_alias_value(node.subject)
         self._record_metadata_merge_key_violations(node.subject)
         self.visit(node.subject)
         continuing_aliases = set(self._metadata_aliases)
         exit_aliases: set[str] = set()
+        case_falls_through = False
         has_unmatched_path = True
         for case in node.cases:
             if subject_is_metadata:
@@ -1244,6 +1266,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
                 self._visit_current_scope_body(case.body) if guard_truth is not False else False
             )
             if falls_through:
+                case_falls_through = True
                 exit_aliases.update(self._metadata_aliases)
             self._metadata_alias_scopes.pop()
             if case.guard is not None and guard_truth is not True:
@@ -1257,6 +1280,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         if has_unmatched_path:
             exit_aliases.update(continuing_aliases)
         self._replace_current_aliases(exit_aliases)
+        return has_unmatched_path or case_falls_through
 
     def _record_metadata_match_pattern_key_violations(self, pattern: ast.pattern) -> None:
         if isinstance(pattern, ast.MatchMapping):
