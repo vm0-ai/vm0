@@ -128,10 +128,9 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
     that can fall through, while loops also retain zero-iteration and possible body
     or ``else`` exits.
 
-    Sequential body traversal treats an explicit ``False`` visitor result as a
-    terminal statement. Control-flow-bearing statement methods return their normal
-    exit result, while the default ``None`` result means an ordinary statement falls
-    through.
+    Sequential body traversal requires every concrete statement visitor to report
+    its normal-exit result explicitly. Expression visitors return ``None`` outside
+    that contract, while a missing statement result fails at the statement boundary.
 
     The mutable analysis state has these invariants:
 
