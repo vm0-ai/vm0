@@ -335,6 +335,7 @@ async function connectTeamsFixture(
   options: {
     readonly displayName?: string;
     readonly principalName?: string;
+    readonly publicBrand?: "vm0" | "okou";
   } = {},
 ): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
@@ -344,7 +345,12 @@ async function connectTeamsFixture(
   })(zeroTeamsConnectContract);
   await accept(
     client.connect({
-      headers: { authorization: "Bearer clerk-session" },
+      headers: {
+        authorization: "Bearer clerk-session",
+        ...(options.publicBrand === "okou"
+          ? { origin: "https://app.okou.ai" }
+          : {}),
+      },
       body: {
         tenantId: fixture.teamsTenantId,
         teamsUserId: fixture.teamsUserId,
@@ -411,7 +417,7 @@ async function setupConnectedTeamsActor(
     options.publicBrand ?? "vm0",
   );
   await flushWaitUntilForTest();
-  await connectTeamsFixture(fixture);
+  await connectTeamsFixture(fixture, options);
   await flushWaitUntilForTest();
   clearTeamsApiCalls(setupTeamsApi);
 
