@@ -9,7 +9,7 @@ use tracing::info;
 
 use super::active_runs::ActiveRunReuseState;
 use super::factory_lifecycle::SharedFactory;
-use super::idle_lifecycle::{evict_oldest_idle_entry, spawn_idle_destroy_job_retaining_lease};
+use super::idle_lifecycle::retire_oldest_idle_entry;
 use super::job_discovery::{
     ClaimedJobSetup, FinalizingAdmission, ReadyClaimedResource, ReservedActivation,
     ReservedActivationRequest, activate_reserved_idle, build_spawn_job_request,
@@ -347,6 +347,7 @@ async fn acquire_fresh_capacity(
     memory_mb: u32,
     ctx: &SpawnContext,
 ) -> Result<BudgetLease, ExecutionFailure> {
+    let mut idle_pool_changes = ctx.idle_pool.lock().await.subscribe_changes();
     let cancel = cancellation.token();
     let mut retiring_leases = Vec::new();
     loop {
@@ -359,22 +360,28 @@ async fn acquire_fresh_capacity(
             Ok(lease) => return Ok(lease),
             Err(retained) => retiring_leases = retained,
         }
-        if let Some(evicted) = evict_oldest_idle_entry(&ctx.idle_pool, &ctx.status).await {
+        if let Some(retiring) = retire_oldest_idle_entry(
+            &ctx.idle_pool,
+            &ctx.status,
+            &ctx.idle_destroy_tracker,
+            "finalizing_fallback_oldest",
+        )
+        .await
+        {
             info!(
                 run_id = %run_id,
-                profile = %evicted.profile_name(),
+                profile = %retiring.profile_name(),
                 "evicting idle VM for finalizing fallback"
             );
-            retiring_leases.push(spawn_idle_destroy_job_retaining_lease(
-                &ctx.idle_destroy_tracker,
-                evicted,
-                "finalizing_fallback_oldest",
-            ));
+            retiring_leases.push(retiring.into_budget_lease());
             ctx.reuse_state_notify.notify_one();
             continue;
         }
 
         info!(run_id = %run_id, "finalizing fallback waiting for fresh capacity");
+        #[cfg(test)]
+        ctx.test_observer
+            .notify_finalizing_capacity_wait_entered(run_id);
         tokio::select! {
             biased;
             () = cancel.cancelled() => {
@@ -382,12 +389,13 @@ async fn acquire_fresh_capacity(
             }
             lease = ResourceBudget::substitute_leases_when_available(
                 &ctx.budget,
-                retiring_leases,
+                &mut retiring_leases,
                 vcpu,
                 memory_mb,
             ) => {
                 return Ok(lease);
             }
+            _ = idle_pool_changes.changed() => {}
         }
     }
 }

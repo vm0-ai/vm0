@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use sandbox::{DeviceRateLimits, SandboxId};
+use tokio::sync::watch;
 
 use crate::ids::RunId;
 use crate::status::IdleVm;
@@ -55,6 +56,7 @@ pub struct IdlePool {
     entries: HashMap<String, IdleEntry>,
     config: IdlePoolConfig,
     revision: u64,
+    changes: watch::Sender<u64>,
     /// Shared lifecycle gate. The signal/main-loop lifecycle controller updates
     /// this before publishing externally visible mode transitions.
     parking_gate: ParkingGate,
@@ -67,10 +69,12 @@ impl IdlePool {
     }
 
     pub(crate) fn new_with_parking_gate(config: IdlePoolConfig, parking_gate: ParkingGate) -> Self {
+        let (changes, _changes_rx) = watch::channel(0);
         Self {
             entries: HashMap::new(),
             config,
             revision: 0,
+            changes,
             parking_gate,
         }
     }
@@ -188,7 +192,11 @@ impl IdlePool {
         let oldest_key = self
             .entries
             .iter()
-            .min_by_key(|(_, e)| e.parked_at)
+            .min_by(|(left_key, left), (right_key, right)| {
+                left.parked_at
+                    .cmp(&right.parked_at)
+                    .then_with(|| left_key.cmp(right_key))
+            })
             .map(|(k, _)| k.clone())?;
         let job = self
             .entries
@@ -268,6 +276,13 @@ impl IdlePool {
         self.entries.len()
     }
 
+    /// Subscribe to pool ownership mutations. The revision is durable for each
+    /// receiver, so capacity waiters cannot miss an entry parked or restored
+    /// between checking the pool and waiting for its next change.
+    pub(crate) fn subscribe_changes(&self) -> watch::Receiver<u64> {
+        self.changes.subscribe()
+    }
+
     /// Current lifecycle parking state.
     #[cfg(test)]
     pub fn parking_state(&self) -> ParkingState {
@@ -297,6 +312,7 @@ impl IdlePool {
 
     fn bump_revision(&mut self) {
         self.revision = self.revision.saturating_add(1);
+        self.changes.send_replace(self.revision);
     }
 }
 

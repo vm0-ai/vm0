@@ -20,8 +20,8 @@ use super::factory_lifecycle::SharedFactory;
 use super::finalizing_claim::{FinalizingClaimRequest, spawn_finalizing_claim};
 use super::idle_lifecycle::{
     SharedIdlePool, add_preparing_run_with_idle_status_snapshot,
-    add_running_run_with_idle_status_snapshot, destroy_idle_jobs_and_wait, evict_oldest_idle_entry,
-    set_idle_status_snapshot, spawn_idle_destroy_job, spawn_idle_destroy_job_retaining_lease,
+    add_running_run_with_idle_status_snapshot, destroy_idle_jobs_and_wait,
+    retire_oldest_idle_entry, set_idle_status_snapshot, spawn_idle_destroy_job,
 };
 use super::job_spawn::{JobProfile, SpawnContext, SpawnJobRequest, spawn_job};
 use crate::config::ProfileConfig;
@@ -1145,21 +1145,23 @@ async fn acquire_local_admission_resource(
             }
         }
 
-        let evicted = evict_oldest_idle_entry(ctx.idle_pool, ctx.status).await?;
+        let retiring = retire_oldest_idle_entry(
+            ctx.idle_pool,
+            ctx.status,
+            &ctx.spawn_ctx.idle_destroy_tracker,
+            "candidate_admission_oldest",
+        )
+        .await?;
         info!(
             run_id = %candidate.run_id(),
-            reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(evicted.reuse_key()),
-            reuse_key_kind = reuse_key_kind(evicted.reuse_key()),
-            profile = %evicted.profile_name(),
-            vcpu = evicted.budget_vcpu(),
-            memory_mb = evicted.budget_memory_mb(),
+            reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(retiring.reuse_key()),
+            reuse_key_kind = reuse_key_kind(retiring.reuse_key()),
+            profile = %retiring.profile_name(),
+            vcpu = retiring.budget_vcpu(),
+            memory_mb = retiring.budget_memory_mb(),
             "evicting idle VM for candidate admission"
         );
-        retiring_leases.push(spawn_idle_destroy_job_retaining_lease(
-            &ctx.spawn_ctx.idle_destroy_tracker,
-            evicted,
-            "candidate_admission_oldest",
-        ));
+        retiring_leases.push(retiring.into_budget_lease());
         ctx.spawn_ctx.reuse_state_notify.notify_one();
     }
 }

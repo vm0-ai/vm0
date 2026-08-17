@@ -849,6 +849,105 @@ async fn finalizing_fallback_starts_fresh_vm_before_idle_destroy_finishes() {
 }
 
 #[tokio::test]
+async fn finalizing_capacity_wait_rechecks_when_an_active_vm_parks_idle() {
+    let destroy_gate = sandbox_mock::MockLifecycleGate::new();
+    let wait_gate = sandbox_mock::MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    let (config, env) = mock_run_config_with_overrides(test_profiles(), 2, 4096, 1, overrides);
+    let budget = Arc::clone(&config.capacity.budget);
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let capacity_source_run_id = RunId::new_v4();
+    let capacity_source_reuse_key = "thread:capacity-source";
+    push_job(
+        &env,
+        capacity_source_run_id,
+        "vm0/default",
+        Some(context_with_reuse_key(
+            capacity_source_run_id,
+            capacity_source_reuse_key,
+        )),
+    );
+    wait_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("capacity source should hold the full budget while running");
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+    assert_eq!(budget.allocated(), (2, 4096, 1));
+    assert_eq!(env.idle_pool.lock().await.len(), 0);
+
+    let finalizing_reuse_key = "thread:waiting-finalizing-capacity";
+    let history_generation_run_id = RunId::new_v4();
+    let predecessor_guard = env.active_runs.register(
+        history_generation_run_id,
+        Some(finalizing_reuse_key.to_owned()),
+        "vm0/default".into(),
+    );
+    let finalizing_run_id = RunId::new_v4();
+    env.provider.set_claim_result(
+        finalizing_run_id,
+        Some(context_with_reuse_key(
+            finalizing_run_id,
+            finalizing_reuse_key,
+        )),
+    );
+    env.handle
+        .discover_tx
+        .send(finalizing_candidate(
+            finalizing_run_id,
+            finalizing_reuse_key,
+            history_generation_run_id,
+            TEST_RUNNER_ID,
+            TEST_HEARTBEAT_GENERATION,
+        ))
+        .unwrap();
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+    assert!(
+        env.handle
+            .claim_candidates()
+            .iter()
+            .any(|candidate| candidate.run_id() == finalizing_run_id),
+        "finalizing successor should be claimed before waiting for capacity"
+    );
+
+    drop(predecessor_guard);
+    env.start_observer
+        .wait_finalizing_capacity_wait_entered(finalizing_run_id, Duration::from_secs(5))
+        .await;
+
+    wait_gate.release_one();
+    let parked_reuse_key = env
+        .start_observer
+        .wait_vm_parked_for_reuse(capacity_source_run_id, Duration::from_secs(5))
+        .await;
+    assert_eq!(parked_reuse_key, capacity_source_reuse_key);
+    destroy_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("newly idle capacity should be retired without waiting for lease release");
+    wait_gate
+        .wait_entered(2, Duration::from_secs(5))
+        .await
+        .expect("finalizing fallback should start after the active VM becomes idle");
+    assert_eq!(budget.allocated(), (2, 4096, 1));
+    assert_eq!(env.idle_pool.lock().await.len(), 0);
+
+    wait_gate.release_one();
+    let completion = env
+        .handle
+        .wait_completion(finalizing_run_id, Duration::from_secs(5))
+        .await
+        .expect("finalizing fallback should complete while retired cleanup is blocked");
+    assert_eq!(completion.exit_code, 0);
+
+    destroy_gate.release_many(2);
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
 async fn ordinary_and_finalizing_pressure_admission_do_not_double_spend_idle_capacity() {
     let destroy_gate = sandbox_mock::MockLifecycleGate::new();
     let wait_gate = sandbox_mock::MockLifecycleGate::new();

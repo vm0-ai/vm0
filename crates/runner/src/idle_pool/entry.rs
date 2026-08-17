@@ -414,10 +414,12 @@ impl IdleDestroyJob {
         &self.profile_name
     }
 
+    #[cfg(test)]
     pub fn budget_vcpu(&self) -> u32 {
         self.budget_lease.vcpu()
     }
 
+    #[cfg(test)]
     pub fn budget_memory_mb(&self) -> u32 {
         self.budget_lease.memory_mb()
     }

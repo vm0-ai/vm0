@@ -83,17 +83,57 @@ pub(super) async fn drain_idle_pool(
     set_idle_status_snapshot(status, snapshot).await;
 }
 
-/// Remove the oldest idle entry and update status to match the new pool state.
-pub(super) async fn evict_oldest_idle_entry(
+pub(super) struct RetiringIdleEntry {
+    budget_lease: BudgetLease,
+    reuse_key: String,
+    profile_name: String,
+}
+
+impl RetiringIdleEntry {
+    pub(super) fn reuse_key(&self) -> &str {
+        &self.reuse_key
+    }
+
+    pub(super) fn profile_name(&self) -> &str {
+        &self.profile_name
+    }
+
+    pub(super) fn budget_vcpu(&self) -> u32 {
+        self.budget_lease.vcpu()
+    }
+
+    pub(super) fn budget_memory_mb(&self) -> u32 {
+        self.budget_lease.memory_mb()
+    }
+
+    pub(super) fn into_budget_lease(self) -> BudgetLease {
+        self.budget_lease
+    }
+}
+
+/// Remove the oldest idle entry, durably own its physical cleanup, and update
+/// status to match the new pool state before returning its retiring lease.
+pub(super) async fn retire_oldest_idle_entry(
     idle_pool: &SharedIdlePool,
     status: &StatusTracker,
-) -> Option<IdleDestroyJob> {
-    let mut pool = idle_pool.lock().await;
-    let evicted = pool.evict_oldest()?;
-    let snapshot = pool.status_snapshot();
-    drop(pool);
+    tracker: &IdleDestroyTracker,
+    context: &'static str,
+) -> Option<RetiringIdleEntry> {
+    let (job, snapshot) = {
+        let mut pool = idle_pool.lock().await;
+        let job = pool.evict_oldest()?;
+        let snapshot = pool.status_snapshot();
+        (job, snapshot)
+    };
+    let reuse_key = job.reuse_key().to_owned();
+    let profile_name = job.profile_name().to_owned();
+    let budget_lease = spawn_idle_destroy_job_retaining_lease(tracker, job, context);
     set_idle_status_snapshot(status, snapshot).await;
-    Some(evicted)
+    Some(RetiringIdleEntry {
+        budget_lease,
+        reuse_key,
+        profile_name,
+    })
 }
 
 pub(super) async fn set_idle_status_snapshot(status: &StatusTracker, snapshot: IdlePoolSnapshot) {
@@ -160,7 +200,7 @@ pub(super) fn spawn_idle_destroy_job(
     tracker.spawn_job(job, context);
 }
 
-pub(super) fn spawn_idle_destroy_job_retaining_lease(
+fn spawn_idle_destroy_job_retaining_lease(
     tracker: &IdleDestroyTracker,
     job: IdleDestroyJob,
     context: &'static str,

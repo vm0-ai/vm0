@@ -219,9 +219,11 @@ impl ResourceBudget {
 
     /// Wait until selected leases can be atomically substituted for one
     /// incoming reservation without losing a concurrent release notification.
+    /// The leases remain in the caller-owned vector whenever this future is
+    /// waiting, so cancelling the wait preserves normal lease-drop accounting.
     pub async fn substitute_leases_when_available(
         budget: &Arc<Self>,
-        mut leases: Vec<BudgetLease>,
+        leases: &mut Vec<BudgetLease>,
         vcpu: u32,
         memory_mb: u32,
     ) -> BudgetLease {
@@ -229,9 +231,9 @@ impl ResourceBudget {
             let notified = budget.availability.notified();
             tokio::pin!(notified);
             notified.as_mut().enable();
-            match Self::try_substitute_leases(budget, leases, vcpu, memory_mb) {
+            match Self::try_substitute_leases(budget, std::mem::take(leases), vcpu, memory_mb) {
                 Ok(lease) => return lease,
-                Err(retained) => leases = retained,
+                Err(retained) => *leases = retained,
             }
             notified.await;
         }

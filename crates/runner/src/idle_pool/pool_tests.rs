@@ -300,6 +300,23 @@ fn evict_oldest() {
 }
 
 #[test]
+fn evict_oldest_breaks_equal_park_time_by_reuse_key() {
+    let mut pool = IdlePool::new(pool_config(0));
+    let parked_at = Instant::now();
+    for reuse_key in ["session-z", "session-a", "session-m"] {
+        let _ = park_at(
+            &mut pool,
+            reuse_key,
+            make_candidate_for(reuse_key, 2, 2048),
+            parked_at,
+        );
+    }
+
+    let evicted = pool.evict_oldest().unwrap();
+    assert_eq!(evicted.reuse_key(), "session-a");
+}
+
+#[test]
 fn evict_oldest_empty_returns_none() {
     let mut pool = IdlePool::new(pool_config(0));
     assert!(pool.evict_oldest().is_none());

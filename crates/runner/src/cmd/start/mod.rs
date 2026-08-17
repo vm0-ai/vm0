@@ -960,6 +960,7 @@ enum SignalSource {
 enum StartLoopEvent {
     BudgetExhaustedReactorEntered,
     WorkspaceCacheChangeObserved,
+    FinalizingCapacityWaitEntered { run_id: RunId },
     ActiveRunStatusPublished { run_id: RunId },
     BeforeIdlePoolOwnershipTransfer { run_id: RunId },
     VmParkedForReuse { run_id: RunId, reuse_key: String },
@@ -1093,6 +1094,10 @@ impl StartLoopTestObserver {
         self.record(StartLoopEvent::WorkspaceCacheChangeObserved);
     }
 
+    fn notify_finalizing_capacity_wait_entered(&self, run_id: RunId) {
+        self.record(StartLoopEvent::FinalizingCapacityWaitEntered { run_id });
+    }
+
     fn notify_before_idle_pool_ownership_transfer(&self, run_id: RunId) {
         self.record(StartLoopEvent::BeforeIdlePoolOwnershipTransfer { run_id });
     }
@@ -1143,6 +1148,16 @@ impl StartLoopTestObserver {
             })
             .await;
         cursor
+    }
+
+    async fn wait_finalizing_capacity_wait_entered(&self, run_id: RunId, timeout: Duration) {
+        self.wait_for(timeout, "finalizing capacity wait", |event| match event {
+            StartLoopEvent::FinalizingCapacityWaitEntered {
+                run_id: observed_run_id,
+            } if *observed_run_id == run_id => Some(()),
+            _ => None,
+        })
+        .await
     }
 
     async fn wait_before_idle_pool_ownership_transfer(&self, run_id: RunId, timeout: Duration) {

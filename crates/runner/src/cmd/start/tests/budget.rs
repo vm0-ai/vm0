@@ -6,8 +6,6 @@ use super::support::{
     wait_budget_count, wait_cancel_token, wait_discover_entered,
     wait_status_idle_reuse_keys_and_active_runs,
 };
-use crate::types::SandboxReuseResult;
-
 // -----------------------------------------------------------------------
 // Test 11: Budget full → job skipped (not claimed) → budget freed → next job succeeds
 //
@@ -128,11 +126,11 @@ async fn budget_exhausted_buffers_discovery_until_budget_frees() {
 }
 
 // -----------------------------------------------------------------------
-// Test 15: Legacy timeout does not affect idle lifetime or reuse
+// Test 15: Idle VMs remain reusable until capacity is needed
 // -----------------------------------------------------------------------
 
 #[tokio::test(start_paused = true)]
-async fn legacy_idle_timeout_does_not_affect_retention_or_reuse() {
+async fn idle_vm_remains_reusable_until_capacity_is_needed() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let budget = Arc::clone(&config.capacity.budget);
@@ -177,7 +175,10 @@ async fn legacy_idle_timeout_does_not_affect_retention_or_reuse() {
         .wait_completion(run_id, Duration::from_secs(5))
         .await
         .expect("aged idle VM should remain reusable");
-    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+    assert_eq!(
+        completion.reuse_result,
+        Some(crate::types::SandboxReuseResult::Reused)
+    );
 
     shutdown(&env, run_handle).await;
 }
