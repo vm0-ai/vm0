@@ -300,7 +300,7 @@ describe("chat composer models", () => {
     ["video", "defaultVideoModel"],
     ["image", "defaultImageModel"],
   ] as const)(
-    "reloads the member default when the push carries only the %s kind",
+    "reloads the member default when the push carries the %s kind alongside an unknown kind",
     async (_media, preferenceKind) => {
       mockOrgModelRoutes("claude-fable-5");
       context.mocks.data.userModelPreference({
@@ -315,8 +315,8 @@ describe("chat composer models", () => {
       detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
       await expectComposerModel("Claude Fable 5");
 
-      // A sibling session changed one media default, so the push carries that
-      // kind alone. The preference is one resource, so it still has to refetch.
+      // A sibling session changed one media default. A future kind must not
+      // prevent this bundle from recognizing that known kind and refetching.
       context.mocks.data.userModelPreference({
         selectedModel: "claude-opus-4-8",
         serviceTier: null,
@@ -331,7 +331,7 @@ describe("chat composer models", () => {
       });
       act(() => {
         triggerAblyEvent("userPreferenceChanged", {
-          kinds: [preferenceKind],
+          kinds: [preferenceKind, "futurePreferenceKind"],
         });
       });
 

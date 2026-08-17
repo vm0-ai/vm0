@@ -22,9 +22,12 @@ export const userModelPreferenceResponseSchema = z.object({
    */
   selectedVideoModel: videoModelIdSchema.nullable().optional(),
   /**
-   * Rollout fallback for an API rollback after the app starts reading image
-   * preferences. Keep optional until the pre-field API is outside the rollback
-   * window; the current API always returns the field.
+   * Rollout fallback. Optional so a newly promoted bundle can still parse a
+   * response from an API that predates image preferences after an API rollback.
+   *
+   * Surface: web/app client -> backend. Window: about 2 days.
+   * Remove — make it required — once the pre-field API is outside the supported
+   * rollback and client-skew window. Follow-up: #27786.
    */
   selectedImageModel: imageModelIdSchema.nullable().optional(),
   updatedAt: z.string().nullable(),
