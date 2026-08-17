@@ -2007,7 +2007,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const warmed = await api.createDirectRun(actor, {
       ...zeroBackedDirectRunBody({
         agentId,
-        prompt: "warm the exact catalog identity before deletion",
+        prompt: "warm the exact catalog identity before corruption",
       }),
       connectorScope: catalogBackedScope,
     });

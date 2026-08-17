@@ -764,13 +764,13 @@ async function loadZeroRunPostAuthorizationContext(
           }),
         };
   signal.throwIfAborted();
-  const storedPermissionPolicies = permissionGrantsToFirewallPolicies(
-    bootstrapContext.permissionGrants,
-  );
   const runPermissionPolicies = await measureZeroPreCreate(
     args.timing,
     "api_dispatch_pre_create_zero_resolve_firewall_metadata",
     async () => {
+      const storedPermissionPolicies = permissionGrantsToFirewallPolicies(
+        bootstrapContext.permissionGrants,
+      );
       if (connectorCatalogSelection.kind === "empty") {
         return storedPermissionPolicies;
       }
