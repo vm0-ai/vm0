@@ -2677,6 +2677,7 @@ describe("RUN-04: agent run telemetry families", () => {
                 kind: "inline",
                 name: "test-fw",
                 customConnectorId: "11111111-1111-4111-8111-111111111111",
+                sourceId: "22222222-2222-4222-8222-222222222222",
                 apis: [
                   {
                     id: "test-fw:0",
@@ -2824,6 +2825,7 @@ describe("RUN-04: agent run telemetry families", () => {
       {
         kind: "inline",
         customConnectorId: "11111111-1111-4111-8111-111111111111",
+        sourceId: "22222222-2222-4222-8222-222222222222",
         name: "test-fw",
         apis: [
           {

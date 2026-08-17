@@ -3288,6 +3288,16 @@ function storedConnectorRuntimeVariables(
   return vars;
 }
 
+function connectorSourceIdsBySlug(
+  bindingSets: readonly ConnectorEnvBindingSet[],
+): Readonly<Record<string, string>> {
+  return Object.fromEntries(
+    bindingSets.map((bindingSet) => {
+      return [bindingSet.connectorSlug, bindingSet.access.connectorId];
+    }),
+  );
+}
+
 function resolveStoredConnectorState(
   bindingSets: readonly ConnectorEnvBindingSet[],
   connectorSecrets: Record<string, string>,
@@ -3379,11 +3389,7 @@ function storedConnectorContextFromSnapshot(
     connectorSlugs: snapshot.allowedConnectorRows.map((row) => {
       return row.connectorSlug;
     }),
-    connectorSourceIdBySlug: Object.fromEntries(
-      snapshot.bindingSets.map((bindingSet) => {
-        return [bindingSet.connectorSlug, bindingSet.access.connectorId];
-      }),
-    ),
+    connectorSourceIdBySlug: connectorSourceIdsBySlug(snapshot.bindingSets),
     storedEnvironment: undefined,
   };
 }
@@ -3466,11 +3472,7 @@ async function materializeStoredConnectorContext(
         connectorSlugs: snapshot.allowedConnectorRows.map((row) => {
           return row.connectorSlug;
         }),
-        connectorSourceIdBySlug: Object.fromEntries(
-          snapshot.bindingSets.map((bindingSet) => {
-            return [bindingSet.connectorSlug, bindingSet.access.connectorId];
-          }),
-        ),
+        connectorSourceIdBySlug: connectorSourceIdsBySlug(snapshot.bindingSets),
         storedEnvironment: compactRecord(resolved.environment),
       });
     },

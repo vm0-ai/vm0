@@ -188,6 +188,7 @@ const runContextExecutionInlineFirewallSchema =
     kind: z.literal("inline"),
     customConnectorId:
       executionFirewallInlineEntrySchema.shape.customConnectorId,
+    sourceId: executionFirewallInlineEntrySchema.shape.sourceId,
   });
 
 const runContextFirewallSchema = z.union([

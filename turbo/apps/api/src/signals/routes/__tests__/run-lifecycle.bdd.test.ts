@@ -8931,7 +8931,8 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         })
         .sort(),
     ).toStrictEqual(admittedIds);
-    expect(claim.connectorRuntimeTargets).toContainEqual({
+    const mcpTarget = customConnectorRuntimeRegistration(claim, mcp.id);
+    expect(mcpTarget).toStrictEqual({
       kind: "custom",
       customConnectorId: mcp.id,
       baseUrlVars: {},
@@ -8948,7 +8949,12 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(mcpPrompt).not.toContain("Use the admitted MCP server.");
     expect(mcpPrompt).not.toContain("mcp-runtime-token");
 
-    const [mcpApi] = inlineFirewallApis(claim.firewalls, mcpInternalName);
+    const mcpFirewall = findFirewallEntry(claim.firewalls, mcpInternalName);
+    if (!mcpFirewall || mcpFirewall.kind !== "inline") {
+      throw new Error("Expected the MCP connector firewall");
+    }
+    expect(mcpFirewall.sourceId).toBe(mcpTarget.sourceId);
+    const [mcpApi] = mcpFirewall.firewall.apis;
     expect(mcpApi).toMatchObject({
       base: "https://mcp-runtime.example.test/api/mcp",
       hostPolicy: { kind: "publicDestination" },
@@ -10412,6 +10418,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
           kind: "inline",
           name: internalName,
           customConnectorId: saved.connector.id,
+          sourceId: pinnedTarget.sourceId,
           apis: expect.arrayContaining([
             expect.objectContaining({
               base: `https://xn--mnich-kva.${rand}.test/v1/`,
