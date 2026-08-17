@@ -2148,6 +2148,9 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
         [200],
       );
 
+      if (!("url" in response.body)) {
+        throw new Error("Expected hosted usage pack checkout response");
+      }
       expect(response.body.url).toBe(checkoutSessions[0].url);
       expect(
         context.mocks.stripe.checkout.sessions.create,
@@ -2163,6 +2166,9 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
             },
             { price: TEST_PRICE_USAGE_PACK_20, quantity: 1 },
           ],
+        }),
+        expect.objectContaining({
+          idempotencyKey: expect.stringContaining("usage-pack-checkout:"),
         }),
       );
       context.mocks.stripe.checkout.sessions.retrieve.mockResolvedValueOnce({
@@ -2187,6 +2193,9 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
         [200],
       );
 
+      if (!("url" in retried.body)) {
+        throw new Error("Expected hosted usage pack checkout response");
+      }
       expect(retried.body.url).toBe(checkoutSessions[0].url);
       expect(
         context.mocks.stripe.checkout.sessions.retrieve,
@@ -2221,6 +2230,9 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
         [200],
       );
 
+      if (!("url" in replaced.body)) {
+        throw new Error("Expected hosted usage pack checkout response");
+      }
       expect(replaced.body.url).toBe(checkoutSessions[1].url);
       expect(
         context.mocks.stripe.checkout.sessions.expire,
@@ -2240,6 +2252,9 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
             },
             { price: TEST_PRICE_USAGE_PACK_50, quantity: 1 },
           ],
+        }),
+        expect.objectContaining({
+          idempotencyKey: expect.stringContaining("usage-pack-checkout:"),
         }),
       );
       const [firstUsagePackSubscriptionId, replacementSubscriptionId] =
@@ -2264,7 +2279,7 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
     },
   );
 
-  it("allows only one of two usage pack previews to create a subscription", async () => {
+  it("reuses a pending usage pack preview and creates one subscription", async () => {
     const fixture = createOrgFixture();
     const customerId = `cus_${randomUUID()}`;
     const paymentMethodId = `pm_${randomUUID()}`;
@@ -2341,6 +2356,17 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
         latest_invoice: null,
       });
     });
+    context.mocks.stripe.subscriptions.retrieve.mockImplementation(
+      (subscriptionId) => {
+        if (!createdSubscription || subscriptionId !== createdSubscription.id) {
+          throw new Error("Expected the created usage pack subscription");
+        }
+        return Promise.resolve({
+          ...createdSubscription,
+          latest_invoice: null,
+        });
+      },
+    );
 
     const client = setupApp({ context, routes: billingCheckoutRoutes })(
       zeroBillingUsagePackCheckoutContract,
@@ -2392,7 +2418,7 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
           return status;
         })
         .sort(),
-    ).toStrictEqual([200, 409]);
+    ).toStrictEqual([200, 200]);
     expect(context.mocks.stripe.subscriptions.create).toHaveBeenCalledTimes(1);
     expect(context.mocks.stripe.subscriptions.create).toHaveBeenCalledWith(
       expect.objectContaining({

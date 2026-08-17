@@ -695,12 +695,103 @@ function definedAttribution(
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
+function usagePackAllocationKeys(
+  allocations: readonly UsagePackCheckoutAllocation[],
+): readonly string[] {
+  return allocations
+    .map((allocation) => {
+      const owner =
+        "userId" in allocation
+          ? (["user", allocation.userId] as const)
+          : (["invitation", allocation.invitationId] as const);
+      return JSON.stringify([
+        ...owner,
+        allocation.usagePackUsd,
+        allocation.stripePriceId,
+      ]);
+    })
+    .sort();
+}
+
+function usagePackAllocationsMatch(
+  stored: readonly UsagePackCheckoutAllocation[],
+  requested: readonly UsagePackCheckoutAllocation[],
+): boolean {
+  const storedKeys = usagePackAllocationKeys(stored);
+  const requestedKeys = usagePackAllocationKeys(requested);
+  return (
+    storedKeys.length === requestedKeys.length &&
+    storedKeys.every((key, index) => {
+      return key === requestedKeys[index];
+    })
+  );
+}
+
+async function reusableUsagePackPurchaseSnapshot(
+  tx: WriteTx,
+  args: CreateUsagePackCheckoutSessionArgs,
+  customerId: string,
+): Promise<string | null> {
+  const candidates = await tx
+    .select({ id: usagePackSubscriptions.id })
+    .from(usagePackSubscriptions)
+    .where(
+      and(
+        eq(usagePackSubscriptions.orgId, args.orgId),
+        eq(usagePackSubscriptions.tier, args.tier),
+        eq(usagePackSubscriptions.stripePlanPriceId, args.planPriceId),
+        eq(usagePackSubscriptions.stripeCustomerId, customerId),
+        eq(usagePackSubscriptions.subscriptionStatus, "checkout_pending"),
+        isNull(usagePackSubscriptions.stripeCheckoutSessionId),
+        isNull(usagePackSubscriptions.stripeSubscriptionId),
+      ),
+    )
+    .orderBy(desc(usagePackSubscriptions.createdAt));
+  for (const candidate of candidates) {
+    const allocationRows = await tx
+      .select({
+        usagePackUsd: usagePackAllocations.usagePackUsd,
+        stripePriceId: usagePackAllocations.stripePriceId,
+        userId: usagePackAllocations.userId,
+        invitationId: usagePackAllocations.invitationId,
+        status: usagePackAllocations.status,
+      })
+      .from(usagePackAllocations)
+      .where(eq(usagePackAllocations.usagePackSubscriptionId, candidate.id));
+    if (
+      allocationRows.length === 0 ||
+      allocationRows.some((allocation) => {
+        return allocation.status !== "pending_payment";
+      })
+    ) {
+      continue;
+    }
+    const storedAllocations = checkoutAllocationsFromRows(allocationRows);
+    if (
+      storedAllocations &&
+      usagePackAllocationsMatch(storedAllocations, args.allocations)
+    ) {
+      return candidate.id;
+    }
+  }
+  return null;
+}
+
 async function createUsagePackPurchaseSnapshot(
   db: Db,
   args: CreateUsagePackCheckoutSessionArgs,
   customerId: string,
 ): Promise<string> {
   return await db.transaction(async (tx) => {
+    await lockBillingPurchaseOrg(tx, args.orgId);
+    const reusableSnapshotId = await reusableUsagePackPurchaseSnapshot(
+      tx,
+      args,
+      customerId,
+    );
+    if (reusableSnapshotId) {
+      return reusableSnapshotId;
+    }
     const [subscription] = await tx
       .insert(usagePackSubscriptions)
       .values({

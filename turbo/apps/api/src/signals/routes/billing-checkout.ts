@@ -45,6 +45,7 @@ import {
   checkoutTierConflictMessage,
   checkoutWouldReplaceWithSameOrLowerTier,
   startPlanPurchase$,
+  type SubscriptionCheckoutTier,
 } from "../services/zero-billing-checkout.service";
 import {
   confirmUsagePackPurchase$,
@@ -424,6 +425,27 @@ function hasActiveLegacyPlanSubscription(
   );
 }
 
+function usagePackCheckoutTierConflicts(
+  metadata:
+    | {
+        readonly tier: string | null;
+        readonly subscriptionStatus: string | null;
+      }
+    | undefined,
+  targetTier: SubscriptionCheckoutTier,
+): boolean {
+  const configuresGrantedPlan =
+    metadata?.subscriptionStatus === "atom_grant" &&
+    metadata.tier === targetTier;
+  return (
+    !configuresGrantedPlan &&
+    checkoutWouldReplaceWithSameOrLowerTier({
+      currentTier: metadata?.tier,
+      targetTier,
+    })
+  );
+}
+
 const checkoutAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   if (auth.orgRole !== "admin") {
@@ -690,15 +712,7 @@ const usagePackCheckoutAuthed$ = command(
       );
     }
 
-    const configuresGrantedPlan =
-      metadata?.subscriptionStatus === "atom_grant" && metadata.tier === tier;
-    if (
-      !configuresGrantedPlan &&
-      checkoutWouldReplaceWithSameOrLowerTier({
-        currentTier: metadata?.tier,
-        targetTier: tier,
-      })
-    ) {
+    if (usagePackCheckoutTierConflicts(metadata, tier)) {
       return badRequestMessage(
         checkoutTierConflictMessage({
           currentTier: metadata?.tier,
