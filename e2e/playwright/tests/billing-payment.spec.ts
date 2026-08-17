@@ -134,12 +134,14 @@ async function mockCreditBalance(page: Page): Promise<void> {
   });
 }
 
-async function renderedCornerRadii(locator: Locator): Promise<{
+type CornerRadii = {
   readonly topLeft: string;
   readonly topRight: string;
   readonly bottomRight: string;
   readonly bottomLeft: string;
-}> {
+};
+
+function readCornerRadii(locator: Locator): Promise<CornerRadii> {
   return locator.evaluate((element) => {
     const style = getComputedStyle(element);
     return {
@@ -149,6 +151,39 @@ async function renderedCornerRadii(locator: Locator): Promise<{
       bottomLeft: style.borderBottomLeftRadius,
     };
   });
+}
+
+function hasReadableCornerRadii(radii: CornerRadii): boolean {
+  return (
+    radii.topLeft !== "" &&
+    radii.topRight !== "" &&
+    radii.bottomRight !== "" &&
+    radii.bottomLeft !== ""
+  );
+}
+
+async function renderedCornerRadii(locator: Locator): Promise<CornerRadii> {
+  // The credit balance card re-renders while its billing and feature-switch
+  // signals settle, which can detach a bar for a frame. Reading a detached
+  // node yields empty computed radii, so retry until every corner is readable
+  // before comparing them.
+  let radii: CornerRadii | null = null;
+  await expect
+    .poll(
+      async () => {
+        const next = await readCornerRadii(locator);
+        if (hasReadableCornerRadii(next)) {
+          radii = next;
+        }
+        return hasReadableCornerRadii(next);
+      },
+      { timeout: 30_000 },
+    )
+    .toBe(true);
+  if (radii === null) {
+    throw new Error("Corner radii did not become readable");
+  }
+  return radii;
 }
 
 async function expectLimitedFreeBillingStatus(page: Page): Promise<void> {
