@@ -1672,10 +1672,7 @@ async fn reusable_idle_sandbox_with_workspace_promotion(
     .expect_reusable()
     .with_last_completed_at("2026-06-01T00:00:01.000Z".into());
 
-    let mut pool = IdlePool::new(IdlePoolConfig {
-        default_timeout: std::time::Duration::from_secs(300),
-        max_idle: 0,
-    });
+    let mut pool = IdlePool::new(IdlePoolConfig { max_idle: 0 });
     assert!(matches!(pool.park(candidate), ParkResult::Parked));
     let entry = pool.take(&reuse_key).expect("idle entry should exist");
     let idle_sandbox = match entry.try_unpark_for_run(crate::ids::RunId::new_v4()).await {
@@ -1784,10 +1781,7 @@ async fn reusable_idle_sandbox_with_fresh_workspace_promotion(
     .expect_reusable()
     .with_last_completed_at("2026-06-01T00:00:01.000Z".into());
 
-    let mut pool = IdlePool::new(IdlePoolConfig {
-        default_timeout: std::time::Duration::from_secs(300),
-        max_idle: 0,
-    });
+    let mut pool = IdlePool::new(IdlePoolConfig { max_idle: 0 });
     assert!(matches!(pool.park(candidate), ParkResult::Parked));
     let entry = pool.take(&reuse_key).expect("idle entry should exist");
     let idle_sandbox = match entry.try_unpark_for_run(crate::ids::RunId::new_v4()).await {

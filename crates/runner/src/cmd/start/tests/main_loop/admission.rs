@@ -4,8 +4,9 @@ use super::super::support::{
     context_with_session, minimal_context, mock_run_config, mock_run_config_with_overrides,
     push_job, seed_idle_pool, seed_idle_pool_with_history_generation,
     seed_idle_pool_with_overrides, seed_idle_pool_with_speculative_timezone,
-    seed_workspace_cache_state, shutdown, test_profiles, wait_budget_count, wait_cancel_token,
-    wait_cancel_token_removed, wait_discover_entered, wait_status_idle_reuse_keys_and_active_runs,
+    seed_workspace_cache_state, shutdown, test_profiles, two_profiles, wait_budget_count,
+    wait_cancel_handle, wait_cancel_token, wait_cancel_token_removed, wait_discover_entered,
+    wait_status_idle_reuse_keys_and_active_runs,
 };
 use std::sync::Arc;
 
@@ -765,6 +766,160 @@ async fn selected_finalizing_candidate_claims_while_predecessor_is_running() {
         Some(RunnerPreferenceClaimState::Active)
     );
 
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
+async fn finalizing_fallback_starts_fresh_vm_before_idle_destroy_finishes() {
+    let destroy_gate = sandbox_mock::MockLifecycleGate::new();
+    let wait_gate = sandbox_mock::MockLifecycleGate::new();
+    let idle_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    idle_overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
+    let fresh_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    fresh_overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    let (config, env) =
+        mock_run_config_with_overrides(test_profiles(), 2, 4096, 1, fresh_overrides);
+    let budget = Arc::clone(&config.capacity.budget);
+    let reuse_key = "thread:finalizing-pressure-overlap";
+    let history_generation_run_id = RunId::new_v4();
+    let predecessor_guard = env.active_runs.register(
+        history_generation_run_id,
+        Some(reuse_key.to_owned()),
+        "vm0/default".into(),
+    );
+    seed_idle_pool_with_overrides(
+        &env.idle_pool,
+        &budget,
+        &idle_overrides,
+        "thread:unrelated-idle-capacity",
+        "vm0/default",
+        2,
+        4096,
+    )
+    .await;
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(context_with_reuse_key(run_id, reuse_key)));
+    env.handle
+        .discover_tx
+        .send(finalizing_candidate(
+            run_id,
+            reuse_key,
+            history_generation_run_id,
+            TEST_RUNNER_ID,
+            TEST_HEARTBEAT_GENERATION,
+        ))
+        .unwrap();
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+    assert!(
+        env.handle
+            .claim_candidates()
+            .iter()
+            .any(|candidate| candidate.run_id() == run_id),
+        "finalizing successor should be claimed before fallback"
+    );
+
+    drop(predecessor_guard);
+    destroy_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("finalizing fallback should retire unrelated idle capacity");
+    wait_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("finalizing fallback should activate fresh VM before destroy completes");
+    assert_eq!(budget.allocated(), (2, 4096, 1));
+    assert_eq!(env.idle_pool.lock().await.len(), 0);
+
+    wait_gate.release_one();
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("finalizing fallback should complete while old destroy remains blocked");
+    assert_eq!(completion.exit_code, 0);
+    assert_ne!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+    assert_eq!(destroy_gate.entered_count(), 1);
+
+    destroy_gate.release_one();
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
+async fn cancelled_finalizing_capacity_wait_releases_retiring_leases_but_keeps_cleanup_owned() {
+    let destroy_gate = sandbox_mock::MockLifecycleGate::new();
+    let idle_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    idle_overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
+    let fresh_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let (config, env) = mock_run_config_with_overrides(two_profiles(), 4, 8192, 2, fresh_overrides);
+    let budget = Arc::clone(&config.capacity.budget);
+    let occupied = ResourceBudget::try_reserve_lease(&budget, 2, 4096)
+        .expect("active work should reserve half the budget");
+    seed_idle_pool_with_overrides(
+        &env.idle_pool,
+        &budget,
+        &idle_overrides,
+        "thread:retiring-idle-capacity",
+        "vm0/default",
+        2,
+        4096,
+    )
+    .await;
+    let reuse_key = "thread:cancelled-finalizing-capacity";
+    let history_generation_run_id = RunId::new_v4();
+    let predecessor_guard = env.active_runs.register(
+        history_generation_run_id,
+        Some(reuse_key.to_owned()),
+        "vm0/large".into(),
+    );
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(context_with_reuse_key(run_id, reuse_key)));
+    env.handle
+        .discover_tx
+        .send(
+            crate::provider::JobCandidate::new(run_id, "vm0/large".into())
+                .with_reuse_key(Some(reuse_key.to_owned()))
+                .with_history_generation_run_id(Some(history_generation_run_id))
+                .with_runner_preference_for_test(ActiveRunnerPreference::ranked_for_test(
+                    RunnerProcessIdentity::new(
+                        TEST_RUNNER_ID.parse().unwrap(),
+                        TEST_HEARTBEAT_GENERATION,
+                    )
+                    .unwrap(),
+                    RunnerPreferenceTier::FinalizingPredecessor,
+                    std::time::Instant::now() + Duration::from_secs(30),
+                )),
+        )
+        .unwrap();
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+    let cancellation = wait_cancel_handle(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+
+    drop(predecessor_guard);
+    destroy_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("finalizing fallback should retire idle capacity before waiting");
+    assert_eq!(budget.allocated(), (4, 8192, 2));
+    cancellation.request_hard_cancellation().await;
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("cancelled finalizing fallback should report completion");
+    assert_eq!(completion.exit_code, 137);
+    wait_budget_count(&budget, 1, Duration::from_secs(5)).await;
+    assert_eq!(destroy_gate.entered_count(), 1);
+
+    destroy_gate.release_one();
+    drop(occupied);
+    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
     shutdown(&env, run_handle).await;
 }
 

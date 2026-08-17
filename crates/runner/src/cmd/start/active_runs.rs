@@ -8,7 +8,6 @@ use crate::ids::RunId;
 #[derive(Clone)]
 pub(super) struct ActiveRuns {
     entries: Arc<Mutex<HashMap<RunId, ActiveRunEntry>>>,
-    changes: watch::Sender<u64>,
     reuse_state_notify: Arc<Notify>,
 }
 
@@ -46,7 +45,6 @@ impl ActiveRunReuseProof {
 #[derive(Clone)]
 pub(super) struct ActiveRunReusePublisher {
     reuse_state: watch::Sender<ActiveRunReuseState>,
-    changes: watch::Sender<u64>,
 }
 
 impl ActiveRunReusePublisher {
@@ -59,27 +57,19 @@ impl ActiveRunReusePublisher {
     }
 
     fn resolve_pending(&self, next: ActiveRunReuseState) -> bool {
-        let changed = self.reuse_state.send_if_modified(|state| {
+        self.reuse_state.send_if_modified(|state| {
             if *state != ActiveRunReuseState::Pending {
                 return false;
             }
             *state = next;
             true
-        });
-        if changed {
-            bump_changes(&self.changes);
-        }
-        changed
+        })
     }
 
     #[cfg(test)]
     pub(super) fn detached() -> Self {
         let (reuse_state, _reuse_state_rx) = watch::channel(ActiveRunReuseState::Pending);
-        let (changes, _changes_rx) = watch::channel(0);
-        Self {
-            reuse_state,
-            changes,
-        }
+        Self { reuse_state }
     }
 }
 
@@ -92,10 +82,8 @@ pub(super) struct ActiveRunGuard {
 
 impl ActiveRuns {
     pub(super) fn new(reuse_state_notify: Arc<Notify>) -> Self {
-        let (changes, _changes_rx) = watch::channel(0);
         Self {
             entries: Arc::new(Mutex::new(HashMap::new())),
-            changes,
             reuse_state_notify,
         }
     }
@@ -122,7 +110,6 @@ impl ActiveRuns {
             });
         }
         drop(entries);
-        bump_changes(&self.changes);
         ActiveRunGuard {
             active_runs: self.clone(),
             run_id: Some(run_id),
@@ -166,17 +153,12 @@ impl ActiveRuns {
     pub(super) fn contains(&self, run_id: RunId) -> bool {
         lock_entries(&self.entries).contains_key(&run_id)
     }
-
-    pub(super) fn subscribe_changes(&self) -> watch::Receiver<u64> {
-        self.changes.subscribe()
-    }
 }
 
 impl ActiveRunGuard {
     pub(super) fn reuse_publisher(&self) -> ActiveRunReusePublisher {
         ActiveRunReusePublisher {
             reuse_state: self.reuse_state.clone(),
-            changes: self.active_runs.changes.clone(),
         }
     }
 
@@ -191,7 +173,6 @@ impl ActiveRunGuard {
         lock_entries(&self.active_runs.entries).remove(&run_id);
         let was_pending = self.reuse_state.send_replace(ActiveRunReuseState::Released)
             == ActiveRunReuseState::Pending;
-        bump_changes(&self.active_runs.changes);
         if self.has_reuse_key && was_pending {
             self.active_runs.reuse_state_notify.notify_one();
         }
@@ -203,10 +184,6 @@ impl Drop for ActiveRunGuard {
     fn drop(&mut self) {
         self.release_inner();
     }
-}
-
-fn bump_changes(changes: &watch::Sender<u64>) {
-    changes.send_modify(|revision| *revision = revision.wrapping_add(1));
 }
 
 fn lock_entries(

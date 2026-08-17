@@ -997,10 +997,7 @@ mod tests {
             ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
             ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
         ];
-        let pool = IdlePool::new(IdlePoolConfig {
-            default_timeout: Duration::from_secs(300),
-            max_idle: 0,
-        });
+        let pool = IdlePool::new(IdlePoolConfig { max_idle: 0 });
         let profiles = test_profiles();
 
         let state = collect_heartbeat_state(
@@ -1029,10 +1026,7 @@ mod tests {
                 workspace_disk_mb: 10240,
             },
         );
-        let pool = IdlePool::new(IdlePoolConfig {
-            default_timeout: Duration::from_secs(300),
-            max_idle: 0,
-        });
+        let pool = IdlePool::new(IdlePoolConfig { max_idle: 0 });
 
         let state = collect_heartbeat_state(
             test_snapshot_metadata(),
@@ -1048,10 +1042,7 @@ mod tests {
     #[test]
     fn heartbeat_admittable_profiles_exclude_unaffordable_parked_profiles() {
         let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 1));
-        let mut pool = IdlePool::new(IdlePoolConfig {
-            default_timeout: Duration::from_secs(300),
-            max_idle: 0,
-        });
+        let mut pool = IdlePool::new(IdlePoolConfig { max_idle: 0 });
         let candidate = ParkedIdleCandidateBuilder::new(
             "sess-idle",
             ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
@@ -1075,10 +1066,7 @@ mod tests {
     #[test]
     fn heartbeat_admittable_profiles_empty_when_not_running() {
         let budget = ResourceBudget::new(8, 32768, 1.0, 4);
-        let pool = IdlePool::new(IdlePoolConfig {
-            default_timeout: Duration::from_secs(300),
-            max_idle: 0,
-        });
+        let pool = IdlePool::new(IdlePoolConfig { max_idle: 0 });
         let profiles = test_profiles();
 
         let state = collect_heartbeat_state(
@@ -1095,10 +1083,7 @@ mod tests {
     #[test]
     fn heartbeat_starting_reports_no_admittable_profiles() {
         let budget = ResourceBudget::new(8, 32768, 1.0, 4);
-        let pool = IdlePool::new(IdlePoolConfig {
-            default_timeout: Duration::from_secs(300),
-            max_idle: 0,
-        });
+        let pool = IdlePool::new(IdlePoolConfig { max_idle: 0 });
         let profiles = test_profiles();
 
         let state = collect_heartbeat_state(
@@ -1117,7 +1102,6 @@ mod tests {
     async fn send_heartbeat_logs_state_counts_without_raw_reuse_state() {
         let reuse_key = "thread:sensitive-heartbeat-17975";
         let idle_pool = Arc::new(tokio::sync::Mutex::new(IdlePool::new(IdlePoolConfig {
-            default_timeout: Duration::from_secs(300),
             max_idle: 1,
         })));
         let dir = tempfile::tempdir().unwrap();
@@ -1189,7 +1173,6 @@ mod tests {
     async fn initial_workspace_cache_heartbeat_uses_loaded_snapshot() {
         let reuse_key = "thread:loaded-initial-snapshot";
         let idle_pool = Arc::new(tokio::sync::Mutex::new(IdlePool::new(IdlePoolConfig {
-            default_timeout: Duration::from_secs(300),
             max_idle: 1,
         })));
         let dir = tempfile::tempdir().unwrap();
@@ -1491,10 +1474,7 @@ mod tests {
             ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
             ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
         ];
-        let mut pool = IdlePool::new(IdlePoolConfig {
-            default_timeout: Duration::from_secs(300),
-            max_idle: 0,
-        });
+        let mut pool = IdlePool::new(IdlePoolConfig { max_idle: 0 });
         assert!(matches!(
             pool.park(make_synthetic_parked_candidate("sess-1")),
             ParkResult::Parked,
@@ -1519,10 +1499,7 @@ mod tests {
             ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
             ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
         ];
-        let mut pool = IdlePool::new(IdlePoolConfig {
-            default_timeout: Duration::from_secs(300),
-            max_idle: 0,
-        });
+        let mut pool = IdlePool::new(IdlePoolConfig { max_idle: 0 });
         assert!(matches!(
             pool.park(make_synthetic_parked_candidate("sess-1")),
             ParkResult::Parked,
@@ -1546,10 +1523,7 @@ mod tests {
     #[test]
     fn heartbeat_running_count_saturates_on_transient_inconsistency() {
         let budget = ResourceBudget::new(8, 32768, 1.0, 4);
-        let mut pool = IdlePool::new(IdlePoolConfig {
-            default_timeout: Duration::from_secs(300),
-            max_idle: 0,
-        });
+        let mut pool = IdlePool::new(IdlePoolConfig { max_idle: 0 });
         assert!(matches!(
             pool.park(make_synthetic_parked_candidate("sess-1")),
             ParkResult::Parked,

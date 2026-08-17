@@ -146,8 +146,10 @@ pub struct SandboxConfig {
     pub max_concurrent: usize,
     /// Overcommit factor applied to both CPU and memory budgets (default: 1.0).
     pub concurrency_factor: f64,
-    /// Idle timeout in seconds for reusable VMs
-    /// (default: [`DEFAULT_IDLE_TIMEOUT_SECS`]).
+    /// Legacy idle timeout retained for runner YAML compatibility.
+    ///
+    /// Idle VM lifetime is capacity-driven, so this value has no runtime
+    /// effect (default: [`DEFAULT_IDLE_TIMEOUT_SECS`]).
     pub idle_timeout_secs: u64,
     /// Maximum number of idle VMs to keep (0 = no limit, default: 0).
     pub max_idle: usize,

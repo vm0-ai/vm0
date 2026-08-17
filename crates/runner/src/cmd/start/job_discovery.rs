@@ -20,9 +20,8 @@ use super::factory_lifecycle::SharedFactory;
 use super::finalizing_claim::{FinalizingClaimRequest, spawn_finalizing_claim};
 use super::idle_lifecycle::{
     SharedIdlePool, add_preparing_run_with_idle_status_snapshot,
-    add_running_run_with_idle_status_snapshot, destroy_idle_jobs_and_wait,
-    evict_expired_idle_entries, evict_oldest_idle_entry, set_idle_status_snapshot,
-    spawn_idle_destroy_job,
+    add_running_run_with_idle_status_snapshot, destroy_idle_jobs_and_wait, evict_oldest_idle_entry,
+    set_idle_status_snapshot, spawn_idle_destroy_job, spawn_idle_destroy_job_retaining_lease,
 };
 use super::job_spawn::{JobProfile, SpawnContext, SpawnJobRequest, spawn_job};
 use crate::config::ProfileConfig;
@@ -68,7 +67,6 @@ pub(super) struct DiscoveredJobContext<'a> {
     pub(super) mode_rx: &'a tokio::sync::watch::Receiver<RunnerMode>,
     pub(super) cancel_tokens: &'a RunCancellationRegistry,
     pub(super) spawn_ctx: &'a SpawnContext,
-    pub(super) destroy_tasks: &'a mut JoinSet<bool>,
     pub(super) jobs: &'a mut JoinSet<RunCancellationRegistration>,
 }
 
@@ -1121,6 +1119,7 @@ async fn acquire_local_admission_resource(
     device_rate_limits: &Option<sandbox::DeviceRateLimits>,
     ctx: &mut DiscoveredJobContext<'_>,
 ) -> Option<LocalAdmissionResource> {
+    let mut retiring_leases = Vec::new();
     loop {
         if let Some(reuse_key) = candidate.reuse_key()
             && let Some(reservation) =
@@ -1129,20 +1128,21 @@ async fn acquire_local_admission_resource(
             return Some(LocalAdmissionResource::Reusable(Box::new(reservation)));
         }
 
-        if let Some(lease) = ResourceBudget::try_reserve_lease(ctx.budget, job_vcpu, job_memory) {
-            return Some(LocalAdmissionResource::Fresh(lease));
-        }
-
-        let expired = evict_expired_idle_entries(ctx.idle_pool, ctx.status).await;
-        if !expired.is_empty() {
-            info!(
-                run_id = %candidate.run_id(),
-                count = expired.len(),
-                "reclaiming expired idle VMs for candidate admission"
-            );
-            destroy_idle_jobs_and_wait(expired, "candidate_admission_expired").await;
-            ctx.spawn_ctx.reuse_state_notify.notify_one();
-            continue;
+        if retiring_leases.is_empty() {
+            if let Some(lease) = ResourceBudget::try_reserve_lease(ctx.budget, job_vcpu, job_memory)
+            {
+                return Some(LocalAdmissionResource::Fresh(lease));
+            }
+        } else {
+            match ResourceBudget::try_substitute_leases(
+                ctx.budget,
+                std::mem::take(&mut retiring_leases),
+                job_vcpu,
+                job_memory,
+            ) {
+                Ok(lease) => return Some(LocalAdmissionResource::Fresh(lease)),
+                Err(retained) => retiring_leases = retained,
+            }
         }
 
         let evicted = evict_oldest_idle_entry(ctx.idle_pool, ctx.status).await?;
@@ -1155,7 +1155,11 @@ async fn acquire_local_admission_resource(
             memory_mb = evicted.budget_memory_mb(),
             "evicting idle VM for candidate admission"
         );
-        destroy_idle_jobs_and_wait(vec![evicted], "candidate_admission_oldest").await;
+        retiring_leases.push(spawn_idle_destroy_job_retaining_lease(
+            &ctx.spawn_ctx.idle_destroy_tracker,
+            evicted,
+            "candidate_admission_oldest",
+        ));
         ctx.spawn_ctx.reuse_state_notify.notify_one();
     }
 }
@@ -1241,7 +1245,7 @@ async fn rollback_untracked_resource(
             set_idle_status_snapshot(ctx.status, snapshot).await;
             if let RestoreReservedIdleResult::Rejected(destroy_job) = restore_result {
                 spawn_idle_destroy_job(
-                    ctx.destroy_tasks,
+                    &ctx.spawn_ctx.idle_destroy_tracker,
                     *destroy_job,
                     "reserved_idle_rollback_rejected",
                 );
@@ -1956,7 +1960,7 @@ async fn try_reuse_from_pool(
                         "workspace promotion identity mismatch, destroying idle VM and falling through to fresh create"
                     );
                     spawn_idle_destroy_job(
-                        ctx.destroy_tasks,
+                        &ctx.spawn_ctx.idle_destroy_tracker,
                         entry.into_destroy_job_without_workspace_promotion_for_mismatch(),
                         "reuse_workspace_promotion_mismatch",
                     );
@@ -2003,7 +2007,11 @@ async fn try_reuse_from_pool(
                         error = %error,
                         "unpark failed, destroying idle VM and falling through to fresh create"
                     );
-                    spawn_idle_destroy_job(ctx.destroy_tasks, *destroy_job, "reuse_unpark_failed");
+                    spawn_idle_destroy_job(
+                        &ctx.spawn_ctx.idle_destroy_tracker,
+                        *destroy_job,
+                        "reuse_unpark_failed",
+                    );
                     (
                         None,
                         job_lease,
@@ -2023,7 +2031,7 @@ async fn try_reuse_from_pool(
                 "idle VM device rate limiter mismatch, destroying"
             );
             spawn_idle_destroy_job(
-                ctx.destroy_tasks,
+                &ctx.spawn_ctx.idle_destroy_tracker,
                 stale.into_destroy_job(),
                 "reuse_device_limit_mismatch",
             );
@@ -2045,7 +2053,7 @@ async fn try_reuse_from_pool(
                 "idle VM profile mismatch, destroying"
             );
             spawn_idle_destroy_job(
-                ctx.destroy_tasks,
+                &ctx.spawn_ctx.idle_destroy_tracker,
                 stale.into_destroy_job(),
                 "reuse_profile_mismatch",
             );

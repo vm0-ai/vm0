@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use sandbox::{DeviceRateLimits, SandboxId};
 
@@ -28,28 +28,17 @@ pub(crate) use parking_gate::ParkingState;
 #[cfg(test)]
 pub(crate) mod test_support;
 
-/// Default idle timeout for kept-alive VMs (30 minutes).
+/// Compatibility default for the legacy `idle_timeout_secs` config field.
 ///
-/// Re-exported via `SandboxConfig::default()` so the YAML default and
-/// the in-process fallback stay locked together.
+/// Idle lifetime is capacity-driven; the field remains only so existing
+/// runner YAML continues to deserialize and round-trip during deployment.
 pub const DEFAULT_IDLE_TIMEOUT_SECS: u64 = 1800;
 
 /// Configuration for the idle sandbox pool.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct IdlePoolConfig {
-    /// Default idle timeout for parked VMs.
-    pub default_timeout: Duration,
     /// Maximum number of idle VMs (0 = unlimited).
     pub max_idle: usize,
-}
-
-impl Default for IdlePoolConfig {
-    fn default() -> Self {
-        Self {
-            default_timeout: Duration::from_secs(DEFAULT_IDLE_TIMEOUT_SECS),
-            max_idle: 0,
-        }
-    }
 }
 
 /// Idle pool status snapshot paired with a monotonic mutation revision.
@@ -97,7 +86,7 @@ impl IdlePool {
     ///
     /// Returns `Rejected(candidate)` if parking is closed/soft-draining or at capacity.
     pub fn park(&mut self, candidate: ParkedIdleCandidate) -> ParkResult {
-        self.park_at(candidate, Instant::now(), self.config.default_timeout)
+        self.park_at(candidate, Instant::now())
     }
 
     #[cfg(test)]
@@ -105,17 +94,11 @@ impl IdlePool {
         &mut self,
         candidate: ParkedIdleCandidate,
         parked_at: Instant,
-        idle_timeout: Duration,
     ) -> ParkResult {
-        self.park_at(candidate, parked_at, idle_timeout)
+        self.park_at(candidate, parked_at)
     }
 
-    fn park_at(
-        &mut self,
-        candidate: ParkedIdleCandidate,
-        parked_at: Instant,
-        idle_timeout: Duration,
-    ) -> ParkResult {
+    fn park_at(&mut self, candidate: ParkedIdleCandidate, parked_at: Instant) -> ParkResult {
         let reuse_key = candidate.reuse_key().to_string();
         if !self.parking_gate.is_open() {
             return ParkResult::Rejected(candidate.into_rejected());
@@ -126,7 +109,7 @@ impl IdlePool {
                 return ParkResult::Rejected(candidate.into_rejected());
             }
         }
-        let entry = candidate.into_idle_entry(parked_at, idle_timeout);
+        let entry = candidate.into_idle_entry(parked_at);
         let result = match self.entries.insert(reuse_key, entry) {
             Some(evicted) => ParkResult::Replaced(evicted.into_destroy_job()),
             None => ParkResult::Parked,
@@ -150,9 +133,7 @@ impl IdlePool {
         device_rate_limits: &Option<DeviceRateLimits>,
     ) -> bool {
         self.entries.get(reuse_key).is_some_and(|entry| {
-            !entry.is_expired_at(Instant::now())
-                && entry.profile_name() == profile_name
-                && entry.device_rate_limits() == device_rate_limits
+            entry.profile_name() == profile_name && entry.device_rate_limits() == device_rate_limits
         })
     }
 
@@ -198,38 +179,13 @@ impl IdlePool {
         let entry = reservation.entry;
         let reuse_key = entry.reuse_key().to_owned();
         let has_capacity = self.config.max_idle == 0 || self.entries.len() < self.config.max_idle;
-        if !self.parking_gate.is_open()
-            || entry.is_expired_at(Instant::now())
-            || !has_capacity
-            || self.entries.contains_key(&reuse_key)
-        {
+        if !self.parking_gate.is_open() || !has_capacity || self.entries.contains_key(&reuse_key) {
             return RestoreReservedIdleResult::Rejected(Box::new(entry.into_destroy_job()));
         }
 
         self.entries.insert(reuse_key, entry);
         self.bump_revision();
         RestoreReservedIdleResult::Restored
-    }
-
-    /// Remove and return all entries that have exceeded their idle timeout.
-    pub fn evict_expired(&mut self) -> Vec<IdleDestroyJob> {
-        let now = Instant::now();
-        let expired: Vec<IdleDestroyJob> = self
-            .entries
-            .extract_if(|_, entry| entry.is_expired_at(now))
-            .map(|(_, entry)| entry.into_destroy_job())
-            .collect();
-        if !expired.is_empty() {
-            self.bump_revision();
-        }
-        expired
-    }
-
-    /// Remove expired entries and return the post-eviction idle status snapshot.
-    pub fn evict_expired_with_snapshot(&mut self) -> (Vec<IdleDestroyJob>, IdlePoolSnapshot) {
-        let expired = self.evict_expired();
-        let snapshot = self.status_snapshot();
-        (expired, snapshot)
     }
 
     /// Evict the oldest idle entry (by park time). Used for resource

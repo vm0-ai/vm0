@@ -145,10 +145,83 @@ impl ResourceBudget {
         }
     }
 
-    /// Wait until resources can be reserved, without losing a release that
-    /// races the capacity check.
-    pub async fn reserve_lease_when_available(
+    /// Atomically substitute existing leases for one incoming reservation.
+    ///
+    /// The supplied leases remain intact when the virtual post-release state
+    /// cannot admit the incoming shape. On success their reservations are
+    /// consumed under the same lock that installs the incoming reservation,
+    /// so concurrent admission cannot observe or steal intermediate capacity.
+    pub fn try_substitute_leases(
         budget: &Arc<Self>,
+        mut leases: Vec<BudgetLease>,
+        vcpu: u32,
+        memory_mb: u32,
+    ) -> Result<BudgetLease, Vec<BudgetLease>> {
+        assert!(
+            leases.iter().all(|lease| {
+                lease
+                    .budget
+                    .as_ref()
+                    .is_some_and(|owner| Arc::ptr_eq(owner, budget))
+            }),
+            "substituted leases must belong to the target resource budget"
+        );
+
+        let mut state = budget.lock();
+        let before = (
+            state.running_vcpu,
+            state.running_memory_mb,
+            state.running_count,
+        );
+        let mut virtual_state = BudgetState {
+            running_vcpu: state.running_vcpu,
+            running_memory_mb: state.running_memory_mb,
+            running_count: state.running_count,
+        };
+        for lease in &leases {
+            assert!(
+                virtual_state.running_vcpu >= lease.vcpu,
+                "substituted vCPU exceeds resource budget allocation"
+            );
+            assert!(
+                virtual_state.running_memory_mb >= lease.memory_mb,
+                "substituted memory exceeds resource budget allocation"
+            );
+            assert!(
+                virtual_state.running_count > 0,
+                "substituted lease count exceeds resource budget allocation"
+            );
+            virtual_state.running_vcpu -= lease.vcpu;
+            virtual_state.running_memory_mb -= lease.memory_mb;
+            virtual_state.running_count -= 1;
+        }
+
+        if !budget.can_admit_locked(&virtual_state, vcpu, memory_mb) {
+            return Err(leases);
+        }
+
+        *state = virtual_state;
+        Self::reserve_locked(&mut state, vcpu, memory_mb);
+        for lease in &mut leases {
+            lease.budget = None;
+        }
+        let released_capacity = state.running_vcpu < before.0
+            || state.running_memory_mb < before.1
+            || state.running_count < before.2;
+        drop(state);
+
+        if released_capacity {
+            budget.availability.notify_waiters();
+        }
+
+        Ok(BudgetLease::new(Arc::clone(budget), vcpu, memory_mb))
+    }
+
+    /// Wait until selected leases can be atomically substituted for one
+    /// incoming reservation without losing a concurrent release notification.
+    pub async fn substitute_leases_when_available(
+        budget: &Arc<Self>,
+        mut leases: Vec<BudgetLease>,
         vcpu: u32,
         memory_mb: u32,
     ) -> BudgetLease {
@@ -156,8 +229,9 @@ impl ResourceBudget {
             let notified = budget.availability.notified();
             tokio::pin!(notified);
             notified.as_mut().enable();
-            if let Some(lease) = Self::try_reserve_lease(budget, vcpu, memory_mb) {
-                return lease;
+            match Self::try_substitute_leases(budget, leases, vcpu, memory_mb) {
+                Ok(lease) => return lease,
+                Err(retained) => leases = retained,
             }
             notified.await;
         }
@@ -408,28 +482,6 @@ mod tests {
         assert_eq!(budget.allocated(), (2, 2048, 1));
 
         drop(lease);
-        assert_eq!(budget.allocated(), (0, 0, 0));
-    }
-
-    #[tokio::test]
-    async fn waiting_reservation_wakes_when_a_lease_is_released() {
-        let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 1));
-        let occupied = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
-        let waiting_budget = Arc::clone(&budget);
-        let waiter = tokio::spawn(async move {
-            ResourceBudget::reserve_lease_when_available(&waiting_budget, 2, 4096).await
-        });
-
-        tokio::task::yield_now().await;
-        assert!(!waiter.is_finished());
-        drop(occupied);
-
-        let replacement = tokio::time::timeout(std::time::Duration::from_secs(1), waiter)
-            .await
-            .expect("released capacity should wake the waiter")
-            .expect("capacity waiter should not panic");
-        assert_eq!(budget.allocated(), (2, 4096, 1));
-        drop(replacement);
         assert_eq!(budget.allocated(), (0, 0, 0));
     }
 

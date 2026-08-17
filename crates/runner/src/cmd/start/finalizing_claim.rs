@@ -5,13 +5,11 @@ use std::time::Instant;
 
 use futures_util::FutureExt;
 use tokio::task::JoinSet;
-use tracing::{info, warn};
+use tracing::info;
 
 use super::active_runs::ActiveRunReuseState;
 use super::factory_lifecycle::SharedFactory;
-use super::idle_lifecycle::{
-    destroy_idle_jobs_and_wait, evict_expired_idle_entries, evict_oldest_idle_entry,
-};
+use super::idle_lifecycle::{evict_oldest_idle_entry, spawn_idle_destroy_job_retaining_lease};
 use super::job_discovery::{
     ClaimedJobSetup, FinalizingAdmission, ReadyClaimedResource, ReservedActivation,
     ReservedActivationRequest, activate_reserved_idle, build_spawn_job_request,
@@ -349,22 +347,17 @@ async fn acquire_fresh_capacity(
     memory_mb: u32,
     ctx: &SpawnContext,
 ) -> Result<BudgetLease, ExecutionFailure> {
-    let mut active_run_changes = ctx.active_runs.subscribe_changes();
     let cancel = cancellation.token();
+    let mut retiring_leases = Vec::new();
     loop {
-        if let Some(lease) = ResourceBudget::try_reserve_lease(&ctx.budget, vcpu, memory_mb) {
-            return Ok(lease);
-        }
-        let expired = evict_expired_idle_entries(&ctx.idle_pool, &ctx.status).await;
-        if !expired.is_empty() {
-            info!(
-                run_id = %run_id,
-                count = expired.len(),
-                "reclaiming expired idle VMs for finalizing fallback"
-            );
-            destroy_idle_jobs_and_wait(expired, "finalizing_fallback_expired").await;
-            ctx.reuse_state_notify.notify_one();
-            continue;
+        match ResourceBudget::try_substitute_leases(
+            &ctx.budget,
+            std::mem::take(&mut retiring_leases),
+            vcpu,
+            memory_mb,
+        ) {
+            Ok(lease) => return Ok(lease),
+            Err(retained) => retiring_leases = retained,
         }
         if let Some(evicted) = evict_oldest_idle_entry(&ctx.idle_pool, &ctx.status).await {
             info!(
@@ -372,7 +365,11 @@ async fn acquire_fresh_capacity(
                 profile = %evicted.profile_name(),
                 "evicting idle VM for finalizing fallback"
             );
-            destroy_idle_jobs_and_wait(vec![evicted], "finalizing_fallback_oldest").await;
+            retiring_leases.push(spawn_idle_destroy_job_retaining_lease(
+                &ctx.idle_destroy_tracker,
+                evicted,
+                "finalizing_fallback_oldest",
+            ));
             ctx.reuse_state_notify.notify_one();
             continue;
         }
@@ -383,13 +380,13 @@ async fn acquire_fresh_capacity(
             () = cancel.cancelled() => {
                 return Err(ExecutionFailure::cancelled());
             }
-            lease = ResourceBudget::reserve_lease_when_available(&ctx.budget, vcpu, memory_mb) => {
+            lease = ResourceBudget::substitute_leases_when_available(
+                &ctx.budget,
+                retiring_leases,
+                vcpu,
+                memory_mb,
+            ) => {
                 return Ok(lease);
-            }
-            changed = active_run_changes.changed() => {
-                if changed.is_err() {
-                    warn!(run_id = %run_id, "active-run change channel closed");
-                }
             }
         }
     }

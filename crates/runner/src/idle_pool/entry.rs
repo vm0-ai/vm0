@@ -1,6 +1,6 @@
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use futures_util::FutureExt;
 use sandbox::{DeviceRateLimits, Sandbox, SandboxFactory, SandboxId};
@@ -114,7 +114,7 @@ impl ParkedIdleCandidate {
         self
     }
 
-    pub(super) fn into_idle_entry(self, parked_at: Instant, idle_timeout: Duration) -> IdleEntry {
+    pub(super) fn into_idle_entry(self, parked_at: Instant) -> IdleEntry {
         let Self {
             resources,
             metadata,
@@ -126,7 +126,6 @@ impl ParkedIdleCandidate {
             metadata,
             budget_lease,
             parked_at,
-            idle_timeout,
         }
     }
 
@@ -165,7 +164,6 @@ pub struct IdleEntry {
     pub(super) metadata: IdleSandboxMetadata,
     pub(super) budget_lease: BudgetLease,
     pub(super) parked_at: Instant,
-    pub(super) idle_timeout: Duration,
 }
 
 #[must_use = "reserved idle sandboxes must be activated, restored, or destroyed"]
@@ -398,6 +396,16 @@ impl IdleDestroyJob {
         }
     }
 
+    pub(crate) fn into_retiring_parts(self) -> (IdleDestroyPayload, BudgetLease) {
+        let Self {
+            payload,
+            budget_lease,
+            reuse_key: _,
+            profile_name: _,
+        } = self;
+        (payload, budget_lease)
+    }
+
     pub fn reuse_key(&self) -> &str {
         &self.reuse_key
     }
@@ -467,10 +475,6 @@ impl IdleEntry {
     #[cfg(test)]
     pub fn budget_memory_mb(&self) -> u32 {
         self.budget_lease.memory_mb()
-    }
-
-    pub(super) fn is_expired_at(&self, now: Instant) -> bool {
-        now.duration_since(self.parked_at) >= self.idle_timeout
     }
 
     /// Bind the next run identity while parked, then unpark and consume this
