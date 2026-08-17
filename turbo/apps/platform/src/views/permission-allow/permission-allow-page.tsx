@@ -34,7 +34,7 @@ import {
 } from "../../signals/permission-allow/permission-grant-expiration.ts";
 import { isActiveUserPermissionGrant } from "../../signals/user-permission-grants.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { VM0Logo } from "../components/vm0-logo.tsx";
+import { ProductBrandMark } from "../components/product-brand-mark.tsx";
 import { PermissionGrantDurationSelect } from "../components/permission-grant-duration-select.tsx";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 import { AvatarFromUrl } from "../zero-page/zero-sidebar-shared.tsx";
@@ -144,7 +144,7 @@ function LoadingCard() {
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
       <div className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-6 py-12">
-        <VM0Logo />
+        <ProductBrandMark />
         <Loader2 size={20} className="animate-spin text-muted-foreground" />
       </div>
     </div>
@@ -200,7 +200,7 @@ function ResultCard({
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
       <div className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-[50px] py-12">
-        <VM0Logo />
+        <ProductBrandMark />
         <div className="flex flex-col items-center gap-4">
           {allowed ? (
             <Check size={40} className="text-green-600 opacity-70" />
@@ -439,7 +439,7 @@ function ConfirmGrantCard({
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
       <div className="pointer-events-auto flex flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-6 py-12">
-        <VM0Logo />
+        <ProductBrandMark />
 
         <div className="flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-4 px-[26px]">
           <p className="text-center text-lg font-medium leading-7 text-foreground">

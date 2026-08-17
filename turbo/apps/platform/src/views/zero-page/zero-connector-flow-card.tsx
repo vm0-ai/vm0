@@ -1,7 +1,7 @@
 import type { PublicConnectorCatalogIcon } from "@okouai/api-contracts/contracts/zero-connector-catalog";
 import type { ReactNode } from "react";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
-import { Vm0LogoLink } from "./zero-directed-shared.tsx";
+import { ProductBrandMarkLink } from "./zero-directed-shared.tsx";
 
 export function ZeroConnectorFlowCard({
   connectorIcon,
@@ -17,7 +17,7 @@ export function ZeroConnectorFlowCard({
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center bg-background pointer-events-none">
       <div className="pointer-events-auto flex w-[430px] max-w-[calc(100%-48px)] flex-col items-center gap-12 rounded-[20px] border border-border bg-background px-6 py-12 text-center">
-        <Vm0LogoLink />
+        <ProductBrandMarkLink />
         <div
           className="flex w-full flex-col items-center gap-4"
           aria-live="polite"

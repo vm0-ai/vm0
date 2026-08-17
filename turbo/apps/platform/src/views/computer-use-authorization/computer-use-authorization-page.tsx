@@ -20,7 +20,7 @@ import { computerUseProductName$ } from "../../signals/branding.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { computerUseIllustrationImg } from "../zero-page/platform-assets.ts";
-import { Vm0LogoLink } from "../zero-page/zero-directed-shared.tsx";
+import { ProductBrandMarkLink } from "../zero-page/zero-directed-shared.tsx";
 import { locale$ } from "../../signals/locale.ts";
 import { i18n } from "../../i18n/index.ts";
 import { desktopProductDisplayName } from "../../i18n/desktop-product.ts";
@@ -191,7 +191,7 @@ function ErrorState() {
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center px-4">
       <div className="flex w-[430px] max-w-full flex-col items-center gap-6 rounded-xl border border-border bg-background px-6 py-10 text-center">
-        <Vm0LogoLink />
+        <ProductBrandMarkLink />
         <div className="flex flex-col gap-2">
           <h1 className="text-lg font-medium text-foreground">
             {t(($) => {
@@ -246,7 +246,7 @@ export function ComputerUseAuthorizationPage() {
     <div className="fixed inset-0 z-10 flex items-center justify-center overflow-y-auto px-4 py-8">
       <div className="flex w-[520px] max-w-full flex-col gap-6 rounded-xl border border-border bg-background px-6 py-8">
         <div className="flex flex-col items-center gap-5 text-center">
-          <Vm0LogoLink />
+          <ProductBrandMarkLink />
           <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-muted">
             <Monitor size={22} />
           </div>
