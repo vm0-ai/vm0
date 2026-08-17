@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.168.22](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.21...runner-rs-v0.168.22) (2026-08-17)
+
+
+### Performance Improvements
+
+* **python:** bound connector-intent header capture ([#27649](https://github.com/vm0-ai/vm0/issues/27649)) ([9c60e64](https://github.com/vm0-ai/vm0/commit/9c60e64ce8ca7d63b4a80b7125fef72b583e6fda))
+
 ## [0.168.21](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.20...runner-rs-v0.168.21) (2026-08-17)
 
 

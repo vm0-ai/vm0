@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.451.15](https://github.com/vm0-ai/vm0/compare/api-v1.451.14...api-v1.451.15) (2026-08-17)
+
+
+### Bug Fixes
+
+* **billing:** unblock scheduled subscription transitions ([#27083](https://github.com/vm0-ai/vm0/issues/27083)) ([a9d6aaa](https://github.com/vm0-ai/vm0/commit/a9d6aaaedf36eff09108427c99ed5218dc5a955b))
+
 ## [1.451.14](https://github.com/vm0-ai/vm0/compare/api-v1.451.13...api-v1.451.14) (2026-08-17)
 
 
