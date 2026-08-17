@@ -225,7 +225,14 @@ fn content_length(headers: &str) -> io::Result<usize> {
             continue;
         };
         if name.eq_ignore_ascii_case("content-length") {
-            let parsed = value.trim().parse::<usize>().map_err(|error| {
+            let value = value.trim();
+            if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "invalid HTTP Content-Length: expected decimal digits",
+                ));
+            }
+            let parsed = value.parse::<usize>().map_err(|error| {
                 io::Error::new(
                     io::ErrorKind::InvalidData,
                     format!("invalid HTTP Content-Length: {error}"),
@@ -392,7 +399,7 @@ mod tests {
         let mut server = RawHttpTestServer::spawn(vec![RawHttpAction::Disconnect]).await;
         let mut socket = connect(&server).await;
         socket
-            .write_all(b"POST / HTTP/1.1\r\nContent-Length: invalid\r\n\r\n")
+            .write_all(b"POST / HTTP/1.1\r\nContent-Length: +7\r\n\r\n")
             .await
             .unwrap();
         drop(socket);
