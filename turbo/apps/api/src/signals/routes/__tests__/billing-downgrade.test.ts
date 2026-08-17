@@ -297,6 +297,109 @@ describe("POST /api/zero/billing/downgrade", () => {
     });
   });
 
+  it("restores a direct cancellation before scheduling team to pro", async () => {
+    const subId = `sub-team-cancel-pro-${randomUUID().slice(0, 8)}`;
+    const periodStart = 1_782_809_751;
+    const periodEnd = 1_785_401_751;
+    const scheduleId = `sched-team-cancel-pro-${randomUUID().slice(0, 8)}`;
+    const effectiveDate = new Date(periodEnd * 1000);
+    const fixture = await track(
+      store.set(
+        seedInvoicesOrg$,
+        {
+          stripeSubscriptionId: subId,
+          subscriptionStatus: "active",
+          tier: "team",
+          currentPeriodEnd: effectiveDate,
+          cancelAtPeriodEnd: true,
+          pendingSubscriptionTargetTier: "limited-free-1",
+          pendingSubscriptionChangeAt: effectiveDate,
+        },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      id: subId,
+      cancel_at_period_end: true,
+      default_payment_method: "pm_card",
+      schedule: null,
+      items: {
+        data: [
+          {
+            id: "si_item_1",
+            current_period_start: periodStart,
+            current_period_end: periodEnd,
+            quantity: 1,
+            price: {
+              id: TEST_PRICE_TEAM,
+              recurring: { interval: "month", interval_count: 1 },
+            },
+          },
+        ],
+      },
+    });
+    context.mocks.stripe.subscriptions.update.mockResolvedValue({ id: subId });
+    context.mocks.stripe.subscriptionSchedules.create.mockResolvedValue({
+      id: scheduleId,
+      current_phase: {
+        start_date: periodStart,
+        end_date: periodEnd,
+      },
+    });
+    context.mocks.stripe.subscriptionSchedules.update.mockResolvedValue({
+      id: scheduleId,
+    });
+
+    const client = setupApp({ context, routes: billingDowngradeRoutes })(
+      zeroBillingDowngradeContract,
+    );
+    const response = await accept(
+      client.create({
+        body: { targetTier: "pro" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      success: true,
+      effectiveDate: effectiveDate.toISOString(),
+    });
+    expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledWith(
+      subId,
+      { cancel_at_period_end: false },
+    );
+    const restoreCall =
+      context.mocks.stripe.subscriptions.update.mock.invocationCallOrder[0];
+    const createScheduleCall =
+      context.mocks.stripe.subscriptionSchedules.create.mock
+        .invocationCallOrder[0];
+    const updateScheduleCall =
+      context.mocks.stripe.subscriptionSchedules.update.mock
+        .invocationCallOrder[0];
+    if (
+      restoreCall === undefined ||
+      createScheduleCall === undefined ||
+      updateScheduleCall === undefined
+    ) {
+      throw new Error(
+        "Expected cancellation restore and schedule update calls",
+      );
+    }
+    expect(restoreCall).toBeLessThan(createScheduleCall);
+    expect(createScheduleCall).toBeLessThan(updateScheduleCall);
+
+    const status = await readBillingStatus();
+    expect(status.body.cancelAtPeriodEnd).toBeFalsy();
+    expect(status.body.scheduledChange).toStrictEqual({
+      type: "downgrade",
+      targetTier: "pro",
+      effectiveDate: effectiveDate.toISOString(),
+    });
+  });
+
   it("preserves usage packs when scheduling team to pro", async () => {
     mockEnv("ZERO_PRICE_USAGE_PACK_PLAN_PRO", TEST_USAGE_PACK_PLAN_PRO);
     mockEnv("ZERO_PRICE_USAGE_PACK_PLAN_TEAM", TEST_USAGE_PACK_PLAN_TEAM);

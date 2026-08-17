@@ -332,9 +332,19 @@ async function scheduleDowngradeToPro(
     throw new Error("Pro plan price ID not configured");
   }
 
+  const attachedScheduleId = subscriptionScheduleId(subscription);
+  // Restore a direct cancellation before attaching a schedule so concurrent
+  // subscription.updated handlers re-read a non-canceling Stripe state.
+  if (subscription.cancel_at_period_end && !attachedScheduleId) {
+    await context.stripe.subscriptions.update(
+      context.org.stripeSubscriptionId,
+      { cancel_at_period_end: false },
+    );
+    signal?.throwIfAborted();
+  }
+
   const existingScheduleId =
-    context.org.pendingSubscriptionScheduleId ??
-    subscriptionScheduleId(subscription);
+    context.org.pendingSubscriptionScheduleId ?? attachedScheduleId;
   const createdSchedule = existingScheduleId
     ? null
     : await context.stripe.subscriptionSchedules.create({
