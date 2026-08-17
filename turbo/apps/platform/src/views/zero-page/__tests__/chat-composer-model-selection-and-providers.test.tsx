@@ -3582,16 +3582,18 @@ describe("chat composer video model", () => {
 
     const videoModelButton = await findDesktopVideoModelButton();
     expect(videoModelButton).toHaveAttribute("aria-pressed", "false");
+    // The first category switch opens the list behind the category it lands on.
     await user.click(videoModelButton);
     expect(videoModelButton).toHaveAttribute("aria-pressed", "true");
     await expect(findComposerModel("Claude Fable 5")).resolves.toHaveAttribute(
       "aria-expanded",
       "false",
     );
-    await user.click(videoModelButton);
 
     // Every public catalog model is offered, with no plan or provider filter.
-    expect(videoPanelButton("Seedance 2.5")).toBeInTheDocument();
+    await expect(
+      findVideoPanelButton("Seedance 2.5"),
+    ).resolves.toBeInTheDocument();
     expect(videoPanelButton("Veo 3.1 fast")).toBeInTheDocument();
     expect(videoPanelButton("Kling v3 4K")).toBeInTheDocument();
     expect(videoPanelButton("MiniMax H3")).toBeInTheDocument();
@@ -3655,7 +3657,16 @@ describe("chat composer video model", () => {
     expect(videoModelButton).toHaveTextContent(/·\s*Seedance 2\.0 Fast/);
     expect(videoModelButton).not.toHaveTextContent("Video");
     expect(videoModelButton).toHaveAttribute("aria-pressed", "true");
+    // The first category switch opens the list behind the category it lands on.
+    await expect(findVideoPanelButton("Seedance 2.5")).resolves.toBeVisible();
     expect(chatModelButton).toHaveAttribute("aria-expanded", "false");
+    expect(videoModelButton).toHaveAttribute("aria-expanded", "true");
+
+    // Close it again so the rest of the walk starts from a closed popup.
+    await user.click(videoModelButton);
+    await waitFor(() => {
+      expect(videoPanelButton("Seedance 2.5")).toBeUndefined();
+    });
     expect(videoModelButton).toHaveAttribute("aria-expanded", "false");
     const collapsedChatModeIcon = Array.from(
       chatModelButton.parentElement?.querySelectorAll(
@@ -3915,12 +3926,12 @@ describe("chat composer video model", () => {
     });
 
     // Entering video mode with the member default still selected says nothing.
+    // The first category switch also opens the video list.
     await user.click(await findDesktopVideoModelButton());
     expect(
       noticeText("Temporarily switched to MiniMax H3 for video"),
     ).toBeNull();
 
-    await user.click(await findDesktopVideoModelButton());
     await user.click(await findVideoPanelButton("Veo 3.1 fast"));
 
     await waitFor(() => {
@@ -4000,7 +4011,6 @@ describe("chat composer video model", () => {
     });
     expect(noticeText(videoNotice)).toBeNull();
 
-    await user.click(videoModelButton);
     await user.click(await findVideoPanelButton("Veo 3.1 fast"));
     await waitFor(() => {
       expect(noticeText(videoNotice)).toBeInTheDocument();
@@ -4073,7 +4083,6 @@ describe("chat composer video model", () => {
     // No `userPreferenceChanged` push is delivered, so the cached preference
     // still holds the pre-write run model. The video write must not resend it.
     const videoModelButton = await findDesktopVideoModelButton();
-    await user.click(videoModelButton);
     await user.click(videoModelButton);
     await user.click(await findVideoPanelButton("Veo 3.1 fast"));
     await waitFor(() => {

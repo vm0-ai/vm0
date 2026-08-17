@@ -301,10 +301,40 @@ function createDesktopMediaModelAnchorSignals(
   return { internalAnchors$, activeAnchor$, anchorRefs };
 }
 
+/**
+ * Tracks whether the composer is wide enough for the desktop category track.
+ * Mobile reaches the same models through a nested panel instead.
+ */
+function createDesktopModelPickerLayoutSignals() {
+  const internalDesktopModelPickerLayout$ = state(false);
+  const desktopModelPickerLayout$ = computed((get) => {
+    return get(internalDesktopModelPickerLayout$);
+  });
+  const desktopModelPickerLifecycleRef$ = onRef(
+    command(({ set }, _element: HTMLElement, signal: AbortSignal) => {
+      const mediaQuery = window.matchMedia("(min-width: 640px)");
+      const syncLayout = () => {
+        set(internalDesktopModelPickerLayout$, mediaQuery.matches);
+      };
+      mediaQuery.addEventListener("change", syncLayout);
+      signal.addEventListener("abort", () => {
+        mediaQuery.removeEventListener("change", syncLayout);
+      });
+      syncLayout();
+    }),
+  );
+  return { desktopModelPickerLayout$, desktopModelPickerLifecycleRef$ };
+}
+
 function createBasicComposerUiSignals() {
+  const { desktopModelPickerLayout$, desktopModelPickerLifecycleRef$ } =
+    createDesktopModelPickerLayoutSignals();
   const internalModelPickerOpen$ = state(false);
   const internalDesktopModelCategory$ = state<DesktopModelCategory>("chat");
-  const internalDesktopModelPickerLayout$ = state(false);
+  // The category track looks like a two-state toggle, so the first switch opens
+  // the list behind the category the user landed on -- that is what makes it
+  // read as a picker. Once they have seen it, switching is just switching.
+  const internalDesktopCategorySwitched$ = state(false);
   const internalDesktopChatModeElement$ = state<HTMLElement | null>(null);
   const desktopMediaModelAnchors = createDesktopMediaModelAnchorSignals(
     internalDesktopModelCategory$,
@@ -332,6 +362,13 @@ function createBasicComposerUiSignals() {
   const desktopModelCategory$ = computed((get) => {
     return get(internalDesktopModelCategory$);
   });
+  const openPickerOnFirstCategorySwitch$ = command(({ get, set }) => {
+    if (get(internalDesktopCategorySwitched$)) {
+      return;
+    }
+    set(internalDesktopCategorySwitched$, true);
+    set(setModelPickerOpen$, true);
+  });
   const toggleDesktopMediaModelCategory$ = command(
     ({ get, set }, category: "video") => {
       if (get(internalDesktopModelCategory$) === category) {
@@ -339,23 +376,8 @@ function createBasicComposerUiSignals() {
         return;
       }
       set(internalDesktopModelCategory$, category);
+      set(openPickerOnFirstCategorySwitch$);
     },
-  );
-  const desktopModelPickerLayout$ = computed((get) => {
-    return get(internalDesktopModelPickerLayout$);
-  });
-  const desktopModelPickerLifecycleRef$ = onRef(
-    command(({ set }, _element: HTMLElement, signal: AbortSignal) => {
-      const mediaQuery = window.matchMedia("(min-width: 640px)");
-      const syncLayout = () => {
-        set(internalDesktopModelPickerLayout$, mediaQuery.matches);
-      };
-      mediaQuery.addEventListener("change", syncLayout);
-      signal.addEventListener("abort", () => {
-        mediaQuery.removeEventListener("change", syncLayout);
-      });
-      syncLayout();
-    }),
   );
   const setDesktopChatModeElement$ = onRef(
     command(({ set }, element: HTMLElement, signal: AbortSignal) => {
@@ -382,7 +404,7 @@ function createBasicComposerUiSignals() {
         return eventTouchesElement(event, element);
       });
       const desktopMediaModelCategoriesAvailable =
-        mediaModelCategoriesAvailable && get(internalDesktopModelPickerLayout$);
+        mediaModelCategoriesAvailable && get(desktopModelPickerLayout$);
       if (
         desktopMediaModelCategoriesAvailable &&
         !open &&
@@ -403,6 +425,7 @@ function createBasicComposerUiSignals() {
         get(internalDesktopModelCategory$) !== "chat";
       if (mediaModelCategoryExpanded && touchesChatMode) {
         set(internalDesktopModelCategory$, "chat");
+        set(openPickerOnFirstCategorySwitch$);
         return true;
       }
       set(setModelPickerOpen$, open);
