@@ -1187,7 +1187,7 @@ export const restoreConcurrencySubscription$ = command(
       args,
     );
     signal.throwIfAborted();
-    if (!subscription) {
+    if (!subscription || !subscription.cancelAtPeriodEnd) {
       return { ok: false, reason: "not_found" };
     }
 
@@ -1197,11 +1197,16 @@ export const restoreConcurrencySubscription$ = command(
         args.subscriptionId,
       );
       signal.throwIfAborted();
-      await scheduleConcurrencyChange(
-        stripeSubscription,
-        subscription.quantity,
-        signal,
-      );
+      const scheduleId = stripeObjectId(stripeSubscription.schedule);
+      if (!scheduleId) {
+        throw new Error(
+          "Canceling shared concurrency subscription has no schedule",
+        );
+      }
+      // Cancellation can create this schedule only when no other subscription
+      // update is pending. Releasing it restores the current items and keeps
+      // later concurrency changes from treating the canceled change as foreign.
+      await stripe.subscriptionSchedules.release(scheduleId);
     } else {
       await stripe.subscriptions.update(args.subscriptionId, {
         cancel_at_period_end: false,

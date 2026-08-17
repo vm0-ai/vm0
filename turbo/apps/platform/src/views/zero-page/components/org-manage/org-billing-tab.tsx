@@ -2571,6 +2571,16 @@ function scheduledMigrationPlanActions(
   };
 }
 
+function cancellationReplacementAction(
+  currentTier: BillingTier,
+  scheduledChange: ScheduledBillingChange,
+  action: () => void,
+): (() => void) | undefined {
+  return currentTier === "team" && scheduledChange?.type === "cancel"
+    ? action
+    : undefined;
+}
+
 function CurrentPlanTitle({
   label,
   legacy,
@@ -2600,6 +2610,7 @@ function UsagePackPricingFlowDialogs({
   migrationTargetTier,
   onMigrationBack,
   onClose,
+  onReplaceCancellationWithPro,
   onSelectMigration,
 }: {
   readonly checkoutAllowed: boolean;
@@ -2609,6 +2620,7 @@ function UsagePackPricingFlowDialogs({
   readonly migrationTargetTier: "pro" | "team" | null;
   readonly onMigrationBack: () => void;
   readonly onClose: () => void;
+  readonly onReplaceCancellationWithPro?: () => void;
   readonly onSelectMigration: (tier: "pro" | "team") => void;
 }) {
   if (migration) {
@@ -2628,6 +2640,7 @@ function UsagePackPricingFlowDialogs({
       checkoutAllowed={checkoutAllowed}
       currentTier={currentTier}
       onClose={onClose}
+      onReplaceCancellationWithPro={onReplaceCancellationWithPro}
     />
   );
 }
@@ -2700,6 +2713,16 @@ export function OrgBillingTab() {
   const handleRestore = () => {
     openRestore();
   };
+  const handleReplaceCancellationWithPro = () => {
+    closeBillingSubPage();
+    setLockedTarget("pro");
+    openDowngrade();
+  };
+  const replaceCancellationWithPro = cancellationReplacementAction(
+    currentTier,
+    scheduledChange,
+    handleReplaceCancellationWithPro,
+  );
   const handleUpgrade = () => {
     if (!usagePackPlansEnabled || currentTier !== "pro") {
       openPricingPage();
@@ -2925,6 +2948,7 @@ export function OrgBillingTab() {
           migrationTargetTier={migrationTargetTier}
           onMigrationBack={closeMigrationSubPage}
           onClose={closeBillingSubPage}
+          onReplaceCancellationWithPro={replaceCancellationWithPro}
           onSelectMigration={openMigrationPage}
         />
       )}
