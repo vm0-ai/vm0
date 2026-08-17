@@ -1,5 +1,6 @@
 import type { RunContextResponse } from "@okouai/api-contracts/contracts/zero-runs";
 import {
+  executionFirewallBuiltinEntrySchema,
   executionFirewallInlineEntrySchema,
   firewallAwsSigv4AuthSchema,
   firewallBaseHostPolicySchema,
@@ -254,9 +255,17 @@ function builtinFirewallFromUnknown(
     return undefined;
   }
   const baseUrlVars = stringRecordValue(value.baseUrlVars);
-  return baseUrlVars
-    ? { kind: "builtin", name, baseUrlVars }
-    : { kind: "builtin", name };
+  const parsedSourceId =
+    executionFirewallBuiltinEntrySchema.shape.sourceId.safeParse(
+      value.sourceId,
+    );
+  const sourceId = parsedSourceId.success ? parsedSourceId.data : undefined;
+  return {
+    kind: "builtin",
+    name,
+    ...(baseUrlVars === undefined ? {} : { baseUrlVars }),
+    ...(sourceId === undefined ? {} : { sourceId }),
+  };
 }
 
 function sanitizedFirewallFromUnknown(
