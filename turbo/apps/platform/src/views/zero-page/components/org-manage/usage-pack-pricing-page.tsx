@@ -135,17 +135,22 @@ function usagePackPlan(tier: UsagePackPlanTier): UsagePackPlan {
 
 function canCheckoutUsagePackPlan(
   checkoutAllowed: boolean,
+  grantedPlanCheckoutAllowed: boolean,
   currentTier: BillingTier,
   targetTier: UsagePackPlanTier,
 ): boolean {
-  if (!checkoutAllowed || currentTier === "custom" || currentTier === "team") {
+  if (!checkoutAllowed || currentTier === "custom") {
     return false;
   }
-  return currentTier !== "pro" || targetTier === "team";
+  if (currentTier === targetTier) {
+    return grantedPlanCheckoutAllowed;
+  }
+  return currentTier !== "team";
 }
 
 function usagePackPlanAction(
   checkoutAllowed: boolean,
+  grantedPlanCheckoutAllowed: boolean,
   currentTier: BillingTier,
   managedTier: UsagePackPlanTier | null,
   targetTier: UsagePackPlanTier,
@@ -159,7 +164,23 @@ function usagePackPlanAction(
   if (managedTier === "team" && targetTier === "pro") {
     return "downgrade";
   }
-  return canCheckoutUsagePackPlan(checkoutAllowed, currentTier, targetTier)
+  if (
+    currentTier === targetTier &&
+    canCheckoutUsagePackPlan(
+      checkoutAllowed,
+      grantedPlanCheckoutAllowed,
+      currentTier,
+      targetTier,
+    )
+  ) {
+    return "manage";
+  }
+  return canCheckoutUsagePackPlan(
+    checkoutAllowed,
+    grantedPlanCheckoutAllowed,
+    currentTier,
+    targetTier,
+  )
     ? "select"
     : "disabled";
 }
@@ -1169,12 +1190,14 @@ function OrderSummary({
   checkoutDisabled,
   checkoutError,
   checkoutLoading,
+  configuresGrantedPlan,
   onCheckout,
   plan,
 }: {
   readonly checkoutDisabled: boolean;
   readonly checkoutError: string | null;
   readonly checkoutLoading: boolean;
+  readonly configuresGrantedPlan: boolean;
   readonly onCheckout: (event: MouseEvent<HTMLButtonElement>) => void;
   readonly plan: UsagePackPlan;
 }) {
@@ -1197,22 +1220,28 @@ function OrderSummary({
           ? i18n.t(($) => {
               return $.billing.common.redirecting;
             })
-          : i18n.t(
-              ($) => {
-                return $.billing.plans.upgradeTo;
-              },
-              { plan: planName(plan.tier) },
-            )}
+          : configuresGrantedPlan
+            ? i18n.t(($) => {
+                return $.billing.plans.usagePacks.configurePackages;
+              })
+            : i18n.t(
+                ($) => {
+                  return $.billing.plans.upgradeTo;
+                },
+                { plan: planName(plan.tier) },
+              )}
       </Button>
     </section>
   );
 }
 
 function CheckoutOrderSummary({
+  configuresGrantedPlan,
   members,
   plan,
   selections,
 }: {
+  readonly configuresGrantedPlan: boolean;
   readonly members: readonly MemberDisplay[] | undefined;
   readonly plan: UsagePackPlan;
   readonly selections: Readonly<Record<string, MemberUsageSelection>>;
@@ -1230,6 +1259,7 @@ function CheckoutOrderSummary({
       checkoutDisabled={!members}
       checkoutError={checkoutError}
       checkoutLoading={checkoutLoading}
+      configuresGrantedPlan={configuresGrantedPlan}
       onCheckout={(event) => {
         if (!members) {
           return;
@@ -2331,11 +2361,13 @@ function ManagedSubscriptionOrderSummary({
 
 function PackageConfigurationStep({
   catalog,
+  configuresGrantedPlan,
   management,
   plan,
   preview,
 }: {
   readonly catalog: readonly UsagePackCatalogItem[];
+  readonly configuresGrantedPlan: boolean;
   readonly management: UsagePackManagementResponse | null;
   readonly plan: UsagePackPlan;
   readonly preview: UsagePackSubscriptionChangePreviewResponse | null;
@@ -2406,6 +2438,7 @@ function PackageConfigurationStep({
           />
         ) : (
           <CheckoutOrderSummary
+            configuresGrantedPlan={configuresGrantedPlan}
             members={members}
             plan={plan}
             selections={selections}
@@ -3048,6 +3081,7 @@ export function UsagePackMigrationPlanSelectionPage({
     return configuration
       ? usagePackPlanAction(
           false,
+          false,
           configuration.tier,
           configuration.tier,
           targetTier,
@@ -3454,11 +3488,13 @@ export function UsagePackMigrationDialogs({
 export function UsagePackPricingDialogs({
   checkoutAllowed,
   currentTier,
+  grantedPlanCheckoutAllowed,
   onClose,
   onReplaceCancellationWithPro,
 }: {
   readonly checkoutAllowed: boolean;
   readonly currentTier: BillingTier;
+  readonly grantedPlanCheckoutAllowed: boolean;
   readonly onClose: () => void;
   readonly onReplaceCancellationWithPro?: () => void;
 }) {
@@ -3480,7 +3516,12 @@ export function UsagePackPricingDialogs({
     return (
       plan.tier === selectedPlanTier &&
       (management !== null ||
-        canCheckoutUsagePackPlan(checkoutAllowed, currentTier, plan.tier))
+        canCheckoutUsagePackPlan(
+          checkoutAllowed,
+          grantedPlanCheckoutAllowed,
+          currentTier,
+          plan.tier,
+        ))
     );
   });
   /* Only a managed subscription reviews its change here; a checkout leaves for
@@ -3516,6 +3557,9 @@ export function UsagePackPricingDialogs({
       ) : selectedPlan ? (
         <PackageConfigurationStep
           catalog={catalog}
+          configuresGrantedPlan={
+            grantedPlanCheckoutAllowed && currentTier === selectedPlan.tier
+          }
           management={management}
           plan={selectedPlan}
           preview={preview}
@@ -3552,6 +3596,7 @@ export function UsagePackPricingDialogs({
           resolveAction={(targetTier) => {
             return usagePackPlanAction(
               checkoutAllowed,
+              grantedPlanCheckoutAllowed,
               currentTier,
               management?.tier ?? null,
               targetTier,

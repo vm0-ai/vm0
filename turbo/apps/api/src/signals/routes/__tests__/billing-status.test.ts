@@ -221,6 +221,7 @@ describe("GET /api/zero/billing/status", () => {
     expect(response.body.currentPeriodEnd).toBe(periodEnd.toISOString());
     expect(response.body.cancelAtPeriodEnd).toBeFalsy();
     expect(response.body.scheduledChange).toBeNull();
+    expect(response.body.canRestorePlan).toBeFalsy();
     expect(response.body.hasSubscription).toBeTruthy();
   });
 
@@ -812,6 +813,7 @@ describe("GET /api/zero/billing/status", () => {
       targetTier: "limited-free-1",
       effectiveDate: periodEnd.toISOString(),
     });
+    expect(response.body.canRestorePlan).toBeTruthy();
   });
 
   it("returns scheduled downgrade details when set", async () => {
@@ -852,6 +854,7 @@ describe("GET /api/zero/billing/status", () => {
       targetTier: "pro",
       effectiveDate: periodEnd.toISOString(),
     });
+    expect(response.body.canRestorePlan).toBeTruthy();
   });
 
   it("returns 200 for non-admin member", async () => {

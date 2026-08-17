@@ -3,12 +3,13 @@ import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
 import { orgConcurrencyEntitlements } from "@okouai/db/schema/org-concurrency-entitlement";
 import { orgConcurrencySubscriptions } from "@okouai/db/schema/org-concurrency-subscription";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
 import {
   orgUsageAllowanceEntitlements,
   orgUsageAllowanceWindows,
 } from "@okouai/db/schema/org-usage-allowance";
 import { command } from "ccstate";
-import { and, eq, gt, isNull, lte, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -63,6 +64,7 @@ import {
   handleUsagePackSubscriptionDeleted,
   handleUsagePackSubscriptionUpdated,
 } from "./usage-pack-subscription.service";
+import { createUsagePackCreditGrant } from "./usage-pack-credit.service";
 import {
   handleUsagePackInvitationCheckoutFailed,
   handleUsagePackInvitationCheckoutPaid,
@@ -207,7 +209,13 @@ interface InvoicePaidOrg {
   readonly tier: string;
 }
 
-type LockedInvoicePaidOrg = InvoicePaidOrg;
+interface LockedInvoicePaidOrg extends InvoicePaidOrg {
+  readonly planEntitlementSource: string | null;
+  readonly planEntitlementPeriodEnd: Date | null;
+  readonly planEntitlementSourceMetadata: Readonly<
+    Record<string, string>
+  > | null;
+}
 
 interface SubscriptionInvoiceDetails {
   readonly subscription: SubscriptionInput;
@@ -245,9 +253,19 @@ interface AtomCreditGrantInvoiceDetails {
   readonly credits: number;
 }
 
+interface AtomUsagePackCreditGrantInvoiceDetails {
+  readonly kind: "usagePackCredits";
+  readonly orgId: string;
+  readonly userId: string;
+  readonly creditsExpiresAt: Date;
+  readonly customerId: string;
+  readonly credits: number;
+}
+
 type AtomGrantInvoiceDetails =
   | AtomPlanGrantInvoiceDetails
-  | AtomCreditGrantInvoiceDetails;
+  | AtomCreditGrantInvoiceDetails
+  | AtomUsagePackCreditGrantInvoiceDetails;
 
 interface UsageAllowanceInvoiceDetails {
   readonly orgId: string;
@@ -680,6 +698,97 @@ function atomGrantCreditExpiresAt(grantExpiresAt: Date | null): Date {
   return autoRechargeNeverExpiresAt();
 }
 
+function atomUsagePackGrantExpiresAt(
+  metadata: Readonly<Record<string, string>>,
+  line: InvoiceLineInput,
+): Date | null {
+  const creditsExpiresAt = metadata.creditsExpiresAt
+    ? parseMetadataDate(metadata.creditsExpiresAt)
+    : null;
+  if (
+    !creditsExpiresAt ||
+    creditsExpiresAt.getTime() <= now() ||
+    typeof line.period.start !== "number" ||
+    typeof line.period.end !== "number" ||
+    line.period.end <= line.period.start ||
+    line.period.end * 1000 !== creditsExpiresAt.getTime()
+  ) {
+    return null;
+  }
+
+  return creditsExpiresAt;
+}
+
+function atomUsagePackCreditGrantInvoiceDetails(
+  invoice: InvoiceInput,
+  metadata: Readonly<Record<string, string>>,
+  line: InvoiceLineInput,
+): AtomUsagePackCreditGrantInvoiceDetails | null {
+  const orgId = metadata.orgId;
+  const customerId = customerIdFromInvoice(invoice);
+  const credits = Number(metadata.creditsAmount);
+  const creditsExpiresAt = atomUsagePackGrantExpiresAt(metadata, line);
+  if (
+    metadata.source !== "atom_usage_pack_credits" ||
+    !orgId ||
+    !metadata.userId ||
+    !customerId ||
+    !Number.isSafeInteger(credits) ||
+    credits <= 0 ||
+    !creditsExpiresAt
+  ) {
+    L.warn("atom usage pack credit grant invoice has invalid metadata", {
+      invoiceId: invoice.id,
+      hasOrgId: Boolean(orgId),
+      hasUserId: Boolean(metadata.userId),
+      creditsAmount: metadata.creditsAmount ?? null,
+      creditsExpiresAt: metadata.creditsExpiresAt ?? null,
+    });
+    return null;
+  }
+
+  return {
+    kind: "usagePackCredits",
+    orgId,
+    userId: metadata.userId,
+    creditsExpiresAt,
+    customerId,
+    credits,
+  };
+}
+
+function atomCreditGrantInvoiceDetails(
+  invoice: InvoiceInput,
+  metadata: Readonly<Record<string, string>>,
+): AtomCreditGrantInvoiceDetails | null {
+  const orgId = metadata.orgId;
+  const credits = Number(metadata.creditsAmount);
+  const creditExpiresAt = creditPurchaseExpiresAt(metadata);
+  if (
+    !orgId ||
+    !Number.isSafeInteger(credits) ||
+    credits <= 0 ||
+    !creditExpiresAt
+  ) {
+    L.warn("atom credit grant invoice has invalid metadata", {
+      invoiceId: invoice.id,
+      hasOrgId: Boolean(orgId),
+      creditsAmount: metadata.creditsAmount ?? null,
+      creditsExpiresAt:
+        metadata[CREDIT_PURCHASE_EXPIRES_AT_METADATA_KEY] ?? null,
+    });
+    return null;
+  }
+
+  return {
+    kind: "credits",
+    orgId,
+    creditExpiresAt,
+    customerId: customerIdFromInvoice(invoice),
+    credits,
+  };
+}
+
 function atomGrantInvoiceDetails(
   invoice: InvoiceInput,
 ): AtomGrantInvoiceDetails | null {
@@ -703,36 +812,14 @@ function atomGrantInvoiceDetails(
     return null;
   }
 
+  if (metadata.grantType === "usage_pack_credits") {
+    return atomUsagePackCreditGrantInvoiceDetails(invoice, metadata, line);
+  }
+  if (metadata.grantType === "credits") {
+    return atomCreditGrantInvoiceDetails(invoice, metadata);
+  }
   const orgId = metadata.orgId;
   const customerId = customerIdFromInvoice(invoice);
-  if (metadata.grantType === "credits") {
-    const credits = Number(metadata.creditsAmount);
-    const creditExpiresAt = creditPurchaseExpiresAt(metadata);
-    if (
-      !orgId ||
-      !Number.isSafeInteger(credits) ||
-      credits <= 0 ||
-      !creditExpiresAt
-    ) {
-      L.warn("atom credit grant invoice has invalid metadata", {
-        invoiceId: invoice.id,
-        hasOrgId: Boolean(orgId),
-        creditsAmount: metadata.creditsAmount ?? null,
-        creditsExpiresAt:
-          metadata[CREDIT_PURCHASE_EXPIRES_AT_METADATA_KEY] ?? null,
-      });
-      return null;
-    }
-
-    return {
-      kind: "credits",
-      orgId,
-      creditExpiresAt,
-      customerId,
-      credits,
-    };
-  }
-
   const tier = atomGrantTier(metadata.tier ?? metadata.planId);
   const grantExpiresAt = atomGrantExpiresAt(metadata, line);
   if (!orgId || !tier) {
@@ -761,7 +848,8 @@ function atomGrantInvoiceDetails(
     grantExpiresAt,
     creditExpiresAt: atomGrantCreditExpiresAt(grantExpiresAt),
     customerId,
-    credits: monthlyCreditsForTier(tier),
+    credits:
+      metadata.planVersion === "usagePack" ? 0 : monthlyCreditsForTier(tier),
   };
 }
 
@@ -779,6 +867,31 @@ function atomGrantWouldReplaceWithSameOrLowerTier(args: {
 
   return (
     atomGrantTierRank(args.lockedOrg.tier) >= atomGrantTierRank(args.targetTier)
+  );
+}
+
+function atomUsagePackGrantWouldNotExtendEntitlement(args: {
+  readonly invoice: InvoiceInput;
+  readonly details: AtomPlanGrantInvoiceDetails;
+  readonly lockedOrg: LockedInvoicePaidOrg;
+}): boolean {
+  if (
+    args.invoice.metadata?.planVersion !== "usagePack" ||
+    args.lockedOrg.planEntitlementSource !== "stripe_atom_grant" ||
+    args.lockedOrg.planEntitlementSourceMetadata?.planVersion !== "usagePack" ||
+    args.lockedOrg.tier !== args.details.tier
+  ) {
+    return false;
+  }
+
+  const currentPeriodEnd = args.lockedOrg.planEntitlementPeriodEnd;
+  if (currentPeriodEnd === null) {
+    return true;
+  }
+
+  return (
+    args.details.grantExpiresAt !== null &&
+    args.details.grantExpiresAt <= currentPeriodEnd
   );
 }
 
@@ -1181,10 +1294,17 @@ async function lockInvoicePaidOrg(
       stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
       subscriptionStatus: orgMetadata.subscriptionStatus,
       tier: orgMetadata.tier,
+      planEntitlementSource: orgPlanEntitlements.source,
+      planEntitlementPeriodEnd: orgPlanEntitlements.currentPeriodEnd,
+      planEntitlementSourceMetadata: orgPlanEntitlements.sourceMetadata,
     })
     .from(orgMetadata)
+    .leftJoin(
+      orgPlanEntitlements,
+      eq(orgPlanEntitlements.orgId, orgMetadata.orgId),
+    )
     .where(eq(orgMetadata.orgId, orgId))
-    .for("update")
+    .for("update", { of: orgMetadata })
     .limit(1);
 
   return org ?? null;
@@ -1416,6 +1536,84 @@ async function processAtomCreditGrantInvoicePaid(
   });
 }
 
+async function processAtomUsagePackCreditGrantInvoicePaid(
+  db: Db,
+  invoice: InvoiceInput,
+  details: AtomUsagePackCreditGrantInvoiceDetails,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    const [activePlan] = await tx
+      .select({
+        stripeCustomerId: orgMetadata.stripeCustomerId,
+      })
+      .from(orgPlanEntitlements)
+      .innerJoin(orgMetadata, eq(orgMetadata.orgId, orgPlanEntitlements.orgId))
+      .where(
+        and(
+          eq(orgPlanEntitlements.orgId, details.orgId),
+          inArray(orgPlanEntitlements.planKey, ["pro", "team"]),
+          eq(orgPlanEntitlements.status, "active"),
+          or(
+            isNull(orgPlanEntitlements.expiresAt),
+            gt(orgPlanEntitlements.expiresAt, nowDate()),
+          ),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!activePlan || activePlan.stripeCustomerId !== details.customerId) {
+      throw new Error(
+        `Atom usage pack grant ${invoice.id} requires an active Pro or Team plan`,
+      );
+    }
+
+    await createUsagePackCreditGrant(tx, {
+      orgId: details.orgId,
+      userId: details.userId,
+      grantType: "bonus",
+      idempotencyKey: `atom-usage-pack:${invoice.id}:${details.userId}`,
+      amount: details.credits,
+      expiresAt: details.creditsExpiresAt,
+    });
+  });
+}
+
+function rejectAtomGrantTierReplacement(args: {
+  readonly invoice: InvoiceInput;
+  readonly details: AtomPlanGrantInvoiceDetails;
+  readonly lockedOrg: LockedInvoicePaidOrg;
+}): void {
+  if (
+    args.invoice.metadata?.planVersion === "usagePack" &&
+    args.lockedOrg.stripeSubscriptionId !== null
+  ) {
+    L.warn(
+      "atom usage-pack grant is waiting for the existing subscription deletion",
+      {
+        invoiceId: args.invoice.id,
+        orgId: args.details.orgId,
+        currentTier: args.lockedOrg.tier,
+        targetTier: args.details.tier,
+        stripeSubscriptionId: args.lockedOrg.stripeSubscriptionId,
+      },
+    );
+    throw new Error(
+      `Cannot apply Atom ${args.details.tier} usage-pack grant while subscription ${args.lockedOrg.stripeSubscriptionId} still owns tier ${args.lockedOrg.tier}; retry after customer.subscription.deleted`,
+    );
+  }
+
+  L.warn("atom grant invoice rejected tier replacement", {
+    invoiceId: args.invoice.id,
+    orgId: args.details.orgId,
+    currentTier: args.lockedOrg.tier,
+    targetTier: args.details.tier,
+    reason: atomGrantTierConflictMessage({
+      currentTier: args.lockedOrg.tier,
+      targetTier: args.details.tier,
+    }),
+  });
+}
+
 async function processAtomPlanGrantInvoicePaid(
   db: Db,
   invoice: InvoiceInput,
@@ -1455,53 +1653,55 @@ async function processAtomPlanGrantInvoicePaid(
       return true;
     }
     if (
+      atomUsagePackGrantWouldNotExtendEntitlement({
+        invoice,
+        details,
+        lockedOrg,
+      })
+    ) {
+      return true;
+    }
+    if (
       atomGrantWouldReplaceWithSameOrLowerTier({
         lockedOrg,
         targetTier: details.tier,
       })
     ) {
-      L.warn("atom grant invoice rejected tier replacement", {
-        invoiceId: invoice.id,
-        orgId: details.orgId,
-        currentTier: lockedOrg.tier,
-        targetTier: details.tier,
-        reason: atomGrantTierConflictMessage({
-          currentTier: lockedOrg.tier,
-          targetTier: details.tier,
-        }),
-      });
+      rejectAtomGrantTierReplacement({ invoice, details, lockedOrg });
       return false;
     }
 
-    await expireCredits(tx, details.orgId);
-    const inserted = await createExpiresRecord(tx, details.orgId, {
-      source: "subscription_renewal",
-      stripeInvoiceId: invoice.id,
-      amount: details.credits,
-      expiresAt: details.creditExpiresAt,
-    });
-    if (!inserted) {
-      if (
-        lockedOrg.tier === details.tier &&
-        lockedOrg.subscriptionStatus === ATOM_GRANT_SUBSCRIPTION_STATUS &&
-        lockedOrg.stripeSubscriptionId === null
-      ) {
-        await upsertAtomGrantPlanEntitlement(tx, invoice, details);
+    if (details.credits > 0) {
+      await expireCredits(tx, details.orgId);
+      const inserted = await createExpiresRecord(tx, details.orgId, {
+        source: "subscription_renewal",
+        stripeInvoiceId: invoice.id,
+        amount: details.credits,
+        expiresAt: details.creditExpiresAt,
+      });
+      if (!inserted) {
+        if (
+          lockedOrg.tier === details.tier &&
+          lockedOrg.subscriptionStatus === ATOM_GRANT_SUBSCRIPTION_STATUS &&
+          lockedOrg.stripeSubscriptionId === null
+        ) {
+          await upsertAtomGrantPlanEntitlement(tx, invoice, details);
+        }
+        await cancelReplacedSubscriptionsAfterAtomGrant({
+          orgId: details.orgId,
+          customerId: details.customerId,
+          invoiceId: invoice.id,
+          knownOldSubscriptionId: lockedOrg.stripeSubscriptionId,
+        });
+        L.debug("atom grant invoice credits already processed", {
+          invoiceId: invoice.id,
+          orgId: details.orgId,
+        });
+        return true;
       }
-      await cancelReplacedSubscriptionsAfterAtomGrant({
-        orgId: details.orgId,
-        customerId: details.customerId,
-        invoiceId: invoice.id,
-        knownOldSubscriptionId: lockedOrg.stripeSubscriptionId,
-      });
-      L.debug("atom grant invoice credits already processed", {
-        invoiceId: invoice.id,
-        orgId: details.orgId,
-      });
-      return true;
-    }
 
-    await grantOrgCredits(tx, details.orgId, details.credits);
+      await grantOrgCredits(tx, details.orgId, details.credits);
+    }
     await writeOrgMetadataWithPlanEntitlements(tx, {
       writeOrgMetadata: async (writeTx) => {
         return await writeTx
@@ -1557,7 +1757,12 @@ async function upsertAtomGrantPlanEntitlement(
     currentPeriodEnd: details.grantExpiresAt,
     expiresAt: details.grantExpiresAt,
     stripePriceId: grantLine ? invoiceLinePriceId(grantLine) : null,
-    sourceMetadata: invoice.metadata ?? {},
+    memberInviteUsagePackRequired:
+      invoice.metadata?.planVersion === "usagePack",
+    sourceMetadata: {
+      ...invoice.metadata,
+      atomPlanInvoiceId: invoice.id,
+    },
   });
 }
 
@@ -1581,6 +1786,18 @@ async function handleAtomGrantInvoicePaid(
       orgId: details.orgId,
       credits: details.credits,
       creditExpiresAt: details.creditExpiresAt.toISOString(),
+    });
+    return { handled: true, drainOrgId: details.orgId };
+  }
+
+  if (details.kind === "usagePackCredits") {
+    await processAtomUsagePackCreditGrantInvoicePaid(db, invoice, details);
+    L.debug("atom member usage pack credit grant invoice processed", {
+      invoiceId: invoice.id,
+      orgId: details.orgId,
+      userId: details.userId,
+      credits: details.credits,
+      creditsExpiresAt: details.creditsExpiresAt.toISOString(),
     });
     return { handled: true, drainOrgId: details.orgId };
   }

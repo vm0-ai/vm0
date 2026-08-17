@@ -241,6 +241,7 @@ function mockBillingStory(): {
     billingStatus = {
       ...billingStatus,
       cancelAtPeriodEnd: true,
+      canRestorePlan: true,
       scheduledChange: {
         type: "cancel",
         targetTier: "limited-free-1",
@@ -256,6 +257,7 @@ function mockBillingStory(): {
     billingStatus = {
       ...billingStatus,
       cancelAtPeriodEnd: false,
+      canRestorePlan: false,
       scheduledChange: null,
     };
     return respond(200, { status: "restored" });
@@ -1126,6 +1128,121 @@ describe("organization billing settings", () => {
     const teamPlan = await screen.findByRole("article", { name: "Team plan" });
     expect(buttonByText("Start with Team", teamPlan)).toBeDisabled();
   });
+
+  it.each([
+    { planName: "Pro", status: activeProBillingStatus() },
+    {
+      planName: "Team",
+      status: activeTeamBillingStatus(),
+    },
+  ])(
+    "lets an Atom-granted $planName workspace manage its current plan",
+    async ({ planName, status }) => {
+      context.mocks.data.org({
+        id: "org_1",
+        name: `Atom ${planName} Org`,
+        role: "admin",
+      });
+      context.mocks.data.orgMembers({
+        name: `Atom ${planName} Org`,
+        role: "admin",
+        members: [
+          {
+            userId: "user_1",
+            email: "alex@example.com",
+            firstName: "Alex",
+            lastName: "Chen",
+            imageUrl: "",
+            role: "admin",
+            joinedAt: "2026-01-01T00:00:00Z",
+          },
+        ],
+        pendingInvitations: [],
+        membershipRequests: [],
+        createdAt: "2026-01-01T00:00:00Z",
+      });
+      context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+        return respond(200, {
+          ...status,
+          subscriptionStatus: "atom_grant",
+          hasSubscription: false,
+          memberInviteUsagePackRequired: true,
+          cancelAtPeriodEnd: true,
+          scheduledChange: {
+            type: "cancel",
+            targetTier: "limited-free-1",
+            effectiveDate: status.currentPeriodEnd,
+          },
+          canRestorePlan: false,
+        });
+      });
+      context.mocks.api(
+        zeroBillingUsagePackCatalogContract.get,
+        ({ respond }) => {
+          return respond(200, usagePackCatalogResponse());
+        },
+      );
+      context.mocks.api(
+        zeroBillingUsagePackManagementContract.get,
+        ({ respond }) => {
+          return respond(404, {
+            error: {
+              message: "Usage pack subscription not found",
+              code: "NOT_FOUND",
+            },
+          });
+        },
+      );
+      context.mocks.api(
+        zeroBillingUsagePackMigrationContract.get,
+        ({ respond }) => {
+          return respond(404, {
+            error: {
+              message: "Legacy subscription migration is not available",
+              code: "NOT_FOUND",
+            },
+          });
+        },
+      );
+
+      detachedSetupPage({
+        context,
+        path: "/?settings=billing",
+        user: {
+          id: "user_1",
+          fullName: "Alex Chen",
+          email: "alex@example.com",
+        },
+        featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
+      });
+
+      await screen.findByText(`${planName} plan`);
+      click(buttonByText("Compare all plans"));
+      const plan = await screen.findByRole("article", {
+        name: `${planName} plan`,
+      });
+      expect(buttonByText("Manage", plan)).toBeEnabled();
+      click(buttonByText("Manage", plan));
+
+      const memberUsage = await screen.findByRole("group", {
+        name: "Member usage",
+      });
+      expect(
+        within(memberUsage).getByRole("combobox", {
+          name: "Usage for Alex Chen",
+        }),
+      ).toHaveTextContent("21,234 credits");
+      const orderSummary = screen.getByRole("region", {
+        name: "Order summary",
+      });
+      expect(
+        buttonByText("Configure member packages", orderSummary),
+      ).toBeEnabled();
+      expect(
+        within(orderSummary).queryByText(`Upgrade to ${planName}`),
+      ).not.toBeInTheDocument();
+    },
+  );
 
   it("previews and confirms an in-place legacy Team migration", async () => {
     let migrationState: UsagePackMigrationStateResponse = {
@@ -2608,6 +2725,7 @@ describe("organization billing settings", () => {
     let billingStatus: BillingStatusResponse = {
       ...activeTeamBillingStatus(),
       cancelAtPeriodEnd: true,
+      canRestorePlan: true,
       scheduledChange: {
         type: "cancel",
         targetTier: "limited-free-1",
@@ -3776,6 +3894,7 @@ describe("organization billing settings", () => {
           : {
               ...activeProBillingStatus(),
               cancelAtPeriodEnd: true,
+              canRestorePlan: true,
               scheduledChange: {
                 type: "cancel",
                 targetTier: "limited-free-1",
@@ -3828,6 +3947,50 @@ describe("organization billing settings", () => {
     });
     expect(successToast).toHaveBeenCalledTimes(1);
   });
+
+  it.each([
+    { caseName: "not restorable", canRestorePlan: false },
+    { caseName: "omitted by an older API", canRestorePlan: undefined },
+  ])(
+    "does not offer restore when a scheduled change is $caseName",
+    async ({ canRestorePlan }) => {
+      context.mocks.data.org({
+        id: "org_1",
+        name: "Expiring Plan Org",
+        role: "admin",
+      });
+      context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+        return respond(200, {
+          ...activeProBillingStatus(),
+          subscriptionStatus: "atom_grant",
+          cancelAtPeriodEnd: true,
+          scheduledChange: {
+            type: "cancel",
+            targetTier: "limited-free-1",
+            effectiveDate: "2026-04-01T00:00:00Z",
+          },
+          ...(canRestorePlan === undefined ? {} : { canRestorePlan }),
+        });
+      });
+
+      await openBillingTab();
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/has been cancelled and will end on Apr 1, 2026/),
+        ).toBeInTheDocument();
+      });
+      expect(screen.queryByText("Restore plan")).not.toBeInTheDocument();
+
+      click(screen.getByText("Compare all plans"));
+
+      await waitFor(() => {
+        expect(screen.getByText("Compare plans")).toBeInTheDocument();
+        expect(screen.getByText("Current plan")).toBeInTheDocument();
+      });
+      expect(screen.queryByText("Restore plan")).not.toBeInTheDocument();
+    },
+  );
 
   it("previews and confirms a saved-billing credit purchase in the app", async () => {
     const checkoutReady = createDeferredPromise<void>(context.signal);
@@ -4067,6 +4230,7 @@ describe("organization billing settings", () => {
         billingStatus = {
           ...billingStatus,
           cancelAtPeriodEnd: targetTier === "limited-free-1",
+          canRestorePlan: true,
           scheduledChange:
             targetTier === "pro"
               ? {
@@ -4090,6 +4254,7 @@ describe("organization billing settings", () => {
       billingStatus = {
         ...billingStatus,
         cancelAtPeriodEnd: false,
+        canRestorePlan: false,
         scheduledChange: null,
       };
       return respond(200, { status: "restored" });
@@ -4170,6 +4335,7 @@ describe("organization billing settings", () => {
     let billingStatus: BillingStatusResponse = {
       ...activeTeamBillingStatus(),
       cancelAtPeriodEnd: true,
+      canRestorePlan: true,
       scheduledChange: {
         type: "cancel",
         targetTier: "limited-free-1",
