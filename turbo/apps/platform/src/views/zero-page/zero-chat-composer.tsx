@@ -150,7 +150,6 @@ import { getModelDisplayName } from "@okouai/core/model-display-name";
 import {
   ModelProviderPicker,
   VideoModelBrandIcon,
-  type MediaModelCategoryId,
   type MediaModelPanelCategory,
   type MediaModelPanelState,
   type ModelProviderSelection,
@@ -7400,16 +7399,14 @@ function ComposerMediaModelModeContent({
   );
 }
 
-interface ComposerMediaModelPickerState<Model extends string> {
-  readonly value: Model | null;
-  readonly onChange: (next: Model | null) => void;
-  readonly mobileCategory: MediaModelCategoryId | null;
-  readonly onMobileCategoryChange: (
-    category: MediaModelCategoryId | null,
-  ) => void;
+interface ComposerVideoModelPickerState {
+  readonly value: VideoModel | null;
+  readonly onChange: (next: VideoModel | null) => void;
+  readonly mobileCategory: "video" | null;
+  readonly onMobileCategoryChange: (category: "video" | null) => void;
 }
 
-interface ComposerResolvedVideoModelPickerState extends ComposerMediaModelPickerState<VideoModel> {
+interface ComposerResolvedVideoModelPickerState extends ComposerVideoModelPickerState {
   readonly selectedModel: VideoModel;
 }
 
@@ -7520,7 +7517,7 @@ function ComposerMediaModelControl({
   icon,
 }: {
   signals: ComposerSignals;
-  category: MediaModelCategoryId;
+  category: "video";
   label: string;
   expanded: boolean;
   selectedModelLabel: string;
@@ -7731,7 +7728,7 @@ function ComposerVideoModelPickerControls({
   value: ModelProviderSelection;
   onChange: (selection: ModelProviderSelection | null) => void;
   codexFastModeEnabled: boolean;
-  videoModel: ComposerMediaModelPickerState<VideoModel>;
+  videoModel: ComposerVideoModelPickerState;
 }) {
   const userPreference = useLastResolved(userModelPreference$);
   const selectedModel =
@@ -7754,7 +7751,7 @@ function ComposerModelPickerSlotBase({
   videoModel,
 }: {
   signals: ComposerSignals;
-  videoModel: ComposerMediaModelPickerState<VideoModel> | undefined;
+  videoModel: ComposerVideoModelPickerState | undefined;
 }) {
   const codexFastModeEnabled = useGet(codexFastModeEnabled$);
   const modelSelection = useLastLoadable(signals.model.modelSelection$);
@@ -7836,7 +7833,7 @@ function ComposerVideoModelPickerSlot({
     useLastResolved(videoModelSignals.selectedVideoModel$) ?? null;
   const setVideoModel = useSet(videoModelSignals.setVideoModel$);
   const pageSignal = useGet(pageSignal$);
-  const videoModel: ComposerMediaModelPickerState<VideoModel> = {
+  const videoModel: ComposerVideoModelPickerState = {
     value: selectedVideoModel,
     onChange: (next) => {
       detach(setVideoModel(next, pageSignal), Reason.DomCallback);

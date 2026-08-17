@@ -75,8 +75,6 @@ export interface ModelProviderSelection {
   codexServiceTier?: CodexServiceTier;
 }
 
-export type MediaModelCategoryId = "video";
-
 export interface MediaModelPanelOption {
   readonly key: string;
   readonly label: string;
@@ -86,7 +84,7 @@ export interface MediaModelPanelOption {
 }
 
 export interface MediaModelPanelCategory {
-  readonly id: MediaModelCategoryId;
+  readonly id: "video";
   readonly label: string;
   readonly menuLabel: string;
   readonly options: readonly MediaModelPanelOption[];
@@ -98,11 +96,9 @@ export interface MediaModelPanelCategory {
  * supplies the active mode and its control anchor through the same state.
  */
 export interface MediaModelPanelState {
-  readonly activeCategory: MediaModelCategoryId | null;
+  readonly activeCategory: "video" | null;
   readonly categories: readonly MediaModelPanelCategory[];
-  readonly onActiveCategoryChange: (
-    category: MediaModelCategoryId | null,
-  ) => void;
+  readonly onActiveCategoryChange: (category: "video" | null) => void;
   readonly contentAnchor?: Element | null;
 }
 
