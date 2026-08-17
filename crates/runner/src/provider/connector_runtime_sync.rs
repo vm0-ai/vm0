@@ -1688,6 +1688,7 @@ mod tests {
 
     use crate::http::{HttpClient, HttpClientConfig};
     use crate::proxy::{ProxyRegistryHandle, VmRegistration};
+    use crate::test_fixtures::raw_http::{json_response, read_http_request};
     use crate::types::{Firewall, FirewallApi, FirewallAuth, FirewallEntry};
 
     fn api_client_for_url(api_url: String) -> ApiClient {
@@ -1763,43 +1764,8 @@ mod tests {
 
     async fn accept_http_request(listener: &TcpListener) -> (tokio::net::TcpStream, String) {
         let (mut socket, _) = listener.accept().await.unwrap();
-        let mut request = Vec::new();
-        let mut buf = [0_u8; 1024];
-        let header_end = loop {
-            let n = socket.read(&mut buf).await.unwrap();
-            if n == 0 {
-                break request.len();
-            }
-            request.extend_from_slice(&buf[..n]);
-            if let Some(header_end) = request
-                .windows(4)
-                .position(|window| window == b"\r\n\r\n")
-                .map(|position| position + 4)
-            {
-                break header_end;
-            }
-        };
-        let headers = String::from_utf8_lossy(&request[..header_end]);
-        let content_length = headers
-            .lines()
-            .find_map(|line| {
-                let (name, value) = line.split_once(':')?;
-                if name.eq_ignore_ascii_case("content-length") {
-                    value.trim().parse::<usize>().ok()
-                } else {
-                    None
-                }
-            })
-            .expect("request should include a valid Content-Length header");
-        let request_len = header_end + content_length;
-        while request.len() < request_len {
-            let n = socket.read(&mut buf).await.unwrap();
-            if n == 0 {
-                break;
-            }
-            request.extend_from_slice(&buf[..n]);
-        }
-        (socket, String::from_utf8_lossy(&request).into_owned())
+        let request = read_http_request(&mut socket).await.unwrap();
+        (socket, request)
     }
 
     fn assert_connector_runtime_sync_request(request: &str, run_id: &RunId) {
@@ -2429,13 +2395,8 @@ mod tests {
             }],
         })
         .to_string();
-        let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-            body.len(),
-            body
-        );
         socket
-            .write_all(response.as_bytes())
+            .write_all(&json_response("200 OK", &body))
             .await
             .expect("connector runtime sync response should be written");
     }
@@ -2448,13 +2409,8 @@ mod tests {
             },
         })
         .to_string();
-        let response = format!(
-            "HTTP/1.1 409 Conflict\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-            body.len(),
-            body
-        );
         socket
-            .write_all(response.as_bytes())
+            .write_all(&json_response("409 Conflict", &body))
             .await
             .expect("terminal connector runtime response should be written");
     }
@@ -2503,12 +2459,7 @@ mod tests {
                     "connectorSlug": "slack",
                 }))
                 .to_string();
-                let response = format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                    body.len(),
-                    body
-                );
-                let _ = socket.write_all(response.as_bytes()).await;
+                let _ = socket.write_all(&json_response("200 OK", &body)).await;
                 return (request, None);
             }
 
@@ -4780,13 +4731,8 @@ mod tests {
                 }],
             })
             .to_string();
-            let first_response = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                first_body.len(),
-                first_body
-            );
             first_socket
-                .write_all(first_response.as_bytes())
+                .write_all(&json_response("200 OK", &first_body))
                 .await
                 .unwrap();
 
@@ -4804,13 +4750,8 @@ mod tests {
                 }],
             })
             .to_string();
-            let second_response = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                second_body.len(),
-                second_body
-            );
             second_socket
-                .write_all(second_response.as_bytes())
+                .write_all(&json_response("200 OK", &second_body))
                 .await
                 .unwrap();
             [first_request, second_request]
@@ -4905,12 +4846,10 @@ mod tests {
             .expect("registry should be valid JSON before retry response");
             let policy_before_retry_response =
                 registry_json["vms"][&source_ip]["networkPolicies"]["slack"].clone();
-            let response = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                response_body.len(),
-                response_body
-            );
-            second_socket.write_all(response.as_bytes()).await.unwrap();
+            second_socket
+                .write_all(&json_response("200 OK", &response_body))
+                .await
+                .unwrap();
             (first_request, second_request, policy_before_retry_response)
         });
 
@@ -5002,12 +4941,10 @@ mod tests {
             let (second_socket, second_request) = accept_http_request(&listener).await;
             drop(second_socket);
             let (mut third_socket, third_request) = accept_http_request(&listener).await;
-            let response = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                response_body.len(),
-                response_body
-            );
-            third_socket.write_all(response.as_bytes()).await.unwrap();
+            third_socket
+                .write_all(&json_response("200 OK", &response_body))
+                .await
+                .unwrap();
             [first_request, second_request, third_request]
         });
 
