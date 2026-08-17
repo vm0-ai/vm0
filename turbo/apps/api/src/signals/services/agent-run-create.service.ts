@@ -262,6 +262,7 @@ import {
 } from "./chat-queued-event.service";
 import { recordFirstAssistantEventEligibility } from "./zero-chat-first-assistant-event-metric.service";
 import { isWebChatTriggerSource } from "./chat-trigger-source.service";
+import { resolveImageModelForRun } from "./image-model.service";
 import { resolveVideoModelForRun } from "./video-model.service";
 import {
   cappedBaseConcurrencyLimit,
@@ -5760,6 +5761,7 @@ interface LaunchRunRowsArgs {
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
   readonly zeroRunModelPin: ZeroRunModelPin | undefined;
   readonly selectedVideoModel: string;
+  readonly selectedImageModel: string | null;
   readonly callbackRows: readonly AgentRunCallbackInsert[];
   readonly chatThreadId: string | undefined;
   readonly zeroRunMetadata: ZeroRunMetadata | undefined;
@@ -5827,6 +5829,7 @@ function launchRunMetadataValues(args: LaunchRunRowsArgs): RunMetadataValues {
     selectedModel: modelPin.selectedModel,
     codexServiceTier: metadata.codexServiceTier ?? null,
     selectedVideoModel: args.selectedVideoModel,
+    selectedImageModel: args.selectedImageModel,
     chatThreadId: args.chatThreadId ?? null,
     apiStartedAt: args.status === "queued" ? null : new Date(args.apiStartTime),
     firstAssistantEventAcknowledgedAt: null,
@@ -6586,6 +6589,7 @@ function preparedLaunchRowsArgs(args: {
     modelProvider: args.commit.context.modelProvider,
     zeroRunModelPin: args.commit.createArgs.zeroRunModelPin,
     selectedVideoModel: args.commit.context.selectedVideoModel,
+    selectedImageModel: args.commit.context.selectedImageModel,
     callbackRows: args.commit.callbackRows,
     chatThreadId: args.commit.createArgs.chatThreadId,
     zeroRunMetadata: args.commit.createArgs.zeroRunMetadata,
@@ -7029,6 +7033,7 @@ async function commitFailedLaunch(args: {
         modelProvider: args.context.modelProvider,
         zeroRunModelPin: args.createArgs.zeroRunModelPin,
         selectedVideoModel: args.context.selectedVideoModel,
+        selectedImageModel: args.context.selectedImageModel,
         callbackRows: args.callbackRows,
         chatThreadId: args.createArgs.chatThreadId,
         zeroRunMetadata: args.createArgs.zeroRunMetadata,
@@ -7591,6 +7596,8 @@ interface PreparedRunContext {
   readonly imageRecognitionAvailable: boolean;
   /** Snapshotted onto the run row; see `resolveVideoModelForRun`. */
   readonly selectedVideoModel: string;
+  /** Resolved once at run start and persisted without affecting generation. */
+  readonly selectedImageModel: string | null;
 }
 
 interface FinalizedPreparedRunContext extends PreparedRunContext {
@@ -8561,6 +8568,15 @@ function prepareRunContext(
       });
       signal.throwIfAborted();
 
+      const selectedImageModel = await resolveImageModelForRun({
+        db,
+        orgId: args.orgId,
+        userId: args.userId,
+        chatThreadId: args.chatThreadId,
+        featureSwitchContext: bodyContext.featureSwitchContext,
+      });
+      signal.throwIfAborted();
+
       const outputMetadata = await timing.measure(
         "api_dispatch_prepare_context_prepare_output_metadata",
         "nested",
@@ -8599,6 +8615,7 @@ function prepareRunContext(
         userTimezone,
         featureSwitchContext: bodyContext.featureSwitchContext,
         selectedVideoModel,
+        selectedImageModel,
         imageRecognitionAvailable: isImageRecognitionAvailableForRun({
           includeZeroTokenSecret: args.includeZeroTokenSecret,
           selectedModel:
