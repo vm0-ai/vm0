@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 
-import type { ImageModelId } from "@okouai/api-contracts/contracts/image-models";
 import { chatThreadEvents } from "@okouai/db/schema/chat-thread-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { count, eq, sql } from "drizzle-orm";
@@ -160,20 +159,5 @@ export async function setChatThreadVideoModelFixture(
   await db()
     .update(chatThreads)
     .set({ selectedVideoModel })
-    .where(eq(chatThreads.id, chatThreadId));
-}
-
-/**
- * Pins a thread's image model without adding a product writer. The compaction
- * test uses a non-null value so a missing hand-written projection cannot be
- * normalized into a false-positive null result.
- */
-export async function setChatThreadImageModelFixture(
-  chatThreadId: string,
-  selectedImageModel: ImageModelId,
-): Promise<void> {
-  await db()
-    .update(chatThreads)
-    .set({ selectedImageModel })
     .where(eq(chatThreads.id, chatThreadId));
 }

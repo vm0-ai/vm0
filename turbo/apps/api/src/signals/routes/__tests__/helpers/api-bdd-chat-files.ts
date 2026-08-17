@@ -7,6 +7,7 @@ import {
   chatThreadComputerUseHostContract,
   chatThreadDraftContract,
   chatThreadEventsContract,
+  chatThreadImageModelContract,
   chatThreadMarkAgentReadContract,
   chatThreadMarkReadContract,
   chatThreadMetadataContract,
@@ -29,6 +30,7 @@ import {
   type UserMessageInputDocument,
   type ZeroIndicators,
 } from "@okouai/api-contracts/contracts/chat-threads";
+import type { ImageModelId } from "@okouai/api-contracts/contracts/image-models";
 import {
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
@@ -77,6 +79,7 @@ import { artifactCatalogRoutes } from "../../artifact-catalog";
 import { chatThreadComputerUseHostRoutes } from "../../chat-threads-computer-use-host";
 import { chatThreadCreateRoutes } from "../../chat-threads-create";
 import { chatThreadDeleteRoutes } from "../../chat-threads-delete";
+import { chatThreadImageModelRoutes } from "../../chat-threads-image-model";
 import { chatThreadMarkReadRoutes } from "../../chat-threads-mark-read";
 import { chatThreadModelSelectionRoutes } from "../../chat-threads-model-selection";
 import { chatThreadPatchRoutes } from "../../chat-threads-patch";
@@ -198,6 +201,7 @@ const chatFilesRoutes = [
   ...chatThreadPinRoutes,
   ...chatThreadUnpinRoutes,
   ...chatThreadRenameRoutes,
+  ...chatThreadImageModelRoutes,
   ...chatThreadModelSelectionRoutes,
   ...chatThreadComputerUseHostRoutes,
   ...chatThreadsArtifactsSyncRoutes,
@@ -326,6 +330,10 @@ export function createChatFilesBddApi(context: TestContext) {
 
   function threadModelSelectionClient() {
     return chatFilesApp(context)(chatThreadModelSelectionContract);
+  }
+
+  function threadImageModelClient() {
+    return chatFilesApp(context)(chatThreadImageModelContract);
   }
 
   function userModelPreferenceClient() {
@@ -879,14 +887,34 @@ export function createChatFilesBddApi(context: TestContext) {
       );
     },
 
+    async updateThreadImageModel(
+      actor: ApiTestUser,
+      threadId: string,
+      imageModel: ImageModelId | null,
+    ): Promise<void> {
+      await accept(
+        threadImageModelClient().update({
+          headers: authenticate(context, actor),
+          params: { id: threadId },
+          body: { model: imageModel },
+        }),
+        [204],
+      );
+    },
+
     async updateUserModelPreference(
       actor: ApiTestUser,
       selectedModel: SupportedRunModel | null,
+      selectedImageModel?: ImageModelId | null,
     ): Promise<void> {
       await accept(
         userModelPreferenceClient().update({
           headers: authenticate(context, actor),
-          body: { selectedModel, serviceTier: null },
+          body: {
+            selectedModel,
+            serviceTier: null,
+            ...(selectedImageModel === undefined ? {} : { selectedImageModel }),
+          },
         }),
         [200],
       );
