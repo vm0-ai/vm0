@@ -557,29 +557,6 @@ describe("browser-rendered presentation template ingestion", () => {
     );
     expect(countMismatch.body.error.code).toBe("page_count_mismatch");
 
-    const oneSlide = await uploadPrivateFile(actor, fixture, {
-      filename: "one-slide.pptx",
-      contentType: PRESENTATION_TEMPLATE_SOURCE_CONTENT_TYPE,
-      body: pptxSource(1),
-    });
-    const fourThreePage = await uploadPrivateFile(actor, fixture, {
-      filename: "page.png",
-      contentType: PRESENTATION_TEMPLATE_PAGE_CONTENT_TYPE,
-      body: pngHeader(1200, 900),
-    });
-    const invalidRatio = await accept(
-      client.commit({
-        headers: webHeaders(),
-        body: {
-          requestId: randomUUID(),
-          sourceFileId: oneSlide.id,
-          pageFileIds: [fourThreePage.id],
-        },
-      }),
-      [400],
-    );
-    expect(invalidRatio.body.error.message).toContain("16:9 PNG");
-
     const pdf = await uploadPrivateFile(actor, fixture, {
       filename: "deck.pdf",
       contentType: "application/pdf",
@@ -591,7 +568,7 @@ describe("browser-rendered presentation template ingestion", () => {
         body: {
           requestId: randomUUID(),
           sourceFileId: pdf.id,
-          pageFileIds: [fourThreePage.id],
+          pageFileIds: [missingPage.id],
         },
       }),
       [400],

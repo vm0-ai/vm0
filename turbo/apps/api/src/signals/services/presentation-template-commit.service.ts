@@ -18,7 +18,6 @@ import { env } from "../../lib/env";
 import { isUniqueViolation } from "../../lib/pg-errors";
 import { now, nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
-import { downloadS3BufferRange } from "../external/s3";
 import { settle } from "../utils";
 import {
   createAgentRun$,
@@ -38,7 +37,6 @@ import { failPresentationTemplateImport$ } from "./presentation-template-failure
 import { lockPresentationTemplateLifecycle } from "./presentation-template-lifecycle.service";
 import { preflightPresentationTemplate$ } from "./presentation-template-preflight.service";
 
-const PNG_HEADER_BYTES = 24;
 const OBJECT_VALIDATION_CONCURRENCY = 8;
 
 type VerificationResult =
@@ -108,23 +106,6 @@ function extensionOf(filename: string): string {
 function titleFromFilename(filename: string): string {
   const withoutExtension = filename.replace(/\.[^.]+$/u, "").trim();
   return withoutExtension || filename;
-}
-
-function isFixedWidePng(header: Buffer): boolean {
-  const signature = Buffer.from([
-    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
-  ]);
-  if (
-    header.length < PNG_HEADER_BYTES ||
-    !header.subarray(0, signature.length).equals(signature) ||
-    header.readUInt32BE(8) !== 13 ||
-    header.subarray(12, 16).toString("ascii") !== "IHDR"
-  ) {
-    return false;
-  }
-  const width = header.readUInt32BE(16);
-  const height = header.readUInt32BE(20);
-  return width > 0 && height > 0 && width * 9 === height * 16;
 }
 
 const resolvePresentationTemplateManifest$ = command(
@@ -239,7 +220,7 @@ const resolvePresentationTemplateManifest$ = command(
 
 const verifyPresentationTemplateContents$ = command(
   async (
-    { get, set },
+    { set },
     manifest: ResolvedPresentationTemplateManifest,
     signal: AbortSignal,
   ): Promise<VerificationResult> => {
@@ -265,32 +246,7 @@ const verifyPresentationTemplateContents$ = command(
         `The PPTX contains ${preflight.slideCount.toString()} slides but ${manifest.pages.length.toString()} page images were committed`,
       );
     }
-
-    const pageHeaders = await mapWithConcurrency(
-      manifest.pages,
-      OBJECT_VALIDATION_CONCURRENCY,
-      async (page) => {
-        return await get(
-          downloadS3BufferRange(
-            bucket,
-            page.key,
-            0,
-            PNG_HEADER_BYTES - 1,
-            signal,
-          ),
-        );
-      },
-    );
-    signal.throwIfAborted();
-    const invalidPngIndex = pageHeaders.findIndex((header) => {
-      return !isFixedWidePng(header);
-    });
-    return invalidPngIndex === -1
-      ? { ok: true }
-      : verificationFailure(
-          "invalid_upload",
-          `Page ${(invalidPngIndex + 1).toString()} is not a valid 16:9 PNG`,
-        );
+    return { ok: true };
   },
 );
 
