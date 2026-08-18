@@ -10,8 +10,8 @@ import {
   connectSlackWorkspace$,
   notifySlackConnect$,
   publishSlackAdminSignal$,
-  zeroSlackConnectStatus,
-} from "../services/zero-slack-connect.service";
+  slackConnectStatus,
+} from "../services/slack-connect.service";
 import { tapError } from "../utils";
 import type { RouteEntry } from "../route-entry";
 
@@ -20,7 +20,7 @@ const L = logger("SlackConnect");
 const getSlackConnectStatusInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const body = await get(
-    zeroSlackConnectStatus({
+    slackConnectStatus({
       orgId: auth.orgId,
       userId: auth.userId,
       isAdmin: "orgRole" in auth && auth.orgRole === "admin",

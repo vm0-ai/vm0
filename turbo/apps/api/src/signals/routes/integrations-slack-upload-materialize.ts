@@ -7,7 +7,7 @@ import { bodyResultOf } from "../context/request";
 import { createSlackClient } from "../external/slack-message-client";
 import { materializeCanonicalPublishedAsset$ } from "../services/canonical-asset.service";
 import { prepareCanonicalSlackDelivery$ } from "../services/canonical-slack-asset-delivery.service";
-import { zeroSlackOrgInstallation } from "../services/zero-slack-data.service";
+import { slackOrgInstallation } from "../services/slack-data.service";
 import type { RouteEntry } from "../route-entry";
 
 const noInstallation = Object.freeze({
@@ -45,7 +45,7 @@ const materializeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const installation = await get(
-    zeroSlackOrgInstallation({ orgId: auth.orgId, userId: auth.userId }),
+    slackOrgInstallation({ orgId: auth.orgId, userId: auth.userId }),
   );
   signal.throwIfAborted();
   if (!installation) {
