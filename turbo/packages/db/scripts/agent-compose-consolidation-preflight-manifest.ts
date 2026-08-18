@@ -259,6 +259,7 @@ export const EXPECTED_REPOSITORY_DEPENDENCIES = {
     "turbo/apps/api/src/signals/routes/chat-threads-image-model.ts|agentComposeId",
     "turbo/apps/api/src/signals/routes/chat-threads-mark-agent-read.ts|agentComposeId,zeroAgents",
     "turbo/apps/api/src/signals/routes/chat-threads-mark-read.ts|agentComposeId",
+    "turbo/apps/api/src/signals/routes/chat-threads-mark-unread.ts|agentComposeId",
     "turbo/apps/api/src/signals/routes/chat-threads-model-selection.ts|agentComposeId",
     "turbo/apps/api/src/signals/routes/chat-threads-pin.ts|agentComposeId",
     "turbo/apps/api/src/signals/routes/chat-threads-rename.ts|agentComposeId",

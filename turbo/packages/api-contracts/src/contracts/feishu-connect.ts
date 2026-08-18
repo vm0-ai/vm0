@@ -88,7 +88,7 @@ const feishuConnectStatusSchema = z.object({
   installations: z.array(feishuInstallationStatusSchema).optional(),
 });
 
-export const zeroFeishuConnectContract = c.router({
+export const feishuConnectContract = c.router({
   getStatus: {
     method: "GET",
     path: "/api/okou/integrations/feishu",
@@ -215,4 +215,4 @@ export type FeishuConnectStatus = z.infer<typeof feishuConnectStatusSchema>;
 export type FeishuInstallationStatus = z.infer<
   typeof feishuInstallationStatusSchema
 >;
-export type ZeroFeishuConnectContract = typeof zeroFeishuConnectContract;
+export type FeishuConnectContract = typeof feishuConnectContract;

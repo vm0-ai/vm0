@@ -21,6 +21,7 @@ _BUILTIN_HOST_POLICY_DENIED_ERROR: Final = "builtin_host_policy_denied"
 _AMBIGUOUS_CONNECTOR_ROUTE_ERROR: Final = "ambiguous_connector_route"
 _FIREWALL_AUTHORIZATION_CHANGED_ERROR: Final = "firewall_authorization_changed"
 _STALE_TLS_ADMISSION_ERROR: Final = "stale_tls_admission"
+_UNSAFE_PLATFORM_PATH_ERROR: Final = "unsafe_platform_path"
 _UPSTREAM_DESTINATION_UNBOUND_ERROR: Final = "upstream_destination_unbound"
 _HTTP_STATUS_CONFLICT = 409
 
@@ -150,6 +151,31 @@ def block_stale_tls_admission(flow: http.HTTPFlow, *, reason: str) -> None:
                 "Request blocked: TLS admission is no longer backed by a valid proxy registry VM"
             ),
             "reason": reason,
+        },
+    )
+
+
+def block_platform_path_denied(flow: http.HTTPFlow) -> None:
+    message = "Request blocked: unsafe platform API path"
+    proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
+    log_proxy_entry(
+        proxy_log_path,
+        "warn",
+        message,
+        type="platform_path_admission",
+        reason=_UNSAFE_PLATFORM_PATH_ERROR,
+    )
+    flow_metadata.set_firewall_decision(
+        flow.metadata,
+        "BLOCK",
+        error=_UNSAFE_PLATFORM_PATH_ERROR,
+    )
+    flow.response = make_local_json_response(
+        flow,
+        403,
+        {
+            "error": _UNSAFE_PLATFORM_PATH_ERROR,
+            "message": message,
         },
     )
 

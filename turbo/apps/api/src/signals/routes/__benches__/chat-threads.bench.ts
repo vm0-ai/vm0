@@ -26,7 +26,7 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
 import { zeroConnectorsMainContract } from "@okouai/api-contracts/contracts/zero-connectors";
-import { zeroOrgContract } from "@okouai/api-contracts/contracts/zero-org";
+import { orgContract } from "@okouai/api-contracts/contracts/org-routes";
 import { zeroPersonalModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-personal-model-providers";
 import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-preferences";
 import { z } from "zod";
@@ -114,7 +114,7 @@ const billingStatusClient = setupApp({
   context,
   routes: billingStatusRoutes,
 })(zeroBillingStatusContract);
-const orgClient = setupApp({ context, routes: orgReadRoutes })(zeroOrgContract);
+const orgClient = setupApp({ context, routes: orgReadRoutes })(orgContract);
 const personalModelProvidersClient = setupApp({
   context,
   routes: zeroPersonalModelProvidersMainTestRoutes,

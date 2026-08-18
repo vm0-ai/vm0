@@ -515,6 +515,11 @@ const malformedChatThreadIdRequests = [
   },
   {
     method: "POST",
+    path: "/api/okou/chat-threads/:id/mark-unread",
+    paramName: "id",
+  },
+  {
+    method: "POST",
     path: "/api/zero/chat-threads/:id/model-selection",
     paramName: "id",
   },

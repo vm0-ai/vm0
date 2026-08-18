@@ -1,9 +1,9 @@
 import { command, computed, state } from "ccstate";
 import {
-  zeroFeishuConnectContract,
+  feishuConnectContract,
   type FeishuConnectStatus,
   type FeishuInstallationStatus,
-} from "@okouai/api-contracts/contracts/zero-feishu-connect";
+} from "@okouai/api-contracts/contracts/feishu-connect";
 import { toast } from "@okouai/ui/components/ui/sonner";
 
 import { accept } from "../../lib/accept.ts";
@@ -37,7 +37,7 @@ const FEISHU_SETUP_STEP_ORDER = [
 export const feishuOrgData$ = computed(
   async (get): Promise<FeishuConnectStatus> => {
     get(reload$);
-    const client = get(zeroClient$)(zeroFeishuConnectContract);
+    const client = get(zeroClient$)(feishuConnectContract);
     const result = await accept(client.getStatus(), [200]);
     return result.body;
   },
@@ -100,7 +100,7 @@ export const feishuInstallations$ = computed(
 
 export const disconnectFeishuOrg$ = command(
   async ({ get, set }, installationId: string | null, signal: AbortSignal) => {
-    const client = get(zeroClient$)(zeroFeishuConnectContract);
+    const client = get(zeroClient$)(feishuConnectContract);
     if (installationId) {
       await accept(
         client.disconnectInstallation({
@@ -236,7 +236,7 @@ export const setupFeishuOrg$ = command(
     },
     signal: AbortSignal,
   ): Promise<FeishuConnectStatus> => {
-    const client = get(zeroClient$)(zeroFeishuConnectContract);
+    const client = get(zeroClient$)(feishuConnectContract);
     const result = await accept(
       client.setup({ body: input, fetchOptions: { signal } }),
       [200],
@@ -256,7 +256,7 @@ export const setupFeishuOrg$ = command(
 
 export const checkFeishuAppIdAvailable$ = command(
   async ({ get }, appId: string, signal: AbortSignal): Promise<void> => {
-    const client = get(zeroClient$)(zeroFeishuConnectContract);
+    const client = get(zeroClient$)(feishuConnectContract);
     await accept(
       client.checkAppId({
         query: { appId },
@@ -275,7 +275,7 @@ export const updateFeishuInstallationAgent$ = command(
     defaultAgentId: string,
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroFeishuConnectContract);
+    const client = get(zeroClient$)(feishuConnectContract);
     await accept(
       client.updateInstallation({
         params: { installationId },
@@ -298,7 +298,7 @@ export const completeFeishuInstallationSetup$ = command(
     defaultAgentId: string,
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroFeishuConnectContract);
+    const client = get(zeroClient$)(feishuConnectContract);
     await accept(
       client.updateInstallation({
         params: { installationId },
@@ -321,7 +321,7 @@ export const completeFeishuInstallationSetup$ = command(
 
 export const uninstallFeishuInstallation$ = command(
   async ({ get, set }, installationId: string, signal: AbortSignal) => {
-    const client = get(zeroClient$)(zeroFeishuConnectContract);
+    const client = get(zeroClient$)(feishuConnectContract);
     await accept(
       client.removeInstallation({
         params: { installationId },

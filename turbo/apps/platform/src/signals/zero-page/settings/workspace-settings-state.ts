@@ -2,10 +2,10 @@ import { command, computed, state } from "ccstate";
 import { animationFrame } from "signal-timers";
 import { onRef } from "../../utils.ts";
 import {
-  zeroOrgContract,
-  zeroOrgDeleteContract,
-  zeroOrgLeaveContract,
-} from "@okouai/api-contracts/contracts/zero-org";
+  orgContract,
+  orgDeleteContract,
+  orgLeaveContract,
+} from "@okouai/api-contracts/contracts/org-routes";
 import { orgLogoContract } from "@okouai/api-contracts/contracts/org-logo";
 import {
   orgInviteContract,
@@ -480,7 +480,7 @@ export const saveOrgProfile$ = command(
     }
 
     if (hasNameChange) {
-      const client = get(zeroClient$)(zeroOrgContract);
+      const client = get(zeroClient$)(orgContract);
       await accept(
         client.update({
           body: { name: input.name },
@@ -507,7 +507,7 @@ export const saveOrgProfile$ = command(
 
 export const leaveOrg$ = command(
   async ({ get }, signal: AbortSignal): Promise<void> => {
-    const client = get(zeroClient$)(zeroOrgLeaveContract);
+    const client = get(zeroClient$)(orgLeaveContract);
     await accept(
       client.leave({
         body: {},
@@ -533,7 +533,7 @@ export const leaveOrg$ = command(
 
 export const deleteOrg$ = command(
   async ({ get }, signal: AbortSignal): Promise<void> => {
-    const client = get(zeroClient$)(zeroOrgDeleteContract);
+    const client = get(zeroClient$)(orgDeleteContract);
     await accept(
       client.delete({
         body: { confirm: WORKSPACE_DELETE_CONFIRMATION },

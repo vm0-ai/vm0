@@ -6,7 +6,7 @@ import { zeroClient$ } from "../api-client.ts";
 import {
   applyUnreadSnapshot$,
   recordOptimisticReadMark$,
-} from "./sidebar-unread-threads.ts";
+} from "./optimistic-chat-thread-read-marks.ts";
 
 interface MarkReadArgs {
   readonly threadId: string;
