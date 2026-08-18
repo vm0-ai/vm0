@@ -273,9 +273,19 @@ pub async fn acquire_with_contention_timeout(
     path: PathBuf,
     contention_timeout: Duration,
 ) -> RunnerResult<TryLock> {
+    acquire_with_contention_timeout_after_busy(path, contention_timeout, std::future::ready(()))
+        .await
+}
+
+async fn acquire_with_contention_timeout_after_busy(
+    path: PathBuf,
+    contention_timeout: Duration,
+    after_busy: impl std::future::Future<Output = ()>,
+) -> RunnerResult<TryLock> {
     match acquire_result_once(&path, LockMode::Exclusive).await? {
         LockAcquire::Acquired(lock) => Ok(TryLock::Acquired(lock)),
         LockAcquire::Busy => {
+            after_busy.await;
             match tokio::time::timeout(
                 contention_timeout,
                 acquire_after_busy(&path, LockMode::Exclusive),
@@ -287,6 +297,15 @@ pub async fn acquire_with_contention_timeout(
             }
         }
     }
+}
+
+#[cfg(test)]
+pub(crate) async fn acquire_with_contention_timeout_after_busy_for_test(
+    path: PathBuf,
+    contention_timeout: Duration,
+    after_busy: impl std::future::Future<Output = ()>,
+) -> RunnerResult<TryLock> {
+    acquire_with_contention_timeout_after_busy(path, contention_timeout, after_busy).await
 }
 
 pub async fn try_acquire_or_busy(path: PathBuf) -> RunnerResult<TryLock> {

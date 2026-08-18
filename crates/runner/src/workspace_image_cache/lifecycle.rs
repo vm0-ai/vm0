@@ -212,6 +212,24 @@ impl WorkspaceImageLease {
 }
 
 impl WorkspaceImageCache {
+    async fn acquire_prepare_lock(&self, lock_path: PathBuf) -> RunnerResult<crate::lock::TryLock> {
+        #[cfg(test)]
+        if let Some(gate) = &self.prepare_lock_test_gate {
+            return crate::lock::acquire_with_contention_timeout_after_busy_for_test(
+                lock_path,
+                WORKSPACE_IMAGE_PREPARE_LOCK_TIMEOUT,
+                gate.enter_and_wait(),
+            )
+            .await;
+        }
+
+        crate::lock::acquire_with_contention_timeout(
+            lock_path,
+            WORKSPACE_IMAGE_PREPARE_LOCK_TIMEOUT,
+        )
+        .await
+    }
+
     pub(crate) fn expected_promotion_identity(
         &self,
         request: WorkspaceImagePromotionIdentityRequest<'_>,
@@ -395,12 +413,7 @@ impl WorkspaceImageCache {
 
         let cache_key = common.cache_key(self, reuse_key, working_dir);
         let lock_path = self.entry_lock_path(&cache_key);
-        let lock = match crate::lock::acquire_with_contention_timeout(
-            lock_path,
-            WORKSPACE_IMAGE_PREPARE_LOCK_TIMEOUT,
-        )
-        .await
-        {
+        let lock = match self.acquire_prepare_lock(lock_path).await {
             Ok(crate::lock::TryLock::Acquired(lock)) => lock,
             Ok(crate::lock::TryLock::Busy) => {
                 info!(

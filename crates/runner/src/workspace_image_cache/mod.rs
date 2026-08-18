@@ -87,6 +87,33 @@ const TEST_FS_AVAILABLE_BYTES: u64 = 1_000 * GIB;
 #[derive(Clone)]
 pub(crate) struct WorkspaceImageCache {
     inner: Arc<WorkspaceImageCacheInner>,
+    #[cfg(test)]
+    prepare_lock_test_gate: Option<WorkspaceImagePrepareLockTestGate>,
+}
+
+#[cfg(test)]
+#[derive(Clone, Default)]
+pub(crate) struct WorkspaceImagePrepareLockTestGate {
+    entered: Arc<tokio::sync::Notify>,
+    release: Arc<tokio::sync::Notify>,
+}
+
+#[cfg(test)]
+impl WorkspaceImagePrepareLockTestGate {
+    pub(crate) async fn enter_and_wait(&self) {
+        self.entered.notify_one();
+        self.release.notified().await;
+    }
+
+    pub(crate) async fn wait_entered(&self, timeout: std::time::Duration) {
+        tokio::time::timeout(timeout, self.entered.notified())
+            .await
+            .expect("workspace image prepare should observe lock contention");
+    }
+
+    pub(crate) fn release(&self) {
+        self.release.notify_one();
+    }
 }
 
 struct WorkspaceImageCacheInner {
@@ -183,10 +210,20 @@ impl WorkspaceImageCache {
                 gc_root_scan_count: AtomicUsize::new(0),
                 fail_next_session_history_sidecar_metadata_commit: AtomicBool::new(false),
             }),
+            prepare_lock_test_gate: None,
         }
     }
 
     pub(crate) fn paths(&self) -> &RunnerPaths {
         &self.inner.paths
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_prepare_lock_test_gate(
+        mut self,
+        gate: WorkspaceImagePrepareLockTestGate,
+    ) -> Self {
+        self.prepare_lock_test_gate = Some(gate);
+        self
     }
 }
