@@ -33,7 +33,7 @@ const MAX_INFLATE_PER_TICK_MIB: u32 = 256;
 pub(crate) const MIN_GUEST_MIB: u32 = 512;
 /// Poll interval for balloon stats.
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
-/// How often to emit status + host memory logs (in ticks).
+/// How often to emit balloon status logs (in ticks).
 /// 12 ticks × 5s = 60s.
 const STATUS_INTERVAL_TICKS: u64 = 12;
 
@@ -115,11 +115,6 @@ async fn run_loop(client: ApiClient, memory_mb: u32, mut state_rx: watch::Receiv
     loop {
         tokio::select! {
             _ = interval.tick() => {
-                if tick_count.is_multiple_of(STATUS_INTERVAL_TICKS)
-                    && let Some((available_mib, total_mib)) = read_host_meminfo()
-                {
-                    info!(host_available_mib = available_mib, host_total_mib = total_mib, "host memory status");
-                }
                 tick(&client, max_inflate, tick_count).await;
                 tick_count += 1;
             }
@@ -219,32 +214,6 @@ async fn tick(client: &ApiClient, max_inflate: u32, tick_count: u64) {
             }
         }
     }
-}
-
-/// Read host memory info from /proc/meminfo. Returns (available_mib, total_mib).
-fn read_host_meminfo() -> Option<(u64, u64)> {
-    let content = match std::fs::read_to_string("/proc/meminfo") {
-        Ok(c) => c,
-        Err(e) => {
-            warn!(error = %e, "failed to read /proc/meminfo");
-            return None;
-        }
-    };
-    parse_meminfo(&content)
-}
-
-/// Parse meminfo content. Returns (available_mib, total_mib).
-fn parse_meminfo(content: &str) -> Option<(u64, u64)> {
-    let mut total_kb: Option<u64> = None;
-    let mut available_kb: Option<u64> = None;
-    for line in content.lines() {
-        if let Some(rest) = line.strip_prefix("MemTotal:") {
-            total_kb = rest.split_whitespace().next().and_then(|v| v.parse().ok());
-        } else if let Some(rest) = line.strip_prefix("MemAvailable:") {
-            available_kb = rest.split_whitespace().next().and_then(|v| v.parse().ok());
-        }
-    }
-    Some((available_kb? / 1024, total_kb? / 1024))
 }
 
 #[cfg(test)]
@@ -686,35 +655,5 @@ mod tests {
         let stats = r#"{"target_mib":0,"actual_mib":0,"target_pages":0,"actual_pages":0,"free_memory":1073741824,"available_memory":1073741824}"#;
         let patch = run_tick_with_mock_at(stats, 1536, 1).await;
         assert!(patch.is_some(), "non-status tick should still inflate");
-    }
-
-    #[test]
-    fn parse_meminfo_typical() {
-        let content = "\
-MemTotal:       16384000 kB
-MemFree:         2048000 kB
-MemAvailable:    8192000 kB
-Buffers:          512000 kB
-";
-        let (available, total) = parse_meminfo(content).unwrap();
-        assert_eq!(total, 16000); // 16384000 / 1024
-        assert_eq!(available, 8000); // 8192000 / 1024
-    }
-
-    #[test]
-    fn parse_meminfo_missing_available() {
-        let content = "MemTotal:       16384000 kB\n";
-        assert!(parse_meminfo(content).is_none());
-    }
-
-    #[test]
-    fn parse_meminfo_missing_total() {
-        let content = "MemAvailable:    8192000 kB\n";
-        assert!(parse_meminfo(content).is_none());
-    }
-
-    #[test]
-    fn parse_meminfo_empty() {
-        assert!(parse_meminfo("").is_none());
     }
 }
