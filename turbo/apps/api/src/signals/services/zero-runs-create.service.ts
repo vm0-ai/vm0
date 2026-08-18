@@ -661,9 +661,8 @@ function createRunBody(args: {
   });
   return {
     prompt: args.body.prompt,
-    agentComposeId: args.agent.id,
+    agentId: args.agent.id,
     sessionId: args.body.sessionId,
-    agentComposeVersionId: args.body.agentComposeVersionId,
     conversationId: args.body.conversationId,
     additionalVolumes: args.body.additionalVolumes,
     realAgentInPreview: args.body.realAgentInPreview,
@@ -1073,7 +1072,7 @@ const createZeroRunInternal$ = command(
     if (!agentId) {
       return args.body.sessionId
         ? notFound("Session not found")
-        : badRequestMessage("agentId is required");
+        : badRequestMessage("Missing agentId or sessionId");
     }
 
     const agent = await measureZeroPreCreate(

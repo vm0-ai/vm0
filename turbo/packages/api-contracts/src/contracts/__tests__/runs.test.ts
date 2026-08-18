@@ -22,6 +22,42 @@ describe("Claude tool entry contract", () => {
 });
 
 describe("unified run request contract", () => {
+  it("accepts Agent-backed creation and Session-backed continuation", () => {
+    expect(
+      unifiedRunRequestSchema.safeParse({
+        agentId: "agent-1",
+        prompt: "start a run",
+      }).success,
+    ).toBe(true);
+    expect(
+      unifiedRunRequestSchema.safeParse({
+        sessionId: "session-1",
+        prompt: "continue a run",
+      }).success,
+    ).toBe(true);
+    expect(
+      unifiedRunRequestSchema.safeParse({
+        agentId: "agent-1",
+        sessionId: "session-1",
+        prompt: "continue a matching Agent Session",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("strictly rejects caller-selected legacy compose identity", () => {
+    for (const legacyIdentity of [
+      { agentComposeId: "compose-1" },
+      { agentComposeVersionId: "version-1" },
+    ]) {
+      expect(
+        unifiedRunRequestSchema.safeParse({
+          ...legacyIdentity,
+          prompt: "start a legacy run",
+        }).success,
+      ).toBe(false);
+    }
+  });
+
   it("rejects checkpoint resume requests", () => {
     expect(
       unifiedRunRequestSchema.safeParse({

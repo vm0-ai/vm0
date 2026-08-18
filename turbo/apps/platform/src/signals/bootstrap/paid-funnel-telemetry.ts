@@ -100,6 +100,15 @@ export const capturePaidOnboardingCheckoutCreated$ = command(
   },
 );
 
+export const capturePaidOnboardingRoleConfirmed$ = command(
+  ({ set }, role: string): void => {
+    capturePaidOnboardingEvent("RoleConfirmed", {
+      ...attributionProperties(set(readStoredAdAttributionMetadata$)),
+      role,
+    });
+  },
+);
+
 export const capturePaidOnboardingRedirectToStripe$ = command(
   ({ get, set }, checkoutSource: string): void => {
     capturePaidOnboardingEvent("RedirectToStripe", {

@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { zeroTeamsOauthContract } from "@okouai/api-contracts/contracts/zero-teams-oauth";
+import { teamsOauthContract } from "@okouai/api-contracts/contracts/teams-oauth";
 import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { z } from "zod";
 
@@ -338,7 +338,7 @@ const connectOauth$ = command(({ get }) => {
     );
   }
 
-  const query = get(queryOf(zeroTeamsOauthContract.connect));
+  const query = get(queryOf(teamsOauthContract.connect));
   const userId = resolveIntegrationUserId(query.userId, query.vm0UserId);
   logIntegrationIdentityCompatibility({
     provider: "teams",
@@ -388,7 +388,7 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
     );
   }
 
-  const query = get(queryOf(zeroTeamsOauthContract.callback));
+  const query = get(queryOf(teamsOauthContract.callback));
   const state = parseOAuthState(query.state);
   const redirectBrand = state?.publicBrand ?? get(publicBrand$);
   if (query.error) {
@@ -493,11 +493,11 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 export const teamsOauthRoutes: readonly RouteEntry[] = [
   {
-    route: zeroTeamsOauthContract.connect,
+    route: teamsOauthContract.connect,
     handler: connectOauth$,
   },
   {
-    route: zeroTeamsOauthContract.callback,
+    route: teamsOauthContract.callback,
     handler: callbackOauth$,
   },
 ];

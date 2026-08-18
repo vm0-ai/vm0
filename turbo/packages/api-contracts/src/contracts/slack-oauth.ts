@@ -6,7 +6,7 @@ const c = initContract();
 
 const jsonErrorSchema = z.object({ error: z.string() });
 
-export const zeroSlackOauthInstallQuerySchema = z.object({
+export const slackOauthInstallQuerySchema = z.object({
   orgId: z.string().optional(),
   userId: z.string().optional(),
   // Old web/app OAuth fallback (observed maximum: ~2 days).
@@ -16,7 +16,7 @@ export const zeroSlackOauthInstallQuerySchema = z.object({
   prompt: z.string().optional(),
 });
 
-export const zeroSlackOauthConnectQuerySchema = z.object({
+export const slackOauthConnectQuerySchema = z.object({
   orgId: z.string().optional(),
   userId: z.string().optional(),
   // Old web/app OAuth fallback (observed maximum: ~2 days).
@@ -25,17 +25,17 @@ export const zeroSlackOauthConnectQuerySchema = z.object({
   prompt: z.string().optional(),
 });
 
-export const zeroSlackOauthCallbackQuerySchema = z.object({
+export const slackOauthCallbackQuerySchema = z.object({
   code: z.string().optional(),
   error: z.string().optional(),
   state: z.string().optional(),
 });
 
-export const zeroSlackOauthContract = c.router({
+export const slackOauthContract = c.router({
   install: {
     method: "GET",
     path: "/api/okou/slack/oauth/install",
-    query: zeroSlackOauthInstallQuerySchema,
+    query: slackOauthInstallQuerySchema,
     responses: {
       307: c.noBody(),
       503: jsonErrorSchema,
@@ -45,7 +45,7 @@ export const zeroSlackOauthContract = c.router({
   connect: {
     method: "GET",
     path: "/api/okou/slack/oauth/connect",
-    query: zeroSlackOauthConnectQuerySchema,
+    query: slackOauthConnectQuerySchema,
     responses: {
       307: c.noBody(),
       400: jsonErrorSchema,
@@ -57,7 +57,7 @@ export const zeroSlackOauthContract = c.router({
   callback: {
     method: "GET",
     path: "/api/okou/slack/oauth/callback",
-    query: zeroSlackOauthCallbackQuerySchema,
+    query: slackOauthCallbackQuerySchema,
     responses: {
       307: c.noBody(),
       400: jsonErrorSchema,
@@ -67,13 +67,13 @@ export const zeroSlackOauthContract = c.router({
   },
 });
 
-export type ZeroSlackOauthContract = typeof zeroSlackOauthContract;
-export type ZeroSlackOauthInstallQuery = z.infer<
-  typeof zeroSlackOauthInstallQuerySchema
+export type SlackOauthContract = typeof slackOauthContract;
+export type SlackOauthInstallQuery = z.infer<
+  typeof slackOauthInstallQuerySchema
 >;
-export type ZeroSlackOauthConnectQuery = z.infer<
-  typeof zeroSlackOauthConnectQuerySchema
+export type SlackOauthConnectQuery = z.infer<
+  typeof slackOauthConnectQuerySchema
 >;
-export type ZeroSlackOauthCallbackQuery = z.infer<
-  typeof zeroSlackOauthCallbackQuerySchema
+export type SlackOauthCallbackQuery = z.infer<
+  typeof slackOauthCallbackQuerySchema
 >;

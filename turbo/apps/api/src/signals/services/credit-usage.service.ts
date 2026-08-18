@@ -21,7 +21,7 @@ import {
   enqueueCreditLowBalanceAlert$,
   LOW_CREDIT_EMAIL_ALERT_THRESHOLD_CREDITS,
   type CreditLowBalanceAlertArgs,
-} from "./zero-credit-low-balance-alert.service";
+} from "./credit-low-balance-alert.service";
 import { triggerAutoRecharge$ } from "./credit-recharge.service";
 import { applyUsageAllowanceToUsageEventsInLockedTransaction } from "./usage-allowance.service";
 import type { Tx } from "../../lib/db-types";

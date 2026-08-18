@@ -4,7 +4,7 @@ import { initContract } from "./base";
 
 const c = initContract();
 
-export const zeroTeamsBrowserConnectQuerySchema = z.object({
+export const teamsBrowserConnectQuerySchema = z.object({
   tenantId: z.string().optional(),
   tenantName: z.string().optional(),
   teamsUserId: z.string().optional(),
@@ -24,11 +24,11 @@ export const zeroTeamsBrowserConnectQuerySchema = z.object({
   orgId: z.string().optional(),
 });
 
-export const zeroTeamsBrowserConnectContract = c.router({
+export const teamsBrowserConnectContract = c.router({
   connect: {
     method: "GET",
     path: "/api/okou/teams/connect",
-    query: zeroTeamsBrowserConnectQuerySchema,
+    query: teamsBrowserConnectQuerySchema,
     responses: {
       307: c.noBody(),
       500: z.object({ error: z.string() }),
@@ -37,8 +37,7 @@ export const zeroTeamsBrowserConnectContract = c.router({
   },
 });
 
-export type ZeroTeamsBrowserConnectContract =
-  typeof zeroTeamsBrowserConnectContract;
-export type ZeroTeamsBrowserConnectQuery = z.infer<
-  typeof zeroTeamsBrowserConnectQuerySchema
+export type TeamsBrowserConnectContract = typeof teamsBrowserConnectContract;
+export type TeamsBrowserConnectQuery = z.infer<
+  typeof teamsBrowserConnectQuerySchema
 >;

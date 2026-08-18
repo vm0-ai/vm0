@@ -304,7 +304,7 @@ function sortedExpectedCacheRows(
 
 async function entitledDirectRunActor(): Promise<{
   readonly actor: ApiTestUser;
-  readonly composeVersionId: string;
+  readonly agentId: string;
   readonly runnerGroup: string;
 }> {
   const bdd = createBddApi(context);
@@ -328,14 +328,14 @@ async function entitledDirectRunActor(): Promise<{
   });
   return {
     actor,
-    composeVersionId: compose.versionId,
+    agentId: compose.composeId,
     runnerGroup,
   };
 }
 
 async function createAndClaimOwnedSystemStorage(args: {
   readonly actor: ApiTestUser;
-  readonly composeVersionId: string;
+  readonly agentId: string;
   readonly runnerGroup: string;
   readonly fixture: OwnedSystemStorageFixture;
   readonly prompt: string;
@@ -344,7 +344,7 @@ async function createAndClaimOwnedSystemStorage(args: {
 }> {
   const api = createRunsApi(context);
   const run = await api.createDirectRun(args.actor, {
-    agentComposeVersionId: args.composeVersionId,
+    agentId: args.agentId,
     prompt: args.prompt,
     ownedSystemStorageMounts: [
       {

@@ -9,9 +9,13 @@
 import { createStore } from "ccstate";
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@okouai/core/storage-names";
+import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
+import { checkpoints } from "@okouai/db/schema/checkpoint";
+import { conversations } from "@okouai/db/schema/conversation";
 import { storages } from "@okouai/db/schema/storage";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, count, eq, inArray } from "drizzle-orm";
 
 import { db } from "../lib/db";
 import { now } from "../lib/time";
@@ -143,6 +147,74 @@ export async function listAgentRunsFixture(args: {
       limit: args.limit ?? 50,
     }),
   );
+}
+
+function exactlyOneCount(
+  source: string,
+  rows: readonly { readonly count: number }[],
+): number {
+  const [row] = rows;
+  if (!row || rows.length !== 1) {
+    throw new Error(
+      `Expected exactly one ${source} COUNT row, received ${rows.length}`,
+    );
+  }
+  return row.count;
+}
+
+/**
+ * Exceptional internal assertion for the Run identity mismatch contract.
+ *
+ * Production APIs cannot observe the absence of Session, callback,
+ * conversation, or checkpoint rows. Keep this fixture narrowly scoped to the
+ * contract requirement that an Agent/Session mismatch fails before every
+ * launch write; ordinary route tests must continue to verify state through
+ * production API surfaces.
+ */
+export async function readRunIdentityMismatchWriteCountsFixture(args: {
+  readonly userId: string;
+  readonly orgId: string;
+}) {
+  const ownedRuns = and(
+    eq(agentRuns.userId, args.userId),
+    eq(agentRuns.orgId, args.orgId),
+  );
+  const [runRows, sessionRows, callbackRows, conversationRows, checkpointRows] =
+    await Promise.all([
+      db().select({ count: count() }).from(agentRuns).where(ownedRuns),
+      db()
+        .select({ count: count() })
+        .from(agentSessions)
+        .where(
+          and(
+            eq(agentSessions.userId, args.userId),
+            eq(agentSessions.orgId, args.orgId),
+          ),
+        ),
+      db()
+        .select({ count: count() })
+        .from(agentRunCallbacks)
+        .innerJoin(agentRuns, eq(agentRunCallbacks.runId, agentRuns.id))
+        .where(ownedRuns),
+      db()
+        .select({ count: count() })
+        .from(conversations)
+        .innerJoin(agentRuns, eq(conversations.runId, agentRuns.id))
+        .where(ownedRuns),
+      db()
+        .select({ count: count() })
+        .from(checkpoints)
+        .innerJoin(agentRuns, eq(checkpoints.runId, agentRuns.id))
+        .where(ownedRuns),
+    ]);
+
+  return {
+    runs: exactlyOneCount("Run", runRows),
+    sessions: exactlyOneCount("Session", sessionRows),
+    callbacks: exactlyOneCount("callback", callbackRows),
+    conversations: exactlyOneCount("conversation", conversationRows),
+    checkpoints: exactlyOneCount("checkpoint", checkpointRows),
+  };
 }
 
 /**
