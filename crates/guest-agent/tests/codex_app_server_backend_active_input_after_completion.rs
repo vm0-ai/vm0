@@ -9,7 +9,7 @@ use guest_agent::active_input::ActiveInputControlOutcome;
 use guest_agent::masker::SecretMasker;
 use std::time::Duration;
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn codex_app_server_backend_rejects_active_input_after_turn_completion()
 -> Result<(), Box<dyn std::error::Error>> {
     let mock = common::build_and_locate_mock_codex()?;
