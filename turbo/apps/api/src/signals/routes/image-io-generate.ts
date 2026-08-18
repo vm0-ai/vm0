@@ -16,6 +16,8 @@ import { and, eq, isNotNull } from "drizzle-orm";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
+import { waitUntil } from "../context/wait-until";
+import { settle } from "../utils";
 import { logger } from "../../lib/log";
 import type { RouteEntry } from "../route-entry";
 import { env } from "../../lib/env";
@@ -23,10 +25,12 @@ import { db$, type ReadonlyDb } from "../external/db";
 import { createBuiltInGenerationRealtimeSubscription } from "../external/realtime";
 import {
   checkImageCredits$,
+  generateBytePlusImage,
   getMissingImagePricing,
   imagePricing$,
   insufficientCredits,
   parseImageOptions,
+  recordGeneratedImage$,
   serviceUnavailable,
   submitFalImageQueueGeneration,
   type ImageOptions,
@@ -34,6 +38,7 @@ import {
 } from "../services/image-generation.service";
 import {
   builtInGenerationRequestWithInternal,
+  completeBuiltInGenerationJob$,
   createBuiltInGenerationJob$,
   failBuiltInGenerationJob$,
   markBuiltInGenerationRunning$,
@@ -225,6 +230,136 @@ const submitImageProviderWebhookJob$ = command(
   },
 );
 
+const executeBytePlusImageProviderJob$ = command(
+  async ({ set }, args: ImageJobArgs, signal: AbortSignal): Promise<void> => {
+    await set(markBuiltInGenerationRunning$, args.generationId, signal);
+    signal.throwIfAborted();
+    const apiKey = env("BYTEPLUS_API_KEY");
+    if (!apiKey) {
+      const unavailable = serviceUnavailable(
+        "BytePlus image generation is not configured",
+        "NOT_CONFIGURED",
+      );
+      await set(
+        failBuiltInGenerationJob$,
+        { generationId: args.generationId, error: unavailable.body.error },
+        signal,
+      );
+      signal.throwIfAborted();
+      await set(completeRunBuiltInAdmission$, {
+        admission: args.admission,
+        status: "failed",
+      });
+      signal.throwIfAborted();
+      return;
+    }
+
+    const generation = await generateBytePlusImage(
+      args.options,
+      apiKey,
+      signal,
+    );
+    signal.throwIfAborted();
+    if (isErrorResponse(generation)) {
+      await set(
+        failBuiltInGenerationJob$,
+        { generationId: args.generationId, error: generation.body.error },
+        signal,
+      );
+      signal.throwIfAborted();
+      await set(completeRunBuiltInAdmission$, {
+        admission: args.admission,
+        status: "failed",
+      });
+      signal.throwIfAborted();
+      return;
+    }
+
+    const result = await set(
+      recordGeneratedImage$,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        runId: args.runId,
+        pricing: args.pricing,
+        generation,
+        usageIdempotency: {
+          generationId: args.generationId,
+          scope: "image",
+        },
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    await set(
+      completeBuiltInGenerationJob$,
+      { generationId: args.generationId, result },
+      signal,
+    );
+    signal.throwIfAborted();
+    await set(completeRunBuiltInAdmission$, {
+      admission: args.admission,
+      status: "completed",
+    });
+    signal.throwIfAborted();
+  },
+);
+
+const runBytePlusImageProviderJob$ = command(
+  async ({ set }, args: ImageJobArgs, signal: AbortSignal): Promise<void> => {
+    const execution = await settle(
+      set(executeBytePlusImageProviderJob$, args, signal),
+      signal,
+    );
+    signal.throwIfAborted();
+    if (execution.ok) {
+      return;
+    }
+
+    L.error("BytePlus image generation failed", {
+      generationId: args.generationId,
+      model: args.options.model,
+      error:
+        execution.error instanceof Error
+          ? execution.error.message
+          : String(execution.error),
+    });
+    await set(
+      failBuiltInGenerationJob$,
+      {
+        generationId: args.generationId,
+        error: {
+          message: "Image generation failed",
+          code: "BYTEPLUS_IMAGE_REQUEST_FAILED",
+        },
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    await set(completeRunBuiltInAdmission$, {
+      admission: args.admission,
+      status: "failed",
+    });
+    signal.throwIfAborted();
+  },
+);
+
+const startImageProviderJob$ = command(
+  async (
+    { set },
+    args: ImageJobArgs,
+    signal: AbortSignal,
+  ): Promise<GenerationErrorResponse | null> => {
+    if (args.options.provider === "byteplus") {
+      waitUntil(
+        set(runBytePlusImageProviderJob$, args, new AbortController().signal),
+      );
+      return null;
+    }
+    return await set(submitImageProviderWebhookJob$, args, signal);
+  },
+);
+
 const postImageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const db = get(db$);
@@ -275,9 +410,15 @@ const postImageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     );
   }
 
-  if (!env("FAL_KEY")) {
+  if (options.provider === "fal" && !env("FAL_KEY")) {
     return serviceUnavailable(
       "Fal image generation is not configured",
+      "NOT_CONFIGURED",
+    );
+  }
+  if (options.provider === "byteplus" && !env("BYTEPLUS_API_KEY")) {
+    return serviceUnavailable(
+      "BytePlus image generation is not configured",
       "NOT_CONFIGURED",
     );
   }
@@ -309,6 +450,8 @@ const postImageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         imageRequestRecord(options),
         {
           admissionId: admission?.id,
+          provider: options.provider,
+          providerTask: "image",
         },
       ),
     },
@@ -316,7 +459,7 @@ const postImageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   );
 
   const submitError = await set(
-    submitImageProviderWebhookJob$,
+    startImageProviderJob$,
     {
       generationId,
       orgId: auth.orgId,

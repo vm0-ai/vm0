@@ -220,6 +220,74 @@ describe("okou generate image command", () => {
     },
   );
 
+  it.each([
+    {
+      name: "an explicit Lite model with an implicit size",
+      runDefaultImageModel: undefined,
+      modelArguments: ["--model", "seedream5-lite"],
+      sizeArguments: [],
+      expectedModel: "seedream5-lite",
+      expectedSize: "auto",
+    },
+    {
+      name: "a Lite run default with an implicit size",
+      runDefaultImageModel: "seedream5-lite",
+      modelArguments: [],
+      sizeArguments: [],
+      expectedModel: undefined,
+      expectedSize: "auto",
+    },
+    {
+      name: "an explicit Lite size",
+      runDefaultImageModel: undefined,
+      modelArguments: ["--model", "seedream5-lite"],
+      sizeArguments: ["--size", "1024x1024"],
+      expectedModel: "seedream5-lite",
+      expectedSize: "1024x1024",
+    },
+  ])(
+    "should serialize $name without rewriting caller intent",
+    async ({
+      runDefaultImageModel,
+      modelArguments,
+      sizeArguments,
+      expectedModel,
+      expectedSize,
+    }) => {
+      if (runDefaultImageModel !== undefined) {
+        vi.stubEnv(DEFAULT_IMAGE_MODEL_ENV, runDefaultImageModel);
+      }
+      let capturedBody: unknown;
+      server.use(
+        http.post(IMAGE_URL, async ({ request }) => {
+          capturedBody = await request.json();
+          return HttpResponse.json(IMAGE_RESULT);
+        }),
+      );
+
+      await generateCommand.parseAsync([
+        "node",
+        "cli",
+        "image",
+        "--raw-prompt",
+        "Lite size precedence",
+        ...modelArguments,
+        ...sizeArguments,
+      ]);
+
+      expect(capturedBody).toEqual({
+        prompt: "Lite size precedence",
+        ...(expectedModel === undefined ? {} : { model: expectedModel }),
+        size: expectedSize,
+        quality: "medium",
+        background: "auto",
+        outputFormat: "png",
+        moderation: "auto",
+        safetyTolerance: "4",
+      });
+    },
+  );
+
   it("should surface the CDN embed URL when it differs from the file URL", async () => {
     const embedUrl =
       "https://cdn.vm7.io/cdn-cgi/image/fit=scale-down,format=auto,quality=85,metadata=none/artifacts/abc.png";
@@ -733,17 +801,23 @@ describe("okou generate image command", () => {
     expect(helpOutput).toContain("flux-pro-1.1");
     expect(helpOutput).toContain("qwen-image");
     expect(helpOutput).toContain("nano-banana-2");
+    expect(helpOutput).toContain("seedream5-pro");
+    expect(helpOutput).toContain("seedream5-lite");
     expect(normalizedHelpOutput).toContain("support varies");
     expect(helpOutput).toContain("3840x2160");
     expect(helpOutput).toContain("edges divisible by 16");
     expect(helpOutput).toContain("--compression <0-100>");
     expect(helpOutput).toContain("Moderation strictness: auto or low");
-    expect(helpOutput).toContain("Uses fal.ai for all image model execution");
+    expect(helpOutput).toContain(
+      "Uses fal.ai and BytePlus for built-in image model execution",
+    );
     expect(helpOutput).toContain("--seed");
     expect(helpOutput).toContain("--safety-tolerance");
     expect(helpOutput).toContain("--image-url");
     expect(helpOutput).toContain("--image-prompt-strength");
-    expect(helpOutput).toContain("Nano Banana 2 accepts up to 14");
+    expect(helpOutput).toContain(
+      "Nano Banana 2 and Seedream 5 Lite accept up to 14",
+    );
     expect(helpOutput).toContain("--style <id>");
     expect(helpOutput).toContain("--style-source <source>");
     expect(helpOutput).toContain("--compile");

@@ -916,6 +916,10 @@ export function ImageModelBrandIcon({ model }: { model: ImageModel }) {
     case "fal-ai/bytedance/seedream/v4/text-to-image": {
       return <ImageModelBrandSvg path={BYTEDANCE_ICON_PATH} />;
     }
+    case "dola-seedream-5-0-pro-260628":
+    case "seedream-5-0-lite-260128": {
+      return <ImageModelBrandSvg path={BYTEDANCE_ICON_PATH} />;
+    }
     case "fal-ai/nano-banana-2": {
       return <GeminiImageModelIcon />;
     }

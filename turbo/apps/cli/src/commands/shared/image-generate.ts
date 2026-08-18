@@ -152,6 +152,26 @@ function resolveImageRequestModel(
   return hasRunDefault && modelSource === "default" ? undefined : model;
 }
 
+function resolveImageRequestSize(
+  command: Command,
+  options: ImageOptions,
+): string {
+  if (command.getOptionValueSource("size") !== "default") {
+    return options.size;
+  }
+  if (options.imageUrl.length > 0) {
+    return "auto";
+  }
+
+  const selectedModel =
+    command.getOptionValueSource("model") === "default"
+      ? (runDefaultImageModelFromEnvironment() ?? options.model)
+      : options.model;
+  return selectedModel === IMAGE_MODEL_CONFIGS["seedream-5-0-lite-260128"].alias
+    ? "auto"
+    : options.size;
+}
+
 function imageModelPreferenceDetail(command: Command, model: string): string {
   const runDefaultModel = runDefaultImageModelFromEnvironment();
   if (runDefaultModel === undefined) {
@@ -240,12 +260,12 @@ export function createImageGenerateCommand(
     .option("--json", "Print the complete generation result as JSON")
     .option(
       "--model <model>",
-      "Model: gpt-image-1 (default), gpt-image-2, gpt-image-1.5, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4, or nano-banana-2",
+      "Model: gpt-image-1 (default), gpt-image-2, gpt-image-1.5, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4, seedream5-pro, seedream5-lite, or nano-banana-2",
       IMAGE_MODEL_CONFIGS[DEFAULT_IMAGE_MODEL].alias,
     )
     .option(
       "--size <size>",
-      "Image size: auto or WIDTHxHEIGHT; support varies by model",
+      "Image size: auto, WIDTHxHEIGHT, or a model-specific resolution preset; support varies by model",
       "1024x1024",
     )
     .option(
@@ -265,7 +285,7 @@ export function createImageGenerateCommand(
       "Moderation strictness: auto or low",
       "auto",
     )
-    .option("--seed <integer>", "Deterministic seed for fal models", parseSeed)
+    .option("--seed <integer>", "Deterministic seed when supported", parseSeed)
     .option("--safety-tolerance <level>", "fal safety tolerance: 1-6", "4")
     .option("--enhance-prompt", "Enable fal prompt enhancement when supported")
     .option(
@@ -315,7 +335,7 @@ Output:
 Notes:
   - Authenticates via OKOU_TOKEN (requires file:write capability)
   - Charges org credits after successful image generation
-  - Uses fal.ai for all image model execution
+  - Uses fal.ai and BytePlus for built-in image model execution
 
 Models:
   - fal.ai: gpt-image-1 (default), gpt-image-2, gpt-image-1.5,
@@ -324,6 +344,10 @@ Models:
     GPT Image models bill by fal output image quality and size.
     Other fal generations bill by output image or rounded-up output
     megapixel, depending on the model.
+  - BytePlus: seedream5-pro and seedream5-lite.
+    BytePlus generations bill the documented provider cost plus 25%, rounded
+    up to whole credits after the request's output and reference costs are
+    combined.
 
 Options:
   - Prompt modes: choose exactly one mode. Use --style <id> --prompt "..."
@@ -337,16 +361,19 @@ Options:
     edges divisible by 16, long:short ratio <= 3:1, and total pixels
     between 655,360 and 8,294,400. gpt-image-1.5, gpt-image-1, and
     gpt-image-1-mini use auto, 1024x1024, 1536x1024, or 1024x1536.
+    seedream5-pro accepts 1K, 1.5K, 2K, auto, or supported custom sizes;
+    seedream5-lite accepts 2K, 3K, 4K, auto, or supported custom sizes.
   - Quality: low, medium, high, or auto. Low is fastest for drafts.
   - Background: auto, opaque, or transparent when supported. gpt-image-2,
     Flux, Qwen, and Seedream do not support transparent backgrounds.
   - Format: png, jpeg, or webp for GPT Image and Nano Banana 2 models; png or
-    jpeg for the other fal models.
+    jpeg for the other fal and BytePlus models.
   - fal-only controls: --seed and --safety-tolerance for supported fal models;
     --enhance-prompt for flux-pro-1.1. --compression and --moderation low are
     not supported on the fal-backed image path.
-  - Image-to-image: pass --image-url to use the model's fal edit/redux endpoint.
-    Nano Banana 2 accepts up to 14 source images. Flux Redux accepts
+  - Image-to-image: pass --image-url to use the model's edit/reference path.
+    Nano Banana 2 and Seedream 5 Lite accept up to 14 source images; Seedream
+    5 Pro accepts up to 10. Flux Redux accepts
     --image-prompt-strength to override the provider default; GPT edit models
     accept --input-fidelity and supported models accept --mask-image-url.
 
@@ -414,15 +441,10 @@ ${formatRegistryListing(styles, "image styles")}`;
         const imagePromptStrength = parseImagePromptStrength(
           options.imagePromptStrength,
         );
-        const hasSourceImage = options.imageUrl.length > 0;
-        const size =
-          hasSourceImage && command.getOptionValueSource("size") === "default"
-            ? "auto"
-            : options.size;
         const result = await generateWebImage({
           prompt: resolvedPrompt,
           model: resolveImageRequestModel(command, options.model),
-          size,
+          size: resolveImageRequestSize(command, options),
           quality: options.quality,
           background: options.background,
           outputFormat: options.format,
