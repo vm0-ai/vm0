@@ -65,6 +65,20 @@ interface UsagePackSummary {
   readonly usagePackUsd: number;
 }
 
+interface UsagePackCreditSummary {
+  readonly bonusCredits: number;
+  readonly hasUsagePack: boolean;
+  readonly memberTotalCredits: number;
+  readonly purchasedCredits: number;
+  readonly totalCredits: number;
+}
+
+interface PendingInvitationSummary {
+  readonly email: string;
+  readonly role: string;
+  readonly usagePackUsd: number;
+}
+
 const apiUrl = process.env.VM0_API_BACKEND_URL!;
 const appUrl = deriveAppUrl(apiUrl);
 const appOrigin = new URL(appUrl).origin;
@@ -233,6 +247,40 @@ test("usage-pack and Plan transitions preserve scheduled intent", async ({
       tier: "team",
       usagePackUsd: 200,
     });
+  });
+});
+
+test("paid invitation purchases and revokes a pending member package", async ({
+  page,
+}) => {
+  test.setTimeout(360_000);
+
+  await withBillingOwner(page, "E2E Paid Member Invitation", async (owner) => {
+    const inviteeEmail = generateTestEmail("paid-onboarding");
+    let token = await buyUsagePackPlan(page, owner, "pro");
+    await expectUsagePackState(page, token, owner.userId, {
+      pendingChange: null,
+      tier: "pro",
+      usagePackUsd: 20,
+    });
+    await expectUsagePackCreditState(page, token, owner.userId, {
+      bonusCredits: 400,
+      hasUsagePack: true,
+      memberTotalCredits: 20_400,
+      purchasedCredits: 20_000,
+      totalCredits: 20_400,
+    });
+    await expectUsagePackCreditsUi(page);
+
+    token = await purchasePaidInvitation(page, owner, inviteeEmail, 50);
+    await expectPendingInvitationState(page, token, inviteeEmail, {
+      email: inviteeEmail,
+      role: "member",
+      usagePackUsd: 50,
+    });
+
+    token = await revokePaidInvitation(page, owner, inviteeEmail);
+    await expectPendingInvitationState(page, token, inviteeEmail, null);
   });
 });
 
@@ -417,6 +465,130 @@ async function buyUsagePackPlan(
     waitUntil: "domcontentloaded",
   });
   return await currentToken(page, owner);
+}
+
+async function expectUsagePackCreditsUi(page: Page): Promise<void> {
+  await page.goto(new URL("/?settings=usage", appUrl).toString(), {
+    waitUntil: "domcontentloaded",
+  });
+  const card = page.getByTestId("usage-pack-credit-card");
+  await expect(card).toBeVisible({ timeout: 30_000 });
+  await expect(
+    card.getByText("Usage pack credits", { exact: true }),
+  ).toBeVisible();
+  await expect(card.getByText("20,400", { exact: true }).first()).toBeVisible();
+  await expect(
+    card.getByTestId("usage-pack-credit-purchased"),
+  ).toHaveAccessibleName(/^Purchased — 20,000\./u);
+  await expect(
+    card.getByTestId("usage-pack-credit-bonus"),
+  ).toHaveAccessibleName(/^Bonus — 400\./u);
+}
+
+async function purchasePaidInvitation(
+  page: Page,
+  owner: BillingOwner,
+  email: string,
+  usagePackUsd: UsagePackUsd,
+): Promise<string> {
+  const settings = await openPeopleSettings(page);
+  await settings
+    .getByRole("button", { name: "Add member", exact: true })
+    .click();
+  const invite = page.getByRole("dialog", { name: "Invite member" });
+  await invite.getByPlaceholder("email@example.com").fill(email);
+  const packageField = invite
+    .getByText("Member packages", { exact: true })
+    .locator("..");
+  await packageField.getByRole("combobox").click();
+  await page
+    .getByRole("option", { name: USAGE_PACK_OPTION_PATTERNS[usagePackUsd] })
+    .click();
+  await invite.getByRole("button", { name: "Continue", exact: true }).click();
+
+  const review = page.getByRole("dialog", { name: "Review invitation" });
+  await expect(review).toBeVisible({ timeout: 30_000 });
+  await expect(review.getByText(email, { exact: true })).toBeVisible();
+  await expect(review.getByText(/^Member · /u)).toBeVisible();
+  const responsePromise = page.waitForResponse(
+    (response) => {
+      return (
+        response.request().method() === "POST" &&
+        /^\/api\/okou\/org\/invite\/purchase\/[^/]+\/confirm$/u.test(
+          new URL(response.url()).pathname,
+        )
+      );
+    },
+    { timeout: STATE_TIMEOUT_MS },
+  );
+  await review
+    .getByRole("button", { name: "Pay and invite", exact: true })
+    .click();
+  const response = await responsePromise;
+  expect(response.status()).toBe(200);
+  await expect(review).toBeHidden({ timeout: 30_000 });
+
+  const row = pendingInvitationRow(settings, email);
+  await expect(row).toBeVisible({ timeout: 30_000 });
+  await expect(
+    row.getByText(`$${usagePackUsd}/month`, { exact: true }),
+  ).toBeVisible();
+  await expect(row.getByText("Pending", { exact: true })).toBeVisible();
+  return await currentToken(page, owner);
+}
+
+async function revokePaidInvitation(
+  page: Page,
+  owner: BillingOwner,
+  email: string,
+): Promise<string> {
+  const settings = await openPeopleSettings(page);
+  const row = pendingInvitationRow(settings, email);
+  await expect(row).toBeVisible({ timeout: 30_000 });
+  await row.getByRole("button", { name: `Actions for ${email}` }).click();
+  await page
+    .getByRole("menuitem", { name: "Revoke invitation", exact: true })
+    .click();
+
+  const dialog = page.getByRole("dialog", { name: "Revoke invitation?" });
+  await expect(dialog).toBeVisible();
+  const responsePromise = page.waitForResponse(
+    (response) => {
+      return (
+        response.request().method() === "DELETE" &&
+        new URL(response.url()).pathname === "/api/okou/org/invite"
+      );
+    },
+    { timeout: STATE_TIMEOUT_MS },
+  );
+  await dialog.getByRole("button", { name: "Revoke", exact: true }).click();
+  const response = await responsePromise;
+  expect(response.status()).toBe(200);
+  await expect(dialog).toBeHidden({ timeout: 30_000 });
+  await expect(pendingInvitationRow(settings, email)).toHaveCount(0, {
+    timeout: 30_000,
+  });
+  return await currentToken(page, owner);
+}
+
+async function openPeopleSettings(page: Page): Promise<Locator> {
+  await page.goto(new URL("/?settings=people", appUrl).toString(), {
+    waitUntil: "domcontentloaded",
+  });
+  const settings = page.getByRole("dialog", { name: "Settings" });
+  await expect(settings).toBeVisible({ timeout: 30_000 });
+  await expect(
+    settings.getByRole("heading", { name: "People", exact: true }),
+  ).toBeVisible();
+  return settings;
+}
+
+function pendingInvitationRow(settings: Locator, email: string): Locator {
+  return settings
+    .getByText(email, { exact: true })
+    .locator(
+      "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' grid ')][1]",
+    );
 }
 
 async function changeUsagePack(
@@ -808,6 +980,50 @@ async function expectUsagePackState(
     .toEqual(expected);
 }
 
+async function expectUsagePackCreditState(
+  page: Page,
+  token: string,
+  memberId: string,
+  expected: UsagePackCreditSummary,
+): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        return await pollSafely(async () => {
+          return await readUsagePackCreditSummary(page, token, memberId);
+        });
+      },
+      {
+        intervals: POLL_INTERVALS_MS,
+        message: `usage-pack credits should become ${JSON.stringify(expected)}`,
+        timeout: STATE_TIMEOUT_MS,
+      },
+    )
+    .toEqual(expected);
+}
+
+async function expectPendingInvitationState(
+  page: Page,
+  token: string,
+  email: string,
+  expected: PendingInvitationSummary | null,
+): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        return await pollSafely(async () => {
+          return await readPendingInvitationSummary(page, token, email);
+        });
+      },
+      {
+        intervals: POLL_INTERVALS_MS,
+        message: `pending invitation should become ${JSON.stringify(expected)}`,
+        timeout: STATE_TIMEOUT_MS,
+      },
+    )
+    .toEqual(expected);
+}
+
 async function expectConcurrencyState(
   page: Page,
   token: string,
@@ -939,6 +1155,68 @@ async function readUsagePackSummary(
     usagePackUsd: requireNumber(
       allocation.usagePackUsd,
       "usage-pack allocation amount",
+    ),
+  };
+}
+
+async function readUsagePackCreditSummary(
+  page: Page,
+  token: string,
+  memberId: string,
+): Promise<UsagePackCreditSummary> {
+  const body = requireRecord(
+    await getApiJson(page, "/api/okou/billing/usage-pack-credits", token),
+    "usage-pack credits",
+  );
+  const member = requireArray(body.memberCredits, "member usage-pack credits")
+    .map((value, index) => {
+      return requireRecord(value, `member usage-pack credits ${index}`);
+    })
+    .find((value) => value.memberId === memberId);
+  if (!member) {
+    throw new Error(`usage-pack credits for member ${memberId} not found`);
+  }
+  return {
+    bonusCredits: requireNumber(body.bonusCredits, "usage-pack bonus credits"),
+    hasUsagePack: requireBoolean(body.hasUsagePack, "usage-pack availability"),
+    memberTotalCredits: requireNumber(
+      member.totalCredits,
+      "member usage-pack total credits",
+    ),
+    purchasedCredits: requireNumber(
+      body.purchasedCredits,
+      "usage-pack purchased credits",
+    ),
+    totalCredits: requireNumber(body.totalCredits, "usage-pack total credits"),
+  };
+}
+
+async function readPendingInvitationSummary(
+  page: Page,
+  token: string,
+  email: string,
+): Promise<PendingInvitationSummary | null> {
+  const body = requireRecord(
+    await getApiJson(page, "/api/okou/org/members", token),
+    "organization members",
+  );
+  const invitation = requireArray(
+    body.pendingInvitations,
+    "pending invitations",
+  )
+    .map((value, index) => {
+      return requireRecord(value, `pending invitation ${index}`);
+    })
+    .find((value) => value.email === email);
+  if (!invitation) {
+    return null;
+  }
+  return {
+    email: requireString(invitation.email, "pending invitation email"),
+    role: requireString(invitation.role, "pending invitation role"),
+    usagePackUsd: requireNumber(
+      invitation.usagePackUsd,
+      "pending invitation usage pack",
     ),
   };
 }
