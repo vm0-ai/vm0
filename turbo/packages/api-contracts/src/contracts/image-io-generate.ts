@@ -11,7 +11,7 @@ const stringOrStringArraySchema = z.union([
 ]);
 const numberOrStringSchema = z.union([z.number(), z.string()]);
 
-export const zeroImageIoGenerateRequestSchema = z
+export const imageIoGenerateRequestSchema = z
   .object({
     prompt: z.string().optional(),
     model: z.string().optional(),
@@ -37,7 +37,7 @@ export const zeroImageIoGenerateRequestSchema = z
   })
   .passthrough();
 
-export const zeroImageIoGenerateResponseSchema = z.object({
+export const imageIoGenerateResponseSchema = z.object({
   id: z.string(),
   filename: z.string(),
   contentType: z.string(),
@@ -67,21 +67,21 @@ export const zeroImageIoGenerateResponseSchema = z.object({
   imagePromptStrength: z.number().optional(),
 });
 
-export type ZeroImageIoGenerateRequest = z.infer<
-  typeof zeroImageIoGenerateRequestSchema
+export type ImageIoGenerateRequest = z.infer<
+  typeof imageIoGenerateRequestSchema
 >;
-export type ZeroImageIoGenerateResponse = z.infer<
-  typeof zeroImageIoGenerateResponseSchema
+export type ImageIoGenerateResponse = z.infer<
+  typeof imageIoGenerateResponseSchema
 >;
 
-export const zeroImageIoGenerateContract = c.router({
+export const imageIoGenerateContract = c.router({
   post: {
     method: "POST",
     path: "/api/okou/image-io/generate",
     headers: authHeadersSchema,
-    body: zeroImageIoGenerateRequestSchema,
+    body: imageIoGenerateRequestSchema,
     responses: {
-      200: zeroImageIoGenerateResponseSchema,
+      200: imageIoGenerateResponseSchema,
       202: builtInGenerationAcceptedResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
@@ -95,4 +95,4 @@ export const zeroImageIoGenerateContract = c.router({
   },
 });
 
-export type ZeroImageIoGenerateContract = typeof zeroImageIoGenerateContract;
+export type ImageIoGenerateContract = typeof imageIoGenerateContract;

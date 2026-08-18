@@ -1588,13 +1588,13 @@ export {
   type ZeroAvatarVideoVoicesQuery,
 } from "./zero-avatar-video";
 export {
-  zeroImageIoGenerateContract,
-  zeroImageIoGenerateRequestSchema,
-  zeroImageIoGenerateResponseSchema,
-  type ZeroImageIoGenerateContract,
-  type ZeroImageIoGenerateRequest,
-  type ZeroImageIoGenerateResponse,
-} from "./zero-image-io-generate";
+  imageIoGenerateContract,
+  imageIoGenerateRequestSchema,
+  imageIoGenerateResponseSchema,
+  type ImageIoGenerateContract,
+  type ImageIoGenerateRequest,
+  type ImageIoGenerateResponse,
+} from "./image-io-generate";
 export {
   imageShareXContract,
   imageShareXRequestSchema,
@@ -1676,13 +1676,13 @@ export {
   type AirQualityCurrentRequest,
 } from "./weather";
 export {
-  zeroVideoIoGenerateContract,
-  zeroVideoIoGenerateRequestSchema,
-  zeroVideoIoGenerateResponseSchema,
-  type ZeroVideoIoGenerateContract,
-  type ZeroVideoIoGenerateRequest,
-  type ZeroVideoIoGenerateResponse,
-} from "./zero-video-io-generate";
+  videoIoGenerateContract,
+  videoIoGenerateRequestSchema,
+  videoIoGenerateResponseSchema,
+  type VideoIoGenerateContract,
+  type VideoIoGenerateRequest,
+  type VideoIoGenerateResponse,
+} from "./video-io-generate";
 export {
   builtInGenerationContract,
   builtInGenerationTypeSchema,
