@@ -21,7 +21,9 @@ import {
 import { useTranslation } from "react-i18next";
 import {
   chatListQuery$,
+  pinAgentDialogQuery$,
   setChatListQuery$,
+  setPinAgentDialogQuery$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import {
   defaultAgentId$,
@@ -1196,6 +1198,131 @@ export function AgentListDialog({
               onSelect={handleChatThread}
             />
           </>
+        )}
+      </CommandList>
+    </CommandDialog>
+  );
+}
+
+export function PinAgentDialog({
+  open,
+  onOpenChange,
+  subagents,
+  onPinAgent,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  subagents: SubagentInfo[];
+  onPinAgent: (agentId: string) => void;
+}) {
+  const { t } = useTranslation("agents");
+  const query = useGet(pinAgentDialogQuery$);
+  const setQuery = useSet(setPinAgentDialogQuery$);
+  const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
+
+  const pinnedIdSet = new Set(pinnedIds);
+  const trimmedQuery = query.trim().toLowerCase();
+  const matches = filterAgentDialogItems(subagents, trimmedQuery);
+  const pinnable = matches.filter((agent) => {
+    return !pinnedIdSet.has(agent.id);
+  });
+  const alreadyPinned = matches.filter((agent) => {
+    return pinnedIdSet.has(agent.id);
+  });
+
+  const pinAgent = (agentId: string) => {
+    onOpenChange(false);
+    onPinAgent(agentId);
+  };
+
+  return (
+    <CommandDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      closeLabel={t(($) => {
+        return $.actions.close;
+      })}
+      className="zero-app sm:max-w-xl w-[calc(100vw-2rem)] gap-0"
+      commandClassName="gap-0"
+      commandProps={{ shouldFilter: false, loop: true }}
+    >
+      <DialogHeader className="px-5 pt-5 pb-3">
+        <DialogTitle className="text-base font-semibold">
+          {t(($) => {
+            return $.sidebar.pinAgent;
+          })}
+        </DialogTitle>
+        <DialogDescription className="text-sm text-muted-foreground mt-1">
+          {t(($) => {
+            return $.sidebar.pinAgentDescription;
+          })}
+        </DialogDescription>
+      </DialogHeader>
+
+      <AgentCommandSearch
+        query={query}
+        setQuery={setQuery}
+        placeholder={t(($) => {
+          return $.sidebar.searchAgents;
+        })}
+      />
+
+      <CommandList data-testid="pin-agent-dialog-list">
+        {matches.length === 0 && (
+          <p className="px-6 py-3 text-xs text-muted-foreground">
+            {t(($) => {
+              return $.sidebar.noResults;
+            })}
+          </p>
+        )}
+        {pinnable.length > 0 && (
+          <AgentCommandSection
+            label={t(($) => {
+              return $.sidebar.sections.others;
+            })}
+          >
+            {pinnable.map((agent) => {
+              return (
+                <CommandItem
+                  key={agent.id}
+                  value={agent.id}
+                  onSelect={() => {
+                    return pinAgent(agent.id);
+                  }}
+                  className="group w-full gap-2 px-1 py-2"
+                >
+                  <AgentCommandAgentContent agent={agent} />
+                  <Pin size={16} className="ml-auto shrink-0 opacity-50" />
+                </CommandItem>
+              );
+            })}
+          </AgentCommandSection>
+        )}
+        {alreadyPinned.length > 0 && (
+          <AgentCommandSection
+            label={t(($) => {
+              return $.sidebar.pinned;
+            })}
+            className="pb-3"
+          >
+            {alreadyPinned.map((agent) => {
+              return (
+                <CommandItem
+                  key={agent.id}
+                  value={agent.id}
+                  disabled
+                  className="w-full gap-2 px-1 py-2 opacity-60"
+                >
+                  <AgentCommandAgentContent agent={agent} />
+                  <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                    {t(($) => {
+                      return $.sidebar.pinned;
+                    })}
+                  </span>
+                </CommandItem>
+              );
+            })}
+          </AgentCommandSection>
         )}
       </CommandList>
     </CommandDialog>

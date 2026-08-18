@@ -32,14 +32,22 @@ export const pinnedAgentIds$ = computed(async (get) => {
   });
 });
 
-/** Pinned agent IDs resolved to full agent objects. */
+/** Pinned agent IDs resolved to full agent objects, in pinned order. */
 export const pinnedAgents$ = computed(async (get) => {
   const ids = await get(pinnedAgentIds$);
-  const pinnedIds = new Set(ids);
   const list = await get(sortedAgents$);
-  return list.filter((a) => {
-    return pinnedIds.has(a.id);
-  });
+  const agentById = new Map(
+    list.map((a) => {
+      return [a.id, a];
+    }),
+  );
+  return ids
+    .map((id) => {
+      return agentById.get(id);
+    })
+    .filter((a): a is NonNullable<typeof a> => {
+      return a !== undefined;
+    });
 });
 
 export const displayedPinnedAgents$ = computed(async (get) => {
@@ -82,6 +90,42 @@ export const setAgentPinned$ = command(
     }
 
     await set(updateUserPreference$, { pinnedAgentIds: [...next] }, signal);
+  },
+);
+
+/**
+ * Move a pinned agent to the position of another pinned agent. The default
+ * agent always leads the pinned list, so it is neither moved nor displaced.
+ */
+export const movePinnedAgent$ = command(
+  async (
+    { get, set },
+    {
+      agentId,
+      targetAgentId,
+    }: { readonly agentId: string; readonly targetAgentId: string },
+    signal: AbortSignal,
+  ) => {
+    const defaultAgentId = await get(defaultAgentId$);
+    signal.throwIfAborted();
+    if (agentId === defaultAgentId || targetAgentId === defaultAgentId) {
+      return;
+    }
+
+    const ids = (await get(pinnedAgentIds$)).filter((id) => {
+      return id !== defaultAgentId;
+    });
+    signal.throwIfAborted();
+    const from = ids.indexOf(agentId);
+    const to = ids.indexOf(targetAgentId);
+    if (from === -1 || to === -1 || from === to) {
+      return;
+    }
+
+    const next = [...ids];
+    next.splice(from, 1);
+    next.splice(to, 0, agentId);
+    await set(updateUserPreference$, { pinnedAgentIds: next }, signal);
   },
 );
 

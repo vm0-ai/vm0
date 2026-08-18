@@ -107,7 +107,7 @@ test("navigate to agents page and verify heading", async ({ page }) => {
   });
 });
 
-test("pinned agents use five equal columns and keep New in the first row", async ({
+test("pinned agents use five equal columns and keep Pin in the first row", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -140,11 +140,11 @@ test("pinned agents use five equal columns and keep New in the first row", async
 
   const grid = page.getByTestId("pinned-agents-grid");
   const cards = grid.getByTestId("pinned-agent-card");
-  const newAgent = grid.getByRole("button", {
-    name: "Open a conversation",
+  const pinAgent = grid.getByRole("button", {
+    name: "Pin an agent",
   });
   await expect(cards).toHaveCount(4);
-  await expect(newAgent).toBeVisible();
+  await expect(pinAgent).toBeVisible();
 
   await expect
     .poll(async () => {
@@ -153,7 +153,7 @@ test("pinned agents use five equal columns and keep New in the first row", async
         cards.nth(1).boundingBox(),
         cards.nth(2).boundingBox(),
         cards.nth(3).boundingBox(),
-        newAgent.boundingBox(),
+        pinAgent.boundingBox(),
       ]);
       if (boxes.some((box) => box === null)) {
         return Number.POSITIVE_INFINITY;
@@ -170,7 +170,7 @@ test("pinned agents use five equal columns and keep New in the first row", async
         cards.nth(1).boundingBox(),
         cards.nth(2).boundingBox(),
         cards.nth(3).boundingBox(),
-        newAgent.boundingBox(),
+        pinAgent.boundingBox(),
       ]);
       if (boxes.some((box) => box === null)) {
         return 0;
@@ -191,7 +191,7 @@ test("pinned agents use five equal columns and keep New in the first row", async
         cards.nth(1).boundingBox(),
         cards.nth(2).boundingBox(),
         cards.nth(3).boundingBox(),
-        newAgent.boundingBox(),
+        pinAgent.boundingBox(),
       ]);
       if (boxes.some((box) => box === null)) {
         return Number.POSITIVE_INFINITY;
@@ -203,15 +203,15 @@ test("pinned agents use five equal columns and keep New in the first row", async
 
   await expect
     .poll(async () => {
-      const [gridBox, newAgentBox] = await Promise.all([
+      const [gridBox, pinAgentBox] = await Promise.all([
         grid.boundingBox(),
-        newAgent.boundingBox(),
+        pinAgent.boundingBox(),
       ]);
-      if (!gridBox || !newAgentBox) {
+      if (!gridBox || !pinAgentBox) {
         return Number.POSITIVE_INFINITY;
       }
       return Math.abs(
-        newAgentBox.x + newAgentBox.width - (gridBox.x + gridBox.width),
+        pinAgentBox.x + pinAgentBox.width - (gridBox.x + gridBox.width),
       );
     })
     .toBeLessThan(2);
@@ -242,7 +242,7 @@ test("pinned agents use five equal columns and keep New in the first row", async
         cards.nth(0).boundingBox(),
         cards.nth(1).boundingBox(),
         cards.nth(2).boundingBox(),
-        newAgent.boundingBox(),
+        pinAgent.boundingBox(),
       ]);
       if (boxes.some((box) => box === null)) {
         return Number.POSITIVE_INFINITY;

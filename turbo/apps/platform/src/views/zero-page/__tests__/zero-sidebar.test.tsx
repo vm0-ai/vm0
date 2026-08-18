@@ -337,6 +337,47 @@ function setupSidebarPage(
   detachedSetupPage(options);
 }
 
+function pinnedAgentNames(container: HTMLElement): string[] {
+  return within(container)
+    .getAllByTestId("pinned-agent-card")
+    .map((card) => {
+      return card.textContent?.trim() ?? "";
+    });
+}
+
+function commandItemByText(container: HTMLElement, text: string): HTMLElement {
+  const item = within(container)
+    .getAllByRole("option")
+    .find((candidate) => {
+      return candidate.textContent
+        ?.replace(/\s+/g, " ")
+        .trim()
+        .startsWith(text);
+    });
+  if (!item) {
+    throw new Error(`${text} command item not found`);
+  }
+  return item;
+}
+
+/**
+ * jsdom does not implement DataTransfer, so drag events need a stub that keeps
+ * the payload the pinned grid writes on drag start.
+ */
+function createDataTransferStub(): DataTransfer {
+  const values = new Map<string, string>();
+  return {
+    effectAllowed: "none",
+    dropEffect: "none",
+    setData: (format: string, value: string) => {
+      values.set(format, value);
+    },
+    getData: (format: string) => {
+      return values.get(format) ?? "";
+    },
+  } as unknown as DataTransfer;
+}
+
 function threadRowByTitle(title: string): HTMLElement {
   const link = threadLinkByTitle(title);
   const row = link.parentElement;
@@ -3330,7 +3371,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("keeps New after the first four pinned agents in navigation order", async () => {
+  it("keeps Pin after the first four pinned agents in navigation order", async () => {
     const pinnedAgentIds = prepareOverflowingPinnedAgents();
     context.mocks.data.userPreferences({ pinnedAgentIds });
 
@@ -3349,13 +3390,13 @@ describe("zero sidebar", () => {
     });
 
     const newAgent = queryAllByRoleFast("button", grid).find((candidate) => {
-      return candidate.getAttribute("aria-label") === "Open a conversation";
+      return candidate.getAttribute("aria-label") === "Pin an agent";
     });
     if (!newAgent) {
-      throw new Error("New agent button not found");
+      throw new Error("Pin agent button not found");
     }
-    // Cards render as Zero, Research, Support, Operations, New, Analytics,
-    // Billing, so New closes the first row and the rest wrap after it.
+    // Cards render as Zero, Research, Support, Operations, Pin, Analytics,
+    // Billing, so Pin closes the first row and the rest wrap after it.
     const fourthAgent = pinnedAgentLink(grid, "Operations Agent");
     const fifthAgent = pinnedAgentLink(grid, "Analytics Agent");
 
@@ -3367,6 +3408,119 @@ describe("zero sidebar", () => {
       newAgent.compareDocumentPosition(fifthAgent) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it("pins an agent from the grid pin entry", async () => {
+    prepareAgentTeam();
+    context.mocks.data.userPreferences({ pinnedAgentIds: [RESEARCH_AGENT_ID] });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    await waitFor(() => {
+      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(2);
+    });
+
+    click(screen.getByLabelText("Pin an agent"));
+
+    const dialogList = await screen.findByTestId("pin-agent-dialog-list");
+    const pinnedOption = commandItemByText(dialogList, "Research Agent");
+    expect(pinnedOption.getAttribute("aria-disabled")).toBe("true");
+
+    click(commandItemByText(dialogList, "Support Agent"));
+
+    await waitFor(() => {
+      expect(pinnedAgentLink(grid, "Support Agent")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("pin-agent-dialog-list")).toBeNull();
+  });
+
+  it("reorders pinned agents with drag and drop", async () => {
+    const pinnedAgentIds = prepareOverflowingPinnedAgents();
+    context.mocks.data.userPreferences({ pinnedAgentIds });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    await waitFor(() => {
+      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
+    });
+    expect(pinnedAgentNames(grid)).toStrictEqual([
+      "Zero",
+      "Research Agent",
+      "Support Agent",
+      "Operations Agent",
+      "Analytics Agent",
+      "Billing Agent",
+    ]);
+
+    const dataTransfer = createDataTransferStub();
+    const dragged = pinnedAgentLink(grid, "Support Agent");
+    const target = pinnedAgentLink(grid, "Billing Agent");
+    fireEvent.dragStart(dragged, { dataTransfer });
+    fireEvent.dragOver(target, { dataTransfer });
+    fireEvent.drop(target, { dataTransfer });
+
+    await waitFor(() => {
+      expect(pinnedAgentNames(grid)).toStrictEqual([
+        "Zero",
+        "Research Agent",
+        "Operations Agent",
+        "Analytics Agent",
+        "Billing Agent",
+        "Support Agent",
+      ]);
+    });
+  });
+
+  it("leaves the lead agent in place when it is dragged", async () => {
+    const pinnedAgentIds = prepareOverflowingPinnedAgents();
+    context.mocks.data.userPreferences({ pinnedAgentIds });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    await waitFor(() => {
+      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
+    });
+
+    const lead = pinnedAgentLink(grid, "Zero");
+    expect(lead.getAttribute("draggable")).toBe("false");
+
+    const dataTransfer = createDataTransferStub();
+    const dragged = pinnedAgentLink(grid, "Support Agent");
+    fireEvent.dragStart(dragged, { dataTransfer });
+    fireEvent.dragOver(lead, { dataTransfer });
+    fireEvent.drop(lead, { dataTransfer });
+
+    await waitFor(() => {
+      expect(pinnedAgentNames(grid)).toStrictEqual([
+        "Zero",
+        "Research Agent",
+        "Support Agent",
+        "Operations Agent",
+        "Analytics Agent",
+        "Billing Agent",
+      ]);
+    });
   });
 
   it("keeps the single-column sidebar when the three-column flag is off", async () => {

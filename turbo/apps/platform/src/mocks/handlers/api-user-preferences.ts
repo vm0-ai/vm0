@@ -27,7 +27,7 @@ let mockPreferences: UserPreferencesResponse = {
 };
 
 function normalizePinnedAgentIds(ids: readonly string[]): string[] {
-  return [...new Set(ids)].sort();
+  return [...new Set(ids)];
 }
 
 export function resetMockUserPreferences(): void {
