@@ -4,7 +4,7 @@ import {
   type BillingStatusResponse,
 } from "@okouai/api-contracts/contracts/zero-billing";
 import { orgMembersContract } from "@okouai/api-contracts/contracts/org-member-routes";
-import { zeroUsageMembersContract } from "@okouai/api-contracts/contracts/zero-usage";
+import { usageMembersContract } from "@okouai/api-contracts/contracts/usage";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -145,7 +145,7 @@ function mockUsageStory(): void {
   context.mocks.api(orgMembersContract.members, ({ respond }) => {
     return respond(200, orgMembers);
   });
-  context.mocks.api(zeroUsageMembersContract.get, ({ respond }) => {
+  context.mocks.api(usageMembersContract.get, ({ respond }) => {
     return respond(200, {
       period: {
         start: "2026-03-01T00:00:00Z",

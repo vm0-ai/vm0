@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroUsageMembersContract } from "@okouai/api-contracts/contracts/zero-usage";
+import { usageMembersContract } from "@okouai/api-contracts/contracts/usage";
 
 import { badRequestMessage } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -24,7 +24,7 @@ function forbidden() {
 const getUsageMembersInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const query = get(queryOf(zeroUsageMembersContract.get));
+    const query = get(queryOf(usageMembersContract.get));
     const range = query.range ?? "billingPeriod";
     const tz = query.tz ?? "UTC";
 
@@ -47,7 +47,7 @@ const getUsageMembersInner$ = command(
 
 export const usageMembersRoutes: readonly RouteEntry[] = [
   {
-    route: zeroUsageMembersContract.get,
+    route: usageMembersContract.get,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       getUsageMembersInner$,
