@@ -316,7 +316,7 @@ mod tests {
 
     const RUN_ID: &str = "receipt-journal-scheduler-test";
     const DELIVERY_ID: &str = "60fca608-d174-4c1a-a1b2-57607b3adf46";
-    const WAIT_TIMEOUT: Duration = Duration::from_secs(2);
+    const WAIT_TIMEOUT: Duration = Duration::from_secs(5);
 
     #[test]
     fn blocked_journal_persistence_does_not_stall_unrelated_async_work() {

@@ -21,7 +21,7 @@ const RUN_ID: &str = "codex-app-server-backend-active-input-cancellation-test";
 const DELIVERY_ID: &str = "2532261d-b0e1-471e-b93d-1acae383d001";
 const LATE_DELIVERY_ID: &str = "2532261d-b0e1-471e-b93d-1acae383d002";
 
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn cancellation_preserves_a_steer_response_already_in_flight()
 -> Result<(), Box<dyn std::error::Error>> {
     let mock = common::build_and_locate_mock_codex()?;

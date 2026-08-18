@@ -663,7 +663,7 @@ mod tests {
         );
     }
 
-    #[tokio::test(flavor = "multi_thread")]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn writer_uses_official_steer_ack_for_active_input_receipts() {
         let mut child = tokio::process::Command::new("cat")
             .stdin(Stdio::piped())

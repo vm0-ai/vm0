@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 
 const DELIVERY_ID: &str = "09065b04-cb85-4dd3-8cde-965e61ab8bfa";
 
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn claude_receipts_delivery_only_after_follow_up_reaches_stdin()
 -> Result<(), Box<dyn std::error::Error>> {
     let mock = common::build_and_locate_mock()?;

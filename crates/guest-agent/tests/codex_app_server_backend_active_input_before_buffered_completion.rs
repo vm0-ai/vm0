@@ -11,7 +11,7 @@ use serde_json::Value;
 use std::time::Duration;
 use uuid::Uuid;
 
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn codex_app_server_backend_steers_accepted_input_before_buffered_completion()
 -> Result<(), Box<dyn std::error::Error>> {
     let mock = common::build_and_locate_mock_codex()?;

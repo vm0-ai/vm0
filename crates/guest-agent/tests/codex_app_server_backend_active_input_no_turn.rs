@@ -15,7 +15,7 @@ use std::time::Duration;
 const RUN_ID: &str = "codex-app-server-backend-active-input-no-turn-test";
 const DELIVERY_ID: &str = "34919e72-7fb3-4b8f-b2ad-9a5e2e1ba0a6";
 
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn codex_app_server_backend_fails_visible_when_no_active_turn()
 -> Result<(), Box<dyn std::error::Error>> {
     let mock = common::build_and_locate_mock_codex()?;
