@@ -7,6 +7,9 @@ import pytest
 import http_header_syntax
 
 _HTTP_TCHARS = frozenset(string.ascii_letters + string.digits + "!#$%&'*+-.^_`|~")
+_ALLOWED_ASCII_HEADER_VALUE_CHARS = frozenset(
+    chr(code_point) for code_point in range(0x20, 0x7F)
+) | {"\t"}
 
 
 @pytest.mark.parametrize("code_point", range(0x80))
@@ -37,9 +40,10 @@ def test_http_header_name_classifies_strings(value: str, expected: bool) -> None
 @pytest.mark.parametrize("code_point", range(0x80))
 def test_header_value_control_classifies_ascii(code_point: int) -> None:
     char = chr(code_point)
-    expected = (code_point <= 0x1F and char != "\t") or code_point == 0x7F
 
-    assert http_header_syntax.has_forbidden_header_value_control(char) is expected
+    assert http_header_syntax.has_forbidden_header_value_control(char) is (
+        char not in _ALLOWED_ASCII_HEADER_VALUE_CHARS
+    )
 
 
 @pytest.mark.parametrize(
