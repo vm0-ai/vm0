@@ -146,11 +146,6 @@ export const chatEvents = pgTable(
       uniqueIndex("chat_events_run_terminal_unique")
         .on(table.runId)
         .where(chatEventTerminalPredicate(table.eventType)),
-      uniqueIndex("chat_events_output_thinking_run_id_unique")
-        .on(table.runId)
-        .where(
-          sql`${table.eventType} = 'output.thinking' AND ${table.runId} IS NOT NULL`,
-        ),
       // control.interrupt rows carry their target run in run_id, so only one
       // interrupt may target a run.
       uniqueIndex("chat_events_control_interrupt_run_id_unique")

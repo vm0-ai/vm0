@@ -3097,13 +3097,13 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
     false,
   );
   const historicalClassifierCallers = execFileSync(
-    "rg",
+    "git",
     [
+      "grep",
       "-l",
-      "--glob",
-      "*.ts",
       "agent-compose-consolidation-preflight-historical-product-builder",
-      ".",
+      "--",
+      "*.ts",
     ],
     { cwd: repositoryRoot, encoding: "utf8" },
   )
@@ -3111,8 +3111,8 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
     .split("\n")
     .sort();
   assert.deepEqual(historicalClassifierCallers, [
-    "./turbo/packages/db/scripts/agent-compose-consolidation-preflight-refinements.ts",
-    "./turbo/packages/db/scripts/test-agent-compose-consolidation-preflight.ts",
+    "turbo/packages/db/scripts/agent-compose-consolidation-preflight-refinements.ts",
+    "turbo/packages/db/scripts/test-agent-compose-consolidation-preflight.ts",
   ]);
 
   const service = await fs.readFile(

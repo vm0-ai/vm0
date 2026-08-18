@@ -91,8 +91,23 @@ function codexAgentMessageText(event: AgentEvent): string | null {
   return item.text;
 }
 
-function assistantEventText(event: AgentEvent): string | null {
+function assistantMessageText(event: AgentEvent): string | null {
   return anthropicMessageText(event) ?? codexAgentMessageText(event);
+}
+
+function codexReasoningText(event: AgentEvent): string | null {
+  if (event.type !== "item.completed") {
+    return null;
+  }
+  const item = recordOf(event.item);
+  if (
+    item?.type !== "reasoning" ||
+    typeof item.text !== "string" ||
+    item.text.trim().length === 0
+  ) {
+    return null;
+  }
+  return item.text;
 }
 
 function resultText(event: AgentEvent): string | null {
@@ -138,7 +153,7 @@ function latestCandidate(
   return latest;
 }
 
-function eventMessageId(event: AgentEvent): string {
+function eventOutputId(event: AgentEvent): string {
   const message = recordOf(event.message);
   if (typeof message?.id === "string") {
     return message.id;
@@ -216,19 +231,32 @@ function nextStoredProjectionSequenceState(
 function assistantEventItems(
   events: readonly AgentEvent[],
 ): InsertAssistantEventsInput["items"] {
-  return events.flatMap((event) => {
-    const text = assistantEventText(event);
-    if (text === null) {
-      return [];
-    }
-    return [
-      {
+  const items: InsertAssistantEventsInput["items"][number][] = [];
+  for (const event of events) {
+    const messageText = assistantMessageText(event);
+    if (messageText !== null) {
+      items.push({
+        eventType: "output.message",
         runEventSequenceNumber: event.sequenceNumber,
-        content: text,
-        runEventId: eventMessageId(event),
-      },
-    ];
-  });
+        content: messageText,
+        runEventId: eventOutputId(event),
+      });
+      continue;
+    }
+
+    const reasoningText = codexReasoningText(event);
+    if (reasoningText === null) {
+      continue;
+    }
+
+    items.push({
+      eventType: "output.thinking",
+      runEventSequenceNumber: event.sequenceNumber,
+      thinking: reasoningText,
+      runEventId: eventOutputId(event),
+    });
+  }
+  return items;
 }
 
 async function lockRunOutputProjection(

@@ -27,6 +27,16 @@ rules as a newer message.
 The best-effort recent chat context supplied automatically when a new session
 starts. It is distinct from explicit retrieval of a thread's complete history.
 
+## Model-originated thinking
+
+Reasoning content emitted by the model or its runtime as part of the durable
+assistant transcript.
+
+## Initial progress
+
+Server-generated, transient progress shown while waiting for model output. It
+is distinct from model-originated thinking and durable completed-work history.
+
 ## Restricted explicit content
 
 Content intended for sexual arousal, sexual depictions involving minors,
