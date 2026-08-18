@@ -269,14 +269,8 @@ function connectComposerFeedback(
   });
 }
 
-interface PendingDomChangeObserver {
-  readonly flush: () => void;
-}
-
-function hasPendingDomChangeObserver(
-  view: EditorView,
-): view is EditorView & { readonly domObserver: PendingDomChangeObserver } {
-  return "domObserver" in view;
+interface EditorViewWithDomObserver extends EditorView {
+  readonly domObserver: { readonly flush: () => void };
 }
 
 /**
@@ -286,14 +280,13 @@ function hasPendingDomChangeObserver(
  * already committed prefix. Flushing the observer applies those pending DOM
  * changes before the document is serialized.
  *
- * `domObserver` is internal to prosemirror-view, so it is narrowed structurally
- * rather than imported.
+ * Every `EditorView` constructs `domObserver`, but prosemirror-view marks it
+ * internal and omits it from the published types, so it is reached through a
+ * cast. A future rename must fail loudly here rather than silently restore the
+ * truncated submission.
  */
 function flushPendingDomChanges(editor: Editor): void {
-  if (!hasPendingDomChangeObserver(editor.view)) {
-    return;
-  }
-  editor.view.domObserver.flush();
+  (editor.view as EditorViewWithDomObserver).domObserver.flush();
 }
 
 function createReadInputForSubmissionCommand(

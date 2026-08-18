@@ -1442,7 +1442,7 @@ describe("chat run queue", () => {
     expect(queuedBodies[0]?.content).toBe("排队完整内容");
   });
 
-  it("queues the full composed text when no input event follows composition end", async () => {
+  it("queues the full composed text with the ime submit flush enabled", async () => {
     const queuedBodies: QueuedMessageCapture[] = [];
     mockActiveRunThread(THREAD_ID, {
       onQueuedEventAppend: (body) => {
@@ -1472,8 +1472,10 @@ describe("chat run queue", () => {
     fireEvent.click(screen.getByLabelText("Send"));
     expect(queuedBodies).toHaveLength(0);
 
-    // iOS Safari can leave the composed tail in the DOM without delivering the
-    // input event that would normally flush it into the document.
+    // No input event follows, so the submission depends on the flush rather
+    // than on prosemirror-view's input handler. This does not reproduce the
+    // iOS stall itself: happy-dom delivers the pending mutation as a microtask
+    // before the gate settles, so the document is already current here.
     fireEvent.compositionEnd(composer, { data: "queued full composed text" });
 
     await waitFor(() => {
