@@ -251,7 +251,7 @@ def _sanitize_header_name_for_capture(name: str) -> str:
 @dataclass(frozen=True)
 class _CaptureHeaderInspection:
     serialized: dict[str, str]
-    truncated: bool
+    serialized_truncated: bool
     body_dependency_headers: http.Headers | None
 
 
@@ -371,7 +371,7 @@ def _inspect_headers_for_capture(headers: http.Headers) -> _CaptureHeaderInspect
 def _sanitize_headers_for_capture(headers: http.Headers) -> tuple[dict[str, str], bool]:
     """Build a bounded header prefix safe for persistent network logs."""
     inspection = _inspect_headers_for_capture(headers)
-    return inspection.serialized, inspection.truncated
+    return inspection.serialized, inspection.serialized_truncated
 
 
 def _set_body_capture_failure(
@@ -434,14 +434,14 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
 
     Response bodies prefer streaming metadata from
     ``response_streaming.configure_response_stream()`` because that path keeps a
-    bounded raw wire-byte buffer and records whether it was truncated. The
-    Bounded ``flow.response.raw_content`` decoding is used only when no stream
+    bounded raw wire-byte buffer and records whether it was truncated. Bounded
+    ``flow.response.raw_content`` decoding is used only when no stream
     buffer metadata exists.
     """
     # Request headers (always available)
     request_inspection = _inspect_headers_for_capture(flow.request.headers)
     log_entry["request_headers"] = request_inspection.serialized
-    if request_inspection.truncated:
+    if request_inspection.serialized_truncated:
         log_entry["request_headers_truncated"] = True
 
     # Request body
@@ -502,7 +502,7 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
     if flow.response:
         response_inspection = _inspect_headers_for_capture(flow.response.headers)
         log_entry["response_headers"] = response_inspection.serialized
-        if response_inspection.truncated:
+        if response_inspection.serialized_truncated:
             log_entry["response_headers_truncated"] = True
         stream_body = response_streaming.captured_response_stream_body(flow)
         stream_truncated = False
