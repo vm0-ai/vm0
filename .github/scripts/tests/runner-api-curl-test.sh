@@ -40,29 +40,47 @@ assert_file_excludes() {
 }
 
 curl() {
-    local fail_enabled=false
+    local request_url="${!#}"
+    local fail_with_body_enabled=false
     local saw_fail_with_body=false
-    local argument
+    local saw_no_fail_with_body=false
+    local saw_vercel_write_out=false
+    local write_out=''
 
-    for argument in "$@"; do
-        case "$argument" in
+    while (($# > 0)); do
+        case "$1" in
             --fail-with-body)
-                fail_enabled=true
+                fail_with_body_enabled=true
                 saw_fail_with_body=true
                 ;;
             --no-fail)
-                fail_enabled=false
+                ;;
+            --no-fail-with-body)
+                fail_with_body_enabled=false
+                saw_no_fail_with_body=true
+                ;;
+            --write-out)
+                shift
+                write_out="$1"
+                if [[ "$write_out" == "$MOCK_CURL_EXPECTED_VERCEL_WRITE_OUT" ]]; then
+                    saw_vercel_write_out=true
+                fi
                 ;;
         esac
+        shift
     done
 
     [[ "$saw_fail_with_body" == true ]] || {
         echo "curl did not receive --fail-with-body" >&2
         return 90
     }
-    [[ "${!#}" == "$MOCK_CURL_EXPECTED_URL" ]] || {
-        echo "curl received an unexpected request URL" >&2
+    [[ "$saw_vercel_write_out" == true ]] || {
+        echo "curl did not receive the Vercel log write-out" >&2
         return 91
+    }
+    [[ "$request_url" == "$MOCK_CURL_EXPECTED_URL" ]] || {
+        echo "curl received an unexpected request URL" >&2
+        return 92
     }
 
     case "$MOCK_CURL_MODE" in
@@ -70,20 +88,33 @@ curl() {
             printf '{"ok":true}\n'
             ;;
         failure)
+            [[ "$fail_with_body_enabled" == true ]] || {
+                echo "curl failure mode did not retain --fail-with-body" >&2
+                return 93
+            }
             printf '{"error":"rate limited"}\n'
             echo "curl: (22) The requested URL returned error: 429" >&2
+            echo "Vercel log query: requestHost:pr-27981-api.vm6.ai requestPath:/api/okou/chat/events status:429" >&2
             return 22
             ;;
-        no-fail)
-            [[ "$fail_enabled" == false ]] || {
-                echo "caller --no-fail did not override --fail-with-body" >&2
-                return 92
+        no-fail-with-body)
+            [[ "$saw_no_fail_with_body" == true ]] || {
+                echo "curl did not receive --no-fail-with-body" >&2
+                return 94
             }
-            printf '{"error":"handled"}\n409'
+            [[ "$fail_with_body_enabled" == false ]] || {
+                echo "caller --no-fail-with-body did not override --fail-with-body" >&2
+                return 95
+            }
+            [[ "$write_out" == $'\n%{http_code}' ]] || {
+                echo "curl did not retain the caller write-out" >&2
+                return 96
+            }
+            printf '{"error":{"message":"Cannot delete agent while its configuration is being migrated","code":"CONFLICT"}}\n409'
             ;;
         *)
             echo "unexpected mock curl mode: $MOCK_CURL_MODE" >&2
-            return 93
+            return 97
             ;;
     esac
 }
@@ -100,6 +131,7 @@ export E2E_API_URL="https://pr-27981-api.vm6.ai/"
 export E2E_API_TOKEN="sensitive-api-token"
 export VERCEL_AUTOMATION_BYPASS_SECRET="sensitive-bypass-secret"
 payload='{"secret":"sensitive-request-payload"}'
+MOCK_CURL_EXPECTED_VERCEL_WRITE_OUT='%{onerror}%{stderr}Vercel log query: requestHost:pr-27981-api.vm6.ai requestPath:/api/okou/chat/events status:%{http_code}\n'
 
 MOCK_CURL_MODE=success
 MOCK_CURL_EXPECTED_URL="https://pr-27981-api.vm6.ai/api/okou/chat/events"
@@ -109,24 +141,29 @@ assert_file_equals $'{"ok":true}\n' "$stdout_file"
 assert_file_equals '' "$stderr_file"
 
 MOCK_CURL_MODE=failure
-run_request "/api/okou/chat/events" -X POST -d "$payload"
+MOCK_CURL_EXPECTED_URL="https://pr-27981-api.vm6.ai/api/okou/chat/events?cursor=sensitive-query-value"
+run_request "/api/okou/chat/events?cursor=sensitive-query-value" -X POST -d "$payload"
 assert_status 22
 assert_file_equals $'{"error":"rate limited"}\n' "$stdout_file"
 assert_file_equals \
-    $'curl: (22) The requested URL returned error: 429\nrunner_api_curl failed: url=https://pr-27981-api.vm6.ai/api/okou/chat/events curl_status=22\n' \
+    $'curl: (22) The requested URL returned error: 429\nVercel log query: requestHost:pr-27981-api.vm6.ai requestPath:/api/okou/chat/events status:429\nrunner_api_curl failed: url=https://pr-27981-api.vm6.ai/api/okou/chat/events curl_status=22\n' \
     "$stderr_file"
 assert_file_excludes "$stderr_file" "$E2E_API_TOKEN"
 assert_file_excludes "$stderr_file" "$VERCEL_AUTOMATION_BYPASS_SECRET"
 assert_file_excludes "$stderr_file" "sensitive-request-payload"
+assert_file_excludes "$stderr_file" "sensitive-query-value"
 
-MOCK_CURL_MODE=no-fail
+MOCK_CURL_MODE=no-fail-with-body
 MOCK_CURL_EXPECTED_URL="https://pr-27981-api.vm6.ai/api/okou/agents/agent-1"
-run_request \
-    "/api/okou/agents/agent-1" \
-    --no-fail \
-    --write-out $'\n%{http_code}'
+MOCK_CURL_EXPECTED_VERCEL_WRITE_OUT='%{onerror}%{stderr}Vercel log query: requestHost:pr-27981-api.vm6.ai requestPath:/api/okou/agents/agent-1 status:%{http_code}\n'
+if delete_runner_agent_for_stage0_teardown "agent-1" \
+    >"$stdout_file" 2>"$stderr_file"; then
+    request_status=0
+else
+    request_status=$?
+fi
 assert_status 0
-assert_file_equals $'{"error":"handled"}\n409' "$stdout_file"
+assert_file_equals '' "$stdout_file"
 assert_file_equals '' "$stderr_file"
 
 echo "runner_api_curl tests passed"

@@ -24,10 +24,18 @@ runner_api_curl() {
     local path="$1"
     shift
 
-    local token base request_url
+    local token base request_url diagnostic_url request_host request_path
+    local request_host_write_out request_path_write_out vercel_log_write_out
     token="$(runner_api_token)" || return 1
     base="$(runner_api_url)" || return 1
     request_url="$base$path"
+    diagnostic_url="${request_url%%\?*}"
+    request_host="${base#*://}"
+    request_host="${request_host%%/*}"
+    request_path="${path%%\?*}"
+    request_host_write_out="${request_host//%/%%}"
+    request_path_write_out="${request_path//%/%%}"
+    vercel_log_write_out="%{onerror}%{stderr}Vercel log query: requestHost:${request_host_write_out} requestPath:${request_path_write_out} status:%{http_code}\n"
 
     local -a headers=(
         -H "Authorization: Bearer $token"
@@ -41,6 +49,7 @@ runner_api_curl() {
 
     local curl_status=0
     curl --fail-with-body --silent --show-error \
+        --write-out "$vercel_log_write_out" \
         --connect-timeout "${E2E_CURL_CONNECT_TIMEOUT_SECONDS:-10}" \
         --max-time "${E2E_CURL_MAX_TIME_SECONDS:-30}" \
         "${headers[@]}" \
@@ -49,7 +58,7 @@ runner_api_curl() {
 
     if ((curl_status != 0)); then
         printf 'runner_api_curl failed: url=%s curl_status=%d\n' \
-            "$request_url" "$curl_status" >&2
+            "$diagnostic_url" "$curl_status" >&2
     fi
     return "$curl_status"
 }
@@ -147,7 +156,7 @@ delete_runner_agent_for_stage0_teardown() {
     response="$(runner_api_curl \
         "/api/okou/agents/$agent_id" \
         -X DELETE \
-        --no-fail \
+        --no-fail-with-body \
         --write-out $'\n%{http_code}')" || return
     http_status="${response##*$'\n'}"
     response_body="${response%$'\n'*}"
