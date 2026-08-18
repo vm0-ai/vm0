@@ -1,4 +1,4 @@
-import { vm0ApiKeys } from "@okouai/db/schema/vm0-api-key";
+import { builtInModelKeys } from "@okouai/db/schema/built-in-model-key";
 import { eq, like } from "drizzle-orm";
 import { z } from "zod";
 
@@ -55,22 +55,22 @@ export async function acquireManagedModelKeyFixture(
   for (const value of rows) {
     const apiKey = await db.transaction(async (tx) => {
       const [row] = await tx
-        .insert(vm0ApiKeys)
+        .insert(builtInModelKeys)
         .values({
           ...value,
           label: vm0ManagedModelKeyFixtureLabel([fixtureId]),
         })
         .onConflictDoUpdate({
-          target: vm0ApiKeys.vendor,
+          target: builtInModelKeys.vendor,
           // Keep the existing key while atomically locking and returning its
           // vendor row. DO NOTHING followed by SELECT FOR UPDATE leaves a
           // window where the previous fixture owner can delete the row.
           set: { vendor: value.vendor },
         })
         .returning({
-          id: vm0ApiKeys.id,
-          apiKey: vm0ApiKeys.apiKey,
-          label: vm0ApiKeys.label,
+          id: builtInModelKeys.id,
+          apiKey: builtInModelKeys.apiKey,
+          label: builtInModelKeys.label,
         });
       if (!row) {
         throw new Error(`Expected VM0 managed key for vendor: ${value.vendor}`);
@@ -89,12 +89,12 @@ export async function acquireManagedModelKeyFixture(
           ? undefined
           : row.label;
       await tx
-        .update(vm0ApiKeys)
+        .update(builtInModelKeys)
         .set({
           label: vm0ManagedModelKeyFixtureLabel(fixtureIds, preservedLabel),
           updatedAt: nowDate(),
         })
-        .where(eq(vm0ApiKeys.id, row.id));
+        .where(eq(builtInModelKeys.id, row.id));
       return row.apiKey;
     });
     acquiredRows.push({ vendor: value.vendor, apiKey });
@@ -109,10 +109,10 @@ export async function releaseManagedModelKeyFixture(
 ): Promise<void> {
   await db.transaction(async (tx) => {
     const rows = await tx
-      .select({ id: vm0ApiKeys.id, label: vm0ApiKeys.label })
-      .from(vm0ApiKeys)
-      .where(like(vm0ApiKeys.label, `%${fixtureId}%`))
-      .orderBy(vm0ApiKeys.vendor)
+      .select({ id: builtInModelKeys.id, label: builtInModelKeys.label })
+      .from(builtInModelKeys)
+      .where(like(builtInModelKeys.label, `%${fixtureId}%`))
+      .orderBy(builtInModelKeys.vendor)
       .for("update");
 
     for (const row of rows) {
@@ -125,7 +125,7 @@ export async function releaseManagedModelKeyFixture(
       });
       if (remainingFixtureIds.length > 0) {
         await tx
-          .update(vm0ApiKeys)
+          .update(builtInModelKeys)
           .set({
             label: vm0ManagedModelKeyFixtureLabel(
               remainingFixtureIds,
@@ -133,20 +133,20 @@ export async function releaseManagedModelKeyFixture(
             ),
             updatedAt: nowDate(),
           })
-          .where(eq(vm0ApiKeys.id, row.id));
+          .where(eq(builtInModelKeys.id, row.id));
         continue;
       }
       if (fixtureLabel.preservedLabel !== undefined) {
         await tx
-          .update(vm0ApiKeys)
+          .update(builtInModelKeys)
           .set({
             label: fixtureLabel.preservedLabel,
             updatedAt: nowDate(),
           })
-          .where(eq(vm0ApiKeys.id, row.id));
+          .where(eq(builtInModelKeys.id, row.id));
         continue;
       }
-      await tx.delete(vm0ApiKeys).where(eq(vm0ApiKeys.id, row.id));
+      await tx.delete(builtInModelKeys).where(eq(builtInModelKeys.id, row.id));
     }
   });
 }

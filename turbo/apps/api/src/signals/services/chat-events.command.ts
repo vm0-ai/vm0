@@ -63,7 +63,7 @@ import {
   shouldDispatchCancelSideEffects,
   type CancelRunResult,
 } from "./run-cancel.service";
-import { scheduleChatThreadTitleGeneration } from "./zero-chat-title.service";
+import { scheduleChatThreadTitleGeneration } from "./chat-title.service";
 import { generateAndPersistInitialThinkingMessage } from "./chat-initial-thinking.service";
 import {
   isCodexFastServiceTierSupported,

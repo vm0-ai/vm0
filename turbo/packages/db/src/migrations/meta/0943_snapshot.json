@@ -1,6 +1,6 @@
 {
-  "id": "0fa30bd1-e37c-453c-a830-d81ada784e5c",
-  "prevId": "8e60149c-25e6-440d-a71b-1137f9316a76",
+  "id": "5677614d-90f0-41f6-add8-23cc0e914531",
+  "prevId": "0fa30bd1-e37c-453c-a830-d81ada784e5c",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4533,6 +4533,74 @@
           "onUpdate": "no action"
         }
       },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.vm0_api_keys": {
+      "name": "vm0_api_keys",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "vendor": {
+          "name": "vendor",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "api_key": {
+          "name": "api_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_vm0_api_keys_vendor": {
+          "name": "idx_vm0_api_keys_vendor",
+          "columns": [
+            {
+              "expression": "vendor",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
@@ -15646,6 +15714,13 @@
           "notNull": true,
           "default": false
         },
+        "weekly_product_update_enabled": {
+          "name": "weekly_product_update_enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
         "selected_model": {
           "name": "selected_model",
           "type": "varchar(255)",
@@ -26247,8 +26322,8 @@
       },
       "isRLSEnabled": false
     },
-    "public.vm0_api_keys": {
-      "name": "vm0_api_keys",
+    "public.weekly_product_update_deliveries": {
+      "name": "weekly_product_update_deliveries",
       "schema": "",
       "columns": {
         "id": {
@@ -26258,20 +26333,157 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "vendor": {
-          "name": "vendor",
-          "type": "varchar(50)",
+        "weekly_product_update_id": {
+          "name": "weekly_product_update_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
-        "api_key": {
-          "name": "api_key",
+        "org_id": {
+          "name": "org_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "label": {
-          "name": "label",
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "chat_thread_id": {
+          "name": "chat_thread_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_weekly_product_update_deliveries_update_user": {
+          "name": "idx_weekly_product_update_deliveries_update_user",
+          "columns": [
+            {
+              "expression": "weekly_product_update_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "weekly_product_update_deliveries_weekly_product_update_id_weekly_product_updates_id_fk": {
+          "name": "weekly_product_update_deliveries_weekly_product_update_id_weekly_product_updates_id_fk",
+          "tableFrom": "weekly_product_update_deliveries",
+          "tableTo": "weekly_product_updates",
+          "columnsFrom": [
+            "weekly_product_update_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "weekly_product_update_deliveries_chat_thread_id_chat_threads_id_fk": {
+          "name": "weekly_product_update_deliveries_chat_thread_id_chat_threads_id_fk",
+          "tableFrom": "weekly_product_update_deliveries",
+          "tableTo": "chat_threads",
+          "columnsFrom": [
+            "chat_thread_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.weekly_product_updates": {
+      "name": "weekly_product_updates",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "broadcast_id": {
+          "name": "broadcast_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "post_slug": {
+          "name": "post_slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "post_url": {
+          "name": "post_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "subject": {
+          "name": "subject",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "message": {
+          "name": "message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "broadcast_sent_at": {
+          "name": "broadcast_sent_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "delivered_at": {
+          "name": "delivered_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "skip_reason": {
+          "name": "skip_reason",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -26292,17 +26504,48 @@
         }
       },
       "indexes": {
-        "idx_vm0_api_keys_vendor": {
-          "name": "idx_vm0_api_keys_vendor",
+        "idx_weekly_product_updates_broadcast": {
+          "name": "idx_weekly_product_updates_broadcast",
           "columns": [
             {
-              "expression": "vendor",
+              "expression": "broadcast_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_weekly_product_updates_post_slug": {
+          "name": "idx_weekly_product_updates_post_slug",
+          "columns": [
+            {
+              "expression": "post_slug",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "status = 'ready'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_weekly_product_updates_status": {
+          "name": "idx_weekly_product_updates_status",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
