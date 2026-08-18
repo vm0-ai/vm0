@@ -559,7 +559,16 @@ async fn receive_finalizing_handoff(
     let candidate = tokio::select! {
         biased;
         candidate = request.receive() => candidate,
-        () = cancel.cancelled() => return FinalizingWaitOutcome::Cancelled,
+        () = cancel.cancelled() => {
+            if let Some(candidate) = request.cancel_and_recover_delivery() {
+                candidate
+                    .into_destroy_job()
+                    .run_with_context("cancelled_finalizing_handoff")
+                    .await;
+                ctx.reuse_state_notify.notify_one();
+            }
+            return FinalizingWaitOutcome::Cancelled;
+        }
     };
     let Ok(candidate) = candidate else {
         return FinalizingWaitOutcome::no_exact("exact_handoff_closed");

@@ -101,13 +101,18 @@ impl ActiveRunHandoffRequest {
     ) -> Result<Box<FinalizingHandoffCandidate>, oneshot::error::RecvError> {
         (&mut self.receiver).await
     }
-}
 
-impl Drop for ActiveRunHandoffRequest {
-    fn drop(&mut self) {
+    pub(super) fn cancel_and_recover_delivery(
+        &mut self,
+    ) -> Option<Box<FinalizingHandoffCandidate>> {
+        self.close_delivery();
+        self.receiver.try_recv().ok()
+    }
+
+    fn close_delivery(&mut self) {
+        let mut broker = lock_handoff(&self.broker);
         self.receiver.close();
         self.signal.cancel();
-        let mut broker = lock_handoff(&self.broker);
         if broker
             .delivery
             .as_ref()
@@ -115,6 +120,12 @@ impl Drop for ActiveRunHandoffRequest {
         {
             broker.delivery = None;
         }
+    }
+}
+
+impl Drop for ActiveRunHandoffRequest {
+    fn drop(&mut self) {
+        self.close_delivery();
     }
 }
 
@@ -598,6 +609,50 @@ mod tests {
 
         assert_eq!(proof.state(), ActiveRunReuseState::Pending);
         let (payload, lease) = recovered.into_active_destroy_parts();
+        drop(payload);
+        drop(lease);
+        assert_eq!(budget.allocated(), (0, 0, 0));
+    }
+
+    #[test]
+    fn cancelled_accepted_handoff_recovers_already_sent_candidate() {
+        let active_runs = ActiveRuns::new(Arc::new(Notify::new()));
+        let predecessor_run_id = RunId::new_v4();
+        let successor_run_id = RunId::new_v4();
+        let guard = active_runs.register(
+            predecessor_run_id,
+            Some("thread:cancelled-handoff".into()),
+            "vm0/default".into(),
+        );
+        let publisher = guard.reuse_publisher();
+        let proof = active_runs
+            .finalizing_predecessor(
+                predecessor_run_id,
+                "thread:cancelled-handoff",
+                "vm0/default",
+            )
+            .unwrap();
+        let mut request = proof
+            .request_handoff(successor_run_id)
+            .expect("exact successor should register a handoff");
+        assert!(publisher.handoff_signal().accept_if_requested());
+
+        let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
+        let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
+        let candidate = ParkedIdleCandidateBuilder::new("thread:cancelled-handoff", lease)
+            .with_history_generation_run_id(predecessor_run_id)
+            .build();
+        assert!(matches!(
+            publisher.deliver_exact_handoff(candidate, predecessor_run_id),
+            ActiveRunHandoffDeliveryResult::Delivered
+        ));
+
+        let recovered = request
+            .cancel_and_recover_delivery()
+            .expect("cancellation must recover a candidate sent before receiver closure");
+        let (payload, lease) = recovered
+            .into_parked_candidate()
+            .into_active_destroy_parts();
         drop(payload);
         drop(lease);
         assert_eq!(budget.allocated(), (0, 0, 0));
