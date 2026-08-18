@@ -675,6 +675,22 @@ function resolveRefreshMetadata(
   };
 }
 
+function modelProviderRefreshLogFields(args: {
+  readonly sourceType: AccessSecretSource;
+  readonly sourceId?: string;
+}): {
+  readonly modelProviderCredentialPath?: "exact-account" | "legacy";
+  readonly sourceId?: string;
+} {
+  if (args.sourceType !== "model-provider") {
+    return {};
+  }
+  return {
+    modelProviderCredentialPath: args.sourceId ? "exact-account" : "legacy",
+    ...(args.sourceId ? { sourceId: args.sourceId } : {}),
+  };
+}
+
 function modelProviderTypeForMetadata(
   providerKey: string,
   metadata: SecretConnectorMetadata,
@@ -914,11 +930,13 @@ async function getSecretValue(args: {
   }
   // Rollout fallback: a run admitted before `PersonalModelProviderAccounts` was
   // enabled for its user carries no exact-account `sourceId`, so it keeps
-  // resolving through the org/user `secrets` lookup below. Surface: existing
-  // runner and sandbox instances, up to 2 hours (`JOB_TIMEOUT` in
-  // `crates/runner/src/executor/mod.rs`). Remove the `sourceId`-less
-  // model-provider path once the switch is GA and every pre-feature run has
-  // drained.
+  // resolving through the org/user `secrets` lookup below. Legacy storage is
+  // temporarily authoritative for the active account; migration 0940 mirrors
+  // legacy writes into that account for old API overlap and rollback. Surface:
+  // existing runner and sandbox instances, up to 2 hours (`JOB_TIMEOUT` in
+  // `crates/runner/src/executor/mod.rs`), plus rollback while the switch remains
+  // reversible. Remove both paths after GA, rollback closure, run drain, and a
+  // zero-candidate legacy account seeding check.
   if (args.type === "model-provider" && args.sourceId) {
     const [row] = await args.db
       .select({ encryptedValue: modelProviderAccountSecrets.encryptedValue })
@@ -2386,6 +2404,7 @@ async function markAndReturnRefreshFailure(
     userId: args.userId,
     errorCode,
     failureReason,
+    ...modelProviderRefreshLogFields(args),
     ...oauthRefreshFailureLogFields(error),
   });
   await markRefreshFailure(
@@ -3973,6 +3992,7 @@ async function refreshSelectedTokens(
             sourceType: metadata.sourceType,
             sourceUserId: metadata.sourceUserId,
             metadataKey: metadata.metadataKey,
+            ...modelProviderRefreshLogFields(metadata),
             reason: refreshResult.reason,
           },
         );

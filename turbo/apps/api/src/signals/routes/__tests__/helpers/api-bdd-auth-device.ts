@@ -222,6 +222,7 @@ function makeCodexTokenResponse(
   scope: "org" | "personal",
   args: {
     readonly accountId?: string;
+    readonly refreshToken?: string;
     readonly workspaceName?: string;
   } = {},
 ) {
@@ -231,7 +232,7 @@ function makeCodexTokenResponse(
       exp: Math.floor(now() / 1000) + 7200,
       account_id: accountId,
     }),
-    refresh_token: `rt_${scope}_synthetic_high_entropy`,
+    refresh_token: args.refreshToken ?? `rt_${scope}_synthetic_high_entropy`,
     id_token: makeCodexIdToken({
       accountId,
       planType: "plus",
@@ -296,6 +297,7 @@ export function mockCodexDeviceAuthProvider(
   options: {
     readonly tokenScope?: "org" | "personal";
     readonly accountId?: string;
+    readonly refreshToken?: string;
     readonly workspaceName?: string;
   } = {},
 ): CodexDeviceAuthProviderRecorder {

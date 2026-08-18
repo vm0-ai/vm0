@@ -2805,6 +2805,15 @@ const EXPECTED_PERMANENT_TRIGGERS = [
     tableName: "image_artifacts",
     triggerName: "image_artifacts_delete_artifact_registry",
   },
+  // Temporary PersonalModelProviderAccounts compatibility. Remove with the
+  // source-ID-less fallback after the #27958 rollout and rollback drain.
+  {
+    definition:
+      "CREATE TRIGGER model_providers_sync_active_refresh_state_0940 AFTER UPDATE OF token_expires_at, needs_reconnect, last_refresh_error_code, updated_at ON public.model_providers FOR EACH ROW EXECUTE FUNCTION sync_active_model_provider_state_from_legacy_0940()",
+    schemaName: "public",
+    tableName: "model_providers",
+    triggerName: "model_providers_sync_active_refresh_state_0940",
+  },
   {
     definition:
       "CREATE CONSTRAINT TRIGGER trg_org_custom_connector_oauth_configs_mode AFTER INSERT OR DELETE OR UPDATE ON public.org_custom_connector_oauth_configs DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION enforce_org_custom_connector_oauth_mode()",
@@ -2860,6 +2869,20 @@ const EXPECTED_PERMANENT_TRIGGERS = [
     schemaName: "public",
     tableName: "run_uploaded_files",
     triggerName: "run_uploaded_files_queue_artifact_catalog",
+  },
+  {
+    definition:
+      "CREATE TRIGGER secrets_insert_sync_active_model_provider_secret_0940 AFTER INSERT ON public.secrets FOR EACH ROW EXECUTE FUNCTION sync_active_model_provider_secret_from_legacy_0940()",
+    schemaName: "public",
+    tableName: "secrets",
+    triggerName: "secrets_insert_sync_active_model_provider_secret_0940",
+  },
+  {
+    definition:
+      "CREATE TRIGGER secrets_update_sync_active_model_provider_secret_0940 AFTER UPDATE OF encrypted_value, updated_at ON public.secrets FOR EACH ROW EXECUTE FUNCTION sync_active_model_provider_secret_from_legacy_0940()",
+    schemaName: "public",
+    tableName: "secrets",
+    triggerName: "secrets_update_sync_active_model_provider_secret_0940",
   },
   {
     definition:
@@ -3031,6 +3054,22 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
   {
     bodyHash: "519c7504c787a49c4c6bea8a588711fc",
     functionName: "reject_chat_event_source_update",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  // Same temporary PersonalModelProviderAccounts bridge and removal gate as
+  // the three #27958 triggers above.
+  {
+    bodyHash: "8d7887ff7f9bd0ea7f5fc0dfea210e16",
+    functionName: "sync_active_model_provider_secret_from_legacy_0940",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    bodyHash: "1d185551d7b87a432169efe683969d36",
+    functionName: "sync_active_model_provider_state_from_legacy_0940",
     identityArguments: "",
     kind: "f",
     schemaName: "public",

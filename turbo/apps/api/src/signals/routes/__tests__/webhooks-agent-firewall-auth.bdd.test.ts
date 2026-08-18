@@ -31,6 +31,11 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd";
 import {
+  createAuthDeviceApiActions,
+  mockCodexDeviceAuthProvider,
+} from "./helpers/api-bdd-auth-device";
+import { createAuthDeviceSupportApi } from "./helpers/api-bdd-auth-device-support";
+import {
   awsVerificationCode,
   createConnectorBddApi,
   mockAwsExternalCodeProvider,
@@ -60,6 +65,43 @@ const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
  */
 
 const context = testContext();
+const authDevice = createAuthDeviceApiActions(context);
+const authDeviceSupport = createAuthDeviceSupportApi(context);
+
+async function addPersonalCodexAccount(
+  actor: ApiTestUser,
+  args: {
+    readonly accountId: string;
+    readonly refreshToken: string;
+    readonly workspaceName: string;
+  },
+): Promise<string> {
+  mockCodexDeviceAuthProvider({
+    tokenScope: "personal",
+    accountId: args.accountId,
+    refreshToken: args.refreshToken,
+    workspaceName: args.workspaceName,
+  });
+  const started = await authDevice.requestCodexStart(actor, "personal", [200], {
+    mode: "add",
+  });
+  if (started.status !== 200) {
+    throw new Error("Expected personal Codex device auth to start");
+  }
+  const completed = await authDevice.requestCodexComplete(
+    actor,
+    started.body.sessionToken,
+    [200],
+  );
+  if (
+    completed.status !== 200 ||
+    !("status" in completed.body) ||
+    completed.body.status !== "complete"
+  ) {
+    throw new Error("Expected personal Codex device auth to complete");
+  }
+  return completed.body.provider.id;
+}
 
 async function firewallRun(): Promise<{
   readonly actor: ApiTestUser;
@@ -1706,6 +1748,241 @@ describe("FW-8: static access tokens and unavailable sources", () => {
 });
 
 describe("FW-9: codex model-provider access", () => {
+  it("keeps active legacy and exact-account refresh state aligned without changing inactive accounts", async () => {
+    const fw = createFirewallApi(context);
+    const { actor, headers } = await firewallRun();
+    await authDeviceSupport.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.PersonalModelProviderAccounts]: true,
+    });
+    const activeAccountId = await addPersonalCodexAccount(actor, {
+      accountId: "codex-firewall-active",
+      refreshToken: "refresh-active-0",
+      workspaceName: "Firewall Active",
+    });
+    const inactiveAccountId = await addPersonalCodexAccount(actor, {
+      accountId: "codex-firewall-inactive",
+      refreshToken: "refresh-inactive-0",
+      workspaceName: "Firewall Inactive",
+    });
+
+    const initialAccounts = await authDeviceSupport.listPersonalModelProviders(
+      actor,
+      [200],
+    );
+    if (!("modelProviders" in initialAccounts.body)) {
+      throw new Error("Expected personal model provider accounts");
+    }
+    expect(
+      initialAccounts.body.modelProviders.find((provider) => {
+        return provider.id === activeAccountId;
+      }),
+    ).toMatchObject({ isActive: true });
+    expect(
+      initialAccounts.body.modelProviders.find((provider) => {
+        return provider.id === inactiveAccountId;
+      }),
+    ).toMatchObject({ isActive: false });
+
+    const refreshInputs: string[] = [];
+    let refreshCall = 0;
+    server.use(
+      http.post("https://auth.openai.com/oauth/token", async ({ request }) => {
+        const body = await request.json();
+        if (
+          typeof body !== "object" ||
+          body === null ||
+          !("refresh_token" in body) ||
+          typeof body.refresh_token !== "string"
+        ) {
+          throw new Error("Expected a Codex refresh token request");
+        }
+        refreshInputs.push(body.refresh_token);
+        refreshCall += 1;
+        if (refreshCall === 4) {
+          return HttpResponse.json(
+            {
+              error: {
+                code: "refresh_token_reused",
+                message: "refresh token already used",
+              },
+            },
+            { status: 401 },
+          );
+        }
+        return HttpResponse.json({
+          access_token: `refreshed-access-${refreshCall}`,
+          refresh_token:
+            refreshCall === 5
+              ? "refresh-inactive-1"
+              : `refresh-active-${refreshCall}`,
+          expires_in: 3600,
+        });
+      }),
+    );
+
+    const refreshBody = (
+      sourceId: string | undefined,
+      forceRefresh: boolean,
+    ) => {
+      return {
+        encryptedSecrets: fw.encryptedSecretsBody({}),
+        authHeaders: {
+          Authorization: `Bearer ${secretTemplate("CHATGPT_ACCESS_TOKEN")}`,
+        },
+        secretConnectorMap: {
+          CHATGPT_ACCESS_TOKEN: "codex-oauth-token",
+        },
+        secretConnectorMetadataMap: {
+          CHATGPT_ACCESS_TOKEN: {
+            sourceType: "model-provider" as const,
+            sourceUserId: actor.userId,
+            ...(sourceId ? { sourceId } : {}),
+            metadataKey: "codex-oauth-token",
+          },
+        },
+        forceRefresh,
+      };
+    };
+
+    const exactFirst = await fw.requestFirewallAuth(
+      headers,
+      refreshBody(activeAccountId, true),
+      [200],
+    );
+    if (exactFirst.status !== 200) {
+      throw new Error("Expected exact active-account refresh to succeed");
+    }
+    const legacySecond = await fw.requestFirewallAuth(
+      headers,
+      refreshBody(undefined, true),
+      [200],
+    );
+    if (legacySecond.status !== 200) {
+      throw new Error("Expected source-ID-less refresh to succeed");
+    }
+    const exactThird = await fw.requestFirewallAuth(
+      headers,
+      refreshBody(activeAccountId, true),
+      [200],
+    );
+    if (exactThird.status !== 200) {
+      throw new Error("Expected bridged exact-account refresh to succeed");
+    }
+    expect(refreshInputs).toStrictEqual([
+      "refresh-active-0",
+      "refresh-active-1",
+      "refresh-active-2",
+    ]);
+
+    const currentExact = await fw.requestFirewallAuth(
+      headers,
+      refreshBody(activeAccountId, false),
+      [200],
+    );
+    const currentLegacy = await fw.requestFirewallAuth(
+      headers,
+      refreshBody(undefined, false),
+      [200],
+    );
+    if (currentExact.status !== 200 || currentLegacy.status !== 200) {
+      throw new Error("Expected both current credential paths to resolve");
+    }
+    expect(refreshInputs).toHaveLength(3);
+
+    const successfulAccountView =
+      await authDeviceSupport.listPersonalModelProviders(actor, [200]);
+    if (!("modelProviders" in successfulAccountView.body)) {
+      throw new Error("Expected successful account state");
+    }
+    expect(
+      successfulAccountView.body.modelProviders.find((provider) => {
+        return provider.id === activeAccountId;
+      }),
+    ).toMatchObject({
+      needsReconnect: false,
+      lastRefreshErrorCode: null,
+    });
+
+    await authDeviceSupport.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.PersonalModelProviderAccounts]: false,
+    });
+    const successfulLegacyView =
+      await authDeviceSupport.listPersonalModelProviders(actor, [200]);
+    if (!("modelProviders" in successfulLegacyView.body)) {
+      throw new Error("Expected successful legacy state");
+    }
+    expect(
+      successfulLegacyView.body.modelProviders.find((provider) => {
+        return provider.type === "codex-oauth-token";
+      }),
+    ).toMatchObject({
+      needsReconnect: false,
+      lastRefreshErrorCode: null,
+    });
+
+    const failedLegacy = await fw.requestFirewallAuth(
+      headers,
+      refreshBody(undefined, true),
+      [502],
+    );
+    if (failedLegacy.status !== 502) {
+      throw new Error("Expected source-ID-less reconnect failure");
+    }
+    expect(failedLegacy.body.error.failureReason).toBe("reconnect_required");
+
+    await authDeviceSupport.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.PersonalModelProviderAccounts]: true,
+    });
+    const failedAccountView =
+      await authDeviceSupport.listPersonalModelProviders(actor, [200]);
+    if (!("modelProviders" in failedAccountView.body)) {
+      throw new Error("Expected failed account state");
+    }
+    expect(
+      failedAccountView.body.modelProviders.find((provider) => {
+        return provider.id === activeAccountId;
+      }),
+    ).toMatchObject({
+      needsReconnect: true,
+      lastRefreshErrorCode: "refresh_token_reused",
+    });
+
+    await authDeviceSupport.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.PersonalModelProviderAccounts]: false,
+    });
+    const failedLegacyView = await authDeviceSupport.listPersonalModelProviders(
+      actor,
+      [200],
+    );
+    if (!("modelProviders" in failedLegacyView.body)) {
+      throw new Error("Expected failed legacy state");
+    }
+    expect(
+      failedLegacyView.body.modelProviders.find((provider) => {
+        return provider.type === "codex-oauth-token";
+      }),
+    ).toMatchObject({
+      needsReconnect: true,
+      lastRefreshErrorCode: "refresh_token_reused",
+    });
+
+    const inactiveRefresh = await fw.requestFirewallAuth(
+      headers,
+      refreshBody(inactiveAccountId, true),
+      [200],
+    );
+    if (inactiveRefresh.status !== 200) {
+      throw new Error("Expected inactive exact-account refresh to succeed");
+    }
+    expect(refreshInputs).toStrictEqual([
+      "refresh-active-0",
+      "refresh-active-1",
+      "refresh-active-2",
+      "refresh-active-3",
+      "refresh-inactive-0",
+    ]);
+  });
+
   it("resolves static model-provider auth from an empty runtime namespace", async () => {
     const fw = createFirewallApi(context);
     const { headers } = await firewallRun();
