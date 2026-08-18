@@ -5,6 +5,7 @@ import {
 } from "@okouai/api-contracts/contracts/test-connector-credential-storage-state";
 import { connectors } from "@okouai/db/schema/connector";
 import { connectorOauthStates } from "@okouai/db/schema/connector-oauth-state";
+import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
 import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
 import { secrets } from "@okouai/db/schema/secret";
 import { userCustomConnectors } from "@okouai/db/schema/user-custom-connector";
@@ -277,6 +278,30 @@ async function deleteCustomCredentialValues(
   });
   signal.throwIfAborted();
   return actionOk();
+}
+
+async function clearFeishuConnectorOwnership(
+  db: Db,
+  body: ConnectorCredentialStorageAction<"clear-feishu-connector-ownership">,
+  signal: AbortSignal,
+) {
+  const [updated] = await db
+    .update(feishuOrgInstallations)
+    .set({ customConnectorId: null })
+    .where(
+      and(
+        eq(feishuOrgInstallations.orgId, body.org_id),
+        eq(feishuOrgInstallations.id, body.installation_id),
+      ),
+    )
+    .returning({ id: feishuOrgInstallations.id });
+  signal.throwIfAborted();
+  return updated
+    ? actionOk()
+    : {
+        status: 400 as const,
+        body: { error: "Feishu installation test fixture was not found" },
+      };
 }
 
 async function seedLegacyCustomFeishuOAuthState(
@@ -571,6 +596,9 @@ const mutateConnectorCredentialStorageState$ = command(
       }
       case "delete-custom-credential-values": {
         return await deleteCustomCredentialValues(db, body, signal);
+      }
+      case "clear-feishu-connector-ownership": {
+        return await clearFeishuConnectorOwnership(db, body, signal);
       }
       case "seed-legacy-custom-feishu-oauth-state": {
         return await seedLegacyCustomFeishuOAuthState(db, body, signal);
