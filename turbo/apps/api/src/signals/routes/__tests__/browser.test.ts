@@ -308,6 +308,27 @@ async function reconcileBrowsers(
 }
 
 describe("okou browser route", () => {
+  it("projects the assistant name in run-required errors by authenticated brand", async () => {
+    const { runs, actor } = await setupBrowserScenario();
+
+    for (const [publicBrand, origin, assistantName] of [
+      ["vm0", "https://app.okou.ai", "Zero"],
+      ["okou", "https://app.vm0.ai", "Okou"],
+    ] as const) {
+      const rejected = await requestBrowserUse({
+        ...browserHeadersForRun(runs, actor, randomUUID(), publicBrand),
+        origin,
+      });
+      expect(rejected.status).toBe(400);
+      await expect(rejected.json()).resolves.toStrictEqual({
+        error: {
+          code: "BROWSER_CHAT_THREAD_REQUIRED",
+          message: `Managed browsers can only be started from a ${assistantName} chat run`,
+        },
+      });
+    }
+  });
+
   it("keeps managed browser access off for a default chat thread", async () => {
     const { runs, chat, actor, agent } = await setupBrowserScenario();
     const sent = await chat.requestSendEvent(

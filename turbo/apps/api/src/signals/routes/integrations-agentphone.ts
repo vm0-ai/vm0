@@ -1,4 +1,5 @@
 import { integrationsAgentPhoneContract } from "@okouai/api-contracts/contracts/integrations-agentphone";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agentphoneVerificationSendCooldowns } from "@okouai/db/schema/agentphone-verification-send-cooldown";
 import { agentphoneUserLinks } from "@okouai/db/schema/agentphone-user-link";
 import { publicBrandPresentation } from "@okouai/core/public-brand";
@@ -255,7 +256,7 @@ const sendAgentPhoneVerificationText$ = command(
       readonly cooldownKeys: readonly VerificationSendCooldownKey[];
       readonly phoneHandle: string;
       readonly connectUrl: string;
-      readonly publicBrand: "vm0" | "okou";
+      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ) => {
@@ -341,7 +342,8 @@ const sendAgentPhoneVerificationText$ = command(
 
 const startLink$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const publicBrand = get(publicBrand$);
+  const publicBrand =
+    auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
 
   const bodyResult = await get(startLinkBody$);
   signal.throwIfAborted();
@@ -380,9 +382,7 @@ const startLink$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   if (currentLink) {
-    return conflict(
-      "Your VM0 account is already connected to a phone number in this organization. Disconnect it first.",
-    );
+    return connectConflict("vm0-org-linked", publicBrand);
   }
 
   const [existingPhoneLink] = await readDb
@@ -393,9 +393,7 @@ const startLink$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   if (existingPhoneLink) {
-    return conflict(
-      "This phone number is already connected to another VM0 account or organization. Disconnect it first.",
-    );
+    return connectConflict("phone-handle-linked", publicBrand);
   }
 
   const connectUrl = buildAgentPhoneConnectUrl({
@@ -462,12 +460,13 @@ const unlink$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 204 as const, body: undefined };
 });
 
-function connectConflict(reason: LinkConflictReason) {
+function connectConflict(reason: LinkConflictReason, publicBrand: PublicBrand) {
+  const brandName = publicBrandPresentation(publicBrand).brandName;
   const message =
     reason === "phone-handle-linked"
-      ? "This phone number is already connected to another VM0 account or organization. Disconnect it first."
+      ? `This phone number is already connected to another ${brandName} account or organization. Disconnect it first.`
       : reason === "vm0-org-linked"
-        ? "Your VM0 account is already connected to another phone number in this organization. Disconnect it first."
+        ? `Your ${brandName} account is already connected to another phone number in this organization. Disconnect it first.`
         : "This phone number link already exists. Disconnect it first and try again.";
 
   return conflict(message);
@@ -478,7 +477,8 @@ type LinkConflictReason = "phone-handle-linked" | "vm0-org-linked" | "conflict";
 const connectAgentPhone$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const publicBrand = get(publicBrand$);
+    const publicBrand =
+      auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
     const bodyResult = await get(connectBody$);
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -516,7 +516,7 @@ const connectAgentPhone$ = command(
     signal.throwIfAborted();
 
     if (!result.ok) {
-      return connectConflict(result.reason);
+      return connectConflict(result.reason, publicBrand);
     }
 
     await publishAgentPhoneUserChanged(auth.userId);

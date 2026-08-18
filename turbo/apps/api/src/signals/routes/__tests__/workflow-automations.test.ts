@@ -2107,6 +2107,83 @@ describe("okou workflow automations", () => {
     );
   });
 
+  it("projects inaccessible Notion page errors by request brand", async () => {
+    const scenario = await setupFixture();
+    await enableNotionWorkflowAutomations(scenario.fixture);
+    await connectNotion(scenario);
+    server.use(
+      http.get("https://api.notion.com/v1/pages/:pageId", () => {
+        return new HttpResponse(null, { status: 404 });
+      }),
+    );
+
+    for (const [origin, assistantName] of [
+      [undefined, "Zero"],
+      ["https://app.okou.ai", "Okou"],
+    ] as const) {
+      const rejected = await accept(
+        automationsClient().create({
+          headers: authHeaders(),
+          ...(origin ? { extraHeaders: { origin } } : {}),
+          params: { workflowId: scenario.workflowId },
+          body: {
+            kind: "event",
+            eventType: "notion-child-page-created",
+            eventConfig: {
+              provider: "notion",
+              event: "child_page_created",
+              parentPageUrl: NOTION_PARENT_PAGE_URL,
+            },
+          },
+        }),
+        [400],
+      );
+      expect(rejected.body.error.message).toBe(
+        `${assistantName} cannot access this Notion page`,
+      );
+    }
+  });
+
+  it("projects inaccessible Notion database errors by request brand", async () => {
+    const scenario = await setupFixture();
+    await enableNotionWorkflowAutomations(scenario.fixture);
+    await connectNotion(scenario);
+    server.use(
+      http.get("https://api.notion.com/v1/databases/:databaseId", () => {
+        return new HttpResponse(null, { status: 404 });
+      }),
+      http.get("https://api.notion.com/v1/data_sources/:dataSourceId", () => {
+        return new HttpResponse(null, { status: 404 });
+      }),
+    );
+
+    for (const [origin, assistantName] of [
+      [undefined, "Zero"],
+      ["https://app.okou.ai", "Okou"],
+    ] as const) {
+      const rejected = await accept(
+        automationsClient().create({
+          headers: authHeaders(),
+          ...(origin ? { extraHeaders: { origin } } : {}),
+          params: { workflowId: scenario.workflowId },
+          body: {
+            kind: "event",
+            eventType: "notion-database-item-created",
+            eventConfig: {
+              provider: "notion",
+              event: "database_item_created",
+              databaseUrl: NOTION_DATABASE_URL,
+            },
+          },
+        }),
+        [400],
+      );
+      expect(rejected.body.error.message).toBe(
+        `${assistantName} cannot access this Notion database`,
+      );
+    }
+  });
+
   it("creates Notion child page automations by validating and storing the parent page", async () => {
     const scenario = await setupFixture();
     const connectorId = await connectNotion(scenario);

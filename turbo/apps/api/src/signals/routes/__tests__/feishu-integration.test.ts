@@ -1282,12 +1282,26 @@ describe("Feishu integration", () => {
     expect(secondSetup.body.error.message).toBe(
       "This workspace already has a Feishu bot",
     );
-    await accept(
+    const vm0Conflict = await accept(
       client.checkAppId({
         headers: { authorization: "Bearer clerk-session" },
         query: { appId: firstAppId },
       }),
       [409],
+    );
+    expect(vm0Conflict.body.error.message).toBe(
+      "This Feishu App ID is already registered in VM0",
+    );
+    const okouConflict = await accept(
+      client.checkAppId({
+        headers: { authorization: "Bearer clerk-session" },
+        extraHeaders: { origin: "https://app.okou.ai" },
+        query: { appId: firstAppId },
+      }),
+      [409],
+    );
+    expect(okouConflict.body.error.message).toBe(
+      "This Feishu App ID is already registered in Okou",
     );
     await accept(
       client.checkAppId({
