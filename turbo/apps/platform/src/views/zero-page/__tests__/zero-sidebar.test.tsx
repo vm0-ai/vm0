@@ -1,4 +1,10 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -36,8 +42,6 @@ import { pathname } from "../../../signals/location.ts";
 import {
   CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
   getChatThreadVirtualListScrollMargin,
-  pinnedAgentGridRows$,
-  setPinnedAgentGridRows$,
 } from "../../../signals/zero-page/zero-sidebar-state.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 import { mockChatEventRows } from "./chat-event-test-helpers.ts";
@@ -56,6 +60,7 @@ function mountedComposer(): HTMLElement {
 }
 
 const context = testContext();
+const refreshContext = testContext();
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const RESEARCH_AGENT_ID = "c0000000-0000-4000-a000-000000000002";
@@ -92,7 +97,7 @@ function prepareDefaultAgent(): void {
   ]);
 }
 
-function prepareAgentTeam(): TeamComposeItem[] {
+function prepareAgentTeam(targetContext = context): TeamComposeItem[] {
   const team: TeamComposeItem[] = [
     {
       id: AGENT_ID,
@@ -128,8 +133,8 @@ function prepareAgentTeam(): TeamComposeItem[] {
       updatedAt: "2024-01-01T00:00:00Z",
     },
   ];
-  context.mocks.data.team(team);
-  context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
+  targetContext.mocks.data.team(team);
+  targetContext.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
     const displayNameById: Record<string, string> = {
       [AGENT_ID]: "Zero",
       [RESEARCH_AGENT_ID]: "Research Agent",
@@ -2865,7 +2870,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("reserves cached pinned agent rows while preferences load", async () => {
+  it("preserves pinned agent rows across a loading refresh", async () => {
     const team = prepareAgentTeam();
     const operationsAgentId = "c0000000-0000-4000-a000-000000000004";
     context.mocks.data.team([
@@ -2877,39 +2882,72 @@ describe("zero sidebar", () => {
         headVersionId: "version_4",
       },
     ]);
-    const preferencesGate = context.mocks.deferred<void>();
-    context.mocks.api(userPreferencesContract.get, async ({ respond }) => {
-      await preferencesGate.promise;
-      return respond(200, {
-        timezone: null,
-        locale: null,
-        supportedLocales: [
-          "en-US",
-          "pt-BR",
-          "ja-JP",
-          "ko-KR",
-          "id-ID",
-          "de-DE",
-          "es-ES",
-          "it-IT",
-          "fr-FR",
-          "hi-IN",
-        ],
-        pinnedAgentIds: [
-          RESEARCH_AGENT_ID,
-          SUPPORT_AGENT_ID,
-          operationsAgentId,
-        ],
-        sendMode: "enter",
-        morningBriefEnabled: false,
-        morningBriefNextRunAt: null,
-        captureNetworkBodiesRemaining: 0,
-      });
+    context.mocks.data.userPreferences({
+      pinnedAgentIds: [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID, operationsAgentId],
     });
-    context.store.set(setPinnedAgentGridRows$, 2);
 
     setupSidebarPage({
       context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const initialGrid = await screen.findByTestId("pinned-agents-grid");
+    await waitFor(() => {
+      expect(
+        within(initialGrid).getAllByTestId("pinned-agent-card"),
+      ).toHaveLength(4);
+    });
+
+    cleanup();
+
+    const refreshTeam = prepareAgentTeam(refreshContext);
+    refreshContext.mocks.data.team([
+      ...refreshTeam,
+      {
+        ...refreshTeam[1]!,
+        id: operationsAgentId,
+        displayName: "Operations Agent",
+        headVersionId: "version_4",
+      },
+    ]);
+    const preferencesGate = refreshContext.mocks.deferred<void>();
+    refreshContext.mocks.api(
+      userPreferencesContract.get,
+      async ({ respond }) => {
+        await preferencesGate.promise;
+        return respond(200, {
+          timezone: null,
+          locale: null,
+          supportedLocales: [
+            "en-US",
+            "pt-BR",
+            "ja-JP",
+            "ko-KR",
+            "id-ID",
+            "de-DE",
+            "es-ES",
+            "it-IT",
+            "fr-FR",
+            "hi-IN",
+          ],
+          pinnedAgentIds: [
+            RESEARCH_AGENT_ID,
+            SUPPORT_AGENT_ID,
+            operationsAgentId,
+          ],
+          sendMode: "enter",
+          morningBriefEnabled: false,
+          morningBriefNextRunAt: null,
+          captureNetworkBodiesRemaining: 0,
+        });
+      },
+    );
+
+    setupSidebarPage({
+      context: refreshContext,
       path: `/agents/${AGENT_ID}/chat`,
       featureSwitches: {
         [FeatureSwitchKey.ThreeColumnNav]: true,
@@ -2926,7 +2964,6 @@ describe("zero sidebar", () => {
     await waitFor(() => {
       expect(within(grid).queryByTestId("pinned-agent-skeleton")).toBeNull();
       expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(4);
-      expect(context.store.get(pinnedAgentGridRows$)).toBe(2);
     });
   });
 

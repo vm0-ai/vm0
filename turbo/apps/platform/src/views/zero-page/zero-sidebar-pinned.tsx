@@ -31,6 +31,7 @@ import {
   setAgentCardCollapsed$,
   pinnedAgentGridRows$,
   cachePinnedAgentGridRowsRef$,
+  PINNED_AGENT_GRID_COLUMNS,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import {
   subagents$,
@@ -52,13 +53,6 @@ import { Link } from "../router/link.tsx";
 import { assistantName$ } from "../../signals/branding.ts";
 import { AgentListDialog } from "./zero-sidebar-dialogs.tsx";
 import { AgentRowSideActions } from "./zero-sidebar-agent-row-actions.tsx";
-
-const PINNED_AGENT_GRID_COLUMNS = 4;
-
-function pinnedAgentGridRows(agentCount: number): number {
-  // The New button always occupies the fourth slot in the first row.
-  return Math.max(1, Math.ceil((agentCount + 1) / PINNED_AGENT_GRID_COLUMNS));
-}
 
 function PinnedAgentGridSkeletonCard() {
   return (
@@ -254,10 +248,6 @@ export function PinnedAgentListSection({
     displayedPinnedAgentsLoadable.state === "hasData"
       ? displayedPinnedAgentsLoadable.data
       : pinnedAgents;
-  const displayedPinnedAgentCount =
-    displayedPinnedAgentsLoadable.state === "hasData"
-      ? displayedPinnedAgentsLoadable.data.length
-      : null;
 
   const selectedAgentId =
     routeAgentId ?? (routeThreadId ? null : sidebarAgentId);
@@ -318,6 +308,7 @@ export function PinnedAgentListSection({
           })}
         </span>
         <div
+          ref={cachePinnedAgentGridRowsRef}
           className="grid min-w-0 grid-cols-4 items-start gap-1 pb-1"
           data-testid="pinned-agents-grid"
         >
@@ -343,16 +334,6 @@ export function PinnedAgentListSection({
           </button>
           {pinnedAgentCards.slice(3)}
         </div>
-        {displayedPinnedAgentCount !== null && (
-          <span
-            key={pinnedAgentGridRows(displayedPinnedAgentCount)}
-            ref={cachePinnedAgentGridRowsRef}
-            data-pinned-agent-grid-rows={pinnedAgentGridRows(
-              displayedPinnedAgentCount,
-            )}
-            hidden
-          />
-        )}
         <AgentListDialogContainer />
       </div>
     );

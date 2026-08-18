@@ -1,6 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { localStorageSignals } from "../external/local-storage.ts";
-import { onRef } from "../utils.ts";
+import { onDomEventFn, onRef } from "../utils.ts";
 
 // ---------------------------------------------------------------------------
 // Chat list dialog search query
@@ -184,22 +184,43 @@ export const setAgentCardCollapsed$ = command(({ set }, collapsed: boolean) => {
 // ---------------------------------------------------------------------------
 // Pinned agent grid rows (three-column sidebar) — persisted in localStorage
 // ---------------------------------------------------------------------------
+export const PINNED_AGENT_GRID_COLUMNS = 4;
+
 const { get$: pinnedAgentGridRowsRaw$, set$: setPinnedAgentGridRowsRaw$ } =
   localStorageSignals("pinnedAgentGridRows");
 export const pinnedAgentGridRows$ = computed((get) => {
   const rows = Number(get(pinnedAgentGridRowsRaw$));
   return Number.isSafeInteger(rows) && rows > 0 ? rows : 1;
 });
-export const setPinnedAgentGridRows$ = command(({ get, set }, rows: number) => {
-  const next = String(rows);
-  if (get(pinnedAgentGridRowsRaw$) === next) {
-    return;
-  }
-  set(setPinnedAgentGridRowsRaw$, next);
-});
+const cachePinnedAgentGridRowsFromElement$ = command(
+  ({ get, set }, element: HTMLDivElement) => {
+    const rows = Math.max(
+      1,
+      Math.ceil(element.childElementCount / PINNED_AGENT_GRID_COLUMNS),
+    );
+    const next = String(rows);
+    if (get(pinnedAgentGridRowsRaw$) === next) {
+      return;
+    }
+    set(setPinnedAgentGridRowsRaw$, next);
+  },
+);
 export const cachePinnedAgentGridRowsRef$ = onRef(
-  command(({ set }, element: HTMLSpanElement, _signal: AbortSignal) => {
-    set(setPinnedAgentGridRows$, Number(element.dataset.pinnedAgentGridRows));
+  command(({ set }, element: HTMLDivElement, signal: AbortSignal) => {
+    set(cachePinnedAgentGridRowsFromElement$, element);
+    const observer = new MutationObserver(
+      onDomEventFn(() => {
+        set(cachePinnedAgentGridRowsFromElement$, element);
+      }),
+    );
+    observer.observe(element, { childList: true });
+    signal.addEventListener(
+      "abort",
+      () => {
+        observer.disconnect();
+      },
+      { once: true },
+    );
   }),
 );
 
