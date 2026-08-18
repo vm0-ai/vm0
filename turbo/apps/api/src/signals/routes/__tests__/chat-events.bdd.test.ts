@@ -134,8 +134,10 @@ import {
   holdThreadSessionConversationClearFixture,
   readCanonicalChatEventStorageFixture,
   releaseBddVm0ApiKey,
+  removeChatCallbackPublicBrandFixture,
   replayPendingChatInputQueueEventFixture,
   replaceThreadSessionBindingFixture,
+  setChatCallbackGitHubDeliveryFixture,
   timeoutRunWithoutCallbacksFixture,
 } from "../../../test-fixtures/chat-events";
 import { cronSteerRunTimeBudgetRoutes } from "../cron-steer-run-time-budget";
@@ -9054,6 +9056,76 @@ describe("CHAT-02: public-brand default assistant identity", () => {
     });
 
     await cancelChatRun(actor, customRun.runId);
+  }, 90_000);
+
+  it("carries the initiating brand into GitHub delivery callbacks with a VM0 legacy fallback", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    bdd.acceptAgentStorageWrites();
+    if (!actor.orgId) {
+      throw new Error("Expected an organization-scoped chat actor");
+    }
+    const orgId = actor.orgId;
+
+    const expectGitHubCallbackBrand = async (args: {
+      readonly requestBrand: PublicBrand;
+      readonly expectedBrand: PublicBrand;
+      readonly legacy: boolean;
+    }): Promise<void> => {
+      const run = await sendChatRun(
+        actor,
+        {
+          agentId,
+          prompt: `deliver a ${args.requestBrand}-branded GitHub response`,
+        },
+        args.requestBrand,
+      );
+      const claim = await claimChatRun(runnerGroup, run.runId);
+      await setChatCallbackGitHubDeliveryFixture({
+        runId: run.runId,
+        installationId: randomUUID(),
+        repo: "vm0-ai/vm0",
+        subjectNumber: 1,
+        subjectKind: "issue",
+        agentId,
+      });
+      if (args.legacy) {
+        await removeChatCallbackPublicBrandFixture(run.runId);
+      }
+
+      chatCallbacks.mockChatOutputEvents([
+        assistantEvent(0, "GitHub callback brand response"),
+      ]);
+      await completeChatRunOk(run.runId, claim.sandboxHeaders);
+      await flushWaitUntilForTest();
+
+      const state = await runStateStore.set(
+        readAgentRunState$,
+        {
+          orgId,
+          userId: actor.userId,
+          runId: run.runId,
+        },
+        context.signal,
+      );
+      expect(
+        state.callbacks.find((callback) => {
+          return callback.internalKind === "github:chat";
+        }),
+      ).toMatchObject({
+        payload: { publicBrand: args.expectedBrand },
+      });
+    };
+
+    await expectGitHubCallbackBrand({
+      requestBrand: "okou",
+      expectedBrand: "okou",
+      legacy: false,
+    });
+    await expectGitHubCallbackBrand({
+      requestBrand: "okou",
+      expectedBrand: "vm0",
+      legacy: true,
+    });
   }, 90_000);
 });
 

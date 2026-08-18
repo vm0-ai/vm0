@@ -1288,6 +1288,59 @@ export async function removeChatCallbackPublicBrandFixture(
   }
 }
 
+/** Attach GitHub delivery metadata that is normally persisted by GitHub ingress. */
+export async function setChatCallbackGitHubDeliveryFixture(args: {
+  readonly runId: string;
+  readonly installationId: string;
+  readonly repo: string;
+  readonly subjectNumber: number;
+  readonly subjectKind: "issue" | "pull_request";
+  readonly agentId: string;
+}): Promise<void> {
+  const [callback] = await db()
+    .select({
+      id: agentRunCallbacks.id,
+      payload: agentRunCallbacks.payload,
+    })
+    .from(agentRunCallbacks)
+    .where(
+      and(
+        eq(agentRunCallbacks.runId, args.runId),
+        eq(agentRunCallbacks.internalKind, "chat"),
+        eq(agentRunCallbacks.status, "pending"),
+      ),
+    )
+    .limit(1);
+  if (
+    !callback ||
+    typeof callback.payload !== "object" ||
+    callback.payload === null ||
+    Array.isArray(callback.payload)
+  ) {
+    throw new Error("Expected one pending canonical chat callback");
+  }
+
+  const callbacks = await db()
+    .update(agentRunCallbacks)
+    .set({
+      payload: {
+        ...callback.payload,
+        githubDelivery: {
+          installationId: args.installationId,
+          repo: args.repo,
+          subjectNumber: args.subjectNumber,
+          subjectKind: args.subjectKind,
+          agentId: args.agentId,
+        },
+      },
+    })
+    .where(eq(agentRunCallbacks.id, callback.id))
+    .returning({ id: agentRunCallbacks.id });
+  if (callbacks.length !== 1) {
+    throw new Error("Expected one pending canonical chat callback");
+  }
+}
+
 async function transitiveBlockedWaiterCount(
   holderPid: number,
 ): Promise<number> {

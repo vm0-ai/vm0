@@ -682,6 +682,35 @@ describe("createApp", () => {
       expect(response.headers.get("location")).toBe(expected);
     });
 
+    it.each([
+      [
+        "https://api.okou.ai",
+        "https://app.vm0.ai",
+        "/sign-in?redirect_url=%2Fchats",
+        "https://app.okou.ai/sign-in?redirect_url=%2Fchats",
+      ],
+      [
+        "https://api.vm0.ai",
+        "https://app.okou.ai",
+        "/sign-up/verify?redirect_url=%2Fonboarding",
+        "https://app.vm0.ai/sign-up/verify?redirect_url=%2Fonboarding",
+      ],
+    ])(
+      "redirects auth requests on %s to its matching app domain",
+      async (apiUrl, configuredAppUrl, path, expected) => {
+        mockEnv("APP_URL", configuredAppUrl);
+        const app = createApp({
+          signal: context.signal,
+          routes: TEST_APP_ROUTES,
+        });
+
+        const response = await app.request(`${apiUrl}${path}`);
+
+        expect(response.status).toBe(302);
+        expect(response.headers.get("location")).toBe(expected);
+      },
+    );
+
     it("returns a 404 JSON response for unmatched routes", async () => {
       const app = createApp({
         signal: context.signal,

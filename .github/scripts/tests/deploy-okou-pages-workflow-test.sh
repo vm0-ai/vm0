@@ -6,7 +6,8 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 python3 - \
   "${repo_root}/.github/workflows/turbo.yml" \
   "${repo_root}/.github/workflows/release-please.yml" \
-  "${repo_root}/.github/workflows/rollback-production.yml" <<'PY'
+  "${repo_root}/.github/workflows/rollback-production.yml" \
+  "${repo_root}/.github/scripts/verify-okou-production-domains.sh" <<'PY'
 from pathlib import Path
 import sys
 
@@ -43,14 +44,19 @@ def require_fragments(step: dict[str, object], fragments: list[str]) -> str:
 turbo, turbo_source = load_workflow(sys.argv[1])
 release, release_source = load_workflow(sys.argv[2])
 rollback, rollback_source = load_workflow(sys.argv[3])
+production_verifier_source = Path(sys.argv[4]).read_text()
 
 turbo_job = turbo["jobs"]["deploy-app"]
 release_job = release["jobs"]["promote-app-production"]
 rollback_job = rollback["jobs"]["rollback-app"]
+rollback_verification_job = rollback["jobs"]["verify-production-domains"]
 
 preview_step = find_step(turbo_job, "Deploy Cloudflare Pages preview")
 release_step = find_step(release_job, "Deploy Cloudflare Pages production")
 rollback_step = find_step(rollback_job, "Deploy App to Cloudflare Pages production")
+rollback_verification_step = find_step(
+    rollback_verification_job, "Verify production App and API domains"
+)
 
 shared_script = "bash .github/scripts/deploy-okou-pages.sh"
 require_fragments(
@@ -85,11 +91,37 @@ require_fragments(
 if "WRANGLER_OUTPUT_FILE_PATH" not in preview_step.get("env", {}):
     raise RuntimeError("preview deployment no longer captures Wrangler output")
 
-require_fragments(release_step, ["curl -fsSL", '"$pages_url"', '"$production_url"'])
 require_fragments(
-    rollback_step,
-    ["curl -fsSL", '"https://${CF_PAGES_PROJECT_NAME}.pages.dev"', '"https://app.vm0.ai"'],
+    release_step,
+    ["verify-okou-production-domains.sh", '"$pages_url"'],
 )
+require_fragments(
+    rollback_verification_step,
+    [
+        "verify-okou-production-domains.sh",
+        '"https://${CF_PAGES_PROJECT_NAME}.pages.dev"',
+    ],
+)
+
+for fragment in (
+    "https://app.vm0.ai",
+    "https://app.okou.ai",
+    "https://api.vm0.ai",
+    "https://api.okou.ai",
+    "sign-in",
+    "sign-up",
+    "%{redirect_url}",
+):
+    if fragment not in production_verifier_source:
+        raise RuntimeError(f"production verifier is missing: {fragment}")
+
+for api_origin, app_origin in (
+    ("https://api.vm0.ai", "https://app.vm0.ai"),
+    ("https://api.okou.ai", "https://app.okou.ai"),
+):
+    invocation = f'verify_auth_redirect "{api_origin}" "{app_origin}"'
+    if invocation not in production_verifier_source:
+        raise RuntimeError(f"production verifier is missing mapping: {invocation}")
 
 print("deploy-okou-pages workflow tests passed")
 PY
