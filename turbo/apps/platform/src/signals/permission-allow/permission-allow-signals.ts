@@ -149,6 +149,7 @@ export function userPermissionGrantsByAgent(
           fetchOptions: { signal },
         }),
         [200],
+        signal,
       );
     }, get(rootSignal$));
     return result.body;
@@ -168,6 +169,7 @@ export function userPermissionGrantsByAgentIfExists(
           fetchOptions: { signal },
         }),
         [200, 404],
+        signal,
       );
     }, get(rootSignal$));
     return result.status === 404 ? null : result.body;

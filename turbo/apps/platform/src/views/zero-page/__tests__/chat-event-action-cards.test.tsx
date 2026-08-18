@@ -33,6 +33,7 @@ import {
 } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
 import { UNKNOWN_PERMISSION_GRANT } from "@okouai/connectors/firewall-types";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
@@ -3898,6 +3899,7 @@ describe("chat event action cards", () => {
 
   it("keeps permission success and composer connectors visible while grants reload", async () => {
     mockNow(context.signal);
+    const toastError = vi.spyOn(toast, "error");
     const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000991";
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=gmail&permission=messages.write&action=allow&expiresIn=1h`;
@@ -4046,6 +4048,7 @@ describe("chat event action cards", () => {
         within(permissionCard).getByText("Permissions updated"),
       ).toBeInTheDocument();
     });
+    expect(toastError).not.toHaveBeenCalled();
   });
 
   it("lets users change permission duration before confirming", async () => {
