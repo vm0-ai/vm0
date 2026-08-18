@@ -729,6 +729,8 @@ function resolveRuntimeNormalSendBody(
 
 type NormalSendAttachmentCountBucket = "0" | "1" | "2_4" | "5_plus";
 
+const NORMAL_SEND_ATTACHMENT_METADATA_CONCURRENCY = 4;
+
 function normalSendAttachmentCountBucket(
   count: number,
 ): NormalSendAttachmentCountBucket {
@@ -764,25 +766,44 @@ const resolveIncomingAttachFileMetadata$ = command(
           return null;
         }
         const metadata: ChatEventAttachFileMetadata[] = [];
-        for (const file of files) {
-          const object = await set(
-            resolveArtifactObject$,
-            { userId: args.userId, id: file.fileId },
-            signal,
+        for (
+          let offset = 0;
+          offset < files.length;
+          offset += NORMAL_SEND_ATTACHMENT_METADATA_CONCURRENCY
+        ) {
+          const wave = files.slice(
+            offset,
+            offset + NORMAL_SEND_ATTACHMENT_METADATA_CONCURRENCY,
           );
-          signal.throwIfAborted();
-          if (!object) {
-            throw new Error(
-              `User-message attachment not found: ${file.fileId}`,
-            );
+          const results = await Promise.allSettled(
+            wave.map(async (file) => {
+              const object = await set(
+                resolveArtifactObject$,
+                { userId: args.userId, id: file.fileId },
+                signal,
+              );
+              return { file, object };
+            }),
+          );
+          for (const result of results) {
+            if (result.status === "rejected") {
+              throw result.reason;
+            }
+            signal.throwIfAborted();
+            const { file, object } = result.value;
+            if (!object) {
+              throw new Error(
+                `User-message attachment not found: ${file.fileId}`,
+              );
+            }
+            metadata.push({
+              id: file.fileId,
+              filename: file.filenameSnapshot,
+              contentType: file.contentType,
+              size: object.size,
+              objectKey: object.key,
+            });
           }
-          metadata.push({
-            id: file.fileId,
-            filename: file.filenameSnapshot,
-            contentType: file.contentType,
-            size: object.size,
-            objectKey: object.key,
-          });
         }
         return metadata;
       },
