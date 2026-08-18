@@ -359,7 +359,7 @@ function currentBillingCandidateWhere(candidate: StripeBillingCandidate) {
   return and(
     eq(orgMetadata.orgId, candidate.orgId),
     eq(orgMetadata.stripeSubscriptionId, candidate.stripeSubscriptionId),
-    inArray(orgMetadata.tier, ["pro", "team"]),
+    inArray(orgMetadata.tier, PAID_TIERS),
     inArray(orgMetadata.subscriptionStatus, [
       ...PAYMENT_FAILED_SUBSCRIPTION_STATUSES,
     ]),

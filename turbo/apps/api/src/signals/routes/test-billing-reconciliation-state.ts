@@ -35,6 +35,19 @@ import {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+type PlanSubscriptionFixtureKind = Extract<
+  BillingReconciliationFixtureKind,
+  `plan-subscription-${string}`
+>;
+
+const PLAN_SUBSCRIPTION_FIXTURE_TIERS: Readonly<
+  Record<PlanSubscriptionFixtureKind, "pro" | "team" | "custom">
+> = {
+  "plan-subscription-pro": "pro",
+  "plan-subscription-team": "team",
+  "plan-subscription-custom": "custom",
+};
+
 const actionBody$ = bodyResultOf(testBillingReconciliationStateContract.action);
 const reconcileBody$ = bodyResultOf(
   testBillingReconciliationStateContract.reconcile,
@@ -54,7 +67,9 @@ function fixtureReference(
 ): FixtureReference {
   const orgId = `org_billing_reconciliation_${kind}_${marker}`;
   switch (kind) {
-    case "plan-subscription":
+    case "plan-subscription-pro":
+    case "plan-subscription-team":
+    case "plan-subscription-custom":
     case "concurrency":
     case "usage-allowance": {
       return {
@@ -159,10 +174,12 @@ async function insertOrganizationFixtures(
   await tx.insert(orgMetadata).values(
     fixtures.map((fixture) => {
       switch (fixture.kind) {
-        case "plan-subscription": {
+        case "plan-subscription-pro":
+        case "plan-subscription-team":
+        case "plan-subscription-custom": {
           return {
             orgId: fixture.orgId,
-            tier: "pro",
+            tier: PLAN_SUBSCRIPTION_FIXTURE_TIERS[fixture.kind],
             stripeSubscriptionId: fixture.stripeSubscriptionId,
             subscriptionStatus: "past_due",
             currentPeriodEnd: old,
@@ -610,7 +627,9 @@ function candidateStateForFixture(
   rows: BillingReconciliationStateRows,
 ): CandidateState {
   switch (fixture.kind) {
-    case "plan-subscription":
+    case "plan-subscription-pro":
+    case "plan-subscription-team":
+    case "plan-subscription-custom":
     case "atom-grant": {
       const row = stateRowForOrg(rows.orgRows, fixture);
       if (!row.subscriptionStatus) {

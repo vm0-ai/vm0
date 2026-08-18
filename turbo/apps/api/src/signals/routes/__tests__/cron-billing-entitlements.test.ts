@@ -20,7 +20,9 @@ const INITIAL_STATUSES: readonly (readonly [
   BillingReconciliationFixtureKind,
   string,
 ])[] = [
-  ["plan-subscription", "past_due"],
+  ["plan-subscription-pro", "past_due"],
+  ["plan-subscription-team", "past_due"],
+  ["plan-subscription-custom", "past_due"],
   ["atom-grant", "atom_grant"],
   ["concurrency", "past_due"],
   ["usage-allowance", "past_due"],
@@ -36,7 +38,9 @@ const RECONCILED_STATUSES: readonly (readonly [
   BillingReconciliationFixtureKind,
   string,
 ])[] = [
-  ["plan-subscription", "canceled"],
+  ["plan-subscription-pro", "canceled"],
+  ["plan-subscription-team", "canceled"],
+  ["plan-subscription-custom", "canceled"],
   ["atom-grant", "expired"],
   ["concurrency", "canceled"],
   ["usage-allowance", "canceled"],
@@ -153,19 +157,27 @@ describe("billing entitlement reconciliation", () => {
       }),
       [200],
     );
-    expect(response.body).toStrictEqual({ success: true, downgraded: 2 });
+    expect(response.body).toStrictEqual({ success: true, downgraded: 4 });
 
     const selected = await readState(selectedMarker);
     expect(statuses(selected)).toStrictEqual(RECONCILED_STATUSES);
-    expect(selected[0]).toStrictEqual({
-      kind: "plan-subscription",
-      orgId: seededFixture(selectedFixtures, "plan-subscription").orgId,
-      status: "canceled",
-      tier: "limited-free-1",
-      credits: 0,
-      stripeSubscriptionId: null,
-    });
-    expect(selected[1]).toStrictEqual({
+    for (const [index, kind] of (
+      [
+        "plan-subscription-pro",
+        "plan-subscription-team",
+        "plan-subscription-custom",
+      ] as const
+    ).entries()) {
+      expect(selected[index]).toStrictEqual({
+        kind,
+        orgId: seededFixture(selectedFixtures, kind).orgId,
+        status: "canceled",
+        tier: "limited-free-1",
+        credits: 0,
+        stripeSubscriptionId: null,
+      });
+    }
+    expect(selected[3]).toStrictEqual({
       kind: "atom-grant",
       orgId: seededFixture(selectedFixtures, "atom-grant").orgId,
       status: "expired",

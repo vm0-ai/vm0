@@ -6,7 +6,9 @@ import { initContract } from "./base";
 const c = initContract();
 
 export const BILLING_RECONCILIATION_FIXTURE_KINDS = [
-  "plan-subscription",
+  "plan-subscription-pro",
+  "plan-subscription-team",
+  "plan-subscription-custom",
   "atom-grant",
   "concurrency",
   "usage-allowance",
