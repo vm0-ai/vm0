@@ -3313,12 +3313,14 @@ describe("chat event action cards", () => {
     expect(screen.queryByTestId("connector-action-card")).toBeNull();
   });
 
-  it("renders delegated computer use authorization links as action cards", async () => {
+  it("keeps a persisted Okou computer use authorization local on VM0", async () => {
+    const threadId = "e4000000-0000-4000-a000-000000000020";
+    context.mocks.browser.url(`https://app.vm0.ai/chats/${threadId}`);
     const authorizationUrl =
-      "https://app.vm0.ai/computer-use/authorize/vm0_computer_use_authorization_request_test";
+      "https://app.okou.ai/computer-use/authorize/vm0_computer_use_authorization_request_test";
 
     mockChatLifecycle(context, {
-      threadId: "e4000000-0000-4000-a000-000000000020",
+      threadId,
       threadTitle: "Computer Use authorization card",
       chatEvents: [
         {
@@ -3340,7 +3342,7 @@ describe("chat event action cards", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/e4000000-0000-4000-a000-000000000020",
+      path: `/chats/${threadId}`,
     });
 
     const card = await screen.findByTestId("computer-use-authorization-card");
@@ -4306,9 +4308,10 @@ describe("chat event action cards", () => {
     });
   });
 
-  it("renders current-thread browser links as cards and keeps other browser links", async () => {
+  it("renders persisted VM0 browser links as cards on Okou and keeps other browser links", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "c0000000-0000-4000-a000-000000000080";
+    context.mocks.browser.url(`https://app.okou.ai/chats/${threadId}`);
     const otherThreadId = "c0000000-0000-4000-a000-000000000079";
     const liveUrl =
       "https://live.browser-use.com/?wss=test-browser-session-token";

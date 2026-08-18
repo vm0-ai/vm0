@@ -273,7 +273,8 @@ describe("POST /api/zero/billing/restore", () => {
   it("uses the request brand fallback and preserves an explicit return URL when restore requires a payment method", async () => {
     const subId = `sub-restore-card-${randomUUID().slice(0, 8)}`;
     const customerId = `cus-restore-card-${randomUUID().slice(0, 8)}`;
-    const fallbackReturnUrl = "https://app.okou.ai";
+    const okouFallbackReturnUrl = "https://app.okou.ai";
+    const vm0FallbackReturnUrl = "https://app.vm0.ai";
     const explicitReturnUrl = "https://app.vm0.ai/settings/billing";
     const checkoutUrl = "https://checkout.stripe.com/setup/restore";
     const fixture = await track(
@@ -327,8 +328,8 @@ describe("POST /api/zero/billing/restore", () => {
       mode: "setup",
       customer: customerId,
       currency: "usd",
-      success_url: fallbackReturnUrl,
-      cancel_url: fallbackReturnUrl,
+      success_url: okouFallbackReturnUrl,
+      cancel_url: okouFallbackReturnUrl,
       metadata: {
         purpose: "billing_restore",
         orgId: fixture.orgId,
@@ -342,6 +343,22 @@ describe("POST /api/zero/billing/restore", () => {
         },
       },
     });
+    context.mocks.stripe.checkout.sessions.create.mockClear();
+    const vm0Response = await accept(
+      client.create({
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+        extraHeaders: { origin: "https://app.vm0.ai" },
+      }),
+      [200],
+    );
+    expect(vm0Response.body).toStrictEqual(response.body);
+    expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success_url: vm0FallbackReturnUrl,
+        cancel_url: vm0FallbackReturnUrl,
+      }),
+    );
     context.mocks.stripe.checkout.sessions.create.mockClear();
     const explicitResponse = await accept(
       client.create({
