@@ -3085,11 +3085,26 @@ describe("zero sidebar", () => {
     ).not.toBeInTheDocument();
     expect(within(dialog).getByText("Incident response")).toBeInTheDocument();
 
+    await fill(
+      within(dialog).getByPlaceholderText("Search chats and messages..."),
+      "missing",
+    );
+    await waitFor(() => {
+      expect(within(dialog).getByText("No results found")).toBeInTheDocument();
+      expect(within(dialog).getByText("0 results")).toBeInTheDocument();
+    });
+
+    await fill(
+      within(dialog).getByPlaceholderText("Search chats and messages..."),
+      "deploy",
+    );
     click(buttonByText("Chats", dialog));
-    expect(within(dialog).getByText("Deployment notes")).toBeInTheDocument();
-    expect(
-      within(dialog).queryByText("Incident response"),
-    ).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(within(dialog).getByText("Deployment notes")).toBeInTheDocument();
+      expect(
+        within(dialog).queryByText("Incident response"),
+      ).not.toBeInTheDocument();
+    });
 
     click(within(dialog).getByText("Deployment notes"));
     await waitFor(() => {

@@ -977,7 +977,8 @@ export function ThreeColumnSearchDialog({
   const resultCount =
     (showThreads ? threadMatches.length : 0) +
     (showMessages ? messageMatches.length : 0);
-  const showNoResults = !searching && resultCount === 0;
+  const visibleSearching = searching && showMessages;
+  const showNoResults = !visibleSearching && resultCount === 0;
   const selectThread = (threadId: string) => {
     onOpenChange(false);
     onSelectChatThread(threadId);
@@ -1118,7 +1119,7 @@ export function ThreeColumnSearchDialog({
                 );
               })
             : null}
-          {searching && showMessages ? (
+          {visibleSearching ? (
             <div
               className="flex items-center gap-2 px-2 py-2.5 text-xs text-muted-foreground"
               role="status"
@@ -1129,14 +1130,14 @@ export function ThreeColumnSearchDialog({
               })}
             </div>
           ) : null}
-          {showNoResults ? (
-            <p className="px-2 py-8 text-center text-sm text-muted-foreground">
-              {t(($) => {
-                return $.sidebar.noResults;
-              })}
-            </p>
-          ) : null}
         </CommandGroup>
+        {showNoResults ? (
+          <p className="px-7 py-8 text-center text-sm text-muted-foreground">
+            {t(($) => {
+              return $.sidebar.noResults;
+            })}
+          </p>
+        ) : null}
       </CommandList>
     </CommandDialog>
   );
