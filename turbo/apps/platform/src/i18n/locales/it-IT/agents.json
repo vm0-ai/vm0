@@ -624,6 +624,7 @@
     "pinned": "In evidenza",
     "pinnedAgents": "Agenti in evidenza",
     "resultCount_one": "{{count}} risultato",
+    "resultCount_many": "{{count}} risultati",
     "resultCount_other": "{{count}} risultati",
     "searchAgents": "Cerca agenti...",
     "searchAgentsAndChats": "Cerca agenti e chat...",

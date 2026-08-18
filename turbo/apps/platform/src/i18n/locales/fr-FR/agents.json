@@ -624,6 +624,7 @@
     "pinned": "Épinglé",
     "pinnedAgents": "Agents épinglés",
     "resultCount_one": "{{count}} résultat",
+    "resultCount_many": "{{count}} résultats",
     "resultCount_other": "{{count}} résultats",
     "searchAgents": "Rechercher des agents...",
     "searchAgentsAndChats": "Rechercher des agents et des chats...",

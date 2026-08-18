@@ -624,6 +624,7 @@
     "pinned": "Fijados",
     "pinnedAgents": "Agentes fijados",
     "resultCount_one": "{{count}} resultado",
+    "resultCount_many": "{{count}} resultados",
     "resultCount_other": "{{count}} resultados",
     "searchAgents": "Buscar agentes...",
     "searchAgentsAndChats": "Buscar agentes y conversaciones...",
