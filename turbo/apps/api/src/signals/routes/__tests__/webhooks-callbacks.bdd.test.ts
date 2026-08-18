@@ -538,6 +538,7 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
     api.acceptNextStripeWebhookEvent({
       id: `evt_bdd_${randomUUID()}`,
       type: "subscription_schedule.released",
+      created: Math.floor(now() / 1000),
       data: { object: { id: `sched_bdd_${randomUUID()}` } },
     });
     const releasedScheduleWithoutOrg = await api.requestStripeWebhook(
@@ -2867,6 +2868,84 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     expectIsoTimestampBetween(canceled?.expiresAt, beforeCancel, afterCancel);
   });
 
+  it("ignores a canceled usage allowance invoice from an obsolete subscription", async () => {
+    const bdd = createBddApi(context);
+    const actor = bdd.user();
+    const orgId = orgOf(actor);
+    const suffix = randomUUID().slice(0, 8);
+    const customerId = `cus_bdd_allowance_stale_${suffix}`;
+    const currentSubscriptionId = `sub_bdd_allowance_current_${suffix}`;
+    const staleSubscriptionId = `sub_bdd_allowance_stale_${suffix}`;
+    const effectiveAtUnix = epochSeconds(-1);
+    const expiresAtUnix = epochSeconds(30);
+
+    await postUsageAllowanceInvoicePaid(context.signal, {
+      orgId,
+      userId: actor.userId,
+      customerId,
+      subscriptionId: currentSubscriptionId,
+      effectiveAt: new Date(effectiveAtUnix * 1000),
+      expiresAt: new Date(expiresAtUnix * 1000),
+      shortWindowSeconds: 3600,
+      shortWindowUnits: 5000,
+      weeklyWindowSeconds: 604_800,
+      weeklyWindowUnits: 50_000,
+    });
+
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: `in_bdd_allowance_stale_${suffix}`,
+          customer: customerId,
+          metadata: {
+            type: "usage_allowance",
+            purpose: "usage_allowance",
+            source: "atom_usage_allowance",
+            orgId,
+            allowanceStatus: "canceled",
+            shortWindowSeconds: "3600",
+            shortWindowUnits: "1000",
+            weeklyWindowSeconds: "604800",
+            weeklyWindowUnits: "10000",
+          },
+          parent: {
+            subscription_details: {
+              subscription: staleSubscriptionId,
+              metadata: {},
+            },
+          },
+          lines: {
+            has_more: false,
+            data: [
+              {
+                id: `il_bdd_allowance_stale_${suffix}`,
+                quantity: 1,
+                price: { id: `price_bdd_allowance_stale_${suffix}` },
+                period: {
+                  start: epochSeconds(-30),
+                  end: epochSeconds(0),
+                },
+                parent: { type: "subscription_item_details" },
+              },
+            ],
+          },
+        },
+      }),
+      [200],
+    );
+
+    await expect(
+      readUsageAllowanceEntitlementFixture(orgId),
+    ).resolves.toMatchObject({
+      status: "active",
+      shortWindowUnits: 5000,
+      weeklyWindowUnits: 50_000,
+      expiresAt: isoOf(expiresAtUnix),
+      stripeSubscriptionId: currentSubscriptionId,
+    });
+  });
+
   it("cancels usage allowance entitlements when their Stripe subscription is deleted", async () => {
     const bdd = createBddApi(context);
     const actor = bdd.user();
@@ -3132,6 +3211,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const suffix = randomUUID().slice(0, 8);
     const customerId = `cus_bdd_custom_allowance_${suffix}`;
     const sharedSubscriptionId = `sub_bdd_custom_allowance_${suffix}`;
+    const previousAllowanceSubscriptionId = `sub_bdd_custom_allowance_previous_${suffix}`;
     const customPriceId = `price_bdd_custom_main_${suffix}`;
     const allowancePriceId = `price_bdd_allowance_${suffix}`;
     const allowanceStartsAtUnix = epochSeconds(-1);
@@ -3180,7 +3260,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       orgId,
       userId: actor.userId,
       customerId,
-      subscriptionId: sharedSubscriptionId,
+      subscriptionId: previousAllowanceSubscriptionId,
       effectiveAt: new Date(allowanceStartsAtUnix * 1000),
       expiresAt: new Date(allowanceEndsAtUnix * 1000),
       shortWindowSeconds: 5 * 60 * 60,
@@ -3244,6 +3324,52 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     expect((await billing.readUsageMembers(actor)).body.period).toStrictEqual({
       start: isoOf(allowanceStartsAtUnix),
       end: isoOf(allowanceEndsAtUnix),
+    });
+
+    const staleSubscriptionId = `sub_bdd_custom_allowance_stale_${suffix}`;
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "customer.subscription.updated",
+        object: {
+          id: staleSubscriptionId,
+          customer: customerId,
+          status: "active",
+          cancel_at: null,
+          cancel_at_period_end: false,
+          schedule: null,
+          metadata: {
+            orgId,
+            purpose: "usage_allowance",
+            allowanceStatus: "active",
+            allowancePriceId,
+            shortWindowSeconds: String(5 * 60 * 60),
+            shortWindowUnits: "1000",
+            weeklyWindowSeconds: String(7 * 86_400),
+            weeklyWindowUnits: "10000",
+          },
+          items: {
+            data: [
+              {
+                id: `si_stale_allowance_${suffix}`,
+                price: { id: allowancePriceId },
+                current_period_start: allowanceStartsAtUnix,
+                current_period_end: epochSeconds(60),
+              },
+            ],
+          },
+        },
+      }),
+      [200],
+    );
+
+    await expect(
+      readUsageAllowanceEntitlementFixture(orgId),
+    ).resolves.toMatchObject({
+      status: "active",
+      shortWindowUnits: 625_000,
+      weeklyWindowUnits: 5_000_000,
+      expiresAt: isoOf(allowanceEndsAtUnix),
+      stripeSubscriptionId: sharedSubscriptionId,
     });
   });
 

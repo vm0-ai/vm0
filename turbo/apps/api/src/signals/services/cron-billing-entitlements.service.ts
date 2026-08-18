@@ -265,8 +265,11 @@ function subscriptionIsPaymentFailed(subscription: SubscriptionInput): boolean {
 function subscriptionIsTerminalUsageAllowance(
   subscription: SubscriptionInput,
 ): boolean {
-  return TERMINAL_USAGE_ALLOWANCE_STATUSES.includes(
-    subscription.status as (typeof TERMINAL_USAGE_ALLOWANCE_STATUSES)[number],
+  return (
+    subscription.metadata?.allowanceStatus === "canceled" ||
+    TERMINAL_USAGE_ALLOWANCE_STATUSES.includes(
+      subscription.status as (typeof TERMINAL_USAGE_ALLOWANCE_STATUSES)[number],
+    )
   );
 }
 

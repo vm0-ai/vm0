@@ -5967,7 +5967,7 @@ describe("usage pack allocation management", () => {
     onTestFinished(() => {
       clearMockNow();
     });
-    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+    const renewedSharedSubscription = {
       id: fixture.subscriptionId,
       customer: fixture.customerId,
       status: "active",
@@ -5994,7 +5994,10 @@ describe("usage pack allocation management", () => {
           },
         ],
       },
-    });
+    };
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      renewedSharedSubscription,
+    );
     const invoiceId = `in_${randomUUID()}`;
     const packageInvoice = managedUsagePackInvoice(fixture, {
       invoiceId,
@@ -6049,6 +6052,15 @@ describe("usage pack allocation management", () => {
     expect(status.currentPeriodEnd).toBe(
       new Date(customPlanEnd * 1000).toISOString(),
     );
+
+    await postManagedUsagePackEvent(
+      "customer.subscription.updated",
+      renewedSharedSubscription,
+    );
+    await expect(readBillingStatus(fixture)).resolves.toMatchObject({
+      tier: "custom",
+      memberInviteUsagePackRequired: true,
+    });
 
     await reconcileBillingOrganization(fixture.orgId);
     await expect(readBillingStatus(fixture)).resolves.toMatchObject({

@@ -11,6 +11,7 @@ import { describe, expect, it, onTestFinished } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
+import { now } from "../../../lib/time";
 import { mockStripeClient } from "../../external/stripe-client";
 import { testBillingReconciliationStateRoutes } from "../test-billing-reconciliation-state";
 
@@ -177,5 +178,49 @@ describe("billing entitlement reconciliation", () => {
     await expect(readState(sentinelMarker)).resolves.toStrictEqual(
       sentinelBefore,
     );
+  });
+
+  it("keeps a removed shared usage allowance canceled on reconciliation retry", async () => {
+    mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
+    const marker = randomUUID();
+    onTestFinished(async () => {
+      await stateAction({ action: "cleanup", marker });
+    });
+    const fixtures = await seedState(marker);
+    const allowance = seededFixture(fixtures, "usage-allowance");
+    const futurePeriodEnd = Math.floor(now() / 1000) + 30 * 86_400;
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      id: allowance.stripeSubscriptionId,
+      status: "active",
+      cancel_at: null,
+      cancel_at_period_end: false,
+      metadata: { allowanceStatus: "canceled" },
+      items: {
+        data: [
+          {
+            price: { id: "price_shared_custom_plan" },
+            current_period_end: futurePeriodEnd,
+          },
+        ],
+      },
+    });
+
+    const response = await accept(
+      apiClient().reconcile({ body: { orgIds: [allowance.orgId] } }),
+      [200],
+    );
+    expect(response.body).toStrictEqual({ success: true, downgraded: 0 });
+
+    const candidate = (await readState(marker)).find((row) => {
+      return row.kind === "usage-allowance";
+    });
+    expect(candidate).toStrictEqual({
+      kind: "usage-allowance",
+      orgId: allowance.orgId,
+      status: "canceled",
+      tier: null,
+      credits: null,
+      stripeSubscriptionId: allowance.stripeSubscriptionId,
+    });
   });
 });

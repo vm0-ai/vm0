@@ -294,9 +294,9 @@ interface UsageAllowanceInvoiceDetails {
   readonly weeklyWindowSeconds: number;
   readonly weeklyWindowUnits: number;
   readonly effectiveAt: Date;
-  readonly expiresAt: Date | null;
+  readonly expiresAt: Date;
   readonly customerId: string | null;
-  readonly subscriptionId: string | null;
+  readonly subscriptionId: string;
   readonly active: boolean;
 }
 
@@ -1189,7 +1189,28 @@ async function handleUsageAllowanceInvoicePaid(
   if (!details) {
     return { handled: false, drainOrgId: null };
   }
+  const existingRows = await db
+    .select({
+      effectiveAt: orgUsageAllowanceEntitlements.effectiveAt,
+      stripeSubscriptionId: orgUsageAllowanceEntitlements.stripeSubscriptionId,
+    })
+    .from(orgUsageAllowanceEntitlements)
+    .where(eq(orgUsageAllowanceEntitlements.orgId, details.orgId))
+    .limit(1);
+  const existing = existingRows[0];
   if (!details.active) {
+    if (
+      existing?.stripeSubscriptionId &&
+      existing.stripeSubscriptionId !== details.subscriptionId
+    ) {
+      L.warn("stale canceled usage allowance invoice ignored", {
+        invoiceId: invoice.id,
+        orgId: details.orgId,
+        currentSubscriptionId: existing.stripeSubscriptionId,
+        invoiceSubscriptionId: details.subscriptionId,
+      });
+      return { handled: true, drainOrgId: null };
+    }
     const canceledAt = nowDate();
     await db.transaction(async (tx) => {
       const rows = await tx
@@ -1199,7 +1220,18 @@ async function handleUsageAllowanceInvoicePaid(
           expiresAt: canceledAt,
           updatedAt: canceledAt,
         })
-        .where(eq(orgUsageAllowanceEntitlements.orgId, details.orgId))
+        .where(
+          and(
+            eq(orgUsageAllowanceEntitlements.orgId, details.orgId),
+            or(
+              isNull(orgUsageAllowanceEntitlements.stripeSubscriptionId),
+              eq(
+                orgUsageAllowanceEntitlements.stripeSubscriptionId,
+                details.subscriptionId,
+              ),
+            ),
+          ),
+        )
         .returning({ orgId: orgUsageAllowanceEntitlements.orgId });
       await expireActiveUsageAllowanceWindows(tx, {
         orgIds: rows.map((row) => {
@@ -1211,16 +1243,6 @@ async function handleUsageAllowanceInvoicePaid(
     });
     return { handled: true, drainOrgId: details.orgId };
   }
-
-  const existingRows = await db
-    .select({
-      effectiveAt: orgUsageAllowanceEntitlements.effectiveAt,
-      stripeSubscriptionId: orgUsageAllowanceEntitlements.stripeSubscriptionId,
-    })
-    .from(orgUsageAllowanceEntitlements)
-    .where(eq(orgUsageAllowanceEntitlements.orgId, details.orgId))
-    .limit(1);
-  const existing = existingRows[0];
   if (
     existing?.stripeSubscriptionId &&
     existing.stripeSubscriptionId !== details.subscriptionId &&
@@ -4122,7 +4144,11 @@ async function handleConcurrencySubscriptionUpdated(
 
 type UsageAllowanceSubscriptionUpdateTarget =
   | { readonly by: "subscription"; readonly orgIds: readonly string[] }
-  | { readonly by: "org"; readonly orgId: string };
+  | {
+      readonly by: "org";
+      readonly orgId: string;
+      readonly currentStripeSubscriptionId: string | null;
+    };
 
 interface UsageAllowanceSubscriptionCreditsUpdate {
   readonly shortWindowUnits: number;
@@ -4131,7 +4157,7 @@ interface UsageAllowanceSubscriptionCreditsUpdate {
 
 async function usageAllowanceSubscriptionUpdateTarget(
   db: Pick<UsageAllowanceSubscriptionUpdateStore, "select">,
-  subscription: Pick<SubscriptionInput, "id" | "metadata">,
+  subscription: Pick<SubscriptionInput, "id" | "items" | "metadata">,
 ): Promise<UsageAllowanceSubscriptionUpdateTarget | null> {
   const subscriptionRows = await db
     .select({ orgId: orgUsageAllowanceEntitlements.orgId })
@@ -4160,9 +4186,16 @@ async function usageAllowanceSubscriptionUpdateTarget(
   const orgRows = await db
     .select({
       orgId: orgUsageAllowanceEntitlements.orgId,
-      stripeSubscriptionId: orgUsageAllowanceEntitlements.stripeSubscriptionId,
+      allowanceSubscriptionId:
+        orgUsageAllowanceEntitlements.stripeSubscriptionId,
+      planSubscriptionId: orgMetadata.stripeSubscriptionId,
+      planTier: orgMetadata.tier,
     })
     .from(orgUsageAllowanceEntitlements)
+    .innerJoin(
+      orgMetadata,
+      eq(orgMetadata.orgId, orgUsageAllowanceEntitlements.orgId),
+    )
     .where(eq(orgUsageAllowanceEntitlements.orgId, metadataOrgId))
     .limit(1);
   const orgRow = orgRows[0];
@@ -4170,7 +4203,26 @@ async function usageAllowanceSubscriptionUpdateTarget(
     return null;
   }
 
-  return { by: "org", orgId: orgRow.orgId };
+  const planItem = knownBillingPlanPriceItem(subscription.items.data);
+  const establishesCustomMainSubscription =
+    orgRow.planSubscriptionId === null &&
+    orgRow.planTier === "custom" &&
+    planItem !== undefined &&
+    tierForKnownPlanPrice(planItem.price) === "custom";
+  if (
+    orgRow.allowanceSubscriptionId !== null &&
+    orgRow.allowanceSubscriptionId !== subscription.id &&
+    orgRow.planSubscriptionId !== subscription.id &&
+    !establishesCustomMainSubscription
+  ) {
+    return null;
+  }
+
+  return {
+    by: "org",
+    orgId: orgRow.orgId,
+    currentStripeSubscriptionId: orgRow.allowanceSubscriptionId,
+  };
 }
 
 function usageAllowanceSubscriptionCreditsUpdate(
@@ -4318,7 +4370,15 @@ async function handleUsageAllowanceSubscriptionUpdated(
               orgUsageAllowanceEntitlements.stripeSubscriptionId,
               subscription.id,
             )
-          : eq(orgUsageAllowanceEntitlements.orgId, target.orgId),
+          : and(
+              eq(orgUsageAllowanceEntitlements.orgId, target.orgId),
+              target.currentStripeSubscriptionId === null
+                ? isNull(orgUsageAllowanceEntitlements.stripeSubscriptionId)
+                : eq(
+                    orgUsageAllowanceEntitlements.stripeSubscriptionId,
+                    target.currentStripeSubscriptionId,
+                  ),
+            ),
       )
       .returning({ orgId: orgUsageAllowanceEntitlements.orgId });
 
@@ -4343,6 +4403,45 @@ async function handleUsageAllowanceSubscriptionUpdated(
 
     return orgIds;
   });
+}
+
+async function upsertSubscriptionUpdatedPlanEntitlements(
+  tx: WriteTx,
+  args: {
+    readonly rows: readonly { readonly orgId: string }[];
+    readonly tier: BillingSubscriptionTier;
+    readonly planItem: SubscriptionInput["items"]["data"][number];
+    readonly subscription: SubscriptionInput;
+    readonly scheduledEnd: Date | null;
+  },
+): Promise<void> {
+  const itemPeriodStart = args.planItem.current_period_start
+    ? new Date(args.planItem.current_period_start * 1000)
+    : null;
+  const itemPeriodEnd = args.planItem.current_period_end
+    ? new Date(args.planItem.current_period_end * 1000)
+    : null;
+  for (const row of args.rows) {
+    const memberInviteUsagePackRequired =
+      await stripeSubscriptionUsesMemberUsagePacks(tx, {
+        orgId: row.orgId,
+        stripeSubscriptionId: args.subscription.id,
+      });
+    await upsertOrgPlanEntitlement(tx, {
+      orgId: row.orgId,
+      tier: args.tier,
+      source: "stripe_subscription",
+      status: args.subscription.status,
+      stripeSubscriptionId: args.subscription.id,
+      stripePriceId: args.planItem.price.id,
+      currentPeriodStart: itemPeriodStart,
+      currentPeriodEnd: itemPeriodEnd,
+      cancelAt: args.scheduledEnd,
+      expiresAt: args.scheduledEnd,
+      memberInviteUsagePackRequired,
+      sourceMetadata: args.subscription.metadata ?? {},
+    });
+  }
 }
 
 async function handleSubscriptionUpdatedLegacy(
@@ -4422,27 +4521,13 @@ async function handleSubscriptionUpdatedLegacy(
       .returning({ orgId: orgMetadata.orgId });
 
     if (planTier && planItem) {
-      const itemPeriodStart = planItem.current_period_start
-        ? new Date(planItem.current_period_start * 1000)
-        : null;
-      const itemPeriodEnd = planItem.current_period_end
-        ? new Date(planItem.current_period_end * 1000)
-        : null;
-      for (const row of rows) {
-        await upsertOrgPlanEntitlement(tx, {
-          orgId: row.orgId,
-          tier: planTier,
-          source: "stripe_subscription",
-          status: subscription.status,
-          stripeSubscriptionId: subscription.id,
-          stripePriceId: planItem.price.id,
-          currentPeriodStart: itemPeriodStart,
-          currentPeriodEnd: itemPeriodEnd,
-          cancelAt: periodEnd,
-          expiresAt: periodEnd,
-          sourceMetadata: subscription.metadata ?? {},
-        });
-      }
+      await upsertSubscriptionUpdatedPlanEntitlements(tx, {
+        rows,
+        tier: planTier,
+        planItem,
+        subscription,
+        scheduledEnd: periodEnd,
+      });
     }
 
     if (!trialShortened) {
