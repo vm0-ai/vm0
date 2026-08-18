@@ -24,9 +24,10 @@ runner_api_curl() {
     local path="$1"
     shift
 
-    local token base
+    local token base request_url
     token="$(runner_api_token)" || return 1
     base="$(runner_api_url)" || return 1
+    request_url="$base$path"
 
     local -a headers=(
         -H "Authorization: Bearer $token"
@@ -38,12 +39,19 @@ runner_api_curl() {
         )
     fi
 
-    curl -fsS \
+    local curl_status=0
+    curl --fail-with-body --silent --show-error \
         --connect-timeout "${E2E_CURL_CONNECT_TIMEOUT_SECONDS:-10}" \
         --max-time "${E2E_CURL_MAX_TIME_SECONDS:-30}" \
         "${headers[@]}" \
         "$@" \
-        "$base$path"
+        "$request_url" || curl_status=$?
+
+    if ((curl_status != 0)); then
+        printf 'runner_api_curl failed: url=%s curl_status=%d\n' \
+            "$request_url" "$curl_status" >&2
+    fi
+    return "$curl_status"
 }
 
 runner_chat_event_rows() {
