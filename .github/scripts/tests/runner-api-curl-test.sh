@@ -94,7 +94,7 @@ curl() {
             }
             printf '{"error":"rate limited"}\n'
             echo "curl: (22) The requested URL returned error: 429" >&2
-            echo "Vercel log query: requestHost:pr-27981-api.vm6.ai requestPath:/api/okou/chat/events status:429" >&2
+            echo "Vercel logs: $MOCK_CURL_EXPECTED_VERCEL_URL" >&2
             return 22
             ;;
         no-fail-with-body)
@@ -131,7 +131,8 @@ export E2E_API_URL="https://pr-27981-api.vm6.ai/"
 export E2E_API_TOKEN="sensitive-api-token"
 export VERCEL_AUTOMATION_BYPASS_SECRET="sensitive-bypass-secret"
 payload='{"secret":"sensitive-request-payload"}'
-MOCK_CURL_EXPECTED_VERCEL_WRITE_OUT='%{onerror}%{stderr}Vercel log query: requestHost:pr-27981-api.vm6.ai requestPath:/api/okou/chat/events status:%{http_code}\n'
+MOCK_CURL_EXPECTED_VERCEL_URL='https://vercel.com/vm0/vm0-api/logs?search=requestHost%3Apr-27981-api.vm6.ai+requestPath%3A%2Fapi%2Fokou%2Fchat%2Fevents+status%3A429&timeline=past12Hours'
+MOCK_CURL_EXPECTED_VERCEL_WRITE_OUT='%{onerror}%{stderr}Vercel logs: https://vercel.com/vm0/vm0-api/logs?search=requestHost%%3Apr-27981-api.vm6.ai+requestPath%%3A%%2Fapi%%2Fokou%%2Fchat%%2Fevents+status%%3A%{http_code}&timeline=past12Hours\n'
 
 MOCK_CURL_MODE=success
 MOCK_CURL_EXPECTED_URL="https://pr-27981-api.vm6.ai/api/okou/chat/events"
@@ -146,7 +147,7 @@ run_request "/api/okou/chat/events?cursor=sensitive-query-value" -X POST -d "$pa
 assert_status 22
 assert_file_equals $'{"error":"rate limited"}\n' "$stdout_file"
 assert_file_equals \
-    $'curl: (22) The requested URL returned error: 429\nVercel log query: requestHost:pr-27981-api.vm6.ai requestPath:/api/okou/chat/events status:429\nrunner_api_curl failed: url=https://pr-27981-api.vm6.ai/api/okou/chat/events curl_status=22\n' \
+    $'curl: (22) The requested URL returned error: 429\nVercel logs: '"$MOCK_CURL_EXPECTED_VERCEL_URL"$'\nrunner_api_curl failed: url=https://pr-27981-api.vm6.ai/api/okou/chat/events curl_status=22\n' \
     "$stderr_file"
 assert_file_excludes "$stderr_file" "$E2E_API_TOKEN"
 assert_file_excludes "$stderr_file" "$VERCEL_AUTOMATION_BYPASS_SECRET"
@@ -155,7 +156,7 @@ assert_file_excludes "$stderr_file" "sensitive-query-value"
 
 MOCK_CURL_MODE=no-fail-with-body
 MOCK_CURL_EXPECTED_URL="https://pr-27981-api.vm6.ai/api/okou/agents/agent-1"
-MOCK_CURL_EXPECTED_VERCEL_WRITE_OUT='%{onerror}%{stderr}Vercel log query: requestHost:pr-27981-api.vm6.ai requestPath:/api/okou/agents/agent-1 status:%{http_code}\n'
+MOCK_CURL_EXPECTED_VERCEL_WRITE_OUT='%{onerror}%{stderr}Vercel logs: https://vercel.com/vm0/vm0-api/logs?search=requestHost%%3Apr-27981-api.vm6.ai+requestPath%%3A%%2Fapi%%2Fokou%%2Fagents%%2Fagent-1+status%%3A%{http_code}&timeline=past12Hours\n'
 if delete_runner_agent_for_stage0_teardown "agent-1" \
     >"$stdout_file" 2>"$stderr_file"; then
     request_status=0
