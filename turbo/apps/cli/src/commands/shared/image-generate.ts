@@ -4,6 +4,7 @@ import { generateWebImage } from "../../lib/api/domains/web";
 import { decodeSandboxTokenPayload } from "../../lib/api/sandbox-token";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { createStyledImageCompilationPacket } from "./image-style-authoring";
+import { runDefaultImageModelFromEnvironment } from "./run-default-image-model";
 import {
   findImageStyle,
   listImageStyles,
@@ -144,9 +145,22 @@ function resolveImageRequestModel(
   command: Command,
   model: string,
 ): string | undefined {
-  const hasRunScopedToken = decodeSandboxTokenPayload() !== undefined;
   const modelSource = command.getOptionValueSource("model");
-  return hasRunScopedToken && modelSource === "default" ? undefined : model;
+  const hasRunDefault =
+    runDefaultImageModelFromEnvironment() !== undefined ||
+    decodeSandboxTokenPayload() !== undefined;
+  return hasRunDefault && modelSource === "default" ? undefined : model;
+}
+
+function imageModelPreferenceDetail(command: Command, model: string): string {
+  const runDefaultModel = runDefaultImageModelFromEnvironment();
+  if (runDefaultModel === undefined) {
+    return `Model preference if direct image generation is used: ${model}`;
+  }
+  if (command.getOptionValueSource("model") === "default") {
+    return `Run default model if direct image generation is used: ${runDefaultModel}; omit --model so the server applies it`;
+  }
+  return `Explicit model if direct image generation is used: ${model}`;
 }
 
 function hasImagePromptModeRequest(options: ImageOptions): boolean {
@@ -377,7 +391,7 @@ ${formatRegistryListing(styles, "image styles")}`;
             style,
             sourceMode: options.styleSource,
             details: [
-              `Model preference if direct image generation is used: ${options.model}`,
+              imageModelPreferenceDetail(command, options.model),
               `Requested size: ${options.size}`,
               `Requested quality: ${options.quality}`,
               `Requested background: ${options.background}`,

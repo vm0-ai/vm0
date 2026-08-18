@@ -767,8 +767,9 @@ function parsePrompt(
 
 function parseImageModel(
   body: Record<string, unknown>,
+  defaultModel: ImageModel,
 ): ImageModel | ErrorResponse {
-  const rawModel = readString(body, "model", DEFAULT_IMAGE_MODEL);
+  const rawModel = readString(body, "model", defaultModel);
   const model = normalizeImageModel(rawModel);
   if (!model) {
     return badRequest(
@@ -1064,12 +1065,21 @@ function parseImagePromptStrength(
   return undefined;
 }
 
-export function parseImageOptions(body: unknown): ImageOptions | ErrorResponse {
+function requestedDefaultImageModel(
+  options: { readonly defaultModel?: ImageModel } | undefined,
+): ImageModel {
+  return options?.defaultModel ?? DEFAULT_IMAGE_MODEL;
+}
+
+export function parseImageOptions(
+  body: unknown,
+  options?: { readonly defaultModel?: ImageModel },
+): ImageOptions | ErrorResponse {
   if (!isRecord(body)) {
     return badRequest("Invalid JSON body");
   }
 
-  const model = parseImageModel(body);
+  const model = parseImageModel(body, requestedDefaultImageModel(options));
   if (typeof model === "object") {
     return model;
   }
