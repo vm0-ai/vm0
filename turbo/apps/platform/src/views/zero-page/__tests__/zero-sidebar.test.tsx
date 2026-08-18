@@ -1554,7 +1554,7 @@ describe("zero sidebar", () => {
     });
     expect(
       within(dialog).getByText(
-        "This will permanently delete this chat. Any task currently running in this chat will be stopped immediately. This action cannot be undone.",
+        "This will permanently delete this chat. Any task currently running in this chat will be stopped immediately. Any linked automations will be paused. This action cannot be undone.",
       ),
     ).toBeInTheDocument();
 

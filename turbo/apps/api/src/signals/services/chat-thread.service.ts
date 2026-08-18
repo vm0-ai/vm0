@@ -50,7 +50,7 @@ import {
 } from "drizzle-orm";
 
 import { zodEnumDriverValueDecoder } from "../../lib/db-structured-result";
-import { now } from "../../lib/time";
+import { now, nowDate } from "../../lib/time";
 import { type Db, db$, type ReadonlyDb, writeDb$ } from "../external/db";
 import { inferMimetype } from "./chat-event-shared.service";
 import { latestRunFinishEventSubquery } from "./chat-thread-read-state-query";
@@ -61,6 +61,8 @@ import {
 import { cancelRun$, type CancelRunResult } from "./run-cancel.service";
 import { runOwnedChatEventForRunCondition } from "./chat-event-type.service";
 import { cancellationRecoveryPendingForThread } from "./chat-active-run.service";
+import { reconcileAutomationEventWatches } from "./automation-event-watch-lifecycle.service";
+import { disableThreadBoundWorkflowAutomations } from "./workflow-user-automation-thread.service";
 
 type ChatThreadRow = {
   readonly id: string;
@@ -767,6 +769,7 @@ export const deleteChatThread$ = command(
         return {
           deleted: false,
           activeRuns: [] as readonly ThreadRunToCancel[],
+          disabledAutomations: [],
         };
       }
 
@@ -794,6 +797,15 @@ export const deleteChatThread$ = command(
           ),
         );
 
+      const disabledAutomations = await disableThreadBoundWorkflowAutomations(
+        tx,
+        {
+          userId: args.userId,
+          chatThreadId: ownedThread.id,
+          currentTime: nowDate(),
+        },
+      );
+
       // Delete the thread last inside the lock. Cascades chat_events; captured
       // active runs lose their canonical chatThreadId, while any retained legacy
       // row is independently nulled by its own foreign key.
@@ -802,7 +814,11 @@ export const deleteChatThread$ = command(
         .where(eq(chatThreads.id, ownedThread.id))
         .returning({ id: chatThreads.id });
 
-      return { deleted: Boolean(deletedThread), activeRuns };
+      return {
+        deleted: Boolean(deletedThread),
+        activeRuns,
+        disabledAutomations,
+      };
     });
     signal.throwIfAborted();
     if (!deletion.deleted) {
@@ -829,6 +845,12 @@ export const deleteChatThread$ = command(
         cancelledRuns.push(result);
       }
     }
+
+    await reconcileAutomationEventWatches(
+      { db: writeDb, automations: deletion.disabledAutomations },
+      signal,
+    );
+    signal.throwIfAborted();
 
     return { deleted: true, cancelledRuns };
   },
