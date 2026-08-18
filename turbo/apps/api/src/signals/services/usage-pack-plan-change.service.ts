@@ -54,6 +54,7 @@ import {
   type BillingPurchasePaymentMethod,
 } from "./billing-payment-method.service";
 import { subscriptionScheduleHasNoFutureChanges } from "./stripe-subscription-schedules.service";
+import { updateUsagePackSubscriptionMetadata } from "./usage-pack-subscription-metadata.service";
 import {
   activeUsagePackPlanPriceId,
   activeUsagePackPriceId,
@@ -2704,10 +2705,10 @@ export async function handleUsagePackSubscriptionChangeInvoicePaid(
       `Subscription change invoice ${invoice.id} has the wrong customer`,
     );
   }
-  const subscription = await getStripeClient().subscriptions.retrieve(
-    subscriptionId,
-    { expand: ["latest_invoice"] },
-  );
+  const stripe = getStripeClient();
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
+    expand: ["latest_invoice"],
+  });
   const expectedImmediateTier = planIsUpgrade(root.sourceTier, root.targetTier)
     ? root.targetTier
     : root.sourceTier;
@@ -2716,8 +2717,22 @@ export async function handleUsagePackSubscriptionChangeInvoicePaid(
       `Subscription change invoice ${invoice.id} was paid before the plan change was applied`,
     );
   }
-  const period = usagePackPeriod(subscription);
-  await reconcileUsagePackAllocationChangeSubscription(db, subscription);
+  const subscriptionWithMetadata = await updateUsagePackSubscriptionMetadata(
+    stripe,
+    {
+      subscription,
+      orgId: root.orgId,
+      tier: expectedImmediateTier,
+      planPriceId: subscriptionPlanItem(subscription).price.id,
+      usagePackSubscriptionId: stored.subscription.id,
+      idempotencyKey: `usage-pack-subscription-metadata:${invoice.id}`,
+    },
+  );
+  const period = usagePackPeriod(subscriptionWithMetadata);
+  await reconcileUsagePackAllocationChangeSubscription(
+    db,
+    subscriptionWithMetadata,
+  );
   await fulfillUsagePackSubscriptionChangeInvoice(db, {
     subscriptionChangeId: root.id,
     prorationTimestamp: root.prorationTimestamp,
@@ -2738,7 +2753,7 @@ export async function handleUsagePackSubscriptionChangeInvoicePaid(
     await scheduleDeferredSubscriptionChange(
       db,
       refreshed,
-      subscription,
+      subscriptionWithMetadata,
       undefined,
     );
   } else {
@@ -2748,7 +2763,11 @@ export async function handleUsagePackSubscriptionChangeInvoicePaid(
       .set({ status: "completed", completedAt, updatedAt: completedAt })
       .where(eq(usagePackSubscriptionChanges.id, root.id));
   }
-  return { handled: true, orgId: root.orgId, subscription };
+  return {
+    handled: true,
+    orgId: root.orgId,
+    subscription: subscriptionWithMetadata,
+  };
 }
 
 async function failExpiredPendingSubscriptionChange(

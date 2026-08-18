@@ -44,10 +44,10 @@ import {
   handleUsagePackSubscriptionUpdated,
   loadUsagePackCatalog,
   usagePackSubscriptionIdFromMetadata,
-  usagePackSubscriptionMetadata,
   type UsagePackInvoiceInput,
   type UsagePackSubscriptionInput,
 } from "./usage-pack-subscription.service";
+import { usagePackSubscriptionMetadata } from "./usage-pack-subscription-metadata.service";
 import { safeJsonParse, settle } from "../utils";
 import {
   activeUsagePackPlanPriceId,

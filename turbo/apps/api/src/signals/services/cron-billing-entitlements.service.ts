@@ -34,10 +34,8 @@ import {
   knownPlanPriceItem,
   tierFromPriceId,
 } from "./zero-billing-checkout.service";
-import {
-  reconcileUsagePackSubscriptions,
-  USAGE_PACK_SUBSCRIPTION_PURPOSE,
-} from "./usage-pack-subscription.service";
+import { reconcileUsagePackSubscriptions } from "./usage-pack-subscription.service";
+import { USAGE_PACK_SUBSCRIPTION_PURPOSE } from "./usage-pack-subscription-metadata.service";
 import { reconcileUsagePackCreditRefunds } from "./usage-pack-credit-refund.service";
 import { reconcileUsagePackInvitationPurchases } from "./usage-pack-invitation-purchase.service";
 import { reconcileUsagePackSubscriptionMigrations } from "./usage-pack-subscription-migration.service";

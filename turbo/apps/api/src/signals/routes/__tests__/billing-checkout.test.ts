@@ -6241,7 +6241,13 @@ describe("usage pack allocation management", () => {
     const userId = `user_${randomUUID()}`;
     const fixture = await seedManagedUsagePack([{ userId, usagePackUsd: 20 }]);
     const quantities = new Map([[TEST_PRICE_USAGE_PACK_20, 1]]);
-    const proSubscription = managedUsagePackSubscription(fixture, quantities);
+    const proSubscription = {
+      ...managedUsagePackSubscription(fixture, quantities),
+      metadata: {
+        ...managedUsagePackMetadata(fixture),
+        utm_source: "google",
+      },
+    };
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
       proSubscription,
     );
@@ -6334,6 +6340,19 @@ describe("usage pack allocation management", () => {
       context.mocks.stripe.checkout.sessions.create,
     ).not.toHaveBeenCalled();
     await postManagedUsagePackEvent("invoice.paid", invoice);
+    expect(context.mocks.stripe.subscriptions.update).toHaveBeenLastCalledWith(
+      fixture.subscriptionId,
+      {
+        metadata: {
+          ...proSubscription.metadata,
+          tier: "team",
+          priceId: TEST_PRICE_USAGE_PACK_PLAN_TEAM,
+        },
+      },
+      {
+        idempotencyKey: `usage-pack-subscription-metadata:${invoice.id}`,
+      },
+    );
     const state = await readUsagePackState(
       fixture.orgId,
       fixture.usagePackSubscriptionId,
@@ -7646,10 +7665,13 @@ describe("usage pack allocation management", () => {
         .allocations[0]?.userId ?? "";
     const oldQuantities = new Map([[TEST_PRICE_USAGE_PACK_20, 1]]);
     const newQuantities = new Map([[TEST_PRICE_USAGE_PACK_50, 1]]);
-    const oldSubscription = managedUsagePackSubscription(
-      fixture,
-      oldQuantities,
-    );
+    const oldSubscription = {
+      ...managedUsagePackSubscription(fixture, oldQuantities),
+      metadata: {
+        ...managedUsagePackMetadata(fixture),
+        utm_source: "google",
+      },
+    };
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
       oldSubscription,
     );
@@ -7736,11 +7758,19 @@ describe("usage pack allocation management", () => {
       targetPriceId: TEST_PRICE_USAGE_PACK_50,
       prorationTimestamp,
     });
-    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
-      managedUsagePackSubscription(fixture, newQuantities),
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      ...managedUsagePackSubscription(fixture, newQuantities),
+      metadata: oldSubscription.metadata,
+    });
+    await postManagedUsagePackEvent("invoice.paid", paidInvoice);
+    await postManagedUsagePackEvent("invoice.paid", paidInvoice);
+    expect(context.mocks.stripe.subscriptions.update).toHaveBeenLastCalledWith(
+      fixture.subscriptionId,
+      { metadata: oldSubscription.metadata },
+      {
+        idempotencyKey: `usage-pack-subscription-metadata:${paidInvoice.id}`,
+      },
     );
-    await postManagedUsagePackEvent("invoice.paid", paidInvoice);
-    await postManagedUsagePackEvent("invoice.paid", paidInvoice);
 
     const upgraded = await readUsagePackState(
       fixture.orgId,

@@ -42,7 +42,6 @@ import {
 import { getOrCreateStripeCustomer$ } from "./billing-customer.service";
 import { persistOrgAcquisitionAttribution$ } from "./acquisition-attribution.service";
 import { upsertOrgPlanEntitlement } from "./org-plan-entitlements.service";
-import { stripePreviewMetadata } from "./stripe-preview-metadata.service";
 import {
   handleUsagePackAllocationChangeInvoicePaid,
   reconcileUsagePackAllocationChanges,
@@ -74,9 +73,11 @@ import {
   resolveBillingPurchaseRoute,
   stripeBillingPurchasePaymentParams,
 } from "./billing-payment-method.service";
-
-export const USAGE_PACK_SUBSCRIPTION_PURPOSE = "usage_pack_subscription";
-const USAGE_PACK_SUBSCRIPTION_ID_METADATA_KEY = "usagePackSubscriptionId";
+import {
+  USAGE_PACK_SUBSCRIPTION_ID_METADATA_KEY,
+  USAGE_PACK_SUBSCRIPTION_PURPOSE,
+  usagePackSubscriptionMetadata,
+} from "./usage-pack-subscription-metadata.service";
 
 const CREDITS_PER_DOLLAR = 1000;
 const PAYABLE_USAGE_PACK_ALLOCATION_STATUSES = [
@@ -483,22 +484,6 @@ export async function activeUsagePackBillingContext(
         stripeSubscriptionId: subscription.stripeSubscriptionId,
       }
     : null;
-}
-
-export function usagePackSubscriptionMetadata(args: {
-  readonly orgId: string;
-  readonly tier: SubscriptionCheckoutTier;
-  readonly planPriceId: string;
-  readonly usagePackSubscriptionId: string;
-}): StripeMetadataParam {
-  return {
-    orgId: args.orgId,
-    tier: args.tier,
-    priceId: args.planPriceId,
-    purpose: USAGE_PACK_SUBSCRIPTION_PURPOSE,
-    [USAGE_PACK_SUBSCRIPTION_ID_METADATA_KEY]: args.usagePackSubscriptionId,
-    ...stripePreviewMetadata(),
-  };
 }
 
 function usagePackCheckoutMetadata(args: {

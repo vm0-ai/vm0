@@ -58,6 +58,7 @@ import {
   isUsagePackPlanPriceId,
   usagePackUsdForKnownPriceId,
 } from "./zero-billing-checkout.service";
+import { updateUsagePackSubscriptionMetadata } from "./usage-pack-subscription-metadata.service";
 
 const PREVIEW_TTL_MS = 15 * 60 * 1000;
 const CHANGE_RECONCILIATION_DELAY_MS = 5 * 60 * 1000;
@@ -3086,6 +3087,23 @@ export async function fulfillUsagePackSubscriptionChangeInvoice(
   });
 }
 
+async function updateAllocationSubscriptionMetadata(
+  context: UsagePackChangeContext,
+  subscriptionId: string,
+  invoiceId: string,
+): Promise<StripeSubscription> {
+  const stripe = getStripeClient();
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  return await updateUsagePackSubscriptionMetadata(stripe, {
+    subscription,
+    orgId: context.subscription.orgId,
+    tier: context.subscription.tier,
+    planPriceId: context.subscription.stripePlanPriceId,
+    usagePackSubscriptionId: context.subscription.id,
+    idempotencyKey: `usage-pack-subscription-metadata:${invoiceId}`,
+  });
+}
+
 export async function handleUsagePackAllocationChangeInvoicePaid(
   db: Db,
   invoice: UsagePackChangeInvoiceInput,
@@ -3142,9 +3160,15 @@ export async function handleUsagePackAllocationChangeInvoicePaid(
       `Usage pack change invoice ${invoice.id} has the wrong customer`,
     );
   }
-  const stripeSubscription =
-    await getStripeClient().subscriptions.retrieve(subscriptionId);
-  await reconcileUsagePackAllocationChangeSubscription(db, stripeSubscription);
+  const subscriptionWithMetadata = await updateAllocationSubscriptionMetadata(
+    context,
+    subscriptionId,
+    invoice.id,
+  );
+  await reconcileUsagePackAllocationChangeSubscription(
+    db,
+    subscriptionWithMetadata,
+  );
   if (
     change.kind !== "upgrade" ||
     !change.sourceAllocationId ||
