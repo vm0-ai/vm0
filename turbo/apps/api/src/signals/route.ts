@@ -192,6 +192,7 @@ import { voiceIoSttRoutes } from "./routes/voice-io-stt";
 import { videoIoGenerateRoutes } from "./routes/video-io-generate";
 import { webDownloadRoutes } from "./routes/web-download";
 import { webFileUrlRoutes } from "./routes/web-file-url";
+import { testPiPreparationProbeRoutes } from "./routes/test-pi-preparation-probe";
 
 export const ROUTES: readonly RouteEntry[] = [
   ...healthRoutes,
@@ -386,5 +387,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...usageRecordRoutes,
   ...modelStatsRoutes,
   ...presentationImagesRoutes,
+  ...testPiPreparationProbeRoutes,
   ...runnersRoutes,
 ];

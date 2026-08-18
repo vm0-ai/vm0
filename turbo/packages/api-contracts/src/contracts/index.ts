@@ -402,6 +402,14 @@ export {
   type TestChatEventRetentionContract,
 } from "./test-chat-event-retention";
 export {
+  piPreparationProbeProfileSchema,
+  piPreparationProbeResponseSchema,
+  testPiPreparationProbeContract,
+  type PiPreparationProbeProfile,
+  type PiPreparationProbeResponse,
+  type TestPiPreparationProbeContract,
+} from "./test-pi-preparation-probe";
+export {
   testSlackStateContract,
   testSlackStateErrorSchema,
   testSlackStateResponseSchema,
