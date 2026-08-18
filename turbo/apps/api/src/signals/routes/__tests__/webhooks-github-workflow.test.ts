@@ -255,8 +255,8 @@ type GithubWebhookAutomationCase = {
   readonly excludedPrompt?: readonly string[];
 };
 
-const githubPullRequestReviewAutomationBody: ZeroWorkflowAutomationCreateRequest =
-  {
+function githubPullRequestReviewAutomationBody(): ZeroWorkflowAutomationCreateRequest {
+  return {
     kind: "event",
     eventType: "github-pull-request-review-submitted",
     eventConfig: {
@@ -271,6 +271,7 @@ const githubPullRequestReviewAutomationBody: ZeroWorkflowAutomationCreateRequest
       },
     },
   };
+}
 
 const githubWebhookAutomationCases: readonly GithubWebhookAutomationCase[] = [
   {
@@ -389,7 +390,7 @@ const githubWebhookAutomationCases: readonly GithubWebhookAutomationCase[] = [
   },
   {
     name: "pull request review submitted",
-    body: githubPullRequestReviewAutomationBody,
+    body: githubPullRequestReviewAutomationBody(),
     event: "pull_request_review",
     payload: (installationId) => {
       return githubPullRequestReviewPayload({
@@ -600,7 +601,7 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     },
   );
 
-  it("acknowledges non-submitted pull request reviews without dispatching", async () => {
+  it("validates pull request review actions before dispatching", async () => {
     const { actor, agentId, workflowId } = await setupFixture();
     const installed = await gh.installGithubApp(actor, agentId);
     mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", GITHUB_WEBHOOK_SECRET);
@@ -608,13 +609,23 @@ describe("POST /api/webhooks/github for workflow automations", () => {
       automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
-        body: githubPullRequestReviewAutomationBody,
+        body: githubPullRequestReviewAutomationBody(),
       }),
       [201],
     );
     if (!created.body.chatThreadId) {
       throw new Error("Expected the automation to have a chat thread");
     }
+
+    const invalid = await postGithubWebhook({
+      event: "pull_request_review",
+      deliveryId: `delivery-${randomUUID()}`,
+      rawBody: JSON.stringify({ action: null }),
+    });
+    expect(invalid).toStrictEqual({
+      status: 400,
+      text: '{"error":"Invalid payload structure"}',
+    });
 
     for (const review of [
       { action: "dismissed", state: "dismissed" },
