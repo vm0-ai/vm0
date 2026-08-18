@@ -1008,8 +1008,8 @@ mod tests {
     use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
     use guest_contracts::reuse_preparation::{ReusePreparationReport, RootFilesystemCapacity};
     use guest_contracts::session_history_identity::{
-        FinalSessionHistoryIdentity, FinalSessionHistorySourceRef, SessionHistoryFramework,
-        SessionHistoryRefKind, SessionHistorySidecarExportMetadata,
+        SessionHistoryFramework, SessionHistoryIdentity, SessionHistoryRefKind,
+        SessionHistorySidecarExportMetadata, SessionHistorySourceRef,
     };
     use sandbox::{ExecResult, SandboxFactory, SandboxId};
     use sandbox_mock::{MockLifecycleGate, MockSandbox, MockSandboxFactory, MockSandboxOverrides};
@@ -1281,16 +1281,16 @@ mod tests {
         history: &[u8],
     ) -> RestoredSessionIdentity {
         let history_source = match framework {
-            SessionHistoryFramework::ClaudeCode => FinalSessionHistorySourceRef::ClaudeCode {
+            SessionHistoryFramework::ClaudeCode => SessionHistorySourceRef::ClaudeCode {
                 config_dir: "/home/user/.claude".to_string(),
                 working_dir: CANONICAL_WORKING_DIR.to_string(),
                 session_id: session_id.to_string(),
             },
-            SessionHistoryFramework::Codex => FinalSessionHistorySourceRef::Codex {
+            SessionHistoryFramework::Codex => SessionHistorySourceRef::Codex {
                 sessions_dir: "/home/user/.codex/sessions".to_string(),
                 thread_id: session_id.to_string(),
             },
-            SessionHistoryFramework::Pi => FinalSessionHistorySourceRef::Pi {
+            SessionHistoryFramework::Pi => SessionHistorySourceRef::Pi {
                 session_path: format!(
                     "{}/restored-{session_id}.jsonl",
                     api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DIR,
@@ -1298,7 +1298,7 @@ mod tests {
                 session_id: session_id.to_string(),
             },
         };
-        let metadata = FinalSessionHistoryIdentity::new(
+        let metadata = SessionHistoryIdentity::new(
             framework,
             hex::encode(Sha256::digest(session_id.as_bytes())),
             SessionHistoryRefKind::Blob,

@@ -20,7 +20,7 @@ use std::fmt;
 
 use api_contracts::generated::constants::runners::RESUME_SESSION_HISTORY_MAX_BYTES;
 use guest_contracts::session_history_identity::{
-    FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES, FinalSessionHistoryIdentity, SessionHistoryFramework,
+    FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES, SessionHistoryFramework, SessionHistoryIdentity,
     SessionHistoryRefKind,
 };
 use sha2::{Digest, Sha256};
@@ -186,7 +186,7 @@ impl RestoredSessionIdentity {
     /// path and runtime directory cannot form a usable verification
     /// projection.
     pub(crate) fn from_final_metadata(
-        metadata: FinalSessionHistoryIdentity,
+        metadata: SessionHistoryIdentity,
         metadata_path: impl Into<String>,
         runtime_dir: impl Into<String>,
     ) -> Option<Self> {

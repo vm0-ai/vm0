@@ -284,8 +284,8 @@ mod tests {
     use guest_contracts::{
         codex_thread_id::canonical_codex_thread_id,
         session_history_identity::{
-            FinalSessionHistoryIdentity, FinalSessionHistorySourceRef, SessionHistoryFramework,
-            SessionHistoryRefKind,
+            SessionHistoryFramework, SessionHistoryIdentity, SessionHistoryRefKind,
+            SessionHistorySourceRef,
         },
     };
     use sha2::{Digest, Sha256};
@@ -332,13 +332,13 @@ mod tests {
     }
 
     fn final_metadata_identity(history_hash: String, size: u64) -> RestoredSessionIdentity {
-        let metadata = FinalSessionHistoryIdentity::new(
+        let metadata = SessionHistoryIdentity::new(
             SessionHistoryFramework::ClaudeCode,
             hex::encode(Sha256::digest(b"sess-restore-plan")),
             SessionHistoryRefKind::Blob,
             history_hash,
             size,
-            FinalSessionHistorySourceRef::ClaudeCode {
+            SessionHistorySourceRef::ClaudeCode {
                 config_dir: "/home/user/.claude".to_string(),
                 working_dir: "/home/user/workspace".to_string(),
                 session_id: "sess-restore-plan".to_string(),
@@ -438,13 +438,13 @@ mod tests {
         let metadata_path =
             "/home/user/.vm0/guest-agent/runs/previous/final-session-history-identity.json";
         let runtime_dir = "/home/user/.vm0/guest-agent/runs/previous";
-        let metadata = FinalSessionHistoryIdentity::new(
+        let metadata = SessionHistoryIdentity::new(
             SessionHistoryFramework::Codex,
             hex::encode(Sha256::digest(canonical_thread_id.as_bytes())),
             SessionHistoryRefKind::Blob,
             history_hash,
             12,
-            FinalSessionHistorySourceRef::Codex {
+            SessionHistorySourceRef::Codex {
                 sessions_dir: "/home/user/.codex/sessions".to_string(),
                 thread_id: canonical_thread_id,
             },

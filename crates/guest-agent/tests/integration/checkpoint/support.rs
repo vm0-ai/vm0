@@ -50,7 +50,7 @@ pub(super) fn checkpoint_session_metadata(
         .to_string();
     let source = match runtime.config.framework {
         guest_agent::env::Framework::ClaudeCode => Some(
-            guest_contracts::session_history_identity::FinalSessionHistorySourceRef::ClaudeCode {
+            guest_contracts::session_history_identity::SessionHistorySourceRef::ClaudeCode {
                 config_dir: runtime
                     .config
                     .user_env
@@ -68,7 +68,7 @@ pub(super) fn checkpoint_session_metadata(
             },
         ),
         guest_agent::env::Framework::Codex => Some(
-            guest_contracts::session_history_identity::FinalSessionHistorySourceRef::Codex {
+            guest_contracts::session_history_identity::SessionHistorySourceRef::Codex {
                 sessions_dir: std::path::Path::new(&runtime.config.home_dir)
                     .join(".codex/sessions")
                     .to_string_lossy()
@@ -77,7 +77,7 @@ pub(super) fn checkpoint_session_metadata(
             },
         ),
         guest_agent::env::Framework::Pi => Some(
-            guest_contracts::session_history_identity::FinalSessionHistorySourceRef::Pi {
+            guest_contracts::session_history_identity::SessionHistorySourceRef::Pi {
                 session_path: format!(
                     "{}/restored-{session_id}.jsonl",
                     api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DIR,

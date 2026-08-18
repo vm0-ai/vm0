@@ -5,7 +5,7 @@ use crate::paths;
 use guest_common::{log_info, log_warn};
 use guest_contracts::cli_agent_session_id::is_valid_cli_agent_session_id;
 use guest_contracts::codex_thread_id::canonical_codex_thread_id;
-use guest_contracts::session_history_identity::FinalSessionHistorySourceRef;
+use guest_contracts::session_history_identity::SessionHistorySourceRef;
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
@@ -83,13 +83,14 @@ impl SessionHistoryLaunchSource {
                 if !is_valid_cli_agent_session_id(raw_session_id) {
                     return None;
                 }
-                let source = config_dir.as_ref().map(|config_dir| {
-                    FinalSessionHistorySourceRef::ClaudeCode {
-                        config_dir: config_dir.clone(),
-                        working_dir: working_dir.clone(),
-                        session_id: raw_session_id.to_string(),
-                    }
-                });
+                let source =
+                    config_dir
+                        .as_ref()
+                        .map(|config_dir| SessionHistorySourceRef::ClaudeCode {
+                            config_dir: config_dir.clone(),
+                            working_dir: working_dir.clone(),
+                            session_id: raw_session_id.to_string(),
+                        });
                 (raw_session_id.to_string(), source)
             }
             Self::Codex { sessions_dir } => {
@@ -97,7 +98,7 @@ impl SessionHistoryLaunchSource {
                 let source =
                     sessions_dir
                         .as_ref()
-                        .map(|sessions_dir| FinalSessionHistorySourceRef::Codex {
+                        .map(|sessions_dir| SessionHistorySourceRef::Codex {
                             sessions_dir: sessions_dir.clone(),
                             thread_id: thread_id.clone(),
                         });
@@ -146,11 +147,11 @@ pub(crate) fn is_pi_session_history_path(session_path: &str, session_id: &str) -
 fn pi_session_history_source(
     session_path: &str,
     session_id: &str,
-) -> Option<FinalSessionHistorySourceRef> {
+) -> Option<SessionHistorySourceRef> {
     if !is_pi_session_history_path(session_path, session_id) {
         return None;
     }
-    Some(FinalSessionHistorySourceRef::Pi {
+    Some(SessionHistorySourceRef::Pi {
         session_path: session_path.to_string(),
         session_id: session_id.to_string(),
     })
@@ -160,7 +161,7 @@ fn pi_session_history_source(
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CapturedSessionMetadata {
     cli_agent_session_id: String,
-    history_source: Option<FinalSessionHistorySourceRef>,
+    history_source: Option<SessionHistorySourceRef>,
 }
 
 impl CapturedSessionMetadata {
@@ -170,7 +171,7 @@ impl CapturedSessionMetadata {
     }
 
     /// Return the canonical history source when launch and event validation succeeded.
-    pub fn history_source(&self) -> Option<&FinalSessionHistorySourceRef> {
+    pub fn history_source(&self) -> Option<&SessionHistorySourceRef> {
         self.history_source.as_ref()
     }
 
@@ -178,7 +179,7 @@ impl CapturedSessionMetadata {
     #[doc(hidden)]
     pub fn for_test(
         cli_agent_session_id: impl Into<String>,
-        history_source: Option<FinalSessionHistorySourceRef>,
+        history_source: Option<SessionHistorySourceRef>,
     ) -> Self {
         Self {
             cli_agent_session_id: cli_agent_session_id.into(),
@@ -325,7 +326,7 @@ mod tests {
             store.captured(),
             Some(&CapturedSessionMetadata {
                 cli_agent_session_id: "session-first".to_string(),
-                history_source: Some(FinalSessionHistorySourceRef::ClaudeCode {
+                history_source: Some(SessionHistorySourceRef::ClaudeCode {
                     config_dir: "/home/user/custom-claude".to_string(),
                     working_dir: paths::CANONICAL_WORKING_DIR.to_string(),
                     session_id: "session-first".to_string(),
@@ -364,7 +365,7 @@ mod tests {
             store
                 .captured()
                 .and_then(CapturedSessionMetadata::history_source),
-            Some(&FinalSessionHistorySourceRef::Codex {
+            Some(&SessionHistorySourceRef::Codex {
                 sessions_dir: "/home/custom/.codex/sessions".to_string(),
                 thread_id: "0193abcd-ef01-7234-89ab-cdef01234567".to_string(),
             })
@@ -392,7 +393,7 @@ mod tests {
             store
                 .captured()
                 .and_then(CapturedSessionMetadata::history_source),
-            Some(&FinalSessionHistorySourceRef::Pi {
+            Some(&SessionHistorySourceRef::Pi {
                 session_path,
                 session_id: session_id.to_string(),
             })
