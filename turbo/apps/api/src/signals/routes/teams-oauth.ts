@@ -19,10 +19,6 @@ import {
 import { safeJsonParse, tapError } from "../utils";
 import type { RouteEntry } from "../route-entry";
 import { getOAuthApiOrigin } from "../../lib/oauth-origin";
-import {
-  logIntegrationIdentityCompatibility,
-  resolveIntegrationUserId,
-} from "../../lib/integration-user-id-compat";
 
 const L = logger("TeamsOAuth");
 const MICROSOFT_AUTHORIZATION_URL =
@@ -158,23 +154,9 @@ function parseOAuthState(state: string | undefined): OAuthState | null {
   }
 
   const record = parsed as Record<string, unknown>;
-  const userId = resolveIntegrationUserId(
-    optionalString(record.userId),
-    // Old web/app OAuth state fallback (observed maximum: ~2 days).
-    // Remove in #27602 after legacy producers and callbacks have drained.
-    optionalString(record.vm0UserId),
-  );
-  logIntegrationIdentityCompatibility({
-    provider: "teams",
-    surface: "state",
-    outcome: userId.outcome,
-  });
-  if (!userId.ok) {
-    return null;
-  }
   return {
     orgId: optionalString(record.orgId),
-    userId: userId.userId,
+    userId: optionalString(record.userId),
     prompt: optionalString(record.prompt),
     // Old web/app OAuth state can omit publicBrand for about two days.
     // Remove this VM0 default in #27660 after legacy states have drained.
@@ -339,16 +321,8 @@ const connectOauth$ = command(({ get }) => {
   }
 
   const query = get(queryOf(teamsOauthContract.connect));
-  const userId = resolveIntegrationUserId(query.userId, query.vm0UserId);
-  logIntegrationIdentityCompatibility({
-    provider: "teams",
-    surface: "query",
-    outcome: userId.outcome,
-  });
-  if (!userId.ok) {
-    return jsonErrorResponse("Conflicting userId values", 400);
-  }
-  if (!query.orgId || !userId.userId) {
+  const userId = query.userId;
+  if (!query.orgId || !userId) {
     return jsonErrorResponse("Missing orgId or userId", 400);
   }
 
@@ -359,7 +333,7 @@ const connectOauth$ = command(({ get }) => {
     publicBrand: PublicBrand;
   } = {
     orgId: query.orgId,
-    userId: userId.userId,
+    userId,
     publicBrand,
   };
   if (query.prompt) {
