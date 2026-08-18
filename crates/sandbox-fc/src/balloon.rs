@@ -33,7 +33,7 @@ const MAX_INFLATE_PER_TICK_MIB: u32 = 256;
 pub(crate) const MIN_GUEST_MIB: u32 = 512;
 /// Poll interval for balloon stats.
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
-/// How often to emit status + host memory logs (in ticks).
+/// How often to emit balloon status logs (in ticks).
 /// 12 ticks × 5s = 60s.
 const STATUS_INTERVAL_TICKS: u64 = 12;
 
