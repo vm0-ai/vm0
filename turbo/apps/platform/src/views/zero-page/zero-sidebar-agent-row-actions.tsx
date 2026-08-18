@@ -9,10 +9,12 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  ContextMenu,
+  ContextMenuTrigger,
 } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 
-interface AgentRowMenuAction {
+export interface AgentRowMenuAction {
   readonly label: string;
   readonly disabled?: boolean | undefined;
   readonly icon: ReactNode;
@@ -130,6 +132,51 @@ function allMenuActionsDisabled(menuActions: readonly AgentRowMenuAction[]) {
   });
 }
 
+function AgentRowMenuItems({
+  menuActions,
+}: {
+  readonly menuActions: readonly AgentRowMenuAction[];
+}) {
+  return menuActions.map((menuAction) => {
+    return (
+      <DropdownMenuItem
+        key={menuAction.label}
+        className="gap-2"
+        onClick={menuAction.onSelect}
+        disabled={menuAction.disabled}
+      >
+        {menuAction.icon}
+        {menuAction.label}
+      </DropdownMenuItem>
+    );
+  });
+}
+
+export function AgentRowContextActions({
+  actions,
+  children,
+}: {
+  readonly actions: readonly AgentRowMenuAction[];
+  readonly children: ReactNode;
+}) {
+  const disabled = allMenuActionsDisabled(actions);
+
+  if (actions.length === 0) {
+    return <>{children}</>;
+  }
+
+  return (
+    <ContextMenu disabled={disabled}>
+      <ContextMenuTrigger className="w-full min-w-0">
+        {children}
+      </ContextMenuTrigger>
+      <DropdownMenuContent className="w-44">
+        <AgentRowMenuItems menuActions={actions} />
+      </DropdownMenuContent>
+    </ContextMenu>
+  );
+}
+
 function unreadClassName(hasMenuActions: boolean): string {
   const base =
     "pointer-events-none flex items-center justify-center transition-opacity duration-150";
@@ -243,19 +290,7 @@ export function AgentRowSideActions({
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
-              {menuActions.map((menuAction) => {
-                return (
-                  <DropdownMenuItem
-                    key={menuAction.label}
-                    className="gap-2"
-                    onClick={menuAction.onSelect}
-                    disabled={menuAction.disabled}
-                  >
-                    {menuAction.icon}
-                    {menuAction.label}
-                  </DropdownMenuItem>
-                );
-              })}
+              <AgentRowMenuItems menuActions={menuActions} />
             </DropdownMenuContent>
           </DropdownMenu>
         </TooltipProvider>

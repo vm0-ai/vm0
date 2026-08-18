@@ -1,6 +1,6 @@
 import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
 import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
-import { zeroGoalsContract } from "@okouai/api-contracts/contracts/zero-goals";
+import { goalsContract } from "@okouai/api-contracts/contracts/goals";
 
 import { mockOptionalEnv } from "../../../lib/env";
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -52,7 +52,7 @@ function currentSecond(): number {
 }
 
 function goalsClient() {
-  return setupApp({ context, routes: goalsRoutes })(zeroGoalsContract);
+  return setupApp({ context, routes: goalsRoutes })(goalsContract);
 }
 
 function zeroToken(

@@ -33,7 +33,7 @@ const invitationPurchaseConfirmResponseSchema = z.union([
  * Zero contract for /api/okou/org/members
  * Proxies to /api/org/members
  */
-export const zeroOrgMembersContract = c.router({
+export const orgMembersContract = c.router({
   members: {
     method: "GET",
     path: "/api/okou/org/members",
@@ -80,13 +80,13 @@ export const zeroOrgMembersContract = c.router({
   },
 });
 
-export type ZeroOrgMembersContract = typeof zeroOrgMembersContract;
+export type OrgMembersContract = typeof orgMembersContract;
 
 /**
  * Zero contract for POST /api/okou/org/invite
  * Proxies to POST /api/org/invite
  */
-export const zeroOrgInviteContract = c.router({
+export const orgInviteContract = c.router({
   invite: {
     method: "POST",
     path: "/api/okou/org/invite",
@@ -157,12 +157,12 @@ export const zeroOrgInviteContract = c.router({
   },
 });
 
-export type ZeroOrgInviteContract = typeof zeroOrgInviteContract;
+export type OrgInviteContract = typeof orgInviteContract;
 
 /**
  * Zero contract for /api/okou/org/membership-requests
  */
-export const zeroOrgMembershipRequestsContract = c.router({
+export const orgMembershipRequestsContract = c.router({
   accept: {
     method: "POST",
     path: "/api/okou/org/membership-requests",
@@ -193,5 +193,5 @@ export const zeroOrgMembershipRequestsContract = c.router({
   },
 });
 
-export type ZeroOrgMembershipRequestsContract =
-  typeof zeroOrgMembershipRequestsContract;
+export type OrgMembershipRequestsContract =
+  typeof orgMembershipRequestsContract;

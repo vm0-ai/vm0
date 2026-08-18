@@ -219,6 +219,7 @@ function renderAccountTrigger(
   display: AccountDisplay,
   collapsed: boolean,
   realtimeIndicator: ZeroDebugRealtimeIndicator,
+  avatarShape: "circle" | "square",
 ) {
   if (collapsed) {
     return (
@@ -233,6 +234,7 @@ function renderAccountTrigger(
           name={display.name}
           initial={display.initial}
           size="sm"
+          shape={avatarShape}
         />
       </Button>
     );
@@ -249,6 +251,7 @@ function renderAccountTrigger(
         name={display.name}
         initial={display.initial}
         size="sm"
+        shape={avatarShape}
       />
       <span className="min-w-0 flex-1 text-left text-sm font-medium leading-tight truncate">
         {display.name}
@@ -860,6 +863,12 @@ export function AccountDropdown({
     features?.[FeatureSwitchKey.SidebarSubscriptionUsage] ?? false;
   const usagePackPlansEnabled =
     features?.[FeatureSwitchKey.UsagePackPlans] ?? false;
+  // The three-column nav stacks the account mark under the workspace logo, so
+  // it takes the same rounded square there and stays a circle everywhere else.
+  const avatarShape =
+    (features?.[FeatureSwitchKey.ThreeColumnNav] ?? false)
+      ? "square"
+      : "circle";
   const realtimeIndicator = useGet(zeroDebugRealtimeIndicator$);
   const openSettings = useSet(openSettingsDialogAt$);
   const setPendingSettingsSection = useSet(
@@ -1005,7 +1014,12 @@ export function AccountDropdown({
     <>
       <DropdownMenu onOpenChange={handleMenuOpenChange}>
         <DropdownMenuTrigger asChild>
-          {renderAccountTrigger(accountDisplay, collapsed, realtimeIndicator)}
+          {renderAccountTrigger(
+            accountDisplay,
+            collapsed,
+            realtimeIndicator,
+            avatarShape,
+          )}
         </DropdownMenuTrigger>
 
         <DropdownMenuContent

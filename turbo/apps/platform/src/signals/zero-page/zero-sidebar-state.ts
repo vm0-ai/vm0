@@ -184,7 +184,7 @@ export const setAgentCardCollapsed$ = command(({ set }, collapsed: boolean) => {
 // ---------------------------------------------------------------------------
 // Pinned agent grid rows (three-column sidebar) — persisted in localStorage
 // ---------------------------------------------------------------------------
-export const PINNED_AGENT_GRID_COLUMNS = 4;
+export const PINNED_AGENT_GRID_COLUMNS = 5;
 
 const { get$: pinnedAgentGridRowsRaw$, set$: setPinnedAgentGridRowsRaw$ } =
   localStorageSignals("pinnedAgentGridRows");

@@ -93,7 +93,7 @@ interface SlackOrgStatusResult {
   readonly reinstallUrl: string | null;
 }
 
-export function zeroSlackOrgStatus(args: {
+export function slackOrgStatus(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly orgRole?: ApiOrgRole;
@@ -220,7 +220,7 @@ export function zeroSlackOrgStatus(args: {
   });
 }
 
-export function zeroSlackOrgInstallation(args: {
+export function slackOrgInstallation(args: {
   readonly orgId: string;
   readonly userId?: string;
 }): Computed<
@@ -263,12 +263,12 @@ interface SlackChannel {
   readonly name: string;
 }
 
-export function zeroSlackChannels(args: {
+export function slackChannels(args: {
   readonly orgId: string;
   readonly userId?: string;
 }): Computed<Promise<readonly SlackChannel[] | null>> {
   return computed(async (get) => {
-    const installation = await get(zeroSlackOrgInstallation(args));
+    const installation = await get(slackOrgInstallation(args));
     if (!installation) {
       return null;
     }

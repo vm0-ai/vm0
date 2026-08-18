@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroOrgMembersContract } from "@okouai/api-contracts/contracts/zero-org-members";
+import { orgMembersContract } from "@okouai/api-contracts/contracts/org-member-routes";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -10,8 +10,8 @@ import {
 } from "../services/org-data.service";
 import type { RouteEntry } from "../route-entry";
 
-const updateRoleBody$ = bodyResultOf(zeroOrgMembersContract.updateRole);
-const removeMemberBody$ = bodyResultOf(zeroOrgMembersContract.removeMember);
+const updateRoleBody$ = bodyResultOf(orgMembersContract.updateRole);
+const removeMemberBody$ = bodyResultOf(orgMembersContract.removeMember);
 
 const updateRoleInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
@@ -72,14 +72,14 @@ const removeMemberInner$ = command(
 
 export const orgMembersRoutes: readonly RouteEntry[] = [
   {
-    route: zeroOrgMembersContract.updateRole,
+    route: orgMembersContract.updateRole,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       updateRoleInner$,
     ),
   },
   {
-    route: zeroOrgMembersContract.removeMember,
+    route: orgMembersContract.removeMember,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       removeMemberInner$,

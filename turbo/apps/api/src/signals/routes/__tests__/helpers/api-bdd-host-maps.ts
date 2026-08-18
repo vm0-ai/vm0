@@ -1,11 +1,11 @@
 import {
-  zeroHostContract,
+  hostContract,
   type HostedSiteCompleteResponse,
   type HostedSiteDeploymentsResponse,
   type HostedSiteFilesResponse,
   type HostedSitePrepareRequest,
   type HostedSitePrepareResponse,
-} from "@okouai/api-contracts/contracts/zero-host";
+} from "@okouai/api-contracts/contracts/host";
 import { mapsContract } from "@okouai/api-contracts/contracts/maps";
 
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
@@ -112,7 +112,7 @@ export function createHostMapsBddApi(context: TestContext) {
     return setupAppWithRoutes({
       context,
       routes: hostMapsRoutes,
-    })(zeroHostContract);
+    })(hostContract);
   }
 
   function mapsClient() {

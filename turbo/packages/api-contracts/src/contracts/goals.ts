@@ -4,15 +4,15 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
-export const zeroGoalStatusSchema = z.enum([
+export const goalStatusSchema = z.enum([
   "active",
   "paused",
   "blocked",
   "complete",
 ]);
-export type ZeroGoalStatus = z.infer<typeof zeroGoalStatusSchema>;
+export type GoalStatus = z.infer<typeof goalStatusSchema>;
 
-export const zeroGoalEventSchema = z.union([
+export const goalEventSchema = z.union([
   z.object({
     type: z.literal("state"),
     status: z.literal("active"),
@@ -24,37 +24,37 @@ export const zeroGoalEventSchema = z.union([
   }),
   z.object({ type: z.literal("cleared") }),
 ]);
-export type ZeroGoalEvent = z.infer<typeof zeroGoalEventSchema>;
+export type GoalEvent = z.infer<typeof goalEventSchema>;
 
-export const zeroGoalCreateRequestSchema = z.object({
+export const goalCreateRequestSchema = z.object({
   objective: z.string().min(1).max(20_000),
 });
-export type ZeroGoalCreateRequest = z.infer<typeof zeroGoalCreateRequestSchema>;
+export type GoalCreateRequest = z.infer<typeof goalCreateRequestSchema>;
 
-export const zeroGoalEditRequestSchema = z.object({
+export const goalEditRequestSchema = z.object({
   objective: z.string().min(1).max(20_000),
 });
-export type ZeroGoalEditRequest = z.infer<typeof zeroGoalEditRequestSchema>;
+export type GoalEditRequest = z.infer<typeof goalEditRequestSchema>;
 
-export const zeroGoalResponseSchema = z.object({
+export const goalResponseSchema = z.object({
   objective: z.string(),
   objectiveBrief: z.string(),
-  status: zeroGoalStatusSchema,
+  status: goalStatusSchema,
 });
-export type ZeroGoalResponse = z.infer<typeof zeroGoalResponseSchema>;
+export type GoalResponse = z.infer<typeof goalResponseSchema>;
 
 const chatThreadGoalParamsSchema = z.object({
   threadId: z.string().min(1),
 });
 
-export const zeroGoalsContract = c.router({
+export const goalsContract = c.router({
   create: {
     method: "POST",
     path: "/api/okou/goal",
     headers: authHeadersSchema,
-    body: zeroGoalCreateRequestSchema,
+    body: goalCreateRequestSchema,
     responses: {
-      201: zeroGoalResponseSchema,
+      201: goalResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
@@ -66,9 +66,9 @@ export const zeroGoalsContract = c.router({
     method: "PATCH",
     path: "/api/okou/goal",
     headers: authHeadersSchema,
-    body: zeroGoalEditRequestSchema,
+    body: goalEditRequestSchema,
     responses: {
-      200: zeroGoalResponseSchema,
+      200: goalResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
@@ -82,7 +82,7 @@ export const zeroGoalsContract = c.router({
     path: "/api/okou/goal",
     headers: authHeadersSchema,
     responses: {
-      200: zeroGoalResponseSchema,
+      200: goalResponseSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
@@ -96,7 +96,7 @@ export const zeroGoalsContract = c.router({
     headers: authHeadersSchema,
     pathParams: chatThreadGoalParamsSchema,
     responses: {
-      200: zeroGoalResponseSchema,
+      200: goalResponseSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
@@ -110,7 +110,7 @@ export const zeroGoalsContract = c.router({
     headers: authHeadersSchema,
     body: c.noBody(),
     responses: {
-      200: zeroGoalResponseSchema,
+      200: goalResponseSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
@@ -124,7 +124,7 @@ export const zeroGoalsContract = c.router({
     headers: authHeadersSchema,
     body: c.noBody(),
     responses: {
-      200: zeroGoalResponseSchema,
+      200: goalResponseSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
@@ -138,7 +138,7 @@ export const zeroGoalsContract = c.router({
     headers: authHeadersSchema,
     body: c.noBody(),
     responses: {
-      200: zeroGoalResponseSchema,
+      200: goalResponseSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
@@ -153,7 +153,7 @@ export const zeroGoalsContract = c.router({
     pathParams: chatThreadGoalParamsSchema,
     body: c.noBody(),
     responses: {
-      200: zeroGoalResponseSchema,
+      200: goalResponseSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
@@ -167,7 +167,7 @@ export const zeroGoalsContract = c.router({
     headers: authHeadersSchema,
     body: c.noBody(),
     responses: {
-      200: zeroGoalResponseSchema,
+      200: goalResponseSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
@@ -190,4 +190,4 @@ export const zeroGoalsContract = c.router({
   },
 });
 
-export type ZeroGoalsContract = typeof zeroGoalsContract;
+export type GoalsContract = typeof goalsContract;

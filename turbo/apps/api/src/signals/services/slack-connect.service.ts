@@ -265,7 +265,7 @@ async function refreshSlackAppHome(args: {
   );
 }
 
-export function zeroSlackConnectStatus(args: {
+export function slackConnectStatus(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly isAdmin: boolean;

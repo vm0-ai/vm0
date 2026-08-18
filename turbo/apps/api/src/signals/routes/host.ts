@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroHostContract } from "@okouai/api-contracts/contracts/zero-host";
+import { hostContract } from "@okouai/api-contracts/contracts/host";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -23,7 +23,7 @@ function internalError(message: string) {
   };
 }
 
-const prepareBody$ = bodyResultOf(zeroHostContract.prepare);
+const prepareBody$ = bodyResultOf(hostContract.prepare);
 const prepareInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
 
@@ -63,10 +63,10 @@ const prepareInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 200 as const, body: result.body };
 });
 
-const completeParams$ = pathParamsOf(zeroHostContract.complete);
-const filesParams$ = pathParamsOf(zeroHostContract.files);
-const filesQuery$ = queryOf(zeroHostContract.files);
-const deploymentsParams$ = pathParamsOf(zeroHostContract.deployments);
+const completeParams$ = pathParamsOf(hostContract.complete);
+const filesParams$ = pathParamsOf(hostContract.files);
+const filesQuery$ = queryOf(hostContract.files);
+const deploymentsParams$ = pathParamsOf(hostContract.deployments);
 const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
 
@@ -154,7 +154,7 @@ const deploymentsInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 export const hostRoutes: readonly RouteEntry[] = [
   {
-    route: zeroHostContract.prepare,
+    route: hostContract.prepare,
     handler: authRoute(
       {
         requiredCapability: "host:write",
@@ -165,7 +165,7 @@ export const hostRoutes: readonly RouteEntry[] = [
     ),
   },
   {
-    route: zeroHostContract.complete,
+    route: hostContract.complete,
     handler: authRoute(
       {
         requiredCapability: "host:write",
@@ -176,7 +176,7 @@ export const hostRoutes: readonly RouteEntry[] = [
     ),
   },
   {
-    route: zeroHostContract.files,
+    route: hostContract.files,
     handler: authRoute(
       {
         requiredCapability: "host:read",
@@ -187,7 +187,7 @@ export const hostRoutes: readonly RouteEntry[] = [
     ),
   },
   {
-    route: zeroHostContract.deployments,
+    route: hostContract.deployments,
     handler: authRoute(
       {
         requiredCapability: "host:read",

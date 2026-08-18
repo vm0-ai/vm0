@@ -3,7 +3,7 @@ import { slackChannelsContract } from "@okouai/api-contracts/contracts/slack-cha
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { zeroSlackChannels } from "../services/zero-slack-data.service";
+import { slackChannels } from "../services/slack-data.service";
 import type { RouteEntry } from "../route-entry";
 
 const slackInstallationNotFound = Object.freeze({
@@ -19,7 +19,7 @@ const slackInstallationNotFound = Object.freeze({
 const getSlackChannelsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const channels = await get(
-    zeroSlackChannels({ orgId: auth.orgId, userId: auth.userId }),
+    slackChannels({ orgId: auth.orgId, userId: auth.userId }),
   );
   if (channels === null) {
     return slackInstallationNotFound;
