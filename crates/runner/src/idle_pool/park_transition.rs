@@ -373,7 +373,6 @@ impl SpeculativeIdleSandbox {
             metadata,
             budget_lease,
             parked_at,
-            idle_timeout,
         } = entry;
         let reuse_key = metadata.reuse_key.clone();
         let profile_name = metadata.profile_name.clone();
@@ -392,7 +391,7 @@ impl SpeculativeIdleSandbox {
         {
             Ok(IdleParkOutcome::Reusable(candidate)) => {
                 SpeculativeReparkResult::Reparked(Box::new(ReservedIdleSandbox {
-                    entry: candidate.into_idle_entry(parked_at, idle_timeout),
+                    entry: candidate.into_idle_entry(parked_at),
                 }))
             }
             Ok(IdleParkOutcome::NonReusable {

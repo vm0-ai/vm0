@@ -85,6 +85,11 @@ import {
   isFeatureEnabled,
   type FeatureSwitchContext,
 } from "@okouai/core/feature-switch";
+import {
+  DEFAULT_IMAGE_MODEL_ENV,
+  IMAGE_MODEL_CONFIGS,
+  type ImageModel,
+} from "@okouai/core/image-model-catalog";
 import { resolveSkillRef, parseGitHubTreeUrl } from "@okouai/core/github-url";
 import {
   getCustomConnectorSkillName,
@@ -420,12 +425,38 @@ function withPendingZeroTokenSecret(body: CreateRunBody): CreateRunBody {
   return withOkouTokenSecret(body, "__pending_okou_token__");
 }
 
+function defaultImageModelPrompt(model: ImageModel): string {
+  const alias = IMAGE_MODEL_CONFIGS[model].alias;
+  return [
+    "# Default built-in image model",
+    "",
+    `This run's default built-in image model is \`${alias}\`.`,
+    "- Only when the current user request explicitly names another supported built-in image model, pass `--model <model>`.",
+    `- Otherwise omit \`--model\`; the server applies \`${alias}\`.`,
+    "- Image generation through a connected third-party service chooses its model separately; this default does not apply to that path.",
+  ].join("\n");
+}
+
+function withDefaultImageModelEnvironment(
+  environment: Record<string, string> | undefined,
+  model: ImageModel | null,
+): Record<string, string> | undefined {
+  if (model === null) {
+    return environment;
+  }
+  return {
+    ...environment,
+    [DEFAULT_IMAGE_MODEL_ENV]: IMAGE_MODEL_CONFIGS[model].alias,
+  };
+}
+
 function withFinalRunAppendSystemPrompt(args: {
   readonly body: CreateRunBody;
   readonly framework: SupportedFramework;
   readonly chatThreadId: string | undefined;
   readonly imageRecognitionAvailable: boolean;
   readonly mcpConnectorSlugs: readonly string[];
+  readonly selectedImageModel: ImageModel | null;
   readonly zeroCliAvailable: boolean;
 }): CreateRunBody {
   const appendedParts: string[] = [];
@@ -444,6 +475,9 @@ function withFinalRunAppendSystemPrompt(args: {
     args.chatThreadId
   ) {
     appendedParts.push(CODEX_WEB_IMAGE_GENERATION_UPLOAD_PROMPT);
+  }
+  if (args.selectedImageModel !== null) {
+    appendedParts.push(defaultImageModelPrompt(args.selectedImageModel));
   }
   // Keep this policy last so custom and integration prompts cannot override it.
   appendedParts.push(RESTRICTED_EXPLICIT_CONTENT_PROMPT);
@@ -5828,7 +5862,7 @@ interface LaunchRunRowsArgs {
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
   readonly zeroRunModelPin: ZeroRunModelPin | undefined;
   readonly selectedVideoModel: string;
-  readonly selectedImageModel: string | null;
+  readonly selectedImageModel: ImageModel | null;
   readonly callbackRows: readonly AgentRunCallbackInsert[];
   readonly chatThreadId: string | undefined;
   readonly zeroRunMetadata: ZeroRunMetadata | undefined;
@@ -7679,7 +7713,10 @@ function buildAtomicLaunchPayload(
     zeroTokenCloudBrowserEnabled: args.createArgs.zeroTokenCloudBrowserEnabled,
     imageRecognitionAvailable: args.context.imageRecognitionAvailable,
     chatThreadId: args.createArgs.chatThreadId,
-    extraEnvironment: args.createArgs.extraEnvironment,
+    extraEnvironment: withDefaultImageModelEnvironment(
+      args.createArgs.extraEnvironment,
+      args.context.selectedImageModel,
+    ),
     userTimezone: args.context.userTimezone,
     featureSwitchContext: args.context.featureSwitchContext,
     timing: args.timing,
@@ -7741,8 +7778,8 @@ interface PreparedRunContext {
   readonly imageRecognitionAvailable: boolean;
   /** Snapshotted onto the run row; see `resolveVideoModelForRun`. */
   readonly selectedVideoModel: string;
-  /** Resolved once at run start and persisted without affecting generation. */
-  readonly selectedImageModel: string | null;
+  /** Resolved once at run start and used as the run's built-in image default. */
+  readonly selectedImageModel: ImageModel | null;
 }
 
 interface FinalizedPreparedRunContext extends PreparedRunContext {
@@ -9172,6 +9209,7 @@ function finalizePreparedRunContext(
       imageRecognitionAvailable: prepared.context.imageRecognitionAvailable,
       mcpConnectorSlugs:
         prepared.context.customConnectorContext.mcpConnectorSlugs,
+      selectedImageModel: prepared.context.selectedImageModel,
       zeroCliAvailable: prepared.args.includeZeroTokenSecret === true,
     }),
   };

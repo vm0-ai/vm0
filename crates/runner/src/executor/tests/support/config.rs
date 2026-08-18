@@ -91,10 +91,7 @@ pub(in crate::executor::tests) async fn make_reusable_idle_sandbox(
         sandbox.park().await.unwrap(),
         sandbox::SandboxParkOutcome::Reusable
     );
-    let mut pool = IdlePool::new(IdlePoolConfig {
-        default_timeout: std::time::Duration::from_secs(300),
-        max_idle: 0,
-    });
+    let mut pool = IdlePool::new(IdlePoolConfig { max_idle: 0 });
     let candidate = ParkedIdleCandidateBuilder::new(session_id, test_budget_lease())
         .with_sandbox(sandbox)
         .with_source_ip(source_ip)

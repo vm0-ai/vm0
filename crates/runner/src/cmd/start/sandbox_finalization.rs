@@ -698,8 +698,7 @@ async fn finalize_sandbox_for_completion_inner(
                         // conditional active-run removal (below) clears the run_id
                         // from active_runs. Without this, doctor would
                         // briefly see the FC as unknown (neither active
-                        // nor idle) until the next idle_cleanup tick
-                        // (~10s), producing transient false-positive
+                        // nor idle), producing transient false-positive
                         // FirecrackerNotInStatus warnings.
                         let snapshot = pool.status_snapshot();
                         drop(transfer_guard);
@@ -1168,14 +1167,9 @@ mod tests {
             ));
             status.write_initial().await;
             let parking_gate = ParkingGate::new_open();
-            let idle_pool: SharedIdlePool =
-                Arc::new(tokio::sync::Mutex::new(IdlePool::new_with_parking_gate(
-                    IdlePoolConfig {
-                        default_timeout: Duration::from_secs(300),
-                        max_idle,
-                    },
-                    parking_gate.clone(),
-                )));
+            let idle_pool: SharedIdlePool = Arc::new(tokio::sync::Mutex::new(
+                IdlePool::new_with_parking_gate(IdlePoolConfig { max_idle }, parking_gate.clone()),
+            ));
             let network_log_manager = NetworkLogManager::new();
 
             Self {

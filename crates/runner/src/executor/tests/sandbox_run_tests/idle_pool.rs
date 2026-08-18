@@ -32,10 +32,7 @@ async fn idle_pool_park_and_reuse_cycle() {
     );
 
     // Park in idle pool
-    let mut pool = IdlePool::new(IdlePoolConfig {
-        default_timeout: std::time::Duration::from_secs(300),
-        max_idle: 0,
-    });
+    let mut pool = IdlePool::new(IdlePoolConfig { max_idle: 0 });
 
     let entry = ParkedIdleCandidateBuilder::new("test-session", test_budget_lease())
         .with_sandbox(sandbox)

@@ -9,6 +9,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import chalk from "chalk";
+import { DEFAULT_IMAGE_MODEL_ENV } from "@okouai/core/image-model-catalog";
 import { WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV } from "@okouai/core/resource-registry";
 import { generateCommand } from "../index";
 import { websiteCommand } from "../website";
@@ -118,6 +119,26 @@ describe("okou generate website command", () => {
     expect(stdout).toContain(
       "Embed the `Embed this URL in HTML` value returned by the generator",
     );
+  });
+
+  it("should keep seedream4 inside a run with a default image model", async () => {
+    vi.stubEnv(WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV, "latest");
+    vi.stubEnv(DEFAULT_IMAGE_MODEL_ENV, "qwen-image");
+
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "website",
+      "--prompt",
+      "observability launch site",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain(
+      "use `seedream4` by default unless the user specifies another image model",
+    );
+    expect(stdout).not.toContain("use `qwen-image` by default");
+    expect(stdout).not.toContain("run default image model");
   });
 
   it("should use the generated base slug when no stable site slug is provided", async () => {

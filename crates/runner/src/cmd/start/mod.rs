@@ -23,13 +23,13 @@
 //! Important invariants:
 //! - one process owns the canonical `base_dir` lock;
 //! - lifecycle signals are registered before slow startup work;
-//! - discovery is pinned across `select!` ticks so heartbeat and cleanup
+//! - discovery is pinned across `select!` ticks so heartbeat and lifecycle
 //!   branches do not restart polling;
 //! - heartbeat work is pinned and single-flight so its I/O does not stall the
 //!   main reactor or overlap a newer snapshot;
 //! - workspace-cache watcher work is pinned across reactor turns so async
 //!   metadata classification cannot lose already-drained kernel events;
-//! - the first routine heartbeat and idle-cleanup ticks are deferred;
+//! - the first routine heartbeat tick is deferred;
 //! - teardown drains heartbeat work and drops discovery before provider
 //!   shutdown.
 
@@ -103,10 +103,7 @@ use heartbeat::{
     refresh_initial_workspace_cache_snapshot,
 };
 use identity::load_runner_process_identity;
-use idle_lifecycle::{
-    SharedIdlePool, cleanup_expired_idle_entries, destroy_idle_jobs_and_wait, drain_idle_pool,
-    evict_expired_idle_entries, spawn_idle_destroy_job,
-};
+use idle_lifecycle::{IdleDestroyTracker, SharedIdlePool, drain_idle_pool};
 use job_discovery::{DiscoveredJob, DiscoveredJobContext, handle_discovered_job};
 use job_spawn::{SpawnContext, handle_job_result};
 use mitm_restart::{
@@ -388,7 +385,6 @@ async fn run_start_with_home(
     let config::SandboxConfig {
         max_concurrent,
         concurrency_factor: yaml_concurrency_factor,
-        idle_timeout_secs,
         max_idle,
     } = runner_config.sandbox;
     let (concurrency_factor, concurrency_factor_source) =
@@ -593,10 +589,7 @@ async fn run_start_with_home(
     // Idle sandbox pool for VM reuse across conversation turns.
     let parking_gate = ParkingGate::new_open();
     let idle_pool = Arc::new(tokio::sync::Mutex::new(IdlePool::new_with_parking_gate(
-        IdlePoolConfig {
-            default_timeout: Duration::from_secs(idle_timeout_secs),
-            max_idle,
-        },
+        IdlePoolConfig { max_idle },
         parking_gate.clone(),
     )));
 
@@ -967,7 +960,9 @@ enum SignalSource {
 enum StartLoopEvent {
     BudgetExhaustedReactorEntered,
     WorkspaceCacheChangeObserved,
-    IdleCleanupProcessed { expired_count: usize },
+    DestroyTasksDrainEntered,
+    DestroyTasksDrainCompleted,
+    FinalizingCapacityWaitEntered { run_id: RunId },
     ActiveRunStatusPublished { run_id: RunId },
     BeforeIdlePoolOwnershipTransfer { run_id: RunId },
     VmParkedForReuse { run_id: RunId, reuse_key: String },
@@ -1101,6 +1096,27 @@ impl StartLoopTestObserver {
         self.record(StartLoopEvent::WorkspaceCacheChangeObserved);
     }
 
+    fn notify_destroy_tasks_drain_entered(&self) {
+        self.record(StartLoopEvent::DestroyTasksDrainEntered);
+    }
+
+    fn notify_destroy_tasks_drain_completed(&self) {
+        self.record(StartLoopEvent::DestroyTasksDrainCompleted);
+    }
+
+    fn destroy_tasks_drain_was_completed(&self) -> bool {
+        self.inner
+            .events
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .iter()
+            .any(|event| matches!(event, StartLoopEvent::DestroyTasksDrainCompleted))
+    }
+
+    fn notify_finalizing_capacity_wait_entered(&self, run_id: RunId) {
+        self.record(StartLoopEvent::FinalizingCapacityWaitEntered { run_id });
+    }
+
     fn notify_before_idle_pool_ownership_transfer(&self, run_id: RunId) {
         self.record(StartLoopEvent::BeforeIdlePoolOwnershipTransfer { run_id });
     }
@@ -1153,17 +1169,27 @@ impl StartLoopTestObserver {
         cursor
     }
 
-    async fn wait_idle_cleanup_processed_with_expired_entries(&self, timeout: Duration) -> usize {
-        self.wait_for(
-            timeout,
-            "idle cleanup processing expired entries",
-            |event| match event {
-                StartLoopEvent::IdleCleanupProcessed { expired_count } if *expired_count > 0 => {
-                    Some(*expired_count)
-                }
-                _ => None,
-            },
-        )
+    async fn wait_destroy_tasks_drain_entered(&self, timeout: Duration) {
+        self.wait_for(timeout, "destroy-task drain", |event| {
+            matches!(event, StartLoopEvent::DestroyTasksDrainEntered).then_some(())
+        })
+        .await;
+    }
+
+    async fn wait_destroy_tasks_drain_completed(&self, timeout: Duration) {
+        self.wait_for(timeout, "destroy-task drain completion", |event| {
+            matches!(event, StartLoopEvent::DestroyTasksDrainCompleted).then_some(())
+        })
+        .await;
+    }
+
+    async fn wait_finalizing_capacity_wait_entered(&self, run_id: RunId, timeout: Duration) {
+        self.wait_for(timeout, "finalizing capacity wait", |event| match event {
+            StartLoopEvent::FinalizingCapacityWaitEntered {
+                run_id: observed_run_id,
+            } if *observed_run_id == run_id => Some(()),
+            _ => None,
+        })
         .await
     }
 
@@ -1204,9 +1230,9 @@ impl StartLoopTestObserver {
 mod start_loop_observer_tests {
     use super::*;
 
-    fn idle_cleanup_expired_count(event: &StartLoopEvent) -> Option<usize> {
+    fn ownership_transfer_run_id(event: &StartLoopEvent) -> Option<RunId> {
         match event {
-            StartLoopEvent::IdleCleanupProcessed { expired_count } => Some(*expired_count),
+            StartLoopEvent::BeforeIdlePoolOwnershipTransfer { run_id } => Some(*run_id),
             _ => None,
         }
     }
@@ -1214,35 +1240,38 @@ mod start_loop_observer_tests {
     #[tokio::test]
     async fn start_loop_observer_wait_after_ignores_events_before_cursor() {
         let observer = StartLoopTestObserver::default();
+        let first = RunId::new_v4();
+        let second = RunId::new_v4();
+        let third = RunId::new_v4();
 
-        observer.record(StartLoopEvent::IdleCleanupProcessed { expired_count: 1 });
+        observer.record(StartLoopEvent::BeforeIdlePoolOwnershipTransfer { run_id: first });
         let cursor = observer.cursor();
-        observer.record(StartLoopEvent::IdleCleanupProcessed { expired_count: 2 });
+        observer.record(StartLoopEvent::BeforeIdlePoolOwnershipTransfer { run_id: second });
 
-        let (expired_count, cursor) = observer
+        let (observed_run_id, cursor) = observer
             .wait_after(
                 cursor,
                 Duration::from_secs(1),
-                "second idle cleanup",
-                idle_cleanup_expired_count,
+                "second ownership transfer",
+                ownership_transfer_run_id,
             )
             .await;
         assert_eq!(
-            expired_count, 2,
+            observed_run_id, second,
             "wait_after should ignore stale events before the cursor"
         );
 
-        observer.record(StartLoopEvent::IdleCleanupProcessed { expired_count: 3 });
-        let (expired_count, _) = observer
+        observer.record(StartLoopEvent::BeforeIdlePoolOwnershipTransfer { run_id: third });
+        let (observed_run_id, _) = observer
             .wait_after(
                 cursor,
                 Duration::from_secs(1),
-                "third idle cleanup",
-                idle_cleanup_expired_count,
+                "third ownership transfer",
+                ownership_transfer_run_id,
             )
             .await;
         assert_eq!(
-            expired_count, 3,
+            observed_run_id, third,
             "next cursor should advance past the matched event"
         );
     }
@@ -1504,10 +1533,6 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     shared.status.set_mode(startup_mode).await;
 
     let mut jobs: JoinSet<RunCancellationRegistration> = JoinSet::new();
-    // Tracked destroy tasks — JoinSet ensures we can await all in-flight
-    // destroys at shutdown so their factory Arcs are released before the
-    // exclusive ownership preflight.
-    let mut destroy_tasks: JoinSet<bool> = JoinSet::new();
 
     if startup_mode == RunnerMode::Running {
         info!(
@@ -1537,26 +1562,6 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     );
 
     // -----------------------------------------------------------------------
-    // Idle pool cleanup interval (every 10 seconds)
-    // -----------------------------------------------------------------------
-    // `interval` fires its first tick immediately. In the main-loop
-    // `tokio::select!` this can pre-empt `discover_fut` on its very first
-    // poll — the discover future parks on `rx.recv()` (Pending) while the
-    // interval tick is Ready, so select deterministically picks the tick.
-    // Inside the tick arm any silent watch flip (`send_if_modified(.., false)`)
-    // lands before the loop returns to the discover arm, and the top-of-loop
-    // `borrow_and_update()` then breaks out before the pending job is ever
-    // claimed. Delaying the first tick by one period keeps both arms Pending
-    // on entry, so `discover_fut` wins the first wake. No observable prod
-    // effect: idle cleanup on an empty pool and the first heartbeat were
-    // both fine to happen ~10s later.
-    let mut idle_cleanup = tokio::time::interval_at(
-        tokio::time::Instant::now() + Duration::from_secs(10),
-        Duration::from_secs(10),
-    );
-    idle_cleanup.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-
-    // -----------------------------------------------------------------------
     // Heartbeat interval — same first-tick delay as above.
     // -----------------------------------------------------------------------
     let mut heartbeat_tick = tokio::time::interval_at(
@@ -1573,6 +1578,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // learns about a held reusable sandbox or workspace image cache without
     // waiting for the next 10-second tick.
     let reuse_state_notify = Arc::clone(&shared.reuse_state_notify);
+    let idle_destroy_tracker = IdleDestroyTracker::new(Arc::clone(&reuse_state_notify));
     let orphaned_active_runs = OrphanedActiveRuns::new();
     let active_runs = shared.active_runs.clone();
     let workspace_cache_snapshot = WorkspaceCacheStateSnapshot::new();
@@ -1664,7 +1670,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     }
 
     // Pin the discover future so it survives cancellation by other select!
-    // branches (heartbeat, idle cleanup, etc.). Without pinning, heartbeat
+    // branches (heartbeat, lifecycle changes, etc.). Without pinning, heartbeat
     // (10s) cancels discover() on every tick, restarting its internal poll
     // sleep (30s) from scratch — so poll never fires. See #8747.
     let mut discover_fut = Box::pin(provider_state.provider.discover());
@@ -1678,6 +1684,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         status: Arc::clone(&shared.status),
         orphaned_active_runs: orphaned_active_runs.clone(),
         parking_gate: shared.parking_gate.clone(),
+        idle_destroy_tracker: idle_destroy_tracker.clone(),
         reuse_state_notify: Arc::clone(&reuse_state_notify),
         usage_flush_tx,
         active_runs: active_runs.clone(),
@@ -1741,22 +1748,6 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         maybe_spawn_mitm_restart(&mut mitm, &mut mitm_crash_rx, &mut mitm_retry).await;
 
         let can_discover = if matches!(mode, RunnerMode::Running) {
-            if !capacity
-                .budget
-                .can_afford(capacity.min_vcpu, capacity.min_memory_mb)
-            {
-                let expired = evict_expired_idle_entries(&shared.idle_pool, &shared.status).await;
-                if !expired.is_empty() {
-                    info!(
-                        count = expired.len(),
-                        "reclaiming expired idle VMs for resource pressure"
-                    );
-                    if destroy_idle_jobs_and_wait(expired, "budget_pressure_expired").await {
-                        reuse_state_notify.notify_one();
-                    }
-                    continue;
-                }
-            }
             // A selected finalizing successor can claim against an exact
             // in-process predecessor without reserving fresh capacity.
             capacity
@@ -1778,8 +1769,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             .map(crate::provider::ActiveRunnerPreference::deadline);
         tokio::select! {
             // Job discovery via provider (Ably wakeups + HTTP poll).
-            // The future is pinned outside the loop so heartbeat/cleanup
-            // ticks don't cancel and restart its internal poll timer. See #8747.
+            // The future is pinned outside the loop so other reactor branches
+            // do not cancel and restart its internal poll timer. See #8747.
             discovered = &mut discover_fut, if can_discover => {
                 let Some(candidate) = discovered else { break };
                 // Future completed — create a new one for the next discovery.
@@ -1800,7 +1791,6 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                         mode_rx: &mode_rx,
                         cancel_tokens: &provider_state.cancel_tokens,
                         spawn_ctx: &spawn_ctx,
-                        destroy_tasks: &mut destroy_tasks,
                         jobs: &mut jobs,
                     },
                 ).await;
@@ -1845,7 +1835,6 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                             mode_rx: &mode_rx,
                             cancel_tokens: &provider_state.cancel_tokens,
                             spawn_ctx: &spawn_ctx,
-                            destroy_tasks: &mut destroy_tasks,
                             jobs: &mut jobs,
                         },
                     ).await;
@@ -1968,14 +1957,6 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     orphan_reap.process_discovery.as_ref(),
                 ).await;
             }
-            // Reap completed destroy tasks
-            Some(result) = destroy_tasks.join_next(), if !destroy_tasks.is_empty() => {
-                match result {
-                    Ok(true) => reuse_state_notify.notify_one(),
-                    Ok(false) => {}
-                    Err(e) => warn!(error = %e, "destroy task panicked"),
-                }
-            }
             // Mitmproxy crash detection
             _ = mitm_crash_rx.recv() => {
                 error!(
@@ -1993,19 +1974,6 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             }
             // Mitmproxy restart timer
             () = sleep_until_retry(&mitm_retry.restart_at) => {}
-            // Idle pool cleanup: evict expired VMs and update status
-            _ = idle_cleanup.tick(), if can_discover => {
-                let expired = cleanup_expired_idle_entries(&shared.idle_pool, &shared.status).await;
-                #[cfg(test)]
-                let expired_count = expired.len();
-                for entry in expired {
-                    spawn_idle_destroy_job(&mut destroy_tasks, entry, "idle_expired");
-                }
-                #[cfg(test)]
-                test_hooks
-                    .test_observer
-                    .record(StartLoopEvent::IdleCleanupProcessed { expired_count });
-            }
             // Heartbeat: report runner state to the server
             _ = heartbeat_tick.tick() => {
                 let live_mode = *mode_rx.borrow();
@@ -2031,7 +1999,6 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                         mode_rx: &mode_rx,
                         cancel_tokens: &provider_state.cancel_tokens,
                         spawn_ctx: &spawn_ctx,
-                        destroy_tasks: &mut destroy_tasks,
                         jobs: &mut jobs,
                     },
                 ).await;
@@ -2064,7 +2031,6 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                             mode_rx: &mode_rx,
                             cancel_tokens: &provider_state.cancel_tokens,
                             spawn_ctx: &spawn_ctx,
-                            destroy_tasks: &mut destroy_tasks,
                             jobs: &mut jobs,
                         },
                     ).await;
@@ -2169,12 +2135,6 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     test_hooks.test_observer.notify_usage_flush_requested();
                     mitm.request_usage_flush();
                 }
-                Some(result) = destroy_tasks.join_next() => {
-                    match result {
-                        Ok(_) => {}
-                        Err(e) => warn!(error = %e, "destroy task panicked"),
-                    }
-                }
                 _ = mitm_crash_rx.recv() => {
                     error!(
                         r#type = "usage_underbilling",
@@ -2205,18 +2165,19 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         .await;
         teardown.phase_complete("orphan_reap_shutdown_final", phase);
     }
-    // Wait for any in-flight destroy tasks (from cleanup tick, profile
-    // mismatch eviction, etc.) so their factory Arcs are dropped before the
+    // Wait for any in-flight destroy tasks (from capacity or profile-mismatch
+    // eviction) so their factory Arcs are dropped before the
     // factory shutdown ownership preflight.
     let phase = teardown.phase_start("destroy_tasks_drain");
-    while let Some(result) = destroy_tasks.join_next().await {
-        match result {
-            Ok(_) => {}
-            Err(e) => {
-                warn!(error = %e, "destroy task panicked during shutdown");
-            }
-        }
-    }
+    #[cfg(test)]
+    test_hooks
+        .test_observer
+        .notify_destroy_tasks_drain_entered();
+    idle_destroy_tracker.close_and_wait().await;
+    #[cfg(test)]
+    test_hooks
+        .test_observer
+        .notify_destroy_tasks_drain_completed();
     teardown.phase_complete("destroy_tasks_drain", phase);
     let phase = teardown.phase_start("background_fill_shutdown");
     exec_config.background_fill.shutdown().await;

@@ -1,12 +1,11 @@
 use super::super::*;
 use super::support::{
-    TestParkedIdleCandidateSpec, context_with_session, minimal_context, mock_run_config,
-    mock_run_config_with_overrides, push_job, seed_idle_pool, seed_idle_pool_expired,
+    TestParkedIdleCandidateSpec, assert_run_exits_within, context_with_session, minimal_context,
+    mock_run_config, mock_run_config_with_overrides, push_job, seed_idle_pool_with_overrides,
     seed_idle_pool_with_timing, shutdown, status_idle_reuse_keys, test_profiles, two_profiles,
     wait_budget_count, wait_cancel_token, wait_discover_entered,
-    wait_idle_cleanup_processed_with_expired_entries, wait_status_idle_reuse_keys_and_active_runs,
+    wait_status_idle_reuse_keys_and_active_runs,
 };
-
 // -----------------------------------------------------------------------
 // Test 11: Budget full → job skipped (not claimed) → budget freed → next job succeeds
 //
@@ -127,17 +126,29 @@ async fn budget_exhausted_buffers_discovery_until_budget_frees() {
 }
 
 // -----------------------------------------------------------------------
-// Test 15: Cleanup tick evicts expired idle entries
+// Test 15: Idle VMs remain reusable until capacity is needed
 // -----------------------------------------------------------------------
 
 #[tokio::test(start_paused = true)]
-async fn cleanup_tick_evicts_expired_entries() {
+async fn idle_vm_remains_reusable_until_capacity_is_needed() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let budget = Arc::clone(&config.capacity.budget);
+    let now = std::time::Instant::now();
 
-    // Pre-seed: park an entry that is already expired (400s old, 300s timeout).
-    seed_idle_pool_expired(&idle_pool, &budget, "sess-exp", "vm0/default", 2, 4096).await;
+    seed_idle_pool_with_timing(
+        &idle_pool,
+        &budget,
+        TestParkedIdleCandidateSpec {
+            reuse_key: "sess-old",
+            profile_name: "vm0/default",
+            vcpu: 2,
+            memory_mb: 4096,
+            history_generation_run_id: None,
+            parked_at: now - Duration::from_secs(3600),
+        },
+    )
+    .await;
     assert_eq!(
         idle_pool.lock().await.len(),
         1,
@@ -148,19 +159,26 @@ async fn cleanup_tick_evicts_expired_entries() {
     let run_handle = tokio::spawn(run(config));
     wait_discover_entered(&env, Duration::from_secs(5)).await;
 
-    // Advance to the first cleanup tick, then synchronize on the loop's
-    // cleanup event instead of using the fixed sleep as the assertion gate.
-    tokio::time::advance(Duration::from_secs(11)).await;
-    let expired_count =
-        wait_idle_cleanup_processed_with_expired_entries(&env, Duration::from_secs(5)).await;
-    assert_eq!(expired_count, 1, "cleanup should process the expired entry");
+    tokio::time::advance(Duration::from_secs(3600)).await;
+    assert_eq!(idle_pool.lock().await.len(), 1, "idle age must not evict");
+    assert_eq!(budget.allocated().2, 1, "aged idle VM keeps its lease");
 
-    // Eviction spawns a destroy_task that releases the idle entry lease.
-    // Poll until it completes.
-    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
-
-    let pool_len = idle_pool.lock().await.len();
-    assert_eq!(pool_len, 0, "expired entry should be evicted");
+    let run_id = RunId::new_v4();
+    push_job(
+        &env,
+        run_id,
+        "vm0/default",
+        Some(context_with_session(run_id, "sess-old")),
+    );
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("aged idle VM should remain reusable");
+    assert_eq!(
+        completion.reuse_result,
+        Some(crate::types::SandboxReuseResult::Reused)
+    );
 
     shutdown(&env, run_handle).await;
 }
@@ -169,15 +187,31 @@ async fn cleanup_tick_evicts_expired_entries() {
 // Test 16: Budget exhausted → evict idle VM → admit new job
 // -----------------------------------------------------------------------
 
-#[tokio::test(start_paused = true)]
-async fn budget_exhausted_evicts_idle_and_admits_job() {
+#[tokio::test(flavor = "current_thread")]
+async fn budget_pressure_starts_fresh_vm_before_idle_destroy_finishes() {
+    let destroy_gate = sandbox_mock::MockLifecycleGate::new();
+    let wait_gate = sandbox_mock::MockLifecycleGate::new();
+    let idle_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    idle_overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
+    let fresh_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    fresh_overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
     // Budget: exactly 1 default job (2 vcpu, 4096 MB).
-    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 2);
+    let (config, env) =
+        mock_run_config_with_overrides(test_profiles(), 2, 4096, 2, Arc::clone(&fresh_overrides));
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let budget = Arc::clone(&config.capacity.budget);
 
     // Pre-seed: idle VM fills the entire budget.
-    seed_idle_pool(&idle_pool, &budget, "sess-evict", "vm0/default", 2, 4096).await;
+    seed_idle_pool_with_overrides(
+        &idle_pool,
+        &budget,
+        &idle_overrides,
+        "sess-evict",
+        "vm0/default",
+        2,
+        4096,
+    )
+    .await;
     assert!(
         !budget.can_afford(2, 4096),
         "budget should be exhausted after seeding"
@@ -189,21 +223,161 @@ async fn budget_exhausted_evicts_idle_and_admits_job() {
     let run_id = RunId::new_v4();
     push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
 
+    destroy_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("idle VM should enter tracked destroy");
+    wait_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("fresh VM should activate while idle destroy is blocked");
+    assert_eq!(
+        budget.allocated(),
+        (2, 4096, 1),
+        "incoming lease should atomically replace the idle lease"
+    );
+    assert_eq!(idle_pool.lock().await.len(), 0);
+
+    wait_gate.release_one();
     let completion = env
         .handle
         .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("fresh job should complete while retired idle cleanup remains blocked");
+    assert_eq!(completion.exit_code, 0);
+
+    env.drain();
+    env.cancel.cancel();
+    env.start_observer
+        .wait_destroy_tasks_drain_entered(Duration::from_secs(5))
         .await;
     assert!(
-        completion.is_some(),
-        "job should complete after idle VM eviction frees budget"
+        !env.start_observer.destroy_tasks_drain_was_completed(),
+        "shutdown must wait for the tracked retired idle destroy"
     );
-    assert_eq!(completion.unwrap().exit_code, 0);
+    destroy_gate.release_one();
+    env.start_observer
+        .wait_destroy_tasks_drain_completed(Duration::from_secs(5))
+        .await;
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(5),
+        "shutdown should finish after retired idle destroy completes",
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn fresh_create_failure_does_not_cancel_retired_idle_destroy() {
+    let destroy_gate = sandbox_mock::MockLifecycleGate::new();
+    let idle_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    idle_overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
+    let fresh_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    fresh_overrides.push_create_result(Err(sandbox::SandboxError::Initialization {
+        phase: sandbox::SandboxInitializationPhase::SandboxAllocation,
+        message: "create failed after idle retirement".into(),
+    }));
+    let (config, env) =
+        mock_run_config_with_overrides(test_profiles(), 2, 4096, 1, fresh_overrides);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
+    seed_idle_pool_with_overrides(
+        &idle_pool,
+        &budget,
+        &idle_overrides,
+        "sess-create-failure-retirement",
+        "vm0/default",
+        2,
+        4096,
+    )
+    .await;
+    let run_handle = tokio::spawn(run(config));
+
+    let run_id = RunId::new_v4();
+    push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+
+    destroy_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("idle destroy should remain tracked before fresh creation");
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("fresh create failure should report completion without waiting for old destroy");
+    assert_eq!(completion.exit_code, 1);
+    assert!(
+        completion
+            .error
+            .is_some_and(|error| error.contains("create failed after idle retirement"))
+    );
+    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
+    assert_eq!(idle_pool.lock().await.len(), 0);
+    assert_eq!(destroy_gate.entered_count(), 1);
+
+    destroy_gate.release_one();
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
+async fn smaller_fresh_profile_releases_only_net_idle_capacity() {
+    let destroy_gate = sandbox_mock::MockLifecycleGate::new();
+    let wait_gate = sandbox_mock::MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    let (config, env) =
+        mock_run_config_with_overrides(two_profiles(), 4, 8192, 2, Arc::clone(&overrides));
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
+    seed_idle_pool_with_overrides(
+        &idle_pool,
+        &budget,
+        &overrides,
+        "sess-large-idle",
+        "vm0/large",
+        4,
+        8192,
+    )
+    .await;
+
+    let run_handle = tokio::spawn(run(config));
+    let run_id = RunId::new_v4();
+    push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+
+    destroy_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("large idle VM should enter tracked destroy");
+    wait_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("smaller fresh VM should activate before destroy completes");
+    assert_eq!(budget.allocated(), (2, 4096, 1));
+    assert!(
+        budget.can_afford(2, 4096),
+        "unused half of the retired large lease should remain admittable"
+    );
+
+    destroy_gate.release_one();
+    wait_gate.release_one();
+    destroy_gate
+        .wait_entered(2, Duration::from_secs(5))
+        .await
+        .expect("fresh VM should enter normal active cleanup");
+    destroy_gate.release_one();
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("smaller fresh job should complete");
+    assert_eq!(completion.exit_code, 0);
 
     shutdown(&env, run_handle).await;
 }
 
 #[tokio::test(start_paused = true)]
-async fn budget_exhausted_reclaims_expired_before_oldest_idle() {
+async fn budget_pressure_evicts_oldest_idle_regardless_of_age() {
     let (config, env) = mock_run_config(two_profiles(), 6, 12288, 3);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let budget = Arc::clone(&config.capacity.budget);
@@ -220,7 +394,6 @@ async fn budget_exhausted_reclaims_expired_before_oldest_idle() {
             memory_mb: 4096,
             history_generation_run_id: None,
             parked_at: now - Duration::from_secs(100),
-            idle_timeout: Duration::from_secs(300),
         },
     )
     .await;
@@ -228,13 +401,12 @@ async fn budget_exhausted_reclaims_expired_before_oldest_idle() {
         &idle_pool,
         &budget,
         TestParkedIdleCandidateSpec {
-            reuse_key: "sess-expired-newer",
+            reuse_key: "sess-newer-large",
             profile_name: "vm0/large",
             vcpu: 4,
             memory_mb: 8192,
             history_generation_run_id: None,
             parked_at: now - Duration::from_secs(10),
-            idle_timeout: Duration::from_secs(1),
         },
     )
     .await;
@@ -254,7 +426,7 @@ async fn budget_exhausted_reclaims_expired_before_oldest_idle() {
         .await;
     assert!(
         completion.is_some(),
-        "job should complete after expired idle reclaim frees budget"
+        "job should complete after oldest idle capacity is reclaimed"
     );
     assert_eq!(completion.unwrap().exit_code, 0);
 
@@ -263,12 +435,12 @@ async fn budget_exhausted_reclaims_expired_before_oldest_idle() {
     let reuse_keys = idle_pool.lock().await.held_reuse_keys();
     assert_eq!(
         reuse_keys,
-        vec!["sess-old-active".to_string()],
-        "expired idle entry should be reclaimed before oldest active entry"
+        vec!["sess-newer-large".to_string()],
+        "oldest idle entry should be reclaimed regardless of age"
     );
     assert_eq!(
         status_idle_reuse_keys(&status_path).await,
-        vec!["sess-old-active".to_string()],
+        vec!["sess-newer-large".to_string()],
         "status.json should reflect the remaining idle VM"
     );
 
@@ -276,8 +448,8 @@ async fn budget_exhausted_reclaims_expired_before_oldest_idle() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn budget_exhausted_evicts_oldest_when_expired_reclaim_insufficient() {
-    let (config, env) = mock_run_config(two_profiles(), 7, 13312, 3);
+async fn larger_profile_retires_only_the_required_oldest_idle_entries() {
+    let (config, env) = mock_run_config(two_profiles(), 6, 12288, 4);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let budget = Arc::clone(&config.capacity.budget);
     let status_path = env._temp_dir.path().join("status.json");
@@ -287,13 +459,12 @@ async fn budget_exhausted_evicts_oldest_when_expired_reclaim_insufficient() {
         &idle_pool,
         &budget,
         TestParkedIdleCandidateSpec {
-            reuse_key: "sess-old-active",
-            profile_name: "vm0/large",
-            vcpu: 4,
-            memory_mb: 8192,
+            reuse_key: "sess-oldest",
+            profile_name: "vm0/default",
+            vcpu: 2,
+            memory_mb: 4096,
             history_generation_run_id: None,
             parked_at: now - Duration::from_secs(100),
-            idle_timeout: Duration::from_secs(300),
         },
     )
     .await;
@@ -301,13 +472,12 @@ async fn budget_exhausted_evicts_oldest_when_expired_reclaim_insufficient() {
         &idle_pool,
         &budget,
         TestParkedIdleCandidateSpec {
-            reuse_key: "sess-new-active",
+            reuse_key: "sess-middle",
             profile_name: "vm0/default",
             vcpu: 2,
             memory_mb: 4096,
             history_generation_run_id: None,
             parked_at: now - Duration::from_secs(50),
-            idle_timeout: Duration::from_secs(300),
         },
     )
     .await;
@@ -315,29 +485,24 @@ async fn budget_exhausted_evicts_oldest_when_expired_reclaim_insufficient() {
         &idle_pool,
         &budget,
         TestParkedIdleCandidateSpec {
-            reuse_key: "sess-expired-small",
+            reuse_key: "sess-newest",
             profile_name: "vm0/default",
-            // Intentionally smaller than the current min profile. With
-            // only profile-sized entries, releasing one expired VM is
-            // already enough to admit the min profile; this pins the
-            // fallback loop for stale/non-current idle footprints.
-            vcpu: 1,
-            memory_mb: 1024,
+            vcpu: 2,
+            memory_mb: 4096,
             history_generation_run_id: None,
             parked_at: now - Duration::from_secs(10),
-            idle_timeout: Duration::from_secs(1),
         },
     )
     .await;
     assert!(
-        !budget.can_afford(2, 4096),
+        !budget.can_afford(4, 8192),
         "seeded idle entries should exhaust budget"
     );
 
     let run_handle = tokio::spawn(run(config));
 
     let run_id = RunId::new_v4();
-    push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+    push_job(&env, run_id, "vm0/large", Some(minimal_context(run_id)));
 
     let completion = env
         .handle
@@ -345,7 +510,7 @@ async fn budget_exhausted_evicts_oldest_when_expired_reclaim_insufficient() {
         .await;
     assert!(
         completion.is_some(),
-        "job should complete after expired reclaim plus oldest eviction"
+        "large job should complete after two oldest idle entries retire"
     );
     assert_eq!(completion.unwrap().exit_code, 0);
 
@@ -354,12 +519,12 @@ async fn budget_exhausted_evicts_oldest_when_expired_reclaim_insufficient() {
     let reuse_keys = idle_pool.lock().await.held_reuse_keys();
     assert_eq!(
         reuse_keys,
-        vec!["sess-new-active".to_string()],
-        "expired entry and oldest active entry should be reclaimed"
+        vec!["sess-newest".to_string()],
+        "only the newest unneeded idle entry should remain"
     );
     assert_eq!(
         status_idle_reuse_keys(&status_path).await,
-        vec!["sess-new-active".to_string()],
+        vec!["sess-newest".to_string()],
         "status.json should reflect only the remaining idle VM"
     );
 

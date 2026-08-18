@@ -1270,7 +1270,6 @@ async fn idle_pool_config_round_trip() {
         sandbox: SandboxConfig {
             max_concurrent: 4,
             concurrency_factor: 1.5,
-            idle_timeout_secs: 600,
             max_idle: 10,
         },
         server: None,
@@ -1281,7 +1280,6 @@ async fn idle_pool_config_round_trip() {
     let loaded = load_with_home(&runner_dir.join("runner.yaml"), &fixture.home, true)
         .await
         .unwrap();
-    assert_eq!(loaded.sandbox.idle_timeout_secs, 600);
     assert_eq!(loaded.sandbox.max_idle, 10);
     assert_eq!(loaded, config);
 }
@@ -1293,6 +1291,5 @@ async fn idle_pool_defaults_when_omitted() {
     let yaml = fixture.yaml_with_default_profile("");
 
     let config = fixture.load_config(&yaml, true).await.unwrap();
-    assert_eq!(config.sandbox.idle_timeout_secs, DEFAULT_IDLE_TIMEOUT_SECS);
     assert_eq!(config.sandbox.max_idle, 0);
 }
