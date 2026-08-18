@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { command } from "ccstate";
 import { and, eq, sql } from "drizzle-orm";
-import { FEISHU_OAUTH_SCOPES } from "@okouai/api-contracts/contracts/zero-feishu-connect";
+import { FEISHU_OAUTH_SCOPES } from "@okouai/api-contracts/contracts/feishu-connect";
 import { connectors } from "@okouai/db/schema/connector";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
 import { orgCustomConnectorOauthConfigs } from "@okouai/db/schema/org-custom-connector-oauth-config";
