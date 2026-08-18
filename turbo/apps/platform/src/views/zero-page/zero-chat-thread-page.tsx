@@ -24,7 +24,6 @@ import {
 } from "../../signals/chat-page/run-usage-popover.ts";
 import {
   AlertCircle,
-  Brain,
   Coffee,
   Flag,
   Hand,
@@ -33,6 +32,7 @@ import {
   Lightbulb,
   Plane,
   Smile,
+  Sparkles,
   Trophy,
   Image,
   ChartLine,
@@ -7911,7 +7911,7 @@ function PagedAssistantThinkingBlock({
                   aria-hidden
                   className="inline-flex size-3.5 shrink-0 items-center justify-center"
                 >
-                  <Brain size={14} className="-translate-y-px" />
+                  <Sparkles size={14} />
                 </span>
                 <span className="shrink-0 text-[13px]">{label}</span>
                 <span className="min-w-0 flex-1 truncate font-serif text-[0.8125rem] font-normal group-open:hidden">
@@ -7922,7 +7922,7 @@ function PagedAssistantThinkingBlock({
             <ChevronRight
               aria-hidden
               size={14}
-              className="shrink-0 text-muted-foreground/70 transition-transform group-open:rotate-90"
+              className="shrink-0 text-muted-foreground/70"
             />
           </span>
         </summary>
