@@ -1014,6 +1014,9 @@ describe("initial thinking indicator", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatInlineThinkingBlocks]: true,
+      },
     });
 
     await screen.findByText("Here is the checklist.");

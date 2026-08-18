@@ -1635,6 +1635,9 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/e7000000-0000-4000-a000-000000000018",
+      featureSwitches: {
+        [FeatureSwitchKey.ChatInlineThinkingBlocks]: true,
+      },
     });
 
     await waitFor(() => {

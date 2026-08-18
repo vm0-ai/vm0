@@ -1,4 +1,5 @@
 import { screen, waitFor } from "@testing-library/react";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { context, detachedSetupPage } from "./chat-lifecycle-test-helpers.ts";
@@ -59,6 +60,9 @@ describe("chat thinking blocks", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatInlineThinkingBlocks]: true,
+      },
     });
 
     await screen.findByText("I loaded the trial accounts.");
@@ -109,6 +113,23 @@ describe("chat thinking blocks", () => {
       "hover:bg-state-hover",
     );
     expect(firstSummary).not.toHaveClass("w-full", "group-open:bg-muted/50");
+    const firstIcon = firstSummary.querySelector("[data-thinking-block-icon]");
+    const secondIcon = secondSummary.querySelector(
+      "[data-thinking-block-icon]",
+    );
+    expect(firstIcon).toHaveClass(
+      "inline-flex",
+      "size-3.5",
+      "items-center",
+      "justify-center",
+    );
+    expect(firstIcon?.querySelector("svg")).toHaveClass("-translate-y-px");
+    expect(secondIcon).toHaveClass(
+      "inline-flex",
+      "size-3.5",
+      "items-center",
+      "justify-center",
+    );
     expect(firstContent).toHaveClass(
       "text-muted-foreground/80",
       "[&_.wmde-markdown]:!text-muted-foreground/80",
@@ -180,6 +201,9 @@ describe("chat thinking blocks", () => {
     detachedSetupPage({
       context,
       path: `/chats/${COMPLETED_THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatInlineThinkingBlocks]: true,
+      },
     });
 
     const expandButton = await screen.findByLabelText("Expand work history");
@@ -248,5 +272,52 @@ describe("chat thinking blocks", () => {
     await user.click(secondSummary);
     expect(firstThinking.open).toBeTruthy();
     expect(secondThinking.open).toBeTruthy();
+  });
+
+  it("keeps thinking events on the legacy presentation while the switch is off", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000213";
+    const runId = "run-legacy-thinking-presentation";
+    mockChatLifecycle(context, {
+      threadId,
+      activeRunIds: [runId],
+      chatEvents: [
+        {
+          id: "msg-legacy-thinking-user",
+          role: "user",
+          content: "Summarize the account",
+          runId,
+          createdAt: "2026-08-18T10:00:00Z",
+        },
+        {
+          id: "msg-legacy-thinking-marker",
+          role: "assistant",
+          content: null,
+          thinking: "This thought stays out of the transcript.",
+          runId,
+          createdAt: "2026-08-18T10:00:01Z",
+        },
+        {
+          id: "msg-legacy-thinking-result",
+          role: "assistant",
+          content: "Here is the account summary.",
+          runId,
+          createdAt: "2026-08-18T10:00:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatInlineThinkingBlocks]: false,
+      },
+    });
+
+    await screen.findByText("Here is the account summary.");
+    expect(document.querySelector("[data-thinking-block]")).toBeNull();
+    expect(
+      screen.queryByText("This thought stays out of the transcript."),
+    ).toBeNull();
   });
 });

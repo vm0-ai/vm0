@@ -1369,6 +1369,7 @@ function isThinkingMarkerSemanticEvent(entry: SemanticChatEvent): boolean {
 
 function lastRunThinkingEvent(
   groups: readonly SemanticChatEventGroup[],
+  inlineThinkingBlocksEnabled: boolean,
 ): SemanticChatEvent | undefined {
   const events = groups.flatMap((group) => {
     return group.events;
@@ -1376,6 +1377,17 @@ function lastRunThinkingEvent(
   const lastEvent = events.at(-1);
   if (!lastEvent || !isThinkingMarkerSemanticEvent(lastEvent)) {
     return undefined;
+  }
+  if (!inlineThinkingBlocksEnabled) {
+    const runId = lastEvent.event.runId;
+    const runHasAssistantText = events.some((entry) => {
+      return (
+        entry.event.runId === runId && isRenderableAssistantSemanticEvent(entry)
+      );
+    });
+    if (runHasAssistantText) {
+      return undefined;
+    }
   }
   return lastEvent;
 }
@@ -1440,6 +1452,7 @@ function resolveThinkingIndicatorMode({
 function thinkingIndicatorProjectionFromGroups(
   groups: SemanticChatGroups,
   runState: RunIndicatorState,
+  inlineThinkingBlocksEnabled: boolean,
 ): ThinkingIndicatorProjection {
   const { activeGroups } = groups;
   const lastGroup = activeGroups.at(-1);
@@ -1450,7 +1463,10 @@ function thinkingIndicatorProjectionFromGroups(
   const lastAssistantEvent = lastIsAssistant
     ? lastGroup.events.at(-1)?.event
     : undefined;
-  const rawThinkingEvent = lastRunThinkingEvent(activeGroups);
+  const rawThinkingEvent = lastRunThinkingEvent(
+    activeGroups,
+    inlineThinkingBlocksEnabled,
+  );
   const lastAssistantOnlyThinking = assistantGroupOnlyHasThinking(
     lastGroup,
     rawThinkingEvent,
@@ -1550,6 +1566,7 @@ function createEventSemanticSignals(
       return thinkingIndicatorProjectionFromGroups(
         get(semanticGroups$),
         runState,
+        get(featureSwitch$)[FeatureSwitchKey.ChatInlineThinkingBlocks] ?? false,
       );
     },
   );
