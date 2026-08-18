@@ -404,6 +404,8 @@ export const EXPECTED_REPOSITORY_DEPENDENCIES = {
     "#27896|run-context-authority-telemetry|removal-owner:#26938-stage-8",
     "#27997|framework-fallback-authority-classification-and-telemetry|removal-owner:#26938-stage-8",
     "#27997|framework-fallback-preflight-partition|removal-owner:#26938-stage-8",
+    "#28056|historical-product-builder-classifier-and-variants|removal-owner:#26938-stage-8",
+    "#28056|historical-product-builder-preflight-partition|removal-owner:#26938-stage-8",
   ],
 } as const satisfies RepositoryDependencyManifest;
 

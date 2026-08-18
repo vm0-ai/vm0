@@ -48,6 +48,7 @@ import {
   ACTIVITY_BUCKETS,
   ENVIRONMENT_OVERLAP_DIMENSIONS,
   ENVIRONMENT_PRIMARY_CLASSES,
+  HISTORICAL_PRODUCT_BUILDER_ORIGIN_CLASSES,
   UNCLASSIFIED_PRIMARY_CLASSES,
   UNSUPPORTED_PRIMARY_REASONS,
   classifyExceptionRefinements,
@@ -397,11 +398,23 @@ const PREFLIGHT_V4_OUTPUT_ALLOWLIST = [
   ...comparisonOutputPaths("launchSnapshots.reasonCompatibilityClosure"),
 ];
 
-/** Every and only approved scalar/array path in a complete v4 result. */
+/** Transition-only #28056 output; removed by #26938 Stage 8. */
+const PREFLIGHT_V5_OUTPUT_ALLOWLIST = [
+  ...refinementDomainOutputPaths(
+    "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin",
+    HISTORICAL_PRODUCT_BUILDER_ORIGIN_CLASSES,
+  ),
+  ...comparisonOutputPaths(
+    "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin.primaryDisjointnessClosure",
+  ),
+];
+
+/** Every and only approved scalar/array path in a complete v5 result. */
 export const PREFLIGHT_OUTPUT_ALLOWLIST = [
   ...PREFLIGHT_V2_OUTPUT_ALLOWLIST,
   ...PREFLIGHT_V3_OUTPUT_ALLOWLIST,
   ...PREFLIGHT_V4_OUTPUT_ALLOWLIST,
+  ...PREFLIGHT_V5_OUTPUT_ALLOWLIST,
 ].sort();
 
 export interface IdentityInventoryRow extends QueryResultRow {
