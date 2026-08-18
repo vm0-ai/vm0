@@ -359,6 +359,20 @@ def _decode_single_zlib_stream_for_network_log_capture(
     return bytes(out)
 
 
+def _decode_zstd_for_network_log_capture(data: bytes, max_output: int) -> bytes | None:
+    if not data or max_output <= 0:
+        return b""
+
+    try:
+        with zstandard.ZstdDecompressor().stream_reader(
+            data,
+            read_across_frames=True,
+        ) as reader:
+            return reader.read(max_output)
+    except zstandard.ZstdError:
+        return None
+
+
 def decode_response_body_for_network_log_capture(
     data: bytes,
     headers: http.Headers,
@@ -399,8 +413,7 @@ def decode_response_body_for_network_log_capture(
             return None
         return body
     if encoding == "zstd":
-        result = _decode_body_bounded(data, headers, max_output=max_output)
-        return None if result.failed else result.body
+        return _decode_zstd_for_network_log_capture(data, max_output)
     return None
 
 

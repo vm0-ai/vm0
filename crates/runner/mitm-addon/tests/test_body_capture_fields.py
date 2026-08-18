@@ -6,6 +6,7 @@ import zlib
 
 import brotli
 import pytest
+import zstandard
 
 from body_capture import add_capture_fields
 from body_limits import BODY_CAPTURE_LIMIT
@@ -437,6 +438,41 @@ class TestAddCaptureFields:
             response_content_type="text/plain",
             response_body=brotli.compress(body)[:-1],
             response_encoding="br",
+        )
+
+        entry = {}
+        add_capture_fields(flow, entry)
+
+        assert "response_body" not in entry
+        assert entry["response_body_encoding"] == "binary"
+
+    def test_response_zstd_concatenated_frames_capture_all_frames(self, real_flow):
+        first = b"first response frame"
+        second = b" and second response frame"
+        compressor = zstandard.ZstdCompressor()
+        compressed = compressor.compress(first) + compressor.compress(second)
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            response_content_type="text/plain",
+            response_body=compressed,
+            response_encoding="zstd",
+        )
+
+        entry = {}
+        add_capture_fields(flow, entry)
+
+        assert entry["response_body"] == (first + second).decode()
+        assert entry["response_body_encoding"] == "utf-8"
+
+    def test_response_zstd_trailing_garbage_skips_body(self, real_flow):
+        compressed = zstandard.ZstdCompressor().compress(b"response body")
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            response_content_type="text/plain",
+            response_body=compressed + b"garbage",
+            response_encoding="zstd",
         )
 
         entry = {}
