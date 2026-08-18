@@ -8833,6 +8833,13 @@ describe("usage pack allocation management", () => {
       role: "member" as const,
       usagePackUsd: 20 as const,
     };
+    const vm0Preview = await accept(
+      client.previewPurchase({
+        headers: { authorization: "Bearer clerk-session" },
+        body: previewBody,
+      }),
+      [200],
+    );
     const preview = await accept(
       client.previewPurchase({
         headers: { authorization: "Bearer clerk-session" },
@@ -8841,6 +8848,7 @@ describe("usage pack allocation management", () => {
       }),
       [200],
     );
+    expect(preview.body.purchaseId).not.toBe(vm0Preview.body.purchaseId);
     expect(preview.body).toStrictEqual({
       purchaseId: expect.any(String),
       usagePackUsd: 20,
