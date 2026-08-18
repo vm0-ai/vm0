@@ -19,6 +19,7 @@ import { unified, type PluggableList } from "unified";
 import { visit } from "unist-util-visit";
 
 import { rehypeMermaid } from "../rehype-mermaid.ts";
+import { remarkGfmAutolinkLiteralCjk } from "./gfm-autolink-literal-cjk.ts";
 import {
   rehypeRewriteHandle,
   reservedMeta,
@@ -49,13 +50,15 @@ declare module "hast" {
  *
  * The plugin order is load-bearing and matches what the two packages built:
  *
- *   remark  remarkAlert → remarkMath? → cjk → gfm → cjkStrikethrough
+ *   remark  remarkAlert → remarkMath? → cjk → gfm → cjkStrikethrough →
+ *           cjkAutolink
  *   rehype  reservedMeta → raw → retrieveMeta → slug → autolinkHeadings →
  *           ignore → rewrite → attrs → katex? → mermaid → prism
  *
- * `remarkCjkFriendlyStrikethrough` has to sit behind `remarkGfm` because it
- * replaces gfm's own `~~` extension, and `rehypeMermaid` has to sit ahead of
- * `rehypePrism`, which rewrites fence content beyond recognition.
+ * `remarkCjkFriendlyStrikethrough` and `remarkGfmAutolinkLiteralCjk` both have
+ * to sit behind `remarkGfm` because each replaces one of gfm's own extensions,
+ * and `rehypeMermaid` has to sit ahead of `rehypePrism`, which rewrites fence
+ * content beyond recognition.
  */
 
 type MarkdownCard = NonNullable<Data["card"]>;
@@ -302,6 +305,7 @@ function remarkPlugins(options: MarkdownParseOptions): PluggableList {
     remarkCjkFriendly,
     remarkGfm,
     remarkCjkFriendlyStrikethrough,
+    remarkGfmAutolinkLiteralCjk,
   ];
 }
 

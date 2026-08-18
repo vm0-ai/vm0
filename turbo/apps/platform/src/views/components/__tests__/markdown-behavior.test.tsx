@@ -17,6 +17,20 @@ function html(source: string): string {
   return container.innerHTML;
 }
 
+function links(source: string): { href: string; text: string }[] {
+  const { container } = render(
+    <StoreProvider value={context.store}>
+      <Markdown source={source} mediaPreview />
+    </StoreProvider>,
+  );
+  return [...container.querySelectorAll("a")].map((anchor) => {
+    return {
+      href: anchor.getAttribute("href") ?? "",
+      text: anchor.textContent ?? "",
+    };
+  });
+}
+
 function table(rows: number, columns: number): string {
   const header = `| ${Array.from({ length: columns }, (_, index) => {
     return `Column ${String(index)}`;
@@ -104,6 +118,67 @@ describe("parse-in-render markdown", () => {
 
     expect(escaped.innerHTML).not.toBe(raw.innerHTML);
     expect(escaped.textContent).toContain("<span> 123 </span>");
+  });
+});
+
+// GFM scans a bare URL to the next ASCII space and trims only ASCII trailing
+// punctuation, so Chinese — which writes `。（）` against the link and leaves no
+// space — used to end up with the sentence inside the href.
+describe("autolink literals against cjk punctuation", () => {
+  it("ends the link at full-width punctuation", () => {
+    expect(links("链接：https://example.com/a（draft）后续")).toStrictEqual([
+      { href: "https://example.com/a", text: "https://example.com/a" },
+    ]);
+    expect(links("中文https://example.com/a。下一句")).toStrictEqual([
+      { href: "https://example.com/a", text: "https://example.com/a" },
+    ]);
+    expect(links("www.example.com/a（x）后")).toStrictEqual([
+      { href: "http://www.example.com/a", text: "www.example.com/a" },
+    ]);
+  });
+
+  // The `**` only closes once the link stops swallowing it, so this covers the
+  // emphasis and the href in one source.
+  it("emphasizes a bolded bare url followed by a full-width period", () => {
+    const rendered = html(
+      "PR 开好了：**https://example.com/pull/28031**。下一步",
+    );
+
+    expect(rendered).toContain(
+      '<strong><a href="https://example.com/pull/28031"',
+    );
+    expect(rendered).toContain("。下一步");
+  });
+
+  it("leaves ascii autolinks and email untouched", () => {
+    expect(links("see https://example.com/a. end")).toStrictEqual([
+      { href: "https://example.com/a", text: "https://example.com/a" },
+    ]);
+    expect(
+      links("read https://en.wikipedia.org/wiki/Ruby_(gem) today"),
+    ).toStrictEqual([
+      {
+        href: "https://en.wikipedia.org/wiki/Ruby_(gem)",
+        text: "https://en.wikipedia.org/wiki/Ruby_(gem)",
+      },
+    ]);
+    expect(links("联系 contact@example.org。谢谢")).toStrictEqual([
+      { href: "mailto:contact@example.org", text: "contact@example.org" },
+    ]);
+  });
+
+  // Full-width brackets that really belong to a URL are the cost of the rule
+  // above: prose that follows a link with a bracket is the far more common
+  // shape, and both cannot win.
+  it("stops a full-width bracket inside a url too", () => {
+    expect(
+      links("https://zh.wikipedia.org/wiki/中文（消歧义）是条目"),
+    ).toStrictEqual([
+      {
+        href: "https://zh.wikipedia.org/wiki/%E4%B8%AD%E6%96%87",
+        text: "https://zh.wikipedia.org/wiki/中文",
+      },
+    ]);
   });
 });
 
