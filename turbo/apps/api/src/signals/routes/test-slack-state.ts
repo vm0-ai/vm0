@@ -36,9 +36,9 @@ import type { RouteEntry } from "../route-entry";
 import { resolveTestOrgId$, testUserId$ } from "../services/cli-auth.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import {
-  acquireVm0ManagedModelKeyFixture,
-  releaseVm0ManagedModelKeyFixture,
-} from "../services/test-vm0-managed-model-key-fixture.service";
+  acquireManagedModelKeyFixture,
+  releaseManagedModelKeyFixture,
+} from "../services/managed-model-key-fixture";
 import { chatEventTypeIn } from "../services/chat-event-type.service";
 import {
   isTestEndpointAllowed,
@@ -231,7 +231,7 @@ async function seedDefaultAgent(
 }
 
 async function seedVm0ManagedKeys(db: Db, composeId: string): Promise<void> {
-  await acquireVm0ManagedModelKeyFixture(
+  await acquireManagedModelKeyFixture(
     db,
     composeId,
     vm0ManagedKeyRows(composeId),
@@ -277,7 +277,7 @@ async function deleteVm0ManagedKeysForSeededDefaultAgent(
     return;
   }
 
-  await releaseVm0ManagedModelKeyFixture(db, compose.id);
+  await releaseManagedModelKeyFixture(db, compose.id);
 }
 
 async function getOrInsertCompose(

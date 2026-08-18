@@ -69,7 +69,7 @@ import {
   buildTeamsConnectUrlForActivity,
   disconnectTeamsConnection$,
   publishTeamsChanged$,
-} from "./zero-teams-connect.service";
+} from "./teams-connect.service";
 import { touchChatThreadLastMessageAt } from "./chat-event-shared.service";
 import { insertChatEvent } from "./chat-event.service";
 import { createChatEventSourcePart } from "./chat-event-annotation.service";

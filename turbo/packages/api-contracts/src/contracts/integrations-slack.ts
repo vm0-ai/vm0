@@ -27,10 +27,10 @@ const slackOrgStatusSchema = z.object({
 });
 
 /**
- * Zero integrations Slack contract (GET/DELETE /api/okou/integrations/slack)
+ * Integrations Slack contract (GET/DELETE /api/okou/integrations/slack)
  * Manages org-scoped Slack workspace info.
  */
-export const zeroIntegrationsSlackContract = c.router({
+export const integrationsSlackContract = c.router({
   getStatus: {
     method: "GET",
     path: "/api/okou/integrations/slack",
@@ -59,7 +59,6 @@ export const zeroIntegrationsSlackContract = c.router({
   },
 });
 
-export type ZeroIntegrationsSlackContract =
-  typeof zeroIntegrationsSlackContract;
+export type IntegrationsSlackContract = typeof integrationsSlackContract;
 export type SlackOrgStatus = z.infer<typeof slackOrgStatusSchema>;
 export { slackOrgStatusSchema };

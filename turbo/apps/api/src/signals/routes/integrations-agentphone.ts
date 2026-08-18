@@ -34,7 +34,7 @@ import {
   type AgentPhoneRecentHistoryMessage,
   type AgentPhoneChannel,
   type AgentPhoneMessageEvent,
-} from "../services/zero-agentphone.service";
+} from "../services/agentphone.service";
 import { safeJsonParse, tapError } from "../utils";
 
 interface AgentPhoneConfig {

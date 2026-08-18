@@ -14,10 +14,10 @@ import type {
   UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import {
-  zeroAvatarVideoContract,
-  type ZeroAvatarVideoAvatarsQuery,
-  type ZeroAvatarVideoVoicesQuery,
-} from "@okouai/api-contracts/contracts/zero-avatar-video";
+  avatarVideoContract,
+  type AvatarVideoAvatarsQuery,
+  type AvatarVideoVoicesQuery,
+} from "@okouai/api-contracts/contracts/avatar-video";
 import { avatarTemplateStylePresetId } from "@okouai/core/avatar-template";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -135,33 +135,30 @@ function mockAvatarCatalog({
   filterReady,
   pageTwoReady,
 }: {
-  readonly observedQueries?: ZeroAvatarVideoAvatarsQuery[];
+  readonly observedQueries?: AvatarVideoAvatarsQuery[];
   readonly firstPage?: ReturnType<typeof createAvatarFirstPage>;
   readonly filterReady?: TestDeferred;
   readonly pageTwoReady?: TestDeferred;
 } = {}): void {
   const selectedAvatar = createSelectedAvatar();
-  context.mocks.api(
-    zeroAvatarVideoContract.avatars,
-    async ({ query, respond }) => {
-      observedQueries.push(query);
-      if (
-        filterReady &&
-        query.page === 1 &&
-        query.style === "professional" &&
-        query.scene === "business" &&
-        query.ethnicity === "north_american"
-      ) {
-        await filterReady.promise;
-      }
-      if (pageTwoReady && query.page === 2) {
-        await pageTwoReady.promise;
-      }
-      return respond(200, {
-        avatars: query.page === 2 ? [selectedAvatar] : firstPage,
-      });
-    },
-  );
+  context.mocks.api(avatarVideoContract.avatars, async ({ query, respond }) => {
+    observedQueries.push(query);
+    if (
+      filterReady &&
+      query.page === 1 &&
+      query.style === "professional" &&
+      query.scene === "business" &&
+      query.ethnicity === "north_american"
+    ) {
+      await filterReady.promise;
+    }
+    if (pageTwoReady && query.page === 2) {
+      await pageTwoReady.promise;
+    }
+    return respond(200, {
+      avatars: query.page === 2 ? [selectedAvatar] : firstPage,
+    });
+  });
 }
 
 function mockVoiceCatalog({
@@ -169,61 +166,58 @@ function mockVoiceCatalog({
   filterReady,
   pageTwoReady,
 }: {
-  readonly observedQueries?: ZeroAvatarVideoVoicesQuery[];
+  readonly observedQueries?: AvatarVideoVoicesQuery[];
   readonly filterReady?: TestDeferred;
   readonly pageTwoReady?: TestDeferred;
 } = {}): void {
   const alternateVoice = createAlternateVoice();
   const selectedVoice = createSelectedVoice();
   const secondVoice = createSecondVoice();
-  context.mocks.api(
-    zeroAvatarVideoContract.voices,
-    async ({ query, respond }) => {
-      observedQueries.push(query);
-      if (
-        filterReady &&
-        query.pageSize === 24 &&
-        query.page === 1 &&
-        query.language === "spanish"
-      ) {
-        await filterReady.promise;
-      }
-      if (pageTwoReady && query.pageSize === 24 && query.page === 2) {
-        await pageTwoReady.promise;
-      }
-      const loadingFilterOptions =
-        query.pageSize === 100 &&
-        query.language === undefined &&
-        query.gender === undefined &&
-        query.age === undefined &&
-        query.useCase === undefined;
-      const loadingRecommendation =
-        query.pageSize === 100 && query.language !== undefined;
-      const voices = loadingFilterOptions
+  context.mocks.api(avatarVideoContract.voices, async ({ query, respond }) => {
+    observedQueries.push(query);
+    if (
+      filterReady &&
+      query.pageSize === 24 &&
+      query.page === 1 &&
+      query.language === "spanish"
+    ) {
+      await filterReady.promise;
+    }
+    if (pageTwoReady && query.pageSize === 24 && query.page === 2) {
+      await pageTwoReady.promise;
+    }
+    const loadingFilterOptions =
+      query.pageSize === 100 &&
+      query.language === undefined &&
+      query.gender === undefined &&
+      query.age === undefined &&
+      query.useCase === undefined;
+    const loadingRecommendation =
+      query.pageSize === 100 && query.language !== undefined;
+    const voices = loadingFilterOptions
+      ? [alternateVoice, selectedVoice]
+      : loadingRecommendation
         ? [alternateVoice, selectedVoice]
-        : loadingRecommendation
-          ? [alternateVoice, selectedVoice]
-          : query.page === 2
-            ? [secondVoice]
-            : query.language === "english"
-              ? [selectedVoice]
-              : [alternateVoice, selectedVoice];
-      return respond(200, {
-        voices,
-        hasMore:
-          query.page === 1 && (query.pageSize === 24 || loadingFilterOptions),
-        filterOptions: loadingFilterOptions
-          ? {
-              languages: ["english", "spanish"],
-              useCases: ["advertisement", "narrative_story", "social_media"],
-            }
-          : {
-              languages: ["english"],
-              useCases: ["narrative_story"],
-            },
-      });
-    },
-  );
+        : query.page === 2
+          ? [secondVoice]
+          : query.language === "english"
+            ? [selectedVoice]
+            : [alternateVoice, selectedVoice];
+    return respond(200, {
+      voices,
+      hasMore:
+        query.page === 1 && (query.pageSize === 24 || loadingFilterOptions),
+      filterOptions: loadingFilterOptions
+        ? {
+            languages: ["english", "spanish"],
+            useCases: ["advertisement", "narrative_story", "social_media"],
+          }
+        : {
+            languages: ["english"],
+            useCases: ["narrative_story"],
+          },
+    });
+  });
 }
 
 async function openAvatarPicker(
@@ -762,7 +756,7 @@ describe("chat composer templates", () => {
     const user = userEvent.setup({ delay: null });
     const avatarFirstPage = createAvatarFirstPage();
     const selectedAvatar = createSelectedAvatar();
-    const observedQueries: ZeroAvatarVideoAvatarsQuery[] = [];
+    const observedQueries: AvatarVideoAvatarsQuery[] = [];
     const avatarFilterReady = context.mocks.deferred<void>();
     const avatarPageTwoReady = context.mocks.deferred<void>();
     const playSpy = vi
@@ -923,7 +917,7 @@ describe("chat composer templates", () => {
     const user = userEvent.setup({ delay: null });
     const selectedAvatar = createSelectedAvatar();
     const selectedVoice = createSelectedVoice();
-    const observedVoiceQueries: ZeroAvatarVideoVoicesQuery[] = [];
+    const observedVoiceQueries: AvatarVideoVoicesQuery[] = [];
     const voiceFilterReady = context.mocks.deferred<void>();
     const voicePageTwoReady = context.mocks.deferred<void>();
     const playSpy = vi
@@ -1120,7 +1114,7 @@ describe("chat composer templates", () => {
     const user = userEvent.setup({ delay: null });
     const selectedAvatar = createSelectedAvatar();
     const selectedVoice = createSelectedVoice();
-    const observedQueries: ZeroAvatarVideoAvatarsQuery[] = [];
+    const observedQueries: AvatarVideoAvatarsQuery[] = [];
     mockAvatarCatalog({
       observedQueries,
       firstPage: [selectedAvatar],

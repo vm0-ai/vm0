@@ -139,8 +139,8 @@ RELOAD_COUNT=$(sudo journalctl -b _PID=1 --after-cursor="$JOURNAL_CURSOR" \
     'index($0, "Reloading requested") && index($0, scope) { count++ } END { print count + 0 }')
 
 echo "Session ${XDG_SESSION_ID} requested ${RELOAD_COUNT} systemd manager reload(s)"
-[ "$RELOAD_COUNT" -ge 2 ] \
-  || fail "expected at least one install and one uninstall reload, got $RELOAD_COUNT"
+# Another session may absorb either completed lifecycle generation, so only
+# this session's upper bound is attributable.
 [ "$RELOAD_COUNT" -le 4 ] \
   || fail "expected at most one reload per successful lifecycle operation, got $RELOAD_COUNT"
 

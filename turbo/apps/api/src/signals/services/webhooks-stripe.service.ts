@@ -46,7 +46,7 @@ import {
   BILLING_PURCHASE_PURPOSE,
   BILLING_RESTORE_PURPOSE,
 } from "./billing-payment-method.service";
-import { restoreSubscriptionForOrg } from "./zero-billing-restore.service";
+import { restoreSubscriptionForOrg } from "./billing-restore.service";
 import { publishBillingChangedForOrg } from "./billing-realtime.service";
 import { drainOrgQueueToCapacity$ } from "./run-queue.service";
 import {

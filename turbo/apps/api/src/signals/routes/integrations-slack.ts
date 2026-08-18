@@ -4,8 +4,8 @@ import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { z } from "zod";
 import {
   slackOrgStatusSchema,
-  zeroIntegrationsSlackContract,
-} from "@okouai/api-contracts/contracts/zero-integrations-slack";
+  integrationsSlackContract,
+} from "@okouai/api-contracts/contracts/integrations-slack";
 import { guaranteedConnectorProvidedBindingNames } from "@okouai/api-contracts/contracts/connector-schemas";
 import { authHeadersSchema } from "@okouai/api-contracts/contracts/base";
 import { apiErrorSchema } from "@okouai/api-contracts/contracts/errors";
@@ -322,7 +322,7 @@ function buildUninstalledAppHomeView(publicBrand: PublicBrand): SlackView {
 }
 
 const deleteSlackIntegrationQuery$ = queryOf(
-  zeroIntegrationsSlackContract.disconnect,
+  integrationsSlackContract.disconnect,
 );
 
 function decryptSlackInstallationToken(args: {
@@ -715,11 +715,11 @@ const slackDownloadAuth = {
 
 export const integrationsSlackRoutes: readonly RouteEntry[] = [
   {
-    route: zeroIntegrationsSlackContract.getStatus,
+    route: integrationsSlackContract.getStatus,
     handler: authRoute(slackReadAuth, getSlackStatusInner$),
   },
   {
-    route: zeroIntegrationsSlackContract.disconnect,
+    route: integrationsSlackContract.disconnect,
     handler: authRoute(slackReadAuth, deleteSlackIntegration$),
   },
   {

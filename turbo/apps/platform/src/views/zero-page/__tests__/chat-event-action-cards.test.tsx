@@ -10,7 +10,7 @@ import {
   type ZeroBrowserSession,
 } from "@okouai/api-contracts/contracts/zero-browser";
 import { zeroAgentsByIdContract } from "@okouai/api-contracts/contracts/zero-agents";
-import { zeroMailContract } from "@okouai/api-contracts/contracts/zero-mail";
+import { mailContract } from "@okouai/api-contracts/contracts/mail";
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogPermissionDetail,
@@ -434,42 +434,39 @@ describe("chat event action cards", () => {
     mockConnectorCatalogStatus([
       publicConnectorStatusItem({ slug: "gmail", label: "Gmail" }),
     ]);
-    context.mocks.api(
-      zeroMailContract.getDraft,
-      async ({ deferred, respond }) => {
-        const draftDeferred = deferred<void>();
-        resolveDraft = () => {
-          draftDeferred.resolve();
-        };
-        draftRequestStarted = true;
-        await draftDeferred.promise;
-        return respond(200, {
-          mailDraftId,
-          mailDraftUrl,
-          mailDraft: {
-            version: 3,
-            provider: "gmail",
-            from: "sender@example.com",
-            to: ["recipient@example.com"],
-            cc: [],
-            bcc: [],
-            subject: MAIL_DRAFT_SUBJECT,
-            body: "Mail body",
-            status: "sent",
-            detailAvailable: true,
-            gmailDraftId: "gmail-draft-id",
-            gmailThreadId: "gmail-thread-id",
-            gmailMessageId: "gmail-message-id",
-            sentGmailMessageId: "gmail-sent-message-id",
-            sentAt: createdAt,
-            references: [],
-            attachments: [],
-            createdAt,
-            updatedAt: createdAt,
-          },
-        });
-      },
-    );
+    context.mocks.api(mailContract.getDraft, async ({ deferred, respond }) => {
+      const draftDeferred = deferred<void>();
+      resolveDraft = () => {
+        draftDeferred.resolve();
+      };
+      draftRequestStarted = true;
+      await draftDeferred.promise;
+      return respond(200, {
+        mailDraftId,
+        mailDraftUrl,
+        mailDraft: {
+          version: 3,
+          provider: "gmail",
+          from: "sender@example.com",
+          to: ["recipient@example.com"],
+          cc: [],
+          bcc: [],
+          subject: MAIL_DRAFT_SUBJECT,
+          body: "Mail body",
+          status: "sent",
+          detailAvailable: true,
+          gmailDraftId: "gmail-draft-id",
+          gmailThreadId: "gmail-thread-id",
+          gmailMessageId: "gmail-message-id",
+          sentGmailMessageId: "gmail-sent-message-id",
+          sentAt: createdAt,
+          references: [],
+          attachments: [],
+          createdAt,
+          updatedAt: createdAt,
+        },
+      });
+    });
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Mail loading height",
@@ -638,7 +635,7 @@ describe("chat event action cards", () => {
       }),
     ]);
 
-    context.mocks.api(zeroMailContract.getDraft, ({ respond }) => {
+    context.mocks.api(mailContract.getDraft, ({ respond }) => {
       draftRequests += 1;
       return respond(200, {
         mailDraftId,
@@ -697,7 +694,7 @@ describe("chat event action cards", () => {
         },
       });
     });
-    context.mocks.api(zeroMailContract.sendDraft, ({ respond }) => {
+    context.mocks.api(mailContract.sendDraft, ({ respond }) => {
       sent = true;
       return respond(200, {
         mailDraftId,
@@ -1095,7 +1092,7 @@ describe("chat event action cards", () => {
         label: "Gmail",
       }),
     ]);
-    context.mocks.api(zeroMailContract.getDraft, ({ respond }) => {
+    context.mocks.api(mailContract.getDraft, ({ respond }) => {
       return respond(200, {
         mailDraftId,
         mailDraftUrl: `https://app.vm0.ai/mail/drafts/${mailDraftId}`,
@@ -1202,7 +1199,7 @@ describe("chat event action cards", () => {
     let secondDraftRequests = 0;
     let secondSubject = "Second draft";
 
-    context.mocks.api(zeroMailContract.getDraft, ({ params, respond }) => {
+    context.mocks.api(mailContract.getDraft, ({ params, respond }) => {
       const isSecondDraft = params.mailDraftId === secondMailDraftId;
       if (isSecondDraft) {
         secondDraftRequests += 1;
@@ -1649,7 +1646,7 @@ describe("chat event action cards", () => {
 
     mockConnectorCatalogStatus([]);
 
-    context.mocks.api(zeroMailContract.getDraft, ({ respond }) => {
+    context.mocks.api(mailContract.getDraft, ({ respond }) => {
       draftRequests += 1;
       if (deleted) {
         return respond(404, {
@@ -1680,7 +1677,7 @@ describe("chat event action cards", () => {
         },
       });
     });
-    context.mocks.api(zeroMailContract.deleteDraft, ({ respond }) => {
+    context.mocks.api(mailContract.deleteDraft, ({ respond }) => {
       deleted = true;
       return respond(204);
     });
@@ -1794,7 +1791,7 @@ describe("chat event action cards", () => {
         });
       },
     );
-    context.mocks.api(zeroMailContract.getDraft, async ({ respond }) => {
+    context.mocks.api(mailContract.getDraft, async ({ respond }) => {
       draftRequests += 1;
       if (pauseReadyRefresh && !reconnectRequired) {
         refreshStarted.resolve();
@@ -1905,7 +1902,7 @@ describe("chat event action cards", () => {
     const mailDraftUrl = `https://app.vm0.ai/mail/drafts/${mailDraftId}`;
     const createdAt = "2026-07-14T10:00:00.000Z";
 
-    context.mocks.api(zeroMailContract.getDraft, ({ respond }) => {
+    context.mocks.api(mailContract.getDraft, ({ respond }) => {
       return respond(200, {
         mailDraftId,
         mailDraftUrl,

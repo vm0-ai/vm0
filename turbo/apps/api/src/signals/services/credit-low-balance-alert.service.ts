@@ -25,7 +25,7 @@ import {
   CREDIT_LOW_BALANCE_EMAIL_SUBJECT,
   getUserEmail,
   type EmailTemplate,
-} from "./zero-email-common.service";
+} from "./email-common.service";
 
 type OrganizationMembership = ClerkOrganizationMembership;
 
