@@ -122,9 +122,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.PersonalModelProviderAccounts]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.PresentationArtifactViewport]).toBe(
-      true,
-    );
     expect(staffOrgStates[FeatureSwitchKey.LatestWebsiteTemplates]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.SavedBillingCreditPurchase]).toBe(
@@ -160,9 +157,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ConnectorDiscovery]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ConnectorCatalogCount]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PersonalModelProviderAccounts]).toBe(
-      false,
-    );
-    expect(otherOrgStates[FeatureSwitchKey.PresentationArtifactViewport]).toBe(
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.LatestWebsiteTemplates]).toBe(false);

@@ -80,7 +80,6 @@ export enum FeatureSwitchKey {
   ImageModelSelection = "imageModelSelection",
   EmojiPickerCategoryRail = "emojiPickerCategoryRail",
   PresentationTemplates = "presentationTemplates",
-  PresentationArtifactViewport = "presentationArtifactViewport",
   LatestWebsiteTemplates = "latestWebsiteTemplates",
   ChatConversationLocator = "chatConversationLocator",
   SharedChatDatabase = "sharedChatDatabase",
