@@ -57,10 +57,6 @@ import {
   getOAuthCanonicalRedirectUrl,
   getOAuthWebOrigin,
 } from "../../lib/oauth-origin";
-import {
-  logIntegrationIdentityCompatibility,
-  resolveIntegrationUserId,
-} from "../../lib/integration-user-id-compat";
 
 const REDIRECT_STATUS = 307;
 const GITHUB_CONNECTOR_SLUG = "github";
@@ -665,38 +661,30 @@ const installGithubOauth$ = command(
     }
 
     const query = get(queryOf(githubOauthContract.install));
-    const userId = resolveIntegrationUserId(query.userId, query.vm0UserId);
-    logIntegrationIdentityCompatibility({
-      provider: "github",
-      surface: "query",
-      outcome: userId.outcome,
-    });
-    if (!userId.ok) {
-      return worksErrorRedirect("Invalid OAuth identity.", publicBrand);
-    }
+    const userId = query.userId;
     const appId = optionalEnv("GITHUB_APP_ID");
     const privateKey = optionalEnv("GITHUB_APP_PRIVATE_KEY");
 
     if (
       query.orgId &&
-      userId.userId &&
+      userId &&
       !(await set(
         isGithubInstallOrgAdmin$,
-        { orgId: query.orgId, userId: userId.userId },
+        { orgId: query.orgId, userId },
         signal,
       ))
     ) {
       return worksErrorRedirect(GITHUB_INSTALL_ADMIN_REQUIRED, publicBrand);
     }
 
-    if (appId && privateKey && userId.userId) {
+    if (appId && privateKey && userId) {
       const db = set(writeDb$);
       const linkedFromLocal = query.orgId
         ? await tryLinkGithubFromLocalRecord(
             {
               db,
               orgId: query.orgId,
-              userId: userId.userId,
+              userId,
             },
             signal,
           )
@@ -713,7 +701,7 @@ const installGithubOauth$ = command(
           appId,
           privateKey,
           orgId: query.orgId ?? null,
-          userId: userId.userId,
+          userId,
           composeId: query.composeId ?? null,
         },
         signal,
@@ -727,7 +715,7 @@ const installGithubOauth$ = command(
 
     const installUrl = await buildGithubAppInstallUrl({
       appSlug,
-      userId: userId.userId ?? undefined,
+      userId,
       orgId: query.orgId,
       composeId: query.composeId,
       origin,

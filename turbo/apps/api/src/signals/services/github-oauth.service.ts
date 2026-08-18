@@ -27,10 +27,6 @@ import {
 } from "../../lib/connector-oauth-state";
 import { now } from "../../lib/time";
 import { logger } from "../../lib/log";
-import {
-  logIntegrationIdentityCompatibility,
-  resolveIntegrationUserId,
-} from "../../lib/integration-user-id-compat";
 import { encryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 
@@ -255,29 +251,6 @@ async function createGithubOauthStateSignature(args: {
   return Buffer.from(signature).toString("hex");
 }
 
-async function createLegacyGithubOauthStateSignature(args: {
-  readonly userId: string;
-  readonly composeId: string | null;
-  readonly secretsEncryptionKey: string;
-}): Promise<string> {
-  const textEncoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    textEncoder.encode(args.secretsEncryptionKey),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const payload = `${args.userId}:${args.composeId ?? ""}`;
-  const signature = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    textEncoder.encode(payload),
-  );
-
-  return Buffer.from(signature).toString("hex");
-}
-
 async function createGithubOauthPublicBrandSignature(args: {
   readonly userId: string | null;
   readonly orgId: string | null;
@@ -308,7 +281,6 @@ async function createGithubOauthPublicBrandSignature(args: {
 
   return Buffer.from(signature).toString("hex");
 }
-
 function signaturesMatch(actual: string | null, expected: string): boolean {
   return (
     actual !== null &&
@@ -529,28 +501,12 @@ export function parseGithubOauthState(
 
   const stateObject = parsed as {
     readonly userId?: unknown;
-    readonly vm0UserId?: unknown;
     readonly orgId?: unknown;
     readonly composeId?: unknown;
     readonly sig?: unknown;
     readonly publicBrand?: unknown;
     readonly publicBrandSig?: unknown;
   };
-
-  const userId = resolveIntegrationUserId(
-    typeof stateObject.userId === "string" ? stateObject.userId : null,
-    // Old web/app OAuth state fallback (observed maximum: ~2 days).
-    // Remove in #27602 after legacy producers and callbacks have drained.
-    typeof stateObject.vm0UserId === "string" ? stateObject.vm0UserId : null,
-  );
-  logIntegrationIdentityCompatibility({
-    provider: "github",
-    surface: "state",
-    outcome: userId.outcome,
-  });
-  if (!userId.ok) {
-    return null;
-  }
 
   const publicBrand = stateObject.publicBrand;
   const publicBrandSig = stateObject.publicBrandSig;
@@ -566,7 +522,7 @@ export function parseGithubOauthState(
   }
 
   return {
-    userId: userId.userId,
+    userId: typeof stateObject.userId === "string" ? stateObject.userId : null,
     orgId: typeof stateObject.orgId === "string" ? stateObject.orgId : null,
     composeId:
       typeof stateObject.composeId === "string" ? stateObject.composeId : null,
@@ -589,27 +545,6 @@ export async function isGithubOauthStateSignatureValid(args: {
       secretsEncryptionKey: args.secretsEncryptionKey,
     });
     identitySignatureValid = signaturesMatch(args.state.sig, expectedSig);
-
-    if (!identitySignatureValid && args.state.orgId === null) {
-      // Old web/app OAuth signature fallback (observed maximum: ~2 days).
-      // Remove in #27602 after legacy states and callbacks have drained.
-      const legacyExpectedSig = await createLegacyGithubOauthStateSignature({
-        userId: args.state.userId,
-        composeId: args.state.composeId,
-        secretsEncryptionKey: args.secretsEncryptionKey,
-      });
-      identitySignatureValid = signaturesMatch(
-        args.state.sig,
-        legacyExpectedSig,
-      );
-      if (identitySignatureValid) {
-        logIntegrationIdentityCompatibility({
-          provider: "github",
-          surface: "signature",
-          outcome: "legacy_signature_accepted",
-        });
-      }
-    }
   }
   if (!identitySignatureValid) {
     return false;

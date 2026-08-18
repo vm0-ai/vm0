@@ -9,9 +9,6 @@ const jsonErrorSchema = z.object({ error: z.string() });
 export const teamsOauthConnectQuerySchema = z.object({
   orgId: z.string().optional(),
   userId: z.string().optional(),
-  // Old web/app OAuth fallback (observed maximum: ~2 days).
-  // Remove in #27602 after legacy query inputs have drained.
-  vm0UserId: z.string().optional(),
   prompt: z.string().optional(),
 });
 
