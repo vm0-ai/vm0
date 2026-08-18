@@ -5,7 +5,7 @@ import {
   zeroConnectorOauthStartContract,
 } from "@okouai/api-contracts/contracts/zero-connectors";
 import { chatEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
-import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
   zeroAgentCustomConnectorsContract,
   type AgentCustomConnectorGrant,
@@ -803,7 +803,7 @@ describe("directed connector connect page", () => {
       },
     });
     mockPublicConnectorStatus(steamOpenIdConnectorStatus());
-    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(userConnectorsContract.get, ({ respond }) => {
       return respond(200, { enabledConnectorSlugs: ["steam"] });
     });
     context.mocks.api(chatEventsContract.send, ({ body, respond }) => {

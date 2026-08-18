@@ -14,7 +14,7 @@ import {
   zeroAgentCustomConnectorsContract,
   type AgentCustomConnectorGrant,
 } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
-import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
   zeroConnectorNoAuthGrantContract,
   zeroConnectorOauthStartContract,
@@ -234,12 +234,12 @@ describe("chat composer connector connection", () => {
     mockConnectors([{ connectorSlug: "github" }]);
     const updatedAgentIds: string[] = [];
     let enabledConnectorSlugs: string[] = [];
-    context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
+    context.mocks.api(userConnectorsContract.get, ({ params, respond }) => {
       expect(params.id).toBe(AGENT_ID);
       return respond(200, { enabledConnectorSlugs });
     });
     context.mocks.api(
-      zeroUserConnectorsContract.update,
+      userConnectorsContract.update,
       ({ body, params, respond }) => {
         expect(body).toStrictEqual({
           enabledConnectorSlugs: ["github"],
@@ -665,7 +665,7 @@ describe("chat composer connector connection", () => {
     );
     let authorizationUpdateCount = 0;
     context.mocks.api(
-      zeroUserConnectorsContract.update,
+      userConnectorsContract.update,
       ({ body, params, respond }) => {
         authorizationUpdateCount += 1;
         expect(params.id).toBe(AGENT_ID);

@@ -1,6 +1,6 @@
 import { command, computed, state } from "ccstate";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
-import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import type { TeamComposeItem } from "@okouai/api-contracts/contracts/zero-team";
 import { zeroClient$ } from "../../api-client.ts";
 import { agents$ } from "../../agent.ts";
@@ -184,7 +184,7 @@ export const setConnectorAgentAuthorization$ = command(
     params: SetConnectorAgentAuthorizationParams,
     signal: AbortSignal,
   ): Promise<void> => {
-    const client = get(zeroClient$)(zeroUserConnectorsContract);
+    const client = get(zeroClient$)(userConnectorsContract);
     await withCleanup(
       accept(
         client.update({

@@ -24,7 +24,7 @@ import {
   zeroConnectorNoAuthGrantContract,
   zeroConnectorsMainContract,
 } from "@okouai/api-contracts/contracts/zero-connectors";
-import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import type {
   InitClientArgs,
   InitClientReturn,
@@ -795,7 +795,7 @@ const authorizeConnectorForVisibleAgents$ = command(
   ): Promise<void> => {
     const visibleSubagents = await get(subagents$);
     signal.throwIfAborted();
-    const client = get(zeroClient$)(zeroUserConnectorsContract);
+    const client = get(zeroClient$)(userConnectorsContract);
     await withCleanup(
       Promise.all(
         visibleSubagents.map(async (agent) => {
@@ -2083,7 +2083,7 @@ function createConnectorOAuthAuthCodeChangedCommand(
         return connectionChanged;
       }
       const authorization = await accept(
-        get(zeroClient$)(zeroUserConnectorsContract).get({
+        get(zeroClient$)(userConnectorsContract).get({
           params: { id: agentId },
           fetchOptions: { signal: sig },
         }),

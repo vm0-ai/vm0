@@ -16,7 +16,7 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { zeroAgentsByIdContract } from "@okouai/api-contracts/contracts/zero-agents";
-import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { zeroAgentCustomConnectorsContract } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroConnectorCatalogContract,
@@ -2933,7 +2933,7 @@ describe("chat composer models", () => {
         visibility: "public",
       });
     });
-    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(userConnectorsContract.get, ({ respond }) => {
       return respond(200, { enabledConnectorSlugs: ["github"] });
     });
     context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
@@ -3028,7 +3028,7 @@ describe("chat composer models", () => {
       },
     ]);
     context.mocks.api(
-      zeroUserConnectorsContract.get,
+      userConnectorsContract.get,
       async ({ respond, withSignal }) => {
         authorizationRequestCount += 1;
         if (authorizationRequestCount > 1) {
@@ -3123,7 +3123,7 @@ describe("chat composer models", () => {
       },
     ]);
     context.mocks.api(
-      zeroUserConnectorsContract.get,
+      userConnectorsContract.get,
       async ({ params, respond, withSignal }) => {
         authorizationAgentIds.push(params.id);
         if (params.id === OTHER_AGENT_ID) {
@@ -3191,7 +3191,7 @@ describe("chat composer models", () => {
       },
     ]);
     context.mocks.api(
-      zeroUserConnectorsContract.get,
+      userConnectorsContract.get,
       async ({ respond, withSignal }) => {
         authorizationRequestCount += 1;
         if (authorizationRequestCount === 1) {
@@ -3201,7 +3201,7 @@ describe("chat composer models", () => {
       },
     );
     context.mocks.api(
-      zeroUserConnectorsContract.update,
+      userConnectorsContract.update,
       ({ params, body, respond }) => {
         updatedAuthorizationAgentId = params.id;
         enabledConnectorSlugs = applyUserConnectorUpdate(
@@ -3284,7 +3284,7 @@ describe("chat composer models", () => {
         hasMore: false,
       });
     });
-    context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
+    context.mocks.api(userConnectorsContract.get, ({ params, respond }) => {
       authorizationAgentIds.push(params.id);
       return respond(200, {
         enabledConnectorSlugs: enabledByAgent.get(params.id) ?? [],
@@ -3300,7 +3300,7 @@ describe("chat composer models", () => {
       },
     );
     context.mocks.api(
-      zeroUserConnectorsContract.update,
+      userConnectorsContract.update,
       ({ params, body, respond }) => {
         updatedAuthorizationAgentId = params.id;
         const enabledConnectorSlugs = applyUserConnectorUpdate(

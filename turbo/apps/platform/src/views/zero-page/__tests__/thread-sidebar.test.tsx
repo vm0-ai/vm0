@@ -14,7 +14,7 @@ import {
   chatThreadsContract,
   type ChatThreadArtifactFile,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
   browserContract,
   type BrowserSession,
@@ -552,11 +552,11 @@ describe("thread-owned utility sidebar", () => {
     let enabledConnectorSlugs: string[] = [];
     let agentAuthorized = false;
     let artifactSynced = false;
-    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(userConnectorsContract.get, ({ respond }) => {
       return respond(200, { enabledConnectorSlugs: enabledConnectorSlugs });
     });
     context.mocks.api(
-      zeroUserConnectorsContract.update,
+      userConnectorsContract.update,
       ({ body, params, respond }) => {
         expect(params.id).toBe(AGENT_ID);
         expect(body).toStrictEqual({

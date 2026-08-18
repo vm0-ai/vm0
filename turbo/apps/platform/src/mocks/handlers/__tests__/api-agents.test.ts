@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 
 import { accept } from "../../../lib/accept.ts";
 import { zeroClient$ } from "../../../signals/api-client.ts";
@@ -11,7 +11,7 @@ const agentId = "c0000000-0000-4000-a000-000000000001";
 function userConnectorsClient() {
   // Direct handler tests bypass page setup, so activate its mock lifecycle.
   void context.mocks;
-  return context.store.get(zeroClient$)(zeroUserConnectorsContract);
+  return context.store.get(zeroClient$)(userConnectorsContract);
 }
 
 describe("api agents mock handlers", () => {

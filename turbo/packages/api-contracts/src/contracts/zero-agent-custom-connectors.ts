@@ -31,7 +31,7 @@ export type AgentCustomConnectorUpdate = z.infer<
 /**
  * Contract for GET/PUT /api/okou/agents/:id/custom-connectors
  *
- * Mirrors {@link import("./user-connectors").zeroUserConnectorsContract} but
+ * Mirrors {@link import("./user-connectors").userConnectorsContract} but
  * over org custom connector UUIDs (not official connector slugs).
  * A user's secret alone does not authorize an agent — they must also enable
  * the custom connector here for every agent that should use it.

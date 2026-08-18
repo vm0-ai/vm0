@@ -6,7 +6,7 @@ import {
   zeroAgentsByIdContract,
   zeroAgentsMainContract,
 } from "@okouai/api-contracts/contracts/zero-agents";
-import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { createStore } from "ccstate";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -365,7 +365,7 @@ describe("okou workflow automation scheduler", () => {
     await wf.connectConnector(scenario.actor, "gmail");
     await accept(
       setupApp({ context, routes: agentsRoutes })(
-        zeroUserConnectorsContract,
+        userConnectorsContract,
       ).update({
         headers: authHeaders(),
         params: { id: scenario.agentId },
