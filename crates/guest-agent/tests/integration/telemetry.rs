@@ -441,7 +441,7 @@ async fn flush_propagates_error_then_loop_recovers() {
 }
 
 #[tokio::test]
-async fn flush_reports_position_persistence_error_after_upload_then_recovers() {
+async fn flush_reports_position_persistence_status_after_upload_then_recovers() {
     let api = SharedApiMock::new().await;
     let server = api.server();
     let files = ExplicitTelemetryFiles::new("position-write-failure-upload").unwrap();
@@ -475,12 +475,15 @@ async fn flush_reports_position_persistence_error_after_upload_then_recovers() {
         http_client!(),
     );
 
-    let first_result = telemetry
+    let first_report = telemetry
         .flush(guest_agent::telemetry::UploadMode::Live)
         .await;
-    assert!(
-        first_result.is_err(),
-        "flush must report a position persistence failure after upload"
+    assert_eq!(
+        first_report.expect("upload should succeed despite position persistence failure"),
+        guest_agent::telemetry::FlushReport {
+            uploaded: true,
+            position_persisted: false,
+        },
     );
     upload_mock.assert_calls_async(1).await;
     {
@@ -497,12 +500,15 @@ async fn flush_reports_position_persistence_error_after_upload_then_recovers() {
     }
 
     std::fs::remove_dir(system_log_pos).expect("position failure directory should be removed");
-    let second_result = telemetry
+    let second_report = telemetry
         .flush(guest_agent::telemetry::UploadMode::Live)
         .await;
-    assert!(
-        second_result.is_ok(),
-        "flush should recover after the position path is restored: {second_result:?}"
+    assert_eq!(
+        second_report.expect("flush should recover after the position path is restored"),
+        guest_agent::telemetry::FlushReport {
+            uploaded: true,
+            position_persisted: true,
+        },
     );
     upload_mock.assert_calls_async(2).await;
     {
@@ -585,7 +591,7 @@ async fn skip_only_metrics_progress_saves_position_without_posting_empty_payload
 }
 
 #[tokio::test]
-async fn skip_only_flush_reports_position_persistence_error_then_recovers() {
+async fn skip_only_flush_reports_position_persistence_status_then_recovers() {
     let api = SharedApiMock::new().await;
     let server = api.server();
     let files = ExplicitTelemetryFiles::new("position-write-failure-skip-only").unwrap();
@@ -613,33 +619,42 @@ async fn skip_only_flush_reports_position_persistence_error_then_recovers() {
         http_client!(),
     );
 
-    let first_result = telemetry
+    let first_report = telemetry
         .flush(guest_agent::telemetry::UploadMode::Live)
         .await;
-    assert!(
-        first_result.is_err(),
-        "skip-only flush must report a position persistence failure"
+    assert_eq!(
+        first_report.expect("skip-only progress should remain a successful flush"),
+        guest_agent::telemetry::FlushReport {
+            uploaded: false,
+            position_persisted: false,
+        },
     );
     upload_mock.assert_calls_async(0).await;
 
     std::fs::remove_dir(metrics_pos_file).expect("position failure directory should be removed");
-    let second_result = telemetry
+    let second_report = telemetry
         .flush(guest_agent::telemetry::UploadMode::Live)
         .await;
-    assert!(
-        second_result.is_ok(),
-        "skip-only flush should recover after the position path is restored: {second_result:?}"
+    assert_eq!(
+        second_report.expect("skip-only flush should recover after the position path is restored"),
+        guest_agent::telemetry::FlushReport {
+            uploaded: false,
+            position_persisted: true,
+        },
     );
     upload_mock.assert_calls_async(0).await;
 
     // The bounded live read consumes the oversized entry in two chunks after
     // the failed position write falls back to offset zero.
-    let third_result = telemetry
+    let third_report = telemetry
         .flush(guest_agent::telemetry::UploadMode::Live)
         .await;
-    assert!(
-        third_result.is_ok(),
-        "skip-only tail flush should complete recovery: {third_result:?}"
+    assert_eq!(
+        third_report.expect("skip-only tail flush should complete recovery"),
+        guest_agent::telemetry::FlushReport {
+            uploaded: false,
+            position_persisted: true,
+        },
     );
     upload_mock.assert_calls_async(0).await;
 

@@ -76,6 +76,15 @@ pub enum UploadMode {
     Final,
 }
 
+/// Result of a completed telemetry flush.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FlushReport {
+    /// Whether the flush sent a non-empty payload to the telemetry endpoint.
+    pub uploaded: bool,
+    /// Whether all positions changed by the flush were persisted successfully.
+    pub position_persisted: bool,
+}
+
 /// Persist the current read position for a file.
 fn save_position(pos_path: impl AsRef<Path>, pos: u64) -> std::io::Result<()> {
     paths::write_private(pos_path, pos.to_string())
@@ -96,6 +105,21 @@ fn save_positions(positions: [(&str, u64); 3]) -> std::io::Result<()> {
     }
 }
 
+/// Persist positions while keeping the upload result successful if the local
+/// replay cursor cannot be recorded.
+fn save_positions_with_warning(positions: [(&str, u64); 3], warning: &str) -> bool {
+    match save_positions(positions) {
+        Ok(()) => true,
+        Err(error) => {
+            log_warn!(
+                LOG_TAG,
+                "{warning}; processed data may be replayed: {error}"
+            );
+            false
+        }
+    }
+}
+
 /// Perform one telemetry upload cycle.
 ///
 /// `UploadMode::Final` should be used only for the very last upload before
@@ -110,7 +134,7 @@ async fn upload_telemetry(
     run_id: &str,
     telemetry_paths: &TelemetryPaths,
     mode: UploadMode,
-) -> Result<(), AgentError> {
+) -> Result<FlushReport, AgentError> {
     // Read deltas
     let system_log = read_file_delta(
         &telemetry_paths.system_log_file,
@@ -136,17 +160,25 @@ async fn upload_telemetry(
     // Nothing new
     if system_log.content.is_empty() && metrics.entries.is_empty() && sandbox_ops.entries.is_empty()
     {
-        if made_progress {
-            save_positions([
-                (telemetry_paths.system_log_pos_file.as_str(), log_pos),
-                (telemetry_paths.metrics_pos_file.as_str(), metrics_pos),
-                (
-                    telemetry_paths.sandbox_ops_pos_file.as_str(),
-                    sandbox_ops_pos,
-                ),
-            ])?;
-        }
-        return Ok(());
+        let position_persisted = if made_progress {
+            save_positions_with_warning(
+                [
+                    (telemetry_paths.system_log_pos_file.as_str(), log_pos),
+                    (telemetry_paths.metrics_pos_file.as_str(), metrics_pos),
+                    (
+                        telemetry_paths.sandbox_ops_pos_file.as_str(),
+                        sandbox_ops_pos,
+                    ),
+                ],
+                "Telemetry skip-only progress was processed but position persistence failed",
+            )
+        } else {
+            true
+        };
+        return Ok(FlushReport {
+            uploaded: false,
+            position_persisted,
+        });
     }
 
     // Mask secrets in text content
@@ -169,15 +201,21 @@ async fn upload_telemetry(
     let url = http.telemetry_url()?;
     match http.post_json(url, &payload, 1).await {
         Ok(_) => {
-            save_positions([
-                (telemetry_paths.system_log_pos_file.as_str(), log_pos),
-                (telemetry_paths.metrics_pos_file.as_str(), metrics_pos),
-                (
-                    telemetry_paths.sandbox_ops_pos_file.as_str(),
-                    sandbox_ops_pos,
-                ),
-            ])?;
-            Ok(())
+            let position_persisted = save_positions_with_warning(
+                [
+                    (telemetry_paths.system_log_pos_file.as_str(), log_pos),
+                    (telemetry_paths.metrics_pos_file.as_str(), metrics_pos),
+                    (
+                        telemetry_paths.sandbox_ops_pos_file.as_str(),
+                        sandbox_ops_pos,
+                    ),
+                ],
+                "Telemetry upload succeeded but position persistence failed",
+            );
+            Ok(FlushReport {
+                uploaded: true,
+                position_persisted,
+            })
         }
         Err(e) => {
             log_warn!(LOG_TAG, "Telemetry upload failed (will retry): {e}");
@@ -192,11 +230,11 @@ enum Cmd {
     /// `mode` is propagated to [`upload_telemetry`]; see [`UploadMode`].
     Flush {
         mode: UploadMode,
-        reply: oneshot::Sender<Result<(), AgentError>>,
+        reply: oneshot::Sender<Result<FlushReport, AgentError>>,
     },
     /// Perform the EOF-consuming final flush, then stop the loop.
     FinalFlushAndShutdown {
-        reply: oneshot::Sender<Result<(), AgentError>>,
+        reply: oneshot::Sender<Result<FlushReport, AgentError>>,
     },
     /// Stop the loop. Any in-flight upload completes first.
     Shutdown,
@@ -245,8 +283,10 @@ impl Telemetry {
     /// Use [`UploadMode::Live`] for any flush while the agent is still
     /// running (the producer continues writing). Use [`UploadMode::Final`]
     /// for the very last flush before exit, which consumes the EOF tail when
-    /// it fits in one bounded read.
-    pub async fn flush(&self, mode: UploadMode) -> Result<(), AgentError> {
+    /// it fits in one bounded read. A completed upload with a position
+    /// persistence failure is reported in [`FlushReport`] rather than as an
+    /// upload error.
+    pub async fn flush(&self, mode: UploadMode) -> Result<FlushReport, AgentError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.tx
             .send(Cmd::Flush {
@@ -274,8 +314,9 @@ impl Telemetry {
     /// Perform the final telemetry upload and stop the uploader task.
     ///
     /// Consumes `self`, so no later periodic `Live` tick or caller-driven
-    /// flush can run after the EOF-consuming final pass.
-    pub async fn final_flush_and_shutdown(self) -> Result<(), AgentError> {
+    /// flush can run after the EOF-consuming final pass. A completed upload
+    /// with a position persistence failure is reported in [`FlushReport`].
+    pub async fn final_flush_and_shutdown(self) -> Result<FlushReport, AgentError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         if self
             .tx
@@ -311,10 +352,16 @@ async fn run(
         while let Some(cmd) = rx.recv().await {
             match cmd {
                 Cmd::Flush { reply, .. } => {
-                    let _ = reply.send(Ok(()));
+                    let _ = reply.send(Ok(FlushReport {
+                        uploaded: false,
+                        position_persisted: true,
+                    }));
                 }
                 Cmd::FinalFlushAndShutdown { reply } => {
-                    let _ = reply.send(Ok(()));
+                    let _ = reply.send(Ok(FlushReport {
+                        uploaded: false,
+                        position_persisted: true,
+                    }));
                     break;
                 }
                 Cmd::Shutdown => break,
