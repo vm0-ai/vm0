@@ -56,6 +56,10 @@ use crate::workspace_mount::ensure_workspace_drive_mounted;
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 
 const SLOW_PROXY_REGISTER_THRESHOLD: Duration = Duration::from_secs(3);
+const WORKSPACE_DRIVE_MOUNT: &str = "workspace_drive_mount";
+const WORKSPACE_DRIVE_MOUNT_GUEST_EXEC: &str = "workspace_drive_mount_guest_exec";
+const WORKSPACE_DRIVE_MOUNT_GUEST_EXEC_UNAVAILABLE: &str =
+    "workspace_drive_mount_guest_exec_unavailable";
 const RUNNER_FRESH_WORKSPACE_IMAGE_PREPARE: &str = "runner_fresh_workspace_image_prepare";
 const RUNNER_FRESH_SANDBOX_FACTORY_CREATE: &str = "runner_fresh_sandbox_factory_create";
 const RUNNER_FRESH_SANDBOX_FACTORY_COW_POOL_ACQUIRE: &str =
@@ -1197,42 +1201,49 @@ async fn create_started_sandbox(
         .await;
 
     let mount_started = Instant::now();
-    if let Err(e) = ensure_workspace_drive_mounted(sandbox.as_ref(), context.run_id).await {
-        telemetry.record(
-            "workspace_drive_mount",
-            mount_started.elapsed(),
-            false,
-            Some(&e.to_string()),
-        );
-        if let Some(prepared_guest_runtime) = prepared_guest_runtime.take() {
-            prepared_guest_runtime
-                .finish(sandbox.as_ref(), telemetry)
+    let mount_result = ensure_workspace_drive_mounted(sandbox.as_ref(), context.run_id).await;
+    let mount_duration = mount_started.elapsed();
+    let guest_duration = match mount_result {
+        Ok(guest_duration) => guest_duration,
+        Err(e) => {
+            telemetry.record(
+                WORKSPACE_DRIVE_MOUNT,
+                mount_duration,
+                false,
+                Some(&e.error.to_string()),
+            );
+            record_workspace_drive_mount_guest_exec(telemetry, e.guest_duration, false);
+            if let Some(prepared_guest_runtime) = prepared_guest_runtime.take() {
+                prepared_guest_runtime
+                    .finish(sandbox.as_ref(), telemetry)
+                    .await;
+            }
+            let unregister_completed =
+                match unregister_proxy_registry(config, &source_ip, context.run_id).await {
+                    Ok(()) => true,
+                    Err(unregister_error) => {
+                        warn!(
+                            run_id = %context.run_id,
+                            error = %unregister_error,
+                            "failed to unregister VM from proxy after workspace mount failure"
+                        );
+                        false
+                    }
+                };
+            network_log_session
+                .close_for_upload(context.run_id, &config.network_log_drain)
                 .await;
+            let destroy_completed = destroy_sandbox_panic_safe(factory, sandbox)
+                .await
+                .is_completed();
+            return Err(SandboxPrepareError::retry_without_workspace_image(
+                e.error,
+                unregister_completed && destroy_completed,
+            ));
         }
-        let unregister_completed =
-            match unregister_proxy_registry(config, &source_ip, context.run_id).await {
-                Ok(()) => true,
-                Err(unregister_error) => {
-                    warn!(
-                        run_id = %context.run_id,
-                        error = %unregister_error,
-                        "failed to unregister VM from proxy after workspace mount failure"
-                    );
-                    false
-                }
-            };
-        network_log_session
-            .close_for_upload(context.run_id, &config.network_log_drain)
-            .await;
-        let destroy_completed = destroy_sandbox_panic_safe(factory, sandbox)
-            .await
-            .is_completed();
-        return Err(SandboxPrepareError::retry_without_workspace_image(
-            e,
-            unregister_completed && destroy_completed,
-        ));
-    }
-    telemetry.record("workspace_drive_mount", mount_started.elapsed(), true, None);
+    };
+    telemetry.record(WORKSPACE_DRIVE_MOUNT, mount_duration, true, None);
+    record_workspace_drive_mount_guest_exec(telemetry, guest_duration, true);
     if let Some(notifier) = sandbox_prepared {
         notifier.notify(context.run_id, sandbox_id).await;
     }
@@ -1243,6 +1254,24 @@ async fn create_started_sandbox(
         network_log_session,
         prepared_guest_runtime,
     })
+}
+
+fn record_workspace_drive_mount_guest_exec(
+    telemetry: &mut JobTelemetry,
+    guest_duration: Option<Duration>,
+    success: bool,
+) {
+    match guest_duration {
+        Some(duration) => {
+            telemetry.record(WORKSPACE_DRIVE_MOUNT_GUEST_EXEC, duration, success, None)
+        }
+        None => telemetry.record_bounded_outcome(
+            WORKSPACE_DRIVE_MOUNT_GUEST_EXEC_UNAVAILABLE,
+            success,
+            "unavailable",
+            None,
+        ),
+    }
 }
 
 pub(super) async fn invalidate_workspace_cache_hit(

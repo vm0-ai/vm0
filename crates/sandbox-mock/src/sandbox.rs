@@ -1012,6 +1012,7 @@ impl Sandbox for MockSandbox {
 fn clone_exec_result(result: &ExecResult) -> ExecResult {
     ExecResult {
         termination: result.termination,
+        guest_duration_ms: result.guest_duration_ms,
         stdout: result.stdout.clone(),
         stderr: result.stderr.clone(),
         diagnostic: result.diagnostic.clone(),

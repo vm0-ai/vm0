@@ -231,7 +231,14 @@ impl Sandbox for ObservedStartSandbox {
         request: &ExecRequest<'_>,
         label: &'static str,
     ) -> sandbox::Result<ExecResult> {
-        self.inner.exec_with_diagnostic_label(request, label).await
+        let mut result = self
+            .inner
+            .exec_with_diagnostic_label(request, label)
+            .await?;
+        if label == "workspace-mount" {
+            result.guest_duration_ms = Some(23);
+        }
+        Ok(result)
     }
 
     async fn read_file(&self, path: &str, max_bytes: u64) -> sandbox::Result<Option<Vec<u8>>> {
@@ -610,6 +617,12 @@ async fn execute_job_records_sandbox_reuse_miss_in_telemetry() {
     assert_lacks_action(&telemetry, "runner_claim_resume_session_validation");
     assert_lacks_action(&telemetry, "runner_claim_task_schedule_wait");
     assert_action_success(&telemetry, "runner_fresh_sandbox_start", true);
+    assert_action_success(
+        &telemetry,
+        "workspace_drive_mount_guest_exec_unavailable",
+        true,
+    );
+    assert_lacks_action(&telemetry, "workspace_drive_mount_guest_exec");
     for action in FRESH_SANDBOX_START_STAGE_ACTIONS {
         assert_lacks_action(&telemetry, action);
     }
@@ -699,11 +712,14 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
         "sandbox_reuse_miss",
         "vm_create",
         "workspace_drive_mount",
+        "workspace_drive_mount_guest_exec",
         "agent_execute",
     ] {
         assert_has_action(&telemetry, action);
     }
     assert_action_duration(&telemetry, "runner_claim_http_request", 42);
+    assert_action_duration(&telemetry, "workspace_drive_mount_guest_exec", 23);
+    assert_lacks_action(&telemetry, "workspace_drive_mount_guest_exec_unavailable");
     for action in FRESH_SANDBOX_FACTORY_STAGE_ACTIONS {
         assert_action_success(&telemetry, action, true);
     }
@@ -1054,6 +1070,8 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
     assert_lacks_action(&telemetry, "runner_fresh_sandbox_start");
     assert_lacks_action(&telemetry, "runner_guest_timezone_sync");
     assert_lacks_action(&telemetry, "workspace_drive_mount");
+    assert_lacks_action(&telemetry, "workspace_drive_mount_guest_exec");
+    assert_lacks_action(&telemetry, "workspace_drive_mount_guest_exec_unavailable");
 }
 
 #[tokio::test]

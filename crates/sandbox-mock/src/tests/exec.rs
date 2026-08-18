@@ -83,6 +83,7 @@ async fn sandbox_queued_exec_results() {
     let sandbox = MockSandbox::new("test-1");
     sandbox.push_exec_result(Ok(ExecResult {
         termination: ExecTermination::Exited { exit_code: 42 },
+        guest_duration_ms: Some(17),
         stdout: b"out".to_vec(),
         stderr: b"err".to_vec(),
         diagnostic: String::new(),
@@ -91,6 +92,7 @@ async fn sandbox_queued_exec_results() {
     }));
     sandbox.push_exec_result(Ok(ExecResult {
         termination: ExecTermination::WaitFailed,
+        guest_duration_ms: None,
         stdout: Vec::new(),
         stderr: b"wait failed".to_vec(),
         diagnostic: "wait failed".to_string(),
@@ -116,6 +118,7 @@ async fn sandbox_queued_exec_results() {
     // First call returns queued result.
     let r1 = sandbox.exec(&req).await.unwrap();
     assert_eq!(r1.termination, ExecTermination::Exited { exit_code: 42 });
+    assert_eq!(r1.guest_duration_ms, Some(17));
     assert_eq!(r1.stdout, b"out");
 
     // Second call preserves a queued non-exited terminal state.
