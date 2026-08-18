@@ -116,6 +116,8 @@ const SHORT_ARTIFACT_FILE_PATH_PATTERN = /^\/artifacts\/[0-9a-z]{10}\.[^/]+$/;
 const PLATFORM_FILE_CDN_HOSTS = ["cdn.vm0.io", "cdn.vm7.io"] as const;
 const HOSTED_SITE_SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u;
 const URL_TOKEN_PATTERN = String.raw`(?:https?:\/\/|\/(?:f|artifacts|browsers)\/|\/mail\/drafts\/|\/\?settings=billing&billingView=)[^\s<>"'()（）【】《》「」『』“”‘’，。；：！？、]+`;
+const URL_TOKEN_OPENING_PREFIX_PATTERN = /^[({<"'“‘（【《「『[]*$/u;
+const MARKDOWN_LINK_TOKEN_PREFIX_PATTERN = /\[[^\]\n]+\]\($/u;
 
 // URL.canParse is unavailable on iOS Safari < 17. Instead of relying on it (or
 // on try/catch, which this repo's ESLint forbids), feature-detect it and fall
@@ -698,10 +700,13 @@ function trimPreviewUrl(value: string): string {
 }
 
 function hasUrlTokenBoundary(value: string, index: number): boolean {
-  if (index === 0) {
+  const prefix = value.slice(0, index);
+  if (MARKDOWN_LINK_TOKEN_PREFIX_PATTERN.test(prefix)) {
     return true;
   }
-  return !/[a-z\d._~-]/iu.test(value[index - 1]!);
+
+  const tokenPrefix = /\S*$/u.exec(prefix)?.[0] ?? "";
+  return URL_TOKEN_OPENING_PREFIX_PATTERN.test(tokenPrefix);
 }
 
 function extractUrlTokens(value: string): string[] {

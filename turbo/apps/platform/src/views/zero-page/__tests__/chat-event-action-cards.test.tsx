@@ -3413,6 +3413,12 @@ describe("chat event action cards", () => {
     const nonHttpUrl = "ftp://app.okou.ai/?settings=billing&billingView=plans";
     const forgedProtocolRelativeUrl =
       "//app.okou.ai.evil.example/?settings=billing&billingView=plans";
+    const bracketedProtocolRelativeUrl =
+      "//[::1]/?settings=billing&billingView=plans";
+    const emptyAuthorityProtocolRelativeUrl =
+      "//?settings=billing&billingView=plans";
+    const fileUrl = "file:///?settings=billing&billingView=plans";
+    const dataUrl = "data:text/plain,/?settings=billing&billingView=plans";
     const creditUrl = "/?settings=billing&billingView=credits";
 
     mockChatLifecycle(context, {
@@ -3437,6 +3443,10 @@ describe("chat event action cards", () => {
             `[Arbitrary Okou plan](${arbitraryOkouUrl})`,
             `[Non-HTTP plan](${nonHttpUrl})`,
             `[Protocol-relative plan](${forgedProtocolRelativeUrl})`,
+            `[Bracketed protocol-relative plan](${bracketedProtocolRelativeUrl})`,
+            `[Empty-authority protocol-relative plan](${emptyAuthorityProtocolRelativeUrl})`,
+            `[File protocol plan](${fileUrl})`,
+            `[Data protocol plan](${dataUrl})`,
             `[Buy credits](${creditUrl})`,
           ].join("\n\n"),
           runId: "run-plan-upgrade",
@@ -3472,6 +3482,14 @@ describe("chat event action cards", () => {
     expect(screen.getByText("Arbitrary Okou plan")).toBeInTheDocument();
     expect(screen.getByText("Non-HTTP plan")).toBeInTheDocument();
     expect(screen.getByText("Protocol-relative plan")).toBeInTheDocument();
+    expect(
+      screen.getByText("Bracketed protocol-relative plan"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Empty-authority protocol-relative plan"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("File protocol plan")).toBeInTheDocument();
+    expect(screen.getByText("Data protocol plan")).toBeInTheDocument();
     expect(linkByText("Buy credits", document)).toHaveAttribute(
       "href",
       creditUrl,
