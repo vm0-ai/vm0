@@ -165,11 +165,13 @@ impl SandboxFinalExecParkHandoff {
     pub async fn wait_and_accept(&self) -> bool {
         loop {
             let changed = self.inner.changed.notified();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
             match self.inner.state.load(Ordering::Acquire) {
                 HANDOFF_ACCEPTED => return true,
                 HANDOFF_REQUESTED => return self.accept_if_requested(),
                 HANDOFF_CANCELLED..=u8::MAX => return false,
-                HANDOFF_OPEN => changed.await,
+                HANDOFF_OPEN => changed.as_mut().await,
             }
         }
     }
@@ -178,10 +180,12 @@ impl SandboxFinalExecParkHandoff {
     pub async fn wait_for_acceptance(&self) -> bool {
         loop {
             let changed = self.inner.changed.notified();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
             match self.inner.state.load(Ordering::Acquire) {
                 HANDOFF_ACCEPTED => return true,
                 HANDOFF_CANCELLED..=u8::MAX => return false,
-                HANDOFF_OPEN | HANDOFF_REQUESTED => changed.await,
+                HANDOFF_OPEN | HANDOFF_REQUESTED => changed.as_mut().await,
             }
         }
     }
