@@ -1,5 +1,9 @@
 import { command, createStore } from "ccstate";
 import {
+  MAX_PRESENTATION_TEMPLATE_PACKAGE_ARCHIVE_BYTES,
+  PRESENTATION_TEMPLATE_PACKAGE_CONTENT_TYPE,
+} from "@okouai/api-contracts/contracts/zero-presentation-templates";
+import {
   getPresentationTemplateStorageName,
   VOLUME_ORG_USER_ID,
 } from "@okouai/core/storage-names";
@@ -11,9 +15,18 @@ import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
-import { deleteS3Objects, listS3ObjectsUnderPrefix } from "../external/s3";
+import {
+  deleteS3Objects,
+  downloadS3BufferWithMaxBytes,
+  listS3ObjectsUnderPrefix,
+} from "../external/s3";
 import { onRejection, settle } from "../utils";
+import { resolveArtifactObject$ } from "./artifact-storage.service";
 import { lockPresentationTemplateLifecycle } from "./presentation-template-lifecycle.service";
+import {
+  validatePresentationTemplatePackageArchive,
+  type PresentationTemplatePackageFile,
+} from "./presentation-template-package-archive.service";
 import {
   commitPreparedVolumeServerSide,
   prepareVolumeServerSide$,
@@ -21,6 +34,11 @@ import {
 
 const L = logger("PresentationTemplatePackage");
 const CLEANUP_TIMEOUT_MS = 30_000;
+
+type CommitPresentationTemplatePackageResult =
+  | { readonly kind: "published" }
+  | { readonly kind: "conflict" }
+  | { readonly kind: "invalid-upload"; readonly message: string };
 
 export const cleanupPresentationTemplatePackage$ = command(
   async (
@@ -146,17 +164,14 @@ async function cleanupAfterPublicationFailureAndLog(args: {
   }
 }
 
-export const publishPresentationTemplatePackage$ = command(
+const publishPresentationTemplatePackageFiles$ = command(
   (
     { set },
     args: {
       readonly orgId: string;
       readonly ownerUserId: string;
       readonly templateId: string;
-      readonly files: readonly {
-        readonly path: string;
-        readonly content: string;
-      }[];
+      readonly files: readonly PresentationTemplatePackageFile[];
     },
     signal: AbortSignal,
   ): Promise<boolean> => {
@@ -234,5 +249,105 @@ export const publishPresentationTemplatePackage$ = command(
         preparedVersionPrefix,
       });
     });
+  },
+);
+
+async function cleanupUploadedArchive(
+  key: string,
+  cleanup: () => Promise<void>,
+): Promise<void> {
+  const result = await settle(cleanup());
+  if (!result.ok) {
+    L.error("Failed to clean an uploaded template package archive", {
+      key,
+      error: result.error,
+    });
+  }
+}
+
+export const commitPresentationTemplatePackage$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly orgId: string;
+      readonly ownerUserId: string;
+      readonly templateId: string;
+      readonly archiveFileId: string;
+    },
+    signal: AbortSignal,
+  ): Promise<CommitPresentationTemplatePackageResult> => {
+    const uploaded = await set(
+      resolveArtifactObject$,
+      { userId: args.ownerUserId, id: args.archiveFileId },
+      signal,
+    );
+    if (!uploaded) {
+      return {
+        kind: "invalid-upload",
+        message: "The template package archive upload was not found",
+      };
+    }
+
+    const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
+    const cleanup = async (): Promise<void> => {
+      await get(deleteS3Objects(bucket, [uploaded.key]));
+    };
+    const commit =
+      async (): Promise<CommitPresentationTemplatePackageResult> => {
+        if (
+          uploaded.contentType !== PRESENTATION_TEMPLATE_PACKAGE_CONTENT_TYPE ||
+          !uploaded.filename.toLowerCase().endsWith(".tar.gz")
+        ) {
+          return {
+            kind: "invalid-upload",
+            message: "Template packages must be uploaded as a tar.gz archive",
+          };
+        }
+        if (
+          uploaded.size <= 0 ||
+          uploaded.size > MAX_PRESENTATION_TEMPLATE_PACKAGE_ARCHIVE_BYTES
+        ) {
+          return {
+            kind: "invalid-upload",
+            message: `Template package archives must be non-empty and no larger than ${MAX_PRESENTATION_TEMPLATE_PACKAGE_ARCHIVE_BYTES.toString()} bytes`,
+          };
+        }
+
+        const archive = await get(
+          downloadS3BufferWithMaxBytes(
+            bucket,
+            uploaded.key,
+            MAX_PRESENTATION_TEMPLATE_PACKAGE_ARCHIVE_BYTES,
+            signal,
+          ),
+        );
+        signal.throwIfAborted();
+        const validated = await validatePresentationTemplatePackageArchive(
+          archive,
+          signal,
+        );
+        if (!validated.ok) {
+          return { kind: "invalid-upload", message: validated.message };
+        }
+        const published = await set(
+          publishPresentationTemplatePackageFiles$,
+          {
+            orgId: args.orgId,
+            ownerUserId: args.ownerUserId,
+            templateId: args.templateId,
+            files: validated.files,
+          },
+          signal,
+        );
+        return published ? { kind: "published" } : { kind: "conflict" };
+      };
+
+    const result = await onRejection(commit(), () => {
+      return cleanupUploadedArchive(uploaded.key, cleanup);
+    });
+    signal.throwIfAborted();
+    await cleanupUploadedArchive(uploaded.key, cleanup);
+    signal.throwIfAborted();
+    return result;
   },
 );

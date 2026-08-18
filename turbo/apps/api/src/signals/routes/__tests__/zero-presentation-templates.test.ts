@@ -1,4 +1,13 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 
 import {
   DeleteObjectsCommand,
@@ -9,18 +18,22 @@ import {
 } from "@aws-sdk/client-s3";
 import {
   PRESENTATION_TEMPLATE_PAGE_CONTENT_TYPE,
+  PRESENTATION_TEMPLATE_PACKAGE_CONTENT_TYPE,
   PRESENTATION_TEMPLATE_SOURCE_CONTENT_TYPE,
   zeroPresentationTemplatesContract,
 } from "@okouai/api-contracts/contracts/zero-presentation-templates";
 import { zeroUploadsContract } from "@okouai/api-contracts/contracts/zero-uploads";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import AdmZip from "adm-zip";
+import { create as createTar } from "tar";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
+import { nowDate } from "../../../lib/time";
 import { flushWaitUntilForTest } from "../../context/wait-until";
+import { onRejection } from "../../utils";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
@@ -151,7 +164,7 @@ function installS3Fixture() {
           typeof input.Metadata === "object" && input.Metadata !== null
             ? (input.Metadata as Readonly<Record<string, string>>)
             : {},
-        lastModified: new Date(),
+        lastModified: nowDate(),
       });
       return Promise.resolve({});
     }
@@ -238,12 +251,16 @@ function installS3Fixture() {
         body,
         contentType: target.contentType,
         metadata: target.metadata,
-        lastModified: new Date(),
+        lastModified: nowDate(),
       });
       return target.key;
     },
     has(bucket: string, key: string): boolean {
       return objects.has(objectId(bucket, key));
+    },
+    body(bucket: string, key: string): Buffer | undefined {
+      const body = objects.get(objectId(bucket, key))?.body;
+      return body ? Buffer.from(body) : undefined;
     },
     keys(bucket: string): readonly string[] {
       return [...objects.keys()].flatMap((storedId) => {
@@ -285,6 +302,71 @@ function pngHeader(width = 1600, height = 900): Buffer {
   header.writeUInt32BE(width, 16);
   header.writeUInt32BE(height, 20);
   return header;
+}
+
+async function packageArchive(
+  files: readonly {
+    readonly path: string;
+    readonly content: string | Buffer;
+  }[],
+): Promise<Buffer> {
+  const directory = mkdtempSync(join(tmpdir(), "presentation-package-test-"));
+  const archivePath = join(directory, "package.tar.gz");
+  const build = async (): Promise<Buffer> => {
+    for (const file of files) {
+      const path = join(directory, file.path);
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, file.content);
+    }
+    await createTar(
+      {
+        cwd: directory,
+        file: archivePath,
+        gzip: true,
+        mtime: nowDate(),
+        portable: true,
+      },
+      files.map((file) => {
+        return file.path;
+      }),
+    );
+    return readFileSync(archivePath);
+  };
+  const archive = await onRejection(build(), () => {
+    rmSync(directory, { recursive: true, force: true });
+  });
+  rmSync(directory, { recursive: true, force: true });
+  return archive;
+}
+
+async function unsafePackageArchive(): Promise<Buffer> {
+  const directory = mkdtempSync(join(tmpdir(), "presentation-package-unsafe-"));
+  const packageDirectory = join(directory, "package");
+  const archivePath = join(directory, "unsafe.tar.gz");
+  const build = async (): Promise<Buffer> => {
+    mkdirSync(packageDirectory);
+    writeFileSync(join(packageDirectory, "SKILL.md"), "# Skill");
+    writeFileSync(
+      join(packageDirectory, "design-system.md"),
+      "# Design system",
+    );
+    writeFileSync(join(directory, "outside.txt"), "unsafe");
+    await createTar(
+      {
+        cwd: packageDirectory,
+        file: archivePath,
+        gzip: true,
+        preservePaths: true,
+      },
+      ["SKILL.md", "design-system.md", "../outside.txt"],
+    );
+    return readFileSync(archivePath);
+  };
+  const archive = await onRejection(build(), () => {
+    rmSync(directory, { recursive: true, force: true });
+  });
+  rmSync(directory, { recursive: true, force: true });
+  return archive;
 }
 
 function webHeaders() {
@@ -553,6 +635,11 @@ describe("browser-rendered presentation template ingestion", () => {
     expect(createdRuns).toHaveLength(1);
     const importRun = createdRuns[0];
     expect(importRun?.prompt).toContain("pages pull");
+    expect(importRun?.prompt).toContain("SKILL.md");
+    expect(importRun?.prompt).toContain("design-system.md");
+    expect(importRun?.prompt).toContain("semantic HTML, CSS, and SVG");
+    expect(importRun?.prompt).toContain("CSS Grid or Flexbox");
+    expect(importRun?.prompt).toContain("Do not include JSON, LAYOUTS.md");
     expect(importRun?.prompt).not.toContain("LibreOffice");
     expect(importRun?.prompt).not.toContain("PDF");
     expect(importRun?.prompt).not.toContain("screenshot");
@@ -609,6 +696,72 @@ describe("browser-rendered presentation template ingestion", () => {
     expect((await runs.listAgentRuns(actor, { limit: 20 })).runs).toHaveLength(
       1,
     );
+  });
+
+  it("rejects unsafe or schema-driven package archives before ready", async () => {
+    const actor = bdd.user();
+    await prepareImportActor(actor);
+    const fixture = installS3Fixture();
+    const uploaded = await uploadValidManifest(actor, fixture, 1);
+    const committed = await accept(
+      templateClient().commit({
+        headers: webHeaders(),
+        body: {
+          requestId: randomUUID(),
+          sourceFileId: uploaded.source.id,
+          pageFileIds: [uploaded.pages[0]?.id ?? randomUUID()],
+        },
+      }),
+      [200],
+    );
+    const templateId = committed.body.id;
+    const runId = await importRunId(actor, templateId);
+    const invalidArchives = [
+      {
+        body: await packageArchive([
+          { path: "SKILL.md", content: "# Skill" },
+          { path: "design-system.md", content: "# Design system" },
+          { path: "tokens.json", content: "{}" },
+        ]),
+        message: "must not contain JSON",
+      },
+      {
+        body: await unsafePackageArchive(),
+        message: "unsafe path",
+      },
+      {
+        body: await packageArchive([{ path: "SKILL.md", content: "# Skill" }]),
+        message: "missing required file: design-system.md",
+      },
+    ];
+
+    for (const invalidArchive of invalidArchives) {
+      const packageUpload = await uploadPrivateFile(actor, fixture, {
+        filename: "presentation-template-package.tar.gz",
+        contentType: PRESENTATION_TEMPLATE_PACKAGE_CONTENT_TYPE,
+        body: invalidArchive.body,
+      });
+      const response = await accept(
+        templateClient().publishPackage({
+          headers: sandboxHeaders(actor, runId),
+          params: { templateId },
+          body: { archiveFileId: packageUpload.id },
+        }),
+        [400],
+      );
+      expect(response.body.error.message).toContain(invalidArchive.message);
+      expect(fixture.has(ARTIFACTS_BUCKET, packageUpload.key)).toBeFalsy();
+    }
+
+    mocks.clerk.session(actor.userId, actor.orgId);
+    const detail = await accept(
+      templateClient().get({
+        headers: webHeaders(),
+        params: { templateId },
+      }),
+      [200],
+    );
+    expect(detail.body.status).toBe("processing");
   });
 
   it("binds private inputs to the analysis run and deletes only the generated package", async () => {
@@ -685,25 +838,81 @@ describe("browser-rendered presentation template ingestion", () => {
     expect(headObjectRequestCount()).toBe(headRequestsBeforeDownloads);
 
     const storageKeysBefore = new Set(fixture.keys(STORAGES_BUCKET));
+    const logo = pngHeader();
+    const font = Buffer.from([0x77, 0x4f, 0x46, 0x32]);
+    const archiveBody = await packageArchive([
+      {
+        path: "SKILL.md",
+        content:
+          "# Author presentation HTML directly\n\nRead design-system.md and write semantic HTML/CSS/SVG.",
+      },
+      { path: "design-system.md", content: "# Reusable visual language" },
+      {
+        path: "color-systems/brand.css",
+        content: ":root { --brand-accent: #7357ff; }",
+      },
+      { path: "assets/identity/logo.png", content: logo },
+      { path: "assets/fonts/brand-font.woff2", content: font },
+    ]);
+    const packageUpload = await uploadPrivateFile(owner, fixture, {
+      filename: "presentation-template-package.tar.gz",
+      contentType: PRESENTATION_TEMPLATE_PACKAGE_CONTENT_TYPE,
+      body: archiveBody,
+    });
     const published = await accept(
       templateClient().publishPackage({
         headers: runHeaders,
         params: { templateId },
-        body: {
-          files: [
-            { path: "DESIGN_SYSTEM.md", content: "# Design system" },
-            { path: "LAYOUTS.md", content: "# Layouts" },
-            { path: "tokens.json", content: '{"colors":{}}' },
-          ],
-        },
+        body: { archiveFileId: packageUpload.id },
       }),
       [200],
     );
     expect(published.body.status).toBe("ready");
+    expect(fixture.has(ARTIFACTS_BUCKET, packageUpload.key)).toBeFalsy();
     const packageKeys = fixture.keys(STORAGES_BUCKET).filter((key) => {
       return !storageKeysBefore.has(key);
     });
     expect(packageKeys.length).toBeGreaterThan(0);
+    const manifestKey = packageKeys.find((key) => {
+      return key.endsWith("/manifest.json");
+    });
+    const manifestBody = manifestKey
+      ? fixture.body(STORAGES_BUCKET, manifestKey)
+      : undefined;
+    expect(manifestBody).toBeDefined();
+    const manifest = JSON.parse(manifestBody?.toString("utf8") ?? "{}") as {
+      readonly files?: readonly {
+        readonly path: string;
+        readonly hash: string;
+        readonly size: number;
+      }[];
+    };
+    expect(
+      manifest.files?.map((file) => {
+        return file.path;
+      }),
+    ).toStrictEqual([
+      "SKILL.md",
+      "design-system.md",
+      "color-systems/brand.css",
+      "assets/identity/logo.png",
+      "assets/fonts/brand-font.woff2",
+    ]);
+    expect(
+      manifest.files?.some((file) => {
+        return file.path.endsWith(".json");
+      }),
+    ).toBeFalsy();
+    expect(manifest.files).toContainEqual({
+      path: "assets/identity/logo.png",
+      hash: createHash("sha256").update(logo).digest("hex"),
+      size: logo.length,
+    });
+    expect(manifest.files).toContainEqual({
+      path: "assets/fonts/brand-font.woff2",
+      hash: createHash("sha256").update(font).digest("hex"),
+      size: font.length,
+    });
 
     await webhooks.requestAgentComplete(
       { runId, exitCode: 0 },

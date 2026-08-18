@@ -9,7 +9,7 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { presentationTemplates } from "@okouai/db/schema/presentation-template";
 import { and, eq } from "drizzle-orm";
 
-import { conflict, notFound } from "../../lib/error";
+import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import type { AuthContext } from "../../types/auth";
@@ -29,7 +29,7 @@ import {
 } from "../services/presentation-template-data.service";
 import { deletePresentationTemplate$ } from "../services/presentation-template-delete.service";
 import { failPresentationTemplateImport$ } from "../services/presentation-template-failure.service";
-import { publishPresentationTemplatePackage$ } from "../services/presentation-template-package.service";
+import { commitPresentationTemplatePackage$ } from "../services/presentation-template-package.service";
 import type { RouteEntry } from "../route-entry";
 
 const PRESIGNED_URL_TTL_SECONDS = 15 * 60;
@@ -366,22 +366,30 @@ const packageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       "The complete source and page set must be committed before publishing a package",
     );
   }
-  const published = await set(
-    publishPresentationTemplatePackage$,
+  const result = await set(
+    commitPresentationTemplatePackage$,
     {
       orgId: auth.orgId,
       ownerUserId: auth.userId,
       templateId: row.id,
-      files: bodyResult.data.files,
+      archiveFileId: bodyResult.data.archiveFileId,
     },
     signal,
   );
-  return published
-    ? {
+  switch (result.kind) {
+    case "published": {
+      return {
         status: 200 as const,
         body: { id: row.id, status: "ready" as const },
-      }
-    : conflict("Presentation template is no longer processing");
+      };
+    }
+    case "conflict": {
+      return conflict("Presentation template is no longer processing");
+    }
+    case "invalid-upload": {
+      return badRequestMessage(result.message);
+    }
+  }
 });
 
 const failParams$ = pathParamsOf(zeroPresentationTemplatesContract.fail);

@@ -9,7 +9,7 @@ import {
 } from "@okouai/api-contracts/contracts/zero-presentation-templates";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { presentationTemplates } from "@okouai/db/schema/presentation-template";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import { templateImportPrompt } from "../../lib/template-import-prompt";
 import type { Tx } from "../../lib/db-types";
@@ -19,6 +19,7 @@ import { isUniqueViolation } from "../../lib/pg-errors";
 import { now, nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
 import { downloadS3BufferRange } from "../external/s3";
+import { settle } from "../utils";
 import {
   createAgentRun$,
   type CreateRunErrorResult,
@@ -473,6 +474,130 @@ async function persistLaunchedAnalysisStatus(
   };
 }
 
+const commitResolvedPresentationTemplate$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly ownerUserId: string;
+      readonly manifest: ResolvedPresentationTemplateManifest;
+      readonly defaultAgentId: string | null;
+    },
+    signal: AbortSignal,
+  ) => {
+    const db = set(writeDb$);
+    const lifecycleArgs: PresentationTemplateLifecycleArgs = {
+      orgId: args.orgId,
+      ownerUserId: args.ownerUserId,
+      templateId: args.manifest.templateId,
+    };
+    const transaction = await settle(
+      db.transaction(async (tx) => {
+        await lockPresentationTemplateLifecycle(tx, lifecycleArgs.templateId);
+        signal.throwIfAborted();
+        const [existing] = await tx
+          .select()
+          .from(presentationTemplates)
+          .where(eq(presentationTemplates.id, lifecycleArgs.templateId))
+          .limit(1);
+        signal.throwIfAborted();
+
+        if (
+          existing &&
+          (existing.orgId !== args.orgId ||
+            existing.ownerUserId !== args.ownerUserId ||
+            !matchesManifest(existing, args.manifest))
+        ) {
+          return conflict(
+            "This presentation template request was already committed with different uploads",
+          );
+        }
+
+        if (!existing && !args.defaultAgentId) {
+          return conflict(
+            "A default agent must be configured before importing a template",
+          );
+        }
+
+        let current = existing;
+        if (!current) {
+          const currentTime = nowDate();
+          [current] = await tx
+            .insert(presentationTemplates)
+            .values({
+              id: lifecycleArgs.templateId,
+              orgId: args.orgId,
+              ownerUserId: args.ownerUserId,
+              title: titleFromFilename(args.manifest.source.filename),
+              status: "pending",
+              sourceStorageKey: args.manifest.source.key,
+              sourceFilename: args.manifest.source.filename,
+              pageKeys: args.manifest.pages.map((page) => {
+                return page.key;
+              }),
+              createdBy: args.ownerUserId,
+              updatedBy: args.ownerUserId,
+              createdAt: currentTime,
+              updatedAt: currentTime,
+            })
+            .returning();
+        }
+        if (!current) {
+          throw new Error("Failed to create presentation template import");
+        }
+
+        const existingRunStatus =
+          await loadPresentationTemplateAnalysisRunStatus(tx, lifecycleArgs);
+        signal.throwIfAborted();
+        if (existingRunStatus) {
+          return await reconcileExistingAnalysisRun(
+            tx,
+            current,
+            lifecycleArgs,
+            existingRunStatus,
+          );
+        }
+        if (current.status !== "pending") {
+          return {
+            status: 200 as const,
+            body: { id: current.id, status: current.status },
+          };
+        }
+        if (!args.defaultAgentId) {
+          return conflict(
+            "A default agent must be configured before importing a template",
+          );
+        }
+
+        const runResult = await set(
+          launchPresentationTemplateAnalysis$,
+          { ...lifecycleArgs, defaultAgentId: args.defaultAgentId },
+          signal,
+        );
+        if (runResult.status !== 201) {
+          throw new AnalysisLaunchRejected(runResult);
+        }
+        return await persistLaunchedAnalysisStatus(tx, current, {
+          ownerUserId: args.ownerUserId,
+          runStatus: runResult.body.status,
+          runError: runResult.body.error,
+        });
+      }),
+      signal,
+    );
+    if (transaction.ok) {
+      return transaction.value;
+    }
+    if (transaction.error instanceof AnalysisLaunchRejected) {
+      return transaction.error.response;
+    }
+    if (isUniqueViolation(transaction.error)) {
+      return conflict("A presentation template import is already active");
+    }
+    throw transaction.error;
+  },
+);
+
 export const commitPresentationTemplate$ = command(
   async (
     { set },
@@ -509,114 +634,16 @@ export const commitPresentationTemplate$ = command(
       .where(eq(orgMetadata.orgId, args.orgId))
       .limit(1);
     signal.throwIfAborted();
-
-    const lifecycleArgs: PresentationTemplateLifecycleArgs = {
-      orgId: args.orgId,
-      ownerUserId: args.ownerUserId,
-      templateId: resolved.manifest.templateId,
-    };
-    let response;
-    try {
-      response = await db.transaction(async (tx) => {
-        await lockPresentationTemplateLifecycle(tx, lifecycleArgs.templateId);
-        signal.throwIfAborted();
-        const [existing] = await tx
-          .select()
-          .from(presentationTemplates)
-          .where(eq(presentationTemplates.id, lifecycleArgs.templateId))
-          .limit(1);
-        signal.throwIfAborted();
-
-        if (
-          existing &&
-          (existing.orgId !== args.orgId ||
-            existing.ownerUserId !== args.ownerUserId ||
-            !matchesManifest(existing, resolved.manifest))
-        ) {
-          return conflict(
-            "This presentation template request was already committed with different uploads",
-          );
-        }
-
-        if (!existing && !metadata?.defaultAgentId) {
-          return conflict(
-            "A default agent must be configured before importing a template",
-          );
-        }
-
-        let current = existing;
-        if (!current) {
-          const currentTime = nowDate();
-          [current] = await tx
-            .insert(presentationTemplates)
-            .values({
-              id: lifecycleArgs.templateId,
-              orgId: args.orgId,
-              ownerUserId: args.ownerUserId,
-              title: titleFromFilename(resolved.manifest.source.filename),
-              status: "pending",
-              sourceStorageKey: resolved.manifest.source.key,
-              sourceFilename: resolved.manifest.source.filename,
-              pageKeys: resolved.manifest.pages.map((page) => {
-                return page.key;
-              }),
-              createdBy: args.ownerUserId,
-              updatedBy: args.ownerUserId,
-              createdAt: currentTime,
-              updatedAt: currentTime,
-            })
-            .returning();
-        }
-        if (!current) {
-          throw new Error("Failed to create presentation template import");
-        }
-
-        const existingRunStatus =
-          await loadPresentationTemplateAnalysisRunStatus(tx, lifecycleArgs);
-        signal.throwIfAborted();
-        if (existingRunStatus) {
-          return await reconcileExistingAnalysisRun(
-            tx,
-            current,
-            lifecycleArgs,
-            existingRunStatus,
-          );
-        }
-        if (current.status !== "pending") {
-          return {
-            status: 200 as const,
-            body: { id: current.id, status: current.status },
-          };
-        }
-        if (!metadata?.defaultAgentId) {
-          return conflict(
-            "A default agent must be configured before importing a template",
-          );
-        }
-
-        const runResult = await set(
-          launchPresentationTemplateAnalysis$,
-          { ...lifecycleArgs, defaultAgentId: metadata.defaultAgentId },
-          signal,
-        );
-        if (runResult.status !== 201) {
-          throw new AnalysisLaunchRejected(runResult);
-        }
-        return await persistLaunchedAnalysisStatus(tx, current, {
-          ownerUserId: args.ownerUserId,
-          runStatus: runResult.body.status,
-          runError: runResult.body.error,
-        });
-      });
-    } catch (error) {
-      if (error instanceof AnalysisLaunchRejected) {
-        return error.response;
-      }
-      if (isUniqueViolation(error)) {
-        return conflict("A presentation template import is already active");
-      }
-      throw error;
-    }
+    const response = await set(
+      commitResolvedPresentationTemplate$,
+      {
+        orgId: args.orgId,
+        ownerUserId: args.ownerUserId,
+        manifest: resolved.manifest,
+        defaultAgentId: metadata?.defaultAgentId ?? null,
+      },
+      signal,
+    );
     signal.throwIfAborted();
 
     if (response.status === 200 && response.body.status === "failed") {
@@ -625,7 +652,7 @@ export const commitPresentationTemplate$ = command(
         {
           orgId: args.orgId,
           ownerUserId: args.ownerUserId,
-          templateId: lifecycleArgs.templateId,
+          templateId: resolved.manifest.templateId,
           error: {
             code: "analysis_failed",
             message: "Template analysis failed before processing began",
