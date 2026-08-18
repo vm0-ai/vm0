@@ -16,6 +16,23 @@ use crate::http::HttpClient;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 
+fn run_journal_io<T>(operation: impl FnOnce() -> io::Result<T>) -> io::Result<T> {
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle)
+            if matches!(
+                handle.runtime_flavor(),
+                tokio::runtime::RuntimeFlavor::MultiThread
+            ) =>
+        {
+            tokio::task::block_in_place(operation)
+        }
+        Ok(_) => Err(io::Error::other(
+            "active-input receipt persistence requires a multi-thread Tokio runtime",
+        )),
+        Err(_) => operation(),
+    }
+}
+
 #[derive(Debug)]
 struct ReceiptJournalState {
     outstanding: Vec<String>,
@@ -30,10 +47,9 @@ struct ReceiptJournal {
 
 impl ReceiptJournal {
     fn load(run_id: &str, path: PathBuf) -> io::Result<Self> {
-        let outstanding =
-            guest_contracts::active_input_receipts::read_active_input_receipt_journal(
-                &path, run_id,
-            )?;
+        let outstanding = run_journal_io(|| {
+            guest_contracts::active_input_receipts::read_active_input_receipt_journal(&path, run_id)
+        })?;
         Ok(Self {
             run_id: run_id.to_owned(),
             path,
@@ -50,39 +66,43 @@ impl ReceiptJournal {
     }
 
     fn persist_acceptance(&self, delivery_id: &str) -> io::Result<()> {
-        let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
-        if state.outstanding.iter().any(|id| id == delivery_id) {
-            return Ok(());
-        }
-        let mut next = state.outstanding.clone();
-        next.push(delivery_id.to_owned());
-        guest_contracts::active_input_receipts::write_active_input_receipt_journal(
-            &self.path,
-            &self.run_id,
-            &next,
-        )?;
-        state.outstanding = next;
-        Ok(())
+        run_journal_io(|| {
+            let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+            if state.outstanding.iter().any(|id| id == delivery_id) {
+                return Ok(());
+            }
+            let mut next = state.outstanding.clone();
+            next.push(delivery_id.to_owned());
+            guest_contracts::active_input_receipts::write_active_input_receipt_journal(
+                &self.path,
+                &self.run_id,
+                &next,
+            )?;
+            state.outstanding = next;
+            Ok(())
+        })
     }
 
     fn acknowledge(&self, delivery_id: &str) -> io::Result<()> {
-        let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
-        if !state.outstanding.iter().any(|id| id == delivery_id) {
-            return Ok(());
-        }
-        let next = state
-            .outstanding
-            .iter()
-            .filter(|id| id.as_str() != delivery_id)
-            .cloned()
-            .collect::<Vec<_>>();
-        guest_contracts::active_input_receipts::write_active_input_receipt_journal(
-            &self.path,
-            &self.run_id,
-            &next,
-        )?;
-        state.outstanding = next;
-        Ok(())
+        run_journal_io(|| {
+            let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+            if !state.outstanding.iter().any(|id| id == delivery_id) {
+                return Ok(());
+            }
+            let next = state
+                .outstanding
+                .iter()
+                .filter(|id| id.as_str() != delivery_id)
+                .cloned()
+                .collect::<Vec<_>>();
+            guest_contracts::active_input_receipts::write_active_input_receipt_journal(
+                &self.path,
+                &self.run_id,
+                &next,
+            )?;
+            state.outstanding = next;
+            Ok(())
+        })
     }
 }
 
@@ -286,4 +306,71 @@ async fn receipt_worker(
         }
     }
     finalize_outstanding(&run_id, &http, &journal, &mut rejected).await;
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::mpsc;
+
+    use super::*;
+
+    const RUN_ID: &str = "receipt-journal-scheduler-test";
+    const DELIVERY_ID: &str = "60fca608-d174-4c1a-a1b2-57607b3adf46";
+    const WAIT_TIMEOUT: Duration = Duration::from_secs(2);
+
+    #[test]
+    fn blocked_journal_persistence_does_not_stall_unrelated_async_work() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("active-input-receipts.json");
+        let journal = Arc::new(ReceiptJournal::load(RUN_ID, path.clone()).unwrap());
+
+        let held_journal = journal.clone();
+        let (lock_held_tx, lock_held_rx) = mpsc::channel();
+        let (release_lock_tx, release_lock_rx) = mpsc::channel();
+        let lock_holder = std::thread::spawn(move || {
+            let _guard = held_journal
+                .state
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            lock_held_tx.send(()).unwrap();
+            release_lock_rx.recv().unwrap();
+        });
+        lock_held_rx.recv_timeout(WAIT_TIMEOUT).unwrap();
+
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()
+            .unwrap();
+        let operation_journal = journal.clone();
+        let (operation_started_tx, operation_started_rx) = mpsc::channel();
+        let operation = runtime.spawn(async move {
+            operation_started_tx.send(()).unwrap();
+            operation_journal.persist_acceptance(DELIVERY_ID)
+        });
+        operation_started_rx.recv_timeout(WAIT_TIMEOUT).unwrap();
+
+        let (probe_tx, probe_rx) = mpsc::channel();
+        let probe = runtime.spawn(async move {
+            probe_tx.send(()).unwrap();
+        });
+        let probe_progressed = probe_rx.recv_timeout(WAIT_TIMEOUT).is_ok();
+
+        release_lock_tx.send(()).unwrap();
+        runtime.block_on(async {
+            operation.await.unwrap().unwrap();
+            probe.await.unwrap();
+        });
+        lock_holder.join().unwrap();
+
+        assert!(
+            probe_progressed,
+            "unrelated async work should progress while journal persistence is blocked"
+        );
+        assert_eq!(
+            guest_contracts::active_input_receipts::read_active_input_receipt_journal(path, RUN_ID)
+                .unwrap(),
+            vec![DELIVERY_ID.to_owned()]
+        );
+    }
 }

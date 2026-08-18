@@ -19,7 +19,7 @@ fn payload(text: &str) -> Result<Vec<u8>, serde_json::Error> {
     guest_contracts::active_input::encode_active_input(DELIVERY_ID, text)
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn explicit_null_delivery_id_is_rejected() -> Result<(), Box<dyn std::error::Error>> {
     let server = MockServer::start();
     let tmp = tempfile::tempdir()?;
@@ -45,7 +45,7 @@ async fn explicit_null_delivery_id_is_rejected() -> Result<(), Box<dyn std::erro
     Ok(())
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn accepted_input_is_deduplicated_reported_and_compacted()
 -> Result<(), Box<dyn std::error::Error>> {
     let server = MockServer::start();
@@ -131,7 +131,7 @@ async fn accepted_input_is_deduplicated_reported_and_compacted()
     Ok(())
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn failed_input_creates_no_receipt_or_completion_evidence()
 -> Result<(), Box<dyn std::error::Error>> {
     let server = MockServer::start();
@@ -185,7 +185,7 @@ async fn failed_input_creates_no_receipt_or_completion_evidence()
     Ok(())
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn rejected_receipt_is_retained_without_a_finalization_retry()
 -> Result<(), Box<dyn std::error::Error>> {
     let server = MockServer::start();
@@ -239,7 +239,7 @@ async fn rejected_receipt_is_retained_without_a_finalization_retry()
     Ok(())
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn transport_failure_gets_only_one_finalization_retry()
 -> Result<(), Box<dyn std::error::Error>> {
     let server = MockServer::start();
@@ -296,7 +296,7 @@ async fn transport_failure_gets_only_one_finalization_retry()
 }
 
 #[cfg(unix)]
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn journal_publication_failure_is_terminal_after_backend_acceptance()
 -> Result<(), Box<dyn std::error::Error>> {
     use std::os::unix::fs::symlink;
@@ -346,7 +346,7 @@ async fn journal_publication_failure_is_terminal_after_backend_acceptance()
     Ok(())
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn unacknowledged_journal_recovers_without_requeueing_the_backend()
 -> Result<(), Box<dyn std::error::Error>> {
     let tmp = tempfile::tempdir()?;

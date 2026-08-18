@@ -53,7 +53,7 @@ unsafe fn setup_api_env(
     Ok(())
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn api_mode_execute_cli_captures_session_metadata_and_sends_events()
 -> Result<(), Box<dyn std::error::Error>> {
     let mock_cli = common::build_and_locate_mock()?;

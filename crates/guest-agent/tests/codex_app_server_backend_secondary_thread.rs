@@ -14,7 +14,7 @@ const SECONDARY_THREAD_ID: &str = "00000000-0000-4000-8000-000000000def";
 const SECONDARY_NOTIFICATION_LOG: &str =
     "Ignoring codex app-server notification for secondary thread";
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn codex_app_server_backend_ignores_secondary_thread_notifications()
 -> Result<(), Box<dyn std::error::Error>> {
     let mock = common::build_and_locate_mock_codex()?;
