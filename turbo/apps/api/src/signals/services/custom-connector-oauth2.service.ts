@@ -527,17 +527,15 @@ export const startCustomConnectorOAuth2$ = command(
     const context: CustomConnectorOAuthStateContext = {
       connectorId: connector.id,
       storageVersion: connector.storageVersion,
-      ...(providerAdapter === "feishu"
+      ...(providerAdapter === "feishu" && args.feishuContext
         ? {
             providerContext: {
               provider: "feishu" as const,
-              completionTarget: args.feishuContext
-                ? ("feishu" as const)
-                : ("custom" as const),
-              ...(args.feishuContext?.installationId
+              completionTarget: "feishu" as const,
+              ...(args.feishuContext.installationId
                 ? { installationId: args.feishuContext.installationId }
                 : {}),
-              ...(args.feishuContext?.expectedOpenId
+              ...(args.feishuContext.expectedOpenId
                 ? { expectedOpenId: args.feishuContext.expectedOpenId }
                 : {}),
             },
