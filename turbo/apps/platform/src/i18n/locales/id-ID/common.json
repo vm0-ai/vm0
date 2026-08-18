@@ -1633,6 +1633,7 @@
       "deleteTitle": "Hapus chat?",
       "draft": "Draf",
       "empty": "Mulai percakapan dan percakapan itu akan muncul di sini",
+      "markUnread": "Tandai belum dibaca",
       "newChatWith": "Chat baru dengan {{agentName}}",
       "noUnread": "Tidak ada chat belum dibaca",
       "openChatMenu": "Buka menu chat",

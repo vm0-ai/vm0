@@ -2700,6 +2700,9 @@ describe("RUN-04: agent run telemetry families", () => {
             environmentShadowLegacyOnlyCountBucket: "2_4",
             environmentShadowCandidateOnlyCountBucket: "1",
             environmentShadowSharedValueDifferenceCountBucket: "5_8",
+            agentExecutionAuthority: "version_content",
+            agentExecutionAuthorityClassification:
+              "systemEnvironmentDifferences",
             environment: { LEGACY_IGNORED: "legacy-map" },
             environmentEntries: [
               { name: "NODE_ENV", value: "production" },
@@ -2859,6 +2862,10 @@ describe("RUN-04: agent run telemetry families", () => {
     });
     expect(contextRead.body).not.toHaveProperty(
       "environmentShadowClassification",
+    );
+    expect(contextRead.body).not.toHaveProperty("agentExecutionAuthority");
+    expect(contextRead.body).not.toHaveProperty(
+      "agentExecutionAuthorityClassification",
     );
     expect(Object.keys(contextRead.body.networkPolicies ?? {})).toStrictEqual([
       "github",

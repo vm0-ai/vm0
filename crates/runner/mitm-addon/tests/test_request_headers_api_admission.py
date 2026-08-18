@@ -93,6 +93,78 @@ async def test_streamed_api_allow_injects_runner_preview_bypass_before_body(
     assert flow.request.headers["x-vercel-protection-bypass"] == "preview-secret"
 
 
+async def test_bounded_unsafe_platform_path_does_not_prebind_before_request_denial(
+    tmp_path, real_flow, mitm_ctx, headers, monkeypatch
+):
+    reg_path = _write_api_registry(tmp_path, capture_network_bodies=False)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="preview-api.vm6.ai",
+        method="POST",
+        path="/api/ordinary/../test/example",
+        request_headers=headers(
+            ("Host", "preview-api.vm6.ai"),
+            ("Content-Length", "4"),
+        ),
+    )
+    monkeypatch.setattr(platform_api, "VERCEL_BYPASS", "preview-secret")
+
+    with mitm_ctx(
+        registry_path=str(reg_path),
+        api_url="https://preview-api.vm6.ai",
+    ):
+        mitm_addon.requestheaders(flow)
+
+        _assert_no_request_stream(flow)
+        assert flow.response is None
+        assert "x-vercel-protection-bypass" not in flow.request.headers
+        assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "unsafe_platform_path"
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+
+
+async def test_streamed_unsafe_platform_path_does_not_start_stream_before_request_denial(
+    tmp_path, real_flow, mitm_ctx, headers, monkeypatch
+):
+    reg_path = _write_api_registry(tmp_path, capture_network_bodies=True)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="preview-api.vm6.ai",
+        method="POST",
+        path="/api/ordinary/%2e%2e/test/example",
+        request_headers=headers(
+            ("Host", "preview-api.vm6.ai"),
+            ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+        ),
+    )
+    monkeypatch.setattr(platform_api, "VERCEL_BYPASS", "preview-secret")
+
+    with mitm_ctx(
+        registry_path=str(reg_path),
+        api_url="https://preview-api.vm6.ai",
+    ):
+        mitm_addon.requestheaders(flow)
+
+        _assert_no_request_stream(flow)
+        assert flow.response is None
+        assert "x-vercel-protection-bypass" not in flow.request.headers
+        assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "unsafe_platform_path"
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+
+
 async def test_streamed_wrong_scheme_does_not_receive_runner_preview_bypass(
     tmp_path, real_flow, mitm_ctx, headers, monkeypatch
 ):

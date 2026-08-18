@@ -28,7 +28,7 @@ const usageMembersResponseSchema = z.object({
 /**
  * Zero contract for GET /api/okou/usage/members
  */
-export const zeroUsageMembersContract = c.router({
+export const usageMembersContract = c.router({
   get: {
     method: "GET",
     path: "/api/okou/usage/members",
@@ -48,7 +48,7 @@ export const zeroUsageMembersContract = c.router({
   },
 });
 
-export type ZeroUsageMembersContract = typeof zeroUsageMembersContract;
+export type UsageMembersContract = typeof usageMembersContract;
 
 // Inferred types from Zod schemas
 export type MemberUsage = z.infer<typeof memberUsageSchema>;

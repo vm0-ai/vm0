@@ -4,9 +4,9 @@ import {
   type ModelProviderResponse,
 } from "@okouai/api-contracts/contracts/model-providers";
 import {
-  zeroModelProvidersByTypeContract,
-  zeroModelProvidersMainContract,
-} from "@okouai/api-contracts/contracts/zero-model-providers";
+  modelProvidersByTypeContract,
+  modelProvidersMainContract,
+} from "@okouai/api-contracts/contracts/model-provider-routes";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -78,7 +78,7 @@ const upsertModelProviderInner$ = command(
     }
 
     const bodyResult = await get(
-      bodyResultOf(zeroModelProvidersMainContract.upsert),
+      bodyResultOf(modelProvidersMainContract.upsert),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -181,9 +181,7 @@ const deleteModelProviderInner$ = command(
       return adminRequired;
     }
 
-    const params = await get(
-      pathParamsOf(zeroModelProvidersByTypeContract.delete),
-    );
+    const params = await get(pathParamsOf(modelProvidersByTypeContract.delete));
     signal.throwIfAborted();
 
     const result = await set(
@@ -202,21 +200,21 @@ const deleteModelProviderInner$ = command(
 
 export const zeroModelProvidersRoutes: readonly RouteEntry[] = [
   {
-    route: zeroModelProvidersMainContract.list,
+    route: modelProvidersMainContract.list,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       listModelProvidersInner$,
     ),
   },
   {
-    route: zeroModelProvidersMainContract.upsert,
+    route: modelProvidersMainContract.upsert,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       upsertModelProviderInner$,
     ),
   },
   {
-    route: zeroModelProvidersByTypeContract.delete,
+    route: modelProvidersByTypeContract.delete,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       deleteModelProviderInner$,

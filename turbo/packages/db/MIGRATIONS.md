@@ -39,9 +39,17 @@ delete the workflow, probe, focused validator, and this entry together.
 | --------------------------------- | ------------------------------------------------- | -------------- |
 | #27613 / #27656 / #27671 / #27792 | Agent/Compose consolidation production preflight  | #26938 Stage 8 |
 | #27665                            | Integration identity Contract readiness preflight | #27602         |
+| #27896                            | Agent execution authority classifier and helpers  | #26938 Stage 8 |
+| #27896                            | Application Compose projection adapter            | #26938 Stage 8 |
+| #27896                            | Legacy exception runtime path                     | #26938 Stage 8 |
+| #27896                            | Run-context authority telemetry                   | #26938 Stage 8 |
 
 <!-- vm0-transition-validator:#27613+#27656+#27671+#27792|agent-compose-consolidation-preflight|removal-owner:#26938-stage-8 -->
 <!-- vm0-transition-validator:#27665|integration-identity-contract-readiness-preflight|removal-owner:#27602 -->
+<!-- vm0-transition-validator:#27896|agent-execution-authority-classifier-and-helpers|removal-owner:#26938-stage-8 -->
+<!-- vm0-transition-validator:#27896|application-compose-projection-adapter|removal-owner:#26938-stage-8 -->
+<!-- vm0-transition-validator:#27896|legacy-exception-runtime-path|removal-owner:#26938-stage-8 -->
+<!-- vm0-transition-validator:#27896|run-context-authority-telemetry|removal-owner:#26938-stage-8 -->
 
 ## Migration patterns
 

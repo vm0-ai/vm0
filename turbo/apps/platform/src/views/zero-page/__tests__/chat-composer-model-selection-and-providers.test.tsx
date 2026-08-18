@@ -26,7 +26,7 @@ import { zeroUserPermissionGrantsContract } from "@okouai/api-contracts/contract
 import { claudeCodeDeviceAuthContract } from "@okouai/api-contracts/contracts/claude-code-device-auth";
 import { codexDeviceAuthContract } from "@okouai/api-contracts/contracts/codex-device-auth";
 import { zeroPersonalModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-personal-model-providers";
-import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
+import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
 import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
 import {
   userModelPreferenceContract,
@@ -167,7 +167,7 @@ describe("chat composer models", () => {
     let preferenceRequestCount = 0;
 
     mockOrgModelRoutes("claude-fable-5");
-    context.mocks.api(zeroModelPoliciesMainContract.list, ({ respond }) => {
+    context.mocks.api(modelPoliciesMainContract.list, ({ respond }) => {
       policiesRequestCount += 1;
       return respond(200, {
         policies: [policy],
@@ -218,7 +218,7 @@ describe("chat composer models", () => {
 
     mockOrgModelRoutes("claude-fable-5");
     context.mocks.api(
-      zeroModelPoliciesMainContract.list,
+      modelPoliciesMainContract.list,
       async ({ respond, withSignal }) => {
         if (blockModelRequests) {
           await withSignal(pendingModelRequests.promise);
@@ -2185,7 +2185,7 @@ describe("chat composer models", () => {
     let runCreateCount = 0;
 
     context.mocks.api(
-      zeroModelPoliciesMainContract.list,
+      modelPoliciesMainContract.list,
       async ({ respond, withSignal }) => {
         await withSignal(policyGate.promise);
         return respond(200, {

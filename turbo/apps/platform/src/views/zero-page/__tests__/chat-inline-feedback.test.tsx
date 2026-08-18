@@ -6,7 +6,7 @@ import {
   type UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import type { OrgModelPolicy } from "@okouai/api-contracts/contracts/model-providers";
-import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
+import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
 import { zeroWorkflowsCollectionContract } from "@okouai/api-contracts/contracts/zero-workflows";
 import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@okouai/core";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -1325,7 +1325,7 @@ describe("chat inline feedback", () => {
     let runCreateCount = 0;
 
     context.mocks.api(
-      zeroModelPoliciesMainContract.list,
+      modelPoliciesMainContract.list,
       async ({ respond, withSignal }) => {
         await withSignal(policyGate.promise);
         return respond(200, {

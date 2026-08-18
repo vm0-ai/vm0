@@ -41,8 +41,8 @@ import { integrationsAgentPhoneContract } from "@okouai/api-contracts/contracts/
 import { integrationsSlackContract } from "@okouai/api-contracts/contracts/integrations-slack";
 import { zeroIntegrationsTelegramContract } from "@okouai/api-contracts/contracts/zero-integrations-telegram";
 import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
-import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
-import { zeroModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-model-providers";
+import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
+import { modelProvidersMainContract } from "@okouai/api-contracts/contracts/model-provider-routes";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { slackChannelsContract } from "@okouai/api-contracts/contracts/slack-channels";
 import { slackConnectContract } from "@okouai/api-contracts/contracts/slack-connect";
@@ -1209,7 +1209,7 @@ export function createBddIntegrationApi(context: TestContext) {
 
     async configureSlackRunModelPolicies(actor: ApiTestUser): Promise<void> {
       const providers = setupApp({ context, routes: zeroModelProvidersRoutes })(
-        zeroModelProvidersMainContract,
+        modelProvidersMainContract,
       );
       const anthropic = await accept(
         providers.upsert({
@@ -1227,7 +1227,7 @@ export function createBddIntegrationApi(context: TestContext) {
       );
       await accept(
         setupApp({ context, routes: modelPoliciesRoutes })(
-          zeroModelPoliciesMainContract,
+          modelPoliciesMainContract,
         ).update({
           headers: authenticate(context, routeMocks, actor),
           body: {

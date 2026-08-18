@@ -29,7 +29,7 @@ import {
   type CodexDeviceAuthScope,
   codexDeviceAuthContract,
 } from "@okouai/api-contracts/contracts/codex-device-auth";
-import { zeroModelProvidersByTypeContract } from "@okouai/api-contracts/contracts/zero-model-providers";
+import { modelProvidersByTypeContract } from "@okouai/api-contracts/contracts/model-provider-routes";
 import { http, HttpResponse } from "msw";
 
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
@@ -768,7 +768,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       actor: ApiTestUser,
       type: "claude-code-oauth-token" | "codex-oauth-token",
     ): Promise<void> {
-      const client = authDeviceApp(context)(zeroModelProvidersByTypeContract);
+      const client = authDeviceApp(context)(modelProvidersByTypeContract);
       await accept(
         client.delete({
           params: { type },

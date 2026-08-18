@@ -19,8 +19,8 @@ import {
   type UserPermissionGrantResponse,
 } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
 import { runnerRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
-import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
-import { zeroModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-model-providers";
+import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
+import { modelProvidersMainContract } from "@okouai/api-contracts/contracts/model-provider-routes";
 import type { ModelProviderResponse } from "@okouai/api-contracts/contracts/model-providers";
 import {
   cronProcessUsageEventsContract,
@@ -103,10 +103,10 @@ type RunnerConnectorRuntimeSyncStatus = 200 | 400 | 401 | 403 | 404 | 409 | 500;
 type RunnerActiveInputDeliveryStatus = 200 | 400 | 401 | 403 | 500;
 type ComposeContent = z.infer<typeof agentComposeApiContentSchema>;
 type OrgModelPolicyRequest = z.infer<
-  (typeof zeroModelPoliciesMainContract.update)["body"]
+  (typeof modelPoliciesMainContract.update)["body"]
 >;
 type OrgModelProviderUpsertRequest = z.infer<
-  (typeof zeroModelProvidersMainContract.upsert)["body"]
+  (typeof modelProvidersMainContract.upsert)["body"]
 >;
 type RunnerHeartbeatBody = z.infer<
   (typeof runnersHeartbeatContract.heartbeat)["body"]
@@ -862,7 +862,7 @@ export function createRunsApi(context: TestContext) {
       actor: ApiTestUser,
     ): Promise<readonly ModelProviderResponse[]> {
       const response = await accept(
-        runApp(context)(zeroModelProvidersMainContract).list({
+        runApp(context)(modelProvidersMainContract).list({
           headers: authenticate(context, actor),
         }),
         [200],
@@ -879,7 +879,7 @@ export function createRunsApi(context: TestContext) {
       body: OrgModelProviderUpsertRequest,
     ): Promise<{ readonly providerId: string }> {
       const response = await accept(
-        runApp(context)(zeroModelProvidersMainContract).upsert({
+        runApp(context)(modelProvidersMainContract).upsert({
           headers: authenticate(context, actor),
           body,
         }),
@@ -897,7 +897,7 @@ export function createRunsApi(context: TestContext) {
       policies: OrgModelPolicyRequest["policies"],
     ): Promise<void> {
       await accept(
-        runApp(context)(zeroModelPoliciesMainContract).update({
+        runApp(context)(modelPoliciesMainContract).update({
           headers: authenticate(context, actor),
           body: { policies },
         }),
@@ -909,7 +909,7 @@ export function createRunsApi(context: TestContext) {
       actor: ApiTestUser,
     ): Promise<{ readonly providerId: string }> {
       const providerResponse = await accept(
-        runApp(context)(zeroModelProvidersMainContract).upsert({
+        runApp(context)(modelProvidersMainContract).upsert({
           headers: authenticate(context, actor),
           body: {
             type: "anthropic-api-key",
@@ -931,7 +931,7 @@ export function createRunsApi(context: TestContext) {
       ];
 
       await accept(
-        runApp(context)(zeroModelPoliciesMainContract).update({
+        runApp(context)(modelPoliciesMainContract).update({
           headers: authenticate(context, actor),
           body: { policies },
         }),

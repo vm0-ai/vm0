@@ -259,6 +259,7 @@ export const EXPECTED_REPOSITORY_DEPENDENCIES = {
     "turbo/apps/api/src/signals/routes/chat-threads-image-model.ts|agentComposeId",
     "turbo/apps/api/src/signals/routes/chat-threads-mark-agent-read.ts|agentComposeId,zeroAgents",
     "turbo/apps/api/src/signals/routes/chat-threads-mark-read.ts|agentComposeId",
+    "turbo/apps/api/src/signals/routes/chat-threads-mark-unread.ts|agentComposeId",
     "turbo/apps/api/src/signals/routes/chat-threads-model-selection.ts|agentComposeId",
     "turbo/apps/api/src/signals/routes/chat-threads-pin.ts|agentComposeId",
     "turbo/apps/api/src/signals/routes/chat-threads-rename.ts|agentComposeId",
@@ -274,6 +275,7 @@ export const EXPECTED_REPOSITORY_DEPENDENCIES = {
     "turbo/apps/api/src/signals/services/agent-compose-provenance-lifecycle.service.ts|agentComposes",
     "turbo/apps/api/src/signals/services/agent-compose.service.ts|agentComposeId,agentComposeVersions,agentComposes,headVersionId",
     "turbo/apps/api/src/signals/services/agent-data.service.ts|agentComposes,headVersionId,zeroAgents",
+    "turbo/apps/api/src/signals/services/agent-execution-authority.ts|headVersionId",
     "turbo/apps/api/src/signals/services/agent-instructions.service.ts|agentComposeVersions,agentComposes,headVersionId,zeroAgents",
     "turbo/apps/api/src/signals/services/agent-run-create.service.ts|agentComposeId,agentComposeVersionId,agentComposeVersions,agentComposes,headVersionId",
     "turbo/apps/api/src/signals/services/agent-run-storage.service.ts|headVersionId",
@@ -397,6 +399,10 @@ export const EXPECTED_REPOSITORY_DEPENDENCIES = {
   transitionValidators: [
     "#27613+#27656+#27671+#27792|agent-compose-consolidation-preflight|removal-owner:#26938-stage-8",
     "#27665|integration-identity-contract-readiness-preflight|removal-owner:#27602",
+    "#27896|agent-execution-authority-classifier-and-helpers|removal-owner:#26938-stage-8",
+    "#27896|application-compose-projection-adapter|removal-owner:#26938-stage-8",
+    "#27896|legacy-exception-runtime-path|removal-owner:#26938-stage-8",
+    "#27896|run-context-authority-telemetry|removal-owner:#26938-stage-8",
   ],
 } as const satisfies RepositoryDependencyManifest;
 
