@@ -31,7 +31,7 @@ import {
   buildTeamsConnectUrlForActivity,
   publishTeamsChanged$,
   recordTeamsInstallationActivity$,
-} from "../services/zero-teams-connect.service";
+} from "../services/teams-connect.service";
 import {
   dispatchTeamsMessageToAgent$,
   teamsWelcomeText,
