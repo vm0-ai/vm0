@@ -7,7 +7,7 @@ import {
 } from "node:crypto";
 
 import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
-import { zeroTeamsConnectContract } from "@okouai/api-contracts/contracts/zero-teams-connect";
+import { teamsConnectContract } from "@okouai/api-contracts/contracts/teams-connect";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
@@ -801,7 +801,7 @@ async function connectTeamsFixture(
 ): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
   const client = setupApp({ context, routes: teamsConnectRoutes })(
-    zeroTeamsConnectContract,
+    teamsConnectContract,
   );
   await accept(
     client.connect({
@@ -1103,7 +1103,7 @@ describe("POST /api/zero/teams/bot", () => {
 
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const client = setupApp({ context, routes: teamsConnectRoutes })(
-      zeroTeamsConnectContract,
+      teamsConnectContract,
     );
     await accept(
       client.connect({
@@ -3294,7 +3294,7 @@ describe("POST /api/zero/teams/bot", () => {
     await flushWaitUntilForTest();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const client = setupApp({ context, routes: teamsConnectRoutes })(
-      zeroTeamsConnectContract,
+      teamsConnectContract,
     );
     await accept(
       client.connect({

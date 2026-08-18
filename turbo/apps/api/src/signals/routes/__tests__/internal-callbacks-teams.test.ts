@@ -2,7 +2,7 @@ import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 
 import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
-import { zeroTeamsConnectContract } from "@okouai/api-contracts/contracts/zero-teams-connect";
+import { teamsConnectContract } from "@okouai/api-contracts/contracts/teams-connect";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -342,7 +342,7 @@ async function connectTeamsFixture(
   const client = setupApp({
     context,
     routes: teamsConnectRoutes,
-  })(zeroTeamsConnectContract);
+  })(teamsConnectContract);
   await accept(
     client.connect({
       headers: {

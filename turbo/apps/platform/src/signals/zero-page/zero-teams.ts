@@ -1,9 +1,9 @@
 import { command, computed, state } from "ccstate";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import {
-  zeroTeamsConnectContract,
+  teamsConnectContract,
   type TeamsConnectStatus,
-} from "@okouai/api-contracts/contracts/zero-teams-connect";
+} from "@okouai/api-contracts/contracts/teams-connect";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import { setAblyLoop$ } from "../realtime.ts";
@@ -14,7 +14,7 @@ const internalTeamsStatus$ = state<TeamsConnectStatus | null>(null);
 
 export const teamsOrgData$ = computed(async (get) => {
   get(internalReload$);
-  const client = get(zeroClient$)(zeroTeamsConnectContract);
+  const client = get(zeroClient$)(teamsConnectContract);
   const result = await accept(client.getStatus(), [200]);
   return result.body;
 });
@@ -93,7 +93,7 @@ export const setShowTeamsUninstallDialog$ = command(
 
 export const disconnectTeamsOrg$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const client = get(zeroClient$)(zeroTeamsConnectContract);
+    const client = get(zeroClient$)(teamsConnectContract);
     await accept(client.disconnect(), [200]);
     signal.throwIfAborted();
     set(reloadTeamsOrg$);
@@ -102,7 +102,7 @@ export const disconnectTeamsOrg$ = command(
 
 export const uninstallTeamsOrg$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const client = get(zeroClient$)(zeroTeamsConnectContract);
+    const client = get(zeroClient$)(teamsConnectContract);
     await accept(client.disconnect({ query: { action: "uninstall" } }), [200]);
     signal.throwIfAborted();
     set(reloadTeamsOrg$);

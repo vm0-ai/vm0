@@ -67,7 +67,7 @@ const teamsDisconnectResponseSchema = z.object({
   success: z.literal(true),
 });
 
-export const zeroTeamsConnectContract = c.router({
+export const teamsConnectContract = c.router({
   getStatus: {
     method: "GET",
     path: "/api/okou/integrations/teams/connect",
@@ -115,4 +115,4 @@ export type TeamsConnectResponse = z.infer<typeof teamsConnectResponseSchema>;
 export type TeamsDisconnectResponse = z.infer<
   typeof teamsDisconnectResponseSchema
 >;
-export type ZeroTeamsConnectContract = typeof zeroTeamsConnectContract;
+export type TeamsConnectContract = typeof teamsConnectContract;

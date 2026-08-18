@@ -5,7 +5,7 @@ import {
   integrationsTeamsMessageContract,
   integrationsTeamsUploadCompleteContract,
 } from "@okouai/api-contracts/contracts/integrations";
-import { zeroTeamsConnectContract } from "@okouai/api-contracts/contracts/zero-teams-connect";
+import { teamsConnectContract } from "@okouai/api-contracts/contracts/teams-connect";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -141,7 +141,7 @@ async function seedConnectedTeams(fixture: TeamsConnectFixture): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
   const client = setupApp({ context, routes: teamsConnectRoutes })(
-    zeroTeamsConnectContract,
+    teamsConnectContract,
   );
   await accept(
     client.connect({

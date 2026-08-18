@@ -3,9 +3,9 @@ import {
   type SlackOrgStatus,
 } from "@okouai/api-contracts/contracts/zero-integrations-slack";
 import {
-  zeroTeamsConnectContract,
+  teamsConnectContract,
   type TeamsConnectStatus,
-} from "@okouai/api-contracts/contracts/zero-teams-connect";
+} from "@okouai/api-contracts/contracts/teams-connect";
 import {
   FEISHU_OAUTH_SCOPES,
   zeroFeishuConnectContract,
@@ -87,7 +87,7 @@ function mockTeamsAPI(overrides: Partial<TeamsConnectStatus> = {}): void {
       "https://teams.microsoft.com/l/app/00000000-0000-0000-0000-000000000001",
     connectUrl: "/api/okou/teams/oauth/connect?orgId=org_1&userId=user_1",
   };
-  context.mocks.api(zeroTeamsConnectContract.getStatus, ({ respond }) => {
+  context.mocks.api(teamsConnectContract.getStatus, ({ respond }) => {
     return respond(200, { ...defaults, ...overrides });
   });
 }
