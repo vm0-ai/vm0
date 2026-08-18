@@ -18,10 +18,10 @@ const slackConnectResponseSchema = z.object({
 });
 
 /**
- * Zero Slack connect contract (GET/POST /api/okou/integrations/slack/connect)
+ * Slack connect contract (GET/POST /api/okou/integrations/slack/connect)
  * Manages per-user Slack connection.
  */
-export const zeroSlackConnectContract = c.router({
+export const slackConnectContract = c.router({
   getStatus: {
     method: "GET",
     path: "/api/okou/integrations/slack/connect",
@@ -53,4 +53,4 @@ export const zeroSlackConnectContract = c.router({
   },
 });
 
-export type ZeroSlackConnectContract = typeof zeroSlackConnectContract;
+export type SlackConnectContract = typeof slackConnectContract;

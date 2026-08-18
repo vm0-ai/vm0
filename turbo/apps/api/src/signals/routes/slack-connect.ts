@@ -1,5 +1,5 @@
 import { command, computed } from "ccstate";
-import { zeroSlackConnectContract } from "@okouai/api-contracts/contracts/zero-slack-connect";
+import { slackConnectContract } from "@okouai/api-contracts/contracts/slack-connect";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -33,7 +33,7 @@ const connectInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   signal.throwIfAborted();
 
-  const bodyResult = await get(bodyResultOf(zeroSlackConnectContract.connect));
+  const bodyResult = await get(bodyResultOf(slackConnectContract.connect));
   signal.throwIfAborted();
   if (!bodyResult.ok) {
     return bodyResult.response;
@@ -126,11 +126,11 @@ const slackConnectWriteAuth = {
 
 export const slackConnectRoutes: readonly RouteEntry[] = [
   {
-    route: zeroSlackConnectContract.getStatus,
+    route: slackConnectContract.getStatus,
     handler: authRoute(slackConnectAuth, getSlackConnectStatusInner$),
   },
   {
-    route: zeroSlackConnectContract.connect,
+    route: slackConnectContract.connect,
     handler: authRoute(slackConnectWriteAuth, connectInner$),
   },
 ];

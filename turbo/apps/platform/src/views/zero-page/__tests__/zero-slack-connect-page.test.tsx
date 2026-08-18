@@ -1,5 +1,5 @@
 import { screen, waitFor } from "@testing-library/react";
-import { zeroSlackConnectContract } from "@okouai/api-contracts/contracts/zero-slack-connect";
+import { slackConnectContract } from "@okouai/api-contracts/contracts/slack-connect";
 import { describe, expect, it } from "vitest";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -18,7 +18,7 @@ function slackConnectPath(): string {
 
 describe("zero Slack connect page", () => {
   it("shows the connected Slack workspace state", async () => {
-    context.mocks.api(zeroSlackConnectContract.getStatus, ({ respond }) => {
+    context.mocks.api(slackConnectContract.getStatus, ({ respond }) => {
       return respond(200, {
         isConnected: true,
         isAdmin: false,

@@ -1,7 +1,7 @@
 import {
   type SlackOrgStatus,
-  zeroIntegrationsSlackContract,
-} from "@okouai/api-contracts/contracts/zero-integrations-slack";
+  integrationsSlackContract,
+} from "@okouai/api-contracts/contracts/integrations-slack";
 import { slackChannelsContract } from "@okouai/api-contracts/contracts/slack-channels";
 import { mockApi } from "../msw-contract.ts";
 
@@ -35,12 +35,12 @@ export function resetMockSlackOrgIntegration(): void {
 
 export const apiIntegrationsSlackOrgHandlers = [
   // GET /api/okou/integrations/slack
-  mockApi(zeroIntegrationsSlackContract.getStatus, ({ respond }) => {
+  mockApi(integrationsSlackContract.getStatus, ({ respond }) => {
     return respond(200, mockSlackOrgData);
   }),
 
   // DELETE /api/okou/integrations/slack
-  mockApi(zeroIntegrationsSlackContract.disconnect, ({ query, respond }) => {
+  mockApi(integrationsSlackContract.disconnect, ({ query, respond }) => {
     if (query.action === "uninstall") {
       mockSlackOrgData = {
         ...mockSlackOrgData,

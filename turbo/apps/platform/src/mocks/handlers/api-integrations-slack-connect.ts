@@ -5,7 +5,7 @@
  * Default behavior: user is not yet connected.
  */
 
-import { zeroSlackConnectContract } from "@okouai/api-contracts/contracts/zero-slack-connect";
+import { slackConnectContract } from "@okouai/api-contracts/contracts/slack-connect";
 import { mockApi } from "../msw-contract.ts";
 
 interface MockSlackConnectData {
@@ -27,7 +27,7 @@ export function resetMockSlackConnect(): void {
 
 export const apiIntegrationsSlackConnectHandlers = [
   // GET /api/okou/integrations/slack/connect — check connection status
-  mockApi(zeroSlackConnectContract.getStatus, ({ respond }) => {
+  mockApi(slackConnectContract.getStatus, ({ respond }) => {
     return respond(200, {
       isConnected: mockData.isConnected,
       isAdmin: false,
@@ -37,7 +37,7 @@ export const apiIntegrationsSlackConnectHandlers = [
   // POST /api/okou/integrations/slack/connect — connect account
   // body ({ workspaceId, slackUserId, channelId?, threadTs? }) is contract-typed
   // but not used for routing — the mock simulates errors via mockData.postError.
-  mockApi(zeroSlackConnectContract.connect, ({ respond }) => {
+  mockApi(slackConnectContract.connect, ({ respond }) => {
     if (mockData.postError) {
       return respond(400, {
         error: { message: mockData.postError, code: "BAD_REQUEST" },
