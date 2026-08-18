@@ -101,6 +101,20 @@ export async function deleteCustomConnectorCredentialValues(
   });
 }
 
+export async function clearFeishuConnectorOwnership(
+  context: TestContext,
+  args: {
+    readonly orgId: string;
+    readonly installationId: string;
+  },
+): Promise<void> {
+  await postAction(context, {
+    action: "clear-feishu-connector-ownership",
+    org_id: args.orgId,
+    installation_id: args.installationId,
+  });
+}
+
 export async function seedLegacyCustomFeishuOAuthState(
   context: TestContext,
   args: {

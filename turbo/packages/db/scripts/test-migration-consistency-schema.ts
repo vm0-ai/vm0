@@ -6960,6 +6960,233 @@ async function validateChatEventContractionFinalization(): Promise<void> {
   }
 }
 
+async function validateFeishuConnectorOwnershipCleanup(): Promise<void> {
+  console.log("=== Validate Feishu connector ownership cleanup ===\n");
+
+  const testDb = "migration_feishu_connector_ownership_cleanup_test";
+  await createDatabase(testDb);
+  const dbUrl = createTestDbUrl(testDb);
+
+  try {
+    const client = new Client({ connectionString: dbUrl });
+    await client.connect();
+
+    try {
+      await applyMigrationsUpToTag(
+        client,
+        "0939_backfill_feishu_custom_connector_ownership",
+      );
+
+      const orgId = "org_feishu_ownership_cleanup";
+      const userId = "user_feishu_ownership_cleanup";
+      const composeId = "00000000-0000-4000-8000-000000094001";
+      const matchedInstallationId = "00000000-0000-4000-8000-000000094002";
+      const matchedConnectorId = "00000000-0000-4000-8000-000000094003";
+      const mismatchedInstallationId = "00000000-0000-4000-8000-000000094004";
+      const mismatchedConnectorId = "00000000-0000-4000-8000-000000094005";
+
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES ($1, $2, 'feishu-ownership-cleanup', $3)
+        `,
+        [composeId, userId, orgId],
+      );
+      await client.query("BEGIN");
+      await client.query(
+        `
+          INSERT INTO "org_custom_connectors" (
+            "id",
+            "org_id",
+            "slug",
+            "display_name",
+            "prefix_templates",
+            "fields",
+            "header_injections",
+            "query_injections",
+            "auth_mode",
+            "created_by"
+          ) VALUES
+            (
+              $1,
+              $2,
+              '_feishu-' || $3::text,
+              'Matched Feishu connector',
+              '["https://open.feishu.cn/open-apis/"]'::jsonb,
+              '[]'::jsonb,
+              '[{"name":"Authorization","valueTemplate":"Bearer {{oauth.access_token}}"}]'::jsonb,
+              '[]'::jsonb,
+              'oauth',
+              $4
+            ),
+            (
+              $5,
+              $2,
+              '_feishu-' || $6::text,
+              'Mismatched Feishu connector',
+              '["https://open.feishu.cn/open-apis/"]'::jsonb,
+              '[]'::jsonb,
+              '[{"name":"Authorization","valueTemplate":"Bearer {{oauth.access_token}}"}]'::jsonb,
+              '[]'::jsonb,
+              'oauth',
+              $4
+            )
+        `,
+        [
+          matchedConnectorId,
+          orgId,
+          matchedInstallationId,
+          userId,
+          mismatchedConnectorId,
+          mismatchedInstallationId,
+        ],
+      );
+      await client.query(
+        `
+          INSERT INTO "org_custom_connector_oauth_configs" (
+            "connector_id",
+            "org_id",
+            "provider_adapter",
+            "client_id",
+            "encrypted_client_secret",
+            "authorization_url",
+            "token_url",
+            "token_endpoint_auth_method",
+            "pkce_method"
+          ) VALUES
+            (
+              $1,
+              $2,
+              'feishu',
+              'cli_matched',
+              'encrypted-matched-secret',
+              'https://accounts.feishu.cn/open-apis/authen/v1/authorize',
+              'https://open.feishu.cn/open-apis/authen/v2/oauth/token',
+              'client_secret_post',
+              'none'
+            ),
+            (
+              $3,
+              $2,
+              'feishu',
+              'cli_wrong',
+              'encrypted-mismatched-secret',
+              'https://accounts.feishu.cn/open-apis/authen/v1/authorize',
+              'https://open.feishu.cn/open-apis/authen/v2/oauth/token',
+              'client_secret_post',
+              'none'
+            )
+        `,
+        [matchedConnectorId, orgId, mismatchedConnectorId],
+      );
+      await client.query("COMMIT");
+      await client.query(
+        `
+          INSERT INTO "feishu_org_installations" (
+            "id",
+            "org_id",
+            "owner_user_id",
+            "app_id",
+            "encrypted_app_secret",
+            "encrypted_verification_token",
+            "encrypted_encrypt_key",
+            "default_compose_id"
+          ) VALUES
+            (
+              $1,
+              $2,
+              $3,
+              'cli_matched',
+              'encrypted-matched-secret',
+              'encrypted-matched-verification-token',
+              'encrypted-matched-key',
+              $4
+            ),
+            (
+              $5,
+              $2,
+              $3,
+              'cli_mismatched',
+              'encrypted-mismatched-secret',
+              'encrypted-mismatched-verification-token',
+              'encrypted-mismatched-key',
+              $4
+            )
+        `,
+        [
+          matchedInstallationId,
+          orgId,
+          userId,
+          composeId,
+          mismatchedInstallationId,
+        ],
+      );
+
+      await applyMigrationsUpToTag(
+        client,
+        "0940_reconcile_feishu_custom_connector_ownership",
+      );
+
+      const ownershipRows = await client.query<{
+        customConnectorId: string | null;
+        id: string;
+      }>(
+        `
+          SELECT
+            "id",
+            "custom_connector_id" AS "customConnectorId"
+          FROM "feishu_org_installations"
+          WHERE "org_id" = $1
+          ORDER BY "id"
+        `,
+        [orgId],
+      );
+      assert.deepEqual(ownershipRows.rows, [
+        {
+          id: matchedInstallationId,
+          customConnectorId: matchedConnectorId,
+        },
+        {
+          id: mismatchedInstallationId,
+          customConnectorId: null,
+        },
+      ]);
+
+      const migrationSql = readFileSync(
+        path.join(
+          MIGRATIONS_DIR,
+          "0940_reconcile_feishu_custom_connector_ownership.sql",
+        ),
+        "utf-8",
+      );
+      await client.query(migrationSql);
+      const rerunRows = await client.query<{
+        customConnectorId: string | null;
+        id: string;
+      }>(
+        `
+          SELECT
+            "id",
+            "custom_connector_id" AS "customConnectorId"
+          FROM "feishu_org_installations"
+          WHERE "org_id" = $1
+          ORDER BY "id"
+        `,
+        [orgId],
+      );
+      assert.deepEqual(rerunRows.rows, ownershipRows.rows);
+
+      console.log("   ✅ exact legacy ownership is reconciled");
+      console.log("   ✅ mismatched application ownership remains unlinked");
+      console.log("   ✅ cleanup reruns without changing ownership\n");
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function validateLatestSnapshotAccuracy(): Promise<void> {
   console.log("=== Phase 1.5: Validate Latest Snapshot Accuracy ===\n");
 
@@ -11820,6 +12047,7 @@ async function main(): Promise<void> {
     await validateAgentRunMetadataStage2Final();
     await validateAgentRunMetadataStage2Runner();
     await validateAgentRunLaunchSnapshotMigration();
+    await validateFeishuConnectorOwnershipCleanup();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
