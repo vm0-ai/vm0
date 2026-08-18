@@ -6,7 +6,7 @@ const c = initContract();
 
 const jsonErrorSchema = z.object({ error: z.string() });
 
-export const zeroTeamsOauthConnectQuerySchema = z.object({
+export const teamsOauthConnectQuerySchema = z.object({
   orgId: z.string().optional(),
   userId: z.string().optional(),
   // Old web/app OAuth fallback (observed maximum: ~2 days).
@@ -15,18 +15,18 @@ export const zeroTeamsOauthConnectQuerySchema = z.object({
   prompt: z.string().optional(),
 });
 
-export const zeroTeamsOauthCallbackQuerySchema = z.object({
+export const teamsOauthCallbackQuerySchema = z.object({
   code: z.string().optional(),
   error: z.string().optional(),
   error_description: z.string().optional(),
   state: z.string().optional(),
 });
 
-export const zeroTeamsOauthContract = c.router({
+export const teamsOauthContract = c.router({
   connect: {
     method: "GET",
     path: "/api/okou/teams/oauth/connect",
-    query: zeroTeamsOauthConnectQuerySchema,
+    query: teamsOauthConnectQuerySchema,
     responses: {
       307: c.noBody(),
       400: jsonErrorSchema,
@@ -37,7 +37,7 @@ export const zeroTeamsOauthContract = c.router({
   callback: {
     method: "GET",
     path: "/api/okou/teams/oauth/callback",
-    query: zeroTeamsOauthCallbackQuerySchema,
+    query: teamsOauthCallbackQuerySchema,
     responses: {
       307: c.noBody(),
       400: jsonErrorSchema,
@@ -47,10 +47,10 @@ export const zeroTeamsOauthContract = c.router({
   },
 });
 
-export type ZeroTeamsOauthContract = typeof zeroTeamsOauthContract;
-export type ZeroTeamsOauthConnectQuery = z.infer<
-  typeof zeroTeamsOauthConnectQuerySchema
+export type TeamsOauthContract = typeof teamsOauthContract;
+export type TeamsOauthConnectQuery = z.infer<
+  typeof teamsOauthConnectQuerySchema
 >;
-export type ZeroTeamsOauthCallbackQuery = z.infer<
-  typeof zeroTeamsOauthCallbackQuerySchema
+export type TeamsOauthCallbackQuery = z.infer<
+  typeof teamsOauthCallbackQuerySchema
 >;
