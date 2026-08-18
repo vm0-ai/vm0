@@ -87,13 +87,20 @@ pub struct FlushReport {
 
 /// Persist the current read position for a file.
 fn save_position(pos_path: impl AsRef<Path>, pos: u64) -> std::io::Result<()> {
-    paths::write_private(pos_path, pos.to_string())
+    let pos_path = pos_path.as_ref();
+    paths::write_private(pos_path, pos.to_string()).map_err(|error| {
+        std::io::Error::new(
+            error.kind(),
+            format!("persist telemetry position {}: {error}", pos_path.display()),
+        )
+    })
 }
 
-/// Persist all read positions and return the first error after attempting each write.
-fn save_positions(positions: [(&str, u64); 3]) -> std::io::Result<()> {
+/// Persist each advanced read position and return the first error after
+/// attempting every required write.
+fn save_positions(positions: [Option<(&str, u64)>; 3]) -> std::io::Result<()> {
     let mut first_error = None;
-    for (path, pos) in positions {
+    for (path, pos) in positions.into_iter().flatten() {
         if let Err(error) = save_position(path, pos) {
             first_error = first_error.or(Some(error));
         }
@@ -107,7 +114,7 @@ fn save_positions(positions: [(&str, u64); 3]) -> std::io::Result<()> {
 
 /// Persist positions while keeping the upload result successful if the local
 /// replay cursor cannot be recorded.
-fn save_positions_with_warning(positions: [(&str, u64); 3], warning: &str) -> bool {
+fn save_positions_with_warning(positions: [Option<(&str, u64)>; 3], warning: &str) -> bool {
     match save_positions(positions) {
         Ok(()) => true,
         Err(error) => {
@@ -154,22 +161,26 @@ async fn upload_telemetry(
     let log_pos = system_log.new_pos;
     let metrics_pos = metrics.new_pos;
     let sandbox_ops_pos = sandbox_ops.new_pos;
-    let made_progress =
-        system_log.made_progress || metrics.made_progress || sandbox_ops.made_progress;
+    let position_updates = [
+        system_log
+            .made_progress
+            .then_some((telemetry_paths.system_log_pos_file.as_str(), log_pos)),
+        metrics
+            .made_progress
+            .then_some((telemetry_paths.metrics_pos_file.as_str(), metrics_pos)),
+        sandbox_ops.made_progress.then_some((
+            telemetry_paths.sandbox_ops_pos_file.as_str(),
+            sandbox_ops_pos,
+        )),
+    ];
+    let made_progress = position_updates.iter().any(Option::is_some);
 
     // Nothing new
     if system_log.content.is_empty() && metrics.entries.is_empty() && sandbox_ops.entries.is_empty()
     {
         let position_persisted = if made_progress {
             save_positions_with_warning(
-                [
-                    (telemetry_paths.system_log_pos_file.as_str(), log_pos),
-                    (telemetry_paths.metrics_pos_file.as_str(), metrics_pos),
-                    (
-                        telemetry_paths.sandbox_ops_pos_file.as_str(),
-                        sandbox_ops_pos,
-                    ),
-                ],
+                position_updates,
                 "Telemetry skip-only progress was processed but position persistence failed",
             )
         } else {
@@ -202,14 +213,7 @@ async fn upload_telemetry(
     match http.post_json(url, &payload, 1).await {
         Ok(_) => {
             let position_persisted = save_positions_with_warning(
-                [
-                    (telemetry_paths.system_log_pos_file.as_str(), log_pos),
-                    (telemetry_paths.metrics_pos_file.as_str(), metrics_pos),
-                    (
-                        telemetry_paths.sandbox_ops_pos_file.as_str(),
-                        sandbox_ops_pos,
-                    ),
-                ],
+                position_updates,
                 "Telemetry upload succeeded but position persistence failed",
             );
             Ok(FlushReport {

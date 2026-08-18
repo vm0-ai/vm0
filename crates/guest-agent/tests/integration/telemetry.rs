@@ -544,6 +544,66 @@ async fn flush_reports_position_persistence_status_after_upload_then_recovers() 
 }
 
 #[tokio::test]
+async fn flush_ignores_unadvanced_position_write_failures() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+    let files = ExplicitTelemetryFiles::new("unadvanced-position-write-failure").unwrap();
+    let paths = &files.paths;
+    let system_log = paths.system_log_file();
+    let metrics_pos = paths.telemetry_metrics_pos_file();
+    let marker = "unadvanced-position-write-failure";
+    ensure_parent_dir(system_log);
+    ensure_parent_dir(metrics_pos);
+    std::fs::write(system_log, format!("{marker}\n")).expect("system log should be written");
+    std::fs::create_dir(metrics_pos).expect("unadvanced position directory should be created");
+    let system_log_guard = SystemLogOverrideGuard::set(system_log);
+
+    let upload_mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/telemetry");
+        then.status(200);
+    });
+
+    let masker = Arc::new(SecretMasker::from_raw(""));
+    let telemetry = guest_agent::telemetry::Telemetry::spawn_for_paths(
+        "test-run-001".to_string(),
+        paths,
+        masker,
+        http_client!(),
+    );
+
+    let first_report = telemetry
+        .flush(guest_agent::telemetry::UploadMode::Live)
+        .await
+        .expect("system log upload should ignore an unadvanced metrics position");
+    assert_eq!(
+        first_report,
+        guest_agent::telemetry::FlushReport {
+            uploaded: true,
+            position_persisted: true,
+        },
+    );
+
+    let second_report = telemetry
+        .flush(guest_agent::telemetry::UploadMode::Live)
+        .await
+        .expect("empty follow-up flush should remain successful");
+    assert_eq!(
+        second_report,
+        guest_agent::telemetry::FlushReport {
+            uploaded: false,
+            position_persisted: true,
+        },
+    );
+    upload_mock.assert_calls_async(1).await;
+
+    telemetry.shutdown().await;
+    drop(system_log_guard);
+    std::fs::remove_dir(metrics_pos).expect("unadvanced position directory should be removed");
+    upload_mock.delete_async().await;
+    remove_telemetry_files(paths);
+}
+
+#[tokio::test]
 async fn skip_only_metrics_progress_saves_position_without_posting_empty_payload() {
     let api = SharedApiMock::new().await;
     let server = api.server();
