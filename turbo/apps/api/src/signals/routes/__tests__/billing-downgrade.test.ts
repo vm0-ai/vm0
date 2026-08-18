@@ -28,7 +28,6 @@ const mocks = createZeroRouteMocks(context);
 
 const TEST_PRICE_PRO = "price_test_pro";
 const TEST_PRICE_TEAM = "price_test_team";
-const TEST_PRODUCT_CUSTOM = "prod_test_custom";
 const TEST_PRICE_CUSTOM = "price_test_custom";
 const TEST_USAGE_PACK_PLAN_PRO = "price_test_usage_pack_plan_pro";
 const TEST_USAGE_PACK_PLAN_TEAM = "price_test_usage_pack_plan_team";
@@ -766,7 +765,7 @@ describe("POST /api/zero/billing/downgrade", () => {
       ),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    mockEnv("OKOU_PRODUCT_CUSTOM", TEST_PRODUCT_CUSTOM);
+    mockEnv("OKOU_PRICE_CUSTOM", TEST_PRICE_CUSTOM);
 
     const periodStartUnix = Math.floor((now() - 86_400 * 1000) / 1000);
     const periodEndUnix = Math.floor(periodEnd.getTime() / 1000);
@@ -784,7 +783,6 @@ describe("POST /api/zero/billing/downgrade", () => {
             quantity: 1,
             price: {
               id: TEST_PRICE_CUSTOM,
-              product: TEST_PRODUCT_CUSTOM,
               recurring: { interval: "month", interval_count: 1 },
             },
           },

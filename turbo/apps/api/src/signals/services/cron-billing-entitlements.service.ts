@@ -69,6 +69,7 @@ interface SubscriptionInput {
   readonly cancel_at_period_end: boolean;
   readonly items: {
     readonly data: readonly {
+      readonly id?: string;
       readonly price: {
         readonly id: string;
         readonly product?: string | { readonly id: string } | null;
@@ -234,7 +235,17 @@ function usageAllowanceSubscriptionEnd(
   if (!periodEnd) {
     return null;
   }
-  return cancelAt && cancelAt < periodEnd ? cancelAt : periodEnd;
+  const allowanceCancelAtValue = subscription.metadata?.allowanceCancelAt;
+  const allowanceCancelAt = allowanceCancelAtValue
+    ? new Date(allowanceCancelAtValue)
+    : null;
+  return [cancelAt, allowanceCancelAt]
+    .filter((value): value is Date => {
+      return value !== null && !Number.isNaN(value.getTime());
+    })
+    .reduce((earliest, value) => {
+      return value < earliest ? value : earliest;
+    }, periodEnd);
 }
 
 function subscriptionCanRefreshPaidThrough(
@@ -852,6 +863,36 @@ async function reconcileUsageAllowanceCandidate(
   const periodEnd = usageAllowanceSubscriptionEnd(subscription);
   const canRefreshPaidThrough = subscriptionCanRefreshPaidThrough(subscription);
   const isPaymentFailed = subscriptionIsPaymentFailed(subscription);
+  const allowancePriceId = subscription.metadata?.allowancePriceId;
+  const sharedAllowanceItem = allowancePriceId
+    ? subscription.items.data.find((item) => {
+        return item.price.id === allowancePriceId;
+      })
+    : undefined;
+
+  if (
+    periodEnd &&
+    periodEnd <= now &&
+    sharedAllowanceItem?.id &&
+    knownBillingPlanPriceItem(subscription.items.data)
+  ) {
+    await stripe.subscriptions.update(subscription.id, {
+      items: [{ id: sharedAllowanceItem.id, deleted: true }],
+      metadata: {
+        ...subscription.metadata,
+        allowanceStatus: "canceled",
+        allowanceCancelAt: periodEnd.toISOString(),
+      },
+      proration_behavior: "none",
+    });
+    signal.throwIfAborted();
+    return await updateUsageAllowanceCandidate(
+      context,
+      candidate,
+      { status: "canceled", expiresAt: periodEnd },
+      signal,
+    );
+  }
 
   if (subscriptionIsTerminalUsageAllowance(subscription)) {
     return await updateUsageAllowanceCandidate(

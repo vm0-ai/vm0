@@ -11,8 +11,7 @@ import type {
 } from "@okouai/api-contracts/contracts/zero-billing";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
-import { orgUsageAllowanceEntitlements } from "@okouai/db/schema/org-usage-allowance";
-import { and, eq, gt, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { env } from "../../lib/env";
@@ -160,13 +159,6 @@ const CREDITS_PER_DOLLAR = 1000;
 const CREDIT_PURCHASE_PREVIEW_TTL_MS = 15 * 60 * 1000;
 const CREDIT_PURCHASE_PREVIEW_LINE_METADATA_KEY = "credit_purchase_preview_id";
 const STRIPE_SUBSCRIPTION_PRICE_TIERS = ["pro", "team"] as const;
-const ACTIVE_USAGE_ALLOWANCE_STATUSES = [
-  "active",
-  "manual_active",
-  "trialing",
-  "past_due",
-  "unpaid",
-] as const;
 export type SubscriptionCheckoutTier =
   (typeof STRIPE_SUBSCRIPTION_PRICE_TIERS)[number];
 export type BillingSubscriptionTier = SubscriptionCheckoutTier | "custom";
@@ -177,43 +169,12 @@ export async function orgPlanSubscriptionId(
 ): Promise<string | null> {
   const [plan] = await db
     .select({
-      planKey: orgPlanEntitlements.planKey,
       stripeSubscriptionId: orgPlanEntitlements.stripeSubscriptionId,
     })
     .from(orgPlanEntitlements)
     .where(eq(orgPlanEntitlements.orgId, orgId))
     .limit(1);
-  if (plan?.stripeSubscriptionId) {
-    return plan.stripeSubscriptionId;
-  }
-  if (plan?.planKey !== "custom") {
-    return null;
-  }
-
-  // Forever Custom Atom grants do not have a Plan subscription. Their usage
-  // allowance subscription owns the recurring billing cycle instead.
-  const currentTime = nowDate();
-  const [allowance] = await db
-    .select({
-      stripeSubscriptionId: orgUsageAllowanceEntitlements.stripeSubscriptionId,
-    })
-    .from(orgUsageAllowanceEntitlements)
-    .where(
-      and(
-        eq(orgUsageAllowanceEntitlements.orgId, orgId),
-        inArray(orgUsageAllowanceEntitlements.status, [
-          ...ACTIVE_USAGE_ALLOWANCE_STATUSES,
-        ]),
-        isNotNull(orgUsageAllowanceEntitlements.stripeSubscriptionId),
-        lte(orgUsageAllowanceEntitlements.effectiveAt, currentTime),
-        or(
-          isNull(orgUsageAllowanceEntitlements.expiresAt),
-          gt(orgUsageAllowanceEntitlements.expiresAt, currentTime),
-        ),
-      ),
-    )
-    .limit(1);
-  return allowance?.stripeSubscriptionId ?? null;
+  return plan?.stripeSubscriptionId ?? null;
 }
 
 const creditPurchasePreviewTokenSchema = z.object({
@@ -362,19 +323,7 @@ interface PlanPriceItem {
 }
 
 interface BillingPlanPriceItem {
-  readonly price: {
-    readonly id: string;
-    readonly product?: string | { readonly id: string } | null;
-  };
-}
-
-function stripeProductId(
-  product: BillingPlanPriceItem["price"]["product"],
-): string | null {
-  if (!product) {
-    return null;
-  }
-  return typeof product === "string" ? product : product.id;
+  readonly price: { readonly id: string };
 }
 
 export function tierForKnownPlanPrice(
@@ -384,17 +333,17 @@ export function tierForKnownPlanPrice(
   if (checkoutTier) {
     return checkoutTier;
   }
-  const customProductId = env("OKOU_PRODUCT_CUSTOM");
-  return customProductId && stripeProductId(price.product) === customProductId
-    ? "custom"
-    : null;
+  return env("OKOU_PRICE_CUSTOM")?.includes(price.id) ? "custom" : null;
 }
 
-export function knownBillingPlanPriceItem<T extends BillingPlanPriceItem>(
-  items: readonly T[],
-): T | undefined {
-  return items.find((item) => {
-    return tierForKnownPlanPrice(item.price) !== null;
+export function knownBillingPlanPriceItem<
+  T extends { readonly price?: { readonly id?: string } },
+>(items: readonly T[]): (T & BillingPlanPriceItem) | undefined {
+  return items.find((item): item is T & BillingPlanPriceItem => {
+    return (
+      typeof item.price?.id === "string" &&
+      tierForKnownPlanPrice({ id: item.price.id }) !== null
+    );
   });
 }
 

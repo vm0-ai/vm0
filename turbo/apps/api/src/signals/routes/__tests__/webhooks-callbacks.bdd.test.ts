@@ -3104,9 +3104,13 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const orgId = orgOf(actor);
     const suffix = randomUUID().slice(0, 8);
     const customerId = `cus_bdd_custom_allowance_${suffix}`;
+    const sharedSubscriptionId = `sub_bdd_custom_allowance_${suffix}`;
+    const customPriceId = `price_bdd_custom_main_${suffix}`;
+    const allowancePriceId = `price_bdd_allowance_${suffix}`;
     const allowanceStartsAtUnix = epochSeconds(-1);
     const allowanceEndsAtUnix = epochSeconds(29);
     api.configureStripeBillingEnv();
+    mockEnv("OKOU_PRICE_CUSTOM", customPriceId);
     context.mocks.stripe.subscriptions.list.mockResolvedValue({ data: [] });
     await completeOnboardingWithoutCredits(actor);
 
@@ -3149,7 +3153,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       orgId,
       userId: actor.userId,
       customerId,
-      subscriptionId: `sub_bdd_custom_allowance_${suffix}`,
+      subscriptionId: sharedSubscriptionId,
       effectiveAt: new Date(allowanceStartsAtUnix * 1000),
       expiresAt: new Date(allowanceEndsAtUnix * 1000),
       shortWindowSeconds: 5 * 60 * 60,
@@ -3157,8 +3161,59 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       weeklyWindowSeconds: 7 * 86_400,
       weeklyWindowUnits: 5_000_000,
     });
+    mockEnv("OKOU_PRICE_CUSTOM", customPriceId);
 
-    expect((await billing.readBillingStatus(actor)).tier).toBe("custom");
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "customer.subscription.updated",
+        object: {
+          id: sharedSubscriptionId,
+          customer: customerId,
+          status: "active",
+          cancel_at: null,
+          cancel_at_period_end: false,
+          schedule: null,
+          metadata: {
+            orgId,
+            purpose: "custom_plan_subscription",
+            tier: "custom",
+            allowanceStatus: "active",
+            allowancePriceId,
+            allowanceCancelAt: isoOf(allowanceEndsAtUnix),
+            shortWindowSeconds: String(5 * 60 * 60),
+            shortWindowUnits: "625000",
+            weeklyWindowSeconds: String(7 * 86_400),
+            weeklyWindowUnits: "5000000",
+          },
+          items: {
+            data: [
+              {
+                id: `si_custom_${suffix}`,
+                price: { id: customPriceId },
+                current_period_start: allowanceStartsAtUnix,
+                current_period_end: allowanceEndsAtUnix,
+              },
+              {
+                id: `si_allowance_${suffix}`,
+                price: { id: allowancePriceId },
+                current_period_start: allowanceStartsAtUnix,
+                current_period_end: allowanceEndsAtUnix,
+              },
+            ],
+          },
+        },
+      }),
+      [200],
+    );
+
+    const status = await billing.readBillingStatus(actor);
+    expect(status.tier).toBe("custom");
+    expect(status.hasSubscription).toBeTruthy();
+    await expect(readOrgPlanEntitlementFixture(orgId)).resolves.toMatchObject({
+      planKey: "custom",
+      stripeSubscriptionId: sharedSubscriptionId,
+      stripePriceId: customPriceId,
+    });
     expect((await billing.readUsageMembers(actor)).body.period).toStrictEqual({
       start: isoOf(allowanceStartsAtUnix),
       end: isoOf(allowanceEndsAtUnix),
@@ -3947,7 +4002,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     expect(settled.body.concurrency.active).toBe(0);
   });
 
-  it("recognizes an Atom Custom product as the main subscription without granting Plan credits", async () => {
+  it("recognizes an Atom Custom price as the main subscription without granting Plan credits", async () => {
     const bdd = createBddApi(context);
     const runs = createRunsApi(context);
     const billing = createBillingMediaApi(context);
@@ -3956,12 +4011,13 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const granted = await runs.grantProEntitlement(actor);
     const creditsBefore = (await billing.readBillingStatus(actor)).credits;
     const suffix = randomUUID().slice(0, 8);
-    const customProductId = `prod_bdd_custom_${suffix}`;
     const customPriceId = `price_bdd_custom_${suffix}`;
     const customSubscriptionId = `sub_bdd_custom_${suffix}`;
     const customInvoiceId = `in_bdd_custom_${suffix}`;
+    const allowancePriceId = `price_bdd_custom_allowance_${suffix}`;
     const periodEnd = epochSeconds(30);
-    mockEnv("OKOU_PRODUCT_CUSTOM", customProductId);
+    api.configureStripeBillingEnv();
+    mockEnv("OKOU_PRICE_CUSTOM", customPriceId);
 
     const customSubscription = {
       id: customSubscriptionId,
@@ -3979,11 +4035,33 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       items: {
         data: [
           {
-            price: { id: customPriceId, product: customProductId },
+            price: { id: customPriceId },
+          },
+          {
+            price: { id: allowancePriceId },
+          },
+          {
+            price: { id: "price_bdd_concurrency" },
+            quantity: 3,
           },
         ],
       },
     };
+    context.mocks.stripe.prices.retrieve.mockResolvedValueOnce({
+      id: allowancePriceId,
+      product: {
+        metadata: {
+          type: "usage_allowance",
+          purpose: "usage_allowance",
+          source: "atom_usage_allowance",
+          orgId,
+          shortWindowSeconds: "3600",
+          shortWindowUnits: "5000",
+          weeklyWindowSeconds: "604800",
+          weeklyWindowUnits: "50000",
+        },
+      },
+    });
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce(
       customSubscription,
     );
@@ -4012,7 +4090,26 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
           parent: {
             subscription_details: { subscription: customSubscriptionId },
           },
-          lines: subscriptionLines(periodEnd, customPriceId),
+          lines: {
+            data: [
+              {
+                price: { id: customPriceId },
+                period: { start: epochSeconds(0), end: periodEnd },
+                parent: { type: "subscription_item_details" },
+              },
+              {
+                price: { id: allowancePriceId },
+                period: { start: epochSeconds(0), end: periodEnd },
+                parent: { type: "subscription_item_details" },
+              },
+              {
+                price: { id: "price_bdd_concurrency" },
+                quantity: 3,
+                period: { start: epochSeconds(0), end: periodEnd },
+                parent: { type: "subscription_item_details" },
+              },
+            ],
+          },
         },
       }),
       [200],
@@ -4026,6 +4123,20 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     expect(customStatus.tier).toBe("custom");
     expect(customStatus.credits).toBe(creditsBefore);
     expect(customStatus.hasSubscription).toBeTruthy();
+    expect(customStatus.concurrencySubscriptions).toStrictEqual([
+      expect.objectContaining({
+        id: customSubscriptionId,
+        quantity: 3,
+      }),
+    ]);
+    await expect(
+      readUsageAllowanceEntitlementFixture(orgId),
+    ).resolves.toMatchObject({
+      status: "active",
+      stripeSubscriptionId: customSubscriptionId,
+      shortWindowUnits: 5000,
+      weeklyWindowUnits: 50_000,
+    });
     await expect(readOrgPlanEntitlementFixture(orgId)).resolves.toMatchObject({
       planKey: "custom",
       source: "stripe_subscription",

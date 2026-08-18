@@ -46,7 +46,10 @@ import {
 } from "../../../test-fixtures/system-config-seeds";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createBddApi } from "./helpers/api-bdd";
-import { postUsageAllowanceInvoicePaid } from "./helpers/stripe-billing-webhook";
+import {
+  postSubscriptionInvoicePaid,
+  postUsageAllowanceInvoicePaid,
+} from "./helpers/stripe-billing-webhook";
 import { seedOrgMembership$ } from "./helpers/org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import {
@@ -124,7 +127,6 @@ const APP_ORIGIN = "http://localhost:3002";
 const TEST_STAFF_ORG_ID = "org_usage_pack_checkout_test_lgD7Q3";
 const TEST_PRICE_PRO = "price_test_pro";
 const TEST_PRICE_TEAM = "price_test_team";
-const TEST_PRODUCT_CUSTOM = "prod_test_custom";
 const TEST_PRICE_CUSTOM = "price_test_custom";
 const TEST_PRICE_USAGE_PACK_PLAN_PRO = "price_test_usage_pack_plan_pro";
 const TEST_PRICE_USAGE_PACK_PLAN_TEAM = "price_test_usage_pack_plan_team";
@@ -367,10 +369,9 @@ async function createSubscriptionOrg(args: {
         : TEST_PRICE_PRO;
   const price = {
     id: priceId,
-    ...(args.tier === "custom" ? { product: TEST_PRODUCT_CUSTOM } : {}),
   };
   if (args.tier === "custom") {
-    mockEnv("OKOU_PRODUCT_CUSTOM", TEST_PRODUCT_CUSTOM);
+    mockEnv("OKOU_PRICE_CUSTOM", TEST_PRICE_CUSTOM);
   }
   mockClerkOrganization(fixture);
   mockOptionalEnv("STRIPE_WEBHOOK_SECRET", STRIPE_WEBHOOK_SECRET);
@@ -615,32 +616,6 @@ async function createMergedConcurrencySubscriptionOrg(args: {
   });
   const planCredits = (await readBillingStatus(fixture)).credits;
   const concurrencyItemId = `si_${randomUUID()}`;
-  context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce({
-    id: fixture.subscriptionId,
-    status: "active",
-    customer: fixture.customerId,
-    cancel_at_period_end: false,
-    cancel_at: null,
-    schedule: null,
-    trial_end: null,
-    metadata: {},
-    items: {
-      data: [
-        {
-          id: `si_${TEST_PRICE_TEAM}`,
-          price: { id: TEST_PRICE_TEAM },
-          quantity: 1,
-          current_period_end: Math.floor(args.periodEnd.getTime() / 1000),
-        },
-        {
-          id: concurrencyItemId,
-          price: { id: TEST_PRICE_CONCURRENCY },
-          quantity: args.slots,
-          current_period_end: Math.floor(args.periodEnd.getTime() / 1000),
-        },
-      ],
-    },
-  });
   const event = {
     type: "invoice.paid",
     data: {
@@ -10215,6 +10190,13 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     const subscriptionId = `sub_${randomUUID()}`;
     const periodStart = new Date(now() - 86_400_000);
     const periodEnd = new Date(now() + 30 * 86_400_000);
+    await postSubscriptionInvoicePaid(context.signal, {
+      ...fixture,
+      tier: "custom",
+      customerId,
+      subscriptionId,
+      currentPeriodEnd: periodEnd,
+    });
     await postUsageAllowanceInvoicePaid(context.signal, {
       ...fixture,
       customerId,
@@ -10406,7 +10388,6 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
             id: `si_${TEST_PRICE_CUSTOM}`,
             price: {
               id: TEST_PRICE_CUSTOM,
-              product: TEST_PRODUCT_CUSTOM,
             },
             quantity: 1,
           },
@@ -12636,7 +12617,6 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
             id: `si_${TEST_PRICE_CUSTOM}`,
             price: {
               id: TEST_PRICE_CUSTOM,
-              product: TEST_PRODUCT_CUSTOM,
             },
             quantity: 1,
           },
@@ -12656,7 +12636,6 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
             id: `si_${TEST_PRICE_CUSTOM}`,
             price: {
               id: TEST_PRICE_CUSTOM,
-              product: TEST_PRODUCT_CUSTOM,
             },
             quantity: 1,
             current_period_end: 4_102_444_800,
