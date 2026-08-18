@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.772.0](https://github.com/vm0-ai/vm0/compare/app-v0.771.0...app-v0.772.0) (2026-08-18)
+
+
+### Features
+
+* add byteplus seedream 5 image models ([#28064](https://github.com/vm0-ai/vm0/issues/28064)) ([a0f3faa](https://github.com/vm0-ai/vm0/commit/a0f3faaa9fb9cd5850d7b994d00284dc9598e587))
+
+
+### Bug Fixes
+
+* **app:** refresh members after billing changes ([#28062](https://github.com/vm0-ai/vm0/issues/28062)) ([2146cf5](https://github.com/vm0-ai/vm0/commit/2146cf518d8c7b94277ee51d2422a73a92a44d96))
+* **platform:** refine thinking disclosure icons ([#28065](https://github.com/vm0-ai/vm0/issues/28065)) ([7816273](https://github.com/vm0-ai/vm0/commit/78162734d36c05e3fd7facd65e67ddf8ed95e94a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.340.0
+    * @okouai/core bumped to 8.570.0
+
 ## [0.771.0](https://github.com/vm0-ai/vm0/compare/app-v0.770.0...app-v0.771.0) (2026-08-18)
 
 
