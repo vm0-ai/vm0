@@ -17,7 +17,7 @@ import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   type SupportedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
-import { zeroGoalsContract } from "@okouai/api-contracts/contracts/zero-goals";
+import { goalsContract } from "@okouai/api-contracts/contracts/goals";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { createApp } from "../../../app-factory";
 import { stubTestTimezone } from "../../../__tests__/env-stub";
@@ -445,7 +445,7 @@ const CHAT_THREAD_READ_CAPABILITIES = [
 ] as const satisfies readonly ZeroCapability[];
 
 function goalsClient() {
-  return setupApp({ context, routes: goalsRoutes })(zeroGoalsContract);
+  return setupApp({ context, routes: goalsRoutes })(goalsContract);
 }
 
 function zeroCapabilityHeaders(
@@ -471,7 +471,7 @@ function zeroCapabilityHeaders(
 }
 
 /** Run-scoped zero bearer with goal capabilities, as issued to sandboxes. */
-function zeroGoalHeaders(
+function goalHeaders(
   actor: ApiTestUser,
   runId: string,
 ): { readonly authorization: string } {
@@ -485,7 +485,7 @@ async function createThreadGoal(
 ): Promise<void> {
   await accept(
     goalsClient().create({
-      headers: zeroGoalHeaders(actor, runId),
+      headers: goalHeaders(actor, runId),
       body: { objective },
     }),
     [201],
@@ -498,7 +498,7 @@ async function completeThreadGoal(
 ): Promise<void> {
   await accept(
     goalsClient().complete({
-      headers: zeroGoalHeaders(actor, runId),
+      headers: goalHeaders(actor, runId),
     }),
     [200],
   );
@@ -629,7 +629,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
     const missingCapability = await accept(
       zeroClient.snapshot({
-        headers: zeroGoalHeaders(actor, randomUUID()),
+        headers: goalHeaders(actor, randomUUID()),
       }),
       [403],
     );

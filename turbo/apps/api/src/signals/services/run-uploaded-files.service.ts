@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import type { HostedArtifactKind } from "@okouai/api-contracts/contracts/zero-host";
+import type { HostedArtifactKind } from "@okouai/api-contracts/contracts/host";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import {

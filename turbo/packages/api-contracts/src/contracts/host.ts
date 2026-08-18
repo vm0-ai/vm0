@@ -145,7 +145,7 @@ export const hostedSiteDeploymentsResponseSchema = z.object({
   deployments: z.array(hostedSiteDeploymentSummarySchema),
 });
 
-export const zeroHostContract = c.router({
+export const hostContract = c.router({
   prepare: {
     method: "POST",
     path: "/api/okou/host/deployments/prepare",
@@ -222,7 +222,7 @@ export const zeroHostContract = c.router({
   },
 });
 
-export type ZeroHostContract = typeof zeroHostContract;
+export type HostContract = typeof hostContract;
 export type HostedSitePrepareRequest = z.infer<
   typeof hostedSitePrepareRequestSchema
 >;
