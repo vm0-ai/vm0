@@ -52,6 +52,7 @@ interface EnsureFeishuCustomConnectorArgs {
 
 interface FeishuConnectorInstallation {
   readonly orgId: string;
+  readonly customConnectorId: string | null;
   readonly ownerUserId: string | null;
   readonly appId: string;
   readonly encryptedAppSecret: string;
@@ -345,19 +346,10 @@ async function preflightFeishuCustomConnectorId(
   const [target] = await db
     .select({
       installationId: feishuOrgInstallations.id,
-      connectorId: orgCustomConnectors.id,
+      customConnectorId: feishuOrgInstallations.customConnectorId,
+      appId: feishuOrgInstallations.appId,
     })
     .from(feishuOrgInstallations)
-    .leftJoin(
-      orgCustomConnectors,
-      and(
-        eq(orgCustomConnectors.orgId, feishuOrgInstallations.orgId),
-        eq(
-          orgCustomConnectors.slug,
-          getFeishuCustomConnectorSlug(args.installationId),
-        ),
-      ),
-    )
     .where(
       and(
         eq(feishuOrgInstallations.id, args.installationId),
@@ -366,7 +358,36 @@ async function preflightFeishuCustomConnectorId(
     )
     .limit(1);
   signal.throwIfAborted();
-  return target ? (target.connectorId ?? randomUUID()) : null;
+  if (!target) {
+    return null;
+  }
+  if (target.customConnectorId) {
+    return target.customConnectorId;
+  }
+  const [legacyConnector] = await db
+    .select({ id: orgCustomConnectors.id })
+    .from(orgCustomConnectors)
+    .innerJoin(
+      orgCustomConnectorOauthConfigs,
+      and(
+        eq(orgCustomConnectorOauthConfigs.connectorId, orgCustomConnectors.id),
+        eq(orgCustomConnectorOauthConfigs.orgId, orgCustomConnectors.orgId),
+      ),
+    )
+    .where(
+      and(
+        eq(orgCustomConnectors.orgId, args.orgId),
+        eq(
+          orgCustomConnectors.slug,
+          getFeishuCustomConnectorSlug(args.installationId),
+        ),
+        eq(orgCustomConnectorOauthConfigs.providerAdapter, "feishu"),
+        eq(orgCustomConnectorOauthConfigs.clientId, target.appId),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+  return legacyConnector?.id ?? randomUUID();
 }
 
 async function reconcileFeishuCustomConnector(
@@ -382,6 +403,7 @@ async function reconcileFeishuCustomConnector(
   const [installation] = await tx
     .select({
       orgId: feishuOrgInstallations.orgId,
+      customConnectorId: feishuOrgInstallations.customConnectorId,
       ownerUserId: feishuOrgInstallations.ownerUserId,
       appId: feishuOrgInstallations.appId,
       encryptedAppSecret: feishuOrgInstallations.encryptedAppSecret,
@@ -417,7 +439,13 @@ async function reconcileFeishuCustomConnector(
     .where(
       and(
         eq(orgCustomConnectors.orgId, args.orgId),
-        eq(orgCustomConnectors.slug, slug),
+        installation.customConnectorId
+          ? eq(orgCustomConnectors.id, installation.customConnectorId)
+          : and(
+              eq(orgCustomConnectors.slug, slug),
+              eq(orgCustomConnectorOauthConfigs.providerAdapter, "feishu"),
+              eq(orgCustomConnectorOauthConfigs.clientId, installation.appId),
+            ),
       ),
     )
     .for("update", { of: orgCustomConnectors })
@@ -466,6 +494,21 @@ async function reconcileFeishuCustomConnector(
             skillStorageVersionId,
             signal,
           );
+  }
+  if (installation.customConnectorId !== connector.connectorId) {
+    await tx
+      .update(feishuOrgInstallations)
+      .set({
+        customConnectorId: connector.connectorId,
+        updatedAt: nowDate(),
+      })
+      .where(
+        and(
+          eq(feishuOrgInstallations.id, args.installationId),
+          eq(feishuOrgInstallations.orgId, args.orgId),
+        ),
+      );
+    signal.throwIfAborted();
   }
   return {
     kind: "reconciled",
@@ -549,7 +592,7 @@ export const ensureFeishuCustomConnector$ = command(
   },
 );
 
-export const deleteFeishuCustomConnector$ = command(
+export const deleteFeishuInstallationAndCustomConnector$ = command(
   async (
     { get, set },
     args: {
@@ -557,45 +600,122 @@ export const deleteFeishuCustomConnector$ = command(
       readonly installationId: string;
     },
     signal: AbortSignal,
-  ): Promise<void> => {
-    const deletion = set(writeDb$)
-      .delete(orgCustomConnectors)
-      .where(
-        and(
-          eq(orgCustomConnectors.orgId, args.orgId),
-          eq(
-            orgCustomConnectors.slug,
-            getFeishuCustomConnectorSlug(args.installationId),
+  ): Promise<boolean> => {
+    const db = set(writeDb$);
+    const deletion = db.transaction(async (tx) => {
+      const [installation] = await tx
+        .select({
+          id: feishuOrgInstallations.id,
+          appId: feishuOrgInstallations.appId,
+          customConnectorId: feishuOrgInstallations.customConnectorId,
+        })
+        .from(feishuOrgInstallations)
+        .where(
+          and(
+            eq(feishuOrgInstallations.orgId, args.orgId),
+            eq(feishuOrgInstallations.id, args.installationId),
           ),
-        ),
-      )
-      .returning({ id: orgCustomConnectors.id });
+        )
+        .for("update")
+        .limit(1);
+      signal.throwIfAborted();
+      if (!installation) {
+        return { installationDeleted: false, connectorId: null };
+      }
+
+      let connectorId = installation.customConnectorId;
+      if (!connectorId) {
+        const [legacyConnector] = await tx
+          .select({ id: orgCustomConnectors.id })
+          .from(orgCustomConnectors)
+          .innerJoin(
+            orgCustomConnectorOauthConfigs,
+            and(
+              eq(
+                orgCustomConnectorOauthConfigs.connectorId,
+                orgCustomConnectors.id,
+              ),
+              eq(
+                orgCustomConnectorOauthConfigs.orgId,
+                orgCustomConnectors.orgId,
+              ),
+            ),
+          )
+          .where(
+            and(
+              eq(orgCustomConnectors.orgId, args.orgId),
+              eq(
+                orgCustomConnectors.slug,
+                getFeishuCustomConnectorSlug(args.installationId),
+              ),
+              eq(orgCustomConnectorOauthConfigs.providerAdapter, "feishu"),
+              eq(orgCustomConnectorOauthConfigs.clientId, installation.appId),
+            ),
+          )
+          .limit(1);
+        connectorId = legacyConnector?.id ?? null;
+      }
+
+      await tx
+        .delete(feishuOrgInstallations)
+        .where(
+          and(
+            eq(feishuOrgInstallations.orgId, args.orgId),
+            eq(feishuOrgInstallations.id, args.installationId),
+          ),
+        );
+      signal.throwIfAborted();
+      if (!connectorId) {
+        return { installationDeleted: true, connectorId: null };
+      }
+      const [deletedConnector] = await tx
+        .delete(orgCustomConnectors)
+        .where(
+          and(
+            eq(orgCustomConnectors.orgId, args.orgId),
+            eq(orgCustomConnectors.id, connectorId),
+          ),
+        )
+        .returning({ id: orgCustomConnectors.id });
+      signal.throwIfAborted();
+      return {
+        installationDeleted: true,
+        connectorId: deletedConnector?.id ?? null,
+      };
+    });
     let postCommitAbort: CapturedConnectorClientInvalidationAbort | undefined;
-    const [deleted] = await commitConnectorRuntimeMutation(
-      deletion,
-      ([connector]) => {
-        return connector
-          ? {
-              db: set(writeDb$),
-              scope: { orgId: args.orgId },
-              targets: [{ kind: "custom", customConnectorId: connector.id }],
-            }
-          : undefined;
-      },
-    );
+    const deleted = await commitConnectorRuntimeMutation(deletion, (result) => {
+      return result.connectorId
+        ? {
+            db,
+            scope: { orgId: args.orgId },
+            targets: [
+              {
+                kind: "custom",
+                customConnectorId: result.connectorId,
+              },
+            ],
+          }
+        : undefined;
+    });
     if (signal.aborted) {
       postCommitAbort = { reason: signal.reason };
     }
-    if (!deleted) {
+    if (!deleted.installationDeleted) {
       signal.throwIfAborted();
-      return;
+      return false;
     }
-    await publishCustomConnectorOrganizationInvalidationAfterCommit(
-      args.orgId,
-      get(clerk$).organizations,
-      signal,
-      postCommitAbort,
-    );
+    if (deleted.connectorId) {
+      await publishCustomConnectorOrganizationInvalidationAfterCommit(
+        args.orgId,
+        get(clerk$).organizations,
+        signal,
+        postCommitAbort,
+      );
+    } else {
+      signal.throwIfAborted();
+    }
+    return true;
   },
 );
 
@@ -609,7 +729,14 @@ export async function hasFeishuCustomConnectorOAuthConnection(
 ): Promise<boolean> {
   const [connection] = await db
     .select({ id: connectors.id })
-    .from(orgCustomConnectors)
+    .from(feishuOrgInstallations)
+    .innerJoin(
+      orgCustomConnectors,
+      and(
+        eq(orgCustomConnectors.id, feishuOrgInstallations.customConnectorId),
+        eq(orgCustomConnectors.orgId, feishuOrgInstallations.orgId),
+      ),
+    )
     .innerJoin(
       connectors,
       and(
@@ -628,11 +755,8 @@ export async function hasFeishuCustomConnectorOAuthConnection(
     )
     .where(
       and(
-        eq(orgCustomConnectors.orgId, args.orgId),
-        eq(
-          orgCustomConnectors.slug,
-          getFeishuCustomConnectorSlug(args.installationId),
-        ),
+        eq(feishuOrgInstallations.orgId, args.orgId),
+        eq(feishuOrgInstallations.id, args.installationId),
         eq(connectors.userId, args.userId),
         eq(connectors.authMethod, "oauth"),
         eq(connectors.needsReconnect, false),
@@ -652,21 +776,18 @@ export async function disconnectFeishuCustomConnectorOAuthConnection(
   signal: AbortSignal,
 ): Promise<void> {
   const [connector] = await db
-    .select({ id: orgCustomConnectors.id })
-    .from(orgCustomConnectors)
+    .select({ id: feishuOrgInstallations.customConnectorId })
+    .from(feishuOrgInstallations)
     .where(
       and(
-        eq(orgCustomConnectors.orgId, args.orgId),
-        eq(
-          orgCustomConnectors.slug,
-          getFeishuCustomConnectorSlug(args.installationId),
-        ),
+        eq(feishuOrgInstallations.orgId, args.orgId),
+        eq(feishuOrgInstallations.id, args.installationId),
       ),
     )
-    .for("update")
+    .for("update", { of: feishuOrgInstallations })
     .limit(1);
   signal.throwIfAborted();
-  if (!connector) {
+  if (!connector?.id) {
     return;
   }
   await deleteCustomConnectorMemberConnection(

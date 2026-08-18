@@ -1,4 +1,5 @@
 import {
+  foreignKey,
   index,
   pgTable,
   text,
@@ -9,6 +10,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { agentComposes } from "./agent-compose";
+import { orgCustomConnectors } from "./org-custom-connector";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 export const feishuOrgInstallations = pgTable(
@@ -16,6 +18,7 @@ export const feishuOrgInstallations = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     orgId: text("org_id").notNull(),
+    customConnectorId: uuid("custom_connector_id"),
     ownerUserId: text("owner_user_id"),
     appId: varchar("app_id", { length: 255 }).notNull(),
     botOpenId: varchar("bot_open_id", { length: 255 }),
@@ -49,8 +52,16 @@ export const feishuOrgInstallations = pgTable(
   (table) => {
     return [
       index("idx_feishu_org_installations_org").on(table.orgId),
+      uniqueIndex("idx_feishu_org_installations_custom_connector").on(
+        table.customConnectorId,
+      ),
       uniqueIndex("idx_feishu_org_installations_app").on(table.appId),
       index("idx_feishu_org_installations_tenant").on(table.feishuTenantKey),
+      foreignKey({
+        name: "fk_feishu_org_installations_custom_connector",
+        columns: [table.customConnectorId, table.orgId],
+        foreignColumns: [orgCustomConnectors.id, orgCustomConnectors.orgId],
+      }).onDelete("restrict"),
     ];
   },
 );

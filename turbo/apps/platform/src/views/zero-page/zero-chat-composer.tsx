@@ -144,7 +144,10 @@ import {
 import { r2ImageTransformUrl } from "@okouai/core/r2-image-transform";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
-import type { CustomConnectorResponse } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import {
+  isIntegrationManagedCustomConnector,
+  type CustomConnectorResponse,
+} from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 import { getModelDisplayName } from "@okouai/core/model-display-name";
 import {
@@ -8205,7 +8208,11 @@ function resolveComposerConnectorCollections({
   );
   const unconnectedCustomConnectors = resolvedCustomConnectors.filter(
     (connector) => {
-      return !connector.connected && (connector.kind === "http" || mcpEnabled);
+      return (
+        !connector.connected &&
+        !isIntegrationManagedCustomConnector(connector) &&
+        (connector.kind === "http" || mcpEnabled)
+      );
     },
   );
   const agentConnectors = resolvedRelatedCatalogItems

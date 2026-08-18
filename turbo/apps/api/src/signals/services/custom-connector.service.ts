@@ -2,24 +2,26 @@ import { command, computed, type Computed } from "ccstate";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { and, eq, gte, inArray, lt, sql } from "drizzle-orm";
-import type {
-  CreateCustomConnectorBody,
-  CustomConnectorAuthMode,
-  CustomConnectorField,
-  CustomConnectorFieldKind,
-  CustomConnectorHeaderInjection,
-  CustomConnectorHttpResponse,
-  CustomConnectorMcpResponse,
-  CustomConnectorMcpTransport,
-  CustomConnectorOAuthConfig,
-  CustomConnectorOAuthConfigInput,
-  CustomConnectorPermissionBundleRef,
-  CustomConnectorPermissionBundleResponse,
-  CustomConnectorProposal,
-  CustomConnectorQueryInjection,
-  CustomConnectorResponse,
-  CustomConnectorValueInput,
-  UpdateCustomConnectorBody,
+import {
+  isIntegrationManagedCustomConnector,
+  isIntegrationManagedCustomConnectorProviderAdapter,
+  type CreateCustomConnectorBody,
+  type CustomConnectorAuthMode,
+  type CustomConnectorField,
+  type CustomConnectorFieldKind,
+  type CustomConnectorHeaderInjection,
+  type CustomConnectorHttpResponse,
+  type CustomConnectorMcpResponse,
+  type CustomConnectorMcpTransport,
+  type CustomConnectorOAuthConfig,
+  type CustomConnectorOAuthConfigInput,
+  type CustomConnectorPermissionBundleRef,
+  type CustomConnectorPermissionBundleResponse,
+  type CustomConnectorProposal,
+  type CustomConnectorQueryInjection,
+  type CustomConnectorResponse,
+  type CustomConnectorValueInput,
+  type UpdateCustomConnectorBody,
 } from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import {
   canonicalizeFirewallBaseUrl,
@@ -27,8 +29,6 @@ import {
   validateBaseUrlHostPolicy,
 } from "@okouai/connectors/firewall-types";
 import { connectors } from "@okouai/db/schema/connector";
-import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
-import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
 import {
   orgCustomConnectorOauthConfigs,
   type OrgCustomConnectorOAuthPkceMethod,
@@ -157,6 +157,10 @@ function forbidden(message: string): ForbiddenResponse {
       },
     },
   };
+}
+
+export function integrationManagedCustomConnectorMutationForbidden(): ForbiddenResponse {
+  return forbidden("This connector is managed by its integration");
 }
 
 export interface CustomConnectorOAuthConfigRow {
@@ -2211,6 +2215,9 @@ export const updateCustomConnectorDefinition$ = command(
     if (!existingConnector) {
       return notFound("Custom connector not found");
     }
+    if (isIntegrationManagedCustomConnector(existingConnector)) {
+      return integrationManagedCustomConnectorMutationForbidden();
+    }
     const prepared = prepareCustomConnectorUpdate({
       existing: existingConnector,
       input: args.input,
@@ -2328,12 +2335,25 @@ export const deleteCustomConnector$ = command(
     { get, set },
     args: { readonly orgId: string; readonly id: string },
     signal: AbortSignal,
-  ): Promise<NotFoundResponse | undefined> => {
+  ): Promise<NotFoundResponse | ForbiddenResponse | undefined> => {
     const writeDb = set(writeDb$);
     const deletion = writeDb.transaction(async (tx) => {
       const [existing] = await tx
-        .select({ id: orgCustomConnectors.id })
+        .select({
+          id: orgCustomConnectors.id,
+          providerAdapter: orgCustomConnectorOauthConfigs.providerAdapter,
+        })
         .from(orgCustomConnectors)
+        .leftJoin(
+          orgCustomConnectorOauthConfigs,
+          and(
+            eq(
+              orgCustomConnectorOauthConfigs.connectorId,
+              orgCustomConnectors.id,
+            ),
+            eq(orgCustomConnectorOauthConfigs.orgId, orgCustomConnectors.orgId),
+          ),
+        )
         .where(
           and(
             eq(orgCustomConnectors.id, args.id),
@@ -2343,6 +2363,13 @@ export const deleteCustomConnector$ = command(
         .limit(1);
       if (!existing) {
         return false;
+      }
+      if (
+        isIntegrationManagedCustomConnectorProviderAdapter(
+          existing.providerAdapter,
+        )
+      ) {
+        return integrationManagedCustomConnectorMutationForbidden();
       }
       await tx
         .delete(orgCustomConnectors)
@@ -2356,7 +2383,7 @@ export const deleteCustomConnector$ = command(
     });
     let postCommitAbort: CapturedConnectorClientInvalidationAbort | undefined;
     const deleted = await commitConnectorRuntimeMutation(deletion, (result) => {
-      return result
+      return result === true
         ? {
             db: writeDb,
             scope: { orgId: args.orgId },
@@ -2367,9 +2394,13 @@ export const deleteCustomConnector$ = command(
     if (signal.aborted) {
       postCommitAbort = { reason: signal.reason };
     }
-    if (!deleted) {
+    if (deleted === false) {
       signal.throwIfAborted();
       return notFound("Custom connector not found");
+    }
+    if (deleted !== true) {
+      signal.throwIfAborted();
+      return deleted;
     }
     await publishCustomConnectorOrganizationInvalidationAfterCommit(
       args.orgId,
@@ -2813,6 +2844,9 @@ export const setCustomConnectorValues$ = command(
     if (!connector) {
       return notFound("Custom connector not found");
     }
+    if (isIntegrationManagedCustomConnector(connector)) {
+      return integrationManagedCustomConnectorMutationForbidden();
+    }
     if (connector.authMode !== "manual") {
       return badRequestMessage(
         "OAuth custom connectors must be connected through OAuth",
@@ -2901,7 +2935,7 @@ export const disconnectCustomConnector$ = command(
       readonly connectorId: string;
     },
     signal: AbortSignal,
-  ): Promise<NotFoundResponse | undefined> => {
+  ): Promise<NotFoundResponse | ForbiddenResponse | undefined> => {
     const writeDb = set(writeDb$);
     let postCommitAbort: CapturedConnectorClientInvalidationAbort | undefined;
     const disconnected = await writeDb.transaction(async (tx) => {
@@ -2909,7 +2943,6 @@ export const disconnectCustomConnector$ = command(
         .select({
           id: orgCustomConnectors.id,
           oauthProviderAdapter: orgCustomConnectorOauthConfigs.providerAdapter,
-          oauthClientId: orgCustomConnectorOauthConfigs.clientId,
         })
         .from(orgCustomConnectors)
         .leftJoin(
@@ -2935,29 +2968,11 @@ export const disconnectCustomConnector$ = command(
         return false;
       }
       if (
-        connector.oauthProviderAdapter === "feishu" &&
-        connector.oauthClientId !== null
+        isIntegrationManagedCustomConnectorProviderAdapter(
+          connector.oauthProviderAdapter,
+        )
       ) {
-        const [installation] = await tx
-          .select({ id: feishuOrgInstallations.id })
-          .from(feishuOrgInstallations)
-          .where(
-            and(
-              eq(feishuOrgInstallations.orgId, args.orgId),
-              eq(feishuOrgInstallations.appId, connector.oauthClientId),
-            ),
-          )
-          .limit(1);
-        if (installation) {
-          await tx
-            .delete(feishuOrgConnections)
-            .where(
-              and(
-                eq(feishuOrgConnections.installationId, installation.id),
-                eq(feishuOrgConnections.userId, args.userId),
-              ),
-            );
-        }
+        return integrationManagedCustomConnectorMutationForbidden();
       }
       await deleteCustomConnectorMemberConnection(tx, args, signal);
       return true;
@@ -2965,9 +2980,13 @@ export const disconnectCustomConnector$ = command(
     if (signal.aborted) {
       postCommitAbort = { reason: signal.reason };
     }
-    if (!disconnected) {
+    if (disconnected === false) {
       signal.throwIfAborted();
       return notFound("Custom connector not found");
+    }
+    if (disconnected !== true) {
+      signal.throwIfAborted();
+      return disconnected;
     }
     await publishCustomConnectorUserInvalidationAfterCommit(
       args.userId,

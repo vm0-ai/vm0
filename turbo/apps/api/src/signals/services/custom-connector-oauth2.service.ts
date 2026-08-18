@@ -6,6 +6,7 @@ import { request as httpsRequest } from "node:https";
 import { command } from "ccstate";
 import { and, eq, exists } from "drizzle-orm";
 import { z } from "zod";
+import { isIntegrationManagedCustomConnector } from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import {
   isOAuthProviderHttpError,
@@ -39,12 +40,12 @@ import {
   decryptStoredSecretValue,
   encryptStoredSecretValue,
 } from "./crypto.utils";
-import { feishuOAuthAppCallbackUrl } from "./feishu-config";
 import {
   CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_SECRET_NAME,
   CUSTOM_CONNECTOR_OAUTH_ID_TOKEN_SECRET_NAME,
   CUSTOM_CONNECTOR_OAUTH_REFRESH_TOKEN_SECRET_NAME,
   getCustomConnectorById,
+  integrationManagedCustomConnectorMutationForbidden,
   normaliseCustomConnectorRow,
   type CustomConnectorOAuthConfigRow,
   type CustomConnectorRow,
@@ -501,6 +502,9 @@ export const startCustomConnectorOAuth2$ = command(
         "Custom connector does not support OAuth 2.0 authentication",
       );
     }
+    if (isIntegrationManagedCustomConnector(connector) && !args.feishuContext) {
+      return integrationManagedCustomConnectorMutationForbidden();
+    }
     if (connector.kind === "mcp") {
       const featureContext = await get(
         userFeatureSwitchContext(args.orgId, args.userId),
@@ -511,10 +515,7 @@ export const startCustomConnectorOAuth2$ = command(
       }
     }
     const providerAdapter = connector.oauthConfig.providerAdapter;
-    const redirectUri =
-      providerAdapter === "feishu" && !args.feishuContext
-        ? feishuOAuthAppCallbackUrl()
-        : args.redirectUri;
+    const redirectUri = args.redirectUri;
     const state = generateConnectorOAuthState();
     const codeVerifier =
       connector.oauthConfig.pkceMethod === "S256" ? createPkceVerifier() : null;

@@ -117,6 +117,39 @@ function customConnector(
   };
 }
 
+function managedFeishuConnector(
+  overrides: Partial<CustomConnectorHttpResponse> = {},
+): CustomConnectorHttpResponse {
+  return customConnector({
+    id: "55555555-5555-4555-8555-555555555555",
+    slug: "_feishu-00000000-0000-4000-8000-000000000055",
+    displayName: "Feishu",
+    prefixTemplates: ["https://open.feishu.cn/open-apis/"],
+    fields: [],
+    headerInjections: [
+      {
+        name: "Authorization",
+        valueTemplate: "Bearer {{oauth.access_token}}",
+      },
+    ],
+    authMode: "oauth",
+    permissionBundleRef: "builtin:feishu@1",
+    oauthConfig: {
+      providerAdapter: "feishu",
+      clientId: "cli_feishu",
+      authorizationUrl:
+        "https://accounts.feishu.cn/open-apis/authen/v1/authorize",
+      tokenUrl: "https://open.feishu.cn/open-apis/authen/v2/oauth/token",
+      tokenEndpointAuthMethod: "client_secret_post",
+      pkceMethod: "none",
+      scopes: ["offline_access", "im:message"],
+      authorizationParams: {},
+    },
+    missingRequiredFields: ["oauth"],
+    ...overrides,
+  });
+}
+
 function mcpCustomConnector(
   overrides: Partial<CustomConnectorMcpResponse> = {},
 ): CustomConnectorMcpResponse {
@@ -284,6 +317,41 @@ describe("chat composer connector connection", () => {
       expect(updateCount).toBe(1);
       expect(screen.getByLabelText("Remove DeepWiki")).toBeInTheDocument();
     });
+  });
+
+  it("keeps a connected integration-managed connector available to the agent", async () => {
+    const user = userEvent.setup({ delay: null });
+    const connector = managedFeishuConnector({
+      connected: true,
+      missingRequiredFields: [],
+    });
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
+      return respond(200, {
+        grants: [
+          {
+            customConnectorId: connector.id,
+            permissionNames: ["standard:use"],
+          },
+        ],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    const composer = composerElementFrom(
+      await screen.findByPlaceholderText(PLACEHOLDER),
+    );
+    await user.click(within(composer).getByLabelText("Connectors"));
+
+    await expect(
+      screen.findByLabelText("Remove Feishu"),
+    ).resolves.toBeInTheDocument();
   });
 
   it("keeps authorized MCP custom connectors removable while disabled", async () => {
@@ -470,6 +538,31 @@ describe("chat composer connector connection", () => {
       expect(updatedAgentIds).toStrictEqual([AGENT_ID]);
       expect(connectDialog).not.toBeInTheDocument();
     });
+  });
+
+  it("excludes an unconnected integration-managed connector from add flows", async () => {
+    const user = userEvent.setup({ delay: null });
+    const standardConnector = customConnector();
+    const managedConnector = managedFeishuConnector();
+    mockCatalog([]);
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, {
+        connectors: [standardConnector, managedConnector],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    const dialog = await openAddConnectorsDialog(user);
+    expect(
+      within(dialog).getByLabelText("Connect Acme Search"),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).queryByLabelText("Connect Feishu"),
+    ).not.toBeInTheDocument();
   });
 
   it("starts a single OAuth connector without an intermediate modal", async () => {
