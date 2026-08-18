@@ -97,6 +97,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatForward]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ChatQuoteOnlyFeedback]).toBe(true);
     expect(
       staffOrgStates[FeatureSwitchKey.ChatRunContinuationPresentation],
     ).toBe(true);
@@ -132,6 +133,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatForward]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ChatQuoteOnlyFeedback]).toBe(false);
     expect(
       otherOrgStates[FeatureSwitchKey.ChatRunContinuationPresentation],
     ).toBe(false);
