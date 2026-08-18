@@ -847,10 +847,30 @@ function isReconnectRequiredRefreshErrorCode(
   errorCode: string | null | undefined,
 ): boolean {
   return (
+    isTerminalChatgptRefreshErrorCode(errorCode) ||
+    errorCode === "invalid_grant"
+  );
+}
+
+function isTerminalChatgptRefreshErrorCode(
+  errorCode: string | null | undefined,
+): boolean {
+  return (
     errorCode === "refresh_token_expired" ||
     errorCode === "refresh_token_reused" ||
-    errorCode === "refresh_token_invalidated" ||
-    errorCode === "invalid_grant"
+    errorCode === "refresh_token_invalidated"
+  );
+}
+
+function isTerminalCodexRefreshState(
+  prepared: PreparedRefreshTokenContext,
+  state: RefreshState,
+): boolean {
+  return (
+    prepared.sourceType === "model-provider" &&
+    prepared.providerKey === "codex-oauth-token" &&
+    state.needsReconnect &&
+    isTerminalChatgptRefreshErrorCode(state.lastRefreshErrorCode)
   );
 }
 
@@ -2642,6 +2662,10 @@ async function refreshLockedAccessToken(args: {
     return sourceMissingResult();
   }
 
+  if (isTerminalCodexRefreshState(args.prepared, lockedState)) {
+    return refreshFailedResult("reconnect_required");
+  }
+
   if (
     didLockedRefreshFailDuringRequest({
       initialState: args.initialState,
@@ -3967,15 +3991,17 @@ async function refreshSelectedTokens(
         featureSwitchContext: context.featureSwitchContext,
       });
       if (!refreshResult.ok) {
-        L.warn(
-          `[${context.auth.runId}] Failed to refresh ${accessSourceKey} token`,
-          {
-            sourceType: metadata.sourceType,
-            sourceUserId: metadata.sourceUserId,
-            metadataKey: metadata.metadataKey,
-            reason: refreshResult.reason,
-          },
-        );
+        if (refreshResult.reason !== "refresh-failed") {
+          L.warn(
+            `[${context.auth.runId}] Failed to refresh ${accessSourceKey} token`,
+            {
+              sourceType: metadata.sourceType,
+              sourceUserId: metadata.sourceUserId,
+              metadataKey: metadata.metadataKey,
+              reason: refreshResult.reason,
+            },
+          );
+        }
         if (refreshResult.reason === "source-missing") {
           return {
             accessSourceKey,
