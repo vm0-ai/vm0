@@ -1020,13 +1020,24 @@ describe("initial thinking indicator", () => {
     });
 
     await screen.findByText("Here is the checklist.");
+    const thinkingLabel = screen.getByText("Thinking");
     const thinkingContent = screen.getAllByText("Reviewing your request");
     expect(thinkingContent).toHaveLength(2);
-    const thinkingBlock = thinkingContent[0]?.closest("details");
-    expect(thinkingBlock).toHaveAttribute("data-thinking-block");
-    expect(thinkingBlock).not.toHaveAttribute("open");
-    expect(
-      document.querySelector("[data-thinking-indicator]"),
-    ).toBeInTheDocument();
+    const [thinkingPreview, thinkingBody] = thinkingContent;
+    if (!thinkingPreview || !thinkingBody) {
+      throw new Error("Inline thinking copy was not rendered");
+    }
+    expect(thinkingPreview).toBeVisible();
+    expect(thinkingBody).not.toBeVisible();
+    const runningLabel = screen.getAllByText(
+      /^(Assembling|Brewing|Mapping|On it|Piecing|Shaping|Sketching|Spinning|Tuning|Wiring)/,
+    )[0];
+    if (!runningLabel) {
+      throw new Error("Running thinking label was not rendered");
+    }
+    expect(runningLabel).toBeVisible();
+
+    click(thinkingLabel);
+    expect(thinkingBody).toBeVisible();
   });
 });
