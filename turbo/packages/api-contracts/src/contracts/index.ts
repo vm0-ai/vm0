@@ -218,7 +218,7 @@ export {
   type TestTeamsDispatchProbeContract,
   type TestTeamsDispatchProbeResponse,
 } from "./test-teams-dispatch-probe";
-export { zeroEmailInboundContract } from "./zero-email";
+export { emailInboundContract } from "./email";
 export {
   sandboxReuseResultSchema,
   workspaceReuseResultSchema,
@@ -1614,26 +1614,26 @@ export {
   type ZeroMailProvider,
 } from "./zero-mail";
 export {
-  zeroBankingContract,
-  zeroBankingProviderSchema,
-  zeroBankingAccountSchema,
-  zeroBankingBalanceSchema,
-  zeroBankingTransactionSchema,
-  zeroBankingAccountsResponseSchema,
-  zeroBankingBalancesRequestSchema,
-  zeroBankingBalancesResponseSchema,
-  zeroBankingTransactionsRequestSchema,
-  zeroBankingTransactionsResponseSchema,
-  type ZeroBankingContract,
-  type ZeroBankingAccount,
-  type ZeroBankingBalance,
-  type ZeroBankingTransaction,
-  type ZeroBankingAccountsResponse,
-  type ZeroBankingBalancesRequest,
-  type ZeroBankingBalancesResponse,
-  type ZeroBankingTransactionsRequest,
-  type ZeroBankingTransactionsResponse,
-} from "./zero-banking";
+  bankingContract,
+  bankingProviderSchema,
+  bankingAccountSchema,
+  bankingBalanceSchema,
+  bankingTransactionSchema,
+  bankingAccountsResponseSchema,
+  bankingBalancesRequestSchema,
+  bankingBalancesResponseSchema,
+  bankingTransactionsRequestSchema,
+  bankingTransactionsResponseSchema,
+  type BankingContract,
+  type BankingAccount,
+  type BankingBalance,
+  type BankingTransaction,
+  type BankingAccountsResponse,
+  type BankingBalancesRequest,
+  type BankingBalancesResponse,
+  type BankingTransactionsRequest,
+  type BankingTransactionsResponse,
+} from "./banking";
 export {
   mapsContract,
   mapsOperationSchema,
@@ -1759,12 +1759,12 @@ export {
   type TelegramSetupStatus,
 } from "./zero-integrations-telegram";
 export {
-  zeroIntegrationsAgentPhoneContract,
-  type ZeroIntegrationsAgentPhoneContract,
+  integrationsAgentPhoneContract,
+  type IntegrationsAgentPhoneContract,
   type AgentPhoneConnectResponse,
   type AgentPhoneLinkStatusResponse,
   type AgentPhoneStartLinkResponse,
-} from "./zero-integrations-agentphone";
+} from "./integrations-agentphone";
 export {
   sharedMessageSchema,
   sharedThreadsContract,

@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroEmailInboundContract } from "@okouai/api-contracts/contracts/zero-email";
+import { emailInboundContract } from "@okouai/api-contracts/contracts/email";
 import { emailSuppressions } from "@okouai/db/schema/email-suppression";
 
 import { request$ } from "../context/hono";
@@ -126,7 +126,7 @@ const handleInboundRoute$ = command(
 
 export const emailInboundRoutes: readonly RouteEntry[] = [
   {
-    route: zeroEmailInboundContract.post,
+    route: emailInboundContract.post,
     handler: handleInboundRoute$,
   },
 ];

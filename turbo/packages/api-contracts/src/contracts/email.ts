@@ -4,7 +4,7 @@ import { initContract } from "./base";
 
 const c = initContract();
 
-export const zeroEmailInboundContract = c.router({
+export const emailInboundContract = c.router({
   post: {
     method: "POST",
     path: "/api/okou/email/inbound",
