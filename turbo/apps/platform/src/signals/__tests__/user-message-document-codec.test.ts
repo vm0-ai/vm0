@@ -740,7 +740,7 @@ describe("user message document codec", () => {
     });
     const expectedPrompt =
       "The user referenced 2 parts of your reply:\n\n" +
-      "> First quote\n\nUser comment:\nFirst note\n\n---\n\n" +
+      "> First quote\n\nFirst note\n\n---\n\n" +
       "> Second quote";
     expect(messageDocumentToPrompt(structured)).toBe(expectedPrompt);
     expect(messageDocumentToDisplayText(structured)).toBe(expectedPrompt);

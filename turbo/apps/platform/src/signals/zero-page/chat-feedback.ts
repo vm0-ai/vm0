@@ -159,13 +159,9 @@ export function formatFeedbackPrompt(
         ? `Source: ${mailSourceLabel(item.source)}\n\n`
         : "";
     const note = item.note.trim();
-    const comment =
-      note.length === 0
-        ? ""
-        : hasQuoteOnlyItem
-          ? `\n\nUser comment:\n${note}`
-          : `\n\n${note}`;
-    return `${source}${quoted}${comment}`;
+    return note.length === 0
+      ? `${source}${quoted}`
+      : `${source}${quoted}\n\n${note}`;
   });
   const intro = hasQuoteOnlyItem
     ? `The user referenced ${items.length} parts of your reply:`

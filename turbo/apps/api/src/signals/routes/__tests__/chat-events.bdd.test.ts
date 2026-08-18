@@ -7492,7 +7492,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     };
     const prompt =
       "The user referenced 2 parts of your reply:\n\n" +
-      "> First quote\n\nUser comment:\nClarify the owner\n\n---\n\n" +
+      "> First quote\n\nClarify the owner\n\n---\n\n" +
       "> Second quote";
 
     const sent = await sendChatRun(actor, {

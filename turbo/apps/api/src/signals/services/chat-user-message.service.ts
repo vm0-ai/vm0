@@ -310,13 +310,9 @@ function formatFeedbackParts(
       commonMailSource === null && part.source?.type === "mail"
         ? `Source: ${mailSourceLabel(part.source)}\n\n`
         : "";
-    const comment =
-      note.length === 0
-        ? ""
-        : hasQuoteOnlyPart
-          ? `\n\nUser comment:\n${note}`
-          : `\n\n${note}`;
-    return `${source}${quoted}${comment}`;
+    return note.length === 0
+      ? `${source}${quoted}`
+      : `${source}${quoted}\n\n${note}`;
   });
   const intro = hasQuoteOnlyPart
     ? `The user referenced ${parts.length} parts of your reply:`
