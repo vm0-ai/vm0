@@ -434,7 +434,7 @@ async def test_singleflight_total_waiter_bound_spans_catalog_keys(real_flow):
         await asyncio.sleep(0)
         assert all(not waiter.done() for waiter in waiters)
         assert overflow_prepare.done()
-        await overflow_prepare
+        assert not await overflow_prepare
 
         overflow_telemetry: dict[str, object] = {}
         catalog_cache.add_network_log_fields(overflow, overflow_telemetry)
