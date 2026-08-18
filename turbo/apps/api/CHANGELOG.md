@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.458.0](https://github.com/vm0-ai/vm0/compare/api-v1.457.5...api-v1.458.0) (2026-08-18)
+
+
+### Features
+
+* **image:** apply the run image model as a default ([#27810](https://github.com/vm0-ai/vm0/issues/27810)) ([026c19c](https://github.com/vm0-ai/vm0/commit/026c19c9cc8694fb0afb7aee36428f5338e9ca89))
+
+
+### Bug Fixes
+
+* **api:** bound oversized axiom agent event data ([#27780](https://github.com/vm0-ai/vm0/issues/27780)) ([e1831b5](https://github.com/vm0-ai/vm0/commit/e1831b565eb9c6603dbefc2942009fc3cf125bf7))
+* **api:** reset autonomy for human-forwarded content ([#27832](https://github.com/vm0-ai/vm0/issues/27832)) ([332e8ae](https://github.com/vm0-ai/vm0/commit/332e8aef6e8582ce67db53a120831718bfeecaad))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.566.0
+    * @okouai/db bumped to 1.204.1
+
 ## [1.457.5](https://github.com/vm0-ai/vm0/compare/api-v1.457.4...api-v1.457.5) (2026-08-18)
 
 

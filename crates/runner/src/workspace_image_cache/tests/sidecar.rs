@@ -4,6 +4,9 @@ use std::path::Path;
 use api_contracts::generated::constants::runners::{
     RESUME_SESSION_HISTORY_MAX_BYTES, paths::CANONICAL_WORKING_DIR,
 };
+use guest_contracts::session_history_identity::{
+    FinalSessionHistoryFramework, FinalSessionHistoryRefKind,
+};
 use sha2::{Digest, Sha256};
 use tokio::fs;
 
@@ -19,8 +22,7 @@ use super::super::{
 use super::support::{TEST_PROFILE_NAME, local_cache, write_current_cache_entry};
 use crate::ids::RunId;
 use crate::paths::RunnerPaths;
-use crate::restored_session_identity::{RestoredSessionFramework, RestoredSessionIdentity};
-use crate::types::ResumeSessionHistoryRefKind;
+use crate::restored_session_identity::RestoredSessionIdentity;
 
 fn mode(path: &Path) -> u32 {
     std::fs::metadata(path).unwrap().permissions().mode() & 0o777
@@ -28,9 +30,9 @@ fn mode(path: &Path) -> u32 {
 
 fn test_restored_session_identity(session_id: &str, history: &[u8]) -> RestoredSessionIdentity {
     RestoredSessionIdentity::new(
-        RestoredSessionFramework::ClaudeCode,
+        FinalSessionHistoryFramework::ClaudeCode,
         session_id,
-        ResumeSessionHistoryRefKind::Blob,
+        FinalSessionHistoryRefKind::Blob,
         hex::encode(Sha256::digest(history)),
         Some(history.len() as u64),
     )

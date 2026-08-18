@@ -1,4 +1,4 @@
-import { zeroFeishuOauthContract } from "@okouai/api-contracts/contracts/zero-feishu-oauth";
+import { feishuOauthContract } from "@okouai/api-contracts/contracts/feishu-oauth";
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
@@ -51,13 +51,10 @@ describe("feishu OAuth callback page", () => {
     context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
       return respond(200, { connectors: [feishuConnectorStatus()] });
     });
-    context.mocks.api(
-      zeroFeishuOauthContract.callback,
-      ({ query, respond }) => {
-        callbackQuery = query;
-        return respond(200, { redirectUrl });
-      },
-    );
+    context.mocks.api(feishuOauthContract.callback, ({ query, respond }) => {
+      callbackQuery = query;
+      return respond(200, { redirectUrl });
+    });
 
     detachedSetupPage({
       context,

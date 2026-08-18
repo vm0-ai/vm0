@@ -13,7 +13,7 @@ const feishuConnectTokenSchema = z.object({
   sig: z.string().min(1),
 });
 
-export const zeroFeishuBrowserConnectContract = c.router({
+export const feishuBrowserConnectContract = c.router({
   connect: {
     method: "GET",
     path: "/api/okou/feishu/connect",
@@ -64,5 +64,4 @@ export const zeroFeishuBrowserConnectContract = c.router({
   },
 });
 
-export type ZeroFeishuBrowserConnectContract =
-  typeof zeroFeishuBrowserConnectContract;
+export type FeishuBrowserConnectContract = typeof feishuBrowserConnectContract;

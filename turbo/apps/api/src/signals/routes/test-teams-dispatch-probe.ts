@@ -3,7 +3,7 @@ import {
   testTeamsDispatchProbeContract,
   type TestTeamsDispatchProbeBody,
 } from "@okouai/api-contracts/contracts/test-teams-dispatch-probe";
-import type { TeamsInboundActivity } from "@okouai/api-contracts/contracts/zero-teams-bot";
+import type { TeamsInboundActivity } from "@okouai/api-contracts/contracts/teams-bot";
 
 import { now } from "../../lib/time";
 import { request$ } from "../context/hono";

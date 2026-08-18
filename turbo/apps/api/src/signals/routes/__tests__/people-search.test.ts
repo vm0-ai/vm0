@@ -803,7 +803,7 @@ describe("okou people-search route", () => {
       },
     });
     const run = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "Find a public professional profile",
     });
     const token = api.zeroTokenForRunWithCapabilities(actor, run.runId, [

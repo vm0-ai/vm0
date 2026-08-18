@@ -480,11 +480,21 @@ def flow_matches_bound_destination(
     *,
     allowed_kinds: frozenset[BindingKind],
 ) -> bool:
-    """Return whether a flow is bound to its authority for an allowed kind.
+    """Return whether the flow authority matches binding evidence for a kind.
 
-    A direct server binding is checked first. Without one, a prior binding from
-    the same client may be used as fallback, but connected flows still require
-    authoritative endpoint evidence matching the bound concrete endpoint.
+    This convenience wrapper normalizes the current trusted authority and
+    delegates to ``flow_matches_normalized_destination``. A ``True`` result does
+    not by itself prove that a durable direct binding exists. It can come from:
+
+    - a matching direct server binding,
+    - a connected prior same-client binding with authoritative endpoint
+      evidence, or
+    - an unconnected server whose normalized address matches the destination,
+      even when no direct or client-associated binding is stored. This last
+      case is retargetable, not durable authorization.
+
+    Callers that need durable admission must additionally require
+    ``has_server_binding`` or go through the privileged binding path.
     """
     trusted_host = flow_metadata.trusted_authority_host(flow.metadata)
     if not trusted_host:
@@ -510,11 +520,22 @@ def flow_matches_normalized_destination(
     destination: NormalizedUpstreamDestination,
     allowed_kinds: frozenset[BindingKind],
 ) -> bool:
-    """Match current binding evidence against an already-normalized authority.
+    """Return whether the flow matches the normalized destination for a kind.
 
-    The caller must derive ``destination`` from the current flow authority.
-    This function revalidates mutable endpoint evidence but does not authorize
-    an unrelated destination.
+    The caller must derive ``destination`` from the current flow authority. A
+    ``True`` result can come from one of three modes:
+
+    1. The current server has a direct binding whose host, port, and kind match
+       and whose current destination still matches the binding.
+    2. The server is connected and a prior same-client binding matches with
+       authoritative connected-endpoint evidence.
+    3. The server is unconnected and its normalized address equals
+       ``destination``. This mode returns ``True`` even when no direct or
+       client-associated binding is stored, so it is retargetable evidence, not
+       durable direct-binding authorization.
+
+    Callers that need durable admission must additionally require
+    ``has_server_binding`` or go through the privileged binding path.
     """
     server = flow.server_conn
     server_id = _connection_id(server)

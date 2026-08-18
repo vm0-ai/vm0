@@ -1039,7 +1039,7 @@ export function ZeroConnectorsPage() {
                   ($) => {
                     return $.connectors.catalog.descriptionWithCount;
                   },
-                  { value: "700+" },
+                  { value: "1000+" },
                 )}
               </p>
             ) : (

@@ -146,7 +146,7 @@ describe("low-credit email delivery", () => {
       },
     });
     const run = await runs.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "cross the low-credit alert threshold",
       triggerSource: "web",
     });

@@ -400,7 +400,7 @@ describe("artifact upload provenance", () => {
         `Artifacts API ${triggerSource} source agent`,
       );
       const run = await api.createDirectRun(owner.actor, {
-        agentComposeId: owner.agentId,
+        agentId: owner.agentId,
         prompt: `create ${triggerSource} artifact`,
         modelProviderType: "anthropic-api-key",
         triggerSource,

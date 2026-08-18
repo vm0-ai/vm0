@@ -18,12 +18,14 @@ import { featureSwitch$ } from "../external/feature-switch.ts";
 import { reloadOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
 import {
   ONBOARDING_CHECKOUT_STATE_PARAM,
+  onboardingDraft$,
   resetOnboardingDraft$,
   storeOnboardingCheckoutDraft$,
 } from "./onboarding-state.ts";
 import {
   capturePaidOnboardingCheckoutCreated$,
   capturePaidOnboardingRedirectToStripe$,
+  capturePaidOnboardingRoleConfirmed$,
 } from "../bootstrap/paid-funnel-telemetry.ts";
 
 export const completeOnboarding$ = command(
@@ -33,6 +35,8 @@ export const completeOnboarding$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     const createClient = get(zeroClient$);
+    const draft = get(onboardingDraft$);
+    const role = draft.choice === "workflow" ? draft.categoryId : null;
     if (redeemCode) {
       const redeemClient = createClient(zeroBillingRedeemCodeContract);
       await accept(
@@ -54,6 +58,9 @@ export const completeOnboarding$ = command(
       [200],
     );
     signal.throwIfAborted();
+    if (role) {
+      set(capturePaidOnboardingRoleConfirmed$, role);
+    }
     set(reloadOnboardingStatus$);
     set(resetOnboardingDraft$);
   },

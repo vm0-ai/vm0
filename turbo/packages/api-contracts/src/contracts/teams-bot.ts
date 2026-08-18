@@ -119,7 +119,7 @@ export const teamsBotIngressResponseSchema = z.object({
   dispatch: teamsBotDispatchResponseSchema.optional(),
 });
 
-export const zeroTeamsBotContract = c.router({
+export const teamsBotContract = c.router({
   post: {
     method: "POST",
     path: "/api/okou/teams/bot",
@@ -146,4 +146,4 @@ export type TeamsBotIngressResponse = z.infer<
 export type TeamsBotDispatchResponse = z.infer<
   typeof teamsBotDispatchResponseSchema
 >;
-export type ZeroTeamsBotContract = typeof zeroTeamsBotContract;
+export type TeamsBotContract = typeof teamsBotContract;

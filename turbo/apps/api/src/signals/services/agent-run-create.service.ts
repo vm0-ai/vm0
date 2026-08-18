@@ -5317,57 +5317,14 @@ async function checkOrgRunPlanStatus(
   return capabilities.status === "active" ? null : insufficientCredits();
 }
 
-async function lookupComposeByVersion(
+async function resolveByAgentId(
   db: Db,
-  versionId: string,
+  agentId: string,
   timing?: ApiDispatchTimingCollector,
 ): Promise<ResolvedCompose | CreateRunErrorResult> {
   const [row] = await measureApiDispatchTiming(
     timing,
-    "api_dispatch_resolve_compose_lookup_version",
-    "nested",
-    async () => {
-      return await db
-        .select({
-          versionContent: agentComposeVersions.content,
-          composeName: agentComposes.name,
-          composeOrgId: agentComposes.orgId,
-          composeId: agentComposes.id,
-          composeUserId: agentComposes.userId,
-        })
-        .from(agentComposeVersions)
-        .leftJoin(
-          agentComposes,
-          eq(agentComposeVersions.composeId, agentComposes.id),
-        )
-        .where(eq(agentComposeVersions.id, versionId))
-        .limit(1);
-    },
-  );
-
-  if (!row?.composeId || !row.composeOrgId || !row.composeUserId) {
-    return notFound("Agent compose version not found");
-  }
-
-  return {
-    agentComposeVersionId: versionId,
-    composeId: row.composeId,
-    composeUserId: row.composeUserId,
-    agentName: row.composeName ?? undefined,
-    orgId: row.composeOrgId,
-    content: row.versionContent as AgentComposeContent,
-    artifacts: [],
-  };
-}
-
-async function resolveByComposeId(
-  db: Db,
-  composeId: string,
-  timing?: ApiDispatchTimingCollector,
-): Promise<ResolvedCompose | CreateRunErrorResult> {
-  const [row] = await measureApiDispatchTiming(
-    timing,
-    "api_dispatch_resolve_compose_lookup_compose",
+    "api_dispatch_resolve_compose_lookup_agent",
     "nested",
     async () => {
       return await db
@@ -5385,7 +5342,7 @@ async function resolveByComposeId(
           agentComposeVersions,
           eq(agentComposeVersions.id, agentComposes.headVersionId),
         )
-        .where(eq(agentComposes.id, composeId))
+        .where(eq(agentComposes.id, agentId))
         .limit(1);
     },
   );
@@ -5631,7 +5588,7 @@ function resolveCompose(
     async (get): Promise<ResolvedCompose | CreateRunErrorResult> => {
       if (body.sessionId) {
         const sessionId = body.sessionId;
-        return await measureApiDispatchTiming(
+        const resolved = await measureApiDispatchTiming(
           timing,
           "api_dispatch_resolve_compose_by_session_id",
           "nested",
@@ -5641,34 +5598,25 @@ function resolveCompose(
             );
           },
         );
+        if (
+          !isRouteError(resolved) &&
+          body.agentId !== undefined &&
+          resolved.composeId !== body.agentId
+        ) {
+          return badRequestMessage("agentId does not match sessionId");
+        }
+        return resolved;
       }
-      if (body.agentComposeVersionId) {
-        const agentComposeVersionId = body.agentComposeVersionId;
-        return await measureApiDispatchTiming(
-          timing,
-          "api_dispatch_resolve_compose_by_version_id",
-          "nested",
-          async () => {
-            return await lookupComposeByVersion(
-              db,
-              agentComposeVersionId,
-              timing,
-            );
-          },
-        );
+      if (!body.agentId) {
+        return badRequestMessage("Missing agentId or sessionId");
       }
-      if (!body.agentComposeId) {
-        return badRequestMessage(
-          "Missing agentComposeId or agentComposeVersionId. Provide composeId, agentComposeVersionId, or sessionId.",
-        );
-      }
-      const agentComposeId = body.agentComposeId;
+      const agentId = body.agentId;
       return await measureApiDispatchTiming(
         timing,
-        "api_dispatch_resolve_compose_by_compose_id",
+        "api_dispatch_resolve_compose_by_agent_id",
         "nested",
         async () => {
-          return await resolveByComposeId(db, agentComposeId, timing);
+          return await resolveByAgentId(db, agentId, timing);
         },
       );
     },

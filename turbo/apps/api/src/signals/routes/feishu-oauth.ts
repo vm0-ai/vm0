@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { and, eq, ne } from "drizzle-orm";
-import { zeroFeishuOauthContract } from "@okouai/api-contracts/contracts/zero-feishu-oauth";
+import { feishuOauthContract } from "@okouai/api-contracts/contracts/feishu-oauth";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
@@ -545,7 +545,7 @@ function connectionErrorMessage(
 }
 
 const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const query = get(queryOf(zeroFeishuOauthContract.connect));
+  const query = get(queryOf(feishuOauthContract.connect));
   const state = query.state ? verifyFeishuOAuthState(query.state) : null;
   if (!state) {
     return jsonErrorResponse("Invalid or expired connect state");
@@ -911,7 +911,7 @@ const completeCustomFeishuOAuth$ = command(
 );
 
 const callback$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const query = get(queryOf(zeroFeishuOauthContract.callback));
+  const query = get(queryOf(feishuOauthContract.callback));
   if (!query.state) {
     return jsonErrorResponse("Invalid or expired connect state");
   }
@@ -938,11 +938,11 @@ const callback$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 export const feishuOauthRoutes: readonly RouteEntry[] = [
   {
-    route: zeroFeishuOauthContract.connect,
+    route: feishuOauthContract.connect,
     handler: connect$,
   },
   {
-    route: zeroFeishuOauthContract.callback,
+    route: feishuOauthContract.callback,
     handler: callback$,
   },
 ];
