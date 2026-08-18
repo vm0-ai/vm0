@@ -6984,6 +6984,10 @@ async function validateFeishuConnectorOwnershipCleanup(): Promise<void> {
       const matchedConnectorId = "00000000-0000-4000-8000-000000094003";
       const mismatchedInstallationId = "00000000-0000-4000-8000-000000094004";
       const mismatchedConnectorId = "00000000-0000-4000-8000-000000094005";
+      const orphanConnectorId = "00000000-0000-4000-8000-000000094006";
+      const orphanSlugId = "00000000-0000-4000-8000-000000094007";
+      const unrelatedConnectorId = "00000000-0000-4000-8000-000000094008";
+      const unrelatedSlugId = "00000000-0000-4000-8000-000000094009";
 
       await client.query(
         `
@@ -7030,6 +7034,30 @@ async function validateFeishuConnectorOwnershipCleanup(): Promise<void> {
               '[]'::jsonb,
               'oauth',
               $4
+            ),
+            (
+              $7,
+              $2,
+              '_feishu-' || $8::text,
+              'Orphaned Feishu connector',
+              '["https://open.feishu.cn/open-apis/"]'::jsonb,
+              '[]'::jsonb,
+              '[{"name":"Authorization","valueTemplate":"Bearer {{oauth.access_token}}"}]'::jsonb,
+              '[]'::jsonb,
+              'oauth',
+              $4
+            ),
+            (
+              $9,
+              $2,
+              '_feishu-' || $10::text,
+              'Unrelated OAuth connector',
+              '["https://open.feishu.cn/open-apis/"]'::jsonb,
+              '[]'::jsonb,
+              '[{"name":"Authorization","valueTemplate":"Bearer {{oauth.access_token}}"}]'::jsonb,
+              '[]'::jsonb,
+              'oauth',
+              $4
             )
         `,
         [
@@ -7039,6 +7067,10 @@ async function validateFeishuConnectorOwnershipCleanup(): Promise<void> {
           userId,
           mismatchedConnectorId,
           mismatchedInstallationId,
+          orphanConnectorId,
+          orphanSlugId,
+          unrelatedConnectorId,
+          unrelatedSlugId,
         ],
       );
       await client.query(
@@ -7075,9 +7107,37 @@ async function validateFeishuConnectorOwnershipCleanup(): Promise<void> {
               'https://open.feishu.cn/open-apis/authen/v2/oauth/token',
               'client_secret_post',
               'none'
+            ),
+            (
+              $4,
+              $2,
+              'feishu',
+              'cli_orphan',
+              'encrypted-orphan-secret',
+              'https://accounts.feishu.cn/open-apis/authen/v1/authorize',
+              'https://open.feishu.cn/open-apis/authen/v2/oauth/token',
+              'client_secret_post',
+              'none'
+            ),
+            (
+              $5,
+              $2,
+              'standard',
+              'cli_unrelated',
+              'encrypted-unrelated-secret',
+              'https://accounts.feishu.cn/open-apis/authen/v1/authorize',
+              'https://open.feishu.cn/open-apis/authen/v2/oauth/token',
+              'client_secret_post',
+              'none'
             )
         `,
-        [matchedConnectorId, orgId, mismatchedConnectorId],
+        [
+          matchedConnectorId,
+          orgId,
+          mismatchedConnectorId,
+          orphanConnectorId,
+          unrelatedConnectorId,
+        ],
       );
       await client.query("COMMIT");
       await client.query(
@@ -7151,6 +7211,19 @@ async function validateFeishuConnectorOwnershipCleanup(): Promise<void> {
           customConnectorId: null,
         },
       ]);
+      const connectorRows = await client.query<{ id: string }>(
+        `
+          SELECT "id"
+          FROM "org_custom_connectors"
+          WHERE "org_id" = $1
+          ORDER BY "id"
+        `,
+        [orgId],
+      );
+      assert.deepEqual(connectorRows.rows, [
+        { id: matchedConnectorId },
+        { id: unrelatedConnectorId },
+      ]);
 
       const migrationSql = readFileSync(
         path.join(
@@ -7175,9 +7248,20 @@ async function validateFeishuConnectorOwnershipCleanup(): Promise<void> {
         [orgId],
       );
       assert.deepEqual(rerunRows.rows, ownershipRows.rows);
+      const rerunConnectorRows = await client.query<{ id: string }>(
+        `
+          SELECT "id"
+          FROM "org_custom_connectors"
+          WHERE "org_id" = $1
+          ORDER BY "id"
+        `,
+        [orgId],
+      );
+      assert.deepEqual(rerunConnectorRows.rows, connectorRows.rows);
 
       console.log("   ✅ exact legacy ownership is reconciled");
-      console.log("   ✅ mismatched application ownership remains unlinked");
+      console.log("   ✅ unlinked generated connectors are removed");
+      console.log("   ✅ unrelated reserved-slug connectors remain intact");
       console.log("   ✅ cleanup reruns without changing ownership\n");
     } finally {
       await client.end();
