@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroMailContract } from "@okouai/api-contracts/contracts/zero-mail";
+import { mailContract } from "@okouai/api-contracts/contracts/mail";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 
@@ -71,7 +71,7 @@ function linkMutationResponse(
   }
 }
 
-const linkDraftBody$ = bodyResultOf(zeroMailContract.linkDraft);
+const linkDraftBody$ = bodyResultOf(mailContract.linkDraft);
 const linkDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const publicBrand =
@@ -93,7 +93,7 @@ const linkDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return linkMutationResponse(result, publicBrand);
 });
 
-const getDraftParams$ = pathParamsOf(zeroMailContract.getDraft);
+const getDraftParams$ = pathParamsOf(mailContract.getDraft);
 const getDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const publicBrand = get(publicBrand$);
@@ -111,7 +111,7 @@ const getDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   );
 });
 
-const getAttachmentParams$ = pathParamsOf(zeroMailContract.getAttachment);
+const getAttachmentParams$ = pathParamsOf(mailContract.getAttachment);
 
 function attachmentResponseContentType(contentType: string): string {
   const mediaType = contentType.split(";", 1)[0]?.trim().toLowerCase();
@@ -165,7 +165,7 @@ const getAttachmentInner$ = command(
   },
 );
 
-const deleteDraftParams$ = pathParamsOf(zeroMailContract.deleteDraft);
+const deleteDraftParams$ = pathParamsOf(mailContract.deleteDraft);
 const deleteDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const publicBrand = get(publicBrand$);
@@ -184,7 +184,7 @@ const deleteDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 204 as const, body: undefined };
 });
 
-const sendDraftParams$ = pathParamsOf(zeroMailContract.sendDraft);
+const sendDraftParams$ = pathParamsOf(mailContract.sendDraft);
 const sendDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const publicBrand = get(publicBrand$);
@@ -218,23 +218,23 @@ const mailDraftHumanAuth = Object.freeze({
 
 export const mailRoutes: readonly RouteEntry[] = [
   {
-    route: zeroMailContract.linkDraft,
+    route: mailContract.linkDraft,
     handler: authRoute(mailDraftLinkAuth, linkDraftInner$),
   },
   {
-    route: zeroMailContract.getDraft,
+    route: mailContract.getDraft,
     handler: authRoute(mailDraftHumanAuth, getDraftInner$),
   },
   {
-    route: zeroMailContract.getAttachment,
+    route: mailContract.getAttachment,
     handler: authRoute(mailDraftHumanAuth, getAttachmentInner$),
   },
   {
-    route: zeroMailContract.deleteDraft,
+    route: mailContract.deleteDraft,
     handler: authRoute(mailDraftHumanAuth, deleteDraftInner$),
   },
   {
-    route: zeroMailContract.sendDraft,
+    route: mailContract.sendDraft,
     handler: authRoute(mailDraftHumanAuth, sendDraftInner$),
   },
 ];

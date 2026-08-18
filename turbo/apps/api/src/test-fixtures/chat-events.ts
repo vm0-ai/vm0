@@ -52,9 +52,9 @@ import {
   runOwnedChatEventForRunCondition,
 } from "../signals/services/chat-event-type.service";
 import {
-  acquireVm0ManagedModelKeyFixture,
-  releaseVm0ManagedModelKeyFixture,
-} from "../signals/services/test-vm0-managed-model-key-fixture.service";
+  acquireManagedModelKeyFixture,
+  releaseManagedModelKeyFixture,
+} from "../signals/services/managed-model-key-fixture";
 import { visibleChatEventCondition } from "../signals/services/chat-event-shared.service";
 import { createChatEventSourcePart } from "../signals/services/chat-event-annotation.service";
 import { buildFeishuChatOpenUrl } from "../signals/services/feishu-config";
@@ -1572,16 +1572,12 @@ export async function acquireBddVm0ApiKey(args: {
       `acquireBddVm0ApiKey: api key must start with one of ${VM0_BDD_API_KEY_PREFIXES.join(", ")}`,
     );
   }
-  const [acquired] = await acquireVm0ManagedModelKeyFixture(
-    db(),
-    args.fixtureId,
-    [
-      {
-        vendor: args.vendor,
-        apiKey: args.apiKey,
-      },
-    ],
-  );
+  const [acquired] = await acquireManagedModelKeyFixture(db(), args.fixtureId, [
+    {
+      vendor: args.vendor,
+      apiKey: args.apiKey,
+    },
+  ]);
   if (!acquired) {
     throw new Error(`Expected VM0 managed key for vendor: ${args.vendor}`);
   }
@@ -1592,7 +1588,7 @@ export async function acquireBddVm0ApiKey(args: {
 export async function releaseBddVm0ApiKey(args: {
   readonly fixtureId: string;
 }): Promise<void> {
-  await releaseVm0ManagedModelKeyFixture(db(), args.fixtureId);
+  await releaseManagedModelKeyFixture(db(), args.fixtureId);
 }
 
 /**

@@ -1670,7 +1670,7 @@
       "chatsWith": "Chatta con {{agentName}}",
       "chatThreads": "Thread di chat",
       "delete": "Elimina la chat",
-      "deleteDescription": "Ciò eliminerà definitivamente questa chat. Qualsiasi attività attualmente in esecuzione in questa chat verrà interrotta immediatamente. Questa azione non può essere annullata.",
+      "deleteDescription": "Ciò eliminerà definitivamente questa chat. Qualsiasi attività attualmente in esecuzione in questa chat verrà interrotta immediatamente. Tutte le automazioni collegate verranno messe in pausa. Questa azione non può essere annullata.",
       "deleteTitle": "Eliminare la chat?",
       "draft": "Bozza",
       "empty": "Avvia una conversazione e verrà visualizzata qui",

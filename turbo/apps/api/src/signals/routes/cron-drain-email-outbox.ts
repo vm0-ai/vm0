@@ -6,7 +6,7 @@ import type { RouteEntry } from "../route-entry";
 import {
   cleanupExpiredEmailOutbox$,
   drainEmailOutboxBatch$,
-} from "../services/zero-email-common.service";
+} from "../services/email-common.service";
 import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 
 const drainEmailOutboxRoute$ = command(

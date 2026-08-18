@@ -3,13 +3,13 @@ import { randomUUID } from "node:crypto";
 import { command } from "ccstate";
 import { and, eq, sql } from "drizzle-orm";
 import {
-  zeroMailDraftSchema,
-  zeroMailDraftStatusSchema,
-  type ZeroMailAttachment,
-  type ZeroMailDraft,
-  type ZeroMailDraftStatus,
-  type ZeroMailInlineImage,
-} from "@okouai/api-contracts/contracts/zero-mail";
+  mailDraftSchema,
+  mailDraftStatusSchema,
+  type MailAttachment,
+  type MailDraft,
+  type MailDraftStatus,
+  type MailInlineImage,
+} from "@okouai/api-contracts/contracts/mail";
 import { connectorAuthMethodHasRequiredScopes } from "@okouai/connectors/connector-auth-method";
 import { agentComposes } from "@okouai/db/schema/agent-compose";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
@@ -112,7 +112,7 @@ interface MailConnection extends ConnectorCredentialConnection {
 interface MailDraftResult {
   readonly kind: "ok";
   readonly mailDraftId: string;
-  readonly mailDraft: ZeroMailDraft;
+  readonly mailDraft: MailDraft;
 }
 
 interface MailDraftLinkResult {
@@ -156,7 +156,7 @@ interface MailDraftRow {
   readonly gmailThreadId: string;
   readonly gmailMessageId: string;
   readonly sentGmailMessageId: string | null;
-  readonly status: ZeroMailDraftStatus;
+  readonly status: MailDraftStatus;
   readonly senderName: string | null;
   readonly senderAddress: string;
   readonly subject: string;
@@ -174,7 +174,7 @@ interface StoredMailDraftRow {
   readonly gmailThreadId: string | null;
   readonly gmailMessageId: string | null;
   readonly sentGmailMessageId: string | null;
-  readonly status: ZeroMailDraftStatus | null;
+  readonly status: MailDraftStatus | null;
   readonly senderName: string | null;
   readonly senderAddress: string | null;
   readonly subject: string | null;
@@ -204,11 +204,11 @@ interface MailDetails {
   readonly subject: string;
   readonly body: string;
   readonly bodyHtml?: string;
-  readonly inlineImages?: readonly ZeroMailInlineImage[];
+  readonly inlineImages?: readonly MailInlineImage[];
   readonly replyTo?: string;
   readonly inReplyTo?: string;
   readonly references: readonly string[];
-  readonly attachments: readonly ZeroMailAttachment[];
+  readonly attachments: readonly MailAttachment[];
 }
 
 interface GmailDraftValue {
@@ -244,10 +244,7 @@ function linkResult(mailDraftId: string): MailDraftLinkResult {
   };
 }
 
-function okResult(
-  mailDraftId: string,
-  mailDraft: ZeroMailDraft,
-): MailDraftResult {
+function okResult(mailDraftId: string, mailDraft: MailDraft): MailDraftResult {
   return {
     ...linkResult(mailDraftId),
     mailDraft,
@@ -410,7 +407,7 @@ function mailDraftRow(
   ) {
     return null;
   }
-  const status = zeroMailDraftStatusSchema.safeParse(row.status);
+  const status = mailDraftStatusSchema.safeParse(row.status);
   if (!status.success) {
     return null;
   }
@@ -610,7 +607,7 @@ function inlineImagePartsByContentId(
 
 interface RichMailBody {
   readonly html: string;
-  readonly inlineImages: readonly ZeroMailInlineImage[];
+  readonly inlineImages: readonly MailInlineImage[];
   readonly inlinePartIds: ReadonlySet<string>;
 }
 
@@ -622,7 +619,7 @@ function richMailBody(
     return null;
   }
   const mimeParts = inlineImagePartsByContentId(payload);
-  const inlineImages: ZeroMailInlineImage[] = [];
+  const inlineImages: MailInlineImage[] = [];
   convert(htmlBody, {
     wordwrap: false,
     formatters: {
@@ -665,7 +662,7 @@ function richMailBody(
 function attachmentMetadata(
   part: GmailMessagePart,
   inlinePartIds: ReadonlySet<string>,
-): readonly ZeroMailAttachment[] {
+): readonly MailAttachment[] {
   if (inlinePartIds.has(part.partId)) {
     return [];
   }
@@ -950,9 +947,9 @@ function responseDraft(args: {
   readonly details: MailDetails | null;
   readonly detailAvailable: boolean;
   readonly accessStatus?: "ready" | "reconnect";
-}): ZeroMailDraft {
+}): MailDraft {
   const details = responseDetails(args.row, args.details);
-  return zeroMailDraftSchema.parse({
+  return mailDraftSchema.parse({
     version: 3,
     provider: "gmail",
     from: details.from,

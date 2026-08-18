@@ -16,7 +16,7 @@ import {
   resolveAgentPhoneUserLinkForOwner,
   storeOutboundAgentPhoneMessage,
   type AgentPhoneChannel,
-} from "../services/zero-agentphone.service";
+} from "../services/agentphone.service";
 import { settle } from "../utils";
 
 function routeError<Status extends 400 | 401 | 403 | 404 | 502>(

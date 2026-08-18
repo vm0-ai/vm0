@@ -1630,7 +1630,7 @@
       "chatsWith": "Chats mit {{agentName}}",
       "chatThreads": "Chat-Threads",
       "delete": "Chat löschen",
-      "deleteDescription": "Dadurch wird dieser Chat dauerhaft gelöscht. Jede derzeit in diesem Chat ausgeführte Aufgabe wird sofort gestoppt. Diese Aktion kann nicht rückgängig gemacht werden.",
+      "deleteDescription": "Dadurch wird dieser Chat dauerhaft gelöscht. Jede derzeit in diesem Chat ausgeführte Aufgabe wird sofort gestoppt. Alle verknüpften Automatisierungen werden pausiert. Diese Aktion kann nicht rückgängig gemacht werden.",
       "deleteTitle": "Chat löschen?",
       "draft": "Entwurf",
       "empty": "Starten Sie eine Konversation; sie wird dann hier angezeigt",

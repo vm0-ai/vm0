@@ -21,12 +21,12 @@ import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 import { logsRoutes } from "../../logs";
 import { queuePositionRoutes } from "../../queue-position";
-import { zeroRunDetailRoutes } from "../../zero-run-detail";
+import { runDetailRoutes } from "../../run-detail";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...logsRoutes,
   ...queuePositionRoutes,
-  ...zeroRunDetailRoutes,
+  ...runDetailRoutes,
 ]);
 
 type AuthHeaders = {
@@ -161,7 +161,7 @@ export function createRunReadsApi(context: TestContext) {
       statuses: readonly TStatus[],
     ) {
       return await accept(
-        setupApp({ context, routes: zeroRunDetailRoutes })(
+        setupApp({ context, routes: runDetailRoutes })(
           zeroRunAgentEventsContract,
         ).getAgentEvents({
           headers: authenticate(context, actor),
@@ -181,7 +181,7 @@ export function createRunReadsApi(context: TestContext) {
       statuses: readonly TStatus[],
     ) {
       return await accept(
-        setupApp({ context, routes: zeroRunDetailRoutes })(
+        setupApp({ context, routes: runDetailRoutes })(
           zeroRunNetworkLogsContract,
         ).getNetworkLogs({
           headers: authenticate(context, actor),

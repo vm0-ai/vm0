@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.768.0](https://github.com/vm0-ai/vm0/compare/app-v0.767.1...app-v0.768.0) (2026-08-18)
+
+
+### Features
+
+* **app:** add image model selection to existing chats ([#27881](https://github.com/vm0-ai/vm0/issues/27881)) ([3dcb1f4](https://github.com/vm0-ai/vm0/commit/3dcb1f4fe316e0e77fc561684659f114365335d3))
+* mark all chats read in three-column navigation ([#27885](https://github.com/vm0-ai/vm0/issues/27885)) ([8a84c70](https://github.com/vm0-ai/vm0/commit/8a84c70acaf8b38b2e254c02e95b789855bb5fb3))
+
+
+### Bug Fixes
+
+* pause automations when deleting chat threads ([#27880](https://github.com/vm0-ai/vm0/issues/27880)) ([039e1ec](https://github.com/vm0-ai/vm0/commit/039e1ecdab67a1ea7559919d3186c9d60a71b4c4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.338.3
+    * @okouai/connectors bumped to 1.207.1
+    * @okouai/core bumped to 8.567.0
+
 ## [0.767.1](https://github.com/vm0-ai/vm0/compare/app-v0.767.0...app-v0.767.1) (2026-08-18)
 
 

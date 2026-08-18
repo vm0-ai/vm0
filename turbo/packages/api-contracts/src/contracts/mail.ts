@@ -5,24 +5,24 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
-export const zeroMailProviderSchema = z.enum(["gmail", "outlook"]);
+export const mailProviderSchema = z.enum(["gmail", "outlook"]);
 
-export const zeroMailDraftStatusSchema = z.enum(["draft", "sent", "deleted"]);
+export const mailDraftStatusSchema = z.enum(["draft", "sent", "deleted"]);
 
-export const zeroMailAttachmentSchema = z.object({
+export const mailAttachmentSchema = z.object({
   filename: z.string(),
   contentType: z.string(),
   size: z.number().int().nonnegative(),
   partId: z.string().optional(),
 });
 
-export const zeroMailInlineImageSchema = z.object({
+export const mailInlineImageSchema = z.object({
   contentId: z.string().min(1),
   partId: z.string().min(1),
   alt: z.string(),
 });
 
-const zeroMailDraftBaseSchema = z.object({
+const mailDraftBaseSchema = z.object({
   provider: z.literal("gmail"),
   from: z.email(),
   fromName: z.string().optional(),
@@ -32,12 +32,12 @@ const zeroMailDraftBaseSchema = z.object({
   subject: z.string(),
   body: z.string(),
   bodyHtml: z.string().optional(),
-  inlineImages: z.array(zeroMailInlineImageSchema).optional(),
+  inlineImages: z.array(mailInlineImageSchema).optional(),
   accessStatus: z.enum(["ready", "reconnect"]).optional(),
   replyTo: z.string().optional(),
   inReplyTo: z.string().optional(),
   references: z.array(z.string()),
-  status: zeroMailDraftStatusSchema,
+  status: mailDraftStatusSchema,
   detailAvailable: z.boolean(),
   gmailDraftId: z.string(),
   gmailThreadId: z.string(),
@@ -48,32 +48,31 @@ const zeroMailDraftBaseSchema = z.object({
   sentAt: z.string().optional(),
 });
 
-export const zeroMailDraftSchema = zeroMailDraftBaseSchema.extend({
+export const mailDraftSchema = mailDraftBaseSchema.extend({
   version: z.literal(3),
-  attachments: z.array(zeroMailAttachmentSchema),
+  attachments: z.array(mailAttachmentSchema),
 });
 
-const zeroMailDraftResponseSchema = z.object({
+const mailDraftResponseSchema = z.object({
   mailDraftId: z.string().uuid(),
   mailDraftUrl: z.url(),
-  mailDraft: zeroMailDraftSchema,
+  mailDraft: mailDraftSchema,
 });
 
-const zeroMailLinkResponseSchema = zeroMailDraftResponseSchema.pick({
+const mailLinkResponseSchema = mailDraftResponseSchema.pick({
   mailDraftId: true,
   mailDraftUrl: true,
 });
 
-const zeroMailDraftPathParamsSchema = z.object({
+const mailDraftPathParamsSchema = z.object({
   mailDraftId: z.string().uuid(),
 });
 
-const zeroMailDraftAttachmentPathParamsSchema =
-  zeroMailDraftPathParamsSchema.extend({
-    partId: z.string().min(1),
-  });
+const mailDraftAttachmentPathParamsSchema = mailDraftPathParamsSchema.extend({
+  partId: z.string().min(1),
+});
 
-export const zeroMailContract = c.router({
+export const mailContract = c.router({
   linkDraft: {
     method: "POST",
     path: "/api/okou/mail/drafts/link",
@@ -84,7 +83,7 @@ export const zeroMailContract = c.router({
       gmailDraftId: z.string().min(1),
     }),
     responses: {
-      200: zeroMailLinkResponseSchema,
+      200: mailLinkResponseSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
@@ -96,9 +95,9 @@ export const zeroMailContract = c.router({
     method: "GET",
     path: "/api/okou/mail/drafts/:mailDraftId",
     headers: authHeadersSchema,
-    pathParams: zeroMailDraftPathParamsSchema,
+    pathParams: mailDraftPathParamsSchema,
     responses: {
-      200: zeroMailDraftResponseSchema,
+      200: mailDraftResponseSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
@@ -110,7 +109,7 @@ export const zeroMailContract = c.router({
     method: "GET",
     path: "/api/okou/mail/drafts/:mailDraftId/attachments/:partId",
     headers: authHeadersSchema,
-    pathParams: zeroMailDraftAttachmentPathParamsSchema,
+    pathParams: mailDraftAttachmentPathParamsSchema,
     responses: {
       200: c.otherResponse({
         contentType: "application/octet-stream",
@@ -127,7 +126,7 @@ export const zeroMailContract = c.router({
     method: "DELETE",
     path: "/api/okou/mail/drafts/:mailDraftId",
     headers: authHeadersSchema,
-    pathParams: zeroMailDraftPathParamsSchema,
+    pathParams: mailDraftPathParamsSchema,
     body: c.noBody(),
     responses: {
       204: c.noBody(),
@@ -142,10 +141,10 @@ export const zeroMailContract = c.router({
     method: "POST",
     path: "/api/okou/mail/drafts/:mailDraftId/send",
     headers: authHeadersSchema,
-    pathParams: zeroMailDraftPathParamsSchema,
+    pathParams: mailDraftPathParamsSchema,
     body: c.noBody(),
     responses: {
-      200: zeroMailDraftResponseSchema,
+      200: mailDraftResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
@@ -156,9 +155,9 @@ export const zeroMailContract = c.router({
   },
 });
 
-export type ZeroMailProvider = z.infer<typeof zeroMailProviderSchema>;
-export type ZeroMailDraftStatus = z.infer<typeof zeroMailDraftStatusSchema>;
-export type ZeroMailAttachment = z.infer<typeof zeroMailAttachmentSchema>;
-export type ZeroMailInlineImage = z.infer<typeof zeroMailInlineImageSchema>;
-export type ZeroMailDraft = z.infer<typeof zeroMailDraftSchema>;
-export type ZeroMailContract = typeof zeroMailContract;
+export type MailProvider = z.infer<typeof mailProviderSchema>;
+export type MailDraftStatus = z.infer<typeof mailDraftStatusSchema>;
+export type MailAttachment = z.infer<typeof mailAttachmentSchema>;
+export type MailInlineImage = z.infer<typeof mailInlineImageSchema>;
+export type MailDraft = z.infer<typeof mailDraftSchema>;
+export type MailContract = typeof mailContract;

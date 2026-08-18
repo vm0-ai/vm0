@@ -1,8 +1,8 @@
 import { ChevronRight, Loader2 } from "lucide-react";
 import type {
-  ZeroMailDraft,
-  ZeroMailDraftStatus,
-} from "@okouai/api-contracts/contracts/zero-mail";
+  MailDraft,
+  MailDraftStatus,
+} from "@okouai/api-contracts/contracts/mail";
 import type { PublicConnectorCatalogIcon } from "@okouai/api-contracts/contracts/zero-connector-catalog";
 import { cn } from "@okouai/ui";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
@@ -35,7 +35,7 @@ function MailDraftCardShell({ children }: { readonly children: ReactNode }) {
   );
 }
 
-function statusLabel(status: ZeroMailDraftStatus): string {
+function statusLabel(status: MailDraftStatus): string {
   switch (status) {
     case "draft": {
       return i18n.t(($) => {
@@ -72,7 +72,7 @@ function MailDraftCardSkeleton() {
   );
 }
 
-function mailDraftRecipients(draft: ZeroMailDraft): string {
+function mailDraftRecipients(draft: MailDraft): string {
   const firstRecipient = draft.to[0];
   if (!firstRecipient) {
     return i18n.t(($) => {
@@ -89,7 +89,7 @@ function MailDraftCardContent({
   gmailIcon,
   reconnecting,
 }: {
-  readonly draft: ZeroMailDraft;
+  readonly draft: MailDraft;
   readonly gmailIcon: PublicConnectorCatalogIcon | undefined;
   readonly reconnecting: boolean;
 }) {
@@ -153,7 +153,7 @@ function DeletedMailDraftCard({
   gmailIcon,
   subject,
 }: {
-  readonly draft: ZeroMailDraft;
+  readonly draft: MailDraft;
   readonly gmailIcon: PublicConnectorCatalogIcon | undefined;
   readonly subject: string;
 }) {

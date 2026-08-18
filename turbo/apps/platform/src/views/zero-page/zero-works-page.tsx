@@ -1,6 +1,6 @@
 import { useGet, useSet, useLastLoadable, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import type { TeamsConnectStatus } from "@okouai/api-contracts/contracts/zero-teams-connect";
+import type { TeamsConnectStatus } from "@okouai/api-contracts/contracts/teams-connect";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   AlertTriangle,

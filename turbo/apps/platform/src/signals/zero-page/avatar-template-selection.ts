@@ -1,8 +1,8 @@
 import type { GenerationTemplateRequest } from "@okouai/api-contracts/contracts/chat-threads";
 import type {
-  ZeroAvatarVideoAvatar,
-  ZeroAvatarVideoVoice,
-} from "@okouai/api-contracts/contracts/zero-avatar-video";
+  AvatarVideoAvatar,
+  AvatarVideoVoice,
+} from "@okouai/api-contracts/contracts/avatar-video";
 import {
   avatarTemplateStylePresetId,
   parseAvatarTemplateStylePresetId,
@@ -20,8 +20,8 @@ interface AvatarTemplateSelection {
 }
 
 export function toAvatarGenerationTemplate(
-  avatar: ZeroAvatarVideoAvatar,
-  voice: ZeroAvatarVideoVoice,
+  avatar: AvatarVideoAvatar,
+  voice: AvatarVideoVoice,
   aspectRatio: "portrait" | "landscape",
 ): GenerationTemplateRequest {
   return {
@@ -68,7 +68,7 @@ export function avatarTemplateSelection(
 }
 
 export function isSelectedAvatarTemplate(
-  avatar: ZeroAvatarVideoAvatar,
+  avatar: AvatarVideoAvatar,
   template: GenerationTemplateRequest | undefined,
 ): boolean {
   return avatarTemplateSelection(template)?.avatarId === avatar.id;

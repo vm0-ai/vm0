@@ -1,6 +1,9 @@
 import { chatThreads } from "@okouai/db/schema/chat-thread";
-import { workflowUserAutomationThreads } from "@okouai/db/schema/workflow";
-import { and, eq } from "drizzle-orm";
+import {
+  workflowAutomations,
+  workflowUserAutomationThreads,
+} from "@okouai/db/schema/workflow";
+import { and, eq, inArray } from "drizzle-orm";
 
 import type { ReadonlyDb } from "../external/db";
 import {
@@ -32,6 +35,64 @@ export async function loadWorkflowUserAutomationThreadId(
     )
     .limit(1);
   return thread?.chatThreadId ?? null;
+}
+
+/**
+ * Pause every enabled automation that shares a workflow-user chat thread.
+ * The caller deletes the thread in the same transaction, so the binding still
+ * identifies the affected workflows while this update runs.
+ */
+export async function disableThreadBoundWorkflowAutomations(
+  db: ChatThreadEventTransaction,
+  args: {
+    readonly userId: string;
+    readonly chatThreadId: string;
+    readonly currentTime: Date;
+  },
+): Promise<
+  readonly Pick<
+    typeof workflowAutomations.$inferSelect,
+    "orgId" | "ownerUserId" | "eventType" | "eventConfig"
+  >[]
+> {
+  // Automation creation locks the same binding before it returns. Taking that
+  // lock first ensures an automation cannot join this thread between the
+  // disable update and the thread delete.
+  const bindings = await db
+    .select({ workflowId: workflowUserAutomationThreads.workflowId })
+    .from(workflowUserAutomationThreads)
+    .where(
+      and(
+        eq(workflowUserAutomationThreads.userId, args.userId),
+        eq(workflowUserAutomationThreads.chatThreadId, args.chatThreadId),
+      ),
+    )
+    .for("update");
+  if (bindings.length === 0) {
+    return [];
+  }
+
+  return await db
+    .update(workflowAutomations)
+    .set({ enabled: false, nextRunAt: null, updatedAt: args.currentTime })
+    .where(
+      and(
+        eq(workflowAutomations.ownerUserId, args.userId),
+        eq(workflowAutomations.enabled, true),
+        inArray(
+          workflowAutomations.workflowId,
+          bindings.map((binding) => {
+            return binding.workflowId;
+          }),
+        ),
+      ),
+    )
+    .returning({
+      orgId: workflowAutomations.orgId,
+      ownerUserId: workflowAutomations.ownerUserId,
+      eventType: workflowAutomations.eventType,
+      eventConfig: workflowAutomations.eventConfig,
+    });
 }
 
 export async function createAutomationChatThread(

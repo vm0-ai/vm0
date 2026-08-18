@@ -14,7 +14,7 @@ import type { RouteEntry } from "../route-entry";
 import {
   cleanupExpiredEmailOutboxItems$,
   drainEmailOutboxItems$,
-} from "../services/zero-email-common.service";
+} from "../services/email-common.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
