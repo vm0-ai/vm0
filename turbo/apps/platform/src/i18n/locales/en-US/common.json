@@ -1633,6 +1633,7 @@
       "deleteTitle": "Delete chat?",
       "draft": "Draft",
       "empty": "Start a conversation and it'll show up here",
+      "markUnread": "Mark unread",
       "newChatWith": "New chat with {{agentName}}",
       "noUnread": "No unread chats",
       "openChatMenu": "Open chat menu",

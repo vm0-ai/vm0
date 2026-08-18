@@ -1632,6 +1632,7 @@
       "deleteTitle": "チャットを削除しますか?",
       "draft": "草案",
       "empty": "会話を開始するとここに表示されます",
+      "markUnread": "未読にする",
       "newChatWith": "{{agentName}} との新しいチャット",
       "noUnread": "未読のチャットはありません",
       "openChatMenu": "チャットメニューを開く",

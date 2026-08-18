@@ -10,6 +10,7 @@ import {
   chatThreadImageModelContract,
   chatThreadMarkAgentReadContract,
   chatThreadMarkReadContract,
+  chatThreadMarkUnreadContract,
   chatThreadMetadataContract,
   chatThreadModelSelectionContract,
   chatThreadPinContract,
@@ -310,6 +311,10 @@ export function createChatFilesBddApi(context: TestContext) {
 
   function threadMarkReadClient() {
     return chatFilesApp(context)(chatThreadMarkReadContract);
+  }
+
+  function threadMarkUnreadClient() {
+    return chatFilesApp(context)(chatThreadMarkUnreadContract);
   }
 
   function threadMarkAgentReadClient() {
@@ -857,6 +862,37 @@ export function createChatFilesBddApi(context: TestContext) {
     ) {
       return await accept(
         threadMarkReadClient().markRead({
+          headers: authenticate(context, actor),
+          params: { id: threadId },
+        }),
+        statuses,
+      );
+    },
+
+    async markThreadUnread(
+      actor: ApiTestUser,
+      threadId: string,
+    ): Promise<{
+      readonly lastReadAt: string | null;
+      readonly unreads: readonly { threadId: string; unreadAt: string }[];
+    }> {
+      const response = await accept(
+        threadMarkUnreadClient().markUnread({
+          headers: authenticate(context, actor),
+          params: { id: threadId },
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async requestMarkThreadUnread(
+      actor: ApiTestUser | null,
+      threadId: string,
+      statuses: readonly (200 | 400 | 401 | 404)[],
+    ) {
+      return await accept(
+        threadMarkUnreadClient().markUnread({
           headers: authenticate(context, actor),
           params: { id: threadId },
         }),

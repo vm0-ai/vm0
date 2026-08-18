@@ -14,6 +14,7 @@ import {
   Trash,
   Pencil,
   Ellipsis,
+  Mail,
   Pin,
   PinOff,
 } from "lucide-react";
@@ -176,6 +177,7 @@ function ChatThreadMenu({
   const isPinned = useGet(signals.pinned$);
   const indicatorState = useLastResolved(signals.indicatorState$) ?? null;
   const togglePinned = useSet(signals.togglePinned$);
+  const markUnread = useSet(signals.markUnread$);
   const openRename = useSet(signals.openRename$);
   const requestDelete = useSet(signals.requestDelete$);
   const pageSignal = useGet(pageSignal$);
@@ -186,6 +188,10 @@ function ChatThreadMenu({
 
   function openRenameDialog() {
     detach(openRename(pageSignal), Reason.DomCallback);
+  }
+
+  function handleMarkUnread() {
+    detach(markUnread(pageSignal), Reason.DomCallback);
   }
 
   const hasOtherIndicator = indicatorState !== null || isPinned;
@@ -264,6 +270,12 @@ function ChatThreadMenu({
                 })}
               </>
             )}
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={handleMarkUnread}>
+            <Mail size={16} className="mr-2" />
+            {t(($) => {
+              return $.chat.sidebar.markUnread;
+            })}
           </DropdownMenuItem>
           <DropdownMenuModalItem onModalSelect={openRenameDialog}>
             <Pencil size={16} className="mr-2" />

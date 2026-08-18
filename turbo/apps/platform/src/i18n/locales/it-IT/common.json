@@ -1673,6 +1673,7 @@
       "deleteTitle": "Eliminare la chat?",
       "draft": "Bozza",
       "empty": "Avvia una conversazione e verrà visualizzata qui",
+      "markUnread": "Segna come non letta",
       "newChatWith": "Nuova chat con {{agentName}}",
       "noUnread": "Nessuna chat non letta",
       "openChatMenu": "Apri il menu della chat",

@@ -1673,6 +1673,7 @@
       "deleteTitle": "Excluir conversa?",
       "draft": "Rascunho",
       "empty": "Nenhuma conversa ainda",
+      "markUnread": "Marcar como não lida",
       "newChatWith": "Nova conversa com {{agentName}}",
       "noUnread": "Nenhuma conversa não lida",
       "openChatMenu": "Abrir menu da conversa",

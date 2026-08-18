@@ -1,34 +1,35 @@
 import { command } from "ccstate";
-import { chatThreadMarkReadContract } from "@okouai/api-contracts/contracts/chat-threads";
+import { chatThreadMarkUnreadContract } from "@okouai/api-contracts/contracts/chat-threads";
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
+import { reloadChatIndicators$ } from "../chat-thread-list-reload.ts";
 import {
   applyUnreadSnapshot$,
-  recordOptimisticReadMark$,
+  clearOptimisticReadMark$,
 } from "./optimistic-chat-thread-read-marks.ts";
 
-interface MarkReadArgs {
+interface MarkUnreadArgs {
   readonly threadId: string;
 }
 
-export const markChatThreadRead$ = command(
+export const markChatThreadUnread$ = command(
   async (
     { get, set },
-    { threadId }: MarkReadArgs,
+    { threadId }: MarkUnreadArgs,
     signal: AbortSignal,
-  ): Promise<string | null> => {
-    set(recordOptimisticReadMark$, threadId);
-    const client = get(zeroClient$)(chatThreadMarkReadContract);
+  ): Promise<void> => {
+    const client = get(zeroClient$)(chatThreadMarkUnreadContract);
     const result = await accept(
-      client.markRead({
+      client.markUnread({
         params: { id: threadId },
         fetchOptions: { signal },
       }),
       [200],
     );
     signal.throwIfAborted();
+    set(clearOptimisticReadMark$, threadId);
     set(applyUnreadSnapshot$, result.body.unreads);
-    return result.body.lastReadAt;
+    set(reloadChatIndicators$);
   },
 );
