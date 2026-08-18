@@ -117,6 +117,9 @@ pub(crate) struct ProcessOverrideState {
     /// Optional durable gate that records and blocks every `wait_process`
     /// entry until released.
     pub(crate) wait_process_lifecycle_gate: Mutex<Option<MockLifecycleGate>>,
+    /// FIFO queue of start-process errors consumed by factory-created
+    /// sandboxes. Empty queue follows the default successful start behavior.
+    pub(crate) start_process_errors: Mutex<VecDeque<SandboxError>>,
     /// When `Some`, `wait_process` returns a wait-process operation error to
     /// simulate timeout or crash.
     pub(crate) wait_process_error: Option<String>,
@@ -174,6 +177,7 @@ impl Default for ProcessOverrideState {
             wait_process_code: None,
             wait_process_gate: None,
             wait_process_lifecycle_gate: Mutex::new(None),
+            start_process_errors: Mutex::new(VecDeque::new()),
             wait_process_error: None,
             wait_process_error_reason: SandboxOperationReason::Timeout,
             wait_process_exits: Mutex::new(VecDeque::new()),
@@ -294,6 +298,16 @@ impl MockSandboxOverrides {
             .process
             .wait_process_lifecycle_gate
             .lock_ignoring_poison() = None;
+    }
+
+    /// Queue a start-process error applied to the next matching start call.
+    /// Consumed FIFO across all sandboxes; empty queue follows the default
+    /// successful start behavior.
+    pub fn push_start_process_error(&self, error: SandboxError) {
+        self.process
+            .start_process_errors
+            .lock_ignoring_poison()
+            .push_back(error);
     }
 
     /// Create overrides that make `wait_process` return an error (simulating
