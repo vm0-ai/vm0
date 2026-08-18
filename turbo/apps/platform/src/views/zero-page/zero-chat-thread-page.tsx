@@ -7845,7 +7845,7 @@ function PagedAssistantThinkingBlock({
         </summary>
         <div
           data-thinking-block-content
-          className="px-2 pb-2 pt-1 font-serif text-[0.875rem] leading-[1.55] text-muted-foreground/80 [overflow-wrap:anywhere]"
+          className="px-2 pb-2 pt-1 font-serif text-[0.875rem] leading-[1.55] text-muted-foreground/80 [overflow-wrap:anywhere] [&_.wmde-markdown]:!text-muted-foreground/80"
         >
           <Markdown
             source={event.thinking}

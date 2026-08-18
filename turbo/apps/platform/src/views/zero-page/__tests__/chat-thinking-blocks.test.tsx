@@ -109,7 +109,10 @@ describe("chat thinking blocks", () => {
       "hover:bg-state-hover",
     );
     expect(firstSummary).not.toHaveClass("w-full", "group-open:bg-muted/50");
-    expect(firstContent).toHaveClass("text-muted-foreground/80");
+    expect(firstContent).toHaveClass(
+      "text-muted-foreground/80",
+      "[&_.wmde-markdown]:!text-muted-foreground/80",
+    );
     expect(firstContent).not.toHaveClass("bg-muted/50");
 
     await user.click(firstSummary);
