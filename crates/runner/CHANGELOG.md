@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.169.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.3...runner-rs-v0.169.4) (2026-08-18)
+
+
+### Bug Fixes
+
+* **runner:** preserve valid network logs around invalid UTF-8 lines ([#27874](https://github.com/vm0-ai/vm0/issues/27874)) ([eedc460](https://github.com/vm0-ai/vm0/commit/eedc460c1f93f60602caba66376226d42733dd86))
+
 ## [0.169.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.2...runner-rs-v0.169.3) (2026-08-18)
 
 
