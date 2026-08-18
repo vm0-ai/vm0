@@ -14,6 +14,7 @@ import {
   desktopProductFromClientHeader,
 } from "@okouai/api-contracts/contracts/client-headers";
 import { serializeError } from "@okouai/core/log-utils";
+import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 // oxlint-disable-next-line no-restricted-imports -- app factory owns the Hono instance, confirmed by ethan@vm0.ai
 import { Hono, type Context, type Next } from "hono";
 import { HTTPException } from "hono/http-exception";
@@ -106,10 +107,14 @@ function captureError(error: unknown): void {
 
 function redirectToApp(context: Context): Response {
   const incoming = new URL(context.req.url);
-  const target = new URL(
-    `${incoming.pathname}${incoming.search}`,
-    env("APP_URL"),
-  );
+  const configuredAppUrl = env("APP_URL");
+  const appUrl =
+    incoming.hostname === "api.okou.ai"
+      ? appUrlForPublicBrand(configuredAppUrl, "okou")
+      : incoming.hostname === "api.vm0.ai"
+        ? appUrlForPublicBrand(configuredAppUrl, "vm0")
+        : configuredAppUrl;
+  const target = new URL(`${incoming.pathname}${incoming.search}`, appUrl);
   return context.redirect(target.toString());
 }
 

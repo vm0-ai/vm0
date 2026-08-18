@@ -226,6 +226,8 @@ const revealWebhookSecretInner$ = computed(async (get) => {
     orgId: auth.orgId,
     member: memberFromAuth(auth),
     automationId: params.id,
+    publicBrand:
+      auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$),
   });
   if (!secret) {
     return notFound("Workflow webhook automation not found");

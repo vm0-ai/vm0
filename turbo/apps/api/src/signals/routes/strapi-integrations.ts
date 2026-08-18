@@ -6,6 +6,7 @@ import { command, computed } from "ccstate";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
+import { publicBrand$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { db$, writeDb$ } from "../external/db";
 import type { RouteEntry, SignalRouteHandler } from "../route-entry";
@@ -63,7 +64,13 @@ const list$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   return {
     status: 200 as const,
-    body: [...(await listStrapiIntegrations(get(db$), auth.orgId))],
+    body: [
+      ...(await listStrapiIntegrations(get(db$), {
+        orgId: auth.orgId,
+        publicBrand:
+          auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$),
+      })),
+    ],
   };
 });
 
@@ -86,6 +93,8 @@ const create$ = command(async ({ get, set }, signal: AbortSignal) => {
     userId: auth.userId,
     name: bodyResult.data.name,
     baseUrl: bodyResult.data.baseUrl,
+    publicBrand:
+      auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$),
   });
   signal.throwIfAborted();
   if (result.kind === "bad_request") {
@@ -111,6 +120,8 @@ const revealSecret$ = computed(async (get) => {
   const secret = await revealStrapiIntegrationSecret(get(db$), {
     orgId: auth.orgId,
     integrationId: params.integrationId,
+    publicBrand:
+      auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$),
   });
   return secret
     ? { status: 200 as const, body: secret }

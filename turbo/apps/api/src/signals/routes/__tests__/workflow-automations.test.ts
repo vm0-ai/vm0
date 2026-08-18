@@ -1249,6 +1249,75 @@ describe("okou workflow automations", () => {
     });
   });
 
+  it("projects webhook URLs by request and run brand without rotating credentials", async () => {
+    mockEnv("VM0_WEB_URL", "https://api.vm0.ai");
+    const { actor, agentId, workflowId } = await setupFixture("team");
+    const created = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        extraHeaders: { origin: "https://app.okou.ai" },
+        params: { workflowId },
+        body: { kind: "event", eventType: "webhook-received" },
+      }),
+      [201],
+    );
+    if (
+      created.body.kind !== "event" ||
+      created.body.eventType !== "webhook-received" ||
+      !created.body.webhookUrl ||
+      !created.body.webhookSecret
+    ) {
+      throw new Error("Expected a webhook automation with credentials");
+    }
+    const createdUrl = new URL(created.body.webhookUrl);
+    expect(createdUrl.hostname).toBe("api.okou.ai");
+
+    const sourceRun = await runs.createRun(actor, {
+      agentId,
+      prompt: "project webhook credentials by run brand",
+      modelProvider: "anthropic-api-key",
+    });
+    const brandCases = [
+      {
+        publicBrand: "okou" as const,
+        origin: "https://app.vm0.ai",
+        hostname: "api.okou.ai",
+      },
+      {
+        publicBrand: "vm0" as const,
+        origin: "https://app.okou.ai",
+        hostname: "api.vm0.ai",
+      },
+      {
+        publicBrand: undefined,
+        origin: "https://app.okou.ai",
+        hostname: "api.vm0.ai",
+      },
+    ];
+
+    for (const brandCase of brandCases) {
+      const token = runs.zeroTokenForRunWithCapabilities(
+        actor,
+        sourceRun.runId,
+        ["agent:write"],
+        brandCase.publicBrand,
+      );
+      const revealed = await accept(
+        automationsClient().revealWebhookSecret({
+          headers: { authorization: `Bearer ${token}` },
+          extraHeaders: { origin: brandCase.origin },
+          params: { id: created.body.id },
+          body: undefined,
+        }),
+        [200],
+      );
+      const revealedUrl = new URL(revealed.body.webhookUrl);
+      expect(revealedUrl.hostname).toBe(brandCase.hostname);
+      expect(revealedUrl.pathname).toBe(createdUrl.pathname);
+      expect(revealed.body.webhookSecret).toBe(created.body.webhookSecret);
+    }
+  });
+
   it("rejects webhook re-enable for Pro", async () => {
     const { actor, customerId, workflowId, subscriptionId } =
       await setupFixture("team");

@@ -568,12 +568,21 @@ function rowSummaryBase(row: AutomationRow, chatThreadId: string | null) {
   };
 }
 
-interface RowToSummaryOptions {
+type RowToSummaryOptions = {
   readonly chatThreadId?: string | null;
-  readonly webhookToken?: string;
-  readonly webhookSecret?: string;
   readonly warning?: string;
-}
+} & (
+  | {
+      readonly webhookToken: string;
+      readonly webhookSecret: string;
+      readonly publicBrand: PublicBrand;
+    }
+  | {
+      readonly webhookToken?: undefined;
+      readonly webhookSecret?: undefined;
+      readonly publicBrand?: undefined;
+    }
+);
 
 async function resolveAutomationChatThreadId(
   db: ReadonlyDb,
@@ -891,8 +900,7 @@ async function rowToSummary(
         scheduleSummary: null,
         ...(await buildWorkflowWebhookSummaryFields(db, {
           automation: row,
-          webhookToken: options.webhookToken,
-          webhookSecret: options.webhookSecret,
+          ...options,
         })),
       };
     }
@@ -1274,6 +1282,7 @@ export async function revealWorkflowWebhookSecret(
     readonly orgId: string;
     readonly member: WorkflowMember;
     readonly automationId: string;
+    readonly publicBrand: PublicBrand;
   },
 ): Promise<ZeroWorkflowWebhookSecretResponse | null> {
   const automation = await loadAutomationRow(db, {
@@ -1296,7 +1305,10 @@ export async function revealWorkflowWebhookSecret(
   if (!visible) {
     return null;
   }
-  return await revealWorkflowWebhookSecretFields(db, { automation });
+  return await revealWorkflowWebhookSecretFields(db, {
+    automation,
+    publicBrand: args.publicBrand,
+  });
 }
 
 interface CreateScheduleAutomationInput {
@@ -1606,6 +1618,7 @@ async function insertWebhookEventAutomation(
     readonly agentId: string;
     readonly workflowTitle: string;
     readonly currentTime: Date;
+    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<ZeroWorkflowAutomationSummary | null> {
@@ -1675,6 +1688,7 @@ async function insertWebhookEventAutomation(
       chatThreadId,
       webhookToken: token,
       webhookSecret: secret,
+      publicBrand: args.publicBrand,
     });
   });
 }
@@ -1883,6 +1897,7 @@ async function createWebhookEventAutomationForWorkflow(
       agentId: args.context.agentId,
       workflowTitle: args.context.workflowTitle,
       currentTime: nowDate(),
+      publicBrand: args.context.publicBrand,
     },
     signal,
   );
