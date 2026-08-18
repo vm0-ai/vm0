@@ -303,6 +303,40 @@ export function downloadS3Buffer(
   return downloadS3BufferWithClient(s3ClientForBucket(bucket), bucket, key);
 }
 
+export function downloadS3BufferRange(
+  bucket: string,
+  key: string,
+  start: number,
+  end: number,
+  signal?: AbortSignal,
+): Computed<Promise<Buffer>> {
+  if (
+    !Number.isInteger(start) ||
+    !Number.isInteger(end) ||
+    start < 0 ||
+    end < start
+  ) {
+    throw new Error("S3 byte range must contain non-negative integer bounds");
+  }
+  return computed(async (get): Promise<Buffer> => {
+    const client = get(s3ClientForBucket(bucket));
+    const response = await client.send(
+      new GetObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Range: `bytes=${start.toString()}-${end.toString()}`,
+      }),
+      signal ? { abortSignal: signal } : undefined,
+    );
+    return await readS3ObjectBody(
+      response,
+      key,
+      { maxBytes: end - start + 1 },
+      signal,
+    );
+  });
+}
+
 export function downloadS3BufferWithMaxBytes(
   bucket: string,
   key: string,

@@ -46,8 +46,36 @@ const presentationTemplateIdParamsSchema = z.object({
   templateId: z.uuid(),
 });
 
+const commitPresentationTemplateBodySchema = z
+  .object({
+    requestId: z.uuid(),
+    sourceFileId: z.uuid(),
+    pageFileIds: z.array(z.uuid()).min(1).max(MAX_PRESENTATION_TEMPLATE_PAGES),
+  })
+  .superRefine(({ sourceFileId, pageFileIds }, context) => {
+    if (new Set(pageFileIds).size !== pageFileIds.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["pageFileIds"],
+        message: "Each page upload must be referenced exactly once",
+      });
+    }
+    if (pageFileIds.includes(sourceFileId)) {
+      context.addIssue({
+        code: "custom",
+        path: ["pageFileIds"],
+        message: "The source upload cannot also be a page upload",
+      });
+    }
+  });
+
 const updatePresentationTemplateBodySchema = z.object({
   title: z.string().trim().min(1).max(255),
+});
+
+const mutationResponseSchema = z.object({
+  id: z.uuid(),
+  status: presentationTemplateStatusSchema,
 });
 
 export const zeroPresentationTemplatesContract = c.router({
@@ -62,6 +90,21 @@ export const zeroPresentationTemplatesContract = c.router({
       500: apiErrorSchema,
     },
     summary: "List presentation templates owned by the current user",
+  },
+  commit: {
+    method: "POST",
+    path: "/api/okou/presentation-templates/commit",
+    headers: authHeadersSchema,
+    body: commitPresentationTemplateBodySchema,
+    responses: {
+      200: mutationResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Commit the uploaded PPTX and its ordered page image references",
   },
   get: {
     method: "GET",
@@ -113,4 +156,7 @@ export type ZeroPresentationTemplatesContract =
   typeof zeroPresentationTemplatesContract;
 export type PresentationTemplateSummary = z.infer<
   typeof presentationTemplateSummarySchema
+>;
+export type CommitPresentationTemplateBody = z.infer<
+  typeof commitPresentationTemplateBodySchema
 >;

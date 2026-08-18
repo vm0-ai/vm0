@@ -1,10 +1,28 @@
 import type { PresentationTemplateSummary } from "@okouai/api-contracts/contracts/zero-presentation-templates";
 import { presentationTemplates } from "@okouai/db/schema/presentation-template";
 import { and, desc, eq, ne } from "drizzle-orm";
+import { v5 as uuidv5 } from "uuid";
 
 import type { ReadonlyDb } from "../external/db";
 
+const IMPORT_ID_NAMESPACE = "89c6526f-2624-43b1-91dc-c5a37dd0041b";
+
 export type PresentationTemplateRow = typeof presentationTemplates.$inferSelect;
+
+/**
+ * Derive the template id from the caller's request id so a resubmitted commit
+ * resolves to the same row instead of starting a second import.
+ */
+export function presentationTemplateIdForRequest(args: {
+  readonly orgId: string;
+  readonly ownerUserId: string;
+  readonly requestId: string;
+}): string {
+  return uuidv5(
+    `${args.orgId}:${args.ownerUserId}:${args.requestId}`,
+    IMPORT_ID_NAMESPACE,
+  );
+}
 
 export function presentationTemplateSummary(
   row: PresentationTemplateRow,

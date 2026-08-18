@@ -1738,6 +1738,7 @@ export {
   PRESENTATION_TEMPLATE_SOURCE_CONTENT_TYPE,
   presentationTemplateStatusSchema,
   zeroPresentationTemplatesContract,
+  type CommitPresentationTemplateBody,
   type PresentationTemplateSummary,
   type ZeroPresentationTemplatesContract,
 } from "./zero-presentation-templates";

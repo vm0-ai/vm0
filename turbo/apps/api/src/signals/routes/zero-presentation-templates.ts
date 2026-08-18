@@ -14,6 +14,7 @@ import { bodyResultOf, pathParamsOf } from "../context/request";
 import { db$, writeDb$ } from "../external/db";
 import { generatePresignedGetUrl } from "../external/s3";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
+import { commitPresentationTemplate$ } from "../services/presentation-template-commit.service";
 import {
   listOwnedPresentationTemplates,
   loadOwnedPresentationTemplate,
@@ -110,6 +111,28 @@ const listInner$ = computed(async (get) => {
     }),
   );
   return { status: 200 as const, body: summaries };
+});
+
+const commitBody$ = bodyResultOf(zeroPresentationTemplatesContract.commit);
+const commitInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  if (!(await get(presentationTemplatesEnabled$))) {
+    return presentationTemplatesDisabled;
+  }
+  const bodyResult = await get(commitBody$);
+  signal.throwIfAborted();
+  if (!bodyResult.ok) {
+    return bodyResult.response;
+  }
+  return await set(
+    commitPresentationTemplate$,
+    {
+      orgId: auth.orgId,
+      ownerUserId: auth.userId,
+      body: bodyResult.data,
+    },
+    signal,
+  );
 });
 
 const getParams$ = pathParamsOf(zeroPresentationTemplatesContract.get);
@@ -224,6 +247,10 @@ export const zeroPresentationTemplatesRoutes: readonly RouteEntry[] = [
   {
     route: zeroPresentationTemplatesContract.list,
     handler: authRoute(templateReadAuth, listInner$),
+  },
+  {
+    route: zeroPresentationTemplatesContract.commit,
+    handler: authRoute(templateWriteAuth, commitInner$),
   },
   {
     route: zeroPresentationTemplatesContract.get,
