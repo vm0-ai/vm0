@@ -89,16 +89,29 @@ fi
 
 discover_selected_runs() {
   local active_statuses=(queued in_progress pending waiting requested)
+  local recent_workflow_files=(turbo.yml crates.yml runner-image.yml)
   local status
+  local workflow_file
 
-  for status in "${active_statuses[@]}"; do
-    gh api --method GET \
-      "repos/${GITHUB_REPOSITORY}/actions/runs" \
-      -f "status=${status}" \
-      -f per_page=100 \
-      --paginate \
-      --slurp
-  done |
+  {
+    # GitHub's status-filtered workflow-run index can omit a concurrently
+    # active sibling workflow. Keep the exhaustive active-status scan, then
+    # union it with each shared-resource workflow's most recent unfiltered
+    # page so a newly overlapping owner cannot disappear at this boundary.
+    for status in "${active_statuses[@]}"; do
+      gh api --method GET \
+        "repos/${GITHUB_REPOSITORY}/actions/runs" \
+        -f "status=${status}" \
+        -f per_page=100 \
+        --paginate \
+        --slurp
+    done
+    for workflow_file in "${recent_workflow_files[@]}"; do
+      gh api --method GET \
+        "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_file}/runs" \
+        -f per_page=100
+    done
+  } |
     jq -r \
       --argjson current_run_id "$GITHUB_RUN_ID" \
       --arg current_head_sha "${GITHUB_SHA:-}" \
@@ -106,7 +119,15 @@ discover_selected_runs() {
       --argjson pr_number "$pr_number" \
       --arg pr_head_ref "$pr_head_ref" \
       --arg pr_head_repository "$pr_head_repository" '
-        .[] | .workflow_runs[]?
+        (if type == "array" then .[] else . end)
+        | .workflow_runs[]?
+        | select(
+            .status == "queued" or
+            .status == "in_progress" or
+            .status == "pending" or
+            .status == "waiting" or
+            .status == "requested"
+          )
         | select(
             if $owner_scope == "closed-pr-cleanup" then
               .id != $current_run_id
@@ -144,8 +165,8 @@ discover_selected_runs() {
 previous_run_ids=""
 have_previous_run_ids=false
 discovery_started_at=$SECONDS
-# Each status filter is a separate API snapshot. Require the selected run IDs
-# to stabilize so a run changing statuses cannot fall between those snapshots.
+# Each API query is a separate snapshot. Require the selected run IDs to
+# stabilize so a run changing statuses cannot fall between those snapshots.
 while true; do
   discovered_runs=$(discover_selected_runs)
   discovered_run_ids=$(printf '%s\n' "$discovered_runs" | cut -f1)

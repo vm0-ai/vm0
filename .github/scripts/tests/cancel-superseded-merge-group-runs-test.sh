@@ -64,7 +64,13 @@ JSON
       printf '[{"workflow_runs":[]}]\n'
       exit 0
     fi
-    cat <<'JSON'
+    cat <<'JSON' | jq -c --argjson omit_turbo "${MOCK_FILTERED_TURBO_OMITTED:-0}" '
+      if $omit_turbo == 1 then
+        .[0].workflow_runs |= map(select(.id != 100))
+      else
+        .
+      end
+    '
 [{"workflow_runs":[
   {"id":100,"name":"Turbo","status":"in_progress","event":"merge_group","head_sha":"old-a","head_branch":"gh-readonly-queue/main/pr-42-old-a","path":".github/workflows/turbo.yml","pull_requests":[],"html_url":"https://example.test/100"},
   {"id":110,"name":"Crates","status":"in_progress","event":"pull_request","head_sha":"old-b","head_branch":"feature/safe-shared-runner","head_repository":{"full_name":"vm0-ai/vm0"},"path":".github/workflows/crates.yml","pull_requests":[],"html_url":"https://example.test/110"},
@@ -76,6 +82,20 @@ JSON
   {"id":300,"name":"Turbo","status":"in_progress","event":"merge_group","head_sha":"newer-sha","head_branch":"gh-readonly-queue/main/pr-42-newer","path":".github/workflows/turbo.yml","pull_requests":[],"html_url":"https://example.test/300"}
 ]}]
 JSON
+    ;;
+  repos/vm0-ai/vm0/actions/workflows/turbo.yml/runs)
+    if [ "${MOCK_FILTERED_TURBO_OMITTED:-0}" = "1" ]; then
+      cat <<'JSON'
+{"workflow_runs":[
+  {"id":100,"name":"Turbo","status":"in_progress","event":"merge_group","head_sha":"old-a","head_branch":"gh-readonly-queue/main/pr-42-old-a","path":".github/workflows/turbo.yml","pull_requests":[],"html_url":"https://example.test/100"}
+]}
+JSON
+    else
+      printf '{"workflow_runs":[]}\n'
+    fi
+    ;;
+  repos/vm0-ai/vm0/actions/workflows/*/runs)
+    printf '{"workflow_runs":[]}\n'
     ;;
   repos/vm0-ai/vm0/actions/runs/*/force-cancel)
     [ "$method" = "POST" ] || exit 1
@@ -180,6 +200,16 @@ cancelled_runs=$(cat "${tmp_dir}/cancel.log")
   fail "expected only older same-PR consumer runs to be cancelled, got: ${cancelled_runs}"
 [ ! -s "${tmp_dir}/sleep.log" ] ||
   fail "already-completed superseded runs must not poll"
+
+: >"${tmp_dir}/gh.log"
+: >"${tmp_dir}/cancel.log"
+: >"${tmp_dir}/sleep.log"
+output=$(run_cancel MOCK_FILTERED_TURBO_OMITTED=1)
+cancelled_runs=$(cat "${tmp_dir}/cancel.log")
+[ "$cancelled_runs" = $'100\n110\n120' ] ||
+  fail "recent workflow fallback must recover a Turbo owner omitted by status filters, got: ${cancelled_runs}"
+grep -q "actions/workflows/turbo.yml/runs" "${tmp_dir}/gh.log" ||
+  fail "expected recent Turbo workflow discovery"
 
 : >"${tmp_dir}/gh.log"
 : >"${tmp_dir}/cancel.log"

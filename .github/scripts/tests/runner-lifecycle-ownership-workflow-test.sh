@@ -123,8 +123,48 @@ unless locked_probe_index && barrier_index && delete_index &&
 end
 
 turbo = YAML.load_file(ARGV.fetch(2)).fetch("jobs")
+turbo_cancel = turbo.fetch("cancel-superseded")
+unless turbo_cancel.fetch("name") == "Cancel superseded merge-group CI" &&
+    turbo_cancel.fetch("if") == "github.event_name == 'merge_group'" &&
+    turbo_cancel.fetch("permissions") == {
+      "actions" => "write",
+      "contents" => "read",
+      "pull-requests" => "read",
+    }
+  raise "Turbo must establish merge-group ownership before shared preview reuse"
+end
+turbo_handoff = named_step(
+  turbo_cancel,
+  "Cancel and await older runs for the queued PR",
+)
+raise "missing Turbo merge-group ownership handoff" unless turbo_handoff
+unless turbo_handoff.dig("env", "GH_TOKEN") == "${{ github.token }}" &&
+    turbo_handoff.dig("env", "GITHUB_REPOSITORY") == "${{ github.repository }}" &&
+    turbo_handoff.dig("env", "GITHUB_RUN_ID") == "${{ github.run_id }}" &&
+    turbo_handoff.dig("env", "GITHUB_SHA") == "${{ github.sha }}" &&
+    turbo_handoff.dig("env", "MERGE_GROUP_HEAD_REF") ==
+      "${{ github.event.merge_group.head_ref }}" &&
+    turbo_handoff.fetch("run") ==
+      ".github/scripts/cancel-superseded-merge-group-runs.sh" &&
+    !turbo_handoff.key?("continue-on-error")
+  raise "Turbo merge-group ownership handoff must fail closed"
+end
+
+detect_release = turbo.fetch("detect-release")
+detect_release_if = detect_release.fetch("if")
+unless detect_release.fetch("needs") == ["cancel-superseded"] &&
+    detect_release_if.include?("!cancelled()") &&
+    detect_release_if.include?("needs.cancel-superseded.result == 'success'")
+  raise "Turbo work must wait for the merge-group ownership handoff"
+end
+
 prepare = turbo.fetch("deploy-runner-prepare")
 start = turbo.fetch("deploy-runner-start")
+deploy_api = turbo.fetch("deploy-api")
+unless turbo.fetch("prepare").fetch("needs") == ["detect-release"] &&
+    deploy_api.fetch("needs") == ["prepare"]
+  raise "shared preview deployment must remain downstream of the ownership handoff"
+end
 unless prepare.dig("outputs", "runner-sha-map") ==
     "${{ steps.manifest.outputs.runner-sha-map }}"
   raise "runner prepare must expose producer SHA ownership by target"
