@@ -13,6 +13,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
+  Skeleton,
 } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import {
@@ -28,6 +29,9 @@ import {
   openAgentListDialog$,
   agentCardCollapsed$,
   setAgentCardCollapsed$,
+  pinnedAgentGridRows$,
+  cachePinnedAgentGridRowsRef$,
+  PINNED_AGENT_GRID_COLUMNS,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import {
   subagents$,
@@ -49,6 +53,19 @@ import { Link } from "../router/link.tsx";
 import { assistantName$ } from "../../signals/branding.ts";
 import { AgentListDialog } from "./zero-sidebar-dialogs.tsx";
 import { AgentRowSideActions } from "./zero-sidebar-agent-row-actions.tsx";
+
+function PinnedAgentGridSkeletonCard() {
+  return (
+    <div
+      aria-hidden="true"
+      data-testid="pinned-agent-skeleton"
+      className="flex w-full min-w-0 flex-col items-center gap-1.5 rounded-lg p-1.5"
+    >
+      <Skeleton className="h-9 w-9 shrink-0 rounded-full" />
+      <Skeleton className="h-[13.75px] w-10" />
+    </div>
+  );
+}
 
 function PinnedAgentSideDecorator({
   agentId,
@@ -208,7 +225,7 @@ export function PinnedAgentListSection({
     typeof pathParams?.threadId === "string" ? pathParams.threadId : null;
   const sidebarAgentId = useLastResolved(currentChatAgentId$) ?? null;
   const pinnedAgentsLoadable = useLastLoadable(pinnedAgents$);
-  const displayedPinnedAgentsResolved = useLastResolved(displayedPinnedAgents$);
+  const displayedPinnedAgentsLoadable = useLastLoadable(displayedPinnedAgents$);
   const unreadAgentIds = useLastResolved(unreadAgentIds$, {
     equalityFn: equalSets,
   });
@@ -217,6 +234,8 @@ export function PinnedAgentListSection({
   const setExpanded = useSet(setSidebarExpanded$);
   const collapsed = useGet(agentCardCollapsed$);
   const setCollapsed = useSet(setAgentCardCollapsed$);
+  const cachedPinnedAgentGridRows = useGet(pinnedAgentGridRows$);
+  const cachePinnedAgentGridRowsRef = useSet(cachePinnedAgentGridRowsRef$);
   const defaultAgentId = useLastResolved(defaultAgentId$);
   const pinnedAgents =
     pinnedAgentsLoadable.state === "hasData" ? pinnedAgentsLoadable.data : [];
@@ -225,15 +244,30 @@ export function PinnedAgentListSection({
       return agent.id;
     }),
   );
-  const displayedPinnedAgents = displayedPinnedAgentsResolved ?? pinnedAgents;
+  const displayedPinnedAgents =
+    displayedPinnedAgentsLoadable.state === "hasData"
+      ? displayedPinnedAgentsLoadable.data
+      : pinnedAgents;
 
   const selectedAgentId =
     routeAgentId ?? (routeThreadId ? null : sidebarAgentId);
 
   if (layout === "horizontal") {
+    const horizontalPinnedAgents =
+      displayedPinnedAgentsLoadable.state === "loading"
+        ? null
+        : displayedPinnedAgents;
     const pinnedAgentCards =
-      pinnedAgentsLoadable.state === "hasData"
-        ? displayedPinnedAgents.map((agent) => {
+      horizontalPinnedAgents === null
+        ? Array.from(
+            {
+              length: cachedPinnedAgentGridRows * PINNED_AGENT_GRID_COLUMNS - 1,
+            },
+            (_, index) => {
+              return <PinnedAgentGridSkeletonCard key={index} />;
+            },
+          )
+        : horizontalPinnedAgents.map((agent) => {
             const isPrimarySelected =
               isChatRoute(activeRoute) && selectedAgentId === agent.id;
             const hasUnread = unreadAgentIds?.has(agent.id) ?? false;
@@ -264,8 +298,7 @@ export function PinnedAgentListSection({
                 </span>
               </Link>
             );
-          })
-        : [];
+          });
 
     return (
       <div className="shrink-0" data-testid="pinned-agents-horizontal">
@@ -275,6 +308,7 @@ export function PinnedAgentListSection({
           })}
         </span>
         <div
+          ref={cachePinnedAgentGridRowsRef}
           className="grid min-w-0 grid-cols-4 items-start gap-1 pb-1"
           data-testid="pinned-agents-grid"
         >
