@@ -33,10 +33,7 @@ import { settle } from "../utils";
 import { insertChatEvent } from "./chat-event.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { touchChatThreadLastMessageAt } from "./chat-event-shared.service";
-import {
-  getResendClient,
-  resolveDefaultAgent,
-} from "./zero-email-common.service";
+import { getResendClient, resolveDefaultAgent } from "./email-common.service";
 import { resolveWeeklyProductUpdate } from "./weekly-product-update-message";
 import { createAutomationChatThread } from "./workflow-user-automation-thread.service";
 
