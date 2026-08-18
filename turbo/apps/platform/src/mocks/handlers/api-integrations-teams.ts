@@ -1,7 +1,7 @@
 import {
   type TeamsConnectStatus,
-  zeroTeamsConnectContract,
-} from "@okouai/api-contracts/contracts/zero-teams-connect";
+  teamsConnectContract,
+} from "@okouai/api-contracts/contracts/teams-connect";
 import { mockApi } from "../msw-contract.ts";
 
 let mockTeamsData: TeamsConnectStatus = {
@@ -25,11 +25,11 @@ export function resetMockTeamsIntegration(): void {
 }
 
 export const apiIntegrationsTeamsHandlers = [
-  mockApi(zeroTeamsConnectContract.getStatus, ({ respond }) => {
+  mockApi(teamsConnectContract.getStatus, ({ respond }) => {
     return respond(200, mockTeamsData);
   }),
 
-  mockApi(zeroTeamsConnectContract.connect, ({ body, respond }) => {
+  mockApi(teamsConnectContract.connect, ({ body, respond }) => {
     mockTeamsData = {
       ...mockTeamsData,
       isInstalled: true,
@@ -47,7 +47,7 @@ export const apiIntegrationsTeamsHandlers = [
     });
   }),
 
-  mockApi(zeroTeamsConnectContract.disconnect, ({ query, respond }) => {
+  mockApi(teamsConnectContract.disconnect, ({ query, respond }) => {
     if (query.action === "uninstall") {
       mockTeamsData = {
         ...mockTeamsData,

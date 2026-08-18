@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from "vitest";
-import { zeroTeamsConnectContract } from "@okouai/api-contracts/contracts/zero-teams-connect";
+import { teamsConnectContract } from "@okouai/api-contracts/contracts/teams-connect";
 import { HttpResponse, http } from "msw";
 
 import { mockEnv } from "../../../lib/env";
@@ -160,7 +160,7 @@ describe("GET /api/zero/integrations/teams/connect", () => {
 
   it("returns 401 when the request is unauthenticated", async () => {
     const client = setupApp({ context, routes: teamsConnectRoutes })(
-      zeroTeamsConnectContract,
+      teamsConnectContract,
     );
 
     const response = await accept(client.getStatus({ headers: {} }), [401]);
@@ -178,7 +178,7 @@ describe("GET /api/zero/integrations/teams/connect", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
     const client = setupApp({ context, routes: teamsConnectRoutes })(
-      zeroTeamsConnectContract,
+      teamsConnectContract,
     );
 
     const response = await accept(
@@ -206,7 +206,7 @@ describe("GET /api/zero/integrations/teams/connect", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
     const client = setupApp({ context, routes: teamsConnectRoutes })(
-      zeroTeamsConnectContract,
+      teamsConnectContract,
     );
 
     const response = await accept(
@@ -236,7 +236,7 @@ describe("GET /api/zero/integrations/teams/connect", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
     const client = setupApp({ context, routes: teamsConnectRoutes })(
-      zeroTeamsConnectContract,
+      teamsConnectContract,
     );
     await accept(
       client.connect({
@@ -279,7 +279,7 @@ describe("GET /api/zero/integrations/teams/connect", () => {
     const fixture = await seedTeamsInstallation(track);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const client = setupApp({ context, routes: teamsConnectRoutes })(
-      zeroTeamsConnectContract,
+      teamsConnectContract,
     );
     await accept(
       client.connect({
@@ -325,7 +325,7 @@ describe("GET /api/zero/integrations/teams/connect", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
     const client = setupApp({ context, routes: teamsConnectRoutes })(
-      zeroTeamsConnectContract,
+      teamsConnectContract,
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     await accept(
@@ -379,7 +379,7 @@ describe("POST /api/zero/integrations/teams/connect", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
     const client = setupApp({ context, routes: teamsConnectRoutes })(
-      zeroTeamsConnectContract,
+      teamsConnectContract,
     );
     const response = await accept(
       client.connect({
@@ -423,7 +423,7 @@ describe("POST /api/zero/integrations/teams/connect", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
     const client = setupApp({ context, routes: teamsConnectRoutes })(
-      zeroTeamsConnectContract,
+      teamsConnectContract,
     );
     const response = await accept(
       client.connect({
@@ -448,7 +448,7 @@ describe("POST /api/zero/integrations/teams/connect", () => {
     );
 
     const client = setupApp({ context, routes: teamsConnectRoutes })(
-      zeroTeamsConnectContract,
+      teamsConnectContract,
     );
     mocks.clerk.session(adminUserId, fixture.orgId, "org:admin");
     await accept(
@@ -481,7 +481,7 @@ describe("POST /api/zero/integrations/teams/connect", () => {
   it("rejects users from the wrong org with a clear error", async () => {
     const fixture = await seedTeamsInstallation(track);
     const client = setupApp({ context, routes: teamsConnectRoutes })(
-      zeroTeamsConnectContract,
+      teamsConnectContract,
     );
 
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
@@ -510,7 +510,7 @@ describe("POST /api/zero/integrations/teams/connect", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
     const client = setupApp({ context, routes: teamsConnectRoutes })(
-      zeroTeamsConnectContract,
+      teamsConnectContract,
     );
     const first = await accept(
       client.connect({
@@ -545,7 +545,7 @@ describe("POST /api/zero/integrations/teams/connect", () => {
     const welcomeRequests = teamsWelcomeHandlers(fixture);
 
     const client = setupApp({ context, routes: teamsConnectRoutes })(
-      zeroTeamsConnectContract,
+      teamsConnectContract,
     );
     const body = {
       ...connectBody(fixture),
@@ -620,7 +620,7 @@ describe("DELETE /api/zero/integrations/teams/connect", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
     const client = setupApp({ context, routes: teamsConnectRoutes })(
-      zeroTeamsConnectContract,
+      teamsConnectContract,
     );
     await accept(
       client.connect({
@@ -656,7 +656,7 @@ describe("DELETE /api/zero/integrations/teams/connect", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
     const client = setupApp({ context, routes: teamsConnectRoutes })(
-      zeroTeamsConnectContract,
+      teamsConnectContract,
     );
     await accept(
       client.connect({

@@ -1449,13 +1449,13 @@ export {
   type TeamsBotContract,
 } from "./teams-bot";
 export {
-  zeroTeamsConnectContract,
+  teamsConnectContract,
   type TeamsConnectBody,
   type TeamsConnectResponse,
   type TeamsConnectStatus,
   type TeamsDisconnectResponse,
-  type ZeroTeamsConnectContract,
-} from "./zero-teams-connect";
+  type TeamsConnectContract,
+} from "./teams-connect";
 export {
   teamsBrowserConnectContract,
   teamsBrowserConnectQuerySchema,
