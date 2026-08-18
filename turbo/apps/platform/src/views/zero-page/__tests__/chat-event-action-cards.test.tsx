@@ -16,7 +16,7 @@ import {
   type PublicConnectorCatalogPermissionDetail,
   type PublicConnectorCatalogStatusItem,
 } from "@okouai/api-contracts/contracts/zero-connector-catalog";
-import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
   zeroAgentCustomConnectorsContract,
   type AgentCustomConnectorGrant,
@@ -175,12 +175,12 @@ function mockAgentConnectorAuthorizations(
   initialConnectorSlugs: readonly string[],
 ): void {
   let enabledConnectorSlugs: string[] = [...initialConnectorSlugs];
-  context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+  context.mocks.api(userConnectorsContract.get, ({ respond }) => {
     return respond(200, {
       enabledConnectorSlugs,
     });
   });
-  context.mocks.api(zeroUserConnectorsContract.update, ({ body, respond }) => {
+  context.mocks.api(userConnectorsContract.update, ({ body, respond }) => {
     enabledConnectorSlugs = applyUserConnectorUpdate(
       enabledConnectorSlugs,
       body,
@@ -1470,7 +1470,7 @@ describe("chat event action cards", () => {
         }),
       });
     });
-    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(userConnectorsContract.get, ({ respond }) => {
       return respond(200, {
         enabledConnectorSlugs: authorized ? ["github"] : [],
       });
@@ -1573,7 +1573,7 @@ describe("chat event action cards", () => {
         }),
       });
     });
-    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(userConnectorsContract.get, ({ respond }) => {
       return respond(200, {
         enabledConnectorSlugs: authorized ? ["stripe"] : [],
       });
@@ -2529,7 +2529,7 @@ describe("chat event action cards", () => {
         }),
       });
     });
-    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(userConnectorsContract.get, ({ respond }) => {
       return respond(200, {
         enabledConnectorSlugs: authorized ? ["future-connector"] : [],
       });

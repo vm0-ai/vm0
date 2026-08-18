@@ -6,7 +6,7 @@ import {
   zeroAgentCustomConnectorsContract,
   type AgentCustomConnectorGrant,
 } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
-import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { agentDraftContract } from "@okouai/api-contracts/contracts/agent-draft";
 import {
   zeroAgentsByIdContract,
@@ -111,7 +111,7 @@ export const apiAgentsHandlers = [
   }),
 
   // GET /api/okou/agents/:id/user-connectors
-  mockApi(zeroUserConnectorsContract.get, ({ params, respond }) => {
+  mockApi(userConnectorsContract.get, ({ params, respond }) => {
     const enabledConnectorSlugs =
       mockEnabledConnectorSlugsByAgent.get(params.id) ?? [];
     return respond(200, {
@@ -126,7 +126,7 @@ export const apiAgentsHandlers = [
   }),
 
   // PUT /api/okou/agents/:id/user-connectors
-  mockApi(zeroUserConnectorsContract.update, ({ body, params, respond }) => {
+  mockApi(userConnectorsContract.update, ({ body, params, respond }) => {
     const enabledConnectorSlugs = mockConnectorUpdateResponse(
       mockEnabledConnectorSlugsByAgent.get(params.id) ?? [],
       body.enabledConnectorSlugs,

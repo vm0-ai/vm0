@@ -44,7 +44,7 @@ import {
   zeroRunsByIdContract,
   zeroRunsQueueContract,
 } from "@okouai/api-contracts/contracts/zero-runs";
-import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 
 import { createAppWithRoutes } from "../../../../app-factory-core";
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
@@ -848,7 +848,7 @@ export function createRunsApi(context: TestContext) {
       connectorSlugs: readonly string[],
     ): Promise<readonly string[]> {
       const response = await accept(
-        runApp(context)(zeroUserConnectorsContract).update({
+        runApp(context)(userConnectorsContract).update({
           headers: authenticate(context, actor),
           params: { id: agentId },
           body: { enabledConnectorSlugs: [...connectorSlugs] },

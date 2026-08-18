@@ -28,7 +28,7 @@ export type UserConnectorUpdate = z.infer<typeof userConnectorUpdateSchema>;
 /**
  * Contract for GET/PUT /api/okou/agents/:id/user-connectors
  */
-export const zeroUserConnectorsContract = c.router({
+export const userConnectorsContract = c.router({
   get: {
     method: "GET",
     path: "/api/okou/agents/:id/user-connectors",
@@ -58,4 +58,4 @@ export const zeroUserConnectorsContract = c.router({
     summary: "Update enabled connector slugs for user on agent",
   },
 });
-export type ZeroUserConnectorsContract = typeof zeroUserConnectorsContract;
+export type UserConnectorsContract = typeof userConnectorsContract;
