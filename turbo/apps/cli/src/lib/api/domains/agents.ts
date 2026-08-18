@@ -19,9 +19,9 @@ import {
 } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 import { getClientConfig, handleError } from "../core/client-factory";
 
-export type ZeroUserPermissionGrant = UserPermissionGrantResponse;
+export type UserPermissionGrant = UserPermissionGrantResponse;
 
-export async function createZeroAgent(
+export async function createAgent(
   body: ZeroAgentRequest,
 ): Promise<ZeroAgentResponse> {
   const config = await getClientConfig();
@@ -31,7 +31,7 @@ export async function createZeroAgent(
   handleError(result, "Failed to create agent");
 }
 
-export async function listZeroAgents(): Promise<ZeroAgentResponse[]> {
+export async function listAgents(): Promise<ZeroAgentResponse[]> {
   const config = await getClientConfig();
   const client = initClient(zeroAgentsMainContract, config);
   const result = await client.list({ headers: {} });
@@ -39,7 +39,7 @@ export async function listZeroAgents(): Promise<ZeroAgentResponse[]> {
   handleError(result, "Failed to list agents");
 }
 
-export async function getZeroAgent(id: string): Promise<ZeroAgentResponse> {
+export async function getAgent(id: string): Promise<ZeroAgentResponse> {
   const config = await getClientConfig();
   const client = initClient(zeroAgentsByIdContract, config);
   const result = await client.get({ params: { id } });
@@ -47,7 +47,7 @@ export async function getZeroAgent(id: string): Promise<ZeroAgentResponse> {
   handleError(result, `Agent "${id}" not found`);
 }
 
-export async function updateZeroAgent(
+export async function updateAgent(
   id: string,
   body: ZeroAgentRequest,
 ): Promise<ZeroAgentResponse> {
@@ -58,7 +58,7 @@ export async function updateZeroAgent(
   handleError(result, `Failed to update agent "${id}"`);
 }
 
-export async function deleteZeroAgent(id: string): Promise<void> {
+export async function deleteAgent(id: string): Promise<void> {
   const config = await getClientConfig();
   const client = initClient(zeroAgentsByIdContract, config);
   const result = await client.delete({ params: { id } });
@@ -66,7 +66,7 @@ export async function deleteZeroAgent(id: string): Promise<void> {
   handleError(result, `Agent "${id}" not found`);
 }
 
-export async function getZeroAgentInstructions(
+export async function getAgentInstructions(
   id: string,
 ): Promise<ZeroAgentInstructionsResponse> {
   const config = await getClientConfig();
@@ -76,7 +76,7 @@ export async function getZeroAgentInstructions(
   handleError(result, `Failed to get instructions for agent "${id}"`);
 }
 
-export async function getZeroAgentUserConnectors(
+export async function getAgentUserConnectors(
   id: string,
 ): Promise<ConnectorSlug[]> {
   const config = await getClientConfig();
@@ -88,7 +88,7 @@ export async function getZeroAgentUserConnectors(
   handleError(result, `Failed to get connector permissions for agent "${id}"`);
 }
 
-export async function getZeroAgentCustomConnectorGrants(
+export async function getAgentCustomConnectorGrants(
   id: string,
 ): Promise<AgentCustomConnectorGrant[]> {
   const config = await getClientConfig();
@@ -101,9 +101,9 @@ export async function getZeroAgentCustomConnectorGrants(
   );
 }
 
-export async function listZeroUserPermissionGrants(
+export async function listUserPermissionGrants(
   agentId: string,
-): Promise<ZeroUserPermissionGrant[]> {
+): Promise<UserPermissionGrant[]> {
   const config = await getClientConfig();
   const client = initClient(zeroUserPermissionGrantsContract, config);
   const result = await client.list({ query: { agentId } });
@@ -113,7 +113,7 @@ export async function listZeroUserPermissionGrants(
   handleError(result, `Failed to get permission grants for agent "${agentId}"`);
 }
 
-export async function updateZeroAgentInstructions(
+export async function updateAgentInstructions(
   id: string,
   content: string,
 ): Promise<void> {

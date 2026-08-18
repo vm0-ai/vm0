@@ -8,9 +8,9 @@ import {
 } from "../lib/api/config";
 import { listConnectors } from "../lib/api/domains/connectors";
 import {
-  getZeroAgentUserConnectors,
-  listZeroUserPermissionGrants,
-} from "../lib/api/domains/zero-agents";
+  getAgentUserConnectors,
+  listUserPermissionGrants,
+} from "../lib/api/domains/agents";
 import { getOrg } from "../lib/api/domains/orgs";
 import { withErrorHandler } from "../lib/command/with-error-handler";
 import { getOkouAgentId } from "../lib/okou-env";
@@ -125,8 +125,8 @@ async function showSandboxInfo(showPermissions: boolean): Promise<void> {
       const [connectorsResult, grantsResult, enabledResult] =
         await Promise.allSettled([
           listConnectors(),
-          listZeroUserPermissionGrants(agentId!),
-          getZeroAgentUserConnectors(agentId!),
+          listUserPermissionGrants(agentId!),
+          getAgentUserConnectors(agentId!),
         ]);
 
       if (connectorsResult.status === "rejected") return;

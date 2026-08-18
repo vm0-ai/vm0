@@ -3,10 +3,10 @@ import { Command, Option } from "commander";
 import { readFileSync } from "node:fs";
 import chalk from "chalk";
 import {
-  getZeroAgent,
-  updateZeroAgent,
-  updateZeroAgentInstructions,
-} from "../../lib/api/domains/zero-agents";
+  getAgent,
+  updateAgent,
+  updateAgentInstructions,
+} from "../../lib/api/domains/agents";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { type AvatarOptions, resolveAvatarUrl } from "./avatar";
 import { parseAgentVisibility } from "./visibility";
@@ -48,13 +48,13 @@ async function applyAgentUpdate(
   const hasAvatar = hasAvatarUpdate(options);
   const resolvedAvatarUrl = hasAvatar ? resolveAvatarUrl(options) : undefined;
 
-  const current = await getZeroAgent(agentId);
+  const current = await getAgent(agentId);
 
   const avatarUrl = hasAvatar
     ? resolvedAvatarUrl
     : (current.avatarUrl ?? undefined);
 
-  await updateZeroAgent(agentId, {
+  await updateAgent(agentId, {
     displayName:
       options.displayName !== undefined
         ? options.displayName
@@ -159,7 +159,7 @@ Notes:
 
       if (options.instructionsFile) {
         const content = readFileSync(options.instructionsFile, "utf-8");
-        await updateZeroAgentInstructions(agentId, content);
+        await updateAgentInstructions(agentId, content);
       }
 
       console.log(chalk.green(`✓ Agent "${agentId}" updated`));

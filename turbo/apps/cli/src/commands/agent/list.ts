@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { listZeroAgents } from "../../lib/api/domains/zero-agents";
+import { listAgents } from "../../lib/api/domains/agents";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 
 export const listCommand = new Command()
@@ -18,7 +18,7 @@ Notes:
   )
   .action(
     withErrorHandler(async () => {
-      const agents = await listZeroAgents();
+      const agents = await listAgents();
 
       if (agents.length === 0) {
         console.log(chalk.dim("No agents found"));
