@@ -8524,7 +8524,7 @@ async function connectorCatalogSelectionForRun(args: {
     args.preloadedConnectorCatalogSnapshot ??
     (await loadConnectorRuntimeSnapshot(args.db, {
       timing: args.timing,
-      requestedConnectorCount: args.connectorScope.allowedConnectorSlugs.length,
+      requestedConnectorSlugs: args.connectorScope.allowedConnectorSlugs,
     }));
   return { kind: "complete", snapshot };
 }

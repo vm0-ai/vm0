@@ -366,6 +366,19 @@ const CONNECTOR_CATALOG_RAW_SIZE_BUCKETS = [
   "2_4_mib",
   "4_8_mib",
 ] as const;
+const CONNECTOR_CATALOG_COMPRESSED_SIZE_BUCKETS = [
+  ...CONNECTOR_CATALOG_RAW_SIZE_BUCKETS,
+  "8_16_mib",
+] as const;
+const CONNECTOR_CATALOG_RESOLVED_CONNECTOR_FRACTION_BUCKETS = [
+  "not_applicable",
+  "none",
+  "up_to_25_percent",
+  "26_50_percent",
+  "51_75_percent",
+  "76_99_percent",
+  "all",
+] as const;
 const API_DISPATCH_STORAGE_MANIFEST_ACTION_TYPES = [
   "api_dispatch_prepare_storage_manifest_resolve_inputs",
   "api_dispatch_prepare_storage_manifest_ensure_artifacts",
@@ -1053,6 +1066,8 @@ function expectConnectorCatalogLoadTiming(args: {
   readonly acceptedCacheOutcome: "hit" | "miss" | "in_flight";
   readonly runtimeCacheOutcome: "hit" | "miss";
   readonly requestedConnectorCount: "known" | "not_applicable";
+  readonly requestedConnectorCountBucket?: (typeof CONNECTOR_CATALOG_COUNT_BUCKETS)[number];
+  readonly resolvedConnectorFraction: (typeof CONNECTOR_CATALOG_RESOLVED_CONNECTOR_FRACTION_BUCKETS)[number];
   readonly validation:
     | { readonly outcome: "attested" | "not_run" }
     | {
@@ -1086,15 +1101,23 @@ function expectConnectorCatalogLoadTiming(args: {
   expect(CONNECTOR_CATALOG_RAW_SIZE_BUCKETS).toContain(
     event.connector_catalog_raw_size_bucket,
   );
+  expect(CONNECTOR_CATALOG_COMPRESSED_SIZE_BUCKETS).toContain(
+    event.connector_catalog_compressed_size_bucket,
+  );
   expect(CONNECTOR_CATALOG_COUNT_BUCKETS).toContain(
     event.connector_catalog_connector_count_bucket,
   );
   const requestedCountBuckets =
-    args.requestedConnectorCount === "known"
-      ? CONNECTOR_CATALOG_COUNT_BUCKETS
-      : ["not_applicable"];
+    args.requestedConnectorCountBucket === undefined
+      ? args.requestedConnectorCount === "known"
+        ? CONNECTOR_CATALOG_COUNT_BUCKETS
+        : ["not_applicable"]
+      : [args.requestedConnectorCountBucket];
   expect(requestedCountBuckets).toContain(
     event.connector_catalog_requested_connector_count_bucket,
+  );
+  expect(event.connector_catalog_resolved_connector_fraction_bucket).toBe(
+    args.resolvedConnectorFraction,
   );
 }
 
@@ -1704,6 +1727,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const missingAuthorityActor = await entitledRunActor();
     const missingAuthorityPrompt =
       "legacy connector catalog validation authority";
+    const unknownConnectorSlug = "catalog-timing-unknown";
     const missingAuthorityRun = await api.createDirectRun(
       missingAuthorityActor.actor,
       {
@@ -1712,7 +1736,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           prompt: missingAuthorityPrompt,
         }),
         connectorScope: {
-          allowedConnectorSlugs: ["x"],
+          allowedConnectorSlugs: [unknownConnectorSlug, unknownConnectorSlug],
           allowedCustomConnectorIds: [],
         },
       },
@@ -1729,6 +1753,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       acceptedCacheOutcome: "miss",
       runtimeCacheOutcome: "miss",
       requestedConnectorCount: "known",
+      requestedConnectorCountBucket: "2_4",
+      resolvedConnectorFraction: "none",
       validation: {
         outcome: "full_fallback",
         fallbackReason: "missing_authority",
@@ -1741,6 +1767,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       missingCatalogVersion,
       missingAuthorityPrompt,
       missingAuthorityActor.agentId,
+      unknownConnectorSlug,
       "test-oauth-secret",
       "fixture-confidential-secret",
     ]);
@@ -1789,6 +1816,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       acceptedCacheOutcome: "miss",
       runtimeCacheOutcome: "miss",
       requestedConnectorCount: "known",
+      resolvedConnectorFraction: "up_to_25_percent",
       validation: {
         outcome: "full_fallback",
         fallbackReason: "missing_compatibility",
@@ -1852,6 +1880,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       acceptedCacheOutcome: "miss",
       runtimeCacheOutcome: "miss",
       requestedConnectorCount: "known",
+      resolvedConnectorFraction: "up_to_25_percent",
       validation: {
         outcome: "full_fallback",
         fallbackReason: "different_authority",
@@ -1899,6 +1928,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       acceptedCacheOutcome: "hit",
       runtimeCacheOutcome: "hit",
       requestedConnectorCount: "known",
+      resolvedConnectorFraction: "up_to_25_percent",
       validation: { outcome: "not_run" },
     });
     expectApiDispatchTimingEventsNotToLeak(cachedEvents, [

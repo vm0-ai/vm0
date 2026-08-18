@@ -788,8 +788,7 @@ async function loadZeroRunPostAuthorizationContext(
           kind: "complete",
           snapshot: await loadConnectorRuntimeSnapshot(db, {
             timing: args.timing,
-            requestedConnectorCount:
-              bootstrapContext.allowedConnectorSlugs.length,
+            requestedConnectorSlugs: bootstrapContext.allowedConnectorSlugs,
           }),
         };
   signal.throwIfAborted();
