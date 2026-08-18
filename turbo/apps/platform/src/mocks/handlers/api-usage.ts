@@ -1,7 +1,7 @@
 import {
-  zeroUsageMembersContract,
+  usageMembersContract,
   type UsageMembersResponse,
-} from "@okouai/api-contracts/contracts/zero-usage";
+} from "@okouai/api-contracts/contracts/usage";
 import { mockApi } from "../msw-contract.ts";
 
 let mockUsageMembersResponse: UsageMembersResponse = {
@@ -14,7 +14,7 @@ export function resetMockUsageMembers(): void {
 }
 
 export const apiUsageHandlers = [
-  mockApi(zeroUsageMembersContract.get, ({ respond }) => {
+  mockApi(usageMembersContract.get, ({ respond }) => {
     return respond(200, mockUsageMembersResponse);
   }),
 ];

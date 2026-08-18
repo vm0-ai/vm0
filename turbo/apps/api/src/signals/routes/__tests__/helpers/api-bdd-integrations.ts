@@ -41,7 +41,7 @@ import { integrationsAgentPhoneContract } from "@okouai/api-contracts/contracts/
 import { zeroIntegrationsSlackContract } from "@okouai/api-contracts/contracts/zero-integrations-slack";
 import { zeroIntegrationsTelegramContract } from "@okouai/api-contracts/contracts/zero-integrations-telegram";
 import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
-import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
+import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
 import { zeroModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-model-providers";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { slackChannelsContract } from "@okouai/api-contracts/contracts/slack-channels";
@@ -1227,7 +1227,7 @@ export function createBddIntegrationApi(context: TestContext) {
       );
       await accept(
         setupApp({ context, routes: modelPoliciesRoutes })(
-          zeroModelPoliciesMainContract,
+          modelPoliciesMainContract,
         ).update({
           headers: authenticate(context, routeMocks, actor),
           body: {

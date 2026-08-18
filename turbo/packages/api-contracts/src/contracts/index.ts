@@ -153,9 +153,9 @@ export {
   type TranslationResponse,
 } from "./translation";
 export {
-  zeroModelPoliciesMainContract,
-  type ZeroModelPoliciesMainContract,
-} from "./zero-model-policies";
+  modelPoliciesMainContract,
+  type ModelPoliciesMainContract,
+} from "./model-policies";
 export {
   createModelProviderConnectionRequestSchema,
   getModelProviderTypeForSurfaceProtocol,
@@ -1399,12 +1399,12 @@ export {
   type WebSearchResult,
 } from "./web-search";
 export {
-  zeroUsageMembersContract,
-  type ZeroUsageMembersContract,
+  usageMembersContract,
+  type UsageMembersContract,
   // Inferred types
   type MemberUsage,
   type UsageMembersResponse,
-} from "./zero-usage";
+} from "./usage";
 export {
   usageRecordContract,
   usageRecordKindSchema,
