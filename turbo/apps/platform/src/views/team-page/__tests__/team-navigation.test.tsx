@@ -12,7 +12,7 @@ import {
   chatThreadEventsContract,
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
   zeroAgentCustomConnectorsContract,
   type AgentCustomConnectorGrant,
@@ -441,13 +441,13 @@ function mockTeamAPIs({
     string,
     AgentCustomConnectorGrant[]
   >();
-  context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
+  context.mocks.api(userConnectorsContract.get, ({ params, respond }) => {
     return respond(200, {
       enabledConnectorSlugs: enabledConnectorSlugsByAgent.get(params.id) ?? [],
     });
   });
   context.mocks.api(
-    zeroUserConnectorsContract.update,
+    userConnectorsContract.update,
     ({ body, params, respond }) => {
       const enabledConnectorSlugs = applyUserConnectorUpdate(
         enabledConnectorSlugsByAgent.get(params.id) ?? [],
@@ -825,7 +825,7 @@ describe("team page navigation", () => {
   it("does not reuse a failed connector authorization draft across agents", async () => {
     mockTeamAPIs();
     let updateCalls = 0;
-    context.mocks.api(zeroUserConnectorsContract.update, ({ respond }) => {
+    context.mocks.api(userConnectorsContract.update, ({ respond }) => {
       updateCalls += 1;
       return respond(400, {
         error: {

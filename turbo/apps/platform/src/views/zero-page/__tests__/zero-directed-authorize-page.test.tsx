@@ -9,7 +9,7 @@ import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
 } from "@okouai/api-contracts/contracts/zero-connector-catalog";
-import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import { screen, waitFor, within } from "@testing-library/react";
@@ -207,7 +207,7 @@ describe("directed connector authorize page", () => {
 
   it("does not reuse optimistic authorization across agents", async () => {
     mockConnectedConnector("gmail");
-    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(userConnectorsContract.get, ({ respond }) => {
       return respond(200, { enabledConnectorSlugs: [] });
     });
 
@@ -246,7 +246,7 @@ describe("directed connector authorize page", () => {
     const secondAgentResponse = context.mocks.deferred<void>();
     let secondAgentRequested = false;
     context.mocks.api(
-      zeroUserConnectorsContract.get,
+      userConnectorsContract.get,
       async ({ params, respond }) => {
         if (params.id === SECOND_AGENT_ID) {
           secondAgentRequested = true;
@@ -290,7 +290,7 @@ describe("directed connector authorize page", () => {
 
   it("does not stay loading when the authorization lookup fails", async () => {
     mockConnectedConnector("gmail");
-    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(userConnectorsContract.get, ({ respond }) => {
       return respond(404, {
         error: { message: "Agent not found", code: "NOT_FOUND" },
       });
@@ -336,7 +336,7 @@ describe("directed connector authorize page", () => {
     ]);
     let submittedValues: Record<string, string> | null = null;
     let authorized = false;
-    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(userConnectorsContract.get, ({ respond }) => {
       return respond(200, {
         enabledConnectorSlugs: authorized ? ["axiom"] : [],
       });
@@ -473,7 +473,7 @@ describe("directed connector authorize page", () => {
         ]);
       },
     });
-    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(userConnectorsContract.get, ({ respond }) => {
       return respond(200, {
         enabledConnectorSlugs: authorized ? ["steam"] : [],
       });
@@ -547,7 +547,7 @@ describe("directed connector authorize page", () => {
         });
       },
     );
-    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(userConnectorsContract.get, ({ respond }) => {
       return respond(200, {
         enabledConnectorSlugs: authorized ? ["stripe"] : [],
       });
@@ -590,20 +590,17 @@ describe("directed connector authorize page", () => {
   it("does not authorize the agent when OAuth connection is cancelled", async () => {
     const { authWindow } = mockConnectorOauthStart();
     let updateCalls = 0;
-    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(userConnectorsContract.get, ({ respond }) => {
       return respond(200, { enabledConnectorSlugs: [] });
     });
-    context.mocks.api(
-      zeroUserConnectorsContract.update,
-      ({ body, respond }) => {
-        updateCalls += 1;
-        const enabledConnectorSlugs =
-          body.operation === "remove" ? [] : body.enabledConnectorSlugs;
-        return respond(200, {
-          enabledConnectorSlugs,
-        });
-      },
-    );
+    context.mocks.api(userConnectorsContract.update, ({ body, respond }) => {
+      updateCalls += 1;
+      const enabledConnectorSlugs =
+        body.operation === "remove" ? [] : body.enabledConnectorSlugs;
+      return respond(200, {
+        enabledConnectorSlugs,
+      });
+    });
 
     detachedSetupPage({
       context,

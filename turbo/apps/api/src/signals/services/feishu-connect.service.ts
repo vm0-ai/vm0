@@ -115,6 +115,7 @@ function toFeishuInstallationStatus(
   args: {
     readonly orgId: string;
     readonly userId: string;
+    readonly publicBrand: PublicBrand;
   },
 ): FeishuInstallationStatus {
   return {
@@ -133,6 +134,7 @@ function toFeishuInstallationStatus(
           installationId: installation.id,
           orgId: args.orgId,
           userId: args.userId,
+          publicBrand: args.publicBrand,
         })
       : null,
     callbackVerified: Boolean(installation.callbackVerifiedAt),
@@ -208,6 +210,7 @@ function feishuStatusResponse(
 export const feishuConnectStatus = (args: {
   readonly orgId: string;
   readonly userId: string;
+  readonly publicBrand: PublicBrand;
   readonly isAdmin: boolean;
   readonly preferredInstallationId?: string;
 }) => {

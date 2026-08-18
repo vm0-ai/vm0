@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { browserSessionChangedPayloadSchema } from "./realtime";
-import { zeroBrowserContract } from "./zero-browser";
+import { browserContract } from "./browser";
 
 const threadId = "22222222-2222-4222-8222-222222222222";
 
@@ -30,8 +30,7 @@ function browserResponse(overrides: Record<string, unknown> = {}) {
 
 describe("managed browser contracts", () => {
   it("parses a thread-keyed browser response", () => {
-    const parsed =
-      zeroBrowserContract.use.responses[200].parse(browserResponse());
+    const parsed = browserContract.use.responses[200].parse(browserResponse());
 
     expect(parsed.browser).toMatchObject({
       threadId,
@@ -54,7 +53,7 @@ describe("managed browser contracts", () => {
       });
     }).toThrow();
     expect(() => {
-      zeroBrowserContract.use.responses[200].parse(
+      browserContract.use.responses[200].parse(
         browserResponse({
           id: "11111111-1111-4111-8111-111111111111",
         }),

@@ -970,10 +970,10 @@ export {
   type ZeroWorkflowAutomationsContract,
 } from "./zero-workflows";
 export {
-  zeroUserConnectorsContract,
+  userConnectorsContract,
   userConnectorEnabledSlugsSchema,
   type UserConnectorEnabledSlugs,
-  type ZeroUserConnectorsContract,
+  type UserConnectorsContract,
 } from "./user-connectors";
 export {
   zeroUserPermissionGrantsContract,

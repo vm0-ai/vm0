@@ -4,6 +4,7 @@ import {
   type ConnectorEnvReader,
 } from "@okouai/connectors/connector-auth-method";
 import type { ConnectorAuthMethodRuntimeConfig } from "@okouai/connectors/connector-config";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { buildConnectorAuthCodeAuthorizationUrlWithMethod } from "@okouai/connectors/auth-providers";
 import type { AuthUrlResult } from "@okouai/connectors/auth-providers/provider-flow-types";
 
@@ -29,6 +30,7 @@ export function prepareConnectorAuthCodeStartWithMethod(args: {
   readonly method: ConnectorAuthMethodRuntimeConfig;
   readonly redirectUri: string;
   readonly readEnv: ConnectorEnvReader;
+  readonly publicBrand: PublicBrand;
 }): PrepareConnectorAuthCodeStartWithMethodResult {
   if (args.method.grant.kind !== "auth-code" || !args.method.client) {
     return { ok: false, reason: "wrong_grant_kind" };
@@ -40,7 +42,7 @@ export function prepareConnectorAuthCodeStartWithMethod(args: {
   if (!authClient) {
     return { ok: false, reason: "auth_client_not_configured" };
   }
-  const state = generateConnectorOAuthState();
+  const state = generateConnectorOAuthState(args.publicBrand);
   return {
     ok: true,
     state,

@@ -1,6 +1,8 @@
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { feishuBrowserConnectContract } from "@okouai/api-contracts/contracts/feishu-browser-connect";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
 
@@ -11,7 +13,7 @@ import {
   requiredAuthContext$,
 } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { request$ } from "../context/hono";
+import { publicBrand$, request$ } from "../context/hono";
 import { bodyResultOf, queryOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
@@ -35,8 +37,13 @@ function redirect(url: string): Response {
   });
 }
 
-function worksRedirect(params: Readonly<Record<string, string>>): Response {
-  return redirect(`${env("APP_URL")}/works?${new URLSearchParams(params)}`);
+function worksRedirect(
+  params: Readonly<Record<string, string>>,
+  publicBrand: PublicBrand,
+): Response {
+  return redirect(
+    `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}/works?${new URLSearchParams(params)}`,
+  );
 }
 
 interface FeishuConnectArgs {
@@ -47,6 +54,7 @@ interface FeishuConnectArgs {
   readonly chatId: string;
   readonly ts: number;
   readonly sig: string;
+  readonly publicBrand: PublicBrand;
 }
 
 type FeishuConnectResult =
@@ -119,6 +127,7 @@ const startFeishuAccountOAuth$ = command(
         userId: args.userId,
         connectorId,
         redirectUri: feishuOAuthAppCallbackUrl(),
+        publicBrand: args.publicBrand,
         feishuContext: {
           installationId: args.installationId,
           expectedOpenId: args.openId,
@@ -138,24 +147,39 @@ const startFeishuAccountOAuth$ = command(
   },
 );
 
-function legacyConnectResult(result: FeishuConnectResult): Response {
+function legacyConnectResult(
+  result: FeishuConnectResult,
+  publicBrand: PublicBrand,
+): Response {
   switch (result.kind) {
     case "invalid": {
-      return worksRedirect({ feishuError: "Invalid or expired connect link" });
+      return worksRedirect(
+        { feishuError: "Invalid or expired connect link" },
+        publicBrand,
+      );
     }
     case "installation_not_found": {
-      return worksRedirect({ feishuError: "Feishu installation not found" });
+      return worksRedirect(
+        { feishuError: "Feishu installation not found" },
+        publicBrand,
+      );
     }
     case "setup_incomplete": {
-      return worksRedirect({
-        feishuError: "Finish setting up this Feishu bot before connecting",
-      });
+      return worksRedirect(
+        {
+          feishuError: "Finish setting up this Feishu bot before connecting",
+        },
+        publicBrand,
+      );
     }
     case "wrong_organization": {
-      return worksRedirect({
-        feishuError:
-          "Switch to the organization connected to this Feishu tenant",
-      });
+      return worksRedirect(
+        {
+          feishuError:
+            "Switch to the organization connected to this Feishu tenant",
+        },
+        publicBrand,
+      );
     }
     case "success": {
       return redirect(result.authorizationUrl);
@@ -165,21 +189,32 @@ function legacyConnectResult(result: FeishuConnectResult): Response {
 
 const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
   const request = get(request$);
+  const publicBrand = get(publicBrand$);
   const auth = await set(requiredAuthContext$, {}, signal);
   if ("status" in auth) {
-    const signIn = new URL("/sign-in", env("APP_URL"));
+    const signIn = new URL(
+      "/sign-in",
+      appUrlForPublicBrand(env("APP_URL"), publicBrand),
+    );
     signIn.searchParams.set("redirect_url", request.url);
     return redirect(signIn.toString());
   }
   const query = get(queryOf(feishuBrowserConnectContract.connect));
   const { installationId, openId, chatId, ts, sig } = query;
   if (!installationId || !openId || !chatId || ts === undefined || !sig) {
-    return worksRedirect({ feishuError: "Invalid or expired connect link" });
+    return worksRedirect(
+      { feishuError: "Invalid or expired connect link" },
+      publicBrand,
+    );
   }
   if (!auth.orgId) {
-    return worksRedirect({
-      feishuError: "Switch to the organization connected to this Feishu tenant",
-    });
+    return worksRedirect(
+      {
+        feishuError:
+          "Switch to the organization connected to this Feishu tenant",
+      },
+      publicBrand,
+    );
   }
   const result = await set(
     startFeishuAccountOAuth$,
@@ -191,14 +226,16 @@ const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
       chatId,
       ts,
       sig,
+      publicBrand,
     },
     signal,
   );
-  return legacyConnectResult(result);
+  return legacyConnectResult(result, publicBrand);
 });
 
 const connectFromApp$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
+  const publicBrand = get(publicBrand$);
   const bodyResult = await get(
     bodyResultOf(feishuBrowserConnectContract.connectFromApp),
   );
@@ -211,6 +248,7 @@ const connectFromApp$ = command(async ({ get, set }, signal: AbortSignal) => {
     {
       orgId: auth.orgId,
       userId: auth.userId,
+      publicBrand,
       ...bodyResult.data,
     },
     signal,

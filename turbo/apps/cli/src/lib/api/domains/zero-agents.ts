@@ -12,7 +12,7 @@ import {
   type UserPermissionGrantResponse,
 } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
-import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
   zeroAgentCustomConnectorsContract,
   type AgentCustomConnectorGrant,
@@ -80,7 +80,7 @@ export async function getZeroAgentUserConnectors(
   id: string,
 ): Promise<ConnectorSlug[]> {
   const config = await getClientConfig();
-  const client = initClient(zeroUserConnectorsContract, config);
+  const client = initClient(userConnectorsContract, config);
   const result = await client.get({ params: { id } });
   if (result.status === 200) {
     return result.body.enabledConnectorSlugs;

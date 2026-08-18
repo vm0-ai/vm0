@@ -648,24 +648,39 @@ export function createBddIntegrationApi(context: TestContext) {
     async requestGithubOauthInstall(
       query: GithubOauthInstallQuery,
       statuses: readonly (307 | 503)[],
+      publicBrand: PublicBrand = "vm0",
     ) {
       const client = setupApp({ context, routes: githubOauthRoutes })(
         githubOauthContract,
       );
-      return await accept(client.install({ query }), statuses);
+      return await accept(
+        client.install({
+          query,
+          ...(publicBrand === "okou"
+            ? { extraHeaders: { origin: "https://app.okou.ai" } }
+            : {}),
+        }),
+        statuses,
+      );
     },
 
     async requestGithubOauthConnect(
       actor: ApiTestUser | null,
       query: GithubOauthConnectQuery,
       statuses: readonly (307 | 401 | 503)[],
+      publicBrand: PublicBrand = "vm0",
     ) {
       const client = setupApp({ context, routes: githubOauthRoutes })(
         githubOauthContract,
       );
       return await accept(
         client.connect({
-          extraHeaders: extraHeaders(authenticate(context, routeMocks, actor)),
+          extraHeaders: {
+            ...extraHeaders(authenticate(context, routeMocks, actor)),
+            ...(publicBrand === "okou"
+              ? { origin: "https://app.okou.ai" }
+              : {}),
+          },
           query,
         }),
         statuses,
@@ -675,21 +690,39 @@ export function createBddIntegrationApi(context: TestContext) {
     async requestGithubOauthConnectCallback(
       query: GithubOauthConnectCallbackQuery,
       statuses: readonly 307[],
+      publicBrand: PublicBrand = "vm0",
     ) {
       const client = setupApp({ context, routes: githubOauthRoutes })(
         githubOauthContract,
       );
-      return await accept(client.connectCallback({ query }), statuses);
+      return await accept(
+        client.connectCallback({
+          query,
+          ...(publicBrand === "okou"
+            ? { extraHeaders: { origin: "https://app.okou.ai" } }
+            : {}),
+        }),
+        statuses,
+      );
     },
 
     async requestGithubAppSetupCallback(
       query: GithubAppSetupCallbackQuery,
       statuses: readonly 307[],
+      publicBrand: PublicBrand = "vm0",
     ) {
       const client = setupApp({ context, routes: githubOauthRoutes })(
         githubOauthContract,
       );
-      return await accept(client.setupCallback({ query }), statuses);
+      return await accept(
+        client.setupCallback({
+          query,
+          ...(publicBrand === "okou"
+            ? { extraHeaders: { origin: "https://app.okou.ai" } }
+            : {}),
+        }),
+        statuses,
+      );
     },
 
     async requestSlackDisconnect(

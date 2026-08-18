@@ -3,6 +3,7 @@ import type {
   GithubConnectUserBody,
   GithubInstallationResponse,
 } from "@okouai/api-contracts/contracts/integrations-github";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { connectors } from "@okouai/db/schema/connector";
 import { githubInstallations } from "@okouai/db/schema/github-installation";
 import { githubUserLinks } from "@okouai/db/schema/github-user-link";
@@ -10,7 +11,7 @@ import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { and, eq } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
-import { request$ } from "../context/hono";
+import { publicBrand$, request$ } from "../context/hono";
 import { writeDb$, type ReadonlyDb } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { env, optionalEnv } from "../../lib/env";
@@ -39,6 +40,7 @@ async function githubInstallUrl(
     readonly userId: string;
     readonly orgId: string;
     readonly origin: string;
+    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<string | null> {
@@ -56,6 +58,7 @@ async function githubInstallUrl(
     orgId: args.orgId,
     composeId: composeId ?? undefined,
     origin: args.origin,
+    publicBrand: args.publicBrand,
     secretsEncryptionKey: env("SECRETS_ENCRYPTION_KEY"),
   });
 }
@@ -225,6 +228,7 @@ export const connectGithubUser$ = command(
 export const getGithubInstallation$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
+    const publicBrand = get(publicBrand$);
     const origin = getOAuthWebOrigin(get(request$).raw);
     const db = set(writeDb$);
     const installation = await loadOrgGithubInstallation(db, auth.orgId);
@@ -238,6 +242,7 @@ export const getGithubInstallation$ = command(
               userId: auth.userId,
               orgId: auth.orgId,
               origin,
+              publicBrand,
             },
             signal,
           )
@@ -289,6 +294,7 @@ export const getGithubInstallation$ = command(
               userId: auth.userId,
               orgId: auth.orgId,
               origin,
+              publicBrand,
               authMethodId: resolvedMethod.authMethodId,
               method: resolvedMethod.method,
               readEnv: optionalEnv,

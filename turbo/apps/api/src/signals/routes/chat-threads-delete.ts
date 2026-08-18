@@ -9,7 +9,7 @@ import { publishThreadListChanged } from "../external/realtime";
 import { notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { deleteChatThread$ } from "../services/chat-thread.service";
-import { stopThreadZeroBrowsers$ } from "../services/zero-browser.service";
+import { stopThreadBrowsers$ } from "../services/browser.service";
 import { dispatchCancelSideEffects$ } from "../services/run-cancel.service";
 import { tapError } from "../utils";
 import type { RouteEntry } from "../route-entry";
@@ -41,7 +41,7 @@ const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return chatThreadNotFound();
   }
 
-  await set(stopThreadZeroBrowsers$, { chatThreadId: params.id }, signal);
+  await set(stopThreadBrowsers$, { chatThreadId: params.id }, signal);
   signal.throwIfAborted();
 
   // Dispatch post-cancel side effects (runner halt, queue drain, credit

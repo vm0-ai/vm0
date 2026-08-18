@@ -1,4 +1,4 @@
-import { zeroBrowserContract } from "@okouai/api-contracts/contracts/zero-browser";
+import { browserContract } from "@okouai/api-contracts/contracts/browser";
 import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -7,17 +7,17 @@ import { bodyResultOf, pathParamsOf } from "../context/request";
 import { publicBrand$ } from "../context/hono";
 import type { RouteEntry } from "../route-entry";
 import {
-  createZeroBrowser$,
-  closeZeroBrowserForThread$,
-  getCurrentZeroBrowser$,
-  getZeroBrowser$,
-  leaseCurrentZeroBrowser$,
-  leaseZeroBrowserByThread$,
-  openZeroBrowserForThread$,
-  resizeZeroBrowserByThread$,
-  useZeroBrowser$,
+  createBrowser$,
+  closeBrowserForThread$,
+  getCurrentBrowser$,
+  getBrowser$,
+  leaseCurrentBrowser$,
+  leaseBrowserByThread$,
+  openBrowserForThread$,
+  resizeBrowserByThread$,
+  useBrowser$,
   type BrowserServiceError,
-} from "../services/zero-browser.service";
+} from "../services/browser.service";
 
 function errorResponse(error: BrowserServiceError) {
   return {
@@ -31,7 +31,7 @@ function errorResponse(error: BrowserServiceError) {
   };
 }
 
-const createBody$ = bodyResultOf(zeroBrowserContract.create);
+const createBody$ = bodyResultOf(browserContract.create);
 const createBrowserInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const body = await get(createBody$);
@@ -43,7 +43,7 @@ const createBrowserInner$ = command(
     const publicBrand =
       auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
     const result = await set(
-      createZeroBrowser$,
+      createBrowser$,
       {
         actor: {
           orgId: auth.orgId,
@@ -61,7 +61,7 @@ const createBrowserInner$ = command(
   },
 );
 
-const useBody$ = bodyResultOf(zeroBrowserContract.use);
+const useBody$ = bodyResultOf(browserContract.use);
 const useBrowserInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const body = await get(useBody$);
   signal.throwIfAborted();
@@ -72,7 +72,7 @@ const useBrowserInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const publicBrand =
     auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
   const result = await set(
-    useZeroBrowser$,
+    useBrowser$,
     {
       orgId: auth.orgId,
       userId: auth.userId,
@@ -86,7 +86,7 @@ const useBrowserInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     : { status: 200 as const, body: result.value };
 });
 
-const leaseBody$ = bodyResultOf(zeroBrowserContract.lease);
+const leaseBody$ = bodyResultOf(browserContract.lease);
 const leaseBrowserInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const body = await get(leaseBody$);
@@ -98,7 +98,7 @@ const leaseBrowserInner$ = command(
     const publicBrand =
       auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
     const result = await set(
-      leaseCurrentZeroBrowser$,
+      leaseCurrentBrowser$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
@@ -113,8 +113,8 @@ const leaseBrowserInner$ = command(
   },
 );
 
-const leaseByThreadParams$ = pathParamsOf(zeroBrowserContract.leaseByThread);
-const leaseByThreadBody$ = bodyResultOf(zeroBrowserContract.leaseByThread);
+const leaseByThreadParams$ = pathParamsOf(browserContract.leaseByThread);
+const leaseByThreadBody$ = bodyResultOf(browserContract.leaseByThread);
 const leaseBrowserByThreadInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const body = await get(leaseByThreadBody$);
@@ -126,7 +126,7 @@ const leaseBrowserByThreadInner$ = command(
     const publicBrand =
       auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
     const result = await set(
-      leaseZeroBrowserByThread$,
+      leaseBrowserByThread$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
@@ -142,8 +142,8 @@ const leaseBrowserByThreadInner$ = command(
   },
 );
 
-const openParams$ = pathParamsOf(zeroBrowserContract.open);
-const openBody$ = bodyResultOf(zeroBrowserContract.open);
+const openParams$ = pathParamsOf(browserContract.open);
+const openBody$ = bodyResultOf(browserContract.open);
 const openBrowserInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const body = await get(openBody$);
   signal.throwIfAborted();
@@ -154,7 +154,7 @@ const openBrowserInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const publicBrand =
     auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
   const result = await set(
-    openZeroBrowserForThread$,
+    openBrowserForThread$,
     {
       orgId: auth.orgId,
       userId: auth.userId,
@@ -170,8 +170,8 @@ const openBrowserInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     : { status: 200 as const, body: result.value };
 });
 
-const closeParams$ = pathParamsOf(zeroBrowserContract.close);
-const closeBody$ = bodyResultOf(zeroBrowserContract.close);
+const closeParams$ = pathParamsOf(browserContract.close);
+const closeBody$ = bodyResultOf(browserContract.close);
 const closeBrowserInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const body = await get(closeBody$);
@@ -183,7 +183,7 @@ const closeBrowserInner$ = command(
     const publicBrand =
       auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
     const result = await set(
-      closeZeroBrowserForThread$,
+      closeBrowserForThread$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
@@ -200,8 +200,8 @@ const closeBrowserInner$ = command(
   },
 );
 
-const resizeByThreadParams$ = pathParamsOf(zeroBrowserContract.resizeByThread);
-const resizeByThreadBody$ = bodyResultOf(zeroBrowserContract.resizeByThread);
+const resizeByThreadParams$ = pathParamsOf(browserContract.resizeByThread);
+const resizeByThreadBody$ = bodyResultOf(browserContract.resizeByThread);
 const resizeBrowserByThreadInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const body = await get(resizeByThreadBody$);
@@ -213,7 +213,7 @@ const resizeBrowserByThreadInner$ = command(
     const publicBrand =
       auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
     const result = await set(
-      resizeZeroBrowserByThread$,
+      resizeBrowserByThread$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
@@ -236,7 +236,7 @@ const currentBrowserInner$ = command(
     const publicBrand =
       auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
     const result = await set(
-      getCurrentZeroBrowser$,
+      getCurrentBrowser$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
@@ -251,13 +251,13 @@ const currentBrowserInner$ = command(
   },
 );
 
-const getParams$ = pathParamsOf(zeroBrowserContract.get);
+const getParams$ = pathParamsOf(browserContract.get);
 const getBrowserInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const publicBrand =
     auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
   const result = await set(
-    getZeroBrowser$,
+    getBrowser$,
     {
       orgId: auth.orgId,
       userId: auth.userId,
@@ -304,39 +304,39 @@ const browserCurrentAuth = Object.freeze({
 
 export const browserRoutes: readonly RouteEntry[] = [
   {
-    route: zeroBrowserContract.create,
+    route: browserContract.create,
     handler: authRoute(browserWriteAuth, createBrowserInner$),
   },
   {
-    route: zeroBrowserContract.use,
+    route: browserContract.use,
     handler: authRoute(browserWriteAuth, useBrowserInner$),
   },
   {
-    route: zeroBrowserContract.lease,
+    route: browserContract.lease,
     handler: authRoute(browserWriteAuth, leaseBrowserInner$),
   },
   {
-    route: zeroBrowserContract.leaseByThread,
+    route: browserContract.leaseByThread,
     handler: authRoute(browserViewerWriteAuth, leaseBrowserByThreadInner$),
   },
   {
-    route: zeroBrowserContract.open,
+    route: browserContract.open,
     handler: authRoute(browserViewerWriteAuth, openBrowserInner$),
   },
   {
-    route: zeroBrowserContract.close,
+    route: browserContract.close,
     handler: authRoute(browserViewerWriteAuth, closeBrowserInner$),
   },
   {
-    route: zeroBrowserContract.resizeByThread,
+    route: browserContract.resizeByThread,
     handler: authRoute(browserViewerWriteAuth, resizeBrowserByThreadInner$),
   },
   {
-    route: zeroBrowserContract.current,
+    route: browserContract.current,
     handler: authRoute(browserCurrentAuth, currentBrowserInner$),
   },
   {
-    route: zeroBrowserContract.get,
+    route: browserContract.get,
     handler: authRoute(browserReadAuth, getBrowserInner$),
   },
 ];
