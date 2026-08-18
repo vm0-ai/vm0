@@ -18,7 +18,7 @@ import { orgTierSchema } from "@okouai/api-contracts/contracts/orgs";
 import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { createStore } from "ccstate";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { writeDb$ } from "../signals/external/db";
 import { upsertOrgPlanEntitlement } from "../signals/services/org-plan-entitlements.service";
@@ -54,6 +54,7 @@ export async function upsertOrgMetadataFixture(values: {
 export async function expireAtomGrantFixture(values: {
   readonly orgId: string;
   readonly expiredAt: Date;
+  readonly creditInvoiceIds?: readonly string[];
 }): Promise<void> {
   const db = createStore().set(writeDb$);
   await db
@@ -66,7 +67,16 @@ export async function expireAtomGrantFixture(values: {
   await db
     .update(creditExpiresRecord)
     .set({ expiresAt: values.expiredAt })
-    .where(eq(creditExpiresRecord.orgId, values.orgId));
+    .where(
+      and(
+        eq(creditExpiresRecord.orgId, values.orgId),
+        values.creditInvoiceIds === undefined
+          ? undefined
+          : inArray(creditExpiresRecord.stripeInvoiceId, [
+              ...values.creditInvoiceIds,
+            ]),
+      ),
+    );
 }
 
 interface OrgAcquisitionAttributionRow {

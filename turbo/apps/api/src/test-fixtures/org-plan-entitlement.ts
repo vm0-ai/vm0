@@ -37,6 +37,7 @@ interface OrgPlanEntitlementFixtureState {
   readonly currentPeriodEnd: string | null;
   readonly cancelAt: string | null;
   readonly expiresAt: string | null;
+  readonly sourceMetadata: Record<string, string> | null;
 }
 
 export async function upsertOrgPlanEntitlementFixture(values: {
@@ -176,6 +177,7 @@ export async function readOrgPlanEntitlementFixture(
       currentPeriodEnd: orgPlanEntitlements.currentPeriodEnd,
       cancelAt: orgPlanEntitlements.cancelAt,
       expiresAt: orgPlanEntitlements.expiresAt,
+      sourceMetadata: orgPlanEntitlements.sourceMetadata,
     })
     .from(orgPlanEntitlements)
     .where(eq(orgPlanEntitlements.orgId, orgId))

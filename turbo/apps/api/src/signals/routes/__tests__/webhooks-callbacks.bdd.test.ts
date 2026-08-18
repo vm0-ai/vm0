@@ -257,17 +257,78 @@ function proSubscription(args: {
   readonly status?: string;
   readonly trialEnd?: number;
   readonly metadata?: Record<string, string>;
+  readonly priceId?: string;
+  readonly periodStart?: number;
+  readonly periodEnd?: number;
+  readonly cancelAt?: number | null;
+  readonly cancelAtPeriodEnd?: boolean;
+  readonly schedule?: string | null;
 }): Record<string, unknown> {
   return {
     id: args.id,
     status: args.status ?? "active",
     customer: args.customerId,
-    cancel_at: null,
-    cancel_at_period_end: false,
-    schedule: null,
+    cancel_at: args.cancelAt ?? null,
+    cancel_at_period_end: args.cancelAtPeriodEnd ?? false,
+    schedule: args.schedule ?? null,
     trial_end: args.trialEnd ?? null,
     metadata: args.metadata ?? {},
-    items: { data: [{ price: { id: "price_bdd_pro" } }] },
+    items: {
+      data: [
+        {
+          price: { id: args.priceId ?? "price_bdd_pro" },
+          ...(args.periodStart === undefined
+            ? {}
+            : { current_period_start: args.periodStart }),
+          ...(args.periodEnd === undefined
+            ? {}
+            : { current_period_end: args.periodEnd }),
+        },
+      ],
+    },
+  };
+}
+
+function atomPlanGrantInvoice(args: {
+  readonly id: string;
+  readonly customerId: string;
+  readonly orgId: string;
+  readonly tier: "team" | "custom";
+  readonly startsAtUnix: number;
+  readonly expiresAtUnix: number;
+  readonly preservePurchasedPro?: boolean;
+}): Record<string, unknown> {
+  return {
+    id: args.id,
+    customer: args.customerId,
+    metadata: {
+      type: "atom_grant",
+      purpose: "atom_grant",
+      source: "atom_entitlement",
+      orgId: args.orgId,
+      tier: args.tier,
+      duration: "7d",
+      atomGrantExpiresAt: isoOf(args.expiresAtUnix),
+      ...(args.preservePurchasedPro
+        ? { planOverrideMode: "preserve_purchased_pro_v1" }
+        : {}),
+    },
+    parent: null,
+    lines: {
+      has_more: false,
+      data: [
+        {
+          id: `il_${args.id}`,
+          quantity: 1,
+          price: { id: "price_bdd_atom_grant" },
+          period: {
+            start: args.startsAtUnix,
+            end: args.expiresAtUnix,
+          },
+          parent: { type: "invoice_item_details" },
+        },
+      ],
+    },
   };
 }
 
@@ -3094,6 +3155,305 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     expect((await billing.readUsageMembers(actor)).body.period).toStrictEqual({
       start: isoOf(grantStartsAtUnix),
       end: isoOf(grantExpiresAtUnix),
+    });
+  });
+
+  it("preserves hidden Pro renewals and restores Pro after a marked Atom override", async () => {
+    const bdd = createBddApi(context);
+    const billing = createBillingMediaApi(context);
+    const runs = createRunsApi(context);
+    const actor = bdd.user();
+    const orgId = orgOf(actor);
+    const suffix = randomUUID().slice(0, 8);
+    const proPeriodStartUnix = epochSeconds(-1);
+    const proPeriodEndUnix = epochSeconds(29);
+    const atomStartsAtUnix = epochSeconds(0);
+    const teamGrantExpiresAtUnix = epochSeconds(7);
+    const customGrantExpiresAtUnix = epochSeconds(14);
+    const teamInvoiceId = `in_bdd_atom_preserve_team_${suffix}`;
+    const hiddenRenewalInvoiceId = `in_bdd_atom_hidden_pro_${suffix}`;
+    const customInvoiceId = `in_bdd_atom_preserve_custom_${suffix}`;
+    const duplicateSubscriptionId = `sub_bdd_atom_duplicate_${suffix}`;
+    const granted = await runs.grantProEntitlement(actor, {
+      periodEndUnix: proPeriodEndUnix,
+      subscriptionMetadata: { orgId },
+    });
+    const preservedSubscription = proSubscription({
+      id: granted.subscriptionId,
+      customerId: granted.customerId,
+      metadata: { orgId },
+      periodStart: proPeriodStartUnix,
+      periodEnd: proPeriodEndUnix,
+    });
+    const duplicateSubscription = proSubscription({
+      id: duplicateSubscriptionId,
+      customerId: granted.customerId,
+      metadata: { orgId },
+      priceId: "price_bdd_team",
+      periodStart: proPeriodStartUnix,
+      periodEnd: proPeriodEndUnix,
+    });
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      preservedSubscription,
+    );
+    context.mocks.stripe.subscriptions.list.mockResolvedValue({
+      data: [preservedSubscription, duplicateSubscription],
+      has_more: false,
+    });
+    context.mocks.stripe.subscriptions.cancel.mockResolvedValue(
+      duplicateSubscription,
+    );
+
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: atomPlanGrantInvoice({
+          id: teamInvoiceId,
+          customerId: granted.customerId,
+          orgId,
+          tier: "team",
+          startsAtUnix: atomStartsAtUnix,
+          expiresAtUnix: teamGrantExpiresAtUnix,
+          preservePurchasedPro: true,
+        }),
+      }),
+      [200],
+    );
+
+    expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledTimes(1);
+    expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledWith(
+      duplicateSubscriptionId,
+      { invoice_now: false, prorate: false },
+    );
+    expect(context.mocks.stripe.subscriptions.cancel).not.toHaveBeenCalledWith(
+      granted.subscriptionId,
+      expect.anything(),
+    );
+    const overridden = await billing.readBillingStatus(actor);
+    expect(overridden).toMatchObject({
+      tier: "team",
+      credits: 140_000,
+      hasSubscription: false,
+      subscriptionStatus: "atom_grant",
+    });
+    await expect(readOrgPlanEntitlementFixture(orgId)).resolves.toMatchObject({
+      planKey: "team",
+      source: "stripe_atom_grant",
+      stripeSubscriptionId: null,
+      sourceMetadata: {
+        planOverrideMode: "preserve_purchased_pro_v1",
+        preservedPurchasedProSubscriptionId: granted.subscriptionId,
+      },
+    });
+
+    const hiddenRenewalEvent = stripeEvent({
+      type: "invoice.paid",
+      object: {
+        id: hiddenRenewalInvoiceId,
+        customer: granted.customerId,
+        metadata: {},
+        parent: {
+          subscription_details: { subscription: granted.subscriptionId },
+        },
+        lines: subscriptionLines(proPeriodEndUnix),
+      },
+    });
+    await api.postStripeEvent(hiddenRenewalEvent, [200]);
+    await api.postStripeEvent(hiddenRenewalEvent, [200]);
+
+    const renewedUnderOverride = await billing.readBillingStatus(actor);
+    expect(renewedUnderOverride).toMatchObject({
+      tier: "team",
+      credits: 160_000,
+      hasSubscription: false,
+      subscriptionStatus: "atom_grant",
+    });
+    expect(renewedUnderOverride.creditGrants).toHaveLength(3);
+    await expect(readOrgPlanEntitlementFixture(orgId)).resolves.toMatchObject({
+      planKey: "team",
+      source: "stripe_atom_grant",
+      stripeSubscriptionId: null,
+      sourceMetadata: {
+        preservedPurchasedProSubscriptionId: granted.subscriptionId,
+      },
+    });
+
+    context.mocks.stripe.subscriptions.cancel.mockClear();
+    context.mocks.stripe.subscriptions.list.mockResolvedValue({
+      data: [preservedSubscription],
+      has_more: false,
+    });
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: atomPlanGrantInvoice({
+          id: customInvoiceId,
+          customerId: granted.customerId,
+          orgId,
+          tier: "custom",
+          startsAtUnix: teamGrantExpiresAtUnix,
+          expiresAtUnix: customGrantExpiresAtUnix,
+          preservePurchasedPro: true,
+        }),
+      }),
+      [200],
+    );
+    expect(context.mocks.stripe.subscriptions.cancel).not.toHaveBeenCalled();
+    await expect(readOrgPlanEntitlementFixture(orgId)).resolves.toMatchObject({
+      planKey: "custom",
+      sourceMetadata: {
+        preservedPurchasedProSubscriptionId: granted.subscriptionId,
+      },
+    });
+
+    const expiredAt = new Date(now() - 1000);
+    await expireAtomGrantFixture({
+      orgId,
+      expiredAt,
+      creditInvoiceIds: [teamInvoiceId],
+    });
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      preservedSubscription,
+    );
+    await runs.reconcileBillingOrganizations([orgId]);
+
+    const restored = await billing.readBillingStatus(actor);
+    expect(restored).toMatchObject({
+      tier: "pro",
+      credits: 40_000,
+      hasSubscription: true,
+      subscriptionStatus: "active",
+      currentPeriodEnd: isoOf(proPeriodEndUnix),
+    });
+    await expect(readOrgPlanEntitlementFixture(orgId)).resolves.toMatchObject({
+      planKey: "pro",
+      source: "stripe_subscription",
+      status: "active",
+      stripeSubscriptionId: granted.subscriptionId,
+      stripePriceId: "price_bdd_pro",
+      currentPeriodStart: isoOf(proPeriodStartUnix),
+      currentPeriodEnd: isoOf(proPeriodEndUnix),
+      sourceMetadata: { orgId },
+    });
+  });
+
+  it("falls back after a marked Atom override when the preserved Pro is missing", async () => {
+    const bdd = createBddApi(context);
+    const billing = createBillingMediaApi(context);
+    const runs = createRunsApi(context);
+    const actor = bdd.user();
+    const orgId = orgOf(actor);
+    const suffix = randomUUID().slice(0, 8);
+    const proPeriodEndUnix = epochSeconds(30);
+    const atomInvoiceId = `in_bdd_atom_missing_pro_${suffix}`;
+    const atomExpiresAtUnix = epochSeconds(7);
+    const granted = await runs.grantProEntitlement(actor, {
+      periodEndUnix: proPeriodEndUnix,
+      subscriptionMetadata: { orgId },
+    });
+    const preservedSubscription = proSubscription({
+      id: granted.subscriptionId,
+      customerId: granted.customerId,
+      metadata: { orgId },
+      periodStart: epochSeconds(0),
+      periodEnd: proPeriodEndUnix,
+    });
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      preservedSubscription,
+    );
+    context.mocks.stripe.subscriptions.list.mockResolvedValue({
+      data: [preservedSubscription],
+      has_more: false,
+    });
+
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: atomPlanGrantInvoice({
+          id: atomInvoiceId,
+          customerId: granted.customerId,
+          orgId,
+          tier: "team",
+          startsAtUnix: epochSeconds(0),
+          expiresAtUnix: atomExpiresAtUnix,
+          preservePurchasedPro: true,
+        }),
+      }),
+      [200],
+    );
+
+    await expireAtomGrantFixture({
+      orgId,
+      expiredAt: new Date(now() - 1000),
+      creditInvoiceIds: [atomInvoiceId],
+    });
+    context.mocks.stripe.subscriptions.retrieve.mockRejectedValueOnce({
+      code: "resource_missing",
+    });
+    await runs.reconcileBillingOrganizations([orgId]);
+
+    const downgraded = await billing.readBillingStatus(actor);
+    expect(downgraded).toMatchObject({
+      tier: "limited-free-1",
+      credits: 20_000,
+      hasSubscription: false,
+      subscriptionStatus: "expired",
+    });
+    await expect(readOrgPlanEntitlementFixture(orgId)).resolves.toMatchObject({
+      planKey: "limited-free-1",
+      source: "stripe_atom_grant",
+      stripeSubscriptionId: null,
+      stripePriceId: null,
+    });
+  });
+
+  it("rejects a marked Atom override when the purchased Pro cannot be preserved safely", async () => {
+    const bdd = createBddApi(context);
+    const billing = createBillingMediaApi(context);
+    const runs = createRunsApi(context);
+    const actor = bdd.user();
+    const orgId = orgOf(actor);
+    const suffix = randomUUID().slice(0, 8);
+    const granted = await runs.grantProEntitlement(actor, {
+      subscriptionMetadata: { orgId },
+    });
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      proSubscription({
+        id: granted.subscriptionId,
+        customerId: granted.customerId,
+        metadata: { orgId },
+        periodStart: epochSeconds(0),
+        periodEnd: epochSeconds(30),
+        schedule: `sched_bdd_atom_${suffix}`,
+      }),
+    );
+
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: atomPlanGrantInvoice({
+          id: `in_bdd_atom_unsafe_pro_${suffix}`,
+          customerId: granted.customerId,
+          orgId,
+          tier: "team",
+          startsAtUnix: epochSeconds(0),
+          expiresAtUnix: epochSeconds(7),
+          preservePurchasedPro: true,
+        }),
+      }),
+      [500],
+    );
+
+    expect(context.mocks.stripe.subscriptions.cancel).not.toHaveBeenCalled();
+    await expect(billing.readBillingStatus(actor)).resolves.toMatchObject({
+      tier: "pro",
+      hasSubscription: true,
+      subscriptionStatus: "active",
+    });
+    await expect(readOrgPlanEntitlementFixture(orgId)).resolves.toMatchObject({
+      planKey: "pro",
+      source: "stripe_subscription",
+      stripeSubscriptionId: granted.subscriptionId,
     });
   });
 

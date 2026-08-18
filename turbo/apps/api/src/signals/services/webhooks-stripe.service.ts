@@ -66,6 +66,7 @@ import {
   handleUsagePackSubscriptionCreated,
   handleUsagePackSubscriptionDeleted,
   handleUsagePackSubscriptionUpdated,
+  USAGE_PACK_SUBSCRIPTION_PURPOSE,
 } from "./usage-pack-subscription.service";
 import { createUsagePackCreditGrant } from "./usage-pack-credit.service";
 import {
@@ -78,6 +79,11 @@ import {
   handleUsagePackMigrationInvoicePaid,
   handleUsagePackMigrationSubscriptionUpdated,
 } from "./usage-pack-subscription-migration.service";
+import {
+  preservedPurchasedProSubscriptionId,
+  requestsPurchasedProPreservation,
+  withPreservedPurchasedProSubscription,
+} from "./atom-plan-override";
 
 const L = logger("WebhookStripe");
 
@@ -218,8 +224,11 @@ interface InvoicePaidOrg {
 }
 
 interface LockedInvoicePaidOrg extends InvoicePaidOrg {
+  readonly cancelAtPeriodEnd: boolean;
+  readonly pendingSubscriptionScheduleId: string | null;
   readonly planEntitlementSource: string | null;
   readonly planEntitlementPeriodEnd: Date | null;
+  readonly planEntitlementStripeSubscriptionId: string | null;
   readonly planEntitlementSourceMetadata: Readonly<
     Record<string, string>
   > | null;
@@ -258,6 +267,7 @@ interface AtomPlanGrantInvoiceDetails {
   readonly customerId: string | null;
   readonly credits: number;
   readonly memberUsagePack: AtomMemberUsagePackDetails | null;
+  readonly preservePurchasedPro: boolean;
 }
 
 interface AtomCreditGrantInvoiceDetails {
@@ -915,6 +925,9 @@ function atomGrantInvoiceDetails(
     credits:
       metadata.planVersion === "usagePack" ? 0 : monthlyCreditsForTier(tier),
     memberUsagePack: memberUsagePack.value,
+    preservePurchasedPro:
+      (tier === "team" || tier === "custom") &&
+      requestsPurchasedProPreservation(metadata),
   };
 }
 
@@ -1359,8 +1372,12 @@ async function lockInvoicePaidOrg(
       stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
       subscriptionStatus: orgMetadata.subscriptionStatus,
       tier: orgMetadata.tier,
+      cancelAtPeriodEnd: orgMetadata.cancelAtPeriodEnd,
+      pendingSubscriptionScheduleId: orgMetadata.pendingSubscriptionScheduleId,
       planEntitlementSource: orgPlanEntitlements.source,
       planEntitlementPeriodEnd: orgPlanEntitlements.currentPeriodEnd,
+      planEntitlementStripeSubscriptionId:
+        orgPlanEntitlements.stripeSubscriptionId,
       planEntitlementSourceMetadata: orgPlanEntitlements.sourceMetadata,
     })
     .from(orgMetadata)
@@ -1698,6 +1715,143 @@ async function grantAtomRedeemMemberUsagePack(
   });
 }
 
+function locallyEligiblePurchasedProSubscriptionId(
+  lockedOrg: LockedInvoicePaidOrg,
+): string | null {
+  if (
+    lockedOrg.tier !== "pro" ||
+    !lockedOrg.stripeSubscriptionId ||
+    (lockedOrg.subscriptionStatus !== "active" &&
+      lockedOrg.subscriptionStatus !== "trialing") ||
+    lockedOrg.cancelAtPeriodEnd ||
+    lockedOrg.pendingSubscriptionScheduleId !== null ||
+    lockedOrg.planEntitlementSource !== "stripe_subscription" ||
+    lockedOrg.planEntitlementSourceMetadata?.purpose ===
+      USAGE_PACK_SUBSCRIPTION_PURPOSE ||
+    lockedOrg.planEntitlementStripeSubscriptionId !==
+      lockedOrg.stripeSubscriptionId
+  ) {
+    return null;
+  }
+
+  return lockedOrg.stripeSubscriptionId;
+}
+
+function stripeSubscriptionCanBePreservedForAtomGrant(args: {
+  readonly subscription: StripeSubscription;
+  readonly subscriptionId: string;
+  readonly customerId: string;
+  readonly orgId: string;
+}): boolean {
+  return (
+    args.subscription.id === args.subscriptionId &&
+    customerIdFromSubscription(args.subscription) === args.customerId &&
+    args.subscription.metadata?.orgId === args.orgId &&
+    args.subscription.metadata?.purpose !== USAGE_PACK_SUBSCRIPTION_PURPOSE &&
+    (args.subscription.status === "active" ||
+      args.subscription.status === "trialing") &&
+    !subscriptionWillCancel(args.subscription) &&
+    (args.subscription.schedule === null ||
+      args.subscription.schedule === undefined) &&
+    tierFromSubscription(args.subscription) === "pro"
+  );
+}
+
+async function purchasedProSubscriptionIdForAtomGrant(args: {
+  readonly details: AtomPlanGrantInvoiceDetails;
+  readonly lockedOrg: LockedInvoicePaidOrg;
+}): Promise<string | null> {
+  const carriedSubscriptionId = preservedPurchasedProSubscriptionId(
+    args.lockedOrg.planEntitlementSourceMetadata,
+  );
+  if (carriedSubscriptionId) {
+    return carriedSubscriptionId;
+  }
+  if (!args.details.preservePurchasedPro) {
+    return null;
+  }
+
+  const subscriptionId = locallyEligiblePurchasedProSubscriptionId(
+    args.lockedOrg,
+  );
+  if (!subscriptionId || !args.details.customerId) {
+    const hasExpectedPurchasedPlan =
+      args.lockedOrg.tier === "pro" ||
+      args.lockedOrg.stripeSubscriptionId !== null;
+    if (hasExpectedPurchasedPlan) {
+      throw new Error(
+        `Cannot safely preserve the purchased Pro subscription for Atom grant in org ${args.details.orgId}`,
+      );
+    }
+    return null;
+  }
+
+  const subscription =
+    await getStripeClient().subscriptions.retrieve(subscriptionId);
+  if (
+    !stripeSubscriptionCanBePreservedForAtomGrant({
+      subscription,
+      subscriptionId,
+      customerId: args.details.customerId,
+      orgId: args.details.orgId,
+    })
+  ) {
+    throw new Error(
+      `Cannot safely preserve purchased Pro subscription ${subscriptionId} for Atom grant in org ${args.details.orgId}`,
+    );
+  }
+
+  return subscriptionId;
+}
+
+async function processExistingAtomPlanGrantInvoice(args: {
+  readonly tx: WriteTx;
+  readonly invoice: InvoiceInput;
+  readonly details: AtomPlanGrantInvoiceDetails;
+  readonly lockedOrg: LockedInvoicePaidOrg;
+  readonly preservedSubscriptionId: string | null;
+}): Promise<boolean> {
+  if (args.lockedOrg.lastProcessedInvoiceId === args.invoice.id) {
+    if (
+      args.lockedOrg.tier === args.details.tier &&
+      args.lockedOrg.subscriptionStatus === ATOM_GRANT_SUBSCRIPTION_STATUS &&
+      args.lockedOrg.stripeSubscriptionId === null
+    ) {
+      await upsertAtomGrantPlanEntitlement(
+        args.tx,
+        args.invoice,
+        args.details,
+        args.preservedSubscriptionId,
+      );
+    }
+    await grantAtomRedeemMemberUsagePack(args.tx, args.invoice, args.details);
+    await cancelReplacedSubscriptionsAfterAtomGrant({
+      orgId: args.details.orgId,
+      customerId: args.details.customerId,
+      invoiceId: args.invoice.id,
+      knownOldSubscriptionId: args.lockedOrg.stripeSubscriptionId,
+      preservedSubscriptionId: args.preservedSubscriptionId,
+      failOnUnpreservedPro: args.details.preservePurchasedPro,
+    });
+    L.debug("atom grant invoice already processed", {
+      invoiceId: args.invoice.id,
+      orgId: args.details.orgId,
+    });
+    return true;
+  }
+  if (
+    atomUsagePackGrantWouldNotExtendEntitlement({
+      invoice: args.invoice,
+      details: args.details,
+      lockedOrg: args.lockedOrg,
+    })
+  ) {
+    await grantAtomRedeemMemberUsagePack(args.tx, args.invoice, args.details);
+    return true;
+  }
+  return false;
+}
+
 async function processAtomPlanGrantInvoicePaid(
   db: Db,
   invoice: InvoiceInput,
@@ -1716,35 +1870,17 @@ async function processAtomPlanGrantInvoicePaid(
     if (!lockedOrg) {
       return false;
     }
-    if (lockedOrg.lastProcessedInvoiceId === invoice.id) {
-      if (
-        lockedOrg.tier === details.tier &&
-        lockedOrg.subscriptionStatus === ATOM_GRANT_SUBSCRIPTION_STATUS &&
-        lockedOrg.stripeSubscriptionId === null
-      ) {
-        await upsertAtomGrantPlanEntitlement(tx, invoice, details);
-      }
-      await grantAtomRedeemMemberUsagePack(tx, invoice, details);
-      await cancelReplacedSubscriptionsAfterAtomGrant({
-        orgId: details.orgId,
-        customerId: details.customerId,
-        invoiceId: invoice.id,
-        knownOldSubscriptionId: lockedOrg.stripeSubscriptionId,
-      });
-      L.debug("atom grant invoice already processed", {
-        invoiceId: invoice.id,
-        orgId: details.orgId,
-      });
-      return true;
-    }
+    const preservedSubscriptionId =
+      await purchasedProSubscriptionIdForAtomGrant({ details, lockedOrg });
     if (
-      atomUsagePackGrantWouldNotExtendEntitlement({
+      await processExistingAtomPlanGrantInvoice({
+        tx,
         invoice,
         details,
         lockedOrg,
+        preservedSubscriptionId,
       })
     ) {
-      await grantAtomRedeemMemberUsagePack(tx, invoice, details);
       return true;
     }
     if (
@@ -1771,13 +1907,20 @@ async function processAtomPlanGrantInvoicePaid(
           lockedOrg.subscriptionStatus === ATOM_GRANT_SUBSCRIPTION_STATUS &&
           lockedOrg.stripeSubscriptionId === null
         ) {
-          await upsertAtomGrantPlanEntitlement(tx, invoice, details);
+          await upsertAtomGrantPlanEntitlement(
+            tx,
+            invoice,
+            details,
+            preservedSubscriptionId,
+          );
         }
         await cancelReplacedSubscriptionsAfterAtomGrant({
           orgId: details.orgId,
           customerId: details.customerId,
           invoiceId: invoice.id,
           knownOldSubscriptionId: lockedOrg.stripeSubscriptionId,
+          preservedSubscriptionId,
+          failOnUnpreservedPro: details.preservePurchasedPro,
         });
         L.debug("atom grant invoice credits already processed", {
           invoiceId: invoice.id,
@@ -1814,7 +1957,12 @@ async function processAtomPlanGrantInvoicePaid(
           .returning({ orgId: orgMetadata.orgId });
       },
       writePlanEntitlement: async (writeTx) => {
-        await upsertAtomGrantPlanEntitlement(writeTx, invoice, details);
+        await upsertAtomGrantPlanEntitlement(
+          writeTx,
+          invoice,
+          details,
+          preservedSubscriptionId,
+        );
       },
     });
     await grantAtomRedeemMemberUsagePack(tx, invoice, details);
@@ -1823,6 +1971,8 @@ async function processAtomPlanGrantInvoicePaid(
       customerId: details.customerId,
       invoiceId: invoice.id,
       knownOldSubscriptionId: lockedOrg.stripeSubscriptionId,
+      preservedSubscriptionId,
+      failOnUnpreservedPro: details.preservePurchasedPro,
     });
     return true;
   });
@@ -1832,6 +1982,7 @@ async function upsertAtomGrantPlanEntitlement(
   tx: WriteTx,
   invoice: InvoiceInput,
   details: AtomPlanGrantInvoiceDetails,
+  preservedSubscriptionId: string | null,
 ): Promise<void> {
   const grantLine = invoiceAtomGrantLine(invoice);
   const periodStart = grantLine?.period.start;
@@ -1846,10 +1997,13 @@ async function upsertAtomGrantPlanEntitlement(
     stripePriceId: grantLine ? invoiceLinePriceId(grantLine) : null,
     memberInviteUsagePackRequired:
       invoice.metadata?.planVersion === "usagePack",
-    sourceMetadata: {
-      ...invoice.metadata,
-      atomPlanInvoiceId: invoice.id,
-    },
+    sourceMetadata: withPreservedPurchasedProSubscription(
+      {
+        ...invoice.metadata,
+        atomPlanInvoiceId: invoice.id,
+      },
+      preservedSubscriptionId,
+    ),
   });
 }
 
@@ -3131,10 +3285,10 @@ function isReplaceablePaidSubscriptionForAtomGrant(args: {
   );
 }
 
-async function replacedAtomGrantSubscriptionIdsForCustomer(args: {
+async function replacedAtomGrantSubscriptionsForCustomer(args: {
   readonly orgId: string;
   readonly customerId: string;
-}): Promise<readonly string[]> {
+}): Promise<readonly StripeSubscription[]> {
   const stripe = getStripeClient();
   const subscriptions = await stripe.subscriptions.list({
     customer: args.customerId,
@@ -3142,16 +3296,12 @@ async function replacedAtomGrantSubscriptionIdsForCustomer(args: {
     limit: 100,
   });
 
-  return subscriptions.data
-    .filter((subscription) => {
-      return isReplaceablePaidSubscriptionForAtomGrant({
-        orgId: args.orgId,
-        subscription,
-      });
-    })
-    .map((subscription) => {
-      return subscription.id;
+  return subscriptions.data.filter((subscription) => {
+    return isReplaceablePaidSubscriptionForAtomGrant({
+      orgId: args.orgId,
+      subscription,
     });
+  });
 }
 
 async function cancelReplacedSubscriptionsAfterAtomGrant(args: {
@@ -3159,16 +3309,35 @@ async function cancelReplacedSubscriptionsAfterAtomGrant(args: {
   readonly customerId: string | null;
   readonly invoiceId: string;
   readonly knownOldSubscriptionId: string | null;
+  readonly preservedSubscriptionId: string | null;
+  readonly failOnUnpreservedPro: boolean;
 }): Promise<void> {
+  const listedSubscriptions = args.customerId
+    ? await replacedAtomGrantSubscriptionsForCustomer({
+        orgId: args.orgId,
+        customerId: args.customerId,
+      })
+    : [];
+  if (
+    args.failOnUnpreservedPro &&
+    !args.preservedSubscriptionId &&
+    listedSubscriptions.some((subscription) => {
+      return tierFromSubscription(subscription) === "pro";
+    })
+  ) {
+    throw new Error(
+      `Cannot safely preserve a purchased Pro subscription for Atom grant in org ${args.orgId}`,
+    );
+  }
+
   const replacedSubscriptionIds = [
     ...(args.knownOldSubscriptionId ? [args.knownOldSubscriptionId] : []),
-    ...(args.customerId
-      ? await replacedAtomGrantSubscriptionIdsForCustomer({
-          orgId: args.orgId,
-          customerId: args.customerId,
-        })
-      : []),
-  ];
+    ...listedSubscriptions.map((subscription) => {
+      return subscription.id;
+    }),
+  ].filter((subscriptionId) => {
+    return subscriptionId !== args.preservedSubscriptionId;
+  });
   if (replacedSubscriptionIds.length === 0) {
     return;
   }
@@ -3450,6 +3619,124 @@ function subscriptionPlanEntitlementIsCurrent(
   );
 }
 
+function hiddenPurchasedProSubscriptionMatches(args: {
+  readonly lockedOrg: LockedInvoicePaidOrg;
+  readonly subscriptionId: string;
+}): boolean {
+  return (
+    args.lockedOrg.planEntitlementSource === "stripe_atom_grant" &&
+    args.lockedOrg.subscriptionStatus === ATOM_GRANT_SUBSCRIPTION_STATUS &&
+    args.lockedOrg.stripeSubscriptionId === null &&
+    preservedPurchasedProSubscriptionId(
+      args.lockedOrg.planEntitlementSourceMetadata,
+    ) === args.subscriptionId
+  );
+}
+
+async function processHiddenPurchasedProInvoicePaid(
+  tx: WriteTx,
+  args: {
+    readonly invoice: InvoiceInput;
+    readonly customerId: string;
+    readonly subscriptionId: string;
+    readonly orgId: string;
+    readonly details: SubscriptionInvoiceDetails;
+  },
+): Promise<boolean> {
+  if (
+    args.details.tier !== "pro" ||
+    (args.details.subscription.status !== "active" &&
+      args.details.subscription.status !== "trialing") ||
+    customerIdFromSubscription(args.details.subscription) !== args.customerId ||
+    args.details.subscription.metadata?.orgId !== args.orgId
+  ) {
+    throw new Error(
+      `Preserved subscription ${args.subscriptionId} is no longer an active org-owned Pro subscription`,
+    );
+  }
+
+  await expireCredits(tx, args.orgId);
+  const inserted = await createExpiresRecord(tx, args.orgId, {
+    source: "subscription_renewal",
+    stripeInvoiceId: args.invoice.id,
+    amount: args.details.credits,
+    expiresAt: args.details.expiresAt,
+  });
+  if (!inserted) {
+    L.debug("hidden purchased Pro invoice already processed", {
+      invoiceId: args.invoice.id,
+      orgId: args.orgId,
+      subscriptionId: args.subscriptionId,
+    });
+    return true;
+  }
+
+  await grantOrgCredits(tx, args.orgId, args.details.credits);
+  L.debug("hidden purchased Pro renewal credits granted", {
+    invoiceId: args.invoice.id,
+    orgId: args.orgId,
+    subscriptionId: args.subscriptionId,
+  });
+  return true;
+}
+
+async function processHiddenPurchasedProInvoiceIfMatched(
+  tx: WriteTx,
+  args: {
+    readonly invoice: InvoiceInput;
+    readonly customerId: string;
+    readonly subscriptionId: string;
+    readonly orgId: string;
+    readonly details: SubscriptionInvoiceDetails;
+  },
+  lockedOrg: LockedInvoicePaidOrg,
+): Promise<boolean | null> {
+  if (
+    !hiddenPurchasedProSubscriptionMatches({
+      lockedOrg,
+      subscriptionId: args.subscriptionId,
+    })
+  ) {
+    return null;
+  }
+  return await processHiddenPurchasedProInvoicePaid(tx, args);
+}
+
+async function processExistingSubscriptionInvoice(args: {
+  readonly tx: WriteTx;
+  readonly invoice: InvoiceInput;
+  readonly customerId: string;
+  readonly subscriptionId: string;
+  readonly orgId: string;
+  readonly details: SubscriptionInvoiceDetails;
+  readonly lockedOrg: LockedInvoicePaidOrg;
+  readonly replacedSubscriptionId: string | null;
+}): Promise<boolean> {
+  if (args.lockedOrg.lastProcessedInvoiceId !== args.invoice.id) {
+    return false;
+  }
+  if (subscriptionPlanEntitlementIsCurrent(args.lockedOrg, args)) {
+    await upsertSubscriptionPlanEntitlement(args.tx, {
+      orgId: args.orgId,
+      subscriptionId: args.subscriptionId,
+      details: args.details,
+    });
+  }
+  await cancelReplacedProSubscriptionsAfterTeamInvoice({
+    orgId: args.orgId,
+    customerId: args.customerId,
+    invoiceId: args.invoice.id,
+    newSubscriptionId: args.subscriptionId,
+    targetTier: args.details.tier,
+    knownOldSubscriptionId: args.replacedSubscriptionId,
+  });
+  L.debug("invoice.paid already processed by concurrent delivery", {
+    invoiceId: args.invoice.id,
+    orgId: args.orgId,
+  });
+  return true;
+}
+
 async function processSubscriptionInvoicePaid(
   tx: WriteTx,
   args: {
@@ -3464,6 +3751,11 @@ async function processSubscriptionInvoicePaid(
   if (!lockedOrg) {
     return false;
   }
+  const hiddenPurchasedProResult =
+    await processHiddenPurchasedProInvoiceIfMatched(tx, args, lockedOrg);
+  if (hiddenPurchasedProResult !== null) {
+    return hiddenPurchasedProResult;
+  }
   const replacedSubscriptionId = replacedProSubscriptionId({
     currentSubscriptionId: lockedOrg.stripeSubscriptionId,
     currentSubscriptionStatus: lockedOrg.subscriptionStatus,
@@ -3472,26 +3764,14 @@ async function processSubscriptionInvoicePaid(
     targetTier: args.details.tier,
   });
 
-  if (lockedOrg.lastProcessedInvoiceId === args.invoice.id) {
-    if (subscriptionPlanEntitlementIsCurrent(lockedOrg, args)) {
-      await upsertSubscriptionPlanEntitlement(tx, {
-        orgId: args.orgId,
-        subscriptionId: args.subscriptionId,
-        details: args.details,
-      });
-    }
-    await cancelReplacedProSubscriptionsAfterTeamInvoice({
-      orgId: args.orgId,
-      customerId: args.customerId,
-      invoiceId: args.invoice.id,
-      newSubscriptionId: args.subscriptionId,
-      targetTier: args.details.tier,
-      knownOldSubscriptionId: replacedSubscriptionId,
-    });
-    L.debug("invoice.paid already processed by concurrent delivery", {
-      invoiceId: args.invoice.id,
-      orgId: args.orgId,
-    });
+  if (
+    await processExistingSubscriptionInvoice({
+      tx,
+      ...args,
+      lockedOrg,
+      replacedSubscriptionId,
+    })
+  ) {
     return true;
   }
 

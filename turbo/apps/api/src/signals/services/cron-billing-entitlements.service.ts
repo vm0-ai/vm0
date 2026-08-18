@@ -2,6 +2,7 @@ import type { OrgTier } from "@okouai/api-contracts/contracts/orgs";
 import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
 import { orgConcurrencySubscriptions } from "@okouai/db/schema/org-concurrency-subscription";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
 import { orgUsageAllowanceEntitlements } from "@okouai/db/schema/org-usage-allowance";
 import { command } from "ccstate";
 import {
@@ -20,7 +21,12 @@ import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { clerk$ } from "../external/clerk";
-import { getStripeClient } from "../external/stripe-client";
+import {
+  getStripeClient,
+  isStripeResourceMissingError,
+} from "../external/stripe-client";
+import { settle } from "../utils";
+import { preservedPurchasedProSubscriptionId } from "./atom-plan-override";
 import type { BillingReconciliationScope } from "./billing-reconciliation-scope";
 import {
   CONCURRENCY_SUBSCRIPTION_PAYMENT_FAILED_STATUSES,
@@ -32,6 +38,7 @@ import {
 } from "./org-plan-entitlements.service";
 import {
   knownPlanPriceItem,
+  tierForKnownPriceId,
   tierFromPriceId,
 } from "./zero-billing-checkout.service";
 import {
@@ -66,10 +73,12 @@ interface SubscriptionInput {
   readonly metadata?: Record<string, string> | null;
   readonly cancel_at?: number | null;
   readonly cancel_at_period_end: boolean;
+  readonly schedule?: string | { readonly id: string } | null;
   readonly items: {
     readonly data: readonly {
       readonly price: { readonly id: string };
       readonly quantity?: number | null;
+      readonly current_period_start?: number | null;
       readonly current_period_end?: number | null;
     }[];
   };
@@ -87,6 +96,7 @@ interface StripeBillingCandidate {
 
 interface AtomGrantCandidate {
   readonly orgId: string;
+  readonly sourceMetadata: Readonly<Record<string, string>> | null;
 }
 
 interface ConcurrencyCandidate {
@@ -169,6 +179,13 @@ function subscriptionPeriodEnd(subscription: SubscriptionInput): Date | null {
   const periodEndUnix = subscription.items.data[0]?.current_period_end;
   return typeof periodEndUnix === "number"
     ? new Date(periodEndUnix * 1000)
+    : null;
+}
+
+function subscriptionPeriodStart(subscription: SubscriptionInput): Date | null {
+  const periodStartUnix = subscription.items.data[0]?.current_period_start;
+  return typeof periodStartUnix === "number"
+    ? new Date(periodStartUnix * 1000)
     : null;
 }
 
@@ -293,6 +310,7 @@ async function upsertStripeSubscriptionPlanSnapshot(
     status: args.status,
     stripeSubscriptionId: args.stripeSubscriptionId,
     stripePriceId: args.stripePriceId ?? null,
+    currentPeriodStart: subscriptionPeriodStart(args.subscription),
     currentPeriodEnd: scheduledEnd,
     cancelAt,
     expiresAt: cancelAt,
@@ -670,16 +688,105 @@ async function expireOrgCredits(
   });
 }
 
-async function reconcileAtomGrantCandidate(
+function subscriptionCanRestorePreservedPro(
+  subscription: SubscriptionInput,
+  orgId: string,
+): boolean {
+  const planItem = knownPlanPriceItem(subscription.items.data);
+  return (
+    subscription.metadata?.orgId === orgId &&
+    subscription.metadata?.purpose !== USAGE_PACK_SUBSCRIPTION_PURPOSE &&
+    (subscription.status === "active" || subscription.status === "trialing") &&
+    !subscriptionWillCancel(subscription) &&
+    (subscription.schedule === null || subscription.schedule === undefined) &&
+    planItem !== undefined &&
+    tierForKnownPriceId(planItem.price.id) === "pro" &&
+    subscriptionPeriodEnd(subscription) !== null
+  );
+}
+
+async function retrievePreservedProSubscription(
+  context: ReconcileBillingContext,
+  subscriptionId: string,
+): Promise<SubscriptionInput | null> {
+  const result = await settle(
+    context.stripe.subscriptions.retrieve(subscriptionId),
+  );
+  if (result.ok) {
+    return result.value;
+  }
+  if (isStripeResourceMissingError(result.error)) {
+    return null;
+  }
+  throw result.error;
+}
+
+async function restorePreservedProSubscription(
   context: ReconcileBillingContext,
   candidate: AtomGrantCandidate,
-  signal: AbortSignal,
-): Promise<DowngradedSubscription[]> {
+  subscriptionId: string,
+  subscription: SubscriptionInput,
+): Promise<boolean> {
   const { db, now } = context;
-  await expireOrgCredits(db, candidate.orgId, now);
-  signal.throwIfAborted();
+  const planItem = knownPlanPriceItem(subscription.items.data);
+  const periodEnd = subscriptionPeriodEnd(subscription);
+  if (!planItem || !periodEnd) {
+    return false;
+  }
 
   const rows = await db.transaction(async (tx) => {
+    return await writeOrgMetadataWithPlanEntitlements(tx, {
+      writeOrgMetadata: async (writeTx) => {
+        return await writeTx
+          .update(orgMetadata)
+          .set({
+            tier: "pro",
+            stripeSubscriptionId: subscriptionId,
+            subscriptionStatus: subscription.status,
+            cancelAtPeriodEnd: false,
+            onboardingPaymentPending: false,
+            currentPeriodEnd: periodEnd,
+            pendingSubscriptionScheduleId: null,
+            pendingSubscriptionTargetTier: null,
+            pendingSubscriptionChangeAt: null,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(orgMetadata.orgId, candidate.orgId),
+              inArray(orgMetadata.tier, PAID_TIERS),
+              isNull(orgMetadata.stripeSubscriptionId),
+              eq(
+                orgMetadata.subscriptionStatus,
+                ATOM_GRANT_SUBSCRIPTION_STATUS,
+              ),
+              isNotNull(orgMetadata.currentPeriodEnd),
+              lte(orgMetadata.currentPeriodEnd, now),
+            ),
+          )
+          .returning({ orgId: orgMetadata.orgId });
+      },
+      writePlanEntitlement: async (writeTx, row) => {
+        await upsertStripeSubscriptionPlanSnapshot(writeTx, {
+          orgId: row.orgId,
+          tier: "pro",
+          subscription,
+          stripeSubscriptionId: subscriptionId,
+          stripePriceId: planItem.price.id,
+          status: subscription.status,
+        });
+      },
+    });
+  });
+  return rows.length > 0;
+}
+
+async function downgradeExpiredAtomGrant(
+  context: ReconcileBillingContext,
+  candidate: AtomGrantCandidate,
+): Promise<DowngradedSubscription[]> {
+  const { db, now } = context;
+  return await db.transaction(async (tx) => {
     return await writeOrgMetadataWithPlanEntitlements(tx, {
       writeOrgMetadata: async (writeTx) => {
         return await writeTx
@@ -722,6 +829,41 @@ async function reconcileAtomGrantCandidate(
       },
     });
   });
+}
+
+async function reconcileAtomGrantCandidate(
+  context: ReconcileBillingContext,
+  candidate: AtomGrantCandidate,
+  signal: AbortSignal,
+): Promise<DowngradedSubscription[]> {
+  await expireOrgCredits(context.db, candidate.orgId, context.now);
+  signal.throwIfAborted();
+
+  const preservedSubscriptionId = preservedPurchasedProSubscriptionId(
+    candidate.sourceMetadata,
+  );
+  if (preservedSubscriptionId) {
+    const subscription = await retrievePreservedProSubscription(
+      context,
+      preservedSubscriptionId,
+    );
+    signal.throwIfAborted();
+    if (
+      subscription &&
+      subscriptionCanRestorePreservedPro(subscription, candidate.orgId) &&
+      (await restorePreservedProSubscription(
+        context,
+        candidate,
+        preservedSubscriptionId,
+        subscription,
+      ))
+    ) {
+      signal.throwIfAborted();
+      return [];
+    }
+  }
+
+  const rows = await downgradeExpiredAtomGrant(context, candidate);
   signal.throwIfAborted();
   return rows;
 }
@@ -964,8 +1106,13 @@ async function loadReconcileCandidateRows(
     db
       .select({
         orgId: orgMetadata.orgId,
+        sourceMetadata: orgPlanEntitlements.sourceMetadata,
       })
       .from(orgMetadata)
+      .leftJoin(
+        orgPlanEntitlements,
+        eq(orgPlanEntitlements.orgId, orgMetadata.orgId),
+      )
       .where(
         and(
           scope ? inArray(orgMetadata.orgId, [...scope.orgIds]) : undefined,
