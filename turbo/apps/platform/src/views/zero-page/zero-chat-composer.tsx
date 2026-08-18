@@ -660,18 +660,11 @@ function PendingItemsStrip({ signals }: { signals: ComposerSignals }) {
   const cancelActiveGoal = useSet(signals.goal.cancelActiveGoal$);
   const openActiveGoal = useSet(signals.goal.openActiveGoal$);
   const pageSignal = useGet(pageSignal$);
-  const queued = pendingEvents.flatMap((event) => {
-    return event.kind === "message" ? [{ id: event.id, text: event.text }] : [];
+  const queued = pendingEvents.filter((event) => {
+    return event.kind === "message";
   });
-  const events = pendingEvents.flatMap((event) => {
-    return event.kind === "automation"
-      ? [
-          {
-            id: event.id,
-            text: event.automationBrief ?? event.workflowName,
-          },
-        ]
-      : [];
+  const events = pendingEvents.filter((event) => {
+    return event.kind === "automation";
   });
   const activeGoal = activeGoalObjective
     ? { objective: activeGoalObjective }
@@ -751,7 +744,12 @@ function PendingItemsStrip({ signals }: { signals: ComposerSignals }) {
             <ComposerStripRow
               key={event.id}
               kind="automation-event"
-              text={event.text}
+              text={
+                event.text ||
+                t(($) => {
+                  return $.chat.queue.automationEvent;
+                })
+              }
               onRemove={() => {
                 detach(
                   removeAutomationEvent(event.id, pageSignal),
