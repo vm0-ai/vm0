@@ -280,8 +280,13 @@ describe("chat composer models", () => {
     });
     const modelPicker = await findComposerModel("Claude Fable 5");
     expect(
-      modelPicker.querySelector(".hidden.min-w-0 > img"),
-    ).toBeInTheDocument();
+      Array.from(
+        modelPicker.querySelectorAll<HTMLImageElement>("img"),
+        (icon) => {
+          return icon.width;
+        },
+      ),
+    ).toStrictEqual([18, 16]);
   });
 
   it.each([
@@ -296,7 +301,7 @@ describe("chat composer models", () => {
       categoryLabel: "Video models",
     },
   ])(
-    "hides the desktop model brand icon when $kind model selection is enabled",
+    "keeps the mobile model brand icon and hides the desktop icon when $kind model selection is enabled",
     async ({ featureSwitch, categoryLabel }) => {
       context.mocks.browser.matchMedia(true);
       mockOrgModelRoutes("claude-fable-5");
@@ -318,9 +323,13 @@ describe("chat composer models", () => {
         ).toBeInTheDocument();
       });
       expect(
-        modelPicker.querySelector(".lucide-message-circle"),
-      ).toBeInTheDocument();
-      expect(modelPicker.querySelector(".hidden.min-w-0 > img")).toBeNull();
+        Array.from(
+          modelPicker.querySelectorAll<HTMLImageElement>("img"),
+          (icon) => {
+            return icon.width;
+          },
+        ),
+      ).toStrictEqual([18]);
     },
   );
 
