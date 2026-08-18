@@ -1,6 +1,8 @@
 import { command, computed, state, type Computed } from "ccstate";
+import { HTTPException } from "hono/http-exception";
 
 import { waitUntil } from "../context/wait-until";
+import { settle } from "../utils";
 import {
   isPatToken,
   isSandboxToken,
@@ -14,6 +16,7 @@ import { AuthContext, CliAuth, ZeroAuthContext } from "../../types/auth";
 import {
   cliTokenRecord,
   getMemberRoleAndUpdateCache$,
+  MembershipRefreshRateLimitedError,
   updateCliTokenLastUsedAt$,
 } from "../services/auth.service";
 import { authorization$, cookie$ } from "../context/hono";
@@ -236,6 +239,30 @@ const resolvedAuthContext$ = command(
   },
 );
 
+function membershipRefreshUnavailable(
+  error: MembershipRefreshRateLimitedError,
+): HTTPException {
+  return new HTTPException(503, {
+    cause: error,
+    res: new Response(
+      JSON.stringify({
+        error: {
+          message: "Authentication is temporarily unavailable",
+          code: "AUTH_DEPENDENCY_UNAVAILABLE",
+        },
+      }),
+      {
+        status: 503,
+        headers: {
+          "Cache-Control": "no-store",
+          "Content-Type": "application/json",
+          "Retry-After": String(error.retryAfterSeconds),
+        },
+      },
+    ),
+  });
+}
+
 function missingCapabilityError(capability: ZeroCapability): AuthErrorResponse {
   const message =
     capability === "computer-use:write"
@@ -309,7 +336,17 @@ export const requiredAuthContext$ = command(
     signal: AbortSignal,
   ): Promise<AuthContext | AuthErrorResponse> => {
     const authHeader = get(authorization$);
-    const authContext = await set(resolvedAuthContext$, options, signal);
+    const authResult = await settle(
+      set(resolvedAuthContext$, options, signal),
+      signal,
+    );
+    if (!authResult.ok) {
+      if (authResult.error instanceof MembershipRefreshRateLimitedError) {
+        throw membershipRefreshUnavailable(authResult.error);
+      }
+      throw authResult.error;
+    }
+    const authContext = authResult.value;
     if (authContext) {
       if (options.requireOrganization && !authContext.orgId) {
         return missingOrganizationError(

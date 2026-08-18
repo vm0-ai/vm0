@@ -1,0 +1,1 @@
+ALTER TABLE "org_members_cache" ADD COLUMN "refresh_after" timestamp;

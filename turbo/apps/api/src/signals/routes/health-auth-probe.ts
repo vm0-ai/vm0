@@ -35,6 +35,9 @@ export const healthAuthProbeContract = c.router({
       403: z.object({
         error: z.object({ message: z.string(), code: z.string() }),
       }),
+      503: z.object({
+        error: z.object({ message: z.string(), code: z.string() }),
+      }),
     },
     summary: "Resolve auth context for the current request",
   },

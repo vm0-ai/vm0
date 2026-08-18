@@ -1,6 +1,7 @@
 import { computed, type Computed } from "ccstate";
 
 import { createClerkClient } from "@clerk/backend";
+import { isClerkAPIResponseError } from "@clerk/backend/errors";
 import { verifyWebhook } from "@clerk/backend/webhooks";
 import { singleton } from "../../lib/singleton";
 import { env } from "../../lib/env";
@@ -163,6 +164,20 @@ export interface ClerkClient {
   readonly organizations: ClerkOrganizationsApi;
   readonly signInTokens: ClerkSignInTokensApi;
   readonly m2m: ClerkMachineToMachineApi;
+}
+
+export interface ClerkRateLimit {
+  readonly retryAfterSeconds: number;
+}
+
+export function clerkRateLimit(error: unknown): ClerkRateLimit | null {
+  if (!isClerkAPIResponseError(error) || error.status !== 429) {
+    return null;
+  }
+
+  return {
+    retryAfterSeconds: Math.max(1, Math.ceil(error.retryAfter ?? 1)),
+  };
 }
 
 /** Session identity as the API models it, independent of Clerk's auth object. */

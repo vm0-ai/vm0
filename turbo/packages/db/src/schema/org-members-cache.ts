@@ -14,6 +14,7 @@ export const orgMembersCache = pgTable(
     userId: text("user_id").notNull(),
     role: text("role").notNull().default("member"),
     cachedAt: timestamp("cached_at").defaultNow().notNull(),
+    refreshAfter: timestamp("refresh_after"),
   },
   (table) => {
     return [primaryKey({ columns: [table.orgId, table.userId] })];

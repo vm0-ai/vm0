@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@okouai/api-contracts/contracts/model-providers";
 
 import { testContext } from "../../../__tests__/test-context";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
+import { createDeferredPromise } from "../../utils";
 import {
   createHistoricalAgentComposeFixture,
   readHistoricalAgentComposeHeadFixture,
@@ -39,6 +40,22 @@ function shortId(): string {
 
 function slug(prefix: string): string {
   return `${prefix}-${shortId()}`;
+}
+
+class ClerkApiResponseTestError extends Error {
+  static readonly kind = "ClerkAPIResponseError";
+  readonly status = 429;
+
+  constructor(readonly retryAfter: number) {
+    super("Too Many Requests");
+    this.name = "ClerkApiResponseTestError";
+  }
+}
+
+function mockClerkMembershipRateLimit(retryAfter = 9): void {
+  context.mocks.clerk.users.getOrganizationMembershipList.mockRejectedValue(
+    new ClerkApiResponseTestError(retryAfter),
+  );
 }
 
 async function onboardAdmin(
@@ -553,6 +570,120 @@ describe("AUTH-02 auth probe CLI PAT bearers", () => {
     expect(refreshed.body).toStrictEqual(first.body);
   });
 
+  it("bounds stale membership use and Clerk retries during rate limits", async () => {
+    const admin = api.user();
+    const base = now();
+    mockNow(base);
+    const key = await api.createCliToken(admin);
+    const bearer = { authorization: `Bearer ${key.token}` };
+    const membershipMock =
+      context.mocks.clerk.users.getOrganizationMembershipList;
+    cfg.mockMembership(admin, "org:admin");
+    await cfg.probeAuth(bearer, {}, [200]);
+    membershipMock.mockClear();
+    mockClerkMembershipRateLimit();
+
+    mockNow(base + 61_000);
+    const stale = await cfg.probeAuth(bearer, {}, [200]);
+    expect(stale.body).toStrictEqual({
+      tokenType: "pat",
+      userId: admin.userId,
+      orgId: admin.orgId,
+      orgRole: "admin",
+    });
+    expect(membershipMock).toHaveBeenCalledTimes(1);
+
+    mockNow(base + 65_000);
+    const cooldownResponses = await Promise.all([
+      cfg.probeAuth(bearer, {}, [200]),
+      cfg.probeAuth(bearer, {}, [200]),
+      cfg.probeAuth(bearer, {}, [200]),
+    ]);
+    for (const response of cooldownResponses) {
+      expect(response.body).toStrictEqual(stale.body);
+    }
+    expect(membershipMock).toHaveBeenCalledTimes(1);
+
+    mockNow(base + 120_000);
+    const unavailable = await cfg.probeAuth(bearer, {}, [503]);
+    expect(unavailable.body).toStrictEqual({
+      error: {
+        message: "Authentication is temporarily unavailable",
+        code: "AUTH_DEPENDENCY_UNAVAILABLE",
+      },
+    });
+    expect(unavailable.headers.get("retry-after")).toBe("9");
+    expect(unavailable.headers.get("cache-control")).toBe("no-store");
+    expect(membershipMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("coalesces concurrent refreshes for one expired membership", async () => {
+    const admin = api.user();
+    const base = now();
+    mockNow(base);
+    const key = await api.createCliToken(admin);
+    const bearer = { authorization: `Bearer ${key.token}` };
+    const membershipMock =
+      context.mocks.clerk.users.getOrganizationMembershipList;
+    const pendingMembership = createDeferredPromise<unknown>(context.signal);
+    cfg.mockMembership(admin, "org:admin");
+    await cfg.probeAuth(bearer, {}, [200]);
+    membershipMock.mockClear();
+    membershipMock.mockReturnValue(pendingMembership.promise);
+
+    mockNow(base + 61_000);
+    const requests = [
+      cfg.probeAuth(bearer, {}, [200]),
+      cfg.probeAuth(bearer, {}, [200]),
+      cfg.probeAuth(bearer, {}, [200]),
+      cfg.probeAuth(bearer, {}, [200]),
+    ];
+    await vi.waitFor(() => {
+      expect(membershipMock).toHaveBeenCalledTimes(1);
+    });
+    pendingMembership.resolve({
+      data: [{ role: "org:admin", organization: { id: admin.orgId } }],
+    });
+
+    const responses = await Promise.all(requests);
+    for (const response of responses) {
+      expect(response.body).toMatchObject({
+        tokenType: "pat",
+        orgId: admin.orgId,
+        orgRole: "admin",
+      });
+    }
+    expect(membershipMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed when a removed membership refresh is rate limited", async () => {
+    const admin = api.user();
+    const base = now();
+    mockNow(base);
+    const key = await api.createCliToken(admin);
+    const bearer = { authorization: `Bearer ${key.token}` };
+    cfg.mockMembership(admin, "org:admin");
+    await cfg.probeAuth(bearer, {}, [200]);
+
+    mockNow(base + 61_000);
+    cfg.mockMembership(admin, null);
+    const removed = await cfg.probeAuth(bearer, {}, [200]);
+    expect(removed.body).toStrictEqual({
+      tokenType: "pat",
+      userId: admin.userId,
+    });
+
+    mockClerkMembershipRateLimit();
+    const unavailable = await cfg.probeAuth(bearer, {}, [503]);
+    expect(unavailable.body).toStrictEqual({
+      error: {
+        message: "Authentication is temporarily unavailable",
+        code: "AUTH_DEPENDENCY_UNAVAILABLE",
+      },
+    });
+    expect(unavailable.headers.get("retry-after")).toBe("9");
+  });
+
   it("rejects forged and malformed pat bearers", async () => {
     cfg.mockSession(null);
 
@@ -600,6 +731,40 @@ describe("AUTH-02 auth probe CLI PAT bearers", () => {
 });
 
 describe("AUTH-01 sandbox and zero bearers", () => {
+  it("uses a bounded cached role for Zero tokens during a Clerk rate limit", async () => {
+    const actor = api.user();
+    const base = now();
+    mockNow(base);
+    const zero = cfg.zeroBearer(actor, ["file:read"]);
+    const membershipMock =
+      context.mocks.clerk.users.getOrganizationMembershipList;
+    cfg.mockMembership(actor, "org:admin");
+    await cfg.probeAuth(
+      { authorization: `Bearer ${zero.token}` },
+      { acceptAnySandboxCapability: "true" },
+      [200],
+    );
+    membershipMock.mockClear();
+    mockClerkMembershipRateLimit();
+
+    mockNow(base + 61_000);
+    const response = await cfg.probeAuth(
+      { authorization: `Bearer ${zero.token}` },
+      { acceptAnySandboxCapability: "true" },
+      [200],
+    );
+    expect(response.body).toStrictEqual({
+      tokenType: "zero",
+      userId: actor.userId,
+      orgId: actor.orgId,
+      orgRole: "admin",
+      runId: zero.runId,
+      capabilities: ["file:read"],
+      publicBrand: "vm0",
+    });
+    expect(membershipMock).toHaveBeenCalledTimes(1);
+  });
+
   it("resolves sandbox and zero bearers on the auth probe by capability opt-in", async () => {
     const sandboxActor = api.user();
     const zeroMember = api.user();

@@ -229,7 +229,7 @@ export function createUserConfigBddApi(context: TestContext) {
     async probeAuth(
       headers: ProbeHeaders,
       query: ProbeQuery,
-      statuses: readonly (200 | 401 | 403)[],
+      statuses: readonly (200 | 401 | 403 | 503)[],
     ) {
       const client = setupAppWithRoutes({
         context,
