@@ -40,6 +40,94 @@ function expectBefore(before: HTMLElement, after: HTMLElement): void {
 }
 
 describe("chat thinking blocks", () => {
+  it("keeps generated initial progress in the status row instead of an inline block", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000215";
+    const runId = "run-generated-initial-thinking";
+    const thinking = "Reviewing the request before the agent responds.";
+    mockChatLifecycle(context, {
+      threadId,
+      activeRunIds: [runId],
+      chatEvents: [
+        {
+          id: "msg-generated-initial-thinking-user",
+          role: "user",
+          content: "Review this account",
+          runId,
+          createdAt: "2026-08-18T10:00:00Z",
+        },
+        {
+          id: "msg-generated-initial-thinking-marker",
+          role: "assistant",
+          content: null,
+          thinking,
+          runId,
+          runEventId: "thinking:initial",
+          createdAt: "2026-08-18T10:00:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatInlineThinkingBlocks]: true,
+      },
+    });
+
+    const progress = await screen.findByLabelText(thinking);
+    expect(progress.closest("[data-thinking-indicator]")).not.toBeNull();
+    expect(document.querySelector("[data-thinking-block]")).toBeNull();
+  });
+
+  it("does not retain generated initial progress in completed work history", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000216";
+    const runId = "run-completed-generated-initial-thinking";
+    const thinking = "Preparing a concise account summary.";
+    mockChatLifecycle(context, {
+      threadId,
+      chatEvents: [
+        {
+          id: "msg-completed-generated-thinking-user",
+          role: "user",
+          content: "Summarize this account",
+          runId,
+          createdAt: "2026-08-18T10:00:00Z",
+        },
+        {
+          id: "msg-completed-generated-thinking-marker",
+          role: "assistant",
+          content: null,
+          thinking,
+          runId,
+          runEventId: "thinking:initial",
+          createdAt: "2026-08-18T10:00:01Z",
+        },
+        {
+          id: "msg-completed-generated-thinking-result",
+          role: "assistant",
+          content: "The account is healthy and expanding.",
+          runId,
+          runLifecycleEvent: "completed",
+          createdAt: "2026-08-18T10:00:05Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatInlineThinkingBlocks]: true,
+      },
+    });
+
+    await screen.findByText("The account is healthy and expanding.");
+    expect(screen.queryByText(thinking)).toBeNull();
+    expect(screen.queryByLabelText("Expand work history")).toBeNull();
+    expect(document.querySelector("[data-thinking-block]")).toBeNull();
+  });
+
   it("keeps thinking events in transcript order with independent open states", async () => {
     const user = userEvent.setup();
     mockChatLifecycle(context, {
