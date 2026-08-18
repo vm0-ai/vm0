@@ -393,16 +393,15 @@ def decode_response_body_for_network_log_capture(
             max_output=max_output,
             require_complete=True,
         )
-    if encoding not in _SUPPORTED_ONE_SHOT_BODY_ENCODINGS:
-        return None
     if encoding == "br":
         body, error = _decode_supported_body_with_complete_status(data, encoding, max_output)
         if error is not None and error != DECODED_BODY_LIMIT_EXCEEDED:
             return None
         return body
-
-    result = _decode_body_bounded(data, headers, max_output=max_output)
-    return None if result.failed else result.body
+    if encoding == "zstd":
+        result = _decode_body_bounded(data, headers, max_output=max_output)
+        return None if result.failed else result.body
+    return None
 
 
 def _log_body_decompression_failure(result: _BodyDecodeResult, headers: http.Headers) -> None:

@@ -352,7 +352,7 @@ def _inspect_headers_for_capture(headers: http.Headers) -> _CaptureHeaderInspect
                 or dependency_bytes > _MAX_CAPTURE_HEADER_BYTES
             ):
                 dependencies_within_budget = False
-            elif dependencies_within_budget:
+            else:
                 dependency_fields.append((raw_name, raw_value))
             dependency_names.add(normalized_raw_name)
 
