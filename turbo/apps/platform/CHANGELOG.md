@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.770.0](https://github.com/vm0-ai/vm0/compare/app-v0.769.0...app-v0.770.0) (2026-08-18)
+
+
+### Features
+
+* **app:** add new-chat image model defaults ([#27959](https://github.com/vm0-ai/vm0/issues/27959)) ([d4c0489](https://github.com/vm0-ai/vm0/commit/d4c048946bc46f692c7a868854adf7f456561219))
+* render thinking blocks inline in chat ([#27923](https://github.com/vm0-ai/vm0/issues/27923)) ([960d256](https://github.com/vm0-ai/vm0/commit/960d25691194d9ec7bf4454eb7d6a0fc7580c4dc))
+
+
+### Bug Fixes
+
+* **platform:** use chat icon for mark unread ([#28018](https://github.com/vm0-ai/vm0/issues/28018)) ([5a6b34b](https://github.com/vm0-ai/vm0/commit/5a6b34b9f5a7f90c4b79d36505eee968092c3a7d))
+* **ui:** show five pinned agents per row ([#27922](https://github.com/vm0-ai/vm0/issues/27922)) ([56a2dfa](https://github.com/vm0-ai/vm0/commit/56a2dfac6effac52303b286b3a8a42a98addd343))
+
+
+### Refactoring
+
+* **browser:** neutralize the browser contract and service naming ([#27999](https://github.com/vm0-ai/vm0/issues/27999)) ([53e70a5](https://github.com/vm0-ai/vm0/commit/53e70a57f49923a644f914fcd9ad7e0468d81ec7)), closes [#27988](https://github.com/vm0-ai/vm0/issues/27988)
+* **connectors:** neutralize the user connectors contract declarations ([#28001](https://github.com/vm0-ai/vm0/issues/28001)) ([56cc9f8](https://github.com/vm0-ai/vm0/commit/56cc9f81029a44b98f1ffd9d264b88a9292470d6)), closes [#27992](https://github.com/vm0-ai/vm0/issues/27992)
+* **contracts:** neutralize uploads goals and host contract naming ([#27934](https://github.com/vm0-ai/vm0/issues/27934)) ([3f5f274](https://github.com/vm0-ai/vm0/commit/3f5f274ad182f1162c6f0165de054b9ffcf9b077)), closes [#27911](https://github.com/vm0-ai/vm0/issues/27911)
+* **contracts:** rename the org member route contract module ([#27954](https://github.com/vm0-ai/vm0/issues/27954)) ([66d5014](https://github.com/vm0-ai/vm0/commit/66d50149f552adf85e8625e2df14daf6c3520f06)), closes [#27942](https://github.com/vm0-ai/vm0/issues/27942)
+* **contracts:** rename the run route contract module ([#27949](https://github.com/vm0-ai/vm0/issues/27949)) ([7404f55](https://github.com/vm0-ai/vm0/commit/7404f5565480aedb84833d9142430fecdc3f8c9f)), closes [#27943](https://github.com/vm0-ai/vm0/issues/27943)
+* remove presentationArtifactViewport feature switch ([#28013](https://github.com/vm0-ai/vm0/issues/28013)) ([172743f](https://github.com/vm0-ai/vm0/commit/172743f2814636af0d7dc7dfce38058b03c18c52))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.339.1
+    * @okouai/core bumped to 8.569.0
+
 ## [0.769.0](https://github.com/vm0-ai/vm0/compare/app-v0.768.0...app-v0.769.0) (2026-08-18)
 
 

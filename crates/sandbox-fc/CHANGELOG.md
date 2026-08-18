@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.37.226](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.225...sandbox-fc-v0.37.226) (2026-08-18)
+
+
+### Documentation
+
+* **rust:** document Firecracker API client construction semantics ([#28033](https://github.com/vm0-ai/vm0/issues/28033)) ([1d17809](https://github.com/vm0-ai/vm0/commit/1d17809fc781cf37ce042cdfefb0a22f296f5136))
+
+
+### Performance Improvements
+
+* **sandbox-fc:** remove redundant host memory sampling ([#28015](https://github.com/vm0-ai/vm0/issues/28015)) ([dd17fd3](https://github.com/vm0-ai/vm0/commit/dd17fd35644bb97b17621b75dbadd86969bf041d))
+
 ## [0.37.225](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.224...sandbox-fc-v0.37.225) (2026-08-18)
 
 ## [0.37.224](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.223...sandbox-fc-v0.37.224) (2026-08-17)
