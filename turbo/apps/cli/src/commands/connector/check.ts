@@ -11,7 +11,7 @@ import {
   diagnoseConnectorCheck,
   getConnector,
 } from "../../lib/api/domains/connectors";
-import { getZeroAgentUserConnectors } from "../../lib/api/domains/zero-agents";
+import { getAgentUserConnectors } from "../../lib/api/domains/agents";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { getOkouAgentId } from "../../lib/okou-env";
 import { toPlatformUrl } from "../doctor/platform-url";
@@ -558,9 +558,7 @@ async function checkConnectorStatus(ctx: DiagContext): Promise<{
 
   const [connector, enabledConnectorSlugs] = await Promise.all([
     getConnector(ctx.connectorSlug),
-    ctx.agentId
-      ? getZeroAgentUserConnectors(ctx.agentId)
-      : Promise.resolve(null),
+    ctx.agentId ? getAgentUserConnectors(ctx.agentId) : Promise.resolve(null),
   ]);
 
   const isConnected = connector !== null;

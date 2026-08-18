@@ -1,7 +1,7 @@
 import chalk from "chalk";
 import type { ConnectorCatalogStatus } from "../../../lib/api/domains/connectors";
 import { getBillingStatus } from "../../../lib/api/domains/billing";
-import { getZeroAgentUserConnectors } from "../../../lib/api/domains/zero-agents";
+import { getAgentUserConnectors } from "../../../lib/api/domains/agents";
 import { listConnectorCatalogStatus } from "../../../lib/api/domains/connectors";
 import { getPlatformOrigin } from "../../doctor/platform-url";
 import {
@@ -645,7 +645,7 @@ export async function runLister(
   const [catalog, enabledConnectorSlugs, platformOrigin, billing] =
     await Promise.all([
       listConnectorCatalogStatus(),
-      agentId ? getZeroAgentUserConnectors(agentId) : Promise.resolve(null),
+      agentId ? getAgentUserConnectors(agentId) : Promise.resolve(null),
       getPlatformOrigin(),
       (generationType === "video" || generationType === "avatar-video") &&
       currentTokenCanReadBilling()

@@ -3,9 +3,9 @@ import { Command, Option } from "commander";
 import { readFileSync } from "node:fs";
 import chalk from "chalk";
 import {
-  createZeroAgent,
-  updateZeroAgentInstructions,
-} from "../../lib/api/domains/zero-agents";
+  createAgent,
+  updateAgentInstructions,
+} from "../../lib/api/domains/agents";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { resolveAvatarUrl } from "./avatar";
 import { parseAgentVisibility } from "./visibility";
@@ -93,7 +93,7 @@ Examples:
       }) => {
         const avatarUrl = resolveAvatarUrl(options);
 
-        const agent = await createZeroAgent({
+        const agent = await createAgent({
           displayName: options.displayName,
           description: options.description,
           sound: options.sound,
@@ -103,7 +103,7 @@ Examples:
 
         if (options.instructionsFile) {
           const content = readFileSync(options.instructionsFile, "utf-8");
-          await updateZeroAgentInstructions(agent.agentId, content);
+          await updateAgentInstructions(agent.agentId, content);
         }
 
         console.log(chalk.green(`✓ Agent "${agent.agentId}" created`));
