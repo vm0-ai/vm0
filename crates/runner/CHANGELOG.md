@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.169.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.2...runner-rs-v0.169.3) (2026-08-18)
+
+
+### Documentation
+
+* **python:** clarify unconnected destination match semantics ([#27845](https://github.com/vm0-ai/vm0/issues/27845)) ([fb3f882](https://github.com/vm0-ai/vm0/commit/fb3f8829b2e03f2eabf16c2c9f5beb222b1c391b))
+
+
+### Refactoring
+
+* **runner:** canonicalize restored session identity enums ([#27862](https://github.com/vm0-ai/vm0/issues/27862)) ([6d1b233](https://github.com/vm0-ai/vm0/commit/6d1b23334818f9bf6efb1b7a3983256964af7005))
+
 ## [0.169.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.1...runner-rs-v0.169.2) (2026-08-18)
 
 

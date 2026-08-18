@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.767.0](https://github.com/vm0-ai/vm0/compare/app-v0.766.2...app-v0.767.0) (2026-08-18)
+
+
+### Features
+
+* **platform:** report confirmed onboarding role ([#27852](https://github.com/vm0-ai/vm0/issues/27852)) ([c055abe](https://github.com/vm0-ai/vm0/commit/c055abe4fde9175c3a7bd6d0bcad93e0b768d70a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.338.1
+    * @okouai/core bumped to 8.566.1
+
 ## [0.766.2](https://github.com/vm0-ai/vm0/compare/app-v0.766.1...app-v0.766.2) (2026-08-18)
 
 
