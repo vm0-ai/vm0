@@ -3314,7 +3314,7 @@ describe("CHAT-02: dispatch failure", () => {
 });
 
 describe("CHAT-02: admission without spendable credits", () => {
-  it("blocks admission for model-first sends through visible chat messages", async () => {
+  it("blocks admission with request-branded guidance through visible chat messages", async () => {
     mockEnv("APP_URL", "https://app.vm0.ai");
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
@@ -3438,6 +3438,34 @@ describe("CHAT-02: admission without spendable credits", () => {
     expect(retry.body).toStrictEqual(sent.body);
     const afterRetry = await chat.listThreadEvents(actor, sent.body.threadId);
     expect(afterRetry.events).toHaveLength(3);
+
+    const vm0Sent = await chat.requestSendEvent(
+      actor,
+      {
+        ...sendBody,
+        prompt: "blocked from the VM0 domain",
+        clientEventId: randomUUID(),
+      },
+      [201],
+    );
+    if (vm0Sent.status !== 201) {
+      throw new Error("Expected the VM0 blocked send to return 201");
+    }
+    expect(vm0Sent.body.runId).toBeNull();
+    const vm0Messages = await chat.listThreadEvents(
+      actor,
+      vm0Sent.body.threadId,
+    );
+    const vm0Guidance = assistantMessages(vm0Messages.events).find(
+      (message) => {
+        return message.eventType === "output.error";
+      },
+    );
+    if (!vm0Guidance) {
+      throw new Error("Expected VM0 insufficient-credits guidance");
+    }
+    expect(vm0Guidance.content).toContain("https://app.vm0.ai/?settings=usage");
+    expect(vm0Guidance.content).not.toContain("https://app.okou.ai");
   }, 60_000);
 });
 
@@ -8485,7 +8513,7 @@ describe("CHAT-02: queued attachments on auto-send", () => {
 });
 
 describe("CHAT-02: public-brand default assistant identity", () => {
-  it("uses the request brand for immediate and auto-sent runs without renaming custom agents", async () => {
+  it("uses each request brand for immediate and auto-sent runs without renaming custom agents", async () => {
     mockEnv("APP_URL", "https://app.vm0.ai");
     const { actor, runnerGroup } = await entitledChatActor();
     bdd.acceptAgentStorageWrites();
@@ -8520,15 +8548,15 @@ describe("CHAT-02: public-brand default assistant identity", () => {
       {
         agentId: defaultAgentId,
         threadId: okouAnchor.threadId,
-        prompt: "continue from the Okou domain",
+        prompt: "continue from the VM0 domain",
         clientEventId: queuedEventId,
       },
       [201],
       undefined,
-      "okou",
+      "vm0",
     );
     if (queued.status !== 201) {
-      throw new Error("Expected the Okou follow-up to enter the chat queue");
+      throw new Error("Expected the VM0 follow-up to enter the chat queue");
     }
     expect(queued.body.runId).toBeNull();
 
@@ -8538,11 +8566,11 @@ describe("CHAT-02: public-brand default assistant identity", () => {
       return event.id === queuedEventId;
     });
     if (!rawQueuedEvent) {
-      throw new Error("Expected the queued Okou event in Raw Events");
+      throw new Error("Expected the queued VM0 event in Raw Events");
     }
     expect(rawQueuedEvent).toMatchObject({
       contextType: "web",
-      contextId: "0bdfae9e-63be-43dd-8193-a96e07787c20",
+      contextId: "e1884e98-ab77-4eca-a420-90e591078804",
     });
     // The previous strict raw-row reader accepts this event because the new
     // context uses existing outer fields and does not widen payload JSONB.
@@ -8567,18 +8595,18 @@ describe("CHAT-02: public-brand default assistant identity", () => {
       return message.revokesEventId === queuedEventId;
     });
     if (!promoted?.runId) {
-      throw new Error("Expected the queued Okou message to auto-send");
+      throw new Error("Expected the queued VM0 message to auto-send");
     }
     const promotedRun = await api.readRun(actor, promoted.runId);
-    expect(promotedRun.appendSystemPrompt).toContain("Your name is Okou.");
-    expect(promotedRun.appendSystemPrompt).not.toContain("Your name is Zero.");
+    expect(promotedRun.appendSystemPrompt).toContain("Your name is Zero.");
+    expect(promotedRun.appendSystemPrompt).not.toContain("Your name is Okou.");
     const promotedClaim = await claimChatRun(runnerGroup, promoted.runId);
     await expectRunPublicBrandTransport({
       actor,
       runId: promoted.runId,
       claim: promotedClaim.claim,
-      publicBrand: "okou",
-      appUrl: "https://app.okou.ai",
+      publicBrand: "vm0",
+      appUrl: "https://app.vm0.ai",
     });
     await cancelChatRun(actor, promoted.runId);
 

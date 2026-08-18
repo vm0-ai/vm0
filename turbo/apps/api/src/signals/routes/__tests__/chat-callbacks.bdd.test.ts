@@ -3950,7 +3950,7 @@ describe("CHAT-02: drain-time admission failure", () => {
       },
       [201],
       undefined,
-      "okou",
+      "vm0",
     );
     if ("error" in queued.body) {
       throw new Error(queued.body.error.message);
@@ -4021,9 +4021,9 @@ describe("CHAT-02: drain-time admission failure", () => {
     expect(errors).toHaveLength(1);
     expect(errors[0]?.content).toContain("Add credits");
     expect(errors[0]?.content).toContain(
-      "https://app.okou.ai/?settings=billing&billingView=credits",
+      "https://app.vm0.ai/?settings=billing&billingView=credits",
     );
-    expect(errors[0]?.content).not.toContain("https://app.vm0.ai");
+    expect(errors[0]?.content).not.toContain("https://app.okou.ai");
     expect(
       (await api.listAgentRuns(actor, { limit: 20 })).runs.filter((run) => {
         return run.prompt === queuedPrompt;
