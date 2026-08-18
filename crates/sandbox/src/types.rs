@@ -277,6 +277,9 @@ where
 pub struct ExecResult {
     /// Structured terminal state reported by the provider.
     pub termination: ExecTermination,
+    /// Guest-reported wall-clock duration in milliseconds, when the provider has
+    /// terminal duration metadata.
+    pub guest_duration_ms: Option<u32>,
     /// Captured stdout bytes, capped by the requested output limit.
     pub stdout: Vec<u8>,
     /// Captured stderr bytes, capped by the requested output limit.
@@ -291,9 +294,13 @@ pub struct ExecResult {
 
 impl ExecResult {
     /// Construct an ordinary exited-process result.
+    ///
+    /// The returned value has no guest duration, diagnostic, or truncation
+    /// metadata.
     pub fn new(exit_code: i32, stdout: Vec<u8>, stderr: Vec<u8>) -> Self {
         Self {
             termination: ExecTermination::Exited { exit_code },
+            guest_duration_ms: None,
             stdout,
             stderr,
             diagnostic: String::new(),
@@ -1239,6 +1246,7 @@ mod tests {
         let result = ExecResult::new(7, b"out".to_vec(), b"err".to_vec());
 
         assert_eq!(result.termination, ExecTermination::Exited { exit_code: 7 });
+        assert_eq!(result.guest_duration_ms, None);
         assert_eq!(result.stdout, b"out");
         assert_eq!(result.stderr, b"err");
         assert!(result.diagnostic.is_empty());

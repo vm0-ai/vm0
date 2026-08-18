@@ -2336,6 +2336,7 @@ fn exec_result_from_operation_result_preserves_terminal_metadata() {
     .expect("bounded exec result should convert");
 
     assert_eq!(result.termination, ExecTermination::Exited { exit_code: 7 });
+    assert_eq!(result.guest_duration_ms, Some(10));
     assert_eq!(result.stdout, b"out");
     assert_eq!(result.stderr, b"err");
     assert_eq!(result.diagnostic, "ignored on ordinary exit");
@@ -2388,6 +2389,7 @@ fn exec_result_from_operation_result_maps_terminal_edge_states() {
         .expect("bounded exec result should convert");
 
         assert_eq!(result.termination, expected_termination);
+        assert_eq!(result.guest_duration_ms, Some(10));
         assert_eq!(result.stderr, input_stderr);
         assert_eq!(result.diagnostic, diagnostic);
     }

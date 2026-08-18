@@ -234,6 +234,7 @@ async fn restore_guest_state_fails_on_non_exited_result() {
     let sandbox = MockSandbox::new("test");
     sandbox.push_exec_result(Ok(ExecResult {
         termination: ExecTermination::WaitFailed,
+        guest_duration_ms: None,
         stdout: b"restore stdout".to_vec(),
         stderr: b"wait failed".to_vec(),
         diagnostic: String::new(),
@@ -454,6 +455,7 @@ async fn sync_guest_timezone_logs_non_exited_result() {
     let sandbox = MockSandbox::new("test");
     sandbox.push_exec_result(Ok(ExecResult {
         termination: ExecTermination::StartFailed,
+        guest_duration_ms: None,
         stdout: b"timezone stdout".to_vec(),
         stderr: b"start failed".to_vec(),
         diagnostic: String::new(),
