@@ -24,6 +24,7 @@ import {
   parseBrowserSessionUrl,
   type BrowserSessionDescriptor,
 } from "./browser-session-block.ts";
+import { isTrustedPlatformHostname } from "./trusted-platform-url.ts";
 
 import {
   resolvePublicArtifactsBaseUrl,
@@ -112,7 +113,6 @@ interface ParseBodyBlocksOptions {
 const LEGACY_PLATFORM_FILE_PATH_PATTERN =
   /^\/(?:f|artifacts)\/[^/]+\/[^/]+\/[^/]+$/;
 const SHORT_ARTIFACT_FILE_PATH_PATTERN = /^\/artifacts\/[0-9a-z]{10}\.[^/]+$/;
-const PLATFORM_FILE_HOST_SUFFIXES = ["vm0.ai", "vm6.ai", "vm7.ai"] as const;
 const PLATFORM_FILE_CDN_HOSTS = ["cdn.vm0.io", "cdn.vm7.io"] as const;
 const HOSTED_SITE_SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u;
 const URL_TOKEN_PATTERN = String.raw`(?:https?:\/\/|\/(?:f|artifacts|browsers)\/|\/mail\/drafts\/|\/\?settings=billing&billingView=)[^\s<>"'()（）【】《》「」『』“”‘’，。；：！？、]+`;
@@ -376,10 +376,7 @@ function platformFileHosts(): Set<string> {
 }
 
 function isPlatformFileHostname(hostname: string): boolean {
-  const isAppHost = PLATFORM_FILE_HOST_SUFFIXES.some((suffix) => {
-    return hostname === suffix || hostname.endsWith(`.${suffix}`);
-  });
-  if (isAppHost) {
+  if (isTrustedPlatformHostname(hostname)) {
     return true;
   }
   return PLATFORM_FILE_CDN_HOSTS.some((host) => {
@@ -700,6 +697,27 @@ function trimPreviewUrl(value: string): string {
   return url;
 }
 
+function hasUrlTokenBoundary(value: string, index: number): boolean {
+  if (index === 0) {
+    return true;
+  }
+  return !/[a-z\d._~-]/iu.test(value[index - 1]!);
+}
+
+function extractUrlTokens(value: string): string[] {
+  return Array.from(
+    value.matchAll(new RegExp(URL_TOKEN_PATTERN, "g")),
+    (match) => {
+      return match.index !== undefined &&
+        hasUrlTokenBoundary(value, match.index)
+        ? trimPreviewUrl(match[0])
+        : "";
+    },
+  ).filter((url, index, list) => {
+    return url.length > 0 && list.indexOf(url) === index;
+  });
+}
+
 function extractPreviewUrlFromLine(line: string): ExtractedPreviewUrl | null {
   const candidate = stripMarkdownLineDecorations(line);
   const markdownLinkMatch = candidate.match(
@@ -720,14 +738,7 @@ function extractPreviewUrlFromLine(line: string): ExtractedPreviewUrl | null {
     };
   }
 
-  const urls = Array.from(
-    candidate.matchAll(new RegExp(URL_TOKEN_PATTERN, "g")),
-    (match) => {
-      return trimPreviewUrl(match[0]);
-    },
-  ).filter((url, index, list) => {
-    return url.length > 0 && list.indexOf(url) === index;
-  });
+  const urls = extractUrlTokens(candidate);
 
   if (urls.length === 1 && isPreviewableChatUrl(urls[0]!)) {
     return {
@@ -752,14 +763,7 @@ function extractActionUrlFromLine(line: string): string | null {
     return trimPreviewUrl(bareUrlMatch[1]);
   }
 
-  const urls = Array.from(
-    candidate.matchAll(new RegExp(URL_TOKEN_PATTERN, "g")),
-    (match) => {
-      return trimPreviewUrl(match[0]);
-    },
-  ).filter((url, index, list) => {
-    return url.length > 0 && list.indexOf(url) === index;
-  });
+  const urls = extractUrlTokens(candidate);
 
   return urls.length === 1 ? urls[0]! : null;
 }

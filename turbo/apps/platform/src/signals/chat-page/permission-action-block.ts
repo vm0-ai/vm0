@@ -1,13 +1,10 @@
 import type { UserPermissionGrantExpiresIn } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
-import {
-  resolvePlatformOriginForTarget,
-  rewritePlatformHostname,
-} from "../api-base.ts";
 import { parseUserPermissionGrantExpiresIn } from "../permission-allow/permission-grant-expiration.ts";
 import {
   chatActionCallbackFromUrl,
   type ChatActionCallback,
 } from "./action-callback.ts";
+import { parseTrustedPlatformUrl } from "./trusted-platform-url.ts";
 
 type PermissionAction = "allow" | "deny";
 
@@ -32,104 +29,6 @@ export function permissionActionResourceKey(
 ): string {
   const path = `/agents/${encodeURIComponent(descriptor.agentId)}/permissions`;
   return descriptor.search ? `${path}?${descriptor.search}` : path;
-}
-
-function browserOrigin(): string | null {
-  if (typeof location === "undefined" || !location.origin) {
-    return null;
-  }
-  return location.origin;
-}
-
-function addPermissionActionOriginVariants(
-  origins: Set<string>,
-  baseUrl: string | null,
-) {
-  if (!baseUrl || !URL.canParse(baseUrl)) {
-    return;
-  }
-
-  const parsed = new URL(baseUrl);
-  origins.add(parsed.origin);
-
-  for (const target of ["api", "www", "app", "platform"] as const) {
-    const variant = new URL(parsed);
-    variant.hostname = rewritePlatformHostname(variant.hostname, target);
-    origins.add(variant.origin);
-  }
-}
-
-function permissionActionOrigins(): Set<string> {
-  const origins = new Set<string>();
-
-  addPermissionActionOriginVariants(origins, browserOrigin());
-  addPermissionActionOriginVariants(
-    origins,
-    resolvePlatformOriginForTarget("api"),
-  );
-
-  return origins;
-}
-
-function permissionActionBaseUrl(): string | null {
-  return browserOrigin() ?? resolvePlatformOriginForTarget("api");
-}
-
-function stripUrlParserIgnoredPrefix(value: string): string {
-  let index = 0;
-  while (index < value.length && value.charCodeAt(index) <= 0x20) {
-    index += 1;
-  }
-  return value.slice(index);
-}
-
-function hasExplicitUrlOrigin(value: string): boolean {
-  return (
-    URL.canParse(value) || stripUrlParserIgnoredPrefix(value).startsWith("//")
-  );
-}
-
-function isPlatformPermissionHostname(hostname: string): boolean {
-  const isPlatformDomain = ["vm0.ai", "vm6.ai", "vm7.ai"].some((suffix) => {
-    return hostname === suffix || hostname.endsWith(`.${suffix}`);
-  });
-  if (!isPlatformDomain) {
-    return false;
-  }
-
-  return /(^|-)(platform|app|www|api)\./.test(hostname);
-}
-
-function isHttpUrl(url: URL): boolean {
-  return url.protocol === "http:" || url.protocol === "https:";
-}
-
-function isAllowedPermissionActionUrl(url: URL, sourceUrl: string): boolean {
-  const explicitOrigin = hasExplicitUrlOrigin(sourceUrl);
-  if (explicitOrigin && !isHttpUrl(url)) {
-    return false;
-  }
-
-  return (
-    !explicitOrigin ||
-    permissionActionOrigins().has(url.origin) ||
-    isPlatformPermissionHostname(url.hostname)
-  );
-}
-
-function parseUrl(value: string): URL | null {
-  const baseUrl = permissionActionBaseUrl();
-  if (baseUrl) {
-    if (!URL.canParse(value, baseUrl)) {
-      return null;
-    }
-    return new URL(value, baseUrl);
-  }
-
-  if (!URL.canParse(value)) {
-    return null;
-  }
-  return new URL(value);
 }
 
 function isPermissionAction(value: string): value is PermissionAction {
@@ -158,12 +57,8 @@ function parsePermissionActionPath(
 export function parsePermissionActionUrl(
   value: string,
 ): PermissionActionDescriptor | null {
-  const url = parseUrl(value);
+  const url = parseTrustedPlatformUrl(value);
   if (!url) {
-    return null;
-  }
-
-  if (!isAllowedPermissionActionUrl(url, value)) {
     return null;
   }
 
