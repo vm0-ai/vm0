@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.567.0](https://github.com/vm0-ai/vm0/compare/core-v8.566.2...core-v8.567.0) (2026-08-18)
+
+
+### Features
+
+* **app:** add image model selection to existing chats ([#27881](https://github.com/vm0-ai/vm0/issues/27881)) ([3dcb1f4](https://github.com/vm0-ai/vm0/commit/3dcb1f4fe316e0e77fc561684659f114365335d3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.338.3
+
 ## [8.566.2](https://github.com/vm0-ai/vm0/compare/core-v8.566.1...core-v8.566.2) (2026-08-18)
 
 

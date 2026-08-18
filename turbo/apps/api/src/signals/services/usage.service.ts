@@ -3,7 +3,7 @@ import { inArray } from "drizzle-orm";
 import type {
   MemberUsage,
   UsageMembersResponse,
-} from "@okouai/api-contracts/contracts/zero-usage";
+} from "@okouai/api-contracts/contracts/usage";
 import type { UsageRecordRange } from "@okouai/api-contracts/contracts/usage-record";
 import { userCache } from "@okouai/db/schema/user-cache";
 import { clerk$, type ClerkUser } from "../external/clerk";

@@ -1,6 +1,6 @@
 import { command, computed } from "ccstate";
 import { eq } from "drizzle-orm";
-import { zeroFeishuConnectContract } from "@okouai/api-contracts/contracts/zero-feishu-connect";
+import { feishuConnectContract } from "@okouai/api-contracts/contracts/feishu-connect";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
@@ -80,7 +80,7 @@ const checkAppId$ = computed(async (get) => {
   if (auth.orgRole !== "admin") {
     return adminRequired();
   }
-  const query = get(queryOf(zeroFeishuConnectContract.checkAppId));
+  const query = get(queryOf(feishuConnectContract.checkAppId));
   const [installation] = await get(db$)
     .select({ id: feishuOrgInstallations.id })
     .from(feishuOrgInstallations)
@@ -100,7 +100,7 @@ const setup$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (auth.orgRole !== "admin") {
     return adminRequired();
   }
-  const bodyResult = await get(bodyResultOf(zeroFeishuConnectContract.setup));
+  const bodyResult = await get(bodyResultOf(feishuConnectContract.setup));
   signal.throwIfAborted();
   if (!bodyResult.ok) {
     return bodyResult.response;
@@ -193,11 +193,9 @@ const updateInstallation$ = command(
     if (auth.orgRole !== "admin") {
       return adminRequired();
     }
-    const params = get(
-      pathParamsOf(zeroFeishuConnectContract.updateInstallation),
-    );
+    const params = get(pathParamsOf(feishuConnectContract.updateInstallation));
     const bodyResult = await get(
-      bodyResultOf(zeroFeishuConnectContract.updateInstallation),
+      bodyResultOf(feishuConnectContract.updateInstallation),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -248,9 +246,7 @@ const removeInstallation$ = command(
     if (auth.orgRole !== "admin") {
       return adminRequired();
     }
-    const params = get(
-      pathParamsOf(zeroFeishuConnectContract.removeInstallation),
-    );
+    const params = get(pathParamsOf(feishuConnectContract.removeInstallation));
     const removed = await set(
       removeFeishuInstallation$,
       { orgId: auth.orgId, installationId: params.installationId },
@@ -302,7 +298,7 @@ const disconnectInstallation$ = command(
     }
     const auth = get(organizationAuthContext$);
     const params = get(
-      pathParamsOf(zeroFeishuConnectContract.disconnectInstallation),
+      pathParamsOf(feishuConnectContract.disconnectInstallation),
     );
     const disconnected = await set(
       disconnectFeishuConnection$,
@@ -327,35 +323,35 @@ const auth = {
 
 export const feishuConnectRoutes: readonly RouteEntry[] = [
   {
-    route: zeroFeishuConnectContract.getStatus,
+    route: feishuConnectContract.getStatus,
     handler: authRoute(auth, getStatus$),
   },
   {
-    route: zeroFeishuConnectContract.checkAppId,
+    route: feishuConnectContract.checkAppId,
     handler: authRoute(auth, checkAppId$),
   },
   {
-    route: zeroFeishuConnectContract.setup,
+    route: feishuConnectContract.setup,
     handler: authRoute(auth, setup$),
   },
   {
-    route: zeroFeishuConnectContract.updateInstallation,
+    route: feishuConnectContract.updateInstallation,
     handler: authRoute(auth, updateInstallation$),
   },
   {
-    route: zeroFeishuConnectContract.removeInstallation,
+    route: feishuConnectContract.removeInstallation,
     handler: authRoute(auth, removeInstallation$),
   },
   {
-    route: zeroFeishuConnectContract.disconnectInstallation,
+    route: feishuConnectContract.disconnectInstallation,
     handler: authRoute(auth, disconnectInstallation$),
   },
   {
-    route: zeroFeishuConnectContract.remove,
+    route: feishuConnectContract.remove,
     handler: authRoute(auth, remove$),
   },
   {
-    route: zeroFeishuConnectContract.disconnect,
+    route: feishuConnectContract.disconnect,
     handler: authRoute(auth, disconnect$),
   },
 ];

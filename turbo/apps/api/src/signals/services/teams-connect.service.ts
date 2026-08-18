@@ -644,7 +644,7 @@ function activeTeamsStatus(args: {
   };
 }
 
-export function zeroTeamsConnectStatus(args: {
+export function teamsConnectStatus(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly isAdmin: boolean;

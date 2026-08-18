@@ -23,7 +23,7 @@ export const avatarVideoVoiceIdSchema = z
   .max(200)
   .regex(/^[A-Za-z0-9._:-]+$/);
 
-export const zeroAvatarVideoGenerateRequestSchema = z
+export const avatarVideoGenerateRequestSchema = z
   .object({
     avatarId: z.number().int().positive(),
     voiceId: avatarVideoVoiceIdSchema,
@@ -43,7 +43,7 @@ export const zeroAvatarVideoGenerateRequestSchema = z
     },
   );
 
-export const zeroAvatarVideoGenerateResponseSchema = z.object({
+export const avatarVideoGenerateResponseSchema = z.object({
   id: z.string(),
   filename: z.string(),
   contentType: z.string(),
@@ -63,7 +63,7 @@ export const zeroAvatarVideoGenerateResponseSchema = z.object({
   sourceUrl: z.url(),
 });
 
-export const zeroAvatarVideoAvatarSchema = z.object({
+export const avatarVideoAvatarSchema = z.object({
   id: z.number().int().positive(),
   name: z.string(),
   videoUrl: z.url().optional(),
@@ -74,7 +74,7 @@ export const zeroAvatarVideoAvatarSchema = z.object({
   age: z.string().optional(),
 });
 
-export const zeroAvatarVideoVoiceSchema = z.object({
+export const avatarVideoVoiceSchema = z.object({
   id: avatarVideoVoiceIdSchema,
   name: z.string(),
   sampleUrl: z.url().optional(),
@@ -85,11 +85,11 @@ export const zeroAvatarVideoVoiceSchema = z.object({
   useCase: z.string().optional(),
 });
 
-export const zeroAvatarVideoAvatarsResponseSchema = z.object({
-  avatars: z.array(zeroAvatarVideoAvatarSchema),
+export const avatarVideoAvatarsResponseSchema = z.object({
+  avatars: z.array(avatarVideoAvatarSchema),
 });
-export const zeroAvatarVideoVoicesResponseSchema = z.object({
-  voices: z.array(zeroAvatarVideoVoiceSchema),
+export const avatarVideoVoicesResponseSchema = z.object({
+  voices: z.array(avatarVideoVoiceSchema),
   hasMore: z.boolean(),
   filterOptions: z
     .object({
@@ -104,7 +104,7 @@ const pageQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).optional(),
 });
 
-export const zeroAvatarVideoAvatarsQuerySchema = pageQuerySchema.extend({
+export const avatarVideoAvatarsQuerySchema = pageQuerySchema.extend({
   aspectRatio: avatarVideoAspectRatioSchema.optional(),
   style: z.enum(["professional", "social"]).optional(),
   gender: z.enum(["female", "male"]).optional(),
@@ -133,36 +133,36 @@ export const zeroAvatarVideoAvatarsQuerySchema = pageQuerySchema.extend({
     .optional(),
 });
 
-export const zeroAvatarVideoVoicesQuerySchema = pageQuerySchema.extend({
+export const avatarVideoVoicesQuerySchema = pageQuerySchema.extend({
   gender: z.enum(["female", "male"]).optional(),
   language: z.string().min(1).optional(),
   age: z.enum(["young", "middle_aged", "old"]).optional(),
   useCase: z.string().min(1).optional(),
 });
 
-export type ZeroAvatarVideoGenerateRequest = z.infer<
-  typeof zeroAvatarVideoGenerateRequestSchema
+export type AvatarVideoGenerateRequest = z.infer<
+  typeof avatarVideoGenerateRequestSchema
 >;
-export type ZeroAvatarVideoGenerateResponse = z.infer<
-  typeof zeroAvatarVideoGenerateResponseSchema
+export type AvatarVideoGenerateResponse = z.infer<
+  typeof avatarVideoGenerateResponseSchema
 >;
-export type ZeroAvatarVideoAvatarsQuery = z.infer<
-  typeof zeroAvatarVideoAvatarsQuerySchema
+export type AvatarVideoAvatarsQuery = z.infer<
+  typeof avatarVideoAvatarsQuerySchema
 >;
-export type ZeroAvatarVideoVoicesQuery = z.infer<
-  typeof zeroAvatarVideoVoicesQuerySchema
+export type AvatarVideoVoicesQuery = z.infer<
+  typeof avatarVideoVoicesQuerySchema
 >;
-export type ZeroAvatarVideoAvatar = z.infer<typeof zeroAvatarVideoAvatarSchema>;
-export type ZeroAvatarVideoVoice = z.infer<typeof zeroAvatarVideoVoiceSchema>;
+export type AvatarVideoAvatar = z.infer<typeof avatarVideoAvatarSchema>;
+export type AvatarVideoVoice = z.infer<typeof avatarVideoVoiceSchema>;
 
-export const zeroAvatarVideoContract = c.router({
+export const avatarVideoContract = c.router({
   generate: {
     method: "POST",
     path: "/api/okou/avatar-video/generate",
     headers: authHeadersSchema,
-    body: zeroAvatarVideoGenerateRequestSchema,
+    body: avatarVideoGenerateRequestSchema,
     responses: {
-      200: zeroAvatarVideoGenerateResponseSchema,
+      200: avatarVideoGenerateResponseSchema,
       202: builtInGenerationAcceptedResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
@@ -179,9 +179,9 @@ export const zeroAvatarVideoContract = c.router({
     method: "GET",
     path: "/api/okou/avatar-video/avatars",
     headers: authHeadersSchema,
-    query: zeroAvatarVideoAvatarsQuerySchema,
+    query: avatarVideoAvatarsQuerySchema,
     responses: {
-      200: zeroAvatarVideoAvatarsResponseSchema,
+      200: avatarVideoAvatarsResponseSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       502: apiErrorSchema,
@@ -193,9 +193,9 @@ export const zeroAvatarVideoContract = c.router({
     method: "GET",
     path: "/api/okou/avatar-video/voices",
     headers: authHeadersSchema,
-    query: zeroAvatarVideoVoicesQuerySchema,
+    query: avatarVideoVoicesQuerySchema,
     responses: {
-      200: zeroAvatarVideoVoicesResponseSchema,
+      200: avatarVideoVoicesResponseSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       502: apiErrorSchema,
@@ -205,4 +205,4 @@ export const zeroAvatarVideoContract = c.router({
   },
 });
 
-export type ZeroAvatarVideoContract = typeof zeroAvatarVideoContract;
+export type AvatarVideoContract = typeof avatarVideoContract;

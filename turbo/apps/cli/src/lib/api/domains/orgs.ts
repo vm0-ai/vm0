@@ -1,5 +1,5 @@
 import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
-import { zeroOrgContract } from "@okouai/api-contracts/contracts/zero-org";
+import { orgContract } from "@okouai/api-contracts/contracts/org-routes";
 import type { OrgResponse } from "@okouai/api-contracts/contracts/orgs";
 import { getClientConfig, handleError } from "../core/client-factory";
 
@@ -8,7 +8,7 @@ import { getClientConfig, handleError } from "../core/client-factory";
  */
 export async function getOrg(): Promise<OrgResponse> {
   const config = await getClientConfig();
-  const client = initClient(zeroOrgContract, config);
+  const client = initClient(orgContract, config);
 
   const result = await client.get({ headers: {} });
 

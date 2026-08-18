@@ -144,6 +144,15 @@ class ApiAllow:
 
 
 @dataclass(frozen=True)
+class PlatformPathDenied:
+    vm_info: dict
+    kind: Literal["platform_path_denied"] = field(
+        init=False,
+        default="platform_path_denied",
+    )
+
+
+@dataclass(frozen=True)
 class BrowserAllow:
     vm_info: dict
     kind: Literal["browser_allow"] = field(init=False, default="browser_allow")
@@ -209,6 +218,7 @@ RequestClassification = (
     | InvalidRegistryVm
     | AuthorityDenied
     | ApiAllow
+    | PlatformPathDenied
     | BrowserAllow
     | FirewallAmbiguous
     | FirewallBlock
@@ -292,8 +302,9 @@ def classify_request(
     """Classify a flow and write metadata needed by downstream hook handling.
 
     The decision order is registry/TLS admission, registered VM resolution,
-    trusted authority validation, platform API allow, browser passthrough,
-    firewall match, publicDestination runtime validation, and default allow.
+    trusted authority validation, platform path admission, platform API allow,
+    browser passthrough, firewall match, publicDestination runtime validation,
+    and default allow.
 
     After registry and TLS admission checks accept a registered VM,
     classification stores VM/run metadata on the flow. Once trusted authority
@@ -422,8 +433,14 @@ def _classify_request(
         scheme=flow.request.scheme,
         hostname=trusted_authority.host,
         port=trusted_authority.port,
-    ) and not upstream_admission.request_path_uses_platform_firewall(flow.request.path):
-        return ApiAllow(vm_info=vm_info)
+    ):
+        platform_path_decision = upstream_admission.platform_request_path_decision(
+            flow.request.path
+        )
+        if platform_path_decision == "deny":
+            return PlatformPathDenied(vm_info=vm_info)
+        if platform_path_decision == "api_allow":
+            return ApiAllow(vm_info=vm_info)
 
     if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
         return BrowserAllow(vm_info=vm_info)
@@ -509,6 +526,7 @@ def classification_needs_request_timing(classification: RequestClassification) -
     return classification.kind in (
         "authority_denied",
         "api_allow",
+        "platform_path_denied",
         "browser_allow",
         "firewall_ambiguous",
         "firewall_block",

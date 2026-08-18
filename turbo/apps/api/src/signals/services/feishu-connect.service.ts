@@ -5,7 +5,7 @@ import {
   FEISHU_OAUTH_SCOPES,
   type FeishuConnectStatus,
   type FeishuInstallationStatus,
-} from "@okouai/api-contracts/contracts/zero-feishu-connect";
+} from "@okouai/api-contracts/contracts/feishu-connect";
 import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";

@@ -153,9 +153,9 @@ export {
   type TranslationResponse,
 } from "./translation";
 export {
-  zeroModelPoliciesMainContract,
-  type ZeroModelPoliciesMainContract,
-} from "./zero-model-policies";
+  modelPoliciesMainContract,
+  type ModelPoliciesMainContract,
+} from "./model-policies";
 export {
   createModelProviderConnectionRequestSchema,
   getModelProviderTypeForSurfaceProtocol,
@@ -578,6 +578,7 @@ export {
   chatThreadByIdContract,
   chatThreadDraftContract,
   chatThreadMarkReadContract,
+  chatThreadMarkUnreadContract,
   chatThreadMarkAgentReadContract,
   chatThreadMetadataContract,
   chatThreadModelSelectionContract,
@@ -612,6 +613,7 @@ export {
   type ChatThreadByIdContract,
   type ChatThreadDraftContract,
   type ChatThreadMarkReadContract,
+  type ChatThreadMarkUnreadContract,
   type ChatThreadMarkAgentReadContract,
   type ChatThreadMetadataContract,
   type ChatThreadModelSelectionContract,
@@ -1057,13 +1059,13 @@ export {
   type ClaudeCodeDeviceAuthContract,
 } from "./claude-code-device-auth";
 export {
-  zeroOrgContract,
-  zeroOrgLeaveContract,
-  zeroOrgDeleteContract,
-  type ZeroOrgContract,
-  type ZeroOrgLeaveContract,
-  type ZeroOrgDeleteContract,
-} from "./zero-org";
+  orgContract,
+  orgLeaveContract,
+  orgDeleteContract,
+  type OrgContract,
+  type OrgLeaveContract,
+  type OrgDeleteContract,
+} from "./org-routes";
 export {
   orgLogoContract,
   orgLogoResponseSchema,
@@ -1399,12 +1401,12 @@ export {
   type WebSearchResult,
 } from "./web-search";
 export {
-  zeroUsageMembersContract,
-  type ZeroUsageMembersContract,
+  usageMembersContract,
+  type UsageMembersContract,
   // Inferred types
   type MemberUsage,
   type UsageMembersResponse,
-} from "./zero-usage";
+} from "./usage";
 export {
   usageRecordContract,
   usageRecordKindSchema,
@@ -1449,13 +1451,13 @@ export {
   type TeamsBotContract,
 } from "./teams-bot";
 export {
-  zeroTeamsConnectContract,
+  teamsConnectContract,
   type TeamsConnectBody,
   type TeamsConnectResponse,
   type TeamsConnectStatus,
   type TeamsDisconnectResponse,
-  type ZeroTeamsConnectContract,
-} from "./zero-teams-connect";
+  type TeamsConnectContract,
+} from "./teams-connect";
 export {
   teamsBrowserConnectContract,
   teamsBrowserConnectQuerySchema,
@@ -1572,25 +1574,25 @@ export {
 } from "./push-subscriptions";
 export {
   avatarVideoAspectRatioSchema,
+  avatarVideoAvatarSchema,
+  avatarVideoAvatarsQuerySchema,
+  avatarVideoAvatarsResponseSchema,
+  avatarVideoContract,
+  avatarVideoGenerateRequestSchema,
+  avatarVideoGenerateResponseSchema,
   avatarVideoScreenStyleSchema,
   avatarVideoVoiceIdSchema,
-  zeroAvatarVideoAvatarSchema,
-  zeroAvatarVideoAvatarsQuerySchema,
-  zeroAvatarVideoAvatarsResponseSchema,
-  zeroAvatarVideoContract,
-  zeroAvatarVideoGenerateRequestSchema,
-  zeroAvatarVideoGenerateResponseSchema,
-  zeroAvatarVideoVoiceSchema,
-  zeroAvatarVideoVoicesQuerySchema,
-  zeroAvatarVideoVoicesResponseSchema,
-  type ZeroAvatarVideoAvatar,
-  type ZeroAvatarVideoAvatarsQuery,
-  type ZeroAvatarVideoContract,
-  type ZeroAvatarVideoGenerateRequest,
-  type ZeroAvatarVideoGenerateResponse,
-  type ZeroAvatarVideoVoice,
-  type ZeroAvatarVideoVoicesQuery,
-} from "./zero-avatar-video";
+  avatarVideoVoiceSchema,
+  avatarVideoVoicesQuerySchema,
+  avatarVideoVoicesResponseSchema,
+  type AvatarVideoAvatar,
+  type AvatarVideoAvatarsQuery,
+  type AvatarVideoContract,
+  type AvatarVideoGenerateRequest,
+  type AvatarVideoGenerateResponse,
+  type AvatarVideoVoice,
+  type AvatarVideoVoicesQuery,
+} from "./avatar-video";
 export {
   imageIoGenerateContract,
   imageIoGenerateRequestSchema,
@@ -1608,15 +1610,15 @@ export {
   type ImageShareXResponse,
 } from "./image-share-x";
 export {
-  zeroMailContract,
-  zeroMailDraftSchema,
-  zeroMailDraftStatusSchema,
-  zeroMailProviderSchema,
-  type ZeroMailContract,
-  type ZeroMailDraft,
-  type ZeroMailDraftStatus,
-  type ZeroMailProvider,
-} from "./zero-mail";
+  mailContract,
+  mailDraftSchema,
+  mailDraftStatusSchema,
+  mailProviderSchema,
+  type MailContract,
+  type MailDraft,
+  type MailDraftStatus,
+  type MailProvider,
+} from "./mail";
 export {
   bankingContract,
   bankingProviderSchema,
@@ -1727,6 +1729,18 @@ export {
   type ZeroUploadsContract,
   type UploadPrepareResponse,
 } from "./zero-uploads";
+export {
+  MAX_PRESENTATION_TEMPLATE_PAGE_BYTES,
+  MAX_PRESENTATION_TEMPLATE_PAGES,
+  MAX_PRESENTATION_TEMPLATE_SOURCE_BYTES,
+  MAX_PRESENTATION_TEMPLATE_TOTAL_PAGE_BYTES,
+  PRESENTATION_TEMPLATE_PAGE_CONTENT_TYPE,
+  PRESENTATION_TEMPLATE_SOURCE_CONTENT_TYPE,
+  presentationTemplateStatusSchema,
+  zeroPresentationTemplatesContract,
+  type PresentationTemplateSummary,
+  type ZeroPresentationTemplatesContract,
+} from "./zero-presentation-templates";
 export {
   zeroGoalsContract,
   zeroGoalCreateRequestSchema,

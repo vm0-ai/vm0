@@ -18,7 +18,7 @@ import {
 import {
   avatarVideoAspectRatioSchema,
   avatarVideoVoiceIdSchema,
-} from "./zero-avatar-video";
+} from "./avatar-video";
 
 const c = initContract();
 const chatEventReadHeadersSchema = authHeadersSchema.extend({
@@ -1165,6 +1165,16 @@ export const chatThreadDraftContract = c.router({
   },
 });
 
+const chatThreadReadStateResponseSchema = z.object({
+  lastReadAt: z.string().nullable(),
+  /**
+   * Fresh unread snapshot for the thread's agent (same shape as the unreads
+   * endpoint). Clients should treat `chatThreadReadCursorUpdated` as
+   * read-state invalidation.
+   */
+  unreads: chatThreadUnreadsSchema.shape.unreads,
+});
+
 /**
  * Mark a chat thread as read up to its current latest run-finish marker.
  * Separate contract so it can be served by its own route file.
@@ -1177,20 +1187,30 @@ export const chatThreadMarkReadContract = c.router({
     pathParams: chatThreadIdPathParamsSchema,
     body: c.noBody(),
     responses: {
-      200: z.object({
-        lastReadAt: z.string().nullable(),
-        /**
-         * Fresh unread snapshot for the thread's agent (same shape as the
-         * unreads endpoint). Clients should treat
-         * `chatThreadReadCursorUpdated` as read-state invalidation.
-         */
-        unreads: chatThreadUnreadsSchema.shape.unreads,
-      }),
+      200: chatThreadReadStateResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Mark a chat thread as read up to the latest run-finish marker",
+  },
+});
+
+/** Mark a chat thread as unread by clearing its read cursor. */
+export const chatThreadMarkUnreadContract = c.router({
+  markUnread: {
+    method: "POST",
+    path: "/api/okou/chat-threads/:id/mark-unread",
+    headers: authHeadersSchema,
+    pathParams: chatThreadIdPathParamsSchema,
+    body: c.noBody(),
+    responses: {
+      200: chatThreadReadStateResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Mark a chat thread as unread",
   },
 });
 
@@ -1672,6 +1692,7 @@ export type ChatThreadsContract = typeof chatThreadsContract;
 export type ChatThreadByIdContract = typeof chatThreadByIdContract;
 export type ChatThreadDraftContract = typeof chatThreadDraftContract;
 export type ChatThreadMarkReadContract = typeof chatThreadMarkReadContract;
+export type ChatThreadMarkUnreadContract = typeof chatThreadMarkUnreadContract;
 export type ChatThreadMarkAgentReadContract =
   typeof chatThreadMarkAgentReadContract;
 export type ChatThreadPinContract = typeof chatThreadPinContract;

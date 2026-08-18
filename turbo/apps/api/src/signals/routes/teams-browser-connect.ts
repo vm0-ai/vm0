@@ -14,7 +14,7 @@ import { db$ } from "../external/db";
 import {
   connectTeamsInstallation$,
   publishTeamsChanged$,
-} from "../services/zero-teams-connect.service";
+} from "../services/teams-connect.service";
 import type { RouteEntry } from "../route-entry";
 
 const L = logger("TeamsBrowserConnect");

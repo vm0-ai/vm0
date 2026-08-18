@@ -106,9 +106,9 @@ import type {
   UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import type {
-  ZeroAvatarVideoAvatar,
-  ZeroAvatarVideoVoice,
-} from "@okouai/api-contracts/contracts/zero-avatar-video";
+  AvatarVideoAvatar,
+  AvatarVideoVoice,
+} from "@okouai/api-contracts/contracts/avatar-video";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import { TiptapWorkflowComposer } from "./tiptap-workflow-composer.tsx";
 import { computerUseIllustrationImg } from "./platform-assets.ts";
@@ -4995,8 +4995,8 @@ function TemplatePickerDialog({
   };
 
   const handleSelectAvatar = (
-    avatar: ZeroAvatarVideoAvatar,
-    voice: ZeroAvatarVideoVoice,
+    avatar: AvatarVideoAvatar,
+    voice: AvatarVideoVoice,
     aspectRatio: "portrait" | "landscape",
   ) => {
     onChange(toAvatarGenerationTemplate(avatar, voice, aspectRatio));
@@ -5310,8 +5310,8 @@ function TemplatePickerCategoryContent({
   onIllustrationVariantChange: (slug: string, index: number) => void;
   onSelectVideo: (item: VideoTemplateItem) => void;
   onSelectAvatar: (
-    avatar: ZeroAvatarVideoAvatar,
-    voice: ZeroAvatarVideoVoice,
+    avatar: AvatarVideoAvatar,
+    voice: AvatarVideoVoice,
     aspectRatio: "portrait" | "landscape",
   ) => void;
   onWorkflowCategoryChange: (category: string) => void;
