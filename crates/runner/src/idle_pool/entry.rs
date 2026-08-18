@@ -3,7 +3,9 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use futures_util::FutureExt;
-use sandbox::{DeviceRateLimits, Sandbox, SandboxFactory, SandboxId};
+use sandbox::{
+    DeviceRateLimits, Sandbox, SandboxFactory, SandboxFinalExecParkHandoffPoint, SandboxId,
+};
 
 use crate::guest_timezone::GuestTimezoneIntent;
 use crate::ids::RunId;
@@ -99,6 +101,23 @@ pub struct ParkedIdleCandidate {
     pub(super) budget_lease: BudgetLease,
 }
 
+/// Under-compacted parked sandbox that may only be handed to its waiting exact
+/// successor or destroyed.
+#[must_use = "immediate handoff candidates must be bound to a claimant or explicitly destroyed"]
+pub(crate) struct ImmediateHandoffCandidate {
+    candidate: ParkedIdleCandidate,
+    handoff_point: SandboxFinalExecParkHandoffPoint,
+}
+
+/// Parked sandbox bound to one claimed exact successor without entering the
+/// generic idle pool.
+#[must_use = "finalizing handoff candidates must be activated or explicitly destroyed"]
+pub(crate) struct FinalizingHandoffCandidate {
+    reservation: ReservedIdleSandbox,
+    successor_run_id: RunId,
+    predecessor_run_id: RunId,
+}
+
 impl ParkedIdleCandidate {
     pub(crate) fn reuse_key(&self) -> &str {
         self.metadata.reuse_key()
@@ -129,6 +148,34 @@ impl ParkedIdleCandidate {
         }
     }
 
+    pub(crate) fn into_finalizing_handoff(
+        self,
+        successor_run_id: RunId,
+        predecessor_run_id: RunId,
+    ) -> FinalizingHandoffCandidate {
+        debug_assert_eq!(
+            self.metadata.history_generation_run_id,
+            Some(predecessor_run_id)
+        );
+        FinalizingHandoffCandidate {
+            reservation: ReservedIdleSandbox {
+                entry: self.into_idle_entry(Instant::now()),
+            },
+            successor_run_id,
+            predecessor_run_id,
+        }
+    }
+
+    pub(crate) fn into_immediate_handoff(
+        self,
+        handoff_point: SandboxFinalExecParkHandoffPoint,
+    ) -> ImmediateHandoffCandidate {
+        ImmediateHandoffCandidate {
+            candidate: self,
+            handoff_point,
+        }
+    }
+
     pub(crate) fn into_active_destroy_parts(self) -> (IdleDestroyPayload, BudgetLease) {
         let Self {
             resources,
@@ -150,6 +197,70 @@ impl ParkedIdleCandidate {
 
         RejectedParkedIdleCandidate {
             payload: resources.into_destroy_payload(WorkspacePromotionPolicy::Promote),
+            budget_lease,
+        }
+    }
+}
+
+impl ImmediateHandoffCandidate {
+    pub(crate) fn handoff_point(&self) -> SandboxFinalExecParkHandoffPoint {
+        self.handoff_point
+    }
+
+    pub(crate) fn with_last_completed_at(self, last_completed_at: String) -> Self {
+        let Self {
+            candidate,
+            handoff_point,
+        } = self;
+        Self {
+            candidate: candidate.with_last_completed_at(last_completed_at),
+            handoff_point,
+        }
+    }
+
+    pub(crate) fn into_finalizing_handoff(
+        self,
+        successor_run_id: RunId,
+        predecessor_run_id: RunId,
+    ) -> FinalizingHandoffCandidate {
+        self.candidate
+            .into_finalizing_handoff(successor_run_id, predecessor_run_id)
+    }
+
+    pub(crate) fn into_active_destroy_parts(self) -> (IdleDestroyPayload, BudgetLease) {
+        self.candidate.into_active_destroy_parts()
+    }
+}
+
+impl FinalizingHandoffCandidate {
+    pub(crate) fn into_reservation(
+        self: Box<Self>,
+        successor_run_id: RunId,
+        predecessor_run_id: RunId,
+    ) -> Result<ReservedIdleSandbox, Box<Self>> {
+        if self.successor_run_id == successor_run_id
+            && self.predecessor_run_id == predecessor_run_id
+        {
+            Ok(self.reservation)
+        } else {
+            Err(self)
+        }
+    }
+
+    pub(crate) fn into_destroy_job(self: Box<Self>) -> IdleDestroyJob {
+        self.reservation.into_destroy_job()
+    }
+
+    pub(crate) fn into_parked_candidate(self: Box<Self>) -> ParkedIdleCandidate {
+        let IdleEntry {
+            resources,
+            metadata,
+            budget_lease,
+            parked_at: _,
+        } = self.reservation.entry;
+        ParkedIdleCandidate {
+            resources,
+            metadata,
             budget_lease,
         }
     }
@@ -598,6 +709,14 @@ impl IdleEntry {
 impl ReservedIdleSandbox {
     pub fn reuse_key(&self) -> &str {
         self.entry.reuse_key()
+    }
+
+    pub(crate) fn profile_name(&self) -> &str {
+        self.entry.profile_name()
+    }
+
+    pub(crate) fn device_rate_limits(&self) -> &Option<DeviceRateLimits> {
+        self.entry.device_rate_limits()
     }
 
     pub(crate) fn guest_timezone_intent(&self) -> &GuestTimezoneIntent {

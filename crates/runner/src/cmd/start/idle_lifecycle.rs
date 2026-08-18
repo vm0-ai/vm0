@@ -341,6 +341,7 @@ mod tests {
             guest_timezone_intent: crate::guest_timezone::GuestTimezoneIntent::Unknown,
             workspace_image_size_bytes: b"workspace image".len() as u64,
             workspace_promotion: Some(fixture.promotion),
+            handoff: None,
         });
         let candidate = match request.park_for_idle().await {
             Ok(outcome) => outcome
