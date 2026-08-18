@@ -1,5 +1,5 @@
 import { command, computed } from "ccstate";
-import { zeroPresentationTemplatesContract } from "@okouai/api-contracts/contracts/zero-presentation-templates";
+import { presentationTemplatesContract } from "@okouai/api-contracts/contracts/presentation-templates";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { presentationTemplates } from "@okouai/db/schema/presentation-template";
@@ -112,7 +112,7 @@ const listInner$ = computed(async (get) => {
   return { status: 200 as const, body: summaries };
 });
 
-const getParams$ = pathParamsOf(zeroPresentationTemplatesContract.get);
+const getParams$ = pathParamsOf(presentationTemplatesContract.get);
 const getInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   if (!(await get(presentationTemplatesEnabled$))) {
@@ -148,8 +148,8 @@ const getInner$ = computed(async (get) => {
   };
 });
 
-const updateParams$ = pathParamsOf(zeroPresentationTemplatesContract.update);
-const updateBody$ = bodyResultOf(zeroPresentationTemplatesContract.update);
+const updateParams$ = pathParamsOf(presentationTemplatesContract.update);
+const updateBody$ = bodyResultOf(presentationTemplatesContract.update);
 const updateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   if (!(await get(presentationTemplatesEnabled$))) {
@@ -199,7 +199,7 @@ const updateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
 });
 
-const deleteParams$ = pathParamsOf(zeroPresentationTemplatesContract.delete);
+const deleteParams$ = pathParamsOf(presentationTemplatesContract.delete);
 const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   if (!(await get(presentationTemplatesEnabled$))) {
@@ -220,21 +220,21 @@ const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     : templateNotFound(params.templateId);
 });
 
-export const zeroPresentationTemplatesRoutes: readonly RouteEntry[] = [
+export const presentationTemplatesRoutes: readonly RouteEntry[] = [
   {
-    route: zeroPresentationTemplatesContract.list,
+    route: presentationTemplatesContract.list,
     handler: authRoute(templateReadAuth, listInner$),
   },
   {
-    route: zeroPresentationTemplatesContract.get,
+    route: presentationTemplatesContract.get,
     handler: authRoute(templateReadAuth, getInner$),
   },
   {
-    route: zeroPresentationTemplatesContract.update,
+    route: presentationTemplatesContract.update,
     handler: authRoute(templateWriteAuth, updateInner$),
   },
   {
-    route: zeroPresentationTemplatesContract.delete,
+    route: presentationTemplatesContract.delete,
     handler: authRoute(templateWriteAuth, deleteInner$),
   },
 ];

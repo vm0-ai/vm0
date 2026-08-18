@@ -1,4 +1,4 @@
-import type { PresentationTemplateSummary } from "@okouai/api-contracts/contracts/zero-presentation-templates";
+import type { PresentationTemplateSummary } from "@okouai/api-contracts/contracts/presentation-templates";
 import { presentationTemplates } from "@okouai/db/schema/presentation-template";
 import { and, desc, eq, ne } from "drizzle-orm";
 

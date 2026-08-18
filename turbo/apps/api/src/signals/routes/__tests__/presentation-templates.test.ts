@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroPresentationTemplatesContract } from "@okouai/api-contracts/contracts/zero-presentation-templates";
+import { presentationTemplatesContract } from "@okouai/api-contracts/contracts/presentation-templates";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -10,7 +10,7 @@ import { mockEnv } from "../../../lib/env";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { zeroPresentationTemplatesRoutes } from "../zero-presentation-templates";
+import { presentationTemplatesRoutes } from "../presentation-templates";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -32,8 +32,8 @@ async function enablePresentationTemplates(actor: ApiTestUser): Promise<void> {
 }
 
 function templateClient() {
-  return setupApp({ context, routes: zeroPresentationTemplatesRoutes })(
-    zeroPresentationTemplatesContract,
+  return setupApp({ context, routes: presentationTemplatesRoutes })(
+    presentationTemplatesContract,
   );
 }
 
