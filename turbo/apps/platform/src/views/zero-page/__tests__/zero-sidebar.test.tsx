@@ -3572,6 +3572,41 @@ describe("zero sidebar", () => {
   it("leaves the lead agent in place when it is dragged", async () => {
     const pinnedAgentIds = prepareOverflowingPinnedAgents();
     context.mocks.data.userPreferences({ pinnedAgentIds });
+    const savedPinnedOrders: string[][] = [];
+    let storedPinnedAgentIds = [...pinnedAgentIds];
+    context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
+      // Boot also writes unrelated preferences such as the timezone, so only a
+      // request that carries pinned ids counts as a reorder.
+      if (body.pinnedAgentIds !== undefined) {
+        storedPinnedAgentIds = [...body.pinnedAgentIds];
+        savedPinnedOrders.push([...body.pinnedAgentIds]);
+      }
+      const nextPinnedAgentIds = storedPinnedAgentIds;
+      context.mocks.data.userPreferences({
+        pinnedAgentIds: [...nextPinnedAgentIds],
+      });
+      return respond(200, {
+        timezone: null,
+        locale: null,
+        supportedLocales: [
+          "en-US",
+          "pt-BR",
+          "ja-JP",
+          "ko-KR",
+          "id-ID",
+          "de-DE",
+          "es-ES",
+          "it-IT",
+          "fr-FR",
+          "hi-IN",
+        ],
+        pinnedAgentIds: [...nextPinnedAgentIds],
+        sendMode: "enter",
+        morningBriefEnabled: false,
+        morningBriefNextRunAt: null,
+        captureNetworkBodiesRemaining: 0,
+      });
+    });
 
     setupSidebarPage({
       context,
@@ -3586,23 +3621,50 @@ describe("zero sidebar", () => {
       expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
     });
 
+    const leadDragTransfer = createDataTransferStub();
     const lead = pinnedAgentLink(grid, "Zero");
-    const dataTransfer = createDataTransferStub();
-    const dragged = pinnedAgentLink(grid, "Support Agent");
-    fireEvent.dragStart(dragged, { dataTransfer });
-    fireEvent.dragOver(lead, { dataTransfer });
-    fireEvent.drop(lead, { dataTransfer });
+    fireEvent.dragStart(pinnedAgentLink(grid, "Support Agent"), {
+      dataTransfer: leadDragTransfer,
+    });
+    fireEvent.dragOver(lead, { dataTransfer: leadDragTransfer });
+    fireEvent.drop(lead, { dataTransfer: leadDragTransfer });
+    fireEvent.dragEnd(pinnedAgentLink(grid, "Support Agent"), {
+      dataTransfer: leadDragTransfer,
+    });
+
+    // A later reorder gives the lead drop time to land if it were not a no-op,
+    // so the recorded requests below prove it never reached the API.
+    const reorderTransfer = createDataTransferStub();
+    fireEvent.dragStart(pinnedAgentLink(grid, "Support Agent"), {
+      dataTransfer: reorderTransfer,
+    });
+    fireEvent.dragOver(pinnedAgentLink(grid, "Billing Agent"), {
+      dataTransfer: reorderTransfer,
+    });
+    fireEvent.drop(pinnedAgentLink(grid, "Billing Agent"), {
+      dataTransfer: reorderTransfer,
+    });
 
     await waitFor(() => {
       expect(pinnedAgentNames(grid)).toStrictEqual([
         "Zero",
         "Research Agent",
-        "Support Agent",
         "Operations Agent",
         "Analytics Agent",
         "Billing Agent",
+        "Support Agent",
       ]);
     });
+    expect(savedPinnedOrders).toStrictEqual([
+      [
+        RESEARCH_AGENT_ID,
+        OVERFLOW_PINNED_AGENTS[0].id,
+        OVERFLOW_PINNED_AGENTS[1].id,
+        OVERFLOW_PINNED_AGENTS[2].id,
+        SUPPORT_AGENT_ID,
+      ],
+    ]);
+    expect(pinnedAgentLink(grid, "Zero")).toBeInTheDocument();
   });
 
   it("keeps the single-column sidebar when the three-column flag is off", async () => {
