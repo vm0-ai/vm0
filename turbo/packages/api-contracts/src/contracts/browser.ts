@@ -8,14 +8,14 @@ const c = initContract();
 // Zero always asks Browser Use for its longest provider lifetime and manages
 // reclamation itself through the idle lease below, so a hard provider timeout
 // can never cut a browser short while somebody is still using it.
-export const ZERO_BROWSER_PROVIDER_TIMEOUT_MINUTES = 240;
-export const ZERO_BROWSER_IDLE_LEASE_MINUTES = 10;
-export const ZERO_BROWSER_SCREEN_WIDTH = 1440;
-export const ZERO_BROWSER_INITIAL_SCREEN_HEIGHT = 900;
-export const ZERO_BROWSER_MIN_SCREEN_HEIGHT = 320;
-export const ZERO_BROWSER_MAX_SCREEN_HEIGHT = 3456;
+export const BROWSER_PROVIDER_TIMEOUT_MINUTES = 240;
+export const BROWSER_IDLE_LEASE_MINUTES = 10;
+export const BROWSER_SCREEN_WIDTH = 1440;
+export const BROWSER_INITIAL_SCREEN_HEIGHT = 900;
+export const BROWSER_MIN_SCREEN_HEIGHT = 320;
+export const BROWSER_MAX_SCREEN_HEIGHT = 3456;
 
-export const zeroBrowserStatusSchema = z.enum([
+export const browserStatusSchema = z.enum([
   "creating",
   "active",
   "resuming",
@@ -24,7 +24,7 @@ export const zeroBrowserStatusSchema = z.enum([
   "error",
 ]);
 
-export const zeroBrowserSuspensionReasonSchema = z.enum([
+export const browserSuspensionReasonSchema = z.enum([
   // Historical reason kept for rows written before the idle lease existed.
   "run_end",
   "idle",
@@ -34,45 +34,45 @@ export const zeroBrowserSuspensionReasonSchema = z.enum([
   "user",
 ]);
 
-const zeroBrowserScreenSchema = z.object({
-  width: z.literal(ZERO_BROWSER_SCREEN_WIDTH),
+const browserScreenSchema = z.object({
+  width: z.literal(BROWSER_SCREEN_WIDTH),
   height: z
     .number()
     .int()
-    .min(ZERO_BROWSER_MIN_SCREEN_HEIGHT)
-    .max(ZERO_BROWSER_MAX_SCREEN_HEIGHT),
+    .min(BROWSER_MIN_SCREEN_HEIGHT)
+    .max(BROWSER_MAX_SCREEN_HEIGHT),
   resizable: z.boolean(),
 });
 
-export const zeroBrowserSessionSchema = z
+export const browserSessionSchema = z
   .object({
     threadId: z.uuid(),
     name: z.string().min(1).max(64),
-    status: zeroBrowserStatusSchema,
+    status: browserStatusSchema,
     viewerUrl: z.url(),
     liveUrl: z.url().nullable(),
     screenshotUrl: z.url().nullable(),
     proxyCountryCode: z.string().length(2).nullable(),
     timeoutMinutes: z.number().int().positive(),
     // Only live provider instances have persisted window dimensions.
-    screen: zeroBrowserScreenSchema.optional(),
+    screen: browserScreenSchema.optional(),
     // When Zero reclaims the live provider instance unless somebody leases it
     // again. Null once no provider instance is running.
     idleExpiresAt: z.iso.datetime().nullable(),
     suspendedAt: z.iso.datetime().nullable(),
-    suspensionReason: zeroBrowserSuspensionReasonSchema.nullable(),
+    suspensionReason: browserSuspensionReasonSchema.nullable(),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
   })
   .strict();
 
-export type ZeroBrowserStatus = z.infer<typeof zeroBrowserStatusSchema>;
-export type ZeroBrowserSuspensionReason = z.infer<
-  typeof zeroBrowserSuspensionReasonSchema
+export type BrowserStatus = z.infer<typeof browserStatusSchema>;
+export type BrowserSuspensionReason = z.infer<
+  typeof browserSuspensionReasonSchema
 >;
-export type ZeroBrowserSession = z.infer<typeof zeroBrowserSessionSchema>;
+export type BrowserSession = z.infer<typeof browserSessionSchema>;
 
-export const zeroBrowserCreateRequestSchema = z
+export const browserCreateRequestSchema = z
   .object({
     name: z.string().trim().min(1).max(64).default("browser"),
     proxyCountryCode: z
@@ -87,16 +87,14 @@ export const zeroBrowserCreateRequestSchema = z
   })
   .strict();
 
-export type ZeroBrowserCreateRequest = z.infer<
-  typeof zeroBrowserCreateRequestSchema
->;
+export type BrowserCreateRequest = z.infer<typeof browserCreateRequestSchema>;
 
 const browserThreadParamsSchema = z.object({
   threadId: z.uuid(),
 });
 
 const browserResponseSchema = z.object({
-  browser: zeroBrowserSessionSchema,
+  browser: browserSessionSchema,
 });
 
 const browserLifecycleRequestSchema = z.object({
@@ -150,12 +148,12 @@ const commonErrorResponses = {
   503: apiErrorSchema,
 } as const;
 
-export const zeroBrowserContract = c.router({
+export const browserContract = c.router({
   create: {
     method: "POST",
     path: "/api/okou/browsers",
     headers: authHeadersSchema,
-    body: zeroBrowserCreateRequestSchema,
+    body: browserCreateRequestSchema,
     responses: {
       201: browserConnectionResponseSchema,
       ...commonErrorResponses,
@@ -257,7 +255,7 @@ export const zeroBrowserContract = c.router({
   },
 });
 
-export const zeroBrowserAuthorizationRequestsContract = c.router({
+export const browserAuthorizationRequestsContract = c.router({
   create: {
     method: "POST",
     path: "/api/okou/browser/authorization-requests",
@@ -306,9 +304,9 @@ export const zeroBrowserAuthorizationRequestsContract = c.router({
   },
 });
 
-export type ZeroBrowserContract = typeof zeroBrowserContract;
-export type ZeroBrowserAuthorizationRequestsContract =
-  typeof zeroBrowserAuthorizationRequestsContract;
+export type BrowserContract = typeof browserContract;
+export type BrowserAuthorizationRequestsContract =
+  typeof browserAuthorizationRequestsContract;
 export type BrowserAuthorizationRequestCreateResponse = z.infer<
   typeof browserAuthorizationRequestCreateResponseSchema
 >;

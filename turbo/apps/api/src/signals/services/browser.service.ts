@@ -1,14 +1,14 @@
 import { randomUUID } from "node:crypto";
 import {
-  ZERO_BROWSER_IDLE_LEASE_MINUTES,
-  ZERO_BROWSER_INITIAL_SCREEN_HEIGHT,
-  ZERO_BROWSER_MAX_SCREEN_HEIGHT,
-  ZERO_BROWSER_MIN_SCREEN_HEIGHT,
-  ZERO_BROWSER_PROVIDER_TIMEOUT_MINUTES,
-  ZERO_BROWSER_SCREEN_WIDTH,
-  type ZeroBrowserSession,
-  type ZeroBrowserSuspensionReason,
-} from "@okouai/api-contracts/contracts/zero-browser";
+  BROWSER_IDLE_LEASE_MINUTES,
+  BROWSER_INITIAL_SCREEN_HEIGHT,
+  BROWSER_MAX_SCREEN_HEIGHT,
+  BROWSER_MIN_SCREEN_HEIGHT,
+  BROWSER_PROVIDER_TIMEOUT_MINUTES,
+  BROWSER_SCREEN_WIDTH,
+  type BrowserSession,
+  type BrowserSuspensionReason,
+} from "@okouai/api-contracts/contracts/browser";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import {
   browserSessionInstances,
@@ -90,7 +90,7 @@ const BROWSER_SCREENSHOT_FILENAME = "browser-screenshot.webp";
 const STRANDED_START_GRACE_MS = 60_000;
 const INACTIVE_BROWSER_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_PROVIDER_VALIDATION_ISSUES_TO_LOG = 10;
-const IDLE_LEASE_MS = ZERO_BROWSER_IDLE_LEASE_MINUTES * 60_000;
+const IDLE_LEASE_MS = BROWSER_IDLE_LEASE_MINUTES * 60_000;
 const INACTIVE_BROWSER_STATUSES = ["suspended", "error"] as const;
 const OWNED_BROWSER_STATUSES = [
   "creating",
@@ -128,13 +128,13 @@ interface BrowserServiceOk<T> {
 type BrowserServiceResult<T> = BrowserServiceOk<T> | BrowserServiceError;
 
 interface BrowserConnection {
-  readonly browser: ZeroBrowserSession;
+  readonly browser: BrowserSession;
   readonly cdpUrl: string;
   readonly lifecycleEventId: string | null;
 }
 
 interface BrowserMutation {
-  readonly browser: ZeroBrowserSession;
+  readonly browser: BrowserSession;
   readonly lifecycleEventId: string | null;
 }
 
@@ -143,7 +143,7 @@ interface BrowserCloseMutation {
 }
 
 interface BrowserScreen {
-  readonly width: typeof ZERO_BROWSER_SCREEN_WIDTH;
+  readonly width: typeof BROWSER_SCREEN_WIDTH;
   readonly height: number;
   readonly resizable: true;
 }
@@ -298,7 +298,7 @@ function publicBrowser(
     readonly idleExpiresAt?: Date | null;
     readonly screen?: BrowserScreen | null;
   },
-): ZeroBrowserSession {
+): BrowserSession {
   return {
     threadId: row.chatThreadId,
     name: row.name,
@@ -324,10 +324,10 @@ function nextIdleDeadline(): Date {
 function browserScreenHeightForAspectRatio(aspectRatio: number): number {
   return Math.min(
     Math.max(
-      Math.round(ZERO_BROWSER_SCREEN_WIDTH / aspectRatio),
-      ZERO_BROWSER_MIN_SCREEN_HEIGHT,
+      Math.round(BROWSER_SCREEN_WIDTH / aspectRatio),
+      BROWSER_MIN_SCREEN_HEIGHT,
     ),
-    ZERO_BROWSER_MAX_SCREEN_HEIGHT,
+    BROWSER_MAX_SCREEN_HEIGHT,
   );
 }
 
@@ -345,9 +345,9 @@ async function loadBrowserScreen(
     .where(eq(browserSessionResizeStates.providerSessionId, providerSessionId))
     .limit(1);
   signal.throwIfAborted();
-  return screen?.width === ZERO_BROWSER_SCREEN_WIDTH
+  return screen?.width === BROWSER_SCREEN_WIDTH
     ? {
-        width: ZERO_BROWSER_SCREEN_WIDTH,
+        width: BROWSER_SCREEN_WIDTH,
         height: screen.height,
         resizable: true,
       }
@@ -396,9 +396,9 @@ async function loadBrowserScreenHeightForThread(
     .orderBy(desc(browserSessionInstances.createdAt))
     .limit(1);
   signal.throwIfAborted();
-  return screen?.width === ZERO_BROWSER_SCREEN_WIDTH
+  return screen?.width === BROWSER_SCREEN_WIDTH
     ? screen.height
-    : ZERO_BROWSER_INITIAL_SCREEN_HEIGHT;
+    : BROWSER_INITIAL_SCREEN_HEIGHT;
 }
 
 // Extending the lease is unconditional and fixed-length: every toucher gets the
@@ -440,7 +440,7 @@ async function persistBrowserScreen(
   const [updatedScreen] = await db
     .update(browserSessionResizeStates)
     .set({
-      screenWidth: ZERO_BROWSER_SCREEN_WIDTH,
+      screenWidth: BROWSER_SCREEN_WIDTH,
       screenHeight,
       updatedAt: nowDate(),
     })
@@ -465,7 +465,7 @@ async function persistBrowserScreen(
     value: {
       instance,
       screen: {
-        width: ZERO_BROWSER_SCREEN_WIDTH,
+        width: BROWSER_SCREEN_WIDTH,
         height: updatedScreen.height,
         resizable: true,
       },
@@ -482,7 +482,7 @@ async function createBrowserScreenState(
     .insert(browserSessionResizeStates)
     .values({
       providerSessionId,
-      screenWidth: ZERO_BROWSER_SCREEN_WIDTH,
+      screenWidth: BROWSER_SCREEN_WIDTH,
       screenHeight,
     })
     .returning({ height: browserSessionResizeStates.screenHeight });
@@ -490,7 +490,7 @@ async function createBrowserScreenState(
     throw new Error("Failed to persist managed browser resize state");
   }
   return {
-    width: ZERO_BROWSER_SCREEN_WIDTH,
+    width: BROWSER_SCREEN_WIDTH,
     height: resizeState.height,
     resizable: true,
   };
@@ -614,7 +614,7 @@ function stopProviderSessionLater(providerSessionId: string): void {
 async function stopActiveBrowserInstance(
   db: Db,
   target: ActiveBrowserInstance,
-  reason: ZeroBrowserSuspensionReason,
+  reason: BrowserSuspensionReason,
   signal: AbortSignal,
   options: {
     readonly emitCloseEvent?: boolean;
@@ -701,7 +701,7 @@ async function stopActiveBrowserInstance(
 async function suspendBrowserWithoutActiveInstance(
   db: Db,
   browser: BrowserSessionRow,
-  reason: ZeroBrowserSuspensionReason,
+  reason: BrowserSuspensionReason,
   signal: AbortSignal,
 ): Promise<BrowserSessionRow | null> {
   const suspended = await db.transaction(async (tx) => {
@@ -1573,7 +1573,7 @@ async function createAndClaimProviderInstance(
         proxyCountryCode: args.browser.proxyCountryCode,
         // Zero owns reclamation through the idle lease, so the provider only
         // needs to enforce the absolute upper bound.
-        timeoutMinutes: ZERO_BROWSER_PROVIDER_TIMEOUT_MINUTES,
+        timeoutMinutes: BROWSER_PROVIDER_TIMEOUT_MINUTES,
       },
       AbortSignal.timeout(PROVIDER_CLEANUP_TIMEOUT_MS),
     ),
@@ -1594,7 +1594,7 @@ async function createAndClaimProviderInstance(
   const resized = await providerCall(
     resizeBrowserUseSession(
       cdpUrl,
-      ZERO_BROWSER_SCREEN_WIDTH,
+      BROWSER_SCREEN_WIDTH,
       args.screenHeight,
       AbortSignal.timeout(PROVIDER_CLEANUP_TIMEOUT_MS),
     ),
@@ -1762,7 +1762,7 @@ async function claimFreshBrowser(
         name: args.name,
         status: "creating",
         proxyCountryCode: args.proxyCountryCode,
-        timeoutMinutes: ZERO_BROWSER_PROVIDER_TIMEOUT_MINUTES,
+        timeoutMinutes: BROWSER_PROVIDER_TIMEOUT_MINUTES,
       })
       .returning();
     if (!browser) {
@@ -1824,7 +1824,7 @@ const createBrowserForContext$ = command(
   },
 );
 
-export const createZeroBrowser$ = command(
+export const createBrowser$ = command(
   async (
     { set },
     args: {
@@ -2189,7 +2189,7 @@ const openBrowserForContext$ = command(
   },
 );
 
-export const useZeroBrowser$ = command(
+export const useBrowser$ = command(
   async (
     { set },
     actor: BrowserActor,
@@ -2211,7 +2211,7 @@ export const useZeroBrowser$ = command(
   },
 );
 
-export const openZeroBrowserForThread$ = command(
+export const openBrowserForThread$ = command(
   async (
     { set },
     args: BrowserSessionAccess & { readonly lifecycleEventId: string },
@@ -2271,7 +2271,7 @@ export const openZeroBrowserForThread$ = command(
   },
 );
 
-export const closeZeroBrowserForThread$ = command(
+export const closeBrowserForThread$ = command(
   async (
     { set },
     args: BrowserSessionAccess & { readonly lifecycleEventId: string },
@@ -2328,7 +2328,7 @@ const leaseInstanceForBrowser$ = command(
     browser: BrowserSessionRow,
     publicBrand: PublicBrand,
     signal: AbortSignal,
-  ): Promise<BrowserServiceResult<ZeroBrowserSession>> => {
+  ): Promise<BrowserServiceResult<BrowserSession>> => {
     const db = set(writeDb$);
     const instance = await loadActiveInstance(db, browser.chatThreadId);
     signal.throwIfAborted();
@@ -2359,12 +2359,12 @@ const leaseInstanceForBrowser$ = command(
   },
 );
 
-export const leaseCurrentZeroBrowser$ = command(
+export const leaseCurrentBrowser$ = command(
   async (
     { set },
     actor: BrowserActor,
     signal: AbortSignal,
-  ): Promise<BrowserServiceResult<ZeroBrowserSession>> => {
+  ): Promise<BrowserServiceResult<BrowserSession>> => {
     const db = set(writeDb$);
     const context = await resolveRunContext(db, actor);
     signal.throwIfAborted();
@@ -2385,12 +2385,12 @@ export const leaseCurrentZeroBrowser$ = command(
   },
 );
 
-export const leaseZeroBrowserByThread$ = command(
+export const leaseBrowserByThread$ = command(
   async (
     { set },
     access: BrowserSessionAccess,
     signal: AbortSignal,
-  ): Promise<BrowserServiceResult<ZeroBrowserSession>> => {
+  ): Promise<BrowserServiceResult<BrowserSession>> => {
     const db = set(writeDb$);
     const browser = await loadOwnedBrowser(db, access);
     signal.throwIfAborted();
@@ -2411,12 +2411,12 @@ export const leaseZeroBrowserByThread$ = command(
   },
 );
 
-export const resizeZeroBrowserByThread$ = command(
+export const resizeBrowserByThread$ = command(
   async (
     { set },
     access: BrowserSessionAccess & { readonly aspectRatio: number },
     signal: AbortSignal,
-  ): Promise<BrowserServiceResult<ZeroBrowserSession>> => {
+  ): Promise<BrowserServiceResult<BrowserSession>> => {
     const db = set(writeDb$);
     const browser = await loadOwnedBrowser(db, access);
     signal.throwIfAborted();
@@ -2481,7 +2481,7 @@ export const resizeZeroBrowserByThread$ = command(
     const resized = await providerCall(
       resizeBrowserUseSession(
         provider.value.cdpUrl,
-        ZERO_BROWSER_SCREEN_WIDTH,
+        BROWSER_SCREEN_WIDTH,
         screenHeight,
         signal,
       ),
@@ -2521,12 +2521,12 @@ export const resizeZeroBrowserByThread$ = command(
   },
 );
 
-export const getZeroBrowser$ = command(
+export const getBrowser$ = command(
   async (
     { set },
     access: BrowserSessionAccess,
     signal: AbortSignal,
-  ): Promise<BrowserServiceResult<ZeroBrowserSession>> => {
+  ): Promise<BrowserServiceResult<BrowserSession>> => {
     const db = set(writeDb$);
     const row = await loadOwnedBrowser(db, access);
     signal.throwIfAborted();
@@ -2580,12 +2580,12 @@ export const getZeroBrowser$ = command(
   },
 );
 
-export const getCurrentZeroBrowser$ = command(
+export const getCurrentBrowser$ = command(
   async (
     { set },
     actor: BrowserActor,
     signal: AbortSignal,
-  ): Promise<BrowserServiceResult<ZeroBrowserSession>> => {
+  ): Promise<BrowserServiceResult<BrowserSession>> => {
     const db = set(writeDb$);
     const context = await resolveRunContext(db, actor);
     signal.throwIfAborted();
@@ -2598,7 +2598,7 @@ export const getCurrentZeroBrowser$ = command(
       return notFound();
     }
     return await set(
-      getZeroBrowser$,
+      getBrowser$,
       {
         orgId: actor.orgId,
         userId: actor.userId,
@@ -2647,7 +2647,7 @@ export const releaseThreadBrowsersForRun$ = command(
   },
 );
 
-export const stopThreadZeroBrowsers$ = command(
+export const stopThreadBrowsers$ = command(
   async (
     { set },
     args: { readonly chatThreadId: string },
@@ -2881,7 +2881,7 @@ interface ExpiredInactiveBrowserTarget {
   readonly userId: string;
   readonly status: InactiveBrowserStatus;
   readonly suspendedAt: Date | null;
-  readonly suspensionReason: ZeroBrowserSuspensionReason | null;
+  readonly suspensionReason: BrowserSuspensionReason | null;
   readonly updatedAt: Date;
   readonly providerProfileId: string | null;
 }
@@ -3469,7 +3469,7 @@ const reconcileBrowserInstance$ = command(
     signal: AbortSignal,
   ): Promise<BrowserReconcileOutcome> => {
     const db = set(writeDb$);
-    let reason: ZeroBrowserSuspensionReason | null = null;
+    let reason: BrowserSuspensionReason | null = null;
     let stopProvider = true;
     if (row.chatThreadId === null) {
       // Nobody can reach a deleted thread's browser, so reclaim it now instead
@@ -3652,14 +3652,14 @@ const reconcileZeroBrowsersWithScope$ = command(
   },
 );
 
-export const reconcileZeroBrowsers$ = command(
+export const reconcileBrowsers$ = command(
   async ({ set }, signal: AbortSignal): Promise<BrowserReconcileResult> => {
     return await set(reconcileZeroBrowsersWithScope$, null, signal);
   },
 );
 
 /** Reconcile only browser resources owned by explicit test fixture threads. */
-export const reconcileZeroBrowserFixtures$ = command(
+export const reconcileBrowserFixtures$ = command(
   async (
     { set },
     chatThreadIds: readonly string[],

@@ -17,7 +17,7 @@ import { createTestFixtureZeroRun$ } from "../services/zero-runs-create.service"
 
 const c = initContract();
 
-export const zeroRunFixtureContract = c.router({
+export const runFixtureContract = c.router({
   create: {
     method: "POST",
     path: "/api/test/zero-run-fixture",
@@ -36,7 +36,7 @@ export const zeroRunFixtureContract = c.router({
   },
 });
 
-const zeroRunFixtureBody$ = bodyResultOf(zeroRunFixtureContract.create);
+const zeroRunFixtureBody$ = bodyResultOf(runFixtureContract.create);
 
 const createZeroRunFixture$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -77,9 +77,9 @@ const createZeroRunFixture$ = command(
  * Test-only Zero run creation adapter. This route is intentionally omitted
  * from every production and E2E route registry.
  */
-export const zeroRunFixtureRoutes: readonly RouteEntry[] = [
+export const runFixtureRoutes: readonly RouteEntry[] = [
   {
-    route: zeroRunFixtureContract.create,
+    route: runFixtureContract.create,
     handler: authRoute(
       {
         accept: ["session", "pat"],

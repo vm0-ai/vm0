@@ -58,7 +58,7 @@ import {
   zeroTeamContract,
   type TeamComposeItem,
 } from "@okouai/api-contracts/contracts/zero-team";
-import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
   userPreferencesContract,
   type UpdateUserPreferencesRequest,
@@ -924,12 +924,17 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     async inviteMember(
       actor: ApiTestUser,
       body: InviteOrgMemberRequest,
+      publicBrand: PublicBrand = "vm0",
     ): Promise<OrgMessageResponse> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
         orgInviteContract,
       );
       const response = await accept(
-        client.invite({ headers: authenticate(actor), body }),
+        client.invite({
+          headers: authenticate(actor),
+          body,
+          ...publicBrandHeaders(publicBrand),
+        }),
         [200],
       );
       return response.body;
@@ -1209,7 +1214,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       agentId: string,
     ): Promise<readonly string[]> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroUserConnectorsContract,
+        userConnectorsContract,
       );
       const response = await accept(
         client.get({

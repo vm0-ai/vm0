@@ -14,7 +14,7 @@ import { connectorOauthStates } from "@okouai/db/schema/connector-oauth-state";
 
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { request$ } from "../context/hono";
+import { publicBrand$, request$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import {
   badRequestMessage,
@@ -407,6 +407,7 @@ const startConnectorOauthInner$ = command(
       return bodyResult.response;
     }
     const request = get(request$).raw;
+    const publicBrand = get(publicBrand$);
     const auth = get(authContext$);
     const connectorSlug = params.connectorSlug;
 
@@ -462,6 +463,7 @@ const startConnectorOauthInner$ = command(
       method,
       redirectUri,
       readEnv: optionalEnv,
+      publicBrand,
     });
     if (!prepared.ok) {
       return internalServerError(`${connectorSlug} auth client not configured`);
@@ -513,6 +515,7 @@ const startConnectorOpenIdInner$ = command(
       return bodyResult.response;
     }
     const request = get(request$).raw;
+    const publicBrand = get(publicBrand$);
     const auth = get(authContext$);
     const connectorSlug = params.connectorSlug;
 
@@ -564,6 +567,7 @@ const startConnectorOpenIdInner$ = command(
         request,
         method: resolved.method,
       }),
+      publicBrand,
     });
     const authResult = await buildConnectorOpenIdAuthUrlWithMethod({
       connectorSlug: resolved.connectorSlug,

@@ -1,9 +1,9 @@
 import { screen, waitFor } from "@testing-library/react";
 import { chatThreadByIdContract } from "@okouai/api-contracts/contracts/chat-threads";
 import {
-  zeroBrowserContract,
-  type ZeroBrowserSession,
-} from "@okouai/api-contracts/contracts/zero-browser";
+  browserContract,
+  type BrowserSession,
+} from "@okouai/api-contracts/contracts/browser";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -18,8 +18,8 @@ const threadId = "c0000000-0000-4000-a000-000000000091";
 const liveUrl = "https://live.browser-use.com/?wss=test-browser-page-token";
 
 function browserSession(
-  overrides: Partial<ZeroBrowserSession> = {},
-): ZeroBrowserSession {
+  overrides: Partial<BrowserSession> = {},
+): BrowserSession {
   return {
     threadId,
     name: "booking",
@@ -54,7 +54,7 @@ describe("browser session page", () => {
     "localizes a suspended browser in $locale",
     async ({ locale, title, start }) => {
       context.mocks.data.userPreferences({ locale });
-      context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+      context.mocks.api(browserContract.get, ({ respond }) => {
         return respond(200, {
           browser: browserSession({
             status: "suspended",
@@ -92,7 +92,7 @@ describe("browser session page", () => {
   });
 
   it("shows browser not found for a missing or inaccessible thread", async () => {
-    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+    context.mocks.api(browserContract.get, ({ respond }) => {
       return respond(404, {
         error: {
           code: "BROWSER_NOT_FOUND",
@@ -119,7 +119,7 @@ describe("browser session page", () => {
   });
 
   it("shows the stopped state when an accessible thread has no browser", async () => {
-    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+    context.mocks.api(browserContract.get, ({ respond }) => {
       return respond(404, {
         error: {
           code: "BROWSER_NOT_FOUND",
@@ -151,18 +151,15 @@ describe("browser session page", () => {
 
   it("loads the authenticated live viewer and keeps the browser leased while it is open", async () => {
     let leaseRequests = 0;
-    context.mocks.api(zeroBrowserContract.get, ({ params, respond }) => {
+    context.mocks.api(browserContract.get, ({ params, respond }) => {
       expect(params.threadId).toBe(threadId);
       return respond(200, { browser: browserSession() });
     });
-    context.mocks.api(
-      zeroBrowserContract.leaseByThread,
-      ({ params, respond }) => {
-        expect(params.threadId).toBe(threadId);
-        leaseRequests += 1;
-        return respond(200, { browser: browserSession() });
-      },
-    );
+    context.mocks.api(browserContract.leaseByThread, ({ params, respond }) => {
+      expect(params.threadId).toBe(threadId);
+      leaseRequests += 1;
+      return respond(200, { browser: browserSession() });
+    });
 
     detachedSetupPage({
       context,
@@ -181,7 +178,7 @@ describe("browser session page", () => {
 
   it("offers a start action that restarts a reclaimed browser", async () => {
     let getRequests = 0;
-    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+    context.mocks.api(browserContract.get, ({ respond }) => {
       getRequests += 1;
       return respond(200, {
         browser: browserSession({
@@ -194,7 +191,7 @@ describe("browser session page", () => {
       });
     });
     let startRequests = 0;
-    context.mocks.api(zeroBrowserContract.open, ({ body, params, respond }) => {
+    context.mocks.api(browserContract.open, ({ body, params, respond }) => {
       expect(params.threadId).toBe(threadId);
       expect(body.eventId).toBeTypeOf("string");
       startRequests += 1;
@@ -203,7 +200,7 @@ describe("browser session page", () => {
         lifecycleEventId: body.eventId,
       });
     });
-    context.mocks.api(zeroBrowserContract.leaseByThread, ({ respond }) => {
+    context.mocks.api(browserContract.leaseByThread, ({ respond }) => {
       return respond(200, { browser: browserSession() });
     });
 

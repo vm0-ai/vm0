@@ -1,9 +1,9 @@
 import { once } from "node:events";
 
 import {
-  ZERO_BROWSER_INITIAL_SCREEN_HEIGHT,
-  ZERO_BROWSER_SCREEN_WIDTH,
-} from "@okouai/api-contracts/contracts/zero-browser";
+  BROWSER_INITIAL_SCREEN_HEIGHT,
+  BROWSER_SCREEN_WIDTH,
+} from "@okouai/api-contracts/contracts/browser";
 import { z } from "zod";
 
 import { env } from "../../lib/env";
@@ -761,8 +761,8 @@ export async function createBrowserUseSession(
         profileId: args.profileId,
         proxyCountryCode: args.proxyCountryCode,
         timeout: args.timeoutMinutes,
-        browserScreenWidth: ZERO_BROWSER_SCREEN_WIDTH,
-        browserScreenHeight: ZERO_BROWSER_INITIAL_SCREEN_HEIGHT,
+        browserScreenWidth: BROWSER_SCREEN_WIDTH,
+        browserScreenHeight: BROWSER_INITIAL_SCREEN_HEIGHT,
         allowResizing: true,
         enableRecording: false,
       }),

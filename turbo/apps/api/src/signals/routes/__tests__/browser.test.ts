@@ -3,9 +3,9 @@ import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 import { testBrowserReconcileContract } from "@okouai/api-contracts/contracts/test-browser-reconcile";
 import {
-  zeroBrowserAuthorizationRequestsContract,
-  zeroBrowserContract,
-} from "@okouai/api-contracts/contracts/zero-browser";
+  browserAuthorizationRequestsContract,
+  browserContract,
+} from "@okouai/api-contracts/contracts/browser";
 import {
   chatThreadComputerUseHostContract,
   chatThreadsContract,
@@ -84,7 +84,7 @@ function isoAt(offsetMs: number): string {
 }
 
 function client() {
-  return setupApp({ context, routes: browserRoutes })(zeroBrowserContract);
+  return setupApp({ context, routes: browserRoutes })(browserContract);
 }
 
 function authorizationClient(baseUrl = "http://api.test") {
@@ -92,7 +92,7 @@ function authorizationClient(baseUrl = "http://api.test") {
     baseUrl,
     context,
     routes: browserAuthorizationRoutes,
-  })(zeroBrowserAuthorizationRequestsContract);
+  })(browserAuthorizationRequestsContract);
 }
 
 function chatThreadsClient() {

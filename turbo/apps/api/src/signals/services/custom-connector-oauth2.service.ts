@@ -6,6 +6,7 @@ import { request as httpsRequest } from "node:https";
 import { command } from "ccstate";
 import { and, eq, exists } from "drizzle-orm";
 import { z } from "zod";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { isIntegrationManagedCustomConnector } from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import {
@@ -478,6 +479,7 @@ export const startCustomConnectorOAuth2$ = command(
       readonly userId: string;
       readonly connectorId: string;
       readonly redirectUri: string;
+      readonly publicBrand: PublicBrand;
       readonly agentId?: string;
       readonly feishuContext?: {
         readonly installationId?: string;
@@ -515,7 +517,7 @@ export const startCustomConnectorOAuth2$ = command(
     }
     const providerAdapter = connector.oauthConfig.providerAdapter;
     const redirectUri = args.redirectUri;
-    const state = generateConnectorOAuthState();
+    const state = generateConnectorOAuthState(args.publicBrand);
     const codeVerifier =
       connector.oauthConfig.pkceMethod === "S256" ? createPkceVerifier() : null;
     const authorizationUrl = buildCustomConnectorOAuth2AuthorizationUrl({

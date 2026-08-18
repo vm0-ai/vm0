@@ -19,8 +19,8 @@ use tokio_util::sync::CancellationToken;
 const RUN_ID: &str = "codex-app-server-backend-active-input-execution-timeout-test";
 const DELIVERY_ID: &str = "2532261d-b0e1-471e-b93d-1acae383d003";
 
-#[tokio::test]
-async fn execution_timeout_terminates_a_stuck_active_input_steer()
+#[test]
+fn execution_timeout_terminates_a_stuck_active_input_steer()
 -> Result<(), Box<dyn std::error::Error>> {
     let mock = common::build_and_locate_mock_codex()?;
     let tmp = tempfile::tempdir()?;
@@ -55,12 +55,42 @@ async fn execution_timeout_terminates_a_stuck_active_input_steer()
     let journal_path = guest_contracts::runtime_paths::active_input_receipt_journal_file(
         runtime.paths.runtime_dir(),
     );
-    let active_input = ActiveInputRuntime::new_with_receipts(
-        RUN_ID,
-        &runtime.config.prompt,
-        &journal_path,
-        HttpClient::with_api_config(server.base_url(), "test-token", "", RUN_ID, Duration::ZERO)?,
-    )?;
+    let receipt_runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .enable_all()
+        .build()?;
+    let receipt_http =
+        HttpClient::with_api_config(server.base_url(), "test-token", "", RUN_ID, Duration::ZERO)?;
+    let active_input = receipt_runtime.block_on(async {
+        ActiveInputRuntime::new_with_receipts(
+            RUN_ID,
+            &runtime.config.prompt,
+            &journal_path,
+            receipt_http,
+        )
+    })?;
+    let test_runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    test_runtime.block_on(assert_execution_timeout(&tmp, &runtime, active_input))?;
+
+    receipt.assert_calls(0);
+    assert!(
+        guest_contracts::active_input_receipts::read_active_input_receipt_journal(
+            &journal_path,
+            RUN_ID,
+        )?
+        .is_empty()
+    );
+
+    Ok(())
+}
+
+async fn assert_execution_timeout(
+    tmp: &tempfile::TempDir,
+    runtime: &guest_agent::run_context::GuestRuntime,
+    active_input: ActiveInputRuntime,
+) -> Result<(), Box<dyn std::error::Error>> {
     let active_input_controller = active_input.controller();
     assert_eq!(
         active_input_controller.handle_control_payload(
@@ -89,7 +119,7 @@ async fn execution_timeout_terminates_a_stuck_active_input_steer()
     let execution_timeout = runtime
         .config
         .agent_execution_timeout
-        .expect("test config should set an execution timeout");
+        .ok_or_else(|| std::io::Error::other("test config should set an execution timeout"))?;
     let checkpoints = [
         common::VirtualTimeCheckpoint::new(
             ready_file,
@@ -111,35 +141,25 @@ async fn execution_timeout_terminates_a_stuck_active_input_steer()
         common::execute_with_virtual_time_checkpoints(execution, &checkpoints),
     )
     .await
-    .expect("execution deadline should terminate the stuck steer")??;
+    .map_err(|_| {
+        std::io::Error::other("execution deadline should terminate the stuck steer")
+    })???;
 
     assert_eq!(result.exit_code, AGENT_EXECUTION_TIMEOUT_EXIT_CODE);
-    let error = result
-        .control_error
-        .as_ref()
-        .expect("execution timeout should preserve a controlled error");
+    let error = result.control_error.as_ref().ok_or_else(|| {
+        std::io::Error::other("execution timeout should preserve a controlled error")
+    })?;
     assert!(
         error
             .to_string()
             .contains("Agent execution timed out after 1 seconds"),
         "unexpected timeout error: {error}"
     );
-    assert_eq!(
-        result
-            .cli_termination
-            .expect("execution timeout should attach termination diagnostics")
-            .reason,
-        CliTerminationReason::ExecutionTimeout
-    );
+    let termination = result.cli_termination.ok_or_else(|| {
+        std::io::Error::other("execution timeout should attach termination diagnostics")
+    })?;
+    assert_eq!(termination.reason, CliTerminationReason::ExecutionTimeout);
     assert!(result.active_input_delivery_ids.is_empty());
-    receipt.assert_calls(0);
-    assert!(
-        guest_contracts::active_input_receipts::read_active_input_receipt_journal(
-            &journal_path,
-            RUN_ID,
-        )?
-        .is_empty()
-    );
 
     Ok(())
 }
