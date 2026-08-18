@@ -1,6 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { toast } from "@okouai/ui/components/ui/sonner";
-import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
+import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
 import type { UpdateOrgModelPolicy } from "@okouai/api-contracts/contracts/model-providers";
 import { zeroClient$ } from "../api-client.ts";
 import { i18n } from "../../i18n/index.ts";
@@ -16,7 +16,7 @@ interface UpdateOrgModelPoliciesParams {
 export const orgModelPolicies$ = computed(async (get) => {
   get(internalReloadOrgModelPolicies$);
   const createClient = get(zeroClient$);
-  const client = createClient(zeroModelPoliciesMainContract, {
+  const client = createClient(modelPoliciesMainContract, {
     apiBase: "api",
   });
   const result = await accept(client.list(), [200]);
@@ -41,7 +41,7 @@ export const updateOrgModelPolicies$ = command(
     signal: AbortSignal,
   ) => {
     const createClient = get(zeroClient$);
-    const client = createClient(zeroModelPoliciesMainContract, {
+    const client = createClient(modelPoliciesMainContract, {
       apiBase: "api",
     });
     const result = await accept(

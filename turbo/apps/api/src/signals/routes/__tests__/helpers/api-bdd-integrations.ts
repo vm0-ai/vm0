@@ -38,14 +38,14 @@ import type { SupportedRunModel } from "@okouai/api-contracts/contracts/model-pr
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { testSlackStateContract } from "@okouai/api-contracts/contracts/test-slack-state";
 import { integrationsAgentPhoneContract } from "@okouai/api-contracts/contracts/integrations-agentphone";
-import { zeroIntegrationsSlackContract } from "@okouai/api-contracts/contracts/zero-integrations-slack";
+import { integrationsSlackContract } from "@okouai/api-contracts/contracts/integrations-slack";
 import { zeroIntegrationsTelegramContract } from "@okouai/api-contracts/contracts/zero-integrations-telegram";
 import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
-import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
+import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
 import { zeroModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-model-providers";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { slackChannelsContract } from "@okouai/api-contracts/contracts/slack-channels";
-import { zeroSlackConnectContract } from "@okouai/api-contracts/contracts/zero-slack-connect";
+import { slackConnectContract } from "@okouai/api-contracts/contracts/slack-connect";
 import { slackOauthContract } from "@okouai/api-contracts/contracts/slack-oauth";
 import { userModelPreferenceContract } from "@okouai/api-contracts/contracts/user-model-preference";
 import { HttpResponse, http } from "msw";
@@ -698,7 +698,7 @@ export function createBddIntegrationApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
       const client = setupApp({ context, routes: integrationsSlackRoutes })(
-        zeroIntegrationsSlackContract,
+        integrationsSlackContract,
       );
       return await accept(
         client.disconnect({
@@ -714,7 +714,7 @@ export function createBddIntegrationApi(context: TestContext) {
       statuses: readonly (200 | 401)[],
     ) {
       const client = setupApp({ context, routes: integrationsSlackRoutes })(
-        zeroIntegrationsSlackContract,
+        integrationsSlackContract,
       );
       return await accept(
         client.getStatus({
@@ -829,7 +829,7 @@ export function createBddIntegrationApi(context: TestContext) {
       statuses: readonly (200 | 401)[],
     ) {
       const client = setupApp({ context, routes: slackConnectRoutes })(
-        zeroSlackConnectContract,
+        slackConnectContract,
       );
       return await accept(
         client.getStatus({
@@ -845,7 +845,7 @@ export function createBddIntegrationApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       const client = setupApp({ context, routes: slackConnectRoutes })(
-        zeroSlackConnectContract,
+        slackConnectContract,
       );
       return await accept(
         client.connect({
@@ -1069,7 +1069,7 @@ export function createBddIntegrationApi(context: TestContext) {
       body: SlackConnectBody,
     ): Promise<void> {
       const client = setupApp({ context, routes: slackConnectRoutes })(
-        zeroSlackConnectContract,
+        slackConnectContract,
       );
       await accept(
         client.connect({
@@ -1227,7 +1227,7 @@ export function createBddIntegrationApi(context: TestContext) {
       );
       await accept(
         setupApp({ context, routes: modelPoliciesRoutes })(
-          zeroModelPoliciesMainContract,
+          modelPoliciesMainContract,
         ).update({
           headers: authenticate(context, routeMocks, actor),
           body: {

@@ -50,7 +50,7 @@ import {
   type SupportedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
+import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
 import {
   zeroAgentsMainContract,
   type ZeroAgentResponse,
@@ -263,7 +263,7 @@ export function createChatFilesBddApi(context: TestContext) {
   }
 
   function modelPoliciesClient() {
-    return chatFilesApp(context)(zeroModelPoliciesMainContract);
+    return chatFilesApp(context)(modelPoliciesMainContract);
   }
 
   async function defaultCreateThreadModel(

@@ -9,11 +9,11 @@ import {
 } from "lucide-react";
 import type { GenerationTemplateRequest } from "@okouai/api-contracts/contracts/chat-threads";
 import type {
-  ZeroAvatarVideoAvatar,
-  ZeroAvatarVideoAvatarsQuery,
-  ZeroAvatarVideoVoice,
-  ZeroAvatarVideoVoicesQuery,
-} from "@okouai/api-contracts/contracts/zero-avatar-video";
+  AvatarVideoAvatar,
+  AvatarVideoAvatarsQuery,
+  AvatarVideoVoice,
+  AvatarVideoVoicesQuery,
+} from "@okouai/api-contracts/contracts/avatar-video";
 import {
   Button,
   Popover,
@@ -53,20 +53,16 @@ const CATALOG_AUTO_LOAD_THRESHOLD_PX = 320;
 const AVATAR_STYLE_VALUES = [
   "professional",
   "social",
-] as const satisfies readonly NonNullable<
-  ZeroAvatarVideoAvatarsQuery["style"]
->[];
+] as const satisfies readonly NonNullable<AvatarVideoAvatarsQuery["style"]>[];
 const AVATAR_GENDER_VALUES = [
   "female",
   "male",
-] as const satisfies readonly NonNullable<
-  ZeroAvatarVideoAvatarsQuery["gender"]
->[];
+] as const satisfies readonly NonNullable<AvatarVideoAvatarsQuery["gender"]>[];
 const AVATAR_AGE_VALUES = [
   "adult",
   "senior",
   "young_adult",
-] as const satisfies readonly NonNullable<ZeroAvatarVideoAvatarsQuery["age"]>[];
+] as const satisfies readonly NonNullable<AvatarVideoAvatarsQuery["age"]>[];
 const AVATAR_SCENE_VALUES = [
   "lifestyle",
   "outdoors",
@@ -75,9 +71,7 @@ const AVATAR_SCENE_VALUES = [
   "health_fitness",
   "education",
   "news",
-] as const satisfies readonly NonNullable<
-  ZeroAvatarVideoAvatarsQuery["scene"]
->[];
+] as const satisfies readonly NonNullable<AvatarVideoAvatarsQuery["scene"]>[];
 const AVATAR_ETHNICITY_VALUES = [
   "european",
   "african",
@@ -87,19 +81,17 @@ const AVATAR_ETHNICITY_VALUES = [
   "south_american",
   "north_american",
 ] as const satisfies readonly NonNullable<
-  ZeroAvatarVideoAvatarsQuery["ethnicity"]
+  AvatarVideoAvatarsQuery["ethnicity"]
 >[];
 const VOICE_GENDER_VALUES = [
   "female",
   "male",
-] as const satisfies readonly NonNullable<
-  ZeroAvatarVideoVoicesQuery["gender"]
->[];
+] as const satisfies readonly NonNullable<AvatarVideoVoicesQuery["gender"]>[];
 const VOICE_AGE_VALUES = [
   "young",
   "middle_aged",
   "old",
-] as const satisfies readonly NonNullable<ZeroAvatarVideoVoicesQuery["age"]>[];
+] as const satisfies readonly NonNullable<AvatarVideoVoicesQuery["age"]>[];
 
 interface CatalogFilterOption<T extends string> {
   readonly value: T;
@@ -304,7 +296,7 @@ function AvatarTemplateMedia({
   aspectRatio,
   className,
 }: {
-  readonly avatar: ZeroAvatarVideoAvatar;
+  readonly avatar: AvatarVideoAvatar;
   readonly aspectRatio: "portrait" | "landscape";
   readonly className?: string;
 }) {
@@ -378,7 +370,7 @@ function AvatarTemplateCardContent({
   aspectRatio,
   selected,
 }: {
-  readonly avatar: ZeroAvatarVideoAvatar;
+  readonly avatar: AvatarVideoAvatar;
   readonly aspectRatio: "portrait" | "landscape";
   readonly selected: boolean;
 }) {
@@ -408,10 +400,10 @@ function AvatarTemplateCard({
   selected,
   onSelect,
 }: {
-  readonly avatar: ZeroAvatarVideoAvatar;
+  readonly avatar: AvatarVideoAvatar;
   readonly aspectRatio: "portrait" | "landscape";
   readonly selected: boolean;
-  readonly onSelect: (avatar: ZeroAvatarVideoAvatar) => void;
+  readonly onSelect: (avatar: AvatarVideoAvatar) => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -643,7 +635,7 @@ function AvatarVoicePickerToolbar({
   avatar,
 }: {
   readonly signals: ComposerSignals;
-  readonly avatar: ZeroAvatarVideoAvatar;
+  readonly avatar: AvatarVideoAvatar;
 }) {
   const { t } = useTranslation();
   const clearVoiceSelection = useSet(
@@ -794,11 +786,7 @@ function toggleVoicePreview(event: ReactMouseEvent<HTMLButtonElement>): void {
   detach(audio.play(), Reason.DomCallback);
 }
 
-function VoicePreviewControl({
-  voice,
-}: {
-  readonly voice: ZeroAvatarVideoVoice;
-}) {
+function VoicePreviewControl({ voice }: { readonly voice: AvatarVideoVoice }) {
   const { t } = useTranslation();
   return (
     <>
@@ -853,10 +841,10 @@ function AvatarVoiceCard({
   recommended,
   onSelect,
 }: {
-  readonly voice: ZeroAvatarVideoVoice;
+  readonly voice: AvatarVideoVoice;
   readonly selected: boolean;
   readonly recommended: boolean;
-  readonly onSelect: (voice: ZeroAvatarVideoVoice) => void;
+  readonly onSelect: (voice: AvatarVideoVoice) => void;
 }) {
   const { t } = useTranslation();
   const recommendedDescriptionId = `avatar-voice-recommendation-${encodeURIComponent(voice.id)}`;
@@ -964,9 +952,9 @@ function AvatarVoiceCard({
 }
 
 function recommendedVoiceFirst(
-  voices: readonly ZeroAvatarVideoVoice[],
-  recommendedVoice: ZeroAvatarVideoVoice | null,
-): readonly ZeroAvatarVideoVoice[] {
+  voices: readonly AvatarVideoVoice[],
+  recommendedVoice: AvatarVideoVoice | null,
+): readonly AvatarVideoVoice[] {
   if (!recommendedVoice) {
     return voices;
   }
@@ -982,7 +970,7 @@ function SelectedAvatarCard({
   avatar,
   aspectRatio,
 }: {
-  readonly avatar: ZeroAvatarVideoAvatar;
+  readonly avatar: AvatarVideoAvatar;
   readonly aspectRatio: "portrait" | "landscape";
 }) {
   const { t } = useTranslation();
@@ -1023,7 +1011,7 @@ function AvatarVoiceCatalog({
 }: {
   readonly signals: ComposerSignals;
   readonly value: GenerationTemplateRequest | undefined;
-  readonly onSelect: (voice: ZeroAvatarVideoVoice) => void;
+  readonly onSelect: (voice: AvatarVideoVoice) => void;
 }) {
   const catalog = useLoadable(signals.template.avatarTemplateVoiceCatalogPage$);
   const recommendation = useLoadable(
@@ -1112,11 +1100,11 @@ function AvatarVoicePickerContent({
   onSelect,
 }: {
   readonly signals: ComposerSignals;
-  readonly avatar: ZeroAvatarVideoAvatar;
+  readonly avatar: AvatarVideoAvatar;
   readonly value: GenerationTemplateRequest | undefined;
   readonly onSelect: (
-    avatar: ZeroAvatarVideoAvatar,
-    voice: ZeroAvatarVideoVoice,
+    avatar: AvatarVideoAvatar,
+    voice: AvatarVideoVoice,
   ) => void;
 }) {
   const aspectRatio = useGet(
@@ -1156,7 +1144,7 @@ function AvatarCatalogPickerContent({
 }: {
   readonly signals: ComposerSignals;
   readonly value: GenerationTemplateRequest | undefined;
-  readonly onUse: (avatar: ZeroAvatarVideoAvatar) => void;
+  readonly onUse: (avatar: AvatarVideoAvatar) => void;
 }) {
   const catalog = useLoadable(signals.template.avatarTemplateCatalogPage$);
   const lastCatalog = useLastResolved(
@@ -1257,8 +1245,8 @@ export function AvatarTemplatePickerContent({
   readonly signals: ComposerSignals;
   readonly value: GenerationTemplateRequest | undefined;
   readonly onSelect: (
-    avatar: ZeroAvatarVideoAvatar,
-    voice: ZeroAvatarVideoVoice,
+    avatar: AvatarVideoAvatar,
+    voice: AvatarVideoVoice,
     aspectRatio: "portrait" | "landscape",
   ) => void;
 }) {

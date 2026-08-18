@@ -5,7 +5,7 @@ import type {
   TestSlackStatePostResponse,
   TestSlackStateResponse,
 } from "@okouai/api-contracts/contracts/test-slack-state";
-import { zeroIntegrationsSlackContract } from "@okouai/api-contracts/contracts/zero-integrations-slack";
+import { integrationsSlackContract } from "@okouai/api-contracts/contracts/integrations-slack";
 import { http, HttpResponse } from "msw";
 
 import { createApp } from "../../../app-factory";
@@ -156,7 +156,7 @@ describe("GET /api/zero/integrations/slack", () => {
     });
 
     const client = setupApp({ context, routes: integrationsSlackRoutes })(
-      zeroIntegrationsSlackContract,
+      integrationsSlackContract,
     );
 
     const response = await accept(
@@ -192,7 +192,7 @@ describe("GET /api/zero/integrations/slack", () => {
     });
 
     const client = setupApp({ context, routes: integrationsSlackRoutes })(
-      zeroIntegrationsSlackContract,
+      integrationsSlackContract,
     );
 
     const response = await accept(
@@ -226,7 +226,7 @@ describe("GET /api/zero/integrations/slack", () => {
     });
 
     const client = setupApp({ context, routes: integrationsSlackRoutes })(
-      zeroIntegrationsSlackContract,
+      integrationsSlackContract,
     );
 
     const response = await accept(
@@ -308,7 +308,7 @@ describe("GET /api/zero/integrations/slack", () => {
       mockAdminAuth();
 
       const client = setupApp({ context, routes: integrationsSlackRoutes })(
-        zeroIntegrationsSlackContract,
+        integrationsSlackContract,
       );
 
       const response = await accept(
@@ -333,7 +333,7 @@ describe("GET /api/zero/integrations/slack", () => {
       mockAdminAuth();
 
       const client = setupApp({ context, routes: integrationsSlackRoutes })(
-        zeroIntegrationsSlackContract,
+        integrationsSlackContract,
       );
 
       const response = await accept(
@@ -364,7 +364,7 @@ describe("GET /api/zero/integrations/slack", () => {
       mockAdminAuth();
 
       const client = setupApp({ context, routes: integrationsSlackRoutes })(
-        zeroIntegrationsSlackContract,
+        integrationsSlackContract,
       );
 
       const response = await accept(
@@ -455,7 +455,7 @@ describe("DELETE /api/zero/integrations/slack", () => {
 
   it("returns 401 when unauthenticated", async () => {
     const client = setupApp({ context, routes: integrationsSlackRoutes })(
-      zeroIntegrationsSlackContract,
+      integrationsSlackContract,
     );
 
     const response = await accept(
@@ -470,7 +470,7 @@ describe("DELETE /api/zero/integrations/slack", () => {
     const seeded = await seedDeleteContext({ withConnection: false });
     mocks.clerk.session(seeded.userId, seeded.orgId);
     const client = setupApp({ context, routes: integrationsSlackRoutes })(
-      zeroIntegrationsSlackContract,
+      integrationsSlackContract,
     );
 
     const response = await accept(
@@ -498,7 +498,7 @@ describe("DELETE /api/zero/integrations/slack", () => {
     );
     mocks.clerk.session(seeded.userId, seeded.orgId);
     const client = setupApp({ context, routes: integrationsSlackRoutes })(
-      zeroIntegrationsSlackContract,
+      integrationsSlackContract,
     );
 
     const response = await accept(
@@ -607,7 +607,7 @@ describe("DELETE /api/zero/integrations/slack?action=uninstall", () => {
     const seeded = await seedUninstallContext();
     mocks.clerk.session(seeded.userId, seeded.orgId, "org:member");
     const client = setupApp({ context, routes: integrationsSlackRoutes })(
-      zeroIntegrationsSlackContract,
+      integrationsSlackContract,
     );
 
     const response = await accept(
@@ -626,7 +626,7 @@ describe("DELETE /api/zero/integrations/slack?action=uninstall", () => {
     const seeded = await seedUninstallContext({ withInstallation: false });
     mocks.clerk.session(seeded.userId, seeded.orgId, "org:admin");
     const client = setupApp({ context, routes: integrationsSlackRoutes })(
-      zeroIntegrationsSlackContract,
+      integrationsSlackContract,
     );
 
     const response = await accept(
@@ -654,7 +654,7 @@ describe("DELETE /api/zero/integrations/slack?action=uninstall", () => {
     );
     mocks.clerk.session(seeded.userId, seeded.orgId, "org:admin");
     const client = setupApp({ context, routes: integrationsSlackRoutes })(
-      zeroIntegrationsSlackContract,
+      integrationsSlackContract,
     );
 
     const response = await accept(

@@ -32,7 +32,7 @@ import {
   loadOrgPlanCapabilities,
   type OrgPlanCapabilities,
 } from "./org-plan-entitlement-read.service";
-import { canRestorePlanSubscription } from "./zero-billing-restore.service";
+import { canRestorePlanSubscription } from "./billing-restore.service";
 
 const TIER_MONTHLY_CREDITS = Object.freeze<Record<PlanCreditTier, number>>({
   pro: 20_000,

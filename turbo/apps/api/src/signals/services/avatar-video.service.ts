@@ -2,10 +2,10 @@ import { Buffer } from "node:buffer";
 
 import { command, computed, type Computed } from "ccstate";
 import {
-  zeroAvatarVideoGenerateRequestSchema,
-  type ZeroAvatarVideoAvatarsQuery,
-  type ZeroAvatarVideoVoicesQuery,
-} from "@okouai/api-contracts/contracts/zero-avatar-video";
+  avatarVideoGenerateRequestSchema,
+  type AvatarVideoAvatarsQuery,
+  type AvatarVideoVoicesQuery,
+} from "@okouai/api-contracts/contracts/avatar-video";
 import { usageEvent } from "@okouai/db/schema/usage-event";
 import { usagePricing } from "@okouai/db/schema/usage-pricing";
 import { and, eq } from "drizzle-orm";
@@ -233,7 +233,7 @@ function compactObject(
 export function parseAvatarVideoOptions(
   body: unknown,
 ): AvatarVideoOptions | AvatarVideoErrorResponse {
-  const parsed = zeroAvatarVideoGenerateRequestSchema.safeParse(body);
+  const parsed = avatarVideoGenerateRequestSchema.safeParse(body);
   if (!parsed.success) {
     return badRequest(parsed.error.issues[0]?.message ?? "Invalid request");
   }
@@ -523,7 +523,7 @@ async function getJoggAiCollection(
 }
 
 export async function listJoggAiPublicAvatars(
-  query: ZeroAvatarVideoAvatarsQuery,
+  query: AvatarVideoAvatarsQuery,
   apiKey: string,
   signal: AbortSignal,
 ): Promise<
@@ -556,7 +556,7 @@ export async function listJoggAiPublicAvatars(
 }
 
 export async function listJoggAiPublicVoices(
-  query: ZeroAvatarVideoVoicesQuery,
+  query: AvatarVideoVoicesQuery,
   apiKey: string,
   signal: AbortSignal,
 ): Promise<

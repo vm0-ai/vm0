@@ -17,7 +17,7 @@ import {
   zeroWorkflowsDetailContract,
   type WorkflowFileEntry,
 } from "@okouai/api-contracts/contracts/zero-workflows";
-import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
+import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
 import {
   zeroModelProvidersByTypeContract,
   zeroModelProvidersMainContract,
@@ -564,7 +564,7 @@ export function createMiscRoutesApi(context: TestContext) {
     ): Promise<OrgModelPoliciesResponse> {
       const response = await accept(
         setupApp({ context, routes: modelPoliciesRoutes })(
-          zeroModelPoliciesMainContract,
+          modelPoliciesMainContract,
         ).list({
           headers: authenticate(context, actor),
         }),
@@ -580,7 +580,7 @@ export function createMiscRoutesApi(context: TestContext) {
     ) {
       return await accept(
         setupApp({ context, routes: modelPoliciesRoutes })(
-          zeroModelPoliciesMainContract,
+          modelPoliciesMainContract,
         ).update({
           headers: authenticate(context, actor),
           body: {

@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.169.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.4...runner-rs-v0.169.5) (2026-08-18)
+
+
+### Bug Fixes
+
+* **python:** bound body capture dependency headers ([#27869](https://github.com/vm0-ai/vm0/issues/27869)) ([60911fa](https://github.com/vm0-ai/vm0/commit/60911fa460886c2c2b9f073aedb632dbcfdf1362))
+
+
+### Documentation
+
+* **rust:** align pi launch contract docs with schema v2 ([#27851](https://github.com/vm0-ai/vm0/issues/27851)) ([b42e81c](https://github.com/vm0-ai/vm0/commit/b42e81ca8080bbffc3d2d79a4566b8b2d766eceb))
+
+
+### Refactoring
+
+* **python:** share builtin base url template layout ([#27864](https://github.com/vm0-ai/vm0/issues/27864)) ([2f62b71](https://github.com/vm0-ai/vm0/commit/2f62b712b78ff8722c0e6b547f2958f3efc1a608))
+* **rust:** neutralize session-history identity type names ([#27895](https://github.com/vm0-ai/vm0/issues/27895)) ([fff9b30](https://github.com/vm0-ai/vm0/commit/fff9b3074cc4e590b2fdb4318da515fcc4605a70))
+
 ## [0.169.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.3...runner-rs-v0.169.4) (2026-08-18)
 
 

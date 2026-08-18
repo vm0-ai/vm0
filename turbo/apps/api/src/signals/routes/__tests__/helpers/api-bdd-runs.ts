@@ -19,7 +19,7 @@ import {
   type UserPermissionGrantResponse,
 } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
 import { runnerRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
-import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
+import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
 import { zeroModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-model-providers";
 import type { ModelProviderResponse } from "@okouai/api-contracts/contracts/model-providers";
 import {
@@ -71,7 +71,7 @@ import { agentsRoutes } from "../../agents";
 import { billingStatusRoutes } from "../../billing-status";
 import { modelPoliciesRoutes } from "../../model-policies";
 import { zeroModelProvidersRoutes } from "../../zero-model-providers";
-import { zeroRunDetailRoutes } from "../../zero-run-detail";
+import { runDetailRoutes } from "../../run-detail";
 import { zeroRunsCancelRoutes } from "../../zero-runs-cancel";
 import { zeroRunsRoutes } from "../../zero-runs";
 import {
@@ -103,7 +103,7 @@ type RunnerConnectorRuntimeSyncStatus = 200 | 400 | 401 | 403 | 404 | 409 | 500;
 type RunnerActiveInputDeliveryStatus = 200 | 400 | 401 | 403 | 500;
 type ComposeContent = z.infer<typeof agentComposeApiContentSchema>;
 type OrgModelPolicyRequest = z.infer<
-  (typeof zeroModelPoliciesMainContract.update)["body"]
+  (typeof modelPoliciesMainContract.update)["body"]
 >;
 type OrgModelProviderUpsertRequest = z.infer<
   (typeof zeroModelProvidersMainContract.upsert)["body"]
@@ -157,7 +157,7 @@ const runRoutes = [
   ...billingStatusRoutes,
   ...modelPoliciesRoutes,
   ...zeroModelProvidersRoutes,
-  ...zeroRunDetailRoutes,
+  ...runDetailRoutes,
   ...zeroRunFixtureRoutes,
   ...zeroRunsRoutes,
   ...zeroRunsCancelRoutes,
@@ -897,7 +897,7 @@ export function createRunsApi(context: TestContext) {
       policies: OrgModelPolicyRequest["policies"],
     ): Promise<void> {
       await accept(
-        runApp(context)(zeroModelPoliciesMainContract).update({
+        runApp(context)(modelPoliciesMainContract).update({
           headers: authenticate(context, actor),
           body: { policies },
         }),
@@ -931,7 +931,7 @@ export function createRunsApi(context: TestContext) {
       ];
 
       await accept(
-        runApp(context)(zeroModelPoliciesMainContract).update({
+        runApp(context)(modelPoliciesMainContract).update({
           headers: authenticate(context, actor),
           body: { policies },
         }),

@@ -7,11 +7,11 @@ import {
   type State,
 } from "ccstate";
 import {
-  zeroMailContract,
-  type ZeroMailAttachment,
-  type ZeroMailDraft,
-  type ZeroMailInlineImage,
-} from "@okouai/api-contracts/contracts/zero-mail";
+  mailContract,
+  type MailAttachment,
+  type MailDraft,
+  type MailInlineImage,
+} from "@okouai/api-contracts/contracts/mail";
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -34,14 +34,14 @@ export interface MailDraftDescriptor {
 }
 
 interface MailAttachmentPartPreview {
-  readonly attachment: ZeroMailAttachment;
+  readonly attachment: MailAttachment;
   /** Object URL of the fetched part; null when the part no longer exists. */
   readonly url: string | null;
   readonly text$: TextPreviewComputed | undefined;
 }
 
 export interface MailInlineImagePreview {
-  readonly image: ZeroMailInlineImage;
+  readonly image: MailInlineImage;
   /** Object URL of the fetched part; null when the part no longer exists. */
   readonly url: string | null;
 }
@@ -58,8 +58,8 @@ export interface MailAttachmentPreviews {
 
 export interface MailDraftSignals extends MailDraftDescriptor {
   readonly threadId: string;
-  readonly draft$: Computed<Promise<ZeroMailDraft | null>>;
-  readonly sidebarDraft$: Computed<Promise<ZeroMailDraft | null>>;
+  readonly draft$: Computed<Promise<MailDraft | null>>;
+  readonly sidebarDraft$: Computed<Promise<MailDraft | null>>;
   readonly attachmentPreviews$: Computed<Promise<MailAttachmentPreviews>>;
   readonly setAttachmentScopeRef$: Command<
     (() => void) | undefined,
@@ -96,7 +96,7 @@ export function parseMailDraftUrl(value: string): MailDraftDescriptor | null {
 
 function createAttachmentPreviews(
   descriptor: MailDraftDescriptor,
-  sidebarDraft$: Computed<Promise<ZeroMailDraft | null>>,
+  sidebarDraft$: Computed<Promise<MailDraft | null>>,
 ): Pick<MailDraftSignals, "attachmentPreviews$" | "setAttachmentScopeRef$"> {
   const attachmentObjectUrls = new Map<string, string>();
   const attachmentScopeActive$ = state(false);
@@ -120,7 +120,7 @@ function createAttachmentPreviews(
       const currentLoadVersion = ++loadVersion;
       const draftPromise = get(sidebarDraft$);
       const signal = get(pageSignal$);
-      const client = get(zeroClient$)(zeroMailContract);
+      const client = get(zeroClient$)(mailContract);
       signal.throwIfAborted();
       if (cleanupSignal !== signal) {
         cleanupSignal?.removeEventListener(
@@ -226,22 +226,22 @@ interface MailDraftResourceSignals extends Pick<
   MailDraftSignals,
   "draft$" | "sidebarDraft$" | "reloadDraft$"
 > {
-  readonly draftOverride$: State<ZeroMailDraft | null | undefined>;
+  readonly draftOverride$: State<MailDraft | null | undefined>;
 }
 
 function createMailDraftResourceSignals(
   descriptor: MailDraftDescriptor,
 ): MailDraftResourceSignals {
-  const draftOverride$ = state<ZeroMailDraft | null | undefined>(undefined);
+  const draftOverride$ = state<MailDraft | null | undefined>(undefined);
   const draftReloadVersion$ = state(0);
-  const draft$ = computed(async (get): Promise<ZeroMailDraft | null> => {
+  const draft$ = computed(async (get): Promise<MailDraft | null> => {
     get(draftReloadVersion$);
     const override = get(draftOverride$);
     if (override !== undefined) {
       return override;
     }
     const response = await accept(
-      get(zeroClient$)(zeroMailContract).getDraft({
+      get(zeroClient$)(mailContract).getDraft({
         params: { mailDraftId: descriptor.mailDraftId },
         fetchOptions: { signal: get(pageSignal$) },
       }),
@@ -271,7 +271,7 @@ function createMailDraftMutationSignals(
   const delete$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
       await accept(
-        get(zeroClient$)(zeroMailContract).deleteDraft({
+        get(zeroClient$)(mailContract).deleteDraft({
           params: { mailDraftId: descriptor.mailDraftId },
           fetchOptions: { signal },
         }),
@@ -283,7 +283,7 @@ function createMailDraftMutationSignals(
   );
   const send$ = command(async ({ get, set }, signal: AbortSignal) => {
     const response = await accept(
-      get(zeroClient$)(zeroMailContract).sendDraft({
+      get(zeroClient$)(mailContract).sendDraft({
         params: { mailDraftId: descriptor.mailDraftId },
         fetchOptions: { signal },
       }),

@@ -1,4 +1,4 @@
-import { zeroTeamsConnectContract } from "@okouai/api-contracts/contracts/zero-teams-connect";
+import { teamsConnectContract } from "@okouai/api-contracts/contracts/teams-connect";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -52,7 +52,7 @@ describe("zero Teams connect page", () => {
   });
 
   it("connects from a Teams link with tenant and user parameters", async () => {
-    context.mocks.api(zeroTeamsConnectContract.getStatus, ({ respond }) => {
+    context.mocks.api(teamsConnectContract.getStatus, ({ respond }) => {
       return respond(200, {
         isConnected: false,
         isInstalled: true,
@@ -64,7 +64,7 @@ describe("zero Teams connect page", () => {
         defaultAgentName: null,
       });
     });
-    context.mocks.api(zeroTeamsConnectContract.connect, ({ body, respond }) => {
+    context.mocks.api(teamsConnectContract.connect, ({ body, respond }) => {
       expect(body).toMatchObject({
         tenantId: "tenant-123",
         tenantName: "Acme Tenant",
