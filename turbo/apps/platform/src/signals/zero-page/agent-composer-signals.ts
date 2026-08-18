@@ -201,10 +201,11 @@ function createAgentComposerSignalsWithDraft(
       }
       const access = get(newThreadComputerAccess$);
       const imageModelEnabled = get(imageModelSelectionEnabled$);
+      const videoModelEnabled = get(videoModelSelectionEnabled$);
       const [hosts, imageModelPin, videoModelPin] = await Promise.all([
         get(computerUseHosts$),
         imageModelEnabled ? get(chatPageImageModelPin$) : Promise.resolve(null),
-        get(chatPageVideoModelPin$),
+        videoModelEnabled ? get(chatPageVideoModelPin$) : Promise.resolve(null),
       ]);
       signal.throwIfAborted();
       const hostId =
