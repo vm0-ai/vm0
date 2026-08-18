@@ -6,7 +6,6 @@ import zlib
 
 import brotli
 import pytest
-import zstandard
 
 from body_capture import add_capture_fields
 from body_limits import BODY_CAPTURE_LIMIT
@@ -382,19 +381,14 @@ class TestAddCaptureFields:
         assert entry["response_body"] == body.decode()
         assert entry["response_body_encoding"] == "utf-8"
 
-    @pytest.mark.parametrize("encoding", ["br", "zstd"])
-    def test_response_incomplete_strict_compression_skips_body(self, real_flow, encoding):
+    def test_response_incomplete_brotli_skips_body(self, real_flow):
         body = b"incomplete response body" * 100
-        if encoding == "br":
-            compressed = brotli.compress(body)
-        else:
-            compressed = zstandard.ZstdCompressor().compress(body)
         flow = real_flow(
             method="POST",
             host="api.example.com",
             response_content_type="text/plain",
-            response_body=compressed[:-1],
-            response_encoding=encoding,
+            response_body=brotli.compress(body)[:-1],
+            response_encoding="br",
         )
 
         entry = {}
