@@ -106,6 +106,8 @@ require_fragments(
         '"https://${CF_PAGES_PROJECT_NAME}.pages.dev"',
     ],
 )
+if release_api_verification_step.get("shell") != "bash":
+    raise RuntimeError("API production verification must use Bash")
 if "app_release_created" in str(release_api_job.get("if", "")):
     raise RuntimeError("API production verification must not depend on an App release")
 require_fragments(
