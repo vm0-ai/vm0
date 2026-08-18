@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.458.2](https://github.com/vm0-ai/vm0/compare/api-v1.458.1...api-v1.458.2) (2026-08-18)
+
+
+### Bug Fixes
+
+* **api:** refresh API release marker comment ([#27844](https://github.com/vm0-ai/vm0/issues/27844)) ([91a1c30](https://github.com/vm0-ai/vm0/commit/91a1c301a4e9f7a5a15613f35da73e8619c3e49e))
+
 ## [1.458.1](https://github.com/vm0-ai/vm0/compare/api-v1.458.0...api-v1.458.1) (2026-08-18)
 
 
