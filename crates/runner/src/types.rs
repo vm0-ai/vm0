@@ -138,7 +138,8 @@ pub struct ExecutionContext {
     pub model_usage_provider: Option<String>,
     #[serde(default)]
     pub codex_runtime_config: Option<CodexRuntimeConfig>,
-    /// Non-secret Pi launch inputs resolved from mounted Storage in Sandbox.
+    /// Schema-v2 Pi launch config marker. Runtime resources are discovered from
+    /// Pi's canonical filesystem locations by the official loader.
     #[serde(default)]
     pub pi_launch_config: Option<serde_json::Value>,
     /// Non-secret model metadata for the Pi Sandbox runtime.
