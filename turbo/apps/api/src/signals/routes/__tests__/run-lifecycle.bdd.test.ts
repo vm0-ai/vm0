@@ -9468,7 +9468,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
   it("hands off more than one runtime-sync batch without truncation", async () => {
     const api = createRunsApi(context);
-    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const { actor, agentId } = await entitledRunActor();
     if (!actor.orgId) {
       throw new Error("Expected a custom connector actor with an organization");
     }
@@ -9500,7 +9500,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       prompt: "use more than one connector runtime sync batch",
       modelProvider: "anthropic-api-key",
     });
-    await api.heartbeatRunner(runnerGroup);
+    onTestFinished(async () => {
+      await api.requestCancelRun(actor, run.runId, [200]);
+    });
     const claim = await api.claimRunnerJob(run.runId);
     const expectedIds = [...createdIds].sort();
     expect(
@@ -9510,8 +9512,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         })
         .sort(),
     ).toStrictEqual(expectedIds);
-
-    await api.requestCancelRun(actor, run.runId, [200]);
   });
 
   it("keeps a granted custom skill independent from runtime admission", async () => {
