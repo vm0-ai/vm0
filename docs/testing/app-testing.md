@@ -208,11 +208,11 @@ specific test scenarios. Do not import the MSW `server` or call `server.use()`
 from page tests directly.
 
 ```typescript
-import { zeroOrgContract } from "@okouai/api-contracts/contracts/zero-org";
+import { orgContract } from "@okouai/api-contracts/contracts/org-routes";
 import { HttpResponse } from "msw";
 
 it("should show error when API returns 404", async () => {
-  context.mocks.api(zeroOrgContract.get, ({ respond }) => {
+  context.mocks.api(orgContract.get, ({ respond }) => {
     return respond(404, {
       error: { code: "NOT_FOUND", message: "Not found" },
     });
