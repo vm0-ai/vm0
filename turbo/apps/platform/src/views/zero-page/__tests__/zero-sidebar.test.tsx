@@ -156,6 +156,44 @@ function prepareAgentTeam(targetContext = context): TeamComposeItem[] {
   return team;
 }
 
+const OVERFLOW_PINNED_AGENTS = [
+  {
+    id: "c0000000-0000-4000-a000-000000000004",
+    displayName: "Operations Agent",
+  },
+  {
+    id: "c0000000-0000-4000-a000-000000000005",
+    displayName: "Analytics Agent",
+  },
+  { id: "c0000000-0000-4000-a000-000000000006", displayName: "Billing Agent" },
+] as const;
+
+/**
+ * Pins five agents so the grid holds six cards plus New, which overflows the
+ * five-column row and puts cards on both sides of the New button.
+ */
+function prepareOverflowingPinnedAgents(targetContext = context): string[] {
+  const team = prepareAgentTeam(targetContext);
+  targetContext.mocks.data.team([
+    ...team,
+    ...OVERFLOW_PINNED_AGENTS.map((agent, index) => {
+      return {
+        ...team[1]!,
+        id: agent.id,
+        displayName: agent.displayName,
+        headVersionId: `version_${String(index + 4)}`,
+      };
+    }),
+  ]);
+  return [
+    RESEARCH_AGENT_ID,
+    SUPPORT_AGENT_ID,
+    ...OVERFLOW_PINNED_AGENTS.map((agent) => {
+      return agent.id;
+    }),
+  ];
+}
+
 function createThread(
   id: string,
   title: string,
@@ -2995,20 +3033,8 @@ describe("zero sidebar", () => {
   });
 
   it("preserves pinned agent rows across a loading refresh", async () => {
-    const team = prepareAgentTeam();
-    const operationsAgentId = "c0000000-0000-4000-a000-000000000004";
-    context.mocks.data.team([
-      ...team,
-      {
-        ...team[1]!,
-        id: operationsAgentId,
-        displayName: "Operations Agent",
-        headVersionId: "version_4",
-      },
-    ]);
-    context.mocks.data.userPreferences({
-      pinnedAgentIds: [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID, operationsAgentId],
-    });
+    const pinnedAgentIds = prepareOverflowingPinnedAgents();
+    context.mocks.data.userPreferences({ pinnedAgentIds });
 
     setupSidebarPage({
       context,
@@ -3022,21 +3048,13 @@ describe("zero sidebar", () => {
     await waitFor(() => {
       expect(
         within(initialGrid).getAllByTestId("pinned-agent-card"),
-      ).toHaveLength(4);
+      ).toHaveLength(6);
     });
 
     cleanup();
 
-    const refreshTeam = prepareAgentTeam(refreshContext);
-    refreshContext.mocks.data.team([
-      ...refreshTeam,
-      {
-        ...refreshTeam[1]!,
-        id: operationsAgentId,
-        displayName: "Operations Agent",
-        headVersionId: "version_4",
-      },
-    ]);
+    const refreshPinnedAgentIds =
+      prepareOverflowingPinnedAgents(refreshContext);
     const preferencesGate = refreshContext.mocks.deferred<void>();
     refreshContext.mocks.api(
       userPreferencesContract.get,
@@ -3057,11 +3075,7 @@ describe("zero sidebar", () => {
             "fr-FR",
             "hi-IN",
           ],
-          pinnedAgentIds: [
-            RESEARCH_AGENT_ID,
-            SUPPORT_AGENT_ID,
-            operationsAgentId,
-          ],
+          pinnedAgentIds: refreshPinnedAgentIds,
           sendMode: "enter",
           morningBriefEnabled: false,
           morningBriefNextRunAt: null,
@@ -3079,33 +3093,23 @@ describe("zero sidebar", () => {
     });
 
     const grid = await screen.findByTestId("pinned-agents-grid");
+    // Six cards plus New cached two rows, so the skeleton grid must restore
+    // 2 * 5 - 1 placeholders rather than the single-row default of 4.
     expect(within(grid).getAllByTestId("pinned-agent-skeleton")).toHaveLength(
-      4,
+      9,
     );
 
     preferencesGate.resolve();
 
     await waitFor(() => {
       expect(within(grid).queryByTestId("pinned-agent-skeleton")).toBeNull();
-      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(4);
+      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
     });
   });
 
   it("keeps New after the first four pinned agents in navigation order", async () => {
-    const team = prepareAgentTeam();
-    const operationsAgentId = "c0000000-0000-4000-a000-000000000004";
-    context.mocks.data.team([
-      ...team,
-      {
-        ...team[1]!,
-        id: operationsAgentId,
-        displayName: "Operations Agent",
-        headVersionId: "version_4",
-      },
-    ]);
-    context.mocks.data.userPreferences({
-      pinnedAgentIds: [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID, operationsAgentId],
-    });
+    const pinnedAgentIds = prepareOverflowingPinnedAgents();
+    context.mocks.data.userPreferences({ pinnedAgentIds });
 
     setupSidebarPage({
       context,
@@ -3118,7 +3122,7 @@ describe("zero sidebar", () => {
     const pinnedSection = await screen.findByTestId("pinned-agents-horizontal");
     const grid = within(pinnedSection).getByTestId("pinned-agents-grid");
     await waitFor(() => {
-      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(4);
+      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
     });
 
     const newAgent = queryAllByRoleFast("button", grid).find((candidate) => {
@@ -3127,10 +3131,17 @@ describe("zero sidebar", () => {
     if (!newAgent) {
       throw new Error("New agent button not found");
     }
-    const operationsAgent = pinnedAgentLink(grid, "Operations Agent");
+    // Cards render as Zero, Research, Support, Operations, New, Analytics,
+    // Billing, so New closes the first row and the rest wrap after it.
+    const fourthAgent = pinnedAgentLink(grid, "Operations Agent");
+    const fifthAgent = pinnedAgentLink(grid, "Analytics Agent");
 
     expect(
-      operationsAgent.compareDocumentPosition(newAgent) &
+      fourthAgent.compareDocumentPosition(newAgent) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(
+      newAgent.compareDocumentPosition(fifthAgent) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
