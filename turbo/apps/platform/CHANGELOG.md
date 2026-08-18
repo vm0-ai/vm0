@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.766.2](https://github.com/vm0-ai/vm0/compare/app-v0.766.1...app-v0.766.2) (2026-08-18)
+
+
+### Bug Fixes
+
+* **platform:** trust historical cross-brand action links ([#27827](https://github.com/vm0-ai/vm0/issues/27827)) ([a6aa776](https://github.com/vm0-ai/vm0/commit/a6aa7764f061ee74c1bd95b3658398bb64cd791b))
+* **ui:** stabilize pinned agent loading layout ([#27790](https://github.com/vm0-ai/vm0/issues/27790)) ([0713c11](https://github.com/vm0-ai/vm0/commit/0713c1125844ed2b1af0467e709a404c7d032787))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.566.0
+
 ## [0.766.1](https://github.com/vm0-ai/vm0/compare/app-v0.766.0...app-v0.766.1) (2026-08-17)
 
 

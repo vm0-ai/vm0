@@ -3035,6 +3035,48 @@ describe("zero attachment chips", () => {
     expect(screen.getByLabelText("Preview abcdefghij.mp4")).toBeInTheDocument();
   });
 
+  it("recognizes historical Okou and preview file links without trusting Okou subdomains", async () => {
+    context.mocks.browser.url(`https://app.vm0.ai/chats/${THREAD_ID}`);
+    const okouFileUrl =
+      "https://app.okou.ai/f/test-user/test-run/okou-history.png";
+    const vm6FileUrl =
+      "https://pr-27815-app.vm6.ai/f/test-user/test-run/vm6-preview.png";
+    const vm7FileUrl =
+      "https://staging-app.vm7.ai/f/test-user/test-run/vm7-preview.png";
+    const forgedOkouFileUrl =
+      "https://app.okou.ai.evil.example/f/test-user/test-run/forged.png";
+    const arbitraryOkouFileUrl =
+      "https://tenant.okou.ai/f/test-user/test-run/arbitrary.png";
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatEvents: [
+        {
+          id: "msg-cross-brand-file-links",
+          role: "assistant",
+          content: [
+            okouFileUrl,
+            vm6FileUrl,
+            vm7FileUrl,
+            forgedOkouFileUrl,
+            arbitraryOkouFileUrl,
+          ].join("\n"),
+          runId: "run-cross-brand-file-links",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await expect(
+      screen.findByAltText("okou-history.png"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByAltText("vm6-preview.png")).toBeInTheDocument();
+    expect(screen.getByAltText("vm7-preview.png")).toBeInTheDocument();
+    expect(screen.queryByAltText("forged.png")).not.toBeInTheDocument();
+    expect(screen.queryByAltText("arbitrary.png")).not.toBeInTheDocument();
+  });
+
   it("requires complete urls for flat artifact preview cards", async () => {
     const incompletePath = "artifacts/97ngzkxdyn.mp4";
     const rootRelativePath = "/artifacts/97ngzkxdyn.mp4";

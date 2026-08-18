@@ -317,17 +317,23 @@ fn run_download_task(task: PreparedDownloadTask) -> bool {
         task.task.mount_path
     );
     let mut remote_metrics = task.task.telemetry.remote_metrics();
+    let mut opened_file_compressed_bytes = None;
 
     match download_with_retry(
         &task.task.url,
         task.effective_mount_path(),
+        &mut opened_file_compressed_bytes,
         remote_metrics.as_mut(),
     ) {
         Ok(()) => {
             let elapsed = start.elapsed();
-            task.task
-                .telemetry
-                .record_result(elapsed, true, None, remote_metrics.as_ref());
+            task.task.telemetry.record_result(
+                elapsed,
+                true,
+                None,
+                opened_file_compressed_bytes,
+                remote_metrics.as_ref(),
+            );
             log_info!(
                 LOG_TAG,
                 "{} downloaded in {}ms",
@@ -342,6 +348,7 @@ fn run_download_task(task: PreparedDownloadTask) -> bool {
                 start.elapsed(),
                 false,
                 Some(&failure_detail),
+                opened_file_compressed_bytes,
                 remote_metrics.as_ref(),
             );
             log_error!(LOG_TAG, "{failure_detail}");
@@ -358,6 +365,7 @@ fn run_download_task(task: PreparedDownloadTask) -> bool {
 fn download_with_retry(
     url: &str,
     target_path: &Path,
+    opened_file_compressed_bytes: &mut Option<u64>,
     mut remote_metrics: Option<&mut RemoteArchiveTaskMetrics>,
 ) -> Result<(), DownloadError> {
     let mut last_error = None;
@@ -367,7 +375,12 @@ fn download_with_retry(
             metrics.begin_attempt();
         }
         let attempt_start = Instant::now();
-        match download_and_extract(url, target_path, remote_metrics.as_deref_mut()) {
+        match download_and_extract(
+            url,
+            target_path,
+            opened_file_compressed_bytes,
+            remote_metrics.as_deref_mut(),
+        ) {
             Ok(()) => return Ok(()),
             Err(e) => {
                 log_warn!(
@@ -393,6 +406,7 @@ fn download_with_retry(
 fn download_and_extract(
     url: &str,
     target_path: &Path,
+    opened_file_compressed_bytes: &mut Option<u64>,
     remote_metrics: Option<&mut RemoteArchiveTaskMetrics>,
 ) -> Result<(), DownloadError> {
     fs::create_dir_all(target_path).map_err(|e| {
@@ -414,6 +428,7 @@ fn download_and_extract(
             return Err(error);
         }
     };
+    *opened_file_compressed_bytes = reader.compressed_bytes();
     let extract_start = Instant::now();
     let result = archive::extract_tar_gz(reader, target_path);
     let extract_wall = extract_start.elapsed();
