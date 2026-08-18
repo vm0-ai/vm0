@@ -150,6 +150,7 @@ export {
   chatThreadByIdContract,
   chatThreadDraftContract,
   chatThreadMarkReadContract,
+  chatThreadMarkUnreadContract,
   chatThreadMarkAgentReadContract,
   chatThreadComputerUseHostContract,
   chatEventsContract,

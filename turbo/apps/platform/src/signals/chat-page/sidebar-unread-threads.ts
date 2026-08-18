@@ -1,51 +1,18 @@
-import { command, computed, state } from "ccstate";
+import { command, computed } from "ccstate";
 import {
   chatThreadMarkAgentReadContract,
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
-import { now } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { currentChatAgentId$ } from "../agent-chat.ts";
 import {
   reloadChatIndicators$,
   reloadChatIndicatorsCounter$,
 } from "../chat-thread-list-reload.ts";
+import { optimisticReadMarks$ } from "./optimistic-chat-thread-read-marks.ts";
 
 type UnreadSnapshot = readonly { threadId: string; unreadAt: string }[];
-
-/**
- * Local optimistic mark-read timestamps. A thread in the server unread
- * snapshot stays hidden while the local mark is newer than that snapshot.
- */
-const optimisticReadMarks$ = state<ReadonlyMap<string, number>>(new Map());
-
-export const recordOptimisticReadMark$ = command(
-  ({ get, set }, threadId: string) => {
-    const next = new Map(get(optimisticReadMarks$));
-    next.set(threadId, now());
-    set(optimisticReadMarks$, next);
-  },
-);
-
-export const applyUnreadSnapshot$ = command(
-  ({ get, set }, unreads: UnreadSnapshot) => {
-    const marks = get(optimisticReadMarks$);
-    if (marks.size === 0) {
-      return;
-    }
-    const next = new Map(marks);
-    for (const unread of unreads) {
-      const markedAt = next.get(unread.threadId);
-      if (markedAt !== undefined && Date.parse(unread.unreadAt) > markedAt) {
-        next.delete(unread.threadId);
-      }
-    }
-    if (next.size !== marks.size) {
-      set(optimisticReadMarks$, next);
-    }
-  },
-);
 
 /**
  * Server unread snapshot for the current agent. Refetched alongside the

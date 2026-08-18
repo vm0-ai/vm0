@@ -1,5 +1,10 @@
 import { command, computed, state } from "ccstate";
-import { setAblyLoop$, subscribeRealtimeReadyCatchUp$ } from "./realtime.ts";
+import {
+  setAblyLoop$,
+  setAblyPayloadLoop$,
+  subscribeRealtimeReadyCatchUp$,
+} from "./realtime.ts";
+import { clearOptimisticReadMark$ } from "./chat-page/optimistic-chat-thread-read-marks.ts";
 
 const internalReloadChatIndicators$ = state(0);
 
@@ -17,6 +22,24 @@ const reloadChatIndicatorsFromRealtime$ = command(({ set }) => {
   set(reloadChatIndicators$);
   return false;
 });
+
+const reloadChatIndicatorsFromReadCursor$ = command(
+  ({ set }, payload: unknown, signal: AbortSignal) => {
+    signal.throwIfAborted();
+    if (
+      typeof payload === "object" &&
+      payload !== null &&
+      "threadId" in payload &&
+      typeof payload.threadId === "string" &&
+      "lastReadAt" in payload &&
+      payload.lastReadAt === null
+    ) {
+      set(clearOptimisticReadMark$, payload.threadId);
+    }
+    set(reloadChatIndicators$);
+    return false;
+  },
+);
 
 const reloadChatIndicatorsOnForeground$ = command(
   ({ set }, signal: AbortSignal) => {
@@ -51,10 +74,10 @@ export const subscribeThreadListChanged$ = command(
 export const subscribeChatThreadReadCursorUpdated$ = command(
   async ({ set }, signal: AbortSignal) => {
     await set(
-      setAblyLoop$,
+      setAblyPayloadLoop$,
       {
         topic: "chatThreadReadCursorUpdated",
-        loopCommand$: reloadChatIndicatorsFromRealtime$,
+        loopCommand$: reloadChatIndicatorsFromReadCursor$,
         options: { runOnForegroundCatchUp: false },
       },
       signal,
