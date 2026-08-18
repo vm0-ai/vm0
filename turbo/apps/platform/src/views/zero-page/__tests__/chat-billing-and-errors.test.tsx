@@ -980,7 +980,7 @@ describe("initial thinking indicator", () => {
     });
   });
 
-  it("hides the thinking marker when the same run has assistant text", async () => {
+  it("keeps the thinking block inline when the same run has assistant text", async () => {
     const threadId = "e1000000-0000-4000-a000-000000000018";
     mockChatLifecycle(context, {
       threadId,
@@ -1017,8 +1017,13 @@ describe("initial thinking indicator", () => {
     });
 
     await screen.findByText("Here is the checklist.");
+    const thinkingContent = screen.getAllByText("Reviewing your request");
+    expect(thinkingContent).toHaveLength(2);
+    const thinkingBlock = thinkingContent[0]?.closest("details");
+    expect(thinkingBlock).toHaveAttribute("data-thinking-block");
+    expect(thinkingBlock).not.toHaveAttribute("open");
     expect(
-      screen.queryByText("Reviewing your request"),
-    ).not.toBeInTheDocument();
+      document.querySelector("[data-thinking-indicator]"),
+    ).toBeInTheDocument();
   });
 });
