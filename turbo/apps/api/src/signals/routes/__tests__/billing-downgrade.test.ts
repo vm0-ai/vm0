@@ -489,7 +489,8 @@ describe("POST /api/zero/billing/downgrade", () => {
     const periodStart = 1_782_809_751;
     const periodEnd = 1_785_401_751;
     const checkoutUrl = "https://checkout.stripe.com/setup/downgrade";
-    const returnUrl = "https://app.vm0.ai/settings?settings=billing";
+    const fallbackReturnUrl = "https://app.okou.ai";
+    const explicitReturnUrl = "https://app.vm0.ai/settings?settings=billing";
     const fixture = await track(
       store.set(
         seedInvoicesOrg$,
@@ -502,6 +503,7 @@ describe("POST /api/zero/billing/downgrade", () => {
         context.signal,
       ),
     );
+    mockEnv("APP_URL", "https://app.vm0.ai");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
@@ -540,8 +542,9 @@ describe("POST /api/zero/billing/downgrade", () => {
     );
     const response = await accept(
       client.create({
-        body: { targetTier: "pro", returnUrl },
+        body: { targetTier: "pro" },
         headers: { authorization: "Bearer clerk-session" },
+        extraHeaders: { origin: "https://app.okou.ai" },
       }),
       [200],
     );
@@ -554,8 +557,8 @@ describe("POST /api/zero/billing/downgrade", () => {
       mode: "setup",
       customer: customerId,
       currency: "usd",
-      success_url: returnUrl,
-      cancel_url: returnUrl,
+      success_url: fallbackReturnUrl,
+      cancel_url: fallbackReturnUrl,
       metadata: {
         purpose: "billing_downgrade",
         orgId: fixture.orgId,
@@ -571,6 +574,22 @@ describe("POST /api/zero/billing/downgrade", () => {
         },
       },
     });
+    context.mocks.stripe.checkout.sessions.create.mockClear();
+    const explicitResponse = await accept(
+      client.create({
+        body: { targetTier: "pro", returnUrl: explicitReturnUrl },
+        headers: { authorization: "Bearer clerk-session" },
+        extraHeaders: { origin: "https://app.okou.ai" },
+      }),
+      [200],
+    );
+    expect(explicitResponse.body).toStrictEqual(response.body);
+    expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success_url: explicitReturnUrl,
+        cancel_url: explicitReturnUrl,
+      }),
+    );
     expect(
       context.mocks.stripe.subscriptionSchedules.create,
     ).not.toHaveBeenCalled();

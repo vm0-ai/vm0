@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import { randomUUID } from "node:crypto";
 
 import { testMailDraftStateContract } from "@okouai/api-contracts/contracts/test-mail-draft-state";
 import { zeroMailContract } from "@okouai/api-contracts/contracts/zero-mail";
@@ -7,6 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
+import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { testMailDraftStateRoutes } from "../test-mail-draft-state";
 import { createBddApi } from "./helpers/api-bdd";
@@ -290,10 +292,11 @@ function authHeaders() {
 
 async function linkDraft(
   fixture: Awaited<ReturnType<typeof seedGmailMailCardFixture>>,
+  headers = authHeaders(),
 ) {
   return await accept(
     client().linkDraft({
-      headers: authHeaders(),
+      headers,
       body: {
         threadId: fixture.thread.id,
         agentId: fixture.agent.agentId,
@@ -306,16 +309,28 @@ async function linkDraft(
 
 describe("POST /api/zero/mail/drafts/link", () => {
   it("links without injecting a duplicate card and sends without rebuilding MIME", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
     const fixture = await seedGmailMailCardFixture();
     const gmail = mockGmailDraftApi();
 
-    const linked = await linkDraft(fixture);
+    const okouToken = runs.zeroTokenForRunWithCapabilities(
+      fixture.actor,
+      randomUUID(),
+      ["connector:read"],
+      "okou",
+    );
+    const linked = await linkDraft(fixture, {
+      authorization: `Bearer ${okouToken}`,
+    });
     expect(linked.body.mailDraftUrl).toBe(
-      `http://localhost:3002/mail/drafts/${linked.body.mailDraftId}`,
+      `https://app.okou.ai/mail/drafts/${linked.body.mailDraftId}`,
     );
 
     const duplicateLink = await linkDraft(fixture);
-    expect(duplicateLink.body).toStrictEqual(linked.body);
+    expect(duplicateLink.body).toStrictEqual({
+      mailDraftId: linked.body.mailDraftId,
+      mailDraftUrl: `https://app.vm0.ai/mail/drafts/${linked.body.mailDraftId}`,
+    });
 
     const loaded = await accept(
       client().getDraft({
@@ -323,6 +338,9 @@ describe("POST /api/zero/mail/drafts/link", () => {
         params: { mailDraftId: linked.body.mailDraftId },
       }),
       [200],
+    );
+    expect(loaded.body.mailDraftUrl).toBe(
+      `https://app.vm0.ai/mail/drafts/${linked.body.mailDraftId}`,
     );
     expect(loaded.body.mailDraft).toMatchObject({
       version: 3,

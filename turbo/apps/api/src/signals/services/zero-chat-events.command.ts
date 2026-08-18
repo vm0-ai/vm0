@@ -13,6 +13,7 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import type { SupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import {
   chatEvents,
@@ -2682,9 +2683,10 @@ function scheduleClaimedQueueFirstEventSideEffects(params: {
 async function buildInsufficientCreditsAssistantMessage(params: {
   readonly db: Db;
   readonly orgId: string;
+  readonly publicBrand: PublicBrand;
 }): Promise<string> {
   const capabilities = await loadOrgPlanCapabilities(params.db, params.orgId);
-  const appUrl = env("APP_URL").replace(/\/$/, "");
+  const appUrl = appUrlForPublicBrand(env("APP_URL"), params.publicBrand);
   const usageUrl = `${appUrl}/?settings=usage`;
   const billingUrl = `${appUrl}/?settings=billing&billingView=plans`;
   if (capabilities?.canBuyCredits !== true) {
@@ -2786,12 +2788,14 @@ async function appendInsufficientCreditsEvents(params: {
   readonly body: RuntimeNormalSendBody;
   readonly userId: string;
   readonly orgId: string;
+  readonly publicBrand: PublicBrand;
   readonly touchThreadSort: boolean;
   readonly queueFirstEventId?: string;
 }): Promise<CreatedChatEventResponse> {
   const assistantContent = await buildInsufficientCreditsAssistantMessage({
     db: params.prepared.db,
     orgId: params.orgId,
+    publicBrand: params.publicBrand,
   });
   if (params.queueFirstEventId) {
     return appendQueueFirstInsufficientCreditsEvents({
@@ -3123,6 +3127,7 @@ const createNormalChatRun$ = command(
         body: prepared.body,
         userId: args.userId,
         orgId: args.orgId,
+        publicBrand: args.publicBrand,
         touchThreadSort: shouldTouchThreadSortFromNormalSend(
           args.zeroPreCreateSource,
           prepared.thread.isNewThread,

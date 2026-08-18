@@ -5,6 +5,7 @@ import {
   type DesktopProduct,
 } from "@okouai/api-contracts/contracts/client-headers";
 import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { cronComputerUseScreenshotCleanupContract } from "@okouai/api-contracts/contracts/cron";
 import {
   zeroComputerUseAuthorizationRequestsContract,
@@ -322,6 +323,7 @@ export function zeroComputerUseToken(args: {
   readonly capabilities: readonly ZeroCapability[];
   readonly runId?: string;
   readonly computerUseHostId?: string;
+  readonly publicBrand?: PublicBrand;
 }): { readonly token: string; readonly runId: string } {
   const seconds = Math.floor(now() / 1000);
   const runId = args.runId ?? `run_${randomUUID()}`;
@@ -331,6 +333,9 @@ export function zeroComputerUseToken(args: {
     orgId: args.orgId,
     runId,
     capabilities: [...args.capabilities],
+    ...(args.publicBrand === undefined
+      ? {}
+      : { publicBrand: args.publicBrand }),
     ...(args.computerUseHostId
       ? { computerUseHostId: args.computerUseHostId }
       : {}),

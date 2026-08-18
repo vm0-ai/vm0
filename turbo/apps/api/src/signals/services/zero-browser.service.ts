@@ -21,6 +21,8 @@ import {
 } from "@okouai/db/schema/browser-session";
 import { agentComposes } from "@okouai/db/schema/agent-compose";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { command } from "ccstate";
 import {
   and,
@@ -146,6 +148,7 @@ interface BrowserScreen {
 interface BrowserActor {
   readonly orgId: string;
   readonly userId: string;
+  readonly publicBrand: PublicBrand;
   readonly runId?: string;
 }
 
@@ -156,6 +159,7 @@ interface BrowserRunContext {
   // calling run; for viewer requests it is the thread's most recent run.
   readonly runId: string;
   readonly chatThreadId: string;
+  readonly publicBrand: PublicBrand;
   // Viewer requests may start a browser while no run is alive, so only run
   // tokens assert that their own run is still running.
   readonly requireLiveRun: boolean;
@@ -169,6 +173,7 @@ interface BrowserCreateInput {
 interface BrowserOwnerAccess {
   readonly orgId: string;
   readonly userId: string;
+  readonly publicBrand: PublicBrand;
   readonly runId?: string;
 }
 
@@ -256,28 +261,34 @@ async function providerCall<T>(
     : providerFailure(result.error);
 }
 
-function browserViewerUrl(chatThreadId: string): string {
-  return `${env("APP_URL").replace(/\/+$/u, "")}/browsers/${chatThreadId}`;
+function browserViewerUrl(
+  chatThreadId: string,
+  publicBrand: PublicBrand,
+): string {
+  return `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}/browsers/${chatThreadId}`;
 }
 
 function publicBrowser(
   row: BrowserSessionRow,
-  liveUrl: string | null,
-  screenshotUrl: string | null,
-  idleExpiresAt: Date | null = null,
-  screen: BrowserScreen | null = null,
+  presentation: {
+    readonly publicBrand: PublicBrand;
+    readonly liveUrl: string | null;
+    readonly screenshotUrl: string | null;
+    readonly idleExpiresAt?: Date | null;
+    readonly screen?: BrowserScreen | null;
+  },
 ): ZeroBrowserSession {
   return {
     threadId: row.chatThreadId,
     name: row.name,
     status: row.status,
-    viewerUrl: browserViewerUrl(row.chatThreadId),
-    liveUrl,
-    screenshotUrl,
+    viewerUrl: browserViewerUrl(row.chatThreadId, presentation.publicBrand),
+    liveUrl: presentation.liveUrl,
+    screenshotUrl: presentation.screenshotUrl,
     proxyCountryCode: row.proxyCountryCode,
     timeoutMinutes: row.timeoutMinutes,
-    ...(screen ? { screen } : {}),
-    idleExpiresAt: idleExpiresAt?.toISOString() ?? null,
+    ...(presentation.screen ? { screen: presentation.screen } : {}),
+    idleExpiresAt: presentation.idleExpiresAt?.toISOString() ?? null,
     suspendedAt: row.suspendedAt?.toISOString() ?? null,
     suspensionReason: row.suspensionReason,
     createdAt: row.createdAt.toISOString(),
@@ -992,6 +1003,7 @@ async function resolveRunContext(
       userId: actor.userId,
       runId: actor.runId,
       chatThreadId: run.chatThreadId,
+      publicBrand: actor.publicBrand,
       requireLiveRun: true,
     },
   };
@@ -1044,6 +1056,7 @@ async function resolveViewerStartContext(
       userId: access.userId,
       runId: latestRunId,
       chatThreadId: access.chatThreadId,
+      publicBrand: access.publicBrand,
       requireLiveRun: false,
     },
   };
@@ -1674,13 +1687,13 @@ const startProviderInstance$ = command(
     return {
       kind: "ok",
       value: {
-        browser: publicBrowser(
-          claimed.browser,
-          started.liveUrl,
+        browser: publicBrowser(claimed.browser, {
+          publicBrand: args.context.publicBrand,
+          liveUrl: started.liveUrl,
           screenshotUrl,
-          claimed.instance.idleExpiresAt,
-          claimed.screen,
-        ),
+          idleExpiresAt: claimed.instance.idleExpiresAt,
+          screen: claimed.screen,
+        }),
         cdpUrl: started.cdpUrl,
         lifecycleEventId: null,
       },
@@ -1899,13 +1912,13 @@ const inspectActiveConnection$ = command(
       return {
         kind: "ok",
         value: {
-          browser: publicBrowser(
-            owner ?? browser,
+          browser: publicBrowser(owner ?? browser, {
+            publicBrand: args.context.publicBrand,
             liveUrl,
             screenshotUrl,
-            leased?.idleExpiresAt ?? instance.idleExpiresAt,
+            idleExpiresAt: leased?.idleExpiresAt ?? instance.idleExpiresAt,
             screen,
-          ),
+          }),
           cdpUrl,
           lifecycleEventId: null,
         },
@@ -2306,6 +2319,7 @@ const leaseInstanceForBrowser$ = command(
   async (
     { set },
     browser: BrowserSessionRow,
+    publicBrand: PublicBrand,
     signal: AbortSignal,
   ): Promise<BrowserServiceResult<ZeroBrowserSession>> => {
     const db = set(writeDb$);
@@ -2327,13 +2341,13 @@ const leaseInstanceForBrowser$ = command(
     signal.throwIfAborted();
     return {
       kind: "ok",
-      value: publicBrowser(
-        browser,
-        null,
+      value: publicBrowser(browser, {
+        publicBrand,
+        liveUrl: null,
         screenshotUrl,
-        leased.idleExpiresAt,
+        idleExpiresAt: leased.idleExpiresAt,
         screen,
-      ),
+      }),
     };
   },
 );
@@ -2355,7 +2369,12 @@ export const leaseCurrentZeroBrowser$ = command(
     if (!browser) {
       return notFound();
     }
-    return await set(leaseInstanceForBrowser$, browser, signal);
+    return await set(
+      leaseInstanceForBrowser$,
+      browser,
+      context.value.publicBrand,
+      signal,
+    );
   },
 );
 
@@ -2376,7 +2395,12 @@ export const leaseZeroBrowserByThread$ = command(
     if (accessError) {
       return accessError;
     }
-    return await set(leaseInstanceForBrowser$, browser, signal);
+    return await set(
+      leaseInstanceForBrowser$,
+      browser,
+      access.publicBrand,
+      signal,
+    );
   },
 );
 
@@ -2479,13 +2503,13 @@ export const resizeZeroBrowserByThread$ = command(
     );
     return {
       kind: "ok",
-      value: publicBrowser(
-        browser,
-        provider.value.liveUrl,
+      value: publicBrowser(browser, {
+        publicBrand: access.publicBrand,
+        liveUrl: provider.value.liveUrl,
         screenshotUrl,
-        persisted.value.instance.idleExpiresAt,
-        persisted.value.screen,
-      ),
+        idleExpiresAt: persisted.value.instance.idleExpiresAt,
+        screen: persisted.value.screen,
+      }),
     };
   },
 );
@@ -2538,7 +2562,13 @@ export const getZeroBrowser$ = command(
     }
     return {
       kind: "ok",
-      value: publicBrowser(row, liveUrl, screenshotUrl, idleExpiresAt, screen),
+      value: publicBrowser(row, {
+        publicBrand: access.publicBrand,
+        liveUrl,
+        screenshotUrl,
+        idleExpiresAt,
+        screen,
+      }),
     };
   },
 );
@@ -2566,6 +2596,7 @@ export const getCurrentZeroBrowser$ = command(
         orgId: actor.orgId,
         userId: actor.userId,
         chatThreadId: context.value.chatThreadId,
+        publicBrand: actor.publicBrand,
       },
       signal,
     );

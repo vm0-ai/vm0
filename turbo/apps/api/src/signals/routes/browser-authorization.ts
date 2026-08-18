@@ -61,10 +61,17 @@ const createAuthorizationRequestInner$ = command(
         "Cloud browser authorization requires a run token",
       );
     }
+    // Legacy sandbox tokens do not carry presentation context and remain VM0.
+    const publicBrand = auth.tokenType === "zero" ? auth.publicBrand : "vm0";
 
     const result = await set(
       createBrowserAuthorizationRequest$,
-      { orgId: auth.orgId, userId: auth.userId, runId: auth.runId },
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        runId: auth.runId,
+        publicBrand,
+      },
       signal,
     );
     signal.throwIfAborted();

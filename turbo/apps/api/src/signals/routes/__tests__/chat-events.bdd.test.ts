@@ -3312,6 +3312,7 @@ describe("CHAT-02: dispatch failure", () => {
 
 describe("CHAT-02: admission without spendable credits", () => {
   it("blocks admission for model-first sends through visible chat messages", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
     const completed = await bdd.completeOnboarding(actor);
@@ -3349,7 +3350,13 @@ describe("CHAT-02: admission without spendable credits", () => {
       model: "claude-sonnet-5",
       clientEventId,
     };
-    const sent = await chat.requestSendEvent(actor, sendBody, [201]);
+    const sent = await chat.requestSendEvent(
+      actor,
+      sendBody,
+      [201],
+      undefined,
+      "okou",
+    );
     if (sent.status !== 201) {
       throw new Error("Expected the blocked send to return 201 without a run");
     }
@@ -3394,6 +3401,8 @@ describe("CHAT-02: admission without spendable credits", () => {
       throw new Error("Expected insufficient-credits assistant guidance");
     }
     expect(guidance.content).toContain("Buy more credits");
+    expect(guidance.content).toContain("https://app.okou.ai/?settings=usage");
+    expect(guidance.content).not.toContain("https://app.vm0.ai");
     expect(guidance.error).toBe("insufficient_credits");
 
     const appended = await chat.listThreadEvents(actor, sent.body.threadId, {
@@ -3420,6 +3429,8 @@ describe("CHAT-02: admission without spendable credits", () => {
       actor,
       { ...sendBody, threadId: sent.body.threadId },
       [201],
+      undefined,
+      "okou",
     );
     expect(retry.body).toStrictEqual(sent.body);
     const afterRetry = await chat.listThreadEvents(actor, sent.body.threadId);

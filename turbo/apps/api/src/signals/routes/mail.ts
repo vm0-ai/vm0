@@ -1,9 +1,13 @@
 import { command } from "ccstate";
 import { zeroMailContract } from "@okouai/api-contracts/contracts/zero-mail";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 
 import { conflict, notFound } from "../../lib/error";
+import { env } from "../../lib/env";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
+import { publicBrand$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
 import {
@@ -16,14 +20,21 @@ import {
   type MailDraftMutationResult,
 } from "../services/mail-draft.service";
 
-function mutationResponse(result: MailDraftMutationResult) {
+function mailDraftUrl(mailDraftId: string, publicBrand: PublicBrand): string {
+  return `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}/mail/drafts/${mailDraftId}`;
+}
+
+function mutationResponse(
+  result: MailDraftMutationResult,
+  publicBrand: PublicBrand,
+) {
   switch (result.kind) {
     case "ok": {
       return {
         status: 200 as const,
         body: {
           mailDraftId: result.mailDraftId,
-          mailDraftUrl: result.mailDraftUrl,
+          mailDraftUrl: mailDraftUrl(result.mailDraftId, publicBrand),
           mailDraft: result.mailDraft,
         },
       };
@@ -37,14 +48,17 @@ function mutationResponse(result: MailDraftMutationResult) {
   }
 }
 
-function linkMutationResponse(result: MailDraftLinkMutationResult) {
+function linkMutationResponse(
+  result: MailDraftLinkMutationResult,
+  publicBrand: PublicBrand,
+) {
   switch (result.kind) {
     case "ok": {
       return {
         status: 200 as const,
         body: {
           mailDraftId: result.mailDraftId,
-          mailDraftUrl: result.mailDraftUrl,
+          mailDraftUrl: mailDraftUrl(result.mailDraftId, publicBrand),
         },
       };
     }
@@ -60,6 +74,8 @@ function linkMutationResponse(result: MailDraftLinkMutationResult) {
 const linkDraftBody$ = bodyResultOf(zeroMailContract.linkDraft);
 const linkDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
+  const publicBrand =
+    auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
   const bodyResult = await get(linkDraftBody$);
   signal.throwIfAborted();
   if (!bodyResult.ok) {
@@ -74,12 +90,13 @@ const linkDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     },
     signal,
   );
-  return linkMutationResponse(result);
+  return linkMutationResponse(result, publicBrand);
 });
 
 const getDraftParams$ = pathParamsOf(zeroMailContract.getDraft);
 const getDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
+  const publicBrand = get(publicBrand$);
   return mutationResponse(
     await set(
       getMailDraft$,
@@ -90,6 +107,7 @@ const getDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       },
       signal,
     ),
+    publicBrand,
   );
 });
 
@@ -150,6 +168,7 @@ const getAttachmentInner$ = command(
 const deleteDraftParams$ = pathParamsOf(zeroMailContract.deleteDraft);
 const deleteDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
+  const publicBrand = get(publicBrand$);
   const result = await set(
     deleteMailDraft$,
     {
@@ -160,7 +179,7 @@ const deleteDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     signal,
   );
   if (result.kind !== "ok") {
-    return mutationResponse(result);
+    return mutationResponse(result, publicBrand);
   }
   return { status: 204 as const, body: undefined };
 });
@@ -168,6 +187,7 @@ const deleteDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const sendDraftParams$ = pathParamsOf(zeroMailContract.sendDraft);
 const sendDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
+  const publicBrand = get(publicBrand$);
   return mutationResponse(
     await set(
       sendMailDraft$,
@@ -178,6 +198,7 @@ const sendDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       },
       signal,
     ),
+    publicBrand,
   );
 });
 
