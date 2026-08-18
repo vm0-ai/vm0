@@ -37,6 +37,10 @@ import {
 } from "./agent-compose-consolidation-preflight-refinements";
 import { validateLaunchSnapshotRecoverabilityStatic } from "./test-agent-compose-consolidation-preflight-launch-snapshots";
 import {
+  validateLaunchSnapshotBackfillDatabase,
+  validateLaunchSnapshotBackfillStatic,
+} from "./test-agent-run-launch-snapshot-backfill";
+import {
   PREFLIGHT_OUTPUT_ALLOWLIST,
   SanitizedPreflightError,
   assertPreflightOutputShape,
@@ -2897,6 +2901,7 @@ async function testDatabaseBoundaries(databaseUrl: string): Promise<void> {
 
 export async function validateAgentComposeConsolidationPreflightStatic(): Promise<void> {
   await validateLaunchSnapshotRecoverabilityStatic();
+  await validateLaunchSnapshotBackfillStatic();
   testSchemaV3DomainsRemainByteStable();
   testApplicationOwnedPlanAndCanonicalCompatibility();
   testIdentityAndApprovedArtifacts();
@@ -2919,6 +2924,7 @@ export async function validateAgentComposeConsolidationPreflight(): Promise<void
   const databaseUrl = process.env.DATABASE_URL;
   assert.ok(databaseUrl, "DATABASE_URL is required");
   await testDatabaseBoundaries(databaseUrl);
+  await validateLaunchSnapshotBackfillDatabase(databaseUrl);
   console.log("agent compose consolidation preflight passed");
 }
 
