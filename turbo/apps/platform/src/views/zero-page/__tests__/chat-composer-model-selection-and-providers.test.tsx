@@ -8,6 +8,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import {
   chatThreadsContract,
+  chatThreadImageModelContract,
   chatThreadVideoModelContract,
   type ChatRunOptionsRequest,
   type ChatThreadEvent,
@@ -3409,6 +3410,245 @@ describe("chat composer models", () => {
     await user.click(await screen.findByLabelText("Remove Slack"));
     await waitFor(() => {
       expect(updatedAuthorizationAgentId).toBe(OTHER_AGENT_ID);
+    });
+  });
+});
+
+describe("chat composer image model", () => {
+  const imageModelLabels = [
+    "GPT Image 1",
+    "GPT Image 2",
+    "GPT Image 1.5",
+    "GPT Image 1 Mini",
+    "Flux Pro v1.1",
+    "Flux Pro v1.1 Ultra",
+    "Qwen Image",
+    "Seedream 4",
+    "Nano Banana 2",
+  ] as const;
+
+  function desktopImageModelButton(
+    root: ParentNode = document,
+  ): HTMLElement | undefined {
+    return Array.from(root.querySelectorAll("button")).find((candidate) => {
+      return (
+        candidate.getAttribute("aria-label") === "Image models" &&
+        candidate.hasAttribute("aria-pressed")
+      );
+    });
+  }
+
+  function findDesktopImageModelButton(
+    root: ParentNode = document,
+  ): Promise<HTMLElement> {
+    return waitFor(() => {
+      const button = desktopImageModelButton(root);
+      if (!button) {
+        throw new Error("Desktop image model button not found");
+      }
+      return button;
+    });
+  }
+
+  function mediaPanelButton(label: string): HTMLElement | undefined {
+    return queryAllByRoleFast("button").find((candidate) => {
+      return candidate.textContent?.replace(/\s+/g, " ").trim() === label;
+    });
+  }
+
+  function findMediaPanelButton(label: string): Promise<HTMLElement> {
+    return waitFor(() => {
+      const button = mediaPanelButton(label);
+      if (!button) {
+        throw new Error(`${label} button not found`);
+      }
+      return button;
+    });
+  }
+
+  it("shows the effective member default and pins an image model optimistically", async () => {
+    const user = userEvent.setup({ delay: null });
+    const updateGate = context.mocks.deferred<void>();
+    const updates: { threadId: string; model: string | null }[] = [];
+    context.mocks.browser.matchMedia(true);
+    mockOrgModelRoutes("claude-fable-5");
+    context.mocks.data.userModelPreference({
+      selectedModel: null,
+      serviceTier: null,
+      selectedVideoModel: null,
+      selectedImageModel: "fal-ai/qwen-image",
+      updatedAt: "2026-08-18T00:00:00Z",
+    });
+    mockAgent();
+    mockThread({
+      selectedModel: "claude-fable-5",
+      selectedImageModel: null,
+    });
+    context.mocks.api(
+      chatThreadImageModelContract.update,
+      async ({ params, body, respond, withSignal }) => {
+        updates.push({ threadId: params.id, model: body.model });
+        await withSignal(updateGate.promise);
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.ImageModelSelection]: true,
+        [FeatureSwitchKey.VideoModelSelection]: true,
+      },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const imageModelButton = await findDesktopImageModelButton();
+    await waitFor(() => {
+      expect(imageModelButton).toHaveTextContent("Qwen Image");
+    });
+    expect(imageModelButton).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(imageModelButton);
+
+    expect(imageModelButton).toHaveAttribute("aria-pressed", "true");
+    expect(imageModelButton).toHaveTextContent(/·\s*Qwen Image/);
+    const listbox = screen.getByRole("listbox");
+    const imageModelButtons = queryAllByRoleFast("button", listbox);
+    for (const label of imageModelLabels) {
+      expect(
+        imageModelButtons.some((button) => {
+          return button.getAttribute("aria-label") === label;
+        }),
+      ).toBeTruthy();
+    }
+    expect(within(listbox).queryByText(/birefnet/i)).not.toBeInTheDocument();
+    expect(
+      within(listbox).queryByText(/clarity upscaler/i),
+    ).not.toBeInTheDocument();
+    expect(within(listbox).queryByText("BYOK")).not.toBeInTheDocument();
+    expect(within(listbox).queryByText("Pro")).not.toBeInTheDocument();
+    expect(
+      within(listbox).queryByText(/aspect ratio/i),
+    ).not.toBeInTheDocument();
+
+    await user.click(await findMediaPanelButton("Seedream 4"));
+
+    await waitFor(() => {
+      expect(updates).toStrictEqual([
+        {
+          threadId: THREAD_ID,
+          model: "fal-ai/bytedance/seedream/v4/text-to-image",
+        },
+      ]);
+      expect(imageModelButton).toHaveTextContent(/·\s*Seedream 4/);
+    });
+    updateGate.resolve();
+  });
+
+  it("opens Image models and Video models as direct mobile rows", async () => {
+    const user = userEvent.setup({ delay: null });
+    context.mocks.browser.matchMedia(false);
+    mockOrgModelRoutes("claude-fable-5");
+    mockAgent();
+    mockThread({
+      selectedModel: "claude-fable-5",
+      selectedImageModel: "gpt-image-2",
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.ImageModelSelection]: true,
+        [FeatureSwitchKey.VideoModelSelection]: true,
+      },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await user.click(await findComposerModel("Claude Fable 5"));
+
+    expect(mediaPanelButton("Image models")).toBeInTheDocument();
+    expect(mediaPanelButton("Video models")).toBeInTheDocument();
+    expect(mediaPanelButton("Manage more models")).toBeUndefined();
+
+    await user.click(await findMediaPanelButton("Image models"));
+
+    await expect(findMediaPanelButton("GPT Image 2")).resolves.toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(mediaPanelButton("Seedream 4")).toBeInTheDocument();
+
+    await user.click(await findMediaPanelButton("Image models"));
+
+    expect(mediaPanelButton("Video models")).toBeInTheDocument();
+    expect(mediaPanelButton("GPT Image 2")).toBeUndefined();
+  });
+
+  it("keeps image model pins independent across split chat composers", async () => {
+    const user = userEvent.setup({ delay: null });
+    const updates: { threadId: string; model: string | null }[] = [];
+    context.mocks.browser.matchMedia(true);
+    mockOrgModelRoutes("claude-fable-5");
+    mockAgent();
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+    mockComposerThreadSnapshot([
+      {
+        id: THREAD_ID,
+        agentId: AGENT_ID,
+        title: "First image thread",
+        selectedModel: "claude-fable-5",
+        selectedImageModel: "gpt-image-2",
+      },
+      {
+        id: OTHER_AGENT_THREAD_ID,
+        agentId: AGENT_ID,
+        title: "Second image thread",
+        selectedModel: "claude-fable-5",
+        selectedImageModel: "fal-ai/qwen-image",
+      },
+    ]);
+    context.mocks.api(
+      chatThreadImageModelContract.update,
+      ({ params, body, respond }) => {
+        updates.push({ threadId: params.id, model: body.model });
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.ImageModelSelection]: true },
+      path: `/chats/${THREAD_ID}?sidebar=${OTHER_AGENT_THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("Chat thread")).toHaveLength(2);
+    });
+    const threadRegions = screen.getAllByLabelText("Chat thread");
+    const firstThread = threadRegions[0];
+    const secondThread = threadRegions[1];
+    if (!firstThread || !secondThread) {
+      throw new Error("Split chat threads not found");
+    }
+    const firstImageModelButton =
+      await findDesktopImageModelButton(firstThread);
+    const secondImageModelButton =
+      await findDesktopImageModelButton(secondThread);
+    expect(firstImageModelButton).toHaveTextContent("GPT Image 2");
+    expect(secondImageModelButton).toHaveTextContent("Qwen Image");
+
+    await user.click(firstImageModelButton);
+    await user.click(await findMediaPanelButton("Seedream 4"));
+
+    await waitFor(() => {
+      expect(updates).toStrictEqual([
+        {
+          threadId: THREAD_ID,
+          model: "fal-ai/bytedance/seedream/v4/text-to-image",
+        },
+      ]);
+      expect(firstImageModelButton).toHaveTextContent("Seedream 4");
+      expect(secondImageModelButton).toHaveTextContent("Qwen Image");
     });
   });
 });

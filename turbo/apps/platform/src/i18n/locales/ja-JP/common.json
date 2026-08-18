@@ -4235,6 +4235,7 @@
         "byokHelp": "設定されたプロバイダーを使用します",
         "fast": "速い",
         "fastImpact": "モデル速度 1.5× · クレジット消費 2.5×",
+        "imageModels": "画像モデル",
         "inheritDefault": "組織のデフォルトから継承",
         "loadError": "モデルをロードできません。",
         "loading": "モデルをロード中...",

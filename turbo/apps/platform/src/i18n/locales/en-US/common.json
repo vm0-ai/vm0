@@ -4236,6 +4236,7 @@
         "byokHelp": "Uses your configured provider",
         "fast": "Fast",
         "fastImpact": "1.5× model speed · 2.5× credit usage",
+        "imageModels": "Image models",
         "inheritDefault": "Inherit from org default",
         "loadError": "Unable to load models.",
         "loading": "Loading models...",

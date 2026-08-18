@@ -83,8 +83,10 @@ export interface MediaModelPanelOption {
   readonly onSelect: () => void;
 }
 
+export type MediaModelCategoryId = "image" | "video";
+
 export interface MediaModelPanelCategory {
-  readonly id: "video";
+  readonly id: MediaModelCategoryId;
   readonly label: string;
   readonly menuLabel: string;
   readonly options: readonly MediaModelPanelOption[];
@@ -96,9 +98,11 @@ export interface MediaModelPanelCategory {
  * supplies the active mode and its control anchor through the same state.
  */
 export interface MediaModelPanelState {
-  readonly activeCategory: "video" | null;
+  readonly activeCategory: MediaModelCategoryId | null;
   readonly categories: readonly MediaModelPanelCategory[];
-  readonly onActiveCategoryChange: (category: "video" | null) => void;
+  readonly onActiveCategoryChange: (
+    category: MediaModelCategoryId | null,
+  ) => void;
   readonly contentAnchor?: Element | null;
 }
 

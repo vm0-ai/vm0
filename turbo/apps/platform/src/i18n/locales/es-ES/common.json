@@ -4286,6 +4286,7 @@
         "byokHelp": "Usa el proveedor que has configurado",
         "fast": "Rápido",
         "fastImpact": "1,5× velocidad del modelo · 2,5× uso de créditos",
+        "imageModels": "Modelos de imagen",
         "inheritDefault": "Heredar el valor predeterminado de la organización",
         "loadError": "No se pudieron cargar los modelos.",
         "loading": "Cargando modelos...",

@@ -325,6 +325,7 @@ export function mockAgent(options?: {
 export function mockThread(options?: {
   selectedModel?: string | null;
   selectedVideoModel?: string | null;
+  selectedImageModel?: string | null;
   activeRunIds?: string[];
   messages?: MockChatEventInput[];
 }): void {
@@ -350,6 +351,7 @@ export function mockThread(options?: {
           serviceTier: null,
           computerUseHostId: null,
           selectedVideoModel: options?.selectedVideoModel ?? null,
+          selectedImageModel: options?.selectedImageModel ?? null,
         },
       ],
       latestEventId: null,
@@ -384,6 +386,8 @@ export function mockComposerThreadSnapshot(
     readonly id: string;
     readonly agentId: string;
     readonly title: string | null;
+    readonly selectedModel?: string | null;
+    readonly selectedImageModel?: string | null;
   }[],
 ): void {
   context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
@@ -399,9 +403,10 @@ export function mockComposerThreadSnapshot(
           updatedAt: timestamp,
           pinnedAt: null,
           renamedAt: null,
-          selectedModel: null,
+          selectedModel: thread.selectedModel ?? null,
           serviceTier: null,
           computerUseHostId: null,
+          selectedImageModel: thread.selectedImageModel ?? null,
         };
       }),
       latestEventId: null,

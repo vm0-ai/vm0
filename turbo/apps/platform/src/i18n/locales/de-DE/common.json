@@ -4236,6 +4236,7 @@
         "byokHelp": "Verwendet Ihren konfigurierten Anbieter",
         "fast": "Schnell",
         "fastImpact": "1,5× Modellgeschwindigkeit · 2,5× Credit-Nutzung",
+        "imageModels": "Bildmodelle",
         "inheritDefault": "Von der Standardeinstellung der Organisation übernehmen",
         "loadError": "Modelle können nicht geladen werden.",
         "loading": "Modelle werden geladen...",
