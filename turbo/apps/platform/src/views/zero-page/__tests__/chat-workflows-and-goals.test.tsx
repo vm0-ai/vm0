@@ -8,7 +8,7 @@ import {
   VIDEO_TEMPLATE_ITEMS,
   WEBSITE_TEMPLATE_ITEMS,
 } from "@okouai/core";
-import { zeroGoalsContract } from "@okouai/api-contracts/contracts/zero-goals";
+import { goalsContract } from "@okouai/api-contracts/contracts/goals";
 import type {
   ChatThreadWorkflowAutomation,
   ZeroWorkflowAutomationUpdateRequest,
@@ -826,7 +826,7 @@ describe("chat lifecycle", () => {
     });
     let pausedGoalThreadId: string | null = null;
     context.mocks.api(
-      zeroGoalsContract.pauseForChatThread,
+      goalsContract.pauseForChatThread,
       ({ params, respond }) => {
         pausedGoalThreadId = params.threadId;
         return respond(200, {
@@ -904,17 +904,14 @@ describe("chat lifecycle", () => {
       activeRunIds: ["run-active"],
     });
     let requestedThreadId: string | null = null;
-    context.mocks.api(
-      zeroGoalsContract.getForChatThread,
-      ({ params, respond }) => {
-        requestedThreadId = params.threadId;
-        return respond(200, {
-          objective: "# Full goal\n\n- Keep **shipping**\n- Review `objective`",
-          objectiveBrief: "Release brief",
-          status: "active",
-        });
-      },
-    );
+    context.mocks.api(goalsContract.getForChatThread, ({ params, respond }) => {
+      requestedThreadId = params.threadId;
+      return respond(200, {
+        objective: "# Full goal\n\n- Keep **shipping**\n- Review `objective`",
+        objectiveBrief: "Release brief",
+        status: "active",
+      });
+    });
 
     detachedSetupPage({ context, path: `/chats/${threadId}` });
 

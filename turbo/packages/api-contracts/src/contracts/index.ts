@@ -1723,26 +1723,26 @@ export {
   type VoiceIoSttResponse,
 } from "./voice-io-stt";
 export {
-  zeroUploadsContract,
-  type ZeroUploadsContract,
+  uploadsContract,
+  type UploadsContract,
   type UploadPrepareResponse,
-} from "./zero-uploads";
+} from "./uploads";
 export {
-  zeroGoalsContract,
-  zeroGoalCreateRequestSchema,
-  zeroGoalEditRequestSchema,
-  zeroGoalEventSchema,
-  zeroGoalResponseSchema,
-  zeroGoalStatusSchema,
-  type ZeroGoalCreateRequest,
-  type ZeroGoalEditRequest,
-  type ZeroGoalEvent,
-  type ZeroGoalResponse,
-  type ZeroGoalStatus,
-  type ZeroGoalsContract,
-} from "./zero-goals";
+  goalsContract,
+  goalCreateRequestSchema,
+  goalEditRequestSchema,
+  goalEventSchema,
+  goalResponseSchema,
+  goalStatusSchema,
+  type GoalCreateRequest,
+  type GoalEditRequest,
+  type GoalEvent,
+  type GoalResponse,
+  type GoalStatus,
+  type GoalsContract,
+} from "./goals";
 export {
-  zeroHostContract,
+  hostContract,
   hostedSiteFileSchema,
   hostedSitePrepareRequestSchema,
   hostedSitePrepareResponseSchema,
@@ -1751,8 +1751,8 @@ export {
   type HostedSitePrepareRequest,
   type HostedSitePrepareResponse,
   type HostedSiteCompleteResponse,
-  type ZeroHostContract,
-} from "./zero-host";
+  type HostContract,
+} from "./host";
 export {
   zeroIntegrationsTelegramContract,
   type ZeroIntegrationsTelegramContract,

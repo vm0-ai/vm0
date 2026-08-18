@@ -1,8 +1,8 @@
 import { command, computed, state } from "ccstate";
 import {
-  zeroGoalsContract,
-  type ZeroGoalResponse,
-} from "@okouai/api-contracts/contracts/zero-goals";
+  goalsContract,
+  type GoalResponse,
+} from "@okouai/api-contracts/contracts/goals";
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -14,12 +14,12 @@ export const activeGoalDialogThreadId$ = computed((get): string | null => {
 });
 
 export const activeGoalDialogGoal$ = computed(
-  async (get): Promise<ZeroGoalResponse | null> => {
+  async (get): Promise<GoalResponse | null> => {
     const threadId = get(activeGoalDialogThreadIdState$);
     if (!threadId) {
       return null;
     }
-    const client = get(zeroClient$)(zeroGoalsContract);
+    const client = get(zeroClient$)(goalsContract);
     const response = await accept(
       client.getForChatThread({ params: { threadId } }),
       [200],
@@ -40,7 +40,7 @@ export const closeChatThreadGoalDialog$ = command(({ set }) => {
 
 export const pauseChatThreadGoal$ = command(
   async ({ get }, threadId: string, signal: AbortSignal) => {
-    const client = get(zeroClient$)(zeroGoalsContract);
+    const client = get(zeroClient$)(goalsContract);
     await accept(
       client.pauseForChatThread({
         params: { threadId },

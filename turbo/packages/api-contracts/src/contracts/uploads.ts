@@ -94,7 +94,7 @@ const completeResponseSchema = z.object({
  * confirms the object exists after the PUT and persists run associations when
  * the request is authenticated with a run-scoped zero token.
  */
-export const zeroUploadsContract = c.router({
+export const uploadsContract = c.router({
   prepare: {
     method: "POST",
     path: "/api/okou/uploads/prepare",
@@ -157,7 +157,7 @@ export const zeroUploadsContract = c.router({
   },
 });
 
-export type ZeroUploadsContract = typeof zeroUploadsContract;
+export type UploadsContract = typeof uploadsContract;
 
 // Inferred types
 export type UploadPrepareResponse = z.infer<typeof prepareResultSchema>;

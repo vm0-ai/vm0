@@ -5,7 +5,7 @@ import type {
   HostedSiteFilesResponse,
   HostedSiteDeploymentsResponse,
   HostedSitePrepareRequest,
-} from "@okouai/api-contracts/contracts/zero-host";
+} from "@okouai/api-contracts/contracts/host";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import {
   hostedDeployments,

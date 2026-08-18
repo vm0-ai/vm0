@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroUploadsContract } from "@okouai/api-contracts/contracts/zero-uploads";
+import { uploadsContract } from "@okouai/api-contracts/contracts/uploads";
 
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -10,7 +10,7 @@ import { recordWebUploadedFile$ } from "../services/run-uploaded-files.service";
 import { rejectSuspendedOrg$ } from "../services/org-suspension.service";
 import type { RouteEntry } from "../route-entry";
 
-const completeBody$ = bodyResultOf(zeroUploadsContract.complete);
+const completeBody$ = bodyResultOf(uploadsContract.complete);
 
 const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(authContext$);
@@ -84,7 +84,7 @@ const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 export const uploadsCompleteRoutes: readonly RouteEntry[] = [
   {
-    route: zeroUploadsContract.complete,
+    route: uploadsContract.complete,
     handler: authRoute({ requiredCapability: "file:write" }, completeInner$),
   },
 ];

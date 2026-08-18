@@ -56,17 +56,17 @@ import {
   type ZeroAgentResponse,
 } from "@okouai/api-contracts/contracts/zero-agents";
 import {
-  zeroHostContract,
+  hostContract,
   type HostedSiteCompleteResponse,
   type HostedSiteDeploymentsResponse,
   type HostedSitePrepareRequest,
   type HostedSitePrepareResponse,
-} from "@okouai/api-contracts/contracts/zero-host";
+} from "@okouai/api-contracts/contracts/host";
 import {
-  zeroUploadsContract,
+  uploadsContract,
   type UploadCompleteResponse,
   type UploadPrepareResponse,
-} from "@okouai/api-contracts/contracts/zero-uploads";
+} from "@okouai/api-contracts/contracts/uploads";
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import {
@@ -365,11 +365,11 @@ export function createChatFilesBddApi(context: TestContext) {
   }
 
   function uploadsClient() {
-    return chatFilesApp(context)(zeroUploadsContract);
+    return chatFilesApp(context)(uploadsContract);
   }
 
   function hostClient() {
-    return chatFilesApp(context)(zeroHostContract);
+    return chatFilesApp(context)(hostContract);
   }
 
   return {
