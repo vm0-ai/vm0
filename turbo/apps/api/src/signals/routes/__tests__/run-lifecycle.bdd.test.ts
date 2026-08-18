@@ -95,6 +95,7 @@ import {
 import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { postSubscriptionInvoicePaid } from "./helpers/stripe-billing-webhook";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import {
   readAgentRunCallbacks$,
@@ -16881,6 +16882,7 @@ describe("BILL-01: billing entitlement reconciliation cron", () => {
     readonly customerId: string;
     readonly status: string;
     readonly periodEndUnix: number;
+    readonly priceId?: string;
   }): unknown {
     return {
       type: "customer.subscription.updated",
@@ -16897,7 +16899,7 @@ describe("BILL-01: billing entitlement reconciliation cron", () => {
           items: {
             data: [
               {
-                price: { id: "price_bdd_pro" },
+                price: { id: args.priceId ?? "price_bdd_pro" },
                 current_period_end: args.periodEndUnix,
               },
             ],
@@ -16910,6 +16912,7 @@ describe("BILL-01: billing entitlement reconciliation cron", () => {
   async function failSubscription(args: {
     readonly subscriptionId: string;
     readonly customerId: string;
+    readonly priceId?: string;
   }): Promise<void> {
     const webhooks = createWebhookCallbackApi(context);
     const event = subscriptionEvent({
@@ -17062,6 +17065,65 @@ describe("BILL-01: billing entitlement reconciliation cron", () => {
       stripePriceId: "price_bdd_pro",
       currentPeriodEnd: new Date(stalePeriodEndUnix * 1000).toISOString(),
       expiresAt: null,
+    });
+  });
+
+  it("downgrades a stale payment-failed Custom subscription", async () => {
+    const api = createRunsApi(context);
+    const billing = createBillingMediaApi(context);
+    const actor = createBddApi(context).user();
+    const orgId = billingActorOrgId(actor);
+    const customerId = `cus_bdd_custom_${randomUUID().slice(0, 8)}`;
+    const subscriptionId = `sub_bdd_custom_${randomUUID().slice(0, 8)}`;
+    const customPriceId = "price_test_custom";
+    context.mocks.stripe.subscriptions.list.mockResolvedValue({
+      data: [],
+      has_more: false,
+    });
+    await postSubscriptionInvoicePaid(context.signal, {
+      orgId,
+      userId: actor.userId,
+      tier: "custom",
+      customerId,
+      subscriptionId,
+      currentPeriodEnd: new Date(now() + 30 * 86_400_000),
+    });
+    await failSubscription({
+      subscriptionId,
+      customerId,
+      priceId: customPriceId,
+    });
+
+    const stalePeriodEndUnix = Math.floor(now() / 1000) - 2 * 86_400;
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      id: subscriptionId,
+      status: "past_due",
+      customer: customerId,
+      cancel_at: null,
+      cancel_at_period_end: false,
+      schedule: null,
+      trial_end: null,
+      metadata: { orgId, purpose: "custom_plan_subscription" },
+      items: {
+        data: [
+          {
+            price: { id: customPriceId },
+            current_period_end: stalePeriodEndUnix,
+          },
+        ],
+      },
+    });
+    await api.reconcileBillingOrganizations([orgId]);
+
+    const status = await billing.readBillingStatus(actor);
+    expect(status.tier).toBe("limited-free-1");
+    await expect(readOrgPlanEntitlementFixture(orgId)).resolves.toMatchObject({
+      orgId,
+      planKey: "limited-free-1",
+      source: "stripe_subscription",
+      stripeSubscriptionId: subscriptionId,
+      stripePriceId: customPriceId,
+      currentPeriodEnd: new Date(stalePeriodEndUnix * 1000).toISOString(),
     });
   });
 

@@ -2968,6 +2968,33 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     ]);
   });
 
+  it("keeps the normal credit window for a non-Atom early cancellation", async () => {
+    const bdd = createBddApi(context);
+    const runs = createRunsApi(context);
+    const billing = createBillingMediaApi(context);
+    const actor = bdd.user();
+    const cancelAtUnix = epochSeconds(7);
+    const periodEndUnix = epochSeconds(30);
+    const renewalExpiresAt = new Date(periodEndUnix * 1000);
+    renewalExpiresAt.setMonth(renewalExpiresAt.getMonth() + 1);
+
+    await runs.grantProEntitlement(actor, {
+      periodEndUnix,
+      cancelAtUnix,
+    });
+
+    const status = await billing.readBillingStatus(actor);
+    expect(status.tier).toBe("pro");
+    expect(status.currentPeriodEnd).toBe(isoOf(cancelAtUnix));
+    expect(status.creditGrants).toStrictEqual([
+      expect.objectContaining({
+        amount: 20_000,
+        expiresAt: renewalExpiresAt.toISOString(),
+        source: "subscription_renewal",
+      }),
+    ]);
+  });
+
   it("cancels replaced subscriptions and reads the Custom grant billing period", async () => {
     const bdd = createBddApi(context);
     const billing = createBillingMediaApi(context);
@@ -2984,7 +3011,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
         {
           id: granted.subscriptionId,
           status: "active",
-          metadata: { orgId },
+          metadata: { orgId: "org_wrong" },
           items: { data: [{ price: { id: "price_bdd_pro" } }] },
         },
       ],
@@ -3041,7 +3068,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
         {
           id: "sub_bdd_team_replaced",
           status: "active",
-          metadata: { orgId },
+          metadata: {},
           items: { data: [{ price: { id: "price_bdd_team" } }] },
         },
       ],
@@ -3753,13 +3780,13 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
         {
           id: teamSubscriptionId,
           status: "active",
-          metadata: { orgId },
+          metadata: { orgId: "org_wrong" },
           items: { data: [{ price: { id: "price_bdd_team" } }] },
         },
         {
           id: granted.subscriptionId,
           status: "active",
-          metadata: { orgId },
+          metadata: { orgId: "org_wrong" },
           items: { data: [{ price: { id: "price_bdd_pro" } }] },
         },
       ],
@@ -4071,7 +4098,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
         {
           id: granted.subscriptionId,
           status: "active",
-          metadata: { orgId },
+          metadata: {},
           items: { data: [{ price: { id: "price_bdd_pro" } }] },
         },
       ],

@@ -361,9 +361,34 @@ function usagePackSubscriptionIdFromMetadata(
   return metadata.usagePackSubscriptionId ?? null;
 }
 
-function invoiceUsagePackSubscriptionId(
+async function boundUsagePackSubscriptionId(
+  db: Pick<Db, "select">,
+  stripeSubscriptionId: string | null,
+): Promise<string | null> {
+  if (!stripeSubscriptionId) {
+    return null;
+  }
+  const [subscription] = await db
+    .select({ id: usagePackSubscriptions.id })
+    .from(usagePackSubscriptions)
+    .where(
+      eq(usagePackSubscriptions.stripeSubscriptionId, stripeSubscriptionId),
+    )
+    .limit(1);
+  return subscription?.id ?? null;
+}
+
+async function invoiceUsagePackSubscriptionId(
+  db: Pick<Db, "select">,
   invoice: UsagePackChangeInvoiceInput,
-): string | null {
+): Promise<string | null> {
+  const boundId = await boundUsagePackSubscriptionId(
+    db,
+    invoiceSubscriptionId(invoice),
+  );
+  if (boundId) {
+    return boundId;
+  }
   const ids = new Set(
     [
       usagePackSubscriptionIdFromMetadata(invoice.metadata),
@@ -2393,13 +2418,13 @@ export async function reconcileUsagePackAllocationChangeSubscription(
   db: Db,
   subscription: UsagePackChangeSubscriptionInput,
 ): Promise<{ readonly reconciled: number; readonly orgId: string | null }> {
-  const usagePackSubscriptionId = usagePackSubscriptionIdFromMetadata(
-    subscription.metadata,
-  );
-  if (
-    !usagePackSubscriptionId ||
-    !(await usagePackAllocationChangeSchemaAvailable(db))
-  ) {
+  if (!(await usagePackAllocationChangeSchemaAvailable(db))) {
+    return { reconciled: 0, orgId: null };
+  }
+  const boundId = await boundUsagePackSubscriptionId(db, subscription.id);
+  const usagePackSubscriptionId =
+    boundId ?? usagePackSubscriptionIdFromMetadata(subscription.metadata);
+  if (!usagePackSubscriptionId) {
     return { reconciled: 0, orgId: null };
   }
   const context = await loadUsagePackChangeContextBySubscriptionId(
@@ -2453,13 +2478,13 @@ export async function reconcileUsagePackAllocationChangeSubscriptionDeleted(
     readonly metadata?: Readonly<Record<string, string>> | null;
   },
 ): Promise<void> {
-  const usagePackSubscriptionId = usagePackSubscriptionIdFromMetadata(
-    subscription.metadata,
-  );
-  if (
-    !usagePackSubscriptionId ||
-    !(await usagePackAllocationChangeSchemaAvailable(db))
-  ) {
+  if (!(await usagePackAllocationChangeSchemaAvailable(db))) {
+    return;
+  }
+  const boundId = await boundUsagePackSubscriptionId(db, subscription.id);
+  const usagePackSubscriptionId =
+    boundId ?? usagePackSubscriptionIdFromMetadata(subscription.metadata);
+  if (!usagePackSubscriptionId) {
     return;
   }
   const context = await loadUsagePackChangeContextBySubscriptionId(
@@ -3090,11 +3115,14 @@ export async function handleUsagePackAllocationChangeInvoicePaid(
   db: Db,
   invoice: UsagePackChangeInvoiceInput,
 ): Promise<UsagePackChangeInvoiceOutcome> {
-  const usagePackSubscriptionId = invoiceUsagePackSubscriptionId(invoice);
-  if (
-    !usagePackSubscriptionId ||
-    !(await usagePackAllocationChangeSchemaAvailable(db))
-  ) {
+  if (!(await usagePackAllocationChangeSchemaAvailable(db))) {
+    return { handled: false, orgId: null };
+  }
+  const usagePackSubscriptionId = await invoiceUsagePackSubscriptionId(
+    db,
+    invoice,
+  );
+  if (!usagePackSubscriptionId) {
     return { handled: false, orgId: null };
   }
   const context = await loadUsagePackChangeContextBySubscriptionId(

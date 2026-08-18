@@ -502,7 +502,9 @@ export const addStripeConcurrencySubscriptionItem$ = command(
       if (!subscriptionScheduleHasNoFutureChanges(subscription, schedule)) {
         return { ok: false, reason: "pending_update" };
       }
-      await stripe.subscriptionSchedules.release(scheduleId);
+      await stripe.subscriptionSchedules.release(scheduleId, {
+        preserve_cancel_date: true,
+      });
       signal.throwIfAborted();
     }
 
@@ -989,7 +991,9 @@ export const applyStripeConcurrencySubscriptionChange$ = command(
     }
 
     if (scheduleId !== null) {
-      await stripe.subscriptionSchedules.release(scheduleId);
+      await stripe.subscriptionSchedules.release(scheduleId, {
+        preserve_cancel_date: true,
+      });
       signal.throwIfAborted();
     }
 
@@ -1279,7 +1283,9 @@ export const restoreConcurrencySubscription$ = command(
       // Cancellation can create this schedule only when no other subscription
       // update is pending. Releasing it restores the current items and keeps
       // later concurrency changes from treating the canceled change as foreign.
-      await stripe.subscriptionSchedules.release(scheduleId);
+      await stripe.subscriptionSchedules.release(scheduleId, {
+        preserve_cancel_date: true,
+      });
     } else {
       await stripe.subscriptions.update(args.subscriptionId, {
         cancel_at_period_end: false,

@@ -37,7 +37,7 @@ import {
 } from "./zero-billing-checkout.service";
 import {
   reconcileUsagePackSubscriptions,
-  USAGE_PACK_SUBSCRIPTION_PURPOSE,
+  stripeSubscriptionUsesMemberUsagePacks,
 } from "./usage-pack-subscription.service";
 import { reconcileUsagePackCreditRefunds } from "./usage-pack-credit-refund.service";
 import { reconcileUsagePackInvitationPurchases } from "./usage-pack-invitation-purchase.service";
@@ -301,6 +301,13 @@ async function upsertStripeSubscriptionPlanSnapshot(
   const cancelAt = subscriptionWillCancel(args.subscription)
     ? scheduledEnd
     : null;
+  const memberInviteUsagePackRequired =
+    args.stripeSubscriptionId !== null &&
+    (args.tier === "pro" || args.tier === "team" || args.tier === "custom") &&
+    (await stripeSubscriptionUsesMemberUsagePacks(tx, {
+      orgId: args.orgId,
+      stripeSubscriptionId: args.stripeSubscriptionId,
+    }));
   await upsertOrgPlanEntitlement(tx, {
     orgId: args.orgId,
     tier: args.tier,
@@ -311,9 +318,7 @@ async function upsertStripeSubscriptionPlanSnapshot(
     currentPeriodEnd: scheduledEnd,
     cancelAt,
     expiresAt: cancelAt,
-    memberInviteUsagePackRequired:
-      (args.tier === "pro" || args.tier === "team") &&
-      args.subscription.metadata?.purpose === USAGE_PACK_SUBSCRIPTION_PURPOSE,
+    memberInviteUsagePackRequired,
     sourceMetadata: args.subscription.metadata ?? {},
   });
 }
@@ -374,7 +379,7 @@ function currentBillingCandidateWhere(candidate: StripeBillingCandidate) {
   return and(
     eq(orgMetadata.orgId, candidate.orgId),
     eq(orgMetadata.stripeSubscriptionId, candidate.stripeSubscriptionId),
-    inArray(orgMetadata.tier, ["pro", "team"]),
+    inArray(orgMetadata.tier, PAID_TIERS),
     inArray(orgMetadata.subscriptionStatus, [
       ...PAYMENT_FAILED_SUBSCRIPTION_STATUSES,
     ]),
@@ -759,7 +764,8 @@ async function reconcileConcurrencyCandidate(
   const isPaymentFailed = subscriptionIsPaymentFailed(subscription);
   const syncedFields = {
     subscriptionStatus: subscription.status,
-    cancelAtPeriodEnd: subscriptionWillCancel(subscription),
+    // `cancel_at` can be the main-plan grant expiry on a shared subscription.
+    cancelAtPeriodEnd: subscription.cancel_at_period_end,
     updatedAt: now,
     ...(periodEnd ? { currentPeriodEnd: periodEnd } : {}),
     ...(item ? { stripePriceId: item.price.id } : {}),

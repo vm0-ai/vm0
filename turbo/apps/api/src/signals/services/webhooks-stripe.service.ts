@@ -65,6 +65,7 @@ import {
   handleUsagePackSubscriptionCreated,
   handleUsagePackSubscriptionDeleted,
   handleUsagePackSubscriptionUpdated,
+  stripeSubscriptionUsesMemberUsagePacks,
 } from "./usage-pack-subscription.service";
 import { createUsagePackCreditGrant } from "./usage-pack-credit.service";
 import {
@@ -362,7 +363,8 @@ function concurrencySubscriptionState(
     slots,
     subscriptionStatus: subscription.status,
     currentPeriodEnd: concurrencySubscriptionPeriodEnd(subscription),
-    cancelAtPeriodEnd: subscriptionWillCancel(subscription),
+    // `cancel_at` can be the main-plan grant expiry on a shared subscription.
+    cancelAtPeriodEnd: subscription.cancel_at_period_end,
   };
 }
 
@@ -3096,7 +3098,6 @@ function tierFromSubscription(subscription: StripeSubscription) {
 }
 
 function isReplaceablePlanSubscription(args: {
-  readonly orgId: string;
   readonly newSubscriptionId: string;
   readonly subscription: StripeSubscription;
   readonly targetTier: BillingSubscriptionTier;
@@ -3109,14 +3110,12 @@ function isReplaceablePlanSubscription(args: {
       (currentTier === "pro" || currentTier === "team"));
   return (
     subscription.id !== args.newSubscriptionId &&
-    subscription.metadata?.orgId === args.orgId &&
     (subscription.status === "active" || subscription.status === "trialing") &&
     replacesTier
   );
 }
 
 async function replacedPlanSubscriptionIdsForCustomer(args: {
-  readonly orgId: string;
   readonly customerId: string;
   readonly newSubscriptionId: string;
   readonly targetTier: BillingSubscriptionTier;
@@ -3135,7 +3134,6 @@ async function replacedPlanSubscriptionIdsForCustomer(args: {
   return subscriptions.data
     .filter((subscription) => {
       return isReplaceablePlanSubscription({
-        orgId: args.orgId,
         newSubscriptionId: args.newSubscriptionId,
         subscription,
         targetTier: args.targetTier,
@@ -3192,7 +3190,6 @@ async function cancelReplacedPlanSubscriptionsAfterInvoice(args: {
   const replacedSubscriptionIds = [
     ...(args.knownOldSubscriptionId ? [args.knownOldSubscriptionId] : []),
     ...(await replacedPlanSubscriptionIdsForCustomer({
-      orgId: args.orgId,
       customerId: args.customerId,
       newSubscriptionId: args.newSubscriptionId,
       targetTier: args.targetTier,
@@ -3210,20 +3207,16 @@ async function cancelReplacedPlanSubscriptionsAfterInvoice(args: {
   });
 }
 
-function isReplaceablePaidSubscriptionForAtomGrant(args: {
-  readonly orgId: string;
-  readonly subscription: StripeSubscription;
-}): boolean {
-  const subscription = args.subscription;
+function isReplaceablePaidSubscriptionForAtomGrant(
+  subscription: StripeSubscription,
+): boolean {
   return (
-    subscription.metadata?.orgId === args.orgId &&
     (subscription.status === "active" || subscription.status === "trialing") &&
     tierFromSubscription(subscription) !== null
   );
 }
 
 async function replacedAtomGrantSubscriptionIdsForCustomer(args: {
-  readonly orgId: string;
   readonly customerId: string;
 }): Promise<readonly string[]> {
   const stripe = getStripeClient();
@@ -3235,10 +3228,7 @@ async function replacedAtomGrantSubscriptionIdsForCustomer(args: {
 
   return subscriptions.data
     .filter((subscription) => {
-      return isReplaceablePaidSubscriptionForAtomGrant({
-        orgId: args.orgId,
-        subscription,
-      });
+      return isReplaceablePaidSubscriptionForAtomGrant(subscription);
     })
     .map((subscription) => {
       return subscription.id;
@@ -3255,7 +3245,6 @@ async function cancelReplacedSubscriptionsAfterAtomGrant(args: {
     ...(args.knownOldSubscriptionId ? [args.knownOldSubscriptionId] : []),
     ...(args.customerId
       ? await replacedAtomGrantSubscriptionIdsForCustomer({
-          orgId: args.orgId,
           customerId: args.customerId,
         })
       : []),
@@ -3511,6 +3500,11 @@ async function upsertSubscriptionPlanEntitlement(
     readonly details: SubscriptionInvoiceDetails;
   },
 ): Promise<void> {
+  const memberInviteUsagePackRequired =
+    await stripeSubscriptionUsesMemberUsagePacks(tx, {
+      orgId: args.orgId,
+      stripeSubscriptionId: args.subscriptionId,
+    });
   await upsertOrgPlanEntitlement(tx, {
     orgId: args.orgId,
     tier: args.details.tier,
@@ -3522,7 +3516,7 @@ async function upsertSubscriptionPlanEntitlement(
     currentPeriodEnd: args.details.periodEndDate,
     cancelAt: args.details.scheduledEndDate,
     expiresAt: args.details.scheduledEndDate,
-    sourceMetadata: args.details.subscription.metadata ?? {},
+    memberInviteUsagePackRequired,
   });
 }
 
@@ -3984,7 +3978,14 @@ async function handleInvoicePaid(
   }
 
   const usagePackResult = await handleUsagePackInvoicePaid(db, invoice);
-  if (usagePackResult.handled) {
+  const invoiceLines = invoice.lines?.data ?? [];
+  const hasCustomPlanInvoiceLine = invoiceLines.some((line) => {
+    const priceId = invoiceLinePriceId(line);
+    return priceId
+      ? tierForKnownPlanPrice({ id: priceId }) === "custom"
+      : false;
+  });
+  if (usagePackResult.handled && !hasCustomPlanInvoiceLine) {
     const concurrencyResult = await handleConcurrencyInvoicePaid(
       db,
       getClerk,
@@ -3992,18 +3993,19 @@ async function handleInvoicePaid(
     );
     return concurrencyResult.drainOrgId ?? usagePackResult.orgId;
   }
+  if (!usagePackResult.handled) {
+    const autoRechargeResult = await handleAutoRechargeInvoicePaid(db, invoice);
+    if (autoRechargeResult.handled) {
+      return autoRechargeResult.drainOrgId;
+    }
 
-  const autoRechargeResult = await handleAutoRechargeInvoicePaid(db, invoice);
-  if (autoRechargeResult.handled) {
-    return autoRechargeResult.drainOrgId;
-  }
-
-  const creditPurchaseResult = await handleCreditPurchaseInvoicePaid(
-    db,
-    invoice,
-  );
-  if (creditPurchaseResult.handled) {
-    return creditPurchaseResult.drainOrgId;
+    const creditPurchaseResult = await handleCreditPurchaseInvoicePaid(
+      db,
+      invoice,
+    );
+    if (creditPurchaseResult.handled) {
+      return creditPurchaseResult.drainOrgId;
+    }
   }
 
   const usageAllowanceResult = await handleUsageAllowanceInvoicePaid(
@@ -4016,19 +4018,24 @@ async function handleInvoicePaid(
     return atomGrantResult.drainOrgId;
   }
 
-  const hasPlanInvoiceLine = invoice.lines.data.some((line) => {
+  const hasPlanInvoiceLine = invoiceLines.some((line) => {
     const priceId = invoiceLinePriceId(line);
     return priceId ? tierForKnownPlanPrice({ id: priceId }) !== null : false;
   });
-  const planDrainOrgId = hasPlanInvoiceLine
+  const shouldHandlePlanInvoice =
+    hasPlanInvoiceLine &&
+    (!usagePackResult.handled || hasCustomPlanInvoiceLine);
+  const componentDrainOrgId =
+    usageAllowanceResult.drainOrgId ?? usagePackResult.orgId;
+  const planDrainOrgId = shouldHandlePlanInvoice
     ? await handlePlanSubscriptionInvoicePaid(
         db,
         getClerk,
         invoice,
         { handled: false, drainOrgId: null },
-        usageAllowanceResult.drainOrgId,
+        componentDrainOrgId,
       )
-    : usageAllowanceResult.drainOrgId;
+    : componentDrainOrgId;
   const concurrencyResult = await handleConcurrencyInvoicePaid(
     db,
     getClerk,
