@@ -1502,6 +1502,7 @@ export const previewInitialConcurrencyPurchase$ = command(
     return await set(
       previewStripeConcurrencySubscriptionChange$,
       {
+        orgId: args.orgId,
         subscriptionId,
         priceId: args.priceId,
         quantity: args.quantity,
@@ -1526,6 +1527,7 @@ export const startConcurrencyPurchase$ = command(
       const result = await set(
         applyStripeConcurrencySubscriptionChange$,
         {
+          orgId: args.orgId,
           subscriptionId: args.existingSubscriptionId,
           quantity: args.quantity,
           mode: "increase",
@@ -1564,6 +1566,7 @@ export const startConcurrencyPurchase$ = command(
     const result = await set(
       addStripeConcurrencySubscriptionItem$,
       {
+        orgId: args.orgId,
         subscriptionId,
         priceId: args.priceId,
         quantity: args.quantity,

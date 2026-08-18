@@ -18,6 +18,7 @@ import {
   and,
   desc,
   eq,
+  gt,
   inArray,
   isNull,
   isNotNull,
@@ -292,6 +293,46 @@ export async function usagePackAllocationChangeSchemaAvailable(
   return state?.available ?? false;
 }
 
+export async function failScheduledUsagePackAllocationChangesForSchedule(
+  db: Pick<Db, "update">,
+  args: {
+    readonly scheduleId: string;
+    readonly completedAt: Date;
+    readonly effectiveAfter?: Date;
+  },
+): Promise<readonly string[]> {
+  const rows = await db
+    .update(usagePackAllocationChanges)
+    .set({
+      status: "failed",
+      failureReason: "scheduled_change_restored",
+      completedAt: args.completedAt,
+      updatedAt: args.completedAt,
+    })
+    .where(
+      and(
+        eq(usagePackAllocationChanges.status, "scheduled"),
+        eq(usagePackAllocationChanges.stripeScheduleId, args.scheduleId),
+        ...(args.effectiveAfter
+          ? [
+              or(
+                isNull(usagePackAllocationChanges.effectiveAt),
+                gt(usagePackAllocationChanges.effectiveAt, args.effectiveAfter),
+              ),
+            ]
+          : []),
+      ),
+    )
+    .returning({ orgId: usagePackAllocationChanges.orgId });
+  return [
+    ...new Set(
+      rows.map((row) => {
+        return row.orgId;
+      }),
+    ),
+  ];
+}
+
 function stripeObjectId(
   value: string | { readonly id: string } | null | undefined,
 ): string | null {
@@ -372,7 +413,34 @@ async function boundUsagePackSubscriptionId(
     .select({ id: usagePackSubscriptions.id })
     .from(usagePackSubscriptions)
     .where(
-      eq(usagePackSubscriptions.stripeSubscriptionId, stripeSubscriptionId),
+      and(
+        eq(usagePackSubscriptions.stripeSubscriptionId, stripeSubscriptionId),
+        notInArray(usagePackSubscriptions.subscriptionStatus, [
+          ...TERMINAL_SUBSCRIPTION_STATUSES,
+        ]),
+      ),
+    )
+    .limit(1);
+  return subscription?.id ?? null;
+}
+
+async function activeMetadataUsagePackSubscriptionId(
+  db: Pick<Db, "select">,
+  metadataId: string | null,
+): Promise<string | null> {
+  if (!metadataId) {
+    return null;
+  }
+  const [subscription] = await db
+    .select({ id: usagePackSubscriptions.id })
+    .from(usagePackSubscriptions)
+    .where(
+      and(
+        eq(usagePackSubscriptions.id, metadataId),
+        notInArray(usagePackSubscriptions.subscriptionStatus, [
+          ...TERMINAL_SUBSCRIPTION_STATUSES,
+        ]),
+      ),
     )
     .limit(1);
   return subscription?.id ?? null;
@@ -402,7 +470,10 @@ async function invoiceUsagePackSubscriptionId(
   if (ids.size > 1) {
     throw new Error("Stripe usage pack invoice metadata has conflicting IDs");
   }
-  return ids.values().next().value ?? null;
+  return await activeMetadataUsagePackSubscriptionId(
+    db,
+    ids.values().next().value ?? null,
+  );
 }
 
 async function loadUsagePackChangeContextBySubscriptionId(
@@ -2423,7 +2494,11 @@ export async function reconcileUsagePackAllocationChangeSubscription(
   }
   const boundId = await boundUsagePackSubscriptionId(db, subscription.id);
   const usagePackSubscriptionId =
-    boundId ?? usagePackSubscriptionIdFromMetadata(subscription.metadata);
+    boundId ??
+    (await activeMetadataUsagePackSubscriptionId(
+      db,
+      usagePackSubscriptionIdFromMetadata(subscription.metadata),
+    ));
   if (!usagePackSubscriptionId) {
     return { reconciled: 0, orgId: null };
   }
@@ -2483,7 +2558,11 @@ export async function reconcileUsagePackAllocationChangeSubscriptionDeleted(
   }
   const boundId = await boundUsagePackSubscriptionId(db, subscription.id);
   const usagePackSubscriptionId =
-    boundId ?? usagePackSubscriptionIdFromMetadata(subscription.metadata);
+    boundId ??
+    (await activeMetadataUsagePackSubscriptionId(
+      db,
+      usagePackSubscriptionIdFromMetadata(subscription.metadata),
+    ));
   if (!usagePackSubscriptionId) {
     return;
   }

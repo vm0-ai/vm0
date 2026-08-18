@@ -68,6 +68,7 @@ import {
   stripeSubscriptionUsesMemberUsagePacks,
 } from "./usage-pack-subscription.service";
 import { createUsagePackCreditGrant } from "./usage-pack-credit.service";
+import { failScheduledUsagePackAllocationChangesForSchedule } from "./usage-pack-allocation-change.service";
 import {
   handleUsagePackInvitationCheckoutFailed,
   handleUsagePackInvitationCheckoutPaid,
@@ -4504,30 +4505,46 @@ async function handleSubscriptionUpdated(
 async function handleSubscriptionScheduleReleased(
   db: Db,
   schedule: SubscriptionScheduleInput,
+  releasedAt: Date,
 ): Promise<readonly string[]> {
-  const rows = await db
-    .update(orgMetadata)
-    .set({
-      cancelAtPeriodEnd: false,
-      pendingSubscriptionScheduleId: null,
-      pendingSubscriptionTargetTier: null,
-      pendingSubscriptionChangeAt: null,
-      updatedAt: nowDate(),
-    })
-    .where(eq(orgMetadata.pendingSubscriptionScheduleId, schedule.id))
-    .returning({ orgId: orgMetadata.orgId });
+  const updatedAt = nowDate();
+  const { rows, usagePackOrgIds } = await db.transaction(async (tx) => {
+    const usagePackOrgIds =
+      await failScheduledUsagePackAllocationChangesForSchedule(tx, {
+        scheduleId: schedule.id,
+        completedAt: updatedAt,
+        effectiveAfter: releasedAt,
+      });
+    const rows = await tx
+      .update(orgMetadata)
+      .set({
+        cancelAtPeriodEnd: false,
+        pendingSubscriptionScheduleId: null,
+        pendingSubscriptionTargetTier: null,
+        pendingSubscriptionChangeAt: null,
+        updatedAt,
+      })
+      .where(eq(orgMetadata.pendingSubscriptionScheduleId, schedule.id))
+      .returning({ orgId: orgMetadata.orgId });
+    return { rows, usagePackOrgIds };
+  });
 
-  if (rows.length > 0) {
-    L.debug("subscription schedule released; cleared pending billing change", {
-      scheduleId: schedule.id,
-      orgIds: rows.map((row) => {
+  const orgIds = [
+    ...new Set([
+      ...usagePackOrgIds,
+      ...rows.map((row) => {
         return row.orgId;
       }),
+    ]),
+  ];
+
+  if (orgIds.length > 0) {
+    L.debug("subscription schedule released; cleared pending billing change", {
+      scheduleId: schedule.id,
+      orgIds,
     });
   }
-  return rows.map((row) => {
-    return row.orgId;
-  });
+  return orgIds;
 }
 
 async function handleSubscriptionScheduleEnded(
@@ -4839,6 +4856,7 @@ export const handleStripeWebhookEvent$ = command(
         const orgIds = await handleSubscriptionScheduleReleased(
           db,
           event.object,
+          new Date(event.created * 1000),
         );
         signal.throwIfAborted();
         addBillingChangedOrgIds(billingChangedOrgIds, orgIds);

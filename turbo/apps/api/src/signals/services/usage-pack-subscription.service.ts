@@ -1474,7 +1474,35 @@ async function boundUsagePackSubscriptionId(
     .select({ id: usagePackSubscriptions.id })
     .from(usagePackSubscriptions)
     .where(
-      eq(usagePackSubscriptions.stripeSubscriptionId, stripeSubscriptionId),
+      and(
+        eq(usagePackSubscriptions.stripeSubscriptionId, stripeSubscriptionId),
+        notInArray(usagePackSubscriptions.subscriptionStatus, [
+          ...TERMINAL_USAGE_PACK_SUBSCRIPTION_STATUSES,
+        ]),
+      ),
+    )
+    .limit(1);
+  return subscription?.id ?? null;
+}
+
+async function activeMetadataUsagePackSubscriptionId(
+  db: Pick<Db, "select">,
+  metadata: readonly (Readonly<Record<string, string>> | null | undefined)[],
+): Promise<string | null> {
+  const metadataId = oneUsagePackSubscriptionId(...metadata);
+  if (!metadataId) {
+    return null;
+  }
+  const [subscription] = await db
+    .select({ id: usagePackSubscriptions.id })
+    .from(usagePackSubscriptions)
+    .where(
+      and(
+        eq(usagePackSubscriptions.id, metadataId),
+        notInArray(usagePackSubscriptions.subscriptionStatus, [
+          ...TERMINAL_USAGE_PACK_SUBSCRIPTION_STATUSES,
+        ]),
+      ),
     )
     .limit(1);
   return subscription?.id ?? null;
@@ -1534,7 +1562,7 @@ async function resolveUsagePackSubscriptionId(
   if (boundId) {
     return boundId;
   }
-  return oneUsagePackSubscriptionId(...args.metadata);
+  return await activeMetadataUsagePackSubscriptionId(db, args.metadata);
 }
 
 function stripeObjectId(value: StripeObjectReference | null | undefined) {
@@ -1613,6 +1641,23 @@ function usagePackSubscriptionWillCancel(
     subscription.cancel_at_period_end ||
     unixDate(subscription.cancel_at) !== null
   );
+}
+
+function subscriptionHasCustomPlan(
+  subscription: UsagePackSubscriptionInput,
+): boolean {
+  return subscription.items.data.some((item) => {
+    return tierForKnownPlanPrice(item.price) === "custom";
+  });
+}
+
+function customSubscriptionRemovedUsagePacks(
+  subscription: UsagePackSubscriptionInput,
+): boolean {
+  const hasUsagePack = subscription.items.data.some((item) => {
+    return usagePackUsdForKnownPriceId(item.price.id) !== null;
+  });
+  return subscriptionHasCustomPlan(subscription) && !hasUsagePack;
 }
 
 function inspectUsagePackBasePlan(
@@ -2032,10 +2077,7 @@ async function deactivateInvalidUsagePackSubscription(
         ),
       );
 
-    const hasCustomMainPlan = subscription.items.data.some((item) => {
-      return tierForKnownPlanPrice(item.price) === "custom";
-    });
-    if (hasCustomMainPlan) {
+    if (subscriptionHasCustomPlan(subscription)) {
       return;
     }
 
@@ -2093,7 +2135,20 @@ async function handleUsagePackSubscriptionChanged(
   const currentSubscription = (await getStripeClient().subscriptions.retrieve(
     eventSubscription.id,
   )) as UsagePackSubscriptionInput;
-  await reconcileUsagePackAllocationChangeSubscription(db, currentSubscription);
+  const removedUsagePacksFromCustom =
+    invalidShape === "deactivate" &&
+    customSubscriptionRemovedUsagePacks(currentSubscription);
+  if (removedUsagePacksFromCustom) {
+    await reconcileUsagePackAllocationChangeSubscriptionDeleted(
+      db,
+      currentSubscription,
+    );
+  } else {
+    await reconcileUsagePackAllocationChangeSubscription(
+      db,
+      currentSubscription,
+    );
+  }
   const context = await loadUsagePackContext(db, usagePackSubscriptionId);
   validateUsagePackSubscriptionCorrelation(
     context,
@@ -2104,6 +2159,24 @@ async function handleUsagePackSubscriptionChanged(
     context,
     currentSubscription,
   );
+  if (removedUsagePacksFromCustom && !inspected.valid) {
+    await deactivateInvalidUsagePackSubscription(
+      db,
+      context,
+      currentSubscription,
+      inspected.reason,
+      "canceled",
+    );
+    L.debug("usage pack component removed from Custom subscription", {
+      usagePackSubscriptionId,
+      stripeSubscriptionId: currentSubscription.id,
+    });
+    return {
+      handled: true,
+      orgId: context.subscription.orgId,
+      subscription: currentSubscription,
+    };
+  }
   if (
     invalidShape === "deactivate" &&
     (currentSubscription.status === "canceled" ||
