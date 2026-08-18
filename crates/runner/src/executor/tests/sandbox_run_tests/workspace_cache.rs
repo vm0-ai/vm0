@@ -2,9 +2,6 @@ use super::*;
 use async_trait::async_trait;
 use httpmock::prelude::*;
 use sha2::{Digest, Sha256};
-use std::os::unix::fs::PermissionsExt;
-use std::sync::mpsc;
-use std::time::Instant;
 
 use crate::executor::session_history_cpu::{SessionHistoryCpuPool, SessionHistoryCpuTestGate};
 use crate::executor::tests::support::RUN_IN_SANDBOX_TEST_TIMEOUT;
@@ -14,7 +11,9 @@ use crate::types::{
     ResumeSessionHistory, ResumeSessionHistoryEncoding, ResumeSessionHistoryRef,
     ResumeSessionHistoryRefKind, WorkspaceReuseResult,
 };
-use crate::workspace_image_cache::WorkspaceSessionHistorySidecarRepresentation;
+use crate::workspace_image_cache::{
+    WorkspaceImagePrepareLockTestGate, WorkspaceSessionHistorySidecarRepresentation,
+};
 
 fn enable_api_start_telemetry(context: &mut crate::types::ExecutionContext) {
     context.api_start_time = Some(chrono::Utc::now().timestamp_millis().max(0) as u64);
@@ -806,13 +805,18 @@ async fn execute_inner_cache_hit_retry_requires_completed_cleanup() {
 
 #[tokio::test]
 async fn execute_inner_waits_for_transient_workspace_cache_lock() {
-    const LOCK_ATTEMPT_WATCHDOG: Duration = Duration::from_secs(1);
+    const LOCK_CONTENTION_WATCHDOG: Duration = Duration::from_secs(1);
 
     let dir = tempfile::tempdir().unwrap();
     let runner_paths = RunnerPaths::new(dir.path().join("runner"));
     let cache = WorkspaceImageCache::new(runner_paths.clone());
+    let prepare_lock_gate = WorkspaceImagePrepareLockTestGate::default();
     let mut config = test_executor_config(dir.path()).await;
-    config.workspace_cache = Some(cache.clone());
+    config.workspace_cache = Some(
+        cache
+            .clone()
+            .with_prepare_lock_test_gate(prepare_lock_gate.clone()),
+    );
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let mut ctx = minimal_context();
@@ -830,57 +834,42 @@ async fn execute_inner_waits_for_transient_workspace_cache_lock() {
         CANONICAL_WORKING_DIR,
         u64::from(params.workspace_disk_mb) * 1024 * 1024,
     );
-    let lock_path = crate::paths::workspace_image_cache_lock_path(
+    let held_lock = crate::lock::acquire(crate::paths::workspace_image_cache_lock_path(
         &runner_paths.base_dir().join("locks"),
         &cache_key,
-    );
-    let held_lock = crate::lock::acquire(lock_path.clone()).await.unwrap();
-    // Each acquisition attempt tightens this safe mode to 0600 before flock.
-    // Two tightenings while the guard is held prove the first attempt observed contention.
-    std::fs::set_permissions(&lock_path, std::fs::Permissions::from_mode(0o644)).unwrap();
-    let (controller_ready_tx, controller_ready_rx) = mpsc::sync_channel(0);
-    let release = std::thread::spawn(move || {
-        let wait_for_attempt = |attempt| {
-            let deadline = Instant::now() + LOCK_ATTEMPT_WATCHDOG;
-            while std::fs::metadata(&lock_path).unwrap().permissions().mode() & 0o777 != 0o600 {
-                assert!(
-                    Instant::now() < deadline,
-                    "workspace cache lock attempt {attempt} did not tighten the lock file"
-                );
-                std::thread::yield_now();
-            }
-        };
-
-        controller_ready_tx.send(()).unwrap();
-        wait_for_attempt(1);
-        std::fs::set_permissions(&lock_path, std::fs::Permissions::from_mode(0o644)).unwrap();
-        wait_for_attempt(2);
-        drop(held_lock);
-    });
-    controller_ready_rx
-        .recv_timeout(LOCK_ATTEMPT_WATCHDOG)
-        .expect("workspace cache lock controller should become ready");
+    ))
+    .await
+    .unwrap();
     let mut telemetry = test_telemetry(&config, &ctx);
 
-    let outcome = tokio::time::timeout(
-        RUN_IN_SANDBOX_TEST_TIMEOUT,
-        execute_new_sandbox(
-            &factory,
-            &ctx,
-            NewSandboxDispatch {
-                id: SandboxId::new_v4(),
-                reuse_result: SandboxReuseResult::PoolMiss,
-            },
-            &config,
-            &params,
-            &mut telemetry,
-            tokio_util::sync::CancellationToken::new(),
-        ),
-    )
-    .await
-    .expect("transient workspace lock wait should remain bounded")
-    .unwrap();
-    release.join().unwrap();
+    let outcome = {
+        let outcome = tokio::time::timeout(
+            RUN_IN_SANDBOX_TEST_TIMEOUT,
+            execute_new_sandbox(
+                &factory,
+                &ctx,
+                NewSandboxDispatch {
+                    id: SandboxId::new_v4(),
+                    reuse_result: SandboxReuseResult::PoolMiss,
+                },
+                &config,
+                &params,
+                &mut telemetry,
+                tokio_util::sync::CancellationToken::new(),
+            ),
+        );
+        tokio::pin!(outcome);
+        tokio::select! {
+            () = prepare_lock_gate.wait_entered(LOCK_CONTENTION_WATCHDOG) => {}
+            _ = &mut outcome => panic!("sandbox execution ended before workspace cache lock contention"),
+        }
+        drop(held_lock);
+        prepare_lock_gate.release();
+        outcome
+            .await
+            .expect("transient workspace lock wait should remain bounded")
+            .unwrap()
+    };
 
     assert_eq!(outcome.exit_code(), 0);
     assert!(outcome.workspace_image.is_some());
