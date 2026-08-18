@@ -361,6 +361,54 @@ async fn start_process_rejects_invalid_env_key() {
 }
 
 #[tokio::test]
+async fn queued_start_process_errors_are_consumed_fifo() {
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    overrides.push_start_process_error(SandboxError::Operation {
+        operation: SandboxOperation::StartProcess,
+        reason: SandboxOperationReason::Guest,
+        message: "first start failed".into(),
+    });
+    overrides.push_start_process_error(SandboxError::Operation {
+        operation: SandboxOperation::StartProcess,
+        reason: SandboxOperationReason::Timeout,
+        message: "second start failed".into(),
+    });
+    let sandbox = MockSandbox::with_overrides("test", Arc::clone(&overrides));
+    let request = StartProcessRequest {
+        cmd: "agent",
+        timeout: Duration::from_secs(5),
+        env: &[],
+        sudo: false,
+        output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+        control: ProcessControlMode::None,
+    };
+
+    let first_error = match sandbox.start_process(&request).await {
+        Ok(_) => panic!("expected first start to fail"),
+        Err(error) => error,
+    };
+    assert_operation_error(
+        first_error,
+        SandboxOperation::StartProcess,
+        SandboxOperationReason::Guest,
+        "first start failed",
+    );
+    let second_error = match sandbox.start_process(&request).await {
+        Ok(_) => panic!("expected second start to fail"),
+        Err(error) => error,
+    };
+    assert_operation_error(
+        second_error,
+        SandboxOperation::StartProcess,
+        SandboxOperationReason::Timeout,
+        "second start failed",
+    );
+    sandbox.start_process(&request).await.unwrap();
+
+    assert_eq!(overrides.start_process_calls().len(), 3);
+}
+
+#[tokio::test]
 async fn start_process_lifecycle_gate_blocks_before_recording_or_cancellation() {
     let gate = MockLifecycleGate::new();
     let overrides = Arc::new(MockSandboxOverrides::new());
