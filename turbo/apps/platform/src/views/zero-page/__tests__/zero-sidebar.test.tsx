@@ -2967,7 +2967,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("keeps New fourth in the pinned agent navigation order", async () => {
+  it("keeps New after the first four pinned agents in navigation order", async () => {
     const team = prepareAgentTeam();
     const operationsAgentId = "c0000000-0000-4000-a000-000000000004";
     context.mocks.data.team([
@@ -3003,15 +3003,10 @@ describe("zero sidebar", () => {
     if (!newAgent) {
       throw new Error("New agent button not found");
     }
-    const supportAgent = pinnedAgentLink(grid, "Support Agent");
     const operationsAgent = pinnedAgentLink(grid, "Operations Agent");
 
     expect(
-      supportAgent.compareDocumentPosition(newAgent) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(
-      newAgent.compareDocumentPosition(operationsAgent) &
+      operationsAgent.compareDocumentPosition(newAgent) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });

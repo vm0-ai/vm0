@@ -312,7 +312,7 @@ export function PinnedAgentListSection({
           className="grid min-w-0 grid-cols-5 items-start gap-1 pb-1"
           data-testid="pinned-agents-grid"
         >
-          {pinnedAgentCards.slice(0, 3)}
+          {pinnedAgentCards.slice(0, 4)}
           <button
             type="button"
             onClick={() => {
@@ -321,7 +321,7 @@ export function PinnedAgentListSection({
             aria-label={t(($) => {
               return $.sidebar.openConversation;
             })}
-            className="col-start-4 row-start-1 flex w-full min-w-0 flex-col items-center gap-1.5 rounded-lg p-1.5 text-sidebar-foreground opacity-70 transition-colors hover:opacity-100 hover:bg-state-hover"
+            className="flex w-full min-w-0 flex-col items-center gap-1.5 rounded-lg p-1.5 text-sidebar-foreground opacity-70 transition-colors hover:opacity-100 hover:bg-state-hover"
           >
             <span className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-[hsl(var(--gray-300))]">
               <Plus size={16} />
@@ -332,7 +332,7 @@ export function PinnedAgentListSection({
               })}
             </span>
           </button>
-          {pinnedAgentCards.slice(3)}
+          {pinnedAgentCards.slice(4)}
         </div>
         <AgentListDialogContainer />
       </div>

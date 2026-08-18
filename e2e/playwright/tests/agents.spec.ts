@@ -17,6 +17,7 @@ const pinnedAgentStory = [
     displayName: "Operations Agent",
   },
 ] as const;
+type PinnedAgentStoryEntry = (typeof pinnedAgentStory)[number];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -25,7 +26,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 async function mockPinnedAgentGrid(
   page: Page,
   defaultAgentId: string,
-): Promise<void> {
+): Promise<(agents: readonly PinnedAgentStoryEntry[]) => void> {
+  let pinnedAgents: readonly PinnedAgentStoryEntry[] = pinnedAgentStory;
+
   await page.route("**/api/okou/feature-switches", async (route) => {
     const response = await route.fetch();
     const body: unknown = await response.json();
@@ -85,12 +88,16 @@ async function mockPinnedAgentGrid(
       response,
       json: {
         ...body,
-        pinnedAgentIds: pinnedAgentStory.map((agent) => {
+        pinnedAgentIds: pinnedAgents.map((agent) => {
           return agent.id;
         }),
       },
     });
   });
+
+  return (agents) => {
+    pinnedAgents = agents;
+  };
 }
 
 test("navigate to agents page and verify heading", async ({ page }) => {
@@ -100,7 +107,7 @@ test("navigate to agents page and verify heading", async ({ page }) => {
   });
 });
 
-test("pinned agents use five equal columns without horizontal overflow", async ({
+test("pinned agents use five equal columns and keep New in the first row", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -113,7 +120,7 @@ test("pinned agents use five equal columns without horizontal overflow", async (
     throw new Error("Could not resolve the default agent from the sidebar");
   }
 
-  await mockPinnedAgentGrid(page, defaultAgentId);
+  const setPinnedAgents = await mockPinnedAgentGrid(page, defaultAgentId);
   await Promise.all([
     ...[
       "/api/okou/feature-switches",
@@ -145,8 +152,8 @@ test("pinned agents use five equal columns without horizontal overflow", async (
         cards.nth(0).boundingBox(),
         cards.nth(1).boundingBox(),
         cards.nth(2).boundingBox(),
-        newAgent.boundingBox(),
         cards.nth(3).boundingBox(),
+        newAgent.boundingBox(),
       ]);
       if (boxes.some((box) => box === null)) {
         return Number.POSITIVE_INFINITY;
@@ -162,8 +169,8 @@ test("pinned agents use five equal columns without horizontal overflow", async (
         cards.nth(0).boundingBox(),
         cards.nth(1).boundingBox(),
         cards.nth(2).boundingBox(),
-        newAgent.boundingBox(),
         cards.nth(3).boundingBox(),
+        newAgent.boundingBox(),
       ]);
       if (boxes.some((box) => box === null)) {
         return 0;
@@ -196,15 +203,15 @@ test("pinned agents use five equal columns without horizontal overflow", async (
 
   await expect
     .poll(async () => {
-      const [gridBox, lastAgentBox] = await Promise.all([
+      const [gridBox, newAgentBox] = await Promise.all([
         grid.boundingBox(),
-        cards.nth(3).boundingBox(),
+        newAgent.boundingBox(),
       ]);
-      if (!gridBox || !lastAgentBox) {
+      if (!gridBox || !newAgentBox) {
         return Number.POSITIVE_INFINITY;
       }
       return Math.abs(
-        lastAgentBox.x + lastAgentBox.width - (gridBox.x + gridBox.width),
+        newAgentBox.x + newAgentBox.width - (gridBox.x + gridBox.width),
       );
     })
     .toBeLessThan(2);
@@ -216,6 +223,37 @@ test("pinned agents use five equal columns without horizontal overflow", async (
       });
     })
     .toBe(0);
+
+  setPinnedAgents(pinnedAgentStory.slice(0, 2));
+  await Promise.all([
+    page.waitForResponse((response) => {
+      return (
+        response.request().method() === "GET" &&
+        new URL(response.url()).pathname === "/api/okou/user-preferences"
+      );
+    }),
+    page.reload(),
+  ]);
+
+  await expect(cards).toHaveCount(3);
+  await expect
+    .poll(async () => {
+      const boxes = await Promise.all([
+        cards.nth(0).boundingBox(),
+        cards.nth(1).boundingBox(),
+        cards.nth(2).boundingBox(),
+        newAgent.boundingBox(),
+      ]);
+      if (boxes.some((box) => box === null)) {
+        return Number.POSITIVE_INFINITY;
+      }
+      const columnStep = boxes[1]!.x - boxes[0]!.x;
+      return Math.max(
+        Math.abs(boxes[3]!.x - boxes[2]!.x - columnStep),
+        Math.abs(boxes[3]!.y - boxes[2]!.y),
+      );
+    })
+    .toBeLessThan(2);
 });
 
 test("reveal the default agent unread action from the whole row", async ({
