@@ -373,13 +373,15 @@ mod tests {
         )
     }
 
+    type CleanupOutputCase<'a> = (&'a str, Vec<u8>, bool, Result<Option<&'a str>, &'a str>);
+
     #[test]
     fn parse_codex_cleanup_output_accepts_and_rejects_expected_stdout() {
         let canonical = canonical_sessions_logical_path("2026-06-04", "07-18-08");
         let canonical_with_newline = format!("{canonical}\n");
         let different_session_id = "00000000-0000-0000-0000-000000000000";
 
-        let cases: &[(&str, Vec<u8>, bool, Result<Option<&str>, &str>)] = &[
+        let cases: &[CleanupOutputCase<'_>] = &[
             (
                 "empty stdout selects the fallback path",
                 Vec::new(),
