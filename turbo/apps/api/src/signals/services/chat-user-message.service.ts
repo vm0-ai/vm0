@@ -259,42 +259,6 @@ function inlineGenerationTemplatePrompt(
   return `[Template #${referenceNumber}: ${part.titleSnapshot} (${generationTemplateTypeLabel(part.template)})]`;
 }
 
-function feedbackPromptIntro(args: {
-  readonly count: number;
-  readonly commonMailSourceLabel: string | null;
-  readonly hasSourceContext: boolean;
-  readonly hasQuoteOnlyPart: boolean;
-}): string {
-  const { count, commonMailSourceLabel, hasSourceContext, hasQuoteOnlyPart } =
-    args;
-  if (hasQuoteOnlyPart) {
-    if (commonMailSourceLabel !== null) {
-      return count === 1
-        ? `The user referenced this part of ${commonMailSourceLabel}:`
-        : `The user referenced ${count} parts of ${commonMailSourceLabel}:`;
-    }
-    if (hasSourceContext) {
-      return count === 1
-        ? "The user referenced this selected passage:"
-        : `The user referenced ${count} selected passages:`;
-    }
-    return count === 1
-      ? "The user referenced this part of your reply:"
-      : `The user referenced ${count} parts of your reply:`;
-  }
-  if (commonMailSourceLabel !== null) {
-    return count === 1
-      ? `Feedback on this part of ${commonMailSourceLabel}:`
-      : `Feedback on ${count} parts of ${commonMailSourceLabel}:`;
-  }
-  if (hasSourceContext) {
-    return `Feedback on ${count} selected ${count === 1 ? "passage" : "passages"}:`;
-  }
-  return count === 1
-    ? "Feedback on this part of your reply:"
-    : `Feedback on ${count} parts of your reply:`;
-}
-
 function formatFeedbackParts(
   parts: readonly Extract<UserMessagePart, { type: "feedback" }>[],
   serializeTemplate: (
@@ -354,13 +318,17 @@ function formatFeedbackParts(
           : `\n\n${note}`;
     return `${source}${quoted}${comment}`;
   });
-  const intro = feedbackPromptIntro({
-    count: parts.length,
-    commonMailSourceLabel:
-      commonMailSource === null ? null : mailSourceLabel(commonMailSource),
-    hasSourceContext,
-    hasQuoteOnlyPart,
-  });
+  const intro = hasQuoteOnlyPart
+    ? `The user referenced ${parts.length} parts of your reply:`
+    : commonMailSource
+      ? parts.length === 1
+        ? `Feedback on this part of ${mailSourceLabel(commonMailSource)}:`
+        : `Feedback on ${parts.length} parts of ${mailSourceLabel(commonMailSource)}:`
+      : hasSourceContext
+        ? `Feedback on ${parts.length} selected ${parts.length === 1 ? "passage" : "passages"}:`
+        : parts.length === 1
+          ? "Feedback on this part of your reply:"
+          : `Feedback on ${parts.length} parts of your reply:`;
   return `${intro}\n\n${blocks.join("\n\n---\n\n")}`;
 }
 

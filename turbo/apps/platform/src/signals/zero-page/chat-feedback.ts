@@ -118,42 +118,6 @@ export function createComposerFeedbackModel(): ComposerFeedbackModel {
   };
 }
 
-function feedbackPromptIntro(args: {
-  readonly count: number;
-  readonly commonMailSourceLabel: string | null;
-  readonly hasSourceContext: boolean;
-  readonly hasQuoteOnlyItem: boolean;
-}): string {
-  const { count, commonMailSourceLabel, hasSourceContext, hasQuoteOnlyItem } =
-    args;
-  if (hasQuoteOnlyItem) {
-    if (commonMailSourceLabel !== null) {
-      return count === 1
-        ? `The user referenced this part of ${commonMailSourceLabel}:`
-        : `The user referenced ${count} parts of ${commonMailSourceLabel}:`;
-    }
-    if (hasSourceContext) {
-      return count === 1
-        ? "The user referenced this selected passage:"
-        : `The user referenced ${count} selected passages:`;
-    }
-    return count === 1
-      ? "The user referenced this part of your reply:"
-      : `The user referenced ${count} parts of your reply:`;
-  }
-  if (commonMailSourceLabel !== null) {
-    return count === 1
-      ? `Feedback on this part of ${commonMailSourceLabel}:`
-      : `Feedback on ${count} parts of ${commonMailSourceLabel}:`;
-  }
-  if (hasSourceContext) {
-    return `Feedback on ${count} selected ${count === 1 ? "passage" : "passages"}:`;
-  }
-  return count === 1
-    ? "Feedback on this part of your reply:"
-    : `Feedback on ${count} parts of your reply:`;
-}
-
 // Compose every selected fragment into a single follow-up turn. A passage can
 // carry a comment, but the reference itself remains meaningful without one.
 export function formatFeedbackPrompt(
@@ -203,12 +167,16 @@ export function formatFeedbackPrompt(
           : `\n\n${note}`;
     return `${source}${quoted}${comment}`;
   });
-  const intro = feedbackPromptIntro({
-    count: items.length,
-    commonMailSourceLabel:
-      commonMailSource === null ? null : mailSourceLabel(commonMailSource),
-    hasSourceContext,
-    hasQuoteOnlyItem,
-  });
+  const intro = hasQuoteOnlyItem
+    ? `The user referenced ${items.length} parts of your reply:`
+    : commonMailSource
+      ? items.length === 1
+        ? `Feedback on this part of ${mailSourceLabel(commonMailSource)}:`
+        : `Feedback on ${items.length} parts of ${mailSourceLabel(commonMailSource)}:`
+      : hasSourceContext
+        ? `Feedback on ${items.length} selected ${items.length === 1 ? "passage" : "passages"}:`
+        : items.length === 1
+          ? "Feedback on this part of your reply:"
+          : `Feedback on ${items.length} parts of your reply:`;
   return `${intro}\n\n${blocks.join("\n\n---\n\n")}`;
 }
