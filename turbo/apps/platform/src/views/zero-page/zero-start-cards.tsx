@@ -18,9 +18,11 @@ import {
 } from "../../signals/zero-page/zero-start-cards.ts";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 
-// Every kind draws into the same 4:3 slot so the row reads as one family.
+// Every kind draws into the same square slot so the row reads as one family.
+// The card is only ~292px wide, so the tile stays small enough to leave the
+// title on one line and the description on two.
 const THUMBNAIL_CLASS =
-  "grid h-[76px] w-[100px] shrink-0 place-items-center overflow-hidden rounded-xl";
+  "grid size-[72px] shrink-0 place-items-center overflow-hidden rounded-xl";
 
 const NODE_CLASS = "rounded-md border border-border bg-card";
 
@@ -31,7 +33,7 @@ type WorkflowArtIcon =
 
 function SlidesArt() {
   return (
-    <div className="relative h-10 w-[54px]">
+    <div className="relative h-[31px] w-[42px]">
       <span
         className={`absolute inset-0 -translate-x-[3px] translate-y-[2px] -rotate-6 ${NODE_CLASS}`}
       />
@@ -39,8 +41,8 @@ function SlidesArt() {
         className={`absolute inset-0 translate-x-[3px] translate-y-px rotate-6 ${NODE_CLASS}`}
       />
       <span className={`absolute inset-0 ${NODE_CLASS}`}>
-        <span className="absolute left-3.5 top-[14px] h-1 w-[26px] rounded-full bg-primary" />
-        <span className="absolute left-3.5 top-[22px] h-1 w-[26px] rounded-full bg-muted-foreground/20" />
+        <span className="absolute left-[11px] top-[11px] h-[3px] w-5 rounded-full bg-primary" />
+        <span className="absolute left-[11px] top-[17px] h-[3px] w-5 rounded-full bg-muted-foreground/20" />
       </span>
     </div>
   );
@@ -48,20 +50,20 @@ function SlidesArt() {
 
 function WebsiteArt() {
   return (
-    <div className="h-[46px] w-[58px] overflow-hidden rounded-md border border-border bg-card">
-      <div className="h-2.5 border-b border-border bg-muted" />
-      <div className="mx-1.5 mt-1.5 h-4 rounded-sm bg-sky-500/25" />
-      <div className="mx-1.5 mt-1 h-1 w-7 rounded-full bg-muted-foreground/20" />
+    <div className="h-[33px] w-[42px] overflow-hidden rounded-md border border-border bg-card">
+      <div className="h-[9px] border-b border-border bg-muted" />
+      <div className="mx-1 mt-1 h-3 rounded-sm bg-sky-500/25" />
+      <div className="mx-1 mt-[3px] h-[3px] w-5 rounded-full bg-muted-foreground/20" />
     </div>
   );
 }
 
 function IllustrationArt() {
   return (
-    <div className="h-12 w-[58px] rounded-md border border-border bg-card p-1.5">
-      <div className="h-2 w-2 rounded-full bg-amber-400" />
+    <div className="h-[37px] w-[44px] rounded-md border border-border bg-card p-1">
+      <div className="size-[7px] rounded-full bg-amber-400" />
       <div
-        className="mt-1 h-[26px] rounded-sm bg-emerald-500/40"
+        className="mt-[3px] h-[19px] rounded-sm bg-emerald-500/40"
         style={{
           clipPath:
             "polygon(0 100%, 0 60%, 27% 26%, 49% 58%, 69% 18%, 100% 62%, 100% 100%)",
@@ -73,9 +75,9 @@ function IllustrationArt() {
 
 function VideoArt() {
   return (
-    <div className="grid h-[42px] w-[58px] place-items-center rounded-md border border-border bg-card">
-      <span className="grid h-5 w-5 place-items-center rounded-full bg-primary/15 text-primary">
-        <Play size={9} fill="currentColor" />
+    <div className="grid h-[30px] w-[42px] place-items-center rounded-md border border-border bg-card">
+      <span className="grid size-4 place-items-center rounded-full bg-primary/15 text-primary">
+        <Play size={7} fill="currentColor" />
       </span>
     </div>
   );
@@ -83,17 +85,17 @@ function VideoArt() {
 
 function AvatarArt() {
   return (
-    <div className="flex h-[52px] w-[46px] flex-col items-center justify-end">
-      <span className="h-6 w-6 rounded-full border border-border bg-card" />
-      <span className="mt-0.5 h-5 w-11 rounded-t-full border border-b-0 border-border bg-card" />
+    <div className="flex h-[38px] w-[34px] flex-col items-center justify-end">
+      <span className="size-[18px] rounded-full border border-border bg-card" />
+      <span className="mt-0.5 h-[15px] w-8 rounded-t-full border border-b-0 border-border bg-card" />
     </div>
   );
 }
 
 function WorkflowNode({ icon }: { icon: WorkflowArtIcon }) {
   return (
-    <span className={`grid h-[22px] w-7 place-items-center ${NODE_CLASS}`}>
-      <ConnectorIcon icon={icon?.icon} size={11} />
+    <span className={`grid h-[17px] w-[22px] place-items-center ${NODE_CLASS}`}>
+      <ConnectorIcon icon={icon?.icon} size={10} />
     </span>
   );
 }
@@ -105,19 +107,19 @@ function WorkflowNode({ icon }: { icon: WorkflowArtIcon }) {
 function WorkflowArt({ icons }: { icons: readonly WorkflowArtIcon[] }) {
   const [trigger, ...steps] = icons;
   return (
-    <div className="flex w-[70px] flex-col items-center">
-      <div className="flex h-[22px] w-full items-center gap-1 rounded-md border border-border bg-card px-1.5">
-        <ConnectorIcon icon={trigger?.icon} size={11} />
-        <span className="h-1 flex-1 rounded-full bg-muted-foreground/20" />
+    <div className="flex w-[54px] flex-col items-center">
+      <div className="flex h-[17px] w-full items-center gap-1 rounded-md border border-border bg-card px-1">
+        <ConnectorIcon icon={trigger?.icon} size={9} />
+        <span className="h-[3px] flex-1 rounded-full bg-muted-foreground/20" />
       </div>
-      <span className="h-2 w-px bg-border" />
+      <span className="h-1.5 w-px bg-border" />
       {steps.length > 1 ? (
         <div className="relative flex w-full justify-between">
-          <span className="absolute left-3.5 right-3.5 top-0 h-px bg-border" />
+          <span className="absolute left-[11px] right-[11px] top-0 h-px bg-border" />
           {steps.slice(0, 2).map((icon, index) => {
             return (
-              <span key={icon?.slug ?? index} className="relative mt-2">
-                <span className="absolute -top-2 left-1/2 h-2 w-px bg-border" />
+              <span key={icon?.slug ?? index} className="relative mt-1.5">
+                <span className="absolute -top-1.5 left-1/2 h-1.5 w-px bg-border" />
                 <WorkflowNode icon={icon} />
               </span>
             );
@@ -197,7 +199,7 @@ function StartCard({
           <p className="text-sm font-semibold text-foreground">
             {content.title}
           </p>
-          <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
             {content.description}
           </p>
         </div>
