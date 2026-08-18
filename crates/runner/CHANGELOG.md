@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.169.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.7...runner-rs-v0.169.8) (2026-08-18)
+
+
+### Performance Improvements
+
+* **runner:** attribute workspace mount guest duration ([#28059](https://github.com/vm0-ai/vm0/issues/28059)) ([7b94559](https://github.com/vm0-ai/vm0/commit/7b94559e3942ebbcfb88e7d287b59cc777386977))
+
 ## [0.169.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.6...runner-rs-v0.169.7) (2026-08-18)
 
 
