@@ -384,6 +384,9 @@ fn lock_handoff(handoff: &Mutex<ActiveRunHandoffBroker>) -> MutexGuard<'_, Activ
 mod tests {
     use super::*;
 
+    use crate::idle_pool::test_support::ParkedIdleCandidateBuilder;
+    use crate::resource_budget::ResourceBudget;
+
     #[tokio::test]
     async fn active_runs_prove_exact_predecessor_and_preserve_shared_reuse_key() {
         let active_runs = ActiveRuns::new(Arc::new(Notify::new()));
@@ -556,5 +559,47 @@ mod tests {
             proof.request_handoff(RunId::new_v4()).is_none(),
             "a cancelled one-shot request must not transfer to another successor"
         );
+    }
+
+    #[test]
+    fn closed_accepted_handoff_receiver_returns_candidate_to_publisher() {
+        let active_runs = ActiveRuns::new(Arc::new(Notify::new()));
+        let predecessor_run_id = RunId::new_v4();
+        let successor_run_id = RunId::new_v4();
+        let guard = active_runs.register(
+            predecessor_run_id,
+            Some("thread:closed-handoff".into()),
+            "vm0/default".into(),
+        );
+        let publisher = guard.reuse_publisher();
+        let proof = active_runs
+            .finalizing_predecessor(predecessor_run_id, "thread:closed-handoff", "vm0/default")
+            .unwrap();
+        let mut request = proof
+            .request_handoff(successor_run_id)
+            .expect("exact successor should register a handoff");
+        assert!(publisher.handoff_signal().accept_if_requested());
+        request.receiver.close();
+
+        let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
+        let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
+        let candidate = ParkedIdleCandidateBuilder::new("thread:closed-handoff", lease)
+            .with_history_generation_run_id(predecessor_run_id)
+            .build();
+        let recovered = match publisher.deliver_exact_handoff(candidate, predecessor_run_id) {
+            ActiveRunHandoffDeliveryResult::Failed(candidate) => candidate,
+            ActiveRunHandoffDeliveryResult::Delivered => {
+                panic!("closed receiver must not take sandbox ownership")
+            }
+            ActiveRunHandoffDeliveryResult::NotRequested(_) => {
+                panic!("provider already accepted the handoff request")
+            }
+        };
+
+        assert_eq!(proof.state(), ActiveRunReuseState::Pending);
+        let (payload, lease) = recovered.into_active_destroy_parts();
+        drop(payload);
+        drop(lease);
+        assert_eq!(budget.allocated(), (0, 0, 0));
     }
 }
