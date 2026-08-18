@@ -1117,7 +1117,7 @@ function ModelFirstModelPickerContentLayout({
     <SelectContent
       anchor={contentAnchor}
       className={cn(
-        "max-h-[320px] min-w-[260px]",
+        "max-h-[380px] min-w-[260px]",
         mediaModelPanelOpen && "min-w-[340px]",
       )}
     >
