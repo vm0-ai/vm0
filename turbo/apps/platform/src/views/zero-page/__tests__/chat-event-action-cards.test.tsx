@@ -420,11 +420,12 @@ describe("chat event action cards", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("keeps sent mail card height stable without exposing follow-up", async () => {
+  it("keeps a persisted Okou mail card local on VM0", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "e4000000-0000-4000-a000-000000000003";
+    context.mocks.browser.url(`https://app.vm0.ai/chats/${threadId}`);
     const mailDraftId = "c0000000-0000-4000-a000-000000000091";
-    const mailDraftUrl = `https://app.vm0.ai/mail/drafts/${mailDraftId}`;
+    const mailDraftUrl = `https://app.okou.ai/mail/drafts/${mailDraftId}`;
     const createdAt = "2026-07-30T10:00:00.000Z";
     let draftRequestStarted = false;
     let resolveDraft = (): void => {
@@ -2614,8 +2615,10 @@ describe("chat event action cards", () => {
     expect(fullCatalogRequests).toBe(0);
   });
 
-  it("fails closed when permission action metadata is hidden", async () => {
-    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=hidden-connector&permission=hidden.permission&action=allow&expiresIn=1h`;
+  it("renders a persisted Okou permission action on VM0 and fails closed without metadata", async () => {
+    const threadId = "e4000000-0000-4000-a000-000000000013";
+    context.mocks.browser.url(`https://app.vm0.ai/chats/${threadId}`);
+    const permissionAuthorizeUrl = `https://app.okou.ai/agents/${AGENT_ID}/permissions?connectorSlug=hidden-connector&permission=hidden.permission&action=allow&expiresIn=1h`;
     context.mocks.api(
       zeroConnectorCatalogContract.permissions,
       ({ respond }) => {
@@ -2625,7 +2628,7 @@ describe("chat event action cards", () => {
       },
     );
     mockChatLifecycle(context, {
-      threadId: "e4000000-0000-4000-a000-000000000013",
+      threadId,
       threadTitle: "Hidden permission metadata",
       chatEvents: [
         {
@@ -2647,7 +2650,7 @@ describe("chat event action cards", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/e4000000-0000-4000-a000-000000000013",
+      path: `/chats/${threadId}`,
     });
 
     const permissionCard = await screen.findByTestId("permission-action-card");
@@ -3358,12 +3361,64 @@ describe("chat event action cards", () => {
     );
   });
 
+  it.each([
+    ["https://app.okou.ai", "https://app.vm0.ai"],
+    ["https://app.vm0.ai", "https://app.okou.ai"],
+    ["https://pr-27815-app.vm6.ai", "https://app.vm0.ai"],
+    ["https://staging-app.vm7.ai", "https://app.vm0.ai"],
+  ] as const)(
+    "localizes a persisted %s plan action while running on %s",
+    async (actionOrigin, currentOrigin) => {
+      const threadId = "e4000000-0000-4000-a000-000000000029";
+      context.mocks.browser.url(`${currentOrigin}/chats/${threadId}`);
+      const actionUrl = `${actionOrigin}/?settings=billing&billingView=plans`;
+
+      mockChatLifecycle(context, {
+        threadId,
+        threadTitle: "Localized persisted plan action",
+        chatEvents: [
+          {
+            id: "msg-assistant-localized-plan-action",
+            role: "assistant",
+            content: actionUrl,
+            runId: "run-localized-plan-action",
+            createdAt: "2026-06-09T10:01:00Z",
+          },
+        ],
+      });
+
+      detachedSetupPage({
+        context,
+        path: `/chats/${threadId}`,
+      });
+
+      const card = await screen.findByTestId("plan-upgrade-card");
+      expect(linkByText("Compare plans", card)).toHaveAttribute(
+        "href",
+        "/?settings=billing&billingView=plans",
+      );
+    },
+  );
+
   it("renders trusted plan links as upgrade cards", async () => {
     const absoluteUrl =
       "https://app.vm0.ai/?settings=billing&billingView=plans";
     const relativeUrl = "/?settings=billing&billingView=plans";
     const untrustedUrl =
       "https://evil.example.test/?settings=billing&billingView=plans";
+    const forgedOkouUrl =
+      "https://app.okou.ai.evil.example/?settings=billing&billingView=plans";
+    const arbitraryOkouUrl =
+      "https://tenant.okou.ai/?settings=billing&billingView=plans";
+    const nonHttpUrl = "ftp://app.okou.ai/?settings=billing&billingView=plans";
+    const forgedProtocolRelativeUrl =
+      "//app.okou.ai.evil.example/?settings=billing&billingView=plans";
+    const bracketedProtocolRelativeUrl =
+      "//[::1]/?settings=billing&billingView=plans";
+    const emptyAuthorityProtocolRelativeUrl =
+      "//?settings=billing&billingView=plans";
+    const fileUrl = "file:///?settings=billing&billingView=plans";
+    const dataUrl = "data:text/plain,/?settings=billing&billingView=plans";
     const creditUrl = "/?settings=billing&billingView=credits";
 
     mockChatLifecycle(context, {
@@ -3384,6 +3439,14 @@ describe("chat event action cards", () => {
             absoluteUrl,
             `[Compare plans](${relativeUrl})`,
             `[Untrusted plan](${untrustedUrl})`,
+            `[Forged Okou plan](${forgedOkouUrl})`,
+            `[Arbitrary Okou plan](${arbitraryOkouUrl})`,
+            `[Non-HTTP plan](${nonHttpUrl})`,
+            `[Protocol-relative plan](${forgedProtocolRelativeUrl})`,
+            `[Bracketed protocol-relative plan](${bracketedProtocolRelativeUrl})`,
+            `[Empty-authority protocol-relative plan](${emptyAuthorityProtocolRelativeUrl})`,
+            `[File protocol plan](${fileUrl})`,
+            `[Data protocol plan](${dataUrl})`,
             `[Buy credits](${creditUrl})`,
           ].join("\n\n"),
           runId: "run-plan-upgrade",
@@ -3415,6 +3478,18 @@ describe("chat event action cards", () => {
       "href",
       untrustedUrl,
     );
+    expect(screen.getByText("Forged Okou plan")).toBeInTheDocument();
+    expect(screen.getByText("Arbitrary Okou plan")).toBeInTheDocument();
+    expect(screen.getByText("Non-HTTP plan")).toBeInTheDocument();
+    expect(screen.getByText("Protocol-relative plan")).toBeInTheDocument();
+    expect(
+      screen.getByText("Bracketed protocol-relative plan"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Empty-authority protocol-relative plan"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("File protocol plan")).toBeInTheDocument();
+    expect(screen.getByText("Data protocol plan")).toBeInTheDocument();
     expect(linkByText("Buy credits", document)).toHaveAttribute(
       "href",
       creditUrl,
