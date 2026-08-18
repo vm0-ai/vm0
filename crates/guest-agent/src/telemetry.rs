@@ -77,8 +77,23 @@ pub enum UploadMode {
 }
 
 /// Persist the current read position for a file.
-fn save_position(pos_path: impl AsRef<Path>, pos: u64) {
-    let _ = paths::write_private(pos_path, pos.to_string());
+fn save_position(pos_path: impl AsRef<Path>, pos: u64) -> std::io::Result<()> {
+    paths::write_private(pos_path, pos.to_string())
+}
+
+/// Persist all read positions and return the first error after attempting each write.
+fn save_positions(positions: [(&str, u64); 3]) -> std::io::Result<()> {
+    let mut first_error = None;
+    for (path, pos) in positions {
+        if let Err(error) = save_position(path, pos) {
+            first_error = first_error.or(Some(error));
+        }
+    }
+
+    match first_error {
+        Some(error) => Err(error),
+        None => Ok(()),
+    }
 }
 
 /// Perform one telemetry upload cycle.
@@ -122,9 +137,14 @@ async fn upload_telemetry(
     if system_log.content.is_empty() && metrics.entries.is_empty() && sandbox_ops.entries.is_empty()
     {
         if made_progress {
-            save_position(&telemetry_paths.system_log_pos_file, log_pos);
-            save_position(&telemetry_paths.metrics_pos_file, metrics_pos);
-            save_position(&telemetry_paths.sandbox_ops_pos_file, sandbox_ops_pos);
+            save_positions([
+                (telemetry_paths.system_log_pos_file.as_str(), log_pos),
+                (telemetry_paths.metrics_pos_file.as_str(), metrics_pos),
+                (
+                    telemetry_paths.sandbox_ops_pos_file.as_str(),
+                    sandbox_ops_pos,
+                ),
+            ])?;
         }
         return Ok(());
     }
@@ -149,9 +169,14 @@ async fn upload_telemetry(
     let url = http.telemetry_url()?;
     match http.post_json(url, &payload, 1).await {
         Ok(_) => {
-            save_position(&telemetry_paths.system_log_pos_file, log_pos);
-            save_position(&telemetry_paths.metrics_pos_file, metrics_pos);
-            save_position(&telemetry_paths.sandbox_ops_pos_file, sandbox_ops_pos);
+            save_positions([
+                (telemetry_paths.system_log_pos_file.as_str(), log_pos),
+                (telemetry_paths.metrics_pos_file.as_str(), metrics_pos),
+                (
+                    telemetry_paths.sandbox_ops_pos_file.as_str(),
+                    sandbox_ops_pos,
+                ),
+            ])?;
             Ok(())
         }
         Err(e) => {
@@ -344,7 +369,7 @@ mod tests {
     fn save_position_and_read_back() {
         let dir = tempfile::tempdir().unwrap();
         let pos = dir.path().join("test.pos");
-        save_position(&pos, 42);
+        save_position(&pos, 42).unwrap();
         let val: u64 = fs::read_to_string(&pos).unwrap().trim().parse().unwrap();
         assert_eq!(val, 42);
     }
@@ -353,8 +378,8 @@ mod tests {
     fn save_position_overwrites_existing() {
         let dir = tempfile::tempdir().unwrap();
         let pos = dir.path().join("overwrite.pos");
-        save_position(&pos, 10);
-        save_position(&pos, 20);
+        save_position(&pos, 10).unwrap();
+        save_position(&pos, 20).unwrap();
         let val: u64 = fs::read_to_string(&pos).unwrap().trim().parse().unwrap();
         assert_eq!(val, 20);
     }
