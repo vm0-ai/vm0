@@ -64,7 +64,11 @@ import {
   setApiTestConnectorCatalogValidationAuthority,
 } from "../../../test-fixtures/connector-catalog";
 import { readStorageS3PrefixFixture } from "../../../test-fixtures/storage";
-import { readHistoricalAgentComposeHeadFixture } from "../../../test-fixtures/historical-agent-composes";
+import {
+  readHistoricalAgentComposeHeadFixture,
+  readRawHistoricalAgentComposeHeadFixture,
+  replaceHistoricalAgentComposeHeadFixture,
+} from "../../../test-fixtures/historical-agent-composes";
 import { readRunIdentityMismatchWriteCountsFixture } from "../../../test-fixtures/agent-runs";
 import {
   createBddApi,
@@ -813,17 +817,27 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function runContextSnapshotForRun(runId: string): Record<string, unknown> {
+function runContextSnapshotsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  const snapshots: Record<string, unknown>[] = [];
   for (const [dataset, events] of context.mocks.axiom.ingest.mock.calls) {
     if (dataset !== "run-context" || !Array.isArray(events)) {
       continue;
     }
-    const snapshot = events.find((event) => {
-      return isRecord(event) && event.runId === runId;
-    });
-    if (isRecord(snapshot)) {
-      return snapshot;
+    for (const event of events) {
+      if (isRecord(event) && event.runId === runId) {
+        snapshots.push(event);
+      }
     }
+  }
+  return snapshots;
+}
+
+function runContextSnapshotForRun(runId: string): Record<string, unknown> {
+  const snapshot = runContextSnapshotsForRun(runId)[0];
+  if (snapshot) {
+    return snapshot;
   }
   throw new Error(`Expected a run-context snapshot for ${runId}`);
 }
@@ -12595,6 +12609,178 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(
       Object.values(unchangedHead.content?.agents ?? {})[0]?.description,
     ).toBe(persistedOnlyMarker);
+  });
+
+  it("uses application authority for framework-only historical heads", async () => {
+    const api = createRunsApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("Expected a framework-fallback organization");
+    }
+    const canonicalHead = await readHistoricalAgentComposeHeadFixture(agentId);
+    if (!canonicalHead.content) {
+      throw new Error("Expected a canonical Agent head");
+    }
+    const frameworkVariant = (
+      framework: "missing" | "future-framework",
+    ): Record<string, unknown> => {
+      const content = structuredClone(
+        canonicalHead.content,
+      ) as unknown as Record<string, unknown>;
+      const agents = content.agents;
+      if (!isRecord(agents)) {
+        throw new Error("Expected raw historical Agent definitions");
+      }
+      const activeAgent = agents[canonicalHead.name];
+      if (!isRecord(activeAgent)) {
+        throw new Error("Expected a raw historical active Agent");
+      }
+      if (framework === "missing") {
+        delete activeAgent.framework;
+      } else {
+        activeAgent.framework = framework;
+      }
+      return content;
+    };
+    await fw.seedOrgCodexProvider(actor, {
+      accessToken: "framework-fallback-access",
+      refreshToken: "framework-fallback-refresh",
+      accountId: "framework-fallback-workspace",
+      idToken: "framework-fallback-id-token",
+      expiresIn: 3600,
+    });
+
+    const missingFrameworkContent = frameworkVariant("missing");
+    const missingFrameworkHead = await replaceHistoricalAgentComposeHeadFixture(
+      {
+        composeId: agentId,
+        userId: actor.userId,
+        content: missingFrameworkContent,
+      },
+      context.signal,
+    );
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "launch a missing-framework historical Agent",
+      modelProvider: "codex-oauth-token",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const firstPoll = await api.pollRunner(runnerGroup);
+    expect(firstPoll.body.job).toMatchObject({
+      runId: first.runId,
+      experimentalProfile: DEFAULT_PROFILE,
+    });
+    const firstClaim = await api.claimRunnerJob(first.runId);
+    expect(firstClaim.agentComposeVersionId).toBe(
+      missingFrameworkHead.versionId,
+    );
+    expect(firstClaim.cliAgentType).toBe("codex");
+    expect(firstClaim.environment).toMatchObject({
+      OPENAI_MODEL: "gpt-5.6-sol",
+    });
+    expectCanonicalOkouRunEnvironment({
+      environment: firstClaim.environment,
+      secretValues: firstClaim.secretValues,
+      appUrl: env("APP_URL"),
+      agentId,
+      userId: actor.userId,
+      orgId: actor.orgId,
+      runId: first.runId,
+    });
+    expect(agentExecutionAuthorityFieldsForRun(first.runId)).toStrictEqual({
+      agentExecutionAuthority: "application",
+      agentExecutionAuthorityClassification: "applicationFrameworkFallback",
+    });
+    expect(runContextSnapshotsForRun(first.runId)).toHaveLength(1);
+    expect(JSON.stringify(runContextSnapshotForRun(first.runId))).not.toContain(
+      "future-framework",
+    );
+    await expect(
+      readRunLaunchSnapshotFixture(context, first.runId),
+    ).resolves.toStrictEqual({
+      exists: true,
+      launch_snapshot: {
+        schemaVersion: 1,
+        framework: "codex",
+        runnerProfile: DEFAULT_PROFILE,
+      },
+    });
+    await expect(
+      readRawHistoricalAgentComposeHeadFixture(agentId),
+    ).resolves.toStrictEqual({
+      headVersionId: missingFrameworkHead.versionId,
+      content: missingFrameworkContent,
+    });
+    await api.requestCancelRun(actor, first.runId, [200]);
+
+    const unsupportedFrameworkContent = frameworkVariant("future-framework");
+    const unsupportedFrameworkHead =
+      await replaceHistoricalAgentComposeHeadFixture(
+        {
+          composeId: agentId,
+          userId: actor.userId,
+          content: unsupportedFrameworkContent,
+        },
+        context.signal,
+      );
+    const resumedPrompt = "continue with the latest unsupported-framework head";
+    context.mocks.axiom.ingest.mockImplementation((dataset, events) => {
+      if (
+        dataset === "run-context" &&
+        Array.isArray(events) &&
+        events.some((event) => {
+          return isRecord(event) && event.prompt === resumedPrompt;
+        })
+      ) {
+        throw new Error("framework-fallback observation failed");
+      }
+      return true;
+    });
+    const resumed = await api.createRun(actor, {
+      agentId,
+      sessionId: first.sessionId,
+      prompt: resumedPrompt,
+      modelProvider: "codex-oauth-token",
+    });
+    expect(resumed.sessionId).toBe(first.sessionId);
+    await api.heartbeatRunner(runnerGroup);
+    const resumedPoll = await api.pollRunner(runnerGroup);
+    expect(resumedPoll.body.job).toMatchObject({
+      runId: resumed.runId,
+      experimentalProfile: DEFAULT_PROFILE,
+    });
+    const resumedClaim = await api.claimRunnerJob(resumed.runId);
+    expect(resumedClaim.agentComposeVersionId).toBe(
+      unsupportedFrameworkHead.versionId,
+    );
+    expect(resumedClaim.cliAgentType).toBe("codex");
+    expect(agentExecutionAuthorityFieldsForRun(resumed.runId)).toStrictEqual({
+      agentExecutionAuthority: "application",
+      agentExecutionAuthorityClassification: "applicationFrameworkFallback",
+    });
+    expect(runContextSnapshotsForRun(resumed.runId)).toHaveLength(1);
+    expect(JSON.stringify(resumedClaim)).not.toContain("future-framework");
+    expect(
+      JSON.stringify(runContextSnapshotForRun(resumed.runId)),
+    ).not.toContain("future-framework");
+    await expect(
+      readRunLaunchSnapshotFixture(context, resumed.runId),
+    ).resolves.toStrictEqual({
+      exists: true,
+      launch_snapshot: {
+        schemaVersion: 1,
+        framework: "codex",
+        runnerProfile: DEFAULT_PROFILE,
+      },
+    });
+    await expect(
+      readRawHistoricalAgentComposeHeadFixture(agentId),
+    ).resolves.toStrictEqual({
+      headVersionId: unsupportedFrameworkHead.versionId,
+      content: unsupportedFrameworkContent,
+    });
+    await api.requestCancelRun(actor, resumed.runId, [200]);
   });
 
   it("classifies active legacy environment value shapes without exposing them", async () => {

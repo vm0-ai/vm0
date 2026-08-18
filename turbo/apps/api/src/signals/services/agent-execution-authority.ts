@@ -24,6 +24,7 @@ export type AgentExecutionAuthority = "application" | "version_content";
 
 export type AgentExecutionAuthorityClassification =
   | "completeSemanticParity"
+  | "applicationFrameworkFallback"
   | AgentExecutionPlanDimension
   | "multipleDimensions";
 
@@ -112,6 +113,150 @@ function hasValidCurrentPlanHash(
     computeComposeVersionId(row.content as Record<string, unknown>) ===
       row.versionId
   );
+}
+
+function normalizeSelectedAgentFrameworkFallback(
+  content: Record<string, unknown>,
+): {
+  readonly content: Record<string, unknown>;
+  readonly activeAgentName: string;
+} | null {
+  const agents = content.agents;
+  if (typeof agents !== "object" || agents === null || Array.isArray(agents)) {
+    return null;
+  }
+  const agentEntries = Object.entries(agents);
+  if (agentEntries.length !== 1) {
+    return null;
+  }
+  const firstEntry = agentEntries[0];
+  const activeAgentName = firstEntry?.[0];
+  const activeAgent = firstEntry?.[1];
+  if (
+    !activeAgentName ||
+    typeof activeAgent !== "object" ||
+    activeAgent === null ||
+    Array.isArray(activeAgent)
+  ) {
+    return null;
+  }
+  const framework = (activeAgent as Record<string, unknown>).framework;
+  if (framework === "claude-code" || framework === "codex") {
+    return null;
+  }
+  return {
+    activeAgentName,
+    content: {
+      ...content,
+      agents: {
+        ...agents,
+        [activeAgentName]: {
+          ...activeAgent,
+          framework: APPLICATION_OWNED_AGENT_EXECUTION_PLAN.framework.fallback,
+        },
+      },
+    },
+  };
+}
+
+function differsOnlyAtSelectedAgentFramework(args: {
+  readonly original: Record<string, unknown>;
+  readonly normalized: Record<string, unknown>;
+  readonly activeAgentName: string;
+}): boolean {
+  const originalAgents = args.original.agents;
+  const normalizedAgents = args.normalized.agents;
+  if (
+    typeof originalAgents !== "object" ||
+    originalAgents === null ||
+    Array.isArray(originalAgents) ||
+    typeof normalizedAgents !== "object" ||
+    normalizedAgents === null ||
+    Array.isArray(normalizedAgents)
+  ) {
+    return false;
+  }
+  const originalAgent = (originalAgents as Record<string, unknown>)[
+    args.activeAgentName
+  ];
+  const normalizedAgent = (normalizedAgents as Record<string, unknown>)[
+    args.activeAgentName
+  ];
+  if (
+    typeof originalAgent !== "object" ||
+    originalAgent === null ||
+    Array.isArray(originalAgent) ||
+    typeof normalizedAgent !== "object" ||
+    normalizedAgent === null ||
+    Array.isArray(normalizedAgent) ||
+    (normalizedAgent as Record<string, unknown>).framework !==
+      APPLICATION_OWNED_AGENT_EXECUTION_PLAN.framework.fallback
+  ) {
+    return false;
+  }
+  const restoredAgent = {
+    ...(normalizedAgent as Record<string, unknown>),
+  };
+  if (Object.hasOwn(originalAgent, "framework")) {
+    restoredAgent.framework = (originalAgent as Record<string, unknown>)[
+      "framework"
+    ];
+  } else {
+    delete restoredAgent.framework;
+  }
+  return isDeepStrictEqual(args.original, {
+    ...args.normalized,
+    agents: {
+      ...normalizedAgents,
+      [args.activeAgentName]: restoredAgent,
+    },
+  });
+}
+
+function validateFrameworkFallbackAgentExecutionPlanRow(
+  row: AgentExecutionAuthorityInput,
+): Extract<
+  ValidatedAgentExecutionPlan,
+  { readonly classification: "supported" }
+> | null {
+  if (!hasValidCurrentPlanHash(row)) {
+    return null;
+  }
+  const normalized = normalizeSelectedAgentFrameworkFallback(row.content);
+  if (
+    !normalized ||
+    !differsOnlyAtSelectedAgentFramework({
+      original: row.content,
+      normalized: normalized.content,
+      activeAgentName: normalized.activeAgentName,
+    })
+  ) {
+    return null;
+  }
+  const parsed = agentComposeApiContentSchema.safeParse(normalized.content);
+  if (!parsed.success || !isDeepStrictEqual(normalized.content, parsed.data)) {
+    return null;
+  }
+  const firstEntry = Object.entries(parsed.data.agents)[0];
+  const activeAgentName = firstEntry?.[0];
+  const activeAgent = firstEntry?.[1];
+  if (!activeAgentName || !activeAgent) {
+    return null;
+  }
+  if (
+    hasInvalidActiveVolumeReference({
+      declarations: activeAgent.volumes,
+      volumeNames: new Set(Object.keys(parsed.data.volumes ?? {})),
+    })
+  ) {
+    return null;
+  }
+  return {
+    classification: "supported",
+    content: parsed.data,
+    activeAgentName,
+    activeAgent,
+  };
 }
 
 function validateAgentExecutionPlanRow(
@@ -219,6 +364,23 @@ export function classifyAgentExecutionAuthority(
   row: AgentExecutionAuthorityInput,
 ): AgentExecutionAuthorityDecision {
   const validated = validateAgentExecutionPlanRow(row);
+  if (
+    validated.classification === "exception" &&
+    validated.dimension === "unsupportedOrInvalidContent"
+  ) {
+    const frameworkFallback =
+      validateFrameworkFallbackAgentExecutionPlanRow(row);
+    if (
+      frameworkFallback &&
+      semanticAgentExecutionPlanDimensions(row, frameworkFallback).size === 0
+    ) {
+      return {
+        authority: "application",
+        classification: "applicationFrameworkFallback",
+        dimensions: [],
+      };
+    }
+  }
   const dimensions =
     validated.classification === "exception"
       ? new Set<AgentExecutionPlanDimension>([validated.dimension])
