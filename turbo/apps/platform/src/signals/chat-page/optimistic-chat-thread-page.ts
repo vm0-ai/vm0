@@ -1,6 +1,10 @@
 import { command, computed } from "ccstate";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
+  DEFAULT_IMAGE_MODEL,
+  type ImageModel,
+} from "@okouai/core/image-model-catalog";
+import {
   DEFAULT_VIDEO_MODEL,
   type VideoModel,
 } from "@okouai/core/video-model-catalog";
@@ -42,6 +46,7 @@ import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
 import {
   featureSwitch$,
+  imageModelSelectionEnabled$,
   imageRecognitionAvailable$,
   videoModelSelectionEnabled$,
 } from "../external/feature-switch.ts";
@@ -52,7 +57,11 @@ import {
 } from "./model-selection-request.ts";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { registerOptimisticChatThreadEvent$ } from "./chat-thread-event-sourcing.ts";
-import { chatPageModelSelection$ } from "../zero-page/zero-chat-page.ts";
+import {
+  chatPageImageModelSelection$,
+  chatPageModelSelection$,
+  resetChatPageImageModelSelection$,
+} from "../zero-page/zero-chat-page.ts";
 import { selectedModelAvailable$ } from "../zero-page/model-first-personal-oauth.ts";
 import type { OptimisticChatThreadEvent } from "./chat-thread-event-types.ts";
 import { toast } from "@okouai/ui/components/ui/sonner";
@@ -83,6 +92,7 @@ interface SendNewThreadMessageRequest {
   editorDocument?: EditorDocumentSnapshot;
   computerUseHostId?: string | null;
   cloudBrowserEnabled?: boolean;
+  imageModel?: ImageModel;
   videoModel?: VideoModel;
   videoRunOptions?: ChatRunVideoOptionsRequest;
   routeSearchParams?: URLSearchParams;
@@ -132,6 +142,27 @@ function userMessageForNewThread(
     throw new Error("Failed to serialize user message");
   }
   return userMessage;
+}
+
+function annotatedMessagesForNewThread(
+  request: SendNewThreadMessageRequest,
+  userMessage: UserMessageInputDocument,
+  modelSelection: ModelProviderSelection,
+): {
+  readonly annotatedUserMessage: UserMessageDocument;
+  readonly optimisticUserMessage: UserMessageDocument;
+} {
+  const annotatedUserMessage = withSelectedModelAnnotation(
+    userMessage,
+    modelSelection.selectedModel,
+    modelSelection.codexServiceTier === "fast" ? "priority" : undefined,
+  );
+  return {
+    annotatedUserMessage,
+    optimisticUserMessage: request.forward
+      ? withOptimisticAgentRunSource(annotatedUserMessage, request.forward)
+      : annotatedUserMessage,
+  };
 }
 
 function createNewThreadOptimisticEventEntry({
@@ -265,6 +296,24 @@ const resolveCurrentNewThreadModelSelection$ = command(
   },
 );
 
+const resolveNewThreadImageModel$ = command(
+  async (
+    { get },
+    requested: ImageModel | undefined,
+    signal: AbortSignal,
+  ): Promise<ImageModel | undefined> => {
+    if (!get(imageModelSelectionEnabled$)) {
+      return undefined;
+    }
+    if (requested) {
+      return requested;
+    }
+    const preference = await get(userModelPreference$);
+    signal.throwIfAborted();
+    return preference.selectedImageModel ?? DEFAULT_IMAGE_MODEL;
+  },
+);
+
 const routeMainChatThread$ = command(
   (
     { get, set },
@@ -331,6 +380,7 @@ const mintOptimisticThreadWithEvent$ = command(
       readonly serviceTier: "priority" | null;
       readonly computerUseHostId: string | null;
       readonly cloudBrowserEnabled: boolean;
+      readonly selectedImageModel: ImageModel | null;
       readonly selectedVideoModel: VideoModel | null;
     },
     signal: AbortSignal,
@@ -352,7 +402,7 @@ const mintOptimisticThreadWithEvent$ = command(
       computerUseHostId: args.computerUseHostId,
       cloudBrowserEnabled: args.cloudBrowserEnabled,
       selectedVideoModel: args.selectedVideoModel,
-      selectedImageModel: null,
+      selectedImageModel: args.selectedImageModel,
       createdAt,
     } satisfies OptimisticChatThreadEvent);
   },
@@ -366,6 +416,7 @@ async function createChatThread(
     readonly clientThreadId: string;
     readonly eventId: string;
     readonly modelSelection: ModelProviderSelection;
+    readonly imageModel?: ImageModel;
     readonly videoModel?: VideoModel;
   },
   signal: AbortSignal,
@@ -380,6 +431,7 @@ async function createChatThread(
         model: args.modelSelection.selectedModel,
         serviceTier:
           args.modelSelection.codexServiceTier === "fast" ? "priority" : null,
+        ...(args.imageModel ? { imageModel: args.imageModel } : {}),
         ...(args.videoModel ? { videoModel: args.videoModel } : {}),
         ...(args.title ? { title: args.title } : {}),
       },
@@ -436,6 +488,13 @@ const startNewChatThreadCreate$ = command(
       (featureSwitches[FeatureSwitchKey.VideoModelSelection] ?? false)
         ? (userPreference.selectedVideoModel ?? DEFAULT_VIDEO_MODEL)
         : undefined;
+    const imageModel =
+      (featureSwitches[FeatureSwitchKey.ImageModelSelection] ?? false)
+        ? ((await get(chatPageImageModelSelection$)) ??
+          userPreference.selectedImageModel ??
+          DEFAULT_IMAGE_MODEL)
+        : undefined;
+    signal.throwIfAborted();
     await set(
       mintOptimisticThreadWithEvent$,
       {
@@ -447,6 +506,7 @@ const startNewChatThreadCreate$ = command(
           modelSelection.codexServiceTier === "fast" ? "priority" : null,
         computerUseHostId: null,
         cloudBrowserEnabled: false,
+        selectedImageModel: imageModel ?? null,
         selectedVideoModel: videoModel ?? null,
       },
       signal,
@@ -463,6 +523,7 @@ const startNewChatThreadCreate$ = command(
           clientThreadId: threadId,
           eventId,
           modelSelection,
+          imageModel,
           videoModel,
         },
         signal,
@@ -492,6 +553,8 @@ export const createNewChatThread$ = command(
       signal,
     );
     await result.createResult;
+    signal.throwIfAborted();
+    set(resetChatPageImageModelSelection$);
   },
 );
 
@@ -542,20 +605,20 @@ const sendNewThreadMessage$ = command(
       return null;
     }
     const features = get(featureSwitch$);
-    const videoModel = get(videoModelSelectionEnabled$)
-      ? request.videoModel
-      : undefined;
-    const userMessage = userMessageForNewThread(request, prepared);
-    const annotatedUserMessage = withSelectedModelAnnotation(
-      userMessage,
-      resolvedModelSelection.selectedModel,
-      resolvedModelSelection.codexServiceTier === "fast"
-        ? "priority"
-        : undefined,
+    const imageModel = await set(
+      resolveNewThreadImageModel$,
+      request.imageModel,
+      signal,
     );
-    const optimisticUserMessage = request.forward
-      ? withOptimisticAgentRunSource(annotatedUserMessage, request.forward)
-      : annotatedUserMessage;
+    signal.throwIfAborted();
+    const videoModelEnabled = get(videoModelSelectionEnabled$);
+    const videoModel = videoModelEnabled ? request.videoModel : undefined;
+    const { annotatedUserMessage, optimisticUserMessage } =
+      annotatedMessagesForNewThread(
+        request,
+        userMessageForNewThread(request, prepared),
+        resolvedModelSelection,
+      );
     const threadId = crypto.randomUUID();
     const clientEventId = crypto.randomUUID();
     const chatThreadEventId = crypto.randomUUID();
@@ -582,6 +645,7 @@ const sendNewThreadMessage$ = command(
             : null,
         computerUseHostId: computerUseHostId ?? null,
         cloudBrowserEnabled: cloudBrowserEnabled ?? false,
+        selectedImageModel: imageModel ?? null,
         selectedVideoModel: videoModel ?? null,
       },
       signal,
@@ -601,6 +665,7 @@ const sendNewThreadMessage$ = command(
         clientThreadId: threadId,
         eventId: chatThreadEventId,
         modelSelection: resolvedModelSelection,
+        imageModel,
         videoModel,
       },
       signal,
@@ -617,7 +682,6 @@ const sendNewThreadMessage$ = command(
       userMessage: annotatedUserMessage,
       computerUseHostId,
       cloudBrowserEnabled,
-      // Gated with the control that produces them, like the pin above.
       videoRunOptions:
         videoModel === undefined ? undefined : request.videoRunOptions,
       sourceRunId: request.forward?.runId,
@@ -625,7 +689,6 @@ const sendNewThreadMessage$ = command(
     const sendResult = (async (): Promise<SendNewThreadMessageResult> => {
       await Promise.all([clearDraftResult, createResult]);
       signal.throwIfAborted();
-
       const result = await sendChatEvent(createClient, sendBody, signal);
       signal.throwIfAborted();
       L.debug("sendNewThreadMessage$ POST chat/events 201", {

@@ -1342,6 +1342,7 @@
       "setAsDefault": "Set as default",
       "temporaryFastModeDisabledNotice": "Fast mode is temporarily disabled for this run",
       "temporaryFastModeEnabledNotice": "Fast mode is temporarily enabled for this run",
+      "temporaryImageModelNotice": "Temporarily switched to {{model}} for images",
       "temporaryModelNotice": "Temporarily switched to {{model}}",
       "temporaryVideoModelNotice": "Temporarily switched to {{model}} for video",
       "threadSuggestions": "Chat threads",

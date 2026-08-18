@@ -1342,6 +1342,7 @@
       "setAsDefault": "डिफ़ॉल्ट के रूप में सेट करें",
       "temporaryFastModeDisabledNotice": "इस रन के लिए फ़ास्ट मोड अस्थायी रूप से बंद है",
       "temporaryFastModeEnabledNotice": "इस रन के लिए फ़ास्ट मोड अस्थायी रूप से चालू है",
+      "temporaryImageModelNotice": "इमेज के लिए अस्थायी रूप से {{model}} पर स्विच किया गया",
       "temporaryModelNotice": "अस्थायी रूप से {{model}} पर स्विच किया गया",
       "temporaryVideoModelNotice": "वीडियो के लिए अस्थायी रूप से {{model}} पर स्विच किया गया",
       "threadSuggestions": "चैट थ्रेड",

@@ -1,5 +1,9 @@
 import { command, computed, state } from "ccstate";
 import {
+  DEFAULT_IMAGE_MODEL,
+  type ImageModel,
+} from "@okouai/core/image-model-catalog";
+import {
   DEFAULT_VIDEO_MODEL,
   type VideoModel,
 } from "@okouai/core/video-model-catalog";
@@ -65,6 +69,10 @@ const internalChatPageUserOverride$ = state<
 
 const internalChatPageVideoModelOverride$ = state<
   { kind: "unset" } | { kind: "set"; value: VideoModel | null }
+>({ kind: "unset" });
+
+const internalChatPageImageModelOverride$ = state<
+  { kind: "unset" } | { kind: "set"; value: ImageModel | null }
 >({ kind: "unset" });
 
 export const chatPageModelSelection$ = computed(
@@ -148,6 +156,17 @@ export const chatPageVideoModelSelection$ = computed(
   },
 );
 
+export const chatPageImageModelSelection$ = computed(
+  async (get): Promise<ImageModel | null> => {
+    const user = get(internalChatPageImageModelOverride$);
+    if (user.kind === "set") {
+      return user.value;
+    }
+    const userPreference = await get(userModelPreference$);
+    return userPreference.selectedImageModel ?? DEFAULT_IMAGE_MODEL;
+  },
+);
+
 /**
  * What a video run started from the new-thread composer would use. The
  * selection above is null when the user cleared it back to "follow my
@@ -164,9 +183,26 @@ export const chatPageEffectiveVideoModel$ = computed(
   },
 );
 
+/** The image model a run started from the new-thread composer would use. */
+export const chatPageEffectiveImageModel$ = computed(
+  async (get): Promise<ImageModel> => {
+    return (
+      (await get(chatPageImageModelSelection$)) ??
+      (await get(userModelPreference$)).selectedImageModel ??
+      DEFAULT_IMAGE_MODEL
+    );
+  },
+);
+
 export const setChatPageVideoModelSelection$ = command(
   ({ set }, value: VideoModel | null) => {
     set(internalChatPageVideoModelOverride$, { kind: "set", value });
+  },
+);
+
+export const setChatPageImageModelSelection$ = command(
+  ({ set }, value: ImageModel | null) => {
+    set(internalChatPageImageModelOverride$, { kind: "set", value });
   },
 );
 
@@ -179,5 +215,11 @@ export const resetChatPageModelSelection$ = command(({ get, set }) => {
 export const resetChatPageVideoModelSelection$ = command(({ get, set }) => {
   if (get(internalChatPageVideoModelOverride$).kind === "set") {
     set(internalChatPageVideoModelOverride$, { kind: "unset" });
+  }
+});
+
+export const resetChatPageImageModelSelection$ = command(({ get, set }) => {
+  if (get(internalChatPageImageModelOverride$).kind === "set") {
+    set(internalChatPageImageModelOverride$, { kind: "unset" });
   }
 });

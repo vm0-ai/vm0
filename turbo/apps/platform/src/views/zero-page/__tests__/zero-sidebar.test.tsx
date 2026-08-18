@@ -39,6 +39,7 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { pathname } from "../../../signals/location.ts";
+import { eventDrivenChatThread } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
 import {
   CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
   getChatThreadVirtualListScrollMargin,
@@ -2905,14 +2906,22 @@ describe("zero sidebar", () => {
 
   it("creates a new chat thread from the three-column header", async () => {
     prepareDefaultAgent();
+    context.mocks.data.userModelPreference({
+      selectedModel: null,
+      serviceTier: null,
+      selectedImageModel: "fal-ai/qwen-image",
+      updatedAt: "2026-08-18T00:00:00Z",
+    });
     mockSidebarThreadStory([
       createThread(EXISTING_THREAD_ID, "Existing conversation"),
     ]);
     let createdThreadId: string | undefined;
     let createdAgentId: string | undefined;
+    let createdImageModel: string | undefined;
     context.mocks.api(chatThreadsContract.create, ({ body, respond }) => {
       createdThreadId = body.clientThreadId ?? "created-thread-id";
       createdAgentId = body.agentId;
+      createdImageModel = body.imageModel;
       return respond(201, {
         id: createdThreadId,
         title: null,
@@ -2927,6 +2936,7 @@ describe("zero sidebar", () => {
       path: `/chats/${EXISTING_THREAD_ID}`,
       featureSwitches: {
         [FeatureSwitchKey.ThreeColumnNav]: true,
+        [FeatureSwitchKey.ImageModelSelection]: true,
       },
     });
 
@@ -2940,10 +2950,17 @@ describe("zero sidebar", () => {
     expect(pathname()).not.toBe("/");
     await waitFor(() => {
       expect(createdAgentId).toBe(AGENT_ID);
+      expect(createdImageModel).toBe("fal-ai/qwen-image");
       expect(createdThreadId).toBeDefined();
       expect(pathname()).toBe(`/chats/${createdThreadId}`);
       expect(within(list).getByText("New chat")).toBeInTheDocument();
     });
+    if (!createdThreadId) {
+      throw new Error("Created thread id not captured");
+    }
+    expect(
+      context.store.get(eventDrivenChatThread(createdThreadId)),
+    ).toMatchObject({ selectedImageModel: "fal-ai/qwen-image" });
   });
 
   it("preserves pinned agent rows across a loading refresh", async () => {

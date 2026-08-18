@@ -361,6 +361,7 @@ function createBasicComposerUiSignals() {
   const setMobileMediaModelCategory$ = command(
     ({ set }, category: MediaModelCategory | null) => {
       set(internalMobileMediaModelCategory$, category);
+      set(internalDesktopModelCategory$, category ?? "chat");
     },
   );
   const desktopModelCategory$ = computed((get) => {
@@ -409,6 +410,9 @@ function createBasicComposerUiSignals() {
       });
       const desktopMediaModelCategoriesAvailable =
         mediaModelCategoriesAvailable && get(desktopModelPickerLayout$);
+      if (!get(desktopModelPickerLayout$) && open) {
+        set(internalDesktopModelCategory$, "chat");
+      }
       if (
         desktopMediaModelCategoriesAvailable &&
         !open &&
