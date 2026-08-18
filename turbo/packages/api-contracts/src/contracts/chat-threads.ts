@@ -18,7 +18,7 @@ import {
 import {
   avatarVideoAspectRatioSchema,
   avatarVideoVoiceIdSchema,
-} from "./zero-avatar-video";
+} from "./avatar-video";
 
 const c = initContract();
 const chatEventReadHeadersSchema = authHeadersSchema.extend({

@@ -1,5 +1,5 @@
 import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
-import { zeroMailContract } from "@okouai/api-contracts/contracts/zero-mail";
+import { mailContract } from "@okouai/api-contracts/contracts/mail";
 
 import { getClientConfig, handleError } from "../core/client-factory";
 
@@ -12,7 +12,7 @@ export async function linkMailDraft(args: {
   readonly mailDraftUrl: string;
 }> {
   const config = await getClientConfig();
-  const client = initClient(zeroMailContract, config);
+  const client = initClient(mailContract, config);
   const result = await client.linkDraft({
     body: {
       threadId: args.threadId,
