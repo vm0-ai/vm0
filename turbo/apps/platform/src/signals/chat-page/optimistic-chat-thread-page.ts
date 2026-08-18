@@ -4,10 +4,7 @@ import {
   DEFAULT_IMAGE_MODEL,
   type ImageModel,
 } from "@okouai/core/image-model-catalog";
-import {
-  DEFAULT_VIDEO_MODEL,
-  type VideoModel,
-} from "@okouai/core/video-model-catalog";
+import type { VideoModel } from "@okouai/core/video-model-catalog";
 import {
   chatThreadModelSelectionContract,
   chatThreadsContract,
@@ -480,14 +477,9 @@ const startNewChatThreadCreate$ = command(
     if (!modelSelection) {
       throw new Error("A model selection is required");
     }
-    const videoModel =
-      (featureSwitches[FeatureSwitchKey.VideoModelSelection] ?? false)
-        ? (userPreference.selectedVideoModel ?? DEFAULT_VIDEO_MODEL)
-        : undefined;
-    const imageModel =
-      (featureSwitches[FeatureSwitchKey.ImageModelSelection] ?? false)
-        ? (userPreference.selectedImageModel ?? DEFAULT_IMAGE_MODEL)
-        : undefined;
+    // A blank thread carries no image or video model pin, so it follows the
+    // member's live default: changing that default later updates every thread
+    // that was never explicitly repinned, matching the run-model behavior.
     signal.throwIfAborted();
     await set(
       mintOptimisticThreadWithEvent$,
@@ -500,8 +492,8 @@ const startNewChatThreadCreate$ = command(
           modelSelection.codexServiceTier === "fast" ? "priority" : null,
         computerUseHostId: null,
         cloudBrowserEnabled: false,
-        selectedImageModel: imageModel ?? null,
-        selectedVideoModel: videoModel ?? null,
+        selectedImageModel: null,
+        selectedVideoModel: null,
       },
       signal,
     );
@@ -517,8 +509,6 @@ const startNewChatThreadCreate$ = command(
           clientThreadId: threadId,
           eventId,
           modelSelection,
-          imageModel,
-          videoModel,
         },
         signal,
       );

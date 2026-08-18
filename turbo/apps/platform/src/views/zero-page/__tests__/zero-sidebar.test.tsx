@@ -2951,7 +2951,9 @@ describe("zero sidebar", () => {
     expect(pathname()).not.toBe("/");
     await waitFor(() => {
       expect(createdAgentId).toBe(AGENT_ID);
-      expect(createdImageModel).toBe("fal-ai/qwen-image");
+      // A blank thread pins no image model, so it follows the live member
+      // default instead of freezing it at creation time.
+      expect(createdImageModel).toBeUndefined();
       expect(createdThreadId).toBeDefined();
       expect(pathname()).toBe(`/chats/${createdThreadId}`);
       expect(within(list).getByText("New chat")).toBeInTheDocument();
@@ -2961,7 +2963,7 @@ describe("zero sidebar", () => {
     }
     expect(
       context.store.get(eventDrivenChatThread(createdThreadId)),
-    ).toMatchObject({ selectedImageModel: "fal-ai/qwen-image" });
+    ).toMatchObject({ selectedImageModel: null });
   });
 
   it("ignores a temporary landing image pick when creating a blank thread", async () => {
@@ -2999,8 +3001,8 @@ describe("zero sidebar", () => {
     });
 
     // The user temporarily switched the landing composer image model without
-    // pressing "Set as default". A blank thread must still be created with the
-    // member default, mirroring how the video model is resolved here.
+    // pressing "Set as default". A blank thread must not pin that pick; it
+    // stays unpinned (null) so it follows the live member default.
     context.store.set(setChatPageImageModelSelection$, "fal-ai/flux-pro/v1.1");
 
     const list = await screen.findByTestId("chat-list-column");
@@ -3013,13 +3015,13 @@ describe("zero sidebar", () => {
     await waitFor(() => {
       expect(createdThreadId).toBeDefined();
     });
-    expect(createdImageModel).toBe("fal-ai/qwen-image");
+    expect(createdImageModel).toBeUndefined();
     if (!createdThreadId) {
       throw new Error("Created thread id not captured");
     }
     expect(
       context.store.get(eventDrivenChatThread(createdThreadId)),
-    ).toMatchObject({ selectedImageModel: "fal-ai/qwen-image" });
+    ).toMatchObject({ selectedImageModel: null });
   });
 
   it("preserves pinned agent rows across a loading refresh", async () => {
