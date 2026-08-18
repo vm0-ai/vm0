@@ -83,6 +83,7 @@ export interface MessageListSignals {
   readonly hasEvents$: Computed<Promise<boolean>>;
   readonly thinkingIndicatorMode$: Computed<Promise<ThinkingIndicatorMode>>;
   readonly thinkingEventId$: Computed<Promise<string | null>>;
+  readonly thinkingEventInline$: Computed<Promise<boolean>>;
   readonly thinkingText$: Computed<Promise<string | null>>;
   readonly recommendedFollowupSource$: Computed<
     Promise<RecommendedFollowupSource | null>
@@ -200,6 +201,7 @@ export interface ChatPanelSignals {
   readonly hasEvents$: Computed<Promise<boolean>>;
   readonly thinkingIndicatorMode$: Computed<Promise<ThinkingIndicatorMode>>;
   readonly thinkingEventId$: Computed<Promise<string | null>>;
+  readonly thinkingEventInline$: Computed<Promise<boolean>>;
   readonly thinkingText$: Computed<Promise<string | null>>;
   readonly recommendedFollowupSource$: Computed<
     Promise<RecommendedFollowupSource | null>

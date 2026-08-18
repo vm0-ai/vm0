@@ -3788,11 +3788,29 @@ type EnrichedThinkingChatEvent = Extract<
   { eventType: "output.thinking" }
 >;
 
+const INITIAL_THINKING_RUN_EVENT_ID = "thinking:initial";
+
 function isThinkingOnlyAssistantEvent(
   event: EnrichedChatEvent,
 ): event is EnrichedThinkingChatEvent {
   return (
     event.eventType === "output.thinking" && event.thinking.trim().length > 0
+  );
+}
+
+function isInlineThinkingAssistantEvent(
+  event: EnrichedChatEvent,
+): event is EnrichedThinkingChatEvent {
+  return (
+    isThinkingOnlyAssistantEvent(event) &&
+    event.runEventId !== INITIAL_THINKING_RUN_EVENT_ID
+  );
+}
+
+function isInitialThinkingPlaceholderEvent(event: EnrichedChatEvent): boolean {
+  return (
+    isThinkingOnlyAssistantEvent(event) &&
+    event.runEventId === INITIAL_THINKING_RUN_EVENT_ID
   );
 }
 
@@ -3811,7 +3829,7 @@ function isRenderableAssistantEvent(
   inlineThinkingBlocksEnabled: boolean,
 ): boolean {
   return (
-    (inlineThinkingBlocksEnabled && isThinkingOnlyAssistantEvent(event)) ||
+    (inlineThinkingBlocksEnabled && isInlineThinkingAssistantEvent(event)) ||
     isRenderableAssistantResultEvent(event)
   );
 }
@@ -3890,6 +3908,7 @@ function foldCompletedWorkPhase(
     finalEventIndex > 0 ? events.slice(0, finalEventIndex) : [];
   const hiddenEvents = precedingEvents.filter((event) => {
     return (
+      !isInitialThinkingPlaceholderEvent(event) &&
       chatEventCompatibilityRole(event.eventType) !== "user" &&
       (inlineThinkingBlocksEnabled || !isThinkingOnlyAssistantEvent(event))
     );
@@ -5397,6 +5416,8 @@ function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
   const running = thinkingIndicatorRunning(mode);
   const isQueued = thinkingIndicatorQueued(mode);
   const thinkingEventId = useLastResolved(thread.thinkingEventId$);
+  const thinkingEventInline =
+    useLastResolved(thread.thinkingEventInline$) ?? false;
   const displayedThinkingText =
     useLastResolved(thread.displayedThinkingText$) ?? "";
   const thinkingTextFadingOut =
@@ -5420,7 +5441,11 @@ function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
   }
 
   // The active thinking event is already rendered inline in transcript order.
-  if (inlineThinkingBlocksEnabled && serverThinkingLabel) {
+  if (
+    inlineThinkingBlocksEnabled &&
+    thinkingEventInline &&
+    serverThinkingLabel
+  ) {
     return null;
   }
 
@@ -7783,7 +7808,7 @@ function PagedAssistantEventItem({
   inlineThinkingBlocksEnabled: boolean;
   thread: ChatPanelSignals;
 }) {
-  if (inlineThinkingBlocksEnabled && isThinkingOnlyAssistantEvent(event)) {
+  if (inlineThinkingBlocksEnabled && isInlineThinkingAssistantEvent(event)) {
     return (
       <PagedAssistantThinkingBlock
         event={event}
@@ -7869,34 +7894,37 @@ function PagedAssistantThinkingBlock({
         open={current}
         className="group max-w-[710px]"
       >
-        <summary className="inline-flex min-h-9 max-w-full cursor-pointer list-none items-center gap-2 rounded-lg px-2 py-1.5 text-left text-muted-foreground transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-          {current ? (
-            <PagedAssistantCurrentThinkingSummary
-              event={event}
-              label={label}
-              preview={preview}
-              thread={thread}
+        <summary className="inline-block max-w-full cursor-pointer list-none rounded-lg text-left text-muted-foreground transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+          {/* Keep flex off summary: iOS WebKit misplaces its first flex child. */}
+          <span className="inline-flex min-h-9 max-w-full items-center gap-2 px-2 py-1.5">
+            {current ? (
+              <PagedAssistantCurrentThinkingSummary
+                event={event}
+                label={label}
+                preview={preview}
+                thread={thread}
+              />
+            ) : (
+              <>
+                <span
+                  data-thinking-block-icon
+                  aria-hidden
+                  className="inline-flex size-3.5 shrink-0 items-center justify-center"
+                >
+                  <Brain size={14} className="-translate-y-px" />
+                </span>
+                <span className="shrink-0 text-[13px]">{label}</span>
+                <span className="min-w-0 flex-1 truncate font-serif text-[0.8125rem] font-normal group-open:hidden">
+                  {preview}
+                </span>
+              </>
+            )}
+            <ChevronRight
+              aria-hidden
+              size={14}
+              className="shrink-0 text-muted-foreground/70 transition-transform group-open:rotate-90"
             />
-          ) : (
-            <>
-              <span
-                data-thinking-block-icon
-                aria-hidden
-                className="inline-flex size-3.5 shrink-0 items-center justify-center"
-              >
-                <Brain size={14} className="-translate-y-px" />
-              </span>
-              <span className="shrink-0 text-[13px]">{label}</span>
-              <span className="min-w-0 flex-1 truncate font-serif text-[0.8125rem] font-normal group-open:hidden">
-                {preview}
-              </span>
-            </>
-          )}
-          <ChevronRight
-            aria-hidden
-            size={14}
-            className="shrink-0 text-muted-foreground/70 transition-transform group-open:rotate-90"
-          />
+          </span>
         </summary>
         <div
           data-thinking-block-content
