@@ -35,7 +35,7 @@ import {
 import {
   dispatchTeamsMessageToAgent$,
   teamsWelcomeText,
-} from "../services/zero-teams-dispatch.service";
+} from "../services/teams-dispatch.service";
 import { ApiDispatchTimingCollector } from "../services/api-dispatch-timing.service";
 import { safeJsonParse, tapError } from "../utils";
 

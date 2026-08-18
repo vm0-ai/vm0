@@ -55,7 +55,7 @@ import {
   type CustomConnectorHttpRow,
 } from "../services/custom-connector.service";
 import { publishFeishuOrgChanged } from "../services/feishu-realtime.service";
-import { notifyFeishuConnect } from "../services/zero-feishu-welcome.service";
+import { notifyFeishuConnect } from "../services/feishu-welcome.service";
 import { tapError } from "../utils";
 
 const L = logger("FeishuOAuth");
