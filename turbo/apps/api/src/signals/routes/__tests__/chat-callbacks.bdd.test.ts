@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { WebPushError } from "web-push";
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
+import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import {
   resolveChatEventRecommendedFollowups,
   type GenerationTemplateRequest,
@@ -92,7 +92,7 @@ const GOAL_CAPABILITIES = [
   "goal:read",
   "goal:agent-result:write",
   "goal:user-control:write",
-] as const satisfies readonly ZeroCapability[];
+] as const satisfies readonly Capability[];
 const FORBIDDEN_CHAT_CALLBACK_PRE_CREATE_TIMING_KEYS = [
   "org_id",
   "orgId",

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
+import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 import { bankingContract } from "@okouai/api-contracts/contracts/banking";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -71,7 +71,7 @@ function currentSecond(): number {
 
 function zeroToken(
   fixture: BankingFixture,
-  capabilities: readonly ZeroCapability[] = ["banking:read"],
+  capabilities: readonly Capability[] = ["banking:read"],
 ): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({

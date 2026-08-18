@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
+import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 
 import { testContext } from "../../../__tests__/test-context";
 import { now } from "../../../lib/time";
@@ -49,7 +49,7 @@ function zeroToken(args: {
   userId: string;
   orgId: string;
   runId: string;
-  capabilities: readonly ZeroCapability[];
+  capabilities: readonly Capability[];
 }): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({
@@ -64,7 +64,7 @@ function zeroToken(args: {
 }
 
 function zeroBearer(
-  capabilities: readonly ZeroCapability[] = ["file:write"],
+  capabilities: readonly Capability[] = ["file:write"],
 ): string {
   const actor = bdd.user();
   const orgId = requireOrgId(actor);

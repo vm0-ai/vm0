@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
+import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import {
   TRANSLATION_MAX_SOURCE_TEXT_CHARS,
   translationContract,
@@ -62,7 +62,7 @@ interface TranslationActor extends ApiTestUser {
 
 function zeroToken(
   actor: TranslationActor,
-  capabilities: readonly ZeroCapability[] = ["translation:write"],
+  capabilities: readonly Capability[] = ["translation:write"],
 ): string {
   return createRunsApi(context).zeroTokenForRunWithCapabilities(
     actor,
