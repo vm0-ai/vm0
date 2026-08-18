@@ -121,25 +121,6 @@ const errorTestContract = c.router({
 describe("createApp", () => {
   const context = testContext();
 
-  it("holds traffic until the public-brand schema is ready", async () => {
-    const app = createAppWithRoutes({
-      routes: healthRoutes,
-      schemaReadiness: () => {
-        return Promise.resolve(false);
-      },
-      signal: context.signal,
-    });
-
-    const response = await app.request("http://api.test/health");
-
-    expect(response.status).toBe(503);
-    expect(response.headers.get("cache-control")).toBe("no-store");
-    expect(response.headers.get("retry-after")).toBe("1");
-    await expect(response.json()).resolves.toStrictEqual({
-      error: "Service unavailable",
-    });
-  });
-
   it.each([
     [
       "literal dot segment",
@@ -160,9 +141,6 @@ describe("createApp", () => {
     });
     const app = createAppWithRoutes({
       routes: [{ route: errorTestContract.pathIdentity, handler: handler$ }],
-      schemaReadiness: () => {
-        return Promise.resolve(true);
-      },
       signal: context.signal,
     });
 
@@ -178,9 +156,6 @@ describe("createApp", () => {
     });
     const app = createAppWithRoutes({
       routes: [{ route: errorTestContract.pathIdentity, handler: handler$ }],
-      schemaReadiness: () => {
-        return Promise.resolve(true);
-      },
       signal: context.signal,
     });
 
