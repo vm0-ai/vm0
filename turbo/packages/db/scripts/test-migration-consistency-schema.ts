@@ -2638,6 +2638,311 @@ async function validateCustomConnectorDefinitionContraction(): Promise<void> {
   }
 }
 
+const PERSONAL_MODEL_PROVIDER_REFRESH_PREVIOUS_MIGRATION =
+  "0939_backfill_feishu_custom_connector_ownership";
+const PERSONAL_MODEL_PROVIDER_REFRESH_MIGRATION =
+  "0940_bridge_legacy_personal_provider_refresh";
+
+async function validatePersonalModelProviderRefreshBridge(): Promise<void> {
+  console.log("=== Validate personal model-provider refresh bridge ===\n");
+  const testDb = "migration_personal_model_provider_refresh_bridge";
+  const testDbUrl = createTestDbUrl(testDb);
+  const providerId = "00000000-0000-4000-8000-000000094001";
+  const activeAccountId = "00000000-0000-4000-8000-000000094002";
+  const inactiveAccountId = "00000000-0000-4000-8000-000000094003";
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpToTag(
+      testDbUrl,
+      PERSONAL_MODEL_PROVIDER_REFRESH_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "model_providers" (
+            "id", "type", "auth_method", "user_id", "org_id",
+            "token_expires_at", "needs_reconnect",
+            "last_refresh_error_code", "updated_at"
+          ) VALUES (
+            $1, 'codex-oauth-token', 'auth_json',
+            'refresh-bridge-user', 'refresh-bridge-org',
+            TIMESTAMP '2030-01-02 00:00:00', true,
+            'legacy_refresh_error', TIMESTAMP '2030-01-02 00:00:01'
+          )
+        `,
+        [providerId],
+      );
+      await client.query(
+        `
+          INSERT INTO "model_provider_accounts" (
+            "id", "model_provider_id", "org_id", "user_id", "type",
+            "auth_method", "is_active", "token_expires_at",
+            "needs_reconnect", "last_refresh_error_code", "updated_at"
+          ) VALUES
+            (
+              $2, $1, 'refresh-bridge-org', 'refresh-bridge-user',
+              'codex-oauth-token', 'auth_json', true,
+              TIMESTAMP '2030-01-01 00:00:00', false, NULL,
+              TIMESTAMP '2030-01-01 00:00:01'
+            ),
+            (
+              $3, $1, 'refresh-bridge-org', 'refresh-bridge-user',
+              'codex-oauth-token', 'auth_json', false,
+              TIMESTAMP '2030-01-01 00:00:00', false, NULL,
+              TIMESTAMP '2030-01-01 00:00:01'
+            )
+        `,
+        [providerId, activeAccountId, inactiveAccountId],
+      );
+      await client.query(`
+          INSERT INTO "secrets" (
+            "name", "encrypted_value", "type", "user_id", "org_id",
+            "updated_at"
+          ) VALUES
+            (
+              'CHATGPT_REFRESH_TOKEN', 'legacy-refresh-1', 'model-provider',
+              'refresh-bridge-user', 'refresh-bridge-org',
+              TIMESTAMP '2030-01-02 00:00:02'
+            ),
+            (
+              'CHATGPT_ID_TOKEN', 'legacy-unmapped', 'model-provider',
+              'refresh-bridge-user', 'refresh-bridge-org',
+              TIMESTAMP '2030-01-02 00:00:03'
+            )
+        `);
+      await client.query(
+        `
+          INSERT INTO "model_provider_account_secrets" (
+            "model_provider_account_id", "name", "encrypted_value",
+            "updated_at"
+          ) VALUES
+            ($1, 'CHATGPT_REFRESH_TOKEN', 'active-refresh-stale',
+              TIMESTAMP '2030-01-01 00:00:02'),
+            ($1, 'CHATGPT_ACCESS_TOKEN', 'active-access-stale',
+              TIMESTAMP '2030-01-01 00:00:03'),
+            ($2, 'CHATGPT_REFRESH_TOKEN', 'inactive-refresh-independent',
+              TIMESTAMP '2030-01-01 00:00:04'),
+            ($2, 'CHATGPT_ACCESS_TOKEN', 'inactive-access-independent',
+              TIMESTAMP '2030-01-01 00:00:05')
+        `,
+        [activeAccountId, inactiveAccountId],
+      );
+
+      await applyMigrationsUpToTag(
+        client,
+        PERSONAL_MODEL_PROVIDER_REFRESH_MIGRATION,
+      );
+
+      const backfilledAccounts = await client.query<{
+        id: string;
+        lastRefreshErrorCode: string | null;
+        needsReconnect: boolean;
+        tokenExpiryMatchesLegacy: boolean;
+        updatedAtMatchesLegacy: boolean;
+      }>(
+        `
+          SELECT
+            "id",
+            "token_expires_at" = TIMESTAMP '2030-01-02 00:00:00'
+              AS "tokenExpiryMatchesLegacy",
+            "needs_reconnect" AS "needsReconnect",
+            "last_refresh_error_code" AS "lastRefreshErrorCode",
+            "updated_at" = TIMESTAMP '2030-01-02 00:00:01'
+              AS "updatedAtMatchesLegacy"
+          FROM "model_provider_accounts"
+          WHERE "id" IN ($1, $2)
+          ORDER BY "id"
+        `,
+        [activeAccountId, inactiveAccountId],
+      );
+      assert.deepEqual(backfilledAccounts.rows, [
+        {
+          id: activeAccountId,
+          tokenExpiryMatchesLegacy: true,
+          needsReconnect: true,
+          lastRefreshErrorCode: "legacy_refresh_error",
+          updatedAtMatchesLegacy: true,
+        },
+        {
+          id: inactiveAccountId,
+          tokenExpiryMatchesLegacy: false,
+          needsReconnect: false,
+          lastRefreshErrorCode: null,
+          updatedAtMatchesLegacy: false,
+        },
+      ]);
+
+      const backfilledSecrets = await client.query<{
+        encryptedValue: string;
+        modelProviderAccountId: string;
+        updatedAtMatchesLegacy: boolean;
+      }>(
+        `
+          SELECT
+            "model_provider_account_id" AS "modelProviderAccountId",
+            "encrypted_value" AS "encryptedValue",
+            "updated_at" = TIMESTAMP '2030-01-02 00:00:02'
+              AS "updatedAtMatchesLegacy"
+          FROM "model_provider_account_secrets"
+          WHERE "name" = 'CHATGPT_REFRESH_TOKEN'
+            AND "model_provider_account_id" IN ($1, $2)
+          ORDER BY "model_provider_account_id"
+        `,
+        [activeAccountId, inactiveAccountId],
+      );
+      assert.deepEqual(backfilledSecrets.rows, [
+        {
+          modelProviderAccountId: activeAccountId,
+          encryptedValue: "legacy-refresh-1",
+          updatedAtMatchesLegacy: true,
+        },
+        {
+          modelProviderAccountId: inactiveAccountId,
+          encryptedValue: "inactive-refresh-independent",
+          updatedAtMatchesLegacy: false,
+        },
+      ]);
+
+      const unmappedSecretCount = await client.query<{ count: number }>(
+        `
+          SELECT count(*)::integer AS "count"
+          FROM "model_provider_account_secrets"
+          WHERE "model_provider_account_id" = $1
+            AND "name" = 'CHATGPT_ID_TOKEN'
+        `,
+        [activeAccountId],
+      );
+      assert.deepEqual(unmappedSecretCount.rows, [{ count: 0 }]);
+
+      await client.query(`
+          UPDATE "secrets"
+          SET
+            "encrypted_value" = 'legacy-refresh-2',
+            "updated_at" = TIMESTAMP '2030-01-03 00:00:02'
+          WHERE "org_id" = 'refresh-bridge-org'
+            AND "user_id" = 'refresh-bridge-user'
+            AND "name" = 'CHATGPT_REFRESH_TOKEN'
+            AND "type" = 'model-provider'
+        `);
+      await client.query(`
+          INSERT INTO "secrets" (
+            "name", "encrypted_value", "type", "user_id", "org_id",
+            "updated_at"
+          ) VALUES (
+            'CHATGPT_ACCESS_TOKEN', 'legacy-access-2', 'model-provider',
+            'refresh-bridge-user', 'refresh-bridge-org',
+            TIMESTAMP '2030-01-03 00:00:03'
+          )
+        `);
+      await client.query(
+        `
+          UPDATE "model_providers"
+          SET
+            "token_expires_at" = TIMESTAMP '2030-01-03 00:00:00',
+            "needs_reconnect" = false,
+            "last_refresh_error_code" = NULL,
+            "updated_at" = TIMESTAMP '2030-01-03 00:00:01'
+          WHERE "id" = $1
+        `,
+        [providerId],
+      );
+
+      const triggeredAccounts = await client.query<{
+        id: string;
+        lastRefreshErrorCode: string | null;
+        needsReconnect: boolean;
+        tokenExpiryMatchesLegacy: boolean;
+      }>(
+        `
+          SELECT
+            "id",
+            "token_expires_at" = TIMESTAMP '2030-01-03 00:00:00'
+              AS "tokenExpiryMatchesLegacy",
+            "needs_reconnect" AS "needsReconnect",
+            "last_refresh_error_code" AS "lastRefreshErrorCode"
+          FROM "model_provider_accounts"
+          WHERE "id" IN ($1, $2)
+          ORDER BY "id"
+        `,
+        [activeAccountId, inactiveAccountId],
+      );
+      assert.deepEqual(triggeredAccounts.rows, [
+        {
+          id: activeAccountId,
+          tokenExpiryMatchesLegacy: true,
+          needsReconnect: false,
+          lastRefreshErrorCode: null,
+        },
+        {
+          id: inactiveAccountId,
+          tokenExpiryMatchesLegacy: false,
+          needsReconnect: false,
+          lastRefreshErrorCode: null,
+        },
+      ]);
+
+      const triggeredSecrets = await client.query<{
+        encryptedValue: string;
+        modelProviderAccountId: string;
+        name: string;
+      }>(
+        `
+          SELECT
+            "model_provider_account_id" AS "modelProviderAccountId",
+            "name",
+            "encrypted_value" AS "encryptedValue"
+          FROM "model_provider_account_secrets"
+          WHERE "model_provider_account_id" IN ($1, $2)
+            AND "name" IN (
+              'CHATGPT_ACCESS_TOKEN', 'CHATGPT_REFRESH_TOKEN'
+            )
+          ORDER BY "model_provider_account_id", "name"
+        `,
+        [activeAccountId, inactiveAccountId],
+      );
+      assert.deepEqual(triggeredSecrets.rows, [
+        {
+          modelProviderAccountId: activeAccountId,
+          name: "CHATGPT_ACCESS_TOKEN",
+          encryptedValue: "legacy-access-2",
+        },
+        {
+          modelProviderAccountId: activeAccountId,
+          name: "CHATGPT_REFRESH_TOKEN",
+          encryptedValue: "legacy-refresh-2",
+        },
+        {
+          modelProviderAccountId: inactiveAccountId,
+          name: "CHATGPT_ACCESS_TOKEN",
+          encryptedValue: "inactive-access-independent",
+        },
+        {
+          modelProviderAccountId: inactiveAccountId,
+          name: "CHATGPT_REFRESH_TOKEN",
+          encryptedValue: "inactive-refresh-independent",
+        },
+      ]);
+
+      console.log(
+        "   ✅ active account state and secrets backfill from legacy",
+      );
+      console.log(
+        "   ✅ legacy INSERT and UPDATE writes reach the active account",
+      );
+      console.log(
+        "   ✅ inactive accounts and missing mappings remain isolated\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 type PermanentTrigger = {
   readonly definition: string;
   readonly schemaName: string;
@@ -11838,6 +12143,7 @@ async function main(): Promise<void> {
     await validateInvalidatedGoalContinuationCleanup();
     await validateMcpCustomConnectorReaderPreparation();
     await validateCustomConnectorDefinitionContraction();
+    await validatePersonalModelProviderRefreshBridge();
     await validateChatEventContractCutover();
     await validateChatEventContractionPreparation();
     await validateChatEventContractionFinalization();
