@@ -29,7 +29,6 @@ use std::os::fd::{AsFd, AsRawFd, OwnedFd};
 use std::path::{Component, Path, PathBuf};
 
 use crate::error::{RunnerError, RunnerResult};
-use crate::host_file::PRIVATE_FILE_MODE;
 
 const PRIVATE_DIR_MODE: u32 = 0o700;
 const GROUP_OR_OTHER_WRITE_BITS: u32 = 0o022;
@@ -186,7 +185,7 @@ pub async fn read_private_file_to_string_with_max(
     let mut options = tokio::fs::OpenOptions::new();
     options
         .read(true)
-        .custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_CLOEXEC | nix::libc::O_NONBLOCK);
+        .custom_flags(crate::host_file::private_file_open_flags());
     let file = match options.open(path).await {
         Ok(file) => file,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -197,7 +196,8 @@ pub async fn read_private_file_to_string_with_max(
             )));
         }
     };
-    secure_open_private_file(&file, path)?;
+    crate::host_file::secure_regular_private_file(&file, path, "private file")
+        .map_err(|e| RunnerError::Config(e.to_string()))?;
     read_private_file_contents(file, path, max_bytes)
         .await
         .map(Some)
@@ -582,64 +582,6 @@ fn ensure_private_dir_fd_owned_by(
     Ok(())
 }
 
-#[cfg(unix)]
-fn secure_open_private_file<Fd: std::os::fd::AsRawFd>(file: &Fd, path: &Path) -> RunnerResult<()> {
-    let mut stat = std::mem::MaybeUninit::<nix::libc::stat>::uninit();
-    // SAFETY: `stat` points to valid writable memory and `file` owns a live fd.
-    let result = unsafe { nix::libc::fstat(file.as_raw_fd(), stat.as_mut_ptr()) };
-    if result != 0 {
-        return Err(RunnerError::Config(format!(
-            "stat private file {}: {}",
-            path.display(),
-            std::io::Error::last_os_error()
-        )));
-    }
-    // SAFETY: successful `fstat` initialized the full `stat` struct.
-    let stat = unsafe { stat.assume_init() };
-    let file_type = stat.st_mode & nix::libc::S_IFMT;
-    if file_type != nix::libc::S_IFREG {
-        return Err(RunnerError::Config(format!(
-            "{} is not a regular private file",
-            path.display()
-        )));
-    }
-    let expected_uid = nix::unistd::geteuid().as_raw();
-    if stat.st_uid != expected_uid {
-        return Err(RunnerError::Config(format!(
-            "{} is owned by uid {}, but runner euid is {expected_uid}; fix ownership before starting the runner",
-            path.display(),
-            stat.st_uid
-        )));
-    }
-    let mode = stat.st_mode & 0o7777;
-    if mode & GROUP_OR_OTHER_WRITE_BITS != 0 {
-        return Err(RunnerError::Config(format!(
-            "{} is group/other writable; fix permissions before starting the runner",
-            path.display()
-        )));
-    }
-    if mode == PRIVATE_FILE_MODE {
-        return Ok(());
-    }
-    chmod_private_file_fd(file, path)
-}
-
-#[cfg(unix)]
-fn chmod_private_file_fd<Fd: std::os::fd::AsRawFd>(file: &Fd, path: &Path) -> RunnerResult<()> {
-    // SAFETY: `fchmod` operates on the live fd and does not affect Rust aliasing.
-    let result =
-        unsafe { nix::libc::fchmod(file.as_raw_fd(), PRIVATE_FILE_MODE as nix::libc::mode_t) };
-    if result == 0 {
-        Ok(())
-    } else {
-        Err(RunnerError::Config(format!(
-            "chmod private file {}: {}",
-            path.display(),
-            std::io::Error::last_os_error()
-        )))
-    }
-}
-
 #[cfg(all(unix, target_os = "linux"))]
 fn chmod_open_private_dir<Fd: std::os::fd::AsRawFd>(fd: &Fd, path: &Path) -> RunnerResult<()> {
     use std::os::unix::fs::PermissionsExt;
@@ -845,6 +787,19 @@ mod tests {
             "unexpected error: {error}"
         );
         assert_eq!(mode(&path), 0o660);
+    }
+
+    #[tokio::test]
+    async fn read_private_file_tightens_safe_permissions() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("runner_id");
+        std::fs::write(&path, b"runner-123").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        let contents = read_private_file_to_string(&path).await.unwrap();
+
+        assert_eq!(contents.as_deref(), Some("runner-123"));
+        assert_eq!(mode(&path), crate::host_file::PRIVATE_FILE_MODE);
     }
 
     #[tokio::test]
