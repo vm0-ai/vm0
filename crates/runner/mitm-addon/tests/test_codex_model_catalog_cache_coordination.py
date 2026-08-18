@@ -400,9 +400,9 @@ async def test_singleflight_waiter_bound_bypasses_excess_requests(real_flow):
 
 
 async def test_singleflight_total_waiter_bound_spans_catalog_keys(real_flow):
-    owner_count = (
-        catalog_cache.MAX_TOTAL_WAITERS + catalog_cache.MAX_WAITERS_PER_KEY - 1
-    ) // catalog_cache.MAX_WAITERS_PER_KEY
+    owner_count = catalog_cache.MAX_TOTAL_WAITERS // catalog_cache.MAX_WAITERS_PER_KEY + 1
+    overflow_owner_index = owner_count - 1
+    assert catalog_cache.MAX_TOTAL_WAITERS // owner_count < catalog_cache.MAX_WAITERS_PER_KEY
     owners = [
         catalog_flow(real_flow, version=f"total-waiter-capacity-{index}")
         for index in range(owner_count)
@@ -415,30 +415,39 @@ async def test_singleflight_total_waiter_bound_spans_catalog_keys(real_flow):
             catalog_cache.prepare_request(
                 catalog_flow(
                     real_flow,
-                    version=f"total-waiter-capacity-{index // catalog_cache.MAX_WAITERS_PER_KEY}",
+                    version=f"total-waiter-capacity-{index % owner_count}",
                 ),
                 request_end_stream=True,
             )
         )
         for index in range(catalog_cache.MAX_TOTAL_WAITERS)
     ]
-    await asyncio.sleep(0)
-    assert all(not waiter.done() for waiter in waiters)
+    overflow = catalog_flow(
+        real_flow,
+        version=f"total-waiter-capacity-{overflow_owner_index}",
+    )
+    overflow_prepare = asyncio.create_task(
+        catalog_cache.prepare_request(overflow, request_end_stream=True)
+    )
+    tasks = [*waiters, overflow_prepare]
+    try:
+        await asyncio.sleep(0)
+        assert all(not waiter.done() for waiter in waiters)
+        assert overflow_prepare.done()
+        await overflow_prepare
 
-    overflow = catalog_flow(real_flow, version="total-waiter-capacity-0")
-    await catalog_cache.prepare_request(overflow, request_end_stream=True)
-    overflow_telemetry: dict[str, object] = {}
-    catalog_cache.add_network_log_fields(overflow, overflow_telemetry)
-    assert overflow_telemetry == {
-        "model_catalog_cache_status": "model_catalog_bypass",
-        "model_catalog_cache_bypass_reason": "request_capacity",
-    }
-
-    for waiter in waiters:
-        waiter.cancel()
-    await asyncio.gather(*waiters, return_exceptions=True)
-    for owner in owners:
-        catalog_cache.handle_error(owner)
+        overflow_telemetry: dict[str, object] = {}
+        catalog_cache.add_network_log_fields(overflow, overflow_telemetry)
+        assert overflow_telemetry == {
+            "model_catalog_cache_status": "model_catalog_bypass",
+            "model_catalog_cache_bypass_reason": "request_capacity",
+        }
+    finally:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        for owner in owners:
+            catalog_cache.handle_error(owner)
 
 
 async def test_in_flight_capacity_bypasses_without_changing_request_encoding(real_flow):
