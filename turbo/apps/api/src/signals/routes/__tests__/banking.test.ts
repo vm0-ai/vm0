@@ -111,7 +111,7 @@ async function seedBankingFixture(
 
   const run = args.triggerSource
     ? await api.createDirectRun(actor, {
-        agentComposeId: agent.agentId,
+        agentId: agent.agentId,
         prompt: "banking automation precondition",
         modelProviderType: "anthropic-api-key",
         triggerSource: args.triggerSource,

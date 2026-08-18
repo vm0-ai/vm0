@@ -69,7 +69,7 @@ function headers(token: string): { readonly authorization: string } {
 
 async function createRunForAgent(actor: ApiTestUser, agentId: string) {
   return await runs.createDirectRun(actor, {
-    agentComposeId: agentId,
+    agentId,
     prompt: "Discover MCP connectors",
     modelProviderType: "anthropic-api-key",
     vars: { OKOU_AGENT_ID: agentId },

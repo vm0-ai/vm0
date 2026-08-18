@@ -374,7 +374,7 @@ describe("workflow skill storage presigned URL cache", () => {
         mockUniquePresignedUrls();
         const createAndClaim = async (prompt: string) => {
           const run = await api.createDirectRun(actor, {
-            agentComposeId: compose.composeId,
+            agentId: compose.composeId,
             prompt,
           });
           await api.heartbeatRunner(runnerGroup);

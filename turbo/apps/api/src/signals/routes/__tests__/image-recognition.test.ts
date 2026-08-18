@@ -103,7 +103,7 @@ async function seedActor(): Promise<RecognitionActor> {
     },
   });
   const run = await api.createDirectRun(actor, {
-    agentComposeId: compose.composeId,
+    agentId: compose.composeId,
     prompt: "Recognize an uploaded image",
   });
   context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
