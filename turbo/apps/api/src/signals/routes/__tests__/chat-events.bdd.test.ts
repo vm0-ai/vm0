@@ -7499,6 +7499,60 @@ describe("CHAT-02: generation templates and attachments", () => {
     await cancelChatRun(actor, sent.runId);
   }, 90_000);
 
+  it("projects referenced passages without requiring every feedback note", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const userMessage: UserMessageInputDocument = {
+      version: 1,
+      parts: [
+        {
+          type: "feedback",
+          quote: "First quote",
+          note: [{ type: "text", text: "Clarify the owner" }],
+        },
+        {
+          type: "feedback",
+          quote: "Second quote",
+          note: [],
+        },
+      ],
+    };
+    const prompt =
+      "The user referenced 2 parts of your reply:\n\n" +
+      "> First quote\n\nClarify the owner\n\n---\n\n" +
+      "> Second quote";
+
+    const sent = await sendChatRun(actor, {
+      agentId,
+      prompt: "legacy fallback",
+      userMessage,
+    });
+
+    const run = await api.readRun(actor, sent.runId);
+    expect(run.prompt).toBe(prompt);
+
+    const messages = await waitForThreadMessages(
+      actor,
+      sent.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return message.runId === sent.runId;
+        });
+      },
+    );
+    const message = userMessages(messages.events).find(
+      (item): item is PromptMessage => {
+        return item.eventType === "input.prompt" && item.runId === sent.runId;
+      },
+    );
+    expect(message?.userMessage?.parts.slice(0, 2)).toStrictEqual(
+      userMessage.parts,
+    );
+
+    await cancelChatRun(actor, sent.runId);
+  }, 90_000);
+
   it("projects multiple inline templates into one ordered prompt and one shared context", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();

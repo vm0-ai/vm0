@@ -2236,6 +2236,109 @@ describe("chat inline feedback", () => {
     expect(sentPrompts[0]).toContain("Add dates.");
   });
 
+  it("sends multiple referenced passages without comments", async () => {
+    const user = userEvent.setup({ delay: null });
+    const assistantReply = "The launch summary needs clearer risk ownership.";
+    const firstQuote = "launch summary";
+    const secondQuote = "risk ownership";
+    const firstRange = {
+      start: assistantReply.indexOf(firstQuote),
+      end: assistantReply.indexOf(firstQuote) + firstQuote.length,
+    };
+    const secondRange = {
+      start: assistantReply.indexOf(secondQuote),
+      end: assistantReply.indexOf(secondQuote) + secondQuote.length,
+    };
+    const sentMessages: RunCreateCapture[] = [];
+
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback review",
+      chatEvents: [
+        {
+          id: "msg-quote-only-user",
+          role: "user",
+          content: "Review this launch summary",
+          runId: "run-quote-only",
+          createdAt: "2026-08-18T10:00:00Z",
+        },
+        {
+          id: "msg-quote-only-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-quote-only",
+          createdAt: "2026-08-18T10:01:00Z",
+        },
+      ],
+      onRunCreate: (body) => {
+        sentMessages.push(body);
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatQuoteOnlyFeedback]: true,
+      },
+    });
+
+    const assistantReplyElement = await screen.findByText(assistantReply);
+    selectTextForInlineFeedback(assistantReplyElement, firstRange);
+    await user.click(await screen.findByText("Quote"));
+    await findFeedbackNote();
+
+    selectTextForInlineFeedback(assistantReplyElement, secondRange);
+    await user.click(await screen.findByText("Quote"));
+    await findFeedbackNotes(2);
+    await user.click(screen.getByLabelText("Send"));
+
+    await waitFor(() => {
+      expect(sentMessages).toHaveLength(1);
+    });
+    expect(sentMessages[0]).toMatchObject({
+      prompt:
+        "The user referenced 2 parts of your reply:\n\n" +
+        `> ${firstQuote}\n\n---\n\n` +
+        `> ${secondQuote}`,
+      hasTextContent: true,
+      userMessage: {
+        version: 1,
+        parts: [
+          {
+            type: "feedback",
+            quote: firstQuote,
+            eventId: "msg-quote-only-assistant",
+            range: firstRange,
+            note: [],
+          },
+          {
+            type: "feedback",
+            quote: secondQuote,
+            eventId: "msg-quote-only-assistant",
+            range: secondRange,
+            note: [],
+          },
+        ],
+      },
+    });
+    const sentFeedbackGroup = await waitFor(() => {
+      const group = document.querySelector("[data-structured-feedback-group]");
+      expect(group).toBeInstanceOf(HTMLElement);
+      return group as HTMLElement;
+    });
+    expect(
+      Array.from(
+        sentFeedbackGroup.querySelectorAll("[data-structured-feedback-quote]"),
+      ).map((quote) => {
+        return quote.textContent;
+      }),
+    ).toStrictEqual([firstQuote, secondQuote]);
+    await waitFor(() => {
+      expect(feedbackNotes()).toHaveLength(0);
+    });
+  });
+
   it("keeps the divider spacing off the first inline feedback item", async () => {
     const user = userEvent.setup({ delay: null });
     const assistantReply = "The launch summary needs clearer risk ownership.";

@@ -281,6 +281,15 @@ function formatFeedbackParts(
   const hasSourceContext = parts.some((part) => {
     return part.source !== undefined;
   });
+  const entries = parts.map((part) => {
+    return {
+      part,
+      note: serializeFeedbackNote(part.note, serializeTemplate).trim(),
+    };
+  });
+  const hasQuoteOnlyPart = entries.some((entry) => {
+    return entry.note.length === 0;
+  });
   const mailSourceLabel = (
     source: NonNullable<
       Extract<UserMessagePart, { type: "feedback" }>["source"]
@@ -290,7 +299,7 @@ function formatFeedbackParts(
       ? `an email draft (mail draft ID: ${source.id})`
       : `a sent email (mail ID: ${source.id}${source.sentId ? `, sent ID: ${source.sentId}` : ""})`;
   };
-  const blocks = parts.map((part) => {
+  const blocks = entries.map(({ part, note }) => {
     const quoted = part.quote
       .split("\n")
       .map((line) => {
@@ -301,20 +310,21 @@ function formatFeedbackParts(
       commonMailSource === null && part.source?.type === "mail"
         ? `Source: ${mailSourceLabel(part.source)}\n\n`
         : "";
-    return `${source}${quoted}\n\n${serializeFeedbackNote(
-      part.note,
-      serializeTemplate,
-    ).trim()}`;
+    return note.length === 0
+      ? `${source}${quoted}`
+      : `${source}${quoted}\n\n${note}`;
   });
-  const intro = commonMailSource
-    ? parts.length === 1
-      ? `Feedback on this part of ${mailSourceLabel(commonMailSource)}:`
-      : `Feedback on ${parts.length} parts of ${mailSourceLabel(commonMailSource)}:`
-    : hasSourceContext
-      ? `Feedback on ${parts.length} selected ${parts.length === 1 ? "passage" : "passages"}:`
-      : parts.length === 1
-        ? "Feedback on this part of your reply:"
-        : `Feedback on ${parts.length} parts of your reply:`;
+  const intro = hasQuoteOnlyPart
+    ? `The user referenced ${parts.length} parts of your reply:`
+    : commonMailSource
+      ? parts.length === 1
+        ? `Feedback on this part of ${mailSourceLabel(commonMailSource)}:`
+        : `Feedback on ${parts.length} parts of ${mailSourceLabel(commonMailSource)}:`
+      : hasSourceContext
+        ? `Feedback on ${parts.length} selected ${parts.length === 1 ? "passage" : "passages"}:`
+        : parts.length === 1
+          ? "Feedback on this part of your reply:"
+          : `Feedback on ${parts.length} parts of your reply:`;
   return `${intro}\n\n${blocks.join("\n\n---\n\n")}`;
 }
 

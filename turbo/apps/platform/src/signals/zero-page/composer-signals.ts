@@ -477,6 +477,9 @@ export function createComposerSignals(
     return options.agentId;
   });
   const feedback = createComposerFeedbackModel();
+  const quoteOnlyFeedbackEnabled$ = computed((get): boolean => {
+    return get(featureSwitch$)[FeatureSwitchKey.ChatQuoteOnlyFeedback] ?? false;
+  });
   const temporaryModelNoticeEnabled$ = computed((get): boolean => {
     return (
       options.threadId === undefined &&
@@ -491,6 +494,7 @@ export function createComposerSignals(
       singleLineOnMobile: options.singleLineOnMobile,
     },
     feedback,
+    quoteOnlyFeedbackEnabled$,
   );
   const ui = createComposerUiSignals();
   const submission = createComposerSubmissionSignals(

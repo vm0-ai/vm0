@@ -97,6 +97,9 @@ interface MountedWorkflowNamesSync {
 const mountedWorkflowNamesSyncs$ = state<ReadonlySet<MountedWorkflowNamesSync>>(
   new Set(),
 );
+const quoteOnlyFeedbackDisabled$ = computed(() => {
+  return false;
+});
 
 const registerMountedWorkflowNamesSync$ = command(
   ({ get, set }, mountedWorkflowNamesSync: MountedWorkflowNamesSync): void => {
@@ -263,12 +266,17 @@ function connectComposerFeedback(
 function createReadInputForSubmissionCommand(
   editor: Editor,
   compositionGate: CompositionGate,
+  quoteOnlyFeedbackEnabled$: Computed<boolean>,
 ) {
-  return command((_context, signal: AbortSignal) => {
+  return command(({ get }, signal: AbortSignal) => {
+    const includeQuoteOnlyFeedback = get(quoteOnlyFeedbackEnabled$);
     return compositionGate.runWhenSettled(() => {
       return {
-        prompt: workflowComposerDocToString(editor),
-        editorDocument: createEditorDocumentSnapshot(editor.state.doc),
+        prompt: workflowComposerDocToString(editor, includeQuoteOnlyFeedback),
+        editorDocument: createEditorDocumentSnapshot(
+          editor.state.doc,
+          includeQuoteOnlyFeedback,
+        ),
       };
     }, signal);
   });
@@ -1340,7 +1348,10 @@ function nodeText(
   });
 }
 
-function workflowComposerDocToString(editor: Editor): string {
+function workflowComposerDocToString(
+  editor: Editor,
+  includeQuoteOnlyFeedback = false,
+): string {
   const sections: string[] = [];
   let textBlocks: string[] = [];
   let feedbackItems: FeedbackItem[] = [];
@@ -1352,11 +1363,13 @@ function workflowComposerDocToString(editor: Editor): string {
     textBlocks = [];
   };
   const flushFeedbackItems = () => {
-    const notedItems = feedbackItems.filter((item) => {
-      return item.note.trim().length > 0;
-    });
-    if (notedItems.length > 0) {
-      sections.push(formatFeedbackPrompt(notedItems));
+    const includedItems = includeQuoteOnlyFeedback
+      ? feedbackItems
+      : feedbackItems.filter((item) => {
+          return item.note.trim().length > 0;
+        });
+    if (includedItems.length > 0) {
+      sections.push(formatFeedbackPrompt(includedItems));
     }
     feedbackItems = [];
   };
@@ -1940,6 +1953,7 @@ interface MountEditorOptions {
   compositionGate: CompositionGate;
   syncWorkflowNames$: WorkflowNamesSyncCommand;
   syncAgentMentionAvatars$: AgentMentionAvatarsSyncCommand;
+  quoteOnlyFeedbackEnabled$: Computed<boolean>;
   autoFocus: boolean;
   singleLineOnMobile: boolean;
 }
@@ -1957,6 +1971,54 @@ function focusMountedEditorAtEnd(editor: Editor): void {
   editor.commands.scrollIntoView();
 }
 
+interface MountedDraftInputSyncTargetOptions {
+  editor: Editor;
+  runtime: WorkflowComposerRuntime;
+  includeQuoteOnlyFeedback: boolean;
+  setEditorDocument(snapshot: EditorDocumentSnapshot): void;
+}
+
+function createMountedDraftInputSyncTarget({
+  editor,
+  runtime,
+  includeQuoteOnlyFeedback,
+  setEditorDocument,
+}: MountedDraftInputSyncTargetOptions): DraftInputSyncTarget {
+  const syncEditorDocument = () => {
+    setEditorDocument(
+      createEditorDocumentSnapshot(editor.state.doc, includeQuoteOnlyFeedback),
+    );
+  };
+  return {
+    syncInput(value) {
+      if (
+        workflowComposerDocToString(editor, includeQuoteOnlyFeedback) === value
+      ) {
+        return;
+      }
+      const changed = setWorkflowComposerDocument(
+        editor,
+        workflowComposerDocumentForValue(editor, value),
+      );
+      if (changed) {
+        runtime.replaceFeedbackItems(feedbackItemsFromWorkflowComposer(editor));
+        syncEditorDocument();
+      }
+    },
+    syncUserMessage(value) {
+      const document = workflowComposerDocumentForUserMessage(editor, value);
+      if (!document) {
+        return;
+      }
+      const changed = setWorkflowComposerDocument(editor, document);
+      if (changed) {
+        runtime.replaceFeedbackItems(feedbackItemsFromWorkflowComposer(editor));
+      }
+      syncEditorDocument();
+    },
+  };
+}
+
 function createMountEditorCommand({
   editor,
   draft,
@@ -1968,19 +2030,27 @@ function createMountEditorCommand({
   compositionGate,
   syncWorkflowNames$,
   syncAgentMentionAvatars$,
+  quoteOnlyFeedbackEnabled$,
   autoFocus,
   singleLineOnMobile,
 }: MountEditorOptions) {
   return onRef(
     command(async ({ get, set }, element: HTMLElement, signal: AbortSignal) => {
+      const includeQuoteOnlyFeedback = get(quoteOnlyFeedbackEnabled$);
       runtime.update = (updatedEditor) => {
         runtime.replaceFeedbackItems(
           feedbackItemsFromWorkflowComposer(updatedEditor),
         );
-        set(draft.setInput$, workflowComposerDocToString(updatedEditor));
+        set(
+          draft.setInput$,
+          workflowComposerDocToString(updatedEditor, includeQuoteOnlyFeedback),
+        );
         set(
           draft.setEditorDocument$,
-          createEditorDocumentSnapshot(updatedEditor.state.doc),
+          createEditorDocumentSnapshot(
+            updatedEditor.state.doc,
+            includeQuoteOnlyFeedback,
+          ),
         );
         set(selectedSuggestionIndexState$, 0);
         set(caretIndex$, updatedEditor.state.selection.head);
@@ -2015,50 +2085,25 @@ function createMountEditorCommand({
       );
       set(
         draft.setEditorDocument$,
-        createEditorDocumentSnapshot(editor.state.doc),
+        createEditorDocumentSnapshot(
+          editor.state.doc,
+          includeQuoteOnlyFeedback,
+        ),
       );
       editor.mount(element);
       mountLocalizationListener(editor, runtime, signal);
       mountCompositionListeners(editor, compositionGate, signal);
-      set(draft.setInputSyncTarget$, {
-        syncInput(value: string) {
-          if (workflowComposerDocToString(editor) === value) {
-            return;
-          }
-          const changed = setWorkflowComposerDocument(
-            editor,
-            workflowComposerDocumentForValue(editor, value),
-          );
-          if (changed) {
-            runtime.replaceFeedbackItems(
-              feedbackItemsFromWorkflowComposer(editor),
-            );
-            set(
-              draft.setEditorDocument$,
-              createEditorDocumentSnapshot(editor.state.doc),
-            );
-          }
-        },
-        syncUserMessage(value) {
-          const document = workflowComposerDocumentForUserMessage(
-            editor,
-            value,
-          );
-          if (!document) {
-            return;
-          }
-          const changed = setWorkflowComposerDocument(editor, document);
-          if (changed) {
-            runtime.replaceFeedbackItems(
-              feedbackItemsFromWorkflowComposer(editor),
-            );
-          }
-          set(
-            draft.setEditorDocument$,
-            createEditorDocumentSnapshot(editor.state.doc),
-          );
-        },
-      });
+      set(
+        draft.setInputSyncTarget$,
+        createMountedDraftInputSyncTarget({
+          editor,
+          runtime,
+          includeQuoteOnlyFeedback,
+          setEditorDocument(snapshot) {
+            set(draft.setEditorDocument$, snapshot);
+          },
+        }),
+      );
       // Keep workflow decoration sync scoped to real editor mounts.
       const mountedWorkflowNamesSync = {
         command$: syncWorkflowNames$,
@@ -2496,6 +2541,7 @@ export function createWorkflowComposerSignals<
   agentIdSource$: Computed<T> = currentChatAgentRecordId$ as Computed<T>,
   mountOptions: WorkflowComposerMountOptions = {},
   feedback: ComposerFeedbackModel = createComposerFeedbackModel(),
+  quoteOnlyFeedbackEnabled$: Computed<boolean> = quoteOnlyFeedbackDisabled$,
 ): WorkflowComposerSignals {
   const caretIndex$ = state(-1);
   const editorFocusedState$ = state(false);
@@ -2567,6 +2613,7 @@ export function createWorkflowComposerSignals<
     compositionGate,
     syncWorkflowNames$,
     syncAgentMentionAvatars$,
+    quoteOnlyFeedbackEnabled$,
     autoFocus: mountOptions.autoFocus ?? false,
     singleLineOnMobile: mountOptions.singleLineOnMobile ?? false,
   });
@@ -2581,6 +2628,7 @@ export function createWorkflowComposerSignals<
   const readInputForSubmission$ = createReadInputForSubmissionCommand(
     editor,
     compositionGate,
+    quoteOnlyFeedbackEnabled$,
   );
   const hasInput$ = computed((get) => {
     return get(draft.hasInput$) || get(feedback.active$);

@@ -414,6 +414,26 @@ describe("chat thread generation template contract", () => {
     expect(parsed.success).toBe(true);
   });
 
+  it("accepts referenced feedback passages without a user comment", () => {
+    const userMessage = {
+      version: 1,
+      parts: [
+        {
+          type: "feedback",
+          quote: "Original reply",
+          note: [],
+        },
+      ],
+    };
+
+    expect(userMessageDocumentSchema.safeParse(userMessage)).toMatchObject({
+      success: true,
+    });
+    expect(userMessageInputDocumentSchema.safeParse(userMessage)).toMatchObject(
+      { success: true },
+    );
+  });
+
   it("accepts feedback event ranges without requiring them on legacy data", () => {
     const legacyFeedback = {
       version: 1,
