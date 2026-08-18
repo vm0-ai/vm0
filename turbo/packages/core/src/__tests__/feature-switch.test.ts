@@ -103,9 +103,6 @@ describe("getAllFeatureStates", () => {
       staffOrgStates[FeatureSwitchKey.ChatRunContinuationPresentation],
     ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatSmoothAutoScroll]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ChatInlineThinkingBlocks]).toBe(
-      true,
-    );
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       true,
@@ -140,9 +137,6 @@ describe("getAllFeatureStates", () => {
       otherOrgStates[FeatureSwitchKey.ChatRunContinuationPresentation],
     ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatSmoothAutoScroll]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ChatInlineThinkingBlocks]).toBe(
-      false,
-    );
     expect(otherOrgStates[FeatureSwitchKey.PiLoop]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       false,

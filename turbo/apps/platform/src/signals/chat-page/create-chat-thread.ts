@@ -1418,7 +1418,6 @@ function isThinkingMarkerSemanticEvent(entry: SemanticChatEvent): boolean {
 
 function lastRunThinkingEvent(
   groups: readonly SemanticChatEventGroup[],
-  inlineThinkingBlocksEnabled: boolean,
 ): SemanticChatEvent | undefined {
   const events = groups.flatMap((group) => {
     return group.events;
@@ -1427,37 +1426,19 @@ function lastRunThinkingEvent(
   if (!lastEvent || !isThinkingMarkerSemanticEvent(lastEvent)) {
     return undefined;
   }
-  if (!inlineThinkingBlocksEnabled) {
-    const runId = lastEvent.event.runId;
-    const runHasAssistantText = events.some((entry) => {
-      return (
-        entry.event.runId === runId && isRenderableAssistantSemanticEvent(entry)
-      );
-    });
-    if (runHasAssistantText) {
-      return undefined;
-    }
-  }
-  return lastEvent;
+  const runId = lastEvent.event.runId;
+  const runHasAssistantText = events.some((entry) => {
+    return (
+      entry.event.runId === runId && isRenderableAssistantSemanticEvent(entry)
+    );
+  });
+  return runHasAssistantText ? undefined : lastEvent;
 }
 
 interface ThinkingIndicatorProjection {
   readonly mode: ThinkingIndicatorMode;
   readonly thinkingEventId: string | null;
-  readonly thinkingEventInline: boolean;
   readonly thinkingText: string | null;
-}
-
-const INITIAL_THINKING_RUN_EVENT_ID = "thinking:initial";
-
-function thinkingEventRendersInline(
-  entry: SemanticChatEvent | undefined,
-): boolean {
-  return (
-    entry !== undefined &&
-    isThinkingMarkerSemanticEvent(entry) &&
-    entry.event.runEventId !== INITIAL_THINKING_RUN_EVENT_ID
-  );
 }
 
 function assistantGroupOnlyHasThinking(
@@ -1514,26 +1495,17 @@ function resolveThinkingIndicatorMode({
 function thinkingIndicatorProjectionFromGroups(
   groups: SemanticChatGroups,
   runState: RunIndicatorState,
-  inlineThinkingBlocksEnabled: boolean,
 ): ThinkingIndicatorProjection {
   const { activeGroups } = groups;
   const lastGroup = activeGroups.at(-1);
   if (!lastGroup) {
-    return {
-      mode: null,
-      thinkingEventId: null,
-      thinkingEventInline: false,
-      thinkingText: null,
-    };
+    return { mode: null, thinkingEventId: null, thinkingText: null };
   }
   const lastIsAssistant = lastGroup.role === "assistant";
   const lastAssistantEvent = lastIsAssistant
     ? lastGroup.events.at(-1)?.event
     : undefined;
-  const rawThinkingEvent = lastRunThinkingEvent(
-    activeGroups,
-    inlineThinkingBlocksEnabled,
-  );
+  const rawThinkingEvent = lastRunThinkingEvent(activeGroups);
   const lastAssistantOnlyThinking = assistantGroupOnlyHasThinking(
     lastGroup,
     rawThinkingEvent,
@@ -1552,12 +1524,7 @@ function thinkingIndicatorProjectionFromGroups(
       running,
     })
   ) {
-    return {
-      mode: null,
-      thinkingEventId: null,
-      thinkingEventInline: false,
-      thinkingText: null,
-    };
+    return { mode: null, thinkingEventId: null, thinkingText: null };
   }
 
   const mode = resolveThinkingIndicatorMode({
@@ -1575,7 +1542,6 @@ function thinkingIndicatorProjectionFromGroups(
   return {
     mode,
     thinkingEventId: thinkingText ? (rawThinkingEvent?.event.id ?? null) : null,
-    thinkingEventInline: thinkingEventRendersInline(rawThinkingEvent),
     thinkingText,
   };
 }
@@ -1639,7 +1605,6 @@ function createEventSemanticSignals(
       return thinkingIndicatorProjectionFromGroups(
         get(semanticGroups$),
         runState,
-        get(featureSwitch$)[FeatureSwitchKey.ChatInlineThinkingBlocks] ?? false,
       );
     },
   );
@@ -1661,9 +1626,6 @@ function createEventSemanticSignals(
   const thinkingEventId$ = computed(async (get): Promise<string | null> => {
     return (await get(thinkingIndicatorProjection$)).thinkingEventId;
   });
-  const thinkingEventInline$ = computed(async (get): Promise<boolean> => {
-    return (await get(thinkingIndicatorProjection$)).thinkingEventInline;
-  });
   const recommendedFollowupSource$ = computed(
     (get): Promise<RecommendedFollowupSource | null> => {
       return Promise.resolve(
@@ -1683,7 +1645,6 @@ function createEventSemanticSignals(
     hasEvents$,
     thinkingIndicatorMode$,
     thinkingEventId$,
-    thinkingEventInline$,
     thinkingText$,
     recommendedFollowupSource$,
     donePhrase$,
@@ -3757,7 +3718,6 @@ function publicChatThreadEventSignals(events: MessageListSignals) {
     hasEvents$: events.hasEvents$,
     thinkingIndicatorMode$: events.thinkingIndicatorMode$,
     thinkingEventId$: events.thinkingEventId$,
-    thinkingEventInline$: events.thinkingEventInline$,
     thinkingText$: events.thinkingText$,
     recommendedFollowupSource$: events.recommendedFollowupSource$,
     donePhrase$: events.donePhrase$,
