@@ -1,14 +1,8 @@
 import { command, computed, state } from "ccstate";
 import { isSupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import {
-  DEFAULT_IMAGE_MODEL,
-  type ImageModel,
-} from "@okouai/core/image-model-catalog";
-import {
-  DEFAULT_VIDEO_MODEL,
-  type VideoModel,
-} from "@okouai/core/video-model-catalog";
+import type { ImageModel } from "@okouai/core/image-model-catalog";
+import type { VideoModel } from "@okouai/core/video-model-catalog";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { currentAgentId$ } from "../agent.ts";
 import {
@@ -41,9 +35,11 @@ import type { ChatEvent } from "../chat-page/chat-event-types.ts";
 import {
   chatPageEffectiveImageModel$,
   chatPageEffectiveVideoModel$,
+  chatPageImageModelPin$,
   chatPageImageModelSelection$,
   chatPageModelSelection$,
   chatPageSelectedModelOauthAvailable$,
+  chatPageVideoModelPin$,
   chatPageVideoModelSelection$,
   configureChatPageSelectedModel$,
   resetChatPageImageModelSelection$,
@@ -205,14 +201,11 @@ function createAgentComposerSignalsWithDraft(
       }
       const access = get(newThreadComputerAccess$);
       const imageModelEnabled = get(imageModelSelectionEnabled$);
-      const [hosts, imageModelSelection, videoModelSelection] =
-        await Promise.all([
-          get(computerUseHosts$),
-          imageModelEnabled
-            ? get(chatPageImageModelSelection$)
-            : Promise.resolve(undefined),
-          get(chatPageVideoModelSelection$),
-        ]);
+      const [hosts, imageModelPin, videoModelPin] = await Promise.all([
+        get(computerUseHosts$),
+        imageModelEnabled ? get(chatPageImageModelPin$) : Promise.resolve(null),
+        get(chatPageVideoModelPin$),
+      ]);
       signal.throwIfAborted();
       const hostId =
         access.kind === "computerUse"
@@ -229,10 +222,11 @@ function createAgentComposerSignalsWithDraft(
           prompt: submission.prompt,
           generationTemplate: submission.generationTemplate,
           editorDocument: submission.editorDocument,
-          ...(imageModelEnabled
-            ? { imageModel: imageModelSelection ?? DEFAULT_IMAGE_MODEL }
-            : {}),
-          videoModel: videoModelSelection ?? DEFAULT_VIDEO_MODEL,
+          // Forward only an explicit per-thread pick; an untouched picker sends
+          // nothing so the new thread stays unpinned and follows the member's
+          // live default.
+          ...(imageModelPin !== null ? { imageModel: imageModelPin } : {}),
+          ...(videoModelPin !== null ? { videoModel: videoModelPin } : {}),
           ...(submission.videoRunOptions === undefined
             ? {}
             : { videoRunOptions: submission.videoRunOptions }),

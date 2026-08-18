@@ -1,9 +1,6 @@
 import { command, computed } from "ccstate";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import {
-  DEFAULT_IMAGE_MODEL,
-  type ImageModel,
-} from "@okouai/core/image-model-catalog";
+import type { ImageModel } from "@okouai/core/image-model-catalog";
 import type { VideoModel } from "@okouai/core/video-model-catalog";
 import {
   chatThreadModelSelectionContract,
@@ -289,24 +286,6 @@ const resolveCurrentNewThreadModelSelection$ = command(
   },
 );
 
-const resolveNewThreadImageModel$ = command(
-  async (
-    { get },
-    requested: ImageModel | undefined,
-    signal: AbortSignal,
-  ): Promise<ImageModel | undefined> => {
-    if (!get(imageModelSelectionEnabled$)) {
-      return undefined;
-    }
-    if (requested) {
-      return requested;
-    }
-    const preference = await get(userModelPreference$);
-    signal.throwIfAborted();
-    return preference.selectedImageModel ?? DEFAULT_IMAGE_MODEL;
-  },
-);
-
 const routeMainChatThread$ = command(
   (
     { get, set },
@@ -587,12 +566,11 @@ const sendNewThreadMessage$ = command(
       return null;
     }
     const features = get(featureSwitch$);
-    const imageModel = await set(
-      resolveNewThreadImageModel$,
-      request.imageModel,
-      signal,
-    );
-    signal.throwIfAborted();
+    // Pin only an explicit per-thread pick; an unpinned (null) thread follows
+    // the member's live default, so changing the default later updates it.
+    const imageModel = get(imageModelSelectionEnabled$)
+      ? request.imageModel
+      : undefined;
     const videoModelEnabled = get(videoModelSelectionEnabled$);
     const videoModel = videoModelEnabled ? request.videoModel : undefined;
     const { annotatedUserMessage, optimisticUserMessage } =
@@ -664,8 +642,7 @@ const sendNewThreadMessage$ = command(
       userMessage: annotatedUserMessage,
       computerUseHostId,
       cloudBrowserEnabled,
-      videoRunOptions:
-        videoModel === undefined ? undefined : request.videoRunOptions,
+      videoRunOptions: videoModelEnabled ? request.videoRunOptions : undefined,
       sourceRunId: request.forward?.runId,
     });
     const sendResult = (async (): Promise<SendNewThreadMessageResult> => {

@@ -194,6 +194,22 @@ export const chatPageEffectiveImageModel$ = computed(
   },
 );
 
+/**
+ * The explicit landing-composer pin: the model the user actively chose for the
+ * next new chat, or null when they never touched the picker. Unlike
+ * chatPage*ModelSelection$, this does NOT fall back to the member default, so an
+ * untouched new thread is created unpinned and follows the live default.
+ */
+export const chatPageVideoModelPin$ = computed((get): VideoModel | null => {
+  const user = get(internalChatPageVideoModelOverride$);
+  return user.kind === "set" ? user.value : null;
+});
+
+export const chatPageImageModelPin$ = computed((get): ImageModel | null => {
+  const user = get(internalChatPageImageModelOverride$);
+  return user.kind === "set" ? user.value : null;
+});
+
 export const setChatPageVideoModelSelection$ = command(
   ({ set }, value: VideoModel | null) => {
     set(internalChatPageVideoModelOverride$, { kind: "set", value });

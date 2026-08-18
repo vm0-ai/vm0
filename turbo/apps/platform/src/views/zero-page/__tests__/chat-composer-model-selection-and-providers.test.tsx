@@ -3564,8 +3564,10 @@ describe("chat composer image model", () => {
       "Use my current image default",
     );
 
+    // Untouched: the thread is created unpinned so it follows the live member
+    // default (already reflected in the button above) instead of freezing it.
     await waitFor(() => {
-      expect(createdImageModel).toBe("gpt-image-2");
+      expect(createdImageModel).toBeUndefined();
     });
   });
 
@@ -4374,8 +4376,10 @@ describe("chat composer video model", () => {
       "Use my current video default",
     );
 
+    // Untouched: the thread is created unpinned so it follows the live member
+    // default (already reflected in the panel above) instead of freezing it.
     await waitFor(() => {
-      expect(createdVideoModel).toBe("fal-ai/veo3.1/fast");
+      expect(createdVideoModel).toBeUndefined();
     });
   });
 
