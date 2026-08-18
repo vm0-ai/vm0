@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.457.5](https://github.com/vm0-ai/vm0/compare/api-v1.457.4...api-v1.457.5) (2026-08-18)
+
+
+### Bug Fixes
+
+* **api:** brand first-party app URLs ([#27791](https://github.com/vm0-ai/vm0/issues/27791)) ([6d3ed48](https://github.com/vm0-ai/vm0/commit/6d3ed489100865df96756f72cfc46001696601c6))
+
 ## [1.457.4](https://github.com/vm0-ai/vm0/compare/api-v1.457.3...api-v1.457.4) (2026-08-18)
 
 

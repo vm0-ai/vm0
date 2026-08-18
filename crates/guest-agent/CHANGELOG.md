@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.74.10](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.9...guest-agent-v0.74.10) (2026-08-18)
+
+
+### Bug Fixes
+
+* **guest-agent:** preserve pi tool events ([#27795](https://github.com/vm0-ai/vm0/issues/27795)) ([fae456a](https://github.com/vm0-ai/vm0/commit/fae456a615fb2a955bbb62dc0b6c326dfdb75f92))
+
 ## [0.74.9](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.8...guest-agent-v0.74.9) (2026-08-17)
 
 ## [0.74.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.7...guest-agent-v0.74.8) (2026-08-17)
