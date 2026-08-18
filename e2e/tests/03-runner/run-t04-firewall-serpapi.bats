@@ -27,8 +27,13 @@ teardown() {
 
     local prompt
     prompt=$(cat <<'EOF'
+set -euo pipefail
 printf 'SERPAPI_TOKEN=%s\n' "$SERPAPI_TOKEN"
-curl --silent --show-error --max-time 5 --output /dev/null 'https://serpapi.com/search?q=vm0-e2e&engine=google' || true
+# Raw DNS has dedicated runner coverage. Keep this firewall-auth probe on IPv4
+# so an unavailable AAAA response cannot block an otherwise valid request.
+curl --ipv4 --silent --show-error --max-time 5 \
+    --output /dev/null \
+    'https://serpapi.com/search?q=vm0-e2e&engine=google'
 printf 'SERPAPI_REQUEST_SENT\n'
 EOF
 )
