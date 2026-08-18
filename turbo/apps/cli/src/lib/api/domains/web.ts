@@ -9,17 +9,17 @@ import type {
   BuiltInGenerationResponse,
 } from "@okouai/api-contracts/contracts/built-in-generation";
 import type {
-  ZeroAvatarVideoAvatar,
-  ZeroAvatarVideoAvatarsQuery,
-  ZeroAvatarVideoGenerateRequest,
-  ZeroAvatarVideoGenerateResponse,
-  ZeroAvatarVideoVoice,
-  ZeroAvatarVideoVoicesQuery,
-} from "@okouai/api-contracts/contracts/zero-avatar-video";
+  AvatarVideoAvatar,
+  AvatarVideoAvatarsQuery,
+  AvatarVideoGenerateRequest,
+  AvatarVideoGenerateResponse,
+  AvatarVideoVoice,
+  AvatarVideoVoicesQuery,
+} from "@okouai/api-contracts/contracts/avatar-video";
 import {
-  zeroAvatarVideoAvatarsResponseSchema,
-  zeroAvatarVideoVoicesResponseSchema,
-} from "@okouai/api-contracts/contracts/zero-avatar-video";
+  avatarVideoAvatarsResponseSchema,
+  avatarVideoVoicesResponseSchema,
+} from "@okouai/api-contracts/contracts/avatar-video";
 import { ApiRequestError, getBaseUrl } from "../core/client-factory";
 import { getActiveToken } from "../config";
 import { headersWithCliClientHeaders } from "../client-headers";
@@ -315,11 +315,11 @@ interface GenerateWebVideoResult {
 }
 
 interface ListWebAvatarVideoAvatarsResult {
-  readonly avatars: readonly ZeroAvatarVideoAvatar[];
+  readonly avatars: readonly AvatarVideoAvatar[];
 }
 
 interface ListWebAvatarVideoVoicesResult {
-  readonly voices: readonly ZeroAvatarVideoVoice[];
+  readonly voices: readonly AvatarVideoVoice[];
   readonly hasMore: boolean;
 }
 
@@ -967,8 +967,8 @@ export async function generateWebVideo(
  * Generate a billed JoggAI talking-avatar video and receive its public CDN URL.
  */
 export async function generateWebAvatarVideo(
-  options: ZeroAvatarVideoGenerateRequest,
-): Promise<ZeroAvatarVideoGenerateResponse> {
+  options: AvatarVideoGenerateRequest,
+): Promise<AvatarVideoGenerateResponse> {
   const baseUrl = await getBaseUrl();
   const token = await getActiveToken();
   if (!token) {
@@ -992,7 +992,7 @@ export async function generateWebAvatarVideo(
     );
     throw new ApiRequestError(message, code, response.status);
   }
-  return readBuiltInGenerationResponse<ZeroAvatarVideoGenerateResponse>({
+  return readBuiltInGenerationResponse<AvatarVideoGenerateResponse>({
     response,
     baseUrl,
     token,
@@ -1035,10 +1035,10 @@ async function getAvatarVideoCollection(
 }
 
 export async function listWebAvatarVideoAvatars(
-  query: ZeroAvatarVideoAvatarsQuery,
+  query: AvatarVideoAvatarsQuery,
 ): Promise<ListWebAvatarVideoAvatarsResult> {
   const baseUrl = await getBaseUrl();
-  return zeroAvatarVideoAvatarsResponseSchema.parse(
+  return avatarVideoAvatarsResponseSchema.parse(
     await getAvatarVideoCollection(
       avatarVideoCollectionUrl(baseUrl, "avatars", query),
       "Failed to list JoggAI avatars",
@@ -1047,10 +1047,10 @@ export async function listWebAvatarVideoAvatars(
 }
 
 export async function listWebAvatarVideoVoices(
-  query: ZeroAvatarVideoVoicesQuery,
+  query: AvatarVideoVoicesQuery,
 ): Promise<ListWebAvatarVideoVoicesResult> {
   const baseUrl = await getBaseUrl();
-  return zeroAvatarVideoVoicesResponseSchema.parse(
+  return avatarVideoVoicesResponseSchema.parse(
     await getAvatarVideoCollection(
       avatarVideoCollectionUrl(baseUrl, "voices", query),
       "Failed to list JoggAI voices",

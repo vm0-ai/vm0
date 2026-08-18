@@ -1,11 +1,11 @@
 import { command, computed, state, type Computed } from "ccstate";
 import {
-  zeroAvatarVideoContract,
-  type ZeroAvatarVideoAvatar,
-  type ZeroAvatarVideoAvatarsQuery,
-  type ZeroAvatarVideoVoice,
-  type ZeroAvatarVideoVoicesQuery,
-} from "@okouai/api-contracts/contracts/zero-avatar-video";
+  avatarVideoContract,
+  type AvatarVideoAvatar,
+  type AvatarVideoAvatarsQuery,
+  type AvatarVideoVoice,
+  type AvatarVideoVoicesQuery,
+} from "@okouai/api-contracts/contracts/avatar-video";
 
 import type { SupportedLocale } from "../../i18n/resources.ts";
 import { accept } from "../../lib/accept.ts";
@@ -18,31 +18,31 @@ const AVATAR_TEMPLATE_FILTER_OPTIONS_PAGE_SIZE = 100;
 const AVATAR_TEMPLATE_RECOMMENDATION_PAGE_SIZE = 100;
 
 interface AvatarTemplateCatalogPage {
-  readonly avatars: readonly ZeroAvatarVideoAvatar[];
+  readonly avatars: readonly AvatarVideoAvatar[];
   readonly hasNext: boolean;
   readonly generation: number;
 }
 
 interface AvatarTemplateVoiceCatalogPage {
-  readonly voices: readonly ZeroAvatarVideoVoice[];
+  readonly voices: readonly AvatarVideoVoice[];
   readonly hasNext: boolean;
   readonly generation: number;
 }
 
 interface AvatarTemplateFilters {
   readonly aspectRatio: "portrait" | "landscape";
-  readonly style: ZeroAvatarVideoAvatarsQuery["style"];
-  readonly gender: ZeroAvatarVideoAvatarsQuery["gender"];
-  readonly age: ZeroAvatarVideoAvatarsQuery["age"];
-  readonly scene: ZeroAvatarVideoAvatarsQuery["scene"];
-  readonly ethnicity: ZeroAvatarVideoAvatarsQuery["ethnicity"];
+  readonly style: AvatarVideoAvatarsQuery["style"];
+  readonly gender: AvatarVideoAvatarsQuery["gender"];
+  readonly age: AvatarVideoAvatarsQuery["age"];
+  readonly scene: AvatarVideoAvatarsQuery["scene"];
+  readonly ethnicity: AvatarVideoAvatarsQuery["ethnicity"];
 }
 
 interface AvatarTemplateVoiceFilters {
-  readonly language: ZeroAvatarVideoVoicesQuery["language"];
-  readonly gender: ZeroAvatarVideoVoicesQuery["gender"];
-  readonly age: ZeroAvatarVideoVoicesQuery["age"];
-  readonly useCase: ZeroAvatarVideoVoicesQuery["useCase"];
+  readonly language: AvatarVideoVoicesQuery["language"];
+  readonly gender: AvatarVideoVoicesQuery["gender"];
+  readonly age: AvatarVideoVoicesQuery["age"];
+  readonly useCase: AvatarVideoVoicesQuery["useCase"];
 }
 
 interface AvatarTemplateVoiceFilterOptions {
@@ -97,7 +97,7 @@ const PREFERRED_VOICE_USE_CASE_BY_AVATAR_STYLE = {
   professional: "informative_educational",
   social: "social_media",
 } as const satisfies Record<
-  NonNullable<ZeroAvatarVideoAvatarsQuery["style"]>,
+  NonNullable<AvatarVideoAvatarsQuery["style"]>,
   string
 >;
 
@@ -110,7 +110,7 @@ const PREFERRED_VOICE_USE_CASE_BY_AVATAR_SCENE = {
   education: "informative_educational",
   news: "entertainment_tv",
 } as const satisfies Record<
-  NonNullable<ZeroAvatarVideoAvatarsQuery["scene"]>,
+  NonNullable<AvatarVideoAvatarsQuery["scene"]>,
   string
 >;
 
@@ -139,7 +139,7 @@ const PREFERRED_VOICE_ACCENTS_BY_AVATAR_ETHNICITY = {
   south_american: ["latin american", "colombian", "peruvian", "brazilian"],
   north_american: ["american", "new york", "southern", "canadian"],
 } as const satisfies Record<
-  NonNullable<ZeroAvatarVideoAvatarsQuery["ethnicity"]>,
+  NonNullable<AvatarVideoAvatarsQuery["ethnicity"]>,
   readonly string[]
 >;
 
@@ -191,9 +191,9 @@ function voiceUseCaseForAvatar(
 }
 
 function recommendedVoiceFromCandidates(
-  voices: readonly ZeroAvatarVideoVoice[],
+  voices: readonly AvatarVideoVoice[],
   ethnicity: AvatarTemplateFilters["ethnicity"],
-): ZeroAvatarVideoVoice | null {
+): AvatarVideoVoice | null {
   if (!ethnicity) {
     return voices[0] ?? null;
   }
@@ -213,7 +213,7 @@ function recommendedVoiceFromCandidates(
 }
 
 function voiceFiltersForAvatar(
-  avatar: ZeroAvatarVideoAvatar,
+  avatar: AvatarVideoAvatar,
   filters: AvatarTemplateFilters,
   locale: SupportedLocale,
 ): AvatarTemplateVoiceFilters {
@@ -226,11 +226,11 @@ function voiceFiltersForAvatar(
 }
 
 function recommendedVoiceQuery(
-  avatar: ZeroAvatarVideoAvatar,
+  avatar: AvatarVideoAvatar,
   avatarFilters: AvatarTemplateFilters,
   voiceFilters: AvatarTemplateVoiceFilters,
   locale: SupportedLocale,
-): ZeroAvatarVideoVoicesQuery {
+): AvatarVideoVoicesQuery {
   const gender =
     voiceFilters.gender ??
     voiceGenderForAvatar(avatar.gender, avatarFilters.gender);
@@ -334,7 +334,7 @@ function createOffsetCatalogPagingSignals<T>(
 function avatarCatalogQuery(
   filters: AvatarTemplateFilters,
   page: number,
-): ZeroAvatarVideoAvatarsQuery {
+): AvatarVideoAvatarsQuery {
   return {
     page,
     pageSize: AVATAR_TEMPLATE_PAGE_SIZE,
@@ -350,7 +350,7 @@ function avatarCatalogQuery(
 function voiceCatalogQuery(
   filters: AvatarTemplateVoiceFilters,
   page: number,
-): ZeroAvatarVideoVoicesQuery {
+): AvatarVideoVoicesQuery {
   return {
     page,
     pageSize: AVATAR_TEMPLATE_PAGE_SIZE,
@@ -366,8 +366,8 @@ function createAvatarTemplateCatalogSignals() {
     emptyAvatarTemplateFilters(),
   );
   const loadPage$ = computed(
-    (get): LoadOffsetCatalogPage<ZeroAvatarVideoAvatar> => {
-      const client = get(zeroClient$)(zeroAvatarVideoContract, {
+    (get): LoadOffsetCatalogPage<AvatarVideoAvatar> => {
+      const client = get(zeroClient$)(avatarVideoContract, {
         apiBase: "api",
       });
       const filters = get(internalFilters$);
@@ -387,8 +387,7 @@ function createAvatarTemplateCatalogSignals() {
       };
     },
   );
-  const paging =
-    createOffsetCatalogPagingSignals<ZeroAvatarVideoAvatar>(loadPage$);
+  const paging = createOffsetCatalogPagingSignals<AvatarVideoAvatar>(loadPage$);
   const avatarTemplateFilters$ = computed((get) => {
     return get(internalFilters$);
   });
@@ -423,30 +422,27 @@ function createAvatarTemplateVoiceCatalogSignals() {
   const internalVoiceFilters$ = state<AvatarTemplateVoiceFilters>(
     emptyAvatarTemplateVoiceFilters(),
   );
-  const loadPage$ = computed(
-    (get): LoadOffsetCatalogPage<ZeroAvatarVideoVoice> => {
-      const client = get(zeroClient$)(zeroAvatarVideoContract, {
-        apiBase: "api",
-      });
-      const filters = get(internalVoiceFilters$);
-      return async (page, signal) => {
-        const result = await accept(
-          client.voices({
-            query: voiceCatalogQuery(filters, page),
-            ...(signal ? { fetchOptions: { signal } } : {}),
-          }),
-          [200],
-          signal,
-        );
-        return {
-          items: result.body.voices,
-          hasNext: result.body.hasMore,
-        };
+  const loadPage$ = computed((get): LoadOffsetCatalogPage<AvatarVideoVoice> => {
+    const client = get(zeroClient$)(avatarVideoContract, {
+      apiBase: "api",
+    });
+    const filters = get(internalVoiceFilters$);
+    return async (page, signal) => {
+      const result = await accept(
+        client.voices({
+          query: voiceCatalogQuery(filters, page),
+          ...(signal ? { fetchOptions: { signal } } : {}),
+        }),
+        [200],
+        signal,
+      );
+      return {
+        items: result.body.voices,
+        hasNext: result.body.hasMore,
       };
-    },
-  );
-  const paging =
-    createOffsetCatalogPagingSignals<ZeroAvatarVideoVoice>(loadPage$);
+    };
+  });
+  const paging = createOffsetCatalogPagingSignals<AvatarVideoVoice>(loadPage$);
   const avatarTemplateVoiceFilters$ = computed((get) => {
     return get(internalVoiceFilters$);
   });
@@ -458,7 +454,7 @@ function createAvatarTemplateVoiceCatalogSignals() {
   );
   const avatarTemplateVoiceFilterOptions$ = computed(
     async (get): Promise<AvatarTemplateVoiceFilterOptions> => {
-      const client = get(zeroClient$)(zeroAvatarVideoContract, {
+      const client = get(zeroClient$)(avatarVideoContract, {
         apiBase: "api",
       });
       const result = await accept(
@@ -502,12 +498,12 @@ function createAvatarTemplateVoiceCatalogSignals() {
 export function createAvatarTemplatePickerSignals() {
   const avatarCatalog = createAvatarTemplateCatalogSignals();
   const voiceCatalog = createAvatarTemplateVoiceCatalogSignals();
-  const internalSelectedAvatar$ = state<ZeroAvatarVideoAvatar | null>(null);
+  const internalSelectedAvatar$ = state<AvatarVideoAvatar | null>(null);
   const selectedAvatarTemplateForVoice$ = computed((get) => {
     return get(internalSelectedAvatar$);
   });
   const avatarTemplateRecommendedVoice$ = computed(
-    async (get): Promise<ZeroAvatarVideoVoice | null> => {
+    async (get): Promise<AvatarVideoVoice | null> => {
       const avatar = get(internalSelectedAvatar$);
       if (!avatar) {
         return null;
@@ -515,7 +511,7 @@ export function createAvatarTemplatePickerSignals() {
       const avatarFilters = get(avatarCatalog.avatarTemplateFilters$);
       const voiceFilters = get(voiceCatalog.avatarTemplateVoiceFilters$);
       const locale = get(locale$);
-      const client = get(zeroClient$)(zeroAvatarVideoContract, {
+      const client = get(zeroClient$)(avatarVideoContract, {
         apiBase: "api",
       });
       const result = await accept(
@@ -536,7 +532,7 @@ export function createAvatarTemplatePickerSignals() {
     },
   );
   const selectAvatarTemplateForVoice$ = command(
-    ({ get, set }, avatar: ZeroAvatarVideoAvatar) => {
+    ({ get, set }, avatar: AvatarVideoAvatar) => {
       const avatarFilters = get(avatarCatalog.avatarTemplateFilters$);
       const locale = get(locale$);
       set(

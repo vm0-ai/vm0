@@ -34,7 +34,7 @@ import {
   CANCELLATION_RECOVERY_STALE_AFTER_MS,
   DEFAULT_PROFILE,
 } from "@okouai/api-contracts/contracts/runners";
-import { zeroMailContract } from "@okouai/api-contracts/contracts/zero-mail";
+import { mailContract } from "@okouai/api-contracts/contracts/mail";
 import {
   getModelProviderFirewall,
   type ModelProviderType,
@@ -3530,7 +3530,7 @@ describe("CHAT-02: Zero Mail link delivery", () => {
     );
 
     const linked = await accept(
-      setupApp({ context, routes: mailRoutes })(zeroMailContract).linkDraft({
+      setupApp({ context, routes: mailRoutes })(mailContract).linkDraft({
         headers: {
           authorization: `Bearer ${okouTokenFromClaim(claim)}`,
         },
