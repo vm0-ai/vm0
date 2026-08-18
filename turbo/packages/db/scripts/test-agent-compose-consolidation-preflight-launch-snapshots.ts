@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -168,6 +169,16 @@ function testCompletePartitionAndStrictSnapshots(): void {
   );
   assertAllClosuresExact(result);
   assert.deepEqual(result.failureGates, ["launchSnapshots.integrity_conflict"]);
+  assert.equal(
+    createHash("sha256").update(JSON.stringify(result.output)).digest("hex"),
+    "931238caecc364f74931a1aa0e47fe24316fe4c836b7f4346bf271a14f7580a2",
+  );
+  for (const classification of result.classifications) {
+    assert.equal(
+      "snapshot" in classification,
+      classification.disposition === "exactly_recoverable",
+    );
+  }
 
   for (const launchSnapshot of [
     null,
@@ -187,6 +198,129 @@ function testCompletePartitionAndStrictSnapshots(): void {
       assert.equal(invalid.output.dispositions.integrity_conflict.count, 1);
     }
   }
+}
+
+function testExactSnapshotValueConstruction(): void {
+  const cases = [
+    {
+      id: "claude-default",
+      content: agentContent({
+        framework: "claude-code",
+        name: "claude-default",
+      }),
+      run: {},
+      snapshot: {
+        schemaVersion: 1,
+        framework: "claude-code",
+        runnerProfile: "vm0/default",
+      },
+    },
+    {
+      id: "claude-explicit",
+      content: agentContent({
+        framework: "claude-code",
+        name: "claude-explicit",
+        profile: "vm0/claude-private",
+        profilePresent: true,
+      }),
+      run: {},
+      snapshot: {
+        schemaVersion: 1,
+        framework: "claude-code",
+        runnerProfile: "vm0/claude-private",
+      },
+    },
+    {
+      id: "codex-default",
+      content: agentContent({ framework: "codex", name: "codex-default" }),
+      run: { modelProvider: "openai-api-key" },
+      snapshot: {
+        schemaVersion: 1,
+        framework: "codex",
+        runnerProfile: "vm0/default",
+      },
+    },
+    {
+      id: "codex-explicit",
+      content: agentContent({
+        framework: "codex",
+        name: "codex-explicit",
+        profile: "vm0/codex-private",
+        profilePresent: true,
+      }),
+      run: { modelProvider: "openai-api-key" },
+      snapshot: {
+        schemaVersion: 1,
+        framework: "codex",
+        runnerProfile: "vm0/codex-private",
+      },
+    },
+    {
+      id: "pi-default",
+      content: agentContent({ framework: "codex", name: "pi-default" }),
+      run: {
+        chatThreadPresent: true,
+        createdAt: new Date("2026-08-13T00:00:00.000Z"),
+        modelProvider: "openai-api-key",
+        selectedModel: "deepseek-v4-flash",
+        triggerSource: "web",
+      },
+      snapshot: {
+        schemaVersion: 1,
+        framework: "pi",
+        runnerProfile: "vm0/default",
+      },
+    },
+    {
+      id: "pi-explicit",
+      content: agentContent({
+        framework: "codex",
+        name: "pi-explicit",
+        profile: "vm0/pi-private",
+        profilePresent: true,
+      }),
+      run: {
+        chatThreadPresent: true,
+        createdAt: new Date("2026-08-13T00:00:00.000Z"),
+        modelProvider: "openai-api-key",
+        selectedModel: "deepseek-v4-flash",
+        triggerSource: "web",
+      },
+      snapshot: {
+        schemaVersion: 1,
+        framework: "pi",
+        runnerProfile: "vm0/pi-private",
+      },
+    },
+  ] as const;
+  const storedVersions = cases.map((testCase) => {
+    return version(testCase.content);
+  });
+  const result = classify({
+    runs: cases.map((testCase, index) => {
+      return run(testCase.id, storedVersions[index]!.id, testCase.run);
+    }),
+    versions: storedVersions,
+    conversations: cases
+      .filter((testCase) => {
+        return testCase.snapshot.framework === "pi";
+      })
+      .map((testCase) => {
+        return conversation(testCase.id, "pi");
+      }),
+  });
+
+  for (const testCase of cases) {
+    const classification = result.classifications.find((item) => {
+      return item.runId === testCase.id;
+    });
+    assert.ok(classification);
+    assert.equal(classification.disposition, "exactly_recoverable");
+    if (classification.disposition === "exactly_recoverable") {
+      assert.deepEqual(classification.snapshot, testCase.snapshot);
+    }
+  }
+  assertAllClosuresExact(result);
 }
 
 function testVersionAndCheckpointEvidence(): void {
@@ -1303,6 +1437,7 @@ async function testClassifierHasNoCurrentAuthorityLookup(): Promise<void> {
 
 export async function validateLaunchSnapshotRecoverabilityStatic(): Promise<void> {
   testCompletePartitionAndStrictSnapshots();
+  testExactSnapshotValueConstruction();
   testVersionAndCheckpointEvidence();
   testProviderAndProductionRolloutHistory();
   testExactProductionBoundaryEdges();

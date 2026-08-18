@@ -4,8 +4,15 @@ import {
   type SetFingerprint,
 } from "./agent-compose-consolidation-preflight-fingerprint";
 
-type HistoricalFramework = "claude-code" | "codex" | "pi";
+export type LaunchSnapshotFramework = "claude-code" | "codex" | "pi";
+type HistoricalFramework = LaunchSnapshotFramework;
 type BaseHistoricalFramework = Exclude<HistoricalFramework, "pi">;
+
+export interface ExactLaunchSnapshotValue {
+  readonly schemaVersion: 1;
+  readonly framework: LaunchSnapshotFramework;
+  readonly runnerProfile: string;
+}
 
 export const LAUNCH_SNAPSHOT_DISPOSITIONS = [
   "already_valid",
@@ -427,10 +434,34 @@ function historicalFirstAgent(content: unknown): HistoricalContent {
   };
 }
 
-interface RunClassification {
-  readonly disposition: LaunchSnapshotDisposition;
+interface RunClassificationBase {
   readonly primaryReason: LaunchSnapshotReason;
   readonly reasons: ReadonlySet<LaunchSnapshotReason>;
+}
+
+type RunClassification =
+  | (RunClassificationBase & {
+      readonly disposition: "exactly_recoverable";
+      readonly snapshot: ExactLaunchSnapshotValue;
+    })
+  | (RunClassificationBase & {
+      readonly disposition: Exclude<
+        LaunchSnapshotDisposition,
+        "exactly_recoverable"
+      >;
+    });
+
+type WithRunId<Classification> = Classification extends RunClassification
+  ? Classification & { readonly runId: string }
+  : never;
+
+export type LaunchSnapshotRunClassification = WithRunId<RunClassification>;
+
+function includeRunId(
+  runId: string,
+  classification: RunClassification,
+): LaunchSnapshotRunClassification {
+  return { runId, ...classification };
 }
 
 interface ResolvedVersionEvidence {
@@ -1321,6 +1352,11 @@ function classifyMissingSnapshot(
     disposition: "exactly_recoverable",
     primaryReason: "complete_exact_evidence",
     reasons: context.reasons,
+    snapshot: {
+      schemaVersion: 1,
+      framework: framework.value,
+      runnerProfile: profile.value,
+    },
   };
 }
 
@@ -1425,6 +1461,7 @@ export function classifyLaunchSnapshotRecoverability(args: {
     readonly reasonCompatibilityClosure: ClosureComparison;
   };
   readonly failureGates: readonly string[];
+  readonly classifications: readonly LaunchSnapshotRunClassification[];
 } {
   const versions = new Map<string, LaunchSnapshotVersionInventoryRow>();
   const duplicateVersionIds = new Set<string>();
@@ -1446,6 +1483,7 @@ export function classifyLaunchSnapshotRecoverability(args: {
   ) as Record<LaunchSnapshotReason, string[]>;
   const primaryReasonMembers: string[] = [];
   const incompatibleReasonRunIds: string[] = [];
+  const classifications: LaunchSnapshotRunClassification[] = [];
 
   for (const run of args.runs) {
     const classified = classifyRun({
@@ -1457,6 +1495,7 @@ export function classifyLaunchSnapshotRecoverability(args: {
       versions,
       duplicateVersionIds,
     });
+    classifications.push(includeRunId(run.id, classified));
     dispositionMembers[classified.disposition].push(run.id);
     primaryReasonMembers.push(run.id);
     if (!reasonsAreCompatible(classified)) {
@@ -1595,5 +1634,6 @@ export function classifyLaunchSnapshotRecoverability(args: {
       reasonCompatibilityClosure,
     },
     failureGates: [...failureGates].sort(),
+    classifications,
   };
 }
