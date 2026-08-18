@@ -192,6 +192,7 @@ import { voiceIoSttRoutes } from "./routes/voice-io-stt";
 import { videoIoGenerateRoutes } from "./routes/video-io-generate";
 import { webDownloadRoutes } from "./routes/web-download";
 import { webFileUrlRoutes } from "./routes/web-file-url";
+// eslint-disable-next-line no-restricted-imports -- preview-only measurement PR; this route must not be merged
 import { testPiPreparationProbeRoutes } from "./routes/test-pi-preparation-probe";
 
 export const ROUTES: readonly RouteEntry[] = [
