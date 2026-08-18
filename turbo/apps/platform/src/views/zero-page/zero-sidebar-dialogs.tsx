@@ -267,6 +267,25 @@ function AgentCommandAgentContent({
   );
 }
 
+/** Keep the dialog's pinned section in the same order as the sidebar. */
+function pinnedAgentsInPinnedOrder(
+  subagents: readonly SubagentInfo[],
+  pinnedIds: readonly string[],
+): SubagentInfo[] {
+  const agentById = new Map(
+    subagents.map((agent) => {
+      return [agent.id, agent];
+    }),
+  );
+  return pinnedIds
+    .map((id) => {
+      return agentById.get(id);
+    })
+    .filter((agent): agent is SubagentInfo => {
+      return agent !== undefined;
+    });
+}
+
 function filterAgentDialogItems<T extends AgentDialogItem>(
   agents: readonly T[],
   trimmedQuery: string,
@@ -1087,9 +1106,7 @@ export function AgentListDialog({
   const saving = pinLoadable.state === "loading";
 
   const pinnedIdSet = new Set(pinnedIds);
-  const pinned = subagents.filter((a) => {
-    return pinnedIdSet.has(a.id);
-  });
+  const pinned = pinnedAgentsInPinnedOrder(subagents, pinnedIds);
 
   const unpinned = subagents.filter((a) => {
     return !pinnedIdSet.has(a.id);
@@ -1226,9 +1243,16 @@ export function PinAgentDialog({
   const pinnable = matches.filter((agent) => {
     return !pinnedIdSet.has(agent.id);
   });
-  const alreadyPinned = matches.filter((agent) => {
-    return pinnedIdSet.has(agent.id);
-  });
+  const matchedIds = new Set(
+    matches.map((agent) => {
+      return agent.id;
+    }),
+  );
+  const alreadyPinned = pinnedAgentsInPinnedOrder(subagents, pinnedIds).filter(
+    (agent) => {
+      return matchedIds.has(agent.id);
+    },
+  );
 
   const pinAgent = (agentId: string) => {
     onOpenChange(false);

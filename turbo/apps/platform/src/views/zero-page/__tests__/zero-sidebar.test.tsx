@@ -1798,6 +1798,45 @@ describe("zero sidebar", () => {
     ).resolves.toBeInTheDocument();
   });
 
+  it("lists the conversation picker's pinned agents in pinned order", async () => {
+    prepareAgentTeam();
+    context.mocks.data.userPreferences({
+      pinnedAgentIds: [SUPPORT_AGENT_ID, RESEARCH_AGENT_ID],
+    });
+
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    const sidebar = await waitFor(() => {
+      const currentSidebar = screen.getByRole("navigation", {
+        name: "Sidebar",
+      });
+      expect(
+        pinnedAgentLink(currentSidebar, "Support Agent"),
+      ).toBeInTheDocument();
+      return currentSidebar;
+    });
+
+    click(within(sidebar).getByLabelText("Open a conversation"));
+
+    const dialog = await screen.findByRole("dialog", { name: "Talk to" });
+    await waitFor(() => {
+      expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
+    });
+    const optionNames = within(dialog)
+      .getAllByRole("option")
+      .map((option) => {
+        return option.textContent?.replace(/\s+/g, " ").trim() ?? "";
+      });
+    const supportIndex = optionNames.findIndex((name) => {
+      return name.startsWith("Support Agent");
+    });
+    const researchIndex = optionNames.findIndex((name) => {
+      return name.startsWith("Research Agent");
+    });
+    expect(supportIndex).toBeGreaterThanOrEqual(0);
+    expect(supportIndex).toBeLessThan(researchIndex);
+  });
+
   it("pins an agent from the conversation picker and opens that agent chat", async () => {
     prepareAgentTeam();
     let createRequests = 0;
