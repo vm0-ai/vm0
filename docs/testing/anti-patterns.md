@@ -390,12 +390,12 @@ it("should create a provider", async () => {
 
 ```typescript
 // ✅ Good — testing through the API endpoint
-import { zeroModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-model-providers";
+import { modelProvidersMainContract } from "@okouai/api-contracts/contracts/model-provider-routes";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 
 const context = testContext();
-const client = setupApp({ context })(zeroModelProvidersMainContract);
+const client = setupApp({ context })(modelProvidersMainContract);
 
 it("should create a provider", async () => {
   context.mocks.clerk.session(userId, orgId);

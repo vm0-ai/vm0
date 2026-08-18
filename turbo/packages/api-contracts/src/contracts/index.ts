@@ -1095,11 +1095,11 @@ export {
   type RunRunnerResponse,
 } from "./zero-runs";
 export {
-  zeroModelProvidersMainContract,
-  zeroModelProvidersByTypeContract,
-  type ZeroModelProvidersMainContract,
-  type ZeroModelProvidersByTypeContract,
-} from "./zero-model-providers";
+  modelProvidersMainContract,
+  modelProvidersByTypeContract,
+  type ModelProvidersMainContract,
+  type ModelProvidersByTypeContract,
+} from "./model-provider-routes";
 export {
   zeroPersonalModelProvidersMainContract,
   zeroPersonalModelProvidersByTypeContract,
