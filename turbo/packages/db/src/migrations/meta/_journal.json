@@ -960,6 +960,13 @@
       "when": 1787059908710,
       "tag": "0944_allow_multiple_chat_thinking_events",
       "breakpoints": true
+    },
+    {
+      "idx": 945,
+      "version": "7",
+      "when": 1787066957764,
+      "tag": "0945_add_byteplus_seedream_5_pricing",
+      "breakpoints": true
     }
   ]
 }

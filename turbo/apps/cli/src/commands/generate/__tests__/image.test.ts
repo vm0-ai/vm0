@@ -733,17 +733,23 @@ describe("okou generate image command", () => {
     expect(helpOutput).toContain("flux-pro-1.1");
     expect(helpOutput).toContain("qwen-image");
     expect(helpOutput).toContain("nano-banana-2");
+    expect(helpOutput).toContain("seedream5-pro");
+    expect(helpOutput).toContain("seedream5-lite");
     expect(normalizedHelpOutput).toContain("support varies");
     expect(helpOutput).toContain("3840x2160");
     expect(helpOutput).toContain("edges divisible by 16");
     expect(helpOutput).toContain("--compression <0-100>");
     expect(helpOutput).toContain("Moderation strictness: auto or low");
-    expect(helpOutput).toContain("Uses fal.ai for all image model execution");
+    expect(helpOutput).toContain(
+      "Uses fal.ai and BytePlus for built-in image model execution",
+    );
     expect(helpOutput).toContain("--seed");
     expect(helpOutput).toContain("--safety-tolerance");
     expect(helpOutput).toContain("--image-url");
     expect(helpOutput).toContain("--image-prompt-strength");
-    expect(helpOutput).toContain("Nano Banana 2 accepts up to 14");
+    expect(helpOutput).toContain(
+      "Nano Banana 2 and Seedream 5 Lite accept up to 14",
+    );
     expect(helpOutput).toContain("--style <id>");
     expect(helpOutput).toContain("--style-source <source>");
     expect(helpOutput).toContain("--compile");

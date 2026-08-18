@@ -3475,6 +3475,8 @@ describe("chat composer image model", () => {
     "Nano Banana 2",
     "Flux Pro v1.1",
     "Flux Pro v1.1 Ultra",
+    "Seedream 5 Pro",
+    "Seedream 5 Lite",
     "Seedream 4",
     "Qwen Image",
   ] as const;

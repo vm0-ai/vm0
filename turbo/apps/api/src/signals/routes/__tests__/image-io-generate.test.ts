@@ -52,6 +52,14 @@ const FAL_GPT_IMAGE_15_URL = "https://queue.fal.run/fal-ai/gpt-image-1.5";
 const FAL_GPT_IMAGE_1_MINI_URL =
   "https://queue.fal.run/fal-ai/gpt-image-1-mini";
 const FAL_GPT_IMAGE_2_URL = "https://queue.fal.run/openai/gpt-image-2";
+const BYTEPLUS_IMAGE_GENERATIONS_URL =
+  "https://ark.ap-southeast.bytepluses.com/api/v3/images/generations";
+const BYTEPLUS_SEEDREAM_5_LITE_MEDIA_URL =
+  "https://ark-content.byteplus.example/files/seedream-5-lite.png";
+const BYTEPLUS_SEEDREAM_5_PRO_LOW_MEDIA_URL =
+  "https://ark-content.byteplus.example/files/seedream-5-pro-low.jpg";
+const BYTEPLUS_SEEDREAM_5_PRO_HIGH_MEDIA_URL =
+  "https://ark-content.byteplus.example/files/seedream-5-pro-high.jpg";
 const FAL_GPT_MEDIA_URL = "https://fal.media/files/test/gpt-image-1.webp";
 const FAL_GPT_15_MEDIA_URL = "https://fal.media/files/test/gpt-image-1.5.png";
 const FAL_GPT_MINI_MEDIA_URL =
@@ -73,6 +81,7 @@ const FAL_CLARITY_UPSCALER_MEDIA_URL =
   "https://fal.media/files/test/clarity-upscaler.png";
 const MOCKUP_IMAGE_URL = "https://example.com/mockup.png";
 const SECOND_MOCKUP_IMAGE_URL = "https://example.com/mockup-2.png";
+const THIRD_MOCKUP_IMAGE_URL = "https://example.com/mockup-3.png";
 const IMAGE_PRICING_MARKUP_MULTIPLIER = 1.2;
 const FAL_FLUX_PROVIDER_CREDITS_PER_MEGAPIXEL = 40;
 const FAL_FLUX_MARKED_UP_CREDITS_PER_MEGAPIXEL = Math.ceil(
@@ -320,6 +329,26 @@ const QWEN_IMAGE_PRICING = [
     category: "output_megapixel",
     unitPrice: 24,
     unitSize: 1,
+  },
+] satisfies readonly UsagePricingRow[];
+
+const SEEDREAM_5_LITE_IMAGE_PRICING = [
+  {
+    kind: "image",
+    provider: "seedream-5-0-lite-260128",
+    category: "provider_cost_usd_micros",
+    unitPrice: 1250,
+    unitSize: 1_000_000,
+  },
+] satisfies readonly UsagePricingRow[];
+
+const SEEDREAM_5_PRO_IMAGE_PRICING = [
+  {
+    kind: "image",
+    provider: "dola-seedream-5-0-pro-260628",
+    category: "provider_cost_usd_micros",
+    unitPrice: 1250,
+    unitSize: 1_000_000,
   },
 ] satisfies readonly UsagePricingRow[];
 
@@ -1374,6 +1403,230 @@ describe("POST /api/zero/image-io/generate", () => {
 
     // No usage settles for a timed-out job: the org balance is unchanged.
     await expect(orgCredits(fixture)).resolves.toBe(1000);
+  });
+
+  it("generates Seedream 5 Lite through BytePlus with 25 percent markup", async () => {
+    const fixture = await seedImageFixture({ credits: 1000 });
+    const pricingFixture = await createScopedImagePricing({
+      configured: SEEDREAM_5_LITE_IMAGE_PRICING,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    let observedAuthorization: string | null = null;
+    let observedBody: unknown = null;
+    server.use(
+      http.post(BYTEPLUS_IMAGE_GENERATIONS_URL, async ({ request }) => {
+        observedAuthorization = request.headers.get("authorization");
+        observedBody = await request.json();
+        return HttpResponse.json({
+          created: 1_700_000_000,
+          model: "seedream-5-0-lite-260128",
+          data: [
+            {
+              url: BYTEPLUS_SEEDREAM_5_LITE_MEDIA_URL,
+              size: "2048x2048",
+              output_format: "png",
+            },
+          ],
+        });
+      }),
+      http.get(BYTEPLUS_SEEDREAM_5_LITE_MEDIA_URL, () => {
+        return new HttpResponse(IMAGE_BYTES, {
+          headers: { "Content-Type": "image/png" },
+        });
+      }),
+    );
+
+    const app = createImageIoTestApp(pricingFixture.resolution);
+    const response = await app.request("/api/zero/image-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "a cinematic product still",
+        model: "seedream5-lite",
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "image",
+      fixture.userId,
+    );
+    await flushWaitUntilForTest();
+
+    const statusResponse = await app.request(
+      `/api/zero/built-in-generations/${generationId}`,
+      { headers: authHeaders() },
+    );
+    expect(statusResponse.status).toBe(200);
+    const body = readGenerationResult(await statusResponse.json());
+    expect(body).toMatchObject({
+      contentType: "image/png",
+      creditsCharged: 44,
+      model: "seedream-5-0-lite-260128",
+      provider: "byteplus",
+      imageSize: "2048x2048",
+      quality: "model-default",
+      background: "auto",
+      outputFormat: "png",
+      billingCategory: "provider_cost_usd_micros",
+      billingQuantity: 35_000,
+      sourceUrl: BYTEPLUS_SEEDREAM_5_LITE_MEDIA_URL,
+    });
+    expect(observedAuthorization).toBe("Bearer test-byteplus-key");
+    expect(observedBody).toStrictEqual({
+      model: "seedream-5-0-lite-260128",
+      prompt: "a cinematic product still",
+      size: "2K",
+      output_format: "png",
+      response_format: "url",
+      watermark: false,
+    });
+    await expect(orgCredits(fixture)).resolves.toBe(956);
+  });
+
+  it("bills Seedream 5 Pro output tiers and references through BytePlus", async () => {
+    const fixture = await seedImageFixture({ credits: 1000 });
+    const pricingFixture = await createScopedImagePricing({
+      configured: SEEDREAM_5_PRO_IMAGE_PRICING,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const observedBodies: unknown[] = [];
+    const observedAuthorizations: (string | null)[] = [];
+    server.use(
+      http.post(BYTEPLUS_IMAGE_GENERATIONS_URL, async ({ request }) => {
+        observedAuthorizations.push(request.headers.get("authorization"));
+        const requestBody = (await request.json()) as Record<string, unknown>;
+        observedBodies.push(requestBody);
+        const highTier = requestBody.size === "2K";
+        return HttpResponse.json({
+          created: 1_700_000_000,
+          model: "dola-seedream-5-0-pro-260628",
+          data: [
+            {
+              url: highTier
+                ? BYTEPLUS_SEEDREAM_5_PRO_HIGH_MEDIA_URL
+                : BYTEPLUS_SEEDREAM_5_PRO_LOW_MEDIA_URL,
+              size: highTier ? "2048x2048" : "1536x1536",
+              output_format: "jpeg",
+            },
+          ],
+        });
+      }),
+      http.get(BYTEPLUS_SEEDREAM_5_PRO_LOW_MEDIA_URL, () => {
+        return new HttpResponse(IMAGE_BYTES, {
+          headers: { "Content-Type": "image/jpeg" },
+        });
+      }),
+      http.get(BYTEPLUS_SEEDREAM_5_PRO_HIGH_MEDIA_URL, () => {
+        return new HttpResponse(IMAGE_BYTES, {
+          headers: { "Content-Type": "image/jpeg" },
+        });
+      }),
+    );
+
+    const app = createImageIoTestApp(pricingFixture.resolution);
+    const lowResponse = await app.request("/api/zero/image-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "a precise editorial portrait",
+        model: "seedream5-pro",
+        size: "1.5K",
+        outputFormat: "jpeg",
+      }),
+    });
+    expect(lowResponse.status).toBe(202);
+    const lowGenerationId = readAcceptedGenerationId(
+      await lowResponse.json(),
+      "image",
+      fixture.userId,
+    );
+    await flushWaitUntilForTest();
+
+    const lowStatusResponse = await app.request(
+      `/api/zero/built-in-generations/${lowGenerationId}`,
+      { headers: authHeaders() },
+    );
+    const lowBody = readGenerationResult(await lowStatusResponse.json());
+    expect(lowBody).toMatchObject({
+      creditsCharged: 57,
+      model: "dola-seedream-5-0-pro-260628",
+      provider: "byteplus",
+      imageSize: "1536x1536",
+      outputFormat: "jpeg",
+      billingCategory: "provider_cost_usd_micros",
+      billingQuantity: 45_000,
+      sourceUrl: BYTEPLUS_SEEDREAM_5_PRO_LOW_MEDIA_URL,
+    });
+
+    const sourceImageUrls = [
+      MOCKUP_IMAGE_URL,
+      SECOND_MOCKUP_IMAGE_URL,
+      THIRD_MOCKUP_IMAGE_URL,
+    ];
+    const highResponse = await app.request("/api/zero/image-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "combine these references into a campaign image",
+        model: "seedream5-pro",
+        size: "2K",
+        outputFormat: "jpeg",
+        imageUrls: sourceImageUrls,
+      }),
+    });
+    expect(highResponse.status).toBe(202);
+    const highGenerationId = readAcceptedGenerationId(
+      await highResponse.json(),
+      "image",
+      fixture.userId,
+    );
+    await flushWaitUntilForTest();
+
+    const highStatusResponse = await app.request(
+      `/api/zero/built-in-generations/${highGenerationId}`,
+      { headers: authHeaders() },
+    );
+    const highBody = readGenerationResult(await highStatusResponse.json());
+    expect(highBody).toMatchObject({
+      creditsCharged: 120,
+      model: "dola-seedream-5-0-pro-260628",
+      provider: "byteplus",
+      imageSize: "2048x2048",
+      outputFormat: "jpeg",
+      billingCategory: "provider_cost_usd_micros",
+      billingQuantity: 96_000,
+      sourceUrl: BYTEPLUS_SEEDREAM_5_PRO_HIGH_MEDIA_URL,
+      sourceImageUrls,
+    });
+
+    expect(observedAuthorizations).toStrictEqual([
+      "Bearer test-byteplus-key",
+      "Bearer test-byteplus-key",
+    ]);
+    expect(observedBodies).toStrictEqual([
+      {
+        model: "dola-seedream-5-0-pro-260628",
+        prompt: "a precise editorial portrait",
+        size: "1.5K",
+        output_format: "jpeg",
+        response_format: "url",
+        watermark: false,
+      },
+      {
+        model: "dola-seedream-5-0-pro-260628",
+        prompt: "combine these references into a campaign image",
+        image: sourceImageUrls,
+        size: "2K",
+        output_format: "jpeg",
+        response_format: "url",
+        watermark: false,
+      },
+    ]);
+    await expect(orgCredits(fixture)).resolves.toBe(823);
   });
 
   it("generates fal image files and settles megapixel usage asynchronously", async () => {
