@@ -65,6 +65,7 @@ const getStatus$ = computed(async (get) => {
     feishuConnectStatus({
       orgId: auth.orgId,
       userId: auth.userId,
+      publicBrand: get(publicBrand$),
       isAdmin: auth.orgRole === "admin",
     }),
   );
@@ -143,6 +144,7 @@ const setup$ = command(async ({ get, set }, signal: AbortSignal) => {
     feishuConnectStatus({
       orgId: auth.orgId,
       userId: auth.userId,
+      publicBrand,
       isAdmin: auth.orgRole === "admin",
       preferredInstallationId: result.installationId,
     }),
@@ -163,6 +165,7 @@ const remove$ = command(async ({ get, set }, signal: AbortSignal) => {
     feishuConnectStatus({
       orgId: auth.orgId,
       userId: auth.userId,
+      publicBrand: get(publicBrand$),
       isAdmin: true,
     }),
   );
@@ -219,6 +222,7 @@ const updateInstallation$ = command(
       feishuConnectStatus({
         orgId: auth.orgId,
         userId: auth.userId,
+        publicBrand: get(publicBrand$),
         isAdmin: auth.orgRole === "admin",
         preferredInstallationId: params.installationId,
       }),
@@ -264,6 +268,7 @@ const disconnect$ = command(async ({ get, set }, signal: AbortSignal) => {
     feishuConnectStatus({
       orgId: auth.orgId,
       userId: auth.userId,
+      publicBrand: get(publicBrand$),
       isAdmin: auth.orgRole === "admin",
     }),
   );

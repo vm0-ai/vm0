@@ -5812,6 +5812,94 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     expect(response.headers.get("Cache-Control")).toBe("no-store");
   });
 
+  it("preserves signed GitHub install brand across provider callbacks", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("VM0_WEB_URL", "https://www.vm0.test");
+    integrations.clearGithubAppProvider();
+    integrations.configureGithubAppInstallProvider();
+
+    const installQuery = {
+      userId: `user_${randomUUID()}`,
+      composeId: `agent_${randomUUID()}`,
+    };
+    const okouInstall = await integrations.requestGithubOauthInstall(
+      installQuery,
+      [307],
+      "okou",
+    );
+    const okouStateString =
+      new URL(okouInstall.headers.get("location") ?? "").searchParams.get(
+        "state",
+      ) ?? "";
+    expect(okouStateString).not.toBe("");
+    const okouState: unknown = JSON.parse(okouStateString);
+    expect(okouState).toMatchObject({
+      publicBrand: "okou",
+      publicBrandSig: expect.stringMatching(/^[0-9a-f]{64}$/u),
+      sig: expect.stringMatching(/^[0-9a-f]{64}$/u),
+    });
+
+    const vm0Install = await integrations.requestGithubOauthInstall(
+      installQuery,
+      [307],
+    );
+    const vm0StateString =
+      new URL(vm0Install.headers.get("location") ?? "").searchParams.get(
+        "state",
+      ) ?? "";
+    expect(vm0StateString).not.toBe("");
+    const vm0State: unknown = JSON.parse(vm0StateString);
+    expect(vm0State).not.toHaveProperty("publicBrand");
+    expect(vm0State).not.toHaveProperty("publicBrandSig");
+
+    integrations.configureGithubAppCallbackProvider();
+    const okouError = await integrations.requestGithubAppSetupCallback(
+      {
+        error: "access_denied",
+        error_description: "Provider denied access",
+        state: okouStateString,
+      },
+      [307],
+    );
+    expect(new URL(okouError.headers.get("location") ?? "").origin).toBe(
+      "https://app.okou.ai",
+    );
+
+    const vm0Error = await integrations.requestGithubAppSetupCallback(
+      {
+        error: "access_denied",
+        error_description: "Provider denied access",
+        state: vm0StateString,
+      },
+      [307],
+      "okou",
+    );
+    expect(new URL(vm0Error.headers.get("location") ?? "").origin).toBe(
+      "https://app.vm0.ai",
+    );
+
+    if (!isRecord(vm0State)) {
+      throw new Error("Expected VM0 GitHub OAuth state to be an object");
+    }
+    const tamperedState = JSON.stringify({
+      ...vm0State,
+      publicBrand: "okou",
+      publicBrandSig: "0".repeat(64),
+    });
+    const tamperedError = await integrations.requestGithubAppSetupCallback(
+      {
+        error: "access_denied",
+        error_description: "Provider denied access",
+        state: tamperedState,
+      },
+      [307],
+      "okou",
+    );
+    expect(new URL(tamperedError.headers.get("location") ?? "").origin).toBe(
+      "https://app.vm0.ai",
+    );
+  });
+
   it("keeps GitHub user OAuth callback errors visible through redirects", async () => {
     const githubError = await integrations.requestGithubOauthConnectCallback(
       {
