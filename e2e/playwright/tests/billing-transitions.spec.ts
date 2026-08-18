@@ -339,6 +339,7 @@ async function withBillingOwner(
     );
     const token = await signInWithClerkTestingHelper(page, email, appUrl, {
       activeOrganizationId: organizationId,
+      preserveAppPage: true,
     });
     await completeExploreOnboarding(page, { appUrl });
     await enableUsagePackPlans(page, token);
