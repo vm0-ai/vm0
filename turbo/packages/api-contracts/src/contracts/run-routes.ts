@@ -27,7 +27,7 @@ import {
  * Fields not used by unattended workflow runs are omitted:
  * triggerSource, vars, secrets, volumeVersions, permissionPolicies.
  */
-export const zeroRunCreateBodySchema = unifiedRunRequestSchema
+export const runCreateBodySchema = unifiedRunRequestSchema
   .omit({
     triggerSource: true,
     artifacts: true,
@@ -59,7 +59,7 @@ const zeroNetworkLogPaginationQuerySchema = createLogPaginationQuerySchema({
 /**
  * Zero runs by ID contract (GET /api/okou/runs/:id)
  */
-export const zeroRunsByIdContract = c.router({
+export const runsByIdContract = c.router({
   getById: {
     method: "GET",
     path: "/api/okou/runs/:id",
@@ -81,7 +81,7 @@ export const zeroRunsByIdContract = c.router({
 /**
  * Zero runs cancel contract (POST /api/okou/runs/:id/cancel)
  */
-export const zeroRunsCancelContract = c.router({
+export const runsCancelContract = c.router({
   cancel: {
     method: "POST",
     path: "/api/okou/runs/:id/cancel",
@@ -104,7 +104,7 @@ export const zeroRunsCancelContract = c.router({
 /**
  * Zero runs queue contract (GET /api/okou/runs/queue)
  */
-export const zeroRunsQueueContract = c.router({
+export const runsQueueContract = c.router({
   getQueue: {
     method: "GET",
     path: "/api/okou/runs/queue",
@@ -121,7 +121,7 @@ export const zeroRunsQueueContract = c.router({
 /**
  * Zero run agent events contract (GET /api/okou/runs/:id/telemetry/agent)
  */
-export const zeroRunAgentEventsContract = c.router({
+export const runAgentEventsContract = c.router({
   getAgentEvents: {
     method: "GET",
     path: "/api/okou/runs/:id/telemetry/agent",
@@ -215,7 +215,7 @@ export const runContextResponseSchema = z.object({
  * Zero run context contract (GET /api/okou/runs/:id/context)
  * Returns a launch-time execution context snapshot for debugging
  */
-export const zeroRunContextContract = c.router({
+export const runContextContract = c.router({
   getContext: {
     method: "GET",
     path: "/api/okou/runs/:id/context",
@@ -238,7 +238,7 @@ export const zeroRunContextContract = c.router({
  * Zero run network logs contract (GET /api/okou/runs/:id/network)
  * Returns mitmproxy network logs for a run
  */
-export const zeroRunNetworkLogsContract = c.router({
+export const runNetworkLogsContract = c.router({
   getNetworkLogs: {
     method: "GET",
     path: "/api/okou/runs/:id/network",
@@ -270,7 +270,7 @@ const runRunnerResponseSchema = z.object({
   workspaceReuseResult: workspaceReuseResultSchema.nullable().optional(),
 });
 
-export const zeroRunRunnerContract = c.router({
+export const runRunnerContract = c.router({
   getRunner: {
     method: "GET",
     path: "/api/okou/runs/:id/runner",
@@ -294,10 +294,10 @@ export type RunContextResponse = z.infer<typeof runContextResponseSchema>;
 export type RunRunnerResponse = z.infer<typeof runRunnerResponseSchema>;
 
 // Type exports
-export type ZeroRunsByIdContract = typeof zeroRunsByIdContract;
-export type ZeroRunsCancelContract = typeof zeroRunsCancelContract;
-export type ZeroRunsQueueContract = typeof zeroRunsQueueContract;
-export type ZeroRunAgentEventsContract = typeof zeroRunAgentEventsContract;
-export type ZeroRunContextContract = typeof zeroRunContextContract;
-export type ZeroRunNetworkLogsContract = typeof zeroRunNetworkLogsContract;
-export type ZeroRunRunnerContract = typeof zeroRunRunnerContract;
+export type RunsByIdContract = typeof runsByIdContract;
+export type RunsCancelContract = typeof runsCancelContract;
+export type RunsQueueContract = typeof runsQueueContract;
+export type RunAgentEventsContract = typeof runAgentEventsContract;
+export type RunContextContract = typeof runContextContract;
+export type RunNetworkLogsContract = typeof runNetworkLogsContract;
+export type RunRunnerContract = typeof runRunnerContract;

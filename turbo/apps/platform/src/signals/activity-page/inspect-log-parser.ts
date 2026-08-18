@@ -1,7 +1,7 @@
 import {
   runContextResponseSchema,
   type RunContextResponse,
-} from "@okouai/api-contracts/contracts/zero-runs";
+} from "@okouai/api-contracts/contracts/run-routes";
 import {
   networkLogEntrySchema,
   type NetworkLogEntry,

@@ -1,5 +1,5 @@
 import { computed, type Computed } from "ccstate";
-import type { RunContextResponse } from "@okouai/api-contracts/contracts/zero-runs";
+import type { RunContextResponse } from "@okouai/api-contracts/contracts/run-routes";
 import {
   runStatusSchema,
   type AgentEventsResponse,

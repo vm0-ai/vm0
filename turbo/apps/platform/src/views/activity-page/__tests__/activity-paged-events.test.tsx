@@ -1,6 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import { logsByIdContract } from "@okouai/api-contracts/contracts/logs";
-import { zeroRunAgentEventsContract } from "@okouai/api-contracts/contracts/zero-runs";
+import { runAgentEventsContract } from "@okouai/api-contracts/contracts/run-routes";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
@@ -64,7 +64,7 @@ describe("activity paged events", () => {
       return respond(200, makeLogDetail({ status: "completed" }));
     });
     context.mocks.api(
-      zeroRunAgentEventsContract.getAgentEvents,
+      runAgentEventsContract.getAgentEvents,
       async ({ query, respond }) => {
         if (query.cursor === undefined) {
           return respond(200, {
@@ -133,7 +133,7 @@ describe("activity paged events", () => {
       return respond(200, makeLogDetail({ status: "completed" }));
     });
     context.mocks.api(
-      zeroRunAgentEventsContract.getAgentEvents,
+      runAgentEventsContract.getAgentEvents,
       ({ query, respond }) => {
         if (query.cursor === undefined) {
           return respond(200, {
@@ -180,7 +180,7 @@ describe("activity paged events", () => {
       return respond(200, makeLogDetail({ status: "completed" }));
     });
     context.mocks.api(
-      zeroRunAgentEventsContract.getAgentEvents,
+      runAgentEventsContract.getAgentEvents,
       ({ query, respond }) => {
         requests.push({ since: query.since, cursor: query.cursor });
         if (query.cursor === "server-page-2") {
@@ -236,7 +236,7 @@ describe("activity paged events", () => {
       return respond(200, makeLogDetail({ status: "running" }));
     });
     context.mocks.api(
-      zeroRunAgentEventsContract.getAgentEvents,
+      runAgentEventsContract.getAgentEvents,
       ({ query, respond }) => {
         requestCount++;
         requestedSequences.push(query.since);
@@ -285,7 +285,7 @@ describe("activity paged events", () => {
       return respond(200, makeLogDetail({ status: "running" }));
     });
     context.mocks.api(
-      zeroRunAgentEventsContract.getAgentEvents,
+      runAgentEventsContract.getAgentEvents,
       ({ query, respond }) => {
         requestCount++;
         requestedSequences.push(query.since);
@@ -325,7 +325,7 @@ describe("activity paged events", () => {
       return respond(200, makeLogDetail({ status: "completed" }));
     });
     context.mocks.api(
-      zeroRunAgentEventsContract.getAgentEvents,
+      runAgentEventsContract.getAgentEvents,
       ({ query, respond }) => {
         requestCount++;
         requestedSequences.push(query.since);
@@ -360,17 +360,14 @@ describe("activity paged events", () => {
     context.mocks.api(logsByIdContract.getById, ({ respond }) => {
       return respond(200, makeLogDetail({ status: "completed" }));
     });
-    context.mocks.api(
-      zeroRunAgentEventsContract.getAgentEvents,
-      ({ respond }) => {
-        return respond(500, {
-          error: {
-            code: "INTERNAL_SERVER_ERROR",
-            message: "Event storage unavailable",
-          },
-        });
-      },
-    );
+    context.mocks.api(runAgentEventsContract.getAgentEvents, ({ respond }) => {
+      return respond(500, {
+        error: {
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Event storage unavailable",
+        },
+      });
+    });
 
     detachedSetupPage({
       context,
@@ -405,7 +402,7 @@ describe("activity paged events", () => {
       );
     });
     context.mocks.api(
-      zeroRunAgentEventsContract.getAgentEvents,
+      runAgentEventsContract.getAgentEvents,
       ({ params, respond }) => {
         if (params.id === firstRunId) {
           return respond(200, {
