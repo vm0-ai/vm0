@@ -1,4 +1,4 @@
-import type { ZeroMailProvider } from "@okouai/api-contracts/contracts/zero-mail";
+import type { MailProvider } from "@okouai/api-contracts/contracts/mail";
 import { getOkouAgentId } from "../../lib/okou-env";
 
 export const MAIL_CONNECTOR_SLUG_BY_PROVIDER = {
@@ -6,7 +6,7 @@ export const MAIL_CONNECTOR_SLUG_BY_PROVIDER = {
   outlook: "outlook-mail",
 } as const;
 
-export function parseMailProvider(value: string): ZeroMailProvider {
+export function parseMailProvider(value: string): MailProvider {
   if (value === "gmail" || value === "outlook") {
     return value;
   }

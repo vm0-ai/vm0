@@ -106,9 +106,9 @@ import type {
   UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import type {
-  ZeroAvatarVideoAvatar,
-  ZeroAvatarVideoVoice,
-} from "@okouai/api-contracts/contracts/zero-avatar-video";
+  AvatarVideoAvatar,
+  AvatarVideoVoice,
+} from "@okouai/api-contracts/contracts/avatar-video";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import { TiptapWorkflowComposer } from "./tiptap-workflow-composer.tsx";
 import { computerUseIllustrationImg } from "./platform-assets.ts";
@@ -185,6 +185,7 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import { orgModelPolicies$ } from "../../signals/external/org-model-policies.ts";
 import {
+  updateDefaultImageModel$,
   updateDefaultVideoModel$,
   updateUserModelPreference$,
   userModelPreference$,
@@ -4995,8 +4996,8 @@ function TemplatePickerDialog({
   };
 
   const handleSelectAvatar = (
-    avatar: ZeroAvatarVideoAvatar,
-    voice: ZeroAvatarVideoVoice,
+    avatar: AvatarVideoAvatar,
+    voice: AvatarVideoVoice,
     aspectRatio: "portrait" | "landscape",
   ) => {
     onChange(toAvatarGenerationTemplate(avatar, voice, aspectRatio));
@@ -5310,8 +5311,8 @@ function TemplatePickerCategoryContent({
   onIllustrationVariantChange: (slug: string, index: number) => void;
   onSelectVideo: (item: VideoTemplateItem) => void;
   onSelectAvatar: (
-    avatar: ZeroAvatarVideoAvatar,
-    voice: ZeroAvatarVideoVoice,
+    avatar: AvatarVideoAvatar,
+    voice: AvatarVideoVoice,
     aspectRatio: "portrait" | "landscape",
   ) => void;
   onWorkflowCategoryChange: (category: string) => void;
@@ -8322,29 +8323,86 @@ function ComposerTemporaryVideoModelNotice({
   );
 }
 
+function ComposerTemporaryImageModelNotice({
+  imageModelSignals,
+}: {
+  imageModelSignals: ComposerImageModelSignals;
+}) {
+  const { t } = useTranslation();
+  const selection = useLastResolved(imageModelSignals.effectiveImageModel$);
+  const userPreference = useLastResolved(userModelPreference$);
+  const [updateLoadable, updateDefaultImageModel] = useLoadableSet(
+    updateDefaultImageModel$,
+  );
+  const pageSignal = useGet(pageSignal$);
+  if (!userPreference) {
+    return null;
+  }
+  const defaultImageModel =
+    userPreference.selectedImageModel ?? DEFAULT_IMAGE_MODEL;
+  if (!selection || selection === defaultImageModel) {
+    return null;
+  }
+  const updating = updateLoadable.state === "loading";
+  const setAsDefault = () => {
+    if (updating) {
+      return;
+    }
+    detach(updateDefaultImageModel(selection, pageSignal), Reason.DomCallback);
+  };
+  return (
+    <ComposerTemporaryModelNoticeRow
+      notice={t(
+        ($) => {
+          return $.chat.composer.temporaryImageModelNotice;
+        },
+        { model: IMAGE_MODEL_CONFIGS[selection].label },
+      )}
+      updating={updating}
+      onSetAsDefault={setAsDefault}
+    />
+  );
+}
+
 function ComposerTemporaryModelNoticeSlot({
   signals,
 }: {
   signals: ComposerSignals;
 }) {
   const enabled = useGet(signals.model.temporaryModelNoticeEnabled$);
+  const imageModelEnabled = useGet(imageModelSelectionEnabled$);
   const videoModelEnabled = useGet(videoModelSelectionEnabled$);
-  const desktopLayout = useGet(signals.model.desktopModelPickerLayout$);
   const desktopModelCategory = useGet(signals.model.desktopModelCategory$);
+  const imageModelSignals = signals.imageModel;
   const videoModelSignals = signals.videoModel;
   if (!enabled) {
     return null;
   }
   // One notice at a time: it belongs to whichever model the composer is
   // currently pointed at, matching the pressed state of the two mode chips.
-  return videoModelEnabled &&
+  if (
+    imageModelEnabled &&
+    imageModelSignals &&
+    desktopModelCategory === "image"
+  ) {
+    return (
+      <ComposerTemporaryImageModelNotice
+        imageModelSignals={imageModelSignals}
+      />
+    );
+  }
+  if (
+    videoModelEnabled &&
     videoModelSignals &&
-    desktopLayout &&
-    desktopModelCategory === "video" ? (
-    <ComposerTemporaryVideoModelNotice videoModelSignals={videoModelSignals} />
-  ) : (
-    <ComposerTemporaryModelNotice signals={signals} />
-  );
+    desktopModelCategory === "video"
+  ) {
+    return (
+      <ComposerTemporaryVideoModelNotice
+        videoModelSignals={videoModelSignals}
+      />
+    );
+  }
+  return <ComposerTemporaryModelNotice signals={signals} />;
 }
 
 // ---------------------------------------------------------------------------

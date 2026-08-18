@@ -7,7 +7,7 @@ import {
   zeroPersonalModelProvidersMainContract,
   zeroPersonalModelProviderAccountsByIdContract,
 } from "@okouai/api-contracts/contracts/zero-personal-model-providers";
-import { zeroModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-model-providers";
+import { modelProvidersMainContract } from "@okouai/api-contracts/contracts/model-provider-routes";
 import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-preferences";
 
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
@@ -80,7 +80,7 @@ export function createAuthDeviceSupportApi(context: TestContext) {
 
     async listModelProviders(actor: ApiTestUser) {
       return await accept(
-        authDeviceSupportApp(context)(zeroModelProvidersMainContract).list({
+        authDeviceSupportApp(context)(modelProvidersMainContract).list({
           headers: authenticate(context, actor),
         }),
         [200],

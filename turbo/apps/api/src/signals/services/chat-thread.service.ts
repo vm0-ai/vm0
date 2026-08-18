@@ -21,7 +21,7 @@ import {
 import {
   type HostedArtifactKind,
   hostedArtifactKindSchema,
-} from "@okouai/api-contracts/contracts/zero-host";
+} from "@okouai/api-contracts/contracts/host";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";

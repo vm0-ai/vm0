@@ -126,7 +126,7 @@ myConnector: {
 In `turbo/apps/api/src/signals/auth/tokens.ts`, add to `CONDITIONAL_CAPABILITIES`:
 
 ```typescript
-const CONDITIONAL_CAPABILITIES: ReadonlyMap<ZeroCapability, FeatureSwitchKey> =
+const CONDITIONAL_CAPABILITIES: ReadonlyMap<Capability, FeatureSwitchKey> =
   new Map([
     // ... existing entries
     ["my-feature:write", FeatureSwitchKey.MyFeature],

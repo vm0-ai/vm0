@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { chatThreadMetadataContract } from "@okouai/api-contracts/contracts/chat-threads";
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
+import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@okouai/api-contracts/contracts/model-providers";
 import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
@@ -60,7 +60,7 @@ function currentSecond(): number {
 function zeroToken(args: {
   readonly userId: string;
   readonly orgId: string;
-  readonly capabilities: readonly ZeroCapability[];
+  readonly capabilities: readonly Capability[];
 }): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({

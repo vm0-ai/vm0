@@ -8,7 +8,7 @@ import {
   type UpdateOrgModelPolicy,
   type ModelProviderType,
 } from "@okouai/api-contracts/contracts/model-providers";
-import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
+import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
 import { zeroModelProviderConnectionsMainContract } from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
 import { userModelPreferenceContract } from "@okouai/api-contracts/contracts/user-model-preference";
 import type { ImageModelId } from "@okouai/api-contracts/contracts/image-models";
@@ -77,7 +77,7 @@ function makeVm0Policy(
 
 function apiClient() {
   return setupApp({ context, routes: modelPoliciesRoutes })(
-    zeroModelPoliciesMainContract,
+    modelPoliciesMainContract,
   );
 }
 

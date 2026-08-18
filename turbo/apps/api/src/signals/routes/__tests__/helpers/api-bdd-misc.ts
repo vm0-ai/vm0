@@ -17,11 +17,11 @@ import {
   zeroWorkflowsDetailContract,
   type WorkflowFileEntry,
 } from "@okouai/api-contracts/contracts/zero-workflows";
-import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
+import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
 import {
-  zeroModelProvidersByTypeContract,
-  zeroModelProvidersMainContract,
-} from "@okouai/api-contracts/contracts/zero-model-providers";
+  modelProvidersByTypeContract,
+  modelProvidersMainContract,
+} from "@okouai/api-contracts/contracts/model-provider-routes";
 import {
   zeroPersonalModelProvidersByTypeContract,
   zeroPersonalModelProvidersMainContract,
@@ -442,7 +442,7 @@ export function createMiscRoutesApi(context: TestContext) {
     async listModelProviders(actor: ApiTestUser) {
       return await accept(
         setupApp({ context, routes: zeroModelProvidersRoutes })(
-          zeroModelProvidersMainContract,
+          modelProvidersMainContract,
         ).list({
           headers: authenticate(context, actor),
         }),
@@ -456,7 +456,7 @@ export function createMiscRoutesApi(context: TestContext) {
     ) {
       return await accept(
         setupApp({ context, routes: zeroModelProvidersRoutes })(
-          zeroModelProvidersMainContract,
+          modelProvidersMainContract,
         ).upsert({
           headers: authenticate(context, actor),
           body: { type: "vm0" },
@@ -472,7 +472,7 @@ export function createMiscRoutesApi(context: TestContext) {
     ) {
       return await accept(
         setupApp({ context, routes: zeroModelProvidersRoutes })(
-          zeroModelProvidersMainContract,
+          modelProvidersMainContract,
         ).upsert({
           headers: authenticate(context, actor),
           body,
@@ -487,7 +487,7 @@ export function createMiscRoutesApi(context: TestContext) {
     ) {
       return await accept(
         setupApp({ context, routes: zeroModelProvidersRoutes })(
-          zeroModelProvidersByTypeContract,
+          modelProvidersByTypeContract,
         ).delete({
           headers: authenticate(context, actor),
           params: { type: "vm0" },
@@ -503,7 +503,7 @@ export function createMiscRoutesApi(context: TestContext) {
     ) {
       return await accept(
         setupApp({ context, routes: zeroModelProvidersRoutes })(
-          zeroModelProvidersByTypeContract,
+          modelProvidersByTypeContract,
         ).delete({
           headers: authenticate(context, actor),
           params: { type },
@@ -564,7 +564,7 @@ export function createMiscRoutesApi(context: TestContext) {
     ): Promise<OrgModelPoliciesResponse> {
       const response = await accept(
         setupApp({ context, routes: modelPoliciesRoutes })(
-          zeroModelPoliciesMainContract,
+          modelPoliciesMainContract,
         ).list({
           headers: authenticate(context, actor),
         }),
@@ -580,7 +580,7 @@ export function createMiscRoutesApi(context: TestContext) {
     ) {
       return await accept(
         setupApp({ context, routes: modelPoliciesRoutes })(
-          zeroModelPoliciesMainContract,
+          modelPoliciesMainContract,
         ).update({
           headers: authenticate(context, actor),
           body: {

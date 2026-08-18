@@ -10,6 +10,7 @@ import {
   chatThreadImageModelContract,
   chatThreadMarkAgentReadContract,
   chatThreadMarkReadContract,
+  chatThreadMarkUnreadContract,
   chatThreadMetadataContract,
   chatThreadModelSelectionContract,
   chatThreadPinContract,
@@ -50,23 +51,23 @@ import {
   type SupportedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
+import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
 import {
   zeroAgentsMainContract,
   type ZeroAgentResponse,
 } from "@okouai/api-contracts/contracts/zero-agents";
 import {
-  zeroHostContract,
+  hostContract,
   type HostedSiteCompleteResponse,
   type HostedSiteDeploymentsResponse,
   type HostedSitePrepareRequest,
   type HostedSitePrepareResponse,
-} from "@okouai/api-contracts/contracts/zero-host";
+} from "@okouai/api-contracts/contracts/host";
 import {
-  zeroUploadsContract,
+  uploadsContract,
   type UploadCompleteResponse,
   type UploadPrepareResponse,
-} from "@okouai/api-contracts/contracts/zero-uploads";
+} from "@okouai/api-contracts/contracts/uploads";
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import {
@@ -263,7 +264,7 @@ export function createChatFilesBddApi(context: TestContext) {
   }
 
   function modelPoliciesClient() {
-    return chatFilesApp(context)(zeroModelPoliciesMainContract);
+    return chatFilesApp(context)(modelPoliciesMainContract);
   }
 
   async function defaultCreateThreadModel(
@@ -310,6 +311,10 @@ export function createChatFilesBddApi(context: TestContext) {
 
   function threadMarkReadClient() {
     return chatFilesApp(context)(chatThreadMarkReadContract);
+  }
+
+  function threadMarkUnreadClient() {
+    return chatFilesApp(context)(chatThreadMarkUnreadContract);
   }
 
   function threadMarkAgentReadClient() {
@@ -365,11 +370,11 @@ export function createChatFilesBddApi(context: TestContext) {
   }
 
   function uploadsClient() {
-    return chatFilesApp(context)(zeroUploadsContract);
+    return chatFilesApp(context)(uploadsContract);
   }
 
   function hostClient() {
-    return chatFilesApp(context)(zeroHostContract);
+    return chatFilesApp(context)(hostContract);
   }
 
   return {
@@ -857,6 +862,37 @@ export function createChatFilesBddApi(context: TestContext) {
     ) {
       return await accept(
         threadMarkReadClient().markRead({
+          headers: authenticate(context, actor),
+          params: { id: threadId },
+        }),
+        statuses,
+      );
+    },
+
+    async markThreadUnread(
+      actor: ApiTestUser,
+      threadId: string,
+    ): Promise<{
+      readonly lastReadAt: string | null;
+      readonly unreads: readonly { threadId: string; unreadAt: string }[];
+    }> {
+      const response = await accept(
+        threadMarkUnreadClient().markUnread({
+          headers: authenticate(context, actor),
+          params: { id: threadId },
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async requestMarkThreadUnread(
+      actor: ApiTestUser | null,
+      threadId: string,
+      statuses: readonly (200 | 400 | 401 | 404)[],
+    ) {
+      return await accept(
+        threadMarkUnreadClient().markUnread({
           headers: authenticate(context, actor),
           params: { id: threadId },
         }),

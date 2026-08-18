@@ -116,6 +116,97 @@ async def test_vm0_api_auto_allow_injects_runner_preview_bypass(
     assert flow.request.headers["x-vercel-protection-bypass"] == "preview-secret"
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        pytest.param("/api/ordinary/../test/example", id="literal-dot-segment"),
+        pytest.param(
+            "/api/ordinary/%2e%2e/test/example",
+            id="encoded-dot-segment",
+        ),
+        pytest.param("/api\\test\\example", id="backslash"),
+        pytest.param("/api/ordinary/%zz/test/example", id="malformed-escape"),
+    ],
+)
+async def test_vm0_api_unsafe_paths_fail_closed_before_binding_or_bypass(
+    registry_file, real_flow, mitm_ctx, monkeypatch, path
+):
+    flow = real_flow(
+        with_response=False,
+        host="preview-api.vm6.ai",
+        path=path,
+    )
+    monkeypatch.setattr(platform_api, "VERCEL_BYPASS", "preview-secret")
+
+    with mitm_ctx(
+        registry_path=str(registry_file),
+        api_url="https://preview-api.vm6.ai",
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert json.loads(flow.response.content) == {
+        "error": "unsafe_platform_path",
+        "message": "Request blocked: unsafe platform API path",
+    }
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "unsafe_platform_path"
+    assert "x-vercel-protection-bypass" not in flow.request.headers
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+
+
+async def test_vm0_api_unsafe_browser_path_does_not_fall_through_to_browser_allow(
+    registry_file, real_flow, mitm_ctx, headers, monkeypatch
+):
+    flow = real_flow(
+        with_response=False,
+        host="preview-api.vm6.ai",
+        path="/api/ordinary/../test/example",
+        request_headers=headers(
+            ("Host", "preview-api.vm6.ai"),
+            ("User-Agent", "Mozilla/5.0 Chrome/151.0.0.0 Safari/537.36"),
+        ),
+    )
+    monkeypatch.setattr(platform_api, "VERCEL_BYPASS", "preview-secret")
+
+    with mitm_ctx(
+        registry_path=str(registry_file),
+        api_url="https://preview-api.vm6.ai",
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "unsafe_platform_path"
+    assert flow.metadata[metadata_keys.BROWSER_USER_AGENT] is True
+    assert "x-vercel-protection-bypass" not in flow.request.headers
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+
+
+async def test_vm0_api_safe_repeated_separator_path_remains_auto_allowed(
+    registry_file, real_flow, mitm_ctx, monkeypatch
+):
+    flow = real_flow(
+        with_response=False,
+        host="preview-api.vm6.ai",
+        path="/api//test/example",
+    )
+    monkeypatch.setattr(platform_api, "VERCEL_BYPASS", "preview-secret")
+
+    with mitm_ctx(
+        registry_path=str(registry_file),
+        api_url="https://preview-api.vm6.ai",
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is None
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.request.headers["x-vercel-protection-bypass"] == "preview-secret"
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
+    assert binding.kinds == frozenset(("api_allow",))
+
+
 async def test_non_api_request_does_not_receive_runner_preview_bypass(
     registry_file, real_flow, mitm_ctx, monkeypatch
 ):
@@ -459,8 +550,24 @@ async def test_unknown_cached_classification_does_not_bypass_registry_gate(
     assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        pytest.param("/api/test/oauth-provider/echo", id="pathname"),
+        pytest.param(
+            "/api/test/oauth-provider/echo?visible=1#fragment",
+            id="query-and-fragment",
+        ),
+    ],
+)
 async def test_vm0_api_test_paths_skip_auto_allow(
-    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, monkeypatch
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    headers,
+    monkeypatch,
+    path,
 ):
     """`/api/test/*` routes exist to exercise the firewall pipeline itself.
 
@@ -493,7 +600,7 @@ async def test_vm0_api_test_paths_skip_auto_allow(
     flow = real_flow(
         with_response=False,
         host="api.vm0.ai",
-        path="/api/test/oauth-provider/echo",
+        path=path,
         request_headers=headers(
             ("Host", "api.vm0.ai"),
             ("x-vm0-test-endpoint-bypass", "preview-secret"),

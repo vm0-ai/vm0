@@ -1,5 +1,50 @@
 # Changelog
 
+## [1.459.0](https://github.com/vm0-ai/vm0/compare/api-v1.458.4...api-v1.459.0) (2026-08-18)
+
+
+### Features
+
+* **api:** add private presentation template records ([#27172](https://github.com/vm0-ai/vm0/issues/27172)) ([c09ae54](https://github.com/vm0-ai/vm0/commit/c09ae540562129bde62bb76fe790555977172466))
+* **chat:** add mark unread action ([#27886](https://github.com/vm0-ai/vm0/issues/27886)) ([e6e1e79](https://github.com/vm0-ai/vm0/commit/e6e1e79e3df60e0564b2186503faaf6f3cb8290c))
+
+
+### Bug Fixes
+
+* **python:** fail closed on unsafe platform api paths ([#27944](https://github.com/vm0-ai/vm0/issues/27944)) ([490b2f5](https://github.com/vm0-ai/vm0/commit/490b2f5ab57211c277f295f48a8dab9b6144973b))
+
+
+### Refactoring
+
+* **contracts:** neutralize usage and model policy contract naming ([#27928](https://github.com/vm0-ai/vm0/issues/27928)) ([62ed800](https://github.com/vm0-ai/vm0/commit/62ed800549a54e26f9c04826864f804bc748b9c9)), closes [#27912](https://github.com/vm0-ai/vm0/issues/27912)
+* **contracts:** rename the org route contract module ([#27950](https://github.com/vm0-ai/vm0/issues/27950)) ([91dc1e4](https://github.com/vm0-ai/vm0/commit/91dc1e4c0e9475ecc18edcda30c6a918b2eab0ee))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.339.0
+    * @okouai/core bumped to 8.568.0
+    * @okouai/db bumped to 1.205.0
+
+## [1.458.4](https://github.com/vm0-ai/vm0/compare/api-v1.458.3...api-v1.458.4) (2026-08-18)
+
+
+### Bug Fixes
+
+* pause automations when deleting chat threads ([#27880](https://github.com/vm0-ai/vm0/issues/27880)) ([039e1ec](https://github.com/vm0-ai/vm0/commit/039e1ecdab67a1ea7559919d3186c9d60a71b4c4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.338.3
+    * @okouai/connectors bumped to 1.207.1
+    * @okouai/core bumped to 8.567.0
+    * @okouai/db bumped to 1.204.4
+
 ## [1.458.3](https://github.com/vm0-ai/vm0/compare/api-v1.458.2...api-v1.458.3) (2026-08-18)
 
 

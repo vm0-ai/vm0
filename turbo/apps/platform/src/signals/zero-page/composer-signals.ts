@@ -188,7 +188,7 @@ export interface ComposerVideoModelSignals {
   >;
 }
 
-/** Image model selected for an existing chat composer. */
+/** Image model selected for a composer that supports image generation. */
 export interface ComposerImageModelSignals {
   readonly selectedImageModel$: Computed<
     ImageModel | null | Promise<ImageModel | null>

@@ -10,6 +10,7 @@ export interface RuntimeContentConsumerManifest {
 }
 
 type RuntimeContentConsumerMode =
+  | "application-authority-classifier"
   | "compose-independent-environment-shadow"
   | "first-plural-schema-parse"
   | "first-plural-framework-display"
@@ -45,6 +46,25 @@ const REVIEWED_CONSUMERS: readonly ReviewedConsumer[] = [
   {
     relativePath: "turbo/apps/api/src/signals/routes/integrations-slack.ts",
     mode: "raw-recursive-variable-secret-scan",
+  },
+  {
+    relativePath:
+      "turbo/apps/api/src/signals/services/agent-execution-authority.ts",
+    mode: "application-authority-classifier",
+    interfaces: [
+      "AgentExecutionAuthorityDecision",
+      "AgentExecutionAuthorityInput",
+    ],
+    functions: [
+      "classifyAgentExecutionAuthority",
+      "hasInvalidActiveVolumeReference",
+      "hasLegacyEnvironmentInfluence",
+      "hasValidCurrentPlanHash",
+      "isMissingCurrentPlanHead",
+      "semanticAgentExecutionPlanDimensions",
+      "validateAgentExecutionPlanRow",
+    ],
+    variables: ["AGENT_EXECUTION_PLAN_DIMENSIONS"],
   },
   {
     relativePath:
@@ -106,6 +126,11 @@ const REVIEWED_CONSUMERS: readonly ReviewedConsumer[] = [
   },
   {
     relativePath:
+      "turbo/apps/api/src/signals/services/teams-connect.service.ts",
+    mode: "raw-recursive-variable-secret-scan",
+  },
+  {
+    relativePath:
       "turbo/apps/api/src/signals/services/telegram-data.service.ts",
     mode: "raw-recursive-variable-secret-scan",
   },
@@ -117,11 +142,6 @@ const REVIEWED_CONSUMERS: readonly ReviewedConsumer[] = [
     interfaceProperties: [
       { interfaceName: "ZeroAgentRunRecord", propertyName: "content" },
     ],
-  },
-  {
-    relativePath:
-      "turbo/apps/api/src/signals/services/zero-teams-connect.service.ts",
-    mode: "raw-recursive-variable-secret-scan",
   },
   {
     relativePath: "turbo/packages/api-contracts/src/contracts/composes.ts",
@@ -177,12 +197,13 @@ export const EXPECTED_RUNTIME_CONTENT_CONSUMER_MANIFEST: RuntimeContentConsumerM
       "rawContentSource|turbo/apps/api/src/signals/services/agent-run-create.service.ts|2|9fdd08fc8b09c8179bd7c05ee55c5c25c488ffacdb266b98fb465b36814686a6",
       "rawContentSource|turbo/apps/api/src/signals/services/logs.service.ts|1|e023e4f3f81e7dd6271af5bb8cc016593d071b202611ce86e8bf2fd6f1a658ee",
       "rawContentSource|turbo/apps/api/src/signals/services/logs.service.ts|2|0446280af1a57f17ee19d46ca28e22d7f20093bd508ee20e47c0e14a3063e8f2",
+      "rawContentSource|turbo/apps/api/src/signals/services/teams-connect.service.ts|1|9fdd08fc8b09c8179bd7c05ee55c5c25c488ffacdb266b98fb465b36814686a6",
       "rawContentSource|turbo/apps/api/src/signals/services/telegram-data.service.ts|1|9fdd08fc8b09c8179bd7c05ee55c5c25c488ffacdb266b98fb465b36814686a6",
       "rawContentSource|turbo/apps/api/src/signals/services/zero-runs-create.service.ts|1|9fdd08fc8b09c8179bd7c05ee55c5c25c488ffacdb266b98fb465b36814686a6",
-      "rawContentSource|turbo/apps/api/src/signals/services/zero-teams-connect.service.ts|1|9fdd08fc8b09c8179bd7c05ee55c5c25c488ffacdb266b98fb465b36814686a6",
       "rawRecursiveScan|turbo/apps/api/src/signals/routes/integrations-slack.ts|1|0357a0f694d2882516d811fff5f28d57abb01a6df4f2bdcb1f8435d0827ea17f",
+      "rawRecursiveScan|turbo/apps/api/src/signals/services/teams-connect.service.ts|1|0357a0f694d2882516d811fff5f28d57abb01a6df4f2bdcb1f8435d0827ea17f",
       "rawRecursiveScan|turbo/apps/api/src/signals/services/telegram-data.service.ts|1|0357a0f694d2882516d811fff5f28d57abb01a6df4f2bdcb1f8435d0827ea17f",
-      "rawRecursiveScan|turbo/apps/api/src/signals/services/zero-teams-connect.service.ts|1|0357a0f694d2882516d811fff5f28d57abb01a6df4f2bdcb1f8435d0827ea17f",
+      "schemaParse|turbo/apps/api/src/signals/services/agent-execution-authority.ts|1|bc9d01f8197c2f9bc1e86be04a1f255c158608fe252eb6afcdc56c4f0d7bef35",
       "schemaParse|turbo/apps/api/src/signals/services/agent-instructions.service.ts|1|712fe12ea1d29b388940ea5921cabf4e2dd2dbc2229162e5210dba575ac256f9",
       "storageForwarding|turbo/apps/api/src/signals/services/agent-run-create.service.ts|1|14ef880a94a1bae38cf026d24cd1a98096a30e4a16df5a32a746f93fee32c04d",
       "zeroRunRawContentUse|turbo/apps/api/src/signals/services/zero-runs-create.service.ts|1|b59eb415f1b94645a15ac9a30463465caac4a5420b05052a4120ba65c9481e9b",
@@ -190,13 +211,14 @@ export const EXPECTED_RUNTIME_CONTENT_CONSUMER_MANIFEST: RuntimeContentConsumerM
     reviewedConsumers: [
       "turbo/apps/api/src/signals/routes/integrations-slack.ts|raw-recursive-variable-secret-scan|1|0357a0f694d2882516d811fff5f28d57abb01a6df4f2bdcb1f8435d0827ea17f",
       "turbo/apps/api/src/signals/services/agent-environment-shadow.ts|compose-independent-environment-shadow|4|bb1c66722499e90deb9a6471567a6d374aefe0f68b878249d0fc4822ddaf3f13",
+      "turbo/apps/api/src/signals/services/agent-execution-authority.ts|application-authority-classifier|11|6f84ff19ccb4f3fdc398973ddc67d010b73264c187004d0a2b6bfbdc706427f9",
       "turbo/apps/api/src/signals/services/agent-instructions.service.ts|first-plural-schema-parse|2|5e0e03733f7327b9e719691adccd8ef9e643f7945e7a2011884b50c17cd0d5ca",
-      "turbo/apps/api/src/signals/services/agent-run-create.service.ts|singular-or-first-plural-launch|17|2bd6e27e3eb4d51e1263c040e2f39b599322e2574e9b30f2826f73061e9301d9",
+      "turbo/apps/api/src/signals/services/agent-run-create.service.ts|singular-or-first-plural-launch|17|3ba4be01b537988945707f15b9e9e8c60f67bcb8f212be00749e4343c7f2a336",
       "turbo/apps/api/src/signals/services/agent-run-storage.service.ts|singular-or-first-plural-storage-and-volumes|8|f892995687452b9c164950e90aab24e9da198326187dea19b646864d71d35cf9",
       "turbo/apps/api/src/signals/services/logs.service.ts|first-plural-framework-display|1|ea68586f0591ce59e883d688f75c0a37ac6022e9eb4e5a2fb2cda1be037123ce",
+      "turbo/apps/api/src/signals/services/teams-connect.service.ts|raw-recursive-variable-secret-scan|1|0357a0f694d2882516d811fff5f28d57abb01a6df4f2bdcb1f8435d0827ea17f",
       "turbo/apps/api/src/signals/services/telegram-data.service.ts|raw-recursive-variable-secret-scan|1|0357a0f694d2882516d811fff5f28d57abb01a6df4f2bdcb1f8435d0827ea17f",
       "turbo/apps/api/src/signals/services/zero-runs-create.service.ts|head-content-selection-and-type-projection|10|2024999e59b45ad3c3bea825eb72378830fdea625e5e5835da8627d5c17b8f2e",
-      "turbo/apps/api/src/signals/services/zero-teams-connect.service.ts|raw-recursive-variable-secret-scan|1|0357a0f694d2882516d811fff5f28d57abb01a6df4f2bdcb1f8435d0827ea17f",
       "turbo/packages/api-contracts/src/contracts/composes.ts|schema-authority|5|cbd115e5355554442c40dd32d555cf19eda9746e639b83b47ec159f2d647b814",
       "turbo/packages/api-contracts/src/contracts/model-providers.ts|model-provider-binding-authority|11|695fe4feb473e80e1fbe28c0553c8bfea2198e8a88da4d063409e291e516cd76",
       "turbo/packages/api-contracts/src/contracts/runs.ts|run-status-authority|1|4d41dae835d0667075b46527798550126907a3998f179a0939928a00ad9e05bb",

@@ -83,8 +83,9 @@ export const chatThreads = pgTable(
       jsonb("draft_attachments").$type<ChatThreadDraftAttachments>(),
     /**
      * Slack-style watermark: the last timestamp up to which the user has read
-     * messages in this thread. Forward-only — never rewound.
-     * NULL means the thread has never been explicitly marked read.
+     * messages in this thread. It normally advances to the latest run-finish
+     * marker; marking the thread unread clears it. NULL means there is no read
+     * watermark.
      */
     lastReadAt: timestamp("last_read_at"),
     /**

@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.769.0](https://github.com/vm0-ai/vm0/compare/app-v0.768.0...app-v0.769.0) (2026-08-18)
+
+
+### Features
+
+* **chat:** add mark unread action ([#27886](https://github.com/vm0-ai/vm0/issues/27886)) ([e6e1e79](https://github.com/vm0-ai/vm0/commit/e6e1e79e3df60e0564b2186503faaf6f3cb8290c))
+
+
+### Refactoring
+
+* **contracts:** neutralize usage and model policy contract naming ([#27928](https://github.com/vm0-ai/vm0/issues/27928)) ([62ed800](https://github.com/vm0-ai/vm0/commit/62ed800549a54e26f9c04826864f804bc748b9c9)), closes [#27912](https://github.com/vm0-ai/vm0/issues/27912)
+* **contracts:** rename the org route contract module ([#27950](https://github.com/vm0-ai/vm0/issues/27950)) ([91dc1e4](https://github.com/vm0-ai/vm0/commit/91dc1e4c0e9475ecc18edcda30c6a918b2eab0ee))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.339.0
+    * @okouai/core bumped to 8.568.0
+
+## [0.768.0](https://github.com/vm0-ai/vm0/compare/app-v0.767.1...app-v0.768.0) (2026-08-18)
+
+
+### Features
+
+* **app:** add image model selection to existing chats ([#27881](https://github.com/vm0-ai/vm0/issues/27881)) ([3dcb1f4](https://github.com/vm0-ai/vm0/commit/3dcb1f4fe316e0e77fc561684659f114365335d3))
+* mark all chats read in three-column navigation ([#27885](https://github.com/vm0-ai/vm0/issues/27885)) ([8a84c70](https://github.com/vm0-ai/vm0/commit/8a84c70acaf8b38b2e254c02e95b789855bb5fb3))
+
+
+### Bug Fixes
+
+* pause automations when deleting chat threads ([#27880](https://github.com/vm0-ai/vm0/issues/27880)) ([039e1ec](https://github.com/vm0-ai/vm0/commit/039e1ecdab67a1ea7559919d3186c9d60a71b4c4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.338.3
+    * @okouai/connectors bumped to 1.207.1
+    * @okouai/core bumped to 8.567.0
+
 ## [0.767.1](https://github.com/vm0-ai/vm0/compare/app-v0.767.0...app-v0.767.1) (2026-08-18)
 
 

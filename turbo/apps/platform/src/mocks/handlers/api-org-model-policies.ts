@@ -5,7 +5,7 @@ import {
   type OrgModelPoliciesResponse,
   type UpdateOrgModelPolicy,
 } from "@okouai/api-contracts/contracts/model-providers";
-import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
+import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
 import { nowDate } from "../../lib/time.ts";
 import { mockApi } from "../msw-contract.ts";
 
@@ -78,11 +78,11 @@ function applyUpdate(policy: UpdateOrgModelPolicy): OrgModelPolicy {
 }
 
 export const apiOrgModelPoliciesHandlers = [
-  mockApi(zeroModelPoliciesMainContract.list, ({ respond }) => {
+  mockApi(modelPoliciesMainContract.list, ({ respond }) => {
     return respond(200, response());
   }),
 
-  mockApi(zeroModelPoliciesMainContract.update, ({ body, respond }) => {
+  mockApi(modelPoliciesMainContract.update, ({ body, respond }) => {
     mockOrgModelPolicies = body.policies.map(applyUpdate);
     return respond(200, response());
   }),

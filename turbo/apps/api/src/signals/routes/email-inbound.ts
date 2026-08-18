@@ -13,7 +13,7 @@ import {
   getUserIdByEmail,
   unsubscribeUser,
   verifyResendWebhook,
-} from "../services/zero-email-common.service";
+} from "../services/email-common.service";
 import { ingestWeeklyProductUpdateBroadcast$ } from "../services/weekly-product-update.service";
 import { safeSync, tapError } from "../utils";
 

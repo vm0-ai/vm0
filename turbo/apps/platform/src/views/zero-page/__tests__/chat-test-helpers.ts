@@ -375,6 +375,7 @@ export function mockChatLifecycle(
       model?: string;
       modelSelection: ModelSelectionRequest;
       serviceTier?: ChatThreadServiceTier | null;
+      imageModel?: string;
       videoModel?: string;
     }) => void;
     onModelSelectionUpdate?: (body: {
@@ -775,6 +776,7 @@ export function mockChatLifecycle(
       model: body.model,
       modelSelection,
       serviceTier: body.serviceTier,
+      imageModel: body.imageModel,
       videoModel: body.videoModel,
     });
     return respond(201, {

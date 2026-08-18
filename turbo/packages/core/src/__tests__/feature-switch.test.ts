@@ -97,17 +97,21 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatForward]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ChatMarkUnread]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatQuoteOnlyFeedback]).toBe(true);
     expect(
       staffOrgStates[FeatureSwitchKey.ChatRunContinuationPresentation],
     ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatSmoothAutoScroll]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ChatInlineThinkingBlocks]).toBe(
+      true,
+    );
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.VideoModelSelection]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ImageModelSelection]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.ImageModelSelection]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       true,
     );
@@ -133,11 +137,15 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatForward]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ChatMarkUnread]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatQuoteOnlyFeedback]).toBe(false);
     expect(
       otherOrgStates[FeatureSwitchKey.ChatRunContinuationPresentation],
     ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatSmoothAutoScroll]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ChatInlineThinkingBlocks]).toBe(
+      false,
+    );
     expect(otherOrgStates[FeatureSwitchKey.PiLoop]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       false,

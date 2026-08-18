@@ -2,11 +2,12 @@ import { command } from "ccstate";
 import { zeroCustomConnectorOAuth2Contract } from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import type { ConnectorOauthCallbackResult } from "@okouai/api-contracts/contracts/connectors-slug-callback";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
+import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 
 import { badRequestMessage } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { setResHeader$ } from "../context/hono";
+import { publicBrand$, setResHeader$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import {
@@ -29,7 +30,11 @@ import { addUserCustomConnector } from "../services/user-connectors.service";
 import { commitConnectorRuntimeMutation } from "../services/connector-runtime-wakeup.service";
 import { publishCustomConnectorUserInvalidationAfterCommit as publishCustomUserInvalidation } from "../services/connector-client-invalidation.service";
 import { isCustomConnectorMcpEnabled } from "../services/custom-connector-mcp-feature.service";
-import { getCustomConnectorById } from "../services/custom-connector.service";
+import {
+  getCustomConnectorById,
+  type CustomConnectorOAuthConfigRow,
+  type CustomConnectorRow,
+} from "../services/custom-connector.service";
 import { tapError } from "../utils";
 import type { RouteEntry } from "../route-entry";
 import {
@@ -59,6 +64,10 @@ function callbackRedirect(args: {
 
 function callbackError(origin: string, message: string): Response {
   return callbackRedirect({ origin, status: "error", message });
+}
+
+function appOriginForPublicBrand(publicBrand: "vm0" | "okou"): string {
+  return new URL(appUrlForPublicBrand(env("APP_URL"), publicBrand)).origin;
 }
 
 function callbackResultFromRedirect(
@@ -115,6 +124,7 @@ const startOAuth2Inner$ = command(async ({ get, set }, signal: AbortSignal) => {
       userId: auth.userId,
       connectorId: params.id,
       redirectUri,
+      publicBrand: get(publicBrand$),
       agentId: body.data.agentId,
     },
     signal,
@@ -139,6 +149,21 @@ function validateClaimedState(storedState: StoredCustomConnectorOAuthState):
     return { ok: false };
   }
   return { ok: true, context };
+}
+
+function isCurrentOAuthCustomConnector(
+  connector: CustomConnectorRow | null,
+  context: NonNullable<ReturnType<typeof parseValidCustomConnectorOAuthState>>,
+): connector is CustomConnectorRow & {
+  readonly authMode: "oauth";
+  readonly oauthConfig: CustomConnectorOAuthConfigRow;
+} {
+  return Boolean(
+    connector &&
+    connector.authMode === "oauth" &&
+    connector.oauthConfig &&
+    customConnectorOAuthStateMatchesDefinition(context, connector),
+  );
 }
 
 async function authorizeCustomConnectorAgent(
@@ -215,23 +240,26 @@ async function codeLessCustomOAuthCallbackResponse(
   );
   signal.throwIfAborted();
   return status.kind === "usable"
-    ? callbackError(args.origin, "Missing authorization code")
+    ? callbackError(
+        appOriginForPublicBrand(status.publicBrand),
+        "Missing authorization code",
+      )
     : callbackError(args.origin, "Invalid OAuth state - please try again");
 }
 
 const completeOAuth2Callback$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
     const query = get(queryOf(zeroCustomConnectorOAuth2Contract.callback));
-    const origin = new URL(env("APP_URL")).origin;
+    const defaultOrigin = new URL(env("APP_URL")).origin;
     const oauthState = query.state;
     const authorizationCode = query.code ?? "";
     const providerError = query.error;
     if (!oauthState) {
-      return callbackError(origin, "Missing OAuth state");
+      return callbackError(defaultOrigin, "Missing OAuth state");
     }
     if (!providerError && !authorizationCode) {
       return await codeLessCustomOAuthCallbackResponse(
-        { db: set(writeDb$), origin, state: oauthState },
+        { db: set(writeDb$), origin: defaultOrigin, state: oauthState },
         signal,
       );
     }
@@ -242,8 +270,12 @@ const completeOAuth2Callback$ = command(
     );
     signal.throwIfAborted();
     if (claimed.kind !== "usable") {
-      return callbackError(origin, "Invalid OAuth state - please try again");
+      return callbackError(
+        defaultOrigin,
+        "Invalid OAuth state - please try again",
+      );
     }
+    const origin = appOriginForPublicBrand(claimed.state.publicBrand);
     if (providerError) {
       return callbackError(origin, query.error_description ?? providerError);
     }
@@ -258,12 +290,7 @@ const completeOAuth2Callback$ = command(
       }),
     );
     signal.throwIfAborted();
-    if (
-      !connector ||
-      connector.authMode !== "oauth" ||
-      !connector.oauthConfig ||
-      !customConnectorOAuthStateMatchesDefinition(state.context, connector)
-    ) {
+    if (!isCurrentOAuthCustomConnector(connector, state.context)) {
       return callbackError(
         origin,
         "Custom connector OAuth configuration changed - please try again",

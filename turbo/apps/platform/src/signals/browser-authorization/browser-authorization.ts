@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { zeroBrowserAuthorizationRequestsContract } from "@okouai/api-contracts/contracts/zero-browser";
+import { browserAuthorizationRequestsContract } from "@okouai/api-contracts/contracts/browser";
 
 import { accept } from "../../lib/accept.ts";
 import { pathParams$ } from "../route.ts";
@@ -18,7 +18,7 @@ export const browserAuthorizationRequest$ = computed(async (get) => {
   if (!requestToken) {
     return null;
   }
-  const client = get(zeroClient$)(zeroBrowserAuthorizationRequestsContract);
+  const client = get(zeroClient$)(browserAuthorizationRequestsContract);
   const result = await accept(client.get({ params: { requestToken } }), [200]);
   return result.body;
 });
@@ -29,7 +29,7 @@ export const applyBrowserAuthorizationRequest$ = command(
     if (!requestToken) {
       throw new Error("Cloud browser authorization request token is missing");
     }
-    const client = get(zeroClient$)(zeroBrowserAuthorizationRequestsContract);
+    const client = get(zeroClient$)(browserAuthorizationRequestsContract);
     const result = await accept(
       client.apply({
         params: { requestToken },

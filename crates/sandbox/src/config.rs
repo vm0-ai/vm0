@@ -99,6 +99,13 @@ pub struct DeviceRateLimits {
 }
 
 /// Host-local ext4 image seeding behavior for one sandbox workspace image.
+///
+/// A supplied seed image must have the logical size described by
+/// [`WorkspaceDriveConfig::size_mb`]. The Firecracker provider requires the
+/// seed to be a regular file whose length is exactly
+/// `size_mb * 1024 * 1024` bytes and does not resize it; a size mismatch fails
+/// sandbox creation before the copy or move consumes the source. Other
+/// providers may prepare seed images differently.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum WorkspaceDriveSeedImage {
     /// Copy the host-local ext4 image into this sandbox's active workspace
@@ -121,7 +128,12 @@ pub enum WorkspaceDriveSeedImage {
 /// block device.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WorkspaceDriveConfig {
-    /// Logical size in MiB for newly initialized workspace images.
+    /// Logical size in MiB for the workspace image.
+    ///
+    /// This size applies both when a provider initializes a fresh image and
+    /// when it prepares a supplied [`WorkspaceDriveSeedImage`]. A supplied seed
+    /// image must have this logical size; see [`WorkspaceDriveSeedImage`] for
+    /// the provider-specific preparation contract.
     pub size_mb: u32,
     /// Optional host-local ext4 image used to seed this sandbox's active
     /// workspace image. The seed variant determines whether providers must

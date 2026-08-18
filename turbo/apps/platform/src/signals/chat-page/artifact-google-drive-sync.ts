@@ -1,7 +1,7 @@
 import { command } from "ccstate";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { chatThreadArtifactsContract } from "@okouai/api-contracts/contracts/chat-threads";
-import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { accept } from "../../lib/accept.ts";
 import { i18n } from "../../i18n/index.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
@@ -201,7 +201,7 @@ async function authorizeGoogleDriveForAgent(
   },
   signal: AbortSignal,
 ): Promise<void> {
-  const client = params.createClient(zeroUserConnectorsContract);
+  const client = params.createClient(userConnectorsContract);
   await accept(
     client.update({
       params: { id: params.agentId },

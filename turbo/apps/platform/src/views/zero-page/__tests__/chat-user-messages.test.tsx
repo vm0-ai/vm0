@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import { ILLUSTRATION_TEMPLATE_ITEMS } from "@okouai/core";
 import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { logsListContract } from "@okouai/api-contracts/contracts/logs";
-import { zeroBrowserContract } from "@okouai/api-contracts/contracts/zero-browser";
+import { browserContract } from "@okouai/api-contracts/contracts/browser";
 
 import {
   detachedSetupPage,
@@ -649,7 +649,7 @@ describe("user messages", () => {
         updatedAt: "2024-01-01T00:00:00Z",
       },
     ]);
-    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+    context.mocks.api(browserContract.get, ({ respond }) => {
       return respond(404, {
         error: { code: "BROWSER_NOT_FOUND", message: "Browser not found" },
       });

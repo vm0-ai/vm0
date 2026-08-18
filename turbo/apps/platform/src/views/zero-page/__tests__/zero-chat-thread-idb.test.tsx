@@ -7,7 +7,7 @@ import {
   chatThreadMarkReadContract,
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import { zeroBrowserContract } from "@okouai/api-contracts/contracts/zero-browser";
+import { browserContract } from "@okouai/api-contracts/contracts/browser";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { mockOrganization, mockUser } from "../../../__tests__/mock-auth.ts";
@@ -182,7 +182,7 @@ describe("okou chat thread IndexedDB fallback", () => {
   it("keeps the app skeleton visible until uncached thread metadata syncs", async () => {
     prepareDefaultAgent();
     mockCurrentThreadDetail();
-    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+    context.mocks.api(browserContract.get, ({ respond }) => {
       return respond(404, {
         error: {
           code: "BROWSER_NOT_FOUND",
@@ -269,7 +269,7 @@ describe("okou chat thread IndexedDB fallback", () => {
 
     prepareDefaultAgent();
     mockCurrentThreadDetail();
-    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+    context.mocks.api(browserContract.get, ({ respond }) => {
       return respond(404, {
         error: {
           code: "BROWSER_NOT_FOUND",

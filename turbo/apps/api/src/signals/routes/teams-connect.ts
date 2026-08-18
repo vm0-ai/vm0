@@ -1,5 +1,5 @@
 import { command, computed } from "ccstate";
-import { zeroTeamsConnectContract } from "@okouai/api-contracts/contracts/zero-teams-connect";
+import { teamsConnectContract } from "@okouai/api-contracts/contracts/teams-connect";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -10,8 +10,8 @@ import {
   disconnectTeamsConnection$,
   publishTeamsChanged$,
   uninstallTeamsInstallation$,
-  zeroTeamsConnectStatus,
-} from "../services/zero-teams-connect.service";
+  teamsConnectStatus,
+} from "../services/teams-connect.service";
 import type { RouteEntry } from "../route-entry";
 
 function errorResponse(
@@ -31,7 +31,7 @@ const getTeamsConnectStatusInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const publicBrand = get(publicBrand$);
   const body = await get(
-    zeroTeamsConnectStatus({
+    teamsConnectStatus({
       orgId: auth.orgId,
       userId: auth.userId,
       isAdmin: "orgRole" in auth && auth.orgRole === "admin",
@@ -46,7 +46,7 @@ const connectInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const publicBrand = get(publicBrand$);
   signal.throwIfAborted();
 
-  const bodyResult = await get(bodyResultOf(zeroTeamsConnectContract.connect));
+  const bodyResult = await get(bodyResultOf(teamsConnectContract.connect));
   signal.throwIfAborted();
   if (!bodyResult.ok) {
     return bodyResult.response;
@@ -106,7 +106,7 @@ const connectInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 const disconnectInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const query = get(queryOf(zeroTeamsConnectContract.disconnect));
+  const query = get(queryOf(teamsConnectContract.disconnect));
 
   if (query.action === "uninstall") {
     if (!("orgRole" in auth) || auth.orgRole !== "admin") {
@@ -171,15 +171,15 @@ const teamsConnectAuth = {
 
 export const teamsConnectRoutes: readonly RouteEntry[] = [
   {
-    route: zeroTeamsConnectContract.getStatus,
+    route: teamsConnectContract.getStatus,
     handler: authRoute(teamsConnectAuth, getTeamsConnectStatusInner$),
   },
   {
-    route: zeroTeamsConnectContract.connect,
+    route: teamsConnectContract.connect,
     handler: authRoute(teamsConnectAuth, connectInner$),
   },
   {
-    route: zeroTeamsConnectContract.disconnect,
+    route: teamsConnectContract.disconnect,
     handler: authRoute(teamsConnectAuth, disconnectInner$),
   },
 ];

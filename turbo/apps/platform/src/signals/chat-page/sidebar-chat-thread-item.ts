@@ -14,6 +14,7 @@ import {
   unloadRightThread$,
 } from "./chat-thread-panes.ts";
 import { openRenameChatThreadDialogForThreadId$ } from "./chat-thread-rename.ts";
+import { markChatThreadUnread$ } from "./chat-thread-mark-unread.ts";
 import { sidebarDraftThreadIds$ } from "./sidebar-draft-threads.ts";
 import { sidebarUnreadThreadIds$ } from "./sidebar-unread-threads.ts";
 
@@ -35,6 +36,7 @@ export interface SidebarChatThreadItemSignals {
   >;
   readonly select$: Command<boolean, [SidebarChatThreadTargetPane]>;
   readonly togglePinned$: Command<Promise<void>, [AbortSignal]>;
+  readonly markUnread$: Command<Promise<void>, [AbortSignal]>;
   readonly openRename$: Command<void, [AbortSignal]>;
   readonly requestDelete$: Command<void, []>;
 }
@@ -136,6 +138,9 @@ function createSidebarChatThreadItemSignals(
         return;
       }
       await set(unpinChatThread$, threadId, signal);
+    }),
+    markUnread$: command(async ({ set }, signal: AbortSignal) => {
+      await set(markChatThreadUnread$, { threadId }, signal);
     }),
     openRename$: command(({ set }, signal: AbortSignal) => {
       set(openRenameChatThreadDialogForThreadId$, threadId, signal);

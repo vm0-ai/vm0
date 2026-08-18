@@ -4,7 +4,7 @@ import { command } from "ccstate";
 import type { RouteEntry } from "../route-entry";
 import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.service";
 import { drainStaleChatThreadQueues$ } from "../services/chat-thread-queue-drain.service";
-import { reconcileZeroBrowsers$ } from "../services/zero-browser.service";
+import { reconcileBrowsers$ } from "../services/browser.service";
 import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 
 const reconcileBrowsersRoute$ = command(
@@ -12,7 +12,7 @@ const reconcileBrowsersRoute$ = command(
     if (!get(hasValidCronSecret$)) {
       return cronUnauthorized();
     }
-    const body = await set(reconcileZeroBrowsers$, signal);
+    const body = await set(reconcileBrowsers$, signal);
     signal.throwIfAborted();
     await set(
       drainStaleChatThreadQueues$,

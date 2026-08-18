@@ -102,6 +102,7 @@ const TONE_INSTRUCTIONS: Readonly<Record<string, string>> = {
 
 interface ZeroAgentRunRecord {
   readonly id: string;
+  readonly name: string;
   readonly orgId: string;
   readonly defaultAgentId: string | null;
   readonly owner: string;
@@ -503,6 +504,7 @@ async function loadZeroAgent(
   const [agent] = await db
     .select({
       id: zeroAgents.id,
+      name: zeroAgents.name,
       orgId: zeroAgents.orgId,
       defaultAgentId: orgMetadata.defaultAgentId,
       owner: zeroAgents.owner,
@@ -788,8 +790,7 @@ async function loadZeroRunPostAuthorizationContext(
           kind: "complete",
           snapshot: await loadConnectorRuntimeSnapshot(db, {
             timing: args.timing,
-            requestedConnectorCount:
-              bootstrapContext.allowedConnectorSlugs.length,
+            requestedConnectorSlugs: bootstrapContext.allowedConnectorSlugs,
           }),
         };
   signal.throwIfAborted();
@@ -868,6 +869,7 @@ function buildZeroCreateAgentRunArgs(args: {
     }),
     callbacks: command.callbacks,
     includeZeroTokenSecret: true,
+    productAgentName: args.agent.name,
     zeroTokenPublicBrand: command.publicBrand,
     zeroTokenComputerUseHostId: command.computerUseHostId,
     zeroTokenCloudBrowserEnabled: args.cloudBrowserEnabled,

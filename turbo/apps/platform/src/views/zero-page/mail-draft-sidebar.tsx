@@ -10,10 +10,10 @@ import {
   X,
 } from "lucide-react";
 import type {
-  ZeroMailAttachment,
-  ZeroMailDraft,
-  ZeroMailInlineImage,
-} from "@okouai/api-contracts/contracts/zero-mail";
+  MailAttachment,
+  MailDraft,
+  MailInlineImage,
+} from "@okouai/api-contracts/contracts/mail";
 import { Button } from "@okouai/ui";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
@@ -174,7 +174,7 @@ function MailMessageHeader({
   draft,
 }: {
   readonly close: () => void;
-  readonly draft: ZeroMailDraft;
+  readonly draft: MailDraft;
 }) {
   const { t } = useTranslation();
   const active = draft.status === "draft";
@@ -273,7 +273,7 @@ function MailMessageHeader({
 function AttachmentSummary({
   attachment,
 }: {
-  readonly attachment: ZeroMailAttachment;
+  readonly attachment: MailAttachment;
 }) {
   return (
     <div className="inline-flex h-7 max-w-[240px] items-center gap-1.5 rounded-md border border-foreground/15 bg-background/80 px-1.5">
@@ -290,7 +290,7 @@ function MailAttachmentPreview({
   text$,
   url,
 }: {
-  readonly attachment: ZeroMailAttachment;
+  readonly attachment: MailAttachment;
   readonly text$?: TextPreviewComputed;
   readonly url: string | null | undefined;
 }) {
@@ -421,7 +421,7 @@ function MailDraftInlineImage({
   image,
   imageUrl,
 }: {
-  readonly image: ZeroMailInlineImage;
+  readonly image: MailInlineImage;
   readonly imageUrl: string | null | undefined;
 }) {
   const { t } = useTranslation();
@@ -899,7 +899,7 @@ function MailDraftRichMessage({
 }: {
   readonly inlineImages: readonly MailInlineImagePreview[] | null;
   readonly inlineImagesLoading: boolean;
-  readonly draft: ZeroMailDraft;
+  readonly draft: MailDraft;
   readonly signals: MailDraftSignals;
 }) {
   if (!draft.bodyHtml || typeof DOMParser === "undefined") {
@@ -947,7 +947,7 @@ function MailDraftMessage({
 }: {
   readonly inlineImages: readonly MailInlineImagePreview[] | null;
   readonly inlineImagesLoading: boolean;
-  readonly draft: ZeroMailDraft;
+  readonly draft: MailDraft;
   readonly signals: MailDraftSignals;
 }) {
   const { t } = useTranslation();
@@ -984,7 +984,7 @@ function MailDraftDetails({
   signals,
 }: {
   readonly close: () => void;
-  readonly draft: ZeroMailDraft;
+  readonly draft: MailDraft;
   readonly signals: MailDraftSignals;
 }) {
   const { t } = useTranslation();
@@ -1051,7 +1051,7 @@ function MailDraftDetail({
   signals,
   close,
 }: {
-  readonly draft: ZeroMailDraft;
+  readonly draft: MailDraft;
   readonly signals: MailDraftSignals;
   readonly close: () => void;
 }) {

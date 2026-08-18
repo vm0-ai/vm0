@@ -38,14 +38,14 @@ import type { SupportedRunModel } from "@okouai/api-contracts/contracts/model-pr
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { testSlackStateContract } from "@okouai/api-contracts/contracts/test-slack-state";
 import { integrationsAgentPhoneContract } from "@okouai/api-contracts/contracts/integrations-agentphone";
-import { zeroIntegrationsSlackContract } from "@okouai/api-contracts/contracts/zero-integrations-slack";
+import { integrationsSlackContract } from "@okouai/api-contracts/contracts/integrations-slack";
 import { zeroIntegrationsTelegramContract } from "@okouai/api-contracts/contracts/zero-integrations-telegram";
 import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
-import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
-import { zeroModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-model-providers";
+import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
+import { modelProvidersMainContract } from "@okouai/api-contracts/contracts/model-provider-routes";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { slackChannelsContract } from "@okouai/api-contracts/contracts/slack-channels";
-import { zeroSlackConnectContract } from "@okouai/api-contracts/contracts/zero-slack-connect";
+import { slackConnectContract } from "@okouai/api-contracts/contracts/slack-connect";
 import { slackOauthContract } from "@okouai/api-contracts/contracts/slack-oauth";
 import { userModelPreferenceContract } from "@okouai/api-contracts/contracts/user-model-preference";
 import { HttpResponse, http } from "msw";
@@ -648,24 +648,39 @@ export function createBddIntegrationApi(context: TestContext) {
     async requestGithubOauthInstall(
       query: GithubOauthInstallQuery,
       statuses: readonly (307 | 503)[],
+      publicBrand: PublicBrand = "vm0",
     ) {
       const client = setupApp({ context, routes: githubOauthRoutes })(
         githubOauthContract,
       );
-      return await accept(client.install({ query }), statuses);
+      return await accept(
+        client.install({
+          query,
+          ...(publicBrand === "okou"
+            ? { extraHeaders: { origin: "https://app.okou.ai" } }
+            : {}),
+        }),
+        statuses,
+      );
     },
 
     async requestGithubOauthConnect(
       actor: ApiTestUser | null,
       query: GithubOauthConnectQuery,
       statuses: readonly (307 | 401 | 503)[],
+      publicBrand: PublicBrand = "vm0",
     ) {
       const client = setupApp({ context, routes: githubOauthRoutes })(
         githubOauthContract,
       );
       return await accept(
         client.connect({
-          extraHeaders: extraHeaders(authenticate(context, routeMocks, actor)),
+          extraHeaders: {
+            ...extraHeaders(authenticate(context, routeMocks, actor)),
+            ...(publicBrand === "okou"
+              ? { origin: "https://app.okou.ai" }
+              : {}),
+          },
           query,
         }),
         statuses,
@@ -675,21 +690,39 @@ export function createBddIntegrationApi(context: TestContext) {
     async requestGithubOauthConnectCallback(
       query: GithubOauthConnectCallbackQuery,
       statuses: readonly 307[],
+      publicBrand: PublicBrand = "vm0",
     ) {
       const client = setupApp({ context, routes: githubOauthRoutes })(
         githubOauthContract,
       );
-      return await accept(client.connectCallback({ query }), statuses);
+      return await accept(
+        client.connectCallback({
+          query,
+          ...(publicBrand === "okou"
+            ? { extraHeaders: { origin: "https://app.okou.ai" } }
+            : {}),
+        }),
+        statuses,
+      );
     },
 
     async requestGithubAppSetupCallback(
       query: GithubAppSetupCallbackQuery,
       statuses: readonly 307[],
+      publicBrand: PublicBrand = "vm0",
     ) {
       const client = setupApp({ context, routes: githubOauthRoutes })(
         githubOauthContract,
       );
-      return await accept(client.setupCallback({ query }), statuses);
+      return await accept(
+        client.setupCallback({
+          query,
+          ...(publicBrand === "okou"
+            ? { extraHeaders: { origin: "https://app.okou.ai" } }
+            : {}),
+        }),
+        statuses,
+      );
     },
 
     async requestSlackDisconnect(
@@ -698,7 +731,7 @@ export function createBddIntegrationApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
       const client = setupApp({ context, routes: integrationsSlackRoutes })(
-        zeroIntegrationsSlackContract,
+        integrationsSlackContract,
       );
       return await accept(
         client.disconnect({
@@ -714,7 +747,7 @@ export function createBddIntegrationApi(context: TestContext) {
       statuses: readonly (200 | 401)[],
     ) {
       const client = setupApp({ context, routes: integrationsSlackRoutes })(
-        zeroIntegrationsSlackContract,
+        integrationsSlackContract,
       );
       return await accept(
         client.getStatus({
@@ -829,7 +862,7 @@ export function createBddIntegrationApi(context: TestContext) {
       statuses: readonly (200 | 401)[],
     ) {
       const client = setupApp({ context, routes: slackConnectRoutes })(
-        zeroSlackConnectContract,
+        slackConnectContract,
       );
       return await accept(
         client.getStatus({
@@ -845,7 +878,7 @@ export function createBddIntegrationApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       const client = setupApp({ context, routes: slackConnectRoutes })(
-        zeroSlackConnectContract,
+        slackConnectContract,
       );
       return await accept(
         client.connect({
@@ -1069,7 +1102,7 @@ export function createBddIntegrationApi(context: TestContext) {
       body: SlackConnectBody,
     ): Promise<void> {
       const client = setupApp({ context, routes: slackConnectRoutes })(
-        zeroSlackConnectContract,
+        slackConnectContract,
       );
       await accept(
         client.connect({
@@ -1209,7 +1242,7 @@ export function createBddIntegrationApi(context: TestContext) {
 
     async configureSlackRunModelPolicies(actor: ApiTestUser): Promise<void> {
       const providers = setupApp({ context, routes: zeroModelProvidersRoutes })(
-        zeroModelProvidersMainContract,
+        modelProvidersMainContract,
       );
       const anthropic = await accept(
         providers.upsert({
@@ -1227,7 +1260,7 @@ export function createBddIntegrationApi(context: TestContext) {
       );
       await accept(
         setupApp({ context, routes: modelPoliciesRoutes })(
-          zeroModelPoliciesMainContract,
+          modelPoliciesMainContract,
         ).update({
           headers: authenticate(context, routeMocks, actor),
           body: {

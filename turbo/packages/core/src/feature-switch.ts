@@ -306,6 +306,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Let the chat composer model picker choose the default built-in image model for a chat thread.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.PiLoop]: {
     maintainer: "ethan@vm0.ai",
@@ -386,6 +387,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ChatMarkUnread]: {
+    maintainer: "yuma@vm0.ai",
+    description: "Show the Mark unread action in the chat thread sidebar menu.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ChatQuoteOnlyFeedback]: {
     maintainer: "bingjie@vm0.ai",
     description:
@@ -404,6 +411,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Smoothly follow new chat content after the thread's initial scroll position is committed.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ChatInlineThinkingBlocks]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Render model thinking as independently collapsible blocks in transcript order.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroOrgMembershipRequestsContract } from "@okouai/api-contracts/contracts/zero-org-members";
+import { orgMembershipRequestsContract } from "@okouai/api-contracts/contracts/org-member-routes";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -30,8 +30,8 @@ const clerkFailed = Object.freeze({
   }),
 });
 
-const acceptBody$ = bodyResultOf(zeroOrgMembershipRequestsContract.accept);
-const rejectBody$ = bodyResultOf(zeroOrgMembershipRequestsContract.reject);
+const acceptBody$ = bodyResultOf(orgMembershipRequestsContract.accept);
+const rejectBody$ = bodyResultOf(orgMembershipRequestsContract.reject);
 
 const acceptInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
@@ -97,14 +97,14 @@ const rejectInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 export const orgMembershipRequestsRoutes: readonly RouteEntry[] = [
   {
-    route: zeroOrgMembershipRequestsContract.accept,
+    route: orgMembershipRequestsContract.accept,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       acceptInner$,
     ),
   },
   {
-    route: zeroOrgMembershipRequestsContract.reject,
+    route: orgMembershipRequestsContract.reject,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       rejectInner$,

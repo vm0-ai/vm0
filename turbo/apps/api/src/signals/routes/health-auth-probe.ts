@@ -7,7 +7,7 @@ import {
   setAuthContext$,
   type AuthErrorResponse,
 } from "../auth/auth-context";
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
+import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import type { AuthContext, AuthTokenType } from "../../types/auth";
 import type { RouteEntry } from "../route-entry";
 import { rawQuery$ } from "../context/hono";
@@ -50,7 +50,7 @@ const probe$ = command(
     const query = get(rawQuery$);
 
     const options: {
-      requiredCapability?: ZeroCapability;
+      requiredCapability?: Capability;
       acceptAnySandboxCapability?: boolean;
       accept?: readonly AuthTokenType[];
     } = {};
@@ -59,7 +59,7 @@ const probe$ = command(
       options.acceptAnySandboxCapability = true;
     }
     if (query.requiredCapability) {
-      options.requiredCapability = query.requiredCapability as ZeroCapability;
+      options.requiredCapability = query.requiredCapability as Capability;
     }
     if (query.accept) {
       options.accept = query.accept.split(",") as AuthTokenType[];

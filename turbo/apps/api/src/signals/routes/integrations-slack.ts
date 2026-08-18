@@ -4,8 +4,8 @@ import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { z } from "zod";
 import {
   slackOrgStatusSchema,
-  zeroIntegrationsSlackContract,
-} from "@okouai/api-contracts/contracts/zero-integrations-slack";
+  integrationsSlackContract,
+} from "@okouai/api-contracts/contracts/integrations-slack";
 import { guaranteedConnectorProvidedBindingNames } from "@okouai/api-contracts/contracts/connector-schemas";
 import { authHeadersSchema } from "@okouai/api-contracts/contracts/base";
 import { apiErrorSchema } from "@okouai/api-contracts/contracts/errors";
@@ -28,10 +28,10 @@ import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
 import { publicBrand$ } from "../context/hono";
 import {
-  zeroSlackOrgInstallation,
-  zeroSlackOrgStatus,
-} from "../services/zero-slack-data.service";
-import { publishSlackAdminSignal$ } from "../services/zero-slack-connect.service";
+  slackOrgInstallation,
+  slackOrgStatus,
+} from "../services/slack-data.service";
+import { publishSlackAdminSignal$ } from "../services/slack-connect.service";
 import { getFileInfo, isSlackApiClientError } from "../../lib/slack-client";
 import {
   fetchSlackFile,
@@ -178,7 +178,7 @@ const getSlackStatusInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const publicBrand = get(publicBrand$);
   const status = await get(
-    zeroSlackOrgStatus({
+    slackOrgStatus({
       orgId: auth.orgId,
       userId: auth.userId,
       orgRole: auth.orgRole,
@@ -322,7 +322,7 @@ function buildUninstalledAppHomeView(publicBrand: PublicBrand): SlackView {
 }
 
 const deleteSlackIntegrationQuery$ = queryOf(
-  zeroIntegrationsSlackContract.disconnect,
+  integrationsSlackContract.disconnect,
 );
 
 function decryptSlackInstallationToken(args: {
@@ -628,7 +628,7 @@ const getSlackDownloadFileInner$ = computed(async (get) => {
   }
 
   const installation = await get(
-    zeroSlackOrgInstallation({ orgId: auth.orgId, userId: auth.userId }),
+    slackOrgInstallation({ orgId: auth.orgId, userId: auth.userId }),
   );
   if (!installation) {
     return jsonErrorResponse(
@@ -715,11 +715,11 @@ const slackDownloadAuth = {
 
 export const integrationsSlackRoutes: readonly RouteEntry[] = [
   {
-    route: zeroIntegrationsSlackContract.getStatus,
+    route: integrationsSlackContract.getStatus,
     handler: authRoute(slackReadAuth, getSlackStatusInner$),
   },
   {
-    route: zeroIntegrationsSlackContract.disconnect,
+    route: integrationsSlackContract.disconnect,
     handler: authRoute(slackReadAuth, deleteSlackIntegration$),
   },
   {

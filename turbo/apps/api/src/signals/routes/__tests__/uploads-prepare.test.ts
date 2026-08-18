@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { createStore } from "ccstate";
 import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 
-import { zeroUploadsContract } from "@okouai/api-contracts/contracts/zero-uploads";
+import { uploadsContract } from "@okouai/api-contracts/contracts/uploads";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -22,7 +22,7 @@ import { uploadsCompleteRoutes } from "../uploads-complete";
 import { uploadsMultipartRoutes } from "../uploads-multipart";
 import { uploadsPrepareRoutes } from "../uploads-prepare";
 
-const zeroUploadsTestRoutes = Object.freeze([
+const uploadsTestRoutes = Object.freeze([
   ...uploadsCompleteRoutes,
   ...uploadsMultipartRoutes,
   ...uploadsPrepareRoutes,
@@ -47,8 +47,8 @@ function validBody() {
 
 describe("POST /api/zero/uploads/prepare", () => {
   it("returns 401 when unauthenticated", async () => {
-    const client = setupApp({ context, routes: zeroUploadsTestRoutes })(
-      zeroUploadsContract,
+    const client = setupApp({ context, routes: uploadsTestRoutes })(
+      uploadsContract,
     );
     const response = await accept(
       client.prepare({ body: validBody(), headers: {} }),
@@ -73,8 +73,8 @@ describe("POST /api/zero/uploads/prepare", () => {
       exp: seconds + 60,
     });
 
-    const client = setupApp({ context, routes: zeroUploadsTestRoutes })(
-      zeroUploadsContract,
+    const client = setupApp({ context, routes: uploadsTestRoutes })(
+      uploadsContract,
     );
     const response = await client.prepare({
       body: validBody(),
@@ -96,8 +96,8 @@ describe("POST /api/zero/uploads/prepare", () => {
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context, routes: zeroUploadsTestRoutes })(
-      zeroUploadsContract,
+    const client = setupApp({ context, routes: uploadsTestRoutes })(
+      uploadsContract,
     );
     const response = await accept(
       client.prepare({
@@ -114,8 +114,8 @@ describe("POST /api/zero/uploads/prepare", () => {
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context, routes: zeroUploadsTestRoutes })(
-      zeroUploadsContract,
+    const client = setupApp({ context, routes: uploadsTestRoutes })(
+      uploadsContract,
     );
     const response = await accept(
       client.prepare({
@@ -136,8 +136,8 @@ describe("POST /api/zero/uploads/prepare", () => {
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context, routes: zeroUploadsTestRoutes })(
-      zeroUploadsContract,
+    const client = setupApp({ context, routes: uploadsTestRoutes })(
+      uploadsContract,
     );
     const response = await client.prepare({
       body: {
@@ -164,8 +164,8 @@ describe("POST /api/zero/uploads/prepare", () => {
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context, routes: zeroUploadsTestRoutes })(
-      zeroUploadsContract,
+    const client = setupApp({ context, routes: uploadsTestRoutes })(
+      uploadsContract,
     );
     const response = await client.prepare({
       body: validBody(),
@@ -199,8 +199,8 @@ describe("POST /api/zero/uploads/prepare", () => {
     const orgId = `org_${randomUUID()}`;
     const peer = { userId: `user_${randomUUID()}`, orgId };
     mocks.clerk.session(peer.userId, peer.orgId);
-    const client = setupApp({ context, routes: zeroUploadsTestRoutes })(
-      zeroUploadsContract,
+    const client = setupApp({ context, routes: uploadsTestRoutes })(
+      uploadsContract,
     );
     const response = await client.prepare({
       body: {
@@ -275,8 +275,8 @@ describe("POST /api/zero/uploads/prepare", () => {
       return Promise.resolve({});
     });
 
-    const response = await setupApp({ context, routes: zeroUploadsTestRoutes })(
-      zeroUploadsContract,
+    const response = await setupApp({ context, routes: uploadsTestRoutes })(
+      uploadsContract,
     ).prepare({
       body: validBody(),
       headers: { authorization: "Bearer clerk-session" },
@@ -307,8 +307,8 @@ describe("POST /api/zero/uploads/prepare", () => {
     });
     mocks.clerk.session(actor.userId, actor.orgId);
 
-    const client = setupApp({ context, routes: zeroUploadsTestRoutes })(
-      zeroUploadsContract,
+    const client = setupApp({ context, routes: uploadsTestRoutes })(
+      uploadsContract,
     );
     const response = await accept(
       client.prepare({
@@ -327,8 +327,8 @@ describe("POST /api/zero/uploads/prepare", () => {
     context.mocks.s3.getSignedUrl.mockResolvedValue(
       "https://r2.example.com/upload?sig=staff-entitlement",
     );
-    const client = setupApp({ context, routes: zeroUploadsTestRoutes })(
-      zeroUploadsContract,
+    const client = setupApp({ context, routes: uploadsTestRoutes })(
+      uploadsContract,
     );
     mocks.clerk.session(userId, orgId);
     onTestFinished(async () => {
@@ -379,8 +379,8 @@ describe("POST /api/zero/uploads/prepare", () => {
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context, routes: zeroUploadsTestRoutes })(
-      zeroUploadsContract,
+    const client = setupApp({ context, routes: uploadsTestRoutes })(
+      uploadsContract,
     );
     const response = await client.prepare({
       body: {
@@ -409,8 +409,8 @@ describe("POST /api/zero/uploads/prepare", () => {
     mockEnv("S3_ENDPOINT", "http://internal-s3.example.com");
     mockEnv("S3_PUBLIC_ENDPOINT", "http://public-s3.example.com");
 
-    const client = setupApp({ context, routes: zeroUploadsTestRoutes })(
-      zeroUploadsContract,
+    const client = setupApp({ context, routes: uploadsTestRoutes })(
+      uploadsContract,
     );
     const response = await client.prepare({
       body: validBody(),
@@ -441,8 +441,8 @@ describe("POST /api/zero/uploads/prepare", () => {
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context, routes: zeroUploadsTestRoutes })(
-      zeroUploadsContract,
+    const client = setupApp({ context, routes: uploadsTestRoutes })(
+      uploadsContract,
     );
     await client.prepare({
       body: {
@@ -539,8 +539,8 @@ describe("POST /api/zero/uploads/prepare", () => {
       { filename: "book.epub", contentType: "application/epub+zip" },
     ] as const;
 
-    const client = setupApp({ context, routes: zeroUploadsTestRoutes })(
-      zeroUploadsContract,
+    const client = setupApp({ context, routes: uploadsTestRoutes })(
+      uploadsContract,
     );
     for (const { filename, contentType } of cases) {
       const response = await client.prepare({
@@ -569,8 +569,8 @@ describe("POST /api/zero/uploads/prepare", () => {
       exp: seconds + 60,
     });
 
-    const client = setupApp({ context, routes: zeroUploadsTestRoutes })(
-      zeroUploadsContract,
+    const client = setupApp({ context, routes: uploadsTestRoutes })(
+      uploadsContract,
     );
     const response = await accept(
       client.prepare({

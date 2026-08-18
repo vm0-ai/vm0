@@ -4,7 +4,7 @@ import type {
   HostedSiteCompleteResponse,
   HostedSiteDeploymentsResponse,
   HostedSiteFilesResponse,
-} from "@okouai/api-contracts/contracts/zero-host";
+} from "@okouai/api-contracts/contracts/host";
 import { ApiRequestError, getBaseUrl } from "../core/client-factory";
 import { getActiveToken } from "../config";
 import { headersWithCliClientHeaders } from "../client-headers";

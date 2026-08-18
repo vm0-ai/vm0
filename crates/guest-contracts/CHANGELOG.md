@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.11.11](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.10...guest-contracts-v0.11.11) (2026-08-18)
+
+
+### Documentation
+
+* **rust:** align pi launch contract docs with schema v2 ([#27851](https://github.com/vm0-ai/vm0/issues/27851)) ([b42e81c](https://github.com/vm0-ai/vm0/commit/b42e81ca8080bbffc3d2d79a4566b8b2d766eceb))
+
+
+### Refactoring
+
+* **rust:** neutralize session-history identity type names ([#27895](https://github.com/vm0-ai/vm0/issues/27895)) ([fff9b30](https://github.com/vm0-ai/vm0/commit/fff9b3074cc4e590b2fdb4318da515fcc4605a70))
+
 ## [0.11.10](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.9...guest-contracts-v0.11.10) (2026-08-17)
 
 

@@ -249,11 +249,10 @@ impl DisconnectOutcome {
 
 impl Drop for DisconnectOutcome {
     fn drop(&mut self) {
-        if let Some(Err(e)) = self.result.take() {
-            tracing::warn!(
-                device_index = self.device_index,
-                error = %e,
-                "detached NBD disconnect failed"
+        if let Some(result) = self.result.as_ref() {
+            observe_detached_disconnect_result(
+                self.device_index,
+                DetachedDisconnectResult::Unconditional(result),
             );
         }
     }
@@ -276,13 +275,15 @@ pub(super) async fn disconnect_device_with_lease_critical_section(
 }
 
 pub(super) struct OwnedDisconnectResultOutcome {
+    device_index: u32,
     lease: DeferredLease,
     result: Option<Result<OwnedDisconnectState>>,
 }
 
 impl OwnedDisconnectResultOutcome {
-    fn new(lease: DeferredLease, result: Result<OwnedDisconnectState>) -> Self {
+    fn new(device_index: u32, lease: DeferredLease, result: Result<OwnedDisconnectState>) -> Self {
         Self {
+            device_index,
             lease,
             result: Some(result),
         }
@@ -305,6 +306,17 @@ impl OwnedDisconnectResultOutcome {
     }
 }
 
+impl Drop for OwnedDisconnectResultOutcome {
+    fn drop(&mut self) {
+        if let Some(result) = self.result.as_ref() {
+            observe_detached_disconnect_result(
+                self.device_index,
+                DetachedDisconnectResult::Owned(result),
+            );
+        }
+    }
+}
+
 pub(super) async fn disconnect_connected_if_owned_result_critical_section(
     connected: ConnectedDevice,
 ) -> Result<OwnedDisconnectState> {
@@ -322,6 +334,7 @@ pub(super) async fn disconnect_connected_if_owned_result_with_lease_critical_sec
     let deferred_lease = DeferredLease::new(pool, lease);
     run_netlink_critical_section("owned NBD disconnect", move || {
         OwnedDisconnectResultOutcome::new(
+            connected.index,
             deferred_lease,
             disconnect_connected_if_owned_result_with(
                 connected,
@@ -352,6 +365,33 @@ pub(super) struct ConnectedDevice {
 pub(super) enum OwnedDisconnectState {
     Disconnected,
     Foreign(u32),
+}
+
+enum DetachedDisconnectResult<'a> {
+    Unconditional(&'a Result<()>),
+    Owned(&'a Result<OwnedDisconnectState>),
+}
+
+fn observe_detached_disconnect_result(device_index: u32, result: DetachedDisconnectResult<'_>) {
+    match result {
+        DetachedDisconnectResult::Unconditional(Err(e))
+        | DetachedDisconnectResult::Owned(Err(e)) => {
+            tracing::warn!(
+                device_index,
+                error = %e,
+                "detached NBD disconnect failed"
+            );
+        }
+        DetachedDisconnectResult::Owned(Ok(OwnedDisconnectState::Foreign(pid))) => {
+            tracing::warn!(
+                device_index,
+                foreign_pid = pid,
+                "detached owned NBD disconnect skipped: device recycled by another process"
+            );
+        }
+        DetachedDisconnectResult::Unconditional(Ok(()))
+        | DetachedDisconnectResult::Owned(Ok(OwnedDisconnectState::Disconnected)) => {}
+    }
 }
 
 pub(super) fn device_ownership(device_index: u32, connect_tid: u32) -> DeviceOwnership {
@@ -458,6 +498,206 @@ pub fn is_our_thread(tid: u32) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tracing::Level;
+    use tracing_subscriber::prelude::*;
+    use tracing_test_support::{CapturedEvent, CapturedEvents};
+
+    const TEST_DEVICE_INDEX: u32 = 0;
+
+    async fn acquired_test_lease() -> (pool::DevicePoolHandle, pool::DeviceLease, tempfile::TempDir)
+    {
+        let lock_dir = tempfile::tempdir().unwrap();
+        let pool = pool::DevicePoolHandle::new_one_device_for_test(
+            pool::DevicePoolConfig {
+                cooldown: Duration::MAX,
+            },
+            lock_dir.path(),
+        );
+        let (lease, _, _) = pool.acquire().await.unwrap().into_parts();
+        assert_eq!(lease.index(), TEST_DEVICE_INDEX);
+        (pool, lease, lock_dir)
+    }
+
+    fn capture_events<T>(action: impl FnOnce() -> T) -> (T, CapturedEvents) {
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let result = tracing::subscriber::with_default(subscriber, action);
+        (result, captured)
+    }
+
+    fn event_with_message(captured: &CapturedEvents, message: &str) -> CapturedEvent {
+        let entries = captured.entries();
+        let mut matching = entries
+            .iter()
+            .filter(|event| event.fields.get("message").map(String::as_str) == Some(message));
+        let event = matching.next().expect("expected detached disconnect event");
+        assert!(
+            matching.next().is_none(),
+            "duplicate detached disconnect events: {entries:#?}"
+        );
+        event.clone()
+    }
+
+    fn assert_no_detached_disconnect_events(captured: &CapturedEvents) {
+        let entries = captured.entries();
+        assert!(
+            entries.iter().all(|event| {
+                !event
+                    .fields
+                    .get("message")
+                    .is_some_and(|message| message.contains("detached") && message.contains("NBD"))
+            }),
+            "unexpected detached disconnect events: {entries:#?}"
+        );
+    }
+
+    async fn assert_single_lease_returned(pool: &pool::DevicePoolHandle) {
+        let snapshot = pool.snapshot().await;
+        assert!(snapshot.in_flight.is_empty());
+        assert_eq!(snapshot.cooldown, vec![TEST_DEVICE_INDEX]);
+        pool.cleanup().await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn dropped_unconditional_disconnect_error_is_observed() {
+        let (pool, lease, _lock_dir) = acquired_test_lease().await;
+        let outcome = DisconnectOutcome::with_lease(
+            TEST_DEVICE_INDEX,
+            DeferredLease::new(pool.clone(), lease),
+            Err(error::NbdCowError::Io(std::io::Error::other(
+                "unconditional disconnect failed",
+            ))),
+        );
+
+        let ((), captured) = capture_events(|| drop(outcome));
+
+        let event = event_with_message(&captured, "detached NBD disconnect failed");
+        assert_eq!(event.level, Level::WARN);
+        assert_eq!(
+            event.fields.get("device_index").map(String::as_str),
+            Some("0")
+        );
+        assert_eq!(
+            event.fields.get("error").map(String::as_str),
+            Some("I/O error: unconditional disconnect failed")
+        );
+        assert_single_lease_returned(&pool).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn dropped_owned_disconnect_error_is_observed() {
+        let (pool, lease, _lock_dir) = acquired_test_lease().await;
+        let outcome = OwnedDisconnectResultOutcome::new(
+            TEST_DEVICE_INDEX,
+            DeferredLease::new(pool.clone(), lease),
+            Err(error::NbdCowError::Io(std::io::Error::other(
+                "owned disconnect failed",
+            ))),
+        );
+
+        let ((), captured) = capture_events(|| drop(outcome));
+
+        let event = event_with_message(&captured, "detached NBD disconnect failed");
+        assert_eq!(event.level, Level::WARN);
+        assert_eq!(
+            event.fields.get("device_index").map(String::as_str),
+            Some("0")
+        );
+        assert_eq!(
+            event.fields.get("error").map(String::as_str),
+            Some("I/O error: owned disconnect failed")
+        );
+        assert_single_lease_returned(&pool).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn dropped_owned_foreign_disconnect_is_observed() {
+        let (pool, lease, _lock_dir) = acquired_test_lease().await;
+        let outcome = OwnedDisconnectResultOutcome::new(
+            TEST_DEVICE_INDEX,
+            DeferredLease::new(pool.clone(), lease),
+            Ok(OwnedDisconnectState::Foreign(41)),
+        );
+
+        let ((), captured) = capture_events(|| drop(outcome));
+
+        let event = event_with_message(
+            &captured,
+            "detached owned NBD disconnect skipped: device recycled by another process",
+        );
+        assert_eq!(event.level, Level::WARN);
+        assert_eq!(
+            event.fields.get("device_index").map(String::as_str),
+            Some("0")
+        );
+        assert_eq!(
+            event.fields.get("foreign_pid").map(String::as_str),
+            Some("41")
+        );
+        assert_single_lease_returned(&pool).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn successful_and_consumed_disconnect_outcomes_are_not_observed() {
+        let (unconditional_pool, unconditional_lease, _unconditional_lock_dir) =
+            acquired_test_lease().await;
+        let (owned_pool, owned_lease, _owned_lock_dir) = acquired_test_lease().await;
+        let (consumed_unconditional_pool, consumed_unconditional_lease, _consumed_lock_dir) =
+            acquired_test_lease().await;
+        let (consumed_owned_pool, consumed_owned_lease, _consumed_owned_lock_dir) =
+            acquired_test_lease().await;
+
+        let (consumed, captured) = capture_events(|| {
+            drop(DisconnectOutcome::with_lease(
+                TEST_DEVICE_INDEX,
+                DeferredLease::new(unconditional_pool.clone(), unconditional_lease),
+                Ok(()),
+            ));
+            drop(OwnedDisconnectResultOutcome::new(
+                TEST_DEVICE_INDEX,
+                DeferredLease::new(owned_pool.clone(), owned_lease),
+                Ok(OwnedDisconnectState::Disconnected),
+            ));
+
+            let unconditional = DisconnectOutcome::with_lease(
+                TEST_DEVICE_INDEX,
+                DeferredLease::new(
+                    consumed_unconditional_pool.clone(),
+                    consumed_unconditional_lease,
+                ),
+                Err(error::NbdCowError::Io(std::io::Error::other(
+                    "consumed unconditional error",
+                ))),
+            )
+            .into_parts()
+            .unwrap();
+            let owned = OwnedDisconnectResultOutcome::new(
+                TEST_DEVICE_INDEX,
+                DeferredLease::new(consumed_owned_pool.clone(), consumed_owned_lease),
+                Ok(OwnedDisconnectState::Foreign(42)),
+            )
+            .into_parts()
+            .unwrap();
+            (unconditional, owned)
+        });
+
+        assert_no_detached_disconnect_events(&captured);
+        let ((unconditional_lease, unconditional_result), (owned_lease, owned_result)) = consumed;
+        assert!(unconditional_result.is_err());
+        assert!(matches!(
+            owned_result,
+            Ok(OwnedDisconnectState::Foreign(42))
+        ));
+        consumed_unconditional_pool
+            .release_clean(unconditional_lease)
+            .await;
+        consumed_owned_pool.release_clean(owned_lease).await;
+
+        assert_single_lease_returned(&unconditional_pool).await;
+        assert_single_lease_returned(&owned_pool).await;
+        assert_single_lease_returned(&consumed_unconditional_pool).await;
+        assert_single_lease_returned(&consumed_owned_pool).await;
+    }
 
     #[tokio::test(flavor = "current_thread")]
     async fn netlink_critical_section_current_thread_runtime_runs() {

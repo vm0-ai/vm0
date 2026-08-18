@@ -16,12 +16,13 @@ import {
   verifyConnectorOpenIdAuthCallbackWithMethod,
   type ConnectorAuthProviderGrantResult,
 } from "@okouai/connectors/auth-providers";
+import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 
 import { request$, setResHeader$ } from "../context/hono";
 import { pathParamsOf, queryOf } from "../context/request";
 import { db$, writeDb$, type Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
-import { optionalEnv } from "../../lib/env";
+import { env, optionalEnv } from "../../lib/env";
 import {
   claimConnectorOAuthState,
   getConnectorOAuthStateStatus,
@@ -197,6 +198,21 @@ function missingStateRedirectResponse(
   );
 }
 
+function callbackOriginForStoredState(
+  origin: string,
+  state: Pick<StoredBuiltinOAuthState, "publicBrand" | "redirectUri">,
+): string {
+  if (state.publicBrand === "okou") {
+    return new URL(appUrlForPublicBrand(env("APP_URL"), "okou")).origin;
+  }
+  const configuredAppOrigin = new URL(env("APP_URL")).origin;
+  if (new URL(state.redirectUri).origin !== configuredAppOrigin) {
+    return origin;
+  }
+  return new URL(appUrlForPublicBrand(env("APP_URL"), state.publicBrand))
+    .origin;
+}
+
 async function exchangeTokenForConnector(args: {
   readonly resolvedMethod: ResolvedConnectorActionMethod;
   readonly code: string;
@@ -340,7 +356,10 @@ async function rejectInvalidStoredOAuthStateForCallback(
     readonly origin: string;
   },
   signal: AbortSignal,
-): Promise<Response | undefined> {
+): Promise<
+  | { readonly ok: true; readonly origin: string }
+  | { readonly ok: false; readonly response: Response }
+> {
   const status = await getConnectorOAuthStateStatus(
     args.db,
     {
@@ -350,10 +369,16 @@ async function rejectInvalidStoredOAuthStateForCallback(
     signal,
   );
   if (status.kind === "usable") {
-    return undefined;
+    return {
+      ok: true,
+      origin: callbackOriginForStoredState(args.origin, status),
+    };
   }
 
-  return invalidStateRedirectResponse(args.origin, args.connectorSlug);
+  return {
+    ok: false,
+    response: invalidStateRedirectResponse(args.origin, args.connectorSlug),
+  };
 }
 
 function invalidStoredAuthMethodResponse(
@@ -783,6 +808,10 @@ const handleOpenIdConnectorCallback$ = command(
     if (!claimedState.ok) {
       return claimedState.response;
     }
+    const callbackOrigin = callbackOriginForStoredState(
+      args.origin,
+      claimedState.storedState,
+    );
 
     const resolver = await get(
       connectorActionResolverForSnapshot(args.snapshot),
@@ -790,7 +819,7 @@ const handleOpenIdConnectorCallback$ = command(
     signal.throwIfAborted();
     const resolvedState = await resolveOpenIdCallbackState(
       {
-        origin: args.origin,
+        origin: callbackOrigin,
         connectorSlug: args.connectorSlug,
         storedState: claimedState.storedState,
         resolver,
@@ -812,7 +841,7 @@ const handleOpenIdConnectorCallback$ = command(
           identity: resolvedState.identity,
           agentId: resolvedState.agentId,
           authorizeAgent: resolvedState.authorizeAgent,
-          origin: args.origin,
+          origin: callbackOrigin,
           connectorSlug: args.connectorSlug,
         },
         signal,
@@ -825,7 +854,7 @@ const handleOpenIdConnectorCallback$ = command(
     }
 
     return redirectWithError(
-      args.origin,
+      callbackOrigin,
       args.connectorSlug,
       "OpenID authorization failed. Please try again.",
       true,
@@ -878,6 +907,73 @@ function storedOAuthStateCallbackArgs(
   };
 }
 
+async function authCodeProviderErrorResponse(
+  db: Db,
+  args: {
+    readonly connectorSlug: ConnectorSlug;
+    readonly query: ConnectorCallbackQuery;
+    readonly origin: string;
+  },
+  signal: AbortSignal,
+): Promise<Response> {
+  let callbackOrigin = args.origin;
+  if (args.query.state) {
+    const claimedState = await claimStoredOAuthStateForCallback(
+      {
+        ...storedOAuthStateCallbackArgs(db, args),
+        state: args.query.state,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (!claimedState.ok) {
+      return claimedState.response;
+    }
+    callbackOrigin = callbackOriginForStoredState(
+      args.origin,
+      claimedState.storedState,
+    );
+  }
+  return redirectWithError(
+    callbackOrigin,
+    args.connectorSlug,
+    args.query.error_description ||
+      args.query.error ||
+      "OAuth authorization failed",
+    true,
+  );
+}
+
+async function missingAuthCodeResponse(
+  db: Db,
+  args: {
+    readonly connectorSlug: ConnectorSlug;
+    readonly query: ConnectorCallbackQuery;
+    readonly origin: string;
+  },
+  signal: AbortSignal,
+): Promise<Response> {
+  let callbackOrigin = args.origin;
+  if (args.query.state) {
+    const stateStatus = await rejectInvalidStoredOAuthStateForCallback(
+      {
+        ...storedOAuthStateCallbackArgs(db, args),
+        state: args.query.state,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (!stateStatus.ok) {
+      return stateStatus.response;
+    }
+    callbackOrigin = stateStatus.origin;
+  }
+  return missingAuthorizationCodeRedirectResponse(
+    callbackOrigin,
+    args.connectorSlug,
+  );
+}
+
 const handleAuthCodeConnectorCallback$ = command(
   async (
     { get, set },
@@ -896,55 +992,14 @@ const handleAuthCodeConnectorCallback$ = command(
     }
 
     const state = args.query.state;
-    const storedStateCallbackArgs = storedOAuthStateCallbackArgs(
-      set(writeDb$),
-      args,
-    );
 
     if (args.query.error) {
-      if (state) {
-        const claimedState = await claimStoredOAuthStateForCallback(
-          {
-            ...storedStateCallbackArgs,
-            state,
-          },
-          signal,
-        );
-        signal.throwIfAborted();
-        if (!claimedState.ok) {
-          return claimedState.response;
-        }
-      }
-      return redirectWithError(
-        args.origin,
-        args.connectorSlug,
-        args.query.error_description ||
-          args.query.error ||
-          "OAuth authorization failed",
-        true,
-      );
+      return await authCodeProviderErrorResponse(set(writeDb$), args, signal);
     }
 
     const code = args.query.code ?? args.query.auth_code;
     if (!code) {
-      if (state) {
-        const invalidStateResponse =
-          await rejectInvalidStoredOAuthStateForCallback(
-            {
-              ...storedStateCallbackArgs,
-              state,
-            },
-            signal,
-          );
-        signal.throwIfAborted();
-        if (invalidStateResponse) {
-          return invalidStateResponse;
-        }
-      }
-      return missingAuthorizationCodeRedirectResponse(
-        args.origin,
-        args.connectorSlug,
-      );
+      return await missingAuthCodeResponse(set(writeDb$), args, signal);
     }
 
     if (!state) {
@@ -953,7 +1008,7 @@ const handleAuthCodeConnectorCallback$ = command(
 
     const claimedState = await claimStoredOAuthStateForCallback(
       {
-        ...storedStateCallbackArgs,
+        ...storedOAuthStateCallbackArgs(set(writeDb$), args),
         state,
       },
       signal,
@@ -962,6 +1017,10 @@ const handleAuthCodeConnectorCallback$ = command(
     if (!claimedState.ok) {
       return claimedState.response;
     }
+    const callbackOrigin = callbackOriginForStoredState(
+      args.origin,
+      claimedState.storedState,
+    );
 
     const resolver = await get(
       connectorActionResolverForSnapshot(args.snapshot),
@@ -969,7 +1028,7 @@ const handleAuthCodeConnectorCallback$ = command(
     signal.throwIfAborted();
     const resolvedState = await resolveCallbackState(
       {
-        origin: args.origin,
+        origin: callbackOrigin,
         connectorSlug: args.connectorSlug,
         storedState: claimedState.storedState,
         resolver,
@@ -997,7 +1056,7 @@ const handleAuthCodeConnectorCallback$ = command(
           identity: resolvedState.identity,
           agentId: resolvedState.agentId,
           authorizeAgent: resolvedState.authorizeAgent,
-          origin: args.origin,
+          origin: callbackOrigin,
           connectorSlug: args.connectorSlug,
         },
         signal,
@@ -1008,7 +1067,7 @@ const handleAuthCodeConnectorCallback$ = command(
     return (
       callbackResponse ??
       redirectWithError(
-        args.origin,
+        callbackOrigin,
         args.connectorSlug,
         "OAuth authorization failed. Please try again.",
         true,

@@ -3,6 +3,8 @@ import type {
   OrgRole,
 } from "@okouai/api-contracts/contracts/org-members";
 import type { UsagePackUsd } from "@okouai/api-contracts/contracts/zero-billing";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import {
   usagePackAllocations,
   usagePackInvitationPurchases,
@@ -93,6 +95,7 @@ interface PendingInvitationPurchaseArgs {
   readonly email: string;
   readonly role: OrgRole;
   readonly inviterUserId: string;
+  readonly publicBrand: PublicBrand;
   readonly usagePackUsd: UsagePackUsd;
   readonly stripePriceId: string;
   readonly preview: UsagePackAllocationAdditionPreview;
@@ -401,6 +404,7 @@ async function insertPendingInvitationPurchase(
         normalizedEmail: args.email,
         role: args.role,
         inviterUserId: args.inviterUserId,
+        publicBrand: args.publicBrand,
         usagePackUsd: args.usagePackUsd,
         stripePriceId: args.stripePriceId,
         currentPeriodStart: args.preview.currentPeriodStart,
@@ -427,6 +431,7 @@ async function reusablePendingInvitationPurchase(
     readonly email: string;
     readonly role: OrgRole;
     readonly inviterUserId: string;
+    readonly publicBrand: PublicBrand;
     readonly usagePackUsd: UsagePackUsd;
     readonly stripePriceId: string;
   },
@@ -444,6 +449,7 @@ async function reusablePendingInvitationPurchase(
         eq(usagePackInvitationPurchases.normalizedEmail, args.email),
         eq(usagePackInvitationPurchases.role, args.role),
         eq(usagePackInvitationPurchases.inviterUserId, args.inviterUserId),
+        eq(usagePackInvitationPurchases.publicBrand, args.publicBrand),
         eq(usagePackInvitationPurchases.usagePackUsd, args.usagePackUsd),
         eq(usagePackInvitationPurchases.stripePriceId, args.stripePriceId),
         eq(usagePackInvitationPurchases.status, "checkout_pending"),
@@ -480,6 +486,7 @@ async function prepareUsagePackInvitationPurchase(
   args: {
     readonly orgId: string;
     readonly inviterUserId: string;
+    readonly publicBrand: PublicBrand;
     readonly email: string;
     readonly role: OrgRole;
     readonly usagePackUsd: UsagePackUsd;
@@ -509,6 +516,7 @@ async function prepareUsagePackInvitationPurchase(
     email,
     role: args.role,
     inviterUserId: args.inviterUserId,
+    publicBrand: args.publicBrand,
     usagePackUsd: args.usagePackUsd,
     stripePriceId,
   });
@@ -572,6 +580,7 @@ async function prepareUsagePackInvitationPurchase(
     email,
     role: args.role,
     inviterUserId: args.inviterUserId,
+    publicBrand: args.publicBrand,
     usagePackUsd: args.usagePackUsd,
     stripePriceId,
     preview,
@@ -602,6 +611,7 @@ export async function createUsagePackInvitationPreview(
   args: {
     readonly orgId: string;
     readonly inviterUserId: string;
+    readonly publicBrand: PublicBrand;
     readonly email: string;
     readonly role: OrgRole;
     readonly usagePackUsd: UsagePackUsd;
@@ -935,7 +945,7 @@ async function ensurePaidInvitationCreated(
       emailAddress: purchase.normalizedEmail,
       inviterUserId: purchase.inviterUserId,
       role: purchase.role === "admin" ? "org:admin" : "org:member",
-      redirectUrl: env("APP_URL"),
+      redirectUrl: appUrlForPublicBrand(env("APP_URL"), purchase.publicBrand),
       expiresInDays: Math.max(
         1,
         Math.ceil(
