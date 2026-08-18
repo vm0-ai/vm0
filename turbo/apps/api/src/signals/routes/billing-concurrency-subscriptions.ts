@@ -3,6 +3,7 @@ import { zeroBillingConcurrencySubscriptionContract } from "@okouai/api-contract
 
 import { billingRedirectAllowed } from "../../lib/billing-redirect";
 import { optionalEnv } from "../../lib/env";
+import { nowDate } from "../../lib/time";
 import {
   badRequestMessage,
   conflict,
@@ -19,6 +20,14 @@ import {
   reduceConcurrencySubscription$,
   restoreConcurrencySubscription$,
 } from "../services/zero-billing-concurrency-subscription.service";
+import { getStripeClient } from "../external/stripe-client";
+import { parseBillingPaymentMethodPreviewToken } from "../services/billing-purchase-preview-token.service";
+import {
+  billingPurchasePreviewEnabled$,
+  revalidateBillingPurchase,
+  routeBillingPurchasePreview,
+  type BillingPurchasePaymentMethod,
+} from "../services/billing-payment-method.service";
 import type { RouteEntry } from "../route-entry";
 
 const adminRequired = Object.freeze({
@@ -45,6 +54,24 @@ const previewConcurrencySubscriptionChangeAuthed$ = command(
     signal.throwIfAborted();
     if (!bodyResult.ok) {
       return bodyResult.response;
+    }
+    const previewEnabled = await set(
+      billingPurchasePreviewEnabled$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        requested: bodyResult.data.supportsInAppPreview === true,
+      },
+      signal,
+    );
+    if (
+      previewEnabled &&
+      (!bodyResult.data.returnUrl ||
+        !billingRedirectAllowed(bodyResult.data.returnUrl))
+    ) {
+      return badRequestMessage(
+        "returnUrl must match the platform origin for in-app billing",
+      );
     }
     const { subscriptionId } = get(
       pathParamsOf(zeroBillingConcurrencySubscriptionContract.previewChange),
@@ -88,6 +115,33 @@ const previewConcurrencySubscriptionChangeAuthed$ = command(
       }
     }
 
+    if (previewEnabled && bodyResult.data.returnUrl) {
+      const route = await routeBillingPurchasePreview(
+        {
+          stripe: getStripeClient(),
+          orgId: auth.orgId,
+          customerId: null,
+          subscriptionId,
+          operation: "concurrency",
+          operationId: `${subscriptionId}:${bodyResult.data.quantity}`,
+          returnUrl: bodyResult.data.returnUrl,
+        },
+        signal,
+      );
+      if (route.kind === "checkout") {
+        return {
+          status: 200 as const,
+          body: { ...result.preview, checkoutUrl: route.url },
+        };
+      }
+      return {
+        status: 200 as const,
+        body: {
+          ...result.preview,
+          paymentMethodPreviewToken: route.paymentMethodPreviewToken,
+        },
+      };
+    }
     return { status: 200 as const, body: result.preview };
   },
 );
@@ -130,12 +184,56 @@ const confirmConcurrencySubscriptionChangeAuthed$ = command(
     const { subscriptionId } = get(
       pathParamsOf(zeroBillingConcurrencySubscriptionContract.confirmChange),
     );
+    let paymentMethod: BillingPurchasePaymentMethod | undefined;
+    if (bodyResult.data.paymentMethodPreviewToken) {
+      const preview = parseBillingPaymentMethodPreviewToken(
+        bodyResult.data.paymentMethodPreviewToken,
+      );
+      if (
+        !preview ||
+        preview.operation !== "concurrency" ||
+        preview.operationId !==
+          `${subscriptionId}:${bodyResult.data.quantity}` ||
+        preview.orgId !== auth.orgId ||
+        preview.subscriptionId !== subscriptionId ||
+        new Date(preview.expiresAt) <= nowDate()
+      ) {
+        return conflict("Concurrency change preview is no longer valid");
+      }
+      const revalidated = await revalidateBillingPurchase(
+        {
+          stripe: getStripeClient(),
+          orgId: auth.orgId,
+          customerId: preview.customerId,
+          subscriptionId,
+          paymentMethodId: preview.paymentMethodId,
+          operation: preview.operation,
+          operationId: preview.operationId,
+          returnUrl: preview.returnUrl,
+        },
+        signal,
+      );
+      if (revalidated.kind === "invalid_preview") {
+        return conflict("Concurrency change preview is no longer valid");
+      }
+      if (revalidated.kind === "checkout") {
+        return {
+          status: 200 as const,
+          body: {
+            status: "checkout_required" as const,
+            checkoutUrl: revalidated.url,
+          },
+        };
+      }
+      paymentMethod = revalidated;
+    }
     const result = await set(
       changeConcurrencySubscription$,
       {
         orgId: auth.orgId,
         subscriptionId,
         quantity: bodyResult.data.quantity,
+        paymentMethod,
       },
       signal,
     );

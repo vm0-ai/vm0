@@ -10,7 +10,7 @@ const stringOrStringArraySchema = z.union([
   z.array(z.string()).readonly(),
 ]);
 
-export const zeroVideoIoGenerateRequestSchema = z
+export const videoIoGenerateRequestSchema = z
   .object({
     prompt: z.string().optional(),
     model: z.string().optional(),
@@ -33,7 +33,7 @@ export const zeroVideoIoGenerateRequestSchema = z
   })
   .passthrough();
 
-export const zeroVideoIoGenerateResponseSchema = z.object({
+export const videoIoGenerateResponseSchema = z.object({
   id: z.string(),
   filename: z.string(),
   contentType: z.string(),
@@ -50,21 +50,21 @@ export const zeroVideoIoGenerateResponseSchema = z.object({
   requestId: z.string().optional(),
 });
 
-export type ZeroVideoIoGenerateRequest = z.infer<
-  typeof zeroVideoIoGenerateRequestSchema
+export type VideoIoGenerateRequest = z.infer<
+  typeof videoIoGenerateRequestSchema
 >;
-export type ZeroVideoIoGenerateResponse = z.infer<
-  typeof zeroVideoIoGenerateResponseSchema
+export type VideoIoGenerateResponse = z.infer<
+  typeof videoIoGenerateResponseSchema
 >;
 
-export const zeroVideoIoGenerateContract = c.router({
+export const videoIoGenerateContract = c.router({
   post: {
     method: "POST",
     path: "/api/okou/video-io/generate",
     headers: authHeadersSchema,
-    body: zeroVideoIoGenerateRequestSchema,
+    body: videoIoGenerateRequestSchema,
     responses: {
-      200: zeroVideoIoGenerateResponseSchema,
+      200: videoIoGenerateResponseSchema,
       202: builtInGenerationAcceptedResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
@@ -79,4 +79,4 @@ export const zeroVideoIoGenerateContract = c.router({
   },
 });
 
-export type ZeroVideoIoGenerateContract = typeof zeroVideoIoGenerateContract;
+export type VideoIoGenerateContract = typeof videoIoGenerateContract;

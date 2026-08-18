@@ -813,6 +813,7 @@
       "concurrentRun_other": "{{value}}개의 동시 실행",
       "continueToStripe": "Stripe로 계속",
       "decreaseAria": "추가 동시 실행 수 감소",
+      "dueNow": "지금 결제",
       "dueToday": "오늘 결제",
       "emptyDescription": "이 워크스페이스에 추가 동시 실행을 구매하세요.",
       "emptyTitle": "동시 실행 구독 없음",

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
-import { zeroImageIoGenerateContract } from "@okouai/api-contracts/contracts/zero-image-io-generate";
+import { imageIoGenerateContract } from "@okouai/api-contracts/contracts/image-io-generate";
 import type { BuiltInGenerationRealtimeSubscription } from "@okouai/api-contracts/contracts/built-in-generation";
 import { isImageModelId } from "@okouai/api-contracts/contracts/image-models";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
@@ -49,7 +49,7 @@ import {
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 
 const L = logger("ImageGeneration");
-const imageBody$ = bodyResultOf(zeroImageIoGenerateContract.post);
+const imageBody$ = bodyResultOf(imageIoGenerateContract.post);
 
 interface GenerationError {
   readonly message: string;
@@ -343,7 +343,7 @@ const postImageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 export const imageIoGenerateRoutes: readonly RouteEntry[] = [
   {
-    route: zeroImageIoGenerateContract.post,
+    route: imageIoGenerateContract.post,
     handler: authRoute(
       {
         requireOrganization: true,

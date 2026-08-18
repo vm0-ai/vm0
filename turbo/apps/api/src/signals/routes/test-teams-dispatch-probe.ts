@@ -10,7 +10,7 @@ import { request$ } from "../context/hono";
 import type { RouteEntry } from "../route-entry";
 import { safeJsonParse, settle } from "../utils";
 import { ApiDispatchTimingCollector } from "../services/api-dispatch-timing.service";
-import { dispatchTeamsMessageToAgent$ } from "../services/zero-teams-dispatch.service";
+import { dispatchTeamsMessageToAgent$ } from "../services/teams-dispatch.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,

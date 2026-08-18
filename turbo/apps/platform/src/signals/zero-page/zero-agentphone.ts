@@ -1,10 +1,10 @@
 import { command, computed, state } from "ccstate";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import {
-  zeroIntegrationsAgentPhoneContract,
+  integrationsAgentPhoneContract,
   type AgentPhoneLinkStatusResponse,
   type AgentPhoneStartLinkResponse,
-} from "@okouai/api-contracts/contracts/zero-integrations-agentphone";
+} from "@okouai/api-contracts/contracts/integrations-agentphone";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import { setAblyLoop$ } from "../realtime.ts";
@@ -110,7 +110,7 @@ export const setAgentPhoneShowPhoneError$ = command(
 export const agentPhoneLinkStatus$ = computed(
   async (get): Promise<AgentPhoneLinkStatusResponse> => {
     get(internalReload$);
-    const client = get(zeroClient$)(zeroIntegrationsAgentPhoneContract, {
+    const client = get(zeroClient$)(integrationsAgentPhoneContract, {
       apiBase: "api",
     });
     const result = await accept(client.getLinkStatus({ headers: {} }), [200]);
@@ -206,7 +206,7 @@ export const startAgentPhoneLink$ = command(
       );
     }
 
-    const client = get(zeroClient$)(zeroIntegrationsAgentPhoneContract, {
+    const client = get(zeroClient$)(integrationsAgentPhoneContract, {
       apiBase: "api",
     });
     await accept(
@@ -230,7 +230,7 @@ export const startAgentPhoneLink$ = command(
 
 export const disconnectAgentPhone$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    const client = get(zeroClient$)(zeroIntegrationsAgentPhoneContract, {
+    const client = get(zeroClient$)(integrationsAgentPhoneContract, {
       apiBase: "api",
     });
     await accept(

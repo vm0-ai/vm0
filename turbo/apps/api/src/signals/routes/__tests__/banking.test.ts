@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
-import { zeroBankingContract } from "@okouai/api-contracts/contracts/zero-banking";
+import { bankingContract } from "@okouai/api-contracts/contracts/banking";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { beforeEach } from "vitest";
@@ -209,7 +209,7 @@ describe("POST /api/zero/banking/*", () => {
     );
 
     const client = setupApp({ context, routes: bankingRoutes })(
-      zeroBankingContract,
+      bankingContract,
     );
     const response = await accept(
       client.accounts({
@@ -262,7 +262,7 @@ describe("POST /api/zero/banking/*", () => {
     );
 
     const client = setupApp({ context, routes: bankingRoutes })(
-      zeroBankingContract,
+      bankingContract,
     );
     const response = await accept(
       client.accounts({
@@ -318,7 +318,7 @@ describe("POST /api/zero/banking/*", () => {
     );
 
     const client = setupApp({ context, routes: bankingRoutes })(
-      zeroBankingContract,
+      bankingContract,
     );
     const response = await accept(
       client.balances({
@@ -366,7 +366,7 @@ describe("POST /api/zero/banking/*", () => {
     );
 
     const client = setupApp({ context, routes: bankingRoutes })(
-      zeroBankingContract,
+      bankingContract,
     );
     const response = await accept(
       client.balances({
@@ -410,7 +410,7 @@ describe("POST /api/zero/banking/*", () => {
     );
 
     const client = setupApp({ context, routes: bankingRoutes })(
-      zeroBankingContract,
+      bankingContract,
     );
     const response = await accept(
       client.accounts({
@@ -444,7 +444,7 @@ describe("POST /api/zero/banking/*", () => {
       );
 
       const client = setupApp({ context, routes: bankingRoutes })(
-        zeroBankingContract,
+        bankingContract,
       );
       const response = await accept(
         client.accounts({
@@ -486,7 +486,7 @@ describe("POST /api/zero/banking/*", () => {
       );
 
       const client = setupApp({ context, routes: bankingRoutes })(
-        zeroBankingContract,
+        bankingContract,
       );
       const response = await accept(
         client.accounts({
@@ -522,7 +522,7 @@ describe("POST /api/zero/banking/*", () => {
     );
 
     const client = setupApp({ context, routes: bankingRoutes })(
-      zeroBankingContract,
+      bankingContract,
     );
     const response = await accept(
       client.accounts({
@@ -575,7 +575,7 @@ describe("POST /api/zero/banking/*", () => {
     );
 
     const client = setupApp({ context, routes: bankingRoutes })(
-      zeroBankingContract,
+      bankingContract,
     );
     const response = await accept(
       client.transactions({

@@ -497,6 +497,11 @@ describe("organization members settings", () => {
       email: "paid.invitee@example.com",
       role: "member",
       usagePackUsd: 50,
+      supportsInAppPreview: true,
+      returnUrl: new URL(
+        window.location.pathname,
+        window.location.origin,
+      ).toString(),
     });
     expect(window.location.href).toBe(initialHref);
     click(buttonByText("Pay and invite", confirmationDialog));
@@ -512,6 +517,91 @@ describe("organization members settings", () => {
       within(rowByEmail("paid.invitee@example.com")).getByText("$50/month"),
     ).toBeInTheDocument();
     expect(window.location.href).toBe(initialHref);
+  });
+
+  it("clears a failed invitation purchase before its dialog reopens", async () => {
+    mockMembersStory();
+    mockMemberInviteEntitlement(true);
+    mockUsagePackManagement();
+    mockUsagePackCatalog();
+    let previewCount = 0;
+    context.mocks.api(
+      zeroOrgInviteContract.previewPurchase,
+      ({ body, respond }) => {
+        previewCount += 1;
+        return respond(200, {
+          purchaseId:
+            previewCount === 1
+              ? "c08a5fab-a05d-43f9-a1ee-10feaf27584c"
+              : "d19b6abc-b16e-54fa-b2ff-21afbf38695d",
+          usagePackUsd: body.usagePackUsd,
+          immediateAmountCents: 1000,
+          currency: "usd",
+          purchasedCredits: 10_000,
+          bonusCredits: 200,
+          totalCredits: 10_200,
+          currentPeriodEnd: "2026-09-01T00:00:00.000Z",
+          expiresAt: "2026-08-13T00:00:00.000Z",
+          paymentMethodPreviewToken: `invite-payment-token-${previewCount}`,
+        });
+      },
+    );
+    context.mocks.api(zeroOrgInviteContract.confirmPurchase, ({ respond }) => {
+      return respond(409, {
+        error: {
+          code: "CONFLICT",
+          message: "Invitation purchase preview is no longer valid",
+        },
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/?settings=people",
+      featureSwitches: {
+        [FeatureSwitchKey.UsagePackPlans]: true,
+        [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
+      },
+    });
+    await expect(screen.findByText("Usage pack")).resolves.toBeInTheDocument();
+
+    const openPurchase = async (email: string): Promise<HTMLElement> => {
+      click(buttonByText("Add member"));
+      const inviteDialog = await screen.findByRole("dialog", {
+        name: "Invite member",
+      });
+      await fill(
+        within(inviteDialog).getByPlaceholderText("email@example.com"),
+        email,
+      );
+      await expect(
+        within(inviteDialog).findByText("Member packages"),
+      ).resolves.toBeInTheDocument();
+      click(buttonByText("Continue", inviteDialog));
+      return await screen.findByRole("dialog", {
+        name: "Review invitation",
+      });
+    };
+
+    const firstDialog = await openPurchase("first@example.com");
+    click(buttonByText("Pay and invite", firstDialog));
+    await within(firstDialog).findByText(
+      "Could not purchase this member package. Review your billing details and try again.",
+    );
+    click(buttonByText("Cancel", firstDialog));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Review invitation" }),
+      ).not.toBeInTheDocument();
+    });
+
+    const reopenedDialog = await openPurchase("second@example.com");
+    expect(
+      within(reopenedDialog).queryByText(
+        "Could not purchase this member package. Review your billing details and try again.",
+      ),
+    ).not.toBeInTheDocument();
+    expect(previewCount).toBe(2);
   });
 
   it("opens the current plan package configuration from member actions", async () => {

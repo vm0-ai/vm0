@@ -15,6 +15,20 @@ import {
 
 const c = initContract();
 
+const invitationPurchaseConfirmResponseSchema = z.union([
+  orgMessageResponseSchema,
+  z.object({
+    status: z.literal("pending_payment"),
+    hostedInvoiceUrl: z.string().url(),
+    message: z.string().optional(),
+  }),
+  z.object({
+    status: z.literal("checkout_required"),
+    checkoutUrl: z.string().url(),
+    message: z.string().optional(),
+  }),
+]);
+
 /**
  * Zero contract for /api/okou/org/members
  * Proxies to /api/org/members
@@ -111,9 +125,11 @@ export const zeroOrgInviteContract = c.router({
     path: "/api/okou/org/invite/purchase/:purchaseId/confirm",
     pathParams: z.object({ purchaseId: z.uuid() }),
     headers: authHeadersSchema,
-    body: z.object({}),
+    body: z.object({
+      paymentMethodPreviewToken: z.string().min(1).optional(),
+    }),
     responses: {
-      200: orgMessageResponseSchema,
+      200: invitationPurchaseConfirmResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,

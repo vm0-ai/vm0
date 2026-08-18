@@ -3,20 +3,26 @@ import type { RouteEntry } from "../signals/route-entry";
 import { setupAppWithRoutes, setupRawAppRequestWithRoutes } from "./test-app";
 import type { TestContext } from "./test-context";
 
-interface SetupAppOptions {
+interface SetupRawAppOptions {
   readonly context: TestContext;
   readonly routes: readonly RouteEntry[];
   readonly signal?: AbortSignal;
+}
+
+interface SetupAppOptions extends SetupRawAppOptions {
+  readonly baseUrl?: string;
   readonly usagePricingResolution?: UsagePricingResolution;
 }
 
 export function setupApp({
+  baseUrl = "http://api.test",
   context,
   routes,
   signal,
   usagePricingResolution,
 }: SetupAppOptions) {
   return setupAppWithRoutes({
+    baseUrl,
     context,
     routes,
     signal,
@@ -32,6 +38,6 @@ export function setupRawAppRequest({
   context,
   routes,
   signal,
-}: SetupAppOptions) {
+}: SetupRawAppOptions) {
   return setupRawAppRequestWithRoutes({ context, routes, signal });
 }

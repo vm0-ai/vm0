@@ -1,6 +1,6 @@
 import { createHmac, randomUUID } from "node:crypto";
 
-import { zeroEmailInboundContract } from "@okouai/api-contracts/contracts/zero-email";
+import { emailInboundContract } from "@okouai/api-contracts/contracts/email";
 import {
   webhookBuiltInGenerationBytePlusContract,
   webhookBuiltInGenerationFalContract,
@@ -405,7 +405,7 @@ export function createWebhookCallbackApi(context: TestContext) {
     ) {
       return await accept(
         setupApp({ context, routes: emailInboundRoutes })(
-          zeroEmailInboundContract,
+          emailInboundContract,
         ).post({
           headers,
           body,

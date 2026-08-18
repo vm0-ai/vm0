@@ -836,9 +836,12 @@ function formatTierLabel(tier: BillingTier): string {
   return planName(tier);
 }
 
-function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
+function DowngradeConfirmDialogContent({
+  currentTier,
+}: {
+  currentTier: BillingTier;
+}) {
   const pageSignal = useGet(pageSignal$);
-  const open = useGet(downgradeDialogOpen$);
   const [downgradeLoadable, confirm] = useLoadableSet(confirmDowngrade$);
   const loading = downgradeLoadable.state === "loading";
   const error =
@@ -858,23 +861,28 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
   const proPlanPrice = getPlanPrice("pro");
   const freePlanPrice = getPlanPrice("free");
 
+  const confirmAndResetTarget = async (): Promise<void> => {
+    await confirm(downgradeTarget, pageSignal);
+    setLockedTarget(null);
+  };
+
   const handleConfirm = () => {
-    detach(confirm(downgradeTarget, pageSignal), Reason.DomCallback);
+    detach(confirmAndResetTarget(), Reason.DomCallback);
+  };
+
+  const handleClose = () => {
+    close();
+    setLockedTarget(null);
   };
 
   return (
     <Dialog
-      open={open}
+      open
       onOpenChange={(v) => {
         if (v) {
           return;
         }
-        close();
-      }}
-      onOpenChangeComplete={(v) => {
-        if (!v) {
-          setLockedTarget(null);
-        }
+        handleClose();
       }}
     >
       <DialogContent className="sm:max-w-[440px]">
@@ -970,7 +978,7 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
         {error && <p className="text-sm text-destructive mt-2">{error}</p>}
 
         <div className="flex justify-end gap-2 mt-4">
-          <Button variant="outline" onClick={close} disabled={loading}>
+          <Button variant="outline" onClick={handleClose} disabled={loading}>
             {i18n.t(($) => {
               return $.billing.common.cancel;
             })}
@@ -1002,7 +1010,17 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
   );
 }
 
-function RestorePlanConfirmDialog({
+function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
+  const open = useGet(downgradeDialogOpen$);
+
+  if (!open) {
+    return null;
+  }
+
+  return <DowngradeConfirmDialogContent currentTier={currentTier} />;
+}
+
+function RestorePlanConfirmDialogContent({
   currentTier,
   periodEnd,
   scheduledChange,
@@ -1012,7 +1030,6 @@ function RestorePlanConfirmDialog({
   scheduledChange: ScheduledBillingChange;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const open = useGet(restoreDialogOpen$);
   const close = useSet(closeRestoreDialog$);
   const [restoreLoadable, restore] = useLoadableSet(restorePlan$);
   const loading = restoreLoadable.state === "loading";
@@ -1051,7 +1068,7 @@ function RestorePlanConfirmDialog({
 
   return (
     <Dialog
-      open={open}
+      open
       onOpenChange={(v) => {
         return !v && close();
       }}
@@ -1095,6 +1112,30 @@ function RestorePlanConfirmDialog({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function RestorePlanConfirmDialog({
+  currentTier,
+  periodEnd,
+  scheduledChange,
+}: {
+  currentTier: BillingTier;
+  periodEnd: string | null | undefined;
+  scheduledChange: ScheduledBillingChange;
+}) {
+  const open = useGet(restoreDialogOpen$);
+
+  if (!open) {
+    return null;
+  }
+
+  return (
+    <RestorePlanConfirmDialogContent
+      currentTier={currentTier}
+      periodEnd={periodEnd}
+      scheduledChange={scheduledChange}
+    />
   );
 }
 

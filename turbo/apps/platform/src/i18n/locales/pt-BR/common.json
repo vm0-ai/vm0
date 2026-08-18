@@ -833,6 +833,7 @@
       "concurrentRun_other": "{{value}} execuções simultâneas",
       "continueToStripe": "Continuar para o Stripe",
       "decreaseAria": "Diminuir a quantidade adicional de simultaneidade",
+      "dueNow": "A pagar agora",
       "dueToday": "A pagar hoje",
       "emptyDescription": "Compre execuções simultâneas adicionais para este workspace.",
       "emptyTitle": "Nenhuma assinatura de simultaneidade",

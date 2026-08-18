@@ -1,7 +1,7 @@
 import {
-  zeroIntegrationsAgentPhoneContract,
+  integrationsAgentPhoneContract,
   type AgentPhoneLinkStatusResponse,
-} from "@okouai/api-contracts/contracts/zero-integrations-agentphone";
+} from "@okouai/api-contracts/contracts/integrations-agentphone";
 import { mockApi } from "../msw-contract.ts";
 
 let mockAgentPhoneStatus: AgentPhoneLinkStatusResponse = {
@@ -33,11 +33,11 @@ function isValidAgentPhoneHandle(value: string): boolean {
 }
 
 export const apiIntegrationsAgentPhoneHandlers = [
-  mockApi(zeroIntegrationsAgentPhoneContract.getLinkStatus, ({ respond }) => {
+  mockApi(integrationsAgentPhoneContract.getLinkStatus, ({ respond }) => {
     return respond(200, mockAgentPhoneStatus);
   }),
 
-  mockApi(zeroIntegrationsAgentPhoneContract.startLink, ({ body, respond }) => {
+  mockApi(integrationsAgentPhoneContract.startLink, ({ body, respond }) => {
     const phoneHandle = normalizeAgentPhoneHandle(body.phoneHandle);
     if (!isValidAgentPhoneHandle(phoneHandle)) {
       return respond(400, {
@@ -53,7 +53,7 @@ export const apiIntegrationsAgentPhoneHandlers = [
     });
   }),
 
-  mockApi(zeroIntegrationsAgentPhoneContract.unlink, ({ respond }) => {
+  mockApi(integrationsAgentPhoneContract.unlink, ({ respond }) => {
     mockAgentPhoneStatus = {
       linked: false,
       agentPhoneNumber: mockAgentPhoneStatus.agentPhoneNumber,

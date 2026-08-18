@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.458.1](https://github.com/vm0-ai/vm0/compare/api-v1.458.0...api-v1.458.1) (2026-08-18)
+
+
+### Refactoring
+
+* **api:** neutralize billing status and credit alert service naming ([#27865](https://github.com/vm0-ai/vm0/issues/27865)) ([30d7256](https://github.com/vm0-ai/vm0/commit/30d725650b5041f70353d4d5e1bb17e88e3054d6)), closes [#27861](https://github.com/vm0-ai/vm0/issues/27861)
+* **contracts:** neutralize teams oauth and bot contract naming ([#27866](https://github.com/vm0-ai/vm0/issues/27866)) ([e495706](https://github.com/vm0-ai/vm0/commit/e49570614d3e81d9c9c559d8f732262fb960dc26)), closes [#27855](https://github.com/vm0-ai/vm0/issues/27855)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.338.1
+    * @okouai/core bumped to 8.566.1
+    * @okouai/db bumped to 1.204.2
+
 ## [1.458.0](https://github.com/vm0-ai/vm0/compare/api-v1.457.5...api-v1.458.0) (2026-08-18)
 
 

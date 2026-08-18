@@ -22,7 +22,7 @@ import {
   feishuConnectStatus,
   removeFeishuInstallation$,
   updateFeishuInstallationAgent$,
-} from "../services/zero-feishu-connect.service";
+} from "../services/feishu-connect.service";
 
 function adminRequired() {
   return {
