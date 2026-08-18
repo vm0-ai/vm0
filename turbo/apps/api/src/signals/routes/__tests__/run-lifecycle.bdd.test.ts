@@ -14986,7 +14986,8 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       },
     ]);
 
-    // Codex item.completed batches persist only non-blank agent_message text.
+    // Codex item.completed batches persist non-blank reasoning and
+    // agent_message text as separate transcript events.
     await webhooks.requestAgentEvents(
       {
         runId,
@@ -14995,16 +14996,34 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
             type: "item.completed",
             sequenceNumber: 3,
             item: {
-              id: "item_bdd_3",
-              type: "agent_message",
-              text: "Codex follow-up note",
+              id: "reasoning_bdd_3",
+              type: "reasoning",
+              text: "Inspecting the event projection.\nComparing transcript order.",
             },
           },
           {
             type: "item.completed",
             sequenceNumber: 4,
             item: {
-              id: "cmd_bdd_4",
+              id: "item_bdd_4",
+              type: "agent_message",
+              text: "Codex follow-up note",
+            },
+          },
+          {
+            type: "item.completed",
+            sequenceNumber: 5,
+            item: {
+              id: "reasoning_bdd_5",
+              type: "reasoning",
+              text: "Preparing the next response.",
+            },
+          },
+          {
+            type: "item.completed",
+            sequenceNumber: 6,
+            item: {
+              id: "cmd_bdd_6",
               type: "command_execution",
               command: "ls",
               exit_code: 0,
@@ -15013,8 +15032,13 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
           },
           {
             type: "item.completed",
-            sequenceNumber: 5,
-            item: { id: "item_bdd_5", type: "agent_message", text: "   " },
+            sequenceNumber: 7,
+            item: { id: "item_bdd_7", type: "agent_message", text: "   " },
+          },
+          {
+            type: "item.completed",
+            sequenceNumber: 8,
+            item: { id: "reasoning_bdd_8", type: "reasoning", text: "   " },
           },
         ],
       },
@@ -15032,6 +15056,26 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
         return message.content;
       }),
     ).toContain("Codex follow-up note");
+    const codexThinking = afterCodex.events.filter((message) => {
+      return (
+        message.eventType === "output.thinking" &&
+        message.runId === runId &&
+        message.runEventId !== "thinking:initial"
+      );
+    });
+    expect(codexThinking).toStrictEqual([
+      expect.objectContaining({
+        runEventId: "reasoning_bdd_3",
+        sequenceNumber: 3,
+        thinking:
+          "Inspecting the event projection.\nComparing transcript order.",
+      }),
+      expect.objectContaining({
+        runEventId: "reasoning_bdd_5",
+        sequenceNumber: 5,
+        thinking: "Preparing the next response.",
+      }),
+    ]);
 
     // Assistant batches without visible text leave the thread unchanged.
     await webhooks.requestAgentEvents(
@@ -15040,9 +15084,9 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
         events: [
           {
             type: "assistant",
-            sequenceNumber: 6,
+            sequenceNumber: 9,
             message: {
-              id: "msg_bdd_6",
+              id: "msg_bdd_9",
               content: [
                 { type: "tool_use", id: "tool_bdd_1", name: "bash", input: {} },
               ],
@@ -15050,9 +15094,9 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
           },
           {
             type: "assistant",
-            sequenceNumber: 7,
+            sequenceNumber: 10,
             message: {
-              id: "msg_bdd_7",
+              id: "msg_bdd_10",
               content: [{ type: "text", text: "" }],
             },
           },
@@ -15077,7 +15121,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
         events: [
           {
             type: "assistant",
-            sequenceNumber: 8,
+            sequenceNumber: 11,
             message: {
               id: "msg_bdd_1",
               content: [{ type: "text", text: "Duplicate text" }],

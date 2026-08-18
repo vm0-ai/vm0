@@ -61,15 +61,25 @@ const EXT_MIMETYPE_MAP: Readonly<Record<string, string>> = {
 };
 const revoker = alias(chatEvents, "revoker");
 
+type InsertAssistantEventItem =
+  | {
+      readonly eventType: "output.message";
+      readonly runEventSequenceNumber: number;
+      readonly content: string;
+      readonly runEventId: string;
+    }
+  | {
+      readonly eventType: "output.thinking";
+      readonly runEventSequenceNumber: number;
+      readonly thinking: string;
+      readonly runEventId: string;
+    };
+
 export interface InsertAssistantEventsInput {
   readonly runId: string;
   readonly threadId: string;
   readonly userId: string;
-  readonly items: readonly {
-    readonly runEventSequenceNumber: number;
-    readonly content: string;
-    readonly runEventId: string;
-  }[];
+  readonly items: readonly InsertAssistantEventItem[];
 }
 
 export function inferMimetype(filename: string): string {
@@ -203,16 +213,25 @@ export async function insertAssistantEventsInTransaction(
   const insertedRows = await insertChatEvents(
     tx,
     args.items.map((item) => {
-      return {
+      const eventIdentity = {
         id: assistantEventIdForRunEvent(args.runId, item.runEventId),
         chatThreadId: args.threadId,
         runId: args.runId,
         runGroupId: runContext.goalId,
-        eventType: "output.message",
-        content: item.content,
         runEventSequenceNumber: item.runEventSequenceNumber,
         runEventId: item.runEventId,
       };
+      return item.eventType === "output.message"
+        ? {
+            ...eventIdentity,
+            eventType: item.eventType,
+            content: item.content,
+          }
+        : {
+            ...eventIdentity,
+            eventType: item.eventType,
+            thinking: item.thinking,
+          };
     }),
   );
   signal.throwIfAborted();

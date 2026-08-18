@@ -406,6 +406,7 @@ function assistantEventInsertInput(
     ...args,
     items: args.items.map((item) => {
       return {
+        eventType: "output.message",
         runEventSequenceNumber: item.sequenceNumber,
         content: item.content,
         runEventId: `callback:${item.sequenceNumber}`,
