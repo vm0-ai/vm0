@@ -111,12 +111,17 @@ impl PiRpcProjection {
                 "Pi RPC message_end omitted its message".to_string(),
             ));
         };
-        if message.get("role").and_then(Value::as_str) != Some("assistant") {
-            return Ok(None);
+        match message.get("role").and_then(Value::as_str) {
+            Some("assistant") => self.project_assistant_message(message),
+            Some("toolResult") => self.project_tool_result_message(message).map(Some),
+            _ => Ok(None),
         }
+    }
+
+    fn project_assistant_message(&mut self, message: &Value) -> Result<Option<Value>, AgentError> {
         self.final_assistant = Some(message.clone());
-        let text = assistant_text(message);
-        if text.is_empty() {
+        let content = assistant_content(message)?;
+        if content.is_empty() {
             return Ok(None);
         }
         let timestamp = message
@@ -137,7 +142,7 @@ impl PiRpcProjection {
             "message": {
                 "id": id,
                 "role": "assistant",
-                "content": [{ "type": "text", "text": text }],
+                "content": content,
                 "model": model,
                 "usage": {
                     "input_tokens": message.pointer("/usage/input").and_then(Value::as_u64).unwrap_or(0),
@@ -147,6 +152,51 @@ impl PiRpcProjection {
                 },
             },
         })))
+    }
+
+    fn project_tool_result_message(&self, message: &Value) -> Result<Value, AgentError> {
+        let tool_use_id = message
+            .get("toolCallId")
+            .and_then(Value::as_str)
+            .filter(|tool_use_id| !tool_use_id.is_empty())
+            .ok_or_else(|| {
+                AgentError::Execution(
+                    "Pi RPC toolResult message omitted its tool call id".to_string(),
+                )
+            })?;
+        let content = message
+            .get("content")
+            .and_then(Value::as_array)
+            .ok_or_else(|| {
+                AgentError::Execution("Pi RPC toolResult message omitted its content".to_string())
+            })?
+            .iter()
+            .map(project_tool_result_content)
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+        let is_error = message
+            .get("isError")
+            .and_then(Value::as_bool)
+            .ok_or_else(|| {
+                AgentError::Execution(
+                    "Pi RPC toolResult message omitted its error status".to_string(),
+                )
+            })?;
+        Ok(json!({
+            "type": "user",
+            "session_id": self.session_id,
+            "message": {
+                "role": "user",
+                "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": tool_use_id,
+                    "content": content,
+                    "is_error": is_error,
+                }],
+            },
+        }))
     }
 
     fn project_agent_settled(&mut self) -> Value {
@@ -174,6 +224,94 @@ impl PiRpcProjection {
             "session_id": self.session_id,
             "duration_ms": self.started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64,
         })
+    }
+}
+
+fn assistant_content(message: &Value) -> Result<Vec<Value>, AgentError> {
+    let mut content = Vec::new();
+    for block in message
+        .get("content")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        match block.get("type").and_then(Value::as_str) {
+            Some("text") => {
+                if let Some(text) = block
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|text| !text.is_empty())
+                {
+                    content.push(json!({ "type": "text", "text": text }));
+                }
+            }
+            Some("toolCall") => content.push(project_tool_call(block)?),
+            _ => {}
+        }
+    }
+    Ok(content)
+}
+
+fn project_tool_call(block: &Value) -> Result<Value, AgentError> {
+    let id = block
+        .get("id")
+        .and_then(Value::as_str)
+        .filter(|id| !id.is_empty())
+        .ok_or_else(|| {
+            AgentError::Execution("Pi RPC toolCall content omitted its id".to_string())
+        })?;
+    let name = block
+        .get("name")
+        .and_then(Value::as_str)
+        .filter(|name| !name.is_empty())
+        .ok_or_else(|| {
+            AgentError::Execution("Pi RPC toolCall content omitted its name".to_string())
+        })?;
+    let arguments = block
+        .get("arguments")
+        .and_then(Value::as_object)
+        .ok_or_else(|| {
+            AgentError::Execution("Pi RPC toolCall content omitted its arguments".to_string())
+        })?;
+    Ok(json!({
+        "type": "tool_use",
+        "id": id,
+        "name": name,
+        "input": arguments,
+    }))
+}
+
+fn project_tool_result_content(block: &Value) -> Result<Option<Value>, AgentError> {
+    match block.get("type").and_then(Value::as_str) {
+        Some("text") => Ok(Some(json!({
+            "type": "text",
+            "text": block
+                .get("text")
+                .and_then(Value::as_str)
+                .ok_or_else(|| AgentError::Execution(
+                    "Pi RPC toolResult text content omitted its text".to_string()
+                ))?,
+        }))),
+        Some("image") => Ok(Some(json!({
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": block
+                    .get("mimeType")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| AgentError::Execution(
+                        "Pi RPC toolResult image content omitted its media type".to_string()
+                    ))?,
+                "data": block
+                    .get("data")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| AgentError::Execution(
+                        "Pi RPC toolResult image content omitted its data".to_string()
+                    ))?,
+            },
+        }))),
+        _ => Ok(None),
     }
 }
 

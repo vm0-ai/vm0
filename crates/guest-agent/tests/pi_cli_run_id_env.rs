@@ -10,7 +10,8 @@ use std::os::unix::fs::PermissionsExt;
 use std::time::Duration;
 
 #[tokio::test]
-async fn guest_exposes_canonical_run_id_to_pi_cli() -> Result<(), Box<dyn std::error::Error>> {
+async fn guest_projects_pi_rpc_events_and_exposes_canonical_run_id()
+-> Result<(), Box<dyn std::error::Error>> {
     let tmp = tempfile::tempdir()?;
     let server = common::RecordingServer::start(200, Duration::ZERO).await?;
     let bin_dir = tmp.path().join("bin");
@@ -43,7 +44,12 @@ case "$prompt_command" in
   *) exit 24 ;;
 esac
 printf '%s\n' '{"id":"00000000-0000-4000-8000-000000000123:pi:initial-prompt","type":"response","command":"prompt","success":true}'
-printf '%s\n' '{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"official rpc projection"}],"model":"deepseek-v4-flash","responseId":"response-1","usage":{"input":5,"output":3,"cacheRead":2,"cacheWrite":1},"stopReason":"stop","timestamp":1}}'
+printf '%s\n' '{"type":"message_end","message":{"role":"assistant","content":[{"type":"toolCall","id":"tool-1","name":"web_search","arguments":{"query":"find supersecret"}}],"model":"deepseek-v4-flash","responseId":"response-1","usage":{"input":5,"output":3,"cacheRead":2,"cacheWrite":1},"stopReason":"toolUse","timestamp":1}}'
+printf '%s\n' '{"type":"message_end","message":{"role":"toolResult","toolCallId":"tool-1","toolName":"web_search","content":[{"type":"text","text":"result supersecret"}],"isError":false,"timestamp":2}}'
+printf '%s\n' '{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"checking both"},{"type":"toolCall","id":"tool-2","name":"read_file","arguments":{"path":"README.md"}},{"type":"text","text":"and"},{"type":"toolCall","id":"tool-3","name":"render_image","arguments":{"format":"png"}}],"model":"deepseek-v4-flash","responseId":"response-2","usage":{"input":8,"output":5,"cacheRead":2,"cacheWrite":1},"stopReason":"toolUse","timestamp":3}}'
+printf '%s\n' '{"type":"message_end","message":{"role":"toolResult","toolCallId":"tool-2","toolName":"read_file","content":[{"type":"text","text":"file contents"}],"isError":false,"timestamp":4}}'
+printf '%s\n' '{"type":"message_end","message":{"role":"toolResult","toolCallId":"tool-3","toolName":"render_image","content":[{"type":"text","text":"render failed"},{"type":"image","data":"aW1hZ2U=","mimeType":"image/png"}],"isError":true,"timestamp":5}}'
+printf '%s\n' '{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"official rpc projection"}],"model":"deepseek-v4-flash","responseId":"response-3","usage":{"input":13,"output":7,"cacheRead":2,"cacheWrite":1},"stopReason":"stop","timestamp":6}}'
 printf '%s\n' '{"type":"agent_settled"}'
 if IFS= read -r unexpected; then
   exit 23
@@ -110,7 +116,7 @@ fi
         Duration::from_secs(5),
         common::execute_cli_for_runtime(
             &runtime,
-            &SecretMasker::from_raw(""),
+            &SecretMasker::from_raw("c3VwZXJzZWNyZXQ="),
             common::spawn_dummy_heartbeat(),
         ),
     )
@@ -118,7 +124,7 @@ fi
     .expect("canonical Pi CLI process should finish")?;
 
     assert_eq!(result.exit_code, common::CLEAN_EXIT);
-    assert_eq!(result.last_event_sequence, Some(2));
+    assert_eq!(result.last_event_sequence, Some(7));
     assert_eq!(
         result.claude_result.map(|summary| summary.status),
         Some(guest_agent::cli::ClaudeResultStatus::Success)
@@ -142,7 +148,19 @@ fi
             .and_then(Value::as_u64)
             .unwrap_or(u64::MAX)
     });
-    assert_eq!(delivered_events.len(), 3);
+    assert_eq!(delivered_events.len(), 8);
+    assert_eq!(
+        delivered_events
+            .iter()
+            .map(|event| event["sequenceNumber"].as_u64())
+            .collect::<Vec<_>>(),
+        (0..8).map(Some).collect::<Vec<_>>()
+    );
+    assert!(
+        delivered_events
+            .iter()
+            .all(|event| !event.to_string().contains("supersecret"))
+    );
     assert_eq!(delivered_events[0]["type"], "system");
     assert_eq!(delivered_events[0]["subtype"], "init");
     assert_eq!(
@@ -151,12 +169,94 @@ fi
     );
     assert_eq!(delivered_events[1]["type"], "assistant");
     assert_eq!(
-        delivered_events[1].pointer("/message/content/0/text"),
+        delivered_events[1].pointer("/message/content/0/type"),
+        Some(&Value::String("tool_use".to_string()))
+    );
+    assert_eq!(delivered_events[1]["message"]["content"][0]["id"], "tool-1");
+    assert_eq!(
+        delivered_events[1]["message"]["content"][0]["name"],
+        "web_search"
+    );
+    assert_eq!(
+        delivered_events[1]["message"]["content"][0]["input"]["query"],
+        "find ***"
+    );
+
+    assert_eq!(delivered_events[2]["type"], "user");
+    assert_eq!(
+        delivered_events[2].pointer("/message/content/0/type"),
+        Some(&Value::String("tool_result".to_string()))
+    );
+    assert_eq!(
+        delivered_events[2]["message"]["content"][0]["tool_use_id"],
+        "tool-1"
+    );
+    assert_eq!(
+        delivered_events[2]["message"]["content"][0]["content"][0]["text"],
+        "result ***"
+    );
+    assert_eq!(
+        delivered_events[2]["message"]["content"][0]["is_error"],
+        false
+    );
+
+    assert_eq!(delivered_events[3]["type"], "assistant");
+    assert_eq!(
+        delivered_events[3]["message"]["content"],
+        serde_json::json!([
+            { "type": "text", "text": "checking both" },
+            {
+                "type": "tool_use",
+                "id": "tool-2",
+                "name": "read_file",
+                "input": { "path": "README.md" },
+            },
+            { "type": "text", "text": "and" },
+            {
+                "type": "tool_use",
+                "id": "tool-3",
+                "name": "render_image",
+                "input": { "format": "png" },
+            },
+        ])
+    );
+
+    assert_eq!(delivered_events[4]["type"], "user");
+    assert_eq!(
+        delivered_events[4]["message"]["content"][0]["tool_use_id"],
+        "tool-2"
+    );
+    assert_eq!(
+        delivered_events[4]["message"]["content"][0]["content"][0]["text"],
+        "file contents"
+    );
+
+    assert_eq!(delivered_events[5]["type"], "user");
+    assert_eq!(
+        delivered_events[5]["message"]["content"][0]["tool_use_id"],
+        "tool-3"
+    );
+    assert_eq!(
+        delivered_events[5]["message"]["content"][0]["is_error"],
+        true
+    );
+    assert_eq!(
+        delivered_events[5].pointer("/message/content/0/content/1/source"),
+        Some(&serde_json::json!({
+            "type": "base64",
+            "media_type": "image/png",
+            "data": "aW1hZ2U=",
+        }))
+    );
+
+    assert_eq!(delivered_events[6]["type"], "assistant");
+    assert_eq!(
+        delivered_events[6].pointer("/message/content/0/text"),
         Some(&Value::String("official rpc projection".to_string()))
     );
-    assert_eq!(delivered_events[2]["type"], "result");
-    assert_eq!(delivered_events[2]["subtype"], "success");
-    assert_eq!(delivered_events[2]["result"], "official rpc projection");
+    assert_eq!(delivered_events[7]["type"], "result");
+    assert_eq!(delivered_events[7]["subtype"], "success");
+    assert_eq!(delivered_events[7]["result"], "official rpc projection");
     assert_eq!(std::fs::read_to_string(capture_path)?, run_id);
 
     let payload_path = std::fs::read_to_string(payload_capture_path)?;
