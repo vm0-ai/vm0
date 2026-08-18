@@ -333,7 +333,10 @@ def decode_response_body_for_network_log_capture(
     *,
     max_output: int = DEFAULT_BODY_DECODE_LIMIT,
 ) -> bytes | None:
-    """Decode a response body while hiding supported-codec failures."""
+    """Decode a buffered response body with mitmproxy-compatible strictness."""
+    encoding = headers.get("content-encoding", "").strip().lower()
+    if encoding and encoding != "identity" and encoding not in _SUPPORTED_ONE_SHOT_BODY_ENCODINGS:
+        return None
     result = _decode_body_bounded(data, headers, max_output=max_output)
     _log_body_decompression_failure(result, headers)
     if result.failed:

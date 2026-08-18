@@ -480,7 +480,11 @@ def _body_capture_dependency_attack_fields(
         return [(header_name, value)]
     if header_name == b"Content-Type":
         return [(header_name, b"text/plain")] * 512
-    return [(b"Content-Type", b"text/plain"), *[(header_name, b"identity")] * 512]
+    return [
+        (b"X-Padding", b"x" * 32_700),
+        (header_name, _DecodeGuardHeaderValue(b"a" * (16 * 1024))),
+        (header_name, _DecodeGuardHeaderValue(b"b" * (16 * 1024))),
+    ]
 
 
 @pytest.mark.parametrize("side", ["request", "response"])
@@ -557,7 +561,7 @@ def test_body_capture_preserves_bounded_valid_dependency_headers(tmp_path, real_
         method="POST",
         request_headers=header_map({"Content-Type": content_type, "Content-Encoding": "identity"}),
         request_body=b"request body",
-        response_headers=header_map({"Content-Type": content_type, "Content-Encoding": "x-custom"}),
+        response_headers=header_map({"Content-Type": content_type, "Content-Encoding": "identity"}),
         response_body=b"response body",
     )
     log_path = tmp_path / "network.jsonl"
