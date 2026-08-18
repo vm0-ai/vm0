@@ -71,10 +71,10 @@ export {
   type DesktopAuthHandoffContract,
 } from "./desktop-auth";
 export {
-  ZERO_CAPABILITIES,
-  ZERO_CAPABILITY_META,
-  type ZeroCapability,
-  type ZeroCapabilityMeta,
+  CAPABILITIES,
+  CAPABILITY_META,
+  type Capability,
+  type CapabilityMeta,
 } from "./capabilities";
 export {
   AGENT_NAME_REGEX,

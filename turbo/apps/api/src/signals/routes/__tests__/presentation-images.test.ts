@@ -1,5 +1,5 @@
 import { presentationImagesContract } from "@okouai/api-contracts/contracts/presentation-images";
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
+import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
@@ -36,7 +36,7 @@ function currentSecond(): number {
 
 function zeroToken(
   fixture: PresentationImagesFixture,
-  capabilities: readonly ZeroCapability[] = ["file:write"],
+  capabilities: readonly Capability[] = ["file:write"],
 ): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({

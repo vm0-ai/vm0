@@ -30,7 +30,7 @@ import {
 } from "../services/goal.service";
 import type { RouteEntry } from "../route-entry";
 import type { AuthContext } from "../../types/auth";
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
+import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 
 const log = logger("Goals");
 
@@ -73,7 +73,7 @@ interface GoalAuth {
   readonly orgId: string;
   readonly userId: string;
   readonly runId: string;
-  readonly capabilities: readonly ZeroCapability[];
+  readonly capabilities: readonly Capability[];
 }
 
 interface SessionGoalAuth {

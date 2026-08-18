@@ -20,7 +20,7 @@ import {
   zeroOrgInviteContract,
   zeroOrgMembersContract,
 } from "@okouai/api-contracts/contracts/zero-org-members";
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
+import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import type { OrgTier } from "@okouai/api-contracts/contracts/orgs";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isStaffOrg } from "@okouai/core/staff-org";
@@ -234,7 +234,7 @@ function stripeInputMetadata(input: unknown): Readonly<Record<string, string>> {
 function zeroToken(args: {
   readonly userId: string;
   readonly orgId: string;
-  readonly capabilities: readonly ZeroCapability[];
+  readonly capabilities: readonly Capability[];
 }): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({

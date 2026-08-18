@@ -7,7 +7,7 @@ import {
   cliAuthDeviceContract,
   cliAuthTokenContract,
 } from "@okouai/api-contracts/contracts/cli-auth";
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
+import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agentComposeApiContentSchema } from "@okouai/api-contracts/contracts/composes";
 import { webhookStripeContract } from "@okouai/api-contracts/contracts/webhooks";
@@ -687,7 +687,7 @@ export function createRunsApi(context: TestContext) {
     zeroTokenForRunWithCapabilities(
       actor: ApiTestUser,
       runId: string,
-      capabilities: readonly ZeroCapability[],
+      capabilities: readonly Capability[],
       publicBrand?: PublicBrand,
     ): string {
       if (!actor.orgId) {
