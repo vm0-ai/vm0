@@ -3154,7 +3154,11 @@ describe("zero sidebar", () => {
     expect(
       within(dialog).queryByText("Research Agent"),
     ).not.toBeInTheDocument();
-    click(within(dialog).getByRole("option", { name: /Support Agent/ }));
+    const supportOption = within(dialog).getByRole("option", {
+      name: /Support Agent/,
+    });
+    expect(queryAllByRoleFast("button", supportOption)).toHaveLength(0);
+    click(supportOption);
 
     await waitFor(() => {
       expect(within(grid).getByText("Support Agent")).toBeInTheDocument();

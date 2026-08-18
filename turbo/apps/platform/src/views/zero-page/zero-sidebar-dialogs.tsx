@@ -577,6 +577,51 @@ function UnpinnedAgentsCommandSection({
   );
 }
 
+function AgentPinCommandSection({
+  agents,
+  label,
+  pinned,
+  disabled,
+  onTogglePin,
+}: {
+  readonly agents: readonly SubagentInfo[];
+  readonly label: string;
+  readonly pinned: boolean;
+  readonly disabled: boolean;
+  readonly onTogglePin: (agentId: string) => void;
+}) {
+  if (agents.length === 0) {
+    return null;
+  }
+
+  return (
+    <AgentCommandSection label={label} className={pinned ? undefined : "pb-3"}>
+      {agents.map((agent) => {
+        return (
+          <CommandItem
+            key={agent.id}
+            value={agent.id}
+            disabled={disabled}
+            onSelect={() => {
+              return onTogglePin(agent.id);
+            }}
+            className="group w-full gap-2 px-1 py-2"
+          >
+            <AgentCommandAgentContent agent={agent} />
+            <span className="ml-auto flex h-8 w-8 shrink-0 items-center justify-center text-muted-foreground">
+              {pinned ? (
+                <PinOff size={16} aria-hidden="true" />
+              ) : (
+                <Pin size={16} aria-hidden="true" />
+              )}
+            </span>
+          </CommandItem>
+        );
+      })}
+    </AgentCommandSection>
+  );
+}
+
 function ChatThreadCommandSection({
   threads,
   activeThreadIds,
@@ -1397,9 +1442,6 @@ export function AgentPinDialog({
   const query = useGet(chatListQuery$);
   const setQuery = useSet(setChatListQuery$);
   const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
-  const unreadAgentIds = useLastResolved(unreadAgentIds$, {
-    equalityFn: equalSets,
-  });
   const pageSignal = useGet(pageSignal$);
   const [pinLoadable, saveAgentPinned] = useLoadableSet(setAgentPinned$);
   const saving = pinLoadable.state === "loading";
@@ -1460,18 +1502,22 @@ export function AgentPinDialog({
       />
 
       <CommandList>
-        <PinnedAgentsCommandSection
+        <AgentPinCommandSection
           agents={pinned}
+          label={t(($) => {
+            return $.sidebar.pinned;
+          })}
+          pinned
           disabled={saving}
-          unreadAgentIds={unreadAgentIds}
-          onChat={togglePin}
           onTogglePin={togglePin}
         />
-        <UnpinnedAgentsCommandSection
+        <AgentPinCommandSection
           agents={unpinned}
+          label={t(($) => {
+            return $.sidebar.sections.others;
+          })}
+          pinned={false}
           disabled={saving}
-          unreadAgentIds={unreadAgentIds}
-          onChat={togglePin}
           onTogglePin={togglePin}
         />
         {pinned.length === 0 && unpinned.length === 0 ? (
