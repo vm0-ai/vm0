@@ -762,15 +762,26 @@ mod tests {
             .unwrap();
         let observer = WorkspaceImageCache::shared(observer_paths, &home, "group-a");
         let publisher = WorkspaceImageCache::shared(publisher_paths, &home, "group-b");
-        let mut watcher = WorkspaceCacheWatcher::new(observer).await.unwrap();
+        let mut watcher = WorkspaceCacheWatcher::new(observer.clone()).await.unwrap();
 
         let foreign_cache_key = commit_entry(&publisher, "foreign-only-entry").await;
 
+        let mut next_change = Box::pin(watcher.next_change());
         assert!(
-            tokio::time::timeout(std::time::Duration::from_millis(100), watcher.next_change())
+            tokio::time::timeout(std::time::Duration::from_millis(100), &mut next_change)
                 .await
                 .is_err()
         );
+        let relevant_cache_key = commit_entry(&observer, "relevant-entry").await;
+        let change = tokio::time::timeout(std::time::Duration::from_secs(2), &mut next_change)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            change.committed_cache_keys,
+            BTreeSet::from([relevant_cache_key])
+        );
+        drop(next_change);
         assert!(!watcher.watch_by_cache_key.contains_key(&foreign_cache_key));
     }
 
