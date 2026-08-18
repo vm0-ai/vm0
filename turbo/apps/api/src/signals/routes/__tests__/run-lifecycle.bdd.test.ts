@@ -823,6 +823,16 @@ function environmentShadowFieldsForRun(runId: string): Record<string, unknown> {
   );
 }
 
+function agentExecutionAuthorityFieldsForRun(
+  runId: string,
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(runContextSnapshotForRun(runId)).filter(([key]) => {
+      return key.startsWith("agentExecutionAuthority");
+    }),
+  );
+}
+
 function sandboxOperationEventsForRun(
   runId: string,
 ): readonly Record<string, unknown>[] {
@@ -3264,6 +3274,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       expect.objectContaining({
         runId: created.runId,
         prompt,
+        agentExecutionAuthority: "application",
+        agentExecutionAuthorityClassification: "completeSemanticParity",
       }),
     ]);
 
@@ -3869,6 +3881,22 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       prompt: "start a session",
       modelProvider: "anthropic-api-key",
     });
+    const currentHead = await readHistoricalAgentComposeHeadFixture(agentId);
+    const continuationOnlyMarker = `continuation-persisted-\${{ secrets.CONTINUATION_CONTENT_SECRET }}`;
+    const replacementHead = await api.createHistoricalCompose(actor, {
+      version: "1",
+      agents: {
+        [currentHead.name]: {
+          framework: "claude-code",
+          instructions: "CLAUDE.md",
+          description: continuationOnlyMarker,
+          environment: {
+            OKOU_AGENT_ID: `\${{ vars.OKOU_AGENT_ID }}`,
+            OKOU_TOKEN: `\${{ secrets.OKOU_TOKEN }}`,
+          },
+        },
+      },
+    });
 
     const resumed = await api.createRun(actor, {
       agentId,
@@ -3879,6 +3907,15 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(resumed.sessionId).toBe(first.sessionId);
     const resumedClaim = await api.claimRunnerJob(resumed.runId);
     expect(resumedClaim.resumeSession).toBeNull();
+    expect(resumedClaim.agentComposeVersionId).toBe(replacementHead.versionId);
+    expect(JSON.stringify(resumedClaim)).not.toContain(continuationOnlyMarker);
+    expect(JSON.stringify(resumedClaim)).not.toContain(
+      "CONTINUATION_CONTENT_SECRET",
+    );
+    expect(agentExecutionAuthorityFieldsForRun(resumed.runId)).toStrictEqual({
+      agentExecutionAuthority: "application",
+      agentExecutionAuthorityClassification: "completeSemanticParity",
+    });
     await expect(
       readRunLaunchSnapshotFixture(context, resumed.runId),
     ).resolves.toStrictEqual({
@@ -12433,6 +12470,23 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
         "The environment shadow fixture requires an organization",
       );
     }
+    const canonicalCompose =
+      await readHistoricalAgentComposeHeadFixture(agentId);
+    const persistedOnlyMarker = `persisted-only-\${{ secrets.PERSISTED_VERSION_CONTENT_SECRET }}`;
+    const parityHead = await api.createHistoricalCompose(actor, {
+      version: "1",
+      agents: {
+        [canonicalCompose.name]: {
+          framework: "claude-code",
+          instructions: "CLAUDE.md",
+          description: persistedOnlyMarker,
+          environment: {
+            OKOU_AGENT_ID: `\${{ vars.OKOU_AGENT_ID }}`,
+            OKOU_TOKEN: `\${{ secrets.OKOU_TOKEN }}`,
+          },
+        },
+      },
+    });
 
     const run = await api.createRun(actor, {
       agentId,
@@ -12441,6 +12495,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     });
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
+    expect(claim.agentComposeVersionId).toBe(parityHead.versionId);
 
     expectCanonicalOkouRunEnvironment({
       environment: claim.environment,
@@ -12475,9 +12530,33 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       environmentShadowCandidateOnlyCountBucket: "0",
       environmentShadowSharedValueDifferenceCountBucket: "0",
     });
+    expect(agentExecutionAuthorityFieldsForRun(run.runId)).toStrictEqual({
+      agentExecutionAuthority: "application",
+      agentExecutionAuthorityClassification: "completeSemanticParity",
+    });
     expect(JSON.stringify(claim)).not.toContain("environmentShadow");
+    expect(JSON.stringify(claim)).not.toContain("agentExecutionAuthority");
+    expect(JSON.stringify(claim)).not.toContain(persistedOnlyMarker);
+    expect(JSON.stringify(claim)).not.toContain(
+      "PERSISTED_VERSION_CONTENT_SECRET",
+    );
+    await expect(
+      readRunLaunchSnapshotFixture(context, run.runId),
+    ).resolves.toStrictEqual({
+      exists: true,
+      launch_snapshot: {
+        schemaVersion: 1,
+        framework: claim.cliAgentType,
+        runnerProfile: DEFAULT_PROFILE,
+      },
+    });
 
     await api.requestCancelRun(actor, run.runId, [200]);
+    const unchangedHead = await readHistoricalAgentComposeHeadFixture(agentId);
+    expect(unchangedHead.headVersionId).toBe(parityHead.versionId);
+    expect(
+      Object.values(unchangedHead.content?.agents ?? {})[0]?.description,
+    ).toBe(persistedOnlyMarker);
   });
 
   it("classifies active legacy environment value shapes without exposing them", async () => {
@@ -12543,6 +12622,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
         agents: {
           [canonicalCompose.name]: {
             framework: "claude-code",
+            instructions: "CLAUDE.md",
             environment: {
               OKOU_AGENT_ID: `\${{ vars.OKOU_AGENT_ID }}`,
               OKOU_TOKEN: `\${{ secrets.OKOU_TOKEN }}`,
@@ -12578,6 +12658,22 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
         expect(serializedShadowFields).not.toContain(forbidden);
       }
       expect(JSON.stringify(claim)).not.toContain("environmentShadow");
+      const authorityFields = agentExecutionAuthorityFieldsForRun(run.runId);
+      expect(authorityFields).toStrictEqual({
+        agentExecutionAuthority: "version_content",
+        agentExecutionAuthorityClassification: "systemEnvironmentDifferences",
+      });
+      const serializedAuthorityFields = JSON.stringify(authorityFields);
+      for (const forbidden of [
+        legacyKey,
+        legacyCase.value,
+        legacyCase.expectedValue,
+        agentId,
+        run.runId,
+      ]) {
+        expect(serializedAuthorityFields).not.toContain(forbidden);
+      }
+      expect(JSON.stringify(claim)).not.toContain("agentExecutionAuthority");
       await api.requestCancelRun(actor, run.runId, [200]);
     }
   });
@@ -12683,6 +12779,9 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       scope: "zero",
     });
     expect(historicalClaim.secretValues).toContain(historicalZeroToken);
+    expect(agentExecutionAuthorityFieldsForRun(historical.runId)).toStrictEqual(
+      {},
+    );
     await api.requestCancelRun(actor, historical.runId, [200]);
 
     const current = await api.createRun(actor, {
@@ -12693,6 +12792,11 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await api.heartbeatRunner(runnerGroup);
     const currentClaim = await api.claimRunnerJob(current.runId);
     expect(currentClaim.agentComposeVersionId).toBe(legacyCompose.versionId);
+    expect(agentExecutionAuthorityFieldsForRun(current.runId)).toStrictEqual({
+      agentExecutionAuthority: "version_content",
+      agentExecutionAuthorityClassification:
+        "agentInstructionsMarkerOrMountDifferences",
+    });
     expectCanonicalOkouRunEnvironment({
       environment: currentClaim.environment,
       secretValues: currentClaim.secretValues,

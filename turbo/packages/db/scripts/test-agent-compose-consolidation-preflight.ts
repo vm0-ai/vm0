@@ -10,6 +10,7 @@ import {
   buildZeroAgentComposeContent,
   computeComposeVersionId,
 } from "../../../apps/api/src/signals/services/agent-compose-content";
+import { classifyAgentExecutionAuthority } from "../../../apps/api/src/signals/services/agent-execution-authority";
 import { APPLICATION_OWNED_AGENT_EXECUTION_PLAN } from "../../../apps/api/src/signals/services/agent-execution-plan";
 import {
   CATALOG_DEPENDENCY_KINDS,
@@ -798,6 +799,14 @@ function testAgentExecutionPlanClassifications(): void {
     canonical.agentExecutionPlans.dimensionUnionClosure.classification,
     "exact",
   );
+  const canonicalAuthority = classifyAgentExecutionAuthority(
+    executionPlanRow({ id: id(601), agentName: "canonical-agent" }),
+  );
+  assert.deepEqual(canonicalAuthority, {
+    authority: "application",
+    classification: "completeSemanticParity",
+    dimensions: [],
+  });
 
   const injected = mutableAgentContent("injected-agent");
   injected.agents["injected-agent"]!.environment = {
@@ -820,6 +829,16 @@ function testAgentExecutionPlanClassifications(): void {
   assert.equal(
     injectedResult.agentExecutionPlans.completeSemanticParity.count,
     1,
+  );
+  assert.equal(
+    classifyAgentExecutionAuthority(
+      executionPlanRow({
+        id: id(602),
+        agentName: "injected-agent",
+        content: injected,
+      }),
+    ).authority,
+    "application",
   );
 
   const ignoredLegacyFields = mutableAgentContent("ignored-fields-agent");
@@ -854,6 +873,20 @@ function testAgentExecutionPlanClassifications(): void {
   assert.equal(
     environmentResult.agentExecutionPlans.systemEnvironmentDifferences.count,
     1,
+  );
+  assert.deepEqual(
+    classifyAgentExecutionAuthority(
+      executionPlanRow({
+        id: id(604),
+        agentName: "environment-agent",
+        content: environment,
+      }),
+    ),
+    {
+      authority: "version_content",
+      classification: "systemEnvironmentDifferences",
+      dimensions: ["systemEnvironmentDifferences"],
+    },
   );
 
   const framework = mutableAgentContent("framework-agent");
@@ -1015,6 +1048,16 @@ function testAgentExecutionPlanClassifications(): void {
     }),
   ]);
   assert.equal(unknownResult.agentExecutionPlans.unclassifiedContent.count, 1);
+  assert.equal(
+    classifyAgentExecutionAuthority(
+      executionPlanRow({
+        id: id(615),
+        agentName: "unknown-agent",
+        content: unknown,
+      }),
+    ).classification,
+    "unclassifiedContent",
+  );
 
   const dangling = classifyPlanRows([
     executionPlanRow({
@@ -1028,6 +1071,18 @@ function testAgentExecutionPlanClassifications(): void {
   assert.equal(
     dangling.agentExecutionPlans.danglingOrMissingHeadVersion.count,
     1,
+  );
+  assert.equal(
+    classifyAgentExecutionAuthority(
+      executionPlanRow({
+        id: id(616),
+        agentName: "dangling-plan-agent",
+        content: null,
+        headVersionId: "a".repeat(64),
+        versionId: null,
+      }),
+    ).classification,
+    "danglingOrMissingHeadVersion",
   );
   const absent = classifyPlanRows([], [id(617)]);
   assert.equal(
@@ -1106,6 +1161,16 @@ function testAgentExecutionPlanClassifications(): void {
   assert.equal(
     combinedResult.agentExecutionPlans.multiDimensionExceptions.count,
     1,
+  );
+  assert.equal(
+    classifyAgentExecutionAuthority(
+      executionPlanRow({
+        id: id(623),
+        agentName: "combined-agent",
+        content: combined,
+      }),
+    ).classification,
+    "multipleDimensions",
   );
   assert.equal(
     combinedResult.agentExecutionPlans.dimensionUnionClosure.classification,
