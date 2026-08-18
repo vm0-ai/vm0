@@ -46,7 +46,7 @@ function parseVm0ManagedModelKeyFixtureLabel(label: string | null) {
  * different integrations share each vendor row, so every owner must be
  * recorded under the same row lock before any fixture can release it.
  */
-export async function acquireVm0ManagedModelKeyFixture(
+export async function acquireManagedModelKeyFixture(
   db: Db,
   fixtureId: string,
   rows: readonly Vm0ManagedModelKeyRow[],
@@ -103,7 +103,7 @@ export async function acquireVm0ManagedModelKeyFixture(
 }
 
 /** Releases only one fixture's ownership, deleting the row at the last owner. */
-export async function releaseVm0ManagedModelKeyFixture(
+export async function releaseManagedModelKeyFixture(
   db: Db,
   fixtureId: string,
 ): Promise<void> {
