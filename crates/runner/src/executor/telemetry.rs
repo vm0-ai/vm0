@@ -119,6 +119,7 @@ impl RunnerPreSpawnPhaseDurations {
 
 pub(crate) struct RunnerPreSpawnTiming {
     claim_returned_at: Instant,
+    api_claim_request_elapsed: Option<Duration>,
     phase_durations: RunnerPreSpawnPhaseDurations,
     task_enqueued_at: Option<Instant>,
     exact_reuse_speculation: Option<ExactReuseSpeculationTiming>,
@@ -148,12 +149,16 @@ pub(super) struct RunnerSpawnTiming {
 impl RunnerPreSpawnTiming {
     #[cfg(test)]
     pub(crate) fn start_after_claim() -> Self {
-        Self::start_at(Instant::now())
+        Self::start_at(Instant::now(), None)
     }
 
-    pub(crate) fn start_at(claim_returned_at: Instant) -> Self {
+    pub(crate) fn start_at(
+        claim_returned_at: Instant,
+        api_claim_request_elapsed: Option<Duration>,
+    ) -> Self {
         Self {
             claim_returned_at,
+            api_claim_request_elapsed,
             phase_durations: RunnerPreSpawnPhaseDurations::default(),
             task_enqueued_at: None,
             exact_reuse_speculation: None,
@@ -181,6 +186,9 @@ impl RunnerPreSpawnTiming {
     }
 
     fn record_collected_phases(&self, telemetry: &mut JobTelemetry, executor_started_at: Instant) {
+        if let Some(duration) = self.api_claim_request_elapsed {
+            telemetry.record("runner_claim_http_request", duration, true, None);
+        }
         for phase in RunnerPreSpawnPhase::ALL {
             if let Some(duration) = self.phase_durations.get(phase) {
                 telemetry.record(phase.action_type(), duration, true, None);

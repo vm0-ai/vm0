@@ -317,7 +317,8 @@ pub(super) async fn handle_discovered_job(
         .await;
         return DiscoveredJobResult::completed(true);
     }
-    let mut pre_spawn_timing = RunnerPreSpawnTiming::start_at(claim_returned_at);
+    let mut pre_spawn_timing =
+        RunnerPreSpawnTiming::start_at(claim_returned_at, claimed.api_claim_request_elapsed());
     let started_at = Instant::now();
     let resume_session_error = validate_resume_session_id(claimed.context()).err();
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::ResumeSessionValidation, started_at);
