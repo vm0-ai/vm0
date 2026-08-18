@@ -1902,7 +1902,7 @@ describe("Feishu integration", () => {
       userId: admin.userId,
       customConnectorId: managedConnector.id,
       storageVersion: managedConnector.storageVersion,
-      redirectUri: `${APP_ORIGIN}/connectors/custom/callback`,
+      redirectUri: `${APP_ORIGIN}/connectors/feishu/callback`,
     });
     const legacyGenericCallbackResponse = await createAppWithRoutes({
       signal: context.signal,
