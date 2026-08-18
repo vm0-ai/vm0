@@ -6,9 +6,9 @@ import {
   zeroConnectorOauthStartContract,
 } from "@okouai/api-contracts/contracts/zero-connectors";
 import {
-  zeroBrowserContract,
-  type ZeroBrowserSession,
-} from "@okouai/api-contracts/contracts/zero-browser";
+  browserContract,
+  type BrowserSession,
+} from "@okouai/api-contracts/contracts/browser";
 import { zeroAgentsByIdContract } from "@okouai/api-contracts/contracts/zero-agents";
 import { mailContract } from "@okouai/api-contracts/contracts/mail";
 import {
@@ -16,7 +16,7 @@ import {
   type PublicConnectorCatalogPermissionDetail,
   type PublicConnectorCatalogStatusItem,
 } from "@okouai/api-contracts/contracts/zero-connector-catalog";
-import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
   zeroAgentCustomConnectorsContract,
   type AgentCustomConnectorGrant,
@@ -175,12 +175,12 @@ function mockAgentConnectorAuthorizations(
   initialConnectorSlugs: readonly string[],
 ): void {
   let enabledConnectorSlugs: string[] = [...initialConnectorSlugs];
-  context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+  context.mocks.api(userConnectorsContract.get, ({ respond }) => {
     return respond(200, {
       enabledConnectorSlugs,
     });
   });
-  context.mocks.api(zeroUserConnectorsContract.update, ({ body, respond }) => {
+  context.mocks.api(userConnectorsContract.update, ({ body, respond }) => {
     enabledConnectorSlugs = applyUserConnectorUpdate(
       enabledConnectorSlugs,
       body,
@@ -519,7 +519,7 @@ describe("chat event action cards", () => {
     let resolveBrowser = (): void => {
       throw new Error("Browser request did not start");
     };
-    const browser: ZeroBrowserSession = {
+    const browser: BrowserSession = {
       threadId,
       name: "loading-shell",
       status: "active",
@@ -535,7 +535,7 @@ describe("chat event action cards", () => {
       updatedAt: "2026-07-30T10:00:00.000Z",
     };
     context.mocks.api(
-      zeroBrowserContract.get,
+      browserContract.get,
       async ({ deferred, params, respond }) => {
         expect(params.threadId).toBe(threadId);
         const browserDeferred = deferred<void>();
@@ -1470,7 +1470,7 @@ describe("chat event action cards", () => {
         }),
       });
     });
-    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(userConnectorsContract.get, ({ respond }) => {
       return respond(200, {
         enabledConnectorSlugs: authorized ? ["github"] : [],
       });
@@ -1573,7 +1573,7 @@ describe("chat event action cards", () => {
         }),
       });
     });
-    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(userConnectorsContract.get, ({ respond }) => {
       return respond(200, {
         enabledConnectorSlugs: authorized ? ["stripe"] : [],
       });
@@ -2529,7 +2529,7 @@ describe("chat event action cards", () => {
         }),
       });
     });
-    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(userConnectorsContract.get, ({ respond }) => {
       return respond(200, {
         enabledConnectorSlugs: authorized ? ["future-connector"] : [],
       });
@@ -4314,7 +4314,7 @@ describe("chat event action cards", () => {
       "https://live.browser-use.com/?wss=test-browser-session-token";
     const screenshotUrl =
       "https://cdn.vm7.io/artifacts/test/browser-screenshot.webp";
-    let browser: ZeroBrowserSession = {
+    let browser: BrowserSession = {
       threadId,
       name: "booking",
       status: "active",
@@ -4330,13 +4330,13 @@ describe("chat event action cards", () => {
       updatedAt: "2026-07-24T10:00:00.000Z",
     };
     let browserRequests = 0;
-    context.mocks.api(zeroBrowserContract.get, ({ params, respond }) => {
+    context.mocks.api(browserContract.get, ({ params, respond }) => {
       expect(params.threadId).toBe(threadId);
       browserRequests += 1;
       return respond(200, { browser });
     });
     const browserOpenEventIds: string[] = [];
-    context.mocks.api(zeroBrowserContract.open, ({ body, params, respond }) => {
+    context.mocks.api(browserContract.open, ({ body, params, respond }) => {
       expect(params.threadId).toBe(threadId);
       browserOpenEventIds.push(body.eventId);
       return respond(200, {
@@ -4345,7 +4345,7 @@ describe("chat event action cards", () => {
       });
     });
     let leaseRequests = 0;
-    context.mocks.api(zeroBrowserContract.leaseByThread, ({ respond }) => {
+    context.mocks.api(browserContract.leaseByThread, ({ respond }) => {
       leaseRequests += 1;
       return respond(200, { browser });
     });

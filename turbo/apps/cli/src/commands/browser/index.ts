@@ -3,10 +3,10 @@ import { spawnSync } from "node:child_process";
 import chalk from "chalk";
 import { Command, InvalidArgumentError, Option } from "commander";
 import {
-  ZERO_BROWSER_IDLE_LEASE_MINUTES,
-  zeroBrowserCreateRequestSchema,
-  type ZeroBrowserSession,
-} from "@okouai/api-contracts/contracts/zero-browser";
+  BROWSER_IDLE_LEASE_MINUTES,
+  browserCreateRequestSchema,
+  type BrowserSession,
+} from "@okouai/api-contracts/contracts/browser";
 
 import {
   createBrowser,
@@ -51,9 +51,7 @@ function parseAgentSession(value: string): string {
   return value;
 }
 
-function browserJson(
-  browser: ZeroBrowserSession,
-): Omit<ZeroBrowserSession, "liveUrl"> {
+function browserJson(browser: BrowserSession): Omit<BrowserSession, "liveUrl"> {
   const { liveUrl: _liveUrl, ...safeBrowser } = browser;
   return safeBrowser;
 }
@@ -76,13 +74,13 @@ function connectAgentBrowser(cdpUrl: string, sessionName: string): void {
   }
 }
 
-function reclaimNotice(browser: ZeroBrowserSession): string {
+function reclaimNotice(browser: BrowserSession): string {
   return browser.idleExpiresAt
     ? `Okou reclaims this browser at ${browser.idleExpiresAt} unless it is used or leased again`
     : "This browser has no live window to reclaim";
 }
 
-function renderBrowser(browser: ZeroBrowserSession): void {
+function renderBrowser(browser: BrowserSession): void {
   console.log(`${browser.name} · ${browser.status}`);
   console.log(chalk.dim(`  Thread ID: ${browser.threadId}`));
   console.log(chalk.dim(`  ${reclaimNotice(browser)}`));
@@ -91,7 +89,7 @@ function renderBrowser(browser: ZeroBrowserSession): void {
 
 async function connectResponse(
   response: {
-    readonly browser: ZeroBrowserSession;
+    readonly browser: BrowserSession;
     readonly cdpUrl: string;
   },
   options: ConnectionOptions,
@@ -134,7 +132,7 @@ const useCommand = new Command()
 const leaseCommand = new Command()
   .name("lease")
   .description(
-    `Keep this thread's live browser for another ${ZERO_BROWSER_IDLE_LEASE_MINUTES} minutes`,
+    `Keep this thread's live browser for another ${BROWSER_IDLE_LEASE_MINUTES} minutes`,
   )
   .option("--json", "Print machine-readable output")
   .action(
@@ -170,7 +168,7 @@ const newCommand = new Command()
   .option("--json", "Print machine-readable output without connection secrets")
   .action(
     withErrorHandler(async (options: NewOptions) => {
-      const request = zeroBrowserCreateRequestSchema.parse({
+      const request = browserCreateRequestSchema.parse({
         name: options.name,
         proxyCountryCode: options.country ?? null,
       });
@@ -222,7 +220,7 @@ Examples:
 
 Notes:
   - The browser outlives this run; the user can keep working in it from the viewer link
-  - Okou reclaims it after ${ZERO_BROWSER_IDLE_LEASE_MINUTES} idle minutes
+  - Okou reclaims it after ${BROWSER_IDLE_LEASE_MINUTES} idle minutes
   - \`okou browser use\` restores a reclaimed browser's login profile and reopens saved tab URLs when possible
   - Browser Use credentials and connection URLs are never printed
   - Each thread keeps an isolated login profile

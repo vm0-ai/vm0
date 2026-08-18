@@ -1,6 +1,6 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
-import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
   zeroAgentCustomConnectorsContract,
   type AgentCustomConnectorGrant,
@@ -224,7 +224,7 @@ function createBuiltinConnectorAuthorizationCommand(
       signal: AbortSignal,
     ): Promise<void> => {
       signal.throwIfAborted();
-      const client = get(zeroClient$)(zeroUserConnectorsContract);
+      const client = get(zeroClient$)(userConnectorsContract);
       await withCleanup(
         accept(
           client.update({

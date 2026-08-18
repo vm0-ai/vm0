@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroAgentsMainContract } from "@okouai/api-contracts/contracts/zero-agents";
-import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -36,7 +36,7 @@ describe("GET /api/zero/agents/:id/user-connectors", () => {
     const agentId = created.body.agentId;
 
     const client = setupApp({ context, routes: agentsRoutes })(
-      zeroUserConnectorsContract,
+      userConnectorsContract,
     );
 
     await updateFeatureSwitchesForUser(context, actor, {
@@ -87,7 +87,7 @@ describe("GET /api/zero/agents/:id/user-connectors", () => {
       [201],
     );
     const client = setupApp({ context, routes: agentsRoutes })(
-      zeroUserConnectorsContract,
+      userConnectorsContract,
     );
     const params = { id: created.body.agentId };
 

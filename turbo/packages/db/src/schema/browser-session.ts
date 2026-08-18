@@ -10,9 +10,9 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import type {
-  ZeroBrowserStatus,
-  ZeroBrowserSuspensionReason,
-} from "@okouai/api-contracts/contracts/zero-browser";
+  BrowserStatus,
+  BrowserSuspensionReason,
+} from "@okouai/api-contracts/contracts/browser";
 
 import { agentRuns } from "./agent-run";
 import { chatThreads } from "./chat-thread";
@@ -91,15 +91,13 @@ export const browserSessions = pgTable(
     browserThreadProfileId: uuid("browser_thread_profile_id").references(() => {
       return browserThreadProfiles.id;
     }),
-    status: varchar("status", { length: 20 })
-      .$type<ZeroBrowserStatus>()
-      .notNull(),
+    status: varchar("status", { length: 20 }).$type<BrowserStatus>().notNull(),
     proxyCountryCode: varchar("proxy_country_code", { length: 2 }),
     timeoutMinutes: integer("timeout_minutes").notNull(),
     suspendedAt: timestamp("suspended_at"),
     suspensionReason: varchar("suspension_reason", {
       length: 20,
-    }).$type<ZeroBrowserSuspensionReason>(),
+    }).$type<BrowserSuspensionReason>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

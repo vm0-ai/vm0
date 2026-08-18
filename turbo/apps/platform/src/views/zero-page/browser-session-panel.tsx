@@ -7,9 +7,9 @@ import {
   Play,
 } from "lucide-react";
 import {
-  ZERO_BROWSER_INITIAL_SCREEN_HEIGHT,
-  ZERO_BROWSER_SCREEN_WIDTH,
-} from "@okouai/api-contracts/contracts/zero-browser";
+  BROWSER_INITIAL_SCREEN_HEIGHT,
+  BROWSER_SCREEN_WIDTH,
+} from "@okouai/api-contracts/contracts/browser";
 import { Button, cn } from "@okouai/ui";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
@@ -337,7 +337,7 @@ export function BrowserSessionPanel({
   }
   const browserAspectRatio = session.screen
     ? session.screen.width / session.screen.height
-    : ZERO_BROWSER_SCREEN_WIDTH / ZERO_BROWSER_INITIAL_SCREEN_HEIGHT;
+    : BROWSER_SCREEN_WIDTH / BROWSER_INITIAL_SCREEN_HEIGHT;
   const liveFrame = (
     <LiveBrowserFrame
       liveUrl={liveUrl}

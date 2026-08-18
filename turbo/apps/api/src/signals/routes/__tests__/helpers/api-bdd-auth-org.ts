@@ -58,7 +58,7 @@ import {
   zeroTeamContract,
   type TeamComposeItem,
 } from "@okouai/api-contracts/contracts/zero-team";
-import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
   userPreferencesContract,
   type UpdateUserPreferencesRequest,
@@ -1209,7 +1209,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       agentId: string,
     ): Promise<readonly string[]> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroUserConnectorsContract,
+        userConnectorsContract,
       );
       const response = await accept(
         client.get({
