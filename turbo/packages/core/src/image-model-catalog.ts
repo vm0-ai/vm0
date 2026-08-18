@@ -58,6 +58,9 @@ export const IMAGE_MODEL_CONFIGS = {
 
 export type ImageModel = ImageModelId;
 
+/** Reserved run environment key carrying the built-in image default alias. */
+export const DEFAULT_IMAGE_MODEL_ENV = "OKOU_DEFAULT_IMAGE_MODEL";
+
 /** All catalog models, in user-facing picker order. */
 export const IMAGE_MODELS: readonly ImageModel[] = IMAGE_MODEL_IDS;
 

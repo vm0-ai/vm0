@@ -11,7 +11,10 @@ import {
 import { replayChatThreadEvents } from "@okouai/core/chat-thread-event-replay";
 import { avatarTemplateStylePresetId } from "@okouai/core/avatar-template";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { DEFAULT_IMAGE_MODEL } from "@okouai/core/image-model-catalog";
+import {
+  DEFAULT_IMAGE_MODEL,
+  DEFAULT_IMAGE_MODEL_ENV,
+} from "@okouai/core/image-model-catalog";
 import { DEFAULT_VIDEO_MODEL } from "@okouai/core/video-model-catalog";
 import {
   chatEventsContract,
@@ -11080,8 +11083,9 @@ async function imageModelSnapshotActor(args: {
   readonly actor: ApiTestUser;
   readonly agentId: string;
   readonly orgId: string;
+  readonly runnerGroup: string;
 }> {
-  const { actor, agentId } = await entitledChatActor();
+  const { actor, agentId, runnerGroup } = await entitledChatActor();
   const orgId = actor.orgId;
   if (!orgId) {
     throw new Error("Expected an entitled chat actor to own an org");
@@ -11091,12 +11095,12 @@ async function imageModelSnapshotActor(args: {
     { ...actor, orgId },
     { [FeatureSwitchKey.ImageModelSelection]: args.selectionEnabled },
   );
-  return { actor, agentId, orgId };
+  return { actor, agentId, orgId, runnerGroup };
 }
 
 describe("CHAT-02: run image model snapshot", () => {
   it("keeps the run snapshot null while image model selection is disabled", async () => {
-    const { actor, agentId } = await imageModelSnapshotActor({
+    const { actor, agentId, runnerGroup } = await imageModelSnapshotActor({
       selectionEnabled: false,
     });
 
@@ -11107,6 +11111,9 @@ describe("CHAT-02: run image model snapshot", () => {
     await expect(
       readRunImageModelSnapshotFixture(anchor.runId),
     ).resolves.toBeNull();
+    expect(
+      (await api.readRun(actor, anchor.runId)).appendSystemPrompt ?? "",
+    ).not.toContain("# Default built-in image model");
     await cancelChatRun(actor, anchor.runId);
 
     await chat.updateUserModelPreference(actor, null, "gpt-image-2");
@@ -11123,11 +11130,18 @@ describe("CHAT-02: run image model snapshot", () => {
     await expect(
       readRunImageModelSnapshotFixture(continued.runId),
     ).resolves.toBeNull();
+    const { claim: disabledClaim } = await claimChatRun(
+      runnerGroup,
+      continued.runId,
+    );
+    expect(
+      claimEnvironment(disabledClaim)[DEFAULT_IMAGE_MODEL_ENV],
+    ).toBeUndefined();
     await cancelChatRun(actor, continued.runId);
   }, 90_000);
 
   it("resolves thread, member, and global image defaults into stable snapshots", async () => {
-    const { actor, agentId } = await imageModelSnapshotActor({
+    const { actor, agentId, runnerGroup } = await imageModelSnapshotActor({
       selectionEnabled: true,
     });
 
@@ -11175,6 +11189,21 @@ describe("CHAT-02: run image model snapshot", () => {
     await expect(
       readRunImageModelSnapshotFixture(threadPinned.runId),
     ).resolves.toBe(initialThreadPin);
+    const threadPinnedPrompt =
+      (await api.readRun(actor, threadPinned.runId)).appendSystemPrompt ?? "";
+    expect(threadPinnedPrompt).toContain("# Default built-in image model");
+    expect(threadPinnedPrompt).toContain(
+      "This run's default built-in image model is `seedream4`.",
+    );
+    expect(threadPinnedPrompt).toContain(
+      "Only when the current user request explicitly names another supported built-in image model, pass `--model <model>`.",
+    );
+    expect(threadPinnedPrompt).toContain(
+      "Otherwise omit `--model`; the server applies `seedream4`.",
+    );
+    expect(threadPinnedPrompt).toContain(
+      "Image generation through a connected third-party service chooses its model separately; this default does not apply to that path.\n\n# Restricted Explicit Content",
+    );
     await cancelChatRun(actor, threadPinned.runId);
 
     const rePinned = await sendChatRun(actor, {
@@ -11185,6 +11214,13 @@ describe("CHAT-02: run image model snapshot", () => {
     await expect(
       readRunImageModelSnapshotFixture(rePinned.runId),
     ).resolves.toBe(nextThreadPin);
+    const { claim: rePinnedClaim } = await claimChatRun(
+      runnerGroup,
+      rePinned.runId,
+    );
+    expect(claimEnvironment(rePinnedClaim)[DEFAULT_IMAGE_MODEL_ENV]).toBe(
+      "nano-banana-2",
+    );
     await cancelChatRun(actor, rePinned.runId);
   }, 90_000);
 

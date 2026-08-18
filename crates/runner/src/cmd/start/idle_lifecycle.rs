@@ -2,18 +2,62 @@
 
 use std::sync::Arc;
 
-use sandbox::SandboxId;
+use sandbox::{DeviceRateLimits, SandboxId};
+use tokio::sync::Notify;
 use tokio::task::JoinSet;
+use tokio_util::task::TaskTracker;
 use tracing::{info, warn};
 
 use crate::idle_pool::{
     DestroyOutcome, IdleDestroyJob, IdleDestroyPayload, IdleDestroyResult, IdlePool,
-    IdlePoolSnapshot,
+    IdlePoolPressureSelection, IdlePoolSnapshot, ReservedIdleSandbox,
 };
 use crate::ids::RunId;
+use crate::resource_budget::BudgetLease;
 use crate::status::StatusTracker;
 
 pub(super) type SharedIdlePool = Arc<tokio::sync::Mutex<IdlePool>>;
+
+#[derive(Clone)]
+pub(super) struct IdleDestroyTracker {
+    tasks: TaskTracker,
+    reuse_state_notify: Arc<Notify>,
+}
+
+impl IdleDestroyTracker {
+    pub(super) fn new(reuse_state_notify: Arc<Notify>) -> Self {
+        Self {
+            tasks: TaskTracker::new(),
+            reuse_state_notify,
+        }
+    }
+
+    fn spawn_job(&self, job: IdleDestroyJob, context: &'static str) {
+        let reuse_state_notify = Arc::clone(&self.reuse_state_notify);
+        drop(self.tasks.spawn(async move {
+            match tokio::spawn(destroy_idle_job(job, context)).await {
+                Ok(true) => reuse_state_notify.notify_one(),
+                Ok(false) => {}
+                Err(error) => warn!(context, %error, "idle entry destroy task panicked"),
+            }
+        }));
+    }
+
+    fn spawn_payload(&self, payload: IdleDestroyPayload, context: &'static str) {
+        let reuse_state_notify = Arc::clone(&self.reuse_state_notify);
+        drop(self.tasks.spawn(async move {
+            let result = destroy_idle_payload_and_wait(payload, context).await;
+            if result.workspace_cache_promoted {
+                reuse_state_notify.notify_one();
+            }
+        }));
+    }
+
+    pub(super) async fn close_and_wait(&self) {
+        let _ = self.tasks.close();
+        self.tasks.wait().await;
+    }
+}
 
 /// Drain the idle pool: destroy every entry captured at drain start in parallel
 /// and wait for all destroys to complete before returning (budgets released).
@@ -39,58 +83,87 @@ pub(super) async fn drain_idle_pool(
     set_idle_status_snapshot(status, snapshot).await;
 }
 
-/// Remove expired idle entries and update status to match the new pool state.
-pub(super) async fn evict_expired_idle_entries(
-    idle_pool: &SharedIdlePool,
-    status: &StatusTracker,
-) -> Vec<IdleDestroyJob> {
-    let mut pool = idle_pool.lock().await;
-    let expired = pool.evict_expired();
-    if expired.is_empty() {
-        return expired;
-    }
-    let snapshot = pool.status_snapshot();
-    drop(pool);
-    set_idle_status_snapshot(status, snapshot).await;
-    expired
+pub(super) struct RetiringIdleEntry {
+    budget_lease: BudgetLease,
+    reuse_key: String,
+    profile_name: String,
 }
 
-/// Remove expired idle entries during the periodic cleanup tick.
-///
-/// Unlike budget-pressure eviction, the periodic tick refreshes status even
-/// when no entries expired. Preserve that behavior so status.json can be
-/// reconciled from the current pool snapshot on every cleanup pass.
-pub(super) async fn cleanup_expired_idle_entries(
+pub(super) struct IdlePressureRequest<'a> {
+    pub(super) reuse_key: Option<&'a str>,
+    pub(super) profile_name: &'a str,
+    pub(super) device_rate_limits: &'a Option<DeviceRateLimits>,
+    pub(super) history_generation_run_id: Option<RunId>,
+    pub(super) context: &'static str,
+}
+
+pub(super) enum IdlePressureSelection {
+    Reusable(Box<ReservedIdleSandbox>),
+    Retiring(RetiringIdleEntry),
+    Empty,
+}
+
+impl RetiringIdleEntry {
+    pub(super) fn reuse_key(&self) -> &str {
+        &self.reuse_key
+    }
+
+    pub(super) fn profile_name(&self) -> &str {
+        &self.profile_name
+    }
+
+    pub(super) fn budget_vcpu(&self) -> u32 {
+        self.budget_lease.vcpu()
+    }
+
+    pub(super) fn budget_memory_mb(&self) -> u32 {
+        self.budget_lease.memory_mb()
+    }
+
+    pub(super) fn into_budget_lease(self) -> BudgetLease {
+        self.budget_lease
+    }
+}
+
+/// Prefer a matching reusable entry; otherwise remove the oldest idle entry.
+/// The pool decision is atomic, and an evicted payload obtains durable cleanup
+/// ownership before the status write yields or its lease can be handed off.
+pub(super) async fn select_idle_entry_for_pressure(
     idle_pool: &SharedIdlePool,
     status: &StatusTracker,
-) -> Vec<IdleDestroyJob> {
-    let mut pool = idle_pool.lock().await;
-    let (expired, mut snapshot) = pool.evict_expired_with_snapshot();
-    drop(pool);
-    if snapshot.idle_vms.len() < snapshot.idle_vms.capacity() / 2 {
-        snapshot.idle_vms.shrink_to_fit();
-    }
-    for entry in &expired {
-        info!(
-            profile = %entry.profile_name(),
-            "idle VM expired, destroying"
+    tracker: &IdleDestroyTracker,
+    request: IdlePressureRequest<'_>,
+) -> IdlePressureSelection {
+    let (selection, snapshot) = {
+        let mut pool = idle_pool.lock().await;
+        let selection = pool.reserve_reusable_or_evict_oldest(
+            request.reuse_key,
+            request.profile_name,
+            request.device_rate_limits,
+            request.history_generation_run_id,
         );
-    }
+        let snapshot = pool.status_snapshot();
+        (selection, snapshot)
+    };
+    let selection = match selection {
+        IdlePoolPressureSelection::Reusable(reservation) => {
+            IdlePressureSelection::Reusable(reservation)
+        }
+        IdlePoolPressureSelection::Evicted(job) => {
+            let reuse_key = job.reuse_key().to_owned();
+            let profile_name = job.profile_name().to_owned();
+            let budget_lease =
+                spawn_idle_destroy_job_retaining_lease(tracker, *job, request.context);
+            IdlePressureSelection::Retiring(RetiringIdleEntry {
+                budget_lease,
+                reuse_key,
+                profile_name,
+            })
+        }
+        IdlePoolPressureSelection::Empty => return IdlePressureSelection::Empty,
+    };
     set_idle_status_snapshot(status, snapshot).await;
-    expired
-}
-
-/// Remove the oldest idle entry and update status to match the new pool state.
-pub(super) async fn evict_oldest_idle_entry(
-    idle_pool: &SharedIdlePool,
-    status: &StatusTracker,
-) -> Option<IdleDestroyJob> {
-    let mut pool = idle_pool.lock().await;
-    let evicted = pool.evict_oldest()?;
-    let snapshot = pool.status_snapshot();
-    drop(pool);
-    set_idle_status_snapshot(status, snapshot).await;
-    Some(evicted)
+    selection
 }
 
 pub(super) async fn set_idle_status_snapshot(status: &StatusTracker, snapshot: IdlePoolSnapshot) {
@@ -150,11 +223,21 @@ pub(super) async fn add_preparing_run_with_idle_status_snapshot(
 }
 
 pub(super) fn spawn_idle_destroy_job(
-    destroy_tasks: &mut JoinSet<bool>,
+    tracker: &IdleDestroyTracker,
     job: IdleDestroyJob,
     context: &'static str,
 ) {
-    destroy_tasks.spawn(destroy_idle_job(job, context));
+    tracker.spawn_job(job, context);
+}
+
+fn spawn_idle_destroy_job_retaining_lease(
+    tracker: &IdleDestroyTracker,
+    job: IdleDestroyJob,
+    context: &'static str,
+) -> BudgetLease {
+    let (payload, budget_lease) = job.into_retiring_parts();
+    tracker.spawn_payload(payload, context);
+    budget_lease
 }
 
 /// Destroy idle entries in parallel and wait until their leases are dropped.
@@ -204,8 +287,6 @@ pub(super) async fn destroy_idle_payload_and_wait(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    use std::time::Duration;
 
     use sandbox::{ResourceLimits, SandboxConfig, SandboxFactory};
     use sandbox_mock::MockSandboxFactory;
@@ -267,10 +348,7 @@ mod tests {
                 .with_last_completed_at(TEST_COMPLETED_AT.into()),
             Err(_) => panic!("park should succeed"),
         };
-        let mut pool = IdlePool::new(IdlePoolConfig {
-            default_timeout: Duration::from_secs(300),
-            max_idle: 0,
-        });
+        let mut pool = IdlePool::new(IdlePoolConfig { max_idle: 0 });
         assert!(matches!(pool.park(candidate), ParkResult::Parked));
 
         let promoted = destroy_idle_jobs_and_wait(pool.drain(), "test_idle_destroy_cache").await;

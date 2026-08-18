@@ -1,11 +1,10 @@
 use super::super::super::*;
 
 use crate::guest_timezone::GuestTimezoneIntent;
-use crate::idle_pool::{ParkResult, ParkedIdleCandidate, test_support::ParkedIdleCandidateBuilder};
+use crate::idle_pool::{ParkResult, test_support::ParkedIdleCandidateBuilder};
 use crate::idle_reuse_preparation::add_healthy_reuse_preparation_matcher;
 use crate::ids::RunId;
 use crate::paths::RunnerPaths;
-use crate::resource_budget::BudgetLease;
 use crate::storage_fingerprints::StorageFingerprints;
 use crate::workspace_image_cache::{
     WorkspaceCacheTerminalStatus, WorkspaceImageCache, WorkspaceImageLeaseIdentity,
@@ -16,17 +15,6 @@ use sandbox::SandboxId;
 
 const TEST_LAST_COMPLETED_AT: &str = "2026-05-28T00:00:00.000Z";
 
-fn make_synthetic_parked_candidate(
-    reuse_key: &str,
-    profile_name: &str,
-    budget_lease: BudgetLease,
-) -> ParkedIdleCandidate {
-    ParkedIdleCandidateBuilder::new(reuse_key, budget_lease)
-        .with_profile_name(profile_name)
-        .with_guest_timezone_intent(GuestTimezoneIntent::Unknown)
-        .build()
-}
-
 struct IdlePoolSeedSpec<'a> {
     reuse_key: &'a str,
     profile_name: &'a str,
@@ -34,7 +22,7 @@ struct IdlePoolSeedSpec<'a> {
     memory_mb: u32,
     history_generation_run_id: Option<RunId>,
     guest_timezone_intent: GuestTimezoneIntent,
-    timing: Option<(std::time::Instant, Duration)>,
+    timing: Option<std::time::Instant>,
 }
 
 pub(in super::super) struct SpeculativeIdleSeedSpec<'a> {
@@ -44,7 +32,7 @@ pub(in super::super) struct SpeculativeIdleSeedSpec<'a> {
     pub(in super::super) memory_mb: u32,
     pub(in super::super) history_generation_run_id: RunId,
     pub(in super::super) guest_timezone_intent: GuestTimezoneIntent,
-    pub(in super::super) timing: Option<(std::time::Instant, Duration)>,
+    pub(in super::super) timing: Option<std::time::Instant>,
 }
 
 /// Pre-populate idle pool with an entry and reserve its budget. Returns
@@ -220,9 +208,7 @@ async fn seed_idle_pool_with_overrides_and_generation(
     };
     let mut guard = pool.lock().await;
     let result = match timing {
-        Some((parked_at, idle_timeout)) => {
-            guard.park_at_for_test(candidate, parked_at, idle_timeout)
-        }
+        Some(parked_at) => guard.park_at_for_test(candidate, parked_at),
         None => guard.park(candidate),
     };
     assert!(matches!(result, ParkResult::Parked));
@@ -333,25 +319,6 @@ pub(in super::super) async fn seed_workspace_cache_state(
     );
 }
 
-pub(in super::super) async fn seed_idle_pool_expired(
-    pool: &SharedIdlePool,
-    budget: &Arc<ResourceBudget>,
-    reuse_key: &str,
-    profile_name: &str,
-    vcpu: u32,
-    memory_mb: u32,
-) {
-    let budget_lease = ResourceBudget::try_reserve_lease(budget, vcpu, memory_mb).unwrap();
-    let candidate = make_synthetic_parked_candidate(reuse_key, profile_name, budget_lease);
-    let mut guard = pool.lock().await;
-    let result = guard.park_at_for_test(
-        candidate,
-        std::time::Instant::now() - Duration::from_secs(400),
-        Duration::from_secs(300),
-    );
-    assert!(matches!(result, ParkResult::Parked));
-}
-
 pub(in super::super) struct TestParkedIdleCandidateSpec<'a> {
     pub(in super::super) reuse_key: &'a str,
     pub(in super::super) profile_name: &'a str,
@@ -359,7 +326,6 @@ pub(in super::super) struct TestParkedIdleCandidateSpec<'a> {
     pub(in super::super) memory_mb: u32,
     pub(in super::super) history_generation_run_id: Option<RunId>,
     pub(in super::super) parked_at: std::time::Instant,
-    pub(in super::super) idle_timeout: Duration,
 }
 
 pub(in super::super) async fn seed_idle_pool_with_timing(
@@ -376,6 +342,6 @@ pub(in super::super) async fn seed_idle_pool_with_timing(
         None => builder.build(),
     };
     let mut guard = pool.lock().await;
-    let result = guard.park_at_for_test(candidate, spec.parked_at, spec.idle_timeout);
+    let result = guard.park_at_for_test(candidate, spec.parked_at);
     assert!(matches!(result, ParkResult::Parked));
 }

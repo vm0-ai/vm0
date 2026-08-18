@@ -5,12 +5,12 @@ use std::time::Instant;
 
 use futures_util::FutureExt;
 use tokio::task::JoinSet;
-use tracing::{info, warn};
+use tracing::info;
 
 use super::active_runs::ActiveRunReuseState;
 use super::factory_lifecycle::SharedFactory;
 use super::idle_lifecycle::{
-    destroy_idle_jobs_and_wait, evict_expired_idle_entries, evict_oldest_idle_entry,
+    IdlePressureRequest, IdlePressureSelection, select_idle_entry_for_pressure,
 };
 use super::job_discovery::{
     ClaimedJobSetup, FinalizingAdmission, ReadyClaimedResource, ReservedActivation,
@@ -59,6 +59,18 @@ struct FinalizingPreparation<'a> {
     claimed: &'a ClaimedJob,
     cancellation: &'a RunCancellationRegistration,
     admission: &'a mut FinalizingAdmission,
+    profile_name: &'a str,
+    vcpu: u32,
+    memory_mb: u32,
+    device_rate_limits: &'a Option<sandbox::DeviceRateLimits>,
+    ctx: &'a SpawnContext,
+}
+
+struct FinalizingFallback<'a> {
+    run_id: RunId,
+    cancellation: &'a RunCancellationRegistration,
+    reuse_key: &'a str,
+    history_generation_run_id: RunId,
     profile_name: &'a str,
     vcpu: u32,
     memory_mb: u32,
@@ -267,9 +279,18 @@ async fn prepare_finalizing_resource(
                 finalizing_fallback_reason = reason,
                 "finalizing successor entering workspace or cold fallback"
             );
-            acquire_fresh_capacity(run_id, cancellation, vcpu, memory_mb, ctx)
-                .await
-                .map(FinalizingResource::Fresh)
+            acquire_fallback_resource(FinalizingFallback {
+                run_id,
+                cancellation,
+                reuse_key: &admission.reuse_key,
+                history_generation_run_id: admission.history_generation_run_id,
+                profile_name,
+                vcpu,
+                memory_mb,
+                device_rate_limits,
+                ctx,
+            })
+            .await
         }
         FinalizingWaitOutcome::Cancelled => Err(ExecutionFailure::cancelled()),
     }
@@ -342,57 +363,159 @@ async fn wait_for_finalizing_resource(
     }
 }
 
-async fn acquire_fresh_capacity(
-    run_id: RunId,
-    cancellation: &RunCancellationRegistration,
-    vcpu: u32,
-    memory_mb: u32,
-    ctx: &SpawnContext,
-) -> Result<BudgetLease, ExecutionFailure> {
-    let mut active_run_changes = ctx.active_runs.subscribe_changes();
+async fn acquire_fallback_resource(
+    request: FinalizingFallback<'_>,
+) -> Result<FinalizingResource, ExecutionFailure> {
+    let FinalizingFallback {
+        run_id,
+        cancellation,
+        reuse_key,
+        history_generation_run_id,
+        profile_name,
+        vcpu,
+        memory_mb,
+        device_rate_limits,
+        ctx,
+    } = request;
+    let mut idle_pool_changes = ctx.idle_pool.lock().await.subscribe_changes();
     let cancel = cancellation.token();
+    let mut retiring_leases = Vec::new();
     loop {
-        if let Some(lease) = ResourceBudget::try_reserve_lease(&ctx.budget, vcpu, memory_mb) {
-            return Ok(lease);
+        if let Some(reservation) = reserve_fallback_exact(
+            cancellation,
+            reuse_key,
+            profile_name,
+            device_rate_limits,
+            history_generation_run_id,
+            ctx,
+        )
+        .await?
+        {
+            return Ok(FinalizingResource::Exact(reservation));
         }
-        let expired = evict_expired_idle_entries(&ctx.idle_pool, &ctx.status).await;
-        if !expired.is_empty() {
-            info!(
-                run_id = %run_id,
-                count = expired.len(),
-                "reclaiming expired idle VMs for finalizing fallback"
-            );
-            destroy_idle_jobs_and_wait(expired, "finalizing_fallback_expired").await;
-            ctx.reuse_state_notify.notify_one();
-            continue;
+        match ResourceBudget::try_substitute_leases(
+            &ctx.budget,
+            std::mem::take(&mut retiring_leases),
+            vcpu,
+            memory_mb,
+        ) {
+            Ok(lease) => {
+                if let Some(reservation) = reserve_fallback_exact(
+                    cancellation,
+                    reuse_key,
+                    profile_name,
+                    device_rate_limits,
+                    history_generation_run_id,
+                    ctx,
+                )
+                .await?
+                {
+                    drop(lease);
+                    return Ok(FinalizingResource::Exact(reservation));
+                }
+                return Ok(FinalizingResource::Fresh(lease));
+            }
+            Err(retained) => retiring_leases = retained,
         }
-        if let Some(evicted) = evict_oldest_idle_entry(&ctx.idle_pool, &ctx.status).await {
-            info!(
-                run_id = %run_id,
-                profile = %evicted.profile_name(),
-                "evicting idle VM for finalizing fallback"
-            );
-            destroy_idle_jobs_and_wait(vec![evicted], "finalizing_fallback_oldest").await;
-            ctx.reuse_state_notify.notify_one();
-            continue;
+        match select_idle_entry_for_pressure(
+            &ctx.idle_pool,
+            &ctx.status,
+            &ctx.idle_destroy_tracker,
+            IdlePressureRequest {
+                reuse_key: Some(reuse_key),
+                profile_name,
+                device_rate_limits,
+                history_generation_run_id: Some(history_generation_run_id),
+                context: "finalizing_fallback_oldest",
+            },
+        )
+        .await
+        {
+            IdlePressureSelection::Reusable(reservation) => {
+                let reservation = accept_fallback_exact(cancellation, reservation, ctx).await?;
+                return Ok(FinalizingResource::Exact(reservation));
+            }
+            IdlePressureSelection::Retiring(retiring) => {
+                info!(
+                    run_id = %run_id,
+                    profile = %retiring.profile_name(),
+                    "evicting idle VM for finalizing fallback"
+                );
+                retiring_leases.push(retiring.into_budget_lease());
+                ctx.reuse_state_notify.notify_one();
+                continue;
+            }
+            IdlePressureSelection::Empty => {}
         }
 
         info!(run_id = %run_id, "finalizing fallback waiting for fresh capacity");
+        #[cfg(test)]
+        ctx.test_observer
+            .notify_finalizing_capacity_wait_entered(run_id);
         tokio::select! {
             biased;
             () = cancel.cancelled() => {
                 return Err(ExecutionFailure::cancelled());
             }
-            lease = ResourceBudget::reserve_lease_when_available(&ctx.budget, vcpu, memory_mb) => {
-                return Ok(lease);
-            }
-            changed = active_run_changes.changed() => {
-                if changed.is_err() {
-                    warn!(run_id = %run_id, "active-run change channel closed");
+            lease = ResourceBudget::substitute_leases_when_available(
+                &ctx.budget,
+                &mut retiring_leases,
+                vcpu,
+                memory_mb,
+            ) => {
+                if let Some(reservation) = reserve_fallback_exact(
+                    cancellation,
+                    reuse_key,
+                    profile_name,
+                    device_rate_limits,
+                    history_generation_run_id,
+                    ctx,
+                ).await? {
+                    drop(lease);
+                    return Ok(FinalizingResource::Exact(reservation));
                 }
+                return Ok(FinalizingResource::Fresh(lease));
             }
+            _ = idle_pool_changes.changed() => {}
         }
     }
+}
+
+async fn reserve_fallback_exact(
+    cancellation: &RunCancellationRegistration,
+    reuse_key: &str,
+    profile_name: &str,
+    device_rate_limits: &Option<sandbox::DeviceRateLimits>,
+    history_generation_run_id: RunId,
+    ctx: &SpawnContext,
+) -> Result<Option<Box<ReservedIdleSandbox>>, ExecutionFailure> {
+    let Some(reservation) = reserve_reusable_idle_for_spawn(
+        reuse_key,
+        profile_name,
+        device_rate_limits,
+        Some(history_generation_run_id),
+        ctx,
+    )
+    .await
+    else {
+        return Ok(None);
+    };
+    accept_fallback_exact(cancellation, Box::new(reservation), ctx)
+        .await
+        .map(Some)
+}
+
+async fn accept_fallback_exact(
+    cancellation: &RunCancellationRegistration,
+    reservation: Box<ReservedIdleSandbox>,
+    ctx: &SpawnContext,
+) -> Result<Box<ReservedIdleSandbox>, ExecutionFailure> {
+    if cancellation.token().is_cancelled() {
+        rollback_reserved_idle_for_spawn(*reservation, ctx).await;
+        ctx.reuse_state_notify.notify_one();
+        return Err(ExecutionFailure::cancelled());
+    }
+    Ok(reservation)
 }
 
 async fn complete_claimed_without_sandbox(

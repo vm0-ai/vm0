@@ -542,10 +542,7 @@ async fn pool_full_rejected_vm_keeps_budget_until_destroy_and_completion() {
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     {
         let mut pool = idle_pool.lock().await;
-        *pool = IdlePool::new(IdlePoolConfig {
-            default_timeout: Duration::from_secs(300),
-            max_idle: 1,
-        });
+        *pool = IdlePool::new(IdlePoolConfig { max_idle: 1 });
     }
     seed_idle_pool(&idle_pool, &budget, "sess-existing", "vm0/default", 2, 4096).await;
     assert_eq!(budget.allocated().2, 1, "seeded idle entry holds budget");

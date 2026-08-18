@@ -199,14 +199,9 @@ fn build_mock_run_config_with_runtime(
     let (usage_flush_tx, usage_flush_rx) = mpsc::channel(1);
     let min_vcpu = profiles_min_vcpu(&profiles);
     let min_memory_mb = profiles_min_memory(&profiles);
-    let idle_pool: SharedIdlePool =
-        Arc::new(tokio::sync::Mutex::new(IdlePool::new_with_parking_gate(
-            IdlePoolConfig {
-                default_timeout: Duration::from_secs(300),
-                max_idle: 10,
-            },
-            parking_gate.clone(),
-        )));
+    let idle_pool: SharedIdlePool = Arc::new(tokio::sync::Mutex::new(
+        IdlePool::new_with_parking_gate(IdlePoolConfig { max_idle: 10 }, parking_gate.clone()),
+    ));
     let reuse_state_notify = Arc::new(tokio::sync::Notify::new());
     let active_runs = ActiveRuns::new(Arc::clone(&reuse_state_notify));
 

@@ -3,6 +3,15 @@ import { randomUUID } from "node:crypto";
 import { command } from "ccstate";
 import { zeroImageIoGenerateContract } from "@okouai/api-contracts/contracts/zero-image-io-generate";
 import type { BuiltInGenerationRealtimeSubscription } from "@okouai/api-contracts/contracts/built-in-generation";
+import { isImageModelId } from "@okouai/api-contracts/contracts/image-models";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import {
+  DEFAULT_IMAGE_MODEL,
+  type ImageModel,
+} from "@okouai/core/image-model-catalog";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { and, eq, isNotNull } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -10,6 +19,7 @@ import { bodyResultOf } from "../context/request";
 import { logger } from "../../lib/log";
 import type { RouteEntry } from "../route-entry";
 import { env } from "../../lib/env";
+import { db$, type ReadonlyDb } from "../external/db";
 import { createBuiltInGenerationRealtimeSubscription } from "../external/realtime";
 import {
   checkImageCredits$,
@@ -36,6 +46,7 @@ import {
   startRunBuiltInAdmission$,
   type RunBuiltInAdmission,
 } from "../services/run-built-in-admission.service";
+import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 
 const L = logger("ImageGeneration");
 const imageBody$ = bodyResultOf(zeroImageIoGenerateContract.post);
@@ -60,6 +71,50 @@ interface ImageJobArgs {
   readonly admission: RunBuiltInAdmission | null;
   readonly options: ImageOptions;
   readonly pricing: ImagePricing;
+}
+
+async function loadRunImageModelDefault(
+  db: ReadonlyDb,
+  orgId: string,
+  userId: string,
+  runId: string | undefined,
+  signal: AbortSignal,
+): Promise<ImageModel | null> {
+  if (!runId) {
+    return null;
+  }
+
+  const [run] = await db
+    .select({ selectedImageModel: agentRuns.selectedImageModel })
+    .from(agentRuns)
+    .where(
+      and(
+        eq(agentRuns.id, runId),
+        eq(agentRuns.orgId, orgId),
+        eq(agentRuns.userId, userId),
+        isNotNull(agentRuns.triggerSource),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+  if (!run) {
+    return null;
+  }
+  const featureSwitchContext = await loadUserFeatureSwitchContext(
+    db,
+    orgId,
+    userId,
+  );
+  signal.throwIfAborted();
+  if (
+    !isFeatureEnabled(
+      FeatureSwitchKey.ImageModelSelection,
+      featureSwitchContext,
+    )
+  ) {
+    return null;
+  }
+  return isImageModelId(run.selectedImageModel) ? run.selectedImageModel : null;
 }
 
 function isGenerationError(value: unknown): value is GenerationError {
@@ -172,13 +227,27 @@ const submitImageProviderWebhookJob$ = command(
 
 const postImageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
+  const db = get(db$);
   const bodyResult = await get(imageBody$);
   signal.throwIfAborted();
   if (!bodyResult.ok) {
     return bodyResult.response;
   }
 
-  const options = parseImageOptions(bodyResult.data);
+  const runId =
+    auth.tokenType === "zero" || auth.tokenType === "sandbox"
+      ? auth.runId
+      : undefined;
+  const runImageModelDefault = await loadRunImageModelDefault(
+    db,
+    auth.orgId,
+    auth.userId,
+    runId,
+    signal,
+  );
+  const options = parseImageOptions(bodyResult.data, {
+    defaultModel: runImageModelDefault ?? DEFAULT_IMAGE_MODEL,
+  });
   if ("status" in options) {
     return options;
   }
@@ -219,10 +288,6 @@ const postImageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     generationId,
   );
   signal.throwIfAborted();
-  const runId =
-    auth.tokenType === "zero" || auth.tokenType === "sandbox"
-      ? auth.runId
-      : undefined;
   const admission = await set(
     startRunBuiltInAdmission$,
     { runId, kind: "image" },

@@ -31,17 +31,13 @@ fn park_at(
     reuse_key: &str,
     candidate: ParkedIdleCandidate,
     parked_at: Instant,
-    idle_timeout: Duration,
 ) -> ParkResult {
     assert_eq!(candidate.reuse_key(), reuse_key);
-    pool.park_at_for_test(candidate, parked_at, idle_timeout)
+    pool.park_at_for_test(candidate, parked_at)
 }
 
 fn pool_config(max_idle: usize) -> IdlePoolConfig {
-    IdlePoolConfig {
-        default_timeout: Duration::from_secs(300),
-        max_idle,
-    }
+    IdlePoolConfig { max_idle }
 }
 
 #[test]
@@ -173,32 +169,29 @@ async fn reserved_restore_rejects_after_parking_closes() {
     assert_eq!(pool.len(), 0);
 }
 
-#[tokio::test]
-async fn reserved_restore_rejects_an_entry_with_expired_original_age() {
+#[test]
+fn reserved_restore_accepts_an_entry_regardless_of_original_age() {
     let mut pool = IdlePool::new(pool_config(0));
     let now = Instant::now();
-    let candidate = make_candidate_for("session-expired-reservation", 2, 2048);
+    let candidate = make_candidate_for("session-aged-reservation", 2, 2048);
     assert!(matches!(
         park_at(
             &mut pool,
-            "session-expired-reservation",
+            "session-aged-reservation",
             candidate,
             now - Duration::from_secs(301),
-            Duration::from_secs(300),
         ),
         ParkResult::Parked
     ));
-    let reservation = ReservedIdleSandbox {
-        entry: pool
-            .take("session-expired-reservation")
-            .expect("expired entry should still be available for ownership testing"),
-    };
+    let reservation = pool
+        .reserve_reusable("session-aged-reservation", "vm0/default", &None)
+        .expect("idle age must not prevent reservation");
 
-    let RestoreReservedIdleResult::Rejected(rejected) = pool.restore_reserved(reservation) else {
-        panic!("originally expired reservation must not be restored");
-    };
-    rejected.run().await;
-    assert_eq!(pool.len(), 0);
+    assert!(matches!(
+        pool.restore_reserved(reservation),
+        RestoreReservedIdleResult::Restored
+    ));
+    assert_eq!(pool.len(), 1);
 }
 
 #[test]
@@ -288,127 +281,6 @@ async fn rejected_parked_idle_candidate_returns_active_owned_lease() {
 }
 
 #[test]
-fn evict_expired() {
-    let mut pool = IdlePool::new(pool_config(0));
-    let now = Instant::now();
-
-    // Entry expired 10s ago
-    let _ = park_at(
-        &mut pool,
-        "expired",
-        make_candidate_for("expired", 2, 2048),
-        now - Duration::from_secs(310),
-        Duration::from_secs(300),
-    );
-    // Entry still fresh
-    let _ = park_at(
-        &mut pool,
-        "fresh",
-        make_candidate_for("fresh", 2, 2048),
-        now,
-        Duration::from_secs(300),
-    );
-
-    let evicted = pool.evict_expired();
-    assert_eq!(evicted.len(), 1);
-    assert_eq!(pool.len(), 1);
-    assert!(pool.take("fresh").is_some());
-}
-
-#[test]
-fn evict_expired_with_snapshot_none_expired_keeps_revision() {
-    let mut pool = IdlePool::new(pool_config(0));
-    let now = Instant::now();
-    let fresh = make_candidate_for("fresh", 2, 2048);
-    let fresh_sandbox_id = fresh.sandbox_id();
-    let _ = park_at(&mut pool, "fresh", fresh, now, Duration::from_secs(300));
-    let before_revision = pool.status_snapshot().revision;
-
-    let (evicted, snapshot) = pool.evict_expired_with_snapshot();
-
-    assert!(evicted.is_empty());
-    assert_eq!(pool.len(), 1);
-    assert_eq!(snapshot.revision, before_revision);
-    assert_eq!(snapshot.idle_vms.len(), 1);
-    assert_eq!(snapshot.idle_vms[0].reuse_key, "fresh");
-    assert_eq!(snapshot.idle_vms[0].sandbox_id, fresh_sandbox_id);
-}
-
-#[test]
-fn evict_expired_with_snapshot_returns_retained_entries_sorted() {
-    let mut pool = IdlePool::new(pool_config(0));
-    let now = Instant::now();
-
-    let expired = make_candidate_for("expired", 2, 2048);
-    let _ = park_at(
-        &mut pool,
-        "expired",
-        expired,
-        now - Duration::from_secs(310),
-        Duration::from_secs(300),
-    );
-    let retained_b = make_candidate_for("sess-b", 4, 4096);
-    let retained_b_sandbox_id = retained_b.sandbox_id();
-    let _ = park_at(
-        &mut pool,
-        "sess-b",
-        retained_b,
-        now,
-        Duration::from_secs(300),
-    );
-    let retained_a = make_candidate_for("sess-a", 1, 1024);
-    let retained_a_sandbox_id = retained_a.sandbox_id();
-    let _ = park_at(
-        &mut pool,
-        "sess-a",
-        retained_a,
-        now,
-        Duration::from_secs(300),
-    );
-    let before_revision = pool.status_snapshot().revision;
-
-    let (evicted, snapshot) = pool.evict_expired_with_snapshot();
-
-    assert_eq!(evicted.len(), 1);
-    assert_eq!(pool.len(), 2);
-    assert_eq!(snapshot.revision, before_revision + 1);
-    assert_eq!(snapshot.idle_vms.len(), 2);
-    assert_eq!(snapshot.idle_vms[0].reuse_key, "sess-a");
-    assert_eq!(snapshot.idle_vms[0].sandbox_id, retained_a_sandbox_id);
-    assert_eq!(snapshot.idle_vms[1].reuse_key, "sess-b");
-    assert_eq!(snapshot.idle_vms[1].sandbox_id, retained_b_sandbox_id);
-}
-
-#[test]
-fn evict_expired_with_snapshot_all_expired_returns_empty_snapshot() {
-    let mut pool = IdlePool::new(pool_config(0));
-    let now = Instant::now();
-
-    let _ = park_at(
-        &mut pool,
-        "s1",
-        make_candidate_for("s1", 2, 2048),
-        now - Duration::from_secs(400),
-        Duration::from_secs(300),
-    );
-    let _ = park_at(
-        &mut pool,
-        "s2",
-        make_candidate_for("s2", 4, 4096),
-        now - Duration::from_secs(310),
-        Duration::from_secs(300),
-    );
-    let before_revision = pool.status_snapshot().revision;
-
-    let (evicted, snapshot) = pool.evict_expired_with_snapshot();
-
-    assert_eq!(evicted.len(), 2);
-    assert_eq!(pool.len(), 0);
-    assert_eq!(snapshot.revision, before_revision + 1);
-    assert!(snapshot.idle_vms.is_empty());
-}
-
-#[test]
 fn evict_oldest() {
     let mut pool = IdlePool::new(pool_config(0));
     let now = Instant::now();
@@ -418,20 +290,68 @@ fn evict_oldest() {
         "old",
         make_candidate_for("old", 2, 2048),
         now - Duration::from_secs(100),
-        Duration::from_secs(300),
     );
-    let _ = park_at(
-        &mut pool,
-        "new",
-        make_candidate_for("new", 4, 4096),
-        now,
-        Duration::from_secs(300),
-    );
+    let _ = park_at(&mut pool, "new", make_candidate_for("new", 4, 4096), now);
 
     let evicted = pool.evict_oldest().unwrap();
     assert_eq!(evicted.budget_vcpu(), 2); // the old one
     assert_eq!(pool.len(), 1);
     assert!(pool.take("new").is_some());
+}
+
+#[test]
+fn evict_oldest_breaks_equal_park_time_by_reuse_key() {
+    let mut pool = IdlePool::new(pool_config(0));
+    let parked_at = Instant::now();
+    for reuse_key in ["session-z", "session-a", "session-m"] {
+        let _ = park_at(
+            &mut pool,
+            reuse_key,
+            make_candidate_for(reuse_key, 2, 2048),
+            parked_at,
+        );
+    }
+
+    let evicted = pool.evict_oldest().unwrap();
+    assert_eq!(evicted.reuse_key(), "session-a");
+}
+
+#[test]
+fn pressure_selection_reserves_exact_match_before_oldest_eviction() {
+    let mut pool = IdlePool::new(pool_config(0));
+    let parked_at = Instant::now();
+    let history_generation_run_id = RunId::new_v4();
+    let matching = ParkedIdleCandidateBuilder::new("session-matching", make_budget_lease(2, 2048))
+        .with_history_generation_run_id(history_generation_run_id)
+        .build();
+    let _ = park_at(
+        &mut pool,
+        "session-matching",
+        matching,
+        parked_at - Duration::from_secs(1),
+    );
+    let _ = park_at(
+        &mut pool,
+        "session-unrelated",
+        make_candidate_for("session-unrelated", 2, 2048),
+        parked_at,
+    );
+
+    let selection = pool.reserve_reusable_or_evict_oldest(
+        Some("session-matching"),
+        "vm0/default",
+        &None,
+        Some(history_generation_run_id),
+    );
+
+    let IdlePoolPressureSelection::Reusable(reservation) = selection else {
+        panic!("matching entry must be reserved before pressure eviction");
+    };
+    assert_eq!(pool.held_reuse_keys(), vec!["session-unrelated"]);
+    assert!(matches!(
+        pool.restore_reserved(*reservation),
+        RestoreReservedIdleResult::Restored
+    ));
 }
 
 #[test]
@@ -609,84 +529,11 @@ fn soft_drain_can_reopen_parking() {
 }
 
 #[test]
-fn evict_expired_none_expired() {
-    let mut pool = IdlePool::new(pool_config(0));
-    let now = Instant::now();
-    let _ = park_at(
-        &mut pool,
-        "fresh",
-        make_candidate_for("fresh", 2, 2048),
-        now,
-        Duration::from_secs(300),
-    );
-    let evicted = pool.evict_expired();
-    assert!(evicted.is_empty());
-    assert_eq!(pool.len(), 1);
-    assert_eq!(pool.status_snapshot().revision, 1);
-}
-
-#[test]
 fn drain_empty_pool() {
     let mut pool = IdlePool::new(pool_config(0));
     let drained = pool.drain();
     assert!(drained.is_empty());
     assert_eq!(pool.parking_state(), ParkingState::Open);
-}
-
-#[test]
-fn evict_expired_all_entries() {
-    let mut pool = IdlePool::new(pool_config(0));
-    let now = Instant::now();
-
-    let _ = park_at(
-        &mut pool,
-        "s1",
-        make_candidate_for("s1", 2, 2048),
-        now - Duration::from_secs(400),
-        Duration::from_secs(300),
-    );
-    let _ = park_at(
-        &mut pool,
-        "s2",
-        make_candidate_for("s2", 4, 4096),
-        now - Duration::from_secs(310),
-        Duration::from_secs(300),
-    );
-    assert_eq!(pool.len(), 2);
-
-    let evicted = pool.evict_expired();
-    assert_eq!(evicted.len(), 2);
-    assert_eq!(pool.len(), 0);
-    assert_eq!(pool.status_snapshot().revision, 3);
-}
-
-#[test]
-fn evict_expired_respects_per_entry_timeout() {
-    let mut pool = IdlePool::new(pool_config(0));
-    let now = Instant::now();
-
-    // Short timeout (60s), parked 70s ago → expired
-    let _ = park_at(
-        &mut pool,
-        "short",
-        make_candidate_for("short", 2, 2048),
-        now - Duration::from_secs(70),
-        Duration::from_secs(60),
-    );
-    // Long timeout (300s), parked 70s ago → NOT expired
-    let _ = park_at(
-        &mut pool,
-        "long",
-        make_candidate_for("long", 4, 4096),
-        now - Duration::from_secs(70),
-        Duration::from_secs(300),
-    );
-
-    let evicted = pool.evict_expired();
-    assert_eq!(evicted.len(), 1);
-    assert_eq!(evicted[0].budget_vcpu(), 2); // only the short-timeout entry
-    assert_eq!(pool.len(), 1);
-    assert!(pool.take("long").is_some());
 }
 
 #[test]

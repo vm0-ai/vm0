@@ -25,10 +25,7 @@ fn make_budget_lease(vcpu: u32, memory_mb: u32) -> BudgetLease {
 }
 
 fn pool_config(max_idle: usize) -> IdlePoolConfig {
-    IdlePoolConfig {
-        default_timeout: Duration::from_secs(300),
-        max_idle,
-    }
+    IdlePoolConfig { max_idle }
 }
 
 async fn make_idle_park_request(
@@ -333,9 +330,8 @@ async fn speculative_repark_preserves_original_idle_age_and_metadata() {
     };
 
     let original_parked_at = Instant::now() - Duration::from_secs(120);
-    let original_timeout = Duration::from_secs(300);
     let reservation = ReservedIdleSandbox {
-        entry: candidate.into_idle_entry(original_parked_at, original_timeout),
+        entry: candidate.into_idle_entry(original_parked_at),
     };
     let SpeculativeIdleUnparkResult::Ready(speculative) = reservation
         .try_unpark_for_speculation(RunId::new_v4())
@@ -352,7 +348,6 @@ async fn speculative_repark_preserves_original_idle_age_and_metadata() {
     };
 
     assert_eq!(restored.entry.parked_at, original_parked_at);
-    assert_eq!(restored.entry.idle_timeout, original_timeout);
     assert_eq!(restored.entry.reuse_key(), reuse_key);
     assert_eq!(restored.entry.profile_name(), profile_name);
     assert_eq!(
@@ -409,7 +404,7 @@ async fn speculative_repark_without_history_generation_returns_owned_destroy_job
         Err(_) => panic!("initial park should succeed"),
     };
     let reservation = ReservedIdleSandbox {
-        entry: candidate.into_idle_entry(Instant::now(), Duration::from_secs(300)),
+        entry: candidate.into_idle_entry(Instant::now()),
     };
     let SpeculativeIdleUnparkResult::Ready(speculative) = reservation
         .try_unpark_for_speculation(RunId::new_v4())

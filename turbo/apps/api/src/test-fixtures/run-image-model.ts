@@ -2,9 +2,9 @@
  * Test fixtures for image-model states that production APIs cannot expose.
  *
  * Canonical member defaults and thread pins must use their production routes.
- * The routes intentionally reject retired IDs, while the run snapshot remains
- * write-only until its generation reader ships, so only those two transition
- * cases use controlled direct database access.
+ * The routes intentionally reject retired IDs, and endpoint fallback tests
+ * need run snapshot states without a public setter. Only those transition and
+ * endpoint cases use controlled direct database access.
  */
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
@@ -56,4 +56,14 @@ export async function readRunImageModelSnapshotFixture(
     throw new Error("Expected a product run row for the image model snapshot");
   }
   return run.selectedImageModel;
+}
+
+export async function setRunImageModelFixture(
+  runId: string,
+  selectedImageModel: string | null,
+): Promise<void> {
+  await db()
+    .update(agentRuns)
+    .set({ selectedImageModel })
+    .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)));
 }

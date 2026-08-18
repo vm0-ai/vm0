@@ -1,7 +1,8 @@
 use std::collections::HashMap;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use sandbox::{DeviceRateLimits, SandboxId};
+use tokio::sync::watch;
 
 use crate::ids::RunId;
 use crate::status::IdleVm;
@@ -28,28 +29,11 @@ pub(crate) use parking_gate::ParkingState;
 #[cfg(test)]
 pub(crate) mod test_support;
 
-/// Default idle timeout for kept-alive VMs (30 minutes).
-///
-/// Re-exported via `SandboxConfig::default()` so the YAML default and
-/// the in-process fallback stay locked together.
-pub const DEFAULT_IDLE_TIMEOUT_SECS: u64 = 1800;
-
 /// Configuration for the idle sandbox pool.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct IdlePoolConfig {
-    /// Default idle timeout for parked VMs.
-    pub default_timeout: Duration,
     /// Maximum number of idle VMs (0 = unlimited).
     pub max_idle: usize,
-}
-
-impl Default for IdlePoolConfig {
-    fn default() -> Self {
-        Self {
-            default_timeout: Duration::from_secs(DEFAULT_IDLE_TIMEOUT_SECS),
-            max_idle: 0,
-        }
-    }
 }
 
 /// Idle pool status snapshot paired with a monotonic mutation revision.
@@ -72,6 +56,7 @@ pub struct IdlePool {
     entries: HashMap<String, IdleEntry>,
     config: IdlePoolConfig,
     revision: u64,
+    changes: watch::Sender<u64>,
     /// Shared lifecycle gate. The signal/main-loop lifecycle controller updates
     /// this before publishing externally visible mode transitions.
     parking_gate: ParkingGate,
@@ -84,10 +69,12 @@ impl IdlePool {
     }
 
     pub(crate) fn new_with_parking_gate(config: IdlePoolConfig, parking_gate: ParkingGate) -> Self {
+        let (changes, _changes_rx) = watch::channel(0);
         Self {
             entries: HashMap::new(),
             config,
             revision: 0,
+            changes,
             parking_gate,
         }
     }
@@ -97,7 +84,7 @@ impl IdlePool {
     ///
     /// Returns `Rejected(candidate)` if parking is closed/soft-draining or at capacity.
     pub fn park(&mut self, candidate: ParkedIdleCandidate) -> ParkResult {
-        self.park_at(candidate, Instant::now(), self.config.default_timeout)
+        self.park_at(candidate, Instant::now())
     }
 
     #[cfg(test)]
@@ -105,17 +92,11 @@ impl IdlePool {
         &mut self,
         candidate: ParkedIdleCandidate,
         parked_at: Instant,
-        idle_timeout: Duration,
     ) -> ParkResult {
-        self.park_at(candidate, parked_at, idle_timeout)
+        self.park_at(candidate, parked_at)
     }
 
-    fn park_at(
-        &mut self,
-        candidate: ParkedIdleCandidate,
-        parked_at: Instant,
-        idle_timeout: Duration,
-    ) -> ParkResult {
+    fn park_at(&mut self, candidate: ParkedIdleCandidate, parked_at: Instant) -> ParkResult {
         let reuse_key = candidate.reuse_key().to_string();
         if !self.parking_gate.is_open() {
             return ParkResult::Rejected(candidate.into_rejected());
@@ -126,7 +107,7 @@ impl IdlePool {
                 return ParkResult::Rejected(candidate.into_rejected());
             }
         }
-        let entry = candidate.into_idle_entry(parked_at, idle_timeout);
+        let entry = candidate.into_idle_entry(parked_at);
         let result = match self.entries.insert(reuse_key, entry) {
             Some(evicted) => ParkResult::Replaced(evicted.into_destroy_job()),
             None => ParkResult::Parked,
@@ -150,9 +131,7 @@ impl IdlePool {
         device_rate_limits: &Option<DeviceRateLimits>,
     ) -> bool {
         self.entries.get(reuse_key).is_some_and(|entry| {
-            !entry.is_expired_at(Instant::now())
-                && entry.profile_name() == profile_name
-                && entry.device_rate_limits() == device_rate_limits
+            entry.profile_name() == profile_name && entry.device_rate_limits() == device_rate_limits
         })
     }
 
@@ -191,6 +170,38 @@ impl IdlePool {
         Some(ReservedIdleSandbox { entry })
     }
 
+    /// Reserve a matching idle entry or select the oldest entry for pressure
+    /// eviction in one pool transition.
+    ///
+    /// Keeping both decisions under the caller's exclusive `&mut` access
+    /// prevents an entry parked between a match check and eviction from being
+    /// destroyed instead of reused.
+    pub(crate) fn reserve_reusable_or_evict_oldest(
+        &mut self,
+        reuse_key: Option<&str>,
+        profile_name: &str,
+        device_rate_limits: &Option<DeviceRateLimits>,
+        history_generation_run_id: Option<RunId>,
+    ) -> IdlePoolPressureSelection {
+        let reservation = reuse_key.and_then(|reuse_key| match history_generation_run_id {
+            Some(history_generation_run_id) => self.reserve_reusable_generation(
+                reuse_key,
+                profile_name,
+                device_rate_limits,
+                history_generation_run_id,
+            ),
+            None => self.reserve_reusable(reuse_key, profile_name, device_rate_limits),
+        });
+        if let Some(reservation) = reservation {
+            return IdlePoolPressureSelection::Reusable(Box::new(reservation));
+        }
+
+        match self.evict_oldest() {
+            Some(job) => IdlePoolPressureSelection::Evicted(Box::new(job)),
+            None => IdlePoolPressureSelection::Empty,
+        }
+    }
+
     pub fn restore_reserved(
         &mut self,
         reservation: ReservedIdleSandbox,
@@ -198,11 +209,7 @@ impl IdlePool {
         let entry = reservation.entry;
         let reuse_key = entry.reuse_key().to_owned();
         let has_capacity = self.config.max_idle == 0 || self.entries.len() < self.config.max_idle;
-        if !self.parking_gate.is_open()
-            || entry.is_expired_at(Instant::now())
-            || !has_capacity
-            || self.entries.contains_key(&reuse_key)
-        {
+        if !self.parking_gate.is_open() || !has_capacity || self.entries.contains_key(&reuse_key) {
             return RestoreReservedIdleResult::Rejected(Box::new(entry.into_destroy_job()));
         }
 
@@ -211,34 +218,17 @@ impl IdlePool {
         RestoreReservedIdleResult::Restored
     }
 
-    /// Remove and return all entries that have exceeded their idle timeout.
-    pub fn evict_expired(&mut self) -> Vec<IdleDestroyJob> {
-        let now = Instant::now();
-        let expired: Vec<IdleDestroyJob> = self
-            .entries
-            .extract_if(|_, entry| entry.is_expired_at(now))
-            .map(|(_, entry)| entry.into_destroy_job())
-            .collect();
-        if !expired.is_empty() {
-            self.bump_revision();
-        }
-        expired
-    }
-
-    /// Remove expired entries and return the post-eviction idle status snapshot.
-    pub fn evict_expired_with_snapshot(&mut self) -> (Vec<IdleDestroyJob>, IdlePoolSnapshot) {
-        let expired = self.evict_expired();
-        let snapshot = self.status_snapshot();
-        (expired, snapshot)
-    }
-
     /// Evict the oldest idle entry (by park time). Used for resource
     /// pressure relief.
     pub fn evict_oldest(&mut self) -> Option<IdleDestroyJob> {
         let oldest_key = self
             .entries
             .iter()
-            .min_by_key(|(_, e)| e.parked_at)
+            .min_by(|(left_key, left), (right_key, right)| {
+                left.parked_at
+                    .cmp(&right.parked_at)
+                    .then_with(|| left_key.cmp(right_key))
+            })
             .map(|(k, _)| k.clone())?;
         let job = self
             .entries
@@ -318,6 +308,13 @@ impl IdlePool {
         self.entries.len()
     }
 
+    /// Subscribe to pool ownership mutations. The revision is durable for each
+    /// receiver, so capacity waiters cannot miss an entry parked or restored
+    /// between checking the pool and waiting for its next change.
+    pub(crate) fn subscribe_changes(&self) -> watch::Receiver<u64> {
+        self.changes.subscribe()
+    }
+
     /// Current lifecycle parking state.
     #[cfg(test)]
     pub fn parking_state(&self) -> ParkingState {
@@ -347,6 +344,7 @@ impl IdlePool {
 
     fn bump_revision(&mut self) {
         self.revision = self.revision.saturating_add(1);
+        self.changes.send_replace(self.revision);
     }
 }
 
@@ -366,6 +364,13 @@ pub enum ParkResult {
     Replaced(IdleDestroyJob),
     /// Parking is closed/soft-draining or at capacity; the entry could not be parked.
     Rejected(RejectedParkedIdleCandidate),
+}
+
+#[must_use = "pressure selection must reserve, track, or explicitly handle idle ownership"]
+pub(crate) enum IdlePoolPressureSelection {
+    Reusable(Box<ReservedIdleSandbox>),
+    Evicted(Box<IdleDestroyJob>),
+    Empty,
 }
 
 #[cfg(test)]

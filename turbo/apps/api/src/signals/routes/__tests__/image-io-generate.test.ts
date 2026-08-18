@@ -8,6 +8,7 @@ import {
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import { onTestFinished } from "vitest";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { testContext } from "../../../__tests__/test-context";
@@ -30,12 +31,14 @@ import {
 } from "../../../test-fixtures/system-config-seeds";
 import { seedOrgMembership$ } from "./helpers/org-membership";
 import { seedCompose$, seedRun$ } from "./helpers/usage-state";
+import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import {
   generatedStripeCustomerId,
   postUsageAllowanceInvoicePaid,
 } from "./helpers/stripe-billing-webhook";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { flushWaitUntilForTest } from "../../context/wait-until";
+import { setRunImageModelFixture } from "../../../test-fixtures/run-image-model";
 
 const context = testContext();
 const store = createStore();
@@ -493,6 +496,35 @@ async function seedImageFixture(options: {
   return fixture;
 }
 
+async function seedImageRun(
+  fixture: ImageFixture,
+  options: {
+    readonly imageModelSelectionEnabled: boolean;
+    readonly selectedImageModel: string | null;
+  },
+): Promise<{ readonly runId: string }> {
+  const { composeId } = await store.set(
+    seedCompose$,
+    { orgId: fixture.orgId, userId: fixture.userId },
+    context.signal,
+  );
+  const { runId } = await store.set(
+    seedRun$,
+    {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      composeId,
+      triggerSource: "web",
+    },
+    context.signal,
+  );
+  await setRunImageModelFixture(runId, options.selectedImageModel);
+  await updateFeatureSwitchesForUser(context, fixture, {
+    [FeatureSwitchKey.ImageModelSelection]: options.imageModelSelectionEnabled,
+  });
+  return { runId };
+}
+
 describe("POST /api/zero/image-io/generate", () => {
   let releasePendingFalResponse: (() => void) | null = null;
 
@@ -614,6 +646,176 @@ describe("POST /api/zero/image-io/generate", () => {
       },
     });
     expect(calledFal).toBeFalsy();
+  });
+
+  it("uses the stable run snapshot for omitted and blank models", async () => {
+    const fixture = await seedImageFixture({});
+    const pricingFixture = await createScopedImagePricing({
+      configured: QWEN_IMAGE_PRICING,
+    });
+    const { runId } = await seedImageRun(fixture, {
+      imageModelSelectionEnabled: true,
+      selectedImageModel: "fal-ai/qwen-image",
+    });
+
+    let falCalls = 0;
+    server.use(
+      http.post(FAL_QWEN_IMAGE_URL, () => {
+        falCalls += 1;
+        return HttpResponse.json(falQueueHandle(`run-default-${falCalls}`));
+      }),
+    );
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      runId,
+    });
+    const app = createImageIoTestApp(pricingFixture.resolution);
+    const prompts = ["omitted model prompt", "blank model prompt"];
+
+    for (const [index, prompt] of prompts.entries()) {
+      const response = await app.request("/api/zero/image-io/generate", {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          prompt,
+          ...(index === 0 ? {} : { model: "   " }),
+        }),
+      });
+      expect(response.status).toBe(202);
+    }
+
+    expect(falCalls).toBe(2);
+  });
+
+  it("preserves a valid explicit model and rejects an invalid explicit model", async () => {
+    const fixture = await seedImageFixture({});
+    const pricingFixture = await createScopedImagePricing({
+      configured: [...GPT_IMAGE_1_PRICING, ...QWEN_IMAGE_PRICING],
+    });
+    const { runId } = await seedImageRun(fixture, {
+      imageModelSelectionEnabled: true,
+      selectedImageModel: "fal-ai/qwen-image",
+    });
+    let gptCalls = 0;
+    let qwenCalls = 0;
+    server.use(
+      http.post(FAL_GPT_IMAGE_1_URL, () => {
+        gptCalls += 1;
+        return HttpResponse.json(falQueueHandle("explicit-gpt-image-1"));
+      }),
+      http.post(FAL_QWEN_IMAGE_URL, () => {
+        qwenCalls += 1;
+        return HttpResponse.json(falQueueHandle("unexpected-qwen"));
+      }),
+    );
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      runId,
+    });
+    const app = createImageIoTestApp(pricingFixture.resolution);
+
+    const explicitResponse = await app.request("/api/zero/image-io/generate", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        prompt: "explicit model parameters use the explicit model",
+        model: "gpt-image-1",
+        background: "transparent",
+        outputFormat: "webp",
+      }),
+    });
+    expect(explicitResponse.status).toBe(202);
+    expect(gptCalls).toBe(1);
+    expect(qwenCalls).toBe(0);
+
+    const invalidResponse = await app.request("/api/zero/image-io/generate", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        prompt: "invalid explicit model must not fall back",
+        model: "not-a-real-image-model",
+      }),
+    });
+    expect(invalidResponse.status).toBe(400);
+    await expect(invalidResponse.json()).resolves.toMatchObject({
+      error: {
+        message: expect.stringContaining(
+          "Unsupported image model: not-a-real-image-model",
+        ),
+        code: "BAD_REQUEST",
+      },
+    });
+    expect(gptCalls).toBe(1);
+    expect(qwenCalls).toBe(0);
+  });
+
+  it("keeps the global default for disabled, null, old, and session paths", async () => {
+    const pricingFixture = await createScopedImagePricing({
+      configured: GPT_IMAGE_1_PRICING,
+    });
+    let gptCalls = 0;
+    let qwenCalls = 0;
+    server.use(
+      http.post(FAL_GPT_IMAGE_1_URL, () => {
+        gptCalls += 1;
+        return HttpResponse.json(falQueueHandle(`global-default-${gptCalls}`));
+      }),
+      http.post(FAL_QWEN_IMAGE_URL, () => {
+        qwenCalls += 1;
+        return HttpResponse.json(falQueueHandle("unexpected-run-default"));
+      }),
+    );
+    const app = createImageIoTestApp(pricingFixture.resolution);
+
+    const runCases = [
+      {
+        imageModelSelectionEnabled: false,
+        selectedImageModel: "fal-ai/qwen-image",
+        prompt: "disabled switch",
+      },
+      {
+        imageModelSelectionEnabled: true,
+        selectedImageModel: null,
+        prompt: "null snapshot",
+      },
+      {
+        imageModelSelectionEnabled: true,
+        selectedImageModel: "fal-ai/retired-image-model",
+        prompt: "old snapshot",
+      },
+    ] as const;
+    for (const runCase of runCases) {
+      const fixture = await seedImageFixture({});
+      const { runId } = await seedImageRun(fixture, runCase);
+      const token = zeroToken({
+        userId: fixture.userId,
+        orgId: fixture.orgId,
+        runId,
+      });
+      const response = await app.request("/api/zero/image-io/generate", {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}` },
+        body: JSON.stringify({ prompt: runCase.prompt }),
+      });
+      expect(response.status).toBe(202);
+    }
+
+    const sessionFixture = await seedImageFixture({});
+    await updateFeatureSwitchesForUser(context, sessionFixture, {
+      [FeatureSwitchKey.ImageModelSelection]: true,
+    });
+    mocks.clerk.session(sessionFixture.userId, sessionFixture.orgId);
+    const sessionResponse = await app.request("/api/zero/image-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ prompt: "session request without a run" }),
+    });
+    expect(sessionResponse.status).toBe(202);
+
+    expect(gptCalls).toBe(4);
+    expect(qwenCalls).toBe(0);
   });
 
   it("returns 402 when the org has no spendable credits", async () => {
