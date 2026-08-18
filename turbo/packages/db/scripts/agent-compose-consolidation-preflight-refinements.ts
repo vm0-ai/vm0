@@ -13,6 +13,7 @@ import {
   fingerprintSortedSet,
   type SetFingerprint,
 } from "./agent-compose-consolidation-preflight-fingerprint";
+import { isExactHistoricalProductBuilderCandidate } from "./agent-compose-consolidation-preflight-historical-product-builder";
 
 export const ENVIRONMENT_PRIMARY_CLASSES = [
   "variableReferenceOnly",
@@ -25,6 +26,16 @@ export const ENVIRONMENT_PRIMARY_CLASSES = [
 
 export type EnvironmentPrimaryClass =
   (typeof ENVIRONMENT_PRIMARY_CLASSES)[number];
+
+/** Transition-only #28056 output classes; removed by #26938 Stage 8. */
+export const HISTORICAL_PRODUCT_BUILDER_ORIGIN_CLASSES = [
+  "exactHistoricalProductBuilder",
+  "referenceOnlyButUnproven",
+  "literalOrOtherUnproven",
+] as const;
+
+export type HistoricalProductBuilderOriginClass =
+  (typeof HISTORICAL_PRODUCT_BUILDER_ORIGIN_CLASSES)[number];
 
 export const ENVIRONMENT_OVERLAP_DIMENSIONS = [
   "officialModelProviderBindingCollision",
@@ -449,6 +460,24 @@ function environmentClassification(
   };
 }
 
+/** Transition-only #28056 classifier adapter; removed by #26938 Stage 8. */
+function historicalProductBuilderOrigin(
+  row: ExceptionRefinementInventoryRow,
+): HistoricalProductBuilderOriginClass {
+  if (isExactHistoricalProductBuilderCandidate(row)) {
+    return "exactHistoricalProductBuilder";
+  }
+  const primary = environmentClassification(row).primary;
+  if (
+    primary === "variableReferenceOnly" ||
+    primary === "secretReferenceOnly" ||
+    primary === "mixedVariableSecretReferenceOnly"
+  ) {
+    return "referenceOnlyButUnproven";
+  }
+  return "literalOrOtherUnproven";
+}
+
 type StrippedDisposition = "ignored" | "inactive" | "reachable" | "unknown";
 
 interface StrippedNode {
@@ -861,6 +890,46 @@ export function classifyExceptionRefinements(args: {
     );
   }
 
+  // Transition-only #28056 evidence partition; removed by #26938 Stage 8.
+  const historicalProductBuilderOriginClassification = primaryClassification({
+    domain:
+      "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin",
+    parentIds: args.environmentIds,
+    primaryClasses: HISTORICAL_PRODUCT_BUILDER_ORIGIN_CLASSES,
+    rowsById: args.rowsById,
+    failureGates: args.failureGates,
+    classify: historicalProductBuilderOrigin,
+  });
+  const originAssignments = HISTORICAL_PRODUCT_BUILDER_ORIGIN_CLASSES.flatMap(
+    (primaryClass) => {
+      return historicalProductBuilderOriginClassification.idsByClass[
+        primaryClass
+      ];
+    },
+  );
+  const originAssignmentCounts = new Map<string, number>();
+  for (const id of originAssignments) {
+    originAssignmentCounts.set(id, (originAssignmentCounts.get(id) ?? 0) + 1);
+  }
+  const duplicateOriginIds = [...originAssignmentCounts]
+    .filter(([, count]) => {
+      return count > 1;
+    })
+    .map(([id]) => {
+      return id;
+    });
+  const originDisjointnessClosure = setComparison(
+    "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin:primary-disjointness-closure",
+    [],
+    duplicateOriginIds,
+    false,
+  );
+  if (originDisjointnessClosure.classification === "drift") {
+    args.failureGates.add(
+      "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin.primaryDisjointnessClosure",
+    );
+  }
+
   const unsupported = primaryClassification({
     domain: "agentExecutionPlans.refinements.unsupportedOrInvalidContent",
     parentIds: args.unsupportedIds,
@@ -909,6 +978,16 @@ export function classifyExceptionRefinements(args: {
       primaryUnionClosure: environment.unionClosure,
       overlapUnionClosure,
       activity: environment.activity,
+      /** Transition-only #28056 output; removed by #26938 Stage 8. */
+      historicalProductBuilderOrigin: {
+        primary: historicalProductBuilderOriginClassification.primary,
+        primaryPartitionClosure:
+          historicalProductBuilderOriginClassification.partitionClosure,
+        primaryDisjointnessClosure: originDisjointnessClosure,
+        primaryUnionClosure:
+          historicalProductBuilderOriginClassification.unionClosure,
+        activity: historicalProductBuilderOriginClassification.activity,
+      },
     },
     unsupportedOrInvalidContent: {
       primary: unsupported.primary,
