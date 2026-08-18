@@ -570,14 +570,25 @@ const runtimeSnapshotCache = singleton((): RuntimeSnapshotCache => {
 async function loadConnectorRuntimeSnapshotWithTiming(
   db: ReadonlyDb,
   timing: ConnectorCatalogLoadTiming | undefined,
+  requestedConnectorSlugs: readonly ConnectorSlug[] | undefined,
 ): Promise<ConnectorRuntimeSnapshot> {
   const acceptedSnapshot = await loadAcceptedConnectorCatalogSnapshot(
     db,
     timing,
   );
+  const resolvedConnectorCount =
+    requestedConnectorSlugs === undefined
+      ? undefined
+      : new Set(
+          requestedConnectorSlugs.filter((connectorSlug) => {
+            return acceptedSnapshot.connectorBySlug.has(connectorSlug);
+          }),
+        ).size;
   timing?.recordCatalogFacts({
     rawSize: acceptedSnapshot.catalogRawSize,
+    compressedSize: acceptedSnapshot.catalogCompressedSize,
     connectorCount: acceptedSnapshot.artifact.connectors.length,
+    resolvedConnectorCount,
   });
   const key = runtimeSnapshotKey(acceptedSnapshot.identity);
   const cache = runtimeSnapshotCache();
@@ -596,18 +607,26 @@ export async function loadConnectorRuntimeSnapshot(
   db: ReadonlyDb,
   options?: {
     readonly timing: ApiDispatchTimingCollector;
-    readonly requestedConnectorCount: number | undefined;
+    readonly requestedConnectorSlugs: readonly ConnectorSlug[] | undefined;
   },
 ): Promise<ConnectorRuntimeSnapshot> {
   if (options === undefined) {
-    return await loadConnectorRuntimeSnapshotWithTiming(db, undefined);
+    return await loadConnectorRuntimeSnapshotWithTiming(
+      db,
+      undefined,
+      undefined,
+    );
   }
   const timing = new ConnectorCatalogLoadTiming(
     options.timing,
-    options.requestedConnectorCount,
+    options.requestedConnectorSlugs?.length,
   );
   return await timing.measureComplete(async () => {
-    return await loadConnectorRuntimeSnapshotWithTiming(db, timing);
+    return await loadConnectorRuntimeSnapshotWithTiming(
+      db,
+      timing,
+      options.requestedConnectorSlugs,
+    );
   });
 }
 

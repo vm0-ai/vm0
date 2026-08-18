@@ -1,8 +1,8 @@
 import {
-  zeroOrgMembersContract,
-  zeroOrgInviteContract,
-  zeroOrgMembershipRequestsContract,
-} from "@okouai/api-contracts/contracts/zero-org-members";
+  orgMembersContract,
+  orgInviteContract,
+  orgMembershipRequestsContract,
+} from "@okouai/api-contracts/contracts/org-member-routes";
 import type { OrgMembersResponse } from "@okouai/api-contracts/contracts/org-members";
 import { mockApi } from "../msw-contract.ts";
 
@@ -33,31 +33,31 @@ export function resetMockOrgMembers(): void {
 }
 
 export const apiOrgMembersHandlers = [
-  mockApi(zeroOrgMembersContract.members, ({ respond }) => {
+  mockApi(orgMembersContract.members, ({ respond }) => {
     return respond(200, mockOrgMembersResponse);
   }),
 
-  mockApi(zeroOrgMembersContract.updateRole, ({ respond }) => {
+  mockApi(orgMembersContract.updateRole, ({ respond }) => {
     return respond(200, { message: "Role updated" });
   }),
 
-  mockApi(zeroOrgMembersContract.removeMember, ({ respond }) => {
+  mockApi(orgMembersContract.removeMember, ({ respond }) => {
     return respond(200, { message: "Member removed" });
   }),
 
-  mockApi(zeroOrgInviteContract.invite, ({ respond }) => {
+  mockApi(orgInviteContract.invite, ({ respond }) => {
     return respond(200, { message: "Invitation sent" });
   }),
 
-  mockApi(zeroOrgInviteContract.revoke, ({ respond }) => {
+  mockApi(orgInviteContract.revoke, ({ respond }) => {
     return respond(200, { message: "Invitation revoked" });
   }),
 
-  mockApi(zeroOrgMembershipRequestsContract.accept, ({ respond }) => {
+  mockApi(orgMembershipRequestsContract.accept, ({ respond }) => {
     return respond(200, { message: "Request accepted" });
   }),
 
-  mockApi(zeroOrgMembershipRequestsContract.reject, ({ respond }) => {
+  mockApi(orgMembershipRequestsContract.reject, ({ respond }) => {
     return respond(200, { message: "Request rejected" });
   }),
 ];

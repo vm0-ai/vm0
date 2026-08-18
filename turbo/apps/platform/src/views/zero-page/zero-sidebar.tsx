@@ -638,10 +638,10 @@ function LabeledRailLink({
       className="group flex w-full flex-col items-center gap-1 no-underline"
     >
       <span
-        className={`relative inline-flex h-9 w-10 items-center justify-center rounded-xl transition-colors duration-200 ${
+        className={`relative inline-flex h-8 w-9 items-center justify-center rounded-lg transition-colors duration-200 ${
           isActive
             ? "bg-state-selected text-sidebar-foreground"
-            : "text-sidebar-foreground group-hover:bg-state-hover"
+            : "text-sidebar-foreground hover:bg-state-hover group-hover:bg-state-hover"
         }`}
       >
         {iconImg ? (
@@ -662,10 +662,8 @@ function LabeledRailLink({
         )}
       </span>
       <span
-        className={`text-[10px] leading-none ${
-          isActive
-            ? "font-semibold text-sidebar-foreground"
-            : "text-sidebar-foreground/60"
+        className={`max-w-full truncate px-0.5 text-[9px] font-medium leading-none ${
+          isActive ? "text-sidebar-foreground" : "text-sidebar-foreground/60"
         }`}
       >
         {caption}
@@ -703,7 +701,7 @@ function LabeledNavRail() {
   return (
     <aside
       data-testid="labeled-nav-rail"
-      className="zero-nav hidden md:flex h-full w-[76px] shrink-0 flex-col items-center border-r-[0.7px] border-sidebar-border bg-sidebar px-1.5 pb-2 pt-3"
+      className="zero-nav hidden md:flex h-full w-[68px] shrink-0 flex-col items-center border-r-[0.7px] border-sidebar-border bg-sidebar px-1.5 pb-2 pt-3"
     >
       <div className="zero-desktop-titlebar-drag-region" aria-hidden="true" />
       <div className="mb-3 shrink-0">
