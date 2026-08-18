@@ -153,9 +153,9 @@ export {
   type TranslationResponse,
 } from "./translation";
 export {
-  zeroModelPoliciesMainContract,
-  type ZeroModelPoliciesMainContract,
-} from "./zero-model-policies";
+  modelPoliciesMainContract,
+  type ModelPoliciesMainContract,
+} from "./model-policies";
 export {
   createModelProviderConnectionRequestSchema,
   getModelProviderTypeForSurfaceProtocol,
@@ -1399,12 +1399,12 @@ export {
   type WebSearchResult,
 } from "./web-search";
 export {
-  zeroUsageMembersContract,
-  type ZeroUsageMembersContract,
+  usageMembersContract,
+  type UsageMembersContract,
   // Inferred types
   type MemberUsage,
   type UsageMembersResponse,
-} from "./zero-usage";
+} from "./usage";
 export {
   usageRecordContract,
   usageRecordKindSchema,
@@ -1727,6 +1727,18 @@ export {
   type ZeroUploadsContract,
   type UploadPrepareResponse,
 } from "./zero-uploads";
+export {
+  MAX_PRESENTATION_TEMPLATE_PAGE_BYTES,
+  MAX_PRESENTATION_TEMPLATE_PAGES,
+  MAX_PRESENTATION_TEMPLATE_SOURCE_BYTES,
+  MAX_PRESENTATION_TEMPLATE_TOTAL_PAGE_BYTES,
+  PRESENTATION_TEMPLATE_PAGE_CONTENT_TYPE,
+  PRESENTATION_TEMPLATE_SOURCE_CONTENT_TYPE,
+  presentationTemplateStatusSchema,
+  zeroPresentationTemplatesContract,
+  type PresentationTemplateSummary,
+  type ZeroPresentationTemplatesContract,
+} from "./zero-presentation-templates";
 export {
   zeroGoalsContract,
   zeroGoalCreateRequestSchema,

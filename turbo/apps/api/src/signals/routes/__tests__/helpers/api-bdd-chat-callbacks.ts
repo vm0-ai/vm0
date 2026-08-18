@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { HttpResponse, http } from "msw";
 import { pushSubscriptionsContract } from "@okouai/api-contracts/contracts/push-subscriptions";
-import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
+import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
 import { z } from "zod";
 
 import { mockOptionalEnv } from "../../../../lib/env";
@@ -22,7 +22,7 @@ const OPENROUTER_COMPLETIONS_URL =
   "https://openrouter.ai/api/v1/chat/completions";
 
 type OrgModelPolicies = z.infer<
-  (typeof zeroModelPoliciesMainContract.update)["body"]
+  (typeof modelPoliciesMainContract.update)["body"]
 >["policies"];
 
 const openRouterCompletionBodySchema = z.object({
@@ -228,7 +228,7 @@ export function createChatCallbacksApi(context: TestContext) {
     return setupAppWithRoutes({
       context,
       routes: modelPoliciesRoutes,
-    })(zeroModelPoliciesMainContract);
+    })(modelPoliciesMainContract);
   }
 
   return {

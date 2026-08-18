@@ -4,7 +4,7 @@ import {
   type UsageRecordRange,
   type UsageRecordScope,
 } from "@okouai/api-contracts/contracts/usage-record";
-import { zeroUsageMembersContract } from "@okouai/api-contracts/contracts/zero-usage";
+import { usageMembersContract } from "@okouai/api-contracts/contracts/usage";
 import { accept } from "../../../lib/accept.ts";
 import { zeroClient$ } from "../../api-client.ts";
 
@@ -122,7 +122,7 @@ export const teamMemberUsageAsync$ = computed(async (get) => {
   get(usageRecordReload$);
   const range = get(teamUsageRangeState$);
   const createClient = get(zeroClient$);
-  const client = createClient(zeroUsageMembersContract);
+  const client = createClient(usageMembersContract);
   const result = await accept(
     client.get({
       query: {

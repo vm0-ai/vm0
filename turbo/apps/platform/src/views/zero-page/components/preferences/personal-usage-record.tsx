@@ -17,7 +17,7 @@ import type {
   UsageRecordScope,
   UsageRecordSource,
 } from "@okouai/api-contracts/contracts/usage-record";
-import type { UsageMembersResponse } from "@okouai/api-contracts/contracts/zero-usage";
+import type { UsageMembersResponse } from "@okouai/api-contracts/contracts/usage";
 import {
   Button,
   DropdownMenu,

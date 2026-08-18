@@ -26,7 +26,7 @@ import { builtInGenerationContract } from "@okouai/api-contracts/contracts/built
 import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
 import { imageIoGenerateContract } from "@okouai/api-contracts/contracts/image-io-generate";
 import { mapsContract } from "@okouai/api-contracts/contracts/maps";
-import { zeroUsageMembersContract } from "@okouai/api-contracts/contracts/zero-usage";
+import { usageMembersContract } from "@okouai/api-contracts/contracts/usage";
 import {
   usageRecordContract,
   type UsageRecordRange,
@@ -496,7 +496,7 @@ export function createBillingMediaApi(context: TestContext) {
       } = {},
     ) {
       const client = setupApp({ context, routes: usageMembersRoutes })(
-        zeroUsageMembersContract,
+        usageMembersContract,
       );
       return await accept(
         client.get({ headers: authenticate(actor), query }),
@@ -513,7 +513,7 @@ export function createBillingMediaApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 500)[],
     ) {
       const client = setupApp({ context, routes: usageMembersRoutes })(
-        zeroUsageMembersContract,
+        usageMembersContract,
       );
       return await accept(
         client.get({ headers: authenticate(actor), query }),
