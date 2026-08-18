@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.169.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.1...runner-rs-v0.169.2) (2026-08-18)
+
+
+### Performance Improvements
+
+* **runner:** make idle vm reclamation capacity-driven ([#27778](https://github.com/vm0-ai/vm0/issues/27778)) ([84f0e1f](https://github.com/vm0-ai/vm0/commit/84f0e1f649e6c75595bd4514252b6a4752c832e0))
+
 ## [0.169.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.0...runner-rs-v0.169.1) (2026-08-18)
 
 ## [0.169.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.168.26...runner-rs-v0.169.0) (2026-08-17)

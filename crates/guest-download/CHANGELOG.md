@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.13](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.12...guest-download-v0.23.13) (2026-08-18)
+
+
+### Performance Improvements
+
+* **guest-download:** attribute archive task shape ([#27853](https://github.com/vm0-ai/vm0/issues/27853)) ([c11a27d](https://github.com/vm0-ai/vm0/commit/c11a27d36e9c3ea3c51eb29d9aa422be13b01761))
+
 ## [0.23.12](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.11...guest-download-v0.23.12) (2026-08-17)
 
 ## [0.23.11](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.10...guest-download-v0.23.11) (2026-08-17)
