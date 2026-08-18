@@ -4292,6 +4292,7 @@
         "loading": "Carregando modelos...",
         "manageMoreModels": "Gerenciar mais modelos",
         "models": "Modelos",
+        "modelVariants": "Variantes de {{model}}",
         "noConfiguredModels": "Nenhum modelo configurado",
         "priceTiers": {
           "balanced": "Custo e desempenho equilibrados",

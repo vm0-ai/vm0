@@ -4241,6 +4241,7 @@
         "loading": "Memuat model...",
         "manageMoreModels": "Kelola model lainnya",
         "models": "Model",
+        "modelVariants": "Varian {{model}}",
         "noConfiguredModels": "Tidak ada model yang dikonfigurasi",
         "priceTiers": {
           "balanced": "Biaya dan performa seimbang",

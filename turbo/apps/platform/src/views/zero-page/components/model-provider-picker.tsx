@@ -8,6 +8,7 @@ import {
 } from "ccstate-react";
 import {
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Cpu,
@@ -23,6 +24,10 @@ import {
   SelectSeparator,
   SelectTrigger,
   SelectValue,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -44,6 +49,7 @@ import {
   VIDEO_MODEL_CONFIGS,
   type VideoModel,
 } from "@okouai/core/video-model-catalog";
+import type { ImageModel } from "@okouai/core/image-model-catalog";
 import { useTranslation } from "react-i18next";
 import { orgModelPolicies$ } from "../../../signals/external/org-model-policies";
 import { userModelPreference$ } from "../../../signals/external/user-model-preference";
@@ -75,12 +81,25 @@ export interface ModelProviderSelection {
   codexServiceTier?: CodexServiceTier;
 }
 
+interface MediaModelPanelVariantControl {
+  readonly label: string;
+  readonly chipLabel: string;
+  readonly selected: boolean;
+  readonly options: readonly {
+    readonly label: string;
+    readonly chipLabel: string;
+    readonly selected: boolean;
+    readonly onSelect: () => void;
+  }[];
+}
+
 export interface MediaModelPanelOption {
   readonly key: string;
   readonly label: string;
   readonly icon: ReactNode;
   readonly selected: boolean;
   readonly onSelect: () => void;
+  readonly variant?: MediaModelPanelVariantControl;
 }
 
 export type MediaModelCategoryId = "image" | "video";
@@ -762,8 +781,137 @@ const MEDIA_MODEL_PANEL_ROW_CLASS =
 
 const BYTEDANCE_ICON_PATH =
   "M19.8772 1.4685 24 2.5326v18.9426l-4.1228 1.0563V1.4685zm-13.3481 9.428 4.115 1.0641v8.9786l-4.115 1.0642v-11.107zM0 2.572l4.115 1.0642v16.7354L0 21.428V2.572zm17.4553 5.6205v11.107l-4.1228-1.0642V9.2568l4.1228-1.0642z";
+const FLUX_ICON_PATH =
+  "M0 20.683L12.01 2.5 24 20.683h-2.233L12.009 5.878 3.471 18.806h12.122l1.239 1.877H0z M8.069 16.724l2.073-3.115 2.074 3.115H8.069zM18.24 20.683l-5.668-8.707h2.177l5.686 8.707h-2.196zM19.74 11.676l2.13-3.19 2.13 3.19h-4.26z";
+const QWEN_ICON_PATH =
+  "M12.604 1.34c.393.69.784 1.382 1.174 2.075a.18.18 0 00.157.091h5.552c.174 0 .322.11.446.327l1.454 2.57c.19.337.24.478.024.837-.26.43-.513.864-.76 1.3l-.367.658c-.106.196-.223.28-.04.512l2.652 4.637c.172.301.111.494-.043.77-.437.785-.882 1.564-1.335 2.34-.159.272-.352.375-.68.37-.777-.016-1.552-.01-2.327.016a.099.099 0 00-.081.05 575.097 575.097 0 01-2.705 4.74c-.169.293-.38.363-.725.364-.997.003-2.002.004-3.017.002a.537.537 0 01-.465-.271l-1.335-2.323a.09.09 0 00-.083-.049H4.982c-.285.03-.553-.001-.805-.092l-1.603-2.77a.543.543 0 01-.002-.54l1.207-2.12a.198.198 0 000-.197 550.951 550.951 0 01-1.875-3.272l-.79-1.395c-.16-.31-.173-.496.095-.965.465-.813.927-1.625 1.387-2.436.132-.234.304-.334.584-.335a338.3 338.3 0 012.589-.001.124.124 0 00.107-.063l2.806-4.895a.488.488 0 01.422-.246c.524-.001 1.053 0 1.583-.006L11.704 1c.341-.003.724.032.9.34zm-3.432.403a.06.06 0 00-.052.03L6.254 6.788a.157.157 0 01-.135.078H3.253c-.056 0-.07.025-.041.074l5.81 10.156c.025.042.013.062-.034.063l-2.795.015a.218.218 0 00-.2.116l-1.32 2.31c-.044.078-.021.118.068.118l5.716.008c.046 0 .08.02.104.061l1.403 2.454c.046.081.092.082.139 0l5.006-8.76.783-1.382a.055.055 0 01.096 0l1.424 2.53a.122.122 0 00.107.062l2.763-.02a.04.04 0 00.035-.02.041.041 0 000-.04l-2.9-5.086a.108.108 0 010-.113l.293-.507 1.12-1.977c.024-.041.012-.062-.035-.062H9.2c-.059 0-.073-.026-.043-.077l1.434-2.505a.107.107 0 000-.114L9.225 1.774a.06.06 0 00-.053-.031zm6.29 8.02c.046 0 .058.02.034.06l-.832 1.465-2.613 4.585a.056.056 0 01-.05.029.058.058 0 01-.05-.029L8.498 9.841c-.02-.034-.01-.052.028-.054l.216-.012 6.722-.012z";
+const GEMINI_ICON_PATH =
+  "M20.616 10.835a14.147 14.147 0 01-4.45-3.001 14.111 14.111 0 01-3.678-6.452.503.503 0 00-.975 0 14.134 14.134 0 01-3.679 6.452 14.155 14.155 0 01-4.45 3.001c-.65.28-1.318.505-2.002.678a.502.502 0 000 .975c.684.172 1.35.397 2.002.677a14.147 14.147 0 014.45 3.001 14.112 14.112 0 013.679 6.453.502.502 0 00.975 0c.172-.685.397-1.351.677-2.003a14.145 14.145 0 013.001-4.45 14.113 14.113 0 016.453-3.678.503.503 0 000-.975 13.245 13.245 0 01-2.003-.678z";
 
 const MINIMAX_ICON_URL = settingsIconAssetUrl("minimax");
+
+function ImageModelBrandSvg({ path }: { path: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={16}
+      height={16}
+      fill="currentColor"
+      aria-hidden="true"
+      className="shrink-0"
+    >
+      <path d={path} />
+    </svg>
+  );
+}
+
+function QwenImageModelIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={16}
+      height={16}
+      aria-hidden="true"
+      className="shrink-0"
+    >
+      <path d={QWEN_ICON_PATH} fill="url(#image-model-qwen-gradient)" />
+      <defs>
+        <linearGradient
+          id="image-model-qwen-gradient"
+          x1="0%"
+          x2="100%"
+          y1="0%"
+          y2="0%"
+        >
+          <stop offset="0%" stopColor="#6336e7" stopOpacity={0.84} />
+          <stop offset="100%" stopColor="#6f69f7" stopOpacity={0.84} />
+        </linearGradient>
+      </defs>
+    </svg>
+  );
+}
+
+function GeminiImageModelIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={16}
+      height={16}
+      aria-hidden="true"
+      className="shrink-0"
+    >
+      <path d={GEMINI_ICON_PATH} fill="#3186ff" />
+      <path
+        d={GEMINI_ICON_PATH}
+        fill="url(#image-model-gemini-green-gradient)"
+      />
+      <path d={GEMINI_ICON_PATH} fill="url(#image-model-gemini-red-gradient)" />
+      <path
+        d={GEMINI_ICON_PATH}
+        fill="url(#image-model-gemini-yellow-gradient)"
+      />
+      <defs>
+        <linearGradient
+          id="image-model-gemini-green-gradient"
+          x1="7"
+          x2="11"
+          y1="15.5"
+          y2="12"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop stopColor="#08b962" />
+          <stop offset="1" stopColor="#08b962" stopOpacity={0} />
+        </linearGradient>
+        <linearGradient
+          id="image-model-gemini-red-gradient"
+          x1="8"
+          x2="11.5"
+          y1="5.5"
+          y2="11"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop stopColor="#f94543" />
+          <stop offset="1" stopColor="#f94543" stopOpacity={0} />
+        </linearGradient>
+        <linearGradient
+          id="image-model-gemini-yellow-gradient"
+          x1="3.5"
+          x2="17.5"
+          y1="13.5"
+          y2="12"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop stopColor="#fabc12" />
+          <stop offset="0.46" stopColor="#fabc12" stopOpacity={0} />
+        </linearGradient>
+      </defs>
+    </svg>
+  );
+}
+
+export function ImageModelBrandIcon({ model }: { model: ImageModel }) {
+  switch (model) {
+    case "gpt-image-1":
+    case "gpt-image-2":
+    case "gpt-image-1.5":
+    case "gpt-image-1-mini": {
+      return <ProviderIcon type="openai-api-key" size={16} />;
+    }
+    case "fal-ai/flux-pro/v1.1":
+    case "fal-ai/flux-pro/v1.1-ultra": {
+      return <ImageModelBrandSvg path={FLUX_ICON_PATH} />;
+    }
+    case "fal-ai/qwen-image": {
+      return <QwenImageModelIcon />;
+    }
+    case "fal-ai/bytedance/seedream/v4/text-to-image": {
+      return <ImageModelBrandSvg path={BYTEDANCE_ICON_PATH} />;
+    }
+    case "fal-ai/nano-banana-2": {
+      return <GeminiImageModelIcon />;
+    }
+  }
+}
 
 function VideoModelVeoIcon() {
   return (
@@ -915,6 +1063,65 @@ export function VideoModelBrandIcon({ model }: { model: VideoModel }) {
 }
 
 function MediaModelPanelRow({ option }: { option: MediaModelPanelOption }) {
+  if (option.variant) {
+    const variant = option.variant;
+    const groupSelected =
+      option.selected ||
+      variant.options.some((candidate) => {
+        return candidate.selected;
+      });
+    return (
+      <div className="relative flex w-full select-none items-center gap-2 rounded-lg pr-2 text-sm transition-colors hover:bg-state-hover hover:text-accent-foreground">
+        <button
+          type="button"
+          aria-label={option.label}
+          aria-pressed={option.selected}
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg py-1.5 pl-2 text-left outline-none"
+          onClick={option.onSelect}
+        >
+          {option.icon}
+          <span className="min-w-0 flex-1 truncate">{option.label}</span>
+        </button>
+        {groupSelected && (
+          <Check size={15} className="shrink-0 text-foreground" />
+        )}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label={variant.label}
+              className={cn(
+                "flex min-w-15 shrink-0 cursor-pointer items-center justify-between gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium leading-none outline-none transition-colors",
+                variant.selected
+                  ? "bg-state-selected text-foreground ring-1 ring-border"
+                  : "bg-muted text-muted-foreground hover:bg-state-selected-hover hover:text-foreground",
+              )}
+            >
+              <span>{variant.chipLabel}</span>
+              <ChevronDown size={12} aria-hidden="true" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-32">
+            {variant.options.map((candidate) => {
+              return (
+                <DropdownMenuItem
+                  key={candidate.label}
+                  aria-label={candidate.label}
+                  className="justify-between gap-2"
+                  onSelect={candidate.onSelect}
+                >
+                  <span>{candidate.chipLabel}</span>
+                  {candidate.selected && (
+                    <Check size={14} className="shrink-0" aria-hidden />
+                  )}
+                </DropdownMenuItem>
+              );
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    );
+  }
   return (
     <button
       type="button"

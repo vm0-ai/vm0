@@ -4242,6 +4242,7 @@
         "loading": "मॉडल लोड हो रहे हैं...",
         "manageMoreModels": "और मॉडल प्रबंधित करें",
         "models": "मॉडल",
+        "modelVariants": "{{model}} के वेरिएंट",
         "noConfiguredModels": "कोई कॉन्फ़िगर मॉडल नहीं",
         "priceTiers": {
           "balanced": "संतुलित लागत और प्रदर्शन",

@@ -15,12 +15,15 @@ interface ImageModelConfig {
   readonly alias: string;
   /** Human-facing name for pickers. */
   readonly label: string;
+  /** Compact label used when the model is shown as a sibling variant. */
+  readonly variantLabel?: string;
 }
 
 export const IMAGE_MODEL_CONFIGS = {
   "gpt-image-1": {
     alias: "gpt-image-1",
     label: "GPT Image 1",
+    variantLabel: "Standard",
   },
   "gpt-image-2": {
     alias: "gpt-image-2",
@@ -33,6 +36,7 @@ export const IMAGE_MODEL_CONFIGS = {
   "gpt-image-1-mini": {
     alias: "gpt-image-1-mini",
     label: "GPT Image 1 Mini",
+    variantLabel: "Mini",
   },
   "fal-ai/flux-pro/v1.1": {
     alias: "flux-pro-1.1",
@@ -64,8 +68,18 @@ export const DEFAULT_IMAGE_MODEL_ENV = "OKOU_DEFAULT_IMAGE_MODEL";
 /** All catalog models, in user-facing picker order. */
 export const IMAGE_MODELS: readonly ImageModel[] = IMAGE_MODEL_IDS;
 
-/** Every catalog model is currently available in the user-facing picker. */
-export const PUBLIC_IMAGE_MODELS: readonly ImageModel[] = IMAGE_MODEL_IDS;
+/** Every catalog model, ordered for the user-facing picker. */
+export const PUBLIC_IMAGE_MODELS = [
+  "gpt-image-1",
+  "gpt-image-2",
+  "gpt-image-1.5",
+  "gpt-image-1-mini",
+  "fal-ai/nano-banana-2",
+  "fal-ai/flux-pro/v1.1",
+  "fal-ai/flux-pro/v1.1-ultra",
+  "fal-ai/bytedance/seedream/v4/text-to-image",
+  "fal-ai/qwen-image",
+] as const satisfies readonly ImageModel[];
 
 export const IMAGE_MODEL_ALIASES = {
   "gpt-image-2": "gpt-image-2",

@@ -148,6 +148,7 @@ import type { CustomConnectorResponse } from "@okouai/api-contracts/contracts/ze
 import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 import { getModelDisplayName } from "@okouai/core/model-display-name";
 import {
+  ImageModelBrandIcon,
   ModelProviderPicker,
   VideoModelBrandIcon,
   type MediaModelCategoryId,
@@ -7659,24 +7660,57 @@ function composerImageModelPanelCategory({
   selectedModel,
   onChange,
   label,
+  variantMenuLabel,
 }: {
   selectedModel: ImageModel;
   onChange: (next: ImageModel | null) => void;
   label: string;
+  variantMenuLabel: string;
 }): MediaModelPanelCategory {
+  const gptImage1Models = ["gpt-image-1", "gpt-image-1-mini"] as const;
+  const baseModel = gptImage1Models[0];
+  const selectedGptImage1Model = gptImage1Models.find((candidate) => {
+    return candidate === selectedModel;
+  });
+  const selectedGptImage1Config =
+    IMAGE_MODEL_CONFIGS[selectedGptImage1Model ?? baseModel];
   return {
     id: "image",
     label,
     menuLabel: label,
-    options: PUBLIC_IMAGE_MODELS.map((candidate) => {
+    options: PUBLIC_IMAGE_MODELS.filter((candidate) => {
+      return candidate !== gptImage1Models[1];
+    }).map((candidate) => {
       return {
         key: candidate,
         label: IMAGE_MODEL_CONFIGS[candidate].label,
-        icon: <ImageIcon size={16} className="shrink-0" aria-hidden="true" />,
+        icon: <ImageModelBrandIcon model={candidate} />,
         selected: selectedModel === candidate,
         onSelect: () => {
           onChange(candidate);
         },
+        ...(candidate === baseModel
+          ? {
+              variant: {
+                label: variantMenuLabel,
+                chipLabel: selectedGptImage1Config.variantLabel,
+                selected:
+                  selectedGptImage1Model !== undefined &&
+                  selectedGptImage1Model !== baseModel,
+                options: gptImage1Models.map((variantModel) => {
+                  const variantConfig = IMAGE_MODEL_CONFIGS[variantModel];
+                  return {
+                    label: variantConfig.label,
+                    chipLabel: variantConfig.variantLabel,
+                    selected: selectedModel === variantModel,
+                    onSelect: () => {
+                      onChange(variantModel);
+                    },
+                  };
+                }),
+              },
+            }
+          : {}),
       };
     }),
   };
@@ -7687,17 +7721,37 @@ function composerVideoModelPanelCategory({
   onChange,
   label,
   menuLabel,
+  variantMenuLabel,
 }: {
   selectedModel: VideoModel;
   onChange: (next: VideoModel | null) => void;
   label: string;
   menuLabel: string;
+  variantMenuLabel: string;
 }): MediaModelPanelCategory {
+  const seedance2Models = [
+    "dreamina-seedance-2-0-260128",
+    "dreamina-seedance-2-0-fast-260128",
+    "dreamina-seedance-2-0-mini-260615",
+  ] as const satisfies readonly VideoModel[];
+  const seedance2Model = seedance2Models[0];
+  const selectedSeedance2Model = seedance2Models.find((candidate) => {
+    return candidate === selectedModel;
+  });
+  const selectedSeedance2Config =
+    VIDEO_MODEL_CONFIGS[selectedSeedance2Model ?? seedance2Model];
   return {
     id: "video",
     label,
     menuLabel,
-    options: PUBLIC_VIDEO_MODELS.map((candidate) => {
+    options: PUBLIC_VIDEO_MODELS.filter((candidate) => {
+      return (
+        candidate === seedance2Model ||
+        !seedance2Models.some((seedance2Candidate) => {
+          return candidate === seedance2Candidate;
+        })
+      );
+    }).map((candidate) => {
       return {
         key: candidate,
         label: VIDEO_MODEL_CONFIGS[candidate].label,
@@ -7706,6 +7760,28 @@ function composerVideoModelPanelCategory({
         onSelect: () => {
           onChange(candidate);
         },
+        ...(candidate === seedance2Model
+          ? {
+              variant: {
+                label: variantMenuLabel,
+                chipLabel: selectedSeedance2Config.variantLabel,
+                selected:
+                  selectedSeedance2Model !== undefined &&
+                  selectedSeedance2Model !== seedance2Model,
+                options: seedance2Models.map((variantModel) => {
+                  const variantConfig = VIDEO_MODEL_CONFIGS[variantModel];
+                  return {
+                    label: variantConfig.label,
+                    chipLabel: variantConfig.variantLabel,
+                    selected: selectedModel === variantModel,
+                    onSelect: () => {
+                      onChange(variantModel);
+                    },
+                  };
+                }),
+              },
+            }
+          : {}),
       };
     }),
   };
@@ -7744,6 +7820,12 @@ function ComposerModelPickerControls({
         label: t(($) => {
           return $.settings.models.picker.imageModels;
         }),
+        variantMenuLabel: t(
+          ($) => {
+            return $.settings.models.picker.modelVariants;
+          },
+          { model: IMAGE_MODEL_CONFIGS["gpt-image-1"].label },
+        ),
       }),
     );
   }
@@ -7760,6 +7842,12 @@ function ComposerModelPickerControls({
             ? $.settings.models.picker.videoModels
             : $.settings.models.picker.manageMoreModels;
         }),
+        variantMenuLabel: t(
+          ($) => {
+            return $.settings.models.picker.modelVariants;
+          },
+          { model: VIDEO_MODEL_CONFIGS["dreamina-seedance-2-0-260128"].label },
+        ),
       }),
     );
   }

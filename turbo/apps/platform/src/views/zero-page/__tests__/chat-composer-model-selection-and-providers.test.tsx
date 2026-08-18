@@ -3415,16 +3415,15 @@ describe("chat composer models", () => {
 });
 
 describe("chat composer image model", () => {
-  const imageModelLabels = [
+  const imageModelControlLabels = [
     "GPT Image 1",
     "GPT Image 2",
     "GPT Image 1.5",
-    "GPT Image 1 Mini",
+    "Nano Banana 2",
     "Flux Pro v1.1",
     "Flux Pro v1.1 Ultra",
-    "Qwen Image",
     "Seedream 4",
-    "Nano Banana 2",
+    "Qwen Image",
   ] as const;
 
   function desktopImageModelButton(
@@ -3456,6 +3455,15 @@ describe("chat composer image model", () => {
     });
   }
 
+  function mediaPanelButtonByAccessibleLabel(
+    label: string,
+    root: ParentNode = document,
+  ): HTMLElement | undefined {
+    return queryAllByRoleFast("button", root).find((candidate) => {
+      return candidate.getAttribute("aria-label") === label;
+    });
+  }
+
   function findMediaPanelButton(label: string): Promise<HTMLElement> {
     return waitFor(() => {
       const button = mediaPanelButton(label);
@@ -3464,6 +3472,30 @@ describe("chat composer image model", () => {
       }
       return button;
     });
+  }
+
+  function imageVariantMenuItem(label: string): HTMLElement | undefined {
+    return queryAllByRoleFast("menuitem").find((candidate) => {
+      return candidate.getAttribute("aria-label") === label;
+    });
+  }
+
+  function findImageVariantMenuItem(label: string): Promise<HTMLElement> {
+    return waitFor(() => {
+      const item = imageVariantMenuItem(label);
+      if (!item) {
+        throw new Error(`${label} image variant not found`);
+      }
+      return item;
+    });
+  }
+
+  function imageModelBrandIcon(label: string): Element {
+    const icon = mediaPanelButton(label)?.firstElementChild;
+    if (!icon) {
+      throw new Error(`${label} brand icon not found`);
+    }
+    return icon;
   }
 
   it("shows the effective member default and pins an image model optimistically", async () => {
@@ -3514,13 +3546,42 @@ describe("chat composer image model", () => {
     expect(imageModelButton).toHaveTextContent(/·\s*Qwen Image/);
     const listbox = screen.getByRole("listbox");
     const imageModelButtons = queryAllByRoleFast("button", listbox);
-    for (const label of imageModelLabels) {
-      expect(
-        imageModelButtons.some((button) => {
-          return button.getAttribute("aria-label") === label;
+    expect(
+      imageModelButtons
+        .filter((button) => {
+          return button.hasAttribute("aria-pressed");
+        })
+        .map((button) => {
+          return button.getAttribute("aria-label");
         }),
-      ).toBeTruthy();
+    ).toStrictEqual(imageModelControlLabels);
+    const variantMenuButton = mediaPanelButtonByAccessibleLabel(
+      "GPT Image 1 variants",
+      listbox,
+    );
+    if (!variantMenuButton) {
+      throw new Error("GPT Image 1 variant menu not found");
     }
+    expect(variantMenuButton).toHaveTextContent(/^Standard$/);
+    expect(within(listbox).queryByText("GPT Image 1 Mini")).toBeNull();
+    const openAiIcon = imageModelBrandIcon("GPT Image 2").outerHTML;
+    expect(openAiIcon).toContain("openai");
+    expect(imageModelBrandIcon("GPT Image 1.5").outerHTML).toBe(openAiIcon);
+    const fluxIcon = imageModelBrandIcon("Flux Pro v1.1").outerHTML;
+    expect(imageModelBrandIcon("Flux Pro v1.1 Ultra").outerHTML).toBe(fluxIcon);
+    const qwenIcon = imageModelBrandIcon("Qwen Image").outerHTML;
+    expect(qwenIcon).toContain("image-model-qwen-gradient");
+    const nanoBananaIcon = imageModelBrandIcon("Nano Banana 2").outerHTML;
+    expect(nanoBananaIcon).toContain("#f94543");
+    expect(
+      new Set([
+        openAiIcon,
+        fluxIcon,
+        qwenIcon,
+        imageModelBrandIcon("Seedream 4").outerHTML,
+        nanoBananaIcon,
+      ]).size,
+    ).toBe(5);
     expect(within(listbox).queryByText(/birefnet/i)).not.toBeInTheDocument();
     expect(
       within(listbox).queryByText(/clarity upscaler/i),
@@ -3531,18 +3592,84 @@ describe("chat composer image model", () => {
       within(listbox).queryByText(/aspect ratio/i),
     ).not.toBeInTheDocument();
 
-    await user.click(await findMediaPanelButton("Seedream 4"));
+    await user.click(variantMenuButton);
+    await expect(
+      findImageVariantMenuItem("GPT Image 1"),
+    ).resolves.toHaveTextContent("Standard");
+    await user.click(await findImageVariantMenuItem("GPT Image 1 Mini"));
 
     await waitFor(() => {
       expect(updates).toStrictEqual([
         {
           threadId: THREAD_ID,
-          model: "fal-ai/bytedance/seedream/v4/text-to-image",
+          model: "gpt-image-1-mini",
         },
       ]);
-      expect(imageModelButton).toHaveTextContent(/·\s*Seedream 4/);
+      expect(imageModelButton).toHaveTextContent(/·\s*GPT Image 1 Mini/);
     });
+    await user.click(imageModelButton);
+    const reopenedListbox = screen.getByRole("listbox");
+    expect(
+      mediaPanelButtonByAccessibleLabel(
+        "GPT Image 1 variants",
+        reopenedListbox,
+      ),
+    ).toHaveTextContent(/^Mini$/);
+    expect(mediaPanelButton("GPT Image 1")).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
     updateGate.resolve();
+  });
+
+  it("selects Standard from the GPT Image 1 variant menu", async () => {
+    const user = userEvent.setup({ delay: null });
+    const updates: { threadId: string; model: string | null }[] = [];
+    context.mocks.browser.matchMedia(true);
+    mockOrgModelRoutes("claude-fable-5");
+    mockAgent();
+    mockThread({
+      selectedModel: "claude-fable-5",
+      selectedImageModel: "gpt-image-1-mini",
+    });
+    context.mocks.api(
+      chatThreadImageModelContract.update,
+      ({ params, body, respond }) => {
+        updates.push({ threadId: params.id, model: body.model });
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.ImageModelSelection]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const imageModelButton = await findDesktopImageModelButton();
+    await waitFor(() => {
+      expect(imageModelButton).toHaveTextContent("GPT Image 1 Mini");
+    });
+    await user.click(imageModelButton);
+    const listbox = screen.getByRole("listbox");
+    const variantMenuButton = mediaPanelButtonByAccessibleLabel(
+      "GPT Image 1 variants",
+      listbox,
+    );
+    if (!variantMenuButton) {
+      throw new Error("GPT Image 1 variant menu not found");
+    }
+    expect(variantMenuButton).toHaveTextContent(/^Mini$/);
+
+    await user.click(variantMenuButton);
+    await user.click(await findImageVariantMenuItem("GPT Image 1"));
+
+    await waitFor(() => {
+      expect(updates).toStrictEqual([
+        { threadId: THREAD_ID, model: "gpt-image-1" },
+      ]);
+      expect(imageModelButton).toHaveTextContent(/·\s*GPT Image 1$/);
+    });
   });
 
   it("opens Image models and Video models as direct mobile rows", async () => {
@@ -3686,6 +3813,42 @@ describe("chat composer video model", () => {
         throw new Error(`${label} button not found`);
       }
       return button;
+    });
+  }
+
+  function videoPanelButtonByAccessibleLabel(
+    label: string,
+  ): HTMLElement | undefined {
+    return queryAllByRoleFast("button").find((candidate) => {
+      return candidate.getAttribute("aria-label") === label;
+    });
+  }
+
+  function findVideoPanelButtonByAccessibleLabel(
+    label: string,
+  ): Promise<HTMLElement> {
+    return waitFor(() => {
+      const button = videoPanelButtonByAccessibleLabel(label);
+      if (!button) {
+        throw new Error(`${label} button not found`);
+      }
+      return button;
+    });
+  }
+
+  function videoVariantMenuItem(label: string): HTMLElement | undefined {
+    return queryAllByRoleFast("menuitem").find((candidate) => {
+      return candidate.getAttribute("aria-label") === label;
+    });
+  }
+
+  function findVideoVariantMenuItem(label: string): Promise<HTMLElement> {
+    return waitFor(() => {
+      const item = videoVariantMenuItem(label);
+      if (!item) {
+        throw new Error(`${label} video variant not found`);
+      }
+      return item;
     });
   }
 
@@ -3912,10 +4075,11 @@ describe("chat composer video model", () => {
     expect(videoPanelButton("Veo 3.1 fast")).toBeInTheDocument();
     expect(videoPanelButton("Kling v3 4K")).toBeInTheDocument();
     expect(videoPanelButton("MiniMax H3")).toBeInTheDocument();
-    expect(videoPanelButton("Seedance 2.0 fast")).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    expect(videoPanelButton("Seedance 2.0 fast")).toBeUndefined();
+    expect(videoPanelButton("Seedance 2.0 Mini")).toBeUndefined();
+    expect(
+      videoPanelButtonByAccessibleLabel("Seedance 2.0 variants"),
+    ).toHaveTextContent(/^Fast$/);
 
     await user.click(await findVideoPanelButton("Veo 3.1 fast"));
 
@@ -4053,7 +4217,14 @@ describe("chat composer video model", () => {
     expect(videoPanelButton("MiniMax H3")).toBeUndefined();
     await user.click(await findVideoPanelButton("Manage more models"));
 
-    await user.click(await findVideoPanelButton("Seedance 2.0 fast"));
+    await user.click(
+      await findVideoPanelButtonByAccessibleLabel("Seedance 2.0 variants"),
+    );
+    await expect(
+      findVideoVariantMenuItem("Seedance 2.0"),
+    ).resolves.toBeInTheDocument();
+    expect(videoVariantMenuItem("Seedance 2.0 Mini")).toBeInTheDocument();
+    await user.click(await findVideoVariantMenuItem("Seedance 2.0 fast"));
 
     await waitFor(() => {
       expect(bodies).toStrictEqual([

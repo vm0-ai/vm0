@@ -4241,6 +4241,7 @@
         "loading": "モデルをロード中...",
         "manageMoreModels": "他のモデルを管理",
         "models": "モデル",
+        "modelVariants": "{{model}} のバリエーション",
         "noConfiguredModels": "設定されたモデルはありません",
         "priceTiers": {
           "balanced": "バランスの取れたコストとパフォーマンス",
