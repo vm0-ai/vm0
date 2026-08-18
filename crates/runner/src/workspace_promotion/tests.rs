@@ -29,7 +29,8 @@ use tracing_test_support::{CapturedEvent, CapturedEvents};
 use crate::ids::RunId;
 use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::workspace_image_cache::{
-    WorkspaceCacheCheckoutResult, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
+    WorkspaceCacheCheckoutResult, WorkspaceImageCache, WorkspaceImageLeaseIdentity,
+    WorkspaceImagePrepareRequest,
 };
 
 fn mode(path: &Path) -> u32 {
@@ -414,6 +415,224 @@ async fn active_workspace_promotion_exports_session_history_sidecar() {
         .await
         .unwrap();
     assert_eq!(tokio::fs::read(sidecar.path).await.unwrap(), history);
+}
+
+#[tokio::test]
+async fn active_workspace_promotion_rejects_invalid_sidecar_metadata() {
+    for (name, stdout) in [
+        ("malformed-json", b"not json".to_vec()),
+        (
+            "zero-size",
+            serde_json::to_vec(&SessionHistorySidecarExportMetadata {
+                representation: SessionHistorySidecarRepresentation::Raw,
+                encoded_size: 0,
+            })
+            .unwrap(),
+        ),
+        (
+            "over-max",
+            serde_json::to_vec(&SessionHistorySidecarExportMetadata {
+                representation: SessionHistorySidecarRepresentation::Raw,
+                encoded_size: RESUME_SESSION_HISTORY_MAX_BYTES + 1,
+            })
+            .unwrap(),
+        ),
+    ] {
+        let reuse_key = format!("thread:invalid-sidecar-metadata-{name}");
+        let session_id = format!("sess-invalid-sidecar-metadata-{name}");
+        let history = br#"{"type":"message","content":"invalid"}"#;
+        let restored_identity = test_restored_session_identity(&session_id, history);
+        let fixture = WorkspacePromotionFixture::new_with_restored_session_identity(
+            &reuse_key,
+            Some(&restored_identity),
+        )
+        .await;
+        let cache = fixture.cache.clone();
+        let sandbox = MockSandbox::new(fixture.sandbox_id.to_string());
+        sandbox.push_exec_result(Ok(ExecResult::new(0, stdout, Vec::new())));
+
+        let (promoted, events) = capture_promotion_events(prepare_and_publish_workspace_image(
+            &sandbox,
+            fixture.promotion,
+        ))
+        .await;
+
+        assert!(promoted, "{name}");
+        assert!(sandbox.copy_file_calls().is_empty(), "{name}");
+        let exec_calls = sandbox.exec_calls();
+        assert_eq!(exec_calls.len(), 3, "{name}");
+        assert!(
+            exec_calls[0].cmd.contains("export-session-history-sidecar"),
+            "{name}"
+        );
+        assert!(exec_calls[1].cmd.contains("rm -f --"), "{name}");
+        assert!(exec_calls[2].sudo, "{name}");
+        let event = captured_event(
+            &events,
+            "workspace image cache session history sidecar export returned invalid metadata",
+        );
+        assert!(
+            event
+                .fields
+                .get("reason")
+                .is_some_and(|reason| reason == "test"),
+            "{name}: {event:#?}"
+        );
+        assert_sidecar_rejection_publishes_without_sidecar(
+            &cache,
+            &reuse_key,
+            &restored_identity,
+            name,
+        )
+        .await;
+    }
+}
+
+#[tokio::test]
+async fn active_workspace_promotion_discards_sidecar_source_on_copy_error() {
+    let reuse_key = "thread:sidecar-copy-error";
+    let session_id = "sess-sidecar-copy-error";
+    let history = br#"{"type":"message","content":"copy error"}"#;
+    let restored_identity = test_restored_session_identity(session_id, history);
+    let fixture = WorkspacePromotionFixture::new_with_restored_session_identity(
+        reuse_key,
+        Some(&restored_identity),
+    )
+    .await;
+    let cache = fixture.cache.clone();
+    let sandbox = MockSandbox::new(fixture.sandbox_id.to_string());
+    let export_metadata = SessionHistorySidecarExportMetadata {
+        representation: SessionHistorySidecarRepresentation::Raw,
+        encoded_size: history.len() as u64,
+    };
+    sandbox.push_exec_result(Ok(ExecResult::new(
+        0,
+        serde_json::to_vec(&export_metadata).unwrap(),
+        Vec::new(),
+    )));
+    sandbox.push_copy_file_result(Err(sandbox::SandboxError::Operation {
+        operation: sandbox::SandboxOperation::CopyFile,
+        reason: sandbox::SandboxOperationReason::Other,
+        message: "simulated copy failure".into(),
+    }));
+
+    let (promoted, events) = capture_promotion_events(prepare_and_publish_workspace_image(
+        &sandbox,
+        fixture.promotion,
+    ))
+    .await;
+
+    assert!(promoted);
+    let copy_calls = sandbox.copy_file_calls();
+    assert_eq!(copy_calls.len(), 1);
+    assert!(!copy_calls[0].host_path.exists());
+    let event = captured_event(
+        &events,
+        "workspace image cache session history sidecar copy failed",
+    );
+    assert!(event.fields.contains_key("error"), "{event:#?}");
+    assert_sidecar_rejection_publishes_without_sidecar(
+        &cache,
+        reuse_key,
+        &restored_identity,
+        "copy-error",
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn active_workspace_promotion_discards_sidecar_source_on_copy_size_mismatch() {
+    let reuse_key = "thread:sidecar-copy-size-mismatch";
+    let session_id = "sess-sidecar-copy-size-mismatch";
+    let history = br#"{"type":"message","content":"short copy"}"#;
+    let restored_identity = test_restored_session_identity(session_id, history);
+    let fixture = WorkspacePromotionFixture::new_with_restored_session_identity(
+        reuse_key,
+        Some(&restored_identity),
+    )
+    .await;
+    let cache = fixture.cache.clone();
+    let sandbox = MockSandbox::new(fixture.sandbox_id.to_string());
+    let export_metadata = SessionHistorySidecarExportMetadata {
+        representation: SessionHistorySidecarRepresentation::Raw,
+        encoded_size: history.len() as u64 + 1,
+    };
+    sandbox.push_exec_result(Ok(ExecResult::new(
+        0,
+        serde_json::to_vec(&export_metadata).unwrap(),
+        Vec::new(),
+    )));
+    sandbox.push_copy_file_result(Ok(history.to_vec()));
+
+    let (promoted, events) = capture_promotion_events(prepare_and_publish_workspace_image(
+        &sandbox,
+        fixture.promotion,
+    ))
+    .await;
+
+    assert!(promoted);
+    let copy_calls = sandbox.copy_file_calls();
+    assert_eq!(copy_calls.len(), 1);
+    assert!(!copy_calls[0].host_path.exists());
+    let event = captured_event(
+        &events,
+        "workspace image cache session history sidecar copy size mismatch",
+    );
+    let copied_bytes = history.len().to_string();
+    let encoded_size = (history.len() as u64 + 1).to_string();
+    assert_eq!(
+        event.fields.get("copied_bytes").map(String::as_str),
+        Some(copied_bytes.as_str()),
+        "{event:#?}"
+    );
+    assert_eq!(
+        event.fields.get("encoded_size").map(String::as_str),
+        Some(encoded_size.as_str()),
+        "{event:#?}"
+    );
+    assert_sidecar_rejection_publishes_without_sidecar(
+        &cache,
+        reuse_key,
+        &restored_identity,
+        "copy-size-mismatch",
+    )
+    .await;
+}
+
+async fn assert_sidecar_rejection_publishes_without_sidecar(
+    cache: &WorkspaceImageCache,
+    reuse_key: &str,
+    restored_identity: &RestoredSessionIdentity,
+    name: &str,
+) {
+    let inspection = cache.inspect().await.unwrap();
+    let entry = inspection.entries.first().unwrap();
+    let entry_paths = cache.entry_paths(&entry.cache_key);
+    assert!(
+        !entry_paths.session_history_sidecar_metadata().is_file(),
+        "{name}"
+    );
+    let lease = cache
+        .prepare(WorkspaceImagePrepareRequest {
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id: SandboxId::new_v4(),
+                profile_name: "vm0/default",
+                reuse_key: Some(reuse_key),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: TEST_WORKSPACE_IMAGE_SIZE_BYTES,
+            },
+            workspace_drive_required: true,
+        })
+        .await;
+    assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::Hit, "{name}");
+    assert!(
+        lease
+            .probe_session_history_sidecar(restored_identity)
+            .await
+            .is_err(),
+        "{name}"
+    );
 }
 
 #[tokio::test]
