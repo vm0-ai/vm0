@@ -2702,6 +2702,7 @@ const loadWebQueuedLaunchMaterial: LaunchLoader = (_db, args) => {
         // replay here.
         videoRunOptions: null,
         computerUseHostDisplayName: null,
+        triggerSource: args.contextType === "agent_run" ? "agent" : "web",
         agentRunSource: args.agentRunSource,
       },
     }),

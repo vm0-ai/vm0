@@ -9159,12 +9159,16 @@ describe("CHAT-02: shared user message queue", () => {
 
   it("persists user-forwarded run provenance across chat threads", async () => {
     const { actor, agentId } = await entitledChatActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an organization-scoped chat actor");
+    }
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const source = await sendChatRun(actor, {
       agentId,
       prompt: "source content selected for forwarding",
     });
+    await setRunAutonomyBudgetFixture(context, source.runId, 0);
     const targetThread = await chat.createThread(actor, { agentId });
     const forwardedEventId = randomUUID();
     const forwarded = await chat.requestSendEvent(
@@ -9225,18 +9229,34 @@ describe("CHAT-02: shared user message queue", () => {
     });
 
     const forwardedRun = await api.readRun(actor, forwardedRunId);
+    const forwardedState = await runStateStore.set(
+      readAgentRunState$,
+      {
+        orgId: actor.orgId,
+        userId: actor.userId,
+        runId: forwardedRunId,
+      },
+      context.signal,
+    );
+    expect(forwardedState.zero_run).toMatchObject({ triggerSource: "web" });
     const forwardedSystemPrompt = forwardedRun.appendSystemPrompt ?? "";
     expect(forwardedSystemPrompt).toContain("# This Run's Trigger");
+    expect(forwardedSystemPrompt).toContain(
+      "was sent by a person who forwarded selected content",
+    );
+    expect(forwardedSystemPrompt).not.toContain(
+      "A person did not type it here.",
+    );
     expect(forwardedSystemPrompt).toContain(`SOURCE_RUN_ID: ${source.runId}`);
     expect(forwardedSystemPrompt).toContain(
       `SOURCE_THREAD_ID: ${source.threadId}`,
     );
     await expect(
       readRunAutonomyBudgetFixture(context, source.runId),
-    ).resolves.toBe(10);
+    ).resolves.toBe(0);
     await expect(
       readRunAutonomyBudgetFixture(context, forwardedRunId),
-    ).resolves.toBe(9);
+    ).resolves.toBe(10);
 
     const unknownSource = await chat.requestSendEvent(
       actor,

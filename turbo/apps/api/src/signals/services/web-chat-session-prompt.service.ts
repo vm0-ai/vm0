@@ -67,6 +67,7 @@ export interface WebChatSessionPromptContext {
    */
   readonly videoRunOptions: ChatRunVideoOptionsRequest | null;
   readonly computerUseHostDisplayName: string | null;
+  readonly triggerSource: "web" | "agent";
   readonly agentRunSource: ChatAgentRunSourceAnnotation | null;
 }
 
@@ -96,10 +97,9 @@ function buildCurrentThreadContext(threadId: string): string {
 }
 
 /**
- * Provenance for a run whose prompt arrived from an agent run in another chat
- * thread. The message text is all that crosses the thread boundary, so without
- * this block the run cannot tell that a person did not write it, and has no
- * identifier for the conversation it came from.
+ * Provenance for a run whose prompt references an agent run in another chat
+ * thread. The source coordinates let the run inspect the originating context,
+ * while the trigger source distinguishes a human Forward from agent delegation.
  *
  * These are facts about how the run was created, not instructions about what
  * to do with them. What the run needs from the source thread depends on the
@@ -107,18 +107,27 @@ function buildCurrentThreadContext(threadId: string): string {
  */
 function buildAgentRunSourceContext(
   source: ChatAgentRunSourceAnnotation,
+  triggerSource: "web" | "agent",
 ): string {
+  const triggerDescription =
+    triggerSource === "web"
+      ? "The message this run was created for was sent by a person who forwarded selected content from an agent run in another chat thread."
+      : "The message this run was created for was sent by an agent run in another chat thread. A person did not type it here.";
+  const carriedContextDescription =
+    triggerSource === "web"
+      ? "The message text contains the forwarded selection and any feedback that person chose to add. The source run's own instructions, surrounding conversation, and other findings stayed in the source thread and are not included above."
+      : "The message text is everything that run chose to carry across the thread boundary. Its own instructions, the conversation it came from, and whatever it already found stayed in the source thread and are not included above.";
   return [
     "# This Run's Trigger",
     "",
-    "The message this run was created for was sent by an agent run in another chat thread. A person did not type it here.",
+    triggerDescription,
     "",
     `- SOURCE_RUN_ID: ${source.runId}`,
     `- SOURCE_THREAD_ID: ${source.threadId}`,
     `- SOURCE_AGENT_ID: ${source.agentId}`,
     `- SOURCE_THREAD_TITLE: ${source.titleSnapshot}`,
     "",
-    "The message text is everything that run chose to carry across the thread boundary. Its own instructions, the conversation it came from, and whatever it already found stayed in the source thread and are not included above.",
+    carriedContextDescription,
     "",
     "Reading the source, each through OKOU_TOKEN:",
     `- \`okou chat messages --thread-id ${source.threadId} --output-dir threads\` synchronizes the source thread's raw snapshot and hot events into \`threads/${source.threadId}/\`; use \`rg -n '"seqId":<SEQ_ID>' threads/${source.threadId}/\` to inspect an event (chat-event:read)`,
@@ -148,7 +157,10 @@ export function buildWebChatAppendSystemPrompt(args: {
     buildWebChatPrompt(),
     buildCurrentThreadContext(args.threadId),
     args.context.agentRunSource
-      ? buildAgentRunSourceContext(args.context.agentRunSource)
+      ? buildAgentRunSourceContext(
+          args.context.agentRunSource,
+          args.context.triggerSource,
+        )
       : "",
     args.priorContext,
     args.incompleteContext,

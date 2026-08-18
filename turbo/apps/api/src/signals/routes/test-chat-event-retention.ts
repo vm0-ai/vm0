@@ -63,6 +63,7 @@ const resolveSessionPromptFixturesRoute$ = command(
         generationTemplatePrompt: "",
         videoRunOptions: null,
         computerUseHostDisplayName: null,
+        triggerSource: "web",
         agentRunSource: null,
       },
     });
