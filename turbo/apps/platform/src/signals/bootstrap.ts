@@ -380,7 +380,9 @@ const ROUTE_CONFIG = [
   },
   {
     path: ROUTES.home,
-    setup: setupAuthPageWrapper(setupHomePage$),
+    setup: setupAuthPageWrapper(
+      setupSettingsParamAfterStableRoute(setupHomePage$),
+    ),
   },
 
   // --- Redirect routes (backward compatibility) ---
