@@ -17,9 +17,9 @@ import {
   zeroBillingStatusContract,
 } from "@okouai/api-contracts/contracts/zero-billing";
 import {
-  zeroOrgInviteContract,
-  zeroOrgMembersContract,
-} from "@okouai/api-contracts/contracts/zero-org-members";
+  orgInviteContract,
+  orgMembersContract,
+} from "@okouai/api-contracts/contracts/org-member-routes";
 import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
 import type { OrgTier } from "@okouai/api-contracts/contracts/orgs";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -4695,9 +4695,7 @@ describe("legacy subscription usage pack migration", () => {
     });
 
     await accept(
-      setupApp({ context, routes: orgInviteRoutes })(
-        zeroOrgInviteContract,
-      ).revoke({
+      setupApp({ context, routes: orgInviteRoutes })(orgInviteContract).revoke({
         headers: { authorization: "Bearer clerk-session" },
         body: { invitationId: fixture.invitation.id },
       }),
@@ -4869,9 +4867,7 @@ describe("legacy subscription usage pack migration", () => {
     );
 
     const revokeResponse = await accept(
-      setupApp({ context, routes: orgInviteRoutes })(
-        zeroOrgInviteContract,
-      ).revoke({
+      setupApp({ context, routes: orgInviteRoutes })(orgInviteContract).revoke({
         headers: { authorization: "Bearer clerk-session" },
         body: { invitationId: fixture.invitation.id },
       }),
@@ -5498,7 +5494,7 @@ describe("usage pack allocation management", () => {
     mockUsagePackChangePreviews(1000, 2000);
     const preview = await accept(
       setupApp({ context, routes: orgInviteRoutes })(
-        zeroOrgInviteContract,
+        orgInviteContract,
       ).previewPurchase({
         headers: { authorization: "Bearer clerk-session" },
         body: { email, role: "member", usagePackUsd: 20 },
@@ -8233,7 +8229,7 @@ describe("usage pack allocation management", () => {
     });
 
     const responsePromise = setupApp({ context, routes: orgMembersRoutes })(
-      zeroOrgMembersContract,
+      orgMembersContract,
     ).removeMember({
       headers: { authorization: "Bearer clerk-session" },
       body: { email: targetEmail },
@@ -8463,7 +8459,7 @@ describe("usage pack allocation management", () => {
 
     await accept(
       setupApp({ context, routes: orgMembersRoutes })(
-        zeroOrgMembersContract,
+        orgMembersContract,
       ).removeMember({
         headers: { authorization: "Bearer clerk-session" },
         body: { email: targetEmail },
@@ -8528,7 +8524,7 @@ describe("usage pack allocation management", () => {
       expect(billing.memberInviteUsagePackRequired).toBeTruthy();
 
       const client = setupApp({ context, routes: orgInviteRoutes })(
-        zeroOrgInviteContract,
+        orgInviteContract,
       );
       const blocked = await accept(
         client.invite({
@@ -8559,7 +8555,7 @@ describe("usage pack allocation management", () => {
       );
       const invited = await accept(
         setupApp({ context, routes: orgInviteRoutes })(
-          zeroOrgInviteContract,
+          orgInviteContract,
         ).invite({
           headers: { authorization: "Bearer clerk-session" },
           body: { email: `legacy-${tier}@example.test`, role: "member" },
@@ -8575,7 +8571,7 @@ describe("usage pack allocation management", () => {
       { userId: `user_${randomUUID()}`, usagePackUsd: 20 },
     ]);
     const client = setupApp({ context, routes: orgInviteRoutes })(
-      zeroOrgInviteContract,
+      orgInviteContract,
     );
     const blocked = await accept(
       client.invite({
@@ -8613,7 +8609,7 @@ describe("usage pack allocation management", () => {
       { userId: `user_${randomUUID()}`, usagePackUsd: 20 },
     ]);
     const client = setupApp({ context, routes: orgInviteRoutes })(
-      zeroOrgInviteContract,
+      orgInviteContract,
     );
 
     for (const tier of ["free", "limited-free-1", "pro-suspend"] as const) {
@@ -8661,7 +8657,7 @@ describe("usage pack allocation management", () => {
 
     const response = await accept(
       setupApp({ context, routes: orgInviteRoutes })(
-        zeroOrgInviteContract,
+        orgInviteContract,
       ).previewPurchase({
         headers: { authorization: "Bearer clerk-session" },
         body: {
@@ -8725,7 +8721,7 @@ describe("usage pack allocation management", () => {
       });
 
     const client = setupApp({ context, routes: orgInviteRoutes })(
-      zeroOrgInviteContract,
+      orgInviteContract,
     );
     const firstReturnUrl = `${APP_ORIGIN}/billing?invite=first`;
     const secondReturnUrl = `${APP_ORIGIN}/settings?invite=second`;
@@ -8825,7 +8821,7 @@ describe("usage pack allocation management", () => {
     context.mocks.stripe.checkout.sessions.create.mockClear();
 
     const client = setupApp({ context, routes: orgInviteRoutes })(
-      zeroOrgInviteContract,
+      orgInviteContract,
     );
     const previewBody = {
       email,
@@ -9039,9 +9035,7 @@ describe("usage pack allocation management", () => {
       ),
     );
     const members = await accept(
-      setupApp({ context, routes: orgReadRoutes })(
-        zeroOrgMembersContract,
-      ).members({
+      setupApp({ context, routes: orgReadRoutes })(orgMembersContract).members({
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -9095,7 +9089,7 @@ describe("usage pack allocation management", () => {
 
     const response = await accept(
       setupApp({ context, routes: orgInviteRoutes })(
-        zeroOrgInviteContract,
+        orgInviteContract,
       ).confirmPurchase({
         headers: { authorization: "Bearer clerk-session" },
         params: { purchaseId: purchase.purchaseId },
@@ -9648,7 +9642,7 @@ describe("usage pack allocation management", () => {
       status: "succeeded",
     });
     const client = setupApp({ context, routes: orgInviteRoutes })(
-      zeroOrgInviteContract,
+      orgInviteContract,
     );
     await accept(
       client.revoke({

@@ -3,7 +3,7 @@ import {
   orgContract,
   orgLeaveContract,
 } from "@okouai/api-contracts/contracts/org-routes";
-import { zeroOrgMembersContract } from "@okouai/api-contracts/contracts/zero-org-members";
+import { orgMembersContract } from "@okouai/api-contracts/contracts/org-member-routes";
 
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -127,7 +127,7 @@ export const orgReadRoutes: readonly RouteEntry[] = [
     handler: authRoute({ requireOrganization: true }, leaveOrgInner$),
   },
   {
-    route: zeroOrgMembersContract.members,
+    route: orgMembersContract.members,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       membersInner$,

@@ -269,7 +269,7 @@ import { accept } from "../../lib/accept.ts";
 // Signal: clean business logic, no manual error handling
 export const inviteMember$ = command(
   async ({ get, set }, email: string, role: OrgRole, signal: AbortSignal) => {
-    const client = get(zeroClient$)(zeroOrgInviteContract);
+    const client = get(zeroClient$)(orgInviteContract);
     const result = await accept(
       client.invite({ body: { email, role } }),
       [200],
