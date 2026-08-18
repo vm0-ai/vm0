@@ -609,6 +609,7 @@
     "leadDescription": "あなたの主任アシスタントがいつでもあなたのためにここにいます",
     "markAllRead": "すべて既読としてマークする",
     "more": "もっと見る",
+    "noAgentsToPin": "他のエージェントはまだありません。",
     "noResults": "結果が見つかりませんでした",
     "openConversation": "会話を開く",
     "openMenu": "エージェントメニューを開く",

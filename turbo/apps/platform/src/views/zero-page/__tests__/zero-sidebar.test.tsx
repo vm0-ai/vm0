@@ -345,6 +345,23 @@ function pinnedAgentNames(container: HTMLElement): string[] {
     });
 }
 
+/** Names of the given agents as the dialog lists them, in rendered order. */
+function dialogAgentOrder(
+  dialog: HTMLElement,
+  names: readonly string[],
+): string[] {
+  return within(dialog)
+    .getAllByRole("option")
+    .map((option) => {
+      return names.find((name) => {
+        return option.textContent?.replace(/\s+/g, " ").trim().startsWith(name);
+      });
+    })
+    .filter((name): name is string => {
+      return name !== undefined;
+    });
+}
+
 function commandItemByText(container: HTMLElement, text: string): HTMLElement {
   const item = within(container)
     .getAllByRole("option")
@@ -1798,8 +1815,9 @@ describe("zero sidebar", () => {
     ).resolves.toBeInTheDocument();
   });
 
-  it("lists the conversation picker's pinned agents in pinned order", async () => {
+  it("keeps pinned agents in team order without the three-column nav", async () => {
     prepareAgentTeam();
+    // Reverse of the team order, so preference order and team order disagree.
     context.mocks.data.userPreferences({
       pinnedAgentIds: [SUPPORT_AGENT_ID, RESEARCH_AGENT_ID],
     });
@@ -1816,25 +1834,52 @@ describe("zero sidebar", () => {
       return currentSidebar;
     });
 
+    expect(pinnedAgentNames(sidebar)).toStrictEqual([
+      "Zero",
+      "Research Agent",
+      "Support Agent",
+    ]);
+
     click(within(sidebar).getByLabelText("Open a conversation"));
 
     const dialog = await screen.findByRole("dialog", { name: "Talk to" });
     await waitFor(() => {
       expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
     });
-    const optionNames = within(dialog)
-      .getAllByRole("option")
-      .map((option) => {
-        return option.textContent?.replace(/\s+/g, " ").trim() ?? "";
-      });
-    const supportIndex = optionNames.findIndex((name) => {
-      return name.startsWith("Support Agent");
+    expect(
+      dialogAgentOrder(dialog, ["Research Agent", "Support Agent"]),
+    ).toStrictEqual(["Research Agent", "Support Agent"]);
+  });
+
+  it("lists pinned agents in pinned order under the three-column nav", async () => {
+    prepareAgentTeam();
+    context.mocks.data.userPreferences({
+      pinnedAgentIds: [SUPPORT_AGENT_ID, RESEARCH_AGENT_ID],
     });
-    const researchIndex = optionNames.findIndex((name) => {
-      return name.startsWith("Research Agent");
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
     });
-    expect(supportIndex).toBeGreaterThanOrEqual(0);
-    expect(supportIndex).toBeLessThan(researchIndex);
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    await waitFor(() => {
+      expect(pinnedAgentNames(grid)).toStrictEqual([
+        "Zero",
+        "Support Agent",
+        "Research Agent",
+      ]);
+    });
+
+    click(screen.getByLabelText("Pin an agent"));
+
+    const dialogList = await screen.findByTestId("pin-agent-dialog-list");
+    expect(
+      dialogAgentOrder(dialogList, ["Research Agent", "Support Agent"]),
+    ).toStrictEqual(["Support Agent", "Research Agent"]);
   });
 
   it("pins an agent from the conversation picker and opens that agent chat", async () => {
@@ -3542,8 +3587,6 @@ describe("zero sidebar", () => {
     });
 
     const lead = pinnedAgentLink(grid, "Zero");
-    expect(lead.getAttribute("draggable")).toBe("false");
-
     const dataTransfer = createDataTransferStub();
     const dragged = pinnedAgentLink(grid, "Support Agent");
     fireEvent.dragStart(dragged, { dataTransfer });

@@ -609,6 +609,7 @@
     "leadDescription": "Votre assistant principal, toujours là pour vous",
     "markAllRead": "Tout marquer comme lu",
     "more": "Plus",
+    "noAgentsToPin": "Vous n'avez pas encore d'autres agents.",
     "noResults": "Aucun résultat trouvé",
     "openConversation": "Ouvrir une conversation",
     "openMenu": "Ouvrir le menu de l'agent",

@@ -32,6 +32,7 @@ import {
 } from "../../signals/agent.ts";
 import {
   pinnedAgentIds$,
+  pinnedAgentRenderOrder$,
   setAgentPinned$,
 } from "../../signals/zero-page/zero-pinned-agents.ts";
 import {
@@ -267,17 +268,17 @@ function AgentCommandAgentContent({
   );
 }
 
-/** Keep the dialog's pinned section in the same order as the sidebar. */
-function pinnedAgentsInPinnedOrder(
+/** Keep a dialog's pinned section in the same order as the sidebar. */
+function agentsInRenderOrder(
   subagents: readonly SubagentInfo[],
-  pinnedIds: readonly string[],
+  renderOrder: readonly string[],
 ): SubagentInfo[] {
   const agentById = new Map(
     subagents.map((agent) => {
       return [agent.id, agent];
     }),
   );
-  return pinnedIds
+  return renderOrder
     .map((id) => {
       return agentById.get(id);
     })
@@ -1098,6 +1099,7 @@ export function AgentListDialog({
   const query = useGet(chatListQuery$);
   const setQuery = useSet(setChatListQuery$);
   const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
+  const pinnedRenderOrder = useLastResolved(pinnedAgentRenderOrder$) ?? [];
   const unreadAgentIds = useLastResolved(unreadAgentIds$, {
     equalityFn: equalSets,
   });
@@ -1106,7 +1108,7 @@ export function AgentListDialog({
   const saving = pinLoadable.state === "loading";
 
   const pinnedIdSet = new Set(pinnedIds);
-  const pinned = pinnedAgentsInPinnedOrder(subagents, pinnedIds);
+  const pinned = agentsInRenderOrder(subagents, pinnedRenderOrder);
 
   const unpinned = subagents.filter((a) => {
     return !pinnedIdSet.has(a.id);
@@ -1236,6 +1238,7 @@ export function PinAgentDialog({
   const query = useGet(pinAgentDialogQuery$);
   const setQuery = useSet(setPinAgentDialogQuery$);
   const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
+  const pinnedRenderOrder = useLastResolved(pinnedAgentRenderOrder$) ?? [];
 
   const pinnedIdSet = new Set(pinnedIds);
   const trimmedQuery = query.trim().toLowerCase();
@@ -1248,11 +1251,12 @@ export function PinAgentDialog({
       return agent.id;
     }),
   );
-  const alreadyPinned = pinnedAgentsInPinnedOrder(subagents, pinnedIds).filter(
-    (agent) => {
-      return matchedIds.has(agent.id);
-    },
-  );
+  const alreadyPinned = agentsInRenderOrder(
+    subagents,
+    pinnedRenderOrder,
+  ).filter((agent) => {
+    return matchedIds.has(agent.id);
+  });
 
   const pinAgent = (agentId: string) => {
     onOpenChange(false);
@@ -1294,9 +1298,13 @@ export function PinAgentDialog({
       <CommandList data-testid="pin-agent-dialog-list">
         {matches.length === 0 && (
           <p className="px-6 py-3 text-xs text-muted-foreground">
-            {t(($) => {
-              return $.sidebar.noResults;
-            })}
+            {trimmedQuery
+              ? t(($) => {
+                  return $.sidebar.noResults;
+                })
+              : t(($) => {
+                  return $.sidebar.noAgentsToPin;
+                })}
           </p>
         )}
         {pinnable.length > 0 && (

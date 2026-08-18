@@ -609,6 +609,7 @@
     "leadDescription": "항상 당신을 돕는 리드 어시스턴트",
     "markAllRead": "모두 읽음으로 표시",
     "more": "더 보기",
+    "noAgentsToPin": "아직 다른 에이전트가 없습니다.",
     "noResults": "결과가 없습니다",
     "openConversation": "대화 열기",
     "openMenu": "에이전트 메뉴 열기",
