@@ -80,6 +80,20 @@ unless browser_install_index && fixture_test_index &&
   raise "Playwright browsers must be installed before browser fixture tests"
 end
 
+expected_browser_install =
+  "cd e2e && pnpm exec playwright install --only-shell chromium"
+{
+  "Playwright E2E" => playwright,
+  "runner E2E preparation" => account_prepare,
+}.each do |job_name, job|
+  install_step = job.fetch("steps").find do |step|
+    step["name"] == "Install Playwright browsers"
+  end
+  unless install_step&.fetch("run", nil) == expected_browser_install
+    raise "#{job_name} must install only the Chromium headless shell"
+  end
+end
+
 unless prepare.dig("outputs", "turbo-runner-consumer-needed") ==
     "${{ steps.runner-e2e.outputs.turbo-runner-consumer-needed }}"
   raise "Turbo must expose the historical runner E2E consumer decision"

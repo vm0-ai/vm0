@@ -1862,7 +1862,7 @@ jobs:
       - name: Check Playwright E2E types
         run: cd e2e && pnpm check-types
       - name: Install Playwright browsers
-        run: cd e2e && pnpm exec playwright install --with-deps chromium
+        run: cd e2e && pnpm exec playwright install --only-shell chromium
       - name: Run Playwright fixture integration tests
         run: cd e2e && pnpm test
       - name: Start Stripe webhook forwarding
@@ -2430,7 +2430,7 @@ jobs:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
       - name: Install Playwright browsers
-        run: cd e2e && pnpm exec playwright install --with-deps chromium
+        run: cd e2e && pnpm exec playwright install --only-shell chromium
       - name: Generate runner E2E API tokens
         run: cd e2e && pnpm exec tsx playwright/runner-token.ts /tmp
         env:
