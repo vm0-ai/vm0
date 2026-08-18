@@ -2,8 +2,8 @@ mod common;
 
 use api_contracts::generated::constants::runners::RESUME_SESSION_HISTORY_MAX_BYTES;
 use guest_contracts::session_history_identity::{
-    FinalSessionHistoryFramework, FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
-    FinalSessionHistorySourceRef, SESSION_HISTORY_IDENTITY_VERIFY_EXIT_EXPECTED_MISMATCH,
+    FinalSessionHistoryIdentity, FinalSessionHistorySourceRef,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_EXPECTED_MISMATCH,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FRAMEWORK_MISMATCH,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_MISMATCH,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ,
@@ -12,9 +12,9 @@ use guest_contracts::session_history_identity::{
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_METADATA,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_METADATA_READ,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS,
-    SESSION_HISTORY_SIDECAR_EXPORT_EXIT_WRITE_FAILURE, SessionHistorySidecarExportFailure,
-    SessionHistorySidecarExportMetadata, SessionHistorySidecarIoErrorClass,
-    SessionHistorySidecarRepresentation,
+    SESSION_HISTORY_SIDECAR_EXPORT_EXIT_WRITE_FAILURE, SessionHistoryFramework,
+    SessionHistoryRefKind, SessionHistorySidecarExportFailure, SessionHistorySidecarExportMetadata,
+    SessionHistorySidecarIoErrorClass, SessionHistorySidecarRepresentation,
 };
 #[cfg(target_os = "linux")]
 use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
@@ -131,9 +131,9 @@ async fn verify_session_history_identity_returns_stable_exit_codes() -> TestResu
     std::fs::write(&matching_history_path, matching_history)?;
     let matching_history_hash = sha256_hex(matching_history);
     let matching_identity = FinalSessionHistoryIdentity::new(
-        FinalSessionHistoryFramework::ClaudeCode,
+        SessionHistoryFramework::ClaudeCode,
         session_id_hash(matching_session_id),
-        FinalSessionHistoryRefKind::Blob,
+        SessionHistoryRefKind::Blob,
         matching_history_hash.clone(),
         matching_history.len() as u64,
         matching_source.clone(),
@@ -145,9 +145,9 @@ async fn verify_session_history_identity_returns_stable_exit_codes() -> TestResu
     guest_contracts::runtime_paths::write_private(&invalid_metadata_path, b"not-json")?;
 
     let framework_mismatch_identity = FinalSessionHistoryIdentity::new(
-        FinalSessionHistoryFramework::ClaudeCode,
+        SessionHistoryFramework::ClaudeCode,
         session_id_hash("different-session"),
-        FinalSessionHistoryRefKind::Blob,
+        SessionHistoryRefKind::Blob,
         matching_history_hash,
         matching_history.len() as u64,
         matching_source.clone(),
@@ -162,9 +162,9 @@ async fn verify_session_history_identity_returns_stable_exit_codes() -> TestResu
     let (_missing_history_path, missing_source) =
         claude_history_fixture(dir.path(), missing_session_id)?;
     let history_read_identity = FinalSessionHistoryIdentity::new(
-        FinalSessionHistoryFramework::ClaudeCode,
+        SessionHistoryFramework::ClaudeCode,
         session_id_hash(missing_session_id),
-        FinalSessionHistoryRefKind::Blob,
+        SessionHistoryRefKind::Blob,
         "b".repeat(64),
         1,
         missing_source,
@@ -180,9 +180,9 @@ async fn verify_session_history_identity_returns_stable_exit_codes() -> TestResu
         claude_history_fixture(dir.path(), mismatch_session_id)?;
     std::fs::write(&mismatched_history_path, b"actual!")?;
     let history_mismatch_identity = FinalSessionHistoryIdentity::new(
-        FinalSessionHistoryFramework::ClaudeCode,
+        SessionHistoryFramework::ClaudeCode,
         session_id_hash(mismatch_session_id),
-        FinalSessionHistoryRefKind::Blob,
+        SessionHistoryRefKind::Blob,
         sha256_hex(b"expect!"),
         7,
         mismatch_source,
@@ -194,9 +194,9 @@ async fn verify_session_history_identity_returns_stable_exit_codes() -> TestResu
     )?;
 
     let history_too_large_identity = FinalSessionHistoryIdentity::new(
-        FinalSessionHistoryFramework::ClaudeCode,
+        SessionHistoryFramework::ClaudeCode,
         session_id_hash(matching_session_id),
-        FinalSessionHistoryRefKind::Blob,
+        SessionHistoryRefKind::Blob,
         "b".repeat(64),
         RESUME_SESSION_HISTORY_MAX_BYTES + 1,
         matching_source,
@@ -287,9 +287,9 @@ async fn export_session_history_sidecar_reads_raw_source_once() -> TestResult {
     let (history_path, history_source) = claude_history_fixture(dir.path(), session_id)?;
     std::fs::write(&history_path, history)?;
     let identity = FinalSessionHistoryIdentity::new(
-        FinalSessionHistoryFramework::ClaudeCode,
+        SessionHistoryFramework::ClaudeCode,
         session_id_hash(session_id),
-        FinalSessionHistoryRefKind::Blob,
+        SessionHistoryRefKind::Blob,
         sha256_hex(history),
         history.len() as u64,
         history_source,
@@ -325,9 +325,9 @@ async fn export_session_history_sidecar_rejects_proc_magic_link_source_without_o
     let sentinel = b"parent-only-secret-sentinel";
     let session_id = "proc-magic-link-source";
     let identity = FinalSessionHistoryIdentity::new(
-        FinalSessionHistoryFramework::ClaudeCode,
+        SessionHistoryFramework::ClaudeCode,
         session_id_hash(session_id),
-        FinalSessionHistoryRefKind::Blob,
+        SessionHistoryRefKind::Blob,
         sha256_hex(sentinel),
         sentinel.len() as u64,
         FinalSessionHistorySourceRef::ClaudeCode {
@@ -374,9 +374,9 @@ async fn export_session_history_sidecar_rejects_final_symlink_without_output() -
     std::fs::write(&outside_path, sentinel)?;
     symlink(&outside_path, &history_path)?;
     let identity = FinalSessionHistoryIdentity::new(
-        FinalSessionHistoryFramework::ClaudeCode,
+        SessionHistoryFramework::ClaudeCode,
         session_id_hash(session_id),
-        FinalSessionHistoryRefKind::Blob,
+        SessionHistoryRefKind::Blob,
         sha256_hex(sentinel),
         sentinel.len() as u64,
         history_source,
@@ -422,9 +422,9 @@ async fn export_session_history_sidecar_reads_native_codex_zstd_once() -> TestRe
         thread_id: thread_id.to_string(),
     };
     let identity = FinalSessionHistoryIdentity::new(
-        FinalSessionHistoryFramework::Codex,
+        SessionHistoryFramework::Codex,
         session_id_hash(thread_id),
-        FinalSessionHistoryRefKind::Blob,
+        SessionHistoryRefKind::Blob,
         sha256_hex(history),
         history.len() as u64,
         history_source,
@@ -460,9 +460,9 @@ async fn export_session_history_sidecar_rejects_metadata_above_resume_limit_befo
     let session_id = "missing-oversized-history";
     let (_history_path, history_source) = claude_history_fixture(dir.path(), session_id)?;
     let identity = FinalSessionHistoryIdentity::new(
-        FinalSessionHistoryFramework::ClaudeCode,
+        SessionHistoryFramework::ClaudeCode,
         session_id_hash(session_id),
-        FinalSessionHistoryRefKind::Blob,
+        SessionHistoryRefKind::Blob,
         "b".repeat(64),
         RESUME_SESSION_HISTORY_MAX_BYTES + 1,
         history_source,
@@ -490,9 +490,9 @@ async fn export_session_history_sidecar_keeps_source_read_failures() -> TestResu
     let session_id = "missing-source-history";
     let (_history_path, history_source) = claude_history_fixture(dir.path(), session_id)?;
     let identity = FinalSessionHistoryIdentity::new(
-        FinalSessionHistoryFramework::ClaudeCode,
+        SessionHistoryFramework::ClaudeCode,
         session_id_hash(session_id),
-        FinalSessionHistoryRefKind::Blob,
+        SessionHistoryRefKind::Blob,
         "b".repeat(64),
         1,
         history_source,
@@ -524,9 +524,9 @@ async fn export_session_history_sidecar_reports_safe_output_write_failure() -> T
     let (history_path, history_source) = claude_history_fixture(dir.path(), session_id)?;
     std::fs::write(&history_path, history)?;
     let identity = FinalSessionHistoryIdentity::new(
-        FinalSessionHistoryFramework::ClaudeCode,
+        SessionHistoryFramework::ClaudeCode,
         session_id_hash(session_id),
-        FinalSessionHistoryRefKind::Blob,
+        SessionHistoryRefKind::Blob,
         sha256_hex(history),
         history.len() as u64,
         history_source,
@@ -567,9 +567,9 @@ async fn export_session_history_sidecar_rejects_history_mismatch() -> TestResult
     let (history_path, history_source) = claude_history_fixture(dir.path(), session_id)?;
     std::fs::write(&history_path, history)?;
     let identity = FinalSessionHistoryIdentity::new(
-        FinalSessionHistoryFramework::ClaudeCode,
+        SessionHistoryFramework::ClaudeCode,
         session_id_hash(session_id),
-        FinalSessionHistoryRefKind::Blob,
+        SessionHistoryRefKind::Blob,
         sha256_hex(b"expect"),
         history.len() as u64,
         history_source,
@@ -602,9 +602,9 @@ async fn export_session_history_sidecar_rejects_symlinked_metadata_without_openi
     let (history_path, history_source) = claude_history_fixture(dir.path(), session_id)?;
     std::fs::write(&history_path, history)?;
     let identity = FinalSessionHistoryIdentity::new(
-        FinalSessionHistoryFramework::ClaudeCode,
+        SessionHistoryFramework::ClaudeCode,
         session_id_hash(session_id),
-        FinalSessionHistoryRefKind::Blob,
+        SessionHistoryRefKind::Blob,
         sha256_hex(history),
         history.len() as u64,
         history_source,

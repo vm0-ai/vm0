@@ -4,9 +4,7 @@ use std::path::Path;
 use api_contracts::generated::constants::runners::{
     RESUME_SESSION_HISTORY_MAX_BYTES, paths::CANONICAL_WORKING_DIR,
 };
-use guest_contracts::session_history_identity::{
-    FinalSessionHistoryFramework, FinalSessionHistoryRefKind,
-};
+use guest_contracts::session_history_identity::{SessionHistoryFramework, SessionHistoryRefKind};
 use sha2::{Digest, Sha256};
 use tokio::fs;
 
@@ -30,9 +28,9 @@ fn mode(path: &Path) -> u32 {
 
 fn test_restored_session_identity(session_id: &str, history: &[u8]) -> RestoredSessionIdentity {
     RestoredSessionIdentity::new(
-        FinalSessionHistoryFramework::ClaudeCode,
+        SessionHistoryFramework::ClaudeCode,
         session_id,
-        FinalSessionHistoryRefKind::Blob,
+        SessionHistoryRefKind::Blob,
         hex::encode(Sha256::digest(history)),
         Some(history.len() as u64),
     )

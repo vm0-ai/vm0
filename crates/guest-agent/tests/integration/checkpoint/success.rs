@@ -1,7 +1,7 @@
 use super::support::*;
 use crate::support::*;
 use guest_contracts::session_history_identity::{
-    FinalSessionHistoryFramework, FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
+    FinalSessionHistoryIdentity, SessionHistoryFramework, SessionHistoryRefKind,
 };
 use httpmock::prelude::*;
 use serde_json::{Value, json};
@@ -434,7 +434,7 @@ async fn success_checkpoint_reconciles_claude_compact_generation_after_commit() 
     let identity_bytes =
         std::fs::read(runtime.paths.final_session_history_identity_file()).unwrap();
     let identity = FinalSessionHistoryIdentity::from_json_slice(&identity_bytes).unwrap();
-    assert_eq!(identity.framework, FinalSessionHistoryFramework::ClaudeCode);
+    assert_eq!(identity.framework, SessionHistoryFramework::ClaudeCode);
     assert_eq!(identity.history_size_bytes, history_size as u64);
     assert_eq!(identity.history_hash, history_hash);
     assert_eq!(
@@ -526,7 +526,7 @@ async fn success_checkpoint_reconciles_codex_compact_generation_after_commit() {
     let identity_bytes =
         std::fs::read(runtime.paths.final_session_history_identity_file()).unwrap();
     let identity = FinalSessionHistoryIdentity::from_json_slice(&identity_bytes).unwrap();
-    assert_eq!(identity.framework, FinalSessionHistoryFramework::Codex);
+    assert_eq!(identity.framework, SessionHistoryFramework::Codex);
     assert_eq!(identity.history_size_bytes, history_size as u64);
     assert_eq!(identity.history_hash, history_hash);
     assert!(matches!(
@@ -706,8 +706,8 @@ async fn success_checkpoint_writes_large_final_identity_metadata()
     let identity_bytes =
         std::fs::read(runtime.paths.final_session_history_identity_file()).unwrap();
     let identity = FinalSessionHistoryIdentity::from_json_slice(&identity_bytes).unwrap();
-    assert_eq!(identity.framework, FinalSessionHistoryFramework::ClaudeCode);
-    assert_eq!(identity.history_ref_kind, FinalSessionHistoryRefKind::Blob);
+    assert_eq!(identity.framework, SessionHistoryFramework::ClaudeCode);
+    assert_eq!(identity.history_ref_kind, SessionHistoryRefKind::Blob);
     assert_eq!(
         identity.session_id_hash,
         hex::encode(Sha256::digest(b"success-large-session"))

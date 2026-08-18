@@ -7,9 +7,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use guest_contracts::cli_agent_session_id::is_valid_cli_agent_session_id;
 use guest_contracts::codex_thread_id::canonical_codex_thread_id;
-use guest_contracts::session_history_identity::{
-    FinalSessionHistoryFramework, FinalSessionHistoryRefKind,
-};
+use guest_contracts::session_history_identity::{SessionHistoryFramework, SessionHistoryRefKind};
 use sandbox::Sandbox;
 use tracing::{info, warn};
 
@@ -27,12 +25,12 @@ impl RestoredSessionIdentity {
         let history_ref = resume_session.history_ref()?;
         let effective_framework = effective_cli_framework(&context.cli_agent_type);
         let framework = match effective_framework {
-            EffectiveCliFramework::ClaudeCode => FinalSessionHistoryFramework::ClaudeCode,
-            EffectiveCliFramework::Codex => FinalSessionHistoryFramework::Codex,
-            EffectiveCliFramework::Pi => FinalSessionHistoryFramework::Pi,
+            EffectiveCliFramework::ClaudeCode => SessionHistoryFramework::ClaudeCode,
+            EffectiveCliFramework::Codex => SessionHistoryFramework::Codex,
+            EffectiveCliFramework::Pi => SessionHistoryFramework::Pi,
         };
         let history_ref_kind = match history_ref.kind {
-            ResumeSessionHistoryRefKind::Blob => FinalSessionHistoryRefKind::Blob,
+            ResumeSessionHistoryRefKind::Blob => SessionHistoryRefKind::Blob,
         };
         let session_id = restored_session_identity_session_id(
             effective_framework,

@@ -4,8 +4,8 @@ use std::time::{Duration, Instant};
 
 use guest_contracts::reuse_preparation::ReusePreparationRequest;
 use guest_contracts::session_history_identity::{
-    FinalSessionHistoryFramework, FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
-    FinalSessionHistorySourceRef,
+    FinalSessionHistoryIdentity, FinalSessionHistorySourceRef, SessionHistoryFramework,
+    SessionHistoryRefKind,
 };
 use sandbox::{ResourceLimits, SandboxConfig, SandboxFactory, SandboxId};
 use sandbox_mock::{MockSandboxFactory, MockSandboxOverrides};
@@ -139,9 +139,9 @@ async fn idle_park_request_protects_retained_identity_runtime_directory() {
     let run_id = request.parts.run_id;
     let retained_runtime_dir = "/home/user/.vm0/guest-agent/runs/previous-run";
     let metadata = FinalSessionHistoryIdentity::new(
-        FinalSessionHistoryFramework::ClaudeCode,
+        SessionHistoryFramework::ClaudeCode,
         hex::encode(Sha256::digest(session_id.as_bytes())),
-        FinalSessionHistoryRefKind::Blob,
+        SessionHistoryRefKind::Blob,
         hex::encode(Sha256::digest(b"history")),
         b"history".len() as u64,
         FinalSessionHistorySourceRef::ClaudeCode {

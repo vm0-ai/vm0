@@ -1,7 +1,7 @@
 use api_contracts::generated::constants::runners::paths::CANONICAL_GUEST_HOME_DIR;
 use guest_contracts::session_history_identity::{
-    FinalSessionHistoryFramework, FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
-    FinalSessionHistorySourceRef,
+    FinalSessionHistoryIdentity, FinalSessionHistorySourceRef, SessionHistoryFramework,
+    SessionHistoryRefKind,
 };
 use sha2::{Digest, Sha256};
 use tokio_util::sync::CancellationToken;
@@ -60,9 +60,9 @@ pub(super) fn final_identity_runtime_paths(
 
 pub(super) fn final_identity_metadata_bytes(session_id: &str, history: &[u8]) -> Vec<u8> {
     FinalSessionHistoryIdentity::new(
-        FinalSessionHistoryFramework::ClaudeCode,
+        SessionHistoryFramework::ClaudeCode,
         hex::encode(Sha256::digest(session_id.as_bytes())),
-        FinalSessionHistoryRefKind::Blob,
+        SessionHistoryRefKind::Blob,
         hex::encode(Sha256::digest(history)),
         history.len() as u64,
         claude_history_source(session_id),

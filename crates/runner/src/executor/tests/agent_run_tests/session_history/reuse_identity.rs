@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
 use guest_contracts::session_history_identity::{
-    FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES, FinalSessionHistoryFramework,
-    FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
+    FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES, FinalSessionHistoryIdentity,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_EXPECTED_MISMATCH,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FRAMEWORK_MISMATCH,
@@ -11,7 +10,8 @@ use guest_contracts::session_history_identity::{
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_TOO_LARGE,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_METADATA,
-    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_METADATA_READ,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_METADATA_READ, SessionHistoryFramework,
+    SessionHistoryRefKind,
 };
 use httpmock::prelude::*;
 use sandbox::{ExecResult, ExecTermination, ProcessExit};
@@ -64,9 +64,9 @@ fn context_with_checkpointed_session_identity(
     let runtime_dir = format!("/home/user/.vm0/guest-agent/runs/{session_id}-previous");
     let metadata_path = format!("{runtime_dir}/final-session-history-identity.json");
     let metadata = FinalSessionHistoryIdentity::new(
-        FinalSessionHistoryFramework::ClaudeCode,
+        SessionHistoryFramework::ClaudeCode,
         hex::encode(Sha256::digest(session_id.as_bytes())),
-        FinalSessionHistoryRefKind::Blob,
+        SessionHistoryRefKind::Blob,
         hex::encode(Sha256::digest(history)),
         history.len() as u64,
         claude_history_source(session_id),
@@ -110,9 +110,9 @@ async fn assert_checkpointed_final_identity_helper_failure_falls_back(
     });
     let (metadata_path, runtime_dir) = final_identity_runtime_paths(&ctx);
     let metadata = FinalSessionHistoryIdentity::new(
-        FinalSessionHistoryFramework::ClaudeCode,
+        SessionHistoryFramework::ClaudeCode,
         hex::encode(Sha256::digest(session_id.as_bytes())),
-        FinalSessionHistoryRefKind::Blob,
+        SessionHistoryRefKind::Blob,
         hex::encode(Sha256::digest(history)),
         history.len() as u64,
         claude_history_source(session_id),
@@ -190,9 +190,9 @@ async fn run_in_sandbox_skips_checkpointed_final_session_history_restore() {
         "/home/user/.vm0/guest-agent/runs/previous/final-session-history-identity.json";
     let previous_runtime_dir = "/home/user/.vm0/guest-agent/runs/previous";
     let metadata = FinalSessionHistoryIdentity::new(
-        FinalSessionHistoryFramework::ClaudeCode,
+        SessionHistoryFramework::ClaudeCode,
         hex::encode(Sha256::digest(session_id.as_bytes())),
-        FinalSessionHistoryRefKind::Blob,
+        SessionHistoryRefKind::Blob,
         hex::encode(Sha256::digest(&history)),
         history.len() as u64,
         claude_history_source(session_id),
@@ -483,9 +483,9 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_reports
     });
     let (metadata_path, runtime_dir) = final_identity_runtime_paths(&ctx);
     let metadata = FinalSessionHistoryIdentity::new(
-        FinalSessionHistoryFramework::ClaudeCode,
+        SessionHistoryFramework::ClaudeCode,
         hex::encode(Sha256::digest(session_id.as_bytes())),
-        FinalSessionHistoryRefKind::Blob,
+        SessionHistoryRefKind::Blob,
         hex::encode(Sha256::digest(history)),
         history.len() as u64,
         claude_history_source(session_id),
@@ -578,9 +578,9 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_exec_er
     });
     let (metadata_path, runtime_dir) = final_identity_runtime_paths(&ctx);
     let metadata = FinalSessionHistoryIdentity::new(
-        FinalSessionHistoryFramework::ClaudeCode,
+        SessionHistoryFramework::ClaudeCode,
         hex::encode(Sha256::digest(session_id.as_bytes())),
-        FinalSessionHistoryRefKind::Blob,
+        SessionHistoryRefKind::Blob,
         hex::encode(Sha256::digest(history)),
         history.len() as u64,
         claude_history_source(session_id),

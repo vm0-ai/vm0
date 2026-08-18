@@ -1008,8 +1008,8 @@ mod tests {
     use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
     use guest_contracts::reuse_preparation::{ReusePreparationReport, RootFilesystemCapacity};
     use guest_contracts::session_history_identity::{
-        FinalSessionHistoryFramework, FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
-        FinalSessionHistorySourceRef, SessionHistorySidecarExportMetadata,
+        FinalSessionHistoryIdentity, FinalSessionHistorySourceRef, SessionHistoryFramework,
+        SessionHistoryRefKind, SessionHistorySidecarExportMetadata,
     };
     use sandbox::{ExecResult, SandboxFactory, SandboxId};
     use sandbox_mock::{MockLifecycleGate, MockSandbox, MockSandboxFactory, MockSandboxOverrides};
@@ -1262,35 +1262,35 @@ mod tests {
     }
 
     fn test_restored_session_identity(
-        framework: FinalSessionHistoryFramework,
+        framework: SessionHistoryFramework,
         session_id: &str,
         history: &[u8],
     ) -> RestoredSessionIdentity {
         RestoredSessionIdentity::new(
             framework,
             session_id,
-            FinalSessionHistoryRefKind::Blob,
+            SessionHistoryRefKind::Blob,
             hex::encode(Sha256::digest(history)),
             Some(history.len() as u64),
         )
     }
 
     fn test_verified_restored_session_identity(
-        framework: FinalSessionHistoryFramework,
+        framework: SessionHistoryFramework,
         session_id: &str,
         history: &[u8],
     ) -> RestoredSessionIdentity {
         let history_source = match framework {
-            FinalSessionHistoryFramework::ClaudeCode => FinalSessionHistorySourceRef::ClaudeCode {
+            SessionHistoryFramework::ClaudeCode => FinalSessionHistorySourceRef::ClaudeCode {
                 config_dir: "/home/user/.claude".to_string(),
                 working_dir: CANONICAL_WORKING_DIR.to_string(),
                 session_id: session_id.to_string(),
             },
-            FinalSessionHistoryFramework::Codex => FinalSessionHistorySourceRef::Codex {
+            SessionHistoryFramework::Codex => FinalSessionHistorySourceRef::Codex {
                 sessions_dir: "/home/user/.codex/sessions".to_string(),
                 thread_id: session_id.to_string(),
             },
-            FinalSessionHistoryFramework::Pi => FinalSessionHistorySourceRef::Pi {
+            SessionHistoryFramework::Pi => FinalSessionHistorySourceRef::Pi {
                 session_path: format!(
                     "{}/restored-{session_id}.jsonl",
                     api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DIR,
@@ -1301,7 +1301,7 @@ mod tests {
         let metadata = FinalSessionHistoryIdentity::new(
             framework,
             hex::encode(Sha256::digest(session_id.as_bytes())),
-            FinalSessionHistoryRefKind::Blob,
+            SessionHistoryRefKind::Blob,
             hex::encode(Sha256::digest(history)),
             history.len() as u64,
             history_source,
@@ -1325,7 +1325,7 @@ mod tests {
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
         let restored_session_identity = test_restored_session_identity(
-            FinalSessionHistoryFramework::ClaudeCode,
+            SessionHistoryFramework::ClaudeCode,
             session_id,
             history,
         );
@@ -2170,7 +2170,7 @@ mod tests {
         let previous_sidecar_body = tokio::fs::read(&sidecar_body_path).await.unwrap();
         let previous_sidecar_metadata = tokio::fs::read(&sidecar_metadata_path).await.unwrap();
         let codex_identity = test_restored_session_identity(
-            FinalSessionHistoryFramework::Codex,
+            SessionHistoryFramework::Codex,
             "codex-session-b",
             previous_history,
         );
@@ -2336,7 +2336,7 @@ mod tests {
         let next_session_id = "019e9154-c304-70f0-adde-36efb1be1701";
         let next_history = br#"{"type":"message","content":"codex-b"}"#;
         let next_identity = test_verified_restored_session_identity(
-            FinalSessionHistoryFramework::Codex,
+            SessionHistoryFramework::Codex,
             next_session_id,
             next_history,
         );

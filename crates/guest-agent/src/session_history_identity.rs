@@ -6,9 +6,8 @@ use crate::session_history;
 use api_contracts::generated::constants::runners::RESUME_SESSION_HISTORY_MAX_BYTES;
 use guest_contracts::codex_thread_id::canonical_codex_thread_id;
 use guest_contracts::session_history_identity::{
-    FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES, FinalSessionHistoryFramework,
-    FinalSessionHistoryIdentity, FinalSessionHistoryIdentityError,
-    FinalSessionHistoryIdentityExpectation, FinalSessionHistoryRefKind,
+    FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES, FinalSessionHistoryIdentity,
+    FinalSessionHistoryIdentityError, FinalSessionHistoryIdentityExpectation,
     FinalSessionHistorySourceRef, SESSION_HISTORY_IDENTITY_VERIFY_EXIT_EXPECTED_MISMATCH,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FRAMEWORK_MISMATCH,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_MISMATCH,
@@ -16,9 +15,9 @@ use guest_contracts::session_history_identity::{
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_TOO_LARGE,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_METADATA,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_METADATA_READ,
-    SESSION_HISTORY_SIDECAR_EXPORT_EXIT_WRITE_FAILURE, SessionHistorySidecarExportFailure,
-    SessionHistorySidecarExportMetadata, SessionHistorySidecarIoErrorClass,
-    SessionHistorySidecarRepresentation,
+    SESSION_HISTORY_SIDECAR_EXPORT_EXIT_WRITE_FAILURE, SessionHistoryFramework,
+    SessionHistoryRefKind, SessionHistorySidecarExportFailure, SessionHistorySidecarExportMetadata,
+    SessionHistorySidecarIoErrorClass, SessionHistorySidecarRepresentation,
 };
 use sha2::{Digest, Sha256};
 use std::fmt;
@@ -39,7 +38,7 @@ pub(crate) fn build_final_session_history_identity(
     FinalSessionHistoryIdentity::new(
         framework,
         session_id_hash,
-        FinalSessionHistoryRefKind::Blob,
+        SessionHistoryRefKind::Blob,
         history_hash,
         history_size_bytes,
         history_source.clone(),
@@ -56,11 +55,11 @@ fn session_id_hash(framework: env::Framework, session_id: &str) -> Option<String
     Some(hex::encode(Sha256::digest(normalized.as_bytes())))
 }
 
-fn final_framework(framework: env::Framework) -> FinalSessionHistoryFramework {
+fn final_framework(framework: env::Framework) -> SessionHistoryFramework {
     match framework {
-        env::Framework::ClaudeCode => FinalSessionHistoryFramework::ClaudeCode,
-        env::Framework::Codex => FinalSessionHistoryFramework::Codex,
-        env::Framework::Pi => FinalSessionHistoryFramework::Pi,
+        env::Framework::ClaudeCode => SessionHistoryFramework::ClaudeCode,
+        env::Framework::Codex => SessionHistoryFramework::Codex,
+        env::Framework::Pi => SessionHistoryFramework::Pi,
     }
 }
 
@@ -205,22 +204,21 @@ fn validated_history_source(
 ) -> Result<&FinalSessionHistorySourceRef, FinalSessionHistoryIdentityVerifyError> {
     let source_session_id = match (&identity.framework, &identity.history_source) {
         (
-            FinalSessionHistoryFramework::ClaudeCode,
+            SessionHistoryFramework::ClaudeCode,
             FinalSessionHistorySourceRef::ClaudeCode { session_id, .. },
         ) => session_id.as_str(),
-        (
-            FinalSessionHistoryFramework::Codex,
-            FinalSessionHistorySourceRef::Codex { thread_id, .. },
-        ) => thread_id.as_str(),
-        (FinalSessionHistoryFramework::Pi, FinalSessionHistorySourceRef::Pi { session_id, .. }) => {
+        (SessionHistoryFramework::Codex, FinalSessionHistorySourceRef::Codex { thread_id, .. }) => {
+            thread_id.as_str()
+        }
+        (SessionHistoryFramework::Pi, FinalSessionHistorySourceRef::Pi { session_id, .. }) => {
             session_id.as_str()
         }
         _ => return Err(FinalSessionHistoryIdentityVerifyError::FrameworkMismatch),
     };
     let framework = match identity.framework {
-        FinalSessionHistoryFramework::ClaudeCode => env::Framework::ClaudeCode,
-        FinalSessionHistoryFramework::Codex => env::Framework::Codex,
-        FinalSessionHistoryFramework::Pi => env::Framework::Pi,
+        SessionHistoryFramework::ClaudeCode => env::Framework::ClaudeCode,
+        SessionHistoryFramework::Codex => env::Framework::Codex,
+        SessionHistoryFramework::Pi => env::Framework::Pi,
     };
     if session_id_hash(framework, source_session_id).as_deref() != Some(&identity.session_id_hash) {
         return Err(FinalSessionHistoryIdentityVerifyError::FrameworkMismatch);
@@ -448,9 +446,9 @@ mod tests {
         history_size: u64,
     ) -> FinalSessionHistoryIdentity {
         FinalSessionHistoryIdentity::new(
-            FinalSessionHistoryFramework::ClaudeCode,
+            SessionHistoryFramework::ClaudeCode,
             session_hash(CLAUDE_SESSION_ID),
-            FinalSessionHistoryRefKind::Blob,
+            SessionHistoryRefKind::Blob,
             history_hash,
             history_size,
             source,
@@ -511,7 +509,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(identity.framework, FinalSessionHistoryFramework::Pi);
+        assert_eq!(identity.framework, SessionHistoryFramework::Pi);
         assert_eq!(identity.history_source, history_source);
         assert_eq!(
             identity.session_id_hash,
@@ -537,9 +535,9 @@ mod tests {
             thread_id: thread_id.to_string(),
         };
         let identity = FinalSessionHistoryIdentity::new(
-            FinalSessionHistoryFramework::Codex,
+            SessionHistoryFramework::Codex,
             session_hash(thread_id),
-            FinalSessionHistoryRefKind::Blob,
+            SessionHistoryRefKind::Blob,
             hex::encode(Sha256::digest(history)),
             history.len() as u64,
             source,
@@ -570,9 +568,9 @@ mod tests {
             thread_id: thread_id.to_string(),
         };
         let identity = FinalSessionHistoryIdentity::new(
-            FinalSessionHistoryFramework::Codex,
+            SessionHistoryFramework::Codex,
             session_hash(thread_id),
-            FinalSessionHistoryRefKind::Blob,
+            SessionHistoryRefKind::Blob,
             hex::encode(Sha256::digest(history)),
             history.len() as u64,
             source,
@@ -717,9 +715,9 @@ mod tests {
             history.len() as u64,
         );
         let expected = FinalSessionHistoryIdentityExpectation::new(
-            FinalSessionHistoryFramework::ClaudeCode,
+            SessionHistoryFramework::ClaudeCode,
             session_hash(CLAUDE_SESSION_ID),
-            FinalSessionHistoryRefKind::Blob,
+            SessionHistoryRefKind::Blob,
             "b".repeat(64),
             history.len() as u64,
         )

@@ -35,10 +35,10 @@ pub const SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_TOO_LARGE: i32 = 9;
 /// Exit code 10 previously represented sidecar export unavailability and
 /// remains reserved for that historical meaning.
 pub const SESSION_HISTORY_SIDECAR_EXPORT_EXIT_WRITE_FAILURE: i32 = 11;
-/// Framework that owns a final session-history file.
+/// Framework that owns session-history bytes.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum FinalSessionHistoryFramework {
+pub enum SessionHistoryFramework {
     /// Claude Code session history.
     ClaudeCode,
     /// Codex session history.
@@ -47,10 +47,10 @@ pub enum FinalSessionHistoryFramework {
     Pi,
 }
 
-/// Storage ref kind for final session-history bytes.
+/// Storage ref kind for session-history bytes.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum FinalSessionHistoryRefKind {
+pub enum SessionHistoryRefKind {
     /// Hash-backed blob storage.
     Blob,
 }
@@ -178,11 +178,11 @@ pub struct SessionHistorySidecarExportFailure {
 #[serde(rename_all = "camelCase")]
 pub struct FinalSessionHistoryIdentity {
     /// CLI framework.
-    pub framework: FinalSessionHistoryFramework,
+    pub framework: SessionHistoryFramework,
     /// SHA-256 hash of the framework-normalized CLI session id.
     pub session_id_hash: String,
     /// Server resume history ref kind.
-    pub history_ref_kind: FinalSessionHistoryRefKind,
+    pub history_ref_kind: SessionHistoryRefKind,
     /// SHA-256 hash of final session-history bytes.
     pub history_hash: String,
     /// Exact final session-history byte length.
@@ -194,9 +194,9 @@ pub struct FinalSessionHistoryIdentity {
 impl FinalSessionHistoryIdentity {
     /// Build validated final identity metadata.
     pub fn new(
-        framework: FinalSessionHistoryFramework,
+        framework: SessionHistoryFramework,
         session_id_hash: impl Into<String>,
-        history_ref_kind: FinalSessionHistoryRefKind,
+        history_ref_kind: SessionHistoryRefKind,
         history_hash: impl Into<String>,
         history_size_bytes: u64,
         history_source: FinalSessionHistorySourceRef,
@@ -250,13 +250,13 @@ impl FinalSessionHistoryIdentity {
         if !matches!(
             (self.framework, &self.history_source),
             (
-                FinalSessionHistoryFramework::ClaudeCode,
+                SessionHistoryFramework::ClaudeCode,
                 FinalSessionHistorySourceRef::ClaudeCode { .. }
             ) | (
-                FinalSessionHistoryFramework::Codex,
+                SessionHistoryFramework::Codex,
                 FinalSessionHistorySourceRef::Codex { .. }
             ) | (
-                FinalSessionHistoryFramework::Pi,
+                SessionHistoryFramework::Pi,
                 FinalSessionHistorySourceRef::Pi { .. }
             )
         ) {
@@ -266,7 +266,7 @@ impl FinalSessionHistoryIdentity {
     }
 }
 
-impl FinalSessionHistoryFramework {
+impl SessionHistoryFramework {
     /// Return the stable CLI argument spelling used by runner and guest-agent.
     pub fn as_str(self) -> &'static str {
         match self {
@@ -287,7 +287,7 @@ impl FinalSessionHistoryFramework {
     }
 }
 
-impl FinalSessionHistoryRefKind {
+impl SessionHistoryRefKind {
     /// Return the stable CLI argument spelling used by runner and guest-agent.
     pub fn as_str(self) -> &'static str {
         match self {
@@ -309,11 +309,11 @@ impl FinalSessionHistoryRefKind {
 #[derive(Clone, Eq, PartialEq)]
 pub struct FinalSessionHistoryIdentityExpectation {
     /// CLI framework expected by runner.
-    pub framework: FinalSessionHistoryFramework,
+    pub framework: SessionHistoryFramework,
     /// SHA-256 hash of the framework-normalized CLI session id expected by runner.
     pub session_id_hash: String,
     /// Server resume history ref kind expected by runner.
-    pub history_ref_kind: FinalSessionHistoryRefKind,
+    pub history_ref_kind: SessionHistoryRefKind,
     /// SHA-256 hash of final session-history bytes expected by runner.
     pub history_hash: String,
     /// Exact final session-history byte length expected by runner.
@@ -335,9 +335,9 @@ impl fmt::Debug for FinalSessionHistoryIdentityExpectation {
 impl FinalSessionHistoryIdentityExpectation {
     /// Build validated expected final identity fields.
     pub fn new(
-        framework: FinalSessionHistoryFramework,
+        framework: SessionHistoryFramework,
         session_id_hash: impl Into<String>,
-        history_ref_kind: FinalSessionHistoryRefKind,
+        history_ref_kind: SessionHistoryRefKind,
         history_hash: impl Into<String>,
         history_size_bytes: u64,
     ) -> Result<Self, FinalSessionHistoryIdentityError> {
@@ -358,9 +358,9 @@ impl FinalSessionHistoryIdentityExpectation {
             .parse::<u64>()
             .map_err(|_| FinalSessionHistoryIdentityError::InvalidHistorySize)?;
         Self::new(
-            FinalSessionHistoryFramework::parse_cli_arg(args[0])?,
+            SessionHistoryFramework::parse_cli_arg(args[0])?,
             args[1],
-            FinalSessionHistoryRefKind::parse_cli_arg(args[2])?,
+            SessionHistoryRefKind::parse_cli_arg(args[2])?,
             args[3],
             history_size_bytes,
         )
@@ -509,9 +509,9 @@ mod tests {
 
     fn valid_identity() -> FinalSessionHistoryIdentity {
         FinalSessionHistoryIdentity::new(
-            FinalSessionHistoryFramework::ClaudeCode,
+            SessionHistoryFramework::ClaudeCode,
             "a".repeat(64),
-            FinalSessionHistoryRefKind::Blob,
+            SessionHistoryRefKind::Blob,
             "b".repeat(64),
             12,
             valid_source(),
@@ -537,9 +537,9 @@ mod tests {
     #[test]
     fn final_identity_rejects_invalid_hashes() {
         let err = FinalSessionHistoryIdentity::new(
-            FinalSessionHistoryFramework::ClaudeCode,
+            SessionHistoryFramework::ClaudeCode,
             "not-a-hash",
-            FinalSessionHistoryRefKind::Blob,
+            SessionHistoryRefKind::Blob,
             "b".repeat(64),
             12,
             valid_source(),
@@ -548,9 +548,9 @@ mod tests {
         assert_eq!(err, FinalSessionHistoryIdentityError::InvalidSessionIdHash);
 
         let err = FinalSessionHistoryIdentity::new(
-            FinalSessionHistoryFramework::ClaudeCode,
+            SessionHistoryFramework::ClaudeCode,
             "a".repeat(64),
-            FinalSessionHistoryRefKind::Blob,
+            SessionHistoryRefKind::Blob,
             "not-a-hash",
             12,
             valid_source(),
@@ -562,9 +562,9 @@ mod tests {
     #[test]
     fn final_identity_rejects_zero_history() {
         let err = FinalSessionHistoryIdentity::new(
-            FinalSessionHistoryFramework::ClaudeCode,
+            SessionHistoryFramework::ClaudeCode,
             "a".repeat(64),
-            FinalSessionHistoryRefKind::Blob,
+            SessionHistoryRefKind::Blob,
             "b".repeat(64),
             0,
             valid_source(),
@@ -576,9 +576,9 @@ mod tests {
     #[test]
     fn final_identity_accepts_large_history_size() {
         let identity = FinalSessionHistoryIdentity::new(
-            FinalSessionHistoryFramework::ClaudeCode,
+            SessionHistoryFramework::ClaudeCode,
             "a".repeat(64),
-            FinalSessionHistoryRefKind::Blob,
+            SessionHistoryRefKind::Blob,
             "b".repeat(64),
             u64::MAX,
             valid_source(),
@@ -595,9 +595,9 @@ mod tests {
     #[test]
     fn final_identity_rejects_invalid_history_source() {
         let err = FinalSessionHistoryIdentity::new(
-            FinalSessionHistoryFramework::ClaudeCode,
+            SessionHistoryFramework::ClaudeCode,
             "a".repeat(64),
-            FinalSessionHistoryRefKind::Blob,
+            SessionHistoryRefKind::Blob,
             "b".repeat(64),
             12,
             FinalSessionHistorySourceRef::ClaudeCode {
@@ -613,9 +613,9 @@ mod tests {
     #[test]
     fn final_identity_rejects_history_source_from_another_framework() {
         let err = FinalSessionHistoryIdentity::new(
-            FinalSessionHistoryFramework::Codex,
+            SessionHistoryFramework::Codex,
             "a".repeat(64),
-            FinalSessionHistoryRefKind::Blob,
+            SessionHistoryRefKind::Blob,
             "b".repeat(64),
             12,
             valid_source(),
@@ -655,9 +655,9 @@ mod tests {
     #[test]
     fn final_identity_expectation_accepts_large_history_size() {
         let expectation = FinalSessionHistoryIdentityExpectation::new(
-            FinalSessionHistoryFramework::ClaudeCode,
+            SessionHistoryFramework::ClaudeCode,
             "a".repeat(64),
-            FinalSessionHistoryRefKind::Blob,
+            SessionHistoryRefKind::Blob,
             "b".repeat(64),
             u64::MAX,
         )
