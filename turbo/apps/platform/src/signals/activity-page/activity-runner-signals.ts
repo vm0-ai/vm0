@@ -1,5 +1,5 @@
 import { computed } from "ccstate";
-import { zeroRunRunnerContract } from "@okouai/api-contracts/contracts/zero-runs";
+import { runRunnerContract } from "@okouai/api-contracts/contracts/run-routes";
 import type {
   SandboxReuseResult,
   WorkspaceReuseResult,
@@ -25,7 +25,7 @@ export const zeroActivityRunner$ = computed(async (get) => {
     return null;
   }
 
-  const client = get(zeroClient$)(zeroRunRunnerContract);
+  const client = get(zeroClient$)(runRunnerContract);
   const result = await accept(
     client.getRunner({ params: { id: runId } }),
     [200],

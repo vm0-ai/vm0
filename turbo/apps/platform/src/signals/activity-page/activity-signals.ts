@@ -1,6 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { logsByIdContract } from "@okouai/api-contracts/contracts/logs";
-import { zeroRunAgentEventsContract } from "@okouai/api-contracts/contracts/zero-runs";
+import { runAgentEventsContract } from "@okouai/api-contracts/contracts/run-routes";
 import type {
   InitClientArgs,
   InitClientReturn,
@@ -28,7 +28,7 @@ const AGENT_EVENTS_POLL_INTERVAL_MS = 1000;
 const TERMINAL_EVENT_STALL_POLL_LIMIT = 30;
 
 type AgentEventsClient = InitClientReturn<
-  typeof zeroRunAgentEventsContract,
+  typeof runAgentEventsContract,
   InitClientArgs
 >;
 
@@ -239,7 +239,7 @@ export const setupActivityEvents$ = command(
     }
 
     set(internalActivityEventsState$, { phase: "loading", runId });
-    const client = get(zeroClient$)(zeroRunAgentEventsContract);
+    const client = get(zeroClient$)(runAgentEventsContract);
     const initial = await onRejection(
       fetchAgentEventBatch(client, runId, {}, signal),
       () => {

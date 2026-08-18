@@ -398,11 +398,12 @@ export const EXPECTED_REPOSITORY_DEPENDENCIES = {
   ],
   transitionValidators: [
     "#27613+#27656+#27671+#27792|agent-compose-consolidation-preflight|removal-owner:#26938-stage-8",
-    "#27665|integration-identity-contract-readiness-preflight|removal-owner:#27602",
     "#27896|agent-execution-authority-classifier-and-helpers|removal-owner:#26938-stage-8",
     "#27896|application-compose-projection-adapter|removal-owner:#26938-stage-8",
     "#27896|legacy-exception-runtime-path|removal-owner:#26938-stage-8",
     "#27896|run-context-authority-telemetry|removal-owner:#26938-stage-8",
+    "#27997|framework-fallback-authority-classification-and-telemetry|removal-owner:#26938-stage-8",
+    "#27997|framework-fallback-preflight-partition|removal-owner:#26938-stage-8",
   ],
 } as const satisfies RepositoryDependencyManifest;
 

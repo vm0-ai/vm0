@@ -1,8 +1,8 @@
 import { command } from "ccstate";
 import {
-  zeroRunContextContract,
-  zeroRunNetworkLogsContract,
-} from "@okouai/api-contracts/contracts/zero-runs";
+  runContextContract,
+  runNetworkLogsContract,
+} from "@okouai/api-contracts/contracts/run-routes";
 import { zeroClient$ } from "../api-client.ts";
 import { logger } from "../log.ts";
 import { accept } from "../../lib/accept.ts";
@@ -27,7 +27,7 @@ export const fetchDownloadExtra$ = command(
 
     const fetchContextBody = async (): Promise<unknown | undefined> => {
       const result = await accept(
-        get(zeroClient$)(zeroRunContextContract).getContext({
+        get(zeroClient$)(runContextContract).getContext({
           params: { id: runId },
           fetchOptions: { signal: _signal },
         }),
@@ -39,7 +39,7 @@ export const fetchDownloadExtra$ = command(
     const [contextResult, networkResult] = await Promise.allSettled([
       fetchContextBody(),
       fetchAllNetworkLogs(
-        get(zeroClient$)(zeroRunNetworkLogsContract),
+        get(zeroClient$)(runNetworkLogsContract),
         runId,
         _signal,
       ),

@@ -1,18 +1,18 @@
 import {
-  zeroRunsByIdContract,
-  zeroRunAgentEventsContract,
-  zeroRunsQueueContract,
-  zeroRunsCancelContract,
-  zeroRunContextContract,
-  zeroRunNetworkLogsContract,
-} from "@okouai/api-contracts/contracts/zero-runs";
+  runsByIdContract,
+  runAgentEventsContract,
+  runsQueueContract,
+  runsCancelContract,
+  runContextContract,
+  runNetworkLogsContract,
+} from "@okouai/api-contracts/contracts/run-routes";
 import { chatEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { queuePositionContract } from "@okouai/api-contracts/contracts/queue-position";
 import { mockApi } from "../msw-contract.ts";
 
 export const apiRunsHandlers = [
   // GET /api/okou/runs/:id
-  mockApi(zeroRunsByIdContract.getById, ({ respond }) =>
+  mockApi(runsByIdContract.getById, ({ respond }) =>
     respond(200, {
       runId: "a0000000-0000-4000-a000-000000000001",
       agentComposeVersionId: null,
@@ -25,7 +25,7 @@ export const apiRunsHandlers = [
   ),
 
   // GET /api/okou/runs/:id/telemetry/agent
-  mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
+  mockApi(runAgentEventsContract.getAgentEvents, ({ respond }) =>
     respond(200, {
       events: [],
       hasMore: false,
@@ -35,7 +35,7 @@ export const apiRunsHandlers = [
   ),
 
   // GET /api/okou/runs/queue
-  mockApi(zeroRunsQueueContract.getQueue, ({ respond }) =>
+  mockApi(runsQueueContract.getQueue, ({ respond }) =>
     respond(200, {
       concurrency: {
         tier: "free",
@@ -51,7 +51,7 @@ export const apiRunsHandlers = [
   ),
 
   // POST /api/okou/runs/:id/cancel
-  mockApi(zeroRunsCancelContract.cancel, ({ params, respond }) =>
+  mockApi(runsCancelContract.cancel, ({ params, respond }) =>
     respond(200, {
       id: params.id,
       status: "cancelled",
@@ -60,7 +60,7 @@ export const apiRunsHandlers = [
   ),
 
   // GET /api/okou/runs/:id/context
-  mockApi(zeroRunContextContract.getContext, ({ params, respond }) =>
+  mockApi(runContextContract.getContext, ({ params, respond }) =>
     respond(200, {
       prompt: "Test prompt",
       appendSystemPrompt: null,
@@ -78,7 +78,7 @@ export const apiRunsHandlers = [
   ),
 
   // GET /api/okou/runs/:id/network
-  mockApi(zeroRunNetworkLogsContract.getNetworkLogs, ({ respond }) =>
+  mockApi(runNetworkLogsContract.getNetworkLogs, ({ respond }) =>
     respond(200, { networkLogs: [], hasMore: false }),
   ),
 

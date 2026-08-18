@@ -21,7 +21,9 @@ import {
 import { useTranslation } from "react-i18next";
 import {
   chatListQuery$,
+  pinAgentDialogQuery$,
   setChatListQuery$,
+  setPinAgentDialogQuery$,
   setThreeColumnSearchFilter$,
   threeColumnSearchFilter$,
   type ThreeColumnSearchFilter,
@@ -33,6 +35,7 @@ import {
 } from "../../signals/agent.ts";
 import {
   pinnedAgentIds$,
+  pinnedAgentRenderOrder$,
   setAgentPinned$,
 } from "../../signals/zero-page/zero-pinned-agents.ts";
 import {
@@ -266,6 +269,25 @@ function AgentCommandAgentContent({
       </span>
     </span>
   );
+}
+
+/** Keep a dialog's pinned section in the same order as the sidebar. */
+function agentsInRenderOrder(
+  subagents: readonly SubagentInfo[],
+  renderOrder: readonly string[],
+): SubagentInfo[] {
+  const agentById = new Map(
+    subagents.map((agent) => {
+      return [agent.id, agent];
+    }),
+  );
+  return renderOrder
+    .map((id) => {
+      return agentById.get(id);
+    })
+    .filter((agent): agent is SubagentInfo => {
+      return agent !== undefined;
+    });
 }
 
 function filterAgentDialogItems<T extends AgentDialogItem>(
@@ -570,51 +592,6 @@ function UnpinnedAgentsCommandSection({
                 }}
               />
             </AgentCommandSideActions>
-          </CommandItem>
-        );
-      })}
-    </AgentCommandSection>
-  );
-}
-
-function AgentPinCommandSection({
-  agents,
-  label,
-  pinned,
-  disabled,
-  onTogglePin,
-}: {
-  readonly agents: readonly SubagentInfo[];
-  readonly label: string;
-  readonly pinned: boolean;
-  readonly disabled: boolean;
-  readonly onTogglePin: (agentId: string) => void;
-}) {
-  if (agents.length === 0) {
-    return null;
-  }
-
-  return (
-    <AgentCommandSection label={label} className={pinned ? undefined : "pb-3"}>
-      {agents.map((agent) => {
-        return (
-          <CommandItem
-            key={agent.id}
-            value={agent.id}
-            disabled={disabled}
-            onSelect={() => {
-              return onTogglePin(agent.id);
-            }}
-            className="group w-full gap-2 px-1 py-2"
-          >
-            <AgentCommandAgentContent agent={agent} />
-            <span className="ml-auto flex h-8 w-8 shrink-0 items-center justify-center text-muted-foreground">
-              {pinned ? (
-                <PinOff size={16} aria-hidden="true" />
-              ) : (
-                <Pin size={16} aria-hidden="true" />
-              )}
-            </span>
           </CommandItem>
         );
       })}
@@ -1503,109 +1480,6 @@ function AgentListDialogUnifiedSearch({
   );
 }
 
-export function AgentPinDialog({
-  open,
-  onOpenChange,
-  subagents,
-}: {
-  readonly open: boolean;
-  readonly onOpenChange: (open: boolean) => void;
-  readonly subagents: readonly SubagentInfo[];
-}) {
-  const { t } = useTranslation("agents");
-  const query = useGet(chatListQuery$);
-  const setQuery = useSet(setChatListQuery$);
-  const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
-  const pageSignal = useGet(pageSignal$);
-  const [pinLoadable, saveAgentPinned] = useLoadableSet(setAgentPinned$);
-  const saving = pinLoadable.state === "loading";
-  const pinnedIdSet = new Set(pinnedIds);
-  const trimmedQuery = query.trim().toLowerCase();
-  const pinned = filterAgentDialogItems(
-    subagents.filter((agent) => {
-      return pinnedIdSet.has(agent.id);
-    }),
-    trimmedQuery,
-  );
-  const unpinned = filterAgentDialogItems(
-    subagents.filter((agent) => {
-      return !pinnedIdSet.has(agent.id);
-    }),
-    trimmedQuery,
-  );
-  const togglePin = (agentId: string) => {
-    detach(
-      saveAgentPinned(
-        { agentId, pinned: !pinnedIdSet.has(agentId) },
-        pageSignal,
-      ),
-      Reason.DomCallback,
-    );
-  };
-
-  return (
-    <CommandDialog
-      open={open}
-      onOpenChange={onOpenChange}
-      closeLabel={t(($) => {
-        return $.actions.close;
-      })}
-      className="zero-app w-[calc(100vw-2rem)] gap-0 sm:max-w-xl"
-      commandClassName="gap-0"
-      commandProps={{ shouldFilter: false, loop: true }}
-    >
-      <DialogHeader className="px-5 pb-3 pt-5">
-        <DialogTitle className="text-base font-semibold">
-          {t(($) => {
-            return $.sidebar.pinAgents;
-          })}
-        </DialogTitle>
-        <DialogDescription className="mt-1 text-sm text-muted-foreground">
-          {t(($) => {
-            return $.sidebar.pinAgentsDescription;
-          })}
-        </DialogDescription>
-      </DialogHeader>
-
-      <AgentCommandSearch
-        query={query}
-        setQuery={setQuery}
-        placeholder={t(($) => {
-          return $.sidebar.searchAgents;
-        })}
-      />
-
-      <CommandList>
-        <AgentPinCommandSection
-          agents={pinned}
-          label={t(($) => {
-            return $.sidebar.pinned;
-          })}
-          pinned
-          disabled={saving}
-          onTogglePin={togglePin}
-        />
-        <AgentPinCommandSection
-          agents={unpinned}
-          label={t(($) => {
-            return $.sidebar.sections.others;
-          })}
-          pinned={false}
-          disabled={saving}
-          onTogglePin={togglePin}
-        />
-        {pinned.length === 0 && unpinned.length === 0 ? (
-          <p className="px-5 py-4 text-center text-sm text-muted-foreground">
-            {t(($) => {
-              return $.sidebar.noResults;
-            })}
-          </p>
-        ) : null}
-      </CommandList>
-    </CommandDialog>
-  );
-}
-
 export function AgentListDialog({
   open,
   onOpenChange,
@@ -1627,6 +1501,7 @@ export function AgentListDialog({
   const query = useGet(chatListQuery$);
   const setQuery = useSet(setChatListQuery$);
   const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
+  const pinnedRenderOrder = useLastResolved(pinnedAgentRenderOrder$) ?? [];
   const unreadAgentIds = useLastResolved(unreadAgentIds$, {
     equalityFn: equalSets,
   });
@@ -1635,9 +1510,7 @@ export function AgentListDialog({
   const saving = pinLoadable.state === "loading";
 
   const pinnedIdSet = new Set(pinnedIds);
-  const pinned = subagents.filter((a) => {
-    return pinnedIdSet.has(a.id);
-  });
+  const pinned = agentsInRenderOrder(subagents, pinnedRenderOrder);
 
   const unpinned = subagents.filter((a) => {
     return !pinnedIdSet.has(a.id);
@@ -1746,6 +1619,144 @@ export function AgentListDialog({
               onSelect={handleChatThread}
             />
           </>
+        )}
+      </CommandList>
+    </CommandDialog>
+  );
+}
+
+export function PinAgentDialog({
+  open,
+  onOpenChange,
+  subagents,
+  onPinAgent,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  subagents: SubagentInfo[];
+  onPinAgent: (agentId: string) => void;
+}) {
+  const { t } = useTranslation("agents");
+  const query = useGet(pinAgentDialogQuery$);
+  const setQuery = useSet(setPinAgentDialogQuery$);
+  const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
+  const pinnedRenderOrder = useLastResolved(pinnedAgentRenderOrder$) ?? [];
+
+  const pinnedIdSet = new Set(pinnedIds);
+  const trimmedQuery = query.trim().toLowerCase();
+  const matches = filterAgentDialogItems(subagents, trimmedQuery);
+  const pinnable = matches.filter((agent) => {
+    return !pinnedIdSet.has(agent.id);
+  });
+  const matchedIds = new Set(
+    matches.map((agent) => {
+      return agent.id;
+    }),
+  );
+  const alreadyPinned = agentsInRenderOrder(
+    subagents,
+    pinnedRenderOrder,
+  ).filter((agent) => {
+    return matchedIds.has(agent.id);
+  });
+
+  const pinAgent = (agentId: string) => {
+    onOpenChange(false);
+    onPinAgent(agentId);
+  };
+
+  return (
+    <CommandDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      closeLabel={t(($) => {
+        return $.actions.close;
+      })}
+      className="zero-app sm:max-w-xl w-[calc(100vw-2rem)] gap-0"
+      commandClassName="gap-0"
+      commandProps={{ shouldFilter: false, loop: true }}
+    >
+      <DialogHeader className="px-5 pt-5 pb-3">
+        <DialogTitle className="text-base font-semibold">
+          {t(($) => {
+            return $.sidebar.pinAgent;
+          })}
+        </DialogTitle>
+        <DialogDescription className="text-sm text-muted-foreground mt-1">
+          {t(($) => {
+            return $.sidebar.pinAgentDescription;
+          })}
+        </DialogDescription>
+      </DialogHeader>
+
+      <AgentCommandSearch
+        query={query}
+        setQuery={setQuery}
+        placeholder={t(($) => {
+          return $.sidebar.searchAgents;
+        })}
+      />
+
+      <CommandList data-testid="pin-agent-dialog-list">
+        {matches.length === 0 && (
+          <p className="px-6 py-3 text-xs text-muted-foreground">
+            {trimmedQuery
+              ? t(($) => {
+                  return $.sidebar.noResults;
+                })
+              : t(($) => {
+                  return $.sidebar.noAgentsToPin;
+                })}
+          </p>
+        )}
+        {pinnable.length > 0 && (
+          <AgentCommandSection
+            label={t(($) => {
+              return $.sidebar.sections.others;
+            })}
+          >
+            {pinnable.map((agent) => {
+              return (
+                <CommandItem
+                  key={agent.id}
+                  value={agent.id}
+                  onSelect={() => {
+                    return pinAgent(agent.id);
+                  }}
+                  className="group w-full gap-2 px-1 py-2"
+                >
+                  <AgentCommandAgentContent agent={agent} />
+                  <Pin size={16} className="ml-auto shrink-0 opacity-50" />
+                </CommandItem>
+              );
+            })}
+          </AgentCommandSection>
+        )}
+        {alreadyPinned.length > 0 && (
+          <AgentCommandSection
+            label={t(($) => {
+              return $.sidebar.pinned;
+            })}
+            className="pb-3"
+          >
+            {alreadyPinned.map((agent) => {
+              return (
+                <CommandItem
+                  key={agent.id}
+                  value={agent.id}
+                  disabled
+                  className="w-full gap-2 px-1 py-2 opacity-60"
+                >
+                  <AgentCommandAgentContent agent={agent} />
+                  <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                    {t(($) => {
+                      return $.sidebar.pinned;
+                    })}
+                  </span>
+                </CommandItem>
+              );
+            })}
+          </AgentCommandSection>
         )}
       </CommandList>
     </CommandDialog>

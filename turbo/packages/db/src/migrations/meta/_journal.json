@@ -946,6 +946,13 @@
       "when": 1787047261770,
       "tag": "0942_shocking_captain_stacy",
       "breakpoints": true
+    },
+    {
+      "idx": 943,
+      "version": "7",
+      "when": 1787049522452,
+      "tag": "0943_contract_legacy_integration_identity",
+      "breakpoints": true
     }
   ]
 }

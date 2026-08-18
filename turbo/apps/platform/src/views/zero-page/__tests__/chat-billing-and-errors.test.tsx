@@ -13,7 +13,7 @@ import {
 } from "@okouai/api-contracts/contracts/zero-billing";
 import { FeatureSwitchKey } from "@okouai/core";
 import { logsByIdContract } from "@okouai/api-contracts/contracts/logs";
-import { zeroRunsByIdContract } from "@okouai/api-contracts/contracts/zero-runs";
+import { runsByIdContract } from "@okouai/api-contracts/contracts/run-routes";
 import { queuePositionContract } from "@okouai/api-contracts/contracts/queue-position";
 import {
   click,
@@ -652,7 +652,7 @@ describe("chat lifecycle", () => {
         artifact: { name: null, version: null },
       });
     });
-    context.mocks.api(zeroRunsByIdContract.getById, ({ respond }) => {
+    context.mocks.api(runsByIdContract.getById, ({ respond }) => {
       return respond(200, {
         runId: "run-active",
         agentComposeVersionId: null,

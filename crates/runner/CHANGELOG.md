@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.169.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.6...runner-rs-v0.169.7) (2026-08-18)
+
+
+### Documentation
+
+* **python:** clarify Anthropic JSON metadata-only results ([#28012](https://github.com/vm0-ai/vm0/issues/28012)) ([bfcb999](https://github.com/vm0-ai/vm0/commit/bfcb999669fa226f88bc26a89fa27edc94d885d1))
+* **python:** clarify X tweet body refinement conditions ([#27968](https://github.com/vm0-ai/vm0/issues/27968)) ([bd19e2d](https://github.com/vm0-ai/vm0/commit/bd19e2dbdc3554420b05d665008d9039c005aca3))
+
+
+### Refactoring
+
+* **runner:** centralize private file validation ([#28019](https://github.com/vm0-ai/vm0/issues/28019)) ([2f7f7da](https://github.com/vm0-ai/vm0/commit/2f7f7dafe3c2801e270d2d6baf07e6c6fd105c08))
+* **rust:** generate codex runtime config ([#28035](https://github.com/vm0-ai/vm0/issues/28035)) ([de3d53b](https://github.com/vm0-ai/vm0/commit/de3d53ba1c521a9a623552fe33e71e61da37b145))
+
+
+### Performance Improvements
+
+* **runner:** defer workspace cache gc to routine maintenance ([#28026](https://github.com/vm0-ai/vm0/issues/28026)) ([c408e32](https://github.com/vm0-ai/vm0/commit/c408e32f4e09d1c6484e4df8744f6d351fff7166))
+* **runner:** measure claim http duration ([#28029](https://github.com/vm0-ai/vm0/issues/28029)) ([974ba54](https://github.com/vm0-ai/vm0/commit/974ba54e70dbf7e6f12a9516d62d61e17f7c88cd))
+
 ## [0.169.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.5...runner-rs-v0.169.6) (2026-08-18)
 
 

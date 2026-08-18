@@ -128,6 +128,22 @@ function commandInput(command: unknown): Record<string, unknown> {
   return {};
 }
 
+function exportDownloadDispositions(exportKey: string): string[] {
+  return context.mocks.s3.getSignedUrl.mock.calls
+    .map(([, command]) => {
+      return commandInput(command);
+    })
+    .filter((input) => {
+      return input.Key === exportKey;
+    })
+    .map((input) => {
+      return input.ResponseContentDisposition;
+    })
+    .filter((disposition): disposition is string => {
+      return typeof disposition === "string";
+    });
+}
+
 function exportZip(exportKey: string): AdmZip {
   const putInput = context.mocks.s3.send.mock.calls
     .map(([command]) => {
@@ -1160,14 +1176,10 @@ describe("OPS-01: user data export", () => {
       nextExportAt: new Date(exportStartAt + 24 * HOUR_MS).toISOString(),
     });
 
-    const signedUrlCommand = commandInput(
-      context.mocks.s3.getSignedUrl.mock.calls.at(-1)?.[1],
-    );
-    expect(signedUrlCommand).toMatchObject({
-      Bucket: "test-user-storages",
-      Key: exportKey,
-      ResponseContentDisposition: 'attachment; filename="vm0-data-export.zip"',
-    });
+    expect(exportDownloadDispositions(exportKey)).toStrictEqual([
+      'attachment; filename="vm0-data-export.zip"',
+      'attachment; filename="vm0-data-export.zip"',
+    ]);
 
     const putInput = context.mocks.s3.send.mock.calls
       .map(([command]) => {
@@ -1232,6 +1244,30 @@ describe("OPS-01: user data export", () => {
       canExport: true,
       nextExportAt: null,
     });
+  });
+
+  it("uses the persisted Okou brand for export download filenames", async () => {
+    const api = createOpsLogsApi(context);
+    const bdd = createBddApi(context);
+    const actor = bdd.user();
+    const downloadUrl = "https://r2.example.com/bdd-okou-export.zip?sig=test";
+
+    context.mocks.s3.getSignedUrl.mockResolvedValue(downloadUrl);
+    context.mocks.s3.send.mockResolvedValue({});
+
+    const started = await api.requestPostUserExport(actor, [202], "okou");
+    const exportKey = `exports/${actor.userId}/${started.body.jobId}.zip`;
+    await waitForUserExportJobStatus(
+      api,
+      actor,
+      started.body.jobId,
+      "completed",
+    );
+
+    expect(exportDownloadDispositions(exportKey)).toStrictEqual([
+      'attachment; filename="okou-data-export.zip"',
+      'attachment; filename="okou-data-export.zip"',
+    ]);
   });
 
   it("exports the userMessage projection", async () => {

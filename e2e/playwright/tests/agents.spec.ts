@@ -140,11 +140,11 @@ test("pinned agents use five equal columns and keep Pin in the first row", async
 
   const grid = page.getByTestId("pinned-agents-grid");
   const cards = grid.getByTestId("pinned-agent-card");
-  const pinAgents = grid.getByRole("button", {
-    name: "Pin agents",
+  const pinAgent = grid.getByRole("button", {
+    name: "Pin an agent",
   });
   await expect(cards).toHaveCount(4);
-  await expect(pinAgents).toBeVisible();
+  await expect(pinAgent).toBeVisible();
 
   await expect
     .poll(async () => {
@@ -153,7 +153,7 @@ test("pinned agents use five equal columns and keep Pin in the first row", async
         cards.nth(1).boundingBox(),
         cards.nth(2).boundingBox(),
         cards.nth(3).boundingBox(),
-        pinAgents.boundingBox(),
+        pinAgent.boundingBox(),
       ]);
       if (boxes.some((box) => box === null)) {
         return Number.POSITIVE_INFINITY;
@@ -170,7 +170,7 @@ test("pinned agents use five equal columns and keep Pin in the first row", async
         cards.nth(1).boundingBox(),
         cards.nth(2).boundingBox(),
         cards.nth(3).boundingBox(),
-        pinAgents.boundingBox(),
+        pinAgent.boundingBox(),
       ]);
       if (boxes.some((box) => box === null)) {
         return 0;
@@ -191,7 +191,7 @@ test("pinned agents use five equal columns and keep Pin in the first row", async
         cards.nth(1).boundingBox(),
         cards.nth(2).boundingBox(),
         cards.nth(3).boundingBox(),
-        pinAgents.boundingBox(),
+        pinAgent.boundingBox(),
       ]);
       if (boxes.some((box) => box === null)) {
         return Number.POSITIVE_INFINITY;
@@ -203,15 +203,15 @@ test("pinned agents use five equal columns and keep Pin in the first row", async
 
   await expect
     .poll(async () => {
-      const [gridBox, pinAgentsBox] = await Promise.all([
+      const [gridBox, pinAgentBox] = await Promise.all([
         grid.boundingBox(),
-        pinAgents.boundingBox(),
+        pinAgent.boundingBox(),
       ]);
-      if (!gridBox || !pinAgentsBox) {
+      if (!gridBox || !pinAgentBox) {
         return Number.POSITIVE_INFINITY;
       }
       return Math.abs(
-        pinAgentsBox.x + pinAgentsBox.width - (gridBox.x + gridBox.width),
+        pinAgentBox.x + pinAgentBox.width - (gridBox.x + gridBox.width),
       );
     })
     .toBeLessThan(2);
@@ -242,7 +242,7 @@ test("pinned agents use five equal columns and keep Pin in the first row", async
         cards.nth(0).boundingBox(),
         cards.nth(1).boundingBox(),
         cards.nth(2).boundingBox(),
-        pinAgents.boundingBox(),
+        pinAgent.boundingBox(),
       ]);
       if (boxes.some((box) => box === null)) {
         return Number.POSITIVE_INFINITY;

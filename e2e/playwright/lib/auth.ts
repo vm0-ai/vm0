@@ -45,6 +45,7 @@ interface LoadedClerkContext {
 
 export interface ClerkTestingSignInOptions {
   readonly activeOrganizationId?: string;
+  readonly preserveAppPage?: boolean;
 }
 
 export interface LoadedClerkTestingPageOptions {
@@ -160,7 +161,9 @@ export async function signInWithLoadedClerkTestingHelper(
     ...clerkState,
   });
 
-  await gotoAboutBlankAfterClerkNavigation(page);
+  if (!options.preserveAppPage) {
+    await gotoAboutBlankAfterClerkNavigation(page);
+  }
   return token;
 }
 

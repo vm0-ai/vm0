@@ -2,7 +2,7 @@ import {
   PI_AGENT_DIR,
   type StoredStorageMountEntry,
 } from "@okouai/api-contracts/contracts/runners";
-import type { RunContextResponse } from "@okouai/api-contracts/contracts/zero-runs";
+import type { RunContextResponse } from "@okouai/api-contracts/contracts/run-routes";
 import { expandVariablesInString } from "@okouai/core/variable-expander";
 import {
   getInstructionsFilename,

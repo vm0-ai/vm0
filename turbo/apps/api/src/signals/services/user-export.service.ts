@@ -81,12 +81,17 @@ import { loadWorkflowVolumeFiles } from "./workflow-volume.service";
 
 const RATE_LIMIT_MS = 24 * 60 * 60 * 1000;
 const DOWNLOAD_URL_EXPIRY_SECONDS = 3600;
-const EXPORT_FILENAME = "vm0-data-export.zip";
 const EXPORT_DOWNLOAD_EXPIRY_SECONDS = 72 * 60 * 60;
 const EXPORT_DOWNLOAD_EXPIRY_MS = EXPORT_DOWNLOAD_EXPIRY_SECONDS * 1000;
 const USER_CACHE_TTL_MS = 15 * 60 * 1000;
 const DATA_EXPORT_READY_SUBJECT = "Your data export is ready";
 const log = logger("service:user-export");
+
+function dataExportFilename(publicBrand: PublicBrand): string {
+  return publicBrand === "okou"
+    ? "okou-data-export.zip"
+    : "vm0-data-export.zip";
+}
 
 type ExportJobStatus = UserExportJob["status"];
 type ActiveExportJobStatus = Extract<ExportJobStatus, "pending" | "running">;
@@ -219,6 +224,7 @@ export function userExportStatus(userId: string) {
         completedAt: exportJobs.completedAt,
         expiresAt: exportJobs.expiresAt,
         s3Key: exportJobs.s3Key,
+        publicBrand: exportJobs.publicBrand,
         error: exportJobs.error,
       })
       .from(exportJobs)
@@ -275,7 +281,7 @@ export function userExportStatus(userId: string) {
           env("R2_USER_STORAGES_BUCKET_NAME"),
           latestJob.s3Key,
           DOWNLOAD_URL_EXPIRY_SECONDS,
-          EXPORT_FILENAME,
+          dataExportFilename(latestJob.publicBrand),
           true,
         ),
       );
@@ -1141,7 +1147,7 @@ async function runExportJob(
       runtime.bucket,
       s3Key,
       EXPORT_DOWNLOAD_EXPIRY_SECONDS,
-      "data-export.zip",
+      dataExportFilename(args.publicBrand),
       true,
     ),
   );

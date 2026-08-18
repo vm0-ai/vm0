@@ -337,6 +337,64 @@ function setupSidebarPage(
   detachedSetupPage(options);
 }
 
+function pinnedAgentNames(container: HTMLElement): string[] {
+  return within(container)
+    .getAllByTestId("pinned-agent-card")
+    .map((card) => {
+      return card.textContent?.trim() ?? "";
+    });
+}
+
+/** Names of the given agents as the dialog lists them, in rendered order. */
+function dialogAgentOrder(
+  dialog: HTMLElement,
+  names: readonly string[],
+): string[] {
+  return within(dialog)
+    .getAllByRole("option")
+    .map((option) => {
+      return names.find((name) => {
+        return option.textContent?.replace(/\s+/g, " ").trim().startsWith(name);
+      });
+    })
+    .filter((name): name is string => {
+      return name !== undefined;
+    });
+}
+
+function commandItemByText(container: HTMLElement, text: string): HTMLElement {
+  const item = within(container)
+    .getAllByRole("option")
+    .find((candidate) => {
+      return candidate.textContent
+        ?.replace(/\s+/g, " ")
+        .trim()
+        .startsWith(text);
+    });
+  if (!item) {
+    throw new Error(`${text} command item not found`);
+  }
+  return item;
+}
+
+/**
+ * jsdom does not implement DataTransfer, so drag events need a stub that keeps
+ * the payload the pinned grid writes on drag start.
+ */
+function createDataTransferStub(): DataTransfer {
+  const values = new Map<string, string>();
+  return {
+    effectAllowed: "none",
+    dropEffect: "none",
+    setData: (format: string, value: string) => {
+      values.set(format, value);
+    },
+    getData: (format: string) => {
+      return values.get(format) ?? "";
+    },
+  } as unknown as DataTransfer;
+}
+
 function threadRowByTitle(title: string): HTMLElement {
   const link = threadLinkByTitle(title);
   const row = link.parentElement;
@@ -1757,6 +1815,73 @@ describe("zero sidebar", () => {
     ).resolves.toBeInTheDocument();
   });
 
+  it("keeps pinned agents in team order without the three-column nav", async () => {
+    prepareAgentTeam();
+    // Reverse of the team order, so preference order and team order disagree.
+    context.mocks.data.userPreferences({
+      pinnedAgentIds: [SUPPORT_AGENT_ID, RESEARCH_AGENT_ID],
+    });
+
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    const sidebar = await waitFor(() => {
+      const currentSidebar = screen.getByRole("navigation", {
+        name: "Sidebar",
+      });
+      expect(
+        pinnedAgentLink(currentSidebar, "Support Agent"),
+      ).toBeInTheDocument();
+      return currentSidebar;
+    });
+
+    expect(pinnedAgentNames(sidebar)).toStrictEqual([
+      "Zero",
+      "Research Agent",
+      "Support Agent",
+    ]);
+
+    click(within(sidebar).getByLabelText("Open a conversation"));
+
+    const dialog = await screen.findByRole("dialog", { name: "Talk to" });
+    await waitFor(() => {
+      expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
+    });
+    expect(
+      dialogAgentOrder(dialog, ["Research Agent", "Support Agent"]),
+    ).toStrictEqual(["Research Agent", "Support Agent"]);
+  });
+
+  it("lists pinned agents in pinned order under the three-column nav", async () => {
+    prepareAgentTeam();
+    context.mocks.data.userPreferences({
+      pinnedAgentIds: [SUPPORT_AGENT_ID, RESEARCH_AGENT_ID],
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    await waitFor(() => {
+      expect(pinnedAgentNames(grid)).toStrictEqual([
+        "Zero",
+        "Support Agent",
+        "Research Agent",
+      ]);
+    });
+
+    click(screen.getByLabelText("Pin an agent"));
+
+    const dialogList = await screen.findByTestId("pin-agent-dialog-list");
+    expect(
+      dialogAgentOrder(dialogList, ["Research Agent", "Support Agent"]),
+    ).toStrictEqual(["Support Agent", "Research Agent"]);
+  });
+
   it("pins an agent from the conversation picker and opens that agent chat", async () => {
     prepareAgentTeam();
     let createRequests = 0;
@@ -3117,57 +3242,6 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("manages pinned agents in a separate three-column dialog", async () => {
-    prepareAgentTeam();
-    context.mocks.data.userPreferences({
-      pinnedAgentIds: [RESEARCH_AGENT_ID],
-    });
-    mockSidebarThreadStory([
-      createThread(INCIDENT_THREAD_ID, "Support escalation"),
-    ]);
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ThreeColumnNav]: true,
-      },
-    });
-
-    const grid = await screen.findByTestId("pinned-agents-grid");
-    const pinButton = within(grid).getByLabelText("Pin agents");
-    expect(pinButton).toHaveTextContent("Pin");
-    click(pinButton);
-
-    const dialog = await screen.findByRole("dialog", { name: "Pin agents" });
-    expect(
-      within(dialog).getByPlaceholderText("Search agents..."),
-    ).toBeInTheDocument();
-    expect(
-      within(dialog).queryByText("Support escalation"),
-    ).not.toBeInTheDocument();
-
-    await fill(
-      within(dialog).getByPlaceholderText("Search agents..."),
-      "support",
-    );
-    expect(
-      within(dialog).queryByText("Research Agent"),
-    ).not.toBeInTheDocument();
-    const supportOption = within(dialog).getByRole("option", {
-      name: /Support Agent/,
-    });
-    expect(queryAllByRoleFast("button", supportOption)).toHaveLength(0);
-    click(supportOption);
-
-    await waitFor(() => {
-      expect(within(grid).getByText("Support Agent")).toBeInTheDocument();
-      expect(
-        screen.getByRole("dialog", { name: "Pin agents" }),
-      ).toBeInTheDocument();
-    });
-  });
-
   it("opens horizontal pinned agent actions from context interactions", async () => {
     prepareAgentTeam();
     context.mocks.data.userPreferences({
@@ -3505,7 +3579,7 @@ describe("zero sidebar", () => {
     });
 
     const pinAgent = queryAllByRoleFast("button", grid).find((candidate) => {
-      return candidate.getAttribute("aria-label") === "Pin agents";
+      return candidate.getAttribute("aria-label") === "Pin an agent";
     });
     if (!pinAgent) {
       throw new Error("Pin agent button not found");
@@ -3523,6 +3597,179 @@ describe("zero sidebar", () => {
       pinAgent.compareDocumentPosition(fifthAgent) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it("pins an agent from the grid pin entry", async () => {
+    prepareAgentTeam();
+    context.mocks.data.userPreferences({ pinnedAgentIds: [RESEARCH_AGENT_ID] });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    await waitFor(() => {
+      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(2);
+    });
+
+    click(screen.getByLabelText("Pin an agent"));
+
+    const dialogList = await screen.findByTestId("pin-agent-dialog-list");
+    const pinnedOption = commandItemByText(dialogList, "Research Agent");
+    expect(pinnedOption.getAttribute("aria-disabled")).toBe("true");
+
+    click(commandItemByText(dialogList, "Support Agent"));
+
+    await waitFor(() => {
+      expect(pinnedAgentLink(grid, "Support Agent")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("pin-agent-dialog-list")).toBeNull();
+  });
+
+  it("reorders pinned agents with drag and drop", async () => {
+    const pinnedAgentIds = prepareOverflowingPinnedAgents();
+    context.mocks.data.userPreferences({ pinnedAgentIds });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    await waitFor(() => {
+      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
+    });
+    expect(pinnedAgentNames(grid)).toStrictEqual([
+      "Zero",
+      "Research Agent",
+      "Support Agent",
+      "Operations Agent",
+      "Analytics Agent",
+      "Billing Agent",
+    ]);
+
+    const dataTransfer = createDataTransferStub();
+    const dragged = pinnedAgentLink(grid, "Support Agent");
+    const target = pinnedAgentLink(grid, "Billing Agent");
+    fireEvent.dragStart(dragged, { dataTransfer });
+    fireEvent.dragOver(target, { dataTransfer });
+    fireEvent.drop(target, { dataTransfer });
+
+    await waitFor(() => {
+      expect(pinnedAgentNames(grid)).toStrictEqual([
+        "Zero",
+        "Research Agent",
+        "Operations Agent",
+        "Analytics Agent",
+        "Billing Agent",
+        "Support Agent",
+      ]);
+    });
+  });
+
+  it("leaves the lead agent in place when it is dragged", async () => {
+    const pinnedAgentIds = prepareOverflowingPinnedAgents();
+    context.mocks.data.userPreferences({ pinnedAgentIds });
+    const savedPinnedOrders: string[][] = [];
+    let storedPinnedAgentIds = [...pinnedAgentIds];
+    context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
+      // Boot also writes unrelated preferences such as the timezone, so only a
+      // request that carries pinned ids counts as a reorder.
+      if (body.pinnedAgentIds !== undefined) {
+        storedPinnedAgentIds = [...body.pinnedAgentIds];
+        savedPinnedOrders.push([...body.pinnedAgentIds]);
+      }
+      const nextPinnedAgentIds = storedPinnedAgentIds;
+      context.mocks.data.userPreferences({
+        pinnedAgentIds: [...nextPinnedAgentIds],
+      });
+      return respond(200, {
+        timezone: null,
+        locale: null,
+        supportedLocales: [
+          "en-US",
+          "pt-BR",
+          "ja-JP",
+          "ko-KR",
+          "id-ID",
+          "de-DE",
+          "es-ES",
+          "it-IT",
+          "fr-FR",
+          "hi-IN",
+        ],
+        pinnedAgentIds: [...nextPinnedAgentIds],
+        sendMode: "enter",
+        morningBriefEnabled: false,
+        morningBriefNextRunAt: null,
+        captureNetworkBodiesRemaining: 0,
+      });
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    await waitFor(() => {
+      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
+    });
+
+    const leadDragTransfer = createDataTransferStub();
+    const lead = pinnedAgentLink(grid, "Zero");
+    fireEvent.dragStart(pinnedAgentLink(grid, "Support Agent"), {
+      dataTransfer: leadDragTransfer,
+    });
+    fireEvent.dragOver(lead, { dataTransfer: leadDragTransfer });
+    fireEvent.drop(lead, { dataTransfer: leadDragTransfer });
+    fireEvent.dragEnd(pinnedAgentLink(grid, "Support Agent"), {
+      dataTransfer: leadDragTransfer,
+    });
+
+    // A later reorder gives the lead drop time to land if it were not a no-op,
+    // so the recorded requests below prove it never reached the API.
+    const reorderTransfer = createDataTransferStub();
+    fireEvent.dragStart(pinnedAgentLink(grid, "Support Agent"), {
+      dataTransfer: reorderTransfer,
+    });
+    fireEvent.dragOver(pinnedAgentLink(grid, "Billing Agent"), {
+      dataTransfer: reorderTransfer,
+    });
+    fireEvent.drop(pinnedAgentLink(grid, "Billing Agent"), {
+      dataTransfer: reorderTransfer,
+    });
+
+    await waitFor(() => {
+      expect(pinnedAgentNames(grid)).toStrictEqual([
+        "Zero",
+        "Research Agent",
+        "Operations Agent",
+        "Analytics Agent",
+        "Billing Agent",
+        "Support Agent",
+      ]);
+    });
+    expect(savedPinnedOrders).toStrictEqual([
+      [
+        RESEARCH_AGENT_ID,
+        OVERFLOW_PINNED_AGENTS[0].id,
+        OVERFLOW_PINNED_AGENTS[1].id,
+        OVERFLOW_PINNED_AGENTS[2].id,
+        SUPPORT_AGENT_ID,
+      ],
+    ]);
+    expect(pinnedAgentLink(grid, "Zero")).toBeInTheDocument();
   });
 
   it("keeps the single-column sidebar when the three-column flag is off", async () => {

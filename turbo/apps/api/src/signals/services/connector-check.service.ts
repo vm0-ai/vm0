@@ -3,7 +3,7 @@ import type {
   ConnectorCheckPolicy,
   ConnectorCheckRequest,
 } from "@okouai/api-contracts/contracts/connector-check";
-import type { RunContextResponse } from "@okouai/api-contracts/contracts/zero-runs";
+import type { RunContextResponse } from "@okouai/api-contracts/contracts/run-routes";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import {
   connectorAuthMethodRuntimeMetadata,

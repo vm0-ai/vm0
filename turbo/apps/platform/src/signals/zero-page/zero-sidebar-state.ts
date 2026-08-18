@@ -163,12 +163,11 @@ export const openAgentListDialog$ = command(({ set }) => {
 });
 
 // ---------------------------------------------------------------------------
-// Three-column search and pin dialogs
+// Three-column search dialog state
 // ---------------------------------------------------------------------------
 export type ThreeColumnSearchFilter = "all" | "chats" | "messages";
 
 const internalThreeColumnSearchOpen$ = state(false);
-const internalThreeColumnPinOpen$ = state(false);
 export const threeColumnSearchOpen$ = computed((get) => {
   return get(internalThreeColumnSearchOpen$);
 });
@@ -189,21 +188,60 @@ export const setThreeColumnSearchFilter$ = command(
 export const openThreeColumnSearchDialog$ = command(({ set }) => {
   set(internalChatListQuery$, "");
   set(internalThreeColumnSearchFilter$, "all");
-  set(internalThreeColumnPinOpen$, false);
   set(internalThreeColumnSearchOpen$, true);
 });
 
-export const threeColumnPinOpen$ = computed((get) => {
-  return get(internalThreeColumnPinOpen$);
+// ---------------------------------------------------------------------------
+// Pin agent dialog state (pinned agent grid)
+// ---------------------------------------------------------------------------
+const internalPinAgentDialogOpen$ = state(false);
+export const pinAgentDialogOpen$ = computed((get) => {
+  return get(internalPinAgentDialogOpen$);
 });
-export const setThreeColumnPinOpen$ = command(({ set }, open: boolean) => {
-  set(internalThreeColumnPinOpen$, open);
+export const setPinAgentDialogOpen$ = command(({ set }, open: boolean) => {
+  set(internalPinAgentDialogOpen$, open);
 });
 
-export const openThreeColumnPinDialog$ = command(({ set }) => {
-  set(internalChatListQuery$, "");
-  set(internalThreeColumnSearchOpen$, false);
-  set(internalThreeColumnPinOpen$, true);
+const internalPinAgentDialogQuery$ = state("");
+export const pinAgentDialogQuery$ = computed((get) => {
+  return get(internalPinAgentDialogQuery$);
+});
+export const setPinAgentDialogQuery$ = command(({ set }, query: string) => {
+  set(internalPinAgentDialogQuery$, query);
+});
+
+export const openPinAgentDialog$ = command(({ set }) => {
+  set(internalPinAgentDialogQuery$, "");
+  set(internalPinAgentDialogOpen$, true);
+});
+
+// ---------------------------------------------------------------------------
+// Pinned agent drag and drop state (pinned agent grid)
+// ---------------------------------------------------------------------------
+const internalDraggingPinnedAgentId$ = state<string | null>(null);
+export const draggingPinnedAgentId$ = computed((get) => {
+  return get(internalDraggingPinnedAgentId$);
+});
+
+const internalPinnedAgentDropTargetId$ = state<string | null>(null);
+export const pinnedAgentDropTargetId$ = computed((get) => {
+  return get(internalPinnedAgentDropTargetId$);
+});
+
+export const startPinnedAgentDrag$ = command(({ set }, agentId: string) => {
+  set(internalDraggingPinnedAgentId$, agentId);
+  set(internalPinnedAgentDropTargetId$, null);
+});
+
+export const setPinnedAgentDropTarget$ = command(
+  ({ set }, agentId: string | null) => {
+    set(internalPinnedAgentDropTargetId$, agentId);
+  },
+);
+
+export const endPinnedAgentDrag$ = command(({ set }) => {
+  set(internalDraggingPinnedAgentId$, null);
+  set(internalPinnedAgentDropTargetId$, null);
 });
 
 // ---------------------------------------------------------------------------

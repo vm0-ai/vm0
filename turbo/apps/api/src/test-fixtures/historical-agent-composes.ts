@@ -173,3 +173,58 @@ export async function readHistoricalAgentComposeHeadFixture(
         : agentComposeApiContentSchema.parse(row.content),
   };
 }
+
+export async function replaceHistoricalAgentComposeHeadFixture(
+  args: {
+    readonly composeId: string;
+    readonly userId: string;
+    readonly content: Record<string, unknown>;
+  },
+  signal: AbortSignal,
+): Promise<{ readonly versionId: string }> {
+  const versionId = composeVersionId(args.content);
+  await db().transaction(async (tx) => {
+    await tx
+      .insert(agentComposeVersions)
+      .values({
+        id: versionId,
+        composeId: args.composeId,
+        content: args.content,
+        createdBy: args.userId,
+      })
+      .onConflictDoNothing();
+    signal.throwIfAborted();
+
+    await tx
+      .update(agentComposes)
+      .set({ headVersionId: versionId, updatedAt: nowDate() })
+      .where(eq(agentComposes.id, args.composeId));
+    signal.throwIfAborted();
+  });
+  signal.throwIfAborted();
+  return { versionId };
+}
+
+export async function readRawHistoricalAgentComposeHeadFixture(
+  composeId: string,
+): Promise<{
+  readonly headVersionId: string | null;
+  readonly content: unknown;
+}> {
+  const [row] = await db()
+    .select({
+      headVersionId: agentComposes.headVersionId,
+      content: agentComposeVersions.content,
+    })
+    .from(agentComposes)
+    .leftJoin(
+      agentComposeVersions,
+      eq(agentComposes.headVersionId, agentComposeVersions.id),
+    )
+    .where(eq(agentComposes.id, composeId))
+    .limit(1);
+  if (!row) {
+    throw new Error("Expected a raw historical Agent Compose fixture");
+  }
+  return row;
+}

@@ -1,5 +1,7 @@
 import { command, computed } from "ccstate";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 import { defaultAgentId$, sortedAgents$, subagents$ } from "../agent.ts";
 import { currentChatAgentId$ } from "../agent-chat.ts";
 import { unreadAgentIds$ } from "../chat-page/chat-thread-indicators.ts";
@@ -32,14 +34,42 @@ export const pinnedAgentIds$ = computed(async (get) => {
   });
 });
 
-/** Pinned agent IDs resolved to full agent objects. */
-export const pinnedAgents$ = computed(async (get) => {
+/**
+ * Order the pinned surfaces render pinned agents in. Only the three-column nav
+ * lets a user reorder the pinned grid, so without that switch the list keeps
+ * the team order it had before drag reordering existed.
+ */
+export const pinnedAgentRenderOrder$ = computed(async (get) => {
   const ids = await get(pinnedAgentIds$);
+  if (get(featureSwitch$)[FeatureSwitchKey.ThreeColumnNav] ?? false) {
+    return ids;
+  }
   const pinnedIds = new Set(ids);
+  return (await get(sortedAgents$))
+    .filter((a) => {
+      return pinnedIds.has(a.id);
+    })
+    .map((a) => {
+      return a.id;
+    });
+});
+
+/** Pinned agent IDs resolved to full agent objects, in render order. */
+export const pinnedAgents$ = computed(async (get) => {
+  const order = await get(pinnedAgentRenderOrder$);
   const list = await get(sortedAgents$);
-  return list.filter((a) => {
-    return pinnedIds.has(a.id);
-  });
+  const agentById = new Map(
+    list.map((a) => {
+      return [a.id, a];
+    }),
+  );
+  return order
+    .map((id) => {
+      return agentById.get(id);
+    })
+    .filter((a): a is NonNullable<typeof a> => {
+      return a !== undefined;
+    });
 });
 
 export const displayedPinnedAgents$ = computed(async (get) => {
@@ -82,6 +112,42 @@ export const setAgentPinned$ = command(
     }
 
     await set(updateUserPreference$, { pinnedAgentIds: [...next] }, signal);
+  },
+);
+
+/**
+ * Move a pinned agent to the position of another pinned agent. The default
+ * agent always leads the pinned list, so it is neither moved nor displaced.
+ */
+export const movePinnedAgent$ = command(
+  async (
+    { get, set },
+    {
+      agentId,
+      targetAgentId,
+    }: { readonly agentId: string; readonly targetAgentId: string },
+    signal: AbortSignal,
+  ) => {
+    const defaultAgentId = await get(defaultAgentId$);
+    signal.throwIfAborted();
+    if (agentId === defaultAgentId || targetAgentId === defaultAgentId) {
+      return;
+    }
+
+    const ids = (await get(pinnedAgentIds$)).filter((id) => {
+      return id !== defaultAgentId;
+    });
+    signal.throwIfAborted();
+    const from = ids.indexOf(agentId);
+    const to = ids.indexOf(targetAgentId);
+    if (from === -1 || to === -1 || from === to) {
+      return;
+    }
+
+    const next = [...ids];
+    next.splice(from, 1);
+    next.splice(to, 0, agentId);
+    await set(updateUserPreference$, { pinnedAgentIds: next }, signal);
   },
 );
 
