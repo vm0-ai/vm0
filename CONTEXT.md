@@ -27,14 +27,6 @@ rules as a newer message.
 The best-effort recent chat context supplied automatically when a new session
 starts. It is distinct from explicit retrieval of a thread's complete history.
 
-## Referenced passage
-
-A passage of assistant-produced content that the user selects and submits as
-part of a message. It may carry an optional user comment; the absence of a
-comment does not make the message empty.
-
-_Avoid_: Annotation, feedback-only quote
-
 ## Restricted explicit content
 
 Content intended for sexual arousal, sexual depictions involving minors,
