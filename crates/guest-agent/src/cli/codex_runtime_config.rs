@@ -3,10 +3,10 @@
 //! The API resolves provider capability metadata before dispatch. The guest
 //! only translates that structured payload into Codex startup configuration.
 
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
+use api_contracts::generated::types::runners::runs::CodexRuntimeConfig;
 use guest_common::telemetry::record_sandbox_op;
 use guest_contracts::runtime_paths::{self, PrivateFileReplacementTarget};
 
@@ -25,23 +25,6 @@ pub(super) fn default_reasoning_effort_for_model(model: &str) -> Option<&'static
         "gpt-5.5" => Some("xhigh"),
         _ => None,
     }
-}
-
-#[derive(Clone, Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct CodexRuntimeConfig {
-    pub provider_id: String,
-    pub name: String,
-    pub base_url: String,
-    pub env_key: String,
-    #[serde(default)]
-    pub http_headers: Option<BTreeMap<String, String>>,
-    #[serde(default)]
-    pub requires_openai_auth: Option<bool>,
-    pub wire_api: String,
-    pub supports_websockets: bool,
-    #[serde(default)]
-    pub model_catalog: Option<serde_json::Value>,
 }
 
 pub(super) fn parse_raw(raw: &str) -> Result<Option<CodexRuntimeConfig>, AgentError> {
@@ -210,6 +193,8 @@ pub(super) fn quote_toml_basic_string(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use super::*;
     use serde_json::json;
 

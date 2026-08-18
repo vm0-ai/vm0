@@ -1,7 +1,8 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
 use std::sync::Arc;
 
+use api_contracts::generated::types::runners::runs::CodexRuntimeConfig;
 use sandbox::SandboxId;
 use serde::{Deserialize, Serialize};
 use unicode_normalization::UnicodeNormalization;
@@ -157,23 +158,6 @@ pub struct PiModelConfig {
     pub base_url: String,
     pub model: String,
     pub api_key_env: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CodexRuntimeConfig {
-    pub provider_id: String,
-    pub name: String,
-    pub base_url: String,
-    pub env_key: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub http_headers: Option<BTreeMap<String, String>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub requires_openai_auth: Option<bool>,
-    pub wire_api: String,
-    pub supports_websockets: bool,
-    #[serde(default)]
-    pub model_catalog: Option<serde_json::Value>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

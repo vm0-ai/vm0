@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use api_contracts::generated::types::runners::runs::CodexRuntimeConfig;
 use sandbox::ProcessOutputMode;
 use sandbox_mock::MockLifecycleGate;
 use tokio::sync::Notify;
@@ -11,7 +12,7 @@ use crate::executor::tests::support::{
     RUN_IN_SANDBOX_TEST_TIMEOUT, create_overridden_sandbox, minimal_context, sandbox_exec_error,
     spawn_run_in_sandbox_test, test_executor_config, test_telemetry,
 };
-use crate::types::{CodexRuntimeConfig, ExecutionContext, FirewallEntry, SandboxReuseResult};
+use crate::types::{ExecutionContext, FirewallEntry, SandboxReuseResult};
 
 fn codex_oauth_context() -> ExecutionContext {
     let mut context = minimal_context();
