@@ -1629,7 +1629,7 @@
       "chatsWith": "Chats with {{agentName}}",
       "chatThreads": "Chat threads",
       "delete": "Delete chat",
-      "deleteDescription": "This will permanently delete this chat. Any task currently running in this chat will be stopped immediately. This action cannot be undone.",
+      "deleteDescription": "This will permanently delete this chat. Any task currently running in this chat will be stopped immediately. Any linked automations will be paused. This action cannot be undone.",
       "deleteTitle": "Delete chat?",
       "draft": "Draft",
       "empty": "Start a conversation and it'll show up here",

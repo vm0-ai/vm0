@@ -1628,7 +1628,7 @@
       "chatsWith": "Chat dengan {{agentName}}",
       "chatThreads": "Thread chat",
       "delete": "Hapus chat",
-      "deleteDescription": "Ini akan menghapus chat ini secara permanen. Setiap tugas yang sedang berjalan di chat ini akan dihentikan segera. Tindakan ini tidak dapat dibatalkan.",
+      "deleteDescription": "Ini akan menghapus chat ini secara permanen. Setiap tugas yang sedang berjalan di chat ini akan dihentikan segera. Semua automasi yang ditautkan akan dijeda. Tindakan ini tidak dapat dibatalkan.",
       "deleteTitle": "Hapus chat?",
       "draft": "Draf",
       "empty": "Mulai percakapan dan percakapan itu akan muncul di sini",

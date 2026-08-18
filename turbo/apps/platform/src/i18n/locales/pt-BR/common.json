@@ -1669,7 +1669,7 @@
       "chatsWith": "Conversas com {{agentName}}",
       "chatThreads": "Conversas",
       "delete": "Excluir",
-      "deleteDescription": "Esta conversa e seu histórico de mensagens serão excluídos permanentemente.",
+      "deleteDescription": "Esta conversa será excluída permanentemente. Qualquer tarefa em execução nesta conversa será interrompida imediatamente. Todas as automações vinculadas serão pausadas. Esta ação não pode ser desfeita.",
       "deleteTitle": "Excluir conversa?",
       "draft": "Rascunho",
       "empty": "Nenhuma conversa ainda",

@@ -1669,7 +1669,7 @@
       "chatsWith": "Discussions avec {{agentName}}",
       "chatThreads": "Fils de discussion",
       "delete": "Supprimer la discussion",
-      "deleteDescription": "Cela supprimera définitivement cette discussion. Toute tâche en cours dans cette discussion sera arrêtée immédiatement. Cette action est irréversible.",
+      "deleteDescription": "Cela supprimera définitivement cette discussion. Toute tâche en cours dans cette discussion sera arrêtée immédiatement. Toutes les automatisations liées seront mises en pause. Cette action est irréversible.",
       "deleteTitle": "Supprimer la discussion ?",
       "draft": "Brouillon",
       "empty": "Commencez une conversation et elle apparaîtra ici",

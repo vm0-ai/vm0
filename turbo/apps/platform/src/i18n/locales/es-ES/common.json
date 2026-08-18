@@ -1669,7 +1669,7 @@
       "chatsWith": "Conversaciones con {{agentName}}",
       "chatThreads": "Conversaciones",
       "delete": "Eliminar chat",
-      "deleteDescription": "Esto eliminará permanentemente este chat. Cualquier tarea que se esté ejecutando en este chat se detendrá inmediatamente. Esta acción no puede deshacerse.",
+      "deleteDescription": "Esto eliminará permanentemente este chat. Cualquier tarea que se esté ejecutando en este chat se detendrá inmediatamente. Todas las automatizaciones vinculadas se pausarán. Esta acción no puede deshacerse.",
       "deleteTitle": "¿Eliminar el chat?",
       "draft": "Borrador",
       "empty": "Empieza una conversación y aparecerá aquí",
