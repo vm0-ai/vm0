@@ -257,8 +257,12 @@ async fn upload_network_logs_inner(
         let line = match std::str::from_utf8(&line) {
             Ok(line) => line.trim(),
             Err(e) => {
-                warn!(run_id = %uploader.run_id, error = %e, "failed to read network logs");
-                return UploadOutcome::Failed;
+                warn!(run_id = %uploader.run_id, error = %e, "malformed network log line");
+                if reached_capped_source_end {
+                    source_limit_reached = true;
+                    break;
+                }
+                continue;
             }
         };
         if line.is_empty() {
@@ -1535,6 +1539,91 @@ mod tests {
         upload_network_logs(&http, run_id, SANDBOX_TOKEN, &path).await;
 
         upload.assert_calls_async(1).await;
+    }
+
+    #[tokio::test]
+    async fn upload_network_logs_preserves_valid_entries_around_invalid_utf8_line() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = network_log_file(&dir);
+        let run_id = RunId::nil();
+        let first = json!({
+            "timestamp": "2026-02-15T10:00:00Z",
+            "host": "first-valid.example",
+        });
+        let second = json!({
+            "timestamp": "2026-02-15T10:00:01Z",
+            "host": "second-valid.example",
+        });
+
+        let mut content = serde_json::to_vec(&first).unwrap();
+        content.extend_from_slice(b"\n");
+        content.extend_from_slice(&[0xFF, 0xFE]);
+        content.extend_from_slice(b"\n");
+        content.extend_from_slice(&serde_json::to_vec(&second).unwrap());
+        content.extend_from_slice(b"\n");
+        tokio::fs::write(&path, &content).await.unwrap();
+
+        let server = MockServer::start_async().await;
+        let expected = json!({
+            "runId": run_id.to_string(),
+            "networkLogs": [first, second],
+        });
+        let upload = server
+            .mock_async(move |when, then| {
+                when.method(POST)
+                    .path("/api/webhooks/agent/telemetry")
+                    .json_body(expected.clone());
+                then.status(200);
+            })
+            .await;
+
+        let http = http_for_server(&server);
+        let (_, events) =
+            capture_async_log_events(upload_network_logs(&http, run_id, SANDBOX_TOKEN, &path))
+                .await;
+
+        upload.assert_calls_async(1).await;
+        assert!(has_captured_event(&events, "malformed network log line"));
+        assert_eq!(tokio::fs::read(&path).await.unwrap(), content);
+    }
+
+    #[tokio::test]
+    async fn upload_network_logs_flushes_pending_batch_after_truncated_multibyte_sequence() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = network_log_file(&dir);
+        let run_id = RunId::nil();
+        let first = json!({
+            "timestamp": "2026-02-15T10:00:00Z",
+            "host": "first-valid.example",
+        });
+
+        let mut content = serde_json::to_vec(&first).unwrap();
+        content.extend_from_slice(b"\n");
+        content.extend_from_slice(&[0xE2, 0x82]);
+        tokio::fs::write(&path, &content).await.unwrap();
+
+        let server = MockServer::start_async().await;
+        let expected = json!({
+            "runId": run_id.to_string(),
+            "networkLogs": [first],
+        });
+        let upload = server
+            .mock_async(move |when, then| {
+                when.method(POST)
+                    .path("/api/webhooks/agent/telemetry")
+                    .json_body(expected.clone());
+                then.status(200);
+            })
+            .await;
+
+        let http = http_for_server(&server);
+        let (_, events) =
+            capture_async_log_events(upload_network_logs(&http, run_id, SANDBOX_TOKEN, &path))
+                .await;
+
+        upload.assert_calls_async(1).await;
+        assert!(has_captured_event(&events, "malformed network log line"));
+        assert_eq!(tokio::fs::read(&path).await.unwrap(), content);
     }
 
     #[tokio::test]
