@@ -2731,6 +2731,41 @@ async function validatePersonalModelProviderRefreshBridge(): Promise<void> {
         [activeAccountId, inactiveAccountId],
       );
 
+      const blockingClient = new Client({ connectionString: testDbUrl });
+      await blockingClient.connect();
+      try {
+        await blockingClient.query("BEGIN");
+        try {
+          await blockingClient.query(
+            `
+              SELECT "id"
+              FROM "model_provider_accounts"
+              WHERE "id" = $1
+              FOR UPDATE
+            `,
+            [activeAccountId],
+          );
+          await assert.rejects(
+            applyMigrationsUpToTag(
+              client,
+              PERSONAL_MODEL_PROVIDER_REFRESH_MIGRATION,
+            ),
+            (error: unknown) => {
+              return (
+                typeof error === "object" &&
+                error !== null &&
+                "code" in error &&
+                error.code === "55P03"
+              );
+            },
+          );
+        } finally {
+          await blockingClient.query("ROLLBACK");
+        }
+      } finally {
+        await blockingClient.end();
+      }
+
       await applyMigrationsUpToTag(
         client,
         PERSONAL_MODEL_PROVIDER_REFRESH_MIGRATION,
@@ -2929,6 +2964,7 @@ async function validatePersonalModelProviderRefreshBridge(): Promise<void> {
       console.log(
         "   ✅ active account state and secrets backfill from legacy",
       );
+      console.log("   ✅ in-flight refresh locks fail fast and retry cleanly");
       console.log(
         "   ✅ legacy INSERT and UPDATE writes reach the active account",
       );

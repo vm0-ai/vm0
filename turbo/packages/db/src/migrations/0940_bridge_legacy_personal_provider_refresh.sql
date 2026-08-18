@@ -3,7 +3,12 @@
 -- runs and API rollback remain supported. Remove these triggers together with
 -- that fallback after global enablement, rollback closure, admitted-run drain,
 -- and a zero-candidate legacy seeding check.
-LOCK TABLE "model_providers", "secrets" IN SHARE ROW EXCLUSIVE MODE;
+LOCK TABLE
+	"model_provider_accounts",
+	"model_provider_account_secrets",
+	"model_providers",
+	"secrets"
+IN EXCLUSIVE MODE NOWAIT;
 --> statement-breakpoint
 CREATE FUNCTION "sync_active_model_provider_state_from_legacy_0940"()
 RETURNS trigger
