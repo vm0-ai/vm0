@@ -1471,15 +1471,15 @@ export {
   type SlackInteractiveContract,
 } from "./slack-interactive";
 export {
-  zeroSlackOauthContract,
-  zeroSlackOauthInstallQuerySchema,
-  zeroSlackOauthConnectQuerySchema,
-  zeroSlackOauthCallbackQuerySchema,
-  type ZeroSlackOauthContract,
-  type ZeroSlackOauthInstallQuery,
-  type ZeroSlackOauthConnectQuery,
-  type ZeroSlackOauthCallbackQuery,
-} from "./zero-slack-oauth";
+  slackOauthContract,
+  slackOauthInstallQuerySchema,
+  slackOauthConnectQuerySchema,
+  slackOauthCallbackQuerySchema,
+  type SlackOauthContract,
+  type SlackOauthInstallQuery,
+  type SlackOauthConnectQuery,
+  type SlackOauthCallbackQuery,
+} from "./slack-oauth";
 export {
   slackChannelsContract,
   slackChannelSchema,

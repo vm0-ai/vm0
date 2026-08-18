@@ -1,4 +1,4 @@
-import { zeroFeishuBrowserConnectContract } from "@okouai/api-contracts/contracts/zero-feishu-browser-connect";
+import { feishuBrowserConnectContract } from "@okouai/api-contracts/contracts/feishu-browser-connect";
 import { describe, expect, it } from "vitest";
 
 import { setupPage } from "../../../__tests__/page-helper.ts";
@@ -25,7 +25,7 @@ describe("feishu connect redirect", () => {
     const locationAssign = context.mocks.browser.locationAssign();
     let connectBody: unknown;
     context.mocks.api(
-      zeroFeishuBrowserConnectContract.connectFromApp,
+      feishuBrowserConnectContract.connectFromApp,
       ({ body, respond }) => {
         connectBody = body;
         return respond(200, {

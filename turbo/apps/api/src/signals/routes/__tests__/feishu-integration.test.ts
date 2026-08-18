@@ -18,7 +18,7 @@ import {
 } from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import { zeroAgentCustomConnectorsContract } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 import { zeroFeishuConnectContract } from "@okouai/api-contracts/contracts/zero-feishu-connect";
-import { zeroFeishuOauthContract } from "@okouai/api-contracts/contracts/zero-feishu-oauth";
+import { feishuOauthContract } from "@okouai/api-contracts/contracts/feishu-oauth";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { getCustomConnectorSkillStorageName } from "@okouai/core/storage-names";
@@ -850,7 +850,7 @@ describe("Feishu integration", () => {
       routes: feishuOauthRoutes,
     });
     const callbackResponse = await oauthApp.request(
-      `${zeroFeishuOauthContract.callback.path}?${new URLSearchParams({
+      `${feishuOauthContract.callback.path}?${new URLSearchParams({
         code: `feishu-oauth-${randomUUID()}`,
         responseMode: "json",
         state,
@@ -1913,7 +1913,7 @@ describe("Feishu integration", () => {
     });
     clearConnectorInvalidationMocks();
     const customConnectorCallback = await oauthApp.request(
-      `${zeroFeishuOauthContract.callback.path}?${new URLSearchParams({
+      `${feishuOauthContract.callback.path}?${new URLSearchParams({
         code: "feishu-custom-connector-code",
         responseMode: "json",
         state: customOAuthState,
@@ -2096,7 +2096,7 @@ describe("Feishu integration", () => {
     }
 
     const handoffResponse = await oauthApp.request(
-      `${zeroFeishuOauthContract.callback.path}?${new URLSearchParams({
+      `${feishuOauthContract.callback.path}?${new URLSearchParams({
         code: "feishu-oauth-code",
         state,
       })}`,
@@ -2110,7 +2110,7 @@ describe("Feishu integration", () => {
 
     clearConnectorInvalidationMocks();
     const callbackResponse = await oauthApp.request(
-      `${zeroFeishuOauthContract.callback.path}?${new URLSearchParams({
+      `${feishuOauthContract.callback.path}?${new URLSearchParams({
         code: "feishu-oauth-code",
         responseMode: "json",
         state,
@@ -2127,7 +2127,7 @@ describe("Feishu integration", () => {
 
     clearConnectorInvalidationMocks();
     const legacyCallbackResponse = await oauthApp.request(
-      `${zeroFeishuOauthContract.callback.path}?${new URLSearchParams({
+      `${feishuOauthContract.callback.path}?${new URLSearchParams({
         code: "legacy-feishu-oauth-code",
         responseMode: "json",
         state: legacyFeishuAppOAuthState({
