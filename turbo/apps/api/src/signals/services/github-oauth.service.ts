@@ -11,6 +11,7 @@ import {
 } from "@okouai/connectors/connector-auth-method";
 import type { ConnectorAuthMethodRuntimeConfig } from "@okouai/connectors/connector-config";
 import type { ConnectorAuthMethodId } from "@okouai/api-contracts/contracts/connector-identity";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import { agentComposes } from "@okouai/db/schema/agent-compose";
 import { connectors } from "@okouai/db/schema/connector";
@@ -58,6 +59,8 @@ interface GithubOAuthState {
   readonly orgId: string | null;
   readonly composeId: string | null;
   readonly sig: string | null;
+  readonly publicBrand: PublicBrand;
+  readonly publicBrandSig: string | null;
 }
 
 export function getGithubOAuthAuthMethod(): ConnectorAuthMethodId {
@@ -275,6 +278,37 @@ async function createLegacyGithubOauthStateSignature(args: {
   return Buffer.from(signature).toString("hex");
 }
 
+async function createGithubOauthPublicBrandSignature(args: {
+  readonly userId: string | null;
+  readonly orgId: string | null;
+  readonly composeId: string | null;
+  readonly publicBrand: PublicBrand;
+  readonly secretsEncryptionKey: string;
+}): Promise<string> {
+  const textEncoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    textEncoder.encode(args.secretsEncryptionKey),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const payload = [
+    "github-oauth-public-brand-v1",
+    args.userId ?? "",
+    args.orgId ?? "",
+    args.composeId ?? "",
+    args.publicBrand,
+  ].join(":");
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    textEncoder.encode(payload),
+  );
+
+  return Buffer.from(signature).toString("hex");
+}
+
 function signaturesMatch(actual: string | null, expected: string): boolean {
   return (
     actual !== null &&
@@ -337,6 +371,7 @@ async function buildGithubOauthState(args: {
   readonly userId?: string;
   readonly orgId?: string;
   readonly composeId?: string;
+  readonly publicBrand: PublicBrand;
   readonly secretsEncryptionKey: string;
 }): Promise<string> {
   const state: {
@@ -344,6 +379,8 @@ async function buildGithubOauthState(args: {
     orgId?: string;
     composeId?: string;
     sig?: string;
+    publicBrand?: PublicBrand;
+    publicBrandSig?: string;
   } = {};
   if (args.userId) {
     state.userId = args.userId;
@@ -359,6 +396,16 @@ async function buildGithubOauthState(args: {
       userId: state.userId,
       orgId: state.orgId ?? null,
       composeId: state.composeId ?? null,
+      secretsEncryptionKey: args.secretsEncryptionKey,
+    });
+  }
+  if (args.publicBrand === "okou") {
+    state.publicBrand = args.publicBrand;
+    state.publicBrandSig = await createGithubOauthPublicBrandSignature({
+      userId: state.userId ?? null,
+      orgId: state.orgId ?? null,
+      composeId: state.composeId ?? null,
+      publicBrand: args.publicBrand,
       secretsEncryptionKey: args.secretsEncryptionKey,
     });
   }
@@ -380,12 +427,14 @@ export async function buildGithubAppInstallUrl(args: {
   readonly orgId?: string;
   readonly composeId?: string;
   readonly origin: string;
+  readonly publicBrand: PublicBrand;
   readonly secretsEncryptionKey: string;
 }): Promise<string> {
   const state = await buildGithubOauthState({
     userId: args.userId,
     orgId: args.orgId,
     composeId: args.composeId,
+    publicBrand: args.publicBrand,
     secretsEncryptionKey: args.secretsEncryptionKey,
   });
   const url = new URL(
@@ -412,6 +461,7 @@ export async function buildGithubUserConnectAuthorizationUrl(
     readonly userId: string;
     readonly orgId: string;
     readonly origin: string;
+    readonly publicBrand: PublicBrand;
     readonly authMethodId: ConnectorAuthMethodId;
     readonly method: ConnectorAuthMethodRuntimeConfig;
     readonly readEnv: ConnectorEnvReader;
@@ -429,7 +479,7 @@ export async function buildGithubUserConnectAuthorizationUrl(
     return null;
   }
 
-  const state = generateConnectorOAuthState();
+  const state = generateConnectorOAuthState(args.publicBrand);
   const redirectUri = `${args.origin}/api/connectors/github/callback`;
   const authResult = normalizeAuthUrlResult(
     await buildConnectorAuthCodeAuthorizationUrlWithMethod({
@@ -467,6 +517,8 @@ export function parseGithubOauthState(
       orgId: null,
       composeId: null,
       sig: null,
+      publicBrand: "vm0",
+      publicBrandSig: null,
     };
   }
 
@@ -481,6 +533,8 @@ export function parseGithubOauthState(
     readonly orgId?: unknown;
     readonly composeId?: unknown;
     readonly sig?: unknown;
+    readonly publicBrand?: unknown;
+    readonly publicBrandSig?: unknown;
   };
 
   const userId = resolveIntegrationUserId(
@@ -498,12 +552,27 @@ export function parseGithubOauthState(
     return null;
   }
 
+  const publicBrand = stateObject.publicBrand;
+  const publicBrandSig = stateObject.publicBrandSig;
+  if (publicBrand === undefined) {
+    if (publicBrandSig !== undefined) {
+      return null;
+    }
+  } else if (
+    (publicBrand !== "vm0" && publicBrand !== "okou") ||
+    typeof publicBrandSig !== "string"
+  ) {
+    return null;
+  }
+
   return {
     userId: userId.userId,
     orgId: typeof stateObject.orgId === "string" ? stateObject.orgId : null,
     composeId:
       typeof stateObject.composeId === "string" ? stateObject.composeId : null,
     sig: typeof stateObject.sig === "string" ? stateObject.sig : null,
+    publicBrand: publicBrand === "okou" ? "okou" : "vm0",
+    publicBrandSig: typeof publicBrandSig === "string" ? publicBrandSig : null,
   };
 }
 
@@ -511,45 +580,52 @@ export async function isGithubOauthStateSignatureValid(args: {
   readonly state: GithubOAuthState;
   readonly secretsEncryptionKey: string;
 }): Promise<boolean> {
-  if (!args.state.userId) {
-    return true;
+  let identitySignatureValid = args.state.userId === null;
+  if (args.state.userId) {
+    const expectedSig = await createGithubOauthStateSignature({
+      userId: args.state.userId,
+      orgId: args.state.orgId,
+      composeId: args.state.composeId,
+      secretsEncryptionKey: args.secretsEncryptionKey,
+    });
+    identitySignatureValid = signaturesMatch(args.state.sig, expectedSig);
+
+    if (!identitySignatureValid && args.state.orgId === null) {
+      // Old web/app OAuth signature fallback (observed maximum: ~2 days).
+      // Remove in #27602 after legacy states and callbacks have drained.
+      const legacyExpectedSig = await createLegacyGithubOauthStateSignature({
+        userId: args.state.userId,
+        composeId: args.state.composeId,
+        secretsEncryptionKey: args.secretsEncryptionKey,
+      });
+      identitySignatureValid = signaturesMatch(
+        args.state.sig,
+        legacyExpectedSig,
+      );
+      if (identitySignatureValid) {
+        logIntegrationIdentityCompatibility({
+          provider: "github",
+          surface: "signature",
+          outcome: "legacy_signature_accepted",
+        });
+      }
+    }
   }
-
-  const expectedSig = await createGithubOauthStateSignature({
-    userId: args.state.userId,
-    orgId: args.state.orgId,
-    composeId: args.state.composeId,
-    secretsEncryptionKey: args.secretsEncryptionKey,
-  });
-
-  if (signaturesMatch(args.state.sig, expectedSig)) {
-    return true;
-  }
-
-  if (args.state.orgId !== null) {
+  if (!identitySignatureValid) {
     return false;
   }
 
-  // Old web/app OAuth signature fallback (observed maximum: ~2 days).
-  // Remove in #27602 after legacy states and callbacks have drained.
-  const legacyExpectedSig = await createLegacyGithubOauthStateSignature({
+  if (args.state.publicBrandSig === null) {
+    return args.state.publicBrand === "vm0";
+  }
+  const expectedPublicBrandSig = await createGithubOauthPublicBrandSignature({
     userId: args.state.userId,
+    orgId: args.state.orgId,
     composeId: args.state.composeId,
+    publicBrand: args.state.publicBrand,
     secretsEncryptionKey: args.secretsEncryptionKey,
   });
-
-  const legacySignatureValid = signaturesMatch(
-    args.state.sig,
-    legacyExpectedSig,
-  );
-  if (legacySignatureValid) {
-    logIntegrationIdentityCompatibility({
-      provider: "github",
-      surface: "signature",
-      outcome: "legacy_signature_accepted",
-    });
-  }
-  return legacySignatureValid;
+  return signaturesMatch(args.state.publicBrandSig, expectedPublicBrandSig);
 }
 
 export async function linkGithubUser(
