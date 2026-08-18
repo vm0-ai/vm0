@@ -11,7 +11,7 @@ transport and built-in host-policy validation are a subsequent registry step.
 import re
 import urllib.parse
 
-import connector_template_syntax
+import builtin_base_url_template
 import matching
 from authority_utils import percent_decode_host
 from path_security import has_unsafe_path, has_unsafe_url_path
@@ -284,30 +284,13 @@ def _validate_base_url_path_variable(
         )
 
 
-def _prefix_is_inside_authority(prefix: str) -> bool:
-    scheme_end = prefix.find("://")
-    if scheme_end == -1:
-        return False
-    after_scheme = prefix[scheme_end + 3 :]
-    return _URL_COMPONENT_DELIMITER_PATTERN.search(after_scheme) is None
-
-
-def _prefix_is_inside_path(prefix: str) -> bool:
-    scheme_end = prefix.find("://")
-    if scheme_end == -1:
-        return False
-    after_scheme = prefix[scheme_end + 3 :]
-    if "?" in after_scheme or "#" in after_scheme:
-        return False
-    return "/" in after_scheme
-
-
 def _validate_base_url_template_variable(
     *,
     firewall_name: str,
     base: str,
     name: str,
     value: str,
+    kind: builtin_base_url_template.BaseUrlTemplateComponentKind,
     prefix: str,
     suffix: str,
 ) -> None:
@@ -317,9 +300,9 @@ def _validate_base_url_template_variable(
         name=name,
         value=value,
     )
-    if prefix == "" and suffix == "":
-        return
-    if prefix == "" and suffix.startswith("/"):
+    if kind == "whole-base":
+        if suffix == "":
+            return
         _validate_base_url_prefix_variable(
             firewall_name=firewall_name,
             base=base,
@@ -327,7 +310,7 @@ def _validate_base_url_template_variable(
             value=value,
         )
         return
-    if prefix.endswith("://") and (suffix == "" or suffix.startswith("/")):
+    if kind == "whole-authority":
         _validate_base_url_authority_variable(
             firewall_name=firewall_name,
             base=base,
@@ -335,11 +318,7 @@ def _validate_base_url_template_variable(
             value=value,
         )
         return
-    if (
-        _prefix_is_inside_authority(prefix)
-        and prefix.endswith(":")
-        and (suffix == "" or suffix.startswith("/"))
-    ):
+    if kind == "port":
         _validate_base_url_port_variable(
             firewall_name=firewall_name,
             base=base,
@@ -347,7 +326,7 @@ def _validate_base_url_template_variable(
             value=value,
         )
         return
-    if _prefix_is_inside_authority(prefix):
+    if kind == "authority-fragment":
         _validate_base_url_authority_fragment_variable(
             firewall_name=firewall_name,
             base=base,
@@ -355,21 +334,13 @@ def _validate_base_url_template_variable(
             value=value,
         )
         return
-    if _prefix_is_inside_path(prefix):
-        _validate_base_url_path_variable(
-            firewall_name=firewall_name,
-            base=base,
-            name=name,
-            value=value,
-            prefix=prefix,
-            suffix=suffix,
-        )
-        return
-    raise _base_url_variable_error(
+    _validate_base_url_path_variable(
         firewall_name=firewall_name,
         base=base,
         name=name,
-        detail="is used in an unsupported base URL template position",
+        value=value,
+        prefix=prefix,
+        suffix=suffix,
     )
 
 
@@ -398,11 +369,17 @@ def resolve_base_url_template(
             a value or position violates the safety contract, or the resolved base
             is invalid.
     """
+    try:
+        variables = builtin_base_url_template.analyze_base_url_template(base)
+    except builtin_base_url_template.BaseUrlTemplateLayoutError as e:
+        raise BuiltinBaseUrlResolutionError(
+            f'builtin firewall "{firewall_name}" {e}: {base}'
+        ) from e
+
     resolved_parts: list[str] = []
     last_index = 0
-    for reference in connector_template_syntax.iter_simple_references(base):
-        if reference.namespace != "vars":
-            continue
+    for variable in variables:
+        reference = variable.reference
         name = reference.name
         value = vars_map.get(name)
         if not value:
@@ -414,6 +391,7 @@ def resolve_base_url_template(
             base=base,
             name=name,
             value=value,
+            kind=variable.kind,
             prefix=base[: reference.start],
             suffix=base[reference.end :],
         )

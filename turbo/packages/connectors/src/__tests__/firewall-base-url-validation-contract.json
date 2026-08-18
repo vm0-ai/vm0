@@ -23,6 +23,52 @@
       "expectedResolvedBase": "https://tenant.example.com/v1/{resource}"
     },
     {
+      "category": "whole-base",
+      "name": "whole base at end resolves",
+      "base": "${{ vars.API_BASE_URL }}",
+      "vars": { "API_BASE_URL": "https://api.example.com/v2" },
+      "expectedResolvedBase": "https://api.example.com/v2"
+    },
+    {
+      "category": "whole-base",
+      "name": "whole base before fixed path resolves",
+      "base": "${{ vars.API_BASE_URL }}/v1/{resource}",
+      "vars": { "API_BASE_URL": "https://api.example.com" },
+      "expectedResolvedBase": "https://api.example.com/v1/{resource}"
+    },
+    {
+      "category": "whole-authority",
+      "name": "whole authority at end resolves",
+      "base": "https://${{ vars.HOST }}",
+      "vars": { "HOST": "api.example.com" },
+      "expectedResolvedBase": "https://api.example.com"
+    },
+    {
+      "category": "port",
+      "name": "port before fixed path resolves",
+      "base": "https://api.example.com:${{ vars.PORT }}/v1",
+      "vars": { "PORT": "8443" },
+      "expectedResolvedBase": "https://api.example.com:8443/v1"
+    },
+    {
+      "category": "path",
+      "name": "path segment before fixed suffix resolves",
+      "base": "https://api.example.com/accounts/${{ vars.TENANT }}/v1",
+      "vars": { "TENANT": "acme" },
+      "expectedResolvedBase": "https://api.example.com/accounts/acme/v1"
+    },
+    {
+      "category": "multiple",
+      "name": "authority port and path references resolve in source order",
+      "base": "https://${{ vars.HOST }}:${{ vars.PORT }}/${{ vars.TENANT }}/v1",
+      "vars": {
+        "HOST": "api.example.com",
+        "PORT": "8443",
+        "TENANT": "acme"
+      },
+      "expectedResolvedBase": "https://api.example.com:8443/acme/v1"
+    },
+    {
       "category": "query-fragment",
       "name": "trailing authority fragment before query is invalid",
       "base": "https://api-${{ vars.HOST }}?page=1",

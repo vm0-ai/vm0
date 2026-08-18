@@ -89,6 +89,8 @@ def test_firewall_catalog_base_url_validity_matches_shared_contract(
 @pytest.mark.parametrize("case", _BASE_URL_TEMPLATE_RESOLUTION_CASES, ids=_case_name)
 def test_firewall_base_url_template_resolution_matches_shared_contract(
     case: dict[str, object],
+    tmp_path: Path,
+    mitm_ctx,
 ) -> None:
     base = case["base"]
     assert isinstance(base, str)
@@ -119,3 +121,21 @@ def test_firewall_base_url_template_resolution_matches_shared_contract(
         )
         == expected_resolved_base
     )
+
+    cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
+    write_catalog_cache(
+        cache_path,
+        digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        version="catalog-contract",
+        firewalls={
+            "contract": {
+                "name": "contract",
+                "apis": [{"base": base, "auth": {}}],
+            }
+        },
+    )
+    with mitm_ctx():
+        snapshot = builtin_firewall_cache.load_catalog_snapshot(str(cache_path))
+
+    assert snapshot.catalog is not None
+    assert snapshot.unavailable_reason is None
