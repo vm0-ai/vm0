@@ -844,7 +844,7 @@ async fn execute_job_workspace_mount_failure_drains_early_prefetch_before_destro
     );
     wait_gate.release_one();
 
-    let (outcome, _telemetry) = tokio::time::timeout(Duration::from_secs(5), task)
+    let (outcome, telemetry) = tokio::time::timeout(Duration::from_secs(5), task)
         .await
         .expect("mount-failure cleanup should finish after the prefetch wait is released")
         .expect("mount-failure task should not panic");
@@ -856,6 +856,18 @@ async fn execute_job_workspace_mount_failure_drains_early_prefetch_before_destro
         "got: {error}"
     );
     assert!(error.contains("mount denied"), "got: {error}");
+    let operations = telemetry.pending_ops_with_outcome_snapshot();
+    let unavailable = operations
+        .iter()
+        .find(|operation| operation.0 == "workspace_drive_mount_guest_exec_unavailable")
+        .unwrap_or_else(|| panic!("missing unavailable mount guest duration: {operations:?}"));
+    assert!(!unavailable.1);
+    assert_eq!(unavailable.2.as_deref(), Some("unavailable"));
+    assert!(
+        operations
+            .iter()
+            .all(|operation| operation.0 != "workspace_drive_mount_guest_exec")
+    );
     assert!(
         outcome.sandbox.is_none(),
         "fresh mount failure should be destroyed inline"
