@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.460.0](https://github.com/vm0-ai/vm0/compare/api-v1.459.1...api-v1.460.0) (2026-08-18)
+
+
+### Features
+
+* **app:** turn the pinned grid entry into an agent pin picker ([#28041](https://github.com/vm0-ai/vm0/issues/28041)) ([2d06fa7](https://github.com/vm0-ai/vm0/commit/2d06fa7bf5c534fda96972bfb093e76a7bea567f))
+
+
+### Bug Fixes
+
+* preserve public brand across generated service urls ([#28052](https://github.com/vm0-ai/vm0/issues/28052)) ([768107d](https://github.com/vm0-ai/vm0/commit/768107d9c5c98c7bc49298dd3eb47dca44bd690b))
+
+
+### Refactoring
+
+* **db:** contract legacy integration identity columns ([#28025](https://github.com/vm0-ai/vm0/issues/28025)) ([9c141f0](https://github.com/vm0-ai/vm0/commit/9c141f00f90d0c656f94e4a1f51ca90d87e1fce6))
+* **feishu:** remove runtime ownership fallback ([#28060](https://github.com/vm0-ai/vm0/issues/28060)) ([26c827e](https://github.com/vm0-ai/vm0/commit/26c827ea10dadf4575876249fe825c6809a08c5d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.339.2
+    * @okouai/core bumped to 8.569.1
+    * @okouai/db bumped to 1.205.2
+
 ## [1.459.1](https://github.com/vm0-ai/vm0/compare/api-v1.459.0...api-v1.459.1) (2026-08-18)
 
 

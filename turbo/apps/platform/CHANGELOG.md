@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.771.0](https://github.com/vm0-ai/vm0/compare/app-v0.770.0...app-v0.771.0) (2026-08-18)
+
+
+### Features
+
+* **app:** separate three-column pin and search ([#28042](https://github.com/vm0-ai/vm0/issues/28042)) ([aa64f44](https://github.com/vm0-ai/vm0/commit/aa64f44a5e65bb82229e26d1ff296e7560e43cc9))
+* **app:** turn the pinned grid entry into an agent pin picker ([#28041](https://github.com/vm0-ai/vm0/issues/28041)) ([2d06fa7](https://github.com/vm0-ai/vm0/commit/2d06fa7bf5c534fda96972bfb093e76a7bea567f))
+
+
+### Bug Fixes
+
+* **app:** hide chat model brand icon in media picker ([#28048](https://github.com/vm0-ai/vm0/issues/28048)) ([b27e778](https://github.com/vm0-ai/vm0/commit/b27e7784df0073f81e327566541e6dec8e22cbb6))
+* **platform:** defer settings until home route stabilizes ([#28043](https://github.com/vm0-ai/vm0/issues/28043)) ([d19e2bd](https://github.com/vm0-ai/vm0/commit/d19e2bd970ccbc3995f29fb59b4fd68f1eafd880))
+* **platform:** separate progress from thinking blocks ([#28055](https://github.com/vm0-ai/vm0/issues/28055)) ([484697f](https://github.com/vm0-ai/vm0/commit/484697fee139c2e38298390b948b24c97e26bd5b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.339.2
+    * @okouai/core bumped to 8.569.1
+
 ## [0.770.0](https://github.com/vm0-ai/vm0/compare/app-v0.769.0...app-v0.770.0) (2026-08-18)
 
 
