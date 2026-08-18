@@ -14,6 +14,7 @@ test("complete app onboarding to chat page", async ({ browser, page }) => {
 
   await signInWithClerkTestingHelper(page, email, appUrl, {
     activeOrganizationId: orgId,
+    preserveAppPage: true,
   });
 
   await completeExploreOnboarding(page, {

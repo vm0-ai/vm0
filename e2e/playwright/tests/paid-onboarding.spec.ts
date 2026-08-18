@@ -33,6 +33,7 @@ test("paid onboarding completes through the video workflow", async ({
 
     await signInWithClerkTestingHelper(page, email, appUrl, {
       activeOrganizationId: organizationId,
+      preserveAppPage: true,
     });
 
     await startVideoOnboardingCheckout(page, { appUrl });
