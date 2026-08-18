@@ -1,5 +1,6 @@
 """Response hook integration tests for network and proxy logging."""
 
+import gzip
 import json
 import time
 import tracemalloc
@@ -28,6 +29,7 @@ from tests.request_handler_helpers import (
     _write_registry,
 )
 from tests.requestheaders_helpers import await_requestheaders_result
+from tests.stream_buffer_helpers import set_request_stream_buffer, set_response_stream_buffer
 from tests.timestamp_helpers import assert_utc_millisecond_timestamp
 
 
@@ -44,6 +46,11 @@ class _BoundedFindUrl(str):
         if end is None:
             raise AssertionError("oversized retained URLs must not use an unbounded delimiter scan")
         return super().find(sub, start, end)
+
+
+class _DecodeGuardHeaderValue(bytes):
+    def decode(self, encoding="utf-8", errors="strict"):
+        raise AssertionError("over-budget dependency header values must not be decoded")
 
 
 def test_calculates_latency_and_logs(registry_file, tmp_path, real_flow, mitm_ctx, headers):
@@ -461,6 +468,149 @@ def test_capture_headers_bound_both_sides_and_final_row(tmp_path, real_flow, mit
     assert entry["response_headers_truncated"] is True
     assert len(entry["request_body"]) == BODY_CAPTURE_LIMIT
     assert len(entry["response_body"]) == BODY_CAPTURE_LIMIT
+
+
+def _body_capture_dependency_attack_fields(
+    header_name: bytes, attack: str
+) -> list[tuple[bytes, bytes]]:
+    if attack == "oversized-single":
+        return [(header_name, _DecodeGuardHeaderValue(b"x" * (32 * 1024 + 1)))]
+    if attack == "malformed":
+        value = b"not a media type" if header_name == b"Content-Type" else b"gzip,,br"
+        return [(header_name, value)]
+    if header_name == b"Content-Type":
+        return [(header_name, b"text/plain")] * 512
+    return [(b"Content-Type", b"text/plain"), *[(header_name, b"identity")] * 512]
+
+
+@pytest.mark.parametrize("side", ["request", "response"])
+@pytest.mark.parametrize("streamed", [False, True], ids=["buffered", "streamed"])
+@pytest.mark.parametrize(
+    "header_name",
+    [
+        pytest.param(b"Content-Type", id="content-type"),
+        pytest.param(b"Content-Encoding", id="content-encoding"),
+    ],
+)
+@pytest.mark.parametrize("attack", ["oversized-single", "duplicate-amplification", "malformed"])
+def test_body_capture_bounds_dependency_headers_and_writes_final_row(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    side,
+    streamed,
+    header_name,
+    attack,
+):
+    raw_url = "https://target.example.com/path"
+    attack_headers = http.Headers(_body_capture_dependency_attack_fields(header_name, attack))
+    valid_headers = header_map({"Content-Type": "text/plain"})
+    request_headers = attack_headers if side == "request" else valid_headers
+    response_headers = attack_headers if side == "response" else valid_headers
+    flow = real_flow(
+        host="target.example.com",
+        method="POST",
+        request_headers=request_headers,
+        request_body=b"request body",
+        response_headers=response_headers,
+        response_body=b"response body",
+    )
+    if streamed and side == "request":
+        set_request_stream_buffer(flow, b"request body", truncated=True)
+    if streamed and side == "response":
+        set_response_stream_buffer(flow, b"response body", truncated=True)
+
+    log_path = tmp_path / "network.jsonl"
+    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(log_path)
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+    flow.metadata[metadata_keys.ORIGINAL_URL] = raw_url
+    flow.metadata[metadata_keys.CAPTURE_BODY] = True
+    http_network_log.set_target(
+        flow,
+        url=raw_url,
+        host="target.example.com",
+        port=443,
+    )
+
+    with mitm_ctx():
+        mitm_addon.response(flow)
+
+    serialized = read_jsonl_text_after_flush(log_path)
+    entry = json.loads(serialized)
+    assert len(serialized.encode()) <= 1_000_000
+    assert entry["url"] == raw_url
+    assert f"{side}_body" not in entry
+    assert entry[f"{side}_body_encoding"] == "binary"
+    if streamed:
+        assert entry[f"{side}_body_truncated"] is True
+    other_side = "response" if side == "request" else "request"
+    assert entry[f"{other_side}_body"] == f"{other_side} body"
+    assert entry[f"{other_side}_body_encoding"] == "utf-8"
+
+
+def test_body_capture_preserves_bounded_valid_dependency_headers(tmp_path, real_flow, mitm_ctx):
+    raw_url = "https://target.example.com/path"
+    content_type = f"text/plain; boundary={'x' * 5_000}"
+    flow = real_flow(
+        host="target.example.com",
+        method="POST",
+        request_headers=header_map({"Content-Type": content_type, "Content-Encoding": "identity"}),
+        request_body=b"request body",
+        response_headers=header_map({"Content-Type": content_type, "Content-Encoding": "x-custom"}),
+        response_body=b"response body",
+    )
+    log_path = tmp_path / "network.jsonl"
+    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(log_path)
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+    flow.metadata[metadata_keys.ORIGINAL_URL] = raw_url
+    flow.metadata[metadata_keys.CAPTURE_BODY] = True
+    http_network_log.set_target(
+        flow,
+        url=raw_url,
+        host="target.example.com",
+        port=443,
+    )
+
+    with mitm_ctx():
+        mitm_addon.response(flow)
+
+    [entry] = read_jsonl_entries_after_flush(log_path)
+    assert entry["request_body"] == "request body"
+    assert entry["request_body_encoding"] == "utf-8"
+    assert entry["response_body"] == "response body"
+    assert entry["response_body_encoding"] == "utf-8"
+
+
+def test_body_capture_decompresses_buffered_response_with_bounded_headers(
+    tmp_path, real_flow, mitm_ctx
+):
+    raw_url = "https://target.example.com/path"
+    flow = real_flow(
+        host="target.example.com",
+        response_headers=header_map({"Content-Type": "text/plain", "Content-Encoding": "gzip"}),
+        response_body=gzip.compress(b"response body"),
+    )
+    log_path = tmp_path / "network.jsonl"
+    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(log_path)
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+    flow.metadata[metadata_keys.ORIGINAL_URL] = raw_url
+    flow.metadata[metadata_keys.CAPTURE_BODY] = True
+    http_network_log.set_target(
+        flow,
+        url=raw_url,
+        host="target.example.com",
+        port=443,
+    )
+
+    with mitm_ctx():
+        mitm_addon.response(flow)
+
+    [entry] = read_jsonl_entries_after_flush(log_path)
+    assert entry["response_body"] == "response body"
+    assert entry["response_body_encoding"] == "utf-8"
 
 
 @pytest.mark.parametrize("delimiter", ["?", "#"], ids=["query", "fragment"])

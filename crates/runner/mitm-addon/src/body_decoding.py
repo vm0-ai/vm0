@@ -4,7 +4,7 @@ Exports:
 
 - Bounded streaming usage decoding for gzip, deflate; one-shot
   decompression for gzip, deflate, br, zstd.
-- Request network-log capture decoding that hides opaque encoded bodies.
+- Request and response network-log capture decoding that hides failed bodies.
 - JSON usage decompression with diagnostic error classification.
 """
 
@@ -323,6 +323,25 @@ def decompress_body(
     on that (see #10287).
     """
     result = _decode_body_bounded(data, headers, max_output=max_output)
+    _log_body_decompression_failure(result, headers)
+    return result.body
+
+
+def decode_response_body_for_network_log_capture(
+    data: bytes,
+    headers: http.Headers,
+    *,
+    max_output: int = DEFAULT_BODY_DECODE_LIMIT,
+) -> bytes | None:
+    """Decode a response body while hiding supported-codec failures."""
+    result = _decode_body_bounded(data, headers, max_output=max_output)
+    _log_body_decompression_failure(result, headers)
+    if result.failed:
+        return None
+    return result.body
+
+
+def _log_body_decompression_failure(result: _BodyDecodeResult, headers: http.Headers) -> None:
     if result.failed and result.error is not None:
         with contextlib.suppress(AttributeError):
             # ctx.log unavailable outside mitmproxy runtime
@@ -330,7 +349,6 @@ def decompress_body(
                 "Decompression failed "
                 f"({headers.get('content-encoding', '').strip().lower()}): {result.error}"
             )
-    return result.body
 
 
 def _decompress_zlib_best_effort_bounded(
