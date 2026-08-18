@@ -9,10 +9,15 @@ export const MAX_PRESENTATION_TEMPLATE_SOURCE_BYTES = 100 * 1024 * 1024;
 export const MAX_PRESENTATION_TEMPLATE_PAGES = 100;
 export const MAX_PRESENTATION_TEMPLATE_PAGE_BYTES = 25 * 1024 * 1024;
 export const MAX_PRESENTATION_TEMPLATE_TOTAL_PAGE_BYTES = 500 * 1024 * 1024;
-export const MAX_PRESENTATION_TEMPLATE_PACKAGE_FILE_BYTES = 512 * 1024;
+export const MAX_PRESENTATION_TEMPLATE_PACKAGE_FILES = 256;
+export const MAX_PRESENTATION_TEMPLATE_PACKAGE_FILE_BYTES = 25 * 1024 * 1024;
+export const MAX_PRESENTATION_TEMPLATE_PACKAGE_TOTAL_BYTES = 100 * 1024 * 1024;
+export const MAX_PRESENTATION_TEMPLATE_PACKAGE_ARCHIVE_BYTES =
+  128 * 1024 * 1024;
 export const PRESENTATION_TEMPLATE_SOURCE_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 export const PRESENTATION_TEMPLATE_PAGE_CONTENT_TYPE = "image/png";
+export const PRESENTATION_TEMPLATE_PACKAGE_CONTENT_TYPE = "application/gzip";
 
 export const presentationTemplateStatusSchema = z.enum([
   "pending",
@@ -101,43 +106,9 @@ const pageDownloadSchema = z.object({
   contentType: z.literal(PRESENTATION_TEMPLATE_PAGE_CONTENT_TYPE),
 });
 
-const packagePathSchema = z.enum([
-  "DESIGN_SYSTEM.md",
-  "LAYOUTS.md",
-  "tokens.json",
-]);
-
-const packageFileSchema = z.object({
-  path: packagePathSchema,
-  content: z.string().refine(
-    (content) => {
-      return (
-        new TextEncoder().encode(content).byteLength <=
-        MAX_PRESENTATION_TEMPLATE_PACKAGE_FILE_BYTES
-      );
-    },
-    {
-      message: `Package files must be ${MAX_PRESENTATION_TEMPLATE_PACKAGE_FILE_BYTES.toString()} UTF-8 bytes or smaller`,
-    },
-  ),
+const publishPackageBodySchema = z.object({
+  archiveFileId: z.uuid(),
 });
-
-const publishPackageBodySchema = z
-  .object({
-    files: z.array(packageFileSchema).length(packagePathSchema.options.length),
-  })
-  .refine(
-    ({ files }) => {
-      return (
-        new Set(
-          files.map((file) => {
-            return file.path;
-          }),
-        ).size === files.length
-      );
-    },
-    { message: "Package must contain each required file exactly once" },
-  );
 
 const failImportBodySchema = z.object({
   code: presentationTemplateImportErrorCodeSchema,
@@ -268,7 +239,7 @@ export const zeroPresentationTemplatesContract = c.router({
       409: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Publish a completed presentation template package",
+    summary: "Validate and publish an uploaded presentation template archive",
   },
   fail: {
     method: "POST",
