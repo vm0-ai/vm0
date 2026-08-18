@@ -28,8 +28,13 @@ class BaseUrlTemplateVariable:
 
 class _BaseUrlComponentBoundaries(NamedTuple):
     authority_start: int | None
+    authority_end: int | None
     path_start: int | None
     query_or_fragment_start: int | None
+    userinfo_end: int | None
+    ip_literal_start: int | None
+    ip_literal_end: int | None
+    port_delimiter: int | None
 
 
 def analyze_base_url_template(base: str) -> tuple[BaseUrlTemplateVariable, ...]:
@@ -62,7 +67,7 @@ def analyze_base_url_template(base: str) -> tuple[BaseUrlTemplateVariable, ...]:
         if kind == "authority-fragment":
             authority_fragment_shape = (
                 "ip-literal"
-                if _reference_is_inside_ip_literal(base, reference, boundaries)
+                if _reference_is_inside_ip_literal(reference, boundaries)
                 else "hostname"
             )
         variables.append(
@@ -78,7 +83,7 @@ def analyze_base_url_template(base: str) -> tuple[BaseUrlTemplateVariable, ...]:
 def _component_boundaries(base: str) -> _BaseUrlComponentBoundaries:
     scheme_delimiter = base.find("://")
     if scheme_delimiter == -1:
-        return _BaseUrlComponentBoundaries(None, None, None)
+        return _BaseUrlComponentBoundaries(None, None, None, None, None, None, None, None)
 
     authority_start = scheme_delimiter + len("://")
     path_start = base.find("/", authority_start)
@@ -88,10 +93,41 @@ def _component_boundaries(base: str) -> _BaseUrlComponentBoundaries:
         (index for index in (query_start, fragment_start) if index != -1),
         default=None,
     )
+    normalized_path_start = None if path_start == -1 else path_start
+    authority_end = min(
+        (
+            boundary
+            for boundary in (normalized_path_start, query_or_fragment_start)
+            if boundary is not None
+        ),
+        default=len(base),
+    )
+    raw_userinfo_end = base.rfind("@", authority_start, authority_end)
+    userinfo_end = None if raw_userinfo_end == -1 else raw_userinfo_end
+    host_start = authority_start if userinfo_end is None else userinfo_end + 1
+    raw_ip_literal_start = base.find("[", host_start, authority_end)
+    ip_literal_start = None if raw_ip_literal_start == -1 else raw_ip_literal_start
+    raw_ip_literal_end = (
+        -1 if ip_literal_start is None else base.find("]", ip_literal_start + 1, authority_end)
+    )
+    ip_literal_end = None if raw_ip_literal_end == -1 else raw_ip_literal_end
+    if ip_literal_start is None:
+        port_search_start = host_start
+    elif ip_literal_end is None:
+        port_search_start = authority_end
+    else:
+        port_search_start = ip_literal_end + 1
+    raw_port_delimiter = base.find(":", port_search_start, authority_end)
+    port_delimiter = None if raw_port_delimiter == -1 else raw_port_delimiter
     return _BaseUrlComponentBoundaries(
         authority_start=authority_start,
-        path_start=None if path_start == -1 else path_start,
+        authority_end=authority_end,
+        path_start=normalized_path_start,
         query_or_fragment_start=query_or_fragment_start,
+        userinfo_end=userinfo_end,
+        ip_literal_start=ip_literal_start,
+        ip_literal_end=ip_literal_end,
+        port_delimiter=port_delimiter,
     )
 
 
@@ -107,11 +143,11 @@ def _component_kind(
     if base.endswith("://", 0, reference.start) and ends_base_or_starts_path:
         return "whole-authority"
     if _reference_is_inside_authority(reference, boundaries):
-        if _reference_is_inside_userinfo(base, reference, boundaries):
+        if _reference_is_inside_userinfo(reference, boundaries):
             raise BaseUrlTemplateLayoutError(
                 "base template variable is used in an unsupported position"
             )
-        if _reference_is_inside_port(base, reference, boundaries):
+        if _reference_is_inside_port(reference, boundaries):
             return "port"
         return "authority-fragment"
     if _reference_is_inside_path(reference, boundaries):
@@ -123,53 +159,36 @@ def _reference_is_inside_authority(
     reference: connector_template_syntax.SimpleTemplateReference,
     boundaries: _BaseUrlComponentBoundaries,
 ) -> bool:
-    if boundaries.authority_start is None or boundaries.authority_start > reference.start:
-        return False
-    return all(
-        boundary is None or reference.start <= boundary
-        for boundary in (boundaries.path_start, boundaries.query_or_fragment_start)
+    return (
+        boundaries.authority_start is not None
+        and boundaries.authority_end is not None
+        and boundaries.authority_start <= reference.start < boundaries.authority_end
     )
 
 
 def _reference_is_inside_userinfo(
-    base: str,
     reference: connector_template_syntax.SimpleTemplateReference,
     boundaries: _BaseUrlComponentBoundaries,
 ) -> bool:
-    authority_end = min(
-        (
-            boundary
-            for boundary in (boundaries.path_start, boundaries.query_or_fragment_start)
-            if boundary is not None
-        ),
-        default=len(base),
-    )
-    return base.find("@", reference.end, authority_end) != -1
+    return boundaries.userinfo_end is not None and reference.start < boundaries.userinfo_end
 
 
 def _reference_is_inside_port(
-    base: str,
     reference: connector_template_syntax.SimpleTemplateReference,
     boundaries: _BaseUrlComponentBoundaries,
 ) -> bool:
-    if boundaries.authority_start is None:
-        return False
-    prefix = base[boundaries.authority_start : reference.start]
-    if _reference_is_inside_ip_literal(base, reference, boundaries):
-        return False
-    port_delimiter = prefix.rfind(":")
-    return port_delimiter > max(prefix.rfind("@"), prefix.rfind("]"))
+    return boundaries.port_delimiter is not None and boundaries.port_delimiter < reference.start
 
 
 def _reference_is_inside_ip_literal(
-    base: str,
     reference: connector_template_syntax.SimpleTemplateReference,
     boundaries: _BaseUrlComponentBoundaries,
 ) -> bool:
-    if boundaries.authority_start is None:
-        return False
-    prefix = base[boundaries.authority_start : reference.start]
-    return prefix.rfind("[") > prefix.rfind("]")
+    return (
+        boundaries.ip_literal_start is not None
+        and boundaries.ip_literal_end is not None
+        and boundaries.ip_literal_start < reference.start < boundaries.ip_literal_end
+    )
 
 
 def _reference_is_inside_path(
