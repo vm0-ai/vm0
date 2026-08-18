@@ -131,7 +131,7 @@ import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import { secrets as secretsTable } from "@okouai/db/schema/secret";
 import { userCache } from "@okouai/db/schema/user-cache";
-import { vm0ApiKeys } from "@okouai/db/schema/vm0-api-key";
+import { builtInModelKeys } from "@okouai/db/schema/built-in-model-key";
 import { variables } from "@okouai/db/schema/variable";
 import type { PersistedStorageMount } from "@okouai/db/types";
 import {
@@ -2292,9 +2292,9 @@ async function vm0ModelProviderEnvironment(
   const vendor = getVm0Vendor(selectedModel);
   const apiModel = getProviderRuntimeModel("vm0", selectedModel);
   const rows = await db
-    .select({ apiKey: vm0ApiKeys.apiKey })
-    .from(vm0ApiKeys)
-    .where(eq(vm0ApiKeys.vendor, vendor))
+    .select({ apiKey: builtInModelKeys.apiKey })
+    .from(builtInModelKeys)
+    .where(eq(builtInModelKeys.vendor, vendor))
     .limit(1);
   const apiKey = rows[0]?.apiKey;
   const secretName = getSecretNameForType(concreteType);

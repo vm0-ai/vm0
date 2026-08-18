@@ -13,7 +13,7 @@ import {
 } from "@okouai/core/storage-names";
 import { GOAL_SKILL_NAME, SEED_SKILLS } from "@okouai/core/seed-skills";
 import { usagePricing } from "@okouai/db/schema/usage-pricing";
-import { vm0ApiKeys } from "@okouai/db/schema/vm0-api-key";
+import { builtInModelKeys } from "@okouai/db/schema/built-in-model-key";
 import { skills } from "@okouai/db/schema/skill";
 import { storages } from "@okouai/db/schema/storage";
 import { createStore } from "ccstate";
@@ -674,14 +674,14 @@ type LineWriter = (message: string) => void;
 export function buildVm0ApiKeys(
   readEnv: OptionalEnvReader = optionalEnv,
   logLine: LineWriter = writeLine,
-): (typeof vm0ApiKeys.$inferInsert)[] {
+): (typeof builtInModelKeys.$inferInsert)[] {
   const vendors = new Set(
     Object.values(VM0_MODEL_TO_PROVIDER).map(({ vendor }) => {
       return vendor;
     }),
   );
 
-  const keys: (typeof vm0ApiKeys.$inferInsert)[] = [];
+  const keys: (typeof builtInModelKeys.$inferInsert)[] = [];
   for (const vendor of vendors) {
     const envVars = getVendorApiKeyEnvVars(vendor);
     const apiKey = envVars
@@ -726,9 +726,9 @@ async function devSeed() {
   writeLine("Seeding vm0_api_keys");
   const apiKeys = buildVm0ApiKeys();
   await database.transaction(async (tx) => {
-    await tx.delete(vm0ApiKeys);
+    await tx.delete(builtInModelKeys);
     if (apiKeys.length > 0) {
-      await tx.insert(vm0ApiKeys).values(apiKeys);
+      await tx.insert(builtInModelKeys).values(apiKeys);
     }
   });
   for (const k of apiKeys) {
