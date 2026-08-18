@@ -76,6 +76,7 @@ export const testConnectorCredentialStorageStateActionBodySchema =
       action: z.literal("seed-custom-runtime-connectors"),
       org_id: z.string(),
       user_id: z.string(),
+      agent_id: z.uuid().optional(),
       custom_connectors: z
         .array(
           z.object({
