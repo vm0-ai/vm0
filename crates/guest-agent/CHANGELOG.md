@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.74.13](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.12...guest-agent-v0.74.13) (2026-08-18)
+
+
+### Bug Fixes
+
+* **guest-agent:** report telemetry position persistence status ([#28040](https://github.com/vm0-ai/vm0/issues/28040)) ([112e8ad](https://github.com/vm0-ai/vm0/commit/112e8adfd0a3cef07222930d65f391169dc7073d))
+
 ## [0.74.12](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.11...guest-agent-v0.74.12) (2026-08-18)
 
 

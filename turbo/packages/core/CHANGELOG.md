@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.570.0](https://github.com/vm0-ai/vm0/compare/core-v8.569.1...core-v8.570.0) (2026-08-18)
+
+
+### Features
+
+* add byteplus seedream 5 image models ([#28064](https://github.com/vm0-ai/vm0/issues/28064)) ([a0f3faa](https://github.com/vm0-ai/vm0/commit/a0f3faaa9fb9cd5850d7b994d00284dc9598e587))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.340.0
+
 ## [8.569.1](https://github.com/vm0-ai/vm0/compare/core-v8.569.0...core-v8.569.1) (2026-08-18)
 
 

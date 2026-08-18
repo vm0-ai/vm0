@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.461.0](https://github.com/vm0-ai/vm0/compare/api-v1.460.0...api-v1.461.0) (2026-08-18)
+
+
+### Features
+
+* add byteplus seedream 5 image models ([#28064](https://github.com/vm0-ai/vm0/issues/28064)) ([a0f3faa](https://github.com/vm0-ai/vm0/commit/a0f3faaa9fb9cd5850d7b994d00284dc9598e587))
+
+
+### Bug Fixes
+
+* **chat:** render model reasoning as thinking blocks ([#28061](https://github.com/vm0-ai/vm0/issues/28061)) ([12b72cb](https://github.com/vm0-ai/vm0/commit/12b72cb55e02daa3f7824f0a5997ebf20f110f54))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.340.0
+    * @okouai/core bumped to 8.570.0
+    * @okouai/db bumped to 1.206.0
+
 ## [1.460.0](https://github.com/vm0-ai/vm0/compare/api-v1.459.1...api-v1.460.0) (2026-08-18)
 
 
