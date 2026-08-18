@@ -107,6 +107,42 @@ async fn maintenance_gc_preserves_valid_group_scoped_entry() {
 }
 
 #[tokio::test]
+async fn routine_gc_cleans_stale_entries_when_capacity_lock_is_available() {
+    let (_dir, _paths, cache) = local_cache().await;
+    let cache_key = workspace_image_cache_key("sess-stale", "/workspace");
+    tokio::fs::create_dir_all(cache.entry_paths(&cache_key).entry_dir().to_path_buf())
+        .await
+        .unwrap();
+    cache.reset_gc_root_scan_count();
+
+    let freed = cache.try_gc().await.unwrap();
+
+    assert!(freed.is_some());
+    assert_eq!(cache.gc_root_scan_count(), 1);
+    assert!(
+        !cache
+            .entry_paths(&cache_key)
+            .entry_dir()
+            .to_path_buf()
+            .exists()
+    );
+}
+
+#[tokio::test]
+async fn routine_gc_skips_without_scanning_when_capacity_lock_is_busy() {
+    let (_dir, _paths, cache) = local_cache().await;
+    let _capacity_lock = crate::lock::acquire(cache.capacity_lock_path())
+        .await
+        .unwrap();
+    cache.reset_gc_root_scan_count();
+
+    let freed = cache.try_gc().await.unwrap();
+
+    assert_eq!(freed, None);
+    assert_eq!(cache.gc_root_scan_count(), 0);
+}
+
+#[tokio::test]
 async fn unknown_metadata_format_is_not_reused_or_advertised_and_is_reclaimed() {
     let (_dir, _paths, cache) = local_cache().await;
     let checkout_reuse_key = "thread:unknown-format-checkout";
@@ -298,7 +334,11 @@ async fn global_gc_evicts_old_entry_from_other_group_under_free_space_pressure()
     )
     .await;
 
-    let freed = cache_b.gc(false).await.unwrap();
+    let freed = cache_b
+        .try_gc()
+        .await
+        .unwrap()
+        .expect("routine GC should acquire the idle capacity lock");
 
     assert!(freed > 0);
     assert!(

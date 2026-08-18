@@ -263,7 +263,7 @@ async fn promotion_overwrites_older_cache_entry() {
 }
 
 #[tokio::test]
-async fn successful_multi_entry_promotion_scans_cache_root_once() {
+async fn successful_multi_entry_promotions_do_not_scan_cache_root() {
     let (_dir, paths, cache) = local_cache().await;
     let run_id = RunId::new_v4();
     let first_key = write_current_cache_entry(
@@ -286,28 +286,41 @@ async fn successful_multi_entry_promotion_scans_cache_root_once() {
     .await;
     cache.reset_gc_root_scan_count();
 
-    let promoted_key = promote_current_cache_entry(
+    let first_promoted_key = promote_current_cache_entry(
         &cache,
         &paths,
-        "sess-promoted",
-        b"promoted image",
+        "sess-promoted-1",
+        b"promoted image 1",
         "2026-05-01T00:02:00.000Z",
+    )
+    .await;
+    let second_promoted_key = promote_current_cache_entry(
+        &cache,
+        &paths,
+        "sess-promoted-2",
+        b"promoted image 2",
+        "2026-05-01T00:03:00.000Z",
     )
     .await;
 
     assert_eq!(
         cache.gc_root_scan_count(),
-        1,
-        "successful promotion should inventory the cache root once during mandatory post-promotion GC"
+        0,
+        "healthy under-budget promotions should not inventory the cache root"
     );
-    for cache_key in [first_key, second_key, promoted_key] {
+    for cache_key in [
+        first_key,
+        second_key,
+        first_promoted_key,
+        second_promoted_key,
+    ] {
         assert!(
             cache
                 .entry_paths(&cache_key)
                 .current_image()
                 .to_path_buf()
                 .exists(),
-            "healthy under-budget entries should remain after post-promotion GC"
+            "healthy under-budget entries should remain available for routine GC"
         );
     }
 }

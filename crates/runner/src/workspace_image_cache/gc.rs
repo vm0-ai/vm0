@@ -85,6 +85,15 @@ impl WorkspaceImageCache {
         self.gc_locked(dry_run).await
     }
 
+    pub(crate) async fn try_gc(&self) -> RunnerResult<Option<u64>> {
+        let _capacity_lock =
+            match crate::lock::try_acquire_or_busy(self.capacity_lock_path()).await? {
+                crate::lock::TryLock::Acquired(lock) => lock,
+                crate::lock::TryLock::Busy => return Ok(None),
+            };
+        self.gc_locked(false).await.map(Some)
+    }
+
     pub(super) async fn gc_locked(&self, dry_run: bool) -> RunnerResult<u64> {
         let inventory = self.gc_inventory(dry_run).await?;
         let stats = self.fs_stats().await?;
