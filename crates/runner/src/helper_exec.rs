@@ -153,6 +153,7 @@ mod tests {
     fn exec_result(termination: ExecTermination) -> ExecResult {
         ExecResult {
             termination,
+            guest_duration_ms: None,
             stdout: Vec::new(),
             stderr: Vec::new(),
             diagnostic: String::new(),

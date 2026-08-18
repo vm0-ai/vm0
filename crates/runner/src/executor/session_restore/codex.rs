@@ -354,6 +354,7 @@ mod tests {
     fn exec_result(stdout: Vec<u8>, stdout_truncated: bool) -> ExecResult {
         ExecResult {
             termination: ExecTermination::Exited { exit_code: 0 },
+            guest_duration_ms: None,
             stdout,
             stderr: Vec::new(),
             diagnostic: String::new(),

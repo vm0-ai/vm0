@@ -748,12 +748,9 @@ async fn execute_new_sandbox_does_not_notify_after_post_start_prepare_failure() 
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
-        pattern: "mount -t ext4".to_string(),
-        exit_code: 64,
-        stdout: Vec::new(),
-        stderr: b"mount denied".to_vec(),
-    });
+    let mut mount_result = ExecResult::new(64, Vec::new(), b"mount denied".to_vec());
+    mount_result.guest_duration_ms = Some(31);
+    overrides.add_exec_result_matcher("mount -t ext4", mount_result);
     let factory = MockSandboxFactory::with_overrides(overrides);
     let ctx = minimal_context();
     let notifications = Arc::new(AtomicUsize::new(0));
@@ -787,6 +784,13 @@ async fn execute_new_sandbox_does_not_notify_after_post_start_prepare_failure() 
 
     assert!(result.is_err());
     assert_eq!(notifications.load(Ordering::SeqCst), 0);
+    let operations = telemetry.pending_ops_with_duration_snapshot();
+    let guest_exec = operations
+        .iter()
+        .find(|operation| operation.0 == "workspace_drive_mount_guest_exec")
+        .unwrap_or_else(|| panic!("missing mount guest duration: {operations:?}"));
+    assert_eq!(guest_exec.1, 31);
+    assert!(!guest_exec.2);
 }
 
 #[tokio::test]
