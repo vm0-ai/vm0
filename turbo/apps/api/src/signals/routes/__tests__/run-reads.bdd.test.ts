@@ -1872,7 +1872,10 @@ function expectTimeCursorAxiomResume(
   },
 ): void {
   const apl = call[0];
-  expect(call[1]).toStrictEqual({ cursor: expected.cursor });
+  expect(call[1]).toStrictEqual({
+    cursor: expected.cursor,
+    noCache: true,
+  });
   expect(apl).toContain(`| order by _time ${expected.order}`);
   if (expected.hasCreatedAtBound) {
     expect(apl).toContain("| where _time >= datetime(");
@@ -2181,6 +2184,8 @@ describe("RUN-04: agent run telemetry families", () => {
       hasMore: true,
       nextCursor: expectedNextCursor,
     });
+    const networkQuery = axiomCallAt(axiomCallCount() - 1);
+    expect(networkQuery[1]).toStrictEqual({ noCache: true });
   });
 
   it("keeps same-timestamp network rows reachable across time cursor pages", async () => {
