@@ -17,6 +17,7 @@ describe("user preferences contract", () => {
       sendMode: "enter",
       morningBriefEnabled: false,
       morningBriefNextRunAt: null,
+      weeklyProductUpdateEnabled: true,
       captureNetworkBodiesRemaining: 0,
     });
 
@@ -32,6 +33,7 @@ describe("user preferences contract", () => {
       sendMode: "enter",
       morningBriefEnabled: false,
       morningBriefNextRunAt: null,
+      weeklyProductUpdateEnabled: true,
       captureNetworkBodiesRemaining: 0,
     });
 
@@ -49,6 +51,7 @@ describe("user preferences contract", () => {
         sendMode: "enter",
         morningBriefEnabled: false,
         morningBriefNextRunAt: null,
+        weeklyProductUpdateEnabled: true,
         captureNetworkBodiesRemaining: 0,
       }),
     ).toMatchObject({
@@ -68,6 +71,7 @@ describe("user preferences contract", () => {
         sendMode: "enter",
         morningBriefEnabled: false,
         morningBriefNextRunAt: null,
+        weeklyProductUpdateEnabled: true,
         captureNetworkBodiesRemaining: 0,
       }),
     ).toMatchObject({
@@ -87,6 +91,7 @@ describe("user preferences contract", () => {
         sendMode: "enter",
         morningBriefEnabled: false,
         morningBriefNextRunAt: null,
+        weeklyProductUpdateEnabled: true,
         captureNetworkBodiesRemaining: 0,
       }),
     ).toMatchObject({
@@ -108,6 +113,7 @@ describe("user preferences contract", () => {
       sendMode: "enter",
       morningBriefEnabled: false,
       morningBriefNextRunAt: null,
+      weeklyProductUpdateEnabled: true,
       captureNetworkBodiesRemaining: 0,
     });
 
@@ -137,6 +143,7 @@ describe("user preferences contract", () => {
       sendMode: "enter",
       morningBriefEnabled: false,
       morningBriefNextRunAt: null,
+      weeklyProductUpdateEnabled: true,
       captureNetworkBodiesRemaining: 0,
     });
 
