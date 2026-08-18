@@ -585,8 +585,15 @@ def _apply_header_query_injection(
     for header_name, header_value in resolved_auth_header_pairs(headers):
         flow.request.headers[header_name] = header_value
     if resolved_query:
-        for key, value in resolved_query.items():
-            flow.request.query[key] = value
+        remaining_query = resolved_query.copy()
+        merged_query: list[tuple[str, str]] = []
+        for key, value in flow.request.query.fields:
+            if key in remaining_query:
+                merged_query.append((key, remaining_query.pop(key)))
+            elif key not in resolved_query:
+                merged_query.append((key, value))
+        merged_query.extend(remaining_query.items())
+        flow.request.query = merged_query
 
 
 def _trusted_aws_sigv4_url(flow: http.HTTPFlow) -> str:
