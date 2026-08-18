@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use api_contracts::generated::constants::model_provider_env::placeholders as model_provider_placeholders;
+use api_contracts::generated::types::runners::runs::CodexRuntimeConfig;
 use guest_contracts::cli_agent_session_id::is_valid_cli_agent_session_id;
 use guest_contracts::codex_thread_id::canonical_codex_thread_id;
 use sandbox::Sandbox;
@@ -10,9 +11,7 @@ use super::cli_framework::{
 };
 use super::{JOB_TIMEOUT, RunnerError, RunnerResult, guest_runtime_dir, guest_runtime_path};
 use crate::ids::RunId;
-use crate::types::{
-    CodexRuntimeConfig, ExecutionContext, SandboxReuseResult, WorkspaceReuseResult,
-};
+use crate::types::{ExecutionContext, SandboxReuseResult, WorkspaceReuseResult};
 
 pub(super) struct ProtectedModelProviderEnvKey {
     name: &'static str,

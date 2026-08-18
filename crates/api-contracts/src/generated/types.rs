@@ -10,6 +10,33 @@
 pub mod runners {
     /// Run-scoped DTOs exchanged between runners, guests, and the API.
     pub mod runs {
+        /// API-owned provider configuration forwarded to Codex in the sandbox.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct CodexRuntimeConfig {
+            /// Codex provider key used in generated startup settings.
+            pub provider_id: String,
+            /// Display name recorded for the Codex provider.
+            pub name: String,
+            /// Base URL for the provider's Responses API.
+            pub base_url: String,
+            /// Environment variable containing the provider credential.
+            pub env_key: String,
+            /// Optional static HTTP headers for provider requests.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub http_headers: Option<std::collections::BTreeMap<String, String>>,
+            /// Optional override for Codex's built-in OpenAI authentication requirement.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub requires_openai_auth: Option<bool>,
+            /// Codex wire protocol selected for the provider.
+            pub wire_api: String,
+            /// Whether the provider supports the Codex websocket transport.
+            pub supports_websockets: bool,
+            /// Optional opaque Codex model catalog supplied by the API.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub model_catalog: Option<serde_json::Value>,
+        }
+
         /// DTOs for durable active-input delivery.
         pub mod active_inputs {
             /// DTOs for recording active-input acceptance receipts.
