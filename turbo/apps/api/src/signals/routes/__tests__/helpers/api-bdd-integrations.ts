@@ -37,7 +37,7 @@ import {
 import type { SupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { testSlackStateContract } from "@okouai/api-contracts/contracts/test-slack-state";
-import { zeroIntegrationsAgentPhoneContract } from "@okouai/api-contracts/contracts/zero-integrations-agentphone";
+import { integrationsAgentPhoneContract } from "@okouai/api-contracts/contracts/integrations-agentphone";
 import { zeroIntegrationsSlackContract } from "@okouai/api-contracts/contracts/zero-integrations-slack";
 import { zeroIntegrationsTelegramContract } from "@okouai/api-contracts/contracts/zero-integrations-telegram";
 import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
@@ -46,7 +46,7 @@ import { zeroModelProvidersMainContract } from "@okouai/api-contracts/contracts/
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { slackChannelsContract } from "@okouai/api-contracts/contracts/slack-channels";
 import { zeroSlackConnectContract } from "@okouai/api-contracts/contracts/zero-slack-connect";
-import { zeroSlackOauthContract } from "@okouai/api-contracts/contracts/zero-slack-oauth";
+import { slackOauthContract } from "@okouai/api-contracts/contracts/slack-oauth";
 import { userModelPreferenceContract } from "@okouai/api-contracts/contracts/user-model-preference";
 import { HttpResponse, http } from "msw";
 import { createApp } from "../../../../app-factory";
@@ -866,7 +866,7 @@ export function createBddIntegrationApi(context: TestContext) {
       statuses: readonly (307 | 503)[],
     ) {
       const client = setupApp({ context, routes: slackOauthRoutes })(
-        zeroSlackOauthContract,
+        slackOauthContract,
       );
       return await accept(client.install({ query }), statuses);
     },
@@ -1044,7 +1044,7 @@ export function createBddIntegrationApi(context: TestContext) {
         scope: SLACK_APP_BOT_SCOPES,
       });
       const client = setupApp({ context, routes: slackOauthRoutes })(
-        zeroSlackOauthContract,
+        slackOauthContract,
       );
       await accept(
         client.callback({
@@ -1325,7 +1325,7 @@ export function createBddIntegrationApi(context: TestContext) {
       statuses: readonly (307 | 400 | 404 | 503)[],
     ) {
       const client = setupApp({ context, routes: slackOauthRoutes })(
-        zeroSlackOauthContract,
+        slackOauthContract,
       );
       return await accept(client.connect({ query }), statuses);
     },
@@ -1339,7 +1339,7 @@ export function createBddIntegrationApi(context: TestContext) {
       statuses: readonly (307 | 400 | 503)[],
     ) {
       const client = setupApp({ context, routes: slackOauthRoutes })(
-        zeroSlackOauthContract,
+        slackOauthContract,
       );
       return await accept(client.callback({ query }), statuses);
     },
@@ -1671,7 +1671,7 @@ export function createBddIntegrationApi(context: TestContext) {
       const client = setupApp({
         context,
         routes: integrationsAgentPhoneRoutes,
-      })(zeroIntegrationsAgentPhoneContract);
+      })(integrationsAgentPhoneContract);
       const response = await accept(
         client.getLinkStatus({
           headers: authenticate(context, routeMocks, actor),
@@ -1689,7 +1689,7 @@ export function createBddIntegrationApi(context: TestContext) {
       const client = setupApp({
         context,
         routes: integrationsAgentPhoneRoutes,
-      })(zeroIntegrationsAgentPhoneContract);
+      })(integrationsAgentPhoneContract);
       return await accept(
         client.startLink({
           headers: authenticate(context, routeMocks, actor),
@@ -1706,7 +1706,7 @@ export function createBddIntegrationApi(context: TestContext) {
       const client = setupApp({
         context,
         routes: integrationsAgentPhoneRoutes,
-      })(zeroIntegrationsAgentPhoneContract);
+      })(integrationsAgentPhoneContract);
       return await accept(
         client.unlink({
           headers: authenticate(context, routeMocks, actor),
@@ -1730,7 +1730,7 @@ export function createBddIntegrationApi(context: TestContext) {
       const client = setupApp({
         context,
         routes: integrationsAgentPhoneRoutes,
-      })(zeroIntegrationsAgentPhoneContract);
+      })(integrationsAgentPhoneContract);
       return await accept(
         client.connectAgentPhone({
           headers: authenticate(context, routeMocks, actor),

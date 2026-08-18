@@ -437,7 +437,7 @@ const userMessageInputPartSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("feedback"),
       quote: z.string().min(1),
-      note: z.array(feedbackNotePartSchema).min(1),
+      note: z.array(feedbackNotePartSchema),
       eventId: z.string().min(1).optional(),
       range: feedbackRangeSchema.optional(),
       source: z

@@ -780,7 +780,7 @@ function InviteDialog() {
   );
 }
 
-function InvitePurchaseConfirmationDialog() {
+function InvitePurchaseConfirmationDialogContent() {
   const { t } = useTranslation();
   const preview = useGet(invitePurchasePreview$);
   const close = useSet(closeInvitePurchasePreview$);
@@ -911,6 +911,16 @@ function InvitePurchaseConfirmationDialog() {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function InvitePurchaseConfirmationDialog() {
+  const preview = useGet(invitePurchasePreview$);
+  if (!preview) {
+    return null;
+  }
+  return (
+    <InvitePurchaseConfirmationDialogContent key={preview.payment.purchaseId} />
   );
 }
 

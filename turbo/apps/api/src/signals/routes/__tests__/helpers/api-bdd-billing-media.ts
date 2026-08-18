@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type StripeSDK from "stripe";
 import { testUsageSettlementContract } from "@okouai/api-contracts/contracts/test-usage-settlement";
 import { acquisitionAttributionContract } from "@okouai/api-contracts/contracts/acquisition-attribution";
-import { zeroBankingContract } from "@okouai/api-contracts/contracts/zero-banking";
+import { bankingContract } from "@okouai/api-contracts/contracts/banking";
 import {
   zeroBillingAutoRechargeContract,
   zeroBillingCheckoutContract,
@@ -24,14 +24,14 @@ import {
 } from "@okouai/api-contracts/contracts/zero-billing";
 import { builtInGenerationContract } from "@okouai/api-contracts/contracts/built-in-generation";
 import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
-import { zeroImageIoGenerateContract } from "@okouai/api-contracts/contracts/zero-image-io-generate";
+import { imageIoGenerateContract } from "@okouai/api-contracts/contracts/image-io-generate";
 import { mapsContract } from "@okouai/api-contracts/contracts/maps";
 import { zeroUsageMembersContract } from "@okouai/api-contracts/contracts/zero-usage";
 import {
   usageRecordContract,
   type UsageRecordRange,
 } from "@okouai/api-contracts/contracts/usage-record";
-import { zeroVideoIoGenerateContract } from "@okouai/api-contracts/contracts/zero-video-io-generate";
+import { videoIoGenerateContract } from "@okouai/api-contracts/contracts/video-io-generate";
 import { voiceIoQuotaContract } from "@okouai/api-contracts/contracts/voice-io-quota";
 import { voiceIoSpeechContract } from "@okouai/api-contracts/contracts/voice-io-speech";
 import { voiceIoSttContract } from "@okouai/api-contracts/contracts/voice-io-stt";
@@ -663,7 +663,7 @@ export function createBillingMediaApi(context: TestContext) {
       statuses: readonly ImageIoStatus[],
     ) {
       const client = setupApp({ context, routes: imageIoGenerateRoutes })(
-        zeroImageIoGenerateContract,
+        imageIoGenerateContract,
       );
       return await accept(
         client.post({ headers: authenticate(actor), body }),
@@ -693,7 +693,7 @@ export function createBillingMediaApi(context: TestContext) {
       statuses: readonly VideoIoStatus[],
     ) {
       const client = setupApp({ context, routes: videoIoGenerateRoutes })(
-        zeroVideoIoGenerateContract,
+        videoIoGenerateContract,
       );
       return await accept(
         client.post({ headers: authenticate(actor), body }),
@@ -822,7 +822,7 @@ export function createBillingMediaApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 502 | 503)[],
     ) {
       const client = setupApp({ context, routes: bankingRoutes })(
-        zeroBankingContract,
+        bankingContract,
       );
       return await accept(
         client.accounts({ headers: authenticate(actor), body: {} }),

@@ -1,7 +1,6 @@
 use api_contracts::generated::constants::runners::paths::CANONICAL_GUEST_HOME_DIR;
 use guest_contracts::session_history_identity::{
-    FinalSessionHistoryFramework, FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
-    FinalSessionHistorySourceRef,
+    SessionHistoryFramework, SessionHistoryIdentity, SessionHistoryRefKind, SessionHistorySourceRef,
 };
 use sha2::{Digest, Sha256};
 use tokio_util::sync::CancellationToken;
@@ -35,8 +34,8 @@ pub(super) fn claude_history_path(session_id: &str) -> String {
     format!("/home/user/.claude/projects/-home-user-workspace/{session_id}.jsonl")
 }
 
-pub(super) fn claude_history_source(session_id: &str) -> FinalSessionHistorySourceRef {
-    FinalSessionHistorySourceRef::ClaudeCode {
+pub(super) fn claude_history_source(session_id: &str) -> SessionHistorySourceRef {
+    SessionHistorySourceRef::ClaudeCode {
         config_dir: "/home/user/.claude".to_string(),
         working_dir: "/home/user/workspace".to_string(),
         session_id: session_id.to_string(),
@@ -59,10 +58,10 @@ pub(super) fn final_identity_runtime_paths(
 }
 
 pub(super) fn final_identity_metadata_bytes(session_id: &str, history: &[u8]) -> Vec<u8> {
-    FinalSessionHistoryIdentity::new(
-        FinalSessionHistoryFramework::ClaudeCode,
+    SessionHistoryIdentity::new(
+        SessionHistoryFramework::ClaudeCode,
         hex::encode(Sha256::digest(session_id.as_bytes())),
-        FinalSessionHistoryRefKind::Blob,
+        SessionHistoryRefKind::Blob,
         hex::encode(Sha256::digest(history)),
         history.len() as u64,
         claude_history_source(session_id),

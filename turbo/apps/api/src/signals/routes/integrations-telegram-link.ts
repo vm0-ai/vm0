@@ -35,7 +35,7 @@ import {
   verifyTelegramLogin,
   type LinkOfficialTelegramUserResult,
   type LinkTelegramUserResult,
-} from "../services/zero-telegram-link.service";
+} from "../services/telegram-link.service";
 import type { AuthContext } from "../../types/auth";
 import type { RouteEntry } from "../route-entry";
 import { publicBrand$ } from "../context/hono";

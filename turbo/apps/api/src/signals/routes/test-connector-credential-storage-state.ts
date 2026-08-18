@@ -14,6 +14,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
+import { connectorOAuthStateExpiresAt } from "../../lib/connector-oauth-state";
 import type { RouteEntry } from "../route-entry";
 import { parseCustomConnectorOAuthStateContext } from "../services/custom-connector-oauth2.service";
 import {
@@ -273,6 +274,33 @@ async function deleteCustomCredentialValues(
           eq(variables.type, "connector"),
         ),
       );
+  });
+  signal.throwIfAborted();
+  return actionOk();
+}
+
+async function seedLegacyCustomFeishuOAuthState(
+  db: Db,
+  body: ConnectorCredentialStorageAction<"seed-legacy-custom-feishu-oauth-state">,
+  signal: AbortSignal,
+) {
+  await db.insert(connectorOauthStates).values({
+    state: body.state,
+    customConnectorId: body.custom_connector_id,
+    storageVersion: body.storage_version,
+    authMethod: "oauth",
+    userId: body.user_id,
+    orgId: body.org_id,
+    redirectUri: body.redirect_uri,
+    oauthContext: JSON.stringify({
+      connectorId: body.custom_connector_id,
+      storageVersion: body.storage_version,
+      providerContext: {
+        provider: "feishu",
+        completionTarget: "custom",
+      },
+    }),
+    expiresAt: connectorOAuthStateExpiresAt(),
   });
   signal.throwIfAborted();
   return actionOk();
@@ -543,6 +571,9 @@ const mutateConnectorCredentialStorageState$ = command(
       }
       case "delete-custom-credential-values": {
         return await deleteCustomCredentialValues(db, body, signal);
+      }
+      case "seed-legacy-custom-feishu-oauth-state": {
+        return await seedLegacyCustomFeishuOAuthState(db, body, signal);
       }
       case "seed-owned-secret": {
         return await seedOwnedSecret(db, body, signal);

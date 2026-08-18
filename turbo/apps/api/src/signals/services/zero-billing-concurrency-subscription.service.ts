@@ -32,6 +32,11 @@ import {
   activeConcurrencySubscriptions,
   isConcurrencyPriceId,
 } from "./org-concurrency-entitlements.service";
+import { completeBillingOperationInvoice } from "./billing-operation-invoice.service";
+import {
+  setStripeSubscriptionPaymentMethod,
+  type BillingPurchasePaymentMethod,
+} from "./billing-payment-method.service";
 import { subscriptionScheduleHasNoFutureChanges } from "./stripe-subscription-schedules.service";
 
 const CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX = 1000;
@@ -46,6 +51,10 @@ interface ConcurrencySubscriptionChangeArgs extends ConcurrencySubscriptionArgs 
   readonly quantity: number;
 }
 
+interface ConfirmedConcurrencySubscriptionChangeArgs extends ConcurrencySubscriptionChangeArgs {
+  readonly paymentMethod?: BillingPurchasePaymentMethod;
+}
+
 interface ReduceConcurrencySubscriptionArgs extends ConcurrencySubscriptionChangeArgs {
   readonly successUrl: string;
 }
@@ -55,12 +64,14 @@ interface StripeConcurrencySubscriptionChangeArgs {
   readonly quantity: number;
   readonly mode: "absolute" | "increase" | "reduce";
   readonly hasScheduledConcurrencyChange: boolean;
+  readonly paymentMethod?: BillingPurchasePaymentMethod;
 }
 
 interface AddStripeConcurrencySubscriptionItemArgs {
   readonly subscriptionId: string;
   readonly priceId: string;
   readonly quantity: number;
+  readonly paymentMethod?: BillingPurchasePaymentMethod;
 }
 
 type CancelConcurrencySubscriptionResult =
@@ -415,22 +426,26 @@ function expandedLatestInvoice(
     : null;
 }
 
-function appliedConcurrencyChangeResponse(
+async function appliedConcurrencyChangeResponse(
+  stripe: StripeClient,
   subscription: StripeSubscription,
-): ConcurrencySubscriptionChangeResponse {
-  if (!subscription.pending_update) {
+  targetQuantity: number,
+  signal: AbortSignal,
+): Promise<ConcurrencySubscriptionChangeResponse> {
+  const invoice = expandedLatestInvoice(subscription);
+  if (!invoice) {
     return { status: "processing", hostedInvoiceUrl: null };
   }
-  const invoice = expandedLatestInvoice(subscription);
-  if (!invoice?.hosted_invoice_url) {
-    throw new Error(
-      "Pending concurrency subscription update has no hosted invoice URL",
-    );
+  const result = await completeBillingOperationInvoice(
+    stripe,
+    invoice,
+    `concurrency:${subscription.id}:${targetQuantity}`,
+    signal,
+  );
+  if (result.status === "pending_payment") {
+    return result;
   }
-  return {
-    status: "pending_payment",
-    hostedInvoiceUrl: invoice.hosted_invoice_url,
-  };
+  return { status: "processing", hostedInvoiceUrl: null };
 }
 
 export const addStripeConcurrencySubscriptionItem$ = command(
@@ -461,7 +476,12 @@ export const addStripeConcurrencySubscriptionItem$ = command(
       return pendingItem?.quantity === args.quantity
         ? {
             ok: true,
-            response: appliedConcurrencyChangeResponse(subscription),
+            response: await appliedConcurrencyChangeResponse(
+              stripe,
+              subscription,
+              args.quantity,
+              signal,
+            ),
             subscription,
           }
         : { ok: false, reason: "pending_update" };
@@ -486,6 +506,15 @@ export const addStripeConcurrencySubscriptionItem$ = command(
       signal.throwIfAborted();
     }
 
+    if (args.paymentMethod) {
+      await setStripeSubscriptionPaymentMethod(
+        stripe,
+        subscription.id,
+        args.paymentMethod,
+        signal,
+      );
+    }
+
     const updatedSubscription = await stripe.subscriptions.update(
       subscription.id,
       {
@@ -503,7 +532,12 @@ export const addStripeConcurrencySubscriptionItem$ = command(
     signal.throwIfAborted();
     return {
       ok: true,
-      response: appliedConcurrencyChangeResponse(updatedSubscription),
+      response: await appliedConcurrencyChangeResponse(
+        stripe,
+        updatedSubscription,
+        args.quantity,
+        signal,
+      ),
       subscription: updatedSubscription,
     };
   },
@@ -864,6 +898,23 @@ export const previewStripeConcurrencySubscriptionChange$ = command(
   },
 );
 
+function concurrencyChangeTargetQuantity(
+  args: Pick<StripeConcurrencySubscriptionChangeArgs, "mode" | "quantity">,
+  currentQuantity: number,
+): number | null {
+  const targetQuantity =
+    args.mode === "increase" ? currentQuantity + args.quantity : args.quantity;
+  if (
+    !Number.isSafeInteger(targetQuantity) ||
+    targetQuantity < 1 ||
+    targetQuantity > CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX ||
+    (args.mode === "reduce" && targetQuantity > currentQuantity)
+  ) {
+    return null;
+  }
+  return targetQuantity;
+}
+
 export const applyStripeConcurrencySubscriptionChange$ = command(
   async (
     _,
@@ -882,16 +933,8 @@ export const applyStripeConcurrencySubscriptionChange$ = command(
         "Concurrency subscription has no active concurrency item",
       );
     }
-    const targetQuantity =
-      args.mode === "increase" ? item.quantity + args.quantity : args.quantity;
-    if (
-      !Number.isSafeInteger(targetQuantity) ||
-      targetQuantity < 1 ||
-      targetQuantity > CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX
-    ) {
-      return { ok: false, reason: "invalid_quantity" };
-    }
-    if (args.mode === "reduce" && targetQuantity > item.quantity) {
+    const targetQuantity = concurrencyChangeTargetQuantity(args, item.quantity);
+    if (targetQuantity === null) {
       return { ok: false, reason: "invalid_quantity" };
     }
 
@@ -902,7 +945,12 @@ export const applyStripeConcurrencySubscriptionChange$ = command(
       return pendingItem?.quantity === targetQuantity
         ? {
             ok: true,
-            response: appliedConcurrencyChangeResponse(subscription),
+            response: await appliedConcurrencyChangeResponse(
+              stripe,
+              subscription,
+              targetQuantity,
+              signal,
+            ),
             subscription,
           }
         : { ok: false, reason: "pending_update" };
@@ -953,6 +1001,15 @@ export const applyStripeConcurrencySubscriptionChange$ = command(
       };
     }
 
+    if (args.paymentMethod) {
+      await setStripeSubscriptionPaymentMethod(
+        stripe,
+        subscription.id,
+        args.paymentMethod,
+        signal,
+      );
+    }
+
     const updatedSubscription = await stripe.subscriptions.update(
       subscription.id,
       {
@@ -966,7 +1023,12 @@ export const applyStripeConcurrencySubscriptionChange$ = command(
     signal.throwIfAborted();
     return {
       ok: true,
-      response: appliedConcurrencyChangeResponse(updatedSubscription),
+      response: await appliedConcurrencyChangeResponse(
+        stripe,
+        updatedSubscription,
+        targetQuantity,
+        signal,
+      ),
       subscription: updatedSubscription,
     };
   },
@@ -1004,7 +1066,7 @@ export const previewConcurrencySubscriptionChange$ = command(
 export const changeConcurrencySubscription$ = command(
   async (
     { get, set },
-    args: ConcurrencySubscriptionChangeArgs,
+    args: ConfirmedConcurrencySubscriptionChangeArgs,
     signal: AbortSignal,
   ): Promise<ChangeConcurrencySubscriptionResult> => {
     const subscription = await findActiveConcurrencySubscription(
@@ -1025,10 +1087,16 @@ export const changeConcurrencySubscription$ = command(
         quantity: args.quantity,
         mode: "absolute",
         hasScheduledConcurrencyChange: subscription.scheduledQuantity !== null,
+        paymentMethod: args.paymentMethod,
       },
       signal,
     );
     if (result.ok) {
+      if (result.response.status === "checkout_required") {
+        throw new Error(
+          "Stripe concurrency change unexpectedly required Checkout",
+        );
+      }
       const scheduled =
         args.quantity < subscription.quantity &&
         result.response.effectiveAt !== undefined;
@@ -1158,6 +1226,11 @@ export const reduceConcurrencySubscription$ = command(
             ? "pending_update"
             : "not_reduction",
       };
+    }
+    if (result.response.status === "checkout_required") {
+      throw new Error(
+        "Stripe concurrency reduction unexpectedly required Checkout",
+      );
     }
     await writeScheduledConcurrencyChange(set(writeDb$), {
       orgId: args.orgId,

@@ -10,8 +10,8 @@ from typing import Literal, NamedTuple
 
 from mitmproxy import ctx
 
+import builtin_base_url_template
 import builtin_host_policy
-import connector_template_syntax
 import matching
 import state_file
 from path_security import has_unsafe_url_path
@@ -27,6 +27,15 @@ _BASE_URL_TEMPLATE_WHOLE_BASE_PLACEHOLDER = "https://x.y"
 _BASE_URL_TEMPLATE_HOST_PLACEHOLDER = "x.y"
 _BASE_URL_TEMPLATE_PORT_PLACEHOLDER = "1"
 _BASE_URL_TEMPLATE_PATH_PLACEHOLDER = "x"
+_BASE_URL_TEMPLATE_PLACEHOLDERS: dict[
+    builtin_base_url_template.BaseUrlTemplateComponentKind, str
+] = {
+    "whole-base": _BASE_URL_TEMPLATE_WHOLE_BASE_PLACEHOLDER,
+    "whole-authority": _BASE_URL_TEMPLATE_HOST_PLACEHOLDER,
+    "authority-fragment": _BASE_URL_TEMPLATE_HOST_PLACEHOLDER,
+    "port": _BASE_URL_TEMPLATE_PORT_PLACEHOLDER,
+    "path": _BASE_URL_TEMPLATE_PATH_PLACEHOLDER,
+}
 
 
 CatalogFileKey = state_file.StateFileIdentity
@@ -44,13 +53,6 @@ class CatalogIdentity(NamedTuple):
     catalog_digest: str
     catalog_version: str
     file_key: CatalogFileKey
-
-
-# Precompute fixed URL delimiters once; a catalog base can contain many templates.
-class _BaseUrlTemplateComponentBoundaries(NamedTuple):
-    authority_start: int | None
-    path_start: int | None
-    query_or_fragment_start: int | None
 
 
 CatalogUnavailableReason = Literal[
@@ -447,121 +449,27 @@ def _validate_api_entry(firewall_name: str, api: dict) -> None:
 
 
 def _base_url_template_syntax_target(firewall_name: str, raw_base: str) -> str | None:
-    search_start = 0
+    try:
+        variables = builtin_base_url_template.analyze_base_url_template(raw_base)
+    except builtin_base_url_template.BaseUrlTemplateLayoutError as e:
+        raise BuiltinFirewallCatalogCacheError(
+            f'catalog cache firewall "{firewall_name}" api {e}'
+        ) from e
+    if not variables:
+        return None
+
     result: list[str] = []
-    found = False
-    boundaries = _base_url_template_component_boundaries(raw_base)
-    while True:
-        start = raw_base.find("${{", search_start)
-        if start == -1:
-            if not found:
-                return None
-            result.append(raw_base[search_start:])
-            return "".join(result)
-        found = True
-        content_start = start + len("${{")
-        end = raw_base.find("}}", content_start)
-        if end == -1:
-            raise BuiltinFirewallCatalogCacheError(
-                f'catalog cache firewall "{firewall_name}" api base template is unterminated'
-            )
-        template_end = end + len("}}")
-        template = raw_base[start:template_end]
-        reference = next(connector_template_syntax.iter_simple_references(template), None)
-        if reference is None or reference.start != 0 or reference.end != len(template):
-            raise BuiltinFirewallCatalogCacheError(
-                f'catalog cache firewall "{firewall_name}" api base template variable is invalid'
-            )
-        if reference.namespace != "vars":
-            raise BuiltinFirewallCatalogCacheError(
-                f'catalog cache firewall "{firewall_name}" api base template must use vars'
-            )
-        result.append(raw_base[search_start:start])
-        result.append(
-            _base_url_template_syntax_placeholder(
-                firewall_name,
-                raw_base,
-                start,
-                template_end,
-                boundaries,
-            )
-        )
-        search_start = template_end
-
-
-def _base_url_template_component_boundaries(
-    raw_base: str,
-) -> _BaseUrlTemplateComponentBoundaries:
-    scheme_delimiter = raw_base.find("://")
-    if scheme_delimiter == -1:
-        return _BaseUrlTemplateComponentBoundaries(None, None, None)
-
-    authority_start = scheme_delimiter + len("://")
-    path_start = raw_base.find("/", authority_start)
-    query_start = raw_base.find("?", authority_start)
-    fragment_start = raw_base.find("#", authority_start)
-    query_or_fragment_start = min(
-        (index for index in (query_start, fragment_start) if index != -1),
-        default=None,
-    )
-    return _BaseUrlTemplateComponentBoundaries(
-        authority_start=authority_start,
-        path_start=None if path_start == -1 else path_start,
-        query_or_fragment_start=query_or_fragment_start,
-    )
-
-
-def _base_url_template_syntax_placeholder(
-    firewall_name: str,
-    raw_base: str,
-    start: int,
-    template_end: int,
-    boundaries: _BaseUrlTemplateComponentBoundaries,
-) -> str:
-    ends_base_or_starts_path = template_end == len(raw_base) or raw_base.startswith(
-        "/", template_end
-    )
-
-    if start == 0 and ends_base_or_starts_path:
-        return _BASE_URL_TEMPLATE_WHOLE_BASE_PLACEHOLDER
-    if raw_base.endswith("://", 0, start) and ends_base_or_starts_path:
-        return _BASE_URL_TEMPLATE_HOST_PLACEHOLDER
-    if _base_url_prefix_is_inside_authority(start, boundaries):
-        if raw_base.endswith(":", 0, start) and ends_base_or_starts_path:
-            return _BASE_URL_TEMPLATE_PORT_PLACEHOLDER
-        return _BASE_URL_TEMPLATE_HOST_PLACEHOLDER
-    if _base_url_prefix_is_inside_path(start, boundaries):
-        return _BASE_URL_TEMPLATE_PATH_PLACEHOLDER
-    raise BuiltinFirewallCatalogCacheError(
-        f'catalog cache firewall "{firewall_name}" api base template variable '
-        "is used in an unsupported position"
-    )
-
-
-def _base_url_prefix_is_inside_authority(
-    template_start: int,
-    boundaries: _BaseUrlTemplateComponentBoundaries,
-) -> bool:
-    if boundaries.authority_start is None or boundaries.authority_start > template_start:
-        return False
-    return all(
-        boundary is None or template_start <= boundary
-        for boundary in (boundaries.path_start, boundaries.query_or_fragment_start)
-    )
-
-
-def _base_url_prefix_is_inside_path(
-    template_start: int,
-    boundaries: _BaseUrlTemplateComponentBoundaries,
-) -> bool:
-    return (
-        boundaries.path_start is not None
-        and boundaries.path_start < template_start
-        and (
-            boundaries.query_or_fragment_start is None
-            or template_start <= boundaries.query_or_fragment_start
-        )
-    )
+    last_index = 0
+    for variable in variables:
+        reference = variable.reference
+        result.append(raw_base[last_index : reference.start])
+        placeholder = _BASE_URL_TEMPLATE_PLACEHOLDERS[variable.kind]
+        if variable.authority_fragment_shape == "ip-literal":
+            placeholder = _BASE_URL_TEMPLATE_PORT_PLACEHOLDER
+        result.append(placeholder)
+        last_index = reference.end
+    result.append(raw_base[last_index:])
+    return "".join(result)
 
 
 def _warn(message: str) -> None:

@@ -572,18 +572,31 @@ export const inviteMember$ = command(
     const createClient = get(zeroClient$);
     const client = createClient(zeroOrgInviteContract);
     if (usagePackUsd !== null) {
+      const supportsInAppPreview =
+        get(featureSwitch$)[FeatureSwitchKey.SavedBillingCreditPurchase] ??
+        false;
       const result = await accept(
         client.previewPurchase({
           body: {
             email,
             role,
             usagePackUsd,
+            ...(supportsInAppPreview
+              ? {
+                  supportsInAppPreview: true,
+                  returnUrl: window.location.href,
+                }
+              : {}),
           },
           fetchOptions: { signal },
         }),
         [200],
       );
       signal.throwIfAborted();
+      if (result.body.checkoutUrl) {
+        window.location.href = result.body.checkoutUrl;
+        return;
+      }
       set(internalInvitePurchasePreview$, {
         email,
         role,
@@ -621,15 +634,30 @@ export const confirmInvitePurchase$ = command(
     }
     const createClient = get(zeroClient$);
     const client = createClient(zeroOrgInviteContract);
-    await accept(
+    const result = await accept(
       client.confirmPurchase({
         params: { purchaseId: preview.payment.purchaseId },
-        body: {},
+        body: {
+          ...(preview.payment.paymentMethodPreviewToken
+            ? {
+                paymentMethodPreviewToken:
+                  preview.payment.paymentMethodPreviewToken,
+              }
+            : {}),
+        },
         fetchOptions: { signal },
       }),
       [200],
     );
     signal.throwIfAborted();
+    if ("status" in result.body && result.body.status === "pending_payment") {
+      window.location.href = result.body.hostedInvoiceUrl;
+      return;
+    }
+    if ("status" in result.body && result.body.status === "checkout_required") {
+      window.location.href = result.body.checkoutUrl;
+      return;
+    }
     toast.success(
       i18n.t(
         ($) => {

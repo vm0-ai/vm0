@@ -15,10 +15,6 @@ import {
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
-import {
-  resolvePlatformOriginForTarget,
-  rewritePlatformHostname,
-} from "../api-base.ts";
 import { pageSignal$ } from "../page-signal.ts";
 import {
   createCardSignalsRegistry,
@@ -29,6 +25,7 @@ import {
   createTextPreviewComputedFromBlob,
   type TextPreviewComputed,
 } from "../text-preview.ts";
+import { parseTrustedPlatformUrl } from "./trusted-platform-url.ts";
 
 export interface MailDraftDescriptor {
   readonly mailDraftId: string;
@@ -78,66 +75,9 @@ export type MailDraftCardSignalsRegistry = CardSignalsRegistry<
   MailDraftSignals
 >;
 
-function browserOrigin(): string | null {
-  if (typeof location === "undefined" || !location.origin) {
-    return null;
-  }
-  return location.origin;
-}
-
-function addAllowedOriginVariants(
-  origins: Set<string>,
-  baseUrl: string | null,
-) {
-  if (!baseUrl || !URL.canParse(baseUrl)) {
-    return;
-  }
-  const parsed = new URL(baseUrl);
-  origins.add(parsed.origin);
-  for (const target of ["api", "www", "app", "platform"] as const) {
-    const variant = new URL(parsed);
-    variant.hostname = rewritePlatformHostname(variant.hostname, target);
-    origins.add(variant.origin);
-  }
-}
-
-function allowedOrigins(): Set<string> {
-  const origins = new Set<string>();
-  addAllowedOriginVariants(origins, browserOrigin());
-  addAllowedOriginVariants(origins, resolvePlatformOriginForTarget("api"));
-  return origins;
-}
-
-function hasExplicitUrlOrigin(value: string): boolean {
-  return URL.canParse(value) || value.trimStart().startsWith("//");
-}
-
-function isPlatformHostname(hostname: string): boolean {
-  const platformDomain = ["vm0.ai", "vm6.ai", "vm7.ai"].some((suffix) => {
-    return hostname === suffix || hostname.endsWith(`.${suffix}`);
-  });
-  return platformDomain && /(^|-)(platform|app|www|api)\./u.test(hostname);
-}
-
-function parseUrl(value: string): URL | null {
-  const baseUrl = browserOrigin() ?? resolvePlatformOriginForTarget("api");
-  if (baseUrl && URL.canParse(value, baseUrl)) {
-    return new URL(value, baseUrl);
-  }
-  return URL.canParse(value) ? new URL(value) : null;
-}
-
 export function parseMailDraftUrl(value: string): MailDraftDescriptor | null {
-  const url = parseUrl(value);
+  const url = parseTrustedPlatformUrl(value);
   if (!url) {
-    return null;
-  }
-  const explicitOrigin = hasExplicitUrlOrigin(value);
-  if (
-    explicitOrigin &&
-    ((url.protocol !== "http:" && url.protocol !== "https:") ||
-      (!allowedOrigins().has(url.origin) && !isPlatformHostname(url.hostname)))
-  ) {
     return null;
   }
   const match = url.pathname.match(

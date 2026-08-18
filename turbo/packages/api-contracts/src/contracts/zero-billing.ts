@@ -113,6 +113,42 @@ const checkoutResponseSchema = z.object({
   url: z.string(),
 });
 
+const subscriptionPurchasePreviewBaseSchema = z.object({
+  status: z.literal("preview"),
+  tier: z.enum(["pro", "team"]),
+  immediateAmountCents: z.number().int().nonnegative(),
+  nextRecurringAmountCents: z.number().int().nonnegative(),
+  currency: z.string().length(3),
+  expiresAt: z.iso.datetime(),
+  previewToken: z.string().min(1),
+});
+
+const planPurchasePreviewResponseSchema =
+  subscriptionPurchasePreviewBaseSchema.extend({
+    purchaseType: z.literal("plan"),
+    trialDays: z.literal(7).optional(),
+  });
+
+const usagePackPurchasePreviewResponseSchema =
+  subscriptionPurchasePreviewBaseSchema.extend({
+    purchaseType: z.literal("usage_pack"),
+  });
+
+const billingPurchaseConfirmResponseSchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("completed"),
+    hostedInvoiceUrl: z.null(),
+  }),
+  z.object({
+    status: z.literal("pending_payment"),
+    hostedInvoiceUrl: z.string().url(),
+  }),
+  z.object({
+    status: z.literal("checkout_required"),
+    checkoutUrl: z.string().url(),
+  }),
+]);
+
 const checkoutCompleteResponseSchema = z.object({
   completed: z.boolean(),
 });
@@ -154,6 +190,8 @@ const stripeRedirectUrlSchema = z.string().url().max(5000);
 
 const checkoutRequestSchema = z.object({
   tier: z.enum(["pro", "team"]),
+  supportsInAppPreview: z.boolean().optional(),
+  previewToken: z.string().min(1).optional(),
   successUrl: stripeRedirectUrlSchema,
   cancelUrl: stripeRedirectUrlSchema,
   trialDays: z.literal(7).optional(),
@@ -218,6 +256,8 @@ export type UsagePackCatalogItem = z.infer<typeof usagePackCatalogItemSchema>;
 
 const usagePackCheckoutRequestSchema = z.object({
   tier: z.enum(["pro", "team"]),
+  supportsInAppPreview: z.boolean().optional(),
+  previewToken: z.string().min(1).optional(),
   memberUsagePacks: z.array(memberUsagePackSchema).min(1).max(1000),
   successUrl: z.string().url(),
   cancelUrl: z.string().url(),
@@ -258,6 +298,8 @@ const usagePackManagementResponseSchema = z.object({
 const usagePackChangePreviewRequestSchema = z.object({
   memberId: z.string().min(1),
   targetUsagePackUsd: usagePackUsdSchema,
+  supportsInAppPreview: z.boolean().optional(),
+  returnUrl: stripeRedirectUrlSchema.optional(),
 });
 
 const usagePackChangePreviewResponseSchema = z.object({
@@ -271,17 +313,27 @@ const usagePackChangePreviewResponseSchema = z.object({
   effectiveAt: z.iso.datetime().nullable(),
   prorationDate: z.iso.datetime(),
   expiresAt: z.iso.datetime(),
+  paymentMethodPreviewToken: z.string().min(1).optional(),
+  checkoutUrl: z.string().url().optional(),
 });
 
-const usagePackChangeConfirmResponseSchema = z.object({
-  status: z.enum(["processing", "pending_payment", "scheduled", "completed"]),
-  effectiveAt: z.iso.datetime().nullable(),
-  hostedInvoiceUrl: z.string().url().nullable(),
-});
+const usagePackChangeConfirmResponseSchema = z.union([
+  z.object({
+    status: z.enum(["processing", "pending_payment", "scheduled", "completed"]),
+    effectiveAt: z.iso.datetime().nullable(),
+    hostedInvoiceUrl: z.string().url().nullable(),
+  }),
+  z.object({
+    status: z.literal("checkout_required"),
+    checkoutUrl: z.string().url(),
+  }),
+]);
 
 const usagePackSubscriptionChangePreviewRequestSchema = z.object({
   targetTier: z.enum(["pro", "team"]),
   memberUsagePacks: z.array(memberUsagePackSchema).min(1).max(1000),
+  supportsInAppPreview: z.boolean().optional(),
+  returnUrl: stripeRedirectUrlSchema.optional(),
 });
 
 const usagePackSubscriptionChangePreviewResponseSchema = z.object({
@@ -302,10 +354,13 @@ const usagePackSubscriptionChangePreviewResponseSchema = z.object({
   effectiveAt: z.iso.datetime(),
   prorationDate: z.iso.datetime(),
   expiresAt: z.iso.datetime(),
+  paymentMethodPreviewToken: z.string().min(1).optional(),
+  checkoutUrl: z.string().url().optional(),
 });
 
 const usagePackSubscriptionChangeConfirmRequestSchema = z.object({
   changeId: z.uuid(),
+  paymentMethodPreviewToken: z.string().min(1).optional(),
 });
 
 export type UsagePackManagementResponse = z.infer<
@@ -397,12 +452,16 @@ const checkoutCompleteRequestSchema = z.object({
 
 const concurrencyCheckoutRequestSchema = z.object({
   quantity: z.number().int().min(1).max(1000),
+  paymentMethodPreviewToken: z.string().min(1).optional(),
   successUrl: stripeRedirectUrlSchema,
   cancelUrl: stripeRedirectUrlSchema,
 });
 
-const concurrencyCheckoutPreviewRequestSchema =
-  concurrencyCheckoutRequestSchema.pick({ quantity: true });
+const concurrencyCheckoutPreviewRequestSchema = z.object({
+  quantity: z.number().int().min(1).max(1000),
+  supportsInAppPreview: z.boolean().optional(),
+  returnUrl: stripeRedirectUrlSchema.optional(),
+});
 
 const concurrencySubscriptionReduceRequestSchema = z.object({
   quantity: z.number().int().min(1).max(1000),
@@ -412,6 +471,13 @@ const concurrencySubscriptionReduceRequestSchema = z.object({
 
 const concurrencySubscriptionChangeRequestSchema = z.object({
   quantity: z.number().int().min(1).max(1000),
+  paymentMethodPreviewToken: z.string().min(1).optional(),
+});
+
+const concurrencySubscriptionChangePreviewRequestSchema = z.object({
+  quantity: z.number().int().min(1).max(1000),
+  supportsInAppPreview: z.boolean().optional(),
+  returnUrl: stripeRedirectUrlSchema.optional(),
 });
 
 const concurrencySubscriptionChangePreviewResponseSchema = z.object({
@@ -421,6 +487,8 @@ const concurrencySubscriptionChangePreviewResponseSchema = z.object({
   nextRecurringAmountCents: z.number().int().nonnegative(),
   currency: z.string().length(3),
   effectiveAt: z.iso.datetime().optional(),
+  paymentMethodPreviewToken: z.string().min(1).optional(),
+  checkoutUrl: z.string().url().optional(),
 });
 
 const concurrencySubscriptionChangeResponseSchema = z.discriminatedUnion(
@@ -441,6 +509,10 @@ const concurrencySubscriptionChangeResponseSchema = z.discriminatedUnion(
       hostedInvoiceUrl: z.null(),
       effectiveAt: z.iso.datetime().optional(),
     }),
+    z.object({
+      status: z.literal("checkout_required"),
+      checkoutUrl: z.string().url(),
+    }),
   ],
 );
 
@@ -458,6 +530,7 @@ const creditCheckoutRequestSchema = z
     credits: z.number().int().min(1000).max(10_000_000),
     customAmount: z.boolean().optional(),
     previewExistingBilling: z.boolean().optional(),
+    supportsInAppPreview: z.boolean().optional(),
     successUrl: stripeRedirectUrlSchema,
     cancelUrl: stripeRedirectUrlSchema,
     autoRecharge: z
@@ -504,16 +577,8 @@ const creditPurchaseStartResponseSchema = z.union([
   creditPurchasePreviewResponseSchema,
 ]);
 
-const creditPurchaseConfirmResponseSchema = z.discriminatedUnion("status", [
-  z.object({
-    status: z.literal("completed"),
-    hostedInvoiceUrl: z.null(),
-  }),
-  z.object({
-    status: z.literal("pending_payment"),
-    hostedInvoiceUrl: z.string().url(),
-  }),
-]);
+const creditPurchaseConfirmResponseSchema =
+  billingPurchaseConfirmResponseSchema;
 
 const autoRechargeUpdateRequestSchema = z
   .object({
@@ -576,14 +641,35 @@ export const zeroBillingCheckoutContract = c.router({
     headers: authHeadersSchema,
     body: checkoutRequestSchema,
     responses: {
-      200: checkoutResponseSchema,
+      200: z.union([
+        checkoutResponseSchema,
+        planPurchasePreviewResponseSchema,
+        billingPurchaseConfirmResponseSchema,
+      ]),
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
+      409: apiErrorSchema,
       500: apiErrorSchema,
       503: apiErrorSchema,
     },
     summary: "Create Stripe checkout session",
+  },
+  confirm: {
+    method: "POST",
+    path: "/api/okou/billing/checkout/confirm",
+    headers: authHeadersSchema,
+    body: z.object({ previewToken: z.string().min(1) }),
+    responses: {
+      200: billingPurchaseConfirmResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Confirm a previewed Plan subscription purchase",
   },
   complete: {
     method: "POST",
@@ -614,14 +700,35 @@ export const zeroBillingUsagePackCheckoutContract = c.router({
     headers: authHeadersSchema,
     body: usagePackCheckoutRequestSchema,
     responses: {
-      200: checkoutResponseSchema,
+      200: z.union([
+        checkoutResponseSchema,
+        usagePackPurchasePreviewResponseSchema,
+        billingPurchaseConfirmResponseSchema,
+      ]),
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
+      409: apiErrorSchema,
       500: apiErrorSchema,
       503: apiErrorSchema,
     },
     summary: "Create Stripe checkout session for a plan with usage packs",
+  },
+  confirm: {
+    method: "POST",
+    path: "/api/okou/billing/usage-pack-checkout/confirm",
+    headers: authHeadersSchema,
+    body: z.object({ previewToken: z.string().min(1) }),
+    responses: {
+      200: billingPurchaseConfirmResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Confirm a previewed usage pack subscription purchase",
   },
 });
 
@@ -684,7 +791,9 @@ export const zeroBillingUsagePackManagementContract = c.router({
     path: "/api/okou/billing/usage-pack-subscription/changes/:changeId/confirm",
     pathParams: z.object({ changeId: z.uuid() }),
     headers: authHeadersSchema,
-    body: z.object({}),
+    body: z.object({
+      paymentMethodPreviewToken: z.string().min(1).optional(),
+    }),
     responses: {
       200: usagePackChangeConfirmResponseSchema,
       400: apiErrorSchema,
@@ -902,7 +1011,7 @@ export const zeroBillingConcurrencySubscriptionContract = c.router({
       subscriptionId: z.string().min(1),
     }),
     headers: authHeadersSchema,
-    body: concurrencySubscriptionChangeRequestSchema,
+    body: concurrencySubscriptionChangePreviewRequestSchema,
     responses: {
       200: concurrencySubscriptionChangePreviewResponseSchema,
       400: apiErrorSchema,
@@ -1308,6 +1417,19 @@ export type ZeroBillingRedeemCodeContract =
 export type BillingStatusResponse = z.infer<typeof billingStatusResponseSchema>;
 export type AutoRechargeConfig = z.infer<typeof autoRechargeSchema>;
 export type CheckoutResponse = z.infer<typeof checkoutResponseSchema>;
+export type CheckoutRequest = z.infer<typeof checkoutRequestSchema>;
+export type UsagePackCheckoutRequest = z.infer<
+  typeof usagePackCheckoutRequestSchema
+>;
+export type PlanPurchasePreviewResponse = z.infer<
+  typeof planPurchasePreviewResponseSchema
+>;
+export type UsagePackPurchasePreviewResponse = z.infer<
+  typeof usagePackPurchasePreviewResponseSchema
+>;
+export type BillingPurchaseConfirmResponse = z.infer<
+  typeof billingPurchaseConfirmResponseSchema
+>;
 export type RedeemCodeResponse = z.infer<typeof redeemCodeResponseSchema>;
 export type ConcurrencyCheckoutRequest = z.infer<
   typeof concurrencyCheckoutRequestSchema

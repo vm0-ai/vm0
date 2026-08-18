@@ -131,6 +131,8 @@ interface BaseVideoModelConfig {
   readonly alias: string;
   /** Human-facing name for pickers. */
   readonly label: string;
+  /** Compact label used when the model is shown as a sibling variant. */
+  readonly variantLabel?: string;
   readonly aspectRatios: readonly VideoAspectRatio[];
   readonly durations: readonly VideoDuration[];
   readonly resolutions: readonly VideoResolution[];
@@ -193,6 +195,7 @@ export const VIDEO_MODEL_CONFIGS = {
     provider: "byteplus",
     alias: "dreamina-seedance-2.0",
     label: "Seedance 2.0",
+    variantLabel: "Standard",
     family: "seedance-2",
     aspectRatios: VIDEO_ASPECT_RATIOS,
     durations: SEEDANCE_2_DURATIONS,
@@ -214,6 +217,7 @@ export const VIDEO_MODEL_CONFIGS = {
     provider: "byteplus",
     alias: "dreamina-seedance-2.0-fast",
     label: "Seedance 2.0 fast",
+    variantLabel: "Fast",
     family: "seedance-2",
     aspectRatios: VIDEO_ASPECT_RATIOS,
     durations: SEEDANCE_2_DURATIONS,
@@ -235,6 +239,7 @@ export const VIDEO_MODEL_CONFIGS = {
     provider: "byteplus",
     alias: "dreamina-seedance-2.0-mini",
     label: "Seedance 2.0 Mini",
+    variantLabel: "Mini",
     family: "seedance-2",
     aspectRatios: VIDEO_ASPECT_RATIOS,
     durations: SEEDANCE_2_DURATIONS,

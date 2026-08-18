@@ -658,7 +658,7 @@ describe("connectors page", () => {
       screen.findByTestId("connector-card-label"),
     ).resolves.toHaveTextContent("GitHub");
     await expect(
-      screen.findByText("Connect 700+ services for your agents to use."),
+      screen.findByText("Connect 1000+ services for your agents to use."),
     ).resolves.toBeInTheDocument();
 
     await fill(await screen.findByPlaceholderText("Find connectors"), "Slack");
@@ -692,7 +692,7 @@ describe("connectors page", () => {
     });
 
     await expect(
-      screen.findByText("Connect 700+ services for your agents to use."),
+      screen.findByText("Connect 1000+ services for your agents to use."),
     ).resolves.toBeInTheDocument();
   });
 
@@ -721,7 +721,7 @@ describe("connectors page", () => {
       screen.findByText("Connect third-party services for your agents to use."),
     ).resolves.toBeInTheDocument();
     expect(
-      screen.queryByText("Connect 700+ services for your agents to use."),
+      screen.queryByText("Connect 1000+ services for your agents to use."),
     ).not.toBeInTheDocument();
   });
 
@@ -4841,12 +4841,9 @@ describe("connectors page", () => {
     );
   });
 
-  it("reconnects a managed Feishu connector without replacing its grants", async () => {
-    const defaultAgentId = "c0000000-0000-4000-a000-000000000044";
-    let oauthStartCount = 0;
+  it("hides an integration-managed Feishu connector from custom settings", async () => {
     let authorizationReads = 0;
-    let authorizationUpdates = 0;
-    let connector = customConnector({
+    const connector = customConnector({
       slug: "_feishu-00000000-0000-4000-8000-000000000044",
       displayName: "Feishu",
       prefixTemplates: ["https://open.feishu.cn/open-apis/"],
@@ -4877,88 +4874,26 @@ describe("connectors page", () => {
       name: "Test Org",
       role: "admin",
     });
-    context.mocks.data.team([teamAgent(defaultAgentId, "Zero")]);
     context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
       return respond(200, { connectors: [connector] });
     });
     context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
       authorizationReads += 1;
-      return respond(200, {
-        grants: [
-          {
-            customConnectorId: connector.id,
-            permissionNames: ["messages:send-as-user"],
-          },
-        ],
-      });
+      return respond(200, { grants: [] });
     });
-    context.mocks.api(
-      zeroAgentCustomConnectorsContract.update,
-      ({ respond }) => {
-        authorizationUpdates += 1;
-        return respond(200, {
-          grants: [
-            {
-              customConnectorId: connector.id,
-              permissionNames: ["messages:send-as-user"],
-            },
-          ],
-        });
-      },
-    );
-    const authWindow = createMockAuthWindow();
-    const browserOpen = context.mocks.browser.open(authWindow);
-    context.mocks.api(
-      zeroCustomConnectorOAuth2Contract.start,
-      ({ params, respond }) => {
-        expect(params.id).toBe(connector.id);
-        oauthStartCount += 1;
-        connector = {
-          ...connector,
-          connected: true,
-          missingRequiredFields: [],
-        };
-        authWindow.close();
-        return respond(200, {
-          authorizationUrl:
-            "https://accounts.feishu.cn/open-apis/authen/v1/authorize?state=feishu-ui-test",
-        });
-      },
-    );
 
     detachedSetupPage({
       context,
       path: "/connectors?tab=custom",
-      featureSwitches: {
-        [FeatureSwitchKey.FeishuIntegration]: true,
-      },
     });
 
-    const connectorButton = await waitFor(() => {
-      return buttonByAriaLabel("Connect Feishu");
-    });
-    expect(
-      within(connectorCardByLabel("Feishu")).queryByTestId(
-        "connector-card-agent-access",
+    await expect(
+      screen.findByText(
+        "No custom connectors yet. Create one to register an API for every member to use.",
       ),
-    ).not.toBeInTheDocument();
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByText("Feishu")).not.toBeInTheDocument();
     expect(authorizationReads).toBe(0);
-    click(connectorButton);
-    expect(browserOpen.calls).toHaveLength(1);
-    expect(document.querySelector('[role="dialog"]')).not.toBeInTheDocument();
-    await waitFor(() => {
-      expect(authWindow.location.href).toBe(
-        "https://accounts.feishu.cn/open-apis/authen/v1/authorize?state=feishu-ui-test",
-      );
-      expect(oauthStartCount).toBe(1);
-      expect(
-        within(connectorCardByLabel("Feishu")).getByTestId(
-          "connector-card-agent-access",
-        ),
-      ).toHaveTextContent("Used by Zero");
-    });
-    expect(authorizationReads).toBe(1);
-    expect(authorizationUpdates).toBe(0);
   });
 
   it("configures OAuth app credentials at creation and authorizes on connect", async () => {

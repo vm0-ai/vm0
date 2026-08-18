@@ -1,5 +1,6 @@
 use super::*;
 use crate::restored_session_identity::RestoredSessionIdentity;
+use guest_contracts::session_history_identity::{SessionHistoryFramework, SessionHistoryRefKind};
 
 #[test]
 fn restored_session_identity_requires_valid_hash_ref() {
@@ -16,6 +17,42 @@ fn restored_session_identity_requires_valid_hash_ref() {
 
     ctx.resume_session = Some(resume_ref("../../etc/passwd", history_ref("hash-a", 12)));
     assert!(RestoredSessionIdentity::from_context(&ctx).is_none());
+}
+
+#[test]
+fn restored_session_identity_maps_request_boundary_types() {
+    let cases = [
+        (
+            claude_context(),
+            "sess-identity-claude",
+            SessionHistoryFramework::ClaudeCode,
+        ),
+        (
+            codex_context(),
+            CODEX_SESSION_ID,
+            SessionHistoryFramework::Codex,
+        ),
+        (
+            pi_context(),
+            "sess-identity-pi",
+            SessionHistoryFramework::Pi,
+        ),
+    ];
+
+    for (mut ctx, session_id, framework) in cases {
+        ctx.resume_session = Some(resume_ref(session_id, history_ref("hash-a", 12)));
+
+        let actual = RestoredSessionIdentity::from_context(&ctx).expect("request identity");
+        let expected = RestoredSessionIdentity::new(
+            framework,
+            session_id,
+            SessionHistoryRefKind::Blob,
+            "hash-a",
+            Some(12),
+        );
+
+        assert_eq!(actual, expected);
+    }
 }
 
 #[test]

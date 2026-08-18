@@ -7,14 +7,15 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use guest_contracts::cli_agent_session_id::is_valid_cli_agent_session_id;
 use guest_contracts::codex_thread_id::canonical_codex_thread_id;
+use guest_contracts::session_history_identity::{SessionHistoryFramework, SessionHistoryRefKind};
 use sandbox::Sandbox;
 use tracing::{info, warn};
 
 use super::cli_framework::{EffectiveCliFramework, effective_cli_framework};
 use super::env::validate_resume_session_id;
 use super::{RunnerError, RunnerResult};
-use crate::restored_session_identity::{RestoredSessionFramework, RestoredSessionIdentity};
-use crate::types::ExecutionContext;
+use crate::restored_session_identity::RestoredSessionIdentity;
+use crate::types::{ExecutionContext, ResumeSessionHistoryRefKind};
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 
 impl RestoredSessionIdentity {
@@ -23,7 +24,14 @@ impl RestoredSessionIdentity {
         let resume_session = context.resume_session.as_ref()?;
         let history_ref = resume_session.history_ref()?;
         let effective_framework = effective_cli_framework(&context.cli_agent_type);
-        let framework = restored_session_framework(effective_framework);
+        let framework = match effective_framework {
+            EffectiveCliFramework::ClaudeCode => SessionHistoryFramework::ClaudeCode,
+            EffectiveCliFramework::Codex => SessionHistoryFramework::Codex,
+            EffectiveCliFramework::Pi => SessionHistoryFramework::Pi,
+        };
+        let history_ref_kind = match history_ref.kind {
+            ResumeSessionHistoryRefKind::Blob => SessionHistoryRefKind::Blob,
+        };
         let session_id = restored_session_identity_session_id(
             effective_framework,
             &resume_session.cli_agent_session_id,
@@ -31,7 +39,7 @@ impl RestoredSessionIdentity {
         Some(Self::new(
             framework,
             &session_id,
-            history_ref.kind,
+            history_ref_kind,
             history_ref.hash.clone(),
             Some(history_ref.raw_size),
         ))
@@ -46,14 +54,6 @@ fn restored_session_identity_session_id(
         EffectiveCliFramework::ClaudeCode => Some(session_id.to_owned()),
         EffectiveCliFramework::Codex => canonical_codex_thread_id(session_id),
         EffectiveCliFramework::Pi => Some(session_id.to_owned()),
-    }
-}
-
-fn restored_session_framework(framework: EffectiveCliFramework) -> RestoredSessionFramework {
-    match framework {
-        EffectiveCliFramework::ClaudeCode => RestoredSessionFramework::ClaudeCode,
-        EffectiveCliFramework::Codex => RestoredSessionFramework::Codex,
-        EffectiveCliFramework::Pi => RestoredSessionFramework::Pi,
     }
 }
 

@@ -192,15 +192,28 @@ fn validate_open_state_file<Fd: std::os::fd::AsRawFd>(
             path.display()
         )));
     }
-    if matches!(owner_check, OwnerCheck::CurrentEuid) {
-        let expected_uid = nix::unistd::geteuid().as_raw();
-        if stat.st_uid != expected_uid {
-            return Err(RunnerError::Internal(format!(
-                "{} is owned by uid {}, but runner euid is {expected_uid}",
-                path.display(),
-                stat.st_uid
-            )));
-        }
+    validate_owner_uid(
+        stat.st_uid,
+        nix::unistd::geteuid().as_raw(),
+        owner_check,
+        path,
+    )?;
+    Ok(())
+}
+
+#[cfg(unix)]
+fn validate_owner_uid(
+    stat_uid: libc::uid_t,
+    expected_uid: libc::uid_t,
+    owner_check: OwnerCheck,
+    path: &Path,
+) -> RunnerResult<()> {
+    if matches!(owner_check, OwnerCheck::CurrentEuid) && stat_uid != expected_uid {
+        return Err(RunnerError::Internal(format!(
+            "{} is owned by uid {}, but runner euid is {expected_uid}",
+            path.display(),
+            stat_uid
+        )));
     }
     Ok(())
 }
@@ -326,5 +339,41 @@ mod tests {
             error.to_string().contains("exceeds 5 bytes"),
             "unexpected error: {error}"
         );
+    }
+
+    #[test]
+    fn validate_owner_uid_accepts_matching_uid() {
+        let path = PathBuf::from("/tmp/state.json");
+        validate_owner_uid(1000, 1000, OwnerCheck::CurrentEuid, &path).unwrap();
+    }
+
+    #[test]
+    fn validate_owner_uid_rejects_mismatched_uid() {
+        let path = PathBuf::from("/tmp/state.json");
+        let error = validate_owner_uid(1000, 2000, OwnerCheck::CurrentEuid, &path).unwrap_err();
+        let message = error.to_string();
+
+        assert!(
+            message.contains(&path.display().to_string()),
+            "missing path: {message}"
+        );
+        assert!(message.contains("1000"), "missing actual uid: {message}");
+        assert!(message.contains("2000"), "missing expected uid: {message}");
+    }
+
+    #[test]
+    fn validate_owner_uid_none_accepts_mismatched_uid() {
+        let path = PathBuf::from("/tmp/state.json");
+        validate_owner_uid(1000, 2000, OwnerCheck::None, &path).unwrap();
+    }
+
+    #[test]
+    fn validate_open_state_file_accepts_regular_file_owned_by_current_uid() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.json");
+        std::fs::write(&path, b"state").unwrap();
+
+        let file = std::fs::File::open(&path).unwrap();
+        validate_open_state_file(&file, &path, OwnerCheck::CurrentEuid).unwrap();
     }
 }

@@ -4,6 +4,8 @@ import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { env, optionalEnv } from "../../lib/env";
+import { billingRedirectAllowed } from "../../lib/billing-redirect";
+import { nowDate } from "../../lib/time";
 import {
   badRequestMessage,
   conflict,
@@ -14,7 +16,9 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { clerk$ } from "../external/clerk";
-import { db$, writeDb$ } from "../external/db";
+import { db$, writeDb$, type ReadonlyDb } from "../external/db";
+import { getStripeClient } from "../external/stripe-client";
+import { parseBillingPaymentMethodPreviewToken } from "../services/billing-purchase-preview-token.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
 import {
@@ -23,6 +27,13 @@ import {
   revokeUsagePackInvitationPurchase,
   usagePackInvitationPurchaseSchemaAvailable,
 } from "../services/usage-pack-invitation-purchase.service";
+import { activeUsagePackBillingContext } from "../services/usage-pack-subscription.service";
+import {
+  billingPurchasePreviewEnabled$,
+  revalidateBillingPurchase,
+  routeBillingPurchasePreview,
+  type BillingPurchasePaymentMethod,
+} from "../services/billing-payment-method.service";
 import type { RouteEntry } from "../route-entry";
 
 const adminRequired = Object.freeze({
@@ -199,6 +210,23 @@ const purchasePreviewInner$ = command(
     if (!body.ok) {
       return body.response;
     }
+    const previewEnabled = await set(
+      billingPurchasePreviewEnabled$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        requested: body.data.supportsInAppPreview === true,
+      },
+      signal,
+    );
+    if (
+      previewEnabled &&
+      (!body.data.returnUrl || !billingRedirectAllowed(body.data.returnUrl))
+    ) {
+      return badRequestMessage(
+        "returnUrl must match the platform origin for in-app billing",
+      );
+    }
     const result = await createUsagePackInvitationPreview(
       set(writeDb$),
       get(clerk$),
@@ -219,9 +247,95 @@ const purchasePreviewInner$ = command(
         "This invitation cannot be purchased in the current billing state",
       );
     }
+    if (previewEnabled && body.data.returnUrl) {
+      const billing = await activeUsagePackBillingContext(db, auth.orgId);
+      signal.throwIfAborted();
+      if (!billing) {
+        return notFound("Usage pack subscription not found");
+      }
+      const route = await routeBillingPurchasePreview(
+        {
+          stripe: getStripeClient(),
+          orgId: auth.orgId,
+          customerId: billing.stripeCustomerId,
+          subscriptionId: billing.stripeSubscriptionId,
+          operation: "usage_pack_invitation",
+          operationId: result.preview.purchaseId,
+          returnUrl: body.data.returnUrl,
+        },
+        signal,
+      );
+      if (route.kind === "checkout") {
+        return {
+          status: 200 as const,
+          body: { ...result.preview, checkoutUrl: route.url },
+        };
+      }
+      return {
+        status: 200 as const,
+        body: {
+          ...result.preview,
+          paymentMethodPreviewToken: route.paymentMethodPreviewToken,
+        },
+      };
+    }
     return { status: 200 as const, body: result.preview };
   },
 );
+
+async function revalidateInvitationPurchasePreview(
+  args: {
+    readonly db: ReadonlyDb;
+    readonly orgId: string;
+    readonly purchaseId: string;
+    readonly paymentMethodPreviewToken: string;
+  },
+  signal: AbortSignal,
+): Promise<
+  | {
+      readonly kind: "continue";
+      readonly paymentMethod: BillingPurchasePaymentMethod;
+    }
+  | { readonly kind: "invalid_preview" }
+  | { readonly kind: "checkout"; readonly url: string }
+> {
+  const preview = parseBillingPaymentMethodPreviewToken(
+    args.paymentMethodPreviewToken,
+  );
+  const billing = await activeUsagePackBillingContext(args.db, args.orgId);
+  signal.throwIfAborted();
+  if (
+    !preview ||
+    !billing ||
+    preview.operation !== "usage_pack_invitation" ||
+    preview.operationId !== args.purchaseId ||
+    preview.orgId !== args.orgId ||
+    preview.customerId !== billing.stripeCustomerId ||
+    preview.subscriptionId !== billing.stripeSubscriptionId ||
+    new Date(preview.expiresAt) <= nowDate()
+  ) {
+    return { kind: "invalid_preview" };
+  }
+  const revalidated = await revalidateBillingPurchase(
+    {
+      stripe: getStripeClient(),
+      orgId: args.orgId,
+      customerId: preview.customerId,
+      subscriptionId: preview.subscriptionId,
+      paymentMethodId: preview.paymentMethodId,
+      operation: preview.operation,
+      operationId: preview.operationId,
+      returnUrl: preview.returnUrl,
+    },
+    signal,
+  );
+  if (revalidated.kind === "invalid_preview") {
+    return { kind: "invalid_preview" };
+  }
+  return revalidated.kind === "checkout"
+    ? { kind: "checkout", url: revalidated.url }
+    : { kind: "continue", paymentMethod: revalidated };
+}
 
 const purchaseConfirmInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -253,13 +367,43 @@ const purchaseConfirmInner$ = command(
     if (!(await usagePackInvitationPurchaseSchemaAvailable(db))) {
       return providerUnavailable("Usage pack invitations are not ready");
     }
+    const body = await get(bodyResultOf(zeroOrgInviteContract.confirmPurchase));
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
     const { purchaseId } = get(
       pathParamsOf(zeroOrgInviteContract.confirmPurchase),
     );
+    let paymentMethod: BillingPurchasePaymentMethod | undefined;
+    if (body.data.paymentMethodPreviewToken) {
+      const revalidated = await revalidateInvitationPurchasePreview(
+        {
+          db,
+          orgId: auth.orgId,
+          purchaseId,
+          paymentMethodPreviewToken: body.data.paymentMethodPreviewToken,
+        },
+        signal,
+      );
+      if (revalidated.kind === "invalid_preview") {
+        return conflict("Invitation purchase preview is no longer valid");
+      }
+      if (revalidated.kind === "checkout") {
+        return {
+          status: 200 as const,
+          body: {
+            status: "checkout_required" as const,
+            checkoutUrl: revalidated.url,
+          },
+        };
+      }
+      paymentMethod = revalidated.paymentMethod;
+    }
     const result = await confirmUsagePackInvitationPurchase(
       set(writeDb$),
       get(clerk$),
-      { orgId: auth.orgId, purchaseId },
+      { orgId: auth.orgId, purchaseId, paymentMethod },
       signal,
     );
     if (result.status === "not_found") {
@@ -272,6 +416,18 @@ const purchaseConfirmInner$ = command(
       return conflict(
         "This invitation cannot be purchased in the current billing state",
       );
+    }
+    if (result.status === "pending_payment") {
+      if (!body.data.paymentMethodPreviewToken) {
+        return conflict("Payment confirmation is required");
+      }
+      return {
+        status: 200 as const,
+        body: {
+          status: "pending_payment" as const,
+          hostedInvoiceUrl: result.hostedInvoiceUrl,
+        },
+      };
     }
     return {
       status: 200 as const,

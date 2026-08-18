@@ -672,6 +672,90 @@ describe("user message document codec", () => {
     ).toStrictEqual(structured);
   });
 
+  it("serializes referenced passages without requiring every feedback note", () => {
+    const editorDocument = workflowComposerDocument({
+      type: "doc",
+      content: [
+        {
+          type: "feedbackItem",
+          attrs: {
+            feedbackId: 1,
+            quote: "First quote",
+            showDivider: false,
+            fill: false,
+          },
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "First note" }],
+            },
+          ],
+        },
+        {
+          type: "feedbackItem",
+          attrs: {
+            feedbackId: 2,
+            quote: "Second quote",
+            showDivider: true,
+            fill: true,
+            eventId: FEEDBACK_EVENT_ID,
+            rangeStart: 18,
+            rangeEnd: 30,
+          },
+          content: [{ type: "paragraph" }],
+        },
+      ],
+    });
+
+    expect(editorDocToMessageDocument(editorDocument)).toStrictEqual({
+      version: 1,
+      parts: [
+        {
+          type: "feedback",
+          quote: "First quote",
+          note: [{ type: "text", text: "First note" }],
+        },
+      ],
+    });
+
+    const structured = editorDocToMessageDocument(editorDocument, {
+      includeQuoteOnlyFeedback: true,
+    });
+    expect(structured).toStrictEqual({
+      version: 1,
+      parts: [
+        {
+          type: "feedback",
+          quote: "First quote",
+          note: [{ type: "text", text: "First note" }],
+        },
+        {
+          type: "feedback",
+          quote: "Second quote",
+          eventId: FEEDBACK_EVENT_ID,
+          range: { start: 18, end: 30 },
+          note: [],
+        },
+      ],
+    });
+    const expectedPrompt =
+      "The user referenced 2 parts of your reply:\n\n" +
+      "> First quote\n\nFirst note\n\n---\n\n" +
+      "> Second quote";
+    expect(messageDocumentToPrompt(structured)).toBe(expectedPrompt);
+    expect(messageDocumentToDisplayText(structured)).toBe(expectedPrompt);
+
+    const restored = messageDocumentToEditorDoc(structured);
+    if (!restored) {
+      throw new Error("Expected quote-only feedback document to restore");
+    }
+    expect(
+      editorDocToMessageDocument(workflowComposerDocument(restored), {
+        includeQuoteOnlyFeedback: true,
+      }),
+    ).toStrictEqual(structured);
+  });
+
   it("preserves mail source metadata for structured feedback", () => {
     const structured: UserMessageDocument = {
       version: 1,

@@ -1,4 +1,4 @@
-import { zeroBankingContract } from "@okouai/api-contracts/contracts/zero-banking";
+import { bankingContract } from "@okouai/api-contracts/contracts/banking";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { command } from "ccstate";
@@ -26,7 +26,7 @@ function zeroTokenRequired() {
   };
 }
 
-const zeroBankingDisabled = Object.freeze({
+const bankingDisabled = Object.freeze({
   status: 403 as const,
   body: Object.freeze({
     error: Object.freeze({
@@ -36,7 +36,7 @@ const zeroBankingDisabled = Object.freeze({
   }),
 });
 
-const zeroBankingEnabled$ = command(async ({ get }) => {
+const bankingEnabled$ = command(async ({ get }) => {
   const auth = get(organizationAuthContext$);
   const overrides = await get(
     userFeatureSwitchOverrides(auth.orgId, auth.userId),
@@ -48,17 +48,17 @@ const zeroBankingEnabled$ = command(async ({ get }) => {
   });
 });
 
-const accountsBody$ = bodyResultOf(zeroBankingContract.accounts);
-const balancesBody$ = bodyResultOf(zeroBankingContract.balances);
-const transactionsBody$ = bodyResultOf(zeroBankingContract.transactions);
+const accountsBody$ = bodyResultOf(bankingContract.accounts);
+const balancesBody$ = bodyResultOf(bankingContract.balances);
+const transactionsBody$ = bodyResultOf(bankingContract.transactions);
 
 const accountsInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   if (auth.tokenType !== "zero") {
     return zeroTokenRequired();
   }
-  if (!(await set(zeroBankingEnabled$))) {
-    return zeroBankingDisabled;
+  if (!(await set(bankingEnabled$))) {
+    return bankingDisabled;
   }
   signal.throwIfAborted();
 
@@ -76,8 +76,8 @@ const balancesInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (auth.tokenType !== "zero") {
     return zeroTokenRequired();
   }
-  if (!(await set(zeroBankingEnabled$))) {
-    return zeroBankingDisabled;
+  if (!(await set(bankingEnabled$))) {
+    return bankingDisabled;
   }
   signal.throwIfAborted();
 
@@ -96,8 +96,8 @@ const transactionsInner$ = command(
     if (auth.tokenType !== "zero") {
       return zeroTokenRequired();
     }
-    if (!(await set(zeroBankingEnabled$))) {
-      return zeroBankingDisabled;
+    if (!(await set(bankingEnabled$))) {
+      return bankingDisabled;
     }
     signal.throwIfAborted();
 
@@ -124,15 +124,15 @@ const bankingAuth = {
 
 export const bankingRoutes: readonly RouteEntry[] = [
   {
-    route: zeroBankingContract.accounts,
+    route: bankingContract.accounts,
     handler: authRoute(bankingAuth, accountsInner$),
   },
   {
-    route: zeroBankingContract.balances,
+    route: bankingContract.balances,
     handler: authRoute(bankingAuth, balancesInner$),
   },
   {
-    route: zeroBankingContract.transactions,
+    route: bankingContract.transactions,
     handler: authRoute(bankingAuth, transactionsInner$),
   },
 ];

@@ -284,17 +284,15 @@ mod tests {
     use guest_contracts::{
         codex_thread_id::canonical_codex_thread_id,
         session_history_identity::{
-            FinalSessionHistoryFramework, FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
-            FinalSessionHistorySourceRef,
+            SessionHistoryFramework, SessionHistoryIdentity, SessionHistoryRefKind,
+            SessionHistorySourceRef,
         },
     };
     use sha2::{Digest, Sha256};
 
     use crate::http::HttpClientConfig;
     use crate::ids::RunId;
-    use crate::restored_session_identity::{
-        RestoredSessionFramework, RestoredSessionHistoryHashSizeRelationship,
-    };
+    use crate::restored_session_identity::RestoredSessionHistoryHashSizeRelationship;
     use crate::test_fixtures::execution_context::execution_context_for_test;
     use crate::types::{
         ResumeSession, ResumeSessionHistory, ResumeSessionHistoryEncoding, ResumeSessionHistoryRef,
@@ -334,13 +332,13 @@ mod tests {
     }
 
     fn final_metadata_identity(history_hash: String, size: u64) -> RestoredSessionIdentity {
-        let metadata = FinalSessionHistoryIdentity::new(
-            FinalSessionHistoryFramework::ClaudeCode,
+        let metadata = SessionHistoryIdentity::new(
+            SessionHistoryFramework::ClaudeCode,
             hex::encode(Sha256::digest(b"sess-restore-plan")),
-            FinalSessionHistoryRefKind::Blob,
+            SessionHistoryRefKind::Blob,
             history_hash,
             size,
-            FinalSessionHistorySourceRef::ClaudeCode {
+            SessionHistorySourceRef::ClaudeCode {
                 config_dir: "/home/user/.claude".to_string(),
                 working_dir: "/home/user/workspace".to_string(),
                 session_id: "sess-restore-plan".to_string(),
@@ -440,13 +438,13 @@ mod tests {
         let metadata_path =
             "/home/user/.vm0/guest-agent/runs/previous/final-session-history-identity.json";
         let runtime_dir = "/home/user/.vm0/guest-agent/runs/previous";
-        let metadata = FinalSessionHistoryIdentity::new(
-            FinalSessionHistoryFramework::Codex,
+        let metadata = SessionHistoryIdentity::new(
+            SessionHistoryFramework::Codex,
             hex::encode(Sha256::digest(canonical_thread_id.as_bytes())),
-            FinalSessionHistoryRefKind::Blob,
+            SessionHistoryRefKind::Blob,
             history_hash,
             12,
-            FinalSessionHistorySourceRef::Codex {
+            SessionHistorySourceRef::Codex {
                 sessions_dir: "/home/user/.codex/sessions".to_string(),
                 thread_id: canonical_thread_id,
             },
@@ -631,9 +629,9 @@ mod tests {
         let history_hash = "a".repeat(64);
         let context = context_with_history_ref(&history_hash);
         let restored_identity = RestoredSessionIdentity::new(
-            RestoredSessionFramework::ClaudeCode,
+            SessionHistoryFramework::ClaudeCode,
             "sess-other",
-            ResumeSessionHistoryRefKind::Blob,
+            SessionHistoryRefKind::Blob,
             history_hash,
             Some(12),
         );
@@ -662,9 +660,9 @@ mod tests {
         let history_hash = "a".repeat(64);
         let context = context_with_history_ref(&history_hash);
         let restored_identity = RestoredSessionIdentity::new(
-            RestoredSessionFramework::Codex,
+            SessionHistoryFramework::Codex,
             "sess-restore-plan",
-            ResumeSessionHistoryRefKind::Blob,
+            SessionHistoryRefKind::Blob,
             history_hash,
             Some(12),
         );

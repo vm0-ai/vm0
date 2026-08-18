@@ -5,7 +5,6 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf } from "../context/request";
 import { deleteCustomConnector$ } from "../services/custom-connector.service";
-import { isNotFoundResponse } from "../../lib/error";
 import type { RouteEntry } from "../route-entry";
 
 const adminRequired = Object.freeze({
@@ -33,7 +32,7 @@ const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   );
   signal.throwIfAborted();
 
-  if (isNotFoundResponse(result)) {
+  if (result) {
     return result;
   }
   return { status: 204 as const, body: undefined };

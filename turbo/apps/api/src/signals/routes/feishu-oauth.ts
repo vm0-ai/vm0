@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { and, eq, ne } from "drizzle-orm";
-import { zeroFeishuOauthContract } from "@okouai/api-contracts/contracts/zero-feishu-oauth";
+import { feishuOauthContract } from "@okouai/api-contracts/contracts/feishu-oauth";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
@@ -55,7 +55,7 @@ import {
   type CustomConnectorHttpRow,
 } from "../services/custom-connector.service";
 import { publishFeishuOrgChanged } from "../services/feishu-realtime.service";
-import { notifyFeishuConnect } from "../services/zero-feishu-welcome.service";
+import { notifyFeishuConnect } from "../services/feishu-welcome.service";
 import { tapError } from "../utils";
 
 const L = logger("FeishuOAuth");
@@ -83,14 +83,16 @@ interface FeishuInstallationOAuthRow {
   readonly defaultAgentId: string;
 }
 
-type FeishuOAuthCompletionTarget = "custom" | "feishu";
 type FeishuCustomConnectorOAuthContext = Omit<
   CustomConnectorOAuthStateContext,
   "providerContext"
 > & {
-  readonly providerContext: NonNullable<
-    CustomConnectorOAuthStateContext["providerContext"]
-  >;
+  readonly providerContext: Omit<
+    NonNullable<CustomConnectorOAuthStateContext["providerContext"]>,
+    "completionTarget"
+  > & {
+    readonly completionTarget: "feishu";
+  };
 };
 
 function redirectResponse(url: string): Response {
@@ -119,24 +121,8 @@ function settingsRedirect(params: Readonly<Record<string, string>>): Response {
   return redirectResponse(settingsUrl(params));
 }
 
-function customConnectorCallbackUrl(
-  status: "error" | "success",
-  message?: string,
-): string {
-  const url = new URL(`/connectors/custom/callback/${status}`, env("APP_URL"));
-  if (message) {
-    url.searchParams.set("message", message);
-  }
-  return url.toString();
-}
-
-function completionErrorUrl(
-  target: FeishuOAuthCompletionTarget,
-  message: string,
-): string {
-  return target === "custom"
-    ? customConnectorCallbackUrl("error", message)
-    : settingsUrl({ error: message });
+function completionErrorUrl(message: string): string {
+  return settingsUrl({ error: message });
 }
 
 function appCallbackUrl(query: FeishuOAuthCallbackQuery): string {
@@ -179,11 +165,18 @@ function validCustomFeishuState(
   const context = parseValidCustomConnectorOAuthState(storedState);
   if (
     !context?.providerContext ||
-    context.providerContext.provider !== "feishu"
+    context.providerContext.provider !== "feishu" ||
+    context.providerContext.completionTarget !== "feishu"
   ) {
     return null;
   }
-  return { ...context, providerContext: context.providerContext };
+  return {
+    ...context,
+    providerContext: {
+      ...context.providerContext,
+      completionTarget: "feishu",
+    },
+  };
 }
 
 async function exchangeOAuthTokenAndUserInfo(
@@ -545,7 +538,7 @@ function connectionErrorMessage(
 }
 
 const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const query = get(queryOf(zeroFeishuOauthContract.connect));
+  const query = get(queryOf(feishuOauthContract.connect));
   const state = query.state ? verifyFeishuOAuthState(query.state) : null;
   if (!state) {
     return jsonErrorResponse("Invalid or expired connect state");
@@ -591,7 +584,6 @@ const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
       connectorId,
       redirectUri: oauthRedirectUri(query.callbackTarget),
       feishuContext: {
-        completionTarget: "feishu",
         installationId: state.installationId,
       },
     },
@@ -615,10 +607,9 @@ const completeLegacyFeishuOAuth$ = command(
     signal: AbortSignal,
   ) => {
     const { db, query, state } = args;
-    const target: FeishuOAuthCompletionTarget = "feishu";
     if (query.error) {
       return callbackRedirectResponse(
-        completionErrorUrl(target, query.error_description ?? query.error),
+        completionErrorUrl(query.error_description ?? query.error),
         query.responseMode,
       );
     }
@@ -629,7 +620,7 @@ const completeLegacyFeishuOAuth$ = command(
     signal.throwIfAborted();
     if (!config || config.orgId !== state.orgId) {
       return callbackRedirectResponse(
-        completionErrorUrl(target, "Feishu bot not found."),
+        completionErrorUrl("Feishu bot not found."),
         query.responseMode,
       );
     }
@@ -643,7 +634,6 @@ const completeLegacyFeishuOAuth$ = command(
     if (!installation?.setupCompletedAt) {
       return callbackRedirectResponse(
         completionErrorUrl(
-          target,
           "Finish setting up this Feishu bot before connecting.",
         ),
         query.responseMode,
@@ -660,7 +650,7 @@ const completeLegacyFeishuOAuth$ = command(
     );
     if (!connectorId) {
       return callbackRedirectResponse(
-        completionErrorUrl(target, "Feishu connector not found."),
+        completionErrorUrl("Feishu connector not found."),
         query.responseMode,
       );
     }
@@ -677,7 +667,7 @@ const completeLegacyFeishuOAuth$ = command(
       connector.oauthConfig.providerAdapter !== "feishu"
     ) {
       return callbackRedirectResponse(
-        completionErrorUrl(target, "Feishu connector is unavailable."),
+        completionErrorUrl("Feishu connector is unavailable."),
         query.responseMode,
       );
     }
@@ -696,7 +686,6 @@ const completeLegacyFeishuOAuth$ = command(
     if (!exchanged) {
       return callbackRedirectResponse(
         completionErrorUrl(
-          target,
           "Failed to connect Feishu account. Please try again.",
         ),
         query.responseMode,
@@ -719,7 +708,7 @@ const completeLegacyFeishuOAuth$ = command(
     );
     if (completed !== "connected") {
       return callbackRedirectResponse(
-        completionErrorUrl(target, connectionErrorMessage(completed)),
+        completionErrorUrl(connectionErrorMessage(completed)),
         query.responseMode,
       );
     }
@@ -742,10 +731,9 @@ const completeClaimedCustomFeishuOAuth$ = command(
     signal: AbortSignal,
   ) => {
     const { context, db, query, state } = args;
-    const target = context.providerContext.completionTarget;
     if (query.error) {
       return callbackRedirectResponse(
-        completionErrorUrl(target, query.error_description ?? query.error),
+        completionErrorUrl(query.error_description ?? query.error),
         query.responseMode,
       );
     }
@@ -768,7 +756,6 @@ const completeClaimedCustomFeishuOAuth$ = command(
     ) {
       return callbackRedirectResponse(
         completionErrorUrl(
-          target,
           "Feishu connector configuration changed. Please try again.",
         ),
         query.responseMode,
@@ -784,7 +771,6 @@ const completeClaimedCustomFeishuOAuth$ = command(
     if (!installation?.setupCompletedAt) {
       return callbackRedirectResponse(
         completionErrorUrl(
-          target,
           "Finish setting up this Feishu bot before connecting.",
         ),
         query.responseMode,
@@ -800,10 +786,7 @@ const completeClaimedCustomFeishuOAuth$ = command(
     signal.throwIfAborted();
     if (!credentials) {
       return callbackRedirectResponse(
-        completionErrorUrl(
-          target,
-          "Could not read Feishu OAuth client credentials.",
-        ),
+        completionErrorUrl("Could not read Feishu OAuth client credentials."),
         query.responseMode,
       );
     }
@@ -822,7 +805,6 @@ const completeClaimedCustomFeishuOAuth$ = command(
     if (!exchanged) {
       return callbackRedirectResponse(
         completionErrorUrl(
-          target,
           "Failed to connect Feishu account. Please try again.",
         ),
         query.responseMode,
@@ -847,14 +829,12 @@ const completeClaimedCustomFeishuOAuth$ = command(
     );
     if (completed !== "connected") {
       return callbackRedirectResponse(
-        completionErrorUrl(target, connectionErrorMessage(completed)),
+        completionErrorUrl(connectionErrorMessage(completed)),
         query.responseMode,
       );
     }
     return callbackRedirectResponse(
-      target === "custom"
-        ? customConnectorCallbackUrl("success")
-        : feishuBotOpenUrl(installation.appId),
+      feishuBotOpenUrl(installation.appId),
       query.responseMode,
     );
   },
@@ -911,7 +891,7 @@ const completeCustomFeishuOAuth$ = command(
 );
 
 const callback$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const query = get(queryOf(zeroFeishuOauthContract.callback));
+  const query = get(queryOf(feishuOauthContract.callback));
   if (!query.state) {
     return jsonErrorResponse("Invalid or expired connect state");
   }
@@ -938,11 +918,11 @@ const callback$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 export const feishuOauthRoutes: readonly RouteEntry[] = [
   {
-    route: zeroFeishuOauthContract.connect,
+    route: feishuOauthContract.connect,
     handler: connect$,
   },
   {
-    route: zeroFeishuOauthContract.callback,
+    route: feishuOauthContract.callback,
     handler: callback$,
   },
 ];

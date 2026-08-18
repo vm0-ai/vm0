@@ -60,6 +60,10 @@ const store = createStore();
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 const DEFAULT_AGENT_AVATAR_URL = "svg:r1s0h1c5f4h";
 
+function isUnknownRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function successfulAxiomIngestStatus(ingested: number) {
   return {
     ingested,
@@ -1351,6 +1355,217 @@ describe("WHCB-04: internal callback and event-consumer boundaries", () => {
     });
     await flushWaitUntilForTest();
     expect(redirectTargetRequests).toBe(0);
+  });
+
+  it("preserves display fields while bounding oversized Axiom traces", async () => {
+    const { actor, runId, headers } = await createEventWebhookRun(
+      "oversized optional Axiom trace",
+    );
+    const oversizedAssistantContent = "助".repeat(300_000);
+    const assistantEvent = {
+      type: "assistant",
+      sequenceNumber: 0,
+      message: {
+        content: [
+          { type: "text", text: oversizedAssistantContent },
+          {
+            type: "tool_use",
+            id: "tool_1",
+            name: "Bash",
+            input: { command: "pwd" },
+          },
+        ],
+      },
+    };
+    const oversizedResultContent = "界".repeat(300_000);
+    const resultEvent = {
+      type: "result",
+      sequenceNumber: 1,
+      result: oversizedResultContent,
+      duration_ms: 123,
+      num_turns: 4,
+      modelUsage: { inputTokens: 100, outputTokens: 200 },
+    };
+    const assistantOriginalBytes = Buffer.byteLength(
+      JSON.stringify(assistantEvent),
+      "utf8",
+    );
+    const resultOriginalBytes = Buffer.byteLength(
+      JSON.stringify(resultEvent),
+      "utf8",
+    );
+    expect(assistantOriginalBytes).toBeGreaterThan(900_000);
+    expect(resultOriginalBytes).toBeGreaterThan(900_000);
+
+    const requests: unknown[] = [];
+    server.use(
+      http.post(
+        "https://api.axiom.co/v1/datasets/agent-run-events/ingest",
+        async ({ request }) => {
+          requests.push(await request.json());
+          return HttpResponse.json(successfulAxiomIngestStatus(2));
+        },
+      ),
+    );
+
+    const response = await api.requestAgentEvents(
+      { runId, events: [assistantEvent, resultEvent] },
+      headers,
+      [200],
+    );
+    expect(response.body).toStrictEqual({
+      received: 2,
+      firstSequence: 0,
+      lastSequence: 1,
+    });
+    await flushWaitUntilForTest();
+
+    expect(requests).toHaveLength(1);
+    const requestBatch = requests[0];
+    if (!Array.isArray(requestBatch)) {
+      throw new Error("Expected an Axiom request batch");
+    }
+    expect(requestBatch).toHaveLength(2);
+
+    const assistantRequestEvent: unknown = requestBatch[0];
+    expect(assistantRequestEvent).toStrictEqual(
+      expect.objectContaining({
+        runId,
+        userId: actor.userId,
+        sequenceNumber: assistantEvent.sequenceNumber,
+        eventType: assistantEvent.type,
+      }),
+    );
+    if (!isUnknownRecord(assistantRequestEvent)) {
+      throw new Error("Expected an assistant Axiom request event");
+    }
+    const assistantEventData = assistantRequestEvent.eventData;
+    expect(assistantEventData).toStrictEqual(
+      expect.objectContaining({
+        type: assistantEvent.type,
+        sequenceNumber: assistantEvent.sequenceNumber,
+        axiomReduction: {
+          reason: "field_size_limit",
+          originalBytes: assistantOriginalBytes,
+          budgetBytes: 900_000,
+        },
+      }),
+    );
+    if (!isUnknownRecord(assistantEventData)) {
+      throw new Error("Expected assistant Axiom event data");
+    }
+    const assistantMessage = assistantEventData.message;
+    if (!isUnknownRecord(assistantMessage)) {
+      throw new Error("Expected a retained assistant message");
+    }
+    const assistantMessageContent = assistantMessage.content;
+    if (!Array.isArray(assistantMessageContent)) {
+      throw new Error("Expected retained assistant message content");
+    }
+    expect(assistantMessageContent).toHaveLength(2);
+    const reducedTextBlock: unknown = assistantMessageContent[0];
+    if (!isUnknownRecord(reducedTextBlock)) {
+      throw new Error("Expected a retained assistant text block");
+    }
+    expect(reducedTextBlock.type).toBe("text");
+    const reducedAssistantText = reducedTextBlock.text;
+    if (typeof reducedAssistantText !== "string") {
+      throw new Error("Expected retained assistant text");
+    }
+    expect(reducedAssistantText).not.toBe(oversizedAssistantContent);
+    expect(reducedAssistantText.startsWith("助")).toBeTruthy();
+    expect(reducedAssistantText.endsWith("[truncated]")).toBeTruthy();
+    expect(assistantMessageContent[1]).toStrictEqual(
+      assistantEvent.message.content[1],
+    );
+    const assistantDeliveredBytes = Buffer.byteLength(
+      JSON.stringify(assistantEventData),
+      "utf8",
+    );
+    expect(assistantDeliveredBytes).toBeLessThanOrEqual(900_000);
+
+    const resultRequestEvent: unknown = requestBatch[1];
+    expect(resultRequestEvent).toStrictEqual(
+      expect.objectContaining({
+        runId,
+        userId: actor.userId,
+        sequenceNumber: resultEvent.sequenceNumber,
+        eventType: resultEvent.type,
+      }),
+    );
+    if (!isUnknownRecord(resultRequestEvent)) {
+      throw new Error("Expected a result Axiom request event");
+    }
+    const resultEventData = resultRequestEvent.eventData;
+    expect(resultEventData).toStrictEqual(
+      expect.objectContaining({
+        type: resultEvent.type,
+        sequenceNumber: resultEvent.sequenceNumber,
+        duration_ms: resultEvent.duration_ms,
+        num_turns: resultEvent.num_turns,
+        modelUsage: resultEvent.modelUsage,
+        axiomReduction: {
+          reason: "field_size_limit",
+          originalBytes: resultOriginalBytes,
+          budgetBytes: 900_000,
+        },
+      }),
+    );
+    if (!isUnknownRecord(resultEventData)) {
+      throw new Error("Expected result Axiom event data");
+    }
+    const reducedResult = resultEventData.result;
+    if (typeof reducedResult !== "string") {
+      throw new Error("Expected a retained result prefix");
+    }
+    expect(reducedResult).not.toBe(oversizedResultContent);
+    expect(reducedResult.startsWith("界")).toBeTruthy();
+    expect(reducedResult.endsWith("[truncated]")).toBeTruthy();
+    const resultDeliveredBytes = Buffer.byteLength(
+      JSON.stringify(resultEventData),
+      "utf8",
+    );
+    expect(resultDeliveredBytes).toBeLessThanOrEqual(900_000);
+
+    const reductionLogs = context.mocks.axiomLogging.warn.mock.calls.filter(
+      ([message]) => {
+        return message === "Reduced oversized agent event for Axiom";
+      },
+    );
+    expect(reductionLogs).toHaveLength(2);
+    const assistantFields = reductionLogs[0]?.[1];
+    expect(assistantFields).toStrictEqual(
+      expect.objectContaining({
+        context: "agent-event-consumer:axiom",
+        runId,
+        sequenceNumber: assistantEvent.sequenceNumber,
+        eventType: assistantEvent.type,
+        originalBytes: assistantOriginalBytes,
+        deliveredBytes: assistantDeliveredBytes,
+        budgetBytes: 900_000,
+      }),
+    );
+    const resultFields = reductionLogs[1]?.[1];
+    expect(resultFields).toStrictEqual(
+      expect.objectContaining({
+        context: "agent-event-consumer:axiom",
+        runId,
+        sequenceNumber: resultEvent.sequenceNumber,
+        eventType: resultEvent.type,
+        originalBytes: resultOriginalBytes,
+        deliveredBytes: resultDeliveredBytes,
+        budgetBytes: 900_000,
+      }),
+    );
+    for (const fields of [assistantFields, resultFields]) {
+      expect(fields).not.toHaveProperty("eventData");
+      expect(JSON.stringify(fields)).not.toContain(
+        oversizedAssistantContent.slice(0, 64),
+      );
+      expect(JSON.stringify(fields)).not.toContain(
+        oversizedResultContent.slice(0, 64),
+      );
+    }
   });
 
   it("acknowledges an event batch when its required DB run is missing", async () => {
@@ -4356,7 +4571,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     expect(bound.tier).toBe("limited-free-1");
     expect(bound.currentPeriodEnd).toBeNull();
 
-    // An incomplete dashboard subscription is recorded without a paid tier.
+    // An incomplete dashboard subscription cannot replace the active one.
     await api.postStripeEvent(
       stripeEvent({
         type: "customer.subscription.created",
@@ -4372,7 +4587,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       [200],
     );
     const incomplete = await billing.readBillingStatus(actor);
-    expect(incomplete.subscriptionStatus).toBe("incomplete");
+    expect(incomplete.subscriptionStatus).toBe("active");
     expect(incomplete.tier).toBe("limited-free-1");
 
     // A subscription checkout completion binds its subscription.

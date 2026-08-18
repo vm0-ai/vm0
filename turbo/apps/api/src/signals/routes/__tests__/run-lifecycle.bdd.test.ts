@@ -65,6 +65,7 @@ import {
 } from "../../../test-fixtures/connector-catalog";
 import { readStorageS3PrefixFixture } from "../../../test-fixtures/storage";
 import { readHistoricalAgentComposeHeadFixture } from "../../../test-fixtures/historical-agent-composes";
+import { readRunIdentityMismatchWriteCountsFixture } from "../../../test-fixtures/agent-runs";
 import {
   createBddApi,
   expectApiError,
@@ -452,19 +453,16 @@ const API_DISPATCH_PERMISSION_MANIFEST_SUBSTEP_ACTION_TYPES = [
   "api_dispatch_prepare_context_merge_permission_manifest",
 ] as const;
 const API_DISPATCH_RESOLVE_COMPOSE_PATH_ACTION_TYPES = [
-  "api_dispatch_resolve_compose_by_compose_id",
-  "api_dispatch_resolve_compose_by_version_id",
+  "api_dispatch_resolve_compose_by_agent_id",
   "api_dispatch_resolve_compose_by_session_id",
 ] as const;
 const API_DISPATCH_RESOLVE_COMPOSE_SUBSTEP_ACTION_TYPES = [
-  "api_dispatch_resolve_compose_lookup_compose",
-  "api_dispatch_resolve_compose_lookup_version",
+  "api_dispatch_resolve_compose_lookup_agent",
   "api_dispatch_resolve_compose_lookup_session_snapshot",
   "api_dispatch_resolve_compose_resolve_session_history",
 ] as const;
 const REPLACED_SESSION_RESOLUTION_ACTION_TYPES = [
   "api_dispatch_resolve_compose_lookup_session",
-  "api_dispatch_resolve_compose_lookup_compose",
   "api_dispatch_resolve_compose_lookup_session_vars",
 ] as const;
 const FORBIDDEN_API_DISPATCH_TIMING_KEYS = [
@@ -1256,13 +1254,10 @@ async function entitledRunActor(): Promise<{
 
 function zeroBackedDirectRunBody(args: {
   readonly agentId: string;
-  readonly agentComposeVersionId?: string;
   readonly prompt: string;
 }) {
   return {
-    ...(args.agentComposeVersionId
-      ? { agentComposeVersionId: args.agentComposeVersionId }
-      : { agentComposeId: args.agentId }),
+    agentId: args.agentId,
     prompt: args.prompt,
     modelProviderType: "anthropic-api-key" as const,
     vars: { OKOU_AGENT_ID: args.agentId },
@@ -1581,19 +1576,19 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       }),
     );
     expectApiDispatchActions(timingEvents, [
-      "api_dispatch_resolve_compose_by_compose_id",
-      "api_dispatch_resolve_compose_lookup_compose",
+      "api_dispatch_resolve_compose_by_agent_id",
+      "api_dispatch_resolve_compose_lookup_agent",
     ]);
     expectNoApiDispatchActions(
       timingEvents,
       API_DISPATCH_RESOLVE_COMPOSE_PATH_ACTION_TYPES.filter((actionType) => {
-        return actionType !== "api_dispatch_resolve_compose_by_compose_id";
+        return actionType !== "api_dispatch_resolve_compose_by_agent_id";
       }),
     );
     expectNoApiDispatchActions(
       timingEvents,
       API_DISPATCH_RESOLVE_COMPOSE_SUBSTEP_ACTION_TYPES.filter((actionType) => {
-        return actionType !== "api_dispatch_resolve_compose_lookup_compose";
+        return actionType !== "api_dispatch_resolve_compose_lookup_agent";
       }),
     );
     const observedActionTypes = apiDispatchActionTypes(timingEvents);
@@ -2097,7 +2092,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
 
     context.mocks.s3.send.mockClear();
     const created = await api.createDirectRun(actor, {
-      agentComposeVersionId: headVersionId,
+      agentId: compose.composeId,
       prompt,
     });
 
@@ -2199,7 +2194,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const suspendedPrompt = `suspended direct ${randomUUID()}`;
     const rejected = await api.requestDirectRun(
       actor,
-      { agentComposeVersionId: headVersionId, prompt: suspendedPrompt },
+      { agentId: compose.composeId, prompt: suspendedPrompt },
       [402],
     );
     expectApiError(rejected.body);
@@ -2326,7 +2321,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const headVersionId = compose.versionId;
 
     const created = await api.createDirectRun(actor, {
-      agentComposeVersionId: headVersionId,
+      agentId: compose.composeId,
       prompt,
       additionalVolumes: [
         {
@@ -2526,7 +2521,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     ]);
 
     const initialized = await api.createDirectRun(actor, {
-      agentComposeVersionId: headVersionId,
+      agentId: compose.composeId,
       prompt: "storage manifest dimensions initialized artifact path",
       additionalVolumes: [
         {
@@ -2635,7 +2630,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
     await api.heartbeatRunner(runnerGroup);
     const created = await api.createDirectRun(actor, {
-      agentComposeVersionId: compose.versionId,
+      agentId: compose.composeId,
       prompt: "resolve only exact storage candidates",
       additionalVolumes: [
         { name: missingAdditionalName, mountPath: "/additional" },
@@ -2710,7 +2705,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.heartbeatRunner(runnerGroup);
 
     const canonicalRun = await api.createDirectRun(actor, {
-      agentComposeVersionId: compose.versionId,
+      agentId: compose.composeId,
       prompt: "canonical storage claim",
     });
     const canonicalClaim = await api.claimRunnerJob(canonicalRun.runId);
@@ -2818,7 +2813,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.heartbeatRunner(runnerGroup);
 
     const initialRun = await api.createDirectRun(actor, {
-      agentComposeVersionId: compose.versionId,
+      agentId: compose.composeId,
       prompt: "persist canonical storage mounts",
       artifacts: [
         {
@@ -3055,7 +3050,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.heartbeatRunner(runnerGroup);
 
     const invalidQueueRun = await api.createDirectRun(actor, {
-      agentComposeVersionId: compose.versionId,
+      agentId: compose.composeId,
       prompt: "reject a pre-canonical Storage queue entry",
     });
     // Pre-migration null JSONB columns cannot be produced by a current public
@@ -3070,7 +3065,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expectApiError(rejectedClaim.body);
 
     const invalidPersistenceRun = await api.createDirectRun(actor, {
-      agentComposeVersionId: compose.versionId,
+      agentId: compose.composeId,
       prompt: "reject pre-canonical Storage checkpoint state",
     });
     const canonicalClaim = await api.claimRunnerJob(
@@ -3109,10 +3104,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         },
       },
     });
-    const headVersionId = compose.versionId;
-
     const initialRun = await api.createDirectRun(actor, {
-      agentComposeVersionId: headVersionId,
+      agentId: compose.composeId,
       prompt: "initial empty artifact creation should not block later commits",
     });
     onTestFinished(async () => {
@@ -3211,7 +3204,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
 
     const committedRun = await api.createDirectRun(actor, {
-      agentComposeVersionId: headVersionId,
+      agentId: compose.composeId,
       prompt: "committed artifact head should stay non-empty",
     });
     onTestFinished(async () => {
@@ -3301,10 +3294,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestCancelRun(actor, created.runId, [200]);
   });
 
-  it("emits compose resolution timing for direct compose version runs", async () => {
+  it("emits Agent resolution timing for direct Agent runs", async () => {
     const api = createRunsApi(context);
     const { actor } = await entitledRunActor();
-    const prompt = "version timing should not leak prompt";
+    const prompt = "Agent timing should not leak prompt";
     const composeName = `bdd-version-timing-${randomUUID().slice(0, 8)}`;
     const compose = await api.createHistoricalCompose(actor, {
       version: "1",
@@ -3318,25 +3311,25 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const headVersionId = compose.versionId;
 
     const created = await api.createDirectRun(actor, {
-      agentComposeVersionId: headVersionId,
+      agentId: compose.composeId,
       prompt,
     });
 
     const timingEvents = apiDispatchTimingEventsForRun(created.runId);
     expectApiDispatchActions(timingEvents, [
-      "api_dispatch_resolve_compose_by_version_id",
-      "api_dispatch_resolve_compose_lookup_version",
+      "api_dispatch_resolve_compose_by_agent_id",
+      "api_dispatch_resolve_compose_lookup_agent",
     ]);
     expectNoApiDispatchActions(
       timingEvents,
       API_DISPATCH_RESOLVE_COMPOSE_PATH_ACTION_TYPES.filter((actionType) => {
-        return actionType !== "api_dispatch_resolve_compose_by_version_id";
+        return actionType !== "api_dispatch_resolve_compose_by_agent_id";
       }),
     );
     expectNoApiDispatchActions(
       timingEvents,
       API_DISPATCH_RESOLVE_COMPOSE_SUBSTEP_ACTION_TYPES.filter((actionType) => {
-        return actionType !== "api_dispatch_resolve_compose_lookup_version";
+        return actionType !== "api_dispatch_resolve_compose_lookup_agent";
       }),
     );
     for (const event of timingEvents) {
@@ -3378,7 +3371,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       [200],
     );
     const resumed = await api.createRun(actor, {
-      agentId,
       sessionId: first.sessionId,
       prompt: "continue checkpointed timing session",
       modelProvider: "anthropic-api-key",
@@ -3726,7 +3718,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       },
     });
     const created = await api.createDirectRun(actor, {
-      agentComposeVersionId: compose.versionId,
+      agentId: compose.composeId,
       prompt: "poll with explicit support list",
     });
     expect(created.status).toBe("pending");
@@ -3868,6 +3860,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
   });
 
   it("resumes the previous session when a run is created with the same sessionId", async () => {
+    const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const { actor, agentId } = await entitledRunActor();
 
@@ -3900,7 +3893,51 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     if (!actor.orgId) {
       throw new Error("Expected session owner to have an organization");
     }
-    const sameOrgUser = createBddApi(context).user({ orgId: actor.orgId });
+    const otherAgent = await bdd.createAgent(actor, {
+      displayName: "Mismatched continuation Agent",
+      description: "Must not continue a Session owned by another Agent.",
+      visibility: "private",
+    });
+    // There is no production read surface for proving the absence of every
+    // launch row. This narrow fixture covers the issue's fail-before-write
+    // requirement; the Run absence is also verified through the public API.
+    const writesBeforeMismatch =
+      await readRunIdentityMismatchWriteCountsFixture({
+        userId: actor.userId,
+        orgId: actor.orgId,
+      });
+    const mismatchPrompt = `reject mismatched Agent Session ${randomUUID()}`;
+    const mismatch = await api.requestCreateRun(
+      actor,
+      {
+        agentId: otherAgent.agentId,
+        sessionId: first.sessionId,
+        prompt: mismatchPrompt,
+        modelProvider: "anthropic-api-key",
+      },
+      [400],
+    );
+    expectApiError(mismatch.body);
+    expect(mismatch.body.error.message).toBe(
+      "agentId does not match sessionId",
+    );
+    await expect(
+      readRunIdentityMismatchWriteCountsFixture({
+        userId: actor.userId,
+        orgId: actor.orgId,
+      }),
+    ).resolves.toStrictEqual(writesBeforeMismatch);
+    const ownedRuns = await api.listAgentRuns(actor, {
+      status: "queued,pending,running,completed,failed,timeout,cancelled",
+      limit: 100,
+    });
+    expect(
+      ownedRuns.runs.filter((run) => {
+        return run.prompt === mismatchPrompt;
+      }),
+    ).toHaveLength(0);
+
+    const sameOrgUser = bdd.user({ orgId: actor.orgId });
     const crossUser = await api.requestDirectRun(
       sameOrgUser,
       {
@@ -6776,7 +6813,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     await api.requestCancelRun(actor, claudeWebRun.runId, [200]);
 
     const codexSlackRun = await api.createDirectRun(actor, {
-      agentComposeId: agentId,
+      agentId,
       prompt: "generate an image from slack",
       modelProviderType: "codex-oauth-token",
       triggerSource: "slack",
@@ -7076,7 +7113,7 @@ describe("RUN-02: persisted run environment resolution", () => {
       },
     });
     const run = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "resolve persisted environment",
       vars: { [names.requestVariable]: "request-variable-value" },
       secrets: { [names.requestSecret]: "request-secret-value" },
@@ -7113,7 +7150,7 @@ describe("RUN-02: persisted run environment resolution", () => {
       },
     });
     const variableOnlyRun = await api.createDirectRun(actor, {
-      agentComposeId: variableOnlyCompose.composeId,
+      agentId: variableOnlyCompose.composeId,
       prompt: "resolve persisted variables without secret references",
     });
     const variableOnlyClaim = await api.claimRunnerJob(variableOnlyRun.runId);
@@ -7340,7 +7377,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const kms = useSecretKmsProbe();
 
     const run = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "use overridden x connector secret",
       secrets: { X_TOKEN: "body-x-token" },
       connectorScope: {
@@ -7447,7 +7484,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const kms = useSecretKmsProbe();
 
     const run = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "use compose-overridden gitlab token",
       connectorScope: {
         allowedConnectorSlugs: ["gitlab"],
@@ -7547,7 +7584,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     });
 
     const run = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "use stored connector variable aliases",
       connectorScope: {
         allowedConnectorSlugs: ["test-oauth"],
@@ -7601,7 +7638,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     });
 
     const compatibleRun = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "materialize compatible connector state",
       connectorScope: {
         allowedConnectorSlugs: ["test-oauth"],
@@ -7632,7 +7669,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       userId: actor.userId,
     });
     const incompatibleRun = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "do not materialize incompatible connector state",
       connectorScope: {
         allowedConnectorSlugs: ["test-oauth"],
@@ -8150,7 +8187,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     });
 
     const run = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "restore prepared masking values",
       secrets: {
         FIRST_TOKEN: "first-secret-value",
@@ -8213,7 +8250,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     });
 
     const missingRun = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "reject missing masking metadata",
       secrets: {
         FIRST_TOKEN: "first-missing-secret",
@@ -8243,7 +8280,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       "Runner job missing valid execution context",
     );
     const invalidRun = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "materialize invalid masking metadata",
       secrets: {
         FIRST_TOKEN: "first-fallback-secret",
@@ -9431,7 +9468,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
   it("hands off more than one runtime-sync batch without truncation", async () => {
     const api = createRunsApi(context);
-    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const { actor, agentId } = await entitledRunActor();
     if (!actor.orgId) {
       throw new Error("Expected a custom connector actor with an organization");
     }
@@ -9463,7 +9500,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       prompt: "use more than one connector runtime sync batch",
       modelProvider: "anthropic-api-key",
     });
-    await api.heartbeatRunner(runnerGroup);
+    onTestFinished(async () => {
+      await api.requestCancelRun(actor, run.runId, [200]);
+    });
     const claim = await api.claimRunnerJob(run.runId);
     const expectedIds = [...createdIds].sort();
     expect(
@@ -9473,8 +9512,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         })
         .sort(),
     ).toStrictEqual(expectedIds);
-
-    await api.requestCancelRun(actor, run.runId, [200]);
   });
 
   it("keeps a granted custom skill independent from runtime admission", async () => {
@@ -12340,7 +12377,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
 
     const run = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "direct run cloudflare defaults",
       connectorScope: {
         allowedConnectorSlugs: ["cloudflare"],
@@ -12628,7 +12665,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       actor.orgId,
     );
     const historical = await api.createDirectRun(actor, {
-      agentComposeVersionId: legacyCompose.versionId,
+      agentId,
       prompt: "consume an immutable legacy Zero context",
       modelProviderType: "anthropic-api-key",
       vars: { ZERO_AGENT_ID: agentId },
@@ -13937,7 +13974,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     });
 
     const run = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "claim without stored secrets",
     });
     expect(run.status).toBe("pending");
@@ -13954,7 +13991,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     expect(cancelled.status).toBe("cancelled");
 
     const emptyRun = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "claim without matching environment secrets",
       secrets: { UNUSED_TOKEN: "unused-secret-value" },
     });
@@ -13979,7 +14016,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       },
     });
     const failedRun = await api.createDirectRun(actor, {
-      agentComposeId: foreignCompose.composeId,
+      agentId: foreignCompose.composeId,
       prompt: "dispatch to a foreign runner group",
     });
     expect(failedRun.status).toBe("failed");
@@ -14005,17 +14042,17 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     expect(failedClaim.body.error.message).toBe("Job not found in queue");
 
     const firstActive = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "active direct run one",
     });
     const secondActive = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "active direct run two",
     });
     const rejected = await api.requestDirectRun(
       actor,
       {
-        agentComposeId: foreignCompose.composeId,
+        agentId: foreignCompose.composeId,
         prompt: "concurrency should win before runner payload validation",
       },
       [429],
@@ -16169,7 +16206,7 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       },
     });
     const run = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "checkpoint without vars",
     });
     const sandboxHeaders = {

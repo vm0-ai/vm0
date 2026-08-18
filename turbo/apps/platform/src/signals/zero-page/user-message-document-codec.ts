@@ -30,6 +30,7 @@ const FEEDBACK_ITEM_NODE_NAME = "feedbackItem";
 export interface EditorDocumentContext {
   readonly selectedTemplate?: GenerationTemplateRequest;
   readonly attachments?: readonly PersistedAttachment[];
+  readonly includeQuoteOnlyFeedback?: boolean;
 }
 
 export interface EditorDocumentSnapshot {
@@ -315,6 +316,7 @@ function appendFeedbackGroup(
   document: ProseMirrorNode,
   startIndex: number,
   parts: UserMessagePart[],
+  includeQuoteOnlyFeedback: boolean,
 ): { readonly nextIndex: number; readonly emitted: boolean } | null {
   const feedbackParts: UserMessagePart[] = [];
   let index = startIndex;
@@ -327,7 +329,10 @@ function appendFeedbackGroup(
     if (!part || part.type !== "feedback") {
       return null;
     }
-    if (feedbackNoteToPrompt(part.note).trim().length > 0) {
+    if (
+      includeQuoteOnlyFeedback ||
+      feedbackNoteToPrompt(part.note).trim().length > 0
+    ) {
       feedbackParts.push(part);
     }
     index += 1;
@@ -373,7 +378,12 @@ export function editorDocToMessageDocument(
       filesAppended = true;
     }
     if (node.type.name === FEEDBACK_ITEM_NODE_NAME) {
-      const feedbackGroup = appendFeedbackGroup(document, index, parts);
+      const feedbackGroup = appendFeedbackGroup(
+        document,
+        index,
+        parts,
+        context.includeQuoteOnlyFeedback ?? false,
+      );
       if (feedbackGroup === null) {
         return null;
       }
@@ -412,13 +422,17 @@ export function editorDocToMessageDocument(
  */
 export function createEditorDocumentSnapshot(
   document: ProseMirrorNode,
+  includeQuoteOnlyFeedback = false,
 ): EditorDocumentSnapshot {
   return Object.freeze({
     toEditorDocument() {
       return document.toJSON();
     },
     toMessageDocument(context: EditorDocumentContext = {}) {
-      return editorDocToMessageDocument(document, context);
+      return editorDocToMessageDocument(document, {
+        ...context,
+        includeQuoteOnlyFeedback,
+      });
     },
   });
 }

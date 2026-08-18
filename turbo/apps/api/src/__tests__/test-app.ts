@@ -12,10 +12,14 @@ import type { UsagePricingResolution } from "../signals/context/usage-pricing-re
 import type { RouteEntry } from "../signals/route-entry";
 import type { TestContext } from "./test-context";
 
-interface SetupAppWithRoutesOptions {
+interface TestAppWithRoutesOptions {
   readonly context: TestContext;
   readonly routes: readonly RouteEntry[];
   readonly signal?: AbortSignal;
+}
+
+interface SetupAppWithRoutesOptions extends TestAppWithRoutesOptions {
+  readonly baseUrl?: string;
   readonly usagePricingResolution?: UsagePricingResolution;
 }
 
@@ -80,7 +84,7 @@ export function setupRawAppRequestWithRoutes({
   context,
   routes,
   signal,
-}: SetupAppWithRoutesOptions) {
+}: TestAppWithRoutesOptions) {
   const app = createAppWithRoutes({
     signal: signal ?? context.signal,
     routes,
@@ -96,6 +100,7 @@ export function setupRawAppRequestWithRoutes({
 }
 
 export function setupAppWithRoutes({
+  baseUrl = "http://api.test",
   context,
   routes,
   signal,
@@ -107,7 +112,7 @@ export function setupAppWithRoutes({
     contract: TContract,
   ): InitClientReturn<TContract, InitClientArgs> => {
     return initClient(contract, {
-      baseUrl: "http://api.test",
+      baseUrl,
       jsonQuery: false,
       throwOnUnknownStatus: true,
       validateResponse: true,

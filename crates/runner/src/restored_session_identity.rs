@@ -20,20 +20,10 @@ use std::fmt;
 
 use api_contracts::generated::constants::runners::RESUME_SESSION_HISTORY_MAX_BYTES;
 use guest_contracts::session_history_identity::{
-    FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES, FinalSessionHistoryFramework,
-    FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
+    FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES, SessionHistoryFramework, SessionHistoryIdentity,
+    SessionHistoryRefKind,
 };
 use sha2::{Digest, Sha256};
-
-use crate::types::ResumeSessionHistoryRefKind;
-
-/// CLI framework namespace used by a restored-session identity.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum RestoredSessionFramework {
-    ClaudeCode,
-    Codex,
-    Pi,
-}
 
 /// Reason a resume request cannot use a retained identity.
 ///
@@ -114,9 +104,9 @@ impl RestoredSessionHistoryHashSizeRelationship {
 /// that requires retained verification provenance.
 #[derive(Clone, Eq)]
 pub(crate) struct RestoredSessionIdentity {
-    framework: RestoredSessionFramework,
+    framework: SessionHistoryFramework,
     session_id_hash: String,
-    history_ref_kind: ResumeSessionHistoryRefKind,
+    history_ref_kind: SessionHistoryRefKind,
     history_hash: String,
     history_size_bytes: Option<u64>,
     verifier: Option<RestoredSessionIdentityVerifier>,
@@ -138,9 +128,9 @@ enum RestoredSessionIdentityVerifier {
 pub(crate) struct RestoredSessionFinalMetadataVerification<'a> {
     pub(crate) metadata_path: &'a str,
     pub(crate) runtime_dir: &'a str,
-    pub(crate) framework: FinalSessionHistoryFramework,
+    pub(crate) framework: SessionHistoryFramework,
     pub(crate) session_id_hash: &'a str,
-    pub(crate) history_ref_kind: FinalSessionHistoryRefKind,
+    pub(crate) history_ref_kind: SessionHistoryRefKind,
     pub(crate) history_hash: &'a str,
     pub(crate) history_size_bytes: u64,
 }
@@ -150,9 +140,9 @@ pub(crate) struct RestoredSessionFinalMetadataVerification<'a> {
 /// This projection requires a stored history size but does not require
 /// final-metadata verifier provenance.
 pub(crate) struct RestoredSessionIdentityFields<'a> {
-    pub(crate) framework: FinalSessionHistoryFramework,
+    pub(crate) framework: SessionHistoryFramework,
     pub(crate) session_id_hash: &'a str,
-    pub(crate) history_ref_kind: FinalSessionHistoryRefKind,
+    pub(crate) history_ref_kind: SessionHistoryRefKind,
     pub(crate) history_hash: &'a str,
     pub(crate) history_size_bytes: u64,
 }
@@ -174,9 +164,9 @@ impl RestoredSessionIdentity {
     /// supply the canonical thread id. The id is stored only as a SHA-256 hash.
     /// This constructor never attaches final-metadata verifier provenance.
     pub(crate) fn new(
-        framework: RestoredSessionFramework,
+        framework: SessionHistoryFramework,
         identity_session_id: &str,
-        history_ref_kind: ResumeSessionHistoryRefKind,
+        history_ref_kind: SessionHistoryRefKind,
         history_hash: impl Into<String>,
         history_size_bytes: Option<u64>,
     ) -> Self {
@@ -196,17 +186,15 @@ impl RestoredSessionIdentity {
     /// path and runtime directory cannot form a usable verification
     /// projection.
     pub(crate) fn from_final_metadata(
-        metadata: FinalSessionHistoryIdentity,
+        metadata: SessionHistoryIdentity,
         metadata_path: impl Into<String>,
         runtime_dir: impl Into<String>,
     ) -> Option<Self> {
         metadata.validate().ok()?;
-        let framework = restored_session_framework_from_final(metadata.framework);
-        let history_ref_kind = resume_history_ref_kind_from_final(metadata.history_ref_kind);
         let identity = Self {
-            framework,
+            framework: metadata.framework,
             session_id_hash: metadata.session_id_hash,
-            history_ref_kind,
+            history_ref_kind: metadata.history_ref_kind,
             history_hash: metadata.history_hash,
             history_size_bytes: Some(metadata.history_size_bytes),
             verifier: Some(RestoredSessionIdentityVerifier::FinalIdentityMetadata {
@@ -222,9 +210,9 @@ impl RestoredSessionIdentity {
     #[cfg(test)]
     pub(crate) fn claude_code_for_test(history_hash: impl Into<String>) -> Self {
         Self::new(
-            RestoredSessionFramework::ClaudeCode,
+            SessionHistoryFramework::ClaudeCode,
             "sess-restore-plan",
-            ResumeSessionHistoryRefKind::Blob,
+            SessionHistoryRefKind::Blob,
             history_hash,
             None,
         )
@@ -271,9 +259,9 @@ impl RestoredSessionIdentity {
                 Some(RestoredSessionFinalMetadataVerification {
                     metadata_path,
                     runtime_dir,
-                    framework: final_session_history_framework(self.framework),
+                    framework: self.framework,
                     session_id_hash: &self.session_id_hash,
-                    history_ref_kind: final_session_history_ref_kind(self.history_ref_kind),
+                    history_ref_kind: self.history_ref_kind,
                     history_hash: &self.history_hash,
                     history_size_bytes: expected_size,
                 })
@@ -287,9 +275,9 @@ impl RestoredSessionIdentity {
     /// verifier provenance or retained guest paths.
     pub(crate) fn cache_fields(&self) -> Option<RestoredSessionIdentityFields<'_>> {
         Some(RestoredSessionIdentityFields {
-            framework: final_session_history_framework(self.framework),
+            framework: self.framework,
             session_id_hash: &self.session_id_hash,
-            history_ref_kind: final_session_history_ref_kind(self.history_ref_kind),
+            history_ref_kind: self.history_ref_kind,
             history_hash: &self.history_hash,
             history_size_bytes: self.history_size_bytes?,
         })
@@ -455,37 +443,3 @@ impl fmt::Debug for RestoredSessionIdentity {
 /// Read cap used to reject oversized final-identity metadata.
 pub(crate) const FINAL_SESSION_HISTORY_IDENTITY_READ_LIMIT: u64 =
     FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES + 1;
-
-fn restored_session_framework_from_final(
-    framework: FinalSessionHistoryFramework,
-) -> RestoredSessionFramework {
-    match framework {
-        FinalSessionHistoryFramework::ClaudeCode => RestoredSessionFramework::ClaudeCode,
-        FinalSessionHistoryFramework::Codex => RestoredSessionFramework::Codex,
-        FinalSessionHistoryFramework::Pi => RestoredSessionFramework::Pi,
-    }
-}
-
-fn final_session_history_framework(
-    framework: RestoredSessionFramework,
-) -> FinalSessionHistoryFramework {
-    match framework {
-        RestoredSessionFramework::ClaudeCode => FinalSessionHistoryFramework::ClaudeCode,
-        RestoredSessionFramework::Codex => FinalSessionHistoryFramework::Codex,
-        RestoredSessionFramework::Pi => FinalSessionHistoryFramework::Pi,
-    }
-}
-
-fn resume_history_ref_kind_from_final(
-    kind: FinalSessionHistoryRefKind,
-) -> ResumeSessionHistoryRefKind {
-    match kind {
-        FinalSessionHistoryRefKind::Blob => ResumeSessionHistoryRefKind::Blob,
-    }
-}
-
-fn final_session_history_ref_kind(kind: ResumeSessionHistoryRefKind) -> FinalSessionHistoryRefKind {
-    match kind {
-        ResumeSessionHistoryRefKind::Blob => FinalSessionHistoryRefKind::Blob,
-    }
-}

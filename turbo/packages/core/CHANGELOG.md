@@ -1,5 +1,30 @@
 # Changelog
 
+## [8.566.2](https://github.com/vm0-ai/vm0/compare/core-v8.566.1...core-v8.566.2) (2026-08-18)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.338.2
+
+## [8.566.1](https://github.com/vm0-ai/vm0/compare/core-v8.566.0...core-v8.566.1) (2026-08-18)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.338.1
+
+## [8.566.0](https://github.com/vm0-ai/vm0/compare/core-v8.565.3...core-v8.566.0) (2026-08-18)
+
+
+### Features
+
+* **image:** apply the run image model as a default ([#27810](https://github.com/vm0-ai/vm0/issues/27810)) ([026c19c](https://github.com/vm0-ai/vm0/commit/026c19c9cc8694fb0afb7aee36428f5338e9ca89))
+
 ## [8.565.3](https://github.com/vm0-ai/vm0/compare/core-v8.565.2...core-v8.565.3) (2026-08-17)
 
 

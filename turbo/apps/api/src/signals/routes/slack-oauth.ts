@@ -1,6 +1,6 @@
 import { command, computed } from "ccstate";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { zeroSlackOauthContract } from "@okouai/api-contracts/contracts/zero-slack-oauth";
+import { slackOauthContract } from "@okouai/api-contracts/contracts/slack-oauth";
 import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
@@ -185,7 +185,7 @@ const installOauth$ = computed((get) => {
     return jsonErrorResponse("Slack integration is not configured", 503);
   }
 
-  const query = get(queryOf(zeroSlackOauthContract.install));
+  const query = get(queryOf(slackOauthContract.install));
   const userId = resolveIntegrationUserId(query.userId, query.vm0UserId);
   logIntegrationIdentityCompatibility({
     provider: "slack",
@@ -241,7 +241,7 @@ const connectOauth$ = command(async ({ get }, signal: AbortSignal) => {
     return jsonErrorResponse("Slack integration is not configured", 503);
   }
 
-  const query = get(queryOf(zeroSlackOauthContract.connect));
+  const query = get(queryOf(slackOauthContract.connect));
   const userId = resolveIntegrationUserId(query.userId, query.vm0UserId);
   logIntegrationIdentityCompatibility({
     provider: "slack",
@@ -699,7 +699,7 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
     return jsonErrorResponse("Slack integration is not configured", 503);
   }
 
-  const query = get(queryOf(zeroSlackOauthContract.callback));
+  const query = get(queryOf(slackOauthContract.callback));
   const state = parseOAuthState(query.state);
   const redirectBrand = state?.publicBrand ?? get(publicBrand$);
 
@@ -741,15 +741,15 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 export const slackOauthRoutes: readonly RouteEntry[] = [
   {
-    route: zeroSlackOauthContract.install,
+    route: slackOauthContract.install,
     handler: installOauth$,
   },
   {
-    route: zeroSlackOauthContract.connect,
+    route: slackOauthContract.connect,
     handler: connectOauth$,
   },
   {
-    route: zeroSlackOauthContract.callback,
+    route: slackOauthContract.callback,
     handler: callbackOauth$,
   },
 ];

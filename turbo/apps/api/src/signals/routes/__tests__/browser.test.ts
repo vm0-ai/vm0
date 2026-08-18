@@ -87,10 +87,12 @@ function client() {
   return setupApp({ context, routes: browserRoutes })(zeroBrowserContract);
 }
 
-function authorizationClient() {
-  return setupApp({ context, routes: browserAuthorizationRoutes })(
-    zeroBrowserAuthorizationRequestsContract,
-  );
+function authorizationClient(baseUrl = "http://api.test") {
+  return setupApp({
+    baseUrl,
+    context,
+    routes: browserAuthorizationRoutes,
+  })(zeroBrowserAuthorizationRequestsContract);
 }
 
 function chatThreadsClient() {
@@ -409,7 +411,7 @@ describe("okou browser route", () => {
     });
   });
 
-  it("lets an agent request cloud browser access for its chat thread", async () => {
+  it("uses the run token brand for browser access requested through the Okou API", async () => {
     const { routeMocks, runs, chat, actor, agent } =
       await setupBrowserScenario();
     const sent = await chat.requestSendEvent(
@@ -434,24 +436,42 @@ describe("okou browser route", () => {
     expect(new URL(legacyCreated.body.authorizationUrl).origin).toBe(
       "https://app.vm0.ai",
     );
-    const runToken = runs.zeroTokenForRunWithCapabilities(
+    const vm0RunToken = runs.zeroTokenForRunWithCapabilities(
+      actor,
+      sent.body.runId,
+      [],
+      "vm0",
+    );
+    const vm0CreatedOnOkouApi = await accept(
+      authorizationClient("https://api.okou.ai").create({
+        headers: { authorization: `Bearer ${vm0RunToken}` },
+        body: {},
+      }),
+      [200],
+    );
+    expect(new URL(vm0CreatedOnOkouApi.body.authorizationUrl).origin).toBe(
+      "https://app.vm0.ai",
+    );
+    const okouRunToken = runs.zeroTokenForRunWithCapabilities(
       actor,
       sent.body.runId,
       [],
       "okou",
     );
-    const created = await accept(
-      authorizationClient().create({
-        headers: { authorization: `Bearer ${runToken}` },
+    const createdOnOkouApi = await accept(
+      authorizationClient("https://api.okou.ai").create({
+        headers: { authorization: `Bearer ${okouRunToken}` },
         body: {},
       }),
       [200],
     );
-    expect(new URL(created.body.authorizationUrl).origin).toBe(
+    expect(new URL(createdOnOkouApi.body.authorizationUrl).origin).toBe(
       "https://app.okou.ai",
     );
     const requestToken = decodeURIComponent(
-      new URL(created.body.authorizationUrl).pathname.split("/").at(-1) ?? "",
+      new URL(createdOnOkouApi.body.authorizationUrl).pathname
+        .split("/")
+        .at(-1) ?? "",
     );
     expect(requestToken).toMatch(/^vm0_browser_authorization_request_/u);
 

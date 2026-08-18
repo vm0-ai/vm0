@@ -80,8 +80,7 @@ const unifiedRunRequestSchema = z
     sessionId: z.string().optional(),
 
     // Base parameters (can be used directly or overridden after shortcut expansion)
-    agentComposeId: z.string().optional(),
-    agentComposeVersionId: z.string().optional(),
+    agentId: z.string().optional(),
     conversationId: z.string().optional(),
     // Multi-mount artifacts, each with its own mountPath.
     artifacts: z

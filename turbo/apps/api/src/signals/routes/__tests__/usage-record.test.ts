@@ -186,7 +186,7 @@ async function createUnthreadedRun(
     mockNow(args.createdAt);
   }
   const run = await api.createDirectRun(actor, {
-    agentComposeId: compose.composeId,
+    agentId: compose.composeId,
     prompt: args.prompt,
     triggerSource: args.triggerSource,
   });

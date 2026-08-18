@@ -17,7 +17,7 @@ import { teamsOrgConnections } from "@okouai/db/schema/teams-org-connection";
 import { teamsOrgInstallations } from "@okouai/db/schema/teams-org-installation";
 import { teamsUserAgentPreferences } from "@okouai/db/schema/teams-user-agent-preference";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
-import type { TeamsInboundActivity } from "@okouai/api-contracts/contracts/zero-teams-bot";
+import type { TeamsInboundActivity } from "@okouai/api-contracts/contracts/teams-bot";
 import { and, eq, isNull, sql } from "drizzle-orm";
 
 import { env } from "../../lib/env";

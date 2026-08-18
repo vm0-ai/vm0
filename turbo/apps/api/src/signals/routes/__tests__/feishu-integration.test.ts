@@ -14,11 +14,13 @@ import {
   zeroCustomConnectorByIdContract,
   zeroCustomConnectorConnectionContract,
   zeroCustomConnectorOAuth2Contract,
+  zeroCustomConnectorProposalContract,
+  zeroCustomConnectorValuesContract,
   zeroCustomConnectorsContract,
 } from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import { zeroAgentCustomConnectorsContract } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 import { zeroFeishuConnectContract } from "@okouai/api-contracts/contracts/zero-feishu-connect";
-import { zeroFeishuOauthContract } from "@okouai/api-contracts/contracts/zero-feishu-oauth";
+import { feishuOauthContract } from "@okouai/api-contracts/contracts/feishu-oauth";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { getCustomConnectorSkillStorageName } from "@okouai/core/storage-names";
@@ -55,8 +57,7 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { readProjectedChatEvents } from "./helpers/chat-event-test-reader";
 import {
   readCustomConnectorCredentialStorageParent,
-  readCustomConnectorOAuthStorageState,
-  setCustomConnectorCredentialStorageState,
+  seedLegacyCustomFeishuOAuthState,
 } from "./helpers/connector-credential-storage-state";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
@@ -66,8 +67,10 @@ import { customConnectorsRoutes } from "../custom-connectors";
 import { customConnectorsDeleteRoutes } from "../custom-connectors-delete";
 import { customConnectorsGetRoutes } from "../custom-connectors-get";
 import { customConnectorOAuth2Routes } from "../custom-connectors-oauth2";
+import { customConnectorProposalRoutes } from "../custom-connectors-proposal";
 import { customConnectorDisconnectRoutes } from "../custom-connectors-disconnect";
 import { customConnectorsUpdateRoutes } from "../custom-connectors-update";
+import { customConnectorsValuesSetRoutes } from "../custom-connectors-values-set";
 import { feishuConnectRoutes } from "../feishu-connect";
 
 const zeroCustomConnectorByIdTestRoutes = Object.freeze([
@@ -850,7 +853,7 @@ describe("Feishu integration", () => {
       routes: feishuOauthRoutes,
     });
     const callbackResponse = await oauthApp.request(
-      `${zeroFeishuOauthContract.callback.path}?${new URLSearchParams({
+      `${feishuOauthContract.callback.path}?${new URLSearchParams({
         code: `feishu-oauth-${randomUUID()}`,
         responseMode: "json",
         state,
@@ -1880,72 +1883,147 @@ describe("Feishu integration", () => {
       context,
       routes: customConnectorOAuth2Routes,
     })(zeroCustomConnectorOAuth2Contract);
-    const customConnectorOAuthStart = await accept(
+    const managedOAuthStart = await accept(
       customConnectorOAuthClient.start({
         headers: { authorization: "Bearer clerk-session" },
         params: { id: managedConnector.id },
         body: {},
       }),
-      [200],
+      [403],
     );
-    const customAuthorizationUrl = new URL(
-      customConnectorOAuthStart.body.authorizationUrl,
+    expect(managedOAuthStart.body.error.message).toBe(
+      "This connector is managed by its integration",
     );
-    expect(customAuthorizationUrl.searchParams.get("redirect_uri")).toBe(
-      `${APP_ORIGIN}/connectors/feishu/callback`,
-    );
-    oauthUserOpenId = "ou_custom_connector_user";
-    const customOAuthState = requireValue(
-      customAuthorizationUrl.searchParams.get("state"),
-      "Expected custom connector Feishu OAuth state",
-    );
-    await expect(
-      readCustomConnectorOAuthStorageState(context, customOAuthState),
-    ).resolves.toMatchObject({
-      custom_oauth_state: {
-        storage_version: 1,
-        context_storage_version: 1,
-      },
+
+    const legacyGenericState = `legacy-generic-feishu-${randomUUID()}`;
+    await seedLegacyCustomFeishuOAuthState(context, {
+      state: legacyGenericState,
+      orgId: requireValue(admin.orgId, "Expected an organization"),
+      userId: admin.userId,
+      customConnectorId: managedConnector.id,
+      storageVersion: managedConnector.storageVersion,
+      redirectUri: `${APP_ORIGIN}/connectors/feishu/callback`,
     });
-    const oauthApp = createAppWithRoutes({
+    const legacyGenericCallbackResponse = await createAppWithRoutes({
       signal: context.signal,
       routes: feishuOauthRoutes,
-    });
-    clearConnectorInvalidationMocks();
-    const customConnectorCallback = await oauthApp.request(
-      `${zeroFeishuOauthContract.callback.path}?${new URLSearchParams({
-        code: "feishu-custom-connector-code",
+    }).request(
+      `${feishuOauthContract.callback.path}?${new URLSearchParams({
+        code: "legacy-generic-feishu-code",
         responseMode: "json",
-        state: customOAuthState,
+        state: legacyGenericState,
       })}`,
     );
-    expect(customConnectorCallback.status).toBe(200);
-    expectCustomConnectorInvalidations([admin.userId]);
-    await expect(customConnectorCallback.json()).resolves.toStrictEqual({
-      redirectUrl: `${APP_ORIGIN}/connectors/custom/callback/success`,
+    expect(legacyGenericCallbackResponse.status).toBe(400);
+    await expect(legacyGenericCallbackResponse.json()).resolves.toStrictEqual({
+      error: "Invalid or expired connect state",
     });
-    await flushWaitUntilForTest();
-    const connectedFromCustomConnector = await accept(
+    expect(oauthTokenRedirectUris).toStrictEqual([]);
+
+    const customConnectorByIdClient = setupApp({
+      context,
+      routes: zeroCustomConnectorByIdTestRoutes,
+    })(zeroCustomConnectorByIdContract);
+    const managedUpdate = await accept(
+      customConnectorByIdClient.update({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { id: managedConnector.id },
+        body: {
+          displayName: managedConnector.displayName,
+          prefixTemplates: managedConnector.prefixTemplates,
+          fields: managedConnector.fields,
+          headerInjections: managedConnector.headerInjections,
+          queryInjections: managedConnector.queryInjections,
+        },
+      }),
+      [403],
+    );
+    expect(managedUpdate.body.error.message).toBe(
+      "This connector is managed by its integration",
+    );
+    const managedDelete = await accept(
+      customConnectorByIdClient.delete({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { id: managedConnector.id },
+      }),
+      [403],
+    );
+    expect(managedDelete.body.error.message).toBe(
+      "This connector is managed by its integration",
+    );
+
+    const managedValues = await accept(
+      setupApp({ context, routes: customConnectorsValuesSetRoutes })(
+        zeroCustomConnectorValuesContract,
+      ).set({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { id: managedConnector.id },
+        body: { values: [] },
+      }),
+      [403],
+    );
+    expect(managedValues.body.error.message).toBe(
+      "This connector is managed by its integration",
+    );
+
+    const managedProposal = await accept(
+      setupApp({ context, routes: customConnectorProposalRoutes })(
+        zeroCustomConnectorProposalContract,
+      ).save({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          proposal: {
+            operation: "update",
+            connectorId: managedConnector.id,
+            displayName: managedConnector.displayName,
+            prefixTemplates: managedConnector.prefixTemplates,
+            fields: [
+              {
+                key: "token",
+                label: "Token",
+                kind: "secret",
+                required: true,
+              },
+            ],
+            headerInjections: [
+              {
+                name: "Authorization",
+                valueTemplate: "Bearer {{secrets.token}}",
+              },
+            ],
+            queryInjections: managedConnector.queryInjections,
+          },
+          values: [],
+        },
+      }),
+      [403],
+    );
+    expect(managedProposal.body.error.message).toBe(
+      "This connector is managed by its integration",
+    );
+
+    const managedDisconnect = await accept(
+      setupApp({ context, routes: customConnectorDisconnectRoutes })(
+        zeroCustomConnectorConnectionContract,
+      ).disconnect({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { id: managedConnector.id },
+      }),
+      [403],
+    );
+    expect(managedDisconnect.body.error.message).toBe(
+      "This connector is managed by its integration",
+    );
+
+    const unchangedConnectorList = await accept(
       customConnectorClient.list({
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
     );
-    expect(connectedFromCustomConnector.body.connectors[0]).toMatchObject({
+    expect(unchangedConnectorList.body.connectors[0]).toMatchObject({
       id: managedConnector.id,
-      connected: true,
-    });
-    await expect(
-      readCustomConnectorCredentialStorageParent(context, {
-        orgId: requireValue(
-          admin.orgId,
-          "Expected Feishu admin to have an organization",
-        ),
-        userId: admin.userId,
-        customConnectorId: managedConnector.id,
-      }),
-    ).resolves.toMatchObject({
-      connector: { storage_version: 1 },
+      connected: false,
     });
     const adminFeishuStatus = await accept(
       client.getStatus({
@@ -1953,95 +2031,15 @@ describe("Feishu integration", () => {
       }),
       [200],
     );
-    expect(adminFeishuStatus.body).toMatchObject({
-      isConnected: true,
-      connectedUserName: "Feishu User",
-    });
-    await setCustomConnectorCredentialStorageState(context, {
-      orgId: requireValue(
-        admin.orgId,
-        "Expected Feishu admin to have an organization",
-      ),
-      userId: admin.userId,
-      customConnectorId: managedConnector.id,
-      authMethod: "oauth",
-      storageVersion: 2,
-    });
-    const incompatibleFeishuStatus = await accept(
-      client.getStatus({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-    expect(incompatibleFeishuStatus.body.isConnected).toBeFalsy();
-    const incompatibleConnectorList = await accept(
-      customConnectorClient.list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-    expect(incompatibleConnectorList.body.connectors[0]).toMatchObject({
-      id: managedConnector.id,
-      connected: false,
-    });
-    await setCustomConnectorCredentialStorageState(context, {
-      orgId: requireValue(
-        admin.orgId,
-        "Expected Feishu admin to have an organization",
-      ),
-      userId: admin.userId,
-      customConnectorId: managedConnector.id,
-      authMethod: "oauth",
-      storageVersion: 1,
-    });
-    const restoredFeishuStatus = await accept(
-      client.getStatus({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-    expect(restoredFeishuStatus.body.isConnected).toBeTruthy();
-    clearConnectorInvalidationMocks();
-    await accept(
-      setupApp({ context, routes: customConnectorDisconnectRoutes })(
-        zeroCustomConnectorConnectionContract,
-      ).disconnect({
-        headers: { authorization: "Bearer clerk-session" },
-        params: { id: managedConnector.id },
-      }),
-      [204],
-    );
-    expectCustomConnectorInvalidations([admin.userId]);
-    const disconnectedFromCustomConnector = await accept(
-      customConnectorClient.list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-    expect(disconnectedFromCustomConnector.body.connectors[0]).toMatchObject({
-      id: managedConnector.id,
-      connected: false,
-    });
-    await expect(
-      readCustomConnectorCredentialStorageParent(context, {
-        orgId: requireValue(
-          admin.orgId,
-          "Expected Feishu admin to have an organization",
-        ),
-        userId: admin.userId,
-        customConnectorId: managedConnector.id,
-      }),
-    ).resolves.toMatchObject({ connector: null });
-    const disconnectedAdminFeishuStatus = await accept(
-      client.getStatus({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-    expect(disconnectedAdminFeishuStatus.body.isConnected).toBeFalsy();
+    expect(adminFeishuStatus.body.isConnected).toBeFalsy();
     oauthTokenRedirectUris = [];
     oauthUserOpenId = "ou_oauth_user";
     outboundMessages = [];
+
+    const oauthApp = createAppWithRoutes({
+      signal: context.signal,
+      routes: feishuOauthRoutes,
+    });
 
     mocks.clerk.session(member.userId, member.orgId, "org:member");
     mockClerkMembership(context, member, "org:member");
@@ -2096,7 +2094,7 @@ describe("Feishu integration", () => {
     }
 
     const handoffResponse = await oauthApp.request(
-      `${zeroFeishuOauthContract.callback.path}?${new URLSearchParams({
+      `${feishuOauthContract.callback.path}?${new URLSearchParams({
         code: "feishu-oauth-code",
         state,
       })}`,
@@ -2110,7 +2108,7 @@ describe("Feishu integration", () => {
 
     clearConnectorInvalidationMocks();
     const callbackResponse = await oauthApp.request(
-      `${zeroFeishuOauthContract.callback.path}?${new URLSearchParams({
+      `${feishuOauthContract.callback.path}?${new URLSearchParams({
         code: "feishu-oauth-code",
         responseMode: "json",
         state,
@@ -2127,7 +2125,7 @@ describe("Feishu integration", () => {
 
     clearConnectorInvalidationMocks();
     const legacyCallbackResponse = await oauthApp.request(
-      `${zeroFeishuOauthContract.callback.path}?${new URLSearchParams({
+      `${feishuOauthContract.callback.path}?${new URLSearchParams({
         code: "legacy-feishu-oauth-code",
         responseMode: "json",
         state: legacyFeishuAppOAuthState({

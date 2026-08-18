@@ -57,6 +57,23 @@ export const customConnectorOAuthProviderAdapterSchema = z.enum([
   "standard",
   "feishu",
 ]);
+export type CustomConnectorOAuthProviderAdapter = z.infer<
+  typeof customConnectorOAuthProviderAdapterSchema
+>;
+
+export const INTEGRATION_MANAGED_CUSTOM_CONNECTOR_PROVIDER_ADAPTERS = [
+  "feishu",
+] as const satisfies readonly CustomConnectorOAuthProviderAdapter[];
+
+export function isIntegrationManagedCustomConnectorProviderAdapter(
+  providerAdapter: CustomConnectorOAuthProviderAdapter | null | undefined,
+): boolean {
+  return INTEGRATION_MANAGED_CUSTOM_CONNECTOR_PROVIDER_ADAPTERS.some(
+    (managedProviderAdapter) => {
+      return managedProviderAdapter === providerAdapter;
+    },
+  );
+}
 export const customConnectorOAuthTokenEndpointAuthMethodSchema = z.enum([
   "client_secret_basic",
   "client_secret_post",
@@ -172,6 +189,16 @@ export const customConnectorResponseSchema = z.discriminatedUnion("kind", [
 export type CustomConnectorResponse = z.infer<
   typeof customConnectorResponseSchema
 >;
+
+export function isIntegrationManagedCustomConnector(connector: {
+  readonly oauthConfig?: {
+    readonly providerAdapter: CustomConnectorOAuthProviderAdapter;
+  } | null;
+}): boolean {
+  return isIntegrationManagedCustomConnectorProviderAdapter(
+    connector.oauthConfig?.providerAdapter,
+  );
+}
 
 export function isHttpCustomConnectorResponse(
   connector: CustomConnectorResponse,

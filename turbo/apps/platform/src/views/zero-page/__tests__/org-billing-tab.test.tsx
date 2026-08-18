@@ -13,6 +13,7 @@ import {
   zeroBillingRestoreContract,
   zeroBillingStatusContract,
   type BillingStatusResponse,
+  type CheckoutRequest,
   type CreditCheckoutRequest,
   type UsagePackMigrationStateResponse,
 } from "@okouai/api-contracts/contracts/zero-billing";
@@ -282,6 +283,16 @@ async function openBillingTab(
       screen.getByRole("heading", { name: "Billing" }),
     ).toBeInTheDocument();
   });
+}
+
+function inAppBillingPreviewFields() {
+  return {
+    supportsInAppPreview: true as const,
+    returnUrl: new URL(
+      window.location.pathname,
+      window.location.origin,
+    ).toString(),
+  };
 }
 
 function installScrollIntoViewMock(): Mock<HTMLElement["scrollIntoView"]> {
@@ -776,6 +787,7 @@ describe("organization billing settings", () => {
             { memberId: "user_1", usagePackUsd: 20 },
             { memberId: "user_2", usagePackUsd: 50 },
           ],
+          ...inAppBillingPreviewFields(),
         });
         return respond(200, {
           changeId: "ad3bd64c-7237-436d-a221-61b14ed719e7",
@@ -1643,7 +1655,7 @@ describe("organization billing settings", () => {
   });
 
   it("previews and confirms a current member package change inline", async () => {
-    let pendingPayment = false;
+    let changeProcessing = false;
     let paymentApplied = false;
     let previewed = false;
     let confirmationRequests = 0;
@@ -1695,11 +1707,11 @@ describe("organization billing settings", () => {
               usagePackUsd: paymentApplied ? 50 : 20,
               currentPeriodEnd: "2026-04-01T00:00:00Z",
               pendingChange:
-                pendingPayment && !paymentApplied
+                changeProcessing && !paymentApplied
                   ? {
                       id: "ad3bd64c-7237-436d-a221-61b14ed719e7",
                       kind: "upgrade",
-                      status: "pending_payment",
+                      status: "applying",
                       targetUsagePackUsd: 50,
                       effectiveAt: "2026-03-16T00:00:00Z",
                     }
@@ -1724,6 +1736,7 @@ describe("organization billing settings", () => {
         expect(body).toStrictEqual({
           targetTier: "pro",
           memberUsagePacks: [{ memberId: "user_1", usagePackUsd: 50 }],
+          ...inAppBillingPreviewFields(),
         });
         return respond(200, {
           changeId: "ad3bd64c-7237-436d-a221-61b14ed719e7",
@@ -1751,9 +1764,9 @@ describe("organization billing settings", () => {
         expect(body).toStrictEqual({
           changeId: "ad3bd64c-7237-436d-a221-61b14ed719e7",
         });
-        pendingPayment = true;
+        changeProcessing = true;
         return respond(200, {
-          status: "pending_payment",
+          status: "processing",
           effectiveAt: "2026-03-16T00:00:00Z",
           hostedInvoiceUrl: null,
         });
@@ -2162,6 +2175,7 @@ describe("organization billing settings", () => {
         expect(body).toStrictEqual({
           targetTier: "pro",
           memberUsagePacks: [{ memberId: "user_1", usagePackUsd: 100 }],
+          ...inAppBillingPreviewFields(),
         });
         return respond(200, {
           changeId: "703d633a-fe5b-4ea7-a46d-d76078f6c802",
@@ -2340,6 +2354,7 @@ describe("organization billing settings", () => {
         expect(body).toStrictEqual({
           targetTier: "pro",
           memberUsagePacks: [{ memberId: "user_1", usagePackUsd: 100 }],
+          ...inAppBillingPreviewFields(),
         });
         return respond(200, {
           changeId: "703d633a-fe5b-4ea7-a46d-d76078f6c802",
@@ -2445,6 +2460,7 @@ describe("organization billing settings", () => {
         expect(body).toStrictEqual({
           targetTier: "team",
           memberUsagePacks: [{ memberId: "user_1", usagePackUsd: 20 }],
+          ...inAppBillingPreviewFields(),
         });
         return respond(200, {
           changeId: "703d633a-fe5b-4ea7-a46d-d76078f6c802",
@@ -2466,7 +2482,7 @@ describe("organization billing settings", () => {
           changeId: "703d633a-fe5b-4ea7-a46d-d76078f6c802",
         });
         return respond(200, {
-          status: "pending_payment",
+          status: "processing",
           effectiveAt: "2026-03-16T00:00:00Z",
           hostedInvoiceUrl: null,
         });
@@ -2621,6 +2637,7 @@ describe("organization billing settings", () => {
         expect(body).toStrictEqual({
           targetTier: "pro",
           memberUsagePacks: [{ memberId: "user_1", usagePackUsd: 20 }],
+          ...inAppBillingPreviewFields(),
         });
         return respond(200, {
           changeId: "667d65ac-85df-4743-b421-b9d18a3ad89b",
@@ -3874,6 +3891,53 @@ describe("organization billing settings", () => {
     expect(screen.queryByText("Downgrade plan")).not.toBeInTheDocument();
   });
 
+  it("clears a failed downgrade before the dialog reopens", async () => {
+    let downgradeRequests = 0;
+
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Downgrade Retry Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, activeProBillingStatus());
+    });
+    context.mocks.api(zeroBillingDowngradeContract.create, ({ respond }) => {
+      downgradeRequests += 1;
+      return respond(409, {
+        error: {
+          code: "CONFLICT",
+          message: "Simulated downgrade failure",
+        },
+      });
+    });
+
+    await openBillingTab();
+    click(screen.getByText("Downgrade"));
+
+    const firstDialog = await screen.findByRole("dialog", {
+      name: "Downgrade plan",
+    });
+    click(buttonByText("Cancel subscription", firstDialog));
+    await within(firstDialog).findByText(/Simulated downgrade failure/);
+
+    click(buttonByText("Cancel", firstDialog));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Downgrade plan" }),
+      ).not.toBeInTheDocument();
+    });
+    click(screen.getByText("Downgrade"));
+
+    const reopenedDialog = await screen.findByRole("dialog", {
+      name: "Downgrade plan",
+    });
+    expect(
+      within(reopenedDialog).queryByText(/Simulated downgrade failure/),
+    ).not.toBeInTheDocument();
+    expect(downgradeRequests).toBe(1);
+  });
+
   it("redirects for restore confirmation and shows success after realtime catches up", async () => {
     const locationAssign = context.mocks.browser.locationAssign();
     const successToast = vi.spyOn(toast, "success");
@@ -3948,6 +4012,62 @@ describe("organization billing settings", () => {
     expect(successToast).toHaveBeenCalledTimes(1);
   });
 
+  it("clears a failed restore before the dialog reopens", async () => {
+    let restoreRequests = 0;
+
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Restore Retry Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, {
+        ...activeProBillingStatus(),
+        cancelAtPeriodEnd: true,
+        canRestorePlan: true,
+        scheduledChange: {
+          type: "cancel",
+          targetTier: "limited-free-1",
+          effectiveDate: "2026-04-01T00:00:00Z",
+        },
+      });
+    });
+    context.mocks.api(zeroBillingRestoreContract.create, ({ respond }) => {
+      restoreRequests += 1;
+      return respond(409, {
+        error: {
+          code: "CONFLICT",
+          message: "Simulated restore failure",
+        },
+      });
+    });
+
+    await openBillingTab();
+    click(screen.getByText("Restore plan"));
+
+    const firstDialog = await screen.findByRole("dialog", {
+      name: "Restore Pro plan?",
+    });
+    click(buttonByText("Restore plan", firstDialog));
+    await within(firstDialog).findByText(/Simulated restore failure/);
+
+    click(buttonByText("Cancel", firstDialog));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Restore Pro plan?" }),
+      ).not.toBeInTheDocument();
+    });
+    click(screen.getByText("Restore plan"));
+
+    const reopenedDialog = await screen.findByRole("dialog", {
+      name: "Restore Pro plan?",
+    });
+    expect(
+      within(reopenedDialog).queryByText(/Simulated restore failure/),
+    ).not.toBeInTheDocument();
+    expect(restoreRequests).toBe(1);
+  });
+
   it.each([
     { caseName: "not restorable", canRestorePlan: false },
     { caseName: "omitted by an older API", canRestorePlan: undefined },
@@ -3991,6 +4111,180 @@ describe("organization billing settings", () => {
       expect(screen.queryByText("Restore plan")).not.toBeInTheDocument();
     },
   );
+
+  it("reviews a saved-card plan purchase in app and opens its unpaid invoice", async () => {
+    let requestedTier: "pro" | "team" | null = null;
+    let supportsInAppPreview: boolean | undefined;
+    let confirmationRequest: CheckoutRequest | null = null;
+    const hostedInvoiceUrl =
+      "https://invoice.stripe.com/plan-purchase-authentication";
+
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Plan Preview Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, activeProBillingStatus());
+    });
+    context.mocks.api(
+      zeroBillingCheckoutContract.create,
+      ({ body, respond }) => {
+        if (body.previewToken) {
+          confirmationRequest = body;
+          return respond(200, {
+            status: "pending_payment",
+            hostedInvoiceUrl,
+          });
+        }
+        requestedTier = body.tier;
+        supportsInAppPreview = body.supportsInAppPreview;
+        return respond(200, {
+          status: "preview",
+          purchaseType: "plan",
+          tier: body.tier,
+          immediateAmountCents: 16_000,
+          nextRecurringAmountCents: 16_000,
+          currency: "usd",
+          expiresAt: "2026-08-13T12:15:00.000Z",
+          previewToken: "plan-preview-token",
+        });
+      },
+    );
+
+    await openBillingTab("/?settings=billing", {
+      [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
+    });
+    const locationBeforePurchase = window.location.href;
+    click(screen.getByText("Upgrade"));
+    await screen.findByText("Compare plans");
+    click(buttonByText("Upgrade to Team"));
+
+    const reviewDialog = await screen.findByRole("dialog", {
+      name: "Upgrade to Team",
+    });
+    expect(within(reviewDialog).getByText("Today")).toBeInTheDocument();
+    expect(within(reviewDialog).getByText("Due now")).toBeInTheDocument();
+    expect(within(reviewDialog).getByText("Plan")).toBeInTheDocument();
+    expect(within(reviewDialog).getByText("Every month")).toBeInTheDocument();
+    expect(within(reviewDialog).getByText("Monthly total")).toBeInTheDocument();
+    expect(within(reviewDialog).getByText("Team")).toBeInTheDocument();
+    expect(within(reviewDialog).getAllByText("$160.00")).toHaveLength(2);
+    expect(requestedTier).toBe("team");
+    expect(supportsInAppPreview).toBeTruthy();
+    expect(window.location.href).toBe(locationBeforePurchase);
+
+    click(buttonByText("Upgrade to Team", reviewDialog));
+
+    await waitFor(() => {
+      expect(window.location.href).toBe(hostedInvoiceUrl);
+    });
+    expect(confirmationRequest).toMatchObject({
+      tier: "team",
+      supportsInAppPreview: true,
+      previewToken: "plan-preview-token",
+    });
+  });
+
+  it("refreshes invalid Plan previews from current and older billing APIs", async () => {
+    let previewCount = 0;
+    let confirmationCount = 0;
+    let confirmedPreviewToken: string | null = null;
+
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Plan Retry Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, activeProBillingStatus());
+    });
+    context.mocks.api(
+      zeroBillingCheckoutContract.create,
+      ({ body, respond }) => {
+        if (body.previewToken) {
+          confirmationCount += 1;
+          confirmedPreviewToken = body.previewToken;
+          if (confirmationCount === 1) {
+            previewCount += 1;
+            return respond(200, {
+              status: "preview",
+              purchaseType: "plan",
+              tier: body.tier,
+              immediateAmountCents: 15_000 + previewCount * 1000,
+              nextRecurringAmountCents: 15_000 + previewCount * 1000,
+              currency: "usd",
+              expiresAt: "2026-08-13T12:15:00.000Z",
+              previewToken: `plan-preview-token-${previewCount}`,
+            });
+          }
+          return confirmationCount === 2
+            ? respond(409, {
+                error: {
+                  code: "CONFLICT",
+                  message: "Plan purchase preview is no longer valid",
+                },
+              })
+            : respond(200, {
+                status: "completed",
+                hostedInvoiceUrl: null,
+              });
+        }
+        previewCount += 1;
+        return respond(200, {
+          status: "preview",
+          purchaseType: "plan",
+          tier: body.tier,
+          immediateAmountCents: 15_000 + previewCount * 1000,
+          nextRecurringAmountCents: 15_000 + previewCount * 1000,
+          currency: "usd",
+          expiresAt: "2026-08-13T12:15:00.000Z",
+          previewToken: `plan-preview-token-${previewCount}`,
+        });
+      },
+    );
+
+    await openBillingTab("/?settings=billing", {
+      [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
+    });
+    click(screen.getByText("Upgrade"));
+    await screen.findByText("Compare plans");
+    click(buttonByText("Upgrade to Team"));
+
+    const firstDialog = await screen.findByRole("dialog", {
+      name: "Upgrade to Team",
+    });
+    click(buttonByText("Upgrade to Team", firstDialog));
+    await screen.findAllByText("$170.00");
+    const refreshedDialog = await screen.findByRole("dialog", {
+      name: "Upgrade to Team",
+    });
+    expect(
+      within(refreshedDialog).queryByText(
+        "Could not prepare the subscription change. Try again.",
+      ),
+    ).not.toBeInTheDocument();
+    expect(within(refreshedDialog).getAllByText("$170.00")).toHaveLength(2);
+    expect(previewCount).toBe(2);
+    expect(confirmationCount).toBe(1);
+
+    click(buttonByText("Upgrade to Team", refreshedDialog));
+    await screen.findAllByText("$180.00");
+    const legacyRefreshedDialog = await screen.findByRole("dialog", {
+      name: "Upgrade to Team",
+    });
+    expect(previewCount).toBe(3);
+    expect(confirmationCount).toBe(2);
+
+    click(buttonByText("Upgrade to Team", legacyRefreshedDialog));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Upgrade to Team" }),
+      ).not.toBeInTheDocument();
+    });
+    expect(confirmationCount).toBe(3);
+    expect(confirmedPreviewToken).toBe("plan-preview-token-3");
+  });
 
   it("previews and confirms a saved-billing credit purchase in the app", async () => {
     const checkoutReady = createDeferredPromise<void>(context.signal);
@@ -4067,7 +4361,7 @@ describe("organization billing settings", () => {
     expect(within(reviewDialog).getByText("+20,000")).toBeInTheDocument();
     expect(startRequest).toMatchObject({
       credits: 20_000,
-      previewExistingBilling: true,
+      supportsInAppPreview: true,
     });
     expect(window.location.href).toBe(locationBeforePurchase);
 
@@ -4081,6 +4375,81 @@ describe("organization billing settings", () => {
     expect(confirmedPreviewToken).toBe("credit-preview-token");
     expect(billingStatusRequests).toBeGreaterThan(1);
     expect(window.location.href).toBe(locationBeforePurchase);
+  });
+
+  it("clears a failed credit confirmation before the purchase dialog reopens", async () => {
+    let previewCount = 0;
+    let confirmationCount = 0;
+
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Credit Retry Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, {
+        ...activeProBillingStatus(),
+        canBuyCredits: true,
+      });
+    });
+    context.mocks.api(
+      zeroBillingCreditCheckoutContract.create,
+      ({ respond }) => {
+        previewCount += 1;
+        return respond(200, {
+          status: "preview",
+          credits: 20_000,
+          amountCents: 1800,
+          currency: "usd",
+          expiresAt: "2026-08-13T12:15:00.000Z",
+          previewToken: `credit-preview-token-${previewCount}`,
+        });
+      },
+    );
+    context.mocks.api(
+      zeroBillingCreditCheckoutContract.confirm,
+      ({ respond }) => {
+        confirmationCount += 1;
+        return respond(409, {
+          error: {
+            code: "CONFLICT",
+            message: "Credit purchase preview is no longer valid",
+          },
+        });
+      },
+    );
+
+    await openBillingTab("/?settings=billing", {
+      [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
+    });
+    click(buttonByText("Quick buy $20.00"));
+
+    const firstDialog = await screen.findByRole("dialog", {
+      name: "Review credit purchase",
+    });
+    click(buttonByText("Pay and add credits", firstDialog));
+    await within(firstDialog).findByText(
+      "Could not complete this credit purchase. Review your billing details and try again.",
+    );
+
+    click(buttonByText("Cancel", firstDialog));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Review credit purchase" }),
+      ).not.toBeInTheDocument();
+    });
+    click(buttonByText("Quick buy $20.00"));
+
+    const reopenedDialog = await screen.findByRole("dialog", {
+      name: "Review credit purchase",
+    });
+    expect(
+      within(reopenedDialog).queryByText(
+        "Could not complete this credit purchase. Review your billing details and try again.",
+      ),
+    ).not.toBeInTheDocument();
+    expect(previewCount).toBe(2);
+    expect(confirmationCount).toBe(1);
   });
 
   it("manages plan changes, credit purchases, and auto-recharge settings", async () => {

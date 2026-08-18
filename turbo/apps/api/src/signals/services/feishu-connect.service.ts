@@ -21,7 +21,7 @@ import {
 import { tapError } from "../utils";
 import { encryptPersistentSecretValue } from "./crypto.utils";
 import {
-  deleteFeishuCustomConnector$,
+  deleteFeishuInstallationAndCustomConnector$,
   disconnectFeishuCustomConnectorOAuthConnection,
   ensureFeishuCustomConnector$,
   hasFeishuCustomConnectorOAuthConnection,
@@ -491,28 +491,7 @@ export const removeFeishuInstallation$ = command(
     args: { readonly orgId: string; readonly installationId: string },
     signal: AbortSignal,
   ): Promise<boolean> => {
-    const rows = await set(writeDb$)
-      .delete(feishuOrgInstallations)
-      .where(
-        and(
-          eq(feishuOrgInstallations.orgId, args.orgId),
-          eq(feishuOrgInstallations.id, args.installationId),
-        ),
-      )
-      .returning({ id: feishuOrgInstallations.id });
-    signal.throwIfAborted();
-    if (rows.length > 0) {
-      await set(
-        deleteFeishuCustomConnector$,
-        {
-          orgId: args.orgId,
-          installationId: args.installationId,
-        },
-        signal,
-      );
-      signal.throwIfAborted();
-    }
-    return rows.length > 0;
+    return await set(deleteFeishuInstallationAndCustomConnector$, args, signal);
   },
 );
 

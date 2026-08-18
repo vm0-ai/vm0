@@ -1,4 +1,4 @@
-import { zeroIntegrationsAgentPhoneContract } from "@okouai/api-contracts/contracts/zero-integrations-agentphone";
+import { integrationsAgentPhoneContract } from "@okouai/api-contracts/contracts/integrations-agentphone";
 import { agentphoneVerificationSendCooldowns } from "@okouai/db/schema/agentphone-verification-send-cooldown";
 import { agentphoneUserLinks } from "@okouai/db/schema/agentphone-user-link";
 import { publicBrandPresentation } from "@okouai/core/public-brand";
@@ -59,11 +59,9 @@ const agentPhoneAuthOptions = {
 const VERIFICATION_SEND_COOLDOWN_MS = 60_000;
 const log = logger("api:agentphone:link");
 
-const startLinkBody$ = bodyResultOf(
-  zeroIntegrationsAgentPhoneContract.startLink,
-);
+const startLinkBody$ = bodyResultOf(integrationsAgentPhoneContract.startLink);
 const connectBody$ = bodyResultOf(
-  zeroIntegrationsAgentPhoneContract.connectAgentPhone,
+  integrationsAgentPhoneContract.connectAgentPhone,
 );
 
 const webhookBodySchema = z.record(z.string(), z.unknown());
@@ -976,23 +974,23 @@ const webhook$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 export const integrationsAgentPhoneRoutes: readonly RouteEntry[] = [
   {
-    route: zeroIntegrationsAgentPhoneContract.connectAgentPhone,
+    route: integrationsAgentPhoneContract.connectAgentPhone,
     handler: authRoute(agentPhoneAuthOptions, connectAgentPhone$),
   },
   {
-    route: zeroIntegrationsAgentPhoneContract.webhook,
+    route: integrationsAgentPhoneContract.webhook,
     handler: webhook$,
   },
   {
-    route: zeroIntegrationsAgentPhoneContract.getLinkStatus,
+    route: integrationsAgentPhoneContract.getLinkStatus,
     handler: authRoute(agentPhoneAuthOptions, getLinkStatus$),
   },
   {
-    route: zeroIntegrationsAgentPhoneContract.startLink,
+    route: integrationsAgentPhoneContract.startLink,
     handler: authRoute(agentPhoneAuthOptions, startLink$),
   },
   {
-    route: zeroIntegrationsAgentPhoneContract.unlink,
+    route: integrationsAgentPhoneContract.unlink,
     handler: authRoute(agentPhoneAuthOptions, unlink$),
   },
 ];

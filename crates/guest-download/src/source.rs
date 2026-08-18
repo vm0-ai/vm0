@@ -38,7 +38,12 @@ pub(crate) fn open_archive(
         log_info!(LOG_TAG, "Reading local archive");
         let file = std::fs::File::open(path)
             .map_err(|e| DownloadError::fatal(format!("Failed to open local archive: {e}")))?;
-        return Ok(ArchiveSource::local(file));
+        let compressed_bytes = file
+            .metadata()
+            .ok()
+            .filter(|metadata| metadata.is_file())
+            .map(|metadata| metadata.len());
+        return Ok(ArchiveSource::local(file, compressed_bytes));
     }
 
     let metrics = metrics.cloned().unwrap_or_default();
@@ -123,13 +128,15 @@ fn timeout_phase(timeout: ureq::Timeout) -> &'static str {
 pub(crate) struct ArchiveSource {
     reader: Box<dyn Read>,
     http_body_read_failure: HttpBodyReadFailure,
+    compressed_bytes: Option<u64>,
 }
 
 impl ArchiveSource {
-    pub(crate) fn local(reader: impl Read + 'static) -> Self {
+    pub(crate) fn local(reader: impl Read + 'static, compressed_bytes: Option<u64>) -> Self {
         Self {
             reader: Box::new(reader),
             http_body_read_failure: HttpBodyReadFailure::disabled(),
+            compressed_bytes,
         }
     }
 
@@ -142,7 +149,12 @@ impl ArchiveSource {
                 metrics,
             }),
             http_body_read_failure,
+            compressed_bytes: None,
         }
+    }
+
+    pub(crate) fn compressed_bytes(&self) -> Option<u64> {
+        self.compressed_bytes
     }
 
     pub(crate) fn into_parts(self) -> (Box<dyn Read>, HttpBodyReadFailure) {

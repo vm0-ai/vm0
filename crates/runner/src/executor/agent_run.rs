@@ -4,7 +4,6 @@ use std::time::{Duration, Instant};
 
 use guest_contracts::diagnostics::{CliTerminationReason, FailureDiagnostic};
 use guest_contracts::session_history_identity::{
-    FinalSessionHistoryIdentity, FinalSessionHistoryIdentityError,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_EXPECTED_MISMATCH,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FRAMEWORK_MISMATCH,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_MISMATCH,
@@ -12,7 +11,8 @@ use guest_contracts::session_history_identity::{
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_TOO_LARGE,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_METADATA,
-    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_METADATA_READ,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_METADATA_READ, SessionHistoryIdentity,
+    SessionHistoryIdentityError,
 };
 use sandbox::{
     EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, GuestProcessCancelHandle,
@@ -167,20 +167,16 @@ impl SessionHistoryIdentityReason {
         }
     }
 
-    const fn from_final_metadata_error(error: FinalSessionHistoryIdentityError) -> Self {
+    const fn from_final_metadata_error(error: SessionHistoryIdentityError) -> Self {
         match error {
-            FinalSessionHistoryIdentityError::MetadataTooLarge => {
-                Self::FinalizeUnverifiableMetadata
-            }
-            FinalSessionHistoryIdentityError::InvalidJson
-            | FinalSessionHistoryIdentityError::InvalidFramework
-            | FinalSessionHistoryIdentityError::InvalidHistoryRefKind
-            | FinalSessionHistoryIdentityError::InvalidSessionIdHash
-            | FinalSessionHistoryIdentityError::InvalidHistoryHash
-            | FinalSessionHistoryIdentityError::InvalidHistorySize
-            | FinalSessionHistoryIdentityError::InvalidHistorySource => {
-                Self::FinalizeInvalidMetadata
-            }
+            SessionHistoryIdentityError::MetadataTooLarge => Self::FinalizeUnverifiableMetadata,
+            SessionHistoryIdentityError::InvalidJson
+            | SessionHistoryIdentityError::InvalidFramework
+            | SessionHistoryIdentityError::InvalidHistoryRefKind
+            | SessionHistoryIdentityError::InvalidSessionIdHash
+            | SessionHistoryIdentityError::InvalidHistoryHash
+            | SessionHistoryIdentityError::InvalidHistorySize
+            | SessionHistoryIdentityError::InvalidHistorySource => Self::FinalizeInvalidMetadata,
         }
     }
 }
@@ -616,7 +612,7 @@ async fn read_final_session_history_identity(
         Ok(None) => return Err(SessionHistoryIdentityReason::FinalizeMissingMetadata),
         Err(_) => return Err(SessionHistoryIdentityReason::FinalizeMetadataReadFailed),
     };
-    let metadata = match FinalSessionHistoryIdentity::from_json_slice(&bytes) {
+    let metadata = match SessionHistoryIdentity::from_json_slice(&bytes) {
         Ok(metadata) => metadata,
         Err(error) => {
             return Err(SessionHistoryIdentityReason::from_final_metadata_error(

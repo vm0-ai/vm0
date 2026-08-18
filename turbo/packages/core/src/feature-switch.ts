@@ -342,7 +342,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.SavedBillingCreditPurchase]: {
     maintainer: "yuma@vm0.ai",
     description:
-      "Preview saved-billing credit purchases and confirm them in the app.",
+      "Preview purchases with saved billing and confirm them in the app.",
     enabled: true,
   },
   [FeatureSwitchKey.ZapierConnector]: {
@@ -382,6 +382,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ChatMarkUnread]: {
     maintainer: "yuma@vm0.ai",
     description: "Show the Mark unread action in the chat thread sidebar menu.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ChatQuoteOnlyFeedback]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Allow quoted assistant passages to be sent without an added user comment.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

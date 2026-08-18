@@ -483,13 +483,14 @@ describe("POST /api/zero/billing/downgrade", () => {
     });
   });
 
-  it("returns setup checkout URL when team to pro needs a payment method", async () => {
+  it("returns branded setup checkout URLs when team to pro needs a payment method", async () => {
     const subId = `sub-team-pro-no-card-${randomUUID().slice(0, 8)}`;
     const customerId = `cus-team-pro-${randomUUID().slice(0, 8)}`;
     const periodStart = 1_782_809_751;
     const periodEnd = 1_785_401_751;
     const checkoutUrl = "https://checkout.stripe.com/setup/downgrade";
-    const fallbackReturnUrl = "https://app.okou.ai";
+    const okouFallbackReturnUrl = "https://app.okou.ai";
+    const vm0FallbackReturnUrl = "https://app.vm0.ai";
     const explicitReturnUrl = "https://app.vm0.ai/settings?settings=billing";
     const fixture = await track(
       store.set(
@@ -557,8 +558,8 @@ describe("POST /api/zero/billing/downgrade", () => {
       mode: "setup",
       customer: customerId,
       currency: "usd",
-      success_url: fallbackReturnUrl,
-      cancel_url: fallbackReturnUrl,
+      success_url: okouFallbackReturnUrl,
+      cancel_url: okouFallbackReturnUrl,
       metadata: {
         purpose: "billing_downgrade",
         orgId: fixture.orgId,
@@ -574,6 +575,22 @@ describe("POST /api/zero/billing/downgrade", () => {
         },
       },
     });
+    context.mocks.stripe.checkout.sessions.create.mockClear();
+    const vm0Response = await accept(
+      client.create({
+        body: { targetTier: "pro" },
+        headers: { authorization: "Bearer clerk-session" },
+        extraHeaders: { origin: "https://app.vm0.ai" },
+      }),
+      [200],
+    );
+    expect(vm0Response.body).toStrictEqual(response.body);
+    expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success_url: vm0FallbackReturnUrl,
+        cancel_url: vm0FallbackReturnUrl,
+      }),
+    );
     context.mocks.stripe.checkout.sessions.create.mockClear();
     const explicitResponse = await accept(
       client.create({

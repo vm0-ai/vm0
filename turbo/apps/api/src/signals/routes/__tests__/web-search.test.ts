@@ -263,7 +263,7 @@ describe("okou web-search route", () => {
       },
     });
     const run = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "Find current public information",
     });
     const token = api.zeroTokenForRunWithCapabilities(actor, run.runId, [

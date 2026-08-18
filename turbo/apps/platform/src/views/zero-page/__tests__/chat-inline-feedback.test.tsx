@@ -147,6 +147,55 @@ function selectTextAcrossElementsForInlineFeedback(
   endElement.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
 }
 
+function assistantActionArea(element: HTMLElement): HTMLElement {
+  const assistantGroup = element.closest('[data-role="assistant"]');
+  if (!(assistantGroup instanceof HTMLElement)) {
+    throw new Error("Assistant group not found");
+  }
+  const primaryActions = assistantGroup.querySelector(
+    '[data-testid="chat-event-actions"]',
+  );
+  const actionArea = primaryActions?.parentElement?.parentElement;
+  if (
+    !(actionArea instanceof HTMLElement) ||
+    actionArea.parentElement !== assistantGroup
+  ) {
+    throw new Error("Assistant action area not found");
+  }
+  return actionArea;
+}
+
+function selectTextToAssistantActionBoundaryForInlineFeedback(
+  startElement: HTMLElement,
+  endAssistantElement = startElement,
+): Range {
+  const startNode = startElement.firstChild;
+  if (!(startNode instanceof Text)) {
+    throw new Error("Selection source must start with a text node");
+  }
+  const actionArea = assistantActionArea(endAssistantElement);
+  startElement.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+  const range = document.createRange();
+  range.setStart(startNode, 0);
+  range.setEnd(actionArea, 0);
+  Object.defineProperty(range, "getBoundingClientRect", {
+    configurable: true,
+    value: () => {
+      return new DOMRect(24, 32, 180, 20);
+    },
+  });
+
+  const selection = window.getSelection();
+  if (!selection) {
+    throw new Error("Selection API is not available");
+  }
+  selection.removeAllRanges();
+  selection.addRange(range);
+  document.dispatchEvent(new Event("selectionchange"));
+  actionArea.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+  return range;
+}
+
 function buttonByText(text: string): HTMLElement {
   const button = queryAllByRoleFast("button").find((candidate) => {
     const label = candidate.textContent?.replace(/\s+/g, " ").trim();
@@ -1744,6 +1793,117 @@ describe("chat inline feedback", () => {
     });
   });
 
+  it("shows the inline feedback toolbar when a whole paragraph selection ends at the action area", async () => {
+    const user = userEvent.setup({ delay: null });
+    const assistantReply = "The rollout dates are unclear in this summary.";
+
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback review",
+      chatEvents: [
+        {
+          id: "msg-feedback-paragraph-boundary-user",
+          role: "user",
+          content: "Review this launch summary",
+          runId: "run-feedback-paragraph-boundary",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-feedback-paragraph-boundary-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-feedback-paragraph-boundary",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatForward]: true },
+    });
+
+    const assistantReplyElement = await screen.findByText(assistantReply);
+    assistantReplyElement.append(document.createTextNode("\n  "));
+    const assistantGroup = assistantReplyElement.closest(
+      '[data-role="assistant"]',
+    );
+    const actionArea = assistantActionArea(assistantReplyElement);
+    const range = selectTextToAssistantActionBoundaryForInlineFeedback(
+      assistantReplyElement,
+    );
+
+    expect(range.commonAncestorContainer).toBe(assistantGroup);
+    expect(range.endContainer).toBe(actionArea);
+    expect(range.endOffset).toBe(0);
+    await waitFor(() => {
+      expect(buttonByText("Copy")).toBeInTheDocument();
+      expect(buttonByText("Quote")).toBeInTheDocument();
+      expect(buttonByText("Forward")).toBeInTheDocument();
+    });
+
+    await user.click(buttonByText("Quote"));
+    const [feedbackItem] = await findFeedbackItems(1);
+    expect(feedbackItem?.firstElementChild?.textContent).toBe(assistantReply);
+  });
+
+  it("rejects an action-boundary selection that crosses unrelated messages", async () => {
+    const firstReply = "The rollout dates are unclear in this summary.";
+    const secondReply = "The risk owners are missing from the plan.";
+
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback review",
+      chatEvents: [
+        {
+          id: "msg-feedback-cross-boundary-user-one",
+          role: "user",
+          content: "Review this launch summary",
+          runId: "run-feedback-cross-boundary-one",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-feedback-cross-boundary-assistant-one",
+          role: "assistant",
+          content: firstReply,
+          runId: "run-feedback-cross-boundary-one",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        {
+          id: "msg-feedback-cross-boundary-user-two",
+          role: "user",
+          content: "Review the risk plan too",
+          runId: "run-feedback-cross-boundary-two",
+          createdAt: "2026-06-09T10:02:00Z",
+        },
+        {
+          id: "msg-feedback-cross-boundary-assistant-two",
+          role: "assistant",
+          content: secondReply,
+          runId: "run-feedback-cross-boundary-two",
+          createdAt: "2026-06-09T10:03:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+    });
+
+    const firstReplyElement = await screen.findByText(firstReply);
+    const secondReplyElement = await screen.findByText(secondReply);
+    selectTextToAssistantActionBoundaryForInlineFeedback(
+      firstReplyElement,
+      secondReplyElement,
+    );
+    await waitForDeferredSelectionCapture();
+
+    expect(window.getSelection()?.isCollapsed).toBeFalsy();
+    expect(screen.queryByText("Quote")).not.toBeInTheDocument();
+  });
+
   it("dismisses the inline feedback toolbar when a click clears the selection", async () => {
     const assistantReply = "The rollout dates are unclear in this summary.";
 
@@ -2074,6 +2234,109 @@ describe("chat inline feedback", () => {
     );
     expect(sentPrompts[0]).toContain("Name owners.");
     expect(sentPrompts[0]).toContain("Add dates.");
+  });
+
+  it("sends multiple referenced passages without comments", async () => {
+    const user = userEvent.setup({ delay: null });
+    const assistantReply = "The launch summary needs clearer risk ownership.";
+    const firstQuote = "launch summary";
+    const secondQuote = "risk ownership";
+    const firstRange = {
+      start: assistantReply.indexOf(firstQuote),
+      end: assistantReply.indexOf(firstQuote) + firstQuote.length,
+    };
+    const secondRange = {
+      start: assistantReply.indexOf(secondQuote),
+      end: assistantReply.indexOf(secondQuote) + secondQuote.length,
+    };
+    const sentMessages: RunCreateCapture[] = [];
+
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback review",
+      chatEvents: [
+        {
+          id: "msg-quote-only-user",
+          role: "user",
+          content: "Review this launch summary",
+          runId: "run-quote-only",
+          createdAt: "2026-08-18T10:00:00Z",
+        },
+        {
+          id: "msg-quote-only-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-quote-only",
+          createdAt: "2026-08-18T10:01:00Z",
+        },
+      ],
+      onRunCreate: (body) => {
+        sentMessages.push(body);
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatQuoteOnlyFeedback]: true,
+      },
+    });
+
+    const assistantReplyElement = await screen.findByText(assistantReply);
+    selectTextForInlineFeedback(assistantReplyElement, firstRange);
+    await user.click(await screen.findByText("Quote"));
+    await findFeedbackNote();
+
+    selectTextForInlineFeedback(assistantReplyElement, secondRange);
+    await user.click(await screen.findByText("Quote"));
+    await findFeedbackNotes(2);
+    await user.click(screen.getByLabelText("Send"));
+
+    await waitFor(() => {
+      expect(sentMessages).toHaveLength(1);
+    });
+    expect(sentMessages[0]).toMatchObject({
+      prompt:
+        "The user referenced 2 parts of your reply:\n\n" +
+        `> ${firstQuote}\n\n---\n\n` +
+        `> ${secondQuote}`,
+      hasTextContent: true,
+      userMessage: {
+        version: 1,
+        parts: [
+          {
+            type: "feedback",
+            quote: firstQuote,
+            eventId: "msg-quote-only-assistant",
+            range: firstRange,
+            note: [],
+          },
+          {
+            type: "feedback",
+            quote: secondQuote,
+            eventId: "msg-quote-only-assistant",
+            range: secondRange,
+            note: [],
+          },
+        ],
+      },
+    });
+    const sentFeedbackGroup = await waitFor(() => {
+      const group = document.querySelector("[data-structured-feedback-group]");
+      expect(group).toBeInstanceOf(HTMLElement);
+      return group as HTMLElement;
+    });
+    expect(
+      Array.from(
+        sentFeedbackGroup.querySelectorAll("[data-structured-feedback-quote]"),
+      ).map((quote) => {
+        return quote.textContent;
+      }),
+    ).toStrictEqual([firstQuote, secondQuote]);
+    await waitFor(() => {
+      expect(feedbackNotes()).toHaveLength(0);
+    });
   });
 
   it("keeps the divider spacing off the first inline feedback item", async () => {

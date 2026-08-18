@@ -3,14 +3,14 @@ import {
   testTeamsDispatchProbeContract,
   type TestTeamsDispatchProbeBody,
 } from "@okouai/api-contracts/contracts/test-teams-dispatch-probe";
-import type { TeamsInboundActivity } from "@okouai/api-contracts/contracts/zero-teams-bot";
+import type { TeamsInboundActivity } from "@okouai/api-contracts/contracts/teams-bot";
 
 import { now } from "../../lib/time";
 import { request$ } from "../context/hono";
 import type { RouteEntry } from "../route-entry";
 import { safeJsonParse, settle } from "../utils";
 import { ApiDispatchTimingCollector } from "../services/api-dispatch-timing.service";
-import { dispatchTeamsMessageToAgent$ } from "../services/zero-teams-dispatch.service";
+import { dispatchTeamsMessageToAgent$ } from "../services/teams-dispatch.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,

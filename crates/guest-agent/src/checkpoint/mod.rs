@@ -486,7 +486,7 @@ mod tests {
         let session_metadata = CapturedSessionMetadata::for_test(
             thread_id,
             Some(
-                guest_contracts::session_history_identity::FinalSessionHistorySourceRef::Codex {
+                guest_contracts::session_history_identity::SessionHistorySourceRef::Codex {
                     sessions_dir: std::path::Path::new(&home_dir)
                         .join(".codex/sessions")
                         .to_string_lossy()

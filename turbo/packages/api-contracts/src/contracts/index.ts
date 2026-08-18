@@ -218,7 +218,7 @@ export {
   type TestTeamsDispatchProbeContract,
   type TestTeamsDispatchProbeResponse,
 } from "./test-teams-dispatch-probe";
-export { zeroEmailInboundContract } from "./zero-email";
+export { emailInboundContract } from "./email";
 export {
   sandboxReuseResultSchema,
   workspaceReuseResultSchema,
@@ -1133,6 +1133,9 @@ export {
   customConnectorAuthModeSchema,
   customConnectorOAuthConfigSchema,
   customConnectorOAuthConfigInputSchema,
+  INTEGRATION_MANAGED_CUSTOM_CONNECTOR_PROVIDER_ADAPTERS,
+  isIntegrationManagedCustomConnector,
+  isIntegrationManagedCustomConnectorProviderAdapter,
   type ZeroCustomConnectorsContract,
   type ZeroCustomConnectorByIdContract,
   type ZeroCustomConnectorConnectionContract,
@@ -1140,6 +1143,7 @@ export {
   type ZeroCustomConnectorOAuth2Contract,
   type CustomConnectorResponse,
   type CustomConnectorAuthMode,
+  type CustomConnectorOAuthProviderAdapter,
   type CustomConnectorOAuthConfig,
   type CustomConnectorOAuthConfigInput,
   type CreateCustomConnectorBody,
@@ -1439,13 +1443,13 @@ export {
 } from "./slack-commands";
 export { slackEventsContract, type SlackEventsContract } from "./slack-events";
 export {
-  zeroTeamsBotContract,
+  teamsBotContract,
   teamsInboundActivitySchema,
   teamsBotIngressResponseSchema,
   type TeamsInboundActivity,
   type TeamsBotIngressResponse,
-  type ZeroTeamsBotContract,
-} from "./zero-teams-bot";
+  type TeamsBotContract,
+} from "./teams-bot";
 export {
   zeroTeamsConnectContract,
   type TeamsConnectBody,
@@ -1455,33 +1459,33 @@ export {
   type ZeroTeamsConnectContract,
 } from "./zero-teams-connect";
 export {
-  zeroTeamsBrowserConnectContract,
-  zeroTeamsBrowserConnectQuerySchema,
-  type ZeroTeamsBrowserConnectContract,
-  type ZeroTeamsBrowserConnectQuery,
-} from "./zero-teams-browser-connect";
+  teamsBrowserConnectContract,
+  teamsBrowserConnectQuerySchema,
+  type TeamsBrowserConnectContract,
+  type TeamsBrowserConnectQuery,
+} from "./teams-browser-connect";
 export {
-  zeroTeamsOauthContract,
-  zeroTeamsOauthCallbackQuerySchema,
-  zeroTeamsOauthConnectQuerySchema,
-  type ZeroTeamsOauthCallbackQuery,
-  type ZeroTeamsOauthConnectQuery,
-  type ZeroTeamsOauthContract,
-} from "./zero-teams-oauth";
+  teamsOauthContract,
+  teamsOauthCallbackQuerySchema,
+  teamsOauthConnectQuerySchema,
+  type TeamsOauthCallbackQuery,
+  type TeamsOauthConnectQuery,
+  type TeamsOauthContract,
+} from "./teams-oauth";
 export {
   slackInteractiveContract,
   type SlackInteractiveContract,
 } from "./slack-interactive";
 export {
-  zeroSlackOauthContract,
-  zeroSlackOauthInstallQuerySchema,
-  zeroSlackOauthConnectQuerySchema,
-  zeroSlackOauthCallbackQuerySchema,
-  type ZeroSlackOauthContract,
-  type ZeroSlackOauthInstallQuery,
-  type ZeroSlackOauthConnectQuery,
-  type ZeroSlackOauthCallbackQuery,
-} from "./zero-slack-oauth";
+  slackOauthContract,
+  slackOauthInstallQuerySchema,
+  slackOauthConnectQuerySchema,
+  slackOauthCallbackQuerySchema,
+  type SlackOauthContract,
+  type SlackOauthInstallQuery,
+  type SlackOauthConnectQuery,
+  type SlackOauthCallbackQuery,
+} from "./slack-oauth";
 export {
   slackChannelsContract,
   slackChannelSchema,
@@ -1590,13 +1594,13 @@ export {
   type ZeroAvatarVideoVoicesQuery,
 } from "./zero-avatar-video";
 export {
-  zeroImageIoGenerateContract,
-  zeroImageIoGenerateRequestSchema,
-  zeroImageIoGenerateResponseSchema,
-  type ZeroImageIoGenerateContract,
-  type ZeroImageIoGenerateRequest,
-  type ZeroImageIoGenerateResponse,
-} from "./zero-image-io-generate";
+  imageIoGenerateContract,
+  imageIoGenerateRequestSchema,
+  imageIoGenerateResponseSchema,
+  type ImageIoGenerateContract,
+  type ImageIoGenerateRequest,
+  type ImageIoGenerateResponse,
+} from "./image-io-generate";
 export {
   imageShareXContract,
   imageShareXRequestSchema,
@@ -1616,26 +1620,26 @@ export {
   type ZeroMailProvider,
 } from "./zero-mail";
 export {
-  zeroBankingContract,
-  zeroBankingProviderSchema,
-  zeroBankingAccountSchema,
-  zeroBankingBalanceSchema,
-  zeroBankingTransactionSchema,
-  zeroBankingAccountsResponseSchema,
-  zeroBankingBalancesRequestSchema,
-  zeroBankingBalancesResponseSchema,
-  zeroBankingTransactionsRequestSchema,
-  zeroBankingTransactionsResponseSchema,
-  type ZeroBankingContract,
-  type ZeroBankingAccount,
-  type ZeroBankingBalance,
-  type ZeroBankingTransaction,
-  type ZeroBankingAccountsResponse,
-  type ZeroBankingBalancesRequest,
-  type ZeroBankingBalancesResponse,
-  type ZeroBankingTransactionsRequest,
-  type ZeroBankingTransactionsResponse,
-} from "./zero-banking";
+  bankingContract,
+  bankingProviderSchema,
+  bankingAccountSchema,
+  bankingBalanceSchema,
+  bankingTransactionSchema,
+  bankingAccountsResponseSchema,
+  bankingBalancesRequestSchema,
+  bankingBalancesResponseSchema,
+  bankingTransactionsRequestSchema,
+  bankingTransactionsResponseSchema,
+  type BankingContract,
+  type BankingAccount,
+  type BankingBalance,
+  type BankingTransaction,
+  type BankingAccountsResponse,
+  type BankingBalancesRequest,
+  type BankingBalancesResponse,
+  type BankingTransactionsRequest,
+  type BankingTransactionsResponse,
+} from "./banking";
 export {
   mapsContract,
   mapsOperationSchema,
@@ -1678,13 +1682,13 @@ export {
   type AirQualityCurrentRequest,
 } from "./weather";
 export {
-  zeroVideoIoGenerateContract,
-  zeroVideoIoGenerateRequestSchema,
-  zeroVideoIoGenerateResponseSchema,
-  type ZeroVideoIoGenerateContract,
-  type ZeroVideoIoGenerateRequest,
-  type ZeroVideoIoGenerateResponse,
-} from "./zero-video-io-generate";
+  videoIoGenerateContract,
+  videoIoGenerateRequestSchema,
+  videoIoGenerateResponseSchema,
+  type VideoIoGenerateContract,
+  type VideoIoGenerateRequest,
+  type VideoIoGenerateResponse,
+} from "./video-io-generate";
 export {
   builtInGenerationContract,
   builtInGenerationTypeSchema,
@@ -1761,12 +1765,12 @@ export {
   type TelegramSetupStatus,
 } from "./zero-integrations-telegram";
 export {
-  zeroIntegrationsAgentPhoneContract,
-  type ZeroIntegrationsAgentPhoneContract,
+  integrationsAgentPhoneContract,
+  type IntegrationsAgentPhoneContract,
   type AgentPhoneConnectResponse,
   type AgentPhoneLinkStatusResponse,
   type AgentPhoneStartLinkResponse,
-} from "./zero-integrations-agentphone";
+} from "./integrations-agentphone";
 export {
   sharedMessageSchema,
   sharedThreadsContract,

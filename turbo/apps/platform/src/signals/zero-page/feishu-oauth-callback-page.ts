@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { zeroFeishuOauthContract } from "@okouai/api-contracts/contracts/zero-feishu-oauth";
+import { feishuOauthContract } from "@okouai/api-contracts/contracts/feishu-oauth";
 
 import { accept } from "../../lib/accept.ts";
 import { i18n } from "../../i18n/index.ts";
@@ -30,7 +30,7 @@ export const setupFeishuOAuthCallbackPage$ = command(
     );
     await set(hideAppSkeleton$, signal);
 
-    const client = get(zeroClient$)(zeroFeishuOauthContract, {
+    const client = get(zeroClient$)(feishuOauthContract, {
       apiBase: "api",
     });
     const result = await accept(

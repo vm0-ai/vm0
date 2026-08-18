@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
-import { zeroFeishuBrowserConnectContract } from "@okouai/api-contracts/contracts/zero-feishu-browser-connect";
+import { feishuBrowserConnectContract } from "@okouai/api-contracts/contracts/feishu-browser-connect";
 import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
 
@@ -120,7 +120,6 @@ const startFeishuAccountOAuth$ = command(
         connectorId,
         redirectUri: feishuOAuthAppCallbackUrl(),
         feishuContext: {
-          completionTarget: "feishu",
           installationId: args.installationId,
           expectedOpenId: args.openId,
         },
@@ -172,7 +171,7 @@ const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
     signIn.searchParams.set("redirect_url", request.url);
     return redirect(signIn.toString());
   }
-  const query = get(queryOf(zeroFeishuBrowserConnectContract.connect));
+  const query = get(queryOf(feishuBrowserConnectContract.connect));
   const { installationId, openId, chatId, ts, sig } = query;
   if (!installationId || !openId || !chatId || ts === undefined || !sig) {
     return worksRedirect({ feishuError: "Invalid or expired connect link" });
@@ -201,7 +200,7 @@ const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
 const connectFromApp$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const bodyResult = await get(
-    bodyResultOf(zeroFeishuBrowserConnectContract.connectFromApp),
+    bodyResultOf(feishuBrowserConnectContract.connectFromApp),
   );
   signal.throwIfAborted();
   if (!bodyResult.ok) {
@@ -257,7 +256,7 @@ const connectFromApp$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 const getStatus$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const query = get(queryOf(zeroFeishuBrowserConnectContract.getStatus));
+  const query = get(queryOf(feishuBrowserConnectContract.getStatus));
   if (
     !verifyFeishuConnectToken({
       installationId: query.installationId,
@@ -329,18 +328,18 @@ const getStatus$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 export const feishuBrowserConnectRoutes: readonly RouteEntry[] = [
   {
-    route: zeroFeishuBrowserConnectContract.connect,
+    route: feishuBrowserConnectContract.connect,
     handler: connect$,
   },
   {
-    route: zeroFeishuBrowserConnectContract.connectFromApp,
+    route: feishuBrowserConnectContract.connectFromApp,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       connectFromApp$,
     ),
   },
   {
-    route: zeroFeishuBrowserConnectContract.getStatus,
+    route: feishuBrowserConnectContract.getStatus,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       getStatus$,

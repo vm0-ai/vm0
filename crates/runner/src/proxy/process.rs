@@ -1054,14 +1054,32 @@ exit 42
         .is_ok()
     }
 
-    async fn wait_for_file(path: &Path) {
-        tokio::time::timeout(Duration::from_secs(2), async {
-            while !tokio::fs::try_exists(path).await.unwrap_or(false) {
+    async fn wait_for_pid_file(path: &Path) -> u32 {
+        let mut last_observation = "no read completed".to_string();
+        let result = tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                match tokio::fs::read_to_string(path).await {
+                    Ok(contents) => match contents.parse::<u32>() {
+                        Ok(pid) => return pid,
+                        Err(error) => {
+                            last_observation =
+                                format!("contents {contents:?} did not parse as a PID: {error}");
+                        }
+                    },
+                    Err(error) => {
+                        last_observation = format!("read failed: {error}");
+                    }
+                }
                 tokio::time::sleep(Duration::from_millis(20)).await;
             }
         })
-        .await
-        .unwrap_or_else(|_| panic!("timed out waiting for {}", path.display()));
+        .await;
+        result.unwrap_or_else(|_| {
+            panic!(
+                "timed out waiting for PID in {}: {last_observation}",
+                path.display()
+            )
+        })
     }
 
     async fn acquire_test_runtime(config: &ProxyConfig) -> Arc<MitmdumpRuntime> {
@@ -1639,11 +1657,7 @@ exit 42
         proxy.start().await.unwrap();
 
         let descendant_path = fake_mitmdump.with_extension("descendant");
-        wait_for_file(&descendant_path).await;
-        let old_descendant_pid: u32 = std::fs::read_to_string(&descendant_path)
-            .unwrap()
-            .parse()
-            .unwrap();
+        let old_descendant_pid = wait_for_pid_file(&descendant_path).await;
         let environment = std::fs::read_to_string(fake_mitmdump.with_extension("env")).unwrap();
         let old_launch = PathBuf::from(environment.lines().next().unwrap());
 
@@ -1675,11 +1689,7 @@ exit 42
         proxy.start().await.unwrap();
 
         let descendant_path = fake_mitmdump.with_extension("descendant");
-        wait_for_file(&descendant_path).await;
-        let descendant_pid: u32 = std::fs::read_to_string(&descendant_path)
-            .unwrap()
-            .parse()
-            .unwrap();
+        let descendant_pid = wait_for_pid_file(&descendant_path).await;
         let environment = std::fs::read_to_string(fake_mitmdump.with_extension("env")).unwrap();
         let launch_path = PathBuf::from(environment.lines().next().unwrap());
 

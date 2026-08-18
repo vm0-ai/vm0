@@ -5,6 +5,7 @@ import type {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { foldActiveChatGoalObjective } from "@okouai/api-contracts/contracts/chat-events";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import type { ImageModel } from "@okouai/core/image-model-catalog";
 import type { VideoModel } from "@okouai/core/video-model-catalog";
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import { onRef, withCleanup } from "../utils.ts";
@@ -187,6 +188,18 @@ export interface ComposerVideoModelSignals {
   >;
 }
 
+/** Image model selected for an existing chat composer. */
+export interface ComposerImageModelSignals {
+  readonly selectedImageModel$: Computed<
+    ImageModel | null | Promise<ImageModel | null>
+  >;
+  readonly effectiveImageModel$: Computed<ImageModel | Promise<ImageModel>>;
+  readonly setImageModel$: Command<
+    Promise<void>,
+    [ImageModel | null, AbortSignal]
+  >;
+}
+
 interface ComposerComputerSignals {
   readonly computerUseHostId$: Computed<string | null>;
   readonly cloudBrowserEnabled$: Computed<boolean>;
@@ -249,6 +262,7 @@ export interface ComposerSignals {
   readonly connector: ComposerConnectorSignals;
   readonly draft: ComposerDraftSignals;
   readonly model: ComposerModelSignals;
+  readonly imageModel?: ComposerImageModelSignals;
   readonly videoModel?: ComposerVideoModelSignals;
   readonly videoOptions: ComposerVideoOptionsSignals;
   readonly computer: ComposerComputerSignals;
@@ -271,6 +285,7 @@ interface CreateComposerSignalsOptions {
   readonly selectedModelOauthAvailable$: ComposerModelSignals["selectedModelOauthAvailable$"];
   readonly setModelSelection$: ComposerModelSignals["setModelSelection$"];
   readonly configureSelectedModel$: ComposerModelSignals["configureSelectedModel$"];
+  readonly imageModel?: ComposerImageModelSignals;
   readonly videoModel?: ComposerVideoModelSignals;
   readonly computerUseHostId$: ComposerComputerSignals["computerUseHostId$"];
   readonly cloudBrowserEnabled$: ComposerComputerSignals["cloudBrowserEnabled$"];
@@ -477,6 +492,9 @@ export function createComposerSignals(
     return options.agentId;
   });
   const feedback = createComposerFeedbackModel();
+  const quoteOnlyFeedbackEnabled$ = computed((get): boolean => {
+    return get(featureSwitch$)[FeatureSwitchKey.ChatQuoteOnlyFeedback] ?? false;
+  });
   const temporaryModelNoticeEnabled$ = computed((get): boolean => {
     return (
       options.threadId === undefined &&
@@ -491,6 +509,7 @@ export function createComposerSignals(
       singleLineOnMobile: options.singleLineOnMobile,
     },
     feedback,
+    quoteOnlyFeedbackEnabled$,
   );
   const ui = createComposerUiSignals();
   const submission = createComposerSubmissionSignals(
@@ -537,6 +556,7 @@ export function createComposerSignals(
       setModelSelection$: options.setModelSelection$,
       configureSelectedModel$: options.configureSelectedModel$,
     },
+    ...(options.imageModel ? { imageModel: options.imageModel } : {}),
     ...(options.videoModel ? { videoModel: options.videoModel } : {}),
     videoOptions: ui.videoOptions,
     computer: {

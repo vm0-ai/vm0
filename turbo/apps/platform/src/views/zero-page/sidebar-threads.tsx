@@ -6,10 +6,12 @@ import {
   useLastResolved,
   useLastLoadable,
 } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import {
   Plus,
   Check,
+  CheckCheck,
   ChevronRight,
   Trash,
   Pencil,
@@ -77,6 +79,8 @@ import {
   chatThreadOnlyUnread$,
   setChatThreadOnlyUnread$,
 } from "../../signals/chat-page/chat-thread-only-unread.ts";
+import { unreadAgentIds$ } from "../../signals/chat-page/chat-thread-indicators.ts";
+import { markAgentThreadsRead$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
 import {
   closeRenameChatThreadDialog$,
   pendingDeleteThreadId$,
@@ -702,15 +706,14 @@ function ChatThreadsListMenuTooltip() {
   );
 }
 
-function ChatThreadsTitle() {
-  const { t } = useTranslation();
+function useNewChatMenuAction() {
   const currentChatAgentId = useLastResolved(currentChatAgentId$) ?? null;
   const createNewChat = useSet(createNewChatThread$);
   const setExpanded = useSet(setSidebarExpanded$);
   const rootSignal = useGet(rootSignal$);
-  const { titleLabel } = useChatThreadsTitleLabels();
   const newChatDisabled = useGet(newChatThreadDisabled$);
-  const onNewChat = (pane: NewChatThreadPane) => {
+
+  function onSelect(pane: NewChatThreadPane) {
     if (!currentChatAgentId) {
       return;
     }
@@ -719,9 +722,87 @@ function ChatThreadsTitle() {
       Reason.DomCallback,
     );
     setExpanded(false);
+  }
+
+  return {
+    disabled: !currentChatAgentId || newChatDisabled,
+    onSelect,
   };
+}
+
+function NewChatMenuItem({
+  disabled,
+  onSelect,
+}: {
+  disabled: boolean;
+  onSelect: (pane: NewChatThreadPane) => void;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <DropdownMenuItem
+      onSelect={() => {
+        onSelect("main");
+      }}
+      disabled={disabled}
+    >
+      <Plus size={16} className="mr-2" />
+      {t(($) => {
+        return $.chat.newChat;
+      })}
+    </DropdownMenuItem>
+  );
+}
+
+function useMarkAllReadMenuAction(showMarkAllRead: boolean) {
+  const currentChatAgentId = useLastResolved(currentChatAgentId$) ?? null;
+  const unreadAgentIds = useLastResolved(unreadAgentIds$);
+  const [markReadLoadable, markAgentThreadsRead] = useLoadableSet(
+    markAgentThreadsRead$,
+  );
+  const pageSignal = useGet(pageSignal$);
+  const markingRead = markReadLoadable.state === "loading";
+  const visible =
+    showMarkAllRead &&
+    currentChatAgentId !== null &&
+    (unreadAgentIds?.has(currentChatAgentId) ?? false);
+
+  function onSelect() {
+    if (!currentChatAgentId) {
+      return;
+    }
+    detach(
+      markAgentThreadsRead(currentChatAgentId, pageSignal),
+      Reason.DomCallback,
+      "markAgentThreadsRead",
+    );
+  }
+
+  return { disabled: markingRead, onSelect, visible };
+}
+
+function MarkAllReadMenuItem({
+  disabled,
+  onSelect,
+}: {
+  disabled: boolean;
+  onSelect: () => void;
+}) {
+  const { t } = useTranslation("agents");
+
+  return (
+    <DropdownMenuItem onSelect={onSelect} disabled={disabled}>
+      <CheckCheck size={16} className="mr-2" />
+      {t(($) => {
+        return $.sidebar.markAllRead;
+      })}
+    </DropdownMenuItem>
+  );
+}
+
+function ChatThreadFilterMenuItems() {
+  const { t } = useTranslation();
   const setCollapsed = useSet(setSessionListCollapsed$);
-  const collapsed = useGet(sessionListCollapsed$);
   const unreadOnly = useGet(chatThreadOnlyUnread$);
   const setUnreadOnly = useSet(setChatThreadOnlyUnread$);
 
@@ -731,6 +812,82 @@ function ChatThreadsTitle() {
       setCollapsed(false);
     }
   }
+
+  return (
+    <>
+      <DropdownMenuItem
+        onSelect={() => {
+          toggleUnreadOnly(false);
+        }}
+      >
+        <Check size={16} className={`mr-2 ${unreadOnly ? "invisible" : ""}`} />
+        {t(($) => {
+          return $.chat.sidebar.allChats;
+        })}
+      </DropdownMenuItem>
+      <DropdownMenuItem
+        onSelect={() => {
+          toggleUnreadOnly(true);
+        }}
+      >
+        <Check size={16} className={`mr-2 ${unreadOnly ? "" : "invisible"}`} />
+        {t(($) => {
+          return $.chat.sidebar.unreadOnly;
+        })}
+      </DropdownMenuItem>
+    </>
+  );
+}
+
+function ChatThreadsListMenu({
+  showMarkAllRead,
+}: {
+  showMarkAllRead: boolean;
+}) {
+  const { t } = useTranslation();
+  const newChatAction = useNewChatMenuAction();
+  const markAllReadAction = useMarkAllReadMenuAction(showMarkAllRead);
+
+  return (
+    <TooltipProvider delayDuration={200}>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
+            className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-state-selected-hover transition-colors"
+            aria-label={t(($) => {
+              return $.chat.sidebar.openListMenu;
+            })}
+          >
+            <ChatThreadsListMenuTooltip />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="end"
+          className="w-44"
+          onClick={(e) => {
+            e.stopPropagation();
+          }}
+        >
+          <NewChatMenuItem {...newChatAction} />
+          {markAllReadAction.visible ? (
+            <MarkAllReadMenuItem {...markAllReadAction} />
+          ) : null}
+          <DropdownMenuSeparator />
+          <ChatThreadFilterMenuItems />
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </TooltipProvider>
+  );
+}
+
+function ChatThreadsTitle({ showMarkAllRead }: { showMarkAllRead: boolean }) {
+  const { titleLabel } = useChatThreadsTitleLabels();
+  const setCollapsed = useSet(setSessionListCollapsed$);
+  const collapsed = useGet(sessionListCollapsed$);
 
   return (
     <div
@@ -749,70 +906,7 @@ function ChatThreadsTitle() {
         </span>
       </span>
       <div className="flex items-center gap-0.5">
-        <TooltipProvider delayDuration={200}>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                }}
-                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-state-selected-hover transition-colors"
-                aria-label={t(($) => {
-                  return $.chat.sidebar.openListMenu;
-                })}
-              >
-                <ChatThreadsListMenuTooltip />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="w-44"
-              onClick={(e) => {
-                e.stopPropagation();
-              }}
-            >
-              <DropdownMenuItem
-                onSelect={() => {
-                  onNewChat("main");
-                }}
-                disabled={!currentChatAgentId || newChatDisabled}
-              >
-                <Plus size={16} className="mr-2" />
-                {t(($) => {
-                  return $.chat.newChat;
-                })}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onSelect={() => {
-                  toggleUnreadOnly(false);
-                }}
-              >
-                <Check
-                  size={16}
-                  className={`mr-2 ${unreadOnly ? "invisible" : ""}`}
-                />
-                {t(($) => {
-                  return $.chat.sidebar.allChats;
-                })}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={() => {
-                  toggleUnreadOnly(true);
-                }}
-              >
-                <Check
-                  size={16}
-                  className={`mr-2 ${unreadOnly ? "" : "invisible"}`}
-                />
-                {t(($) => {
-                  return $.chat.sidebar.unreadOnly;
-                })}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </TooltipProvider>
+        <ChatThreadsListMenu showMarkAllRead={showMarkAllRead} />
       </div>
     </div>
   );
@@ -1007,12 +1101,19 @@ function ExpandedChatThreadsContent() {
     </OverlayScrollArea>
   );
 }
-export function ChatThreadsSection() {
+export function ChatThreadsSection({
+  showMarkAllRead = false,
+}: {
+  showMarkAllRead?: boolean;
+} = {}) {
   const agentScope = useGet(currentChatAgentScope$);
 
   return (
     <div className="mt-4 flex flex-col min-h-0 flex-1">
-      <ChatThreadsTitle key={agentScope ?? "no-agent"} />
+      <ChatThreadsTitle
+        key={agentScope ?? "no-agent"}
+        showMarkAllRead={showMarkAllRead}
+      />
       <ChatThreadsContent />
       <ChatThreadRenameDialog />
       <DeleteChatThreadDialog />

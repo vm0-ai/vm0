@@ -2,11 +2,70 @@
 
 import base64
 import gzip
+import zlib
 
+import brotli
 import pytest
+import zstandard
 
 from body_capture import add_capture_fields
 from body_limits import BODY_CAPTURE_LIMIT
+from tests.body_decode_helpers import pseudo_random_ascii
+
+
+def _track_zlib_max_input(monkeypatch) -> dict[str, int]:
+    real_factory = zlib.decompressobj
+    stats = {"max_input": 0}
+
+    class TrackingDecompressionObj:
+        def __init__(self, wrapped):
+            self._wrapped = wrapped
+
+        def decompress(self, chunk, *args, **kwargs):
+            stats["max_input"] = max(stats["max_input"], len(chunk))
+            return self._wrapped.decompress(chunk, *args, **kwargs)
+
+        @property
+        def eof(self):
+            return self._wrapped.eof
+
+        @property
+        def unconsumed_tail(self):
+            return self._wrapped.unconsumed_tail
+
+    def factory(*args, **kwargs):
+        return TrackingDecompressionObj(real_factory(*args, **kwargs))
+
+    monkeypatch.setattr("body_decoding.zlib.decompressobj", factory)
+    return stats
+
+
+def _track_zstd_max_read(monkeypatch) -> dict[str, int]:
+    real_factory = zstandard.ZstdDecompressor
+    stats = {"max_read": 0, "read_across_frames": 0}
+
+    class TrackingReader:
+        def __init__(self, wrapped):
+            self._wrapped = wrapped
+
+        def __enter__(self):
+            self._wrapped.__enter__()
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return self._wrapped.__exit__(exc_type, exc_value, traceback)
+
+        def read(self, size=-1):
+            stats["max_read"] = max(stats["max_read"], size)
+            return self._wrapped.read(size)
+
+    class TrackingDecompressor:
+        def stream_reader(self, *args, **kwargs):
+            stats["read_across_frames"] = int(kwargs.get("read_across_frames") is True)
+            return TrackingReader(real_factory().stream_reader(*args, **kwargs))
+
+    monkeypatch.setattr("body_decoding.zstandard.ZstdDecompressor", TrackingDecompressor)
+    return stats
 
 
 class TestAddCaptureFields:
@@ -325,8 +384,8 @@ class TestAddCaptureFields:
         assert entry["request_body_encoding"] == "binary"
 
     def test_response_decompression_error_skips_body(self, real_flow):
-        # Content-Encoding: gzip + non-gzip bytes makes flow.response.content
-        # raise ValueError, which add_capture_fields is expected to catch.
+        # Content-Encoding: gzip + non-gzip bytes makes the bounded capture
+        # decoder fail, which add_capture_fields is expected to hide.
         flow = real_flow(
             method="POST",
             host="api.example.com",
@@ -344,11 +403,137 @@ class TestAddCaptureFields:
         assert "response_body" not in entry  # response body skipped
         assert entry["response_body_encoding"] == "binary"  # marked as binary
 
+    def test_response_unsupported_encoding_skips_body(self, real_flow):
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            response_content_type="text/plain",
+            response_body=b"opaque response body",
+            response_encoding="x-custom",
+        )
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert "response_body" not in entry
+        assert entry["response_body_encoding"] == "binary"
+
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+    def test_response_preserves_mitmproxy_compatible_zlib_variants(self, real_flow, encoding):
+        body = b"compatible response body"
+        if encoding == "gzip":
+            compressed = zlib.compress(body)
+        else:
+            compressor = zlib.compressobj(wbits=-zlib.MAX_WBITS)
+            compressed = compressor.compress(body) + compressor.flush()
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            response_content_type="text/plain",
+            response_body=compressed,
+            response_encoding=encoding,
+        )
+
+        entry = {}
+        add_capture_fields(flow, entry)
+
+        assert entry["response_body"] == body.decode()
+        assert entry["response_body_encoding"] == "utf-8"
+
+    def test_response_large_gzip_bounds_compressed_input_chunks(self, real_flow, monkeypatch):
+        body = pseudo_random_ascii(BODY_CAPTURE_LIMIT * 4)
+        compressed = gzip.compress(body)
+        assert len(compressed) > 1024
+        stats = _track_zlib_max_input(monkeypatch)
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            response_content_type="text/plain",
+            response_body=compressed,
+            response_encoding="gzip",
+        )
+
+        entry = {}
+        add_capture_fields(flow, entry)
+
+        assert entry["response_body_truncated"] is True
+        assert len(entry["response_body"]) == BODY_CAPTURE_LIMIT
+        assert stats["max_input"] <= 1024
+
+    def test_response_incomplete_brotli_skips_body(self, real_flow):
+        body = b"incomplete response body" * 100
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            response_content_type="text/plain",
+            response_body=brotli.compress(body)[:-1],
+            response_encoding="br",
+        )
+
+        entry = {}
+        add_capture_fields(flow, entry)
+
+        assert "response_body" not in entry
+        assert entry["response_body_encoding"] == "binary"
+
+    def test_response_zstd_concatenated_frames_capture_all_frames(self, real_flow):
+        first = b"first response frame"
+        second = b" and second response frame"
+        compressor = zstandard.ZstdCompressor()
+        compressed = compressor.compress(first) + compressor.compress(second)
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            response_content_type="text/plain",
+            response_body=compressed,
+            response_encoding="zstd",
+        )
+
+        entry = {}
+        add_capture_fields(flow, entry)
+
+        assert entry["response_body"] == (first + second).decode()
+        assert entry["response_body_encoding"] == "utf-8"
+
+    def test_response_zstd_trailing_garbage_skips_body(self, real_flow):
+        compressed = zstandard.ZstdCompressor().compress(b"response body")
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            response_content_type="text/plain",
+            response_body=compressed + b"garbage",
+            response_encoding="zstd",
+        )
+
+        entry = {}
+        add_capture_fields(flow, entry)
+
+        assert "response_body" not in entry
+        assert entry["response_body_encoding"] == "binary"
+
+    def test_response_zstd_zip_bomb_bounds_decoded_output(self, real_flow, monkeypatch):
+        compressed = zstandard.ZstdCompressor().compress(b"x" * (BODY_CAPTURE_LIMIT * 4))
+        stats = _track_zstd_max_read(monkeypatch)
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            response_content_type="text/plain",
+            response_body=compressed,
+            response_encoding="zstd",
+        )
+
+        entry = {}
+        add_capture_fields(flow, entry)
+
+        assert entry["response_body_truncated"] is True
+        assert len(entry["response_body"]) == BODY_CAPTURE_LIMIT
+        assert stats == {
+            "max_read": BODY_CAPTURE_LIMIT + 1,
+            "read_across_frames": 1,
+        }
+
     def test_request_decompression_error_marks_body_binary(self, real_flow):
         # Request capture decodes the captured stream buffer or raw_content with the
         # bounded helper. Malformed gzip returns None, so add_capture_fields marks the
-        # body binary without accessing flow.request.content, unlike the response
-        # fallback above.
+        # body binary without accessing flow.request.content.
         flow = real_flow(
             method="POST",
             host="api.example.com",

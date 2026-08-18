@@ -2,7 +2,7 @@
 
 import base64
 import re
-import zlib
+from dataclasses import dataclass
 from email.utils import parsedate_to_datetime
 from typing import Literal
 
@@ -52,6 +52,16 @@ _MAX_CAPTURE_HEADER_NAME_LENGTH = 256
 _MAX_CAPTURE_HEADER_VALUE_TO_PRESERVE = 256
 _MAX_CAPTURE_HEADER_FIELDS = 512
 _MAX_CAPTURE_HEADER_BYTES = 32 * 1024
+_CAPTURE_HEADER_FOLD_SEPARATOR_BYTES = len(b", ")
+_BODY_CAPTURE_DEPENDENCY_HEADER_NAMES = frozenset(
+    {
+        b"content-encoding",
+        b"content-type",
+    }
+)
+_BODY_CAPTURE_DEPENDENCY_HEADER_NAME_LENGTHS = frozenset(
+    len(name) for name in _BODY_CAPTURE_DEPENDENCY_HEADER_NAMES
+)
 _REDACTED_HEADER_NAME = "[redacted-header-name]"
 _VALUE_PRESERVING_CAPTURE_CONTENT_TYPES = frozenset(
     {
@@ -238,29 +248,143 @@ def _sanitize_header_name_for_capture(name: str) -> str:
     return name
 
 
-def _sanitize_headers_for_capture(headers: http.Headers) -> tuple[dict[str, str], bool]:
-    """Build a bounded header prefix safe for persistent network logs."""
+@dataclass(frozen=True)
+class _CaptureHeaderInspection:
+    serialized: dict[str, str]
+    serialized_truncated: bool
+    body_dependency_headers: http.Headers | None
+
+
+def _has_valid_body_capture_content_type(headers: http.Headers) -> bool:
+    values = headers.get_all("content-type")
+    if not values:
+        return True
+    if len(values) != 1:
+        return False
+
+    value = values[0]
+    if _UNSAFE_CAPTURE_HEADER_VALUE_CHARS.search(value) is not None:
+        return False
+    media_type = value.partition(";")[0].strip(_HTTP_OPTIONAL_WHITESPACE)
+    type_name, separator, subtype_name = media_type.partition("/")
+    return (
+        separator == "/"
+        and _MEDIA_TYPE_NAME_PATTERN.fullmatch(type_name) is not None
+        and _MEDIA_TYPE_NAME_PATTERN.fullmatch(subtype_name) is not None
+    )
+
+
+def _has_valid_body_capture_content_encoding(headers: http.Headers) -> bool:
+    values = headers.get_all("content-encoding")
+    if not values:
+        return True
+
+    folded_value = ", ".join(values)
+    if _UNSAFE_CAPTURE_HEADER_VALUE_CHARS.search(folded_value) is not None:
+        return False
+    for raw_coding in folded_value.split(","):
+        coding = raw_coding.strip(_HTTP_OPTIONAL_WHITESPACE)
+        if not coding or _HTTP_FIELD_NAME_PATTERN.fullmatch(coding) is None:
+            return False
+    return True
+
+
+def _has_valid_body_capture_dependencies(headers: http.Headers) -> bool:
+    if not _has_valid_body_capture_content_type(headers):
+        return False
+    return _has_valid_body_capture_content_encoding(headers)
+
+
+def _body_capture_dependency_header_name(raw_name: bytes) -> bytes | None:
+    if len(raw_name) not in _BODY_CAPTURE_DEPENDENCY_HEADER_NAME_LENGTHS:
+        return None
+    normalized_name = raw_name.lower()
+    if normalized_name not in _BODY_CAPTURE_DEPENDENCY_HEADER_NAMES:
+        return None
+    return normalized_name
+
+
+def _inspect_headers_for_capture(headers: http.Headers) -> _CaptureHeaderInspection:
+    """Inspect bounded serialization and body dependencies before string access.
+
+    Serialization stops decoding at its prefix limit. Raw-name inspection keeps
+    looking for the two body dependencies so unrelated overflow does not hide a
+    later matching field or suppress an otherwise bounded body capture.
+    """
     result: dict[str, str] = {}
     seen_names: set[str] = set()
+    dependency_fields: list[tuple[bytes, bytes]] = []
+    dependency_names: set[bytes] = set()
+    dependency_bytes = 0
+    dependency_field_count = 0
+    dependencies_within_budget = True
     captured_bytes = 0
+    serialized_truncated = False
     for index, (raw_name, raw_value) in enumerate(headers.fields):
-        field_bytes = len(raw_name) + len(raw_value)
-        if (
-            index >= _MAX_CAPTURE_HEADER_FIELDS
-            or field_bytes > _MAX_CAPTURE_HEADER_BYTES - captured_bytes
-        ):
-            return result, True
-        captured_bytes += field_bytes
+        if not serialized_truncated:
+            field_bytes = len(raw_name) + len(raw_value)
+            if (
+                index >= _MAX_CAPTURE_HEADER_FIELDS
+                or field_bytes > _MAX_CAPTURE_HEADER_BYTES - captured_bytes
+            ):
+                serialized_truncated = True
+            else:
+                captured_bytes += field_bytes
+                name = raw_name.decode("utf-8", "surrogateescape")
+                value = raw_value.decode("utf-8", "surrogateescape")
+                captured_name = _sanitize_header_name_for_capture(name)
+                case_insensitive_name = captured_name.lower()
+                if case_insensitive_name not in seen_names:
+                    seen_names.add(case_insensitive_name)
+                    result[captured_name] = _sanitize_header_value_for_capture(captured_name, value)
 
-        name = raw_name.decode("utf-8", "surrogateescape")
-        value = raw_value.decode("utf-8", "surrogateescape")
-        captured_name = _sanitize_header_name_for_capture(name)
-        case_insensitive_name = captured_name.lower()
-        if case_insensitive_name in seen_names:
-            continue  # keep first occurrence only (raw fields contain all)
-        seen_names.add(case_insensitive_name)
-        result[captured_name] = _sanitize_header_value_for_capture(captured_name, value)
-    return result, False
+        normalized_raw_name = _body_capture_dependency_header_name(raw_name)
+        if normalized_raw_name is not None and dependencies_within_budget:
+            fold_separator_bytes = (
+                _CAPTURE_HEADER_FOLD_SEPARATOR_BYTES
+                if normalized_raw_name in dependency_names
+                else 0
+            )
+            dependency_bytes += len(raw_value) + fold_separator_bytes
+            dependency_field_count += 1
+            if (
+                dependency_field_count > _MAX_CAPTURE_HEADER_FIELDS
+                or dependency_bytes > _MAX_CAPTURE_HEADER_BYTES
+            ):
+                dependencies_within_budget = False
+            else:
+                dependency_fields.append((raw_name, raw_value))
+            dependency_names.add(normalized_raw_name)
+
+        if serialized_truncated and not dependencies_within_budget:
+            break
+
+    if not dependencies_within_budget:
+        return _CaptureHeaderInspection(result, serialized_truncated, None)
+
+    dependency_headers = http.Headers(dependency_fields)
+    if not _has_valid_body_capture_dependencies(dependency_headers):
+        dependency_headers = None
+    return _CaptureHeaderInspection(result, serialized_truncated, dependency_headers)
+
+
+def _sanitize_headers_for_capture(headers: http.Headers) -> tuple[dict[str, str], bool]:
+    """Build a bounded header prefix safe for persistent network logs."""
+    inspection = _inspect_headers_for_capture(headers)
+    return inspection.serialized, inspection.serialized_truncated
+
+
+def _set_body_capture_failure(
+    log_entry: dict,
+    side: Literal["request", "response"],
+    body: bytes,
+    *,
+    truncated: bool = False,
+) -> None:
+    if truncated:
+        log_entry[f"{side}_body_truncated"] = True
+    if body:
+        log_entry[f"{side}_body_encoding"] = "binary"
 
 
 def _set_body_fields(
@@ -310,14 +434,14 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
 
     Response bodies prefer streaming metadata from
     ``response_streaming.configure_response_stream()`` because that path keeps a
-    bounded raw wire-byte buffer and records whether it was truncated. The
-    mitmproxy ``flow.response.content`` fallback is used only when no stream
+    bounded raw wire-byte buffer and records whether it was truncated. Bounded
+    ``flow.response.raw_content`` decoding is used only when no stream
     buffer metadata exists.
     """
     # Request headers (always available)
-    request_headers, request_headers_truncated = _sanitize_headers_for_capture(flow.request.headers)
-    log_entry["request_headers"] = request_headers
-    if request_headers_truncated:
+    request_inspection = _inspect_headers_for_capture(flow.request.headers)
+    log_entry["request_headers"] = request_inspection.serialized
+    if request_inspection.serialized_truncated:
         log_entry["request_headers_truncated"] = True
 
     # Request body
@@ -329,66 +453,98 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
             request_stream_incomplete = (
                 flow.metadata.get(metadata_keys.REQUEST_STREAM_COMPLETE) is not True
             )
-            req_ct = flow.request.headers.get("content-type", "")
-            request_body = body_decoding.decode_request_body_for_network_log_capture(
-                bytes(request_stream_body.buffer),
-                flow.request.headers,
-                max_output=BODY_CAPTURE_LIMIT + 1,
-            )
-            if request_body is None:
-                if request_stream_body.truncated or request_stream_incomplete:
-                    log_entry["request_body_truncated"] = True
-                log_entry["request_body_encoding"] = "binary"
-            else:
-                _set_body_fields(
+            raw_request_body = bytes(request_stream_body.buffer)
+            request_dependency_headers = request_inspection.body_dependency_headers
+            if request_dependency_headers is None:
+                _set_body_capture_failure(
                     log_entry,
                     "request",
-                    request_body,
-                    req_ct,
-                    already_truncated=request_stream_incomplete,
-                    truncated_at_limit=request_stream_body.truncated,
+                    raw_request_body,
+                    truncated=request_stream_body.truncated or request_stream_incomplete,
                 )
-        elif flow.request.raw_content:
-            req_ct = flow.request.headers.get("content-type", "")
-            request_body = body_decoding.decode_request_body_for_network_log_capture(
-                flow.request.raw_content,
-                flow.request.headers,
-                max_output=BODY_CAPTURE_LIMIT + 1,
-            )
-            if request_body is None:
-                log_entry["request_body_encoding"] = "binary"
             else:
-                _set_body_fields(log_entry, "request", request_body, req_ct)
+                req_ct = request_dependency_headers.get("content-type", "")
+                request_body = body_decoding.decode_request_body_for_network_log_capture(
+                    raw_request_body,
+                    request_dependency_headers,
+                    max_output=BODY_CAPTURE_LIMIT + 1,
+                )
+                if request_body is None:
+                    if request_stream_body.truncated or request_stream_incomplete:
+                        log_entry["request_body_truncated"] = True
+                    log_entry["request_body_encoding"] = "binary"
+                else:
+                    _set_body_fields(
+                        log_entry,
+                        "request",
+                        request_body,
+                        req_ct,
+                        already_truncated=request_stream_incomplete,
+                        truncated_at_limit=request_stream_body.truncated,
+                    )
+        elif flow.request.raw_content:
+            request_dependency_headers = request_inspection.body_dependency_headers
+            if request_dependency_headers is None:
+                _set_body_capture_failure(log_entry, "request", flow.request.raw_content)
+            else:
+                req_ct = request_dependency_headers.get("content-type", "")
+                request_body = body_decoding.decode_request_body_for_network_log_capture(
+                    flow.request.raw_content,
+                    request_dependency_headers,
+                    max_output=BODY_CAPTURE_LIMIT + 1,
+                )
+                if request_body is None:
+                    log_entry["request_body_encoding"] = "binary"
+                else:
+                    _set_body_fields(log_entry, "request", request_body, req_ct)
 
     # Response headers
     if flow.response:
-        response_headers, response_headers_truncated = _sanitize_headers_for_capture(
-            flow.response.headers
-        )
-        log_entry["response_headers"] = response_headers
-        if response_headers_truncated:
+        response_inspection = _inspect_headers_for_capture(flow.response.headers)
+        log_entry["response_headers"] = response_inspection.serialized
+        if response_inspection.serialized_truncated:
             log_entry["response_headers_truncated"] = True
-
-    if flow.response:
         stream_body = response_streaming.captured_response_stream_body(flow)
         stream_truncated = False
         if stream_body is not None:
             stream_truncated = stream_body.truncated
+            raw_response_body = bytes(stream_body.buffer)
+        else:
+            raw_response_body = flow.response.raw_content
+        if raw_response_body is None:
+            return
+
+        response_dependency_headers = response_inspection.body_dependency_headers
+        if response_dependency_headers is None:
+            _set_body_capture_failure(
+                log_entry,
+                "response",
+                raw_response_body,
+                truncated=stream_truncated,
+            )
+            return
+
+        if stream_body is not None:
             body = body_decoding.decompress_body(
-                bytes(stream_body.buffer),
-                flow.response.headers,
+                raw_response_body,
+                response_dependency_headers,
                 max_output=BODY_CAPTURE_LIMIT + 1,
             )
         else:
-            try:
-                body = flow.response.content
-            except (zlib.error, ValueError):
-                # ZlibError (decompression failure) or ValueError from mitmproxy
-                log_entry["response_body_encoding"] = "binary"
-                return
+            body = body_decoding.decode_response_body_for_network_log_capture(
+                raw_response_body,
+                response_dependency_headers,
+                max_output=BODY_CAPTURE_LIMIT + 1,
+            )
         if body is None:
+            _set_body_capture_failure(
+                log_entry,
+                "response",
+                raw_response_body,
+                truncated=stream_truncated,
+            )
             return
-        res_ct = flow.response.headers.get("content-type", "")
+        res_ct = response_dependency_headers.get("content-type", "")
         # Also check decompressed size in case it expanded beyond the limit.
         _set_body_fields(
             log_entry,

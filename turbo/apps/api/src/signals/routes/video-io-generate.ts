@@ -2,9 +2,9 @@ import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
 import {
-  zeroVideoIoGenerateContract,
-  type ZeroVideoIoGenerateRequest,
-} from "@okouai/api-contracts/contracts/zero-video-io-generate";
+  videoIoGenerateContract,
+  type VideoIoGenerateRequest,
+} from "@okouai/api-contracts/contracts/video-io-generate";
 import type { BuiltInGenerationRealtimeSubscription } from "@okouai/api-contracts/contracts/built-in-generation";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { VIDEO_MODEL_CONFIGS } from "@okouai/core/video-model-catalog";
@@ -57,7 +57,7 @@ import {
 } from "../services/run-built-in-admission.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 
-const videoBody$ = bodyResultOf(zeroVideoIoGenerateContract.post);
+const videoBody$ = bodyResultOf(videoIoGenerateContract.post);
 
 async function loadRunVideoModel(
   db: ReadonlyDb,
@@ -125,9 +125,9 @@ async function loadEnforcedRunVideoModel(
  * was actually used.
  */
 function withEnforcedRunVideoModel(
-  body: ZeroVideoIoGenerateRequest,
+  body: VideoIoGenerateRequest,
   runVideoModel: VideoModelId,
-): ZeroVideoIoGenerateRequest {
+): VideoIoGenerateRequest {
   const config = VIDEO_MODEL_CONFIGS[runVideoModel];
   const honours = <T>(
     supported: readonly T[],
@@ -527,7 +527,7 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 export const videoIoGenerateRoutes: readonly RouteEntry[] = [
   {
-    route: zeroVideoIoGenerateContract.post,
+    route: videoIoGenerateContract.post,
     handler: authRoute(
       {
         requireOrganization: true,

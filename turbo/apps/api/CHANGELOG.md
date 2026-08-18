@@ -1,5 +1,67 @@
 # Changelog
 
+## [1.458.3](https://github.com/vm0-ai/vm0/compare/api-v1.458.2...api-v1.458.3) (2026-08-18)
+
+
+### Refactoring
+
+* **api:** neutralize agent run and compose service naming ([#27870](https://github.com/vm0-ai/vm0/issues/27870)) ([e834830](https://github.com/vm0-ai/vm0/commit/e8348301e5848a821ef80bac1a2ec116d69c86ee)), closes [#27859](https://github.com/vm0-ai/vm0/issues/27859)
+* **feishu:** make generated connector integration-owned ([#27884](https://github.com/vm0-ai/vm0/issues/27884)) ([ac37534](https://github.com/vm0-ai/vm0/commit/ac37534f8228eed341a0dd86bfb31e28646f9001))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.338.2
+    * @okouai/core bumped to 8.566.2
+    * @okouai/db bumped to 1.204.3
+
+## [1.458.2](https://github.com/vm0-ai/vm0/compare/api-v1.458.1...api-v1.458.2) (2026-08-18)
+
+
+### Bug Fixes
+
+* **api:** refresh API release marker comment ([#27844](https://github.com/vm0-ai/vm0/issues/27844)) ([91a1c30](https://github.com/vm0-ai/vm0/commit/91a1c301a4e9f7a5a15613f35da73e8619c3e49e))
+
+## [1.458.1](https://github.com/vm0-ai/vm0/compare/api-v1.458.0...api-v1.458.1) (2026-08-18)
+
+
+### Refactoring
+
+* **api:** neutralize billing status and credit alert service naming ([#27865](https://github.com/vm0-ai/vm0/issues/27865)) ([30d7256](https://github.com/vm0-ai/vm0/commit/30d725650b5041f70353d4d5e1bb17e88e3054d6)), closes [#27861](https://github.com/vm0-ai/vm0/issues/27861)
+* **contracts:** neutralize teams oauth and bot contract naming ([#27866](https://github.com/vm0-ai/vm0/issues/27866)) ([e495706](https://github.com/vm0-ai/vm0/commit/e49570614d3e81d9c9c559d8f732262fb960dc26)), closes [#27855](https://github.com/vm0-ai/vm0/issues/27855)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.338.1
+    * @okouai/core bumped to 8.566.1
+    * @okouai/db bumped to 1.204.2
+
+## [1.458.0](https://github.com/vm0-ai/vm0/compare/api-v1.457.5...api-v1.458.0) (2026-08-18)
+
+
+### Features
+
+* **image:** apply the run image model as a default ([#27810](https://github.com/vm0-ai/vm0/issues/27810)) ([026c19c](https://github.com/vm0-ai/vm0/commit/026c19c9cc8694fb0afb7aee36428f5338e9ca89))
+
+
+### Bug Fixes
+
+* **api:** bound oversized axiom agent event data ([#27780](https://github.com/vm0-ai/vm0/issues/27780)) ([e1831b5](https://github.com/vm0-ai/vm0/commit/e1831b565eb9c6603dbefc2942009fc3cf125bf7))
+* **api:** reset autonomy for human-forwarded content ([#27832](https://github.com/vm0-ai/vm0/issues/27832)) ([332e8ae](https://github.com/vm0-ai/vm0/commit/332e8aef6e8582ce67db53a120831718bfeecaad))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.566.0
+    * @okouai/db bumped to 1.204.1
+
 ## [1.457.5](https://github.com/vm0-ai/vm0/compare/api-v1.457.4...api-v1.457.5) (2026-08-18)
 
 

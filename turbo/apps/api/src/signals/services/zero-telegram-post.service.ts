@@ -90,7 +90,7 @@ import {
   formatTelegramUserDisplayName,
   linkOfficialTelegramUser$,
   linkTelegramUser$,
-} from "./zero-telegram-link.service";
+} from "./telegram-link.service";
 import {
   updateUserModelPreference$,
   userModelPreference,

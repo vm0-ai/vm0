@@ -157,11 +157,15 @@ pub const FEATURE_FLAGS_ENV: &str = "VM0_FEATURE_FLAGS";
 /// Logical run-payload field name for API-owned Codex runtime metadata.
 pub const CODEX_RUNTIME_CONFIG_ENV: &str = "VM0_CODEX_RUNTIME_CONFIG";
 
-/// Logical run-payload field name for non-secret Pi launch inputs.
+/// Logical run-payload field name for the schema-v2 Pi launch config marker.
 ///
-/// The value is filesystem references only. It never reaches the Pi CLI child
-/// as an environment value; the guest-agent republishes it through
-/// [`PI_LAUNCH_PAYLOAD_FILE_ENV`].
+/// The value is the serialized `{"schemaVersion":2}` version marker. Pi's
+/// runtime resources are discovered from canonical filesystem locations by the
+/// official loader. The value never reaches the Pi CLI child as an environment
+/// value; the guest-agent republishes it through
+/// [`PI_LAUNCH_PAYLOAD_FILE_ENV`]. See `piLaunchConfigSchema` in
+/// `turbo/packages/api-contracts/src/contracts/runners.ts` for the canonical
+/// wire schema.
 pub const PI_LAUNCH_CONFIG_ENV: &str = "OKOU_PI_LAUNCH_CONFIG";
 
 /// Path to the private guest-agent-owned Pi launch payload JSON file.
@@ -217,7 +221,7 @@ pub struct RunPayload {
     /// JSON object describing API-owned Codex provider/runtime metadata.
     #[serde(default)]
     pub codex_runtime_config: String,
-    /// JSON object describing non-secret Pi launch inputs.
+    /// Serialized schema-v2 Pi launch config marker.
     #[serde(default)]
     pub pi_launch_config: String,
     /// JSON object describing non-secret Pi model metadata.
@@ -497,7 +501,7 @@ mod tests {
             artifacts: "[]".to_string(),
             feature_flags: r#"{"flag":true}"#.to_string(),
             codex_runtime_config: r#"{"providerId":"deepseek"}"#.to_string(),
-            pi_launch_config: "fixed Pi prompt".to_string(),
+            pi_launch_config: r#"{"schemaVersion":2}"#.to_string(),
             pi_model_config: r#"{"provider":"deepseek"}"#.to_string(),
             pi_session_id: "22222222-2222-4222-8222-222222222222".to_string(),
         };
@@ -510,7 +514,7 @@ mod tests {
         assert_eq!(json["disallowedTools"], "WebFetch");
         assert_eq!(json["featureFlags"], r#"{"flag":true}"#);
         assert_eq!(json["codexRuntimeConfig"], r#"{"providerId":"deepseek"}"#);
-        assert_eq!(json["piLaunchConfig"], "fixed Pi prompt");
+        assert_eq!(json["piLaunchConfig"], r#"{"schemaVersion":2}"#);
         assert_eq!(json["piModelConfig"], r#"{"provider":"deepseek"}"#);
         assert_eq!(json["piSessionId"], "22222222-2222-4222-8222-222222222222");
     }
@@ -527,7 +531,7 @@ mod tests {
             artifacts: "[]".to_string(),
             feature_flags: r#"{"flag":true}"#.to_string(),
             codex_runtime_config: r#"{"providerId":"deepseek"}"#.to_string(),
-            pi_launch_config: "fixed Pi prompt".to_string(),
+            pi_launch_config: r#"{"schemaVersion":2}"#.to_string(),
             pi_model_config: r#"{"provider":"deepseek"}"#.to_string(),
             pi_session_id: "22222222-2222-4222-8222-222222222222".to_string(),
         };
@@ -575,7 +579,7 @@ mod tests {
                 },
                 RunPayloadField {
                     name: PI_LAUNCH_CONFIG_ENV,
-                    value: "fixed Pi prompt"
+                    value: r#"{"schemaVersion":2}"#
                 },
                 RunPayloadField {
                     name: PI_MODEL_CONFIG_ENV,

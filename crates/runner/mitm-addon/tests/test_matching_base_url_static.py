@@ -28,6 +28,29 @@ class TestMatchBaseUrl:
         )
         assert result is None
 
+    def test_static_base_exact_path_returns_root(self):
+        result = matching.match_base_url("https://api.example.com/v1", "https://api.example.com/v1")
+        assert result == ("/", {})
+
+    def test_static_base_descendant_path(self):
+        result = matching.match_base_url(
+            "https://api.example.com/v1/items", "https://api.example.com/v1"
+        )
+        assert result == ("/items", {})
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://api.example.com/v10",
+            "https://api.example.com/v10/items",
+            "https://api.example.com/v1foo",
+            "https://api.example.com/v1.0",
+        ],
+    )
+    def test_static_base_rejects_sibling_path_segment(self, url):
+        result = matching.match_base_url(url, "https://api.example.com/v1")
+        assert result is None
+
     def test_static_base_exact(self):
         result = matching.match_base_url("https://api.github.com", "https://api.github.com")
         assert result == ("/", {})
