@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { zeroOrgMembersContract } from "@okouai/api-contracts/contracts/zero-org-members";
+import { orgMembersContract } from "@okouai/api-contracts/contracts/org-member-routes";
 import type {
   OrgMember,
   OrgPendingInvitation,
@@ -15,7 +15,7 @@ const orgMembersVersion$ = state(0);
 const orgMembersResponse$ = computed(async (get) => {
   get(orgMembersVersion$);
   const createClient = get(zeroClient$);
-  const client = createClient(zeroOrgMembersContract);
+  const client = createClient(orgMembersContract);
   const result = await accept(client.members(), [200]);
   return result.body;
 });

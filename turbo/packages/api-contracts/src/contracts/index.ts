@@ -1071,13 +1071,13 @@ export {
   type OrgLogoResponse,
 } from "./org-logo";
 export {
-  zeroOrgMembersContract,
-  zeroOrgInviteContract,
-  zeroOrgMembershipRequestsContract,
-  type ZeroOrgMembersContract,
-  type ZeroOrgInviteContract,
-  type ZeroOrgMembershipRequestsContract,
-} from "./zero-org-members";
+  orgMembersContract,
+  orgInviteContract,
+  orgMembershipRequestsContract,
+  type OrgMembersContract,
+  type OrgInviteContract,
+  type OrgMembershipRequestsContract,
+} from "./org-member-routes";
 export {
   zeroRunsByIdContract,
   zeroRunsCancelContract,
