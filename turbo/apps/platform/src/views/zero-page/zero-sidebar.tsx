@@ -809,7 +809,7 @@ function ChatListColumn() {
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-2 pt-1">
         <PinnedAgentListSection layout="horizontal" />
-        <ChatThreadsSection />
+        <ChatThreadsSection showMarkAllRead />
       </div>
       <div className="px-2 pb-2">
         <SidebarUpgradeCard />
