@@ -930,10 +930,7 @@ export function VideoModelBrandIcon({ model }: { model: VideoModel }) {
 
 function MediaModelPriceTier({ tier }: { tier: Vm0ModelPriceTier }) {
   return (
-    <span
-      className="min-w-7 shrink-0 text-right text-xs font-medium text-muted-foreground"
-      aria-label={getVm0ModelPriceTierLabel(tier)}
-    >
+    <span className="min-w-7 shrink-0 text-right text-xs font-medium text-muted-foreground">
       {tier}
     </span>
   );
