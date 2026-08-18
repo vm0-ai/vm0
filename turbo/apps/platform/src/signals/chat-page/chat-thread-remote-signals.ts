@@ -4,11 +4,13 @@ import {
   chatThreadDraftContract,
   chatThreadDraftSchema,
   chatThreadComputerUseHostContract,
+  chatThreadImageModelContract,
   chatThreadModelSelectionContract,
   chatThreadVideoModelContract,
   type PersistedAttachment,
   type UserMessageInputDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
+import type { ImageModel } from "@okouai/core/image-model-catalog";
 import type { VideoModel } from "@okouai/core/video-model-catalog";
 import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
@@ -65,6 +67,11 @@ interface PatchComputerUseHostArgs {
 interface PatchVideoModelArgs {
   readonly threadId: string;
   readonly videoModel: VideoModel | null;
+}
+
+interface PatchImageModelArgs {
+  readonly threadId: string;
+  readonly imageModel: ImageModel | null;
 }
 
 interface SubscribeRealtimeArgs {
@@ -228,6 +235,42 @@ export const patchChatThreadVideoModel$ = command(
       client.update({
         params: { id: threadId },
         body: { model: videoModel, eventId },
+        fetchOptions: { signal },
+      }),
+      [204],
+    );
+  },
+);
+
+export const patchChatThreadImageModel$ = command(
+  async (
+    { get, set },
+    { threadId, imageModel }: PatchImageModelArgs,
+    signal: AbortSignal,
+  ) => {
+    const eventId = crypto.randomUUID();
+    const threadMeta = get(chatThreadMetaMap$).get(threadId);
+    if (threadMeta) {
+      set(registerOptimisticChatThreadEvent$, {
+        id: eventId,
+        kind: "image_model_updated",
+        chatThreadId: threadId,
+        agentId: threadMeta.agentId,
+        title: null,
+        selectedModel: null,
+        serviceTier: null,
+        computerUseHostId: null,
+        cloudBrowserEnabled: false,
+        selectedVideoModel: null,
+        selectedImageModel: imageModel,
+        createdAt: nowDate().toISOString(),
+      } satisfies OptimisticChatThreadEvent);
+    }
+    const client = get(zeroClient$)(chatThreadImageModelContract);
+    await accept(
+      client.update({
+        params: { id: threadId },
+        body: { model: imageModel, eventId },
         fetchOptions: { signal },
       }),
       [204],

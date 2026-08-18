@@ -266,14 +266,15 @@ function eventTouchesElement(
   );
 }
 
-type DesktopModelCategory = "chat" | "video";
+type MediaModelCategory = "image" | "video";
+type DesktopModelCategory = "chat" | MediaModelCategory;
 
 function createDesktopMediaModelAnchorSignals(
   desktopModelCategory$: State<DesktopModelCategory>,
 ) {
-  const internalAnchors$ = state<Readonly<Record<"video", HTMLElement | null>>>(
-    { video: null },
-  );
+  const internalAnchors$ = state<
+    Readonly<Record<MediaModelCategory, HTMLElement | null>>
+  >({ image: null, video: null });
   const activeAnchor$ = computed((get) => {
     const category = get(desktopModelCategory$);
     if (category === "chat") {
@@ -281,7 +282,7 @@ function createDesktopMediaModelAnchorSignals(
     }
     return get(internalAnchors$)[category];
   });
-  const createAnchorRef = (category: "video") => {
+  const createAnchorRef = (category: MediaModelCategory) => {
     return onRef(
       command(({ set }, element: HTMLElement, signal: AbortSignal) => {
         set(internalAnchors$, (anchors) => {
@@ -296,8 +297,9 @@ function createDesktopMediaModelAnchorSignals(
     );
   };
   const anchorRefs = {
+    image: createAnchorRef("image"),
     video: createAnchorRef("video"),
-  } satisfies Record<"video", ReturnType<typeof createAnchorRef>>;
+  } satisfies Record<MediaModelCategory, ReturnType<typeof createAnchorRef>>;
   return { internalAnchors$, activeAnchor$, anchorRefs };
 }
 
@@ -341,7 +343,9 @@ function createBasicComposerUiSignals() {
   );
   // Mobile reaches media models through a nested category. Desktop derives
   // the visible category from its persistent selection instead.
-  const internalMobileMediaModelCategory$ = state<"video" | null>(null);
+  const internalMobileMediaModelCategory$ = state<MediaModelCategory | null>(
+    null,
+  );
   const modelPickerOpen$ = computed((get) => {
     return get(internalModelPickerOpen$);
   });
@@ -355,7 +359,7 @@ function createBasicComposerUiSignals() {
     return get(internalMobileMediaModelCategory$);
   });
   const setMobileMediaModelCategory$ = command(
-    ({ set }, category: "video" | null) => {
+    ({ set }, category: MediaModelCategory | null) => {
       set(internalMobileMediaModelCategory$, category);
     },
   );
@@ -370,7 +374,7 @@ function createBasicComposerUiSignals() {
     set(setModelPickerOpen$, true);
   });
   const toggleDesktopMediaModelCategory$ = command(
-    ({ get, set }, category: "video") => {
+    ({ get, set }, category: MediaModelCategory) => {
       if (get(internalDesktopModelCategory$) === category) {
         set(setModelPickerOpen$, !get(internalModelPickerOpen$));
         return;

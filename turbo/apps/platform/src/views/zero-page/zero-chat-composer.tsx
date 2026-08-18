@@ -151,8 +151,10 @@ import {
 import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 import { getModelDisplayName } from "@okouai/core/model-display-name";
 import {
+  ImageModelBrandIcon,
   ModelProviderPicker,
   VideoModelBrandIcon,
+  type MediaModelCategoryId,
   type MediaModelPanelCategory,
   type MediaModelPanelState,
   type ModelProviderSelection,
@@ -191,6 +193,7 @@ import {
   codexFastModeEnabled$,
   customConnectorMcpEnabled$,
   avatarTemplatesEnabled$,
+  imageModelSelectionEnabled$,
   imageRecognitionAvailable$,
   videoModelSelectionEnabled$,
 } from "../../signals/external/feature-switch.ts";
@@ -212,6 +215,7 @@ import type { TemplateCardHtmlPreviewState } from "../../signals/zero-page/zero-
 import type {
   ComposerPendingEvent,
   ComposerPrimaryAction,
+  ComposerImageModelSignals,
   ComposerSignals,
   ComposerVideoModelSignals,
 } from "../../signals/zero-page/composer-signals.ts";
@@ -235,6 +239,12 @@ import {
   AvatarTemplatePickerToolbar,
 } from "./avatar-template-picker.tsx";
 import { ComposerVideoOptionsChip } from "./composer-video-options.tsx";
+import {
+  DEFAULT_IMAGE_MODEL,
+  IMAGE_MODEL_CONFIGS,
+  PUBLIC_IMAGE_MODELS,
+  type ImageModel,
+} from "@okouai/core/image-model-catalog";
 import {
   DEFAULT_VIDEO_MODEL,
   PUBLIC_VIDEO_MODELS,
@@ -7404,16 +7414,23 @@ function ComposerMediaModelModeContent({
   );
 }
 
-interface ComposerVideoModelPickerState {
-  readonly value: VideoModel | null;
-  readonly onChange: (next: VideoModel | null) => void;
-  readonly mobileCategory: "video" | null;
-  readonly onMobileCategoryChange: (category: "video" | null) => void;
+interface ComposerMediaModelPickerState<Model extends string> {
+  readonly value: Model | null;
+  readonly onChange: (next: Model | null) => void;
 }
 
-interface ComposerResolvedVideoModelPickerState extends ComposerVideoModelPickerState {
-  readonly selectedModel: VideoModel;
+interface ComposerResolvedMediaModelPickerState<
+  Model extends string,
+> extends ComposerMediaModelPickerState<Model> {
+  readonly selectedModel: Model;
 }
+
+type ComposerImageModelPickerState = ComposerMediaModelPickerState<ImageModel>;
+type ComposerResolvedImageModelPickerState =
+  ComposerResolvedMediaModelPickerState<ImageModel>;
+type ComposerVideoModelPickerState = ComposerMediaModelPickerState<VideoModel>;
+type ComposerResolvedVideoModelPickerState =
+  ComposerResolvedMediaModelPickerState<VideoModel>;
 
 function composerModelPickerTriggerClassName(
   mediaModelCategoriesAvailable: boolean,
@@ -7534,7 +7551,7 @@ function ComposerMediaModelControl({
   icon,
 }: {
   signals: ComposerSignals;
-  category: "video";
+  category: MediaModelCategoryId;
   label: string;
   expanded: boolean;
   selectedModelLabel: string;
@@ -7617,22 +7634,127 @@ function ComposerVideoModelControl({
   );
 }
 
+function ComposerImageModelControl({
+  signals,
+  expanded,
+  selectedModel,
+}: {
+  signals: ComposerSignals;
+  expanded: boolean;
+  selectedModel: ImageModel;
+}) {
+  const { t } = useTranslation();
+  const imageModelsLabel = t(($) => {
+    return $.settings.models.picker.imageModels;
+  });
+  return (
+    <ComposerMediaModelControl
+      signals={signals}
+      category="image"
+      label={imageModelsLabel}
+      expanded={expanded}
+      selectedModelLabel={IMAGE_MODEL_CONFIGS[selectedModel].label}
+      icon={<ImageIcon size={16} aria-hidden="true" />}
+    />
+  );
+}
+
+function composerImageModelPanelCategory({
+  selectedModel,
+  onChange,
+  label,
+  variantMenuLabel,
+}: {
+  selectedModel: ImageModel;
+  onChange: (next: ImageModel | null) => void;
+  label: string;
+  variantMenuLabel: string;
+}): MediaModelPanelCategory {
+  const gptImage1Models = ["gpt-image-1", "gpt-image-1-mini"] as const;
+  const baseModel = gptImage1Models[0];
+  const selectedGptImage1Model = gptImage1Models.find((candidate) => {
+    return candidate === selectedModel;
+  });
+  const selectedGptImage1Config =
+    IMAGE_MODEL_CONFIGS[selectedGptImage1Model ?? baseModel];
+  return {
+    id: "image",
+    label,
+    menuLabel: label,
+    options: PUBLIC_IMAGE_MODELS.filter((candidate) => {
+      return candidate !== gptImage1Models[1];
+    }).map((candidate) => {
+      return {
+        key: candidate,
+        label: IMAGE_MODEL_CONFIGS[candidate].label,
+        icon: <ImageModelBrandIcon model={candidate} />,
+        selected: selectedModel === candidate,
+        onSelect: () => {
+          onChange(candidate);
+        },
+        ...(candidate === baseModel
+          ? {
+              variant: {
+                label: variantMenuLabel,
+                chipLabel: selectedGptImage1Config.variantLabel,
+                selected:
+                  selectedGptImage1Model !== undefined &&
+                  selectedGptImage1Model !== baseModel,
+                options: gptImage1Models.map((variantModel) => {
+                  const variantConfig = IMAGE_MODEL_CONFIGS[variantModel];
+                  return {
+                    label: variantConfig.label,
+                    chipLabel: variantConfig.variantLabel,
+                    selected: selectedModel === variantModel,
+                    onSelect: () => {
+                      onChange(variantModel);
+                    },
+                  };
+                }),
+              },
+            }
+          : {}),
+      };
+    }),
+  };
+}
+
 function composerVideoModelPanelCategory({
   selectedModel,
   onChange,
   label,
   menuLabel,
+  variantMenuLabel,
 }: {
   selectedModel: VideoModel;
   onChange: (next: VideoModel | null) => void;
   label: string;
   menuLabel: string;
+  variantMenuLabel: string;
 }): MediaModelPanelCategory {
+  const seedance2Models = [
+    "dreamina-seedance-2-0-260128",
+    "dreamina-seedance-2-0-fast-260128",
+    "dreamina-seedance-2-0-mini-260615",
+  ] as const satisfies readonly VideoModel[];
+  const seedance2Model = seedance2Models[0];
+  const selectedSeedance2Model = seedance2Models.find((candidate) => {
+    return candidate === selectedModel;
+  });
+  const selectedSeedance2Config =
+    VIDEO_MODEL_CONFIGS[selectedSeedance2Model ?? seedance2Model];
   return {
     id: "video",
     label,
     menuLabel,
-    options: PUBLIC_VIDEO_MODELS.map((candidate) => {
+    options: PUBLIC_VIDEO_MODELS.filter((candidate) => {
+      return (
+        candidate === seedance2Model ||
+        !seedance2Models.some((seedance2Candidate) => {
+          return candidate === seedance2Candidate;
+        })
+      );
+    }).map((candidate) => {
       return {
         key: candidate,
         label: VIDEO_MODEL_CONFIGS[candidate].label,
@@ -7641,6 +7763,28 @@ function composerVideoModelPanelCategory({
         onSelect: () => {
           onChange(candidate);
         },
+        ...(candidate === seedance2Model
+          ? {
+              variant: {
+                label: variantMenuLabel,
+                chipLabel: selectedSeedance2Config.variantLabel,
+                selected:
+                  selectedSeedance2Model !== undefined &&
+                  selectedSeedance2Model !== seedance2Model,
+                options: seedance2Models.map((variantModel) => {
+                  const variantConfig = VIDEO_MODEL_CONFIGS[variantModel];
+                  return {
+                    label: variantConfig.label,
+                    chipLabel: variantConfig.variantLabel,
+                    selected: selectedModel === variantModel,
+                    onSelect: () => {
+                      onChange(variantModel);
+                    },
+                  };
+                }),
+              },
+            }
+          : {}),
       };
     }),
   };
@@ -7651,51 +7795,97 @@ function ComposerModelPickerControls({
   value,
   onChange,
   codexFastModeEnabled,
+  imageModel,
   videoModel,
 }: {
   signals: ComposerSignals;
   value: ModelProviderSelection;
   onChange: (selection: ModelProviderSelection | null) => void;
   codexFastModeEnabled: boolean;
+  imageModel: ComposerResolvedImageModelPickerState | undefined;
   videoModel: ComposerResolvedVideoModelPickerState | undefined;
 }) {
   const { t } = useTranslation();
   const desktopLayout = useGet(signals.model.desktopModelPickerLayout$);
+  const mobileCategory = useGet(signals.model.mobileMediaModelCategory$);
+  const setMobileCategory = useSet(signals.model.setMobileMediaModelCategory$);
   const setLifecycleRef = useSet(signals.model.desktopModelPickerLifecycleRef$);
   const desktopActiveMediaModelAnchor = useGet(
     signals.model.desktopActiveMediaModelAnchor$,
   );
   const desktopModelCategory = useGet(signals.model.desktopModelCategory$);
+  const categories: MediaModelPanelCategory[] = [];
+  if (imageModel) {
+    categories.push(
+      composerImageModelPanelCategory({
+        selectedModel: imageModel.selectedModel,
+        onChange: imageModel.onChange,
+        label: t(($) => {
+          return $.settings.models.picker.imageModels;
+        }),
+        variantMenuLabel: t(
+          ($) => {
+            return $.settings.models.picker.modelVariants;
+          },
+          { model: IMAGE_MODEL_CONFIGS["gpt-image-1"].label },
+        ),
+      }),
+    );
+  }
+  if (videoModel) {
+    categories.push(
+      composerVideoModelPanelCategory({
+        selectedModel: videoModel.selectedModel,
+        onChange: videoModel.onChange,
+        label: t(($) => {
+          return $.settings.models.picker.videoModels;
+        }),
+        menuLabel: t(($) => {
+          return imageModel
+            ? $.settings.models.picker.videoModels
+            : $.settings.models.picker.manageMoreModels;
+        }),
+        variantMenuLabel: t(
+          ($) => {
+            return $.settings.models.picker.modelVariants;
+          },
+          { model: VIDEO_MODEL_CONFIGS["dreamina-seedance-2-0-260128"].label },
+        ),
+      }),
+    );
+  }
+  const desktopActiveCategory =
+    desktopModelCategory === "chat" ||
+    !categories.some((category) => {
+      return category.id === desktopModelCategory;
+    })
+      ? null
+      : desktopModelCategory;
+  const activeCategory = desktopLayout
+    ? desktopActiveCategory
+    : categories.some((category) => {
+          return category.id === mobileCategory;
+        })
+      ? mobileCategory
+      : null;
+  const mediaModelCategoryExpanded =
+    desktopLayout && desktopActiveCategory !== null;
+  const imageModeExpanded =
+    mediaModelCategoryExpanded && desktopActiveCategory === "image";
   const videoModeExpanded =
-    desktopLayout &&
-    videoModel !== undefined &&
-    desktopModelCategory === "video";
-  const mediaModelPanel: MediaModelPanelState | undefined = videoModel
-    ? {
-        activeCategory: desktopLayout
-          ? desktopModelCategory === "chat"
-            ? null
-            : desktopModelCategory
-          : videoModel.mobileCategory,
-        categories: [
-          composerVideoModelPanelCategory({
-            selectedModel: videoModel.selectedModel,
-            onChange: videoModel.onChange,
-            label: t(($) => {
-              return $.settings.models.picker.videoModels;
-            }),
-            menuLabel: t(($) => {
-              return $.settings.models.picker.manageMoreModels;
-            }),
-          }),
-        ],
-        onActiveCategoryChange: videoModel.onMobileCategoryChange,
-        contentAnchor:
-          desktopLayout && videoModeExpanded
-            ? desktopActiveMediaModelAnchor
-            : undefined,
-      }
-    : undefined;
+    mediaModelCategoryExpanded && desktopActiveCategory === "video";
+  const mediaModelPanel: MediaModelPanelState | undefined =
+    categories.length > 0
+      ? {
+          activeCategory,
+          categories,
+          onActiveCategoryChange: setMobileCategory,
+          contentAnchor:
+            desktopLayout && mediaModelCategoryExpanded
+              ? desktopActiveMediaModelAnchor
+              : undefined,
+        }
+      : undefined;
   return (
     <>
       <div
@@ -7717,9 +7907,16 @@ function ComposerModelPickerControls({
           onChange={onChange}
           codexFastModeEnabled={codexFastModeEnabled}
           desktopLayout={desktopLayout}
-          mediaModelCategoryExpanded={videoModeExpanded}
+          mediaModelCategoryExpanded={mediaModelCategoryExpanded}
           mediaModelPanel={mediaModelPanel}
         />
+        {imageModel && (
+          <ComposerImageModelControl
+            signals={signals}
+            expanded={imageModeExpanded}
+            selectedModel={imageModel.selectedModel}
+          />
+        )}
         {videoModel && (
           <ComposerVideoModelControl
             signals={signals}
@@ -7733,40 +7930,59 @@ function ComposerModelPickerControls({
   );
 }
 
-function ComposerVideoModelPickerControls({
+function ComposerMediaModelPickerControls({
   signals,
   value,
   onChange,
   codexFastModeEnabled,
+  imageModel,
   videoModel,
 }: {
   signals: ComposerSignals;
   value: ModelProviderSelection;
   onChange: (selection: ModelProviderSelection | null) => void;
   codexFastModeEnabled: boolean;
-  videoModel: ComposerVideoModelPickerState;
+  imageModel: ComposerImageModelPickerState | undefined;
+  videoModel: ComposerVideoModelPickerState | undefined;
 }) {
   const userPreference = useLastResolved(userModelPreference$);
-  const selectedModel =
-    videoModel.value ??
-    userPreference?.selectedVideoModel ??
-    DEFAULT_VIDEO_MODEL;
+  const resolvedImageModel = imageModel
+    ? {
+        ...imageModel,
+        selectedModel:
+          imageModel.value ??
+          userPreference?.selectedImageModel ??
+          DEFAULT_IMAGE_MODEL,
+      }
+    : undefined;
+  const resolvedVideoModel = videoModel
+    ? {
+        ...videoModel,
+        selectedModel:
+          videoModel.value ??
+          userPreference?.selectedVideoModel ??
+          DEFAULT_VIDEO_MODEL,
+      }
+    : undefined;
   return (
     <ComposerModelPickerControls
       signals={signals}
       value={value}
       onChange={onChange}
       codexFastModeEnabled={codexFastModeEnabled}
-      videoModel={{ ...videoModel, selectedModel }}
+      imageModel={resolvedImageModel}
+      videoModel={resolvedVideoModel}
     />
   );
 }
 
 function ComposerModelPickerSlotBase({
   signals,
+  imageModel,
   videoModel,
 }: {
   signals: ComposerSignals;
+  imageModel: ComposerImageModelPickerState | undefined;
   videoModel: ComposerVideoModelPickerState | undefined;
 }) {
   const codexFastModeEnabled = useGet(codexFastModeEnabled$);
@@ -7809,12 +8025,13 @@ function ComposerModelPickerSlotBase({
         selection={value}
         oauthAvailable={selectedModelOauthAvailable}
       />
-      {videoModel ? (
-        <ComposerVideoModelPickerControls
+      {imageModel || videoModel ? (
+        <ComposerMediaModelPickerControls
           signals={signals}
           value={value}
           onChange={onModelPickerChange}
           codexFastModeEnabled={codexFastModeEnabled}
+          imageModel={imageModel}
           videoModel={videoModel}
         />
       ) : (
@@ -7823,6 +8040,7 @@ function ComposerModelPickerSlotBase({
           value={value}
           onChange={onModelPickerChange}
           codexFastModeEnabled={codexFastModeEnabled}
+          imageModel={undefined}
           videoModel={undefined}
         />
       )}
@@ -7830,11 +8048,7 @@ function ComposerModelPickerSlotBase({
   );
 }
 
-/**
- * Choosing a video model writes the thread pin and closes the shared popover.
- * Closing also resets the nested mobile category; desktop keeps its active
- * category.
- */
+/** Choosing a media model writes its pin and closes the shared popover. */
 function ComposerVideoModelPickerSlot({
   signals,
   videoModelSignals,
@@ -7842,8 +8056,6 @@ function ComposerVideoModelPickerSlot({
   signals: ComposerSignals;
   videoModelSignals: ComposerVideoModelSignals;
 }) {
-  const mobileCategory = useGet(signals.model.mobileMediaModelCategory$);
-  const setMobileCategory = useSet(signals.model.setMobileMediaModelCategory$);
   const setModelPickerOpen = useSet(signals.model.setModelPickerOpen$);
   const selectedVideoModel =
     useLastResolved(videoModelSignals.selectedVideoModel$) ?? null;
@@ -7855,17 +8067,86 @@ function ComposerVideoModelPickerSlot({
       detach(setVideoModel(next, pageSignal), Reason.DomCallback);
       setModelPickerOpen(false);
     },
-    mobileCategory,
-    onMobileCategoryChange: setMobileCategory,
   };
   return (
-    <ComposerModelPickerSlotBase signals={signals} videoModel={videoModel} />
+    <ComposerModelPickerSlotBase
+      signals={signals}
+      imageModel={undefined}
+      videoModel={videoModel}
+    />
+  );
+}
+
+function ComposerExistingMediaModelPickerSlot({
+  signals,
+  imageModelSignals,
+  videoModelSignals,
+  imageModelEnabled,
+  videoModelEnabled,
+}: {
+  signals: ComposerSignals;
+  imageModelSignals: ComposerImageModelSignals;
+  videoModelSignals: ComposerVideoModelSignals;
+  imageModelEnabled: boolean;
+  videoModelEnabled: boolean;
+}) {
+  const setModelPickerOpen = useSet(signals.model.setModelPickerOpen$);
+  const selectedImageModel =
+    useLastResolved(imageModelSignals.selectedImageModel$) ?? null;
+  const selectedVideoModel =
+    useLastResolved(videoModelSignals.selectedVideoModel$) ?? null;
+  const setImageModel = useSet(imageModelSignals.setImageModel$);
+  const setVideoModel = useSet(videoModelSignals.setVideoModel$);
+  const pageSignal = useGet(pageSignal$);
+  const imageModel: ComposerImageModelPickerState | undefined =
+    imageModelEnabled
+      ? {
+          value: selectedImageModel,
+          onChange: (next) => {
+            detach(setImageModel(next, pageSignal), Reason.DomCallback);
+            setModelPickerOpen(false);
+          },
+        }
+      : undefined;
+  const videoModel: ComposerVideoModelPickerState | undefined =
+    videoModelEnabled
+      ? {
+          value: selectedVideoModel,
+          onChange: (next) => {
+            detach(setVideoModel(next, pageSignal), Reason.DomCallback);
+            setModelPickerOpen(false);
+          },
+        }
+      : undefined;
+  return (
+    <ComposerModelPickerSlotBase
+      signals={signals}
+      imageModel={imageModel}
+      videoModel={videoModel}
+    />
   );
 }
 
 function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
+  const imageModelEnabled = useGet(imageModelSelectionEnabled$);
   const videoModelEnabled = useGet(videoModelSelectionEnabled$);
+  const imageModelSignals = signals.imageModel;
   const videoModelSignals = signals.videoModel;
+  if (
+    (imageModelEnabled || videoModelEnabled) &&
+    imageModelSignals &&
+    videoModelSignals
+  ) {
+    return (
+      <ComposerExistingMediaModelPickerSlot
+        signals={signals}
+        imageModelSignals={imageModelSignals}
+        videoModelSignals={videoModelSignals}
+        imageModelEnabled={imageModelEnabled}
+        videoModelEnabled={videoModelEnabled}
+      />
+    );
+  }
   if (videoModelEnabled && videoModelSignals) {
     return (
       <ComposerVideoModelPickerSlot
@@ -7875,7 +8156,11 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
     );
   }
   return (
-    <ComposerModelPickerSlotBase signals={signals} videoModel={undefined} />
+    <ComposerModelPickerSlotBase
+      signals={signals}
+      imageModel={undefined}
+      videoModel={undefined}
+    />
   );
 }
 
