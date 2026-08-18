@@ -5,7 +5,7 @@ import { chatEventsContract } from "@okouai/api-contracts/contracts/chat-threads
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
-import { handleSendChatEvent$ } from "../services/zero-chat-events.command";
+import { handleSendChatEvent$ } from "../services/chat-events.command";
 
 const sendEventBody$ = bodyResultOf(chatEventsContract.send);
 
