@@ -8,11 +8,11 @@ import {
 } from "drizzle-orm/pg-core";
 
 /**
- * VM0 API Keys table
- * Platform-managed key pool for the VM0 managed model provider.
- * Each vendor has one platform-managed key.
+ * Built-in model keys table
+ * Platform-held key pool for the built-in model provider.
+ * Each vendor has one platform-held key.
  */
-export const vm0ApiKeys = pgTable(
+export const builtInModelKeys = pgTable(
   "vm0_api_keys",
   {
     id: uuid("id").defaultRandom().primaryKey(),
