@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.169.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.5...runner-rs-v0.169.6) (2026-08-18)
+
+
+### Bug Fixes
+
+* **python:** fail closed on unsafe platform api paths ([#27944](https://github.com/vm0-ai/vm0/issues/27944)) ([490b2f5](https://github.com/vm0-ai/vm0/commit/490b2f5ab57211c277f295f48a8dab9b6144973b))
+
+
+### Performance Improvements
+
+* **python:** batch firewall auth query injection ([#27932](https://github.com/vm0-ai/vm0/issues/27932)) ([d46487f](https://github.com/vm0-ai/vm0/commit/d46487f9911378c1ea7dff89c4bc08b3d04f30ee))
+
 ## [0.169.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.4...runner-rs-v0.169.5) (2026-08-18)
 
 
