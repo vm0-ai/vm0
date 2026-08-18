@@ -16,9 +16,9 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
-  zeroBrowserContract,
-  type ZeroBrowserSession,
-} from "@okouai/api-contracts/contracts/zero-browser";
+  browserContract,
+  type BrowserSession,
+} from "@okouai/api-contracts/contracts/browser";
 import { zeroConnectorCatalogContract } from "@okouai/api-contracts/contracts/zero-connector-catalog";
 import { mailContract } from "@okouai/api-contracts/contracts/mail";
 import { describe, expect, it, vi } from "vitest";
@@ -49,8 +49,8 @@ const THREAD_PATH = `/chats/${THREAD_ID}`;
 const ARTIFACT_ID = "a0000000-0000-4000-a000-000000000001";
 
 function browserSession(
-  overrides: Partial<ZeroBrowserSession> = {},
-): ZeroBrowserSession {
+  overrides: Partial<BrowserSession> = {},
+): BrowserSession {
   return {
     threadId: THREAD_ID,
     name: "Thread browser",
@@ -307,7 +307,7 @@ function menuItemByText(text: string): HTMLElement {
 
 describe("thread-owned utility sidebar", () => {
   it("always opens the thread browser from the header", async () => {
-    context.mocks.api(zeroBrowserContract.get, ({ params, respond }) => {
+    context.mocks.api(browserContract.get, ({ params, respond }) => {
       expect(params.threadId).toBe(THREAD_ID);
       return respond(404, {
         error: { code: "NOT_FOUND", message: "Browser not found" },
@@ -329,13 +329,13 @@ describe("thread-owned utility sidebar", () => {
   });
 
   it("optimistically opens the browser and records sidebar close with caller event IDs", async () => {
-    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+    context.mocks.api(browserContract.get, ({ respond }) => {
       return respond(404, {
         error: { code: "NOT_FOUND", message: "Browser not found" },
       });
     });
     let startEventId: string | null = null;
-    context.mocks.api(zeroBrowserContract.open, ({ body, params, respond }) => {
+    context.mocks.api(browserContract.open, ({ body, params, respond }) => {
       expect(params.threadId).toBe(THREAD_ID);
       startEventId = body.eventId;
       return respond(200, {
@@ -343,13 +343,13 @@ describe("thread-owned utility sidebar", () => {
         lifecycleEventId: body.eventId,
       });
     });
-    context.mocks.api(zeroBrowserContract.leaseByThread, ({ respond }) => {
+    context.mocks.api(browserContract.leaseByThread, ({ respond }) => {
       return respond(200, { browser: browserSession({ liveUrl: null }) });
     });
     const finishClose = context.mocks.deferred<void>();
     let closeEventId: string | null = null;
     context.mocks.api(
-      zeroBrowserContract.close,
+      browserContract.close,
       async ({ body, params, respond }) => {
         expect(params.threadId).toBe(THREAD_ID);
         closeEventId = body.eventId;
@@ -797,10 +797,10 @@ describe("thread-owned utility sidebar", () => {
       return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
     });
     const browser = browserSession();
-    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+    context.mocks.api(browserContract.get, ({ respond }) => {
       return respond(200, { browser });
     });
-    context.mocks.api(zeroBrowserContract.leaseByThread, ({ respond }) => {
+    context.mocks.api(browserContract.leaseByThread, ({ respond }) => {
       return respond(200, { browser: { ...browser, liveUrl: null } });
     });
     setupChatThread();
@@ -837,7 +837,7 @@ describe("thread-owned utility sidebar", () => {
       return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
     });
     let browserRequests = 0;
-    context.mocks.api(zeroBrowserContract.get, async ({ respond }) => {
+    context.mocks.api(browserContract.get, async ({ respond }) => {
       browserRequests += 1;
       if (browserRequests === 1) {
         requestStarted.resolve();
@@ -846,7 +846,7 @@ describe("thread-owned utility sidebar", () => {
       return respond(200, { browser });
     });
     let leaseRequests = 0;
-    context.mocks.api(zeroBrowserContract.leaseByThread, ({ respond }) => {
+    context.mocks.api(browserContract.leaseByThread, ({ respond }) => {
       leaseRequests += 1;
       return respond(200, {
         browser: {
@@ -858,26 +858,23 @@ describe("thread-owned utility sidebar", () => {
       });
     });
     const resizeAspectRatios: number[] = [];
-    context.mocks.api(
-      zeroBrowserContract.resizeByThread,
-      ({ body, respond }) => {
-        resizeAspectRatios.push(body.aspectRatio);
-        if (resizeAspectRatios.length === 2) {
-          return respond(404, {
-            error: {
-              code: "BROWSER_NOT_FOUND",
-              message: "Managed browser not found",
-            },
-          });
-        }
-        browser = {
-          ...browser,
-          screen: { width: 1440, height: 1800, resizable: true },
-          updatedAt: "2026-03-10T00:00:00.500Z",
-        };
-        return respond(200, { browser });
-      },
-    );
+    context.mocks.api(browserContract.resizeByThread, ({ body, respond }) => {
+      resizeAspectRatios.push(body.aspectRatio);
+      if (resizeAspectRatios.length === 2) {
+        return respond(404, {
+          error: {
+            code: "BROWSER_NOT_FOUND",
+            message: "Managed browser not found",
+          },
+        });
+      }
+      browser = {
+        ...browser,
+        screen: { width: 1440, height: 1800, resizable: true },
+        updatedAt: "2026-03-10T00:00:00.500Z",
+      };
+      return respond(200, { browser });
+    });
     setupChatThread({
       messages: [
         {
@@ -999,10 +996,10 @@ describe("thread-owned utility sidebar", () => {
     context.mocks.browser.matchMedia((query) => {
       return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
     });
-    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+    context.mocks.api(browserContract.get, ({ respond }) => {
       return respond(200, { browser: browserSession() });
     });
-    context.mocks.api(zeroBrowserContract.leaseByThread, ({ respond }) => {
+    context.mocks.api(browserContract.leaseByThread, ({ respond }) => {
       return respond(200, {
         browser: browserSession({ liveUrl: null }),
       });
@@ -1107,7 +1104,7 @@ describe("thread-owned utility sidebar", () => {
         },
       });
     });
-    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+    context.mocks.api(browserContract.get, ({ respond }) => {
       return respond(404, {
         error: { code: "NOT_FOUND", message: "Browser not found" },
       });
@@ -1197,10 +1194,10 @@ describe("thread-owned utility sidebar", () => {
         });
       },
     );
-    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+    context.mocks.api(browserContract.get, ({ respond }) => {
       return respond(200, { browser: browserSession() });
     });
-    context.mocks.api(zeroBrowserContract.leaseByThread, ({ respond }) => {
+    context.mocks.api(browserContract.leaseByThread, ({ respond }) => {
       return respond(200, { browser: browserSession({ liveUrl: null }) });
     });
     const fixture = setupChatThread({
@@ -1247,10 +1244,10 @@ describe("thread-owned utility sidebar", () => {
     context.mocks.browser.matchMedia((query) => {
       return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
     });
-    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+    context.mocks.api(browserContract.get, ({ respond }) => {
       return respond(200, { browser: browserSession() });
     });
-    context.mocks.api(zeroBrowserContract.leaseByThread, ({ respond }) => {
+    context.mocks.api(browserContract.leaseByThread, ({ respond }) => {
       return respond(200, { browser: browserSession({ liveUrl: null }) });
     });
     const fixture = setupChatThread({
