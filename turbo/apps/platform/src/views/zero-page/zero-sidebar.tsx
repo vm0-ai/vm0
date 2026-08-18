@@ -782,7 +782,7 @@ function ChatListColumn() {
                 size="icon-sm"
               >
                 <Search
-                  className="text-muted-foreground opacity-50"
+                  className="text-muted-foreground opacity-70"
                   size={17}
                 />
               </Button>
@@ -801,7 +801,7 @@ function ChatListColumn() {
                 variant="quiet"
                 size="icon-sm"
               >
-                <Edit className="opacity-50" size={17} />
+                <Edit className="text-muted-foreground opacity-70" size={17} />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
