@@ -1935,7 +1935,7 @@ describe("FW-9: codex model-provider access", () => {
     expect(userScoped.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
   });
 
-  it("recovers a reconnect-flagged codex provider after a successful refresh", async () => {
+  it("recovers an unclassified reconnect-flagged codex provider after a successful refresh", async () => {
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();
     await fw.seedOrgCodexProvider(actor, {
@@ -1945,7 +1945,7 @@ describe("FW-9: codex model-provider access", () => {
       idToken: "id-token-bdd",
       expiresIn: -60,
       needsReconnect: true,
-      lastRefreshErrorCode: "refresh_token_expired",
+      lastRefreshErrorCode: "refresh_token_other",
     });
     fw.mockCodexTokenRefresh(() => {
       return HttpResponse.json({
@@ -1976,7 +1976,7 @@ describe("FW-9: codex model-provider access", () => {
     );
   });
 
-  it("re-refreshes reconnect-flagged codex providers before their token expires", async () => {
+  it("re-refreshes unclassified reconnect-flagged codex providers before their token expires", async () => {
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();
     await fw.seedOrgCodexProvider(actor, {
@@ -1986,7 +1986,7 @@ describe("FW-9: codex model-provider access", () => {
       idToken: "id-token-bdd",
       expiresIn: 3600,
       needsReconnect: true,
-      lastRefreshErrorCode: "refresh_token_expired",
+      lastRefreshErrorCode: "refresh_token_other",
     });
     fw.mockCodexTokenRefresh(() => {
       return HttpResponse.json({
@@ -2041,7 +2041,73 @@ describe("FW-9: codex model-provider access", () => {
     expect(missing.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
   });
 
-  it("preserves chatgpt reconnect error codes on codex refresh failure", async () => {
+  it("stops retrying terminal chatgpt refresh failures", async () => {
+    const fw = createFirewallApi(context);
+    const { actor, headers } = await firewallRun();
+    const terminalErrorCodes = [
+      "refresh_token_reused",
+      "refresh_token_expired",
+      "refresh_token_invalidated",
+    ] as const;
+    const body = {
+      encryptedSecrets: fw.encryptedSecretsBody({
+        CHATGPT_ACCESS_TOKEN: "stale-chatgpt-token",
+      }),
+      authHeaders: {
+        Authorization: `Bearer ${secretTemplate("CHATGPT_ACCESS_TOKEN")}`,
+      },
+      secretConnectorMap: { CHATGPT_ACCESS_TOKEN: "codex-oauth-token" },
+    };
+
+    for (const errorCode of terminalErrorCodes) {
+      await fw.seedOrgCodexProvider(actor, {
+        accessToken: "stale-chatgpt-token",
+        refreshToken: `chatgpt-refresh-${errorCode}`,
+        accountId: "acct-bdd",
+        idToken: "id-token-bdd",
+        expiresIn: -60,
+      });
+      let refreshCalls = 0;
+      fw.mockCodexTokenRefresh(() => {
+        refreshCalls += 1;
+        return HttpResponse.json(
+          {
+            error: {
+              code: errorCode,
+              message: `${errorCode} refresh token`,
+            },
+          },
+          { status: 401 },
+        );
+      });
+      context.mocks.axiomLogging.warn.mockClear();
+
+      for (let requestIndex = 0; requestIndex < 3; requestIndex += 1) {
+        const failed = await fw.requestFirewallAuth(headers, body, [502]);
+        if (failed.status !== 502) {
+          throw new Error("Expected the chatgpt reconnect failure to be 502");
+        }
+        expect(failed.body.error.code).toBe("TOKEN_REFRESH_FAILED");
+        expect(failed.body.error.failureReason).toBe("reconnect_required");
+        expect(failed.body.error.connectors).toStrictEqual([
+          "codex-oauth-token",
+        ]);
+      }
+
+      expect(refreshCalls).toBe(1);
+      expect(context.mocks.axiomLogging.warn).toHaveBeenCalledTimes(1);
+      expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+        expect.stringContaining("codex-oauth-token token refresh failed"),
+        expect.objectContaining({
+          accessSourceKey: "codex-oauth-token",
+          errorCode,
+          failureReason: "reconnect_required",
+        }),
+      );
+    }
+  });
+
+  it("retries a transient codex refresh failure", async () => {
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();
     await fw.seedOrgCodexProvider(actor, {
@@ -2051,37 +2117,42 @@ describe("FW-9: codex model-provider access", () => {
       idToken: "id-token-bdd",
       expiresIn: -60,
     });
+    let refreshCalls = 0;
     fw.mockCodexTokenRefresh(() => {
-      return HttpResponse.json(
-        {
-          error: {
-            code: "refresh_token_expired",
-            message: "expired refresh token",
-          },
-        },
-        { status: 401 },
-      );
+      refreshCalls += 1;
+      if (refreshCalls === 1) {
+        return HttpResponse.json({ error: "server_error" }, { status: 503 });
+      }
+      return HttpResponse.json({
+        access_token: "recovered-chatgpt-token",
+        refresh_token: "rotated-chatgpt-refresh",
+        expires_in: 3600,
+      });
     });
-
-    const failed = await fw.requestFirewallAuth(
-      headers,
-      {
-        encryptedSecrets: fw.encryptedSecretsBody({
-          CHATGPT_ACCESS_TOKEN: "stale-chatgpt-token",
-        }),
-        authHeaders: {
-          Authorization: `Bearer ${secretTemplate("CHATGPT_ACCESS_TOKEN")}`,
-        },
-        secretConnectorMap: { CHATGPT_ACCESS_TOKEN: "codex-oauth-token" },
+    const body = {
+      encryptedSecrets: fw.encryptedSecretsBody({
+        CHATGPT_ACCESS_TOKEN: "stale-chatgpt-token",
+      }),
+      authHeaders: {
+        Authorization: `Bearer ${secretTemplate("CHATGPT_ACCESS_TOKEN")}`,
       },
-      [502],
-    );
+      secretConnectorMap: { CHATGPT_ACCESS_TOKEN: "codex-oauth-token" },
+    };
+
+    const failed = await fw.requestFirewallAuth(headers, body, [502]);
     if (failed.status !== 502) {
-      throw new Error("Expected the chatgpt reconnect failure to be 502");
+      throw new Error("Expected the transient codex failure to be 502");
     }
-    expect(failed.body.error.code).toBe("TOKEN_REFRESH_FAILED");
-    expect(failed.body.error.failureReason).toBe("reconnect_required");
-    expect(failed.body.error.connectors).toStrictEqual(["codex-oauth-token"]);
+    expect(failed.body.error.failureReason).toBe("upstream_provider");
+
+    const recovered = await fw.requestFirewallAuth(headers, body, [200]);
+    if (recovered.status !== 200) {
+      throw new Error("Expected the transient codex failure to recover");
+    }
+    expect(recovered.body.headers.Authorization).toBe(
+      "Bearer recovered-chatgpt-token",
+    );
+    expect(refreshCalls).toBe(2);
   });
 
   it("omits the failure reason for unknown chatgpt refresh error codes", async () => {
