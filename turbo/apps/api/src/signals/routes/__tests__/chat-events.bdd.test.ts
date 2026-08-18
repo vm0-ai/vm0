@@ -45,7 +45,7 @@ import {
   zeroModelProviderConnectionsByIdContract,
   zeroModelProviderConnectionsMainContract,
 } from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
-import { zeroModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-model-providers";
+import { modelProvidersMainContract } from "@okouai/api-contracts/contracts/model-provider-routes";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { z } from "zod";
 import { createApp } from "../../../app-factory";
@@ -1000,7 +1000,7 @@ function modelProviderSecretPlaceholder(
 
 function modelProvidersClient() {
   return setupApp({ context, routes: zeroModelProvidersRoutes })(
-    zeroModelProvidersMainContract,
+    modelProvidersMainContract,
   );
 }
 

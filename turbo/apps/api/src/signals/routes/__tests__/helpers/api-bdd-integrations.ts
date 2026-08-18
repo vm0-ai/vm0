@@ -42,7 +42,7 @@ import { integrationsSlackContract } from "@okouai/api-contracts/contracts/integ
 import { zeroIntegrationsTelegramContract } from "@okouai/api-contracts/contracts/zero-integrations-telegram";
 import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
 import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
-import { zeroModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-model-providers";
+import { modelProvidersMainContract } from "@okouai/api-contracts/contracts/model-provider-routes";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { slackChannelsContract } from "@okouai/api-contracts/contracts/slack-channels";
 import { slackConnectContract } from "@okouai/api-contracts/contracts/slack-connect";
@@ -1209,7 +1209,7 @@ export function createBddIntegrationApi(context: TestContext) {
 
     async configureSlackRunModelPolicies(actor: ApiTestUser): Promise<void> {
       const providers = setupApp({ context, routes: zeroModelProvidersRoutes })(
-        zeroModelProvidersMainContract,
+        modelProvidersMainContract,
       );
       const anthropic = await accept(
         providers.upsert({
