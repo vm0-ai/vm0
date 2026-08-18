@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
   chatRunFinishedEventConfigSchema,
   gmailLabelAppliedEventConfigSchema,
@@ -266,6 +267,7 @@ interface CreateEventAutomationWorkflowContext {
   readonly workflowId: string;
   readonly agentId: string;
   readonly workflowTitle: string;
+  readonly publicBrand: PublicBrand;
 }
 
 interface ScheduleColumns {
@@ -2215,6 +2217,7 @@ async function createNotionEventAutomationForWorkflow(
             {
               orgId: args.input.orgId,
               userId: args.input.member.userId,
+              publicBrand: args.context.publicBrand,
               eventConfig:
                 "parentPageUrl" in eventConfig
                   ? eventConfig
@@ -2240,6 +2243,7 @@ async function createNotionEventAutomationForWorkflow(
             {
               orgId: args.input.orgId,
               userId: args.input.member.userId,
+              publicBrand: args.context.publicBrand,
               eventConfig:
                 "databaseUrl" in eventConfig
                   ? eventConfig
@@ -2265,6 +2269,7 @@ async function createNotionEventAutomationForWorkflow(
             {
               orgId: args.input.orgId,
               userId: args.input.member.userId,
+              publicBrand: args.context.publicBrand,
               eventConfig:
                 "scope" in eventConfig
                   ? eventConfig.scope.type === "page"
@@ -2516,6 +2521,7 @@ const createEventAutomationForWorkflow$ = command(
       readonly workflowId: string;
       readonly agentId: string;
       readonly workflowTitle: string;
+      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ): Promise<AutomationResult> => {
@@ -2645,6 +2651,7 @@ export const createWorkflowAutomation$ = command(
   async (
     { set },
     args: CreateAutomationInput,
+    publicBrand: PublicBrand,
     signal: AbortSignal,
   ): Promise<AutomationResult> => {
     const writeDb = set(writeDb$);
@@ -2689,6 +2696,7 @@ export const createWorkflowAutomation$ = command(
           workflowId: workflow.id,
           agentId: agent.id,
           workflowTitle,
+          publicBrand,
         },
         signal,
       );

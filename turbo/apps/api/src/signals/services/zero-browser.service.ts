@@ -22,7 +22,10 @@ import {
 import { agentComposes } from "@okouai/db/schema/agent-compose";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { appUrlForPublicBrand } from "@okouai/core/public-brand";
+import {
+  appUrlForPublicBrand,
+  publicBrandPresentation,
+} from "@okouai/core/public-brand";
 import { command } from "ccstate";
 import {
   and,
@@ -216,6 +219,24 @@ function notFound(): BrowserServiceError {
 
 function conflict(message: string, code = "BROWSER_CONFLICT") {
   return serviceError(409, code, message);
+}
+
+function chatRunRequired(
+  publicBrand: PublicBrand,
+  code: "BROWSER_RUN_REQUIRED" | "BROWSER_CHAT_THREAD_REQUIRED",
+) {
+  return serviceError(
+    400,
+    code,
+    `Managed browsers can only be started from a ${publicBrandPresentation(publicBrand).assistantName} chat run`,
+  );
+}
+
+function browserReclaiming(publicBrand: PublicBrand) {
+  return conflict(
+    `${publicBrandPresentation(publicBrand).assistantName} is still reclaiming this thread's previous managed browser; retry in a moment`,
+    "BROWSER_STOPPING",
+  );
 }
 
 function providerFailure(error: unknown): BrowserServiceError {
@@ -956,11 +977,7 @@ async function resolveRunContext(
   actor: BrowserActor,
 ): Promise<BrowserServiceResult<BrowserRunContext>> {
   if (!actor.runId) {
-    return serviceError(
-      400,
-      "BROWSER_RUN_REQUIRED",
-      "Managed browsers can only be started from a Zero chat run",
-    );
+    return chatRunRequired(actor.publicBrand, "BROWSER_RUN_REQUIRED");
   }
   const [run] = await db
     .select({
@@ -980,11 +997,7 @@ async function resolveRunContext(
     )
     .limit(1);
   if (!run?.chatThreadId) {
-    return serviceError(
-      400,
-      "BROWSER_CHAT_THREAD_REQUIRED",
-      "Managed browsers can only be started from a Zero chat run",
-    );
+    return chatRunRequired(actor.publicBrand, "BROWSER_CHAT_THREAD_REQUIRED");
   }
   if (isTerminalRunStatus(run.status)) {
     return conflict("The chat run already ended", "BROWSER_RUN_ENDED");
@@ -1987,10 +2000,7 @@ async function claimBrowserForResume(
           "BROWSER_STARTING",
         );
       }
-      return conflict(
-        "Zero is still reclaiming this thread's previous managed browser; retry in a moment",
-        "BROWSER_STOPPING",
-      );
+      return browserReclaiming(context.publicBrand);
     }
     const current = await loadCurrentBrowser(tx, context);
     if (!current) {
@@ -2051,10 +2061,7 @@ const reuseLiveThreadBrowser$ = command(
               "The managed browser is already starting",
               "BROWSER_STARTING",
             )
-          : conflict(
-              "Zero is still reclaiming this thread's previous managed browser; retry in a moment",
-              "BROWSER_STOPPING",
-            ),
+          : browserReclaiming(args.context.publicBrand),
       };
     }
     const inspected = await set(
