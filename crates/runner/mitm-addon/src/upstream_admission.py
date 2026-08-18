@@ -10,9 +10,11 @@ from mitmproxy import connection, ctx, http, tls
 import connection_endpoints
 import flow_metadata
 import matching
+import path_security
 import registry
 import upstream_destination_binding
 from host_normalization import normalize_hostname
+from runtime_url_parsing import strip_url_query_and_fragment
 
 TLS_ADMISSION_VALID_REGISTRY_VM: Final = "valid_registry_vm"
 TLS_ADMISSION_INVALID_REGISTRY_VM: Final = "invalid_registry_vm"
@@ -27,6 +29,7 @@ TlsAdmissionKind = Literal[
     "invalid_registry_vm",
     "registry_unavailable",
 ]
+PlatformRequestPathDecision = Literal["api_allow", "firewall", "deny"]
 _tls_admissions: dict[str, "TlsAdmission"] = {}
 
 
@@ -123,7 +126,7 @@ def _connected_verified_tls_destination_endpoint(
 
 
 def _request_has_platform_test_endpoint_bypass(flow: http.HTTPFlow) -> bool:
-    if not flow.request.path.startswith(_TEST_ENDPOINT_PATH_PREFIX):
+    if platform_request_path_decision(flow.request.path) != "firewall":
         return False
     expected_bypass = os.environ.get("VERCEL_AUTOMATION_BYPASS_SECRET", "")
     if not expected_bypass:
@@ -131,8 +134,13 @@ def _request_has_platform_test_endpoint_bypass(flow: http.HTTPFlow) -> bool:
     return flow.request.headers.get(_TEST_ENDPOINT_BYPASS_HEADER) == expected_bypass
 
 
-def request_path_uses_platform_firewall(path: str) -> bool:
-    return path.startswith(_TEST_ENDPOINT_PATH_PREFIX)
+def platform_request_path_decision(path: str) -> PlatformRequestPathDecision:
+    pathname = strip_url_query_and_fragment(path)
+    if path_security.has_unsafe_path(pathname):
+        return "deny"
+    if pathname.startswith(_TEST_ENDPOINT_PATH_PREFIX):
+        return "firewall"
+    return "api_allow"
 
 
 def api_destination_matches(

@@ -355,24 +355,20 @@ def _prebind_bounded_requestheaders_upstream_destination(
         except AuthorityValidationError:
             return None
         flow.metadata[metadata_keys.TRUSTED_AUTHORITY_HOST] = trusted_authority.host
-        if upstream_admission.api_destination_matches(
+        is_api_destination = upstream_admission.api_destination_matches(
             api_url,
             scheme=flow.request.scheme,
             hostname=trusted_authority.host,
             port=trusted_authority.port,
-        ) and not upstream_admission.request_path_uses_platform_firewall(flow.request.path):
-            classification = _classify_request_for_flow_with_trusted_authority(
+        )
+        if (
+            not is_api_destination
+            and upstream_admission.has_bound_destination(
                 flow,
-                trusted_authority=trusted_authority,
-                defer_unresolved_public_destination=True,
+                allowed_kinds=frozenset(("connector_auth",)),
             )
-            if classification.kind == "api_allow":
-                _admit_platform_api_request(flow)
-            return classification
-        if upstream_admission.has_bound_destination(
-            flow,
-            allowed_kinds=frozenset(("connector_auth",)),
-        ) and not _request_may_use_aws_sigv4(flow):
+            and not _request_may_use_aws_sigv4(flow)
+        ):
             return None
         classification = _classify_request_for_flow_with_trusted_authority(
             flow,
@@ -649,6 +645,10 @@ def _block_invalid_registry_vm(
 
 def _block_stale_tls_admission(flow: http.HTTPFlow, *, reason: str) -> None:
     http_local_responses.block_stale_tls_admission(flow, reason=reason)
+
+
+def _block_platform_path_denied(flow: http.HTTPFlow) -> None:
+    http_local_responses.block_platform_path_denied(flow)
 
 
 def _block_firewall_authorization_changed(
@@ -1222,6 +1222,9 @@ def _block_current_firewall_authorization(
     if classification.kind == "authority_denied":
         _block_authority_validation_error(flow, classification.authority_error)
         return
+    if classification.kind == "platform_path_denied":
+        _block_platform_path_denied(flow)
+        return
     if classification.kind == "firewall_ambiguous":
         _set_firewall_ambiguous_response(flow, classification.firewall_ambiguous)
         return
@@ -1343,6 +1346,9 @@ async def request(flow: http.HTTPFlow) -> None:
                 _block_upstream_destination_unbound(flow, reason="api_allow")
                 return
             flow_metadata.set_firewall_decision(flow.metadata, "ALLOW")
+            return
+        if classification.kind == "platform_path_denied":
+            _block_platform_path_denied(flow)
             return
         if classification.kind == "browser_allow":
             # Browser-originated traffic intentionally bypasses connector

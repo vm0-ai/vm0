@@ -109,6 +109,13 @@ const errorTestContract = c.router({
       500: z.object({ error: z.string() }),
     },
   },
+  pathIdentity: {
+    method: "GET",
+    path: "/api/test/path-identity",
+    responses: {
+      200: z.object({ matched: z.literal(true) }),
+    },
+  },
 });
 
 describe("createApp", () => {
@@ -131,6 +138,57 @@ describe("createApp", () => {
     await expect(response.json()).resolves.toStrictEqual({
       error: "Service unavailable",
     });
+  });
+
+  it.each([
+    [
+      "literal dot segment",
+      "http://api.test/api/ordinary/../test/path-identity",
+    ],
+    [
+      "encoded dot segment",
+      "http://api.test/api/ordinary/%2e%2e/test/path-identity",
+    ],
+    ["backslash", String.raw`http://api.test/api\test\path-identity`],
+    [
+      "query and fragment",
+      "http://api.test/api/test/path-identity?visible=1#fragment",
+    ],
+  ])("normalizes a %s to the registered pathname", async (_case, url) => {
+    const handler$ = computed(() => {
+      return { status: 200 as const, body: { matched: true as const } };
+    });
+    const app = createAppWithRoutes({
+      routes: [{ route: errorTestContract.pathIdentity, handler: handler$ }],
+      schemaReadiness: () => {
+        return Promise.resolve(true);
+      },
+      signal: context.signal,
+    });
+
+    const response = await app.request(url);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({ matched: true });
+  });
+
+  it("retains a repeated pathname separator", async () => {
+    const handler$ = computed(() => {
+      return { status: 200 as const, body: { matched: true as const } };
+    });
+    const app = createAppWithRoutes({
+      routes: [{ route: errorTestContract.pathIdentity, handler: handler$ }],
+      schemaReadiness: () => {
+        return Promise.resolve(true);
+      },
+      signal: context.signal,
+    });
+
+    const response = await app.request(
+      "http://api.test/api//test/path-identity",
+    );
+
+    expect(response.status).toBe(404);
   });
 
   it("captures unhandled errors and returns a sanitized response", async () => {
