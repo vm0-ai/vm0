@@ -444,6 +444,16 @@ def has_bound_destination(
     *,
     allowed_kinds: frozenset[upstream_destination_binding.BindingKind],
 ) -> bool:
+    """Return whether the flow authority matches binding evidence for a kind.
+
+    This delegates to
+    ``upstream_destination_binding.flow_matches_bound_destination``. A ``True``
+    result does not prove a durable direct binding exists: it may be an
+    unconnected, retargetable normalized-address match or a prior-client match.
+    Callers that need durable direct admission must still require
+    ``upstream_destination_binding.has_server_binding`` or use
+    ``ensure_bound_destination``.
+    """
     return upstream_destination_binding.flow_matches_bound_destination(
         flow,
         allowed_kinds=allowed_kinds,
