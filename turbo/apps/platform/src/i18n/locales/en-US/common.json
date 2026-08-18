@@ -813,6 +813,7 @@
       "concurrentRun_other": "{{value}} concurrent runs",
       "continueToStripe": "Continue to Stripe",
       "decreaseAria": "Decrease additional concurrency quantity",
+      "dueNow": "Due now",
       "dueToday": "Due today",
       "emptyDescription": "Buy additional concurrent runs for this workspace.",
       "emptyTitle": "No concurrency subscriptions",

@@ -813,6 +813,7 @@
       "concurrentRun_other": "{{value}} gleichzeitige Ausführungen",
       "continueToStripe": "Weiter zu Stripe",
       "decreaseAria": "Verringern Sie die zusätzliche Parallelitätsmenge",
+      "dueNow": "Jetzt fällig",
       "dueToday": "Heute fällig",
       "emptyDescription": "Kaufen Sie zusätzliche gleichzeitige Ausführungen für diesen Arbeitsbereich.",
       "emptyTitle": "Keine Parallelitätsabonnements",

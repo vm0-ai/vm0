@@ -94,6 +94,8 @@ export type InviteOrgMemberRequest = z.infer<
 export const previewOrgInvitationPurchaseRequestSchema =
   inviteOrgMemberRequestSchema.extend({
     usagePackUsd: usagePackUsdSchema,
+    supportsInAppPreview: z.boolean().optional(),
+    returnUrl: z.string().url().max(5000).optional(),
   });
 
 export const orgInvitationPurchasePreviewResponseSchema = z.object({
@@ -106,6 +108,8 @@ export const orgInvitationPurchasePreviewResponseSchema = z.object({
   totalCredits: z.number().int().positive(),
   currentPeriodEnd: z.iso.datetime(),
   expiresAt: z.iso.datetime(),
+  paymentMethodPreviewToken: z.string().min(1).optional(),
+  checkoutUrl: z.string().url().optional(),
 });
 export type OrgInvitationPurchasePreviewResponse = z.infer<
   typeof orgInvitationPurchasePreviewResponseSchema

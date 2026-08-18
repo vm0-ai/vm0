@@ -813,6 +813,7 @@
       "concurrentRun_other": "{{value}} 同時実行数",
       "continueToStripe": "Stripe に進む",
       "decreaseAria": "追加の同時実行数を減らす",
+      "dueNow": "今回のお支払い",
       "dueToday": "本日のお支払い",
       "emptyDescription": "このワークスペースに対して追加の同時実行を購入します。",
       "emptyTitle": "同時実行サブスクリプションなし",

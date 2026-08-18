@@ -813,6 +813,7 @@
       "concurrentRun_other": "{{value}} समवर्ती चलता है",
       "continueToStripe": "Stripe पर जारी रखें",
       "decreaseAria": "अतिरिक्त समवर्ती मात्रा कम करें",
+      "dueNow": "अभी देय",
       "dueToday": "आज देय",
       "emptyDescription": "इस वर्कस्पेस के लिए अतिरिक्त समवर्ती रन खरीदें।",
       "emptyTitle": "कोई समवर्ती सदस्यता नहीं",
