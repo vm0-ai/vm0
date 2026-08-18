@@ -55,7 +55,10 @@ import {
 } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { readProjectedChatEvents } from "./helpers/chat-event-test-reader";
-import { readCustomConnectorCredentialStorageParent } from "./helpers/connector-credential-storage-state";
+import {
+  readCustomConnectorCredentialStorageParent,
+  seedLegacyCustomFeishuOAuthState,
+} from "./helpers/connector-credential-storage-state";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { agentsRoutes } from "../agents";
@@ -1891,6 +1894,31 @@ describe("Feishu integration", () => {
     expect(managedOAuthStart.body.error.message).toBe(
       "This connector is managed by its integration",
     );
+
+    const legacyGenericState = `legacy-generic-feishu-${randomUUID()}`;
+    await seedLegacyCustomFeishuOAuthState(context, {
+      state: legacyGenericState,
+      orgId: requireValue(admin.orgId, "Expected an organization"),
+      userId: admin.userId,
+      customConnectorId: managedConnector.id,
+      storageVersion: managedConnector.storageVersion,
+      redirectUri: `${APP_ORIGIN}/connectors/custom/callback`,
+    });
+    const legacyGenericCallbackResponse = await createAppWithRoutes({
+      signal: context.signal,
+      routes: feishuOauthRoutes,
+    }).request(
+      `${feishuOauthContract.callback.path}?${new URLSearchParams({
+        code: "legacy-generic-feishu-code",
+        responseMode: "json",
+        state: legacyGenericState,
+      })}`,
+    );
+    expect(legacyGenericCallbackResponse.status).toBe(400);
+    await expect(legacyGenericCallbackResponse.json()).resolves.toStrictEqual({
+      error: "Invalid or expired connect state",
+    });
+    expect(oauthTokenRedirectUris).toStrictEqual([]);
 
     const customConnectorByIdClient = setupApp({
       context,

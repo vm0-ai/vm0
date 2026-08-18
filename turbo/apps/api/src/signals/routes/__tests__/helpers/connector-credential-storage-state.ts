@@ -101,6 +101,28 @@ export async function deleteCustomConnectorCredentialValues(
   });
 }
 
+export async function seedLegacyCustomFeishuOAuthState(
+  context: TestContext,
+  args: {
+    readonly state: string;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly customConnectorId: string;
+    readonly storageVersion: number;
+    readonly redirectUri: string;
+  },
+): Promise<void> {
+  await postAction(context, {
+    action: "seed-legacy-custom-feishu-oauth-state",
+    state: args.state,
+    org_id: args.orgId,
+    user_id: args.userId,
+    custom_connector_id: args.customConnectorId,
+    storage_version: args.storageVersion,
+    redirect_uri: args.redirectUri,
+  });
+}
+
 export async function seedOwnedConnectorSecret(
   context: TestContext,
   args: {
