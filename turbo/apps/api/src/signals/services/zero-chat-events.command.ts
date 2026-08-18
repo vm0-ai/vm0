@@ -1528,7 +1528,7 @@ function appendUnassociatedUserMessage(params: {
             contextId: webChatPublicBrandContextId(params.publicBrand),
           }
         : {}),
-      ...(params.agentRunSource
+      ...(params.triggerSource === "agent" && params.agentRunSource
         ? {
             agentRunContext: {
               sourceRunId: params.agentRunSource.runId,
@@ -2938,6 +2938,7 @@ function buildCreateZeroRunArgs(params: {
     videoRunOptions: prepared.videoRunOptions,
     computerUseHostDisplayName:
       prepared.computerUseHostGrant?.displayName ?? null,
+    triggerSource: prepared.triggerSource,
     agentRunSource: prepared.agentRunSource,
   };
   return {
