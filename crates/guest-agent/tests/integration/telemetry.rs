@@ -448,10 +448,14 @@ async fn flush_reports_position_persistence_status_after_upload_then_recovers() 
     let paths = &files.paths;
     let system_log = paths.system_log_file();
     let system_log_pos = paths.telemetry_system_log_pos_file();
+    let metrics_log = paths.metrics_log_file();
+    let metrics_pos = paths.telemetry_metrics_pos_file();
     let marker = "position-persistence-upload";
+    let metric = serde_json::json!({"name": "position-persistence-metric"});
     ensure_parent_dir(system_log);
     ensure_parent_dir(system_log_pos);
     std::fs::write(system_log, format!("{marker}\n")).expect("system log should be written");
+    std::fs::write(metrics_log, format!("{metric}\n")).expect("metrics log should be written");
     std::fs::create_dir(system_log_pos).expect("position failure directory should be created");
 
     let request_bodies = Arc::new(Mutex::new(Vec::new()));
@@ -497,7 +501,20 @@ async fn flush_reports_position_persistence_status_after_upload_then_recovers() 
             .expect("first telemetry request should contain valid JSON");
         let expected_log = format!("{marker}\n");
         assert_eq!(payload["systemLog"].as_str(), Some(expected_log.as_str()));
+        assert_eq!(payload["metrics"], serde_json::json!([metric]));
     }
+    let persisted_metrics_pos: u64 = std::fs::read_to_string(metrics_pos)
+        .expect("metrics position should persist after the earlier system position fails")
+        .trim()
+        .parse()
+        .expect("metrics position should be numeric");
+    assert_eq!(
+        persisted_metrics_pos,
+        std::fs::metadata(metrics_log)
+            .expect("metrics metadata should be available")
+            .len(),
+        "a later advanced position must persist after an earlier position write fails"
+    );
 
     std::fs::remove_dir(system_log_pos).expect("position failure directory should be removed");
     let second_report = telemetry
@@ -522,6 +539,7 @@ async fn flush_reports_position_persistence_status_after_upload_then_recovers() 
             .expect("recovery telemetry request should contain valid JSON");
         let expected_log = format!("{marker}\n");
         assert_eq!(payload["systemLog"].as_str(), Some(expected_log.as_str()));
+        assert_eq!(payload["metrics"], serde_json::json!([]));
     }
 
     telemetry.shutdown().await;
