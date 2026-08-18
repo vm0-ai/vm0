@@ -106,9 +106,13 @@ export const gitHubWorkflowJobEventSchema: z.ZodType<GithubWorkflowJobEventPaylo
     sender: gitHubUserSchema,
   });
 
+export const gitHubPullRequestReviewActionSchema = z.object({
+  action: z.string(),
+});
+
 export const gitHubPullRequestReviewEventSchema: z.ZodType<GithubPullRequestReviewEventPayload> =
   z.object({
-    action: z.string(),
+    action: z.literal("submitted"),
     review: z.object({
       id: z.number(),
       user: gitHubUserSchema,
