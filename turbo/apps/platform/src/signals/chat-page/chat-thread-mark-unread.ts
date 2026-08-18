@@ -1,9 +1,11 @@
 import { command } from "ccstate";
 import { chatThreadMarkUnreadContract } from "@okouai/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { reloadChatIndicators$ } from "../chat-thread-list-reload.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 import {
   applyUnreadSnapshot$,
   clearOptimisticReadMark$,
@@ -19,6 +21,9 @@ export const markChatThreadUnread$ = command(
     { threadId }: MarkUnreadArgs,
     signal: AbortSignal,
   ): Promise<void> => {
+    if (!(get(featureSwitch$)[FeatureSwitchKey.ChatMarkUnread] ?? false)) {
+      return;
+    }
     const client = get(zeroClient$)(chatThreadMarkUnreadContract);
     const result = await accept(
       client.markUnread({

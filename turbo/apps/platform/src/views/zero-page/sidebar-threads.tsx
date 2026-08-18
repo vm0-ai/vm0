@@ -18,6 +18,7 @@ import {
   Pin,
   PinOff,
 } from "lucide-react";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { useChatThreadsTitleLabels } from "./zero-sidebar-shared.tsx";
 import {
   Tooltip,
@@ -44,6 +45,7 @@ import {
 import { Skeleton } from "@okouai/ui/components/ui/skeleton";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   deleteChatThread$,
@@ -168,6 +170,35 @@ function preventChatThreadMenuNavigation(e: MouseEvent) {
   e.stopPropagation();
 }
 
+function ChatThreadMarkUnreadMenuItem({
+  signals,
+}: {
+  signals: SidebarChatThreadItemSignals;
+}) {
+  const { t } = useTranslation();
+  const enabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ChatMarkUnread] ?? false;
+  const markUnread = useSet(signals.markUnread$);
+  const pageSignal = useGet(pageSignal$);
+
+  if (!enabled) {
+    return null;
+  }
+
+  return (
+    <DropdownMenuItem
+      onSelect={() => {
+        detach(markUnread(pageSignal), Reason.DomCallback);
+      }}
+    >
+      <Mail size={16} className="mr-2" />
+      {t(($) => {
+        return $.chat.sidebar.markUnread;
+      })}
+    </DropdownMenuItem>
+  );
+}
+
 function ChatThreadMenu({
   signals,
 }: {
@@ -177,7 +208,6 @@ function ChatThreadMenu({
   const isPinned = useGet(signals.pinned$);
   const indicatorState = useLastResolved(signals.indicatorState$) ?? null;
   const togglePinned = useSet(signals.togglePinned$);
-  const markUnread = useSet(signals.markUnread$);
   const openRename = useSet(signals.openRename$);
   const requestDelete = useSet(signals.requestDelete$);
   const pageSignal = useGet(pageSignal$);
@@ -188,10 +218,6 @@ function ChatThreadMenu({
 
   function openRenameDialog() {
     detach(openRename(pageSignal), Reason.DomCallback);
-  }
-
-  function handleMarkUnread() {
-    detach(markUnread(pageSignal), Reason.DomCallback);
   }
 
   const hasOtherIndicator = indicatorState !== null || isPinned;
@@ -271,12 +297,7 @@ function ChatThreadMenu({
               </>
             )}
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={handleMarkUnread}>
-            <Mail size={16} className="mr-2" />
-            {t(($) => {
-              return $.chat.sidebar.markUnread;
-            })}
-          </DropdownMenuItem>
+          <ChatThreadMarkUnreadMenuItem signals={signals} />
           <DropdownMenuModalItem onModalSelect={openRenameDialog}>
             <Pencil size={16} className="mr-2" />
             {t(($) => {

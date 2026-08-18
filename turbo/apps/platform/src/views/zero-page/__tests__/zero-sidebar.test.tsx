@@ -934,6 +934,27 @@ describe("zero sidebar", () => {
     });
   });
 
+  it("hides mark unread while the feature switch is off", async () => {
+    prepareDefaultAgent();
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Release plan"),
+      createThread(INCIDENT_THREAD_ID, "Incident notes"),
+    ]);
+
+    setupSidebarPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.ChatMarkUnread]: false },
+      path: `/chats/${EXISTING_THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+    });
+
+    openThreadMenu("Release plan");
+    expect(queryMenuItemByText("Mark unread")).toBeNull();
+  });
+
   it("marks the current chat unread from the sidebar menu", async () => {
     prepareDefaultAgent();
     mockSidebarThreadStory([
@@ -972,6 +993,7 @@ describe("zero sidebar", () => {
 
     setupSidebarPage({
       context,
+      featureSwitches: { [FeatureSwitchKey.ChatMarkUnread]: true },
       path: `/chats/${EXISTING_THREAD_ID}`,
     });
 
