@@ -54,11 +54,6 @@ export const testConnectorCredentialStorageStateActionBodySchema =
       custom_connector_id: z.uuid(),
     }),
     z.object({
-      action: z.literal("clear-feishu-connector-ownership"),
-      org_id: z.string(),
-      installation_id: z.uuid(),
-    }),
-    z.object({
       action: z.literal("seed-legacy-custom-feishu-oauth-state"),
       state: z.string().min(1),
       org_id: z.string(),

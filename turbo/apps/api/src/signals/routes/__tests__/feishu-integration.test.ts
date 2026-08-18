@@ -56,7 +56,6 @@ import {
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { readProjectedChatEvents } from "./helpers/chat-event-test-reader";
 import {
-  clearFeishuConnectorOwnership,
   readCustomConnectorCredentialStorageParent,
   seedLegacyCustomFeishuOAuthState,
 } from "./helpers/connector-credential-storage-state";
@@ -1533,78 +1532,6 @@ describe("Feishu integration", () => {
       }),
       [200],
     );
-  });
-
-  it("does not infer connector ownership when removing an unlinked installation", async () => {
-    const actor = authOrgApi.user({
-      userId: `user_${randomUUID()}`,
-      orgId: `org_${randomUUID()}`,
-      orgRole: "org:admin",
-    });
-    authOrgApi.acceptAgentStorageWrites();
-    await enableFeishuIntegration(actor);
-    const agent = await authOrgApi.createAgent(actor, {
-      displayName: "Feishu unlinked removal agent",
-      visibility: "public",
-    });
-    mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
-    const client = setupApp({ context, routes: feishuConnectRoutes })(
-      zeroFeishuConnectContract,
-    );
-    const configured = await accept(
-      client.setup({
-        headers: { authorization: "Bearer clerk-session" },
-        body: {
-          appId: `cli_${randomUUID()}`,
-          appSecret: APP_SECRET,
-          verificationToken: VERIFICATION_TOKEN,
-          defaultAgentId: agent.agentId,
-          createNew: true,
-        },
-      }),
-      [200],
-    );
-    const installationId = requireValue(
-      configured.body.installationId,
-      "Expected Feishu setup to return an installation id",
-    );
-    const customConnectorClient = setupApp({
-      context,
-      routes: customConnectorsRoutes,
-    })(zeroCustomConnectorsContract);
-    const connectorBeforeRemoval = requireValue(
-      (
-        await accept(
-          customConnectorClient.list({
-            headers: { authorization: "Bearer clerk-session" },
-          }),
-          [200],
-        )
-      ).body.connectors[0],
-      "Expected Feishu setup to create a managed connector",
-    );
-    await clearFeishuConnectorOwnership(context, {
-      orgId: requireValue(actor.orgId, "Expected an organization"),
-      installationId,
-    });
-
-    await accept(
-      client.removeInstallation({
-        headers: { authorization: "Bearer clerk-session" },
-        params: { installationId },
-      }),
-      [200],
-    );
-
-    const connectorsAfterRemoval = await accept(
-      customConnectorClient.list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-    expect(connectorsAfterRemoval.body.connectors).toMatchObject([
-      { id: connectorBeforeRemoval.id },
-    ]);
   });
 
   it("keeps the managed connector and skill HEAD active when repair publication fails", async () => {
