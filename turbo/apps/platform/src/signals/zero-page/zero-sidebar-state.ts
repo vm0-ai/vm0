@@ -163,6 +163,50 @@ export const openAgentListDialog$ = command(({ set }) => {
 });
 
 // ---------------------------------------------------------------------------
+// Three-column search and pin dialogs
+// ---------------------------------------------------------------------------
+export type ThreeColumnSearchFilter = "all" | "chats" | "messages";
+
+const internalThreeColumnSearchOpen$ = state(false);
+const internalThreeColumnPinOpen$ = state(false);
+export const threeColumnSearchOpen$ = computed((get) => {
+  return get(internalThreeColumnSearchOpen$);
+});
+export const setThreeColumnSearchOpen$ = command(({ set }, open: boolean) => {
+  set(internalThreeColumnSearchOpen$, open);
+});
+
+const internalThreeColumnSearchFilter$ = state<ThreeColumnSearchFilter>("all");
+export const threeColumnSearchFilter$ = computed((get) => {
+  return get(internalThreeColumnSearchFilter$);
+});
+export const setThreeColumnSearchFilter$ = command(
+  ({ set }, filter: ThreeColumnSearchFilter) => {
+    set(internalThreeColumnSearchFilter$, filter);
+  },
+);
+
+export const openThreeColumnSearchDialog$ = command(({ set }) => {
+  set(internalChatListQuery$, "");
+  set(internalThreeColumnSearchFilter$, "all");
+  set(internalThreeColumnPinOpen$, false);
+  set(internalThreeColumnSearchOpen$, true);
+});
+
+export const threeColumnPinOpen$ = computed((get) => {
+  return get(internalThreeColumnPinOpen$);
+});
+export const setThreeColumnPinOpen$ = command(({ set }, open: boolean) => {
+  set(internalThreeColumnPinOpen$, open);
+});
+
+export const openThreeColumnPinDialog$ = command(({ set }) => {
+  set(internalChatListQuery$, "");
+  set(internalThreeColumnSearchOpen$, false);
+  set(internalThreeColumnPinOpen$, true);
+});
+
+// ---------------------------------------------------------------------------
 // Agent card / pinned section collapse state (TalkToSection) — persisted in localStorage
 // ---------------------------------------------------------------------------
 const {

@@ -28,6 +28,9 @@ import {
   chatListOpen$,
   setChatListOpen$,
   openAgentListDialog$,
+  openThreeColumnPinDialog$,
+  setThreeColumnPinOpen$,
+  threeColumnPinOpen$,
   agentCardCollapsed$,
   setAgentCardCollapsed$,
   pinnedAgentGridRows$,
@@ -52,7 +55,7 @@ import { equalSets } from "../../lib/equality.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { assistantName$ } from "../../signals/branding.ts";
-import { AgentListDialog } from "./zero-sidebar-dialogs.tsx";
+import { AgentListDialog, AgentPinDialog } from "./zero-sidebar-dialogs.tsx";
 import {
   AgentRowContextActions,
   AgentRowSideActions,
@@ -239,6 +242,20 @@ function OpenAgentListDialog({
   );
 }
 
+function ThreeColumnPinDialogContainer() {
+  const open = useGet(threeColumnPinOpen$);
+  const onOpenChange = useSet(setThreeColumnPinOpen$);
+  const subagents = useLastResolved(subagents$) ?? [];
+
+  if (!open) {
+    return null;
+  }
+
+  return (
+    <AgentPinDialog open onOpenChange={onOpenChange} subagents={subagents} />
+  );
+}
+
 export function PinnedAgentListSection({
   layout = "vertical",
 }: {
@@ -259,6 +276,7 @@ export function PinnedAgentListSection({
   });
 
   const openAgentListDialog = useSet(openAgentListDialog$);
+  const openThreeColumnPinDialog = useSet(openThreeColumnPinDialog$);
   const setExpanded = useSet(setSidebarExpanded$);
   const collapsed = useGet(agentCardCollapsed$);
   const setCollapsed = useSet(setAgentCardCollapsed$);
@@ -353,25 +371,25 @@ export function PinnedAgentListSection({
           <button
             type="button"
             onClick={() => {
-              openAgentListDialog();
+              openThreeColumnPinDialog();
             }}
             aria-label={t(($) => {
-              return $.sidebar.openConversation;
+              return $.sidebar.pinAgents;
             })}
             className="flex w-full min-w-0 flex-col items-center gap-1.5 rounded-lg p-1.5 text-sidebar-foreground opacity-70 transition-colors hover:opacity-100 hover:bg-state-hover"
           >
             <span className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-[hsl(var(--gray-300))]">
-              <Plus size={16} />
+              <Pin size={16} />
             </span>
             <span className="text-[11px] leading-tight">
               {t(($) => {
-                return $.sidebar.new;
+                return $.sidebar.pinTile;
               })}
             </span>
           </button>
           {pinnedAgentCards.slice(4)}
         </div>
-        <AgentListDialogContainer />
+        <ThreeColumnPinDialogContainer />
       </div>
     );
   }
