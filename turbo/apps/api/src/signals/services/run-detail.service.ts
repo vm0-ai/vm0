@@ -255,8 +255,11 @@ ${buildTimeCursorProjection()}
         queryAxiom(
           apl,
           previousCursorBoundary
-            ? { cursor: previousCursorBoundary.tieBreaker }
-            : undefined,
+            ? {
+                cursor: previousCursorBoundary.tieBreaker,
+                noCache: true,
+              }
+            : { noCache: true },
         ),
       )
     ).slice();
