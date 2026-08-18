@@ -83,6 +83,25 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
       "Connectors: gmail required.\n\nCreate the workflow draft first. Before adding or enabling its automation, ask only for the next missing detail among the Gmail label name, handling rules, and final action.",
   }),
   defineWorkflowTemplate({
+    id: "workflow-template:zero-weekly-product-updates",
+    category: "Everyone",
+    title: "Zero weekly product updates",
+    description:
+      "Turn Zero's latest product blog into a rich visual update in this chat.",
+    connectorSlugs: [],
+    behavior: [
+      "Find the latest published weekly Zero product update at https://www.vm0.ai/en/blog by selecting the newest Product article in the What's new in Zero series whose slug starts with whats-new-in-zero-week-of-.",
+      "Read the source article and turn it into a concise, factual Web Chat update in the language used in the thread, while preserving natural product terms.",
+      "Format the update with a title, week label, cover image, short overview, one section per major update, one best-thing-to-try callout, embedded source screenshots, and a final link to the full article.",
+      "Embed included images with Markdown image syntax, using their source URLs and useful alt text so Web Chat renders them inline.",
+      "Exclude page chrome, share widgets, related articles, subscribe prompts, and repeated copy. Never invent product claims or visuals that are not supported by the source article.",
+      "Deliver the update only as the final response in the chat thread where the workflow or automation runs. Do not send email or use newsletters, Resend, or external messaging.",
+      "Compare the source URL with prior weekly updates in the current thread. If there is no newer weekly article, report that there is no new weekly update instead of reposting the same article.",
+    ],
+    missingInfo:
+      "Connectors: none required.\nSuggested trigger: Add a weekly schedule after the user confirms the day, time, and timezone. The final update is posted in the Web Chat thread where the automation runs.\n\nCreate the workflow draft first. Before adding or enabling its automation, ask only for the schedule, timezone, and whether the output should follow the thread language or use one fixed language.",
+  }),
+  defineWorkflowTemplate({
     id: "workflow-template:daily-standup-report",
     category: "Engineering",
     title: "Daily standup report",
