@@ -163,6 +163,59 @@ export const openAgentListDialog$ = command(({ set }) => {
 });
 
 // ---------------------------------------------------------------------------
+// Pin agent dialog state (pinned agent grid)
+// ---------------------------------------------------------------------------
+const internalPinAgentDialogOpen$ = state(false);
+export const pinAgentDialogOpen$ = computed((get) => {
+  return get(internalPinAgentDialogOpen$);
+});
+export const setPinAgentDialogOpen$ = command(({ set }, open: boolean) => {
+  set(internalPinAgentDialogOpen$, open);
+});
+
+const internalPinAgentDialogQuery$ = state("");
+export const pinAgentDialogQuery$ = computed((get) => {
+  return get(internalPinAgentDialogQuery$);
+});
+export const setPinAgentDialogQuery$ = command(({ set }, query: string) => {
+  set(internalPinAgentDialogQuery$, query);
+});
+
+export const openPinAgentDialog$ = command(({ set }) => {
+  set(internalPinAgentDialogQuery$, "");
+  set(internalPinAgentDialogOpen$, true);
+});
+
+// ---------------------------------------------------------------------------
+// Pinned agent drag and drop state (pinned agent grid)
+// ---------------------------------------------------------------------------
+const internalDraggingPinnedAgentId$ = state<string | null>(null);
+export const draggingPinnedAgentId$ = computed((get) => {
+  return get(internalDraggingPinnedAgentId$);
+});
+
+const internalPinnedAgentDropTargetId$ = state<string | null>(null);
+export const pinnedAgentDropTargetId$ = computed((get) => {
+  return get(internalPinnedAgentDropTargetId$);
+});
+
+export const startPinnedAgentDrag$ = command(({ set }, agentId: string) => {
+  set(internalDraggingPinnedAgentId$, agentId);
+  set(internalPinnedAgentDropTargetId$, null);
+});
+
+export const setPinnedAgentDropTarget$ = command(
+  ({ set }, agentId: string | null) => {
+    set(internalPinnedAgentDropTargetId$, agentId);
+  },
+);
+
+export const endPinnedAgentDrag$ = command(({ set }) => {
+  set(internalDraggingPinnedAgentId$, null);
+  set(internalPinnedAgentDropTargetId$, null);
+});
+
+// ---------------------------------------------------------------------------
 // Agent card / pinned section collapse state (TalkToSection) — persisted in localStorage
 // ---------------------------------------------------------------------------
 const {
