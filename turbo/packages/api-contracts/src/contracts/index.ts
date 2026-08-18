@@ -1073,13 +1073,13 @@ export {
   type OrgLogoResponse,
 } from "./org-logo";
 export {
-  zeroOrgMembersContract,
-  zeroOrgInviteContract,
-  zeroOrgMembershipRequestsContract,
-  type ZeroOrgMembersContract,
-  type ZeroOrgInviteContract,
-  type ZeroOrgMembershipRequestsContract,
-} from "./zero-org-members";
+  orgMembersContract,
+  orgInviteContract,
+  orgMembershipRequestsContract,
+  type OrgMembersContract,
+  type OrgInviteContract,
+  type OrgMembershipRequestsContract,
+} from "./org-member-routes";
 export {
   zeroRunsByIdContract,
   zeroRunsCancelContract,
@@ -1097,11 +1097,11 @@ export {
   type RunRunnerResponse,
 } from "./zero-runs";
 export {
-  zeroModelProvidersMainContract,
-  zeroModelProvidersByTypeContract,
-  type ZeroModelProvidersMainContract,
-  type ZeroModelProvidersByTypeContract,
-} from "./zero-model-providers";
+  modelProvidersMainContract,
+  modelProvidersByTypeContract,
+  type ModelProvidersMainContract,
+  type ModelProvidersByTypeContract,
+} from "./model-provider-routes";
 export {
   zeroPersonalModelProvidersMainContract,
   zeroPersonalModelProvidersByTypeContract,
@@ -1725,10 +1725,10 @@ export {
   type VoiceIoSttResponse,
 } from "./voice-io-stt";
 export {
-  zeroUploadsContract,
-  type ZeroUploadsContract,
+  uploadsContract,
+  type UploadsContract,
   type UploadPrepareResponse,
-} from "./zero-uploads";
+} from "./uploads";
 export {
   MAX_PRESENTATION_TEMPLATE_PAGE_BYTES,
   MAX_PRESENTATION_TEMPLATE_PAGES,
@@ -1742,21 +1742,21 @@ export {
   type ZeroPresentationTemplatesContract,
 } from "./zero-presentation-templates";
 export {
-  zeroGoalsContract,
-  zeroGoalCreateRequestSchema,
-  zeroGoalEditRequestSchema,
-  zeroGoalEventSchema,
-  zeroGoalResponseSchema,
-  zeroGoalStatusSchema,
-  type ZeroGoalCreateRequest,
-  type ZeroGoalEditRequest,
-  type ZeroGoalEvent,
-  type ZeroGoalResponse,
-  type ZeroGoalStatus,
-  type ZeroGoalsContract,
-} from "./zero-goals";
+  goalsContract,
+  goalCreateRequestSchema,
+  goalEditRequestSchema,
+  goalEventSchema,
+  goalResponseSchema,
+  goalStatusSchema,
+  type GoalCreateRequest,
+  type GoalEditRequest,
+  type GoalEvent,
+  type GoalResponse,
+  type GoalStatus,
+  type GoalsContract,
+} from "./goals";
 export {
-  zeroHostContract,
+  hostContract,
   hostedSiteFileSchema,
   hostedSitePrepareRequestSchema,
   hostedSitePrepareResponseSchema,
@@ -1765,8 +1765,8 @@ export {
   type HostedSitePrepareRequest,
   type HostedSitePrepareResponse,
   type HostedSiteCompleteResponse,
-  type ZeroHostContract,
-} from "./zero-host";
+  type HostContract,
+} from "./host";
 export {
   zeroIntegrationsTelegramContract,
   type ZeroIntegrationsTelegramContract,

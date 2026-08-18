@@ -20,7 +20,7 @@ import type {
   PersistedAttachment,
   UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import { zeroUploadsContract } from "@okouai/api-contracts/contracts/zero-uploads";
+import { uploadsContract } from "@okouai/api-contracts/contracts/uploads";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import type { EditorDocumentSnapshot } from "./user-message-document-codec.ts";
 import { i18n } from "../../i18n/index.ts";
@@ -72,7 +72,7 @@ const abortMultipartUpload$ = command(
     upload: MultipartUploadReference,
     signal: AbortSignal,
   ): Promise<void> => {
-    const client = get(zeroClient$)(zeroUploadsContract);
+    const client = get(zeroClient$)(uploadsContract);
     await tapError(
       accept(
         client.abortMultipart({
@@ -264,7 +264,7 @@ function createChatAttachment(file: File): ZeroChatAttachment {
 
   const upload$ = command(async ({ get, set }, parentSignal: AbortSignal) => {
     const createClient = get(zeroClient$);
-    const client = createClient(zeroUploadsContract);
+    const client = createClient(uploadsContract);
     const signal = set(resetSignal$, parentSignal);
 
     const promise = (async () => {

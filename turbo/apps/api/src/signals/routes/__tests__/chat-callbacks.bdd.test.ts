@@ -11,7 +11,7 @@ import { testBrowserReconcileContract } from "@okouai/api-contracts/contracts/te
 import type { SupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@okouai/api-contracts/contracts/runners";
-import { zeroGoalsContract } from "@okouai/api-contracts/contracts/zero-goals";
+import { goalsContract } from "@okouai/api-contracts/contracts/goals";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
@@ -71,7 +71,7 @@ const chatCallbacks = createChatCallbacksApi(context);
 const misc = createMiscRoutesApi(context);
 
 function goalsClient() {
-  return setupApp({ context, routes: goalsRoutes })(zeroGoalsContract);
+  return setupApp({ context, routes: goalsRoutes })(goalsContract);
 }
 
 const USER_ARTIFACTS_BUCKET = "test-user-artifacts";
@@ -333,7 +333,7 @@ async function queueChatEvent(
   return messageId;
 }
 
-function zeroGoalHeaders(
+function goalHeaders(
   actor: ApiTestUser,
   runId: string,
 ): { readonly authorization: string } {
@@ -376,7 +376,7 @@ async function createGoalForRun(
 ): Promise<void> {
   await accept(
     goalsClient().create({
-      headers: zeroGoalHeaders(actor, runId),
+      headers: goalHeaders(actor, runId),
       body: { objective },
     }),
     [201],
@@ -1957,7 +1957,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
 
     const edited = await accept(
       goalsClient().edit({
-        headers: zeroGoalHeaders(actor, first.runId),
+        headers: goalHeaders(actor, first.runId),
         body: { objective: updatedObjective },
       }),
       [200],
@@ -2035,7 +2035,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
 
     const cleared = await accept(
       goalsClient().clear({
-        headers: zeroGoalHeaders(actor, first.runId),
+        headers: goalHeaders(actor, first.runId),
       }),
       [200],
     );
@@ -2136,7 +2136,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     }
     const paused = await accept(
       goalsClient().pause({
-        headers: zeroGoalHeaders(actor, first.runId),
+        headers: goalHeaders(actor, first.runId),
       }),
       [200],
     );
@@ -2171,7 +2171,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     );
     const goal = await accept(
       goalsClient().get({
-        headers: zeroGoalHeaders(actor, first.runId),
+        headers: goalHeaders(actor, first.runId),
       }),
       [200],
     );
@@ -2211,7 +2211,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     const [paused] = await Promise.all([
       accept(
         goalsClient().pause({
-          headers: zeroGoalHeaders(actor, first.runId),
+          headers: goalHeaders(actor, first.runId),
         }),
         [200],
       ),
@@ -2266,7 +2266,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     );
     const goal = await accept(
       goalsClient().get({
-        headers: zeroGoalHeaders(actor, first.runId),
+        headers: goalHeaders(actor, first.runId),
       }),
       [200],
     );
@@ -2299,7 +2299,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       .poll(async () => {
         const goal = await accept(
           goalsClient().get({
-            headers: zeroGoalHeaders(actor, first.runId),
+            headers: goalHeaders(actor, first.runId),
           }),
           [200],
         );
@@ -2504,7 +2504,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
 
     const paused = await accept(
       goalsClient().pause({
-        headers: zeroGoalHeaders(actor, userRun.runId),
+        headers: goalHeaders(actor, userRun.runId),
       }),
       [200],
     );
@@ -5291,7 +5291,7 @@ describe("CHAT-02: push notification gating", () => {
       .poll(async () => {
         const goal = await accept(
           goalsClient().get({
-            headers: zeroGoalHeaders(actor, run.runId),
+            headers: goalHeaders(actor, run.runId),
           }),
           [200],
         );

@@ -11,7 +11,7 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { morningBriefContract } from "@okouai/api-contracts/contracts/morning-brief";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { zeroModelProvidersByTypeContract } from "@okouai/api-contracts/contracts/zero-model-providers";
+import { modelProvidersByTypeContract } from "@okouai/api-contracts/contracts/model-provider-routes";
 import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-preferences";
 import { ILLUSTRATION_TEMPLATE_ITEMS } from "@okouai/core";
 import { createStore } from "ccstate";
@@ -245,7 +245,7 @@ function morningBriefTriggerClient() {
 
 function modelProvidersByTypeClient() {
   return setupApp({ context, routes: zeroModelProvidersRoutes })(
-    zeroModelProvidersByTypeContract,
+    modelProvidersByTypeContract,
   );
 }
 
@@ -1032,7 +1032,7 @@ describe("cron execute morning briefs", () => {
     if (!email) {
       throw new Error("Expected a morning brief email");
     }
-    expect(email.from).toBe("Okou <okou@vm0.bot>");
+    expect(email.from).toBe("Okou <okou@okou.io>");
     expect(email.html).toContain("Good morning. Here's your brief for today.");
     expect(email.html).toContain("Competitor research finished");
     expect(email.html).toContain("Continue in Okou");

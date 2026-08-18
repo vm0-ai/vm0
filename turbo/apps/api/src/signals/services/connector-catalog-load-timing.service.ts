@@ -31,6 +31,17 @@ type ConnectorCatalogRawSizeBucket =
   | "1_2_mib"
   | "2_4_mib"
   | "4_8_mib";
+type ConnectorCatalogCompressedSizeBucket =
+  | ConnectorCatalogRawSizeBucket
+  | "8_16_mib";
+type ConnectorCatalogResolvedConnectorFractionBucket =
+  | "not_applicable"
+  | "none"
+  | "up_to_25_percent"
+  | "26_50_percent"
+  | "51_75_percent"
+  | "76_99_percent"
+  | "all";
 
 function countBucket(count: number): ConnectorCatalogCountBucket {
   if (count === 0) {
@@ -51,23 +62,54 @@ function countBucket(count: number): ConnectorCatalogCountBucket {
   return "17_plus";
 }
 
-function rawSizeBucket(rawSize: number): ConnectorCatalogRawSizeBucket {
-  if (rawSize < 256 * 1024) {
+function rawSizeBucket(size: number): ConnectorCatalogRawSizeBucket {
+  if (size < 256 * 1024) {
     return "0_255_kib";
   }
-  if (rawSize < 512 * 1024) {
+  if (size < 512 * 1024) {
     return "256_511_kib";
   }
-  if (rawSize < 1024 * 1024) {
+  if (size < 1024 * 1024) {
     return "512_1023_kib";
   }
-  if (rawSize < 2 * 1024 * 1024) {
+  if (size < 2 * 1024 * 1024) {
     return "1_2_mib";
   }
-  if (rawSize < 4 * 1024 * 1024) {
+  if (size < 4 * 1024 * 1024) {
     return "2_4_mib";
   }
   return "4_8_mib";
+}
+
+function compressedSizeBucket(
+  size: number,
+): ConnectorCatalogCompressedSizeBucket {
+  return size < 8 * 1024 * 1024 ? rawSizeBucket(size) : "8_16_mib";
+}
+
+function resolvedConnectorFractionBucket(
+  resolvedConnectorCount: number | undefined,
+  connectorCount: number,
+): ConnectorCatalogResolvedConnectorFractionBucket {
+  if (resolvedConnectorCount === undefined) {
+    return "not_applicable";
+  }
+  if (resolvedConnectorCount === 0) {
+    return "none";
+  }
+  if (resolvedConnectorCount === connectorCount) {
+    return "all";
+  }
+  if (resolvedConnectorCount * 4 <= connectorCount) {
+    return "up_to_25_percent";
+  }
+  if (resolvedConnectorCount * 2 <= connectorCount) {
+    return "26_50_percent";
+  }
+  if (resolvedConnectorCount * 4 <= connectorCount * 3) {
+    return "51_75_percent";
+  }
+  return "76_99_percent";
 }
 
 function acceptedCacheOutcomeRank(
@@ -93,7 +135,9 @@ export class ConnectorCatalogLoadTiming {
   private runtimeCacheOutcome: ConnectorRuntimeSnapshotCacheOutcome | undefined;
   private validationResult: ConnectorCatalogValidationResult | undefined;
   private catalogRawSize: number | undefined;
+  private catalogCompressedSize: number | undefined;
   private connectorCount: number | undefined;
+  private resolvedConnectorCount: number | undefined;
 
   constructor(
     private readonly collector: ApiDispatchTimingCollector,
@@ -124,10 +168,14 @@ export class ConnectorCatalogLoadTiming {
 
   recordCatalogFacts(args: {
     readonly rawSize: number;
+    readonly compressedSize: number;
     readonly connectorCount: number;
+    readonly resolvedConnectorCount: number | undefined;
   }): void {
     this.catalogRawSize = args.rawSize;
+    this.catalogCompressedSize = args.compressedSize;
     this.connectorCount = args.connectorCount;
+    this.resolvedConnectorCount = args.resolvedConnectorCount;
   }
 
   async measure<T>(
@@ -185,12 +233,24 @@ export class ConnectorCatalogLoadTiming {
               this.catalogRawSize,
             ),
           }),
+      ...(this.catalogCompressedSize === undefined
+        ? {}
+        : {
+            connector_catalog_compressed_size_bucket: compressedSizeBucket(
+              this.catalogCompressedSize,
+            ),
+          }),
       ...(this.connectorCount === undefined
         ? {}
         : {
             connector_catalog_connector_count_bucket: countBucket(
               this.connectorCount,
             ),
+            connector_catalog_resolved_connector_fraction_bucket:
+              resolvedConnectorFractionBucket(
+                this.resolvedConnectorCount,
+                this.connectorCount,
+              ),
           }),
       connector_catalog_requested_connector_count_bucket:
         this.requestedConnectorCount === undefined

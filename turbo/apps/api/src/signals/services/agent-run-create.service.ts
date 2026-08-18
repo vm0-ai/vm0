@@ -181,6 +181,11 @@ import {
   compareApplicationOwnedEnvironment,
   type EnvironmentShadowObservation,
 } from "./agent-environment-shadow";
+import { buildZeroAgentComposeContent } from "./agent-compose-content";
+import {
+  classifyAgentExecutionAuthority,
+  type AgentExecutionAuthorityDecision,
+} from "./agent-execution-authority";
 import {
   decryptStoredSecretValue,
   encryptPersistentSecretValue,
@@ -552,6 +557,7 @@ interface AgentComposeContent {
 }
 
 interface ResolvedCompose {
+  readonly headVersionId: string;
   readonly agentComposeVersionId: string;
   readonly composeId: string;
   readonly composeUserId: string;
@@ -566,7 +572,18 @@ interface ResolvedCompose {
   readonly agentSessionId?: string;
   readonly continuedFromAgentSessionId?: string;
   readonly resumeSession?: StoredExecutionContext["resumeSession"];
+  readonly agentExecutionAuthorityObservation?: Pick<
+    AgentExecutionAuthorityDecision,
+    "authority" | "classification"
+  >;
 }
+
+type PersistedPlan = Omit<
+  ResolvedCompose,
+  "content" | "agentExecutionAuthorityObservation"
+> & {
+  readonly content: unknown;
+};
 
 type ConnectorScopeSource = "explicit" | "zero_agent" | "empty";
 
@@ -864,6 +881,10 @@ interface BuiltStoredExecutionContext {
   // Plain secret values used for run-context redaction; values, not names.
   readonly secretValues: readonly string[];
   readonly environmentShadowObservation?: EnvironmentShadowObservation;
+  readonly agentExecutionAuthorityObservation?: Pick<
+    AgentExecutionAuthorityDecision,
+    "authority" | "classification"
+  >;
 }
 
 type BuiltStoredExecutionContextDraft = Omit<
@@ -917,6 +938,7 @@ export interface CreateAgentRunArgs {
   readonly chatThreadId?: string;
   readonly threadSessionResolution?: ChatThreadSessionResolution;
   readonly includeZeroTokenSecret?: boolean;
+  readonly productAgentName?: string;
   readonly zeroTokenPublicBrand?: PublicBrand;
   readonly zeroTokenComputerUseHostId?: string;
   readonly zeroTokenCloudBrowserEnabled?: boolean;
@@ -1306,12 +1328,42 @@ function canonicalOkouComposeContent(
 // Content-addressed compose versions remain persisted unchanged. New branded
 // contexts interpret legacy versions through this runtime-only projection.
 function runtimeResolvedCompose(
-  resolved: ResolvedCompose,
-  canonicalOkouRuntime: boolean,
+  resolved: PersistedPlan,
+  productAgentName: string | undefined,
 ): ResolvedCompose {
-  return canonicalOkouRuntime
-    ? { ...resolved, content: canonicalOkouComposeContent(resolved.content) }
-    : resolved;
+  if (productAgentName === undefined) {
+    return { ...resolved, content: resolved.content as AgentComposeContent };
+  }
+  const decision = classifyAgentExecutionAuthority({
+    agentName: productAgentName,
+    headVersionId: resolved.headVersionId,
+    versionId: resolved.agentComposeVersionId,
+    content: resolved.content,
+  });
+  const observation = {
+    authority: decision.authority,
+    classification: decision.classification,
+  };
+  if (decision.authority === "application") {
+    // Persisted JSON stops at the classifier. Every downstream launch
+    // consumer receives a fresh projection of the application-owned plan.
+    return {
+      ...resolved,
+      content: buildZeroAgentComposeContent(
+        productAgentName,
+      ) as AgentComposeContent,
+      agentExecutionAuthorityObservation: observation,
+    };
+  }
+  // Stage 4B transition: fail-closed exception domains retain the exact
+  // pre-Stage-4B runtime projection until #26938 Stage 8 removes this path.
+  return {
+    ...resolved,
+    content: canonicalOkouComposeContent(
+      resolved.content as AgentComposeContent,
+    ),
+    agentExecutionAuthorityObservation: observation,
+  };
 }
 
 function resolveFramework(
@@ -5321,7 +5373,7 @@ async function resolveByAgentId(
   db: Db,
   agentId: string,
   timing?: ApiDispatchTimingCollector,
-): Promise<ResolvedCompose | CreateRunErrorResult> {
+): Promise<PersistedPlan | CreateRunErrorResult> {
   const [row] = await measureApiDispatchTiming(
     timing,
     "api_dispatch_resolve_compose_lookup_agent",
@@ -5357,6 +5409,7 @@ async function resolveByAgentId(
   }
 
   return {
+    headVersionId: row.headVersionId,
     agentComposeVersionId: row.versionId,
     composeId: row.composeId,
     composeUserId: row.composeUserId,
@@ -5461,8 +5514,8 @@ function resolveBySessionId(
   userId: string,
   orgId: string,
   timing?: ApiDispatchTimingCollector,
-): Computed<Promise<ResolvedCompose | CreateRunErrorResult>> {
-  return computed(async (): Promise<ResolvedCompose | CreateRunErrorResult> => {
+): Computed<Promise<PersistedPlan | CreateRunErrorResult>> {
+  return computed(async (): Promise<PersistedPlan | CreateRunErrorResult> => {
     const [snapshot] = await measureApiDispatchTiming(
       timing,
       "api_dispatch_resolve_compose_lookup_session_snapshot",
@@ -5560,6 +5613,7 @@ function resolveBySessionId(
       : undefined;
 
     return {
+      headVersionId: snapshot.compose.headVersionId,
       agentComposeVersionId: snapshot.version.id,
       composeId: snapshot.compose.id,
       composeUserId: snapshot.compose.userId,
@@ -5583,9 +5637,9 @@ function resolveCompose(
   userId: string,
   orgId: string,
   timing?: ApiDispatchTimingCollector,
-): Computed<Promise<ResolvedCompose | CreateRunErrorResult>> {
+): Computed<Promise<PersistedPlan | CreateRunErrorResult>> {
   return computed(
-    async (get): Promise<ResolvedCompose | CreateRunErrorResult> => {
+    async (get): Promise<PersistedPlan | CreateRunErrorResult> => {
       if (body.sessionId) {
         const sessionId = body.sessionId;
         const resolved = await measureApiDispatchTiming(
@@ -6076,6 +6130,8 @@ async function buildStoredExecutionContextDraft(args: {
     secretNames,
     secretValues,
     environmentShadowObservation,
+    agentExecutionAuthorityObservation:
+      args.resolved.agentExecutionAuthorityObservation,
   };
 }
 
@@ -6133,6 +6189,8 @@ function buildRunContextSnapshot(args: {
   const cliAgentSessionId =
     storedContext.piSessionId ?? storedContext.resumeSession?.sessionId ?? null;
   const environmentShadow = args.builtContext.environmentShadowObservation;
+  const agentExecutionAuthority =
+    args.builtContext.agentExecutionAuthorityObservation;
   let environmentShadowFields: Partial<
     Pick<
       RunContextAxiomSnapshot,
@@ -6175,6 +6233,13 @@ function buildRunContextSnapshot(args: {
     artifact: args.builtContext.runContextStorage.artifact,
     featureFlagEntries: featureFlagsRecordToEntries(storedContext.featureFlags),
     ...environmentShadowFields,
+    ...(agentExecutionAuthority
+      ? {
+          agentExecutionAuthority: agentExecutionAuthority.authority,
+          agentExecutionAuthorityClassification:
+            agentExecutionAuthority.classification,
+        }
+      : {}),
   };
   return snapshot;
 }
@@ -8221,9 +8286,12 @@ async function prepareRunBodyContext(
     return persistedResolved;
   }
   const canonicalOkouRuntime = args.createArgs.includeZeroTokenSecret === true;
+  if (canonicalOkouRuntime && args.createArgs.productAgentName === undefined) {
+    throw new Error("Product Agent name is required for canonical runtime");
+  }
   const resolved = runtimeResolvedCompose(
     persistedResolved,
-    canonicalOkouRuntime,
+    canonicalOkouRuntime ? args.createArgs.productAgentName : undefined,
   );
   if (resolved.orgId !== args.createArgs.orgId) {
     return notFound("Resource not found");
@@ -8524,7 +8592,7 @@ async function connectorCatalogSelectionForRun(args: {
     args.preloadedConnectorCatalogSnapshot ??
     (await loadConnectorRuntimeSnapshot(args.db, {
       timing: args.timing,
-      requestedConnectorCount: args.connectorScope.allowedConnectorSlugs.length,
+      requestedConnectorSlugs: args.connectorScope.allowedConnectorSlugs,
     }));
   return { kind: "complete", snapshot };
 }

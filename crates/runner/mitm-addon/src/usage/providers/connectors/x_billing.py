@@ -8,8 +8,11 @@ server-side billing processor to look up ``unit_price`` in
 
 Body-dependent refinement is applied on top via
 :func:`refine_bucket_with_body` — currently used to drop
-``content.create_with_url`` to ``content.create`` when the POST /2/tweets
-body contains no URL.
+``content.create_with_url`` to ``content.create`` only when the POST
+/2/tweets body is valid plain text with neither a URL nor a rendered-link
+signal such as a quote reference, media attachment, card, or DM deep link.
+Parse failures and ambiguous bodies stay on the more expensive bucket,
+matching the "never under-charge" rule.
 
 Design:
 

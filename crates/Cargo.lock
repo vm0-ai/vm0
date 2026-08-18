@@ -2057,6 +2057,8 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "tracing-subscriber",
+ "tracing-test-support",
  "which",
 ]
 
@@ -2580,7 +2582,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.169.5"
+version = "0.169.6"
 dependencies = [
  "ably-subscriber",
  "api-contracts",

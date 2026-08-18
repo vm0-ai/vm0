@@ -15,6 +15,7 @@ import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
   apiUrlForPublicBrand,
   appUrlForPublicBrand,
+  fromDomainForPublicBrand,
   publicBrandPresentation,
 } from "@okouai/core/public-brand";
 
@@ -154,26 +155,26 @@ function appUrl(publicBrand: PublicBrand): string {
   return appUrlForPublicBrand(env("APP_URL"), publicBrand);
 }
 
-function getFromDomain(): string {
+function getFromDomain(publicBrand: PublicBrand): string {
   const domain = env("RESEND_FROM_DOMAIN");
   if (!domain) {
     throw new Error("RESEND_FROM_DOMAIN is not configured");
   }
-  return domain;
+  return fromDomainForPublicBrand(domain, publicBrand);
 }
 
 export function buildFromAddress(
   localPart: string,
   publicBrand: PublicBrand = "vm0",
 ): string {
-  return `${publicBrandPresentation(publicBrand).assistantName} <${localPart}@${getFromDomain()}>`;
+  return `${publicBrandPresentation(publicBrand).assistantName} <${localPart}@${getFromDomain(publicBrand)}>`;
 }
 
 export function buildTeamFromAddress(
   localPart: string,
   publicBrand: PublicBrand = "vm0",
 ): string {
-  return `${publicBrandPresentation(publicBrand).brandName} Team <${localPart}@${getFromDomain()}>`;
+  return `${publicBrandPresentation(publicBrand).brandName} Team <${localPart}@${getFromDomain(publicBrand)}>`;
 }
 
 function generateUnsubscribeToken(userId: string): string {

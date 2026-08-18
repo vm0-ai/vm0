@@ -62,7 +62,7 @@ import {
   updateUserModelPreference$,
   userModelPreference,
 } from "./user-data.service";
-import { publishSlackAdminSignal$ } from "./zero-slack-connect.service";
+import { publishSlackAdminSignal$ } from "./slack-connect.service";
 import {
   admitCanonicalSlackChatEvent,
   ensureCanonicalSlackChatThreadRoute,

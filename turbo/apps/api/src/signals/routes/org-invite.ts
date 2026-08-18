@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroOrgInviteContract } from "@okouai/api-contracts/contracts/zero-org-members";
+import { orgInviteContract } from "@okouai/api-contracts/contracts/org-member-routes";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { appUrlForPublicBrand } from "@okouai/core/public-brand";
@@ -58,7 +58,7 @@ const memberInvitationUpgradeRequired = Object.freeze({
   }),
 });
 
-const inviteBody$ = bodyResultOf(zeroOrgInviteContract.invite);
+const inviteBody$ = bodyResultOf(orgInviteContract.invite);
 
 async function usagePackInvitationsEnabled(
   get: Parameters<Parameters<typeof command>[0]>[0]["get"],
@@ -120,7 +120,7 @@ const inviteInner$ = command(async ({ get }, signal: AbortSignal) => {
   };
 });
 
-const revokeBody$ = bodyResultOf(zeroOrgInviteContract.revoke);
+const revokeBody$ = bodyResultOf(orgInviteContract.revoke);
 
 const revokeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
@@ -172,9 +172,7 @@ const revokeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
 });
 
-const purchasePreviewBody$ = bodyResultOf(
-  zeroOrgInviteContract.previewPurchase,
-);
+const purchasePreviewBody$ = bodyResultOf(orgInviteContract.previewPurchase);
 
 const purchasePreviewInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -370,14 +368,12 @@ const purchaseConfirmInner$ = command(
     if (!(await usagePackInvitationPurchaseSchemaAvailable(db))) {
       return providerUnavailable("Usage pack invitations are not ready");
     }
-    const body = await get(bodyResultOf(zeroOrgInviteContract.confirmPurchase));
+    const body = await get(bodyResultOf(orgInviteContract.confirmPurchase));
     signal.throwIfAborted();
     if (!body.ok) {
       return body.response;
     }
-    const { purchaseId } = get(
-      pathParamsOf(zeroOrgInviteContract.confirmPurchase),
-    );
+    const { purchaseId } = get(pathParamsOf(orgInviteContract.confirmPurchase));
     let paymentMethod: BillingPurchasePaymentMethod | undefined;
     if (body.data.paymentMethodPreviewToken) {
       const revalidated = await revalidateInvitationPurchasePreview(
@@ -441,28 +437,28 @@ const purchaseConfirmInner$ = command(
 
 export const orgInviteRoutes: readonly RouteEntry[] = [
   {
-    route: zeroOrgInviteContract.invite,
+    route: orgInviteContract.invite,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       inviteInner$,
     ),
   },
   {
-    route: zeroOrgInviteContract.revoke,
+    route: orgInviteContract.revoke,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       revokeInner$,
     ),
   },
   {
-    route: zeroOrgInviteContract.previewPurchase,
+    route: orgInviteContract.previewPurchase,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       purchasePreviewInner$,
     ),
   },
   {
-    route: zeroOrgInviteContract.confirmPurchase,
+    route: orgInviteContract.confirmPurchase,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       purchaseConfirmInner$,

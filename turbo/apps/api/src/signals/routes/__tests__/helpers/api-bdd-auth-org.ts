@@ -50,10 +50,10 @@ import {
 } from "@okouai/api-contracts/contracts/org-routes";
 import { orgLogoContract } from "@okouai/api-contracts/contracts/org-logo";
 import {
-  zeroOrgInviteContract,
-  zeroOrgMembersContract,
-  zeroOrgMembershipRequestsContract,
-} from "@okouai/api-contracts/contracts/zero-org-members";
+  orgInviteContract,
+  orgMembersContract,
+  orgMembershipRequestsContract,
+} from "@okouai/api-contracts/contracts/org-member-routes";
 import {
   zeroTeamContract,
   type TeamComposeItem,
@@ -860,7 +860,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
 
     async listMembers(actor: ApiTestUser): Promise<OrgMembersResponse> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroOrgMembersContract,
+        orgMembersContract,
       );
       const response = await accept(
         client.members({ headers: authenticate(actor) }),
@@ -874,7 +874,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       statuses: readonly S[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroOrgMembersContract,
+        orgMembersContract,
       );
       return await accept(
         client.members({ headers: authenticate(actor) }),
@@ -913,7 +913,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       S extends 200 | 400 | 401 | 403 | 404 | 500,
     >(token: string, statuses: readonly S[]) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroOrgMembersContract,
+        orgMembersContract,
       );
       return await accept(
         client.members({ headers: bearerHeaders(token) }),
@@ -927,7 +927,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       publicBrand: PublicBrand = "vm0",
     ): Promise<OrgMessageResponse> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroOrgInviteContract,
+        orgInviteContract,
       );
       const response = await accept(
         client.invite({
@@ -946,7 +946,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 500)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroOrgInviteContract,
+        orgInviteContract,
       );
       return await accept(
         client.invite({ headers: authenticate(actor), body }),
@@ -959,7 +959,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       invitationId: string,
     ): Promise<OrgMessageResponse> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroOrgInviteContract,
+        orgInviteContract,
       );
       const response = await accept(
         client.revoke({
@@ -977,7 +977,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 500)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroOrgInviteContract,
+        orgInviteContract,
       );
       return await accept(
         client.revoke({
@@ -993,7 +993,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       body: UpdateOrgMemberRoleRequest,
     ): Promise<OrgMessageResponse> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroOrgMembersContract,
+        orgMembersContract,
       );
       const response = await accept(
         client.updateRole({ headers: authenticate(actor), body }),
@@ -1008,7 +1008,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroOrgMembersContract,
+        orgMembersContract,
       );
       return await accept(
         client.updateRole({ headers: authenticate(actor), body }),
@@ -1021,7 +1021,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       body: RemoveOrgMemberRequest,
     ): Promise<OrgMessageResponse> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroOrgMembersContract,
+        orgMembersContract,
       );
       const response = await accept(
         client.removeMember({ headers: authenticate(actor), body }),
@@ -1036,7 +1036,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroOrgMembersContract,
+        orgMembersContract,
       );
       return await accept(
         client.removeMember({ headers: authenticate(actor), body }),
@@ -1049,7 +1049,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       body: MembershipRequestAction,
     ): Promise<OrgMessageResponse> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroOrgMembershipRequestsContract,
+        orgMembershipRequestsContract,
       );
       const response = await accept(
         client.accept({ headers: authenticate(actor), body }),
@@ -1063,7 +1063,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       body: MembershipRequestAction,
     ): Promise<OrgMessageResponse> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroOrgMembershipRequestsContract,
+        orgMembershipRequestsContract,
       );
       const response = await accept(
         client.reject({ headers: authenticate(actor), body }),
@@ -1078,7 +1078,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 500)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroOrgMembershipRequestsContract,
+        orgMembershipRequestsContract,
       );
       return await accept(
         client.accept({ headers: authenticate(actor), body }),
@@ -1092,7 +1092,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 500)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroOrgMembershipRequestsContract,
+        orgMembershipRequestsContract,
       );
       return await accept(
         client.reject({ headers: authenticate(actor), body }),

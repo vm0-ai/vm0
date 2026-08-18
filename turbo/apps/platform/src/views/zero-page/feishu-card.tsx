@@ -12,7 +12,7 @@ import {
   Plus,
   Settings,
 } from "lucide-react";
-import { FEISHU_OAUTH_SCOPES } from "@okouai/api-contracts/contracts/zero-feishu-connect";
+import { FEISHU_OAUTH_SCOPES } from "@okouai/api-contracts/contracts/feishu-connect";
 import type { TeamComposeItem } from "@okouai/api-contracts/contracts/zero-team";
 import { Button } from "@okouai/ui";
 import {

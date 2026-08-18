@@ -38,7 +38,10 @@ type ThumbnailSize = keyof typeof THUMBNAIL_SIZE;
 const THUMBNAIL_BASE = "shrink-0 zero-thumb-border";
 
 /**
- * A person: always a circle, so it never reads as a workspace or an app icon.
+ * A person: a circle by default, so it never reads as a workspace or an app
+ * icon. The labeled navigation rail asks for `square` instead: there the
+ * account mark sits directly under the workspace logo in a column of rounded
+ * squares, and matching that shape is what keeps the column reading as a grid.
  * Falls back to the name's initial when the account has no picture.
  */
 export function UserAvatar({
@@ -46,13 +49,19 @@ export function UserAvatar({
   name,
   initial,
   size = "md",
+  shape = "circle",
 }: {
   imageUrl: string | null | undefined;
   name: string;
   initial: string;
   size?: ThumbnailSize;
+  shape?: "circle" | "square";
 }) {
-  const base = cn(THUMBNAIL_BASE, THUMBNAIL_SIZE[size], "rounded-full");
+  const base = cn(
+    THUMBNAIL_BASE,
+    THUMBNAIL_SIZE[size],
+    shape === "square" ? THUMBNAIL_RADIUS[size] : "rounded-full",
+  );
 
   if (imageUrl) {
     return (
