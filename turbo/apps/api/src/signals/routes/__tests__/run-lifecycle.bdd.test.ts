@@ -2012,6 +2012,14 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         }),
       ),
     ).toStrictEqual(new Set(["attested", "not_run"]));
+    for (const event of concurrentLoadEvents) {
+      expect(CONNECTOR_CATALOG_COMPRESSED_SIZE_BUCKETS).toContain(
+        event.connector_catalog_compressed_size_bucket,
+      );
+      expect(event.connector_catalog_resolved_connector_fraction_bucket).toBe(
+        "up_to_25_percent",
+      );
+    }
     for (const events of concurrentEvents) {
       expectNoApiDispatchActions(
         events,
