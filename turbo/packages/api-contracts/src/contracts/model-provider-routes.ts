@@ -13,12 +13,12 @@ const orgUpsertModelProviderRequestSchema =
   upsertModelProviderRequestSchema.omit({ selectedModel: true });
 
 /**
- * Zero model providers main contract for /api/okou/model-providers
+ * Model providers main contract for /api/okou/model-providers
  *
  * GET: List org-level model providers (any member)
  * POST: Create or update an org-level model provider (admin only)
  */
-export const zeroModelProvidersMainContract = c.router({
+export const modelProvidersMainContract = c.router({
   list: {
     method: "GET",
     path: "/api/okou/model-providers",
@@ -48,15 +48,14 @@ export const zeroModelProvidersMainContract = c.router({
   },
 });
 
-export type ZeroModelProvidersMainContract =
-  typeof zeroModelProvidersMainContract;
+export type ModelProvidersMainContract = typeof modelProvidersMainContract;
 
 /**
- * Zero model providers by type contract for /api/okou/model-providers/:type
+ * Model providers by type contract for /api/okou/model-providers/:type
  *
  * DELETE: Delete an org-level model provider (admin only)
  */
-export const zeroModelProvidersByTypeContract = c.router({
+export const modelProvidersByTypeContract = c.router({
   delete: {
     method: "DELETE",
     path: "/api/okou/model-providers/:type",
@@ -75,5 +74,4 @@ export const zeroModelProvidersByTypeContract = c.router({
   },
 });
 
-export type ZeroModelProvidersByTypeContract =
-  typeof zeroModelProvidersByTypeContract;
+export type ModelProvidersByTypeContract = typeof modelProvidersByTypeContract;

@@ -9,7 +9,7 @@ import {
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { logsByIdContract } from "@okouai/api-contracts/contracts/logs";
 import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
-import { zeroModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-model-providers";
+import { modelProvidersMainContract } from "@okouai/api-contracts/contracts/model-provider-routes";
 import { HttpResponse, http } from "msw";
 import type { z } from "zod";
 
@@ -453,7 +453,7 @@ export function createAgentPhoneBddApi(context: TestContext) {
       actor: ApiTestUser,
     ): Promise<void> {
       const providers = setupApp({ context, routes: zeroModelProvidersRoutes })(
-        zeroModelProvidersMainContract,
+        modelProvidersMainContract,
       );
       const upserted = await accept(
         providers.upsert({
