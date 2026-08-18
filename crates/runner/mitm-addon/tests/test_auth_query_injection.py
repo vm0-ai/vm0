@@ -3,9 +3,13 @@
 from unittest.mock import AsyncMock, patch
 from urllib.parse import parse_qs, urlparse
 
+import pytest
+from mitmproxy import http
+
 import auth
 import flow_metadata_keys as metadata_keys
 from tests.firewall_auth_helpers import (
+    apply_requestheaders_auth_without_upstream_admission,
     handle_firewall_request_without_upstream_admission,
     make_allow,
 )
@@ -69,6 +73,97 @@ def make_query_inputs(
 
 class TestAuthQueryInjection:
     """Tests for query parameter injection via auth.query."""
+
+    @pytest.mark.parametrize(
+        ("hook_phase", "expected_result"),
+        [
+            pytest.param(
+                "request",
+                auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM,
+                id="request",
+            ),
+            pytest.param(
+                "requestheaders",
+                auth.FirewallHeaderPhaseAuthResult.APPLIED,
+                id="requestheaders",
+            ),
+        ],
+    )
+    async def test_query_params_are_merged_with_one_query_read_and_write(
+        self,
+        real_flow,
+        mitm_ctx,
+        monkeypatch,
+        hook_phase,
+        expected_result,
+    ):
+        bulk_query = {f"bulk_{index}": f"value_{index}" for index in range(64)}
+        resolved_query = {
+            "managed": "resolved-managed",
+            "new_first": "first",
+            **bulk_query,
+            "duplicate": "resolved-duplicate",
+            "new_last": "last",
+        }
+        flow, allow, vm_info, token_meta = make_query_inputs(
+            real_flow,
+            host="serpapi.com",
+            path=(
+                "/search;matrix=1?managed=old-1&keep=1&managed=old-2"
+                "&repeat=one&repeat=two&empty=&duplicate=old-1&duplicate=old-2#fragment"
+            ),
+            auth_overrides={
+                "query": dict.fromkeys(resolved_query, "${{ secrets.VALUE }}"),
+            },
+            token_overrides={"query": resolved_query},
+        )
+        query_reads = 0
+        query_writes = 0
+        original_get_query = http.Request._get_query
+        original_set_query = http.Request._set_query
+
+        def counted_get_query(request):
+            nonlocal query_reads
+            query_reads += 1
+            return original_get_query(request)
+
+        def counted_set_query(request, query_data):
+            nonlocal query_writes
+            query_writes += 1
+            return original_set_query(request, query_data)
+
+        monkeypatch.setattr(http.Request, "_get_query", counted_get_query)
+        monkeypatch.setattr(http.Request, "_set_query", counted_set_query)
+
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            mitm_ctx(),
+        ):
+            if hook_phase == "request":
+                result = await handle_firewall_request_without_upstream_admission(
+                    flow, allow, vm_info
+                )
+            else:
+                result = await apply_requestheaders_auth_without_upstream_admission(
+                    flow, allow, vm_info
+                )
+
+        assert result is expected_result
+        assert (query_reads, query_writes) == (1, 1)
+        assert list(flow.request.query.items(multi=True)) == [
+            ("managed", "resolved-managed"),
+            ("keep", "1"),
+            ("repeat", "one"),
+            ("repeat", "two"),
+            ("empty", ""),
+            ("duplicate", "resolved-duplicate"),
+            ("new_first", "first"),
+            *bulk_query.items(),
+            ("new_last", "last"),
+        ]
+        parsed_url = urlparse(flow.request.url)
+        assert parsed_url.params == "matrix=1"
+        assert parsed_url.fragment == "fragment"
 
     async def test_query_params_injected_on_standard_path(self, real_flow, mitm_ctx):
         """Resolved auth.query params are injected into flow.request.query."""

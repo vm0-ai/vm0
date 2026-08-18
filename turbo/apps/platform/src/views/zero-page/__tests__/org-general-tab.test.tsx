@@ -1,4 +1,4 @@
-import { zeroOrgContract } from "@okouai/api-contracts/contracts/zero-org";
+import { orgContract } from "@okouai/api-contracts/contracts/org-routes";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
@@ -37,7 +37,7 @@ describe("organization general settings", () => {
         headers: { "Content-Type": "application/json" },
       });
     });
-    context.mocks.api(zeroOrgContract.update, ({ body, respond }) => {
+    context.mocks.api(orgContract.update, ({ body, respond }) => {
       capturedBody = body;
       return respond(200, {
         id: "org_1",
@@ -80,7 +80,7 @@ describe("organization general settings", () => {
       name: "Old Name",
       role: "admin",
     });
-    context.mocks.api(zeroOrgContract.update, ({ respond }) => {
+    context.mocks.api(orgContract.update, ({ respond }) => {
       return respond(500, {
         error: {
           code: "INTERNAL_SERVER_ERROR",

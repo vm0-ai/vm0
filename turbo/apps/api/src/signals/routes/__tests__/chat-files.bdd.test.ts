@@ -102,6 +102,23 @@ describe("CHAT-01 chat thread lifecycle", () => {
       unreads: [],
     });
 
+    context.mocks.ably.publish.mockClear();
+    const markedUnread = await api.markThreadUnread(actor, created.id);
+    expect(markedUnread).toStrictEqual({
+      lastReadAt: null,
+      unreads: [],
+    });
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "chatThreadReadCursorUpdated",
+      {
+        threadId: created.id,
+        agentId: agent.agentId,
+        lastReadAt: null,
+      },
+    );
+    detail = await api.readThread(actor, created.id);
+    expect(detail.lastReadAt).toBeNull();
+
     await api.updateThreadModelSelection(actor, created.id, null);
     detail = await api.readThread(actor, created.id);
     expect(detail).not.toHaveProperty("selectedModel");
@@ -253,6 +270,14 @@ describe("CHAT-01 chat thread lifecycle", () => {
     );
     expectApiError(peerMarkRead.body);
     expect(peerMarkRead.body.error.code).toBe("NOT_FOUND");
+
+    const peerMarkUnread = await api.requestMarkThreadUnread(
+      peer,
+      thread.id,
+      [404],
+    );
+    expectApiError(peerMarkUnread.body);
+    expect(peerMarkUnread.body.error.code).toBe("NOT_FOUND");
 
     detail = await api.readThread(owner, thread.id);
     expect(detail.lastReadAt).toStrictEqual(expect.any(String));

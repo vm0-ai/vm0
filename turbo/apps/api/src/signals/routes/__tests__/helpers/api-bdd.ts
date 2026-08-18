@@ -15,7 +15,7 @@ import {
   type ZeroAgentRequest,
   type ZeroAgentResponse,
 } from "@okouai/api-contracts/contracts/zero-agents";
-import { zeroOrgContract } from "@okouai/api-contracts/contracts/zero-org";
+import { orgContract } from "@okouai/api-contracts/contracts/org-routes";
 import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-preferences";
 
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
@@ -138,7 +138,7 @@ export function createBddApi(context: TestContext) {
     return setupAppWithRoutes({
       context,
       routes: orgReadRoutes,
-    })(zeroOrgContract);
+    })(orgContract);
   }
 
   function userPreferencesClient() {

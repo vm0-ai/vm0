@@ -1674,6 +1674,7 @@
       "deleteTitle": "Supprimer la discussion ?",
       "draft": "Brouillon",
       "empty": "Commencez une conversation et elle apparaîtra ici",
+      "markUnread": "Marquer comme non lu",
       "newChatWith": "Nouvelle discussion avec {{agentName}}",
       "noUnread": "Aucune discussion non lue",
       "openChatMenu": "Ouvrir le menu de discussion",

@@ -12,6 +12,7 @@ import {
   chatThreadByIdContract,
   chatThreadMarkAgentReadContract,
   chatThreadMarkReadContract,
+  chatThreadMarkUnreadContract,
   chatThreadEventsContract,
   chatThreadPinContract,
   chatThreadRenameContract,
@@ -845,6 +846,23 @@ describe("zero sidebar", () => {
     });
 
     markReadDeferred.resolve();
+
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("chatThreadReadCursorUpdated"),
+      ).toBeTruthy();
+    });
+    context.mocks.ably.trigger("chatThreadReadCursorUpdated", {
+      threadId: INCIDENT_THREAD_ID,
+      agentId: AGENT_ID,
+      lastReadAt: null,
+    });
+
+    await waitFor(() => {
+      expect(
+        within(threadRowByTitle("Incident notes")).getByLabelText("Unread"),
+      ).toBeInTheDocument();
+    });
   });
 
   it("pins and unpins a chat thread from the sidebar menu", async () => {
@@ -913,6 +931,93 @@ describe("zero sidebar", () => {
           "chat-thread-pinned-indicator",
         ),
       ).not.toBeInTheDocument();
+    });
+  });
+
+  it("hides mark unread while the feature switch is off", async () => {
+    prepareDefaultAgent();
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Release plan"),
+      createThread(INCIDENT_THREAD_ID, "Incident notes"),
+    ]);
+
+    setupSidebarPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.ChatMarkUnread]: false },
+      path: `/chats/${EXISTING_THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+    });
+
+    openThreadMenu("Release plan");
+    expect(queryMenuItemByText("Mark unread")).toBeNull();
+  });
+
+  it("marks the current chat unread from the sidebar menu", async () => {
+    prepareDefaultAgent();
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Release plan"),
+      createThread(INCIDENT_THREAD_ID, "Incident notes"),
+    ]);
+    let markedUnreadThreadId: string | null = null;
+    context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
+      return respond(200, {
+        unreads:
+          markedUnreadThreadId === null
+            ? []
+            : [
+                {
+                  threadId: markedUnreadThreadId,
+                  unreadAt: "2026-03-10T00:05:00Z",
+                },
+              ],
+      });
+    });
+    context.mocks.api(
+      chatThreadMarkUnreadContract.markUnread,
+      ({ params, respond }) => {
+        markedUnreadThreadId = params.id;
+        return respond(200, {
+          lastReadAt: null,
+          unreads: [
+            {
+              threadId: params.id,
+              unreadAt: "2026-03-10T00:05:00Z",
+            },
+          ],
+        });
+      },
+    );
+
+    setupSidebarPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.ChatMarkUnread]: true },
+      path: `/chats/${EXISTING_THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+      expect(within(sidebar()).getByText("Incident notes")).toBeInTheDocument();
+    });
+
+    openThreadMenu("Release plan");
+    click(menuItemByText("Mark unread"));
+
+    await waitFor(() => {
+      expect(markedUnreadThreadId).toBe(EXISTING_THREAD_ID);
+    });
+    expect(
+      within(threadRowByTitle("Release plan")).queryByLabelText("Unread"),
+    ).not.toBeInTheDocument();
+
+    click(threadLinkByTitle("Incident notes"));
+
+    await waitFor(() => {
+      expect(
+        within(threadRowByTitle("Release plan")).getByLabelText("Unread"),
+      ).toBeInTheDocument();
     });
   });
 

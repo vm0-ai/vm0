@@ -46,6 +46,7 @@ import { chatThreadGetRoutes } from "./chat-threads-get";
 import { chatThreadImageModelRoutes } from "./chat-threads-image-model";
 import { chatThreadMarkAgentReadRoutes } from "./chat-threads-mark-agent-read";
 import { chatThreadMarkReadRoutes } from "./chat-threads-mark-read";
+import { chatThreadMarkUnreadRoutes } from "./chat-threads-mark-unread";
 import { chatThreadModelSelectionRoutes } from "./chat-threads-model-selection";
 import { chatThreadVideoModelRoutes } from "./chat-threads-video-model";
 import { chatThreadPatchRoutes } from "./chat-threads-patch";
@@ -396,6 +397,7 @@ export const chatThreadRoutes: readonly RouteEntry[] = [
   ...chatThreadImageModelRoutes,
   ...chatThreadMarkAgentReadRoutes,
   ...chatThreadMarkReadRoutes,
+  ...chatThreadMarkUnreadRoutes,
   ...chatThreadModelSelectionRoutes,
   ...chatThreadPatchRoutes,
   ...chatThreadPinRoutes,

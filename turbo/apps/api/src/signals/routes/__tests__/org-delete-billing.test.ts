@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroAgentsMainContract } from "@okouai/api-contracts/contracts/zero-agents";
-import { zeroOrgDeleteContract } from "@okouai/api-contracts/contracts/zero-org";
+import { orgDeleteContract } from "@okouai/api-contracts/contracts/org-routes";
 import { createStore } from "ccstate";
 import type StripeSDK from "stripe";
 import { afterEach, expect, test } from "vitest";
@@ -196,7 +196,7 @@ function mockOrgDeletion(fixture: OrgDeleteBillingFixture): void {
 
 async function requestOrgDeletion() {
   const client = setupApp({ context, routes: orgDeleteRoutes })(
-    zeroOrgDeleteContract,
+    orgDeleteContract,
   );
   return await client.delete({
     headers: { authorization: "Bearer clerk-session" },

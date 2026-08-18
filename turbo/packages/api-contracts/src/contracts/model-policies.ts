@@ -7,7 +7,7 @@ import {
 
 const c = initContract();
 
-export const zeroModelPoliciesMainContract = c.router({
+export const modelPoliciesMainContract = c.router({
   list: {
     method: "GET",
     path: "/api/okou/model-policies",
@@ -39,5 +39,4 @@ export const zeroModelPoliciesMainContract = c.router({
   },
 });
 
-export type ZeroModelPoliciesMainContract =
-  typeof zeroModelPoliciesMainContract;
+export type ModelPoliciesMainContract = typeof modelPoliciesMainContract;

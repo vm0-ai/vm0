@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroOrgDeleteContract } from "@okouai/api-contracts/contracts/zero-org";
+import { orgDeleteContract } from "@okouai/api-contracts/contracts/org-routes";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -7,7 +7,7 @@ import { bodyResultOf } from "../context/request";
 import { deleteOrg$ } from "../services/org-data.service";
 import type { RouteEntry } from "../route-entry";
 
-const deleteBody$ = bodyResultOf(zeroOrgDeleteContract.delete);
+const deleteBody$ = bodyResultOf(orgDeleteContract.delete);
 
 const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
@@ -36,7 +36,7 @@ const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 export const orgDeleteRoutes: readonly RouteEntry[] = [
   {
-    route: zeroOrgDeleteContract.delete,
+    route: orgDeleteContract.delete,
     handler: authRoute(
       {
         requireOrganization: true,
