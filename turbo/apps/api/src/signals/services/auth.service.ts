@@ -260,7 +260,7 @@ export const getMemberRoleAndUpdateCache$ = command(
       async (tx): Promise<MemberRoleRefreshResult> => {
         const lockKey = `clerk_membership:${orgId}:${userId}`;
         await tx.execute(
-          sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`,
+          sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`,
         );
         signal.throwIfAborted();
         return await refreshLockedMemberRole(
