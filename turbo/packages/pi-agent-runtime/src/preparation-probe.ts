@@ -5,6 +5,7 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
+import { registerSessionResourceCleanup } from "@earendil-works/pi-ai";
 
 export interface PiOfficialPreparationProbeInput {
   readonly agentDir: string;
@@ -154,6 +155,12 @@ export async function measurePiOfficialPreparation(
     settingsManagerCreateMs,
     totalMs: elapsedMs(totalStartedAt),
   };
+  // The Vite server bundle can retain cleanupSessionResources from Pi's
+  // compatibility barrel without scheduling its module initializer. Register
+  // a no-op through Pi's core entrypoint so dispose exercises the real cleanup
+  // path with the registry initialized.
+  const unregisterProbeResource = registerSessionResourceCleanup(() => {});
   await created.session.dispose();
+  unregisterProbeResource();
   return result;
 }

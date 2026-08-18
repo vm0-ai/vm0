@@ -452,6 +452,7 @@ export async function runPiPreparationProbe(
       "Storage and R2 network download is excluded from timed preparation.",
       "The representative file counts and byte totals match the current installed skill tree, but file contents are synthetic.",
       "No model request, executable extension, or agent tool is invoked.",
+      "The probe initializes Pi's session resource registry through its core entrypoint before disposing a no-model AgentSession.",
     ],
     network_download_measured: false,
     profile: args.profile,
