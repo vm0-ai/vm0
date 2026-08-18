@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.458.3](https://github.com/vm0-ai/vm0/compare/api-v1.458.2...api-v1.458.3) (2026-08-18)
+
+
+### Refactoring
+
+* **api:** neutralize agent run and compose service naming ([#27870](https://github.com/vm0-ai/vm0/issues/27870)) ([e834830](https://github.com/vm0-ai/vm0/commit/e8348301e5848a821ef80bac1a2ec116d69c86ee)), closes [#27859](https://github.com/vm0-ai/vm0/issues/27859)
+* **feishu:** make generated connector integration-owned ([#27884](https://github.com/vm0-ai/vm0/issues/27884)) ([ac37534](https://github.com/vm0-ai/vm0/commit/ac37534f8228eed341a0dd86bfb31e28646f9001))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.338.2
+    * @okouai/core bumped to 8.566.2
+    * @okouai/db bumped to 1.204.3
+
 ## [1.458.2](https://github.com/vm0-ai/vm0/compare/api-v1.458.1...api-v1.458.2) (2026-08-18)
 
 

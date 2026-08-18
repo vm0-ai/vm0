@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.767.1](https://github.com/vm0-ai/vm0/compare/app-v0.767.0...app-v0.767.1) (2026-08-18)
+
+
+### Bug Fixes
+
+* show selection toolbar for whole assistant paragraphs ([#27877](https://github.com/vm0-ai/vm0/issues/27877)) ([55f4021](https://github.com/vm0-ai/vm0/commit/55f40212167b6d9f87e9850d759330fbb9c336fe))
+
+
+### Refactoring
+
+* **feishu:** make generated connector integration-owned ([#27884](https://github.com/vm0-ai/vm0/issues/27884)) ([ac37534](https://github.com/vm0-ai/vm0/commit/ac37534f8228eed341a0dd86bfb31e28646f9001))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.338.2
+    * @okouai/core bumped to 8.566.2
+
 ## [0.767.0](https://github.com/vm0-ai/vm0/compare/app-v0.766.2...app-v0.767.0) (2026-08-18)
 
 
