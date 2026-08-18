@@ -1,10 +1,8 @@
 import { command, computed, state } from "ccstate";
 import { isSupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import {
-  DEFAULT_VIDEO_MODEL,
-  type VideoModel,
-} from "@okouai/core/video-model-catalog";
+import type { ImageModel } from "@okouai/core/image-model-catalog";
+import type { VideoModel } from "@okouai/core/video-model-catalog";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { currentAgentId$ } from "../agent.ts";
 import {
@@ -14,6 +12,7 @@ import {
 import type { ChatForwardContext } from "../chat-page/chat-forward.ts";
 import {
   featureSwitch$,
+  imageModelSelectionEnabled$,
   videoModelSelectionEnabled$,
 } from "../external/feature-switch.ts";
 import {
@@ -34,13 +33,19 @@ import {
 } from "./composer-signals.ts";
 import type { ChatEvent } from "../chat-page/chat-event-types.ts";
 import {
+  chatPageEffectiveImageModel$,
   chatPageEffectiveVideoModel$,
+  chatPageImageModelPin$,
+  chatPageImageModelSelection$,
   chatPageModelSelection$,
   chatPageSelectedModelOauthAvailable$,
+  chatPageVideoModelPin$,
   chatPageVideoModelSelection$,
   configureChatPageSelectedModel$,
+  resetChatPageImageModelSelection$,
   resetChatPageModelSelection$,
   resetChatPageVideoModelSelection$,
+  setChatPageImageModelSelection$,
   setChatPageModelSelection$,
   setChatPageVideoModelSelection$,
 } from "./zero-chat-page.ts";
@@ -113,6 +118,35 @@ const setVideoModel$ = command(
   },
 );
 
+const setImageModel$ = command(
+  async (
+    { get, set },
+    imageModel: ImageModel | null,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    if (!get(imageModelSelectionEnabled$)) {
+      return;
+    }
+    set(setChatPageImageModelSelection$, imageModel);
+    const explicitDefaultActionEnabled =
+      get(featureSwitch$)[FeatureSwitchKey.NewChatDefaultModelAction] ?? false;
+    if (explicitDefaultActionEnabled) {
+      return;
+    }
+    const userPreference = await get(userModelPreference$);
+    signal.throwIfAborted();
+    await set(
+      updateUserModelPreference$,
+      {
+        selectedModel: userPreference.selectedModel,
+        serviceTier: userPreference.serviceTier,
+        selectedImageModel: imageModel,
+      },
+      signal,
+    );
+  },
+);
+
 const computerUseHostId$ = computed((get): string | null => {
   const selection = get(newThreadComputerAccess$);
   return selection.kind === "computerUse" ? selection.hostId : null;
@@ -166,9 +200,12 @@ function createAgentComposerSignalsWithDraft(
         return false;
       }
       const access = get(newThreadComputerAccess$);
-      const [hosts, videoModelSelection] = await Promise.all([
+      const imageModelEnabled = get(imageModelSelectionEnabled$);
+      const videoModelEnabled = get(videoModelSelectionEnabled$);
+      const [hosts, imageModelPin, videoModelPin] = await Promise.all([
         get(computerUseHosts$),
-        get(chatPageVideoModelSelection$),
+        imageModelEnabled ? get(chatPageImageModelPin$) : Promise.resolve(null),
+        videoModelEnabled ? get(chatPageVideoModelPin$) : Promise.resolve(null),
       ]);
       signal.throwIfAborted();
       const hostId =
@@ -186,7 +223,11 @@ function createAgentComposerSignalsWithDraft(
           prompt: submission.prompt,
           generationTemplate: submission.generationTemplate,
           editorDocument: submission.editorDocument,
-          videoModel: videoModelSelection ?? DEFAULT_VIDEO_MODEL,
+          // Forward only an explicit per-thread pick; an untouched picker sends
+          // nothing so the new thread stays unpinned and follows the member's
+          // live default.
+          ...(imageModelPin !== null ? { imageModel: imageModelPin } : {}),
+          ...(videoModelPin !== null ? { videoModel: videoModelPin } : {}),
           ...(submission.videoRunOptions === undefined
             ? {}
             : { videoRunOptions: submission.videoRunOptions }),
@@ -205,6 +246,7 @@ function createAgentComposerSignalsWithDraft(
       );
       if (sent) {
         set(resetNewThreadComputerAccess$);
+        set(resetChatPageImageModelSelection$);
         set(resetChatPageModelSelection$);
         set(resetChatPageVideoModelSelection$);
       }
@@ -224,6 +266,11 @@ function createAgentComposerSignalsWithDraft(
     selectedModelOauthAvailable$: chatPageSelectedModelOauthAvailable$,
     setModelSelection$,
     configureSelectedModel$: configureChatPageSelectedModel$,
+    imageModel: {
+      selectedImageModel$: chatPageImageModelSelection$,
+      effectiveImageModel$: chatPageEffectiveImageModel$,
+      setImageModel$,
+    },
     videoModel: {
       selectedVideoModel$: chatPageVideoModelSelection$,
       effectiveVideoModel$: chatPageEffectiveVideoModel$,
