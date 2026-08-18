@@ -2827,6 +2827,54 @@ describe("zero sidebar", () => {
     ).toBeInTheDocument();
   });
 
+  it("opens horizontal pinned agent actions from context interactions", async () => {
+    prepareAgentTeam();
+    context.mocks.data.userPreferences({
+      pinnedAgentIds: [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID],
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    const researchAgent = await waitFor(() => {
+      return pinnedAgentLink(grid, "Research Agent");
+    });
+
+    fireEvent.contextMenu(researchAgent);
+    expect(menuItemByText("Unpin")).toBeInTheDocument();
+    click(menuItemByText("Unpin"));
+    await waitFor(() => {
+      expect(within(grid).queryByText("Research Agent")).toBeNull();
+    });
+
+    const supportAgent = pinnedAgentLink(grid, "Support Agent");
+    fireEvent.touchStart(supportAgent, {
+      touches: [{ identifier: 1, clientX: 12, clientY: 12 }],
+    });
+    await waitFor(() => {
+      expect(menuItemByText("Unpin")).toBeInTheDocument();
+    });
+    fireEvent.touchEnd(supportAgent, {
+      touches: [],
+      changedTouches: [{ identifier: 1, clientX: 12, clientY: 12 }],
+    });
+    fireEvent.keyDown(document, { code: "Escape", key: "Escape" });
+    await waitFor(() => {
+      expect(queryMenuItemByText("Unpin")).toBeNull();
+    });
+
+    click(supportAgent);
+    await waitFor(() => {
+      expect(pathname()).toBe(`/agents/${SUPPORT_AGENT_ID}/chat`);
+    });
+  });
+
   it("creates a new chat thread from the three-column header", async () => {
     prepareDefaultAgent();
     mockSidebarThreadStory([
