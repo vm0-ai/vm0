@@ -1647,6 +1647,38 @@
       "unread": "未読",
       "unreadOnly": "未読のみ"
     },
+    "startCards": {
+      "kinds": {
+        "avatar": {
+          "description": "次のコンテンツ用のプレゼンターを作る",
+          "prompt": "次の動画用に話すアバターのプレゼンターを作ってください。",
+          "title": "アバターを作る"
+        },
+        "illustration": {
+          "description": "好きなスタイルで仕上がったビジュアルを作る",
+          "prompt": "指定するスタイルでイラストを作ってください。",
+          "title": "イラストを作る"
+        },
+        "slides": {
+          "description": "トピックや資料から完成度の高いスライドを作る",
+          "prompt": "渡すトピックや資料からプレゼン資料を作ってください。",
+          "title": "プレゼン資料を作る"
+        },
+        "video": {
+          "description": "アイデアや素材から完成した動画を作る",
+          "prompt": "私のアイデアや素材から完成した動画を作ってください。",
+          "title": "動画を作る"
+        },
+        "website": {
+          "description": "共有できるページを作って公開する",
+          "prompt": "共有できるウェブページを作って公開してください。",
+          "title": "ウェブサイトを作る"
+        }
+      },
+      "openTemplatesAria": "テンプレートを見る",
+      "startWithPrompt": "プロンプトから始める",
+      "templates": "テンプレート"
+    },
     "templates": {
       "categories": {
         "illustration": "イラストレーション",

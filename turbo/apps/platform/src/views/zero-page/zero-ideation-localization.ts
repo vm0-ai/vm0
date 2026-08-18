@@ -14,31 +14,6 @@ export type IdeationCatalogCopy = Readonly<
   Record<string, IdeationCategoryCopy>
 >;
 
-function resolveUseCaseCopy(
-  id: string,
-  catalogCopy: IdeationCatalogCopy,
-): IdeationUseCaseCopy {
-  for (const categoryCopy of Object.values(catalogCopy)) {
-    const copy = categoryCopy.cases[id];
-    if (copy) {
-      return copy;
-    }
-  }
-  throw new Error(`Missing ideation use case copy: ${id}`);
-}
-
-export function localizeIdeationUseCase<T extends { readonly id: string }>(
-  useCase: T,
-  catalogCopy: IdeationCatalogCopy,
-): T & IdeationUseCaseCopy {
-  const copy = resolveUseCaseCopy(useCase.id, catalogCopy);
-  return {
-    ...useCase,
-    title: copy.title,
-    description: copy.description,
-  };
-}
-
 export function localizeIdeationCategories(
   categories: ReturnType<typeof getCategories>,
   catalogCopy: IdeationCatalogCopy,

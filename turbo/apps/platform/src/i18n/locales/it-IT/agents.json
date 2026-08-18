@@ -465,11 +465,6 @@
     },
     "chat": "Chatta",
     "description": "Fai clic su qualsiasi scheda per avviare una conversazione. Potrebbe diventare un'attività su richiesta, un flusso di lavoro ricorrente o un agente secondario.",
-    "entry": {
-      "description": "Sfoglia i casi d'uso su tutti i connettori",
-      "title": "Idee e casi d'uso",
-      "viewAll": "Visualizza tutto"
-    },
     "search": {
       "accessibilityLabel": "Cerca casi d'uso",
       "empty": "Nessun caso d'uso corrisponde alla tua ricerca.",

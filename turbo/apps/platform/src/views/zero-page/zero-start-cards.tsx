@@ -1,0 +1,349 @@
+import type { ReactNode } from "react";
+import { useGet, useLastResolved, useSet } from "ccstate-react";
+import { useTranslation } from "react-i18next";
+import { ArrowUpRight, LayoutTemplate, Play, Sparkles } from "lucide-react";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
+import type {
+  PublicConnectorCatalogIcon,
+  PublicConnectorCatalogStatusItem,
+} from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import type { WorkflowTemplateItem } from "@okouai/core/workflow-template-items";
+import { Button } from "@okouai/ui";
+import { connectorCatalogStatusBySlug$ } from "../../signals/external/connectors.ts";
+import { agentChatComposerSignals$ } from "../../signals/zero-page/agent-composer-signals.ts";
+import {
+  startCardKinds$,
+  startCardWorkflowTemplate$,
+  type StartCardKind,
+} from "../../signals/zero-page/zero-start-cards.ts";
+import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
+
+// Every kind draws into the same 4:3 slot so the row reads as one family.
+const THUMBNAIL_CLASS =
+  "grid h-[76px] w-[100px] shrink-0 place-items-center overflow-hidden rounded-xl";
+
+const NODE_CLASS = "rounded-md border border-border bg-card";
+
+/** A resolved connector mark, or `undefined` while the catalog is loading. */
+type WorkflowArtIcon =
+  | { readonly slug: ConnectorSlug; readonly icon: PublicConnectorCatalogIcon }
+  | undefined;
+
+function SlidesArt() {
+  return (
+    <div className="relative h-10 w-[54px]">
+      <span
+        className={`absolute inset-0 -translate-x-[3px] translate-y-[2px] -rotate-6 ${NODE_CLASS}`}
+      />
+      <span
+        className={`absolute inset-0 translate-x-[3px] translate-y-px rotate-6 ${NODE_CLASS}`}
+      />
+      <span className={`absolute inset-0 ${NODE_CLASS}`}>
+        <span className="absolute left-3.5 top-[14px] h-1 w-[26px] rounded-full bg-primary" />
+        <span className="absolute left-3.5 top-[22px] h-1 w-[26px] rounded-full bg-muted-foreground/20" />
+      </span>
+    </div>
+  );
+}
+
+function WebsiteArt() {
+  return (
+    <div className="h-[46px] w-[58px] overflow-hidden rounded-md border border-border bg-card">
+      <div className="h-2.5 border-b border-border bg-muted" />
+      <div className="mx-1.5 mt-1.5 h-4 rounded-sm bg-sky-500/25" />
+      <div className="mx-1.5 mt-1 h-1 w-7 rounded-full bg-muted-foreground/20" />
+    </div>
+  );
+}
+
+function IllustrationArt() {
+  return (
+    <div className="h-12 w-[58px] rounded-md border border-border bg-card p-1.5">
+      <div className="h-2 w-2 rounded-full bg-amber-400" />
+      <div
+        className="mt-1 h-[26px] rounded-sm bg-emerald-500/40"
+        style={{
+          clipPath:
+            "polygon(0 100%, 0 60%, 27% 26%, 49% 58%, 69% 18%, 100% 62%, 100% 100%)",
+        }}
+      />
+    </div>
+  );
+}
+
+function VideoArt() {
+  return (
+    <div className="grid h-[42px] w-[58px] place-items-center rounded-md border border-border bg-card">
+      <span className="grid h-5 w-5 place-items-center rounded-full bg-primary/15 text-primary">
+        <Play size={9} fill="currentColor" />
+      </span>
+    </div>
+  );
+}
+
+function AvatarArt() {
+  return (
+    <div className="flex h-[52px] w-[46px] flex-col items-center justify-end">
+      <span className="h-6 w-6 rounded-full border border-border bg-card" />
+      <span className="mt-0.5 h-5 w-11 rounded-t-full border border-b-0 border-border bg-card" />
+    </div>
+  );
+}
+
+function WorkflowNode({ icon }: { icon: WorkflowArtIcon }) {
+  return (
+    <span className={`grid h-[22px] w-7 place-items-center ${NODE_CLASS}`}>
+      <ConnectorIcon icon={icon?.icon} size={11} />
+    </span>
+  );
+}
+
+/**
+ * Flow diagram for the workflow card: the template's first connector is the
+ * trigger, the rest are the tools the workflow writes to.
+ */
+function WorkflowArt({ icons }: { icons: readonly WorkflowArtIcon[] }) {
+  const [trigger, ...steps] = icons;
+  return (
+    <div className="flex w-[70px] flex-col items-center">
+      <div className="flex h-[22px] w-full items-center gap-1 rounded-md border border-border bg-card px-1.5">
+        <ConnectorIcon icon={trigger?.icon} size={11} />
+        <span className="h-1 flex-1 rounded-full bg-muted-foreground/20" />
+      </div>
+      <span className="h-2 w-px bg-border" />
+      {steps.length > 1 ? (
+        <div className="relative flex w-full justify-between">
+          <span className="absolute left-3.5 right-3.5 top-0 h-px bg-border" />
+          {steps.slice(0, 2).map((icon, index) => {
+            return (
+              <span key={icon?.slug ?? index} className="relative mt-2">
+                <span className="absolute -top-2 left-1/2 h-2 w-px bg-border" />
+                <WorkflowNode icon={icon} />
+              </span>
+            );
+          })}
+        </div>
+      ) : (
+        <WorkflowNode icon={steps[0]} />
+      )}
+    </div>
+  );
+}
+
+function thumbnailTint(kind: StartCardKind): string {
+  switch (kind) {
+    case "slides": {
+      return "bg-orange-500/10";
+    }
+    case "website": {
+      return "bg-sky-500/10";
+    }
+    case "illustration": {
+      return "bg-emerald-500/10";
+    }
+    case "video": {
+      return "bg-amber-500/10";
+    }
+    case "avatar": {
+      return "bg-violet-500/10";
+    }
+    case "workflow": {
+      return "bg-slate-500/10";
+    }
+  }
+}
+
+interface StartCardContent {
+  readonly title: string;
+  readonly description: string;
+  readonly prompt: string;
+}
+
+/** Shape of `chat.startCards.kinds` in the common namespace. */
+type StartCardCopy = Record<
+  Exclude<StartCardKind, "workflow">,
+  StartCardContent
+>;
+
+function StartCard({
+  kind,
+  content,
+  art,
+  onSelectPrompt,
+  onOpenTemplates,
+}: {
+  kind: StartCardKind;
+  content: StartCardContent;
+  art: ReactNode;
+  onSelectPrompt: (prompt: string) => void;
+  onOpenTemplates: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="zero-card group relative flex flex-col p-4 transition-colors hover:bg-state-hover">
+      {/* Stretched hit area so the whole card opens the template picker, kept as
+          a real button so the hover actions stay focusable siblings. */}
+      <button
+        type="button"
+        className="absolute inset-0 rounded-[inherit] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-label={t(($) => {
+          return $.chat.startCards.openTemplatesAria;
+        })}
+        onClick={onOpenTemplates}
+      />
+      <div className="pointer-events-none flex items-center gap-3">
+        <div className={`${THUMBNAIL_CLASS} ${thumbnailTint(kind)}`}>{art}</div>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-foreground">
+            {content.title}
+          </p>
+          <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+            {content.description}
+          </p>
+        </div>
+      </div>
+      <div className="relative mt-3 h-8">
+        <ArrowUpRight
+          size={14}
+          aria-hidden="true"
+          className="absolute left-0 top-1/2 -translate-y-1/2 text-muted-foreground transition-opacity group-focus-within:opacity-0 group-hover:opacity-0"
+        />
+        <div className="absolute inset-y-0 left-0 flex items-center gap-1.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => {
+              onSelectPrompt(content.prompt);
+            }}
+          >
+            <Sparkles />
+            {t(($) => {
+              return $.chat.startCards.startWithPrompt;
+            })}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={onOpenTemplates}
+          >
+            <LayoutTemplate />
+            {t(($) => {
+              return $.chat.startCards.templates;
+            })}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function connectorIcons(
+  slugs: readonly ConnectorSlug[],
+  statusBySlug:
+    | ReadonlyMap<string, PublicConnectorCatalogStatusItem>
+    | undefined,
+): readonly WorkflowArtIcon[] {
+  const resolved = slugs.flatMap((slug) => {
+    const status = statusBySlug?.get(slug);
+    return status ? [{ slug, icon: status.icon }] : [];
+  });
+  // Hold the diagram shape while the catalog is still loading.
+  return resolved.length > 0 ? resolved.slice(0, 3) : [undefined, undefined];
+}
+
+export function StartCards({
+  onSelectPrompt,
+}: {
+  onSelectPrompt: (prompt: string) => void;
+}) {
+  const { t } = useTranslation();
+  const kinds = useGet(startCardKinds$);
+  const workflowTemplate = useGet(startCardWorkflowTemplate$);
+  const statusBySlug = useLastResolved(connectorCatalogStatusBySlug$);
+  const composerSignals = useGet(agentChatComposerSignals$);
+  const setTemplateCategory = useSet(
+    composerSignals.template.setTemplatePickerCategory$,
+  );
+  const setTemplateSearch = useSet(
+    composerSignals.template.setTemplatePickerSearch$,
+  );
+  const setTemplatePreviewSlug = useSet(
+    composerSignals.template.setTemplatePickerPreviewSlug$,
+  );
+  const setTemplateReferenceValue = useSet(
+    composerSignals.template.setTemplatePickerReferenceValue$,
+  );
+  const setTemplateOpen = useSet(
+    composerSignals.template.setTemplatePickerOpen$,
+  );
+  const copy: StartCardCopy = t(
+    ($) => {
+      return $.chat.startCards.kinds;
+    },
+    { returnObjects: true },
+  );
+
+  const openTemplates = (kind: StartCardKind) => {
+    setTemplateSearch("");
+    setTemplatePreviewSlug(null);
+    setTemplateReferenceValue(null);
+    setTemplateCategory(kind);
+    setTemplateOpen(true);
+  };
+
+  const contentFor = (
+    kind: StartCardKind,
+    template: WorkflowTemplateItem | undefined,
+  ): StartCardContent => {
+    if (kind === "workflow") {
+      return {
+        title: template?.title ?? "",
+        description: template?.description ?? "",
+        prompt: template?.promptGuidance ?? "",
+      };
+    }
+    return copy[kind];
+  };
+
+  const artFor = (kind: StartCardKind): ReactNode => {
+    const art: Record<StartCardKind, ReactNode> = {
+      slides: <SlidesArt />,
+      website: <WebsiteArt />,
+      illustration: <IllustrationArt />,
+      video: <VideoArt />,
+      avatar: <AvatarArt />,
+      workflow: (
+        <WorkflowArt
+          icons={connectorIcons(
+            workflowTemplate?.connectorSlugs ?? [],
+            statusBySlug,
+          )}
+        />
+      ),
+    };
+    return art[kind];
+  };
+
+  return (
+    <div
+      data-testid="start-cards"
+      className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+    >
+      {kinds.map((kind) => {
+        return (
+          <StartCard
+            key={kind}
+            kind={kind}
+            content={contentFor(kind, workflowTemplate)}
+            art={artFor(kind)}
+            onSelectPrompt={onSelectPrompt}
+            onOpenTemplates={() => {
+              openTemplates(kind);
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}

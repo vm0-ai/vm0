@@ -1688,6 +1688,38 @@
       "unread": "Não lida",
       "unreadOnly": "Somente não lidas"
     },
+    "startCards": {
+      "kinds": {
+        "avatar": {
+          "description": "Crie um apresentador para o seu próximo conteúdo",
+          "prompt": "Crie um apresentador avatar falante para o meu próximo vídeo.",
+          "title": "Criar um avatar"
+        },
+        "illustration": {
+          "description": "Crie um visual finalizado no estilo que você quiser",
+          "prompt": "Crie uma ilustração no estilo que eu descrever.",
+          "title": "Criar uma ilustração"
+        },
+        "slides": {
+          "description": "Transforme um tema ou documento em um deck caprichado",
+          "prompt": "Crie uma apresentação a partir de um tema ou documento que eu fornecer.",
+          "title": "Criar uma apresentação"
+        },
+        "video": {
+          "description": "Transforme sua ideia ou seus arquivos em um vídeo pronto",
+          "prompt": "Transforme minha ideia ou meus arquivos em um vídeo pronto.",
+          "title": "Criar um vídeo"
+        },
+        "website": {
+          "description": "Crie e publique uma página compartilhável",
+          "prompt": "Crie e publique uma página web que eu possa compartilhar.",
+          "title": "Criar um site"
+        }
+      },
+      "openTemplatesAria": "Explorar modelos",
+      "startWithPrompt": "Começar com um prompt",
+      "templates": "Modelos"
+    },
     "templates": {
       "categories": {
         "illustration": "Ilustração",
