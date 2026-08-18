@@ -45,9 +45,7 @@
 use std::path::Path;
 
 use api_contracts::generated::constants::runners::RESUME_SESSION_HISTORY_MAX_BYTES;
-use guest_contracts::session_history_identity::{
-    FinalSessionHistoryFramework, FinalSessionHistoryRefKind,
-};
+use guest_contracts::session_history_identity::{SessionHistoryFramework, SessionHistoryRefKind};
 use serde::{Deserialize, Serialize};
 use tokio::fs;
 
@@ -103,9 +101,9 @@ fn session_history_sidecar_body_paths(paths: &CacheEntryPaths) -> [std::path::Pa
 #[serde(rename_all = "camelCase")]
 struct WorkspaceSessionHistorySidecarMetadata {
     version: u8,
-    framework: FinalSessionHistoryFramework,
+    framework: SessionHistoryFramework,
     session_id_hash: String,
-    history_ref_kind: FinalSessionHistoryRefKind,
+    history_ref_kind: SessionHistoryRefKind,
     history_hash: String,
     history_size_bytes: u64,
     representation: WorkspaceSessionHistorySidecarRepresentation,
@@ -173,7 +171,7 @@ impl WorkspaceSessionHistorySidecarMetadata {
                 Ok(())
             }
             (
-                FinalSessionHistoryFramework::Codex,
+                SessionHistoryFramework::Codex,
                 WorkspaceSessionHistorySidecarRepresentation::CodexZstd,
             ) => Ok(()),
             _ => Err(WorkspaceSessionHistorySidecarMiss::UnsupportedFormat),

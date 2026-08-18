@@ -1,8 +1,6 @@
 use super::*;
 use crate::restored_session_identity::RestoredSessionIdentity;
-use guest_contracts::session_history_identity::{
-    FinalSessionHistoryFramework, FinalSessionHistoryRefKind,
-};
+use guest_contracts::session_history_identity::{SessionHistoryFramework, SessionHistoryRefKind};
 
 #[test]
 fn restored_session_identity_requires_valid_hash_ref() {
@@ -27,17 +25,17 @@ fn restored_session_identity_maps_request_boundary_types() {
         (
             claude_context(),
             "sess-identity-claude",
-            FinalSessionHistoryFramework::ClaudeCode,
+            SessionHistoryFramework::ClaudeCode,
         ),
         (
             codex_context(),
             CODEX_SESSION_ID,
-            FinalSessionHistoryFramework::Codex,
+            SessionHistoryFramework::Codex,
         ),
         (
             pi_context(),
             "sess-identity-pi",
-            FinalSessionHistoryFramework::Pi,
+            SessionHistoryFramework::Pi,
         ),
     ];
 
@@ -48,7 +46,7 @@ fn restored_session_identity_maps_request_boundary_types() {
         let expected = RestoredSessionIdentity::new(
             framework,
             session_id,
-            FinalSessionHistoryRefKind::Blob,
+            SessionHistoryRefKind::Blob,
             "hash-a",
             Some(12),
         );

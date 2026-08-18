@@ -11,11 +11,11 @@ use api_contracts::generated::constants::runners::{
 };
 use async_trait::async_trait;
 use guest_contracts::session_history_identity::{
-    FinalSessionHistoryFramework, FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
-    FinalSessionHistorySourceRef, SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ,
-    SESSION_HISTORY_SIDECAR_EXPORT_EXIT_WRITE_FAILURE, SessionHistorySidecarExportFailure,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ,
+    SESSION_HISTORY_SIDECAR_EXPORT_EXIT_WRITE_FAILURE, SessionHistoryFramework,
+    SessionHistoryIdentity, SessionHistoryRefKind, SessionHistorySidecarExportFailure,
     SessionHistorySidecarExportMetadata, SessionHistorySidecarIoErrorClass,
-    SessionHistorySidecarRepresentation,
+    SessionHistorySidecarRepresentation, SessionHistorySourceRef,
 };
 use sandbox::{
     CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestProcessHandle, ProcessExit,
@@ -56,13 +56,13 @@ async fn mock_sandbox_with_overrides(
 }
 
 fn test_restored_session_identity(session_id: &str, history: &[u8]) -> RestoredSessionIdentity {
-    let metadata = FinalSessionHistoryIdentity::new(
-        FinalSessionHistoryFramework::ClaudeCode,
+    let metadata = SessionHistoryIdentity::new(
+        SessionHistoryFramework::ClaudeCode,
         hex::encode(Sha256::digest(session_id.as_bytes())),
-        FinalSessionHistoryRefKind::Blob,
+        SessionHistoryRefKind::Blob,
         hex::encode(Sha256::digest(history)),
         history.len() as u64,
-        FinalSessionHistorySourceRef::ClaudeCode {
+        SessionHistorySourceRef::ClaudeCode {
             config_dir: "/home/user/.claude".to_string(),
             working_dir: CANONICAL_WORKING_DIR.to_string(),
             session_id: session_id.to_string(),

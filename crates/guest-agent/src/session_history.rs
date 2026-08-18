@@ -16,7 +16,7 @@ use crate::error::AgentError;
 use crate::nofollow_fs::Dir;
 use guest_contracts::cli_agent_session_id::is_valid_cli_agent_session_id;
 use guest_contracts::codex_thread_id::codex_thread_id_filename_key;
-use guest_contracts::session_history_identity::FinalSessionHistorySourceRef;
+use guest_contracts::session_history_identity::SessionHistorySourceRef;
 use sha2::{Digest, Sha256};
 use std::ffi::{OsStr, OsString};
 use std::fs::File;
@@ -182,10 +182,10 @@ impl PreparedSessionHistorySidecar {
 
 /// Resolve one canonical framework source and return its already-open regular file.
 pub(crate) fn resolve_session_history_from_source(
-    source: &FinalSessionHistorySourceRef,
+    source: &SessionHistorySourceRef,
 ) -> Result<ResolvedSessionHistory, AgentError> {
     match source {
-        FinalSessionHistorySourceRef::ClaudeCode {
+        SessionHistorySourceRef::ClaudeCode {
             config_dir,
             working_dir,
             session_id,
@@ -210,7 +210,7 @@ pub(crate) fn resolve_session_history_from_source(
             let leaf = format!("{session_id}.jsonl");
             open_exact_session_history(&config_dir, &["projects", &project_dir], OsStr::new(&leaf))
         }
-        FinalSessionHistorySourceRef::Codex {
+        SessionHistorySourceRef::Codex {
             sessions_dir,
             thread_id,
         } => {
@@ -230,7 +230,7 @@ pub(crate) fn resolve_session_history_from_source(
                 ))
             }
         }
-        FinalSessionHistorySourceRef::Pi {
+        SessionHistorySourceRef::Pi {
             session_path,
             session_id,
         } => {
@@ -252,7 +252,7 @@ pub(crate) fn resolve_session_history_from_source(
 }
 
 pub(crate) fn digest_session_history_from_source_bounded(
-    source: &FinalSessionHistorySourceRef,
+    source: &SessionHistorySourceRef,
     max_bytes: u64,
 ) -> Result<SessionHistoryDigest, SessionHistoryDigestError> {
     resolve_session_history_from_source(source)?
@@ -261,7 +261,7 @@ pub(crate) fn digest_session_history_from_source_bounded(
 }
 
 pub(crate) fn prepare_session_history_sidecar_from_source_bounded(
-    source: &FinalSessionHistorySourceRef,
+    source: &SessionHistorySourceRef,
     max_decoded_bytes: u64,
     max_encoded_bytes: u64,
 ) -> Result<PreparedSessionHistorySidecar, SessionHistoryDigestError> {
@@ -987,8 +987,8 @@ mod tests {
 
     const TEST_CLAUDE_SESSION_ID: &str = "session-history-source-test";
 
-    fn claude_source(config_dir: &Path) -> FinalSessionHistorySourceRef {
-        FinalSessionHistorySourceRef::ClaudeCode {
+    fn claude_source(config_dir: &Path) -> SessionHistorySourceRef {
+        SessionHistorySourceRef::ClaudeCode {
             config_dir: config_dir.to_string_lossy().into_owned(),
             working_dir: crate::paths::CANONICAL_WORKING_DIR.to_string(),
             session_id: TEST_CLAUDE_SESSION_ID.to_string(),
@@ -1001,8 +1001,8 @@ mod tests {
             .join(format!("{TEST_CLAUDE_SESSION_ID}.jsonl"))
     }
 
-    fn codex_source(sessions_dir: &Path, thread_id: &str) -> FinalSessionHistorySourceRef {
-        FinalSessionHistorySourceRef::Codex {
+    fn codex_source(sessions_dir: &Path, thread_id: &str) -> SessionHistorySourceRef {
+        SessionHistorySourceRef::Codex {
             sessions_dir: sessions_dir.to_string_lossy().into_owned(),
             thread_id: thread_id.to_string(),
         }
@@ -1056,7 +1056,7 @@ mod tests {
     }
 
     fn read_session_history_from_source_for_test_bounded(
-        source: &FinalSessionHistorySourceRef,
+        source: &SessionHistorySourceRef,
         max_bytes: u64,
     ) -> Result<Vec<u8>, AgentError> {
         match resolve_session_history_from_source(source)?
@@ -1203,7 +1203,7 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn rejects_proc_magic_link_source() {
-        let source = FinalSessionHistorySourceRef::ClaudeCode {
+        let source = SessionHistorySourceRef::ClaudeCode {
             config_dir: "/proc/self".to_string(),
             working_dir: crate::paths::CANONICAL_WORKING_DIR.to_string(),
             session_id: TEST_CLAUDE_SESSION_ID.to_string(),

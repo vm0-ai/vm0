@@ -26,9 +26,9 @@ use guest_contracts::diagnostics::{
     FailureDiagnostic, FailureReason, WorkloadResourceLimitDiagnostic,
 };
 use guest_contracts::session_history_identity::{
-    FinalSessionHistoryIdentityExpectation, SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS,
-    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS, SessionHistoryIdentityExpectation,
 };
 use std::path::Path;
 use std::sync::Arc;
@@ -168,7 +168,7 @@ fn helper_exit_code_from_args() -> Option<i32> {
 }
 
 fn session_history_identity_helper_exit_code(
-    error: &session_history_identity::FinalSessionHistoryIdentityVerifyError,
+    error: &session_history_identity::SessionHistoryIdentityVerifyError,
 ) -> i32 {
     let exit_code = error.helper_exit_code();
     if exit_code == SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS {
@@ -179,7 +179,7 @@ fn session_history_identity_helper_exit_code(
 }
 
 fn session_history_sidecar_export_helper_exit_code(
-    error: &session_history_identity::FinalSessionHistorySidecarExportError,
+    error: &session_history_identity::SessionHistorySidecarExportError,
 ) -> i32 {
     let exit_code = error.helper_exit_code();
     let Some(failure) = error.output_failure() else {
@@ -205,7 +205,7 @@ fn final_session_history_identity_path_from_process_env() -> std::ffi::OsString 
 
 fn parse_session_history_identity_expectation(
     args: &[std::ffi::OsString],
-) -> Result<Option<FinalSessionHistoryIdentityExpectation>, ()> {
+) -> Result<Option<SessionHistoryIdentityExpectation>, ()> {
     let [
         framework,
         session_id_hash,
@@ -234,7 +234,7 @@ fn parse_session_history_identity_expectation(
     let history_ref_kind = history_ref_kind.to_str().ok_or(())?;
     let history_hash = history_hash.to_str().ok_or(())?;
     let history_size_bytes = history_size_bytes.to_str().ok_or(())?;
-    FinalSessionHistoryIdentityExpectation::from_cli_args([
+    SessionHistoryIdentityExpectation::from_cli_args([
         framework,
         session_id_hash,
         history_ref_kind,
@@ -1836,7 +1836,7 @@ mod tests {
         let session_metadata = session_metadata::CapturedSessionMetadata::for_test(
             session_id,
             Some(
-                guest_contracts::session_history_identity::FinalSessionHistorySourceRef::ClaudeCode {
+                guest_contracts::session_history_identity::SessionHistorySourceRef::ClaudeCode {
                     config_dir: config_dir.to_string_lossy().into_owned(),
                     working_dir: paths::CANONICAL_WORKING_DIR.to_string(),
                     session_id: session_id.to_string(),

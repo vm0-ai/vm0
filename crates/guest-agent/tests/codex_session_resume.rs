@@ -235,7 +235,7 @@ fn recovery_checkpoint_resolves_history_from_codex_sessions_root() -> TestResult
     let session_metadata = guest_agent::session_metadata::CapturedSessionMetadata::for_test(
         thread_id,
         Some(
-            guest_contracts::session_history_identity::FinalSessionHistorySourceRef::Codex {
+            guest_contracts::session_history_identity::SessionHistorySourceRef::Codex {
                 sessions_dir: Path::new(&guest_runtime.config.home_dir)
                     .join(".codex/sessions")
                     .to_string_lossy()

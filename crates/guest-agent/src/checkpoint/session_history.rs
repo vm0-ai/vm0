@@ -7,7 +7,7 @@ use crate::error::AgentError;
 use crate::http::HttpClient;
 use crate::session_history as history;
 use crate::session_history_identity::{
-    FinalSessionHistoryIdentityBuildError, build_final_session_history_identity,
+    SessionHistoryIdentityBuildError, build_final_session_history_identity,
 };
 use api_contracts::generated::constants::runners::{
     RESUME_SESSION_HISTORY_MAX_BYTES, SESSION_HISTORY_ENCODING_GZIP,
@@ -19,7 +19,7 @@ use guest_common::telemetry::{
     SandboxOpDimensions, record_sandbox_op, record_sandbox_op_with_dimensions,
 };
 use guest_common::{log_info, log_warn};
-use guest_contracts::session_history_identity::FinalSessionHistorySourceRef;
+use guest_contracts::session_history_identity::SessionHistorySourceRef;
 use guest_session_prune::{
     ClaudeHistoryIneligibleReason, ClaudeHistorySelection, CodexHistoryIneligibleReason,
     CodexHistorySelection, select_claude_compact_generation_from_file,
@@ -316,7 +316,7 @@ pub(super) struct CheckpointSessionHistoryInputs {
     framework: env::Framework,
     limits: CheckpointSessionHistoryLimits,
     cli_agent_session_id: String,
-    history_source: Option<FinalSessionHistorySourceRef>,
+    history_source: Option<SessionHistorySourceRef>,
 }
 
 impl CheckpointSessionHistoryInputs {
@@ -333,7 +333,7 @@ impl CheckpointSessionHistoryInputs {
 
 pub(super) struct UploadedCheckpointSessionHistory {
     pub(super) cli_agent_session_id: String,
-    pub(super) history_source: FinalSessionHistorySourceRef,
+    pub(super) history_source: SessionHistorySourceRef,
     pub(super) history_hash: String,
     pub(super) history_size: u64,
     pub(super) live_history: PreparedLiveHistory,
@@ -517,7 +517,7 @@ fn prepare_session_history(
     framework: env::Framework,
     limits: CheckpointSessionHistoryLimits,
     cli_agent_session_id: &str,
-    history_source: &FinalSessionHistorySourceRef,
+    history_source: &SessionHistorySourceRef,
     history_read_start: std::time::Instant,
 ) -> Result<PreparedSessionHistoryOutcome, AgentError> {
     let mut resolved =
@@ -1044,7 +1044,7 @@ pub(super) fn write_final_session_history_identity(
     cli_agent_session_id: &str,
     history_hash: &str,
     history_size: u64,
-    history_source: &FinalSessionHistorySourceRef,
+    history_source: &SessionHistorySourceRef,
     framework: env::Framework,
     final_session_history_identity_file: &str,
 ) {
@@ -1061,13 +1061,13 @@ pub(super) fn write_final_session_history_identity(
         Ok(identity) => identity,
         Err(error) => {
             match error {
-                FinalSessionHistoryIdentityBuildError::InvalidSessionId => record_sandbox_op(
+                SessionHistoryIdentityBuildError::InvalidSessionId => record_sandbox_op(
                     "session_history_identity_write_skipped_invalid_session_id",
                     Duration::ZERO,
                     true,
                     None,
                 ),
-                FinalSessionHistoryIdentityBuildError::InvalidMetadata(_) => record_sandbox_op(
+                SessionHistoryIdentityBuildError::InvalidMetadata(_) => record_sandbox_op(
                     "session_history_identity_write_skipped_invalid_metadata",
                     Duration::ZERO,
                     true,

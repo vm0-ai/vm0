@@ -140,7 +140,7 @@ async fn unchanged_artifact_checkpoint_records_content_hash_timing()
     let session_metadata = guest_agent::session_metadata::CapturedSessionMetadata::for_test(
         session_id,
         Some(
-            guest_contracts::session_history_identity::FinalSessionHistorySourceRef::ClaudeCode {
+            guest_contracts::session_history_identity::SessionHistorySourceRef::ClaudeCode {
                 config_dir: config_dir.to_string_lossy().into_owned(),
                 working_dir: guest_agent::paths::CANONICAL_WORKING_DIR.to_string(),
                 session_id: session_id.to_string(),
