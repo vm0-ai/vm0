@@ -317,6 +317,44 @@ fn evict_oldest_breaks_equal_park_time_by_reuse_key() {
 }
 
 #[test]
+fn pressure_selection_reserves_exact_match_before_oldest_eviction() {
+    let mut pool = IdlePool::new(pool_config(0));
+    let parked_at = Instant::now();
+    let history_generation_run_id = RunId::new_v4();
+    let matching = ParkedIdleCandidateBuilder::new("session-matching", make_budget_lease(2, 2048))
+        .with_history_generation_run_id(history_generation_run_id)
+        .build();
+    let _ = park_at(
+        &mut pool,
+        "session-matching",
+        matching,
+        parked_at - Duration::from_secs(1),
+    );
+    let _ = park_at(
+        &mut pool,
+        "session-unrelated",
+        make_candidate_for("session-unrelated", 2, 2048),
+        parked_at,
+    );
+
+    let selection = pool.reserve_reusable_or_evict_oldest(
+        Some("session-matching"),
+        "vm0/default",
+        &None,
+        Some(history_generation_run_id),
+    );
+
+    let IdlePoolPressureSelection::Reusable(reservation) = selection else {
+        panic!("matching entry must be reserved before pressure eviction");
+    };
+    assert_eq!(pool.held_reuse_keys(), vec!["session-unrelated"]);
+    assert!(matches!(
+        pool.restore_reserved(*reservation),
+        RestoreReservedIdleResult::Restored
+    ));
+}
+
+#[test]
 fn evict_oldest_empty_returns_none() {
     let mut pool = IdlePool::new(pool_config(0));
     assert!(pool.evict_oldest().is_none());

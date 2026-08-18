@@ -170,6 +170,38 @@ impl IdlePool {
         Some(ReservedIdleSandbox { entry })
     }
 
+    /// Reserve a matching idle entry or select the oldest entry for pressure
+    /// eviction in one pool transition.
+    ///
+    /// Keeping both decisions under the caller's exclusive `&mut` access
+    /// prevents an entry parked between a match check and eviction from being
+    /// destroyed instead of reused.
+    pub(crate) fn reserve_reusable_or_evict_oldest(
+        &mut self,
+        reuse_key: Option<&str>,
+        profile_name: &str,
+        device_rate_limits: &Option<DeviceRateLimits>,
+        history_generation_run_id: Option<RunId>,
+    ) -> IdlePoolPressureSelection {
+        let reservation = reuse_key.and_then(|reuse_key| match history_generation_run_id {
+            Some(history_generation_run_id) => self.reserve_reusable_generation(
+                reuse_key,
+                profile_name,
+                device_rate_limits,
+                history_generation_run_id,
+            ),
+            None => self.reserve_reusable(reuse_key, profile_name, device_rate_limits),
+        });
+        if let Some(reservation) = reservation {
+            return IdlePoolPressureSelection::Reusable(Box::new(reservation));
+        }
+
+        match self.evict_oldest() {
+            Some(job) => IdlePoolPressureSelection::Evicted(Box::new(job)),
+            None => IdlePoolPressureSelection::Empty,
+        }
+    }
+
     pub fn restore_reserved(
         &mut self,
         reservation: ReservedIdleSandbox,
@@ -332,6 +364,13 @@ pub enum ParkResult {
     Replaced(IdleDestroyJob),
     /// Parking is closed/soft-draining or at capacity; the entry could not be parked.
     Rejected(RejectedParkedIdleCandidate),
+}
+
+#[must_use = "pressure selection must reserve, track, or explicitly handle idle ownership"]
+pub(crate) enum IdlePoolPressureSelection {
+    Reusable(Box<ReservedIdleSandbox>),
+    Evicted(Box<IdleDestroyJob>),
+    Empty,
 }
 
 #[cfg(test)]

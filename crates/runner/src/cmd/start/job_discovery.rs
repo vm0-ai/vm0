@@ -19,9 +19,10 @@ use super::active_runs::{ActiveRunGuard, ActiveRunReuseProof};
 use super::factory_lifecycle::SharedFactory;
 use super::finalizing_claim::{FinalizingClaimRequest, spawn_finalizing_claim};
 use super::idle_lifecycle::{
-    SharedIdlePool, add_preparing_run_with_idle_status_snapshot,
-    add_running_run_with_idle_status_snapshot, destroy_idle_jobs_and_wait,
-    retire_oldest_idle_entry, set_idle_status_snapshot, spawn_idle_destroy_job,
+    IdlePressureRequest, IdlePressureSelection, SharedIdlePool,
+    add_preparing_run_with_idle_status_snapshot, add_running_run_with_idle_status_snapshot,
+    destroy_idle_jobs_and_wait, select_idle_entry_for_pressure, set_idle_status_snapshot,
+    spawn_idle_destroy_job,
 };
 use super::job_spawn::{JobProfile, SpawnContext, SpawnJobRequest, spawn_job};
 use crate::config::ProfileConfig;
@@ -1145,13 +1146,26 @@ async fn acquire_local_admission_resource(
             }
         }
 
-        let retiring = retire_oldest_idle_entry(
+        let pressure_selection = select_idle_entry_for_pressure(
             ctx.idle_pool,
             ctx.status,
             &ctx.spawn_ctx.idle_destroy_tracker,
-            "candidate_admission_oldest",
+            IdlePressureRequest {
+                reuse_key: candidate.reuse_key(),
+                profile_name,
+                device_rate_limits,
+                history_generation_run_id: None,
+                context: "candidate_admission_oldest",
+            },
         )
-        .await?;
+        .await;
+        let retiring = match pressure_selection {
+            IdlePressureSelection::Reusable(reservation) => {
+                return Some(LocalAdmissionResource::Reusable(reservation));
+            }
+            IdlePressureSelection::Retiring(retiring) => retiring,
+            IdlePressureSelection::Empty => return None,
+        };
         info!(
             run_id = %candidate.run_id(),
             reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(retiring.reuse_key()),
