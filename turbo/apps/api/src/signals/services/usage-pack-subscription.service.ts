@@ -1109,6 +1109,7 @@ async function loadUsagePackPurchaseSnapshot(
   const allocations = checkoutAllocationsFromRows(allocationRows);
   if (
     !subscription ||
+    subscription.subscriptionStatus === "checkout_expired" ||
     subscription.orgId !== orgId ||
     subscription.stripeCustomerId !== preview.customerId ||
     subscription.tier !== preview.tier ||
@@ -1173,6 +1174,7 @@ async function existingUsagePackPurchaseResult(
       expandedLatestInvoice(existing),
       `usage-pack:${preview.usagePackSubscriptionId}`,
       signal,
+      { payOpenInvoice: true },
     );
     return {
       status: "confirmed",
@@ -1235,6 +1237,7 @@ async function existingUsagePackPurchaseResult(
     expandedLatestInvoice(existing),
     `usage-pack:${preview.usagePackSubscriptionId}`,
     signal,
+    { payOpenInvoice: true },
   );
   return {
     status: "confirmed",
@@ -1357,6 +1360,7 @@ async function confirmUsagePackPurchaseSnapshot(
     expandedLatestInvoice(created),
     `usage-pack:${preview.usagePackSubscriptionId}`,
     signal,
+    { payOpenInvoice: true },
   );
   return {
     status: "confirmed",

@@ -1087,6 +1087,45 @@ async function createConfirmedPlanSubscription(
   };
 }
 
+async function completeExistingPlanPurchase(
+  stripe: StripeClient,
+  preview: PlanPurchasePreviewToken,
+  subscription: StripeSubscription,
+  signal: AbortSignal,
+): Promise<ConfirmPlanPurchaseResult> {
+  const invoice = expandedLatestInvoice(subscription);
+  if (invoice && invoice.status !== "paid") {
+    const route = await resolveBillingPurchaseRoute(
+      {
+        stripe,
+        supportsInAppPreview: true,
+        customerId: preview.customerId,
+        subscriptionId: subscription.id,
+        subscription,
+      },
+      signal,
+    );
+    if (
+      route.kind === "checkout" ||
+      route.customerId !== preview.customerId ||
+      route.paymentMethodId !== preview.paymentMethodId
+    ) {
+      return { status: "invalid_preview" };
+    }
+  }
+  const completion = await completeBillingOperationInvoiceWithInvoice(
+    stripe,
+    invoice,
+    `plan:${preview.purchaseId}`,
+    signal,
+    { payOpenInvoice: true },
+  );
+  return {
+    status: "confirmed",
+    ...completion,
+  };
+}
+
 async function confirmPlanPurchaseTransaction(
   args: {
     readonly tx: WriteTx;
@@ -1114,17 +1153,12 @@ async function confirmPlanPurchaseTransaction(
     signal,
   );
   if (subscriptionState.existing) {
-    const completion = await completeBillingOperationInvoiceWithInvoice(
+    return await completeExistingPlanPurchase(
       stripe,
-      expandedLatestInvoice(subscriptionState.existing),
-      `plan:${preview.purchaseId}`,
+      preview,
+      subscriptionState.existing,
       signal,
-      { payOpenInvoice: true },
     );
-    return {
-      status: "confirmed",
-      ...completion,
-    };
   }
 
   const [org] = await tx

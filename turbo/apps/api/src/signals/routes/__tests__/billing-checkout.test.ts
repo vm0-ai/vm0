@@ -1337,6 +1337,139 @@ describe("POST /api/zero/billing/checkout", () => {
     expect(billing.hasSubscription).toBeTruthy();
   });
 
+  it("rejects a resumable Plan purchase after its saved card changes", async () => {
+    const customerId = `cus_${randomUUID().slice(0, 8)}`;
+    const pendingSubscriptionId = `sub_${randomUUID().slice(0, 8)}`;
+    const fixture = await trackedBillingSeed({
+      stripeCustomerId: customerId,
+      stripeSubscriptionId: pendingSubscriptionId,
+      subscriptionStatus: "incomplete",
+      tier: "pro",
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    await enableSavedBillingPurchasePreview(fixture);
+
+    const previewPaymentMethodId = `pm_${randomUUID().slice(0, 8)}`;
+    const replacementPaymentMethodId = `pm_${randomUUID().slice(0, 8)}`;
+    const periodStart = currentSecond();
+    const periodEnd = periodStart + 30 * 86_400;
+    const invoiceId = `in_${randomUUID().slice(0, 8)}`;
+    let currentPaymentMethodId = previewPaymentMethodId;
+    const metadata = {
+      orgId: fixture.orgId,
+      tier: "team",
+      priceId: TEST_PRICE_TEAM,
+      billingPurchaseId: `purchase_${randomUUID().slice(0, 8)}`,
+    };
+    const invoice = {
+      id: invoiceId,
+      hosted_invoice_url: "https://invoice.stripe.com/pending-team",
+      customer: customerId,
+      metadata: {},
+      amount_due: 20_000,
+      currency: "usd",
+      status: "open" as const,
+      lines: {
+        has_more: false,
+        data: [
+          {
+            amount: 20_000,
+            price: { id: TEST_PRICE_TEAM },
+            parent: { type: "subscription_item_details" as const },
+            period: { start: periodStart, end: periodEnd },
+          },
+        ],
+      },
+      parent: {
+        subscription_details: {
+          subscription: pendingSubscriptionId,
+          metadata,
+        },
+      },
+    };
+    const pendingSubscription = () => {
+      return {
+        id: pendingSubscriptionId,
+        customer: customerId,
+        status: "incomplete",
+        metadata,
+        default_payment_method: currentPaymentMethodId,
+        cancel_at_period_end: false,
+        cancel_at: null,
+        schedule: null,
+        trial_end: null,
+        items: {
+          data: [
+            {
+              price: { id: TEST_PRICE_TEAM },
+              current_period_end: periodEnd,
+            },
+          ],
+        },
+        latest_invoice: invoice,
+      };
+    };
+    context.mocks.stripe.subscriptions.retrieve.mockImplementation(
+      (subscriptionId) => {
+        if (subscriptionId !== pendingSubscriptionId) {
+          throw new Error(`Unexpected Stripe subscription ${subscriptionId}`);
+        }
+        return Promise.resolve(pendingSubscription());
+      },
+    );
+    context.mocks.stripe.subscriptions.list.mockResolvedValue({
+      data: [pendingSubscription()],
+      has_more: false,
+    });
+    context.mocks.stripe.invoices.createPreview.mockResolvedValue({
+      id: `in_preview_${randomUUID().slice(0, 8)}`,
+      hosted_invoice_url: null,
+      customer: customerId,
+      metadata: {},
+      amount_due: 20_000,
+      currency: "usd",
+      status: null,
+      lines: { has_more: false, data: [] },
+      parent: null,
+    });
+
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
+      zeroBillingCheckoutContract,
+    );
+    const start = await accept(
+      client.create({
+        body: {
+          tier: "team",
+          supportsInAppPreview: true,
+          successUrl: `${APP_ORIGIN}/billing?billing=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    if (!("previewToken" in start.body)) {
+      throw new Error("Expected a Team purchase preview");
+    }
+    currentPaymentMethodId = replacementPaymentMethodId;
+
+    const confirmation = await accept(
+      client.confirm({
+        body: { previewToken: start.body.previewToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [409],
+    );
+
+    expect(confirmation.body).toStrictEqual({
+      error: {
+        message: "Plan purchase preview is no longer valid",
+        code: "CONFLICT",
+      },
+    });
+    expect(context.mocks.stripe.invoices.pay).not.toHaveBeenCalled();
+  });
+
   it("refreshes an invalid Plan preview through the rollout-safe checkout route", async () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
@@ -2554,6 +2687,212 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
       });
     },
   );
+
+  it("rejects a usage pack preview after a replacement retires its snapshot", async () => {
+    const fixture = createOrgFixture();
+    const customerId = `cus_${randomUUID()}`;
+    const paymentMethodId = `pm_${randomUUID()}`;
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.UsagePackPlans]: true,
+      [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
+    });
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
+      {
+        data: [
+          {
+            role: "org:admin",
+            publicUserData: { userId: fixture.userId },
+            createdAt: now(),
+          },
+        ],
+      },
+    );
+    context.mocks.clerk.organizations.getOrganizationInvitationList.mockResolvedValue(
+      { data: [] },
+    );
+    context.mocks.stripe.customers.create.mockResolvedValue({ id: customerId });
+    context.mocks.stripe.customers.retrieve.mockResolvedValue({
+      id: customerId,
+      invoice_settings: { default_payment_method: paymentMethodId },
+    });
+    context.mocks.stripe.invoices.createPreview.mockResolvedValue({
+      id: `in_preview_${randomUUID()}`,
+      customer: customerId,
+      amount_due: 4000,
+      currency: "usd",
+      status: null,
+      metadata: {},
+      hosted_invoice_url: null,
+      lines: { has_more: false, data: [] },
+      parent: null,
+    });
+
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
+      zeroBillingUsagePackCheckoutContract,
+    );
+    const purchaseBody = {
+      tier: "pro" as const,
+      supportsInAppPreview: true,
+      memberUsagePacks: [
+        { memberId: fixture.userId, usagePackUsd: 20 as const },
+      ],
+      successUrl: `${APP_ORIGIN}/billing?billing=success`,
+      cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
+    };
+    const firstPreview = await accept(
+      client.create({
+        body: purchaseBody,
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    await accept(
+      client.create({
+        body: {
+          ...purchaseBody,
+          memberUsagePacks: [{ memberId: fixture.userId, usagePackUsd: 50 }],
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    if (!("previewToken" in firstPreview.body)) {
+      throw new Error("Expected a usage pack purchase preview");
+    }
+
+    const confirmation = await accept(
+      client.confirm({
+        body: { previewToken: firstPreview.body.previewToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [409],
+    );
+
+    expect(confirmation.body).toStrictEqual({
+      error: {
+        message: "Usage pack purchase preview is no longer valid",
+        code: "CONFLICT",
+      },
+    });
+    expect(context.mocks.stripe.subscriptions.create).not.toHaveBeenCalled();
+  });
+
+  it("attempts the saved card for an open usage pack invoice", async () => {
+    const fixture = createOrgFixture();
+    const customerId = `cus_${randomUUID()}`;
+    const paymentMethodId = `pm_${randomUUID()}`;
+    const subscriptionId = `sub_${randomUUID()}`;
+    const hostedInvoiceUrl =
+      "https://invoice.stripe.com/usage-pack-authentication";
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.UsagePackPlans]: true,
+      [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
+    });
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
+      {
+        data: [
+          {
+            role: "org:admin",
+            publicUserData: { userId: fixture.userId },
+            createdAt: now(),
+          },
+        ],
+      },
+    );
+    context.mocks.clerk.organizations.getOrganizationInvitationList.mockResolvedValue(
+      { data: [] },
+    );
+    context.mocks.stripe.customers.create.mockResolvedValue({ id: customerId });
+    context.mocks.stripe.customers.retrieve.mockResolvedValue({
+      id: customerId,
+      invoice_settings: { default_payment_method: paymentMethodId },
+    });
+    context.mocks.stripe.invoices.createPreview.mockResolvedValue({
+      id: `in_preview_${randomUUID()}`,
+      customer: customerId,
+      amount_due: 4000,
+      currency: "usd",
+      status: null,
+      metadata: {},
+      hosted_invoice_url: null,
+      lines: { has_more: false, data: [] },
+      parent: null,
+    });
+    const operationInvoice = {
+      id: `in_${randomUUID()}`,
+      customer: customerId,
+      amount_due: 4000,
+      currency: "usd",
+      status: "open" as const,
+      metadata: {},
+      hosted_invoice_url: hostedInvoiceUrl,
+      lines: { has_more: false, data: [] },
+      parent: null,
+    };
+    context.mocks.stripe.subscriptions.list.mockResolvedValue({
+      data: [],
+      has_more: false,
+    });
+    context.mocks.stripe.subscriptions.create.mockResolvedValue({
+      id: subscriptionId,
+      customer: customerId,
+      status: "incomplete",
+      metadata: {},
+      items: {
+        data: [
+          { price: { id: TEST_PRICE_USAGE_PACK_PLAN_PRO } },
+          { price: { id: TEST_PRICE_USAGE_PACK_20 } },
+        ],
+      },
+      latest_invoice: operationInvoice,
+    });
+    context.mocks.stripe.invoices.pay.mockRejectedValue(
+      new Error("Payment requires customer authentication"),
+    );
+    context.mocks.stripe.invoices.retrieve.mockResolvedValue(operationInvoice);
+
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
+      zeroBillingUsagePackCheckoutContract,
+    );
+    const start = await accept(
+      client.create({
+        body: {
+          tier: "pro",
+          supportsInAppPreview: true,
+          memberUsagePacks: [{ memberId: fixture.userId, usagePackUsd: 20 }],
+          successUrl: `${APP_ORIGIN}/billing?billing=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    if (!("previewToken" in start.body)) {
+      throw new Error("Expected a usage pack purchase preview");
+    }
+
+    const confirmation = await accept(
+      client.confirm({
+        body: { previewToken: start.body.previewToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(confirmation.body).toStrictEqual({
+      status: "pending_payment",
+      hostedInvoiceUrl,
+    });
+    expect(context.mocks.stripe.invoices.pay).toHaveBeenCalledWith(
+      operationInvoice.id,
+      {},
+      expect.objectContaining({
+        idempotencyKey: expect.stringContaining(
+          "billing-operation:usage-pack:",
+        ),
+      }),
+    );
+  });
 
   it("reuses a pending usage pack preview and creates one subscription", async () => {
     const fixture = createOrgFixture();
