@@ -24,7 +24,7 @@ import {
   buildFromAddress,
   buildUnsubscribeHeaders,
   getUserEmail,
-} from "./zero-email-common.service";
+} from "./email-common.service";
 import {
   buildMorningBriefUnsubscribePageUrl,
   buildMorningBriefUnsubscribeUrl,

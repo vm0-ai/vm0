@@ -38,7 +38,7 @@ import { buildMorningBriefChatMessage } from "./morning-brief-run-prompt";
 import { insertChatEvent } from "./chat-event.service";
 import { touchChatThreadLastMessageAt } from "./chat-event-shared.service";
 import { createUserMessageDocument } from "./chat-user-message.service";
-import { resolveDefaultAgent } from "./zero-email-common.service";
+import { resolveDefaultAgent } from "./email-common.service";
 import { createAutomationChatThread } from "./workflow-user-automation-thread.service";
 
 const log = logger("api:morning-brief");
