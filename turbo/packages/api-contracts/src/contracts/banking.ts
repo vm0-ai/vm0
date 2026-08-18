@@ -9,9 +9,9 @@ const dateOnlySchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be formatted as YYYY-MM-DD");
 
-export const zeroBankingProviderSchema = z.literal("finicity");
+export const bankingProviderSchema = z.literal("finicity");
 
-export const zeroBankingAccountSchema = z.object({
+export const bankingAccountSchema = z.object({
   id: z.string(),
   name: z.string().nullable(),
   institutionName: z.string().nullable(),
@@ -21,7 +21,7 @@ export const zeroBankingAccountSchema = z.object({
   currency: z.string().nullable(),
 });
 
-export const zeroBankingBalanceSchema = z.object({
+export const bankingBalanceSchema = z.object({
   accountId: z.string(),
   name: z.string().nullable(),
   type: z.string().nullable(),
@@ -31,7 +31,7 @@ export const zeroBankingBalanceSchema = z.object({
   balanceDate: z.number().nullable(),
 });
 
-export const zeroBankingTransactionSchema = z.object({
+export const bankingTransactionSchema = z.object({
   id: z.string(),
   accountId: z.string(),
   amount: z.number().nullable(),
@@ -44,38 +44,38 @@ export const zeroBankingTransactionSchema = z.object({
   merchant: z.string().nullable(),
 });
 
-export const zeroBankingAccountsResponseSchema = z.object({
+export const bankingAccountsResponseSchema = z.object({
   operation: z.literal("accounts"),
-  provider: zeroBankingProviderSchema,
-  accounts: z.array(zeroBankingAccountSchema),
+  provider: bankingProviderSchema,
+  accounts: z.array(bankingAccountSchema),
 });
 
-export const zeroBankingBalancesRequestSchema = z.object({
+export const bankingBalancesRequestSchema = z.object({
   accountId: z.string().trim().min(1),
 });
 
-export const zeroBankingBalancesResponseSchema = z.object({
+export const bankingBalancesResponseSchema = z.object({
   operation: z.literal("balances"),
-  provider: zeroBankingProviderSchema,
-  balance: zeroBankingBalanceSchema,
+  provider: bankingProviderSchema,
+  balance: bankingBalanceSchema,
 });
 
-export const zeroBankingTransactionsRequestSchema = z.object({
+export const bankingTransactionsRequestSchema = z.object({
   accountId: z.string().trim().min(1),
   from: dateOnlySchema,
   to: dateOnlySchema,
   limit: z.number().int().min(1).max(1000).default(100),
 });
 
-export const zeroBankingTransactionsResponseSchema = z.object({
+export const bankingTransactionsResponseSchema = z.object({
   operation: z.literal("transactions"),
-  provider: zeroBankingProviderSchema,
+  provider: bankingProviderSchema,
   accountId: z.string(),
-  transactions: z.array(zeroBankingTransactionSchema),
+  transactions: z.array(bankingTransactionSchema),
 });
 
-const zeroBankingAccountsResponses = {
-  200: zeroBankingAccountsResponseSchema,
+const bankingAccountsResponses = {
+  200: bankingAccountsResponseSchema,
   400: apiErrorSchema,
   401: apiErrorSchema,
   403: apiErrorSchema,
@@ -83,8 +83,8 @@ const zeroBankingAccountsResponses = {
   503: apiErrorSchema,
 } as const;
 
-const zeroBankingBalancesResponses = {
-  200: zeroBankingBalancesResponseSchema,
+const bankingBalancesResponses = {
+  200: bankingBalancesResponseSchema,
   400: apiErrorSchema,
   401: apiErrorSchema,
   403: apiErrorSchema,
@@ -92,8 +92,8 @@ const zeroBankingBalancesResponses = {
   503: apiErrorSchema,
 } as const;
 
-const zeroBankingTransactionsResponses = {
-  200: zeroBankingTransactionsResponseSchema,
+const bankingTransactionsResponses = {
+  200: bankingTransactionsResponseSchema,
   400: apiErrorSchema,
   401: apiErrorSchema,
   403: apiErrorSchema,
@@ -101,52 +101,50 @@ const zeroBankingTransactionsResponses = {
   503: apiErrorSchema,
 } as const;
 
-export const zeroBankingContract = c.router({
+export const bankingContract = c.router({
   accounts: {
     method: "POST",
     path: "/api/okou/banking/accounts",
     headers: authHeadersSchema,
     body: z.object({}),
-    responses: zeroBankingAccountsResponses,
+    responses: bankingAccountsResponses,
     summary: "List accounts through the managed Zero Banking gateway",
   },
   balances: {
     method: "POST",
     path: "/api/okou/banking/balances",
     headers: authHeadersSchema,
-    body: zeroBankingBalancesRequestSchema,
-    responses: zeroBankingBalancesResponses,
+    body: bankingBalancesRequestSchema,
+    responses: bankingBalancesResponses,
     summary: "Read an account balance through the managed Zero Banking gateway",
   },
   transactions: {
     method: "POST",
     path: "/api/okou/banking/transactions",
     headers: authHeadersSchema,
-    body: zeroBankingTransactionsRequestSchema,
-    responses: zeroBankingTransactionsResponses,
+    body: bankingTransactionsRequestSchema,
+    responses: bankingTransactionsResponses,
     summary:
       "Read account transactions through the managed Zero Banking gateway",
   },
 });
 
-export type ZeroBankingContract = typeof zeroBankingContract;
-export type ZeroBankingAccount = z.infer<typeof zeroBankingAccountSchema>;
-export type ZeroBankingBalance = z.infer<typeof zeroBankingBalanceSchema>;
-export type ZeroBankingTransaction = z.infer<
-  typeof zeroBankingTransactionSchema
+export type BankingContract = typeof bankingContract;
+export type BankingAccount = z.infer<typeof bankingAccountSchema>;
+export type BankingBalance = z.infer<typeof bankingBalanceSchema>;
+export type BankingTransaction = z.infer<typeof bankingTransactionSchema>;
+export type BankingAccountsResponse = z.infer<
+  typeof bankingAccountsResponseSchema
 >;
-export type ZeroBankingAccountsResponse = z.infer<
-  typeof zeroBankingAccountsResponseSchema
+export type BankingBalancesRequest = z.infer<
+  typeof bankingBalancesRequestSchema
 >;
-export type ZeroBankingBalancesRequest = z.infer<
-  typeof zeroBankingBalancesRequestSchema
+export type BankingBalancesResponse = z.infer<
+  typeof bankingBalancesResponseSchema
 >;
-export type ZeroBankingBalancesResponse = z.infer<
-  typeof zeroBankingBalancesResponseSchema
+export type BankingTransactionsRequest = z.infer<
+  typeof bankingTransactionsRequestSchema
 >;
-export type ZeroBankingTransactionsRequest = z.infer<
-  typeof zeroBankingTransactionsRequestSchema
->;
-export type ZeroBankingTransactionsResponse = z.infer<
-  typeof zeroBankingTransactionsResponseSchema
+export type BankingTransactionsResponse = z.infer<
+  typeof bankingTransactionsResponseSchema
 >;

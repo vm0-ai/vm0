@@ -46,7 +46,7 @@ const agentPhoneStartLinkResponseSchema = z.object({
   verificationSent: z.literal(true),
 });
 
-export const zeroIntegrationsAgentPhoneContract = c.router({
+export const integrationsAgentPhoneContract = c.router({
   connectAgentPhone: {
     method: "POST",
     path: "/api/agentphone/connect",
@@ -112,8 +112,8 @@ export const zeroIntegrationsAgentPhoneContract = c.router({
   },
 });
 
-export type ZeroIntegrationsAgentPhoneContract =
-  typeof zeroIntegrationsAgentPhoneContract;
+export type IntegrationsAgentPhoneContract =
+  typeof integrationsAgentPhoneContract;
 export type AgentPhoneConnectResponse = z.infer<
   typeof agentPhoneConnectResponseSchema
 >;

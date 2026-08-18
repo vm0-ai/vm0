@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type StripeSDK from "stripe";
 import { testUsageSettlementContract } from "@okouai/api-contracts/contracts/test-usage-settlement";
 import { acquisitionAttributionContract } from "@okouai/api-contracts/contracts/acquisition-attribution";
-import { zeroBankingContract } from "@okouai/api-contracts/contracts/zero-banking";
+import { bankingContract } from "@okouai/api-contracts/contracts/banking";
 import {
   zeroBillingAutoRechargeContract,
   zeroBillingCheckoutContract,
@@ -822,7 +822,7 @@ export function createBillingMediaApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 502 | 503)[],
     ) {
       const client = setupApp({ context, routes: bankingRoutes })(
-        zeroBankingContract,
+        bankingContract,
       );
       return await accept(
         client.accounts({ headers: authenticate(actor), body: {} }),

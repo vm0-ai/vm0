@@ -1,13 +1,13 @@
 import type {
-  ZeroBankingAccount,
-  ZeroBankingAccountsResponse,
-  ZeroBankingBalance,
-  ZeroBankingBalancesRequest,
-  ZeroBankingBalancesResponse,
-  ZeroBankingTransaction,
-  ZeroBankingTransactionsRequest,
-  ZeroBankingTransactionsResponse,
-} from "@okouai/api-contracts/contracts/zero-banking";
+  BankingAccount,
+  BankingAccountsResponse,
+  BankingBalance,
+  BankingBalancesRequest,
+  BankingBalancesResponse,
+  BankingTransaction,
+  BankingTransactionsRequest,
+  BankingTransactionsResponse,
+} from "@okouai/api-contracts/contracts/banking";
 import {
   bankingAccessAuditEvents,
   bankingAccounts,
@@ -295,7 +295,7 @@ function providerTransactionId(
 function toBankingAccount(
   row: BankingAccountRow,
   providerAccount: Record<string, unknown> | undefined,
-): ZeroBankingAccount {
+): BankingAccount {
   return {
     id: row.providerAccountId,
     name: stringValue(providerAccount?.name) ?? row.displayName,
@@ -312,7 +312,7 @@ function toBankingAccount(
 function toBankingBalance(
   row: BankingAccountRow,
   providerAccount: Record<string, unknown>,
-): ZeroBankingBalance {
+): BankingBalance {
   return {
     accountId: row.providerAccountId,
     name: stringValue(providerAccount.name) ?? row.displayName,
@@ -327,7 +327,7 @@ function toBankingBalance(
 function toBankingTransaction(
   accountId: string,
   transaction: Record<string, unknown>,
-): ZeroBankingTransaction | null {
+): BankingTransaction | null {
   const id = providerTransactionId(transaction);
   if (!id) {
     return null;
@@ -623,7 +623,7 @@ export const bankingAccounts$ = command(
       return auth.response;
     }
     if (auth.access.accounts.length === 0) {
-      const body: ZeroBankingAccountsResponse = {
+      const body: BankingAccountsResponse = {
         operation: "accounts",
         provider: PROVIDER,
         accounts: [],
@@ -664,7 +664,7 @@ export const bankingAccounts$ = command(
         return id !== null && allowedAccountIds.has(id);
       },
     );
-    const body: ZeroBankingAccountsResponse = {
+    const body: BankingAccountsResponse = {
       operation: "accounts",
       provider: PROVIDER,
       accounts: auth.access.accounts.map((row) => {
@@ -692,7 +692,7 @@ export const bankingAccounts$ = command(
 export const bankingBalances$ = command(
   async (
     { set },
-    args: BankingGatewayArgs<ZeroBankingBalancesRequest>,
+    args: BankingGatewayArgs<BankingBalancesRequest>,
     signal: AbortSignal,
   ) => {
     const db = set(writeDb$);
@@ -729,7 +729,7 @@ export const bankingBalances$ = command(
       return badGateway("Finicity account was not found", "FINICITY_NOT_FOUND");
     }
 
-    const body: ZeroBankingBalancesResponse = {
+    const body: BankingBalancesResponse = {
       operation: "balances",
       provider: PROVIDER,
       balance: toBankingBalance(auth.access.account, providerAccount),
@@ -753,7 +753,7 @@ export const bankingBalances$ = command(
 export const bankingTransactions$ = command(
   async (
     { set },
-    args: BankingGatewayArgs<ZeroBankingTransactionsRequest>,
+    args: BankingGatewayArgs<BankingTransactionsRequest>,
     signal: AbortSignal,
   ) => {
     const db = set(writeDb$);
@@ -796,7 +796,7 @@ export const bankingTransactions$ = command(
       return providerResult;
     }
 
-    const body: ZeroBankingTransactionsResponse = {
+    const body: BankingTransactionsResponse = {
       operation: "transactions",
       provider: PROVIDER,
       accountId: args.body.accountId,
