@@ -1437,13 +1437,13 @@ export {
 } from "./slack-commands";
 export { slackEventsContract, type SlackEventsContract } from "./slack-events";
 export {
-  zeroTeamsBotContract,
+  teamsBotContract,
   teamsInboundActivitySchema,
   teamsBotIngressResponseSchema,
   type TeamsInboundActivity,
   type TeamsBotIngressResponse,
-  type ZeroTeamsBotContract,
-} from "./zero-teams-bot";
+  type TeamsBotContract,
+} from "./teams-bot";
 export {
   zeroTeamsConnectContract,
   type TeamsConnectBody,
@@ -1453,19 +1453,19 @@ export {
   type ZeroTeamsConnectContract,
 } from "./zero-teams-connect";
 export {
-  zeroTeamsBrowserConnectContract,
-  zeroTeamsBrowserConnectQuerySchema,
-  type ZeroTeamsBrowserConnectContract,
-  type ZeroTeamsBrowserConnectQuery,
-} from "./zero-teams-browser-connect";
+  teamsBrowserConnectContract,
+  teamsBrowserConnectQuerySchema,
+  type TeamsBrowserConnectContract,
+  type TeamsBrowserConnectQuery,
+} from "./teams-browser-connect";
 export {
-  zeroTeamsOauthContract,
-  zeroTeamsOauthCallbackQuerySchema,
-  zeroTeamsOauthConnectQuerySchema,
-  type ZeroTeamsOauthCallbackQuery,
-  type ZeroTeamsOauthConnectQuery,
-  type ZeroTeamsOauthContract,
-} from "./zero-teams-oauth";
+  teamsOauthContract,
+  teamsOauthCallbackQuerySchema,
+  teamsOauthConnectQuerySchema,
+  type TeamsOauthCallbackQuery,
+  type TeamsOauthConnectQuery,
+  type TeamsOauthContract,
+} from "./teams-oauth";
 export {
   slackInteractiveContract,
   type SlackInteractiveContract,

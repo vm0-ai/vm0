@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { zeroTeamsBrowserConnectContract } from "@okouai/api-contracts/contracts/zero-teams-browser-connect";
+import { teamsBrowserConnectContract } from "@okouai/api-contracts/contracts/teams-browser-connect";
 import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { teamsOrgInstallations } from "@okouai/db/schema/teams-org-installation";
 import { eq } from "drizzle-orm";
@@ -205,7 +205,7 @@ const browserConnect$ = command(async ({ get, set }, signal: AbortSignal) => {
     return signInRedirect(request.url, publicBrand);
   }
 
-  const query = get(queryOf(zeroTeamsBrowserConnectContract.connect));
+  const query = get(queryOf(teamsBrowserConnectContract.connect));
   const tenantId = query.tenantId;
   const teamsUserId = query.teamsUserId;
   const teamsAadObjectId = query.teamsAadObjectId;
@@ -280,7 +280,7 @@ const browserConnect$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 export const teamsBrowserConnectRoutes: readonly RouteEntry[] = [
   {
-    route: zeroTeamsBrowserConnectContract.connect,
+    route: teamsBrowserConnectContract.connect,
     handler: browserConnect$,
   },
 ];

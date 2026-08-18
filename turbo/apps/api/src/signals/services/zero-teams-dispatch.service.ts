@@ -22,7 +22,7 @@ import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import type {
   TeamsInboundActivity,
   TeamsInboundAttachment,
-} from "@okouai/api-contracts/contracts/zero-teams-bot";
+} from "@okouai/api-contracts/contracts/teams-bot";
 import { and, desc, eq, isNull, notExists, or } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { convert } from "html-to-text";
