@@ -808,6 +808,252 @@ function testAgentExecutionPlanClassifications(): void {
     dimensions: [],
   });
 
+  const frameworkFallbackContent = (
+    name: string,
+    variant: "missing" | "unsupported",
+  ): MutableAgentContent => {
+    const content = mutableAgentContent(name);
+    const agent = content.agents[name] as unknown as Record<string, unknown>;
+    if (variant === "missing") {
+      delete agent.framework;
+    } else {
+      agent.framework = "future-framework";
+    }
+    return content;
+  };
+  const missingFramework = frameworkFallbackContent(
+    "missing-framework-agent",
+    "missing",
+  );
+  const unsupportedFramework = frameworkFallbackContent(
+    "unsupported-framework-agent",
+    "unsupported",
+  );
+  const missingFrameworkBefore = structuredClone(missingFramework);
+  const unsupportedFrameworkBefore = structuredClone(unsupportedFramework);
+  const missingFrameworkRow = executionPlanRow({
+    id: id(627),
+    agentName: "missing-framework-agent",
+    content: missingFramework,
+  });
+  const unsupportedFrameworkRow = executionPlanRow({
+    id: id(628),
+    agentName: "unsupported-framework-agent",
+    content: unsupportedFramework,
+  });
+  for (const row of [missingFrameworkRow, unsupportedFrameworkRow]) {
+    assert.deepEqual(classifyAgentExecutionAuthority(row), {
+      authority: "application",
+      classification: "applicationFrameworkFallback",
+      dimensions: [],
+    });
+  }
+  assert.deepEqual(missingFramework, missingFrameworkBefore);
+  assert.deepEqual(unsupportedFramework, unsupportedFrameworkBefore);
+
+  const frameworkFallbackResult = classifyPlanRows([
+    executionPlanRow({ id: id(629), agentName: "separate-parity-agent" }),
+    missingFrameworkRow,
+    unsupportedFrameworkRow,
+  ]);
+  assert.equal(frameworkFallbackResult.status, "passed");
+  assert.equal(
+    frameworkFallbackResult.agentExecutionPlans.completeSemanticParity.count,
+    1,
+  );
+  assert.deepEqual(
+    frameworkFallbackResult.agentExecutionPlans.applicationFrameworkFallback,
+    fingerprintSortedSet(
+      "agent-execution-plans:application-framework-fallback-agent-ids",
+      [id(627), id(628)],
+    ),
+  );
+  assert.equal(frameworkFallbackResult.agentExecutionPlans.exceptions.count, 0);
+  assert.equal(
+    frameworkFallbackResult.agentExecutionPlans.partitionClosure.classification,
+    "exact",
+  );
+
+  const mixedFrameworkFallbackCases: readonly {
+    readonly suffix: number;
+    readonly name: string;
+    readonly agentName?: string;
+    readonly mutate: (
+      content: MutableAgentContent,
+      agent: Record<string, unknown>,
+    ) => void;
+  }[] = [
+    {
+      suffix: 630,
+      name: "fallback-environment-agent",
+      mutate: (_content, agent) => {
+        agent.environment = { CUSTOM_RUNTIME_VALUE: "legacy-value" };
+      },
+    },
+    {
+      suffix: 631,
+      name: "fallback-unknown-agent",
+      mutate: (content) => {
+        content.futureField = { retained: true };
+      },
+    },
+    {
+      suffix: 632,
+      name: "fallback-runner-agent",
+      mutate: (_content, agent) => {
+        agent.experimental_runner = { group: "vm0/custom" };
+      },
+    },
+    {
+      suffix: 633,
+      name: "fallback-profile-agent",
+      mutate: (_content, agent) => {
+        agent.experimental_profile = "vm0/large";
+      },
+    },
+    {
+      suffix: 634,
+      name: "fallback-instructions-agent",
+      mutate: (_content, agent) => {
+        delete agent.instructions;
+      },
+    },
+    {
+      suffix: 635,
+      name: "fallback-artifact-agent",
+      mutate: (content) => {
+        content.artifacts = [{ name: "legacy-artifact" }];
+      },
+    },
+    {
+      suffix: 636,
+      name: "fallback-volume-agent",
+      mutate: (content, agent) => {
+        agent.volumes = ["legacy-volume:/data"];
+        content.volumes = {
+          "legacy-volume": { name: "legacy-storage", version: "latest" },
+        };
+      },
+    },
+    {
+      suffix: 637,
+      name: "fallback-other-name",
+      agentName: "fallback-product-name",
+      mutate: () => {},
+    },
+    {
+      suffix: 641,
+      name: "fallback-ambiguous-agent",
+      mutate: (content) => {
+        content.agents["fallback-second-agent"] = {
+          framework: "claude-code",
+        };
+      },
+    },
+  ];
+  const mixedFrameworkFallbackRows = mixedFrameworkFallbackCases.map(
+    ({ suffix, name, agentName, mutate }) => {
+      const content = frameworkFallbackContent(name, "missing");
+      mutate(
+        content,
+        content.agents[name] as unknown as Record<string, unknown>,
+      );
+      const row = executionPlanRow({
+        id: id(suffix),
+        agentName: agentName ?? name,
+        content,
+      });
+      assert.deepEqual(classifyAgentExecutionAuthority(row), {
+        authority: "version_content",
+        classification: "unsupportedOrInvalidContent",
+        dimensions: ["unsupportedOrInvalidContent"],
+      });
+      return row;
+    },
+  );
+  const mixedFrameworkFallbackResult = classifyPlanRows(
+    mixedFrameworkFallbackRows,
+  );
+  assert.equal(
+    mixedFrameworkFallbackResult.agentExecutionPlans
+      .applicationFrameworkFallback.count,
+    0,
+  );
+  assert.equal(
+    mixedFrameworkFallbackResult.agentExecutionPlans.unsupportedOrInvalidContent
+      .count,
+    mixedFrameworkFallbackRows.length,
+  );
+  assert.equal(
+    mixedFrameworkFallbackResult.agentExecutionPlans.refinements
+      .unsupportedOrInvalidContent.primaryPartitionClosure.expected.count,
+    mixedFrameworkFallbackRows.length,
+  );
+
+  const hashDriftFramework = frameworkFallbackContent(
+    "fallback-hash-drift-agent",
+    "missing",
+  );
+  assert.equal(
+    classifyAgentExecutionAuthority(
+      executionPlanRow({
+        id: id(638),
+        agentName: "fallback-hash-drift-agent",
+        content: hashDriftFramework,
+        headVersionId: "e".repeat(64),
+        versionId: "e".repeat(64),
+      }),
+    ).authority,
+    "version_content",
+  );
+  assert.equal(
+    classifyAgentExecutionAuthority(
+      executionPlanRow({
+        id: id(639),
+        agentName: "fallback-missing-version-agent",
+        content: frameworkFallbackContent(
+          "fallback-missing-version-agent",
+          "missing",
+        ),
+        versionId: null,
+      }),
+    ).classification,
+    "danglingOrMissingHeadVersion",
+  );
+  assert.equal(
+    classifyAgentExecutionAuthority(
+      executionPlanRow({
+        id: id(642),
+        agentName: "fallback-dangling-head-agent",
+        content: frameworkFallbackContent(
+          "fallback-dangling-head-agent",
+          "missing",
+        ),
+        headVersionId: null,
+      }),
+    ).classification,
+    "danglingOrMissingHeadVersion",
+  );
+  const duplicateFrameworkFallbackRow = executionPlanRow({
+    id: id(640),
+    agentName: "fallback-duplicate-agent",
+    content: frameworkFallbackContent("fallback-duplicate-agent", "missing"),
+  });
+  const duplicateFrameworkFallbackResult = classifyPlanRows([
+    duplicateFrameworkFallbackRow,
+    duplicateFrameworkFallbackRow,
+  ]);
+  assert.equal(
+    duplicateFrameworkFallbackResult.agentExecutionPlans
+      .applicationFrameworkFallback.count,
+    0,
+  );
+  assert.equal(
+    duplicateFrameworkFallbackResult.agentExecutionPlans.unclassifiedContent
+      .count,
+    1,
+  );
+
   const injected = mutableAgentContent("injected-agent");
   injected.agents["injected-agent"]!.environment = {
     ZERO_AGENT_ID: "legacy-agent-id",
