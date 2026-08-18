@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import { homeAgentId$ } from "../agent.ts";
+import { setupAgentsPage$ } from "../agents-page/agents-page-setup.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
 
 export const setupHomePage$ = command(
@@ -15,6 +16,7 @@ export const setupHomePage$ = command(
     const homeAgentId = await get(homeAgentId$);
     signal.throwIfAborted();
     if (!homeAgentId) {
+      await set(setupAgentsPage$, signal);
       return;
     }
     const params = get(searchParams$);

@@ -9,10 +9,6 @@ import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { localStorageSignals } from "../../../signals/external/local-storage.ts";
 import { pathname } from "../../../signals/location.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import {
-  settingsActiveSection$,
-  settingsDialogOpen$,
-} from "../../../signals/zero-page/settings/settings-dialog.ts";
 
 const context = testContext();
 const LAST_USED_AGENT_STORAGE_KEY = "zero.lastUsedAgentId";
@@ -46,7 +42,6 @@ describe("settings deep-link handoff", () => {
     });
 
     await teamRequestStarted.promise;
-    expect(context.store.get(settingsDialogOpen$)).toBeFalsy();
     expect(
       screen.queryByRole("dialog", { name: "Settings" }),
     ).not.toBeInTheDocument();
@@ -79,10 +74,12 @@ describe("settings deep-link handoff", () => {
       path: "/?settings=billing",
     });
 
-    await waitFor(() => {
-      expect(context.store.get(settingsDialogOpen$)).toBeTruthy();
-      expect(context.store.get(settingsActiveSection$)).toBe("billing");
-    });
+    await expect(
+      screen.findByRole("dialog", { name: "Settings" }),
+    ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByRole("heading", { name: "Billing" }),
+    ).resolves.toBeInTheDocument();
     expect(pathname()).toBe("/");
   });
 });
