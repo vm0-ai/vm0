@@ -152,6 +152,26 @@ function resolveImageRequestModel(
   return hasRunDefault && modelSource === "default" ? undefined : model;
 }
 
+function resolveImageRequestSize(
+  command: Command,
+  options: ImageOptions,
+): string {
+  if (command.getOptionValueSource("size") !== "default") {
+    return options.size;
+  }
+  if (options.imageUrl.length > 0) {
+    return "auto";
+  }
+
+  const selectedModel =
+    command.getOptionValueSource("model") === "default"
+      ? (runDefaultImageModelFromEnvironment() ?? options.model)
+      : options.model;
+  return selectedModel === IMAGE_MODEL_CONFIGS["seedream-5-0-lite-260128"].alias
+    ? "auto"
+    : options.size;
+}
+
 function imageModelPreferenceDetail(command: Command, model: string): string {
   const runDefaultModel = runDefaultImageModelFromEnvironment();
   if (runDefaultModel === undefined) {
@@ -421,15 +441,10 @@ ${formatRegistryListing(styles, "image styles")}`;
         const imagePromptStrength = parseImagePromptStrength(
           options.imagePromptStrength,
         );
-        const hasSourceImage = options.imageUrl.length > 0;
-        const size =
-          hasSourceImage && command.getOptionValueSource("size") === "default"
-            ? "auto"
-            : options.size;
         const result = await generateWebImage({
           prompt: resolvedPrompt,
           model: resolveImageRequestModel(command, options.model),
-          size,
+          size: resolveImageRequestSize(command, options),
           quality: options.quality,
           background: options.background,
           outputFormat: options.format,

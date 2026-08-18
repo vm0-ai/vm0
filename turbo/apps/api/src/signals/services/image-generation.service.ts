@@ -1222,12 +1222,7 @@ function requestedImageSize(
 ): string {
   const defaultSize =
     hasSourceImages || model === SEEDREAM_5_LITE_MODEL ? "auto" : "1024x1024";
-  const requested = readString(body, "size", defaultSize);
-  // The CLI's historical default is 1024x1024, below Seedream 5 Lite's
-  // minimum. Treat that default-shaped request as the model's 2K preset.
-  return model === SEEDREAM_5_LITE_MODEL && requested === "1024x1024"
-    ? "2K"
-    : requested;
+  return readString(body, "size", defaultSize);
 }
 
 export function parseImageOptions(

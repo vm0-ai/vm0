@@ -1486,6 +1486,41 @@ describe("POST /api/zero/image-io/generate", () => {
     await expect(orgCredits(fixture)).resolves.toBe(956);
   });
 
+  it("rejects an explicit unsupported Seedream 5 Lite size", async () => {
+    const fixture = await seedImageFixture({ credits: 1000 });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    let bytePlusCalls = 0;
+    server.use(
+      http.post(BYTEPLUS_IMAGE_GENERATIONS_URL, () => {
+        bytePlusCalls += 1;
+        return HttpResponse.json({});
+      }),
+    );
+
+    const app = createImageIoTestApp();
+    const response = await app.request("/api/zero/image-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "an explicitly undersized product still",
+        model: "seedream5-lite",
+        size: "1024x1024",
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message:
+          "Unsupported image size for seedream5-lite: 1024x1024; total pixels must be between 3686400 and 16777216",
+        code: "BAD_REQUEST",
+      },
+    });
+    expect(bytePlusCalls).toBe(0);
+    await expect(orgCredits(fixture)).resolves.toBe(1000);
+  });
+
   it("bills Seedream 5 Pro output tiers and references through BytePlus", async () => {
     const fixture = await seedImageFixture({ credits: 1000 });
     const pricingFixture = await createScopedImagePricing({
