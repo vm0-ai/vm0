@@ -687,7 +687,7 @@ function memberInvitationAllowed(
   return capabilities?.memberInvitationAllowed ?? false;
 }
 
-export function zeroBillingStatus(
+export function orgBillingStatus(
   orgId: string,
 ): Computed<Promise<BillingStatusResponse>> {
   return computed(async (get): Promise<BillingStatusResponse> => {

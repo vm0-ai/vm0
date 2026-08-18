@@ -3,12 +3,12 @@ import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { zeroBillingStatus } from "../services/zero-billing-status.service";
+import { orgBillingStatus } from "../services/billing-status.service";
 import type { RouteEntry } from "../route-entry";
 
 const getBillingStatusInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const body = await get(zeroBillingStatus(auth.orgId));
+  const body = await get(orgBillingStatus(auth.orgId));
   return { status: 200 as const, body };
 });
 
