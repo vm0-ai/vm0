@@ -101,6 +101,20 @@ function resolveSelectionSource(range: Range): Element | null {
   // common ancestor even when both endpoints are inside assistant bubbles.
   const startSource = closestFeedbackSource(range.startContainer);
   const endSource = closestFeedbackSource(range.endContainer);
+  if (startSource && !endSource && range.endOffset === 0) {
+    // Chromium can end a whole-paragraph selection at offset 0 in the
+    // following action-area sibling. Accept only that trailing boundary in
+    // the same assistant group as the selected content.
+    const endElement =
+      range.endContainer instanceof Element
+        ? range.endContainer
+        : range.endContainer.parentElement;
+    const startGroup = startSource.closest(ASSISTANT_GROUP_SELECTOR);
+    const endGroup = endElement?.closest(ASSISTANT_GROUP_SELECTOR);
+    if (startGroup !== null && startGroup === endGroup) {
+      return startSource;
+    }
+  }
   if (!startSource || !endSource) {
     return null;
   }
