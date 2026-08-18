@@ -313,7 +313,7 @@ async function deliverClaimedGitHubChatCallback(
       run: context.run,
       target: context.payload,
       messageContent: context.messageContent,
-      publicBrand: context.payload.publicBrand ?? "vm0",
+      publicBrand: context.payload.publicBrand,
     },
     signal,
   );

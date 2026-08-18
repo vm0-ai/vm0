@@ -18,7 +18,5 @@ export type GitHubDeliveryTarget = z.infer<typeof githubDeliveryTargetSchema>;
 export const githubChatCallbackPayloadSchema =
   githubDeliveryTargetSchema.extend({
     chatEventId: z.string().uuid(),
-    // Missing is the permanent VM0 contract for callbacks persisted before
-    // public branding reached the secondary GitHub delivery callback.
-    publicBrand: publicBrandSchema.optional(),
+    publicBrand: publicBrandSchema,
   });

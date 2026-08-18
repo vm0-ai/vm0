@@ -1293,6 +1293,14 @@ jobs:
           skip-finish: "true"
           skip-setup: "true"
 
+      - name: Verify production App and API domains
+        env:
+          CF_PAGES_PROJECT_NAME: ${{ vars.CF_PAGES_PROJECT_NAME }}
+        run: |
+          set -euo pipefail
+          bash .github/scripts/verify-okou-production-domains.sh \
+            "https://${CF_PAGES_PROJECT_NAME}.pages.dev"
+
       - name: Resolve Vercel dashboard URL
         id: vercel-dashboard
         if: ${{ steps.deploy.outputs.url != '' }}

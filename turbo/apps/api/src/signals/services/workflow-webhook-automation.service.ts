@@ -120,12 +120,18 @@ async function decryptWorkflowWebhookSecret(
 
 export async function buildWorkflowWebhookSummaryFields(
   db: ReadonlyDb,
-  args: {
-    readonly automation: AutomationRow;
-    readonly webhookToken?: string;
-    readonly webhookSecret?: string;
-    readonly publicBrand?: PublicBrand;
-  },
+  args: { readonly automation: AutomationRow } & (
+    | {
+        readonly webhookToken: string;
+        readonly webhookSecret: string;
+        readonly publicBrand: PublicBrand;
+      }
+    | {
+        readonly webhookToken?: undefined;
+        readonly webhookSecret?: undefined;
+        readonly publicBrand?: undefined;
+      }
+  ),
 ): Promise<{
   readonly webhookUrl?: string;
   readonly secretLastFour: string;
@@ -149,7 +155,7 @@ export async function buildWorkflowWebhookSummaryFields(
       ? {
           webhookUrl: workflowWebhookUrlForToken(
             args.webhookToken,
-            args.publicBrand ?? "vm0",
+            args.publicBrand,
           ),
         }
       : {}),

@@ -568,13 +568,21 @@ function rowSummaryBase(row: AutomationRow, chatThreadId: string | null) {
   };
 }
 
-interface RowToSummaryOptions {
+type RowToSummaryOptions = {
   readonly chatThreadId?: string | null;
-  readonly webhookToken?: string;
-  readonly webhookSecret?: string;
-  readonly publicBrand?: PublicBrand;
   readonly warning?: string;
-}
+} & (
+  | {
+      readonly webhookToken: string;
+      readonly webhookSecret: string;
+      readonly publicBrand: PublicBrand;
+    }
+  | {
+      readonly webhookToken?: undefined;
+      readonly webhookSecret?: undefined;
+      readonly publicBrand?: undefined;
+    }
+);
 
 async function resolveAutomationChatThreadId(
   db: ReadonlyDb,
@@ -892,9 +900,7 @@ async function rowToSummary(
         scheduleSummary: null,
         ...(await buildWorkflowWebhookSummaryFields(db, {
           automation: row,
-          webhookToken: options.webhookToken,
-          webhookSecret: options.webhookSecret,
-          publicBrand: options.publicBrand,
+          ...options,
         })),
       };
     }

@@ -48,11 +48,15 @@ production_verifier_source = Path(sys.argv[4]).read_text()
 
 turbo_job = turbo["jobs"]["deploy-app"]
 release_job = release["jobs"]["promote-app-production"]
+release_api_job = release["jobs"]["promote-api-production"]
 rollback_job = rollback["jobs"]["rollback-app"]
 rollback_verification_job = rollback["jobs"]["verify-production-domains"]
 
 preview_step = find_step(turbo_job, "Deploy Cloudflare Pages preview")
 release_step = find_step(release_job, "Deploy Cloudflare Pages production")
+release_api_verification_step = find_step(
+    release_api_job, "Verify production App and API domains"
+)
 rollback_step = find_step(rollback_job, "Deploy App to Cloudflare Pages production")
 rollback_verification_step = find_step(
     rollback_verification_job, "Verify production App and API domains"
@@ -95,6 +99,15 @@ require_fragments(
     release_step,
     ["verify-okou-production-domains.sh", '"$pages_url"'],
 )
+require_fragments(
+    release_api_verification_step,
+    [
+        "verify-okou-production-domains.sh",
+        '"https://${CF_PAGES_PROJECT_NAME}.pages.dev"',
+    ],
+)
+if "app_release_created" in str(release_api_job.get("if", "")):
+    raise RuntimeError("API production verification must not depend on an App release")
 require_fragments(
     rollback_verification_step,
     [

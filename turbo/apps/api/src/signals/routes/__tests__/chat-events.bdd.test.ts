@@ -98,6 +98,7 @@ import {
 } from "./helpers/api-bdd-connectors";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createFirewallApi, secretTemplate } from "./helpers/api-bdd-firewall";
+import { createGithubBddApi } from "./helpers/api-bdd-github";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
@@ -173,6 +174,7 @@ const chat = createChatFilesBddApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const connectors = createConnectorBddApi(context);
+const github = createGithubBddApi(context);
 const cu = createComputerUseBddApi(context);
 const misc = createMiscRoutesApi(context);
 const authDevice = createAuthDeviceApiActions(context);
@@ -9058,18 +9060,47 @@ describe("CHAT-02: public-brand default assistant identity", () => {
     await cancelChatRun(actor, customRun.runId);
   }, 90_000);
 
-  it("carries the initiating brand into GitHub delivery callbacks with a VM0 legacy fallback", async () => {
+  it("posts brand-matched GitHub Audit links with a VM0 legacy fallback", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     bdd.acceptAgentStorageWrites();
     if (!actor.orgId) {
       throw new Error("Expected an organization-scoped chat actor");
     }
     const orgId = actor.orgId;
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      {
+        [FeatureSwitchKey.ZeroDebug]: true,
+      },
+    );
+    const installation = await github.installGithubApp(actor, agentId);
+    const postedComments: string[] = [];
+    server.use(
+      http.post(
+        "https://api.github.com/repos/:owner/:repo/issues/:issueNumber/comments",
+        async ({ request, params }) => {
+          expect(params.owner).toBe("vm0-ai");
+          expect(params.repo).toBe("vm0");
+          const body = (await request.json()) as Record<string, unknown>;
+          if (typeof body.body !== "string") {
+            return HttpResponse.json(
+              { message: "Expected a comment body" },
+              { status: 400 },
+            );
+          }
+          postedComments.push(body.body);
+          return HttpResponse.json({ id: postedComments.length });
+        },
+      ),
+    );
 
     const expectGitHubCallbackBrand = async (args: {
       readonly requestBrand: PublicBrand;
       readonly expectedBrand: PublicBrand;
       readonly legacy: boolean;
+      readonly subjectNumber: number;
     }): Promise<void> => {
       const run = await sendChatRun(
         actor,
@@ -9082,9 +9113,9 @@ describe("CHAT-02: public-brand default assistant identity", () => {
       const claim = await claimChatRun(runnerGroup, run.runId);
       await setChatCallbackGitHubDeliveryFixture({
         runId: run.runId,
-        installationId: randomUUID(),
+        remoteInstallationId: installation.remoteInstallationId,
         repo: "vm0-ai/vm0",
-        subjectNumber: 1,
+        subjectNumber: args.subjectNumber,
         subjectKind: "issue",
         agentId,
       });
@@ -9098,34 +9129,24 @@ describe("CHAT-02: public-brand default assistant identity", () => {
       await completeChatRunOk(run.runId, claim.sandboxHeaders);
       await flushWaitUntilForTest();
 
-      const state = await runStateStore.set(
-        readAgentRunState$,
-        {
-          orgId,
-          userId: actor.userId,
-          runId: run.runId,
-        },
-        context.signal,
+      expect(postedComments.at(-1)).toContain(
+        `📋 [Audit](https://app.${args.expectedBrand === "okou" ? "okou.ai" : "vm0.ai"}/activities/${run.runId})`,
       );
-      expect(
-        state.callbacks.find((callback) => {
-          return callback.internalKind === "github:chat";
-        }),
-      ).toMatchObject({
-        payload: { publicBrand: args.expectedBrand },
-      });
     };
 
     await expectGitHubCallbackBrand({
       requestBrand: "okou",
       expectedBrand: "okou",
       legacy: false,
+      subjectNumber: 1,
     });
     await expectGitHubCallbackBrand({
       requestBrand: "okou",
       expectedBrand: "vm0",
       legacy: true,
+      subjectNumber: 2,
     });
+    expect(postedComments).toHaveLength(2);
   }, 90_000);
 });
 
