@@ -19,6 +19,29 @@ fn payload(text: &str) -> Result<Vec<u8>, serde_json::Error> {
     guest_contracts::active_input::encode_active_input(DELIVERY_ID, text)
 }
 
+#[tokio::test]
+async fn receipt_runtime_rejects_current_thread_runtime() -> Result<(), Box<dyn std::error::Error>>
+{
+    let tmp = tempfile::tempdir()?;
+    let result = ActiveInputRuntime::new_with_receipts(
+        RUN_ID,
+        "initial",
+        tmp.path().join("active-input-receipts.json"),
+        HttpClient::new()?,
+    );
+    let error = match result {
+        Ok(_) => return Err("receipt runtime should require a multi-thread Tokio runtime".into()),
+        Err(error) => error,
+    };
+
+    assert_eq!(error.kind(), std::io::ErrorKind::Other);
+    assert_eq!(
+        error.to_string(),
+        "active-input receipt persistence requires a multi-thread Tokio runtime"
+    );
+    Ok(())
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn explicit_null_delivery_id_is_rejected() -> Result<(), Box<dyn std::error::Error>> {
     let server = MockServer::start();
