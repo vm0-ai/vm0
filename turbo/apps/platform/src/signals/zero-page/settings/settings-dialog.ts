@@ -55,7 +55,6 @@ const internalSettingsDialogOpen$ = state(false);
 const internalSettingsDialogSignal$ = state<AbortSignal | null>(null);
 const resetSettingsDialogSignal$ = resetSignal();
 const internalSettingsDialogSessionActive$ = state(false);
-const internalSettingsDialogInitialized$ = state(false);
 const pendingAccountMenuSettingsSection$ = state<{
   readonly ownerId: string;
   readonly section: SettingsSection;
@@ -172,7 +171,6 @@ const releaseSettingsDialogSession$ = command(({ set }) => {
   set(clearPendingLogo$);
   set(resetUsagePackPricing$);
   set(internalSettingsDialogOpen$, false);
-  set(internalSettingsDialogInitialized$, false);
 });
 
 export const closeSettingsModal$ = command(({ get, set }) => {
@@ -200,7 +198,6 @@ export const setSettingsDialogOpen$ = command(
       return;
     }
 
-    const dialogInitialized = get(internalSettingsDialogInitialized$);
     const modalSignal = set(resetSettingsDialogSignal$, pageSignal);
     modalSignal.addEventListener(
       "abort",
@@ -211,16 +208,11 @@ export const setSettingsDialogOpen$ = command(
     );
     set(internalSettingsDialogSignal$, modalSignal);
     set(internalSettingsDialogSessionActive$, true);
-    if (!dialogInitialized) {
-      set(reloadBillingStatus$);
-    }
+    set(reloadBillingStatus$);
     set(internalSettingsDialogOpen$, true);
-    if (!dialogInitialized) {
-      await set(initProfileName$, modalSignal);
-      pageSignal.throwIfAborted();
-      modalSignal.throwIfAborted();
-      set(internalSettingsDialogInitialized$, true);
-    }
+    await set(initProfileName$, modalSignal);
+    pageSignal.throwIfAborted();
+    modalSignal.throwIfAborted();
     const params = new URLSearchParams(get(searchParams$));
     const section = get(internalActiveSection$);
     if (section === "model") {
