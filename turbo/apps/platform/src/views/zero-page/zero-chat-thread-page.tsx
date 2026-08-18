@@ -24,6 +24,7 @@ import {
 } from "../../signals/chat-page/run-usage-popover.ts";
 import {
   AlertCircle,
+  Brain,
   Coffee,
   Flag,
   Hand,
@@ -3330,7 +3331,7 @@ function chatRunPresentationForGroups(
       if (runId !== undefined) {
         lastAssociatedRunId = runId;
       }
-      if (!isRenderableAssistantEvent(event)) {
+      if (!isRenderableAssistantResultEvent(event)) {
         continue;
       }
       if (runId === undefined) {
@@ -3739,7 +3740,7 @@ function attachUsageToCompletedWorkGroups(
   for (const [index, group] of groups.entries()) {
     if (
       group.role !== "assistant" ||
-      !group.events.some(isRenderableAssistantEvent)
+      !group.events.some(isRenderableAssistantResultEvent)
     ) {
       continue;
     }
@@ -3764,7 +3765,20 @@ function attachUsageToCompletedWorkGroups(
   });
 }
 
-function isRenderableAssistantEvent(event: EnrichedChatEvent): boolean {
+type EnrichedThinkingChatEvent = Extract<
+  EnrichedChatEvent,
+  { eventType: "output.thinking" }
+>;
+
+function isThinkingOnlyAssistantEvent(
+  event: EnrichedChatEvent,
+): event is EnrichedThinkingChatEvent {
+  return (
+    event.eventType === "output.thinking" && event.thinking.trim().length > 0
+  );
+}
+
+function isRenderableAssistantResultEvent(event: EnrichedChatEvent): boolean {
   return (
     chatEventCompatibilityRole(event.eventType) === "assistant" &&
     ((isChatEventContentTextType(event.eventType) && Boolean(event.content)) ||
@@ -3774,9 +3788,10 @@ function isRenderableAssistantEvent(event: EnrichedChatEvent): boolean {
   );
 }
 
-function isThinkingOnlyAssistantEvent(event: EnrichedChatEvent): boolean {
+function isRenderableAssistantEvent(event: EnrichedChatEvent): boolean {
   return (
-    event.eventType === "output.thinking" && event.thinking.trim().length > 0
+    isThinkingOnlyAssistantEvent(event) ||
+    isRenderableAssistantResultEvent(event)
   );
 }
 
@@ -3822,14 +3837,14 @@ function lastCompletedWorkEventIndex(
 function completedWorkFinalEventIndex(
   events: readonly EnrichedChatEvent[],
 ): number {
-  return lastCompletedWorkEventIndex(events, isRenderableAssistantEvent);
+  return lastCompletedWorkEventIndex(events, isRenderableAssistantResultEvent);
 }
 
 function canFoldCompletedWorkTrailingEvent(event: EnrichedChatEvent): boolean {
   const role = chatEventCompatibilityRole(event.eventType);
   return (
     role === "user" ||
-    (role === "assistant" && !isRenderableAssistantEvent(event))
+    (role === "assistant" && !isRenderableAssistantResultEvent(event))
   );
 }
 
@@ -3853,8 +3868,11 @@ function foldCompletedWorkPhase(
       !isThinkingOnlyAssistantEvent(event)
     );
   });
-  const userEvents = events.filter((event) => {
-    return chatEventCompatibilityRole(event.eventType) === "user";
+  const visiblePrecedingEvents = precedingEvents.filter((event) => {
+    return (
+      chatEventCompatibilityRole(event.eventType) === "user" ||
+      isThinkingOnlyAssistantEvent(event)
+    );
   });
   const trailingEvents =
     finalEventIndex >= 0 ? events.slice(finalEventIndex + 1) : [];
@@ -3870,7 +3888,7 @@ function foldCompletedWorkPhase(
   }
   return {
     visibleEvents: [
-      ...userEvents,
+      ...visiblePrecedingEvents,
       finalEvent,
       ...trailingEvents.filter(isRenderableAssistantEvent),
     ],
@@ -5363,6 +5381,11 @@ function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
       : undefined;
 
   if (mode === null) {
+    return null;
+  }
+
+  // The active thinking event is already rendered inline in transcript order.
+  if (serverThinkingLabel) {
     return null;
   }
 
@@ -7620,6 +7643,7 @@ function PagedAssistantGroup({
     onToggle: () => void;
   };
 }) {
+  const currentThinkingEventId = useLastResolved(thread.thinkingEventId$);
   const hasRenderableEvent = group.events.some((event) => {
     return isRenderableAssistantEvent(event);
   });
@@ -7649,6 +7673,7 @@ function PagedAssistantGroup({
         key={event.id}
         event={event}
         compactTop={compactTop}
+        currentThinking={event.id === currentThinkingEventId}
         thread={thread}
       />
     );
@@ -7707,12 +7732,25 @@ function PagedAssistantGroup({
 function PagedAssistantEventItem({
   event,
   compactTop = false,
+  currentThinking,
   thread,
 }: {
   event: EnrichedChatEvent;
   compactTop?: boolean;
+  currentThinking: boolean;
   thread: ChatPanelSignals;
 }) {
+  if (isThinkingOnlyAssistantEvent(event)) {
+    return (
+      <PagedAssistantThinkingBlock
+        event={event}
+        compactTop={compactTop}
+        current={currentThinking}
+        thread={thread}
+      />
+    );
+  }
+
   const error = chatEventError(event);
   if (error) {
     return (
@@ -7754,6 +7792,141 @@ function PagedAssistantEventItem({
   }
 
   return null;
+}
+
+function PagedAssistantThinkingBlock({
+  event,
+  compactTop,
+  current,
+  thread,
+}: {
+  event: EnrichedThinkingChatEvent;
+  compactTop: boolean;
+  current: boolean;
+  thread: ChatPanelSignals;
+}) {
+  const { t } = useTranslation();
+  const label = t(($) => {
+    return $.activity.events.thinking;
+  });
+  const preview = event.thinking.trim().replace(/\s+/g, " ");
+
+  return (
+    <div
+      data-chat-scroll-anchor-event-id={event.id}
+      data-chat-run-id={event.runId}
+      className={cn(
+        "min-w-0",
+        compactTop ? "@[900px]:pt-0" : "@[900px]:pt-2.5",
+      )}
+    >
+      <details
+        data-thinking-block
+        data-thinking-indicator={current ? "" : undefined}
+        open={current}
+        className="group max-w-[710px]"
+      >
+        <summary className="flex min-h-9 w-full cursor-pointer list-none items-center gap-2 rounded-[10px] px-2.5 py-1.5 text-left text-muted-foreground transition-colors hover:bg-muted/50 group-open:bg-muted/50 group-open:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+          {current ? (
+            <PagedAssistantCurrentThinkingSummary
+              event={event}
+              label={label}
+              preview={preview}
+              thread={thread}
+            />
+          ) : (
+            <>
+              <Brain aria-hidden size={14} className="shrink-0" />
+              <span className="shrink-0 text-xs font-semibold">{label}</span>
+              <span className="min-w-0 flex-1 truncate font-serif text-[0.8125rem] font-normal group-open:hidden">
+                {preview}
+              </span>
+            </>
+          )}
+          <ChevronRight
+            aria-hidden
+            size={14}
+            className="ml-auto shrink-0 text-muted-foreground/70 transition-transform group-open:rotate-90"
+          />
+        </summary>
+        <div
+          data-thinking-block-content
+          className="mt-1 rounded-xl bg-muted/50 px-3 py-2.5 font-serif text-[0.875rem] leading-[1.55] text-foreground/80 [overflow-wrap:anywhere]"
+        >
+          <Markdown
+            source={event.thinking}
+            escapeHtml
+            mathEnabled
+            style={{ fontSize: "inherit", lineHeight: "inherit" }}
+          />
+        </div>
+      </details>
+    </div>
+  );
+}
+
+function PagedAssistantCurrentThinkingSummary({
+  event,
+  label,
+  preview,
+  thread,
+}: {
+  event: EnrichedThinkingChatEvent;
+  label: string;
+  preview: string;
+  thread: ChatPanelSignals;
+}) {
+  const thinkingText = useLastResolved(thread.thinkingText$);
+  const displayedThinkingText =
+    useLastResolved(thread.displayedThinkingText$) ?? "";
+  const thinkingTextFadingOut =
+    useLastResolved(thread.thinkingTextFadingOut$) ?? false;
+  const setThinkingIndicatorTextRef = useSet(
+    thread.setThinkingIndicatorTextRef$,
+  );
+  const [c1, c2, c3] = useGet(thread.blockColors$);
+  const blockStyle = {
+    "--zb-c1": c1,
+    "--zb-c2": c2,
+    "--zb-c3": c3,
+  } as CSSProperties;
+  const serverThinkingLabel = thinkingText
+    ? {
+        displayedText: displayedThinkingText,
+        fadingOut: thinkingTextFadingOut,
+        fullText: thinkingText,
+        id: event.id,
+        setRef: setThinkingIndicatorTextRef,
+      }
+    : undefined;
+
+  return (
+    <>
+      <span className="zero-blocks shrink-0" style={blockStyle}>
+        <span />
+        <span />
+        <span />
+      </span>
+      <span className="shrink-0 text-xs font-semibold">{label}</span>
+      {serverThinkingLabel ? (
+        <ShimmerText
+          key={serverThinkingLabel.id}
+          setRef={serverThinkingLabel.setRef}
+          className={cn(
+            "min-w-0 group-open:hidden transition-opacity duration-200",
+            serverThinkingLabel.fadingOut ? "opacity-0" : "opacity-100",
+          )}
+          ariaLabel={serverThinkingLabel.fullText}
+        >
+          {serverThinkingLabel.displayedText || "\u00a0"}
+        </ShimmerText>
+      ) : (
+        <span className="min-w-0 flex-1 truncate font-serif text-[0.8125rem] font-normal group-open:hidden">
+          {preview}
+        </span>
+      )}
+    </>
+  );
 }
 
 function formatCredits(value: number): string {

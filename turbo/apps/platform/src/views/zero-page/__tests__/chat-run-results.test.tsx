@@ -1641,6 +1641,9 @@ describe("chat lifecycle", () => {
       expect(
         screen.getByText("Summarize the launch status"),
       ).toBeInTheDocument();
+      expect(document.querySelector("[data-thinking-block]")).toHaveTextContent(
+        "Reviewing launch context",
+      );
       expect(screen.getByText("Launch status is ready.")).toBeInTheDocument();
       expect(screen.queryByText("Worked for 5s")).not.toBeInTheDocument();
       expect(screen.queryByLabelText("Expand work history")).toBeNull();

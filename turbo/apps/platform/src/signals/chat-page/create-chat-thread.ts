@@ -1377,13 +1377,7 @@ function lastRunThinkingEvent(
   if (!lastEvent || !isThinkingMarkerSemanticEvent(lastEvent)) {
     return undefined;
   }
-  const runId = lastEvent.event.runId;
-  const runHasAssistantText = events.some((entry) => {
-    return (
-      entry.event.runId === runId && isRenderableAssistantSemanticEvent(entry)
-    );
-  });
-  return runHasAssistantText ? undefined : lastEvent;
+  return lastEvent;
 }
 
 interface ThinkingIndicatorProjection {
