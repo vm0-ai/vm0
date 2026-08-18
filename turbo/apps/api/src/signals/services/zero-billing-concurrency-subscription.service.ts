@@ -1267,6 +1267,56 @@ function concurrencyChangeTargetQuantity(
   return targetQuantity;
 }
 
+async function applyImmediateConcurrencySubscriptionChange(
+  stripe: StripeClient,
+  args: {
+    readonly subscription: StripeSubscription;
+    readonly item: NonNullable<ReturnType<typeof concurrencySubscriptionItem>>;
+    readonly targetQuantity: number;
+    readonly paymentMethod: BillingPurchasePaymentMethod | undefined;
+  },
+  signal: AbortSignal,
+): Promise<StripeConcurrencySubscriptionChangeResult> {
+  if (args.targetQuantity === args.item.quantity) {
+    return {
+      ok: true,
+      response: { status: "completed", hostedInvoiceUrl: null },
+      subscription: { ...args.subscription, schedule: null },
+    };
+  }
+
+  if (args.paymentMethod) {
+    await setStripeSubscriptionPaymentMethod(
+      stripe,
+      args.subscription.id,
+      args.paymentMethod,
+      signal,
+    );
+  }
+
+  const updatedSubscription = await stripe.subscriptions.update(
+    args.subscription.id,
+    {
+      items: [{ id: args.item.id, quantity: args.targetQuantity }],
+      payment_behavior: "pending_if_incomplete",
+      proration_behavior: "always_invoice",
+      proration_date: Math.floor(nowDate().getTime() / 1000),
+      expand: ["latest_invoice"],
+    },
+  );
+  signal.throwIfAborted();
+  return {
+    ok: true,
+    response: await appliedConcurrencyChangeResponse(
+      stripe,
+      updatedSubscription,
+      args.targetQuantity,
+      signal,
+    ),
+    subscription: updatedSubscription,
+  };
+}
+
 export const applyStripeConcurrencySubscriptionChange$ = command(
   async (
     { get },
@@ -1381,45 +1431,16 @@ export const applyStripeConcurrencySubscriptionChange$ = command(
       });
       signal.throwIfAborted();
     }
-
-    if (targetQuantity === item.quantity) {
-      return {
-        ok: true,
-        response: { status: "completed", hostedInvoiceUrl: null },
-        subscription: { ...subscription, schedule: null },
-      };
-    }
-
-    if (args.paymentMethod) {
-      await setStripeSubscriptionPaymentMethod(
-        stripe,
-        subscription.id,
-        args.paymentMethod,
-        signal,
-      );
-    }
-
-    const updatedSubscription = await stripe.subscriptions.update(
-      subscription.id,
+    return await applyImmediateConcurrencySubscriptionChange(
+      stripe,
       {
-        items: [{ id: item.id, quantity: targetQuantity }],
-        payment_behavior: "pending_if_incomplete",
-        proration_behavior: "always_invoice",
-        proration_date: Math.floor(nowDate().getTime() / 1000),
-        expand: ["latest_invoice"],
-      },
-    );
-    signal.throwIfAborted();
-    return {
-      ok: true,
-      response: await appliedConcurrencyChangeResponse(
-        stripe,
-        updatedSubscription,
+        subscription,
+        item,
         targetQuantity,
-        signal,
-      ),
-      subscription: updatedSubscription,
-    };
+        paymentMethod: args.paymentMethod,
+      },
+      signal,
+    );
   },
 );
 
