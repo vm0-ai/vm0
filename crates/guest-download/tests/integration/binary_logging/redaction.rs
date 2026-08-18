@@ -580,4 +580,53 @@ fn binary_does_not_log_file_archive_path_on_missing_local_file() {
     assert_does_not_contain_any("stderr", &stderr, &forbidden);
     assert_does_not_contain_any("system log", &system_log_content, &forbidden);
     assert_does_not_contain_any("sandbox ops log", &ops_log_content, &forbidden);
+    let ops = fixture.ops_entries().unwrap();
+    assert!(
+        ops.iter().any(|entry| {
+            entry["action_type"] == "storage_download"
+                && entry["success"] == false
+                && entry["outcome"] == "file_unknown"
+                && entry["reason"] == "other"
+        }),
+        "missing bounded failed local attribution: {ops_log_content}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn binary_classifies_non_file_local_archive_as_unknown_without_logging_path() {
+    let fixture = BinaryLoggingFixture::new("secret-non-file-path").unwrap();
+    let non_file = fixture.dir.path().join("secret-staged-archive-directory");
+    std::fs::create_dir(&non_file).unwrap();
+
+    let mount = fixture.dir.path().join("mount");
+    let url = format!("file://{}", non_file.display());
+    let manifest =
+        write_manifest(&fixture.dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
+
+    let output = fixture.run_manifest_path(&manifest).unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let system_log_content = fixture.read_system_log().unwrap();
+    let ops_log_content = fixture.read_ops_log().unwrap();
+    let non_file_path = non_file.to_string_lossy();
+    let forbidden = [
+        url.as_str(),
+        non_file_path.as_ref(),
+        "secret-staged-archive",
+    ];
+    assert_does_not_contain_any("stderr", &stderr, &forbidden);
+    assert_does_not_contain_any("system log", &system_log_content, &forbidden);
+    assert_does_not_contain_any("sandbox ops log", &ops_log_content, &forbidden);
+    let ops = fixture.ops_entries().unwrap();
+    assert!(
+        ops.iter().any(|entry| {
+            entry["action_type"] == "storage_download"
+                && entry["success"] == false
+                && entry["outcome"] == "file_unknown"
+                && entry["reason"] == "other"
+        }),
+        "missing bounded failed local attribution: {ops_log_content}"
+    );
 }

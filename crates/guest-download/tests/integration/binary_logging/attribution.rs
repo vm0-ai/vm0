@@ -2,7 +2,7 @@ use super::{BinaryLoggingFixture, assert_action_types_present};
 use crate::support::{create_tar_gz, read_http_request_path, write_manifest};
 use httpmock::prelude::*;
 use httpmock::{HttpMockRequest, HttpMockResponse};
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::io::Write as _;
 use std::net::TcpListener;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -14,6 +14,17 @@ const ARTIFACT_REMOTE_PREFIX: &str = "artifact_download_remote_";
 
 fn operation<'a>(ops: &'a [Value], action: &str) -> Option<&'a Value> {
     ops.iter().find(|entry| entry["action_type"] == action)
+}
+
+fn operation_with_dimensions<'a>(
+    ops: &'a [Value],
+    action: &str,
+    outcome: &str,
+    reason: &str,
+) -> Option<&'a Value> {
+    ops.iter().find(|entry| {
+        entry["action_type"] == action && entry["outcome"] == outcome && entry["reason"] == reason
+    })
 }
 
 fn action_precedes(actions: &[String], earlier: &str, later: &str) -> bool {
@@ -131,6 +142,14 @@ fn binary_records_download_scheduler_attribution() {
             "download_total",
         ],
     );
+    let storage_total =
+        operation_with_dimensions(&ops, "storage_download", "remote_lt_64_kib", "other").unwrap();
+    assert_eq!(storage_total["success"], true);
+    assert!(storage_total.get("error").is_none());
+    let artifact_total =
+        operation_with_dimensions(&ops, "artifact_download", "file_lt_64_kib", "other").unwrap();
+    assert_eq!(artifact_total["success"], true);
+    assert!(artifact_total.get("error").is_none());
     for phase in [
         "guest_download_plan_build",
         "guest_download_cleanup",
@@ -327,6 +346,12 @@ fn binary_records_scheduler_attribution_for_failed_download() {
         .unwrap()["duration_ms"],
         0
     );
+    let storage_total =
+        operation_with_dimensions(&ops, "storage_download", "remote_zero", "other").unwrap();
+    assert_eq!(storage_total["success"], false);
+    assert!(storage_total["error"].as_str().is_some_and(|error| {
+        error.contains("HTTP status 404") && error.contains("urlScheme=http")
+    }));
 }
 
 #[test]
@@ -431,6 +456,16 @@ fn binary_records_remote_artifact_attribution_and_compressed_byte_bucket() {
     archive_mock.assert_calls(1);
     assert_eq!(std::fs::read(mount.join("artifact.bin")).unwrap(), content);
 
+    let ops = fixture.ops_entries().unwrap();
+    let artifact_total = operation_with_dimensions(
+        &ops,
+        "artifact_download",
+        "remote_64_kib_to_256_kib",
+        "other",
+    )
+    .unwrap();
+    assert_eq!(artifact_total["success"], true);
+    assert!(artifact_total.get("error").is_none());
     let actions = fixture.action_types().unwrap();
     assert_action_types_present(
         &actions,
@@ -544,4 +579,104 @@ fn binary_separates_response_header_and_body_read_wait() {
         "header wait was {header_wait}ms: {ops:?}"
     );
     assert!(body_wait >= 50, "body wait was {body_wait}ms: {ops:?}");
+}
+
+#[test]
+fn binary_records_opened_file_size_around_bucket_boundary() {
+    let fixture = BinaryLoggingFixture::new("opened-file-size-boundary").unwrap();
+    let below_boundary = fixture.dir.path().join("below-boundary.tar.gz");
+    let at_boundary = fixture.dir.path().join("at-boundary.tar.gz");
+    std::fs::write(&below_boundary, vec![0_u8; 65_535]).unwrap();
+    std::fs::write(&at_boundary, vec![0_u8; 65_536]).unwrap();
+
+    let below_mount = fixture.dir.path().join("below-mount");
+    let at_mount = fixture.dir.path().join("at-mount");
+    let below_url = format!("file://{}", below_boundary.display());
+    let at_url = format!("file://{}", at_boundary.display());
+    let manifest = write_manifest(
+        &fixture.dir,
+        &[
+            (below_mount.to_str().unwrap(), Some(&below_url)),
+            (at_mount.to_str().unwrap(), Some(&at_url)),
+        ],
+        None,
+    )
+    .unwrap();
+
+    let output = fixture.run_manifest_path(&manifest).unwrap();
+
+    assert!(!output.status.success());
+    let ops = fixture.ops_entries().unwrap();
+    for outcome in ["file_lt_64_kib", "file_64_kib_to_256_kib"] {
+        let task = operation_with_dimensions(&ops, "storage_download", outcome, "other").unwrap();
+        assert_eq!(task["success"], false);
+        assert!(
+            task["error"]
+                .as_str()
+                .is_some_and(|error| error.contains("invalid gzip header")),
+            "unexpected task entry: {task:?}"
+        );
+    }
+    assert_eq!(
+        ops.iter()
+            .filter(|entry| entry["action_type"] == "storage_download")
+            .count(),
+        2,
+        "unexpected task totals: {ops:?}"
+    );
+    assert_eq!(
+        operation(&ops, "guest_download_archive_scheduler").unwrap()["success"],
+        false
+    );
+    assert_eq!(operation(&ops, "download_total").unwrap()["success"], false);
+}
+
+#[test]
+fn binary_records_framework_home_instructions_role() {
+    let fixture = BinaryLoggingFixture::new("framework-home-instructions-role").unwrap();
+    let archive = create_tar_gz(&[("AGENTS.md", b"runtime instructions")]).unwrap();
+    assert!(archive.len() < 65_536);
+    let archive_path = fixture.dir.path().join("instructions.tar.gz");
+    std::fs::write(&archive_path, archive).unwrap();
+
+    let framework_home = fixture.dir.path().join(".codex");
+    let extract_path = fixture.dir.path().join("instructions-stage");
+    let manifest_path = fixture.dir.path().join("instructions-manifest.json");
+    let manifest = json!({
+        "storageMounts": [{
+            "mountPath": framework_home,
+            "extractPath": extract_path,
+            "archiveUrl": format!("file://{}", archive_path.display()),
+            "instructionsTargetFilename": "AGENTS.md"
+        }]
+    });
+    std::fs::write(&manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+
+    let output = fixture.run_manifest_path(&manifest_path).unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        std::fs::read_to_string(framework_home.join("AGENTS.md")).unwrap(),
+        "runtime instructions"
+    );
+    assert!(!extract_path.exists());
+    let ops = fixture.ops_entries().unwrap();
+    let task = operation_with_dimensions(
+        &ops,
+        "storage_download",
+        "file_lt_64_kib",
+        "framework_home_instructions",
+    )
+    .unwrap();
+    assert_eq!(task["success"], true);
+    assert!(task.get("error").is_none());
+    assert_eq!(
+        operation(&ops, "guest_download_instruction_normalize").unwrap()["success"],
+        true
+    );
+    assert_eq!(operation(&ops, "download_total").unwrap()["success"], true);
 }

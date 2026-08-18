@@ -1,5 +1,7 @@
 use crate::source;
-use guest_common::telemetry::record_sandbox_op;
+use guest_common::telemetry::{
+    SandboxOpDimensions, record_sandbox_op, record_sandbox_op_with_dimensions,
+};
 use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
@@ -37,9 +39,22 @@ impl DownloadTaskTelemetry {
         duration: Duration,
         success: bool,
         error: Option<&str>,
+        opened_file_compressed_bytes: Option<u64>,
         remote_metrics: Option<&RemoteArchiveTaskMetrics>,
     ) {
-        record_sandbox_op(self.archive_kind.total_action(), duration, success, error);
+        record_sandbox_op_with_dimensions(
+            self.archive_kind.total_action(),
+            duration,
+            success,
+            error,
+            SandboxOpDimensions {
+                outcome: Some(
+                    self.url_kind
+                        .source_size_outcome(opened_file_compressed_bytes, remote_metrics),
+                ),
+                reason: Some(self.task_kind.label()),
+            },
+        );
         if let Some(metrics) = remote_metrics {
             record_remote_archive_attribution(self.archive_kind, metrics, success);
         }
@@ -285,6 +300,16 @@ enum DownloadTaskKind {
     Other,
 }
 
+impl DownloadTaskKind {
+    fn label(self) -> &'static str {
+        match self {
+            Self::FrameworkHomeInstructions => "framework_home_instructions",
+            Self::FrameworkSkillChild => "framework_skill_child",
+            Self::Other => "other",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum DownloadUrlKind {
     Remote,
@@ -300,6 +325,24 @@ impl DownloadUrlKind {
             Self::File
         } else {
             Self::Other
+        }
+    }
+
+    fn source_size_outcome(
+        self,
+        opened_file_compressed_bytes: Option<u64>,
+        remote_metrics: Option<&RemoteArchiveTaskMetrics>,
+    ) -> &'static str {
+        match self {
+            Self::File => opened_file_compressed_bytes
+                .map(CompressedBytesBucket::from_bytes)
+                .map(CompressedBytesBucket::file_outcome)
+                .unwrap_or("file_unknown"),
+            Self::Remote => remote_metrics
+                .map(|metrics| CompressedBytesBucket::from_bytes(metrics.compressed_bytes_consumed))
+                .map(CompressedBytesBucket::remote_outcome)
+                .unwrap_or("remote_unknown"),
+            Self::Other => "other_unknown",
         }
     }
 }
@@ -353,6 +396,32 @@ impl CompressedBytesBucket {
             4_194_304..16_777_216 => Self::Mib4To16,
             16_777_216..67_108_864 => Self::Mib16To64,
             _ => Self::Mib64Plus,
+        }
+    }
+
+    fn file_outcome(self) -> &'static str {
+        match self {
+            Self::Zero => "file_zero",
+            Self::Under64Kib => "file_lt_64_kib",
+            Self::Kib64To256 => "file_64_kib_to_256_kib",
+            Self::Kib256To1Mib => "file_256_kib_to_1_mib",
+            Self::Mib1To4 => "file_1_mib_to_4_mib",
+            Self::Mib4To16 => "file_4_mib_to_16_mib",
+            Self::Mib16To64 => "file_16_mib_to_64_mib",
+            Self::Mib64Plus => "file_64_mib_plus",
+        }
+    }
+
+    fn remote_outcome(self) -> &'static str {
+        match self {
+            Self::Zero => "remote_zero",
+            Self::Under64Kib => "remote_lt_64_kib",
+            Self::Kib64To256 => "remote_64_kib_to_256_kib",
+            Self::Kib256To1Mib => "remote_256_kib_to_1_mib",
+            Self::Mib1To4 => "remote_1_mib_to_4_mib",
+            Self::Mib4To16 => "remote_4_mib_to_16_mib",
+            Self::Mib16To64 => "remote_16_mib_to_64_mib",
+            Self::Mib64Plus => "remote_64_mib_plus",
         }
     }
 }
@@ -747,6 +816,15 @@ mod tests {
 
     #[test]
     fn task_kind_classification_identifies_instructions_and_skill_children() {
+        assert_eq!(
+            DownloadTaskKind::FrameworkHomeInstructions.label(),
+            "framework_home_instructions"
+        );
+        assert_eq!(
+            DownloadTaskKind::FrameworkSkillChild.label(),
+            "framework_skill_child"
+        );
+        assert_eq!(DownloadTaskKind::Other.label(), "other");
         assert_eq!(
             DownloadTaskTelemetry::storage(
                 "https://example.com/archive.tar.gz",
