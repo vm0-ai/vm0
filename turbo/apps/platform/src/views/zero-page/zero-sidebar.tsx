@@ -38,7 +38,9 @@ import { assistantName$ } from "../../signals/branding.ts";
 import {
   manageSectionCollapsed$,
   setManageSectionCollapsed$,
-  openAgentListDialog$,
+  openThreeColumnSearchDialog$,
+  setThreeColumnSearchOpen$,
+  threeColumnSearchOpen$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import {
   ZeroOrgSwitcher,
@@ -50,6 +52,7 @@ import { slackOrgScopeMismatch$ } from "../../signals/zero-page/zero-slack.ts";
 import { AccountDropdown } from "./zero-sidebar-account.tsx";
 import { ChatThreadsSection } from "./sidebar-threads.tsx";
 import { PinnedAgentListSection } from "./zero-sidebar-pinned.tsx";
+import { ThreeColumnSearchDialog } from "./zero-sidebar-dialogs.tsx";
 import { SidebarUpgradeCard } from "./zero-sidebar-upgrade.tsx";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -58,6 +61,7 @@ import {
   createNewChatThread$,
   newChatThreadDisabled$,
 } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
+import { detachedNavigateTo$ } from "../../signals/route.ts";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 
@@ -738,12 +742,34 @@ function LabeledNavRail() {
   );
 }
 
+function ThreeColumnSearchDialogContainer() {
+  const open = useGet(threeColumnSearchOpen$);
+  const onOpenChange = useSet(setThreeColumnSearchOpen$);
+  const navigate = useSet(detachedNavigateTo$);
+
+  if (!open) {
+    return null;
+  }
+
+  return (
+    <ThreeColumnSearchDialog
+      open
+      onOpenChange={onOpenChange}
+      onSelectChatThread={(threadId) => {
+        navigate("/chats/:threadId", {
+          pathParams: { threadId },
+        });
+      }}
+    />
+  );
+}
+
 function ChatListColumn() {
   const currentChatAgentId = useLastResolved(currentChatAgentId$) ?? null;
   const createNewChat = useSet(createNewChatThread$);
   const newChatDisabled = useGet(newChatThreadDisabled$);
   const rootSignal = useGet(rootSignal$);
-  const openAgentList = useSet(openAgentListDialog$);
+  const openThreeColumnSearch = useSet(openThreeColumnSearchDialog$);
   const { t } = useTranslation();
   const searchLabel = t(($) => {
     return $.appShell.sidebar.searchConversations;
@@ -761,62 +787,65 @@ function ChatListColumn() {
     );
   };
   return (
-    <aside
-      data-testid="chat-list-column"
-      className="zero-nav hidden md:flex h-full w-[300px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar"
-    >
-      <div className="flex shrink-0 items-center gap-1 px-3 pb-2 pt-3">
-        <span className="flex-1 text-[15px] font-semibold text-sidebar-foreground">
-          {t(($) => {
-            return $.appShell.sidebar.chat;
-          })}
-        </span>
-        <TooltipProvider delayDuration={200}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                onClick={() => {
-                  openAgentList();
-                }}
-                aria-label={searchLabel}
-                variant="quiet"
-                size="icon-sm"
-              >
-                <Search style={chatHeaderIconStyle} size={17} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p className="text-xs">{searchLabel}</p>
-            </TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                onClick={onNewChat}
-                disabled={!currentChatAgentId || newChatDisabled}
-                aria-label={newChatLabel}
-                variant="quiet"
-                size="icon-sm"
-              >
-                <Edit style={chatHeaderIconStyle} size={17} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p className="text-xs">{newChatLabel}</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </div>
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-2 pt-1">
-        <PinnedAgentListSection layout="horizontal" />
-        <ChatThreadsSection showMarkAllRead />
-      </div>
-      <div className="px-2 pb-2">
-        <SidebarUpgradeCard />
-      </div>
-    </aside>
+    <>
+      <aside
+        data-testid="chat-list-column"
+        className="zero-nav hidden md:flex h-full w-[300px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar"
+      >
+        <div className="flex shrink-0 items-center gap-1 px-3 pb-2 pt-3">
+          <span className="flex-1 text-[15px] font-semibold text-sidebar-foreground">
+            {t(($) => {
+              return $.appShell.sidebar.chat;
+            })}
+          </span>
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    openThreeColumnSearch();
+                  }}
+                  aria-label={searchLabel}
+                  variant="quiet"
+                  size="icon-sm"
+                >
+                  <Search style={chatHeaderIconStyle} size={17} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p className="text-xs">{searchLabel}</p>
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  onClick={onNewChat}
+                  disabled={!currentChatAgentId || newChatDisabled}
+                  aria-label={newChatLabel}
+                  variant="quiet"
+                  size="icon-sm"
+                >
+                  <Edit style={chatHeaderIconStyle} size={17} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p className="text-xs">{newChatLabel}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-2 pt-1">
+          <PinnedAgentListSection layout="horizontal" />
+          <ChatThreadsSection showMarkAllRead />
+        </div>
+        <div className="px-2 pb-2">
+          <SidebarUpgradeCard />
+        </div>
+      </aside>
+      <ThreeColumnSearchDialogContainer />
+    </>
   );
 }
 

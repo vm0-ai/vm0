@@ -163,6 +163,35 @@ export const openAgentListDialog$ = command(({ set }) => {
 });
 
 // ---------------------------------------------------------------------------
+// Three-column search dialog state
+// ---------------------------------------------------------------------------
+export type ThreeColumnSearchFilter = "all" | "chats" | "messages";
+
+const internalThreeColumnSearchOpen$ = state(false);
+export const threeColumnSearchOpen$ = computed((get) => {
+  return get(internalThreeColumnSearchOpen$);
+});
+export const setThreeColumnSearchOpen$ = command(({ set }, open: boolean) => {
+  set(internalThreeColumnSearchOpen$, open);
+});
+
+const internalThreeColumnSearchFilter$ = state<ThreeColumnSearchFilter>("all");
+export const threeColumnSearchFilter$ = computed((get) => {
+  return get(internalThreeColumnSearchFilter$);
+});
+export const setThreeColumnSearchFilter$ = command(
+  ({ set }, filter: ThreeColumnSearchFilter) => {
+    set(internalThreeColumnSearchFilter$, filter);
+  },
+);
+
+export const openThreeColumnSearchDialog$ = command(({ set }) => {
+  set(internalChatListQuery$, "");
+  set(internalThreeColumnSearchFilter$, "all");
+  set(internalThreeColumnSearchOpen$, true);
+});
+
+// ---------------------------------------------------------------------------
 // Pin agent dialog state (pinned agent grid)
 // ---------------------------------------------------------------------------
 const internalPinAgentDialogOpen$ = state(false);

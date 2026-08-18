@@ -3,7 +3,7 @@
 import type { ReactNode, SyntheticEvent } from "react";
 import { useGet, useSet, useLastResolved, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import { Loader2, Search, X, Pin, PinOff } from "lucide-react";
+import { ChevronRight, Loader2, Search, X, Pin, PinOff } from "lucide-react";
 import type { ChatSearchResult } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   Button,
@@ -24,6 +24,9 @@ import {
   pinAgentDialogQuery$,
   setChatListQuery$,
   setPinAgentDialogQuery$,
+  setThreeColumnSearchFilter$,
+  threeColumnSearchFilter$,
+  type ThreeColumnSearchFilter,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import {
   defaultAgentId$,
@@ -834,6 +837,405 @@ function ChatMessageCommandItem({
         </span>
       ) : null}
     </CommandItem>
+  );
+}
+
+function SpotlightResultType({ children }: { readonly children: ReactNode }) {
+  return (
+    <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+      {children}
+    </span>
+  );
+}
+
+function SpotlightThreadCommandItem({
+  thread,
+  indicator,
+  onSelect,
+}: {
+  readonly thread: AgentListDialogChatThread;
+  readonly indicator: ChatThreadCommandIndicatorValue;
+  readonly onSelect: () => void;
+}) {
+  const { t } = useTranslation("agents");
+
+  return (
+    <CommandItem
+      value={`spotlight-thread-${thread.id}`}
+      onSelect={onSelect}
+      className="group w-full gap-3 px-2 py-2.5"
+    >
+      <AgentAvatarImg
+        name={thread.agentId}
+        alt=""
+        className="h-9 w-9 shrink-0 rounded-xl object-cover object-top"
+      />
+      <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
+        <span className="truncate text-sm font-medium text-foreground">
+          {thread.title}
+        </span>
+        <SpotlightResultType>
+          {t(($) => {
+            return $.sidebar.chatResult;
+          })}
+        </SpotlightResultType>
+      </span>
+      <span className="ml-auto flex shrink-0 items-center gap-2 text-muted-foreground">
+        <ChatThreadCommandIndicator indicator={indicator} />
+        <ChevronRight size={15} aria-hidden="true" />
+      </span>
+    </CommandItem>
+  );
+}
+
+function SpotlightMessageCommandItem({
+  message,
+  thread,
+  indicator,
+  onSelect,
+}: {
+  readonly message: ChatSearchResult;
+  readonly thread: AgentListDialogChatThread | undefined;
+  readonly indicator: ChatThreadCommandIndicatorValue;
+  readonly onSelect: () => void;
+}) {
+  const { t } = useTranslation("agents");
+  const title = thread?.title ?? message.agentName;
+
+  return (
+    <CommandItem
+      value={`spotlight-message-${message.matchedMessage.chatThreadId}:${message.matchedMessage.seqId}`}
+      onSelect={onSelect}
+      className="group w-full gap-3 px-2 py-2.5"
+    >
+      <AgentAvatarImg
+        name={thread?.agentId ?? message.agentName}
+        alt=""
+        className="h-9 w-9 shrink-0 rounded-xl object-cover object-top"
+      />
+      <span className="min-w-0 flex-1 text-left">
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-sm font-medium text-foreground">
+            {title}
+          </span>
+          <SpotlightResultType>
+            {t(($) => {
+              return $.sidebar.messageResult;
+            })}
+          </SpotlightResultType>
+        </span>
+        <ChatMessageSnippet message={message} />
+      </span>
+      <span className="ml-auto flex shrink-0 items-center gap-2 text-muted-foreground">
+        <ChatThreadCommandIndicator indicator={indicator} />
+        <ChevronRight size={15} aria-hidden="true" />
+      </span>
+    </CommandItem>
+  );
+}
+
+function SpotlightFilterButton({
+  active,
+  label,
+  onSelect,
+}: {
+  readonly active: boolean;
+  readonly label: string;
+  readonly onSelect: () => void;
+}) {
+  return (
+    <Button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      variant={active ? "outline" : "quiet"}
+      size="xs"
+      className="h-7 rounded-full px-3 text-xs font-normal"
+      onClick={onSelect}
+    >
+      {label}
+    </Button>
+  );
+}
+
+function SpotlightSearchInput({
+  query,
+  onValueChange,
+}: {
+  readonly query: string;
+  readonly onValueChange: (query: string) => void;
+}) {
+  const { t } = useTranslation("agents");
+
+  return (
+    <div className="px-5 pb-4 pt-5">
+      <div className="relative">
+        <CommandInput
+          value={query}
+          onValueChange={onValueChange}
+          placeholder={t(($) => {
+            return $.sidebar.searchChatsAndMessages;
+          })}
+          wrapperClassName="h-12 rounded-xl"
+          className="pr-12 text-[15px] placeholder:text-[15px]"
+        />
+        <kbd className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded-md border-[0.7px] border-[hsl(var(--gray-300))] bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+          {t(($) => {
+            return $.sidebar.escapeShortcut;
+          })}
+        </kbd>
+      </div>
+    </div>
+  );
+}
+
+function SpotlightSearchFilterBar({
+  filter,
+  resultCount,
+  onSelect,
+}: {
+  readonly filter: ThreeColumnSearchFilter;
+  readonly resultCount: number;
+  readonly onSelect: (filter: ThreeColumnSearchFilter) => void;
+}) {
+  const { t } = useTranslation("agents");
+  const options: readonly {
+    readonly value: ThreeColumnSearchFilter;
+    readonly label: string;
+  }[] = [
+    {
+      value: "all",
+      label: t(($) => {
+        return $.sidebar.filterAll;
+      }),
+    },
+    {
+      value: "chats",
+      label: t(($) => {
+        return $.sidebar.sections.chats;
+      }),
+    },
+    {
+      value: "messages",
+      label: t(($) => {
+        return $.sidebar.sections.messages;
+      }),
+    },
+  ];
+
+  return (
+    <div className="flex items-center justify-between border-y-[0.7px] border-[hsl(var(--gray-300))] px-5 py-3">
+      <div role="tablist" className="flex items-center gap-1">
+        {options.map((option) => {
+          return (
+            <SpotlightFilterButton
+              key={option.value}
+              active={filter === option.value}
+              label={option.label}
+              onSelect={() => {
+                return onSelect(option.value);
+              }}
+            />
+          );
+        })}
+      </div>
+      <span className="text-xs text-muted-foreground" role="status">
+        {t(
+          ($) => {
+            return $.sidebar.resultCount;
+          },
+          { count: resultCount },
+        )}
+      </span>
+    </div>
+  );
+}
+
+interface SpotlightSearchResultsProps {
+  readonly threads: readonly AgentListDialogChatThread[];
+  readonly messages: readonly ChatSearchResult[];
+  readonly threadMap: ReadonlyMap<string, AgentListDialogChatThread>;
+  readonly activeThreadIds: ReadonlySet<string> | undefined;
+  readonly unreadThreadIds: ReadonlySet<string> | undefined;
+  readonly showThreads: boolean;
+  readonly showMessages: boolean;
+  readonly searching: boolean;
+  readonly showNoResults: boolean;
+  readonly onSelect: (threadId: string) => void;
+}
+
+function SpotlightSearchResults({
+  threads,
+  messages,
+  threadMap,
+  activeThreadIds,
+  unreadThreadIds,
+  showThreads,
+  showMessages,
+  searching,
+  showNoResults,
+  onSelect,
+}: SpotlightSearchResultsProps) {
+  const { t } = useTranslation("agents");
+
+  return (
+    <CommandList className="min-h-[300px] max-h-[min(560px,65vh)] pb-3 pt-2">
+      <CommandGroup
+        heading={t(($) => {
+          return $.sidebar.bestMatches;
+        })}
+        className="px-5 [&_[cmdk-group-items]]:mt-1 [&_[cmdk-group-items]]:flex [&_[cmdk-group-items]]:flex-col"
+      >
+        {showThreads
+          ? threads.map((thread) => {
+              return (
+                <SpotlightThreadCommandItem
+                  key={thread.id}
+                  thread={thread}
+                  indicator={chatThreadCommandIndicator(
+                    thread.id,
+                    activeThreadIds,
+                    unreadThreadIds,
+                  )}
+                  onSelect={() => {
+                    return onSelect(thread.id);
+                  }}
+                />
+              );
+            })
+          : null}
+        {showMessages
+          ? messages.map((message) => {
+              return (
+                <SpotlightMessageCommandItem
+                  key={`${message.matchedMessage.chatThreadId}:${message.matchedMessage.seqId}`}
+                  message={message}
+                  thread={threadMap.get(message.chatThreadId)}
+                  indicator={chatThreadCommandIndicator(
+                    message.chatThreadId,
+                    activeThreadIds,
+                    unreadThreadIds,
+                  )}
+                  onSelect={() => {
+                    return onSelect(message.chatThreadId);
+                  }}
+                />
+              );
+            })
+          : null}
+        {searching ? (
+          <div
+            className="flex items-center gap-2 px-2 py-2.5 text-xs text-muted-foreground"
+            role="status"
+          >
+            <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+            {t(($) => {
+              return $.sidebar.searching;
+            })}
+          </div>
+        ) : null}
+      </CommandGroup>
+      {showNoResults ? (
+        <p className="px-7 py-8 text-center text-sm text-muted-foreground">
+          {t(($) => {
+            return $.sidebar.noResults;
+          })}
+        </p>
+      ) : null}
+    </CommandList>
+  );
+}
+
+export function ThreeColumnSearchDialog({
+  open,
+  onOpenChange,
+  onSelectChatThread,
+}: {
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly onSelectChatThread: (threadId: string) => void;
+}) {
+  const { t } = useTranslation("agents");
+  const query = useGet(chatListQuery$);
+  const setQuery = useSet(setChatListQuery$);
+  const filter = useGet(threeColumnSearchFilter$);
+  const setFilter = useSet(setThreeColumnSearchFilter$);
+  const threadResult = useGet(agentListDialogChatThreads$);
+  const threadMap = useGet(agentListDialogChatThreadMap$);
+  const messageLoadable = useLoadable(agentListDialogChatMessages$);
+  const activeThreadIds = useLastResolved(sidebarActiveThreadIds$, {
+    equalityFn: equalSets,
+  });
+  const unreadThreadIds = useLastResolved(sidebarUnreadThreadIds$, {
+    equalityFn: equalSets,
+  });
+  const trimmedQuery = query.trim().toLowerCase();
+  const threadMatches =
+    threadResult.query === trimmedQuery ? threadResult.chatThreads : [];
+  const messageResult =
+    messageLoadable.state === "hasData" &&
+    messageLoadable.data.query === trimmedQuery
+      ? messageLoadable.data
+      : undefined;
+  const messageMatches = messageResult?.chatMessages ?? [];
+  const searching =
+    messageLoadable.state === "loading" ||
+    (messageLoadable.state === "hasData" &&
+      messageLoadable.data.query !== trimmedQuery);
+  const showThreads = filter !== "messages";
+  const showMessages = filter !== "chats";
+  const resultCount =
+    (showThreads ? threadMatches.length : 0) +
+    (showMessages ? messageMatches.length : 0);
+  const visibleSearching = searching && showMessages;
+  const showNoResults = !visibleSearching && resultCount === 0;
+  const selectThread = (threadId: string) => {
+    onOpenChange(false);
+    onSelectChatThread(threadId);
+  };
+
+  return (
+    <CommandDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      closeLabel={t(($) => {
+        return $.actions.close;
+      })}
+      className="zero-app w-[calc(100vw-2rem)] gap-0 rounded-[var(--zero-composer-radius)] sm:max-w-[820px] [&_[data-slot=dialog-close]]:hidden"
+      commandClassName="gap-0 rounded-[var(--zero-composer-radius)]"
+      commandProps={{ shouldFilter: false, loop: true }}
+    >
+      <DialogHeader className="sr-only">
+        <DialogTitle>
+          {t(($) => {
+            return $.sidebar.searchChatsAndMessages;
+          })}
+        </DialogTitle>
+        <DialogDescription>
+          {t(($) => {
+            return $.sidebar.searchChatsAndMessages;
+          })}
+        </DialogDescription>
+      </DialogHeader>
+      <SpotlightSearchInput query={query} onValueChange={setQuery} />
+      <SpotlightSearchFilterBar
+        filter={filter}
+        resultCount={resultCount}
+        onSelect={setFilter}
+      />
+      <SpotlightSearchResults
+        threads={threadMatches}
+        messages={messageMatches}
+        threadMap={threadMap}
+        activeThreadIds={activeThreadIds}
+        unreadThreadIds={unreadThreadIds}
+        showThreads={showThreads}
+        showMessages={showMessages}
+        searching={visibleSearching}
+        showNoResults={showNoResults}
+        onSelect={selectThread}
+      />
+    </CommandDialog>
   );
 }
 
