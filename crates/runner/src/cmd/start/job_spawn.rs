@@ -17,7 +17,7 @@ use tracing::{error, warn};
 use super::active_runs::{ActiveRunGuard, ActiveRunReusePublisher, ActiveRuns};
 use super::factory_lifecycle::SharedFactory;
 use super::heartbeat::WorkspaceCacheStateSnapshot;
-use super::idle_lifecycle::SharedIdlePool;
+use super::idle_lifecycle::{IdleDestroyTracker, SharedIdlePool};
 use super::job_lifecycle::{
     ActiveBudgetLease, CompletionPayload, FinalizationReady, RunCleanupDisposition, RunCleanupState,
 };
@@ -73,6 +73,7 @@ pub(super) struct SpawnContext {
     /// completion so soft-drain/resume races do not depend on a stale
     /// spawn-time mode snapshot.
     pub(super) parking_gate: ParkingGate,
+    pub(super) idle_destroy_tracker: IdleDestroyTracker,
     /// Notifies the main loop to send an immediate heartbeat after reusable
     /// state changes. This eliminates the up-to-10s blind spot where
     /// the server does not know which runner holds a reusable sandbox or
@@ -943,10 +944,7 @@ mod tests {
             status.write_initial().await;
             let parking_gate = ParkingGate::new_open();
             let idle_pool = Arc::new(tokio::sync::Mutex::new(IdlePool::new_with_parking_gate(
-                IdlePoolConfig {
-                    default_timeout: Duration::from_secs(300),
-                    max_idle: 10,
-                },
+                IdlePoolConfig { max_idle: 10 },
                 parking_gate.clone(),
             )));
 
@@ -1491,7 +1489,6 @@ mod tests {
             let status = Arc::new(StatusTracker::new(status_path.clone(), 4, None, None));
             let idle_pool: SharedIdlePool =
                 Arc::new(tokio::sync::Mutex::new(IdlePool::new(IdlePoolConfig {
-                    default_timeout: Duration::from_secs(300),
                     max_idle: 10,
                 })));
             let tokens = RunCancellationRegistry::new();

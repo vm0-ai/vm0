@@ -484,10 +484,10 @@ async fn heartbeat_tick_uses_live_mode_after_silent_mode_flip() {
     .await;
 }
 
-/// Regression for #10146 / #10223: the main-loop `idle_cleanup` and
-/// `heartbeat_tick` intervals must defer their first tick past the
-/// configured period, so neither tick branch is Ready on the first `select!`
-/// poll. Otherwise they pre-empt `discover_fut` (which parks on
+/// Regression for #10146 / #10223: the main-loop `heartbeat_tick` interval
+/// must defer its first tick past the configured period, so the tick branch
+/// is not Ready on the first `select!` poll. Otherwise it pre-empts
+/// `discover_fut` (which parks on
 /// `rx.recv()` → Pending) and any silent `mode_tx` flip during the
 /// tick body breaks the loop before the pending job is ever claimed.
 ///

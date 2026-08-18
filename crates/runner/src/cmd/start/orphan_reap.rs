@@ -325,8 +325,6 @@ mod tests {
         IdlePool, IdlePoolConfig, ParkResult, test_support::ParkedIdleCandidateBuilder,
     };
     use crate::resource_budget::ResourceBudget;
-    use std::time::Duration;
-
     struct OrphanReapFixture {
         _dir: tempfile::TempDir,
         status_path: std::path::PathBuf,
@@ -342,7 +340,6 @@ mod tests {
             let status = StatusTracker::new(status_path.clone(), 4, None, None);
             let idle_pool: SharedIdlePool =
                 Arc::new(tokio::sync::Mutex::new(IdlePool::new(IdlePoolConfig {
-                    default_timeout: Duration::from_secs(300),
                     max_idle: 10,
                 })));
             Self {
