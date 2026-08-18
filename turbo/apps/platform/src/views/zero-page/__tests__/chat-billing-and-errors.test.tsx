@@ -980,7 +980,7 @@ describe("initial thinking indicator", () => {
     });
   });
 
-  it("keeps the thinking block inline when the same run has assistant text", async () => {
+  it("hides the thinking marker when the same run has assistant text", async () => {
     const threadId = "e1000000-0000-4000-a000-000000000018";
     mockChatLifecycle(context, {
       threadId,
@@ -1014,30 +1014,11 @@ describe("initial thinking indicator", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatInlineThinkingBlocks]: true,
-      },
     });
 
     await screen.findByText("Here is the checklist.");
-    const thinkingLabel = screen.getByText("Thinking");
-    const thinkingContent = screen.getAllByText("Reviewing your request");
-    expect(thinkingContent).toHaveLength(2);
-    const [thinkingPreview, thinkingBody] = thinkingContent;
-    if (!thinkingPreview || !thinkingBody) {
-      throw new Error("Inline thinking copy was not rendered");
-    }
-    expect(thinkingPreview).toBeVisible();
-    expect(thinkingBody).not.toBeVisible();
-    const runningLabel = screen.getAllByText(
-      /^(Assembling|Brewing|Mapping|On it|Piecing|Shaping|Sketching|Spinning|Tuning|Wiring)/,
-    )[0];
-    if (!runningLabel) {
-      throw new Error("Running thinking label was not rendered");
-    }
-    expect(runningLabel).toBeVisible();
-
-    click(thinkingLabel);
-    expect(thinkingBody).toBeVisible();
+    expect(
+      screen.queryByText("Reviewing your request"),
+    ).not.toBeInTheDocument();
   });
 });
