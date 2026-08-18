@@ -634,7 +634,7 @@ function LabeledRailLink({
       className="group flex w-full flex-col items-center gap-1 no-underline"
     >
       <span
-        className={`relative inline-flex h-8 w-9 items-center justify-center rounded-md transition-colors duration-200 ${
+        className={`relative inline-flex h-8 w-9 items-center justify-center rounded-lg transition-colors duration-200 ${
           isActive
             ? "bg-state-selected text-sidebar-foreground"
             : "text-sidebar-foreground hover:bg-state-hover group-hover:bg-state-hover"
