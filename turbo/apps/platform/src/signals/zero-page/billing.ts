@@ -47,6 +47,7 @@ import {
 } from "../bootstrap/paid-funnel-telemetry.ts";
 import { currentLocale, i18n } from "../../i18n/index.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
+import { refreshOrgMembers$ } from "../external/org-members.ts";
 import { sessionStorageSignals } from "../external/session-storage.ts";
 import {
   setUsagePackMigrationRevisionPreview$,
@@ -726,6 +727,7 @@ const reloadBillingStatusFromRemoteChange$ = command(
     set(reloadQueueData$);
     set(reloadUsagePackManagement$);
     set(reloadUsageRecords$);
+    set(refreshOrgMembers$);
     await set(reconcilePendingBillingPayment$, signal);
   },
 );

@@ -65,7 +65,9 @@ function mockMembersStory(): {
   readonly addPendingInvitation: (
     invitation: NonNullable<OrgMembersResponse["pendingInvitations"]>[number],
   ) => void;
+  readonly membersRequestCount: () => number;
 } {
+  let membersRequestCount = 0;
   let response: OrgMembersResponse = {
     name: "Test Org",
     role: "admin",
@@ -135,6 +137,7 @@ function mockMembersStory(): {
     role: "admin",
   });
   context.mocks.api(orgMembersContract.members, ({ respond }) => {
+    membersRequestCount += 1;
     return respond(200, response);
   });
   context.mocks.api(orgInviteContract.invite, ({ body, respond }) => {
@@ -231,6 +234,9 @@ function mockMembersStory(): {
           invitation,
         ],
       };
+    },
+    membersRequestCount() {
+      return membersRequestCount;
     },
   };
 }
@@ -421,13 +427,6 @@ describe("organization members settings", () => {
       orgInviteContract.confirmPurchase,
       ({ params, respond }) => {
         confirmedPurchaseId = params.purchaseId;
-        membersStory.addPendingInvitation({
-          id: "inv-paid",
-          email: "paid.invitee@example.com",
-          role: "member",
-          createdAt: "2026-01-06T00:00:00Z",
-          usagePackUsd: 50,
-        });
         return respond(200, {
           message: "Invitation purchased and sent",
         });
@@ -445,6 +444,11 @@ describe("organization members settings", () => {
       ).toBeInTheDocument();
     });
     await expect(screen.findByText("Usage pack")).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("billing:changed"),
+      ).toBeTruthy();
+    });
     expect(
       within(rowByEmail("alice@example.com")).getByText("$20/month"),
     ).toBeInTheDocument();
@@ -501,13 +505,37 @@ describe("organization members settings", () => {
       ).toString(),
     });
     expect(window.location.href).toBe(initialHref);
+    const membersRequestsBeforeConfirm = membersStory.membersRequestCount();
     click(buttonByText("Pay and invite", confirmationDialog));
 
     await waitFor(() => {
       expect(confirmedPurchaseId).toBe("c08a5fab-a05d-43f9-a1ee-10feaf27584c");
+      expect(membersStory.membersRequestCount()).toBeGreaterThan(
+        membersRequestsBeforeConfirm,
+      );
       expect(
         screen.queryByRole("dialog", { name: "Review invitation" }),
       ).not.toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText("paid.invitee@example.com"),
+    ).not.toBeInTheDocument();
+
+    membersStory.addPendingInvitation({
+      id: "inv-paid",
+      email: "paid.invitee@example.com",
+      role: "member",
+      createdAt: "2026-01-06T00:00:00Z",
+      usagePackUsd: 50,
+    });
+    const membersRequestsBeforeBillingChange =
+      membersStory.membersRequestCount();
+    context.mocks.ably.trigger("billing:changed");
+
+    await waitFor(() => {
+      expect(membersStory.membersRequestCount()).toBeGreaterThan(
+        membersRequestsBeforeBillingChange,
+      );
     });
     await screen.findByText("paid.invitee@example.com");
     expect(
