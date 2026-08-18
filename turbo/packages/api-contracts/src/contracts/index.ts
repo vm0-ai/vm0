@@ -1426,15 +1426,15 @@ export {
   type TeamComposeItem,
 } from "./zero-team";
 export {
-  zeroIntegrationsSlackContract,
+  integrationsSlackContract,
   slackOrgStatusSchema,
-  type ZeroIntegrationsSlackContract,
+  type IntegrationsSlackContract,
   type SlackOrgStatus,
-} from "./zero-integrations-slack";
+} from "./integrations-slack";
 export {
-  zeroSlackConnectContract,
-  type ZeroSlackConnectContract,
-} from "./zero-slack-connect";
+  slackConnectContract,
+  type SlackConnectContract,
+} from "./slack-connect";
 export {
   slackCommandsContract,
   type SlackCommandsContract,

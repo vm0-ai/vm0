@@ -1,7 +1,7 @@
 import {
-  zeroIntegrationsSlackContract,
+  integrationsSlackContract,
   type SlackOrgStatus,
-} from "@okouai/api-contracts/contracts/zero-integrations-slack";
+} from "@okouai/api-contracts/contracts/integrations-slack";
 import {
   zeroTeamsConnectContract,
   type TeamsConnectStatus,
@@ -73,7 +73,7 @@ function mockSlackAPI(overrides: Partial<SlackOrgStatus> = {}): void {
       missingVars: [],
     },
   };
-  context.mocks.api(zeroIntegrationsSlackContract.getStatus, ({ respond }) => {
+  context.mocks.api(integrationsSlackContract.getStatus, ({ respond }) => {
     return respond(200, { ...defaults, ...overrides });
   });
 }
