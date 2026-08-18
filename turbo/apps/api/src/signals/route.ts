@@ -121,7 +121,7 @@ import { imageRecognitionRoutes } from "./routes/image-recognition";
 import { translationRoutes } from "./routes/translation";
 import { runDetailRoutes } from "./routes/run-detail";
 import { zeroRunsRoutes } from "./routes/zero-runs";
-import { zeroRunsCancelRoutes } from "./routes/zero-runs-cancel";
+import { runsCancelRoutes } from "./routes/runs-cancel";
 import { meModelProvidersDeleteRoutes } from "./routes/me-model-providers-delete";
 import { meModelProviderAccountRoutes } from "./routes/me-model-provider-accounts";
 import { meModelProvidersListRoutes } from "./routes/me-model-providers-list";
@@ -321,7 +321,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...translationRoutes,
   ...runDetailRoutes,
   ...zeroRunsRoutes,
-  ...zeroRunsCancelRoutes,
+  ...runsCancelRoutes,
   ...onboardingCompleteRoutes,
   ...onboardingStatusRoutes,
   ...orgInviteRoutes,

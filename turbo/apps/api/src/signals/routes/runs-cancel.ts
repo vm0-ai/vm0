@@ -73,7 +73,7 @@ const cancelInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
 });
 
-export const zeroRunsCancelRoutes: readonly RouteEntry[] = [
+export const runsCancelRoutes: readonly RouteEntry[] = [
   {
     route: runsCancelContract.cancel,
     handler: authRoute(

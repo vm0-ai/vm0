@@ -15,7 +15,7 @@ use std::time::Duration;
 const RUN_ID: &str = "codex-app-server-backend-active-input-test";
 const DELIVERY_ID: &str = "6bd71939-58df-48f2-81d4-468da3c788a5";
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn codex_app_server_backend_steers_active_input_into_active_turn()
 -> Result<(), Box<dyn std::error::Error>> {
     let mock = common::build_and_locate_mock_codex()?;

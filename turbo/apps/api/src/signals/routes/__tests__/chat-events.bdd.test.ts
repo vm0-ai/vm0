@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
+
+import { HeadObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import {
@@ -50,6 +52,10 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import { z } from "zod";
 import { createApp } from "../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import {
+  buildArtifactKeyV2,
+  buildArtifactPrefixV2,
+} from "../../../lib/file-url";
 import {
   clearMockNow,
   mockNow,
@@ -1142,9 +1148,10 @@ async function requestSendEventRaw(
     readonly userMessage: UserMessageInputDocument;
     readonly hasTextContent: boolean;
   },
+  signal: AbortSignal = context.signal,
 ): Promise<{ readonly status: number; readonly body: unknown }> {
   const headers = sessionHeaders(actor);
-  const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
+  const app = createApp({ signal, routes: TEST_APP_ROUTES });
   const response = await app.request("/api/zero/chat/events", {
     method: "POST",
     headers: { ...headers, "content-type": "application/json" },
@@ -8280,6 +8287,317 @@ describe("CHAT-02: generation templates and attachments", () => {
       throw new Error("Expected chat thread events to load");
     }
     expect(events.body.events).toStrictEqual([]);
+  }, 60_000);
+
+  it("resolves attachment metadata in ordered waves of four", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const files = Array.from({ length: 5 }, (_, index) => {
+      return {
+        id: randomUUID(),
+        filename: `bounded-${index + 1}.txt`,
+        contentType: `text/x-bounded-${index + 1}`,
+        size: 100 + index,
+      };
+    });
+    const objects = files.map((file) => {
+      return {
+        ...file,
+        key: buildArtifactKeyV2(file.id, file.filename),
+        prefix: buildArtifactPrefixV2(file.id),
+      };
+    });
+    const objectsByPrefix = new Map(
+      objects.map((object) => {
+        return [object.prefix, object];
+      }),
+    );
+    const objectsByKey = new Map(
+      objects.map((object) => {
+        return [object.key, object];
+      }),
+    );
+    const firstWaveStarted = createDeferredPromise<void>(context.signal);
+    const releaseFirstWave = createDeferredPromise<void>(context.signal);
+    let startedLists = 0;
+    let activeLists = 0;
+    let peakActiveLists = 0;
+    context.mocks.s3.send.mockImplementation(
+      async (command: unknown): Promise<unknown> => {
+        if (command instanceof ListObjectsV2Command) {
+          const prefix = command.input.Prefix;
+          const object =
+            typeof prefix === "string"
+              ? objectsByPrefix.get(prefix)
+              : undefined;
+          if (!object) {
+            return { Contents: [] };
+          }
+          startedLists += 1;
+          activeLists += 1;
+          peakActiveLists = Math.max(peakActiveLists, activeLists);
+          if (startedLists === 4) {
+            firstWaveStarted.resolve(undefined);
+          }
+          await releaseFirstWave.promise;
+          activeLists -= 1;
+          return {
+            Contents: [
+              {
+                Key: object.key,
+                Size: object.size,
+                LastModified: new Date("2026-08-18T00:00:00.000Z"),
+              },
+            ],
+          };
+        }
+        if (command instanceof HeadObjectCommand) {
+          const key = command.input.Key;
+          const object =
+            typeof key === "string" ? objectsByKey.get(key) : undefined;
+          if (!object) {
+            return {};
+          }
+          return {
+            ContentLength: object.size,
+            ContentType: object.contentType,
+            LastModified: new Date("2026-08-18T00:00:00.000Z"),
+            Metadata: {
+              "artifact-id": object.id,
+              filename: encodeURIComponent(object.filename),
+              "user-id": encodeURIComponent(actor.userId),
+            },
+          };
+        }
+        return {};
+      },
+    );
+
+    const prompt = "read the bounded attachment set";
+    const send = chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        prompt,
+        userMessage: {
+          version: 1,
+          parts: [
+            ...files.map((file) => {
+              return {
+                type: "file" as const,
+                fileId: file.id,
+                filenameSnapshot: file.filename,
+                contentType: file.contentType,
+              };
+            }),
+            { type: "text", text: prompt },
+          ],
+        },
+      },
+      [201],
+    );
+    onTestFinished(async () => {
+      if (!releaseFirstWave.settled()) {
+        releaseFirstWave.resolve(undefined);
+      }
+      const response = await send;
+      if (response.status === 201 && response.body.runId) {
+        await cancelChatRun(actor, response.body.runId);
+      }
+    });
+
+    await firstWaveStarted.promise;
+    expect(startedLists).toBe(4);
+    expect(activeLists).toBe(4);
+    expect(peakActiveLists).toBe(4);
+    releaseFirstWave.resolve(undefined);
+
+    const sent = await send;
+    expect(sent.status).toBe(201);
+    if (sent.status !== 201 || !sent.body.runId) {
+      throw new Error("Expected the bounded attachment send to create a run");
+    }
+    expect(startedLists).toBe(5);
+    expect(peakActiveLists).toBe(4);
+
+    const run = await api.readRun(actor, sent.body.runId);
+    const promptPositions = files.map((file) => {
+      return run.prompt.indexOf(`[ID] ${file.id}`);
+    });
+    expect(
+      promptPositions.every((position) => {
+        return position >= 0;
+      }),
+    ).toBeTruthy();
+    expect(promptPositions).toStrictEqual(
+      [...promptPositions].sort((a, b) => {
+        return a - b;
+      }),
+    );
+
+    const catalog = await chat.listArtifactCatalog(actor, {
+      chatThreadId: sent.body.threadId,
+      kind: "file",
+      limit: 20,
+    });
+    for (const file of files) {
+      const summary = catalog.artifacts.find((artifact) => {
+        return artifact.title === file.filename;
+      });
+      if (!summary) {
+        throw new Error(`Expected catalog entry for ${file.filename}`);
+      }
+      const detail = await chat.getArtifactCatalogEntry(actor, summary.id);
+      expect(detail.kind).toBe("file");
+      if (detail.kind !== "file") {
+        throw new Error(`Expected file catalog entry for ${file.filename}`);
+      }
+      expect(detail.file).toMatchObject({
+        filename: file.filename,
+        contentType: file.contentType,
+        size: file.size,
+      });
+    }
+    expect(apiDispatchTimingEventsForRun(sent.body.runId)).toContainEqual(
+      expect.objectContaining({
+        op_type: API_DISPATCH_NORMAL_SEND_ATTACHMENT_METADATA_ACTION_TYPE,
+        normal_send_attachment_count_bucket: "5_plus",
+      }),
+    );
+  }, 60_000);
+
+  it("does not create a run when an attachment is missing", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chat.mockEmptyObjectStorage();
+    const model = await chat.getDefaultCreateThreadModel(actor);
+    const prompt = "reject the missing attachment";
+    const response = await requestSendEventRaw(actor, {
+      agentId,
+      model,
+      prompt,
+      userMessage: {
+        version: 1,
+        parts: [
+          {
+            type: "file",
+            fileId: randomUUID(),
+            filenameSnapshot: "missing.txt",
+            contentType: "text/plain",
+          },
+          { type: "text", text: prompt },
+        ],
+      },
+      hasTextContent: true,
+    });
+
+    expect(response).toStrictEqual({
+      status: 500,
+      body: { error: "Internal server error" },
+    });
+    const runs = await api.listAgentRuns(actor, {
+      status: "queued,pending,running,completed,failed,timeout,cancelled",
+      limit: 100,
+    });
+    expect(
+      runs.runs.some((run) => {
+        return run.prompt === prompt;
+      }),
+    ).toBeFalsy();
+  }, 60_000);
+
+  it("does not create a run when attachment storage fails", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    const model = await chat.getDefaultCreateThreadModel(actor);
+    context.mocks.s3.send.mockRejectedValue(
+      new Error("object storage unavailable"),
+    );
+    const prompt = "reject the failed attachment lookup";
+    const response = await requestSendEventRaw(actor, {
+      agentId,
+      model,
+      prompt,
+      userMessage: {
+        version: 1,
+        parts: [
+          {
+            type: "file",
+            fileId: randomUUID(),
+            filenameSnapshot: "unavailable.txt",
+            contentType: "text/plain",
+          },
+          { type: "text", text: prompt },
+        ],
+      },
+      hasTextContent: true,
+    });
+
+    expect(response).toStrictEqual({
+      status: 500,
+      body: { error: "Internal server error" },
+    });
+    const runs = await api.listAgentRuns(actor, {
+      status: "queued,pending,running,completed,failed,timeout,cancelled",
+      limit: 100,
+    });
+    expect(
+      runs.runs.some((run) => {
+        return run.prompt === prompt;
+      }),
+    ).toBeFalsy();
+  }, 60_000);
+
+  it("does not create a run when attachment resolution is aborted", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    const model = await chat.getDefaultCreateThreadModel(actor);
+    const controller = new AbortController();
+    const abortError = new Error(
+      "client disconnected during attachment lookup",
+    );
+    abortError.name = "AbortError";
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      if (command instanceof ListObjectsV2Command) {
+        controller.abort(abortError);
+      }
+      return Promise.resolve({ Contents: [] });
+    });
+    const prompt = "abort the attachment lookup";
+    const response = await requestSendEventRaw(
+      actor,
+      {
+        agentId,
+        model,
+        prompt,
+        userMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "file",
+              fileId: randomUUID(),
+              filenameSnapshot: "aborted.txt",
+              contentType: "text/plain",
+            },
+            { type: "text", text: prompt },
+          ],
+        },
+        hasTextContent: true,
+      },
+      controller.signal,
+    );
+
+    expect(controller.signal.aborted).toBeTruthy();
+    expect(response).toStrictEqual({
+      status: 500,
+      body: { error: "Internal server error" },
+    });
+    const runs = await api.listAgentRuns(actor, {
+      status: "queued,pending,running,completed,failed,timeout,cancelled",
+      limit: 100,
+    });
+    expect(
+      runs.runs.some((run) => {
+        return run.prompt === prompt;
+      }),
+    ).toBeFalsy();
   }, 60_000);
 
   it("persists attachments and injects them into the run prompt", async () => {
