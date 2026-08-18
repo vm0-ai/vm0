@@ -8,6 +8,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import {
   chatThreadsContract,
+  chatThreadImageModelContract,
   chatThreadVideoModelContract,
   type ChatRunOptionsRequest,
   type ChatThreadEvent,
@@ -25,7 +26,7 @@ import { zeroUserPermissionGrantsContract } from "@okouai/api-contracts/contract
 import { claudeCodeDeviceAuthContract } from "@okouai/api-contracts/contracts/claude-code-device-auth";
 import { codexDeviceAuthContract } from "@okouai/api-contracts/contracts/codex-device-auth";
 import { zeroPersonalModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-personal-model-providers";
-import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
+import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
 import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
 import {
   userModelPreferenceContract,
@@ -166,7 +167,7 @@ describe("chat composer models", () => {
     let preferenceRequestCount = 0;
 
     mockOrgModelRoutes("claude-fable-5");
-    context.mocks.api(zeroModelPoliciesMainContract.list, ({ respond }) => {
+    context.mocks.api(modelPoliciesMainContract.list, ({ respond }) => {
       policiesRequestCount += 1;
       return respond(200, {
         policies: [policy],
@@ -217,7 +218,7 @@ describe("chat composer models", () => {
 
     mockOrgModelRoutes("claude-fable-5");
     context.mocks.api(
-      zeroModelPoliciesMainContract.list,
+      modelPoliciesMainContract.list,
       async ({ respond, withSignal }) => {
         if (blockModelRequests) {
           await withSignal(pendingModelRequests.promise);
@@ -2184,7 +2185,7 @@ describe("chat composer models", () => {
     let runCreateCount = 0;
 
     context.mocks.api(
-      zeroModelPoliciesMainContract.list,
+      modelPoliciesMainContract.list,
       async ({ respond, withSignal }) => {
         await withSignal(policyGate.promise);
         return respond(200, {
@@ -3413,6 +3414,372 @@ describe("chat composer models", () => {
   });
 });
 
+describe("chat composer image model", () => {
+  const imageModelControlLabels = [
+    "GPT Image 1",
+    "GPT Image 2",
+    "GPT Image 1.5",
+    "Nano Banana 2",
+    "Flux Pro v1.1",
+    "Flux Pro v1.1 Ultra",
+    "Seedream 4",
+    "Qwen Image",
+  ] as const;
+
+  function desktopImageModelButton(
+    root: ParentNode = document,
+  ): HTMLElement | undefined {
+    return Array.from(root.querySelectorAll("button")).find((candidate) => {
+      return (
+        candidate.getAttribute("aria-label") === "Image models" &&
+        candidate.hasAttribute("aria-pressed")
+      );
+    });
+  }
+
+  function findDesktopImageModelButton(
+    root: ParentNode = document,
+  ): Promise<HTMLElement> {
+    return waitFor(() => {
+      const button = desktopImageModelButton(root);
+      if (!button) {
+        throw new Error("Desktop image model button not found");
+      }
+      return button;
+    });
+  }
+
+  function mediaPanelButton(label: string): HTMLElement | undefined {
+    return queryAllByRoleFast("button").find((candidate) => {
+      return candidate.textContent?.replace(/\s+/g, " ").trim() === label;
+    });
+  }
+
+  function mediaPanelButtonByAccessibleLabel(
+    label: string,
+    root: ParentNode = document,
+  ): HTMLElement | undefined {
+    return queryAllByRoleFast("button", root).find((candidate) => {
+      return candidate.getAttribute("aria-label") === label;
+    });
+  }
+
+  function findMediaPanelButton(label: string): Promise<HTMLElement> {
+    return waitFor(() => {
+      const button = mediaPanelButton(label);
+      if (!button) {
+        throw new Error(`${label} button not found`);
+      }
+      return button;
+    });
+  }
+
+  function imageVariantMenuItem(label: string): HTMLElement | undefined {
+    return queryAllByRoleFast("menuitem").find((candidate) => {
+      return candidate.getAttribute("aria-label") === label;
+    });
+  }
+
+  function findImageVariantMenuItem(label: string): Promise<HTMLElement> {
+    return waitFor(() => {
+      const item = imageVariantMenuItem(label);
+      if (!item) {
+        throw new Error(`${label} image variant not found`);
+      }
+      return item;
+    });
+  }
+
+  function imageModelBrandIcon(label: string): Element {
+    const icon = mediaPanelButton(label)?.firstElementChild;
+    if (!icon) {
+      throw new Error(`${label} brand icon not found`);
+    }
+    return icon;
+  }
+
+  it("shows the effective member default and pins an image model optimistically", async () => {
+    const user = userEvent.setup({ delay: null });
+    const updateGate = context.mocks.deferred<void>();
+    const updates: { threadId: string; model: string | null }[] = [];
+    context.mocks.browser.matchMedia(true);
+    mockOrgModelRoutes("claude-fable-5");
+    context.mocks.data.userModelPreference({
+      selectedModel: null,
+      serviceTier: null,
+      selectedVideoModel: null,
+      selectedImageModel: "fal-ai/qwen-image",
+      updatedAt: "2026-08-18T00:00:00Z",
+    });
+    mockAgent();
+    mockThread({
+      selectedModel: "claude-fable-5",
+      selectedImageModel: null,
+    });
+    context.mocks.api(
+      chatThreadImageModelContract.update,
+      async ({ params, body, respond, withSignal }) => {
+        updates.push({ threadId: params.id, model: body.model });
+        await withSignal(updateGate.promise);
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.ImageModelSelection]: true,
+        [FeatureSwitchKey.VideoModelSelection]: true,
+      },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const imageModelButton = await findDesktopImageModelButton();
+    await waitFor(() => {
+      expect(imageModelButton).toHaveTextContent("Qwen Image");
+    });
+    expect(imageModelButton).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(imageModelButton);
+
+    expect(imageModelButton).toHaveAttribute("aria-pressed", "true");
+    expect(imageModelButton).toHaveTextContent(/·\s*Qwen Image/);
+    const listbox = screen.getByRole("listbox");
+    const imageModelButtons = queryAllByRoleFast("button", listbox);
+    expect(
+      imageModelButtons
+        .filter((button) => {
+          return button.hasAttribute("aria-pressed");
+        })
+        .map((button) => {
+          return button.getAttribute("aria-label");
+        }),
+    ).toStrictEqual(imageModelControlLabels);
+    const variantMenuButton = mediaPanelButtonByAccessibleLabel(
+      "GPT Image 1 variants",
+      listbox,
+    );
+    if (!variantMenuButton) {
+      throw new Error("GPT Image 1 variant menu not found");
+    }
+    expect(variantMenuButton).toHaveTextContent(/^Standard$/);
+    expect(within(listbox).queryByText("GPT Image 1 Mini")).toBeNull();
+    const openAiIcon = imageModelBrandIcon("GPT Image 2").outerHTML;
+    expect(openAiIcon).toContain("openai");
+    expect(imageModelBrandIcon("GPT Image 1.5").outerHTML).toBe(openAiIcon);
+    const fluxIcon = imageModelBrandIcon("Flux Pro v1.1").outerHTML;
+    expect(imageModelBrandIcon("Flux Pro v1.1 Ultra").outerHTML).toBe(fluxIcon);
+    const qwenIcon = imageModelBrandIcon("Qwen Image").outerHTML;
+    expect(qwenIcon).toContain("image-model-qwen-gradient");
+    const nanoBananaIcon = imageModelBrandIcon("Nano Banana 2").outerHTML;
+    expect(nanoBananaIcon).toContain("#f94543");
+    expect(
+      new Set([
+        openAiIcon,
+        fluxIcon,
+        qwenIcon,
+        imageModelBrandIcon("Seedream 4").outerHTML,
+        nanoBananaIcon,
+      ]).size,
+    ).toBe(5);
+    expect(within(listbox).queryByText(/birefnet/i)).not.toBeInTheDocument();
+    expect(
+      within(listbox).queryByText(/clarity upscaler/i),
+    ).not.toBeInTheDocument();
+    expect(within(listbox).queryByText("BYOK")).not.toBeInTheDocument();
+    expect(within(listbox).queryByText("Pro")).not.toBeInTheDocument();
+    expect(
+      within(listbox).queryByText(/aspect ratio/i),
+    ).not.toBeInTheDocument();
+
+    await user.click(variantMenuButton);
+    await expect(
+      findImageVariantMenuItem("GPT Image 1"),
+    ).resolves.toHaveTextContent("Standard");
+    await user.click(await findImageVariantMenuItem("GPT Image 1 Mini"));
+
+    await waitFor(() => {
+      expect(updates).toStrictEqual([
+        {
+          threadId: THREAD_ID,
+          model: "gpt-image-1-mini",
+        },
+      ]);
+      expect(imageModelButton).toHaveTextContent(/·\s*GPT Image 1 Mini/);
+    });
+    await user.click(imageModelButton);
+    const reopenedListbox = screen.getByRole("listbox");
+    expect(
+      mediaPanelButtonByAccessibleLabel(
+        "GPT Image 1 variants",
+        reopenedListbox,
+      ),
+    ).toHaveTextContent(/^Mini$/);
+    expect(mediaPanelButton("GPT Image 1")).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    updateGate.resolve();
+  });
+
+  it("selects Standard from the GPT Image 1 variant menu", async () => {
+    const user = userEvent.setup({ delay: null });
+    const updates: { threadId: string; model: string | null }[] = [];
+    context.mocks.browser.matchMedia(true);
+    mockOrgModelRoutes("claude-fable-5");
+    mockAgent();
+    mockThread({
+      selectedModel: "claude-fable-5",
+      selectedImageModel: "gpt-image-1-mini",
+    });
+    context.mocks.api(
+      chatThreadImageModelContract.update,
+      ({ params, body, respond }) => {
+        updates.push({ threadId: params.id, model: body.model });
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.ImageModelSelection]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const imageModelButton = await findDesktopImageModelButton();
+    await waitFor(() => {
+      expect(imageModelButton).toHaveTextContent("GPT Image 1 Mini");
+    });
+    await user.click(imageModelButton);
+    const listbox = screen.getByRole("listbox");
+    const variantMenuButton = mediaPanelButtonByAccessibleLabel(
+      "GPT Image 1 variants",
+      listbox,
+    );
+    if (!variantMenuButton) {
+      throw new Error("GPT Image 1 variant menu not found");
+    }
+    expect(variantMenuButton).toHaveTextContent(/^Mini$/);
+
+    await user.click(variantMenuButton);
+    await user.click(await findImageVariantMenuItem("GPT Image 1"));
+
+    await waitFor(() => {
+      expect(updates).toStrictEqual([
+        { threadId: THREAD_ID, model: "gpt-image-1" },
+      ]);
+      expect(imageModelButton).toHaveTextContent(/·\s*GPT Image 1$/);
+    });
+  });
+
+  it("opens Image models and Video models as direct mobile rows", async () => {
+    const user = userEvent.setup({ delay: null });
+    context.mocks.browser.matchMedia(false);
+    mockOrgModelRoutes("claude-fable-5");
+    mockAgent();
+    mockThread({
+      selectedModel: "claude-fable-5",
+      selectedImageModel: "gpt-image-2",
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.ImageModelSelection]: true,
+        [FeatureSwitchKey.VideoModelSelection]: true,
+      },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await user.click(await findComposerModel("Claude Fable 5"));
+
+    expect(mediaPanelButton("Image models")).toBeInTheDocument();
+    expect(mediaPanelButton("Video models")).toBeInTheDocument();
+    expect(mediaPanelButton("Manage more models")).toBeUndefined();
+
+    await user.click(await findMediaPanelButton("Image models"));
+
+    await expect(findMediaPanelButton("GPT Image 2")).resolves.toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(mediaPanelButton("Seedream 4")).toBeInTheDocument();
+
+    await user.click(await findMediaPanelButton("Image models"));
+
+    expect(mediaPanelButton("Video models")).toBeInTheDocument();
+    expect(mediaPanelButton("GPT Image 2")).toBeUndefined();
+  });
+
+  it("keeps image model pins independent across split chat composers", async () => {
+    const user = userEvent.setup({ delay: null });
+    const updates: { threadId: string; model: string | null }[] = [];
+    context.mocks.browser.matchMedia(true);
+    mockOrgModelRoutes("claude-fable-5");
+    mockAgent();
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+    mockComposerThreadSnapshot([
+      {
+        id: THREAD_ID,
+        agentId: AGENT_ID,
+        title: "First image thread",
+        selectedModel: "claude-fable-5",
+        selectedImageModel: "gpt-image-2",
+      },
+      {
+        id: OTHER_AGENT_THREAD_ID,
+        agentId: AGENT_ID,
+        title: "Second image thread",
+        selectedModel: "claude-fable-5",
+        selectedImageModel: "fal-ai/qwen-image",
+      },
+    ]);
+    context.mocks.api(
+      chatThreadImageModelContract.update,
+      ({ params, body, respond }) => {
+        updates.push({ threadId: params.id, model: body.model });
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.ImageModelSelection]: true },
+      path: `/chats/${THREAD_ID}?sidebar=${OTHER_AGENT_THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("Chat thread")).toHaveLength(2);
+    });
+    const threadRegions = screen.getAllByLabelText("Chat thread");
+    const firstThread = threadRegions[0];
+    const secondThread = threadRegions[1];
+    if (!firstThread || !secondThread) {
+      throw new Error("Split chat threads not found");
+    }
+    const firstImageModelButton =
+      await findDesktopImageModelButton(firstThread);
+    const secondImageModelButton =
+      await findDesktopImageModelButton(secondThread);
+    expect(firstImageModelButton).toHaveTextContent("GPT Image 2");
+    expect(secondImageModelButton).toHaveTextContent("Qwen Image");
+
+    await user.click(firstImageModelButton);
+    await user.click(await findMediaPanelButton("Seedream 4"));
+
+    await waitFor(() => {
+      expect(updates).toStrictEqual([
+        {
+          threadId: THREAD_ID,
+          model: "fal-ai/bytedance/seedream/v4/text-to-image",
+        },
+      ]);
+      expect(firstImageModelButton).toHaveTextContent("Seedream 4");
+      expect(secondImageModelButton).toHaveTextContent("Qwen Image");
+    });
+  });
+});
+
 describe("chat composer video model", () => {
   function desktopVideoModelButton(): HTMLElement | undefined {
     return queryAllByRoleFast("button").find((candidate) => {
@@ -3446,6 +3813,42 @@ describe("chat composer video model", () => {
         throw new Error(`${label} button not found`);
       }
       return button;
+    });
+  }
+
+  function videoPanelButtonByAccessibleLabel(
+    label: string,
+  ): HTMLElement | undefined {
+    return queryAllByRoleFast("button").find((candidate) => {
+      return candidate.getAttribute("aria-label") === label;
+    });
+  }
+
+  function findVideoPanelButtonByAccessibleLabel(
+    label: string,
+  ): Promise<HTMLElement> {
+    return waitFor(() => {
+      const button = videoPanelButtonByAccessibleLabel(label);
+      if (!button) {
+        throw new Error(`${label} button not found`);
+      }
+      return button;
+    });
+  }
+
+  function videoVariantMenuItem(label: string): HTMLElement | undefined {
+    return queryAllByRoleFast("menuitem").find((candidate) => {
+      return candidate.getAttribute("aria-label") === label;
+    });
+  }
+
+  function findVideoVariantMenuItem(label: string): Promise<HTMLElement> {
+    return waitFor(() => {
+      const item = videoVariantMenuItem(label);
+      if (!item) {
+        throw new Error(`${label} video variant not found`);
+      }
+      return item;
     });
   }
 
@@ -3672,10 +4075,11 @@ describe("chat composer video model", () => {
     expect(videoPanelButton("Veo 3.1 fast")).toBeInTheDocument();
     expect(videoPanelButton("Kling v3 4K")).toBeInTheDocument();
     expect(videoPanelButton("MiniMax H3")).toBeInTheDocument();
-    expect(videoPanelButton("Seedance 2.0 fast")).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    expect(videoPanelButton("Seedance 2.0 fast")).toBeUndefined();
+    expect(videoPanelButton("Seedance 2.0 Mini")).toBeUndefined();
+    expect(
+      videoPanelButtonByAccessibleLabel("Seedance 2.0 variants"),
+    ).toHaveTextContent(/^Fast$/);
 
     await user.click(await findVideoPanelButton("Veo 3.1 fast"));
 
@@ -3813,7 +4217,14 @@ describe("chat composer video model", () => {
     expect(videoPanelButton("MiniMax H3")).toBeUndefined();
     await user.click(await findVideoPanelButton("Manage more models"));
 
-    await user.click(await findVideoPanelButton("Seedance 2.0 fast"));
+    await user.click(
+      await findVideoPanelButtonByAccessibleLabel("Seedance 2.0 variants"),
+    );
+    await expect(
+      findVideoVariantMenuItem("Seedance 2.0"),
+    ).resolves.toBeInTheDocument();
+    expect(videoVariantMenuItem("Seedance 2.0 Mini")).toBeInTheDocument();
+    await user.click(await findVideoVariantMenuItem("Seedance 2.0 fast"));
 
     await waitFor(() => {
       expect(bodies).toStrictEqual([

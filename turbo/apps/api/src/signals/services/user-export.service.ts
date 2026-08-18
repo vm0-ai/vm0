@@ -55,7 +55,7 @@ import {
   buildOneClickUnsubscribeUrl,
   buildUnsubscribeHeaders,
   buildUnsubscribeUrl,
-} from "./zero-email-common.service";
+} from "./email-common.service";
 import {
   normalizeSessionHistoryBlobEncoding,
   resumeSessionHistoryBlobKey,

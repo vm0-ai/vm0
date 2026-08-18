@@ -8,7 +8,7 @@ import {
 } from "@okouai/api-contracts/contracts/integrations";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { logsByIdContract } from "@okouai/api-contracts/contracts/logs";
-import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
+import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
 import { zeroModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-model-providers";
 import { HttpResponse, http } from "msw";
 import type { z } from "zod";
@@ -48,7 +48,7 @@ export const AGENTPHONE_BDD_PHONE_NUMBER = "+19039853128";
 const AGENTPHONE_API_BASE_URL = "https://api.agentphone.test";
 
 type OrgModelPolicyUpdateBody = z.infer<
-  (typeof zeroModelPoliciesMainContract.update)["body"]
+  (typeof modelPoliciesMainContract.update)["body"]
 >;
 
 export interface AgentPhoneProviderSend {
@@ -473,7 +473,7 @@ export function createAgentPhoneBddApi(context: TestContext) {
       ];
       await accept(
         setupApp({ context, routes: modelPoliciesRoutes })(
-          zeroModelPoliciesMainContract,
+          modelPoliciesMainContract,
         ).update({
           headers: authenticate(context, actor),
           body: { policies },

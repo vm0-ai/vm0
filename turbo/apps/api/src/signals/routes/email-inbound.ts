@@ -11,7 +11,7 @@ import {
   getUserIdByEmail,
   unsubscribeUser,
   verifyResendWebhook,
-} from "../services/zero-email-common.service";
+} from "../services/email-common.service";
 import { safeSync } from "../utils";
 
 interface WebhookEvent {

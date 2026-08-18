@@ -15,7 +15,7 @@ import {
   isTeamsInstallationActive,
   prepareTeamsInstallation$,
   publishTeamsChanged$,
-} from "../services/zero-teams-connect.service";
+} from "../services/teams-connect.service";
 import { safeJsonParse, tapError } from "../utils";
 import type { RouteEntry } from "../route-entry";
 import { getOAuthApiOrigin } from "../../lib/oauth-origin";

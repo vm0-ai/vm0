@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.458.4](https://github.com/vm0-ai/vm0/compare/api-v1.458.3...api-v1.458.4) (2026-08-18)
+
+
+### Bug Fixes
+
+* pause automations when deleting chat threads ([#27880](https://github.com/vm0-ai/vm0/issues/27880)) ([039e1ec](https://github.com/vm0-ai/vm0/commit/039e1ecdab67a1ea7559919d3186c9d60a71b4c4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.338.3
+    * @okouai/connectors bumped to 1.207.1
+    * @okouai/core bumped to 8.567.0
+    * @okouai/db bumped to 1.204.4
+
 ## [1.458.3](https://github.com/vm0-ai/vm0/compare/api-v1.458.2...api-v1.458.3) (2026-08-18)
 
 

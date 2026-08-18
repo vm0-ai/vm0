@@ -20,7 +20,7 @@ import {
   type ZeroBrowserSession,
 } from "@okouai/api-contracts/contracts/zero-browser";
 import { zeroConnectorCatalogContract } from "@okouai/api-contracts/contracts/zero-connector-catalog";
-import { zeroMailContract } from "@okouai/api-contracts/contracts/zero-mail";
+import { mailContract } from "@okouai/api-contracts/contracts/mail";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -1077,7 +1077,7 @@ describe("thread-owned utility sidebar", () => {
     context.mocks.browser.matchMedia((query) => {
       return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
     });
-    context.mocks.api(zeroMailContract.getDraft, ({ params, respond }) => {
+    context.mocks.api(mailContract.getDraft, ({ params, respond }) => {
       const deleted = params.mailDraftId === deletedDraftId;
       if (!deleted && params.mailDraftId !== reconnectDraftId) {
         throw new Error(`Unexpected mail draft: ${params.mailDraftId}`);

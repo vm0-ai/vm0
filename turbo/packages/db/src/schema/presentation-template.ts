@@ -27,9 +27,9 @@ export type PresentationTemplateVisibility =
   (typeof PRESENTATION_TEMPLATE_VISIBILITIES)[number];
 
 /**
- * Import lifecycle. `pending` is written when the row is created, `processing`
- * once page images exist, `ready` once the package is published. `failed` is
- * terminal and carries `error`.
+ * Import lifecycle. `pending` is written only after the source and every page
+ * upload have been validated, `processing` once analysis has started, `ready`
+ * once the package is published. `failed` is terminal and carries `error`.
  */
 export const PRESENTATION_TEMPLATE_STATUSES = [
   "pending",
@@ -48,12 +48,13 @@ export type PresentationTemplateStatus =
  * `zero_workflows` derives `custom-skill@{workflowId}`. One authoritative
  * location, nothing to keep in sync.
  *
- * `page_keys` holds R2 object keys rather than URLs, so how a page is served
- * stays a read-time decision. Array position is the page number and element 0
- * is the cover, so the page count is `array_length(page_keys, 1)` and never a
- * stored column. Page images are deliberately not `run_uploaded_files` rows:
- * that table's catalog trigger would project every slide crop into the user's
- * artifact catalog.
+ * `source_storage_key` and `page_keys` reference independently owned objects
+ * created by the normal private upload route. URLs remain a read-time
+ * decision. Array position is the page number and element 0 is the cover, so
+ * the page count is `array_length(page_keys, 1)` and never a stored column.
+ * The template commit resolves those uploads directly instead of registering
+ * the page images as `run_uploaded_files`, which would project every slide
+ * crop into the user's artifact catalog.
  */
 export const presentationTemplates = pgTable(
   "presentation_templates",
@@ -71,14 +72,14 @@ export const presentationTemplates = pgTable(
       .notNull()
       .default("pending"),
     error: jsonb("error").$type<PresentationTemplateError>(),
-    /** Object key of the uploaded deck, as assigned by the upload route. */
+    /** Private artifact object key assigned by the normal upload route. */
     sourceStorageKey: text("source_storage_key").notNull(),
     sourceFilename: text("source_filename").notNull(),
     pageKeys: text("page_keys")
       .array()
       .notNull()
       .default(sql`'{}'::text[]`),
-    /** Page width divided by height, written when the pages are committed. */
+    /** Legacy compatibility column retained until #26578; new imports leave it null. */
     aspectRatio: real("aspect_ratio"),
     createdBy: text("created_by").notNull(),
     updatedBy: text("updated_by").notNull(),

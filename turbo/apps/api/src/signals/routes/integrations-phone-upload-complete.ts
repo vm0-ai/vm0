@@ -20,7 +20,7 @@ import {
   resolveAgentPhoneUserLinkForOwner,
   storeOutboundAgentPhoneMessage,
   type AgentPhoneChannel,
-} from "../services/zero-agentphone.service";
+} from "../services/agentphone.service";
 import type { RouteEntry } from "../route-entry";
 import { settle } from "../utils";
 

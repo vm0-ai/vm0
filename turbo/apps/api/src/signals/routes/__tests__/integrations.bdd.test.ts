@@ -2502,6 +2502,9 @@ describe("INT-01: Slack app deep webhook flows", () => {
       sandboxToken: mainClaim.sandboxToken,
       cliAgentType: mainClaim.cliAgentType,
     });
+    // The completion response precedes its waitUntil callback and queue drain.
+    // Own that work before the next ingress can enter the same scheduler.
+    await flushWaitUntilForTest();
 
     await integrations.postSlackEvent(teamId, {
       type: "message",
@@ -2520,6 +2523,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       sandboxToken: threadClaim.sandboxToken,
       cliAgentType: threadClaim.cliAgentType,
     });
+    await flushWaitUntilForTest();
 
     await integrations.postSlackEvent(teamId, {
       type: "message",
@@ -2540,6 +2544,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       sandboxToken: threadFollowUpClaim.sandboxToken,
       cliAgentType: threadFollowUpClaim.cliAgentType,
     });
+    await flushWaitUntilForTest();
 
     await integrations.postSlackEvent(teamId, {
       type: "message",
