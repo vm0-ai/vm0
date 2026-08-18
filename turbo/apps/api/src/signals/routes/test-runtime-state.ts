@@ -39,9 +39,9 @@ import {
   settleIncludingAbort,
 } from "../utils";
 import {
-  acquireVm0ManagedModelKeyFixture,
-  releaseVm0ManagedModelKeyFixture,
-} from "../services/test-vm0-managed-model-key-fixture.service";
+  acquireManagedModelKeyFixture,
+  releaseManagedModelKeyFixture,
+} from "../services/managed-model-key-fixture";
 import { browserScreenshotSchemaAvailable } from "../services/browser-screenshot-schema.service";
 import { usagePackInvitationPurchaseSchemaAvailable } from "../services/usage-pack-invitation-purchase.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
@@ -222,7 +222,7 @@ async function seedVm0ManagedModelKey(
   signal: AbortSignal,
 ): Promise<string> {
   const vendor = getVm0Vendor(selectedModel);
-  await acquireVm0ManagedModelKeyFixture(db, fixtureId, [
+  await acquireManagedModelKeyFixture(db, fixtureId, [
     {
       vendor,
       apiKey: `${VM0_MANAGED_MODEL_KEY_FIXTURE_PREFIX}${fixtureId}`,
@@ -237,7 +237,7 @@ async function deleteVm0ManagedModelKey(
   fixtureId: string,
   signal: AbortSignal,
 ): Promise<void> {
-  await releaseVm0ManagedModelKeyFixture(db, fixtureId);
+  await releaseManagedModelKeyFixture(db, fixtureId);
   signal.throwIfAborted();
 }
 

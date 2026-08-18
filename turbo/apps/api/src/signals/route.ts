@@ -119,7 +119,7 @@ import { queuePositionRoutes } from "./routes/queue-position";
 import { realtimeTokenRoutes } from "./routes/realtime-token";
 import { imageRecognitionRoutes } from "./routes/image-recognition";
 import { translationRoutes } from "./routes/translation";
-import { zeroRunDetailRoutes } from "./routes/zero-run-detail";
+import { runDetailRoutes } from "./routes/run-detail";
 import { zeroRunsRoutes } from "./routes/zero-runs";
 import { zeroRunsCancelRoutes } from "./routes/zero-runs-cancel";
 import { meModelProvidersDeleteRoutes } from "./routes/me-model-providers-delete";
@@ -318,7 +318,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...realtimeTokenRoutes,
   ...imageRecognitionRoutes,
   ...translationRoutes,
-  ...zeroRunDetailRoutes,
+  ...runDetailRoutes,
   ...zeroRunsRoutes,
   ...zeroRunsCancelRoutes,
   ...onboardingCompleteRoutes,
