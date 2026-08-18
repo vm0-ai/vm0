@@ -10,7 +10,7 @@ const c = initContract();
  * Zero contract for /api/okou/org
  * Proxies to /api/org
  */
-export const zeroOrgContract = c.router({
+export const orgContract = c.router({
   get: {
     method: "GET",
     path: "/api/okou/org",
@@ -40,13 +40,13 @@ export const zeroOrgContract = c.router({
   },
 });
 
-export type ZeroOrgContract = typeof zeroOrgContract;
+export type OrgContract = typeof orgContract;
 
 /**
  * Zero contract for POST /api/okou/org/leave
  * Proxies to POST /api/org/leave
  */
-export const zeroOrgLeaveContract = c.router({
+export const orgLeaveContract = c.router({
   leave: {
     method: "POST",
     path: "/api/okou/org/leave",
@@ -63,12 +63,12 @@ export const zeroOrgLeaveContract = c.router({
   },
 });
 
-export type ZeroOrgLeaveContract = typeof zeroOrgLeaveContract;
+export type OrgLeaveContract = typeof orgLeaveContract;
 
 /**
  * Zero contract for DELETE /api/okou/org/delete
  */
-export const zeroOrgDeleteContract = c.router({
+export const orgDeleteContract = c.router({
   delete: {
     method: "POST",
     path: "/api/okou/org/delete",
@@ -86,4 +86,4 @@ export const zeroOrgDeleteContract = c.router({
   },
 });
 
-export type ZeroOrgDeleteContract = typeof zeroOrgDeleteContract;
+export type OrgDeleteContract = typeof orgDeleteContract;

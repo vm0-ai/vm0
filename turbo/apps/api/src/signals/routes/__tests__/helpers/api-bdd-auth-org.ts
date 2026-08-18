@@ -44,10 +44,10 @@ import {
   type CustomConnectorResponse,
 } from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import {
-  zeroOrgContract,
-  zeroOrgDeleteContract,
-  zeroOrgLeaveContract,
-} from "@okouai/api-contracts/contracts/zero-org";
+  orgContract,
+  orgDeleteContract,
+  orgLeaveContract,
+} from "@okouai/api-contracts/contracts/org-routes";
 import { orgLogoContract } from "@okouai/api-contracts/contracts/org-logo";
 import {
   zeroOrgInviteContract,
@@ -808,7 +808,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
 
     async readOrg(actor: ApiTestUser): Promise<OrgResponse> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroOrgContract,
+        orgContract,
       );
       const response = await accept(
         client.get({ headers: authenticate(actor) }),
@@ -822,7 +822,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       statuses: readonly (200 | 401 | 404)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroOrgContract,
+        orgContract,
       );
       return await accept(
         client.get({ headers: authenticate(actor) }),
@@ -835,7 +835,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       body: UpdateOrgRequest,
     ): Promise<OrgResponse> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroOrgContract,
+        orgContract,
       );
       const response = await accept(
         client.update({ headers: authenticate(actor), body }),
@@ -850,7 +850,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroOrgContract,
+        orgContract,
       );
       return await accept(
         client.update({ headers: authenticate(actor), body }),
@@ -887,7 +887,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroOrgContract,
+        orgContract,
       );
       return await accept(
         client.get({ headers: bearerHeaders(token) }),
@@ -901,7 +901,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroOrgContract,
+        orgContract,
       );
       return await accept(
         client.update({ headers: bearerHeaders(token), body }),
@@ -1097,7 +1097,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
 
     async leaveOrg(actor: ApiTestUser): Promise<OrgMessageResponse> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroOrgLeaveContract,
+        orgLeaveContract,
       );
       const response = await accept(
         client.leave({ headers: authenticate(actor), body: {} }),
@@ -1111,7 +1111,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 500)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroOrgLeaveContract,
+        orgLeaveContract,
       );
       return await accept(
         client.leave({ headers: authenticate(actor), body: {} }),
@@ -1121,7 +1121,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
 
     async deleteOrg(actor: ApiTestUser): Promise<OrgMessageResponse> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroOrgDeleteContract,
+        orgDeleteContract,
       );
       const response = await accept(
         client.delete({
@@ -1138,7 +1138,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroOrgDeleteContract,
+        orgDeleteContract,
       );
       return await accept(
         client.delete({

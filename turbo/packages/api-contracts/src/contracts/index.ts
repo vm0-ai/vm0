@@ -1057,13 +1057,13 @@ export {
   type ClaudeCodeDeviceAuthContract,
 } from "./claude-code-device-auth";
 export {
-  zeroOrgContract,
-  zeroOrgLeaveContract,
-  zeroOrgDeleteContract,
-  type ZeroOrgContract,
-  type ZeroOrgLeaveContract,
-  type ZeroOrgDeleteContract,
-} from "./zero-org";
+  orgContract,
+  orgLeaveContract,
+  orgDeleteContract,
+  type OrgContract,
+  type OrgLeaveContract,
+  type OrgDeleteContract,
+} from "./org-routes";
 export {
   orgLogoContract,
   orgLogoResponseSchema,

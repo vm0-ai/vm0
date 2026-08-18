@@ -1,8 +1,8 @@
 import {
-  zeroOrgContract,
-  zeroOrgLeaveContract,
-  zeroOrgDeleteContract,
-} from "@okouai/api-contracts/contracts/zero-org";
+  orgContract,
+  orgLeaveContract,
+  orgDeleteContract,
+} from "@okouai/api-contracts/contracts/org-routes";
 import type { OrgResponse } from "@okouai/api-contracts/contracts/orgs";
 import { http, HttpResponse } from "msw";
 import { mockApi } from "../msw-contract.ts";
@@ -33,20 +33,20 @@ export function resetMockOrgLogo(): void {
 }
 
 export const apiOrgHandlers = [
-  mockApi(zeroOrgContract.get, ({ respond }) => {
+  mockApi(orgContract.get, ({ respond }) => {
     return respond(200, mockOrg);
   }),
 
-  mockApi(zeroOrgContract.update, ({ body, respond }) => {
+  mockApi(orgContract.update, ({ body, respond }) => {
     mockOrg = { ...mockOrg, ...body };
     return respond(200, mockOrg);
   }),
 
-  mockApi(zeroOrgLeaveContract.leave, ({ respond }) => {
+  mockApi(orgLeaveContract.leave, ({ respond }) => {
     return respond(200, { message: "Left org" });
   }),
 
-  mockApi(zeroOrgDeleteContract.delete, ({ respond }) => {
+  mockApi(orgDeleteContract.delete, ({ respond }) => {
     return respond(200, { message: "Org deleted" });
   }),
 
