@@ -16,6 +16,21 @@ use std::path::Path;
 /// are logged and skipped. Consequently, `Ok(())` means that all accepted
 /// entries were processed, not that every archive entry was unpacked.
 ///
+/// # TOCTOU (documented, not mitigated)
+///
+/// The ancestor checks performed before each `unpack_in` do not provide TOCTOU
+/// protection. Sequential entry processing only orders entries within this
+/// process; it does not prevent another process from concurrently mutating the
+/// destination tree (for example, atomically replacing a checked directory with
+/// a symlink) between a check and the extraction below. The `tar` crate's
+/// threat model explicitly excludes concurrent destination mutation, and
+/// preventing such races requires OS primitives (e.g. `openat`/`O_PATH`) that
+/// this crate does not use. Exposure is reduced by lifecycle assumptions owned
+/// by callers: the runner applies storage before spawning the guest agent, and
+/// the guest-download scheduler serializes logically or physically overlapping
+/// targets within this process. Callers that permit concurrent access to an
+/// extraction target must not rely on this function for containment.
+///
 /// # Errors
 ///
 /// An unreadable archive entry or entry path, or a failure to unpack an
@@ -134,9 +149,11 @@ pub(crate) fn extract_tar_gz(source: ArchiveSource, target: &Path) -> Result<(),
             continue;
         }
 
-        // TOCTOU is not a concern here: entries are processed sequentially from a single
-        // archive stream, so no external actor can modify the filesystem between our checks
-        // and the extraction below.
+        // This check-plus-unpack sequence is not TOCTOU-safe: sequential processing of a single
+        // archive stream only orders entries within this process, and another process can still
+        // replace a checked directory or symlink between the ancestor check and the extraction
+        // below. Safety relies on the caller's lifecycle/exclusivity assumptions documented on
+        // `extract_tar_gz`.
         entry.unpack_in(target).map_err(|e| {
             archive_error(
                 &http_body_read_failure,
