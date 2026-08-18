@@ -72,12 +72,9 @@ import { billingStatusRoutes } from "../../billing-status";
 import { modelPoliciesRoutes } from "../../model-policies";
 import { zeroModelProvidersRoutes } from "../../zero-model-providers";
 import { runDetailRoutes } from "../../run-detail";
-import { zeroRunsCancelRoutes } from "../../zero-runs-cancel";
+import { runsCancelRoutes } from "../../runs-cancel";
 import { zeroRunsRoutes } from "../../zero-runs";
-import {
-  zeroRunFixtureContract,
-  zeroRunFixtureRoutes,
-} from "../../test-zero-run-fixture";
+import { runFixtureContract, runFixtureRoutes } from "../../test-run-fixture";
 import { testBillingReconciliationStateRoutes } from "../../test-billing-reconciliation-state";
 import { userPermissionGrantsRoutes } from "../../user-permission-grants";
 import { createBddApi, type ApiTestUser } from "./api-bdd";
@@ -158,9 +155,9 @@ const runRoutes = [
   ...modelPoliciesRoutes,
   ...zeroModelProvidersRoutes,
   ...runDetailRoutes,
-  ...zeroRunFixtureRoutes,
+  ...runFixtureRoutes,
   ...zeroRunsRoutes,
-  ...zeroRunsCancelRoutes,
+  ...runsCancelRoutes,
   ...agentsRoutes,
   ...userPermissionGrantsRoutes,
 ] as const;
@@ -471,7 +468,7 @@ export function createRunsApi(context: TestContext) {
 
     async createRun(actor: ApiTestUser, body: ZeroRunRequest) {
       const response = await accept(
-        runApp(context)(zeroRunFixtureContract).create({
+        runApp(context)(runFixtureContract).create({
           headers: authenticate(context, actor),
           body,
         }),
@@ -958,7 +955,7 @@ export function createRunsApi(context: TestContext) {
       extraHeaders?: Readonly<Record<string, string>>,
     ) {
       return await accept(
-        runApp(context)(zeroRunFixtureContract).create({
+        runApp(context)(runFixtureContract).create({
           headers: {
             ...authenticate(context, actor),
             ...extraHeaders,
@@ -975,7 +972,7 @@ export function createRunsApi(context: TestContext) {
       statuses: readonly (201 | 400 | 401 | 402 | 403 | 404 | 429 | 503)[],
     ) {
       return await accept(
-        runApp(context)(zeroRunFixtureContract).create({
+        runApp(context)(runFixtureContract).create({
           headers: authenticate(context, actor),
           body: body as ZeroRunRequest,
         }),
