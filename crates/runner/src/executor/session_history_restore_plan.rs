@@ -292,9 +292,7 @@ mod tests {
 
     use crate::http::HttpClientConfig;
     use crate::ids::RunId;
-    use crate::restored_session_identity::{
-        RestoredSessionFramework, RestoredSessionHistoryHashSizeRelationship,
-    };
+    use crate::restored_session_identity::RestoredSessionHistoryHashSizeRelationship;
     use crate::test_fixtures::execution_context::execution_context_for_test;
     use crate::types::{
         ResumeSession, ResumeSessionHistory, ResumeSessionHistoryEncoding, ResumeSessionHistoryRef,
@@ -631,9 +629,9 @@ mod tests {
         let history_hash = "a".repeat(64);
         let context = context_with_history_ref(&history_hash);
         let restored_identity = RestoredSessionIdentity::new(
-            RestoredSessionFramework::ClaudeCode,
+            FinalSessionHistoryFramework::ClaudeCode,
             "sess-other",
-            ResumeSessionHistoryRefKind::Blob,
+            FinalSessionHistoryRefKind::Blob,
             history_hash,
             Some(12),
         );
@@ -662,9 +660,9 @@ mod tests {
         let history_hash = "a".repeat(64);
         let context = context_with_history_ref(&history_hash);
         let restored_identity = RestoredSessionIdentity::new(
-            RestoredSessionFramework::Codex,
+            FinalSessionHistoryFramework::Codex,
             "sess-restore-plan",
-            ResumeSessionHistoryRefKind::Blob,
+            FinalSessionHistoryRefKind::Blob,
             history_hash,
             Some(12),
         );

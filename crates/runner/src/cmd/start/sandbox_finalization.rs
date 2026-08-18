@@ -1034,12 +1034,12 @@ mod tests {
     use crate::network_log_manager::NetworkLogManager;
     use crate::paths::RunnerPaths;
     use crate::resource_budget::{BudgetLease, ResourceBudget};
-    use crate::restored_session_identity::{RestoredSessionFramework, RestoredSessionIdentity};
+    use crate::restored_session_identity::RestoredSessionIdentity;
     use crate::status::StatusTracker;
     use crate::storage_fingerprints::StorageFingerprint;
     use crate::storage_manifest::{ArtifactEntry, StorageEntry, StorageManifest};
     use crate::storage_plan::build_storage_plan;
-    use crate::types::{ResumeSessionHistoryRefKind, SandboxReuseResult};
+    use crate::types::SandboxReuseResult;
     use crate::workspace_image_cache::{
         WorkspaceImageCache, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
         WorkspaceImagePromotionContext, WorkspaceImagePromotionIdentityRequest,
@@ -1268,53 +1268,44 @@ mod tests {
     }
 
     fn test_restored_session_identity(
-        framework: RestoredSessionFramework,
+        framework: FinalSessionHistoryFramework,
         session_id: &str,
         history: &[u8],
     ) -> RestoredSessionIdentity {
         RestoredSessionIdentity::new(
             framework,
             session_id,
-            ResumeSessionHistoryRefKind::Blob,
+            FinalSessionHistoryRefKind::Blob,
             hex::encode(Sha256::digest(history)),
             Some(history.len() as u64),
         )
     }
 
     fn test_verified_restored_session_identity(
-        framework: RestoredSessionFramework,
+        framework: FinalSessionHistoryFramework,
         session_id: &str,
         history: &[u8],
     ) -> RestoredSessionIdentity {
-        let (final_framework, history_source) = match framework {
-            RestoredSessionFramework::ClaudeCode => (
-                FinalSessionHistoryFramework::ClaudeCode,
-                FinalSessionHistorySourceRef::ClaudeCode {
-                    config_dir: "/home/user/.claude".to_string(),
-                    working_dir: CANONICAL_WORKING_DIR.to_string(),
-                    session_id: session_id.to_string(),
-                },
-            ),
-            RestoredSessionFramework::Codex => (
-                FinalSessionHistoryFramework::Codex,
-                FinalSessionHistorySourceRef::Codex {
-                    sessions_dir: "/home/user/.codex/sessions".to_string(),
-                    thread_id: session_id.to_string(),
-                },
-            ),
-            RestoredSessionFramework::Pi => (
-                FinalSessionHistoryFramework::Pi,
-                FinalSessionHistorySourceRef::Pi {
-                    session_path: format!(
-                        "{}/restored-{session_id}.jsonl",
-                        api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DIR,
-                    ),
-                    session_id: session_id.to_string(),
-                },
-            ),
+        let history_source = match framework {
+            FinalSessionHistoryFramework::ClaudeCode => FinalSessionHistorySourceRef::ClaudeCode {
+                config_dir: "/home/user/.claude".to_string(),
+                working_dir: CANONICAL_WORKING_DIR.to_string(),
+                session_id: session_id.to_string(),
+            },
+            FinalSessionHistoryFramework::Codex => FinalSessionHistorySourceRef::Codex {
+                sessions_dir: "/home/user/.codex/sessions".to_string(),
+                thread_id: session_id.to_string(),
+            },
+            FinalSessionHistoryFramework::Pi => FinalSessionHistorySourceRef::Pi {
+                session_path: format!(
+                    "{}/restored-{session_id}.jsonl",
+                    api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DIR,
+                ),
+                session_id: session_id.to_string(),
+            },
         };
         let metadata = FinalSessionHistoryIdentity::new(
-            final_framework,
+            framework,
             hex::encode(Sha256::digest(session_id.as_bytes())),
             FinalSessionHistoryRefKind::Blob,
             hex::encode(Sha256::digest(history)),
@@ -1340,7 +1331,7 @@ mod tests {
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
         let restored_session_identity = test_restored_session_identity(
-            RestoredSessionFramework::ClaudeCode,
+            FinalSessionHistoryFramework::ClaudeCode,
             session_id,
             history,
         );
@@ -2185,7 +2176,7 @@ mod tests {
         let previous_sidecar_body = tokio::fs::read(&sidecar_body_path).await.unwrap();
         let previous_sidecar_metadata = tokio::fs::read(&sidecar_metadata_path).await.unwrap();
         let codex_identity = test_restored_session_identity(
-            RestoredSessionFramework::Codex,
+            FinalSessionHistoryFramework::Codex,
             "codex-session-b",
             previous_history,
         );
@@ -2351,7 +2342,7 @@ mod tests {
         let next_session_id = "019e9154-c304-70f0-adde-36efb1be1701";
         let next_history = br#"{"type":"message","content":"codex-b"}"#;
         let next_identity = test_verified_restored_session_identity(
-            RestoredSessionFramework::Codex,
+            FinalSessionHistoryFramework::Codex,
             next_session_id,
             next_history,
         );
