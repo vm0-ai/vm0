@@ -4,7 +4,7 @@ Exports:
 
 - Bounded streaming usage decoding for gzip, deflate; one-shot
   decompression for gzip, deflate, br, zstd.
-- Request network-log capture decoding that hides opaque encoded bodies.
+- Request and response network-log capture decoding that hides failed bodies.
 - JSON usage decompression with diagnostic error classification.
 """
 
@@ -323,6 +323,101 @@ def decompress_body(
     on that (see #10287).
     """
     result = _decode_body_bounded(data, headers, max_output=max_output)
+    _log_body_decompression_failure(result, headers)
+    return result.body
+
+
+def _decode_single_zlib_stream_for_network_log_capture(
+    data: bytes,
+    *,
+    wbits: int,
+    max_output: int,
+    require_complete: bool,
+) -> bytes | None:
+    if not data or max_output <= 0:
+        return b""
+
+    obj = zlib.decompressobj(wbits)
+    input_cursor = ZlibInputCursor(data)
+    out = bytearray()
+    while input_cursor and len(out) < max_output:
+        try:
+            decoded = obj.decompress(
+                input_cursor.take(),
+                max_length=max_output - len(out),
+            )
+        except zlib.error:
+            return None
+        out.extend(decoded)
+        if obj.eof:
+            break
+        if obj.unconsumed_tail:
+            input_cursor.carry(obj.unconsumed_tail)
+
+    if require_complete and len(out) < max_output and not obj.eof:
+        return None
+    return bytes(out)
+
+
+def _decode_zstd_for_network_log_capture(data: bytes, max_output: int) -> bytes | None:
+    if not data or max_output <= 0:
+        return b""
+
+    try:
+        with zstandard.ZstdDecompressor().stream_reader(
+            data,
+            read_across_frames=True,
+        ) as reader:
+            return reader.read(max_output)
+    except zstandard.ZstdError:
+        return None
+
+
+def decode_response_body_for_network_log_capture(
+    data: bytes,
+    headers: http.Headers,
+    *,
+    max_output: int = DEFAULT_BODY_DECODE_LIMIT,
+) -> bytes | None:
+    """Decode a buffered response body with bounded mitmproxy compatibility."""
+    encoding = headers.get("content-encoding", "").strip().lower()
+    if not encoding or encoding == "identity":
+        return data
+    if encoding == "gzip":
+        # mitmproxy uses zlib's gzip/zlib auto-detection and accepts partial
+        # output when a gzip stream ends before its trailer.
+        return _decode_single_zlib_stream_for_network_log_capture(
+            data,
+            wbits=32 + zlib.MAX_WBITS,
+            max_output=max_output,
+            require_complete=False,
+        )
+    if encoding == "deflate":
+        body = _decode_single_zlib_stream_for_network_log_capture(
+            data,
+            wbits=zlib.MAX_WBITS,
+            max_output=max_output,
+            require_complete=True,
+        )
+        if body is not None:
+            return body
+        return _decode_single_zlib_stream_for_network_log_capture(
+            data,
+            wbits=-zlib.MAX_WBITS,
+            max_output=max_output,
+            require_complete=True,
+        )
+    if encoding == "br":
+        body, error = _decode_supported_body_with_complete_status(data, encoding, max_output)
+        if error is not None and error != DECODED_BODY_LIMIT_EXCEEDED:
+            return None
+        return body
+    if encoding == "zstd":
+        return _decode_zstd_for_network_log_capture(data, max_output)
+    return None
+
+
+def _log_body_decompression_failure(result: _BodyDecodeResult, headers: http.Headers) -> None:
     if result.failed and result.error is not None:
         with contextlib.suppress(AttributeError):
             # ctx.log unavailable outside mitmproxy runtime
@@ -330,7 +425,6 @@ def decompress_body(
                 "Decompression failed "
                 f"({headers.get('content-encoding', '').strip().lower()}): {result.error}"
             )
-    return result.body
 
 
 def _decompress_zlib_best_effort_bounded(
