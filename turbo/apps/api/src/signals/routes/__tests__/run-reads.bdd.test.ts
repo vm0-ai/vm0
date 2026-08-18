@@ -264,11 +264,11 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
     const memberCompose = await createClaudeCompose(member, "bdd-member-usage");
 
     await api.createDirectRun(actor, {
-      agentComposeId: actorCompose.composeId,
+      agentId: actorCompose.composeId,
       prompt: "actor active run",
     });
     await api.createDirectRun(member, {
-      agentComposeId: memberCompose.composeId,
+      agentId: memberCompose.composeId,
       prompt: "member active run",
     });
     await bdd.readMe(actor);
@@ -458,11 +458,11 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
     await api.requestCancelRun(actor, seedRun.runId, [200]);
 
     const runA = await api.createDirectRun(actor, {
-      agentComposeId: target.composeId,
+      agentId: target.composeId,
       prompt: "target run a",
     });
     const runB = await api.createDirectRun(actor, {
-      agentComposeId: other.composeId,
+      agentId: other.composeId,
       prompt: "other run b",
     });
 
@@ -591,7 +591,7 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
     expect(missing.body.error.message).toBe("Agent run not found");
 
     const runM = await api.createDirectRun(member, {
-      agentComposeId: memberCompose.composeId,
+      agentId: memberCompose.composeId,
       prompt: "member run m",
     });
     const hiddenFromActor = await api.requestReadRun(actor, runM.runId, [404]);
@@ -688,7 +688,7 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
     expect(emptyQueue.body.estimatedTimePerRun).toBeNull();
 
     const zeroRun = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "zero duration estimate",
     });
     await api.claimRunnerJob(zeroRun.runId);
@@ -697,7 +697,7 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
     expect(zeroQueue.body.estimatedTimePerRun).toBe(0);
 
     const fractionalRun = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "fractional average estimate",
     });
     await api.claimRunnerJob(fractionalRun.runId);
@@ -706,7 +706,7 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
     expect(fractionalQueue.body.estimatedTimePerRun).toBe(1);
 
     const normalRun = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "normal duration estimate",
     });
     await api.claimRunnerJob(normalRun.runId);
@@ -720,7 +720,7 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
       "bdd-large-duration-estimate",
     );
     const largeRun = await api.createDirectRun(largeActor, {
-      agentComposeId: largeCompose.composeId,
+      agentId: largeCompose.composeId,
       prompt: "large duration estimate",
     });
     await api.claimRunnerJob(largeRun.runId);
@@ -737,7 +737,7 @@ describe("RUN-03: cancel through the Zero route", () => {
     const compose = await createClaudeCompose(actor, "bdd-cancel");
 
     const c1 = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "cancel a running run",
     });
     await api.claimRunnerJob(c1.runId);
@@ -754,7 +754,7 @@ describe("RUN-03: cancel through the Zero route", () => {
     expect(repeated.body).toMatchObject({ status: "cancelled" });
 
     const c2 = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "complete then cancel",
     });
     const claim2 = await api.claimRunnerJob(c2.runId);
@@ -781,11 +781,11 @@ describe("RUN-03: cancel through the Zero route", () => {
       visibility: "private",
     });
     const d1 = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "occupy slot one",
     });
     const d2 = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "occupy slot two",
     });
     const c4 = await api.createRun(actor, {
@@ -822,12 +822,12 @@ describe("RUN-03: queue position", () => {
     });
 
     const running = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "running run",
     });
     await api.claimRunnerJob(running.runId);
     const pending = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "pending run",
     });
     const queued = await api.createRun(actor, {
@@ -929,7 +929,7 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     });
 
     const run = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "create compressed checkpoint",
     });
     const claim = await api.claimRunnerJob(run.runId);
@@ -1038,7 +1038,7 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     });
 
     const run = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "create zstd compressed checkpoint",
     });
     const claim = await api.claimRunnerJob(run.runId);
@@ -1127,7 +1127,7 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     });
 
     const run = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "create missing compressed blob metadata",
     });
     const claim = await api.claimRunnerJob(run.runId);
@@ -1218,7 +1218,7 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     });
 
     const run = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "create missing zstd blob metadata",
     });
     const claim = await api.claimRunnerJob(run.runId);
@@ -1377,7 +1377,7 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     const presignCallsBeforeRun =
       context.mocks.s3.getSignedUrl.mock.calls.length;
     const r1 = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "pin the volume by version prefix",
       vars: { VOL_VERSION: versionPrefix },
       artifacts: [
@@ -1447,25 +1447,42 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
       [200],
     );
 
+    const latestCompose = await api.createHistoricalCompose(actor, {
+      version: "2",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-latest-inline-key" },
+          volumes: ["data:/data"],
+        },
+      },
+      volumes: {
+        data: { name: volumeName, version: `\${{ vars.VOL_VERSION }}` },
+      },
+    });
+    expect(latestCompose.composeId).toBe(compose.composeId);
+
     if (!claim1.agentComposeVersionId) {
       throw new Error("Expected the claim to carry a compose version id");
     }
-    const byVersion = await reads.requestCreateDirectRun(
+    const byAgent = await reads.requestCreateDirectRun(
       actor,
       {
-        agentComposeVersionId: claim1.agentComposeVersionId,
-        prompt: "run a pinned compose version",
+        agentId: compose.composeId,
+        prompt: "run the latest Agent head",
         vars: { VOL_VERSION: volumeVersion },
       },
       [201],
     );
-    if (byVersion.status !== 201) {
-      throw new Error("Expected the version-pinned run create to succeed");
+    if (byAgent.status !== 201) {
+      throw new Error("Expected the Agent-backed run create to succeed");
     }
-    await api.requestCancelRun(actor, byVersion.body.runId, [200]);
+    const byAgentClaim = await api.claimRunnerJob(byAgent.body.runId);
+    expect(byAgentClaim.agentComposeVersionId).toBe(latestCompose.versionId);
+    await api.requestCancelRun(actor, byAgent.body.runId, [200]);
 
     const strictMemory = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "user-authored memory stays strict",
       vars: { VOL_VERSION: volumeVersion },
       artifacts: [{ name: "memory", mountPath: "/mnt/user-memory" }],
@@ -1493,7 +1510,7 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     await api.requestCancelRun(actor, strictMemory.runId, [200]);
 
     const customCanonical = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "custom artifact claims the canonical memory mount",
       vars: { VOL_VERSION: volumeVersion },
       artifacts: [
@@ -1531,6 +1548,7 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     });
     expect(continued.sessionId).toBe(r1.sessionId);
     const continuedClaim = await api.claimRunnerJob(continued.runId);
+    expect(continuedClaim.agentComposeVersionId).toBe(latestCompose.versionId);
     expect(continuedClaim.vars).toStrictEqual({
       VOL_VERSION: versionPrefix,
     });
@@ -1560,6 +1578,19 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
 });
 
 describe("RUN-01: direct run admission boundaries", () => {
+  it("requires an Agent or Session identity", async () => {
+    const actor = await entitledActor();
+    const missingIdentity = await reads.requestCreateDirectRun(
+      actor,
+      { prompt: "reject a direct run without identity" },
+      [400],
+    );
+    expectApiError(missingIdentity.body);
+    expect(missingIdentity.body.error.message).toBe(
+      "Missing agentId or sessionId",
+    );
+  });
+
   it("serializes concurrent direct runs at a one-run limit", async () => {
     const actor = await entitledActor();
     const compose = await createClaudeCompose(actor, "bdd-admission-race");
@@ -1569,7 +1600,7 @@ describe("RUN-01: direct run admission boundaries", () => {
       reads.requestCreateDirectRun(
         actor,
         {
-          agentComposeId: compose.composeId,
+          agentId: compose.composeId,
           prompt: "concurrent admission candidate one",
         },
         [201, 429],
@@ -1577,7 +1608,7 @@ describe("RUN-01: direct run admission boundaries", () => {
       reads.requestCreateDirectRun(
         actor,
         {
-          agentComposeId: compose.composeId,
+          agentId: compose.composeId,
           prompt: "concurrent admission candidate two",
         },
         [201, 429],
@@ -1632,16 +1663,16 @@ describe("RUN-01: direct run admission boundaries", () => {
     const compose = await createClaudeCompose(actor, "bdd-admission");
 
     const first = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "first concurrent run",
     });
     const second = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "second concurrent run",
     });
     const limited = await reads.requestCreateDirectRun(
       actor,
-      { agentComposeId: compose.composeId, prompt: "third concurrent run" },
+      { agentId: compose.composeId, prompt: "third concurrent run" },
       [429],
     );
     expectApiError(limited.body);
@@ -1652,7 +1683,7 @@ describe("RUN-01: direct run admission boundaries", () => {
     const crossOrgCompose = await reads.requestCreateDirectRun(
       actor,
       {
-        agentComposeId: foreignCompose.composeId,
+        agentId: foreignCompose.composeId,
         prompt: "run a foreign compose",
       },
       [404],
@@ -1663,7 +1694,7 @@ describe("RUN-01: direct run admission boundaries", () => {
     mockEnv("CONCURRENT_RUN_LIMIT_CAP", "0");
     const uncapped = await reads.requestCreateDirectRun(
       actor,
-      { agentComposeId: compose.composeId, prompt: "uncapped third run" },
+      { agentId: compose.composeId, prompt: "uncapped third run" },
       [201],
     );
     if (uncapped.status !== 201) {
@@ -1678,7 +1709,7 @@ describe("RUN-01: direct run admission boundaries", () => {
     const uncachedGate = await reads.requestCreateDirectRun(
       actor,
       {
-        agentComposeId: compose.composeId,
+        agentId: compose.composeId,
         prompt: "capture without a cached email",
         captureNetworkBodies: true,
       },
@@ -1692,7 +1723,7 @@ describe("RUN-01: direct run admission boundaries", () => {
     const externalGate = await reads.requestCreateDirectRun(
       actor,
       {
-        agentComposeId: compose.composeId,
+        agentId: compose.composeId,
         prompt: "capture with an external email",
         captureNetworkBodies: true,
       },
@@ -1709,7 +1740,7 @@ describe("RUN-01: direct run admission boundaries", () => {
     const allowed = await reads.requestCreateDirectRun(
       internal,
       {
-        agentComposeId: compose.composeId,
+        agentId: compose.composeId,
         prompt: "capture from an internal account",
         captureNetworkBodies: true,
       },
@@ -1984,7 +2015,7 @@ describe("RUN-04: agent run telemetry families", () => {
     const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
     const compose = await createClaudeCompose(actor, "bdd-activity-events");
     const run = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "inspect activity events",
     });
     const claim = await api.claimRunnerJob(run.runId);
@@ -2075,7 +2106,7 @@ describe("RUN-04: agent run telemetry families", () => {
     const actor = await entitledActor();
     const compose = await createClaudeCompose(actor, "bdd-network-hardening");
     const zeroRun = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "zero network hardening",
     });
 
@@ -2156,7 +2187,7 @@ describe("RUN-04: agent run telemetry families", () => {
     const actor = await entitledActor();
     const compose = await createClaudeCompose(actor, "bdd-time-cursor-ties");
     const run = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "emit tied network telemetry",
     });
     const runId = run.runId;
@@ -2388,7 +2419,7 @@ describe("RUN-04: agent run telemetry families", () => {
     const actor = await entitledActor();
     const compose = await createClaudeCompose(actor, "bdd-unpageable");
     const run = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "emit an unpageable network boundary",
     });
     const runId = run.runId;
@@ -3169,7 +3200,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     });
     await api.requestCancelRun(actor, secondAgentRun.runId, [200]);
     const testRun = await api.createDirectRun(actor, {
-      agentComposeId: testCompose.composeId,
+      agentId: testCompose.composeId,
       prompt: "direct test run",
     });
     await api.requestCancelRun(actor, testRun.runId, [200]);
@@ -3439,7 +3470,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     const actor = await entitledActor();
     const compose = await createClaudeCompose(actor, "historical-agent-log");
     const historicalAgentRun = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
+      agentId: compose.composeId,
       prompt: "historical agent-source run",
       triggerSource: "agent",
     });
@@ -3492,7 +3523,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     expect(currentCompose.versionId).toBe(foreignCompose.headVersionId);
 
     const sharedRun = await api.createDirectRun(actor, {
-      agentComposeId: currentCompose.composeId,
+      agentId: currentCompose.composeId,
       prompt: "shared compose version log",
       vars: { OKOU_AGENT_ID: currentCompose.composeId },
       secrets: { OKOU_TOKEN: "bdd-okou-token" },

@@ -93,7 +93,7 @@ async function seedActor(): Promise<TranslationActor> {
     },
   });
   const run = await api.createDirectRun(actor, {
-    agentComposeId: compose.composeId,
+    agentId: compose.composeId,
     prompt: "Translate text",
   });
   context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({

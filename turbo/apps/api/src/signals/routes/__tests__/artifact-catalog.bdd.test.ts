@@ -410,7 +410,7 @@ async function publishHostedSiteFromDirectRun(args: {
     args.runId ??
     (
       await api.createDirectRun(args.owner.actor, {
-        agentComposeId: args.owner.agentId,
+        agentId: args.owner.agentId,
         prompt: `publish ${args.site}`,
         modelProviderType: "anthropic-api-key",
         triggerSource: "automation-schedule",
@@ -1014,7 +1014,7 @@ describe("GET /api/zero/artifacts/catalog", () => {
   it("keeps a workflow run artifact under the owning vm0 user", async () => {
     const owner = await catalogActor("Artifact catalog workflow owner");
     const run = await api.createDirectRun(owner.actor, {
-      agentComposeId: owner.agentId,
+      agentId: owner.agentId,
       prompt: "create a workflow artifact",
       modelProviderType: "anthropic-api-key",
       triggerSource: "automation-schedule",

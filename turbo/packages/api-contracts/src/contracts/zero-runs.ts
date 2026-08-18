@@ -35,13 +35,11 @@ export const zeroRunCreateBodySchema = unifiedRunRequestSchema
     volumeVersions: true,
     vars: true,
     secrets: true,
-    agentComposeId: true,
     appendSystemPrompt: true,
     modelProviderType: true,
     permissionPolicies: true,
   })
   .extend({
-    agentId: z.string().optional(),
     modelProvider: z.string().optional(),
   });
 
