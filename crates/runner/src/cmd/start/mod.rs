@@ -960,6 +960,7 @@ enum SignalSource {
 enum StartLoopEvent {
     BudgetExhaustedReactorEntered,
     WorkspaceCacheChangeObserved,
+    DestroyTasksDrainEntered,
     FinalizingCapacityWaitEntered { run_id: RunId },
     ActiveRunStatusPublished { run_id: RunId },
     BeforeIdlePoolOwnershipTransfer { run_id: RunId },
@@ -1094,6 +1095,10 @@ impl StartLoopTestObserver {
         self.record(StartLoopEvent::WorkspaceCacheChangeObserved);
     }
 
+    fn notify_destroy_tasks_drain_entered(&self) {
+        self.record(StartLoopEvent::DestroyTasksDrainEntered);
+    }
+
     fn notify_finalizing_capacity_wait_entered(&self, run_id: RunId) {
         self.record(StartLoopEvent::FinalizingCapacityWaitEntered { run_id });
     }
@@ -1148,6 +1153,13 @@ impl StartLoopTestObserver {
             })
             .await;
         cursor
+    }
+
+    async fn wait_destroy_tasks_drain_entered(&self, timeout: Duration) {
+        self.wait_for(timeout, "destroy-task drain", |event| {
+            matches!(event, StartLoopEvent::DestroyTasksDrainEntered).then_some(())
+        })
+        .await;
     }
 
     async fn wait_finalizing_capacity_wait_entered(&self, run_id: RunId, timeout: Duration) {
@@ -2136,6 +2148,10 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // eviction) so their factory Arcs are dropped before the
     // factory shutdown ownership preflight.
     let phase = teardown.phase_start("destroy_tasks_drain");
+    #[cfg(test)]
+    test_hooks
+        .test_observer
+        .notify_destroy_tasks_drain_entered();
     idle_destroy_tracker.close_and_wait().await;
     teardown.phase_complete("destroy_tasks_drain", phase);
     let phase = teardown.phase_start("background_fill_shutdown");

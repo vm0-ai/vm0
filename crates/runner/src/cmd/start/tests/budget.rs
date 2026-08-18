@@ -217,7 +217,7 @@ async fn budget_pressure_starts_fresh_vm_before_idle_destroy_finishes() {
         "budget should be exhausted after seeding"
     );
 
-    let mut run_handle = tokio::spawn(run(config));
+    let run_handle = tokio::spawn(run(config));
 
     // Push new job — budget is full, but idle pool has an entry to evict.
     let run_id = RunId::new_v4();
@@ -248,10 +248,11 @@ async fn budget_pressure_starts_fresh_vm_before_idle_destroy_finishes() {
 
     env.drain();
     env.cancel.cancel();
+    env.start_observer
+        .wait_destroy_tasks_drain_entered(Duration::from_secs(5))
+        .await;
     assert!(
-        tokio::time::timeout(Duration::from_millis(100), &mut run_handle)
-            .await
-            .is_err(),
+        !run_handle.is_finished(),
         "shutdown must wait for the tracked retired idle destroy"
     );
     destroy_gate.release_one();
