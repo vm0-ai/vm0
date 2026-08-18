@@ -16,7 +16,12 @@ import {
   type EditorState,
   type Transaction,
 } from "@tiptap/pm/state";
-import { Decoration, DecorationSet, type NodeView } from "@tiptap/pm/view";
+import {
+  Decoration,
+  DecorationSet,
+  type EditorView,
+  type NodeView,
+} from "@tiptap/pm/view";
 import { StarterKit } from "@tiptap/starter-kit";
 import { createCompositionGate, type CompositionGate } from "@okouai/ui";
 import {
@@ -27,6 +32,7 @@ import {
 import type { ZeroWorkflowSummary } from "@okouai/api-contracts/contracts/zero-workflows";
 import { agents$ } from "../agent.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
+import { composerImeSubmitFlushEnabled$ } from "../external/feature-switch.ts";
 import { onRef, resetSignal } from "../utils.ts";
 import type { DraftInputSyncTarget, DraftSignals } from "./chat-draft.ts";
 import {
@@ -263,6 +269,33 @@ function connectComposerFeedback(
   });
 }
 
+interface PendingDomChangeObserver {
+  readonly flush: () => void;
+}
+
+function hasPendingDomChangeObserver(
+  view: EditorView,
+): view is EditorView & { readonly domObserver: PendingDomChangeObserver } {
+  return "domObserver" in view;
+}
+
+/**
+ * ProseMirror defers reading the contenteditable while an IME composition is in
+ * flight. On a busy page the composed tail can still be missing from
+ * `editor.state.doc` after the composition gate settles, which submits only the
+ * already committed prefix. Flushing the observer applies those pending DOM
+ * changes before the document is serialized.
+ *
+ * `domObserver` is internal to prosemirror-view, so it is narrowed structurally
+ * rather than imported.
+ */
+function flushPendingDomChanges(editor: Editor): void {
+  if (!hasPendingDomChangeObserver(editor.view)) {
+    return;
+  }
+  editor.view.domObserver.flush();
+}
+
 function createReadInputForSubmissionCommand(
   editor: Editor,
   compositionGate: CompositionGate,
@@ -270,7 +303,11 @@ function createReadInputForSubmissionCommand(
 ) {
   return command(({ get }, signal: AbortSignal) => {
     const includeQuoteOnlyFeedback = get(quoteOnlyFeedbackEnabled$);
+    const flushBeforeRead = get(composerImeSubmitFlushEnabled$);
     return compositionGate.runWhenSettled(() => {
+      if (flushBeforeRead) {
+        flushPendingDomChanges(editor);
+      }
       return {
         prompt: workflowComposerDocToString(editor, includeQuoteOnlyFeedback),
         editorDocument: createEditorDocumentSnapshot(

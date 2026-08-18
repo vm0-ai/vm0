@@ -1442,6 +1442,46 @@ describe("chat run queue", () => {
     expect(queuedBodies[0]?.content).toBe("排队完整内容");
   });
 
+  it("queues the full composed text when no input event follows composition end", async () => {
+    const queuedBodies: QueuedMessageCapture[] = [];
+    mockActiveRunThread(THREAD_ID, {
+      onQueuedEventAppend: (body) => {
+        queuedBodies.push(body);
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: CHAT_PATH,
+      featureSwitches: { [FeatureSwitchKey.ComposerImeSubmitFlush]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+    const composer = await activeRunComposer();
+    await fill(composer, "排");
+
+    fireEvent.compositionStart(composer, { data: "排" });
+    const paragraph = composer.querySelector("p");
+    if (!paragraph) {
+      throw new Error("Composer paragraph not found");
+    }
+    paragraph.textContent = "排队完整内容";
+
+    fireEvent.click(screen.getByLabelText("Send"));
+    expect(queuedBodies).toHaveLength(0);
+
+    // iOS Safari can leave the composed tail in the DOM without delivering the
+    // input event that would normally flush it into the document.
+    fireEvent.compositionEnd(composer, { data: "排队完整内容" });
+
+    await waitFor(() => {
+      expect(queuedBodies).toHaveLength(1);
+    });
+    expect(queuedBodies[0]?.content).toBe("排队完整内容");
+  });
+
   it("renders a server-reconciled follow-up inline", async () => {
     const user = userEvent.setup({ delay: null });
     const queuedBodies: QueuedMessageCapture[] = [];
