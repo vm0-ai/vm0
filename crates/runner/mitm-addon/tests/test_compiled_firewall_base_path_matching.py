@@ -374,6 +374,41 @@ def test_compiled_matches_static_base_boundary_and_query():
     assert compiled is None
 
 
+def test_compiled_static_base_rejects_sibling_path_segment():
+    fws = wrap_firewalls(
+        [
+            {
+                "base": "https://api.example.com/v1",
+                "auth": {"headers": {"Authorization": "Bearer token"}},
+                "permissions": [
+                    {"name": "read", "rules": ["ANY /{path*}"]},
+                ],
+            }
+        ],
+        name="example",
+    )
+    policies = {"example": {"allow": ["read"], "deny": [], "unknownPolicy": "deny"}}
+    compiled_firewalls = compile_firewalls_or_fail(fws)
+
+    result = matching.match_compiled_firewall_request(
+        "https://api.example.com/v10/items",
+        "GET",
+        compiled_firewalls,
+        policies,
+    )
+
+    assert result is None
+
+    linear_result = matching._match_compiled_firewall_request_linear(
+        "https://api.example.com/v10/items",
+        "GET",
+        compiled_firewalls,
+        policies,
+    )
+
+    assert linear_result is None
+
+
 def test_compiled_static_base_preserves_repeated_terminal_empty_segments():
     fws = wrap_firewalls(
         [
