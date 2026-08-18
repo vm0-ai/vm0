@@ -13,7 +13,6 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { logsListContract } from "@okouai/api-contracts/contracts/logs";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -2477,66 +2476,6 @@ describe("zero attachment chips", () => {
     expect(screen.queryByLabelText("Enter fullscreen")).toBeNull();
   });
 
-  it("keeps hosted presentation aliases on the legacy preview when disabled", async () => {
-    const presentationUrl = "https://legacy-roadmap.sites.vm7.io";
-    const presentationDeploymentUrl = "https://dpl-legacy-roadmap.sites.vm7.io";
-    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
-      return respond(200, {
-        runs: [
-          {
-            runId: "run-legacy-presentation",
-            files: [
-              artifactFile(presentationDeploymentUrl, {
-                aliasUrl: presentationUrl,
-              }),
-            ],
-          },
-        ],
-      });
-    });
-    mockChatLifecycle(context, {
-      threadId: THREAD_ID,
-      chatEvents: [
-        {
-          id: "msg-legacy-presentation-artifact",
-          role: "assistant",
-          content: `[Legacy roadmap](${presentationUrl})`,
-          runId: "run-legacy-presentation",
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({
-      context,
-      featureSwitches: {
-        [FeatureSwitchKey.PresentationArtifactViewport]: false,
-      },
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    click(await screen.findByLabelText("Open html preview for Legacy roadmap"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("artifact-dialog-body-html"),
-      ).toBeInTheDocument();
-    });
-    expect(
-      screen.queryByTestId("presentation-artifact-viewport"),
-    ).not.toBeInTheDocument();
-
-    click(screen.getByLabelText("Open in split view"));
-
-    const sidebar = await screen.findByTestId("artifact-sidebar");
-    expect(
-      within(sidebar).queryByTestId("presentation-artifact-viewport"),
-    ).not.toBeInTheDocument();
-    expect(
-      within(sidebar).getByTestId("artifact-sidebar-body-html"),
-    ).not.toHaveAttribute("tabindex", "-1");
-  });
-
   it("opens presentation HTML preview controls from hosted alias links", async () => {
     const resizeObserver = mockResizeObserver();
     const presentationUrl = "https://quarterly-roadmap.sites.vm7.io";
@@ -2571,9 +2510,6 @@ describe("zero attachment chips", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: {
-        [FeatureSwitchKey.PresentationArtifactViewport]: true,
-      },
       path: `/chats/${THREAD_ID}`,
     });
 
