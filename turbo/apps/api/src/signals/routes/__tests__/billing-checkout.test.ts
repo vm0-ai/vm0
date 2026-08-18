@@ -8780,6 +8780,7 @@ describe("usage pack allocation management", () => {
   });
 
   it("previews and confirms an invitation with the saved payment method", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
     const existingMemberUserId = `user_${randomUUID()}`;
     const fixture = await seedManagedUsagePack([
       { userId: existingMemberUserId, usagePackUsd: 20 },
@@ -8836,6 +8837,7 @@ describe("usage pack allocation management", () => {
       client.previewPurchase({
         headers: { authorization: "Bearer clerk-session" },
         body: previewBody,
+        extraHeaders: { origin: "https://app.okou.ai" },
       }),
       [200],
     );
@@ -8858,6 +8860,7 @@ describe("usage pack allocation management", () => {
       client.previewPurchase({
         headers: { authorization: "Bearer clerk-session" },
         body: previewBody,
+        extraHeaders: { origin: "https://app.okou.ai" },
       }),
       [200],
     );
@@ -8872,6 +8875,7 @@ describe("usage pack allocation management", () => {
       client.previewPurchase({
         headers: { authorization: "Bearer clerk-session" },
         body: { ...previewBody, role: "admin" },
+        extraHeaders: { origin: "https://app.okou.ai" },
       }),
       [200],
     );
@@ -9003,6 +9007,7 @@ describe("usage pack allocation management", () => {
         emailAddress: email,
         inviterUserId: fixture.userId,
         role: "org:admin",
+        redirectUrl: "https://app.okou.ai",
         privateMetadata: {
           usagePackInvitationPurchaseId: activePurchaseId,
         },

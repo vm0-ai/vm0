@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
+import { mockEnv } from "../../../lib/env";
 import {
   createAuthOrgAgentsBddApi,
   type ApiTestUser,
@@ -229,6 +230,41 @@ describe("AUTH-03", () => {
 });
 
 describe("ORG-01 and ORG-02", () => {
+  it("projects direct invitation redirects by request brand", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    const admin = api.user();
+
+    const vm0Email = `vm0-invite-${shortId()}@example.test`;
+    context.mocks.clerk.organizations.createOrganizationInvitation.mockResolvedValueOnce(
+      { id: `inv_${shortId()}` },
+    );
+    await api.inviteMember(admin, { email: vm0Email, role: "member" });
+    expect(
+      context.mocks.clerk.organizations.createOrganizationInvitation,
+    ).toHaveBeenLastCalledWith({
+      organizationId: admin.orgId,
+      emailAddress: vm0Email,
+      inviterUserId: admin.userId,
+      role: "org:member",
+      redirectUrl: "https://app.vm0.ai",
+    });
+
+    const okouEmail = `okou-invite-${shortId()}@example.test`;
+    context.mocks.clerk.organizations.createOrganizationInvitation.mockResolvedValueOnce(
+      { id: `inv_${shortId()}` },
+    );
+    await api.inviteMember(admin, { email: okouEmail, role: "member" }, "okou");
+    expect(
+      context.mocks.clerk.organizations.createOrganizationInvitation,
+    ).toHaveBeenLastCalledWith({
+      organizationId: admin.orgId,
+      emailAddress: okouEmail,
+      inviterUserId: admin.userId,
+      role: "org:member",
+      redirectUrl: "https://app.okou.ai",
+    });
+  });
+
   it("reads, updates, lists, invites, changes membership, handles requests, and leaves orgs through APIs", async () => {
     const admin = api.user();
     const member = api.user({

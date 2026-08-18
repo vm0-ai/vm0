@@ -2,6 +2,7 @@ import { command } from "ccstate";
 import { zeroOrgInviteContract } from "@okouai/api-contracts/contracts/zero-org-members";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 
 import { env, optionalEnv } from "../../lib/env";
 import { billingRedirectAllowed } from "../../lib/billing-redirect";
@@ -15,6 +16,7 @@ import {
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
+import { publicBrand$ } from "../context/hono";
 import { clerk$ } from "../external/clerk";
 import { db$, writeDb$, type ReadonlyDb } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
@@ -108,7 +110,7 @@ const inviteInner$ = command(async ({ get }, signal: AbortSignal) => {
     emailAddress: body.data.email,
     inviterUserId: auth.userId,
     role: body.data.role === "admin" ? "org:admin" : "org:member",
-    redirectUrl: env("APP_URL"),
+    redirectUrl: appUrlForPublicBrand(env("APP_URL"), get(publicBrand$)),
   });
   signal.throwIfAborted();
 
@@ -236,6 +238,7 @@ const purchasePreviewInner$ = command(
         email: body.data.email,
         role: body.data.role,
         usagePackUsd: body.data.usagePackUsd,
+        publicBrand: get(publicBrand$),
       },
       signal,
     );

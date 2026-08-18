@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
   bigint,
   boolean,
@@ -455,6 +456,10 @@ export const usagePackInvitationPurchases = pgTable(
       { onDelete: "set null" },
     ),
     orgId: text("org_id").notNull(),
+    publicBrand: text("public_brand")
+      .$type<PublicBrand>()
+      .default("vm0")
+      .notNull(),
     normalizedEmail: text("normalized_email").notNull(),
     role: varchar("role", { length: 20 }).$type<"admin" | "member">().notNull(),
     inviterUserId: text("inviter_user_id").notNull(),

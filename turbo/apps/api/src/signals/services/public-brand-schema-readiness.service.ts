@@ -34,7 +34,8 @@ async function probePublicBrandSchemaReady(readDb: ReadDb): Promise<boolean> {
               ('slack_org_installations'),
               ('teams_org_installations'),
               ('telegram_installations'),
-              ('telegram_official_user_links')
+              ('telegram_official_user_links'),
+              ('usage_pack_invitation_purchases')
           ) AS required(table_name)
           WHERE NOT EXISTS (
             SELECT 1
@@ -56,10 +57,10 @@ export async function publicBrandSchemaReady(): Promise<boolean> {
   if (state.ready) {
     return true;
   }
-  // On the DB/API surface, new API instances can appear before migrations 0934
-  // and 0935 are visible (observed maximum exposure is about 102 minutes).
+  // On the DB/API surface, new API instances can appear before public-brand
+  // migrations are visible (observed maximum exposure is about 102 minutes).
   // Refuse traffic instead of issuing column-dependent queries, then remove
-  // this gate once both migrations are guaranteed across the production
+  // this gate once all required migrations are guaranteed across the production
   // rollback window (tracked by #27660).
   state.ready = await probePublicBrandSchemaReady(db());
   return state.ready;
