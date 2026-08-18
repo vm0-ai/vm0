@@ -14,7 +14,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@okouai/ui";
-import type { CustomConnectorResponse } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import {
+  isIntegrationManagedCustomConnector,
+  type CustomConnectorResponse,
+} from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import {
   disconnectCustomConnector$,
   closeCustomConnectorDialog$,
@@ -204,8 +207,7 @@ function CustomConnectorRow({
   onDelete,
 }: CustomConnectorRowProps) {
   const { t } = useTranslation();
-  const adminCanDelete =
-    isAdmin && connector.oauthConfig?.providerAdapter !== "feishu";
+  const adminCanDelete = isAdmin;
   const mcpActionsEnabled = connector.kind === "http" || mcpEnabled;
   const adminCanEdit = adminCanDelete && mcpActionsEnabled;
   const canConnect = !connector.connected && mcpActionsEnabled;
@@ -323,6 +325,9 @@ function CustomConnectorDialogs({
 export function CustomConnectorsPanel() {
   const { t } = useTranslation();
   const connectors = useLastResolved(customConnectors$);
+  const userManagedConnectors = connectors?.filter((connector) => {
+    return !isIntegrationManagedCustomConnector(connector);
+  });
   const isAdmin = useLastResolved(isOrgAdmin$) ?? false;
   const mcpEnabled = useGet(customConnectorMcpEnabled$);
   const openEdit = useSet(openCustomConnectorEditDialog$);
@@ -347,7 +352,7 @@ export function CustomConnectorsPanel() {
 
   return (
     <section className="flex flex-col gap-3">
-      {connectors && connectors.length === 0 && (
+      {userManagedConnectors && userManagedConnectors.length === 0 && (
         <div className="zero-card py-12 flex flex-col items-center gap-3">
           <img
             src={noConnectorImg}
@@ -368,9 +373,9 @@ export function CustomConnectorsPanel() {
         </div>
       )}
 
-      {connectors && connectors.length > 0 && (
+      {userManagedConnectors && userManagedConnectors.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {connectors.map((c) => {
+          {userManagedConnectors.map((c) => {
             return (
               <CustomConnectorRow
                 key={c.id}
