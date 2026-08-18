@@ -2827,6 +2827,82 @@ describe("zero sidebar", () => {
     ).toBeInTheDocument();
   });
 
+  it("marks all chats read from the three-column chat list menu", async () => {
+    prepareDefaultAgent();
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Existing conversation"),
+      createThread(INCIDENT_THREAD_ID, "Unread conversation"),
+    ]);
+
+    let hasUnread = true;
+    const markedAgentIds: string[] = [];
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      return respond(200, {
+        agents: hasUnread ? { [AGENT_ID]: "unread" } : {},
+        threads: hasUnread ? { [INCIDENT_THREAD_ID]: "unread" } : {},
+      });
+    });
+    context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
+      return respond(200, {
+        unreads: hasUnread
+          ? [
+              {
+                threadId: INCIDENT_THREAD_ID,
+                unreadAt: "2026-03-10T00:05:00Z",
+              },
+            ]
+          : [],
+      });
+    });
+    context.mocks.api(
+      chatThreadMarkAgentReadContract.markAgentRead,
+      ({ body, respond }) => {
+        markedAgentIds.push(body.agentId);
+        hasUnread = false;
+        return respond(204);
+      },
+    );
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const list = await screen.findByTestId("chat-list-column");
+    await waitFor(() => {
+      expect(within(list).getByText("Unread conversation")).toBeInTheDocument();
+      expect(within(list).getAllByLabelText("Unread").length).toBeGreaterThan(
+        0,
+      );
+    });
+
+    click(within(list).getByLabelText("Open chat list menu"));
+    await waitFor(() => {
+      expect(
+        queryAllByRoleFast("menuitem").map((item) => {
+          return item.textContent?.replace(/\s+/g, " ").trim();
+        }),
+      ).toStrictEqual([
+        "New chat",
+        "Mark all read",
+        "All chats",
+        "Unread only",
+      ]);
+    });
+    click(menuItemByText("Mark all read"));
+
+    await waitFor(() => {
+      expect(markedAgentIds).toStrictEqual([AGENT_ID]);
+      expect(within(list).queryByLabelText("Unread")).not.toBeInTheDocument();
+    });
+
+    click(within(list).getByLabelText("Open chat list menu"));
+    expect(queryMenuItemByText("Mark all read")).not.toBeInTheDocument();
+  });
+
   it("creates a new chat thread from the three-column header", async () => {
     prepareDefaultAgent();
     mockSidebarThreadStory([
