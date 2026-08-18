@@ -1032,7 +1032,7 @@ describe("cron execute morning briefs", () => {
     if (!email) {
       throw new Error("Expected a morning brief email");
     }
-    expect(email.from).toBe("Okou <okou@vm0.bot>");
+    expect(email.from).toBe("Okou <okou@okou.io>");
     expect(email.html).toContain("Good morning. Here's your brief for today.");
     expect(email.html).toContain("Competitor research finished");
     expect(email.html).toContain("Continue in Okou");
