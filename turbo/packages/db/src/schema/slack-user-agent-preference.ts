@@ -1,8 +1,8 @@
 import {
   pgTable,
+  primaryKey,
   text,
   timestamp,
-  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 import { agentComposes } from "./agent-compose";
@@ -29,11 +29,6 @@ export const slackUserAgentPreferences = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => {
-    return [
-      uniqueIndex("idx_slack_user_agent_preferences_user_org").on(
-        table.userId,
-        table.orgId,
-      ),
-    ];
+    return [primaryKey({ columns: [table.userId, table.orgId] })];
   },
 );

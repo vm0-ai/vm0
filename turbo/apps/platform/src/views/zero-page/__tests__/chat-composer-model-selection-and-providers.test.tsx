@@ -278,8 +278,60 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(document.title).toContain("Scout");
     });
-    await expectComposerModel("Claude Fable 5");
+    const modelPicker = await findComposerModel("Claude Fable 5");
+    expect(
+      Array.from(
+        modelPicker.querySelectorAll<HTMLImageElement>("img"),
+        (icon) => {
+          return icon.width;
+        },
+      ),
+    ).toStrictEqual([18, 16]);
   });
+
+  it.each([
+    {
+      kind: "image",
+      featureSwitch: FeatureSwitchKey.ImageModelSelection,
+      categoryLabel: "Image models",
+    },
+    {
+      kind: "video",
+      featureSwitch: FeatureSwitchKey.VideoModelSelection,
+      categoryLabel: "Video models",
+    },
+  ])(
+    "keeps the mobile model brand icon and hides the desktop icon when $kind model selection is enabled",
+    async ({ featureSwitch, categoryLabel }) => {
+      context.mocks.browser.matchMedia(true);
+      mockOrgModelRoutes("claude-fable-5");
+      mockAgent();
+      mockThread({ selectedModel: "claude-fable-5" });
+
+      detachedSetupPage({
+        context,
+        featureSwitches: { [featureSwitch]: true },
+        path: `/chats/${THREAD_ID}`,
+      });
+
+      const modelPicker = await findComposerModel("Claude Fable 5");
+      await waitFor(() => {
+        expect(
+          queryAllByRoleFast("button").find((button) => {
+            return button.getAttribute("aria-label") === categoryLabel;
+          }),
+        ).toBeInTheDocument();
+      });
+      expect(
+        Array.from(
+          modelPicker.querySelectorAll<HTMLImageElement>("img"),
+          (icon) => {
+            return icon.width;
+          },
+        ),
+      ).toStrictEqual([18]);
+    },
+  );
 
   it("shows user preference over workspace default", async () => {
     mockOrgModelRoutes("claude-fable-5");
