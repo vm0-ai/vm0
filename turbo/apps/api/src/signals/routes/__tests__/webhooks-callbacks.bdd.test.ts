@@ -4356,7 +4356,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     expect(bound.tier).toBe("limited-free-1");
     expect(bound.currentPeriodEnd).toBeNull();
 
-    // An incomplete dashboard subscription is recorded without a paid tier.
+    // An incomplete dashboard subscription cannot replace the active one.
     await api.postStripeEvent(
       stripeEvent({
         type: "customer.subscription.created",
@@ -4372,7 +4372,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       [200],
     );
     const incomplete = await billing.readBillingStatus(actor);
-    expect(incomplete.subscriptionStatus).toBe("incomplete");
+    expect(incomplete.subscriptionStatus).toBe("active");
     expect(incomplete.tier).toBe("limited-free-1");
 
     // A subscription checkout completion binds its subscription.

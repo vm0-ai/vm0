@@ -55,7 +55,7 @@ import {
   reconcileUsagePackSubscriptionChanges,
 } from "./usage-pack-plan-change.service";
 import type { BillingReconciliationScope } from "./billing-reconciliation-scope";
-import { completeBillingOperationInvoice } from "./billing-operation-invoice.service";
+import { completeBillingOperationInvoiceWithInvoice } from "./billing-operation-invoice.service";
 import { lockBillingPurchaseOrg } from "./billing-purchase-lock.service";
 import {
   billingPreviewExpiresAt,
@@ -146,6 +146,7 @@ type ConfirmUsagePackPurchaseResult =
   | {
       readonly status: "confirmed";
       readonly response: BillingPurchaseConfirmResponse;
+      readonly paidInvoice: StripeInvoice | null;
     }
   | { readonly status: "invalid_preview" };
 
@@ -1146,6 +1147,7 @@ async function existingUsagePackPurchaseResult(
             session.id,
           ),
         },
+        paidInvoice: null,
       };
     }
     if (session.status === "open" && session.url) {
@@ -1155,6 +1157,7 @@ async function existingUsagePackPurchaseResult(
           status: "checkout_required",
           checkoutUrl: session.url,
         },
+        paidInvoice: null,
       };
     }
     return { status: "invalid_preview" };
@@ -1165,14 +1168,15 @@ async function existingUsagePackPurchaseResult(
       { expand: ["latest_invoice"] },
     );
     signal.throwIfAborted();
+    const completion = await completeBillingOperationInvoiceWithInvoice(
+      stripe,
+      expandedLatestInvoice(existing),
+      `usage-pack:${preview.usagePackSubscriptionId}`,
+      signal,
+    );
     return {
       status: "confirmed",
-      response: await completeBillingOperationInvoice(
-        stripe,
-        expandedLatestInvoice(existing),
-        `usage-pack:${preview.usagePackSubscriptionId}`,
-        signal,
-      ),
+      ...completion,
     };
   }
   const active = await activeUsagePackBillingContext(db, orgId);
@@ -1226,14 +1230,15 @@ async function existingUsagePackPurchaseResult(
     })
     .where(eq(usagePackSubscriptions.id, preview.usagePackSubscriptionId));
   signal.throwIfAborted();
+  const completion = await completeBillingOperationInvoiceWithInvoice(
+    stripe,
+    expandedLatestInvoice(existing),
+    `usage-pack:${preview.usagePackSubscriptionId}`,
+    signal,
+  );
   return {
     status: "confirmed",
-    response: await completeBillingOperationInvoice(
-      stripe,
-      expandedLatestInvoice(existing),
-      `usage-pack:${preview.usagePackSubscriptionId}`,
-      signal,
-    ),
+    ...completion,
   };
 }
 
@@ -1292,6 +1297,7 @@ async function confirmUsagePackPurchaseSnapshot(
           signal,
         ),
       },
+      paidInvoice: null,
     };
   }
   if (
@@ -1346,14 +1352,15 @@ async function confirmUsagePackPurchaseSnapshot(
     })
     .where(eq(usagePackSubscriptions.id, preview.usagePackSubscriptionId));
   signal.throwIfAborted();
+  const completion = await completeBillingOperationInvoiceWithInvoice(
+    stripe,
+    expandedLatestInvoice(created),
+    `usage-pack:${preview.usagePackSubscriptionId}`,
+    signal,
+  );
   return {
     status: "confirmed",
-    response: await completeBillingOperationInvoice(
-      stripe,
-      expandedLatestInvoice(created),
-      `usage-pack:${preview.usagePackSubscriptionId}`,
-      signal,
-    ),
+    ...completion,
   };
 }
 

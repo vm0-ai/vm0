@@ -86,6 +86,7 @@ import {
 } from "../services/usage-pack-subscription-migration.service";
 import { usagePackInvitationPurchaseSchemaAvailable } from "../services/usage-pack-invitation-purchase.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
+import { reconcilePaidStripeInvoice$ } from "../services/webhooks-stripe.service";
 import {
   mergeFirstTouchAttribution,
   parseStoredSignupAttribution,
@@ -453,6 +454,19 @@ const confirmPlanPurchaseForOrg$ = command(
     if (result.status === "invalid_preview") {
       return conflict("Plan purchase preview is no longer valid");
     }
+    if (result.paidInvoice) {
+      const reconciledOrgId = await set(
+        reconcilePaidStripeInvoice$,
+        result.paidInvoice,
+        signal,
+      );
+      signal.throwIfAborted();
+      if (reconciledOrgId !== orgId) {
+        throw new Error(
+          `Paid Plan purchase invoice ${result.paidInvoice.id} did not reconcile to org ${orgId}`,
+        );
+      }
+    }
     return { status: 200 as const, body: result.response };
   },
 );
@@ -473,14 +487,14 @@ const checkoutAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
   if (bodyResult.data.previewToken) {
     const confirmation = await set(
-      confirmPlanPurchase$,
+      confirmPlanPurchaseForOrg$,
       auth.orgId,
       bodyResult.data.previewToken,
       signal,
     );
     signal.throwIfAborted();
-    if (confirmation.status !== "invalid_preview") {
-      return { status: 200 as const, body: confirmation.response };
+    if (confirmation.status !== 409) {
+      return confirmation;
     }
   }
   const {
@@ -638,6 +652,19 @@ const confirmUsagePackPurchaseForOrg$ = command(
     signal.throwIfAborted();
     if (result.status === "invalid_preview") {
       return conflict("Usage pack purchase preview is no longer valid");
+    }
+    if (result.paidInvoice) {
+      const reconciledOrgId = await set(
+        reconcilePaidStripeInvoice$,
+        result.paidInvoice,
+        signal,
+      );
+      signal.throwIfAborted();
+      if (reconciledOrgId !== orgId) {
+        throw new Error(
+          `Paid usage pack purchase invoice ${result.paidInvoice.id} did not reconcile to org ${orgId}`,
+        );
+      }
     }
     return { status: 200 as const, body: result.response };
   },

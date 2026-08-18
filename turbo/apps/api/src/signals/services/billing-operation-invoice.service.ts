@@ -8,6 +8,11 @@ type BillingOperationInvoiceResult =
       readonly hostedInvoiceUrl: string;
     };
 
+interface BillingOperationInvoiceCompletion {
+  readonly response: BillingOperationInvoiceResult;
+  readonly paidInvoice: StripeInvoice | null;
+}
+
 async function finalizeOperationInvoice(
   stripe: StripeClient,
   invoice: StripeInvoice,
@@ -26,15 +31,18 @@ async function finalizeOperationInvoice(
   return finalized;
 }
 
-export async function completeBillingOperationInvoice(
+export async function completeBillingOperationInvoiceWithInvoice(
   stripe: StripeClient,
   invoice: StripeInvoice | null,
   operationId: string,
   signal: AbortSignal,
   options?: { readonly payOpenInvoice?: boolean },
-): Promise<BillingOperationInvoiceResult> {
+): Promise<BillingOperationInvoiceCompletion> {
   if (!invoice) {
-    return { status: "completed", hostedInvoiceUrl: null };
+    return {
+      response: { status: "completed", hostedInvoiceUrl: null },
+      paidInvoice: null,
+    };
   }
 
   const shouldPay = invoice.status === "draft" || options?.payOpenInvoice;
@@ -60,15 +68,38 @@ export async function completeBillingOperationInvoice(
   }
 
   if (current.status === "paid") {
-    return { status: "completed", hostedInvoiceUrl: null };
+    return {
+      response: { status: "completed", hostedInvoiceUrl: null },
+      paidInvoice: current,
+    };
   }
   if (current.status === "open" && current.hosted_invoice_url) {
     return {
-      status: "pending_payment",
-      hostedInvoiceUrl: current.hosted_invoice_url,
+      response: {
+        status: "pending_payment",
+        hostedInvoiceUrl: current.hosted_invoice_url,
+      },
+      paidInvoice: null,
     };
   }
   throw new Error(
     `Stripe operation invoice ${current.id} is ${current.status ?? "missing a status"} without a hosted payment URL`,
   );
+}
+
+export async function completeBillingOperationInvoice(
+  stripe: StripeClient,
+  invoice: StripeInvoice | null,
+  operationId: string,
+  signal: AbortSignal,
+  options?: { readonly payOpenInvoice?: boolean },
+): Promise<BillingOperationInvoiceResult> {
+  const completion = await completeBillingOperationInvoiceWithInvoice(
+    stripe,
+    invoice,
+    operationId,
+    signal,
+    options,
+  );
+  return completion.response;
 }

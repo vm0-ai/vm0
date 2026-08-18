@@ -20,6 +20,7 @@ import { writeDb$, type Db } from "../external/db";
 import {
   getStripeClient,
   isStripeResourceMissingError,
+  type StripeInvoice,
   type StripePaymentIntent,
   type StripeSubscription,
   type StripeWebhookEvent,
@@ -2415,12 +2416,14 @@ async function shouldSkipSubscriptionBinding(
   args: {
     readonly customerId: string;
     readonly subscriptionId: string;
+    readonly subscriptionStatus: string;
     readonly tier: SubscriptionCheckoutTier;
   },
 ): Promise<boolean> {
   const [existing] = await db
     .select({
       stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+      subscriptionStatus: orgMetadata.subscriptionStatus,
       tier: orgMetadata.tier,
     })
     .from(orgMetadata)
@@ -2430,6 +2433,19 @@ async function shouldSkipSubscriptionBinding(
   if (existing?.stripeSubscriptionId === args.subscriptionId) {
     L.debug("subscription binding already processed", {
       subscriptionId: args.subscriptionId,
+    });
+    return true;
+  }
+  if (
+    args.subscriptionStatus === "incomplete" &&
+    (existing?.subscriptionStatus === "active" ||
+      existing?.subscriptionStatus === "trialing")
+  ) {
+    L.debug("provisional subscription cannot replace an active subscription", {
+      customerId: args.customerId,
+      subscriptionId: args.subscriptionId,
+      currentSubscriptionId: existing.stripeSubscriptionId,
+      currentSubscriptionStatus: existing.subscriptionStatus,
     });
     return true;
   }
@@ -2915,6 +2931,7 @@ async function bindSubscriptionToCustomerOrg(
     await shouldSkipSubscriptionBinding(db, {
       customerId: args.customerId,
       subscriptionId: args.subscription.id,
+      subscriptionStatus: args.subscription.status,
       tier: tierFromPriceId(priceId),
     })
   ) {
@@ -4489,6 +4506,29 @@ async function publishBillingChanges(
     signal.throwIfAborted();
   }
 }
+
+export const reconcilePaidStripeInvoice$ = command(
+  async (
+    { get, set },
+    invoice: StripeInvoice,
+    signal: AbortSignal,
+  ): Promise<string | null> => {
+    const db = set(writeDb$);
+    const getClerk = (): ClerkClient => {
+      return get(clerk$);
+    };
+    const orgId = await handleInvoicePaid(db, getClerk, invoice);
+    signal.throwIfAborted();
+    if (!orgId) {
+      return null;
+    }
+
+    await publishBillingChanges(db, new Set([orgId]), signal);
+    await set(drainOrgQueueToCapacity$, { orgId }, signal);
+    signal.throwIfAborted();
+    return orgId;
+  },
+);
 
 export const handleStripeWebhookEvent$ = command(
   async (

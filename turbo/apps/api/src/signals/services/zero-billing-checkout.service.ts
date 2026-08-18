@@ -34,7 +34,10 @@ import {
   previewStripeConcurrencySubscriptionChange$,
 } from "./zero-billing-concurrency-subscription.service";
 import { stripePreviewMetadata } from "./stripe-preview-metadata.service";
-import { completeBillingOperationInvoice } from "./billing-operation-invoice.service";
+import {
+  completeBillingOperationInvoice,
+  completeBillingOperationInvoiceWithInvoice,
+} from "./billing-operation-invoice.service";
 import { lockBillingPurchaseOrg } from "./billing-purchase-lock.service";
 import {
   createBillingPreviewToken,
@@ -73,6 +76,7 @@ type ConfirmPlanPurchaseResult =
   | {
       readonly status: "confirmed";
       readonly response: BillingPurchaseConfirmResponse;
+      readonly paidInvoice: StripeInvoice | null;
     }
   | { readonly status: "invalid_preview" };
 
@@ -852,6 +856,10 @@ async function planPurchaseSubscriptionState(
     readonly customerId: string;
     readonly purchaseId: string;
     readonly sourceSubscriptionId: string | null;
+    readonly targetTier: SubscriptionCheckoutTier;
+    readonly targetPriceId: string;
+    readonly immediateAmountCents: number;
+    readonly currency: string;
   },
   signal: AbortSignal,
 ): Promise<{
@@ -864,15 +872,37 @@ async function planPurchaseSubscriptionState(
     limit: 100,
   });
   signal.throwIfAborted();
-  const existingSummary = subscriptions.data.find((subscription) => {
+  const exactPurchase = subscriptions.data.find((subscription) => {
     return subscription.metadata?.billingPurchaseId === args.purchaseId;
   });
+  const resumablePurchase = subscriptions.data.find((subscription) => {
+    return (
+      subscription.metadata?.orgId === args.orgId &&
+      subscription.metadata.billingPurchaseId !== undefined &&
+      knownPlanPriceItem(subscription.items.data)?.price.id ===
+        args.targetPriceId &&
+      subscription.status === "incomplete"
+    );
+  });
+  const existingSummary = exactPurchase ?? resumablePurchase;
   const hasCompetingPurchase = subscriptions.data.some((subscription) => {
+    const tier = tierForKnownPriceId(
+      knownPlanPriceItem(subscription.items.data)?.price.id ?? "",
+    );
+    const isReplaceableActivePlan =
+      tier !== null &&
+      (subscription.status === "active" ||
+        subscription.status === "trialing") &&
+      !checkoutWouldReplaceWithSameOrLowerTier({
+        currentTier: tier,
+        targetTier: args.targetTier,
+      });
     return (
       subscription.id !== args.sourceSubscriptionId &&
+      subscription.id !== existingSummary?.id &&
       subscription.metadata?.orgId === args.orgId &&
-      knownPlanPriceItem(subscription.items.data) !== undefined &&
-      subscription.metadata?.billingPurchaseId !== args.purchaseId &&
+      tier !== null &&
+      !isReplaceableActivePlan &&
       subscription.status !== "canceled" &&
       subscription.status !== "incomplete_expired"
     );
@@ -885,6 +915,15 @@ async function planPurchaseSubscriptionState(
     { expand: ["latest_invoice"] },
   );
   signal.throwIfAborted();
+  const invoice = expandedLatestInvoice(existing);
+  if (
+    existingSummary !== exactPurchase &&
+    (!invoice ||
+      invoice.amount_due !== args.immediateAmountCents ||
+      invoice.currency !== args.currency)
+  ) {
+    return { existing: null, hasCompetingPurchase: true };
+  }
   return { existing, hasCompetingPurchase };
 }
 
@@ -1035,15 +1074,16 @@ async function createConfirmedPlanSubscription(
     { idempotencyKey: `plan-purchase:${preview.purchaseId}:subscription` },
   );
   signal.throwIfAborted();
+  const completion = await completeBillingOperationInvoiceWithInvoice(
+    stripe,
+    expandedLatestInvoice(subscription),
+    `plan:${preview.purchaseId}`,
+    signal,
+    { payOpenInvoice: true },
+  );
   return {
     status: "confirmed",
-    response: await completeBillingOperationInvoice(
-      stripe,
-      expandedLatestInvoice(subscription),
-      `plan:${preview.purchaseId}`,
-      signal,
-      { payOpenInvoice: true },
-    ),
+    ...completion,
   };
 }
 
@@ -1066,19 +1106,24 @@ async function confirmPlanPurchaseTransaction(
       customerId: preview.customerId,
       purchaseId: preview.purchaseId,
       sourceSubscriptionId: preview.sourceSubscriptionId,
+      targetTier: preview.tier,
+      targetPriceId: preview.priceId,
+      immediateAmountCents: preview.immediateAmountCents,
+      currency: preview.currency,
     },
     signal,
   );
   if (subscriptionState.existing) {
+    const completion = await completeBillingOperationInvoiceWithInvoice(
+      stripe,
+      expandedLatestInvoice(subscriptionState.existing),
+      `plan:${preview.purchaseId}`,
+      signal,
+      { payOpenInvoice: true },
+    );
     return {
       status: "confirmed",
-      response: await completeBillingOperationInvoice(
-        stripe,
-        expandedLatestInvoice(subscriptionState.existing),
-        `plan:${preview.purchaseId}`,
-        signal,
-        { payOpenInvoice: true },
-      ),
+      ...completion,
     };
   }
 
@@ -1134,6 +1179,7 @@ async function confirmPlanPurchaseTransaction(
     return {
       status: "confirmed",
       response: { status: "checkout_required", checkoutUrl: url },
+      paidInvoice: null,
     };
   }
   if (
