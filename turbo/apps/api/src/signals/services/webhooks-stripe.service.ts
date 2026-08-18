@@ -225,6 +225,7 @@ interface InvoicePaidOrg {
 
 interface LockedInvoicePaidOrg extends InvoicePaidOrg {
   readonly cancelAtPeriodEnd: boolean;
+  readonly currentPeriodEnd: Date | null;
   readonly pendingSubscriptionScheduleId: string | null;
   readonly planEntitlementSource: string | null;
   readonly planEntitlementPeriodEnd: Date | null;
@@ -1373,6 +1374,7 @@ async function lockInvoicePaidOrg(
       subscriptionStatus: orgMetadata.subscriptionStatus,
       tier: orgMetadata.tier,
       cancelAtPeriodEnd: orgMetadata.cancelAtPeriodEnd,
+      currentPeriodEnd: orgMetadata.currentPeriodEnd,
       pendingSubscriptionScheduleId: orgMetadata.pendingSubscriptionScheduleId,
       planEntitlementSource: orgPlanEntitlements.source,
       planEntitlementPeriodEnd: orgPlanEntitlements.currentPeriodEnd,
@@ -3627,6 +3629,8 @@ function hiddenPurchasedProSubscriptionMatches(args: {
     args.lockedOrg.planEntitlementSource === "stripe_atom_grant" &&
     args.lockedOrg.subscriptionStatus === ATOM_GRANT_SUBSCRIPTION_STATUS &&
     args.lockedOrg.stripeSubscriptionId === null &&
+    (args.lockedOrg.currentPeriodEnd === null ||
+      args.lockedOrg.currentPeriodEnd.getTime() > now()) &&
     preservedPurchasedProSubscriptionId(
       args.lockedOrg.planEntitlementSourceMetadata,
     ) === args.subscriptionId

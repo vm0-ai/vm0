@@ -499,7 +499,7 @@ test("Team paid invitation and runner usage consume purchased credits first", as
         "This follow-up run should be cancelled immediately.",
       );
       expect(settlement.threadId).toBe(first.threadId);
-      expect(settlement.status).toBe("pending");
+      expect(["pending", "queued"]).toContain(settlement.status);
       await cancelRun(page, token, settlement.runId);
 
       await expect

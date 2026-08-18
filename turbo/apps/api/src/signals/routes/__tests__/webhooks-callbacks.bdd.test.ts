@@ -3337,6 +3337,88 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     });
   });
 
+  it("restores preserved Pro when renewal arrives after Atom expiry but before cron", async () => {
+    const bdd = createBddApi(context);
+    const billing = createBillingMediaApi(context);
+    const runs = createRunsApi(context);
+    const actor = bdd.user();
+    const orgId = orgOf(actor);
+    const suffix = randomUUID().slice(0, 8);
+    const proPeriodStartUnix = epochSeconds(-1);
+    const proPeriodEndUnix = epochSeconds(30);
+    const atomInvoiceId = `in_bdd_atom_expired_before_renewal_${suffix}`;
+    const renewalInvoiceId = `in_bdd_pro_after_atom_expiry_${suffix}`;
+    const granted = await runs.grantProEntitlement(actor, {
+      periodEndUnix: proPeriodEndUnix,
+      subscriptionMetadata: { orgId },
+    });
+    const preservedSubscription = proSubscription({
+      id: granted.subscriptionId,
+      customerId: granted.customerId,
+      metadata: { orgId },
+      periodStart: proPeriodStartUnix,
+      periodEnd: proPeriodEndUnix,
+    });
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      preservedSubscription,
+    );
+    context.mocks.stripe.subscriptions.list.mockResolvedValue({
+      data: [preservedSubscription],
+      has_more: false,
+    });
+
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: atomPlanGrantInvoice({
+          id: atomInvoiceId,
+          customerId: granted.customerId,
+          orgId,
+          tier: "team",
+          startsAtUnix: epochSeconds(0),
+          expiresAtUnix: epochSeconds(7),
+          preservePurchasedPro: true,
+        }),
+      }),
+      [200],
+    );
+
+    await expireAtomGrantFixture({
+      orgId,
+      expiredAt: new Date(now() - 1000),
+      creditInvoiceIds: [atomInvoiceId],
+    });
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: renewalInvoiceId,
+          customer: granted.customerId,
+          metadata: {},
+          parent: {
+            subscription_details: { subscription: granted.subscriptionId },
+          },
+          lines: subscriptionLines(proPeriodEndUnix),
+        },
+      }),
+      [200],
+    );
+
+    await expect(billing.readBillingStatus(actor)).resolves.toMatchObject({
+      tier: "pro",
+      credits: 40_000,
+      hasSubscription: true,
+      subscriptionStatus: "active",
+      currentPeriodEnd: isoOf(proPeriodEndUnix),
+    });
+    await expect(readOrgPlanEntitlementFixture(orgId)).resolves.toMatchObject({
+      planKey: "pro",
+      source: "stripe_subscription",
+      stripeSubscriptionId: granted.subscriptionId,
+      currentPeriodEnd: isoOf(proPeriodEndUnix),
+    });
+  });
+
   it("falls back after a marked Atom override when the preserved Pro is missing", async () => {
     const bdd = createBddApi(context);
     const billing = createBillingMediaApi(context);
