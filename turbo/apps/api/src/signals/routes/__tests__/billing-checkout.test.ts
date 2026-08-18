@@ -6282,7 +6282,15 @@ describe("usage pack allocation management", () => {
       [200],
     );
     expect(confirmed.body.status).toBe("pending_payment");
-    expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledWith(
+    expect(context.mocks.stripe.subscriptions.update).toHaveBeenNthCalledWith(
+      1,
+      fixture.subscriptionId,
+      {
+        default_payment_method: paymentMethodId,
+      },
+    );
+    expect(context.mocks.stripe.subscriptions.update).toHaveBeenNthCalledWith(
+      2,
       fixture.subscriptionId,
       expect.objectContaining({
         items: expect.arrayContaining([
@@ -6292,7 +6300,6 @@ describe("usage pack allocation management", () => {
         payment_behavior: "pending_if_incomplete",
         proration_behavior: "always_invoice",
         proration_date: prorationTimestamp,
-        default_payment_method: paymentMethodId,
       }),
       {
         idempotencyKey: `usage-pack-subscription-change:${preview.body.changeId}:apply`,
@@ -7519,12 +7526,22 @@ describe("usage pack allocation management", () => {
       [200],
     );
     expect(confirmed.body.status).toBe("completed");
-    expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledWith(
+    expect(context.mocks.stripe.subscriptions.update).toHaveBeenNthCalledWith(
+      1,
+      fixture.subscriptionId,
+      {
+        default_payment_method: paymentMethodId,
+      },
+    );
+    expect(context.mocks.stripe.subscriptions.update).toHaveBeenNthCalledWith(
+      2,
       fixture.subscriptionId,
       expect.objectContaining({
-        default_payment_method: paymentMethodId,
+        payment_behavior: "pending_if_incomplete",
+        proration_behavior: "always_invoice",
+        proration_date: prorationTimestamp,
       }),
-      expect.any(Object),
+      { idempotencyKey: `usage-pack-change:${preview.body.changeId}:apply` },
     );
     const state = await readUsagePackState(
       fixture.orgId,
@@ -9916,7 +9933,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
           data: [allowanceLine, ...recurringInvoice.lines.data],
         },
       });
-    context.mocks.stripe.subscriptions.update.mockResolvedValueOnce({
+    context.mocks.stripe.subscriptions.update.mockResolvedValue({
       id: subscriptionId,
       latest_invoice: null,
       pending_update: null,
@@ -9990,7 +10007,15 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
         items: [{ price: TEST_PRICE_CONCURRENCY, quantity: 3 }],
       },
     });
-    expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledWith(
+    expect(context.mocks.stripe.subscriptions.update).toHaveBeenNthCalledWith(
+      1,
+      subscriptionId,
+      {
+        default_payment_method: paymentMethodId,
+      },
+    );
+    expect(context.mocks.stripe.subscriptions.update).toHaveBeenNthCalledWith(
+      2,
       subscriptionId,
       {
         items: [{ price: TEST_PRICE_CONCURRENCY, quantity: 3 }],
@@ -9998,7 +10023,6 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
         proration_behavior: "always_invoice",
         proration_date: expect.any(Number),
         expand: ["latest_invoice"],
-        default_payment_method: paymentMethodId,
       },
     );
     expect(
@@ -10989,7 +11013,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
         });
       })
       .mockResolvedValueOnce(recurringConcurrencyPreviewInvoice(4));
-    context.mocks.stripe.subscriptions.update.mockResolvedValueOnce({
+    context.mocks.stripe.subscriptions.update.mockResolvedValue({
       id: subscriptionId,
       latest_invoice: {
         id: `in_${randomUUID()}`,
@@ -11068,7 +11092,15 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
       status: "pending_payment",
       hostedInvoiceUrl,
     });
-    expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledWith(
+    expect(context.mocks.stripe.subscriptions.update).toHaveBeenNthCalledWith(
+      1,
+      subscriptionId,
+      {
+        default_payment_method: paymentMethodId,
+      },
+    );
+    expect(context.mocks.stripe.subscriptions.update).toHaveBeenNthCalledWith(
+      2,
       subscriptionId,
       {
         items: [{ id: subscriptionItemId, quantity: 4 }],
@@ -11076,7 +11108,6 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
         proration_behavior: "always_invoice",
         proration_date: expect.any(Number),
         expand: ["latest_invoice"],
-        default_payment_method: paymentMethodId,
       },
     );
     expect(

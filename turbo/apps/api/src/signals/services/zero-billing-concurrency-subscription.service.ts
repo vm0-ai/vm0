@@ -34,7 +34,7 @@ import {
 } from "./org-concurrency-entitlements.service";
 import { completeBillingOperationInvoice } from "./billing-operation-invoice.service";
 import {
-  stripeBillingPurchasePaymentParams,
+  setStripeSubscriptionPaymentMethod,
   type BillingPurchasePaymentMethod,
 } from "./billing-payment-method.service";
 import { subscriptionScheduleHasNoFutureChanges } from "./stripe-subscription-schedules.service";
@@ -506,6 +506,15 @@ export const addStripeConcurrencySubscriptionItem$ = command(
       signal.throwIfAborted();
     }
 
+    if (args.paymentMethod) {
+      await setStripeSubscriptionPaymentMethod(
+        stripe,
+        subscription.id,
+        args.paymentMethod,
+        signal,
+      );
+    }
+
     const updatedSubscription = await stripe.subscriptions.update(
       subscription.id,
       {
@@ -514,9 +523,6 @@ export const addStripeConcurrencySubscriptionItem$ = command(
             ? { id: currentItem.id, quantity: args.quantity }
             : { price: args.priceId, quantity: args.quantity },
         ],
-        ...(args.paymentMethod
-          ? stripeBillingPurchasePaymentParams(args.paymentMethod)
-          : {}),
         payment_behavior: "pending_if_incomplete",
         proration_behavior: "always_invoice",
         proration_date: Math.floor(nowDate().getTime() / 1000),
@@ -995,13 +1001,19 @@ export const applyStripeConcurrencySubscriptionChange$ = command(
       };
     }
 
+    if (args.paymentMethod) {
+      await setStripeSubscriptionPaymentMethod(
+        stripe,
+        subscription.id,
+        args.paymentMethod,
+        signal,
+      );
+    }
+
     const updatedSubscription = await stripe.subscriptions.update(
       subscription.id,
       {
         items: [{ id: item.id, quantity: targetQuantity }],
-        ...(args.paymentMethod
-          ? stripeBillingPurchasePaymentParams(args.paymentMethod)
-          : {}),
         payment_behavior: "pending_if_incomplete",
         proration_behavior: "always_invoice",
         proration_date: Math.floor(nowDate().getTime() / 1000),

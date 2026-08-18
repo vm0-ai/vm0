@@ -50,7 +50,7 @@ import {
 import type { BillingReconciliationScope } from "./billing-reconciliation-scope";
 import { completeBillingOperationInvoice } from "./billing-operation-invoice.service";
 import {
-  stripeBillingPurchasePaymentParams,
+  setStripeSubscriptionPaymentMethod,
   type BillingPurchasePaymentMethod,
 } from "./billing-payment-method.service";
 import { subscriptionScheduleHasNoFutureChanges } from "./stripe-subscription-schedules.service";
@@ -2215,7 +2215,16 @@ async function applyImmediateSubscriptionChange(
   if (!targetPlanPriceId) {
     throw new Error("Team usage pack plan Price is not configured");
   }
-  const updatedSubscription = await getStripeClient().subscriptions.update(
+  const stripe = getStripeClient();
+  if (args.paymentMethod) {
+    await setStripeSubscriptionPaymentMethod(
+      stripe,
+      args.subscription.id,
+      args.paymentMethod,
+      signal,
+    );
+  }
+  const updatedSubscription = await stripe.subscriptions.update(
     args.subscription.id,
     {
       items: subscriptionUpdateItems(
@@ -2224,9 +2233,6 @@ async function applyImmediateSubscriptionChange(
         targetPlanPriceId,
         packageQuantities,
       ),
-      ...(args.paymentMethod
-        ? stripeBillingPurchasePaymentParams(args.paymentMethod)
-        : {}),
       payment_behavior: "pending_if_incomplete",
       proration_behavior: "always_invoice",
       proration_date: args.stored.root.prorationTimestamp,
@@ -2244,7 +2250,7 @@ async function applyImmediateSubscriptionChange(
   const pendingUpdateExpiresAt =
     subscriptionPendingUpdateExpiresAt(updatedSubscription);
   const payment = await completeBillingOperationInvoice(
-    getStripeClient(),
+    stripe,
     invoice,
     `usage-pack-subscription:${args.stored.root.id}`,
     signal,

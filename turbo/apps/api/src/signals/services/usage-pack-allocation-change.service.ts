@@ -49,7 +49,7 @@ import {
 import type { BillingReconciliationScope } from "./billing-reconciliation-scope";
 import { completeBillingOperationInvoice } from "./billing-operation-invoice.service";
 import {
-  stripeBillingPurchasePaymentParams,
+  setStripeSubscriptionPaymentMethod,
   type BillingPurchasePaymentMethod,
 } from "./billing-payment-method.service";
 import { downgradeSubscriptionForOrg } from "./zero-billing-downgrade.service";
@@ -3653,13 +3653,19 @@ async function confirmUsagePackUpgrade(
     change.sourceStripePriceId,
     change.targetStripePriceId,
   );
-  const updatedSubscription = await getStripeClient().subscriptions.update(
+  const stripe = getStripeClient();
+  if (paymentMethod) {
+    await setStripeSubscriptionPaymentMethod(
+      stripe,
+      subscription.id,
+      paymentMethod,
+      signal,
+    );
+  }
+  const updatedSubscription = await stripe.subscriptions.update(
     subscription.id,
     {
       items,
-      ...(paymentMethod
-        ? stripeBillingPurchasePaymentParams(paymentMethod)
-        : {}),
       payment_behavior: "pending_if_incomplete",
       proration_behavior: "always_invoice",
       proration_date: change.prorationTimestamp,
@@ -3673,7 +3679,7 @@ async function confirmUsagePackUpgrade(
     throw new Error("Stripe did not create a usage pack change invoice");
   }
   const payment = await completeBillingOperationInvoice(
-    getStripeClient(),
+    stripe,
     invoice,
     `usage-pack-allocation:${change.id}`,
     signal,

@@ -147,6 +147,7 @@ export interface StripeSubscriptionUpdateParams {
   readonly cancel_at_period_end?: boolean;
   readonly metadata?: StripeMetadataParam;
   readonly default_payment_method?: string;
+  readonly default_source?: string;
   readonly items?: StripeSubscriptionUpdateItemParam[];
   readonly payment_behavior?:
     | "allow_incomplete"

@@ -130,6 +130,19 @@ export function stripeBillingPurchasePaymentParams(
     : { default_source: paymentMethod.paymentMethodId };
 }
 
+export async function setStripeSubscriptionPaymentMethod(
+  stripe: ReturnType<typeof getStripeClient>,
+  subscriptionId: string,
+  paymentMethod: BillingPurchasePaymentMethod,
+  signal: AbortSignal,
+): Promise<void> {
+  await stripe.subscriptions.update(
+    subscriptionId,
+    stripeBillingPurchasePaymentParams(paymentMethod),
+  );
+  signal.throwIfAborted();
+}
+
 export const billingPurchasePreviewEnabled$ = command(
   async (
     { get },
