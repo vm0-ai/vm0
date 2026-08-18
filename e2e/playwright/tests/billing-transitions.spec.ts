@@ -731,12 +731,28 @@ async function restoreConcurrency(
 }
 
 async function openBillingSettings(page: Page): Promise<Locator> {
-  await page.goto(new URL("/?settings=billing", appUrl).toString(), {
+  // The root route hands off to the canonical chat route. Starting the billing
+  // flow during that handoff lets the destination route reset its sub-page.
+  await page.waitForURL(isCanonicalChatUrl, {
+    waitUntil: "domcontentloaded",
+  });
+  const settingsUrl = new URL(page.url());
+  settingsUrl.hash = "";
+  settingsUrl.search = "";
+  settingsUrl.searchParams.set("settings", "billing");
+  await page.goto(settingsUrl.toString(), {
     waitUntil: "domcontentloaded",
   });
   const settings = page.getByRole("dialog", { name: "Settings" });
   await expect(settings).toBeVisible({ timeout: 30_000 });
   return settings;
+}
+
+function isCanonicalChatUrl(url: URL): boolean {
+  return (
+    url.origin === appOrigin &&
+    /^\/(?:agents\/[^/]+\/chat|chats\/[^/]+)$/u.test(url.pathname)
+  );
 }
 
 async function currentToken(page: Page, owner: BillingOwner): Promise<string> {
