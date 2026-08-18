@@ -187,7 +187,7 @@ async fn idle_vm_remains_reusable_until_capacity_is_needed() {
 // Test 16: Budget exhausted → evict idle VM → admit new job
 // -----------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn budget_pressure_starts_fresh_vm_before_idle_destroy_finishes() {
     let destroy_gate = sandbox_mock::MockLifecycleGate::new();
     let wait_gate = sandbox_mock::MockLifecycleGate::new();
@@ -252,10 +252,13 @@ async fn budget_pressure_starts_fresh_vm_before_idle_destroy_finishes() {
         .wait_destroy_tasks_drain_entered(Duration::from_secs(5))
         .await;
     assert!(
-        !run_handle.is_finished(),
+        !env.start_observer.destroy_tasks_drain_was_completed(),
         "shutdown must wait for the tracked retired idle destroy"
     );
     destroy_gate.release_one();
+    env.start_observer
+        .wait_destroy_tasks_drain_completed(Duration::from_secs(5))
+        .await;
     assert_run_exits_within(
         run_handle,
         Duration::from_secs(5),

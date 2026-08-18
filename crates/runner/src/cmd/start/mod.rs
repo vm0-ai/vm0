@@ -961,6 +961,7 @@ enum StartLoopEvent {
     BudgetExhaustedReactorEntered,
     WorkspaceCacheChangeObserved,
     DestroyTasksDrainEntered,
+    DestroyTasksDrainCompleted,
     FinalizingCapacityWaitEntered { run_id: RunId },
     ActiveRunStatusPublished { run_id: RunId },
     BeforeIdlePoolOwnershipTransfer { run_id: RunId },
@@ -1099,6 +1100,19 @@ impl StartLoopTestObserver {
         self.record(StartLoopEvent::DestroyTasksDrainEntered);
     }
 
+    fn notify_destroy_tasks_drain_completed(&self) {
+        self.record(StartLoopEvent::DestroyTasksDrainCompleted);
+    }
+
+    fn destroy_tasks_drain_was_completed(&self) -> bool {
+        self.inner
+            .events
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .iter()
+            .any(|event| matches!(event, StartLoopEvent::DestroyTasksDrainCompleted))
+    }
+
     fn notify_finalizing_capacity_wait_entered(&self, run_id: RunId) {
         self.record(StartLoopEvent::FinalizingCapacityWaitEntered { run_id });
     }
@@ -1158,6 +1172,13 @@ impl StartLoopTestObserver {
     async fn wait_destroy_tasks_drain_entered(&self, timeout: Duration) {
         self.wait_for(timeout, "destroy-task drain", |event| {
             matches!(event, StartLoopEvent::DestroyTasksDrainEntered).then_some(())
+        })
+        .await;
+    }
+
+    async fn wait_destroy_tasks_drain_completed(&self, timeout: Duration) {
+        self.wait_for(timeout, "destroy-task drain completion", |event| {
+            matches!(event, StartLoopEvent::DestroyTasksDrainCompleted).then_some(())
         })
         .await;
     }
@@ -2153,6 +2174,10 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         .test_observer
         .notify_destroy_tasks_drain_entered();
     idle_destroy_tracker.close_and_wait().await;
+    #[cfg(test)]
+    test_hooks
+        .test_observer
+        .notify_destroy_tasks_drain_completed();
     teardown.phase_complete("destroy_tasks_drain", phase);
     let phase = teardown.phase_start("background_fill_shutdown");
     exec_config.background_fill.shutdown().await;
