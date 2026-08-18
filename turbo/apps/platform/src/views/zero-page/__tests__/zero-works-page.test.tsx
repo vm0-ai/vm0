@@ -183,25 +183,22 @@ async function disconnectAndReopenAgentPhone(): Promise<HTMLElement> {
 describe("works page", () => {
   it("shows skeleton rows while Feishu settings load", async () => {
     const responseReady = context.mocks.deferred<void>();
-    context.mocks.api(
-      feishuConnectContract.getStatus,
-      async ({ respond }) => {
-        await responseReady.promise;
-        return respond(200, {
-          isConnected: false,
-          isInstalled: false,
-          isAdmin: true,
-          appId: null,
-          callbackUrl: null,
-          callbackVerified: false,
-          messageReceived: false,
-          tenantKey: null,
-          tenantName: null,
-          defaultAgentId: null,
-          defaultAgentName: "Okou",
-        });
-      },
-    );
+    context.mocks.api(feishuConnectContract.getStatus, async ({ respond }) => {
+      await responseReady.promise;
+      return respond(200, {
+        isConnected: false,
+        isInstalled: false,
+        isAdmin: true,
+        appId: null,
+        callbackUrl: null,
+        callbackVerified: false,
+        messageReceived: false,
+        tenantKey: null,
+        tenantName: null,
+        defaultAgentId: null,
+        defaultAgentName: "Okou",
+      });
+    });
 
     detachedSetupPage({
       context,

@@ -190,9 +190,7 @@ const updateInstallation$ = command(
     if (auth.orgRole !== "admin") {
       return adminRequired();
     }
-    const params = get(
-      pathParamsOf(feishuConnectContract.updateInstallation),
-    );
+    const params = get(pathParamsOf(feishuConnectContract.updateInstallation));
     const bodyResult = await get(
       bodyResultOf(feishuConnectContract.updateInstallation),
     );
@@ -244,9 +242,7 @@ const removeInstallation$ = command(
     if (auth.orgRole !== "admin") {
       return adminRequired();
     }
-    const params = get(
-      pathParamsOf(feishuConnectContract.removeInstallation),
-    );
+    const params = get(pathParamsOf(feishuConnectContract.removeInstallation));
     const removed = await set(
       removeFeishuInstallation$,
       { orgId: auth.orgId, installationId: params.installationId },
