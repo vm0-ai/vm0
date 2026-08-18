@@ -529,6 +529,8 @@ mod tests {
             FinalSessionHistoryIdentity::from_json_slice(&bytes).unwrap(),
             identity
         );
+        assert_eq!(value["framework"], "claude-code");
+        assert_eq!(value["historyRefKind"], "blob");
         assert!(value.get("version").is_none());
         assert!(value.get("historySource").is_some());
         assert!(value.get("historyMarkerPayload").is_none());
@@ -640,6 +642,8 @@ mod tests {
     #[test]
     fn final_identity_expectation_parses_cli_args_and_matches_identity() {
         let identity = valid_identity();
+        assert_eq!(identity.framework.as_str(), "claude-code");
+        assert_eq!(identity.history_ref_kind.as_str(), "blob");
         let expectation = FinalSessionHistoryIdentityExpectation::from_cli_args([
             identity.framework.as_str(),
             &identity.session_id_hash,
