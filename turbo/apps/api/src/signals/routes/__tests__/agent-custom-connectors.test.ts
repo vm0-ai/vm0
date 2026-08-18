@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
+import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import { zeroAgentCustomConnectorsContract } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
@@ -55,7 +55,7 @@ async function apiKeyHeaders(
 
 function zeroTokenFor(
   actor: ApiTestUser,
-  capabilities: readonly ZeroCapability[],
+  capabilities: readonly Capability[],
 ): string {
   if (!actor.orgId) {
     throw new Error("Expected an org-scoped actor");

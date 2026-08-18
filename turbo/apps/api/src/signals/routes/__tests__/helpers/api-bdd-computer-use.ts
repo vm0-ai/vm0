@@ -4,7 +4,7 @@ import {
   CLIENT_PRODUCT_HEADER,
   type DesktopProduct,
 } from "@okouai/api-contracts/contracts/client-headers";
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
+import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { cronComputerUseScreenshotCleanupContract } from "@okouai/api-contracts/contracts/cron";
 import {
@@ -320,7 +320,7 @@ function bodyStream(buffer: Buffer): AsyncIterable<Uint8Array> {
 export function zeroComputerUseToken(args: {
   readonly userId: string;
   readonly orgId: string;
-  readonly capabilities: readonly ZeroCapability[];
+  readonly capabilities: readonly Capability[];
   readonly runId?: string;
   readonly computerUseHostId?: string;
   readonly publicBrand?: PublicBrand;

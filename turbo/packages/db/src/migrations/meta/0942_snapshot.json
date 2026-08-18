@@ -1,6 +1,6 @@
 {
-  "id": "8e60149c-25e6-440d-a71b-1137f9316a76",
-  "prevId": "96def71c-40d8-4f9b-9976-65a4ce85718b",
+  "id": "0fa30bd1-e37c-453c-a830-d81ada784e5c",
+  "prevId": "8e60149c-25e6-440d-a71b-1137f9316a76",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -17251,22 +17251,6 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_presentation_templates_active_import": {
-          "name": "idx_presentation_templates_active_import",
-          "columns": [
-            {
-              "expression": "owner_user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "status IN ('pending', 'processing')",
           "concurrently": false,
           "method": "btree",
           "with": {}

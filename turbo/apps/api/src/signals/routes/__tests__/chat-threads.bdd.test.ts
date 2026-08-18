@@ -12,7 +12,7 @@ import {
   type ChatEvent,
   type UserMessageInputDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
+import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   type SupportedRunModel,
@@ -439,10 +439,10 @@ const GOAL_CAPABILITIES = [
   "goal:read",
   "goal:agent-result:write",
   "goal:user-control:write",
-] as const satisfies readonly ZeroCapability[];
+] as const satisfies readonly Capability[];
 const CHAT_THREAD_READ_CAPABILITIES = [
   "chat-thread:read",
-] as const satisfies readonly ZeroCapability[];
+] as const satisfies readonly Capability[];
 
 function goalsClient() {
   return setupApp({ context, routes: goalsRoutes })(goalsContract);
@@ -451,7 +451,7 @@ function goalsClient() {
 function zeroCapabilityHeaders(
   actor: ApiTestUser,
   runId: string,
-  capabilities: readonly ZeroCapability[],
+  capabilities: readonly Capability[],
 ): { readonly authorization: string } {
   if (!actor.orgId) {
     throw new Error("Expected an org-scoped actor for zero auth");
