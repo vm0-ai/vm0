@@ -14,6 +14,7 @@ import {
   gitHubDeploymentStatusEventSchema,
   gitHubInstallationEventSchema,
   gitHubIssueCommentEventSchema,
+  gitHubPullRequestReviewActionSchema,
   gitHubPullRequestReviewEventSchema,
   gitHubPullRequestEventSchema,
   gitHubWorkflowJobEventSchema,
@@ -231,6 +232,20 @@ const postGithubPullRequestReviewWebhook$ = command(
     args: GithubBackgroundWebhookArgs,
     signal: AbortSignal,
   ): Response => {
+    const action = gitHubPullRequestReviewActionSchema.safeParse(args.payload);
+    if (!action.success) {
+      L.error("Invalid pull_request_review event payload", {
+        error: action.error,
+      });
+      return jsonError("Invalid payload structure", 400);
+    }
+    if (action.data.action !== "submitted") {
+      L.debug("Ignoring unhandled pull_request_review action", {
+        action: action.data.action,
+      });
+      return new Response("OK", { status: 200 });
+    }
+
     const parsed = gitHubPullRequestReviewEventSchema.safeParse(args.payload);
     if (!parsed.success) {
       L.error("Invalid pull_request_review event payload", {
