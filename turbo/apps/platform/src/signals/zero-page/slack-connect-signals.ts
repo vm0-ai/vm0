@@ -1,6 +1,6 @@
 import { command, computed } from "ccstate";
 import { searchParams$ } from "../route.ts";
-import { zeroSlackConnectContract } from "@okouai/api-contracts/contracts/zero-slack-connect";
+import { slackConnectContract } from "@okouai/api-contracts/contracts/slack-connect";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 
@@ -21,7 +21,7 @@ export const slackConnectStatus$ = computed(
       return "idle";
     }
 
-    const client = get(zeroClient$)(zeroSlackConnectContract);
+    const client = get(zeroClient$)(slackConnectContract);
     const [result] = await Promise.allSettled([
       accept(client.getStatus(), [200]),
     ]);
@@ -61,7 +61,7 @@ export const connectSlackAccount$ = command(
       return;
     }
 
-    const client = get(zeroClient$)(zeroSlackConnectContract);
+    const client = get(zeroClient$)(slackConnectContract);
     const channelId = params.get("c");
     const threadTs = params.get("t");
 

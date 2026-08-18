@@ -2,7 +2,7 @@ import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 
 import { testMailDraftStateContract } from "@okouai/api-contracts/contracts/test-mail-draft-state";
-import { zeroMailContract } from "@okouai/api-contracts/contracts/zero-mail";
+import { mailContract } from "@okouai/api-contracts/contracts/mail";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
@@ -277,7 +277,7 @@ async function seedGmailMailCardFixture() {
 }
 
 function client() {
-  return setupApp({ context, routes: mailRoutes })(zeroMailContract);
+  return setupApp({ context, routes: mailRoutes })(mailContract);
 }
 
 function stateClient() {

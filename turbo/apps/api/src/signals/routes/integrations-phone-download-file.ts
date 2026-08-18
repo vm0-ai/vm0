@@ -10,7 +10,7 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
 import { db$ } from "../external/db";
-import { agentPhoneFilenameFromMediaUrl } from "../services/zero-agentphone.service";
+import { agentPhoneFilenameFromMediaUrl } from "../services/agentphone.service";
 import type { RouteEntry } from "../route-entry";
 import { tapError } from "../utils";
 

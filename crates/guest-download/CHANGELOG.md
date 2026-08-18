@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.14](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.13...guest-download-v0.23.14) (2026-08-18)
+
+
+### Documentation
+
+* **rust:** correct guest archive TOCTOU claim ([#27906](https://github.com/vm0-ai/vm0/issues/27906)) ([23c0fc6](https://github.com/vm0-ai/vm0/commit/23c0fc6ee0a316aa3dfa4d8a58338c076bec1b3a))
+
 ## [0.23.13](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.12...guest-download-v0.23.13) (2026-08-18)
 
 

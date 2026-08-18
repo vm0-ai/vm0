@@ -6,7 +6,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import type { ZeroMailDraftStatus } from "@okouai/api-contracts/contracts/zero-mail";
+import type { MailDraftStatus } from "@okouai/api-contracts/contracts/mail";
 import { chatThreads } from "./chat-thread";
 import { connectors } from "./connector";
 
@@ -30,7 +30,7 @@ export const mailDrafts = pgTable(
     gmailThreadId: text("gmail_thread_id"),
     gmailMessageId: text("gmail_message_id"),
     sentGmailMessageId: text("sent_gmail_message_id"),
-    status: text("status").$type<ZeroMailDraftStatus>(),
+    status: text("status").$type<MailDraftStatus>(),
     senderName: text("sender_name"),
     senderAddress: text("sender_address"),
     subject: text("subject"),

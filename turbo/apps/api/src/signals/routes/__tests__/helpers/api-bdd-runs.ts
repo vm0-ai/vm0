@@ -71,7 +71,7 @@ import { agentsRoutes } from "../../agents";
 import { billingStatusRoutes } from "../../billing-status";
 import { modelPoliciesRoutes } from "../../model-policies";
 import { zeroModelProvidersRoutes } from "../../zero-model-providers";
-import { zeroRunDetailRoutes } from "../../zero-run-detail";
+import { runDetailRoutes } from "../../run-detail";
 import { zeroRunsCancelRoutes } from "../../zero-runs-cancel";
 import { zeroRunsRoutes } from "../../zero-runs";
 import {
@@ -157,7 +157,7 @@ const runRoutes = [
   ...billingStatusRoutes,
   ...modelPoliciesRoutes,
   ...zeroModelProvidersRoutes,
-  ...zeroRunDetailRoutes,
+  ...runDetailRoutes,
   ...zeroRunFixtureRoutes,
   ...zeroRunsRoutes,
   ...zeroRunsCancelRoutes,

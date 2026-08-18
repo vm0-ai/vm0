@@ -81,7 +81,7 @@ const getAgentEventsInner$ = computed(async (get) => {
   return { status: 200 as const, body: result };
 });
 
-export const zeroRunDetailRoutes: readonly RouteEntry[] = [
+export const runDetailRoutes: readonly RouteEntry[] = [
   {
     route: runContextContract.getContext,
     handler: authRoute(runReadAuth, getContextInner$),

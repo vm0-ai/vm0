@@ -1,5 +1,5 @@
 import { createStore } from "ccstate";
-import { zeroTeamsConnectContract } from "@okouai/api-contracts/contracts/zero-teams-connect";
+import { teamsConnectContract } from "@okouai/api-contracts/contracts/teams-connect";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -294,7 +294,7 @@ describe("Teams OAuth API routes", () => {
 
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const client = setupApp({ context, routes: teamsConnectRoutes })(
-      zeroTeamsConnectContract,
+      teamsConnectContract,
     );
     const pendingStatus = await accept(
       client.getStatus({
@@ -360,7 +360,7 @@ describe("Teams OAuth API routes", () => {
 
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const client = setupApp({ context, routes: teamsConnectRoutes })(
-      zeroTeamsConnectContract,
+      teamsConnectContract,
     );
     const status = await accept(
       client.getStatus({
@@ -381,7 +381,7 @@ describe("Teams OAuth API routes", () => {
     await seedMembership(fixture.orgId, fixture.userId, "admin");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const client = setupApp({ context, routes: teamsConnectRoutes })(
-      zeroTeamsConnectContract,
+      teamsConnectContract,
     );
     await accept(
       client.connect({

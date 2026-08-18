@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { command, computed } from "ccstate";
-import { zeroAvatarVideoContract } from "@okouai/api-contracts/contracts/zero-avatar-video";
+import { avatarVideoContract } from "@okouai/api-contracts/contracts/avatar-video";
 import type { BuiltInGenerationRealtimeSubscription } from "@okouai/api-contracts/contracts/built-in-generation";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -42,9 +42,9 @@ import {
   startRunBuiltInAdmission$,
 } from "../services/run-built-in-admission.service";
 
-const generateBody$ = bodyResultOf(zeroAvatarVideoContract.generate);
-const avatarsQuery$ = queryOf(zeroAvatarVideoContract.avatars);
-const voicesQuery$ = queryOf(zeroAvatarVideoContract.voices);
+const generateBody$ = bodyResultOf(avatarVideoContract.generate);
+const avatarsQuery$ = queryOf(avatarVideoContract.avatars);
+const voicesQuery$ = queryOf(avatarVideoContract.voices);
 
 const avatarVideoEnabled$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
@@ -283,21 +283,21 @@ const getVoicesInner$ = command(async ({ get }, signal: AbortSignal) => {
 
 export const avatarVideoRoutes: readonly RouteEntry[] = [
   {
-    route: zeroAvatarVideoContract.generate,
+    route: avatarVideoContract.generate,
     handler: authRoute(
       { requireOrganization: true, requiredCapability: "file:write" },
       postGenerateInner$,
     ),
   },
   {
-    route: zeroAvatarVideoContract.avatars,
+    route: avatarVideoContract.avatars,
     handler: authRoute(
       { requireOrganization: true, requiredCapability: "file:write" },
       getAvatarsInner$,
     ),
   },
   {
-    route: zeroAvatarVideoContract.voices,
+    route: avatarVideoContract.voices,
     handler: authRoute(
       { requireOrganization: true, requiredCapability: "file:write" },
       getVoicesInner$,
