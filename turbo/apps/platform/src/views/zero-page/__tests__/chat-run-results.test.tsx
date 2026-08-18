@@ -1605,7 +1605,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("does not fold a completed run when the only prior assistant message is thinking", async () => {
+  it("folds a completed run when the only prior assistant message is thinking", async () => {
     mockChatLifecycle(context, {
       threadId: "e7000000-0000-4000-a000-000000000018",
       chatEvents: [
@@ -1635,6 +1635,9 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/e7000000-0000-4000-a000-000000000018",
+      featureSwitches: {
+        [FeatureSwitchKey.ChatInlineThinkingBlocks]: true,
+      },
     });
 
     await waitFor(() => {
@@ -1642,8 +1645,24 @@ describe("chat lifecycle", () => {
         screen.getByText("Summarize the launch status"),
       ).toBeInTheDocument();
       expect(screen.getByText("Launch status is ready.")).toBeInTheDocument();
-      expect(screen.queryByText("Worked for 5s")).not.toBeInTheDocument();
-      expect(screen.queryByLabelText("Expand work history")).toBeNull();
+      expect(screen.queryByText("Reviewing launch context")).toBeNull();
+      expect(screen.getByLabelText("Expand work history")).toHaveTextContent(
+        "Worked for 5s",
+      );
+    });
+
+    click(screen.getByLabelText("Expand work history"));
+
+    await waitFor(() => {
+      const thinkingSummary = screen
+        .getAllByText("Reviewing launch context")
+        .map((candidate) => {
+          return candidate.closest("summary");
+        })
+        .find((summary): summary is HTMLElement => {
+          return summary instanceof HTMLElement;
+        });
+      expect(thinkingSummary).toBeVisible();
     });
   });
 

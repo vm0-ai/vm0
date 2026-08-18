@@ -24,6 +24,7 @@ import {
 } from "../../signals/chat-page/run-usage-popover.ts";
 import {
   AlertCircle,
+  Brain,
   Coffee,
   Flag,
   Hand,
@@ -3081,7 +3082,12 @@ function ChatThreadRenderedEventGroups({
   );
   const runGroupVisibleGroups =
     runGroupFolding?.visibleGroups ?? renderedActiveGroups;
-  const completedWorkFolding = buildCompletedWorkFolding(runGroupVisibleGroups);
+  const inlineThinkingBlocksEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ChatInlineThinkingBlocks] ?? false;
+  const completedWorkFolding = buildCompletedWorkFolding(
+    runGroupVisibleGroups,
+    inlineThinkingBlocksEnabled,
+  );
   const completedWorkExpandedKeys = useGet(completedWorkExpandedKeys$);
   const effectiveCompletedWorkExpandedKeys =
     completedWorkExpandedKeysForScrollTarget(
@@ -3330,7 +3336,7 @@ function chatRunPresentationForGroups(
       if (runId !== undefined) {
         lastAssociatedRunId = runId;
       }
-      if (!isRenderableAssistantEvent(event)) {
+      if (!isRenderableAssistantResultEvent(event)) {
         continue;
       }
       if (runId === undefined) {
@@ -3367,6 +3373,7 @@ function groupRendersContent(
   group: ChatEventGroup,
   embeddedFolds: readonly RunGroupFoldControl[],
   completedWorkFold: CompletedWorkFold | null,
+  inlineThinkingBlocksEnabled: boolean,
 ): boolean {
   if (embeddedFolds.length > 0 || completedWorkFold !== null) {
     return true;
@@ -3374,7 +3381,9 @@ function groupRendersContent(
   if (group.role === "user") {
     return group.events.some(rendersUserBubble);
   }
-  return group.events.some(isRenderableAssistantEvent);
+  return group.events.some((event) => {
+    return isRenderableAssistantEvent(event, inlineThinkingBlocksEnabled);
+  });
 }
 
 // A user group can be on screen for its fold alone, with every message in it
@@ -3408,8 +3417,11 @@ function ChatThreadEventGroups({
       runGroupFolding,
       onToggleRunGroup,
     });
+  const features = useGet(featureSwitch$);
   const continuationPresentationEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.ChatRunContinuationPresentation];
+    features[FeatureSwitchKey.ChatRunContinuationPresentation];
+  const inlineThinkingBlocksEnabled =
+    features[FeatureSwitchKey.ChatInlineThinkingBlocks] ?? false;
   const runPresentation = continuationPresentationEnabled
     ? chatRunPresentationForGroups(groups)
     : null;
@@ -3436,7 +3448,14 @@ function ChatThreadEventGroups({
           previousVisibleGroup !== undefined &&
           previousVisibleGroup.role === "user" &&
           groupHasUserBubble(previousVisibleGroup);
-        if (groupRendersContent(group, embeddedFolds, completedWorkFold)) {
+        if (
+          groupRendersContent(
+            group,
+            embeddedFolds,
+            completedWorkFold,
+            inlineThinkingBlocksEnabled,
+          )
+        ) {
           previousVisibleGroup = group;
         }
         const completedWorkExpanded =
@@ -3739,7 +3758,7 @@ function attachUsageToCompletedWorkGroups(
   for (const [index, group] of groups.entries()) {
     if (
       group.role !== "assistant" ||
-      !group.events.some(isRenderableAssistantEvent)
+      !group.events.some(isRenderableAssistantResultEvent)
     ) {
       continue;
     }
@@ -3764,7 +3783,20 @@ function attachUsageToCompletedWorkGroups(
   });
 }
 
-function isRenderableAssistantEvent(event: EnrichedChatEvent): boolean {
+type EnrichedThinkingChatEvent = Extract<
+  EnrichedChatEvent,
+  { eventType: "output.thinking" }
+>;
+
+function isThinkingOnlyAssistantEvent(
+  event: EnrichedChatEvent,
+): event is EnrichedThinkingChatEvent {
+  return (
+    event.eventType === "output.thinking" && event.thinking.trim().length > 0
+  );
+}
+
+function isRenderableAssistantResultEvent(event: EnrichedChatEvent): boolean {
   return (
     chatEventCompatibilityRole(event.eventType) === "assistant" &&
     ((isChatEventContentTextType(event.eventType) && Boolean(event.content)) ||
@@ -3774,9 +3806,13 @@ function isRenderableAssistantEvent(event: EnrichedChatEvent): boolean {
   );
 }
 
-function isThinkingOnlyAssistantEvent(event: EnrichedChatEvent): boolean {
+function isRenderableAssistantEvent(
+  event: EnrichedChatEvent,
+  inlineThinkingBlocksEnabled: boolean,
+): boolean {
   return (
-    event.eventType === "output.thinking" && event.thinking.trim().length > 0
+    (inlineThinkingBlocksEnabled && isThinkingOnlyAssistantEvent(event)) ||
+    isRenderableAssistantResultEvent(event)
   );
 }
 
@@ -3822,14 +3858,18 @@ function lastCompletedWorkEventIndex(
 function completedWorkFinalEventIndex(
   events: readonly EnrichedChatEvent[],
 ): number {
-  return lastCompletedWorkEventIndex(events, isRenderableAssistantEvent);
+  return lastCompletedWorkEventIndex(events, isRenderableAssistantResultEvent);
 }
 
-function canFoldCompletedWorkTrailingEvent(event: EnrichedChatEvent): boolean {
+function canFoldCompletedWorkTrailingEvent(
+  event: EnrichedChatEvent,
+  inlineThinkingBlocksEnabled: boolean,
+): boolean {
   const role = chatEventCompatibilityRole(event.eventType);
   return (
     role === "user" ||
-    (role === "assistant" && !isRenderableAssistantEvent(event))
+    (role === "assistant" &&
+      !isRenderableAssistantEvent(event, inlineThinkingBlocksEnabled))
   );
 }
 
@@ -3841,6 +3881,7 @@ interface CompletedWorkPhaseFolding {
 function foldCompletedWorkPhase(
   runId: string,
   events: readonly EnrichedChatEvent[],
+  inlineThinkingBlocksEnabled: boolean,
 ): CompletedWorkPhaseFolding {
   const finalEventIndex = completedWorkFinalEventIndex(events);
   const finalEvent =
@@ -3850,16 +3891,19 @@ function foldCompletedWorkPhase(
   const hiddenEvents = precedingEvents.filter((event) => {
     return (
       chatEventCompatibilityRole(event.eventType) !== "user" &&
-      !isThinkingOnlyAssistantEvent(event)
+      (inlineThinkingBlocksEnabled || !isThinkingOnlyAssistantEvent(event))
     );
   });
-  const userEvents = events.filter((event) => {
+  const visiblePrecedingEvents = precedingEvents.filter((event) => {
     return chatEventCompatibilityRole(event.eventType) === "user";
   });
   const trailingEvents =
     finalEventIndex >= 0 ? events.slice(finalEventIndex + 1) : [];
   const trailingEventsCanFold = trailingEvents.every((event) => {
-    return canFoldCompletedWorkTrailingEvent(event);
+    return canFoldCompletedWorkTrailingEvent(
+      event,
+      inlineThinkingBlocksEnabled,
+    );
   });
   if (
     finalEvent === undefined ||
@@ -3870,9 +3914,11 @@ function foldCompletedWorkPhase(
   }
   return {
     visibleEvents: [
-      ...userEvents,
+      ...visiblePrecedingEvents,
       finalEvent,
-      ...trailingEvents.filter(isRenderableAssistantEvent),
+      ...trailingEvents.filter((event) => {
+        return isRenderableAssistantEvent(event, inlineThinkingBlocksEnabled);
+      }),
     ],
     fold: {
       key: `${runId}:${finalEvent.id}`,
@@ -3885,6 +3931,7 @@ function foldCompletedWorkPhase(
 
 function buildCompletedWorkFolding(
   groups: readonly ChatEventGroup[],
+  inlineThinkingBlocksEnabled: boolean,
 ): CompletedWorkFolding | null {
   const usageByRunId = usageByRunIdFromGroups(groups);
   const events = groups.flatMap((group) => {
@@ -3920,7 +3967,11 @@ function buildCompletedWorkFolding(
       hasCompletedWorkPhaseBoundary = true;
     }
     for (const completedWorkEvents of completedWorkEventGroups) {
-      const phaseFolding = foldCompletedWorkPhase(runId, completedWorkEvents);
+      const phaseFolding = foldCompletedWorkPhase(
+        runId,
+        completedWorkEvents,
+        inlineThinkingBlocksEnabled,
+      );
       visibleEvents.push(...phaseFolding.visibleEvents);
       if (phaseFolding.fold !== null) {
         folds.push(phaseFolding.fold);
@@ -5328,6 +5379,8 @@ function equalRecommendedFollowupSources(
 }
 
 function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
+  const inlineThinkingBlocksEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ChatInlineThinkingBlocks] ?? false;
   const [c1, c2, c3] = useGet(thread.blockColors$);
   const blockStyle = {
     "--zb-c1": c1,
@@ -5363,6 +5416,11 @@ function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
       : undefined;
 
   if (mode === null) {
+    return null;
+  }
+
+  // The active thinking event is already rendered inline in transcript order.
+  if (inlineThinkingBlocksEnabled && serverThinkingLabel) {
     return null;
   }
 
@@ -7620,8 +7678,11 @@ function PagedAssistantGroup({
     onToggle: () => void;
   };
 }) {
+  const inlineThinkingBlocksEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ChatInlineThinkingBlocks] ?? false;
+  const currentThinkingEventId = useLastResolved(thread.thinkingEventId$);
   const hasRenderableEvent = group.events.some((event) => {
-    return isRenderableAssistantEvent(event);
+    return isRenderableAssistantEvent(event, inlineThinkingBlocksEnabled);
   });
   const hasRunGroupFolds = (runGroupFolds?.length ?? 0) > 0;
   const showCompletedWorkFold = completedWorkFold && !hasRunGroupFolds;
@@ -7639,7 +7700,10 @@ function PagedAssistantGroup({
     .join("\n\n");
   let renderedAssistantEventCount = 0;
   const renderAssistantEventItem = (event: EnrichedChatEvent) => {
-    const isRenderable = isRenderableAssistantEvent(event);
+    const isRenderable = isRenderableAssistantEvent(
+      event,
+      inlineThinkingBlocksEnabled,
+    );
     const compactTop = isRenderable && renderedAssistantEventCount > 0;
     if (isRenderable) {
       renderedAssistantEventCount += 1;
@@ -7649,6 +7713,8 @@ function PagedAssistantGroup({
         key={event.id}
         event={event}
         compactTop={compactTop}
+        currentThinking={event.id === currentThinkingEventId}
+        inlineThinkingBlocksEnabled={inlineThinkingBlocksEnabled}
         thread={thread}
       />
     );
@@ -7707,12 +7773,27 @@ function PagedAssistantGroup({
 function PagedAssistantEventItem({
   event,
   compactTop = false,
+  currentThinking,
+  inlineThinkingBlocksEnabled,
   thread,
 }: {
   event: EnrichedChatEvent;
   compactTop?: boolean;
+  currentThinking: boolean;
+  inlineThinkingBlocksEnabled: boolean;
   thread: ChatPanelSignals;
 }) {
+  if (inlineThinkingBlocksEnabled && isThinkingOnlyAssistantEvent(event)) {
+    return (
+      <PagedAssistantThinkingBlock
+        event={event}
+        compactTop={compactTop}
+        current={currentThinking}
+        thread={thread}
+      />
+    );
+  }
+
   const error = chatEventError(event);
   if (error) {
     return (
@@ -7754,6 +7835,153 @@ function PagedAssistantEventItem({
   }
 
   return null;
+}
+
+function PagedAssistantThinkingBlock({
+  event,
+  compactTop,
+  current,
+  thread,
+}: {
+  event: EnrichedThinkingChatEvent;
+  compactTop: boolean;
+  current: boolean;
+  thread: ChatPanelSignals;
+}) {
+  const { t } = useTranslation();
+  const label = t(($) => {
+    return $.activity.events.thinking;
+  });
+  const preview = event.thinking.trim().replace(/\s+/g, " ");
+
+  return (
+    <div
+      data-chat-scroll-anchor-event-id={event.id}
+      data-chat-run-id={event.runId}
+      className={cn(
+        "-mx-2 min-w-0",
+        compactTop ? "@[900px]:pt-0" : "@[900px]:pt-2.5",
+      )}
+    >
+      <details
+        data-thinking-block
+        data-thinking-indicator={current ? "" : undefined}
+        open={current}
+        className="group max-w-[710px]"
+      >
+        <summary className="inline-flex min-h-9 max-w-full cursor-pointer list-none items-center gap-2 rounded-lg px-2 py-1.5 text-left text-muted-foreground transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+          {current ? (
+            <PagedAssistantCurrentThinkingSummary
+              event={event}
+              label={label}
+              preview={preview}
+              thread={thread}
+            />
+          ) : (
+            <>
+              <span
+                data-thinking-block-icon
+                aria-hidden
+                className="inline-flex size-3.5 shrink-0 items-center justify-center"
+              >
+                <Brain size={14} className="-translate-y-px" />
+              </span>
+              <span className="shrink-0 text-[13px]">{label}</span>
+              <span className="min-w-0 flex-1 truncate font-serif text-[0.8125rem] font-normal group-open:hidden">
+                {preview}
+              </span>
+            </>
+          )}
+          <ChevronRight
+            aria-hidden
+            size={14}
+            className="shrink-0 text-muted-foreground/70 transition-transform group-open:rotate-90"
+          />
+        </summary>
+        <div
+          data-thinking-block-content
+          className="px-2 pb-2 pt-1 font-serif text-[0.875rem] leading-[1.55] text-muted-foreground/80 [overflow-wrap:anywhere] [&_.wmde-markdown]:!text-muted-foreground/80"
+        >
+          <Markdown
+            source={event.thinking}
+            escapeHtml
+            mathEnabled
+            style={{ fontSize: "inherit", lineHeight: "inherit" }}
+          />
+        </div>
+      </details>
+    </div>
+  );
+}
+
+function PagedAssistantCurrentThinkingSummary({
+  event,
+  label,
+  preview,
+  thread,
+}: {
+  event: EnrichedThinkingChatEvent;
+  label: string;
+  preview: string;
+  thread: ChatPanelSignals;
+}) {
+  const thinkingText = useLastResolved(thread.thinkingText$);
+  const displayedThinkingText =
+    useLastResolved(thread.displayedThinkingText$) ?? "";
+  const thinkingTextFadingOut =
+    useLastResolved(thread.thinkingTextFadingOut$) ?? false;
+  const setThinkingIndicatorTextRef = useSet(
+    thread.setThinkingIndicatorTextRef$,
+  );
+  const [c1, c2, c3] = useGet(thread.blockColors$);
+  const blockStyle = {
+    "--zb-c1": c1,
+    "--zb-c2": c2,
+    "--zb-c3": c3,
+  } as CSSProperties;
+  const serverThinkingLabel = thinkingText
+    ? {
+        displayedText: displayedThinkingText,
+        fadingOut: thinkingTextFadingOut,
+        fullText: thinkingText,
+        id: event.id,
+        setRef: setThinkingIndicatorTextRef,
+      }
+    : undefined;
+
+  return (
+    <>
+      <span
+        data-thinking-block-icon
+        aria-hidden
+        className="inline-flex size-3.5 shrink-0 items-center justify-center"
+      >
+        <span className="zero-blocks" style={blockStyle}>
+          <span />
+          <span />
+          <span />
+        </span>
+      </span>
+      <span className="shrink-0 text-[13px]">{label}</span>
+      {serverThinkingLabel ? (
+        <ShimmerText
+          key={serverThinkingLabel.id}
+          setRef={serverThinkingLabel.setRef}
+          className={cn(
+            "min-w-0 group-open:hidden transition-opacity duration-200",
+            serverThinkingLabel.fadingOut ? "opacity-0" : "opacity-100",
+          )}
+          ariaLabel={serverThinkingLabel.fullText}
+        >
+          {serverThinkingLabel.displayedText || "\u00a0"}
+        </ShimmerText>
+      ) : (
+        <span className="min-w-0 flex-1 truncate font-serif text-[0.8125rem] font-normal group-open:hidden">
+          {preview}
+        </span>
+      )}
+    </>
+  );
 }
 
 function formatCredits(value: number): string {
