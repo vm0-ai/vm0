@@ -159,7 +159,7 @@ pub const CODEX_RUNTIME_CONFIG_ENV: &str = "VM0_CODEX_RUNTIME_CONFIG";
 
 /// Logical run-payload field name for the schema-v2 Pi launch config marker.
 ///
-/// The value is the serialized `{ "schemaVersion": 2 }` version marker. Pi's
+/// The value is the serialized `{"schemaVersion":2}` version marker. Pi's
 /// runtime resources are discovered from canonical filesystem locations by the
 /// official loader. The value never reaches the Pi CLI child as an environment
 /// value; the guest-agent republishes it through
