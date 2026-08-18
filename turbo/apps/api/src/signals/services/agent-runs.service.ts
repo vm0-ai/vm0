@@ -295,7 +295,7 @@ function runningTaskItem(
   };
 }
 
-export function zeroRunById(args: {
+export function agentRunById(args: {
   readonly runId: string;
   readonly userId: string;
   readonly orgId: string;
@@ -447,7 +447,7 @@ export function agentRunList(args: {
   });
 }
 
-export function zeroRunRunner(args: {
+export function agentRunRunner(args: {
   readonly runId: string;
   readonly userId: string;
   readonly orgId: string;
@@ -492,7 +492,7 @@ export function zeroRunRunner(args: {
   });
 }
 
-export function zeroOrgTier(orgId: string): Computed<Promise<OrgTier>> {
+export function organizationTier(orgId: string): Computed<Promise<OrgTier>> {
   return computed(async (get): Promise<OrgTier> => {
     const [row] = await get(db$)
       .select({ tier: orgMetadata.tier })
@@ -507,7 +507,7 @@ export function zeroOrgTier(orgId: string): Computed<Promise<OrgTier>> {
   });
 }
 
-export function zeroRunQueueStatus(args: {
+export function agentRunQueueStatus(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly orgTier: OrgTier;

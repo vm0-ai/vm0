@@ -102,21 +102,21 @@ export interface UserInfo {
   readonly agentphoneHandle?: string;
 }
 
-export interface ZeroRunBootstrapContext extends AgentConnectorScope {
+export interface RunBootstrapContext extends AgentConnectorScope {
   readonly userInfo: UserInfo;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly workflows: readonly RunWorkflowRef[];
   readonly permissionGrants: readonly FirewallPermissionGrant[];
 }
 
-interface ZeroRunBootstrapSnapshotArgs {
+interface RunBootstrapSnapshotArgs {
   readonly userId: string;
   readonly orgId: string;
   readonly agentId: string;
   readonly checkedAt: Date;
 }
 
-export interface ZeroRunBootstrapSnapshotRows {
+export interface RunBootstrapSnapshotRows {
   readonly metadataRows: readonly BootstrapMetadataQueryRow[];
   readonly workflowRows: readonly RunWorkflowSourceRow[];
 }
@@ -145,7 +145,7 @@ function emptyBootstrapMetadataFields() {
 
 function zeroRunCustomConnectorMetadataQuery(
   db: ReadonlyDb,
-  args: ZeroRunBootstrapSnapshotArgs,
+  args: RunBootstrapSnapshotArgs,
 ) {
   return db
     .select({
@@ -178,9 +178,9 @@ function zeroRunCustomConnectorMetadataQuery(
     );
 }
 
-async function queryZeroRunBootstrapMetadataSnapshot(
+async function queryRunBootstrapMetadataSnapshot(
   db: ReadonlyDb,
-  args: ZeroRunBootstrapSnapshotArgs,
+  args: RunBootstrapSnapshotArgs,
 ): Promise<BootstrapMetadataQueryRow[]> {
   const userInfoQuery = db
     .select({
@@ -279,7 +279,7 @@ async function queryZeroRunBootstrapMetadataSnapshot(
 
 async function queryZeroRunWorkflowCandidates(
   db: ReadonlyDb,
-  args: ZeroRunBootstrapSnapshotArgs,
+  args: RunBootstrapSnapshotArgs,
 ): Promise<RunWorkflowSourceRow[]> {
   return await db
     .select({
@@ -302,24 +302,24 @@ async function queryZeroRunWorkflowCandidates(
     );
 }
 
-export async function loadZeroRunBootstrapSnapshotRows(
+export async function loadRunBootstrapSnapshotRows(
   db: ReadonlyDb,
-  args: ZeroRunBootstrapSnapshotArgs,
-): Promise<ZeroRunBootstrapSnapshotRows> {
+  args: RunBootstrapSnapshotArgs,
+): Promise<RunBootstrapSnapshotRows> {
   const [metadataRows, workflowRows] = await Promise.all([
-    queryZeroRunBootstrapMetadataSnapshot(db, args),
+    queryRunBootstrapMetadataSnapshot(db, args),
     queryZeroRunWorkflowCandidates(db, args),
   ]);
   return { metadataRows, workflowRows };
 }
 
-export function materializeZeroRunBootstrapContext(
-  rows: ZeroRunBootstrapSnapshotRows,
+export function materializeRunBootstrapContext(
+  rows: RunBootstrapSnapshotRows,
   args: {
     readonly userId: string;
     readonly orgId: string;
   },
-): ZeroRunBootstrapContext {
+): RunBootstrapContext {
   let userInfo: UserInfo = {
     name: null,
     email: null,

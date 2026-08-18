@@ -58,12 +58,12 @@ import {
 } from "./api-dispatch-timing.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
 import {
-  loadZeroRunBootstrapSnapshotRows,
-  materializeZeroRunBootstrapContext,
+  loadRunBootstrapSnapshotRows,
+  materializeRunBootstrapContext,
+  type RunBootstrapContext,
+  type RunBootstrapSnapshotRows,
   type UserInfo,
-  type ZeroRunBootstrapContext,
-  type ZeroRunBootstrapSnapshotRows,
-} from "./zero-run-bootstrap-context.service";
+} from "./run-bootstrap-context.service";
 import type { RunWorkflowRef } from "./workflow-data.service";
 import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
 import { expandConnectorServerFirewallPolicies } from "./connector-server-firewall-catalog.service";
@@ -598,7 +598,7 @@ function zeroBootstrapCountBucket(count: number): ZeroBootstrapCountBucket {
 }
 
 function zeroBootstrapLoadTimingDimensions(
-  rows: ZeroRunBootstrapSnapshotRows | undefined,
+  rows: RunBootstrapSnapshotRows | undefined,
 ): ApiDispatchTimingDimensions | undefined {
   if (!rows) {
     return undefined;
@@ -614,8 +614,8 @@ function zeroBootstrapLoadTimingDimensions(
 }
 
 function zeroBootstrapMaterializeTimingDimensions(
-  rows: ZeroRunBootstrapSnapshotRows,
-  context: ZeroRunBootstrapContext | undefined,
+  rows: RunBootstrapSnapshotRows,
+  context: RunBootstrapContext | undefined,
 ): ApiDispatchTimingDimensions {
   return {
     ...zeroBootstrapLoadTimingDimensions(rows),
@@ -740,12 +740,12 @@ async function loadZeroRunPostAuthorizationContext(
   },
   signal: AbortSignal,
 ) {
-  let measuredSnapshotRows: ZeroRunBootstrapSnapshotRows | undefined;
+  let measuredSnapshotRows: RunBootstrapSnapshotRows | undefined;
   const snapshotRows = await measureZeroPreCreate(
     args.timing,
     "api_dispatch_pre_create_zero_load_bootstrap_snapshot_rows",
     async () => {
-      const loadedRows = await loadZeroRunBootstrapSnapshotRows(db, {
+      const loadedRows = await loadRunBootstrapSnapshotRows(db, {
         userId: args.userId,
         orgId: args.orgId,
         agentId: args.agentId,
@@ -760,12 +760,12 @@ async function loadZeroRunPostAuthorizationContext(
   );
   signal.throwIfAborted();
 
-  let measuredBootstrapContext: ZeroRunBootstrapContext | undefined;
+  let measuredBootstrapContext: RunBootstrapContext | undefined;
   const bootstrapContext = await measureZeroPreCreate(
     args.timing,
     "api_dispatch_pre_create_zero_materialize_bootstrap_context",
     () => {
-      const context = materializeZeroRunBootstrapContext(snapshotRows, {
+      const context = materializeRunBootstrapContext(snapshotRows, {
         userId: args.userId,
         orgId: args.orgId,
       });
