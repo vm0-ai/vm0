@@ -65,6 +65,7 @@ import {
 } from "../../../test-fixtures/connector-catalog";
 import { readStorageS3PrefixFixture } from "../../../test-fixtures/storage";
 import {
+  historicalProductBuilderContentFixture,
   readHistoricalAgentComposeHeadFixture,
   readRawHistoricalAgentComposeHeadFixture,
   replaceHistoricalAgentComposeHeadFixture,
@@ -12781,6 +12782,226 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       content: unsupportedFrameworkContent,
     });
     await api.requestCancelRun(actor, resumed.runId, [200]);
+  });
+
+  // Transition-only #28070 coverage; removed by #26938 Stage 8.
+  it("uses application environment authority for exact historical builder heads", async () => {
+    const appUrl = "https://app.stage-4e.example.test";
+    mockEnv("APP_URL", appUrl);
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("Expected a historical-builder organization");
+    }
+    const canonicalHead = await readHistoricalAgentComposeHeadFixture(agentId);
+    if (!canonicalHead.content) {
+      throw new Error("Expected a canonical Agent head");
+    }
+
+    await connectors.connectManualGrant(actor, "gitlab", "api-token", {
+      accessToken: "glpat-stage-4e-current",
+      host: "gitlab-before-stage-4e.example.com",
+    });
+    await api.enableAgentConnectors(actor, agentId, ["gitlab"]);
+
+    const baseline = await api.createRun(actor, {
+      agentId,
+      prompt: "establish the pre-transition session",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const baselinePoll = await api.pollRunner(runnerGroup);
+    expect(baselinePoll.body.job).toMatchObject({ runId: baseline.runId });
+    const baselineClaim = await api.claimRunnerJob(baseline.runId);
+    expect(baselineClaim.environment?.GITLAB_HOST).toBe(
+      "gitlab-before-stage-4e.example.com",
+    );
+    await api.requestCancelRun(actor, baseline.runId, [200]);
+
+    const historicalContent = historicalProductBuilderContentFixture(
+      canonicalHead.name,
+    );
+    const historicalHead = await replaceHistoricalAgentComposeHeadFixture(
+      {
+        composeId: agentId,
+        userId: actor.userId,
+        content: historicalContent,
+      },
+      context.signal,
+    );
+    await connectors.connectManualGrant(actor, "gitlab", "api-token", {
+      accessToken: "glpat-stage-4e-current",
+      host: "gitlab-stage-4e-current.example.com",
+    });
+
+    const continuationPrompt =
+      "continue with the exact latest historical builder head";
+    context.mocks.axiom.ingest.mockImplementation((dataset, events) => {
+      if (
+        dataset === "run-context" &&
+        Array.isArray(events) &&
+        events.some((event) => {
+          return isRecord(event) && event.prompt === continuationPrompt;
+        })
+      ) {
+        throw new Error("historical-builder observation failed");
+      }
+      return true;
+    });
+
+    const resumed = await api.createRun(actor, {
+      agentId,
+      sessionId: baseline.sessionId,
+      prompt: continuationPrompt,
+      modelProvider: "anthropic-api-key",
+    });
+    expect(resumed.sessionId).toBe(baseline.sessionId);
+    await api.heartbeatRunner(runnerGroup);
+    const resumedPoll = await api.pollRunner(runnerGroup);
+    expect(resumedPoll.body.job).toMatchObject({ runId: resumed.runId });
+    const resumedClaim = await api.claimRunnerJob(resumed.runId);
+    expect(resumedClaim.resumeSession).toBeNull();
+    await api.requestCancelRun(actor, resumed.runId, [200]);
+
+    const fresh = await api.createRun(actor, {
+      agentId,
+      prompt: "launch the exact historical builder head as a new Run",
+      modelProvider: "anthropic-api-key",
+    });
+    const freshTimingEvents = apiDispatchTimingEventsForRun(fresh.runId);
+    expectApiDispatchActions(
+      freshTimingEvents,
+      API_DISPATCH_TIMING_ACTION_TYPES,
+    );
+    expectApiDispatchActions(
+      freshTimingEvents,
+      API_DISPATCH_CONNECTOR_CATALOG_ALWAYS_ACTION_TYPES,
+    );
+    expectApiDispatchActions(
+      freshTimingEvents,
+      API_DISPATCH_STORED_CONNECTOR_SNAPSHOT_ACTION_TYPES,
+    );
+    expectApiDispatchActions(
+      freshTimingEvents,
+      API_DISPATCH_PERMISSION_MANIFEST_SUBSTEP_ACTION_TYPES,
+    );
+    expectNoApiDispatchActions(freshTimingEvents, [
+      "api_dispatch_prepare_context_decrypt_stored_connector_secrets",
+    ]);
+    for (const existingOwnerAction of [
+      "api_dispatch_resolve_compose_lookup_agent",
+      "api_dispatch_prepare_context_resolve_model_provider",
+      "api_dispatch_prepare_context_load_stored_connector_snapshot_rows",
+      "api_dispatch_prepare_context_load_builtin_permission_indexes",
+      "api_dispatch_prepare_storage_manifest_load_storage_index",
+    ]) {
+      expect(
+        freshTimingEvents.filter((event) => {
+          return event.op_type === existingOwnerAction;
+        }),
+      ).toHaveLength(1);
+    }
+    await api.heartbeatRunner(runnerGroup);
+    const freshPoll = await api.pollRunner(runnerGroup);
+    expect(freshPoll.body.job).toMatchObject({ runId: fresh.runId });
+    const freshClaim = await api.claimRunnerJob(fresh.runId);
+
+    for (const { run, claim } of [
+      { run: resumed, claim: resumedClaim },
+      { run: fresh, claim: freshClaim },
+    ]) {
+      expect(claim.agentComposeVersionId).toBe(historicalHead.versionId);
+      expect(claim.cliAgentType).toBe("claude-code");
+      expect(claim.environment).toMatchObject({
+        ANTHROPIC_API_KEY: modelProviderPlaceholder(
+          "anthropic-api-key",
+          "ANTHROPIC_API_KEY",
+        ),
+        ANTHROPIC_MODEL: "claude-sonnet-5",
+        GITLAB_TOKEN: connectorPlaceholder("gitlab", "GITLAB_TOKEN"),
+        GITLAB_HOST: "gitlab-stage-4e-current.example.com",
+        CLI_PKG_URL: "https://static.vm0.io/okou-cli/test-commit/package.tgz",
+        [WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]: "previous",
+      });
+      expect(claim.vars).toMatchObject({
+        GITLAB_HOST: "gitlab-stage-4e-current.example.com",
+      });
+      expect(claim.secretConnectorMap).toMatchObject({
+        GITLAB_TOKEN: "gitlab",
+      });
+      expect(claim.secretValues ?? []).not.toContain("glpat-stage-4e-current");
+      expectCanonicalOkouRunEnvironment({
+        environment: claim.environment,
+        secretValues: claim.secretValues,
+        appUrl,
+        agentId,
+        userId: actor.userId,
+        orgId: actor.orgId,
+        runId: run.runId,
+      });
+      const serializedClaim = JSON.stringify(claim);
+      const serializedAuthorityEnvironment = JSON.stringify({
+        environment: claim.environment,
+        vars: claim.vars,
+        secretConnectorMap: claim.secretConnectorMap,
+      });
+      for (const discardedHistoricalBinding of [
+        "ADZUNA_APP_ID",
+        "ANTHROPIC_MANAGED_AGENTS_TOKEN",
+        "GH_TOKEN",
+        "GITHUB_TOKEN",
+        "ZERO_AGENT_ID",
+        "ZERO_TOKEN",
+      ]) {
+        expect(serializedAuthorityEnvironment).not.toContain(
+          discardedHistoricalBinding,
+        );
+      }
+      expect(environmentShadowFieldsForRun(run.runId)).toStrictEqual({
+        environmentShadowClassification: "exact",
+        environmentShadowLegacyOnlyCountBucket: "0",
+        environmentShadowCandidateOnlyCountBucket: "0",
+        environmentShadowSharedValueDifferenceCountBucket: "0",
+      });
+      const authorityFields = agentExecutionAuthorityFieldsForRun(run.runId);
+      expect(authorityFields).toStrictEqual({
+        agentExecutionAuthority: "application",
+        agentExecutionAuthorityClassification:
+          "applicationHistoricalProductBuilderEnvironment",
+      });
+      const serializedAuthorityFields = JSON.stringify(authorityFields);
+      for (const forbidden of [
+        canonicalHead.name,
+        agentId,
+        run.runId,
+        "GITLAB_TOKEN",
+        "gitlab-stage-4e-current.example.com",
+      ]) {
+        expect(serializedAuthorityFields).not.toContain(forbidden);
+      }
+      expect(runContextSnapshotsForRun(run.runId)).toHaveLength(1);
+      expect(serializedClaim).not.toContain("agentExecutionAuthority");
+      expect(serializedClaim).not.toContain("environmentShadow");
+      await expect(
+        readRunLaunchSnapshotFixture(context, run.runId),
+      ).resolves.toStrictEqual({
+        exists: true,
+        launch_snapshot: {
+          schemaVersion: 1,
+          framework: "claude-code",
+          runnerProfile: DEFAULT_PROFILE,
+        },
+      });
+    }
+
+    await expect(
+      readRawHistoricalAgentComposeHeadFixture(agentId),
+    ).resolves.toStrictEqual({
+      headVersionId: historicalHead.versionId,
+      content: historicalContent,
+    });
+    await api.requestCancelRun(actor, fresh.runId, [200]);
   });
 
   it("classifies active legacy environment value shapes without exposing them", async () => {

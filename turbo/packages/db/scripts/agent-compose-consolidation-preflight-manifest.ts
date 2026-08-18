@@ -318,6 +318,7 @@ export const EXPECTED_REPOSITORY_DEPENDENCIES = {
     "turbo/apps/api/src/signals/services/github-queued-launch-context.service.ts|agentComposeId",
     "turbo/apps/api/src/signals/services/goal.service.ts|agentComposeId",
     "turbo/apps/api/src/signals/services/google-drive-artifact-sync.service.ts|agentComposeId",
+    "turbo/apps/api/src/signals/services/historical-product-builder.ts|headVersionId",
     "turbo/apps/api/src/signals/services/integration-agent-response-presentation.service.ts|zeroAgents",
     "turbo/apps/api/src/signals/services/internal-agentphone-chat-run-callback.service.ts|agentComposeId",
     "turbo/apps/api/src/signals/services/internal-chat-run-callback.service.ts|agentComposeId,zeroAgents",
@@ -406,6 +407,8 @@ export const EXPECTED_REPOSITORY_DEPENDENCIES = {
     "#27997|framework-fallback-preflight-partition|removal-owner:#26938-stage-8",
     "#28056|historical-product-builder-classifier-and-variants|removal-owner:#26938-stage-8",
     "#28056|historical-product-builder-preflight-partition|removal-owner:#26938-stage-8",
+    "#28070|historical-product-builder-environment-authority-and-telemetry|removal-owner:#26938-stage-8",
+    "#28070|historical-product-builder-v6-authority-lineage-partition|removal-owner:#26938-stage-8",
   ],
 } as const satisfies RepositoryDependencyManifest;
 

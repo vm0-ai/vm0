@@ -13,7 +13,7 @@ import {
   fingerprintSortedSet,
   type SetFingerprint,
 } from "./agent-compose-consolidation-preflight-fingerprint";
-import { isExactHistoricalProductBuilderCandidate } from "./agent-compose-consolidation-preflight-historical-product-builder";
+import { isExactHistoricalProductBuilderCandidate } from "../../../apps/api/src/signals/services/historical-product-builder";
 
 export const ENVIRONMENT_PRIMARY_CLASSES = [
   "variableReferenceOnly",
@@ -834,7 +834,9 @@ export function classifyExceptionRefinements(args: {
     string,
     readonly ExceptionRefinementInventoryRow[]
   >;
-  readonly environmentIds: readonly string[];
+  readonly legacyEnvironmentIds: readonly string[];
+  readonly residualEnvironmentIds: readonly string[];
+  readonly applicationHistoricalProductBuilderEnvironmentIds: readonly string[];
   readonly unsupportedIds: readonly string[];
   readonly unclassifiedIds: readonly string[];
   readonly failureGates: Set<string>;
@@ -850,7 +852,7 @@ export function classifyExceptionRefinements(args: {
   >();
   const environment = primaryClassification({
     domain: "agentExecutionPlans.refinements.systemEnvironmentDifferences",
-    parentIds: args.environmentIds,
+    parentIds: args.legacyEnvironmentIds,
     primaryClasses: ENVIRONMENT_PRIMARY_CLASSES,
     rowsById: args.rowsById,
     failureGates: args.failureGates,
@@ -870,7 +872,7 @@ export function classifyExceptionRefinements(args: {
       }),
     ),
   ];
-  const expectedOverlapUnionIds = args.environmentIds.filter((id) => {
+  const expectedOverlapUnionIds = args.legacyEnvironmentIds.filter((id) => {
     return (environmentClassifications.get(id)?.overlaps.size ?? 0) > 0;
   });
   const overlapUnionClosure = setComparison(
@@ -894,7 +896,7 @@ export function classifyExceptionRefinements(args: {
   const historicalProductBuilderOriginClassification = primaryClassification({
     domain:
       "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin",
-    parentIds: args.environmentIds,
+    parentIds: args.legacyEnvironmentIds,
     primaryClasses: HISTORICAL_PRODUCT_BUILDER_ORIGIN_CLASSES,
     rowsById: args.rowsById,
     failureGates: args.failureGates,
@@ -928,6 +930,70 @@ export function classifyExceptionRefinements(args: {
     args.failureGates.add(
       "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin.primaryDisjointnessClosure",
     );
+  }
+
+  const exactHistoricalProductBuilderIds =
+    historicalProductBuilderOriginClassification.idsByClass
+      .exactHistoricalProductBuilder;
+  const unprovenHistoricalProductBuilderIds = [
+    ...historicalProductBuilderOriginClassification.idsByClass
+      .referenceOnlyButUnproven,
+    ...historicalProductBuilderOriginClassification.idsByClass
+      .literalOrOtherUnproven,
+  ];
+  const legacyEnvironmentLineage = fingerprintSortedSet(
+    "agent-execution-plans:systemEnvironmentDifferences:agent-ids",
+    args.legacyEnvironmentIds,
+  );
+  const applicationAuthorityMembershipLineageClosure = setComparison(
+    "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin:application-authority-membership-lineage-closure",
+    exactHistoricalProductBuilderIds,
+    args.applicationHistoricalProductBuilderEnvironmentIds,
+    true,
+  );
+  const residualEnvironmentMembershipLineageClosure = setComparison(
+    "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin:residual-environment-membership-lineage-closure",
+    unprovenHistoricalProductBuilderIds,
+    args.residualEnvironmentIds,
+    true,
+  );
+  const authorityPartitionClosure = setComparison(
+    "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin:authority-partition-closure",
+    args.legacyEnvironmentIds,
+    [
+      ...args.applicationHistoricalProductBuilderEnvironmentIds,
+      ...args.residualEnvironmentIds,
+    ],
+    true,
+  );
+  const residualEnvironmentSet = new Set(args.residualEnvironmentIds);
+  const authorityIntersectionIds =
+    args.applicationHistoricalProductBuilderEnvironmentIds.filter((id) => {
+      return residualEnvironmentSet.has(id);
+    });
+  const authorityDisjointnessClosure = setComparison(
+    "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin:authority-disjointness-closure",
+    [],
+    authorityIntersectionIds,
+    true,
+  );
+  for (const [name, closure] of [
+    [
+      "applicationAuthorityMembershipLineageClosure",
+      applicationAuthorityMembershipLineageClosure,
+    ],
+    [
+      "residualEnvironmentMembershipLineageClosure",
+      residualEnvironmentMembershipLineageClosure,
+    ],
+    ["authorityPartitionClosure", authorityPartitionClosure],
+    ["authorityDisjointnessClosure", authorityDisjointnessClosure],
+  ] as const) {
+    if (closure.classification === "drift") {
+      args.failureGates.add(
+        `agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin.${name}`,
+      );
+    }
   }
 
   const unsupported = primaryClassification({
@@ -978,14 +1044,19 @@ export function classifyExceptionRefinements(args: {
       primaryUnionClosure: environment.unionClosure,
       overlapUnionClosure,
       activity: environment.activity,
-      /** Transition-only #28056 output; removed by #26938 Stage 8. */
+      /** Transition-only #28056 and #28070 output; removed by #26938 Stage 8. */
       historicalProductBuilderOrigin: {
+        legacyEnvironmentLineage,
         primary: historicalProductBuilderOriginClassification.primary,
         primaryPartitionClosure:
           historicalProductBuilderOriginClassification.partitionClosure,
         primaryDisjointnessClosure: originDisjointnessClosure,
         primaryUnionClosure:
           historicalProductBuilderOriginClassification.unionClosure,
+        applicationAuthorityMembershipLineageClosure,
+        residualEnvironmentMembershipLineageClosure,
+        authorityPartitionClosure,
+        authorityDisjointnessClosure,
         activity: historicalProductBuilderOriginClassification.activity,
       },
     },
