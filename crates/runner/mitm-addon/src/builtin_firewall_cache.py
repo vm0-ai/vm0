@@ -463,7 +463,10 @@ def _base_url_template_syntax_target(firewall_name: str, raw_base: str) -> str |
     for variable in variables:
         reference = variable.reference
         result.append(raw_base[last_index : reference.start])
-        result.append(_BASE_URL_TEMPLATE_PLACEHOLDERS[variable.kind])
+        placeholder = _BASE_URL_TEMPLATE_PLACEHOLDERS[variable.kind]
+        if variable.authority_fragment_shape == "ip-literal":
+            placeholder = _BASE_URL_TEMPLATE_PORT_PLACEHOLDER
+        result.append(placeholder)
         last_index = reference.end
     result.append(raw_base[last_index:])
     return "".join(result)

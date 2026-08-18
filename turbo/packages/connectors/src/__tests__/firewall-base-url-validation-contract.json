@@ -69,6 +69,20 @@
       "expectedResolvedBase": "https://api.example.com:8443/acme/v1"
     },
     {
+      "category": "port",
+      "name": "port fragments across references resolve",
+      "base": "https://api.example.com:${{ vars.PORT_MAJOR }}${{ vars.PORT_MINOR }}/v1",
+      "vars": { "PORT_MAJOR": "84", "PORT_MINOR": "43" },
+      "expectedResolvedBase": "https://api.example.com:8443/v1"
+    },
+    {
+      "category": "authority-fragment",
+      "name": "ipv6 authority fragment resolves",
+      "base": "https://[2001:db8::${{ vars.SUFFIX }}]/v1",
+      "vars": { "SUFFIX": "1" },
+      "expectedResolvedBase": "https://[2001:db8::1]/v1"
+    },
+    {
       "category": "query-fragment",
       "name": "trailing authority fragment before query is invalid",
       "base": "https://api-${{ vars.HOST }}?page=1",

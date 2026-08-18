@@ -12,6 +12,7 @@ BaseUrlTemplateComponentKind = Literal[
     "port",
     "path",
 ]
+AuthorityFragmentShape = Literal["hostname", "ip-literal"]
 
 
 class BaseUrlTemplateLayoutError(ValueError):
@@ -22,6 +23,7 @@ class BaseUrlTemplateLayoutError(ValueError):
 class BaseUrlTemplateVariable:
     reference: connector_template_syntax.SimpleTemplateReference
     kind: BaseUrlTemplateComponentKind
+    authority_fragment_shape: AuthorityFragmentShape | None
 
 
 class _BaseUrlComponentBoundaries(NamedTuple):
@@ -55,10 +57,19 @@ def analyze_base_url_template(base: str) -> tuple[BaseUrlTemplateVariable, ...]:
         if reference.namespace != "vars":
             raise BaseUrlTemplateLayoutError("base template must use vars")
 
+        kind = _component_kind(base, reference, boundaries)
+        authority_fragment_shape: AuthorityFragmentShape | None = None
+        if kind == "authority-fragment":
+            authority_fragment_shape = (
+                "ip-literal"
+                if _reference_is_inside_ip_literal(base, reference, boundaries)
+                else "hostname"
+            )
         variables.append(
             BaseUrlTemplateVariable(
                 reference=reference,
-                kind=_component_kind(base, reference, boundaries),
+                kind=kind,
+                authority_fragment_shape=authority_fragment_shape,
             )
         )
         search_start = template_end
@@ -100,7 +111,7 @@ def _component_kind(
             raise BaseUrlTemplateLayoutError(
                 "base template variable is used in an unsupported position"
             )
-        if base.endswith(":", 0, reference.start) and ends_base_or_starts_path:
+        if _reference_is_inside_port(base, reference, boundaries):
             return "port"
         return "authority-fragment"
     if _reference_is_inside_path(reference, boundaries):
@@ -134,6 +145,31 @@ def _reference_is_inside_userinfo(
         default=len(base),
     )
     return base.find("@", reference.end, authority_end) != -1
+
+
+def _reference_is_inside_port(
+    base: str,
+    reference: connector_template_syntax.SimpleTemplateReference,
+    boundaries: _BaseUrlComponentBoundaries,
+) -> bool:
+    if boundaries.authority_start is None:
+        return False
+    prefix = base[boundaries.authority_start : reference.start]
+    if _reference_is_inside_ip_literal(base, reference, boundaries):
+        return False
+    port_delimiter = prefix.rfind(":")
+    return port_delimiter > max(prefix.rfind("@"), prefix.rfind("]"))
+
+
+def _reference_is_inside_ip_literal(
+    base: str,
+    reference: connector_template_syntax.SimpleTemplateReference,
+    boundaries: _BaseUrlComponentBoundaries,
+) -> bool:
+    if boundaries.authority_start is None:
+        return False
+    prefix = base[boundaries.authority_start : reference.start]
+    return prefix.rfind("[") > prefix.rfind("]")
 
 
 def _reference_is_inside_path(
