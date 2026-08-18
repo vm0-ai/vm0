@@ -6,7 +6,7 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import type { SlackAnyBlock } from "../external/slack-block-kit";
 import { createSlackClient } from "../external/slack-message-client";
-import { zeroSlackOrgInstallation } from "../services/zero-slack-data.service";
+import { slackOrgInstallation } from "../services/slack-data.service";
 import {
   resolveCurrentUserSlackId,
   slackMessageSendFooterText,
@@ -50,7 +50,7 @@ const sendMessageInner$ = command(async ({ get }, signal: AbortSignal) => {
   const body = bodyResult.data;
 
   const installation = await get(
-    zeroSlackOrgInstallation({ orgId: auth.orgId, userId: auth.userId }),
+    slackOrgInstallation({ orgId: auth.orgId, userId: auth.userId }),
   );
   signal.throwIfAborted();
   if (!installation) {

@@ -25,8 +25,8 @@ import {
   connectSlackWorkspace$,
   notifySlackConnect$,
   publishSlackAdminSignal$,
-} from "../services/zero-slack-connect.service";
-import { SLACK_BOT_SCOPES } from "../services/zero-slack-data.service";
+} from "../services/slack-connect.service";
+import { SLACK_BOT_SCOPES } from "../services/slack-data.service";
 import type { RouteEntry } from "../route-entry";
 import {
   getOAuthCanonicalRedirectUrl,
