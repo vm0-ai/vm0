@@ -480,7 +480,6 @@ export const startCustomConnectorOAuth2$ = command(
       readonly redirectUri: string;
       readonly agentId?: string;
       readonly feishuContext?: {
-        readonly completionTarget: "custom" | "feishu";
         readonly installationId?: string;
         readonly expectedOpenId?: string;
       };
@@ -532,8 +531,9 @@ export const startCustomConnectorOAuth2$ = command(
         ? {
             providerContext: {
               provider: "feishu" as const,
-              completionTarget:
-                args.feishuContext?.completionTarget ?? ("custom" as const),
+              completionTarget: args.feishuContext
+                ? ("feishu" as const)
+                : ("custom" as const),
               ...(args.feishuContext?.installationId
                 ? { installationId: args.feishuContext.installationId }
                 : {}),

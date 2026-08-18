@@ -416,6 +416,7 @@ async function reconcileFeishuCustomConnector(
         eq(feishuOrgInstallations.orgId, args.orgId),
       ),
     )
+    .for("update", { of: feishuOrgInstallations })
     .limit(1);
   signal.throwIfAborted();
   if (!installation) {
