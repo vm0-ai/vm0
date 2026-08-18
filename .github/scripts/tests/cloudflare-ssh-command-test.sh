@@ -392,11 +392,16 @@ FAKE_TIMEOUT_MODE=real \
     > "$actual_cancel/stdout" 2> "$actual_cancel/stderr" &
 actual_cancel_invocation_pid=$!
 for _ in {1..50}; do
-  [ -s "$actual_cancel/actual-ssh.pid" ] && break
+  if [ -s "$actual_cancel/actual-ssh.pid" ] \
+    && [ -s "$actual_cancel/actual-ssh-child.pid" ]; then
+    break
+  fi
   sleep 0.1
 done
 [ -s "$actual_cancel/actual-ssh.pid" ] \
   || fail "cancelled SSH caller did not start"
+[ -s "$actual_cancel/actual-ssh-child.pid" ] \
+  || fail "cancelled SSH descendant did not start"
 actual_cancel_pid=$(< "$actual_cancel/actual-ssh.pid")
 actual_cancel_timeout_pid=$(ps -o ppid= -p "$actual_cancel_pid" \
   | tr -d '[:space:]')
