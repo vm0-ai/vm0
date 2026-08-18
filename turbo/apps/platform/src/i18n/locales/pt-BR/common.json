@@ -1368,6 +1368,7 @@
       "setAsDefault": "Definir como padrão",
       "temporaryFastModeDisabledNotice": "O modo rápido está temporariamente desativado para esta execução",
       "temporaryFastModeEnabledNotice": "O modo rápido está temporariamente ativado para esta execução",
+      "temporaryImageModelNotice": "Alternado temporariamente para {{model}} em imagens",
       "temporaryModelNotice": "Alternado temporariamente para {{model}}",
       "temporaryVideoModelNotice": "Alternado temporariamente para {{model}} em vídeo",
       "threadSuggestions": "Conversas",

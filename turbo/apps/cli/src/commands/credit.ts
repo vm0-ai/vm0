@@ -1,6 +1,6 @@
 import { Command, Option } from "commander";
 import chalk from "chalk";
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
+import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import type { BillingStatusResponse } from "@okouai/api-contracts/contracts/zero-billing";
 
 import {
@@ -26,7 +26,7 @@ function parseCredits(value: string): number {
 }
 
 function requireCapabilityForCreditAction(
-  capability: ZeroCapability,
+  capability: Capability,
   message: string,
 ): void {
   const payload = decodeSandboxTokenPayload();

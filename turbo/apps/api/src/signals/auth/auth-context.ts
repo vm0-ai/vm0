@@ -9,7 +9,7 @@ import {
   verifyZeroToken,
 } from "./tokens";
 import { clerkSessionAuth$ } from "./clerk-session";
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
+import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import { AuthContext, CliAuth, ZeroAuthContext } from "../../types/auth";
 import {
   cliTokenRecord,
@@ -19,7 +19,7 @@ import {
 import { authorization$, cookie$ } from "../context/hono";
 
 export interface AuthOptions {
-  readonly requiredCapability?: ZeroCapability;
+  readonly requiredCapability?: Capability;
   readonly acceptAnySandboxCapability?: boolean;
   readonly requireOrganization?: boolean;
   readonly missingOrganizationStatus?: 400 | 401;
@@ -236,7 +236,7 @@ const resolvedAuthContext$ = command(
   },
 );
 
-function missingCapabilityError(capability: ZeroCapability): AuthErrorResponse {
+function missingCapabilityError(capability: Capability): AuthErrorResponse {
   const message =
     capability === "computer-use:write"
       ? "Computer Use is not authorized for this run. Authorize a computer once in the conversation, then retry."

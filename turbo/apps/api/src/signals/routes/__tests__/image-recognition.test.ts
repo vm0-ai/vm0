@@ -5,7 +5,7 @@ import {
   IMAGE_RECOGNITION_MAX_FILE_BYTES,
   imageRecognitionContract,
 } from "@okouai/api-contracts/contracts/image-recognition";
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
+import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import { usageRecordContract } from "@okouai/api-contracts/contracts/usage-record";
 import { HttpResponse, http } from "msw";
 import { onTestFinished } from "vitest";
@@ -72,7 +72,7 @@ interface StoredObject {
 
 function zeroToken(
   actor: RecognitionActor,
-  capabilities: readonly ZeroCapability[] = ["image-recognition:write"],
+  capabilities: readonly Capability[] = ["image-recognition:write"],
 ): string {
   return createRunsApi(context).zeroTokenForRunWithCapabilities(
     actor,

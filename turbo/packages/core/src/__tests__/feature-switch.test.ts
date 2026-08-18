@@ -108,7 +108,7 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.VideoModelSelection]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ImageModelSelection]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.ImageModelSelection]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       true,
     );
