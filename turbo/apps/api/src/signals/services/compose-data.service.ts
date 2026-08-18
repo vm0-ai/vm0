@@ -22,7 +22,7 @@ import { isLockNotAvailable } from "../../lib/pg-errors";
 import { settle } from "../utils";
 import { reconcileAutomationEventWatches } from "./automation-event-watch-lifecycle.service";
 
-export function zeroComposeExists(args: {
+export function agentComposeExists(args: {
   readonly orgId: string;
   readonly composeId: string;
 }): Computed<Promise<boolean>> {

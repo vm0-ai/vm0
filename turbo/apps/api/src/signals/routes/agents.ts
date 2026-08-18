@@ -32,7 +32,7 @@ import {
   recomposeAgentIfStale$,
   serverSideZeroAgentCompose$,
 } from "../services/agent-compose.service";
-import { deleteComposeById$ } from "../services/zero-compose-data.service";
+import { deleteComposeById$ } from "../services/compose-data.service";
 import {
   agentResponse,
   defaultAgentResponse,

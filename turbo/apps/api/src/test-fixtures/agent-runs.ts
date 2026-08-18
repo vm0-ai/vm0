@@ -19,7 +19,7 @@ import {
   createAgentRun$,
   type CreateAgentRunArgs,
 } from "../signals/services/agent-run-create.service";
-import { agentRunList } from "../signals/services/zero-runs.service";
+import { agentRunList } from "../signals/services/agent-runs.service";
 
 const store = createStore();
 

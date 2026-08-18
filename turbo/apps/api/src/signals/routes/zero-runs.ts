@@ -10,11 +10,11 @@ import { authRoute } from "../auth/auth-route";
 import { pathParamsOf } from "../context/request";
 import { notFound } from "../../lib/error";
 import {
-  zeroOrgTier,
-  zeroRunById,
-  zeroRunQueueStatus,
-  zeroRunRunner,
-} from "../services/zero-runs.service";
+  agentRunById,
+  agentRunQueueStatus,
+  agentRunRunner,
+  organizationTier,
+} from "../services/agent-runs.service";
 import type { RouteEntry } from "../route-entry";
 
 const runReadAuth = {
@@ -29,7 +29,7 @@ const getRunByIdInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(zeroRunsByIdContract.getById));
   const run = await get(
-    zeroRunById({ runId: params.id, userId: auth.userId, orgId: auth.orgId }),
+    agentRunById({ runId: params.id, userId: auth.userId, orgId: auth.orgId }),
   );
   if (!run) {
     return runNotFound;
@@ -41,7 +41,7 @@ const getRunRunnerInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(zeroRunRunnerContract.getRunner));
   const runner = await get(
-    zeroRunRunner({
+    agentRunRunner({
       runId: params.id,
       userId: auth.userId,
       orgId: auth.orgId,
@@ -55,9 +55,9 @@ const getRunRunnerInner$ = computed(async (get) => {
 
 const getRunQueueInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const orgTier = await get(zeroOrgTier(auth.orgId));
+  const orgTier = await get(organizationTier(auth.orgId));
   const queue = await get(
-    zeroRunQueueStatus({
+    agentRunQueueStatus({
       userId: auth.userId,
       orgId: auth.orgId,
       orgTier,
