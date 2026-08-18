@@ -1605,7 +1605,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("does not fold a completed run when the only prior assistant message is thinking", async () => {
+  it("folds a completed run when the only prior assistant message is thinking", async () => {
     mockChatLifecycle(context, {
       threadId: "e7000000-0000-4000-a000-000000000018",
       chatEvents: [
@@ -1641,12 +1641,19 @@ describe("chat lifecycle", () => {
       expect(
         screen.getByText("Summarize the launch status"),
       ).toBeInTheDocument();
+      expect(screen.getByText("Launch status is ready.")).toBeInTheDocument();
+      expect(document.querySelector("[data-thinking-block]")).toBeNull();
+      expect(screen.getByLabelText("Expand work history")).toHaveTextContent(
+        "Worked for 5s",
+      );
+    });
+
+    click(screen.getByLabelText("Expand work history"));
+
+    await waitFor(() => {
       expect(document.querySelector("[data-thinking-block]")).toHaveTextContent(
         "Reviewing launch context",
       );
-      expect(screen.getByText("Launch status is ready.")).toBeInTheDocument();
-      expect(screen.queryByText("Worked for 5s")).not.toBeInTheDocument();
-      expect(screen.queryByLabelText("Expand work history")).toBeNull();
     });
   });
 

@@ -3844,7 +3844,7 @@ function canFoldCompletedWorkTrailingEvent(event: EnrichedChatEvent): boolean {
   const role = chatEventCompatibilityRole(event.eventType);
   return (
     role === "user" ||
-    (role === "assistant" && !isRenderableAssistantResultEvent(event))
+    (role === "assistant" && !isRenderableAssistantEvent(event))
   );
 }
 
@@ -3863,16 +3863,10 @@ function foldCompletedWorkPhase(
   const precedingEvents =
     finalEventIndex > 0 ? events.slice(0, finalEventIndex) : [];
   const hiddenEvents = precedingEvents.filter((event) => {
-    return (
-      chatEventCompatibilityRole(event.eventType) !== "user" &&
-      !isThinkingOnlyAssistantEvent(event)
-    );
+    return chatEventCompatibilityRole(event.eventType) !== "user";
   });
   const visiblePrecedingEvents = precedingEvents.filter((event) => {
-    return (
-      chatEventCompatibilityRole(event.eventType) === "user" ||
-      isThinkingOnlyAssistantEvent(event)
-    );
+    return chatEventCompatibilityRole(event.eventType) === "user";
   });
   const trailingEvents =
     finalEventIndex >= 0 ? events.slice(finalEventIndex + 1) : [];
@@ -7816,7 +7810,7 @@ function PagedAssistantThinkingBlock({
       data-chat-scroll-anchor-event-id={event.id}
       data-chat-run-id={event.runId}
       className={cn(
-        "min-w-0",
+        "-mx-2 min-w-0",
         compactTop ? "@[900px]:pt-0" : "@[900px]:pt-2.5",
       )}
     >
@@ -7826,7 +7820,7 @@ function PagedAssistantThinkingBlock({
         open={current}
         className="group max-w-[710px]"
       >
-        <summary className="flex min-h-9 w-full cursor-pointer list-none items-center gap-2 rounded-[10px] px-2.5 py-1.5 text-left text-muted-foreground transition-colors hover:bg-muted/50 group-open:bg-muted/50 group-open:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+        <summary className="inline-flex min-h-9 max-w-full cursor-pointer list-none items-center gap-2 rounded-lg px-2 py-1.5 text-left text-muted-foreground transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
           {current ? (
             <PagedAssistantCurrentThinkingSummary
               event={event}
@@ -7837,7 +7831,7 @@ function PagedAssistantThinkingBlock({
           ) : (
             <>
               <Brain aria-hidden size={14} className="shrink-0" />
-              <span className="shrink-0 text-xs font-semibold">{label}</span>
+              <span className="shrink-0 text-[13px]">{label}</span>
               <span className="min-w-0 flex-1 truncate font-serif text-[0.8125rem] font-normal group-open:hidden">
                 {preview}
               </span>
@@ -7846,12 +7840,12 @@ function PagedAssistantThinkingBlock({
           <ChevronRight
             aria-hidden
             size={14}
-            className="ml-auto shrink-0 text-muted-foreground/70 transition-transform group-open:rotate-90"
+            className="shrink-0 text-muted-foreground/70 transition-transform group-open:rotate-90"
           />
         </summary>
         <div
           data-thinking-block-content
-          className="mt-1 rounded-xl bg-muted/50 px-3 py-2.5 font-serif text-[0.875rem] leading-[1.55] text-foreground/80 [overflow-wrap:anywhere]"
+          className="px-2 pb-2 pt-1 font-serif text-[0.875rem] leading-[1.55] text-muted-foreground/80 [overflow-wrap:anywhere]"
         >
           <Markdown
             source={event.thinking}
@@ -7907,7 +7901,7 @@ function PagedAssistantCurrentThinkingSummary({
         <span />
         <span />
       </span>
-      <span className="shrink-0 text-xs font-semibold">{label}</span>
+      <span className="shrink-0 text-[13px]">{label}</span>
       {serverThinkingLabel ? (
         <ShimmerText
           key={serverThinkingLabel.id}
