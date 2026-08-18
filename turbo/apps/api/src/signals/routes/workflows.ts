@@ -81,7 +81,7 @@ import {
   type WorkflowRow,
 } from "../services/workflow-data.service";
 import type { RouteEntry } from "../route-entry";
-import { sendNormalEvent$ } from "../services/zero-chat-events.command";
+import { sendNormalEvent$ } from "../services/chat-events.command";
 import type { Tx } from "../../lib/db-types";
 
 const log = logger("api:workflow-connector-readiness");

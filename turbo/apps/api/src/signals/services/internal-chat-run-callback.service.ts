@@ -162,7 +162,7 @@ import {
   generateChatNotificationSummary,
   loadChatThreadRecommendedFollowupContext,
   scheduleChatThreadTitleGeneration,
-} from "./zero-chat-title.service";
+} from "./chat-title.service";
 import { createQueueFirstZeroRun$ } from "./zero-runs-create.service";
 import { loadActiveGoalForThread } from "./goal.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
