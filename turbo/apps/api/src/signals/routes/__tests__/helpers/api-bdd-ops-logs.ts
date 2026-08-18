@@ -1,4 +1,5 @@
 import { userExportContract } from "@okouai/api-contracts/contracts/user-export";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { setupApp } from "../../../../__tests__/test-helpers";
@@ -82,12 +83,16 @@ export function createOpsLogsApi(context: TestContext) {
     async requestPostUserExport<TStatus extends 202 | 401 | 403 | 429 | 500>(
       actor: ApiTestUser | null,
       statuses: readonly TStatus[],
+      publicBrand: PublicBrand = "vm0",
     ) {
       return await accept(
         setupApp({ context, routes: userExportRoutes })(
           userExportContract,
         ).post({
           headers: authenticate(context, actor),
+          ...(publicBrand === "okou"
+            ? { extraHeaders: { origin: "https://app.okou.ai" } }
+            : {}),
         }),
         statuses,
       );
