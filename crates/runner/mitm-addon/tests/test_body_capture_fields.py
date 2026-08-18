@@ -9,6 +9,34 @@ import pytest
 
 from body_capture import add_capture_fields
 from body_limits import BODY_CAPTURE_LIMIT
+from tests.body_decode_helpers import pseudo_random_ascii
+
+
+def _track_zlib_max_input(monkeypatch) -> dict[str, int]:
+    real_factory = zlib.decompressobj
+    stats = {"max_input": 0}
+
+    class TrackingDecompressionObj:
+        def __init__(self, wrapped):
+            self._wrapped = wrapped
+
+        def decompress(self, chunk, *args, **kwargs):
+            stats["max_input"] = max(stats["max_input"], len(chunk))
+            return self._wrapped.decompress(chunk, *args, **kwargs)
+
+        @property
+        def eof(self):
+            return self._wrapped.eof
+
+        @property
+        def unconsumed_tail(self):
+            return self._wrapped.unconsumed_tail
+
+    def factory(*args, **kwargs):
+        return TrackingDecompressionObj(real_factory(*args, **kwargs))
+
+    monkeypatch.setattr("body_decoding.zlib.decompressobj", factory)
+    return stats
 
 
 class TestAddCaptureFields:
@@ -380,6 +408,26 @@ class TestAddCaptureFields:
 
         assert entry["response_body"] == body.decode()
         assert entry["response_body_encoding"] == "utf-8"
+
+    def test_response_large_gzip_bounds_compressed_input_chunks(self, real_flow, monkeypatch):
+        body = pseudo_random_ascii(BODY_CAPTURE_LIMIT * 4)
+        compressed = gzip.compress(body)
+        assert len(compressed) > 1024
+        stats = _track_zlib_max_input(monkeypatch)
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            response_content_type="text/plain",
+            response_body=compressed,
+            response_encoding="gzip",
+        )
+
+        entry = {}
+        add_capture_fields(flow, entry)
+
+        assert entry["response_body_truncated"] is True
+        assert len(entry["response_body"]) == BODY_CAPTURE_LIMIT
+        assert stats["max_input"] <= 1024
 
     def test_response_incomplete_brotli_skips_body(self, real_flow):
         body = b"incomplete response body" * 100

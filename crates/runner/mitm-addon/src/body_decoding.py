@@ -338,13 +338,25 @@ def _decode_single_zlib_stream_for_network_log_capture(
         return b""
 
     obj = zlib.decompressobj(wbits)
-    try:
-        body = obj.decompress(data, max_length=max_output)
-    except zlib.error:
+    input_cursor = ZlibInputCursor(data)
+    out = bytearray()
+    while input_cursor and len(out) < max_output:
+        try:
+            decoded = obj.decompress(
+                input_cursor.take(),
+                max_length=max_output - len(out),
+            )
+        except zlib.error:
+            return None
+        out.extend(decoded)
+        if obj.eof:
+            break
+        if obj.unconsumed_tail:
+            input_cursor.carry(obj.unconsumed_tail)
+
+    if require_complete and len(out) < max_output and not obj.eof:
         return None
-    if require_complete and len(body) < max_output and not obj.eof:
-        return None
-    return body
+    return bytes(out)
 
 
 def decode_response_body_for_network_log_capture(
