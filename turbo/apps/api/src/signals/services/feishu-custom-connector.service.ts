@@ -345,7 +345,6 @@ async function preflightFeishuCustomConnectorId(
 ): Promise<string | null> {
   const [target] = await db
     .select({
-      installationId: feishuOrgInstallations.id,
       customConnectorId: feishuOrgInstallations.customConnectorId,
     })
     .from(feishuOrgInstallations)
