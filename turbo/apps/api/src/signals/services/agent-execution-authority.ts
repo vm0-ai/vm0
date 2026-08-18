@@ -3,6 +3,7 @@ import { agentComposeApiContentSchema } from "@okouai/api-contracts/contracts/co
 
 import { computeComposeVersionId } from "./agent-compose-content";
 import { APPLICATION_OWNED_AGENT_EXECUTION_PLAN } from "./agent-execution-plan";
+import { isExactHistoricalProductBuilderCandidate } from "./historical-product-builder";
 
 export const AGENT_EXECUTION_PLAN_DIMENSIONS = [
   "danglingOrMissingHeadVersion",
@@ -25,6 +26,8 @@ export type AgentExecutionAuthority = "application" | "version_content";
 export type AgentExecutionAuthorityClassification =
   | "completeSemanticParity"
   | "applicationFrameworkFallback"
+  // Transition-only #28070 subtype; removed by #26938 Stage 8.
+  | "applicationHistoricalProductBuilderEnvironment"
   | AgentExecutionPlanDimension
   | "multipleDimensions";
 
@@ -390,6 +393,18 @@ export function classifyAgentExecutionAuthority(
       return dimensions.has(dimension);
     },
   );
+  if (
+    validated.classification === "supported" &&
+    orderedDimensions.length === 1 &&
+    orderedDimensions[0] === "systemEnvironmentDifferences" &&
+    isExactHistoricalProductBuilderCandidate(row)
+  ) {
+    return {
+      authority: "application",
+      classification: "applicationHistoricalProductBuilderEnvironment",
+      dimensions: [],
+    };
+  }
   if (orderedDimensions.length === 0) {
     return {
       authority: "application",

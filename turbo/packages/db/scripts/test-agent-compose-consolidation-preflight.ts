@@ -33,7 +33,7 @@ import {
   computeHistoricalProductBuilderReviewFingerprint,
   isExactHistoricalProductBuilderCandidate,
   type HistoricalProductBuilderCandidate,
-} from "./agent-compose-consolidation-preflight-historical-product-builder";
+} from "../../../apps/api/src/signals/services/historical-product-builder";
 import {
   EXPECTED_RUNTIME_CONTENT_CONSUMER_MANIFEST,
   collectRuntimeContentConsumerManifest,
@@ -543,7 +543,10 @@ function testSchemaV3DomainsRemainByteStable(): void {
 /** Transition-only #28056 contract test; removed by #26938 Stage 8. */
 function testSchemaV4OutputContractRemainsByteStable(): void {
   const acceptedV4Paths = PREFLIGHT_OUTPUT_ALLOWLIST.filter((outputPath) => {
-    return !outputPath.includes(".historicalProductBuilderOrigin.");
+    return (
+      !outputPath.includes(".historicalProductBuilderOrigin.") &&
+      !outputPath.includes(".applicationHistoricalProductBuilderEnvironment.")
+    );
   });
   assert.equal(acceptedV4Paths.length, 874);
   assert.deepEqual(
@@ -555,6 +558,34 @@ function testSchemaV4OutputContractRemainsByteStable(): void {
       count: 874,
       digest:
         "24a68ad3c32b2d796e42477c2424a0dd8206f89e6c1ce5f0cdda4d418da47b94",
+    },
+  );
+}
+
+/** Transition-only #28070 contract test; removed by #26938 Stage 8. */
+function testSchemaV5OutputContractRemainsByteStable(): void {
+  const v6Markers = [
+    ".applicationHistoricalProductBuilderEnvironment.",
+    ".legacyEnvironmentLineage.",
+    ".applicationAuthorityMembershipLineageClosure.",
+    ".residualEnvironmentMembershipLineageClosure.",
+    ".authorityPartitionClosure.",
+    ".authorityDisjointnessClosure.",
+  ];
+  const acceptedV5Paths = PREFLIGHT_OUTPUT_ALLOWLIST.filter((outputPath) => {
+    return !v6Markers.some((marker) => {
+      return outputPath.includes(marker);
+    });
+  });
+  assert.deepEqual(
+    fingerprintSortedSet(
+      "agent-compose-consolidation-preflight:v5-output-paths",
+      acceptedV5Paths,
+    ),
+    {
+      count: 971,
+      digest:
+        "931140875c0a0d3c568166d61a680fedbd219f1d5bdffdbc5a660962263b49e1",
     },
   );
 }
@@ -1528,7 +1559,7 @@ function mutableHistoricalContent(agentName: string): {
   return { content, agent, environment };
 }
 
-/** Transition-only #28056 focused test; removed by #26938 Stage 8. */
+/** Transition-only #28056 and #28070 focused test; removed by #26938 Stage 8. */
 function testHistoricalProductBuilderVariantAndClassifier(): void {
   assert.equal(HISTORICAL_PRODUCT_BUILDER_VARIANTS.length, 1);
   const variant = HISTORICAL_PRODUCT_BUILDER_VARIANTS[0];
@@ -1590,6 +1621,11 @@ function testHistoricalProductBuilderVariantAndClassifier(): void {
   const exact = historicalCandidate(agentName);
   const unchanged = structuredClone(exact);
   assert.equal(isExactHistoricalProductBuilderCandidate(exact), true);
+  assert.deepEqual(classifyAgentExecutionAuthority(exact), {
+    authority: "application",
+    classification: "applicationHistoricalProductBuilderEnvironment",
+    dimensions: [],
+  });
   assert.deepEqual(exact, unchanged);
 
   const changedKey = mutableHistoricalContent(agentName);
@@ -1612,6 +1648,7 @@ function testHistoricalProductBuilderVariantAndClassifier(): void {
 
   const partial = mutableHistoricalContent(agentName);
   partial.agent.environment = {
+    GH_TOKEN: "${{ secrets.GH_TOKEN }}",
     ZERO_AGENT_ID: "${{ vars.ZERO_AGENT_ID }}",
     ZERO_TOKEN: "${{ secrets.ZERO_TOKEN }}",
   };
@@ -1712,42 +1749,58 @@ function testHistoricalProductBuilderVariantAndClassifier(): void {
     missingVersion,
     historicalCandidate(agentName, null),
   );
-  for (const candidate of unproven) {
+  for (const [index, candidate] of unproven.entries()) {
+    const unchangedCandidate = structuredClone(candidate);
     assert.equal(isExactHistoricalProductBuilderCandidate(candidate), false);
+    const authorityDecision = classifyAgentExecutionAuthority(candidate);
+    assert.equal(
+      authorityDecision.authority,
+      "version_content",
+      `unproven candidate ${index}: ${authorityDecision.classification}`,
+    );
+    assert.deepEqual(candidate, unchangedCandidate);
   }
 }
 
-/** Transition-only #28056 focused test; removed by #26938 Stage 8. */
+/** Transition-only #28056 and #28070 focused test; removed by #26938 Stage 8. */
 function testHistoricalProductBuilderOriginPartition(): void {
   const snapshot = new Date("2026-08-17T00:00:00.000Z");
   const id = (suffix: number): string => {
     return `00000000-0000-4000-8000-${suffix.toString().padStart(12, "0")}`;
   };
-  const exactId = id(800);
-  const exactName = "historical-origin-exact";
-  const rows: AgentExecutionPlanInventoryRow[] = [
-    executionPlanRow({
-      id: exactId,
-      agentName: exactName,
-      content: buildHistoricalProductBuilderContent(
-        "zero-connector-catalog-at-3b45e4e",
-        exactName,
-      ),
-      activitySnapshotTime: snapshot,
-      latestAttributedRunAt: snapshot,
-      currentHeadEverExercised: true,
-    }),
-  ];
+  const exactIds: string[] = [];
+  const legacyEnvironmentRows: AgentExecutionPlanInventoryRow[] = [];
+  for (let index = 0; index < 8; index += 1) {
+    const exactId = id(800 + index);
+    const exactName = `historical-origin-exact-${index}`;
+    exactIds.push(exactId);
+    legacyEnvironmentRows.push(
+      executionPlanRow({
+        id: exactId,
+        agentName: exactName,
+        content: buildHistoricalProductBuilderContent(
+          "zero-connector-catalog-at-3b45e4e",
+          exactName,
+        ),
+        activitySnapshotTime: snapshot,
+        latestAttributedRunAt:
+          index < 6 ? new Date("2026-06-15T00:00:00.000Z") : null,
+        currentHeadEverExercised: index < 5,
+      }),
+    );
+  }
   const referenceIds: string[] = [];
-  for (let index = 0; index < 657; index += 1) {
-    const rowId = id(801 + index);
+  for (let index = 0; index < 650; index += 1) {
+    const rowId = id(808 + index);
     const name = `historical-origin-reference-${index}`;
     const content = mutableAgentContent(name);
     content.agents[name]!.environment = {
       [`LEGACY_CONNECTOR_${index}`]: `\${{ secrets.LEGACY_CONNECTOR_${index} }}`,
     };
     referenceIds.push(rowId);
-    rows.push(executionPlanRow({ id: rowId, agentName: name, content }));
+    legacyEnvironmentRows.push(
+      executionPlanRow({ id: rowId, agentName: name, content }),
+    );
   }
   const literalId = id(1458);
   const literalName = "historical-origin-literal";
@@ -1755,7 +1808,7 @@ function testHistoricalProductBuilderOriginPartition(): void {
   literalContent.agents[literalName]!.environment = {
     LEGACY_LITERAL: "literal-value",
   };
-  rows.push(
+  legacyEnvironmentRows.push(
     executionPlanRow({
       id: literalId,
       agentName: literalName,
@@ -1765,25 +1818,124 @@ function testHistoricalProductBuilderOriginPartition(): void {
     }),
   );
 
+  const unclassifiedIds: string[] = [];
+  const unclassifiedRows: AgentExecutionPlanInventoryRow[] = [];
+  for (let index = 0; index < 167; index += 1) {
+    const rowId = id(1459 + index);
+    const name = `residual-content-${index}`;
+    const content = mutableAgentContent(name);
+    content.futureField = { reviewedRuntimeReachable: index };
+    unclassifiedIds.push(rowId);
+    unclassifiedRows.push(
+      executionPlanRow({ id: rowId, agentName: name, content }),
+    );
+  }
+  const unsupportedIds: string[] = [];
+  const unsupportedRows: AgentExecutionPlanInventoryRow[] = [];
+  for (let index = 0; index < 70; index += 1) {
+    const rowId = id(1626 + index);
+    unsupportedIds.push(rowId);
+    unsupportedRows.push(
+      executionPlanRow({
+        id: rowId,
+        agentName: `unsupported-content-${index}`,
+        content: { version: "1", agents: {} },
+      }),
+    );
+  }
+  const danglingIds: string[] = [];
+  const danglingRows: AgentExecutionPlanInventoryRow[] = [];
+  for (let index = 0; index < 17; index += 1) {
+    const rowId = id(1696 + index);
+    danglingIds.push(rowId);
+    danglingRows.push(
+      executionPlanRow({
+        id: rowId,
+        agentName: `dangling-head-${index}`,
+        content: null,
+        headVersionId: "a".repeat(64),
+        versionId: null,
+      }),
+    );
+  }
+  const rows = [
+    ...legacyEnvironmentRows,
+    ...unclassifiedRows,
+    ...unsupportedRows,
+    ...danglingRows,
+  ];
+
   const result = classifyPlanRows(rows);
   const environment =
     result.agentExecutionPlans.refinements.systemEnvironmentDifferences;
   const origin = environment.historicalProductBuilderOrigin;
   assert.equal(
     result.agentExecutionPlans.systemEnvironmentDifferences.count,
-    659,
+    651,
   );
   assert.equal(
     result.agentExecutionPlans.systemEnvironmentDifferences.digest,
     fingerprintSortedSet(
+      "agent-execution-plans:v6:residual-system-environment-differences:agent-ids",
+      [...referenceIds, literalId],
+    ).digest,
+  );
+  assert.equal(
+    result.agentExecutionPlans.applicationHistoricalProductBuilderEnvironment
+      .count,
+    8,
+  );
+  assert.equal(
+    result.agentExecutionPlans.applicationHistoricalProductBuilderEnvironment
+      .digest,
+    fingerprintSortedSet(
+      "agent-execution-plans:v6:application-historical-product-builder-environment-agent-ids",
+      exactIds,
+    ).digest,
+  );
+  assert.equal(result.agentExecutionPlans.exceptions.count, 905);
+  assert.equal(result.agentExecutionPlans.unclassifiedContent.count, 167);
+  assert.equal(
+    result.agentExecutionPlans.unclassifiedContent.digest,
+    fingerprintSortedSet(
+      "agent-execution-plans:unclassifiedContent:agent-ids",
+      unclassifiedIds,
+    ).digest,
+  );
+  assert.equal(
+    result.agentExecutionPlans.unsupportedOrInvalidContent.count,
+    70,
+  );
+  assert.equal(
+    result.agentExecutionPlans.unsupportedOrInvalidContent.digest,
+    fingerprintSortedSet(
+      "agent-execution-plans:unsupportedOrInvalidContent:agent-ids",
+      unsupportedIds,
+    ).digest,
+  );
+  assert.equal(
+    result.agentExecutionPlans.danglingOrMissingHeadVersion.count,
+    17,
+  );
+  assert.equal(
+    result.agentExecutionPlans.danglingOrMissingHeadVersion.digest,
+    fingerprintSortedSet(
+      "agent-execution-plans:danglingOrMissingHeadVersion:agent-ids",
+      danglingIds,
+    ).digest,
+  );
+  assert.equal(origin.legacyEnvironmentLineage.count, 659);
+  assert.equal(
+    origin.legacyEnvironmentLineage.digest,
+    fingerprintSortedSet(
       "agent-execution-plans:systemEnvironmentDifferences:agent-ids",
-      rows.map((row) => {
+      legacyEnvironmentRows.map((row) => {
         return row.id;
       }),
     ).digest,
   );
-  assert.equal(origin.primary.exactHistoricalProductBuilder.count, 1);
-  assert.equal(origin.primary.referenceOnlyButUnproven.count, 657);
+  assert.equal(origin.primary.exactHistoricalProductBuilder.count, 8);
+  assert.equal(origin.primary.referenceOnlyButUnproven.count, 650);
   assert.equal(origin.primary.literalOrOtherUnproven.count, 1);
   assert.equal(origin.primaryPartitionClosure.classification, "exact");
   assert.equal(origin.primaryPartitionClosure.expected.count, 659);
@@ -1797,7 +1949,7 @@ function testHistoricalProductBuilderOriginPartition(): void {
     origin.primary.exactHistoricalProductBuilder.digest,
     fingerprintSortedSet(
       "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin:primary:exactHistoricalProductBuilder:agent-ids",
-      [exactId],
+      exactIds,
     ).digest,
   );
   assert.equal(
@@ -1820,18 +1972,34 @@ function testHistoricalProductBuilderOriginPartition(): void {
   assert.ok(exactActivity);
   assert.ok(referenceActivity);
   assert.ok(literalActivity);
-  assert.equal(exactActivity.currentHeadEverExercised.count, 1);
-  assert.equal(exactActivity.latestAttributedRun.within7Days.count, 1);
+  assert.equal(exactActivity.currentHeadEverExercised.count, 5);
+  assert.equal(exactActivity.latestAttributedRun.over30Through90Days.count, 6);
+  assert.equal(exactActivity.latestAttributedRun.noAttributedRun.count, 2);
   assert.equal(
     referenceActivity.latestAttributedRun.noAttributedRun.count,
-    657,
+    650,
   );
   assert.equal(literalActivity.latestAttributedRun.over90Days.count, 1);
+  assert.equal(
+    origin.applicationAuthorityMembershipLineageClosure.classification,
+    "exact",
+  );
+  assert.equal(
+    origin.residualEnvironmentMembershipLineageClosure.classification,
+    "exact",
+  );
+  assert.equal(origin.authorityPartitionClosure.classification, "exact");
+  assert.equal(origin.authorityPartitionClosure.expected.count, 659);
+  assert.equal(origin.authorityPartitionClosure.observed.count, 659);
+  assert.equal(origin.authorityDisjointnessClosure.classification, "exact");
+  assert.equal(origin.authorityDisjointnessClosure.observed.count, 0);
 
   const duplicateFailureGates = new Set<string>();
   const duplicate = classifyExceptionRefinements({
-    rowsById: new Map([[exactId, [rows[0]!]]]),
-    environmentIds: [exactId, exactId],
+    rowsById: new Map([[exactIds[0]!, [legacyEnvironmentRows[0]!]]]),
+    legacyEnvironmentIds: [exactIds[0]!, exactIds[0]!],
+    residualEnvironmentIds: [],
+    applicationHistoricalProductBuilderEnvironmentIds: [exactIds[0]!],
     unsupportedIds: [],
     unclassifiedIds: [],
     failureGates: duplicateFailureGates,
@@ -1944,7 +2112,9 @@ function testEnvironmentExceptionRefinements(): void {
   const failureGates = new Set<string>();
   const forced = classifyExceptionRefinements({
     rowsById: new Map([[unclassifiedId, [unclassifiedRow]]]),
-    environmentIds: [unclassifiedId],
+    legacyEnvironmentIds: [unclassifiedId],
+    residualEnvironmentIds: [unclassifiedId],
+    applicationHistoricalProductBuilderEnvironmentIds: [],
     unsupportedIds: [],
     unclassifiedIds: [],
     failureGates,
@@ -2565,7 +2735,7 @@ function testOutputRedaction(): void {
     (error: unknown) => {
       assert.ok(error instanceof SanitizedPreflightError);
       assert.deepEqual(sanitizedFailureResult(error), {
-        schemaVersion: "vm0.agent-compose-consolidation-preflight.v5",
+        schemaVersion: "vm0.agent-compose-consolidation-preflight.v6",
         status: "failed",
         failureGates: ["probe.output_shape"],
       });
@@ -2608,7 +2778,7 @@ function assertSafeAggregateValues(value: unknown, pathPrefix = ""): void {
     return;
   }
   const allowedClassifications = new Set([
-    "vm0.agent-compose-consolidation-preflight.v5",
+    "vm0.agent-compose-consolidation-preflight.v6",
     "passed",
     "failed",
     "exact",
@@ -3027,10 +3197,13 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
       workflow.indexOf('>> "$GITHUB_OUTPUT"'),
   );
   assert.match(workflow, /scripts\/agent-compose-consolidation-preflight\.ts/u);
-  assert.match(workflow, /#27613 \+ #27656 \+ #27671 \+ #27792 \+ #28056/u);
-  assert.match(workflow, /vm0\.agent-compose-consolidation-preflight\.v5/u);
+  assert.match(
+    workflow,
+    /#27613 \+ #27656 \+ #27671 \+ #27792 \+ #28056 \+ #28070/u,
+  );
+  assert.match(workflow, /vm0\.agent-compose-consolidation-preflight\.v6/u);
   assert.equal(
-    /vm0\.agent-compose-consolidation-preflight\.v[1234]/u.test(workflow),
+    /vm0\.agent-compose-consolidation-preflight\.v[1-5]/u.test(workflow),
     false,
   );
   assert.equal(
@@ -3073,7 +3246,7 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
 
   const historicalClassifierPath = path.join(
     repositoryRoot,
-    "turbo/packages/db/scripts/agent-compose-consolidation-preflight-historical-product-builder.ts",
+    "turbo/apps/api/src/signals/services/historical-product-builder.ts",
   );
   const historicalClassifierSource = await fs.readFile(
     historicalClassifierPath,
@@ -3097,13 +3270,15 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
     false,
   );
   const historicalClassifierCallers = execFileSync(
-    "git",
+    "rg",
     [
-      "grep",
       "-l",
-      "agent-compose-consolidation-preflight-historical-product-builder",
-      "--",
+      "-F",
+      "isExactHistoricalProductBuilderCandidate(",
+      "--glob",
       "*.ts",
+      "turbo/apps/api/src/signals",
+      "turbo/packages/db/scripts",
     ],
     { cwd: repositoryRoot, encoding: "utf8" },
   )
@@ -3111,6 +3286,8 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
     .split("\n")
     .sort();
   assert.deepEqual(historicalClassifierCallers, [
+    "turbo/apps/api/src/signals/services/agent-execution-authority.ts",
+    "turbo/apps/api/src/signals/services/historical-product-builder.ts",
     "turbo/packages/db/scripts/agent-compose-consolidation-preflight-refinements.ts",
     "turbo/packages/db/scripts/test-agent-compose-consolidation-preflight.ts",
   ]);
@@ -3702,6 +3879,7 @@ export async function validateAgentComposeConsolidationPreflightStatic(): Promis
   await validateLaunchSnapshotBackfillStatic();
   testSchemaV3DomainsRemainByteStable();
   testSchemaV4OutputContractRemainsByteStable();
+  testSchemaV5OutputContractRemainsByteStable();
   testApplicationOwnedPlanAndCanonicalCompatibility();
   testIdentityAndApprovedArtifacts();
   testVersionHeadRunAndCheckpointClassifications();

@@ -409,12 +409,35 @@ const PREFLIGHT_V5_OUTPUT_ALLOWLIST = [
   ),
 ];
 
-/** Every and only approved scalar/array path in a complete v5 result. */
+/** Transition-only #28070 authority/lineage output; removed by #26938 Stage 8. */
+const PREFLIGHT_V6_OUTPUT_ALLOWLIST = [
+  ...setOutputPaths(
+    "agentExecutionPlans.applicationHistoricalProductBuilderEnvironment",
+  ),
+  ...setOutputPaths(
+    "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin.legacyEnvironmentLineage",
+  ),
+  ...comparisonOutputPaths(
+    "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin.applicationAuthorityMembershipLineageClosure",
+  ),
+  ...comparisonOutputPaths(
+    "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin.residualEnvironmentMembershipLineageClosure",
+  ),
+  ...comparisonOutputPaths(
+    "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin.authorityPartitionClosure",
+  ),
+  ...comparisonOutputPaths(
+    "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin.authorityDisjointnessClosure",
+  ),
+];
+
+/** Every and only approved scalar/array path in a complete v6 result. */
 export const PREFLIGHT_OUTPUT_ALLOWLIST = [
   ...PREFLIGHT_V2_OUTPUT_ALLOWLIST,
   ...PREFLIGHT_V3_OUTPUT_ALLOWLIST,
   ...PREFLIGHT_V4_OUTPUT_ALLOWLIST,
   ...PREFLIGHT_V5_OUTPUT_ALLOWLIST,
+  ...PREFLIGHT_V6_OUTPUT_ALLOWLIST,
 ].sort();
 
 export interface IdentityInventoryRow extends QueryResultRow {
@@ -1042,6 +1065,7 @@ function classifyAgentExecutionPlans(
   ) as Record<AgentExecutionPlanDimension, Set<string>>;
   const parityIds: string[] = [];
   const frameworkFallbackIds: string[] = [];
+  const historicalProductBuilderEnvironmentIds: string[] = [];
   const exceptionIds: string[] = [];
   const multiDimensionIds: string[] = [];
 
@@ -1052,6 +1076,11 @@ function classifyAgentExecutionPlans(
     if (decision.authority === "application") {
       if (decision.classification === "applicationFrameworkFallback") {
         frameworkFallbackIds.push(id);
+      } else if (
+        decision.classification ===
+        "applicationHistoricalProductBuilderEnvironment"
+      ) {
+        historicalProductBuilderEnvironmentIds.push(id);
       } else {
         parityIds.push(id);
       }
@@ -1072,7 +1101,12 @@ function classifyAgentExecutionPlans(
   const partitionClosure = cardinalityAwareComparison(
     "agent-execution-plans:partition-closure",
     expectedMatchedIds,
-    [...parityIds, ...frameworkFallbackIds, ...exceptionIds],
+    [
+      ...parityIds,
+      ...frameworkFallbackIds,
+      ...historicalProductBuilderEnvironmentIds,
+      ...exceptionIds,
+    ],
   );
   const dimensionUnionIds = [
     ...new Set(
@@ -1123,9 +1157,16 @@ function classifyAgentExecutionPlans(
     }
   }
 
+  const legacyEnvironmentIds = [
+    ...historicalProductBuilderEnvironmentIds,
+    ...dimensionIds.systemEnvironmentDifferences,
+  ];
   const refinements = classifyExceptionRefinements({
     rowsById,
-    environmentIds: [...dimensionIds.systemEnvironmentDifferences],
+    legacyEnvironmentIds,
+    residualEnvironmentIds: [...dimensionIds.systemEnvironmentDifferences],
+    applicationHistoricalProductBuilderEnvironmentIds:
+      historicalProductBuilderEnvironmentIds,
     unsupportedIds: [...dimensionIds.unsupportedOrInvalidContent],
     unclassifiedIds: [...dimensionIds.unclassifiedContent],
     failureGates,
@@ -1133,11 +1174,13 @@ function classifyAgentExecutionPlans(
 
   const dimensionOutput = Object.fromEntries(
     AGENT_EXECUTION_PLAN_DIMENSIONS.map((dimension) => {
+      const domain =
+        dimension === "systemEnvironmentDifferences"
+          ? "agent-execution-plans:v6:residual-system-environment-differences:agent-ids"
+          : `agent-execution-plans:${dimension}:agent-ids`;
       return [
         dimension,
-        fingerprintSortedSet(`agent-execution-plans:${dimension}:agent-ids`, [
-          ...dimensionIds[dimension],
-        ]),
+        fingerprintSortedSet(domain, [...dimensionIds[dimension]]),
       ];
     }),
   ) as Record<AgentExecutionPlanDimension, SetFingerprint>;
@@ -1154,6 +1197,10 @@ function classifyAgentExecutionPlans(
     applicationFrameworkFallback: fingerprintSortedSet(
       "agent-execution-plans:application-framework-fallback-agent-ids",
       frameworkFallbackIds,
+    ),
+    applicationHistoricalProductBuilderEnvironment: fingerprintSortedSet(
+      "agent-execution-plans:v6:application-historical-product-builder-environment-agent-ids",
+      historicalProductBuilderEnvironmentIds,
     ),
     exceptions: fingerprintSortedSet(
       "agent-execution-plans:exception-agent-ids",

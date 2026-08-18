@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { agentComposeApiContentSchema } from "@okouai/api-contracts/contracts/composes";
-import { computeComposeVersionId } from "../../../apps/api/src/signals/services/agent-compose-content";
+import { computeComposeVersionId } from "./agent-compose-content";
 
 /**
- * Transition-only evidence for #28056. Every definition in this file,
+ * Transition-only evidence for #28056 and #28070. Every definition in this file,
  * including the reviewed source fixture, classifier helpers, and review
  * fingerprint, is owned by #26938 Stage 8 removal.
  */
@@ -299,7 +299,7 @@ const ZERO_SECRET_BINDINGS = [
   "ZERO_TOKEN",
 ] as const;
 
-export interface HistoricalProductBuilderVariant {
+interface HistoricalProductBuilderVariant {
   readonly id: string;
   readonly identityBranding: "zero";
   readonly sourceCommit: string;
@@ -323,9 +323,9 @@ export const HISTORICAL_PRODUCT_BUILDER_VARIANTS = [
     id: "zero-connector-catalog-at-3b45e4e",
     identityBranding: "zero",
     sourceCommit: "3b45e4eab8f1ca26f7187800c6e475b198ec0f28",
-    sourcePullRequest: 14831,
+    sourcePullRequest: 14_831,
     removalCommit: "68a48441b4c05ccd25d9599dd2b4e7be808aa450",
-    removalPullRequest: 14820,
+    removalPullRequest: 14_820,
     eligibleConnectorCount: 229,
     environmentBindingCount: 281,
     variableBindingCount: 34,
@@ -335,7 +335,7 @@ export const HISTORICAL_PRODUCT_BUILDER_VARIANTS = [
   },
 ] as const satisfies readonly HistoricalProductBuilderVariant[];
 
-export type HistoricalProductBuilderVariantId =
+type HistoricalProductBuilderVariantId =
   (typeof HISTORICAL_PRODUCT_BUILDER_VARIANTS)[number]["id"];
 
 export interface HistoricalProductBuilderCandidate {
@@ -366,7 +366,7 @@ export function buildHistoricalProductBuilderContent(
   agentName: string,
 ): Record<string, unknown> {
   switch (variantId) {
-    case "zero-connector-catalog-at-3b45e4e":
+    case "zero-connector-catalog-at-3b45e4e": {
       return {
         version: "1",
         agents: {
@@ -377,6 +377,7 @@ export function buildHistoricalProductBuilderContent(
           },
         },
       };
+    }
   }
 }
 
@@ -454,7 +455,9 @@ export function isExactHistoricalProductBuilderCandidate(
     return false;
   }
   const agentEntries = Object.entries(parsed.data.agents);
-  if (agentEntries.length !== 1) return false;
+  if (agentEntries.length !== 1) {
+    return false;
+  }
   const activeAgentName = agentEntries[0]?.[0];
   if (
     activeAgentName === undefined ||
@@ -464,7 +467,9 @@ export function isExactHistoricalProductBuilderCandidate(
   }
 
   return HISTORICAL_PRODUCT_BUILDER_VARIANTS.some((variant) => {
-    if (!hasReviewedDefinition(variant)) return false;
+    if (!hasReviewedDefinition(variant)) {
+      return false;
+    }
     const expected = buildHistoricalProductBuilderContent(
       variant.id,
       row.agentName,
