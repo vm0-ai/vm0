@@ -9,7 +9,7 @@ import {
   integrationsFeishuUploadInitContract,
 } from "@okouai/api-contracts/contracts/integrations";
 import { zeroFeishuConnectContract } from "@okouai/api-contracts/contracts/zero-feishu-connect";
-import { zeroFeishuOauthContract } from "@okouai/api-contracts/contracts/zero-feishu-oauth";
+import { feishuOauthContract } from "@okouai/api-contracts/contracts/feishu-oauth";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -183,7 +183,7 @@ async function connectCurrentFeishuUser(actor: FeishuTestActor): Promise<void> {
   );
   mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
   const oauthClient = setupApp({ context, routes: feishuOauthRoutes })(
-    zeroFeishuOauthContract,
+    feishuOauthContract,
   );
   await accept(
     oauthClient.callback({

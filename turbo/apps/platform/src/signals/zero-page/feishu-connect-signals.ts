@@ -1,5 +1,5 @@
 import { command, computed } from "ccstate";
-import { zeroFeishuBrowserConnectContract } from "@okouai/api-contracts/contracts/zero-feishu-browser-connect";
+import { feishuBrowserConnectContract } from "@okouai/api-contracts/contracts/feishu-browser-connect";
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -53,7 +53,7 @@ export const connectFeishuAccount$ = command(
       throw new Error("Invalid Feishu connect link");
     }
 
-    const client = get(zeroClient$)(zeroFeishuBrowserConnectContract);
+    const client = get(zeroClient$)(feishuBrowserConnectContract);
     const result = await accept(
       client.connectFromApp({
         body: params,
