@@ -1,21 +1,21 @@
 import {
-  zeroBrowserAuthorizationRequestsContract,
-  zeroBrowserContract,
+  browserAuthorizationRequestsContract,
+  browserContract,
   type BrowserAuthorizationRequestCreateResponse,
-  type ZeroBrowserCreateRequest,
-  type ZeroBrowserSession,
-} from "@okouai/api-contracts/contracts/zero-browser";
+  type BrowserCreateRequest,
+  type BrowserSession,
+} from "@okouai/api-contracts/contracts/browser";
 import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
 
 import { getClientConfig, handleError } from "../core/client-factory";
 
 async function client() {
-  return initClient(zeroBrowserContract, await getClientConfig());
+  return initClient(browserContract, await getClientConfig());
 }
 
 async function authorizationClient() {
   return initClient(
-    zeroBrowserAuthorizationRequestsContract,
+    browserAuthorizationRequestsContract,
     await getClientConfig(),
   );
 }
@@ -31,8 +31,8 @@ export async function createBrowserAuthorizationRequest(): Promise<BrowserAuthor
 }
 
 export async function createBrowser(
-  body: ZeroBrowserCreateRequest,
-): Promise<{ browser: ZeroBrowserSession; cdpUrl: string }> {
+  body: BrowserCreateRequest,
+): Promise<{ browser: BrowserSession; cdpUrl: string }> {
   const result = await (await client()).create({ headers: {}, body });
   if (result.status === 201) {
     return result.body;
@@ -41,7 +41,7 @@ export async function createBrowser(
 }
 
 export async function useBrowser(): Promise<{
-  browser: ZeroBrowserSession;
+  browser: BrowserSession;
   cdpUrl: string;
 }> {
   const result = await (
@@ -56,7 +56,7 @@ export async function useBrowser(): Promise<{
   handleError(result, "Failed to open the managed browser");
 }
 
-export async function leaseBrowser(): Promise<ZeroBrowserSession> {
+export async function leaseBrowser(): Promise<BrowserSession> {
   const result = await (
     await client()
   ).lease({
@@ -69,7 +69,7 @@ export async function leaseBrowser(): Promise<ZeroBrowserSession> {
   handleError(result, "Failed to extend the managed browser lease");
 }
 
-export async function getCurrentBrowser(): Promise<ZeroBrowserSession> {
+export async function getCurrentBrowser(): Promise<BrowserSession> {
   const result = await (await client()).current({ headers: {} });
   if (result.status === 200) {
     return result.body.browser;

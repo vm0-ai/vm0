@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroBrowserAuthorizationRequestsContract } from "@okouai/api-contracts/contracts/zero-browser";
+import { browserAuthorizationRequestsContract } from "@okouai/api-contracts/contracts/browser";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -28,14 +28,10 @@ const unsupportedContext = conflict(
   "Cloud browser authorization links are only available from chat thread runs",
 );
 
-const createBody$ = bodyResultOf(
-  zeroBrowserAuthorizationRequestsContract.create,
-);
-const getParams$ = pathParamsOf(zeroBrowserAuthorizationRequestsContract.get);
-const applyParams$ = pathParamsOf(
-  zeroBrowserAuthorizationRequestsContract.apply,
-);
-const applyBody$ = bodyResultOf(zeroBrowserAuthorizationRequestsContract.apply);
+const createBody$ = bodyResultOf(browserAuthorizationRequestsContract.create);
+const getParams$ = pathParamsOf(browserAuthorizationRequestsContract.get);
+const applyParams$ = pathParamsOf(browserAuthorizationRequestsContract.apply);
+const applyBody$ = bodyResultOf(browserAuthorizationRequestsContract.apply);
 
 const browserAuthorizationAuthOptions = {
   requireOrganization: true,
@@ -157,21 +153,21 @@ const applyAuthorizationRequestInner$ = command(
 
 export const browserAuthorizationRoutes: readonly RouteEntry[] = [
   {
-    route: zeroBrowserAuthorizationRequestsContract.create,
+    route: browserAuthorizationRequestsContract.create,
     handler: authRoute(
       browserAuthorizationCreateAuthOptions,
       createAuthorizationRequestInner$,
     ),
   },
   {
-    route: zeroBrowserAuthorizationRequestsContract.get,
+    route: browserAuthorizationRequestsContract.get,
     handler: authRoute(
       browserAuthorizationAuthOptions,
       getAuthorizationRequestInner$,
     ),
   },
   {
-    route: zeroBrowserAuthorizationRequestsContract.apply,
+    route: browserAuthorizationRequestsContract.apply,
     handler: authRoute(
       browserAuthorizationAuthOptions,
       applyAuthorizationRequestInner$,
