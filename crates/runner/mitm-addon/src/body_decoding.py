@@ -327,21 +327,67 @@ def decompress_body(
     return result.body
 
 
+def _decode_single_zlib_stream_for_network_log_capture(
+    data: bytes,
+    *,
+    wbits: int,
+    max_output: int,
+    require_complete: bool,
+) -> bytes | None:
+    if not data or max_output <= 0:
+        return b""
+
+    obj = zlib.decompressobj(wbits)
+    try:
+        body = obj.decompress(data, max_length=max_output)
+    except zlib.error:
+        return None
+    if require_complete and len(body) < max_output and not obj.eof:
+        return None
+    return body
+
+
 def decode_response_body_for_network_log_capture(
     data: bytes,
     headers: http.Headers,
     *,
     max_output: int = DEFAULT_BODY_DECODE_LIMIT,
 ) -> bytes | None:
-    """Decode a buffered response body with mitmproxy-compatible strictness."""
+    """Decode a buffered response body with bounded mitmproxy compatibility."""
     encoding = headers.get("content-encoding", "").strip().lower()
-    if encoding and encoding != "identity" and encoding not in _SUPPORTED_ONE_SHOT_BODY_ENCODINGS:
+    if not encoding or encoding == "identity":
+        return data
+    if encoding == "gzip":
+        # mitmproxy uses zlib's gzip/zlib auto-detection and accepts partial
+        # output when a gzip stream ends before its trailer.
+        return _decode_single_zlib_stream_for_network_log_capture(
+            data,
+            wbits=32 + zlib.MAX_WBITS,
+            max_output=max_output,
+            require_complete=False,
+        )
+    if encoding == "deflate":
+        body = _decode_single_zlib_stream_for_network_log_capture(
+            data,
+            wbits=zlib.MAX_WBITS,
+            max_output=max_output,
+            require_complete=True,
+        )
+        if body is not None:
+            return body
+        return _decode_single_zlib_stream_for_network_log_capture(
+            data,
+            wbits=-zlib.MAX_WBITS,
+            max_output=max_output,
+            require_complete=True,
+        )
+    if encoding not in _SUPPORTED_ONE_SHOT_BODY_ENCODINGS:
         return None
-    result = _decode_body_bounded(data, headers, max_output=max_output)
-    _log_body_decompression_failure(result, headers)
-    if result.failed:
+
+    body, error = _decode_supported_body_with_complete_status(data, encoding, max_output)
+    if error is not None and error != DECODED_BODY_LIMIT_EXCEEDED:
         return None
-    return result.body
+    return body
 
 
 def _log_body_decompression_failure(result: _BodyDecodeResult, headers: http.Headers) -> None:

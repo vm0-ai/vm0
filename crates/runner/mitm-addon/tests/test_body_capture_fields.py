@@ -2,8 +2,11 @@
 
 import base64
 import gzip
+import zlib
 
+import brotli
 import pytest
+import zstandard
 
 from body_capture import add_capture_fields
 from body_limits import BODY_CAPTURE_LIMIT
@@ -354,6 +357,49 @@ class TestAddCaptureFields:
         )
         entry = {}
         add_capture_fields(flow, entry)
+        assert "response_body" not in entry
+        assert entry["response_body_encoding"] == "binary"
+
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+    def test_response_preserves_mitmproxy_compatible_zlib_variants(self, real_flow, encoding):
+        body = b"compatible response body"
+        if encoding == "gzip":
+            compressed = zlib.compress(body)
+        else:
+            compressor = zlib.compressobj(wbits=-zlib.MAX_WBITS)
+            compressed = compressor.compress(body) + compressor.flush()
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            response_content_type="text/plain",
+            response_body=compressed,
+            response_encoding=encoding,
+        )
+
+        entry = {}
+        add_capture_fields(flow, entry)
+
+        assert entry["response_body"] == body.decode()
+        assert entry["response_body_encoding"] == "utf-8"
+
+    @pytest.mark.parametrize("encoding", ["br", "zstd"])
+    def test_response_incomplete_strict_compression_skips_body(self, real_flow, encoding):
+        body = b"incomplete response body" * 100
+        if encoding == "br":
+            compressed = brotli.compress(body)
+        else:
+            compressed = zstandard.ZstdCompressor().compress(body)
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            response_content_type="text/plain",
+            response_body=compressed[:-1],
+            response_encoding=encoding,
+        )
+
+        entry = {}
+        add_capture_fields(flow, entry)
+
         assert "response_body" not in entry
         assert entry["response_body_encoding"] == "binary"
 
