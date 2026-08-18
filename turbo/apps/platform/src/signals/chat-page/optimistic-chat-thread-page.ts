@@ -57,11 +57,7 @@ import {
 } from "./model-selection-request.ts";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { registerOptimisticChatThreadEvent$ } from "./chat-thread-event-sourcing.ts";
-import {
-  chatPageImageModelSelection$,
-  chatPageModelSelection$,
-  resetChatPageImageModelSelection$,
-} from "../zero-page/zero-chat-page.ts";
+import { chatPageModelSelection$ } from "../zero-page/zero-chat-page.ts";
 import { selectedModelAvailable$ } from "../zero-page/model-first-personal-oauth.ts";
 import type { OptimisticChatThreadEvent } from "./chat-thread-event-types.ts";
 import { toast } from "@okouai/ui/components/ui/sonner";
@@ -490,9 +486,7 @@ const startNewChatThreadCreate$ = command(
         : undefined;
     const imageModel =
       (featureSwitches[FeatureSwitchKey.ImageModelSelection] ?? false)
-        ? ((await get(chatPageImageModelSelection$)) ??
-          userPreference.selectedImageModel ??
-          DEFAULT_IMAGE_MODEL)
+        ? (userPreference.selectedImageModel ?? DEFAULT_IMAGE_MODEL)
         : undefined;
     signal.throwIfAborted();
     await set(
@@ -553,8 +547,6 @@ export const createNewChatThread$ = command(
       signal,
     );
     await result.createResult;
-    signal.throwIfAborted();
-    set(resetChatPageImageModelSelection$);
   },
 );
 
