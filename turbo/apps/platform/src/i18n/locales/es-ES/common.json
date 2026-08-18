@@ -4290,6 +4290,7 @@
         "loadError": "No se pudieron cargar los modelos.",
         "loading": "Cargando modelos...",
         "manageMoreModels": "Gestionar más modelos",
+        "mini": "Mini",
         "models": "Modelos",
         "noConfiguredModels": "Sin modelos configurados",
         "priceTiers": {
@@ -4305,7 +4306,8 @@
           "deepseek": "Deepseek"
         },
         "standard": "Estándar",
-        "videoModels": "Modelos de vídeo"
+        "videoModels": "Modelos de vídeo",
+        "videoModelVariant": "Variante de {{model}}: {{variant}}"
       },
       "policies": {
         "actionsFor": "Acciones para {{model}}",

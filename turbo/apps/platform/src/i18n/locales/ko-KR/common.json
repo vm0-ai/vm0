@@ -4239,6 +4239,7 @@
         "loadError": "모델을 불러올 수 없습니다.",
         "loading": "모델 불러오는 중...",
         "manageMoreModels": "더 많은 모델 관리",
+        "mini": "Mini",
         "models": "모델",
         "noConfiguredModels": "구성된 모델 없음",
         "priceTiers": {
@@ -4254,7 +4255,8 @@
           "deepseek": "Deepseek"
         },
         "standard": "표준",
-        "videoModels": "동영상 모델"
+        "videoModels": "동영상 모델",
+        "videoModelVariant": "{{model}} 변형: {{variant}}"
       },
       "policies": {
         "actionsFor": "{{model}}에 대한 작업",

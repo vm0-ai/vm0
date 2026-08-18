@@ -4239,6 +4239,7 @@
         "loadError": "Tidak dapat memuat model.",
         "loading": "Memuat model...",
         "manageMoreModels": "Kelola model lainnya",
+        "mini": "Mini",
         "models": "Model",
         "noConfiguredModels": "Tidak ada model yang dikonfigurasi",
         "priceTiers": {
@@ -4254,7 +4255,8 @@
           "deepseek": "Deepseek"
         },
         "standard": "Standar",
-        "videoModels": "Model video"
+        "videoModels": "Model video",
+        "videoModelVariant": "Varian {{model}}: {{variant}}"
       },
       "policies": {
         "actionsFor": "Tindakan untuk {{model}}",

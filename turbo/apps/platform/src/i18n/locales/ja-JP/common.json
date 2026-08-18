@@ -4239,6 +4239,7 @@
         "loadError": "モデルをロードできません。",
         "loading": "モデルをロード中...",
         "manageMoreModels": "他のモデルを管理",
+        "mini": "Mini",
         "models": "モデル",
         "noConfiguredModels": "設定されたモデルはありません",
         "priceTiers": {
@@ -4254,7 +4255,8 @@
           "deepseek": "ディープシーク"
         },
         "standard": "標準",
-        "videoModels": "動画モデル"
+        "videoModels": "動画モデル",
+        "videoModelVariant": "{{model}} のバリエーション: {{variant}}"
       },
       "policies": {
         "actionsFor": "{{model}} のアクション",

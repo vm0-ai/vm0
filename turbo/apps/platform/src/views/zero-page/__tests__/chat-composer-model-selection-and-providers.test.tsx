@@ -3435,7 +3435,10 @@ describe("chat composer video model", () => {
 
   function videoPanelButton(label: string): HTMLElement | undefined {
     return queryAllByRoleFast("button").find((candidate) => {
-      return candidate.textContent?.replace(/\s+/g, " ").trim() === label;
+      return (
+        candidate.getAttribute("aria-label") === label ||
+        candidate.textContent?.replace(/\s+/g, " ").trim() === label
+      );
     });
   }
 
@@ -3446,6 +3449,22 @@ describe("chat composer video model", () => {
         throw new Error(`${label} button not found`);
       }
       return button;
+    });
+  }
+
+  function variantMenuItem(label: string): HTMLElement | undefined {
+    return queryAllByRoleFast("menuitem").find((candidate) => {
+      return candidate.getAttribute("aria-label") === label;
+    });
+  }
+
+  function findVariantMenuItem(label: string): Promise<HTMLElement> {
+    return waitFor(() => {
+      const item = variantMenuItem(label);
+      if (!item) {
+        throw new Error(`${label} menu item not found`);
+      }
+      return item;
     });
   }
 
@@ -3665,17 +3684,23 @@ describe("chat composer video model", () => {
       "false",
     );
 
-    // Every public catalog model is offered, with no plan or provider filter.
-    await expect(
-      findVideoPanelButton("Seedance 2.5"),
-    ).resolves.toBeInTheDocument();
-    expect(videoPanelButton("Veo 3.1 fast")).toBeInTheDocument();
-    expect(videoPanelButton("Kling v3 4K")).toBeInTheDocument();
-    expect(videoPanelButton("MiniMax H3")).toBeInTheDocument();
-    expect(videoPanelButton("Seedance 2.0 fast")).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    // Every public model family is offered, with the three Seedance 2.0
+    // variants sharing one row and relative price tiers visible at a glance.
+    const seedance25 = await findVideoPanelButton("Seedance 2.5");
+    const seedance20 = await findVideoPanelButton("Seedance 2.0");
+    const seedance15 = await findVideoPanelButton("Seedance 1.5 pro");
+    const veo = await findVideoPanelButton("Veo 3.1 fast");
+    const kling = await findVideoPanelButton("Kling v3 4K");
+    const minimax = await findVideoPanelButton("MiniMax H3");
+    expect(seedance25.parentElement).toHaveTextContent("$$$");
+    expect(seedance20.parentElement).toHaveTextContent("Fast$$");
+    expect(seedance15.parentElement).toHaveTextContent("$");
+    expect(veo.parentElement).toHaveTextContent("$$");
+    expect(kling.parentElement).toHaveTextContent("$$$$");
+    expect(minimax.parentElement).toHaveTextContent("$$");
+    expect(videoPanelButton("Seedance 2.0 fast")).toBeUndefined();
+    expect(videoPanelButton("Seedance 2.0 Mini")).toBeUndefined();
+    expect(seedance20).toHaveAttribute("aria-pressed", "true");
 
     await user.click(await findVideoPanelButton("Veo 3.1 fast"));
 
@@ -3696,6 +3721,42 @@ describe("chat composer video model", () => {
     await expect(
       findVideoPanelButton("Manage more models"),
     ).resolves.toBeInTheDocument();
+  });
+
+  it("selects and reprices a grouped Seedance 2.0 variant", async () => {
+    const user = userEvent.setup({ delay: null });
+    context.mocks.browser.matchMedia(true);
+    const { bodies } = mockVideoModelThread(null);
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.VideoModelSelection]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await user.click(await findDesktopVideoModelButton());
+    const variantTrigger = await findVideoPanelButton(
+      "Seedance 2.0 variant: Fast",
+    );
+    await user.click(variantTrigger);
+
+    const standard = await findVariantMenuItem("Standard $$");
+    const fast = await findVariantMenuItem("Fast $$");
+    const mini = await findVariantMenuItem("Mini $");
+    expect(standard).toBeInTheDocument();
+    expect(fast.querySelector("svg.lucide-check")).not.toBeNull();
+    expect(mini.querySelector("svg.lucide-check")).toBeNull();
+
+    await user.click(mini);
+
+    await waitFor(() => {
+      expect(bodies).toStrictEqual([
+        { model: "dreamina-seedance-2-0-mini-260615" },
+      ]);
+    });
+    await waitFor(() => {
+      expect(variantMenuItem("Mini $")).toBeUndefined();
+    });
   });
 
   it("preserves the shared popup state while switching desktop model modes", async () => {
@@ -3813,7 +3874,7 @@ describe("chat composer video model", () => {
     expect(videoPanelButton("MiniMax H3")).toBeUndefined();
     await user.click(await findVideoPanelButton("Manage more models"));
 
-    await user.click(await findVideoPanelButton("Seedance 2.0 fast"));
+    await user.click(await findVideoPanelButton("Seedance 2.0"));
 
     await waitFor(() => {
       expect(bodies).toStrictEqual([

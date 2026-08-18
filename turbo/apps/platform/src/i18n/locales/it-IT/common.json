@@ -4290,6 +4290,7 @@
         "loadError": "Impossibile caricare i modelli.",
         "loading": "Caricamento modelli...",
         "manageMoreModels": "Gestisci altri modelli",
+        "mini": "Mini",
         "models": "Modelli",
         "noConfiguredModels": "Nessun modello configurato",
         "priceTiers": {
@@ -4305,7 +4306,8 @@
           "deepseek": "Ricerca profonda"
         },
         "standard": "Norma",
-        "videoModels": "Modelli video"
+        "videoModels": "Modelli video",
+        "videoModelVariant": "Variante di {{model}}: {{variant}}"
       },
       "policies": {
         "actionsFor": "Azioni per {{model}}",

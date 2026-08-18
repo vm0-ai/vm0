@@ -4240,6 +4240,7 @@
         "loadError": "मॉडल लोड करने में असमर्थ.",
         "loading": "मॉडल लोड हो रहे हैं...",
         "manageMoreModels": "और मॉडल प्रबंधित करें",
+        "mini": "Mini",
         "models": "मॉडल",
         "noConfiguredModels": "कोई कॉन्फ़िगर मॉडल नहीं",
         "priceTiers": {
@@ -4255,7 +4256,8 @@
           "deepseek": "गहन खोज"
         },
         "standard": "मानक",
-        "videoModels": "वीडियो मॉडल"
+        "videoModels": "वीडियो मॉडल",
+        "videoModelVariant": "{{model}} वैरिएंट: {{variant}}"
       },
       "policies": {
         "actionsFor": "{{model}} के लिए क्रियाएँ",

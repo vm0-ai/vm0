@@ -151,6 +151,7 @@ import {
   ModelProviderPicker,
   VideoModelBrandIcon,
   type MediaModelPanelCategory,
+  type MediaModelPanelOption,
   type MediaModelPanelState,
   type ModelProviderSelection,
 } from "./components/model-provider-picker.tsx";
@@ -7614,32 +7615,146 @@ function ComposerVideoModelControl({
   );
 }
 
+const SEEDANCE_2_VARIANT_MODELS = [
+  "dreamina-seedance-2-0-260128",
+  "dreamina-seedance-2-0-fast-260128",
+  "dreamina-seedance-2-0-mini-260615",
+] as const satisfies readonly VideoModel[];
+
+function seedance2Variants() {
+  return [
+    {
+      model: SEEDANCE_2_VARIANT_MODELS[0],
+      label: i18n.t(($) => {
+        return $.settings.models.picker.standard;
+      }),
+    },
+    {
+      model: SEEDANCE_2_VARIANT_MODELS[1],
+      label: i18n.t(($) => {
+        return $.settings.models.picker.fast;
+      }),
+    },
+    {
+      model: SEEDANCE_2_VARIANT_MODELS[2],
+      label: i18n.t(($) => {
+        return $.settings.models.picker.mini;
+      }),
+    },
+  ] as const;
+}
+
+const VIDEO_MODEL_PRICE_TIER = {
+  "dreamina-seedance-2-5-260628": "$$$",
+  "dreamina-seedance-2-0-260128": "$$",
+  "dreamina-seedance-2-0-fast-260128": "$$",
+  "dreamina-seedance-2-0-mini-260615": "$",
+  "seedance-1-5-pro-251215": "$",
+  "fal-ai/veo3.1/fast": "$$",
+  "fal-ai/kling-video/v3/4k/text-to-video": "$$$$",
+  "MiniMax-H3": "$$",
+} as const satisfies Readonly<
+  Record<VideoModel, MediaModelPanelOption["priceTier"]>
+>;
+
+function videoModelDetail(model: VideoModel, audioLabel: string): string {
+  const config = VIDEO_MODEL_CONFIGS[model];
+  const resolution = config.defaultResolution.endsWith("k")
+    ? config.defaultResolution.toUpperCase()
+    : config.defaultResolution;
+  return config.supportsGenerateAudio
+    ? `${resolution} · ${audioLabel}`
+    : resolution;
+}
+
 function composerVideoModelPanelCategory({
   selectedModel,
   onChange,
   label,
   menuLabel,
+  audioLabel,
 }: {
   selectedModel: VideoModel;
   onChange: (next: VideoModel | null) => void;
   label: string;
   menuLabel: string;
+  audioLabel: string;
 }): MediaModelPanelCategory {
+  const variants = seedance2Variants();
+  const selectedVariant =
+    variants.find((variant) => {
+      return variant.model === selectedModel;
+    }) ?? variants[1];
   return {
     id: "video",
     label,
     menuLabel,
-    options: PUBLIC_VIDEO_MODELS.map((candidate) => {
-      return {
-        key: candidate,
-        label: VIDEO_MODEL_CONFIGS[candidate].label,
-        icon: <VideoModelBrandIcon model={candidate} />,
-        selected: selectedModel === candidate,
-        onSelect: () => {
-          onChange(candidate);
-        },
-      };
-    }),
+    options: PUBLIC_VIDEO_MODELS.flatMap(
+      (candidate): MediaModelPanelOption[] => {
+        if (
+          SEEDANCE_2_VARIANT_MODELS.some((model) => {
+            return model === candidate;
+          })
+        ) {
+          if (candidate !== SEEDANCE_2_VARIANT_MODELS[0]) {
+            return [];
+          }
+          const selected = SEEDANCE_2_VARIANT_MODELS.some((model) => {
+            return model === selectedModel;
+          });
+          return [
+            {
+              key: "seedance-2",
+              label: VIDEO_MODEL_CONFIGS[SEEDANCE_2_VARIANT_MODELS[0]].label,
+              detail: videoModelDetail(selectedVariant.model, audioLabel),
+              icon: <VideoModelBrandIcon model={selectedVariant.model} />,
+              priceTier: VIDEO_MODEL_PRICE_TIER[selectedVariant.model],
+              selected,
+              onSelect: () => {
+                onChange(selectedVariant.model);
+              },
+              variantPicker: {
+                ariaLabel: i18n.t(
+                  ($) => {
+                    return $.settings.models.picker.videoModelVariant;
+                  },
+                  {
+                    model:
+                      VIDEO_MODEL_CONFIGS[SEEDANCE_2_VARIANT_MODELS[0]].label,
+                    variant: selectedVariant.label,
+                  },
+                ),
+                valueLabel: selectedVariant.label,
+                options: variants.map((variant) => {
+                  return {
+                    key: variant.model,
+                    label: variant.label,
+                    priceTier: VIDEO_MODEL_PRICE_TIER[variant.model],
+                    selected: variant.model === selectedVariant.model,
+                    onSelect: () => {
+                      onChange(variant.model);
+                    },
+                  };
+                }),
+              },
+            },
+          ];
+        }
+        return [
+          {
+            key: candidate,
+            label: VIDEO_MODEL_CONFIGS[candidate].label,
+            detail: videoModelDetail(candidate, audioLabel),
+            icon: <VideoModelBrandIcon model={candidate} />,
+            priceTier: VIDEO_MODEL_PRICE_TIER[candidate],
+            selected: selectedModel === candidate,
+            onSelect: () => {
+              onChange(candidate);
+            },
+          },
+        ];
+      },
+    ),
   };
 }
 
@@ -7683,6 +7798,9 @@ function ComposerModelPickerControls({
             }),
             menuLabel: t(($) => {
               return $.settings.models.picker.manageMoreModels;
+            }),
+            audioLabel: t(($) => {
+              return $.artifacts.kinds.audio;
             }),
           }),
         ],

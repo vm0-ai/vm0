@@ -4240,6 +4240,7 @@
         "loadError": "Unable to load models.",
         "loading": "Loading models...",
         "manageMoreModels": "Manage more models",
+        "mini": "Mini",
         "models": "Models",
         "noConfiguredModels": "No configured models",
         "priceTiers": {
@@ -4255,7 +4256,8 @@
           "deepseek": "Deepseek"
         },
         "standard": "Standard",
-        "videoModels": "Video models"
+        "videoModels": "Video models",
+        "videoModelVariant": "{{model}} variant: {{variant}}"
       },
       "policies": {
         "actionsFor": "Actions for {{model}}",

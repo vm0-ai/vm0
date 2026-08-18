@@ -8,6 +8,7 @@ import {
 } from "ccstate-react";
 import {
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Cpu,
@@ -15,6 +16,10 @@ import {
   Zap,
 } from "lucide-react";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   Select,
   SelectContent,
   SelectGroup,
@@ -78,9 +83,22 @@ export interface ModelProviderSelection {
 export interface MediaModelPanelOption {
   readonly key: string;
   readonly label: string;
+  readonly detail: string;
   readonly icon: ReactNode;
+  readonly priceTier: Vm0ModelPriceTier;
   readonly selected: boolean;
   readonly onSelect: () => void;
+  readonly variantPicker?: {
+    readonly ariaLabel: string;
+    readonly valueLabel: string;
+    readonly options: readonly {
+      readonly key: string;
+      readonly label: string;
+      readonly priceTier: Vm0ModelPriceTier;
+      readonly selected: boolean;
+      readonly onSelect: () => void;
+    }[];
+  };
 }
 
 export interface MediaModelPanelCategory {
@@ -754,7 +772,7 @@ function ModelFirstPolicyItems({
 // Select's value space belongs to the run model, and a SelectItem here would
 // both join it and close the popover on click.
 const MEDIA_MODEL_PANEL_ROW_CLASS =
-  "relative flex w-full cursor-pointer select-none items-center gap-2 rounded-lg py-1.5 pl-2 pr-8 text-left text-sm outline-none transition-colors hover:bg-state-hover hover:text-accent-foreground";
+  "relative flex w-full select-none items-center rounded-lg text-sm outline-none transition-colors hover:bg-state-hover hover:text-accent-foreground";
 
 const BYTEDANCE_ICON_PATH =
   "M19.8772 1.4685 24 2.5326v18.9426l-4.1228 1.0563V1.4685zm-13.3481 9.428 4.115 1.0641v8.9786l-4.115 1.0642v-11.107zM0 2.572l4.115 1.0642v16.7354L0 21.428V2.572zm17.4553 5.6205v11.107l-4.1228-1.0642V9.2568l4.1228-1.0642z";
@@ -910,21 +928,94 @@ export function VideoModelBrandIcon({ model }: { model: VideoModel }) {
   );
 }
 
+function MediaModelPriceTier({ tier }: { tier: Vm0ModelPriceTier }) {
+  return (
+    <span
+      className="min-w-7 shrink-0 text-right text-xs font-medium text-muted-foreground"
+      aria-label={getVm0ModelPriceTierLabel(tier)}
+    >
+      {tier}
+    </span>
+  );
+}
+
+function MediaModelVariantPicker({
+  picker,
+}: {
+  picker: NonNullable<MediaModelPanelOption["variantPicker"]>;
+}) {
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label={picker.ariaLabel}
+          className="inline-flex h-7 shrink-0 items-center gap-1 rounded-full border border-border bg-background px-2.5 text-xs font-medium text-foreground shadow-sm outline-none transition-colors hover:bg-state-hover focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {picker.valueLabel}
+          <ChevronDown size={13} className="text-muted-foreground" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" sideOffset={6} className="w-44 p-1.5">
+        {picker.options.map((variant) => {
+          return (
+            <DropdownMenuItem
+              key={variant.key}
+              aria-label={`${variant.label} ${variant.priceTier}`}
+              className={cn(
+                "grid grid-cols-[1fr_auto_15px] gap-3 px-2.5 py-2",
+                variant.selected && "bg-state-selected",
+              )}
+              onClick={variant.onSelect}
+            >
+              <span>{variant.label}</span>
+              <MediaModelPriceTier tier={variant.priceTier} />
+              {variant.selected ? (
+                <Check size={15} className="text-foreground" />
+              ) : (
+                <span aria-hidden="true" />
+              )}
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function MediaModelPanelRow({ option }: { option: MediaModelPanelOption }) {
   return (
-    <button
-      type="button"
-      aria-label={option.label}
-      aria-pressed={option.selected}
-      className={MEDIA_MODEL_PANEL_ROW_CLASS}
-      onClick={option.onSelect}
-    >
-      {option.icon}
-      <span className="min-w-0 flex-1 truncate">{option.label}</span>
-      {option.selected && (
-        <Check size={15} className="absolute right-2 text-foreground" />
+    <div
+      className={cn(
+        MEDIA_MODEL_PANEL_ROW_CLASS,
+        option.selected && "bg-state-selected hover:bg-state-selected-hover",
       )}
-    </button>
+    >
+      <button
+        type="button"
+        aria-label={option.label}
+        aria-pressed={option.selected}
+        className="flex min-w-0 flex-1 items-center gap-2 rounded-lg py-2 pl-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        onClick={option.onSelect}
+      >
+        {option.icon}
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate">{option.label}</span>
+          <span className="truncate text-[11px] leading-4 text-muted-foreground">
+            {option.detail}
+          </span>
+        </span>
+      </button>
+      <span className="flex shrink-0 items-center gap-2.5 pr-2">
+        {option.variantPicker && (
+          <MediaModelVariantPicker picker={option.variantPicker} />
+        )}
+        <MediaModelPriceTier tier={option.priceTier} />
+      </span>
+      {option.selected && (
+        <Check size={15} className="mr-2 shrink-0 text-foreground" />
+      )}
+    </div>
   );
 }
 
@@ -1025,7 +1116,10 @@ function ModelFirstModelPickerContentLayout({
   return (
     <SelectContent
       anchor={contentAnchor}
-      className="max-h-[280px] min-w-[260px]"
+      className={cn(
+        "max-h-[320px] min-w-[260px]",
+        mediaModelPanelOpen && "min-w-[340px]",
+      )}
     >
       {/* A media-model panel replaces the model rows, so keep the selected run
           model measurable the same way a hidden select value is. */}
