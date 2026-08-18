@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
@@ -9,6 +9,35 @@ const THREAD_ID = "b0000000-0000-4000-a000-000000000211";
 const RUN_ID = "run-inline-thinking-blocks";
 const COMPLETED_THREAD_ID = "b0000000-0000-4000-a000-000000000212";
 const COMPLETED_RUN_ID = "run-completed-inline-thinking-blocks";
+
+function thinkingSummaries(): HTMLElement[] {
+  const summaries = screen
+    .getAllByText("Thinking")
+    .map((label) => {
+      return label.closest("summary");
+    })
+    .filter((summary): summary is HTMLElement => {
+      return summary instanceof HTMLElement;
+    });
+
+  return [...new Set(summaries)];
+}
+
+function thinkingContent(text: string): HTMLElement {
+  const content = screen.getAllByText(text).find((candidate) => {
+    return candidate.closest("summary") === null;
+  });
+  if (!content) {
+    throw new Error(`Expanded thinking copy was not rendered: ${text}`);
+  }
+  return content;
+}
+
+function expectBefore(before: HTMLElement, after: HTMLElement): void {
+  expect(
+    before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+}
 
 describe("chat thinking blocks", () => {
   it("keeps thinking events in transcript order with independent open states", async () => {
@@ -70,79 +99,33 @@ describe("chat thinking blocks", () => {
     const messageTwo = screen.getByText(
       "The strongest split is second-workflow activation.",
     );
-    const thinkingBlocks = await waitFor(() => {
-      const blocks = document.querySelectorAll<HTMLDetailsElement>(
-        "[data-thinking-block]",
-      );
-      expect(blocks).toHaveLength(2);
-      return blocks;
-    });
-
-    const firstThinking = thinkingBlocks[0];
-    const secondThinking = thinkingBlocks[1];
-    if (!firstThinking || !secondThinking) {
-      throw new Error("Thinking blocks were not rendered");
-    }
-    expect(
-      firstThinking.compareDocumentPosition(messageOne) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(
-      messageOne.compareDocumentPosition(messageTwo) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(
-      messageTwo.compareDocumentPosition(secondThinking) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-
-    expect(firstThinking.open).toBeFalsy();
-    expect(secondThinking.open).toBeTruthy();
-    const firstSummary = firstThinking.querySelector("summary");
-    const secondSummary = secondThinking.querySelector("summary");
+    const summaries = thinkingSummaries();
+    expect(summaries).toHaveLength(2);
+    const firstSummary = summaries[0];
+    const secondSummary = summaries[1];
     if (!firstSummary || !secondSummary) {
       throw new Error("Thinking block summaries were not rendered");
     }
-    const firstContent = firstThinking.querySelector(
-      "[data-thinking-block-content]",
+    const firstContent = thinkingContent(
+      "Comparing retained and churned trial cohorts.",
     );
-    expect(firstThinking.parentElement).toHaveClass("-mx-2");
-    expect(firstSummary).toHaveClass(
-      "inline-flex",
-      "px-2",
-      "hover:bg-state-hover",
+    const secondContent = thinkingContent(
+      "Checking whether collaboration changes the result.",
     );
-    expect(firstSummary).not.toHaveClass("w-full", "group-open:bg-muted/50");
-    const firstIcon = firstSummary.querySelector("[data-thinking-block-icon]");
-    const secondIcon = secondSummary.querySelector(
-      "[data-thinking-block-icon]",
-    );
-    expect(firstIcon).toHaveClass(
-      "inline-flex",
-      "size-3.5",
-      "items-center",
-      "justify-center",
-    );
-    expect(firstIcon?.querySelector("svg")).toHaveClass("-translate-y-px");
-    expect(secondIcon).toHaveClass(
-      "inline-flex",
-      "size-3.5",
-      "items-center",
-      "justify-center",
-    );
-    expect(firstContent).toHaveClass(
-      "text-muted-foreground/80",
-      "[&_.wmde-markdown]:!text-muted-foreground/80",
-    );
-    expect(firstContent).not.toHaveClass("bg-muted/50");
+
+    expectBefore(firstSummary, messageOne);
+    expectBefore(messageOne, messageTwo);
+    expectBefore(messageTwo, secondSummary);
+    expect(firstContent).not.toBeVisible();
+    expect(secondContent).toBeVisible();
 
     await user.click(firstSummary);
-    expect(firstThinking.open).toBeTruthy();
-    expect(secondThinking.open).toBeTruthy();
+    expect(firstContent).toBeVisible();
+    expect(secondContent).toBeVisible();
 
     await user.click(secondSummary);
-    expect(firstThinking.open).toBeTruthy();
-    expect(secondThinking.open).toBeFalsy();
+    expect(firstContent).toBeVisible();
+    expect(secondContent).not.toBeVisible();
   });
 
   it("folds completed thinking and intermediate messages behind the final result", async () => {
@@ -218,19 +201,20 @@ describe("chat thinking blocks", () => {
     expect(
       screen.queryByText("The enterprise cohort leads the increase."),
     ).toBeNull();
-    expect(document.querySelectorAll("[data-thinking-block]")).toHaveLength(0);
+    expect(
+      screen.queryByText("Comparing expansion by customer cohort."),
+    ).toBeNull();
+    expect(
+      screen.queryByText("Checking whether seat growth explains the result."),
+    ).toBeNull();
 
     await user.click(expandButton);
+    await screen.findAllByText("Comparing expansion by customer cohort.");
 
-    const thinkingBlocks = await waitFor(() => {
-      const blocks = document.querySelectorAll<HTMLDetailsElement>(
-        "[data-thinking-block]",
-      );
-      expect(blocks).toHaveLength(2);
-      return blocks;
-    });
-    const firstThinking = thinkingBlocks[0];
-    const secondThinking = thinkingBlocks[1];
+    const summaries = thinkingSummaries();
+    expect(summaries).toHaveLength(2);
+    const firstSummary = summaries[0];
+    const secondSummary = summaries[1];
     const messageOne = screen.getByText("I loaded the expansion records.");
     const messageTwo = screen.getByText(
       "The enterprise cohort leads the increase.",
@@ -238,40 +222,30 @@ describe("chat thinking blocks", () => {
     const result = screen.getByText(
       "Expansion revenue grew 18%, led by enterprise accounts.",
     );
-    if (!firstThinking || !secondThinking) {
-      throw new Error("Completed thinking blocks were not rendered");
-    }
-    expect(
-      firstThinking.compareDocumentPosition(messageOne) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(
-      messageOne.compareDocumentPosition(messageTwo) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(
-      messageTwo.compareDocumentPosition(secondThinking) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(
-      secondThinking.compareDocumentPosition(result) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(firstThinking.open).toBeFalsy();
-    expect(secondThinking.open).toBeFalsy();
-
-    const firstSummary = firstThinking.querySelector("summary");
-    const secondSummary = secondThinking.querySelector("summary");
     if (!firstSummary || !secondSummary) {
       throw new Error("Completed thinking summaries were not rendered");
     }
+    const firstContent = thinkingContent(
+      "Comparing expansion by customer cohort.",
+    );
+    const secondContent = thinkingContent(
+      "Checking whether seat growth explains the result.",
+    );
+
+    expectBefore(firstSummary, messageOne);
+    expectBefore(messageOne, messageTwo);
+    expectBefore(messageTwo, secondSummary);
+    expectBefore(secondSummary, result);
+    expect(firstContent).not.toBeVisible();
+    expect(secondContent).not.toBeVisible();
+
     await user.click(firstSummary);
-    expect(firstThinking.open).toBeTruthy();
-    expect(secondThinking.open).toBeFalsy();
+    expect(firstContent).toBeVisible();
+    expect(secondContent).not.toBeVisible();
 
     await user.click(secondSummary);
-    expect(firstThinking.open).toBeTruthy();
-    expect(secondThinking.open).toBeTruthy();
+    expect(firstContent).toBeVisible();
+    expect(secondContent).toBeVisible();
   });
 
   it("keeps thinking events on the legacy presentation while the switch is off", async () => {
@@ -315,9 +289,57 @@ describe("chat thinking blocks", () => {
     });
 
     await screen.findByText("Here is the account summary.");
-    expect(document.querySelector("[data-thinking-block]")).toBeNull();
     expect(
       screen.queryByText("This thought stays out of the transcript."),
     ).toBeNull();
+  });
+
+  it("keeps completed thinking history on the legacy presentation while the switch is off", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000214";
+    const runId = "run-completed-legacy-thinking-presentation";
+    mockChatLifecycle(context, {
+      threadId,
+      chatEvents: [
+        {
+          id: "msg-completed-legacy-thinking-user",
+          role: "user",
+          content: "Summarize the legacy account",
+          runId,
+          createdAt: "2026-08-18T10:00:00Z",
+        },
+        {
+          id: "msg-completed-legacy-thinking-marker",
+          role: "assistant",
+          content: null,
+          thinking: "This completed thought stays out of the transcript.",
+          runId,
+          createdAt: "2026-08-18T10:00:01Z",
+        },
+        {
+          id: "msg-completed-legacy-thinking-result",
+          role: "assistant",
+          content: "Here is the completed legacy account summary.",
+          runId,
+          runLifecycleEvent: "completed",
+          createdAt: "2026-08-18T10:00:05Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatInlineThinkingBlocks]: false,
+      },
+    });
+
+    await screen.findByText("Here is the completed legacy account summary.");
+    expect(screen.getByText("Summarize the legacy account")).toBeVisible();
+    expect(
+      screen.queryByText("This completed thought stays out of the transcript."),
+    ).toBeNull();
+    expect(screen.queryByLabelText("Expand work history")).toBeNull();
+    expect(screen.queryByText("Worked for 5s")).toBeNull();
   });
 });

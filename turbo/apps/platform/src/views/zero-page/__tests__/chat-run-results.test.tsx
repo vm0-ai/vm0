@@ -1645,7 +1645,7 @@ describe("chat lifecycle", () => {
         screen.getByText("Summarize the launch status"),
       ).toBeInTheDocument();
       expect(screen.getByText("Launch status is ready.")).toBeInTheDocument();
-      expect(document.querySelector("[data-thinking-block]")).toBeNull();
+      expect(screen.queryByText("Reviewing launch context")).toBeNull();
       expect(screen.getByLabelText("Expand work history")).toHaveTextContent(
         "Worked for 5s",
       );
@@ -1654,9 +1654,15 @@ describe("chat lifecycle", () => {
     click(screen.getByLabelText("Expand work history"));
 
     await waitFor(() => {
-      expect(document.querySelector("[data-thinking-block]")).toHaveTextContent(
-        "Reviewing launch context",
-      );
+      const thinkingSummary = screen
+        .getAllByText("Reviewing launch context")
+        .map((candidate) => {
+          return candidate.closest("summary");
+        })
+        .find((summary): summary is HTMLElement => {
+          return summary instanceof HTMLElement;
+        });
+      expect(thinkingSummary).toBeVisible();
     });
   });
 
