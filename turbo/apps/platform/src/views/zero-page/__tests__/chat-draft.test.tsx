@@ -11,7 +11,7 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { agentDraftContract } from "@okouai/api-contracts/contracts/agent-draft";
 import { zeroAgentsByIdContract } from "@okouai/api-contracts/contracts/zero-agents";
-import { zeroRunsQueueContract } from "@okouai/api-contracts/contracts/zero-runs";
+import { runsQueueContract } from "@okouai/api-contracts/contracts/run-routes";
 import { zeroTeamContract } from "@okouai/api-contracts/contracts/zero-team";
 import { zeroWorkflowsCollectionContract } from "@okouai/api-contracts/contracts/zero-workflows";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -269,7 +269,7 @@ describe("chat drafts", () => {
         ],
       });
     });
-    context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {
+    context.mocks.api(runsQueueContract.getQueue, ({ respond }) => {
       return respond(200, {
         concurrency: {
           tier: "pro",

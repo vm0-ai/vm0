@@ -10,7 +10,7 @@ import {
   zeroBillingStatusContract,
   type BillingStatusResponse,
 } from "@okouai/api-contracts/contracts/zero-billing";
-import { zeroRunsQueueContract } from "@okouai/api-contracts/contracts/zero-runs";
+import { runsQueueContract } from "@okouai/api-contracts/contracts/run-routes";
 import type {
   ConcurrencyInfo,
   QueueEntry,
@@ -233,7 +233,7 @@ async function openDrawer(memberUsageEnabled = false): Promise<void> {
 
 describe("queue drawer", () => {
   it("shows active slot usage grouped by member", async () => {
-    context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {
+    context.mocks.api(runsQueueContract.getQueue, ({ respond }) => {
       return respond(
         200,
         queueResponse({ concurrency: concurrencyWithMemberUsage() }),
@@ -258,7 +258,7 @@ describe("queue drawer", () => {
   });
 
   it("keeps the existing availability summary when member usage is disabled", async () => {
-    context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {
+    context.mocks.api(runsQueueContract.getQueue, ({ respond }) => {
       return respond(
         200,
         queueResponse({ concurrency: concurrencyWithMemberUsage() }),
@@ -275,7 +275,7 @@ describe("queue drawer", () => {
   });
 
   it("shows the free tier limit and upgrade path", async () => {
-    context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {
+    context.mocks.api(runsQueueContract.getQueue, ({ respond }) => {
       return respond(
         200,
         queueResponse({
@@ -303,7 +303,7 @@ describe("queue drawer", () => {
   });
 
   it("shows the Team upgrade path for Pro tier", async () => {
-    context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {
+    context.mocks.api(runsQueueContract.getQueue, ({ respond }) => {
       return respond(
         200,
         queueResponse({
@@ -328,7 +328,7 @@ describe("queue drawer", () => {
 
   it("shows additional concurrency checkout for Team admins", async () => {
     mockConcurrencyCapability(true);
-    context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {
+    context.mocks.api(runsQueueContract.getQueue, ({ respond }) => {
       return respond(
         200,
         queueResponse({
@@ -358,7 +358,7 @@ describe("queue drawer", () => {
   it("refreshes the concurrency limit when billing changes in realtime", async () => {
     let concurrencyLimit = 5;
     mockConcurrencyCapability(true);
-    context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {
+    context.mocks.api(runsQueueContract.getQueue, ({ respond }) => {
       return respond(
         200,
         queueResponse({
@@ -393,7 +393,7 @@ describe("queue drawer", () => {
 
   it("shows additional concurrency checkout for Custom admins without plan upgrade", async () => {
     mockConcurrencyCapability(true);
-    context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {
+    context.mocks.api(runsQueueContract.getQueue, ({ respond }) => {
       return respond(
         200,
         queueResponse({
@@ -430,7 +430,7 @@ describe("queue drawer", () => {
       name: "Test Org",
       role: "admin",
     });
-    context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {
+    context.mocks.api(runsQueueContract.getQueue, ({ respond }) => {
       return respond(
         200,
         queueResponse({
@@ -541,7 +541,7 @@ describe("queue drawer", () => {
       name: "Test Org",
       role: "admin",
     });
-    context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {
+    context.mocks.api(runsQueueContract.getQueue, ({ respond }) => {
       return respond(
         200,
         queueResponse({
@@ -653,7 +653,7 @@ describe("queue drawer", () => {
       name: "Test Org",
       role: "admin",
     });
-    context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {
+    context.mocks.api(runsQueueContract.getQueue, ({ respond }) => {
       return respond(
         200,
         queueResponse({
@@ -699,7 +699,7 @@ describe("queue drawer", () => {
       role: "admin",
     });
     mockConcurrencyCapability(false);
-    context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {
+    context.mocks.api(runsQueueContract.getQueue, ({ respond }) => {
       return respond(
         200,
         queueResponse({
@@ -733,7 +733,7 @@ describe("queue drawer", () => {
       name: "Test Org",
       role: "member",
     });
-    context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {
+    context.mocks.api(runsQueueContract.getQueue, ({ respond }) => {
       return respond(
         200,
         queueResponse({
@@ -764,7 +764,7 @@ describe("queue drawer", () => {
       name: "Test Org",
       role: "member",
     });
-    context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {
+    context.mocks.api(runsQueueContract.getQueue, ({ respond }) => {
       return respond(
         200,
         queueResponse({

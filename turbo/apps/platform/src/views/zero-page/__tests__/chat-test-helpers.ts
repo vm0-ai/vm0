@@ -18,9 +18,9 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { logsByIdContract } from "@okouai/api-contracts/contracts/logs";
 import {
-  zeroRunsCancelContract,
-  zeroRunsByIdContract,
-} from "@okouai/api-contracts/contracts/zero-runs";
+  runsCancelContract,
+  runsByIdContract,
+} from "@okouai/api-contracts/contracts/run-routes";
 import { zeroComputerUseHostsContract } from "@okouai/api-contracts/contracts/zero-computer-use";
 import { queuePositionContract } from "@okouai/api-contracts/contracts/queue-position";
 import type { RunStatus } from "@okouai/api-contracts/contracts/runs";
@@ -835,14 +835,14 @@ export function mockChatLifecycle(
       artifact: { name: null, version: null },
     });
   });
-  context.mocks.api(zeroRunsCancelContract.cancel, ({ respond }) => {
+  context.mocks.api(runsCancelContract.cancel, ({ respond }) => {
     return respond(200, {
       id: "a0000000-0000-4000-a000-000000000001",
       status: "cancelled",
       message: "Run cancelled",
     });
   });
-  context.mocks.api(zeroRunsByIdContract.getById, ({ respond }) => {
+  context.mocks.api(runsByIdContract.getById, ({ respond }) => {
     return respond(200, {
       runId: "a0000000-0000-4000-a000-000000000001",
       agentComposeVersionId: null,

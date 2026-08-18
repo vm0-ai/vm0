@@ -1,4 +1,4 @@
-import type { RunContextResponse } from "@okouai/api-contracts/contracts/zero-runs";
+import type { RunContextResponse } from "@okouai/api-contracts/contracts/run-routes";
 import {
   executionFirewallBuiltinEntrySchema,
   executionFirewallInlineEntrySchema,

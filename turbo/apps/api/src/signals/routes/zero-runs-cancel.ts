@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroRunsCancelContract } from "@okouai/api-contracts/contracts/zero-runs";
+import { runsCancelContract } from "@okouai/api-contracts/contracts/run-routes";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -24,7 +24,7 @@ function isCancelResult(value: NonNullable<unknown>): value is CancelRunResult {
 
 const cancelInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(zeroRunsCancelContract.cancel));
+  const params = get(pathParamsOf(runsCancelContract.cancel));
   const apiStartTime = get(apiStartTime$);
   signal.throwIfAborted();
 
@@ -75,7 +75,7 @@ const cancelInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 export const zeroRunsCancelRoutes: readonly RouteEntry[] = [
   {
-    route: zeroRunsCancelContract.cancel,
+    route: runsCancelContract.cancel,
     handler: authRoute(
       {
         requireOrganization: true,

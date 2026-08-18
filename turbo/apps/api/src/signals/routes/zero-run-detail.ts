@@ -1,9 +1,9 @@
 import { computed } from "ccstate";
 import {
-  zeroRunAgentEventsContract,
-  zeroRunContextContract,
-  zeroRunNetworkLogsContract,
-} from "@okouai/api-contracts/contracts/zero-runs";
+  runAgentEventsContract,
+  runContextContract,
+  runNetworkLogsContract,
+} from "@okouai/api-contracts/contracts/run-routes";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -26,7 +26,7 @@ const runNotFound = notFound("Agent run not found");
 
 const getContextInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(zeroRunContextContract.getContext));
+  const params = get(pathParamsOf(runContextContract.getContext));
   const result = await get(runContext(params.id, auth.userId, auth.orgId));
   if (result.kind === "not-found") {
     return runNotFound;
@@ -39,8 +39,8 @@ const getContextInner$ = computed(async (get) => {
 
 const getNetworkLogsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(zeroRunNetworkLogsContract.getNetworkLogs));
-  const query = get(queryOf(zeroRunNetworkLogsContract.getNetworkLogs));
+  const params = get(pathParamsOf(runNetworkLogsContract.getNetworkLogs));
+  const query = get(queryOf(runNetworkLogsContract.getNetworkLogs));
   const result = await get(
     runNetworkLogs({
       runId: params.id,
@@ -61,8 +61,8 @@ const getNetworkLogsInner$ = computed(async (get) => {
 
 const getAgentEventsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(zeroRunAgentEventsContract.getAgentEvents));
-  const query = get(queryOf(zeroRunAgentEventsContract.getAgentEvents));
+  const params = get(pathParamsOf(runAgentEventsContract.getAgentEvents));
+  const query = get(queryOf(runAgentEventsContract.getAgentEvents));
   const result = await get(
     runAgentEvents({
       runId: params.id,
@@ -83,15 +83,15 @@ const getAgentEventsInner$ = computed(async (get) => {
 
 export const zeroRunDetailRoutes: readonly RouteEntry[] = [
   {
-    route: zeroRunContextContract.getContext,
+    route: runContextContract.getContext,
     handler: authRoute(runReadAuth, getContextInner$),
   },
   {
-    route: zeroRunNetworkLogsContract.getNetworkLogs,
+    route: runNetworkLogsContract.getNetworkLogs,
     handler: authRoute(runReadAuth, getNetworkLogsInner$),
   },
   {
-    route: zeroRunAgentEventsContract.getAgentEvents,
+    route: runAgentEventsContract.getAgentEvents,
     handler: authRoute(runReadAuth, getAgentEventsInner$),
   },
 ];

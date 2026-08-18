@@ -1,6 +1,6 @@
 import { PLAN_UPGRADE_CLI_HINT } from "@okouai/api-contracts/contracts/errors";
 import { CANONICAL_WORKING_DIR } from "@okouai/api-contracts/contracts/runners";
-import { zeroRunCreateBodySchema } from "@okouai/api-contracts/contracts/zero-runs";
+import { runCreateBodySchema } from "@okouai/api-contracts/contracts/run-routes";
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
@@ -73,7 +73,7 @@ import {
   type WebChatSessionPromptContext,
 } from "./web-chat-session-prompt.service";
 
-type ZeroRunCreateBody = z.infer<typeof zeroRunCreateBodySchema>;
+type ZeroRunCreateBody = z.infer<typeof runCreateBodySchema>;
 type ZeroRunOrigin = "zero_run" | "workflow_automation" | "goal_continuation";
 export type ZeroPreCreateSource =
   | "chat_callback_auto_send"
