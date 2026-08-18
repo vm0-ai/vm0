@@ -27,9 +27,19 @@ teardown() {
 
     local prompt
     prompt=$(cat <<'EOF'
+set -euo pipefail
 printf 'SERPAPI_TOKEN=%s\n' "$SERPAPI_TOKEN"
-curl --silent --show-error --max-time 5 --output /dev/null 'https://serpapi.com/search?q=vm0-e2e&engine=google' || true
-printf 'SERPAPI_REQUEST_SENT\n'
+# Raw DNS has dedicated runner coverage. Keep this firewall-auth probe on IPv4
+# so an unavailable AAAA response cannot block an otherwise valid request.
+if curl --ipv4 --silent --show-error --max-time 5 \
+    --output /dev/null \
+    'https://serpapi.com/search?q=vm0-e2e&engine=google'; then
+    printf 'SERPAPI_REQUEST_SENT\n'
+else
+    curl_status=$?
+    printf 'SERPAPI_REQUEST_FAILED=%s\n' "$curl_status"
+    exit "$curl_status"
+fi
 EOF
 )
     run runner_e2e_start_chat_run "$AGENT_ID" "$prompt"
@@ -42,9 +52,12 @@ EOF
     echo "$output"
     assert_success
 
-    run runner_e2e_wait_for_chat_text "$THREAD_ID" "$RUN_ID" SERPAPI_REQUEST_SENT
+    # Both outcomes use this prefix so a transport failure surfaces without
+    # waiting for a success marker that can no longer be emitted.
+    run runner_e2e_wait_for_chat_text "$THREAD_ID" "$RUN_ID" SERPAPI_REQUEST_
     echo "$output"
     assert_success
+    assert_output --partial "SERPAPI_REQUEST_SENT"
     assert_output --partial "SERPAPI_TOKEN=CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCof"
 
     run runner_e2e_wait_for_firewall_log \
