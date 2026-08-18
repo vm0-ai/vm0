@@ -379,9 +379,12 @@ async function validateConnectorRows(
 
 async function validateOldWriterCompatibility(
   client: Client,
-  builtInConnectorId: string,
+  fixture: Awaited<ReturnType<typeof seedPreExpansionState>>,
 ): Promise<string> {
-  const existing = await client.query<{ id: string; isDefault: boolean }>(
+  const existingBuiltIn = await client.query<{
+    id: string;
+    isDefault: boolean;
+  }>(
     `
       INSERT INTO "connectors" (
         "id", "connector_slug", "auth_method", "storage_version", "user_id", "org_id"
@@ -399,8 +402,34 @@ async function validateOldWriterCompatibility(
       RETURNING "id", "is_default" AS "isDefault"
     `,
   );
-  assert.deepEqual(existing.rows, [
-    { id: builtInConnectorId, isDefault: true },
+  assert.deepEqual(existingBuiltIn.rows, [
+    { id: fixture.builtInConnectorId, isDefault: true },
+  ]);
+
+  const existingCustom = await client.query<{
+    id: string;
+    isDefault: boolean;
+  }>(
+    `
+      INSERT INTO "connectors" (
+        "id", "custom_connector_id", "auth_method", "storage_version", "user_id", "org_id"
+      ) VALUES (
+        '00000000-0000-4000-8000-000000276880',
+        $1,
+        'manual',
+        2,
+        'user_connector_account_expansion',
+        'org_connector_account_expansion'
+      )
+      ON CONFLICT ("org_id", "user_id", "custom_connector_id")
+        WHERE "custom_connector_id" IS NOT NULL
+      DO UPDATE SET "storage_version" = excluded."storage_version"
+      RETURNING "id", "is_default" AS "isDefault"
+    `,
+    [fixture.customHttpDefinitionId],
+  );
+  assert.deepEqual(existingCustom.rows, [
+    { id: fixture.customHttpConnectorId, isDefault: true },
   ]);
 
   const newConnectorId = "00000000-0000-4000-8000-000000276878";
@@ -696,7 +725,7 @@ export async function validateConnectorAccountExpansion(): Promise<void> {
     );
 
     await validateConnectorRows(client, fixture);
-    await validateOldWriterCompatibility(client, fixture.builtInConnectorId);
+    await validateOldWriterCompatibility(client, fixture);
     await validateCatalog(client);
     await validateSelections(client, fixture);
     await validateFeishuLinks(client, fixture);
