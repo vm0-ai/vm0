@@ -309,7 +309,7 @@ export function PinnedAgentListSection({
         </span>
         <div
           ref={cachePinnedAgentGridRowsRef}
-          className="grid min-w-0 grid-cols-4 items-start gap-1 pb-1"
+          className="grid min-w-0 grid-cols-5 items-start gap-1 pb-1"
           data-testid="pinned-agents-grid"
         >
           {pinnedAgentCards.slice(0, 3)}

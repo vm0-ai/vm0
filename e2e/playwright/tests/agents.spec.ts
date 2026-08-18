@@ -100,7 +100,7 @@ test("navigate to agents page and verify heading", async ({ page }) => {
   });
 });
 
-test("pinned agents use four equal columns without horizontal overflow", async ({
+test("pinned agents use five equal columns without horizontal overflow", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -146,6 +146,7 @@ test("pinned agents use four equal columns without horizontal overflow", async (
         cards.nth(1).boundingBox(),
         cards.nth(2).boundingBox(),
         newAgent.boundingBox(),
+        cards.nth(3).boundingBox(),
       ]);
       if (boxes.some((box) => box === null)) {
         return Number.POSITIVE_INFINITY;
@@ -162,6 +163,7 @@ test("pinned agents use four equal columns without horizontal overflow", async (
         cards.nth(1).boundingBox(),
         cards.nth(2).boundingBox(),
         newAgent.boundingBox(),
+        cards.nth(3).boundingBox(),
       ]);
       if (boxes.some((box) => box === null)) {
         return 0;
@@ -170,6 +172,7 @@ test("pinned agents use four equal columns without horizontal overflow", async (
         boxes[1]!.x - boxes[0]!.x,
         boxes[2]!.x - boxes[1]!.x,
         boxes[3]!.x - boxes[2]!.x,
+        boxes[4]!.x - boxes[3]!.x,
       );
     })
     .toBeGreaterThan(1);
@@ -193,42 +196,16 @@ test("pinned agents use four equal columns without horizontal overflow", async (
 
   await expect
     .poll(async () => {
-      const [gridBox, newAgentBox] = await Promise.all([
+      const [gridBox, lastAgentBox] = await Promise.all([
         grid.boundingBox(),
-        newAgent.boundingBox(),
+        cards.nth(3).boundingBox(),
       ]);
-      if (!gridBox || !newAgentBox) {
+      if (!gridBox || !lastAgentBox) {
         return Number.POSITIVE_INFINITY;
       }
       return Math.abs(
-        newAgentBox.x + newAgentBox.width - (gridBox.x + gridBox.width),
+        lastAgentBox.x + lastAgentBox.width - (gridBox.x + gridBox.width),
       );
-    })
-    .toBeLessThan(2);
-
-  await expect
-    .poll(async () => {
-      const [firstCardBox, wrappedCardBox] = await Promise.all([
-        cards.nth(0).boundingBox(),
-        cards.nth(3).boundingBox(),
-      ]);
-      if (!firstCardBox || !wrappedCardBox) {
-        return 0;
-      }
-      return wrappedCardBox.y - firstCardBox.y;
-    })
-    .toBeGreaterThan(1);
-
-  await expect
-    .poll(async () => {
-      const [firstCardBox, wrappedCardBox] = await Promise.all([
-        cards.nth(0).boundingBox(),
-        cards.nth(3).boundingBox(),
-      ]);
-      if (!firstCardBox || !wrappedCardBox) {
-        return Number.POSITIVE_INFINITY;
-      }
-      return Math.abs(wrappedCardBox.x - firstCardBox.x);
     })
     .toBeLessThan(2);
 

@@ -2956,7 +2956,7 @@ describe("zero sidebar", () => {
 
     const grid = await screen.findByTestId("pinned-agents-grid");
     expect(within(grid).getAllByTestId("pinned-agent-skeleton")).toHaveLength(
-      7,
+      4,
     );
 
     preferencesGate.resolve();
