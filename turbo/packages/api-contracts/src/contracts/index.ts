@@ -1737,10 +1737,10 @@ export {
   PRESENTATION_TEMPLATE_PAGE_CONTENT_TYPE,
   PRESENTATION_TEMPLATE_SOURCE_CONTENT_TYPE,
   presentationTemplateStatusSchema,
-  zeroPresentationTemplatesContract,
+  presentationTemplatesContract,
   type PresentationTemplateSummary,
-  type ZeroPresentationTemplatesContract,
-} from "./zero-presentation-templates";
+  type PresentationTemplatesContract,
+} from "./presentation-templates";
 export {
   goalsContract,
   goalCreateRequestSchema,
