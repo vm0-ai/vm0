@@ -2821,7 +2821,16 @@ describe("zero sidebar", () => {
     // The middle list column owns the chat header and pinned agents.
     const list = screen.getByTestId("chat-list-column");
     expect(within(list).getByText("Chat")).toBeInTheDocument();
-    expect(within(list).getByLabelText("New chat")).toBeInTheDocument();
+    const searchButton = within(list).getByLabelText("Search conversations");
+    const newChatButton = within(list).getByLabelText("New chat");
+    expect(searchButton.querySelector("svg")).toHaveClass(
+      "text-muted-foreground",
+      "opacity-70",
+    );
+    expect(newChatButton.querySelector("svg")).toHaveClass(
+      "text-muted-foreground",
+      "opacity-70",
+    );
     expect(
       within(list).getByTestId("pinned-agents-horizontal"),
     ).toBeInTheDocument();
