@@ -10,8 +10,8 @@ import {
   disconnectTeamsConnection$,
   publishTeamsChanged$,
   uninstallTeamsInstallation$,
-  zeroTeamsConnectStatus,
-} from "../services/zero-teams-connect.service";
+  teamsConnectStatus,
+} from "../services/teams-connect.service";
 import type { RouteEntry } from "../route-entry";
 
 function errorResponse(
@@ -31,7 +31,7 @@ const getTeamsConnectStatusInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const publicBrand = get(publicBrand$);
   const body = await get(
-    zeroTeamsConnectStatus({
+    teamsConnectStatus({
       orgId: auth.orgId,
       userId: auth.userId,
       isAdmin: "orgRole" in auth && auth.orgRole === "admin",
