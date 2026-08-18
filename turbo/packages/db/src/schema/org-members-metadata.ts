@@ -31,6 +31,14 @@ export const orgMembersMetadata = pgTable(
     morningBriefEnabled: boolean("morning_brief_enabled")
       .notNull()
       .default(false),
+    /**
+     * Weekly product update delivered into Web Chat. Opt-out, unlike the
+     * Morning Brief: it is a low-frequency product announcement, so the
+     * default is on and the rollout is staged by feature switch instead.
+     */
+    weeklyProductUpdateEnabled: boolean("weekly_product_update_enabled")
+      .notNull()
+      .default(true),
     selectedModel: varchar("selected_model", { length: 255 }),
     serviceTier: varchar("service_tier", {
       length: 32,

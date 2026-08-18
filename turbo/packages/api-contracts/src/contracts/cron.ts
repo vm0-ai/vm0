@@ -237,6 +237,13 @@ const cronExecuteMorningBriefsResponseSchema = z.object({
   skipped: z.number(),
 });
 
+const cronExecuteWeeklyProductUpdatesResponseSchema = z.object({
+  success: z.literal(true),
+  claimed: z.number(),
+  delivered: z.number(),
+  skipped: z.number(),
+});
+
 const cronRenewGmailWatchesResponseSchema = z.object({
   success: z.literal(true),
   renewed: z.number(),
@@ -570,6 +577,19 @@ export const cronExecuteMorningBriefsContract = c.router({
       401: apiErrorSchema,
     },
     summary: "Execute due morning briefs",
+  },
+});
+
+export const cronExecuteWeeklyProductUpdatesContract = c.router({
+  execute: {
+    method: "GET",
+    path: "/api/cron/execute-weekly-product-updates",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronExecuteWeeklyProductUpdatesResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Claim sent weekly update broadcasts and fan them out to Web Chat",
   },
 });
 

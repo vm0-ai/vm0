@@ -214,6 +214,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.WeeklyProductUpdate]: {
+    maintainer: "ming@vm0.ai",
+    description:
+      "Deliver the weekly product update into Web Chat when its newsletter broadcast is sent.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ManualMorningBrief]: {
     maintainer: "ethan@vm0.ai",
     description:

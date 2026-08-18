@@ -110,6 +110,8 @@ export function userPreferences({
         pinnedAgentIds: orgMembersMetadata.pinnedAgentIds,
         sendMode: orgMembersMetadata.sendMode,
         morningBriefEnabled: orgMembersMetadata.morningBriefEnabled,
+        weeklyProductUpdateEnabled:
+          orgMembersMetadata.weeklyProductUpdateEnabled,
         captureNetworkBodiesRemaining:
           orgMembersMetadata.captureNetworkBodiesRemaining,
       })
@@ -131,6 +133,7 @@ export function userPreferences({
         sendMode: "enter",
         morningBriefEnabled: false,
         morningBriefNextRunAt: null,
+        weeklyProductUpdateEnabled: true,
         captureNetworkBodiesRemaining: 0,
       };
     }
@@ -145,6 +148,7 @@ export function userPreferences({
       sendMode: parseSendMode(row.sendMode),
       morningBriefEnabled: row.morningBriefEnabled,
       morningBriefNextRunAt: await loadMorningBriefNextRunAt(db, orgId, userId),
+      weeklyProductUpdateEnabled: row.weeklyProductUpdateEnabled,
       captureNetworkBodiesRemaining: row.captureNetworkBodiesRemaining ?? 0,
     };
   });
@@ -254,6 +258,10 @@ export const updateUserPreferences$ = command(
         preferences.morningBriefEnabled !== undefined
           ? preferences.morningBriefEnabled
           : existing.morningBriefEnabled,
+      weeklyProductUpdateEnabled:
+        preferences.weeklyProductUpdateEnabled !== undefined
+          ? preferences.weeklyProductUpdateEnabled
+          : existing.weeklyProductUpdateEnabled,
       captureNetworkBodiesRemaining:
         preferences.captureNetworkBodiesRemaining !== undefined
           ? preferences.captureNetworkBodiesRemaining
@@ -272,6 +280,7 @@ export const updateUserPreferences$ = command(
         pinnedAgentIds: merged.pinnedAgentIds,
         sendMode: merged.sendMode,
         morningBriefEnabled: merged.morningBriefEnabled,
+        weeklyProductUpdateEnabled: merged.weeklyProductUpdateEnabled,
         captureNetworkBodiesRemaining: merged.captureNetworkBodiesRemaining,
         createdAt: updatedAt,
         updatedAt,
@@ -293,6 +302,9 @@ export const updateUserPreferences$ = command(
           }),
           ...(preferences.morningBriefEnabled !== undefined && {
             morningBriefEnabled: preferences.morningBriefEnabled,
+          }),
+          ...(preferences.weeklyProductUpdateEnabled !== undefined && {
+            weeklyProductUpdateEnabled: preferences.weeklyProductUpdateEnabled,
           }),
           ...(preferences.captureNetworkBodiesRemaining !== undefined && {
             captureNetworkBodiesRemaining:

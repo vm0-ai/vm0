@@ -5,6 +5,8 @@ import { emailSuppressions } from "@okouai/db/schema/email-suppression";
 import { request$ } from "../context/hono";
 import { clerk$ } from "../external/clerk";
 import { writeDb$ } from "../external/db";
+import { waitUntil } from "../context/wait-until";
+import { logger } from "../../lib/log";
 import type { RouteEntry } from "../route-entry";
 import {
   getSvixHeaders,
@@ -12,13 +14,17 @@ import {
   unsubscribeUser,
   verifyResendWebhook,
 } from "../services/zero-email-common.service";
-import { safeSync } from "../utils";
+import { ingestWeeklyProductUpdateBroadcast$ } from "../services/weekly-product-update.service";
+import { safeSync, tapError } from "../utils";
+
+const L = logger("EmailInboundRoute");
 
 interface WebhookEvent {
   readonly type?: string;
   readonly data?: {
     readonly to?: readonly string[];
     readonly email_id?: string;
+    readonly broadcast_id?: string;
   };
 }
 
@@ -115,6 +121,21 @@ const handleInboundRoute$ = command(
     } else if (event.type === "email.complained") {
       await set(handleComplaint$, event, signal);
       signal.throwIfAborted();
+    } else if (event.type === "email.sent" && event.data?.broadcast_id) {
+      // A broadcast emits one `email.sent` per recipient. The claim inside the
+      // command keeps only the first, so the rest cost a single indexed insert.
+      const broadcastId = event.data.broadcast_id;
+      waitUntil(
+        tapError(
+          set(ingestWeeklyProductUpdateBroadcast$, broadcastId, signal),
+          (error) => {
+            L.error("weekly product update ingest failed", {
+              broadcastId,
+              error,
+            });
+          },
+        ),
+      );
     }
 
     // The Agent Email Channel is retired. Resend still sends delivery events

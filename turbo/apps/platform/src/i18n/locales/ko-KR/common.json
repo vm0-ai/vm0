@@ -4454,6 +4454,13 @@
           "utc": "UTC",
           "vancouver": "밴쿠버 (PT)"
         }
+      },
+      "updates": {
+        "sectionTitle": "업데이트"
+      },
+      "weeklyProductUpdate": {
+        "description": "뉴스레터가 발송되면 주간 제품 업데이트를 웹 채팅에서 받아 봅니다",
+        "title": "주간 제품 업데이트"
       }
     },
     "shared": {

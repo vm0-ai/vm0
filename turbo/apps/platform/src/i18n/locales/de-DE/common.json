@@ -4455,6 +4455,13 @@
           "utc": "UTC",
           "vancouver": "Vancouver (PT)"
         }
+      },
+      "updates": {
+        "sectionTitle": "Updates"
+      },
+      "weeklyProductUpdate": {
+        "description": "Erhalte das wöchentliche Produkt-Update im Web-Chat, sobald der Newsletter verschickt wird",
+        "title": "Wöchentliches Produkt-Update"
       }
     },
     "shared": {

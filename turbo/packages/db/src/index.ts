@@ -95,6 +95,7 @@ import * as runUploadedFileSchema from "./schema/run-uploaded-file";
 import * as vm0ApiKeySchema from "./schema/vm0-api-key";
 import * as workflowSchema from "./schema/workflow";
 import * as morningBriefSchema from "./schema/morning-brief";
+import * as weeklyProductUpdateSchema from "./schema/weekly-product-update";
 import * as computerUseHostSchema from "./schema/computer-use-host";
 import * as userFeatureSwitchesSchema from "./schema/user-feature-switches";
 import * as userBehaviorCountSchema from "./schema/user-behavior-count";
@@ -224,6 +225,7 @@ export const schema = {
   ...vm0ApiKeySchema,
   ...workflowSchema,
   ...morningBriefSchema,
+  ...weeklyProductUpdateSchema,
   ...computerUseHostSchema,
   ...userFeatureSwitchesSchema,
   ...userBehaviorCountSchema,

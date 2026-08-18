@@ -42,6 +42,7 @@ export enum FeatureSwitchKey {
   StripeInvoicePaidWorkflowAutomations = "stripeInvoicePaidWorkflowAutomations",
   MorningBrief = "morningBrief",
   ManualMorningBrief = "manualMorningBrief",
+  WeeklyProductUpdate = "weeklyProductUpdate",
   TestOauthConnector = "testOauthConnector",
   FreshdeskConnector = "freshdeskConnector",
   StabilityAiConnector = "stabilityAiConnector",

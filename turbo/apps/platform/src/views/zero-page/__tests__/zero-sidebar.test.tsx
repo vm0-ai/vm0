@@ -3017,6 +3017,7 @@ describe("zero sidebar", () => {
           sendMode: "enter",
           morningBriefEnabled: false,
           morningBriefNextRunAt: null,
+          weeklyProductUpdateEnabled: true,
           captureNetworkBodiesRemaining: 0,
         });
       },

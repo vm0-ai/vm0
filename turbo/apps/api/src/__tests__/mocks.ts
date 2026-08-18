@@ -131,6 +131,8 @@ export interface ApiTestMocks {
   };
   readonly resend: {
     readonly send: AsyncMock;
+    readonly broadcastsGet: AsyncMock;
+    readonly broadcastsList: AsyncMock;
   };
   readonly signalTimers: {
     readonly delay: SignalTimerDelayMock;
@@ -490,6 +492,8 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     },
     resend: {
       send: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      broadcastsGet: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      broadcastsList: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
     signalTimers: {
       delay:
@@ -879,6 +883,10 @@ vi.mock("resend", () => {
         emails: {
           send: apiTestMocks.resend.send,
         },
+        broadcasts: {
+          get: apiTestMocks.resend.broadcastsGet,
+          list: apiTestMocks.resend.broadcastsList,
+        },
       };
     }),
   };
@@ -1204,6 +1212,12 @@ export function resetApiTestMocks(): void {
   apiTestMocks.dns.lookupOverrides.clear();
   apiTestMocks.nodeRequest.pinnedAddresses.length = 0;
   apiTestMocks.resend.send.mockReset();
+  apiTestMocks.resend.broadcastsGet.mockReset();
+  apiTestMocks.resend.broadcastsList.mockReset();
+  apiTestMocks.resend.broadcastsList.mockResolvedValue({
+    data: { object: "list", has_more: false, data: [] },
+    error: null,
+  });
   apiTestMocks.signalTimers.delay.mockReset();
   apiTestMocks.slack.assistant.threads.setStatus.mockReset();
   apiTestMocks.slack.chat.getPermalink.mockReset();

@@ -80,6 +80,7 @@ function createPreferences(
     sendMode: "enter",
     morningBriefEnabled: false,
     morningBriefNextRunAt: null,
+    weeklyProductUpdateEnabled: true,
     captureNetworkBodiesRemaining: 0,
   };
 }

@@ -135,7 +135,7 @@ function outboxRowSelection() {
   };
 }
 
-function getResendClient(): Resend {
+export function getResendClient(): Resend {
   const apiKey = env("RESEND_API_KEY");
   if (!apiKey) {
     throw new Error("RESEND_API_KEY is not configured");

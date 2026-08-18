@@ -19,6 +19,7 @@ import {
 } from "../../../../../signals/zero-page/settings/preferences-page.ts";
 import { TimezoneSettings } from "../timezone-settings.tsx";
 import { MorningBriefSettings } from "../morning-brief-settings.tsx";
+import { WeeklyProductUpdateSettings } from "../weekly-product-update-settings.tsx";
 import { SettingsSectionHeading } from "../settings-section-heading.tsx";
 import { AccountSection } from "./account-section.tsx";
 import { LanguageSettings } from "../language-settings.tsx";
@@ -239,6 +240,8 @@ export function PreferenceSection() {
         <TimezoneSettings />
         <MorningBriefSettings />
       </section>
+
+      <WeeklyProductUpdateSettings />
     </div>
   );
 }

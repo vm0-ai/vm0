@@ -4455,6 +4455,13 @@
           "utc": "UTC",
           "vancouver": "वैंकूवर (PT)"
         }
+      },
+      "updates": {
+        "sectionTitle": "अपडेट"
+      },
+      "weeklyProductUpdate": {
+        "description": "न्यूज़लेटर भेजे जाने पर साप्ताहिक उत्पाद अपडेट वेब चैट में पाएं",
+        "title": "साप्ताहिक उत्पाद अपडेट"
       }
     },
     "shared": {

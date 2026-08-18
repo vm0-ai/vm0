@@ -39,6 +39,8 @@ export const userPreferencesResponseSchema = z.object({
    * scheduled (preference off, timezone missing, or schedule not synced).
    */
   morningBriefNextRunAt: z.string().nullable(),
+  /** Opt-out: the weekly product update in Web Chat is on by default. */
+  weeklyProductUpdateEnabled: z.boolean(),
   captureNetworkBodiesRemaining: z.number().int().min(0),
 });
 
@@ -54,6 +56,7 @@ export const updateUserPreferencesRequestSchema = z
     pinnedAgentIds: z.array(z.string()).optional(),
     sendMode: sendModeSchema.optional(),
     morningBriefEnabled: z.boolean().optional(),
+    weeklyProductUpdateEnabled: z.boolean().optional(),
     captureNetworkBodiesRemaining: z.number().int().min(0).optional(),
   })
   .refine(
@@ -64,6 +67,7 @@ export const updateUserPreferencesRequestSchema = z
         data.pinnedAgentIds !== undefined ||
         data.sendMode !== undefined ||
         data.morningBriefEnabled !== undefined ||
+        data.weeklyProductUpdateEnabled !== undefined ||
         data.captureNetworkBodiesRemaining !== undefined
       );
     },

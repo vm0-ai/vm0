@@ -33,6 +33,7 @@ function createMockPreferences(
     sendMode: "enter",
     morningBriefEnabled: false,
     morningBriefNextRunAt: null,
+    weeklyProductUpdateEnabled: true,
     captureNetworkBodiesRemaining: 0,
     ...overrides,
   };

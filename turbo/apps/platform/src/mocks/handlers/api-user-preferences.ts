@@ -23,6 +23,7 @@ let mockPreferences: UserPreferencesResponse = {
   sendMode: "enter",
   morningBriefEnabled: false,
   morningBriefNextRunAt: null,
+  weeklyProductUpdateEnabled: true,
   captureNetworkBodiesRemaining: 0,
 };
 
@@ -50,6 +51,7 @@ export function resetMockUserPreferences(): void {
     sendMode: "enter",
     morningBriefEnabled: false,
     morningBriefNextRunAt: null,
+    weeklyProductUpdateEnabled: true,
     captureNetworkBodiesRemaining: 0,
   };
 }
