@@ -319,7 +319,7 @@ mod tests {
     fn extract_archive(tar_gz: Vec<u8>, mount: &Path) -> bool {
         std::fs::create_dir_all(mount).unwrap();
         let target = mount.canonicalize().unwrap();
-        extract_tar_gz(ArchiveSource::local(Cursor::new(tar_gz)), &target).is_ok()
+        extract_tar_gz(ArchiveSource::local(Cursor::new(tar_gz), None), &target).is_ok()
     }
 
     #[test]
