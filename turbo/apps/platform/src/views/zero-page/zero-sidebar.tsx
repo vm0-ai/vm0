@@ -62,6 +62,10 @@ import {
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 
 const slackIcon = settingsIconAssetUrl("slack");
+const chatHeaderIconStyle = {
+  color: "var(--color-muted-foreground)",
+  opacity: 0.7,
+} as const;
 
 type ManageNavId = "agents" | "artifacts" | "connectors" | "workflows";
 
@@ -781,10 +785,7 @@ function ChatListColumn() {
                 variant="quiet"
                 size="icon-sm"
               >
-                <Search
-                  className="text-muted-foreground opacity-70"
-                  size={17}
-                />
+                <Search style={chatHeaderIconStyle} size={17} />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -801,7 +802,7 @@ function ChatListColumn() {
                 variant="quiet"
                 size="icon-sm"
               >
-                <Edit className="text-muted-foreground opacity-70" size={17} />
+                <Edit style={chatHeaderIconStyle} size={17} />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
