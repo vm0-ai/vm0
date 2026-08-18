@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
+import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -21,7 +21,7 @@ const adminRequired = Object.freeze({
   }),
 });
 
-const updateBody$ = bodyResultOf(zeroModelPoliciesMainContract.update);
+const updateBody$ = bodyResultOf(modelPoliciesMainContract.update);
 
 const listModelPoliciesInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -70,7 +70,7 @@ const updateModelPoliciesInner$ = command(
 
 export const modelPoliciesRoutes: readonly RouteEntry[] = [
   {
-    route: zeroModelPoliciesMainContract.list,
+    route: modelPoliciesMainContract.list,
     handler: authRoute(
       {
         requireOrganization: true,
@@ -81,7 +81,7 @@ export const modelPoliciesRoutes: readonly RouteEntry[] = [
     ),
   },
   {
-    route: zeroModelPoliciesMainContract.update,
+    route: modelPoliciesMainContract.update,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       updateModelPoliciesInner$,

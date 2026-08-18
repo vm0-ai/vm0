@@ -1,5 +1,5 @@
 import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
-import { zeroModelPoliciesMainContract } from "@okouai/api-contracts/contracts/zero-model-policies";
+import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
 import type { OrgModelPoliciesResponse } from "@okouai/api-contracts/contracts/model-providers";
 import { getClientConfig, handleError } from "../core/client-factory";
 
@@ -8,7 +8,7 @@ import { getClientConfig, handleError } from "../core/client-factory";
  */
 export async function listModelPolicies(): Promise<OrgModelPoliciesResponse> {
   const config = await getClientConfig();
-  const client = initClient(zeroModelPoliciesMainContract, config);
+  const client = initClient(modelPoliciesMainContract, config);
 
   const result = await client.list({ headers: {} });
 
