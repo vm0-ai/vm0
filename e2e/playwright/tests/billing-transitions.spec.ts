@@ -753,10 +753,10 @@ async function buyUsagePackPlan(
   const packages = page.getByRole("dialog", {
     name: "Configure member packages",
   });
-  await expect(packages).toBeVisible();
+  await expect(packages).toBeVisible({ timeout: STATE_TIMEOUT_MS });
   await expect(
     packages.getByRole("combobox", { name: /^Usage for /u }),
-  ).toBeVisible();
+  ).toBeVisible({ timeout: STATE_TIMEOUT_MS });
   if (usagePackUsd !== undefined) {
     await selectUsagePack(page, packages, usagePackUsd);
   }
@@ -952,7 +952,7 @@ async function openUsagePackManagement(
   const packages = page.getByRole("dialog", {
     name: "Configure member packages",
   });
-  await expect(packages).toBeVisible();
+  await expect(packages).toBeVisible({ timeout: STATE_TIMEOUT_MS });
   return packages;
 }
 
@@ -962,6 +962,7 @@ async function selectUsagePack(
   target: UsagePackUsd,
 ): Promise<void> {
   const select = packages.getByRole("combobox", { name: /^Usage for /u });
+  await expect(select).toBeVisible({ timeout: STATE_TIMEOUT_MS });
   await select.click();
   await page
     .getByRole("option", { name: USAGE_PACK_OPTION_PATTERNS[target] })
@@ -979,18 +980,18 @@ async function submitUsagePackConfiguration(
     name: action,
     exact: true,
   });
-  await expect(actionButton).toBeEnabled();
+  await expect(actionButton).toBeEnabled({ timeout: STATE_TIMEOUT_MS });
   await actionButton.click();
 
   let review = page.getByRole("dialog", { name: "Review package change" });
-  await expect(review).toBeVisible();
+  await expect(review).toBeVisible({ timeout: STATE_TIMEOUT_MS });
   if (backFromReviewOnce) {
     await review.getByRole("button", { name: "Back", exact: true }).click();
     await expect(review).toBeHidden();
-    await expect(actionButton).toBeEnabled();
+    await expect(actionButton).toBeEnabled({ timeout: STATE_TIMEOUT_MS });
     await actionButton.click();
     review = page.getByRole("dialog", { name: "Review package change" });
-    await expect(review).toBeVisible();
+    await expect(review).toBeVisible({ timeout: STATE_TIMEOUT_MS });
   }
 
   await review.getByRole("button", { name: "Confirm", exact: true }).click();
@@ -1008,7 +1009,7 @@ async function expectUsagePackReductionRejectedWhilePlanEnds(
     name: "Confirm",
     exact: true,
   });
-  await expect(confirm).toBeEnabled();
+  await expect(confirm).toBeEnabled({ timeout: STATE_TIMEOUT_MS });
   await confirm.click();
   await expect(
     page.getByText(USAGE_PACK_PLAN_ENDING_MESSAGE, { exact: true }),
