@@ -58,7 +58,7 @@ import {
   activeUsagePackPriceId,
   isUsagePackPlanPriceId,
   usagePackUsdForKnownPriceId,
-} from "./zero-billing-checkout.service";
+} from "./billing-checkout.service";
 
 const PREVIEW_TTL_MS = 15 * 60 * 1000;
 const CHANGE_RECONCILIATION_DELAY_MS = 5 * 60 * 1000;

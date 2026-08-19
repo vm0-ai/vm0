@@ -2,7 +2,7 @@ import {
   stripeInvoicePaidEventConfigSchema,
   stripeInvoiceBillingReasonSchema,
   type StripeInvoiceBillingReason,
-} from "@okouai/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/workflows";
 import type {
   StripeAutomationEventSnapshot,
   StripeAutomationEventSnapshotLine,

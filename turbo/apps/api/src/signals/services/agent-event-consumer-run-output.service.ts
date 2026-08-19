@@ -18,7 +18,7 @@ import {
 import {
   publishFirstAssistantEventCreatedSignalSafely,
   recordFirstAssistantEventAcknowledgementMetric,
-} from "./zero-chat-first-assistant-event-metric.service";
+} from "./chat-first-assistant-event-metric.service";
 import { chatThreadForRunFromDb } from "./chat-thread.service";
 import { writeRunMetadataInTransaction } from "./agent-run-metadata-write.service";
 

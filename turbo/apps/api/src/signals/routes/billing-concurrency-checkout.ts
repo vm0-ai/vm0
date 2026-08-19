@@ -22,8 +22,8 @@ import {
   previewInitialConcurrencyPurchase$,
   orgPlanSubscriptionId,
   startConcurrencyPurchase$,
-} from "../services/zero-billing-checkout.service";
-import { previewConcurrencySubscriptionChange$ } from "../services/zero-billing-concurrency-subscription.service";
+} from "../services/billing-checkout.service";
+import { previewConcurrencySubscriptionChange$ } from "../services/billing-concurrency-subscription.service";
 import { parseBillingPaymentMethodPreviewToken } from "../services/billing-purchase-preview-token.service";
 import {
   billingPurchasePreviewEnabled$,

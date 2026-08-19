@@ -70,7 +70,7 @@ import {
   tierForKnownPriceId,
   type SubscriptionCheckoutTier,
   usagePackUsdForKnownPriceId,
-} from "./zero-billing-checkout.service";
+} from "./billing-checkout.service";
 import {
   resolveBillingPurchaseRoute,
   stripeBillingPurchasePaymentParams,

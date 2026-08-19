@@ -61,7 +61,7 @@ import {
   isUsagePackPlanPriceId,
   tierForKnownPriceId,
   usagePackUsdForKnownPriceId,
-} from "./zero-billing-checkout.service";
+} from "./billing-checkout.service";
 
 const PREVIEW_TTL_MS = 15 * 60 * 1000;
 const RECONCILIATION_DELAY_MS = 5 * 60 * 1000;

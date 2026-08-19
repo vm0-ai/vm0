@@ -70,10 +70,10 @@ import { webhooksStripeRoutes } from "../../webhooks-stripe";
 import { agentsRoutes } from "../../agents";
 import { billingStatusRoutes } from "../../billing-status";
 import { modelPoliciesRoutes } from "../../model-policies";
-import { zeroModelProvidersRoutes } from "../../zero-model-providers";
+import { modelProvidersRoutes } from "../../model-providers";
 import { runDetailRoutes } from "../../run-detail";
 import { runsCancelRoutes } from "../../runs-cancel";
-import { zeroRunsRoutes } from "../../zero-runs";
+import { runsRoutes } from "../../runs";
 import { runFixtureContract, runFixtureRoutes } from "../../test-run-fixture";
 import { testBillingReconciliationStateRoutes } from "../../test-billing-reconciliation-state";
 import { userPermissionGrantsRoutes } from "../../user-permission-grants";
@@ -153,10 +153,10 @@ const runRoutes = [
   ...webhooksStripeRoutes,
   ...billingStatusRoutes,
   ...modelPoliciesRoutes,
-  ...zeroModelProvidersRoutes,
+  ...modelProvidersRoutes,
   ...runDetailRoutes,
   ...runFixtureRoutes,
-  ...zeroRunsRoutes,
+  ...runsRoutes,
   ...runsCancelRoutes,
   ...agentsRoutes,
   ...userPermissionGrantsRoutes,

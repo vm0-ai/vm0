@@ -139,7 +139,7 @@ async fn run_finalizing_claim(
     } = request;
     let run_id = claimed.context().run_id;
     let mut pre_spawn_timing =
-        RunnerPreSpawnTiming::start_at(claim_returned_at, claimed.api_claim_request_elapsed());
+        RunnerPreSpawnTiming::start_at(claim_returned_at, claimed.api_claim_timing());
     pre_spawn_timing.mark_task_enqueued();
     let started_at = Instant::now();
     let mut reserved_exact = None;

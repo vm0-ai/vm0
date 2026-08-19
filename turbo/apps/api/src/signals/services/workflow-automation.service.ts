@@ -42,11 +42,11 @@ import {
   type StrapiEntryPublishedEventConfig,
   type WebhookReceivedEventConfig,
   type WorkflowAutomationEventType,
-  type ZeroWorkflowSchedule,
-  type ZeroWorkflowWebhookSecretResponse,
-  type ZeroWorkflowAutomationsListEntry,
-  type ZeroWorkflowAutomationSummary,
-} from "@okouai/api-contracts/contracts/zero-workflows";
+  type WorkflowSchedule,
+  type WorkflowWebhookSecretResponse,
+  type WorkflowAutomationsListEntry,
+  type WorkflowAutomationSummary,
+} from "@okouai/api-contracts/contracts/workflows";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { parseScheduledAtTime } from "@okouai/core/timezone";
@@ -194,7 +194,7 @@ type StripeInvoicePaidAutomationEventType = Extract<
  * Outcome of an automation mutation, mapped to an HTTP response by the route layer.
  */
 export type AutomationResult =
-  | { readonly kind: "ok"; readonly summary: ZeroWorkflowAutomationSummary }
+  | { readonly kind: "ok"; readonly summary: WorkflowAutomationSummary }
   | { readonly kind: "deleted" }
   | { readonly kind: "not-found" }
   | { readonly kind: "forbidden"; readonly message: string }
@@ -279,7 +279,7 @@ interface ScheduleColumns {
 }
 
 function parseOnceAtTime(
-  schedule: Extract<ZeroWorkflowSchedule, { type: "once" }>,
+  schedule: Extract<WorkflowSchedule, { type: "once" }>,
 ): Date {
   const result = parseScheduledAtTime(schedule.atTime, schedule.timezone);
   if (!result.ok) {
@@ -288,7 +288,7 @@ function parseOnceAtTime(
   return result.date;
 }
 
-function scheduleToColumns(schedule: ZeroWorkflowSchedule): ScheduleColumns {
+function scheduleToColumns(schedule: WorkflowSchedule): ScheduleColumns {
   if (schedule.type === "cron") {
     return {
       scheduleType: "cron",
@@ -322,7 +322,7 @@ function scheduleToColumns(schedule: ZeroWorkflowSchedule): ScheduleColumns {
  * a positive integer by the contract.
  */
 function validateSchedule(
-  schedule: ZeroWorkflowSchedule,
+  schedule: WorkflowSchedule,
   now: Date,
 ): string | null {
   if (schedule.type === "loop") {
@@ -359,7 +359,7 @@ function validateSchedule(
  * run; this only seeds the first run.
  */
 function resolveNextRunAt(
-  schedule: ZeroWorkflowSchedule,
+  schedule: WorkflowSchedule,
   enabled: boolean,
   now: Date,
   lastRunAt: Date | null = null,
@@ -390,7 +390,7 @@ function resolveLoopNextRunAt(
   return nextFromLastRun.getTime() > now.getTime() ? nextFromLastRun : now;
 }
 
-function summarizeSchedule(schedule: ZeroWorkflowSchedule): string {
+function summarizeSchedule(schedule: WorkflowSchedule): string {
   if (schedule.type === "cron") {
     return `${schedule.cronExpression} (${schedule.timezone})`;
   }
@@ -413,7 +413,7 @@ function requiredScheduleColumn<T>(
   return value;
 }
 
-function rowToSchedule(row: AutomationRow): ZeroWorkflowSchedule {
+function rowToSchedule(row: AutomationRow): WorkflowSchedule {
   if (row.kind !== "schedule" || row.scheduleType === null) {
     throw new Error(
       `Workflow automation is not a schedule automation: ${row.id}`,
@@ -602,7 +602,7 @@ async function resolveAutomationChatThreadId(
 function notionChildPageRowSummary(
   row: AutomationRow,
   chatThreadId: string | null,
-): ZeroWorkflowAutomationSummary {
+): WorkflowAutomationSummary {
   return {
     ...rowSummaryBase(row, chatThreadId),
     kind: "event",
@@ -616,7 +616,7 @@ function notionChildPageRowSummary(
 function notionDatabaseItemRowSummary(
   row: AutomationRow,
   chatThreadId: string | null,
-): ZeroWorkflowAutomationSummary {
+): WorkflowAutomationSummary {
   return {
     ...rowSummaryBase(row, chatThreadId),
     kind: "event",
@@ -632,7 +632,7 @@ function notionDatabaseItemRowSummary(
 function notionPageContentUpdatedRowSummary(
   row: AutomationRow,
   chatThreadId: string | null,
-): ZeroWorkflowAutomationSummary {
+): WorkflowAutomationSummary {
   return {
     ...rowSummaryBase(row, chatThreadId),
     kind: "event",
@@ -648,7 +648,7 @@ function notionPageContentUpdatedRowSummary(
 function githubEventRowToSummary(
   row: AutomationRow,
   chatThreadId: string | null,
-): ZeroWorkflowAutomationSummary | null {
+): WorkflowAutomationSummary | null {
   const summaryBase = {
     ...rowSummaryBase(row, chatThreadId),
     kind: "event" as const,
@@ -718,7 +718,7 @@ function stripeInvoicePaidRowToSummary(
   row: AutomationRow,
   chatThreadId: string | null,
   health: StripeWorkflowAutomationHealth,
-): ZeroWorkflowAutomationSummary {
+): WorkflowAutomationSummary {
   return {
     ...rowSummaryBase(row, chatThreadId),
     kind: "event",
@@ -758,7 +758,7 @@ function eventRowToSummary(
   row: AutomationRow,
   chatThreadId: string | null,
   warning?: string,
-): ZeroWorkflowAutomationSummary | null {
+): WorkflowAutomationSummary | null {
   if (row.eventType === "chat-run-finished") {
     return {
       ...rowSummaryBase(row, chatThreadId),
@@ -880,7 +880,7 @@ async function rowToSummary(
   db: ReadonlyDb,
   row: AutomationRow,
   options: RowToSummaryOptions = {},
-): Promise<ZeroWorkflowAutomationSummary> {
+): Promise<WorkflowAutomationSummary> {
   const chatThreadId = await resolveAutomationChatThreadId(db, row, options);
   if (row.kind === "event") {
     if (row.eventType === "stripe-invoice-paid") {
@@ -922,7 +922,7 @@ async function rowToPublicSummary(
   db: ReadonlyDb,
   row: AutomationRow,
   options: { readonly chatThreadId?: string | null } = {},
-): Promise<ZeroWorkflowAutomationSummary | null> {
+): Promise<WorkflowAutomationSummary | null> {
   if (row.kind === "event" && !supportedAutomationEventType(row.eventType)) {
     return null;
   }
@@ -1064,7 +1064,7 @@ export async function loadWorkflowAutomations(
     readonly workflowId: string;
     readonly userId: string;
   },
-): Promise<readonly ZeroWorkflowAutomationSummary[]> {
+): Promise<readonly WorkflowAutomationSummary[]> {
   const rows = await db
     .select(workflowAutomationColumns())
     .from(workflowAutomations)
@@ -1102,7 +1102,7 @@ export async function listWorkspaceWorkflowAutomations(
     readonly orgId: string;
     readonly member: WorkflowMember;
   },
-): Promise<readonly ZeroWorkflowAutomationsListEntry[]> {
+): Promise<readonly WorkflowAutomationsListEntry[]> {
   const rows = await db
     .select({
       automation: workflowAutomationColumns(),
@@ -1143,7 +1143,7 @@ export async function listWorkspaceWorkflowAutomations(
     .orderBy(asc(workflowAutomations.createdAt), asc(workflowAutomations.id));
 
   const entries = await Promise.all(
-    rows.map(async (row): Promise<ZeroWorkflowAutomationsListEntry | null> => {
+    rows.map(async (row): Promise<WorkflowAutomationsListEntry | null> => {
       const automation = await rowToPublicSummary(db, row.automation, {
         chatThreadId: row.chatThreadId ?? null,
       });
@@ -1167,7 +1167,7 @@ export async function listWorkspaceWorkflowAutomations(
 
 function chatThreadAutomationFromSummary(args: {
   readonly workflow: WorkflowRow;
-  readonly summary: ZeroWorkflowAutomationSummary | null;
+  readonly summary: WorkflowAutomationSummary | null;
   readonly chatThreadId: string | null;
 }): readonly ChatThreadWorkflowAutomation[] {
   const { workflow, summary, chatThreadId } = args;
@@ -1257,7 +1257,7 @@ export async function getWorkflowAutomation(
     readonly member: WorkflowMember;
     readonly automationId: string;
   },
-): Promise<ZeroWorkflowAutomationSummary | null> {
+): Promise<WorkflowAutomationSummary | null> {
   const automation = await loadAutomationRow(db, {
     orgId: args.orgId,
     automationId: args.automationId,
@@ -1284,7 +1284,7 @@ export async function revealWorkflowWebhookSecret(
     readonly automationId: string;
     readonly publicBrand: PublicBrand;
   },
-): Promise<ZeroWorkflowWebhookSecretResponse | null> {
+): Promise<WorkflowWebhookSecretResponse | null> {
   const automation = await loadAutomationRow(db, {
     orgId: args.orgId,
     automationId: args.automationId,
@@ -1315,7 +1315,7 @@ interface CreateScheduleAutomationInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
   readonly workflowId: string;
-  readonly schedule: ZeroWorkflowSchedule;
+  readonly schedule: WorkflowSchedule;
   readonly enabled: boolean;
   readonly autonomyBudget?: number;
 }
@@ -1572,7 +1572,7 @@ async function insertEventAutomation(
     readonly workflowTitle: string;
     readonly currentTime: Date;
   },
-): Promise<ZeroWorkflowAutomationSummary> {
+): Promise<WorkflowAutomationSummary> {
   return await db.transaction(async (tx) => {
     const chatThreadId = await ensureWorkflowUserAutomationThread(tx, {
       orgId: args.input.orgId,
@@ -1621,7 +1621,7 @@ async function insertWebhookEventAutomation(
     readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
-): Promise<ZeroWorkflowAutomationSummary | null> {
+): Promise<WorkflowAutomationSummary | null> {
   return await db.transaction(async (tx) => {
     const tierEligible = await lockWorkflowWebhookAutomationTierEligibleForOrg(
       tx,
@@ -1844,7 +1844,7 @@ async function insertScheduleAutomation(
     readonly nextRunAt: Date | null;
     readonly currentTime: Date;
   },
-): Promise<ZeroWorkflowAutomationSummary> {
+): Promise<WorkflowAutomationSummary> {
   return await db.transaction(async (tx) => {
     const chatThreadId = await ensureWorkflowUserAutomationThread(tx, {
       orgId: args.input.orgId,
@@ -2068,9 +2068,9 @@ async function createGoogleCalendarEventAutomationForWorkflow(
 }
 
 function googleFormsSummaryWithWarning(
-  summary: ZeroWorkflowAutomationSummary,
+  summary: WorkflowAutomationSummary,
   warning: string | undefined,
-): ZeroWorkflowAutomationSummary {
+): WorkflowAutomationSummary {
   if (
     summary.kind !== "event" ||
     summary.eventType !== "google-forms-response-submitted"
@@ -2810,7 +2810,7 @@ interface UpdateAutomationInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
   readonly automationId: string;
-  readonly schedule?: ZeroWorkflowSchedule;
+  readonly schedule?: WorkflowSchedule;
   readonly eventConfig?:
     | GmailAutomationEventConfig
     | GithubAutomationEventConfig;
@@ -2825,7 +2825,7 @@ async function updateAutomationEventConfig(
       | GithubAutomationEventConfig;
   },
   signal: AbortSignal,
-): Promise<ZeroWorkflowAutomationSummary> {
+): Promise<WorkflowAutomationSummary> {
   const [row] = await db
     .update(workflowAutomations)
     .set({

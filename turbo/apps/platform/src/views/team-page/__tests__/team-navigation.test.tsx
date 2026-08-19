@@ -23,11 +23,11 @@ import {
   zeroAgentInstructionsContract,
 } from "@okouai/api-contracts/contracts/zero-agents";
 import {
-  zeroWorkflowsCollectionContract,
-  zeroWorkflowsDetailContract,
-  zeroWorkflowAutomationsContract,
-  type ZeroWorkflowSummary,
-} from "@okouai/api-contracts/contracts/zero-workflows";
+  workflowsCollectionContract,
+  workflowsDetailContract,
+  workflowAutomationsContract,
+  type WorkflowSummary,
+} from "@okouai/api-contracts/contracts/workflows";
 import {
   type ApplyUserPermissionGrantsRequest,
   type UserPermissionGrantResponse,
@@ -145,7 +145,7 @@ function createWorkflowSummary({
   readonly agentDisplayName: string;
   readonly displayName: string;
   readonly visibility: "public" | "private";
-}): ZeroWorkflowSummary {
+}): WorkflowSummary {
   return {
     id,
     agentId,
@@ -540,19 +540,16 @@ function mockAgentWorkflowApis(): void {
     }),
   ];
 
+  context.mocks.api(workflowsCollectionContract.list, ({ query, respond }) => {
+    const visible = query.agentId
+      ? workflows.filter((workflow) => {
+          return workflow.agentId === query.agentId;
+        })
+      : workflows;
+    return respond(200, visible);
+  });
   context.mocks.api(
-    zeroWorkflowsCollectionContract.list,
-    ({ query, respond }) => {
-      const visible = query.agentId
-        ? workflows.filter((workflow) => {
-            return workflow.agentId === query.agentId;
-          })
-        : workflows;
-      return respond(200, visible);
-    },
-  );
-  context.mocks.api(
-    zeroWorkflowAutomationsContract.listWorkspace,
+    workflowAutomationsContract.listWorkspace,
     ({ respond }) => {
       return respond(200, []);
     },
@@ -1165,7 +1162,7 @@ describe("team page navigation", () => {
     mockAgentWorkflowApis();
     const copyRequests: { workflowId: string; toAgentId: string }[] = [];
     context.mocks.api(
-      zeroWorkflowsDetailContract.copy,
+      workflowsDetailContract.copy,
       ({ params, body, respond }) => {
         copyRequests.push({
           workflowId: params.workflowId,

@@ -6,9 +6,9 @@ import {
 } from "@okouai/api-contracts/contracts/cron";
 import { testGmailWatchRenewalContract } from "@okouai/api-contracts/contracts/test-gmail-watch-renewal";
 import {
-  zeroWorkflowAutomationsContract,
-  zeroWorkflowsDetailContract,
-} from "@okouai/api-contracts/contracts/zero-workflows";
+  workflowAutomationsContract,
+  workflowsDetailContract,
+} from "@okouai/api-contracts/contracts/workflows";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 
@@ -78,13 +78,13 @@ function authHeaders() {
 
 function automationsClient() {
   return setupApp({ context, routes: workflowAutomationsRoutes })(
-    zeroWorkflowAutomationsContract,
+    workflowAutomationsContract,
   );
 }
 
 function detailClient() {
   return setupApp({ context, routes: workflowsRoutes })(
-    zeroWorkflowsDetailContract,
+    workflowsDetailContract,
   );
 }
 

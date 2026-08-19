@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { testWorkflowAutomationExecutionContract } from "@okouai/api-contracts/contracts/test-workflow-automation-execution";
 import { strapiIntegrationsContract } from "@okouai/api-contracts/contracts/strapi-integrations";
-import { zeroWorkflowAutomationsContract } from "@okouai/api-contracts/contracts/zero-workflows";
+import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
 import { fnv1a } from "@okouai/core/identity-hash";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -116,7 +116,7 @@ function integrationsClient() {
 
 function automationsClient() {
   return setupApp({ context, routes: workflowAutomationsRoutes })(
-    zeroWorkflowAutomationsContract,
+    workflowAutomationsContract,
   );
 }
 

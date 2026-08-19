@@ -46,7 +46,7 @@ import {
   checkoutWouldReplaceWithSameOrLowerTier,
   startPlanPurchase$,
   type SubscriptionCheckoutTier,
-} from "../services/zero-billing-checkout.service";
+} from "../services/billing-checkout.service";
 import {
   confirmUsagePackPurchase$,
   activeUsagePackBillingContext,

@@ -66,7 +66,7 @@ const getRunQueueInner$ = computed(async (get) => {
   return { status: 200 as const, body: queue };
 });
 
-export const zeroRunsRoutes: readonly RouteEntry[] = [
+export const runsRoutes: readonly RouteEntry[] = [
   {
     route: runsQueueContract.getQueue,
     handler: authRoute(runReadAuth, getRunQueueInner$),

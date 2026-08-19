@@ -4,9 +4,11 @@ import {
 } from "@okouai/db/schema/agent-compose";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { checkpoints } from "@okouai/db/schema/checkpoint";
-import { count, eq } from "drizzle-orm";
+import type { CheckpointAgentComposeSnapshot } from "@okouai/db/jsonb-contracts/checkpoint";
+import { count, eq, sql } from "drizzle-orm";
 
 import { db } from "../lib/db";
+import { pgIntegerDecoder, pgTextDecoder } from "../lib/db-structured-result";
 import { createDeferredPromise } from "../signals/utils";
 
 // These fixtures construct and inspect historical cross-Agent provenance
@@ -84,23 +86,74 @@ export async function readAgentComposeVersionReferenceCountsFixture(
   };
 }
 
-export async function readCheckpointAgentComposeVersionIdFixture(
+export async function readCheckpointAgentComposeSnapshotFixture(
   runId: string,
-): Promise<string> {
+): Promise<unknown> {
   const [checkpoint] = await db()
     .select({ snapshot: checkpoints.agentComposeSnapshot })
     .from(checkpoints)
     .where(eq(checkpoints.runId, runId))
     .limit(1);
-  const snapshot = checkpoint?.snapshot;
-  const versionId =
-    typeof snapshot === "object" && snapshot !== null
-      ? Reflect.get(snapshot, "agentComposeVersionId")
-      : undefined;
-  if (typeof versionId !== "string") {
-    throw new Error("Expected a checkpoint Agent Compose version");
+  if (!checkpoint) {
+    throw new Error("Expected a checkpoint");
   }
-  return versionId;
+  return checkpoint.snapshot;
+}
+
+export async function clearAgentRunVersionFixture(
+  runId: string,
+): Promise<void> {
+  const rows = await db()
+    .update(agentRuns)
+    .set({ agentComposeVersionId: null })
+    .where(eq(agentRuns.id, runId))
+    .returning({ id: agentRuns.id });
+  if (rows.length !== 1) {
+    throw new Error("Expected one Agent Run version reference to clear");
+  }
+}
+
+export async function writeCheckpointAgentComposeSnapshotFixture(args: {
+  readonly runId: string;
+  readonly snapshot: CheckpointAgentComposeSnapshot;
+}): Promise<void> {
+  const rows = await db()
+    .update(checkpoints)
+    .set({ agentComposeSnapshot: args.snapshot })
+    .where(eq(checkpoints.runId, args.runId))
+    .returning({ id: checkpoints.id });
+  if (rows.length !== 1) {
+    throw new Error("Expected one checkpoint snapshot to change");
+  }
+}
+
+export async function readCheckpointAgentComposeSnapshotBytesFixture(
+  runId: string,
+): Promise<{
+  readonly binary: string;
+  readonly size: number;
+  readonly text: string;
+}> {
+  const [checkpoint] = await db()
+    .select({
+      binary:
+        sql`encode(jsonb_send(${checkpoints.agentComposeSnapshot}), 'hex')`.mapWith(
+          pgTextDecoder,
+        ),
+      text: sql`${checkpoints.agentComposeSnapshot}::text`.mapWith(
+        pgTextDecoder,
+      ),
+      size: sql`pg_column_size(${checkpoints.agentComposeSnapshot})`.mapWith(
+        pgIntegerDecoder,
+      ),
+    })
+    .from(checkpoints)
+    .where(eq(checkpoints.runId, runId))
+    .limit(1);
+  if (!checkpoint) {
+    throw new Error("Expected a checkpoint snapshot");
+  }
+  return checkpoint;
 }
 
 export async function holdAgentComposeVersionRowFixture(args: {

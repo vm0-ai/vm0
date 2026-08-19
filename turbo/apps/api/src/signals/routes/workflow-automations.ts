@@ -1,5 +1,5 @@
 import { command, computed } from "ccstate";
-import { zeroWorkflowAutomationsContract } from "@okouai/api-contracts/contracts/zero-workflows";
+import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -90,12 +90,8 @@ function automationErrorResponse(
   }
 }
 
-const createAutomationBody$ = bodyResultOf(
-  zeroWorkflowAutomationsContract.create,
-);
-const updateAutomationBody$ = bodyResultOf(
-  zeroWorkflowAutomationsContract.update,
-);
+const createAutomationBody$ = bodyResultOf(workflowAutomationsContract.create);
+const updateAutomationBody$ = bodyResultOf(workflowAutomationsContract.update);
 
 const workspaceWorkflowAutomationEntries$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
@@ -117,7 +113,7 @@ const listWorkspaceAutomationsInner$ = computed(async (get) => {
 const listChatThreadAutomationsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(
-    pathParamsOf(zeroWorkflowAutomationsContract.listForChatThread),
+    pathParamsOf(workflowAutomationsContract.listForChatThread),
   );
   const db = get(db$);
   const automations = await listThreadBoundWorkflowAutomations(db, {
@@ -130,7 +126,7 @@ const listChatThreadAutomationsInner$ = computed(async (get) => {
 
 const listAutomationsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(zeroWorkflowAutomationsContract.list));
+  const params = get(pathParamsOf(workflowAutomationsContract.list));
   const db = get(db$);
   const visible = await loadVisibleWorkflowById(db, {
     orgId: auth.orgId,
@@ -151,7 +147,7 @@ const listAutomationsInner$ = computed(async (get) => {
 const createAutomationInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const params = get(pathParamsOf(zeroWorkflowAutomationsContract.create));
+    const params = get(pathParamsOf(workflowAutomationsContract.create));
     const bodyResult = await get(createAutomationBody$);
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -203,7 +199,7 @@ const createAutomationInner$ = command(
 
 const getAutomationInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(zeroWorkflowAutomationsContract.get));
+  const params = get(pathParamsOf(workflowAutomationsContract.get));
   const db = get(db$);
   const automation = await getWorkflowAutomation(db, {
     orgId: auth.orgId,
@@ -219,7 +215,7 @@ const getAutomationInner$ = computed(async (get) => {
 const revealWebhookSecretInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(
-    pathParamsOf(zeroWorkflowAutomationsContract.revealWebhookSecret),
+    pathParamsOf(workflowAutomationsContract.revealWebhookSecret),
   );
   const db = get(db$);
   const secret = await revealWorkflowWebhookSecret(db, {
@@ -238,7 +234,7 @@ const revealWebhookSecretInner$ = computed(async (get) => {
 const updateAutomationInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const params = get(pathParamsOf(zeroWorkflowAutomationsContract.update));
+    const params = get(pathParamsOf(workflowAutomationsContract.update));
     const bodyResult = await get(updateAutomationBody$);
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -273,7 +269,7 @@ const updateAutomationInner$ = command(
 const deleteAutomationInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const params = get(pathParamsOf(zeroWorkflowAutomationsContract.delete));
+    const params = get(pathParamsOf(workflowAutomationsContract.delete));
     const result = await set(
       deleteWorkflowAutomation$,
       {
@@ -294,7 +290,7 @@ const deleteAutomationInner$ = command(
 const enableAutomationInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const params = get(pathParamsOf(zeroWorkflowAutomationsContract.enable));
+    const params = get(pathParamsOf(workflowAutomationsContract.enable));
     let inheritedAutonomyBudget: number | undefined;
     const db = get(db$);
     if (auth.tokenType === "zero") {
@@ -336,7 +332,7 @@ const enableAutomationInner$ = command(
 const disableAutomationInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const params = get(pathParamsOf(zeroWorkflowAutomationsContract.disable));
+    const params = get(pathParamsOf(workflowAutomationsContract.disable));
     const result = await set(
       disableWorkflowAutomation$,
       {
@@ -357,7 +353,7 @@ const disableAutomationInner$ = command(
 const runAutomationInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const params = get(pathParamsOf(zeroWorkflowAutomationsContract.run));
+    const params = get(pathParamsOf(workflowAutomationsContract.run));
     const result = await set(
       runOwnedWorkflowAutomationNow$,
       {
@@ -392,10 +388,7 @@ const runAutomationInner$ = command(
 );
 
 const workflowAutomationRouteHandlers: Readonly<
-  Record<
-    keyof typeof zeroWorkflowAutomationsContract,
-    SignalRouteHandler<unknown>
-  >
+  Record<keyof typeof workflowAutomationsContract, SignalRouteHandler<unknown>>
 > = {
   listWorkspace: authRoute(
     workflowAutomationReadAuth,
@@ -418,47 +411,47 @@ const workflowAutomationRouteHandlers: Readonly<
 
 export const workflowAutomationsRoutes: readonly RouteEntry[] = [
   {
-    route: zeroWorkflowAutomationsContract.listWorkspace,
+    route: workflowAutomationsContract.listWorkspace,
     handler: workflowAutomationRouteHandlers.listWorkspace,
   },
   {
-    route: zeroWorkflowAutomationsContract.listForChatThread,
+    route: workflowAutomationsContract.listForChatThread,
     handler: workflowAutomationRouteHandlers.listForChatThread,
   },
   {
-    route: zeroWorkflowAutomationsContract.list,
+    route: workflowAutomationsContract.list,
     handler: workflowAutomationRouteHandlers.list,
   },
   {
-    route: zeroWorkflowAutomationsContract.create,
+    route: workflowAutomationsContract.create,
     handler: workflowAutomationRouteHandlers.create,
   },
   {
-    route: zeroWorkflowAutomationsContract.get,
+    route: workflowAutomationsContract.get,
     handler: workflowAutomationRouteHandlers.get,
   },
   {
-    route: zeroWorkflowAutomationsContract.update,
+    route: workflowAutomationsContract.update,
     handler: workflowAutomationRouteHandlers.update,
   },
   {
-    route: zeroWorkflowAutomationsContract.delete,
+    route: workflowAutomationsContract.delete,
     handler: workflowAutomationRouteHandlers.delete,
   },
   {
-    route: zeroWorkflowAutomationsContract.enable,
+    route: workflowAutomationsContract.enable,
     handler: workflowAutomationRouteHandlers.enable,
   },
   {
-    route: zeroWorkflowAutomationsContract.disable,
+    route: workflowAutomationsContract.disable,
     handler: workflowAutomationRouteHandlers.disable,
   },
   {
-    route: zeroWorkflowAutomationsContract.run,
+    route: workflowAutomationsContract.run,
     handler: workflowAutomationRouteHandlers.run,
   },
   {
-    route: zeroWorkflowAutomationsContract.revealWebhookSecret,
+    route: workflowAutomationsContract.revealWebhookSecret,
     handler: workflowAutomationRouteHandlers.revealWebhookSecret,
   },
 ];
