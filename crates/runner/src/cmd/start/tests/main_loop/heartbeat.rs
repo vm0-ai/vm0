@@ -155,14 +155,27 @@ async fn heartbeat_triggers_coalesce_into_one_current_mode_follow_up() {
         *mode = RunnerMode::Draining;
         false
     });
-    let status_path = env._temp_dir.path().join("status.json");
+    let second_tick_cursor = env.start_observer.cursor();
     tokio::time::advance(HEARTBEAT_PERIOD).await;
-    wait_status_mode(&status_path, "draining", Duration::from_secs(5)).await;
+    env.start_observer
+        .wait_routine_heartbeat_requested_after(
+            second_tick_cursor,
+            RunnerMode::Draining,
+            Duration::from_secs(5),
+        )
+        .await;
 
     // A further tick while the first request is blocked must collapse into
     // the same dirty follow-up rather than overlap or queue another payload.
+    let third_tick_cursor = env.start_observer.cursor();
     tokio::time::advance(HEARTBEAT_PERIOD).await;
-    tokio::task::yield_now().await;
+    env.start_observer
+        .wait_routine_heartbeat_requested_after(
+            third_tick_cursor,
+            RunnerMode::Draining,
+            Duration::from_secs(5),
+        )
+        .await;
     assert_eq!(env.handle.heartbeat_count(), 1);
     assert_eq!(env.handle.max_heartbeat_in_flight(), 1);
 
