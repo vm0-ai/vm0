@@ -3796,6 +3796,104 @@ describe("zero sidebar", () => {
     });
   });
 
+  it("shows a drag handle on reorderable pinned agents but not on the lead agent", async () => {
+    const pinnedAgentIds = prepareOverflowingPinnedAgents();
+    context.mocks.data.userPreferences({ pinnedAgentIds });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    await waitFor(() => {
+      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
+    });
+
+    expect(
+      within(pinnedAgentLink(grid, "Support Agent")).getByTestId(
+        "pinned-agent-drag-handle",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(pinnedAgentLink(grid, "Zero")).queryByTestId(
+        "pinned-agent-drag-handle",
+      ),
+    ).toBeNull();
+    expect(
+      within(screen.getByTestId("pinned-agents-horizontal")).getByText(
+        "Drag to reorder",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("marks the landing slot with an insertion caret while dragging", async () => {
+    const pinnedAgentIds = prepareOverflowingPinnedAgents();
+    context.mocks.data.userPreferences({ pinnedAgentIds });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    await waitFor(() => {
+      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
+    });
+
+    // Billing Agent sits after Support Agent, so a forwards drag lands after it.
+    const forwards = createDataTransferStub();
+    fireEvent.dragStart(pinnedAgentLink(grid, "Support Agent"), {
+      dataTransfer: forwards,
+    });
+    fireEvent.dragOver(pinnedAgentLink(grid, "Billing Agent"), {
+      dataTransfer: forwards,
+    });
+
+    await waitFor(() => {
+      expect(
+        within(grid).getAllByTestId("pinned-agent-drop-caret"),
+      ).toHaveLength(1);
+    });
+    expect(
+      within(pinnedAgentLink(grid, "Billing Agent")).getByTestId(
+        "pinned-agent-drop-caret",
+      ).className,
+    ).toContain("-right-");
+
+    fireEvent.dragEnd(pinnedAgentLink(grid, "Support Agent"), {
+      dataTransfer: forwards,
+    });
+    await waitFor(() => {
+      expect(
+        within(grid).queryAllByTestId("pinned-agent-drop-caret"),
+      ).toHaveLength(0);
+    });
+
+    // Research Agent sits before Support Agent, so a backwards drag lands before it.
+    const backwards = createDataTransferStub();
+    fireEvent.dragStart(pinnedAgentLink(grid, "Support Agent"), {
+      dataTransfer: backwards,
+    });
+    fireEvent.dragOver(pinnedAgentLink(grid, "Research Agent"), {
+      dataTransfer: backwards,
+    });
+
+    await waitFor(() => {
+      expect(
+        within(pinnedAgentLink(grid, "Research Agent")).getByTestId(
+          "pinned-agent-drop-caret",
+        ).className,
+      ).toContain("-left-");
+    });
+  });
+
   it("leaves the lead agent in place when it is dragged", async () => {
     const pinnedAgentIds = prepareOverflowingPinnedAgents();
     context.mocks.data.userPreferences({ pinnedAgentIds });

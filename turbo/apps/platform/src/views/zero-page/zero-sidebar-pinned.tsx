@@ -253,18 +253,52 @@ interface PinnedGridAgent {
   readonly displayName?: string | null;
 }
 
+/** Which side of the hovered card the dragged agent lands on. */
+type PinnedDropSide = "before" | "after";
+
+/**
+ * The drag handle shown above a pinned tile on hover. It is absolutely
+ * positioned so it costs no layout: the tile keeps its size and the avatar
+ * never moves.
+ */
+function PinnedAgentDragHandle() {
+  return (
+    <span
+      aria-hidden="true"
+      data-testid="pinned-agent-drag-handle"
+      className="pointer-events-none absolute -top-[5px] left-1/2 z-10 flex -translate-x-1/2 flex-col gap-[2px] rounded border-[0.7px] border-border bg-popover p-[2.5px] opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+    >
+      {[0, 1].map((row) => {
+        return (
+          <span key={row} className="flex gap-[2px]">
+            {[0, 1, 2].map((dot) => {
+              return (
+                <span
+                  key={dot}
+                  className="h-[2px] w-[2px] rounded-full bg-[hsl(var(--gray-500))]"
+                />
+              );
+            })}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
 function PinnedAgentGridCard({
   agent,
   isPrimarySelected,
   hasUnread,
   isReorderable,
+  dropSide,
 }: {
   readonly agent: PinnedGridAgent;
   readonly isPrimarySelected: boolean;
   readonly hasUnread: boolean;
   readonly isReorderable: boolean;
+  readonly dropSide: PinnedDropSide | null;
 }) {
-  const { t } = useTranslation("agents");
   const pageSignal = useGet(pageSignal$);
   const draggingAgentId = useGet(draggingPinnedAgentId$);
   const dropTargetAgentId = useGet(pinnedAgentDropTargetId$);
@@ -276,7 +310,6 @@ function PinnedAgentGridCard({
   const isDragging = draggingAgentId === agent.id;
   const acceptsDrop =
     isReorderable && draggingAgentId !== null && draggingAgentId !== agent.id;
-  const isDropTarget = acceptsDrop && dropTargetAgentId === agent.id;
 
   return (
     <Link
@@ -284,13 +317,6 @@ function PinnedAgentGridCard({
       options={{ pathParams: { agentId: agent.id } }}
       data-testid="pinned-agent-card"
       draggable={isReorderable}
-      title={
-        isReorderable
-          ? t(($) => {
-              return $.sidebar.dragToReorder;
-            })
-          : undefined
-      }
       onDragStart={(e) => {
         e.dataTransfer.effectAllowed = "move";
         e.dataTransfer.setData("text/plain", agent.id);
@@ -326,15 +352,29 @@ function PinnedAgentGridCard({
         );
         endDrag();
       }}
-      className={`group flex w-full min-w-0 flex-col items-center gap-1.5 rounded-lg p-1.5 no-underline transition-colors duration-200 ${
+      className={`group relative flex w-full min-w-0 flex-col items-center gap-1.5 rounded-lg p-1.5 no-underline transition-colors duration-200 ${
         isPrimarySelected
           ? "bg-state-selected text-sidebar-foreground"
           : "text-sidebar-foreground hover:bg-state-hover"
-      } ${isDragging ? "opacity-40" : ""} ${
-        isDropTarget ? "ring-2 ring-[hsl(var(--primary-700))]" : ""
-      }`}
+      } ${isReorderable ? "cursor-grab active:cursor-grabbing" : ""}`}
     >
-      <span className="relative">
+      {isReorderable && !isDragging && <PinnedAgentDragHandle />}
+      {dropSide && (
+        <span
+          aria-hidden="true"
+          data-testid="pinned-agent-drop-caret"
+          className={`pointer-events-none absolute inset-y-0 z-10 w-0.5 rounded-full bg-[hsl(var(--primary-700))] ${
+            dropSide === "before" ? "-left-[3px]" : "-right-[3px]"
+          }`}
+        />
+      )}
+      {isDragging && (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0.5 rounded-lg border border-dashed border-[hsl(var(--gray-400))] bg-state-hover"
+        />
+      )}
+      <span className={`relative ${isDragging ? "opacity-0" : ""}`}>
         <AgentAvatarImg
           name={agent.id}
           alt={agent.displayName ?? agent.id}
@@ -344,11 +384,46 @@ function PinnedAgentGridCard({
           <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-[hsl(var(--primary-700))] ring-2 ring-sidebar" />
         )}
       </span>
-      <span className="w-full truncate text-center text-[11px] leading-tight">
+      <span
+        className={`w-full truncate text-center text-[11px] leading-tight ${
+          isDragging ? "opacity-0" : ""
+        }`}
+      >
         {agent.displayName ?? agent.id}
       </span>
     </Link>
   );
+}
+
+/**
+ * Which edge of `agentId` the insertion caret sits on. `movePinnedAgent$`
+ * splices the dragged agent into the target's index, so a drag that travels
+ * backwards lands before the target and a forwards drag lands after it.
+ */
+function resolveDropSide({
+  agents,
+  draggingAgentId,
+  dropTargetAgentId,
+  agentId,
+}: {
+  readonly agents: readonly PinnedGridAgent[];
+  readonly draggingAgentId: string | null;
+  readonly dropTargetAgentId: string | null;
+  readonly agentId: string;
+}): PinnedDropSide | null {
+  if (draggingAgentId === null || dropTargetAgentId !== agentId) {
+    return null;
+  }
+  const from = agents.findIndex((a) => {
+    return a.id === draggingAgentId;
+  });
+  const to = agents.findIndex((a) => {
+    return a.id === agentId;
+  });
+  if (from === -1 || to === -1 || from === to) {
+    return null;
+  }
+  return from > to ? "before" : "after";
 }
 
 function PinAgentDialogContainer() {
@@ -403,6 +478,8 @@ export function PinnedAgentListSection({
   const setCollapsed = useSet(setAgentCardCollapsed$);
   const cachedPinnedAgentGridRows = useGet(pinnedAgentGridRows$);
   const cachePinnedAgentGridRowsRef = useSet(cachePinnedAgentGridRowsRef$);
+  const draggingAgentId = useGet(draggingPinnedAgentId$);
+  const dropTargetAgentId = useGet(pinnedAgentDropTargetId$);
   const defaultAgentId = useLastResolved(defaultAgentId$);
   const pinnedAgents =
     pinnedAgentsLoadable.state === "hasData" ? pinnedAgentsLoadable.data : [];
@@ -453,21 +530,42 @@ export function PinnedAgentListSection({
                   isPrimarySelected={isPrimarySelected}
                   hasUnread={hasUnread}
                   isReorderable={isPinned && !isDefaultAgent}
+                  dropSide={resolveDropSide({
+                    agents: horizontalPinnedAgents,
+                    draggingAgentId,
+                    dropTargetAgentId,
+                    agentId: agent.id,
+                  })}
                 />
               </PinnedAgentContextDecorator>
             );
           });
+    // Reordering only means something once two agents can trade places, so the
+    // hint stays out of the way for a lone pinned agent.
+    const canReorder =
+      (horizontalPinnedAgents ?? []).filter((agent) => {
+        return pinnedAgentIds.has(agent.id) && agent.id !== defaultAgentId;
+      }).length >= 2;
 
     return (
       <div className="shrink-0" data-testid="pinned-agents-horizontal">
-        <span className="block px-1 pb-2 text-[13px] font-medium leading-4 text-sidebar-foreground/50">
-          {t(($) => {
-            return $.sidebar.pinnedAgents;
-          })}
-        </span>
+        <div className="flex items-baseline justify-between px-1 pb-2">
+          <span className="text-[13px] font-medium leading-4 text-sidebar-foreground/50">
+            {t(($) => {
+              return $.sidebar.pinnedAgents;
+            })}
+          </span>
+          {canReorder && (
+            <span className="text-[11px] leading-4 text-sidebar-foreground/50">
+              {t(($) => {
+                return $.sidebar.dragToReorder;
+              })}
+            </span>
+          )}
+        </div>
         <div
           ref={cachePinnedAgentGridRowsRef}
-          className="grid min-w-0 grid-cols-5 items-start gap-1 pb-1"
+          className="grid min-w-0 grid-cols-5 items-start gap-x-1 gap-y-2 pb-1"
           data-testid="pinned-agents-grid"
         >
           {pinnedAgentCards.slice(0, 4)}
