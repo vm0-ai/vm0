@@ -335,7 +335,7 @@ function ChatThreadSideDecorator({
   const indicatorState = useLastResolved(signals.indicatorState$) ?? null;
   if (indicatorState === "draft") {
     return (
-      <div className="pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
+      <div className="pointer-events-none absolute right-[var(--zero-trailing-inset,0px)] top-0 flex h-8 w-8 items-center justify-center">
         <span className="flex items-center justify-center">
           <SessionStateIndicator signals={signals} />
         </span>
@@ -343,7 +343,7 @@ function ChatThreadSideDecorator({
     );
   }
   return (
-    <div className="pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
+    <div className="pointer-events-none absolute right-[var(--zero-trailing-inset,0px)] top-0 flex h-8 w-8 items-center justify-center">
       <ChatThreadMenu signals={signals} />
       {indicatorState !== null ? (
         <span className="flex items-center justify-center group-hover:hidden peer-data-popup-open:hidden">
@@ -408,7 +408,7 @@ function ChatThreadItemLink({
         e.preventDefault();
         detach(openRename(pageSignal), Reason.DomCallback);
       }}
-      className={`flex h-8 items-center gap-2 rounded-lg py-2 pl-2 pr-8 text-left text-sm leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
+      className={`flex h-8 items-center gap-2 rounded-lg py-2 pl-2 pr-[calc(2rem+var(--zero-trailing-inset,0px))] text-left text-sm leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
         isHighlighted
           ? "bg-state-selected text-sidebar-foreground font-medium"
           : isUnread
@@ -891,7 +891,7 @@ function ChatThreadsTitle({ showMarkAllRead }: { showMarkAllRead: boolean }) {
 
   return (
     <div
-      className="zero-nav-recent-label group flex h-8 shrink-0 cursor-pointer items-center justify-between rounded-lg pl-2 pr-0 hover:bg-state-hover transition-colors"
+      className="zero-nav-recent-label group flex h-8 shrink-0 cursor-pointer items-center justify-between rounded-lg pl-2 pr-[var(--zero-trailing-inset,0px)] hover:bg-state-hover transition-colors"
       onClick={() => {
         return setCollapsed(!collapsed);
       }}

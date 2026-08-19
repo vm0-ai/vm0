@@ -790,11 +790,18 @@ function ChatListColumn() {
   };
   return (
     <>
+      {/*
+        Trailing icon buttons are 32px wide and would otherwise sit flush with
+        the 12px content inset, 10px right of the pinned grid's last column
+        center — the grid track is 52px wide, so (52 - 32) / 2 pulls every
+        trailing control onto that one vertical line. Sidebars that have no
+        pinned grid leave the variable unset and keep their flush alignment.
+      */}
       <aside
         data-testid="chat-list-column"
-        className="zero-nav hidden md:flex h-full w-[300px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar"
+        className="zero-nav hidden md:flex h-full w-[300px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar [--zero-trailing-inset:10px]"
       >
-        <div className="flex shrink-0 items-center gap-1 px-3 pb-2 pt-3">
+        <div className="flex shrink-0 items-center gap-1 pb-2 pl-3 pr-[calc(0.75rem+var(--zero-trailing-inset,0px))] pt-3">
           <span className="flex-1 pl-2 text-[15px] font-semibold text-sidebar-foreground">
             {t(($) => {
               return $.appShell.sidebar.chat;
