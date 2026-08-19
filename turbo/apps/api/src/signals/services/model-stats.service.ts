@@ -72,6 +72,10 @@ function getModelStatsModelIds(): string[] {
   ];
 }
 
+function isInUuidArray(value: SQLWrapper, values: readonly string[]): SQL {
+  return sql`${value} = ANY(${sql.param([...values])}::uuid[])`;
+}
+
 interface ModelStatsProcessingResult {
   readonly cutoff: Date;
   readonly processedHours: number;
@@ -244,9 +248,10 @@ function modelStatsHourClaimCtes(args: ModelStatsHourProcessingSqlArgs): SQL {
           isNull(modelUsageObservation.aggregatedAt),
           lt(modelUsageObservation.observedAt, sql`${args.cutoff}::timestamp`),
           args.scope
-            ? inArray(modelUsageObservation.idempotencyKey, [
-                ...args.scope.observationIdempotencyKeys,
-              ])
+            ? isInUuidArray(
+                modelUsageObservation.idempotencyKey,
+                args.scope.observationIdempotencyKeys,
+              )
             : undefined,
         )}
         ORDER BY ${modelUsageObservation.observedAt}
@@ -267,9 +272,10 @@ function modelStatsHourClaimCtes(args: ModelStatsHourProcessingSqlArgs): SQL {
             sql`oldest_pending_hour.hour_start + INTERVAL '1 hour'`,
           ),
           args.scope
-            ? inArray(modelUsageObservation.idempotencyKey, [
-                ...args.scope.observationIdempotencyKeys,
-              ])
+            ? isInUuidArray(
+                modelUsageObservation.idempotencyKey,
+                args.scope.observationIdempotencyKeys,
+              )
             : undefined,
         )}
         RETURNING
@@ -461,9 +467,10 @@ async function cleanupAppliedModelUsageObservations(
           isNotNull(modelUsageObservation.aggregatedAt),
           lt(modelUsageObservation.observedAt, cutoff),
           observationIdempotencyKeys
-            ? inArray(modelUsageObservation.idempotencyKey, [
-                ...observationIdempotencyKeys,
-              ])
+            ? isInUuidArray(
+                modelUsageObservation.idempotencyKey,
+                observationIdempotencyKeys,
+              )
             : undefined,
         ),
       )

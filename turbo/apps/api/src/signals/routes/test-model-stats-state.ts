@@ -5,7 +5,16 @@ import {
 } from "@okouai/api-contracts/contracts/test-model-stats-state";
 import { modelStat } from "@okouai/db/schema/model-stat";
 import { modelUsageObservation } from "@okouai/db/schema/model-usage-observation";
-import { and, asc, count, eq, inArray, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  eq,
+  or,
+  sql,
+  type SQL,
+  type SQLWrapper,
+} from "drizzle-orm";
 import { z } from "zod";
 
 import { executeRawRows } from "../../lib/db-raw-rows";
@@ -29,6 +38,10 @@ import {
 
 const actionBody$ = bodyResultOf(testModelStatsStateContract.action);
 const OBSERVATION_FIXTURE_INSERT_BATCH_SIZE = 5000;
+
+function isInUuidArray(value: SQLWrapper, values: readonly string[]): SQL {
+  return sql`${value} = ANY(${sql.param([...values])}::uuid[])`;
+}
 
 interface ModelStatsAggregationLockGate {
   holderPid: number | null;
@@ -220,7 +233,7 @@ async function readObservations(
       aggregatedAt: modelUsageObservation.aggregatedAt,
     })
     .from(modelUsageObservation)
-    .where(inArray(modelUsageObservation.idempotencyKey, idempotencyKeys))
+    .where(isInUuidArray(modelUsageObservation.idempotencyKey, idempotencyKeys))
     .orderBy(asc(modelUsageObservation.idempotencyKey));
   signal.throwIfAborted();
   return rows;
@@ -233,7 +246,9 @@ async function deleteObservations(
 ): Promise<void> {
   await db
     .delete(modelUsageObservation)
-    .where(inArray(modelUsageObservation.idempotencyKey, idempotencyKeys));
+    .where(
+      isInUuidArray(modelUsageObservation.idempotencyKey, idempotencyKeys),
+    );
   signal.throwIfAborted();
 }
 
@@ -332,7 +347,10 @@ async function deleteFixture(
     await tx
       .delete(modelUsageObservation)
       .where(
-        inArray(modelUsageObservation.idempotencyKey, body.idempotency_keys),
+        isInUuidArray(
+          modelUsageObservation.idempotencyKey,
+          body.idempotency_keys,
+        ),
       );
     signal.throwIfAborted();
     await tx.delete(modelStat).where(statKeyPredicate);
