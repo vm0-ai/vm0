@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.772.2](https://github.com/vm0-ai/vm0/compare/app-v0.772.1...app-v0.772.2) (2026-08-19)
+
+
+### Bug Fixes
+
+* **composer:** flush pending ime dom changes before submit ([#28045](https://github.com/vm0-ai/vm0/issues/28045)) ([2ad0862](https://github.com/vm0-ai/vm0/commit/2ad08627c7599840af4c82103032edab250e5e4d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.570.2
+
 ## [0.772.1](https://github.com/vm0-ai/vm0/compare/app-v0.772.0...app-v0.772.1) (2026-08-19)
 
 
