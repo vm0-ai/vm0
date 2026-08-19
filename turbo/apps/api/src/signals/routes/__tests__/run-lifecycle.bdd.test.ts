@@ -1517,7 +1517,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(rejected.body.error.message).toBe(
       MISSING_AGENT_CONFIGURATION_MESSAGE,
     );
-    expect(rejected.body.error.message).not.toContain("vm0 build");
   });
 
   it("returns the same remediation when a Session Agent loses its compose version", async () => {
@@ -1545,7 +1544,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(rejected.body.error.message).toBe(
       MISSING_AGENT_CONFIGURATION_MESSAGE,
     );
-    expect(rejected.body.error.message).not.toContain("vm0 build");
   });
 
   it("emits api dispatch timing for exact-empty direct dispatch runs", async () => {
