@@ -255,6 +255,10 @@ import {
   type ConnectorCredentialReadGroup,
 } from "./connector-credential-access.service";
 import {
+  connectorAccountTargetKey,
+  resolveConnectorAccounts,
+} from "./connector-account-resolution.service";
+import {
   defaultFirewallPolicyForPermissionIndex,
   networkPolicyForFirewallPolicy,
 } from "./firewall-network-policy.service";
@@ -3753,7 +3757,7 @@ function storedConnectorSnapshotQuery(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedConnectorSlugs: readonly ConnectorSlug[];
+    readonly connectorIds: readonly string[];
   },
 ) {
   const selectedConnectors = db.$with("stored_connector_candidates").as(
@@ -3782,7 +3786,7 @@ function storedConnectorSnapshotQuery(
           eq(connectors.orgId, args.orgId),
           eq(connectors.userId, args.userId),
           isNotNull(connectors.connectorSlug),
-          inArray(connectors.connectorSlug, args.allowedConnectorSlugs),
+          inArray(connectors.id, args.connectorIds),
         ),
       ),
   );
@@ -3861,7 +3865,7 @@ async function loadStoredConnectorSnapshotRows(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedConnectorSlugs: readonly ConnectorSlug[];
+    readonly connectorIds: readonly string[];
     readonly timingDimensions: ApiDispatchTimingDimensions;
   },
   timing?: ApiDispatchTimingCollector,
@@ -4007,12 +4011,33 @@ async function loadStoredConnectorMaterializationSnapshot(
   const baseTimingDimensions = storedConnectorTimingDimensions({
     scopeSource: args.scopeSource,
   });
+  const accountResolutions = await resolveConnectorAccounts(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    requests: args.allowedConnectorSlugs.map((connectorSlug) => {
+      return {
+        target: { kind: "builtin" as const, connectorSlug },
+        selection: { kind: "default" as const },
+      };
+    }),
+  });
+  const connectorIds = args.allowedConnectorSlugs.flatMap((connectorSlug) => {
+    const resolution = accountResolutions.get(
+      connectorAccountTargetKey({ kind: "builtin", connectorSlug }),
+    );
+    return resolution?.kind === "resolved"
+      ? [resolution.account.connectorId]
+      : [];
+  });
+  if (connectorIds.length === 0) {
+    return null;
+  }
   const rows = await loadStoredConnectorSnapshotRows(
     db,
     {
       orgId: args.orgId,
       userId: args.userId,
-      allowedConnectorSlugs: args.allowedConnectorSlugs,
+      connectorIds,
       timingDimensions: baseTimingDimensions,
     },
     timing,
@@ -4697,10 +4722,33 @@ async function loadCustomConnectorContext(
     return emptyCustomConnectorRuntimeContext();
   }
 
+  const accountResolutions = await resolveConnectorAccounts(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    requests: args.allowedCustomConnectorIds.map((customConnectorId) => {
+      return {
+        target: { kind: "custom" as const, customConnectorId },
+        selection: { kind: "default" as const },
+      };
+    }),
+  });
+  const memberConnectorIdsByCustomConnectorId = new Map<string, string>();
+  for (const customConnectorId of args.allowedCustomConnectorIds) {
+    const resolution = accountResolutions.get(
+      connectorAccountTargetKey({ kind: "custom", customConnectorId }),
+    );
+    if (resolution?.kind === "resolved") {
+      memberConnectorIdsByCustomConnectorId.set(
+        customConnectorId,
+        resolution.account.connectorId,
+      );
+    }
+  }
   const rows = await loadCustomConnectorRuntimeData(db, {
     orgId: args.orgId,
     userId: args.userId,
     connectorIds: args.allowedCustomConnectorIds,
+    memberConnectorIdsByCustomConnectorId,
     measure: async (step, operation) => {
       const actionType =
         step === "connectorRows"

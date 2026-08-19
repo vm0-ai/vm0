@@ -82,7 +82,7 @@
     },
     {
       "path": "/api/cron/reconcile-billing-entitlements",
-      "schedule": "0 0,12 * * *"
+      "schedule": "0 * * * *"
     },
     {
       "path": "/api/cron/refresh-storage-presigned-urls",

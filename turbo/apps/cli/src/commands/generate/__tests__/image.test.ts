@@ -796,7 +796,7 @@ describe("okou generate image command", () => {
     imageCommand.outputHelp();
     const normalizedHelpOutput = helpOutput.replace(/\s+/g, " ");
 
-    expect(helpOutput).toContain("gpt-image-1.5");
+    expect(helpOutput).toContain("gpt-image-2");
     expect(helpOutput).toContain("gpt-image-1 (default)");
     expect(helpOutput).toContain("flux-pro-1.1");
     expect(helpOutput).toContain("qwen-image");

@@ -15,9 +15,9 @@ use super::super::telemetry::{
     RunnerPreSpawnPhase, elapsed_since_api_start_ms, record_api_to_spawn, record_reuse_result,
 };
 use super::super::{
-    ExactReuseSpeculationTiming, ExecutionHooks, NewSandboxDispatch, RunnerPreSpawnOperationTiming,
-    RunnerPreSpawnTiming, SessionHistoryRestorePlan, execute_job, execute_job_reuse,
-    execute_job_reuse_with_hooks, execute_job_with_prepared_notifier,
+    ExactReuseSpeculationTiming, ExecutionHooks, FinalizingHandoffOutcome, NewSandboxDispatch,
+    RunnerPreSpawnOperationTiming, RunnerPreSpawnTiming, SessionHistoryRestorePlan, execute_job,
+    execute_job_reuse, execute_job_reuse_with_hooks, execute_job_with_prepared_notifier,
 };
 use super::support::{
     default_params, make_reusable_idle_sandbox, minimal_context, test_executor_config,
@@ -532,6 +532,7 @@ fn pre_spawn_timing_with_phases() -> RunnerPreSpawnTiming {
     ] {
         timing.record_phase(phase, Duration::from_millis(duration_ms));
     }
+    timing.record_finalizing_handoff_outcome(FinalizingHandoffOutcome::Accepted);
     timing.mark_task_enqueued();
     timing
 }
@@ -701,6 +702,7 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
         "runner_claim_to_executor_start",
         "runner_executor_start_to_spawn",
         "runner_claim_to_spawn",
+        "runner_claim_finalizing_handoff",
         "runner_fresh_sandbox_prepare",
         "runner_fresh_sandbox_factory_create",
         "runner_fresh_sandbox_proxy_register",
@@ -720,6 +722,15 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
     assert_action_duration(&telemetry, "runner_claim_http_request", 42);
     assert_action_duration(&telemetry, "workspace_drive_mount_guest_exec", 23);
     assert_lacks_action(&telemetry, "workspace_drive_mount_guest_exec_unavailable");
+    assert!(
+        telemetry
+            .pending_ops_with_outcome_snapshot()
+            .iter()
+            .any(|operation| {
+                operation.0 == "runner_claim_finalizing_handoff"
+                    && operation.2.as_deref() == Some("accepted")
+            })
+    );
     for action in FRESH_SANDBOX_FACTORY_STAGE_ACTIONS {
         assert_action_success(&telemetry, action, true);
     }

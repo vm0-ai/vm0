@@ -11,12 +11,13 @@ use sandbox::{
     GuestProcessCancelHandle, GuestProcessControlHandle, GuestProcessHandle, GuestProcessWaiter,
     ProcessControlAck, ProcessControlFailureKind, ProcessControlGuestStatus, ProcessControlMode,
     ProcessControlOutcome, ProcessControlWriteState, ProcessExit, ProcessOutputChunk,
-    ProcessOutputMode, Sandbox, SandboxConfig, SandboxError, SandboxFinalExecParkObserver,
-    SandboxFinalExecParkOutcome, SandboxFinalExecParkStage, SandboxFinalExecParkSubstage,
-    SandboxFinalExecParkSubstageOutcome, SandboxIdleTransition, SandboxInvalidStateContext,
-    SandboxOperation, SandboxOperationReason, SandboxParkNonReusableReason, SandboxParkOutcome,
-    SandboxStartObserver, SandboxStartStage, SevereMemoryRetentionDiagnostics, StartProcessRequest,
-    WriteFileEntry,
+    ProcessOutputMode, Sandbox, SandboxConfig, SandboxError, SandboxFinalExecParkHandoff,
+    SandboxFinalExecParkHandoffOutcome, SandboxFinalExecParkHandoffPoint,
+    SandboxFinalExecParkObserver, SandboxFinalExecParkOutcome, SandboxFinalExecParkStage,
+    SandboxFinalExecParkSubstage, SandboxFinalExecParkSubstageOutcome, SandboxIdleTransition,
+    SandboxInvalidStateContext, SandboxOperation, SandboxOperationReason,
+    SandboxParkNonReusableReason, SandboxParkOutcome, SandboxStartObserver, SandboxStartStage,
+    SevereMemoryRetentionDiagnostics, StartProcessRequest, WriteFileEntry,
 };
 use tokio::io::AsyncRead;
 use tokio::sync::{mpsc, watch};
@@ -1896,8 +1897,9 @@ impl FirecrackerSandbox {
         &mut self,
         request: &ExecRequest<'_>,
         diagnostic_label: &'static str,
+        handoff: Option<&SandboxFinalExecParkHandoff>,
         observer: Option<&mut dyn SandboxFinalExecParkObserver>,
-    ) -> sandbox::Result<SandboxFinalExecParkOutcome> {
+    ) -> sandbox::Result<SandboxFinalExecParkHandoffOutcome> {
         if self.is_parked {
             return Err(idle_transition_error(
                 SandboxIdleTransition::Park,
@@ -1922,7 +1924,7 @@ impl FirecrackerSandbox {
         let balloon_controller = self.runtime.balloon_mut();
         let api_sock = self.sock_paths.api_sock();
         let final_exec_request = exec_capture_request(request, timeout_ms, diagnostic_label);
-        let (normal_operations_fence, park_outcome, exec_result) =
+        let (normal_operations_fence, physical_outcome, exec_result) =
             park_with_ready_for_park_and_preparation_with_observer(
                 &id,
                 &coordinator,
@@ -1965,13 +1967,16 @@ impl FirecrackerSandbox {
                     guest.quiesce_operations(GUEST_PARK_LIFECYCLE_TIMEOUT).await
                 },
                 |timing, events| async move {
-                    let (events, result) = park_inner_with_guest(
+                    let (events, result) = park_inner_with_guest_and_handoff(
                         is_parked,
                         memory_mb,
                         balloon_controller,
                         &api_sock,
                         &park_id,
-                        physical_park_guest,
+                        PhysicalParkRequest {
+                            guest: physical_park_guest,
+                            handoff,
+                        },
                         events,
                     )
                     .await;
@@ -1980,11 +1985,21 @@ impl FirecrackerSandbox {
             )
             .await?;
         self.park_fence = Some(normal_operations_fence);
-        self.park_outcome = Some(park_outcome.clone());
-        Ok(SandboxFinalExecParkOutcome {
-            exec_result,
-            park_outcome,
-        })
+        match physical_outcome {
+            PhysicalParkOutcome::Idle(park_outcome) => {
+                self.park_outcome = Some(park_outcome.clone());
+                Ok(SandboxFinalExecParkHandoffOutcome::Parked(
+                    SandboxFinalExecParkOutcome {
+                        exec_result,
+                        park_outcome,
+                    },
+                ))
+            }
+            PhysicalParkOutcome::Handoff(point) => {
+                self.park_outcome = None;
+                Ok(SandboxFinalExecParkHandoffOutcome::Handoff { exec_result, point })
+            }
+        }
     }
 }
 
@@ -2243,8 +2258,16 @@ impl Sandbox for FirecrackerSandbox {
         request: &ExecRequest<'_>,
         diagnostic_label: &'static str,
     ) -> sandbox::Result<SandboxFinalExecParkOutcome> {
-        self.final_exec_and_park_with_optional_observer(request, diagnostic_label, None)
-            .await
+        match self
+            .final_exec_and_park_with_optional_observer(request, diagnostic_label, None, None)
+            .await?
+        {
+            SandboxFinalExecParkHandoffOutcome::Parked(outcome) => Ok(outcome),
+            SandboxFinalExecParkHandoffOutcome::Handoff { .. } => Err(idle_transition_error(
+                SandboxIdleTransition::Park,
+                "provider accepted a handoff without a handoff signal",
+            )),
+        }
     }
 
     async fn final_exec_and_park_with_observer(
@@ -2253,8 +2276,37 @@ impl Sandbox for FirecrackerSandbox {
         diagnostic_label: &'static str,
         observer: &mut dyn SandboxFinalExecParkObserver,
     ) -> sandbox::Result<SandboxFinalExecParkOutcome> {
-        self.final_exec_and_park_with_optional_observer(request, diagnostic_label, Some(observer))
-            .await
+        match self
+            .final_exec_and_park_with_optional_observer(
+                request,
+                diagnostic_label,
+                None,
+                Some(observer),
+            )
+            .await?
+        {
+            SandboxFinalExecParkHandoffOutcome::Parked(outcome) => Ok(outcome),
+            SandboxFinalExecParkHandoffOutcome::Handoff { .. } => Err(idle_transition_error(
+                SandboxIdleTransition::Park,
+                "provider accepted a handoff without a handoff signal",
+            )),
+        }
+    }
+
+    async fn final_exec_and_park_for_handoff(
+        &mut self,
+        request: &ExecRequest<'_>,
+        diagnostic_label: &'static str,
+        handoff: &SandboxFinalExecParkHandoff,
+        observer: &mut dyn SandboxFinalExecParkObserver,
+    ) -> sandbox::Result<SandboxFinalExecParkHandoffOutcome> {
+        self.final_exec_and_park_with_optional_observer(
+            request,
+            diagnostic_label,
+            Some(handoff),
+            Some(observer),
+        )
+        .await
     }
 
     async fn unpark(&mut self) -> sandbox::Result<()> {
@@ -3609,6 +3661,16 @@ struct BalloonSettleResult {
     telemetry_outcome: SandboxFinalExecParkSubstageOutcome,
 }
 
+enum BalloonSettleWaitResult {
+    Settled(BalloonSettleResult),
+    Handoff,
+}
+
+enum PhysicalParkOutcome {
+    Idle(SandboxParkOutcome),
+    Handoff(SandboxFinalExecParkHandoffPoint),
+}
+
 /// Wait until the guest balloon driver inflates close enough to `target_mib`.
 ///
 /// The guest needs running vCPUs to inflate, so this must be called
@@ -3620,11 +3682,24 @@ struct BalloonSettleResult {
 /// [`BALLOON_SETTLE_PROGRESS_GRACE`]. The returned outcome rejects only the
 /// existing severe-deficit classification. Errors from stats fetching are
 /// non-fatal — we log and proceed to pause.
+#[cfg(test)]
 async fn wait_for_balloon_with_outcome(
     client: &ApiClient,
     target_mib: u32,
     log_id: &str,
 ) -> BalloonSettleResult {
+    match wait_for_balloon_with_optional_handoff(client, target_mib, log_id, None).await {
+        BalloonSettleWaitResult::Settled(result) => result,
+        BalloonSettleWaitResult::Handoff => panic!("handoff signal was not provided"),
+    }
+}
+
+async fn wait_for_balloon_with_optional_handoff(
+    client: &ApiClient,
+    target_mib: u32,
+    log_id: &str,
+    handoff: Option<&SandboxFinalExecParkHandoff>,
+) -> BalloonSettleWaitResult {
     let tolerance_mib = balloon_settle_tolerance_mib(target_mib);
     let mut summary = BalloonSettleSummary::new(target_mib);
     let mut settle_timeout = BALLOON_SETTLE_TIMEOUT;
@@ -3648,14 +3723,29 @@ async fn wait_for_balloon_with_outcome(
                     &summary,
                     &outcome,
                 );
-                return BalloonSettleResult {
+                return BalloonSettleWaitResult::Settled(BalloonSettleResult {
                     park_outcome: outcome,
                     telemetry_outcome: SandboxFinalExecParkSubstageOutcome::Deadline,
-                };
+                });
             }
         }
 
-        match tokio::time::timeout_at(deadline, client.get_balloon_statistics()).await {
+        let statistics = match handoff {
+            Some(handoff) => {
+                tokio::select! {
+                    biased;
+                    accepted = handoff.wait_and_accept() => {
+                        if accepted {
+                            return BalloonSettleWaitResult::Handoff;
+                        }
+                        tokio::time::timeout_at(deadline, client.get_balloon_statistics()).await
+                    }
+                    statistics = tokio::time::timeout_at(deadline, client.get_balloon_statistics()) => statistics,
+                }
+            }
+            None => tokio::time::timeout_at(deadline, client.get_balloon_statistics()).await,
+        };
+        match statistics {
             Ok(Ok(stats)) => {
                 let deficit_mib = summary.observe(&stats);
                 if deficit_mib == 0 {
@@ -3679,10 +3769,10 @@ async fn wait_for_balloon_with_outcome(
                         reported_total_mib = ?summary.reported_total_mib(),
                         "balloon fully inflated, proceeding to pause"
                     );
-                    return BalloonSettleResult {
+                    return BalloonSettleWaitResult::Settled(BalloonSettleResult {
                         park_outcome: SandboxParkOutcome::Reusable,
                         telemetry_outcome: SandboxFinalExecParkSubstageOutcome::TargetReached,
-                    };
+                    });
                 }
 
                 if deficit_mib <= tolerance_mib {
@@ -3706,10 +3796,10 @@ async fn wait_for_balloon_with_outcome(
                         reported_total_mib = ?summary.reported_total_mib(),
                         "balloon inflated within tolerance, proceeding to pause"
                     );
-                    return BalloonSettleResult {
+                    return BalloonSettleWaitResult::Settled(BalloonSettleResult {
                         park_outcome: SandboxParkOutcome::Reusable,
                         telemetry_outcome: SandboxFinalExecParkSubstageOutcome::WithinTolerance,
-                    };
+                    });
                 }
 
                 if summary.is_pressure_limited_partial_reclaim(deficit_mib, tolerance_mib) {
@@ -3734,10 +3824,10 @@ async fn wait_for_balloon_with_outcome(
                         reason = BALLOON_PRESSURE_LIMITED_REASON,
                         "balloon pressure-limited partial reclaim, proceeding to pause"
                     );
-                    return BalloonSettleResult {
+                    return BalloonSettleWaitResult::Settled(BalloonSettleResult {
                         park_outcome: SandboxParkOutcome::Reusable,
                         telemetry_outcome: SandboxFinalExecParkSubstageOutcome::PressureLimited,
-                    };
+                    });
                 }
 
                 // Balloon timing tests advance paused time only after a completed stats sample.
@@ -3769,10 +3859,10 @@ async fn wait_for_balloon_with_outcome(
                     %e,
                     "balloon stats unavailable, proceeding to pause"
                 );
-                return BalloonSettleResult {
+                return BalloonSettleWaitResult::Settled(BalloonSettleResult {
                     park_outcome: outcome,
                     telemetry_outcome: SandboxFinalExecParkSubstageOutcome::StatsUnavailable,
-                };
+                });
             }
             Err(_) => {
                 let outcome = summary.park_outcome();
@@ -3784,10 +3874,10 @@ async fn wait_for_balloon_with_outcome(
                     &summary,
                     &outcome,
                 );
-                return BalloonSettleResult {
+                return BalloonSettleWaitResult::Settled(BalloonSettleResult {
                     park_outcome: outcome,
                     telemetry_outcome: SandboxFinalExecParkSubstageOutcome::Deadline,
-                };
+                });
             }
         }
 
@@ -3795,12 +3885,27 @@ async fn wait_for_balloon_with_outcome(
             .next()
             .unwrap_or(BALLOON_SETTLE_MAX_POLL);
         let next_poll = tokio::time::Instant::now() + poll_interval;
-        tokio::time::sleep_until(if next_poll < deadline {
+        let sleep = tokio::time::sleep_until(if next_poll < deadline {
             next_poll
         } else {
             deadline
-        })
-        .await;
+        });
+        tokio::pin!(sleep);
+        match handoff {
+            Some(handoff) => {
+                tokio::select! {
+                    biased;
+                    accepted = handoff.wait_and_accept() => {
+                        if accepted {
+                            return BalloonSettleWaitResult::Handoff;
+                        }
+                        sleep.as_mut().await;
+                    }
+                    () = sleep.as_mut() => {}
+                }
+            }
+            None => sleep.as_mut().await,
+        }
     }
 }
 
@@ -3853,20 +3958,29 @@ async fn terminal_guest_memory_snapshot(
     }
 }
 
-async fn park_inner_with_guest<'observer>(
+struct PhysicalParkRequest<'handoff> {
+    guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
+    handoff: Option<&'handoff SandboxFinalExecParkHandoff>,
+}
+
+async fn park_inner_with_guest_and_handoff<'observer>(
     is_parked: &mut bool,
     memory_mb: u32,
     balloon_controller: &mut Option<balloon::ControllerHandle>,
     api_sock: &std::path::Path,
     log_id: &str,
-    guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
+    request: PhysicalParkRequest<'_>,
     mut events: SandboxFinalExecParkSubstageEvents<'observer>,
 ) -> (
     SandboxFinalExecParkSubstageEvents<'observer>,
-    sandbox::Result<SandboxParkOutcome>,
+    sandbox::Result<PhysicalParkOutcome>,
 ) {
+    let PhysicalParkRequest { guest, handoff } = request;
     if *is_parked {
-        return (events, Ok(SandboxParkOutcome::Reusable));
+        return (
+            events,
+            Ok(PhysicalParkOutcome::Idle(SandboxParkOutcome::Reusable)),
+        );
     }
 
     let target = memory_mb.saturating_sub(balloon::MIN_GUEST_MIB);
@@ -3910,60 +4024,97 @@ async fn park_inner_with_guest<'observer>(
             controller.abort_and_join().await;
         }
 
-        if let Err(e) = client.patch_balloon(target).await {
+        if handoff.is_some_and(SandboxFinalExecParkHandoff::accept_if_requested) {
             events.record(
                 SandboxFinalExecParkSubstage::BalloonSetup,
                 balloon_setup_started.elapsed(),
-                false,
-                Some(SandboxFinalExecParkSubstageOutcome::Failed),
+                true,
+                Some(SandboxFinalExecParkSubstageOutcome::HandoffRequested),
             );
-            return (
-                events,
-                Err(SandboxError::IdleTransition {
-                    transition: SandboxIdleTransition::Park,
-                    message: format!("balloon inflate: {e}"),
-                }),
+            events.record(
+                SandboxFinalExecParkSubstage::BalloonSettle,
+                Duration::ZERO,
+                true,
+                Some(SandboxFinalExecParkSubstageOutcome::Skipped),
             );
-        }
-        events.record(
-            SandboxFinalExecParkSubstage::BalloonSetup,
-            balloon_setup_started.elapsed(),
-            true,
-            None,
-        );
-
-        // Wait for the guest to inflate the balloon close enough before
-        // pausing vCPUs. The guest balloon driver needs running vCPUs to
-        // process the inflate — pausing immediately would negate the memory
-        // savings.
-        let balloon_settle_started = Instant::now();
-        let settle_result = wait_for_balloon_with_outcome(&client, target, log_id).await;
-        let BalloonSettleResult {
-            mut park_outcome,
-            telemetry_outcome,
-        } = settle_result;
-        match &mut park_outcome {
-            SandboxParkOutcome::NonReusable(
-                SandboxParkNonReusableReason::SevereMemoryRetention(diagnostics),
-            ) => {
-                diagnostics.guest_memory_snapshot =
-                    terminal_guest_memory_snapshot(&guest, log_id).await;
+            PhysicalParkOutcome::Handoff(SandboxFinalExecParkHandoffPoint::BeforeBalloon)
+        } else {
+            if let Err(e) = client.patch_balloon(target).await {
+                events.record(
+                    SandboxFinalExecParkSubstage::BalloonSetup,
+                    balloon_setup_started.elapsed(),
+                    false,
+                    Some(SandboxFinalExecParkSubstageOutcome::Failed),
+                );
+                return (
+                    events,
+                    Err(SandboxError::IdleTransition {
+                        transition: SandboxIdleTransition::Park,
+                        message: format!("balloon inflate: {e}"),
+                    }),
+                );
             }
-            SandboxParkOutcome::Reusable => {}
+            events.record(
+                SandboxFinalExecParkSubstage::BalloonSetup,
+                balloon_setup_started.elapsed(),
+                true,
+                None,
+            );
+
+            // Wait for the guest to inflate the balloon close enough before
+            // pausing vCPUs. The guest balloon driver needs running vCPUs to
+            // process the inflate — pausing immediately would negate the memory
+            // savings.
+            let balloon_settle_started = Instant::now();
+            let settle_result =
+                wait_for_balloon_with_optional_handoff(&client, target, log_id, handoff).await;
+            match settle_result {
+                BalloonSettleWaitResult::Handoff => {
+                    events.record(
+                        SandboxFinalExecParkSubstage::BalloonSettle,
+                        balloon_settle_started.elapsed(),
+                        true,
+                        Some(SandboxFinalExecParkSubstageOutcome::HandoffRequested),
+                    );
+                    PhysicalParkOutcome::Handoff(
+                        SandboxFinalExecParkHandoffPoint::DuringBalloonSettle,
+                    )
+                }
+                BalloonSettleWaitResult::Settled(BalloonSettleResult {
+                    mut park_outcome,
+                    telemetry_outcome,
+                }) => {
+                    match &mut park_outcome {
+                        SandboxParkOutcome::NonReusable(
+                            SandboxParkNonReusableReason::SevereMemoryRetention(diagnostics),
+                        ) => {
+                            diagnostics.guest_memory_snapshot =
+                                terminal_guest_memory_snapshot(&guest, log_id).await;
+                        }
+                        SandboxParkOutcome::Reusable => {}
+                    }
+                    events.record(
+                        SandboxFinalExecParkSubstage::BalloonSettle,
+                        balloon_settle_started.elapsed(),
+                        true,
+                        Some(telemetry_outcome),
+                    );
+                    PhysicalParkOutcome::Idle(park_outcome)
+                }
+            }
         }
-        events.record(
-            SandboxFinalExecParkSubstage::BalloonSettle,
-            balloon_settle_started.elapsed(),
-            true,
-            Some(telemetry_outcome),
-        );
-        park_outcome
     } else {
+        let handoff_requested =
+            handoff.is_some_and(SandboxFinalExecParkHandoff::accept_if_requested);
         events.record(
             SandboxFinalExecParkSubstage::BalloonSetup,
             Duration::ZERO,
             true,
-            Some(SandboxFinalExecParkSubstageOutcome::Skipped),
+            Some(if handoff_requested {
+                SandboxFinalExecParkSubstageOutcome::HandoffRequested
+            } else {
+                SandboxFinalExecParkSubstageOutcome::Skipped
+            }),
         );
         events.record(
             SandboxFinalExecParkSubstage::BalloonSettle,
@@ -3971,7 +4122,11 @@ async fn park_inner_with_guest<'observer>(
             true,
             Some(SandboxFinalExecParkSubstageOutcome::Skipped),
         );
-        SandboxParkOutcome::Reusable
+        if handoff_requested {
+            PhysicalParkOutcome::Handoff(SandboxFinalExecParkHandoffPoint::BeforeBalloon)
+        } else {
+            PhysicalParkOutcome::Idle(SandboxParkOutcome::Reusable)
+        }
     };
 
     // Pause vCPUs to eliminate idle CPU overhead (timer ticks, kernel
@@ -4001,21 +4156,69 @@ async fn park_inner_with_guest<'observer>(
     );
 
     *is_parked = true;
-    if target > 0 {
-        info!(
-            id = %log_id,
-            target_mib = target,
-            admission_action = park_admission_action(&outcome),
-            "sandbox parked (balloon settled, vCPUs paused)"
-        );
-    } else {
-        info!(
-            id = %log_id,
-            admission_action = park_admission_action(&outcome),
-            "sandbox parked (vCPUs paused, balloon skipped)"
-        );
+    match &outcome {
+        PhysicalParkOutcome::Handoff(_) => {
+            info!(id = %log_id, "sandbox parked for exact-successor handoff");
+        }
+        PhysicalParkOutcome::Idle(_) if target > 0 => {
+            info!(
+                id = %log_id,
+                target_mib = target,
+                admission_action = physical_park_admission_action(&outcome),
+                "sandbox parked (balloon settled, vCPUs paused)"
+            );
+        }
+        PhysicalParkOutcome::Idle(_) => {
+            info!(
+                id = %log_id,
+                admission_action = physical_park_admission_action(&outcome),
+                "sandbox parked (vCPUs paused, balloon skipped)"
+            );
+        }
     }
     (events, Ok(outcome))
+}
+
+fn physical_park_admission_action(outcome: &PhysicalParkOutcome) -> &'static str {
+    match outcome {
+        PhysicalParkOutcome::Idle(outcome) => park_admission_action(outcome),
+        PhysicalParkOutcome::Handoff(_) => "exact_handoff",
+    }
+}
+
+async fn park_inner_with_guest<'observer>(
+    is_parked: &mut bool,
+    memory_mb: u32,
+    balloon_controller: &mut Option<balloon::ControllerHandle>,
+    api_sock: &std::path::Path,
+    log_id: &str,
+    guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
+    events: SandboxFinalExecParkSubstageEvents<'observer>,
+) -> (
+    SandboxFinalExecParkSubstageEvents<'observer>,
+    sandbox::Result<SandboxParkOutcome>,
+) {
+    let (events, result) = park_inner_with_guest_and_handoff(
+        is_parked,
+        memory_mb,
+        balloon_controller,
+        api_sock,
+        log_id,
+        PhysicalParkRequest {
+            guest,
+            handoff: None,
+        },
+        events,
+    )
+    .await;
+    let result = result.and_then(|outcome| match outcome {
+        PhysicalParkOutcome::Idle(outcome) => Ok(outcome),
+        PhysicalParkOutcome::Handoff(_) => Err(idle_transition_error(
+            SandboxIdleTransition::Park,
+            "provider accepted a handoff without a handoff signal",
+        )),
+    });
+    (events, result)
 }
 
 #[cfg(test)]

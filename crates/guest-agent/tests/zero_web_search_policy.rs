@@ -75,7 +75,7 @@ fn build_runtime(
     let user_env_file = write_user_env_file(
         &runtime_dir,
         &HashMap::from([
-            ("ZERO_AGENT_ID", "agent-zero-web-search"),
+            ("OKOU_AGENT_ID", "agent-okou-web-search"),
             (
                 "TEST_ARGS_PATH",
                 args_path.to_str().ok_or("args path must be valid UTF-8")?,

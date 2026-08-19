@@ -5,9 +5,15 @@ import type {
   ModelProviderType,
 } from "./model-provider-types";
 
+// Custom gateway types are excluded because their firewall is compiled per
+// surface from the stored base URL and auth header, not from a static table.
 type FirewallSupportedProvider = Exclude<
   ModelProviderType,
-  "aws-bedrock" | "azure-foundry" | "vm0"
+  | "aws-bedrock"
+  | "azure-foundry"
+  | "custom-anthropic-messages"
+  | "custom-openai-responses"
+  | "vm0"
 >;
 type LegacySingleSecretProvider = Exclude<
   FirewallSupportedProvider,
