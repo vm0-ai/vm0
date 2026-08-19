@@ -1,6 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import { onboardingCompleteContract } from "@okouai/api-contracts/contracts/onboarding";
-import { expect, test, vi } from "vitest";
+import { afterAll, expect, test, vi } from "vitest";
 
 import {
   click,
@@ -24,16 +24,23 @@ type Register = (properties: Record<string, unknown>) => void;
 type Reset = () => void;
 type Unregister = (property: string) => void;
 
-const posthog = vi.hoisted(() => {
+const { apiOriginMarker, posthog } = vi.hoisted(() => {
   vi.stubEnv("VITE_POSTHOG_KEY", "phc_test_key");
   window.location.href = "https://app.vm0.ai/";
+  const apiOriginMarker = document.createElement("meta");
+  apiOriginMarker.name = "vm0-api-origin";
+  apiOriginMarker.content = "https://api.vm0.ai";
+  document.head.append(apiOriginMarker);
   return {
-    capture: vi.fn<Capture>(),
-    identify: vi.fn<Identify>(),
-    init: vi.fn<Init>(),
-    register: vi.fn<Register>(),
-    reset: vi.fn<Reset>(),
-    unregister: vi.fn<Unregister>(),
+    apiOriginMarker,
+    posthog: {
+      capture: vi.fn<Capture>(),
+      identify: vi.fn<Identify>(),
+      init: vi.fn<Init>(),
+      register: vi.fn<Register>(),
+      reset: vi.fn<Reset>(),
+      unregister: vi.fn<Unregister>(),
+    },
   };
 });
 
@@ -42,6 +49,10 @@ vi.mock("posthog-js", () => {
 });
 
 const context = testContext();
+
+afterAll(() => {
+  apiOriginMarker.remove();
+});
 
 function buttonByText(text: string): HTMLElement {
   const button = queryAllByRoleFast("button").find((candidate) => {
