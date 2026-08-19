@@ -4101,7 +4101,7 @@ describe("chat composer image model", () => {
       (candidate) => {
         // Skip the category-strip segment items; they live inside the same
         // <SelectContent> but the radio role puts them under a different query.
-        return candidate.getAttribute("role") !== "radio";
+        return candidate.role !== "radio";
       },
     );
     expect(
@@ -4176,7 +4176,7 @@ describe("chat composer image model", () => {
       within(listbox)
         .queryAllByText("Pro")
         .filter((candidate) => {
-          return candidate.getAttribute("role") !== "radio";
+          return candidate.role !== "radio";
         }),
     ).toStrictEqual([]);
     expect(
