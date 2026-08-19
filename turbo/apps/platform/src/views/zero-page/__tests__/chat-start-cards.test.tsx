@@ -76,7 +76,7 @@ describe("chat start cards", () => {
     expect(
       renderedTitles(EN_TITLES).length + renderedTitles(workflowTitles).length,
     ).toBe(3);
-    expect(screen.getAllByText("Prompt")).toHaveLength(3);
+    expect(screen.getAllByText("Create")).toHaveLength(3);
     expect(templateButtons()).toHaveLength(3);
   });
 
@@ -91,7 +91,7 @@ describe("chat start cards", () => {
     )) as HTMLTextAreaElement;
     expect(composer).toHaveTextContent("");
 
-    click(screen.getAllByText("Prompt")[0]);
+    click(screen.getAllByText("Create")[0]);
 
     expect(composer.textContent).not.toBe("");
   });

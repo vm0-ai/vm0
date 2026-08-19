@@ -180,12 +180,16 @@ function StartCard({
   onOpenTemplates: () => void;
 }) {
   const { t } = useTranslation();
+  // `justify-center`: every card in the row is stretched to the tallest one, so
+  // shorter content has to sit in the middle or its bottom padding reads as
+  // deeper than its top.
+  //
   // `@container`: the overlay drops its secondary action based on how wide the
   // card actually is, which the viewport alone does not tell us — the same
   // breakpoint yields a 292px card with the sidebar open and a wider one
   // without it.
   return (
-    <div className="zero-card group @container relative p-4 transition-colors hover:bg-state-hover">
+    <div className="zero-card group @container relative flex flex-col justify-center p-4 transition-colors hover:bg-state-hover">
       {/* Stretched hit area so the whole card opens the template picker, kept as
           a real button so the hover actions stay focusable siblings. */}
       <button
@@ -219,13 +223,14 @@ function StartCard({
           touch device where `hover` never resolves, falls through to the card.
           */}
       <div className="pointer-events-none absolute inset-x-4 bottom-4 flex h-14 items-end gap-1 bg-gradient-to-t from-card from-[57%] to-transparent opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 group-focus-within:[&>button]:pointer-events-auto group-hover:[&>button]:pointer-events-auto">
-        {/* Peers, not a primary and a secondary: both open a way in, and the
-            card's own click already carries the emphasis. */}
+        {/* Peers that split the card: one starts the run from this card's
+            prompt, the other opens the picker. Neither leads, so they take
+            equal widths rather than each hugging its own label. */}
         <Button
           type="button"
           size="xs"
           variant="outline"
-          className="min-w-0"
+          className="min-w-0 flex-1 gap-1.5"
           onClick={() => {
             onSelectPrompt(content.prompt);
           }}
@@ -245,13 +250,15 @@ function StartCard({
           type="button"
           size="xs"
           variant="outline"
-          className="hidden shrink-0 @[15rem]:inline-flex"
+          className="hidden min-w-0 flex-1 gap-1.5 @[15rem]:inline-flex"
           onClick={onOpenTemplates}
         >
           <LayoutTemplate />
-          {t(($) => {
-            return $.chat.startCards.templates;
-          })}
+          <span className="truncate">
+            {t(($) => {
+              return $.chat.startCards.templates;
+            })}
+          </span>
         </Button>
       </div>
     </div>
