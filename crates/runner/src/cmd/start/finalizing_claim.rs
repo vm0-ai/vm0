@@ -230,18 +230,28 @@ async fn run_finalizing_claim(
                     active_lease,
                     reuse_result,
                     idle_snapshot,
-                } => ReadyClaimedResource {
-                    reuse_entry: reuse_entry.map(|entry| *entry),
-                    active_lease,
-                    reuse_result,
-                    idle_snapshot: Some(idle_snapshot),
-                },
+                } => {
+                    if reuse_entry.is_none() {
+                        pre_spawn_timing.record_finalizing_handoff_outcome(
+                            FinalizingHandoffOutcome::ActivationFailed,
+                        );
+                    }
+                    ReadyClaimedResource {
+                        reuse_entry: reuse_entry.map(|entry| *entry),
+                        active_lease,
+                        reuse_result,
+                        idle_snapshot: Some(idle_snapshot),
+                    }
+                }
                 ReservedActivation::CannotStart {
                     budget_lease,
                     reuse_result,
                     error,
                 } => {
                     drop(active_run_guard);
+                    pre_spawn_timing.record_finalizing_handoff_outcome(
+                        FinalizingHandoffOutcome::ActivationFailed,
+                    );
                     let cancellation = complete_claimed_without_sandbox(
                         claimed,
                         cancellation,
