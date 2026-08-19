@@ -1692,17 +1692,17 @@
     "startCards": {
       "kinds": {
         "avatar": {
-          "description": "Créez un présentateur pour votre prochain contenu",
+          "description": "Créez un présentateur pour votre contenu",
           "prompt": "Crée un présentateur avatar parlant pour ma prochaine vidéo.",
           "title": "Créer un avatar"
         },
         "illustration": {
-          "description": "Obtenez un visuel fini dans le style de votre choix",
+          "description": "Obtenez un visuel fini dans le style voulu",
           "prompt": "Crée une illustration dans le style que je décris.",
           "title": "Créer une illustration"
         },
         "slides": {
-          "description": "Transformez un sujet ou un document en présentation soignée",
+          "description": "Transformez un sujet ou un document en deck",
           "prompt": "Crée une présentation à partir d'un sujet ou d'un document que je te donne.",
           "title": "Créer une présentation"
         },

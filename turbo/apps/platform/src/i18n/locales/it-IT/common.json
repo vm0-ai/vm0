@@ -1702,7 +1702,7 @@
           "title": "Crea un'illustrazione"
         },
         "slides": {
-          "description": "Trasforma un argomento o un documento in slide curate",
+          "description": "Trasforma un argomento o documento in slide",
           "prompt": "Crea una presentazione da un argomento o documento che ti fornisco.",
           "title": "Crea una presentazione"
         },

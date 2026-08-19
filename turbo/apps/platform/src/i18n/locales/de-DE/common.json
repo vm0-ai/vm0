@@ -1652,7 +1652,7 @@
     "startCards": {
       "kinds": {
         "avatar": {
-          "description": "Erstellen Sie eine Moderation für Ihren nächsten Inhalt",
+          "description": "Erstellen Sie eine Moderation für Videos",
           "prompt": "Erstelle einen sprechenden Avatar-Moderator für mein nächstes Video.",
           "title": "Avatar erstellen"
         },
@@ -1662,17 +1662,17 @@
           "title": "Illustration erstellen"
         },
         "slides": {
-          "description": "Machen Sie aus einem Thema oder Dokument ein fertiges Deck",
+          "description": "Machen Sie aus einem Thema ein fertiges Deck",
           "prompt": "Erstelle eine Präsentation aus einem Thema oder Dokument, das ich dir gebe.",
           "title": "Präsentation erstellen"
         },
         "video": {
-          "description": "Machen Sie aus Ihrer Idee oder Ihren Assets ein fertiges Video",
+          "description": "Machen Sie aus Ihrer Idee ein fertiges Video",
           "prompt": "Mach aus meiner Idee oder meinen Assets ein fertiges Video.",
           "title": "Video erstellen"
         },
         "website": {
-          "description": "Erstellen und veröffentlichen Sie eine teilbare Seite",
+          "description": "Erstellen Sie eine teilbare Seite",
           "prompt": "Erstelle und veröffentliche eine teilbare Webseite für mich.",
           "title": "Website erstellen"
         }

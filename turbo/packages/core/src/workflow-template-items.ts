@@ -70,7 +70,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:auto-inbox-label",
     category: "Everyone",
     title: "Auto-inbox label",
-    description: "Run a workflow whenever you apply a Gmail label.",
+    description: "Run a workflow when you apply a Gmail label.",
     connectorSlugs: ["gmail"],
     behavior: [
       "Create a workflow that reacts when a named Gmail label is applied to a message.",
@@ -85,8 +85,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:daily-standup-report",
     category: "Engineering",
     title: "Daily standup report",
-    description:
-      "Pull product and engineering signals into a morning Slack report.",
+    description: "Post a morning product and engineering brief.",
     connectorSlugs: ["github", "sentry", "axiom", "plausible", "slack"],
     behavior: [
       "Create a scheduled workflow that runs every weekday or every morning.",
@@ -101,7 +100,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:github-pr-summarizer",
     category: "Engineering",
     title: "GitHub PR summarizer",
-    description: "Collect merged pull requests into a Notion report.",
+    description: "Collect merged pull requests into a report.",
     connectorSlugs: ["github", "notion", "slack"],
     behavior: [
       "Create a daily or weekly scheduled workflow for one or more GitHub repositories.",
@@ -116,8 +115,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:sentry-issue-digest",
     category: "Engineering",
     title: "Sentry issue digest",
-    description:
-      "Send a daily digest of critical and high-severity Sentry issues to Slack.",
+    description: "Send a daily digest of critical Sentry issues.",
     connectorSlugs: ["sentry", "slack"],
     behavior: [
       "Create a daily scheduled workflow that checks selected Sentry projects.",
@@ -132,8 +130,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:vercel-deploy-digest",
     category: "Engineering",
     title: "Vercel deploy digest",
-    description:
-      "Link Vercel deployments to commits and alert Slack on failures.",
+    description: "Alert Slack when a Vercel deploy fails.",
     connectorSlugs: ["vercel", "github", "slack"],
     behavior: [
       "Create a workflow that monitors selected Vercel projects on a schedule or via webhook when available.",
@@ -148,7 +145,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:auto-merge-github-prs",
     category: "Engineering",
     title: "Auto-merge GitHub PRs",
-    description: "Merge PRs labeled ready-to-merge once CI passes.",
+    description: "Merge ready-to-merge PRs once CI passes.",
     connectorSlugs: ["github", "vercel", "slack"],
     behavior: [
       "A PR is labeled ready-to-merge",
@@ -162,8 +159,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:file-sentry-crashes-github",
     category: "Engineering",
     title: "File Sentry crashes as GitHub issues",
-    description:
-      "Rank new Sentry errors by user impact and file the worst as GitHub issues.",
+    description: "File the worst Sentry errors as GitHub issues.",
     connectorSlugs: ["sentry", "github", "linear", "slack"],
     behavior: [
       "Zero pulls new Sentry errors",
@@ -177,8 +173,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:draft-github-release-notes-notion",
     category: "Engineering",
     title: "Draft GitHub release notes in Notion",
-    description:
-      "Turn the PRs merged since the last release into clean notes in Notion.",
+    description: "Turn merged PRs into release notes in Notion.",
     connectorSlugs: ["github", "notion", "slack"],
     behavior: [
       "A PR is labeled shipped",
@@ -207,8 +202,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:github-idea-to-notion-spec",
     category: "Product",
     title: "Turn a GitHub idea into a Notion spec",
-    description:
-      "Expand a labeled GitHub issue into a structured product spec in Notion.",
+    description: "Expand a GitHub issue into a Notion spec.",
     connectorSlugs: ["github", "notion", "figma"],
     behavior: [
       "An issue is labeled needs-spec",
@@ -222,8 +216,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:post-release-notes-slack",
     category: "Product",
     title: "Post release notes to Slack",
-    description:
-      "Draft a changelog from recently shipped work and post it to Slack.",
+    description: "Draft a changelog and post it to Slack.",
     connectorSlugs: ["github", "slack", "notion"],
     behavior: [
       "A PR is labeled release",
@@ -237,7 +230,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:sync-linear-roadmap-notion",
     category: "Product",
     title: "Sync the Linear roadmap to Notion",
-    description: "Keep a Notion roadmap in sync with your Linear issue status.",
+    description: "Keep a Notion roadmap in sync with Linear.",
     connectorSlugs: ["linear", "notion"],
     behavior: [
       "Zero reads Linear status",
@@ -251,8 +244,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:track-feature-usage-posthog",
     category: "Product",
     title: "Track feature usage with PostHog",
-    description:
-      "Surface the biggest weekly shifts in feature usage from PostHog.",
+    description: "Surface the week's biggest usage shifts.",
     connectorSlugs: ["posthog", "slack"],
     behavior: [
       "Zero reads PostHog",
@@ -266,7 +258,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:flag-figma-designs-no-task",
     category: "Product",
     title: "Flag Figma designs without a task",
-    description: "Flag Figma designs that have no linked Linear task yet.",
+    description: "Flag Figma designs with no Linear task.",
     connectorSlugs: ["figma", "linear", "slack"],
     behavior: [
       "Zero scans Figma frames",
@@ -280,7 +272,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:revenuecat-subscription-digest",
     category: "Data",
     title: "RevenueCat subscription digest",
-    description: "Track subscriptions in Sheets and alert Slack on churn.",
+    description: "Track subscriptions and alert Slack on churn.",
     connectorSlugs: ["revenuecat", "google-sheets", "slack"],
     behavior: [
       "Create a daily scheduled workflow that pulls RevenueCat subscription activity.",
@@ -295,8 +287,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:post-daily-metrics-slack",
     category: "Data",
     title: "Post daily metrics to Slack",
-    description:
-      "Post daily visitors, signups, and activation numbers to Slack.",
+    description: "Post daily visitors and signups to Slack.",
     connectorSlugs: ["plausible", "slack", "posthog", "clerk"],
     behavior: [
       "Zero pulls the metrics",
@@ -310,8 +301,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:run-daily-query-sheets",
     category: "Data",
     title: "Run a daily query into Google Sheets",
-    description:
-      "Run your saved SQL on a schedule and append the results to a Sheet.",
+    description: "Run saved SQL and append results to a Sheet.",
     connectorSlugs: ["snowflake", "google-sheets", "slack"],
     behavior: [
       "Zero runs the query",
@@ -325,8 +315,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:check-posthog-signup-funnel",
     category: "Data",
     title: "Check the PostHog signup funnel",
-    description:
-      "Track the signup funnel and post the biggest drop-off to Slack.",
+    description: "Post the signup funnel's biggest drop-off.",
     connectorSlugs: ["posthog", "slack"],
     behavior: [
       "Zero runs the funnel",
@@ -340,8 +329,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:alert-metric-moves-slack",
     category: "Data",
     title: "Alert when a metric moves",
-    description:
-      "Watch your key metrics and alert Slack when one moves sharply.",
+    description: "Alert Slack when a key metric moves sharply.",
     connectorSlugs: ["plausible", "slack", "posthog"],
     behavior: [
       "Zero checks the metric",
@@ -355,7 +343,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:track-signup-sources-sheets",
     category: "Data",
     title: "Track signup sources in Google Sheets",
-    description: "Attribute each new signup to its source in a tracking Sheet.",
+    description: "Attribute each signup to its source in a Sheet.",
     connectorSlugs: ["clerk", "google-sheets", "plausible"],
     behavior: [
       "Zero reads new signups",
@@ -369,8 +357,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:build-weekly-deck-gamma",
     category: "Data",
     title: "Build the weekly deck in Gamma",
-    description:
-      "Turn the week's metrics into a ready-to-present deck in Gamma.",
+    description: "Turn the week's metrics into a Gamma deck.",
     connectorSlugs: ["google-sheets", "gamma", "plausible", "slack"],
     behavior: [
       "Zero gathers the numbers",
@@ -384,8 +371,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:competitive-intel-monitor",
     category: "Marketing",
     title: "Competitive intel monitor",
-    description:
-      "Watch competitor pricing and feature changes, and log them in Notion.",
+    description: "Log competitor pricing changes in Notion.",
     connectorSlugs: ["firecrawl", "notion", "slack"],
     behavior: [
       "Create a weekly or daily scheduled workflow for a list of competitor pages.",
@@ -400,8 +386,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:x-brand-monitor",
     category: "Marketing",
     title: "X brand monitor",
-    description:
-      "Track brand mentions on X and alert Slack on the strong ones.",
+    description: "Alert Slack on strong brand mentions on X.",
     connectorSlugs: ["x", "notion", "slack"],
     behavior: [
       "Create a scheduled workflow that searches X for product, company, or keyword mentions.",
@@ -416,8 +401,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:track-keyword-ranks-ahrefs",
     category: "Marketing",
     title: "Track keyword ranks with Ahrefs",
-    description:
-      "Track keyword rankings in Ahrefs and report the movers in Notion.",
+    description: "Report the week's keyword rank movers.",
     connectorSlugs: ["ahrefs", "similarweb", "notion"],
     behavior: [
       "Zero reads keyword positions",
@@ -431,8 +415,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:publish-scheduled-posts-buffer",
     category: "Marketing",
     title: "Publish scheduled posts to Buffer",
-    description:
-      "Publish the day's scheduled content and queue the social posts.",
+    description: "Publish the day's scheduled social posts.",
     connectorSlugs: ["notion", "strapi", "buffer"],
     behavior: [
       "Zero reads today's calendar",
@@ -446,8 +429,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:blog-posts-to-x",
     category: "Marketing",
     title: "Turn blog posts into social posts",
-    description:
-      "Turn each new blog post into social variants queued via Buffer.",
+    description: "Turn each new blog post into social posts.",
     connectorSlugs: ["strapi", "buffer", "x"],
     behavior: [
       "Zero finds new posts",
@@ -461,8 +443,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:draft-newsletter-mailchimp",
     category: "Marketing",
     title: "Draft the newsletter in Mailchimp",
-    description:
-      "Assemble recent updates into a newsletter draft in Mailchimp.",
+    description: "Assemble recent updates into a newsletter.",
     connectorSlugs: ["github", "mailchimp"],
     behavior: [
       "Zero gathers what shipped",
@@ -476,8 +457,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:compare-google-ads-last-month",
     category: "Marketing",
     title: "Compare Google Ads vs last month",
-    description:
-      "Compare ad spend and ROAS to last month and flag anomalies in Slack.",
+    description: "Compare ad spend and ROAS to last month.",
     connectorSlugs: ["google-ads", "slack", "meta-ads"],
     behavior: [
       "Zero reads ad performance",
@@ -491,7 +471,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:salesforce-pipeline-digest",
     category: "Sales",
     title: "Salesforce pipeline digest",
-    description: "Summarize Salesforce opportunity risks in Slack each week.",
+    description: "Summarize Salesforce pipeline risks weekly.",
     connectorSlugs: ["salesforce", "slack"],
     behavior: [
       "Create a weekly scheduled workflow that reviews selected Salesforce opportunities.",
@@ -506,8 +486,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:catch-leads-gmail",
     category: "Sales",
     title: "Catch leads from Gmail",
-    description:
-      "Spot buying signals in new email and log the qualified leads.",
+    description: "Spot buying signals and log qualified leads.",
     connectorSlugs: ["gmail", "apollo", "google-sheets", "slack"],
     behavior: [
       "Zero scans new mail",
@@ -521,7 +500,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:new-gmail-contacts-hubspot",
     category: "Sales",
     title: "Add new Gmail contacts to HubSpot",
-    description: "Add and enrich unknown email senders as HubSpot contacts.",
+    description: "Add unknown email senders to HubSpot.",
     connectorSlugs: ["gmail", "hubspot", "apollo"],
     behavior: [
       "Zero spots an unknown sender",
@@ -535,7 +514,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:research-new-signups-apollo",
     category: "Sales",
     title: "Research new signups",
-    description: "Research each new signup and post a quick snapshot.",
+    description: "Research each new signup and post a snapshot.",
     connectorSlugs: ["clerk", "slack", "apollo"],
     behavior: [
       "Zero reads new signups",
@@ -549,7 +528,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:gmail-followups-auto",
     category: "Sales",
     title: "Send Gmail follow-ups automatically",
-    description: "Find contacts who didn't reply and draft the next follow-up.",
+    description: "Draft follow-ups for contacts who didn't reply.",
     connectorSlugs: ["instantly", "gmail", "apollo"],
     behavior: [
       "Zero checks sequence status",
@@ -563,8 +542,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:prep-google-calendar-meetings",
     category: "Sales",
     title: "Prep for Google Calendar meetings",
-    description:
-      "Research external attendees and send a prep brief before meetings.",
+    description: "Send a prep brief before external meetings.",
     connectorSlugs: ["google-calendar", "apollo", "gong", "slack"],
     behavior: [
       "A meeting is added",
@@ -578,8 +556,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:log-gong-calls-hubspot",
     category: "Sales",
     title: "Log Gong calls to HubSpot",
-    description:
-      "Pull notes and next steps from a Gong call into the HubSpot deal.",
+    description: "Pull Gong call notes into the HubSpot deal.",
     connectorSlugs: ["gong", "hubspot", "slack"],
     behavior: [
       "Zero reads the transcript",
@@ -593,7 +570,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:support-ticket-router",
     category: "Support",
     title: "Support ticket router",
-    description: "Classify support emails and alert Slack on critical ones.",
+    description: "Classify support email and flag critical ones.",
     connectorSlugs: ["gmail", "notion", "slack"],
     behavior: [
       "Create a workflow that runs from a Gmail trigger or scheduled inbox scan.",
@@ -608,8 +585,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:zendesk-knowledge-base",
     category: "Support",
     title: "Zendesk knowledge base",
-    description:
-      "Find recurring Zendesk questions, draft FAQ entries, and save them to Notion.",
+    description: "Turn recurring questions into FAQ entries.",
     connectorSlugs: ["zendesk", "notion", "slack"],
     behavior: [
       "Create a scheduled workflow that reviews recent Zendesk conversations or tickets.",
@@ -624,7 +600,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:draft-replies-notion-faq",
     category: "Support",
     title: "Draft replies from your Notion FAQ",
-    description: "Draft ticket replies grounded in your Notion FAQ.",
+    description: "Draft ticket replies from your Notion FAQ.",
     connectorSlugs: ["intercom", "notion", "gmail"],
     behavior: [
       "A question arrives",
@@ -638,8 +614,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:send-bugs-github-slack",
     category: "Support",
     title: "Send bugs to GitHub and Slack",
-    description:
-      "File bug-tagged reports as GitHub issues and alert the team on Slack.",
+    description: "File bug reports as GitHub issues.",
     connectorSlugs: ["github", "slack", "linear"],
     behavior: [
       "An issue is labeled bug",
@@ -653,7 +628,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:spot-churn-risk-stripe-zendesk",
     category: "Support",
     title: "Spot churn risk in Stripe and Zendesk",
-    description: "Flag accounts at risk of churn and draft a recovery email.",
+    description: "Flag churn risk and draft a recovery email.",
     connectorSlugs: ["clerk", "stripe", "zendesk", "resend", "slack"],
     behavior: [
       "Zero scans accounts",
@@ -667,8 +642,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:summarize-zendesk-tickets-daily",
     category: "Support",
     title: "Summarize Zendesk tickets daily",
-    description:
-      "Summarize the last day of Zendesk tickets and post it to Slack.",
+    description: "Post a daily summary of Zendesk tickets.",
     connectorSlugs: ["zendesk", "slack"],
     behavior: [
       "Zero reads the queue",
@@ -682,8 +656,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:daily-company-brief-slack",
     category: "CEO",
     title: "Post a daily company brief to Slack",
-    description:
-      "Pull product, growth, and revenue into a daily brief on Slack.",
+    description: "Pull product, growth, and revenue into a brief.",
     connectorSlugs: [
       "plausible",
       "slack",
@@ -704,8 +677,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:daily-industry-news-slack",
     category: "CEO",
     title: "Post daily industry news to Slack",
-    description:
-      "Round up the day's relevant industry news into a Slack brief.",
+    description: "Round up the day's industry news for Slack.",
     connectorSlugs: ["exa", "slack"],
     behavior: [
       "Zero scans the news",
@@ -719,8 +691,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:business-review-gamma",
     category: "CEO",
     title: "Build the business review in Gamma",
-    description:
-      "Turn the month's metrics into a business review deck in Gamma.",
+    description: "Turn the month's metrics into a review deck.",
     connectorSlugs: ["stripe", "gamma", "clerk"],
     behavior: [
       "Zero pulls the numbers",
@@ -734,7 +705,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:highlight-key-emails-gmail",
     category: "CEO",
     title: "Highlight key emails in Gmail",
-    description: "Surface the few emails that actually need your attention.",
+    description: "Surface the emails that need your attention.",
     connectorSlugs: ["gmail", "slack"],
     behavior: [
       "Zero reads the inbox",
@@ -748,8 +719,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:investor-update-google-docs",
     category: "CEO",
     title: "Draft the investor update in Google Docs",
-    description:
-      "Assemble metrics and highlights into an investor update in Docs.",
+    description: "Assemble metrics into an investor update.",
     connectorSlugs: ["stripe", "google-docs", "google-sheets"],
     behavior: [
       "Zero gathers KPIs",
@@ -763,7 +733,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:gmail-reconnect-reminders",
     category: "CEO",
     title: "Get Gmail reconnect reminders",
-    description: "Surface important contacts you haven't emailed in a while.",
+    description: "Surface contacts you haven't emailed lately.",
     connectorSlugs: ["gmail", "google-calendar", "slack"],
     behavior: [
       "Zero reviews your contacts",
@@ -777,8 +747,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:clickup-slack-standup",
     category: "Operations",
     title: "ClickUp Slack standup",
-    description:
-      "Pull ClickUp tasks each morning and post a team standup summary to Slack.",
+    description: "Post a morning standup from ClickUp tasks.",
     connectorSlugs: ["clickup", "slack"],
     behavior: [
       "Create a daily scheduled workflow that reads selected ClickUp spaces, folders, lists, or assignees.",
@@ -793,7 +762,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:sync-asana-projects-notion",
     category: "Operations",
     title: "Sync Asana projects to Notion",
-    description: "Roll up Asana project status into a single board in Notion.",
+    description: "Roll up Asana project status into Notion.",
     connectorSlugs: ["asana", "notion"],
     behavior: ["Zero reads Asana", "Rolled into one board", "Digest posted"],
     missingInfo:
@@ -803,7 +772,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:meeting-notes-asana-tasks",
     category: "Operations",
     title: "Turn meeting notes into Asana tasks",
-    description: "Turn meeting notes into assigned, due-dated tasks in Asana.",
+    description: "Turn meeting notes into tasks in Asana.",
     connectorSlugs: ["fireflies", "asana"],
     behavior: [
       "Zero reads the transcript",
@@ -817,7 +786,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:file-gmail-invoices-drive",
     category: "Operations",
     title: "File Gmail invoices to Google Drive",
-    description: "File invoice emails to Drive and log each one in a Sheet.",
+    description: "File invoice emails to Drive and log them.",
     connectorSlugs: ["gmail", "google-drive", "google-sheets"],
     behavior: [
       "An invoice is labeled",
@@ -831,8 +800,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:onboard-new-hires-asana",
     category: "Operations",
     title: "Onboard new hires in Asana",
-    description:
-      "Create the onboarding task checklist for each new hire in Asana.",
+    description: "Create an onboarding checklist per new hire.",
     connectorSlugs: ["deel", "asana", "google-drive"],
     behavior: [
       "A new hire is added",
@@ -846,7 +814,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:chase-overdue-asana-tasks",
     category: "Operations",
     title: "Chase overdue Asana tasks",
-    description: "Find overdue Asana tasks and nudge their owners on Slack.",
+    description: "Nudge the owners of overdue Asana tasks.",
     connectorSlugs: ["asana", "slack"],
     behavior: ["Zero scans Asana", "Owners identified", "Nudges sent in Slack"],
     missingInfo:
@@ -856,7 +824,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:catch-calendar-conflicts",
     category: "Operations",
     title: "Catch Google Calendar conflicts",
-    description: "Scan your calendar for double-bookings and alert you early.",
+    description: "Catch double-bookings in your calendar early.",
     connectorSlugs: ["google-calendar", "cal-com", "slack"],
     behavior: [
       "An event is created",
@@ -870,8 +838,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:personal-weekly-digest",
     category: "Everyone",
     title: "Personal weekly digest",
-    description:
-      "Summarize GitHub, Gmail, and Calendar into a weekly Slack update.",
+    description: "Summarize your week across GitHub and Gmail.",
     connectorSlugs: ["github", "gmail", "google-calendar", "slack"],
     behavior: [
       "Create a weekly scheduled workflow for the selected owner.",
@@ -886,8 +853,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:morning-brief",
     category: "Everyone",
     title: "Morning brief",
-    description:
-      "Turn Gmail, Calendar, and Notion updates into a short daily plan in Slack.",
+    description: "Turn mail and meetings into a short daily plan.",
     connectorSlugs: ["gmail", "google-calendar", "notion", "slack"],
     behavior: [
       "Create a daily scheduled workflow that prepares a morning planning brief.",
@@ -902,8 +868,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:sort-gmail-draft-replies",
     category: "Everyone",
     title: "Sort Gmail and draft replies",
-    description:
-      "Sort your inbox and draft replies to the emails that need them.",
+    description: "Sort your inbox and draft the replies needed.",
     connectorSlugs: ["gmail"],
     behavior: ["Zero reads new mail", "Sorted by urgency", "Replies drafted"],
     missingInfo:
@@ -913,8 +878,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:research-calendar-meetings",
     category: "Everyone",
     title: "Research your calendar meetings",
-    description:
-      "Research the people you're meeting before each calendar event.",
+    description: "Research the people you meet before each event.",
     connectorSlugs: ["google-calendar", "exa", "slack"],
     behavior: [
       "A meeting is added",
@@ -928,7 +892,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:summarize-gmail-newsletters",
     category: "Everyone",
     title: "Summarize Gmail newsletters",
-    description: "Digest the newsletters in your inbox into one short summary.",
+    description: "Digest your newsletters into one summary.",
     connectorSlugs: ["gmail", "slack"],
     behavior: [
       "Zero collects newsletters",
@@ -942,8 +906,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:meeting-recaps-slack",
     category: "Everyone",
     title: "Get meeting recaps in Slack",
-    description:
-      "Share a recap with decisions and action items after each meeting.",
+    description: "Share decisions and action items after meetings.",
     connectorSlugs: ["fireflies", "gmail", "slack"],
     behavior: ["Zero reads the transcript", "Recap written", "Sent to you"],
     missingInfo:
@@ -953,7 +916,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:flagged-gmail-todoist-tasks",
     category: "Everyone",
     title: "Turn flagged Gmail into Todoist tasks",
-    description: "Turn the emails you flag into Todoist tasks automatically.",
+    description: "Turn flagged emails into Todoist tasks.",
     connectorSlugs: ["gmail", "todoist"],
     behavior: [
       "You flag an email",

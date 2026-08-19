@@ -1671,7 +1671,7 @@
           "title": "Buat video"
         },
         "website": {
-          "description": "Buat dan terbitkan halaman yang bisa dibagikan",
+          "description": "Buat halaman yang bisa dibagikan",
           "prompt": "Buat dan terbitkan halaman web yang bisa saya bagikan.",
           "title": "Buat situs web"
         }

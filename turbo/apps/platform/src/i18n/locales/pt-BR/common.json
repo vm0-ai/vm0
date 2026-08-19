@@ -1692,7 +1692,7 @@
     "startCards": {
       "kinds": {
         "avatar": {
-          "description": "Crie um apresentador para o seu próximo conteúdo",
+          "description": "Crie um apresentador para o próximo conteúdo",
           "prompt": "Crie um apresentador avatar falante para o meu próximo vídeo.",
           "title": "Criar um avatar"
         },
@@ -1702,12 +1702,12 @@
           "title": "Criar uma ilustração"
         },
         "slides": {
-          "description": "Transforme um tema ou documento em um deck caprichado",
+          "description": "Transforme um tema ou documento em um deck",
           "prompt": "Crie uma apresentação a partir de um tema ou documento que eu fornecer.",
           "title": "Criar uma apresentação"
         },
         "video": {
-          "description": "Transforme sua ideia ou seus arquivos em um vídeo pronto",
+          "description": "Transforme sua ideia em um vídeo pronto",
           "prompt": "Transforme minha ideia ou meus arquivos em um vídeo pronto.",
           "title": "Criar um vídeo"
         },
