@@ -260,13 +260,17 @@ type PinnedDropSide = "before" | "after";
  * The drag handle shown above a pinned tile on hover. It is absolutely
  * positioned so it costs no layout: the tile keeps its size and the avatar
  * never moves.
+ *
+ * Every inset is a whole pixel. The tile is a `1fr` grid column, so the handle
+ * is centred on a fractional x; a half-pixel padding would round up on one edge
+ * and down on the other and visibly push the dots off-centre.
  */
 function PinnedAgentDragHandle() {
   return (
     <span
       aria-hidden="true"
       data-testid="pinned-agent-drag-handle"
-      className="pointer-events-none absolute -top-[5px] left-1/2 z-10 flex -translate-x-1/2 flex-col gap-[2px] rounded border-[0.7px] border-border bg-popover p-[2.5px] opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+      className="pointer-events-none absolute -top-[8px] left-1/2 z-10 flex -translate-x-1/2 flex-col gap-[2px] rounded border border-border bg-popover p-[3px] opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
     >
       {[0, 1].map((row) => {
         return (
@@ -550,7 +554,7 @@ export function PinnedAgentListSection({
         </span>
         <div
           ref={cachePinnedAgentGridRowsRef}
-          className="grid min-w-0 grid-cols-5 items-start gap-x-1 gap-y-2 pb-1"
+          className="grid min-w-0 grid-cols-5 items-start gap-x-1 gap-y-2.5 pb-1"
           data-testid="pinned-agents-grid"
         >
           {pinnedAgentCards.slice(0, 4)}
