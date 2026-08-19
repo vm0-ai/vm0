@@ -2,18 +2,14 @@ import type { ReactNode } from "react";
 import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { ArrowUpRight, LayoutTemplate, Play, Sparkles } from "lucide-react";
-import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
-import type {
-  PublicConnectorCatalogIcon,
-  PublicConnectorCatalogStatusItem,
-} from "@okouai/api-contracts/contracts/zero-connector-catalog";
 import type { WorkflowTemplateItem } from "@okouai/core/workflow-template-items";
 import { Button } from "@okouai/ui";
-import { connectorCatalogStatusBySlug$ } from "../../signals/external/connectors.ts";
 import { agentChatComposerSignals$ } from "../../signals/zero-page/agent-composer-signals.ts";
 import {
   startCardKinds$,
+  startCardWorkflowConnectorIcons$,
   startCardWorkflowTemplate$,
+  type StartCardConnectorIcon,
   type StartCardKind,
 } from "../../signals/zero-page/zero-start-cards.ts";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
@@ -27,9 +23,7 @@ const THUMBNAIL_CLASS =
 const NODE_CLASS = "rounded-md border border-border bg-card";
 
 /** A resolved connector mark, or `undefined` while the catalog is loading. */
-type WorkflowArtIcon =
-  | { readonly slug: ConnectorSlug; readonly icon: PublicConnectorCatalogIcon }
-  | undefined;
+type WorkflowArtIcon = StartCardConnectorIcon | undefined;
 
 function SlidesArt() {
   return (
@@ -102,9 +96,14 @@ function WorkflowNode({ icon }: { icon: WorkflowArtIcon }) {
 
 /**
  * Flow diagram for the workflow card: the template's first connector is the
- * trigger, the rest are the tools the workflow writes to.
+ * trigger, the rest are the tools the workflow writes to. Only this card needs
+ * connector marks, so the lookups start when it is actually drawn.
  */
-function WorkflowArt({ icons }: { icons: readonly WorkflowArtIcon[] }) {
+function WorkflowArt() {
+  const resolved = useLastResolved(startCardWorkflowConnectorIcons$);
+  // Hold the diagram shape while the marks are still loading.
+  const icons: readonly WorkflowArtIcon[] =
+    resolved && resolved.length > 0 ? resolved : [undefined, undefined];
   const [trigger, ...steps] = icons;
   return (
     <div className="flex w-[54px] flex-col items-center">
@@ -240,20 +239,6 @@ function StartCard({
   );
 }
 
-function connectorIcons(
-  slugs: readonly ConnectorSlug[],
-  statusBySlug:
-    | ReadonlyMap<string, PublicConnectorCatalogStatusItem>
-    | undefined,
-): readonly WorkflowArtIcon[] {
-  const resolved = slugs.flatMap((slug) => {
-    const status = statusBySlug?.get(slug);
-    return status ? [{ slug, icon: status.icon }] : [];
-  });
-  // Hold the diagram shape while the catalog is still loading.
-  return resolved.length > 0 ? resolved.slice(0, 3) : [undefined, undefined];
-}
-
 export function StartCards({
   onSelectPrompt,
 }: {
@@ -262,7 +247,6 @@ export function StartCards({
   const { t } = useTranslation();
   const kinds = useGet(startCardKinds$);
   const workflowTemplate = useGet(startCardWorkflowTemplate$);
-  const statusBySlug = useLastResolved(connectorCatalogStatusBySlug$);
   const composerSignals = useGet(agentChatComposerSignals$);
   const setTemplateCategory = useSet(
     composerSignals.template.setTemplatePickerCategory$,
@@ -315,14 +299,7 @@ export function StartCards({
       illustration: <IllustrationArt />,
       video: <VideoArt />,
       avatar: <AvatarArt />,
-      workflow: (
-        <WorkflowArt
-          icons={connectorIcons(
-            workflowTemplate?.connectorSlugs ?? [],
-            statusBySlug,
-          )}
-        />
-      ),
+      workflow: <WorkflowArt />,
     };
     return art[kind];
   };

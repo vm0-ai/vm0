@@ -3,7 +3,10 @@ import {
   WORKFLOW_TEMPLATE_ITEMS,
   type WorkflowTemplateItem,
 } from "@okouai/core/workflow-template-items";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
+import type { PublicConnectorCatalogIcon } from "@okouai/api-contracts/contracts/zero-connector-catalog";
 import { avatarTemplatesEnabled$ } from "../external/feature-switch.ts";
+import { connectorCatalogItemBySlug } from "../external/connectors.ts";
 
 /**
  * Entry kinds on the chat landing page. The values match the template picker
@@ -40,14 +43,42 @@ function shuffled<T>(items: readonly T[]): T[] {
 const internalStartCardOrder$ = state<readonly StartCardKind[]>(
   shuffled(START_CARD_KINDS),
 );
+const drawnWorkflowTemplate = shuffled(WORKFLOW_TEMPLATE_ITEMS)[0];
 const internalStartCardWorkflow$ = state<WorkflowTemplateItem | undefined>(
-  shuffled(WORKFLOW_TEMPLATE_ITEMS)[0],
+  drawnWorkflowTemplate,
 );
 
 /** The workflow template whose name and connectors the workflow card shows. */
 export const startCardWorkflowTemplate$ = computed((get) => {
   return get(internalStartCardWorkflow$);
 });
+
+/** Marks shown in the workflow card's flow diagram. */
+export interface StartCardConnectorIcon {
+  readonly slug: ConnectorSlug;
+  readonly icon: PublicConnectorCatalogIcon;
+}
+
+// The drawn template is fixed for the page load, so its lookups are built once.
+// They resolve one connector each: the chat landing page must not pull the full
+// connector catalog just to draw three marks.
+const workflowConnectorItems$ = (drawnWorkflowTemplate?.connectorSlugs ?? [])
+  .slice(0, 3)
+  .map((connectorSlug) => {
+    return connectorCatalogItemBySlug(connectorSlug);
+  });
+
+export const startCardWorkflowConnectorIcons$ = computed(
+  async (get): Promise<readonly StartCardConnectorIcon[]> => {
+    const pending = workflowConnectorItems$.map((item$) => {
+      return get(item$);
+    });
+    const items = await Promise.all(pending);
+    return items.flatMap((item) => {
+      return item ? [{ slug: item.slug, icon: item.icon }] : [];
+    });
+  },
+);
 
 export const startCardKinds$ = computed((get): readonly StartCardKind[] => {
   const avatarEnabled = get(avatarTemplatesEnabled$);
