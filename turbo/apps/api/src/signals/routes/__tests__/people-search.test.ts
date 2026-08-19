@@ -4,7 +4,7 @@ import {
   peopleSearchContract,
   type PeopleSearchRequest,
 } from "@okouai/api-contracts/contracts/people-search";
-import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import { usageRecordContract } from "@okouai/api-contracts/contracts/usage-record";
 import { webSearchContract } from "@okouai/api-contracts/contracts/web-search";
 import { HttpResponse, http, type JsonBodyType } from "msw";
@@ -147,7 +147,7 @@ async function createPricingFixture(
 
 async function credits(actor: ApiTestUser): Promise<number> {
   const response = await accept(
-    client()(zeroBillingStatusContract).get({
+    client()(billingStatusContract).get({
       headers: authenticate(actor),
     }),
     [200],

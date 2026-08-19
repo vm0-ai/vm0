@@ -1,5 +1,5 @@
 import { computed } from "ccstate";
-import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -14,7 +14,7 @@ const getBillingStatusInner$ = computed(async (get) => {
 
 export const billingStatusRoutes: readonly RouteEntry[] = [
   {
-    route: zeroBillingStatusContract.get,
+    route: billingStatusContract.get,
     handler: authRoute(
       {
         requireOrganization: true,

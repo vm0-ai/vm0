@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { testUsageSettlementContract } from "@okouai/api-contracts/contracts/test-usage-settlement";
-import { zeroBillingUsagePackCreditsContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingUsagePackCreditsContract } from "@okouai/api-contracts/contracts/billing";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { onTestFinished } from "vitest";
 
@@ -45,7 +45,7 @@ function authenticate(
 
 function creditsClient() {
   return setupApp({ context, routes: billingUsagePackCreditsRoutes })(
-    zeroBillingUsagePackCreditsContract,
+    billingUsagePackCreditsContract,
   );
 }
 

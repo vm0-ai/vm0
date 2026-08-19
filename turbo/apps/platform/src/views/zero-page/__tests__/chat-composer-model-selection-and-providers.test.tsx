@@ -27,7 +27,7 @@ import { claudeCodeDeviceAuthContract } from "@okouai/api-contracts/contracts/cl
 import { codexDeviceAuthContract } from "@okouai/api-contracts/contracts/codex-device-auth";
 import { zeroPersonalModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-personal-model-providers";
 import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
-import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import {
   userModelPreferenceContract,
   type UpdateUserModelPreferenceRequest,
@@ -2040,7 +2040,7 @@ describe("chat composer models", () => {
   it("restores personal models when billing refreshes after realtime subscribes", async () => {
     const user = userEvent.setup({ delay: null });
     let billingRequestCount = 0;
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       billingRequestCount += 1;
       return respond(
         200,
@@ -2101,7 +2101,7 @@ describe("chat composer models", () => {
   it("keeps loaded thread model options visible when billing refresh fails", async () => {
     const user = userEvent.setup({ delay: null });
     let billingRequestCount = 0;
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       billingRequestCount++;
       if (billingRequestCount === 1) {
         return respond(200, billingStatus("free"));

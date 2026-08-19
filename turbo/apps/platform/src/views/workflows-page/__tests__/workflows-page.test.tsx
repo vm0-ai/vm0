@@ -1,9 +1,9 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
-  zeroBillingStatusContract,
+  billingStatusContract,
   type BillingStatusResponse,
-} from "@okouai/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/billing";
 import {
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
@@ -118,7 +118,7 @@ function mockBillingTier(
   tier: string,
   capabilities: Partial<BillingStatusResponse> = {},
 ): void {
-  context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+  context.mocks.api(billingStatusContract.get, ({ respond }) => {
     return respond(200, billingStatus(tier, capabilities));
   });
 }

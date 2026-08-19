@@ -7,10 +7,10 @@ import {
   type ChatEvent,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import {
-  zeroBillingCheckoutContract,
-  zeroBillingCreditCheckoutContract,
-  zeroBillingStatusContract,
-} from "@okouai/api-contracts/contracts/zero-billing";
+  billingCheckoutContract,
+  billingCreditCheckoutContract,
+  billingStatusContract,
+} from "@okouai/api-contracts/contracts/billing";
 import { FeatureSwitchKey } from "@okouai/core";
 import { logsByIdContract } from "@okouai/api-contracts/contracts/logs";
 import { runsByIdContract } from "@okouai/api-contracts/contracts/run-routes";
@@ -39,14 +39,11 @@ describe("chat lifecycle", () => {
   it("shows billing recovery guidance when credits are depleted", async () => {
     const threadId = "e1000000-0000-4000-a000-000000000001";
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
-    context.mocks.api(
-      zeroBillingCheckoutContract.create,
-      ({ body, respond }) => {
-        return respond(200, {
-          url: `https://checkout.stripe.com/recover?tier=${body.tier}`,
-        });
-      },
-    );
+    context.mocks.api(billingCheckoutContract.create, ({ body, respond }) => {
+      return respond(200, {
+        url: `https://checkout.stripe.com/recover?tier=${body.tier}`,
+      });
+    });
 
     detachedSetupPage({ context, path: `/chats/${threadId}` });
 
@@ -69,14 +66,11 @@ describe("chat lifecycle", () => {
   it("shows Pro upgrade guidance when built-in video requires Pro", async () => {
     const threadId = "e1000000-0000-4000-a000-000000000002";
     mockFailedAssistantThread({ threadId, error: "pro_required" });
-    context.mocks.api(
-      zeroBillingCheckoutContract.create,
-      ({ body, respond }) => {
-        return respond(200, {
-          url: `https://checkout.stripe.com/recover?tier=${body.tier}`,
-        });
-      },
-    );
+    context.mocks.api(billingCheckoutContract.create, ({ body, respond }) => {
+      return respond(200, {
+        url: `https://checkout.stripe.com/recover?tier=${body.tier}`,
+      });
+    });
 
     detachedSetupPage({ context, path: `/chats/${threadId}` });
 
@@ -104,7 +98,7 @@ describe("chat lifecycle", () => {
       name: "Test Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, {
         tier: "limited-free-1",
         credits: 1500,
@@ -125,14 +119,11 @@ describe("chat lifecycle", () => {
         concurrencySubscriptions: [],
       });
     });
-    context.mocks.api(
-      zeroBillingCheckoutContract.create,
-      ({ body, respond }) => {
-        return respond(200, {
-          url: `https://checkout.stripe.com/recover?tier=${body.tier}`,
-        });
-      },
-    );
+    context.mocks.api(billingCheckoutContract.create, ({ body, respond }) => {
+      return respond(200, {
+        url: `https://checkout.stripe.com/recover?tier=${body.tier}`,
+      });
+    });
 
     detachedSetupPage({ context, path: `/chats/${threadId}` });
 
@@ -185,7 +176,7 @@ describe("chat lifecycle", () => {
       name: "Test Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, {
         tier: "pro",
         credits: 1500,
@@ -229,7 +220,7 @@ describe("chat lifecycle", () => {
       name: "Test Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, {
         tier: "pro",
         credits: 0,
@@ -251,7 +242,7 @@ describe("chat lifecycle", () => {
       });
     });
     context.mocks.api(
-      zeroBillingCreditCheckoutContract.create,
+      billingCreditCheckoutContract.create,
       async ({ body, respond }) => {
         await checkoutReady.promise;
         return respond(200, {
@@ -306,7 +297,7 @@ describe("chat lifecycle", () => {
       name: "Test Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, {
         tier: "pro",
         credits: 0,
@@ -328,7 +319,7 @@ describe("chat lifecycle", () => {
       });
     });
     context.mocks.api(
-      zeroBillingCreditCheckoutContract.create,
+      billingCreditCheckoutContract.create,
       async ({ respond }) => {
         await checkoutReady.promise;
         return respond(200, {
@@ -378,7 +369,7 @@ describe("chat lifecycle", () => {
       name: "Test Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, {
         tier: "pro",
         credits: 0,
@@ -420,7 +411,7 @@ describe("chat lifecycle", () => {
       name: "Test Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, {
         tier: "custom",
         credits: 0,
@@ -442,7 +433,7 @@ describe("chat lifecycle", () => {
       });
     });
     context.mocks.api(
-      zeroBillingCreditCheckoutContract.create,
+      billingCreditCheckoutContract.create,
       ({ body, respond }) => {
         return respond(200, {
           url: `https://checkout.stripe.com/credits?credits=${body.credits}`,

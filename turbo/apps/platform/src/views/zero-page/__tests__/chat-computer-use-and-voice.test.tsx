@@ -4,7 +4,7 @@ import { toast } from "@okouai/ui/components/ui/sonner";
 import { describe, expect, it, vi } from "vitest";
 import { voiceIoQuotaContract } from "@okouai/api-contracts/contracts/voice-io-quota";
 import { zeroComputerUseHostsContract } from "@okouai/api-contracts/contracts/zero-computer-use";
-import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import { fill } from "../../../__tests__/page-helper.ts";
 import {
   mockChatLifecycle,
@@ -1557,7 +1557,7 @@ describe("chat lifecycle", () => {
     const toastError = vi.spyOn(toast, "error");
     const threadId = "e2000000-0000-4000-a000-000000000018";
     context.mocks.browser.voiceInput({ rms: 0.1 });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, billingStatus("pro"));
     });
     context.mocks.api(voiceIoQuotaContract.get, ({ respond }) => {
@@ -1591,7 +1591,7 @@ describe("chat lifecycle", () => {
       name: "Test Org",
       role: "member",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, billingStatus("pro"));
     });
     context.mocks.api(voiceIoQuotaContract.get, ({ respond }) => {
@@ -1622,7 +1622,7 @@ describe("chat lifecycle", () => {
           ? "e2000000-0000-4000-a000-000000000020"
           : "e2000000-0000-4000-a000-000000000021";
       context.mocks.browser.voiceInput({ rms: 0.1 });
-      context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      context.mocks.api(billingStatusContract.get, ({ respond }) => {
         return respond(200, billingStatus(tier));
       });
       context.mocks.api(voiceIoQuotaContract.get, ({ respond }) => {

@@ -4,7 +4,7 @@ import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { Check, Gift, Loader2, Lock, X } from "lucide-react";
 import { Button } from "@okouai/ui";
-import type { RedeemResponse } from "@okouai/api-contracts/contracts/zero-billing";
+import type { RedeemResponse } from "@okouai/api-contracts/contracts/billing";
 import {
   redeemResponse$,
   redeemStripeSuccess$,

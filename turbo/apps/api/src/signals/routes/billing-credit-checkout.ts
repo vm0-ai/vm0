@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroBillingCreditCheckoutContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingCreditCheckoutContract } from "@okouai/api-contracts/contracts/billing";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { eq } from "drizzle-orm";
 
@@ -44,7 +44,7 @@ const creditCheckoutAuthed$ = command(
     signal.throwIfAborted();
 
     const bodyResult = await get(
-      bodyResultOf(zeroBillingCreditCheckoutContract.create),
+      bodyResultOf(billingCreditCheckoutContract.create),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -174,7 +174,7 @@ const creditPurchaseConfirmAuthed$ = command(
     signal.throwIfAborted();
 
     const bodyResult = await get(
-      bodyResultOf(zeroBillingCreditCheckoutContract.confirm),
+      bodyResultOf(billingCreditCheckoutContract.confirm),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -246,11 +246,11 @@ const creditPurchaseConfirm$ = command(async ({ set }, signal: AbortSignal) => {
 
 export const billingCreditCheckoutRoutes: readonly RouteEntry[] = [
   {
-    route: zeroBillingCreditCheckoutContract.create,
+    route: billingCreditCheckoutContract.create,
     handler: creditCheckout$,
   },
   {
-    route: zeroBillingCreditCheckoutContract.confirm,
+    route: billingCreditCheckoutContract.confirm,
     handler: creditPurchaseConfirm$,
   },
 ];

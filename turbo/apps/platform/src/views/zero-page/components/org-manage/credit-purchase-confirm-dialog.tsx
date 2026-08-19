@@ -1,7 +1,7 @@
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
-import type { CreditPurchasePreviewResponse } from "@okouai/api-contracts/contracts/zero-billing";
+import type { CreditPurchasePreviewResponse } from "@okouai/api-contracts/contracts/billing";
 import { FeatureSwitchKey } from "@okouai/core";
 import { Button } from "@okouai/ui";
 import {

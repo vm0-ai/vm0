@@ -24,9 +24,9 @@ import {
 } from "@okouai/api-contracts/contracts/zero-agents";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
-  zeroBillingStatusContract,
+  billingStatusContract,
   type BillingStatusResponse,
-} from "@okouai/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/billing";
 import { expect, vi } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
@@ -267,7 +267,7 @@ export function mockBillingCapabilities(
   },
   tier = "pro",
 ): void {
-  context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+  context.mocks.api(billingStatusContract.get, ({ respond }) => {
     return respond(200, billingStatus(tier, modelCapabilities));
   });
 }

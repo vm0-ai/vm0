@@ -64,7 +64,7 @@ import type {
   BillingStatusResponse,
   ConcurrencySubscriptionChangePreviewResponse,
   UsagePackMigrationStateResponse,
-} from "@okouai/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/billing";
 import {
   Dialog,
   DialogContent,

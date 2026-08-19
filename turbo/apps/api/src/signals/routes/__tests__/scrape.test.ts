@@ -5,7 +5,7 @@ import {
   scrapeContract,
   type ScrapeRequest,
 } from "@okouai/api-contracts/contracts/scrape";
-import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 
 import { mockEnv } from "../../../lib/env";
 import { createAppWithRoutes } from "../../../app-factory-core";
@@ -120,7 +120,7 @@ async function fundActor(actor: ApiTestUser): Promise<void> {
 
 async function credits(actor: ApiTestUser): Promise<number> {
   const response = await accept(
-    client()(zeroBillingStatusContract).get({
+    client()(billingStatusContract).get({
       headers: authenticate(actor),
     }),
     [200],

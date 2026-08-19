@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroBillingRedeemCodeContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingRedeemCodeContract } from "@okouai/api-contracts/contracts/billing";
 
 import { env, optionalEnv } from "../../lib/env";
 import { badRequestMessage, providerUnavailable } from "../../lib/error";
@@ -171,9 +171,7 @@ const redeemCodeAuthed$ = command(async ({ get }, signal: AbortSignal) => {
   }
   signal.throwIfAborted();
 
-  const bodyResult = await get(
-    bodyResultOf(zeroBillingRedeemCodeContract.create),
-  );
+  const bodyResult = await get(bodyResultOf(billingRedeemCodeContract.create));
   signal.throwIfAborted();
   if (!bodyResult.ok) {
     return bodyResult.response;
@@ -258,7 +256,7 @@ const redeemCode$ = command(async ({ set }, signal: AbortSignal) => {
 
 export const billingRedeemCodeRoutes: readonly RouteEntry[] = [
   {
-    route: zeroBillingRedeemCodeContract.create,
+    route: billingRedeemCodeContract.create,
     handler: redeemCode$,
   },
 ];
