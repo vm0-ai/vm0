@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
-import { LayoutTemplate, Play, Sparkles } from "lucide-react";
+import { Play } from "lucide-react";
 import type { WorkflowTemplateItem } from "@okouai/core/workflow-template-items";
 import { Button } from "@okouai/ui";
 import { agentChatComposerSignals$ } from "../../signals/zero-page/agent-composer-signals.ts";
@@ -230,12 +230,11 @@ function StartCard({
           type="button"
           size="xs"
           variant="outline"
-          className="min-w-0 flex-1 gap-1.5"
+          className="min-w-0 flex-1 text-xs"
           onClick={() => {
             onSelectPrompt(content.prompt);
           }}
         >
-          <Sparkles />
           <span className="truncate">
             {t(($) => {
               return $.chat.startCards.startWithPrompt;
@@ -250,10 +249,9 @@ function StartCard({
           type="button"
           size="xs"
           variant="outline"
-          className="hidden min-w-0 flex-1 gap-1.5 @[15rem]:inline-flex"
+          className="hidden min-w-0 flex-1 text-xs @[15rem]:inline-flex"
           onClick={onOpenTemplates}
         >
-          <LayoutTemplate />
           <span className="truncate">
             {t(($) => {
               return $.chat.startCards.templates;
