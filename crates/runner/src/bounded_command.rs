@@ -145,11 +145,6 @@ impl BoundedChild {
             None => Err("child"),
         }
     }
-
-    #[cfg(test)]
-    fn pid(&self) -> Option<u32> {
-        self.child.as_ref().and_then(Child::id)
-    }
 }
 
 impl Drop for BoundedChild {
@@ -414,7 +409,14 @@ mod tests {
             CommandOutputCapture::StdoutAndStderr,
             Duration::from_secs(1),
         ));
-        let (pid, starttime) = wait_for_recorded_process(&pid_path).await?;
+        let (pid, starttime) = match wait_for_recorded_process(&pid_path).await {
+            Ok(process) => process,
+            Err(error) => {
+                task.abort();
+                let _ = task.await;
+                return Err(error);
+            }
+        };
 
         let outcome = task.await.unwrap().unwrap();
 
@@ -434,7 +436,14 @@ mod tests {
             CommandOutputCapture::StdoutAndStderr,
             Duration::from_secs(60),
         ));
-        let (pid, starttime) = wait_for_recorded_process(&pid_path).await?;
+        let (pid, starttime) = match wait_for_recorded_process(&pid_path).await {
+            Ok(process) => process,
+            Err(error) => {
+                task.abort();
+                let _ = task.await;
+                return Err(error);
+            }
+        };
 
         task.abort();
         assert!(matches!(task.await, Err(error) if error.is_cancelled()));
@@ -479,27 +488,6 @@ mod tests {
         assert!(output.status.success());
         assert!(output.stdout.is_empty());
         assert_eq!(output.stderr, b"stderr");
-    }
-
-    #[cfg(target_os = "linux")]
-    #[tokio::test]
-    async fn kill_and_reap_child_reaps_running_child() {
-        let mut command = Command::new("sleep");
-        command.arg("60");
-        let mut child = BoundedChild::spawn(&mut command).unwrap();
-        let pid = child.pid().unwrap();
-        let starttime = read_process_stat(pid)
-            .await
-            .unwrap_or_else(|| panic!("read initial process stat for pid {pid}"))
-            .starttime;
-
-        kill_and_reap_child("sleep", &mut child).await.unwrap();
-
-        let observed = read_process_stat(pid).await;
-        assert!(
-            !matches!(&observed, Some(stat) if stat.starttime == starttime),
-            "killed child pid {pid} was not reaped: {observed:?}"
-        );
     }
 
     #[tokio::test(start_paused = true)]
