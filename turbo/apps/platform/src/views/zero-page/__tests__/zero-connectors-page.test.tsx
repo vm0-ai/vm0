@@ -673,6 +673,38 @@ describe("connectors page", () => {
     ).toBeInTheDocument();
   });
 
+  it("does not treat bounded discovery results as the catalog size", async () => {
+    mockConnectors([]);
+    context.mocks.api(zeroConnectorCatalogContract.discovery, ({ respond }) => {
+      return respond(200, {
+        connectors: [
+          publicStatusItem({
+            connectorSlug: "github",
+            label: "GitHub",
+            authMethods: [],
+          }),
+        ],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: {
+        [FeatureSwitchKey.ConnectorDiscovery]: true,
+        [FeatureSwitchKey.ConnectorCatalogCount]: true,
+      },
+    });
+
+    await expect(
+      screen.findByTestId("connector-card-label"),
+    ).resolves.toHaveTextContent("GitHub");
+    expect(
+      screen.getByText("Connect third-party services for your agents to use."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/^Connect 1 service/)).not.toBeInTheDocument();
+  });
+
   it("shows the full connector catalog size in the page description", async () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
