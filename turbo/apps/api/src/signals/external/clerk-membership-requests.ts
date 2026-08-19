@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { env } from "../../lib/env";
+import { startUntrackedBestEffortCleanup } from "../utils";
 import { ClerkRateLimitError } from "./clerk";
 
 const CLERK_API_BASE = "https://api.clerk.com/v1";
@@ -38,10 +39,13 @@ export async function fetchClerkMembershipRequests(
       signal,
     },
   );
-  if (res.status === 404) {
-    return [];
-  }
   if (!res.ok) {
+    if (res.body) {
+      startUntrackedBestEffortCleanup(res.body.cancel());
+    }
+    if (res.status === 404) {
+      return [];
+    }
     if (res.status === 429) {
       throw new ClerkRateLimitError(
         `Failed to fetch membership requests for org ${orgId}: HTTP 429`,
