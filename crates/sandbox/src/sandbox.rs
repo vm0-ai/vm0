@@ -1,8 +1,11 @@
 use std::any::Any;
 use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::Duration;
 
 use async_trait::async_trait;
+use tokio::sync::Notify;
 
 use crate::error::{Result, SandboxError, SandboxIdleTransition};
 use crate::types::{
@@ -29,6 +32,174 @@ pub struct SandboxFinalExecParkOutcome {
     pub exec_result: ExecResult,
     /// Eligibility reported after the sandbox reached the parked state.
     pub park_outcome: SandboxParkOutcome,
+}
+
+/// Point where an exact successor shortened physical park preparation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SandboxFinalExecParkHandoffPoint {
+    /// The request was accepted before submitting the park-time balloon target.
+    BeforeBalloon,
+    /// The request interrupted the bounded balloon-settle wait.
+    DuringBalloonSettle,
+}
+
+/// Completed final guest exec and physical park, optionally shortened for an
+/// already-claimed exact successor.
+pub enum SandboxFinalExecParkHandoffOutcome {
+    /// No handoff request interrupted provider compaction.
+    Parked(SandboxFinalExecParkOutcome),
+    /// The sandbox reached the paused boundary without completing idle memory
+    /// compaction and must be delivered only to the accepted exact successor.
+    Handoff {
+        /// Terminal result of the lifecycle-owned final guest exec.
+        exec_result: ExecResult,
+        /// Provider boundary where the request shortened physical park.
+        point: SandboxFinalExecParkHandoffPoint,
+    },
+}
+
+const HANDOFF_OPEN: u8 = 0;
+const HANDOFF_REQUESTED: u8 = 1;
+const HANDOFF_ACCEPTED: u8 = 2;
+const HANDOFF_CANCELLED: u8 = 3;
+
+struct SandboxFinalExecParkHandoffState {
+    state: AtomicU8,
+    changed: Notify,
+}
+
+/// Monotonic one-shot coordination between an exact successor and physical
+/// sandbox parking.
+///
+/// A lifecycle owner creates one signal for an active run. At most one exact
+/// successor may request it. The provider may accept that request before or
+/// during idle compaction; cancellation before acceptance permanently closes
+/// the signal so another successor cannot inherit the request.
+#[derive(Clone)]
+pub struct SandboxFinalExecParkHandoff {
+    inner: Arc<SandboxFinalExecParkHandoffState>,
+}
+
+impl SandboxFinalExecParkHandoff {
+    /// Create an unrequested one-shot handoff signal.
+    pub fn new() -> Self {
+        Self {
+            inner: Arc::new(SandboxFinalExecParkHandoffState {
+                state: AtomicU8::new(HANDOFF_OPEN),
+                changed: Notify::new(),
+            }),
+        }
+    }
+
+    /// Register the only exact-successor request.
+    pub fn request(&self) -> bool {
+        let requested = self
+            .inner
+            .state
+            .compare_exchange(
+                HANDOFF_OPEN,
+                HANDOFF_REQUESTED,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+            .is_ok();
+        if requested {
+            self.inner.changed.notify_waiters();
+        }
+        requested
+    }
+
+    /// Permanently close the signal before the provider accepts a request.
+    pub fn cancel(&self) -> bool {
+        loop {
+            let state = self.inner.state.load(Ordering::Acquire);
+            match state {
+                HANDOFF_OPEN | HANDOFF_REQUESTED => {
+                    if self
+                        .inner
+                        .state
+                        .compare_exchange_weak(
+                            state,
+                            HANDOFF_CANCELLED,
+                            Ordering::AcqRel,
+                            Ordering::Acquire,
+                        )
+                        .is_ok()
+                    {
+                        self.inner.changed.notify_waiters();
+                        return true;
+                    }
+                }
+                HANDOFF_ACCEPTED | HANDOFF_CANCELLED..=u8::MAX => return false,
+            }
+        }
+    }
+
+    /// Return whether the provider has already accepted the one-shot request.
+    pub fn is_accepted(&self) -> bool {
+        self.inner.state.load(Ordering::Acquire) == HANDOFF_ACCEPTED
+    }
+
+    /// Accept a pending request, or confirm that it was already accepted.
+    pub fn accept_if_requested(&self) -> bool {
+        loop {
+            match self.inner.state.load(Ordering::Acquire) {
+                HANDOFF_ACCEPTED => return true,
+                HANDOFF_REQUESTED => {
+                    if self
+                        .inner
+                        .state
+                        .compare_exchange_weak(
+                            HANDOFF_REQUESTED,
+                            HANDOFF_ACCEPTED,
+                            Ordering::AcqRel,
+                            Ordering::Acquire,
+                        )
+                        .is_ok()
+                    {
+                        self.inner.changed.notify_waiters();
+                        return true;
+                    }
+                }
+                _ => return false,
+            }
+        }
+    }
+
+    /// Wait for a request and accept it, returning false if it was cancelled.
+    pub async fn wait_and_accept(&self) -> bool {
+        loop {
+            let changed = self.inner.changed.notified();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
+            match self.inner.state.load(Ordering::Acquire) {
+                HANDOFF_ACCEPTED => return true,
+                HANDOFF_REQUESTED => return self.accept_if_requested(),
+                HANDOFF_CANCELLED..=u8::MAX => return false,
+                HANDOFF_OPEN => changed.as_mut().await,
+            }
+        }
+    }
+
+    /// Wait until the provider accepts the request or the request is cancelled.
+    pub async fn wait_for_acceptance(&self) -> bool {
+        loop {
+            let changed = self.inner.changed.notified();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
+            match self.inner.state.load(Ordering::Acquire) {
+                HANDOFF_ACCEPTED => return true,
+                HANDOFF_CANCELLED..=u8::MAX => return false,
+                HANDOFF_OPEN | HANDOFF_REQUESTED => changed.as_mut().await,
+            }
+        }
+    }
+}
+
+impl Default for SandboxFinalExecParkHandoff {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Stable reason why a validly parked sandbox cannot be reused.
@@ -232,6 +403,8 @@ pub enum SandboxFinalExecParkSubstageOutcome {
     Deadline,
     /// Balloon statistics were unavailable and the existing policy proceeded.
     StatsUnavailable,
+    /// Exact-successor demand shortened idle-only memory compaction.
+    HandoffRequested,
     /// The provider operation failed.
     Failed,
 }
@@ -246,6 +419,7 @@ impl SandboxFinalExecParkSubstageOutcome {
             Self::PressureLimited => "pressure_limited",
             Self::Deadline => "deadline",
             Self::StatsUnavailable => "stats_unavailable",
+            Self::HandoffRequested => "handoff_requested",
             Self::Failed => "failed",
         }
     }
@@ -475,6 +649,24 @@ pub trait Sandbox: Send + Sync + Any {
         self.final_exec_and_park(request, diagnostic_label).await
     }
 
+    /// Run the final guest preparation and reach the paused park boundary while
+    /// allowing one already-claimed exact successor to shorten idle-only
+    /// provider compaction.
+    ///
+    /// The default implementation preserves provider compatibility by fully
+    /// parking and never accepting the handoff signal.
+    async fn final_exec_and_park_for_handoff(
+        &mut self,
+        request: &ExecRequest<'_>,
+        diagnostic_label: &'static str,
+        _handoff: &SandboxFinalExecParkHandoff,
+        observer: &mut dyn SandboxFinalExecParkObserver,
+    ) -> Result<SandboxFinalExecParkHandoffOutcome> {
+        self.final_exec_and_park_with_observer(request, diagnostic_label, observer)
+            .await
+            .map(SandboxFinalExecParkHandoffOutcome::Parked)
+    }
+
     /// Transition the sandbox back to the active state.
     ///
     /// Must be called before any further work is dispatched via `exec` /
@@ -630,4 +822,38 @@ pub trait Sandbox: Send + Sync + Any {
         handle: GuestProcessHandle,
         timeout: Duration,
     ) -> Result<ProcessExit>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SandboxFinalExecParkHandoff;
+
+    #[test]
+    fn final_exec_park_handoff_accepts_only_one_request() {
+        let handoff = SandboxFinalExecParkHandoff::new();
+
+        assert!(handoff.request());
+        assert!(!handoff.request());
+        assert!(handoff.accept_if_requested());
+        assert!(!handoff.cancel());
+    }
+
+    #[test]
+    fn final_exec_park_handoff_cancellation_closes_unaccepted_request() {
+        let handoff = SandboxFinalExecParkHandoff::new();
+
+        assert!(handoff.request());
+        assert!(handoff.cancel());
+        assert!(!handoff.accept_if_requested());
+        assert!(!handoff.request());
+    }
+
+    #[test]
+    fn final_exec_park_handoff_cancellation_closes_before_request() {
+        let handoff = SandboxFinalExecParkHandoff::new();
+
+        assert!(handoff.cancel());
+        assert!(!handoff.request());
+        assert!(!handoff.accept_if_requested());
+    }
 }

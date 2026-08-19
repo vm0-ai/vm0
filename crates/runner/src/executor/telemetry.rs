@@ -29,6 +29,43 @@ pub(crate) enum RunnerPreSpawnPhase {
     SpawnJobSetup,
 }
 
+#[derive(Clone, Copy)]
+pub(crate) enum FinalizingHandoffOutcome {
+    Accepted,
+    ActivationFailed,
+    PublishedExact,
+    NotAcceptedBeforeDeadline,
+    NoExact,
+    Cancelled,
+}
+
+impl FinalizingHandoffOutcome {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Accepted => "accepted",
+            Self::ActivationFailed => "activation_failed",
+            Self::PublishedExact => "published_exact",
+            Self::NotAcceptedBeforeDeadline => "not_accepted_before_deadline",
+            Self::NoExact => "no_exact",
+            Self::Cancelled => "cancelled",
+        }
+    }
+
+    const fn succeeded(self) -> bool {
+        matches!(self, Self::Accepted | Self::PublishedExact)
+    }
+
+    pub(crate) fn record(self, telemetry: &mut JobTelemetry) {
+        telemetry.record_with_outcome(
+            "runner_claim_finalizing_handoff",
+            Duration::ZERO,
+            self.succeeded(),
+            (!self.succeeded()).then_some(self.as_str()),
+            Some(self.as_str()),
+        );
+    }
+}
+
 impl RunnerPreSpawnPhase {
     const ALL: [Self; 10] = [
         Self::ResumeSessionValidation,
@@ -123,6 +160,7 @@ pub(crate) struct RunnerPreSpawnTiming {
     phase_durations: RunnerPreSpawnPhaseDurations,
     task_enqueued_at: Option<Instant>,
     exact_reuse_speculation: Option<ExactReuseSpeculationTiming>,
+    finalizing_handoff_outcome: Option<FinalizingHandoffOutcome>,
 }
 
 #[derive(Clone, Copy)]
@@ -162,11 +200,20 @@ impl RunnerPreSpawnTiming {
             phase_durations: RunnerPreSpawnPhaseDurations::default(),
             task_enqueued_at: None,
             exact_reuse_speculation: None,
+            finalizing_handoff_outcome: None,
         }
     }
 
     pub(crate) fn record_exact_reuse_speculation(&mut self, timing: ExactReuseSpeculationTiming) {
         self.exact_reuse_speculation = Some(timing);
+    }
+
+    pub(crate) fn record_finalizing_handoff_outcome(&mut self, outcome: FinalizingHandoffOutcome) {
+        self.finalizing_handoff_outcome = Some(outcome);
+    }
+
+    pub(crate) fn finalizing_handoff_outcome(&self) -> Option<FinalizingHandoffOutcome> {
+        self.finalizing_handoff_outcome
     }
 
     pub(crate) fn record_phase(&mut self, phase: RunnerPreSpawnPhase, duration: Duration) {
@@ -201,6 +248,9 @@ impl RunnerPreSpawnTiming {
                 true,
                 None,
             );
+        }
+        if let Some(outcome) = self.finalizing_handoff_outcome {
+            outcome.record(telemetry);
         }
         if let Some(timing) = self.exact_reuse_speculation.as_ref() {
             telemetry.record(

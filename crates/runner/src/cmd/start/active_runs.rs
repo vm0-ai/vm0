@@ -1,8 +1,12 @@
 use std::collections::{HashMap, HashSet, hash_map};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use tokio::sync::{Notify, watch};
+use sandbox::SandboxFinalExecParkHandoff;
+use tokio::sync::{Notify, oneshot, watch};
 
+use crate::idle_pool::{
+    FinalizingHandoffCandidate, ImmediateHandoffCandidate, ParkedIdleCandidate,
+};
 use crate::ids::RunId;
 
 #[derive(Clone)]
@@ -15,18 +19,31 @@ struct ActiveRunEntry {
     reuse_key: Option<String>,
     profile_name: String,
     reuse_state: watch::Sender<ActiveRunReuseState>,
+    handoff: Arc<Mutex<ActiveRunHandoffBroker>>,
+}
+
+struct ActiveRunHandoffBroker {
+    signal: SandboxFinalExecParkHandoff,
+    delivery: Option<ActiveRunHandoffDelivery>,
+}
+
+struct ActiveRunHandoffDelivery {
+    successor_run_id: RunId,
+    sender: oneshot::Sender<Box<FinalizingHandoffCandidate>>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum ActiveRunReuseState {
     Pending,
     ExactSandboxPublished,
+    ExactSandboxHandedOff,
     NoExactSandbox,
     Released,
 }
 
 pub(super) struct ActiveRunReuseProof {
     reuse_state: watch::Receiver<ActiveRunReuseState>,
+    handoff: Arc<Mutex<ActiveRunHandoffBroker>>,
 }
 
 impl ActiveRunReuseProof {
@@ -40,20 +57,180 @@ impl ActiveRunReuseProof {
         }
         self.state()
     }
+
+    pub(super) fn request_handoff(
+        &self,
+        successor_run_id: RunId,
+    ) -> Option<ActiveRunHandoffRequest> {
+        let mut broker = lock_handoff(&self.handoff);
+        if self.state() != ActiveRunReuseState::Pending || broker.delivery.is_some() {
+            return None;
+        }
+        let (sender, receiver) = oneshot::channel();
+        broker.delivery = Some(ActiveRunHandoffDelivery {
+            successor_run_id,
+            sender,
+        });
+        if !broker.signal.request() {
+            broker.delivery = None;
+            return None;
+        }
+        Some(ActiveRunHandoffRequest {
+            successor_run_id,
+            signal: broker.signal.clone(),
+            receiver,
+            broker: Arc::clone(&self.handoff),
+        })
+    }
+}
+
+pub(super) struct ActiveRunHandoffRequest {
+    successor_run_id: RunId,
+    signal: SandboxFinalExecParkHandoff,
+    receiver: oneshot::Receiver<Box<FinalizingHandoffCandidate>>,
+    broker: Arc<Mutex<ActiveRunHandoffBroker>>,
+}
+
+impl ActiveRunHandoffRequest {
+    pub(super) async fn accepted(&self) -> bool {
+        self.signal.wait_for_acceptance().await
+    }
+
+    pub(super) async fn receive(
+        &mut self,
+    ) -> Result<Box<FinalizingHandoffCandidate>, oneshot::error::RecvError> {
+        (&mut self.receiver).await
+    }
+
+    pub(super) fn cancel_and_recover_delivery(
+        &mut self,
+    ) -> Option<Box<FinalizingHandoffCandidate>> {
+        self.close_delivery();
+        self.receiver.try_recv().ok()
+    }
+
+    pub(super) fn expire_if_unaccepted(&mut self) -> bool {
+        let mut broker = lock_handoff(&self.broker);
+        if !self.signal.cancel() && self.signal.is_accepted() {
+            return false;
+        }
+        self.receiver.close();
+        if broker
+            .delivery
+            .as_ref()
+            .is_some_and(|delivery| delivery.successor_run_id == self.successor_run_id)
+        {
+            broker.delivery = None;
+        }
+        true
+    }
+
+    fn close_delivery(&mut self) {
+        let mut broker = lock_handoff(&self.broker);
+        self.receiver.close();
+        self.signal.cancel();
+        if broker
+            .delivery
+            .as_ref()
+            .is_some_and(|delivery| delivery.successor_run_id == self.successor_run_id)
+        {
+            broker.delivery = None;
+        }
+    }
+}
+
+impl Drop for ActiveRunHandoffRequest {
+    fn drop(&mut self) {
+        self.close_delivery();
+    }
 }
 
 #[derive(Clone)]
 pub(super) struct ActiveRunReusePublisher {
     reuse_state: watch::Sender<ActiveRunReuseState>,
+    handoff: Arc<Mutex<ActiveRunHandoffBroker>>,
+}
+
+pub(super) enum ActiveRunHandoffDeliveryResult<C> {
+    Delivered,
+    NotRequested(C),
+    Failed(C),
 }
 
 impl ActiveRunReusePublisher {
     pub(super) fn publish_exact_sandbox(&self) -> bool {
-        self.resolve_pending(ActiveRunReuseState::ExactSandboxPublished)
+        self.publish_without_handoff(ActiveRunReuseState::ExactSandboxPublished)
     }
 
     pub(super) fn publish_no_exact_sandbox(&self) -> bool {
-        self.resolve_pending(ActiveRunReuseState::NoExactSandbox)
+        self.publish_without_handoff(ActiveRunReuseState::NoExactSandbox)
+    }
+
+    pub(super) fn handoff_signal(&self) -> SandboxFinalExecParkHandoff {
+        lock_handoff(&self.handoff).signal.clone()
+    }
+
+    pub(super) fn deliver_exact_handoff(
+        &self,
+        candidate: ParkedIdleCandidate,
+        predecessor_run_id: RunId,
+    ) -> ActiveRunHandoffDeliveryResult<ParkedIdleCandidate> {
+        self.deliver_handoff(
+            candidate,
+            predecessor_run_id,
+            |candidate, successor_run_id, predecessor_run_id| {
+                candidate.into_finalizing_handoff(successor_run_id, predecessor_run_id)
+            },
+            FinalizingHandoffCandidate::into_parked_candidate,
+        )
+    }
+
+    pub(super) fn deliver_exact_immediate_handoff(
+        &self,
+        candidate: ImmediateHandoffCandidate,
+        predecessor_run_id: RunId,
+    ) -> ActiveRunHandoffDeliveryResult<ImmediateHandoffCandidate> {
+        let handoff_point = candidate.handoff_point();
+        self.deliver_handoff(
+            candidate,
+            predecessor_run_id,
+            |candidate, successor_run_id, predecessor_run_id| {
+                candidate.into_finalizing_handoff(successor_run_id, predecessor_run_id)
+            },
+            |candidate| {
+                candidate
+                    .into_parked_candidate()
+                    .into_immediate_handoff(handoff_point)
+            },
+        )
+    }
+
+    fn deliver_handoff<C>(
+        &self,
+        candidate: C,
+        predecessor_run_id: RunId,
+        bind: impl FnOnce(C, RunId, RunId) -> FinalizingHandoffCandidate,
+        recover: impl FnOnce(Box<FinalizingHandoffCandidate>) -> C,
+    ) -> ActiveRunHandoffDeliveryResult<C> {
+        let mut broker = lock_handoff(&self.handoff);
+        if !broker.signal.accept_if_requested() {
+            return ActiveRunHandoffDeliveryResult::NotRequested(candidate);
+        }
+        let Some(delivery) = broker.delivery.take() else {
+            return ActiveRunHandoffDeliveryResult::Failed(candidate);
+        };
+        let candidate = Box::new(bind(
+            candidate,
+            delivery.successor_run_id,
+            predecessor_run_id,
+        ));
+        match delivery.sender.send(candidate) {
+            Ok(()) => {
+                self.resolve_pending(ActiveRunReuseState::ExactSandboxHandedOff);
+                ActiveRunHandoffDeliveryResult::Delivered
+            }
+            Err(candidate) => ActiveRunHandoffDeliveryResult::Failed(recover(candidate)),
+        }
     }
 
     fn resolve_pending(&self, next: ActiveRunReuseState) -> bool {
@@ -66,10 +243,26 @@ impl ActiveRunReusePublisher {
         })
     }
 
+    fn publish_without_handoff(&self, next: ActiveRunReuseState) -> bool {
+        let mut broker = lock_handoff(&self.handoff);
+        let resolved = self.resolve_pending(next);
+        if resolved {
+            broker.signal.cancel();
+            broker.delivery = None;
+        }
+        resolved
+    }
+
     #[cfg(test)]
     pub(super) fn detached() -> Self {
         let (reuse_state, _reuse_state_rx) = watch::channel(ActiveRunReuseState::Pending);
-        Self { reuse_state }
+        Self {
+            reuse_state,
+            handoff: Arc::new(Mutex::new(ActiveRunHandoffBroker {
+                signal: SandboxFinalExecParkHandoff::new(),
+                delivery: None,
+            })),
+        }
     }
 }
 
@@ -78,6 +271,7 @@ pub(super) struct ActiveRunGuard {
     run_id: Option<RunId>,
     has_reuse_key: bool,
     reuse_state: watch::Sender<ActiveRunReuseState>,
+    handoff: Arc<Mutex<ActiveRunHandoffBroker>>,
 }
 
 impl ActiveRuns {
@@ -95,6 +289,10 @@ impl ActiveRuns {
         profile_name: String,
     ) -> ActiveRunGuard {
         let (reuse_state, _reuse_state_rx) = watch::channel(ActiveRunReuseState::Pending);
+        let handoff = Arc::new(Mutex::new(ActiveRunHandoffBroker {
+            signal: SandboxFinalExecParkHandoff::new(),
+            delivery: None,
+        }));
         let has_reuse_key = reuse_key.is_some();
         let mut entries = lock_entries(&self.entries);
         let entry = entries.entry(run_id);
@@ -107,6 +305,7 @@ impl ActiveRuns {
                 reuse_key,
                 profile_name,
                 reuse_state: reuse_state.clone(),
+                handoff: Arc::clone(&handoff),
             });
         }
         drop(entries);
@@ -115,6 +314,7 @@ impl ActiveRuns {
             run_id: Some(run_id),
             has_reuse_key,
             reuse_state,
+            handoff,
         }
     }
 
@@ -131,6 +331,7 @@ impl ActiveRuns {
         }
         let proof = ActiveRunReuseProof {
             reuse_state: entry.reuse_state.subscribe(),
+            handoff: Arc::clone(&entry.handoff),
         };
         (proof.state() == ActiveRunReuseState::Pending).then_some(proof)
     }
@@ -159,6 +360,7 @@ impl ActiveRunGuard {
     pub(super) fn reuse_publisher(&self) -> ActiveRunReusePublisher {
         ActiveRunReusePublisher {
             reuse_state: self.reuse_state.clone(),
+            handoff: Arc::clone(&self.handoff),
         }
     }
 
@@ -171,8 +373,13 @@ impl ActiveRunGuard {
             return false;
         };
         lock_entries(&self.active_runs.entries).remove(&run_id);
-        let was_pending = self.reuse_state.send_replace(ActiveRunReuseState::Released)
-            == ActiveRunReuseState::Pending;
+        let was_pending = {
+            let mut handoff = lock_handoff(&self.handoff);
+            handoff.signal.cancel();
+            handoff.delivery = None;
+            self.reuse_state.send_replace(ActiveRunReuseState::Released)
+                == ActiveRunReuseState::Pending
+        };
         if self.has_reuse_key && was_pending {
             self.active_runs.reuse_state_notify.notify_one();
         }
@@ -194,9 +401,18 @@ fn lock_entries(
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
+fn lock_handoff(handoff: &Mutex<ActiveRunHandoffBroker>) -> MutexGuard<'_, ActiveRunHandoffBroker> {
+    handoff
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use crate::idle_pool::test_support::ParkedIdleCandidateBuilder;
+    use crate::resource_budget::ResourceBudget;
 
     #[tokio::test]
     async fn active_runs_prove_exact_predecessor_and_preserve_shared_reuse_key() {
@@ -316,5 +532,187 @@ mod tests {
             released_proof.changed().await,
             ActiveRunReuseState::Released
         );
+    }
+
+    #[test]
+    fn resolved_predecessor_rejects_late_handoff_requests() {
+        let active_runs = ActiveRuns::new(Arc::new(Notify::new()));
+        let published_run_id = RunId::new_v4();
+        let published_guard = active_runs.register(
+            published_run_id,
+            Some("thread:published".into()),
+            "vm0/default".into(),
+        );
+        let published_proof = active_runs
+            .finalizing_predecessor(published_run_id, "thread:published", "vm0/default")
+            .unwrap();
+
+        assert!(published_guard.reuse_publisher().publish_exact_sandbox());
+        assert!(published_proof.request_handoff(RunId::new_v4()).is_none());
+
+        let released_run_id = RunId::new_v4();
+        let released_guard = active_runs.register(
+            released_run_id,
+            Some("thread:released-late".into()),
+            "vm0/default".into(),
+        );
+        let released_proof = active_runs
+            .finalizing_predecessor(released_run_id, "thread:released-late", "vm0/default")
+            .unwrap();
+        drop(released_guard);
+
+        assert!(released_proof.request_handoff(RunId::new_v4()).is_none());
+    }
+
+    #[test]
+    fn predecessor_accepts_only_one_live_handoff_request() {
+        let active_runs = ActiveRuns::new(Arc::new(Notify::new()));
+        let run_id = RunId::new_v4();
+        let _guard = active_runs.register(
+            run_id,
+            Some("thread:single-handoff".into()),
+            "vm0/default".into(),
+        );
+        let proof = active_runs
+            .finalizing_predecessor(run_id, "thread:single-handoff", "vm0/default")
+            .unwrap();
+        let request = proof
+            .request_handoff(RunId::new_v4())
+            .expect("first exact successor should register");
+
+        assert!(proof.request_handoff(RunId::new_v4()).is_none());
+        drop(request);
+        assert!(
+            proof.request_handoff(RunId::new_v4()).is_none(),
+            "a cancelled one-shot request must not transfer to another successor"
+        );
+    }
+
+    #[test]
+    fn closed_accepted_handoff_receiver_returns_candidate_to_publisher() {
+        let active_runs = ActiveRuns::new(Arc::new(Notify::new()));
+        let predecessor_run_id = RunId::new_v4();
+        let successor_run_id = RunId::new_v4();
+        let guard = active_runs.register(
+            predecessor_run_id,
+            Some("thread:closed-handoff".into()),
+            "vm0/default".into(),
+        );
+        let publisher = guard.reuse_publisher();
+        let proof = active_runs
+            .finalizing_predecessor(predecessor_run_id, "thread:closed-handoff", "vm0/default")
+            .unwrap();
+        let mut request = proof
+            .request_handoff(successor_run_id)
+            .expect("exact successor should register a handoff");
+        assert!(publisher.handoff_signal().accept_if_requested());
+        request.receiver.close();
+
+        let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
+        let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
+        let candidate = ParkedIdleCandidateBuilder::new("thread:closed-handoff", lease)
+            .with_history_generation_run_id(predecessor_run_id)
+            .build();
+        let recovered = match publisher.deliver_exact_handoff(candidate, predecessor_run_id) {
+            ActiveRunHandoffDeliveryResult::Failed(candidate) => candidate,
+            ActiveRunHandoffDeliveryResult::Delivered => {
+                panic!("closed receiver must not take sandbox ownership")
+            }
+            ActiveRunHandoffDeliveryResult::NotRequested(_) => {
+                panic!("provider already accepted the handoff request")
+            }
+        };
+
+        assert_eq!(proof.state(), ActiveRunReuseState::Pending);
+        let (payload, lease) = recovered.into_active_destroy_parts();
+        drop(payload);
+        drop(lease);
+        assert_eq!(budget.allocated(), (0, 0, 0));
+    }
+
+    #[test]
+    fn cancelled_accepted_handoff_recovers_already_sent_candidate() {
+        let active_runs = ActiveRuns::new(Arc::new(Notify::new()));
+        let predecessor_run_id = RunId::new_v4();
+        let successor_run_id = RunId::new_v4();
+        let guard = active_runs.register(
+            predecessor_run_id,
+            Some("thread:cancelled-handoff".into()),
+            "vm0/default".into(),
+        );
+        let publisher = guard.reuse_publisher();
+        let proof = active_runs
+            .finalizing_predecessor(
+                predecessor_run_id,
+                "thread:cancelled-handoff",
+                "vm0/default",
+            )
+            .unwrap();
+        let mut request = proof
+            .request_handoff(successor_run_id)
+            .expect("exact successor should register a handoff");
+        assert!(publisher.handoff_signal().accept_if_requested());
+
+        let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
+        let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
+        let candidate = ParkedIdleCandidateBuilder::new("thread:cancelled-handoff", lease)
+            .with_history_generation_run_id(predecessor_run_id)
+            .build();
+        assert!(matches!(
+            publisher.deliver_exact_handoff(candidate, predecessor_run_id),
+            ActiveRunHandoffDeliveryResult::Delivered
+        ));
+
+        let recovered = request
+            .cancel_and_recover_delivery()
+            .expect("cancellation must recover a candidate sent before receiver closure");
+        let (payload, lease) = recovered
+            .into_parked_candidate()
+            .into_active_destroy_parts();
+        drop(payload);
+        drop(lease);
+        assert_eq!(budget.allocated(), (0, 0, 0));
+    }
+
+    #[tokio::test]
+    async fn deadline_preserves_accepted_handoff_before_delivery() {
+        let active_runs = ActiveRuns::new(Arc::new(Notify::new()));
+        let predecessor_run_id = RunId::new_v4();
+        let successor_run_id = RunId::new_v4();
+        let guard = active_runs.register(
+            predecessor_run_id,
+            Some("thread:deadline-handoff".into()),
+            "vm0/default".into(),
+        );
+        let publisher = guard.reuse_publisher();
+        let proof = active_runs
+            .finalizing_predecessor(predecessor_run_id, "thread:deadline-handoff", "vm0/default")
+            .unwrap();
+        let mut request = proof
+            .request_handoff(successor_run_id)
+            .expect("exact successor should register a handoff");
+        assert!(publisher.handoff_signal().accept_if_requested());
+
+        assert!(!request.expire_if_unaccepted());
+
+        let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
+        let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
+        let candidate = ParkedIdleCandidateBuilder::new("thread:deadline-handoff", lease)
+            .with_history_generation_run_id(predecessor_run_id)
+            .build();
+        assert!(matches!(
+            publisher.deliver_exact_handoff(candidate, predecessor_run_id),
+            ActiveRunHandoffDeliveryResult::Delivered
+        ));
+        let candidate = request
+            .receive()
+            .await
+            .expect("accepted handoff should remain deliverable after its deadline");
+        let (payload, lease) = candidate
+            .into_parked_candidate()
+            .into_active_destroy_parts();
+        drop(payload);
+        drop(lease);
+        assert_eq!(budget.allocated(), (0, 0, 0));
     }
 }

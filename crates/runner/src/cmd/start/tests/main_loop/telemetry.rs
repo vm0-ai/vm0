@@ -1,8 +1,9 @@
 use super::super::super::*;
 use super::super::support::{
-    context_with_session, minimal_context, mock_run_config_with_api_url,
-    mock_run_config_with_overrides_and_api_url, push_job, seed_idle_pool, shutdown, test_profiles,
-    wait_discover_entered,
+    SpeculativeIdleSeedSpec, context_with_session, minimal_context, mock_run_config_with_api_url,
+    mock_run_config_with_overrides_and_api_url, push_job, seed_idle_pool,
+    seed_idle_pool_with_speculative_timezone, shutdown, test_profiles, test_runner_identity,
+    wait_cancel_handle, wait_discover_entered,
 };
 use crate::paths::RunnerPaths;
 use crate::workspace_image_cache::WorkspaceImageCache;
@@ -325,4 +326,256 @@ async fn invalid_resume_session_emits_no_reuse_telemetry() {
     shutdown(&env, run_handle).await;
 
     reuse_telemetry_mock.assert_calls_async(0).await;
+}
+
+#[tokio::test]
+async fn cancelled_finalizing_handoff_flushes_outcome_without_executor() {
+    use httpmock::prelude::*;
+
+    let server = MockServer::start_async().await;
+    let telemetry_mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/telemetry")
+                .body_includes("runner_claim_finalizing_handoff")
+                .body_includes(r#""outcome":"cancelled""#);
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"{"success":true,"id":"ok"}"#);
+        })
+        .await;
+
+    let (config, env) =
+        mock_run_config_with_api_url(test_profiles(), 2, 4096, 1, &server.base_url());
+    let reuse_key = "thread:cancelled-finalizing-handoff-telemetry";
+    let predecessor_run_id = RunId::new_v4();
+    let predecessor_guard = env.active_runs.register(
+        predecessor_run_id,
+        Some(reuse_key.to_owned()),
+        "vm0/default".into(),
+    );
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    let mut context = minimal_context(run_id);
+    context.reuse_key = Some(reuse_key.to_owned());
+    env.provider.set_claim_result(run_id, Some(context));
+    env.handle
+        .discover_tx
+        .send(
+            crate::provider::JobCandidate::new(run_id, "vm0/default".into())
+                .with_reuse_key(Some(reuse_key.to_owned()))
+                .with_history_generation_run_id(Some(predecessor_run_id))
+                .with_runner_preference_for_test(
+                    crate::provider::ActiveRunnerPreference::ranked_for_test(
+                        test_runner_identity(),
+                        crate::provider::RunnerPreferenceTier::FinalizingPredecessor,
+                        std::time::Instant::now() + Duration::from_secs(30),
+                    ),
+                ),
+        )
+        .unwrap();
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+    let cancellation = wait_cancel_handle(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+
+    cancellation.request_hard_cancellation().await;
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("cancelled finalizing handoff should report completion");
+    assert_eq!(completion.exit_code, 137);
+
+    drop(predecessor_guard);
+    shutdown(&env, run_handle).await;
+    telemetry_mock.assert_calls_async(1).await;
+}
+
+#[tokio::test]
+async fn finalizing_handoff_activation_failure_is_not_reported_as_accepted() {
+    use httpmock::prelude::*;
+
+    let server = MockServer::start_async().await;
+    let telemetry_mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/telemetry")
+                .body_includes("runner_claim_finalizing_handoff")
+                .body_includes(r#""outcome":"activation_failed""#);
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"{"success":true,"id":"ok"}"#);
+        })
+        .await;
+
+    let wait_gate = sandbox_mock::MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    overrides.push_unpark_result(Err(sandbox::SandboxError::IdleTransition {
+        transition: sandbox::SandboxIdleTransition::Unpark,
+        message: "simulated handoff activation failure".into(),
+    }));
+    let (config, env) = mock_run_config_with_overrides_and_api_url(
+        test_profiles(),
+        2,
+        4096,
+        1,
+        overrides,
+        &server.base_url(),
+    );
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let reuse_key = "thread:failed-finalizing-handoff-activation";
+    let predecessor_run_id = RunId::new_v4();
+    let mut predecessor_context = minimal_context(predecessor_run_id);
+    predecessor_context.reuse_key = Some(reuse_key.to_owned());
+    push_job(
+        &env,
+        predecessor_run_id,
+        "vm0/default",
+        Some(predecessor_context),
+    );
+    wait_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("predecessor should still be running when the successor is claimed");
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+
+    let run_id = RunId::new_v4();
+    let mut context = minimal_context(run_id);
+    context.reuse_key = Some(reuse_key.to_owned());
+    env.provider.set_claim_result(run_id, Some(context));
+    env.handle
+        .discover_tx
+        .send(
+            crate::provider::JobCandidate::new(run_id, "vm0/default".into())
+                .with_reuse_key(Some(reuse_key.to_owned()))
+                .with_history_generation_run_id(Some(predecessor_run_id))
+                .with_runner_preference_for_test(
+                    crate::provider::ActiveRunnerPreference::ranked_for_test(
+                        test_runner_identity(),
+                        crate::provider::RunnerPreferenceTier::FinalizingPredecessor,
+                        std::time::Instant::now() + Duration::from_secs(30),
+                    ),
+                ),
+        )
+        .unwrap();
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+
+    wait_gate.release_one();
+    wait_gate
+        .wait_entered(2, Duration::from_secs(5))
+        .await
+        .expect("fresh fallback should start after handoff activation fails");
+    wait_gate.release_one();
+
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("fresh fallback should complete");
+    assert_eq!(
+        completion.reuse_result,
+        Some(crate::types::SandboxReuseResult::UnparkFailed)
+    );
+
+    shutdown(&env, run_handle).await;
+    telemetry_mock.assert_calls_async(1).await;
+}
+
+#[tokio::test]
+async fn published_exact_activation_failure_is_reported_as_activation_failed() {
+    use httpmock::prelude::*;
+
+    let server = MockServer::start_async().await;
+    let telemetry_mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/telemetry")
+                .body_includes("runner_claim_finalizing_handoff")
+                .body_includes(r#""outcome":"activation_failed""#);
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"{"success":true,"id":"ok"}"#);
+        })
+        .await;
+
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_unpark_result(Err(sandbox::SandboxError::IdleTransition {
+        transition: sandbox::SandboxIdleTransition::Unpark,
+        message: "simulated published exact activation failure".into(),
+    }));
+    let (config, env) = mock_run_config_with_overrides_and_api_url(
+        test_profiles(),
+        2,
+        4096,
+        1,
+        Arc::clone(&overrides),
+        &server.base_url(),
+    );
+    let budget = Arc::clone(&config.capacity.budget);
+    let reuse_key = "thread:failed-published-exact-activation";
+    let predecessor_run_id = RunId::new_v4();
+    let predecessor_guard = env.active_runs.register(
+        predecessor_run_id,
+        Some(reuse_key.to_owned()),
+        "vm0/default".into(),
+    );
+    let predecessor_reuse = predecessor_guard.reuse_publisher();
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    let mut context = minimal_context(run_id);
+    context.reuse_key = Some(reuse_key.to_owned());
+    env.provider.set_claim_result(run_id, Some(context));
+    env.handle
+        .discover_tx
+        .send(
+            crate::provider::JobCandidate::new(run_id, "vm0/default".into())
+                .with_reuse_key(Some(reuse_key.to_owned()))
+                .with_history_generation_run_id(Some(predecessor_run_id))
+                .with_runner_preference_for_test(
+                    crate::provider::ActiveRunnerPreference::ranked_for_test(
+                        test_runner_identity(),
+                        crate::provider::RunnerPreferenceTier::FinalizingPredecessor,
+                        std::time::Instant::now() + Duration::from_secs(30),
+                    ),
+                ),
+        )
+        .unwrap();
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+
+    seed_idle_pool_with_speculative_timezone(
+        &env.idle_pool,
+        &budget,
+        &overrides,
+        SpeculativeIdleSeedSpec {
+            reuse_key,
+            profile_name: "vm0/default",
+            vcpu: 2,
+            memory_mb: 4096,
+            history_generation_run_id: predecessor_run_id,
+            guest_timezone_intent: crate::guest_timezone::GuestTimezoneIntent::Unknown,
+            timing: None,
+        },
+    )
+    .await;
+    assert!(predecessor_reuse.publish_exact_sandbox());
+
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("fresh fallback should complete after exact activation fails");
+    assert_eq!(
+        completion.reuse_result,
+        Some(crate::types::SandboxReuseResult::UnparkFailed)
+    );
+
+    drop(predecessor_guard);
+    shutdown(&env, run_handle).await;
+    telemetry_mock.assert_calls_async(1).await;
 }

@@ -64,6 +64,7 @@ async fn make_idle_park_request(
         guest_timezone_intent: crate::guest_timezone::GuestTimezoneIntent::Unknown,
         workspace_image_size_bytes: 0,
         workspace_promotion: None,
+        handoff: None,
     })
 }
 
@@ -238,6 +239,7 @@ async fn idle_park_request_success_preserves_reuse_metadata() {
         guest_timezone_intent: crate::guest_timezone::GuestTimezoneIntent::Unknown,
         workspace_image_size_bytes: 0,
         workspace_promotion: None,
+        handoff: None,
     });
 
     let candidate = match request.park_for_idle().await {

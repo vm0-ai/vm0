@@ -5,7 +5,8 @@ use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use futures_util::FutureExt;
 use guest_contracts::reuse_preparation::ReusePreparationReport;
 use sandbox::{
-    DeviceRateLimits, Sandbox, SandboxFactory, SandboxFinalExecParkObserver, SandboxId,
+    DeviceRateLimits, Sandbox, SandboxFactory, SandboxFinalExecParkHandoff,
+    SandboxFinalExecParkHandoffOutcome, SandboxFinalExecParkObserver, SandboxId,
     SandboxParkNonReusableReason, SandboxParkOutcome,
 };
 
@@ -21,9 +22,9 @@ use crate::workspace_image_cache::{
 use crate::workspace_promotion::abandon_unpublished_workspace_promotion;
 
 use super::entry::{
-    IdleDestroyJob, IdleEntry, IdleSandboxMetadata, IdleSandboxResources, ParkedIdleCandidate,
-    RejectedParkedIdleCandidate, ReservedIdleSandbox, SpeculativeIdleSandbox,
-    WorkspacePromotionPolicy,
+    IdleDestroyJob, IdleDestroyPayload, IdleEntry, IdleSandboxMetadata, IdleSandboxResources,
+    ImmediateHandoffCandidate, ParkedIdleCandidate, RejectedParkedIdleCandidate,
+    ReservedIdleSandbox, SpeculativeIdleSandbox, WorkspacePromotionPolicy,
 };
 
 /// One-shot request to transition an active sandbox into same-reuse-key idle
@@ -50,17 +51,44 @@ pub(crate) struct IdleParkRequestParts {
     pub(crate) guest_timezone_intent: GuestTimezoneIntent,
     pub(crate) workspace_image_size_bytes: u64,
     pub(crate) workspace_promotion: Option<WorkspaceImagePromotionContext>,
+    pub(crate) handoff: Option<SandboxFinalExecParkHandoff>,
 }
 
 /// Result after the sandbox successfully reaches the parked state.
 #[must_use = "parked outcomes must be admitted for reuse or explicitly destroyed"]
 pub(crate) enum IdleParkOutcome {
     Reusable(ParkedIdleCandidate),
+    Handoff(ImmediateHandoffCandidate),
     NonReusable {
         candidate: ParkedIdleCandidate,
         reason: SandboxParkNonReusableReason,
         preparation_report: ReusePreparationReport,
     },
+}
+
+pub(crate) enum IdleParkCandidate {
+    Ordinary(ParkedIdleCandidate),
+    Immediate(ImmediateHandoffCandidate),
+}
+
+impl IdleParkCandidate {
+    pub(crate) fn with_last_completed_at(self, last_completed_at: String) -> Self {
+        match self {
+            Self::Ordinary(candidate) => {
+                Self::Ordinary(candidate.with_last_completed_at(last_completed_at))
+            }
+            Self::Immediate(candidate) => {
+                Self::Immediate(candidate.with_last_completed_at(last_completed_at))
+            }
+        }
+    }
+
+    pub(crate) fn into_active_destroy_parts(self) -> (IdleDestroyPayload, BudgetLease) {
+        match self {
+            Self::Ordinary(candidate) => candidate.into_active_destroy_parts(),
+            Self::Immediate(candidate) => candidate.into_active_destroy_parts(),
+        }
+    }
 }
 
 pub(crate) struct IdleParkNonReusable {
@@ -165,6 +193,7 @@ impl IdleParkRequest {
             guest_timezone_intent,
             workspace_image_size_bytes,
             workspace_promotion,
+            handoff,
         } = self.parts;
 
         let metadata = IdleSandboxMetadata {
@@ -194,6 +223,7 @@ impl IdleParkRequest {
                 workspace_image_size_bytes,
             },
             observer,
+            handoff,
         )
         .await
     }
@@ -202,6 +232,7 @@ impl IdleParkRequest {
 async fn park_idle_transition(
     input: IdleParkTransitionInput,
     observer: Option<&mut dyn SandboxFinalExecParkObserver>,
+    handoff: Option<SandboxFinalExecParkHandoff>,
 ) -> Result<IdleParkOutcome, IdleParkFailure> {
     let IdleParkTransitionInput {
         operation_run_id,
@@ -279,13 +310,31 @@ async fn park_idle_transition(
 
     let final_exec_and_park = {
         let request = preparation.exec_request();
-        let transition = match observer {
-            Some(observer) => sandbox.final_exec_and_park_with_observer(
-                &request,
-                "idle-reuse-preparation-and-park",
-                observer,
-            ),
-            None => sandbox.final_exec_and_park(&request, "idle-reuse-preparation-and-park"),
+        let transition = async {
+            match (observer, handoff.as_ref()) {
+                (Some(observer), Some(handoff)) => {
+                    sandbox
+                        .final_exec_and_park_for_handoff(
+                            &request,
+                            "idle-reuse-preparation-and-park",
+                            handoff,
+                            observer,
+                        )
+                        .await
+                }
+                (Some(observer), None) => sandbox
+                    .final_exec_and_park_with_observer(
+                        &request,
+                        "idle-reuse-preparation-and-park",
+                        observer,
+                    )
+                    .await
+                    .map(SandboxFinalExecParkHandoffOutcome::Parked),
+                (None, _) => sandbox
+                    .final_exec_and_park(&request, "idle-reuse-preparation-and-park")
+                    .await
+                    .map(SandboxFinalExecParkHandoffOutcome::Parked),
+            }
         };
         AssertUnwindSafe(transition).catch_unwind().await
     };
@@ -300,7 +349,11 @@ async fn park_idle_transition(
                 metadata,
                 budget_lease,
             };
-            let preparation_report = match preparation.validate_result(&outcome.exec_result) {
+            let exec_result = match &outcome {
+                SandboxFinalExecParkHandoffOutcome::Parked(outcome) => &outcome.exec_result,
+                SandboxFinalExecParkHandoffOutcome::Handoff { exec_result, .. } => exec_result,
+            };
+            let preparation_report = match preparation.validate_result(exec_result) {
                 Ok(report) => report,
                 Err(error) => {
                     return Err(IdleParkFailure {
@@ -312,12 +365,17 @@ async fn park_idle_transition(
                     });
                 }
             };
-            Ok(match outcome.park_outcome {
-                SandboxParkOutcome::Reusable => IdleParkOutcome::Reusable(candidate),
-                SandboxParkOutcome::NonReusable(reason) => IdleParkOutcome::NonReusable {
-                    candidate,
-                    reason,
-                    preparation_report,
+            Ok(match outcome {
+                SandboxFinalExecParkHandoffOutcome::Handoff { point, .. } => {
+                    IdleParkOutcome::Handoff(candidate.into_immediate_handoff(point))
+                }
+                SandboxFinalExecParkHandoffOutcome::Parked(outcome) => match outcome.park_outcome {
+                    SandboxParkOutcome::Reusable => IdleParkOutcome::Reusable(candidate),
+                    SandboxParkOutcome::NonReusable(reason) => IdleParkOutcome::NonReusable {
+                        candidate,
+                        reason,
+                        preparation_report,
+                    },
                 },
             })
         }
@@ -386,6 +444,7 @@ impl SpeculativeIdleSandbox {
                 workspace_image_size_bytes,
             },
             None,
+            None,
         )
         .await
         {
@@ -393,6 +452,19 @@ impl SpeculativeIdleSandbox {
                 SpeculativeReparkResult::Reparked(Box::new(ReservedIdleSandbox {
                     entry: candidate.into_idle_entry(parked_at),
                 }))
+            }
+            Ok(IdleParkOutcome::Handoff(candidate)) => {
+                let (payload, budget_lease) = candidate.into_active_destroy_parts();
+                SpeculativeReparkResult::Destroy {
+                    destroy_job: Box::new(IdleDestroyJob {
+                        payload,
+                        budget_lease,
+                        reuse_key,
+                        profile_name,
+                    }),
+                    reason: "speculative_repark_unexpected_handoff",
+                    error: "speculative re-park unexpectedly produced an immediate handoff".into(),
+                }
             }
             Ok(IdleParkOutcome::NonReusable {
                 candidate, reason, ..
@@ -423,15 +495,16 @@ impl SpeculativeIdleSandbox {
 }
 
 impl IdleParkOutcome {
-    pub(crate) fn into_parts(self) -> (ParkedIdleCandidate, Option<IdleParkNonReusable>) {
+    pub(crate) fn into_parts(self) -> (IdleParkCandidate, Option<IdleParkNonReusable>) {
         match self {
-            Self::Reusable(candidate) => (candidate, None),
+            Self::Reusable(candidate) => (IdleParkCandidate::Ordinary(candidate), None),
+            Self::Handoff(candidate) => (IdleParkCandidate::Immediate(candidate), None),
             Self::NonReusable {
                 candidate,
                 reason,
                 preparation_report,
             } => (
-                candidate,
+                IdleParkCandidate::Ordinary(candidate),
                 Some(IdleParkNonReusable {
                     reason,
                     preparation_report,
@@ -444,6 +517,7 @@ impl IdleParkOutcome {
     pub(crate) fn expect_reusable(self) -> ParkedIdleCandidate {
         match self {
             Self::Reusable(candidate) => candidate,
+            Self::Handoff(_) => panic!("expected ordinary reusable parked candidate, got handoff"),
             Self::NonReusable { reason, .. } => {
                 panic!(
                     "expected reusable parked candidate, got {}",

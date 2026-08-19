@@ -12,15 +12,18 @@ mod entry;
 mod park_transition;
 mod parking_gate;
 
-pub(crate) use entry::{DestroyOutcome, IdleDestroyPayload, IdleDestroyResult};
+pub(crate) use entry::{
+    DestroyOutcome, FinalizingHandoffCandidate, IdleDestroyPayload, IdleDestroyResult,
+    ImmediateHandoffCandidate,
+};
 pub use entry::{
     IdleDestroyJob, IdleEntry, IdleUnparkResult, ParkedIdleCandidate, RejectedParkedIdleCandidate,
     ReservedIdleSandbox, RestoreReservedIdleResult, ReusableIdleSandbox, ReusableIdleSandboxParts,
 };
 pub(crate) use entry::{SpeculativeIdleSandbox, SpeculativeIdleUnparkResult};
 pub(crate) use park_transition::{
-    IdleParkActiveParts, IdleParkFailureParts, IdleParkRequest, IdleParkRequestParts,
-    SpeculativeReparkResult,
+    IdleParkActiveParts, IdleParkCandidate, IdleParkFailureParts, IdleParkRequest,
+    IdleParkRequestParts, SpeculativeReparkResult,
 };
 pub(crate) use parking_gate::ParkingGate;
 #[cfg(test)]
