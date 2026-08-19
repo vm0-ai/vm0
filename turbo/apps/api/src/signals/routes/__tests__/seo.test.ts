@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 
-import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import { seoContract } from "@okouai/api-contracts/contracts/seo";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
@@ -93,7 +93,7 @@ async function seedUnfundedActor(): Promise<OrgApiTestUser> {
 
 async function credits(actor: OrgApiTestUser): Promise<number> {
   const response = await accept(
-    client(actor.usagePricingResolution)(zeroBillingStatusContract).get({
+    client(actor.usagePricingResolution)(billingStatusContract).get({
       headers: authenticate(actor),
     }),
     [200],

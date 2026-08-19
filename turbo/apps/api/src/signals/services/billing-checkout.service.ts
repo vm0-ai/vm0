@@ -8,7 +8,7 @@ import type {
   CreditPurchasePreviewResponse,
   PlanPurchasePreviewResponse,
   UsagePackUsd,
-} from "@okouai/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/billing";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
 import { and, eq } from "drizzle-orm";
@@ -136,7 +136,8 @@ type StartConcurrencyPurchaseResult =
       readonly reason:
         | "invalid_quantity"
         | "missing_plan_subscription"
-        | "pending_update";
+        | "pending_update"
+        | "plan_ending";
     };
 
 type PreviewInitialConcurrencyPurchaseResult =
@@ -152,7 +153,8 @@ type PreviewInitialConcurrencyPurchaseResult =
         | "not_found"
         | "canceling"
         | "no_change"
-        | "pending_update";
+        | "pending_update"
+        | "plan_ending";
     };
 
 const CREDITS_PER_DOLLAR = 1000;

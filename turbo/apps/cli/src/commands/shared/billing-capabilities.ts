@@ -1,4 +1,4 @@
-import type { BillingStatusResponse } from "@okouai/api-contracts/contracts/zero-billing";
+import type { BillingStatusResponse } from "@okouai/api-contracts/contracts/billing";
 import { decodeSandboxTokenPayload } from "../../lib/api/sandbox-token";
 
 export function currentPlanCanBuyCredits(

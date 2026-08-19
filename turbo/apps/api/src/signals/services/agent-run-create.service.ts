@@ -589,6 +589,9 @@ type PersistedPlan = Omit<
   readonly content: unknown;
 };
 
+const MISSING_AGENT_CONFIGURATION_MESSAGE =
+  "Agent configuration is unavailable. Edit the agent, or ask its owner to edit it, then try again.";
+
 type ConnectorScopeSource = "explicit" | "zero_agent" | "empty";
 
 interface EffectiveConnectorScope {
@@ -5451,9 +5454,7 @@ async function resolveByAgentId(
     return notFound("Agent compose not found");
   }
   if (!row.headVersionId || !row.versionId) {
-    return badRequestMessage(
-      "Agent compose has no versions. Run 'vm0 build' first.",
-    );
+    return badRequestMessage(MISSING_AGENT_CONFIGURATION_MESSAGE);
   }
 
   return {
@@ -5639,9 +5640,7 @@ function resolveBySessionId(
       return notFound("Agent compose not found");
     }
     if (!snapshot.compose.headVersionId || !snapshot.version) {
-      return badRequestMessage(
-        "Agent compose has no versions. Run 'vm0 build' first.",
-      );
+      return badRequestMessage(MISSING_AGENT_CONFIGURATION_MESSAGE);
     }
 
     const conversation = snapshot.conversation;

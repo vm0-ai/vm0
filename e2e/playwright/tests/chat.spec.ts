@@ -1725,7 +1725,8 @@ test("avatar catalog surfaces stay stable while scrolling and selecting", async 
 
   await page.goto(appUrl);
   await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
-  await page.getByRole("button", { name: "Template" }).click();
+  // Exact: the start cards under the composer also carry "Templates" actions.
+  await page.getByRole("button", { name: "Template", exact: true }).click();
   await page.getByRole("tab", { name: "Avatar" }).click();
   const dialog = page.getByRole("dialog");
   const avatarScroll = dialog.locator("[data-avatar-template-grid-scroll]");

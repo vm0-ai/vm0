@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 
 import {
-  zeroBillingRestoreContract,
-  zeroBillingStatusContract,
-} from "@okouai/api-contracts/contracts/zero-billing";
+  billingRestoreContract,
+  billingStatusContract,
+} from "@okouai/api-contracts/contracts/billing";
 import { createStore } from "ccstate";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -36,7 +36,7 @@ function mockSubscriptionWithPaymentMethod(
 async function readBillingStatus() {
   return await accept(
     setupApp({ context, routes: billingStatusRoutes })(
-      zeroBillingStatusContract,
+      billingStatusContract,
     ).get({
       headers: { authorization: "Bearer clerk-session" },
     }),
@@ -57,7 +57,7 @@ describe("POST /api/zero/billing/restore", () => {
     mockOptionalEnv("STRIPE_SECRET_KEY", undefined);
 
     const client = setupApp({ context, routes: billingRestoreRoutes })(
-      zeroBillingRestoreContract,
+      billingRestoreContract,
     );
     const response = await accept(
       client.create({
@@ -77,7 +77,7 @@ describe("POST /api/zero/billing/restore", () => {
 
   it("returns 401 when not authenticated", async () => {
     const client = setupApp({ context, routes: billingRestoreRoutes })(
-      zeroBillingRestoreContract,
+      billingRestoreContract,
     );
     const response = await accept(
       client.create({
@@ -97,7 +97,7 @@ describe("POST /api/zero/billing/restore", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
     const client = setupApp({ context, routes: billingRestoreRoutes })(
-      zeroBillingRestoreContract,
+      billingRestoreContract,
     );
     const response = await accept(
       client.create({
@@ -122,7 +122,7 @@ describe("POST /api/zero/billing/restore", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
     const client = setupApp({ context, routes: billingRestoreRoutes })(
-      zeroBillingRestoreContract,
+      billingRestoreContract,
     );
     const response = await accept(
       client.create({
@@ -157,7 +157,7 @@ describe("POST /api/zero/billing/restore", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
     const client = setupApp({ context, routes: billingRestoreRoutes })(
-      zeroBillingRestoreContract,
+      billingRestoreContract,
     );
     const response = await accept(
       client.create({
@@ -197,7 +197,7 @@ describe("POST /api/zero/billing/restore", () => {
     context.mocks.stripe.subscriptions.update.mockResolvedValue({ id: subId });
 
     const client = setupApp({ context, routes: billingRestoreRoutes })(
-      zeroBillingRestoreContract,
+      billingRestoreContract,
     );
     const response = await accept(
       client.create({
@@ -246,7 +246,7 @@ describe("POST /api/zero/billing/restore", () => {
     });
 
     const client = setupApp({ context, routes: billingRestoreRoutes })(
-      zeroBillingRestoreContract,
+      billingRestoreContract,
     );
     const response = await accept(
       client.create({
@@ -306,7 +306,7 @@ describe("POST /api/zero/billing/restore", () => {
     });
 
     const client = setupApp({ context, routes: billingRestoreRoutes })(
-      zeroBillingRestoreContract,
+      billingRestoreContract,
     );
     const response = await accept(
       client.create({

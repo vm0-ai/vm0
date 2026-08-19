@@ -14,7 +14,7 @@ import {
   cliAuthTestTokenContract,
 } from "@okouai/api-contracts/contracts/cli-auth-test";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
-import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import {
   type DesktopAuthCallbackScheme,
   desktopAuthConsumeContract,
@@ -582,7 +582,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
     },
 
     async readBillingStatus(actor: ApiTestUser) {
-      const client = authDeviceApp(context)(zeroBillingStatusContract);
+      const client = authDeviceApp(context)(billingStatusContract);
       const response = await accept(
         client.get({ headers: authenticate(actor) }),
         [200],

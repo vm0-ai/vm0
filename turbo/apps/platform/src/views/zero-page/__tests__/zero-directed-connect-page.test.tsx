@@ -20,9 +20,9 @@ import {
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import {
-  zeroConnectorCatalogContract,
+  connectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
-} from "@okouai/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/connector-catalog";
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -56,7 +56,7 @@ function mockPublicConnectorStatus(
 function mockPublicConnectorStatuses(
   connectors: readonly PublicConnectorCatalogStatusItem[],
 ): void {
-  context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+  context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
     return respond(200, { connectors: [...connectors] });
   });
 }

@@ -1023,11 +1023,12 @@ export {
 } from "./zero-connectors";
 export {
   publicConnectorCatalogIconSchema,
-  zeroConnectorCatalogContract,
+  connectorCatalogContract,
   type PublicConnectorCatalogAuthMethodDetail,
   type PublicConnectorCatalogAuthMethodSummary,
   type PublicConnectorCatalogDetail,
   type PublicConnectorCatalogDetailResponse,
+  type PublicConnectorCatalogDiscoveryResponse,
   type PublicConnectorCatalogConnection,
   type PublicConnectorCatalogConnectionStatus,
   type PublicConnectorCatalogItem,
@@ -1040,8 +1041,8 @@ export {
   type PublicConnectorCatalogStartOption,
   type PublicConnectorCatalogStatusItem,
   type PublicConnectorCatalogStatusResponse,
-  type ZeroConnectorCatalogContract,
-} from "./zero-connector-catalog";
+  type ConnectorCatalogContract,
+} from "./connector-catalog";
 export {
   connectorCheckContract,
   connectorCheckDiagnosticResultSchema,
@@ -1266,24 +1267,24 @@ export {
   type AcquisitionAttributionContract,
 } from "./acquisition-attribution";
 export {
-  zeroBillingStatusContract,
-  zeroBillingCheckoutContract,
-  zeroBillingConcurrencyCheckoutContract,
-  zeroBillingPortalContract,
-  zeroBillingAutoRechargeContract,
-  zeroBillingInvoicesContract,
-  zeroBillingDowngradeContract,
-  zeroBillingRestoreContract,
-  zeroBillingRedeemContract,
-  type ZeroBillingStatusContract,
-  type ZeroBillingCheckoutContract,
-  type ZeroBillingConcurrencyCheckoutContract,
-  type ZeroBillingPortalContract,
-  type ZeroBillingAutoRechargeContract,
-  type ZeroBillingInvoicesContract,
-  type ZeroBillingDowngradeContract,
-  type ZeroBillingRestoreContract,
-  type ZeroBillingRedeemContract,
+  billingStatusContract,
+  billingCheckoutContract,
+  billingConcurrencyCheckoutContract,
+  billingPortalContract,
+  billingAutoRechargeContract,
+  billingInvoicesContract,
+  billingDowngradeContract,
+  billingRestoreContract,
+  billingRedeemContract,
+  type BillingStatusContract,
+  type BillingCheckoutContract,
+  type BillingConcurrencyCheckoutContract,
+  type BillingPortalContract,
+  type BillingAutoRechargeContract,
+  type BillingInvoicesContract,
+  type BillingDowngradeContract,
+  type BillingRestoreContract,
+  type BillingRedeemContract,
   // Inferred types
   type BillingStatusResponse,
   type AutoRechargeConfig,
@@ -1295,7 +1296,7 @@ export {
   type DowngradeResponse,
   type RedeemRequest,
   type RedeemResponse,
-} from "./zero-billing";
+} from "./billing";
 export {
   scrapeContract,
   scrapeBillingCategorySchema,

@@ -9,7 +9,7 @@ import {
   zeroConnectorsMainContract,
   zeroConnectorsSearchContract,
 } from "@okouai/api-contracts/contracts/zero-connectors";
-import type { PublicConnectorCatalogDetail } from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import type { PublicConnectorCatalogDetail } from "@okouai/api-contracts/contracts/connector-catalog";
 import { connectorOauthStates } from "@okouai/db/schema/connector-oauth-state";
 
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
@@ -18,6 +18,7 @@ import { publicBrand$, request$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import {
   badRequestMessage,
+  conflict,
   notFound,
   providerUnavailable,
 } from "../../lib/error";
@@ -192,8 +193,11 @@ const deleteConnectorBySlugInner$ = command(
     );
     signal.throwIfAborted();
 
-    if (!deleted) {
+    if (deleted === "missing") {
       return notFound("Connector not found");
+    }
+    if (deleted === "ambiguous") {
+      return conflict("Multiple connector accounts require an exact choice");
     }
 
     return { status: 204 as const, body: undefined };

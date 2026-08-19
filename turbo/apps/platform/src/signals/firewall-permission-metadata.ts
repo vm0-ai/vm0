@@ -1,6 +1,6 @@
 import { computed, type Computed } from "ccstate";
 import { connectorSlugSchema } from "@okouai/api-contracts/contracts/connector-identity";
-import { zeroConnectorCatalogContract } from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import { connectorCatalogContract } from "@okouai/api-contracts/contracts/connector-catalog";
 import { accept } from "../lib/accept.ts";
 import { zeroClient$ } from "./api-client.ts";
 import type { PlatformConnectorPermissionMetadata } from "./connector-domain.ts";
@@ -23,7 +23,7 @@ export function firewallPermissionMetadataByConnector(
     get(featureSwitch$);
 
     const createClient = get(zeroClient$);
-    const client = createClient(zeroConnectorCatalogContract);
+    const client = createClient(connectorCatalogContract);
     const result = await accept(
       client.permissions({
         params: { connectorSlug: key },

@@ -30,7 +30,7 @@ const bankingDisabled = Object.freeze({
   status: 403 as const,
   body: Object.freeze({
     error: Object.freeze({
-      message: "Zero Banking is not enabled",
+      message: "Banking is not enabled",
       code: "FORBIDDEN",
     }),
   }),

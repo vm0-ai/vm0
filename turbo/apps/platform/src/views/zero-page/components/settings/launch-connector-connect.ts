@@ -1,5 +1,5 @@
 import type { ConnectorAuthMethodId } from "@okouai/api-contracts/contracts/connector-identity";
-import type { PublicConnectorCatalogAuthMethodDetail } from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import type { PublicConnectorCatalogAuthMethodDetail } from "@okouai/api-contracts/contracts/connector-catalog";
 
 import type { PlatformConnectorCatalogStatusItem } from "../../../../signals/connector-domain.ts";
 import { getConnectorStatusDirectConnectMethod } from "../../../../signals/zero-page/settings/connectors.ts";

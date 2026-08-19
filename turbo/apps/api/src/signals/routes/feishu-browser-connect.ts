@@ -333,7 +333,10 @@ const getStatus$ = command(async ({ get, set }, signal: AbortSignal) => {
     };
   }
   const [connection] = await db
-    .select({ userId: feishuOrgConnections.userId })
+    .select({
+      userId: feishuOrgConnections.userId,
+      connectorId: feishuOrgConnections.connectorId,
+    })
     .from(feishuOrgConnections)
     .where(
       and(
@@ -352,6 +355,8 @@ const getStatus$ = command(async ({ get, set }, signal: AbortSignal) => {
       orgId: auth.orgId,
       userId: auth.userId,
       installationId: query.installationId,
+      memberConnectorId: connection.connectorId,
+      feishuOpenId: query.openId,
     }));
   signal.throwIfAborted();
   return {

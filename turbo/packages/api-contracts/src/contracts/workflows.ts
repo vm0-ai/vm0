@@ -2,7 +2,7 @@ import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { connectorSlugSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
-import { publicConnectorCatalogIconSchema } from "./zero-connector-catalog";
+import { publicConnectorCatalogIconSchema } from "./connector-catalog";
 
 const c = initContract();
 

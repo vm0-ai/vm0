@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroBillingRestoreContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingRestoreContract } from "@okouai/api-contracts/contracts/billing";
 import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 
 import { env, optionalEnv } from "../../lib/env";
@@ -33,7 +33,7 @@ const restoreAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
   signal.throwIfAborted();
 
-  const bodyResult = await get(bodyResultOf(zeroBillingRestoreContract.create));
+  const bodyResult = await get(bodyResultOf(billingRestoreContract.create));
   signal.throwIfAborted();
   if (!bodyResult.ok) {
     return bodyResult.response;
@@ -87,7 +87,7 @@ const restore$ = command(async ({ set }, signal: AbortSignal) => {
 
 export const billingRestoreRoutes: readonly RouteEntry[] = [
   {
-    route: zeroBillingRestoreContract.create,
+    route: billingRestoreContract.create,
     handler: restore$,
   },
 ];

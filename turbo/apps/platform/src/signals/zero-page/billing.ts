@@ -1,20 +1,20 @@
 import { command, computed, state } from "ccstate";
 import {
-  zeroBillingStatusContract,
-  zeroBillingCheckoutContract,
-  zeroBillingUsagePackCatalogContract,
-  zeroBillingUsagePackCheckoutContract,
-  zeroBillingUsagePackManagementContract,
-  zeroBillingUsagePackCreditsContract,
-  zeroBillingUsagePackMigrationContract,
-  zeroBillingConcurrencyCheckoutContract,
-  zeroBillingConcurrencySubscriptionContract,
-  zeroBillingCreditCheckoutContract,
-  zeroBillingPortalContract,
-  zeroBillingAutoRechargeContract,
-  zeroBillingInvoicesContract,
-  zeroBillingDowngradeContract,
-  zeroBillingRestoreContract,
+  billingStatusContract,
+  billingCheckoutContract,
+  billingUsagePackCatalogContract,
+  billingUsagePackCheckoutContract,
+  billingUsagePackManagementContract,
+  billingUsagePackCreditsContract,
+  billingUsagePackMigrationContract,
+  billingConcurrencyCheckoutContract,
+  billingConcurrencySubscriptionContract,
+  billingCreditCheckoutContract,
+  billingPortalContract,
+  billingAutoRechargeContract,
+  billingInvoicesContract,
+  billingDowngradeContract,
+  billingRestoreContract,
   type BillingStatusResponse,
   type CheckoutRequest,
   type ConcurrencySubscriptionChangePreviewResponse,
@@ -25,7 +25,7 @@ import {
   type UsagePackCheckoutRequest,
   type UsagePackPurchasePreviewResponse,
   type UsagePackMigrationStateResponse,
-} from "@okouai/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/billing";
 import { FeatureSwitchKey } from "@okouai/core";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { zeroClient$ } from "../api-client.ts";
@@ -435,7 +435,7 @@ const billingStatusResource$ = computed(
     get(billingReload$);
     get(accountMenuBillingStatusReload$);
     const createClient = get(zeroClient$);
-    const client = createClient(zeroBillingStatusContract);
+    const client = createClient(billingStatusContract);
     const load = async (): Promise<BillingStatusResponse> => {
       const result = await accept(client.get(), [200]);
       return result.body;
@@ -449,7 +449,7 @@ const usagePackCreditsResource$ = computed(
     get(billingReload$);
     get(accountMenuUsagePackCreditsReload$);
     const createClient = get(zeroClient$);
-    const client = createClient(zeroBillingUsagePackCreditsContract);
+    const client = createClient(billingUsagePackCreditsContract);
     const load = async (): Promise<UsagePackCreditsResponse> => {
       const result = await accept(client.get(), [200]);
       return result.body;
@@ -468,7 +468,7 @@ export const usagePackCreditsAsync$ = computed((get) => {
 
 export const usagePackCatalogAsync$ = computed(async (get) => {
   const createClient = get(zeroClient$);
-  const client = createClient(zeroBillingUsagePackCatalogContract);
+  const client = createClient(billingUsagePackCatalogContract);
   const result = await accept(client.get(), [200]);
   return result.body.usagePacks;
 });
@@ -476,7 +476,7 @@ export const usagePackCatalogAsync$ = computed(async (get) => {
 export const usagePackManagementAsync$ = computed(async (get) => {
   get(usagePackManagementReload$);
   const createClient = get(zeroClient$);
-  const client = createClient(zeroBillingUsagePackManagementContract);
+  const client = createClient(billingUsagePackManagementContract);
   const result = await accept(client.get(), [200, 404]);
   return result.status === 200 ? result.body : null;
 });
@@ -488,7 +488,7 @@ export const usagePackMigrationAsync$ = computed(
       return null;
     }
     const createClient = get(zeroClient$);
-    const client = createClient(zeroBillingUsagePackMigrationContract);
+    const client = createClient(billingUsagePackMigrationContract);
     const result = await accept(client.get(), [200, 403, 404, 409]);
     return result.status === 200 ? result.body : null;
   },
@@ -802,7 +802,7 @@ export const startCheckout$ = command(
       get(featureSwitch$)[FeatureSwitchKey.SavedBillingCreditPurchase] ?? false;
 
     const createClient = get(zeroClient$);
-    const client = createClient(zeroBillingCheckoutContract);
+    const client = createClient(billingCheckoutContract);
     const request: CheckoutRequest = {
       tier,
       ...(supportsInAppPreview ? { supportsInAppPreview: true } : {}),
@@ -873,7 +873,7 @@ export const startUsagePackCheckout$ = command(
       get(featureSwitch$)[FeatureSwitchKey.SavedBillingCreditPurchase] ?? false;
 
     const createClient = get(zeroClient$);
-    const client = createClient(zeroBillingUsagePackCheckoutContract);
+    const client = createClient(billingUsagePackCheckoutContract);
     const request: UsagePackCheckoutRequest = {
       tier: args.tier,
       ...(supportsInAppPreview ? { supportsInAppPreview: true } : {}),
@@ -922,7 +922,7 @@ export const confirmSubscriptionPurchase$ = command(
     const response =
       state.purchaseType === "plan"
         ? await accept(
-            createClient(zeroBillingCheckoutContract).create({
+            createClient(billingCheckoutContract).create({
               body: {
                 ...state.request,
                 previewToken: state.preview.previewToken,
@@ -932,7 +932,7 @@ export const confirmSubscriptionPurchase$ = command(
             [200, 409],
           )
         : await accept(
-            createClient(zeroBillingUsagePackCheckoutContract).create({
+            createClient(billingUsagePackCheckoutContract).create({
               body: {
                 ...state.request,
                 previewToken: state.preview.previewToken,
@@ -947,7 +947,7 @@ export const confirmSubscriptionPurchase$ = command(
         throw new Error("Usage pack confirmation returned a conflict");
       }
       const refreshed = await accept(
-        createClient(zeroBillingCheckoutContract).create({
+        createClient(billingCheckoutContract).create({
           body: state.request,
           fetchOptions: { signal },
         }),
@@ -1039,7 +1039,7 @@ export const previewUsagePackMigration$ = command(
     signal: AbortSignal,
   ) => {
     const createClient = get(zeroClient$);
-    const client = createClient(zeroBillingUsagePackMigrationContract);
+    const client = createClient(billingUsagePackMigrationContract);
     const result = await accept(
       client.preview({
         body: {
@@ -1059,7 +1059,7 @@ export const previewUsagePackMigration$ = command(
 export const confirmUsagePackMigration$ = command(
   async ({ get, set }, migrationId: string, signal: AbortSignal) => {
     const createClient = get(zeroClient$);
-    const client = createClient(zeroBillingUsagePackMigrationContract);
+    const client = createClient(billingUsagePackMigrationContract);
     const result = await accept(
       client.confirm({
         params: { migrationId },
@@ -1069,6 +1069,11 @@ export const confirmUsagePackMigration$ = command(
       [200],
     );
     signal.throwIfAborted();
+    toast.success(
+      i18n.t(($) => {
+        return $.billing.toasts.subscriptionChangeConfirmed;
+      }),
+    );
     set(setUsagePackMigrationPreview$, null);
     set(reloadUsagePackMigration$);
     set(reloadUsagePackManagement$);
@@ -1088,7 +1093,7 @@ export const previewUsagePackMigrationRevision$ = command(
     signal: AbortSignal,
   ) => {
     const createClient = get(zeroClient$);
-    const client = createClient(zeroBillingUsagePackMigrationContract);
+    const client = createClient(billingUsagePackMigrationContract);
     const result = await accept(
       client.previewRevision({
         params: { migrationId: args.migrationId },
@@ -1125,7 +1130,7 @@ export const confirmUsagePackMigrationRevision$ = command(
       throw new Error("Usage pack migration revision preview is not open");
     }
     const createClient = get(zeroClient$);
-    const client = createClient(zeroBillingUsagePackMigrationContract);
+    const client = createClient(billingUsagePackMigrationContract);
     const result = await accept(
       client.confirmRevision({
         params: { migrationId: args.migrationId },
@@ -1161,7 +1166,7 @@ export const previewUsagePackSubscriptionChange$ = command(
     signal: AbortSignal,
   ) => {
     const createClient = get(zeroClient$);
-    const client = createClient(zeroBillingUsagePackManagementContract);
+    const client = createClient(billingUsagePackManagementContract);
     const supportsInAppPreview =
       get(featureSwitch$)[FeatureSwitchKey.SavedBillingCreditPurchase] ?? false;
     const preview = await accept(
@@ -1201,7 +1206,7 @@ export const confirmUsagePackSubscriptionChange$ = command(
       throw new Error("Usage pack subscription change preview is not open");
     }
     const createClient = get(zeroClient$);
-    const client = createClient(zeroBillingUsagePackManagementContract);
+    const client = createClient(billingUsagePackManagementContract);
     const result = await accept(
       client.confirmSubscriptionChange({
         body: {
@@ -1264,7 +1269,7 @@ export const startCreditCheckout$ = command(
     cancelUrl.searchParams.set("credits", "canceled");
 
     const createClient = get(zeroClient$);
-    const client = createClient(zeroBillingCreditCheckoutContract);
+    const client = createClient(billingCreditCheckoutContract);
     const savedBillingCreditPurchaseEnabled =
       get(featureSwitch$)[FeatureSwitchKey.SavedBillingCreditPurchase] ?? false;
     const result = await accept(
@@ -1310,7 +1315,7 @@ export const confirmCreditPurchase$ = command(
     }
     const { preview } = previewState;
     const createClient = get(zeroClient$);
-    const client = createClient(zeroBillingCreditCheckoutContract);
+    const client = createClient(billingCreditCheckoutContract);
     const result = await accept(
       client.confirm({
         body: { previewToken: preview.previewToken },
@@ -1350,7 +1355,7 @@ export const startConcurrencyCheckout$ = command(
     cancelUrl.searchParams.set("concurrency", "canceled");
 
     const createClient = get(zeroClient$);
-    const client = createClient(zeroBillingConcurrencyCheckoutContract);
+    const client = createClient(billingConcurrencyCheckoutContract);
     const dialog = get(internalConcurrencyConfirmDialog$);
     const paymentMethodPreviewToken =
       dialog?.action === "purchase" && dialog.quantity === quantity
@@ -1399,7 +1404,7 @@ export const openConcurrencyPurchaseReview$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     const createClient = get(zeroClient$);
-    const client = createClient(zeroBillingConcurrencyCheckoutContract);
+    const client = createClient(billingConcurrencyCheckoutContract);
     const supportsInAppPreview =
       get(featureSwitch$)[FeatureSwitchKey.SavedBillingCreditPurchase] ?? false;
     const returnUrl = checkoutReturnUrl().toString();
@@ -1447,7 +1452,7 @@ const loadConcurrencySubscriptionChangePreview$ = command(
     signal: AbortSignal,
   ): Promise<ConcurrencySubscriptionChangePreviewResponse | null> => {
     const createClient = get(zeroClient$);
-    const client = createClient(zeroBillingConcurrencySubscriptionContract);
+    const client = createClient(billingConcurrencySubscriptionContract);
     const supportsInAppPreview =
       get(featureSwitch$)[FeatureSwitchKey.SavedBillingCreditPurchase] ?? false;
     const result = await accept(
@@ -1547,7 +1552,7 @@ export const confirmConcurrencySubscriptionChange$ = command(
       throw new Error("Concurrency change preview is not available");
     }
     const createClient = get(zeroClient$);
-    const client = createClient(zeroBillingConcurrencySubscriptionContract);
+    const client = createClient(billingConcurrencySubscriptionContract);
     const result = await accept(
       client.confirmChange({
         params: { subscriptionId: dialog.subscriptionId },
@@ -1600,7 +1605,7 @@ export const startConcurrencyReduction$ = command(
     cancelUrl.searchParams.set("concurrency", "canceled");
 
     const createClient = get(zeroClient$);
-    const client = createClient(zeroBillingConcurrencySubscriptionContract);
+    const client = createClient(billingConcurrencySubscriptionContract);
     const result = await accept(
       client.reduce({
         params: { subscriptionId: args.subscriptionId },
@@ -1621,7 +1626,7 @@ export const startConcurrencyReduction$ = command(
 export const cancelConcurrencySubscription$ = command(
   async ({ get, set }, subscriptionId: string, signal: AbortSignal) => {
     const createClient = get(zeroClient$);
-    const client = createClient(zeroBillingConcurrencySubscriptionContract);
+    const client = createClient(billingConcurrencySubscriptionContract);
     const result = await accept(
       client.cancel({
         params: { subscriptionId },
@@ -1654,7 +1659,7 @@ export const cancelConcurrencySubscription$ = command(
 export const restoreConcurrencySubscription$ = command(
   async ({ get, set }, subscriptionId: string, signal: AbortSignal) => {
     const createClient = get(zeroClient$);
-    const client = createClient(zeroBillingConcurrencySubscriptionContract);
+    const client = createClient(billingConcurrencySubscriptionContract);
     await accept(
       client.restore({
         params: { subscriptionId },
@@ -1679,7 +1684,7 @@ export const restoreConcurrencySubscription$ = command(
 export const openBillingPortal$ = command(
   async ({ get }, newTab: boolean, signal: AbortSignal) => {
     const createClient = get(zeroClient$);
-    const client = createClient(zeroBillingPortalContract);
+    const client = createClient(billingPortalContract);
     const result = await accept(
       client.create({
         body: { returnUrl: window.location.href },
@@ -1723,7 +1728,7 @@ export const confirmDowngrade$ = command(
     signal: AbortSignal,
   ) => {
     const createClient = get(zeroClient$);
-    const client = createClient(zeroBillingDowngradeContract);
+    const client = createClient(billingDowngradeContract);
     const result = await accept(
       client.create({
         body: { targetTier, returnUrl: window.location.href },
@@ -1755,7 +1760,7 @@ export const confirmDowngrade$ = command(
 export const restorePlan$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const createClient = get(zeroClient$);
-    const client = createClient(zeroBillingRestoreContract);
+    const client = createClient(billingRestoreContract);
     const result = await accept(
       client.create({
         body: { returnUrl: window.location.href },
@@ -1870,7 +1875,7 @@ export const saveAutoRecharge$ = command(
     signal: AbortSignal,
   ) => {
     const createClient = get(zeroClient$);
-    const client = createClient(zeroBillingAutoRechargeContract);
+    const client = createClient(billingAutoRechargeContract);
     await accept(
       client.update({
         body: config,
@@ -1912,7 +1917,7 @@ export const saveAutoRecharge$ = command(
 
 export const invoicesAsync$ = computed(async (get) => {
   const createClient = get(zeroClient$);
-  const client = createClient(zeroBillingInvoicesContract);
+  const client = createClient(billingInvoicesContract);
   const result = await accept(client.get(), [200]);
   return result.body;
 });
@@ -1984,7 +1989,7 @@ export const downloadMonthlyReceipts$ = command(
     const downloaded = await tapError(
       (async () => {
         const createClient = get(zeroClient$);
-        const client = createClient(zeroBillingInvoicesContract);
+        const client = createClient(billingInvoicesContract);
         const response = await accept(
           client.downloadReceipts({
             query: range,

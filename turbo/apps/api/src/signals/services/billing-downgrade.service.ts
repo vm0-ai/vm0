@@ -1,7 +1,8 @@
 import { command } from "ccstate";
 import type { OrgTier } from "@okouai/api-contracts/contracts/orgs";
+import { orgConcurrencySubscriptions } from "@okouai/db/schema/org-concurrency-subscription";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
@@ -18,8 +19,11 @@ import {
   type StripeSubscriptionSchedule,
 } from "../external/stripe-client";
 import {
+  canceledUsageAllowanceScheduleMetadata,
   subscriptionScheduleFinalEnd,
   subscriptionScheduleId,
+  subscriptionSchedulePhasesEndingAt,
+  subscriptionSchedulePhasesReplacingPriceAt,
 } from "./stripe-subscription-schedules.service";
 import {
   activePriceId,
@@ -223,6 +227,180 @@ function shouldReplacePendingDowngradeSchedule(
   );
 }
 
+interface ConcurrencyChangeState {
+  readonly cancelAtPeriodEnd: boolean;
+  readonly currentPeriodEnd: Date | null;
+  readonly scheduledSlots: number | null;
+  readonly scheduledChangeAt: Date | null;
+}
+
+async function concurrencyChangeState(
+  context: DowngradeContext,
+): Promise<ConcurrencyChangeState | null> {
+  const [concurrency] = await context.db
+    .select({
+      cancelAtPeriodEnd: orgConcurrencySubscriptions.cancelAtPeriodEnd,
+      currentPeriodEnd: orgConcurrencySubscriptions.currentPeriodEnd,
+      scheduledSlots: orgConcurrencySubscriptions.scheduledSlots,
+      scheduledChangeAt: orgConcurrencySubscriptions.scheduledChangeAt,
+    })
+    .from(orgConcurrencySubscriptions)
+    .where(
+      and(
+        eq(orgConcurrencySubscriptions.orgId, context.orgId),
+        eq(
+          orgConcurrencySubscriptions.stripeSubscriptionId,
+          context.org.stripeSubscriptionId,
+        ),
+      ),
+    )
+    .limit(1);
+  return concurrency ?? null;
+}
+
+function supersededConcurrencyChanges(
+  concurrency: ConcurrencyChangeState | null,
+  effectiveDate: Date,
+): { readonly cancel: boolean; readonly scheduled: boolean } {
+  const cancelSuperseded =
+    concurrency?.cancelAtPeriodEnd === true &&
+    (!concurrency.currentPeriodEnd ||
+      concurrency.currentPeriodEnd >= effectiveDate);
+  const scheduledChangeSuperseded =
+    concurrency?.scheduledSlots !== null &&
+    concurrency?.scheduledSlots !== undefined &&
+    (!concurrency.scheduledChangeAt ||
+      concurrency.scheduledChangeAt >= effectiveDate);
+  return { cancel: cancelSuperseded, scheduled: scheduledChangeSuperseded };
+}
+
+async function clearConcurrencyChangeSupersededByPlanCancellation(
+  context: DowngradeContext,
+  concurrency: ConcurrencyChangeState | null,
+  effectiveDate: Date,
+): Promise<void> {
+  const superseded = supersededConcurrencyChanges(concurrency, effectiveDate);
+  if (!superseded.cancel && !superseded.scheduled) {
+    return;
+  }
+
+  await context.db
+    .update(orgConcurrencySubscriptions)
+    .set({
+      ...(superseded.cancel ? { cancelAtPeriodEnd: false } : {}),
+      ...(superseded.scheduled
+        ? { scheduledSlots: null, scheduledChangeAt: null }
+        : {}),
+      updatedAt: nowDate(),
+    })
+    .where(
+      and(
+        eq(orgConcurrencySubscriptions.orgId, context.orgId),
+        eq(
+          orgConcurrencySubscriptions.stripeSubscriptionId,
+          context.org.stripeSubscriptionId,
+        ),
+      ),
+    );
+}
+
+function hasPendingConcurrencyChange(
+  concurrency: ConcurrencyChangeState | null,
+): boolean {
+  return (
+    concurrency?.cancelAtPeriodEnd === true ||
+    (concurrency?.scheduledSlots !== null &&
+      concurrency?.scheduledSlots !== undefined)
+  );
+}
+
+async function scheduleCancellationOnExistingSchedule(
+  context: DowngradeContext,
+  subscription: StripeSubscription,
+  scheduleId: string,
+  effectiveDate: Date,
+  concurrency: ConcurrencyChangeState | null,
+): Promise<Date> {
+  if (shouldReplacePendingDowngradeSchedule(context, scheduleId)) {
+    const discounts = subscriptionSchedulePhaseDiscounts(subscription);
+    const currentPhaseRange = subscriptionItemPhaseRange(
+      subscriptionCurrentItem(subscription),
+    );
+    await context.stripe.subscriptionSchedules.update(scheduleId, {
+      end_behavior: "cancel",
+      proration_behavior: "none",
+      phases: [
+        phaseWithDiscounts(
+          {
+            start_date: currentPhaseRange.startDate,
+            end_date: currentPhaseRange.endDate,
+            items: subscriptionPhaseItems(subscription),
+            proration_behavior: "none",
+          },
+          discounts,
+        ),
+      ],
+    });
+    return effectiveDate;
+  }
+
+  const schedule =
+    await context.stripe.subscriptionSchedules.retrieve(scheduleId);
+  if (
+    context.org.pendingSubscriptionScheduleId === scheduleId ||
+    !hasPendingConcurrencyChange(concurrency)
+  ) {
+    await context.stripe.subscriptionSchedules.update(scheduleId, {
+      end_behavior: "cancel",
+      proration_behavior: "none",
+    });
+    return subscriptionScheduleFinalEnd(schedule) ?? effectiveDate;
+  }
+
+  await context.stripe.subscriptionSchedules.update(scheduleId, {
+    end_behavior: "cancel",
+    proration_behavior: "none",
+    phases: [
+      ...subscriptionSchedulePhasesEndingAt(
+        schedule,
+        dateUnixSeconds(effectiveDate),
+        canceledUsageAllowanceScheduleMetadata(subscription),
+      ),
+    ],
+  });
+  return effectiveDate;
+}
+
+async function scheduleCancellationWithoutSchedule(
+  context: DowngradeContext,
+  subscription: StripeSubscription,
+  effectiveDate: Date,
+  currentPhaseEnd: number,
+): Promise<Date> {
+  const cancelAt = subscriptionCancelAt(subscription);
+  if (cancelAt) {
+    return cancelAt;
+  }
+
+  if (
+    context.org.currentPeriodEnd &&
+    dateUnixSeconds(context.org.currentPeriodEnd) > currentPhaseEnd
+  ) {
+    await context.stripe.subscriptions.update(
+      context.org.stripeSubscriptionId,
+      {
+        cancel_at: dateUnixSeconds(context.org.currentPeriodEnd),
+      },
+    );
+    return context.org.currentPeriodEnd;
+  }
+
+  await context.stripe.subscriptions.update(context.org.stripeSubscriptionId, {
+    cancel_at_period_end: true,
+  });
+  return effectiveDate;
+}
+
 async function scheduleCancellationAtPeriodEnd(
   context: DowngradeContext,
   signal?: AbortSignal,
@@ -239,61 +417,32 @@ async function scheduleCancellationAtPeriodEnd(
   const currentPhaseRange = subscriptionItemPhaseRange(currentItem);
   let effectiveDate =
     context.org.currentPeriodEnd ?? new Date(currentPhaseRange.endDate * 1000);
+  const concurrency = await concurrencyChangeState(context);
+  signal?.throwIfAborted();
 
   if (scheduleId) {
-    if (shouldReplacePendingDowngradeSchedule(context, scheduleId)) {
-      const discounts = subscriptionSchedulePhaseDiscounts(subscription);
-      await context.stripe.subscriptionSchedules.update(scheduleId, {
-        end_behavior: "cancel",
-        proration_behavior: "none",
-        phases: [
-          phaseWithDiscounts(
-            {
-              start_date: currentPhaseRange.startDate,
-              end_date: currentPhaseRange.endDate,
-              items: subscriptionPhaseItems(subscription),
-              proration_behavior: "none",
-            },
-            discounts,
-          ),
-        ],
-      });
-    } else {
-      const schedule =
-        await context.stripe.subscriptionSchedules.retrieve(scheduleId);
-      effectiveDate =
-        subscriptionScheduleFinalEnd(schedule) ??
-        context.org.currentPeriodEnd ??
-        new Date(currentPhaseRange.endDate * 1000);
-      await context.stripe.subscriptionSchedules.update(scheduleId, {
-        end_behavior: "cancel",
-        proration_behavior: "none",
-      });
-    }
+    effectiveDate = await scheduleCancellationOnExistingSchedule(
+      context,
+      subscription,
+      scheduleId,
+      effectiveDate,
+      concurrency,
+    );
   } else {
-    const cancelAt = subscriptionCancelAt(subscription);
-    if (cancelAt) {
-      effectiveDate = cancelAt;
-    } else if (
-      context.org.currentPeriodEnd &&
-      dateUnixSeconds(context.org.currentPeriodEnd) > currentPhaseRange.endDate
-    ) {
-      effectiveDate = context.org.currentPeriodEnd;
-      await context.stripe.subscriptions.update(
-        context.org.stripeSubscriptionId,
-        {
-          cancel_at: dateUnixSeconds(effectiveDate),
-        },
-      );
-    } else {
-      await context.stripe.subscriptions.update(
-        context.org.stripeSubscriptionId,
-        {
-          cancel_at_period_end: true,
-        },
-      );
-    }
+    effectiveDate = await scheduleCancellationWithoutSchedule(
+      context,
+      subscription,
+      effectiveDate,
+      currentPhaseRange.endDate,
+    );
   }
+  signal?.throwIfAborted();
+
+  await clearConcurrencyChangeSupersededByPlanCancellation(
+    context,
+    concurrency,
+    effectiveDate,
+  );
   signal?.throwIfAborted();
 
   await context.db
@@ -353,35 +502,55 @@ async function scheduleDowngradeToPro(
   const currentPriceId = currentItem.price.id;
   const quantity = currentItem.quantity;
   const discounts = subscriptionSchedulePhaseDiscounts(subscription);
+  const concurrency = existingScheduleId
+    ? await concurrencyChangeState(context)
+    : null;
+  signal?.throwIfAborted();
+  const existingAddOnSchedule =
+    existingScheduleId &&
+    context.org.pendingSubscriptionScheduleId !== existingScheduleId &&
+    hasPendingConcurrencyChange(concurrency)
+      ? await context.stripe.subscriptionSchedules.retrieve(existingScheduleId)
+      : null;
+  signal?.throwIfAborted();
 
   await context.stripe.subscriptionSchedules.update(scheduleId, {
     end_behavior: "release",
     proration_behavior: "none",
-    phases: [
-      phaseWithDiscounts(
-        {
-          start_date: startDate,
-          end_date: endDate,
-          items: subscriptionPhaseItems(subscription),
-          proration_behavior: "none",
-        },
-        discounts,
-      ),
-      phaseWithDiscounts(
-        {
-          start_date: endDate,
-          duration: phaseDuration(currentItem.price),
-          items: subscription.items.data.map((item) => {
-            return schedulePhaseItem(
-              item.price.id === currentPriceId ? proPriceId : item.price.id,
-              item.price.id === currentPriceId ? quantity : item.quantity,
-            );
+    phases: existingAddOnSchedule
+      ? [
+          ...subscriptionSchedulePhasesReplacingPriceAt(existingAddOnSchedule, {
+            effectiveAt: endDate,
+            sourcePriceId: currentPriceId,
+            targetPriceId: proPriceId,
+            targetQuantity: quantity ?? 1,
           }),
-          proration_behavior: "none",
-        },
-        discounts,
-      ),
-    ],
+        ]
+      : [
+          phaseWithDiscounts(
+            {
+              start_date: startDate,
+              end_date: endDate,
+              items: subscriptionPhaseItems(subscription),
+              proration_behavior: "none",
+            },
+            discounts,
+          ),
+          phaseWithDiscounts(
+            {
+              start_date: endDate,
+              duration: phaseDuration(currentItem.price),
+              items: subscription.items.data.map((item) => {
+                return schedulePhaseItem(
+                  item.price.id === currentPriceId ? proPriceId : item.price.id,
+                  item.price.id === currentPriceId ? quantity : item.quantity,
+                );
+              }),
+              proration_behavior: "none",
+            },
+            discounts,
+          ),
+        ],
   });
   signal?.throwIfAborted();
 

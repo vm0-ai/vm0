@@ -12,7 +12,7 @@ import {
   userConnectorEnabledSlugsSchema,
   userConnectorUpdateSchema,
 } from "../user-connectors";
-import { zeroConnectorCatalogContract } from "../zero-connector-catalog";
+import { connectorCatalogContract } from "../connector-catalog";
 import {
   connectorCheckDiagnosticResultSchema,
   connectorCheckRequestSchema,
@@ -166,12 +166,12 @@ describe("connector client response contracts", () => {
       }),
     ).toMatchObject({ connectors: [{ slug: "github" }] });
     expect(
-      zeroConnectorCatalogContract.list.responses[200].parse({
+      connectorCatalogContract.list.responses[200].parse({
         connectors: [catalogItem],
       }),
     ).toMatchObject({ connectors: [{ slug: "github" }] });
     expect(
-      zeroConnectorCatalogContract.permissions.responses[200].parse({
+      connectorCatalogContract.permissions.responses[200].parse({
         permissions: {
           connectorSlug: "github",
           label: "GitHub",
@@ -369,7 +369,7 @@ describe("connector path parameter contracts", () => {
       params: { connectorSlug: "github" },
       headers: {},
     });
-    await initClient(zeroConnectorCatalogContract, config).permissions({
+    await initClient(connectorCatalogContract, config).permissions({
       params: { connectorSlug: "github" },
       headers: {},
     });

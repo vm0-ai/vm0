@@ -221,7 +221,7 @@ describe("POST /api/zero/banking/*", () => {
 
     expect(response.body).toStrictEqual({
       error: {
-        message: "Zero Banking is not enabled",
+        message: "Banking is not enabled",
         code: "FORBIDDEN",
       },
     });

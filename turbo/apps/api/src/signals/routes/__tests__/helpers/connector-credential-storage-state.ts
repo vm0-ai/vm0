@@ -115,6 +115,38 @@ export async function clearFeishuConnectorOwnership(
   });
 }
 
+export async function readFeishuMemberConnectorState(
+  context: TestContext,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly installationId: string;
+  },
+): Promise<TestConnectorCredentialStorageStateActionResponse> {
+  return await postAction(context, {
+    action: "read-feishu-member-connector",
+    org_id: args.orgId,
+    user_id: args.userId,
+    installation_id: args.installationId,
+  });
+}
+
+export async function setFeishuMemberConnectorLink(
+  context: TestContext,
+  args: {
+    readonly userId: string;
+    readonly installationId: string;
+    readonly connectorId: string | null;
+  },
+): Promise<void> {
+  await postAction(context, {
+    action: "set-feishu-member-connector-link",
+    user_id: args.userId,
+    installation_id: args.installationId,
+    connector_id: args.connectorId,
+  });
+}
+
 export async function seedLegacyCustomFeishuOAuthState(
   context: TestContext,
   args: {
@@ -241,6 +273,92 @@ export async function setConnectorCredentialStorageState(
       ? {}
       : { token_expires_at: args.tokenExpiresAt }),
   });
+}
+
+export async function setConnectorDefaultState(
+  context: TestContext,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorId: string;
+    readonly isDefault: boolean;
+  },
+): Promise<void> {
+  await postAction(context, {
+    action: "set-connector-default",
+    org_id: args.orgId,
+    user_id: args.userId,
+    connector_id: args.connectorId,
+    is_default: args.isDefault,
+  });
+}
+
+export async function setConnectorExternalIdState(
+  context: TestContext,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorId: string;
+    readonly externalId: string | null;
+  },
+): Promise<void> {
+  await postAction(context, {
+    action: "set-connector-external-id",
+    org_id: args.orgId,
+    user_id: args.userId,
+    connector_id: args.connectorId,
+    external_id: args.externalId,
+  });
+}
+
+export async function seedBuiltinThreadConnectorSelection(
+  context: TestContext,
+  args: {
+    readonly chatThreadId: string;
+    readonly connectorId: string;
+    readonly connectorSlug: string;
+  },
+): Promise<void> {
+  await postAction(context, {
+    action: "seed-builtin-thread-selection",
+    chat_thread_id: args.chatThreadId,
+    connector_id: args.connectorId,
+    connector_slug: args.connectorSlug,
+  });
+}
+
+export async function seedCustomThreadConnectorSelection(
+  context: TestContext,
+  args: {
+    readonly chatThreadId: string;
+    readonly connectorId: string;
+    readonly customConnectorId: string;
+  },
+): Promise<void> {
+  await postAction(context, {
+    action: "seed-custom-thread-selection",
+    chat_thread_id: args.chatThreadId,
+    connector_id: args.connectorId,
+    custom_connector_id: args.customConnectorId,
+  });
+}
+
+export async function readThreadConnectorSelectionState(
+  context: TestContext,
+  args: {
+    readonly chatThreadId: string;
+    readonly connectorId: string;
+  },
+): Promise<boolean> {
+  const response = await postAction(context, {
+    action: "read-thread-selection",
+    chat_thread_id: args.chatThreadId,
+    connector_id: args.connectorId,
+  });
+  if (response.selection_exists === undefined) {
+    throw new Error("Thread connector selection state was not returned");
+  }
+  return response.selection_exists;
 }
 
 export async function setCustomConnectorCredentialStorageState(

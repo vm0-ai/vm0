@@ -8,6 +8,7 @@ import {
   type TestRuntimeStateActionBody,
 } from "@okouai/api-contracts/contracts/test-runtime-state";
 import { compatibleStoredExecutionContextSchema } from "@okouai/api-contracts/contracts/runners";
+import { agentComposes } from "@okouai/db/schema/agent-compose";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import {
@@ -1539,6 +1540,18 @@ const postRuntimeStateAction$ = command(
             }),
           },
         };
+      }
+      case "set-agent-compose-versionless": {
+        const [updated] = await db
+          .update(agentComposes)
+          .set({ headVersionId: null })
+          .where(eq(agentComposes.id, body.agent_id))
+          .returning({ id: agentComposes.id });
+        signal.throwIfAborted();
+        if (!updated) {
+          throw new Error("Expected an Agent compose fixture");
+        }
+        return { status: 200 as const, body: { ok: true as const } };
       }
     }
   },

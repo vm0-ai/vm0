@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 import {
-  zeroBillingDowngradeContract,
-  zeroBillingStatusContract,
-} from "@okouai/api-contracts/contracts/zero-billing";
+  billingConcurrencySubscriptionContract,
+  billingDowngradeContract,
+  billingStatusContract,
+} from "@okouai/api-contracts/contracts/billing";
 import { createStore } from "ccstate";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -16,6 +17,11 @@ import {
   type InvoicesOrgFixture,
 } from "./helpers/billing-invoices";
 import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
+import {
+  postConcurrencyEntitlementsInvoicePaid,
+  TEST_PRICE_CONCURRENCY,
+} from "./helpers/stripe-billing-webhook";
+import { billingConcurrencySubscriptionRoutes } from "../billing-concurrency-subscriptions";
 import { billingDowngradeRoutes } from "../billing-downgrade";
 import { billingStatusRoutes } from "../billing-status";
 
@@ -33,7 +39,7 @@ const TEST_USAGE_PACK_50 = "price_test_usage_pack_50";
 async function readBillingStatus() {
   return await accept(
     setupApp({ context, routes: billingStatusRoutes })(
-      zeroBillingStatusContract,
+      billingStatusContract,
     ).get({
       headers: { authorization: "Bearer clerk-session" },
     }),
@@ -55,7 +61,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     mockOptionalEnv("STRIPE_SECRET_KEY", undefined);
 
     const client = setupApp({ context, routes: billingDowngradeRoutes })(
-      zeroBillingDowngradeContract,
+      billingDowngradeContract,
     );
     const response = await accept(
       client.create({
@@ -75,7 +81,7 @@ describe("POST /api/zero/billing/downgrade", () => {
 
   it("returns 401 when not authenticated", async () => {
     const client = setupApp({ context, routes: billingDowngradeRoutes })(
-      zeroBillingDowngradeContract,
+      billingDowngradeContract,
     );
     const response = await accept(
       client.create({
@@ -95,7 +101,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
     const client = setupApp({ context, routes: billingDowngradeRoutes })(
-      zeroBillingDowngradeContract,
+      billingDowngradeContract,
     );
     const response = await accept(
       client.create({
@@ -120,7 +126,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
     const client = setupApp({ context, routes: billingDowngradeRoutes })(
-      zeroBillingDowngradeContract,
+      billingDowngradeContract,
     );
     const response = await client.create({
       body: { targetTier: "team" as "pro" },
@@ -137,7 +143,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
     const client = setupApp({ context, routes: billingDowngradeRoutes })(
-      zeroBillingDowngradeContract,
+      billingDowngradeContract,
     );
     const response = await accept(
       client.create({
@@ -171,7 +177,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
     const client = setupApp({ context, routes: billingDowngradeRoutes })(
-      zeroBillingDowngradeContract,
+      billingDowngradeContract,
     );
     const response = await accept(
       client.create({
@@ -240,7 +246,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     });
 
     const client = setupApp({ context, routes: billingDowngradeRoutes })(
-      zeroBillingDowngradeContract,
+      billingDowngradeContract,
     );
     const response = await accept(
       client.create({
@@ -351,7 +357,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     });
 
     const client = setupApp({ context, routes: billingDowngradeRoutes })(
-      zeroBillingDowngradeContract,
+      billingDowngradeContract,
     );
     const response = await accept(
       client.create({
@@ -435,7 +441,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     });
 
     const client = setupApp({ context, routes: billingDowngradeRoutes })(
-      zeroBillingDowngradeContract,
+      billingDowngradeContract,
     );
     const response = await accept(
       client.create({
@@ -479,6 +485,279 @@ describe("POST /api/zero/billing/downgrade", () => {
       targetTier: "pro",
       effectiveDate: new Date(periodEnd * 1000).toISOString(),
     });
+  });
+
+  it("preserves a Plan downgrade while restoring a concurrency reduction", async () => {
+    const subId = `sub-team-concurrency-pro-${randomUUID().slice(0, 8)}`;
+    const customerId = `cus-team-concurrency-pro-${randomUUID().slice(0, 8)}`;
+    const scheduleId = `sched-concurrency-pro-${randomUUID().slice(0, 8)}`;
+    const periodStart = Math.floor((now() - 86_400 * 1000) / 1000);
+    const periodEnd = Math.floor((now() + 30 * 86_400 * 1000) / 1000);
+    const futureEnd = periodEnd + 30 * 86_400;
+    const currentPeriodEnd = new Date(periodEnd * 1000);
+    const fixture = await track(
+      store.set(
+        seedInvoicesOrg$,
+        {
+          stripeCustomerId: customerId,
+          stripeSubscriptionId: subId,
+          subscriptionStatus: "active",
+          tier: "team",
+          currentPeriodEnd,
+        },
+        context.signal,
+      ),
+    );
+    await postConcurrencyEntitlementsInvoicePaid(context.signal, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      customerId,
+      subscriptionId: subId,
+      lines: [
+        {
+          slots: 5,
+          startsAt: new Date(periodStart * 1000),
+          expiresAt: currentPeriodEnd,
+        },
+      ],
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    const subscription = {
+      id: subId,
+      customer: customerId,
+      schedule: null,
+      pending_update: null,
+      default_payment_method: "pm_card",
+      discounts: [],
+      items: {
+        data: [
+          {
+            id: "si_item_team",
+            current_period_start: periodStart,
+            current_period_end: periodEnd,
+            quantity: 1,
+            price: {
+              id: TEST_PRICE_TEAM,
+              recurring: { interval: "month", interval_count: 1 },
+            },
+          },
+          {
+            id: "si_item_concurrency",
+            current_period_start: periodStart,
+            current_period_end: periodEnd,
+            quantity: 5,
+            price: {
+              id: TEST_PRICE_CONCURRENCY,
+              recurring: { interval: "month", interval_count: 1 },
+            },
+          },
+        ],
+      },
+    };
+    context.mocks.stripe.subscriptions.retrieve.mockReset();
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce(
+      subscription,
+    );
+    context.mocks.stripe.subscriptionSchedules.create.mockReset();
+    context.mocks.stripe.subscriptionSchedules.create.mockResolvedValueOnce({
+      id: scheduleId,
+    });
+    context.mocks.stripe.subscriptionSchedules.update.mockReset();
+    context.mocks.stripe.subscriptionSchedules.update.mockResolvedValue({
+      id: scheduleId,
+    });
+
+    await accept(
+      setupApp({
+        context,
+        routes: billingConcurrencySubscriptionRoutes,
+      })(billingConcurrencySubscriptionContract).confirmChange({
+        params: { subscriptionId: subId },
+        body: { quantity: 3 },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce({
+      ...subscription,
+      schedule: scheduleId,
+    });
+    context.mocks.stripe.subscriptionSchedules.retrieve.mockResolvedValueOnce({
+      id: scheduleId,
+      end_behavior: "release",
+      current_phase: { start_date: periodStart, end_date: periodEnd },
+      phases: [
+        {
+          start_date: periodStart,
+          end_date: periodEnd,
+          items: [
+            { price: TEST_PRICE_TEAM, quantity: 1 },
+            { price: TEST_PRICE_CONCURRENCY, quantity: 5 },
+          ],
+          proration_behavior: "none",
+        },
+        {
+          start_date: periodEnd,
+          end_date: futureEnd,
+          items: [
+            { price: TEST_PRICE_TEAM, quantity: 1 },
+            { price: TEST_PRICE_CONCURRENCY, quantity: 3 },
+          ],
+          proration_behavior: "none",
+        },
+      ],
+    });
+    context.mocks.stripe.subscriptionSchedules.update.mockClear();
+
+    const response = await accept(
+      setupApp({ context, routes: billingDowngradeRoutes })(
+        billingDowngradeContract,
+      ).create({
+        body: { targetTier: "pro" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      success: true,
+      effectiveDate: currentPeriodEnd.toISOString(),
+    });
+    expect(
+      context.mocks.stripe.subscriptionSchedules.update,
+    ).toHaveBeenCalledWith(scheduleId, {
+      end_behavior: "release",
+      proration_behavior: "none",
+      phases: [
+        {
+          start_date: periodStart,
+          end_date: periodEnd,
+          items: [
+            { price: TEST_PRICE_TEAM, quantity: 1 },
+            { price: TEST_PRICE_CONCURRENCY, quantity: 5 },
+          ],
+          proration_behavior: "none",
+        },
+        {
+          start_date: periodEnd,
+          end_date: futureEnd,
+          items: [
+            { price: TEST_PRICE_PRO, quantity: 1 },
+            { price: TEST_PRICE_CONCURRENCY, quantity: 3 },
+          ],
+          proration_behavior: "none",
+        },
+      ],
+    });
+    const status = await readBillingStatus();
+    expect(status.body.scheduledChange).toStrictEqual({
+      type: "downgrade",
+      targetTier: "pro",
+      effectiveDate: currentPeriodEnd.toISOString(),
+    });
+    expect(status.body.concurrencySubscriptions[0]?.scheduledQuantity).toBe(3);
+
+    const planSchedule = {
+      id: scheduleId,
+      end_behavior: "release" as const,
+      current_phase: { start_date: periodStart, end_date: periodEnd },
+      phases: [
+        {
+          start_date: periodStart,
+          end_date: periodEnd,
+          items: [
+            { price: TEST_PRICE_TEAM, quantity: 1 },
+            { price: TEST_PRICE_CONCURRENCY, quantity: 5 },
+          ],
+          proration_behavior: "none" as const,
+        },
+        {
+          start_date: periodEnd,
+          end_date: futureEnd,
+          items: [
+            { price: TEST_PRICE_PRO, quantity: 1 },
+            { price: TEST_PRICE_CONCURRENCY, quantity: 3 },
+          ],
+          proration_behavior: "none" as const,
+        },
+      ],
+    };
+    context.mocks.stripe.subscriptions.retrieve
+      .mockResolvedValueOnce({
+        ...subscription,
+        schedule: scheduleId,
+      })
+      .mockResolvedValueOnce({
+        ...subscription,
+        schedule: scheduleId,
+        latest_invoice: null,
+      });
+    context.mocks.stripe.subscriptionSchedules.retrieve.mockResolvedValueOnce(
+      planSchedule,
+    );
+    context.mocks.stripe.subscriptionSchedules.update.mockClear();
+    context.mocks.stripe.subscriptionSchedules.release.mockClear();
+
+    const restored = await accept(
+      setupApp({
+        context,
+        routes: billingConcurrencySubscriptionRoutes,
+      })(billingConcurrencySubscriptionContract).restore({
+        params: { subscriptionId: subId },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(restored.body).toStrictEqual({ success: true });
+    expect(
+      context.mocks.stripe.subscriptionSchedules.update,
+    ).toHaveBeenCalledWith(
+      scheduleId,
+      {
+        end_behavior: "release",
+        proration_behavior: "none",
+        phases: [
+          {
+            start_date: periodStart,
+            end_date: periodEnd,
+            items: [
+              { price: TEST_PRICE_TEAM, quantity: 1 },
+              { price: TEST_PRICE_CONCURRENCY, quantity: 5 },
+            ],
+            proration_behavior: "none",
+          },
+          {
+            start_date: periodEnd,
+            end_date: futureEnd,
+            items: [
+              { price: TEST_PRICE_PRO, quantity: 1 },
+              { price: TEST_PRICE_CONCURRENCY, quantity: 5 },
+            ],
+            proration_behavior: "none",
+          },
+        ],
+      },
+      {
+        idempotencyKey: expect.stringMatching(
+          /^concurrency-change:[^:]+:[^:]+:schedule-update$/u,
+        ),
+      },
+    );
+    expect(
+      context.mocks.stripe.subscriptionSchedules.release,
+    ).not.toHaveBeenCalled();
+    const restoredStatus = await readBillingStatus();
+    expect(restoredStatus.body.scheduledChange).toStrictEqual({
+      type: "downgrade",
+      targetTier: "pro",
+      effectiveDate: currentPeriodEnd.toISOString(),
+    });
+    expect(
+      restoredStatus.body.concurrencySubscriptions[0]?.scheduledQuantity,
+    ).toBeUndefined();
   });
 
   it("returns branded setup checkout URLs when team to pro needs a payment method", async () => {
@@ -537,7 +816,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     });
 
     const client = setupApp({ context, routes: billingDowngradeRoutes })(
-      zeroBillingDowngradeContract,
+      billingDowngradeContract,
     );
     const response = await accept(
       client.create({
@@ -654,7 +933,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     context.mocks.stripe.subscriptions.update.mockResolvedValue({ id: subId });
 
     const client = setupApp({ context, routes: billingDowngradeRoutes })(
-      zeroBillingDowngradeContract,
+      billingDowngradeContract,
     );
     const response = await accept(
       client.create({
@@ -726,7 +1005,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     context.mocks.stripe.subscriptions.update.mockResolvedValue({ id: subId });
 
     const client = setupApp({ context, routes: billingDowngradeRoutes })(
-      zeroBillingDowngradeContract,
+      billingDowngradeContract,
     );
     const response = await accept(
       client.create({
@@ -744,6 +1023,182 @@ describe("POST /api/zero/billing/downgrade", () => {
       subId,
       { cancel_at_period_end: true },
     );
+  });
+
+  it("does not delay Team cancellation for a pending concurrency reduction", async () => {
+    const subId = `sub-team-concurrency-${randomUUID().slice(0, 8)}`;
+    const customerId = `cus-team-concurrency-${randomUUID().slice(0, 8)}`;
+    const scheduleId = `sched-concurrency-${randomUUID().slice(0, 8)}`;
+    const periodStart = Math.floor((now() - 86_400 * 1000) / 1000);
+    const periodEnd = Math.floor((now() + 30 * 86_400 * 1000) / 1000);
+    const futureEnd = periodEnd + 30 * 86_400;
+    const currentPeriodEnd = new Date(periodEnd * 1000);
+    const allowanceCancelAt = currentPeriodEnd.toISOString();
+    const fixture = await track(
+      store.set(
+        seedInvoicesOrg$,
+        {
+          stripeCustomerId: customerId,
+          stripeSubscriptionId: subId,
+          subscriptionStatus: "active",
+          tier: "team",
+          currentPeriodEnd,
+        },
+        context.signal,
+      ),
+    );
+    await postConcurrencyEntitlementsInvoicePaid(context.signal, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      customerId,
+      subscriptionId: subId,
+      lines: [
+        {
+          slots: 5,
+          startsAt: new Date(periodStart * 1000),
+          expiresAt: currentPeriodEnd,
+        },
+      ],
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    const subscription = {
+      id: subId,
+      schedule: null,
+      pending_update: null,
+      metadata: {
+        allowanceStatus: "canceled",
+        allowanceCancelAt,
+      },
+      items: {
+        data: [
+          {
+            id: "si_item_team",
+            current_period_start: periodStart,
+            current_period_end: periodEnd,
+            quantity: 1,
+            price: {
+              id: TEST_PRICE_TEAM,
+              recurring: { interval: "month", interval_count: 1 },
+            },
+          },
+          {
+            id: "si_item_concurrency",
+            current_period_start: periodStart,
+            current_period_end: periodEnd,
+            quantity: 5,
+            price: {
+              id: TEST_PRICE_CONCURRENCY,
+              recurring: { interval: "month", interval_count: 1 },
+            },
+          },
+        ],
+      },
+    };
+    context.mocks.stripe.subscriptions.retrieve.mockReset();
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce(
+      subscription,
+    );
+    context.mocks.stripe.subscriptionSchedules.create.mockReset();
+    context.mocks.stripe.subscriptionSchedules.create.mockResolvedValueOnce({
+      id: scheduleId,
+    });
+    context.mocks.stripe.subscriptionSchedules.update.mockReset();
+    context.mocks.stripe.subscriptionSchedules.update.mockResolvedValue({
+      id: scheduleId,
+    });
+
+    await accept(
+      setupApp({
+        context,
+        routes: billingConcurrencySubscriptionRoutes,
+      })(billingConcurrencySubscriptionContract).confirmChange({
+        params: { subscriptionId: subId },
+        body: { quantity: 3 },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(
+      (await readBillingStatus()).body.concurrencySubscriptions[0]
+        ?.scheduledQuantity,
+    ).toBe(3);
+
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce({
+      ...subscription,
+      schedule: scheduleId,
+    });
+    context.mocks.stripe.subscriptionSchedules.retrieve.mockResolvedValueOnce({
+      id: scheduleId,
+      end_behavior: "release",
+      current_phase: { start_date: periodStart, end_date: periodEnd },
+      phases: [
+        {
+          start_date: periodStart,
+          end_date: periodEnd,
+          metadata: { allowanceStatus: "active" },
+          items: [
+            { price: TEST_PRICE_TEAM, quantity: 1 },
+            { price: TEST_PRICE_CONCURRENCY, quantity: 5 },
+          ],
+          proration_behavior: "none",
+        },
+        {
+          start_date: periodEnd,
+          end_date: futureEnd,
+          metadata: { allowanceStatus: "active" },
+          items: [
+            { price: TEST_PRICE_TEAM, quantity: 1 },
+            { price: TEST_PRICE_CONCURRENCY, quantity: 3 },
+          ],
+          proration_behavior: "none",
+        },
+      ],
+    });
+    context.mocks.stripe.subscriptionSchedules.update.mockClear();
+
+    const response = await accept(
+      setupApp({ context, routes: billingDowngradeRoutes })(
+        billingDowngradeContract,
+      ).create({
+        body: { targetTier: "limited-free-1" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      success: true,
+      effectiveDate: currentPeriodEnd.toISOString(),
+    });
+    expect(
+      context.mocks.stripe.subscriptionSchedules.update,
+    ).toHaveBeenCalledWith(scheduleId, {
+      end_behavior: "cancel",
+      proration_behavior: "none",
+      phases: [
+        {
+          start_date: periodStart,
+          end_date: periodEnd,
+          items: [
+            { price: TEST_PRICE_TEAM, quantity: 1 },
+            { price: TEST_PRICE_CONCURRENCY, quantity: 5 },
+          ],
+          metadata: {
+            allowanceStatus: "canceled",
+            allowanceCancelAt,
+          },
+          proration_behavior: "none",
+        },
+      ],
+    });
+    const status = await readBillingStatus();
+    expect(status.body.currentPeriodEnd).toBe(currentPeriodEnd.toISOString());
+    expect(
+      status.body.concurrencySubscriptions[0]?.scheduledQuantity,
+    ).toBeUndefined();
+    expect(
+      status.body.concurrencySubscriptions[0]?.cancelAtPeriodEnd,
+    ).toBeFalsy();
   });
 
   it("cancels a product-backed Custom Plan at period end", async () => {
@@ -790,7 +1245,7 @@ describe("POST /api/zero/billing/downgrade", () => {
 
     const response = await accept(
       setupApp({ context, routes: billingDowngradeRoutes })(
-        zeroBillingDowngradeContract,
+        billingDowngradeContract,
       ).create({
         body: { targetTier: "limited-free-1" },
         headers: { authorization: "Bearer clerk-session" },
@@ -849,7 +1304,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     context.mocks.stripe.subscriptions.update.mockResolvedValue({ id: subId });
 
     const client = setupApp({ context, routes: billingDowngradeRoutes })(
-      zeroBillingDowngradeContract,
+      billingDowngradeContract,
     );
     const response = await accept(
       client.create({
@@ -924,7 +1379,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     });
 
     const client = setupApp({ context, routes: billingDowngradeRoutes })(
-      zeroBillingDowngradeContract,
+      billingDowngradeContract,
     );
     const response = await accept(
       client.create({
@@ -1008,7 +1463,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     });
 
     const client = setupApp({ context, routes: billingDowngradeRoutes })(
-      zeroBillingDowngradeContract,
+      billingDowngradeContract,
     );
     const response = await accept(
       client.create({
@@ -1088,7 +1543,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     });
 
     const client = setupApp({ context, routes: billingDowngradeRoutes })(
-      zeroBillingDowngradeContract,
+      billingDowngradeContract,
     );
     const response = await accept(
       client.create({

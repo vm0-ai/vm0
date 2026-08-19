@@ -7,6 +7,7 @@ import type {
   PublicConnectorCatalogConnection,
   PublicConnectorCatalogConnectionStatus,
   PublicConnectorCatalogDetail,
+  PublicConnectorCatalogDiscoveryResponse,
   PublicConnectorCatalogIcon,
   PublicConnectorCatalogItem,
   PublicConnectorCatalogListResponse,
@@ -14,7 +15,7 @@ import type {
   PublicConnectorCatalogPermissionSummary,
   PublicConnectorCatalogStatusItem,
   PublicConnectorCatalogStatusResponse,
-} from "@okouai/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/connector-catalog";
 import {
   connectorCatalogActiveSnapshot,
   connectorCatalogCompatibilityEvaluation,
@@ -139,6 +140,11 @@ export interface ConnectorCatalogReferenceMetadata {
 
 export interface ConnectorCatalogStatusRead {
   readonly status: PublicConnectorCatalogStatusResponse;
+  readonly referenceMetadata: readonly ConnectorCatalogReferenceMetadata[];
+}
+
+interface ConnectorCatalogDiscoveryRead {
+  readonly status: PublicConnectorCatalogDiscoveryResponse;
   readonly referenceMetadata: readonly ConnectorCatalogReferenceMetadata[];
 }
 
@@ -1080,19 +1086,25 @@ export async function listExternalPublicConnectorCatalogStatus(
 
 export async function discoverExternalPublicConnectorCatalogStatus(
   args: ExternalCatalogDiscoveryArgs,
-): Promise<ConnectorCatalogStatusRead> {
+): Promise<ConnectorCatalogDiscoveryRead> {
   const catalog = await loadAcceptedConnectorCatalogSnapshot(args.db);
   const effective = effectiveConnectors({
     catalog,
     featureStates: args.featureStates,
   });
-  return connectorCatalogStatusRead({
+  const read = connectorCatalogStatusRead({
     catalog,
     effective: discoveryEffectiveConnectors(effective, args),
     connectors: args.connectors,
     referenceConnectorSlugs: args.referenceConnectorSlugs,
-    totalConnectorCount: effective.length,
   });
+  return {
+    ...read,
+    status: {
+      ...read.status,
+      totalConnectorCount: effective.length,
+    },
+  };
 }
 
 function connectorCatalogStatusRead(args: {
@@ -1100,7 +1112,6 @@ function connectorCatalogStatusRead(args: {
   readonly effective: readonly EffectiveConnector[];
   readonly connectors: readonly ConnectorResponse[];
   readonly referenceConnectorSlugs: readonly string[];
-  readonly totalConnectorCount?: number;
 }): ConnectorCatalogStatusRead {
   const connectorsBySlug = new Map(
     args.connectors.map((connector) => {
@@ -1121,9 +1132,6 @@ function connectorCatalogStatusRead(args: {
         args.catalog,
         args.effective,
       ),
-      ...(args.totalConnectorCount === undefined
-        ? {}
-        : { totalConnectorCount: args.totalConnectorCount }),
     },
     referenceMetadata: referenceMetadataForCatalog(
       args.catalog,

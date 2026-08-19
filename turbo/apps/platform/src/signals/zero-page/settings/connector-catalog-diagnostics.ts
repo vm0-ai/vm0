@@ -1,5 +1,5 @@
 import type { ConnectorCatalogDiagnostics } from "@okouai/api-contracts/contracts/connector-catalog-diagnostics";
-import { zeroConnectorCatalogContract } from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import { connectorCatalogContract } from "@okouai/api-contracts/contracts/connector-catalog";
 import { command, computed, state } from "ccstate";
 
 import { accept } from "../../../lib/accept.ts";
@@ -17,7 +17,7 @@ export const connectorCatalogDiagnostics$ = computed(
   async (get): Promise<ConnectorCatalogDiagnostics | null> => {
     get(internalConnectorCatalogDiagnosticsReload$);
     const createClient = get(zeroClient$);
-    const client = createClient(zeroConnectorCatalogContract);
+    const client = createClient(connectorCatalogContract);
     const result = await accept(client.diagnostics(), [200, 403, 404]);
 
     return result.status === 200 ? result.body : null;

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroBillingAutoRechargeContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingAutoRechargeContract } from "@okouai/api-contracts/contracts/billing";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -27,7 +27,7 @@ type AutoRechargeActor = ApiTestUser & { readonly orgId: string };
 
 function autoRechargeClient() {
   return setupApp({ context, routes: billingAutoRechargeRoutes })(
-    zeroBillingAutoRechargeContract,
+    billingAutoRechargeContract,
   );
 }
 

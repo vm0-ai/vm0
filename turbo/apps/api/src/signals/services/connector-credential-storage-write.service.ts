@@ -1,7 +1,8 @@
+import { chatThreadConnectorSelections } from "@okouai/db/schema/chat-thread-connector-selection";
 import { connectors } from "@okouai/db/schema/connector";
 import { secrets } from "@okouai/db/schema/secret";
 import { variables } from "@okouai/db/schema/variable";
-import { eq, isNotNull, sql, type SQL } from "drizzle-orm";
+import { eq, inArray, isNotNull, sql, type SQL } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
@@ -40,6 +41,7 @@ interface ConnectorOwnedCredentialDeleteConditions {
 }
 
 interface ConnectorCredentialStorageDeleteConditions extends ConnectorOwnedCredentialDeleteConditions {
+  readonly selection: SQL;
   readonly connection: SQL;
 }
 
@@ -153,6 +155,8 @@ async function deleteConnectorCredentialStorageConnectionsWhere(
   conditions: ConnectorCredentialStorageDeleteConditions,
   signal: AbortSignal,
 ): Promise<void> {
+  await db.delete(chatThreadConnectorSelections).where(conditions.selection);
+  signal.throwIfAborted();
   await deleteConnectorOwnedCredentialRowsWhere(db, conditions, signal);
   await db.delete(connectors).where(conditions.connection);
   signal.throwIfAborted();
@@ -185,6 +189,10 @@ export async function deleteConnectorCredentialStorageConnection(
   await deleteConnectorCredentialStorageConnectionsWhere(
     db,
     {
+      selection: eq(
+        chatThreadConnectorSelections.connectorId,
+        args.connectorId,
+      ),
       secret: eq(secrets.connectorId, args.connectorId),
       variable: eq(variables.connectorId, args.connectorId),
       connection: eq(connectors.id, args.connectorId),
@@ -198,21 +206,55 @@ export async function deleteConnectorCredentialStorageConnectionsForOwner(
   owner: ConnectorOwnerScope,
   signal: AbortSignal,
 ): Promise<void> {
+  const connectorOwnerCondition =
+    owner.kind === "user"
+      ? eq(connectors.userId, owner.userId)
+      : eq(connectors.orgId, owner.orgId);
   const conditions: ConnectorCredentialStorageDeleteConditions =
     owner.kind === "user"
       ? {
+          selection: inArray(
+            chatThreadConnectorSelections.connectorId,
+            db
+              .select({ connectorId: connectors.id })
+              .from(connectors)
+              .where(connectorOwnerCondition),
+          ),
           secret: sql`${eq(secrets.userId, owner.userId)} AND ${isNotNull(secrets.connectorId)}`,
           variable: sql`${eq(variables.userId, owner.userId)} AND ${isNotNull(variables.connectorId)}`,
-          connection: eq(connectors.userId, owner.userId),
+          connection: connectorOwnerCondition,
         }
       : {
+          selection: inArray(
+            chatThreadConnectorSelections.connectorId,
+            db
+              .select({ connectorId: connectors.id })
+              .from(connectors)
+              .where(connectorOwnerCondition),
+          ),
           secret: sql`${eq(secrets.orgId, owner.orgId)} AND ${isNotNull(secrets.connectorId)}`,
           variable: sql`${eq(variables.orgId, owner.orgId)} AND ${isNotNull(variables.connectorId)}`,
-          connection: eq(connectors.orgId, owner.orgId),
+          connection: connectorOwnerCondition,
         };
   await deleteConnectorCredentialStorageConnectionsWhere(
     db,
     conditions,
     signal,
   );
+}
+
+export async function deleteConnectorSelectionsForCustomConnectorDefinition(
+  db: Db,
+  args: { readonly customConnectorId: string },
+  signal: AbortSignal,
+): Promise<void> {
+  await db
+    .delete(chatThreadConnectorSelections)
+    .where(
+      eq(
+        chatThreadConnectorSelections.customConnectorId,
+        args.customConnectorId,
+      ),
+    );
+  signal.throwIfAborted();
 }

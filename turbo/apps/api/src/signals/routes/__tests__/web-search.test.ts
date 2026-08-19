@@ -9,7 +9,7 @@ import {
   webSearchContract,
   type WebSearchRequest,
 } from "@okouai/api-contracts/contracts/web-search";
-import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import { usageRecordContract } from "@okouai/api-contracts/contracts/usage-record";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
@@ -134,7 +134,7 @@ async function fundActor(actor: ApiTestUser): Promise<void> {
 
 async function credits(actor: ApiTestUser): Promise<number> {
   const response = await accept(
-    client()(zeroBillingStatusContract).get({
+    client()(billingStatusContract).get({
       headers: authenticate(actor),
     }),
     [200],
@@ -449,7 +449,7 @@ describe("okou web-search route", () => {
       [200],
     );
     const status = await accept(
-      client()(zeroBillingStatusContract).get({
+      client()(billingStatusContract).get({
         headers: authenticate(actor),
       }),
       [200],

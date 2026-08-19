@@ -1,8 +1,8 @@
 import { screen, waitForElementToBeRemoved } from "@testing-library/react";
 import {
-  zeroConnectorCatalogContract,
+  connectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
-} from "@okouai/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/connector-catalog";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
@@ -56,7 +56,7 @@ function publicConnectorStatusItem(
 }
 
 function mockConnectorCatalogStatus(connectorSlugs: readonly string[]): void {
-  context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+  context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
     return respond(200, {
       connectors: connectorSlugs.map(publicConnectorStatusItem),
     });
@@ -216,18 +216,15 @@ describe("zero ideation page", () => {
 
     const catalogRequested = context.mocks.deferred<void>();
     const catalogReady = context.mocks.deferred<void>();
-    context.mocks.api(
-      zeroConnectorCatalogContract.status,
-      async ({ respond }) => {
-        catalogRequested.resolve();
-        await catalogReady.promise;
-        return respond(200, {
-          connectors: ["github", "sentry", "axiom", "plausible", "slack"].map(
-            publicConnectorStatusItem,
-          ),
-        });
-      },
-    );
+    context.mocks.api(connectorCatalogContract.status, async ({ respond }) => {
+      catalogRequested.resolve();
+      await catalogReady.promise;
+      return respond(200, {
+        connectors: ["github", "sentry", "axiom", "plausible", "slack"].map(
+          publicConnectorStatusItem,
+        ),
+      });
+    });
     context.store.set(reloadConnectors$);
 
     await catalogRequested.promise;
@@ -241,15 +238,12 @@ describe("zero ideation page", () => {
 
   it("does not treat pending catalog status as an empty catalog", async () => {
     const catalogReady = context.mocks.deferred<void>();
-    context.mocks.api(
-      zeroConnectorCatalogContract.status,
-      async ({ respond }) => {
-        await catalogReady.promise;
-        return respond(200, {
-          connectors: [],
-        });
-      },
-    );
+    context.mocks.api(connectorCatalogContract.status, async ({ respond }) => {
+      await catalogReady.promise;
+      return respond(200, {
+        connectors: [],
+      });
+    });
 
     detachedSetupPage({
       context,
@@ -269,15 +263,12 @@ describe("zero ideation page", () => {
 
   it("fails closed when catalog status errors on the ideas page", async () => {
     const catalogReady = context.mocks.deferred<void>();
-    context.mocks.api(
-      zeroConnectorCatalogContract.status,
-      async ({ respond }) => {
-        await catalogReady.promise;
-        return respond(403, {
-          error: { message: "Forbidden", code: "FORBIDDEN" },
-        });
-      },
-    );
+    context.mocks.api(connectorCatalogContract.status, async ({ respond }) => {
+      await catalogReady.promise;
+      return respond(403, {
+        error: { message: "Forbidden", code: "FORBIDDEN" },
+      });
+    });
 
     detachedSetupPage({
       context,
@@ -314,15 +305,12 @@ describe("zero ideation page", () => {
     ).resolves.toBeInTheDocument();
 
     const catalogReady = context.mocks.deferred<void>();
-    context.mocks.api(
-      zeroConnectorCatalogContract.status,
-      async ({ respond }) => {
-        await catalogReady.promise;
-        return respond(403, {
-          error: { message: "Forbidden", code: "FORBIDDEN" },
-        });
-      },
-    );
+    context.mocks.api(connectorCatalogContract.status, async ({ respond }) => {
+      await catalogReady.promise;
+      return respond(403, {
+        error: { message: "Forbidden", code: "FORBIDDEN" },
+      });
+    });
     context.store.set(reloadConnectors$);
 
     expect(screen.getByText("Daily standup report")).toBeInTheDocument();
@@ -450,18 +438,15 @@ describe("zero ideation page", () => {
 
     const catalogRequested = context.mocks.deferred<void>();
     const catalogReady = context.mocks.deferred<void>();
-    context.mocks.api(
-      zeroConnectorCatalogContract.status,
-      async ({ respond }) => {
-        catalogRequested.resolve();
-        await catalogReady.promise;
-        return respond(200, {
-          connectors: ["github", "sentry", "axiom", "plausible", "slack"].map(
-            publicConnectorStatusItem,
-          ),
-        });
-      },
-    );
+    context.mocks.api(connectorCatalogContract.status, async ({ respond }) => {
+      catalogRequested.resolve();
+      await catalogReady.promise;
+      return respond(200, {
+        connectors: ["github", "sentry", "axiom", "plausible", "slack"].map(
+          publicConnectorStatusItem,
+        ),
+      });
+    });
     context.store.set(reloadConnectors$);
 
     await catalogRequested.promise;
@@ -475,15 +460,12 @@ describe("zero ideation page", () => {
 
   it("does not treat pending catalog status as empty for suggested prompts", async () => {
     const catalogReady = context.mocks.deferred<void>();
-    context.mocks.api(
-      zeroConnectorCatalogContract.status,
-      async ({ respond }) => {
-        await catalogReady.promise;
-        return respond(200, {
-          connectors: [],
-        });
-      },
-    );
+    context.mocks.api(connectorCatalogContract.status, async ({ respond }) => {
+      await catalogReady.promise;
+      return respond(200, {
+        connectors: [],
+      });
+    });
 
     detachedSetupPage({
       context,
@@ -501,15 +483,12 @@ describe("zero ideation page", () => {
 
   it("fails closed when catalog status errors for suggested prompts", async () => {
     const catalogReady = context.mocks.deferred<void>();
-    context.mocks.api(
-      zeroConnectorCatalogContract.status,
-      async ({ respond }) => {
-        await catalogReady.promise;
-        return respond(403, {
-          error: { message: "Forbidden", code: "FORBIDDEN" },
-        });
-      },
-    );
+    context.mocks.api(connectorCatalogContract.status, async ({ respond }) => {
+      await catalogReady.promise;
+      return respond(403, {
+        error: { message: "Forbidden", code: "FORBIDDEN" },
+      });
+    });
 
     detachedSetupPage({
       context,
@@ -546,15 +525,12 @@ describe("zero ideation page", () => {
     expect(queryAllByRoleFast("button", promptGrid)).toHaveLength(3);
 
     const catalogReady = context.mocks.deferred<void>();
-    context.mocks.api(
-      zeroConnectorCatalogContract.status,
-      async ({ respond }) => {
-        await catalogReady.promise;
-        return respond(403, {
-          error: { message: "Forbidden", code: "FORBIDDEN" },
-        });
-      },
-    );
+    context.mocks.api(connectorCatalogContract.status, async ({ respond }) => {
+      await catalogReady.promise;
+      return respond(403, {
+        error: { message: "Forbidden", code: "FORBIDDEN" },
+      });
+    });
     context.store.set(reloadConnectors$);
 
     const loadingButtons = queryAllByRoleFast("button", promptGrid);

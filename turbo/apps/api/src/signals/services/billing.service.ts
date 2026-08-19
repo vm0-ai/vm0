@@ -1,5 +1,5 @@
 import { command, computed, type Computed } from "ccstate";
-import type { AutoRechargeConfig } from "@okouai/api-contracts/contracts/zero-billing";
+import type { AutoRechargeConfig } from "@okouai/api-contracts/contracts/billing";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { orgUsageAllowanceEntitlements } from "@okouai/db/schema/org-usage-allowance";
 import { eq } from "drizzle-orm";

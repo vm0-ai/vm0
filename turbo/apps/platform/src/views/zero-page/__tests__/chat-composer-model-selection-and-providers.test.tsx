@@ -19,15 +19,15 @@ import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { zeroAgentCustomConnectorsContract } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 import {
-  zeroConnectorCatalogContract,
+  connectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
-} from "@okouai/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/connector-catalog";
 import { zeroUserPermissionGrantsContract } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
 import { claudeCodeDeviceAuthContract } from "@okouai/api-contracts/contracts/claude-code-device-auth";
 import { codexDeviceAuthContract } from "@okouai/api-contracts/contracts/codex-device-auth";
 import { zeroPersonalModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-personal-model-providers";
 import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
-import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import {
   userModelPreferenceContract,
   type UpdateUserModelPreferenceRequest,
@@ -128,7 +128,7 @@ function categoryTab(
   root: ParentNode = document,
 ): HTMLElement | undefined {
   return queryAllByRoleFast("radio", root).find((candidate) => {
-    return candidate.textContent?.replace(/\s+/gu, " ").trim() === name;
+    return candidate.getAttribute("aria-label") === name;
   });
 }
 
@@ -339,7 +339,7 @@ describe("chat composer models", () => {
       categoryTab: "Video",
     },
   ])(
-    "keeps the mobile model brand icon and hides the desktop icon when $kind model selection is enabled",
+    "keeps the model brand icon on the trigger when $kind model selection is enabled",
     async ({ featureSwitch, categoryTab }) => {
       const user = userEvent.setup({ delay: null });
       context.mocks.browser.matchMedia(true);
@@ -360,12 +360,12 @@ describe("chat composer models", () => {
       await waitFor(() => {
         expect(
           queryAllByRoleFast("radio").find((radio) => {
-            return (
-              radio.textContent?.replace(/\s+/gu, " ").trim() === categoryTab
-            );
+            return radio.getAttribute("aria-label") === categoryTab;
           }),
         ).toBeInTheDocument();
       });
+      // The trigger reads the same whether or not media categories are on: the
+      // selected model's brand mark on both layouts, and no mode glyph.
       expect(
         Array.from(
           modelPicker.querySelectorAll<HTMLImageElement>("img"),
@@ -373,7 +373,8 @@ describe("chat composer models", () => {
             return icon.width;
           },
         ),
-      ).toStrictEqual([18]);
+      ).toStrictEqual([18, 16]);
+      expect(modelPicker.querySelector(".lucide-message-circle")).toBeNull();
     },
   );
 
@@ -2040,7 +2041,7 @@ describe("chat composer models", () => {
   it("restores personal models when billing refreshes after realtime subscribes", async () => {
     const user = userEvent.setup({ delay: null });
     let billingRequestCount = 0;
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       billingRequestCount += 1;
       return respond(
         200,
@@ -2101,7 +2102,7 @@ describe("chat composer models", () => {
   it("keeps loaded thread model options visible when billing refresh fails", async () => {
     const user = userEvent.setup({ delay: null });
     let billingRequestCount = 0;
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       billingRequestCount++;
       if (billingRequestCount === 1) {
         return respond(200, billingStatus("free"));
@@ -3145,7 +3146,7 @@ describe("chat composer models", () => {
       },
     );
     context.mocks.api(
-      zeroConnectorCatalogContract.discovery,
+      connectorCatalogContract.discovery,
       async ({ respond, withSignal }) => {
         discoveryRequestCount += 1;
         if (discoveryRequestCount > 1) {
@@ -4285,7 +4286,8 @@ describe("chat composer video model", () => {
     const variant = queryAllByRoleFast("radio").find((candidate) => {
       return (
         candidate.getAttribute("aria-checked") === "true" &&
-        candidate.hasAttribute("aria-label")
+        candidate.hasAttribute("aria-label") &&
+        candidate.textContent?.trim()
       );
     });
     return variant?.getAttribute("aria-label") ?? undefined;
@@ -4545,7 +4547,9 @@ describe("chat composer video model", () => {
     expect(videoPanelButton("Seedance 2.0 fast")).toBeUndefined();
     expect(videoPanelButton("Seedance 2.0 Mini")).toBeUndefined();
     const variantSegments = queryAllByRoleFast("radio").filter((candidate) => {
-      return candidate.hasAttribute("aria-label");
+      return (
+        candidate.hasAttribute("aria-label") && candidate.textContent?.trim()
+      );
     });
     expect(
       variantSegments.map((candidate) => {
@@ -4591,13 +4595,11 @@ describe("chat composer video model", () => {
     const chatModelButton = await findComposerModel("Claude Fable 5");
     expect(screen.getAllByRole("combobox")).toHaveLength(1);
     expect(chatModelButton).toHaveAttribute("aria-expanded", "false");
-    const chatModeIcon = chatModelButton.querySelector(
-      ".lucide-message-circle",
-    );
-    expect(chatModeIcon).toBeInTheDocument();
-    expect(chatModeIcon).toHaveAttribute("width", "16");
-    expect(chatModeIcon).toHaveAttribute("height", "16");
-    expect(chatModelButton).toHaveTextContent(/·\s*Claude Fable 5/);
+    // The trigger names the model and nothing else -- no mode glyph, no
+    // category word.
+    expect(chatModelButton.querySelector(".lucide-message-circle")).toBeNull();
+    expect(chatModelButton).toHaveTextContent("Claude Fable 5");
+    expect(chatModelButton).not.toHaveTextContent("·");
     expect(chatModelButton).not.toHaveTextContent("Chat");
     expect(videoCategoryTab()).toBeUndefined();
 
@@ -4660,7 +4662,10 @@ describe("chat composer video model", () => {
     expect(
       queryAllByRoleFast("radio")
         .filter((candidate) => {
-          return candidate.hasAttribute("aria-label");
+          return (
+            candidate.hasAttribute("aria-label") &&
+            candidate.textContent?.trim()
+          );
         })
         .map((candidate) => {
           return candidate.getAttribute("aria-label");

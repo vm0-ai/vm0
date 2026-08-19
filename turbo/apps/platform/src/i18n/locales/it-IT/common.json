@@ -1689,6 +1689,38 @@
       "unread": "Non letto",
       "unreadOnly": "Solo non letto"
     },
+    "startCards": {
+      "kinds": {
+        "avatar": {
+          "description": "Crea un presentatore per il tuo prossimo contenuto",
+          "prompt": "Crea un presentatore avatar parlante per il mio prossimo video.",
+          "title": "Crea un avatar"
+        },
+        "illustration": {
+          "description": "Ottieni un visual finito nello stile che preferisci",
+          "prompt": "Crea un'illustrazione nello stile che descrivo.",
+          "title": "Crea un'illustrazione"
+        },
+        "slides": {
+          "description": "Trasforma un argomento o documento in slide",
+          "prompt": "Crea una presentazione da un argomento o documento che ti fornisco.",
+          "title": "Crea una presentazione"
+        },
+        "video": {
+          "description": "Trasforma la tua idea o i tuoi file in un video finito",
+          "prompt": "Trasforma la mia idea o i miei file in un video finito.",
+          "title": "Crea un video"
+        },
+        "website": {
+          "description": "Crea e pubblica una pagina condivisibile",
+          "prompt": "Crea e pubblica una pagina web che posso condividere.",
+          "title": "Crea un sito web"
+        }
+      },
+      "openTemplatesAria": "Sfoglia i modelli",
+      "startWithPrompt": "Crea",
+      "templates": "Modelli"
+    },
     "templates": {
       "categories": {
         "illustration": "Illustrazione",
@@ -4290,6 +4322,7 @@
         "categoryChat": "Chat",
         "categoryImage": "Immagini",
         "categoryVideo": "Video",
+        "chatModels": "Modelli chat",
         "fast": "Veloce",
         "fastImpact": "Velocità del modello 1,5× · consumo di crediti 2,5×",
         "imageModels": "Modelli di immagini",

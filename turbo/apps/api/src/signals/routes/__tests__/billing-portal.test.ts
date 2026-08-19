@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroBillingPortalContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingPortalContract } from "@okouai/api-contracts/contracts/billing";
 import { createStore } from "ccstate";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -59,7 +59,7 @@ describe("POST /api/zero/billing/portal", () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context, routes: billingPortalRoutes })(
-      zeroBillingPortalContract,
+      billingPortalContract,
     );
     const response = await accept(
       client.create({
@@ -79,7 +79,7 @@ describe("POST /api/zero/billing/portal", () => {
 
   it("returns 401 when not authenticated", async () => {
     const client = setupApp({ context, routes: billingPortalRoutes })(
-      zeroBillingPortalContract,
+      billingPortalContract,
     );
 
     const response = await accept(
@@ -102,7 +102,7 @@ describe("POST /api/zero/billing/portal", () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context, routes: billingPortalRoutes })(
-      zeroBillingPortalContract,
+      billingPortalContract,
     );
     const response = await accept(
       client.create({
@@ -119,7 +119,7 @@ describe("POST /api/zero/billing/portal", () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context, routes: billingPortalRoutes })(
-      zeroBillingPortalContract,
+      billingPortalContract,
     );
     const response = await accept(
       client.create({
@@ -140,7 +140,7 @@ describe("POST /api/zero/billing/portal", () => {
     );
 
     const client = setupApp({ context, routes: billingPortalRoutes })(
-      zeroBillingPortalContract,
+      billingPortalContract,
     );
     const response = await accept(
       client.create({
@@ -184,7 +184,7 @@ describe("POST /api/zero/billing/portal", () => {
     });
 
     const client = setupApp({ context, routes: billingPortalRoutes })(
-      zeroBillingPortalContract,
+      billingPortalContract,
     );
     const response = await accept(
       client.create({
@@ -229,7 +229,7 @@ describe("POST /api/zero/billing/portal", () => {
     const returnUrl = `${APP_ORIGIN}/settings/billing`;
     const response = await accept(
       setupApp({ context, routes: billingPortalRoutes })(
-        zeroBillingPortalContract,
+        billingPortalContract,
       ).create({
         body: { returnUrl },
         headers: { authorization: "Bearer clerk-session" },
@@ -272,7 +272,7 @@ describe("POST /api/zero/billing/portal", () => {
 
     const response = await accept(
       setupApp({ context, routes: billingPortalRoutes })(
-        zeroBillingPortalContract,
+        billingPortalContract,
       ).create({
         body: { returnUrl },
         headers: { authorization: "Bearer clerk-session" },
@@ -351,7 +351,7 @@ describe("POST /api/zero/billing/portal", () => {
 
     const response = await accept(
       setupApp({ context, routes: billingPortalRoutes })(
-        zeroBillingPortalContract,
+        billingPortalContract,
       ).create({
         body: {
           returnUrl: `${APP_ORIGIN}/settings/billing`,
@@ -413,7 +413,7 @@ describe("POST /api/zero/billing/portal", () => {
 
     const response = await accept(
       setupApp({ context, routes: billingPortalRoutes })(
-        zeroBillingPortalContract,
+        billingPortalContract,
       ).create({
         body: {
           returnUrl: `${APP_ORIGIN}/settings/billing`,
@@ -447,7 +447,7 @@ describe("POST /api/zero/billing/portal", () => {
     );
 
     const client = setupApp({ context, routes: billingPortalRoutes })(
-      zeroBillingPortalContract,
+      billingPortalContract,
     );
     const response = await accept(
       client.create({

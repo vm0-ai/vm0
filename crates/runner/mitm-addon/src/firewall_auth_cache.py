@@ -28,6 +28,12 @@ class FirewallAuthCacheKey:
     run_id: str
     api_id: str
     auth_identity: str
+    registry_generation: int | None = field(
+        default=None,
+        compare=False,
+        hash=False,
+        repr=False,
+    )
 
 
 @dataclass
@@ -63,7 +69,12 @@ class FirewallAuthStateSnapshotForTests:
     last_force_refresh_monotonic_at: float | None = None
 
 
+FIREWALL_AUTH_REGISTRY_GENERATION_ATTRIBUTE = "_firewall_auth_registry_generation"
+type _FirewallAuthScope = tuple[str, str]
+
 _auth_state: dict[FirewallAuthCacheKey, _FirewallAuthState] = {}
+_owned_auth_keys: dict[_FirewallAuthScope, FirewallAuthCacheKey] = {}
+_active_registry_generations: dict[str, int] = {}
 MAX_CONCURRENT_FIREWALL_AUTH_FETCHES = 4
 MAX_ADMITTED_FIREWALL_AUTH_FETCHES = 16
 _admitted_firewall_auth_fetches = 0
@@ -79,7 +90,23 @@ _FORCE_REFRESH_COOLDOWN_SECS = 120.0
 
 
 def _get_auth_state(cache_key: FirewallAuthCacheKey) -> _FirewallAuthState:
+    """Return owned state, or detached state for a superseded registry key."""
     state = _auth_state.get(cache_key)
+
+    registry_generation = cache_key.registry_generation
+    is_current_registry_generation = registry_generation is None or (
+        _active_registry_generations.get(cache_key.run_id) == registry_generation
+    )
+    if not is_current_registry_generation:
+        return state if state is not None else _FirewallAuthState()
+
+    scope = (cache_key.run_id, cache_key.api_id)
+    owned_key = _owned_auth_keys.get(scope)
+    if owned_key is not None and owned_key != cache_key:
+        _auth_state.pop(owned_key, None)
+        state = None
+
+    _owned_auth_keys[scope] = cache_key
     if state is None:
         state = _FirewallAuthState()
         _auth_state[cache_key] = state
@@ -135,16 +162,22 @@ def clear_cached_firewall_headers(cache_key: FirewallAuthCacheKey) -> None:
         state.cache = None
 
 
-def evict_stale_cache_keys(active_run_ids: set[str]) -> None:
-    """Remove cache entries for runs no longer in the registry."""
-    stale = [k for k in _auth_state if k.run_id not in active_run_ids]
-    for k in stale:
-        _auth_state.pop(k, None)
+def reconcile_registry_cache_ownership(active_run_generations: dict[str, int]) -> None:
+    """Reconcile cache ownership with the current registry generation."""
+    _active_registry_generations.clear()
+    _active_registry_generations.update(active_run_generations)
+
+    stale_scopes = [scope for scope in _owned_auth_keys if scope[0] not in active_run_generations]
+    for scope in stale_scopes:
+        cache_key = _owned_auth_keys.pop(scope)
+        _auth_state.pop(cache_key, None)
 
 
 def evict_all_cache_keys() -> None:
     """Remove all auth cache entries when active registry ownership is unknown."""
     _auth_state.clear()
+    _owned_auth_keys.clear()
+    _active_registry_generations.clear()
 
 
 def reset_cache_for_tests() -> None:
@@ -153,6 +186,8 @@ def reset_cache_for_tests() -> None:
     global _firewall_auth_fetch_semaphore
 
     _auth_state.clear()
+    _owned_auth_keys.clear()
+    _active_registry_generations.clear()
     _admitted_firewall_auth_fetches = 0
     _firewall_auth_fetch_semaphore = None
 

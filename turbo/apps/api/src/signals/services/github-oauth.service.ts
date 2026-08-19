@@ -578,10 +578,18 @@ export async function linkGithubUser(
     const [connector] = await args.db
       .select({ externalId: connectors.externalId })
       .from(connectors)
+      .innerJoin(
+        githubInstallations,
+        and(
+          eq(githubInstallations.id, args.installRecordId),
+          eq(githubInstallations.orgId, connectors.orgId),
+        ),
+      )
       .where(
         and(
           eq(connectors.userId, args.userId),
           eq(connectors.connectorSlug, "github"),
+          eq(connectors.isDefault, true),
         ),
       )
       .limit(1);

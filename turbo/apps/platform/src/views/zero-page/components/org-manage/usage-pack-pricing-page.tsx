@@ -26,7 +26,7 @@ import type {
   UsagePackSubscriptionChangePreviewResponse,
   UsagePackMigrationPreviewResponse,
   UsagePackMigrationRevisionPreviewResponse,
-} from "@okouai/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/billing";
 import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type { MouseEvent, ReactNode } from "react";

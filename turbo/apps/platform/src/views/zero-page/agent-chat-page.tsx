@@ -27,6 +27,8 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { openSettingsDialogAt$ } from "../../signals/zero-page/settings/settings-dialog.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
+import { StartCards } from "./zero-start-cards.tsx";
+import { homeStartCardsEnabled$ } from "../../signals/external/feature-switch.ts";
 import { relatedCatalogItems$ } from "../../signals/zero-page/settings/connectors.ts";
 import { AttachmentLightbox } from "./zero-attachment-chips.tsx";
 import {
@@ -536,6 +538,7 @@ export function AgentChatPage() {
     subscribeComputerUseHostsChangedRef$,
   );
   const userFirstName = useLastResolved(user$)?.firstName ?? null;
+  const startCardsEnabled = useGet(homeStartCardsEnabled$);
 
   const composerSignals = useGet(agentChatComposerSignals$);
   const setInput = useSet(composerSignals.draft.setDraftInput$);
@@ -580,7 +583,11 @@ export function AgentChatPage() {
 
           <ZeroChatComposer signals={composerSignals} />
 
-          <SuggestedPromptsGrid onSelectPrompt={handleInputChange} />
+          {startCardsEnabled ? (
+            <StartCards onSelectPrompt={handleInputChange} />
+          ) : (
+            <SuggestedPromptsGrid onSelectPrompt={handleInputChange} />
+          )}
         </div>
       </main>
       <PersonalClaudeCodeDeviceAuthDialog />

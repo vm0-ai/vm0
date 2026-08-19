@@ -6,9 +6,9 @@ import {
 } from "@okouai/api-contracts/contracts/zero-connectors";
 import { chatEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import {
-  zeroConnectorCatalogContract,
+  connectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
-} from "@okouai/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/connector-catalog";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
@@ -73,7 +73,7 @@ function publicStatusItem(args: {
 function mockPublicConnectorStatus(
   connectors: readonly PublicConnectorCatalogStatusItem[],
 ): void {
-  context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+  context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
     return respond(200, { connectors: [...connectors] });
   });
 }

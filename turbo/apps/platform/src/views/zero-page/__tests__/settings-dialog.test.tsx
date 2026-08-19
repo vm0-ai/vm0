@@ -1,12 +1,12 @@
 import { screen, waitFor, within } from "@testing-library/react";
-import { zeroConnectorCatalogContract } from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import { connectorCatalogContract } from "@okouai/api-contracts/contracts/connector-catalog";
 import {
   type UserLocale,
   type UserPreferencesResponse,
   userPreferencesContract,
 } from "@okouai/api-contracts/contracts/user-preferences";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -860,7 +860,7 @@ describe("settings dialog", () => {
       response: billingStatus("limited-free-1"),
     },
   ])("shows model settings with $name", async ({ response }) => {
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, response);
     });
 
@@ -918,41 +918,38 @@ describe("settings dialog", () => {
 
   it("refreshes connector catalog diagnostics on every Debug entry", async () => {
     let requestCount = 0;
-    context.mocks.api(
-      zeroConnectorCatalogContract.diagnostics,
-      ({ respond }) => {
-        requestCount += 1;
-        const requestedAt = "2026-08-19T04:00:00.000Z";
-        return respond(200, {
-          state: "current",
-          active: {
-            catalogVersion: `2026-08-19.${requestCount}`,
-            catalogDigest: `sha256:${"a".repeat(64)}`,
-            activatedAt: requestedAt,
-          },
-          lastAttempt: {
-            at: requestedAt,
-            outcome: "accepted",
-            failureCode: null,
-            reusedCachedRejection: false,
-          },
-          lastSuccessAt: requestedAt,
-          rejectedCandidate: null,
-          filtering: {
-            capabilityDigest: `sha256:${"b".repeat(64)}`,
-            evaluatedAt: requestedAt,
-            stale: false,
-            filteredAuthMethods: [],
-          },
-          credentialStorage: {
-            missingConnectorVersions: 0,
-            unownedConnectorSecrets: 0,
-            unownedConnectorVariables: 0,
-            unresolvedBridgeCredentials: 0,
-          },
-        });
-      },
-    );
+    context.mocks.api(connectorCatalogContract.diagnostics, ({ respond }) => {
+      requestCount += 1;
+      const requestedAt = "2026-08-19T04:00:00.000Z";
+      return respond(200, {
+        state: "current",
+        active: {
+          catalogVersion: `2026-08-19.${requestCount}`,
+          catalogDigest: `sha256:${"a".repeat(64)}`,
+          activatedAt: requestedAt,
+        },
+        lastAttempt: {
+          at: requestedAt,
+          outcome: "accepted",
+          failureCode: null,
+          reusedCachedRejection: false,
+        },
+        lastSuccessAt: requestedAt,
+        rejectedCandidate: null,
+        filtering: {
+          capabilityDigest: `sha256:${"b".repeat(64)}`,
+          evaluatedAt: requestedAt,
+          stale: false,
+          filteredAuthMethods: [],
+        },
+        credentialStorage: {
+          missingConnectorVersions: 0,
+          unownedConnectorSecrets: 0,
+          unownedConnectorVariables: 0,
+          unresolvedBridgeCredentials: 0,
+        },
+      });
+    });
 
     await openDialog("admin", "debug");
 
@@ -1006,39 +1003,36 @@ describe("settings dialog", () => {
   });
 
   it("does not describe an uncached rejection as a fresh evaluation", async () => {
-    context.mocks.api(
-      zeroConnectorCatalogContract.diagnostics,
-      ({ respond }) => {
-        return respond(200, {
-          state: "stale",
-          active: {
-            catalogVersion: "2026-07-25.1",
-            catalogDigest: `sha256:${"a".repeat(64)}`,
-            activatedAt: "2026-07-25T01:00:00.000Z",
-          },
-          lastAttempt: {
-            at: "2026-07-25T02:00:00.000Z",
-            outcome: "rejected",
-            failureCode: "source-unavailable",
-            reusedCachedRejection: false,
-          },
-          lastSuccessAt: "2026-07-25T01:00:00.000Z",
-          rejectedCandidate: null,
-          filtering: {
-            capabilityDigest: `sha256:${"b".repeat(64)}`,
-            evaluatedAt: "2026-07-25T01:00:00.000Z",
-            stale: false,
-            filteredAuthMethods: [],
-          },
-          credentialStorage: {
-            missingConnectorVersions: 0,
-            unownedConnectorSecrets: 0,
-            unownedConnectorVariables: 0,
-            unresolvedBridgeCredentials: 0,
-          },
-        });
-      },
-    );
+    context.mocks.api(connectorCatalogContract.diagnostics, ({ respond }) => {
+      return respond(200, {
+        state: "stale",
+        active: {
+          catalogVersion: "2026-07-25.1",
+          catalogDigest: `sha256:${"a".repeat(64)}`,
+          activatedAt: "2026-07-25T01:00:00.000Z",
+        },
+        lastAttempt: {
+          at: "2026-07-25T02:00:00.000Z",
+          outcome: "rejected",
+          failureCode: "source-unavailable",
+          reusedCachedRejection: false,
+        },
+        lastSuccessAt: "2026-07-25T01:00:00.000Z",
+        rejectedCandidate: null,
+        filtering: {
+          capabilityDigest: `sha256:${"b".repeat(64)}`,
+          evaluatedAt: "2026-07-25T01:00:00.000Z",
+          stale: false,
+          filteredAuthMethods: [],
+        },
+        credentialStorage: {
+          missingConnectorVersions: 0,
+          unownedConnectorSecrets: 0,
+          unownedConnectorVariables: 0,
+          unresolvedBridgeCredentials: 0,
+        },
+      });
+    });
 
     await openDialog("admin", "debug");
 
@@ -1052,17 +1046,14 @@ describe("settings dialog", () => {
   });
 
   it("keeps Debug settings usable when diagnostics are unavailable", async () => {
-    context.mocks.api(
-      zeroConnectorCatalogContract.diagnostics,
-      ({ respond }) => {
-        return respond(404, {
-          error: {
-            message: "Connector catalog diagnostics are unavailable",
-            code: "NOT_FOUND",
-          },
-        });
-      },
-    );
+    context.mocks.api(connectorCatalogContract.diagnostics, ({ respond }) => {
+      return respond(404, {
+        error: {
+          message: "Connector catalog diagnostics are unavailable",
+          code: "NOT_FOUND",
+        },
+      });
+    });
 
     await openDialog("admin", "debug");
 

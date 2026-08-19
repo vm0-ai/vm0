@@ -1,5 +1,5 @@
 import { command, computed } from "ccstate";
-import { zeroBillingAutoRechargeContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingAutoRechargeContract } from "@okouai/api-contracts/contracts/billing";
 
 import { badRequestMessage } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -39,7 +39,7 @@ const updateAutoRechargeInner$ = command(
     }
 
     const bodyResult = await get(
-      bodyResultOf(zeroBillingAutoRechargeContract.update),
+      bodyResultOf(billingAutoRechargeContract.update),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -73,14 +73,14 @@ const updateAutoRechargeInner$ = command(
 
 export const billingAutoRechargeRoutes: readonly RouteEntry[] = [
   {
-    route: zeroBillingAutoRechargeContract.get,
+    route: billingAutoRechargeContract.get,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       getAutoRechargeInner$,
     ),
   },
   {
-    route: zeroBillingAutoRechargeContract.update,
+    route: billingAutoRechargeContract.update,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       updateAutoRechargeInner$,

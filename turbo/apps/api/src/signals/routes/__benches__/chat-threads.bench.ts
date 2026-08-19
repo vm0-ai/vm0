@@ -24,7 +24,7 @@ import {
   chatThreadByIdContract,
   type UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import { zeroConnectorsMainContract } from "@okouai/api-contracts/contracts/zero-connectors";
 import { orgContract } from "@okouai/api-contracts/contracts/org-routes";
 import { zeroPersonalModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-personal-model-providers";
@@ -113,7 +113,7 @@ const userPreferencesClient = setupApp({
 const billingStatusClient = setupApp({
   context,
   routes: billingStatusRoutes,
-})(zeroBillingStatusContract);
+})(billingStatusContract);
 const orgClient = setupApp({ context, routes: orgReadRoutes })(orgContract);
 const personalModelProvidersClient = setupApp({
   context,

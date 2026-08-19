@@ -1,7 +1,7 @@
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
-import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import { financeContract } from "@okouai/api-contracts/contracts/finance";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -46,7 +46,7 @@ async function fundActor(actor: ApiTestUser): Promise<void> {
 
 async function credits(actor: ApiTestUser): Promise<number> {
   const response = await accept(
-    client()(zeroBillingStatusContract).get({
+    client()(billingStatusContract).get({
       headers: authenticate(actor),
     }),
     [200],

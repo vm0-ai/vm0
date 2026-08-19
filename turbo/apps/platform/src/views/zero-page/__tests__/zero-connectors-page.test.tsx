@@ -27,10 +27,10 @@ import {
   zeroConnectorsMainContract,
 } from "@okouai/api-contracts/contracts/zero-connectors";
 import {
-  zeroConnectorCatalogContract,
+  connectorCatalogContract,
   type PublicConnectorCatalogCategoryMetadata,
   type PublicConnectorCatalogStatusItem,
-} from "@okouai/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/connector-catalog";
 import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { zeroUserPermissionGrantsContract } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
@@ -392,7 +392,7 @@ function mockPublicConnectorStatus(
   connectors: readonly PublicConnectorCatalogStatusItem[],
   categoryMetadata?: PublicConnectorCatalogCategoryMetadata,
 ): void {
-  context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+  context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
     return respond(200, {
       connectors: [...connectors],
       ...(categoryMetadata ? { categoryMetadata } : {}),
@@ -631,16 +631,16 @@ describe("connectors page", () => {
     const discoveryKeywords: (string | undefined)[] = [];
     let legacyStatusRequests = 0;
     context.mocks.api(
-      zeroConnectorCatalogContract.discovery,
+      connectorCatalogContract.discovery,
       ({ query, respond }) => {
         discoveryKeywords.push(query.keyword);
         return respond(200, {
           connectors: query.keyword ? [slack] : [github],
-          totalConnectorCount: 347,
+          totalConnectorCount: 1234,
         });
       },
     );
-    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+    context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
       legacyStatusRequests += 1;
       return respond(200, { connectors: [github, slack] });
     });
@@ -658,7 +658,7 @@ describe("connectors page", () => {
       screen.findByTestId("connector-card-label"),
     ).resolves.toHaveTextContent("GitHub");
     await expect(
-      screen.findByText("Connect 1100+ services for your agents to use."),
+      screen.findByText("Connect 1,234 services for your agents to use."),
     ).resolves.toBeInTheDocument();
 
     await fill(await screen.findByPlaceholderText("Find connectors"), "Slack");
@@ -668,9 +668,12 @@ describe("connectors page", () => {
     });
     expect(discoveryKeywords).toContain("Slack");
     expect(legacyStatusRequests).toBe(0);
+    expect(
+      screen.getByText("Connect 1,234 services for your agents to use."),
+    ).toBeInTheDocument();
   });
 
-  it("shows the static connector catalog size in the page description", async () => {
+  it("shows the full connector catalog size in the page description", async () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
       publicStatusItem({
@@ -692,7 +695,55 @@ describe("connectors page", () => {
     });
 
     await expect(
-      screen.findByText("Connect 1100+ services for your agents to use."),
+      screen.findByText("Connect 2 services for your agents to use."),
+    ).resolves.toBeInTheDocument();
+  });
+
+  it("keeps the catalog description count-free while the count loads", async () => {
+    mockConnectors([]);
+    let catalogRequestStarted = false;
+    let resolveCatalog = (): void => {
+      throw new Error("Catalog request did not start");
+    };
+    context.mocks.api(
+      connectorCatalogContract.discovery,
+      async ({ deferred, respond }) => {
+        const catalogDeferred = deferred<void>();
+        resolveCatalog = () => {
+          catalogDeferred.resolve();
+        };
+        catalogRequestStarted = true;
+        await catalogDeferred.promise;
+        return respond(200, {
+          connectors: [],
+          totalConnectorCount: 1234,
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: {
+        [FeatureSwitchKey.ConnectorDiscovery]: true,
+        [FeatureSwitchKey.ConnectorCatalogCount]: true,
+      },
+    });
+
+    await expect(
+      screen.findByText("Connect third-party services for your agents to use."),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByText("Connect 1,234 services for your agents to use."),
+    ).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(catalogRequestStarted).toBeTruthy();
+    });
+
+    resolveCatalog();
+
+    await expect(
+      screen.findByText("Connect 1,234 services for your agents to use."),
     ).resolves.toBeInTheDocument();
   });
 
@@ -721,7 +772,7 @@ describe("connectors page", () => {
       screen.findByText("Connect third-party services for your agents to use."),
     ).resolves.toBeInTheDocument();
     expect(
-      screen.queryByText("Connect 1100+ services for your agents to use."),
+      screen.queryByText("Connect 2 services for your agents to use."),
     ).not.toBeInTheDocument();
   });
 
@@ -2857,7 +2908,7 @@ describe("connectors page", () => {
     ];
     let catalogStatusRequestCount = 0;
     let manualGrantConnectResponded = false;
-    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+    context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
       catalogStatusRequestCount += 1;
       return respond(200, { connectors: [...catalogStatusItems] });
     });

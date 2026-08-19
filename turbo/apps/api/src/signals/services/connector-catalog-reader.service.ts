@@ -2,10 +2,11 @@ import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connecto
 import type { ConnectorSearchItem } from "@okouai/api-contracts/contracts/zero-connectors";
 import type {
   PublicConnectorCatalogListResponse,
+  PublicConnectorCatalogDiscoveryResponse,
   PublicConnectorCatalogPermissionDetail,
   PublicConnectorCatalogStatusItem,
   PublicConnectorCatalogStatusResponse,
-} from "@okouai/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/connector-catalog";
 
 import type { ReadonlyDb } from "../external/db";
 import type { ConnectorFeatureStates } from "./connector-catalog-feature-states";
@@ -75,7 +76,7 @@ export async function discoverPublicConnectorCatalogStatus(
     readonly connectors: readonly ConnectorResponse[];
     readonly keyword: string | undefined;
   },
-): Promise<PublicConnectorCatalogStatusResponse> {
+): Promise<PublicConnectorCatalogDiscoveryResponse> {
   const read = await discoverExternalPublicConnectorCatalogStatus({
     ...args,
     referenceConnectorSlugs: [],
