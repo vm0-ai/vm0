@@ -22,6 +22,12 @@ import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.servic
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { resolveActiveNetworkPolicyRefreshes } from "./user-permission-grants.service";
 import { loadCustomConnectorRuntimeData } from "./custom-connector.service";
+import {
+  connectorAccountTargetKey,
+  resolveConnectorAccounts,
+  resolvedConnectorAccountIdsByTarget,
+} from "./connector-account-resolution.service";
+import { resolveConnectorCredentialAccess } from "./connector-credential-access.service";
 
 const L = logger("connector-runtime-sync");
 
@@ -71,10 +77,49 @@ function builtinUnresolvedResult(
 async function loadCustomSnapshot(args: {
   readonly db: Db;
   readonly scope: ConnectorRuntimeScope;
-  readonly customConnectorIds: readonly string[];
+  readonly registrations: readonly Extract<
+    ConnectorRuntimeTargetRegistration,
+    { readonly kind: "custom" }
+  >[];
 }) {
   return await args.db.transaction(
     async (tx) => {
+      const customConnectorIds = args.registrations.map((registration) => {
+        return registration.customConnectorId;
+      });
+      const accountResolutions = await resolveConnectorAccounts(tx, {
+        orgId: args.scope.orgId,
+        userId: args.scope.userId,
+        requests: args.registrations.map((registration) => {
+          return {
+            target: {
+              kind: "custom" as const,
+              customConnectorId: registration.customConnectorId,
+            },
+            selection:
+              registration.sourceId === undefined
+                ? { kind: "legacy-singleton" as const }
+                : {
+                    kind: "exact" as const,
+                    sourceId: registration.sourceId,
+                  },
+          };
+        }),
+      });
+      const resolvedAccountIds =
+        resolvedConnectorAccountIdsByTarget(accountResolutions);
+      const memberConnectorIdsByCustomConnectorId = new Map<string, string>();
+      for (const customConnectorId of customConnectorIds) {
+        const memberConnectorId = resolvedAccountIds.get(
+          connectorAccountTargetKey({ kind: "custom", customConnectorId }),
+        );
+        if (memberConnectorId) {
+          memberConnectorIdsByCustomConnectorId.set(
+            customConnectorId,
+            memberConnectorId,
+          );
+        }
+      }
       const connectorCatalogSnapshot = await loadConnectorRuntimeSnapshot(tx);
       const featureSwitchContext = await loadUserFeatureSwitchContext(
         tx,
@@ -84,7 +129,8 @@ async function loadCustomSnapshot(args: {
       const runtimeRows = await loadCustomConnectorRuntimeData(tx, {
         orgId: args.scope.orgId,
         userId: args.scope.userId,
-        connectorIds: args.customConnectorIds,
+        connectorIds: customConnectorIds,
+        memberConnectorIdsByCustomConnectorId,
       });
       const grantRows = await tx
         .select({
@@ -97,10 +143,7 @@ async function loadCustomSnapshot(args: {
             eq(userCustomConnectors.orgId, args.scope.orgId),
             eq(userCustomConnectors.userId, args.scope.userId),
             eq(userCustomConnectors.agentId, args.scope.agentId),
-            inArray(
-              userCustomConnectors.customConnectorId,
-              args.customConnectorIds,
-            ),
+            inArray(userCustomConnectors.customConnectorId, customConnectorIds),
           ),
         );
       const grants = new Map(
@@ -125,6 +168,7 @@ async function loadCustomSnapshot(args: {
         connectorCatalogSnapshot,
         featureSwitchContext,
         customTargets,
+        accountResolutions,
       };
     },
     { isolationLevel: "repeatable read", accessMode: "read only" },
@@ -142,12 +186,17 @@ async function resolveCustomTarget(args: {
     kind: "custom" as const,
     customConnectorId: args.registration.customConnectorId,
   };
+  const accountResolution = args.snapshot.accountResolutions.get(
+    connectorAccountTargetKey(target),
+  );
+  if (accountResolution?.kind !== "resolved") {
+    return customAbsentResult(target, "connector-unavailable");
+  }
   const custom = args.snapshot.customTargets.get(target.customConnectorId);
   if (!custom) {
     return customAbsentResult(target, "connector-unavailable");
   }
   if (custom.row.credentialAccess.kind === "incompatible") {
-    // Credential compatibility gates auth resolution, not definition-owned policy.
     L.debug("Custom connector credential storage is incompatible", {
       customConnectorId: target.customConnectorId,
       memberConnectorId: custom.row.credentialAccess.memberConnectorId,
@@ -160,6 +209,10 @@ async function resolveCustomTarget(args: {
       definitionStorageVersion:
         custom.row.credentialAccess.definitionStorageVersion,
     });
+    return customAbsentResult(target, "connector-unavailable");
+  }
+  if (custom.row.credentialAccess.kind === "absent") {
+    return customAbsentResult(target, "connector-unavailable");
   }
   const row = custom.row;
   const permissionBundle = await loadEffectiveCustomConnectorPermissionBundle({
@@ -204,9 +257,7 @@ async function resolveCustomTarget(args: {
     state: "available" as const,
     firewall: {
       ...state.firewall,
-      ...(args.registration.sourceId === undefined
-        ? {}
-        : { sourceId: args.registration.sourceId }),
+      sourceId: accountResolution.account.connectorId,
     },
     networkPolicy: state.networkPolicy,
     baseUrlVars: { ...resolvedTarget.baseUrlVars },
@@ -221,23 +272,52 @@ export async function resolveConnectorRuntimeTargets(args: {
   const builtinConnectorSlugs = args.targets.flatMap((target) => {
     return target.kind === "builtin" ? [target.connectorSlug] : [];
   });
-  const customConnectorIds = args.targets.flatMap((target) => {
-    return target.kind === "custom" ? [target.customConnectorId] : [];
+  const customRegistrations = args.targets.flatMap((target) => {
+    return target.kind === "custom" ? [target] : [];
   });
-  const [builtinRefreshes, customSnapshot] = await Promise.all([
-    resolveActiveNetworkPolicyRefreshes(
-      args.db,
-      args.scope,
-      builtinConnectorSlugs,
-    ),
-    customConnectorIds.length > 0
-      ? loadCustomSnapshot({
-          db: args.db,
-          scope: args.scope,
-          customConnectorIds,
-        })
-      : undefined,
-  ]);
+  const builtinCatalogSnapshot =
+    builtinConnectorSlugs.length > 0
+      ? await loadConnectorRuntimeSnapshot(args.db)
+      : undefined;
+  const [builtinRefreshes, builtinAccountResolutions, customSnapshot] =
+    await Promise.all([
+      resolveActiveNetworkPolicyRefreshes(
+        args.db,
+        args.scope,
+        builtinConnectorSlugs,
+        builtinCatalogSnapshot,
+      ),
+      resolveConnectorAccounts(args.db, {
+        orgId: args.scope.orgId,
+        userId: args.scope.userId,
+        requests: args.targets.flatMap((registration) => {
+          return registration.kind === "builtin"
+            ? [
+                {
+                  target: {
+                    kind: "builtin" as const,
+                    connectorSlug: registration.connectorSlug,
+                  },
+                  selection:
+                    registration.sourceId === undefined
+                      ? { kind: "legacy-singleton" as const }
+                      : {
+                          kind: "exact" as const,
+                          sourceId: registration.sourceId,
+                        },
+                },
+              ]
+            : [];
+        }),
+      }),
+      customRegistrations.length > 0
+        ? loadCustomSnapshot({
+            db: args.db,
+            scope: args.scope,
+            registrations: customRegistrations,
+          })
+        : undefined,
+    ]);
   const builtinByTarget = new Map(
     builtinRefreshes.map((refresh) => {
       return [
@@ -265,9 +345,26 @@ export async function resolveConnectorRuntimeTargets(args: {
       kind: "builtin" as const,
       connectorSlug: registration.connectorSlug,
     };
+    const accountResolution = builtinAccountResolutions.get(
+      connectorAccountTargetKey(target),
+    );
+    const credentialAccess =
+      accountResolution?.kind === "resolved" && builtinCatalogSnapshot
+        ? resolveConnectorCredentialAccess({
+            snapshot: builtinCatalogSnapshot,
+            stored: {
+              authMethodId: accountResolution.account.authMethod,
+              connectorId: accountResolution.account.connectorId,
+              connectorSlug: registration.connectorSlug,
+              orgId: args.scope.orgId,
+              storageVersion: accountResolution.account.storageVersion,
+              userId: args.scope.userId,
+            },
+          })
+        : undefined;
     const refresh = builtinByTarget.get(connectorRuntimeTargetKey(target));
     results.push(
-      refresh
+      refresh && credentialAccess?.kind === "ok"
         ? {
             target,
             state: "available",
@@ -286,7 +383,7 @@ export async function resolveConnectorRuntimeTargets(args: {
   L.debug("Resolved connector runtime targets", {
     targetCount: args.targets.length,
     builtinTargetCount: builtinConnectorSlugs.length,
-    customTargetCount: customConnectorIds.length,
+    customTargetCount: customRegistrations.length,
     availableCount: stateCounts.available,
     absentCount: stateCounts.absent,
     unresolvedCount: stateCounts.unresolved,

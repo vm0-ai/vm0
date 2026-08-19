@@ -948,13 +948,17 @@ async fn finalizing_capacity_wait_rechecks_when_an_active_vm_parks_idle() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn finalizing_capacity_wait_reuses_matching_vm_parked_after_deadline() {
+async fn finalizing_immediate_handoff_reuses_matching_vm_past_preference_deadline() {
     let destroy_gate = sandbox_mock::MockLifecycleGate::new();
     let wait_gate = sandbox_mock::MockLifecycleGate::new();
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
     overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
-    let (config, env) = mock_run_config_with_overrides(test_profiles(), 2, 4096, 1, overrides);
+    overrides.push_final_exec_park_handoff_point(
+        sandbox::SandboxFinalExecParkHandoffPoint::BeforeBalloon,
+    );
+    let (config, env) =
+        mock_run_config_with_overrides(test_profiles(), 2, 4096, 1, Arc::clone(&overrides));
     let budget = Arc::clone(&config.capacity.budget);
     let run_handle = tokio::spawn(run(config));
     wait_discover_entered(&env, Duration::from_secs(2)).await;
@@ -999,22 +1003,20 @@ async fn finalizing_capacity_wait_reuses_matching_vm_parked_after_deadline() {
     );
 
     tokio::time::advance(Duration::from_millis(101)).await;
-    env.start_observer
-        .wait_finalizing_capacity_wait_entered(successor_run_id, Duration::from_secs(5))
-        .await;
-
     wait_gate.release_one();
-    let parked_reuse_key = env
-        .start_observer
-        .wait_vm_parked_for_reuse(predecessor_run_id, Duration::from_secs(5))
-        .await;
-    assert_eq!(parked_reuse_key, reuse_key);
     wait_gate
         .wait_entered(2, Duration::from_secs(5))
         .await
-        .expect("matching idle publication should activate the successor");
+        .expect("direct handoff should activate the successor");
     assert_eq!(destroy_gate.entered_count(), 0);
     assert_eq!(budget.allocated(), (2, 4096, 1));
+    assert_eq!(env.idle_pool.lock().await.len(), 0);
+    assert_eq!(overrides.unpark_call_count(), 1);
+    assert_eq!(
+        overrides.completed_final_exec_park_handoff_points(),
+        vec![sandbox::SandboxFinalExecParkHandoffPoint::BeforeBalloon],
+        "runner integration must exercise the typed immediate-handoff path"
+    );
 
     wait_gate.release_one();
     let predecessor_completion = env
@@ -1033,10 +1035,77 @@ async fn finalizing_capacity_wait_reuses_matching_vm_parked_after_deadline() {
     );
     assert_eq!(
         successor_completion.sandbox_id, predecessor_completion.sandbox_id,
-        "successor should reuse the predecessor sandbox after the deadline"
+        "successor should reuse the predecessor sandbox without idle publication"
     );
 
     destroy_gate.release_one();
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn finalizing_handoff_grace_starts_when_claim_returns() {
+    let wait_gate = sandbox_mock::MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    let (config, env) = mock_run_config_with_overrides(test_profiles(), 4, 8192, 2, overrides);
+    let reuse_key = "thread:claim-relative-handoff-grace";
+    let predecessor_run_id = RunId::new_v4();
+    let predecessor_guard = env.active_runs.register(
+        predecessor_run_id,
+        Some(reuse_key.to_owned()),
+        "vm0/default".into(),
+    );
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(context_with_reuse_key(run_id, reuse_key)));
+    env.handle
+        .discover_tx
+        .send(finalizing_candidate_until(
+            run_id,
+            reuse_key,
+            predecessor_run_id,
+            TEST_RUNNER_ID,
+            TEST_HEARTBEAT_GENERATION,
+            std::time::Instant::now() + Duration::from_millis(100),
+        ))
+        .unwrap();
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+    assert!(
+        env.handle
+            .claim_candidates()
+            .iter()
+            .any(|candidate| candidate.run_id() == run_id)
+    );
+
+    tokio::time::advance(
+        super::super::super::finalizing_claim::FINALIZING_HANDOFF_ACCEPTANCE_GRACE
+            - Duration::from_millis(1),
+    )
+    .await;
+    tokio::task::yield_now().await;
+    assert_eq!(
+        wait_gate.entered_count(),
+        0,
+        "fresh fallback must not start inside the claim-relative handoff grace"
+    );
+
+    tokio::time::advance(Duration::from_millis(2)).await;
+    wait_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("fresh fallback should start after the handoff grace expires");
+    wait_gate.release_one();
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("fallback run should complete after the claim-relative grace");
+    assert_ne!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+
+    drop(predecessor_guard);
     shutdown(&env, run_handle).await;
 }
 
@@ -1272,7 +1341,7 @@ async fn selected_ranked_finalizing_candidate_falls_back_at_deadline() {
 }
 
 #[tokio::test]
-async fn finalizing_successor_starts_before_replaced_sandbox_cleanup_finishes() {
+async fn finalizing_handoff_starts_before_existing_idle_cleanup() {
     let predecessor_gate = sandbox_mock::MockLifecycleGate::new();
     let destroy_gate = sandbox_mock::MockLifecycleGate::new();
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
@@ -1340,22 +1409,22 @@ async fn finalizing_successor_starts_before_replaced_sandbox_cleanup_finishes() 
     .await;
 
     predecessor_gate.release_one();
-    destroy_gate
-        .wait_entered(1, Duration::from_secs(5))
-        .await
-        .expect("replaced sandbox cleanup should remain in predecessor finalization");
     predecessor_gate
         .wait_entered(2, Duration::from_secs(5))
         .await
-        .expect("successor should activate the published sandbox before cleanup finishes");
+        .expect("direct handoff should activate the successor without idle cleanup");
+    assert_eq!(
+        destroy_gate.entered_count(),
+        0,
+        "predecessor handoff should not replace the existing idle sandbox"
+    );
     env.handle
         .wait_completion(history_generation_run_id, Duration::from_secs(5))
         .await
-        .expect("predecessor should report completion while replaced sandbox cleanup is blocked");
-    destroy_gate.release_one();
+        .expect("predecessor should report completion after direct handoff");
     wait_status_idle_reuse_keys_and_active_runs(
         &status_path,
-        &[],
+        &[reuse_key],
         &[run_id.to_string()],
         Duration::from_secs(5),
     )
@@ -1375,6 +1444,11 @@ async fn finalizing_successor_starts_before_replaced_sandbox_cleanup_finishes() 
         .await
         .expect("sandbox publication should wake the claimed successor");
     assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+    destroy_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("successor parking should replace the older idle sandbox");
+    destroy_gate.release_one();
     destroy_gate.release_one();
     shutdown(&env, run_handle).await;
 }

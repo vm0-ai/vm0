@@ -2,7 +2,7 @@ import type { ModelProviderType } from "@okouai/api-contracts/contracts/model-pr
 import { cn } from "@okouai/ui";
 import { settingsIconAssetUrl } from "./settings-icon-assets.ts";
 
-const PROVIDER_ICONS: Readonly<Record<ModelProviderType, string>> =
+const PROVIDER_ICONS: Readonly<Partial<Record<ModelProviderType, string>>> =
   Object.freeze({
     "claude-code-oauth-token": settingsIconAssetUrl("claude-code"),
     "anthropic-api-key": settingsIconAssetUrl("anthropic"),

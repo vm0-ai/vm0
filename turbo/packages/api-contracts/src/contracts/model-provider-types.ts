@@ -10,6 +10,8 @@ export const MODEL_PROVIDER_TYPE_IDS = [
   "codex-oauth-token",
   "azure-foundry",
   "aws-bedrock",
+  "custom-anthropic-messages",
+  "custom-openai-responses",
   "vm0",
 ] as const;
 
