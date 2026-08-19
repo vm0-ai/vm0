@@ -6,16 +6,21 @@ import {
   useSet,
   useLastLoadable,
   useLastResolved,
+  type Loadable,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { Search, Plus, Filter, ChevronDown, Check } from "lucide-react";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
-import type { PublicConnectorCatalogCategoryMetadata } from "@okouai/api-contracts/contracts/connector-catalog";
+import type {
+  PublicConnectorCatalogCategoryMetadata,
+  PublicConnectorCatalogStatusResponse,
+} from "@okouai/api-contracts/contracts/connector-catalog";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { Tabs, TabsList, TabsTrigger } from "@okouai/ui/components/ui/tabs";
+import { formatLocalizedNumber } from "../../i18n/format.ts";
 import {
   connectorsPageTab$,
   setConnectorsPageTab$,
@@ -844,6 +849,18 @@ function connectorLabelForSlug(
   );
 }
 
+function effectiveConnectorCatalogCount(
+  catalogStatusLoadable: Loadable<PublicConnectorCatalogStatusResponse>,
+): number | null {
+  if (catalogStatusLoadable.state !== "hasData") {
+    return null;
+  }
+  return (
+    catalogStatusLoadable.data.totalConnectorCount ??
+    catalogStatusLoadable.data.connectors.length
+  );
+}
+
 export function ZeroConnectorsPage() {
   const { t } = useTranslation();
   const relatedCatalogItemsLoadable = useLastLoadable(relatedCatalogItems$);
@@ -894,6 +911,9 @@ export function ZeroConnectorsPage() {
     filteredCatalogItemsLoadable.state === "hasData"
       ? filteredCatalogItemsLoadable.data
       : [];
+  const connectorCatalogCount = effectiveConnectorCatalogCount(
+    catalogStatusLoadable,
+  );
   const categoryMetadata = localizeConnectorCategoryMetadata(
     catalogStatusLoadable.state === "hasData"
       ? catalogStatusLoadable.data.categoryMetadata
@@ -1033,13 +1053,13 @@ export function ZeroConnectorsPage() {
                 return $.connectors.catalog.title;
               })}
             </h1>
-            {connectorCatalogCountEnabled ? (
+            {connectorCatalogCountEnabled && connectorCatalogCount !== null ? (
               <p className="mt-0.5 text-sm text-muted-foreground">
                 {t(
                   ($) => {
                     return $.connectors.catalog.descriptionWithCount;
                   },
-                  { value: "1100+" },
+                  { value: formatLocalizedNumber(connectorCatalogCount) },
                 )}
               </p>
             ) : (

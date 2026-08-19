@@ -429,7 +429,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.ConnectorCatalogCount]: {
     maintainer: "ethan@vm0.ai",
-    description: "Show an approximate connector catalog size.",
+    description: "Show the exact effective connector catalog size.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
