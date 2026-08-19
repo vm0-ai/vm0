@@ -3517,7 +3517,6 @@ describe("chat composer image model", () => {
   const imageModelControlLabels = [
     "GPT Image 1",
     "GPT Image 2",
-    "GPT Image 1.5",
     "Nano Banana 2",
     "Flux Pro v1.1",
     "Seedream 5",
@@ -3574,8 +3573,7 @@ describe("chat composer image model", () => {
 
   /**
    * The composer no longer prints the image model, so the selection is read
-   * from the open panel: a plain row carries `aria-pressed`, while a family
-   * with variants marks the choice on its segment instead.
+   * from the open panel's pressed row.
    */
   function selectedImageModelLabel(
     root: ParentNode = document,
@@ -4120,8 +4118,6 @@ describe("chat composer image model", () => {
         return candidate.getAttribute("aria-label");
       }),
     ).toStrictEqual([
-      "GPT Image 1",
-      "GPT Image 1 Mini",
       "Flux Pro v1.1",
       "Flux Pro v1.1 Ultra",
       "Seedream 5 Pro",
@@ -4131,7 +4127,7 @@ describe("chat composer image model", () => {
       variantSegments.map((candidate) => {
         return candidate.textContent;
       }),
-    ).toStrictEqual(["Standard", "Mini", "Standard", "Ultra", "Pro", "Lite"]);
+    ).toStrictEqual(["Standard", "Ultra", "Pro", "Lite"]);
     // Qwen is the selection, so no family carries the checkmark, yet each
     // segment still fills its base variant so the control never reads as empty.
     expect(
@@ -4142,13 +4138,12 @@ describe("chat composer image model", () => {
         .map((candidate) => {
           return candidate.getAttribute("aria-label");
         }),
-    ).toStrictEqual(["GPT Image 1", "Flux Pro v1.1", "Seedream 5 Pro"]);
-    expect(within(listbox).queryByText("GPT Image 1 Mini")).toBeNull();
+    ).toStrictEqual(["Flux Pro v1.1", "Seedream 5 Pro"]);
     expect(within(listbox).queryByText("Flux Pro v1.1 Ultra")).toBeNull();
     expect(within(listbox).queryByText("Seedream 5 Lite")).toBeNull();
     const openAiIcon = imageModelBrandIcon("GPT Image 2").outerHTML;
     expect(openAiIcon).toContain("openai");
-    expect(imageModelBrandIcon("GPT Image 1.5").outerHTML).toBe(openAiIcon);
+    expect(imageModelBrandIcon("GPT Image 1").outerHTML).toBe(openAiIcon);
     const fluxIcon = imageModelBrandIcon("Flux Pro v1.1").outerHTML;
     const qwenIcon = imageModelBrandIcon("Qwen Image").outerHTML;
     expect(qwenIcon).toContain("image-model-qwen-gradient");
@@ -4181,74 +4176,29 @@ describe("chat composer image model", () => {
       within(listbox).queryByText(/aspect ratio/i),
     ).not.toBeInTheDocument();
 
-    // One click on the segment is a complete selection -- no menu to open.
-    await user.click(await findImageVariantSegment("GPT Image 1 Mini"));
+    await user.click(await findMediaPanelButton("GPT Image 1"));
 
     await waitFor(() => {
       expect(updates).toStrictEqual([
         {
           threadId: THREAD_ID,
-          model: "gpt-image-1-mini",
+          model: "gpt-image-1",
         },
-      ]);
-    });
-    await openImageModels(user);
-    await waitFor(() => {
-      expect(selectedImageModelLabel()).toBe("GPT Image 1 Mini");
-    });
-    await expect(
-      findImageVariantSegment("GPT Image 1 Mini"),
-    ).resolves.toHaveAttribute("aria-checked", "true");
-    expect(mediaPanelButton("GPT Image 1")).toHaveAttribute(
-      "aria-pressed",
-      "false",
-    );
-    updateGate.resolve();
-  });
-
-  it("selects Standard from the GPT Image 1 variant menu", async () => {
-    const user = userEvent.setup({ delay: null });
-    const updates: { threadId: string; model: string | null }[] = [];
-    context.mocks.browser.matchMedia(true);
-    mockOrgModelRoutes("claude-fable-5");
-    mockAgent();
-    mockThread({
-      selectedModel: "claude-fable-5",
-      selectedImageModel: "gpt-image-1-mini",
-    });
-    context.mocks.api(
-      chatThreadImageModelContract.update,
-      ({ params, body, respond }) => {
-        updates.push({ threadId: params.id, model: body.model });
-        return respond(204);
-      },
-    );
-
-    detachedSetupPage({
-      context,
-      featureSwitches: { [FeatureSwitchKey.ImageModelSelection]: true },
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    await openImageModels(user);
-    await waitFor(() => {
-      expect(selectedImageModelLabel()).toBe("GPT Image 1 Mini");
-    });
-    await expect(
-      findImageVariantSegment("GPT Image 1 Mini"),
-    ).resolves.toHaveAttribute("aria-checked", "true");
-
-    await user.click(await findImageVariantSegment("GPT Image 1"));
-
-    await waitFor(() => {
-      expect(updates).toStrictEqual([
-        { threadId: THREAD_ID, model: "gpt-image-1" },
       ]);
     });
     await openImageModels(user);
     await waitFor(() => {
       expect(selectedImageModelLabel()).toBe("GPT Image 1");
     });
+    expect(mediaPanelButton("GPT Image 1")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(mediaPanelButton("Qwen Image")).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    updateGate.resolve();
   });
 
   it("selects Flux and Seedream 5 variants from their family rows", async () => {

@@ -55,7 +55,7 @@ function buildGenerateHelpText(): string {
     "  Show image choices:    okou generate image",
     "  Show report choices:   okou generate report",
     "  Use a connector:       okou generate video --provider heygen",
-    "  Force built-in:        okou generate image --provider built-in --model gpt-image-1.5 --raw-prompt ...",
+    "  Force built-in:        okou generate image --provider built-in --model gpt-image-2 --raw-prompt ...",
   ];
 
   return `\nExamples:\n${examples.join("\n")}\n\nNotes:\n  - Run "okou generate <type>" with no --prompt to list generation choices for that type.

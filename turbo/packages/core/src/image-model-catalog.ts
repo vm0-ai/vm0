@@ -23,20 +23,10 @@ export const IMAGE_MODEL_CONFIGS = {
   "gpt-image-1": {
     alias: "gpt-image-1",
     label: "GPT Image 1",
-    variantLabel: "Standard",
   },
   "gpt-image-2": {
     alias: "gpt-image-2",
     label: "GPT Image 2",
-  },
-  "gpt-image-1.5": {
-    alias: "gpt-image-1.5",
-    label: "GPT Image 1.5",
-  },
-  "gpt-image-1-mini": {
-    alias: "gpt-image-1-mini",
-    label: "GPT Image 1 Mini",
-    variantLabel: "Mini",
   },
   "fal-ai/flux-pro/v1.1": {
     alias: "flux-pro-1.1",
@@ -89,8 +79,6 @@ export const IMAGE_MODELS: readonly ImageModel[] = IMAGE_MODEL_IDS;
 export const PUBLIC_IMAGE_MODELS = [
   "gpt-image-1",
   "gpt-image-2",
-  "gpt-image-1.5",
-  "gpt-image-1-mini",
   "fal-ai/nano-banana-2",
   "fal-ai/flux-pro/v1.1",
   "fal-ai/flux-pro/v1.1-ultra",
@@ -115,7 +103,6 @@ interface ImageModelVariantGroup {
  * one family costs one row instead of one row per variant.
  */
 export const IMAGE_MODEL_VARIANT_GROUPS = [
-  { label: "GPT Image 1", models: ["gpt-image-1", "gpt-image-1-mini"] },
   {
     label: "Flux Pro v1.1",
     models: ["fal-ai/flux-pro/v1.1", "fal-ai/flux-pro/v1.1-ultra"],
@@ -128,9 +115,7 @@ export const IMAGE_MODEL_VARIANT_GROUPS = [
 
 export const IMAGE_MODEL_ALIASES = {
   "gpt-image-2": "gpt-image-2",
-  "gpt-image-1.5": "gpt-image-1.5",
   "gpt-image-1": "gpt-image-1",
-  "gpt-image-1-mini": "gpt-image-1-mini",
   "flux-pro-1.1": "fal-ai/flux-pro/v1.1",
   "flux-pro-1.1-ultra": "fal-ai/flux-pro/v1.1-ultra",
   "qwen-image": "fal-ai/qwen-image",
