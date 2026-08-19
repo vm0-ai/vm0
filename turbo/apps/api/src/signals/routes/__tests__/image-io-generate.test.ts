@@ -46,8 +46,6 @@ const mocks = createZeroRouteMocks(context);
 const TEST_BUCKET = "test-user-artifacts";
 const IMAGE_BYTES = Buffer.from("fake image bytes");
 const IMAGE_IO_MODEL = "gpt-image-2";
-const FAL_GPT_IMAGE_1_MINI_URL =
-  "https://queue.fal.run/fal-ai/gpt-image-1-mini";
 const FAL_GPT_IMAGE_2_URL = "https://queue.fal.run/openai/gpt-image-2";
 const BYTEPLUS_IMAGE_GENERATIONS_URL =
   "https://ark.ap-southeast.bytepluses.com/api/v3/images/generations";
@@ -58,8 +56,6 @@ const BYTEPLUS_SEEDREAM_5_PRO_LOW_MEDIA_URL =
 const BYTEPLUS_SEEDREAM_5_PRO_HIGH_MEDIA_URL =
   "https://ark-content.byteplus.example/files/seedream-5-pro-high.jpg";
 const FAL_GPT_MEDIA_URL = "https://fal.media/files/test/gpt-image-2.webp";
-const FAL_GPT_MINI_MEDIA_URL =
-  "https://fal.media/files/test/gpt-image-1-mini.jpg";
 const FAL_QWEN_IMAGE_URL = "https://queue.fal.run/fal-ai/qwen-image";
 const FAL_MEDIA_URL = "https://fal.media/files/test/qwen.jpg";
 const FAL_FLUX_REDUX_URL = "https://queue.fal.run/fal-ai/flux-pro/v1.1/redux";
@@ -89,7 +85,7 @@ const FAL_NANO_BANANA_2_MARKED_UP_CREDITS_PER_IMAGE = Math.ceil(
     IMAGE_PRICING_MARKUP_MULTIPLIER,
 );
 const WEB_ORIGIN = "https://www.vm0.test";
-const MISSING_PRICING_IMAGE_MODEL = "gpt-image-1-mini";
+const MISSING_PRICING_IMAGE_MODEL = "gpt-image-2";
 const IMAGE_PRICING_CATEGORIES = [
   "output_image.low.standard",
   "output_image.low.large",
@@ -388,52 +384,7 @@ const CLARITY_UPSCALER_IMAGE_PRICING = [
   },
 ] satisfies readonly UsagePricingRow[];
 
-const GPT_IMAGE_1_MINI_PRICING = [
-  {
-    kind: "image",
-    provider: "gpt-image-1-mini",
-    category: "output_image.low.standard",
-    unitPrice: 6,
-    unitSize: 1,
-  },
-  {
-    kind: "image",
-    provider: "gpt-image-1-mini",
-    category: "output_image.low.large",
-    unitPrice: 7,
-    unitSize: 1,
-  },
-  {
-    kind: "image",
-    provider: "gpt-image-1-mini",
-    category: "output_image.medium.standard",
-    unitPrice: 13,
-    unitSize: 1,
-  },
-  {
-    kind: "image",
-    provider: "gpt-image-1-mini",
-    category: "output_image.medium.large",
-    unitPrice: 18,
-    unitSize: 1,
-  },
-  {
-    kind: "image",
-    provider: "gpt-image-1-mini",
-    category: "output_image.high.standard",
-    unitPrice: 43,
-    unitSize: 1,
-  },
-  {
-    kind: "image",
-    provider: "gpt-image-1-mini",
-    category: "output_image.high.large",
-    unitPrice: 62,
-    unitSize: 1,
-  },
-] satisfies readonly UsagePricingRow[];
-
-const MISSING_GPT_IMAGE_1_MINI_PRICING: readonly UsagePricingKey[] =
+const MISSING_GPT_IMAGE_2_PRICING: readonly UsagePricingKey[] =
   IMAGE_PRICING_CATEGORIES.map((category) => {
     return {
       kind: "image",
@@ -920,12 +871,12 @@ describe("POST /api/zero/image-io/generate", () => {
   it("returns 503 when image pricing is not configured", async () => {
     const fixture = await seedImageFixture({ credits: 1000 });
     const pricingFixture = await createScopedImagePricing({
-      missing: MISSING_GPT_IMAGE_1_MINI_PRICING,
+      missing: MISSING_GPT_IMAGE_2_PRICING,
     });
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let falCalls = 0;
     server.use(
-      http.post(FAL_GPT_IMAGE_1_MINI_URL, () => {
+      http.post(FAL_GPT_IMAGE_2_URL, () => {
         falCalls += 1;
         return HttpResponse.json({});
       }),
@@ -2239,103 +2190,6 @@ describe("POST /api/zero/image-io/generate", () => {
     });
     expect(falCalls).toBe(0);
     await expect(orgCredits(fixture)).resolves.toBe(1000);
-  });
-
-  it("generates GPT Image 1 mini through fal without BYOK usage", async () => {
-    const fixture = await seedImageFixture({ credits: 1000 });
-    const pricingFixture = await createScopedImagePricing({
-      configured: GPT_IMAGE_1_MINI_PRICING,
-    });
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    let falCalls = 0;
-    let observedAuthorization: string | null = null;
-    let observedBody: Record<string, unknown> | null = null;
-    let observedRequestUrl: string | null = null;
-    server.use(
-      http.post(FAL_GPT_IMAGE_1_MINI_URL, async ({ request }) => {
-        falCalls += 1;
-        observedAuthorization = request.headers.get("authorization");
-        observedRequestUrl = request.url;
-        observedBody = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json(falQueueHandle("gpt-image-mini-request"));
-      }),
-      http.get(FAL_GPT_MINI_MEDIA_URL, () => {
-        return new HttpResponse(IMAGE_BYTES, {
-          headers: { "Content-Type": "image/jpeg" },
-        });
-      }),
-    );
-
-    const app = createImageIoTestApp(pricingFixture.resolution);
-    const response = await app.request("/api/zero/image-io/generate", {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify({
-        prompt: "a compact technical diagram",
-        model: "gpt-image-1-mini",
-        size: "1024x1536",
-        quality: "medium",
-        outputFormat: "jpeg",
-      }),
-    });
-
-    expect(response.status).toBe(202);
-    const generationId = readAcceptedGenerationId(
-      await response.json(),
-      "image",
-      fixture.userId,
-    );
-
-    await postFalWebhook(app, observedRequestUrl, {
-      images: [
-        {
-          url: FAL_GPT_MINI_MEDIA_URL,
-          width: 1024,
-          height: 1536,
-          content_type: "image/jpeg",
-        },
-      ],
-      prompt: "A compact technical diagram.",
-    });
-    await flushWaitUntilForTest();
-
-    const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
-      { headers: authHeaders() },
-    );
-    expect(statusResponse.status).toBe(200);
-    const body = readGenerationResult(await statusResponse.json());
-    expect(body).toMatchObject({
-      contentType: "image/jpeg",
-      size: IMAGE_BYTES.byteLength,
-      creditsCharged: 18,
-      model: "gpt-image-1-mini",
-      provider: "fal",
-      imageSize: "1024x1536",
-      quality: "medium",
-      background: "auto",
-      outputFormat: "jpeg",
-      billingCategory: "output_image.medium.large",
-      billingQuantity: 1,
-      sourceUrl: FAL_GPT_MINI_MEDIA_URL,
-    });
-    expect(body).not.toHaveProperty("usage");
-    expect(falCalls).toBe(1);
-    expect(observedAuthorization).toBe("Key test-fal-key");
-    expect(observedBody).toStrictEqual({
-      prompt: "a compact technical diagram",
-      image_size: "1024x1536",
-      num_images: 1,
-      quality: "medium",
-      background: "auto",
-      output_format: "jpeg",
-    });
-    expect(observedBody).not.toHaveProperty("openai_api_key");
-
-    // The medium/large-tier charge is asserted through the result body above
-    // and the exact org balance drop.
-    await expect(orgCredits(fixture)).resolves.toBe(1000 - 18);
   });
 
   it("records a failed job when fal image generation fails", async () => {

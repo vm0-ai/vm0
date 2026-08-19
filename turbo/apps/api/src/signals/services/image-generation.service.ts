@@ -78,12 +78,6 @@ const IMAGE_MODERATIONS = ["auto", "low"] as const;
 const IMAGE_SAFETY_TOLERANCES = ["1", "2", "3", "4", "5", "6"] as const;
 const IMAGE_INPUT_FIDELITIES = ["low", "high"] as const;
 const MAX_SOURCE_IMAGE_URLS = 10;
-const STANDARD_GPT_IMAGE_SIZES = [
-  "auto",
-  "1024x1024",
-  "1536x1024",
-  "1024x1536",
-] as const;
 const FAL_IMAGE_OUTPUT_FORMATS = ["png", "jpeg"] as const;
 const BYTEPLUS_IMAGE_OUTPUT_FORMATS = ["png", "jpeg"] as const;
 const SEEDREAM_5_PRO_SIZE_PRESETS = ["1K", "1.5K", "2K"] as const;
@@ -114,7 +108,6 @@ const IMAGE_GENERATION_MODEL_CONFIGS = {
     imageToImageEndpointId: "openai/gpt-image-2/edit",
     sourceImageInput: "image_urls",
     provider: "fal",
-    sizeMode: "flexible",
     sizeParameter: undefined,
     outputFormats: IMAGE_OUTPUT_FORMATS,
     pricingCategories: FAL_QUALITY_SIZE_IMAGE_PRICING_CATEGORIES,
@@ -132,31 +125,6 @@ const IMAGE_GENERATION_MODEL_CONFIGS = {
     supportsInputFidelity: false,
     supportsImagePromptStrength: false,
   },
-  "gpt-image-1-mini": {
-    alias: "gpt-image-1-mini",
-    promptless: false,
-    endpointId: "fal-ai/gpt-image-1-mini",
-    imageToImageEndpointId: "fal-ai/gpt-image-1-mini/edit",
-    sourceImageInput: "image_urls",
-    provider: "fal",
-    sizeMode: "standard",
-    sizeParameter: undefined,
-    outputFormats: IMAGE_OUTPUT_FORMATS,
-    pricingCategories: FAL_QUALITY_SIZE_IMAGE_PRICING_CATEGORIES,
-    billingMode: "quality_size_image",
-    supportsTransparentBackground: true,
-    supportsOutputCompression: false,
-    supportsModeration: false,
-    supportsQuality: true,
-    supportsBackground: true,
-    usesOpenAiByok: false,
-    supportsSeed: false,
-    supportsSafetyTolerance: false,
-    supportsEnhancePrompt: false,
-    supportsMaskImage: false,
-    supportsInputFidelity: false,
-    supportsImagePromptStrength: false,
-  },
   "fal-ai/flux-pro/v1.1": {
     alias: "flux-pro-1.1",
     promptless: false,
@@ -164,7 +132,6 @@ const IMAGE_GENERATION_MODEL_CONFIGS = {
     imageToImageEndpointId: "fal-ai/flux-pro/v1.1/redux",
     sourceImageInput: "image_url",
     provider: "fal",
-    sizeMode: "flexible",
     sizeParameter: "image_size",
     outputFormats: FAL_IMAGE_OUTPUT_FORMATS,
     pricingCategories: [FAL_OUTPUT_MEGAPIXEL_CATEGORY],
@@ -189,7 +156,6 @@ const IMAGE_GENERATION_MODEL_CONFIGS = {
     imageToImageEndpointId: "fal-ai/flux-pro/v1.1-ultra/redux",
     sourceImageInput: "image_url",
     provider: "fal",
-    sizeMode: "flexible",
     sizeParameter: "aspect_ratio",
     outputFormats: FAL_IMAGE_OUTPUT_FORMATS,
     pricingCategories: [FAL_OUTPUT_IMAGE_CATEGORY],
@@ -214,7 +180,6 @@ const IMAGE_GENERATION_MODEL_CONFIGS = {
     imageToImageEndpointId: "fal-ai/qwen-image-2/edit",
     sourceImageInput: "image_url",
     provider: "fal",
-    sizeMode: "flexible",
     sizeParameter: "image_size",
     outputFormats: FAL_IMAGE_OUTPUT_FORMATS,
     pricingCategories: [FAL_OUTPUT_MEGAPIXEL_CATEGORY],
@@ -239,7 +204,6 @@ const IMAGE_GENERATION_MODEL_CONFIGS = {
     imageToImageEndpointId: "fal-ai/bytedance/seedream/v4/edit",
     sourceImageInput: "image_urls",
     provider: "fal",
-    sizeMode: "flexible",
     sizeParameter: "image_size",
     outputFormats: ["png"],
     pricingCategories: [FAL_OUTPUT_IMAGE_CATEGORY],
@@ -264,7 +228,6 @@ const IMAGE_GENERATION_MODEL_CONFIGS = {
     imageToImageEndpointId: BYTEPLUS_IMAGE_GENERATIONS_URL,
     sourceImageInput: "image_urls",
     provider: "byteplus",
-    sizeMode: "flexible",
     sizeParameter: "size",
     outputFormats: BYTEPLUS_IMAGE_OUTPUT_FORMATS,
     pricingCategories: [PROVIDER_COST_USD_MICROS_CATEGORY],
@@ -289,7 +252,6 @@ const IMAGE_GENERATION_MODEL_CONFIGS = {
     imageToImageEndpointId: BYTEPLUS_IMAGE_GENERATIONS_URL,
     sourceImageInput: "image_urls",
     provider: "byteplus",
-    sizeMode: "flexible",
     sizeParameter: "size",
     outputFormats: BYTEPLUS_IMAGE_OUTPUT_FORMATS,
     pricingCategories: [PROVIDER_COST_USD_MICROS_CATEGORY],
@@ -314,7 +276,6 @@ const IMAGE_GENERATION_MODEL_CONFIGS = {
     imageToImageEndpointId: "fal-ai/nano-banana-2/edit",
     sourceImageInput: "image_urls",
     provider: "fal",
-    sizeMode: "flexible",
     sizeParameter: "aspect_ratio",
     outputFormats: IMAGE_OUTPUT_FORMATS,
     pricingCategories: [FAL_OUTPUT_IMAGE_CATEGORY],
@@ -342,7 +303,6 @@ const IMAGE_TRANSFORM_MODEL_CONFIGS = {
     imageToImageEndpointId: BIREFNET_MODEL,
     sourceImageInput: "image_url",
     provider: "fal",
-    sizeMode: "flexible",
     sizeParameter: undefined,
     outputFormats: ["png"],
     pricingCategories: [FAL_OUTPUT_IMAGE_CATEGORY],
@@ -367,7 +327,6 @@ const IMAGE_TRANSFORM_MODEL_CONFIGS = {
     imageToImageEndpointId: CLARITY_UPSCALER_MODEL,
     sourceImageInput: "image_url",
     provider: "fal",
-    sizeMode: "flexible",
     sizeParameter: undefined,
     outputFormats: FAL_IMAGE_OUTPUT_FORMATS,
     pricingCategories: [FAL_OUTPUT_MEGAPIXEL_CATEGORY],
@@ -776,17 +735,6 @@ function validateImageSize(
   const longEdge = Math.max(width, height);
   const shortEdge = Math.min(width, height);
   const pixels = width * height;
-  const modelConfig = IMAGE_MODEL_CONFIGS[model];
-
-  if (
-    modelConfig.sizeMode === "standard" &&
-    !hasString(STANDARD_GPT_IMAGE_SIZES, size)
-  ) {
-    return badRequest(
-      `Unsupported image size for ${modelConfig.alias}: ${size}. Use auto, 1024x1024, 1536x1024, or 1024x1536`,
-    );
-  }
-
   if (longEdge > IMAGE_IO_MAX_EDGE) {
     return badRequest(
       `Unsupported image size: ${size}; max edge is ${IMAGE_IO_MAX_EDGE}px`,
@@ -1456,21 +1404,10 @@ function nearestFalAspectRatio(width: number, height: number): string {
 }
 
 function falImageSize(options: ImageOptions) {
-  const modelConfig = IMAGE_MODEL_CONFIGS[options.model];
   if (options.size === "auto") {
-    if (modelConfig.sizeMode === "standard") {
-      return "1024x1024";
-    }
     return "landscape_4_3";
   }
-  const parsed = parseSize(options.size);
-  if (!parsed) {
-    return "landscape_4_3";
-  }
-  if (modelConfig.sizeMode === "standard") {
-    return options.size;
-  }
-  return parsed;
+  return parseSize(options.size) ?? "landscape_4_3";
 }
 
 function falAspectRatio(options: ImageOptions): string {

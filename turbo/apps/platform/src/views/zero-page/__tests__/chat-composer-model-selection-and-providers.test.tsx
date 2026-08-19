@@ -3470,7 +3470,6 @@ describe("chat composer models", () => {
 describe("chat composer image model", () => {
   const imageModelControlLabels = [
     "GPT Image 2",
-    "GPT Image 1 Mini",
     "Nano Banana 2",
     "Flux Pro v1.1",
     "Flux Pro v1.1 Ultra",
@@ -4044,7 +4043,6 @@ describe("chat composer image model", () => {
     ).toBeUndefined();
     const openAiIcon = imageModelBrandIcon("GPT Image 2").outerHTML;
     expect(openAiIcon).toContain("openai");
-    expect(imageModelBrandIcon("GPT Image 1 Mini").outerHTML).toBe(openAiIcon);
     const fluxIcon = imageModelBrandIcon("Flux Pro v1.1").outerHTML;
     expect(imageModelBrandIcon("Flux Pro v1.1 Ultra").outerHTML).toBe(fluxIcon);
     const qwenIcon = imageModelBrandIcon("Qwen Image").outerHTML;
@@ -4070,23 +4068,23 @@ describe("chat composer image model", () => {
       within(listbox).queryByText(/aspect ratio/i),
     ).not.toBeInTheDocument();
 
-    await user.click(await findMediaPanelButton("GPT Image 1 Mini"));
+    await user.click(await findMediaPanelButton("GPT Image 2"));
 
     await waitFor(() => {
       expect(updates).toStrictEqual([
         {
           threadId: THREAD_ID,
-          model: "gpt-image-1-mini",
+          model: "gpt-image-2",
         },
       ]);
-      expect(imageModelButton).toHaveTextContent(/·\s*GPT Image 1 Mini/);
+      expect(imageModelButton).toHaveTextContent(/·\s*GPT Image 2/);
     });
     await user.click(imageModelButton);
-    expect(mediaPanelButton("GPT Image 1 Mini")).toHaveAttribute(
+    expect(mediaPanelButton("GPT Image 2")).toHaveAttribute(
       "aria-pressed",
       "true",
     );
-    expect(mediaPanelButton("GPT Image 2")).toHaveAttribute(
+    expect(mediaPanelButton("Qwen Image")).toHaveAttribute(
       "aria-pressed",
       "false",
     );

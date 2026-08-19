@@ -537,8 +537,8 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   // Fal-hosted GPT Image models. The endpoints return image URLs without
   // token usage, so built-in generation bills per output image tier at the
   // raw provider cost. Large tiers use the highest documented non-1024x1024
-  // price. gpt-image-1 and gpt-image-1.5 are no longer selectable, but their
-  // rows stay so already-recorded usage keeps pricing.
+  // price. gpt-image-1, gpt-image-1.5, and gpt-image-1-mini are no longer
+  // selectable, but their rows stay so already-recorded usage keeps pricing.
   ...usageGroup("image", "gpt-image-2", [
     ["output_image.low.standard", usd(0.006), 1],
     ["output_image.low.large", usd(0.012), 1],
