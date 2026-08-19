@@ -93,6 +93,8 @@ describe("okou model-provider command", () => {
     expect(logCalls).toContain("Model Provider Routes:");
     expect(logCalls).toContain("Claude Sonnet 4.6");
     expect(logCalls).toContain("provider: built-in");
+    expect(logCalls).toContain("provider type: vm0 (Built-in model)");
+    expect(logCalls).not.toContain("VM0 Managed");
     expect(logCalls).toContain("GPT 5.6 Luna");
     expect(logCalls).toContain("provider: api key");
     expect(logCalls).toContain("GPT 5.5");

@@ -769,6 +769,15 @@ export const MODEL_PROVIDER_TYPES = {
   },
 } as const satisfies Record<ModelProviderType, unknown>;
 
+export function getModelProviderPresentationLabel(
+  type: ModelProviderType,
+): string {
+  if (type === "vm0") {
+    return "Built-in model";
+  }
+  return MODEL_PROVIDER_TYPES[type].label;
+}
+
 const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
   "claude-fable-5": [
     "vm0",
