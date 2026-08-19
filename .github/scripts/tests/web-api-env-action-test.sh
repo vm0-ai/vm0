@@ -91,10 +91,7 @@ assert_no_fixture_secret_values() {
   local unexpected
   for unexpected in \
     "github-" \
-    "doppler-" \
-    "okou-google-weather-token" \
-    "okou-dataforseo-login" \
-    "okou-browser-use-api-key"; do
+    "doppler-"; do
     if [[ "$output" == *"$unexpected"* ]]; then
       fail "render output exposed a fixture secret value"
     fi
@@ -179,7 +176,7 @@ run_action() {
   local input_app="${3:-api}"
   local input_environment="${4:-preview}"
   local input_cli_pkg_url="${5-https://static.vm0.io/okou-cli/test-sha/package.tgz}"
-  local branded_config="${6:-legacy}"
+  local branded_config="${6:-canonical}"
   local action_script="${test_dir}/web-api-env-action.sh"
   local github_output="${test_dir}/github-output"
   local repo_vars_json
@@ -187,14 +184,10 @@ run_action() {
 
   repo_vars_json='{"GH_OAUTH_CLIENT_ID":"github-gh-client-id","SLACK_OAUTH_CLIENT_ID":"github-slack-client-id","VM0_API_BACKEND_URL":"https://api.github.test","GOOGLE_ADS_DEVELOPER_TOKEN":"github-google-ads-var","FINICITY_PARTNER_ID":"github-finicity-partner-id","POSTHOG_KEY":"github-posthog-key","POSTHOG_HOST":"https://posthog.github.test","ATOM_URL":"https://atom.github.test","STRIPE_OAUTH_CLIENT_ID":"ca_test_connect_client","STRIPE_CONCURRENCY_PORTAL_CONFIGURATION_ID":"bpc_test_concurrency","MICROSOFT_TEAMS_BOT_APP_ID":"github-teams-bot-app-id","MICROSOFT_TEAMS_APP_TENANT_ID":"github-teams-app-tenant-id","OKOU_PRICE_PRO":"price_test_pro","OKOU_PRICE_TEAM":"price_test_team","OKOU_PRICE_USAGE_PACK_PLAN_PRO":"price_test_usage_pack_plan_pro","OKOU_PRICE_USAGE_PACK_PLAN_TEAM":"price_test_usage_pack_plan_team","OKOU_PRICE_USAGE_PACK_20":"price_test_usage_pack_20","OKOU_PRICE_USAGE_PACK_50":"price_test_usage_pack_50","OKOU_PRICE_USAGE_PACK_100":"price_test_usage_pack_100","OKOU_PRICE_USAGE_PACK_200":"price_test_usage_pack_200","ATOM_GRANT_PRICE":"price_test_atom_grant","OKOU_PRICE_CUSTOM_CREDITS":"price_test_custom_credits","OKOU_PRICE_CUSTOM_CREDIT_UNIT":"price_test_custom_credit_unit","OKOU_PRICE_CONCURRENCY":"price_test_concurrency","GMAIL_PUBSUB_TOPIC_NAME":"projects/github/topics/gmail","GMAIL_PUBSUB_PUSH_AUDIENCE":"https://api.github.test/api/webhooks/gmail","GMAIL_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL":"gmail-push@github.test","GOOGLE_WORKSPACE_EVENTS_PUBSUB_TOPIC_NAME":"projects/github/topics/google-workspace-events","GOOGLE_WORKSPACE_EVENTS_PUBSUB_PUSH_AUDIENCE":"https://api.github.test/api/webhooks/google-workspace-events","GOOGLE_WORKSPACE_EVENTS_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL":"workspace-events-push@github.test"}'
   repo_vars_json="$(jq -c '. + {OKOU_HOST_DOMAIN: "sites.test", OKOU_HOST_SCHEME: "https", OKOU_ONE_TIME_CAMPAIGN: "test-campaign"}' <<< "$repo_vars_json")"
-  repo_secrets_json='{"GH_OAUTH_CLIENT_SECRET":"github-gh-client-secret","SLACK_OAUTH_CLIENT_SECRET":"github-slack-client-secret","GOOGLE_ADS_DEVELOPER_TOKEN":"github-google-ads-secret","ZERO_MAPS_GOOGLE_MAPS_TOKEN":"github-google-maps-token","ZERO_WEATHER_GOOGLE_WEATHER_TOKEN":"github-google-weather-token","ZERO_FINANCE_APIDOJO_TOKEN":"github-apidojo-token","ZERO_SEO_DATAFORSEO_LOGIN":"github-dataforseo-login","ZERO_SEO_DATAFORSEO_PASSWORD":"github-dataforseo-password","ZERO_BROWSER_USE_API_KEY":"github-browser-use-api-key","ZERO_SCRAPE_FIRECRAWL_TOKEN":"github-firecrawl-token","ZERO_WEB_SEARCH_PERPLEXITY_TOKEN":"github-perplexity-token","STEAM_WEB_API_KEY":"github-steam-web-api-key","FINICITY_APP_KEY":"github-finicity-app-key","FINICITY_APP_SECRET":"github-finicity-app-secret","UNSPLASH_ACCESS_KEY":"github-unsplash-access-key","VM0_MACHINE_SECRET_KEY":"github-atom-machine-secret","MICROSOFT_TEAMS_BOT_APP_PASSWORD":"github-teams-bot-app-password","VERCEL_AUTOMATION_BYPASS_SECRET":"github-vercel-bypass-secret","CLOUDFLARE_BROWSER_RENDERING_API_TOKEN":"github-cloudflare-browser-rendering-token","ARTIFACT_PREVIEW_WAF_SECRET":"github-artifact-preview-waf-secret","JOGGAI_WEBHOOK_SECRET":"github-joggai-webhook-secret","STRIPE_WEBHOOK_SECRET":"github-stripe-billing-webhook-secret","STRIPE_AUTOMATION_WEBHOOK_SECRET":"github-stripe-automation-webhook-secret"}'
-  if [[ "$branded_config" == "both" ]]; then
-    # Secrets still resolve through first_non_empty(OKOU_*, ZERO_*), so this
-    # fixture supplies both brandings to pin canonical precedence.
-    repo_secrets_json="$(jq -c '. + {OKOU_WEATHER_GOOGLE_WEATHER_TOKEN: "okou-google-weather-token", OKOU_SEO_DATAFORSEO_LOGIN: "okou-dataforseo-login", OKOU_BROWSER_USE_API_KEY: "okou-browser-use-api-key"}' <<< "$repo_secrets_json")"
-  elif [[ "$branded_config" == "empty" ]]; then
+  repo_secrets_json='{"GH_OAUTH_CLIENT_SECRET":"github-gh-client-secret","SLACK_OAUTH_CLIENT_SECRET":"github-slack-client-secret","GOOGLE_ADS_DEVELOPER_TOKEN":"github-google-ads-secret","OKOU_MAPS_GOOGLE_MAPS_TOKEN":"github-google-maps-token","OKOU_WEATHER_GOOGLE_WEATHER_TOKEN":"github-google-weather-token","OKOU_FINANCE_APIDOJO_TOKEN":"github-apidojo-token","OKOU_SEO_DATAFORSEO_LOGIN":"github-dataforseo-login","OKOU_SEO_DATAFORSEO_PASSWORD":"github-dataforseo-password","OKOU_BROWSER_USE_API_KEY":"github-browser-use-api-key","OKOU_SCRAPE_FIRECRAWL_TOKEN":"github-firecrawl-token","OKOU_WEB_SEARCH_PERPLEXITY_TOKEN":"github-perplexity-token","STEAM_WEB_API_KEY":"github-steam-web-api-key","FINICITY_APP_KEY":"github-finicity-app-key","FINICITY_APP_SECRET":"github-finicity-app-secret","UNSPLASH_ACCESS_KEY":"github-unsplash-access-key","VM0_MACHINE_SECRET_KEY":"github-atom-machine-secret","MICROSOFT_TEAMS_BOT_APP_PASSWORD":"github-teams-bot-app-password","VERCEL_AUTOMATION_BYPASS_SECRET":"github-vercel-bypass-secret","CLOUDFLARE_BROWSER_RENDERING_API_TOKEN":"github-cloudflare-browser-rendering-token","ARTIFACT_PREVIEW_WAF_SECRET":"github-artifact-preview-waf-secret","JOGGAI_WEBHOOK_SECRET":"github-joggai-webhook-secret","STRIPE_WEBHOOK_SECRET":"github-stripe-billing-webhook-secret","STRIPE_AUTOMATION_WEBHOOK_SECRET":"github-stripe-automation-webhook-secret"}'
+  if [[ "$branded_config" == "empty" ]]; then
     repo_vars_json="$(jq -c 'with_entries(select(.key | startswith("OKOU_") | not))' <<< "$repo_vars_json")"
-    repo_secrets_json="$(jq -c 'with_entries(select(.key | startswith("ZERO_") | not))' <<< "$repo_secrets_json")"
+    repo_secrets_json="$(jq -c 'with_entries(select(.key | startswith("OKOU_") | not))' <<< "$repo_secrets_json")"
   fi
 
   extract_action_script > "$action_script"
@@ -225,10 +218,10 @@ if ! oauth_client_config_prefixes | grep -qx SLACK; then
   fail "expected Slack OAuth client config to come from Doppler"
 fi
 
-# Variable sources are canonical-only. The secret half still falls back to
-# ZERO_* names, so this guard is scoped to variable reads.
-if grep -En '(repo_var|add_var [A-Z0-9_]+) "?ZERO_' "$ACTION"; then
-  fail "variable sources must read canonical OKOU_ names, not ZERO_"
+# Both the variable and the secret sources are canonical-only now, so no
+# source read in the action may name a legacy ZERO_ variable or secret.
+if grep -En '(repo_var|repo_secret|add_(var|secret) [A-Z0-9_]+) "?ZERO_' "$ACTION"; then
+  fail "environment sources must read canonical OKOU_ names, not ZERO_"
 fi
 
 success_dir="$(mktemp -d)"
@@ -303,17 +296,6 @@ assert_env_absent_value "$success_env_file" "github-slack-client-secret"
 assert_env_absent_value "$success_env_file" "github-posthog-key"
 assert_env_absent_value "$success_env_file" "github-cloudflare-browser-rendering-token"
 assert_env_absent_value "$success_env_file" "github-artifact-preview-waf-secret"
-
-precedence_dir="$(mktemp -d)"
-TEMP_DIRS+=("$precedence_dir")
-precedence_output="$(run_action "$(build_doppler_secrets_json)" "$precedence_dir" api preview "https://static.vm0.io/okou-cli/test-sha/package.tgz" both 2>&1)"
-precedence_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${precedence_dir}/github-output")"
-assert_contains "$precedence_output" "Rendered"
-assert_no_fixture_secret_values "$precedence_output"
-assert_migrated_zero_outputs_absent "$precedence_env_file"
-assert_env_value "$precedence_env_file" OKOU_WEATHER_GOOGLE_WEATHER_TOKEN "okou-google-weather-token"
-assert_env_value "$precedence_env_file" OKOU_SEO_DATAFORSEO_LOGIN "okou-dataforseo-login"
-assert_env_value "$precedence_env_file" OKOU_BROWSER_USE_API_KEY "okou-browser-use-api-key"
 
 empty_dir="$(mktemp -d)"
 TEMP_DIRS+=("$empty_dir")

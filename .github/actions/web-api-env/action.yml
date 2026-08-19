@@ -123,13 +123,6 @@ runs:
           add_env "$1" "$(repo_secret "$2")"
         }
 
-        add_okou_secret() {
-          local suffix="$1"
-          local value
-          value="$(first_non_empty "$(repo_secret "OKOU_${suffix}")" "$(repo_secret "ZERO_${suffix}")")"
-          add_env "OKOU_${suffix}" "$value"
-        }
-
         add_oauth_client_config_key() {
           local key="$1"
           local value
@@ -355,12 +348,12 @@ runs:
           FINANCE_APIDOJO_TOKEN
         )
         for suffix in "${okou_provider_secret_suffixes[@]}"; do
-          add_okou_secret "$suffix"
+          add_secret "OKOU_${suffix}" "OKOU_${suffix}"
         done
         if [[ "$INPUT_APP" == "api" ]]; then
-          add_okou_secret SEO_DATAFORSEO_LOGIN
-          add_okou_secret SEO_DATAFORSEO_PASSWORD
-          add_okou_secret BROWSER_USE_API_KEY
+          add_secret OKOU_SEO_DATAFORSEO_LOGIN OKOU_SEO_DATAFORSEO_LOGIN
+          add_secret OKOU_SEO_DATAFORSEO_PASSWORD OKOU_SEO_DATAFORSEO_PASSWORD
+          add_secret OKOU_BROWSER_USE_API_KEY OKOU_BROWSER_USE_API_KEY
         fi
         add_secret STEAM_WEB_API_KEY STEAM_WEB_API_KEY
         add_secret FINICITY_APP_KEY FINICITY_APP_KEY
