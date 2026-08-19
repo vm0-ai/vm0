@@ -64,18 +64,8 @@ const originalHeadAppendChild = document.head.appendChild.bind(document.head);
 const appendedPlausibleScripts: HTMLScriptElement[] = [];
 const context = testContext();
 
-function setBrowserUrl(url: string): void {
-  context.mocks.browser.url(url);
-}
-
-function setApiOrigin(origin: string): void {
-  const element = document.createElement("meta");
-  element.name = "vm0-api-origin";
-  element.content = origin;
-  document.head.append(element);
-  context.signal.addEventListener("abort", () => element.remove(), {
-    once: true,
-  });
+function setBrowserUrl(url: string, apiOriginMarker?: string | null): void {
+  context.mocks.browser.url(url, { apiOriginMarker });
 }
 
 function installImmediateIdleCallback(): void {
@@ -162,7 +152,6 @@ beforeEach(() => {
 describe("portable platform runtime environment", () => {
   it("selects Okou API services and public config on app.okou.ai", async () => {
     setBrowserUrl("https://app.okou.ai/agents");
-    setApiOrigin("https://api.okou.ai");
     const runtime = await loadRuntimeSurfaces();
 
     expect(runtime.apiBase.resolveApiBase()).toBe("https://api.okou.ai");
@@ -207,7 +196,6 @@ describe("portable platform runtime environment", () => {
 
   it("selects the VM0 API service on app.vm0.ai", async () => {
     setBrowserUrl("https://app.vm0.ai/agents");
-    setApiOrigin("https://api.vm0.ai");
     const runtime = await loadRuntimeSurfaces();
 
     expect(runtime.apiBase.resolveApiBase()).toBe("https://api.vm0.ai");
@@ -225,10 +213,7 @@ describe("portable platform runtime environment", () => {
   ])(
     "fails closed when the production API origin marker is %s on %s",
     async (_state, appUrl, marker, hostname) => {
-      setBrowserUrl(appUrl);
-      if (marker !== undefined) {
-        setApiOrigin(marker);
-      }
+      setBrowserUrl(appUrl, marker ?? null);
       const runtime = await loadRuntimeSurfaces();
 
       expect(() => runtime.apiBase.resolveApiBase()).toThrow(
@@ -243,8 +228,7 @@ describe("portable platform runtime environment", () => {
   ])(
     "rejects a mismatched production API origin marker on %s",
     async (appUrl, apiOrigin, hostname) => {
-      setBrowserUrl(appUrl);
-      setApiOrigin(apiOrigin);
+      setBrowserUrl(appUrl, apiOrigin);
       const runtime = await loadRuntimeSurfaces();
 
       expect(() => runtime.apiBase.resolveApiBase()).toThrow(
@@ -465,8 +449,10 @@ describe("portable platform runtime environment", () => {
   });
 
   it("uses the configured API for an immutable Pages deployment", async () => {
-    setBrowserUrl("https://3508a2f5.okou-app.pages.dev/agents");
-    setApiOrigin("https://pr-23364-api.vm6.ai");
+    setBrowserUrl(
+      "https://3508a2f5.okou-app.pages.dev/agents",
+      "https://pr-23364-api.vm6.ai",
+    );
     const runtime = await loadRuntimeSurfaces();
 
     expect(runtime.apiBase.resolveApiBase()).toBe(
@@ -481,8 +467,10 @@ describe("portable platform runtime environment", () => {
   });
 
   it("rejects an invalid API origin on an immutable Pages deployment", async () => {
-    setBrowserUrl("https://3508a2f5.okou-app.pages.dev/agents");
-    setApiOrigin("https://example.com");
+    setBrowserUrl(
+      "https://3508a2f5.okou-app.pages.dev/agents",
+      "https://example.com",
+    );
     const runtime = await loadRuntimeSurfaces();
 
     expect(() => runtime.apiBase.resolveApiBase()).toThrow(
@@ -491,8 +479,10 @@ describe("portable platform runtime environment", () => {
   });
 
   it("keeps unrecognized provider hosts on the same origin", async () => {
-    setBrowserUrl("https://deployment.pages.dev/agents");
-    setApiOrigin("https://pr-23364-api.vm6.ai");
+    setBrowserUrl(
+      "https://deployment.pages.dev/agents",
+      "https://pr-23364-api.vm6.ai",
+    );
     const runtime = await loadRuntimeSurfaces();
 
     expect(runtime.apiBase.resolveApiBase()).toBe(

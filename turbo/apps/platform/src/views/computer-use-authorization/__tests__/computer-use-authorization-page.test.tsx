@@ -11,20 +11,6 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 
-function setApiOrigin(origin: string): void {
-  const element = document.createElement("meta");
-  element.name = "vm0-api-origin";
-  element.content = origin;
-  document.head.append(element);
-  context.signal.addEventListener(
-    "abort",
-    () => {
-      element.remove();
-    },
-    { once: true },
-  );
-}
-
 function replaceNavigatorProperty(property: string, value: unknown): void {
   const descriptor = Object.getOwnPropertyDescriptor(navigator, property);
   Object.defineProperty(navigator, property, {
@@ -292,7 +278,6 @@ describe("computer use authorization page", () => {
 
   it("shows Okou desktop guidance on an Okou host", async () => {
     context.mocks.browser.url("https://app.okou.ai/");
-    setApiOrigin("https://api.okou.ai");
     context.mocks.api(
       zeroComputerUseAuthorizationRequestsContract.get,
       ({ respond }) => {
