@@ -223,7 +223,7 @@ function StartCard({
             card's own click already carries the emphasis. */}
         <Button
           type="button"
-          size="sm"
+          size="xs"
           variant="outline"
           className="min-w-0"
           onClick={() => {
@@ -243,7 +243,7 @@ function StartCard({
             picker on its own. */}
         <Button
           type="button"
-          size="sm"
+          size="xs"
           variant="outline"
           className="hidden shrink-0 @[15rem]:inline-flex"
           onClick={onOpenTemplates}

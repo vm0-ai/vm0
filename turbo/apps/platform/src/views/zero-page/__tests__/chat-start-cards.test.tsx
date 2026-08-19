@@ -76,7 +76,7 @@ describe("chat start cards", () => {
     expect(
       renderedTitles(EN_TITLES).length + renderedTitles(workflowTitles).length,
     ).toBe(3);
-    expect(screen.getAllByText("Use prompt")).toHaveLength(3);
+    expect(screen.getAllByText("Prompt")).toHaveLength(3);
     expect(templateButtons()).toHaveLength(3);
   });
 
@@ -91,7 +91,7 @@ describe("chat start cards", () => {
     )) as HTMLTextAreaElement;
     expect(composer).toHaveTextContent("");
 
-    click(screen.getAllByText("Use prompt")[0]);
+    click(screen.getAllByText("Prompt")[0]);
 
     expect(composer.textContent).not.toBe("");
   });
@@ -129,6 +129,7 @@ describe("chat start cards", () => {
 
     expect(renderedTitles(PT_BR_TITLES).length).toBeGreaterThanOrEqual(2);
     expect(renderedTitles(EN_TITLES)).toStrictEqual([]);
-    expect(screen.getAllByText("Usar prompt")).toHaveLength(3);
+    expect(screen.getAllByText("Modelos")).toHaveLength(3);
+    expect(screen.queryByText("Templates")).toBeNull();
   });
 });
