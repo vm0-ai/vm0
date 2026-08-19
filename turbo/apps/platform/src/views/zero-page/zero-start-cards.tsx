@@ -237,13 +237,15 @@ function StartCard({
             })}
           </span>
         </Button>
-        {/* Dropped once the card is too narrow to hold both. The card itself
-            still opens the picker. */}
+        {/* Dropped once the card is too narrow to hold both — the query reads
+            the card's content box, so 15rem sits between the two-up card's
+            188px and the three-up card's 260px. The card still opens the
+            picker on its own. */}
         <Button
           type="button"
           size="sm"
           variant="outline"
-          className="hidden shrink-0 @[17rem]:inline-flex"
+          className="hidden shrink-0 @[15rem]:inline-flex"
           onClick={onOpenTemplates}
         >
           <LayoutTemplate />
