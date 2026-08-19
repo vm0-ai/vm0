@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.169.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.11...runner-rs-v0.169.12) (2026-08-19)
+
+
+### Refactoring
+
+* **runner:** route host oom probe through bounded commands ([#28119](https://github.com/vm0-ai/vm0/issues/28119)) ([ef5d2cd](https://github.com/vm0-ai/vm0/commit/ef5d2cd3fc414c55acc67162835f3403d0c0db2a))
+
+## [0.169.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.10...runner-rs-v0.169.11) (2026-08-19)
+
+
+### Bug Fixes
+
+* **python:** track generator advancement failures ([#28107](https://github.com/vm0-ai/vm0/issues/28107)) ([c56f8d5](https://github.com/vm0-ai/vm0/commit/c56f8d5cc628c754880c27dc690d5704cf493df0))
+
+
+### Documentation
+
+* **runner:** document workspace image cache GC policy ([#28104](https://github.com/vm0-ai/vm0/issues/28104)) ([e178040](https://github.com/vm0-ai/vm0/commit/e178040179027bea9f2863aa5bea3332f3f25016))
+
+## [0.169.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.9...runner-rs-v0.169.10) (2026-08-19)
+
+
+### Documentation
+
+* **python:** document webhook delivery callback lifecycle ([#28096](https://github.com/vm0-ai/vm0/issues/28096)) ([e94991b](https://github.com/vm0-ai/vm0/commit/e94991becd85d9b350a804ff011b9369b8488791))
+
 ## [0.169.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.8...runner-rs-v0.169.9) (2026-08-18)
 
 ## [0.169.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.7...runner-rs-v0.169.8) (2026-08-18)

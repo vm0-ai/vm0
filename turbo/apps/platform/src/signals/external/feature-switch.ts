@@ -63,6 +63,10 @@ export const imageModelSelectionEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ImageModelSelection] ?? false;
 });
 
+export const composerImeSubmitFlushEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.ComposerImeSubmitFlush] ?? false;
+});
+
 export const codexFastModeEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
 });

@@ -498,11 +498,19 @@ describe("model-first canonical catalog", () => {
     expect(getProviderRuntimeModel("vm0", "gpt-5.6-sol")).toBe("gpt-5.6-sol");
     expect(getVm0ConcreteProviderType("gpt-5.6-sol")).toBe("openai-api-key");
     expect(getVm0Vendor("gpt-5.6-sol")).toBe("openai");
-    expect(getVm0ConcreteProviderType("deepseek-v4-pro")).toBe("deepseek");
-    expect(getVm0Vendor("deepseek-v4-pro")).toBe("deepseek");
     expect(getProviderRuntimeModel("openrouter-api-key", "custom/model")).toBe(
       "custom/model",
     );
+  });
+
+  it.each([
+    ["deepseek-v4-flash", "deepseek/deepseek-v4-flash"],
+    ["deepseek-v4-pro", "deepseek/deepseek-v4-pro"],
+  ] as const)("routes vm0 managed %s through OpenRouter", (model, apiModel) => {
+    expect(getVm0ConcreteProviderType(model)).toBe("openrouter-codex");
+    expect(getVm0Vendor(model)).toBe("openrouter");
+    expect(getVm0ApiModel(model)).toBe(apiModel);
+    expect(getProviderRuntimeModel("vm0", model)).toBe(apiModel);
   });
 
   it.each([

@@ -331,7 +331,7 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
             items: {
               data: [
                 {
-                  price: { id: "price_bdd_pro" },
+                  price: { id: "price_bdd_team" },
                   current_period_end: Math.floor(now() / 1000) + 86_400,
                 },
               ],

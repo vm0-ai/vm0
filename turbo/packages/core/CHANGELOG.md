@@ -1,5 +1,45 @@
 # Changelog
 
+## [8.572.0](https://github.com/vm0-ai/vm0/compare/core-v8.571.0...core-v8.572.0) (2026-08-19)
+
+
+### Features
+
+* support seedance 2.5 1080p video generation ([#28113](https://github.com/vm0-ai/vm0/issues/28113)) ([53bcc41](https://github.com/vm0-ai/vm0/commit/53bcc411e5ca63f00eac1be61269940e1a43560c))
+
+
+### Bug Fixes
+
+* route managed deepseek models through openrouter ([#28145](https://github.com/vm0-ai/vm0/issues/28145)) ([3a805bc](https://github.com/vm0-ai/vm0/commit/3a805bc0de34e678ed888fa26a44e202b779d5d1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.341.1
+
+## [8.571.0](https://github.com/vm0-ai/vm0/compare/core-v8.570.2...core-v8.571.0) (2026-08-19)
+
+
+### Features
+
+* **connectors:** add account storage foundation ([#28066](https://github.com/vm0-ai/vm0/issues/28066)) ([71aa5ef](https://github.com/vm0-ai/vm0/commit/71aa5ef49d8f1c439e6af1c98d8830fbcbc80d55))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.341.0
+
+## [8.570.2](https://github.com/vm0-ai/vm0/compare/core-v8.570.1...core-v8.570.2) (2026-08-19)
+
+
+### Bug Fixes
+
+* **composer:** flush pending ime dom changes before submit ([#28045](https://github.com/vm0-ai/vm0/issues/28045)) ([2ad0862](https://github.com/vm0-ai/vm0/commit/2ad08627c7599840af4c82103032edab250e5e4d))
+
 ## [8.570.1](https://github.com/vm0-ai/vm0/compare/core-v8.570.0...core-v8.570.1) (2026-08-19)
 
 

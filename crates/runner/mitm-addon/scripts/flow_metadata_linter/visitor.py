@@ -1015,7 +1015,9 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
     def _visit_for_statement(self, node: ast.For | ast.AsyncFor) -> bool:
         self._record_metadata_merge_key_violations(node.iter)
         self.visit(node.iter)
-        iteration_may_raise = isinstance(node, ast.AsyncFor) or _iteration_may_raise(node.iter)
+        iteration_may_raise = isinstance(node, ast.AsyncFor) or _iteration_may_raise(
+            node.iter, advances=True
+        )
         if iteration_may_raise:
             self._record_implicit_exception_aliases()
         base_aliases = set(self._metadata_aliases)
@@ -1377,7 +1379,9 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         first_generator, *remaining_generators = generators
         self._record_metadata_merge_key_violations(first_generator.iter)
         self.visit(first_generator.iter)
-        if first_generator.is_async or _iteration_may_raise(first_generator.iter):
+        if first_generator.is_async or _iteration_may_raise(
+            first_generator.iter, advances=not deferred
+        ):
             self._record_implicit_exception_aliases()
         if not first_generator.is_async and _iterable_is_statically_empty(first_generator.iter):
             return
@@ -1411,7 +1415,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         for generator in remaining_generators if body_is_reachable else []:
             self._record_metadata_merge_key_violations(generator.iter)
             self.visit(generator.iter)
-            if generator.is_async or _iteration_may_raise(generator.iter):
+            if generator.is_async or _iteration_may_raise(generator.iter, advances=True):
                 self._record_implicit_exception_aliases()
             if not generator.is_async and _iterable_is_statically_empty(generator.iter):
                 body_is_reachable = False
@@ -1442,5 +1446,5 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
 
     def _record_later_comprehension_iterations(self, generators: list[ast.comprehension]) -> None:
         for generator in reversed(generators):
-            if generator.is_async or _iteration_may_raise(generator.iter):
+            if generator.is_async or _iteration_may_raise(generator.iter, advances=True):
                 self._record_implicit_exception_aliases()

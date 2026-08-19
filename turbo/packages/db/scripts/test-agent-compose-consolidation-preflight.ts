@@ -3270,15 +3270,15 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
     false,
   );
   const historicalClassifierCallers = execFileSync(
-    "rg",
+    "git",
     [
+      "grep",
       "-l",
       "-F",
       "isExactHistoricalProductBuilderCandidate(",
-      "--glob",
-      "*.ts",
-      "turbo/apps/api/src/signals",
-      "turbo/packages/db/scripts",
+      "--",
+      ":(glob)turbo/apps/api/src/signals/**/*.ts",
+      ":(glob)turbo/packages/db/scripts/**/*.ts",
     ],
     { cwd: repositoryRoot, encoding: "utf8" },
   )

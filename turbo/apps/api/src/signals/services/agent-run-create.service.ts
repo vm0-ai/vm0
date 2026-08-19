@@ -27,6 +27,7 @@ import {
 import { modelProviderSurfaceProtocolSchema } from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
 import {
   getDefaultModel,
+  getModelProviderCodexCatalogForModel,
   getModelProviderCodexRuntimeConfig,
   getModelProviderEnvBindings,
   getModelImageInputSupport,
@@ -243,9 +244,9 @@ import {
 } from "./connector-credential-status.service";
 import {
   getConnectorRuntimeConnector,
-  loadConnectorRuntimeSnapshot,
+  loadConnectorRuntimeSelection,
   type ConnectorRuntimeMethod,
-  type ConnectorRuntimeSnapshot,
+  type ConnectorRuntimeSelection,
 } from "./connector-catalog-runtime.service";
 import {
   connectorCredentialSecretReadCondition,
@@ -599,8 +600,8 @@ interface EffectiveConnectorScope {
 export type RunConnectorCatalogSelection =
   | { readonly kind: "empty" }
   | {
-      readonly kind: "complete";
-      readonly snapshot: ConnectorRuntimeSnapshot;
+      readonly kind: "scoped";
+      readonly selection: ConnectorRuntimeSelection;
     };
 
 export function isEmptyRunConnectorScope(scope: {
@@ -1161,7 +1162,7 @@ function buildLegacySystemSkillVolumes(
 
 function buildConnectorSkillVolumes(
   connectorSlugs: readonly ConnectorSlug[],
-  snapshot: ConnectorRuntimeSnapshot,
+  snapshot: ConnectorRuntimeSelection,
   skillsRoot: string,
 ): readonly PreparedAdditionalVolume[] {
   return connectorSlugs.flatMap((connectorSlug) => {
@@ -1235,10 +1236,10 @@ function buildInjectedSkillVolumes(
       buildLegacySystemSkillVolumes(seedSkillNames, skillsRoot),
       "system_skill",
     ) ?? []),
-    ...(args.connectorCatalogSelection.kind === "complete"
+    ...(args.connectorCatalogSelection.kind === "scoped"
       ? buildConnectorSkillVolumes(
           args.allowedConnectorSlugs,
-          args.connectorCatalogSelection.snapshot,
+          args.connectorCatalogSelection.selection,
           skillsRoot,
         )
       : []),
@@ -2301,18 +2302,43 @@ async function vm0ModelProviderEnvironment(
   if (!apiKey || !secretName) {
     return null;
   }
-  const codexRuntimeConfig = getModelProviderCodexRuntimeConfig(concreteType);
+  const environment = providerEnvironmentFromSecretRefs(
+    concreteType,
+    secretName,
+    apiKey,
+    apiModel,
+  );
+  let codexRuntimeConfig = getModelProviderCodexRuntimeConfig(concreteType);
+  if (!codexRuntimeConfig) {
+    const modelCatalog = getModelProviderCodexCatalogForModel(
+      selectedModel,
+      apiModel,
+    );
+    if (modelCatalog) {
+      const baseUrl = environment.OPENAI_BASE_URL;
+      if (!baseUrl) {
+        throw new Error(
+          `Missing OPENAI_BASE_URL for VM0 Codex provider ${concreteType}`,
+        );
+      }
+      codexRuntimeConfig = {
+        providerId: concreteType,
+        name: MODEL_PROVIDER_TYPES[concreteType].label,
+        baseUrl,
+        envKey: "OPENAI_API_KEY",
+        requiresOpenaiAuth: false,
+        wireApi: "responses",
+        supportsWebsockets: false,
+        modelCatalog,
+      };
+    }
+  }
 
   return {
     id: null,
     type: "vm0",
     concreteType,
-    environment: providerEnvironmentFromSecretRefs(
-      concreteType,
-      secretName,
-      apiKey,
-      apiModel,
-    ),
+    environment,
     secrets: { [secretName]: apiKey },
     selectedModel,
     ...(codexRuntimeConfig ? { codexRuntimeConfig } : {}),
@@ -3061,7 +3087,7 @@ function emptyConnectorRuntimeContext(): ConnectorRuntimeContext {
 function allowedStoredConnectorRows(
   rows: readonly StoredConnectorRuntimeRowCandidate[],
   allowedConnectorSlugs: readonly ConnectorSlug[],
-  snapshot: ConnectorRuntimeSnapshot,
+  snapshot: ConnectorRuntimeSelection,
   now: Date,
 ): readonly StoredConnectorRuntimeRow[] {
   const validRows = rows.flatMap((row) => {
@@ -3698,7 +3724,7 @@ async function loadStoredConnectorMaterializationPlan(
     readonly userId: string;
     readonly allowedConnectorSlugs: readonly ConnectorSlug[];
     readonly scopeSource: ConnectorScopeSource;
-    readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+    readonly connectorCatalogSnapshot: ConnectorRuntimeSelection;
   },
   timing?: ApiDispatchTimingCollector,
 ): Promise<StoredConnectorMaterializationSnapshot | null> {
@@ -3866,7 +3892,7 @@ async function loadStoredConnectorSnapshotRows(
 function buildStoredConnectorMaterializationPlan(args: {
   readonly connectorRows: readonly StoredConnectorRuntimeRowCandidate[];
   readonly allowedConnectorSlugs: readonly ConnectorSlug[];
-  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+  readonly connectorCatalogSnapshot: ConnectorRuntimeSelection;
 }): StoredConnectorMaterializationPlan | null {
   const allowedConnectorRows = allowedStoredConnectorRows(
     args.connectorRows,
@@ -3889,7 +3915,7 @@ function materializeStoredConnectorSnapshotRows(
   args: {
     readonly rows: readonly StoredConnectorMaterializationSnapshotRow[];
     readonly allowedConnectorSlugs: readonly ConnectorSlug[];
-    readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+    readonly connectorCatalogSnapshot: ConnectorRuntimeSelection;
     readonly timingDimensions: ApiDispatchTimingDimensions;
   },
   timing?: ApiDispatchTimingCollector,
@@ -3974,7 +4000,7 @@ async function loadStoredConnectorMaterializationSnapshot(
     readonly userId: string;
     readonly allowedConnectorSlugs: readonly ConnectorSlug[];
     readonly scopeSource: ConnectorScopeSource;
-    readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+    readonly connectorCatalogSnapshot: ConnectorRuntimeSelection;
   },
   timing?: ApiDispatchTimingCollector,
 ): Promise<StoredConnectorMaterializationSnapshot | null> {
@@ -4310,7 +4336,7 @@ function jsonArrayEqual(
 interface BuildCustomConnectorRuntimeContextArgs {
   readonly rows: CustomConnectorRuntimeDataRows;
   readonly featureSwitchContext: FeatureSwitchContext;
-  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+  readonly connectorCatalogSnapshot: ConnectorRuntimeSelection;
   readonly grants: readonly AgentCustomConnectorGrant[] | undefined;
   readonly baseUrlVarsByConnectorId?: ReadonlyMap<
     string,
@@ -4378,7 +4404,7 @@ function unavailableCustomConnectorRuntimeRow(
 
 export async function loadEffectiveCustomConnectorPermissionBundle(args: {
   readonly row: CustomConnectorRuntimeDataRows[number];
-  readonly snapshot: ConnectorRuntimeSnapshot;
+  readonly snapshot: ConnectorRuntimeSelection;
 }): Promise<CustomConnectorPermissionBundle | null | undefined> {
   if (args.row.connector.kind === "mcp") {
     return null;
@@ -4393,7 +4419,7 @@ export async function loadEffectiveCustomConnectorPermissionBundle(args: {
   });
   return ref
     ? ((await loadCustomConnectorPermissionBundle({
-        snapshot: args.snapshot,
+        catalog: args.snapshot.serverFirewallMetadata,
         ref,
       })) ?? undefined)
     : null;
@@ -4662,7 +4688,7 @@ async function loadCustomConnectorContext(
       | readonly AgentCustomConnectorGrant[]
       | undefined;
     readonly featureSwitchContext: FeatureSwitchContext;
-    readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+    readonly connectorCatalogSnapshot: ConnectorRuntimeSelection;
   },
   signal: AbortSignal,
   timing?: ApiDispatchTimingCollector,
@@ -4760,7 +4786,7 @@ function resolveConnectorNetworkPolicy(args: {
 }
 
 async function loadRequiredFirewallPermissionIndex(args: {
-  readonly snapshot: ConnectorRuntimeSnapshot;
+  readonly snapshot: ConnectorRuntimeSelection;
   readonly connectorSlug: string;
 }): Promise<ConnectorServerFirewallPermissionIndex> {
   const index = await args.snapshot.serverFirewalls.loadPermissionIndex(
@@ -4775,7 +4801,7 @@ async function loadRequiredFirewallPermissionIndex(args: {
 }
 
 function getRequiredFirewallExecutionMetadata(
-  snapshot: ConnectorRuntimeSnapshot,
+  snapshot: ConnectorRuntimeSelection,
   connectorSlug: string,
 ): ConnectorServerFirewallExecutionMetadata {
   const metadata = snapshot.serverFirewalls.getExecutionMetadata(connectorSlug);
@@ -4995,13 +5021,13 @@ interface BuiltinConnectorManifestSource {
 }
 
 function buildConnectorPermissionBaseline(
-  snapshot: ConnectorRuntimeSnapshot,
+  snapshot: ConnectorRuntimeSelection,
   sources: readonly BuiltinConnectorManifestSource[],
 ): StoredConnectorPermissionBaseline {
   const validationAuthority = currentConnectorCatalogValidatorIdentity();
   return {
     version: 1,
-    catalogIdentity: snapshot.acceptedSnapshot.identity,
+    catalogIdentity: snapshot.catalogIdentity,
     validationAuthority: {
       backendVersion: validationAuthority.backendVersion,
       buildCommitSha: validationAuthority.buildCommitSha,
@@ -5133,10 +5159,10 @@ function mergePermissionManifests(args: {
       return undefined;
     }
     if (args.connectorCatalogSelection.kind === "empty") {
-      throw new Error("Builtin connector sources require a complete catalog");
+      throw new Error("Builtin connector sources require a catalog selection");
     }
     return buildConnectorPermissionBaseline(
-      args.connectorCatalogSelection.snapshot,
+      args.connectorCatalogSelection.selection,
       args.builtinSources,
     );
   })();
@@ -5193,7 +5219,7 @@ async function buildPermissionManifest(
       if (args.connectorCatalogSelection.kind === "empty") {
         return [];
       }
-      const snapshot = args.connectorCatalogSelection.snapshot;
+      const snapshot = args.connectorCatalogSelection.selection;
       const connectorSlugs =
         args.connectorSlugs ??
         Object.keys(args.permissionPolicies ?? {}).filter((connectorSlug) => {
@@ -7949,7 +7975,7 @@ async function loadRunConnectorContexts(
     readonly orgId: string;
     readonly userId: string;
     readonly connectorScope: EffectiveConnectorScope;
-    readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+    readonly connectorCatalogSnapshot: ConnectorRuntimeSelection;
     readonly featureSwitchContext: FeatureSwitchContext;
     readonly timing: ApiDispatchTimingCollector | undefined;
   },
@@ -8186,7 +8212,7 @@ interface PreparedRuntimeContext {
 
 function connectorScopeForRuntimeSnapshot(
   scope: EffectiveConnectorScope,
-  snapshot: ConnectorRuntimeSnapshot,
+  snapshot: ConnectorRuntimeSelection,
 ): EffectiveConnectorScope {
   return {
     ...scope,
@@ -8407,7 +8433,7 @@ async function prepareRunConnectorContexts(
             orgId: args.createArgs.orgId,
             userId: args.createArgs.userId,
             connectorScope: args.connectorScope,
-            connectorCatalogSnapshot: args.connectorCatalogSelection.snapshot,
+            connectorCatalogSnapshot: args.connectorCatalogSelection.selection,
             featureSwitchContext: args.featureSwitchContext,
             timing: args.timing,
           },
@@ -8459,7 +8485,7 @@ async function prepareRunRuntimeContext(
     readonly db: Db;
     readonly createArgs: CreateAgentRunArgs;
     readonly connectorScope: EffectiveConnectorScope;
-    readonly preloadedConnectorCatalogSnapshot?: ConnectorRuntimeSnapshot;
+    readonly preloadedConnectorCatalogSnapshot?: ConnectorRuntimeSelection;
     readonly timing: ApiDispatchTimingCollector;
     readonly bodyContext: PreparedRunBodyContext;
   },
@@ -8470,10 +8496,10 @@ async function prepareRunRuntimeContext(
   const connectorCatalogSelection = await connectorCatalogSelectionForRun(args);
   signal.throwIfAborted();
   const connectorScope =
-    connectorCatalogSelection.kind === "complete"
+    connectorCatalogSelection.kind === "scoped"
       ? connectorScopeForRuntimeSnapshot(
           args.connectorScope,
-          connectorCatalogSelection.snapshot,
+          connectorCatalogSelection.selection,
         )
       : args.connectorScope;
   const modelProvider = await resolvePreparedRunModelProvider(args, signal);
@@ -8581,20 +8607,20 @@ async function prepareRunRuntimeContext(
 
 async function connectorCatalogSelectionForRun(args: {
   readonly db: Db;
-  readonly preloadedConnectorCatalogSnapshot?: ConnectorRuntimeSnapshot;
+  readonly preloadedConnectorCatalogSnapshot?: ConnectorRuntimeSelection;
   readonly connectorScope: EffectiveConnectorScope;
   readonly timing: ApiDispatchTimingCollector;
 }): Promise<RunConnectorCatalogSelection> {
   if (isEmptyRunConnectorScope(args.connectorScope)) {
     return { kind: "empty" };
   }
-  const snapshot =
+  const selection =
     args.preloadedConnectorCatalogSnapshot ??
-    (await loadConnectorRuntimeSnapshot(args.db, {
+    (await loadConnectorRuntimeSelection(args.db, {
       timing: args.timing,
       requestedConnectorSlugs: args.connectorScope.allowedConnectorSlugs,
     }));
-  return { kind: "complete", snapshot };
+  return { kind: "scoped", selection };
 }
 
 function prepareRunOutputMetadata(args: {
@@ -8655,7 +8681,7 @@ interface PrepareRunContextInput {
   readonly preloadedFeatureSwitchContext: FeatureSwitchContext | undefined;
   readonly preloadedUserTimezone: string | null | undefined;
   readonly preloadedConnectorCatalogSnapshot:
-    | ConnectorRuntimeSnapshot
+    | ConnectorRuntimeSelection
     | undefined;
 }
 
@@ -9193,7 +9219,7 @@ interface PrepareAgentRunArgs {
   readonly preloadedFeatureSwitchContext?: FeatureSwitchContext;
   // Undefined means not preloaded; null is an authoritative missing value.
   readonly preloadedUserTimezone?: string | null;
-  readonly preloadedConnectorCatalogSnapshot?: ConnectorRuntimeSnapshot;
+  readonly preloadedConnectorCatalogSnapshot?: ConnectorRuntimeSelection;
 }
 
 interface CompleteAgentRunArgs {

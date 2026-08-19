@@ -97,18 +97,20 @@ export function pendingChatQueueEventCondition(db: ChatQueueReadDb) {
 export function chatQueueEventPriority(): SQL {
   return sql`CASE ${chatEvents.eventType}
     WHEN 'input.prompt' THEN 0
-    WHEN 'input.goal' THEN 1
-    WHEN 'input.automation' THEN 2
+    WHEN 'input.automation' THEN 1
+    WHEN 'input.goal' THEN 2
     ELSE 3
   END`;
 }
 
 /**
  * List one thread's pending queue in its authoritative database order. User
- * input keeps absolute priority over goal continuation; goal continuation stays
- * ahead of automation input. Each class is FIFO by the original event timestamp
- * and id. Keep the sort in PostgreSQL so sub-millisecond timestamp precision
- * matches the final queue-claim queries.
+ * input keeps absolute priority over the rest; automation input stays ahead of
+ * goal continuation, because a goal continues itself after every run and would
+ * otherwise leave no idle window for an automation event to be claimed. Each
+ * class is FIFO by the original event timestamp and id. Keep the sort in
+ * PostgreSQL so sub-millisecond timestamp precision matches the final
+ * queue-claim queries.
  */
 export async function listPendingChatQueueEvents(
   db: ChatQueueReadDb,

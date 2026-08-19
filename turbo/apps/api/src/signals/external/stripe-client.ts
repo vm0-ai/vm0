@@ -437,7 +437,10 @@ export interface StripeSubscriptionSchedulesApi {
     params: StripeSubscriptionScheduleUpdateParams,
     options?: StripeRequestOptions,
   ): Promise<StripeSubscriptionSchedule>;
-  release(id: string): Promise<StripeSubscriptionSchedule>;
+  release(
+    id: string,
+    params?: { readonly preserve_cancel_date?: boolean },
+  ): Promise<StripeSubscriptionSchedule>;
 }
 
 export interface StripeCustomersApi {

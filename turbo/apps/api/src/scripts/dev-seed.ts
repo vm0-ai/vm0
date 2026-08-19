@@ -50,7 +50,7 @@ function usd(amount: number): number {
   return Math.round(amount * USD_TO_CREDITS);
 }
 
-/** Video price with a 20% gross margin: provider cost / 0.8. */
+/** Video price with a 25% markup (20% gross margin): provider cost / 0.8. */
 function videoUsd(providerCost: number): number {
   return Math.round((providerCost * USD_TO_CREDITS) / 0.8);
 }
@@ -400,8 +400,8 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["tokens.cache_read", usd(1), 1_000_000],
     ["tokens.cache_creation", usd(12.5), 1_000_000],
   ]),
-  // DeepSeek API pricing retrieved 2026-07-31 from:
-  // https://api-docs.deepseek.com/quick_start/pricing/
+  // Canonical VM0 customer credit pricing for managed DeepSeek V4 Flash.
+  // Keep this product rate independent of the selected upstream route.
   ...usageGroup("model", "deepseek-v4-flash", [
     ["tokens.input", usd(0.14), 1_000_000],
     ["tokens.output", usd(0.28), 1_000_000],
@@ -605,10 +605,12 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["output_megapixel", usd(0.03), 1],
   ]),
 
-  // Video generation uses a 20% gross margin: price = provider cost / 0.8.
+  // Video generation uses a 25% markup (20% gross margin): cost / 0.8.
   ...usageGroup("video", "dreamina-seedance-2-5-260628", [
     ["output_video_tokens.480p_720p.no_video", videoUsd(10.7), 1_000_000],
     ["output_video_tokens.480p_720p.with_video", videoUsd(6.4), 1_000_000],
+    ["output_video_tokens.1080p.no_video", videoUsd(11.7), 1_000_000],
+    ["output_video_tokens.1080p.with_video", videoUsd(7), 1_000_000],
   ]),
   ...usageGroup("video", "dreamina-seedance-2-0-260128", [
     ["output_video_tokens.480p_720p.no_video", videoUsd(7), 1_000_000],
@@ -666,9 +668,6 @@ function getVendorApiKeyEnvVars(vendor: string): string[] {
   }
   if (vendor === "openai") {
     return [envVar, "OPENAI_API_KEY"];
-  }
-  if (vendor === "deepseek") {
-    return [envVar, "DEEPSEEK_API_KEY"];
   }
   return [envVar];
 }

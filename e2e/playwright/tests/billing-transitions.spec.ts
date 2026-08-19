@@ -1,7 +1,8 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "../fixtures";
 import {
-  refreshClerkSessionToken,
+  getCurrentClerkSessionToken,
+  type ClerkSessionTokenCache,
   signInWithClerkTestingHelper,
 } from "../lib/auth";
 import {
@@ -22,13 +23,8 @@ type UsagePackUsd = 20 | 50 | 100 | 200;
 
 interface BillingOwner {
   readonly organizationId: string;
-  readonly session: BillingSession;
+  readonly session: ClerkSessionTokenCache;
   readonly userId: string;
-}
-
-interface BillingSession {
-  refreshedAt: number;
-  token: string;
 }
 
 interface ScheduledPlanChangeSummary {
@@ -100,28 +96,28 @@ test("usage-pack and Plan transitions preserve scheduled intent", async ({
   test.setTimeout(360_000);
 
   await withBillingOwner(page, "E2E Usage Pack Transitions", async (owner) => {
-    let token = await buyUsagePackPlan(page, owner, "pro");
-    await expectPlanState(page, token, {
+    await buyUsagePackPlan(page, "pro");
+    await expectPlanState(page, owner, {
       cancelAtPeriodEnd: false,
       hasSubscription: true,
       scheduledChange: null,
       tier: "pro",
     });
-    await expectUsagePackState(page, token, owner.userId, {
+    await expectUsagePackState(page, owner, owner.userId, {
       pendingChange: null,
       tier: "pro",
       usagePackUsd: 20,
     });
 
-    token = await changeUsagePack(page, owner, "pro", 200, "Confirm", true);
-    await expectUsagePackState(page, token, owner.userId, {
+    await changeUsagePack(page, "pro", 200, "Confirm", true);
+    await expectUsagePackState(page, owner, owner.userId, {
       pendingChange: null,
       tier: "pro",
       usagePackUsd: 200,
     });
 
-    token = await changeUsagePack(page, owner, "pro", 20, "Confirm");
-    await expectUsagePackState(page, token, owner.userId, {
+    await changeUsagePack(page, "pro", 20, "Confirm");
+    await expectUsagePackState(page, owner, owner.userId, {
       pendingChange: {
         kind: "downgrade",
         status: "scheduled",
@@ -131,8 +127,8 @@ test("usage-pack and Plan transitions preserve scheduled intent", async ({
       usagePackUsd: 200,
     });
 
-    token = await changeUsagePack(page, owner, "pro", 100, "Confirm");
-    await expectUsagePackState(page, token, owner.userId, {
+    await changeUsagePack(page, "pro", 100, "Confirm");
+    await expectUsagePackState(page, owner, owner.userId, {
       pendingChange: {
         kind: "downgrade",
         status: "scheduled",
@@ -142,15 +138,15 @@ test("usage-pack and Plan transitions preserve scheduled intent", async ({
       usagePackUsd: 200,
     });
 
-    token = await changeUsagePack(page, owner, "pro", 200, "Restore");
-    await expectUsagePackState(page, token, owner.userId, {
+    await changeUsagePack(page, "pro", 200, "Restore");
+    await expectUsagePackState(page, owner, owner.userId, {
       pendingChange: null,
       tier: "pro",
       usagePackUsd: 200,
     });
 
-    token = await cancelPlan(page, owner, "pro");
-    await expectPlanState(page, token, {
+    await cancelPlan(page, "pro");
+    await expectPlanState(page, owner, {
       cancelAtPeriodEnd: true,
       hasSubscription: true,
       scheduledChange: {
@@ -160,29 +156,29 @@ test("usage-pack and Plan transitions preserve scheduled intent", async ({
       tier: "pro",
     });
 
-    token = await restorePlan(page, owner, "pro");
-    await expectPlanState(page, token, {
+    await restorePlan(page, "pro");
+    await expectPlanState(page, owner, {
       cancelAtPeriodEnd: false,
       hasSubscription: true,
       scheduledChange: null,
       tier: "pro",
     });
 
-    token = await upgradeProToTeam(page, owner);
-    await expectPlanState(page, token, {
+    await upgradeProToTeam(page);
+    await expectPlanState(page, owner, {
       cancelAtPeriodEnd: false,
       hasSubscription: true,
       scheduledChange: null,
       tier: "team",
     });
-    await expectUsagePackState(page, token, owner.userId, {
+    await expectUsagePackState(page, owner, owner.userId, {
       pendingChange: null,
       tier: "team",
       usagePackUsd: 200,
     });
 
-    token = await cancelPlan(page, owner, "team");
-    await expectPlanState(page, token, {
+    await cancelPlan(page, "team");
+    await expectPlanState(page, owner, {
       cancelAtPeriodEnd: true,
       hasSubscription: true,
       scheduledChange: {
@@ -192,32 +188,32 @@ test("usage-pack and Plan transitions preserve scheduled intent", async ({
       tier: "team",
     });
 
-    token = await restorePlan(page, owner, "team");
-    await expectPlanState(page, token, {
+    await restorePlan(page, "team");
+    await expectPlanState(page, owner, {
       cancelAtPeriodEnd: false,
       hasSubscription: true,
       scheduledChange: null,
       tier: "team",
     });
 
-    token = await downgradeTeamToPro(page, owner);
-    await expectPlanState(page, token, {
+    await downgradeTeamToPro(page);
+    await expectPlanState(page, owner, {
       cancelAtPeriodEnd: false,
       hasSubscription: true,
       scheduledChange: { targetTier: "pro", type: "downgrade" },
       tier: "team",
     });
 
-    token = await restorePlan(page, owner, "team");
-    await expectPlanState(page, token, {
+    await restorePlan(page, "team");
+    await expectPlanState(page, owner, {
       cancelAtPeriodEnd: false,
       hasSubscription: true,
       scheduledChange: null,
       tier: "team",
     });
 
-    token = await cancelPlan(page, owner, "team");
-    await expectPlanState(page, token, {
+    await cancelPlan(page, "team");
+    await expectPlanState(page, owner, {
       cancelAtPeriodEnd: true,
       hasSubscription: true,
       scheduledChange: {
@@ -227,27 +223,136 @@ test("usage-pack and Plan transitions preserve scheduled intent", async ({
       tier: "team",
     });
 
-    token = await replaceTeamCancellationWithPro(page, owner);
-    await expectPlanState(page, token, {
+    await replaceTeamCancellationWithPro(page);
+    await expectPlanState(page, owner, {
       cancelAtPeriodEnd: false,
       hasSubscription: true,
       scheduledChange: { targetTier: "pro", type: "downgrade" },
       tier: "team",
     });
 
-    token = await restorePlan(page, owner, "team");
-    await expectPlanState(page, token, {
+    await restorePlan(page, "team");
+    await expectPlanState(page, owner, {
       cancelAtPeriodEnd: false,
       hasSubscription: true,
       scheduledChange: null,
       tier: "team",
     });
-    await expectUsagePackState(page, token, owner.userId, {
+    await expectUsagePackState(page, owner, owner.userId, {
       pendingChange: null,
       tier: "team",
       usagePackUsd: 200,
     });
   });
+});
+
+test("restored Team plan preserves package and concurrency changes", async ({
+  page,
+}) => {
+  test.setTimeout(360_000);
+
+  await withBillingOwner(
+    page,
+    "E2E Combined Billing Transitions",
+    async (owner) => {
+      await buyUsagePackPlan(page, "team", 100);
+      await expectPlanState(page, owner, {
+        cancelAtPeriodEnd: false,
+        hasSubscription: true,
+        scheduledChange: null,
+        tier: "team",
+      });
+      await expectUsagePackState(page, owner, owner.userId, {
+        pendingChange: null,
+        tier: "team",
+        usagePackUsd: 100,
+      });
+      await expectConcurrencyState(page, owner, {
+        cancelAtPeriodEnd: null,
+        concurrencyLimit: 10,
+        quantity: null,
+        scheduledQuantity: null,
+        subscriptionCount: 0,
+      });
+
+      await downgradeTeamToPro(page, 20);
+      await expectPlanState(page, owner, {
+        cancelAtPeriodEnd: false,
+        hasSubscription: true,
+        scheduledChange: { targetTier: "pro", type: "downgrade" },
+        tier: "team",
+      });
+      await expectUsagePackState(page, owner, owner.userId, {
+        pendingChange: {
+          kind: "downgrade",
+          status: "scheduled",
+          targetUsagePackUsd: 20,
+        },
+        tier: "team",
+        usagePackUsd: 100,
+      });
+
+      await restorePlan(page, "team");
+      await expectPlanState(page, owner, {
+        cancelAtPeriodEnd: false,
+        hasSubscription: true,
+        scheduledChange: null,
+        tier: "team",
+      });
+      await expectUsagePackState(page, owner, owner.userId, {
+        pendingChange: null,
+        tier: "team",
+        usagePackUsd: 100,
+      });
+
+      await changeUsagePack(page, "team", 50, "Confirm");
+      await expectUsagePackState(page, owner, owner.userId, {
+        pendingChange: {
+          kind: "downgrade",
+          status: "scheduled",
+          targetUsagePackUsd: 50,
+        },
+        tier: "team",
+        usagePackUsd: 100,
+      });
+
+      await buyConcurrency(page, owner, 10);
+      await expectConcurrencyState(page, owner, {
+        cancelAtPeriodEnd: false,
+        concurrencyLimit: 20,
+        quantity: 10,
+        scheduledQuantity: null,
+        subscriptionCount: 1,
+      });
+      await expectUsagePackState(page, owner, owner.userId, {
+        pendingChange: {
+          kind: "downgrade",
+          status: "scheduled",
+          targetUsagePackUsd: 50,
+        },
+        tier: "team",
+        usagePackUsd: 100,
+      });
+
+      await changeConcurrency(page, 5);
+      await expectConcurrencyState(page, owner, {
+        cancelAtPeriodEnd: false,
+        concurrencyLimit: 20,
+        quantity: 10,
+        scheduledQuantity: 5,
+        subscriptionCount: 1,
+      });
+      await expectUsagePackState(page, owner, owner.userId, {
+        pendingChange: {
+          kind: "downgrade",
+          status: "scheduled",
+          targetUsagePackUsd: 50,
+        },
+        tier: "team",
+        usagePackUsd: 100,
+      });
+    },
+  );
 });
 
 test("paid invitation purchases and revokes a pending member package", async ({
@@ -257,13 +362,13 @@ test("paid invitation purchases and revokes a pending member package", async ({
 
   await withBillingOwner(page, "E2E Paid Member Invitation", async (owner) => {
     const inviteeEmail = generateTestEmail("paid-onboarding");
-    let token = await buyUsagePackPlan(page, owner, "pro");
-    await expectUsagePackState(page, token, owner.userId, {
+    await buyUsagePackPlan(page, "pro");
+    await expectUsagePackState(page, owner, owner.userId, {
       pendingChange: null,
       tier: "pro",
       usagePackUsd: 20,
     });
-    await expectUsagePackCreditState(page, token, owner.userId, {
+    await expectUsagePackCreditState(page, owner, owner.userId, {
       bonusCredits: 400,
       hasUsagePack: true,
       memberTotalCredits: 20_400,
@@ -272,15 +377,15 @@ test("paid invitation purchases and revokes a pending member package", async ({
     });
     await expectUsagePackCreditsUi(page);
 
-    token = await purchasePaidInvitation(page, owner, inviteeEmail, 50);
-    await expectPendingInvitationState(page, token, inviteeEmail, {
+    await purchasePaidInvitation(page, inviteeEmail, 50);
+    await expectPendingInvitationState(page, owner, inviteeEmail, {
       email: inviteeEmail,
       role: "member",
       usagePackUsd: 50,
     });
 
-    token = await revokePaidInvitation(page, owner, inviteeEmail);
-    await expectPendingInvitationState(page, token, inviteeEmail, null);
+    await revokePaidInvitation(page, inviteeEmail);
+    await expectPendingInvitationState(page, owner, inviteeEmail, null);
   });
 });
 
@@ -290,14 +395,14 @@ test("concurrency transitions handle schedules, cancellation, and restoration", 
   test.setTimeout(360_000);
 
   await withBillingOwner(page, "E2E Concurrency Transitions", async (owner) => {
-    let token = await buyUsagePackPlan(page, owner, "team");
-    await expectPlanState(page, token, {
+    await buyUsagePackPlan(page, "team");
+    await expectPlanState(page, owner, {
       cancelAtPeriodEnd: false,
       hasSubscription: true,
       scheduledChange: null,
       tier: "team",
     });
-    await expectConcurrencyState(page, token, {
+    await expectConcurrencyState(page, owner, {
       cancelAtPeriodEnd: null,
       concurrencyLimit: 10,
       quantity: null,
@@ -305,8 +410,8 @@ test("concurrency transitions handle schedules, cancellation, and restoration", 
       subscriptionCount: 0,
     });
 
-    token = await buyConcurrency(page, owner, 5);
-    await expectConcurrencyState(page, token, {
+    await buyConcurrency(page, owner, 5);
+    await expectConcurrencyState(page, owner, {
       cancelAtPeriodEnd: false,
       concurrencyLimit: 15,
       quantity: 5,
@@ -314,8 +419,8 @@ test("concurrency transitions handle schedules, cancellation, and restoration", 
       subscriptionCount: 1,
     });
 
-    token = await changeConcurrency(page, owner, 1);
-    await expectConcurrencyState(page, token, {
+    await changeConcurrency(page, 1);
+    await expectConcurrencyState(page, owner, {
       cancelAtPeriodEnd: false,
       concurrencyLimit: 15,
       quantity: 5,
@@ -323,8 +428,8 @@ test("concurrency transitions handle schedules, cancellation, and restoration", 
       subscriptionCount: 1,
     });
 
-    token = await changeConcurrency(page, owner, 3);
-    await expectConcurrencyState(page, token, {
+    await changeConcurrency(page, 3);
+    await expectConcurrencyState(page, owner, {
       cancelAtPeriodEnd: false,
       concurrencyLimit: 15,
       quantity: 5,
@@ -332,8 +437,8 @@ test("concurrency transitions handle schedules, cancellation, and restoration", 
       subscriptionCount: 1,
     });
 
-    token = await changeConcurrency(page, owner, 6);
-    await expectConcurrencyState(page, token, {
+    await changeConcurrency(page, 6);
+    await expectConcurrencyState(page, owner, {
       cancelAtPeriodEnd: false,
       concurrencyLimit: 16,
       quantity: 6,
@@ -341,8 +446,8 @@ test("concurrency transitions handle schedules, cancellation, and restoration", 
       subscriptionCount: 1,
     });
 
-    token = await cancelConcurrency(page, owner);
-    await expectConcurrencyState(page, token, {
+    await cancelConcurrency(page);
+    await expectConcurrencyState(page, owner, {
       cancelAtPeriodEnd: true,
       concurrencyLimit: 16,
       quantity: 6,
@@ -350,8 +455,8 @@ test("concurrency transitions handle schedules, cancellation, and restoration", 
       subscriptionCount: 1,
     });
 
-    token = await restoreConcurrency(page, owner);
-    await expectConcurrencyState(page, token, {
+    await restoreConcurrency(page);
+    await expectConcurrencyState(page, owner, {
       cancelAtPeriodEnd: false,
       concurrencyLimit: 16,
       quantity: 6,
@@ -359,8 +464,8 @@ test("concurrency transitions handle schedules, cancellation, and restoration", 
       subscriptionCount: 1,
     });
 
-    token = await changeConcurrency(page, owner, 10);
-    await expectConcurrencyState(page, token, {
+    await changeConcurrency(page, 10);
+    await expectConcurrencyState(page, owner, {
       cancelAtPeriodEnd: false,
       concurrencyLimit: 20,
       quantity: 10,
@@ -389,13 +494,14 @@ async function withBillingOwner(
       activeOrganizationId: organizationId,
       preserveAppPage: true,
     });
-    await completeExploreOnboarding(page, { appUrl });
-    await enableUsagePackPlans(page, token);
-    await run({
+    const owner: BillingOwner = {
       organizationId,
       session: { refreshedAt: Date.now(), token },
       userId,
-    });
+    };
+    await completeExploreOnboarding(page, { appUrl });
+    await enableUsagePackPlans(page, await currentToken(page, owner));
+    await run(owner);
   } finally {
     await deleteClerkTestOwnerResources(
       email,
@@ -431,9 +537,9 @@ async function enableUsagePackPlans(page: Page, token: string): Promise<void> {
 
 async function buyUsagePackPlan(
   page: Page,
-  owner: BillingOwner,
   tier: PaidTier,
-): Promise<string> {
+  usagePackUsd?: UsagePackUsd,
+): Promise<void> {
   const planLabel = tier === "pro" ? "Pro" : "Team";
   const settings = await openBillingSettings(page);
   await expect(
@@ -455,6 +561,9 @@ async function buyUsagePackPlan(
   await expect(
     packages.getByRole("combobox", { name: /^Usage for /u }),
   ).toBeVisible();
+  if (usagePackUsd !== undefined) {
+    await selectUsagePack(page, packages, usagePackUsd);
+  }
   const summary = packages.getByRole("region", { name: "Order summary" });
   await summary
     .getByRole("button", { name: `Upgrade to ${planLabel}`, exact: true })
@@ -465,7 +574,6 @@ async function buyUsagePackPlan(
     timeout: 120_000,
     waitUntil: "domcontentloaded",
   });
-  return await currentToken(page, owner);
 }
 
 async function expectUsagePackCreditsUi(page: Page): Promise<void> {
@@ -488,10 +596,9 @@ async function expectUsagePackCreditsUi(page: Page): Promise<void> {
 
 async function purchasePaidInvitation(
   page: Page,
-  owner: BillingOwner,
   email: string,
   usagePackUsd: UsagePackUsd,
-): Promise<string> {
+): Promise<void> {
   const settings = await openPeopleSettings(page);
   await settings
     .getByRole("button", { name: "Add member", exact: true })
@@ -535,14 +642,9 @@ async function purchasePaidInvitation(
     row.getByText(`$${usagePackUsd}/month`, { exact: true }),
   ).toBeVisible();
   await expect(row.getByText("Pending", { exact: true })).toBeVisible();
-  return await currentToken(page, owner);
 }
 
-async function revokePaidInvitation(
-  page: Page,
-  owner: BillingOwner,
-  email: string,
-): Promise<string> {
+async function revokePaidInvitation(page: Page, email: string): Promise<void> {
   const settings = await openPeopleSettings(page);
   const row = pendingInvitationRow(settings, email);
   await expect(row).toBeVisible({ timeout: 30_000 });
@@ -569,7 +671,6 @@ async function revokePaidInvitation(
   await expect(pendingInvitationRow(settings, email)).toHaveCount(0, {
     timeout: 30_000,
   });
-  return await currentToken(page, owner);
 }
 
 async function openPeopleSettings(page: Page): Promise<Locator> {
@@ -594,20 +695,17 @@ function pendingInvitationRow(settings: Locator, email: string): Locator {
 
 async function changeUsagePack(
   page: Page,
-  owner: BillingOwner,
   tier: PaidTier,
   target: UsagePackUsd,
   action: "Confirm" | "Restore",
   backFromReviewOnce = false,
-): Promise<string> {
-  const token = await currentToken(page, owner);
+): Promise<void> {
   const packages = await openUsagePackManagement(page, tier);
   await selectUsagePack(page, packages, target);
-  return await submitUsagePackConfiguration(
+  await submitUsagePackConfiguration(
     page,
     packages,
     action,
-    token,
     backFromReviewOnce,
   );
 }
@@ -650,9 +748,8 @@ async function submitUsagePackConfiguration(
   page: Page,
   packages: Locator,
   action: "Confirm" | "Restore",
-  token: string,
   backFromReviewOnce = false,
-): Promise<string> {
+): Promise<void> {
   const summary = packages.getByRole("region", { name: "Order summary" });
   const actionButton = summary.getByRole("button", {
     name: action,
@@ -674,15 +771,9 @@ async function submitUsagePackConfiguration(
 
   await review.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(review).toBeHidden({ timeout: 30_000 });
-  return token;
 }
 
-async function cancelPlan(
-  page: Page,
-  owner: BillingOwner,
-  tier: PaidTier,
-): Promise<string> {
-  const token = await currentToken(page, owner);
+async function cancelPlan(page: Page, tier: PaidTier): Promise<void> {
   const settings = await openBillingSettings(page);
   const planLabel = tier === "pro" ? "Pro" : "Team";
   await expect(
@@ -700,15 +791,9 @@ async function cancelPlan(
     .getByRole("button", { name: "Cancel subscription", exact: true })
     .click();
   await expect(dialog).toBeHidden({ timeout: 30_000 });
-  return token;
 }
 
-async function restorePlan(
-  page: Page,
-  owner: BillingOwner,
-  tier: PaidTier,
-): Promise<string> {
-  const token = await currentToken(page, owner);
+async function restorePlan(page: Page, tier: PaidTier): Promise<void> {
   const settings = await openBillingSettings(page);
   const restore = settings.getByRole("button", {
     name: "Restore plan",
@@ -731,28 +816,22 @@ async function restorePlan(
     .getByRole("button", { name: "Restore plan", exact: true })
     .click();
   await expect(dialog).toBeHidden({ timeout: 30_000 });
-  return token;
 }
 
-async function upgradeProToTeam(
-  page: Page,
-  owner: BillingOwner,
-): Promise<string> {
-  const token = await currentToken(page, owner);
+async function upgradeProToTeam(page: Page): Promise<void> {
   const settings = await openBillingSettings(page);
   await settings.getByRole("button", { name: "Upgrade", exact: true }).click();
   const packages = page.getByRole("dialog", {
     name: "Configure member packages",
   });
   await expect(packages).toBeVisible();
-  return await submitUsagePackConfiguration(page, packages, "Confirm", token);
+  await submitUsagePackConfiguration(page, packages, "Confirm");
 }
 
 async function downgradeTeamToPro(
   page: Page,
-  owner: BillingOwner,
-): Promise<string> {
-  const token = await currentToken(page, owner);
+  usagePackUsd?: UsagePackUsd,
+): Promise<void> {
   const settings = await openBillingSettings(page);
   await settings
     .getByRole("button", { name: "Compare all plans", exact: true })
@@ -764,14 +843,13 @@ async function downgradeTeamToPro(
     name: "Configure member packages",
   });
   await expect(packages).toBeVisible();
-  return await submitUsagePackConfiguration(page, packages, "Confirm", token);
+  if (usagePackUsd !== undefined) {
+    await selectUsagePack(page, packages, usagePackUsd);
+  }
+  await submitUsagePackConfiguration(page, packages, "Confirm");
 }
 
-async function replaceTeamCancellationWithPro(
-  page: Page,
-  owner: BillingOwner,
-): Promise<string> {
-  const token = await currentToken(page, owner);
+async function replaceTeamCancellationWithPro(page: Page): Promise<void> {
   const settings = await openBillingSettings(page);
   await settings
     .getByRole("button", { name: "Compare all plans", exact: true })
@@ -785,14 +863,13 @@ async function replaceTeamCancellationWithPro(
     .getByRole("button", { name: "Downgrade to Pro", exact: true })
     .click();
   await expect(dialog).toBeHidden({ timeout: 30_000 });
-  return token;
 }
 
 async function buyConcurrency(
   page: Page,
   owner: BillingOwner,
   quantity: number,
-): Promise<string> {
+): Promise<void> {
   const token = await currentToken(page, owner);
   const initial = await readBillingSummary(page, token);
   expect(initial.canBuyConcurrency).toBe(true);
@@ -820,15 +897,12 @@ async function buyConcurrency(
     .getByRole("button", { name: "Pay and add slots", exact: true })
     .click();
   await expect(review).toBeHidden({ timeout: 30_000 });
-  return token;
 }
 
 async function changeConcurrency(
   page: Page,
-  owner: BillingOwner,
   targetQuantity: number,
-): Promise<string> {
-  const token = await currentToken(page, owner);
+): Promise<void> {
   const settings = await openBillingSettings(page);
   await settings.getByRole("button", { name: "Change", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Change concurrency" });
@@ -852,14 +926,9 @@ async function changeConcurrency(
     })
     .click();
   await expect(review).toBeHidden({ timeout: 30_000 });
-  return token;
 }
 
-async function cancelConcurrency(
-  page: Page,
-  owner: BillingOwner,
-): Promise<string> {
-  const token = await currentToken(page, owner);
+async function cancelConcurrency(page: Page): Promise<void> {
   const settings = await openBillingSettings(page);
   await settings.getByRole("button", { name: "Change", exact: true }).click();
   const changeDialog = page.getByRole("dialog", {
@@ -875,14 +944,9 @@ async function cancelConcurrency(
     .getByRole("button", { name: "Cancel subscription", exact: true })
     .click();
   await expect(cancelDialog).toBeHidden({ timeout: 30_000 });
-  return token;
 }
 
-async function restoreConcurrency(
-  page: Page,
-  owner: BillingOwner,
-): Promise<string> {
-  const token = await currentToken(page, owner);
+async function restoreConcurrency(page: Page): Promise<void> {
   const settings = await openBillingSettings(page);
   await expect(
     settings.getByRole("button", { name: "Change", exact: true }),
@@ -900,7 +964,6 @@ async function restoreConcurrency(
     .getByRole("button", { name: "Restore subscription", exact: true })
     .click();
   await expect(dialog).toBeHidden({ timeout: 30_000 });
-  return token;
 }
 
 async function openBillingSettings(page: Page): Promise<Locator> {
@@ -913,20 +976,15 @@ async function openBillingSettings(page: Page): Promise<Locator> {
 }
 
 async function currentToken(page: Page, owner: BillingOwner): Promise<string> {
-  if (Date.now() - owner.session.refreshedAt < TOKEN_REUSE_MS) {
-    return owner.session.token;
-  }
-  const token = await refreshClerkSessionToken(page, {
+  return await getCurrentClerkSessionToken(page, owner.session, {
     activeOrganizationId: owner.organizationId,
+    reuseMs: TOKEN_REUSE_MS,
   });
-  owner.session.refreshedAt = Date.now();
-  owner.session.token = token;
-  return token;
 }
 
 async function expectPlanState(
   page: Page,
-  token: string,
+  owner: BillingOwner,
   expected: {
     readonly cancelAtPeriodEnd: boolean;
     readonly hasSubscription: boolean;
@@ -937,12 +995,8 @@ async function expectPlanState(
   await expect
     .poll(
       async () => {
-        const state = await pollSafely(async () => {
-          return await readBillingSummary(page, token);
-        });
-        if ("pollingError" in state) {
-          return state;
-        }
+        const token = await currentToken(page, owner);
+        const state = await readBillingSummary(page, token);
         return {
           cancelAtPeriodEnd: state.cancelAtPeriodEnd,
           hasSubscription: state.hasSubscription,
@@ -961,16 +1015,15 @@ async function expectPlanState(
 
 async function expectUsagePackState(
   page: Page,
-  token: string,
+  owner: BillingOwner,
   memberId: string,
   expected: UsagePackSummary,
 ): Promise<void> {
   await expect
     .poll(
       async () => {
-        return await pollSafely(async () => {
-          return await readUsagePackSummary(page, token, memberId);
-        });
+        const token = await currentToken(page, owner);
+        return await readUsagePackSummary(page, token, memberId);
       },
       {
         intervals: POLL_INTERVALS_MS,
@@ -983,16 +1036,15 @@ async function expectUsagePackState(
 
 async function expectUsagePackCreditState(
   page: Page,
-  token: string,
+  owner: BillingOwner,
   memberId: string,
   expected: UsagePackCreditSummary,
 ): Promise<void> {
   await expect
     .poll(
       async () => {
-        return await pollSafely(async () => {
-          return await readUsagePackCreditSummary(page, token, memberId);
-        });
+        const token = await currentToken(page, owner);
+        return await readUsagePackCreditSummary(page, token, memberId);
       },
       {
         intervals: POLL_INTERVALS_MS,
@@ -1005,16 +1057,15 @@ async function expectUsagePackCreditState(
 
 async function expectPendingInvitationState(
   page: Page,
-  token: string,
+  owner: BillingOwner,
   email: string,
   expected: PendingInvitationSummary | null,
 ): Promise<void> {
   await expect
     .poll(
       async () => {
-        return await pollSafely(async () => {
-          return await readPendingInvitationSummary(page, token, email);
-        });
+        const token = await currentToken(page, owner);
+        return await readPendingInvitationSummary(page, token, email);
       },
       {
         intervals: POLL_INTERVALS_MS,
@@ -1027,7 +1078,7 @@ async function expectPendingInvitationState(
 
 async function expectConcurrencyState(
   page: Page,
-  token: string,
+  owner: BillingOwner,
   expected: {
     readonly cancelAtPeriodEnd: boolean | null;
     readonly concurrencyLimit: number;
@@ -1039,12 +1090,8 @@ async function expectConcurrencyState(
   await expect
     .poll(
       async () => {
-        const state = await pollSafely(async () => {
-          return await readBillingSummary(page, token);
-        });
-        if ("pollingError" in state) {
-          return state;
-        }
+        const token = await currentToken(page, owner);
+        const state = await readBillingSummary(page, token);
         const subscription = state.concurrencySubscriptions[0] ?? null;
         return {
           cancelAtPeriodEnd: subscription?.cancelAtPeriodEnd ?? null,
@@ -1061,18 +1108,6 @@ async function expectConcurrencyState(
       },
     )
     .toEqual(expected);
-}
-
-async function pollSafely<T>(
-  read: () => Promise<T>,
-): Promise<T | { readonly pollingError: string }> {
-  try {
-    return await read();
-  } catch (error) {
-    return {
-      pollingError: error instanceof Error ? error.message : String(error),
-    };
-  }
 }
 
 async function readBillingSummary(

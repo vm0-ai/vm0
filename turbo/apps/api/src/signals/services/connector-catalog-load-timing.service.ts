@@ -30,10 +30,11 @@ type ConnectorCatalogRawSizeBucket =
   | "512_1023_kib"
   | "1_2_mib"
   | "2_4_mib"
-  | "4_8_mib";
+  | "4_8_mib"
+  | "8_16_mib";
 type ConnectorCatalogCompressedSizeBucket =
   | ConnectorCatalogRawSizeBucket
-  | "8_16_mib";
+  | "16_32_mib";
 type ConnectorCatalogResolvedConnectorFractionBucket =
   | "not_applicable"
   | "none"
@@ -78,13 +79,16 @@ function rawSizeBucket(size: number): ConnectorCatalogRawSizeBucket {
   if (size < 4 * 1024 * 1024) {
     return "2_4_mib";
   }
-  return "4_8_mib";
+  if (size < 8 * 1024 * 1024) {
+    return "4_8_mib";
+  }
+  return "8_16_mib";
 }
 
 function compressedSizeBucket(
   size: number,
 ): ConnectorCatalogCompressedSizeBucket {
-  return size < 8 * 1024 * 1024 ? rawSizeBucket(size) : "8_16_mib";
+  return size < 16 * 1024 * 1024 ? rawSizeBucket(size) : "16_32_mib";
 }
 
 function resolvedConnectorFractionBucket(
@@ -138,6 +142,7 @@ export class ConnectorCatalogLoadTiming {
   private catalogCompressedSize: number | undefined;
   private connectorCount: number | undefined;
   private resolvedConnectorCount: number | undefined;
+  private materializedConnectorCount: number | undefined;
 
   constructor(
     private readonly collector: ApiDispatchTimingCollector,
@@ -176,6 +181,10 @@ export class ConnectorCatalogLoadTiming {
     this.catalogCompressedSize = args.compressedSize;
     this.connectorCount = args.connectorCount;
     this.resolvedConnectorCount = args.resolvedConnectorCount;
+  }
+
+  recordMaterializedConnectorCount(count: number): void {
+    this.materializedConnectorCount = count;
   }
 
   async measure<T>(
@@ -256,6 +265,13 @@ export class ConnectorCatalogLoadTiming {
         this.requestedConnectorCount === undefined
           ? "not_applicable"
           : countBucket(this.requestedConnectorCount),
+      ...(this.materializedConnectorCount === undefined
+        ? {}
+        : {
+            connector_catalog_materialized_connector_count_bucket: countBucket(
+              this.materializedConnectorCount,
+            ),
+          }),
     };
   }
 }

@@ -31,12 +31,13 @@ import {
   writeOrgMetadataWithPlanEntitlements,
 } from "./org-plan-entitlements.service";
 import {
+  knownBillingPlanPriceItem,
   knownPlanPriceItem,
-  tierFromPriceId,
+  tierForKnownPlanPrice,
 } from "./zero-billing-checkout.service";
 import {
   reconcileUsagePackSubscriptions,
-  USAGE_PACK_SUBSCRIPTION_PURPOSE,
+  stripeSubscriptionUsesMemberUsagePacks,
 } from "./usage-pack-subscription.service";
 import { reconcileUsagePackCreditRefunds } from "./usage-pack-credit-refund.service";
 import { reconcileUsagePackInvitationPurchases } from "./usage-pack-invitation-purchase.service";
@@ -68,7 +69,11 @@ interface SubscriptionInput {
   readonly cancel_at_period_end: boolean;
   readonly items: {
     readonly data: readonly {
-      readonly price: { readonly id: string };
+      readonly id?: string;
+      readonly price: {
+        readonly id: string;
+        readonly product?: string | { readonly id: string } | null;
+      };
       readonly quantity?: number | null;
       readonly current_period_end?: number | null;
     }[];
@@ -230,7 +235,17 @@ function usageAllowanceSubscriptionEnd(
   if (!periodEnd) {
     return null;
   }
-  return cancelAt && cancelAt < periodEnd ? cancelAt : periodEnd;
+  const allowanceCancelAtValue = subscription.metadata?.allowanceCancelAt;
+  const allowanceCancelAt = allowanceCancelAtValue
+    ? new Date(allowanceCancelAtValue)
+    : null;
+  return [cancelAt, allowanceCancelAt]
+    .filter((value): value is Date => {
+      return value !== null && !Number.isNaN(value.getTime());
+    })
+    .reduce((earliest, value) => {
+      return value < earliest ? value : earliest;
+    }, periodEnd);
 }
 
 function subscriptionCanRefreshPaidThrough(
@@ -250,8 +265,11 @@ function subscriptionIsPaymentFailed(subscription: SubscriptionInput): boolean {
 function subscriptionIsTerminalUsageAllowance(
   subscription: SubscriptionInput,
 ): boolean {
-  return TERMINAL_USAGE_ALLOWANCE_STATUSES.includes(
-    subscription.status as (typeof TERMINAL_USAGE_ALLOWANCE_STATUSES)[number],
+  return (
+    subscription.metadata?.allowanceStatus === "canceled" ||
+    TERMINAL_USAGE_ALLOWANCE_STATUSES.includes(
+      subscription.status as (typeof TERMINAL_USAGE_ALLOWANCE_STATUSES)[number],
+    )
   );
 }
 
@@ -286,6 +304,13 @@ async function upsertStripeSubscriptionPlanSnapshot(
   const cancelAt = subscriptionWillCancel(args.subscription)
     ? scheduledEnd
     : null;
+  const memberInviteUsagePackRequired =
+    args.stripeSubscriptionId !== null &&
+    (args.tier === "pro" || args.tier === "team" || args.tier === "custom") &&
+    (await stripeSubscriptionUsesMemberUsagePacks(tx, {
+      orgId: args.orgId,
+      stripeSubscriptionId: args.stripeSubscriptionId,
+    }));
   await upsertOrgPlanEntitlement(tx, {
     orgId: args.orgId,
     tier: args.tier,
@@ -296,9 +321,7 @@ async function upsertStripeSubscriptionPlanSnapshot(
     currentPeriodEnd: scheduledEnd,
     cancelAt,
     expiresAt: cancelAt,
-    memberInviteUsagePackRequired:
-      (args.tier === "pro" || args.tier === "team") &&
-      args.subscription.metadata?.purpose === USAGE_PACK_SUBSCRIPTION_PURPOSE,
+    memberInviteUsagePackRequired,
     sourceMetadata: args.subscription.metadata ?? {},
   });
 }
@@ -359,7 +382,7 @@ function currentBillingCandidateWhere(candidate: StripeBillingCandidate) {
   return and(
     eq(orgMetadata.orgId, candidate.orgId),
     eq(orgMetadata.stripeSubscriptionId, candidate.stripeSubscriptionId),
-    inArray(orgMetadata.tier, ["pro", "team"]),
+    inArray(orgMetadata.tier, PAID_TIERS),
     inArray(orgMetadata.subscriptionStatus, [
       ...PAYMENT_FAILED_SUBSCRIPTION_STATUSES,
     ]),
@@ -417,10 +440,11 @@ async function refreshRecoveredBillingCandidate(
   signal: AbortSignal,
 ): Promise<void> {
   const { db } = context;
-  const priceId =
-    knownPlanPriceItem(subscription.items.data)?.price.id ??
-    subscription.items.data[0]?.price.id;
-  const tier = priceId ? tierFromPriceId(priceId) : undefined;
+  const planItem = knownBillingPlanPriceItem(subscription.items.data);
+  const priceId = planItem?.price.id ?? subscription.items.data[0]?.price.id;
+  const tier = planItem
+    ? (tierForKnownPlanPrice(planItem.price) ?? undefined)
+    : undefined;
 
   await db.transaction(async (tx) => {
     await writeOrgMetadataWithPlanEntitlements(tx, {
@@ -743,7 +767,8 @@ async function reconcileConcurrencyCandidate(
   const isPaymentFailed = subscriptionIsPaymentFailed(subscription);
   const syncedFields = {
     subscriptionStatus: subscription.status,
-    cancelAtPeriodEnd: subscriptionWillCancel(subscription),
+    // `cancel_at` can be the main-plan grant expiry on a shared subscription.
+    cancelAtPeriodEnd: subscription.cancel_at_period_end,
     updatedAt: now,
     ...(periodEnd ? { currentPeriodEnd: periodEnd } : {}),
     ...(item ? { stripePriceId: item.price.id } : {}),
@@ -847,6 +872,36 @@ async function reconcileUsageAllowanceCandidate(
   const periodEnd = usageAllowanceSubscriptionEnd(subscription);
   const canRefreshPaidThrough = subscriptionCanRefreshPaidThrough(subscription);
   const isPaymentFailed = subscriptionIsPaymentFailed(subscription);
+  const allowancePriceId = subscription.metadata?.allowancePriceId;
+  const sharedAllowanceItem = allowancePriceId
+    ? subscription.items.data.find((item) => {
+        return item.price.id === allowancePriceId;
+      })
+    : undefined;
+
+  if (
+    periodEnd &&
+    periodEnd <= now &&
+    sharedAllowanceItem?.id &&
+    knownBillingPlanPriceItem(subscription.items.data)
+  ) {
+    await stripe.subscriptions.update(subscription.id, {
+      items: [{ id: sharedAllowanceItem.id, deleted: true }],
+      metadata: {
+        ...subscription.metadata,
+        allowanceStatus: "canceled",
+        allowanceCancelAt: periodEnd.toISOString(),
+      },
+      proration_behavior: "none",
+    });
+    signal.throwIfAborted();
+    return await updateUsageAllowanceCandidate(
+      context,
+      candidate,
+      { status: "canceled", expiresAt: periodEnd },
+      signal,
+    );
+  }
 
   if (subscriptionIsTerminalUsageAllowance(subscription)) {
     return await updateUsageAllowanceCandidate(

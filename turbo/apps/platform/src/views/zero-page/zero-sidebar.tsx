@@ -20,6 +20,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
   cn,
+  getShortcutLabel,
 } from "@okouai/ui";
 import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
 import {
@@ -666,7 +667,7 @@ function LabeledRailLink({
         )}
       </span>
       <span
-        className={`max-w-full truncate px-0.5 text-[9px] font-medium leading-none ${
+        className={`max-w-full truncate px-0.5 text-[9px] font-medium leading-[14px] ${
           isActive ? "text-sidebar-foreground" : "text-sidebar-foreground/60"
         }`}
       >
@@ -715,7 +716,7 @@ function LabeledNavRail() {
         aria-label={t(($) => {
           return $.appShell.sidebar.ariaLabel;
         })}
-        className="flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-y-auto pb-2"
+        className="flex min-h-0 w-full flex-1 flex-col items-center gap-3 overflow-y-auto pb-2"
       >
         {navItems.map((item) => {
           const isActive =
@@ -774,6 +775,7 @@ function ChatListColumn() {
   const searchLabel = t(($) => {
     return $.appShell.sidebar.searchConversations;
   });
+  const searchShortcutLabel = getShortcutLabel("mod+k");
   const newChatLabel = t(($) => {
     return $.appShell.sidebar.navigation.newChat;
   });
@@ -807,6 +809,7 @@ function ChatListColumn() {
                     openThreeColumnSearch();
                   }}
                   aria-label={searchLabel}
+                  aria-keyshortcuts="Meta+K Control+K"
                   variant="quiet"
                   size="icon-sm"
                 >
@@ -814,7 +817,10 @@ function ChatListColumn() {
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                <p className="text-xs">{searchLabel}</p>
+                <p className="text-xs">
+                  {searchLabel}
+                  <span aria-hidden="true">{` · ${searchShortcutLabel}`}</span>
+                </p>
               </TooltipContent>
             </Tooltip>
             <Tooltip>
