@@ -27,6 +27,7 @@ import {
 import { modelProviderSurfaceProtocolSchema } from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
 import {
   getDefaultModel,
+  getModelProviderCodexCatalogForModel,
   getModelProviderCodexRuntimeConfig,
   getModelProviderEnvBindings,
   getModelImageInputSupport,
@@ -253,6 +254,10 @@ import {
   type ConnectorCredentialAccess,
   type ConnectorCredentialReadGroup,
 } from "./connector-credential-access.service";
+import {
+  connectorAccountTargetKey,
+  resolveConnectorAccounts,
+} from "./connector-account-resolution.service";
 import {
   defaultFirewallPolicyForPermissionIndex,
   networkPolicyForFirewallPolicy,
@@ -2301,18 +2306,43 @@ async function vm0ModelProviderEnvironment(
   if (!apiKey || !secretName) {
     return null;
   }
-  const codexRuntimeConfig = getModelProviderCodexRuntimeConfig(concreteType);
+  const environment = providerEnvironmentFromSecretRefs(
+    concreteType,
+    secretName,
+    apiKey,
+    apiModel,
+  );
+  let codexRuntimeConfig = getModelProviderCodexRuntimeConfig(concreteType);
+  if (!codexRuntimeConfig) {
+    const modelCatalog = getModelProviderCodexCatalogForModel(
+      selectedModel,
+      apiModel,
+    );
+    if (modelCatalog) {
+      const baseUrl = environment.OPENAI_BASE_URL;
+      if (!baseUrl) {
+        throw new Error(
+          `Missing OPENAI_BASE_URL for VM0 Codex provider ${concreteType}`,
+        );
+      }
+      codexRuntimeConfig = {
+        providerId: concreteType,
+        name: MODEL_PROVIDER_TYPES[concreteType].label,
+        baseUrl,
+        envKey: "OPENAI_API_KEY",
+        requiresOpenaiAuth: false,
+        wireApi: "responses",
+        supportsWebsockets: false,
+        modelCatalog,
+      };
+    }
+  }
 
   return {
     id: null,
     type: "vm0",
     concreteType,
-    environment: providerEnvironmentFromSecretRefs(
-      concreteType,
-      secretName,
-      apiKey,
-      apiModel,
-    ),
+    environment,
     secrets: { [secretName]: apiKey },
     selectedModel,
     ...(codexRuntimeConfig ? { codexRuntimeConfig } : {}),
@@ -3727,7 +3757,7 @@ function storedConnectorSnapshotQuery(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedConnectorSlugs: readonly ConnectorSlug[];
+    readonly connectorIds: readonly string[];
   },
 ) {
   const selectedConnectors = db.$with("stored_connector_candidates").as(
@@ -3756,7 +3786,7 @@ function storedConnectorSnapshotQuery(
           eq(connectors.orgId, args.orgId),
           eq(connectors.userId, args.userId),
           isNotNull(connectors.connectorSlug),
-          inArray(connectors.connectorSlug, args.allowedConnectorSlugs),
+          inArray(connectors.id, args.connectorIds),
         ),
       ),
   );
@@ -3835,7 +3865,7 @@ async function loadStoredConnectorSnapshotRows(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedConnectorSlugs: readonly ConnectorSlug[];
+    readonly connectorIds: readonly string[];
     readonly timingDimensions: ApiDispatchTimingDimensions;
   },
   timing?: ApiDispatchTimingCollector,
@@ -3981,12 +4011,33 @@ async function loadStoredConnectorMaterializationSnapshot(
   const baseTimingDimensions = storedConnectorTimingDimensions({
     scopeSource: args.scopeSource,
   });
+  const accountResolutions = await resolveConnectorAccounts(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    requests: args.allowedConnectorSlugs.map((connectorSlug) => {
+      return {
+        target: { kind: "builtin" as const, connectorSlug },
+        selection: { kind: "default" as const },
+      };
+    }),
+  });
+  const connectorIds = args.allowedConnectorSlugs.flatMap((connectorSlug) => {
+    const resolution = accountResolutions.get(
+      connectorAccountTargetKey({ kind: "builtin", connectorSlug }),
+    );
+    return resolution?.kind === "resolved"
+      ? [resolution.account.connectorId]
+      : [];
+  });
+  if (connectorIds.length === 0) {
+    return null;
+  }
   const rows = await loadStoredConnectorSnapshotRows(
     db,
     {
       orgId: args.orgId,
       userId: args.userId,
-      allowedConnectorSlugs: args.allowedConnectorSlugs,
+      connectorIds,
       timingDimensions: baseTimingDimensions,
     },
     timing,
@@ -4671,10 +4722,33 @@ async function loadCustomConnectorContext(
     return emptyCustomConnectorRuntimeContext();
   }
 
+  const accountResolutions = await resolveConnectorAccounts(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    requests: args.allowedCustomConnectorIds.map((customConnectorId) => {
+      return {
+        target: { kind: "custom" as const, customConnectorId },
+        selection: { kind: "default" as const },
+      };
+    }),
+  });
+  const memberConnectorIdsByCustomConnectorId = new Map<string, string>();
+  for (const customConnectorId of args.allowedCustomConnectorIds) {
+    const resolution = accountResolutions.get(
+      connectorAccountTargetKey({ kind: "custom", customConnectorId }),
+    );
+    if (resolution?.kind === "resolved") {
+      memberConnectorIdsByCustomConnectorId.set(
+        customConnectorId,
+        resolution.account.connectorId,
+      );
+    }
+  }
   const rows = await loadCustomConnectorRuntimeData(db, {
     orgId: args.orgId,
     userId: args.userId,
     connectorIds: args.allowedCustomConnectorIds,
+    memberConnectorIdsByCustomConnectorId,
     measure: async (step, operation) => {
       const actionType =
         step === "connectorRows"

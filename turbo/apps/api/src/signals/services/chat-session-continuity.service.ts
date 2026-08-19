@@ -1,6 +1,7 @@
 import {
   MODEL_PROVIDER_TYPES,
   areProvidersCompatible,
+  isCustomGatewayProviderType,
   normalizeRunModelId,
   type ModelProviderType,
 } from "@okouai/api-contracts/contracts/model-providers";
@@ -253,22 +254,40 @@ async function customSurfaceRouteChanged(args: {
   );
 }
 
+/**
+ * Whether either side of a route change can be a custom gateway surface.
+ *
+ * The dedicated `custom-*` types say so directly. The two Vercel adapter types
+ * still count because runs recorded before migration `0948` used them for
+ * custom surfaces too, and the rows whose surface id no longer resolves were
+ * deliberately left unreclassified.
+ */
+function customSurfaceRouteMayBeInUse(args: {
+  readonly previousRoute: ChatThreadSessionRoute;
+  readonly nextRoute: ChatThreadSessionRoute;
+}): boolean {
+  return [args.previousRoute.modelProvider, args.nextRoute.modelProvider].some(
+    (provider) => {
+      return (
+        provider === "vercel-ai-gateway" ||
+        provider === "vercel-ai-gateway-codex" ||
+        (isKnownModelProvider(provider) &&
+          isCustomGatewayProviderType(provider))
+      );
+    },
+  );
+}
+
 function shouldRotateCanonicalSession(args: {
   readonly previousRoute: ChatThreadSessionRoute;
   readonly nextRoute: ChatThreadSessionRoute;
 }): boolean {
   const providerIdChanged =
     args.previousRoute.modelProviderId !== args.nextRoute.modelProviderId;
-  const gatewayAdapterInUse =
-    args.previousRoute.modelProvider === "vercel-ai-gateway" ||
-    args.previousRoute.modelProvider === "vercel-ai-gateway-codex" ||
-    args.nextRoute.modelProvider === "vercel-ai-gateway" ||
-    args.nextRoute.modelProvider === "vercel-ai-gateway-codex";
-  if (providerIdChanged && gatewayAdapterInUse) {
-    // A custom surface uses the same runtime adapter type as a legacy Vercel
-    // provider. Once its connection is deleted, the surface row can no longer
-    // prove that the previous route was custom, so the provider identity must
-    // remain part of the canonical continuity boundary.
+  if (providerIdChanged && customSurfaceRouteMayBeInUse(args)) {
+    // Once a custom gateway connection is deleted, the surface row can no
+    // longer prove that the previous route was custom, so the provider
+    // identity must remain part of the canonical continuity boundary.
     return true;
   }
   return shouldStartNewChatSession({

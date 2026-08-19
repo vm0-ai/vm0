@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.773.1](https://github.com/vm0-ai/vm0/compare/app-v0.773.0...app-v0.773.1) (2026-08-19)
+
+
+### Bug Fixes
+
+* **platform:** keep virtual thread rows visible after refresh ([#28142](https://github.com/vm0-ai/vm0/issues/28142)) ([2776cb2](https://github.com/vm0-ai/vm0/commit/2776cb2fda7e4f5f9e28f2447a623d328a1f4c34))
+* **platform:** prevent multipart completion abort race ([#28100](https://github.com/vm0-ai/vm0/issues/28100)) ([84edf6a](https://github.com/vm0-ai/vm0/commit/84edf6a1d268f0519a4ad1c95aa10981e1ad7e0c))
+* **platform:** update connector count to 1100+ ([#28139](https://github.com/vm0-ai/vm0/issues/28139)) ([074baf3](https://github.com/vm0-ai/vm0/commit/074baf3683a19fff2e08004f53984c78e3ca35b6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.341.1
+    * @okouai/core bumped to 8.572.0
+
 ## [0.773.0](https://github.com/vm0-ai/vm0/compare/app-v0.772.2...app-v0.773.0) (2026-08-19)
 
 

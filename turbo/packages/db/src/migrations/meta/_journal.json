@@ -981,6 +981,13 @@
       "when": 1787110580902,
       "tag": "0947_add_seedance_2_5_1080p_pricing",
       "breakpoints": true
+    },
+    {
+      "idx": 948,
+      "version": "7",
+      "when": 1787113693225,
+      "tag": "0948_custom_model_gateway_provider_types",
+      "breakpoints": true
     }
   ]
 }

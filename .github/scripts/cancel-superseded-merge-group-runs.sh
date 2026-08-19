@@ -69,13 +69,24 @@ if [[ ! "$pr_number" =~ ^[0-9]+$ ]]; then
   exit 2
 fi
 
-pr_head=$(
+if ! pr_head=$(
   gh api --method GET \
     "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}" \
-    --jq '[.head.ref, .head.repo.full_name] | @tsv'
-)
+    --jq '[.head.ref, .head.repo.full_name] | @tsv' 2>&1
+); then
+  if $cancel_selected_runs; then
+    echo "::warning::failed to resolve PR #${pr_number} head; continuing without cancellation: ${pr_head}" >&2
+    exit 0
+  fi
+  echo "failed to resolve PR #${pr_number} head: ${pr_head}" >&2
+  exit 1
+fi
 IFS=$'\t' read -r pr_head_ref pr_head_repository <<<"$pr_head"
 if [ -z "$pr_head_ref" ] || [ -z "$pr_head_repository" ]; then
+  if $cancel_selected_runs; then
+    echo "::warning::failed to resolve head repository and ref for PR #${pr_number}; continuing without cancellation" >&2
+    exit 0
+  fi
   echo "failed to resolve head repository and ref for PR #${pr_number}" >&2
   exit 1
 fi
@@ -92,12 +103,14 @@ discover_selected_runs() {
   local status
 
   for status in "${active_statuses[@]}"; do
-    gh api --method GET \
+    if ! gh api --method GET \
       "repos/${GITHUB_REPOSITORY}/actions/runs" \
       -f "status=${status}" \
       -f per_page=100 \
       --paginate \
-      --slurp
+      --slurp; then
+      return 1
+    fi
   done |
     jq -r \
       --argjson current_run_id "$GITHUB_RUN_ID" \
@@ -147,7 +160,14 @@ discovery_started_at=$SECONDS
 # Each status filter is a separate API snapshot. Require the selected run IDs
 # to stabilize so a run changing statuses cannot fall between those snapshots.
 while true; do
-  discovered_runs=$(discover_selected_runs)
+  if ! discovered_runs=$(discover_selected_runs 2>&1); then
+    if $cancel_selected_runs; then
+      echo "::warning::failed to discover ${selected_runs_label}; continuing without cancellation: ${discovered_runs}" >&2
+      exit 0
+    fi
+    echo "failed to discover ${selected_runs_label}: ${discovered_runs}" >&2
+    exit 1
+  fi
   discovered_run_ids=$(printf '%s\n' "$discovered_runs" | cut -f1)
 
   if $have_previous_run_ids; then
@@ -195,39 +215,15 @@ while IFS= read -r run_record; do
       gh api --method POST \
         "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/force-cancel" 2>&1
     ); then
-      current_status=$(
-        gh api --method GET \
-          "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" \
-          --jq '.status'
-      )
-      if [ "$current_status" != "completed" ]; then
-        # GitHub can wedge a run so that it keeps reporting an active status
-        # while refusing force cancellation with HTTP 409. A run only claims
-        # the shared pr-N runner once it starts a job, so a wedged run whose
-        # latest attempt started no job cannot be the writer this barrier
-        # protects against, and it would never reach "completed" for the
-        # barrier below. Skip it; every other cancel failure still fails closed.
-        if ! started_jobs=$(
-          gh api --method GET \
-            "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/jobs" \
-            --jq '.total_count' 2>&1
-        ); then
-          started_jobs=""
-        fi
-        if [[ "$cancel_error" == *"HTTP 409"* ]] && [ "$started_jobs" = "0" ]; then
-          echo "skipping wedged ${selected_run_label} ${run_id}: reported ${current_status} with no started job"
-          continue
-        fi
-        echo "failed to cancel ${selected_run_label} ${run_id}: ${cancel_error}" >&2
-        exit 1
-      fi
+      echo "::warning::failed to cancel ${selected_run_label} ${run_id}; continuing without cancellation: ${cancel_error}" >&2
+      continue
     fi
   fi
   run_ids+=("$run_id")
 done <<<"$selected_runs"
 
 if $cancel_selected_runs && [ "${#run_ids[@]}" -eq 0 ]; then
-  echo "All ${selected_runs_label} were wedged without starting a job; nothing to await."
+  echo "All ${selected_runs_label} failed cancellation; continuing without a terminal-state barrier."
   exit 0
 fi
 
@@ -235,11 +231,18 @@ started_at=$SECONDS
 while true; do
   pending_runs=()
   for run_id in "${run_ids[@]}"; do
-    current_status=$(
+    if ! current_status=$(
       gh api --method GET \
         "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" \
-        --jq '.status'
-    )
+        --jq '.status' 2>&1
+    ); then
+      if $cancel_selected_runs; then
+        echo "::warning::failed to query ${selected_run_label} ${run_id}; continuing without a terminal-state barrier: ${current_status}" >&2
+        exit 0
+      fi
+      echo "failed to query ${selected_run_label} ${run_id}: ${current_status}" >&2
+      exit 1
+    fi
     if [ "$current_status" != "completed" ]; then
       pending_runs+=("${run_id}:${current_status}")
     fi
