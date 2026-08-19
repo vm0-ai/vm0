@@ -375,45 +375,82 @@ describe("POST /api/zero/mail/drafts/link", () => {
       }),
     ).resolves.toBeFalsy();
 
-    const customConnectorId = randomUUID();
+    const disconnectCustomConnectorId = randomUUID();
+    const deleteCustomConnectorId = randomUUID();
     await seedCustomConnectorRuntimeConnectors(context, {
       orgId: fixture.actor.orgId ?? "",
       userId: fixture.actor.userId,
       agentId: fixture.agent.agentId,
       customConnectors: [
         {
-          id: customConnectorId,
-          slug: "_selection-cleanup",
-          displayName: "Selection cleanup",
-          prefixTemplate: "https://selection.example.com/",
+          id: disconnectCustomConnectorId,
+          slug: "_disconnect-selection-cleanup",
+          displayName: "Disconnect selection cleanup",
+          prefixTemplate: "https://disconnect-selection.example.com/",
+        },
+        {
+          id: deleteCustomConnectorId,
+          slug: "_delete-selection-cleanup",
+          displayName: "Delete selection cleanup",
+          prefixTemplate: "https://delete-selection.example.com/",
         },
       ],
     });
-    const customStorage = await readCustomConnectorCredentialStorageParent(
-      context,
-      {
+    const disconnectCustomStorage =
+      await readCustomConnectorCredentialStorageParent(context, {
         orgId: fixture.actor.orgId ?? "",
         userId: fixture.actor.userId,
-        customConnectorId,
-      },
-    );
-    const customMemberConnectorId = customStorage.connector?.id;
-    if (!customMemberConnectorId) {
-      throw new Error("Expected a stored custom connector account");
+        customConnectorId: disconnectCustomConnectorId,
+      });
+    const disconnectMemberConnectorId = disconnectCustomStorage.connector?.id;
+    if (!disconnectMemberConnectorId) {
+      throw new Error("Expected a custom connector account to disconnect");
     }
     await seedCustomThreadConnectorSelection(context, {
       chatThreadId: fixture.thread.id,
-      connectorId: customMemberConnectorId,
-      customConnectorId,
+      connectorId: disconnectMemberConnectorId,
+      customConnectorId: disconnectCustomConnectorId,
     });
-
-    await connectors.deleteCustomConnector(fixture.actor, customConnectorId);
+    await connectors.disconnectCustomConnector(
+      fixture.actor,
+      disconnectCustomConnectorId,
+    );
     await expect(
       readThreadConnectorSelectionState(context, {
         chatThreadId: fixture.thread.id,
-        connectorId: customMemberConnectorId,
+        connectorId: disconnectMemberConnectorId,
       }),
     ).resolves.toBeFalsy();
+
+    const deleteCustomStorage =
+      await readCustomConnectorCredentialStorageParent(context, {
+        orgId: fixture.actor.orgId ?? "",
+        userId: fixture.actor.userId,
+        customConnectorId: deleteCustomConnectorId,
+      });
+    const deleteMemberConnectorId = deleteCustomStorage.connector?.id;
+    if (!deleteMemberConnectorId) {
+      throw new Error("Expected a custom connector account to delete");
+    }
+    await seedCustomThreadConnectorSelection(context, {
+      chatThreadId: fixture.thread.id,
+      connectorId: deleteMemberConnectorId,
+      customConnectorId: deleteCustomConnectorId,
+    });
+    await connectors.deleteCustomConnector(
+      fixture.actor,
+      deleteCustomConnectorId,
+    );
+    await expect(
+      readThreadConnectorSelectionState(context, {
+        chatThreadId: fixture.thread.id,
+        connectorId: deleteMemberConnectorId,
+      }),
+    ).resolves.toBeFalsy();
+    await connectors.deleteCustomConnector(
+      fixture.actor,
+      disconnectCustomConnectorId,
+    );
   });
 
   it("links without injecting a duplicate card and sends without rebuilding MIME", async () => {
