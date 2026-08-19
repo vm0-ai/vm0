@@ -3,13 +3,15 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client } from "pg";
+import postgres from "postgres";
 import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-helpers";
+import { applyPendingMigrations } from "./migration-runner";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const packageDirectory = path.join(scriptDirectory, "..");
 const migrationsDirectory = path.join(packageDirectory, "src/migrations");
-const previousMigration = "0947_add_seedance_2_5_1080p_pricing";
-const nullableMigration = "0948_checkpoint_agent_compose_snapshot_nullable";
+const previousMigration = "0948_custom_model_gateway_provider_types";
+const nullableMigration = "0949_confused_machine_man";
 const upgradeDatabase = "migration_checkpoint_snapshot_nullable";
 
 function databaseErrorCode(error: unknown): string | undefined {
@@ -21,13 +23,9 @@ function databaseErrorCode(error: unknown): string | undefined {
 
 function validateMigrationSql(migrationSql: string): void {
   assert.doesNotMatch(migrationSql, /^-- vm0:non-transactional$/mu);
-  assert.equal(
-    migrationSql.match(/SET LOCAL lock_timeout = '1s'/gu)?.length,
-    1,
-  );
-  assert.equal(
-    migrationSql.match(/SET LOCAL statement_timeout = '10s'/gu)?.length,
-    1,
+  assert.doesNotMatch(
+    migrationSql,
+    /\bSET\s+(?:LOCAL\s+)?(?:lock_timeout|statement_timeout)\b/iu,
   );
   assert.equal(
     migrationSql.match(
@@ -269,10 +267,9 @@ export async function validateCheckpointAgentComposeSnapshotNullableMigration():
 
   const setup = new Client({ connectionString: upgradeUrl.toString() });
   const blocker = new Client({ connectionString: upgradeUrl.toString() });
-  const migrator = new Client({ connectionString: upgradeUrl.toString() });
+  const migrator = postgres(upgradeUrl.toString(), { max: 1 });
   await setup.connect();
   await blocker.connect();
-  await migrator.connect();
   try {
     await applyMigrationsFromDirectoryUpToTag(
       setup,
@@ -311,20 +308,12 @@ export async function validateCheckpointAgentComposeSnapshotNullableMigration():
     await blocker.query("BEGIN");
     await blocker.query(`LOCK TABLE "checkpoints" IN ACCESS SHARE MODE`);
     const lockStartedAt = Date.now();
-    await assert.rejects(
-      applyMigrationsFromDirectoryUpToTag(
-        migrator,
-        migrationsDirectory,
-        nullableMigration,
-      ),
-      (error: unknown) => {
-        return databaseErrorCode(error) === "55P03";
-      },
-    );
+    await assert.rejects(applyPendingMigrations(migrator), (error: unknown) => {
+      return databaseErrorCode(error) === "55P03";
+    });
     const lockWaitMilliseconds = Date.now() - lockStartedAt;
     assert.ok(lockWaitMilliseconds >= 750);
     assert.ok(lockWaitMilliseconds < 2_500);
-    await migrator.query("ROLLBACK");
     await blocker.query("COMMIT");
     assert.deepEqual(await readSnapshotColumn(setup), {
       columnDefault: null,
@@ -336,11 +325,7 @@ export async function validateCheckpointAgentComposeSnapshotNullableMigration():
       historicalBytes,
     );
 
-    await applyMigrationsFromDirectoryUpToTag(
-      migrator,
-      migrationsDirectory,
-      nullableMigration,
-    );
+    await applyPendingMigrations(migrator);
     assert.equal(await readCheckpointRelationFileNode(setup), relationFileNode);
     assert.deepEqual(await readSnapshotColumn(setup), {
       columnDefault: null,
@@ -388,12 +373,8 @@ export async function validateCheckpointAgentComposeSnapshotNullableMigration():
     `);
     assert.deepEqual(coexistence.rows, [{ absent: 1, present: 2 }]);
 
-    await applyMigrationsFromDirectoryUpToTag(
-      migrator,
-      migrationsDirectory,
-      nullableMigration,
-    );
-    await migrator.query(migrationSql);
+    await applyPendingMigrations(migrator);
+    await migrator.unsafe(migrationSql);
     assert.equal(await readCheckpointRelationFileNode(setup), relationFileNode);
     assert.deepEqual(
       await readSnapshotBytes(setup, historical.runId),
