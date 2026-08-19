@@ -5133,6 +5133,132 @@ async fn park_pauses_when_balloon_stats_are_unavailable() {
 }
 
 #[tokio::test]
+async fn exact_handoff_skips_balloon_target_but_still_pauses() {
+    let mut api = MockLifecycleApi::new(std::collections::VecDeque::new(), None);
+    let mut controller = Some(test_balloon_controller());
+    let mut is_parked = false;
+    let mut observer = RecordingFinalExecParkObserver::default();
+    let handoff = SandboxFinalExecParkHandoff::new();
+    assert!(handoff.request());
+
+    let result = {
+        let (_events, result) = park_inner_with_guest_and_handoff(
+            &mut is_parked,
+            2048,
+            &mut controller,
+            api.socket_path(),
+            "handoff-before-balloon",
+            PhysicalParkRequest {
+                guest: Arc::new(tokio::sync::Mutex::new(None)),
+                handoff: Some(&handoff),
+            },
+            SandboxFinalExecParkSubstageEvents::new(Some(&mut observer)),
+        )
+        .await;
+        result
+    };
+
+    assert!(matches!(
+        result.unwrap(),
+        PhysicalParkOutcome::Handoff(SandboxFinalExecParkHandoffPoint::BeforeBalloon)
+    ));
+    assert!(is_parked);
+    assert!(controller.is_none());
+    assert_eq!(
+        observer.substage_records,
+        vec![
+            (
+                SandboxFinalExecParkSubstage::BalloonSetup,
+                true,
+                Some(SandboxFinalExecParkSubstageOutcome::HandoffRequested),
+            ),
+            (
+                SandboxFinalExecParkSubstage::BalloonSettle,
+                true,
+                Some(SandboxFinalExecParkSubstageOutcome::Skipped),
+            ),
+            (SandboxFinalExecParkSubstage::VcpuPause, true, None),
+        ]
+    );
+    let requests = api.drain_requests();
+    let patches = patches(&requests);
+    assert_eq!(patches.len(), 1, "handoff should only pause the VM");
+    assert_eq!(patches[0].path, "/vm");
+}
+
+#[tokio::test]
+async fn exact_handoff_interrupts_in_flight_balloon_settle() {
+    let stats_entered = Arc::new(Notify::new());
+    let stats_release = Arc::new(Notify::new());
+    let mut api = MockLifecycleApi::with_stats(
+        std::collections::VecDeque::new(),
+        std::collections::VecDeque::from([MockBalloonStatsReply::GatedOk {
+            entered: Arc::clone(&stats_entered),
+            release: Arc::clone(&stats_release),
+            stats: MockBalloonStats::new(1536, 0),
+        }]),
+    );
+    let mut controller = Some(test_balloon_controller());
+    let mut is_parked = false;
+    let mut observer = RecordingFinalExecParkObserver::default();
+    let handoff = SandboxFinalExecParkHandoff::new();
+    let result = {
+        let park = park_inner_with_guest_and_handoff(
+            &mut is_parked,
+            2048,
+            &mut controller,
+            api.socket_path(),
+            "handoff-during-balloon",
+            PhysicalParkRequest {
+                guest: Arc::new(tokio::sync::Mutex::new(None)),
+                handoff: Some(&handoff),
+            },
+            SandboxFinalExecParkSubstageEvents::new(Some(&mut observer)),
+        );
+        tokio::pin!(park);
+
+        tokio::select! {
+            () = stats_entered.notified() => {}
+            _ = park.as_mut() => panic!("park completed before balloon settle was interrupted"),
+        }
+        assert!(handoff.request());
+        let (_events, result) = tokio::time::timeout(Duration::from_secs(1), park.as_mut())
+            .await
+            .expect("handoff should wake the in-flight balloon request");
+        result
+    };
+    stats_release.notify_waiters();
+
+    assert!(matches!(
+        result.unwrap(),
+        PhysicalParkOutcome::Handoff(SandboxFinalExecParkHandoffPoint::DuringBalloonSettle)
+    ));
+    assert!(is_parked);
+    assert!(controller.is_none());
+    assert_eq!(
+        observer.substage_records,
+        vec![
+            (SandboxFinalExecParkSubstage::BalloonSetup, true, None),
+            (
+                SandboxFinalExecParkSubstage::BalloonSettle,
+                true,
+                Some(SandboxFinalExecParkSubstageOutcome::HandoffRequested),
+            ),
+            (SandboxFinalExecParkSubstage::VcpuPause, true, None),
+        ]
+    );
+    let requests = api.drain_requests();
+    let patches = patches(&requests);
+    assert_eq!(
+        patches.len(),
+        2,
+        "handoff should inflate once and then pause"
+    );
+    assert_eq!(patches[0].path, "/balloon");
+    assert_eq!(patches[1].path, "/vm");
+}
+
+#[tokio::test]
 async fn snapshot_restore_with_limiters_loads_paused_patches_then_resumes() {
     let mut api =
         MockLifecycleApi::new(std::collections::VecDeque::from(vec![204, 204, 204]), None);

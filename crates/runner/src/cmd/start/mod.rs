@@ -1342,6 +1342,7 @@ enum OuterJobPanicPoint {
     ClaimedWithoutSandbox,
     ActiveOrUnknown,
     IdlePoolOwned,
+    HandoffOwned,
     DestroyCompleted,
 }
 

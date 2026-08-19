@@ -1,13 +1,13 @@
 //! Owned claimed-job waiting before a finalizing predecessor publishes reuse.
 
 use std::panic::AssertUnwindSafe;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use futures_util::FutureExt;
 use tokio::task::JoinSet;
 use tracing::info;
 
-use super::active_runs::ActiveRunReuseState;
+use super::active_runs::{ActiveRunHandoffRequest, ActiveRunReuseState};
 use super::factory_lifecycle::SharedFactory;
 use super::idle_lifecycle::{
     IdlePressureRequest, IdlePressureSelection, select_idle_entry_for_pressure,
@@ -21,14 +21,18 @@ use super::job_spawn::{SpawnContext, run_job};
 #[cfg(test)]
 use super::{OuterJobPanicPoint, maybe_panic_outer_job};
 use crate::executor::{
-    ExecutionFailure, RunnerPreSpawnPhase, RunnerPreSpawnTiming, validate_resume_session_id,
+    ExecutionFailure, FinalizingHandoffOutcome, RunnerPreSpawnPhase, RunnerPreSpawnTiming,
+    validate_resume_session_id,
 };
-use crate::idle_pool::ReservedIdleSandbox;
+use crate::idle_pool::{FinalizingHandoffCandidate, ReservedIdleSandbox};
 use crate::ids::RunId;
 use crate::provider::ClaimedJob;
 use crate::resource_budget::{BudgetLease, ResourceBudget};
 use crate::run_cancellation::RunCancellationRegistration;
+use crate::telemetry::JobTelemetry;
 use crate::types::{CompleteRequest, SandboxReuseResult};
+
+pub(super) const FINALIZING_HANDOFF_ACCEPTANCE_GRACE: Duration = Duration::from_millis(1500);
 
 pub(super) struct FinalizingClaimRequest {
     pub(super) claimed: ClaimedJob,
@@ -45,12 +49,30 @@ pub(super) struct FinalizingClaimRequest {
 }
 
 enum FinalizingWaitOutcome {
+    Handoff(Box<FinalizingHandoffCandidate>),
     Exact(Box<ReservedIdleSandbox>),
-    Fallback(&'static str),
-    Cancelled,
+    Fallback {
+        reason: &'static str,
+        handoff_outcome: FinalizingHandoffOutcome,
+    },
+    Cancelled(Option<Box<FinalizingHandoffCandidate>>),
+}
+
+impl FinalizingWaitOutcome {
+    fn no_exact(reason: &'static str) -> Self {
+        Self::Fallback {
+            reason,
+            handoff_outcome: FinalizingHandoffOutcome::NoExact,
+        }
+    }
+
+    fn cancelled(request: Option<&mut ActiveRunHandoffRequest>) -> Self {
+        Self::Cancelled(request.and_then(ActiveRunHandoffRequest::cancel_and_recover_delivery))
+    }
 }
 
 enum FinalizingResource {
+    Handoff(Box<FinalizingHandoffCandidate>),
     Exact(Box<ReservedIdleSandbox>),
     Fresh(BudgetLease),
 }
@@ -59,9 +81,21 @@ struct FinalizingPreparation<'a> {
     claimed: &'a ClaimedJob,
     cancellation: &'a RunCancellationRegistration,
     admission: &'a mut FinalizingAdmission,
+    claim_returned_at: Instant,
     profile_name: &'a str,
     vcpu: u32,
     memory_mb: u32,
+    device_rate_limits: &'a Option<sandbox::DeviceRateLimits>,
+    pre_spawn_timing: &'a mut RunnerPreSpawnTiming,
+    ctx: &'a SpawnContext,
+}
+
+struct FinalizingWait<'a> {
+    run_id: RunId,
+    cancellation: &'a RunCancellationRegistration,
+    admission: &'a mut FinalizingAdmission,
+    claim_returned_at: Instant,
+    profile_name: &'a str,
     device_rate_limits: &'a Option<sandbox::DeviceRateLimits>,
     ctx: &'a SpawnContext,
 }
@@ -114,10 +148,12 @@ async fn run_finalizing_claim(
             claimed: &claimed,
             cancellation: &cancellation,
             admission: &mut admission,
+            claim_returned_at,
             profile_name: &profile_name,
             vcpu,
             memory_mb,
             device_rate_limits: &device_rate_limits,
+            pre_spawn_timing: &mut pre_spawn_timing,
             ctx: &ctx,
         },
         &mut reserved_exact,
@@ -132,8 +168,15 @@ async fn run_finalizing_claim(
             if let Some(reservation) = reserved_exact.take() {
                 rollback_reserved_idle_for_spawn(*reservation, &ctx).await;
             }
-            return complete_claimed_without_sandbox(claimed, cancellation, failure, None, &ctx)
-                .await;
+            return complete_claimed_without_sandbox(
+                claimed,
+                cancellation,
+                failure,
+                None,
+                pre_spawn_timing.finalizing_handoff_outcome(),
+                &ctx,
+            )
+            .await;
         }
         Err(payload) => {
             if let Some(reservation) = reserved_exact.take() {
@@ -146,6 +189,7 @@ async fn run_finalizing_claim(
                     "runner panicked while preparing a claimed finalizing successor",
                 ),
                 None,
+                pre_spawn_timing.finalizing_handoff_outcome(),
                 &ctx,
             )
             .await;
@@ -172,6 +216,7 @@ async fn run_finalizing_claim(
                 ReservedActivationRequest {
                     run_id,
                     profile_name: &profile_name,
+                    device_rate_limits: &device_rate_limits,
                     workspace_disk_mb,
                     context: claimed.context(),
                 },
@@ -185,23 +230,116 @@ async fn run_finalizing_claim(
                     active_lease,
                     reuse_result,
                     idle_snapshot,
-                } => ReadyClaimedResource {
-                    reuse_entry: reuse_entry.map(|entry| *entry),
-                    active_lease,
-                    reuse_result,
-                    idle_snapshot: Some(idle_snapshot),
-                },
+                } => {
+                    if reuse_entry.is_none() {
+                        pre_spawn_timing.record_finalizing_handoff_outcome(
+                            FinalizingHandoffOutcome::ActivationFailed,
+                        );
+                    }
+                    ReadyClaimedResource {
+                        reuse_entry: reuse_entry.map(|entry| *entry),
+                        active_lease,
+                        reuse_result,
+                        idle_snapshot: Some(idle_snapshot),
+                    }
+                }
                 ReservedActivation::CannotStart {
                     budget_lease,
                     reuse_result,
                     error,
                 } => {
                     drop(active_run_guard);
+                    pre_spawn_timing.record_finalizing_handoff_outcome(
+                        FinalizingHandoffOutcome::ActivationFailed,
+                    );
                     let cancellation = complete_claimed_without_sandbox(
                         claimed,
                         cancellation,
                         ExecutionFailure::from_error(error),
                         Some(reuse_result),
+                        pre_spawn_timing.finalizing_handoff_outcome(),
+                        &ctx,
+                    )
+                    .await;
+                    drop(budget_lease);
+                    return cancellation;
+                }
+            }
+        }
+        FinalizingResource::Handoff(candidate) => {
+            let reservation =
+                match candidate.into_reservation(run_id, admission.history_generation_run_id) {
+                    Ok(reservation) => reservation,
+                    Err(candidate) => {
+                        drop(active_run_guard);
+                        candidate
+                            .into_destroy_job()
+                            .run_with_context("finalizing_handoff_identity_mismatch")
+                            .await;
+                        ctx.reuse_state_notify.notify_one();
+                        pre_spawn_timing.record_finalizing_handoff_outcome(
+                            FinalizingHandoffOutcome::ActivationFailed,
+                        );
+                        return complete_claimed_without_sandbox(
+                            claimed,
+                            cancellation,
+                            ExecutionFailure::from_error(
+                                "finalizing handoff identity did not match claimed successor",
+                            ),
+                            None,
+                            pre_spawn_timing.finalizing_handoff_outcome(),
+                            &ctx,
+                        )
+                        .await;
+                    }
+                };
+            match activate_reserved_idle(
+                reservation,
+                ReservedActivationRequest {
+                    run_id,
+                    profile_name: &profile_name,
+                    device_rate_limits: &device_rate_limits,
+                    workspace_disk_mb,
+                    context: claimed.context(),
+                },
+                &ctx,
+                &mut pre_spawn_timing,
+            )
+            .await
+            {
+                ReservedActivation::Ready {
+                    reuse_entry,
+                    active_lease,
+                    reuse_result,
+                    idle_snapshot,
+                } => {
+                    pre_spawn_timing.record_finalizing_handoff_outcome(if reuse_entry.is_some() {
+                        FinalizingHandoffOutcome::Accepted
+                    } else {
+                        FinalizingHandoffOutcome::ActivationFailed
+                    });
+                    ReadyClaimedResource {
+                        reuse_entry: reuse_entry.map(|entry| *entry),
+                        active_lease,
+                        reuse_result,
+                        idle_snapshot: Some(idle_snapshot),
+                    }
+                }
+                ReservedActivation::CannotStart {
+                    budget_lease,
+                    reuse_result,
+                    error,
+                } => {
+                    drop(active_run_guard);
+                    pre_spawn_timing.record_finalizing_handoff_outcome(
+                        FinalizingHandoffOutcome::ActivationFailed,
+                    );
+                    let cancellation = complete_claimed_without_sandbox(
+                        claimed,
+                        cancellation,
+                        ExecutionFailure::from_error(error),
+                        Some(reuse_result),
+                        pre_spawn_timing.finalizing_handoff_outcome(),
                         &ctx,
                     )
                     .await;
@@ -240,10 +378,12 @@ async fn prepare_finalizing_resource(
         claimed,
         cancellation,
         admission,
+        claim_returned_at,
         profile_name,
         vcpu,
         memory_mb,
         device_rate_limits,
+        pre_spawn_timing,
         ctx,
     } = request;
     let run_id = claimed.context().run_id;
@@ -263,18 +403,30 @@ async fn prepare_finalizing_resource(
         "finalizing successor claimed before sandbox publication"
     );
     match wait_for_finalizing_resource(
-        run_id,
-        cancellation,
-        admission,
-        profile_name,
-        device_rate_limits,
-        ctx,
+        FinalizingWait {
+            run_id,
+            cancellation,
+            admission,
+            claim_returned_at,
+            profile_name,
+            device_rate_limits,
+            ctx,
+        },
         reserved_exact,
     )
     .await
     {
-        FinalizingWaitOutcome::Exact(reservation) => Ok(FinalizingResource::Exact(reservation)),
-        FinalizingWaitOutcome::Fallback(reason) => {
+        FinalizingWaitOutcome::Handoff(candidate) => Ok(FinalizingResource::Handoff(candidate)),
+        FinalizingWaitOutcome::Exact(reservation) => {
+            pre_spawn_timing
+                .record_finalizing_handoff_outcome(FinalizingHandoffOutcome::PublishedExact);
+            Ok(FinalizingResource::Exact(reservation))
+        }
+        FinalizingWaitOutcome::Fallback {
+            reason,
+            handoff_outcome,
+        } => {
+            pre_spawn_timing.record_finalizing_handoff_outcome(handoff_outcome);
             info!(
                 run_id = %run_id,
                 finalizing_fallback_reason = reason,
@@ -293,30 +445,69 @@ async fn prepare_finalizing_resource(
             })
             .await
         }
-        FinalizingWaitOutcome::Cancelled => Err(ExecutionFailure::cancelled()),
+        FinalizingWaitOutcome::Cancelled(candidate) => {
+            if let Some(candidate) = candidate {
+                candidate
+                    .into_destroy_job()
+                    .run_with_context("cancelled_finalizing_handoff")
+                    .await;
+                ctx.reuse_state_notify.notify_one();
+            }
+            pre_spawn_timing.record_finalizing_handoff_outcome(FinalizingHandoffOutcome::Cancelled);
+            Err(ExecutionFailure::cancelled())
+        }
     }
 }
 
 async fn wait_for_finalizing_resource(
-    run_id: RunId,
-    cancellation: &RunCancellationRegistration,
-    admission: &mut FinalizingAdmission,
-    profile_name: &str,
-    device_rate_limits: &Option<sandbox::DeviceRateLimits>,
-    ctx: &SpawnContext,
+    request: FinalizingWait<'_>,
     reserved_exact: &mut Option<Box<ReservedIdleSandbox>>,
 ) -> FinalizingWaitOutcome {
+    let FinalizingWait {
+        run_id,
+        cancellation,
+        admission,
+        claim_returned_at,
+        profile_name,
+        device_rate_limits,
+        ctx,
+    } = request;
     let cancel = cancellation.token();
+    let mut handoff = admission.predecessor.request_handoff(run_id);
+    let pre_acceptance_deadline = if handoff.is_some() {
+        admission
+            .deadline
+            .max(claim_returned_at + FINALIZING_HANDOFF_ACCEPTANCE_GRACE)
+    } else {
+        admission.deadline
+    };
     loop {
         if cancel.is_cancelled() {
-            return FinalizingWaitOutcome::Cancelled;
+            return FinalizingWaitOutcome::cancelled(handoff.as_mut());
         }
         let state = admission.predecessor.state();
+        if state != ActiveRunReuseState::Pending
+            && let Some(request) = handoff.as_mut()
+        {
+            if request.accepted().await {
+                return receive_finalizing_handoff(
+                    request,
+                    run_id,
+                    admission.history_generation_run_id,
+                    cancellation,
+                )
+                .await;
+            }
+            handoff = None;
+        }
         let missing_exact_reason = match state {
             ActiveRunReuseState::ExactSandboxPublished => Some("published_exact_unavailable"),
+            ActiveRunReuseState::ExactSandboxHandedOff => {
+                return FinalizingWaitOutcome::no_exact("exact_handoff_unavailable");
+            }
             ActiveRunReuseState::Released => Some("predecessor_released_without_exact"),
             ActiveRunReuseState::NoExactSandbox => {
-                return FinalizingWaitOutcome::Fallback("predecessor_no_exact");
+                return FinalizingWaitOutcome::no_exact("predecessor_no_exact");
             }
             ActiveRunReuseState::Pending => None,
         };
@@ -335,7 +526,7 @@ async fn wait_for_finalizing_resource(
                     rollback_reserved_idle_for_spawn(*reservation, ctx).await;
                     ctx.reuse_state_notify.notify_one();
                 }
-                return FinalizingWaitOutcome::Cancelled;
+                return FinalizingWaitOutcome::cancelled(None);
             }
             if let Some(reservation) = reserved_exact.take() {
                 info!(
@@ -345,23 +536,94 @@ async fn wait_for_finalizing_resource(
                 );
                 return FinalizingWaitOutcome::Exact(reservation);
             }
-            return FinalizingWaitOutcome::Fallback(missing_exact_reason);
+            return FinalizingWaitOutcome::no_exact(missing_exact_reason);
         }
 
-        let deadline = tokio::time::Instant::from_std(admission.deadline);
-        tokio::select! {
-            biased;
-            () = cancel.cancelled() => {
-                return FinalizingWaitOutcome::Cancelled;
+        let deadline = tokio::time::Instant::from_std(pre_acceptance_deadline);
+        if let Some(request) = handoff.as_mut() {
+            tokio::select! {
+                biased;
+                () = cancel.cancelled() => {
+                    return FinalizingWaitOutcome::cancelled(Some(request));
+                }
+                accepted = request.accepted() => {
+                    if accepted {
+                        return receive_finalizing_handoff(
+                            request,
+                            run_id,
+                            admission.history_generation_run_id,
+                            cancellation,
+                        )
+                        .await;
+                    }
+                    handoff = None;
+                }
+                _ = admission.predecessor.changed() => {}
+                _ = tokio::time::sleep_until(deadline) => {
+                    if admission.predecessor.state() == ActiveRunReuseState::Pending {
+                        if cancel.is_cancelled() {
+                            return FinalizingWaitOutcome::cancelled(Some(request));
+                        }
+                        if request.expire_if_unaccepted() {
+                            return FinalizingWaitOutcome::Fallback {
+                                reason: "handoff_acceptance_deadline",
+                                handoff_outcome:
+                                    FinalizingHandoffOutcome::NotAcceptedBeforeDeadline,
+                            };
+                        }
+                        return receive_finalizing_handoff(
+                            request,
+                            run_id,
+                            admission.history_generation_run_id,
+                            cancellation,
+                        )
+                        .await;
+                    }
+                }
             }
-            _ = admission.predecessor.changed() => {}
-            _ = tokio::time::sleep_until(deadline) => {
-                if admission.predecessor.state() == ActiveRunReuseState::Pending {
-                    return FinalizingWaitOutcome::Fallback("preference_deadline");
+        } else {
+            tokio::select! {
+                biased;
+                () = cancel.cancelled() => {
+                    return FinalizingWaitOutcome::cancelled(None);
+                }
+                _ = admission.predecessor.changed() => {}
+                _ = tokio::time::sleep_until(deadline) => {
+                    if admission.predecessor.state() == ActiveRunReuseState::Pending {
+                        return FinalizingWaitOutcome::no_exact("handoff_request_unavailable");
+                    }
                 }
             }
         }
     }
+}
+
+async fn receive_finalizing_handoff(
+    request: &mut ActiveRunHandoffRequest,
+    run_id: RunId,
+    predecessor_run_id: RunId,
+    cancellation: &RunCancellationRegistration,
+) -> FinalizingWaitOutcome {
+    let cancel = cancellation.token();
+    let candidate = tokio::select! {
+        biased;
+        candidate = request.receive() => candidate,
+        () = cancel.cancelled() => {
+            return FinalizingWaitOutcome::cancelled(Some(request));
+        }
+    };
+    let Ok(candidate) = candidate else {
+        return FinalizingWaitOutcome::no_exact("exact_handoff_closed");
+    };
+    if cancel.is_cancelled() {
+        return FinalizingWaitOutcome::Cancelled(Some(candidate));
+    }
+    info!(
+        run_id = %run_id,
+        predecessor_run_id = %predecessor_run_id,
+        "finalizing successor received direct parked sandbox handoff"
+    );
+    FinalizingWaitOutcome::Handoff(candidate)
 }
 
 async fn acquire_fallback_resource(
@@ -524,10 +786,21 @@ async fn complete_claimed_without_sandbox(
     cancellation: RunCancellationRegistration,
     failure: ExecutionFailure,
     reuse_result: Option<SandboxReuseResult>,
+    handoff_outcome: Option<FinalizingHandoffOutcome>,
     ctx: &SpawnContext,
 ) -> RunCancellationRegistration {
     let (context, completion_auth, active_input_source) = claimed.into_parts();
     drop(active_input_source);
+    let telemetry = handoff_outcome.map(|outcome| {
+        let mut telemetry = JobTelemetry::new(
+            ctx.exec_config.http.clone(),
+            context.run_id,
+            context.sandbox_token.clone(),
+            ctx.exec_config.runner_name.clone(),
+        );
+        outcome.record(&mut telemetry);
+        telemetry
+    });
     ctx.provider
         .complete(
             CompleteRequest {
@@ -542,5 +815,101 @@ async fn complete_claimed_without_sandbox(
             completion_auth,
         )
         .await;
+    if let Some(telemetry) = telemetry {
+        telemetry.flush().await;
+    }
     cancellation
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use tokio::sync::Notify;
+
+    use super::super::active_runs::{ActiveRunHandoffDeliveryResult, ActiveRuns};
+    use super::*;
+    use crate::idle_pool::test_support::ParkedIdleCandidateBuilder;
+    use crate::resource_budget::ResourceBudget;
+    use sandbox_mock::{MockSandbox, MockSandboxFactory, MockSandboxOverrides};
+
+    fn delivered_handoff_request() -> (
+        ActiveRunHandoffRequest,
+        Arc<ResourceBudget>,
+        Arc<MockSandboxOverrides>,
+    ) {
+        let active_runs = ActiveRuns::new(Arc::new(Notify::new()));
+        let predecessor_run_id = RunId::new_v4();
+        let successor_run_id = RunId::new_v4();
+        let guard = active_runs.register(
+            predecessor_run_id,
+            Some("thread:finalizing-wait-race".into()),
+            "vm0/default".into(),
+        );
+        let publisher = guard.reuse_publisher();
+        let proof = active_runs
+            .finalizing_predecessor(
+                predecessor_run_id,
+                "thread:finalizing-wait-race",
+                "vm0/default",
+            )
+            .expect("registered predecessor should remain finalizing");
+        let request = proof
+            .request_handoff(successor_run_id)
+            .expect("exact successor should register a handoff");
+        assert!(publisher.handoff_signal().accept_if_requested());
+
+        let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
+        let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096)
+            .expect("handoff candidate should reserve the test budget");
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        let sandbox = Box::new(MockSandbox::with_overrides(
+            "finalizing-wait-race",
+            Arc::clone(&overrides),
+        ));
+        let factory = Arc::new(
+            Box::new(MockSandboxFactory::with_overrides(Arc::clone(&overrides)))
+                as Box<dyn sandbox::SandboxFactory>,
+        );
+        let candidate = ParkedIdleCandidateBuilder::new("thread:finalizing-wait-race", lease)
+            .with_sandbox(sandbox)
+            .with_factory(factory)
+            .with_history_generation_run_id(predecessor_run_id)
+            .build();
+        assert!(matches!(
+            publisher.deliver_exact_handoff(candidate, predecessor_run_id),
+            ActiveRunHandoffDeliveryResult::Delivered
+        ));
+
+        (request, budget, overrides)
+    }
+
+    #[tokio::test]
+    async fn cancellation_before_acceptance_branch_recovers_delivered_handoff() {
+        let (mut request, budget, overrides) = delivered_handoff_request();
+
+        let candidate = match FinalizingWaitOutcome::cancelled(Some(&mut request)) {
+            FinalizingWaitOutcome::Cancelled(Some(candidate)) => candidate,
+            _ => panic!("cancellation should retain an already delivered handoff candidate"),
+        };
+        candidate.into_destroy_job().run().await;
+
+        assert_eq!(overrides.destroy_call_count(), 1);
+        assert_eq!(budget.allocated(), (0, 0, 0));
+    }
+
+    #[tokio::test]
+    async fn deadline_race_prefers_an_already_delivered_handoff() {
+        let (mut request, budget, overrides) = delivered_handoff_request();
+
+        assert!(!request.expire_if_unaccepted());
+        let candidate = request
+            .receive()
+            .await
+            .expect("deadline should not discard a handoff that already won delivery");
+        candidate.into_destroy_job().run().await;
+
+        assert_eq!(overrides.destroy_call_count(), 1);
+        assert_eq!(budget.allocated(), (0, 0, 0));
+    }
 }

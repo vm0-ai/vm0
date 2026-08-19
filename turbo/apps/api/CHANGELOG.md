@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.463.0](https://github.com/vm0-ai/vm0/compare/api-v1.462.0...api-v1.463.0) (2026-08-19)
+
+
+### Features
+
+* support seedance 2.5 1080p video generation ([#28113](https://github.com/vm0-ai/vm0/issues/28113)) ([53bcc41](https://github.com/vm0-ai/vm0/commit/53bcc411e5ca63f00eac1be61269940e1a43560c))
+
+
+### Bug Fixes
+
+* route managed deepseek models through openrouter ([#28145](https://github.com/vm0-ai/vm0/issues/28145)) ([3a805bc](https://github.com/vm0-ai/vm0/commit/3a805bc0de34e678ed888fa26a44e202b779d5d1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.341.1
+    * @okouai/core bumped to 8.572.0
+    * @okouai/db bumped to 1.208.0
+
 ## [1.462.0](https://github.com/vm0-ai/vm0/compare/api-v1.461.2...api-v1.462.0) (2026-08-19)
 
 

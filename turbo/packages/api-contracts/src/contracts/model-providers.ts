@@ -749,6 +749,18 @@ export const MODEL_PROVIDER_TYPES = {
     allowCustomModel: true,
     customModelPlaceholder: "anthropic.claude-sonnet-4-20250514-v1:0",
   },
+  // Org-configured custom gateways. These mirror the ModelProviderSurfaceProtocol
+  // enum so a stored provider type never names an unrelated vendor. The runtime
+  // (env vars, firewall, codex provider config) is compiled from the surface row
+  // itself, so these entries carry no secret, binding, or model catalog.
+  "custom-anthropic-messages": {
+    framework: "claude-code" as const,
+    label: "Custom Gateway (Anthropic Messages)",
+  },
+  "custom-openai-responses": {
+    framework: "codex" as const,
+    label: "Custom Gateway (OpenAI Responses)",
+  },
   vm0: {
     framework: "claude-code" as const,
     label: "VM0 Managed",
@@ -900,11 +912,18 @@ export function getProviderRuntimeModel(
 
 /**
  * Provider types hidden from user-facing selection UI.
- * These lack static firewall support (dynamic URLs or SigV4), so token
- * replacement cannot be used.  New selection is blocked until a proper
- * solution is implemented; existing configurations continue to work.
+ * `aws-bedrock` and `azure-foundry` lack static firewall support (dynamic URLs
+ * or SigV4), so token replacement cannot be used.  New selection is blocked
+ * until a proper solution is implemented; existing configurations continue to
+ * work.  The custom gateway types are never picked directly either: they are
+ * derived from a model provider surface's protocol.
  */
-const HIDDEN_PROVIDER_LIST = ["aws-bedrock", "azure-foundry"] as const;
+const HIDDEN_PROVIDER_LIST = [
+  "aws-bedrock",
+  "azure-foundry",
+  "custom-anthropic-messages",
+  "custom-openai-responses",
+] as const;
 
 const HIDDEN_PROVIDER_TYPES: ReadonlySet<ModelProviderType> = new Set(
   HIDDEN_PROVIDER_LIST,
@@ -1134,14 +1153,37 @@ export function getProviderBaseUrl(type: ModelProviderType): string | null {
   return openaiUrl ?? null;
 }
 
+const CUSTOM_GATEWAY_PROVIDER_TYPES: ReadonlySet<ModelProviderType> = new Set([
+  "custom-anthropic-messages",
+  "custom-openai-responses",
+]);
+
+/**
+ * Check whether a provider type routes through an org-configured gateway
+ * surface. These types carry no envBindings, so `getProviderBaseUrl` cannot
+ * report their upstream: it is stored per surface in `model_provider_surfaces`.
+ */
+export function isCustomGatewayProviderType(type: ModelProviderType): boolean {
+  return CUSTOM_GATEWAY_PROVIDER_TYPES.has(type);
+}
+
 /**
  * Check if two model providers are compatible for session continuation.
  * Providers are compatible if they resolve to the same upstream base URL.
+ *
+ * A custom gateway type resolves to no base URL here, which must not be read
+ * as "the vendor default endpoint" — that would make a self-hosted gateway
+ * look interchangeable with anthropic-api-key, openai-api-key, or vm0. It is
+ * compatible only with itself; whether two runs used the same surface is a
+ * separate question, answered by the surface id the caller also holds.
  */
 export function areProvidersCompatible(
   a: ModelProviderType,
   b: ModelProviderType,
 ): boolean {
+  if (isCustomGatewayProviderType(a) || isCustomGatewayProviderType(b)) {
+    return a === b;
+  }
   return getProviderBaseUrl(a) === getProviderBaseUrl(b);
 }
 
