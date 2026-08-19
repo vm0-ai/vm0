@@ -19,13 +19,18 @@ export interface PiPreheatedResourceSnapshot {
   readonly skills: readonly PiSkillCatalogEntry[];
 }
 
+const XML_CHARACTER_ENTITIES: Readonly<Record<string, string>> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&apos;",
+};
+
 function escapeXml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
+  return value.replace(/[&<>"']/gu, (character) => {
+    return XML_CHARACTER_ENTITIES[character] ?? character;
+  });
 }
 
 /** Format Pi's native skill discovery block without reading any skill body. */
