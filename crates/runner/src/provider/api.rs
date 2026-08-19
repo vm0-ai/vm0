@@ -34,8 +34,8 @@ use super::builtin_firewall_catalog::{
 };
 use super::connector_runtime_sync::ConnectorRuntimeSyncHandle;
 use super::{
-    ClaimedJob, CompletionAuth, CompletionAuthError, CompletionReportTiming, JobCandidate,
-    JobDiscoverySource, JobProvider, RunnerPreference, RunnerPreferenceClaimState,
+    ApiClaimTiming, ClaimedJob, CompletionAuth, CompletionAuthError, CompletionReportTiming,
+    JobCandidate, JobDiscoverySource, JobProvider, RunnerPreference, RunnerPreferenceClaimState,
     parse_runner_preference,
 };
 use crate::active_input::{ActiveInputNotifications, ActiveInputSource};
@@ -133,6 +133,13 @@ enum ClaimApiError {
     ResponseRead(String),
     #[error("claim response decode failed: {0}")]
     ResponseDecode(String),
+}
+
+#[cfg_attr(test, derive(Debug))]
+struct SuccessfulClaimResponse {
+    context: ExecutionContext,
+    response_body_read_elapsed: Duration,
+    response_decode_elapsed: Duration,
 }
 
 #[derive(Clone, Copy)]
@@ -635,7 +642,16 @@ impl JobProvider for ApiProvider {
         let claim_result = self.api.claim(&candidate, &self.runner_identity).await;
         let claim_request_elapsed = claim_request_started_at.elapsed();
         match claim_result {
-            Ok(Some(ctx)) => {
+            Ok(Some(SuccessfulClaimResponse {
+                context: ctx,
+                response_body_read_elapsed,
+                response_decode_elapsed,
+            })) => {
+                let api_claim_timing = ApiClaimTiming::new(
+                    claim_request_elapsed,
+                    response_body_read_elapsed,
+                    response_decode_elapsed,
+                );
                 let active_input_source = (ctx.cli_agent_type != "pi"
                     && supports_thread_active_input(ctx.reuse_key.as_deref()))
                 .then(|| {
@@ -651,10 +667,10 @@ impl JobProvider for ApiProvider {
                         run_id,
                         ctx,
                         active_input_source,
-                        claim_request_elapsed,
+                        api_claim_timing,
                     )
                 } else {
-                    ClaimedJob::api(run_id, ctx, claim_request_elapsed)
+                    ClaimedJob::api(run_id, ctx, api_claim_timing)
                 } {
                     Ok(claimed) => claimed,
                     Err(error) => {
@@ -1037,7 +1053,7 @@ impl ApiClient {
         &self,
         candidate: &JobCandidate,
         runner_identity: &RunnerProcessIdentity,
-    ) -> Result<Option<ExecutionContext>, ClaimApiError> {
+    ) -> Result<Option<SuccessfulClaimResponse>, ClaimApiError> {
         let run_id = candidate.run_id();
         let body = claim_request_body(candidate, runner_identity);
         let run_id = run_id.to_string();
@@ -1061,20 +1077,28 @@ impl ApiClient {
         }
 
         let resp = check_api_status(resp, "claim").await?;
+        let response_body_read_started_at = Instant::now();
         let body = resp
             .bytes()
             .await
             .map_err(|error| ClaimApiError::ResponseRead(error.to_string()))?;
-        let ctx = decode_api_json_bytes(&body).map_err(ClaimApiError::ResponseDecode)?;
+        let response_body_read_elapsed = response_body_read_started_at.elapsed();
+        let response_decode_started_at = Instant::now();
+        let context = decode_api_json_bytes(&body).map_err(ClaimApiError::ResponseDecode)?;
+        let response_decode_elapsed = response_decode_started_at.elapsed();
 
-        Ok(Some(ctx))
+        Ok(Some(SuccessfulClaimResponse {
+            context,
+            response_body_read_elapsed,
+            response_decode_elapsed,
+        }))
     }
 
     #[cfg(test)]
     async fn claim_for_test(
         &self,
         candidate: &JobCandidate,
-    ) -> Result<Option<ExecutionContext>, ClaimApiError> {
+    ) -> Result<Option<SuccessfulClaimResponse>, ClaimApiError> {
         let runner_identity =
             RunnerProcessIdentity::new("550e8400-e29b-41d4-a716-446655440000".parse().unwrap(), 7)
                 .unwrap();
@@ -3909,7 +3933,14 @@ mod tests {
             ))
             .await
             .expect("shared current claim response should decode");
-        assert!(claimed.api_claim_request_elapsed().is_some());
+        let claim_timing = claimed
+            .api_claim_timing()
+            .expect("successful API claim should retain timing");
+        assert!(
+            claim_timing.request_elapsed()
+                >= claim_timing.response_body_read_elapsed()
+                    + claim_timing.response_decode_elapsed()
+        );
         let context = claimed.context();
 
         assert_eq!(context.run_id, run_id);

@@ -9,6 +9,7 @@ use guest_contracts::epoch_milliseconds::{
 use tracing::warn;
 
 use crate::guest_timezone::GuestTimezoneAssumption;
+use crate::provider::ApiClaimTiming;
 use crate::telemetry::{JobTelemetry, RunnerStartupPath};
 use crate::types::{ExecutionContext, SandboxReuseResult, WorkspaceReuseResult};
 use crate::workspace_image_cache::WorkspaceCacheCheckoutResult;
@@ -156,7 +157,7 @@ impl RunnerPreSpawnPhaseDurations {
 
 pub(crate) struct RunnerPreSpawnTiming {
     claim_returned_at: Instant,
-    api_claim_request_elapsed: Option<Duration>,
+    api_claim_timing: Option<ApiClaimTiming>,
     phase_durations: RunnerPreSpawnPhaseDurations,
     task_enqueued_at: Option<Instant>,
     exact_reuse_speculation: Option<ExactReuseSpeculationTiming>,
@@ -192,11 +193,11 @@ impl RunnerPreSpawnTiming {
 
     pub(crate) fn start_at(
         claim_returned_at: Instant,
-        api_claim_request_elapsed: Option<Duration>,
+        api_claim_timing: Option<ApiClaimTiming>,
     ) -> Self {
         Self {
             claim_returned_at,
-            api_claim_request_elapsed,
+            api_claim_timing,
             phase_durations: RunnerPreSpawnPhaseDurations::default(),
             task_enqueued_at: None,
             exact_reuse_speculation: None,
@@ -233,8 +234,25 @@ impl RunnerPreSpawnTiming {
     }
 
     fn record_collected_phases(&self, telemetry: &mut JobTelemetry, executor_started_at: Instant) {
-        if let Some(duration) = self.api_claim_request_elapsed {
-            telemetry.record("runner_claim_http_request", duration, true, None);
+        if let Some(timing) = self.api_claim_timing {
+            telemetry.record(
+                "runner_claim_http_request",
+                timing.request_elapsed(),
+                true,
+                None,
+            );
+            telemetry.record(
+                "runner_claim_response_body_read",
+                timing.response_body_read_elapsed(),
+                true,
+                None,
+            );
+            telemetry.record(
+                "runner_claim_response_decode",
+                timing.response_decode_elapsed(),
+                true,
+                None,
+            );
         }
         for phase in RunnerPreSpawnPhase::ALL {
             if let Some(duration) = self.phase_durations.get(phase) {
