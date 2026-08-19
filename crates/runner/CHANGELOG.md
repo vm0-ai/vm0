@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.169.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.10...runner-rs-v0.169.11) (2026-08-19)
+
+
+### Bug Fixes
+
+* **python:** track generator advancement failures ([#28107](https://github.com/vm0-ai/vm0/issues/28107)) ([c56f8d5](https://github.com/vm0-ai/vm0/commit/c56f8d5cc628c754880c27dc690d5704cf493df0))
+
+
+### Documentation
+
+* **runner:** document workspace image cache GC policy ([#28104](https://github.com/vm0-ai/vm0/issues/28104)) ([e178040](https://github.com/vm0-ai/vm0/commit/e178040179027bea9f2863aa5bea3332f3f25016))
+
 ## [0.169.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.9...runner-rs-v0.169.10) (2026-08-19)
 
 
