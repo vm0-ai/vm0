@@ -192,8 +192,7 @@ where
     S: Subscriber + for<'a> LookupSpan<'a>,
 {
     fn on_event(&self, event: &Event<'_>, _: Context<'_, S>) {
-        let value = serialize_event(event);
-        if self.tx.try_send(Msg::Event(value)).is_err() {
+        let Ok(permit) = self.tx.try_reserve() else {
             // Bounded-channel full or dispatcher gone. Emit a periodic
             // best-effort diagnostic under `INTERNAL_TARGET`; if tracing
             // observes it, the Axiom per-layer filter keeps it out of remote
@@ -206,7 +205,10 @@ where
                     "axiom channel full",
                 );
             }
-        }
+            return;
+        };
+
+        permit.send(Msg::Event(serialize_event(event)));
     }
 }
 

@@ -6,7 +6,7 @@
 //! endpoint with the TS-compatible payload shape.
 //!
 
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use std::time::Duration;
@@ -33,6 +33,15 @@ struct RecordedEvent {
 #[derive(Clone, Default)]
 struct RecordingLayer {
     events: Arc<Mutex<Vec<RecordedEvent>>>,
+}
+
+struct FormattingProbe<'a>(&'a AtomicUsize);
+
+impl std::fmt::Debug for FormattingProbe<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fetch_add(1, Ordering::Relaxed);
+        formatter.write_str("formatted")
+    }
 }
 
 impl RecordingLayer {
@@ -450,6 +459,27 @@ fn burst_past_channel_cap_drops_without_blocking() {
         CHANNEL_CAP,
         "the bounded channel must drop every event beyond its capacity",
     );
+}
+
+#[test]
+fn rejected_events_are_not_serialized() {
+    let (tx, receiver) = tokio::sync::mpsc::channel(1);
+    assert!(tx.try_send(super::Msg::Event(json!({}))).is_ok());
+
+    let layer = AxiomLayer {
+        tx,
+        dropped: AtomicU64::new(0),
+    };
+    let subscriber = tracing_subscriber::registry().with(with_ingest_filter(layer));
+    let formatting_count = AtomicUsize::new(0);
+
+    let _sub = tracing::subscriber::set_default(subscriber);
+    tracing::warn!(probe = ?FormattingProbe(&formatting_count), "full channel");
+    assert_eq!(formatting_count.load(Ordering::Relaxed), 0);
+
+    drop(receiver);
+    tracing::warn!(probe = ?FormattingProbe(&formatting_count), "closed channel");
+    assert_eq!(formatting_count.load(Ordering::Relaxed), 0);
 }
 
 #[tokio::test]
