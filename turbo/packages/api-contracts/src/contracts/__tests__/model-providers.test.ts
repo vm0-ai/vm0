@@ -1424,4 +1424,58 @@ describe("custom model gateway provider types", () => {
     expect(selectable).toContain("vercel-ai-gateway");
     expect(selectable).toContain("vercel-ai-gateway-codex");
   });
+
+  it.each([
+    "vm0",
+    "anthropic-api-key",
+    "claude-code-oauth-token",
+    "openai-api-key",
+    "codex-oauth-token",
+    "aws-bedrock",
+    "azure-foundry",
+  ] as const)(
+    "are not session-compatible with %s despite sharing an absent base URL",
+    (type) => {
+      // These providers resolve to no base URL because they use the vendor
+      // default endpoint. A custom gateway resolves to none because its
+      // endpoint lives on the surface row, so the two must not be conflated.
+      expect(getProviderBaseUrl(type)).toBeNull();
+      expect(areProvidersCompatible("custom-anthropic-messages", type)).toBe(
+        false,
+      );
+      expect(areProvidersCompatible("custom-openai-responses", type)).toBe(
+        false,
+      );
+    },
+  );
+
+  it("are session-compatible only with themselves", () => {
+    expect(
+      areProvidersCompatible(
+        "custom-anthropic-messages",
+        "custom-anthropic-messages",
+      ),
+    ).toBe(true);
+    expect(
+      areProvidersCompatible(
+        "custom-openai-responses",
+        "custom-openai-responses",
+      ),
+    ).toBe(true);
+    expect(
+      areProvidersCompatible(
+        "custom-anthropic-messages",
+        "custom-openai-responses",
+      ),
+    ).toBe(false);
+    expect(
+      areProvidersCompatible("custom-anthropic-messages", "vercel-ai-gateway"),
+    ).toBe(false);
+    expect(
+      areProvidersCompatible(
+        "custom-openai-responses",
+        "vercel-ai-gateway-codex",
+      ),
+    ).toBe(false);
+  });
 });

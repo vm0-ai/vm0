@@ -1115,14 +1115,37 @@ export function getProviderBaseUrl(type: ModelProviderType): string | null {
   return openaiUrl ?? null;
 }
 
+const CUSTOM_GATEWAY_PROVIDER_TYPES: ReadonlySet<ModelProviderType> = new Set([
+  "custom-anthropic-messages",
+  "custom-openai-responses",
+]);
+
+/**
+ * Check whether a provider type routes through an org-configured gateway
+ * surface. These types carry no envBindings, so `getProviderBaseUrl` cannot
+ * report their upstream: it is stored per surface in `model_provider_surfaces`.
+ */
+export function isCustomGatewayProviderType(type: ModelProviderType): boolean {
+  return CUSTOM_GATEWAY_PROVIDER_TYPES.has(type);
+}
+
 /**
  * Check if two model providers are compatible for session continuation.
  * Providers are compatible if they resolve to the same upstream base URL.
+ *
+ * A custom gateway type resolves to no base URL here, which must not be read
+ * as "the vendor default endpoint" — that would make a self-hosted gateway
+ * look interchangeable with anthropic-api-key, openai-api-key, or vm0. It is
+ * compatible only with itself; whether two runs used the same surface is a
+ * separate question, answered by the surface id the caller also holds.
  */
 export function areProvidersCompatible(
   a: ModelProviderType,
   b: ModelProviderType,
 ): boolean {
+  if (isCustomGatewayProviderType(a) || isCustomGatewayProviderType(b)) {
+    return a === b;
+  }
   return getProviderBaseUrl(a) === getProviderBaseUrl(b);
 }
 

@@ -6502,6 +6502,110 @@ describe("CHAT-02: run-level model overrides", () => {
     await cancelChatRun(actor, second.runId);
   }, 90_000);
 
+  it("rotates after a custom gateway is deleted and replaced by a direct vendor key", async () => {
+    const { actor, agentId, runnerGroup, providerId } =
+      await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const created = await accept(
+      modelProviderConnectionsClient().create({
+        headers: sessionHeaders(actor),
+        body: {
+          displayName: "Direct replacement gateway",
+          secret: "direct-replacement-gateway-secret",
+          surfaces: [
+            {
+              protocol: "anthropic-messages",
+              apiBaseUrl: "https://gateway.example.com/anthropic",
+              authHeaderName: "Authorization",
+              authHeaderTemplate: "Bearer {{secret}}",
+              modelMappings: {
+                "claude-sonnet-5": "anthropic/claude-sonnet-4.6",
+              },
+            },
+          ],
+        },
+      }),
+      [201],
+    );
+    const surfaceId = created.body.surfaces[0]?.id;
+    if (!surfaceId) {
+      throw new Error("Expected the custom gateway to have a surface");
+    }
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-5",
+        isDefault: true,
+        defaultProviderType: "custom-anthropic-messages",
+        credentialScope: "org",
+        modelProviderId: null,
+        modelProviderSurfaceId: surfaceId,
+      },
+    ]);
+
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "establish a custom gateway session",
+      model: "claude-sonnet-5",
+    });
+    const firstClaim = await claimChatRun(runnerGroup, first.runId);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
+    const originalBinding = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    if (!originalBinding.agent_session_id) {
+      throw new Error("Expected the custom gateway route to bind a session");
+    }
+
+    // A direct vendor key resolves to no upstream base URL because it uses the
+    // vendor default endpoint, and so does a custom gateway, whose endpoint is
+    // stored on the surface row. The session must still rotate: the deleted
+    // surface pointed somewhere else entirely.
+    await accept(
+      modelProviderConnectionsByIdClient().delete({
+        headers: sessionHeaders(actor),
+        params: { id: created.body.id },
+      }),
+      [204],
+    );
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-5",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+
+    const second = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "rotate onto the direct vendor key",
+    });
+    const rotatedBinding = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    expect(rotatedBinding.agent_session_id).not.toBe(
+      originalBinding.agent_session_id,
+    );
+    expect(sandboxOperationEventsForRun(second.runId)).toContainEqual(
+      expect.objectContaining({
+        op_type: "chat_thread_session_binding_persisted",
+        chat_thread_id: first.threadId,
+        agent_session_id: rotatedBinding.agent_session_id,
+        agent_session_run_id: second.runId,
+        binding_action: "rotated",
+      }),
+    );
+    const secondClaim = await claimChatRun(runnerGroup, second.runId);
+    expect(secondClaim.claim.resumeSession).toBeNull();
+    await cancelChatRun(actor, second.runId);
+  }, 90_000);
+
   it("rotates from the latest session run when binding provenance is deleted", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
