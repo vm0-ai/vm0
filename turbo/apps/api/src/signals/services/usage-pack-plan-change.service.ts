@@ -43,6 +43,7 @@ import {
 import {
   calculateUsagePackAdditionCreditGrant,
   calculateUsagePackUpgradeCreditGrants,
+  failScheduledUsagePackAllocationChangesForSchedule,
   fulfillUsagePackSubscriptionChangeInvoice,
   reconcileUsagePackAllocationChangeSubscription,
   type UsagePackChangeInvoiceInput,
@@ -2321,25 +2322,10 @@ async function restoreScheduledSubscriptionChange(
   const completedAt = nowDate();
   await db.transaction(async (tx) => {
     await lockUsagePackBillingOrg(tx, stored.root.orgId);
-    await tx
-      .update(usagePackAllocationChanges)
-      .set({
-        status: "failed",
-        failureReason: "scheduled_change_restored",
-        completedAt,
-        updatedAt: completedAt,
-      })
-      .where(
-        and(
-          inArray(
-            usagePackAllocationChanges.id,
-            scheduledChanges.map((change) => {
-              return change.id;
-            }),
-          ),
-          eq(usagePackAllocationChanges.status, "scheduled"),
-        ),
-      );
+    await failScheduledUsagePackAllocationChangesForSchedule(tx, {
+      scheduleId,
+      completedAt,
+    });
     await tx
       .update(usagePackSubscriptionChanges)
       .set({

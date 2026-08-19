@@ -11,6 +11,7 @@ import {
   billingDefaultPaymentMethodStatus,
   createBillingSetupCheckout,
 } from "./billing-payment-method.service";
+import { failScheduledUsagePackAllocationChangesForSchedule } from "./usage-pack-allocation-change.service";
 
 const L = logger("BillingRestore");
 
@@ -107,16 +108,25 @@ export async function restoreSubscriptionForOrg(
     });
   }
 
-  await db
-    .update(orgMetadata)
-    .set({
-      cancelAtPeriodEnd: false,
-      pendingSubscriptionScheduleId: null,
-      pendingSubscriptionTargetTier: null,
-      pendingSubscriptionChangeAt: null,
-      updatedAt: nowDate(),
-    })
-    .where(eq(orgMetadata.orgId, args.orgId));
+  const restoredAt = nowDate();
+  await db.transaction(async (tx) => {
+    if (pendingScheduleId) {
+      await failScheduledUsagePackAllocationChangesForSchedule(tx, {
+        scheduleId: pendingScheduleId,
+        completedAt: restoredAt,
+      });
+    }
+    await tx
+      .update(orgMetadata)
+      .set({
+        cancelAtPeriodEnd: false,
+        pendingSubscriptionScheduleId: null,
+        pendingSubscriptionTargetTier: null,
+        pendingSubscriptionChangeAt: null,
+        updatedAt: restoredAt,
+      })
+      .where(eq(orgMetadata.orgId, args.orgId));
+  });
 
   L.debug("scheduled subscription change restored", {
     orgId: args.orgId,

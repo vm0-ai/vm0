@@ -8,8 +8,8 @@ import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-hel
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDirectory = path.join(scriptDirectory, "../src/migrations");
-const previousMigration = "0946_connector_account_expansion";
-const reclassifyMigration = "0947_custom_model_gateway_provider_types";
+const previousMigration = "0947_add_seedance_2_5_1080p_pricing";
+const reclassifyMigration = "0948_custom_model_gateway_provider_types";
 const testDatabase = "migration_custom_gateway_provider_types";
 
 const CUSTOM_ORG = "org_custom_gateway_reclassify";

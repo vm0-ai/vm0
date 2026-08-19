@@ -375,6 +375,19 @@ def enqueue_webhook_delivery(
     If the executor has already been shut down (drain/shutdown race),
     falls back to synchronous delivery so the report is not silently lost.
 
+    When provided, ``delivery_outcome_callback`` is invoked exactly once for
+    an admitted payload after delivery reaches a final ``success``,
+    ``retryable_failure``, or ``permanent_failure`` outcome.  It is not
+    invoked when admission returns ``False`` or when enqueueing fails before
+    delivery ownership transfers.  Normal delivery invokes it on a webhook
+    executor worker; the executor-shutdown fallback invokes it synchronously
+    on the enqueueing thread.
+
+    The callback runs before the pending-report lease and delivery-capacity
+    slot are released.  Exceptions raised by the callback propagate through
+    the worker future or synchronous fallback, while the surrounding cleanup
+    still releases the owned counters.
+
     Returns whether the payload was admitted to delivery.  ``False`` means
     delivery was saturated and the caller still owns retry handling.
     """

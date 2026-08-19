@@ -2516,6 +2516,7 @@ function BillingPricingPage({
       ) : migration ? (
         <UsagePackMigrationPlanSelectionPage
           configuration={migration.configuration ?? null}
+          currentTier={currentTier}
           onBack={onBack}
           onSelect={onSelectMigration}
         />
@@ -2684,6 +2685,7 @@ function UsagePackPricingFlowDialogs({
   if (migration) {
     return (
       <UsagePackMigrationDialogs
+        currentTier={currentTier}
         migration={migration}
         migrationOpen={migrationOpen}
         migrationTargetTier={migrationTargetTier}

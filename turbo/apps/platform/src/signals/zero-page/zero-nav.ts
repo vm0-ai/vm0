@@ -1,14 +1,19 @@
 import { command, computed, state } from "ccstate";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { detachedNavigateTo$ } from "../route.ts";
 import { ROUTES, type RouteKey } from "../route-paths.ts";
 import { localStorageSignals } from "../external/local-storage.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 import { openQueueDrawer$ } from "../queue-page/queue-drawer-state.ts";
 import { setupGlobalShortcut } from "../../lib/setup-global-shortcut.ts";
 import { currentChatAgentId$ } from "../agent-chat.ts";
 import { activeRoute$ } from "../active-route.ts";
 import { eventDrivenChatThreads$ } from "../chat-page/chat-thread-event-sourcing.ts";
 import { setChatShortcutHelpOpen$ } from "../chat-page/chat-shortcut-help.ts";
-import { openAgentListDialog$ } from "./zero-sidebar-state.ts";
+import {
+  openAgentListDialog$,
+  openThreeColumnSearchDialog$,
+} from "./zero-sidebar-state.ts";
 import { displayedPinnedAgents$ } from "./zero-pinned-agents.ts";
 import { writeToClipboard } from "./clipboard.ts";
 import { isStandaloneMode } from "./settings/connectors.ts";
@@ -131,13 +136,24 @@ export const toggleSidebarOff$ = command(({ get, set }) => {
 });
 
 export const setupGlobalKeyboardShortcuts$ = command(
-  ({ set }, signal: AbortSignal) => {
+  ({ get, set }, signal: AbortSignal) => {
     setupGlobalShortcut(
       {
         "mod+b": {
           allowInEditableTarget: true,
           run: () => {
             set(toggleSidebarOff$);
+          },
+        },
+        "mod+k": {
+          allowInEditableTarget: true,
+          shouldHandle: () => {
+            return (
+              get(featureSwitch$)[FeatureSwitchKey.ThreeColumnNav] ?? false
+            );
+          },
+          run: () => {
+            set(openThreeColumnSearchDialog$);
           },
         },
         "mod+l": {

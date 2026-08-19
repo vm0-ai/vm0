@@ -425,7 +425,7 @@ async function validateExplicitPermissionNames(args: {
   }
 
   const bundle = await loadCustomConnectorPermissionBundle({
-    snapshot: args.snapshot,
+    catalog: args.snapshot.serverFirewallMetadata,
     ref: args.permissionBundleRef,
   });
   if (!bundle) {

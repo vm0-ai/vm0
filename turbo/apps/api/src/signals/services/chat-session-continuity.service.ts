@@ -258,7 +258,7 @@ async function customSurfaceRouteChanged(args: {
  * Whether either side of a route change can be a custom gateway surface.
  *
  * The dedicated `custom-*` types say so directly. The two Vercel adapter types
- * still count because runs recorded before migration `0947` used them for
+ * still count because runs recorded before migration `0948` used them for
  * custom surfaces too, and the rows whose surface id no longer resolves were
  * deliberately left unreclassified.
  */
