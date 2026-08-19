@@ -1171,7 +1171,7 @@ async function readUsagePackSummary(
   page: Page,
   token: string,
   memberId: string,
-): Promise<UsagePackSummary> {
+): Promise<UsagePackSummary | null> {
   const body = requireRecord(
     await getApiJson(page, "/api/okou/billing/usage-pack-subscription", token),
     "usage-pack management",
@@ -1182,7 +1182,9 @@ async function readUsagePackSummary(
     })
     .find((value) => value.memberId === memberId);
   if (!allocation) {
-    throw new Error(`usage-pack allocation for member ${memberId} not found`);
+    // Checkout completion binds the subscription before invoice.paid activates
+    // allocations.
+    return null;
   }
 
   return {
