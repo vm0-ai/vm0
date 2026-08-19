@@ -14,7 +14,7 @@ import { server } from "../../../mocks/server";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { testTeamsDispatchProbeRoutes } from "../test-teams-dispatch-probe";
 import { testTeamsStateRoutes } from "../test-teams-state";
-import { createFixtureTracker } from "./helpers/zero-route-test";
+import { createFixtureTracker } from "./helpers/route-test";
 
 const context = testContext();
 const TEAMS_STATE_ROUTE = "/api/test/teams-state";

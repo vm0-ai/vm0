@@ -5,10 +5,7 @@ import { createAppWithRoutes } from "../../../app-factory-core";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { teamsBrowserConnectRoutes } from "../teams-browser-connect";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
 import {
   installTeamsForTest,
   removeTeamsForTest,
@@ -20,7 +17,7 @@ import {
 import { teamsConnectRoutes } from "../teams-connect";
 
 const context = testContext();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const CONNECT_PATH = "http://api.test/api/zero/teams/connect";
 const APP_ORIGIN = "https://app.vm0.test";
 

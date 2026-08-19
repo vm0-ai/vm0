@@ -49,7 +49,7 @@ import { codexDeviceAuthRoutes } from "../../codex-device-auth";
 import { zeroModelProvidersRoutes } from "../../zero-model-providers";
 import { realtimeTokenRoutes } from "../../realtime-token";
 import type { ApiTestUser } from "./api-bdd";
-import { createZeroRouteMocks } from "./zero-route-test";
+import { createRouteMocks } from "./route-test";
 
 interface AuthHeaders {
   readonly authorization?: string;
@@ -409,7 +409,7 @@ export function mockClaudeCodeTokenEndpoint(
 }
 
 export function createAuthDeviceApiActions(context: TestContext) {
-  const routeMocks = createZeroRouteMocks(context);
+  const routeMocks = createRouteMocks(context);
 
   function authenticate(actor: ApiTestUser | null): AuthHeaders {
     if (!actor) {

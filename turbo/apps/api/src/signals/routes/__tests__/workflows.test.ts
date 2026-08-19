@@ -41,10 +41,7 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
 import { workflowAutomationsRoutes } from "../workflow-automations";
 import { workflowsRoutes } from "../workflows";
 import { testSystemStoragePresignedUrlCacheStateRoutes } from "../test-system-storage-presigned-url-cache-state";
@@ -53,7 +50,7 @@ const context = testContext();
 const bdd = createBddApi(context);
 const chat = createChatFilesBddApi(context);
 const miscApi = createMiscRoutesApi(context);
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const api = createRunsApi(context);
 const connectorApi = createConnectorBddApi(context);
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";

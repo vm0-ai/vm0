@@ -46,7 +46,7 @@ import {
 import { modelStatsContract, modelStatsPublicRoutes } from "../../model-stats";
 import { testUsageSettlementRoutes } from "../../test-usage-settlement";
 import type { ApiTestUser } from "./api-bdd";
-import { createZeroRouteMocks } from "./zero-route-test";
+import { createRouteMocks } from "./route-test";
 import { acquisitionAttributionRoutes } from "../../acquisition-attribution";
 import { bankingRoutes } from "../../banking";
 import { billingAutoRechargeRoutes } from "../../billing-auto-recharge";
@@ -224,7 +224,7 @@ function stripeInvoices(value: unknown): readonly StripeInvoice[] {
 }
 
 export function createBillingMediaApi(context: TestContext) {
-  const routeMocks = createZeroRouteMocks(context);
+  const routeMocks = createRouteMocks(context);
   mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
   mockListStripeInvoices(async (customerId, created) => {
     return stripeInvoices(

@@ -35,7 +35,7 @@ import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { setupApp } from "../../../../__tests__/test-helpers";
 import { signSandboxJwtForTests } from "../../../auth/tokens";
 import type { ApiTestUser } from "./api-bdd";
-import { createZeroRouteMocks } from "./zero-route-test";
+import { createRouteMocks } from "./route-test";
 import { cronComputerUseScreenshotCleanupRoutesForTest } from "../../cron-computer-use-screenshot-cleanup";
 import { computerUseRoutes } from "../../computer-use";
 import { computerUseAuthorizationRoutes } from "../../computer-use-authorization";
@@ -346,7 +346,7 @@ export function zeroComputerUseToken(args: {
 }
 
 export function createComputerUseBddApi(context: TestContext) {
-  const mocks = createZeroRouteMocks(context);
+  const mocks = createRouteMocks(context);
 
   function authenticate(auth: ComputerUseAuth): AuthHeaders {
     if (auth === null) {

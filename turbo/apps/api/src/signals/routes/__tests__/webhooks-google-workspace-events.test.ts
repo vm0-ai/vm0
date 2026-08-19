@@ -13,13 +13,13 @@ import { server } from "../../../mocks/server";
 import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { chatEventDisplayText } from "./helpers/chat-event";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { webhooksGoogleWorkspaceEventsRoutes } from "../webhooks-google-workspace-events";
 import { workflowAutomationsRoutes } from "../workflow-automations";
 
 const context = testContext();
 const connectors = createConnectorBddApi(context);
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const workflows = createWorkflowsBddApi(context);
 
 const TOPIC_NAME = "projects/vm0-ai-488909/topics/google-workspace-events";

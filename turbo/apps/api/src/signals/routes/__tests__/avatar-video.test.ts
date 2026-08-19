@@ -28,12 +28,12 @@ import { billingStatusRoutes } from "../billing-status";
 import { builtInGenerationRoutes } from "../built-in-generation";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { seedOrgMembership$ } from "./helpers/org-membership";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { seedCompose$, seedRun$ } from "./helpers/usage-state";
 
 const context = testContext();
 const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 const JOGGAI_CREATE_URL = "https://api.jogg.ai/v2/create_video_from_avatar";
 const JOGGAI_AVATARS_URL = "https://api.jogg.ai/v2/avatars/public";

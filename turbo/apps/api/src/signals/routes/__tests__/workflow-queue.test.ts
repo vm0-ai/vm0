@@ -36,7 +36,7 @@ import {
 } from "./helpers/chat-event";
 import { readThreadSessionBinding } from "./helpers/runtime-state";
 import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
 import {
   completeRunWithoutCallbacksFixture,
@@ -63,7 +63,7 @@ const TEST_APP_ROUTES = Object.freeze([
 ]);
 
 const context = testContext();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
 const runsApi = createRunsApi(context);
 const webhooksApi = createWebhookCallbackApi(context);

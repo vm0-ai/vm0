@@ -20,7 +20,7 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import {
   createAuthOrgAgentsBddApi,
   type ApiTestUser,
@@ -40,7 +40,7 @@ const TEST_APP_ROUTES = Object.freeze([
 type ModelPolicyFixture = ApiTestUser & { readonly orgId: string };
 
 const context = testContext();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const authOrgApi = createAuthOrgAgentsBddApi(context);
 const runsApi = createRunsApi(context);
 const MODEL_POLICIES_PATH = "/api/zero/model-policies";

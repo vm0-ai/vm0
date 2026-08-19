@@ -15,16 +15,13 @@ import {
   seedInvoicesOrg$,
   type InvoicesOrgFixture,
 } from "./helpers/billing-invoices";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
 import { billingDowngradeRoutes } from "../billing-downgrade";
 import { billingStatusRoutes } from "../billing-status";
 
 const context = testContext();
 const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 const TEST_PRICE_PRO = "price_test_pro";
 const TEST_PRICE_TEAM = "price_test_team";

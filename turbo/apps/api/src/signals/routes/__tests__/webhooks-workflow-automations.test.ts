@@ -10,7 +10,7 @@ import type { ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { workflowAutomationsRoutes } from "../workflow-automations";
 import { webhooksWorkflowAutomationsRoutes } from "../webhooks-workflow-automations";
 
@@ -20,7 +20,7 @@ const TEST_APP_ROUTES = Object.freeze([
 ]);
 
 const context = testContext();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
 
 const WORKFLOW_NAME = "webhook-automation-workflow";

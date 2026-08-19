@@ -92,7 +92,7 @@ import { orgReadRoutes } from "../../org-read";
 import { teamRoutes } from "../../team";
 import { userPreferencesRoutes } from "../../user-preferences";
 import { createBddApi, type OnboardingBootstrapOptions } from "./api-bdd";
-import { createZeroRouteMocks } from "./zero-route-test";
+import { createRouteMocks } from "./route-test";
 
 type ClerkOrgRole = "org:admin" | "org:member";
 type ApiOrgRole = "admin" | "member";
@@ -378,7 +378,7 @@ function publicBrandHeaders(publicBrand: PublicBrand) {
 }
 
 export function createAuthOrgAgentsBddApi(context: TestContext) {
-  const routeMocks = createZeroRouteMocks(context);
+  const routeMocks = createRouteMocks(context);
 
   function testApp() {
     return createAppWithRoutes({

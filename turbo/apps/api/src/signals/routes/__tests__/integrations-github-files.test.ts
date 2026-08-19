@@ -22,7 +22,7 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createGithubBddApi } from "./helpers/api-bdd-github";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { integrationsGithubUploadCompleteRoutes } from "../integrations-github-upload-complete";
 import { integrationsGithubUploadInitRoutes } from "../integrations-github-upload-init";
 import { integrationsGithubDownloadFileRoutes } from "../integrations-github-download-file";
@@ -34,7 +34,7 @@ const TEST_APP_ROUTES = Object.freeze([
 ]);
 
 const context = testContext();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const github = createGithubBddApi(context);
 const bdd = createBddApi(context);
 const api = createRunsApi(context);

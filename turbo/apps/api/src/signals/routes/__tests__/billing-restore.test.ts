@@ -14,16 +14,13 @@ import {
   seedInvoicesOrg$,
   type InvoicesOrgFixture,
 } from "./helpers/billing-invoices";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
 import { billingRestoreRoutes } from "../billing-restore";
 import { billingStatusRoutes } from "../billing-status";
 
 const context = testContext();
 const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 function mockSubscriptionWithPaymentMethod(
   subId: string,

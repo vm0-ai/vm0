@@ -32,7 +32,7 @@ import {
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { readRunLaunchSnapshotFixture } from "./helpers/runtime-state";
-import { createFixtureTracker } from "./helpers/zero-route-test";
+import { createFixtureTracker } from "./helpers/route-test";
 
 /*
  * FILE-03 timing notes:

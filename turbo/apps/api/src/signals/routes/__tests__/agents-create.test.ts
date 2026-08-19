@@ -14,12 +14,12 @@ import {
   createAuthOrgAgentsBddApi,
   type ApiTestUser,
 } from "./helpers/api-bdd-auth-org";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { agentsRoutes } from "../agents";
 
 const context = testContext();
 const authOrgApi = createAuthOrgAgentsBddApi(context);
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 type AgentsFixture = ApiTestUser & { readonly orgId: string };
 

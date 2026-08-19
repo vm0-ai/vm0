@@ -22,7 +22,7 @@ import {
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { chatEventDisplayText } from "./helpers/chat-event";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { testStripeAutomationEventRoutes } from "../test-stripe-automation-events";
 import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
 import { webhooksStripeAutomationEventsRoutes } from "../webhooks-stripe-automation-events";
@@ -32,7 +32,7 @@ const context = testContext();
 const connectors = createConnectorBddApi(context);
 const runs = createRunsApi(context);
 const workflows = createWorkflowsBddApi(context);
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 const AUTOMATION_WEBHOOK_SECRET = "whsec_stripe_automation_events";
 const STRIPE_ACCOUNT_ID = "acct_stripe_workflow_live";

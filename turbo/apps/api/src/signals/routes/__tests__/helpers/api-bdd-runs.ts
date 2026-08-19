@@ -78,7 +78,7 @@ import { runFixtureContract, runFixtureRoutes } from "../../test-run-fixture";
 import { testBillingReconciliationStateRoutes } from "../../test-billing-reconciliation-state";
 import { userPermissionGrantsRoutes } from "../../user-permission-grants";
 import { createBddApi, type ApiTestUser } from "./api-bdd";
-import { createZeroRouteMocks } from "./zero-route-test";
+import { createRouteMocks } from "./route-test";
 
 type AuthHeaders = { readonly authorization?: string };
 type ZeroRunRequest = z.infer<typeof runCreateBodySchema>;
@@ -198,7 +198,7 @@ function authenticate(
     return {};
   }
 
-  createZeroRouteMocks(context).clerk.session(
+  createRouteMocks(context).clerk.session(
     nextActor.userId,
     nextActor.orgId,
     nextActor.orgRole,

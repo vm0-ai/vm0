@@ -39,7 +39,7 @@ import {
   type ModelStatsStatKey,
 } from "./helpers/model-stats-state";
 import { commitMemoryVersion } from "./helpers/memory";
-import { createFixtureTracker } from "./helpers/zero-route-test";
+import { createFixtureTracker } from "./helpers/route-test";
 import { agentInstructionsRoutes } from "../agent-instructions";
 
 /* BILL-02 model stats and OPS-01 user export. */

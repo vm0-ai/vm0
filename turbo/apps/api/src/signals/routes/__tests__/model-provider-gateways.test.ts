@@ -11,11 +11,11 @@ import { createBddApi } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { modelProviderGatewayRoutes } from "../model-provider-gateways";
 
 const context = testContext();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const chat = createChatFilesBddApi(context);
 

@@ -14,15 +14,12 @@ import {
   seedSlackOrgInstallation$,
   type SlackIntegrationFixture,
 } from "./helpers/integrations-slack";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
 import { integrationsSlackRoutes } from "../integrations-slack";
 
 const context = testContext();
 const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 describe("GET /api/zero/integrations/slack", () => {
   const track = createFixtureTracker<SlackIntegrationFixture>((fixture) => {

@@ -30,7 +30,7 @@ import { onboardingCompleteRoutes } from "../../onboarding-complete";
 import { onboardingStatusRoutes } from "../../onboarding-status";
 import { orgReadRoutes } from "../../org-read";
 import { userPreferencesRoutes } from "../../user-preferences";
-import { createZeroRouteMocks } from "./zero-route-test";
+import { createRouteMocks } from "./route-test";
 
 type ClerkOrgRole = "org:admin" | "org:member";
 
@@ -114,7 +114,7 @@ function createUser(options: ApiTestUserOptions = {}): ApiTestUser {
 }
 
 export function createBddApi(context: TestContext) {
-  const mocks = createZeroRouteMocks(context);
+  const mocks = createRouteMocks(context);
 
   function authClient() {
     return setupAppWithRoutes({ context, routes: authMeRoutes })(authContract);

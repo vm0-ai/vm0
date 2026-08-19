@@ -26,7 +26,7 @@ import {
   createBddIntegrationApi,
 } from "./api-bdd-integrations";
 import { sessionHistoryBlobBodyForKey } from "./api-bdd-session-history";
-import { createZeroRouteMocks } from "./zero-route-test";
+import { createRouteMocks } from "./route-test";
 import { integrationsPhoneUploadCompleteRoutes } from "../../integrations-phone-upload-complete";
 import { integrationsPhoneUploadInitRoutes } from "../../integrations-phone-upload-init";
 import { integrationsPhoneDownloadFileRoutes } from "../../integrations-phone-download-file";
@@ -136,7 +136,7 @@ function authenticate(
   context: TestContext,
   actor: ApiTestUser,
 ): { readonly authorization: string } {
-  createZeroRouteMocks(context).clerk.session(
+  createRouteMocks(context).clerk.session(
     actor.userId,
     actor.orgId,
     actor.orgRole,

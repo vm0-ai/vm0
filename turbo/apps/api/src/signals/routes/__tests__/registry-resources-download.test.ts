@@ -12,10 +12,10 @@ import {
   resolvePrivateRegistryResourceArchive,
   registryResourceDownloadRoutes,
 } from "../registry-resources-download";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 
 const context = testContext();
-const routeMocks = createZeroRouteMocks(context);
+const routeMocks = createRouteMocks(context);
 
 function authHeaders() {
   const userId = `user_${randomUUID()}`;

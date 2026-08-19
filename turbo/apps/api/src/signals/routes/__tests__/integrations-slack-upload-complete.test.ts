@@ -24,7 +24,7 @@ import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
@@ -52,7 +52,7 @@ type CompletedChatEvent = Extract<ChatEvent, { eventType: "run.completed" }>;
 
 const context = testContext();
 const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const bdd = createBddApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const chatApi = createChatFilesBddApi(context);

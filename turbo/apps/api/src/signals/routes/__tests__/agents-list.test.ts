@@ -4,11 +4,11 @@ import { zeroAgentsMainContract } from "@okouai/api-contracts/contracts/zero-age
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { agentsRoutes } from "../agents";
 
 const context = testContext();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 interface OrgUser {
   readonly orgId: string;

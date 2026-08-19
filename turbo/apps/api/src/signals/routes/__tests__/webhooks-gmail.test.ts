@@ -36,7 +36,7 @@ import {
   chatEventDisplayText,
 } from "./helpers/chat-event";
 import { seedVm0ManagedModelKey } from "./helpers/runtime-state";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { workflowAutomationsRoutes } from "../workflow-automations";
 import { webhooksGmailRoutes } from "../webhooks-gmail";
 
@@ -46,7 +46,7 @@ const TEST_APP_ROUTES = Object.freeze([
 ]);
 
 const context = testContext();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const bdd = createBddApi(context);
 const chatApi = createChatFilesBddApi(context);
 const connectorsApi = createConnectorBddApi(context);

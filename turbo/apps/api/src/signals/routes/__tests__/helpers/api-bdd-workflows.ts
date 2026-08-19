@@ -16,7 +16,7 @@ import { server } from "../../../../mocks/server";
 import { createBddApi, type ApiTestUser } from "./api-bdd";
 import { createConnectorBddApi } from "./api-bdd-connectors";
 import { createRunsApi } from "./api-bdd-runs";
-import { createZeroRouteMocks } from "./zero-route-test";
+import { createRouteMocks } from "./route-test";
 import { readProjectedChatEvents } from "./chat-event-test-reader";
 import { chatThreadGetRoutes } from "../../chat-threads-get";
 import { workflowAutomationsRoutes } from "../../workflow-automations";
@@ -108,7 +108,7 @@ export function createWorkflowsBddApi(context: TestContext) {
   const bdd = createBddApi(context);
   const runs = createRunsApi(context);
   const connectors = createConnectorBddApi(context);
-  const mocks = createZeroRouteMocks(context);
+  const mocks = createRouteMocks(context);
 
   function authHeaders() {
     return { authorization: "Bearer clerk-session" } as const;

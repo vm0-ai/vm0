@@ -14,12 +14,12 @@ import { generateSandboxToken } from "../../auth/tokens";
 import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { webhooksAgentFirewallAuthRoutes } from "../webhooks-agent-firewall-auth";
 import { zeroModelProvidersRoutes } from "../zero-model-providers";
 
 const context = testContext();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 function uniqueOrgUser(prefix: string): {
   readonly orgId: string;

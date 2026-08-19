@@ -17,13 +17,13 @@ import {
   type TelegramFixture,
 } from "./helpers/telegram";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { server } from "../../../mocks/server";
 import { integrationsTelegramRoutes } from "../integrations-telegram";
 
 const context = testContext();
 const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const bdd = createBddApi(context);
 const AUTH_HEADERS = { authorization: "Bearer clerk-session" } as const;
 

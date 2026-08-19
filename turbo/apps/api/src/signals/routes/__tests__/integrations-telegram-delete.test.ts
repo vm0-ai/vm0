@@ -15,13 +15,13 @@ import {
   deleteTelegramFixture$,
   type TelegramFixture,
 } from "./helpers/telegram";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { integrationsTelegramRoutes } from "../integrations-telegram";
 
 const context = testContext();
 const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const bdd = createBddApi(context);
 const AUTH_HEADERS = { authorization: "Bearer clerk-session" } as const;
 const OFFICIAL_BOT_TOKEN = "9876543210:official-test-token";

@@ -28,7 +28,7 @@ import {
   chatEventDisplayText,
 } from "./helpers/chat-event";
 import { seedOrgMembership$ } from "./helpers/org-membership";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
 import { agentsRoutes } from "../agents";
 import { workflowAutomationsRoutes } from "../workflow-automations";
@@ -43,7 +43,7 @@ const TEST_APP_ROUTES = Object.freeze([
 
 const context = testContext();
 const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
 const runsApi = createRunsApi(context);
 const runReadsApi = createRunReadsApi(context);

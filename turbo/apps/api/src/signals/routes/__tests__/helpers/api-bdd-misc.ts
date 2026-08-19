@@ -34,7 +34,7 @@ import {
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { setupApp } from "../../../../__tests__/test-helpers";
 import type { ApiTestUser } from "./api-bdd";
-import { createZeroRouteMocks } from "./zero-route-test";
+import { createRouteMocks } from "./route-test";
 import { emailUnsubscribeRoutes } from "../../email-unsubscribe";
 import { userExportRoutes } from "../../user-export";
 import { logsRoutes } from "../../logs";
@@ -89,7 +89,7 @@ function authenticate(
     return {};
   }
 
-  createZeroRouteMocks(context).clerk.session(
+  createRouteMocks(context).clerk.session(
     actor.userId,
     actor.orgId,
     actor.orgRole,
