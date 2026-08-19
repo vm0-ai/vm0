@@ -212,6 +212,10 @@ import {
   type TelegramQueuedLaunchMaterial,
 } from "./telegram-queued-launch-context.service";
 import type { Tx } from "../../lib/db-types";
+import {
+  resolveVm0ModelRuntimeRoute,
+  type Vm0ModelRuntimeRoute,
+} from "./vm0-model-runtime-route.service";
 
 const log = logger("callback:chat");
 const PG_FOREIGN_KEY_VIOLATION = "23503";
@@ -658,6 +662,7 @@ interface CreateQueuedChatRunInput {
   readonly queuedMessage: QueuedUserMessage;
   readonly modelPin: ModelFirstPin;
   readonly effectiveModelProvider: string | null | undefined;
+  readonly vm0ModelRuntimeRoute: Vm0ModelRuntimeRoute | undefined;
   readonly cliAgentType: string | null;
   readonly codexServiceTier: "fast" | undefined;
   readonly computerUseHostGrant: {
@@ -952,10 +957,15 @@ function buildQueuedCreateZeroRunArgs(
       selectedModel: input.modelPin.selectedModel,
     },
     zeroRunMetadata: { autonomyBudget: input.autonomyBudget },
+    ...(input.vm0ModelRuntimeRoute
+      ? { vm0ModelRuntimeRoute: input.vm0ModelRuntimeRoute }
+      : {}),
     threadSessionRoute: {
       selectedModel: input.modelPin.selectedModel,
       modelProvider: input.effectiveModelProvider ?? null,
       modelProviderId: input.modelPin.modelProviderId,
+      modelRuntimeProvider: input.vm0ModelRuntimeRoute?.providerType ?? null,
+      modelRuntimeModel: input.vm0ModelRuntimeRoute?.upstreamModel ?? null,
       cliAgentType: input.cliAgentType,
     },
     body: {
@@ -2554,6 +2564,7 @@ async function buildQueuedPriorContext(args: {
 interface QueuedMessageModelRoute {
   readonly modelPin: ModelFirstPin;
   readonly effectiveModelProvider: string | null | undefined;
+  readonly vm0ModelRuntimeRoute: Vm0ModelRuntimeRoute | undefined;
   readonly cliAgentType: string | null;
   readonly codexServiceTier: "fast" | undefined;
 }
@@ -2594,11 +2605,27 @@ async function resolveQueuedMessageModelRoute(args: {
   if (modelContext.providerAdmission.error) {
     return { error: modelContext.providerAdmission.error.body.error };
   }
+  const effectiveModelProvider =
+    modelContext.providerAdmission.effectiveModelProvider;
+  const selectedModel = modelContext.pin.selectedModel;
+  const vm0ModelRuntimeRoute =
+    effectiveModelProvider === "vm0" && selectedModel
+      ? await resolveVm0ModelRuntimeRoute(args.db, selectedModel)
+      : undefined;
+  if (effectiveModelProvider === "vm0" && !vm0ModelRuntimeRoute) {
+    return {
+      error: {
+        code: "PROVIDER_UNAVAILABLE",
+        message:
+          "No model provider configured: no VM0 managed model key is configured",
+      },
+    };
+  }
   return {
     route: {
       modelPin: modelContext.pin,
-      effectiveModelProvider:
-        modelContext.providerAdmission.effectiveModelProvider,
+      effectiveModelProvider,
+      vm0ModelRuntimeRoute: vm0ModelRuntimeRoute ?? undefined,
       cliAgentType: modelContext.providerAdmission.cliAgentType,
       codexServiceTier: modelContext.runCodexServiceTier,
     },
@@ -2637,6 +2664,10 @@ function loadQueuedMessageSessionState(
           selectedModel: modelRoute.modelPin.selectedModel,
           modelProvider: modelRoute.effectiveModelProvider ?? null,
           modelProviderId: modelRoute.modelPin.modelProviderId,
+          modelRuntimeProvider:
+            modelRoute.vm0ModelRuntimeRoute?.providerType ?? null,
+          modelRuntimeModel:
+            modelRoute.vm0ModelRuntimeRoute?.upstreamModel ?? null,
           cliAgentType: modelRoute.cliAgentType,
         },
       });
@@ -3143,6 +3174,7 @@ async function buildCreateQueuedChatRunInput(
     queuedMessage: args.queuedMessage,
     modelPin: modelRoute.modelPin,
     effectiveModelProvider: modelRoute.effectiveModelProvider,
+    vm0ModelRuntimeRoute: modelRoute.vm0ModelRuntimeRoute,
     cliAgentType: modelRoute.cliAgentType,
     codexServiceTier: modelRoute.codexServiceTier,
     computerUseHostGrant,

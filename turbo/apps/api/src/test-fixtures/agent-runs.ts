@@ -14,6 +14,7 @@ import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { checkpoints } from "@okouai/db/schema/checkpoint";
 import { conversations } from "@okouai/db/schema/conversation";
+import { builtInModelKeys } from "@okouai/db/schema/built-in-model-key";
 import { storages } from "@okouai/db/schema/storage";
 import { and, count, eq, inArray } from "drizzle-orm";
 
@@ -233,5 +234,47 @@ export async function backdateRunStartedAtFixture(args: {
     .returning({ id: agentRuns.id });
   if (updated.length !== 1) {
     throw new Error("Expected one running run to become historical");
+  }
+}
+
+export async function readRunModelRuntimeRouteFixture(runId: string) {
+  const [run] = await db()
+    .select({
+      modelProvider: agentRuns.modelProvider,
+      selectedModel: agentRuns.selectedModel,
+      modelRuntimeProvider: agentRuns.modelRuntimeProvider,
+      modelRuntimeModel: agentRuns.modelRuntimeModel,
+      vm0ModelKeyId: agentRuns.vm0ModelKeyId,
+      modelKeyVendor: builtInModelKeys.vendor,
+    })
+    .from(agentRuns)
+    .leftJoin(
+      builtInModelKeys,
+      eq(builtInModelKeys.id, agentRuns.vm0ModelKeyId),
+    )
+    .where(eq(agentRuns.id, runId))
+    .limit(1);
+  if (!run) {
+    throw new Error("Expected one run runtime route");
+  }
+  return run;
+}
+
+/** Simulate historical or alternate managed-route metadata not constructible through current policy. */
+export async function setRunModelRuntimeRouteFixture(args: {
+  readonly runId: string;
+  readonly modelRuntimeProvider: string | null;
+  readonly modelRuntimeModel: string | null;
+}): Promise<void> {
+  const updated = await db()
+    .update(agentRuns)
+    .set({
+      modelRuntimeProvider: args.modelRuntimeProvider,
+      modelRuntimeModel: args.modelRuntimeModel,
+    })
+    .where(eq(agentRuns.id, args.runId))
+    .returning({ id: agentRuns.id });
+  if (updated.length !== 1) {
+    throw new Error("Expected one run runtime route to update");
   }
 }

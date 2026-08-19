@@ -3,7 +3,9 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   getModelProviderFirewall,
+  getProviderRuntimeModel,
   getVm0ConcreteProviderType,
+  getVm0Vendor,
   type ModelProviderType,
   type SupportedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
@@ -71,7 +73,11 @@ import {
   readRawHistoricalAgentComposeHeadFixture,
   replaceHistoricalAgentComposeHeadFixture,
 } from "../../../test-fixtures/historical-agent-composes";
-import { readRunIdentityMismatchWriteCountsFixture } from "../../../test-fixtures/agent-runs";
+import {
+  readRunIdentityMismatchWriteCountsFixture,
+  readRunModelRuntimeRouteFixture,
+  setRunModelRuntimeRouteFixture,
+} from "../../../test-fixtures/agent-runs";
 import {
   createBddApi,
   expectApiError,
@@ -595,6 +601,20 @@ async function seedVm0ManagedDefaultModelKey(): Promise<string> {
 async function seedVm0ManagedModelKey(selectedModel: string): Promise<string> {
   const fixture = await seedVm0ManagedModelKeyState(context, selectedModel);
   return fixture.selectedModel;
+}
+
+async function expectVm0RunRuntimeRoute(
+  runId: string,
+  selectedModel: string,
+): Promise<void> {
+  await expect(readRunModelRuntimeRouteFixture(runId)).resolves.toStrictEqual({
+    modelProvider: "vm0",
+    selectedModel,
+    modelRuntimeProvider: getVm0ConcreteProviderType(selectedModel),
+    modelRuntimeModel: getProviderRuntimeModel("vm0", selectedModel),
+    vm0ModelKeyId: expect.any(String),
+    modelKeyVendor: getVm0Vendor(selectedModel),
+  });
 }
 
 function useSecretKmsClientForTests(args: {
@@ -4309,6 +4329,15 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       { authorization: `Bearer ${firstClaim.sandboxToken}` },
       [200],
     );
+    await expect(
+      readRunModelRuntimeRouteFixture(first.runId),
+    ).resolves.toMatchObject({
+      modelProvider: "anthropic-api-key",
+      modelRuntimeProvider: null,
+      modelRuntimeModel: null,
+      vm0ModelKeyId: null,
+      modelKeyVendor: null,
+    });
     await api.requestHeartbeatRunner(true, [200], {
       runnerId: randomUUID(),
       group: runnerGroup,
@@ -4370,6 +4399,128 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     const completed = await api.readRun(actor, resumed.runId);
     expect(completed.status).toBe("completed");
+  });
+
+  it("isolates direct VM0 continuation by its persisted runtime route", async () => {
+    const api = createRunsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const selectedModel = await seedVm0ManagedDefaultModelKey();
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "start a managed direct session",
+      modelProvider: "vm0",
+    });
+    const firstClaim = await api.claimRunnerJob(first.runId);
+    const initialStorageManifest = expectCanonicalStorageManifest(
+      firstClaim.storageManifest,
+    );
+    if (!initialStorageManifest) {
+      throw new Error("Expected canonical Storage mounts for the direct run");
+    }
+    const initialStorageMounts = initialStorageManifest.storageMounts;
+    const cliAgentSessionId = `bdd-vm0-direct-${first.runId}`;
+    const firstHistory = `managed direct history ${first.runId}`;
+    const firstHistoryHash = createHash("sha256")
+      .update(firstHistory)
+      .digest("hex");
+    mockSessionHistoryBlob(firstHistoryHash, firstHistory);
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: first.runId,
+        cliAgentType: firstClaim.cliAgentType,
+        cliAgentSessionId,
+        cliAgentSessionHistoryHash: firstHistoryHash,
+      },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      { runId: first.runId, exitCode: 0, lastEventSequence: 0 },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+    await api.requestHeartbeatRunner(true, [200], {
+      runnerId: randomUUID(),
+      group: runnerGroup,
+      admittableProfiles: [],
+    });
+
+    const resumed = await api.createRun(actor, {
+      agentId,
+      sessionId: first.sessionId,
+      prompt: "reuse the same managed runtime route",
+      modelProvider: "vm0",
+    });
+    expect(resumed.sessionId).toBe(first.sessionId);
+    const resumedClaim = await api.claimRunnerJob(resumed.runId);
+    expect(resumedClaim.resumeSession).toMatchObject({
+      sessionId: cliAgentSessionId,
+      historyRef: { kind: "blob", hash: firstHistoryHash },
+    });
+    const resumedStorageManifest = expectCanonicalStorageManifest(
+      resumedClaim.storageManifest,
+    );
+    if (!resumedStorageManifest) {
+      throw new Error("Expected canonical Storage mounts for the resumed run");
+    }
+    expect(resumedStorageManifest.storageMounts).toStrictEqual(
+      initialStorageMounts,
+    );
+    await expectVm0RunRuntimeRoute(resumed.runId, selectedModel);
+
+    const resumedHistory = `managed resumed history ${resumed.runId}`;
+    const resumedHistoryHash = createHash("sha256")
+      .update(resumedHistory)
+      .digest("hex");
+    mockSessionHistoryBlob(resumedHistoryHash, resumedHistory);
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: resumed.runId,
+        cliAgentType: resumedClaim.cliAgentType,
+        cliAgentSessionId,
+        cliAgentSessionHistoryHash: resumedHistoryHash,
+      },
+      { authorization: `Bearer ${resumedClaim.sandboxToken}` },
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      { runId: resumed.runId, exitCode: 0, lastEventSequence: 0 },
+      { authorization: `Bearer ${resumedClaim.sandboxToken}` },
+      [200],
+    );
+    await setRunModelRuntimeRouteFixture({
+      runId: resumed.runId,
+      modelRuntimeProvider: null,
+      modelRuntimeModel: null,
+    });
+    await api.requestHeartbeatRunner(true, [200], {
+      runnerId: randomUUID(),
+      group: runnerGroup,
+      admittableProfiles: [],
+    });
+
+    const rotated = await api.createRun(actor, {
+      agentId,
+      sessionId: first.sessionId,
+      prompt: "discard a legacy managed checkpoint",
+      modelProvider: "vm0",
+    });
+    expect(rotated.sessionId).toBe(first.sessionId);
+    const rotatedClaim = await api.claimRunnerJob(rotated.runId);
+    expect(rotatedClaim.resumeSession).toBeNull();
+    const rotatedStorageManifest = expectCanonicalStorageManifest(
+      rotatedClaim.storageManifest,
+    );
+    if (!rotatedStorageManifest) {
+      throw new Error("Expected canonical Storage mounts for the rotated run");
+    }
+    expect(rotatedStorageManifest.storageMounts).toStrictEqual(
+      initialStorageMounts,
+    );
+    await expectVm0RunRuntimeRoute(rotated.runId, selectedModel);
+    await api.requestCancelRun(actor, rotated.runId, [200]);
   });
 
   it("validates same-thread reuse heartbeat inventory shapes", async () => {
@@ -6674,6 +6825,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     );
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
+    await expectVm0RunRuntimeRoute(run.runId, selectedModel);
 
     expect(
       claim.firewalls?.map((firewall) => {
@@ -6723,6 +6875,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       experimentalProfile: DEFAULT_PROFILE,
     });
     const claim = await api.claimRunnerJob(sent.body.runId);
+    await expectVm0RunRuntimeRoute(sent.body.runId, selectedModel);
 
     expect(claim.cliAgentType).toBe("codex");
     await expect(
@@ -6847,6 +7000,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
 
       await api.heartbeatRunner(runnerGroup);
       const claim = await api.claimRunnerJob(sent.body.runId);
+      await expectVm0RunRuntimeRoute(sent.body.runId, selectedModel);
 
       expect(claim.cliAgentType).toBe("codex");
       expect(claim.environment).toMatchObject({

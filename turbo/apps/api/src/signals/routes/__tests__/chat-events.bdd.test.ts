@@ -65,7 +65,11 @@ import {
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
-import { backdateRunStartedAtFixture } from "../../../test-fixtures/agent-runs";
+import {
+  backdateRunStartedAtFixture,
+  readRunModelRuntimeRouteFixture,
+  setRunModelRuntimeRouteFixture,
+} from "../../../test-fixtures/agent-runs";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
 import { setChatThreadVideoModelFixture } from "../../../test-fixtures/chat-thread-events";
@@ -5438,6 +5442,107 @@ describe("CHAT-02: run-level model overrides", () => {
       "claude-sonnet-5",
     );
     await cancelChatRun(actor, second.runId);
+  }, 90_000);
+
+  it("rotates VM0 chat sessions on runtime-model and legacy-route mismatches", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const selectedModel = "claude-sonnet-5";
+    await seedVm0ManagedModelKey(selectedModel);
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: selectedModel,
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+    ]);
+
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "establish a managed runtime route",
+      model: selectedModel,
+    });
+    const firstClaim = await claimChatRun(runnerGroup, first.runId);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
+    const firstBinding = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    if (!firstBinding.agent_session_id) {
+      throw new Error("Expected the managed route to bind a session");
+    }
+    await expect(
+      readRunModelRuntimeRouteFixture(first.runId),
+    ).resolves.toMatchObject({
+      modelProvider: "vm0",
+      selectedModel,
+      modelRuntimeProvider: "anthropic-api-key",
+      modelRuntimeModel: selectedModel,
+      vm0ModelKeyId: expect.any(String),
+      modelKeyVendor: "anthropic",
+    });
+
+    const reused = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "reuse the same managed route",
+    });
+    const reusedBinding = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    expect(reusedBinding.agent_session_id).toBe(firstBinding.agent_session_id);
+    const reusedClaim = await claimChatRun(runnerGroup, reused.runId);
+    expect(reusedClaim.claim.resumeSession?.sessionId).toBe(
+      `bdd-cli-${first.runId}`,
+    );
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(reused.runId, reusedClaim.sandboxHeaders);
+
+    await setRunModelRuntimeRouteFixture({
+      runId: reused.runId,
+      modelRuntimeProvider: "anthropic-api-key",
+      modelRuntimeModel: "alternate-upstream-model",
+    });
+    const mismatched = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "rotate after the upstream model changes",
+    });
+    const mismatchedBinding = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    expect(mismatchedBinding.agent_session_id).not.toBe(
+      reusedBinding.agent_session_id,
+    );
+    const mismatchedClaim = await claimChatRun(runnerGroup, mismatched.runId);
+    expect(mismatchedClaim.claim.resumeSession).toBeNull();
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(mismatched.runId, mismatchedClaim.sandboxHeaders);
+
+    await setRunModelRuntimeRouteFixture({
+      runId: mismatched.runId,
+      modelRuntimeProvider: null,
+      modelRuntimeModel: null,
+    });
+    const legacy = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "rotate legacy managed history",
+    });
+    const legacyBinding = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    expect(legacyBinding.agent_session_id).not.toBe(
+      mismatchedBinding.agent_session_id,
+    );
+    const legacyClaim = await claimChatRun(runnerGroup, legacy.runId);
+    expect(legacyClaim.claim.resumeSession).toBeNull();
+    await cancelChatRun(actor, legacy.runId);
   }, 90_000);
 
   it("lazily adopts the latest eligible session for a legacy unbound thread", async () => {

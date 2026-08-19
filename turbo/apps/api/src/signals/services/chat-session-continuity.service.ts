@@ -20,11 +20,14 @@ import {
   pgBooleanDecoder,
 } from "../../lib/db-structured-result";
 import type { Db, ReadonlyDb } from "../external/db";
+import { hasIncompatibleVm0ModelRuntimeRoute } from "./vm0-model-runtime-route.service";
 
 export interface ChatThreadSessionRoute {
   readonly selectedModel: string | null;
   readonly modelProvider: string | null;
   readonly modelProviderId: string | null;
+  readonly modelRuntimeProvider: string | null;
+  readonly modelRuntimeModel: string | null;
   readonly cliAgentType: string | null;
 }
 
@@ -60,6 +63,8 @@ interface SessionRunRoute {
   readonly selectedModel: string | null;
   readonly modelProvider: string | null;
   readonly modelProviderId: string | null;
+  readonly modelRuntimeProvider: string | null;
+  readonly modelRuntimeModel: string | null;
   readonly createdAt: Date;
 }
 
@@ -147,6 +152,8 @@ async function latestHistoricalThreadSession(args: {
       selectedModel: agentRuns.selectedModel,
       modelProvider: agentRuns.modelProvider,
       modelProviderId: agentRuns.modelProviderId,
+      modelRuntimeProvider: agentRuns.modelRuntimeProvider,
+      modelRuntimeModel: agentRuns.modelRuntimeModel,
       cliAgentType: conversations.cliAgentType,
       historylessConversation: historylessConversationSql(),
       routeRunCreatedAt: agentRuns.createdAt,
@@ -181,6 +188,8 @@ async function latestHistoricalThreadSession(args: {
       selectedModel: row.selectedModel,
       modelProvider: row.modelProvider,
       modelProviderId: row.modelProviderId,
+      modelRuntimeProvider: row.modelRuntimeProvider,
+      modelRuntimeModel: row.modelRuntimeModel,
       cliAgentType: row.cliAgentType,
     },
     routeRunCreatedAt: row.routeRunCreatedAt,
@@ -196,6 +205,8 @@ async function latestSessionRunRoute(args: {
       selectedModel: agentRuns.selectedModel,
       modelProvider: agentRuns.modelProvider,
       modelProviderId: agentRuns.modelProviderId,
+      modelRuntimeProvider: agentRuns.modelRuntimeProvider,
+      modelRuntimeModel: agentRuns.modelRuntimeModel,
       createdAt: agentRuns.createdAt,
     })
     .from(agentRuns)
@@ -282,6 +293,14 @@ function shouldRotateCanonicalSession(args: {
   readonly previousRoute: ChatThreadSessionRoute;
   readonly nextRoute: ChatThreadSessionRoute;
 }): boolean {
+  if (
+    hasIncompatibleVm0ModelRuntimeRoute({
+      previous: args.previousRoute,
+      next: args.nextRoute,
+    })
+  ) {
+    return true;
+  }
   const providerIdChanged =
     args.previousRoute.modelProviderId !== args.nextRoute.modelProviderId;
   if (providerIdChanged && customSurfaceRouteMayBeInUse(args)) {
@@ -326,6 +345,27 @@ async function shouldRotateResolvedSession(args: {
       });
 }
 
+function boundThreadPreviousRoute(args: {
+  readonly thread: ChatThreadSessionRoute;
+  readonly latestRoute: SessionRunRoute | null;
+}): ChatThreadSessionRoute {
+  const { thread, latestRoute } = args;
+  return {
+    selectedModel: latestRoute?.selectedModel ?? thread.selectedModel,
+    modelProvider: latestRoute?.modelProvider ?? thread.modelProvider,
+    modelProviderId: latestRoute?.modelProviderId ?? thread.modelProviderId,
+    modelRuntimeProvider:
+      latestRoute === null
+        ? thread.modelRuntimeProvider
+        : latestRoute.modelRuntimeProvider,
+    modelRuntimeModel:
+      latestRoute === null
+        ? thread.modelRuntimeModel
+        : latestRoute.modelRuntimeModel,
+    cliAgentType: thread.cliAgentType,
+  };
+}
+
 export async function resolveChatThreadSession(args: {
   readonly db: Db | ReadonlyDb;
   readonly threadId: string;
@@ -343,6 +383,8 @@ export async function resolveChatThreadSession(args: {
       selectedModel: agentRuns.selectedModel,
       modelProvider: agentRuns.modelProvider,
       modelProviderId: agentRuns.modelProviderId,
+      modelRuntimeProvider: agentRuns.modelRuntimeProvider,
+      modelRuntimeModel: agentRuns.modelRuntimeModel,
       routeRunId:
         sql`CASE WHEN ${agentRuns.triggerSource} IS NOT NULL THEN ${agentRuns.id} ELSE NULL END`.mapWith(
           nullableDriverValueDecoder(agentRuns.id),
@@ -390,12 +432,10 @@ export async function resolveChatThreadSession(args: {
             sessionId: thread.sessionId,
           })
         : null;
-    const previousRoute = {
-      selectedModel: latestRoute?.selectedModel ?? thread.selectedModel,
-      modelProvider: latestRoute?.modelProvider ?? thread.modelProvider,
-      modelProviderId: latestRoute?.modelProviderId ?? thread.modelProviderId,
-      cliAgentType: thread.cliAgentType,
-    };
+    const previousRoute = boundThreadPreviousRoute({
+      thread,
+      latestRoute,
+    });
     const rotate = await shouldRotateResolvedSession({
       db: args.db,
       orgId: args.orgId,

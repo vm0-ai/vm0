@@ -14,6 +14,9 @@ type StoredRunMetadataValues = Pick<
   | "modelProviderId"
   | "modelProviderCredentialScope"
   | "selectedModel"
+  | "modelRuntimeProvider"
+  | "modelRuntimeModel"
+  | "vm0ModelKeyId"
   | "codexServiceTier"
   | "selectedVideoModel"
   | "selectedImageModel"
@@ -68,6 +71,9 @@ export function normalizeRunMetadata(
     modelProviderId: input.modelProviderId ?? null,
     modelProviderCredentialScope: input.modelProviderCredentialScope ?? null,
     selectedModel: input.selectedModel ?? null,
+    modelRuntimeProvider: input.modelRuntimeProvider ?? null,
+    modelRuntimeModel: input.modelRuntimeModel ?? null,
+    vm0ModelKeyId: input.vm0ModelKeyId ?? null,
     codexServiceTier: input.codexServiceTier ?? null,
     selectedVideoModel: input.selectedVideoModel ?? null,
     selectedImageModel: input.selectedImageModel ?? null,

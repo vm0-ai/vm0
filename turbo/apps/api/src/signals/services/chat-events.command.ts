@@ -41,6 +41,7 @@ import {
   conflict,
   insufficientCredits,
   notFound,
+  providerUnavailable,
 } from "../../lib/error";
 import { env } from "../../lib/env";
 import type { AuthContext } from "../../types/auth";
@@ -110,6 +111,10 @@ import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { registerCanonicalWebInputAssets } from "./canonical-asset.service";
 import { resolveArtifactObject$ } from "./artifact-storage.service";
 import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
+import {
+  resolveVm0ModelRuntimeRoute,
+  type Vm0ModelRuntimeRoute,
+} from "./vm0-model-runtime-route.service";
 import {
   chatEventTypeIn,
   runOwnedChatEventCondition,
@@ -196,6 +201,7 @@ type ModelFirstProviderAdmission = Awaited<
 interface ResolvedRunConfiguration {
   readonly modelPin: ThreadModelPin;
   readonly providerAdmission: ModelFirstProviderAdmission;
+  readonly vm0ModelRuntimeRoute?: Vm0ModelRuntimeRoute;
   readonly codexServiceTier: "fast" | undefined;
 }
 
@@ -433,6 +439,7 @@ type NormalSendFailure =
   | ReturnType<typeof conflict>
   | ReturnType<typeof autonomyBudgetExhausted>
   | ReturnType<typeof insufficientCredits>
+  | ReturnType<typeof providerUnavailable>
   | ReturnType<typeof badRequestMessage>;
 
 interface CreatedChatEventResponse {
@@ -893,6 +900,33 @@ function emptyModelFirstThreadPin(): ThreadModelPin {
   };
 }
 
+async function withVm0ModelRuntimeRoute(
+  db: Db,
+  configuration: ResolvedRunConfiguration,
+): Promise<ResolvedRunConfiguration | NormalSendFailure> {
+  if (
+    configuration.providerAdmission.error ||
+    configuration.providerAdmission.effectiveModelProvider !== "vm0"
+  ) {
+    return configuration;
+  }
+  const selectedModel = configuration.modelPin.selectedModel;
+  if (!selectedModel) {
+    return providerUnavailable(
+      "No model provider configured: no VM0 managed model is selected",
+    );
+  }
+  const vm0ModelRuntimeRoute = await resolveVm0ModelRuntimeRoute(
+    db,
+    selectedModel,
+  );
+  return vm0ModelRuntimeRoute
+    ? { ...configuration, vm0ModelRuntimeRoute }
+    : providerUnavailable(
+        "No model provider configured: no VM0 managed model key is configured",
+      );
+}
+
 async function resolveExplicitRunConfiguration(params: {
   readonly db: Db;
   readonly orgId: string;
@@ -953,7 +987,7 @@ async function resolveExplicitRunConfiguration(params: {
   if (codexServiceTierError) {
     return codexServiceTierError;
   }
-  return {
+  return await withVm0ModelRuntimeRoute(params.db, {
     modelPin,
     providerAdmission,
     codexServiceTier: codexServiceTierForRun({
@@ -961,7 +995,7 @@ async function resolveExplicitRunConfiguration(params: {
       modelPin,
       codexFastModeEnabled: params.codexFastModeEnabled,
     }),
-  };
+  });
 }
 
 async function resolveNormalSendFeatureSwitches(
@@ -1482,11 +1516,15 @@ async function resolveThread(params: {
     if ("status" in persisted) {
       return persisted;
     }
-    runConfiguration = {
+    const resolvedRunConfiguration = await withVm0ModelRuntimeRoute(params.db, {
       modelPin: persisted.pin,
       providerAdmission: persisted.providerAdmission,
       codexServiceTier: persisted.runCodexServiceTier,
-    };
+    });
+    if ("status" in resolvedRunConfiguration) {
+      return resolvedRunConfiguration;
+    }
+    runConfiguration = resolvedRunConfiguration;
     persistedModelResolutionPath = persisted.resolutionPath;
   }
 
@@ -2952,8 +2990,12 @@ function buildCreateZeroRunArgs(params: {
   readonly realAgentInPreviewEnabled: boolean;
 }) {
   const { args, prepared } = params;
-  const { modelPin, providerAdmission, codexServiceTier } =
-    prepared.runConfiguration;
+  const {
+    modelPin,
+    providerAdmission,
+    vm0ModelRuntimeRoute,
+    codexServiceTier,
+  } = prepared.runConfiguration;
   const webChatSessionPromptContext: WebChatSessionPromptContext = {
     generationTemplatePrompt: prepared.generationTemplatePrompt,
     videoRunOptions: prepared.videoRunOptions,
@@ -2972,6 +3014,7 @@ function buildCreateZeroRunArgs(params: {
     modelProviderCredentialScope:
       modelPin.modelProviderCredentialScope ?? undefined,
     selectedModelOverride: modelPin.selectedModel ?? undefined,
+    ...(vm0ModelRuntimeRoute ? { vm0ModelRuntimeRoute } : {}),
     zeroRunModelPin: {
       modelProvider: providerAdmission.effectiveModelProvider ?? null,
       modelProviderId: modelPin.modelProviderId,
@@ -2982,6 +3025,8 @@ function buildCreateZeroRunArgs(params: {
       selectedModel: modelPin.selectedModel,
       modelProvider: providerAdmission.effectiveModelProvider ?? null,
       modelProviderId: modelPin.modelProviderId,
+      modelRuntimeProvider: vm0ModelRuntimeRoute?.providerType ?? null,
+      modelRuntimeModel: vm0ModelRuntimeRoute?.upstreamModel ?? null,
       cliAgentType: providerAdmission.cliAgentType,
     },
     codexServiceTier,
