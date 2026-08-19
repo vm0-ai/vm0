@@ -10,7 +10,7 @@ import {
   type GmailLabelAppliedEventConfig,
   type GmailNewMessageEventConfig,
   type GmailAutomationEventConfig,
-} from "@okouai/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/workflows";
 import {
   gmailProcessedEvents,
   gmailWatchStates,

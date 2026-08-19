@@ -1,8 +1,8 @@
 import { command, computed, state } from "ccstate";
 import {
-  zeroIntegrationsTelegramContract,
+  integrationsTelegramContract,
   type TelegramLinkStatusResponse,
-} from "@okouai/api-contracts/contracts/zero-integrations-telegram";
+} from "@okouai/api-contracts/contracts/integrations-telegram";
 import { accept } from "../../lib/accept.ts";
 import { capturePlausibleEvent } from "../../lib/plausible.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -26,7 +26,7 @@ export const telegramConnectLinkStatus$ = computed(
       return null;
     }
 
-    const client = get(zeroClient$)(zeroIntegrationsTelegramContract);
+    const client = get(zeroClient$)(integrationsTelegramContract);
     const result = await accept(
       client.getLinkStatus({
         headers: {},
@@ -82,7 +82,7 @@ export const connectTelegramAccount$ = command(
       return null;
     }
     const { params } = parsed;
-    const client = get(zeroClient$)(zeroIntegrationsTelegramContract);
+    const client = get(zeroClient$)(integrationsTelegramContract);
     const linkCredential = params.connectSignature
       ? { connectSignature: params.connectSignature }
       : await (async () => {

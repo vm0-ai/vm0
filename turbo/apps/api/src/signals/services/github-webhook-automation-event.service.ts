@@ -18,7 +18,7 @@ import {
   type GithubWorkflowRunConclusion,
   type GithubAutomationEventConfig,
   type WorkflowAutomationEventType,
-} from "@okouai/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/workflows";
 import { githubInstallations } from "@okouai/db/schema/github-installation";
 import {
   workflowUserAutomationThreads,

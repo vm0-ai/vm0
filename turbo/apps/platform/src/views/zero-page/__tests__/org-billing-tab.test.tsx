@@ -1,22 +1,22 @@
 import {
-  zeroBillingAutoRechargeContract,
-  zeroBillingCheckoutContract,
-  zeroBillingUsagePackCatalogContract,
-  zeroBillingUsagePackCheckoutContract,
-  zeroBillingUsagePackManagementContract,
-  zeroBillingUsagePackMigrationContract,
-  zeroBillingConcurrencyCheckoutContract,
-  zeroBillingConcurrencySubscriptionContract,
-  zeroBillingCreditCheckoutContract,
-  zeroBillingDowngradeContract,
-  zeroBillingPortalContract,
-  zeroBillingRestoreContract,
-  zeroBillingStatusContract,
+  billingAutoRechargeContract,
+  billingCheckoutContract,
+  billingUsagePackCatalogContract,
+  billingUsagePackCheckoutContract,
+  billingUsagePackManagementContract,
+  billingUsagePackMigrationContract,
+  billingConcurrencyCheckoutContract,
+  billingConcurrencySubscriptionContract,
+  billingCreditCheckoutContract,
+  billingDowngradeContract,
+  billingPortalContract,
+  billingRestoreContract,
+  billingStatusContract,
   type BillingStatusResponse,
   type CheckoutRequest,
   type CreditCheckoutRequest,
   type UsagePackMigrationStateResponse,
-} from "@okouai/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/billing";
 import { FeatureSwitchKey } from "@okouai/core";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -212,25 +212,22 @@ function mockBillingStory(): {
     name: "Test Org",
     role: "admin",
   });
-  context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+  context.mocks.api(billingStatusContract.get, ({ respond }) => {
     return respond(200, billingStatus);
   });
+  context.mocks.api(billingAutoRechargeContract.update, ({ body, respond }) => {
+    billingStatus = {
+      ...billingStatus,
+      autoRecharge: {
+        enabled: body.enabled,
+        threshold: body.enabled ? (body.threshold ?? null) : null,
+        amount: body.enabled ? (body.amount ?? null) : null,
+      },
+    };
+    return respond(200, billingStatus.autoRecharge);
+  });
   context.mocks.api(
-    zeroBillingAutoRechargeContract.update,
-    ({ body, respond }) => {
-      billingStatus = {
-        ...billingStatus,
-        autoRecharge: {
-          enabled: body.enabled,
-          threshold: body.enabled ? (body.threshold ?? null) : null,
-          amount: body.enabled ? (body.amount ?? null) : null,
-        },
-      };
-      return respond(200, billingStatus.autoRecharge);
-    },
-  );
-  context.mocks.api(
-    zeroBillingCreditCheckoutContract.create,
+    billingCreditCheckoutContract.create,
     ({ body, respond }) => {
       creditCheckoutRequest = body;
       return respond(200, {
@@ -238,7 +235,7 @@ function mockBillingStory(): {
       });
     },
   );
-  context.mocks.api(zeroBillingDowngradeContract.create, ({ respond }) => {
+  context.mocks.api(billingDowngradeContract.create, ({ respond }) => {
     billingStatus = {
       ...billingStatus,
       cancelAtPeriodEnd: true,
@@ -254,7 +251,7 @@ function mockBillingStory(): {
       effectiveDate: "2026-04-01T00:00:00Z",
     });
   });
-  context.mocks.api(zeroBillingRestoreContract.create, ({ respond }) => {
+  context.mocks.api(billingRestoreContract.create, ({ respond }) => {
     billingStatus = {
       ...billingStatus,
       cancelAtPeriodEnd: false,
@@ -335,20 +332,17 @@ describe("organization billing settings", () => {
       role: "admin",
     });
     context.mocks.data.userPreferences({ locale: "pt-BR" });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, {
         ...activeProBillingStatus(),
         canBuyCredits: true,
         autoRechargeAllowed: true,
       });
     });
-    context.mocks.api(
-      zeroBillingUsagePackCatalogContract.get,
-      ({ respond }) => {
-        usagePackCatalogCalls += 1;
-        return respond(200, usagePackCatalogResponse());
-      },
-    );
+    context.mocks.api(billingUsagePackCatalogContract.get, ({ respond }) => {
+      usagePackCatalogCalls += 1;
+      return respond(200, usagePackCatalogResponse());
+    });
 
     detachedSetupPage({
       context,
@@ -385,15 +379,12 @@ describe("organization billing settings", () => {
       name: "Usage Pack Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, noActiveBillingStatus());
     });
-    context.mocks.api(
-      zeroBillingUsagePackCatalogContract.get,
-      ({ respond }) => {
-        return respond(200, usagePackCatalogResponse());
-      },
-    );
+    context.mocks.api(billingUsagePackCatalogContract.get, ({ respond }) => {
+      return respond(200, usagePackCatalogResponse());
+    });
     context.mocks.data.orgMembers({
       name: "Usage Pack Org",
       role: "admin",
@@ -688,7 +679,7 @@ describe("organization billing settings", () => {
       }),
     );
     context.mocks.api(
-      zeroBillingUsagePackCheckoutContract.create,
+      billingUsagePackCheckoutContract.create,
       ({ body, respond }) => {
         expect(body.memberUsagePacks).toStrictEqual([
           { memberId: "user_1", usagePackUsd: 50 },
@@ -750,36 +741,30 @@ describe("organization billing settings", () => {
       membershipRequests: [],
       createdAt: "2026-01-01T00:00:00Z",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, activeProBillingStatus());
     });
+    context.mocks.api(billingUsagePackCatalogContract.get, ({ respond }) => {
+      return respond(200, usagePackCatalogResponse());
+    });
+    context.mocks.api(billingUsagePackManagementContract.get, ({ respond }) => {
+      return respond(200, {
+        tier: "pro",
+        currentPeriodEnd: "2026-04-01T00:00:00Z",
+        supportsMemberAdditions: true,
+        allocations: [
+          {
+            id: "b5235934-83df-4f16-bf41-f46890db7d40",
+            memberId: "user_1",
+            usagePackUsd: 20,
+            currentPeriodEnd: "2026-04-01T00:00:00Z",
+            pendingChange: null,
+          },
+        ],
+      });
+    });
     context.mocks.api(
-      zeroBillingUsagePackCatalogContract.get,
-      ({ respond }) => {
-        return respond(200, usagePackCatalogResponse());
-      },
-    );
-    context.mocks.api(
-      zeroBillingUsagePackManagementContract.get,
-      ({ respond }) => {
-        return respond(200, {
-          tier: "pro",
-          currentPeriodEnd: "2026-04-01T00:00:00Z",
-          supportsMemberAdditions: true,
-          allocations: [
-            {
-              id: "b5235934-83df-4f16-bf41-f46890db7d40",
-              memberId: "user_1",
-              usagePackUsd: 20,
-              currentPeriodEnd: "2026-04-01T00:00:00Z",
-              pendingChange: null,
-            },
-          ],
-        });
-      },
-    );
-    context.mocks.api(
-      zeroBillingUsagePackManagementContract.previewSubscriptionChange,
+      billingUsagePackManagementContract.previewSubscriptionChange,
       ({ body, respond }) => {
         expect(body).toStrictEqual({
           targetTier: "pro",
@@ -867,23 +852,20 @@ describe("organization billing settings", () => {
       name: "Legacy Team Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, activeTeamBillingStatus());
     });
-    context.mocks.api(
-      zeroBillingUsagePackMigrationContract.get,
-      ({ respond }) => {
-        migrationCalls += 1;
-        return respond(200, {
-          tier: "team",
-          targetTier: null,
-          status: "eligible",
-          migrationId: null,
-          effectiveAt: "2026-09-01T00:00:00.000Z",
-          hostedInvoiceUrl: null,
-        });
-      },
-    );
+    context.mocks.api(billingUsagePackMigrationContract.get, ({ respond }) => {
+      migrationCalls += 1;
+      return respond(200, {
+        tier: "team",
+        targetTier: null,
+        status: "eligible",
+        migrationId: null,
+        effectiveAt: "2026-09-01T00:00:00.000Z",
+        hostedInvoiceUrl: null,
+      });
+    });
 
     await openBillingTab();
 
@@ -920,17 +902,14 @@ describe("organization billing settings", () => {
       membershipRequests: [],
       createdAt: "2026-01-01T00:00:00Z",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, activeTeamBillingStatus());
     });
+    context.mocks.api(billingUsagePackCatalogContract.get, ({ respond }) => {
+      return respond(200, usagePackCatalogResponse());
+    });
     context.mocks.api(
-      zeroBillingUsagePackCatalogContract.get,
-      ({ respond }) => {
-        return respond(200, usagePackCatalogResponse());
-      },
-    );
-    context.mocks.api(
-      zeroBillingUsagePackMigrationContract.get,
+      billingUsagePackMigrationContract.get,
       async ({ respond }) => {
         await migrationReady.promise;
         return respond(200, {
@@ -1062,22 +1041,19 @@ describe("organization billing settings", () => {
       name: "Legacy Pro Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, activeProBillingStatus());
     });
-    context.mocks.api(
-      zeroBillingUsagePackMigrationContract.get,
-      ({ respond }) => {
-        return respond(200, {
-          tier: "pro",
-          targetTier: null,
-          status: "eligible",
-          migrationId: null,
-          effectiveAt: "2026-09-01T00:00:00.000Z",
-          hostedInvoiceUrl: null,
-        });
-      },
-    );
+    context.mocks.api(billingUsagePackMigrationContract.get, ({ respond }) => {
+      return respond(200, {
+        tier: "pro",
+        targetTier: null,
+        status: "eligible",
+        migrationId: null,
+        effectiveAt: "2026-09-01T00:00:00.000Z",
+        hostedInvoiceUrl: null,
+      });
+    });
 
     detachedSetupPage({
       context,
@@ -1096,37 +1072,28 @@ describe("organization billing settings", () => {
       name: "Paid Pro Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, activeProBillingStatus());
     });
-    context.mocks.api(
-      zeroBillingUsagePackCatalogContract.get,
-      ({ respond }) => {
-        return respond(200, usagePackCatalogResponse());
-      },
-    );
-    context.mocks.api(
-      zeroBillingUsagePackManagementContract.get,
-      ({ respond }) => {
-        return respond(404, {
-          error: {
-            message: "Usage pack subscription not found",
-            code: "NOT_FOUND",
-          },
-        });
-      },
-    );
-    context.mocks.api(
-      zeroBillingUsagePackMigrationContract.get,
-      ({ respond }) => {
-        return respond(404, {
-          error: {
-            message: "Legacy subscription migration is not available",
-            code: "NOT_FOUND",
-          },
-        });
-      },
-    );
+    context.mocks.api(billingUsagePackCatalogContract.get, ({ respond }) => {
+      return respond(200, usagePackCatalogResponse());
+    });
+    context.mocks.api(billingUsagePackManagementContract.get, ({ respond }) => {
+      return respond(404, {
+        error: {
+          message: "Usage pack subscription not found",
+          code: "NOT_FOUND",
+        },
+      });
+    });
+    context.mocks.api(billingUsagePackMigrationContract.get, ({ respond }) => {
+      return respond(404, {
+        error: {
+          message: "Legacy subscription migration is not available",
+          code: "NOT_FOUND",
+        },
+      });
+    });
 
     detachedSetupPage({
       context,
@@ -1173,7 +1140,7 @@ describe("organization billing settings", () => {
         membershipRequests: [],
         createdAt: "2026-01-01T00:00:00Z",
       });
-      context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      context.mocks.api(billingStatusContract.get, ({ respond }) => {
         return respond(200, {
           ...status,
           subscriptionStatus: "atom_grant",
@@ -1188,14 +1155,11 @@ describe("organization billing settings", () => {
           canRestorePlan: false,
         });
       });
+      context.mocks.api(billingUsagePackCatalogContract.get, ({ respond }) => {
+        return respond(200, usagePackCatalogResponse());
+      });
       context.mocks.api(
-        zeroBillingUsagePackCatalogContract.get,
-        ({ respond }) => {
-          return respond(200, usagePackCatalogResponse());
-        },
-      );
-      context.mocks.api(
-        zeroBillingUsagePackManagementContract.get,
+        billingUsagePackManagementContract.get,
         ({ respond }) => {
           return respond(404, {
             error: {
@@ -1206,7 +1170,7 @@ describe("organization billing settings", () => {
         },
       );
       context.mocks.api(
-        zeroBillingUsagePackMigrationContract.get,
+        billingUsagePackMigrationContract.get,
         ({ respond }) => {
           return respond(404, {
             error: {
@@ -1295,34 +1259,25 @@ describe("organization billing settings", () => {
       membershipRequests: [],
       createdAt: "2026-01-01T00:00:00Z",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, activeTeamBillingStatus());
     });
+    context.mocks.api(billingUsagePackCatalogContract.get, ({ respond }) => {
+      return respond(200, usagePackCatalogResponse());
+    });
+    context.mocks.api(billingUsagePackManagementContract.get, ({ respond }) => {
+      return respond(404, {
+        error: {
+          message: "Usage pack subscription not found",
+          code: "NOT_FOUND",
+        },
+      });
+    });
+    context.mocks.api(billingUsagePackMigrationContract.get, ({ respond }) => {
+      return respond(200, migrationState);
+    });
     context.mocks.api(
-      zeroBillingUsagePackCatalogContract.get,
-      ({ respond }) => {
-        return respond(200, usagePackCatalogResponse());
-      },
-    );
-    context.mocks.api(
-      zeroBillingUsagePackManagementContract.get,
-      ({ respond }) => {
-        return respond(404, {
-          error: {
-            message: "Usage pack subscription not found",
-            code: "NOT_FOUND",
-          },
-        });
-      },
-    );
-    context.mocks.api(
-      zeroBillingUsagePackMigrationContract.get,
-      ({ respond }) => {
-        return respond(200, migrationState);
-      },
-    );
-    context.mocks.api(
-      zeroBillingUsagePackMigrationContract.preview,
+      billingUsagePackMigrationContract.preview,
       ({ body, respond }) => {
         expect(body.targetTier).toBe("team");
         expect(body.memberUsagePacks).toStrictEqual([
@@ -1352,7 +1307,7 @@ describe("organization billing settings", () => {
       },
     );
     context.mocks.api(
-      zeroBillingUsagePackMigrationContract.confirm,
+      billingUsagePackMigrationContract.confirm,
       ({ body, params, respond }) => {
         expect(body).toStrictEqual({});
         expect(params.migrationId).toBe("3ea4b7cf-d71e-45dc-8273-8bc8b9712490");
@@ -1377,7 +1332,7 @@ describe("organization billing settings", () => {
       },
     );
     context.mocks.api(
-      zeroBillingUsagePackMigrationContract.previewRevision,
+      billingUsagePackMigrationContract.previewRevision,
       ({ body, params, respond }) => {
         expect(params.migrationId).toBe("3ea4b7cf-d71e-45dc-8273-8bc8b9712490");
         expect(body).toStrictEqual({
@@ -1405,7 +1360,7 @@ describe("organization billing settings", () => {
       },
     );
     context.mocks.api(
-      zeroBillingUsagePackMigrationContract.confirmRevision,
+      billingUsagePackMigrationContract.confirmRevision,
       ({ body, params, respond }) => {
         expect(params.migrationId).toBe("3ea4b7cf-d71e-45dc-8273-8bc8b9712490");
         expect(body).toStrictEqual({
@@ -1684,53 +1639,47 @@ describe("organization billing settings", () => {
       membershipRequests: [],
       createdAt: "2026-01-01T00:00:00Z",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, activeProBillingStatus());
     });
-    context.mocks.api(
-      zeroBillingUsagePackCatalogContract.get,
-      ({ respond }) => {
-        return respond(200, usagePackCatalogResponse());
-      },
-    );
-    context.mocks.api(
-      zeroBillingUsagePackManagementContract.get,
-      ({ respond }) => {
-        managementRequests += 1;
-        return respond(200, {
-          tier: "pro",
-          currentPeriodEnd: "2026-04-01T00:00:00Z",
-          allocations: [
-            {
-              id: "b5235934-83df-4f16-bf41-f46890db7d40",
-              memberId: "user_1",
-              usagePackUsd: paymentApplied ? 50 : 20,
-              currentPeriodEnd: "2026-04-01T00:00:00Z",
-              pendingChange:
-                changeProcessing && !paymentApplied
+    context.mocks.api(billingUsagePackCatalogContract.get, ({ respond }) => {
+      return respond(200, usagePackCatalogResponse());
+    });
+    context.mocks.api(billingUsagePackManagementContract.get, ({ respond }) => {
+      managementRequests += 1;
+      return respond(200, {
+        tier: "pro",
+        currentPeriodEnd: "2026-04-01T00:00:00Z",
+        allocations: [
+          {
+            id: "b5235934-83df-4f16-bf41-f46890db7d40",
+            memberId: "user_1",
+            usagePackUsd: paymentApplied ? 50 : 20,
+            currentPeriodEnd: "2026-04-01T00:00:00Z",
+            pendingChange:
+              changeProcessing && !paymentApplied
+                ? {
+                    id: "ad3bd64c-7237-436d-a221-61b14ed719e7",
+                    kind: "upgrade",
+                    status: "applying",
+                    targetUsagePackUsd: 50,
+                    effectiveAt: "2026-03-16T00:00:00Z",
+                  }
+                : previewed && !paymentApplied
                   ? {
                       id: "ad3bd64c-7237-436d-a221-61b14ed719e7",
                       kind: "upgrade",
-                      status: "applying",
+                      status: "previewed",
                       targetUsagePackUsd: 50,
                       effectiveAt: "2026-03-16T00:00:00Z",
                     }
-                  : previewed && !paymentApplied
-                    ? {
-                        id: "ad3bd64c-7237-436d-a221-61b14ed719e7",
-                        kind: "upgrade",
-                        status: "previewed",
-                        targetUsagePackUsd: 50,
-                        effectiveAt: "2026-03-16T00:00:00Z",
-                      }
-                    : null,
-            },
-          ],
-        });
-      },
-    );
+                  : null,
+          },
+        ],
+      });
+    });
     context.mocks.api(
-      zeroBillingUsagePackManagementContract.previewSubscriptionChange,
+      billingUsagePackManagementContract.previewSubscriptionChange,
       ({ body, respond }) => {
         previewed = true;
         expect(body).toStrictEqual({
@@ -1758,7 +1707,7 @@ describe("organization billing settings", () => {
       },
     );
     context.mocks.api(
-      zeroBillingUsagePackManagementContract.confirmSubscriptionChange,
+      billingUsagePackManagementContract.confirmSubscriptionChange,
       ({ body, respond }) => {
         confirmationRequests += 1;
         expect(body).toStrictEqual({
@@ -2024,46 +1973,40 @@ describe("organization billing settings", () => {
       membershipRequests: [],
       createdAt: "2026-01-01T00:00:00Z",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, activeProBillingStatus());
     });
-    context.mocks.api(
-      zeroBillingUsagePackCatalogContract.get,
-      ({ respond }) => {
-        return respond(200, usagePackCatalogResponse());
-      },
-    );
-    context.mocks.api(
-      zeroBillingUsagePackManagementContract.get,
-      ({ respond }) => {
-        return respond(200, {
-          tier: "pro",
-          currentPeriodEnd: "2026-04-01T00:00:00Z",
-          allocations: [
-            {
-              id: "b5235934-83df-4f16-bf41-f46890db7d40",
-              memberId: "user_1",
-              usagePackUsd: 20,
-              currentPeriodEnd: "2026-04-01T00:00:00Z",
-              pendingChange: null,
+    context.mocks.api(billingUsagePackCatalogContract.get, ({ respond }) => {
+      return respond(200, usagePackCatalogResponse());
+    });
+    context.mocks.api(billingUsagePackManagementContract.get, ({ respond }) => {
+      return respond(200, {
+        tier: "pro",
+        currentPeriodEnd: "2026-04-01T00:00:00Z",
+        allocations: [
+          {
+            id: "b5235934-83df-4f16-bf41-f46890db7d40",
+            memberId: "user_1",
+            usagePackUsd: 20,
+            currentPeriodEnd: "2026-04-01T00:00:00Z",
+            pendingChange: null,
+          },
+          {
+            id: "f2264b0e-2e55-4098-a9d4-7e2d7ff017d5",
+            memberId: "removed_user",
+            usagePackUsd: 50,
+            currentPeriodEnd: "2026-04-01T00:00:00Z",
+            pendingChange: {
+              id: "18b51e88-6804-46c8-9b2f-3b130f6ca69c",
+              kind: "removal",
+              status: "scheduled",
+              targetUsagePackUsd: null,
+              effectiveAt: "2026-04-01T00:00:00Z",
             },
-            {
-              id: "f2264b0e-2e55-4098-a9d4-7e2d7ff017d5",
-              memberId: "removed_user",
-              usagePackUsd: 50,
-              currentPeriodEnd: "2026-04-01T00:00:00Z",
-              pendingChange: {
-                id: "18b51e88-6804-46c8-9b2f-3b130f6ca69c",
-                kind: "removal",
-                status: "scheduled",
-                targetUsagePackUsd: null,
-                effectiveAt: "2026-04-01T00:00:00Z",
-              },
-            },
-          ],
-        });
-      },
-    );
+          },
+        ],
+      });
+    });
 
     detachedSetupPage({
       context,
@@ -2134,43 +2077,37 @@ describe("organization billing settings", () => {
       membershipRequests: [],
       createdAt: "2026-01-01T00:00:00Z",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, activeProBillingStatus());
     });
+    context.mocks.api(billingUsagePackCatalogContract.get, ({ respond }) => {
+      return respond(200, usagePackCatalogResponse());
+    });
+    context.mocks.api(billingUsagePackManagementContract.get, ({ respond }) => {
+      return respond(200, {
+        tier: "pro",
+        currentPeriodEnd: "2026-04-01T00:00:00Z",
+        allocations: [
+          {
+            id: "b5235934-83df-4f16-bf41-f46890db7d40",
+            memberId: "user_1",
+            usagePackUsd: 100,
+            currentPeriodEnd: "2026-04-01T00:00:00Z",
+            pendingChange: restored
+              ? null
+              : {
+                  id: "ad3bd64c-7237-436d-a221-61b14ed719e7",
+                  kind: "downgrade",
+                  status: "scheduled",
+                  targetUsagePackUsd: 50,
+                  effectiveAt: "2026-04-01T00:00:00Z",
+                },
+          },
+        ],
+      });
+    });
     context.mocks.api(
-      zeroBillingUsagePackCatalogContract.get,
-      ({ respond }) => {
-        return respond(200, usagePackCatalogResponse());
-      },
-    );
-    context.mocks.api(
-      zeroBillingUsagePackManagementContract.get,
-      ({ respond }) => {
-        return respond(200, {
-          tier: "pro",
-          currentPeriodEnd: "2026-04-01T00:00:00Z",
-          allocations: [
-            {
-              id: "b5235934-83df-4f16-bf41-f46890db7d40",
-              memberId: "user_1",
-              usagePackUsd: 100,
-              currentPeriodEnd: "2026-04-01T00:00:00Z",
-              pendingChange: restored
-                ? null
-                : {
-                    id: "ad3bd64c-7237-436d-a221-61b14ed719e7",
-                    kind: "downgrade",
-                    status: "scheduled",
-                    targetUsagePackUsd: 50,
-                    effectiveAt: "2026-04-01T00:00:00Z",
-                  },
-            },
-          ],
-        });
-      },
-    );
-    context.mocks.api(
-      zeroBillingUsagePackManagementContract.previewSubscriptionChange,
+      billingUsagePackManagementContract.previewSubscriptionChange,
       ({ body, respond }) => {
         expect(body).toStrictEqual({
           targetTier: "pro",
@@ -2191,7 +2128,7 @@ describe("organization billing settings", () => {
       },
     );
     context.mocks.api(
-      zeroBillingUsagePackManagementContract.confirmSubscriptionChange,
+      billingUsagePackManagementContract.confirmSubscriptionChange,
       ({ body, respond }) => {
         expect(body).toStrictEqual({
           changeId: "703d633a-fe5b-4ea7-a46d-d76078f6c802",
@@ -2315,41 +2252,35 @@ describe("organization billing settings", () => {
       membershipRequests: [],
       createdAt: "2026-01-01T00:00:00Z",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, activeProBillingStatus());
     });
-    context.mocks.api(
-      zeroBillingUsagePackCatalogContract.get,
-      ({ respond }) => {
-        return respond(200, usagePackCatalogResponse());
-      },
-    );
-    context.mocks.api(
-      zeroBillingUsagePackManagementContract.get,
-      ({ respond }) => {
-        return respond(200, {
-          tier: "pro",
-          currentPeriodEnd: "2026-04-01T00:00:00Z",
-          allocations: [
-            {
-              id: "b5235934-83df-4f16-bf41-f46890db7d40",
-              memberId: "user_1",
-              usagePackUsd: 200,
-              currentPeriodEnd: "2026-04-01T00:00:00Z",
-              pendingChange: {
-                id: "ad3bd64c-7237-436d-a221-61b14ed719e7",
-                kind: "downgrade",
-                status: "scheduled",
-                targetUsagePackUsd: 50,
-                effectiveAt: "2026-04-01T00:00:00Z",
-              },
+    context.mocks.api(billingUsagePackCatalogContract.get, ({ respond }) => {
+      return respond(200, usagePackCatalogResponse());
+    });
+    context.mocks.api(billingUsagePackManagementContract.get, ({ respond }) => {
+      return respond(200, {
+        tier: "pro",
+        currentPeriodEnd: "2026-04-01T00:00:00Z",
+        allocations: [
+          {
+            id: "b5235934-83df-4f16-bf41-f46890db7d40",
+            memberId: "user_1",
+            usagePackUsd: 200,
+            currentPeriodEnd: "2026-04-01T00:00:00Z",
+            pendingChange: {
+              id: "ad3bd64c-7237-436d-a221-61b14ed719e7",
+              kind: "downgrade",
+              status: "scheduled",
+              targetUsagePackUsd: 50,
+              effectiveAt: "2026-04-01T00:00:00Z",
             },
-          ],
-        });
-      },
-    );
+          },
+        ],
+      });
+    });
     context.mocks.api(
-      zeroBillingUsagePackManagementContract.previewSubscriptionChange,
+      billingUsagePackManagementContract.previewSubscriptionChange,
       ({ body, respond }) => {
         expect(body).toStrictEqual({
           targetTier: "pro",
@@ -2427,35 +2358,29 @@ describe("organization billing settings", () => {
       name: "Usage Pack Upgrade Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, activeProBillingStatus());
     });
+    context.mocks.api(billingUsagePackCatalogContract.get, ({ respond }) => {
+      return respond(200, usagePackCatalogResponse());
+    });
+    context.mocks.api(billingUsagePackManagementContract.get, ({ respond }) => {
+      return respond(200, {
+        tier: "pro",
+        currentPeriodEnd: "2026-04-01T00:00:00Z",
+        allocations: [
+          {
+            id: "b5235934-83df-4f16-bf41-f46890db7d40",
+            memberId: "user_1",
+            usagePackUsd: 20,
+            currentPeriodEnd: "2026-04-01T00:00:00Z",
+            pendingChange: null,
+          },
+        ],
+      });
+    });
     context.mocks.api(
-      zeroBillingUsagePackCatalogContract.get,
-      ({ respond }) => {
-        return respond(200, usagePackCatalogResponse());
-      },
-    );
-    context.mocks.api(
-      zeroBillingUsagePackManagementContract.get,
-      ({ respond }) => {
-        return respond(200, {
-          tier: "pro",
-          currentPeriodEnd: "2026-04-01T00:00:00Z",
-          allocations: [
-            {
-              id: "b5235934-83df-4f16-bf41-f46890db7d40",
-              memberId: "user_1",
-              usagePackUsd: 20,
-              currentPeriodEnd: "2026-04-01T00:00:00Z",
-              pendingChange: null,
-            },
-          ],
-        });
-      },
-    );
-    context.mocks.api(
-      zeroBillingUsagePackManagementContract.previewSubscriptionChange,
+      billingUsagePackManagementContract.previewSubscriptionChange,
       ({ body, respond }) => {
         expect(body).toStrictEqual({
           targetTier: "team",
@@ -2476,7 +2401,7 @@ describe("organization billing settings", () => {
       },
     );
     context.mocks.api(
-      zeroBillingUsagePackManagementContract.confirmSubscriptionChange,
+      billingUsagePackManagementContract.confirmSubscriptionChange,
       ({ body, respond }) => {
         expect(body).toStrictEqual({
           changeId: "703d633a-fe5b-4ea7-a46d-d76078f6c802",
@@ -2604,35 +2529,29 @@ describe("organization billing settings", () => {
       name: "Usage Pack Downgrade Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, activeTeamBillingStatus());
     });
+    context.mocks.api(billingUsagePackCatalogContract.get, ({ respond }) => {
+      return respond(200, usagePackCatalogResponse());
+    });
+    context.mocks.api(billingUsagePackManagementContract.get, ({ respond }) => {
+      return respond(200, {
+        tier: "team",
+        currentPeriodEnd: "2026-04-01T00:00:00Z",
+        allocations: [
+          {
+            id: "3a9138ff-bb8c-4476-95c2-64775cc50ceb",
+            memberId: "user_1",
+            usagePackUsd: 20,
+            currentPeriodEnd: "2026-04-01T00:00:00Z",
+            pendingChange: null,
+          },
+        ],
+      });
+    });
     context.mocks.api(
-      zeroBillingUsagePackCatalogContract.get,
-      ({ respond }) => {
-        return respond(200, usagePackCatalogResponse());
-      },
-    );
-    context.mocks.api(
-      zeroBillingUsagePackManagementContract.get,
-      ({ respond }) => {
-        return respond(200, {
-          tier: "team",
-          currentPeriodEnd: "2026-04-01T00:00:00Z",
-          allocations: [
-            {
-              id: "3a9138ff-bb8c-4476-95c2-64775cc50ceb",
-              memberId: "user_1",
-              usagePackUsd: 20,
-              currentPeriodEnd: "2026-04-01T00:00:00Z",
-              pendingChange: null,
-            },
-          ],
-        });
-      },
-    );
-    context.mocks.api(
-      zeroBillingUsagePackManagementContract.previewSubscriptionChange,
+      billingUsagePackManagementContract.previewSubscriptionChange,
       ({ body, respond }) => {
         expect(body).toStrictEqual({
           targetTier: "pro",
@@ -2653,7 +2572,7 @@ describe("organization billing settings", () => {
       },
     );
     context.mocks.api(
-      zeroBillingUsagePackManagementContract.confirmSubscriptionChange,
+      billingUsagePackManagementContract.confirmSubscriptionChange,
       ({ body, respond }) => {
         expect(body).toStrictEqual({
           changeId: "667d65ac-85df-4743-b421-b9d18a3ad89b",
@@ -2754,59 +2673,50 @@ describe("organization billing settings", () => {
       name: "Managed Team Cancel Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, billingStatus);
     });
+    context.mocks.api(billingUsagePackCatalogContract.get, ({ respond }) => {
+      return respond(200, usagePackCatalogResponse());
+    });
+    context.mocks.api(billingUsagePackManagementContract.get, ({ respond }) => {
+      return respond(200, {
+        tier: "team",
+        currentPeriodEnd: "2026-05-01T00:00:00Z",
+        allocations: [
+          {
+            id: "3a9138ff-bb8c-4476-95c2-64775cc50ceb",
+            memberId: "user_1",
+            usagePackUsd: 20,
+            currentPeriodEnd: "2026-05-01T00:00:00Z",
+            pendingChange: null,
+          },
+        ],
+      });
+    });
     context.mocks.api(
-      zeroBillingUsagePackCatalogContract.get,
-      ({ respond }) => {
-        return respond(200, usagePackCatalogResponse());
-      },
-    );
-    context.mocks.api(
-      zeroBillingUsagePackManagementContract.get,
-      ({ respond }) => {
-        return respond(200, {
-          tier: "team",
-          currentPeriodEnd: "2026-05-01T00:00:00Z",
-          allocations: [
-            {
-              id: "3a9138ff-bb8c-4476-95c2-64775cc50ceb",
-              memberId: "user_1",
-              usagePackUsd: 20,
-              currentPeriodEnd: "2026-05-01T00:00:00Z",
-              pendingChange: null,
-            },
-          ],
-        });
-      },
-    );
-    context.mocks.api(
-      zeroBillingUsagePackManagementContract.previewSubscriptionChange,
+      billingUsagePackManagementContract.previewSubscriptionChange,
       () => {
         packagePreviewCalls += 1;
         throw new Error("Package preview must not replace a Plan cancellation");
       },
     );
-    context.mocks.api(
-      zeroBillingDowngradeContract.create,
-      ({ body, respond }) => {
-        requestedTargetTier = body.targetTier;
-        billingStatus = {
-          ...billingStatus,
-          cancelAtPeriodEnd: false,
-          scheduledChange: {
-            type: "downgrade",
-            targetTier: "pro",
-            effectiveDate: "2026-05-01T00:00:00Z",
-          },
-        };
-        return respond(200, {
-          success: true,
+    context.mocks.api(billingDowngradeContract.create, ({ body, respond }) => {
+      requestedTargetTier = body.targetTier;
+      billingStatus = {
+        ...billingStatus,
+        cancelAtPeriodEnd: false,
+        scheduledChange: {
+          type: "downgrade",
+          targetTier: "pro",
           effectiveDate: "2026-05-01T00:00:00Z",
-        });
-      },
-    );
+        },
+      };
+      return respond(200, {
+        success: true,
+        effectiveDate: "2026-05-01T00:00:00Z",
+      });
+    });
 
     detachedSetupPage({
       context,
@@ -2850,7 +2760,7 @@ describe("organization billing settings", () => {
       name: "Credit Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, activeProBillingStatus());
     });
 
@@ -2876,7 +2786,7 @@ describe("organization billing settings", () => {
       name: "Credit Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, billingStatus);
     });
 
@@ -2925,7 +2835,7 @@ describe("organization billing settings", () => {
       name: "Capability Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, {
         ...noActiveBillingStatus(),
         canBuyConcurrency: true,
@@ -2958,7 +2868,7 @@ describe("organization billing settings", () => {
       name: "Suspended Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, async ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, async ({ respond }) => {
       statusCalls++;
       if (failNextStatusRequest) {
         failNextStatusRequest = false;
@@ -2973,14 +2883,11 @@ describe("organization billing settings", () => {
       }
       return respond(200, noActiveBillingStatus());
     });
-    context.mocks.api(
-      zeroBillingCheckoutContract.create,
-      ({ body, respond }) => {
-        return respond(200, {
-          url: `https://checkout.stripe.com/test-upgrade?tier=${body.tier}`,
-        });
-      },
-    );
+    context.mocks.api(billingCheckoutContract.create, ({ body, respond }) => {
+      return respond(200, {
+        url: `https://checkout.stripe.com/test-upgrade?tier=${body.tier}`,
+      });
+    });
 
     await openBillingTab();
 
@@ -3029,10 +2936,10 @@ describe("organization billing settings", () => {
       name: "Paid Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, activeProBillingStatus());
     });
-    context.mocks.api(zeroBillingPortalContract.create, ({ body, respond }) => {
+    context.mocks.api(billingPortalContract.create, ({ body, respond }) => {
       portalRequestBody = body;
       return respond(200, {
         url: "https://billing.stripe.com/customer-portal/test-org",
@@ -3063,10 +2970,10 @@ describe("organization billing settings", () => {
       name: "No Subscription Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, noActiveBillingStatus());
     });
-    context.mocks.api(zeroBillingPortalContract.create, ({ body, respond }) => {
+    context.mocks.api(billingPortalContract.create, ({ body, respond }) => {
       portalRequestBody = body;
       return respond(200, {
         url: "https://billing.stripe.com/customer-portal/no-subscription",
@@ -3096,10 +3003,10 @@ describe("organization billing settings", () => {
       name: "No Subscription Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, noActiveBillingStatus());
     });
-    context.mocks.api(zeroBillingPortalContract.create, ({ respond }) => {
+    context.mocks.api(billingPortalContract.create, ({ respond }) => {
       return respond(200, {
         url: "https://billing.stripe.com/customer-portal/no-subscription",
       });
@@ -3131,7 +3038,7 @@ describe("organization billing settings", () => {
       name: "Custom Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, activeCustomBillingStatus());
     });
 
@@ -3174,18 +3081,15 @@ describe("organization billing settings", () => {
         name: "Custom Usage Pack Org",
         role: "admin",
       });
-      context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      context.mocks.api(billingStatusContract.get, ({ respond }) => {
         return respond(200, activeCustomBillingStatus());
       });
-      context.mocks.api(
-        zeroBillingUsagePackCatalogContract.get,
-        ({ respond }) => {
-          return respond(200, usagePackCatalogResponse());
-        },
-      );
+      context.mocks.api(billingUsagePackCatalogContract.get, ({ respond }) => {
+        return respond(200, usagePackCatalogResponse());
+      });
       if (source === "managed subscription") {
         context.mocks.api(
-          zeroBillingUsagePackManagementContract.get,
+          billingUsagePackManagementContract.get,
           ({ respond }) => {
             return respond(200, {
               tier: "team",
@@ -3196,7 +3100,7 @@ describe("organization billing settings", () => {
         );
       } else {
         context.mocks.api(
-          zeroBillingUsagePackMigrationContract.get,
+          billingUsagePackMigrationContract.get,
           ({ respond }) => {
             return respond(200, {
               tier: "team",
@@ -3255,7 +3159,7 @@ describe("organization billing settings", () => {
       name: "Custom Cancel Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, {
         ...activeCustomBillingStatus(),
         cancelAtPeriodEnd: true,
@@ -3286,7 +3190,7 @@ describe("organization billing settings", () => {
       name: "Team Concurrency Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, {
         ...activeTeamBillingStatus(),
         concurrencySubscriptions: [
@@ -3337,11 +3241,11 @@ describe("organization billing settings", () => {
       name: "Team Concurrency Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, billingStatus);
     });
     context.mocks.api(
-      zeroBillingConcurrencySubscriptionContract.cancel,
+      billingConcurrencySubscriptionContract.cancel,
       ({ params, respond }) => {
         canceledSubscriptionId = params.subscriptionId;
         billingStatus = {
@@ -3362,7 +3266,7 @@ describe("organization billing settings", () => {
       },
     );
     context.mocks.api(
-      zeroBillingConcurrencySubscriptionContract.restore,
+      billingConcurrencySubscriptionContract.restore,
       ({ params, respond }) => {
         restoredSubscriptionId = params.subscriptionId;
         billingStatus = {
@@ -3380,7 +3284,7 @@ describe("organization billing settings", () => {
       },
     );
     context.mocks.api(
-      zeroBillingConcurrencySubscriptionContract.previewChange,
+      billingConcurrencySubscriptionContract.previewChange,
       ({ body, respond }) => {
         previewedQuantity = body.quantity;
         return respond(200, {
@@ -3393,7 +3297,7 @@ describe("organization billing settings", () => {
       },
     );
     context.mocks.api(
-      zeroBillingConcurrencySubscriptionContract.confirmChange,
+      billingConcurrencySubscriptionContract.confirmChange,
       ({ body, respond }) => {
         confirmedQuantity = body.quantity;
         return respond(200, {
@@ -3507,14 +3411,14 @@ describe("organization billing settings", () => {
       name: "Team Concurrency Purchase Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, {
         ...activeTeamBillingStatus(),
         concurrencyPurchaseReviewAvailable: true,
       });
     });
     context.mocks.api(
-      zeroBillingConcurrencyCheckoutContract.preview,
+      billingConcurrencyCheckoutContract.preview,
       ({ body, respond }) => {
         previewedQuantity = body.quantity;
         return respond(200, {
@@ -3527,7 +3431,7 @@ describe("organization billing settings", () => {
       },
     );
     context.mocks.api(
-      zeroBillingConcurrencyCheckoutContract.create,
+      billingConcurrencyCheckoutContract.create,
       ({ body, respond }) => {
         requestedQuantity = body.quantity;
         return respond(200, { url: body.successUrl });
@@ -3596,11 +3500,11 @@ describe("organization billing settings", () => {
       name: "Team Concurrency Compatibility Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, activeTeamBillingStatus());
     });
     context.mocks.api(
-      zeroBillingConcurrencyCheckoutContract.create,
+      billingConcurrencyCheckoutContract.create,
       ({ body, respond }) => {
         requestedQuantity = body.quantity;
         return respond(200, {
@@ -3650,11 +3554,11 @@ describe("organization billing settings", () => {
       name: "Concurrency Reduction Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, billingStatus);
     });
     context.mocks.api(
-      zeroBillingConcurrencySubscriptionContract.previewChange,
+      billingConcurrencySubscriptionContract.previewChange,
       ({ body, respond }) => {
         previewedQuantity = body.quantity;
         return respond(200, {
@@ -3668,7 +3572,7 @@ describe("organization billing settings", () => {
       },
     );
     context.mocks.api(
-      zeroBillingConcurrencySubscriptionContract.confirmChange,
+      billingConcurrencySubscriptionContract.confirmChange,
       ({ body, respond }) => {
         confirmedQuantity = body.quantity;
         billingStatus = {
@@ -3747,7 +3651,7 @@ describe("organization billing settings", () => {
       name: "Concurrency Boundary Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, {
         ...activeTeamBillingStatus(),
         concurrencyLimit: 11,
@@ -3802,7 +3706,7 @@ describe("organization billing settings", () => {
       name: "Concurrency Loading Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, {
         ...activeTeamBillingStatus(),
         concurrencyLimit: 12,
@@ -3819,7 +3723,7 @@ describe("organization billing settings", () => {
       });
     });
     context.mocks.api(
-      zeroBillingConcurrencySubscriptionContract.previewChange,
+      billingConcurrencySubscriptionContract.previewChange,
       async ({ body, respond }) => {
         previewStarted = true;
         await previewReady.promise;
@@ -3875,7 +3779,7 @@ describe("organization billing settings", () => {
       name: "Concurrency Compatibility Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, {
         ...activeTeamBillingStatus(),
         concurrencyLimit: 12,
@@ -3890,7 +3794,7 @@ describe("organization billing settings", () => {
       });
     });
     context.mocks.api(
-      zeroBillingConcurrencyCheckoutContract.create,
+      billingConcurrencyCheckoutContract.create,
       ({ body, respond }) => {
         requestedQuantity = body.quantity;
         return respond(200, {
@@ -3943,10 +3847,10 @@ describe("organization billing settings", () => {
       name: "Payment Confirm Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, activeProBillingStatus());
     });
-    context.mocks.api(zeroBillingDowngradeContract.create, ({ respond }) => {
+    context.mocks.api(billingDowngradeContract.create, ({ respond }) => {
       return respond(200, {
         status: "payment_method_required",
         checkoutUrl: "https://checkout.stripe.com/confirm-cancel-subscription",
@@ -3982,10 +3886,10 @@ describe("organization billing settings", () => {
       name: "Downgrade Retry Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, activeProBillingStatus());
     });
-    context.mocks.api(zeroBillingDowngradeContract.create, ({ respond }) => {
+    context.mocks.api(billingDowngradeContract.create, ({ respond }) => {
       downgradeRequests += 1;
       return respond(409, {
         error: {
@@ -4032,7 +3936,7 @@ describe("organization billing settings", () => {
       name: "Restore Realtime Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       billingStatusRequests += 1;
       return respond(
         200,
@@ -4050,7 +3954,7 @@ describe("organization billing settings", () => {
             },
       );
     });
-    context.mocks.api(zeroBillingRestoreContract.create, ({ respond }) => {
+    context.mocks.api(billingRestoreContract.create, ({ respond }) => {
       return respond(200, {
         status: "payment_method_required",
         checkoutUrl: "https://checkout.stripe.com/confirm-restore-plan",
@@ -4103,7 +4007,7 @@ describe("organization billing settings", () => {
       name: "Restore Retry Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, {
         ...activeProBillingStatus(),
         cancelAtPeriodEnd: true,
@@ -4115,7 +4019,7 @@ describe("organization billing settings", () => {
         },
       });
     });
-    context.mocks.api(zeroBillingRestoreContract.create, ({ respond }) => {
+    context.mocks.api(billingRestoreContract.create, ({ respond }) => {
       restoreRequests += 1;
       return respond(409, {
         error: {
@@ -4162,7 +4066,7 @@ describe("organization billing settings", () => {
         name: "Expiring Plan Org",
         role: "admin",
       });
-      context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      context.mocks.api(billingStatusContract.get, ({ respond }) => {
         return respond(200, {
           ...activeProBillingStatus(),
           subscriptionStatus: "atom_grant",
@@ -4207,33 +4111,30 @@ describe("organization billing settings", () => {
       name: "Plan Preview Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, activeProBillingStatus());
     });
-    context.mocks.api(
-      zeroBillingCheckoutContract.create,
-      ({ body, respond }) => {
-        if (body.previewToken) {
-          confirmationRequest = body;
-          return respond(200, {
-            status: "pending_payment",
-            hostedInvoiceUrl,
-          });
-        }
-        requestedTier = body.tier;
-        supportsInAppPreview = body.supportsInAppPreview;
+    context.mocks.api(billingCheckoutContract.create, ({ body, respond }) => {
+      if (body.previewToken) {
+        confirmationRequest = body;
         return respond(200, {
-          status: "preview",
-          purchaseType: "plan",
-          tier: body.tier,
-          immediateAmountCents: 16_000,
-          nextRecurringAmountCents: 16_000,
-          currency: "usd",
-          expiresAt: "2026-08-13T12:15:00.000Z",
-          previewToken: "plan-preview-token",
+          status: "pending_payment",
+          hostedInvoiceUrl,
         });
-      },
-    );
+      }
+      requestedTier = body.tier;
+      supportsInAppPreview = body.supportsInAppPreview;
+      return respond(200, {
+        status: "preview",
+        purchaseType: "plan",
+        tier: body.tier,
+        immediateAmountCents: 16_000,
+        nextRecurringAmountCents: 16_000,
+        currency: "usd",
+        expiresAt: "2026-08-13T12:15:00.000Z",
+        previewToken: "plan-preview-token",
+      });
+    });
 
     await openBillingTab("/?settings=billing", {
       [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
@@ -4279,53 +4180,50 @@ describe("organization billing settings", () => {
       name: "Plan Retry Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, activeProBillingStatus());
     });
-    context.mocks.api(
-      zeroBillingCheckoutContract.create,
-      ({ body, respond }) => {
-        if (body.previewToken) {
-          confirmationCount += 1;
-          confirmedPreviewToken = body.previewToken;
-          if (confirmationCount === 1) {
-            previewCount += 1;
-            return respond(200, {
-              status: "preview",
-              purchaseType: "plan",
-              tier: body.tier,
-              immediateAmountCents: 15_000 + previewCount * 1000,
-              nextRecurringAmountCents: 15_000 + previewCount * 1000,
-              currency: "usd",
-              expiresAt: "2026-08-13T12:15:00.000Z",
-              previewToken: `plan-preview-token-${previewCount}`,
-            });
-          }
-          return confirmationCount === 2
-            ? respond(409, {
-                error: {
-                  code: "CONFLICT",
-                  message: "Plan purchase preview is no longer valid",
-                },
-              })
-            : respond(200, {
-                status: "completed",
-                hostedInvoiceUrl: null,
-              });
+    context.mocks.api(billingCheckoutContract.create, ({ body, respond }) => {
+      if (body.previewToken) {
+        confirmationCount += 1;
+        confirmedPreviewToken = body.previewToken;
+        if (confirmationCount === 1) {
+          previewCount += 1;
+          return respond(200, {
+            status: "preview",
+            purchaseType: "plan",
+            tier: body.tier,
+            immediateAmountCents: 15_000 + previewCount * 1000,
+            nextRecurringAmountCents: 15_000 + previewCount * 1000,
+            currency: "usd",
+            expiresAt: "2026-08-13T12:15:00.000Z",
+            previewToken: `plan-preview-token-${previewCount}`,
+          });
         }
-        previewCount += 1;
-        return respond(200, {
-          status: "preview",
-          purchaseType: "plan",
-          tier: body.tier,
-          immediateAmountCents: 15_000 + previewCount * 1000,
-          nextRecurringAmountCents: 15_000 + previewCount * 1000,
-          currency: "usd",
-          expiresAt: "2026-08-13T12:15:00.000Z",
-          previewToken: `plan-preview-token-${previewCount}`,
-        });
-      },
-    );
+        return confirmationCount === 2
+          ? respond(409, {
+              error: {
+                code: "CONFLICT",
+                message: "Plan purchase preview is no longer valid",
+              },
+            })
+          : respond(200, {
+              status: "completed",
+              hostedInvoiceUrl: null,
+            });
+      }
+      previewCount += 1;
+      return respond(200, {
+        status: "preview",
+        purchaseType: "plan",
+        tier: body.tier,
+        immediateAmountCents: 15_000 + previewCount * 1000,
+        nextRecurringAmountCents: 15_000 + previewCount * 1000,
+        currency: "usd",
+        expiresAt: "2026-08-13T12:15:00.000Z",
+        previewToken: `plan-preview-token-${previewCount}`,
+      });
+    });
 
     await openBillingTab("/?settings=billing", {
       [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
@@ -4380,7 +4278,7 @@ describe("organization billing settings", () => {
       name: "Credit Preview Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       billingStatusRequests += 1;
       return respond(200, {
         ...activeProBillingStatus(),
@@ -4388,7 +4286,7 @@ describe("organization billing settings", () => {
       });
     });
     context.mocks.api(
-      zeroBillingCreditCheckoutContract.create,
+      billingCreditCheckoutContract.create,
       async ({ body, respond }) => {
         startRequest = body;
         await checkoutReady.promise;
@@ -4403,7 +4301,7 @@ describe("organization billing settings", () => {
       },
     );
     context.mocks.api(
-      zeroBillingCreditCheckoutContract.confirm,
+      billingCreditCheckoutContract.confirm,
       ({ body, respond }) => {
         confirmedPreviewToken = body.previewToken;
         return respond(200, {
@@ -4469,38 +4367,32 @@ describe("organization billing settings", () => {
       name: "Credit Retry Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, {
         ...activeProBillingStatus(),
         canBuyCredits: true,
       });
     });
-    context.mocks.api(
-      zeroBillingCreditCheckoutContract.create,
-      ({ respond }) => {
-        previewCount += 1;
-        return respond(200, {
-          status: "preview",
-          credits: 20_000,
-          amountCents: 1800,
-          currency: "usd",
-          expiresAt: "2026-08-13T12:15:00.000Z",
-          previewToken: `credit-preview-token-${previewCount}`,
-        });
-      },
-    );
-    context.mocks.api(
-      zeroBillingCreditCheckoutContract.confirm,
-      ({ respond }) => {
-        confirmationCount += 1;
-        return respond(409, {
-          error: {
-            code: "CONFLICT",
-            message: "Credit purchase preview is no longer valid",
-          },
-        });
-      },
-    );
+    context.mocks.api(billingCreditCheckoutContract.create, ({ respond }) => {
+      previewCount += 1;
+      return respond(200, {
+        status: "preview",
+        credits: 20_000,
+        amountCents: 1800,
+        currency: "usd",
+        expiresAt: "2026-08-13T12:15:00.000Z",
+        previewToken: `credit-preview-token-${previewCount}`,
+      });
+    });
+    context.mocks.api(billingCreditCheckoutContract.confirm, ({ respond }) => {
+      confirmationCount += 1;
+      return respond(409, {
+        error: {
+          code: "CONFLICT",
+          message: "Credit purchase preview is no longer valid",
+        },
+      });
+    });
 
     await openBillingTab("/?settings=billing", {
       [FeatureSwitchKey.SavedBillingCreditPurchase]: true,
@@ -4672,37 +4564,34 @@ describe("organization billing settings", () => {
       name: "Team Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, billingStatus);
     });
-    context.mocks.api(
-      zeroBillingDowngradeContract.create,
-      ({ body, respond }) => {
-        const targetTier = body.targetTier === "pro" ? "pro" : "limited-free-1";
-        billingStatus = {
-          ...billingStatus,
-          cancelAtPeriodEnd: targetTier === "limited-free-1",
-          canRestorePlan: true,
-          scheduledChange:
-            targetTier === "pro"
-              ? {
-                  type: "downgrade",
-                  targetTier: "pro",
-                  effectiveDate: "2026-05-01T00:00:00Z",
-                }
-              : {
-                  type: "cancel",
-                  targetTier: "limited-free-1",
-                  effectiveDate: "2026-05-01T00:00:00Z",
-                },
-        };
-        return respond(200, {
-          success: true,
-          effectiveDate: "2026-05-01T00:00:00Z",
-        });
-      },
-    );
-    context.mocks.api(zeroBillingRestoreContract.create, ({ respond }) => {
+    context.mocks.api(billingDowngradeContract.create, ({ body, respond }) => {
+      const targetTier = body.targetTier === "pro" ? "pro" : "limited-free-1";
+      billingStatus = {
+        ...billingStatus,
+        cancelAtPeriodEnd: targetTier === "limited-free-1",
+        canRestorePlan: true,
+        scheduledChange:
+          targetTier === "pro"
+            ? {
+                type: "downgrade",
+                targetTier: "pro",
+                effectiveDate: "2026-05-01T00:00:00Z",
+              }
+            : {
+                type: "cancel",
+                targetTier: "limited-free-1",
+                effectiveDate: "2026-05-01T00:00:00Z",
+              },
+      };
+      return respond(200, {
+        success: true,
+        effectiveDate: "2026-05-01T00:00:00Z",
+      });
+    });
+    context.mocks.api(billingRestoreContract.create, ({ respond }) => {
       billingStatus = {
         ...billingStatus,
         cancelAtPeriodEnd: false,
@@ -4800,28 +4689,25 @@ describe("organization billing settings", () => {
       name: "Team Cancel Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, billingStatus);
     });
-    context.mocks.api(
-      zeroBillingDowngradeContract.create,
-      ({ body, respond }) => {
-        capturedTargetTier = body.targetTier;
-        billingStatus = {
-          ...billingStatus,
-          cancelAtPeriodEnd: false,
-          scheduledChange: {
-            type: "downgrade",
-            targetTier: "pro",
-            effectiveDate: "2026-05-01T00:00:00Z",
-          },
-        };
-        return respond(200, {
-          success: true,
+    context.mocks.api(billingDowngradeContract.create, ({ body, respond }) => {
+      capturedTargetTier = body.targetTier;
+      billingStatus = {
+        ...billingStatus,
+        cancelAtPeriodEnd: false,
+        scheduledChange: {
+          type: "downgrade",
+          targetTier: "pro",
           effectiveDate: "2026-05-01T00:00:00Z",
-        });
-      },
-    );
+        },
+      };
+      return respond(200, {
+        success: true,
+        effectiveDate: "2026-05-01T00:00:00Z",
+      });
+    });
 
     await openBillingTab();
 

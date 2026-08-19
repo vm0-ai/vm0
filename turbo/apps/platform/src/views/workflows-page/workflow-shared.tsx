@@ -7,8 +7,8 @@ import type {
   GithubDeploymentState,
   GithubPullRequestReviewState,
   GithubWorkflowRunConclusion,
-  ZeroWorkflowAutomationSummary,
-} from "@okouai/api-contracts/contracts/zero-workflows";
+  WorkflowAutomationSummary,
+} from "@okouai/api-contracts/contracts/workflows";
 
 import { i18n } from "../../i18n/index.ts";
 
@@ -95,7 +95,7 @@ export function formatWorkflowIntervalSeconds(seconds: number): string {
 }
 
 export function automationKindLabel(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
 ): string {
   if (automation.kind === "schedule") {
     return i18n.t(($) => {
@@ -466,7 +466,7 @@ function formatGmailMatchSummary(config: GmailNewMessageEventConfig): string {
 }
 
 export function gmailAutomationTitle(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
 ): string {
   if (automation.kind === "schedule") {
     return automation.scheduleSummary;
@@ -567,10 +567,7 @@ export function gmailAutomationTitle(
 }
 
 function githubAutomationSummary(
-  automation: Extract<
-    ZeroWorkflowAutomationSummary,
-    { readonly kind: "event" }
-  >,
+  automation: Extract<WorkflowAutomationSummary, { readonly kind: "event" }>,
 ): string | null {
   switch (automation.eventType) {
     case "github-pull-request": {
@@ -623,7 +620,7 @@ function githubAutomationSummary(
 }
 
 export function gmailAutomationSummary(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
 ): string | null {
   if (automation.kind !== "event") {
     return null;

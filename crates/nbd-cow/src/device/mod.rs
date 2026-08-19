@@ -95,11 +95,15 @@ impl NbdCowDevice {
         }
     }
 
-    /// Mark the device as abandoned without performing cleanup.
+    /// Mark the device as abandoned without disconnecting the kernel device.
     ///
     /// Use as a last resort when netlink disconnect fails. Cancels tasks
-    /// and marks the device as disconnected so Drop becomes a no-op.
-    /// The device persists in the kernel until `runner gc` cleans it up.
+    /// and marks the device as disconnected so Drop becomes a no-op. The
+    /// kernel device may remain connected after this method returns. `runner
+    /// gc` considers it eligible only after the connecting TID recorded in
+    /// `/sys/block/nbdN/pid` no longer exists; it skips the device while that
+    /// TID is still alive. The kernel may also disconnect an orphan with
+    /// pending I/O after its configured dead-connection timeout.
     pub fn abandon(&mut self) {
         tracing::warn!(
             device_index = self.device_index,

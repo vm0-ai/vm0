@@ -3,7 +3,7 @@ import { v5 as uuidv5 } from "uuid";
 import {
   chatRunFinishedEventConfigSchema,
   type ChatRunFinishedEventConfig,
-} from "@okouai/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/workflows";
 import {
   workflowUserAutomationThreads,
   workflowAutomations,

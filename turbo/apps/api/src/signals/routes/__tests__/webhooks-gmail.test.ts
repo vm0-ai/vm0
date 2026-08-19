@@ -7,9 +7,9 @@ import {
 } from "node:crypto";
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@okouai/api-contracts/contracts/model-providers";
 import {
-  zeroWorkflowAutomationsContract,
-  type ZeroWorkflowAutomationSummary,
-} from "@okouai/api-contracts/contracts/zero-workflows";
+  workflowAutomationsContract,
+  type WorkflowAutomationSummary,
+} from "@okouai/api-contracts/contracts/workflows";
 import { HttpResponse, http } from "msw";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -36,7 +36,7 @@ import {
   chatEventDisplayText,
 } from "./helpers/chat-event";
 import { seedVm0ManagedModelKey } from "./helpers/runtime-state";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { workflowAutomationsRoutes } from "../workflow-automations";
 import { webhooksGmailRoutes } from "../webhooks-gmail";
 
@@ -46,7 +46,7 @@ const TEST_APP_ROUTES = Object.freeze([
 ]);
 
 const context = testContext();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const bdd = createBddApi(context);
 const chatApi = createChatFilesBddApi(context);
 const connectorsApi = createConnectorBddApi(context);
@@ -79,7 +79,7 @@ function authHeaders(actor: ApiTestUser) {
 
 function automationsClient() {
   return setupApp({ context, routes: workflowAutomationsRoutes })(
-    zeroWorkflowAutomationsContract,
+    workflowAutomationsContract,
   );
 }
 
@@ -521,7 +521,7 @@ async function setupFixture(
 async function readAutomation(
   actor: ApiTestUser,
   automationId: string,
-): Promise<ZeroWorkflowAutomationSummary> {
+): Promise<WorkflowAutomationSummary> {
   const response = await accept(
     automationsClient().get({
       headers: authHeaders(actor),
@@ -556,7 +556,7 @@ async function runAutomationNow(
 }
 
 function requireAutomationChatThreadId(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
 ): string {
   if (!automation.chatThreadId) {
     throw new Error(

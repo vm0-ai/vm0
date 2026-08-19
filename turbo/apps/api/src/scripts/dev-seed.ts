@@ -40,7 +40,6 @@ function writeLine(message: string): void {
  *   DEV_MODEL_{VENDOR_UPPER}_KEY (e.g., DEV_MODEL_ANTHROPIC_KEY, DEV_MODEL_OPENAI_KEY)
  * Anthropic and OpenAI also fall back to their provider env names because
  * CI and local dev already use them for real model smoke tests.
- * DeepSeek also falls back to its provider env name.
  */
 
 /** 1 USD = 1000 credits */

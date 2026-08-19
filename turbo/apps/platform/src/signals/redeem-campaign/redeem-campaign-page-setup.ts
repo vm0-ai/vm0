@@ -1,7 +1,7 @@
 import { command } from "ccstate";
 import { createElement } from "react";
 import { i18n } from "../../i18n/index.ts";
-import { zeroBillingRedeemContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingRedeemContract } from "@okouai/api-contracts/contracts/billing";
 import { RedeemCampaignPage } from "../../views/redeem-campaign-page/redeem-campaign-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
@@ -64,7 +64,7 @@ export const setupRedeemCampaignPage$ = command(
       origin,
     );
 
-    const client = get(zeroClient$)(zeroBillingRedeemContract);
+    const client = get(zeroClient$)(billingRedeemContract);
     const result = await accept(
       client.create({
         params: { campaign },

@@ -2,7 +2,7 @@ import { useLoadable } from "ccstate-react";
 import { Button } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import type { OrgMember } from "@okouai/api-contracts/contracts/org-members";
-import type { BillingStatusResponse } from "@okouai/api-contracts/contracts/zero-billing";
+import type { BillingStatusResponse } from "@okouai/api-contracts/contracts/billing";
 import type { MemberUsage } from "@okouai/api-contracts/contracts/usage";
 import { ChevronRight } from "lucide-react";
 import {

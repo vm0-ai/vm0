@@ -1,8 +1,8 @@
 import {
-  zeroBillingStatusContract,
-  zeroBillingUsagePackCreditsContract,
+  billingStatusContract,
+  billingUsagePackCreditsContract,
   type UsagePackCreditsResponse,
-} from "@okouai/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/billing";
 import {
   usageRecordContract,
   type UsageRecordRow,
@@ -155,7 +155,7 @@ function usageRow(args: {
 }
 
 function mockBillingStatus(tier: "limited-free-1" | "pro" = "pro"): void {
-  context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+  context.mocks.api(billingStatusContract.get, ({ respond }) => {
     return respond(200, {
       tier,
       supportByok: tier !== "limited-free-1",
@@ -193,7 +193,7 @@ function mockBillingStatus(tier: "limited-free-1" | "pro" = "pro"): void {
 }
 
 function mockEmptyUsagePackCredits(): void {
-  context.mocks.api(zeroBillingUsagePackCreditsContract.get, ({ respond }) => {
+  context.mocks.api(billingUsagePackCreditsContract.get, ({ respond }) => {
     return respond(200, {
       totalCredits: 0,
       purchasedCredits: 0,
@@ -267,18 +267,15 @@ describe("personal usage settings", () => {
   it("does not request or show usage pack credits when the switch is disabled", async () => {
     mockPersonalUsageStory(usageRows(), "pro", false, "member");
     let usagePackCreditRequests = 0;
-    context.mocks.api(
-      zeroBillingUsagePackCreditsContract.get,
-      ({ respond }) => {
-        usagePackCreditRequests += 1;
-        return respond(200, {
-          totalCredits: 20_400,
-          purchasedCredits: 20_000,
-          bonusCredits: 400,
-          creditGrants: [],
-        });
-      },
-    );
+    context.mocks.api(billingUsagePackCreditsContract.get, ({ respond }) => {
+      usagePackCreditRequests += 1;
+      return respond(200, {
+        totalCredits: 20_400,
+        purchasedCredits: 20_000,
+        bonusCredits: 400,
+        creditGrants: [],
+      });
+    });
 
     await openUsageSettings(false);
     // Without the new pricing a member has neither an organization balance nor
@@ -300,35 +297,32 @@ describe("personal usage settings", () => {
   it("shows the member's usage pack credit breakdown when the switch is enabled", async () => {
     const user = userEvent.setup();
     mockPersonalUsageStory(usageRows(), "pro", false, "member");
-    context.mocks.api(
-      zeroBillingUsagePackCreditsContract.get,
-      ({ respond }) => {
-        return respond(200, {
-          totalCredits: 20_400,
-          purchasedCredits: 20_000,
-          bonusCredits: 400,
-          hasUsagePack: true,
-          creditGrants: [
-            {
-              id: "grant-purchased",
-              grantType: "purchased",
-              amount: 25_000,
-              remaining: 20_000,
-              createdAt: "2026-03-01T00:00:00.000Z",
-              expiresAt: "2026-04-01T00:00:00.000Z",
-            },
-            {
-              id: "grant-bonus",
-              grantType: "bonus",
-              amount: 400,
-              remaining: 400,
-              createdAt: "2026-03-01T00:00:00.000Z",
-              expiresAt: "2026-04-01T00:00:00.000Z",
-            },
-          ],
-        });
-      },
-    );
+    context.mocks.api(billingUsagePackCreditsContract.get, ({ respond }) => {
+      return respond(200, {
+        totalCredits: 20_400,
+        purchasedCredits: 20_000,
+        bonusCredits: 400,
+        hasUsagePack: true,
+        creditGrants: [
+          {
+            id: "grant-purchased",
+            grantType: "purchased",
+            amount: 25_000,
+            remaining: 20_000,
+            createdAt: "2026-03-01T00:00:00.000Z",
+            expiresAt: "2026-04-01T00:00:00.000Z",
+          },
+          {
+            id: "grant-bonus",
+            grantType: "bonus",
+            amount: 400,
+            remaining: 400,
+            createdAt: "2026-03-01T00:00:00.000Z",
+            expiresAt: "2026-04-01T00:00:00.000Z",
+          },
+        ],
+      });
+    });
 
     await openUsageSettings(true);
 
@@ -374,19 +368,16 @@ describe("personal usage settings", () => {
   it("hides usage pack credits when the organization has no active pack", async () => {
     let requests = 0;
     mockPersonalUsageStory(usageRows(), "pro", false, "member");
-    context.mocks.api(
-      zeroBillingUsagePackCreditsContract.get,
-      ({ respond }) => {
-        requests += 1;
-        return respond(200, {
-          totalCredits: 0,
-          purchasedCredits: 0,
-          bonusCredits: 0,
-          creditGrants: [],
-          hasUsagePack: false,
-        });
-      },
-    );
+    context.mocks.api(billingUsagePackCreditsContract.get, ({ respond }) => {
+      requests += 1;
+      return respond(200, {
+        totalCredits: 0,
+        purchasedCredits: 0,
+        bonusCredits: 0,
+        creditGrants: [],
+        hasUsagePack: false,
+      });
+    });
 
     await openUsageSettings(true);
 
@@ -398,27 +389,24 @@ describe("personal usage settings", () => {
 
   it("shows one-time credits without an active usage pack allocation", async () => {
     mockPersonalUsageStory(usageRows(), "pro", false, "member");
-    context.mocks.api(
-      zeroBillingUsagePackCreditsContract.get,
-      ({ respond }) => {
-        return respond(200, {
-          totalCredits: 10_000,
-          purchasedCredits: 0,
-          bonusCredits: 10_000,
-          creditGrants: [
-            {
-              id: "grant-atom-bonus",
-              grantType: "bonus",
-              amount: 10_000,
-              remaining: 10_000,
-              createdAt: "2026-08-17T03:43:42.000Z",
-              expiresAt: "2026-09-17T03:43:37.000Z",
-            },
-          ],
-          hasUsagePack: false,
-        });
-      },
-    );
+    context.mocks.api(billingUsagePackCreditsContract.get, ({ respond }) => {
+      return respond(200, {
+        totalCredits: 10_000,
+        purchasedCredits: 0,
+        bonusCredits: 10_000,
+        creditGrants: [
+          {
+            id: "grant-atom-bonus",
+            grantType: "bonus",
+            amount: 10_000,
+            remaining: 10_000,
+            createdAt: "2026-08-17T03:43:42.000Z",
+            expiresAt: "2026-09-17T03:43:37.000Z",
+          },
+        ],
+        hasUsagePack: false,
+      });
+    });
 
     await openUsageSettings(true);
 
@@ -450,27 +438,24 @@ describe("personal usage settings", () => {
       pendingInvitations: [],
       membershipRequests: [],
     });
-    context.mocks.api(
-      zeroBillingUsagePackCreditsContract.get,
-      ({ respond }) => {
-        return respond(200, {
-          totalCredits: 20_000,
-          purchasedCredits: 20_000,
-          bonusCredits: 0,
-          creditGrants: [],
-          hasUsagePack: true,
-          memberCredits: [
-            {
-              memberId: "test-user-123",
-              totalCredits: 20_000,
-              purchasedCredits: 20_000,
-              bonusCredits: 0,
-              creditGrants: [],
-            },
-          ],
-        });
-      },
-    );
+    context.mocks.api(billingUsagePackCreditsContract.get, ({ respond }) => {
+      return respond(200, {
+        totalCredits: 20_000,
+        purchasedCredits: 20_000,
+        bonusCredits: 0,
+        creditGrants: [],
+        hasUsagePack: true,
+        memberCredits: [
+          {
+            memberId: "test-user-123",
+            totalCredits: 20_000,
+            purchasedCredits: 20_000,
+            bonusCredits: 0,
+            creditGrants: [],
+          },
+        ],
+      });
+    });
 
     await openUsageSettings(true);
 
@@ -530,27 +515,24 @@ describe("personal usage settings", () => {
         expiresAt: "2026-04-01T00:00:00.000Z",
       },
     ] satisfies UsagePackCreditsResponse["creditGrants"];
-    context.mocks.api(
-      zeroBillingUsagePackCreditsContract.get,
-      ({ respond }) => {
-        return respond(200, {
-          totalCredits: 20_400,
-          purchasedCredits: 20_000,
-          bonusCredits: 400,
-          creditGrants: linghanCreditGrants,
-          hasUsagePack: true,
-          memberCredits: [
-            {
-              memberId: "test-user-123",
-              totalCredits: 20_400,
-              purchasedCredits: 20_000,
-              bonusCredits: 400,
-              creditGrants: linghanCreditGrants,
-            },
-          ],
-        });
-      },
-    );
+    context.mocks.api(billingUsagePackCreditsContract.get, ({ respond }) => {
+      return respond(200, {
+        totalCredits: 20_400,
+        purchasedCredits: 20_000,
+        bonusCredits: 400,
+        creditGrants: linghanCreditGrants,
+        hasUsagePack: true,
+        memberCredits: [
+          {
+            memberId: "test-user-123",
+            totalCredits: 20_400,
+            purchasedCredits: 20_000,
+            bonusCredits: 400,
+            creditGrants: linghanCreditGrants,
+          },
+        ],
+      });
+    });
 
     await openUsageSettings(true);
 

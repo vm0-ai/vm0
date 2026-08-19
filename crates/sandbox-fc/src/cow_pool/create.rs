@@ -1,14 +1,18 @@
+use std::ffi::OsStr;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use tracing::info;
 
 use super::{
     CowPoolConfig, CowPoolError, PreparedCowSlot, PrewarmedSlot, SlotSpawner, destroy_slot_async,
 };
+use crate::command;
 use crate::duration::duration_ms;
+
+const COW_SPARSE_COPY_TIMEOUT: Duration = Duration::from_secs(300);
 
 #[derive(Clone)]
 pub(super) struct CowFileConfig {
@@ -38,9 +42,7 @@ pub(super) fn default_slot_spawner() -> SlotSpawner {
 async fn prepare_slot(config: CowPoolConfig) -> Result<PreparedCowSlot, CowPoolError> {
     let file_started = Instant::now();
     let create_config = CowFileConfig::from(&config);
-    let slot = tokio::task::spawn_blocking(move || create_slot(&create_config))
-        .await
-        .map_err(|error| CowPoolError::CowFileCreation(format!("join: {error}")))??;
+    let slot = create_slot(&create_config).await?;
     let file_elapsed_ms = duration_ms(file_started.elapsed());
 
     let nbd_started = Instant::now();
@@ -67,14 +69,21 @@ async fn prepare_slot(config: CowPoolConfig) -> Result<PreparedCowSlot, CowPoolE
 }
 
 /// Create a pre-warmed slot: workspace directory + COW file.
-pub(super) fn create_slot(config: &CowFileConfig) -> Result<PrewarmedSlot, CowPoolError> {
+pub(super) async fn create_slot(config: &CowFileConfig) -> Result<PrewarmedSlot, CowPoolError> {
+    create_slot_with_copy_timeout(config, COW_SPARSE_COPY_TIMEOUT).await
+}
+
+pub(super) async fn create_slot_with_copy_timeout(
+    config: &CowFileConfig,
+    copy_timeout: Duration,
+) -> Result<PrewarmedSlot, CowPoolError> {
     let id = uuid::Uuid::new_v4().to_string();
     let workspace = config.workspaces_dir.join(&id);
     let cow_file = workspace.join("cow.img");
 
-    if let Err(e) = create_cow_file(config, &workspace, &cow_file) {
+    if let Err(e) = create_cow_file(config, &workspace, &cow_file, copy_timeout).await {
         // Best-effort cleanup: remove any partially-created workspace.
-        let _ = std::fs::remove_dir_all(&workspace);
+        let _ = tokio::fs::remove_dir_all(&workspace).await;
         return Err(e);
     }
 
@@ -82,31 +91,41 @@ pub(super) fn create_slot(config: &CowFileConfig) -> Result<PrewarmedSlot, CowPo
 }
 
 /// Create the COW file: sparse-copy from golden image or allocate fresh.
-fn create_cow_file(
+async fn create_cow_file(
     config: &CowFileConfig,
     workspace: &Path,
     cow_file: &Path,
+    copy_timeout: Duration,
 ) -> Result<(), CowPoolError> {
-    std::fs::create_dir_all(workspace).map_err(|e| CowPoolError::CowFileCreation(e.to_string()))?;
+    tokio::fs::create_dir_all(workspace)
+        .await
+        .map_err(|e| CowPoolError::CowFileCreation(e.to_string()))?;
     match &config.golden_cow {
         Some(golden) => {
             let expected_blocks = validate_base_size(config.base_size)?;
-            sparse_copy(golden, cow_file)?;
-            ensure_owner_read_write(cow_file)?;
-            let cow_file_len = std::fs::metadata(cow_file)
+            sparse_copy(golden, cow_file, copy_timeout).await?;
+            ensure_owner_read_write(cow_file).await?;
+            let cow_file_len = tokio::fs::metadata(cow_file)
+                .await
                 .map_err(|e| CowPoolError::CowFileCreation(e.to_string()))?
                 .len();
             // Snapshot restore requires the dirty bitmap sidecar to preserve COW reads.
             let golden_bitmap = nbd_cow::cow::bitmap_path_for(golden);
             let cow_bitmap = nbd_cow::cow::bitmap_path_for(cow_file);
-            sparse_copy(&golden_bitmap, &cow_bitmap)?;
-            validate_cow_bitmap(&cow_bitmap, cow_file_len, expected_blocks)?;
+            sparse_copy(&golden_bitmap, &cow_bitmap, copy_timeout).await?;
+            tokio::task::spawn_blocking(move || {
+                validate_cow_bitmap(&cow_bitmap, cow_file_len, expected_blocks)
+            })
+            .await
+            .map_err(|e| CowPoolError::CowFileCreation(format!("bitmap validation join: {e}")))??;
         }
         None => {
             validate_base_size(config.base_size)?;
-            let f = std::fs::File::create(cow_file)
+            let f = tokio::fs::File::create(cow_file)
+                .await
                 .map_err(|e| CowPoolError::CowFileCreation(e.to_string()))?;
             f.set_len(config.base_size)
+                .await
                 .map_err(|e| CowPoolError::CowFileCreation(e.to_string()))?;
         }
     }
@@ -147,34 +166,30 @@ fn validate_base_size(base_size: u64) -> Result<usize, CowPoolError> {
     Ok(expected_blocks)
 }
 
-fn ensure_owner_read_write(path: &Path) -> Result<(), CowPoolError> {
-    let metadata =
-        std::fs::metadata(path).map_err(|e| CowPoolError::CowFileCreation(e.to_string()))?;
+async fn ensure_owner_read_write(path: &Path) -> Result<(), CowPoolError> {
+    let metadata = tokio::fs::metadata(path)
+        .await
+        .map_err(|e| CowPoolError::CowFileCreation(e.to_string()))?;
     let mut permissions = metadata.permissions();
     let mode = permissions.mode();
     let mode_with_owner_rw = mode | 0o600;
     if mode_with_owner_rw != mode {
         permissions.set_mode(mode_with_owner_rw);
-        std::fs::set_permissions(path, permissions)
+        tokio::fs::set_permissions(path, permissions)
+            .await
             .map_err(|e| CowPoolError::CowFileCreation(e.to_string()))?;
     }
     Ok(())
 }
 
-/// Synchronous sparse copy via `cp --sparse=always`.
-fn sparse_copy(src: &Path, dst: &Path) -> Result<(), CowPoolError> {
-    let output = std::process::Command::new("cp")
-        .arg("--sparse=always")
-        .arg("--")
-        .arg(src)
-        .arg(dst)
-        .output()
-        .map_err(|e| CowPoolError::CowFileCreation(format!("exec cp: {e}")))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(CowPoolError::CowFileCreation(format!(
-            "cp --sparse=always failed: {stderr}"
-        )));
-    }
-    Ok(())
+async fn sparse_copy(src: &Path, dst: &Path, timeout: Duration) -> Result<(), CowPoolError> {
+    let args = [
+        OsStr::new("--sparse=always"),
+        OsStr::new("--"),
+        src.as_os_str(),
+        dst.as_os_str(),
+    ];
+    command::exec_status_os_with_timeout(OsStr::new("cp"), &args, timeout)
+        .await
+        .map_err(|e| CowPoolError::CowFileCreation(e.to_string()))
 }

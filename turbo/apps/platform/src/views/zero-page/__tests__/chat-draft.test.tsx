@@ -10,10 +10,10 @@ import {
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { agentDraftContract } from "@okouai/api-contracts/contracts/agent-draft";
-import { zeroAgentsByIdContract } from "@okouai/api-contracts/contracts/zero-agents";
+import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
 import { runsQueueContract } from "@okouai/api-contracts/contracts/run-routes";
-import { zeroTeamContract } from "@okouai/api-contracts/contracts/zero-team";
-import { zeroWorkflowsCollectionContract } from "@okouai/api-contracts/contracts/zero-workflows";
+import { teamContract } from "@okouai/api-contracts/contracts/team";
+import { workflowsCollectionContract } from "@okouai/api-contracts/contracts/workflows";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise, resetSignal } from "../../../signals/utils.ts";
 import {
@@ -122,7 +122,7 @@ function mockAgentChatPage(agentId: string): void {
     serviceTier: null,
     updatedAt: "2026-03-10T00:00:00Z",
   });
-  context.mocks.api(zeroTeamContract.list, ({ respond }) => {
+  context.mocks.api(teamContract.list, ({ respond }) => {
     return respond(200, [
       {
         id: agentId,
@@ -135,7 +135,7 @@ function mockAgentChatPage(agentId: string): void {
       },
     ]);
   });
-  context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
+  context.mocks.api(agentsByIdContract.get, ({ params, respond }) => {
     return respond(200, {
       agentId: params.id,
       ownerId: "test-user-123",
@@ -1826,7 +1826,7 @@ describe("chat drafts", () => {
     const url =
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8e2a2ad0-da8a-4ee7-8494-e0d7f6d87360/image.png";
 
-    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+    context.mocks.api(workflowsCollectionContract.list, ({ respond }) => {
       return respond(200, []);
     });
     mockChatLifecycle(context, { threadId });

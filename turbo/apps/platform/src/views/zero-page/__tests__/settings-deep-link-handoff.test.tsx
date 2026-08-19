@@ -1,7 +1,7 @@
 import {
-  zeroTeamContract,
+  teamContract,
   type TeamComposeItem,
-} from "@okouai/api-contracts/contracts/zero-team";
+} from "@okouai/api-contracts/contracts/team";
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -30,7 +30,7 @@ describe("settings deep-link handoff", () => {
     context.store.set(setLastUsedAgentId$, DEFAULT_AGENT.id);
     const teamRequestStarted = context.mocks.deferred<void>();
     const releaseTeamRequest = context.mocks.deferred<void>();
-    context.mocks.api(zeroTeamContract.list, async ({ respond }) => {
+    context.mocks.api(teamContract.list, async ({ respond }) => {
       teamRequestStarted.resolve(undefined);
       await releaseTeamRequest.promise;
       return respond(200, [DEFAULT_AGENT]);

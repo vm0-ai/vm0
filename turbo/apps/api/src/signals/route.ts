@@ -105,7 +105,7 @@ import { mcpConnectorsRoutes } from "./routes/mcp-connectors";
 import { weatherRoutes } from "./routes/weather";
 import { modelPoliciesRoutes } from "./routes/model-policies";
 import { modelProviderGatewayRoutes } from "./routes/model-provider-gateways";
-import { zeroModelProvidersRoutes } from "./routes/zero-model-providers";
+import { modelProvidersRoutes } from "./routes/model-providers";
 import { onboardingCompleteRoutes } from "./routes/onboarding-complete";
 import { onboardingStatusRoutes } from "./routes/onboarding-status";
 import { orgInviteRoutes } from "./routes/org-invite";
@@ -120,7 +120,7 @@ import { realtimeTokenRoutes } from "./routes/realtime-token";
 import { imageRecognitionRoutes } from "./routes/image-recognition";
 import { translationRoutes } from "./routes/translation";
 import { runDetailRoutes } from "./routes/run-detail";
-import { zeroRunsRoutes } from "./routes/zero-runs";
+import { runsRoutes } from "./routes/runs";
 import { runsCancelRoutes } from "./routes/runs-cancel";
 import { meModelProvidersDeleteRoutes } from "./routes/me-model-providers-delete";
 import { meModelProviderAccountRoutes } from "./routes/me-model-provider-accounts";
@@ -304,7 +304,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...browserAuthorizationRoutes,
   ...modelPoliciesRoutes,
   ...modelProviderGatewayRoutes,
-  ...zeroModelProvidersRoutes,
+  ...modelProvidersRoutes,
   ...meModelProvidersDeleteRoutes,
   ...meModelProviderAccountRoutes,
   ...meModelProvidersListRoutes,
@@ -320,7 +320,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...imageRecognitionRoutes,
   ...translationRoutes,
   ...runDetailRoutes,
-  ...zeroRunsRoutes,
+  ...runsRoutes,
   ...runsCancelRoutes,
   ...onboardingCompleteRoutes,
   ...onboardingStatusRoutes,

@@ -1,8 +1,8 @@
 import { command, computed } from "ccstate";
 import {
-  zeroModelProviderConnectionsByIdContract,
-  zeroModelProviderConnectionsMainContract,
-} from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
+  modelProviderConnectionsByIdContract,
+  modelProviderConnectionsMainContract,
+} from "@okouai/api-contracts/contracts/model-provider-gateways";
 
 import { badRequestMessage, isNotFoundResponse } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -50,7 +50,7 @@ const createConnectionInner$ = command(
       return adminRequired;
     }
     const body = await get(
-      bodyResultOf(zeroModelProviderConnectionsMainContract.create),
+      bodyResultOf(modelProviderConnectionsMainContract.create),
     );
     signal.throwIfAborted();
     if (!body.ok) {
@@ -74,8 +74,8 @@ const updateConnectionInner$ = command(
       return adminRequired;
     }
     const [body, params] = await Promise.all([
-      get(bodyResultOf(zeroModelProviderConnectionsByIdContract.update)),
-      get(pathParamsOf(zeroModelProviderConnectionsByIdContract.update)),
+      get(bodyResultOf(modelProviderConnectionsByIdContract.update)),
+      get(pathParamsOf(modelProviderConnectionsByIdContract.update)),
     ]);
     signal.throwIfAborted();
     if (!body.ok) {
@@ -103,7 +103,7 @@ const deleteConnectionInner$ = command(
       return adminRequired;
     }
     const params = await get(
-      pathParamsOf(zeroModelProviderConnectionsByIdContract.delete),
+      pathParamsOf(modelProviderConnectionsByIdContract.delete),
     );
     signal.throwIfAborted();
     const result = await set(
@@ -119,28 +119,28 @@ const deleteConnectionInner$ = command(
 
 export const modelProviderGatewayRoutes: readonly RouteEntry[] = [
   {
-    route: zeroModelProviderConnectionsMainContract.list,
+    route: modelProviderConnectionsMainContract.list,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       listConnectionsInner$,
     ),
   },
   {
-    route: zeroModelProviderConnectionsMainContract.create,
+    route: modelProviderConnectionsMainContract.create,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       createConnectionInner$,
     ),
   },
   {
-    route: zeroModelProviderConnectionsByIdContract.update,
+    route: modelProviderConnectionsByIdContract.update,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       updateConnectionInner$,
     ),
   },
   {
-    route: zeroModelProviderConnectionsByIdContract.delete,
+    route: modelProviderConnectionsByIdContract.delete,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       deleteConnectionInner$,

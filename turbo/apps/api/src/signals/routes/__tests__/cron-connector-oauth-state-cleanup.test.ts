@@ -14,7 +14,7 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import {
   type TestCronDeleteCleanupsStateActionBody,
   type TestCronDeleteCleanupsStateResponse,
@@ -24,7 +24,7 @@ import {
 import { connectorsRoutes } from "../connectors";
 
 const context = testContext();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const API_ORIGIN = "https://api.vm0.ai";
 
 function mockAuthenticatedSession(marker: string): void {

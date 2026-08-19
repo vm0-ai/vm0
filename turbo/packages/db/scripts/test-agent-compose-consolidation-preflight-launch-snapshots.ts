@@ -390,8 +390,8 @@ function testVersionAndCheckpointEvidence(): void {
   assert.equal(conflicts.output.reasons.checkpoint_version_missing.count, 1);
 
   const malformedVariants = [
-    null,
     [],
+    {},
     { agentComposeVersionId: "invalid" },
     { agentComposeVersionId: storedVersion.id, vars: { INVALID: 1 } },
     { agentComposeVersionId: storedVersion.id, secretNames: [1] },
@@ -404,6 +404,16 @@ function testVersionAndCheckpointEvidence(): void {
     });
     assert.equal(malformed.output.dispositions.integrity_conflict.count, 1);
   }
+
+  const intentionallyAbsent = classify({
+    runs: [run("absent-checkpoint-snapshot", storedVersion.id)],
+    versions: [storedVersion],
+    checkpoints: [checkpoint("absent-checkpoint-snapshot", null)],
+  });
+  assert.equal(
+    intentionallyAbsent.output.dispositions.exactly_recoverable.count,
+    1,
+  );
 
   const mismatchedHash = classify({
     runs: [run("hash-conflict", "c".repeat(64))],

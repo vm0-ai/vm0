@@ -614,7 +614,7 @@ const redeemCodeRequestSchema = z.object({
 /**
  * Zero contract for GET /api/okou/billing/status
  */
-export const zeroBillingStatusContract = c.router({
+export const billingStatusContract = c.router({
   get: {
     method: "GET",
     path: "/api/okou/billing/status",
@@ -629,12 +629,12 @@ export const zeroBillingStatusContract = c.router({
   },
 });
 
-export type ZeroBillingStatusContract = typeof zeroBillingStatusContract;
+export type BillingStatusContract = typeof billingStatusContract;
 
 /**
  * Zero contract for POST /api/okou/billing/checkout
  */
-export const zeroBillingCheckoutContract = c.router({
+export const billingCheckoutContract = c.router({
   create: {
     method: "POST",
     path: "/api/okou/billing/checkout",
@@ -688,12 +688,12 @@ export const zeroBillingCheckoutContract = c.router({
   },
 });
 
-export type ZeroBillingCheckoutContract = typeof zeroBillingCheckoutContract;
+export type BillingCheckoutContract = typeof billingCheckoutContract;
 
 /**
  * Zero contract for POST /api/okou/billing/usage-pack-checkout
  */
-export const zeroBillingUsagePackCheckoutContract = c.router({
+export const billingUsagePackCheckoutContract = c.router({
   create: {
     method: "POST",
     path: "/api/okou/billing/usage-pack-checkout",
@@ -732,10 +732,10 @@ export const zeroBillingUsagePackCheckoutContract = c.router({
   },
 });
 
-export type ZeroBillingUsagePackCheckoutContract =
-  typeof zeroBillingUsagePackCheckoutContract;
+export type BillingUsagePackCheckoutContract =
+  typeof billingUsagePackCheckoutContract;
 
-export const zeroBillingUsagePackCatalogContract = c.router({
+export const billingUsagePackCatalogContract = c.router({
   get: {
     method: "GET",
     path: "/api/okou/billing/usage-pack-catalog",
@@ -751,10 +751,10 @@ export const zeroBillingUsagePackCatalogContract = c.router({
   },
 });
 
-export type ZeroBillingUsagePackCatalogContract =
-  typeof zeroBillingUsagePackCatalogContract;
+export type BillingUsagePackCatalogContract =
+  typeof billingUsagePackCatalogContract;
 
-export const zeroBillingUsagePackManagementContract = c.router({
+export const billingUsagePackManagementContract = c.router({
   get: {
     method: "GET",
     path: "/api/okou/billing/usage-pack-subscription",
@@ -842,10 +842,10 @@ export const zeroBillingUsagePackManagementContract = c.router({
   },
 });
 
-export type ZeroBillingUsagePackManagementContract =
-  typeof zeroBillingUsagePackManagementContract;
+export type BillingUsagePackManagementContract =
+  typeof billingUsagePackManagementContract;
 
-export const zeroBillingUsagePackCreditsContract = c.router({
+export const billingUsagePackCreditsContract = c.router({
   get: {
     method: "GET",
     path: "/api/okou/billing/usage-pack-credits",
@@ -861,13 +861,13 @@ export const zeroBillingUsagePackCreditsContract = c.router({
   },
 });
 
-export type ZeroBillingUsagePackCreditsContract =
-  typeof zeroBillingUsagePackCreditsContract;
+export type BillingUsagePackCreditsContract =
+  typeof billingUsagePackCreditsContract;
 export type UsagePackCreditsResponse = z.infer<
   typeof usagePackCreditsResponseSchema
 >;
 
-export const zeroBillingUsagePackMigrationContract = c.router({
+export const billingUsagePackMigrationContract = c.router({
   get: {
     method: "GET",
     path: "/api/okou/billing/usage-pack-migration",
@@ -956,13 +956,13 @@ export const zeroBillingUsagePackMigrationContract = c.router({
   },
 });
 
-export type ZeroBillingUsagePackMigrationContract =
-  typeof zeroBillingUsagePackMigrationContract;
+export type BillingUsagePackMigrationContract =
+  typeof billingUsagePackMigrationContract;
 
 /**
  * Zero contract for POST /api/okou/billing/concurrency-checkout
  */
-export const zeroBillingConcurrencyCheckoutContract = c.router({
+export const billingConcurrencyCheckoutContract = c.router({
   preview: {
     method: "POST",
     path: "/api/zero/billing/concurrency-checkout/preview",
@@ -997,13 +997,13 @@ export const zeroBillingConcurrencyCheckoutContract = c.router({
   },
 });
 
-export type ZeroBillingConcurrencyCheckoutContract =
-  typeof zeroBillingConcurrencyCheckoutContract;
+export type BillingConcurrencyCheckoutContract =
+  typeof billingConcurrencyCheckoutContract;
 
 /**
  * Zero contract for concurrency subscriptions.
  */
-export const zeroBillingConcurrencySubscriptionContract = c.router({
+export const billingConcurrencySubscriptionContract = c.router({
   previewChange: {
     method: "POST",
     path: "/api/okou/billing/concurrency-subscriptions/:subscriptionId/changes/preview",
@@ -1102,13 +1102,13 @@ export const zeroBillingConcurrencySubscriptionContract = c.router({
   },
 });
 
-export type ZeroBillingConcurrencySubscriptionContract =
-  typeof zeroBillingConcurrencySubscriptionContract;
+export type BillingConcurrencySubscriptionContract =
+  typeof billingConcurrencySubscriptionContract;
 
 /**
  * Zero contract for POST /api/okou/billing/credit-checkout
  */
-export const zeroBillingCreditCheckoutContract = c.router({
+export const billingCreditCheckoutContract = c.router({
   create: {
     method: "POST",
     path: "/api/okou/billing/credit-checkout",
@@ -1142,13 +1142,13 @@ export const zeroBillingCreditCheckoutContract = c.router({
   },
 });
 
-export type ZeroBillingCreditCheckoutContract =
-  typeof zeroBillingCreditCheckoutContract;
+export type BillingCreditCheckoutContract =
+  typeof billingCreditCheckoutContract;
 
 /**
  * Zero contract for POST /api/okou/billing/portal
  */
-export const zeroBillingPortalContract = c.router({
+export const billingPortalContract = c.router({
   create: {
     method: "POST",
     path: "/api/okou/billing/portal",
@@ -1166,12 +1166,12 @@ export const zeroBillingPortalContract = c.router({
   },
 });
 
-export type ZeroBillingPortalContract = typeof zeroBillingPortalContract;
+export type BillingPortalContract = typeof billingPortalContract;
 
 /**
  * Zero contract for /api/okou/billing/auto-recharge
  */
-export const zeroBillingAutoRechargeContract = c.router({
+export const billingAutoRechargeContract = c.router({
   get: {
     method: "GET",
     path: "/api/okou/billing/auto-recharge",
@@ -1199,8 +1199,7 @@ export const zeroBillingAutoRechargeContract = c.router({
   },
 });
 
-export type ZeroBillingAutoRechargeContract =
-  typeof zeroBillingAutoRechargeContract;
+export type BillingAutoRechargeContract = typeof billingAutoRechargeContract;
 
 /**
  * Zero contract for GET /api/okou/billing/invoices
@@ -1226,7 +1225,7 @@ function billingMonthIndex(month: string): number {
   return Number(month.slice(0, 4)) * 12 + Number(month.slice(5, 7)) - 1;
 }
 
-export const zeroBillingInvoicesContract = c.router({
+export const billingInvoicesContract = c.router({
   get: {
     method: "GET",
     path: "/api/okou/billing/invoices",
@@ -1273,7 +1272,7 @@ export const zeroBillingInvoicesContract = c.router({
   },
 });
 
-export type ZeroBillingInvoicesContract = typeof zeroBillingInvoicesContract;
+export type BillingInvoicesContract = typeof billingInvoicesContract;
 
 // ---------------------------------------------------------------------------
 // Downgrade
@@ -1312,7 +1311,7 @@ const restoreResponseSchema = z.discriminatedUnion("status", [
 /**
  * Zero contract for POST /api/okou/billing/downgrade
  */
-export const zeroBillingDowngradeContract = c.router({
+export const billingDowngradeContract = c.router({
   create: {
     method: "POST",
     path: "/api/okou/billing/downgrade",
@@ -1331,12 +1330,12 @@ export const zeroBillingDowngradeContract = c.router({
   },
 });
 
-export type ZeroBillingDowngradeContract = typeof zeroBillingDowngradeContract;
+export type BillingDowngradeContract = typeof billingDowngradeContract;
 
 /**
  * Zero contract for POST /api/okou/billing/restore
  */
-export const zeroBillingRestoreContract = c.router({
+export const billingRestoreContract = c.router({
   create: {
     method: "POST",
     path: "/api/okou/billing/restore",
@@ -1354,7 +1353,7 @@ export const zeroBillingRestoreContract = c.router({
   },
 });
 
-export type ZeroBillingRestoreContract = typeof zeroBillingRestoreContract;
+export type BillingRestoreContract = typeof billingRestoreContract;
 
 /**
  * Zero contract for POST /api/okou/billing/redeem/:campaign
@@ -1364,7 +1363,7 @@ export type ZeroBillingRestoreContract = typeof zeroBillingRestoreContract;
  * union so a single landing page on the platform can render the appropriate
  * state (ready / already_granted / processing / error).
  */
-export const zeroBillingRedeemContract = c.router({
+export const billingRedeemContract = c.router({
   create: {
     method: "POST",
     path: "/api/okou/billing/redeem/:campaign",
@@ -1383,7 +1382,7 @@ export const zeroBillingRedeemContract = c.router({
   },
 });
 
-export type ZeroBillingRedeemContract = typeof zeroBillingRedeemContract;
+export type BillingRedeemContract = typeof billingRedeemContract;
 
 /**
  * Zero contract for POST /api/okou/billing/redeem-code
@@ -1392,7 +1391,7 @@ export type ZeroBillingRedeemContract = typeof zeroBillingRedeemContract;
  * waits for billing status to update through realtime before completing
  * onboarding.
  */
-export const zeroBillingRedeemCodeContract = c.router({
+export const billingRedeemCodeContract = c.router({
   create: {
     method: "POST",
     path: "/api/okou/billing/redeem-code",
@@ -1410,8 +1409,7 @@ export const zeroBillingRedeemCodeContract = c.router({
   },
 });
 
-export type ZeroBillingRedeemCodeContract =
-  typeof zeroBillingRedeemCodeContract;
+export type BillingRedeemCodeContract = typeof billingRedeemCodeContract;
 
 // Inferred types from Zod schemas
 export type BillingStatusResponse = z.infer<typeof billingStatusResponseSchema>;

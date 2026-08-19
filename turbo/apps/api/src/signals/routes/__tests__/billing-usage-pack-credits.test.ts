@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { testUsageSettlementContract } from "@okouai/api-contracts/contracts/test-usage-settlement";
-import { zeroBillingUsagePackCreditsContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingUsagePackCreditsContract } from "@okouai/api-contracts/contracts/billing";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { onTestFinished } from "vitest";
 
@@ -13,7 +13,7 @@ import {
   deleteFeatureSwitchesForUser,
   updateFeatureSwitchesForUser,
 } from "./helpers/feature-switches";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { testUsageSettlementRoutes } from "../test-usage-settlement";
 import {
   testUsagePackSubscriptionStateContract,
@@ -22,7 +22,7 @@ import {
 import { billingUsagePackCreditsRoutes } from "../billing-usage-pack-credits";
 
 const context = testContext();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 interface UsagePackCreditsFixture {
   readonly orgId: string;
@@ -45,7 +45,7 @@ function authenticate(
 
 function creditsClient() {
   return setupApp({ context, routes: billingUsagePackCreditsRoutes })(
-    zeroBillingUsagePackCreditsContract,
+    billingUsagePackCreditsContract,
   );
 }
 

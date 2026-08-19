@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { command } from "ccstate";
 import { and, eq, gte } from "drizzle-orm";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import type { WebhookReceivedEventConfig } from "@okouai/api-contracts/contracts/zero-workflows";
+import type { WebhookReceivedEventConfig } from "@okouai/api-contracts/contracts/workflows";
 import { apiUrlForPublicBrand } from "@okouai/core/public-brand";
 import {
   workflowUserAutomationThreads,

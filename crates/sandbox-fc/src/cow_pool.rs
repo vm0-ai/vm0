@@ -71,7 +71,7 @@ use slot::{PrewarmedSlot, destroy_slot_async};
 /// Number of ready COW slots to keep warm in steady state.
 const BUFFER_SIZE: usize = 4;
 
-/// Maximum simultaneous blocking slot creation workers.
+/// Maximum simultaneous slot creation tasks.
 const MAX_CONCURRENT_SLOT_CREATIONS: usize = 4;
 
 /// Maximum simultaneous prepared-slot teardowns during producer shutdown.

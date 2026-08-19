@@ -123,13 +123,6 @@ runs:
           add_env "$1" "$(repo_secret "$2")"
         }
 
-        add_okou_var() {
-          local suffix="$1"
-          local value
-          value="$(first_non_empty "$(repo_var "OKOU_${suffix}")" "$(repo_var "ZERO_${suffix}")")"
-          add_env "OKOU_${suffix}" "$value"
-        }
-
         add_okou_secret() {
           local suffix="$1"
           local value
@@ -248,8 +241,8 @@ runs:
         add_var R2_HOSTED_SITES_BUCKET_NAME R2_HOSTED_SITES_BUCKET_NAME
         add_secret R2_HOSTED_SITES_ACCESS_KEY_ID R2_HOSTED_SITES_ACCESS_KEY_ID
         add_secret R2_HOSTED_SITES_SECRET_ACCESS_KEY R2_HOSTED_SITES_SECRET_ACCESS_KEY
-        add_okou_var HOST_DOMAIN
-        add_okou_var HOST_SCHEME
+        add_var OKOU_HOST_DOMAIN OKOU_HOST_DOMAIN
+        add_var OKOU_HOST_SCHEME OKOU_HOST_SCHEME
         add_secret SECRETS_ENCRYPTION_KEY SECRETS_ENCRYPTION_KEY
         add_secret SECRETS_KMS_KEY_ID SECRETS_KMS_KEY_ID
         add_var AWS_REGION AWS_REGION
@@ -398,7 +391,7 @@ runs:
           ONE_TIME_CAMPAIGN
         )
         for suffix in "${okou_price_var_suffixes[@]}"; do
-          add_okou_var "$suffix"
+          add_var "OKOU_${suffix}" "OKOU_${suffix}"
         done
         add_var ATOM_GRANT_PRICE ATOM_GRANT_PRICE
         add_secret AGENTPHONE_API_KEY AGENTPHONE_API_KEY

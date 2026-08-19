@@ -1,7 +1,7 @@
 import {
-  zeroBillingStatusContract,
+  billingStatusContract,
   type BillingStatusResponse,
-} from "@okouai/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/billing";
 import { mapsContract } from "@okouai/api-contracts/contracts/maps";
 
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
@@ -11,7 +11,7 @@ import type { RouteEntry } from "../../../route-entry";
 import { billingStatusRoutes } from "../../billing-status";
 import { mapsRoutes } from "../../maps";
 import type { ApiTestUser } from "./api-bdd";
-import { createZeroRouteMocks } from "./zero-route-test";
+import { createRouteMocks } from "./route-test";
 
 type MapsStatus = 200 | 400 | 401 | 402 | 403 | 502 | 503;
 type OsmLayer = "roads" | "buildings" | "water" | "parks";
@@ -65,7 +65,7 @@ function authenticate(context: TestContext, actor: ApiTestUser | null) {
     return {};
   }
 
-  createZeroRouteMocks(context).clerk.session(
+  createRouteMocks(context).clerk.session(
     actor.userId,
     actor.orgId,
     actor.orgRole,
@@ -86,7 +86,7 @@ export function createMapsBillingApi(context: TestContext) {
     async readBillingStatus(
       actor: ApiTestUser,
     ): Promise<BillingStatusResponse> {
-      const client = mapsBillingApp(context)(zeroBillingStatusContract);
+      const client = mapsBillingApp(context)(billingStatusContract);
       const response = await accept(
         client.get({ headers: authenticate(context, actor) }),
         [200],

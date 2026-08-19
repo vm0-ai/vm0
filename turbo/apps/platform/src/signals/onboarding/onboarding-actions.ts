@@ -1,10 +1,10 @@
 import { command } from "ccstate";
 import { onboardingCompleteContract } from "@okouai/api-contracts/contracts/onboarding";
 import {
-  zeroBillingCheckoutContract,
-  zeroBillingRedeemCodeContract,
-  zeroBillingUsagePackCheckoutContract,
-} from "@okouai/api-contracts/contracts/zero-billing";
+  billingCheckoutContract,
+  billingRedeemCodeContract,
+  billingUsagePackCheckoutContract,
+} from "@okouai/api-contracts/contracts/billing";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { accept } from "../../lib/accept.ts";
 import { IN_VITEST } from "../../env.ts";
@@ -38,7 +38,7 @@ export const completeOnboarding$ = command(
     const draft = get(onboardingDraft$);
     const role = draft.choice === "workflow" ? draft.categoryId : null;
     if (redeemCode) {
-      const redeemClient = createClient(zeroBillingRedeemCodeContract);
+      const redeemClient = createClient(billingRedeemCodeContract);
       await accept(
         redeemClient.create({
           body: { code: redeemCode },
@@ -124,7 +124,7 @@ export const prepareOnboardingVideoRun$ = command(
     if (get(featureSwitch$)[FeatureSwitchKey.UsagePackPlans]) {
       const { userId } = await get(authenticatedIdentity$);
       signal.throwIfAborted();
-      const client = get(zeroClient$)(zeroBillingUsagePackCheckoutContract);
+      const client = get(zeroClient$)(billingUsagePackCheckoutContract);
       const result = await accept(
         client.create({
           body: {
@@ -144,7 +144,7 @@ export const prepareOnboardingVideoRun$ = command(
       }
       checkoutUrl = result.body.url;
     } else {
-      const client = get(zeroClient$)(zeroBillingCheckoutContract);
+      const client = get(zeroClient$)(billingCheckoutContract);
       const result = await accept(
         client.create({
           body: {
@@ -175,7 +175,7 @@ const CHECKOUT_POLL_INTERVAL_MS = 1000;
 
 export const completeOnboardingCheckoutReturn$ = command(
   async ({ get }, sessionId: string, signal: AbortSignal): Promise<void> => {
-    const client = get(zeroClient$)(zeroBillingCheckoutContract);
+    const client = get(zeroClient$)(billingCheckoutContract);
     let attempts = 0;
     await setLoop(
       async (loopSignal) => {

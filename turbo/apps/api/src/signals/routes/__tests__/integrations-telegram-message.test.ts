@@ -19,14 +19,14 @@ import {
   seedTelegramInstallation$,
   seedTelegramUserLink$,
 } from "./helpers/telegram";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { createBddApi } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { integrationsTelegramMessageRoutes } from "../integrations-telegram-message";
 
 const context = testContext();
 const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const bdd = createBddApi(context);
 const api = createRunsApi(context);
 

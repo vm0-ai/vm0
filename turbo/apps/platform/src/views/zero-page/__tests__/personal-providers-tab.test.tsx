@@ -1,9 +1,9 @@
 import { claudeCodeDeviceAuthContract } from "@okouai/api-contracts/contracts/claude-code-device-auth";
 import { codexDeviceAuthContract } from "@okouai/api-contracts/contracts/codex-device-auth";
 import {
-  zeroBillingStatusContract,
+  billingStatusContract,
   type BillingStatusResponse,
-} from "@okouai/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/billing";
 import type { ModelProviderResponse } from "@okouai/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
@@ -151,7 +151,7 @@ function mockBillingCapabilities(modelCapabilities: {
   readonly supportByok: boolean;
   readonly restrictedVm0Models: boolean;
 }): void {
-  context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+  context.mocks.api(billingStatusContract.get, ({ respond }) => {
     const status: BillingStatusResponse = {
       tier: "pro",
       ...modelCapabilities,

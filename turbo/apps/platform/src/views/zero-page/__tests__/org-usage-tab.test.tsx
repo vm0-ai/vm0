@@ -1,8 +1,8 @@
 import type { OrgMembersResponse } from "@okouai/api-contracts/contracts/org-members";
 import {
-  zeroBillingStatusContract,
+  billingStatusContract,
   type BillingStatusResponse,
-} from "@okouai/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/billing";
 import { orgMembersContract } from "@okouai/api-contracts/contracts/org-member-routes";
 import { usageMembersContract } from "@okouai/api-contracts/contracts/usage";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -40,7 +40,7 @@ function expectedAllowanceResetText(value: string): string {
 function mockBillingStatus(
   overrides: Partial<BillingStatusResponse> = {},
 ): void {
-  context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+  context.mocks.api(billingStatusContract.get, ({ respond }) => {
     return respond(200, {
       tier: "pro",
       credits: 12_000,

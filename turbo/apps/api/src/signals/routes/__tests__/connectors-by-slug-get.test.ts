@@ -18,12 +18,12 @@ import {
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { seedConnectorStorageRow } from "./helpers/connector-credential-storage-state";
 import { seedOrgMembership$ } from "./helpers/org-membership";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { connectorsRoutes } from "../connectors";
 
 const context = testContext();
 const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 interface AuthenticatedFixture {
   readonly orgId: string;

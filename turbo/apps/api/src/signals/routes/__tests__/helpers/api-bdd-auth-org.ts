@@ -29,12 +29,12 @@ import {
   type AgentCustomConnectorGrants,
 } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 import {
-  zeroAgentsByIdContract,
-  zeroAgentsMainContract,
-  type ZeroAgentMetadataRequest,
-  type ZeroAgentRequest,
-  type ZeroAgentResponse,
-} from "@okouai/api-contracts/contracts/zero-agents";
+  agentsByIdContract,
+  agentsMainContract,
+  type AgentMetadataRequest,
+  type AgentRequest,
+  type AgentResponse,
+} from "@okouai/api-contracts/contracts/agents";
 import {
   zeroCustomConnectorByIdContract,
   zeroCustomConnectorConnectionContract,
@@ -55,9 +55,9 @@ import {
   orgMembershipRequestsContract,
 } from "@okouai/api-contracts/contracts/org-member-routes";
 import {
-  zeroTeamContract,
+  teamContract,
   type TeamComposeItem,
-} from "@okouai/api-contracts/contracts/zero-team";
+} from "@okouai/api-contracts/contracts/team";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
   userPreferencesContract,
@@ -92,7 +92,7 @@ import { orgReadRoutes } from "../../org-read";
 import { teamRoutes } from "../../team";
 import { userPreferencesRoutes } from "../../user-preferences";
 import { createBddApi, type OnboardingBootstrapOptions } from "./api-bdd";
-import { createZeroRouteMocks } from "./zero-route-test";
+import { createRouteMocks } from "./route-test";
 
 type ClerkOrgRole = "org:admin" | "org:member";
 type ApiOrgRole = "admin" | "member";
@@ -378,7 +378,7 @@ function publicBrandHeaders(publicBrand: PublicBrand) {
 }
 
 export function createAuthOrgAgentsBddApi(context: TestContext) {
-  const routeMocks = createZeroRouteMocks(context);
+  const routeMocks = createRouteMocks(context);
 
   function testApp() {
     return createAppWithRoutes({
@@ -1184,7 +1184,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       publicBrand: PublicBrand = "vm0",
     ): Promise<readonly TeamComposeItem[]> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroTeamContract,
+        teamContract,
       );
       const response = await accept(
         client.list({
@@ -1201,7 +1201,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroTeamContract,
+        teamContract,
       );
       return await accept(
         client.list({ headers: authenticate(actor) }),
@@ -1228,11 +1228,11 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
 
     async createAgent(
       actor: ApiTestUser,
-      body: ZeroAgentRequest = {},
+      body: AgentRequest = {},
       publicBrand: PublicBrand = "vm0",
-    ): Promise<ZeroAgentResponse> {
+    ): Promise<AgentResponse> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroAgentsMainContract,
+        agentsMainContract,
       );
       const response = await accept(
         client.create({
@@ -1247,11 +1247,11 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
 
     async requestCreateAgent(
       actor: ApiTestUser | null,
-      body: ZeroAgentRequest,
+      body: AgentRequest,
       statuses: readonly (201 | 400 | 401 | 403 | 409 | 422)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroAgentsMainContract,
+        agentsMainContract,
       );
       return await accept(
         client.create({ headers: authenticate(actor), body }),
@@ -1262,9 +1262,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     async listAgents(
       actor: ApiTestUser,
       publicBrand: PublicBrand = "vm0",
-    ): Promise<readonly ZeroAgentResponse[]> {
+    ): Promise<readonly AgentResponse[]> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroAgentsMainContract,
+        agentsMainContract,
       );
       const response = await accept(
         client.list({
@@ -1280,9 +1280,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser,
       agentId: string,
       publicBrand: PublicBrand = "vm0",
-    ): Promise<ZeroAgentResponse> {
+    ): Promise<AgentResponse> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroAgentsByIdContract,
+        agentsByIdContract,
       );
       const response = await accept(
         client.get({
@@ -1301,7 +1301,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroAgentsByIdContract,
+        agentsByIdContract,
       );
       return await accept(
         client.get({ params: { id: agentId }, headers: authenticate(actor) }),
@@ -1312,11 +1312,11 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     async updateAgentMetadata(
       actor: ApiTestUser,
       agentId: string,
-      body: ZeroAgentMetadataRequest,
+      body: AgentMetadataRequest,
       publicBrand: PublicBrand = "vm0",
-    ): Promise<ZeroAgentResponse> {
+    ): Promise<AgentResponse> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroAgentsByIdContract,
+        agentsByIdContract,
       );
       const response = await accept(
         client.updateMetadata({
@@ -1333,11 +1333,11 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     async updateAgent(
       actor: ApiTestUser,
       agentId: string,
-      body: ZeroAgentRequest,
+      body: AgentRequest,
       publicBrand: PublicBrand = "vm0",
-    ): Promise<ZeroAgentResponse> {
+    ): Promise<AgentResponse> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroAgentsByIdContract,
+        agentsByIdContract,
       );
       const response = await accept(
         client.update({
@@ -1354,11 +1354,11 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     async requestUpdateAgentMetadata(
       actor: ApiTestUser | null,
       agentId: string,
-      body: ZeroAgentMetadataRequest,
+      body: AgentMetadataRequest,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 409)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroAgentsByIdContract,
+        agentsByIdContract,
       );
       return await accept(
         client.updateMetadata({
@@ -1381,7 +1381,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     ): Promise<void> {
       await removeAgentLegacyVersionsFixture(agentId);
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroAgentsByIdContract,
+        agentsByIdContract,
       );
       await accept(
         client.delete({
@@ -1398,7 +1398,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       statuses: readonly (204 | 400 | 401 | 403 | 404 | 409)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroAgentsByIdContract,
+        agentsByIdContract,
       );
       return await accept(
         client.delete({

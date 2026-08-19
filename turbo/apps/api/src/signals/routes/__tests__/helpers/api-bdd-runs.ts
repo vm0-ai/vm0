@@ -11,7 +11,7 @@ import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agentComposeApiContentSchema } from "@okouai/api-contracts/contracts/composes";
 import { webhookStripeContract } from "@okouai/api-contracts/contracts/webhooks";
-import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import {
   zeroUserPermissionGrantsContract,
   type ApplyUserPermissionGrant,
@@ -70,15 +70,15 @@ import { webhooksStripeRoutes } from "../../webhooks-stripe";
 import { agentsRoutes } from "../../agents";
 import { billingStatusRoutes } from "../../billing-status";
 import { modelPoliciesRoutes } from "../../model-policies";
-import { zeroModelProvidersRoutes } from "../../zero-model-providers";
+import { modelProvidersRoutes } from "../../model-providers";
 import { runDetailRoutes } from "../../run-detail";
 import { runsCancelRoutes } from "../../runs-cancel";
-import { zeroRunsRoutes } from "../../zero-runs";
+import { runsRoutes } from "../../runs";
 import { runFixtureContract, runFixtureRoutes } from "../../test-run-fixture";
 import { testBillingReconciliationStateRoutes } from "../../test-billing-reconciliation-state";
 import { userPermissionGrantsRoutes } from "../../user-permission-grants";
 import { createBddApi, type ApiTestUser } from "./api-bdd";
-import { createZeroRouteMocks } from "./zero-route-test";
+import { createRouteMocks } from "./route-test";
 
 type AuthHeaders = { readonly authorization?: string };
 type ZeroRunRequest = z.infer<typeof runCreateBodySchema>;
@@ -153,10 +153,10 @@ const runRoutes = [
   ...webhooksStripeRoutes,
   ...billingStatusRoutes,
   ...modelPoliciesRoutes,
-  ...zeroModelProvidersRoutes,
+  ...modelProvidersRoutes,
   ...runDetailRoutes,
   ...runFixtureRoutes,
-  ...zeroRunsRoutes,
+  ...runsRoutes,
   ...runsCancelRoutes,
   ...agentsRoutes,
   ...userPermissionGrantsRoutes,
@@ -198,7 +198,7 @@ function authenticate(
     return {};
   }
 
-  createZeroRouteMocks(context).clerk.session(
+  createRouteMocks(context).clerk.session(
     nextActor.userId,
     nextActor.orgId,
     nextActor.orgRole,
@@ -437,7 +437,7 @@ export function createRunsApi(context: TestContext) {
       );
 
       const billingStatus = await accept(
-        runApp(context)(zeroBillingStatusContract).get({
+        runApp(context)(billingStatusContract).get({
           headers: authenticate(context, actor),
         }),
         [200],
@@ -940,7 +940,7 @@ export function createRunsApi(context: TestContext) {
 
     async readBillingStatus(actor: ApiTestUser) {
       const response = await accept(
-        runApp(context)(zeroBillingStatusContract).get({
+        runApp(context)(billingStatusContract).get({
           headers: authenticate(context, actor),
         }),
         [200],

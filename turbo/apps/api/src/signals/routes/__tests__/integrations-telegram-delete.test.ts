@@ -4,8 +4,8 @@ import { createStore } from "ccstate";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   OFFICIAL_TELEGRAM_BOT_ID,
-  zeroIntegrationsTelegramContract,
-} from "@okouai/api-contracts/contracts/zero-integrations-telegram";
+  integrationsTelegramContract,
+} from "@okouai/api-contracts/contracts/integrations-telegram";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -15,13 +15,13 @@ import {
   deleteTelegramFixture$,
   type TelegramFixture,
 } from "./helpers/telegram";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { integrationsTelegramRoutes } from "../integrations-telegram";
 
 const context = testContext();
 const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const bdd = createBddApi(context);
 const AUTH_HEADERS = { authorization: "Bearer clerk-session" } as const;
 const OFFICIAL_BOT_TOKEN = "9876543210:official-test-token";
@@ -199,7 +199,7 @@ describe("DELETE /api/integrations/telegram", () => {
 
   function client() {
     return setupApp({ context, routes: integrationsTelegramRoutes })(
-      zeroIntegrationsTelegramContract,
+      integrationsTelegramContract,
     );
   }
 

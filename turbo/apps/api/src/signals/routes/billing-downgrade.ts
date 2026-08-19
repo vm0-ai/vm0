@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroBillingDowngradeContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingDowngradeContract } from "@okouai/api-contracts/contracts/billing";
 import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 
 import { env, optionalEnv } from "../../lib/env";
@@ -13,7 +13,7 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { publicBrand$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
-import { downgradeSubscription$ } from "../services/zero-billing-downgrade.service";
+import { downgradeSubscription$ } from "../services/billing-downgrade.service";
 import type { RouteEntry } from "../route-entry";
 
 const adminRequired = Object.freeze({
@@ -33,9 +33,7 @@ const downgradeAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
   signal.throwIfAborted();
 
-  const bodyResult = await get(
-    bodyResultOf(zeroBillingDowngradeContract.create),
-  );
+  const bodyResult = await get(bodyResultOf(billingDowngradeContract.create));
   signal.throwIfAborted();
   if (!bodyResult.ok) {
     return bodyResult.response;
@@ -92,7 +90,7 @@ const downgrade$ = command(async ({ set }, signal: AbortSignal) => {
 
 export const billingDowngradeRoutes: readonly RouteEntry[] = [
   {
-    route: zeroBillingDowngradeContract.create,
+    route: billingDowngradeContract.create,
     handler: downgrade$,
   },
 ];

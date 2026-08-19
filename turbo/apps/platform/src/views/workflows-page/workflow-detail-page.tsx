@@ -25,12 +25,12 @@ import type {
   StripeInvoiceBillingReason,
   WorkflowFileEntry,
   WorkflowFileMetadata,
-  ZeroWorkflowDetailResponse,
-  ZeroWorkflowSchedule,
+  WorkflowDetailResponse,
+  WorkflowSchedule,
   WorkflowScheduleType,
-  ZeroWorkflowAutomationSummary,
-  ZeroWorkflowUpdateRequest,
-} from "@okouai/api-contracts/contracts/zero-workflows";
+  WorkflowAutomationSummary,
+  WorkflowUpdateRequest,
+} from "@okouai/api-contracts/contracts/workflows";
 import type { PlatformWorkflowConnectorReadinessEntry } from "../../signals/connector-domain.ts";
 import {
   AlertTriangle,
@@ -273,7 +273,7 @@ const STRIPE_INVOICE_BILLING_REASONS = [
 ] as const satisfies readonly StripeInvoiceBillingReason[];
 
 type WorkflowStripeInvoicePaidAutomation = Extract<
-  ZeroWorkflowAutomationSummary,
+  WorkflowAutomationSummary,
   { readonly kind: "event"; readonly eventType: "stripe-invoice-paid" }
 >;
 type StripeDeliveryStatus = NonNullable<
@@ -440,14 +440,14 @@ function workflowWebhookCopy() {
 type GmailMatchRules = NonNullable<GmailNewMessageEventConfig["match"]>;
 type GmailTextMatcher = NonNullable<GmailMatchRules["from"]>;
 type GmailWorkflowAutomationSummary = Extract<
-  ZeroWorkflowAutomationSummary,
+  WorkflowAutomationSummary,
   {
     readonly kind: "event";
     readonly eventType: "gmail-new-message" | "gmail-label-applied";
   }
 >;
 type GithubWorkflowAutomationSummary = Extract<
-  ZeroWorkflowAutomationSummary,
+  WorkflowAutomationSummary,
   {
     readonly kind: "event";
     readonly eventType:
@@ -471,7 +471,7 @@ type GithubWebhookWorkflowAutomationSummary = Extract<
   }
 >;
 type WebhookWorkflowAutomationSummary = Extract<
-  ZeroWorkflowAutomationSummary,
+  WorkflowAutomationSummary,
   { readonly kind: "event"; readonly eventType: "webhook-received" }
 >;
 
@@ -960,7 +960,7 @@ const WORKFLOW_CRON_FREQUENCY_TO_TIME_OPTION: Readonly<
 });
 
 function isGmailWorkflowAutomation(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
 ): automation is GmailWorkflowAutomationSummary {
   return (
     automation.kind === "event" &&
@@ -970,7 +970,7 @@ function isGmailWorkflowAutomation(
 }
 
 function isGithubWorkflowAutomation(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
 ): automation is GithubWorkflowAutomationSummary {
   return (
     automation.kind === "event" &&
@@ -984,7 +984,7 @@ function isGithubWorkflowAutomation(
 }
 
 function isGithubWebhookWorkflowAutomation(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
 ): automation is GithubWebhookWorkflowAutomationSummary {
   return (
     automation.kind === "event" &&
@@ -997,7 +997,7 @@ function isGithubWebhookWorkflowAutomation(
 }
 
 function isWebhookWorkflowAutomation(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
 ): automation is WebhookWorkflowAutomationSummary {
   return (
     automation.kind === "event" && automation.eventType === "webhook-received"
@@ -1069,7 +1069,7 @@ function WorkflowDetailContent() {
 function WorkflowBreadcrumb({
   detail,
 }: {
-  readonly detail: ZeroWorkflowDetailResponse | null;
+  readonly detail: WorkflowDetailResponse | null;
 }) {
   if (!detail) {
     return (
@@ -1123,7 +1123,7 @@ function BreadcrumbLink({
 function WorkflowHeaderIcon({
   automation,
 }: {
-  readonly automation: ZeroWorkflowAutomationSummary | undefined;
+  readonly automation: WorkflowAutomationSummary | undefined;
 }) {
   if (automation) {
     return <AutomationListIcon automation={automation} size="md" />;
@@ -1140,7 +1140,7 @@ function DetailHeader({
   activeTab,
   onTabChange,
 }: {
-  readonly detail: ZeroWorkflowDetailResponse | null;
+  readonly detail: WorkflowDetailResponse | null;
   readonly activeTab: WorkflowDetailTab;
   readonly onTabChange: (tab: WorkflowDetailTab) => void;
 }) {
@@ -1311,7 +1311,7 @@ function AutomationCreateAction() {
 function WorkflowChatButton({
   detail,
 }: {
-  readonly detail: ZeroWorkflowDetailResponse;
+  readonly detail: WorkflowDetailResponse;
 }) {
   const pageSignal = useGet(pageSignal$);
   const [openLoadable, openWorkflowChat] = useLoadableSet(openWorkflowChat$);
@@ -1354,7 +1354,7 @@ function WorkflowTabContent({
   detail,
 }: {
   readonly activeTab: WorkflowDetailTab;
-  readonly detail: ZeroWorkflowDetailResponse;
+  readonly detail: WorkflowDetailResponse;
 }) {
   const content = (() => {
     switch (activeTab) {
@@ -1381,7 +1381,7 @@ function WorkflowTabContent({
 function WorkflowInfoTab({
   detail,
 }: {
-  readonly detail: ZeroWorkflowDetailResponse;
+  readonly detail: WorkflowDetailResponse;
 }) {
   const actionDialog = useGet(workflowActionDialog$);
   const setActionDialog = useSet(setWorkflowActionDialog$);
@@ -1488,7 +1488,7 @@ function WorkflowInfoTab({
 }
 
 function hasUnsavedConnectorReadinessInputs(
-  detail: ZeroWorkflowDetailResponse,
+  detail: WorkflowDetailResponse,
   metadataPatch: {
     readonly workflowId: string;
     readonly displayName?: string;
@@ -1688,7 +1688,7 @@ function WorkflowConnectorReadiness({
   detail,
   hasUnsavedInputs,
 }: {
-  readonly detail: ZeroWorkflowDetailResponse;
+  readonly detail: WorkflowDetailResponse;
   readonly hasUnsavedInputs: boolean;
 }) {
   const pageSignal = useGet(pageSignal$);
@@ -1862,7 +1862,7 @@ interface WorkflowMetadataValues {
 }
 
 function workflowMetadataDefaults(
-  detail: ZeroWorkflowDetailResponse,
+  detail: WorkflowDetailResponse,
 ): WorkflowMetadataValues {
   return {
     displayName: detail.displayName ?? "",
@@ -1881,7 +1881,7 @@ function WorkflowMetadataFields({
   onPatch,
   values,
 }: {
-  readonly detail: ZeroWorkflowDetailResponse;
+  readonly detail: WorkflowDetailResponse;
   readonly disabled: boolean;
   readonly onPatch: (patch: Partial<WorkflowMetadataValues>) => void;
   readonly values: WorkflowMetadataValues;
@@ -1990,7 +1990,7 @@ function WorkflowMetadataFields({
 function WorkflowMetadataForm({
   detail,
 }: {
-  readonly detail: ZeroWorkflowDetailResponse;
+  readonly detail: WorkflowDetailResponse;
 }) {
   const copy = workflowMetadataCopy();
   const pageSignal = useGet(pageSignal$);
@@ -2074,7 +2074,7 @@ function WorkflowMetadataForm({
 function WorkflowInstructionsTab({
   detail,
 }: {
-  readonly detail: ZeroWorkflowDetailResponse;
+  readonly detail: WorkflowDetailResponse;
 }) {
   return (
     <div className="mx-auto flex max-w-[900px] flex-col gap-3">
@@ -2088,7 +2088,7 @@ function WorkflowInstructionsTab({
 function ShadowWarning({
   detail,
 }: {
-  readonly detail: ZeroWorkflowDetailResponse;
+  readonly detail: WorkflowDetailResponse;
 }) {
   if (!detail.shadowedBy) {
     return null;
@@ -2114,7 +2114,7 @@ function ShadowWarning({
 function WorkflowPublicToggle({
   detail,
 }: {
-  readonly detail: ZeroWorkflowDetailResponse;
+  readonly detail: WorkflowDetailResponse;
 }) {
   const copy = workflowVisibilityCopy();
   const pageSignal = useGet(pageSignal$);
@@ -2406,7 +2406,7 @@ function WorkflowCopyDialog({
   open,
   onOpenChange,
 }: {
-  readonly detail: ZeroWorkflowDetailResponse;
+  readonly detail: WorkflowDetailResponse;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
 }) {
@@ -2571,7 +2571,7 @@ function WorkflowDeleteDialog({
   open,
   onOpenChange,
 }: {
-  readonly detail: ZeroWorkflowDetailResponse;
+  readonly detail: WorkflowDetailResponse;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
 }) {
@@ -2645,7 +2645,7 @@ function WorkflowDeleteDialog({
 function WorkflowFilePicker({
   detail,
 }: {
-  readonly detail: ZeroWorkflowDetailResponse;
+  readonly detail: WorkflowDetailResponse;
 }) {
   const selectedFilePath = useGet(selectedWorkflowFilePath$);
   const setSelectedFilePath = useSet(setSelectedWorkflowFilePath$);
@@ -2861,7 +2861,7 @@ function workflowDraftUpdateBody(
   selectedFilePath: string | null,
   draft: string,
   fileContents: readonly WorkflowFileEntry[],
-): ZeroWorkflowUpdateRequest {
+): WorkflowUpdateRequest {
   if (!selectedFilePath) {
     return { instruction: draft || null };
   }
@@ -2891,7 +2891,7 @@ function selectedWorkflowFile(
 }
 
 function workflowSelectedSourceContent(
-  detail: ZeroWorkflowDetailResponse,
+  detail: WorkflowDetailResponse,
   selectedFilePath: string | null,
   selectedFile: WorkflowFileEntry | null,
 ): string {
@@ -2905,7 +2905,7 @@ function workflowSelectedSourceContent(
 function WorkflowFilePreview({
   detail,
 }: {
-  readonly detail: ZeroWorkflowDetailResponse;
+  readonly detail: WorkflowDetailResponse;
 }) {
   const selectedFilePath = useGet(selectedWorkflowFilePath$);
   const fileContents: readonly WorkflowFileEntry[] = detail.fileContents ?? [];
@@ -2942,7 +2942,7 @@ function WorkflowSelectedFileEditor({
   selectedFilePath,
   sourceContent,
 }: {
-  readonly detail: ZeroWorkflowDetailResponse;
+  readonly detail: WorkflowDetailResponse;
   readonly fileContents: readonly WorkflowFileEntry[];
   readonly selectedFilePath: string | null;
   readonly sourceContent: string;
@@ -3205,7 +3205,7 @@ function shiftedDayOfMonth(
 }
 
 function parseWorkflowCronFields(
-  schedule: Extract<ZeroWorkflowSchedule, { type: "cron" }>,
+  schedule: Extract<WorkflowSchedule, { type: "cron" }>,
   displayTimezone: string,
 ): WorkflowCronFields {
   const parts = schedule.cronExpression.trim().split(/\s+/u);
@@ -3317,7 +3317,7 @@ function buildUtcCronExpressionFromFields(
 }
 
 function workflowScheduleTitle(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
   displayTimezone: string,
 ): string {
   if (automation.kind !== "schedule") {
@@ -3408,7 +3408,7 @@ function buildAutomationSchedule(
     readonly atTime: string;
   },
   displayTimezone: string,
-): ZeroWorkflowSchedule | null {
+): WorkflowSchedule | null {
   if (type === "cron") {
     const cronExpression = buildUtcCronExpressionFromFields(
       fields.cronFields,
@@ -3927,7 +3927,7 @@ function formatGmailMatchSummary(config: GmailNewMessageEventConfig): string {
 }
 
 function workflowAutomationTitle(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
 ): string {
   if (automation.kind === "schedule") {
     return automation.scheduleSummary;
@@ -4188,10 +4188,7 @@ function githubCommentAutomationSummary(
 }
 
 function githubWorkflowAutomationSummary(
-  automation: Extract<
-    ZeroWorkflowAutomationSummary,
-    { readonly kind: "event" }
-  >,
+  automation: Extract<WorkflowAutomationSummary, { readonly kind: "event" }>,
 ): string | null {
   switch (automation.eventType) {
     case "github-pull-request": {
@@ -4239,7 +4236,7 @@ function githubWorkflowAutomationSummary(
 }
 
 function eventWorkflowAutomationSummary(
-  automation: Extract<ZeroWorkflowAutomationSummary, { kind: "event" }>,
+  automation: Extract<WorkflowAutomationSummary, { kind: "event" }>,
 ): string | null {
   if (automation.eventType === "google-meet-transcript-generated") {
     return i18n.t(($) => {
@@ -4328,7 +4325,7 @@ function stripeBillingReasonsSummary(
 }
 
 function workflowAutomationSummary(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
 ): string | null {
   if (automation.kind !== "event") {
     return null;
@@ -5517,7 +5514,7 @@ function CreateChatRunFinishedAutomationDialog({
 function AutomationsSection({
   detail,
 }: {
-  readonly detail: ZeroWorkflowDetailResponse;
+  readonly detail: WorkflowDetailResponse;
 }) {
   const createDialog = useGet(workflowAutomationCreateDialog$);
   const setCreateDialog = useSet(setWorkflowAutomationCreateDialog$);
@@ -9460,7 +9457,7 @@ function AutomationRowStats({
   automation,
   displayTimezone,
 }: {
-  readonly automation: ZeroWorkflowAutomationSummary;
+  readonly automation: WorkflowAutomationSummary;
   readonly displayTimezone: string;
 }) {
   if (
@@ -9529,7 +9526,7 @@ function AutomationRow({
   displayTimezone,
   showDivider,
 }: {
-  readonly automation: ZeroWorkflowAutomationSummary;
+  readonly automation: WorkflowAutomationSummary;
   readonly canManage: boolean;
   readonly displayTimezone: string;
   readonly showDivider: boolean;
@@ -9632,7 +9629,7 @@ function AutomationRow({
 }
 
 function workflowAutomationSubtitle(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
 ): string | null {
   if (
     isWebhookWorkflowAutomation(automation) &&
@@ -9704,7 +9701,7 @@ function AutomationStatusSwitch({
   title,
   canManage,
 }: {
-  readonly automation: ZeroWorkflowAutomationSummary;
+  readonly automation: WorkflowAutomationSummary;
   readonly title: string;
   readonly canManage: boolean;
 }) {
@@ -9747,7 +9744,7 @@ function AutomationControls({
   automation,
   displayTimezone,
 }: {
-  readonly automation: ZeroWorkflowAutomationSummary;
+  readonly automation: WorkflowAutomationSummary;
   readonly displayTimezone: string;
 }) {
   const copy = automationActionCopy();
@@ -9870,7 +9867,7 @@ function AutomationMoreActionsMenu({
   disabled,
   onRevealWebhookSecret,
 }: {
-  readonly automation: ZeroWorkflowAutomationSummary;
+  readonly automation: WorkflowAutomationSummary;
   readonly disabled: boolean;
   readonly onRevealWebhookSecret?: () => void;
 }) {
@@ -9945,7 +9942,7 @@ function AutomationMoreActionsMenu({
 }
 
 function canEditWorkflowAutomation(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
 ): boolean {
   return (
     automation.kind === "schedule" ||
@@ -9957,7 +9954,7 @@ function canEditWorkflowAutomation(
 }
 
 function editWorkflowAutomationTitle(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
 ): string {
   if (automation.kind === "schedule") {
     return i18n.t(($) => {
@@ -10003,7 +10000,7 @@ function EditWorkflowAutomationDialog({
   open,
   onOpenChange,
 }: {
-  readonly automation: ZeroWorkflowAutomationSummary;
+  readonly automation: WorkflowAutomationSummary;
   readonly displayTimezone: string;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
@@ -10088,7 +10085,7 @@ function ChatRunFinishedAutomationDetails({
   onClose,
 }: {
   readonly automation: Extract<
-    ZeroWorkflowAutomationSummary,
+    WorkflowAutomationSummary,
     { readonly kind: "event"; readonly eventType: "chat-run-finished" }
   >;
   readonly onClose: () => void;
@@ -10149,10 +10146,7 @@ function UpdateScheduleAutomationForm({
   displayTimezone,
   onCancel,
 }: {
-  readonly automation: Extract<
-    ZeroWorkflowAutomationSummary,
-    { kind: "schedule" }
-  >;
+  readonly automation: Extract<WorkflowAutomationSummary, { kind: "schedule" }>;
   readonly displayTimezone: string;
   readonly onCancel: () => void;
 }) {
@@ -10249,7 +10243,7 @@ function UpdateGmailNewMessageAutomationForm({
   onCancel,
 }: {
   readonly automation: Extract<
-    ZeroWorkflowAutomationSummary,
+    WorkflowAutomationSummary,
     { eventType: "gmail-new-message" }
   >;
   readonly onCancel: () => void;
@@ -10332,7 +10326,7 @@ function UpdateGmailLabelAppliedAutomationForm({
   onCancel,
 }: {
   readonly automation: Extract<
-    ZeroWorkflowAutomationSummary,
+    WorkflowAutomationSummary,
     { eventType: "gmail-label-applied" }
   >;
   readonly onCancel: () => void;
@@ -10422,7 +10416,7 @@ function UpdateGithubWorkflowRunCompletedAutomationForm({
   onCancel,
 }: {
   readonly automation: Extract<
-    ZeroWorkflowAutomationSummary,
+    WorkflowAutomationSummary,
     { eventType: "github-workflow-run-completed" }
   >;
   readonly onCancel: () => void;

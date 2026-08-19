@@ -6,7 +6,7 @@ import {
   userPreferencesContract,
 } from "@okouai/api-contracts/contracts/user-preferences";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -860,7 +860,7 @@ describe("settings dialog", () => {
       response: billingStatus("limited-free-1"),
     },
   ])("shows model settings with $name", async ({ response }) => {
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, response);
     });
 

@@ -19,15 +19,15 @@ import {
   type AgentCustomConnectorUpdate,
 } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 import {
-  zeroAgentsByIdContract,
-  zeroAgentInstructionsContract,
-} from "@okouai/api-contracts/contracts/zero-agents";
+  agentsByIdContract,
+  agentInstructionsContract,
+} from "@okouai/api-contracts/contracts/agents";
 import {
-  zeroWorkflowsCollectionContract,
-  zeroWorkflowsDetailContract,
-  zeroWorkflowAutomationsContract,
-  type ZeroWorkflowSummary,
-} from "@okouai/api-contracts/contracts/zero-workflows";
+  workflowsCollectionContract,
+  workflowsDetailContract,
+  workflowAutomationsContract,
+  type WorkflowSummary,
+} from "@okouai/api-contracts/contracts/workflows";
 import {
   type ApplyUserPermissionGrantsRequest,
   type UserPermissionGrantResponse,
@@ -42,7 +42,7 @@ import {
 } from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { toast } from "@okouai/ui/components/ui/sonner";
-import type { TeamComposeItem } from "@okouai/api-contracts/contracts/zero-team";
+import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -145,7 +145,7 @@ function createWorkflowSummary({
   readonly agentDisplayName: string;
   readonly displayName: string;
   readonly visibility: "public" | "private";
-}): ZeroWorkflowSummary {
+}): WorkflowSummary {
   return {
     id,
     agentId,
@@ -492,7 +492,7 @@ function mockTeamAPIs({
   context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
     return respond(200, { agents: {}, threads: {} });
   });
-  context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
+  context.mocks.api(agentsByIdContract.get, ({ params, respond }) => {
     const agent = params.id === zeroAgentId ? "Zero" : "Research Agent";
     return respond(200, {
       agentId: params.id,
@@ -507,7 +507,7 @@ function mockTeamAPIs({
       visibility: "public",
     });
   });
-  context.mocks.api(zeroAgentInstructionsContract.get, ({ respond }) => {
+  context.mocks.api(agentInstructionsContract.get, ({ respond }) => {
     return respond(200, { content: null, filename: null });
   });
 }
@@ -540,19 +540,16 @@ function mockAgentWorkflowApis(): void {
     }),
   ];
 
+  context.mocks.api(workflowsCollectionContract.list, ({ query, respond }) => {
+    const visible = query.agentId
+      ? workflows.filter((workflow) => {
+          return workflow.agentId === query.agentId;
+        })
+      : workflows;
+    return respond(200, visible);
+  });
   context.mocks.api(
-    zeroWorkflowsCollectionContract.list,
-    ({ query, respond }) => {
-      const visible = query.agentId
-        ? workflows.filter((workflow) => {
-            return workflow.agentId === query.agentId;
-          })
-        : workflows;
-      return respond(200, visible);
-    },
-  );
-  context.mocks.api(
-    zeroWorkflowAutomationsContract.listWorkspace,
+    workflowAutomationsContract.listWorkspace,
     ({ respond }) => {
       return respond(200, []);
     },
@@ -870,7 +867,7 @@ describe("team page navigation", () => {
       createAgent(unavailableAgentId, "Archived Agent"),
       createAgent(researchAgentId, "Research Agent"),
     ]);
-    context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
+    context.mocks.api(agentsByIdContract.get, ({ respond }) => {
       return respond(403, {
         error: {
           message: "Agent details are unavailable",
@@ -1099,7 +1096,7 @@ describe("team page navigation", () => {
   it("deletes an agent from the profile tab", async () => {
     mockTeamAPIs();
     let deleted = false;
-    context.mocks.api(zeroAgentsByIdContract.delete, ({ params, respond }) => {
+    context.mocks.api(agentsByIdContract.delete, ({ params, respond }) => {
       if (params.id === researchAgentId) {
         deleted = true;
       }
@@ -1108,7 +1105,7 @@ describe("team page navigation", () => {
     // Once the agent is deleted, any refetch of it must 404 — exactly as
     // production behaves. This guards against reloading the just-deleted agent
     // and surfacing an "Agent not found" error toast over the success toast.
-    context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
+    context.mocks.api(agentsByIdContract.get, ({ params, respond }) => {
       if (params.id === researchAgentId && deleted) {
         return respond(404, {
           error: {
@@ -1165,7 +1162,7 @@ describe("team page navigation", () => {
     mockAgentWorkflowApis();
     const copyRequests: { workflowId: string; toAgentId: string }[] = [];
     context.mocks.api(
-      zeroWorkflowsDetailContract.copy,
+      workflowsDetailContract.copy,
       ({ params, body, respond }) => {
         copyRequests.push({
           workflowId: params.workflowId,
@@ -1185,13 +1182,13 @@ describe("team page navigation", () => {
       },
     );
     let deleted = false;
-    context.mocks.api(zeroAgentsByIdContract.delete, ({ params, respond }) => {
+    context.mocks.api(agentsByIdContract.delete, ({ params, respond }) => {
       if (params.id === researchAgentId) {
         deleted = true;
       }
       return respond(204);
     });
-    context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
+    context.mocks.api(agentsByIdContract.get, ({ params, respond }) => {
       if (params.id === researchAgentId && deleted) {
         return respond(404, {
           error: {

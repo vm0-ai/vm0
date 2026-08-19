@@ -43,6 +43,10 @@ _EMPTY_PROXY_ENVIRONMENT = {
 }
 
 
+def _https_proxy_environment(proxy_url: str) -> dict[str, str]:
+    return _EMPTY_PROXY_ENVIRONMENT | {"https_proxy": proxy_url}
+
+
 @dataclass(frozen=True)
 class _RawHttpRequest:
     method: str
@@ -212,20 +216,40 @@ async def _close_test_writer(writer: asyncio.StreamWriter) -> None:
         await writer.wait_closed()
 
 
-async def _write_success_response(
-    writer: asyncio.StreamWriter,
+def _success_response_bytes(
     *,
     headers: dict[str, str] | None = None,
-) -> None:
+) -> bytes:
     body = json.dumps(firewall_auth_success_response(headers or {})).encode()
-    writer.write(
+    return (
         b"HTTP/1.1 200 OK\r\n"
         + f"Content-Length: {len(body)}\r\n".encode("ascii")
         + b"Content-Type: application/json\r\nConnection: close\r\n\r\n"
         + body
     )
+
+
+async def _write_success_response(
+    writer: asyncio.StreamWriter,
+    *,
+    headers: dict[str, str] | None = None,
+) -> None:
+    writer.write(_success_response_bytes(headers=headers))
     await writer.drain()
     await _close_test_writer(writer)
+
+
+async def _relay_test_stream(
+    reader: asyncio.StreamReader,
+    writer: asyncio.StreamWriter,
+) -> None:
+    try:
+        with suppress(ConnectionError):
+            while data := await reader.read(64 * 1024):
+                writer.write(data)
+                await writer.drain()
+    finally:
+        await _close_test_writer(writer)
 
 
 async def _trickle_until_peer_disconnect(
@@ -1821,6 +1845,126 @@ class TestFirewallAuthAsyncTransport:
         assert origin.request_count == 1
         assert proxy.request_count == 0
 
+    async def test_https_proxy_connect_failure_preserves_status_with_response_body(
+        self,
+        mitm_ctx,
+    ):
+        proxy_requests: list[_RawHttpRequest] = []
+        response_body = b"proxy authentication required"
+
+        async def handle_proxy(
+            reader: asyncio.StreamReader,
+            writer: asyncio.StreamWriter,
+        ) -> None:
+            proxy_requests.append(await _read_raw_http_request(reader))
+            writer.write(
+                b"HTTP/1.1 407 Proxy Authentication Required\r\n"
+                + f"Content-Length: {len(response_body)}\r\n\r\n".encode("ascii")
+                + response_body
+            )
+            await writer.drain()
+            await _close_test_writer(writer)
+
+        async with _run_test_server(handle_proxy) as proxy_port:
+            with (
+                patch.dict(
+                    os.environ,
+                    _https_proxy_environment(f"http://127.0.0.1:{proxy_port}"),
+                ),
+                patch.object(platform_api, "VERCEL_BYPASS", ""),
+                mitm_ctx(api_url="https://platform.example"),
+                pytest.raises(
+                    OSError,
+                    match=r"^Firewall auth HTTP proxy CONNECT failed with status 407$",
+                ) as exc_info,
+            ):
+                await auth_client.fetch_firewall_headers(firewall_auth_request())
+
+        assert len(proxy_requests) == 1
+        assert proxy_requests[0].method == "CONNECT"
+        assert proxy_requests[0].target == "platform.example"
+        assert response_body.decode() not in str(exc_info.value)
+
+    async def test_https_proxy_connect_bounds_response_headers_and_closes_socket(
+        self,
+        mitm_ctx,
+    ):
+        proxy_requests: list[_RawHttpRequest] = []
+        proxy_peer_closed = asyncio.Event()
+
+        async def handle_proxy(
+            reader: asyncio.StreamReader,
+            writer: asyncio.StreamWriter,
+        ) -> None:
+            proxy_requests.append(await _read_raw_http_request(reader))
+            writer.write(
+                b"HTTP/1.1 100 Continue\r\nX-Fill: "
+                + b"x" * auth_client._MAX_FIREWALL_AUTH_RESPONSE_HEADER_BYTES
+            )
+            with suppress(ConnectionError):
+                await writer.drain()
+            with suppress(ConnectionResetError):
+                while await reader.read(64 * 1024):
+                    pass
+            proxy_peer_closed.set()
+            await _close_test_writer(writer)
+
+        async with _run_test_server(handle_proxy) as proxy_port:
+            with (
+                patch.dict(
+                    os.environ,
+                    _https_proxy_environment(f"http://127.0.0.1:{proxy_port}"),
+                ),
+                patch.object(platform_api, "VERCEL_BYPASS", ""),
+                mitm_ctx(api_url="https://platform.example"),
+                pytest.raises(
+                    ValueError,
+                    match=r"^Firewall auth HTTP proxy response headers too large$",
+                ),
+            ):
+                await auth_client.fetch_firewall_headers(firewall_auth_request())
+
+            await asyncio.wait_for(proxy_peer_closed.wait(), timeout=2.0)
+
+        assert len(proxy_requests) == 1
+        assert proxy_requests[0].method == "CONNECT"
+        assert proxy_requests[0].target == "platform.example"
+
+    async def test_total_deadline_aborts_stalled_https_proxy_connect(
+        self,
+        mitm_ctx,
+    ):
+        connect_received = asyncio.Event()
+        proxy_peer_closed = asyncio.Event()
+
+        async def handle_proxy(
+            reader: asyncio.StreamReader,
+            writer: asyncio.StreamWriter,
+        ) -> None:
+            await _read_raw_http_request(reader)
+            connect_received.set()
+            with suppress(ConnectionResetError):
+                while await reader.read(64 * 1024):
+                    pass
+            proxy_peer_closed.set()
+            await _close_test_writer(writer)
+
+        async with _run_test_server(handle_proxy) as proxy_port:
+            with (
+                patch.dict(
+                    os.environ,
+                    _https_proxy_environment(f"http://127.0.0.1:{proxy_port}"),
+                ),
+                patch.object(auth_client, "FIREWALL_AUTH_FETCH_DEADLINE_SECONDS", 0.1),
+                patch.object(platform_api, "VERCEL_BYPASS", ""),
+                mitm_ctx(api_url="https://platform.example"),
+                pytest.raises(auth_client.FirewallAuthDeadlineExceededError),
+            ):
+                await auth_client.fetch_firewall_headers(firewall_auth_request())
+
+            await asyncio.wait_for(connect_received.wait(), timeout=2.0)
+            await asyncio.wait_for(proxy_peer_closed.wait(), timeout=2.0)
+
     async def test_https_proxy_connect_preserves_origin_tls_and_isolates_credentials(
         self,
         mitm_ctx,
@@ -1848,21 +1992,15 @@ class TestFirewallAuthAsyncTransport:
                     "127.0.0.1",
                     origin_port,
                 )
-                client_writer.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+                client_writer.write(
+                    b"HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 200 Connection Established\r\n\r\n"
+                )
                 await client_writer.drain()
-
-                async def relay(
-                    reader: asyncio.StreamReader,
-                    writer: asyncio.StreamWriter,
-                ) -> None:
-                    while data := await reader.read(64 * 1024):
-                        writer.write(data)
-                        await writer.drain()
 
                 try:
                     await asyncio.gather(
-                        relay(client_reader, origin_writer),
-                        relay(origin_reader, client_writer),
+                        _relay_test_stream(client_reader, origin_writer),
+                        _relay_test_stream(origin_reader, client_writer),
                     )
                 finally:
                     await _close_test_writer(origin_writer)
@@ -1870,16 +2008,8 @@ class TestFirewallAuthAsyncTransport:
 
             async with _run_test_server(handle_proxy) as proxy_port:
                 proxy_url = f"http://proxy-user:proxy-password@127.0.0.1:{proxy_port}"
-                proxy_environment = {
-                    "https_proxy": proxy_url,
-                    "HTTPS_PROXY": "",
-                    "all_proxy": "",
-                    "ALL_PROXY": "",
-                    "no_proxy": "",
-                    "NO_PROXY": "",
-                }
                 with (
-                    patch.dict(os.environ, proxy_environment),
+                    patch.dict(os.environ, _https_proxy_environment(proxy_url)),
                     patch.object(auth_client, "_https_context", client_context),
                     patch.object(platform_api, "VERCEL_BYPASS", ""),
                     mitm_ctx(api_url=f"https://localhost:{origin_port}"),
@@ -1898,3 +2028,83 @@ class TestFirewallAuthAsyncTransport:
         assert origin_requests[0].target == "/api/webhooks/agent/firewall/auth"
         assert origin_requests[0].headers["authorization"] == "Bearer tok-xyz"
         assert "proxy-authorization" not in origin_requests[0].headers
+
+    async def test_https_proxy_connect_rejects_pre_tls_response_bytes(
+        self,
+        mitm_ctx,
+        tmp_path: Path,
+    ):
+        server_context, client_context = _create_tls_contexts(tmp_path)
+        origin_requests: list[_RawHttpRequest] = []
+        proxy_requests: list[_RawHttpRequest] = []
+        proxy_peer_closed = asyncio.Event()
+
+        async def handle_origin(
+            reader: asyncio.StreamReader,
+            writer: asyncio.StreamWriter,
+        ) -> None:
+            origin_requests.append(await _read_raw_http_request(reader))
+            await _write_success_response(writer)
+
+        async with _run_test_server(handle_origin, ssl_context=server_context) as origin_port:
+
+            async def handle_proxy(
+                client_reader: asyncio.StreamReader,
+                client_writer: asyncio.StreamWriter,
+            ) -> None:
+                proxy_requests.append(await _read_raw_http_request(client_reader))
+                origin_reader, origin_writer = await asyncio.open_connection(
+                    "127.0.0.1",
+                    origin_port,
+                )
+                client_writer.write(
+                    b"HTTP/1.1 200 Connection Established\r\n\r\n"
+                    + _success_response_bytes(
+                        headers={"Authorization": "Bearer proxy-forged-token"}
+                    )
+                )
+                await client_writer.drain()
+
+                async def relay_client_to_origin() -> None:
+                    try:
+                        await _relay_test_stream(client_reader, origin_writer)
+                    finally:
+                        proxy_peer_closed.set()
+
+                try:
+                    await asyncio.gather(
+                        relay_client_to_origin(),
+                        _relay_test_stream(origin_reader, client_writer),
+                    )
+                finally:
+                    await _close_test_writer(origin_writer)
+                    await _close_test_writer(client_writer)
+
+            async with _run_test_server(handle_proxy) as proxy_port:
+                with (
+                    patch.dict(
+                        os.environ,
+                        _https_proxy_environment(f"http://127.0.0.1:{proxy_port}"),
+                    ),
+                    patch.object(auth_client, "_https_context", client_context),
+                    patch.object(platform_api, "VERCEL_BYPASS", ""),
+                    mitm_ctx(api_url=f"https://localhost:{origin_port}"),
+                    pytest.raises(
+                        ValueError,
+                        match=r"^Firewall auth HTTP proxy sent data before TLS$",
+                    ),
+                ):
+                    await auth_client.fetch_firewall_headers(
+                        firewall_auth_request(
+                            auth_headers={
+                                "Authorization": "Bearer ${{ secrets.TOKEN }}",
+                            }
+                        )
+                    )
+
+                await asyncio.wait_for(proxy_peer_closed.wait(), timeout=2.0)
+
+        assert len(proxy_requests) == 1
+        assert proxy_requests[0].method == "CONNECT"
+        assert proxy_requests[0].target == f"localhost:{origin_port}"
+        assert origin_requests == []

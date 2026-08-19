@@ -2,8 +2,8 @@ import { computed, type Computed } from "ccstate";
 import type {
   WorkflowFileEntry,
   WorkflowFileMetadata,
-  ZeroWorkflowDetailResponse,
-} from "@okouai/api-contracts/contracts/zero-workflows";
+  WorkflowDetailResponse,
+} from "@okouai/api-contracts/contracts/workflows";
 
 import { db$, type Db } from "../external/db";
 import { clerk$ } from "../external/clerk";
@@ -24,8 +24,8 @@ export function workflowDetail(args: {
   readonly orgId: string;
   readonly member: WorkflowMember;
   readonly workflowId: string;
-}): Computed<Promise<ZeroWorkflowDetailResponse | null>> {
-  return computed(async (get): Promise<ZeroWorkflowDetailResponse | null> => {
+}): Computed<Promise<WorkflowDetailResponse | null>> {
+  return computed(async (get): Promise<WorkflowDetailResponse | null> => {
     const db = get(db$);
     const visible = await loadVisibleWorkflowById(db, {
       orgId: args.orgId,

@@ -5,11 +5,11 @@ import {
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import {
-  zeroBillingConcurrencyCheckoutContract,
-  zeroBillingConcurrencySubscriptionContract,
-  zeroBillingStatusContract,
+  billingConcurrencyCheckoutContract,
+  billingConcurrencySubscriptionContract,
+  billingStatusContract,
   type BillingStatusResponse,
-} from "@okouai/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/billing";
 import { runsQueueContract } from "@okouai/api-contracts/contracts/run-routes";
 import type {
   ConcurrencyInfo,
@@ -104,7 +104,7 @@ function mockConcurrencyCapability(
       ? { concurrencyPurchaseReviewAvailable: true }
       : {}),
   };
-  context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+  context.mocks.api(billingStatusContract.get, ({ respond }) => {
     return respond(200, status);
   });
 }
@@ -446,7 +446,7 @@ describe("queue drawer", () => {
       );
     });
     context.mocks.api(
-      zeroBillingConcurrencyCheckoutContract.preview,
+      billingConcurrencyCheckoutContract.preview,
       ({ body, respond }) => {
         previewQuantity = body.quantity;
         return respond(200, {
@@ -459,7 +459,7 @@ describe("queue drawer", () => {
       },
     );
     context.mocks.api(
-      zeroBillingConcurrencyCheckoutContract.create,
+      billingConcurrencyCheckoutContract.create,
       ({ body, respond }) => {
         checkoutQuantity = body.quantity;
         checkoutSuccessUrl = body.successUrl;
@@ -557,7 +557,7 @@ describe("queue drawer", () => {
       );
     });
     context.mocks.api(
-      zeroBillingConcurrencyCheckoutContract.create,
+      billingConcurrencyCheckoutContract.create,
       ({ body, respond }) => {
         checkoutQuantity = body.quantity;
         return respond(200, {
@@ -566,7 +566,7 @@ describe("queue drawer", () => {
       },
     );
     context.mocks.api(
-      zeroBillingConcurrencySubscriptionContract.previewChange,
+      billingConcurrencySubscriptionContract.previewChange,
       ({ params, body, respond }) => {
         previewedSubscriptionId = params.subscriptionId;
         previewedQuantity = body.quantity;
@@ -580,7 +580,7 @@ describe("queue drawer", () => {
       },
     );
     context.mocks.api(
-      zeroBillingConcurrencySubscriptionContract.confirmChange,
+      billingConcurrencySubscriptionContract.confirmChange,
       ({ params, body, respond }) => {
         confirmedSubscriptionId = params.subscriptionId;
         confirmedQuantity = body.quantity;
@@ -669,7 +669,7 @@ describe("queue drawer", () => {
       );
     });
     context.mocks.api(
-      zeroBillingConcurrencyCheckoutContract.create,
+      billingConcurrencyCheckoutContract.create,
       ({ body, respond }) => {
         checkoutQuantity = body.quantity;
         return respond(200, {

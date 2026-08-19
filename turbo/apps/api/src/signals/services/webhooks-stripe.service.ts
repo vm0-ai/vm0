@@ -35,13 +35,13 @@ import {
   knownBillingPlanPriceItem,
   type BillingSubscriptionTier,
   tierForKnownPlanPrice,
-} from "./zero-billing-checkout.service";
+} from "./billing-checkout.service";
 import { isCurrentStripePreviewMetadata } from "./stripe-preview-metadata.service";
 import {
   subscriptionScheduleCancellationEnd,
   subscriptionScheduleId,
 } from "./stripe-subscription-schedules.service";
-import { downgradeSubscriptionForOrg } from "./zero-billing-downgrade.service";
+import { downgradeSubscriptionForOrg } from "./billing-downgrade.service";
 import {
   BILLING_DOWNGRADE_PURPOSE,
   BILLING_PURCHASE_PURPOSE,

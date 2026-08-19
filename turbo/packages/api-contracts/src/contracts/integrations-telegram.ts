@@ -125,14 +125,14 @@ const telegramWebhookPathParamsSchema = z.object({
 });
 
 /**
- * Zero integrations Telegram contract
+ * Integrations Telegram contract
  * Covers all Telegram integration endpoints.
  *
  * Path note: these endpoints use /api/integrations/ and /api/telegram/ (not /api/okou/)
  * because they are served by the platform app directly, not the Zero sub-application.
  * This is intentional and matches the real server routing.
  */
-export const zeroIntegrationsTelegramContract = c.router({
+export const integrationsTelegramContract = c.router({
   list: {
     method: "GET",
     path: "/api/integrations/telegram",
@@ -305,8 +305,7 @@ export const zeroIntegrationsTelegramContract = c.router({
   },
 });
 
-export type ZeroIntegrationsTelegramContract =
-  typeof zeroIntegrationsTelegramContract;
+export type IntegrationsTelegramContract = typeof integrationsTelegramContract;
 export type TelegramBot = z.infer<typeof telegramBotSchema>;
 export type TelegramBotStatus = z.infer<typeof telegramBotStatusSchema>;
 export type TelegramListResponse = z.infer<typeof telegramListResponseSchema>;

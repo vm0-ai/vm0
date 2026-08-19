@@ -1,14 +1,14 @@
 import { command } from "ccstate";
 import { desktopProductFromClientHeader } from "@okouai/api-contracts/contracts/client-headers";
 import {
-  zeroComputerUseAuditEventsContract,
-  zeroComputerUseCommandContract,
-  zeroComputerUseHeartbeatContract,
-  zeroComputerUseHostCommandsContract,
-  zeroComputerUseHostsContract,
-  zeroComputerUsePluginCommandContract,
-  zeroComputerUseWriteCommandContract,
-} from "@okouai/api-contracts/contracts/zero-computer-use";
+  computerUseAuditEventsContract,
+  computerUseCommandContract,
+  computerUseHeartbeatContract,
+  computerUseHostCommandsContract,
+  computerUseHostsContract,
+  computerUsePluginCommandContract,
+  computerUseWriteCommandContract,
+} from "@okouai/api-contracts/contracts/computer-use";
 import {
   COMPUTER_USE_MCP_PLUGIN,
   COMPUTER_USE_PLUGIN_CALL_KIND,
@@ -96,7 +96,7 @@ function parseBearerToken(authorization: string | undefined): string | null {
   return token.length > 0 ? token : null;
 }
 
-const hostStartBody$ = bodyResultOf(zeroComputerUseHostsContract.start);
+const hostStartBody$ = bodyResultOf(computerUseHostsContract.start);
 const hostStartInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const clientProduct = desktopProductFromClientHeader(get(clientProduct$));
@@ -124,7 +124,7 @@ const hostStartInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
 });
 
-const heartbeatBody$ = bodyResultOf(zeroComputerUseHeartbeatContract.heartbeat);
+const heartbeatBody$ = bodyResultOf(computerUseHeartbeatContract.heartbeat);
 const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const bodyResult = await get(heartbeatBody$);
   signal.throwIfAborted();
@@ -154,7 +154,7 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
 });
 
-const hostStopBody$ = bodyResultOf(zeroComputerUseHeartbeatContract.stop);
+const hostStopBody$ = bodyResultOf(computerUseHeartbeatContract.stop);
 const hostStopInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const bodyResult = await get(hostStopBody$);
   signal.throwIfAborted();
@@ -206,7 +206,7 @@ const hostsListInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 200 as const, body: result };
 });
 
-const commandCreateBody$ = bodyResultOf(zeroComputerUseCommandContract.create);
+const commandCreateBody$ = bodyResultOf(computerUseCommandContract.create);
 const commandCreateInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
@@ -259,7 +259,7 @@ const commandCreateInner$ = command(
 );
 
 const writeCommandCreateBody$ = bodyResultOf(
-  zeroComputerUseWriteCommandContract.create,
+  computerUseWriteCommandContract.create,
 );
 const writeCommandCreateInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -313,7 +313,7 @@ const writeCommandCreateInner$ = command(
 );
 
 const pluginCommandCreateBody$ = bodyResultOf(
-  zeroComputerUsePluginCommandContract.create,
+  computerUsePluginCommandContract.create,
 );
 const pluginCommandCreateInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -391,7 +391,7 @@ const pluginCommandCreateInner$ = command(
   },
 );
 
-const commandGetParams$ = pathParamsOf(zeroComputerUseCommandContract.get);
+const commandGetParams$ = pathParamsOf(computerUseCommandContract.get);
 const commandGetInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const params = get(commandGetParams$);
@@ -418,7 +418,7 @@ const commandGetInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const screenshotGetParams$ = pathParamsOf(
-  zeroComputerUseCommandContract.getScreenshot,
+  computerUseCommandContract.getScreenshot,
 );
 const screenshotGetInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -457,7 +457,7 @@ const screenshotGetInner$ = command(
 );
 
 const pluginContentGetParams$ = pathParamsOf(
-  zeroComputerUseCommandContract.getPluginContent,
+  computerUseCommandContract.getPluginContent,
 );
 const pluginContentGetInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -499,9 +499,7 @@ const pluginContentGetInner$ = command(
   },
 );
 
-const hostCommandNextBody$ = bodyResultOf(
-  zeroComputerUseHostCommandsContract.next,
-);
+const hostCommandNextBody$ = bodyResultOf(computerUseHostCommandsContract.next);
 const hostCommandNextInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const bodyResult = await get(hostCommandNextBody$);
@@ -540,10 +538,10 @@ const hostCommandNextInner$ = command(
 );
 
 const hostCommandCompleteBody$ = bodyResultOf(
-  zeroComputerUseHostCommandsContract.complete,
+  computerUseHostCommandsContract.complete,
 );
 const hostCommandCompleteParams$ = pathParamsOf(
-  zeroComputerUseHostCommandsContract.complete,
+  computerUseHostCommandsContract.complete,
 );
 const hostCommandCompleteInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -594,7 +592,7 @@ const hostCommandCompleteInner$ = command(
   },
 );
 
-const auditEventsQuery$ = queryOf(zeroComputerUseAuditEventsContract.list);
+const auditEventsQuery$ = queryOf(computerUseAuditEventsContract.list);
 const auditEventsListInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
@@ -634,58 +632,58 @@ const computerUseHostListAuthOptions = {
 
 export const computerUseRoutes: readonly RouteEntry[] = [
   {
-    route: zeroComputerUseHostsContract.start,
+    route: computerUseHostsContract.start,
     handler: authRoute(computerUseAuthOptions, hostStartInner$),
   },
   {
-    route: zeroComputerUseHeartbeatContract.heartbeat,
+    route: computerUseHeartbeatContract.heartbeat,
     handler: heartbeatInner$,
   },
   {
-    route: zeroComputerUseHeartbeatContract.stop,
+    route: computerUseHeartbeatContract.stop,
     handler: hostStopInner$,
   },
   {
-    route: zeroComputerUseHostsContract.list,
+    route: computerUseHostsContract.list,
     handler: authRoute(computerUseHostListAuthOptions, hostsListInner$),
   },
   {
-    route: zeroComputerUseCommandContract.create,
+    route: computerUseCommandContract.create,
     handler: authRoute(computerUseCommandAuthOptions, commandCreateInner$),
   },
   {
-    route: zeroComputerUseWriteCommandContract.create,
+    route: computerUseWriteCommandContract.create,
     handler: authRoute(computerUseCommandAuthOptions, writeCommandCreateInner$),
   },
   {
-    route: zeroComputerUsePluginCommandContract.create,
+    route: computerUsePluginCommandContract.create,
     handler: authRoute(
       computerUseCommandAuthOptions,
       pluginCommandCreateInner$,
     ),
   },
   {
-    route: zeroComputerUseCommandContract.get,
+    route: computerUseCommandContract.get,
     handler: authRoute(computerUseCommandAuthOptions, commandGetInner$),
   },
   {
-    route: zeroComputerUseCommandContract.getScreenshot,
+    route: computerUseCommandContract.getScreenshot,
     handler: authRoute(computerUseCommandAuthOptions, screenshotGetInner$),
   },
   {
-    route: zeroComputerUseCommandContract.getPluginContent,
+    route: computerUseCommandContract.getPluginContent,
     handler: authRoute(computerUseCommandAuthOptions, pluginContentGetInner$),
   },
   {
-    route: zeroComputerUseHostCommandsContract.next,
+    route: computerUseHostCommandsContract.next,
     handler: hostCommandNextInner$,
   },
   {
-    route: zeroComputerUseHostCommandsContract.complete,
+    route: computerUseHostCommandsContract.complete,
     handler: hostCommandCompleteInner$,
   },
   {
-    route: zeroComputerUseAuditEventsContract.list,
+    route: computerUseAuditEventsContract.list,
     handler: authRoute(computerUseAuthOptions, auditEventsListInner$),
   },
 ];

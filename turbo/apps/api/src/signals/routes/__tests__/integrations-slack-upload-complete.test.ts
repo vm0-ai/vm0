@@ -15,7 +15,11 @@ import {
   integrationsSlackUploadInitContract,
   integrationsSlackUploadMaterializeContract,
 } from "@okouai/api-contracts/contracts/integrations";
-import type { ChatEvent } from "@okouai/api-contracts/contracts/chat-threads";
+import {
+  chatThreadArtifactsContract,
+  type ChatEvent,
+} from "@okouai/api-contracts/contracts/chat-threads";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -24,7 +28,7 @@ import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
@@ -47,12 +51,19 @@ import {
 import { integrationsSlackUploadCompleteRoutes } from "../integrations-slack-upload-complete";
 import { integrationsSlackUploadInitRoutes } from "../integrations-slack-upload-init";
 import { integrationsSlackUploadMaterializeRoutes } from "../integrations-slack-upload-materialize";
+import { chatThreadsArtifactsSyncRoutes } from "../chat-threads-artifacts-sync";
 
 type CompletedChatEvent = Extract<ChatEvent, { eventType: "run.completed" }>;
 
+interface DriveFolderFixture {
+  readonly id: string;
+  readonly name: string;
+  readonly parentFolderId: string | null;
+}
+
 const context = testContext();
 const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const bdd = createBddApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const chatApi = createChatFilesBddApi(context);
@@ -135,6 +146,7 @@ function okouToken(args: {
   readonly orgId: string;
   readonly runId: string;
   readonly capabilities?: readonly string[];
+  readonly publicBrand?: PublicBrand;
 }): string {
   const seconds = Math.floor(now() / 1000);
   return signSandboxJwtForTests({
@@ -143,6 +155,7 @@ function okouToken(args: {
     orgId: args.orgId,
     runId: args.runId,
     capabilities: (args.capabilities ?? ["slack:write"]) as never,
+    ...(args.publicBrand ? { publicBrand: args.publicBrand } : {}),
     iat: seconds,
     exp: seconds + 60,
   });
@@ -639,26 +652,49 @@ describe("POST /api/okou/integrations/slack/upload-file/complete", () => {
       "google-drive",
     ]);
 
-    let folderCount = 0;
+    const driveFolders: DriveFolderFixture[] = [];
     const driveUploadBodies: string[] = [];
+    const driveUploadContentTypes: (string | null)[] = [];
     server.use(
-      http.get("https://www.googleapis.com/drive/v3/files", () => {
-        return HttpResponse.json({ files: [] });
+      http.get("https://www.googleapis.com/drive/v3/files", ({ request }) => {
+        const query = new URL(request.url).searchParams.get("q");
+        if (!query) {
+          throw new Error("Expected Google Drive folder query");
+        }
+        const folder = driveFolders.find((candidate) => {
+          const parentClause = candidate.parentFolderId
+            ? `'${candidate.parentFolderId}' in parents`
+            : "'root' in parents";
+          return (
+            query.includes(`name = '${candidate.name}'`) &&
+            query.includes(parentClause)
+          );
+        });
+        return HttpResponse.json({ files: folder ? [folder] : [] });
       }),
       http.post(
         "https://www.googleapis.com/drive/v3/files",
         async ({ request }) => {
-          const body = (await request.json()) as { name?: string };
-          folderCount += 1;
-          return HttpResponse.json({
-            id: `drive-folder-${String(folderCount)}`,
-            name: body.name ?? "folder",
-          });
+          const body = (await request.json()) as {
+            readonly name?: string;
+            readonly parents?: readonly string[];
+          };
+          if (!body.name) {
+            throw new Error("Expected Google Drive folder name");
+          }
+          const folder = {
+            id: `drive-folder-${String(driveFolders.length + 1)}`,
+            name: body.name,
+            parentFolderId: body.parents?.[0] ?? null,
+          };
+          driveFolders.push(folder);
+          return HttpResponse.json(folder);
         },
       ),
       http.post(
         "https://www.googleapis.com/upload/drive/v3/files",
         async ({ request }) => {
+          driveUploadContentTypes.push(request.headers.get("content-type"));
           driveUploadBodies.push(await request.text());
           return HttpResponse.json({
             id: "drive-canonical-asset",
@@ -669,10 +705,18 @@ describe("POST /api/okou/integrations/slack/upload-file/complete", () => {
         },
       ),
     );
-    const driveSync = await chatApi.requestSyncThreadArtifact(
-      actorFor({ orgId, userId }),
-      threadId,
-      { runId, fileId: canonicalAssetId },
+    mocks.clerk.session(userId, orgId);
+    const vm0DriveClient = setupApp({
+      baseUrl: "https://api.vm0.ai",
+      context,
+      routes: chatThreadsArtifactsSyncRoutes,
+    })(chatThreadArtifactsContract);
+    const driveSync = await accept(
+      vm0DriveClient.syncGoogleDrive({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId },
+        body: { runId, fileId: canonicalAssetId },
+      }),
       [200],
     );
     expect(driveSync.body).toStrictEqual({
@@ -680,8 +724,84 @@ describe("POST /api/okou/integrations/slack/upload-file/complete", () => {
       name: "report.csv",
       webViewLink: "https://drive.google.com/file/d/drive-canonical-asset/view",
     });
-    expect(driveUploadBodies).toHaveLength(1);
-    expect(driveUploadBodies[0]).toContain(`"vm0FileId":"${canonicalAssetId}"`);
+
+    const okouDriveClient = setupApp({
+      baseUrl: "https://api.okou.ai",
+      context,
+      routes: chatThreadsArtifactsSyncRoutes,
+    })(chatThreadArtifactsContract);
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const okouDriveSync = await accept(
+        okouDriveClient.syncGoogleDrive({
+          headers: { authorization: "Bearer clerk-session" },
+          params: { threadId },
+          body: { runId, fileId: canonicalAssetId },
+        }),
+        [200],
+      );
+      expect(okouDriveSync.body.name).toBe("report.csv");
+    }
+
+    const okouRunDriveSync = await accept(
+      vm0DriveClient.syncGoogleDrive({
+        headers: {
+          authorization: `Bearer ${okouToken({
+            userId,
+            orgId,
+            runId,
+            capabilities: ["file:write"],
+            publicBrand: "okou",
+          })}`,
+        },
+        params: { threadId },
+        body: { runId, fileId: canonicalAssetId },
+      }),
+      [200],
+    );
+    expect(okouRunDriveSync.body.name).toBe("report.csv");
+
+    const vm0RunDriveSync = await accept(
+      okouDriveClient.syncGoogleDrive({
+        headers: {
+          authorization: `Bearer ${okouToken({
+            userId,
+            orgId,
+            runId,
+            capabilities: ["file:write"],
+            publicBrand: "vm0",
+          })}`,
+        },
+        params: { threadId },
+        body: { runId, fileId: canonicalAssetId },
+      }),
+      [200],
+    );
+    expect(vm0RunDriveSync.body.name).toBe("report.csv");
+
+    expect(driveFolders).toHaveLength(4);
+    expect(
+      driveFolders
+        .filter((folder) => {
+          return folder.parentFolderId === null;
+        })
+        .map((folder) => {
+          return folder.name;
+        }),
+    ).toStrictEqual(["vm0-artifact", "Okou Artifacts"]);
+    expect(driveUploadBodies).toHaveLength(5);
+    expect(driveUploadBodies[3]).toContain('"parents":["drive-folder-4"]');
+    expect(driveUploadBodies[4]).toContain('"parents":["drive-folder-2"]');
+    for (const body of driveUploadBodies) {
+      expect(body).toContain(`"vm0Artifact":"true"`);
+      expect(body).toContain(`"vm0ThreadId":"${threadId}"`);
+      expect(body).toContain(`"vm0RunId":"${runId}"`);
+      expect(body).toContain(`"vm0FileId":"${canonicalAssetId}"`);
+    }
+    expect(
+      driveUploadContentTypes.every((contentType) => {
+        return contentType?.startsWith("multipart/related; boundary=vm0-");
+      }),
+    ).toBeTruthy();
 
     const claim = await claimRun(runnerGroup, runId);
     await completeRun({

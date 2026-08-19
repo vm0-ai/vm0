@@ -6,7 +6,7 @@ import {
   useLastResolved,
   useSet,
 } from "ccstate-react";
-import type { ZeroWorkflowSummary } from "@okouai/api-contracts/contracts/zero-workflows";
+import type { WorkflowSummary } from "@okouai/api-contracts/contracts/workflows";
 import {
   ArrowUpDown,
   ChevronDown,
@@ -87,7 +87,7 @@ function workflowAutomationEntryMap(
   return grouped;
 }
 
-function ownerLabel(workflow: ZeroWorkflowSummary): string {
+function ownerLabel(workflow: WorkflowSummary): string {
   return workflow.ownerUserDisplayName?.trim() || workflow.ownerUserId;
 }
 
@@ -136,7 +136,7 @@ function ConnectorPillMarker({
 }
 
 /** The agent that runs the workflow, drawn as its real avatar. */
-function AgentAvatar({ workflow }: { readonly workflow: ZeroWorkflowSummary }) {
+function AgentAvatar({ workflow }: { readonly workflow: WorkflowSummary }) {
   const label = agentLabel(workflow);
   return (
     <AgentAvatarImg
@@ -153,11 +153,7 @@ function AgentAvatar({ workflow }: { readonly workflow: ZeroWorkflowSummary }) {
   );
 }
 
-function MemberAvatar({
-  workflow,
-}: {
-  readonly workflow: ZeroWorkflowSummary;
-}) {
+function MemberAvatar({ workflow }: { readonly workflow: WorkflowSummary }) {
   const label = ownerLabel(workflow);
   if (workflow.ownerUserImageUrl) {
     return (
@@ -177,11 +173,7 @@ function MemberAvatar({
   );
 }
 
-function VisibilityIcon({
-  workflow,
-}: {
-  readonly workflow: ZeroWorkflowSummary;
-}) {
+function VisibilityIcon({ workflow }: { readonly workflow: WorkflowSummary }) {
   const isPublic = workflow.visibility === "public";
   const Icon = isPublic ? Globe : Lock;
   const label = isPublic
@@ -321,7 +313,7 @@ function ConnectorCell({
 export function WorkflowHoverContent({
   workflow,
 }: {
-  readonly workflow: ZeroWorkflowSummary;
+  readonly workflow: WorkflowSummary;
 }) {
   useTranslation();
   const title = workflowTitle(workflow);
@@ -376,7 +368,7 @@ function WorkflowRow({
   entries,
   displayTimezone,
 }: {
-  readonly workflow: ZeroWorkflowSummary;
+  readonly workflow: WorkflowSummary;
   readonly entries: readonly WorkflowAutomationEntry[];
   readonly displayTimezone: string;
 }) {
@@ -433,10 +425,10 @@ function hasAutomations(
 }
 
 function applyWorkflowFilters(
-  workflows: readonly ZeroWorkflowSummary[],
+  workflows: readonly WorkflowSummary[],
   entriesByWorkflowId: WorkflowAutomationEntryMap,
   filter: WorkflowFilter,
-): readonly ZeroWorkflowSummary[] {
+): readonly WorkflowSummary[] {
   return workflows.filter((workflow) => {
     const automated = hasAutomations(workflow.id, entriesByWorkflowId);
     switch (filter) {
@@ -466,7 +458,7 @@ interface AgentFilterOption {
 
 /** The distinct agents that own at least one workflow, sorted by label. */
 function agentFilterOptions(
-  workflows: readonly ZeroWorkflowSummary[],
+  workflows: readonly WorkflowSummary[],
 ): readonly AgentFilterOption[] {
   const labelsByAgentId = new Map<string, string>();
   for (const workflow of workflows) {
@@ -484,9 +476,9 @@ function agentFilterOptions(
 }
 
 function applyAgentFilter(
-  workflows: readonly ZeroWorkflowSummary[],
+  workflows: readonly WorkflowSummary[],
   agentFilter: string,
-): readonly ZeroWorkflowSummary[] {
+): readonly WorkflowSummary[] {
   if (agentFilter === WORKFLOW_ALL_AGENTS) {
     return workflows;
   }
@@ -626,7 +618,7 @@ function WorkflowRowList({
   displayTimezone,
   framed = true,
 }: {
-  readonly workflows: readonly ZeroWorkflowSummary[];
+  readonly workflows: readonly WorkflowSummary[];
   readonly entriesByWorkflowId: WorkflowAutomationEntryMap;
   readonly displayTimezone: string;
   readonly framed?: boolean;
@@ -658,12 +650,12 @@ function WorkflowNextRunGroups({
   entriesByWorkflowId,
   displayTimezone,
 }: {
-  readonly workflows: readonly ZeroWorkflowSummary[];
+  readonly workflows: readonly WorkflowSummary[];
   readonly entriesByWorkflowId: WorkflowAutomationEntryMap;
   readonly displayTimezone: string;
 }) {
   const now = nowDate();
-  const buckets = new Map<NextRunBucket, ZeroWorkflowSummary[]>();
+  const buckets = new Map<NextRunBucket, WorkflowSummary[]>();
   for (const workflow of workflows) {
     const entries = entriesByWorkflowId.get(workflow.id) ?? [];
     const bucket = workflowNextRunBucket(entries, now, displayTimezone);
@@ -707,7 +699,7 @@ function WorkflowListPanel({
   automationEntriesByWorkflowId,
   displayTimezone = new Intl.DateTimeFormat().resolvedOptions().timeZone,
 }: {
-  readonly workflows: readonly ZeroWorkflowSummary[] | null;
+  readonly workflows: readonly WorkflowSummary[] | null;
   readonly loading: boolean;
   readonly emptyDescription: string;
   readonly sortMode?: WorkflowSortMode;
@@ -947,9 +939,9 @@ function AgentFilterDropdown({
 }
 
 function sortWorkflows(
-  workflows: readonly ZeroWorkflowSummary[],
+  workflows: readonly WorkflowSummary[],
   sortMode: WorkflowSortMode,
-): readonly ZeroWorkflowSummary[] {
+): readonly WorkflowSummary[] {
   if (sortMode === "created") {
     return [...workflows].sort((a, b) => {
       return b.createdAt.localeCompare(a.createdAt);
