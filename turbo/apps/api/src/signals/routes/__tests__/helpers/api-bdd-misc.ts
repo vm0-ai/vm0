@@ -13,10 +13,10 @@ import type {
   UpsertModelProviderRequest,
 } from "@okouai/api-contracts/contracts/model-providers";
 import {
-  zeroWorkflowsCollectionContract,
-  zeroWorkflowsDetailContract,
+  workflowsCollectionContract,
+  workflowsDetailContract,
   type WorkflowFileEntry,
-} from "@okouai/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/workflows";
 import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
 import {
   modelProvidersByTypeContract,
@@ -331,7 +331,7 @@ export function createMiscRoutesApi(context: TestContext) {
     async listWorkflows(actor: ApiTestUser) {
       return await accept(
         setupApp({ context, routes: workflowsRoutes })(
-          zeroWorkflowsCollectionContract,
+          workflowsCollectionContract,
         ).list({
           headers: authenticate(context, actor),
         }),
@@ -351,7 +351,7 @@ export function createMiscRoutesApi(context: TestContext) {
     ) {
       return await accept(
         setupApp({ context, routes: workflowsRoutes })(
-          zeroWorkflowsCollectionContract,
+          workflowsCollectionContract,
         ).create({
           headers: authenticate(context, actor),
           body: {
@@ -374,7 +374,7 @@ export function createMiscRoutesApi(context: TestContext) {
     ) {
       return await accept(
         setupApp({ context, routes: workflowsRoutes })(
-          zeroWorkflowsCollectionContract,
+          workflowsCollectionContract,
         ).create({
           headers: authenticate(context, actor),
           body: {
@@ -396,7 +396,7 @@ export function createMiscRoutesApi(context: TestContext) {
     ) {
       return await accept(
         setupApp({ context, routes: workflowsRoutes })(
-          zeroWorkflowsDetailContract,
+          workflowsDetailContract,
         ).get({
           headers: authenticate(context, actor),
           params: { workflowId },
@@ -413,7 +413,7 @@ export function createMiscRoutesApi(context: TestContext) {
     ) {
       return await accept(
         setupApp({ context, routes: workflowsRoutes })(
-          zeroWorkflowsDetailContract,
+          workflowsDetailContract,
         ).update({
           headers: authenticate(context, actor),
           params: { workflowId },
@@ -430,7 +430,7 @@ export function createMiscRoutesApi(context: TestContext) {
     ) {
       return await accept(
         setupApp({ context, routes: workflowsRoutes })(
-          zeroWorkflowsDetailContract,
+          workflowsDetailContract,
         ).delete({
           headers: authenticate(context, actor),
           params: { workflowId },

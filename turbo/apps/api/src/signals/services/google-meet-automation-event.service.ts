@@ -3,7 +3,7 @@ import { OAuth2Client } from "google-auth-library";
 import { command } from "ccstate";
 import { and, eq, lte, or } from "drizzle-orm";
 import { z } from "zod";
-import { googleMeetTranscriptGeneratedEventConfigSchema } from "@okouai/api-contracts/contracts/zero-workflows";
+import { googleMeetTranscriptGeneratedEventConfigSchema } from "@okouai/api-contracts/contracts/workflows";
 import {
   googleWorkspaceEventSubscriptionStates,
   googleWorkspaceProcessedEvents,

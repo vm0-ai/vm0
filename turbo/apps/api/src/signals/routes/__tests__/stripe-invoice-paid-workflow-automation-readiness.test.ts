@@ -5,7 +5,7 @@ import {
   testStripeInvoicePaidFixtureContract,
   type TestStripeInvoicePaidFixtureState,
 } from "@okouai/api-contracts/contracts/test-stripe-invoice-paid-readiness";
-import { zeroWorkflowAutomationsContract } from "@okouai/api-contracts/contracts/zero-workflows";
+import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
@@ -63,7 +63,7 @@ function authenticate(scenario: StripeAutomationScenario): void {
 
 function automationsClient() {
   return setupApp({ context, routes: workflowAutomationsRoutes })(
-    zeroWorkflowAutomationsContract,
+    workflowAutomationsContract,
   );
 }
 

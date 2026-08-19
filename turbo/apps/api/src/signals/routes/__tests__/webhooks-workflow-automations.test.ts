@@ -1,4 +1,4 @@
-import { zeroWorkflowAutomationsContract } from "@okouai/api-contracts/contracts/zero-workflows";
+import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -31,7 +31,7 @@ function authHeaders() {
 
 function automationsClient() {
   return setupApp({ context, routes: workflowAutomationsRoutes })(
-    zeroWorkflowAutomationsContract,
+    workflowAutomationsContract,
   );
 }
 

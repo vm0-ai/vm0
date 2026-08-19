@@ -7,13 +7,13 @@ import {
   type TestSystemStoragePresignedUrlCacheStateActionBody,
 } from "@okouai/api-contracts/contracts/test-system-storage-presigned-url-cache-state";
 import {
-  zeroWorkflowsCollectionContract,
-  zeroWorkflowsDetailContract,
-  zeroWorkflowAutomationsContract,
-  zeroWorkflowVisibilityContract,
-  type ZeroWorkflowCreateRequest,
-  type ZeroWorkflowUpdateRequest,
-} from "@okouai/api-contracts/contracts/zero-workflows";
+  workflowsCollectionContract,
+  workflowsDetailContract,
+  workflowAutomationsContract,
+  workflowVisibilityContract,
+  type WorkflowCreateRequest,
+  type WorkflowUpdateRequest,
+} from "@okouai/api-contracts/contracts/workflows";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import {
   getCustomSkillStorageName,
@@ -114,13 +114,13 @@ function authHeaders(actor: ApiTestUser): { readonly authorization: string } {
 
 function collectionClient() {
   return setupApp({ context, routes: workflowsRoutes })(
-    zeroWorkflowsCollectionContract,
+    workflowsCollectionContract,
   );
 }
 
 function detailClient() {
   return setupApp({ context, routes: workflowsRoutes })(
-    zeroWorkflowsDetailContract,
+    workflowsDetailContract,
   );
 }
 
@@ -289,13 +289,13 @@ function mockConnectorReadinessModel(
 
 function visibilityClient() {
   return setupApp({ context, routes: workflowsRoutes })(
-    zeroWorkflowVisibilityContract,
+    workflowVisibilityContract,
   );
 }
 
 function automationsClient() {
   return setupApp({ context, routes: workflowAutomationsRoutes })(
-    zeroWorkflowAutomationsContract,
+    workflowAutomationsContract,
   );
 }
 
@@ -315,10 +315,7 @@ async function createAgent(
   return agent;
 }
 
-async function createWorkflow(
-  actor: ApiTestUser,
-  body: ZeroWorkflowCreateRequest,
-) {
+async function createWorkflow(actor: ApiTestUser, body: WorkflowCreateRequest) {
   const workflow = await accept(
     collectionClient().create({
       headers: authHeaders(actor),
@@ -368,7 +365,7 @@ async function requestCreateWorkflow<
   TStatus extends 400 | 401 | 403 | 404 | 409,
 >(
   actor: ApiTestUser,
-  body: ZeroWorkflowCreateRequest,
+  body: WorkflowCreateRequest,
   statuses: readonly TStatus[],
 ) {
   return await accept(
@@ -383,7 +380,7 @@ async function requestCreateWorkflow<
 async function updateWorkflow(
   actor: ApiTestUser,
   workflowId: string,
-  body: ZeroWorkflowUpdateRequest,
+  body: WorkflowUpdateRequest,
 ) {
   return await accept(
     detailClient().update({
@@ -400,7 +397,7 @@ async function requestUpdateWorkflow<
 >(
   actor: ApiTestUser,
   workflowId: string,
-  body: ZeroWorkflowUpdateRequest,
+  body: WorkflowUpdateRequest,
   statuses: readonly TStatus[],
 ) {
   return await accept(

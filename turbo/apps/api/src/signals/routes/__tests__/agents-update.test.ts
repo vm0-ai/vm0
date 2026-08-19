@@ -6,7 +6,7 @@ import {
   zeroAgentsMainContract,
   type ZeroAgentRequest,
 } from "@okouai/api-contracts/contracts/zero-agents";
-import { zeroWorkflowsCollectionContract } from "@okouai/api-contracts/contracts/zero-workflows";
+import { workflowsCollectionContract } from "@okouai/api-contracts/contracts/workflows";
 import {
   cliAuthApproveContract,
   cliAuthDeviceContract,
@@ -125,7 +125,7 @@ async function createWorkflowFor(
   mocks.clerk.session(user.userId, user.orgId);
   await accept(
     setupApp({ context, routes: workflowsRoutes })(
-      zeroWorkflowsCollectionContract,
+      workflowsCollectionContract,
     ).create({
       headers: authHeaders(),
       body: { agentId, name },

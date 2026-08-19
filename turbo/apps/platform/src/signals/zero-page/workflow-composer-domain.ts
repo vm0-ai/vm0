@@ -1,4 +1,4 @@
-import type { ZeroWorkflowSummary } from "@okouai/api-contracts/contracts/zero-workflows";
+import type { WorkflowSummary } from "@okouai/api-contracts/contracts/workflows";
 
 export function findWorkflowQueryMatches(
   workflows: readonly ComposerSlashWorkflow[],
@@ -71,7 +71,7 @@ export function buildComposerSlashWorkflows({
   workflows,
 }: {
   readonly agentId: string | null | undefined;
-  readonly workflows: readonly ZeroWorkflowSummary[];
+  readonly workflows: readonly WorkflowSummary[];
 }): readonly ComposerSlashWorkflow[] {
   if (!agentId) {
     return [];

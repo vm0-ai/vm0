@@ -3,10 +3,10 @@ import {
   type ChatEvent,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import {
-  zeroWorkflowsCollectionContract,
-  zeroWorkflowAutomationsContract,
-  type ZeroWorkflowAutomationSummary,
-} from "@okouai/api-contracts/contracts/zero-workflows";
+  workflowsCollectionContract,
+  workflowAutomationsContract,
+  type WorkflowAutomationSummary,
+} from "@okouai/api-contracts/contracts/workflows";
 import { HttpResponse, http } from "msw";
 
 import { accept, type TestContext } from "../../../../__tests__/test-context";
@@ -176,7 +176,7 @@ export function createWorkflowsBddApi(context: TestContext) {
       },
     ): Promise<string> {
       const client = setupApp({ context, routes: workflowsRoutes })(
-        zeroWorkflowsCollectionContract,
+        workflowsCollectionContract,
       );
       const response = await accept(
         client.create({
@@ -197,11 +197,11 @@ export function createWorkflowsBddApi(context: TestContext) {
 
     async readAutomation(
       automationId: string,
-    ): Promise<ZeroWorkflowAutomationSummary> {
+    ): Promise<WorkflowAutomationSummary> {
       const client = setupApp({
         context,
         routes: workflowAutomationsRoutes,
-      })(zeroWorkflowAutomationsContract);
+      })(workflowAutomationsContract);
       const response = await accept(
         client.get({ headers: authHeaders(), params: { id: automationId } }),
         [200],
