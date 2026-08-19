@@ -22,10 +22,40 @@ const THUMBNAIL_CLASS =
 
 const NODE_CLASS = "rounded-md border border-border bg-card";
 
+// The only illustrated palette the product already owns is the agent avatar's:
+// five hair colours over one skin tone. Taking the tiles from there keeps the
+// row in the same family as the face at the top of the page, and each colour is
+// laid down at a fraction of its strength so the tiles stay quiet.
+function kindAccent(kind: StartCardKind): string {
+  switch (kind) {
+    case "slides": {
+      return "#E88033";
+    }
+    case "website": {
+      return "#3EB7B8";
+    }
+    case "illustration": {
+      return "#EDC43E";
+    }
+    case "video": {
+      return "#FF81B2";
+    }
+    case "avatar": {
+      return "#F3BAB1";
+    }
+    case "workflow": {
+      return "#97918A";
+    }
+  }
+}
+
+const TILE_ALPHA = "1F";
+const FILL_ALPHA = "8C";
+
 /** A resolved connector mark, or `undefined` while the catalog is loading. */
 type WorkflowArtIcon = StartCardConnectorIcon | undefined;
 
-function SlidesArt() {
+function SlidesArt({ accent }: { accent: string }) {
   return (
     <div className="relative h-[31px] w-[42px]">
       <span
@@ -35,30 +65,51 @@ function SlidesArt() {
         className={`absolute inset-0 translate-x-[3px] translate-y-px rotate-6 ${NODE_CLASS}`}
       />
       <span className={`absolute inset-0 ${NODE_CLASS}`}>
-        <span className="absolute left-[11px] top-[11px] h-[3px] w-5 rounded-full bg-primary" />
+        <span
+          className="absolute left-[11px] top-[11px] h-[3px] w-5 rounded-full"
+          style={{ backgroundColor: accent }}
+        />
         <span className="absolute left-[11px] top-[17px] h-[3px] w-5 rounded-full bg-muted-foreground/20" />
       </span>
     </div>
   );
 }
 
-function WebsiteArt() {
+function WebsiteArt({ accent }: { accent: string }) {
   return (
-    <div className="h-[33px] w-[42px] overflow-hidden rounded-md border border-border bg-card">
-      <div className="h-[9px] border-b border-border bg-muted" />
-      <div className="mx-1 mt-1 h-3 rounded-sm bg-sky-500/25" />
-      <div className="mx-1 mt-[3px] h-[3px] w-5 rounded-full bg-muted-foreground/20" />
+    <div className="h-[34px] w-[44px] overflow-hidden rounded-md border border-border bg-card">
+      {/* A browser chrome bar reads as a page far more clearly than a coloured
+          block does, and the traffic lights give the tile its detail. */}
+      <div className="flex h-[10px] items-center gap-[2px] border-b border-border bg-muted px-[3px]">
+        <span className="size-[2px] rounded-full bg-muted-foreground/40" />
+        <span className="size-[2px] rounded-full bg-muted-foreground/25" />
+        <span className="size-[2px] rounded-full bg-muted-foreground/25" />
+      </div>
+      <div className="flex gap-[3px] p-[4px]">
+        <span
+          className="size-[10px] shrink-0 rounded-[2px]"
+          style={{ backgroundColor: `${accent}${FILL_ALPHA}` }}
+        />
+        <span className="mt-[1px] flex flex-1 flex-col gap-[2px]">
+          <span className="h-[2px] rounded-full bg-muted-foreground/25" />
+          <span className="h-[2px] w-3/5 rounded-full bg-muted-foreground/20" />
+        </span>
+      </div>
     </div>
   );
 }
 
-function IllustrationArt() {
+function IllustrationArt({ accent }: { accent: string }) {
   return (
     <div className="h-[37px] w-[44px] rounded-md border border-border bg-card p-1">
-      <div className="size-[7px] rounded-full bg-amber-400" />
       <div
-        className="mt-[3px] h-[19px] rounded-sm bg-emerald-500/40"
+        className="size-[7px] rounded-full"
+        style={{ backgroundColor: accent }}
+      />
+      <div
+        className="mt-[3px] h-[19px] rounded-sm"
         style={{
+          backgroundColor: `${accent}${FILL_ALPHA}`,
           clipPath:
             "polygon(0 100%, 0 60%, 27% 26%, 49% 58%, 69% 18%, 100% 62%, 100% 100%)",
         }}
@@ -67,21 +118,37 @@ function IllustrationArt() {
   );
 }
 
-function VideoArt() {
+function VideoArt({ accent }: { accent: string }) {
   return (
     <div className="grid h-[30px] w-[42px] place-items-center rounded-md border border-border bg-card">
-      <span className="grid size-4 place-items-center rounded-full bg-primary/15 text-primary">
+      <span
+        className="grid size-4 place-items-center rounded-full"
+        style={{ backgroundColor: `${accent}${TILE_ALPHA}`, color: accent }}
+      >
         <Play size={7} fill="currentColor" />
       </span>
     </div>
   );
 }
 
-function AvatarArt() {
+function AvatarArt({ accent }: { accent: string }) {
   return (
-    <div className="flex h-[38px] w-[34px] flex-col items-center justify-end">
-      <span className="size-[18px] rounded-full border border-border bg-card" />
-      <span className="mt-0.5 h-[15px] w-8 rounded-t-full border border-b-0 border-border bg-card" />
+    // A framed portrait with a caption bar, so the tile reads as a presenter on
+    // camera rather than the generic account glyph it was.
+    <div className="flex h-[38px] w-[32px] flex-col overflow-hidden rounded-md border border-border bg-card">
+      <div className="relative flex-1">
+        <span
+          className="absolute left-1/2 top-[6px] size-[9px] -translate-x-1/2 rounded-full"
+          style={{ backgroundColor: accent }}
+        />
+        <span
+          className="absolute -bottom-[1px] left-1/2 h-[11px] w-[19px] -translate-x-1/2 rounded-t-full"
+          style={{ backgroundColor: `${accent}${FILL_ALPHA}` }}
+        />
+      </div>
+      <div className="flex h-[9px] items-center justify-center border-t border-border bg-muted">
+        <span className="h-[2px] w-[14px] rounded-full bg-muted-foreground/25" />
+      </div>
     </div>
   );
 }
@@ -131,29 +198,6 @@ function WorkflowArt() {
   );
 }
 
-function thumbnailTint(kind: StartCardKind): string {
-  switch (kind) {
-    case "slides": {
-      return "bg-orange-500/10";
-    }
-    case "website": {
-      return "bg-sky-500/10";
-    }
-    case "illustration": {
-      return "bg-emerald-500/10";
-    }
-    case "video": {
-      return "bg-amber-500/10";
-    }
-    case "avatar": {
-      return "bg-violet-500/10";
-    }
-    case "workflow": {
-      return "bg-slate-500/10";
-    }
-  }
-}
-
 interface StartCardContent {
   readonly title: string;
   readonly description: string;
@@ -201,7 +245,14 @@ function StartCard({
         onClick={onOpenTemplates}
       />
       <div className="pointer-events-none flex items-center gap-3">
-        <div className={`${THUMBNAIL_CLASS} ${thumbnailTint(kind)}`}>{art}</div>
+        <div
+          className={THUMBNAIL_CLASS}
+          style={{
+            backgroundColor: `${kindAccent(kind)}${TILE_ALPHA}`,
+          }}
+        >
+          {art}
+        </div>
         <div className="min-w-0">
           <p className="text-sm font-semibold text-foreground">
             {content.title}
@@ -317,12 +368,13 @@ export function StartCards({
   };
 
   const artFor = (kind: StartCardKind): ReactNode => {
+    const accent = kindAccent(kind);
     const art: Record<StartCardKind, ReactNode> = {
-      slides: <SlidesArt />,
-      website: <WebsiteArt />,
-      illustration: <IllustrationArt />,
-      video: <VideoArt />,
-      avatar: <AvatarArt />,
+      slides: <SlidesArt accent={accent} />,
+      website: <WebsiteArt accent={accent} />,
+      illustration: <IllustrationArt accent={accent} />,
+      video: <VideoArt accent={accent} />,
+      avatar: <AvatarArt accent={accent} />,
       workflow: <WorkflowArt />,
     };
     return art[kind];
