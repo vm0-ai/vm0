@@ -8,14 +8,14 @@ import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { billingAutoRechargeRoutes } from "../billing-auto-recharge";
 
 const context = testContext();
 const bdd = createBddApi(context);
 const billingApi = createBillingMediaApi(context);
 const runsApi = createRunsApi(context);
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 const defaultAutoRechargeConfig = Object.freeze({
   enabled: false,

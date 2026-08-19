@@ -28,7 +28,7 @@ import {
   findSlackOrgConnection$,
   seedSlackConnectOrg$,
 } from "./helpers/slack-connect";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import {
   createBillingWebhookFixture,
   generatedStripeCustomerId,
@@ -42,7 +42,7 @@ import {
 
 const context = testContext();
 const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 interface OrgDeleteBillingFixture extends BillingWebhookFixture {
   readonly customerId: string;

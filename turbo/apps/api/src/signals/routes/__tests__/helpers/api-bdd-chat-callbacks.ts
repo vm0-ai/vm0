@@ -14,7 +14,7 @@ import { modelPoliciesRoutes } from "../../model-policies";
 import { pushSubscriptionsRoutes } from "../../push-subscriptions";
 import { sessionHistoryBlobBodyForKey } from "./api-bdd-session-history";
 import type { ApiTestUser } from "./api-bdd";
-import { createZeroRouteMocks } from "./zero-route-test";
+import { createRouteMocks } from "./route-test";
 import type { AgentEvent } from "../../../../lib/event-consumer/verify";
 
 const CHAT_CALLBACK_URL = "http://localhost:3000/api/internal/callbacks/chat";
@@ -64,7 +64,7 @@ function authenticate(
     return {};
   }
 
-  createZeroRouteMocks(context).clerk.session(
+  createRouteMocks(context).clerk.session(
     actor.userId,
     actor.orgId,
     actor.orgRole,

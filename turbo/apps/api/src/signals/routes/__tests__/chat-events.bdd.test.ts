@@ -112,7 +112,7 @@ import {
   seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
   setRunAutonomyBudgetFixture,
 } from "./helpers/runtime-state";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { overwriteModelProviderSecretForTests } from "./helpers/model-provider-state";
 import { flushWaitUntilForTest } from "../../context/wait-until";
@@ -179,7 +179,7 @@ const cu = createComputerUseBddApi(context);
 const misc = createMiscRoutesApi(context);
 const authDevice = createAuthDeviceApiActions(context);
 const authDeviceSupport = createAuthDeviceSupportApi(context);
-const routeMocks = createZeroRouteMocks(context);
+const routeMocks = createRouteMocks(context);
 const runStateStore = createStore();
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "okou web upload-file -f <path>";

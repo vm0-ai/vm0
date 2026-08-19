@@ -19,7 +19,7 @@ import {
   mockGoogleCalendarConnectorOAuth,
 } from "./helpers/api-bdd-workflows";
 import { chatEventDisplayText } from "./helpers/chat-event";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { workflowAutomationsRoutes } from "../workflow-automations";
 import { webhooksGoogleCalendarRoutes } from "../webhooks-google-calendar";
 
@@ -29,7 +29,7 @@ const TEST_APP_ROUTES = Object.freeze([
 ]);
 
 const context = testContext();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
 const runsApi = createRunsApi(context);
 const webhooksApi = createWebhookCallbackApi(context);

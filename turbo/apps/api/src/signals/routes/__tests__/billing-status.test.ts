@@ -24,17 +24,14 @@ import {
   seedBillingStatusOrg$,
   type BillingStatusFixture,
 } from "./helpers/billing-status";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
 import { createBddApi } from "./helpers/api-bdd";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { billingStatusRoutes } from "../billing-status";
 
 const context = testContext();
 const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);

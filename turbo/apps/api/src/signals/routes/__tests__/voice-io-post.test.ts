@@ -28,11 +28,11 @@ import {
 } from "../../../test-fixtures/system-config-seeds";
 import { seedOrgMembership$ } from "./helpers/org-membership";
 import { seedCompose$, seedRun$ } from "./helpers/usage-state";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 
 const context = testContext();
 const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const TEST_BUCKET = "test-user-artifacts";
 const AUDIO_INPUT_BEHAVIOR_KEY = "audio_input";
 const AUDIO_INPUT_FREE_QUOTA = 10;

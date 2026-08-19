@@ -99,7 +99,7 @@ import {
   projectChatEventRows,
   readProjectedChatEvents,
 } from "./chat-event-test-reader";
-import { createZeroRouteMocks } from "./zero-route-test";
+import { createRouteMocks } from "./route-test";
 
 interface AuthHeaders {
   readonly authorization?: string;
@@ -156,7 +156,7 @@ function authenticate(
     return {};
   }
 
-  createZeroRouteMocks(context).clerk.session(
+  createRouteMocks(context).clerk.session(
     actor.userId,
     actor.orgId,
     actor.orgRole,
@@ -234,7 +234,7 @@ export function persistedAttachment(
 }
 
 export function createChatFilesBddApi(context: TestContext) {
-  const mocks = createZeroRouteMocks(context);
+  const mocks = createRouteMocks(context);
 
   function mockCompletedUploadObjects(
     actor: ApiTestUser,

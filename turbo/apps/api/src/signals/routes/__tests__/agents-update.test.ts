@@ -18,7 +18,7 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { seedOrgMembership$ } from "./helpers/org-membership";
 import { cliAuthRoutes } from "../cli-auth";
 import { agentInstructionsRoutes } from "../agent-instructions";
@@ -27,7 +27,7 @@ import { workflowsRoutes } from "../workflows";
 
 const context = testContext();
 const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 interface OrgUser {
   readonly orgId: string;

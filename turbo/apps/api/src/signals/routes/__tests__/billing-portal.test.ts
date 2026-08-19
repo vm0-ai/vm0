@@ -17,15 +17,12 @@ import {
   generatedStripeSubscriptionId,
   postUsageAllowanceInvoicePaid,
 } from "./helpers/stripe-billing-webhook";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
 import { billingPortalRoutes } from "../billing-portal";
 
 const context = testContext();
 const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 const APP_ORIGIN = "http://app.localhost:3002";
 const PORTAL_CONFIGURATION_ID = "bpc_payment_methods";

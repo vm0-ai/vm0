@@ -61,7 +61,7 @@ import {
 } from "../../../test-fixtures/org-plan-entitlement";
 import { createUniqueStaffOrgIdFixture } from "../../../test-fixtures/staff-org";
 import { createDeferredPromise, settle } from "../../utils";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { assertPublicConnectorCatalogHasNoPrivateFields } from "./helpers/connector-catalog-public-leak";
 import { readConnectorCredentialStorageState } from "./helpers/connector-credential-storage-state";
 import { readUserSecrets } from "./helpers/user-config-state";
@@ -117,7 +117,7 @@ const TEST_APP_ROUTES = Object.freeze([
 ]);
 
 const context = testContext();
-const zeroMocks = createZeroRouteMocks(context);
+const zeroMocks = createRouteMocks(context);
 const bdd = createBddApi(context);
 const connectorsApi = createConnectorBddApi(context);
 const miscApi = createMiscRoutesApi(context);

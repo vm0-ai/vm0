@@ -30,7 +30,7 @@ import {
   seedTelegramUserLink$,
   type TelegramFixture,
 } from "./helpers/telegram";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { integrationsTelegramRoutes } from "../integrations-telegram";
 
@@ -38,7 +38,7 @@ const TEST_APP_ROUTES = Object.freeze([...integrationsTelegramRoutes]);
 
 const context = testContext();
 const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const storages = createStoragesBddApi(context);
 
 const OFFICIAL_BOT_TOKEN = "9876543210:fake-test-token";

@@ -37,14 +37,14 @@ import {
   type RecordedChatEventPut,
 } from "./helpers/fake-chat-event-r2";
 import { createOpsLogsApi } from "./helpers/api-bdd-ops-logs";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 
 const context = testContext();
 const store = createStore();
 const bdd = createBddApi(context);
 const chat = createChatFilesBddApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
-const routeMocks = createZeroRouteMocks(context);
+const routeMocks = createRouteMocks(context);
 
 interface ArchiveFixture {
   readonly actor: ApiTestUser;

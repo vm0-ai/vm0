@@ -23,7 +23,7 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { billingStatusRoutes } from "../billing-status";
 import { seoRoutes } from "../seo";
 
@@ -47,7 +47,7 @@ const SEO_PRICING_ROWS = [
 ] as const satisfies readonly UsagePricingRow[];
 
 function authenticate(actor: ApiTestUser) {
-  createZeroRouteMocks(context).clerk.session(
+  createRouteMocks(context).clerk.session(
     actor.userId,
     actor.orgId,
     actor.orgRole,

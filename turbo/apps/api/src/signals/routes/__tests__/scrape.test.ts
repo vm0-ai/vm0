@@ -28,7 +28,7 @@ import {
   expectApiError,
   type ApiTestUser,
 } from "./helpers/api-bdd";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 
 const context = testContext();
 const FIRECRAWL_SCRAPE_URL = "https://api.firecrawl.dev/v2/scrape";
@@ -60,7 +60,7 @@ function authenticate(actor: ApiTestUser | null): AuthHeaders {
     return {};
   }
 
-  createZeroRouteMocks(context).clerk.session(
+  createRouteMocks(context).clerk.session(
     actor.userId,
     actor.orgId,
     actor.orgRole,

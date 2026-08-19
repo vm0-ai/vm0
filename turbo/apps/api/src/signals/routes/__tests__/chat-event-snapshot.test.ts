@@ -33,10 +33,7 @@ import {
   readChatEventSnapshotHead,
   setChatEventSnapshotHeadVersion,
 } from "./helpers/runtime-state";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -68,7 +65,7 @@ function mockR2GcWindowForKey(key: string, after: Date): Date {
 }
 
 function authenticate(actor: ApiTestUser) {
-  createZeroRouteMocks(context).clerk.session(
+  createRouteMocks(context).clerk.session(
     actor.userId,
     actor.orgId,
     actor.orgRole,

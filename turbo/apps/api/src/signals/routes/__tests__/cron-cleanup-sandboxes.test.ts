@@ -43,7 +43,7 @@ import {
   seedUsagePricingRows,
 } from "../../../test-fixtures/system-config-seeds";
 import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
-import { createFixtureTracker } from "./helpers/zero-route-test";
+import { createFixtureTracker } from "./helpers/route-test";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { runnersRoutes } from "../runners";
 

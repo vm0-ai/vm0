@@ -10,11 +10,11 @@ import {
   deleteFeatureSwitchesForUser,
   updateFeatureSwitchesForUser,
 } from "./helpers/feature-switches";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { agentsRoutes } from "../agents";
 
 const context = testContext();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 describe("GET /api/zero/agents/:id/user-connectors", () => {
   it("keeps connector grants when their discovery feature switch is disabled", async () => {

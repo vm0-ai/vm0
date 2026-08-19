@@ -8,7 +8,7 @@ import {
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { meModelProvidersDeleteRoutes } from "../me-model-providers-delete";
 import { meModelProvidersListRoutes } from "../me-model-providers-list";
 import { meModelProvidersResetSubscriptionRoutes } from "../me-model-providers-reset-subscription";
@@ -25,7 +25,7 @@ const zeroPersonalModelProvidersByTypeTestRoutes = Object.freeze([
 ]);
 
 const context = testContext();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 interface UserModelProviderFixture {
   readonly orgId: string;
