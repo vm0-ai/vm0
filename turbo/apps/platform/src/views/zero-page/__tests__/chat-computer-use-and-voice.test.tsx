@@ -38,6 +38,20 @@ function computerUseRow(switchName: string): HTMLElement {
   return row;
 }
 
+function setApiOrigin(origin: string): void {
+  const element = document.createElement("meta");
+  element.name = "vm0-api-origin";
+  element.content = origin;
+  document.head.append(element);
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      element.remove();
+    },
+    { once: true },
+  );
+}
+
 describe("chat lifecycle", () => {
   it("keeps Cloud browser and Computer Use mutually exclusive", async () => {
     const user = userEvent.setup({ delay: null });
@@ -504,6 +518,7 @@ describe("chat lifecycle", () => {
 
   it("uses Okou copy on an Okou host", async () => {
     context.mocks.browser.url("https://app.okou.ai/");
+    setApiOrigin("https://api.okou.ai");
     const user = userEvent.setup({ delay: null });
     const threadId = "e2000000-0000-4000-a000-000000000005";
     mockChatLifecycle(context, { threadId });
