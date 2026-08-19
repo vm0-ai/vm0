@@ -3,11 +3,14 @@ use std::process::{ExitStatus, Output, Stdio};
 use std::time::Duration;
 
 use tokio::io::AsyncReadExt;
-use tokio::process::Command;
+use tokio::process::{Child, Command};
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
+use crate::child_cleanup::kill_and_reap_child_on_drop;
+
 const COMMAND_CLEANUP_TIMEOUT: Duration = Duration::from_secs(2);
+const BOUNDED_COMMAND_CHILD_LABEL: &str = "bounded command";
 
 #[derive(Debug)]
 pub(crate) enum BoundedCommandOutcome<T> {
@@ -33,8 +36,7 @@ pub(crate) async fn run_bounded(
     program: &str,
     timeout: Duration,
 ) -> Result<BoundedCommandOutcome<ExitStatus>, BoundedCommandError> {
-    command.kill_on_drop(true);
-    let mut child = command.spawn().map_err(BoundedCommandError::Spawn)?;
+    let mut child = BoundedChild::spawn(&mut command).map_err(BoundedCommandError::Spawn)?;
 
     match tokio::time::timeout(timeout, child.wait()).await {
         Ok(Ok(status)) => Ok(BoundedCommandOutcome::Exited(status)),
@@ -67,10 +69,9 @@ pub(crate) async fn run_output_bounded(
             command.stdout(Stdio::piped()).stderr(Stdio::piped());
         }
     }
-    command.kill_on_drop(true);
 
-    let mut child = command.spawn().map_err(BoundedCommandError::Spawn)?;
-    let mut output_tasks = match ChildOutputTasks::from_child(&mut child, capture) {
+    let mut child = BoundedChild::spawn(&mut command).map_err(BoundedCommandError::Spawn)?;
+    let mut output_tasks = match child.output_tasks(capture) {
         Ok(output_tasks) => output_tasks,
         Err(stream) => {
             return match kill_and_reap_child(program, &mut child).await {
@@ -106,6 +107,50 @@ pub(crate) async fn run_output_bounded(
         stdout,
         stderr,
     }))
+}
+
+struct BoundedChild {
+    child: Option<Child>,
+}
+
+impl BoundedChild {
+    fn spawn(command: &mut Command) -> io::Result<Self> {
+        command.spawn().map(|child| Self { child: Some(child) })
+    }
+
+    async fn wait(&mut self) -> io::Result<ExitStatus> {
+        let result = match self.child.as_mut() {
+            Some(child) => child.wait().await,
+            None => Err(io::Error::other("bounded command child is not owned")),
+        };
+        if result.is_ok() {
+            self.child = None;
+        }
+        result
+    }
+
+    fn start_kill(&mut self) -> io::Result<()> {
+        match self.child.as_mut() {
+            Some(child) => child.start_kill(),
+            None => Err(io::Error::other("bounded command child is not owned")),
+        }
+    }
+
+    fn output_tasks(
+        &mut self,
+        capture: CommandOutputCapture,
+    ) -> Result<ChildOutputTasks, &'static str> {
+        match self.child.as_mut() {
+            Some(child) => ChildOutputTasks::from_child(child, capture),
+            None => Err("child"),
+        }
+    }
+}
+
+impl Drop for BoundedChild {
+    fn drop(&mut self) {
+        kill_and_reap_child_on_drop(BOUNDED_COMMAND_CHILD_LABEL, &mut self.child);
+    }
 }
 
 enum ChildOutputTasks {
@@ -198,6 +243,12 @@ impl ChildOutputTasks {
     }
 }
 
+impl Drop for ChildOutputTasks {
+    fn drop(&mut self) {
+        self.abort();
+    }
+}
+
 async fn read_child_output<R>(mut reader: R) -> io::Result<Vec<u8>>
 where
     R: tokio::io::AsyncRead + Unpin,
@@ -238,10 +289,7 @@ fn output_task_timeout(program: &str, stream: &str) -> BoundedCommandError {
     ))
 }
 
-async fn kill_and_reap_child(
-    program: &str,
-    child: &mut tokio::process::Child,
-) -> Result<(), String> {
+async fn kill_and_reap_child(program: &str, child: &mut BoundedChild) -> Result<(), String> {
     let kill_error = child.start_kill().err();
     let deadline = Instant::now() + COMMAND_CLEANUP_TIMEOUT;
     match tokio::time::timeout_at(deadline, child.wait()).await {
@@ -265,6 +313,60 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     use crate::process::read_process_stat;
+    #[cfg(target_os = "linux")]
+    use std::path::Path;
+
+    #[cfg(target_os = "linux")]
+    const PROCESS_OBSERVATION_TIMEOUT: Duration = Duration::from_secs(2);
+
+    #[cfg(target_os = "linux")]
+    fn pid_recording_command(pid_path: &Path) -> Command {
+        let mut command = Command::new("sh");
+        command
+            .arg("-c")
+            .arg("printf '%s' \"$$\" > \"$1\"; exec sleep 60")
+            .arg("sh")
+            .arg(pid_path);
+        command
+    }
+
+    #[cfg(target_os = "linux")]
+    async fn wait_for_recorded_process(pid_path: &Path) -> io::Result<(u32, u64)> {
+        let deadline = std::time::Instant::now() + PROCESS_OBSERVATION_TIMEOUT;
+        loop {
+            match tokio::fs::read_to_string(pid_path).await {
+                Ok(raw_pid) => {
+                    let pid = raw_pid.trim().parse::<u32>().map_err(io::Error::other)?;
+                    if let Some(stat) = read_process_stat(pid).await {
+                        return Ok((pid, stat.starttime));
+                    }
+                }
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error),
+            }
+            if std::time::Instant::now() >= deadline {
+                return Err(io::Error::other(format!(
+                    "timed out waiting for command pid in {}",
+                    pid_path.display()
+                )));
+            }
+            tokio::task::yield_now().await;
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    async fn wait_for_process_exit(pid: u32, starttime: u64) -> io::Result<()> {
+        let deadline = std::time::Instant::now() + PROCESS_OBSERVATION_TIMEOUT;
+        while matches!(read_process_stat(pid).await, Some(stat) if stat.starttime == starttime) {
+            if std::time::Instant::now() >= deadline {
+                return Err(io::Error::other(format!(
+                    "timed out waiting for process {pid} to be reaped"
+                )));
+            }
+            tokio::task::yield_now().await;
+        }
+        Ok(())
+    }
 
     #[tokio::test]
     async fn status_command_times_out_after_reaping_child() {
@@ -293,6 +395,59 @@ mod tests {
         .unwrap();
 
         assert!(matches!(outcome, BoundedCommandOutcome::TimedOut));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn output_command_timeout_reaps_recorded_child() -> io::Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+        let pid_path = temp_dir.path().join("pid");
+        let command = pid_recording_command(&pid_path);
+        let task = tokio::spawn(run_output_bounded(
+            command,
+            "sh",
+            CommandOutputCapture::StdoutAndStderr,
+            Duration::from_secs(1),
+        ));
+        let (pid, starttime) = match wait_for_recorded_process(&pid_path).await {
+            Ok(process) => process,
+            Err(error) => {
+                task.abort();
+                let _ = task.await;
+                return Err(error);
+            }
+        };
+
+        let outcome = task.await.unwrap().unwrap();
+
+        assert!(matches!(outcome, BoundedCommandOutcome::TimedOut));
+        wait_for_process_exit(pid, starttime).await
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn output_command_cancellation_reaps_recorded_child() -> io::Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+        let pid_path = temp_dir.path().join("pid");
+        let command = pid_recording_command(&pid_path);
+        let task = tokio::spawn(run_output_bounded(
+            command,
+            "sh",
+            CommandOutputCapture::StdoutAndStderr,
+            Duration::from_secs(60),
+        ));
+        let (pid, starttime) = match wait_for_recorded_process(&pid_path).await {
+            Ok(process) => process,
+            Err(error) => {
+                task.abort();
+                let _ = task.await;
+                return Err(error);
+            }
+        };
+
+        task.abort();
+        assert!(matches!(task.await, Err(error) if error.is_cancelled()));
+        wait_for_process_exit(pid, starttime).await
     }
 
     #[tokio::test]
@@ -333,29 +488,6 @@ mod tests {
         assert!(output.status.success());
         assert!(output.stdout.is_empty());
         assert_eq!(output.stderr, b"stderr");
-    }
-
-    #[cfg(target_os = "linux")]
-    #[tokio::test]
-    async fn kill_and_reap_child_reaps_running_child() {
-        let mut child = Command::new("sleep")
-            .arg("60")
-            .kill_on_drop(true)
-            .spawn()
-            .unwrap();
-        let pid = child.id().unwrap();
-        let starttime = read_process_stat(pid)
-            .await
-            .unwrap_or_else(|| panic!("read initial process stat for pid {pid}"))
-            .starttime;
-
-        kill_and_reap_child("sleep", &mut child).await.unwrap();
-
-        let observed = read_process_stat(pid).await;
-        assert!(
-            !matches!(&observed, Some(stat) if stat.starttime == starttime),
-            "killed child pid {pid} was not reaped: {observed:?}"
-        );
     }
 
     #[tokio::test(start_paused = true)]
