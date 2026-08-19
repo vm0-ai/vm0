@@ -101,6 +101,115 @@ impl MockSandbox {
         self
     }
 
+    async fn final_exec_and_park_with_observer_and_handoff(
+        &mut self,
+        request: &ExecRequest<'_>,
+        diagnostic_label: &'static str,
+        handoff: Option<(
+            &SandboxFinalExecParkHandoff,
+            SandboxFinalExecParkHandoffPoint,
+        )>,
+        observer: &mut dyn SandboxFinalExecParkObserver,
+    ) -> Result<SandboxFinalExecParkHandoffOutcome> {
+        let preparation_started = Instant::now();
+        let exec_result = match self
+            .exec_with_diagnostic_label(request, diagnostic_label)
+            .await
+        {
+            Ok(exec_result) => {
+                observer.record_stage(
+                    SandboxFinalExecParkStage::ReusePreparation,
+                    preparation_started.elapsed(),
+                    true,
+                );
+                exec_result
+            }
+            Err(error) => {
+                observer.record_stage(
+                    SandboxFinalExecParkStage::ReusePreparation,
+                    preparation_started.elapsed(),
+                    false,
+                );
+                return Err(error);
+            }
+        };
+        let handoff_point =
+            handoff.and_then(|(signal, point)| signal.accept_if_requested().then_some(point));
+        let physical_park_started = Instant::now();
+        observer.record_substage(
+            SandboxFinalExecParkSubstage::BalloonSetup,
+            Duration::ZERO,
+            true,
+            match handoff_point {
+                Some(SandboxFinalExecParkHandoffPoint::BeforeBalloon) => {
+                    Some(SandboxFinalExecParkSubstageOutcome::HandoffRequested)
+                }
+                Some(SandboxFinalExecParkHandoffPoint::DuringBalloonSettle) => None,
+                None => Some(SandboxFinalExecParkSubstageOutcome::Skipped),
+            },
+        );
+        observer.record_substage(
+            SandboxFinalExecParkSubstage::BalloonSettle,
+            Duration::ZERO,
+            true,
+            Some(match handoff_point {
+                Some(SandboxFinalExecParkHandoffPoint::DuringBalloonSettle) => {
+                    SandboxFinalExecParkSubstageOutcome::HandoffRequested
+                }
+                Some(SandboxFinalExecParkHandoffPoint::BeforeBalloon) | None => {
+                    SandboxFinalExecParkSubstageOutcome::Skipped
+                }
+            }),
+        );
+        let park_outcome = match self.park().await {
+            Ok(park_outcome) => {
+                observer.record_substage(
+                    SandboxFinalExecParkSubstage::VcpuPause,
+                    Duration::ZERO,
+                    true,
+                    None,
+                );
+                observer.record_stage(
+                    SandboxFinalExecParkStage::PhysicalPark,
+                    physical_park_started.elapsed(),
+                    true,
+                );
+                park_outcome
+            }
+            Err(error) => {
+                observer.record_substage(
+                    SandboxFinalExecParkSubstage::VcpuPause,
+                    Duration::ZERO,
+                    false,
+                    Some(SandboxFinalExecParkSubstageOutcome::Failed),
+                );
+                observer.record_stage(
+                    SandboxFinalExecParkStage::PhysicalPark,
+                    physical_park_started.elapsed(),
+                    false,
+                );
+                return Err(error);
+            }
+        };
+        if let Some(point) = handoff_point {
+            if let Some(overrides) = &self.overrides {
+                overrides
+                    .lifecycle
+                    .completed_final_exec_park_handoff_points
+                    .lock_ignoring_poison()
+                    .push(point);
+            }
+            Ok(SandboxFinalExecParkHandoffOutcome::Handoff { exec_result, point })
+        } else {
+            Ok(SandboxFinalExecParkHandoffOutcome::Parked(
+                SandboxFinalExecParkOutcome {
+                    exec_result,
+                    park_outcome,
+                },
+            ))
+        }
+    }
+
     /// Queue an exec result. Results are consumed in FIFO order.
     pub fn push_exec_result(&self, result: Result<ExecResult>) {
         self.exec_results.lock_ignoring_poison().push_back(result);
@@ -369,75 +478,46 @@ impl Sandbox for MockSandbox {
         diagnostic_label: &'static str,
         observer: &mut dyn SandboxFinalExecParkObserver,
     ) -> Result<SandboxFinalExecParkOutcome> {
-        let preparation_started = Instant::now();
-        let exec_result = match self
-            .exec_with_diagnostic_label(request, diagnostic_label)
-            .await
+        match self
+            .final_exec_and_park_with_observer_and_handoff(
+                request,
+                diagnostic_label,
+                None,
+                observer,
+            )
+            .await?
         {
-            Ok(exec_result) => {
-                observer.record_stage(
-                    SandboxFinalExecParkStage::ReusePreparation,
-                    preparation_started.elapsed(),
-                    true,
-                );
-                exec_result
+            SandboxFinalExecParkHandoffOutcome::Parked(outcome) => Ok(outcome),
+            SandboxFinalExecParkHandoffOutcome::Handoff { .. } => {
+                Err(SandboxError::IdleTransition {
+                    transition: SandboxIdleTransition::Park,
+                    message: "mock accepted a handoff without a handoff signal".into(),
+                })
             }
-            Err(error) => {
-                observer.record_stage(
-                    SandboxFinalExecParkStage::ReusePreparation,
-                    preparation_started.elapsed(),
-                    false,
-                );
-                return Err(error);
-            }
-        };
-        let physical_park_started = Instant::now();
-        observer.record_substage(
-            SandboxFinalExecParkSubstage::BalloonSetup,
-            Duration::ZERO,
-            true,
-            Some(SandboxFinalExecParkSubstageOutcome::Skipped),
-        );
-        observer.record_substage(
-            SandboxFinalExecParkSubstage::BalloonSettle,
-            Duration::ZERO,
-            true,
-            Some(SandboxFinalExecParkSubstageOutcome::Skipped),
-        );
-        let park_outcome = match self.park().await {
-            Ok(park_outcome) => {
-                observer.record_substage(
-                    SandboxFinalExecParkSubstage::VcpuPause,
-                    Duration::ZERO,
-                    true,
-                    None,
-                );
-                observer.record_stage(
-                    SandboxFinalExecParkStage::PhysicalPark,
-                    physical_park_started.elapsed(),
-                    true,
-                );
-                park_outcome
-            }
-            Err(error) => {
-                observer.record_substage(
-                    SandboxFinalExecParkSubstage::VcpuPause,
-                    Duration::ZERO,
-                    false,
-                    Some(SandboxFinalExecParkSubstageOutcome::Failed),
-                );
-                observer.record_stage(
-                    SandboxFinalExecParkStage::PhysicalPark,
-                    physical_park_started.elapsed(),
-                    false,
-                );
-                return Err(error);
-            }
-        };
-        Ok(SandboxFinalExecParkOutcome {
-            exec_result,
-            park_outcome,
-        })
+        }
+    }
+
+    async fn final_exec_and_park_for_handoff(
+        &mut self,
+        request: &ExecRequest<'_>,
+        diagnostic_label: &'static str,
+        handoff: &SandboxFinalExecParkHandoff,
+        observer: &mut dyn SandboxFinalExecParkObserver,
+    ) -> Result<SandboxFinalExecParkHandoffOutcome> {
+        let point = self.overrides.as_ref().and_then(|overrides| {
+            overrides
+                .lifecycle
+                .final_exec_park_handoff_points
+                .lock_ignoring_poison()
+                .pop_front()
+        });
+        self.final_exec_and_park_with_observer_and_handoff(
+            request,
+            diagnostic_label,
+            point.map(|point| (handoff, point)),
+            observer,
+        )
+        .await
     }
 
     /// Mock unpark: counter + queued-result semantics mirror [`park`]

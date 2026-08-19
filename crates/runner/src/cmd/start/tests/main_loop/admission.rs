@@ -948,12 +948,15 @@ async fn finalizing_capacity_wait_rechecks_when_an_active_vm_parks_idle() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn finalizing_handoff_reuses_matching_vm_past_preference_deadline() {
+async fn finalizing_immediate_handoff_reuses_matching_vm_past_preference_deadline() {
     let destroy_gate = sandbox_mock::MockLifecycleGate::new();
     let wait_gate = sandbox_mock::MockLifecycleGate::new();
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
     overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    overrides.push_final_exec_park_handoff_point(
+        sandbox::SandboxFinalExecParkHandoffPoint::BeforeBalloon,
+    );
     let (config, env) =
         mock_run_config_with_overrides(test_profiles(), 2, 4096, 1, Arc::clone(&overrides));
     let budget = Arc::clone(&config.capacity.budget);
@@ -1009,6 +1012,11 @@ async fn finalizing_handoff_reuses_matching_vm_past_preference_deadline() {
     assert_eq!(budget.allocated(), (2, 4096, 1));
     assert_eq!(env.idle_pool.lock().await.len(), 0);
     assert_eq!(overrides.unpark_call_count(), 1);
+    assert_eq!(
+        overrides.completed_final_exec_park_handoff_points(),
+        vec![sandbox::SandboxFinalExecParkHandoffPoint::BeforeBalloon],
+        "runner integration must exercise the typed immediate-handoff path"
+    );
 
     wait_gate.release_one();
     let predecessor_completion = env
