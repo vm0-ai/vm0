@@ -60,11 +60,9 @@ import {
   type NewChatThreadPane,
 } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import {
-  scrollToThread$,
-  scrollCurrentChatThreadOnRef$,
   currentChatThreadListed$,
   sidebarChatThreadCount$,
-  sidebarChatThreadWindow$,
+  type SidebarChatThreadScrollSignals,
   type SidebarChatThreadWindow,
 } from "../../signals/chat-page/sidebar-chat-thread-scroll.ts";
 import type { SidebarChatThreadItemSignals } from "../../signals/chat-page/sidebar-chat-thread-item.ts";
@@ -92,9 +90,6 @@ import {
   setRenameDialogInput$,
   sessionListCollapsed$,
   setSessionListCollapsed$,
-  isScrolled$,
-  setIsScrolled$,
-  setChatThreadVirtualListElement$,
   CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { Link } from "../router/link.tsx";
@@ -629,11 +624,17 @@ function DeleteChatThreadDialog() {
   );
 }
 
-function VirtualizedChatThreads({ threadCount }: { threadCount: number }) {
-  const window = useLastResolved(sidebarChatThreadWindow$, {
+function VirtualizedChatThreads({
+  scrollSignals,
+  threadCount,
+}: {
+  scrollSignals: SidebarChatThreadScrollSignals;
+  threadCount: number;
+}) {
+  const window = useLastResolved(scrollSignals.window$, {
     equalityFn: equalSidebarChatThreadWindows,
   });
-  const setVirtualListElement = useSet(setChatThreadVirtualListElement$);
+  const setVirtualListElement = useSet(scrollSignals.setVirtualListElement$);
   const startIndex = window?.startIndex ?? 0;
   const visibleItems = window?.items ?? [];
 
@@ -666,7 +667,13 @@ function VirtualizedChatThreads({ threadCount }: { threadCount: number }) {
   );
 }
 
-function ChatThreads({ threadCount }: { threadCount: number }) {
+function ChatThreads({
+  scrollSignals,
+  threadCount,
+}: {
+  scrollSignals: SidebarChatThreadScrollSignals;
+  threadCount: number;
+}) {
   const { t } = useTranslation();
   const unreadOnly = useGet(chatThreadOnlyUnread$);
 
@@ -683,7 +690,12 @@ function ChatThreads({ threadCount }: { threadCount: number }) {
       </p>
     );
   }
-  return <VirtualizedChatThreads threadCount={threadCount} />;
+  return (
+    <VirtualizedChatThreads
+      scrollSignals={scrollSignals}
+      threadCount={threadCount}
+    />
+  );
 }
 
 function ChatThreadsListMenuTooltip() {
@@ -964,20 +976,26 @@ function consumePointerFocus(viewport: HTMLElement) {
   return true;
 }
 
-function ChatThreadsContent() {
+function ChatThreadsContent({
+  scrollSignals,
+}: {
+  scrollSignals: SidebarChatThreadScrollSignals;
+}) {
   const collapsed = useGet(sessionListCollapsed$);
 
   if (collapsed) {
     return null;
   }
 
-  return <ExpandedChatThreadsContent />;
+  return <ExpandedChatThreadsContent scrollSignals={scrollSignals} />;
 }
 
 function AgentChatThreadsContent({
   currentMainThreadId,
+  scrollSignals,
 }: {
   currentMainThreadId: string | null;
+  scrollSignals: SidebarChatThreadScrollSignals;
 }) {
   // The primitive count preserves the previous resolved value while the
   // underlying event projection recomputes. Visible rows subscribe separately
@@ -988,7 +1006,9 @@ function AgentChatThreadsContent({
   const chatThreadsLoading = threadCountLoadable.state === "loading";
   const currentMainThreadListed =
     useLastResolved(currentChatThreadListed$) ?? false;
-  const scrollCurrentChatThreadOnRef = useSet(scrollCurrentChatThreadOnRef$);
+  const scrollCurrentChatThreadOnRef = useSet(
+    scrollSignals.scrollCurrentChatThreadOnRef$,
+  );
 
   return (
     <div className="flex flex-col gap-1">
@@ -1002,19 +1022,22 @@ function AgentChatThreadsContent({
       {chatThreadsLoading ? (
         <ChatThreadsSkeleton />
       ) : (
-        <ChatThreads threadCount={threadCount} />
+        <ChatThreads scrollSignals={scrollSignals} threadCount={threadCount} />
       )}
     </div>
   );
 }
 
-function ExpandedChatThreadsContent() {
+function ExpandedChatThreadsContent({
+  scrollSignals,
+}: {
+  scrollSignals: SidebarChatThreadScrollSignals;
+}) {
   const { t } = useTranslation();
   const agentScope = useGet(currentChatAgentScope$);
-  const isScrolled = useGet(isScrolled$);
-  const setIsScrolledFn = useSet(setIsScrolled$);
+  const isScrolled = useGet(scrollSignals.isScrolled$);
   const currentMainThreadId = useGet(currentChatThreadId$);
-  const scrollToThread = useSet(scrollToThread$);
+  const scrollToThread = useSet(scrollSignals.scrollToThread$);
   const pageSignal = useGet(pageSignal$);
   const focusThreadLink = (
     viewport: HTMLElement,
@@ -1069,6 +1092,7 @@ function ExpandedChatThreadsContent() {
 
   return (
     <OverlayScrollArea
+      scrollSignals={scrollSignals}
       className="mt-1 min-h-0 flex-1"
       aria-label={t(($) => {
         return $.chat.sidebar.chatThreads;
@@ -1087,9 +1111,6 @@ function ExpandedChatThreadsContent() {
         }
         focusCurrentMainThreadLink(event.currentTarget);
       }}
-      onScroll={(e) => {
-        return setIsScrolledFn(e.currentTarget.scrollTop > 0);
-      }}
       style={{
         boxShadow: isScrolled ? "0 -1px 0 0 hsl(var(--border) / 0.4)" : "none",
       }}
@@ -1097,15 +1118,18 @@ function ExpandedChatThreadsContent() {
       <AgentChatThreadsContent
         key={agentScope ?? "no-agent"}
         currentMainThreadId={currentMainThreadId}
+        scrollSignals={scrollSignals}
       />
     </OverlayScrollArea>
   );
 }
 export function ChatThreadsSection({
+  scrollSignals,
   showMarkAllRead = false,
 }: {
+  scrollSignals: SidebarChatThreadScrollSignals;
   showMarkAllRead?: boolean;
-} = {}) {
+}) {
   const agentScope = useGet(currentChatAgentScope$);
 
   return (
@@ -1114,7 +1138,7 @@ export function ChatThreadsSection({
         key={agentScope ?? "no-agent"}
         showMarkAllRead={showMarkAllRead}
       />
-      <ChatThreadsContent />
+      <ChatThreadsContent scrollSignals={scrollSignals} />
       <ChatThreadRenameDialog />
       <DeleteChatThreadDialog />
     </div>
