@@ -153,9 +153,10 @@ describe("okou generate video command", () => {
     });
   });
 
-  it("should ignore an explicit model inside an agent run", async () => {
-    // The server generates with the model the run is set to and drops whatever
-    // the request names, so sending one would only misreport what was used.
+  it("should send an explicit model inside an agent run", async () => {
+    // The run's model is a default, so an explicit `--model` is the only way a
+    // user who names a model in the prompt can get it. Dropping it here left
+    // the agent unable to honour that request at all.
     vi.stubEnv("OKOU_TOKEN", buildRunToken());
     let payload: unknown = null;
     server.use(
@@ -175,8 +176,10 @@ describe("okou generate video command", () => {
       "kling-v3-4k",
     ]);
 
-    expect(payload).not.toHaveProperty("model");
-    expect(payload).toMatchObject({ prompt: "A neon market tracking shot" });
+    expect(payload).toMatchObject({
+      prompt: "A neon market tracking shot",
+      model: "kling-v3-4k",
+    });
   });
 
   it("should generate a video and print the /f file URL", async () => {
