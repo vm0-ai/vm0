@@ -602,6 +602,7 @@
     }
   },
   "sidebar": {
+    "addPin": "ピン留め",
     "bestMatches": "最適な結果",
     "chatResult": "チャット",
     "clearSearch": "検索をクリア",

@@ -3668,10 +3668,10 @@ describe("zero sidebar", () => {
     });
 
     const grid = await screen.findByTestId("pinned-agents-grid");
-    // Six cards cached two rows, so the skeleton grid must restore 2 * 5
-    // placeholders rather than the single-row default of 5.
+    // Six cards plus Pin cached two rows, so the skeleton grid must restore
+    // 2 * 5 - 1 placeholders rather than the single-row default of 4.
     expect(within(grid).getAllByTestId("pinned-agent-skeleton")).toHaveLength(
-      10,
+      9,
     );
 
     preferencesGate.resolve();
@@ -3682,7 +3682,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("keeps the pin entry in the section header, outside the agent grid", async () => {
+  it("keeps Pin after the first four pinned agents in navigation order", async () => {
     const pinnedAgentIds = prepareOverflowingPinnedAgents();
     context.mocks.data.userPreferences({ pinnedAgentIds });
 
@@ -3700,19 +3700,28 @@ describe("zero sidebar", () => {
       expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
     });
 
-    // The pin entry shares the trailing icon column with the chat header and
-    // the chats section menu, so it must sit in the header rather than take a
-    // grid cell and push the sixth agent onto a second row.
-    const pinAgent = within(pinnedSection).getByLabelText("Pin an agent");
-    expect(grid.contains(pinAgent)).toBeFalsy();
+    const pinAgent = queryAllByRoleFast("button", grid).find((candidate) => {
+      return candidate.getAttribute("aria-label") === "Pin an agent";
+    });
+    if (!pinAgent) {
+      throw new Error("Pin agent button not found");
+    }
+    // Cards render as Zero, Research, Support, Operations, Pin, Analytics,
+    // Billing, so Pin closes the first row and the rest wrap after it.
+    const fourthAgent = pinnedAgentLink(grid, "Operations Agent");
+    const fifthAgent = pinnedAgentLink(grid, "Analytics Agent");
+
     expect(
-      queryAllByRoleFast("button", grid).some((candidate) => {
-        return candidate.getAttribute("aria-label") === "Pin an agent";
-      }),
-    ).toBeFalsy();
+      fourthAgent.compareDocumentPosition(pinAgent) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(
+      pinAgent.compareDocumentPosition(fifthAgent) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
-  it("pins an agent from the section pin entry", async () => {
+  it("pins an agent from the grid pin entry", async () => {
     prepareAgentTeam();
     context.mocks.data.userPreferences({ pinnedAgentIds: [RESEARCH_AGENT_ID] });
 

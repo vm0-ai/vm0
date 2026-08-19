@@ -602,6 +602,7 @@
     }
   },
   "sidebar": {
+    "addPin": "Fijar",
     "bestMatches": "Mejores coincidencias",
     "chatResult": "Conversación",
     "clearSearch": "Borrar búsqueda",
