@@ -237,7 +237,7 @@ export type PublicConnectorCatalogPermissionDetailResponse = z.infer<
   typeof publicConnectorCatalogPermissionDetailResponseSchema
 >;
 
-export const zeroConnectorCatalogContract = c.router({
+export const connectorCatalogContract = c.router({
   list: {
     method: "GET",
     path: "/api/okou/connector-catalog",
@@ -320,4 +320,4 @@ export const zeroConnectorCatalogContract = c.router({
   },
 });
 
-export type ZeroConnectorCatalogContract = typeof zeroConnectorCatalogContract;
+export type ConnectorCatalogContract = typeof connectorCatalogContract;

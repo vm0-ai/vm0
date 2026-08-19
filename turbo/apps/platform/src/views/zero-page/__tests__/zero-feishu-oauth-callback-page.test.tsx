@@ -1,8 +1,8 @@
 import { feishuOauthContract } from "@okouai/api-contracts/contracts/feishu-oauth";
 import {
-  zeroConnectorCatalogContract,
+  connectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
-} from "@okouai/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/connector-catalog";
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -48,7 +48,7 @@ describe("feishu OAuth callback page", () => {
       "https://applink.feishu.cn/client/bot/open?appId=cli_test";
     const locationAssign = context.mocks.browser.locationAssign();
     let callbackQuery: unknown;
-    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+    context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
       return respond(200, { connectors: [feishuConnectorStatus()] });
     });
     context.mocks.api(feishuOauthContract.callback, ({ query, respond }) => {

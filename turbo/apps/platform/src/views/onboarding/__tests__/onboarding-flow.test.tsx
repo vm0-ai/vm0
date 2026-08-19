@@ -13,9 +13,9 @@ import {
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
 import {
-  zeroConnectorCatalogContract,
+  connectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
-} from "@okouai/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/connector-catalog";
 import {
   zeroConnectorManualGrantContract,
   zeroConnectorOauthStartContract,
@@ -171,7 +171,7 @@ function mockGithubCatalogItem(
     singleAuthCodeAuthMethodId: "oauth",
     connectNotice: null,
   };
-  context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+  context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
     return respond(200, { connectors: [github] });
   });
 }
@@ -440,7 +440,7 @@ describe("onboarding flow", () => {
 
   it("allows draft creation before required connectors are connected", async () => {
     mockOnboardingNeeded();
-    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+    context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
       return respond(200, { connectors: [] });
     });
     detachedSetupPage({

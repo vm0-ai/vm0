@@ -14,7 +14,7 @@ import type {
   PublicConnectorCatalogPermissionSummary,
   PublicConnectorCatalogStatusItem,
   PublicConnectorCatalogStatusResponse,
-} from "@okouai/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/connector-catalog";
 import {
   connectorCatalogActiveSnapshot,
   connectorCatalogCompatibilityEvaluation,

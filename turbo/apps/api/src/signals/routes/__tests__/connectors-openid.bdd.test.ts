@@ -5,7 +5,7 @@ import {
   zeroConnectorOpenIdStartContract,
   zeroConnectorsBySlugContract,
 } from "@okouai/api-contracts/contracts/zero-connectors";
-import { zeroConnectorCatalogContract } from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import { connectorCatalogContract } from "@okouai/api-contracts/contracts/connector-catalog";
 import { steamPlayerContract } from "@okouai/api-contracts/contracts/steam-player";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
@@ -315,7 +315,7 @@ describe("Steam OpenID connector", () => {
     mockSession(actor);
 
     const client = setupApp({ context, routes: connectorCatalogRoutes })(
-      zeroConnectorCatalogContract,
+      connectorCatalogContract,
     );
     const visible = await accept(
       client.status({ headers: authHeaders() }),

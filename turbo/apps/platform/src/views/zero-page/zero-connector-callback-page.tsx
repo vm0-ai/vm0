@@ -1,5 +1,5 @@
 import { AlertCircle, Check, Loader2 } from "lucide-react";
-import type { PublicConnectorCatalogIcon } from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import type { PublicConnectorCatalogIcon } from "@okouai/api-contracts/contracts/connector-catalog";
 import { Button } from "@okouai/ui/components/ui/button";
 import { useTranslation } from "react-i18next";
 import { ZeroConnectorFlowCard } from "./zero-connector-flow-card.tsx";

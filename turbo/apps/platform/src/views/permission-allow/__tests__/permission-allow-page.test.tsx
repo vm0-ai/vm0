@@ -3,9 +3,9 @@ import userEvent from "@testing-library/user-event";
 import { chatEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { zeroAgentsByIdContract } from "@okouai/api-contracts/contracts/zero-agents";
 import {
-  zeroConnectorCatalogContract,
+  connectorCatalogContract,
   type PublicConnectorCatalogPermissionDetail,
-} from "@okouai/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/connector-catalog";
 import {
   zeroUserPermissionGrantsContract,
   type UserPermissionGrantResponse,
@@ -91,7 +91,7 @@ describe("permission allow page", () => {
       });
     });
     context.mocks.api(
-      zeroConnectorCatalogContract.permissions,
+      connectorCatalogContract.permissions,
       ({ params, respond }) => {
         expect(params.connectorSlug).toBe("slack");
         return respond(200, {
@@ -215,14 +215,11 @@ describe("permission allow page", () => {
         visibility: "public",
       });
     });
-    context.mocks.api(
-      zeroConnectorCatalogContract.permissions,
-      ({ respond }) => {
-        return respond(404, {
-          error: { message: "Connector not found", code: "NOT_FOUND" },
-        });
-      },
-    );
+    context.mocks.api(connectorCatalogContract.permissions, ({ respond }) => {
+      return respond(404, {
+        error: { message: "Connector not found", code: "NOT_FOUND" },
+      });
+    });
 
     detachedSetupPage({
       context,
@@ -503,7 +500,7 @@ describe("permission allow page", () => {
       });
     });
     context.mocks.api(
-      zeroConnectorCatalogContract.permissions,
+      connectorCatalogContract.permissions,
       ({ params, respond }) => {
         expect(params.connectorSlug).toBe("slack");
         return respond(200, {

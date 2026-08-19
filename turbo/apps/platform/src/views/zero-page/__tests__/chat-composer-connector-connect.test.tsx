@@ -1,9 +1,9 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
-  zeroConnectorCatalogContract,
+  connectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
-} from "@okouai/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/connector-catalog";
 import {
   zeroCustomConnectorValuesContract,
   zeroCustomConnectorsContract,
@@ -191,7 +191,7 @@ function mcpCustomConnector(
 function mockCatalog(
   connectors: readonly PublicConnectorCatalogStatusItem[],
 ): void {
-  context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+  context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
     return respond(200, { connectors: [...connectors] });
   });
 }
@@ -773,7 +773,7 @@ describe("chat composer connector connection", () => {
     const discoveryKeywords: (string | undefined)[] = [];
     let fullCatalogRequests = 0;
     context.mocks.api(
-      zeroConnectorCatalogContract.discovery,
+      connectorCatalogContract.discovery,
       ({ query, respond }) => {
         discoveryKeywords.push(query.keyword);
         return respond(200, {
@@ -782,7 +782,7 @@ describe("chat composer connector connection", () => {
         });
       },
     );
-    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+    context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
       fullCatalogRequests += 1;
       return respond(200, { connectors: [github, axiom] });
     });

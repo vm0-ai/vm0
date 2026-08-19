@@ -9,7 +9,7 @@ import {
   zeroConnectorsMainContract,
   zeroConnectorsSearchContract,
 } from "@okouai/api-contracts/contracts/zero-connectors";
-import type { PublicConnectorCatalogDetail } from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import type { PublicConnectorCatalogDetail } from "@okouai/api-contracts/contracts/connector-catalog";
 import { connectorOauthStates } from "@okouai/db/schema/connector-oauth-state";
 
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";

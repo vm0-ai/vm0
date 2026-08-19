@@ -7,7 +7,7 @@ import type {
   PublicConnectorCatalogAuthMethodDetail,
   PublicConnectorCatalogItem,
   PublicConnectorCatalogStatusItem,
-} from "@okouai/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/connector-catalog";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;

@@ -1,4 +1,4 @@
-import type { PublicConnectorCatalogIcon } from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import type { PublicConnectorCatalogIcon } from "@okouai/api-contracts/contracts/connector-catalog";
 import type { ReactNode } from "react";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { ProductBrandMarkLink } from "./zero-directed-shared.tsx";

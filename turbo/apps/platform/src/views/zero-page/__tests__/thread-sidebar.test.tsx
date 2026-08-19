@@ -19,7 +19,7 @@ import {
   browserContract,
   type BrowserSession,
 } from "@okouai/api-contracts/contracts/browser";
-import { zeroConnectorCatalogContract } from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import { connectorCatalogContract } from "@okouai/api-contracts/contracts/connector-catalog";
 import { mailContract } from "@okouai/api-contracts/contracts/mail";
 import { describe, expect, it, vi } from "vitest";
 
@@ -540,7 +540,7 @@ describe("thread-owned utility sidebar", () => {
       ]),
     );
     context.mocks.data.connectors([googleDriveConnector()]);
-    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+    context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
       return respond(200, { connectors: [] });
     });
     context.mocks.http.get(markdownUrl, () => {

@@ -2,11 +2,11 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import {
-  zeroConnectorCatalogContract,
+  connectorCatalogContract,
   type PublicConnectorCatalogPermissionDetail,
   type PublicConnectorCatalogPermissionSummary,
   type PublicConnectorCatalogStatusItem,
-} from "@okouai/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/connector-catalog";
 import {
   chatThreadByIdContract,
   chatThreadEventsContract,
@@ -1291,7 +1291,7 @@ describe("team page navigation", () => {
 
   it("hides connector permission management when catalog status has no permissions", async () => {
     mockTeamAPIs();
-    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+    context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
       return respond(200, {
         connectors: [
           axiomCatalogStatusItem({
@@ -1424,27 +1424,24 @@ describe("team page navigation", () => {
       }),
       { name: "memberships.read" },
     ];
-    context.mocks.api(
-      zeroConnectorCatalogContract.permissions,
-      ({ respond }) => {
-        const permissions = {
-          connectorSlug: "cloudflare",
-          label: "Cloudflare",
-          icon: {
-            url: "https://icons.example.test/cloudflare.svg",
-            invertInDarkMode: false,
-          },
-          permissionCount: paginatedPermissions.length,
-          permissions: paginatedPermissions,
-          categories: null,
-          defaultPolicy: {
-            permissionDefault: "allow",
-            unknownPolicy: "deny",
-          },
-        } satisfies PublicConnectorCatalogPermissionDetail;
-        return respond(200, { permissions });
-      },
-    );
+    context.mocks.api(connectorCatalogContract.permissions, ({ respond }) => {
+      const permissions = {
+        connectorSlug: "cloudflare",
+        label: "Cloudflare",
+        icon: {
+          url: "https://icons.example.test/cloudflare.svg",
+          invertInDarkMode: false,
+        },
+        permissionCount: paginatedPermissions.length,
+        permissions: paginatedPermissions,
+        categories: null,
+        defaultPolicy: {
+          permissionDefault: "allow",
+          unknownPolicy: "deny",
+        },
+      } satisfies PublicConnectorCatalogPermissionDetail;
+      return respond(200, { permissions });
+    });
     const capturedApplies: ApplyUserPermissionGrantsRequest[] = [];
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, []);

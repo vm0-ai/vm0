@@ -11,7 +11,7 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { Search, Plus, Filter, ChevronDown, Check } from "lucide-react";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
-import type { PublicConnectorCatalogCategoryMetadata } from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import type { PublicConnectorCatalogCategoryMetadata } from "@okouai/api-contracts/contracts/connector-catalog";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import type { TeamComposeItem } from "@okouai/api-contracts/contracts/zero-team";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
