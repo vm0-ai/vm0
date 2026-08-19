@@ -4099,11 +4099,17 @@ describe("chat composer image model", () => {
     const listbox = screen.getByRole("listbox");
     // Both variants are on the row at once, and neither is marked while a
     // different family is the selection.
-    const variantSegments = queryAllByRoleFast("radio", listbox).filter(
-      (candidate) => {
+    const variantSegments = queryAllByRoleFast("radio", listbox)
+      .filter((candidate) => {
         return candidate.hasAttribute("aria-label");
-      },
-    );
+      })
+      .filter((candidate) => {
+        // Exclude the category-tab segment items (Chat / Image / Video).
+        return !(
+          candidate instanceof HTMLElement &&
+          candidate.closest("[data-slot='segment-control']")
+        );
+      });
     expect(
       variantSegments.map((candidate) => {
         return candidate.getAttribute("aria-label");
