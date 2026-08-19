@@ -1835,8 +1835,15 @@ jobs:
   cli-e2e-02-playwright:
     runs-on: ubuntu-latest
     timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        project:
+          - features
+          - paid-onboarding
+          - billing-transitions
     concurrency:
-      group: cli-e2e-02-playwright-${{ needs.prepare.outputs.job-ref }}
+      group: cli-e2e-02-playwright-${{ matrix.project }}-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
     needs:
       - prepare
@@ -1928,7 +1935,10 @@ jobs:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Run Playwright E2E tests
         continue-on-error: ${{ vars.CI_CHECK_BROWSER_E2E != '1' }}
-        run: cd e2e && npx playwright test --config playwright/playwright.config.ts
+        run: >-
+          cd e2e && npx playwright test
+          --config playwright/playwright.config.ts
+          --project="${{ matrix.project }}"
         env:
           VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
           OKOU_APP_URL: ${{ needs.deploy-app.outputs.preview-url }}
@@ -1937,14 +1947,6 @@ jobs:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-      - name: Cleanup Playwright E2E accounts
-        if: always()
-        run: >-
-          cd e2e && pnpm exec tsx playwright/clerk-test-resources.ts
-          cleanup-generation playwright,paid-onboarding
-        env:
-          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
       - name: Print Stripe webhook forwarding log
         if: always() && github.event_name == 'push' && needs.prepare.outputs.job-ref != 'staging'
         run: |
@@ -1957,16 +1959,58 @@ jobs:
           if [[ -f /tmp/stripe-listen.pid ]]; then
             kill "$(cat /tmp/stripe-listen.pid)" 2>/dev/null || true
           fi
-      - name: Upload Playwright report
+      - name: Upload Playwright blob report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-blob-${{ matrix.project }}
+          path: e2e/playwright/blob-report/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  cli-e2e-02-playwright-finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    concurrency:
+      group: cli-e2e-02-playwright-finalize-${{ needs.prepare.outputs.job-ref }}
+      cancel-in-progress: true
+    needs: [prepare, cli-e2e-02-playwright]
+    if: always() && needs.cli-e2e-02-playwright.result != 'skipped'
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Install pnpm
+        run: corepack enable pnpm
+      - name: Install E2E dependencies
+        run: cd e2e && pnpm install --frozen-lockfile
+      - name: Download Playwright blob reports
+        uses: actions/download-artifact@v8.0.1
+        with:
+          pattern: playwright-blob-*
+          path: e2e/all-blob-reports
+          merge-multiple: true
+      - name: Merge Playwright HTML report
+        run: >-
+          cd e2e && pnpm exec playwright merge-reports
+          --reporter=html all-blob-reports
+      - name: Upload Playwright HTML report
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report
-          path: |
-            e2e/playwright-report/
-            e2e/test-results/
+          path: e2e/playwright-report/
           retention-days: 7
           if-no-files-found: ignore
+      - name: Cleanup Playwright E2E accounts
+        if: always()
+        run: >-
+          cd e2e && pnpm exec tsx playwright/clerk-test-resources.ts
+          cleanup-generation playwright,paid-onboarding
+        env:
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
 
   # Build one self-contained package archive per checked-out commit and upload
   # it to the same canonical R2 bucket used by deploy-app. The ready marker is
@@ -2971,6 +3015,7 @@ jobs:
       - deploy-cli
       - cli-e2e-02-browser
       - cli-e2e-02-playwright
+      - cli-e2e-02-playwright-finalize
       - cli-e2e-01-serial
       - cli-e2e-03-runner-prepare
       - cli-e2e-03-runner-bootstrap
@@ -3080,6 +3125,7 @@ jobs:
           check_result "deploy-cli" "${{ needs.deploy-cli.result }}" "$CF_APP_SKIP_ALLOWED"
           check_result "cli-e2e-02-browser" "${{ needs.cli-e2e-02-browser.result }}" "${{ vars.CI_CHECK_BROWSER_E2E == '1' && 'true' || 'informational' }}"
           check_result "cli-e2e-02-playwright" "${{ needs.cli-e2e-02-playwright.result }}" "${{ vars.CI_CHECK_BROWSER_E2E == '1' && 'true' || 'informational' }}"
+          check_result "cli-e2e-02-playwright-finalize" "${{ needs.cli-e2e-02-playwright-finalize.result }}" "${{ vars.CI_CHECK_BROWSER_E2E == '1' && 'true' || 'informational' }}"
           check_result "cli-e2e-01-serial" "${{ needs.cli-e2e-01-serial.result }}" "true"
           check_result "cli-e2e-03-runner-prepare" "${{ needs.cli-e2e-03-runner-prepare.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
           check_result "cli-e2e-03-runner-bootstrap" "${{ needs.cli-e2e-03-runner-bootstrap.result }}" "$RUNNER_E2E_SKIP_ALLOWED"

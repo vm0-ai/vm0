@@ -149,10 +149,33 @@ playwright = turbo_jobs.fetch("cli-e2e-02-playwright")
 playwright_cleanup = playwright.fetch("steps").find do |step|
   step["name"] == "Cleanup Playwright E2E accounts"
 end
-raise "missing Playwright E2E account finalizer" unless playwright_cleanup
-unless playwright_cleanup.fetch("if") == "always()" &&
-    playwright_cleanup.fetch("run").include?("cleanup-generation playwright,paid-onboarding")
-  raise "Playwright cleanup must always target only its current-generation roles"
+if playwright_cleanup
+  raise "Playwright matrix lanes must not reconcile their shared generation"
+end
+
+playwright_finalizer = turbo_jobs.fetch("cli-e2e-02-playwright-finalize")
+unless Array(playwright_finalizer["needs"]).include?("cli-e2e-02-playwright")
+  raise "Playwright finalizer must wait for every matrix lane"
+end
+playwright_finalizer_condition = playwright_finalizer.fetch("if")
+unless playwright_finalizer_condition.include?("always()") &&
+    playwright_finalizer_condition.include?(
+      "needs.cli-e2e-02-playwright.result != 'skipped'",
+    )
+  raise "Playwright finalizer must run after terminal matrix outcomes"
+end
+playwright_finalizer_steps = playwright_finalizer.fetch("steps")
+playwright_cleanup = playwright_finalizer_steps.find do |step|
+  step["name"] == "Cleanup Playwright E2E accounts"
+end
+unless playwright_cleanup && playwright_cleanup.fetch("if") == "always()" &&
+    playwright_cleanup.fetch("run").include?(
+      "cleanup-generation playwright,paid-onboarding",
+    )
+  raise "Playwright final cleanup must reconcile only its current-generation roles"
+end
+unless playwright_finalizer_steps.last == playwright_cleanup
+  raise "Playwright generation cleanup must be the final finalizer step"
 end
 
 runner_cleanup = turbo_jobs.fetch("cli-e2e-03-runner-cleanup")

@@ -13,6 +13,7 @@ RUNNER_HELPERS=(
 )
 RUNNER_TOKEN="${REPO_ROOT}/e2e/playwright/runner-token.ts"
 RUNNER_MOCK_CLAUDE_BOOTSTRAP="${REPO_ROOT}/e2e/playwright/runner-mock-claude-bootstrap.bash"
+PLAYWRIGHT_CONFIG="${REPO_ROOT}/e2e/playwright/playwright.config.ts"
 
 fail() {
   echo "FAIL: $1" >&2
@@ -37,6 +38,10 @@ grep -Fq "RUNNER_GROUP: \${{ format('vm0/development-{0}', needs.prepare.outputs
 if grep -Fq 'playwright-staging' "$WORKFLOW"; then
   fail "main Playwright runs must not use a group outside the staging API default"
 fi
+grep -Fq '["list"]' "$PLAYWRIGHT_CONFIG" ||
+  fail "Playwright CI must retain human-readable list reporting"
+grep -Fq '["blob", { outputDir: "blob-report" }]' "$PLAYWRIGHT_CONFIG" ||
+  fail "Playwright CI must emit mergeable blob reports"
 if grep -R -Fq '/api/test/' "$RUNNER_TESTS" "${RUNNER_HELPERS[@]}"; then
   fail "runner E2E coverage must use supported public APIs"
 fi
@@ -65,6 +70,7 @@ jobs = workflow.fetch("jobs")
 prepare = jobs.fetch("prepare")
 stripe_listener = jobs.fetch("deploy-stripe-listener")
 playwright = jobs.fetch("cli-e2e-02-playwright")
+playwright_finalizer = jobs.fetch("cli-e2e-02-playwright-finalize")
 account_prepare = jobs.fetch("cli-e2e-03-runner-prepare")
 bootstrap = jobs.fetch("cli-e2e-03-runner-bootstrap")
 runner = jobs.fetch("cli-e2e-03-runner")
@@ -78,6 +84,73 @@ fixture_test_index = playwright_step_names.index(
 unless browser_install_index && fixture_test_index &&
     browser_install_index < fixture_test_index
   raise "Playwright browsers must be installed before browser fixture tests"
+end
+
+unless playwright.dig("strategy", "fail-fast") == false
+  raise "Playwright project lanes must not fail fast"
+end
+expected_playwright_projects = %w[features paid-onboarding billing-transitions]
+unless playwright.dig("strategy", "matrix", "project") ==
+    expected_playwright_projects
+  raise "Playwright matrix must contain the three independent projects"
+end
+expected_playwright_group =
+  "cli-e2e-02-playwright-${{ matrix.project }}-${{ needs.prepare.outputs.job-ref }}"
+unless playwright.dig("concurrency", "group") == expected_playwright_group
+  raise "each Playwright project must keep an independent concurrency group"
+end
+playwright_run = playwright.fetch("steps").find do |step|
+  step["name"] == "Run Playwright E2E tests"
+end
+unless playwright_run&.fetch("run", "")&.include?(
+    '--project="${{ matrix.project }}"',
+  )
+  raise "each Playwright lane must select only its matrix project"
+end
+playwright_blob_upload = playwright.fetch("steps").find do |step|
+  step["name"] == "Upload Playwright blob report"
+end
+unless playwright_blob_upload && playwright_blob_upload.fetch("if") == "always()" &&
+    playwright_blob_upload.dig("with", "name") ==
+      "playwright-blob-${{ matrix.project }}" &&
+    playwright_blob_upload.dig("with", "path") ==
+      "e2e/playwright/blob-report/"
+  raise "each Playwright lane must always upload its uniquely named blob report"
+end
+
+unless Array(playwright_finalizer["needs"]).include?("cli-e2e-02-playwright")
+  raise "Playwright report finalizer must wait for every matrix lane"
+end
+finalizer_steps = playwright_finalizer.fetch("steps")
+download_index = finalizer_steps.index do |step|
+  step["name"] == "Download Playwright blob reports"
+end
+merge_index = finalizer_steps.index do |step|
+  step["name"] == "Merge Playwright HTML report"
+end
+upload_index = finalizer_steps.index do |step|
+  step["name"] == "Upload Playwright HTML report"
+end
+unless download_index && merge_index && upload_index &&
+    download_index < merge_index && merge_index < upload_index
+  raise "Playwright finalizer must download, merge, then upload reports"
+end
+download_step = finalizer_steps.fetch(download_index)
+unless download_step.dig("with", "pattern") == "playwright-blob-*" &&
+    download_step.dig("with", "merge-multiple") == true
+  raise "Playwright finalizer must combine every lane blob artifact"
+end
+merge_step = finalizer_steps.fetch(merge_index)
+unless merge_step.fetch("run").include?(
+    "playwright merge-reports --reporter=html all-blob-reports",
+  )
+  raise "Playwright finalizer must build one HTML report from lane blobs"
+end
+upload_step = finalizer_steps.fetch(upload_index)
+unless upload_step.fetch("if") == "always()" &&
+    upload_step.dig("with", "name") == "playwright-report" &&
+    upload_step.dig("with", "path") == "e2e/playwright-report/"
+  raise "Playwright finalizer must always publish the merged HTML report"
 end
 
 expected_browser_install =
@@ -537,6 +610,8 @@ end
 
 gate_needs = Array(jobs.fetch("ci-gate-turbo")["needs"])
 %w[
+  cli-e2e-02-playwright
+  cli-e2e-02-playwright-finalize
   cli-e2e-03-runner-prepare
   cli-e2e-03-runner-bootstrap
   cli-e2e-03-runner
@@ -562,6 +637,13 @@ end
 ].each do |job_name|
   expected = "check_result \"#{job_name}\" \"${{ needs.#{job_name}.result }}\" \"$RUNNER_E2E_SKIP_ALLOWED\""
   raise "CI gate must check #{job_name} with RUNNER_E2E_SKIP_ALLOWED" unless gate_script.include?(expected)
+end
+%w[
+  cli-e2e-02-playwright
+  cli-e2e-02-playwright-finalize
+].each do |job_name|
+  expected = "check_result \"#{job_name}\" \"${{ needs.#{job_name}.result }}\" \"${{ vars.CI_CHECK_BROWSER_E2E == '1' && 'true' || 'informational' }}\""
+  raise "CI gate must check #{job_name} with the browser E2E policy" unless gate_script.include?(expected)
 end
 RUBY
 
