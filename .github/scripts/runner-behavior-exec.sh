@@ -1129,6 +1129,26 @@ seed_token = "CODEX-COMPACT-SEED-TOKEN"
 compacting_turn_token = "CODEX-COMPACTING-TURN-TOKEN"
 candidate_turn_token = "CODEX-COMPACT-CANDIDATE-TURN-TOKEN"
 append_token = "CODEX-COMPACT-APPEND-TOKEN"
+# [sync:codex-app-server-compatibility-params] Keep in sync with initialize in
+# codex_app_server.rs, thread/turn params in codex_app_server_backend.rs, and
+# IGNORED_NOTIFICATION_METHODS in codex_app_server_events.rs.
+opt_out_notification_methods = [
+    "command/exec/outputDelta",
+    "process/outputDelta",
+    "process/exited",
+    "item/agentMessage/delta",
+    "item/plan/delta",
+    "item/commandExecution/outputDelta",
+    "item/commandExecution/terminalInteraction",
+    "item/fileChange/outputDelta",
+    "item/fileChange/patchUpdated",
+    "item/mcpToolCall/progress",
+    "item/reasoning/summaryTextDelta",
+    "item/reasoning/summaryPartAdded",
+    "item/reasoning/textDelta",
+    "thread/realtime/transcript/delta",
+    "thread/realtime/outputAudio/delta",
+]
 requests = []
 current_codex = shutil.which("codex")
 assert current_codex is not None, "bundled Codex is not on PATH"
@@ -1233,19 +1253,25 @@ def run_codex_app_server(codex_home, prompt, resume_id=None):
                     "method": "initialize",
                     "params": {
                         "clientInfo": {
-                            "name": "vm0-runner-compatibility-probe",
+                            "name": "vm0-guest-agent",
                             "title": None,
                             "version": "0",
                         },
                         "capabilities": {
                             "experimentalApi": True,
                             "requestAttestation": False,
+                            "optOutNotificationMethods": (
+                                opt_out_notification_methods
+                            ),
                         },
                     },
                 },
             )
             wait_for_app_server_response(process, 1, messages)
-            send_app_server_message(process, {"method": "initialized"})
+            send_app_server_message(
+                process,
+                {"method": "initialized", "params": None},
+            )
 
             thread_params = {
                 "cwd": "/home/user/workspace",
@@ -1311,7 +1337,6 @@ def run_codex_app_server(codex_home, prompt, resume_id=None):
             assert return_code == 0, stderr
             return {
                 "thread_id": thread_id,
-                "turn_id": turn_id,
                 "messages": messages,
                 "stderr": stderr,
             }
