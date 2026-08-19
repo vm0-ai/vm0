@@ -4093,11 +4093,8 @@ describe("chat composer image model", () => {
         return candidate.hasAttribute("aria-label");
       })
       .filter((candidate) => {
-        // Exclude the category-tab segment items (Chat / Image / Video).
-        return !(
-          candidate instanceof HTMLElement &&
-          candidate.closest("[data-slot='segment-control']")
-        );
+        // Exclude the category-tab segment items inside the <SegmentControl>.
+        return !(candidate as HTMLElement).closest?.('[role="radiogroup"]');
       });
     expect(
       variantSegments.map((candidate) => {
