@@ -978,6 +978,7 @@ enum SignalSource {
 #[derive(Debug, PartialEq, Eq)]
 enum StartLoopEvent {
     BudgetExhaustedReactorEntered,
+    RoutineHeartbeatRequested { mode: RunnerMode },
     WorkspaceCacheChangeObserved,
     DestroyTasksDrainEntered,
     DestroyTasksDrainCompleted,
@@ -1111,6 +1112,10 @@ impl StartLoopTestObserver {
         self.record(StartLoopEvent::BudgetExhaustedReactorEntered);
     }
 
+    fn notify_routine_heartbeat_requested(&self, mode: RunnerMode) {
+        self.record(StartLoopEvent::RoutineHeartbeatRequested { mode });
+    }
+
     fn notify_workspace_cache_change_observed(&self) {
         self.record(StartLoopEvent::WorkspaceCacheChangeObserved);
     }
@@ -1173,6 +1178,26 @@ impl StartLoopTestObserver {
             matches!(event, StartLoopEvent::BudgetExhaustedReactorEntered).then_some(())
         })
         .await;
+    }
+
+    async fn wait_routine_heartbeat_requested_after(
+        &self,
+        cursor: StartLoopCursor,
+        mode: RunnerMode,
+        timeout: Duration,
+    ) -> StartLoopCursor {
+        let ((), cursor) = self
+            .wait_after(cursor, timeout, "routine heartbeat request", |event| {
+                matches!(
+                    event,
+                    StartLoopEvent::RoutineHeartbeatRequested {
+                        mode: observed_mode,
+                    } if *observed_mode == mode
+                )
+                .then_some(())
+            })
+            .await;
+        cursor
     }
 
     async fn wait_workspace_cache_change_observed_after(
@@ -2026,6 +2051,10 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             _ = heartbeat_tick.tick() => {
                 let live_mode = *mode_rx.borrow();
                 heartbeat.request(live_mode)?;
+                #[cfg(test)]
+                test_hooks
+                    .test_observer
+                    .notify_routine_heartbeat_requested(live_mode);
             }
             _ = sleep_until_optional_instant(pending_finalizing_deadline),
                 if pending_finalizing_candidate.is_some() && mode == RunnerMode::Running =>
