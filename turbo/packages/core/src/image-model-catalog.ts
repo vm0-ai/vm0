@@ -18,13 +18,13 @@ interface ImageModelConfig {
 }
 
 export const IMAGE_MODEL_CONFIGS = {
-  "gpt-image-2": {
-    alias: "gpt-image-2",
-    label: "GPT Image 2",
-  },
   "gpt-image-1": {
     alias: "gpt-image-1",
     label: "GPT Image 1",
+  },
+  "gpt-image-2": {
+    alias: "gpt-image-2",
+    label: "GPT Image 2",
   },
   "fal-ai/flux-pro/v1.1": {
     alias: "flux-pro-1.1",
@@ -66,8 +66,8 @@ export const IMAGE_MODELS: readonly ImageModel[] = IMAGE_MODEL_IDS;
 
 /** Every catalog model, ordered for the user-facing picker. */
 export const PUBLIC_IMAGE_MODELS = [
-  "gpt-image-2",
   "gpt-image-1",
+  "gpt-image-2",
   "fal-ai/nano-banana-2",
   "fal-ai/flux-pro/v1.1",
   "fal-ai/flux-pro/v1.1-ultra",
@@ -91,4 +91,4 @@ export const IMAGE_MODEL_ALIASES = {
 } as const satisfies Readonly<Record<string, ImageModel>>;
 
 /** Global fallback when no more specific image model default exists. */
-export const DEFAULT_IMAGE_MODEL = "gpt-image-2" satisfies ImageModel;
+export const DEFAULT_IMAGE_MODEL = "gpt-image-1" satisfies ImageModel;

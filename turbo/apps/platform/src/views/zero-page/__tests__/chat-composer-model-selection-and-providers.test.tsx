@@ -3469,8 +3469,8 @@ describe("chat composer models", () => {
 
 describe("chat composer image model", () => {
   const imageModelControlLabels = [
-    "GPT Image 2",
     "GPT Image 1",
+    "GPT Image 2",
     "Nano Banana 2",
     "Flux Pro v1.1",
     "Flux Pro v1.1 Ultra",
@@ -4040,7 +4040,7 @@ describe("chat composer image model", () => {
         }),
     ).toStrictEqual(imageModelControlLabels);
     expect(
-      mediaPanelButtonByAccessibleLabel("GPT Image 2 variants", listbox),
+      mediaPanelButtonByAccessibleLabel("GPT Image 1 variants", listbox),
     ).toBeUndefined();
     const openAiIcon = imageModelBrandIcon("GPT Image 2").outerHTML;
     expect(openAiIcon).toContain("openai");
@@ -4070,19 +4070,19 @@ describe("chat composer image model", () => {
       within(listbox).queryByText(/aspect ratio/i),
     ).not.toBeInTheDocument();
 
-    await user.click(await findMediaPanelButton("GPT Image 2"));
+    await user.click(await findMediaPanelButton("GPT Image 1"));
 
     await waitFor(() => {
       expect(updates).toStrictEqual([
         {
           threadId: THREAD_ID,
-          model: "gpt-image-2",
+          model: "gpt-image-1",
         },
       ]);
-      expect(imageModelButton).toHaveTextContent(/·\s*GPT Image 2/);
+      expect(imageModelButton).toHaveTextContent(/·\s*GPT Image 1/);
     });
     await user.click(imageModelButton);
-    expect(mediaPanelButton("GPT Image 2")).toHaveAttribute(
+    expect(mediaPanelButton("GPT Image 1")).toHaveAttribute(
       "aria-pressed",
       "true",
     );

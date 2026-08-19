@@ -45,10 +45,10 @@ const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const TEST_BUCKET = "test-user-artifacts";
 const IMAGE_BYTES = Buffer.from("fake image bytes");
-const IMAGE_IO_MODEL = "gpt-image-2";
-const FAL_GPT_IMAGE_2_URL = "https://queue.fal.run/openai/gpt-image-2";
+const IMAGE_IO_MODEL = "gpt-image-1";
 const FAL_GPT_IMAGE_1_URL =
   "https://queue.fal.run/fal-ai/gpt-image-1/text-to-image";
+const FAL_GPT_IMAGE_2_URL = "https://queue.fal.run/openai/gpt-image-2";
 const BYTEPLUS_IMAGE_GENERATIONS_URL =
   "https://ark.ap-southeast.bytepluses.com/api/v3/images/generations";
 const BYTEPLUS_SEEDREAM_5_LITE_MEDIA_URL =
@@ -57,8 +57,7 @@ const BYTEPLUS_SEEDREAM_5_PRO_LOW_MEDIA_URL =
   "https://ark-content.byteplus.example/files/seedream-5-pro-low.jpg";
 const BYTEPLUS_SEEDREAM_5_PRO_HIGH_MEDIA_URL =
   "https://ark-content.byteplus.example/files/seedream-5-pro-high.jpg";
-const FAL_GPT_MEDIA_URL = "https://fal.media/files/test/gpt-image-2.webp";
-const FAL_GPT_1_MEDIA_URL = "https://fal.media/files/test/gpt-image-1.png";
+const FAL_GPT_MEDIA_URL = "https://fal.media/files/test/gpt-image-1.webp";
 const FAL_QWEN_IMAGE_URL = "https://queue.fal.run/fal-ai/qwen-image";
 const FAL_MEDIA_URL = "https://fal.media/files/test/qwen.jpg";
 const FAL_FLUX_REDUX_URL = "https://queue.fal.run/fal-ai/flux-pro/v1.1/redux";
@@ -272,7 +271,7 @@ function zeroToken(args: {
   });
 }
 
-const GPT_IMAGE_2_PRICING = [
+const GPT_IMAGE_1_PRICING = [
   {
     kind: "image",
     provider: IMAGE_IO_MODEL,
@@ -383,51 +382,6 @@ const CLARITY_UPSCALER_IMAGE_PRICING = [
     provider: "fal-ai/clarity-upscaler",
     category: "output_megapixel",
     unitPrice: 30,
-    unitSize: 1,
-  },
-] satisfies readonly UsagePricingRow[];
-
-const GPT_IMAGE_1_PRICING = [
-  {
-    kind: "image",
-    provider: "gpt-image-1",
-    category: "output_image.low.standard",
-    unitPrice: 13,
-    unitSize: 1,
-  },
-  {
-    kind: "image",
-    provider: "gpt-image-1",
-    category: "output_image.low.large",
-    unitPrice: 19,
-    unitSize: 1,
-  },
-  {
-    kind: "image",
-    provider: "gpt-image-1",
-    category: "output_image.medium.standard",
-    unitPrice: 50,
-    unitSize: 1,
-  },
-  {
-    kind: "image",
-    provider: "gpt-image-1",
-    category: "output_image.medium.large",
-    unitPrice: 76,
-    unitSize: 1,
-  },
-  {
-    kind: "image",
-    provider: "gpt-image-1",
-    category: "output_image.high.standard",
-    unitPrice: 200,
-    unitSize: 1,
-  },
-  {
-    kind: "image",
-    provider: "gpt-image-1",
-    category: "output_image.high.large",
-    unitPrice: 300,
     unitSize: 1,
   },
 ] satisfies readonly UsagePricingRow[];
@@ -568,12 +522,12 @@ describe("POST /api/zero/image-io/generate", () => {
   it("rejects empty prompts before provider generation", async () => {
     const fixture = await seedImageFixture({});
     const pricingFixture = await createScopedImagePricing({
-      configured: GPT_IMAGE_2_PRICING,
+      configured: GPT_IMAGE_1_PRICING,
     });
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let falCalls = 0;
     server.use(
-      http.post(FAL_GPT_IMAGE_2_URL, () => {
+      http.post(FAL_GPT_IMAGE_1_URL, () => {
         falCalls += 1;
         return HttpResponse.json({});
       }),
@@ -670,7 +624,7 @@ describe("POST /api/zero/image-io/generate", () => {
   it("preserves a valid explicit model and rejects an invalid explicit model", async () => {
     const fixture = await seedImageFixture({});
     const pricingFixture = await createScopedImagePricing({
-      configured: [...GPT_IMAGE_2_PRICING, ...QWEN_IMAGE_PRICING],
+      configured: [...GPT_IMAGE_1_PRICING, ...QWEN_IMAGE_PRICING],
     });
     const { runId } = await seedImageRun(fixture, {
       imageModelSelectionEnabled: true,
@@ -679,9 +633,9 @@ describe("POST /api/zero/image-io/generate", () => {
     let gptCalls = 0;
     let qwenCalls = 0;
     server.use(
-      http.post(FAL_GPT_IMAGE_2_URL, () => {
+      http.post(FAL_GPT_IMAGE_1_URL, () => {
         gptCalls += 1;
-        return HttpResponse.json(falQueueHandle("explicit-gpt-image-2"));
+        return HttpResponse.json(falQueueHandle("explicit-gpt-image-1"));
       }),
       http.post(FAL_QWEN_IMAGE_URL, () => {
         qwenCalls += 1;
@@ -700,7 +654,8 @@ describe("POST /api/zero/image-io/generate", () => {
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
         prompt: "explicit model parameters use the explicit model",
-        model: "gpt-image-2",
+        model: "gpt-image-1",
+        background: "transparent",
         outputFormat: "webp",
       }),
     });
@@ -731,12 +686,12 @@ describe("POST /api/zero/image-io/generate", () => {
 
   it("keeps the global default for disabled, null, old, and session paths", async () => {
     const pricingFixture = await createScopedImagePricing({
-      configured: GPT_IMAGE_2_PRICING,
+      configured: GPT_IMAGE_1_PRICING,
     });
     let gptCalls = 0;
     let qwenCalls = 0;
     server.use(
-      http.post(FAL_GPT_IMAGE_2_URL, () => {
+      http.post(FAL_GPT_IMAGE_1_URL, () => {
         gptCalls += 1;
         return HttpResponse.json(falQueueHandle(`global-default-${gptCalls}`));
       }),
@@ -799,12 +754,12 @@ describe("POST /api/zero/image-io/generate", () => {
   it("returns 402 when the org has no spendable credits", async () => {
     const fixture = await seedImageFixture({ credits: 0 });
     const pricingFixture = await createScopedImagePricing({
-      configured: GPT_IMAGE_2_PRICING,
+      configured: GPT_IMAGE_1_PRICING,
     });
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let falCalls = 0;
     server.use(
-      http.post(FAL_GPT_IMAGE_2_URL, () => {
+      http.post(FAL_GPT_IMAGE_1_URL, () => {
         falCalls += 1;
         return HttpResponse.json({});
       }),
@@ -831,7 +786,7 @@ describe("POST /api/zero/image-io/generate", () => {
   it("admits image generation when allowance remains", async () => {
     const fixture = await seedImageFixture({ credits: 0 });
     const pricingFixture = await createScopedImagePricing({
-      configured: GPT_IMAGE_2_PRICING,
+      configured: GPT_IMAGE_1_PRICING,
     });
     const effectiveAt = nowDate();
     await postUsageAllowanceInvoicePaid(context.signal, {
@@ -852,7 +807,7 @@ describe("POST /api/zero/image-io/generate", () => {
     let observedBody: unknown = null;
     let observedRequestUrl: string | null = null;
     server.use(
-      http.post(FAL_GPT_IMAGE_2_URL, async ({ request }) => {
+      http.post(FAL_GPT_IMAGE_1_URL, async ({ request }) => {
         falCalls += 1;
         observedAuthorization = request.headers.get("authorization");
         observedBody = await request.json();
@@ -878,10 +833,11 @@ describe("POST /api/zero/image-io/generate", () => {
     expect(observedAuthorization).toBe("Key test-fal-key");
     expect(observedBody).toStrictEqual({
       prompt: "a cat covered by allowance",
-      image_size: { width: 1024, height: 1024 },
+      image_size: "1024x1024",
       num_images: 1,
       output_format: "png",
       quality: "medium",
+      background: "auto",
       openai_api_key: "test-openai-key",
     });
 
@@ -954,7 +910,7 @@ describe("POST /api/zero/image-io/generate", () => {
   it("limits run-scoped zero token image generations after three active built-ins", async () => {
     const fixture = await seedImageFixture({});
     const pricingFixture = await createScopedImagePricing({
-      configured: GPT_IMAGE_2_PRICING,
+      configured: GPT_IMAGE_1_PRICING,
     });
     const { composeId } = await store.set(
       seedCompose$,
@@ -977,7 +933,7 @@ describe("POST /api/zero/image-io/generate", () => {
     const observedAuthorizations: (string | null)[] = [];
     const observedBodies: unknown[] = [];
     server.use(
-      http.post(FAL_GPT_IMAGE_2_URL, async ({ request }) => {
+      http.post(FAL_GPT_IMAGE_1_URL, async ({ request }) => {
         falCalls += 1;
         observedAuthorizations.push(request.headers.get("authorization"));
         observedBodies.push(await request.json());
@@ -1025,10 +981,11 @@ describe("POST /api/zero/image-io/generate", () => {
       [0, 1, 2].map((submission) => {
         return {
           prompt: `a pending run image ${submission}`,
-          image_size: { width: 1024, height: 1024 },
+          image_size: "1024x1024",
           num_images: 1,
           output_format: "png",
           quality: "medium",
+          background: "auto",
           openai_api_key: "test-openai-key",
         };
       }),
@@ -1039,7 +996,7 @@ describe("POST /api/zero/image-io/generate", () => {
   it("generates image files for run-scoped zero tokens", async () => {
     const fixture = await seedImageFixture({});
     const pricingFixture = await createScopedImagePricing({
-      configured: GPT_IMAGE_2_PRICING,
+      configured: GPT_IMAGE_1_PRICING,
     });
     const { composeId } = await store.set(
       seedCompose$,
@@ -1062,12 +1019,12 @@ describe("POST /api/zero/image-io/generate", () => {
     let observedBody: unknown = null;
     let observedRequestUrl: string | null = null;
     server.use(
-      http.post(FAL_GPT_IMAGE_2_URL, async ({ request }) => {
+      http.post(FAL_GPT_IMAGE_1_URL, async ({ request }) => {
         falCalls += 1;
         observedAuthorization = request.headers.get("authorization");
         observedRequestUrl = request.url;
         observedBody = await request.json();
-        return HttpResponse.json(falQueueHandle("gpt-image-2-request"));
+        return HttpResponse.json(falQueueHandle("gpt-image-1-request"));
       }),
       http.get(FAL_GPT_MEDIA_URL, () => {
         return new HttpResponse(IMAGE_BYTES, {
@@ -1089,6 +1046,7 @@ describe("POST /api/zero/image-io/generate", () => {
         prompt: "a small robot painting a sunflower",
         size: "1024x1024",
         quality: "auto",
+        background: "opaque",
         outputFormat: "webp",
       }),
     });
@@ -1146,7 +1104,7 @@ describe("POST /api/zero/image-io/generate", () => {
       provider: "fal",
       imageSize: "1024x1024",
       quality: "auto",
-      background: "auto",
+      background: "opaque",
       outputFormat: "webp",
       moderation: "auto",
       revisedPrompt: "A small robot paints a sunflower.",
@@ -1157,9 +1115,10 @@ describe("POST /api/zero/image-io/generate", () => {
     expect(observedAuthorization).toBe("Key test-fal-key");
     expect(observedBody).toStrictEqual({
       prompt: "a small robot painting a sunflower",
-      image_size: { width: 1024, height: 1024 },
+      image_size: "1024x1024",
       num_images: 1,
       quality: "auto",
+      background: "opaque",
       output_format: "webp",
       openai_api_key: "test-openai-key",
     });
@@ -1239,7 +1198,7 @@ describe("POST /api/zero/image-io/generate", () => {
   it("does not complete a job after the status route times it out", async () => {
     const fixture = await seedImageFixture({ credits: 1000 });
     const pricingFixture = await createScopedImagePricing({
-      configured: GPT_IMAGE_2_PRICING,
+      configured: GPT_IMAGE_1_PRICING,
     });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
@@ -1255,13 +1214,13 @@ describe("POST /api/zero/image-io/generate", () => {
     let observedRequestUrl: string | null = null;
 
     server.use(
-      http.post(FAL_GPT_IMAGE_2_URL, async ({ request }) => {
+      http.post(FAL_GPT_IMAGE_1_URL, async ({ request }) => {
         falCalls += 1;
         observedAuthorization = request.headers.get("authorization");
         observedRequestUrl = request.url;
         observedBody = await request.json();
         markFalStarted();
-        return HttpResponse.json(falQueueHandle("late-gpt-image-2-request"));
+        return HttpResponse.json(falQueueHandle("late-gpt-image-1-request"));
       }),
       http.get(FAL_GPT_MEDIA_URL, () => {
         return new HttpResponse(IMAGE_BYTES, {
@@ -1292,10 +1251,11 @@ describe("POST /api/zero/image-io/generate", () => {
     expect(observedAuthorization).toBe("Key test-fal-key");
     expect(observedBody).toStrictEqual({
       prompt: "a late image",
-      image_size: { width: 1024, height: 1024 },
+      image_size: "1024x1024",
       num_images: 1,
       output_format: "png",
       quality: "medium",
+      background: "auto",
       openai_api_key: "test-openai-key",
     });
 
@@ -2240,114 +2200,17 @@ describe("POST /api/zero/image-io/generate", () => {
     await expect(orgCredits(fixture)).resolves.toBe(1000);
   });
 
-  it("generates GPT Image 1 through fal with its fixed size shape", async () => {
-    const fixture = await seedImageFixture({ credits: 1000 });
-    const pricingFixture = await createScopedImagePricing({
-      configured: GPT_IMAGE_1_PRICING,
-    });
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    let falCalls = 0;
-    let observedAuthorization: string | null = null;
-    let observedBody: Record<string, unknown> | null = null;
-    let observedRequestUrl: string | null = null;
-    server.use(
-      http.post(FAL_GPT_IMAGE_1_URL, async ({ request }) => {
-        falCalls += 1;
-        observedAuthorization = request.headers.get("authorization");
-        observedRequestUrl = request.url;
-        observedBody = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json(falQueueHandle("gpt-image-1-request"));
-      }),
-      http.get(FAL_GPT_1_MEDIA_URL, () => {
-        return new HttpResponse(IMAGE_BYTES, {
-          headers: { "Content-Type": "image/png" },
-        });
-      }),
-    );
-
-    const app = createImageIoTestApp(pricingFixture.resolution);
-    const response = await app.request("/api/zero/image-io/generate", {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify({
-        prompt: "a precise medical infographic",
-        model: "gpt-image-1",
-        size: "1024x1536",
-        quality: "low",
-        background: "transparent",
-        outputFormat: "png",
-      }),
-    });
-
-    expect(response.status).toBe(202);
-    const generationId = readAcceptedGenerationId(
-      await response.json(),
-      "image",
-      fixture.userId,
-    );
-
-    await postFalWebhook(app, observedRequestUrl, {
-      images: [
-        {
-          url: FAL_GPT_1_MEDIA_URL,
-          width: 1024,
-          height: 1536,
-          content_type: "image/png",
-        },
-      ],
-      prompt: "A precise medical infographic.",
-    });
-    await flushWaitUntilForTest();
-
-    const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
-      { headers: authHeaders() },
-    );
-    expect(statusResponse.status).toBe(200);
-    const body = readGenerationResult(await statusResponse.json());
-    expect(body).toMatchObject({
-      contentType: "image/png",
-      size: IMAGE_BYTES.byteLength,
-      creditsCharged: 19,
-      model: "gpt-image-1",
-      provider: "fal",
-      imageSize: "1024x1536",
-      quality: "low",
-      background: "transparent",
-      outputFormat: "png",
-      billingCategory: "output_image.low.large",
-      billingQuantity: 1,
-      sourceUrl: FAL_GPT_1_MEDIA_URL,
-    });
-    expect(falCalls).toBe(1);
-    expect(observedAuthorization).toBe("Key test-fal-key");
-    // gpt-image-1 keeps fal's fixed WIDTHxHEIGHT string instead of the
-    // flexible {width, height} shape the other models use.
-    expect(observedBody).toStrictEqual({
-      prompt: "a precise medical infographic",
-      image_size: "1024x1536",
-      num_images: 1,
-      quality: "low",
-      background: "transparent",
-      output_format: "png",
-      openai_api_key: "test-openai-key",
-    });
-
-    await expect(orgCredits(fixture)).resolves.toBe(1000 - 19);
-  });
-
   it("records a failed job when fal image generation fails", async () => {
     const fixture = await seedImageFixture({ credits: 1000 });
     const pricingFixture = await createScopedImagePricing({
-      configured: GPT_IMAGE_2_PRICING,
+      configured: GPT_IMAGE_1_PRICING,
     });
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let falCalls = 0;
     let observedAuthorization: string | null = null;
     let observedBody: unknown = null;
     server.use(
-      http.post(FAL_GPT_IMAGE_2_URL, async ({ request }) => {
+      http.post(FAL_GPT_IMAGE_1_URL, async ({ request }) => {
         falCalls += 1;
         observedAuthorization = request.headers.get("authorization");
         observedBody = await request.json();
@@ -2376,10 +2239,11 @@ describe("POST /api/zero/image-io/generate", () => {
     expect(observedAuthorization).toBe("Key test-fal-key");
     expect(observedBody).toStrictEqual({
       prompt: "a cat",
-      image_size: { width: 1024, height: 1024 },
+      image_size: "1024x1024",
       num_images: 1,
       output_format: "png",
       quality: "medium",
+      background: "auto",
       openai_api_key: "test-openai-key",
     });
     // The failed job is observed through its realtime failure event and the

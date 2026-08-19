@@ -260,7 +260,7 @@ export function createImageGenerateCommand(
     .option("--json", "Print the complete generation result as JSON")
     .option(
       "--model <model>",
-      "Model: gpt-image-2 (default), gpt-image-1, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4, seedream5-pro, seedream5-lite, or nano-banana-2",
+      "Model: gpt-image-1 (default), gpt-image-2, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4, seedream5-pro, seedream5-lite, or nano-banana-2",
       IMAGE_MODEL_CONFIGS[DEFAULT_IMAGE_MODEL].alias,
     )
     .option(
@@ -338,7 +338,7 @@ Notes:
   - Uses fal.ai and BytePlus for built-in image model execution
 
 Models:
-  - fal.ai: gpt-image-2 (default), gpt-image-1, flux-pro-1.1,
+  - fal.ai: gpt-image-1 (default), gpt-image-2, flux-pro-1.1,
     flux-pro-1.1-ultra, qwen-image, seedream4, nano-banana-2.
     GPT Image models bill by fal output image quality and size.
     Other fal generations bill by output image or rounded-up output
