@@ -460,14 +460,14 @@ export function PinnedAgentListSection({
 
     return (
       <div className="shrink-0" data-testid="pinned-agents-horizontal">
-        <span className="block px-1 pb-2 text-[13px] font-medium leading-4 text-sidebar-foreground/50">
+        <span className="flex h-8 items-center pl-2 text-[13px] font-medium leading-4 text-sidebar-foreground/50">
           {t(($) => {
             return $.sidebar.pinnedAgents;
           })}
         </span>
         <div
           ref={cachePinnedAgentGridRowsRef}
-          className="grid min-w-0 grid-cols-5 items-start gap-1 pb-1"
+          className="grid min-w-0 grid-cols-5 items-start gap-1"
           data-testid="pinned-agents-grid"
         >
           {pinnedAgentCards.slice(0, 4)}
