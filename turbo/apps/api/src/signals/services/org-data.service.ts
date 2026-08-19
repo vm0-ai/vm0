@@ -739,12 +739,17 @@ async function fetchOrgMemberDirectory(
         return client.organizations.getOrganization({ organizationId: orgId });
       }, readSignal),
       retryClerkRead(() => {
-        return listAllOrganizationMemberships(client.organizations, orgId);
+        return listAllOrganizationMemberships(
+          client.organizations,
+          orgId,
+          readSignal,
+        );
       }, readSignal),
       retryClerkRead(() => {
         return listAllPendingOrganizationInvitations(
           client.organizations,
           orgId,
+          readSignal,
         );
       }, readSignal),
     ]),

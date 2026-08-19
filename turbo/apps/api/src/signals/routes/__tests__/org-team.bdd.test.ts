@@ -450,9 +450,17 @@ describe("ORG-02: membership admin matrix", () => {
     expect(context.mocks.signalTimers.delay).toHaveBeenCalledTimes(2);
   });
 
-  it("stops sibling Clerk retries when a directory read is exhausted", async () => {
+  it("stops sibling Clerk work when a directory read is exhausted", async () => {
     const admin = api.user();
     api.mockClerkOrg(admin);
+    const invitationPage = createDeferredPromise<{
+      readonly data: readonly {
+        readonly id: string;
+        readonly emailAddress: string;
+        readonly role: string;
+        readonly createdAt: number;
+      }[];
+    }>(context.signal);
     let siblingDelayAborted = false;
     context.mocks.signalTimers.delay.mockImplementation((ms, options) => {
       if (ms < 10_000) {
@@ -479,6 +487,9 @@ describe("ORG-02: membership admin matrix", () => {
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockRejectedValue(
       new ClerkApiResponseTestError(1),
     );
+    context.mocks.clerk.organizations.getOrganizationInvitationList.mockReturnValueOnce(
+      invitationPage.promise,
+    );
 
     const exhausted = await api.requestListMembers(admin, [503]);
 
@@ -490,6 +501,21 @@ describe("ORG-02: membership admin matrix", () => {
       context.mocks.clerk.organizations.getOrganization,
     ).toHaveBeenCalledTimes(1);
     expect(siblingDelayAborted).toBeTruthy();
+
+    invitationPage.resolve({
+      data: Array.from({ length: 100 }, (_, index) => {
+        return {
+          id: `inv_${index}`,
+          emailAddress: `pending-${index}@example.com`,
+          role: "org:member",
+          createdAt: now(),
+        };
+      }),
+    });
+    await invitationPage.promise;
+    expect(
+      context.mocks.clerk.organizations.getOrganizationInvitationList,
+    ).toHaveBeenCalledTimes(1);
   });
 
   it("rejects Clerk member records without required user identifiers", async () => {
