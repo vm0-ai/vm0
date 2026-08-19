@@ -29,6 +29,8 @@ export const connectors = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     connectorSlug: varchar("connector_slug", { length: 64 }),
     customConnectorId: uuid("custom_connector_id"),
+    displayName: varchar("display_name", { length: 255 }),
+    isDefault: boolean("is_default").default(true),
     authMethod: varchar("auth_method", { length: 50 }).notNull(), // "oauth"
     storageVersion: bigint("storage_version", { mode: "number" }).notNull(),
 
@@ -58,10 +60,20 @@ export const connectors = pgTable(
       uniqueIndex("idx_connectors_org_user_custom_connector")
         .on(table.orgId, table.userId, table.customConnectorId)
         .where(sql`${table.customConnectorId} IS NOT NULL`),
+      uniqueIndex("idx_connectors_org_user_custom_connector_default")
+        .on(table.orgId, table.userId, table.customConnectorId)
+        .where(
+          sql`${table.customConnectorId} IS NOT NULL AND ${table.isDefault} = true`,
+        ),
       unique("idx_connectors_id_org_user").on(
         table.id,
         table.orgId,
         table.userId,
+      ),
+      unique("idx_connectors_id_slug").on(table.id, table.connectorSlug),
+      unique("idx_connectors_id_custom_connector").on(
+        table.id,
+        table.customConnectorId,
       ),
       foreignKey({
         name: "fk_connectors_custom_connector",
@@ -75,6 +87,11 @@ export const connectors = pgTable(
       uniqueIndex("idx_connectors_org_user_slug")
         .on(table.orgId, table.userId, table.connectorSlug)
         .where(sql`${table.connectorSlug} IS NOT NULL`),
+      uniqueIndex("idx_connectors_org_user_slug_default")
+        .on(table.orgId, table.userId, table.connectorSlug)
+        .where(
+          sql`${table.connectorSlug} IS NOT NULL AND ${table.isDefault} = true`,
+        ),
       check(
         "chk_connectors_storage_version_positive",
         sql`${table.storageVersion} > 0`,
