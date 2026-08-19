@@ -20,7 +20,7 @@ import {
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { weatherRoutes } from "../weather";
 
 const context = testContext();
@@ -36,7 +36,7 @@ const GOOGLE_AIR_QUALITY_CURRENT_URL =
   "https://airquality.googleapis.com/v1/currentConditions:lookup";
 
 function authenticate(actor: ApiTestUser): { readonly authorization: string } {
-  createZeroRouteMocks(context).clerk.session(
+  createRouteMocks(context).clerk.session(
     actor.userId,
     actor.orgId,
     actor.orgRole,

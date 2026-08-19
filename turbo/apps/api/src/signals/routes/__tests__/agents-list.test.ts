@@ -1,14 +1,14 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroAgentsMainContract } from "@okouai/api-contracts/contracts/zero-agents";
+import { agentsMainContract } from "@okouai/api-contracts/contracts/agents";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { agentsRoutes } from "../agents";
 
 const context = testContext();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 interface OrgUser {
   readonly orgId: string;
@@ -24,7 +24,7 @@ function authHeaders() {
 }
 
 function apiClient() {
-  return setupApp({ context, routes: agentsRoutes })(zeroAgentsMainContract);
+  return setupApp({ context, routes: agentsRoutes })(agentsMainContract);
 }
 
 describe("GET /api/zero/agents", () => {

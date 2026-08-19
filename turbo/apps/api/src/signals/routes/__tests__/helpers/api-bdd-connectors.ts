@@ -64,7 +64,7 @@ import { now } from "../../../../lib/time";
 import { server } from "../../../../mocks/server";
 import { createDeferredPromise } from "../../../utils";
 import type { ApiTestUser } from "./api-bdd";
-import { createZeroRouteMocks } from "./zero-route-test";
+import { createRouteMocks } from "./route-test";
 import { connectorsSlugCallbackRoutes } from "../../connectors-slug-callback";
 import { githubOauthRoutes } from "../../github-oauth";
 import { integrationsGithubRoutes } from "../../integrations-github";
@@ -1275,7 +1275,7 @@ export function mockAwsDeferredTokenExchange(): AwsDeferredTokenExchange {
 }
 
 export function createConnectorBddApi(context: TestContext) {
-  const mocks = createZeroRouteMocks(context);
+  const mocks = createRouteMocks(context);
 
   function authenticate(nextActor: ApiTestUser | null): AuthHeaders {
     if (!nextActor) {

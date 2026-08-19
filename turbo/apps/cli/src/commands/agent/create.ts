@@ -1,4 +1,4 @@
-import type { ZeroAgentVisibility } from "@okouai/api-contracts/contracts/zero-agents";
+import type { AgentVisibility } from "@okouai/api-contracts/contracts/agents";
 import { Command, Option } from "commander";
 import { readFileSync } from "node:fs";
 import chalk from "chalk";
@@ -24,7 +24,7 @@ export const createCommand = new Command()
       "--visibility <visibility>",
       "Agent visibility: private or public",
     )
-      .default("private" satisfies ZeroAgentVisibility)
+      .default("private" satisfies AgentVisibility)
       .argParser(parseAgentVisibility),
   )
   .option("--avatar <preset>", "Avatar preset: preset:0 through preset:4")
@@ -81,7 +81,7 @@ Examples:
         displayName?: string;
         description?: string;
         sound?: string;
-        visibility: ZeroAgentVisibility;
+        visibility: AgentVisibility;
         avatar?: string;
         avatarRotation?: string;
         avatarSkin?: string;

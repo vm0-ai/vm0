@@ -52,7 +52,7 @@ import {
   postUsageAllowanceInvoicePaid,
 } from "./helpers/stripe-billing-webhook";
 import { seedOrgMembership$ } from "./helpers/org-membership";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import {
   deleteFeatureSwitchesForUser,
   updateFeatureSwitchesForUser,
@@ -80,7 +80,7 @@ import {
 
 const context = testContext();
 const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 async function usagePackStateAction(
   body: TestUsagePackSubscriptionStateAction,

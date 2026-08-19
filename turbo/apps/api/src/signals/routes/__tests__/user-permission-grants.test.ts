@@ -13,7 +13,7 @@ import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { seedOrgMembership$ } from "./helpers/org-membership";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import {
   deleteUsageStateFixture$,
   seedCompose$,
@@ -26,7 +26,7 @@ const TEST_APP_ROUTES = Object.freeze([...userPermissionGrantsRoutes]);
 
 const context = testContext();
 const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 const AUTH_HEADERS = { authorization: "Bearer clerk-session" } as const;
 const SLACK_CONNECTOR = "slack";

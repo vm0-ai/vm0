@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import type { BrandedApiNamespace } from "@okouai/api-contracts/contracts/api-namespaces";
-import { zeroAgentsByIdContract } from "@okouai/api-contracts/contracts/zero-agents";
+import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
 
 import { createApp } from "../../../app-factory";
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -30,7 +30,7 @@ function currentSecond(): number {
 }
 
 function agentsClient() {
-  return setupApp({ context, routes: agentsRoutes })(zeroAgentsByIdContract);
+  return setupApp({ context, routes: agentsRoutes })(agentsByIdContract);
 }
 
 function bearerHeaders(token: string): { readonly authorization: string } {

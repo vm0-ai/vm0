@@ -17,7 +17,7 @@ import {
   chatEventAutomationPart,
   chatEventDisplayText,
 } from "./helpers/chat-event";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
 import { strapiIntegrationsRoutes } from "../strapi-integrations";
 import { strapiEventsRoutes } from "../strapi-events";
@@ -31,7 +31,7 @@ const TEST_APP_ROUTES = Object.freeze([
 ]);
 
 const context = testContext();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const workflows = createWorkflowsBddApi(context);
 const runs = createRunsApi(context);
 

@@ -362,7 +362,7 @@ export const EXPECTED_REPOSITORY_DEPENDENCIES = {
     "turbo/packages/api-contracts/src/contracts/composes.ts|headVersionId",
     "turbo/packages/api-contracts/src/contracts/runners.ts|agentComposeVersionId",
     "turbo/packages/api-contracts/src/contracts/runs.ts|agentComposeVersionId",
-    "turbo/packages/api-contracts/src/contracts/zero-team.ts|headVersionId",
+    "turbo/packages/api-contracts/src/contracts/team.ts|headVersionId",
     "turbo/packages/db/src/schema/agent-compose.ts|agentComposeVersions,agentComposes,headVersionId,head_version_id",
     "turbo/packages/db/src/schema/agent-draft.ts|zeroAgents",
     "turbo/packages/db/src/schema/agent-run-session-conversation.ts|agentComposeId,agentComposeVersionId,agentComposeVersions,agentComposes,agent_compose_id,agent_compose_version_id",

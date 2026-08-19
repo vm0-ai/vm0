@@ -21,7 +21,7 @@ import { meModelProvidersListRoutes } from "../../me-model-providers-list";
 import { modelProvidersRoutes } from "../../model-providers";
 import { userPreferencesRoutes } from "../../user-preferences";
 import type { ApiTestUser } from "./api-bdd";
-import { createZeroRouteMocks } from "./zero-route-test";
+import { createRouteMocks } from "./route-test";
 
 interface AuthHeaders {
   readonly authorization?: string;
@@ -52,7 +52,7 @@ function authenticate(
     return {};
   }
 
-  createZeroRouteMocks(context).clerk.session(
+  createRouteMocks(context).clerk.session(
     actor.userId,
     actor.orgId,
     actor.orgRole,

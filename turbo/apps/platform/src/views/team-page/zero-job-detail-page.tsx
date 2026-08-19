@@ -1080,7 +1080,7 @@ function useAgentFields() {
   const { t } = useTranslation("agents");
   const agent = useLastResolved(currentAgent$);
   const detail = useLastResolved(agentDetail$);
-  // Both signals fetch from zeroAgentsByIdContract; pick whichever resolved first
+  // Both signals fetch from agentsByIdContract; pick whichever resolved first
   const source = agent ?? detail;
   if (!source) {
     return {

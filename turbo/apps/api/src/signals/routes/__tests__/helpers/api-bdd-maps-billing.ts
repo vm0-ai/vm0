@@ -11,7 +11,7 @@ import type { RouteEntry } from "../../../route-entry";
 import { billingStatusRoutes } from "../../billing-status";
 import { mapsRoutes } from "../../maps";
 import type { ApiTestUser } from "./api-bdd";
-import { createZeroRouteMocks } from "./zero-route-test";
+import { createRouteMocks } from "./route-test";
 
 type MapsStatus = 200 | 400 | 401 | 402 | 403 | 502 | 503;
 type OsmLayer = "roads" | "buildings" | "water" | "parks";
@@ -65,7 +65,7 @@ function authenticate(context: TestContext, actor: ApiTestUser | null) {
     return {};
   }
 
-  createZeroRouteMocks(context).clerk.session(
+  createRouteMocks(context).clerk.session(
     actor.userId,
     actor.orgId,
     actor.orgRole,

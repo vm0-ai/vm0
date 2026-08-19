@@ -1,5 +1,5 @@
 import { command, computed } from "ccstate";
-import { zeroAgentInstructionsContract } from "@okouai/api-contracts/contracts/zero-agents";
+import { agentInstructionsContract } from "@okouai/api-contracts/contracts/agents";
 import { agentComposes } from "@okouai/db/schema/agent-compose";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
@@ -37,7 +37,7 @@ const agentWriteAuth = {
 
 const getAgentInstructionsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(zeroAgentInstructionsContract.get));
+  const params = get(pathParamsOf(agentInstructionsContract.get));
   const result = await get(
     agentInstructions({
       orgId: auth.orgId,
@@ -52,7 +52,7 @@ const getAgentInstructionsInner$ = computed(async (get) => {
 });
 
 const updateAgentInstructionsBody$ = bodyResultOf(
-  zeroAgentInstructionsContract.update,
+  agentInstructionsContract.update,
 );
 
 const updateAgentInstructionsInner$ = command(
@@ -60,7 +60,7 @@ const updateAgentInstructionsInner$ = command(
     const auth = get(organizationAuthContext$);
     const publicBrand = get(publicBrand$);
     const member = { userId: auth.userId, role: auth.orgRole ?? "member" };
-    const params = get(pathParamsOf(zeroAgentInstructionsContract.update));
+    const params = get(pathParamsOf(agentInstructionsContract.update));
     const body = await get(updateAgentInstructionsBody$);
     signal.throwIfAborted();
     if (!body.ok) {
@@ -154,11 +154,11 @@ const updateAgentInstructionsInner$ = command(
 
 export const agentInstructionsRoutes: readonly RouteEntry[] = [
   {
-    route: zeroAgentInstructionsContract.get,
+    route: agentInstructionsContract.get,
     handler: authRoute(agentReadAuth, getAgentInstructionsInner$),
   },
   {
-    route: zeroAgentInstructionsContract.update,
+    route: agentInstructionsContract.update,
     handler: authRoute(agentWriteAuth, updateAgentInstructionsInner$),
   },
 ];

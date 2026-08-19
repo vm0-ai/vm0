@@ -1,4 +1,4 @@
-import type { ZeroAgentVisibility } from "@okouai/api-contracts/contracts/zero-agents";
+import type { AgentVisibility } from "@okouai/api-contracts/contracts/agents";
 import { Command, Option } from "commander";
 import { readFileSync } from "node:fs";
 import chalk from "chalk";
@@ -15,7 +15,7 @@ interface AgentEditOptions extends AvatarOptions {
   displayName?: string;
   description?: string;
   sound?: string;
-  visibility?: ZeroAgentVisibility;
+  visibility?: AgentVisibility;
   instructionsFile?: string;
 }
 

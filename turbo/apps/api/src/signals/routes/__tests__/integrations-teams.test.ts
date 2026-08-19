@@ -16,7 +16,7 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { seedOrgMembership$ } from "./helpers/org-membership";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import {
   installTeamsForTest,
   removeTeamsForTest,
@@ -31,7 +31,7 @@ import { teamsConnectRoutes } from "../teams-connect";
 
 const context = testContext();
 const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const SERVICE_URL = "https://smba.trafficmanager.net/amer/";
 const TEAMS_APP_TENANT_ID = "11111111-1111-1111-1111-111111111111";
 const BOT_FRAMEWORK_TOKEN_URL = `https://login.microsoftonline.com/${TEAMS_APP_TENANT_ID}/oauth2/v2.0/token`;

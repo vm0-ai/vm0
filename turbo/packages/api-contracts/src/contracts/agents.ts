@@ -4,13 +4,13 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
-export const zeroAgentVisibilitySchema = z.enum(["public", "private"]);
-export type ZeroAgentVisibility = z.infer<typeof zeroAgentVisibilitySchema>;
+export const agentVisibilitySchema = z.enum(["public", "private"]);
+export type AgentVisibility = z.infer<typeof agentVisibilitySchema>;
 
 /**
- * Zero agent response schema
+ * Agent response schema
  */
-export const zeroAgentResponseSchema = z.object({
+export const agentResponseSchema = z.object({
   agentId: z.string(),
   ownerId: z.string(),
   description: z.string().nullable(),
@@ -20,57 +20,57 @@ export const zeroAgentResponseSchema = z.object({
   modelProviderId: z.string().uuid().nullable().default(null),
   selectedModel: z.string().nullable().default(null),
   preferPersonalProvider: z.boolean().default(false),
-  visibility: zeroAgentVisibilitySchema,
+  visibility: agentVisibilitySchema,
 });
 
 /**
- * Create/update zero agent request schema
+ * Create/update agent request schema
  */
-export const zeroAgentRequestSchema = z.object({
+export const agentRequestSchema = z.object({
   description: z.string().optional(),
   displayName: z.string().optional(),
   sound: z.string().optional(),
   avatarUrl: z.string().optional(),
-  visibility: zeroAgentVisibilitySchema.optional(),
+  visibility: agentVisibilitySchema.optional(),
 });
 
 /**
  * Partial metadata update request schema (for PATCH)
  */
-export const zeroAgentMetadataRequestSchema = z.object({
+export const agentMetadataRequestSchema = z.object({
   displayName: z.string().optional(),
   description: z.string().optional(),
   sound: z.string().optional(),
   avatarUrl: z.string().nullable().optional(),
-  visibility: zeroAgentVisibilitySchema.optional(),
+  visibility: agentVisibilitySchema.optional(),
 });
 
 /**
- * Zero agent instructions response schema
+ * Agent instructions response schema
  */
-export const zeroAgentInstructionsResponseSchema = z.object({
+export const agentInstructionsResponseSchema = z.object({
   content: z.string().nullable(),
   filename: z.string().nullable(),
 });
 
 /**
- * Zero agent instructions update request schema
+ * Agent instructions update request schema
  */
-export const zeroAgentInstructionsRequestSchema = z.object({
+export const agentInstructionsRequestSchema = z.object({
   content: z.string(),
 });
 
 /**
  * Contract for GET/POST /api/okou/agents (list/create agents)
  */
-export const zeroAgentsMainContract = c.router({
+export const agentsMainContract = c.router({
   create: {
     method: "POST",
     path: "/api/okou/agents",
     headers: authHeadersSchema,
-    body: zeroAgentRequestSchema,
+    body: agentRequestSchema,
     responses: {
-      201: zeroAgentResponseSchema,
+      201: agentResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
@@ -84,7 +84,7 @@ export const zeroAgentsMainContract = c.router({
     path: "/api/okou/agents",
     headers: authHeadersSchema,
     responses: {
-      200: z.array(zeroAgentResponseSchema),
+      200: z.array(agentResponseSchema),
       401: apiErrorSchema,
       403: apiErrorSchema,
     },
@@ -95,14 +95,14 @@ export const zeroAgentsMainContract = c.router({
 /**
  * Contract for GET/PUT/PATCH/DELETE /api/okou/agents/:id
  */
-export const zeroAgentsByIdContract = c.router({
+export const agentsByIdContract = c.router({
   get: {
     method: "GET",
     path: "/api/okou/agents/:id",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     responses: {
-      200: zeroAgentResponseSchema,
+      200: agentResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
@@ -115,9 +115,9 @@ export const zeroAgentsByIdContract = c.router({
     path: "/api/okou/agents/:id",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
-    body: zeroAgentRequestSchema,
+    body: agentRequestSchema,
     responses: {
-      200: zeroAgentResponseSchema,
+      200: agentResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
@@ -132,9 +132,9 @@ export const zeroAgentsByIdContract = c.router({
     path: "/api/okou/agents/:id",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
-    body: zeroAgentMetadataRequestSchema,
+    body: agentMetadataRequestSchema,
     responses: {
-      200: zeroAgentResponseSchema,
+      200: agentResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
@@ -164,14 +164,14 @@ export const zeroAgentsByIdContract = c.router({
 /**
  * Contract for GET/PUT /api/okou/agents/:id/instructions
  */
-export const zeroAgentInstructionsContract = c.router({
+export const agentInstructionsContract = c.router({
   get: {
     method: "GET",
     path: "/api/okou/agents/:id/instructions",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     responses: {
-      200: zeroAgentInstructionsResponseSchema,
+      200: agentInstructionsResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
@@ -184,9 +184,9 @@ export const zeroAgentInstructionsContract = c.router({
     path: "/api/okou/agents/:id/instructions",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
-    body: zeroAgentInstructionsRequestSchema,
+    body: agentInstructionsRequestSchema,
     responses: {
-      200: zeroAgentResponseSchema,
+      200: agentResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
@@ -198,19 +198,16 @@ export const zeroAgentInstructionsContract = c.router({
 });
 
 // Export types
-export type ZeroAgentResponse = z.infer<typeof zeroAgentResponseSchema>;
-export type ZeroAgentRequest = z.infer<typeof zeroAgentRequestSchema>;
-export type ZeroAgentMetadataRequest = z.infer<
-  typeof zeroAgentMetadataRequestSchema
+export type AgentResponse = z.infer<typeof agentResponseSchema>;
+export type AgentRequest = z.infer<typeof agentRequestSchema>;
+export type AgentMetadataRequest = z.infer<typeof agentMetadataRequestSchema>;
+export type AgentInstructionsResponse = z.infer<
+  typeof agentInstructionsResponseSchema
 >;
-export type ZeroAgentInstructionsResponse = z.infer<
-  typeof zeroAgentInstructionsResponseSchema
->;
-export type ZeroAgentInstructionsRequest = z.infer<
-  typeof zeroAgentInstructionsRequestSchema
+export type AgentInstructionsRequest = z.infer<
+  typeof agentInstructionsRequestSchema
 >;
 
-export type ZeroAgentsMainContract = typeof zeroAgentsMainContract;
-export type ZeroAgentsByIdContract = typeof zeroAgentsByIdContract;
-export type ZeroAgentInstructionsContract =
-  typeof zeroAgentInstructionsContract;
+export type AgentsMainContract = typeof agentsMainContract;
+export type AgentsByIdContract = typeof agentsByIdContract;
+export type AgentInstructionsContract = typeof agentInstructionsContract;

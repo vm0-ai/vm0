@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 
 import {
-  zeroAgentInstructionsContract,
-  zeroAgentsByIdContract,
-  zeroAgentsMainContract,
-  type ZeroAgentRequest,
-} from "@okouai/api-contracts/contracts/zero-agents";
+  agentInstructionsContract,
+  agentsByIdContract,
+  agentsMainContract,
+  type AgentRequest,
+} from "@okouai/api-contracts/contracts/agents";
 import { workflowsCollectionContract } from "@okouai/api-contracts/contracts/workflows";
 import {
   cliAuthApproveContract,
@@ -18,7 +18,7 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { seedOrgMembership$ } from "./helpers/org-membership";
 import { cliAuthRoutes } from "../cli-auth";
 import { agentInstructionsRoutes } from "../agent-instructions";
@@ -27,7 +27,7 @@ import { workflowsRoutes } from "../workflows";
 
 const context = testContext();
 const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 interface OrgUser {
   readonly orgId: string;
@@ -89,23 +89,23 @@ async function cliAuthHeaders(
 }
 
 function agentsClient() {
-  return setupApp({ context, routes: agentsRoutes })(zeroAgentsByIdContract);
+  return setupApp({ context, routes: agentsRoutes })(agentsByIdContract);
 }
 
 function agentsCollectionClient() {
-  return setupApp({ context, routes: agentsRoutes })(zeroAgentsMainContract);
+  return setupApp({ context, routes: agentsRoutes })(agentsMainContract);
 }
 
 function instructionsClient() {
   return setupApp({ context, routes: agentInstructionsRoutes })(
-    zeroAgentInstructionsContract,
+    agentInstructionsContract,
   );
 }
 
 /** Creates an agent through POST /api/zero/agents with the user as owner. */
 async function createAgentAs(
   user: OrgUser,
-  body: ZeroAgentRequest = {},
+  body: AgentRequest = {},
 ): Promise<{ readonly agentId: string }> {
   mocks.clerk.session(user.userId, user.orgId);
   context.mocks.s3.send.mockResolvedValue({});

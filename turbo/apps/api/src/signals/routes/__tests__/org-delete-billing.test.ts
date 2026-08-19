@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroAgentsMainContract } from "@okouai/api-contracts/contracts/zero-agents";
+import { agentsMainContract } from "@okouai/api-contracts/contracts/agents";
 import { orgDeleteContract } from "@okouai/api-contracts/contracts/org-routes";
 import { createStore } from "ccstate";
 import type StripeSDK from "stripe";
@@ -28,7 +28,7 @@ import {
   findSlackOrgConnection$,
   seedSlackConnectOrg$,
 } from "./helpers/slack-connect";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import {
   createBillingWebhookFixture,
   generatedStripeCustomerId,
@@ -42,7 +42,7 @@ import {
 
 const context = testContext();
 const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 interface OrgDeleteBillingFixture extends BillingWebhookFixture {
   readonly customerId: string;
@@ -624,7 +624,7 @@ test("does not delete the org when its proportional refund fails", async () => {
     exp: deletionTimestamp + 60,
   });
   const agents = setupApp({ context, routes: agentsRoutes })(
-    zeroAgentsMainContract,
+    agentsMainContract,
   );
   const misc = createMiscRoutesApi(context);
 

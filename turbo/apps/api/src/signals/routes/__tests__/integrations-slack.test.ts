@@ -17,10 +17,7 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { SlackFileFetchError } from "../../external/slack-file-fetcher";
 import { testSlackStateRoutes } from "../test-slack-state";
 import { seedOrgMembership$ } from "./helpers/org-membership";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
 import {
   deleteSlackIntegrationFixture$,
   seedSlackOrgConnection$,
@@ -410,7 +407,7 @@ describe("DELETE /api/zero/integrations/slack", () => {
       return store.set(deleteSlackIntegrationFixture$, fixture, context.signal);
     },
   );
-  const mocks = createZeroRouteMocks(context);
+  const mocks = createRouteMocks(context);
 
   beforeEach(() => {
     context.mocks.slack.views.publish.mockResolvedValue({ ok: true });
@@ -551,7 +548,7 @@ describe("DELETE /api/zero/integrations/slack?action=uninstall", () => {
       return store.set(deleteSlackIntegrationFixture$, fixture, context.signal);
     },
   );
-  const mocks = createZeroRouteMocks(context);
+  const mocks = createRouteMocks(context);
 
   beforeEach(() => {
     context.mocks.slack.views.publish.mockResolvedValue({ ok: true });
@@ -794,7 +791,7 @@ describe("GET /api/zero/integrations/slack/download-file", () => {
       return store.set(deleteSlackIntegrationFixture$, fixture, context.signal);
     },
   );
-  const mocks = createZeroRouteMocks(context);
+  const mocks = createRouteMocks(context);
 
   async function seedDownloadContext(
     args: {

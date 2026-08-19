@@ -16,7 +16,7 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { billingStatusRoutes } from "../billing-status";
 import { financeRoutes } from "../finance";
 
@@ -28,7 +28,7 @@ const FINANCE_ROUTES = Object.freeze([
 const APIDOJO_BASE_URL = "https://apidojo-yahoo-finance-v1.p.rapidapi.com";
 
 function authenticate(actor: ApiTestUser) {
-  createZeroRouteMocks(context).clerk.session(
+  createRouteMocks(context).clerk.session(
     actor.userId,
     actor.orgId,
     actor.orgRole,
