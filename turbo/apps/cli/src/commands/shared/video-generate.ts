@@ -399,7 +399,7 @@ export function createVideoGenerateCommand(
     .option("--json", "Print the complete generation result as JSON")
     .option(
       "--model <model>",
-      "Model: dreamina-seedance-2.0-fast, dreamina-seedance-2.5, dreamina-seedance-2.0, dreamina-seedance-2.0-mini, seedance-1.5-pro, minimax-h3, veo3.1-fast, or kling-v3-4k. Do not pass this unless the user named a model: omitting it uses the model selected for this chat, and passing one overrides that selection",
+      "Model: dreamina-seedance-2.0-fast, dreamina-seedance-2.5, dreamina-seedance-2.0, dreamina-seedance-2.0-mini, seedance-1.5-pro, minimax-h3, veo3.1-fast, or kling-v3-4k. Do not pass this unless the user named a model",
     )
     .option(
       "--aspect-ratio <ratio>",
