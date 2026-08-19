@@ -1663,6 +1663,161 @@ describe("WHCB-04: internal callback and event-consumer boundaries", () => {
     ).toBeTruthy();
   });
 
+  it("logs bounded Axiom partial-ingest details without event payload values", async () => {
+    const { runId, headers } = await createEventWebhookRun(
+      "partial Axiom ingest diagnostics",
+    );
+    const submittedPayloadValue = `private-event-value-${randomUUID()}`;
+    const rawFailureError = `schema\nrule\t${"x".repeat(600)}`;
+    const normalizedFailureError = `schema rule ${"x".repeat(600)}`;
+    const expectedFailureError = `${normalizedFailureError.slice(0, 509)}...`;
+    const failureTimestamp = "2026-08-19T00:00:00.000Z";
+    server.use(
+      http.post(
+        "https://api.axiom.co/v1/datasets/agent-run-events/ingest",
+        () => {
+          return HttpResponse.json({
+            ingested: 1,
+            failed: 1,
+            failures: [
+              {
+                timestamp: failureTimestamp,
+                error: rawFailureError,
+              },
+            ],
+            processedBytes: 123,
+          });
+        },
+      ),
+    );
+
+    const response = await api.requestAgentEvents(
+      {
+        runId,
+        events: [
+          {
+            type: "system",
+            sequenceNumber: 10,
+            detail: submittedPayloadValue,
+          },
+          {
+            type: "result",
+            sequenceNumber: 11,
+            result: "DB-backed callback output",
+          },
+        ],
+      },
+      headers,
+      [200],
+    );
+    expect(response.body).toStrictEqual({
+      received: 2,
+      firstSequence: 10,
+      lastSequence: 11,
+    });
+    await flushWaitUntilForTest();
+
+    const logFields = context.mocks.axiomLogging.error.mock.calls.find(
+      ([message, fields]) => {
+        return (
+          message === "Optional Axiom trace delivery failed" &&
+          isUnknownRecord(fields) &&
+          fields.runId === runId
+        );
+      },
+    )?.[1];
+    if (!isUnknownRecord(logFields) || !isUnknownRecord(logFields.error)) {
+      throw new Error("Expected structured Axiom partial-ingest log fields");
+    }
+    expect(logFields).toMatchObject({
+      runId,
+      firstSequence: 10,
+      lastSequence: 11,
+    });
+    expect(logFields.error).toMatchObject({
+      name: "DirectAxiomIngestError",
+      reason: "partial_ingest",
+      dataset: "agent-run-events",
+      expected: 2,
+      ingested: 1,
+      failed: 1,
+      failureDetailsReturned: 1,
+      failureDetailsOmitted: 0,
+    });
+    expect(logFields.error.failureDetails).toStrictEqual([
+      {
+        timestamp: failureTimestamp,
+        error: expectedFailureError,
+      },
+    ]);
+    expect(expectedFailureError).toHaveLength(512);
+    expect(JSON.stringify(logFields)).not.toContain(submittedPayloadValue);
+  });
+
+  it("limits the number of logged Axiom partial-ingest details", async () => {
+    const { runId, headers } = await createEventWebhookRun(
+      "partial Axiom ingest detail limit",
+    );
+    const failures = Array.from({ length: 4 }, (_, index) => {
+      return {
+        timestamp: `2026-08-19T00:00:0${index}.000Z`,
+        error: `failure-${index + 1}`,
+      };
+    });
+    server.use(
+      http.post(
+        "https://api.axiom.co/v1/datasets/agent-run-events/ingest",
+        () => {
+          return HttpResponse.json({
+            ingested: 1,
+            failed: 4,
+            failures,
+            processedBytes: 123,
+          });
+        },
+      ),
+    );
+
+    const response = await api.requestAgentEvents(
+      {
+        runId,
+        events: Array.from({ length: 5 }, (_, sequenceNumber) => {
+          return { type: "system", sequenceNumber };
+        }),
+      },
+      headers,
+      [200],
+    );
+    expect(response.body).toStrictEqual({
+      received: 5,
+      firstSequence: 0,
+      lastSequence: 4,
+    });
+    await flushWaitUntilForTest();
+
+    const logFields = context.mocks.axiomLogging.error.mock.calls.find(
+      ([message, fields]) => {
+        return (
+          message === "Optional Axiom trace delivery failed" &&
+          isUnknownRecord(fields) &&
+          fields.runId === runId
+        );
+      },
+    )?.[1];
+    if (!isUnknownRecord(logFields) || !isUnknownRecord(logFields.error)) {
+      throw new Error("Expected structured Axiom partial-ingest log fields");
+    }
+    expect(logFields.error).toMatchObject({
+      expected: 5,
+      ingested: 1,
+      failed: 4,
+      failureDetailsReturned: 4,
+      failureDetailsOmitted: 1,
+    });
+    expect(logFields.error.failureDetails).toStrictEqual(failures.slice(0, 3));
+    expect(JSON.stringify(logFields)).not.toContain("failure-4");
+  });
+
   it("acknowledges events when the optional Axiom status is malformed", async () => {
     const { runId, headers } = await createEventWebhookRun(
       "malformed optional Axiom status",
