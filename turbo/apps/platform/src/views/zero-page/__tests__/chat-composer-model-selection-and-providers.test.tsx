@@ -3509,15 +3509,6 @@ describe("chat composer image model", () => {
     });
   }
 
-  function mediaPanelButtonByAccessibleLabel(
-    label: string,
-    root: ParentNode = document,
-  ): HTMLElement | undefined {
-    return queryAllByRoleFast("button", root).find((candidate) => {
-      return candidate.getAttribute("aria-label") === label;
-    });
-  }
-
   function findMediaPanelButton(label: string): Promise<HTMLElement> {
     return waitFor(() => {
       const button = mediaPanelButton(label);
@@ -4039,9 +4030,6 @@ describe("chat composer image model", () => {
           return button.getAttribute("aria-label");
         }),
     ).toStrictEqual(imageModelControlLabels);
-    expect(
-      mediaPanelButtonByAccessibleLabel("GPT Image 1 variants", listbox),
-    ).toBeUndefined();
     const openAiIcon = imageModelBrandIcon("GPT Image 2").outerHTML;
     expect(openAiIcon).toContain("openai");
     expect(imageModelBrandIcon("GPT Image 1").outerHTML).toBe(openAiIcon);
