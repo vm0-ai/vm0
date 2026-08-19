@@ -456,12 +456,12 @@
         "newChat": "Nouveau chat",
         "settings": "Paramètres",
         "workflows": "Workflows",
-        "works": "Où {{agentName}} travaille"
+        "works": "Canaux de {{agentName}}"
       },
       "rail": {
         "new": "Nouveau",
         "workflows": "Workflows",
-        "works": "Travail"
+        "works": "Canaux"
       },
       "searchConversations": "Rechercher des conversations",
       "workspaceSwitcher": {
@@ -5449,7 +5449,7 @@
     },
     "connected": "Connecté",
     "connectedWithDetail": "Connecté ({{detail}})",
-    "documentTitle": "Fonctionne",
+    "documentTitle": "Canaux",
     "feishuConnected": "Feishu connecté avec succès",
     "github": {
       "adminInstall": "Demandez à un administrateur de l’organisation d’installer l’application GitHub",
@@ -5459,7 +5459,7 @@
     },
     "header": {
       "description": "Connecter avec {{displayName}} via ces canaux",
-      "title": "Où {{displayName}} travaille"
+      "title": "Canaux de {{displayName}}"
     },
     "slack": {
       "adminInstall": "Demandez à votre administrateur d'installer l'intégration Slack",

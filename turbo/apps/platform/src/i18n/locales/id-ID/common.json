@@ -442,12 +442,12 @@
         "newChat": "Chat baru",
         "settings": "Pengaturan",
         "workflows": "Alur kerja",
-        "works": "Tempat {{agentName}} bekerja"
+        "works": "Saluran {{agentName}}"
       },
       "rail": {
         "new": "Baru",
         "workflows": "Alur kerja",
-        "works": "Bekerja"
+        "works": "Saluran"
       },
       "searchConversations": "Cari percakapan",
       "workspaceSwitcher": {
@@ -5390,7 +5390,7 @@
     },
     "connected": "Terhubung",
     "connectedWithDetail": "Terhubung ({{detail}})",
-    "documentTitle": "Berfungsi",
+    "documentTitle": "Saluran",
     "feishuConnected": "Feishu berhasil terhubung",
     "github": {
       "adminInstall": "Minta admin organisasi untuk menginstal aplikasi GitHub",
@@ -5400,7 +5400,7 @@
     },
     "header": {
       "description": "Hubungkan dengan {{displayName}} melalui saluran ini",
-      "title": "Tempat {{displayName}} bekerja"
+      "title": "Saluran {{displayName}}"
     },
     "slack": {
       "adminInstall": "Minta admin Anda untuk memasang integrasi Slack",
