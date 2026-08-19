@@ -31,19 +31,7 @@ const SETUP_READ_TIMEOUT: Duration = Duration::from_secs(60);
 const SETUP_REQUEST_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 const GROUP_OR_OTHER_WRITE_BITS: u32 = 0o022;
 const ROOT_UID: u32 = 0;
-const START_SYSTEM_DEPENDENCIES: [&str; 11] = [
-    "ip",
-    "iptables",
-    "iptables-save",
-    "iptables-restore",
-    "ip6tables",
-    "ip6tables-save",
-    "ip6tables-restore",
-    "sysctl",
-    "dnsmasq",
-    "mkfs.ext4",
-    "openssl",
-];
+const RUNNER_START_SYSTEM_DEPENDENCIES: [&str; 2] = ["dnsmasq", "openssl"];
 const OTHER_COMMAND_SYSTEM_DEPENDENCIES: [&str; 3] = ["pgrep", "debootstrap", "flock"];
 
 struct ProducedSetupArtifact {
@@ -108,7 +96,8 @@ fn check_architecture() -> RunnerResult<&'static str> {
 
 /// Returns names of missing required dependencies.
 fn check_system_dependencies() -> Vec<&'static str> {
-    let missing_required: Vec<&str> = START_SYSTEM_DEPENDENCIES
+    let start_system_dependencies = start_system_dependencies();
+    let missing_required: Vec<&str> = start_system_dependencies
         .iter()
         .filter(|dep| which::which(dep).is_err())
         .copied()
@@ -136,6 +125,12 @@ fn check_system_dependencies() -> Vec<&'static str> {
     }
 
     missing_required
+}
+
+fn start_system_dependencies() -> Vec<&'static str> {
+    let mut dependencies = sandbox_fc::runtime_required_commands();
+    dependencies.extend(RUNNER_START_SYSTEM_DEPENDENCIES);
+    dependencies
 }
 
 async fn create_directories(paths: &HomePaths) -> RunnerResult<()> {
@@ -1051,9 +1046,10 @@ mod tests {
     #[test]
     fn check_system_dependencies_only_returns_known_deps() {
         let missing = check_system_dependencies();
+        let known = start_system_dependencies();
         for dep in &missing {
             assert!(
-                START_SYSTEM_DEPENDENCIES.contains(dep),
+                known.contains(dep),
                 "unexpected dependency reported as missing: {dep}"
             );
         }
@@ -1061,22 +1057,17 @@ mod tests {
 
     #[test]
     fn runner_start_dependencies_include_openssl_for_proxy_ca_validation() {
-        assert!(START_SYSTEM_DEPENDENCIES.contains(&"openssl"));
+        assert!(RUNNER_START_SYSTEM_DEPENDENCIES.contains(&"openssl"));
         assert!(!OTHER_COMMAND_SYSTEM_DEPENDENCIES.contains(&"openssl"));
     }
 
     #[test]
-    fn runner_start_dependencies_include_dual_stack_firewall_tools() {
-        for dependency in [
-            "iptables",
-            "iptables-save",
-            "iptables-restore",
-            "ip6tables",
-            "ip6tables-save",
-            "ip6tables-restore",
-        ] {
-            assert!(START_SYSTEM_DEPENDENCIES.contains(&dependency));
+    fn start_dependencies_include_sandbox_runtime_commands() {
+        let start_dependencies = start_system_dependencies();
+        for dependency in sandbox_fc::runtime_required_commands() {
+            assert!(start_dependencies.contains(&dependency));
         }
+        assert!(start_dependencies.contains(&"conntrack"));
     }
 
     #[test]
