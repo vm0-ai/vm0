@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.169.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.9...runner-rs-v0.169.10) (2026-08-19)
+
+
+### Documentation
+
+* **python:** document webhook delivery callback lifecycle ([#28096](https://github.com/vm0-ai/vm0/issues/28096)) ([e94991b](https://github.com/vm0-ai/vm0/commit/e94991becd85d9b350a804ff011b9369b8488791))
+
 ## [0.169.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.8...runner-rs-v0.169.9) (2026-08-18)
 
 ## [0.169.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.7...runner-rs-v0.169.8) (2026-08-18)
