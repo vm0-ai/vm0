@@ -61,7 +61,7 @@ function rebaseApiPath(path: string, apiBase: string): string {
  * @example
  * ```ts
  * const createClient = get(zeroClient$);
- * const client = createClient(zeroAgentsByIdContract);
+ * const client = createClient(agentsByIdContract);
  * const result = await client.get({ params: { id: "my-agent-id" } });
  * if (result.status === 200) {
  *   console.log(result.body.displayName);

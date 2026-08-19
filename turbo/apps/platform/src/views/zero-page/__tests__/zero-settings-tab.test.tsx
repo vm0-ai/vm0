@@ -2,10 +2,10 @@ import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import {
-  zeroAgentInstructionsContract,
-  zeroAgentsByIdContract,
-  type ZeroAgentResponse,
-} from "@okouai/api-contracts/contracts/zero-agents";
+  agentInstructionsContract,
+  agentsByIdContract,
+  type AgentResponse,
+} from "@okouai/api-contracts/contracts/agents";
 import { AVATAR_PRESET_COUNT } from "@okouai/core/agent-avatar";
 
 import {
@@ -55,7 +55,7 @@ function tabByText(text: string): HTMLElement {
 }
 
 function prepareAgentProfile(avatarUrl = "preset:0"): void {
-  let detail: ZeroAgentResponse = {
+  let detail: AgentResponse = {
     agentId: AGENT_ID,
     ownerId: "test-user-123",
     description: "A helpful agent",
@@ -92,23 +92,20 @@ function prepareAgentProfile(avatarUrl = "preset:0"): void {
       updatedAt: "2024-01-02T00:00:00Z",
     },
   ]);
-  context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
+  context.mocks.api(agentsByIdContract.get, ({ respond }) => {
     return respond(200, detail);
   });
-  context.mocks.api(
-    zeroAgentsByIdContract.updateMetadata,
-    ({ body, respond }) => {
-      detail = { ...detail, ...body };
-      return respond(200, detail);
-    },
-  );
-  context.mocks.api(zeroAgentInstructionsContract.get, ({ respond }) => {
+  context.mocks.api(agentsByIdContract.updateMetadata, ({ body, respond }) => {
+    detail = { ...detail, ...body };
+    return respond(200, detail);
+  });
+  context.mocks.api(agentInstructionsContract.get, ({ respond }) => {
     return respond(200, { content: null, filename: null });
   });
 }
 
 function prepareMatchingAgentProfiles(): void {
-  const details: Record<string, ZeroAgentResponse> = {
+  const details: Record<string, AgentResponse> = {
     [AGENT_ID]: {
       agentId: AGENT_ID,
       ownerId: "test-user-123",
@@ -159,14 +156,14 @@ function prepareMatchingAgentProfiles(): void {
       updatedAt: "2024-01-02T00:00:00Z",
     },
   ]);
-  context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
+  context.mocks.api(agentsByIdContract.get, ({ params, respond }) => {
     const detail = details[params.id];
     if (!detail) {
       throw new Error(`Unexpected agent detail request: ${params.id}`);
     }
     return respond(200, detail);
   });
-  context.mocks.api(zeroAgentInstructionsContract.get, ({ respond }) => {
+  context.mocks.api(agentInstructionsContract.get, ({ respond }) => {
     return respond(200, { content: null, filename: null });
   });
 }

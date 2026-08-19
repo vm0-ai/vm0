@@ -325,7 +325,7 @@ Key points:
 Every API route test file should follow this structure:
 
 ```typescript
-import { zeroAgentsMainContract } from "@okouai/api-contracts/contracts/zero-agents";
+import { agentsMainContract } from "@okouai/api-contracts/contracts/agents";
 import { describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -334,7 +334,7 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 const context = testContext();
 
 function apiClient() {
-  return setupApp({ context })(zeroAgentsMainContract);
+  return setupApp({ context })(agentsMainContract);
 }
 
 function authHeaders() {

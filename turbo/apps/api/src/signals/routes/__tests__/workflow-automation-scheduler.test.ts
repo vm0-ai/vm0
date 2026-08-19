@@ -3,9 +3,9 @@ import { createHash, randomUUID } from "node:crypto";
 import { testWorkflowAutomationExecutionContract } from "@okouai/api-contracts/contracts/test-workflow-automation-execution";
 import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
 import {
-  zeroAgentsByIdContract,
-  zeroAgentsMainContract,
-} from "@okouai/api-contracts/contracts/zero-agents";
+  agentsByIdContract,
+  agentsMainContract,
+} from "@okouai/api-contracts/contracts/agents";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { createStore } from "ccstate";
 
@@ -540,7 +540,7 @@ describe("okou workflow automation scheduler", () => {
     mocks.clerk.session(member.userId, scenario.orgId, "org:member");
     const apiKey = await runsApi.createCliToken(member);
     await accept(
-      setupApp({ context, routes: agentsRoutes })(zeroAgentsMainContract).list({
+      setupApp({ context, routes: agentsRoutes })(agentsMainContract).list({
         headers: { authorization: `Bearer ${apiKey.token}` },
       }),
       [200],
@@ -564,7 +564,7 @@ describe("okou workflow automation scheduler", () => {
     mocks.clerk.session(scenario.userId, scenario.orgId);
     await accept(
       setupApp({ context, routes: agentsRoutes })(
-        zeroAgentsByIdContract,
+        agentsByIdContract,
       ).updateMetadata({
         headers: authHeaders(),
         params: { id: scenario.agentId },
@@ -579,7 +579,7 @@ describe("okou workflow automation scheduler", () => {
     // already happened during the tick above.
     await accept(
       setupApp({ context, routes: agentsRoutes })(
-        zeroAgentsByIdContract,
+        agentsByIdContract,
       ).updateMetadata({
         headers: authHeaders(),
         params: { id: scenario.agentId },

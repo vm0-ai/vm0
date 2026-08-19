@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { zeroAgentVisibilitySchema } from "./zero-agents";
+import { agentVisibilitySchema } from "./agents";
 
 const c = initContract();
 
@@ -12,16 +12,16 @@ const teamComposeItemSchema = z.object({
   description: z.string().nullable(),
   sound: z.string().nullable(),
   avatarUrl: z.string().nullable(),
-  visibility: zeroAgentVisibilitySchema.optional(),
+  visibility: agentVisibilitySchema.optional(),
   headVersionId: z.string().nullable(),
   updatedAt: z.string(),
 });
 
 /**
- * Zero team contract (GET /api/okou/team)
+ * Team contract (GET /api/okou/team)
  * Lists all agents in the user's active Clerk org.
  */
-export const zeroTeamContract = c.router({
+export const teamContract = c.router({
   list: {
     method: "GET",
     path: "/api/okou/team",
@@ -36,6 +36,6 @@ export const zeroTeamContract = c.router({
   },
 });
 
-export type ZeroTeamContract = typeof zeroTeamContract;
+export type TeamContract = typeof teamContract;
 export type TeamComposeItem = z.infer<typeof teamComposeItemSchema>;
 export { teamComposeItemSchema };

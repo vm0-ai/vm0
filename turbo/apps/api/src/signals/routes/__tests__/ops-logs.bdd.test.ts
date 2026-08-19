@@ -6,7 +6,7 @@ import type {
   GenerationTemplateRequest,
   UserMessageInputDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import { zeroAgentInstructionsContract } from "@okouai/api-contracts/contracts/zero-agents";
+import { agentInstructionsContract } from "@okouai/api-contracts/contracts/agents";
 import { ILLUSTRATION_TEMPLATE_ITEMS } from "@okouai/core";
 import { env } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
@@ -1357,7 +1357,7 @@ describe("OPS-01: user data export", () => {
     });
     await accept(
       setupApp({ context, routes: agentInstructionsRoutes })(
-        zeroAgentInstructionsContract,
+        agentInstructionsContract,
       ).update({
         params: { id: agent.agentId },
         headers: { authorization: "Bearer clerk-session" },

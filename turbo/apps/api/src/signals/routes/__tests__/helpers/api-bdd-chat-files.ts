@@ -53,9 +53,9 @@ import {
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
 import {
-  zeroAgentsMainContract,
-  type ZeroAgentResponse,
-} from "@okouai/api-contracts/contracts/zero-agents";
+  agentsMainContract,
+  type AgentResponse,
+} from "@okouai/api-contracts/contracts/agents";
 import {
   hostContract,
   type HostedSiteCompleteResponse,
@@ -408,9 +408,9 @@ export function createChatFilesBddApi(context: TestContext) {
     async createAgentForChatThread(
       actor: ApiTestUser,
       displayName = `BDD chat ${randomUUID().slice(0, 8)}`,
-    ): Promise<ZeroAgentResponse> {
+    ): Promise<AgentResponse> {
       const response = await accept(
-        chatFilesApp(context)(zeroAgentsMainContract).create({
+        chatFilesApp(context)(agentsMainContract).create({
           headers: authenticate(context, actor),
           body: { displayName, visibility: "private" },
         }),

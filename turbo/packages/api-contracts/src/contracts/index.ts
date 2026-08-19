@@ -875,23 +875,23 @@ export {
   type AgentDraftRequest,
 } from "./agent-draft";
 export {
-  zeroAgentsMainContract,
-  zeroAgentsByIdContract,
-  zeroAgentInstructionsContract,
-  zeroAgentResponseSchema,
-  zeroAgentRequestSchema,
-  zeroAgentMetadataRequestSchema,
-  zeroAgentInstructionsResponseSchema,
-  zeroAgentInstructionsRequestSchema,
-  type ZeroAgentsMainContract,
-  type ZeroAgentsByIdContract,
-  type ZeroAgentInstructionsContract,
-  type ZeroAgentResponse,
-  type ZeroAgentRequest,
-  type ZeroAgentMetadataRequest,
-  type ZeroAgentInstructionsResponse,
-  type ZeroAgentInstructionsRequest,
-} from "./zero-agents";
+  agentsMainContract,
+  agentsByIdContract,
+  agentInstructionsContract,
+  agentResponseSchema,
+  agentRequestSchema,
+  agentMetadataRequestSchema,
+  agentInstructionsResponseSchema,
+  agentInstructionsRequestSchema,
+  type AgentsMainContract,
+  type AgentsByIdContract,
+  type AgentInstructionsContract,
+  type AgentResponse,
+  type AgentRequest,
+  type AgentMetadataRequest,
+  type AgentInstructionsResponse,
+  type AgentInstructionsRequest,
+} from "./agents";
 export {
   workflowVisibilitySchema,
   workflowNameSchema,
@@ -1434,11 +1434,11 @@ export {
   type UsageRecordSource,
 } from "./usage-record";
 export {
-  zeroTeamContract,
+  teamContract,
   teamComposeItemSchema,
-  type ZeroTeamContract,
+  type TeamContract,
   type TeamComposeItem,
-} from "./zero-team";
+} from "./team";
 export {
   integrationsSlackContract,
   slackOrgStatusSchema,

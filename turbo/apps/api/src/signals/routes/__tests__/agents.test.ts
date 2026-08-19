@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroAgentsMainContract } from "@okouai/api-contracts/contracts/zero-agents";
+import { agentsMainContract } from "@okouai/api-contracts/contracts/agents";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
@@ -25,9 +25,7 @@ describe("GET /api/zero/agents/:id/user-connectors", () => {
     context.mocks.s3.send.mockResolvedValue({});
 
     const created = await accept(
-      setupApp({ context, routes: agentsRoutes })(
-        zeroAgentsMainContract,
-      ).create({
+      setupApp({ context, routes: agentsRoutes })(agentsMainContract).create({
         headers: { authorization: "Bearer clerk-session" },
         body: {},
       }),
@@ -78,9 +76,7 @@ describe("GET /api/zero/agents/:id/user-connectors", () => {
     const headers = { authorization: "Bearer clerk-session" };
 
     const created = await accept(
-      setupApp({ context, routes: agentsRoutes })(
-        zeroAgentsMainContract,
-      ).create({
+      setupApp({ context, routes: agentsRoutes })(agentsMainContract).create({
         headers,
         body: {},
       }),

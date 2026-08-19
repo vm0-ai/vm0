@@ -24,7 +24,7 @@ import type {
   CustomConnectorPermissionBundleResponse,
 } from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import type { PlatformConnectorPermissionMetadata } from "../../../../signals/connector-domain.ts";
-import type { TeamComposeItem } from "@okouai/api-contracts/contracts/zero-team";
+import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { applyUserPermissionGrants$ } from "../../../../signals/permission-allow/permission-allow-signals.ts";
 import { activeUserPermissionGrantSnapshot } from "../../../../signals/user-permission-grants.ts";

@@ -5,7 +5,7 @@ import {
   useSet,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import type { TeamComposeItem } from "@okouai/api-contracts/contracts/zero-team";
+import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
 import type {
   WorkflowSummary,
   WorkflowAutomationSummary,

@@ -9,7 +9,7 @@ import {
   browserContract,
   type BrowserSession,
 } from "@okouai/api-contracts/contracts/browser";
-import { zeroAgentsByIdContract } from "@okouai/api-contracts/contracts/zero-agents";
+import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
 import { mailContract } from "@okouai/api-contracts/contracts/mail";
 import {
   zeroConnectorCatalogContract,
@@ -3508,7 +3508,7 @@ describe("chat event action cards", () => {
     let pendingRequest = true;
     let staleRequestSignal: AbortSignal | undefined;
 
-    context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
+    context.mocks.api(agentsByIdContract.get, ({ params, respond }) => {
       return respond(200, {
         agentId: params.id,
         ownerId: "test-user-123",
@@ -3903,7 +3903,7 @@ describe("chat event action cards", () => {
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=gmail&permission=messages.write&action=allow&expiresIn=1h`;
     let holdAgentResponse = false;
     context.mocks.api(
-      zeroAgentsByIdContract.get,
+      agentsByIdContract.get,
       async ({ deferred, params, respond }) => {
         if (holdAgentResponse) {
           const agentDeferred = deferred<void>();
