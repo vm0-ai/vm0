@@ -923,7 +923,7 @@ export async function listUndeliveredStripePaidCheckoutSessions(
 /**
  * Lists Stripe's still-undelivered `invoice.paid` events, oldest first.
  * Stripe retains Events for 30 days, which is substantially longer than the
- * twice-daily billing reconciliation interval. Keeping the SDK event union at
+ * hourly billing reconciliation interval. Keeping the SDK event union at
  * this gateway lets the billing service consume only vm0-owned invoice types.
  */
 export async function listUndeliveredStripePaidInvoices(

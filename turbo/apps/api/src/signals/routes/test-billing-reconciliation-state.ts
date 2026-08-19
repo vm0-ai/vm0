@@ -21,7 +21,7 @@ import {
   usagePackSubscriptions,
 } from "@okouai/db/schema/usage-pack-subscription";
 import { command } from "ccstate";
-import { inArray } from "drizzle-orm";
+import { and, inArray, isNotNull } from "drizzle-orm";
 
 import type { Tx } from "../../lib/db-types";
 import { nowDate } from "../../lib/time";
@@ -526,7 +526,7 @@ async function readBillingReconciliationState(
   db: Db,
   marker: string,
   signal: AbortSignal,
-): Promise<CandidateState[]> {
+) {
   const fixtures = fixtureReferences(marker);
   const rows = await loadBillingReconciliationStateRows(
     db,
@@ -535,9 +535,21 @@ async function readBillingReconciliationState(
     }),
   );
   signal.throwIfAborted();
-  return fixtures.map((fixture) => {
-    return candidateStateForFixture(fixture, rows);
-  });
+  return {
+    candidates: fixtures.map((fixture) => {
+      return candidateStateForFixture(fixture, rows);
+    }),
+    creditExpirations: rows.creditExpirationRows.flatMap((row) => {
+      return row.stripeInvoiceId
+        ? [
+            {
+              stripeInvoiceId: row.stripeInvoiceId,
+              expiresAt: row.expiresAt.toISOString(),
+            },
+          ]
+        : [];
+    }),
+  };
 }
 
 async function loadBillingReconciliationStateRows(
@@ -554,6 +566,7 @@ async function loadBillingReconciliationStateRows(
     refundRows,
     migrationRows,
     invitationRows,
+    creditExpirationRows,
   ] = await Promise.all([
     db
       .select({
@@ -625,6 +638,18 @@ async function loadBillingReconciliationStateRows(
       })
       .from(usagePackInvitationPurchases)
       .where(inArray(usagePackInvitationPurchases.orgId, orgIds)),
+    db
+      .select({
+        stripeInvoiceId: creditExpiresRecord.stripeInvoiceId,
+        expiresAt: creditExpiresRecord.expiresAt,
+      })
+      .from(creditExpiresRecord)
+      .where(
+        and(
+          inArray(creditExpiresRecord.orgId, orgIds),
+          isNotNull(creditExpiresRecord.stripeInvoiceId),
+        ),
+      ),
   ]);
   return {
     orgRows,
@@ -636,6 +661,7 @@ async function loadBillingReconciliationStateRows(
     refundRows,
     migrationRows,
     invitationRows,
+    creditExpirationRows,
   };
 }
 
@@ -806,14 +832,14 @@ const mutateTestBillingReconciliationState$ = command(
         };
       }
       case "read": {
-        const candidates = await readBillingReconciliationState(
+        const state = await readBillingReconciliationState(
           db,
           bodyResult.data.marker,
           signal,
         );
         return {
           status: 200 as const,
-          body: { action: "read" as const, candidates },
+          body: { action: "read" as const, ...state },
         };
       }
       case "cleanup": {

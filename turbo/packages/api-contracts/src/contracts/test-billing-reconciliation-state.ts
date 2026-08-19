@@ -59,6 +59,12 @@ export const testBillingReconciliationStateActionResponseSchema =
     z.object({
       action: z.literal("read"),
       candidates: z.array(candidateStateSchema),
+      creditExpirations: z.array(
+        z.object({
+          stripeInvoiceId: z.string().min(1),
+          expiresAt: z.iso.datetime(),
+        }),
+      ),
     }),
     z.object({ action: z.literal("ok") }),
   ]);

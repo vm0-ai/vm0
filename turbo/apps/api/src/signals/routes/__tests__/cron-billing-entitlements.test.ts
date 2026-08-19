@@ -196,6 +196,21 @@ async function readState(marker: string) {
   return response.candidates;
 }
 
+async function readCreditExpiration(
+  marker: string,
+  stripeInvoiceId: string,
+): Promise<string | null> {
+  const response = await stateAction({ action: "read", marker });
+  if (response.action !== "read") {
+    throw new Error("Billing reconciliation state was not read");
+  }
+  return (
+    response.creditExpirations.find((expiration) => {
+      return expiration.stripeInvoiceId === stripeInvoiceId;
+    })?.expiresAt ?? null
+  );
+}
+
 function seededFixture(
   fixtures: Awaited<ReturnType<typeof seedState>>,
   kind: BillingReconciliationFixtureKind,
@@ -621,6 +636,10 @@ describe("billing entitlement reconciliation", () => {
     context.mocks.stripe.subscriptionSchedules.retrieve.mockRejectedValue(
       new Error("temporary schedule failure"),
     );
+    context.mocks.stripe.customers.retrieve.mockResolvedValue({
+      id: `cus_${projectionPlan.orgId}`,
+      metadata: { orgId: projectionPlan.orgId },
+    });
 
     const response = await accept(
       apiClient().reconcile({
@@ -649,7 +668,7 @@ describe("billing entitlement reconciliation", () => {
       orgId: projectionPlan.orgId,
       status: "active",
       tier: "pro",
-      credits: 20_000,
+      credits: 0,
       stripeSubscriptionId: projectionPlan.stripeSubscriptionId,
     });
     await expect(readState(canceledMarker)).resolves.toContainEqual({
@@ -785,6 +804,7 @@ describe("billing entitlement reconciliation", () => {
       currency: "usd",
     };
     const eventId = `evt_${randomUUID()}`;
+    const paidAtSeconds = Math.floor(now() / 1000) - 2 * 86_400;
     context.mocks.stripe.events.list.mockImplementation((params) => {
       const type = (params as { readonly type?: string }).type;
       return Promise.resolve(
@@ -794,7 +814,7 @@ describe("billing entitlement reconciliation", () => {
                 {
                   id: eventId,
                   type,
-                  created: Math.floor(now() / 1000),
+                  created: paidAtSeconds,
                   data: { object: session },
                 },
               ],
@@ -833,5 +853,8 @@ describe("billing entitlement reconciliation", () => {
       credits: 100_000,
       stripeSubscriptionId: null,
     });
+    await expect(readCreditExpiration(marker, session.id)).resolves.toBe(
+      new Date((paidAtSeconds + 30 * 86_400) * 1000).toISOString(),
+    );
   });
 });

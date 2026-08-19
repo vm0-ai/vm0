@@ -2018,6 +2018,7 @@ async function handleAtomGrantInvoicePaid(
 async function handleOneTimePurchaseCompleted(
   db: Db,
   session: CheckoutSessionInput,
+  paidAt: Date,
 ): Promise<string | null> {
   const metadata = session.metadata ?? {};
   const orgId = metadata.orgId;
@@ -2042,7 +2043,7 @@ async function handleOneTimePurchaseCompleted(
   }
 
   const expiresAt = new Date(
-    now() + campaign.expiresDays * 24 * 60 * 60 * 1000,
+    paidAt.getTime() + campaign.expiresDays * 24 * 60 * 60 * 1000,
   );
 
   await db.transaction(async (tx) => {
@@ -2131,6 +2132,7 @@ async function handlePaidCheckoutPurpose(
   db: Db,
   session: CheckoutSessionInput,
   purpose: "one_time_purchase",
+  paidAt: Date,
 ): Promise<PaidWebhookOutcome> {
   if (session.metadata?.purpose !== purpose) {
     return { handled: false, drainOrgId: null };
@@ -2144,7 +2146,7 @@ async function handlePaidCheckoutPurpose(
     return { handled: true, drainOrgId: null };
   }
 
-  const drainOrgId = await handleOneTimePurchaseCompleted(db, session);
+  const drainOrgId = await handleOneTimePurchaseCompleted(db, session, paidAt);
   return { handled: true, drainOrgId };
 }
 
@@ -3833,6 +3835,7 @@ async function handleCheckoutCompleted(
     db,
     session,
     "one_time_purchase",
+    paidAt,
   );
   if (oneTimePurchaseResult.handled) {
     return {
