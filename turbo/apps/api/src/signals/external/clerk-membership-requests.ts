@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 import { env } from "../../lib/env";
+import { startUntrackedBestEffortCleanup } from "../utils";
+import { ClerkRateLimitError } from "./clerk";
 
 const CLERK_API_BASE = "https://api.clerk.com/v1";
 
@@ -16,6 +18,12 @@ const clerkMembershipRequestsResponseSchema = z.object({
 
 type ClerkMembershipRequestData = z.infer<typeof membershipRequestDataSchema>;
 
+function cancelUnusedResponseBody(response: Response): void {
+  if (response.body) {
+    startUntrackedBestEffortCleanup(response.body.cancel());
+  }
+}
+
 /**
  * Fetch pending membership requests for an organization.
  *
@@ -27,18 +35,27 @@ type ClerkMembershipRequestData = z.infer<typeof membershipRequestDataSchema>;
  */
 export async function fetchClerkMembershipRequests(
   orgId: string,
+  signal: AbortSignal,
 ): Promise<readonly ClerkMembershipRequestData[]> {
   const secretKey = env("CLERK_SECRET_KEY");
   const res = await fetch(
     `${CLERK_API_BASE}/organizations/${orgId}/membership_requests?status=pending`,
     {
       headers: { Authorization: `Bearer ${secretKey}` },
+      signal,
     },
   );
-  if (res.status === 404) {
-    return [];
-  }
   if (!res.ok) {
+    cancelUnusedResponseBody(res);
+    if (res.status === 404) {
+      return [];
+    }
+    if (res.status === 429) {
+      throw new ClerkRateLimitError(
+        `Failed to fetch membership requests for org ${orgId}: HTTP 429`,
+        Number(res.headers.get("Retry-After")),
+      );
+    }
     throw new Error(
       `Failed to fetch membership requests for org ${orgId}: HTTP ${res.status}`,
     );
@@ -56,6 +73,7 @@ export async function acceptClerkMembershipRequest(args: {
     `${CLERK_API_BASE}/organizations/${args.orgId}/membership_requests/${args.requestId}/accept`,
     { method: "POST", headers: { Authorization: `Bearer ${secretKey}` } },
   );
+  cancelUnusedResponseBody(res);
   return { ok: res.ok };
 }
 
@@ -68,5 +86,6 @@ export async function rejectClerkMembershipRequest(args: {
     `${CLERK_API_BASE}/organizations/${args.orgId}/membership_requests/${args.requestId}/reject`,
     { method: "POST", headers: { Authorization: `Bearer ${secretKey}` } },
   );
+  cancelUnusedResponseBody(res);
   return { ok: res.ok };
 }

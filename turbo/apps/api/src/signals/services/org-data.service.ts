@@ -1,4 +1,4 @@
-import { command, computed, type Computed } from "ccstate";
+import { command } from "ccstate";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { orgCache } from "@okouai/db/schema/org-cache";
@@ -20,7 +20,13 @@ import {
 import { usagePackUsdSchema } from "@okouai/api-contracts/contracts/billing";
 
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
-import { clerk$, type ClerkUser } from "../external/clerk";
+import {
+  clerk$,
+  createClerkReadRetryBudget,
+  retryClerkRead,
+  type ClerkReadRetryBudget,
+  type ClerkUser,
+} from "../external/clerk";
 import {
   listAllOrganizationMemberships,
   listAllPendingOrganizationInvitations,
@@ -634,6 +640,8 @@ async function fetchUserProfileMap(
   db: Db,
   client: ReturnType<typeof clerk$.read>,
   userIds: readonly string[],
+  signal: AbortSignal,
+  retryBudget: ClerkReadRetryBudget,
 ): Promise<Map<string, ClerkUserProfile>> {
   const map = new Map<string, ClerkUserProfile>();
   const uniqueUserIds = [...new Set(userIds)];
@@ -652,6 +660,7 @@ async function fetchUserProfileMap(
     })
     .from(userCache)
     .where(inArray(userCache.userId, uniqueUserIds));
+  signal.throwIfAborted();
   const missingUserIds = new Set(uniqueUserIds);
   for (const cached of cachedUsers) {
     if (currentTime - cached.cachedAt.getTime() >= USER_PROFILE_CACHE_TTL_MS) {
@@ -678,10 +687,19 @@ async function fetchUserProfileMap(
     offset < userIdsToFetch.length;
     offset += CLERK_USER_LIST_BATCH_SIZE
   ) {
-    const users = await client.users.getUserList({
-      userId: userIdsToFetch.slice(offset, offset + CLERK_USER_LIST_BATCH_SIZE),
-      limit: CLERK_USER_LIST_BATCH_SIZE,
-    });
+    const users = await retryClerkRead(
+      () => {
+        return client.users.getUserList({
+          userId: userIdsToFetch.slice(
+            offset,
+            offset + CLERK_USER_LIST_BATCH_SIZE,
+          ),
+          limit: CLERK_USER_LIST_BATCH_SIZE,
+        });
+      },
+      signal,
+      retryBudget,
+    );
     for (const user of users.data) {
       const email = userPrimaryEmail(user);
       const name =
@@ -712,24 +730,114 @@ async function fetchUserProfileMap(
               cachedAt: refreshedAt,
             },
           });
+        signal.throwIfAborted();
       }
     }
   }
   return map;
 }
 
-export function orgMembersList(
-  args: OrgMembersListArgs,
-): Computed<Promise<OrgMembersResponse>> {
-  return computed(async (get): Promise<OrgMembersResponse> => {
+async function fetchOrgMemberDirectory(
+  client: ReturnType<typeof clerk$.read>,
+  orgId: string,
+  signal: AbortSignal,
+  retryBudget: ClerkReadRetryBudget,
+) {
+  const controller = new AbortController();
+  const readSignal = AbortSignal.any([signal, controller.signal]);
+  const [organization, memberships, invitations] = await onRejection(
+    Promise.all([
+      retryClerkRead(
+        () => {
+          return client.organizations.getOrganization({
+            organizationId: orgId,
+          });
+        },
+        readSignal,
+        retryBudget,
+      ),
+      retryClerkRead(
+        () => {
+          return listAllOrganizationMemberships(
+            client.organizations,
+            orgId,
+            readSignal,
+          );
+        },
+        readSignal,
+        retryBudget,
+      ),
+      retryClerkRead(
+        () => {
+          return listAllPendingOrganizationInvitations(
+            client.organizations,
+            orgId,
+            readSignal,
+          );
+        },
+        readSignal,
+        retryBudget,
+      ),
+    ]),
+    () => {
+      controller.abort();
+    },
+  );
+  controller.abort();
+  signal.throwIfAborted();
+  return { organization, memberships, invitations };
+}
+
+async function fetchOrgMembershipRequests(
+  db: Db,
+  client: ReturnType<typeof clerk$.read>,
+  orgId: string,
+  signal: AbortSignal,
+  retryBudget: ClerkReadRetryBudget,
+): Promise<NonNullable<OrgMembersResponse["membershipRequests"]>> {
+  const requestsData = await retryClerkRead(
+    () => {
+      return fetchClerkMembershipRequests(orgId, signal);
+    },
+    signal,
+    retryBudget,
+  );
+  const requestProfiles = await fetchUserProfileMap(
+    db,
+    client,
+    requestsData.map((request) => {
+      return request.public_user_data.user_id;
+    }),
+    signal,
+    retryBudget,
+  );
+  return requestsData.map((request) => {
+    const userId = request.public_user_data.user_id;
+    const profile = requestProfiles.get(userId);
+    return {
+      id: request.id,
+      userId,
+      email: profile?.email ?? "",
+      firstName: profile?.firstName ?? null,
+      lastName: profile?.lastName ?? null,
+      imageUrl: profile?.imageUrl ?? "",
+      createdAt: new Date(request.created_at).toISOString(),
+    };
+  });
+}
+
+export const orgMembersList$ = command(
+  async (
+    { get },
+    args: OrgMembersListArgs,
+    signal: AbortSignal,
+  ): Promise<OrgMembersResponse> => {
     const client = get(clerk$);
     const db = get(db$) as Db;
+    const retryBudget = createClerkReadRetryBudget(now);
 
-    const [org, memberships, invitations] = await Promise.all([
-      client.organizations.getOrganization({ organizationId: args.orgId }),
-      listAllOrganizationMemberships(client.organizations, args.orgId),
-      listAllPendingOrganizationInvitations(client.organizations, args.orgId),
-    ]);
+    const { organization, memberships, invitations } =
+      await fetchOrgMemberDirectory(client, args.orgId, signal, retryBudget);
 
     const membersWithUserIds = memberships.map((membership) => {
       return {
@@ -745,6 +853,8 @@ export function orgMembersList(
       membersWithUserIds.map((member) => {
         return member.userId;
       }),
+      signal,
+      retryBudget,
     );
 
     const memberList: OrgMember[] = membersWithUserIds.map((member) => {
@@ -813,41 +923,24 @@ export function orgMembersList(
           })
         : [];
 
-    let membershipRequests: NonNullable<
-      OrgMembersResponse["membershipRequests"]
-    > = [];
-    if (args.callerRole === "admin") {
-      const requestsData = await fetchClerkMembershipRequests(args.orgId);
-      const requestUserIds = requestsData.map((request) => {
-        return request.public_user_data.user_id;
-      });
-      const requestProfiles = await fetchUserProfileMap(
-        db,
-        client,
-        requestUserIds,
-      );
-      membershipRequests = requestsData.map((req) => {
-        const uid = req.public_user_data.user_id;
-        const profile = requestProfiles.get(uid);
-        return {
-          id: req.id,
-          userId: uid,
-          email: profile?.email ?? "",
-          firstName: profile?.firstName ?? null,
-          lastName: profile?.lastName ?? null,
-          imageUrl: profile?.imageUrl ?? "",
-          createdAt: new Date(req.created_at).toISOString(),
-        };
-      });
-    }
+    const membershipRequests =
+      args.callerRole === "admin"
+        ? await fetchOrgMembershipRequests(
+            db,
+            client,
+            args.orgId,
+            signal,
+            retryBudget,
+          )
+        : [];
 
     return {
-      name: org.name,
+      name: organization.name,
       role: args.callerRole,
       members: memberList,
       pendingInvitations,
       membershipRequests,
-      createdAt: new Date(org.createdAt).toISOString(),
+      createdAt: new Date(organization.createdAt).toISOString(),
     };
-  });
-}
+  },
+);

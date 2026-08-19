@@ -1,9 +1,12 @@
 import { computed, type Computed } from "ccstate";
 
 import { createClerkClient } from "@clerk/backend";
+import { isClerkAPIResponseError } from "@clerk/backend/errors";
 import { verifyWebhook } from "@clerk/backend/webhooks";
+import { delay } from "signal-timers";
 import { singleton } from "../../lib/singleton";
 import { env } from "../../lib/env";
+import { settle } from "../utils";
 
 /**
  * Clerk gateway. This module is the only place `@clerk/backend` is resolved:
@@ -163,6 +166,95 @@ export interface ClerkClient {
   readonly organizations: ClerkOrganizationsApi;
   readonly signInTokens: ClerkSignInTokensApi;
   readonly m2m: ClerkMachineToMachineApi;
+}
+
+export interface ClerkRateLimit {
+  readonly retryAfterSeconds: number;
+}
+
+export class ClerkRateLimitError extends Error implements ClerkRateLimit {
+  readonly retryAfterSeconds: number;
+
+  constructor(message: string, retryAfterSeconds?: number) {
+    super(message);
+    this.name = "ClerkRateLimitError";
+    this.retryAfterSeconds = normalizeRetryAfterSeconds(retryAfterSeconds);
+  }
+}
+
+const CLERK_READ_MAX_ATTEMPTS = 3;
+const CLERK_READ_MAX_TOTAL_DELAY_MS = 15_000;
+const CLERK_READ_MAX_JITTER_MS = 250;
+
+export interface ClerkReadRetryBudget {
+  readonly remainingDelayMs: () => number;
+}
+
+export function createClerkReadRetryBudget(
+  currentTimeMs: () => number,
+): ClerkReadRetryBudget {
+  const deadlineAtMs = currentTimeMs() + CLERK_READ_MAX_TOTAL_DELAY_MS;
+  return {
+    remainingDelayMs: () => {
+      return Math.max(0, deadlineAtMs - currentTimeMs());
+    },
+  };
+}
+
+function normalizeRetryAfterSeconds(value: number | undefined): number {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(1, Math.ceil(value))
+    : 1;
+}
+
+export function clerkRateLimit(error: unknown): ClerkRateLimit | null {
+  if (error instanceof ClerkRateLimitError) {
+    return error;
+  }
+  if (!isClerkAPIResponseError(error) || error.status !== 429) {
+    return null;
+  }
+  return {
+    retryAfterSeconds: normalizeRetryAfterSeconds(error.retryAfter),
+  };
+}
+
+/** Retry a Clerk operation only after the caller has identified it as a read. */
+export async function retryClerkRead<T>(
+  read: () => Promise<T>,
+  signal: AbortSignal,
+  budget: ClerkReadRetryBudget,
+): Promise<T> {
+  let totalDelayMs = 0;
+  for (let attempt = 1; ; attempt += 1) {
+    signal.throwIfAborted();
+    const result = await settle(read(), signal);
+    if (result.ok) {
+      return result.value;
+    }
+
+    const rateLimit = clerkRateLimit(result.error);
+    if (!rateLimit || attempt >= CLERK_READ_MAX_ATTEMPTS) {
+      throw result.error;
+    }
+
+    const retryAfterMs = rateLimit.retryAfterSeconds * 1000;
+    const remainingDelayMs = Math.min(
+      CLERK_READ_MAX_TOTAL_DELAY_MS - totalDelayMs,
+      budget.remainingDelayMs(),
+    );
+    if (retryAfterMs > remainingDelayMs) {
+      throw result.error;
+    }
+    const jitterBudgetMs = Math.min(
+      CLERK_READ_MAX_JITTER_MS,
+      remainingDelayMs - retryAfterMs,
+    );
+    const jitterMs = Math.floor(Math.random() * (jitterBudgetMs + 1));
+    const waitMs = retryAfterMs + jitterMs;
+    await delay(waitMs, { signal });
+    totalDelayMs += waitMs;
+  }
 }
 
 /** Session identity as the API models it, independent of Clerk's auth object. */
