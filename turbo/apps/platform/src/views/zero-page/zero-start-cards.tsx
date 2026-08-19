@@ -209,11 +209,13 @@ function StartCard({
       </div>
       {/* An overlay rather than a row in the flow: the actions must not reserve
           height while hidden, and `inset-x-4` keeps them inside the card, which
-          the two buttons are otherwise too wide for. `bg-inherit` tracks the
-          card's own background so the band covers the description line it sits
-          on. Hidden actions must not take clicks either — on a touch device
-          `hover` never resolves, so a tap here has to reach the card. */}
-      <div className="pointer-events-none absolute inset-x-4 bottom-4 flex h-8 items-center gap-1.5 bg-inherit opacity-0 transition-opacity group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100">
+          the two buttons are otherwise too wide for. The longest description in
+          a row reaches the card's bottom edge, so the buttons sit on a scrim
+          that fades that text out instead of slicing through a line. Only the
+          buttons take clicks — the rest of the overlay, and all of it on a
+          touch device where `hover` never resolves, falls through to the card.
+          */}
+      <div className="pointer-events-none absolute inset-x-4 bottom-4 flex h-14 items-end gap-1.5 bg-gradient-to-t from-card from-[57%] to-transparent opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 group-focus-within:[&>button]:pointer-events-auto group-hover:[&>button]:pointer-events-auto">
         <Button
           type="button"
           size="sm"
