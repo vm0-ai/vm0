@@ -465,6 +465,11 @@
     },
     "chat": "Chat",
     "description": "Cliquez sur n'importe quelle carte pour démarrer une conversation. Cela pourrait devenir une tâche à la demande, un workflow récurrent ou un sous-agent.",
+    "entry": {
+      "description": "Parcourir les cas d'utilisation de tous les connecteurs",
+      "title": "Idées et cas d'utilisation",
+      "viewAll": "Voir tout"
+    },
     "search": {
       "accessibilityLabel": "Rechercher des cas d'utilisation",
       "empty": "Aucun cas d'utilisation ne correspond à votre recherche.",

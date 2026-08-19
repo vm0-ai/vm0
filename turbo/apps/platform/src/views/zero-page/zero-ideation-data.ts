@@ -614,3 +614,18 @@ export function getCategories(
       return c.cases.length > 0;
     });
 }
+
+export function getRandomPrompts(
+  count: number,
+  options: IdeationFilterOptions,
+): UseCase[] {
+  const all = getCategories(options).flatMap((c) => {
+    return c.cases.filter((u) => {
+      return u.connectorSlugs && u.connectorSlugs.length > 0;
+    });
+  });
+  const shuffled = [...all].sort(() => {
+    return Math.random() - 0.5;
+  });
+  return shuffled.slice(0, count);
+}

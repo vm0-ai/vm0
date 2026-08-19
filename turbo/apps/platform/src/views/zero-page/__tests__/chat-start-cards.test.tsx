@@ -1,5 +1,6 @@
 import { screen } from "@testing-library/react";
 import { WORKFLOW_TEMPLATE_ITEMS } from "@okouai/core/workflow-template-items";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -60,6 +61,7 @@ describe("chat start cards", () => {
     detachedSetupPage({
       context,
       path: `/agents/${agentId}/chat`,
+      featureSwitches: { [FeatureSwitchKey.HomeStartCards]: true },
     });
 
     await expect(
@@ -84,6 +86,7 @@ describe("chat start cards", () => {
     detachedSetupPage({
       context,
       path: `/agents/${agentId}/chat`,
+      featureSwitches: { [FeatureSwitchKey.HomeStartCards]: true },
     });
 
     const composer = (await screen.findByPlaceholderText(
@@ -100,6 +103,7 @@ describe("chat start cards", () => {
     detachedSetupPage({
       context,
       path: `/agents/${agentId}/chat`,
+      featureSwitches: { [FeatureSwitchKey.HomeStartCards]: true },
     });
 
     await expect(
@@ -121,6 +125,7 @@ describe("chat start cards", () => {
     detachedSetupPage({
       context,
       path: `/agents/${agentId}/chat`,
+      featureSwitches: { [FeatureSwitchKey.HomeStartCards]: true },
     });
 
     await expect(
