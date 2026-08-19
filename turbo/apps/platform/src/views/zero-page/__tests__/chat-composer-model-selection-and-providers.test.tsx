@@ -4304,7 +4304,7 @@ describe("chat composer image model", () => {
         .filter((button) => {
           return (
             button.hasAttribute("aria-pressed") &&
-            imageModelControlLabelSet.has(
+            (imageModelControlLabels as readonly string[]).includes(
               button.getAttribute("aria-label") ?? "",
             )
           );
