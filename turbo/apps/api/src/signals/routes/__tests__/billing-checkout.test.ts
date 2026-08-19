@@ -5346,6 +5346,23 @@ describe("usage pack allocation management", () => {
     });
   }
 
+  function isStripeSchedulePreview(input: object): boolean {
+    return (
+      "schedule_details" in input &&
+      typeof input.schedule_details === "object" &&
+      input.schedule_details !== null
+    );
+  }
+
+  function stripeInvoicePreviewMode(input: object): "next" | "recurring" {
+    const previewMode =
+      "preview_mode" in input ? input.preview_mode : undefined;
+    if (previewMode !== "next" && previewMode !== "recurring") {
+      throw new Error("Expected a Stripe invoice preview mode");
+    }
+    return previewMode;
+  }
+
   function mockUsagePackSubscriptionChangePreviews(
     immediateAmountCents: number,
     recurringPlanAmountCents: number,
@@ -5354,15 +5371,12 @@ describe("usage pack allocation management", () => {
       if (typeof input !== "object" || input === null) {
         throw new Error("Expected Stripe invoice preview input");
       }
-      const previewMode =
-        "preview_mode" in input ? input.preview_mode : undefined;
-      if (previewMode !== "next" && previewMode !== "recurring") {
-        throw new Error("Expected a Stripe invoice preview mode");
-      }
+      const previewMode = stripeInvoicePreviewMode(input);
       const subscriptionDetails =
         "subscription_details" in input
           ? input.subscription_details
           : undefined;
+      const scheduledPreview = isStripeSchedulePreview(input);
       if (
         previewMode === "recurring" &&
         typeof subscriptionDetails === "object" &&
@@ -5379,7 +5393,11 @@ describe("usage pack allocation management", () => {
         typeof subscriptionDetails.proration_date === "number"
           ? subscriptionDetails.proration_date
           : undefined;
-      if (previewMode === "next" && prorationTimestamp === undefined) {
+      if (
+        previewMode === "next" &&
+        prorationTimestamp === undefined &&
+        !scheduledPreview
+      ) {
         throw new Error("Expected a plan proration timestamp");
       }
       const line = (args: {
@@ -5398,47 +5416,46 @@ describe("usage pack allocation management", () => {
           period: { start: prorationTimestamp ?? 0 },
         };
       };
-      const lines =
-        previewMode === "next"
-          ? [
-              line({
-                id: "il_plan_credit",
-                amount: -recurringPlanAmountCents / 2,
-                priceId: TEST_PRICE_USAGE_PACK_PLAN_PRO,
-                proration: true,
-              }),
-              line({
-                id: "il_plan_charge",
-                amount: immediateAmountCents + recurringPlanAmountCents / 2,
-                priceId: TEST_PRICE_USAGE_PACK_PLAN_TEAM,
-                proration: true,
-              }),
-              line({
-                id: "il_existing_package",
-                amount: 2000,
-                priceId: TEST_PRICE_USAGE_PACK_20,
-                proration: false,
-              }),
-            ]
-          : [
-              line({
-                id: "il_team_plan",
-                amount: recurringPlanAmountCents,
-                priceId: TEST_PRICE_USAGE_PACK_PLAN_TEAM,
-                proration: false,
-              }),
-              line({
-                id: "il_existing_package",
-                amount: 2000,
-                priceId: TEST_PRICE_USAGE_PACK_20,
-                proration: false,
-              }),
-            ];
+      const immediatePreview = previewMode === "next" && !scheduledPreview;
+      const lines = immediatePreview
+        ? [
+            line({
+              id: "il_plan_credit",
+              amount: -recurringPlanAmountCents / 2,
+              priceId: TEST_PRICE_USAGE_PACK_PLAN_PRO,
+              proration: true,
+            }),
+            line({
+              id: "il_plan_charge",
+              amount: immediateAmountCents + recurringPlanAmountCents / 2,
+              priceId: TEST_PRICE_USAGE_PACK_PLAN_TEAM,
+              proration: true,
+            }),
+            line({
+              id: "il_existing_package",
+              amount: 2000,
+              priceId: TEST_PRICE_USAGE_PACK_20,
+              proration: false,
+            }),
+          ]
+        : [
+            line({
+              id: "il_team_plan",
+              amount: recurringPlanAmountCents,
+              priceId: TEST_PRICE_USAGE_PACK_PLAN_TEAM,
+              proration: false,
+            }),
+            line({
+              id: "il_existing_package",
+              amount: 2000,
+              priceId: TEST_PRICE_USAGE_PACK_20,
+              proration: false,
+            }),
+          ];
       return Promise.resolve({
-        amount_due:
-          previewMode === "next"
-            ? immediateAmountCents + 2000
-            : recurringPlanAmountCents + 2000,
+        amount_due: immediatePreview
+          ? immediateAmountCents + 2000
+          : recurringPlanAmountCents + 2000,
         currency: "usd",
         lines: {
           has_more: false,
@@ -5465,6 +5482,13 @@ describe("usage pack allocation management", () => {
         "subscription_details" in input
           ? input.subscription_details
           : undefined;
+      if (previewMode === "next" && isStripeSchedulePreview(input)) {
+        return Promise.resolve({
+          amount_due: args.nextRecurringAmountCents,
+          currency: "usd",
+          lines: { has_more: false, data: [] },
+        });
+      }
       if (previewMode === "recurring") {
         if (
           args.rejectScheduledSubscriptionRecurringPreview &&
@@ -6339,7 +6363,7 @@ describe("usage pack allocation management", () => {
     context.mocks.stripe.subscriptions.retrieve.mockClear();
     mockUsagePackChangePreviews(1500, 5000);
     const client = setupApp({ context, routes: billingCheckoutRoutes })(
-      zeroBillingUsagePackManagementContract,
+      billingUsagePackManagementContract,
     );
 
     const preview = await accept(
@@ -6417,7 +6441,7 @@ describe("usage pack allocation management", () => {
       },
     );
     const client = setupApp({ context, routes: billingCheckoutRoutes })(
-      zeroBillingUsagePackManagementContract,
+      billingUsagePackManagementContract,
     );
 
     const preview = await accept(
@@ -6494,7 +6518,7 @@ describe("usage pack allocation management", () => {
       },
     );
     const client = setupApp({ context, routes: billingCheckoutRoutes })(
-      zeroBillingUsagePackManagementContract,
+      billingUsagePackManagementContract,
     );
 
     const preview = await accept(
@@ -6549,7 +6573,7 @@ describe("usage pack allocation management", () => {
       targetPriceId: TEST_PRICE_USAGE_PACK_50,
     });
     const client = setupApp({ context, routes: billingCheckoutRoutes })(
-      zeroBillingUsagePackManagementContract,
+      billingUsagePackManagementContract,
     );
 
     const preview = await accept(
@@ -6643,7 +6667,7 @@ describe("usage pack allocation management", () => {
     );
     context.mocks.stripe.subscriptions.retrieve.mockClear();
     const client = setupApp({ context, routes: billingCheckoutRoutes })(
-      zeroBillingUsagePackManagementContract,
+      billingUsagePackManagementContract,
     );
     const expectedMessage =
       "Your Plan is scheduled to end before this usage pack change can take effect. Restore your Plan first, then try again.";
@@ -6689,7 +6713,7 @@ describe("usage pack allocation management", () => {
       endingSubscription,
     );
     const client = setupApp({ context, routes: billingCheckoutRoutes })(
-      zeroBillingUsagePackManagementContract,
+      billingUsagePackManagementContract,
     );
     const expectedMessage =
       "Your Plan is scheduled to end before this usage pack change can take effect. Restore your Plan first, then try again.";
@@ -6743,7 +6767,7 @@ describe("usage pack allocation management", () => {
     );
     mockUsagePackChangePreviews(0, 2000);
     const client = setupApp({ context, routes: billingCheckoutRoutes })(
-      zeroBillingUsagePackManagementContract,
+      billingUsagePackManagementContract,
     );
     const preview = await accept(
       client.previewChange({
@@ -6801,7 +6825,7 @@ describe("usage pack allocation management", () => {
       targetPriceId: TEST_PRICE_USAGE_PACK_20,
     });
     const client = setupApp({ context, routes: billingCheckoutRoutes })(
-      zeroBillingUsagePackManagementContract,
+      billingUsagePackManagementContract,
     );
     const preview = await accept(
       client.previewSubscriptionChange({
@@ -8051,7 +8075,7 @@ describe("usage pack allocation management", () => {
       id: scheduleId,
     });
     const client = setupApp({ context, routes: billingCheckoutRoutes })(
-      zeroBillingUsagePackManagementContract,
+      billingUsagePackManagementContract,
     );
     const downgradePreview = await accept(
       client.previewSubscriptionChange({
@@ -8523,8 +8547,37 @@ describe("usage pack allocation management", () => {
       fixture.billingPeriod,
       { scheduleId },
     );
+    const scheduledPackageDowngrade = {
+      id: scheduleId,
+      end_behavior: "release",
+      current_phase: {
+        start_date: fixture.billingPeriod.start,
+        end_date: fixture.billingPeriod.end,
+      },
+      phases: [
+        {
+          start_date: fixture.billingPeriod.start,
+          end_date: fixture.billingPeriod.end,
+          items: [
+            { price: TEST_PRICE_USAGE_PACK_PLAN_PRO, quantity: 1 },
+            { price: TEST_PRICE_USAGE_PACK_200, quantity: 1 },
+          ],
+        },
+        {
+          start_date: fixture.billingPeriod.end,
+          end_date: fixture.billingPeriod.end + 30 * 86_400,
+          items: [
+            { price: TEST_PRICE_USAGE_PACK_PLAN_PRO, quantity: 1 },
+            { price: TEST_PRICE_USAGE_PACK_50, quantity: 1 },
+          ],
+        },
+      ],
+    };
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
       scheduledSubscription,
+    );
+    context.mocks.stripe.subscriptionSchedules.retrieve.mockResolvedValue(
+      scheduledPackageDowngrade,
     );
     mockUsagePackSubscriptionPackagePreviews({
       immediateAmountCents: 0,
@@ -8550,16 +8603,22 @@ describe("usage pack allocation management", () => {
         nextRecurringAmountCents: 10_000,
       }),
     );
-    expect(context.mocks.stripe.invoices.createPreview).toHaveBeenCalledWith({
-      customer: fixture.customerId,
-      preview_mode: "recurring",
-      subscription_details: {
-        items: [
-          { price: TEST_PRICE_USAGE_PACK_PLAN_PRO, quantity: 1 },
-          { price: TEST_PRICE_USAGE_PACK_100, quantity: 1 },
-        ],
-      },
-    });
+    expect(context.mocks.stripe.invoices.createPreview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        schedule: scheduleId,
+        preview_mode: "next",
+        schedule_details: expect.objectContaining({
+          phases: expect.arrayContaining([
+            expect.objectContaining({
+              start_date: fixture.billingPeriod.end,
+              items: expect.arrayContaining([
+                { price: TEST_PRICE_USAGE_PACK_100, quantity: 1 },
+              ]),
+            }),
+          ]),
+        }),
+      }),
+    );
     const beforeConfirmation = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
       [200],
@@ -8630,6 +8689,19 @@ describe("usage pack allocation management", () => {
       targetPriceId: TEST_PRICE_USAGE_PACK_200,
       rejectScheduledSubscriptionRecurringPreview: true,
     });
+    context.mocks.stripe.subscriptionSchedules.retrieve.mockResolvedValue({
+      ...scheduledPackageDowngrade,
+      phases: [
+        scheduledPackageDowngrade.phases[0],
+        {
+          ...scheduledPackageDowngrade.phases[1],
+          items: [
+            { price: TEST_PRICE_USAGE_PACK_PLAN_PRO, quantity: 1 },
+            { price: TEST_PRICE_USAGE_PACK_100, quantity: 1 },
+          ],
+        },
+      ],
+    });
     const restorePreview = await accept(
       client.previewSubscriptionChange({
         headers: { authorization: "Bearer clerk-session" },
@@ -8640,32 +8712,6 @@ describe("usage pack allocation management", () => {
       }),
       [200],
     );
-    context.mocks.stripe.subscriptionSchedules.retrieve.mockResolvedValue({
-      id: scheduleId,
-      end_behavior: "release",
-      current_phase: {
-        start_date: fixture.billingPeriod.start,
-        end_date: fixture.billingPeriod.end,
-      },
-      phases: [
-        {
-          start_date: fixture.billingPeriod.start,
-          end_date: fixture.billingPeriod.end,
-          items: [
-            { price: TEST_PRICE_USAGE_PACK_PLAN_PRO, quantity: 1 },
-            { price: TEST_PRICE_USAGE_PACK_200, quantity: 1 },
-          ],
-        },
-        {
-          start_date: fixture.billingPeriod.end,
-          end_date: fixture.billingPeriod.end + 30 * 86_400,
-          items: [
-            { price: TEST_PRICE_USAGE_PACK_PLAN_PRO, quantity: 1 },
-            { price: TEST_PRICE_USAGE_PACK_100, quantity: 1 },
-          ],
-        },
-      ],
-    });
     context.mocks.stripe.subscriptionSchedules.update.mockResolvedValue({
       id: scheduleId,
     });
@@ -8887,6 +8933,204 @@ describe("usage pack allocation management", () => {
     expect(state.allocations).toStrictEqual([
       expect.objectContaining({ usagePackUsd: 20, status: "active" }),
     ]);
+  });
+
+  it("merges a Team to Pro change into a scheduled concurrency reduction", async () => {
+    const userId = `user_${randomUUID()}`;
+    const fixture = await seedManagedUsagePack(
+      [{ userId, usagePackUsd: 20 }],
+      "team",
+    );
+    const scheduleId = `sub_sched_${randomUUID()}`;
+    const sourceSubscription = managedUsagePackSubscription(
+      fixture,
+      new Map([[TEST_PRICE_USAGE_PACK_20, 1]]),
+      fixture.billingPeriod,
+      { scheduleId },
+    );
+    const concurrencyItem = {
+      id: "si_concurrency",
+      price: {
+        id: TEST_PRICE_CONCURRENCY,
+        recurring: { interval: "month" as const, interval_count: 1 },
+      },
+      quantity: 10,
+      current_period_start: fixture.billingPeriod.start,
+      current_period_end: fixture.billingPeriod.end,
+    };
+    const subscription = {
+      ...sourceSubscription,
+      items: {
+        data: [...sourceSubscription.items.data, concurrencyItem],
+      },
+    };
+    const futureEnd = fixture.billingPeriod.end + 30 * 86_400;
+    const schedule = {
+      id: scheduleId,
+      end_behavior: "release",
+      current_phase: {
+        start_date: fixture.billingPeriod.start,
+        end_date: fixture.billingPeriod.end,
+      },
+      phases: [
+        {
+          start_date: fixture.billingPeriod.start,
+          end_date: fixture.billingPeriod.end,
+          items: [
+            { price: TEST_PRICE_USAGE_PACK_PLAN_TEAM, quantity: 1 },
+            { price: TEST_PRICE_USAGE_PACK_20, quantity: 1 },
+            { price: TEST_PRICE_CONCURRENCY, quantity: 10 },
+          ],
+        },
+        {
+          start_date: fixture.billingPeriod.end,
+          end_date: futureEnd,
+          currency: "usd",
+          metadata: {
+            allowanceCancelAt: "2035-06-01T00:00:00.000Z",
+            allowanceStatus: "canceled",
+          },
+          discounts: [{ coupon: "coupon_scheduled" }],
+          items: [
+            { price: TEST_PRICE_USAGE_PACK_PLAN_TEAM, quantity: 1 },
+            { price: TEST_PRICE_USAGE_PACK_20, quantity: 1 },
+            {
+              price: TEST_PRICE_CONCURRENCY,
+              quantity: 5,
+              metadata: { source: "scheduled" },
+              tax_rates: ["txr_scheduled"],
+            },
+          ],
+        },
+      ],
+    };
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(subscription);
+    context.mocks.stripe.subscriptionSchedules.retrieve.mockResolvedValue({
+      ...schedule,
+      phases: schedule.phases.map((phase, index) => {
+        return index === 0
+          ? phase
+          : {
+              ...phase,
+              items: [
+                { price: TEST_PRICE_USAGE_PACK_PLAN_TEAM, quantity: 1 },
+                { price: TEST_PRICE_USAGE_PACK_50, quantity: 1 },
+                { price: TEST_PRICE_CONCURRENCY, quantity: 5 },
+              ],
+            };
+      }),
+    });
+    context.mocks.stripe.subscriptionSchedules.update.mockResolvedValue({
+      id: scheduleId,
+    });
+    mockUsagePackSubscriptionChangePreviews(0, 2000);
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
+      billingUsagePackManagementContract,
+    );
+
+    const conflict = await accept(
+      client.previewSubscriptionChange({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          targetTier: "pro",
+          memberUsagePacks: [{ memberId: userId, usagePackUsd: 20 }],
+        },
+      }),
+      [409],
+    );
+    expect(conflict.body.error.message).toBe(
+      "Another usage pack billing change is in progress",
+    );
+    context.mocks.stripe.subscriptionSchedules.retrieve.mockResolvedValue(
+      schedule,
+    );
+
+    const preview = await accept(
+      client.previewSubscriptionChange({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          targetTier: "pro",
+          memberUsagePacks: [{ memberId: userId, usagePackUsd: 20 }],
+        },
+      }),
+      [200],
+    );
+    expect(context.mocks.stripe.invoices.createPreview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        schedule: scheduleId,
+        preview_mode: "next",
+        schedule_details: expect.objectContaining({
+          phases: expect.arrayContaining([
+            expect.objectContaining({
+              start_date: fixture.billingPeriod.end,
+              items: expect.arrayContaining([
+                expect.objectContaining({
+                  price: TEST_PRICE_CONCURRENCY,
+                  quantity: 5,
+                }),
+                { price: TEST_PRICE_USAGE_PACK_PLAN_PRO, quantity: 1 },
+              ]),
+            }),
+          ]),
+        }),
+      }),
+    );
+    await accept(
+      client.confirmSubscriptionChange({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { changeId: preview.body.changeId },
+      }),
+      [200],
+    );
+
+    expect(
+      context.mocks.stripe.subscriptionSchedules.create,
+    ).not.toHaveBeenCalled();
+    expect(
+      context.mocks.stripe.subscriptionSchedules.update,
+    ).toHaveBeenCalledWith(
+      scheduleId,
+      {
+        end_behavior: "release",
+        proration_behavior: "none",
+        phases: [
+          {
+            start_date: fixture.billingPeriod.start,
+            end_date: fixture.billingPeriod.end,
+            items: [
+              { price: TEST_PRICE_USAGE_PACK_PLAN_TEAM, quantity: 1 },
+              { price: TEST_PRICE_USAGE_PACK_20, quantity: 1 },
+              { price: TEST_PRICE_CONCURRENCY, quantity: 10 },
+            ],
+            proration_behavior: "none",
+          },
+          {
+            start_date: fixture.billingPeriod.end,
+            end_date: futureEnd,
+            currency: "usd",
+            items: [
+              {
+                price: TEST_PRICE_CONCURRENCY,
+                quantity: 5,
+                metadata: { source: "scheduled" },
+                tax_rates: ["txr_scheduled"],
+              },
+              { price: TEST_PRICE_USAGE_PACK_PLAN_PRO, quantity: 1 },
+              { price: TEST_PRICE_USAGE_PACK_20, quantity: 1 },
+            ],
+            metadata: {
+              allowanceCancelAt: "2035-06-01T00:00:00.000Z",
+              allowanceStatus: "canceled",
+            },
+            proration_behavior: "none",
+            discounts: [{ coupon: "coupon_scheduled" }],
+          },
+        ],
+      },
+      {
+        idempotencyKey: `usage-pack-subscription-change:${preview.body.changeId}:schedule-update`,
+      },
+    );
   });
 
   it("revises a pending Team to Pro schedule when the package total increases from $20 to $40", async () => {
@@ -12522,7 +12766,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     const client = setupApp({
       context,
       routes: billingConcurrencyCheckoutRoutes,
-    })(zeroBillingConcurrencyCheckoutContract);
+    })(billingConcurrencyCheckoutContract);
     const preview = await accept(
       client.preview({
         body: {
@@ -12829,7 +13073,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     const client = setupApp({
       context,
       routes: billingConcurrencySubscriptionRoutes,
-    })(zeroBillingConcurrencySubscriptionContract);
+    })(billingConcurrencySubscriptionContract);
     const preview = await accept(
       client.previewChange({
         params: { subscriptionId },
@@ -13139,7 +13383,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     const client = setupApp({
       context,
       routes: billingConcurrencyCheckoutRoutes,
-    })(zeroBillingConcurrencyCheckoutContract);
+    })(billingConcurrencyCheckoutContract);
     const preview = await accept(
       client.preview({
         body: { quantity: 3 },
@@ -13296,7 +13540,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     const client = setupApp({
       context,
       routes: billingConcurrencySubscriptionRoutes,
-    })(zeroBillingConcurrencySubscriptionContract);
+    })(billingConcurrencySubscriptionContract);
 
     const preview = await accept(
       client.previewChange({
@@ -13398,7 +13642,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     const client = setupApp({
       context,
       routes: billingConcurrencySubscriptionRoutes,
-    })(zeroBillingConcurrencySubscriptionContract);
+    })(billingConcurrencySubscriptionContract);
     const expectedReductionError = {
       error: {
         message:
@@ -13528,7 +13772,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
       setupApp({
         context,
         routes: billingConcurrencySubscriptionRoutes,
-      })(zeroBillingConcurrencySubscriptionContract).previewChange({
+      })(billingConcurrencySubscriptionContract).previewChange({
         params: { subscriptionId: fixture.subscriptionId },
         body: { quantity: 3 },
         headers: { authorization: "Bearer clerk-session" },
@@ -13644,7 +13888,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     const client = setupApp({
       context,
       routes: billingConcurrencyCheckoutRoutes,
-    })(zeroBillingConcurrencyCheckoutContract);
+    })(billingConcurrencyCheckoutContract);
     const preview = await accept(
       client.preview({
         body: { quantity: 3 },
@@ -16348,7 +16592,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     const client = setupApp({
       context,
       routes: billingConcurrencySubscriptionRoutes,
-    })(zeroBillingConcurrencySubscriptionContract);
+    })(billingConcurrencySubscriptionContract);
 
     await accept(
       client.confirmChange({
@@ -16445,7 +16689,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     const client = setupApp({
       context,
       routes: billingConcurrencySubscriptionRoutes,
-    })(zeroBillingConcurrencySubscriptionContract);
+    })(billingConcurrencySubscriptionContract);
     await accept(
       client.confirmChange({
         params: { subscriptionId: fixture.subscriptionId },
@@ -16589,7 +16833,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     const client = setupApp({
       context,
       routes: billingConcurrencySubscriptionRoutes,
-    })(zeroBillingConcurrencySubscriptionContract);
+    })(billingConcurrencySubscriptionContract);
 
     await accept(
       client.cancel({

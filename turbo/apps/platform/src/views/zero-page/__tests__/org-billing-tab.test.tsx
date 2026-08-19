@@ -3230,7 +3230,7 @@ describe("organization billing settings", () => {
       name: "Ending Team Concurrency Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, {
         ...activeTeamBillingStatus(),
         cancelAtPeriodEnd: true,
@@ -3253,7 +3253,7 @@ describe("organization billing settings", () => {
       });
     });
     context.mocks.api(
-      zeroBillingConcurrencySubscriptionContract.previewChange,
+      billingConcurrencySubscriptionContract.previewChange,
       ({ body, respond }) => {
         previewedQuantity = body.quantity;
         return respond(409, {
@@ -3266,7 +3266,7 @@ describe("organization billing settings", () => {
       },
     );
     context.mocks.api(
-      zeroBillingConcurrencySubscriptionContract.cancel,
+      billingConcurrencySubscriptionContract.cancel,
       ({ params, respond }) => {
         canceledSubscriptionId = params.subscriptionId;
         return respond(409, {
@@ -3705,7 +3705,7 @@ describe("organization billing settings", () => {
       },
     );
     context.mocks.api(
-      zeroBillingConcurrencySubscriptionContract.restore,
+      billingConcurrencySubscriptionContract.restore,
       ({ params, respond }) => {
         restoredSubscriptionId = params.subscriptionId;
         billingStatus = {

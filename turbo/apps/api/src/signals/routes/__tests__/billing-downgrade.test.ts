@@ -571,7 +571,7 @@ describe("POST /api/zero/billing/downgrade", () => {
       setupApp({
         context,
         routes: billingConcurrencySubscriptionRoutes,
-      })(zeroBillingConcurrencySubscriptionContract).confirmChange({
+      })(billingConcurrencySubscriptionContract).confirmChange({
         params: { subscriptionId: subId },
         body: { quantity: 3 },
         headers: { authorization: "Bearer clerk-session" },
@@ -612,7 +612,7 @@ describe("POST /api/zero/billing/downgrade", () => {
 
     const response = await accept(
       setupApp({ context, routes: billingDowngradeRoutes })(
-        zeroBillingDowngradeContract,
+        billingDowngradeContract,
       ).create({
         body: { targetTier: "pro" },
         headers: { authorization: "Bearer clerk-session" },
@@ -703,7 +703,7 @@ describe("POST /api/zero/billing/downgrade", () => {
       setupApp({
         context,
         routes: billingConcurrencySubscriptionRoutes,
-      })(zeroBillingConcurrencySubscriptionContract).restore({
+      })(billingConcurrencySubscriptionContract).restore({
         params: { subscriptionId: subId },
         body: {},
         headers: { authorization: "Bearer clerk-session" },
