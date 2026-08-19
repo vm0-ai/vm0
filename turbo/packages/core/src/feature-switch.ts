@@ -369,7 +369,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ComposerImeSubmitFlush]: {
     maintainer: "bingjie@vm0.ai",
     description:
-      "Flush pending IME DOM changes into the composer document before reading a submission.",
+      "Protect in-flight IME composition in the chat composer: skip unchanged feedback note DOM writes and flush pending DOM changes before reading a submission.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

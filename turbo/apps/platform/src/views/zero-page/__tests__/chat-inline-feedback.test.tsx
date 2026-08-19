@@ -1464,6 +1464,7 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ComposerImeSubmitFlush]: true },
     });
 
     selectTextForInlineFeedback(await screen.findByText(assistantReply));
