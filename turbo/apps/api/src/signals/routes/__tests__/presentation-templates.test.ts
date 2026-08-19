@@ -310,7 +310,6 @@ async function openImport(
 /** Ask the import for a slot without uploading anything to it. */
 async function requestSlot(
   actor: ApiTestUser,
-  fixture: ReturnType<typeof installS3Fixture>,
   templateId: string,
   slot:
     | { readonly role: "source"; readonly filename: string }
@@ -353,13 +352,7 @@ async function fillSlot(
     | { readonly role: "page"; readonly pageIndex: number },
   body: Buffer,
 ): Promise<string> {
-  const uploadUrl = await requestSlot(
-    actor,
-    fixture,
-    templateId,
-    slot,
-    body.length,
-  );
+  const uploadUrl = await requestSlot(actor, templateId, slot, body.length);
   return fixture.upload(uploadUrl, body);
 }
 
@@ -666,18 +659,11 @@ describe("presentation template import", () => {
     const empty = await openImport(actor);
     await requestSlot(
       actor,
-      fixture,
       empty,
       { role: "source", filename: "brand-system.pptx" },
       2048,
     );
-    await requestSlot(
-      actor,
-      fixture,
-      empty,
-      { role: "page", pageIndex: 0 },
-      24,
-    );
+    await requestSlot(actor, empty, { role: "page", pageIndex: 0 }, 24);
     mocks.clerk.session(actor.userId, actor.orgId);
     const noSource = await accept(
       client.commit({
@@ -698,13 +684,7 @@ describe("presentation template import", () => {
       { role: "source", filename: "brand-system.pptx" },
       pptxSource(2),
     );
-    await requestSlot(
-      actor,
-      fixture,
-      pagesMissing,
-      { role: "page", pageIndex: 0 },
-      24,
-    );
+    await requestSlot(actor, pagesMissing, { role: "page", pageIndex: 0 }, 24);
     await fillSlot(
       actor,
       fixture,
@@ -724,6 +704,69 @@ describe("presentation template import", () => {
     expect(noPage.body.error.message).toContain("Page 1 was never uploaded");
   });
 
+  it("refuses to commit a slot whose stored object is empty", async () => {
+    const actor = bdd.user();
+    await enablePresentationTemplates(actor);
+    const fixture = installS3Fixture();
+    const client = templateClient();
+
+    // A presigned PUT accepts an empty body while the declared size has to be
+    // positive, so an empty object is a distinct case from an unfilled slot.
+    const emptySource = await openImport(actor);
+    const sourceUrl = await requestSlot(
+      actor,
+      emptySource,
+      { role: "source", filename: "brand-system.pptx" },
+      2048,
+    );
+    fixture.upload(sourceUrl, Buffer.alloc(0));
+    await fillSlot(
+      actor,
+      fixture,
+      emptySource,
+      { role: "page", pageIndex: 0 },
+      pngHeader(),
+    );
+    mocks.clerk.session(actor.userId, actor.orgId);
+    const noSource = await accept(
+      client.commit({
+        headers: webHeaders(),
+        params: { templateId: emptySource },
+        body: {},
+      }),
+      [400],
+    );
+    expect(noSource.body.error.message).toContain("source deck was never");
+
+    const emptyPage = await openImport(actor);
+    await fillSlot(
+      actor,
+      fixture,
+      emptyPage,
+      { role: "source", filename: "brand-system.pptx" },
+      pptxSource(1),
+    );
+    const pageUrl = await requestSlot(
+      actor,
+      emptyPage,
+      { role: "page", pageIndex: 0 },
+      24,
+    );
+    fixture.upload(pageUrl, Buffer.alloc(0));
+    mocks.clerk.session(actor.userId, actor.orgId);
+    const noPageBytes = await accept(
+      client.commit({
+        headers: webHeaders(),
+        params: { templateId: emptyPage },
+        body: {},
+      }),
+      [400],
+    );
+    expect(noPageBytes.body.error.message).toContain(
+      "Page 1 was never uploaded",
+    );
+  });
+
   it("measures the stored bytes instead of the declared size", async () => {
     const actor = bdd.user();
     await enablePresentationTemplates(actor);
@@ -735,7 +778,6 @@ describe("presentation template import", () => {
     const deck = pptxSource(1);
     const uploadUrl = await requestSlot(
       actor,
-      fixture,
       templateId,
       { role: "source", filename: "brand-system.pptx" },
       deck.length + 4096,

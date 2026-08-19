@@ -15,12 +15,13 @@ import type { Tx } from "../../lib/db-types";
 import { conflict, notFound } from "../../lib/error";
 import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
-import { writeDb$ } from "../external/db";
+import { writeDb$, type ReadonlyDb } from "../external/db";
 import {
   deleteS3Objects,
   generatePresignedPutUrl,
   s3MetadataHeaders,
   s3ObjectHead,
+  type S3ObjectHead,
 } from "../external/s3";
 import { allocateArtifactObject$ } from "./artifact-storage.service";
 import { presentationTemplateIdForRequest } from "./presentation-template-data.service";
@@ -130,7 +131,7 @@ export const createPresentationTemplateImport$ = command(
 );
 
 async function loadOpenImport(
-  tx: Tx,
+  tx: Tx | ReadonlyDb,
   args: {
     readonly orgId: string;
     readonly ownerUserId: string;
@@ -163,6 +164,30 @@ export const requestPresentationTemplateUpload$ = command(
     signal: AbortSignal,
   ) => {
     const db = set(writeDb$);
+    // Reject an unknown or already-committed import before doing any storage
+    // work. The transaction below repeats this check under the lifecycle lock,
+    // which is the authoritative one; this read only keeps an S3 round trip off
+    // a request that cannot succeed.
+    const opening = await loadOpenImport(db, args);
+    signal.throwIfAborted();
+    if (!opening) {
+      return importNotFound(args.templateId);
+    }
+    if (!isOpenImport(opening)) {
+      return conflict("This presentation template import is already committed");
+    }
+
+    // The API picks the object, so the caller never names one. Allocating only
+    // chooses a key and writes nothing, so it runs before the transaction opens
+    // rather than holding a pooled connection and the lifecycle lock across an
+    // S3 round trip.
+    const artifact = await set(
+      allocateArtifactObject$,
+      { userId: args.ownerUserId, filename: args.body.filename },
+      signal,
+    );
+    signal.throwIfAborted();
+
     const slot = await db.transaction(async (tx) => {
       await lockPresentationTemplateLifecycle(tx, args.templateId);
       signal.throwIfAborted();
@@ -191,14 +216,6 @@ export const requestPresentationTemplateUpload$ = command(
           ),
         )
         .limit(1);
-      signal.throwIfAborted();
-
-      // The API picks the object, so the caller never names one.
-      const artifact = await set(
-        allocateArtifactObject$,
-        { userId: args.ownerUserId, filename: args.body.filename },
-        signal,
-      );
       signal.throwIfAborted();
 
       await tx
@@ -230,7 +247,6 @@ export const requestPresentationTemplateUpload$ = command(
         });
       return {
         kind: "allocated" as const,
-        artifact,
         replacedKey: previous?.storageKey,
       };
     });
@@ -244,7 +260,7 @@ export const requestPresentationTemplateUpload$ = command(
     }
 
     const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
-    if (slot.replacedKey && slot.replacedKey !== slot.artifact.key) {
+    if (slot.replacedKey && slot.replacedKey !== artifact.key) {
       await get(deleteS3Objects(bucket, [slot.replacedKey]));
       signal.throwIfAborted();
     }
@@ -252,10 +268,10 @@ export const requestPresentationTemplateUpload$ = command(
     const uploadUrl = await get(
       generatePresignedPutUrl(
         bucket,
-        slot.artifact.key,
+        artifact.key,
         args.body.contentType,
         PUT_URL_TTL_SECONDS,
-        { usePublicEndpoint: true, metadata: slot.artifact.metadata },
+        { usePublicEndpoint: true, metadata: artifact.metadata },
       ),
     );
     signal.throwIfAborted();
@@ -263,7 +279,7 @@ export const requestPresentationTemplateUpload$ = command(
       status: 200 as const,
       body: {
         uploadUrl,
-        uploadHeaders: s3MetadataHeaders(slot.artifact.metadata),
+        uploadHeaders: s3MetadataHeaders(artifact.metadata),
       },
     };
   },
@@ -315,6 +331,15 @@ function collectUploads(
 }
 
 /**
+ * Bytes actually stored for one slot. A presigned PUT accepts an empty body, so
+ * an object that is absent and one that is zero length say the same thing: the
+ * upload never delivered the slot's content.
+ */
+function storedSize(head: S3ObjectHead): number {
+  return head.kind === "found" ? (head.contentLength ?? 0) : 0;
+}
+
+/**
  * Allocating a slot only reserves an object; the caller still has to PUT the
  * bytes. Commit therefore measures every allocated object instead of trusting
  * the size the caller declared when it asked for the slot.
@@ -326,27 +351,30 @@ const measureStoredUploads$ = command(
     signal: AbortSignal,
   ): Promise<StoredUploads | { readonly error: string }> => {
     const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
-    const heads = await Promise.all(
-      [uploads.sourceKey, ...uploads.pageKeys].map(async (key) => {
-        return await get(s3ObjectHead(bucket, key));
-      }),
-    );
+    const [sourceHead, pageHeads] = await Promise.all([
+      get(s3ObjectHead(bucket, uploads.sourceKey)),
+      Promise.all(
+        uploads.pageKeys.map(async (key) => {
+          return await get(s3ObjectHead(bucket, key));
+        }),
+      ),
+    ]);
     signal.throwIfAborted();
 
-    const missing = heads.findIndex((head) => {
-      return head.kind !== "found" || head.contentLength === undefined;
-    });
-    if (missing === 0) {
+    const sourceSize = storedSize(sourceHead);
+    if (sourceSize === 0) {
       return { error: "The source deck was never uploaded" };
     }
-    if (missing > 0) {
-      return { error: `Page ${missing.toString()} was never uploaded` };
+    const pageSizes = pageHeads.map(storedSize);
+    const emptyPage = pageSizes.findIndex((size) => {
+      return size === 0;
+    });
+    if (emptyPage !== -1) {
+      return {
+        error: `Page ${(emptyPage + 1).toString()} was never uploaded`,
+      };
     }
 
-    const sizes = heads.map((head) => {
-      return head.kind === "found" ? (head.contentLength ?? 0) : 0;
-    });
-    const [sourceSize = 0, ...pageSizes] = sizes;
     if (sourceSize > MAX_PRESENTATION_TEMPLATE_SOURCE_BYTES) {
       return {
         error: `Presentation files must be ${MAX_PRESENTATION_TEMPLATE_SOURCE_BYTES.toString()} bytes or smaller`,
