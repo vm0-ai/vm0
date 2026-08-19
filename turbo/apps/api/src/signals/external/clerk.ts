@@ -211,6 +211,7 @@ export async function retryClerkRead<T>(
 ): Promise<T> {
   let totalDelayMs = 0;
   for (let attempt = 1; ; attempt += 1) {
+    signal.throwIfAborted();
     const result = await settle(read(), signal);
     if (result.ok) {
       return result.value;
