@@ -29,6 +29,7 @@ import {
 } from "./helpers/api-bdd";
 import { createBddIntegrationApi } from "./helpers/api-bdd-integrations";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
+import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import {
   createConnectorBddApi,
   manualHttpCustomConnectorCreateBody,
@@ -53,6 +54,11 @@ import {
   materializeHourlyUsage$,
   readUsageStorageCounts$,
 } from "./helpers/usage-state";
+import {
+  readCustomConnectorCredentialStorageParent,
+  readThreadConnectorSelectionState,
+  seedCustomThreadConnectorSelection,
+} from "./helpers/connector-credential-storage-state";
 
 const context = testContext();
 const api = createWebhookCallbackApi(context);
@@ -6539,6 +6545,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
 
   it("cleans up user state after a verified user.deleted event", async () => {
     const bdd = createBddApi(context);
+    const chat = createChatFilesBddApi(context);
     const runs = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
     const userConfig = createUserConfigBddApi(context);
@@ -6567,6 +6574,10 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       displayName: "BDD Doomed Agent",
       visibility: "private",
     });
+    const connectorSelectionThread = await chat.createThread(doomed, {
+      agentId: doomedAgent.agentId,
+      title: "BDD doomed connector selection",
+    });
     await runs.enableAgentConnectors(doomed, sharedAgent.agentId, ["openai"]);
     await connectors.connectManualGrant(
       peer,
@@ -6585,6 +6596,16 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       customManual.id,
       "doomed-custom-secret",
     );
+    const customManualStorage =
+      await readCustomConnectorCredentialStorageParent(context, {
+        orgId: orgOf(doomed),
+        userId: doomed.userId,
+        customConnectorId: customManual.id,
+      });
+    const customManualMemberConnectorId = customManualStorage.connector?.id;
+    if (!customManualMemberConnectorId) {
+      throw new Error("Expected the doomed custom connector account");
+    }
     await connectors.setCustomConnectorSecret(
       peer,
       customManual.id,
@@ -6645,6 +6666,11 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       modelProvider: "anthropic-api-key",
     });
     expect(run.status).toBe("pending");
+    await seedCustomThreadConnectorSelection(context, {
+      chatThreadId: connectorSelectionThread.id,
+      connectorId: customManualMemberConnectorId,
+      customConnectorId: customManual.id,
+    });
     await runs.claimRunnerJob(run.runId);
     await store.set(
       insertUsageEvent$,
@@ -6825,6 +6851,12 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       connected: false,
       configuredFieldKeys: [],
     });
+    await expect(
+      readThreadConnectorSelectionState(context, {
+        chatThreadId: connectorSelectionThread.id,
+        connectorId: customManualMemberConnectorId,
+      }),
+    ).resolves.toBeFalsy();
     await expect(
       connectors.readCustomConnector(peer, customManual.id),
     ).resolves.toMatchObject({

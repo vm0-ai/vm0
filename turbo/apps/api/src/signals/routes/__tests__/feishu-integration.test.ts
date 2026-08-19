@@ -58,7 +58,11 @@ import { readProjectedChatEvents } from "./helpers/chat-event-test-reader";
 import {
   clearFeishuConnectorOwnership,
   readCustomConnectorCredentialStorageParent,
+  readFeishuMemberConnectorState,
+  seedConnectorStorageRow,
   seedLegacyCustomFeishuOAuthState,
+  setConnectorExternalIdState,
+  setFeishuMemberConnectorLink,
 } from "./helpers/connector-credential-storage-state";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createRouteMocks } from "./helpers/route-test";
@@ -93,6 +97,14 @@ const VERIFICATION_TOKEN = "feishu-test-verification-token";
 const APP_SECRET = "feishu-test-secret";
 const TENANT_KEY = "tenant_feishu_integration_test";
 const BOT_OPEN_ID = "ou_feishu_bot";
+
+function feishuConnectClient() {
+  return setupApp({ context, routes: feishuConnectRoutes })(
+    feishuConnectContract,
+  );
+}
+
+type FeishuConnectClient = ReturnType<typeof feishuConnectClient>;
 
 function mockAuthoritativeOrganizationMembers(
   actors: readonly ApiTestUser[],
@@ -210,6 +222,118 @@ function requireValue<T>(value: T | null | undefined, message: string): T {
     throw new Error(message);
   }
   return value;
+}
+
+async function expectExactFeishuMemberConnector(args: {
+  readonly client: FeishuConnectClient;
+  readonly installationId: string;
+  readonly member: ApiTestUser;
+}): Promise<void> {
+  const connected = await accept(
+    args.client.getStatus({
+      headers: { authorization: "Bearer clerk-session" },
+    }),
+    [200],
+  );
+  expect(connected.body.installations?.[0]?.isConnected).toBeTruthy();
+  expect(connected.body.installations?.[0]?.connectedUserName).toBe(
+    "Feishu User",
+  );
+  const orgId = requireValue(args.member.orgId, "Expected an organization");
+  const memberConnection = await readFeishuMemberConnectorState(context, {
+    orgId,
+    userId: args.member.userId,
+    installationId: args.installationId,
+  });
+  expect(memberConnection.feishu_member_connection).toMatchObject({
+    connector_external_id: "ou_oauth_user",
+    open_id: "ou_oauth_user",
+  });
+  const memberConnectorId = requireValue(
+    memberConnection.feishu_member_connection?.connector_id,
+    "Expected Feishu OAuth to persist exact account ownership",
+  );
+
+  await setConnectorExternalIdState(context, {
+    orgId,
+    userId: args.member.userId,
+    connectorId: memberConnectorId,
+    externalId: "ou_wrong_account",
+  });
+  const identityMismatch = await accept(
+    args.client.getStatus({
+      headers: { authorization: "Bearer clerk-session" },
+    }),
+    [200],
+  );
+  expect(identityMismatch.body.installations?.[0]?.isConnected).toBeFalsy();
+
+  await setConnectorExternalIdState(context, {
+    orgId,
+    userId: args.member.userId,
+    connectorId: memberConnectorId,
+    externalId: null,
+  });
+  const historicalExactLink = await accept(
+    args.client.getStatus({
+      headers: { authorization: "Bearer clerk-session" },
+    }),
+    [200],
+  );
+  expect(historicalExactLink.body.installations?.[0]?.isConnected).toBeTruthy();
+
+  await setConnectorExternalIdState(context, {
+    orgId,
+    userId: args.member.userId,
+    connectorId: memberConnectorId,
+    externalId: "ou_oauth_user",
+  });
+
+  const foreignConnectorId = await seedConnectorStorageRow(context, {
+    orgId,
+    userId: args.member.userId,
+    connectorSlug: "github",
+    authMethod: "oauth",
+    storageVersion: 1,
+  });
+  await setFeishuMemberConnectorLink(context, {
+    userId: args.member.userId,
+    installationId: args.installationId,
+    connectorId: foreignConnectorId,
+  });
+  const mismatched = await accept(
+    args.client.getStatus({
+      headers: { authorization: "Bearer clerk-session" },
+    }),
+    [200],
+  );
+  expect(mismatched.body.installations?.[0]?.isConnected).toBeFalsy();
+
+  await setFeishuMemberConnectorLink(context, {
+    userId: args.member.userId,
+    installationId: args.installationId,
+    connectorId: memberConnectorId,
+  });
+  const relinked = await accept(
+    args.client.getStatus({
+      headers: { authorization: "Bearer clerk-session" },
+    }),
+    [200],
+  );
+  expect(relinked.body.installations?.[0]?.isConnected).toBeTruthy();
+
+  await setFeishuMemberConnectorLink(context, {
+    userId: args.member.userId,
+    installationId: args.installationId,
+    connectorId: null,
+  });
+  const legacyUnlinked = await accept(
+    args.client.getStatus({
+      headers: { authorization: "Bearer clerk-session" },
+    }),
+    [200],
+  );
+  expect(legacyUnlinked.body.installations?.[0]?.isConnected).toBeTruthy();
 }
 
 function feishuConnectBody(connectUrl: string) {
@@ -2243,16 +2367,11 @@ describe("Feishu integration", () => {
     await flushWaitUntilForTest();
 
     mocks.clerk.session(member.userId, member.orgId, member.orgRole);
-    const connected = await accept(
-      client.getStatus({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-    expect(connected.body.installations?.[0]?.isConnected).toBeTruthy();
-    expect(connected.body.installations?.[0]?.connectedUserName).toBe(
-      "Feishu User",
-    );
+    await expectExactFeishuMemberConnector({
+      client,
+      installationId,
+      member,
+    });
     const connectedConnectorList = await accept(
       customConnectorClient.list({
         headers: { authorization: "Bearer clerk-session" },

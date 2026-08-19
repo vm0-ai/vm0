@@ -9,6 +9,12 @@ const connectorStateSchema = z.object({
   storage_version: z.number().int().positive(),
 });
 
+const feishuMemberConnectionStateSchema = z.object({
+  connector_id: z.uuid().nullable(),
+  connector_external_id: z.string().nullable(),
+  open_id: z.string(),
+});
+
 const secretStateSchema = z.object({
   name: z.string(),
   connector_id: z.uuid(),
@@ -57,6 +63,18 @@ export const testConnectorCredentialStorageStateActionBodySchema =
       action: z.literal("clear-feishu-connector-ownership"),
       org_id: z.string(),
       installation_id: z.uuid(),
+    }),
+    z.object({
+      action: z.literal("read-feishu-member-connector"),
+      org_id: z.string(),
+      user_id: z.string(),
+      installation_id: z.uuid(),
+    }),
+    z.object({
+      action: z.literal("set-feishu-member-connector-link"),
+      user_id: z.string(),
+      installation_id: z.uuid(),
+      connector_id: z.uuid().nullable(),
     }),
     z.object({
       action: z.literal("seed-legacy-custom-feishu-oauth-state"),
@@ -111,6 +129,37 @@ export const testConnectorCredentialStorageStateActionBodySchema =
       token_expires_at: z.iso.datetime().nullable().optional(),
     }),
     z.object({
+      action: z.literal("set-connector-default"),
+      org_id: z.string(),
+      user_id: z.string(),
+      connector_id: z.uuid(),
+      is_default: z.boolean(),
+    }),
+    z.object({
+      action: z.literal("set-connector-external-id"),
+      org_id: z.string(),
+      user_id: z.string(),
+      connector_id: z.uuid(),
+      external_id: z.string().nullable(),
+    }),
+    z.object({
+      action: z.literal("seed-builtin-thread-selection"),
+      chat_thread_id: z.uuid(),
+      connector_id: z.uuid(),
+      connector_slug: z.string(),
+    }),
+    z.object({
+      action: z.literal("seed-custom-thread-selection"),
+      chat_thread_id: z.uuid(),
+      connector_id: z.uuid(),
+      custom_connector_id: z.uuid(),
+    }),
+    z.object({
+      action: z.literal("read-thread-selection"),
+      chat_thread_id: z.uuid(),
+      connector_id: z.uuid(),
+    }),
+    z.object({
       action: z.literal("set-custom-parent-state"),
       org_id: z.string(),
       user_id: z.string(),
@@ -141,6 +190,10 @@ export const testConnectorCredentialStorageStateActionResponseSchema = z.object(
     connector: connectorStateSchema.nullable().optional(),
     connector_id: z.uuid().optional(),
     custom_oauth_state: customOauthStateSchema.nullable().optional(),
+    feishu_member_connection: feishuMemberConnectionStateSchema
+      .nullable()
+      .optional(),
+    selection_exists: z.boolean().optional(),
     secrets: z.array(secretStateSchema).optional(),
     variables: z.array(variableStateSchema).optional(),
   },

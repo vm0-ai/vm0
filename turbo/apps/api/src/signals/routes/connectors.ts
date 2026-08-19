@@ -18,6 +18,7 @@ import { publicBrand$, request$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import {
   badRequestMessage,
+  conflict,
   notFound,
   providerUnavailable,
 } from "../../lib/error";
@@ -192,8 +193,11 @@ const deleteConnectorBySlugInner$ = command(
     );
     signal.throwIfAborted();
 
-    if (!deleted) {
+    if (deleted === "missing") {
       return notFound("Connector not found");
+    }
+    if (deleted === "ambiguous") {
+      return conflict("Multiple connector accounts require an exact choice");
     }
 
     return { status: 204 as const, body: undefined };

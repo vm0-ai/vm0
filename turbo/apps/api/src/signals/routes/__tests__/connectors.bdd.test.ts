@@ -60,6 +60,7 @@ import {
   readConnectorCredentialStorageState,
   readCustomConnectorCredentialStorageParent,
   readCustomConnectorOAuthStorageState,
+  setConnectorDefaultState,
   setCustomConnectorCredentialStorageState,
 } from "./helpers/connector-credential-storage-state";
 import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
@@ -1875,6 +1876,25 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await expect(
       connectorsApi.readCustomConnector(admin, created.id),
     ).resolves.toMatchObject({ connected: true });
+
+    const parent = await readCustomConnectorCredentialStorageParent(context, {
+      orgId: admin.orgId ?? "",
+      userId: admin.userId,
+      customConnectorId: created.id,
+    });
+    const memberConnectorId = parent.connector?.id;
+    if (!memberConnectorId) {
+      throw new Error("Expected a stored custom connector account");
+    }
+    await setConnectorDefaultState(context, {
+      orgId: admin.orgId ?? "",
+      userId: admin.userId,
+      connectorId: memberConnectorId,
+      isDefault: false,
+    });
+    await expect(
+      connectorsApi.readCustomConnector(admin, created.id),
+    ).resolves.toMatchObject({ connected: false });
 
     await connectorsApi.disconnectCustomConnector(admin, created.id);
     await expect(
@@ -6405,6 +6425,26 @@ describe("CONN-02: GitHub installation link after connector OAuth", () => {
     expect(afterLink.isConnected).toBeTruthy();
     expect(afterLink.connectedGithubUserId).toBe("42");
     expect(afterLink.connectedGithubUsername).toBe("bdd-github-user");
+
+    const connectorState = await readConnectorCredentialStorageState(context, {
+      orgId: admin.orgId ?? "",
+      userId: admin.userId,
+      connectorSlug: "github",
+    });
+    const connectorId = connectorState.connector?.id;
+    if (!connectorId) {
+      throw new Error("Expected a stored GitHub connector account");
+    }
+    await setConnectorDefaultState(context, {
+      orgId: admin.orgId ?? "",
+      userId: admin.userId,
+      connectorId,
+      isDefault: false,
+    });
+    const withoutDefault = await connectorsApi.readGithubIntegration(admin);
+    expect(withoutDefault.isConnected).toBeTruthy();
+    expect(withoutDefault.connectedGithubUserId).toBe("42");
+    expect(withoutDefault.connectedGithubUsername).toBeNull();
 
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "github:changed",

@@ -18,6 +18,7 @@ import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import {
   seedConnectorStorageRow,
+  setConnectorDefaultState,
   setConnectorCredentialStorageState,
   setConnectorVariableOwner,
 } from "./helpers/connector-credential-storage-state";
@@ -614,6 +615,24 @@ describe("POST /api/zero/connectors/diagnostics/check", () => {
     const serialized = JSON.stringify(resolved.body);
     expect(serialized).not.toContain("REAP_API_BASE_URL");
     expect(serialized).not.toContain("reap-test-api-key");
+
+    await setConnectorDefaultState(context, {
+      orgId,
+      userId: owner.userId,
+      connectorId: reapConnectorId,
+      isDefault: false,
+    });
+    const nonDefault = await checkWithSession(owner, request);
+    expect(nonDefault.body).toMatchObject({
+      outcome: "unresolved-dynamic-base",
+      connector: { connectorSlug: "reap" },
+    });
+    await setConnectorDefaultState(context, {
+      orgId,
+      userId: owner.userId,
+      connectorId: reapConnectorId,
+      isDefault: true,
+    });
 
     await setConnectorCredentialStorageState(context, {
       connectorSlug: "reap",

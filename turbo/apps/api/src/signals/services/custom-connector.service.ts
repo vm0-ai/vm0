@@ -39,7 +39,7 @@ import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
 
 import { clerk$ } from "../external/clerk";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
-import { badRequestMessage, notFound } from "../../lib/error";
+import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { safeSync } from "../utils";
@@ -56,6 +56,7 @@ import {
   type PreparedCustomConnectorValue,
   upsertCustomConnectorStoredValues,
 } from "./custom-connector-credential-storage.service";
+import { deleteConnectorSelectionsForCustomConnectorDefinition } from "./connector-credential-storage-write.service";
 import { loadCustomConnectorPermissionBundle } from "./custom-connector-permission-bundle.service";
 import {
   customConnectorDefinitionHasConnectedConnection,
@@ -136,6 +137,7 @@ const CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_REFERENCE = "oauth.access_token";
 
 type BadRequestResponse = ReturnType<typeof badRequestMessage>;
 type NotFoundResponse = ReturnType<typeof notFound>;
+type ConflictResponse = ReturnType<typeof conflict>;
 type ForbiddenResponse = {
   readonly status: 403;
   readonly body: {
@@ -2371,6 +2373,11 @@ export const deleteCustomConnector$ = command(
       ) {
         return integrationManagedCustomConnectorMutationForbidden();
       }
+      await deleteConnectorSelectionsForCustomConnectorDefinition(
+        tx,
+        { customConnectorId: args.id },
+        signal,
+      );
       await tx
         .delete(orgCustomConnectors)
         .where(
@@ -2935,7 +2942,9 @@ export const disconnectCustomConnector$ = command(
       readonly connectorId: string;
     },
     signal: AbortSignal,
-  ): Promise<NotFoundResponse | ForbiddenResponse | undefined> => {
+  ): Promise<
+    NotFoundResponse | ConflictResponse | ForbiddenResponse | undefined
+  > => {
     const writeDb = set(writeDb$);
     let postCommitAbort: CapturedConnectorClientInvalidationAbort | undefined;
     const disconnected = await writeDb.transaction(async (tx) => {
@@ -2974,7 +2983,14 @@ export const disconnectCustomConnector$ = command(
       ) {
         return integrationManagedCustomConnectorMutationForbidden();
       }
-      await deleteCustomConnectorMemberConnection(tx, args, signal);
+      const result = await deleteCustomConnectorMemberConnection(
+        tx,
+        args,
+        signal,
+      );
+      if (result === "ambiguous") {
+        return conflict("Multiple connector accounts require an exact choice");
+      }
       return true;
     });
     if (signal.aborted) {

@@ -14,7 +14,11 @@ import {
   invalidateApiTestConnectorCatalogCompatibility,
   installApiTestConnectorCatalog,
 } from "../../../test-fixtures/connector-catalog";
-import { seedConnectorStorageRow } from "./helpers/connector-credential-storage-state";
+import {
+  readConnectorCredentialStorageState,
+  seedConnectorStorageRow,
+  setConnectorDefaultState,
+} from "./helpers/connector-credential-storage-state";
 import { createRouteMocks } from "./helpers/route-test";
 import { connectorsRoutes } from "../connectors";
 
@@ -132,6 +136,50 @@ describe("GET /api/zero/connectors", () => {
         name: "GITLAB_TOKEN",
       }),
     );
+  });
+
+  it("projects only the default account for each connector target", async () => {
+    const fixture = seedAuthenticatedFixture();
+    seededFixtures.push(fixture);
+    await connectGitlab(fixture);
+    const state = await readConnectorCredentialStorageState(context, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      connectorSlug: "gitlab",
+    });
+    const connectorId = state.connector?.id;
+    if (!connectorId) {
+      throw new Error("Expected a stored GitLab connector account");
+    }
+    await setConnectorDefaultState(context, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      connectorId,
+      isDefault: false,
+    });
+
+    const response = await accept(
+      setupApp({ context, routes: connectorsRoutes })(
+        zeroConnectorsMainContract,
+      ).list({ headers: authHeaders() }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      connectors: [],
+      connectorProvidedBindings: [],
+    });
+
+    const detail = await accept(
+      setupApp({ context, routes: connectorsRoutes })(
+        zeroConnectorsBySlugContract,
+      ).get({
+        params: { connectorSlug: "gitlab" },
+        headers: authHeaders(),
+      }),
+      [404],
+    );
+    expect(detail.body.error.code).toBe("NOT_FOUND");
   });
 
   it("skips stored connectors whose runtime method is unavailable", async () => {

@@ -20,7 +20,14 @@ import {
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createRouteMocks } from "./helpers/route-test";
 import {
+  readConnectorCredentialStorageState,
+  readCustomConnectorCredentialStorageParent,
+  readThreadConnectorSelectionState,
   seedConnectorStorageRow,
+  seedBuiltinThreadConnectorSelection,
+  seedCustomConnectorRuntimeConnectors,
+  seedCustomThreadConnectorSelection,
+  setConnectorDefaultState,
   setConnectorCredentialStorageState,
   setConnectorSecretOwner,
 } from "./helpers/connector-credential-storage-state";
@@ -308,6 +315,144 @@ async function linkDraft(
 }
 
 describe("POST /api/zero/mail/drafts/link", () => {
+  it("uses the default for new drafts while preserving and deleting an exact pinned account", async () => {
+    const fixture = await seedGmailMailCardFixture();
+    mockGmailDraftApi();
+    const linked = await linkDraft(fixture);
+    const storage = await readConnectorCredentialStorageState(context, {
+      orgId: fixture.actor.orgId ?? "",
+      userId: fixture.actor.userId,
+      connectorSlug: "gmail",
+    });
+    const connectorId = storage.connector?.id;
+    if (!connectorId) {
+      throw new Error("Expected a stored Gmail connector account");
+    }
+    await seedBuiltinThreadConnectorSelection(context, {
+      chatThreadId: fixture.thread.id,
+      connectorId,
+      connectorSlug: "gmail",
+    });
+    await setConnectorDefaultState(context, {
+      orgId: fixture.actor.orgId ?? "",
+      userId: fixture.actor.userId,
+      connectorId,
+      isDefault: false,
+    });
+
+    await accept(
+      client().getDraft({
+        headers: authHeaders(),
+        params: { mailDraftId: linked.body.mailDraftId },
+      }),
+      [200],
+    );
+
+    const newThread = await chat.createThread(fixture.actor, {
+      agentId: fixture.agent.agentId,
+      title: "Default Gmail projection",
+    });
+    const newDraft = await accept(
+      client().linkDraft({
+        headers: authHeaders(),
+        body: {
+          threadId: newThread.id,
+          agentId: fixture.agent.agentId,
+          gmailDraftId: GMAIL_DRAFT_ID,
+        },
+      }),
+      [409],
+    );
+    expect(newDraft.body.error.message).toBe(
+      "Connect and authorize Gmail for this agent first",
+    );
+
+    await connectors.deleteConnectorBySlug(fixture.actor, "gmail");
+    await expect(
+      readThreadConnectorSelectionState(context, {
+        chatThreadId: fixture.thread.id,
+        connectorId,
+      }),
+    ).resolves.toBeFalsy();
+
+    const disconnectCustomConnectorId = randomUUID();
+    const deleteCustomConnectorId = randomUUID();
+    await seedCustomConnectorRuntimeConnectors(context, {
+      orgId: fixture.actor.orgId ?? "",
+      userId: fixture.actor.userId,
+      agentId: fixture.agent.agentId,
+      customConnectors: [
+        {
+          id: disconnectCustomConnectorId,
+          slug: "_disconnect-selection-cleanup",
+          displayName: "Disconnect selection cleanup",
+          prefixTemplate: "https://disconnect-selection.example.com/",
+        },
+        {
+          id: deleteCustomConnectorId,
+          slug: "_delete-selection-cleanup",
+          displayName: "Delete selection cleanup",
+          prefixTemplate: "https://delete-selection.example.com/",
+        },
+      ],
+    });
+    const disconnectCustomStorage =
+      await readCustomConnectorCredentialStorageParent(context, {
+        orgId: fixture.actor.orgId ?? "",
+        userId: fixture.actor.userId,
+        customConnectorId: disconnectCustomConnectorId,
+      });
+    const disconnectMemberConnectorId = disconnectCustomStorage.connector?.id;
+    if (!disconnectMemberConnectorId) {
+      throw new Error("Expected a custom connector account to disconnect");
+    }
+    await seedCustomThreadConnectorSelection(context, {
+      chatThreadId: fixture.thread.id,
+      connectorId: disconnectMemberConnectorId,
+      customConnectorId: disconnectCustomConnectorId,
+    });
+    await connectors.disconnectCustomConnector(
+      fixture.actor,
+      disconnectCustomConnectorId,
+    );
+    await expect(
+      readThreadConnectorSelectionState(context, {
+        chatThreadId: fixture.thread.id,
+        connectorId: disconnectMemberConnectorId,
+      }),
+    ).resolves.toBeFalsy();
+
+    const deleteCustomStorage =
+      await readCustomConnectorCredentialStorageParent(context, {
+        orgId: fixture.actor.orgId ?? "",
+        userId: fixture.actor.userId,
+        customConnectorId: deleteCustomConnectorId,
+      });
+    const deleteMemberConnectorId = deleteCustomStorage.connector?.id;
+    if (!deleteMemberConnectorId) {
+      throw new Error("Expected a custom connector account to delete");
+    }
+    await seedCustomThreadConnectorSelection(context, {
+      chatThreadId: fixture.thread.id,
+      connectorId: deleteMemberConnectorId,
+      customConnectorId: deleteCustomConnectorId,
+    });
+    await connectors.deleteCustomConnector(
+      fixture.actor,
+      deleteCustomConnectorId,
+    );
+    await expect(
+      readThreadConnectorSelectionState(context, {
+        chatThreadId: fixture.thread.id,
+        connectorId: deleteMemberConnectorId,
+      }),
+    ).resolves.toBeFalsy();
+    await connectors.deleteCustomConnector(
+      fixture.actor,
+      disconnectCustomConnectorId,
+    );
+  });
+
   it("links without injecting a duplicate card and sends without rebuilding MIME", async () => {
     mockEnv("APP_URL", "https://app.vm0.ai");
     const fixture = await seedGmailMailCardFixture();

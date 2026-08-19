@@ -388,6 +388,7 @@ const revokeOrgConnectorTokens$ = command(
     signal.throwIfAborted();
     const rows = await db
       .select({
+        connectorId: connectors.id,
         userId: connectors.userId,
         connectorSlug: sql`${connectors.connectorSlug}`
           .mapWith(pgTextDecoder)
@@ -406,6 +407,7 @@ const revokeOrgConnectorTokens$ = command(
           orgId,
           userId: row.userId,
           connectorSlug: row.connectorSlug,
+          sourceId: row.connectorId,
           snapshot,
         },
         signal,
@@ -425,6 +427,7 @@ const revokeUserConnectorTokens$ = command(
     signal.throwIfAborted();
     const rows = await db
       .select({
+        connectorId: connectors.id,
         orgId: connectors.orgId,
         connectorSlug: sql`${connectors.connectorSlug}`
           .mapWith(pgTextDecoder)
@@ -443,6 +446,7 @@ const revokeUserConnectorTokens$ = command(
           orgId: row.orgId,
           userId,
           connectorSlug: row.connectorSlug,
+          sourceId: row.connectorId,
           snapshot,
         },
         signal,

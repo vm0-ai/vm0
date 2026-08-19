@@ -20,8 +20,9 @@ const L = logger("connector-account-resolution");
 export type ConnectorAccountSelectionMode =
   | { readonly kind: "exact"; readonly sourceId: string }
   | { readonly kind: "default" }
-  // Compatibility for source-less Runner and firewall payloads. Remove in
-  // #27695 after every run admitted before source propagation has drained.
+  // Target-only callers may act only while one account exists. Source-less
+  // runtime call sites are temporary and tracked for removal in #27695;
+  // legacy target-only mutation APIs keep this fail-closed singleton semantic.
   | { readonly kind: "legacy-singleton" };
 
 export interface ConnectorAccountResolutionRequest {
@@ -377,6 +378,27 @@ export async function resolveConnectorAccounts(
     ...outcomeCounts,
   });
   return resolutions;
+}
+
+export async function resolveConnectorAccount(
+  db: ReadonlyDb,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly request: ConnectorAccountResolutionRequest;
+  },
+): Promise<ConnectorAccountResolution> {
+  const key = connectorAccountTargetKey(args.request.target);
+  const resolutions = await resolveConnectorAccounts(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    requests: [args.request],
+  });
+  const resolution = resolutions.get(key);
+  if (!resolution) {
+    throw new Error("Expected one connector account resolution");
+  }
+  return resolution;
 }
 
 export function resolvedConnectorAccountIdsByTarget(

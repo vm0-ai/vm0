@@ -4,6 +4,7 @@ import { feishuOauthContract } from "@okouai/api-contracts/contracts/feishu-oaut
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import { appUrlForPublicBrand } from "@okouai/core/public-brand";
+import { connectors } from "@okouai/db/schema/connector";
 import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
 
@@ -423,7 +424,7 @@ async function persistFeishuOAuthConnection(
     if (!connection.connected) {
       return connection;
     }
-    await storeCustomConnectorOAuth2Connection(
+    const memberConnectorId = await storeCustomConnectorOAuth2Connection(
       {
         db: tx,
         orgId: args.state.orgId,
@@ -435,6 +436,19 @@ async function persistFeishuOAuthConnection(
       },
       signal,
     );
+    signal.throwIfAborted();
+    await tx
+      .update(feishuOrgConnections)
+      .set({ connectorId: memberConnectorId, updatedAt: nowDate() })
+      .where(eq(feishuOrgConnections.id, connection.connectionId));
+    await tx
+      .update(connectors)
+      .set({
+        externalId: args.userInfo.openId,
+        externalUsername: args.userInfo.name,
+        updatedAt: nowDate(),
+      })
+      .where(eq(connectors.id, memberConnectorId));
     signal.throwIfAborted();
     if (!args.installation.tenantKey && args.userInfo.tenantKey) {
       await tx

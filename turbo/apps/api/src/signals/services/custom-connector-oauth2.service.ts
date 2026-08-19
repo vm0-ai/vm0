@@ -770,10 +770,10 @@ export async function storeCustomConnectorOAuth2Connection(
     readonly featureContext: FeatureSwitchContext;
   },
   signal: AbortSignal,
-): Promise<void> {
+): Promise<string> {
   const encrypted = await encryptTokenValues(args);
   signal.throwIfAborted();
-  await args.db.transaction(async (tx) => {
+  return await args.db.transaction(async (tx) => {
     await lockCustomConnectorOAuth2CredentialContract({
       db: tx,
       orgId: args.orgId,
@@ -781,7 +781,7 @@ export async function storeCustomConnectorOAuth2Connection(
       storageVersion: args.storageVersion,
     });
     signal.throwIfAborted();
-    await replaceConnectorConnection(
+    const connection = await replaceConnectorConnection(
       tx,
       {
         orgId: args.orgId,
@@ -805,6 +805,7 @@ export async function storeCustomConnectorOAuth2Connection(
       },
       signal,
     );
+    return connection.id;
   });
 }
 
