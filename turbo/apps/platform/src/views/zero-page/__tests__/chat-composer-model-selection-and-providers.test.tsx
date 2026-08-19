@@ -33,7 +33,7 @@ import {
   type UpdateUserModelPreferenceRequest,
   type UserModelPreferenceResponse,
 } from "@okouai/api-contracts/contracts/user-model-preference";
-import { zeroWorkflowsCollectionContract } from "@okouai/api-contracts/contracts/zero-workflows";
+import { workflowsCollectionContract } from "@okouai/api-contracts/contracts/workflows";
 import { IMAGE_RECOGNITION_MAX_FILE_BYTES } from "@okouai/api-contracts/contracts/image-recognition";
 import { beforeEach, describe, expect, it } from "vitest";
 import { triggerAblyEvent } from "../../../mocks/ably.ts";
@@ -3388,7 +3388,7 @@ describe("chat composer models", () => {
       });
     });
     context.mocks.api(
-      zeroWorkflowsCollectionContract.list,
+      workflowsCollectionContract.list,
       ({ query, respond }) => {
         if (query.agentId) {
           workflowAgentIds.push(query.agentId);

@@ -11,10 +11,10 @@ import {
   type UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import {
-  zeroWorkflowsCollectionContract,
-  zeroWorkflowAutomationsContract,
-  type ZeroWorkflowAutomationUpdateRequest,
-} from "@okouai/api-contracts/contracts/zero-workflows";
+  workflowsCollectionContract,
+  workflowAutomationsContract,
+  type WorkflowAutomationUpdateRequest,
+} from "@okouai/api-contracts/contracts/workflows";
 import {
   createMockWorkflowAutomation,
   setMockWorkflowAutomations,
@@ -439,11 +439,11 @@ export function mockAutomationThread(): void {
 export function mockWorkflowAutomationUpdate(
   onUpdate: (
     automationId: string,
-    body: ZeroWorkflowAutomationUpdateRequest,
+    body: WorkflowAutomationUpdateRequest,
   ) => void,
 ): void {
   context.mocks.api(
-    zeroWorkflowAutomationsContract.update,
+    workflowAutomationsContract.update,
     ({ body, params, respond }) => {
       onUpdate(params.id, body);
       if ("schedule" in body) {
@@ -631,7 +631,7 @@ export async function findWorkflowComposerEditor(): Promise<HTMLElement> {
 }
 
 export function mockWorkflowComposerWorkflows(): void {
-  context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+  context.mocks.api(workflowsCollectionContract.list, ({ respond }) => {
     return respond(200, []);
   });
 }

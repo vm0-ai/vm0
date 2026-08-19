@@ -1,9 +1,9 @@
 import { command, computed } from "ccstate";
 import {
-  zeroWorkflowsCollectionContract,
-  zeroWorkflowsDetailContract,
-  zeroWorkflowVisibilityContract,
-} from "@okouai/api-contracts/contracts/zero-workflows";
+  workflowsCollectionContract,
+  workflowsDetailContract,
+  workflowVisibilityContract,
+} from "@okouai/api-contracts/contracts/workflows";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   getAllFeatureStates,
@@ -317,15 +317,13 @@ async function publishCreatedWorkflow(
   }
 }
 
-const createWorkflowBody$ = bodyResultOf(
-  zeroWorkflowsCollectionContract.create,
-);
-const updateWorkflowBody$ = bodyResultOf(zeroWorkflowsDetailContract.update);
-const copyWorkflowBody$ = bodyResultOf(zeroWorkflowsDetailContract.copy);
+const createWorkflowBody$ = bodyResultOf(workflowsCollectionContract.create);
+const updateWorkflowBody$ = bodyResultOf(workflowsDetailContract.update);
+const copyWorkflowBody$ = bodyResultOf(workflowsDetailContract.copy);
 
 const listWorkflowsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const query = get(queryOf(zeroWorkflowsCollectionContract.list));
+  const query = get(queryOf(workflowsCollectionContract.list));
   const workflows = await get(
     workflowList({
       orgId: auth.orgId,
@@ -482,7 +480,7 @@ const createWorkflowInner$ = command(
 
 const getWorkflowDetailInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(zeroWorkflowsDetailContract.get));
+  const params = get(pathParamsOf(workflowsDetailContract.get));
   const result = await get(
     workflowDetail({
       orgId: auth.orgId,
@@ -507,7 +505,7 @@ const connectorReadinessInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const params = get(
-      pathParamsOf(zeroWorkflowsDetailContract.connectorReadiness),
+      pathParamsOf(workflowsDetailContract.connectorReadiness),
     );
     const overrides = await get(
       userFeatureSwitchOverrides(auth.orgId, auth.userId),
@@ -585,7 +583,7 @@ const updateWorkflowInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const member = memberFromAuth(auth);
-    const params = get(pathParamsOf(zeroWorkflowsDetailContract.update));
+    const params = get(pathParamsOf(workflowsDetailContract.update));
     const bodyResult = await get(updateWorkflowBody$);
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -670,7 +668,7 @@ const deleteWorkflowInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const member = memberFromAuth(auth);
-    const params = get(pathParamsOf(zeroWorkflowsDetailContract.delete));
+    const params = get(pathParamsOf(workflowsDetailContract.delete));
 
     const writeDb = set(writeDb$);
     const visible = await loadVisibleWorkflowById(writeDb, {
@@ -912,7 +910,7 @@ const copyWorkflowInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const member = memberFromAuth(auth);
-    const params = get(pathParamsOf(zeroWorkflowsDetailContract.copy));
+    const params = get(pathParamsOf(workflowsDetailContract.copy));
     const bodyResult = await get(copyWorkflowBody$);
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -1058,7 +1056,7 @@ const prepareWorkflowChatThreadInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const member = memberFromAuth(auth);
-    const params = get(pathParamsOf(zeroWorkflowsDetailContract.chatThread));
+    const params = get(pathParamsOf(workflowsDetailContract.chatThread));
 
     const writeDb = set(writeDb$);
     const visible = await loadVisibleWorkflowById(writeDb, {
@@ -1102,7 +1100,7 @@ const prepareWorkflowChatThreadInner$ = command(
 const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const member = memberFromAuth(auth);
-  const params = get(pathParamsOf(zeroWorkflowsDetailContract.run));
+  const params = get(pathParamsOf(workflowsDetailContract.run));
 
   const writeDb = set(writeDb$);
   const visible = await loadVisibleWorkflowById(writeDb, {
@@ -1268,7 +1266,7 @@ async function loadVisibilityTransition(
 const publishInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const member = memberFromAuth(auth);
-  const params = get(pathParamsOf(zeroWorkflowVisibilityContract.publish));
+  const params = get(pathParamsOf(workflowVisibilityContract.publish));
 
   const writeDb = set(writeDb$);
   const loaded = await loadVisibilityTransition(writeDb, {
@@ -1324,7 +1322,7 @@ const publishInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const demoteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const member = memberFromAuth(auth);
-  const params = get(pathParamsOf(zeroWorkflowVisibilityContract.demote));
+  const params = get(pathParamsOf(workflowVisibilityContract.demote));
 
   const writeDb = set(writeDb$);
   const loaded = await loadVisibilityTransition(writeDb, {
@@ -1374,47 +1372,47 @@ const demoteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 export const workflowsRoutes: readonly RouteEntry[] = [
   {
-    route: zeroWorkflowsCollectionContract.list,
+    route: workflowsCollectionContract.list,
     handler: authRoute(workflowReadAuth, listWorkflowsInner$),
   },
   {
-    route: zeroWorkflowsCollectionContract.create,
+    route: workflowsCollectionContract.create,
     handler: authRoute(workflowWriteAuth, createWorkflowInner$),
   },
   {
-    route: zeroWorkflowsDetailContract.get,
+    route: workflowsDetailContract.get,
     handler: authRoute(workflowReadAuth, getWorkflowDetailInner$),
   },
   {
-    route: zeroWorkflowsDetailContract.update,
+    route: workflowsDetailContract.update,
     handler: authRoute(workflowWriteAuth, updateWorkflowInner$),
   },
   {
-    route: zeroWorkflowsDetailContract.delete,
+    route: workflowsDetailContract.delete,
     handler: authRoute(workflowWriteAuth, deleteWorkflowInner$),
   },
   {
-    route: zeroWorkflowsDetailContract.copy,
+    route: workflowsDetailContract.copy,
     handler: authRoute(workflowWriteAuth, copyWorkflowInner$),
   },
   {
-    route: zeroWorkflowsDetailContract.chatThread,
+    route: workflowsDetailContract.chatThread,
     handler: authRoute(workflowReadAuth, prepareWorkflowChatThreadInner$),
   },
   {
-    route: zeroWorkflowsDetailContract.run,
+    route: workflowsDetailContract.run,
     handler: authRoute(workflowWriteAuth, runWorkflowInner$),
   },
   {
-    route: zeroWorkflowsDetailContract.connectorReadiness,
+    route: workflowsDetailContract.connectorReadiness,
     handler: authRoute(workflowReadAuth, connectorReadinessInner$),
   },
   {
-    route: zeroWorkflowVisibilityContract.publish,
+    route: workflowVisibilityContract.publish,
     handler: authRoute(workflowWriteAuth, publishInner$),
   },
   {
-    route: zeroWorkflowVisibilityContract.demote,
+    route: workflowVisibilityContract.demote,
     handler: authRoute(workflowWriteAuth, demoteInner$),
   },
 ];

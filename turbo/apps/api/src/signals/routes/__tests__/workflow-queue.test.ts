@@ -4,7 +4,7 @@ import { chatEventsContract } from "@okouai/api-contracts/contracts/chat-threads
 import { testCronCleanupSandboxesStateContract } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
 import { testWorkflowAutomationExecutionContract } from "@okouai/api-contracts/contracts/test-workflow-automation-execution";
 import { modelProvidersByTypeContract } from "@okouai/api-contracts/contracts/model-provider-routes";
-import { zeroWorkflowAutomationsContract } from "@okouai/api-contracts/contracts/zero-workflows";
+import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
 import { onTestFinished, test as vitestTest } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -87,7 +87,7 @@ function authHeaders() {
 
 function automationsClient() {
   return setupApp({ context, routes: workflowAutomationsRoutes })(
-    zeroWorkflowAutomationsContract,
+    workflowAutomationsContract,
   );
 }
 

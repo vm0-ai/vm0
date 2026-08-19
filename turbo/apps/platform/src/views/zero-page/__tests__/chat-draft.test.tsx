@@ -13,7 +13,7 @@ import { agentDraftContract } from "@okouai/api-contracts/contracts/agent-draft"
 import { zeroAgentsByIdContract } from "@okouai/api-contracts/contracts/zero-agents";
 import { runsQueueContract } from "@okouai/api-contracts/contracts/run-routes";
 import { zeroTeamContract } from "@okouai/api-contracts/contracts/zero-team";
-import { zeroWorkflowsCollectionContract } from "@okouai/api-contracts/contracts/zero-workflows";
+import { workflowsCollectionContract } from "@okouai/api-contracts/contracts/workflows";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise, resetSignal } from "../../../signals/utils.ts";
 import {
@@ -1826,7 +1826,7 @@ describe("chat drafts", () => {
     const url =
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8e2a2ad0-da8a-4ee7-8494-e0d7f6d87360/image.png";
 
-    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+    context.mocks.api(workflowsCollectionContract.list, ({ respond }) => {
       return respond(200, []);
     });
     mockChatLifecycle(context, { threadId });

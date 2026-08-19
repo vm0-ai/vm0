@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 import { createHash, timingSafeEqual } from "node:crypto";
-import { strapiEntryPublishedEventConfigSchema } from "@okouai/api-contracts/contracts/zero-workflows";
+import { strapiEntryPublishedEventConfigSchema } from "@okouai/api-contracts/contracts/workflows";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import {

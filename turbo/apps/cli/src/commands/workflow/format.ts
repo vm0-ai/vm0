@@ -1,7 +1,7 @@
-import type { ZeroWorkflowSummary } from "@okouai/api-contracts/contracts/zero-workflows";
+import type { WorkflowSummary } from "@okouai/api-contracts/contracts/workflows";
 
 type WorkflowAgentFields = Pick<
-  ZeroWorkflowSummary,
+  WorkflowSummary,
   "agentDisplayName" | "agentName" | "agentId"
 >;
 

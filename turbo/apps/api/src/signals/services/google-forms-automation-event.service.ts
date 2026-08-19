@@ -9,7 +9,7 @@ import {
   googleFormsResponseSubmittedEventConfigSchema,
   type GoogleFormsResponseSubmittedEventConfig,
   type GoogleFormsResponseSubmittedEventCreateConfig,
-} from "@okouai/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/workflows";
 import {
   googleFormsAutomationCursors,
   googleFormsProcessedEvents,
