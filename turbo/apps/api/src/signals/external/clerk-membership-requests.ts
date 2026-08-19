@@ -18,6 +18,12 @@ const clerkMembershipRequestsResponseSchema = z.object({
 
 type ClerkMembershipRequestData = z.infer<typeof membershipRequestDataSchema>;
 
+function cancelUnusedResponseBody(response: Response): void {
+  if (response.body) {
+    startUntrackedBestEffortCleanup(response.body.cancel());
+  }
+}
+
 /**
  * Fetch pending membership requests for an organization.
  *
@@ -40,9 +46,7 @@ export async function fetchClerkMembershipRequests(
     },
   );
   if (!res.ok) {
-    if (res.body) {
-      startUntrackedBestEffortCleanup(res.body.cancel());
-    }
+    cancelUnusedResponseBody(res);
     if (res.status === 404) {
       return [];
     }
@@ -69,6 +73,7 @@ export async function acceptClerkMembershipRequest(args: {
     `${CLERK_API_BASE}/organizations/${args.orgId}/membership_requests/${args.requestId}/accept`,
     { method: "POST", headers: { Authorization: `Bearer ${secretKey}` } },
   );
+  cancelUnusedResponseBody(res);
   return { ok: res.ok };
 }
 
@@ -81,5 +86,6 @@ export async function rejectClerkMembershipRequest(args: {
     `${CLERK_API_BASE}/organizations/${args.orgId}/membership_requests/${args.requestId}/reject`,
     { method: "POST", headers: { Authorization: `Bearer ${secretKey}` } },
   );
+  cancelUnusedResponseBody(res);
   return { ok: res.ok };
 }
