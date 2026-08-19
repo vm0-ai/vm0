@@ -41,7 +41,7 @@ function kindAccent(kind: StartCardKind): string {
       return "#FF81B2";
     }
     case "avatar": {
-      return "#F3BAB1";
+      return "#C77242";
     }
     case "workflow": {
       return "#97918A";
@@ -49,7 +49,7 @@ function kindAccent(kind: StartCardKind): string {
   }
 }
 
-const TILE_ALPHA = "1F";
+const TILE_ALPHA = "2E";
 const FILL_ALPHA = "8C";
 
 /** A resolved connector mark, or `undefined` while the catalog is loading. */
@@ -133,22 +133,34 @@ function VideoArt({ accent }: { accent: string }) {
 
 function AvatarArt({ accent }: { accent: string }) {
   return (
-    // A framed portrait with a caption bar, so the tile reads as a presenter on
-    // camera rather than the generic account glyph it was.
-    <div className="flex h-[38px] w-[32px] flex-col overflow-hidden rounded-md border border-border bg-card">
-      <div className="relative flex-1">
+    // A round portrait chip beside a small waveform: the bust alone is the
+    // account glyph every product has, and it is the speaking that makes this
+    // an avatar video.
+    <div className="flex items-center gap-[5px]">
+      <span className="relative size-[32px] shrink-0 overflow-hidden rounded-full border border-border bg-card">
         <span
-          className="absolute left-1/2 top-[6px] size-[9px] -translate-x-1/2 rounded-full"
+          className="absolute left-1/2 top-[7px] size-[10px] -translate-x-1/2 rounded-full"
           style={{ backgroundColor: accent }}
         />
         <span
-          className="absolute -bottom-[1px] left-1/2 h-[11px] w-[19px] -translate-x-1/2 rounded-t-full"
+          className="absolute bottom-0 left-1/2 h-[13px] w-[21px] -translate-x-1/2 rounded-t-full"
           style={{ backgroundColor: `${accent}${FILL_ALPHA}` }}
         />
-      </div>
-      <div className="flex h-[9px] items-center justify-center border-t border-border bg-muted">
-        <span className="h-[2px] w-[14px] rounded-full bg-muted-foreground/25" />
-      </div>
+      </span>
+      <span className="flex items-center gap-[2px]">
+        <span
+          className="h-[7px] w-[2px] rounded-full"
+          style={{ backgroundColor: `${accent}${FILL_ALPHA}` }}
+        />
+        <span
+          className="h-[13px] w-[2px] rounded-full"
+          style={{ backgroundColor: accent }}
+        />
+        <span
+          className="h-[9px] w-[2px] rounded-full"
+          style={{ backgroundColor: `${accent}${FILL_ALPHA}` }}
+        />
+      </span>
     </div>
   );
 }
