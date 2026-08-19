@@ -96,6 +96,7 @@ describe("getAllFeatureStates", () => {
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.SharedChatDatabase]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ChatForward]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatMarkUnread]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatQuoteOnlyFeedback]).toBe(true);
