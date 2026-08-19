@@ -5974,6 +5974,43 @@ describe("connector catalog executable compatibility", () => {
 });
 
 describe("connector catalog rejection and latest-valid retention", () => {
+  it("accepts catalogs between eight and sixteen MiB and rejects larger catalogs", async () => {
+    configureSource();
+    const accepted = buildRelease({
+      version: "2026-07-15.sixteen-mib-limit",
+      mutateCatalog: (artifact) => {
+        firstRecord(artifact.connectors, "connectors").description = "x".repeat(
+          8 * 1024 * 1024,
+        );
+      },
+    });
+    const acceptedBytes = releaseCatalogBytes(accepted);
+    expect(acceptedBytes.byteLength).toBeGreaterThan(8 * 1024 * 1024);
+    expect(acceptedBytes.byteLength).toBeLessThanOrEqual(16 * 1024 * 1024);
+    serveObjects(catalogObjects([accepted], accepted));
+
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "accepted",
+      active: { catalogVersion: accepted.version },
+    });
+
+    const rejected = buildRelease({
+      version: "2026-07-15.over-sixteen-mib-limit",
+      catalogBytes: Buffer.alloc(16 * 1024 * 1024 + 1),
+    });
+    serveObjects(catalogObjects([rejected], rejected));
+
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "rejected",
+      state: "stale",
+      active: { catalogVersion: accepted.version },
+      lastAttempt: {
+        outcome: "rejected",
+        failureCode: "object-too-large",
+      },
+    });
+  });
+
   it("classifies unavailable and oversized objects before acceptance", async () => {
     configureSource();
     context.mocks.s3.send.mockRejectedValue(
