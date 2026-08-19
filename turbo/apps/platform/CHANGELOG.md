@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.774.0](https://github.com/vm0-ai/vm0/compare/app-v0.773.1...app-v0.774.0) (2026-08-19)
+
+
+### Features
+
+* collapse composer model controls into one entry point ([#28114](https://github.com/vm0-ai/vm0/issues/28114)) ([664e5e1](https://github.com/vm0-ai/vm0/commit/664e5e14477556d2c910bcd73304e527fdc1a89f))
+
+
+### Bug Fixes
+
+* **app:** refresh connector catalog diagnostics on debug entry ([#28130](https://github.com/vm0-ai/vm0/issues/28130)) ([b01ceb5](https://github.com/vm0-ai/vm0/commit/b01ceb574842aaeb171ec4f0cbe57e8492a0b9c9))
+
+
+### Refactoring
+
+* give custom model gateways their own provider types ([#28120](https://github.com/vm0-ai/vm0/issues/28120)) ([1de777f](https://github.com/vm0-ai/vm0/commit/1de777f7bc1e5df798ba384af30be07df2b23151))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.341.2
+    * @okouai/core bumped to 8.572.1
+
 ## [0.773.1](https://github.com/vm0-ai/vm0/compare/app-v0.773.0...app-v0.773.1) (2026-08-19)
 
 

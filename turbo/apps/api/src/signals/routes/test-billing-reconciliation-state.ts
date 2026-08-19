@@ -2,6 +2,7 @@ import {
   BILLING_RECONCILIATION_FIXTURE_KINDS,
   testBillingReconciliationStateContract,
   type BillingReconciliationFixtureKind,
+  type TestBillingReconciliationStateActionBody,
   type TestBillingReconciliationStateActionResponse,
 } from "@okouai/api-contracts/contracts/test-billing-reconciliation-state";
 import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
@@ -12,6 +13,7 @@ import { orgUsageAllowanceEntitlements } from "@okouai/db/schema/org-usage-allow
 import { usagePackCreditGrants } from "@okouai/db/schema/usage-pack-credit-grant";
 import { usagePackCreditRefunds } from "@okouai/db/schema/usage-pack-credit-refund";
 import {
+  usagePackAllocations,
   usagePackAllocationChanges,
   usagePackInvitationPurchases,
   usagePackSubscriptionChanges,
@@ -19,7 +21,7 @@ import {
   usagePackSubscriptions,
 } from "@okouai/db/schema/usage-pack-subscription";
 import { command } from "ccstate";
-import { inArray } from "drizzle-orm";
+import { and, inArray, isNotNull } from "drizzle-orm";
 
 import type { Tx } from "../../lib/db-types";
 import { nowDate } from "../../lib/time";
@@ -27,7 +29,11 @@ import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import type { RouteEntry } from "../route-entry";
-import { reconcileBillingEntitlementsForOrganizations$ } from "../services/cron-billing-entitlements.service";
+import {
+  reconcileBillingEntitlementsForOrganizations$,
+  reconcileUndeliveredStripePaidCheckoutSessions$,
+  reconcileUndeliveredStripePaidInvoices$,
+} from "../services/cron-billing-entitlements.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -65,7 +71,15 @@ function fixtureReference(
         stripePaymentIntentId: null,
       };
     }
-    case "usage-pack-subscription":
+    case "usage-pack-subscription": {
+      return {
+        kind,
+        orgId,
+        stripeSubscriptionId: `sub_billing_reconciliation_${kind}_${marker}`,
+        stripeCheckoutSessionId: `cs_billing_reconciliation_${kind}_${marker}`,
+        stripePaymentIntentId: null,
+      };
+    }
     case "usage-pack-invitation": {
       return {
         kind,
@@ -124,6 +138,9 @@ async function insertUsagePackSubscription(
   values: {
     readonly subscriptionStatus: string;
     readonly stripeCheckoutSessionId?: string | null;
+    readonly stripeSubscriptionId?: string | null;
+    readonly currentPeriodStart?: Date | null;
+    readonly currentPeriodEnd?: Date | null;
     readonly updatedAt: Date;
   },
 ): Promise<string> {
@@ -136,6 +153,9 @@ async function insertUsagePackSubscription(
       stripeCustomerId: `cus_${fixture.kind}_${fixture.orgId}`,
       subscriptionStatus: values.subscriptionStatus,
       stripeCheckoutSessionId: values.stripeCheckoutSessionId ?? null,
+      stripeSubscriptionId: values.stripeSubscriptionId ?? null,
+      currentPeriodStart: values.currentPeriodStart ?? null,
+      currentPeriodEnd: values.currentPeriodEnd ?? null,
       updatedAt: values.updatedAt,
     })
     .returning({ id: usagePackSubscriptions.id });
@@ -151,32 +171,59 @@ interface FixtureTimes {
   readonly future: Date;
 }
 
+type FixtureMode = NonNullable<
+  Extract<
+    TestBillingReconciliationStateActionBody,
+    { readonly action: "seed" }
+  >["mode"]
+>;
+
 async function insertOrganizationFixtures(
   tx: Tx,
   fixtures: readonly FixtureReference[],
-  old: Date,
+  times: FixtureTimes,
+  mode: FixtureMode,
 ): Promise<void> {
   await tx.insert(orgMetadata).values(
     fixtures.map((fixture) => {
       switch (fixture.kind) {
         case "plan-subscription": {
+          if (mode === "unbound") {
+            return {
+              orgId: fixture.orgId,
+              tier: "limited-free-1",
+              stripeCustomerId: `cus_${fixture.orgId}`,
+              subscriptionStatus: "missing",
+              updatedAt: times.old,
+            };
+          }
           return {
             orgId: fixture.orgId,
             tier: "pro",
             stripeSubscriptionId: fixture.stripeSubscriptionId,
-            subscriptionStatus: "past_due",
-            currentPeriodEnd: old,
-            updatedAt: old,
+            subscriptionStatus: mode === "active" ? "active" : "past_due",
+            currentPeriodEnd: mode === "active" ? times.future : times.old,
+            updatedAt: times.old,
           };
         }
         case "atom-grant": {
+          if (mode === "unbound") {
+            return {
+              orgId: fixture.orgId,
+              tier: "limited-free-1",
+              credits: 0,
+              stripeCustomerId: `cus_${fixture.orgId}`,
+              subscriptionStatus: "missing",
+              updatedAt: times.old,
+            };
+          }
           return {
             orgId: fixture.orgId,
             tier: "team",
             credits: 100,
             subscriptionStatus: "atom_grant",
-            currentPeriodEnd: old,
-            updatedAt: old,
+            currentPeriodEnd: times.old,
+            updatedAt: times.old,
           };
         }
         case "concurrency":
@@ -187,7 +234,7 @@ async function insertOrganizationFixtures(
         case "usage-pack-refund":
         case "usage-pack-migration":
         case "usage-pack-invitation": {
-          return { orgId: fixture.orgId, updatedAt: old };
+          return { orgId: fixture.orgId, updatedAt: times.old };
         }
       }
       throw new Error(
@@ -201,6 +248,7 @@ async function insertCoreBillingFixtures(
   tx: Tx,
   fixtures: readonly FixtureReference[],
   times: FixtureTimes,
+  mode: FixtureMode,
 ): Promise<void> {
   const atomGrant = requireFixtureReference(fixtures, "atom-grant");
   await tx.insert(creditExpiresRecord).values({
@@ -220,8 +268,8 @@ async function insertCoreBillingFixtures(
     stripeSubscriptionId: concurrency.stripeSubscriptionId,
     stripePriceId: "price_billing_reconciliation_concurrency",
     slots: 2,
-    subscriptionStatus: "past_due",
-    currentPeriodEnd: times.old,
+    subscriptionStatus: mode === "active" ? "active" : "past_due",
+    currentPeriodEnd: mode === "active" ? times.future : times.old,
     updatedAt: times.old,
   });
 
@@ -229,12 +277,12 @@ async function insertCoreBillingFixtures(
   await tx.insert(orgUsageAllowanceEntitlements).values({
     orgId: usageAllowance.orgId,
     source: "stripe_subscription",
-    status: "past_due",
+    status: mode === "active" ? "active" : "past_due",
     shortWindowSeconds: 3600,
     shortWindowUnits: 1000,
     weeklyWindowUnits: 10_000,
     effectiveAt: times.older,
-    expiresAt: times.old,
+    expiresAt: mode === "active" ? times.future : times.old,
     stripeSubscriptionId: usageAllowance.stripeSubscriptionId,
     updatedAt: times.old,
   });
@@ -243,14 +291,33 @@ async function insertCoreBillingFixtures(
 async function insertUsagePackSubscriptionFixture(
   tx: Tx,
   fixtures: readonly FixtureReference[],
-  old: Date,
+  times: FixtureTimes,
+  mode: FixtureMode,
 ): Promise<void> {
   const fixture = requireFixtureReference(fixtures, "usage-pack-subscription");
-  await insertUsagePackSubscription(tx, fixture, {
-    subscriptionStatus: "checkout_pending",
-    stripeCheckoutSessionId: fixture.stripeCheckoutSessionId,
-    updatedAt: old,
+  const subscriptionId = await insertUsagePackSubscription(tx, fixture, {
+    subscriptionStatus: mode === "active" ? "active" : "checkout_pending",
+    stripeCheckoutSessionId:
+      mode === "active" ? null : fixture.stripeCheckoutSessionId,
+    stripeSubscriptionId:
+      mode === "active" ? fixture.stripeSubscriptionId : null,
+    currentPeriodStart: mode === "active" ? times.old : null,
+    currentPeriodEnd: mode === "active" ? times.future : null,
+    updatedAt: times.old,
   });
+  if (mode === "active") {
+    await tx.insert(usagePackAllocations).values({
+      usagePackSubscriptionId: subscriptionId,
+      orgId: fixture.orgId,
+      userId: `user_${fixture.orgId}`,
+      usagePackUsd: 20,
+      stripePriceId: `price_usage_pack_${fixture.kind}`,
+      status: "active",
+      currentPeriodStart: times.old,
+      currentPeriodEnd: times.future,
+      updatedAt: times.old,
+    });
+  }
 }
 
 async function insertUsagePackSubscriptionChangeFixture(
@@ -412,8 +479,9 @@ async function insertUsagePackFixtures(
   fixtures: readonly FixtureReference[],
   marker: string,
   times: FixtureTimes,
+  mode: FixtureMode,
 ): Promise<void> {
-  await insertUsagePackSubscriptionFixture(tx, fixtures, times.old);
+  await insertUsagePackSubscriptionFixture(tx, fixtures, times, mode);
   await insertUsagePackSubscriptionChangeFixture(tx, fixtures, times);
   await insertUsagePackAllocationChangeFixture(tx, fixtures, times);
   await insertUsagePackRefundFixture(tx, fixtures, marker, times);
@@ -424,6 +492,7 @@ async function insertUsagePackFixtures(
 async function seedBillingReconciliationState(
   db: Db,
   marker: string,
+  mode: FixtureMode,
   signal: AbortSignal,
 ): Promise<readonly FixtureReference[]> {
   const fixtures = fixtureReferences(marker);
@@ -435,9 +504,9 @@ async function seedBillingReconciliationState(
   };
 
   await db.transaction(async (tx) => {
-    await insertOrganizationFixtures(tx, fixtures, times.old);
-    await insertCoreBillingFixtures(tx, fixtures, times);
-    await insertUsagePackFixtures(tx, fixtures, marker, times);
+    await insertOrganizationFixtures(tx, fixtures, times, mode);
+    await insertCoreBillingFixtures(tx, fixtures, times, mode);
+    await insertUsagePackFixtures(tx, fixtures, marker, times, mode);
   });
   signal.throwIfAborted();
   return fixtures;
@@ -457,7 +526,7 @@ async function readBillingReconciliationState(
   db: Db,
   marker: string,
   signal: AbortSignal,
-): Promise<CandidateState[]> {
+) {
   const fixtures = fixtureReferences(marker);
   const rows = await loadBillingReconciliationStateRows(
     db,
@@ -466,9 +535,21 @@ async function readBillingReconciliationState(
     }),
   );
   signal.throwIfAborted();
-  return fixtures.map((fixture) => {
-    return candidateStateForFixture(fixture, rows);
-  });
+  return {
+    candidates: fixtures.map((fixture) => {
+      return candidateStateForFixture(fixture, rows);
+    }),
+    creditExpirations: rows.creditExpirationRows.flatMap((row) => {
+      return row.stripeInvoiceId
+        ? [
+            {
+              stripeInvoiceId: row.stripeInvoiceId,
+              expiresAt: row.expiresAt.toISOString(),
+            },
+          ]
+        : [];
+    }),
+  };
 }
 
 async function loadBillingReconciliationStateRows(
@@ -485,6 +566,7 @@ async function loadBillingReconciliationStateRows(
     refundRows,
     migrationRows,
     invitationRows,
+    creditExpirationRows,
   ] = await Promise.all([
     db
       .select({
@@ -556,6 +638,18 @@ async function loadBillingReconciliationStateRows(
       })
       .from(usagePackInvitationPurchases)
       .where(inArray(usagePackInvitationPurchases.orgId, orgIds)),
+    db
+      .select({
+        stripeInvoiceId: creditExpiresRecord.stripeInvoiceId,
+        expiresAt: creditExpiresRecord.expiresAt,
+      })
+      .from(creditExpiresRecord)
+      .where(
+        and(
+          inArray(creditExpiresRecord.orgId, orgIds),
+          isNotNull(creditExpiresRecord.stripeInvoiceId),
+        ),
+      ),
   ]);
   return {
     orgRows,
@@ -567,6 +661,7 @@ async function loadBillingReconciliationStateRows(
     refundRows,
     migrationRows,
     invitationRows,
+    creditExpirationRows,
   };
 }
 
@@ -728,6 +823,7 @@ const mutateTestBillingReconciliationState$ = command(
         const fixtures = await seedBillingReconciliationState(
           db,
           bodyResult.data.marker,
+          bodyResult.data.mode ?? "stale",
           signal,
         );
         return {
@@ -736,14 +832,14 @@ const mutateTestBillingReconciliationState$ = command(
         };
       }
       case "read": {
-        const candidates = await readBillingReconciliationState(
+        const state = await readBillingReconciliationState(
           db,
           bodyResult.data.marker,
           signal,
         );
         return {
           status: 200 as const,
-          body: { action: "read" as const, candidates },
+          body: { action: "read" as const, ...state },
         };
       }
       case "cleanup": {
@@ -772,6 +868,14 @@ const reconcileTestBillingState$ = command(
       return bodyResult.response;
     }
 
+    if (bodyResult.data.replayUndeliveredPaidCheckouts) {
+      await set(reconcileUndeliveredStripePaidCheckoutSessions$, signal);
+      signal.throwIfAborted();
+    }
+    if (bodyResult.data.replayUndeliveredPaidInvoices) {
+      await set(reconcileUndeliveredStripePaidInvoices$, signal);
+      signal.throwIfAborted();
+    }
     const result = await set(
       reconcileBillingEntitlementsForOrganizations$,
       bodyResult.data.orgIds,

@@ -126,14 +126,20 @@ function subscriptionPrice(tier: SubscriptionWebhookInput["tier"]) {
 
 async function postStripeEvent(
   signal: AbortSignal,
-  event: unknown,
+  event: Readonly<Record<string, unknown>>,
 ): Promise<void> {
   const app = createAppWithRoutes({ signal, routes: webhooksStripeRoutes });
-  getApiTestMocks().stripe.webhooks.constructEvent.mockReturnValueOnce(event);
+  const stripeEvent = {
+    created: Math.floor(now() / 1000),
+    ...event,
+  };
+  getApiTestMocks().stripe.webhooks.constructEvent.mockReturnValueOnce(
+    stripeEvent,
+  );
   const response = await app.request("/api/webhooks/stripe", {
     method: "POST",
     headers: { "stripe-signature": "t=1,v1=billing-state-test" },
-    body: JSON.stringify(event),
+    body: JSON.stringify(stripeEvent),
   });
   signal.throwIfAborted();
   if (response.ok) {

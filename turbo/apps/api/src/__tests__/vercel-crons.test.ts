@@ -127,7 +127,7 @@ const expectedVercelCrons = [
   },
   {
     path: cronReconcileBillingEntitlementsContract.reconcile.path,
-    schedule: "0 0,12 * * *",
+    schedule: "0 * * * *",
   },
   {
     path: cronRefreshStoragePresignedUrlsContract.refresh.path,

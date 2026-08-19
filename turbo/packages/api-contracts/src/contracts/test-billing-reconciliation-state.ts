@@ -20,6 +20,7 @@ export const BILLING_RECONCILIATION_FIXTURE_KINDS = [
 
 const fixtureKindSchema = z.enum(BILLING_RECONCILIATION_FIXTURE_KINDS);
 const markerSchema = z.string().uuid();
+const fixtureModeSchema = z.enum(["stale", "active", "unbound"]);
 
 const fixtureReferenceSchema = z.object({
   kind: fixtureKindSchema,
@@ -40,7 +41,11 @@ const candidateStateSchema = z.object({
 
 export const testBillingReconciliationStateActionBodySchema =
   z.discriminatedUnion("action", [
-    z.object({ action: z.literal("seed"), marker: markerSchema }),
+    z.object({
+      action: z.literal("seed"),
+      marker: markerSchema,
+      mode: fixtureModeSchema.optional(),
+    }),
     z.object({ action: z.literal("read"), marker: markerSchema }),
     z.object({ action: z.literal("cleanup"), marker: markerSchema }),
   ]);
@@ -54,12 +59,20 @@ export const testBillingReconciliationStateActionResponseSchema =
     z.object({
       action: z.literal("read"),
       candidates: z.array(candidateStateSchema),
+      creditExpirations: z.array(
+        z.object({
+          stripeInvoiceId: z.string().min(1),
+          expiresAt: z.iso.datetime(),
+        }),
+      ),
     }),
     z.object({ action: z.literal("ok") }),
   ]);
 
 export const testBillingReconciliationStateReconcileBodySchema = z.object({
   orgIds: z.array(z.string().min(1)).min(1).max(100),
+  replayUndeliveredPaidCheckouts: z.boolean().optional(),
+  replayUndeliveredPaidInvoices: z.boolean().optional(),
 });
 
 export const testBillingReconciliationStateContract = c.router({

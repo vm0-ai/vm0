@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.169.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.12...runner-rs-v0.169.13) (2026-08-19)
+
+
+### Performance Improvements
+
+* **runner:** hand off finalizing sandboxes before idle compaction ([#28063](https://github.com/vm0-ai/vm0/issues/28063)) ([543aae3](https://github.com/vm0-ai/vm0/commit/543aae384b1d6311d0bcceef487ab37bea3f3147))
+
 ## [0.169.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.11...runner-rs-v0.169.12) (2026-08-19)
 
 
