@@ -49,7 +49,12 @@ export const chatThreadsArtifactsSyncRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadArtifactsContract.syncGoogleDrive,
     handler: authRoute(
-      { requireOrganization: true, missingOrganizationStatus: 401 },
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "file:write",
+        accept: ["session", "pat", "zero"],
+      },
       syncInner$,
     ),
   },

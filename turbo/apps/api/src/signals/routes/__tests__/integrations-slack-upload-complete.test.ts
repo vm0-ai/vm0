@@ -19,6 +19,7 @@ import {
   chatThreadArtifactsContract,
   type ChatEvent,
 } from "@okouai/api-contracts/contracts/chat-threads";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -145,6 +146,7 @@ function okouToken(args: {
   readonly orgId: string;
   readonly runId: string;
   readonly capabilities?: readonly string[];
+  readonly publicBrand?: PublicBrand;
 }): string {
   const seconds = Math.floor(now() / 1000);
   return signSandboxJwtForTests({
@@ -153,6 +155,7 @@ function okouToken(args: {
     orgId: args.orgId,
     runId: args.runId,
     capabilities: (args.capabilities ?? ["slack:write"]) as never,
+    ...(args.publicBrand ? { publicBrand: args.publicBrand } : {}),
     iat: seconds,
     exp: seconds + 60,
   });
@@ -739,6 +742,42 @@ describe("POST /api/okou/integrations/slack/upload-file/complete", () => {
       expect(okouDriveSync.body.name).toBe("report.csv");
     }
 
+    const okouRunDriveSync = await accept(
+      vm0DriveClient.syncGoogleDrive({
+        headers: {
+          authorization: `Bearer ${okouToken({
+            userId,
+            orgId,
+            runId,
+            capabilities: ["file:write"],
+            publicBrand: "okou",
+          })}`,
+        },
+        params: { threadId },
+        body: { runId, fileId: canonicalAssetId },
+      }),
+      [200],
+    );
+    expect(okouRunDriveSync.body.name).toBe("report.csv");
+
+    const vm0RunDriveSync = await accept(
+      okouDriveClient.syncGoogleDrive({
+        headers: {
+          authorization: `Bearer ${okouToken({
+            userId,
+            orgId,
+            runId,
+            capabilities: ["file:write"],
+            publicBrand: "vm0",
+          })}`,
+        },
+        params: { threadId },
+        body: { runId, fileId: canonicalAssetId },
+      }),
+      [200],
+    );
+    expect(vm0RunDriveSync.body.name).toBe("report.csv");
+
     expect(driveFolders).toHaveLength(4);
     expect(
       driveFolders
@@ -749,7 +788,9 @@ describe("POST /api/okou/integrations/slack/upload-file/complete", () => {
           return folder.name;
         }),
     ).toStrictEqual(["vm0-artifact", "Okou Artifacts"]);
-    expect(driveUploadBodies).toHaveLength(3);
+    expect(driveUploadBodies).toHaveLength(5);
+    expect(driveUploadBodies[3]).toContain('"parents":["drive-folder-4"]');
+    expect(driveUploadBodies[4]).toContain('"parents":["drive-folder-2"]');
     for (const body of driveUploadBodies) {
       expect(body).toContain(`"vm0Artifact":"true"`);
       expect(body).toContain(`"vm0ThreadId":"${threadId}"`);
