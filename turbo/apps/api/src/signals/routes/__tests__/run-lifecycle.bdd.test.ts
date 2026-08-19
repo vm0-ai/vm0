@@ -130,6 +130,7 @@ import {
   releaseOrgAdmissionLock,
   seedVm0ManagedDefaultModelKey as seedVm0ManagedDefaultModelKeyState,
   seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
+  setAgentComposeVersionlessFixture,
   setCustomConnectorAuthTemplateFixture,
   setRunnerJobContextProfileAsPreviousApi,
 } from "./helpers/runtime-state";
@@ -202,6 +203,8 @@ function runnerPreference(job: RunnerJob | null | undefined) {
 const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "okou web upload-file -f <path>";
 const MCP_CONNECTOR_PROMPT_HEADING = "# MCP Custom Connectors";
 const MCP_CONNECTOR_PROMPT_INVENTORY_LIMIT = 20;
+const MISSING_AGENT_CONFIGURATION_MESSAGE =
+  "Agent configuration is unavailable. Edit the agent, or ask its owner to edit it, then try again.";
 const API_DISPATCH_ATOMIC_PERSISTENCE_ACTION_TYPES = [
   "api_dispatch_persist_atomic_launch",
 ] as const;
@@ -1496,6 +1499,55 @@ async function setupSameThreadReuseScenario(sourceRunnerIdentity?: {
 }
 
 describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks", () => {
+  it("returns a current remediation when a direct Agent has no compose version", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    await setAgentComposeVersionlessFixture(context, agentId);
+
+    const rejected = await api.requestDirectRun(
+      actor,
+      {
+        agentId,
+        prompt: "run a versionless Agent",
+      },
+      [400],
+    );
+
+    expectApiError(rejected.body);
+    expect(rejected.body.error.message).toBe(
+      MISSING_AGENT_CONFIGURATION_MESSAGE,
+    );
+    expect(rejected.body.error.message).not.toContain("vm0 build");
+  });
+
+  it("returns the same remediation when a Session Agent loses its compose version", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const first = await api.createDirectRun(actor, {
+      ...zeroBackedDirectRunBody({
+        agentId,
+        prompt: "start a Session before losing the compose version",
+      }),
+    });
+    await api.requestCancelRun(actor, first.runId, [200]);
+    await setAgentComposeVersionlessFixture(context, agentId);
+
+    const rejected = await api.requestDirectRun(
+      actor,
+      {
+        sessionId: first.sessionId,
+        prompt: "resume a versionless Agent Session",
+      },
+      [400],
+    );
+
+    expectApiError(rejected.body);
+    expect(rejected.body.error.message).toBe(
+      MISSING_AGENT_CONFIGURATION_MESSAGE,
+    );
+    expect(rejected.body.error.message).not.toContain("vm0 build");
+  });
+
   it("emits api dispatch timing for exact-empty direct dispatch runs", async () => {
     const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
