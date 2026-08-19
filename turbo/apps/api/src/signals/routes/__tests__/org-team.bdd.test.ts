@@ -4,7 +4,7 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
-import { now } from "../../../lib/time";
+import { mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { createHistoricalAgentComposeFixture } from "../../../test-fixtures/historical-agent-composes";
 import { createDeferredPromise } from "../../utils";
@@ -516,6 +516,40 @@ describe("ORG-02: membership admin matrix", () => {
     expect(
       context.mocks.clerk.organizations.getOrganizationInvitationList,
     ).toHaveBeenCalledTimes(1);
+  });
+
+  it("shares the retry deadline across organization member reads", async () => {
+    const admin = api.user();
+    const orgId = orgIdOf(admin);
+    api.mockClerkOrg(admin);
+    context.mocks.signalTimers.delay.mockImplementation((ms) => {
+      mockNow(now() + ms);
+      return Promise.resolve();
+    });
+    context.mocks.clerk.organizations.getOrganizationMembershipList
+      .mockRejectedValueOnce(new ClerkApiResponseTestError(10))
+      .mockResolvedValue({
+        data: [
+          {
+            role: "org:admin",
+            publicUserData: { userId: admin.userId },
+            createdAt: now(),
+          },
+        ],
+      });
+    const requests = api.mockClerkMembershipRequestHandlers(orgId, {
+      listStatus: 429,
+      retryAfterSeconds: 6,
+    });
+
+    const exhausted = await api.requestListMembers(admin, [503]);
+
+    expect(exhausted.headers.get("Retry-After")).toBe("6");
+    expect(
+      context.mocks.clerk.organizations.getOrganizationMembershipList,
+    ).toHaveBeenCalledTimes(2);
+    expect(requests.listCalls()).toBe(1);
+    expect(context.mocks.signalTimers.delay).toHaveBeenCalledTimes(1);
   });
 
   it("rejects Clerk member records without required user identifiers", async () => {

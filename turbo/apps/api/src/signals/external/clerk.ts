@@ -186,6 +186,21 @@ const CLERK_READ_MAX_ATTEMPTS = 3;
 const CLERK_READ_MAX_TOTAL_DELAY_MS = 15_000;
 const CLERK_READ_MAX_JITTER_MS = 250;
 
+export interface ClerkReadRetryBudget {
+  readonly remainingDelayMs: () => number;
+}
+
+export function createClerkReadRetryBudget(
+  currentTimeMs: () => number,
+): ClerkReadRetryBudget {
+  const deadlineAtMs = currentTimeMs() + CLERK_READ_MAX_TOTAL_DELAY_MS;
+  return {
+    remainingDelayMs: () => {
+      return Math.max(0, deadlineAtMs - currentTimeMs());
+    },
+  };
+}
+
 function normalizeRetryAfterSeconds(value: number | undefined): number {
   return typeof value === "number" && Number.isFinite(value)
     ? Math.max(1, Math.ceil(value))
@@ -208,6 +223,7 @@ export function clerkRateLimit(error: unknown): ClerkRateLimit | null {
 export async function retryClerkRead<T>(
   read: () => Promise<T>,
   signal: AbortSignal,
+  budget: ClerkReadRetryBudget,
 ): Promise<T> {
   let totalDelayMs = 0;
   for (let attempt = 1; ; attempt += 1) {
@@ -223,7 +239,10 @@ export async function retryClerkRead<T>(
     }
 
     const retryAfterMs = rateLimit.retryAfterSeconds * 1000;
-    const remainingDelayMs = CLERK_READ_MAX_TOTAL_DELAY_MS - totalDelayMs;
+    const remainingDelayMs = Math.min(
+      CLERK_READ_MAX_TOTAL_DELAY_MS - totalDelayMs,
+      budget.remainingDelayMs(),
+    );
     if (retryAfterMs > remainingDelayMs) {
       throw result.error;
     }
