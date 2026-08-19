@@ -28,7 +28,8 @@ from mitmproxy.addonmanager import Loader
 #
 # auth_base_forwarder/body_capture/connector_diagnostics/connector_intent/content_length/
 # matching/model_websocket_usage/registry/response_encoding_negotiation/response_streaming/
-# runner_flush_lifecycle/terminal_usage/upstream_admission/usage/websocket_retention are imported
+# runner_flush_lifecycle/terminal_usage/upstream_admission/usage/websocket_framing/
+# websocket_retention are imported
 # by module (not selective `from X import ...`) so that:
 #   1. Cross-module calls read as ``auth_base_forwarder.X(...)`` /
 #      ``body_capture.X(...)`` / ``connector_diagnostics.X(...)`` /
@@ -38,7 +39,8 @@ from mitmproxy.addonmanager import Loader
 #      ``response_streaming.X(...)`` / ``runner_flush_lifecycle.X(...)`` /
 #      ``terminal_usage.X(...)`` /
 #      ``upstream_admission.X(...)`` / ``usage.X(...)`` /
-#      ``websocket_retention.X(...)``, making the module boundary visible at call sites.
+#      ``websocket_framing.X(...)`` / ``websocket_retention.X(...)``, making the
+#      module boundary visible at call sites.
 #   2. Tests can patch names on the owning module object and affect all
 #      callers — no mock-placement pitfalls from copied function bindings.
 import auth_base_forwarder
@@ -69,6 +71,7 @@ import terminal_usage
 import upstream_admission
 import upstream_destination_binding
 import usage
+import websocket_framing
 import websocket_retention
 from auth import (
     FirewallAuthHandlingResult,
@@ -1574,11 +1577,11 @@ def websocket_message(flow: http.HTTPFlow) -> None:
     """Bound WebSocket history and observe model-provider protocol events."""
     if not flow.websocket or not flow.websocket.messages:
         return
-    if not flow_metadata.run_id(flow.metadata):
-        return
 
     message = flow.websocket.messages[-1]
     websocket_retention.schedule_message_trim(flow)
+    if not flow_metadata.run_id(flow.metadata):
+        return
     if not model_websocket_usage.is_enabled(flow):
         return
     if getattr(message, "from_client", False):
@@ -1624,6 +1627,7 @@ def _release_terminal_flow_state(
     release_aws_sigv4_body_admission: bool = True,
 ) -> None:
     if release_tracking:
+        websocket_framing.log_limit_violation(flow)
         websocket_retention.release_terminal_messages(flow)
         terminal_usage.release_model_websocket_terminal_state(flow)
     request_classification.pop_cached_classification(flow)
@@ -1640,6 +1644,7 @@ def _release_terminal_flow_state(
         aws_sigv4_body_admission.release_from_flow(flow)
     if release_tracking:
         terminal_usage.release_tracked_flow(flow)
+        websocket_framing.release_flow_state(flow)
 
 
 def websocket_end(flow: http.HTTPFlow) -> None:

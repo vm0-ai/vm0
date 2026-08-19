@@ -1,8 +1,10 @@
 """WebSocket framing integration tests through mitmproxy's real hook pipeline."""
 
+import asyncio
 import hashlib
 import weakref
 import zlib
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
@@ -25,10 +27,19 @@ from wsproto.connection import Connection as WsprotoConnection
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import websocket_framing
+from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 
 _CLIENT_IP = "10.200.0.5"
 _HOST = "websocket.example.com"
 _PERMESSAGE_DEFLATE = "permessage-deflate"
+
+
+@pytest.fixture(autouse=True)
+async def _reset_aggregate_decoded_budget() -> AsyncGenerator[None, None]:
+    websocket_framing.reset_aggregate_budget_for_tests()
+    yield
+    await asyncio.sleep(0)
+    websocket_framing.reset_aggregate_budget_for_tests()
 
 
 @dataclass
@@ -113,6 +124,8 @@ async def _start_websocket(
     *,
     permessage_deflate: str | None = None,
     run_id: str | None = None,
+    openai_responses_client_limit: bool = False,
+    proxy_log_path: Path | None = None,
 ) -> _RunningWebSocket:
     client = connection.Client(
         peername=(_CLIENT_IP, 12345),
@@ -143,6 +156,10 @@ async def _start_websocket(
     flow.websocket = WebSocketData()
     if run_id is not None:
         flow.metadata[metadata_keys.VM_RUN_ID] = run_id
+    if proxy_log_path is not None:
+        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log_path)
+    if openai_responses_client_limit:
+        websocket_framing.configure_openai_responses_client_limit(flow)
 
     running = _RunningWebSocket(
         layer=websocket.WebsocketLayer(context, flow),
@@ -414,6 +431,250 @@ def test_install_websocket_framing_preserves_marked_connection_class(
     websocket_framing.install_websocket_framing()
 
     assert websocket.WebsocketConnection is MarkedWebsocketConnection
+
+
+async def test_openai_responses_client_limit_is_direction_specific(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(websocket_framing, "MAX_DECODED_MESSAGE_BYTES", 4)
+    monkeypatch.setattr(
+        websocket_framing,
+        "MAX_OPENAI_RESPONSES_CLIENT_DECODED_MESSAGE_BYTES",
+        8,
+    )
+    monkeypatch.setattr(
+        websocket_framing,
+        "MAX_OPENAI_RESPONSES_CLIENT_AGGREGATE_DECODED_BYTES",
+        32,
+    )
+
+    with (
+        patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
+        taddons.context(Proxyserver(), mitm_addon) as addon_context,
+    ):
+        marked = await _start_websocket(
+            addon_context,
+            openai_responses_client_limit=True,
+        )
+        marked_client = await _handle_event(
+            addon_context,
+            marked,
+            events.DataReceived(
+                marked.client,
+                _peer(from_client=True).send(_message_event(b"12345678")),
+            ),
+        )
+        assert marked.flow.websocket is not None
+        assert marked.flow.websocket.messages[-1].content == b"12345678"
+
+        ordinary = await _start_websocket(addon_context)
+        ordinary_client = await _handle_event(
+            addon_context,
+            ordinary,
+            events.DataReceived(
+                ordinary.client,
+                _peer(from_client=True).send(_message_event(b"12345")),
+            ),
+        )
+
+        marked_server = await _start_websocket(
+            addon_context,
+            openai_responses_client_limit=True,
+        )
+        server_event = await _handle_event(
+            addon_context,
+            marked_server,
+            events.DataReceived(
+                marked_server.server,
+                _peer(from_client=False).send(_message_event(b"12345")),
+            ),
+        )
+
+    assert len(_message_hooks(marked_client)) == 1
+    assert len(_data_sends(marked_client)) == 1
+
+    assert _message_hooks(ordinary_client) == []
+    assert _data_sends(ordinary_client) == []
+    assert ordinary.flow.websocket is not None
+    assert ordinary.flow.websocket.close_code == 1009
+
+    assert _message_hooks(server_event) == []
+    assert _data_sends(server_event) == []
+    assert marked_server.flow.websocket is not None
+    assert marked_server.flow.websocket.close_code == 1009
+
+
+async def test_openai_responses_client_aggregate_limit_is_shared_and_released(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    aggregate_log = tmp_path / "aggregate.jsonl"
+    monkeypatch.setattr(websocket_framing, "MAX_DECODED_MESSAGE_BYTES", 4)
+    monkeypatch.setattr(
+        websocket_framing,
+        "MAX_OPENAI_RESPONSES_CLIENT_DECODED_MESSAGE_BYTES",
+        10,
+    )
+    monkeypatch.setattr(
+        websocket_framing,
+        "MAX_OPENAI_RESPONSES_CLIENT_AGGREGATE_DECODED_BYTES",
+        12,
+    )
+
+    with (
+        patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
+        taddons.context(Proxyserver(), mitm_addon) as addon_context,
+    ):
+        holder = await _start_websocket(
+            addon_context,
+            openai_responses_client_limit=True,
+        )
+        holder_peer = _peer(from_client=True)
+        prefix = await _handle_event(
+            addon_context,
+            holder,
+            events.DataReceived(
+                holder.client,
+                holder_peer.send(_message_event(b"12345678", message_finished=False)),
+            ),
+        )
+
+        rejected = await _start_websocket(
+            addon_context,
+            run_id="run-aggregate-rejected",
+            openai_responses_client_limit=True,
+            proxy_log_path=aggregate_log,
+        )
+        over_aggregate = await _handle_event(
+            addon_context,
+            rejected,
+            events.DataReceived(
+                rejected.client,
+                _peer(from_client=True).send(_message_event(b"12345")),
+            ),
+        )
+
+        completed = await _handle_event(
+            addon_context,
+            holder,
+            events.DataReceived(
+                holder.client,
+                holder_peer.send(_message_event(b"90")),
+            ),
+        )
+        assert len(_message_hooks(completed)) == 1
+        assert holder.flow.websocket is not None
+        assert holder.flow.websocket.messages[-1].content == b"1234567890"
+        await asyncio.sleep(0)
+        assert holder.flow.websocket.messages == []
+
+        after_release = await _start_websocket(
+            addon_context,
+            openai_responses_client_limit=True,
+        )
+        delivered_after_release = await _handle_event(
+            addon_context,
+            after_release,
+            events.DataReceived(
+                after_release.client,
+                _peer(from_client=True).send(_message_event(b"1234567890")),
+            ),
+        )
+
+    assert prefix == []
+    assert _message_hooks(over_aggregate) == []
+    assert _data_sends(over_aggregate) == []
+    assert rejected.flow.websocket is not None
+    assert rejected.flow.websocket.close_code == 1009
+    assert not rejected.flow.live
+
+    assert len(_message_hooks(delivered_after_release)) == 1
+    assert after_release.flow.websocket is not None
+    assert after_release.flow.websocket.messages[-1].content == b"1234567890"
+    aggregate_entries = read_jsonl_entries_after_flush(aggregate_log)
+    aggregate_diagnostic = next(
+        entry for entry in aggregate_entries if entry.get("type") == "websocket_framing_limit"
+    )
+    assert aggregate_diagnostic["reason"] == "aggregate_decoded_bytes"
+    assert aggregate_diagnostic["limit_value"] == 12
+    assert aggregate_diagnostic["observed_value"] == 13
+
+
+@pytest.mark.parametrize(
+    ("frame_limit", "content", "message_finished", "expected_reason", "expected_unit"),
+    [
+        (8_192, b"12345", True, "decoded_message_bytes", "bytes"),
+        (0, b"", False, "message_data_frames", "frames"),
+    ],
+)
+async def test_framing_limit_rejection_writes_content_free_diagnostic(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    frame_limit: int,
+    content: bytes,
+    message_finished: bool,
+    expected_reason: str,
+    expected_unit: str,
+) -> None:
+    proxy_log = tmp_path / f"{expected_reason}.jsonl"
+    monkeypatch.setattr(websocket_framing, "MAX_MESSAGE_DATA_FRAMES", frame_limit)
+    monkeypatch.setattr(
+        websocket_framing,
+        "MAX_OPENAI_RESPONSES_CLIENT_DECODED_MESSAGE_BYTES",
+        4,
+    )
+    monkeypatch.setattr(
+        websocket_framing,
+        "MAX_OPENAI_RESPONSES_CLIENT_AGGREGATE_DECODED_BYTES",
+        16,
+    )
+
+    with (
+        patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
+        taddons.context(Proxyserver(), mitm_addon) as addon_context,
+    ):
+        running = await _start_websocket(
+            addon_context,
+            run_id="run-rejected",
+            openai_responses_client_limit=True,
+            proxy_log_path=proxy_log,
+        )
+        rejected = await _handle_event(
+            addon_context,
+            running,
+            events.DataReceived(
+                running.client,
+                _peer(from_client=True).send(
+                    _message_event(content, message_finished=message_finished)
+                ),
+            ),
+        )
+
+    assert _message_hooks(rejected) == []
+    assert _data_sends(rejected) == []
+    assert running.flow.websocket is not None
+    assert running.flow.websocket.close_code == 1009
+    entries = read_jsonl_entries_after_flush(proxy_log)
+    diagnostic = next(entry for entry in entries if entry.get("type") == "websocket_framing_limit")
+    assert diagnostic == {
+        "timestamp": diagnostic["timestamp"],
+        "level": "warn",
+        "message": "WebSocket message rejected by framing limit",
+        "type": "websocket_framing_limit",
+        "reason": expected_reason,
+        "direction": "client_to_server",
+        "limit_class": "openai_responses_client",
+        "limit_unit": expected_unit,
+        "limit_value": 4 if expected_unit == "bytes" else 0,
+        "observed_value": 5 if expected_unit == "bytes" else 1,
+        "observed_is_lower_bound": False,
+        "close_code": 1009,
+        "run_id": "run-rejected",
+        "flow_id": running.flow.id,
+        "firewall_name": "",
+    }
+    assert "12345" not in proxy_log.read_text()
 
 
 @pytest.mark.parametrize(
@@ -863,3 +1124,88 @@ async def test_compressed_overflow_is_bounded_and_does_not_affect_another_flow(
     assert healthy.flow.websocket is not None
     assert healthy.flow.websocket.timestamp_end is None
     assert healthy.flow.websocket.messages[-1].content == b"healthy"
+
+
+async def test_compressed_openai_responses_client_uses_aggregate_output_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    aggregate_limit = 96 * 1024
+    first_fragment_bytes = 64 * 1024
+    content = hashlib.shake_256(b"vm0 aggregate compressed output").digest(160 * 1024)
+    monkeypatch.setattr(
+        websocket_framing,
+        "MAX_OPENAI_RESPONSES_CLIENT_DECODED_MESSAGE_BYTES",
+        256 * 1024,
+    )
+    monkeypatch.setattr(
+        websocket_framing,
+        "MAX_OPENAI_RESPONSES_CLIENT_AGGREGATE_DECODED_BYTES",
+        aggregate_limit,
+    )
+    stats = _track_zlib_decompression(monkeypatch)
+
+    with (
+        patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
+        taddons.context(Proxyserver(), mitm_addon) as addon_context,
+    ):
+        rejected = await _start_websocket(
+            addon_context,
+            permessage_deflate=_PERMESSAGE_DEFLATE,
+            openai_responses_client_limit=True,
+        )
+        compressed_peer = _peer(
+            from_client=True,
+            permessage_deflate=_PERMESSAGE_DEFLATE,
+        )
+        prefix = await _handle_event(
+            addon_context,
+            rejected,
+            events.DataReceived(
+                rejected.client,
+                compressed_peer.send(
+                    _message_event(
+                        content[:first_fragment_bytes],
+                        message_finished=False,
+                    )
+                ),
+            ),
+        )
+        rejected_source = _bounded_source_websocket(rejected, from_client=True)
+        assert 0 < rejected_source._vm0_message_limit._budget.decoded_bytes < aggregate_limit
+
+        overflow = await _handle_event(
+            addon_context,
+            rejected,
+            events.DataReceived(
+                rejected.client,
+                compressed_peer.send(_message_event(content[first_fragment_bytes:])),
+            ),
+        )
+
+        healthy = await _start_websocket(
+            addon_context,
+            openai_responses_client_limit=True,
+        )
+        delivered = await _handle_event(
+            addon_context,
+            healthy,
+            events.DataReceived(
+                healthy.client,
+                _peer(from_client=True).send(_message_event(b"h" * aggregate_limit)),
+            ),
+        )
+
+    assert prefix == []
+    assert stats.max_lengths
+    assert all(0 < size <= aggregate_limit + 1 for size in stats.max_lengths)
+    assert max(stats.output_sizes) <= aggregate_limit + 1
+    assert _message_hooks(overflow) == []
+    assert _data_sends(overflow) == []
+    assert rejected.flow.websocket is not None
+    assert rejected.flow.websocket.close_code == 1009
+    _assert_bounded_source_state_cleared(rejected, from_client=True)
+
+    assert len(_message_hooks(delivered)) == 1
+    assert healthy.flow.websocket is not None
+    assert healthy.flow.websocket.messages[-1].content == b"h" * aggregate_limit

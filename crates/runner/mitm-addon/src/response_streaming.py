@@ -28,6 +28,7 @@ import model_websocket_usage
 import runtime_url_parsing
 import stream_capture
 import usage
+import websocket_framing
 from body_limits import STREAM_BUFFER_LIMIT
 from logging_utils import log_proxy_entry
 from usage.underbilling import log_usage_underbilling
@@ -215,6 +216,7 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
         and _is_confirmed_websocket_upgrade_response(flow)
     ):
         model_websocket_usage.activate(flow)
+        websocket_framing.configure_openai_responses_client_limit(flow)
         return _ResponseUsageStreamSetup(None, False)
     if not _response_can_have_body(flow, response):
         return _ResponseUsageStreamSetup(None, False)

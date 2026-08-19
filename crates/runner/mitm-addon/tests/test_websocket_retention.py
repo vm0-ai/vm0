@@ -8,6 +8,7 @@ from mitmproxy.flow import Error
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import usage
+import websocket_framing
 from tests.model_provider_flow_helpers import (
     make_openai_responses_websocket_flow,
     model_provider_usage_sources,
@@ -232,6 +233,32 @@ class TestModelProviderWebSocketRetention:
         assert flow.websocket is not None
         assert flow.websocket.messages == [latest_client]
         assert old_server not in flow.websocket.messages
+
+    def test_model_websocket_deferred_trim_releases_large_completed_message(
+        self,
+        tmp_path,
+        real_flow,
+        deferred_websocket_trim_scheduler: list[ScheduledWebSocketTrim],
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        monkeypatch.setattr(websocket_framing, "MAX_DECODED_MESSAGE_BYTES", 4)
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(flow)
+        large_client = append_websocket_message(
+            flow,
+            from_client=True,
+            content=b"large",
+        )
+
+        mitm_addon.websocket_message(flow)
+
+        assert flow.websocket is not None
+        assert flow.websocket.messages == [large_client]
+        assert len(deferred_websocket_trim_scheduler) == 1
+
+        run_deferred_websocket_trims(deferred_websocket_trim_scheduler)
+
+        assert flow.websocket.messages == []
 
 
 class TestRegisteredWebSocketRetention:
