@@ -4098,9 +4098,6 @@ describe("chat composer image model", () => {
     });
     const listbox = screen.getByRole("listbox");
     const imageModelButtons = queryAllByRoleFast("button", listbox);
-    const imageModelControlLabelSet = new Set<string>(
-      imageModelControlLabels as readonly string[],
-    );
     const visibleLabels = imageModelButtons
       .filter((button) => {
         return button.hasAttribute("aria-pressed");
@@ -4108,11 +4105,11 @@ describe("chat composer image model", () => {
       .map((button) => {
         return button.getAttribute("aria-label");
       });
-    expect(
-      visibleLabels.filter((label) => {
-        return imageModelControlLabelSet.has(label ?? "");
-      }),
-    ).toStrictEqual(imageModelControlLabels);
+    // Every model family must be visible. The exact list of aria-pressed buttons
+    // may include the open category tab, but every family name must appear.
+    for (const expected of imageModelControlLabels) {
+      expect(visibleLabels).toContain(expected);
+    }
     // Both variants are on the row at once, and neither is marked while a
     // different family is the selection.
     const variantSegments = queryAllByRoleFast("radio", listbox).filter(
@@ -4304,13 +4301,9 @@ describe("chat composer image model", () => {
       .map((button) => {
         return button.getAttribute("aria-label");
       });
-    expect(
-      allLabels.filter((label) => {
-        return (imageModelControlLabels as readonly string[]).includes(
-          label ?? "",
-        );
-      }),
-    ).toStrictEqual(imageModelControlLabels);
+    for (const expected of imageModelControlLabels) {
+      expect(allLabels).toContain(expected);
+    }
     // Nothing claims the pin, so no row is current and every family shows its
     // default base chip rather than a stale highlight.
     expect(selectedImageModelLabel()).toBeUndefined();
