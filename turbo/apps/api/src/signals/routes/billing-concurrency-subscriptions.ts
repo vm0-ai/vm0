@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroBillingConcurrencySubscriptionContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingConcurrencySubscriptionContract } from "@okouai/api-contracts/contracts/billing";
 
 import { billingRedirectAllowed } from "../../lib/billing-redirect";
 import { optionalEnv } from "../../lib/env";
@@ -19,7 +19,7 @@ import {
   previewConcurrencySubscriptionChange$,
   reduceConcurrencySubscription$,
   restoreConcurrencySubscription$,
-} from "../services/zero-billing-concurrency-subscription.service";
+} from "../services/billing-concurrency-subscription.service";
 import { getStripeClient } from "../external/stripe-client";
 import { parseBillingPaymentMethodPreviewToken } from "../services/billing-purchase-preview-token.service";
 import {
@@ -49,7 +49,7 @@ const previewConcurrencySubscriptionChangeAuthed$ = command(
     signal.throwIfAborted();
 
     const bodyResult = await get(
-      bodyResultOf(zeroBillingConcurrencySubscriptionContract.previewChange),
+      bodyResultOf(billingConcurrencySubscriptionContract.previewChange),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -74,7 +74,7 @@ const previewConcurrencySubscriptionChangeAuthed$ = command(
       );
     }
     const { subscriptionId } = get(
-      pathParamsOf(zeroBillingConcurrencySubscriptionContract.previewChange),
+      pathParamsOf(billingConcurrencySubscriptionContract.previewChange),
     );
     const result = await set(
       previewConcurrencySubscriptionChange$,
@@ -175,14 +175,14 @@ const confirmConcurrencySubscriptionChangeAuthed$ = command(
     signal.throwIfAborted();
 
     const bodyResult = await get(
-      bodyResultOf(zeroBillingConcurrencySubscriptionContract.confirmChange),
+      bodyResultOf(billingConcurrencySubscriptionContract.confirmChange),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
     const { subscriptionId } = get(
-      pathParamsOf(zeroBillingConcurrencySubscriptionContract.confirmChange),
+      pathParamsOf(billingConcurrencySubscriptionContract.confirmChange),
     );
     let paymentMethod: BillingPurchasePaymentMethod | undefined;
     if (bodyResult.data.paymentMethodPreviewToken) {
@@ -295,7 +295,7 @@ const reduceConcurrencySubscriptionAuthed$ = command(
     signal.throwIfAborted();
 
     const bodyResult = await get(
-      bodyResultOf(zeroBillingConcurrencySubscriptionContract.reduce),
+      bodyResultOf(billingConcurrencySubscriptionContract.reduce),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -311,7 +311,7 @@ const reduceConcurrencySubscriptionAuthed$ = command(
       );
     }
     const { subscriptionId } = get(
-      pathParamsOf(zeroBillingConcurrencySubscriptionContract.reduce),
+      pathParamsOf(billingConcurrencySubscriptionContract.reduce),
     );
     const result = await set(
       reduceConcurrencySubscription$,
@@ -384,7 +384,7 @@ const cancelConcurrencySubscriptionAuthed$ = command(
     signal.throwIfAborted();
 
     const { subscriptionId } = get(
-      pathParamsOf(zeroBillingConcurrencySubscriptionContract.cancel),
+      pathParamsOf(billingConcurrencySubscriptionContract.cancel),
     );
     const result = await set(
       cancelConcurrencySubscription$,
@@ -440,7 +440,7 @@ const restoreConcurrencySubscriptionAuthed$ = command(
     signal.throwIfAborted();
 
     const { subscriptionId } = get(
-      pathParamsOf(zeroBillingConcurrencySubscriptionContract.restore),
+      pathParamsOf(billingConcurrencySubscriptionContract.restore),
     );
     const result = await set(
       restoreConcurrencySubscription$,
@@ -484,23 +484,23 @@ const restoreConcurrencySubscriptionRoute$ = command(
 
 export const billingConcurrencySubscriptionRoutes: readonly RouteEntry[] = [
   {
-    route: zeroBillingConcurrencySubscriptionContract.previewChange,
+    route: billingConcurrencySubscriptionContract.previewChange,
     handler: previewConcurrencySubscriptionChangeRoute$,
   },
   {
-    route: zeroBillingConcurrencySubscriptionContract.confirmChange,
+    route: billingConcurrencySubscriptionContract.confirmChange,
     handler: confirmConcurrencySubscriptionChangeRoute$,
   },
   {
-    route: zeroBillingConcurrencySubscriptionContract.reduce,
+    route: billingConcurrencySubscriptionContract.reduce,
     handler: reduceConcurrencySubscriptionRoute$,
   },
   {
-    route: zeroBillingConcurrencySubscriptionContract.cancel,
+    route: billingConcurrencySubscriptionContract.cancel,
     handler: cancelConcurrencySubscriptionRoute$,
   },
   {
-    route: zeroBillingConcurrencySubscriptionContract.restore,
+    route: billingConcurrencySubscriptionContract.restore,
     handler: restoreConcurrencySubscriptionRoute$,
   },
 ];

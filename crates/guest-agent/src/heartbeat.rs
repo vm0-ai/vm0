@@ -38,6 +38,22 @@ pub async fn heartbeat_loop_for_run(
 }
 
 /// Like [`heartbeat_loop_for_run`] but with a configurable interval.
+///
+/// When `http` has API configuration, `interval` must be non-zero. Tokio's
+/// first interval tick is immediately ready, so the first heartbeat is
+/// attempted when the loop starts rather than after one full interval.
+///
+/// The timer uses [`MissedTickBehavior::Delay`]. If an HTTP cycle takes longer
+/// than `interval`, one overdue heartbeat may run after the cycle completes,
+/// but accumulated overdue ticks are not replayed as a burst. The next
+/// heartbeat then waits one full interval after that overdue tick completes.
+///
+/// # Panics
+///
+/// Panics if `http` has API configuration and `interval` is zero, because the
+/// underlying Tokio interval requires a non-zero duration. When no API is
+/// configured, the function returns after shutdown without constructing a
+/// timer.
 pub async fn heartbeat_loop_for_run_with_interval(
     run_id: String,
     http: HttpClient,

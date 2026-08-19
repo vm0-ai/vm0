@@ -34,9 +34,11 @@ import {
 import {
   LAUNCH_SNAPSHOT_DISPOSITIONS,
   LAUNCH_SNAPSHOT_REASONS,
+  checkpointReference,
   classifyLaunchSnapshotRecoverability,
   type LaunchSnapshotCheckpointInventoryRow,
   type LaunchSnapshotConversationInventoryRow,
+  type LaunchSnapshotRunClassification,
   type LaunchSnapshotRunInventoryRow,
 } from "./agent-compose-consolidation-preflight-launch-snapshots";
 import {
@@ -59,6 +61,28 @@ const DEFAULT_LOCK_TIMEOUT_MS = 1000;
 const DEFAULT_STATEMENT_TIMEOUT_MS = 30_000;
 const DEFAULT_EXPECTED_DANGLING_HEAD_COUNT = 17;
 const ACTIVE_RUN_STATUSES = ["queued", "pending", "running"] as const;
+// Protected v6 run 32203970280 at d570536126e6137eb3423573623f8abbdf6be0c6
+// emitted this exact aggregate before the nullable cutover. It remains bounded
+// evidence, not an append-only membership gate: approved Run deletion cascades
+// to its checkpoint.
+const ACCEPTED_V6_CHECKPOINT_LINEAGE_EVIDENCE: SetFingerprint = {
+  count: 131_986,
+  digest: "e6311454e1623b825e10aafb7329c8e00777d71a5075be28f2c44d187bfb80b9",
+};
+// Protected v6 run 32203970280 emitted its repeatable-read aggregate at this
+// UTC instant. Using output completion conservatively covers the full observed
+// interval; rows at or after it are rolling old-writer growth. Keep internal.
+const CHECKPOINT_PRE_CUTOVER_BOUNDARY = "2026-08-19T01:12:07.933676Z";
+
+const CHECKPOINT_TRANSITION_PARTITIONS = [
+  "legacySnapshotPresentValid",
+  "snapshotAbsentWithCompleteLaunchSnapshot",
+  "snapshotAbsentWithoutCompleteLaunchSnapshot",
+  "malformedOrInvalidLegacySnapshot",
+] as const;
+
+type CheckpointTransitionPartition =
+  (typeof CHECKPOINT_TRANSITION_PARTITIONS)[number];
 
 /** Safe digests of the six #26938-approved compose-only artifact IDs. */
 export const APPROVED_ARTIFACT_MEMBER_DIGESTS = [
@@ -431,13 +455,39 @@ const PREFLIGHT_V6_OUTPUT_ALLOWLIST = [
   ),
 ];
 
-/** Every and only approved scalar/array path in a complete v6 result. */
+/** Transition-only #28080 checkpoint snapshot output; removed by #26938 Stage 8. */
+const PREFLIGHT_V7_OUTPUT_ALLOWLIST = [
+  ...setOutputPaths("checkpoints.transition.population"),
+  ...CHECKPOINT_TRANSITION_PARTITIONS.flatMap((partition) => {
+    return setOutputPaths(`checkpoints.transition.partitions.${partition}`);
+  }),
+  ...comparisonOutputPaths("checkpoints.transition.populationClosure"),
+  ...comparisonOutputPaths(
+    "checkpoints.transition.partitionCardinalityClosure",
+  ),
+  ...comparisonOutputPaths(
+    "checkpoints.transition.partitionDisjointnessClosure",
+  ),
+  ...comparisonOutputPaths("checkpoints.transition.partitionUnionClosure"),
+  ...comparisonOutputPaths("checkpoints.transition.runReferenceClosure"),
+  ...comparisonOutputPaths(
+    "checkpoints.transition.conversationReferenceClosure",
+  ),
+  ...comparisonOutputPaths("checkpoints.transition.sessionReferenceClosure"),
+  ...comparisonOutputPaths("checkpoints.transition.storageReferenceClosure"),
+  ...setOutputPaths("checkpoints.transition.acceptedV6LegacySnapshotEvidence"),
+  ...comparisonOutputPaths("checkpoints.transition.legacySnapshotLineage"),
+  ...setOutputPaths("checkpoints.transition.legacySnapshotGrowth"),
+];
+
+/** Every and only approved scalar/array path in a complete v7 result. */
 export const PREFLIGHT_OUTPUT_ALLOWLIST = [
   ...PREFLIGHT_V2_OUTPUT_ALLOWLIST,
   ...PREFLIGHT_V3_OUTPUT_ALLOWLIST,
   ...PREFLIGHT_V4_OUTPUT_ALLOWLIST,
   ...PREFLIGHT_V5_OUTPUT_ALLOWLIST,
   ...PREFLIGHT_V6_OUTPUT_ALLOWLIST,
+  ...PREFLIGHT_V7_OUTPUT_ALLOWLIST,
 ].sort();
 
 export interface IdentityInventoryRow extends QueryResultRow {
@@ -474,6 +524,11 @@ export interface RunInventoryRow
 export interface CheckpointInventoryRow
   extends QueryResultRow, LaunchSnapshotCheckpointInventoryRow {
   readonly id: string;
+  readonly preCutover: boolean;
+  readonly runReferenceValid: boolean;
+  readonly conversationReferenceValid: boolean;
+  readonly sessionReferenceValid: boolean;
+  readonly storageReferenceValid: boolean;
 }
 
 export type ConversationInventoryRow = QueryResultRow &
@@ -795,6 +850,23 @@ function comparison(
   };
 }
 
+function cardinalityComparison(
+  domain: string,
+  expected: readonly string[],
+  observed: readonly string[],
+): ReturnType<typeof comparison> {
+  const result = comparison(domain, expected, observed);
+  const exactCardinality =
+    expected.length === result.expected.count &&
+    observed.length === result.observed.count &&
+    expected.length === observed.length;
+  return {
+    ...result,
+    classification:
+      result.classification === "exact" && exactCardinality ? "exact" : "drift",
+  };
+}
+
 function recordSet(
   domain: string,
   rows: readonly { readonly id: string }[],
@@ -821,30 +893,6 @@ function headRecordSet(
 
 function increment(map: Map<string, number>, key: string): void {
   map.set(key, (map.get(key) ?? 0) + 1);
-}
-
-function checkpointVersionId(
-  snapshot: unknown,
-):
-  | { readonly classification: "absent" }
-  | { readonly classification: "invalid" }
-  | { readonly classification: "valid"; readonly versionId: string } {
-  if (
-    snapshot === null ||
-    typeof snapshot !== "object" ||
-    Array.isArray(snapshot)
-  ) {
-    return { classification: "invalid" };
-  }
-  if (!("agentComposeVersionId" in snapshot)) {
-    return { classification: "absent" };
-  }
-  const value = (snapshot as { readonly agentComposeVersionId?: unknown })
-    .agentComposeVersionId;
-  if (typeof value !== "string" || !/^[0-9a-f]{64}$/u.test(value)) {
-    return { classification: "invalid" };
-  }
-  return { classification: "valid", versionId: value };
 }
 
 interface IdentityClassificationInput {
@@ -1454,6 +1502,7 @@ function classifyCheckpoints(
   versionIds: ReadonlySet<string>,
   runHashes: ReadonlySet<string>,
   headHashes: ReadonlySet<string>,
+  launchSnapshotClassifications: readonly LaunchSnapshotRunClassification[],
   failureGates: Set<string>,
 ) {
   const absent: CheckpointInventoryRow[] = [];
@@ -1461,17 +1510,39 @@ function classifyCheckpoints(
   const valid: CheckpointInventoryRow[] = [];
   const missing: CheckpointInventoryRow[] = [];
   const fanout = new Map<string, number>();
+  const launchSnapshotByRunId = new Map(
+    launchSnapshotClassifications.map((classification) => {
+      return [classification.runId, classification] as const;
+    }),
+  );
+  const partitionMembers = Object.fromEntries(
+    CHECKPOINT_TRANSITION_PARTITIONS.map((partition) => {
+      return [partition, [] as CheckpointInventoryRow[]];
+    }),
+  ) as Record<CheckpointTransitionPartition, CheckpointInventoryRow[]>;
 
   for (const checkpoint of rows) {
-    const reference = checkpointVersionId(checkpoint.snapshot);
+    const reference = checkpointReference(checkpoint.snapshot);
     if (reference.classification === "absent") {
       absent.push(checkpoint);
+      const launchSnapshot = launchSnapshotByRunId.get(checkpoint.runId);
+      const partition =
+        launchSnapshot?.disposition === "already_valid"
+          ? "snapshotAbsentWithCompleteLaunchSnapshot"
+          : "snapshotAbsentWithoutCompleteLaunchSnapshot";
+      partitionMembers[partition].push(checkpoint);
     } else if (reference.classification === "invalid") {
       invalid.push(checkpoint);
+      partitionMembers.malformedOrInvalidLegacySnapshot.push(checkpoint);
     } else {
       valid.push(checkpoint);
       increment(fanout, reference.versionId);
-      if (!versionIds.has(reference.versionId)) missing.push(checkpoint);
+      if (!versionIds.has(reference.versionId)) {
+        missing.push(checkpoint);
+        partitionMembers.malformedOrInvalidLegacySnapshot.push(checkpoint);
+      } else {
+        partitionMembers.legacySnapshotPresentValid.push(checkpoint);
+      }
     }
   }
   const versionHashes = [...fanout.keys()];
@@ -1493,6 +1564,144 @@ function classifyCheckpoints(
   }
   if (missing.length > 0) {
     failureGates.add("checkpoints.missing_version");
+  }
+
+  const checkpointIds = rows.map((row) => {
+    return row.id;
+  });
+  const uniqueCheckpointIds = [...new Set(checkpointIds)];
+  const partitionAssignments = CHECKPOINT_TRANSITION_PARTITIONS.flatMap(
+    (partition) => {
+      return partitionMembers[partition].map((row) => {
+        return row.id;
+      });
+    },
+  );
+  const partitionAssignmentCounts = new Map<string, number>();
+  for (const checkpointId of partitionAssignments) {
+    increment(partitionAssignmentCounts, checkpointId);
+  }
+  const duplicatePartitionIds = [...partitionAssignmentCounts]
+    .filter(([, count]) => {
+      return count > 1;
+    })
+    .map(([checkpointId]) => {
+      return checkpointId;
+    });
+  const referenceMembers = (field: keyof CheckpointInventoryRow): string[] => {
+    return rows
+      .filter((row) => {
+        return row[field] === true;
+      })
+      .map((row) => {
+        return row.id;
+      });
+  };
+  const populationClosure = cardinalityComparison(
+    "checkpoints:transition:population-closure:v7",
+    checkpointIds,
+    uniqueCheckpointIds,
+  );
+  const partitionCardinalityClosure = cardinalityComparison(
+    "checkpoints:transition:partition-cardinality-closure:v7",
+    checkpointIds,
+    partitionAssignments,
+  );
+  const partitionDisjointnessClosure = comparison(
+    "checkpoints:transition:partition-disjointness-closure:v7",
+    [],
+    duplicatePartitionIds,
+  );
+  const partitionUnionClosure = comparison(
+    "checkpoints:transition:partition-union-closure:v7",
+    checkpointIds,
+    partitionAssignments,
+  );
+  const runReferenceClosure = cardinalityComparison(
+    "checkpoints:transition:run-reference-closure:v7",
+    checkpointIds,
+    referenceMembers("runReferenceValid"),
+  );
+  const conversationReferenceClosure = cardinalityComparison(
+    "checkpoints:transition:conversation-reference-closure:v7",
+    checkpointIds,
+    referenceMembers("conversationReferenceValid"),
+  );
+  const sessionReferenceClosure = cardinalityComparison(
+    "checkpoints:transition:session-reference-closure:v7",
+    checkpointIds,
+    referenceMembers("sessionReferenceValid"),
+  );
+  const storageReferenceClosure = cardinalityComparison(
+    "checkpoints:transition:storage-reference-closure:v7",
+    checkpointIds,
+    referenceMembers("storageReferenceValid"),
+  );
+  const referencesValid = (row: CheckpointInventoryRow): boolean => {
+    return (
+      row.runReferenceValid &&
+      row.conversationReferenceValid &&
+      row.sessionReferenceValid &&
+      row.storageReferenceValid
+    );
+  };
+  const legacySnapshotPresentValidIds = new Set(
+    partitionMembers.legacySnapshotPresentValid.map((row) => {
+      return row.id;
+    }),
+  );
+  // The protected cohort is evaluated from surviving rows on the fixed
+  // pre-cutover side of the boundary. Cascaded Run/checkpoint deletion removes
+  // a member from both sides; reclassifying any survivor removes it only from
+  // the observed side and fails closed. No row timestamp or identity is
+  // emitted.
+  const survivingPreCutover = rows.filter((row) => {
+    return row.preCutover;
+  });
+  const validSurvivingPreCutover = survivingPreCutover.filter((row) => {
+    return legacySnapshotPresentValidIds.has(row.id) && referencesValid(row);
+  });
+  const legacySnapshotLineage = comparison(
+    "checkpoints:transition:surviving-pre-cutover-lineage:v7",
+    survivingPreCutover.map((row) => {
+      return row.id;
+    }),
+    validSurvivingPreCutover.map((row) => {
+      return row.id;
+    }),
+  );
+  const legacySnapshotGrowth =
+    partitionMembers.legacySnapshotPresentValid.filter((row) => {
+      return !row.preCutover && referencesValid(row);
+    });
+  const closureResults = [
+    populationClosure,
+    partitionCardinalityClosure,
+    partitionDisjointnessClosure,
+    partitionUnionClosure,
+  ];
+  if (
+    closureResults.some((closure) => {
+      return closure.classification === "drift";
+    })
+  ) {
+    failureGates.add("checkpoints.transition_closure");
+  }
+  for (const [closure, gate] of [
+    [runReferenceClosure, "checkpoints.run_reference"],
+    [conversationReferenceClosure, "checkpoints.conversation_reference"],
+    [sessionReferenceClosure, "checkpoints.session_reference"],
+    [storageReferenceClosure, "checkpoints.storage_reference"],
+  ] as const) {
+    if (closure.classification === "drift") failureGates.add(gate);
+  }
+  if (partitionMembers.snapshotAbsentWithoutCompleteLaunchSnapshot.length > 0) {
+    failureGates.add(
+      "checkpoints.snapshot_absent_without_complete_launch_snapshot",
+    );
+  }
+  if (legacySnapshotLineage.classification === "drift") {
+    failureGates.add("checkpoints.legacy_snapshot_lineage");
   }
 
   return {
@@ -1529,6 +1738,37 @@ function classifyCheckpoints(
       "checkpoints:head-referenced-version-hashes",
       headReferencedHashes,
     ),
+    transition: {
+      population: fingerprintSortedSet(
+        "checkpoints:transition:population:v7",
+        checkpointIds,
+      ),
+      partitions: Object.fromEntries(
+        CHECKPOINT_TRANSITION_PARTITIONS.map((partition) => {
+          return [
+            partition,
+            recordSet(
+              `checkpoints:transition:partition:${partition}:checkpoint-ids:v7`,
+              partitionMembers[partition],
+            ),
+          ];
+        }),
+      ) as Record<CheckpointTransitionPartition, SetFingerprint>,
+      populationClosure,
+      partitionCardinalityClosure,
+      partitionDisjointnessClosure,
+      partitionUnionClosure,
+      runReferenceClosure,
+      conversationReferenceClosure,
+      sessionReferenceClosure,
+      storageReferenceClosure,
+      acceptedV6LegacySnapshotEvidence: ACCEPTED_V6_CHECKPOINT_LINEAGE_EVIDENCE,
+      legacySnapshotLineage,
+      legacySnapshotGrowth: recordSet(
+        "checkpoints:transition:legacy-snapshot-growth:checkpoint-ids:v7",
+        legacySnapshotGrowth,
+      ),
+    },
   };
 }
 
@@ -1727,6 +1967,13 @@ export function classifyPreflightInventory(
   const heads = classifyHeads(inventory.heads);
   const headHashSet = new Set(heads.distinctHashes);
   const runs = classifyRuns(inventory.runs, headHashSet, failureGates);
+  const launchSnapshots = classifyLaunchSnapshotRecoverability({
+    runs: inventory.runs,
+    versions: inventory.versions,
+    checkpoints: inventory.checkpoints,
+    conversations: inventory.conversations,
+  });
+  for (const gate of launchSnapshots.failureGates) failureGates.add(gate);
   const checkpoints = classifyCheckpoints(
     inventory.checkpoints,
     new Set(
@@ -1736,6 +1983,7 @@ export function classifyPreflightInventory(
     ),
     new Set(runs.versionHashes),
     headHashSet,
+    launchSnapshots.classifications,
     failureGates,
   );
   const danglingHeads = classifyDangling(
@@ -1751,13 +1999,6 @@ export function classifyPreflightInventory(
     observedRepository,
     failureGates,
   );
-  const launchSnapshots = classifyLaunchSnapshotRecoverability({
-    runs: inventory.runs,
-    versions: inventory.versions,
-    checkpoints: inventory.checkpoints,
-    conversations: inventory.conversations,
-  });
-  for (const gate of launchSnapshots.failureGates) failureGates.add(gate);
   const sortedFailureGates = [...failureGates].sort();
 
   const result = {
@@ -1970,9 +2211,105 @@ async function collectDatabaseInventory(
     `SELECT
        "checkpoint"."id"::text AS "id",
        "checkpoint"."run_id"::text AS "runId",
-       "checkpoint"."agent_compose_snapshot" AS "snapshot"
+       "checkpoint"."agent_compose_snapshot" AS "snapshot",
+       (
+         "checkpoint"."created_at" AT TIME ZONE 'UTC'
+       ) < $1::timestamptz AS "preCutover",
+       "run"."id" IS NOT NULL AS "runReferenceValid",
+       (
+         "conversation"."id" IS NOT NULL AND
+         "conversation"."run_id" = "checkpoint"."run_id"
+       ) AS "conversationReferenceValid",
+       (
+         "session"."id" IS NOT NULL AND
+         "session"."conversation_id" = "checkpoint"."conversation_id"
+       ) AS "sessionReferenceValid",
+       CASE
+         WHEN "checkpoint"."storage_mounts" IS NULL THEN true
+         WHEN jsonb_typeof("checkpoint"."storage_mounts") <> 'array'
+           THEN false
+         ELSE NOT EXISTS (
+           SELECT 1
+           FROM jsonb_array_elements("checkpoint"."storage_mounts")
+             AS "entry"("mount")
+           LEFT JOIN "storages" AS "storage"
+             ON "storage"."id"::text = "entry"."mount" ->> 'storageId'
+             AND "storage"."org_id" = "entry"."mount" ->> 'orgId'
+             AND "storage"."user_id" = "entry"."mount" ->> 'userId'
+             AND "storage"."name" = "entry"."mount" ->> 'name'
+           LEFT JOIN "storage_versions" AS "storage_version"
+             ON "storage_version"."id" = "entry"."mount" ->> 'version'
+             AND "storage_version"."storage_id" = "storage"."id"
+           WHERE
+             jsonb_typeof("entry"."mount") <> 'object' OR
+             NOT (
+               "entry"."mount" ?& ARRAY[
+                 'orgId',
+                 'userId',
+                 'name',
+                 'storageId',
+                 'version',
+                 'mountPath'
+               ]
+             ) OR
+             (
+               "entry"."mount" -
+               'orgId' -
+               'userId' -
+               'name' -
+               'storageId' -
+               'version' -
+               'mountPath' -
+               'optional' -
+               'writeback' -
+               'instructionsTargetFilename' -
+               'missingRootPolicy'
+             ) <> '{}'::jsonb OR
+             jsonb_typeof("entry"."mount" -> 'orgId') <> 'string' OR
+             jsonb_typeof("entry"."mount" -> 'userId') <> 'string' OR
+             jsonb_typeof("entry"."mount" -> 'name') <> 'string' OR
+             jsonb_typeof("entry"."mount" -> 'storageId') <> 'string' OR
+             jsonb_typeof("entry"."mount" -> 'version') <> 'string' OR
+             jsonb_typeof("entry"."mount" -> 'mountPath') <> 'string' OR
+             (
+               "entry"."mount" ? 'optional' AND
+               jsonb_typeof("entry"."mount" -> 'optional') <> 'boolean'
+             ) OR
+             (
+               "entry"."mount" ? 'writeback' AND
+               jsonb_typeof("entry"."mount" -> 'writeback') <> 'boolean'
+             ) OR
+             (
+               "entry"."mount" ? 'instructionsTargetFilename' AND
+               jsonb_typeof(
+                 "entry"."mount" -> 'instructionsTargetFilename'
+               ) <> 'string'
+             ) OR
+             (
+               "entry"."mount" ? 'missingRootPolicy' AND
+               (
+                 jsonb_typeof(
+                   "entry"."mount" -> 'missingRootPolicy'
+                 ) <> 'string' OR
+                 "entry"."mount" ->> 'missingRootPolicy' NOT IN (
+                   'fail',
+                   'preserveParentVersion'
+                 )
+               )
+             ) OR
+             "storage"."id" IS NULL OR
+             "storage_version"."id" IS NULL
+         )
+       END AS "storageReferenceValid"
      FROM "checkpoints" AS "checkpoint"
+     LEFT JOIN "agent_runs" AS "run"
+       ON "run"."id" = "checkpoint"."run_id"
+     LEFT JOIN "conversations" AS "conversation"
+       ON "conversation"."id" = "checkpoint"."conversation_id"
+     LEFT JOIN "agent_sessions" AS "session"
+       ON "session"."id" = "run"."session_id"
      ORDER BY "checkpoint"."id"`,
+    [CHECKPOINT_PRE_CUTOVER_BOUNDARY],
   );
   const conversations = await safeQuery<ConversationInventoryRow>(
     client,

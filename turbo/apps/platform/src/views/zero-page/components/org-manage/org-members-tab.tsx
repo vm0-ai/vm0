@@ -45,7 +45,7 @@ import type {
   UsagePackCatalogItem,
   UsagePackManagementResponse,
   UsagePackUsd,
-} from "@okouai/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/billing";
 import {
   orgMembers$,
   orgPendingInvitations$,

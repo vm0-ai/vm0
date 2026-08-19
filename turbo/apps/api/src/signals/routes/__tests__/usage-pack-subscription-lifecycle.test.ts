@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { testBillingReconciliationStateContract } from "@okouai/api-contracts/contracts/test-billing-reconciliation-state";
-import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import type StripeSDK from "stripe";
 import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 
@@ -11,7 +11,7 @@ import { createApp } from "../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { mockStripeClient } from "../../external/stripe-client";
 import { testBillingReconciliationStateRoutes } from "../test-billing-reconciliation-state";
 import {
@@ -24,7 +24,7 @@ import { webhooksStripeRoutes } from "../webhooks-stripe";
 import { billingStatusRoutes } from "../billing-status";
 
 const context = testContext();
-const routeMocks = createZeroRouteMocks(context);
+const routeMocks = createRouteMocks(context);
 
 const TEST_PRICE_PRO = "price_usage_pack_lifecycle_pro";
 const TEST_PRICE_TEAM = "price_usage_pack_lifecycle_team";
@@ -292,7 +292,7 @@ async function readBillingStatus(fixture: UsagePackLifecycleFixture) {
   routeMocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
   const response = await accept(
     setupApp({ context, routes: billingStatusRoutes })(
-      zeroBillingStatusContract,
+      billingStatusContract,
     ).get({ headers: { authorization: "Bearer clerk-session" } }),
     [200],
   );

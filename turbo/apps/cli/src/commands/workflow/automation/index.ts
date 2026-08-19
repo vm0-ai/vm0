@@ -8,8 +8,8 @@ import type {
   GithubPullRequestReviewState,
   GithubWorkflowRunConclusion,
   StripeInvoiceBillingReason,
-  ZeroWorkflowSchedule,
-} from "@okouai/api-contracts/contracts/zero-workflows";
+  WorkflowSchedule,
+} from "@okouai/api-contracts/contracts/workflows";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   isFeatureEnabled,
@@ -498,10 +498,7 @@ function wallTimeToUtcIso(value: string, timezone: string): string {
   return result.toISOString();
 }
 
-function buildSchedule(
-  kind: string,
-  options: UpdateOptions,
-): ZeroWorkflowSchedule {
+function buildSchedule(kind: string, options: UpdateOptions): WorkflowSchedule {
   switch (kind) {
     case "cron":
       if (!options.expr) {

@@ -9,7 +9,7 @@ import {
   webSearchContract,
   type WebSearchRequest,
 } from "@okouai/api-contracts/contracts/web-search";
-import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import { usageRecordContract } from "@okouai/api-contracts/contracts/usage-record";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
@@ -40,7 +40,7 @@ import {
   generatedStripeCustomerId,
   postUsageAllowanceInvoicePaid,
 } from "./helpers/stripe-billing-webhook";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { usageRecordRoutes } from "../usage-record";
 
 const context = testContext();
@@ -74,7 +74,7 @@ function authenticate(actor: ApiTestUser | null): AuthHeaders {
     return {};
   }
 
-  createZeroRouteMocks(context).clerk.session(
+  createRouteMocks(context).clerk.session(
     actor.userId,
     actor.orgId,
     actor.orgRole,
@@ -134,7 +134,7 @@ async function fundActor(actor: ApiTestUser): Promise<void> {
 
 async function credits(actor: ApiTestUser): Promise<number> {
   const response = await accept(
-    client()(zeroBillingStatusContract).get({
+    client()(billingStatusContract).get({
       headers: authenticate(actor),
     }),
     [200],
@@ -449,7 +449,7 @@ describe("okou web-search route", () => {
       [200],
     );
     const status = await accept(
-      client()(zeroBillingStatusContract).get({
+      client()(billingStatusContract).get({
         headers: authenticate(actor),
       }),
       [200],

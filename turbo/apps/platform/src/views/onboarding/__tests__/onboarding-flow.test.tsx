@@ -7,9 +7,9 @@ import {
   WEBSITE_TEMPLATE_ITEMS,
 } from "@okouai/core";
 import {
-  zeroBillingCheckoutContract,
-  zeroBillingUsagePackCheckoutContract,
-} from "@okouai/api-contracts/contracts/zero-billing";
+  billingCheckoutContract,
+  billingUsagePackCheckoutContract,
+} from "@okouai/api-contracts/contracts/billing";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
 import {
@@ -943,17 +943,14 @@ describe("onboarding flow", () => {
         generationType = templateTypeFromUserMessage(body.userMessage);
       },
     });
-    context.mocks.api(
-      zeroBillingCheckoutContract.create,
-      ({ body, respond }) => {
-        successUrl = body.successUrl;
-        cancelUrl = body.cancelUrl;
-        return respond(200, {
-          url: "https://checkout.stripe.com/test/onboarding-video",
-        });
-      },
-    );
-    context.mocks.api(zeroBillingCheckoutContract.complete, ({ respond }) => {
+    context.mocks.api(billingCheckoutContract.create, ({ body, respond }) => {
+      successUrl = body.successUrl;
+      cancelUrl = body.cancelUrl;
+      return respond(200, {
+        url: "https://checkout.stripe.com/test/onboarding-video",
+      });
+    });
+    context.mocks.api(billingCheckoutContract.complete, ({ respond }) => {
       return respond(200, { completed: true });
     });
 
@@ -1042,14 +1039,14 @@ describe("onboarding flow", () => {
           }[];
         }
       | undefined;
-    context.mocks.api(zeroBillingCheckoutContract.create, ({ respond }) => {
+    context.mocks.api(billingCheckoutContract.create, ({ respond }) => {
       legacyCheckoutCalled = true;
       return respond(200, {
         url: "https://checkout.stripe.com/test/legacy-onboarding-video",
       });
     });
     context.mocks.api(
-      zeroBillingUsagePackCheckoutContract.create,
+      billingUsagePackCheckoutContract.create,
       ({ body, respond }) => {
         usagePackCheckoutBody = body;
         return respond(200, {
@@ -1108,7 +1105,7 @@ describe("onboarding flow", () => {
         generationType = templateTypeFromUserMessage(body.userMessage);
       },
     });
-    context.mocks.api(zeroBillingCheckoutContract.complete, ({ respond }) => {
+    context.mocks.api(billingCheckoutContract.complete, ({ respond }) => {
       checkoutCompletionAttempts += 1;
       return respond(200, { completed: checkoutCompletionAttempts >= 2 });
     });
@@ -1199,7 +1196,7 @@ describe("onboarding flow", () => {
     const gtag = installGtagMock();
     const template = firstItem(VIDEO_TEMPLATE_ITEMS);
     mockChatLifecycle(context);
-    context.mocks.api(zeroBillingCheckoutContract.create, ({ respond }) => {
+    context.mocks.api(billingCheckoutContract.create, ({ respond }) => {
       return respond(200, {
         url: "https://checkout.stripe.com/test/onboarding-video",
       });

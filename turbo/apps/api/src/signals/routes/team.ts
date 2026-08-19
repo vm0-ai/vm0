@@ -1,5 +1,5 @@
 import { computed } from "ccstate";
-import { zeroTeamContract } from "@okouai/api-contracts/contracts/zero-team";
+import { teamContract } from "@okouai/api-contracts/contracts/team";
 
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -31,7 +31,7 @@ const listTeamInner$ = computed(async (get) => {
 
 export const teamRoutes: readonly RouteEntry[] = [
   {
-    route: zeroTeamContract.list,
+    route: teamContract.list,
     handler: authRoute({}, listTeamInner$),
   },
 ];

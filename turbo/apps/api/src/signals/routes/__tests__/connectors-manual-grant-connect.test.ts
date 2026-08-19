@@ -18,7 +18,7 @@ import {
   seedConnectorStorageRow,
   seedOwnedConnectorSecret,
 } from "./helpers/connector-credential-storage-state";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { connectorsRoutes } from "../connectors";
 import { featureSwitchesRoutes } from "../feature-switches";
 
@@ -28,7 +28,7 @@ const TEST_APP_ROUTES = Object.freeze([
 ]);
 
 const context = testContext();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 interface AuthenticatedFixture {
   readonly orgId: string;

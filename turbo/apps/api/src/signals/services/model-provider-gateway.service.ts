@@ -11,7 +11,7 @@ import type {
   ModelProviderConnectionResponse,
   ModelProviderSurfaceProtocol,
   UpdateModelProviderConnectionRequest,
-} from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
+} from "@okouai/api-contracts/contracts/model-provider-gateways";
 import { canonicalizeFirewallBaseUrl } from "@okouai/connectors/firewall-types";
 import {
   modelProviderConnections,

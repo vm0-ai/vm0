@@ -1,5 +1,5 @@
 import { command, computed } from "ccstate";
-import { zeroBillingInvoicesContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingInvoicesContract } from "@okouai/api-contracts/contracts/billing";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -35,7 +35,7 @@ const downloadReceiptsInner$ = command(
     if (auth.orgRole !== "admin") {
       return adminRequired;
     }
-    const query = get(queryOf(zeroBillingInvoicesContract.downloadReceipts));
+    const query = get(queryOf(billingInvoicesContract.downloadReceipts));
     const result = await set(
       downloadOrgReceiptArchive$,
       {
@@ -83,14 +83,14 @@ const downloadReceiptsInner$ = command(
 
 export const billingInvoicesRoutes: readonly RouteEntry[] = [
   {
-    route: zeroBillingInvoicesContract.get,
+    route: billingInvoicesContract.get,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       getInvoicesInner$,
     ),
   },
   {
-    route: zeroBillingInvoicesContract.downloadReceipts,
+    route: billingInvoicesContract.downloadReceipts,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       downloadReceiptsInner$,

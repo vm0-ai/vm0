@@ -24,7 +24,7 @@ import {
   runOwnedChatEventCondition,
 } from "./chat-event-type.service";
 import { canonicalChatEventError } from "./canonical-chat-event-read.service";
-import { publishFirstAssistantEventCreatedSafely } from "./zero-chat-first-assistant-event-metric.service";
+import { publishFirstAssistantEventCreatedSafely } from "./chat-first-assistant-event-metric.service";
 import {
   appendChatThreadEvent,
   type ChatThreadEventTransaction,

@@ -13,7 +13,7 @@ import {
 import {
   getModelProviderTypeForSurfaceProtocol,
   modelProviderSurfaceProtocolSchema,
-} from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
+} from "@okouai/api-contracts/contracts/model-provider-gateways";
 import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import type { SupportedFramework } from "@okouai/core/frameworks";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";

@@ -14,11 +14,11 @@ import {
 import { seedConnectedXConnector } from "../../../test-fixtures/x-connector";
 import { createBddApi } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { imageShareXRoutes } from "../image-share-x";
 
 const context = testContext();
-const routeMocks = createZeroRouteMocks(context);
+const routeMocks = createRouteMocks(context);
 const X_ACCESS_TOKEN = "x-access-token";
 const IMAGE_URL = "https://cdn.vm7.io/artifacts/user-image/share.png";
 const IMAGE_BYTES = [137, 80, 78, 71] as const;

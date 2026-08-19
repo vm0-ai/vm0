@@ -1,10 +1,10 @@
 import { command, computed, state } from "ccstate";
 import {
-  zeroModelProviderConnectionsByIdContract,
-  zeroModelProviderConnectionsMainContract,
+  modelProviderConnectionsByIdContract,
+  modelProviderConnectionsMainContract,
   type CreateModelProviderConnectionRequest,
   type UpdateModelProviderConnectionRequest,
-} from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
+} from "@okouai/api-contracts/contracts/model-provider-gateways";
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -15,7 +15,7 @@ const reloadModelProviderConnections$ = state(0);
 export const modelProviderConnections$ = computed(async (get) => {
   get(reloadModelProviderConnections$);
   const createClient = get(zeroClient$);
-  const client = createClient(zeroModelProviderConnectionsMainContract);
+  const client = createClient(modelProviderConnectionsMainContract);
   const result = await accept(client.list(), [200]);
   return result.body.connections;
 });
@@ -27,7 +27,7 @@ export const createModelProviderConnection$ = command(
     signal: AbortSignal,
   ) => {
     const createClient = get(zeroClient$);
-    const client = createClient(zeroModelProviderConnectionsMainContract);
+    const client = createClient(modelProviderConnectionsMainContract);
     const result = await accept(
       client.create({ body: input, fetchOptions: { signal } }),
       [201],
@@ -50,7 +50,7 @@ export const updateModelProviderConnection$ = command(
     signal: AbortSignal,
   ) => {
     const createClient = get(zeroClient$);
-    const client = createClient(zeroModelProviderConnectionsByIdContract);
+    const client = createClient(modelProviderConnectionsByIdContract);
     const result = await accept(
       client.update({
         params: { id: args.id },
@@ -72,7 +72,7 @@ export const updateModelProviderConnection$ = command(
 export const deleteModelProviderConnection$ = command(
   async ({ get, set }, id: string, signal: AbortSignal) => {
     const createClient = get(zeroClient$);
-    const client = createClient(zeroModelProviderConnectionsByIdContract);
+    const client = createClient(modelProviderConnectionsByIdContract);
     await accept(
       client.delete({ params: { id }, fetchOptions: { signal } }),
       [204],

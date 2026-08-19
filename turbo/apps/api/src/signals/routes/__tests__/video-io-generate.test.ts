@@ -29,13 +29,13 @@ import {
 import { setRunVideoModelFixture } from "../../../test-fixtures/run-video-model";
 import { seedOrgMembership$ } from "./helpers/org-membership";
 import { seedCompose$, seedRun$ } from "./helpers/usage-state";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 
 const context = testContext();
 const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const TEST_BUCKET = "test-user-artifacts";
 const VIDEO_BYTES = Buffer.from("fake video bytes");
 const VIDEO_IO_MODEL = "dreamina-seedance-2-0-fast-260128";

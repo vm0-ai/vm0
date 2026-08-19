@@ -1,20 +1,20 @@
 import { codexDeviceAuthContract } from "@okouai/api-contracts/contracts/codex-device-auth";
 import { claudeCodeDeviceAuthContract } from "@okouai/api-contracts/contracts/claude-code-device-auth";
 import {
-  zeroBillingCheckoutContract,
-  zeroBillingStatusContract,
+  billingCheckoutContract,
+  billingStatusContract,
   type BillingStatusResponse,
-} from "@okouai/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/billing";
 import type {
   ModelProviderResponse,
   OrgModelPolicy,
 } from "@okouai/api-contracts/contracts/model-providers";
 import {
-  zeroModelProviderConnectionsByIdContract,
-  zeroModelProviderConnectionsMainContract,
+  modelProviderConnectionsByIdContract,
+  modelProviderConnectionsMainContract,
   type CreateModelProviderConnectionRequest,
   type ModelProviderConnectionResponse,
-} from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
+} from "@okouai/api-contracts/contracts/model-provider-gateways";
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -209,13 +209,13 @@ function mockBillingCapabilities(modelCapabilities: {
   readonly supportByok: boolean;
   readonly restrictedVm0Models: boolean;
 }): void {
-  context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+  context.mocks.api(billingStatusContract.get, ({ respond }) => {
     return respond(200, billingStatus("pro", modelCapabilities));
   });
 }
 
 function mockProCheckout(): void {
-  context.mocks.api(zeroBillingCheckoutContract.create, ({ body, respond }) => {
+  context.mocks.api(billingCheckoutContract.create, ({ body, respond }) => {
     return respond(200, {
       url: "https://checkout.stripe.com/test-upgrade?tier=" + body.tier,
     });
@@ -259,13 +259,13 @@ function mockGatewayConnectionLifecycle() {
   let deleteCount = 0;
 
   context.mocks.api(
-    zeroModelProviderConnectionsMainContract.list,
+    modelProviderConnectionsMainContract.list,
     ({ respond }) => {
       return respond(200, { connections });
     },
   );
   context.mocks.api(
-    zeroModelProviderConnectionsMainContract.create,
+    modelProviderConnectionsMainContract.create,
     ({ body, respond }) => {
       createSecret = body.secret;
       createSurfaces = body.surfaces;
@@ -275,7 +275,7 @@ function mockGatewayConnectionLifecycle() {
     },
   );
   context.mocks.api(
-    zeroModelProviderConnectionsByIdContract.update,
+    modelProviderConnectionsByIdContract.update,
     ({ body, respond }) => {
       updateCount += 1;
       updateSecret = body.secret;
@@ -285,7 +285,7 @@ function mockGatewayConnectionLifecycle() {
     },
   );
   context.mocks.api(
-    zeroModelProviderConnectionsByIdContract.delete,
+    modelProviderConnectionsByIdContract.delete,
     ({ respond }) => {
       deleteCount += 1;
       connections = [];
@@ -992,7 +992,7 @@ describe("organization model providers settings", () => {
 
   it("preserves limited-free restrictions with a legacy billing response", async () => {
     mockAdminOrg();
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, billingStatus("limited-free-1"));
     });
     context.mocks.data.orgModelProviders([]);

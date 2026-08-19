@@ -1,12 +1,12 @@
 import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
 import {
-  zeroAgentsMainContract,
-  zeroAgentsByIdContract,
-  zeroAgentInstructionsContract,
-  type ZeroAgentResponse,
-  type ZeroAgentRequest,
-  type ZeroAgentInstructionsResponse,
-} from "@okouai/api-contracts/contracts/zero-agents";
+  agentsMainContract,
+  agentsByIdContract,
+  agentInstructionsContract,
+  type AgentResponse,
+  type AgentRequest,
+  type AgentInstructionsResponse,
+} from "@okouai/api-contracts/contracts/agents";
 import {
   zeroUserPermissionGrantsContract,
   type UserPermissionGrantResponse,
@@ -21,27 +21,25 @@ import { getClientConfig, handleError } from "../core/client-factory";
 
 export type UserPermissionGrant = UserPermissionGrantResponse;
 
-export async function createAgent(
-  body: ZeroAgentRequest,
-): Promise<ZeroAgentResponse> {
+export async function createAgent(body: AgentRequest): Promise<AgentResponse> {
   const config = await getClientConfig();
-  const client = initClient(zeroAgentsMainContract, config);
+  const client = initClient(agentsMainContract, config);
   const result = await client.create({ body });
   if (result.status === 201) return result.body;
   handleError(result, "Failed to create agent");
 }
 
-export async function listAgents(): Promise<ZeroAgentResponse[]> {
+export async function listAgents(): Promise<AgentResponse[]> {
   const config = await getClientConfig();
-  const client = initClient(zeroAgentsMainContract, config);
+  const client = initClient(agentsMainContract, config);
   const result = await client.list({ headers: {} });
   if (result.status === 200) return result.body;
   handleError(result, "Failed to list agents");
 }
 
-export async function getAgent(id: string): Promise<ZeroAgentResponse> {
+export async function getAgent(id: string): Promise<AgentResponse> {
   const config = await getClientConfig();
-  const client = initClient(zeroAgentsByIdContract, config);
+  const client = initClient(agentsByIdContract, config);
   const result = await client.get({ params: { id } });
   if (result.status === 200) return result.body;
   handleError(result, `Agent "${id}" not found`);
@@ -49,10 +47,10 @@ export async function getAgent(id: string): Promise<ZeroAgentResponse> {
 
 export async function updateAgent(
   id: string,
-  body: ZeroAgentRequest,
-): Promise<ZeroAgentResponse> {
+  body: AgentRequest,
+): Promise<AgentResponse> {
   const config = await getClientConfig();
-  const client = initClient(zeroAgentsByIdContract, config);
+  const client = initClient(agentsByIdContract, config);
   const result = await client.update({ params: { id }, body });
   if (result.status === 200) return result.body;
   handleError(result, `Failed to update agent "${id}"`);
@@ -60,7 +58,7 @@ export async function updateAgent(
 
 export async function deleteAgent(id: string): Promise<void> {
   const config = await getClientConfig();
-  const client = initClient(zeroAgentsByIdContract, config);
+  const client = initClient(agentsByIdContract, config);
   const result = await client.delete({ params: { id } });
   if (result.status === 204) return;
   handleError(result, `Agent "${id}" not found`);
@@ -68,9 +66,9 @@ export async function deleteAgent(id: string): Promise<void> {
 
 export async function getAgentInstructions(
   id: string,
-): Promise<ZeroAgentInstructionsResponse> {
+): Promise<AgentInstructionsResponse> {
   const config = await getClientConfig();
-  const client = initClient(zeroAgentInstructionsContract, config);
+  const client = initClient(agentInstructionsContract, config);
   const result = await client.get({ params: { id } });
   if (result.status === 200) return result.body;
   handleError(result, `Failed to get instructions for agent "${id}"`);
@@ -118,7 +116,7 @@ export async function updateAgentInstructions(
   content: string,
 ): Promise<void> {
   const config = await getClientConfig();
-  const client = initClient(zeroAgentInstructionsContract, config);
+  const client = initClient(agentInstructionsContract, config);
   const result = await client.update({
     params: { id },
     body: { content },

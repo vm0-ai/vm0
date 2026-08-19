@@ -6,12 +6,7 @@ import type {
   UIEvent,
 } from "react";
 import { useGet, useSet } from "ccstate-react";
-import {
-  thumbStyle$,
-  setThumbStyle$,
-  setOverlayScrollMetrics$,
-  setOverlayScrollViewport$,
-} from "../../signals/zero-page/zero-sidebar-state.ts";
+import type { SidebarChatThreadScrollSignals } from "../../signals/chat-page/sidebar-chat-thread-scroll.ts";
 
 /** Overlay scroll area: hides native scrollbar, renders a custom thin indicator. */
 export function OverlayScrollArea({
@@ -20,7 +15,7 @@ export function OverlayScrollArea({
   children,
   onFocus,
   onPointerDownCapture,
-  onScroll,
+  scrollSignals,
   style,
   "data-testid": dataTestId,
   tabIndex,
@@ -30,34 +25,19 @@ export function OverlayScrollArea({
   children: ReactNode;
   onFocus?: FocusEventHandler<HTMLDivElement>;
   onPointerDownCapture?: PointerEventHandler<HTMLDivElement>;
-  onScroll?: (e: UIEvent<HTMLDivElement>) => void;
+  scrollSignals: SidebarChatThreadScrollSignals;
   style?: CSSProperties;
   "data-testid"?: string;
   tabIndex?: number;
 }) {
-  const thumbStyleValue = useGet(thumbStyle$);
-  const setThumbStyleFn = useSet(setThumbStyle$);
-  const setOverlayScrollMetricsFn = useSet(setOverlayScrollMetrics$);
-  const setViewportRef = useSet(setOverlayScrollViewport$);
+  const thumbStyleValue = useGet(scrollSignals.thumbStyle$);
+  const setScrollMetrics = useSet(scrollSignals.setScrollMetrics$);
+  const setViewportRef = useSet(scrollSignals.setScrollViewport$);
 
   const handleScroll = (e: UIEvent<HTMLDivElement>) => {
-    onScroll?.(e);
     const el = e.currentTarget;
     const { scrollTop, scrollHeight, clientHeight } = el;
-    setOverlayScrollMetricsFn({ scrollTop, scrollHeight, clientHeight });
-    if (scrollHeight <= clientHeight) {
-      setThumbStyleFn({
-        top: thumbStyleValue.top,
-        height: thumbStyleValue.height,
-        visible: false,
-      });
-      return;
-    }
-    const ratio = clientHeight / scrollHeight;
-    const thumbH = Math.max(ratio * clientHeight, 24);
-    const maxTop = clientHeight - thumbH;
-    const top = (scrollTop / (scrollHeight - clientHeight)) * maxTop;
-    setThumbStyleFn({ top, height: thumbH, visible: true });
+    setScrollMetrics({ scrollTop, scrollHeight, clientHeight });
   };
 
   return (

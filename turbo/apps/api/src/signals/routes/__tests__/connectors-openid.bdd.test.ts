@@ -14,14 +14,14 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { connectorsSlugCallbackRoutes } from "../connectors-slug-callback";
 import { connectorCatalogRoutes } from "../connector-catalog";
 import { connectorsRoutes } from "../connectors";
 import { steamPlayerRoutes } from "../steam-player";
 
 const context = testContext();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 const STEAM_ID = "76561198000000000";
 

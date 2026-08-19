@@ -19,7 +19,7 @@ import {
   seedOrgMembership$,
   type OrgMembershipFixture,
 } from "./helpers/org-membership";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { assertPublicConnectorCatalogHasNoPrivateFields } from "./helpers/connector-catalog-public-leak";
 import { createBddApi } from "./helpers/api-bdd";
 import {
@@ -31,7 +31,7 @@ import { connectorCatalogRoutes } from "../connector-catalog";
 import { featureSwitchesRoutes } from "../feature-switches";
 
 const context = testContext();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const bdd = createBddApi(context);
 const connectorsApi = createConnectorBddApi(context);
 const authDevice = createAuthDeviceApiActions(context);

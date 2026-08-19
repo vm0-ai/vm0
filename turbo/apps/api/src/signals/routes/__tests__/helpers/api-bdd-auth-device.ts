@@ -14,7 +14,7 @@ import {
   cliAuthTestTokenContract,
 } from "@okouai/api-contracts/contracts/cli-auth-test";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
-import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import {
   type DesktopAuthCallbackScheme,
   desktopAuthConsumeContract,
@@ -46,10 +46,10 @@ import { agentsRoutes } from "../../agents";
 import { billingStatusRoutes } from "../../billing-status";
 import { claudeCodeDeviceAuthRoutes } from "../../claude-code-device-auth";
 import { codexDeviceAuthRoutes } from "../../codex-device-auth";
-import { zeroModelProvidersRoutes } from "../../zero-model-providers";
+import { modelProvidersRoutes } from "../../model-providers";
 import { realtimeTokenRoutes } from "../../realtime-token";
 import type { ApiTestUser } from "./api-bdd";
-import { createZeroRouteMocks } from "./zero-route-test";
+import { createRouteMocks } from "./route-test";
 
 interface AuthHeaders {
   readonly authorization?: string;
@@ -82,7 +82,7 @@ const authDeviceRoutes: readonly RouteEntry[] = [
   ...billingStatusRoutes,
   ...claudeCodeDeviceAuthRoutes,
   ...codexDeviceAuthRoutes,
-  ...zeroModelProvidersRoutes,
+  ...modelProvidersRoutes,
   ...realtimeTokenRoutes,
 ];
 
@@ -409,7 +409,7 @@ export function mockClaudeCodeTokenEndpoint(
 }
 
 export function createAuthDeviceApiActions(context: TestContext) {
-  const routeMocks = createZeroRouteMocks(context);
+  const routeMocks = createRouteMocks(context);
 
   function authenticate(actor: ApiTestUser | null): AuthHeaders {
     if (!actor) {
@@ -582,7 +582,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
     },
 
     async readBillingStatus(actor: ApiTestUser) {
-      const client = authDeviceApp(context)(zeroBillingStatusContract);
+      const client = authDeviceApp(context)(billingStatusContract);
       const response = await accept(
         client.get({ headers: authenticate(actor) }),
         [200],

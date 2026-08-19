@@ -5,11 +5,11 @@ import {
   orgMembershipRequestsContract,
 } from "@okouai/api-contracts/contracts/org-member-routes";
 import {
-  zeroBillingStatusContract,
-  zeroBillingUsagePackCatalogContract,
-  zeroBillingUsagePackManagementContract,
+  billingStatusContract,
+  billingUsagePackCatalogContract,
+  billingUsagePackManagementContract,
   type BillingStatusResponse,
-} from "@okouai/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/billing";
 import { FeatureSwitchKey } from "@okouai/core";
 import { screen, waitFor, within } from "@testing-library/react";
 import { toast } from "@okouai/ui/components/ui/sonner";
@@ -272,49 +272,46 @@ function mockMemberInviteEntitlement(
     concurrencySubscriptions: [],
     ...overrides,
   };
-  context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+  context.mocks.api(billingStatusContract.get, ({ respond }) => {
     return respond(200, response);
   });
 }
 
 function mockUsagePackManagement(onRequest?: () => void): void {
-  context.mocks.api(
-    zeroBillingUsagePackManagementContract.get,
-    ({ respond }) => {
-      onRequest?.();
-      return respond(200, {
-        tier: "pro",
-        currentPeriodEnd: "2026-09-01T00:00:00.000Z",
-        allocations: [
-          {
-            id: "a99c2cd1-b012-4ba5-952f-3aa9b707d0c6",
-            memberId: "test-user-123",
-            usagePackUsd: 20,
-            currentPeriodEnd: "2026-09-01T00:00:00.000Z",
-            pendingChange: null,
-          },
-          {
-            id: "d0b55925-a0b3-4dd2-a433-f114bdf6cd2a",
-            memberId: "user-bob",
-            usagePackUsd: 50,
-            currentPeriodEnd: "2026-09-01T00:00:00.000Z",
-            pendingChange: null,
-          },
-          {
-            id: "4875750e-c7a1-4740-bafb-3466443955f4",
-            memberId: "user-eve",
-            usagePackUsd: 100,
-            currentPeriodEnd: "2026-09-01T00:00:00.000Z",
-            pendingChange: null,
-          },
-        ],
-      });
-    },
-  );
+  context.mocks.api(billingUsagePackManagementContract.get, ({ respond }) => {
+    onRequest?.();
+    return respond(200, {
+      tier: "pro",
+      currentPeriodEnd: "2026-09-01T00:00:00.000Z",
+      allocations: [
+        {
+          id: "a99c2cd1-b012-4ba5-952f-3aa9b707d0c6",
+          memberId: "test-user-123",
+          usagePackUsd: 20,
+          currentPeriodEnd: "2026-09-01T00:00:00.000Z",
+          pendingChange: null,
+        },
+        {
+          id: "d0b55925-a0b3-4dd2-a433-f114bdf6cd2a",
+          memberId: "user-bob",
+          usagePackUsd: 50,
+          currentPeriodEnd: "2026-09-01T00:00:00.000Z",
+          pendingChange: null,
+        },
+        {
+          id: "4875750e-c7a1-4740-bafb-3466443955f4",
+          memberId: "user-eve",
+          usagePackUsd: 100,
+          currentPeriodEnd: "2026-09-01T00:00:00.000Z",
+          pendingChange: null,
+        },
+      ],
+    });
+  });
 }
 
 function mockUsagePackCatalog(): void {
-  context.mocks.api(zeroBillingUsagePackCatalogContract.get, ({ respond }) => {
+  context.mocks.api(billingUsagePackCatalogContract.get, ({ respond }) => {
     return respond(200, {
       usagePacks: [
         {
@@ -547,30 +544,27 @@ describe("organization members settings", () => {
   it("shows a scheduled usage pack downgrade beside the current package", async () => {
     mockMembersStory();
     mockMemberInviteEntitlement(true);
-    context.mocks.api(
-      zeroBillingUsagePackManagementContract.get,
-      ({ respond }) => {
-        return respond(200, {
-          tier: "pro",
-          currentPeriodEnd: "2026-09-01T00:00:00.000Z",
-          allocations: [
-            {
-              id: "4875750e-c7a1-4740-bafb-3466443955f4",
-              memberId: "user-eve",
-              usagePackUsd: 100,
-              currentPeriodEnd: "2026-09-01T00:00:00.000Z",
-              pendingChange: {
-                id: "8044563e-ef31-4fb6-aa31-e7ecb2b1a5f6",
-                kind: "downgrade",
-                status: "scheduled",
-                targetUsagePackUsd: 50,
-                effectiveAt: "2026-09-01T00:00:00.000Z",
-              },
+    context.mocks.api(billingUsagePackManagementContract.get, ({ respond }) => {
+      return respond(200, {
+        tier: "pro",
+        currentPeriodEnd: "2026-09-01T00:00:00.000Z",
+        allocations: [
+          {
+            id: "4875750e-c7a1-4740-bafb-3466443955f4",
+            memberId: "user-eve",
+            usagePackUsd: 100,
+            currentPeriodEnd: "2026-09-01T00:00:00.000Z",
+            pendingChange: {
+              id: "8044563e-ef31-4fb6-aa31-e7ecb2b1a5f6",
+              kind: "downgrade",
+              status: "scheduled",
+              targetUsagePackUsd: 50,
+              effectiveAt: "2026-09-01T00:00:00.000Z",
             },
-          ],
-        });
-      },
-    );
+          },
+        ],
+      });
+    });
 
     detachedSetupPage({
       context,
@@ -715,17 +709,14 @@ describe("organization members settings", () => {
         effectiveDate: "2026-09-01T00:00:00.000Z",
       },
     });
-    context.mocks.api(
-      zeroBillingUsagePackManagementContract.get,
-      ({ respond }) => {
-        return respond(404, {
-          error: {
-            message: "Usage pack subscription not found",
-            code: "NOT_FOUND",
-          },
-        });
-      },
-    );
+    context.mocks.api(billingUsagePackManagementContract.get, ({ respond }) => {
+      return respond(404, {
+        error: {
+          message: "Usage pack subscription not found",
+          code: "NOT_FOUND",
+        },
+      });
+    });
     mockUsagePackCatalog();
 
     detachedSetupPage({
@@ -783,7 +774,7 @@ describe("organization members settings", () => {
       mockMemberInviteEntitlement(entitlement);
       let managementRequested = false;
       context.mocks.api(
-        zeroBillingUsagePackManagementContract.get,
+        billingUsagePackManagementContract.get,
         ({ respond }) => {
           managementRequested = true;
           return respond(200, {

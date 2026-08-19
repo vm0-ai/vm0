@@ -3,8 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { describe, expect, it, vi } from "vitest";
 import { voiceIoQuotaContract } from "@okouai/api-contracts/contracts/voice-io-quota";
-import { zeroComputerUseHostsContract } from "@okouai/api-contracts/contracts/zero-computer-use";
-import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { computerUseHostsContract } from "@okouai/api-contracts/contracts/computer-use";
+import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import { fill } from "../../../__tests__/page-helper.ts";
 import {
   mockChatLifecycle,
@@ -65,7 +65,7 @@ describe("chat lifecycle", () => {
         cloudBrowserEnabled: false,
       },
     ]);
-    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+    context.mocks.api(computerUseHostsContract.list, ({ respond }) => {
       return respond(200, {
         hosts: [
           {
@@ -151,7 +151,7 @@ describe("chat lifecycle", () => {
         cloudBrowserEnabled: false,
       },
     ]);
-    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+    context.mocks.api(computerUseHostsContract.list, ({ respond }) => {
       return respond(200, {
         hosts: [
           {
@@ -206,7 +206,7 @@ describe("chat lifecycle", () => {
   it("keeps Cloud browser out of the Your computer group", async () => {
     const user = userEvent.setup({ delay: null });
     mockChatLifecycle(context);
-    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+    context.mocks.api(computerUseHostsContract.list, ({ respond }) => {
       return respond(200, { hosts: [] });
     });
 
@@ -245,7 +245,7 @@ describe("chat lifecycle", () => {
         sentComputerUseHostId = body.computerUseHostId;
       },
     });
-    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+    context.mocks.api(computerUseHostsContract.list, ({ respond }) => {
       return respond(200, { hosts: [] });
     });
 
@@ -277,7 +277,7 @@ describe("chat lifecycle", () => {
         sentCloudBrowserEnabled = body.cloudBrowserEnabled;
       },
     });
-    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+    context.mocks.api(computerUseHostsContract.list, ({ respond }) => {
       return respond(200, { hosts: [] });
     });
 
@@ -316,7 +316,7 @@ describe("chat lifecycle", () => {
         sentComputerUseHostId = body.computerUseHostId;
       },
     });
-    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+    context.mocks.api(computerUseHostsContract.list, ({ respond }) => {
       return respond(200, {
         hosts: [
           {
@@ -385,7 +385,7 @@ describe("chat lifecycle", () => {
         computerUseHostId: "22222222-2222-4222-8222-222222222222",
       },
     ]);
-    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+    context.mocks.api(computerUseHostsContract.list, ({ respond }) => {
       return respond(200, {
         hosts: [
           {
@@ -464,7 +464,7 @@ describe("chat lifecycle", () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "e2000000-0000-4000-a000-000000000001";
     mockChatLifecycle(context, { threadId });
-    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+    context.mocks.api(computerUseHostsContract.list, ({ respond }) => {
       return respond(200, { hosts: [] });
     });
 
@@ -507,7 +507,7 @@ describe("chat lifecycle", () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "e2000000-0000-4000-a000-000000000005";
     mockChatLifecycle(context, { threadId });
-    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+    context.mocks.api(computerUseHostsContract.list, ({ respond }) => {
       return respond(200, { hosts: [] });
     });
 
@@ -544,7 +544,7 @@ describe("chat lifecycle", () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "e2000000-0000-4000-a000-000000000002";
     mockChatLifecycle(context, { threadId });
-    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+    context.mocks.api(computerUseHostsContract.list, ({ respond }) => {
       return respond(200, { hosts: [] });
     });
 
@@ -581,7 +581,7 @@ describe("chat lifecycle", () => {
         sentComputerUseHostId = body.computerUseHostId;
       },
     });
-    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+    context.mocks.api(computerUseHostsContract.list, ({ respond }) => {
       return respond(200, {
         hosts: [
           {
@@ -631,7 +631,7 @@ describe("chat lifecycle", () => {
     let hostOnline = true;
     let requestCount = 0;
     mockChatLifecycle(context, { threadId });
-    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+    context.mocks.api(computerUseHostsContract.list, ({ respond }) => {
       requestCount += 1;
       return respond(200, {
         hosts: [
@@ -707,7 +707,7 @@ describe("chat lifecycle", () => {
         updatedAt: "2026-03-10T00:00:00Z",
       },
     ]);
-    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+    context.mocks.api(computerUseHostsContract.list, ({ respond }) => {
       return respond(200, {
         hosts: [
           {
@@ -788,7 +788,7 @@ describe("chat lifecycle", () => {
         computerUseHostId: hostId,
       },
     ]);
-    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+    context.mocks.api(computerUseHostsContract.list, ({ respond }) => {
       return respond(200, {
         hosts: [
           {
@@ -855,7 +855,7 @@ describe("chat lifecycle", () => {
         computerUseHostId: hostId,
       },
     ]);
-    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+    context.mocks.api(computerUseHostsContract.list, ({ respond }) => {
       return respond(200, {
         hosts: [
           {
@@ -895,7 +895,7 @@ describe("chat lifecycle", () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "e2000000-0000-4000-a000-000000000005";
     mockChatLifecycle(context, { threadId });
-    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+    context.mocks.api(computerUseHostsContract.list, ({ respond }) => {
       return respond(403, {
         error: {
           code: "FORBIDDEN",
@@ -1557,7 +1557,7 @@ describe("chat lifecycle", () => {
     const toastError = vi.spyOn(toast, "error");
     const threadId = "e2000000-0000-4000-a000-000000000018";
     context.mocks.browser.voiceInput({ rms: 0.1 });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, billingStatus("pro"));
     });
     context.mocks.api(voiceIoQuotaContract.get, ({ respond }) => {
@@ -1591,7 +1591,7 @@ describe("chat lifecycle", () => {
       name: "Test Org",
       role: "member",
     });
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(200, billingStatus("pro"));
     });
     context.mocks.api(voiceIoQuotaContract.get, ({ respond }) => {
@@ -1622,7 +1622,7 @@ describe("chat lifecycle", () => {
           ? "e2000000-0000-4000-a000-000000000020"
           : "e2000000-0000-4000-a000-000000000021";
       context.mocks.browser.voiceInput({ rms: 0.1 });
-      context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      context.mocks.api(billingStatusContract.get, ({ respond }) => {
         return respond(200, billingStatus(tier));
       });
       context.mocks.api(voiceIoQuotaContract.get, ({ respond }) => {

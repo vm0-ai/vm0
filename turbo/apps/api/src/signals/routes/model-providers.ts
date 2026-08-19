@@ -198,7 +198,7 @@ const deleteModelProviderInner$ = command(
   },
 );
 
-export const zeroModelProvidersRoutes: readonly RouteEntry[] = [
+export const modelProvidersRoutes: readonly RouteEntry[] = [
   {
     route: modelProvidersMainContract.list,
     handler: authRoute(

@@ -1,15 +1,15 @@
 import { initClient } from "@okouai/api-contracts/contracts/trpc-contract";
 import {
-  zeroBillingStatusContract,
-  zeroBillingCreditCheckoutContract,
+  billingStatusContract,
+  billingCreditCheckoutContract,
   type BillingStatusResponse,
-} from "@okouai/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/billing";
 
 import { getClientConfig, handleError } from "../core/client-factory";
 
 export async function getBillingStatus(): Promise<BillingStatusResponse> {
   const config = await getClientConfig();
-  const client = initClient(zeroBillingStatusContract, config);
+  const client = initClient(billingStatusContract, config);
 
   const result = await client.get({ headers: {} });
   if (result.status === 200) {
@@ -29,7 +29,7 @@ export async function createCreditCheckout(body: {
   };
 }): Promise<{ readonly url: string }> {
   const config = await getClientConfig();
-  const client = initClient(zeroBillingCreditCheckoutContract, config);
+  const client = initClient(billingCreditCheckoutContract, config);
 
   const result = await client.create({ body });
   if (result.status === 200) {

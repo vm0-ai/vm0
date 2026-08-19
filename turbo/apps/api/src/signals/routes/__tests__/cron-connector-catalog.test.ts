@@ -19,10 +19,10 @@ import { connectorCheckContract } from "@okouai/api-contracts/contracts/connecto
 import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
 import { zeroUserPermissionGrantsContract } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
 import {
-  zeroWorkflowAutomationsContract,
-  zeroWorkflowsCollectionContract,
-  zeroWorkflowsDetailContract,
-} from "@okouai/api-contracts/contracts/zero-workflows";
+  workflowAutomationsContract,
+  workflowsCollectionContract,
+  workflowsDetailContract,
+} from "@okouai/api-contracts/contracts/workflows";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@okouai/core/storage-names";
 import { HttpResponse, http } from "msw";
@@ -61,7 +61,7 @@ import {
 } from "../../../test-fixtures/org-plan-entitlement";
 import { createUniqueStaffOrgIdFixture } from "../../../test-fixtures/staff-org";
 import { createDeferredPromise, settle } from "../../utils";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { assertPublicConnectorCatalogHasNoPrivateFields } from "./helpers/connector-catalog-public-leak";
 import { readConnectorCredentialStorageState } from "./helpers/connector-credential-storage-state";
 import { readUserSecrets } from "./helpers/user-config-state";
@@ -117,7 +117,7 @@ const TEST_APP_ROUTES = Object.freeze([
 ]);
 
 const context = testContext();
-const zeroMocks = createZeroRouteMocks(context);
+const zeroMocks = createRouteMocks(context);
 const bdd = createBddApi(context);
 const connectorsApi = createConnectorBddApi(context);
 const miscApi = createMiscRoutesApi(context);
@@ -4053,7 +4053,7 @@ describe("connector catalog valid lifecycle", () => {
     created.agentId = agent.agentId;
     const workflow = await accept(
       setupApp({ context, routes: workflowsRoutes })(
-        zeroWorkflowsCollectionContract,
+        workflowsCollectionContract,
       ).create({
         headers,
         body: {
@@ -4067,7 +4067,7 @@ describe("connector catalog valid lifecycle", () => {
     created.workflowId = workflow.body.id;
     await accept(
       setupApp({ context, routes: workflowAutomationsRoutes })(
-        zeroWorkflowAutomationsContract,
+        workflowAutomationsContract,
       ).create({
         headers,
         params: { workflowId: workflow.body.id },
@@ -4143,7 +4143,7 @@ describe("connector catalog valid lifecycle", () => {
     const callsBeforeReadiness = context.mocks.s3.send.mock.calls.length;
     const readiness = await accept(
       setupApp({ context, routes: workflowsRoutes })(
-        zeroWorkflowsDetailContract,
+        workflowsDetailContract,
       ).connectorReadiness({
         headers,
         params: { workflowId: workflow.body.id },
@@ -4253,7 +4253,7 @@ describe("connector catalog valid lifecycle", () => {
     const headers = { authorization: "Bearer clerk-session" };
     const workflow = await accept(
       setupApp({ context, routes: workflowsRoutes })(
-        zeroWorkflowsCollectionContract,
+        workflowsCollectionContract,
       ).create({
         headers,
         body: {
@@ -4304,7 +4304,7 @@ describe("connector catalog valid lifecycle", () => {
 
     const firstCreate = accept(
       setupApp({ context, routes: workflowAutomationsRoutes })(
-        zeroWorkflowAutomationsContract,
+        workflowAutomationsContract,
       ).create({
         headers,
         params: { workflowId: workflow.body.id },
@@ -4348,7 +4348,7 @@ describe("connector catalog valid lifecycle", () => {
 
     await accept(
       setupApp({ context, routes: workflowAutomationsRoutes })(
-        zeroWorkflowAutomationsContract,
+        workflowAutomationsContract,
       ).create({
         headers,
         params: { workflowId: workflow.body.id },

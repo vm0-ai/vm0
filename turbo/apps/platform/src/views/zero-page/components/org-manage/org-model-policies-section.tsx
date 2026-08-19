@@ -57,7 +57,7 @@ import {
   getModelProviderTypeForSurfaceProtocol,
   type ModelProviderConnectionResponse,
   type ModelProviderSurfaceProtocol,
-} from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
+} from "@okouai/api-contracts/contracts/model-provider-gateways";
 import {
   orgModelPolicies$,
   updateOrgModelPolicies$,

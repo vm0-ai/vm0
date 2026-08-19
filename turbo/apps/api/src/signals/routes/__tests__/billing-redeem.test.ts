@@ -1,18 +1,18 @@
 import { randomUUID } from "node:crypto";
 
 import StripeSDK from "stripe";
-import { zeroBillingRedeemContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingRedeemContract } from "@okouai/api-contracts/contracts/billing";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { postOneTimePurchaseCompleted } from "./helpers/stripe-billing-webhook";
 import { billingRedeemRoutes } from "../billing-redeem";
 
 const context = testContext();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 const CAMPAIGN = "ZERO100";
 const PRICE_ID = "price_test_campaign";
@@ -49,7 +49,7 @@ function postRedeem(options?: {
   readonly headers?: { readonly authorization?: string };
 }) {
   const client = setupApp({ context, routes: billingRedeemRoutes })(
-    zeroBillingRedeemContract,
+    billingRedeemContract,
   );
   return client.create({
     params: { campaign: options?.campaign ?? CAMPAIGN },

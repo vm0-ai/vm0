@@ -1,8 +1,8 @@
 import type {
-  ZeroWorkflowConnectorReadinessEntry,
-  ZeroWorkflowConnectorReadinessResponse,
-  ZeroWorkflowConnectorReadinessStatus,
-} from "@okouai/api-contracts/contracts/zero-workflows";
+  WorkflowConnectorReadinessEntry,
+  WorkflowConnectorReadinessResponse,
+  WorkflowConnectorReadinessStatus,
+} from "@okouai/api-contracts/contracts/workflows";
 import {
   connectorSlugSchema,
   type ConnectorSlug,
@@ -47,7 +47,7 @@ interface DetectWorkflowConnectorReadinessArgs {
 type DetectWorkflowConnectorReadinessResult =
   | {
       readonly ok: true;
-      readonly response: ZeroWorkflowConnectorReadinessResponse;
+      readonly response: WorkflowConnectorReadinessResponse;
     }
   | {
       readonly ok: false;
@@ -246,7 +246,7 @@ function readinessStatus(args: {
     | "scope-mismatch"
     | "reconnect-required";
   readonly enabledForAgent: boolean;
-}): ZeroWorkflowConnectorReadinessStatus {
+}): WorkflowConnectorReadinessStatus {
   if (args.connectionStatus !== "connected") {
     return args.connectionStatus;
   }
@@ -254,7 +254,7 @@ function readinessStatus(args: {
 }
 
 const READINESS_STATUS_ORDER: Readonly<
-  Record<ZeroWorkflowConnectorReadinessStatus, number>
+  Record<WorkflowConnectorReadinessStatus, number>
 > = {
   "reconnect-required": 0,
   "scope-mismatch": 1,
@@ -348,7 +348,7 @@ export const detectWorkflowConnectorReadiness$ = command(
     for (const dependency of automationDependencies.values()) {
       mergedDependencies.set(dependency.connectorSlug, dependency.reason);
     }
-    const connectors: ZeroWorkflowConnectorReadinessEntry[] = [];
+    const connectors: WorkflowConnectorReadinessEntry[] = [];
     for (const [connectorSlug, reason] of mergedDependencies) {
       const catalogEntry = statusBySlug.get(connectorSlug);
       if (!catalogEntry) {

@@ -26,7 +26,7 @@ import {
   activeUsagePackPlanPriceId,
   isUsagePackPlanPriceId,
   knownBillingPlanPriceItem,
-} from "./zero-billing-checkout.service";
+} from "./billing-checkout.service";
 import {
   BILLING_DOWNGRADE_PURPOSE,
   billingDefaultPaymentMethodStatus,

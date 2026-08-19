@@ -27,7 +27,7 @@ import {
   insertHostedSiteAsPreviousApi,
   insertLegacyArtifactCatalogFile,
 } from "./helpers/runtime-state";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -36,7 +36,7 @@ const chat = createChatFilesBddApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const host = createHostMapsBddApi(context);
 const webhooks = createWebhookCallbackApi(context);
-const routeMocks = createZeroRouteMocks(context);
+const routeMocks = createRouteMocks(context);
 const sharedThreadTestRoutes: readonly RouteEntry[] = [
   ...artifactCatalogRoutes,
   ...sharedThreadRoutes,

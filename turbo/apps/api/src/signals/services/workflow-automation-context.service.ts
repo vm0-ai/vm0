@@ -1,8 +1,9 @@
-import { zeroAutomationEventTypeSchema } from "@okouai/api-contracts/contracts/zero-workflows";
+import { automationEventTypeSchema } from "@okouai/api-contracts/contracts/workflows";
 import { z } from "zod";
 
-export const workflowAutomationEventTypeSchema =
-  zeroAutomationEventTypeSchema.or(z.enum(["schedule", "manual"]));
+export const workflowAutomationEventTypeSchema = automationEventTypeSchema.or(
+  z.enum(["schedule", "manual"]),
+);
 
 export type WorkflowAutomationEventType = z.infer<
   typeof workflowAutomationEventTypeSchema

@@ -36,7 +36,7 @@ import {
   setBrowserTabSnapshotAsPreviousApi,
   setComputerUseHostAsPreviousApi,
 } from "./helpers/runtime-state";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { testBrowserReconcileRoutes } from "../test-browser-reconcile";
 import { browserRoutes } from "../browser";
 import { browserAuthorizationRoutes } from "../browser-authorization";
@@ -230,7 +230,7 @@ async function setupBrowserScenario() {
   );
 
   const bdd = createBddApi(context);
-  const routeMocks = createZeroRouteMocks(context);
+  const routeMocks = createRouteMocks(context);
   const runs = createRunsApi(context);
   const chat = createChatFilesBddApi(context);
   const callbacks = createChatCallbacksApi(context);

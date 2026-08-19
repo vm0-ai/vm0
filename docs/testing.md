@@ -251,7 +251,7 @@ mocking only external services:
 ```typescript
 const context = testContext();
 const client = setupApp({ context, routes: agentsRoutes })(
-  zeroAgentsMainContract,
+  agentsMainContract,
 );
 
 it("should list an agent created through the API", async () => {

@@ -1,4 +1,4 @@
-import type { BillingStatusResponse } from "@okouai/api-contracts/contracts/zero-billing";
+import type { BillingStatusResponse } from "@okouai/api-contracts/contracts/billing";
 import { computed } from "ccstate";
 
 import {

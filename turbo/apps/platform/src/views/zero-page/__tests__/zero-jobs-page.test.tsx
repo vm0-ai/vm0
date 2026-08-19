@@ -9,14 +9,14 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
-  zeroAgentInstructionsContract,
-  zeroAgentsByIdContract,
-  zeroAgentsMainContract,
-} from "@okouai/api-contracts/contracts/zero-agents";
+  agentInstructionsContract,
+  agentsByIdContract,
+  agentsMainContract,
+} from "@okouai/api-contracts/contracts/agents";
 import {
   type TeamComposeItem,
-  zeroTeamContract,
-} from "@okouai/api-contracts/contracts/zero-team";
+  teamContract,
+} from "@okouai/api-contracts/contracts/team";
 
 const context = testContext();
 
@@ -36,7 +36,7 @@ function createDefaultAgent(): TeamComposeItem {
 
 function mockAgentsPage(team: TeamComposeItem[]): void {
   context.mocks.data.team(team);
-  context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
+  context.mocks.api(agentsByIdContract.get, ({ params, respond }) => {
     const agent = team.find((item) => {
       return item.id === params.id;
     });
@@ -144,7 +144,7 @@ function mockAgentDetailStory(): string {
     },
   ]);
   context.mocks.data.userPreferences({ timezone: "UTC" });
-  context.mocks.api(zeroAgentInstructionsContract.get, ({ respond }) => {
+  context.mocks.api(agentInstructionsContract.get, ({ respond }) => {
     return respond(200, {
       content: "Summarize risks with concise bullets.",
       filename: "AGENTS.md",
@@ -210,10 +210,10 @@ describe("zero jobs page", () => {
   it("creates public and private agents, customizes avatars, supports Enter submit, cancel, and card navigation", async () => {
     let team: TeamComposeItem[] = [createDefaultAgent()];
     mockAgentsPage(team);
-    context.mocks.api(zeroTeamContract.list, ({ respond }) => {
+    context.mocks.api(teamContract.list, ({ respond }) => {
       return respond(200, team);
     });
-    context.mocks.api(zeroAgentsMainContract.create, ({ body, respond }) => {
+    context.mocks.api(agentsMainContract.create, ({ body, respond }) => {
       const agent: TeamComposeItem = {
         id:
           body.visibility === "private"
@@ -243,7 +243,7 @@ describe("zero jobs page", () => {
       });
     });
     context.mocks.api(
-      zeroAgentInstructionsContract.update,
+      agentInstructionsContract.update,
       ({ params, respond }) => {
         const agent = team.find((item) => {
           return item.id === params.id;
@@ -401,10 +401,10 @@ describe("zero jobs page", () => {
       locale: "pt-BR",
       supportedLocales: ["en-US", "pt-BR"],
     });
-    context.mocks.api(zeroTeamContract.list, ({ respond }) => {
+    context.mocks.api(teamContract.list, ({ respond }) => {
       return respond(200, team);
     });
-    context.mocks.api(zeroAgentsMainContract.create, ({ body, respond }) => {
+    context.mocks.api(agentsMainContract.create, ({ body, respond }) => {
       const agent: TeamComposeItem = {
         id: "a0000000-0000-4000-a000-000000000402",
         ownerId: "test-user-123",
@@ -431,7 +431,7 @@ describe("zero jobs page", () => {
       });
     });
     context.mocks.api(
-      zeroAgentInstructionsContract.update,
+      agentInstructionsContract.update,
       ({ params, respond }) => {
         const agent = team.find((item) => {
           return item.id === params.id;
@@ -450,7 +450,7 @@ describe("zero jobs page", () => {
         });
       },
     );
-    context.mocks.api(zeroAgentInstructionsContract.get, ({ respond }) => {
+    context.mocks.api(agentInstructionsContract.get, ({ respond }) => {
       return respond(200, {
         content: "Summarize risks with concise bullets.",
         filename: "AGENTS.md",

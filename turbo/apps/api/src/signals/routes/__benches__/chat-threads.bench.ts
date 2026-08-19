@@ -24,7 +24,7 @@ import {
   chatThreadByIdContract,
   type UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import { zeroConnectorsMainContract } from "@okouai/api-contracts/contracts/zero-connectors";
 import { orgContract } from "@okouai/api-contracts/contracts/org-routes";
 import { zeroPersonalModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-personal-model-providers";
@@ -53,7 +53,7 @@ import { currentConnectorCatalogValidatorIdentity } from "../../services/connect
 import { normalizeRunMetadata } from "../../services/agent-run-metadata-write.service";
 import { seedUserModelProvider$ } from "./helpers/model-providers";
 import { seedOrgMembership$ } from "../__tests__/helpers/org-membership";
-import { createZeroRouteMocks } from "../__tests__/helpers/zero-route-test";
+import { createRouteMocks } from "../__tests__/helpers/route-test";
 import { billingStatusRoutes } from "../billing-status";
 import { chatThreadRoutes } from "../chat-threads";
 import { connectorsRoutes } from "../connectors";
@@ -84,7 +84,7 @@ const zeroPersonalModelProvidersMainTestRoutes = Object.freeze([
 
 const context = testContext();
 const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 const TARGET_RUN_COUNT = 200;
 const TARGET_MESSAGES_PER_RUN = 3;
@@ -113,7 +113,7 @@ const userPreferencesClient = setupApp({
 const billingStatusClient = setupApp({
   context,
   routes: billingStatusRoutes,
-})(zeroBillingStatusContract);
+})(billingStatusContract);
 const orgClient = setupApp({ context, routes: orgReadRoutes })(orgContract);
 const personalModelProvidersClient = setupApp({
   context,

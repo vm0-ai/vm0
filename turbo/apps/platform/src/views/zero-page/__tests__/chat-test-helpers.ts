@@ -21,7 +21,7 @@ import {
   runsCancelContract,
   runsByIdContract,
 } from "@okouai/api-contracts/contracts/run-routes";
-import { zeroComputerUseHostsContract } from "@okouai/api-contracts/contracts/zero-computer-use";
+import { computerUseHostsContract } from "@okouai/api-contracts/contracts/computer-use";
 import { queuePositionContract } from "@okouai/api-contracts/contracts/queue-position";
 import type { RunStatus } from "@okouai/api-contracts/contracts/runs";
 import {
@@ -858,7 +858,7 @@ export function mockChatLifecycle(
   context.mocks.api(queuePositionContract.getPosition, ({ respond }) => {
     return respond(200, { position: queuePosition, total: 0 });
   });
-  context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+  context.mocks.api(computerUseHostsContract.list, ({ respond }) => {
     return respond(200, { hosts: [] });
   });
 

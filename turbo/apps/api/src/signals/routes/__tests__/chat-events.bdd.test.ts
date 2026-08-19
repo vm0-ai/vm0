@@ -44,9 +44,9 @@ import {
 } from "@okouai/api-contracts/contracts/model-providers";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
-  zeroModelProviderConnectionsByIdContract,
-  zeroModelProviderConnectionsMainContract,
-} from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
+  modelProviderConnectionsByIdContract,
+  modelProviderConnectionsMainContract,
+} from "@okouai/api-contracts/contracts/model-provider-gateways";
 import { modelProvidersMainContract } from "@okouai/api-contracts/contracts/model-provider-routes";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { z } from "zod";
@@ -112,7 +112,7 @@ import {
   seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
   setRunAutonomyBudgetFixture,
 } from "./helpers/runtime-state";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { overwriteModelProviderSecretForTests } from "./helpers/model-provider-state";
 import { flushWaitUntilForTest } from "../../context/wait-until";
@@ -146,14 +146,14 @@ import { chatEventsRoutes } from "../chat-events";
 import { chatThreadRoutes } from "../chat-threads";
 import { mailRoutes } from "../mail";
 import { modelProviderGatewayRoutes } from "../model-provider-gateways";
-import { zeroModelProvidersRoutes } from "../zero-model-providers";
+import { modelProvidersRoutes } from "../model-providers";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...chatEventsRoutes,
   ...chatThreadRoutes,
   ...mailRoutes,
   ...modelProviderGatewayRoutes,
-  ...zeroModelProvidersRoutes,
+  ...modelProvidersRoutes,
 ]);
 
 /**
@@ -179,7 +179,7 @@ const cu = createComputerUseBddApi(context);
 const misc = createMiscRoutesApi(context);
 const authDevice = createAuthDeviceApiActions(context);
 const authDeviceSupport = createAuthDeviceSupportApi(context);
-const routeMocks = createZeroRouteMocks(context);
+const routeMocks = createRouteMocks(context);
 const runStateStore = createStore();
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "okou web upload-file -f <path>";
@@ -1009,20 +1009,20 @@ function modelProviderSecretPlaceholder(
 }
 
 function modelProvidersClient() {
-  return setupApp({ context, routes: zeroModelProvidersRoutes })(
+  return setupApp({ context, routes: modelProvidersRoutes })(
     modelProvidersMainContract,
   );
 }
 
 function modelProviderConnectionsClient() {
   return setupApp({ context, routes: modelProviderGatewayRoutes })(
-    zeroModelProviderConnectionsMainContract,
+    modelProviderConnectionsMainContract,
   );
 }
 
 function modelProviderConnectionsByIdClient() {
   return setupApp({ context, routes: modelProviderGatewayRoutes })(
-    zeroModelProviderConnectionsByIdContract,
+    modelProviderConnectionsByIdContract,
   );
 }
 
@@ -4844,18 +4844,18 @@ describe("CHAT-02: model-first provider policies", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   }, 90_000);
 
-  it("routes vm0 DeepSeek through OpenRouter Pi bindings", async () => {
+  it("routes vm0 DeepSeek through native Pi bindings", async () => {
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const keyFixtureId = randomUUID();
     const requestedApiKey = `vm0-key-bdd-dev-seed-${keyFixtureId}`;
 
-    // Keep a second OpenRouter fixture owner alive to cover vendor-unique row
+    // Keep a second DeepSeek fixture owner alive to cover vendor-unique row
     // arbitration instead of relying on another test file's scheduling.
     await seedVm0ManagedModelKey("deepseek-v4-flash");
     const selectedApiKey = await acquireBddVm0ApiKey({
       fixtureId: keyFixtureId,
-      vendor: "openrouter",
+      vendor: "deepseek",
       apiKey: requestedApiKey,
     });
 
@@ -4865,11 +4865,11 @@ describe("CHAT-02: model-first provider policies", () => {
         await api.requestCancelRun(actor, runId, [200]);
       }
     };
-    const releaseVm0OpenRouterKey = async () => {
+    const releaseVm0DeepSeekKey = async () => {
       await releaseBddVm0ApiKey({ fixtureId: keyFixtureId });
     };
     const cleanupRunAndKeys = async () => {
-      await Promise.all([releaseVm0OpenRouterKey(), cancelRunIfCreated()]);
+      await Promise.all([releaseVm0DeepSeekKey(), cancelRunIfCreated()]);
     };
 
     await (async () => {
@@ -4905,39 +4905,34 @@ describe("CHAT-02: model-first provider policies", () => {
       const environment = claimEnvironment(claim);
       expect(claim.cliAgentType).toBe("pi");
       expect(environment.OPENAI_API_KEY).toBe(
-        modelProviderSecretPlaceholder(
-          "openrouter-codex",
-          "OPENROUTER_API_KEY",
-        ),
+        modelProviderSecretPlaceholder("deepseek", "DEEPSEEK_API_KEY"),
       );
-      expect(environment.OPENAI_BASE_URL).toBe("https://openrouter.ai/api/v1");
-      expect(environment.OPENAI_MODEL).toBe("deepseek/deepseek-v4-flash");
+      expect(environment.OPENAI_BASE_URL).toBe("https://api.deepseek.com/");
+      expect(environment.OPENAI_MODEL).toBe("deepseek-v4-flash");
       expect(claim.firewalls).toContainEqual(
         expect.objectContaining({
           kind: "builtin",
-          name: "model-provider:openrouter-codex",
+          name: "model-provider:deepseek",
         }),
       );
-      expect(claim.billableFirewalls).toContain(
-        "model-provider:openrouter-codex",
-      );
+      expect(claim.billableFirewalls).toContain("model-provider:deepseek");
       expect(claim.piModelConfig).toStrictEqual({
-        provider: "openrouter",
-        baseUrl: "https://openrouter.ai/api/v1",
-        model: "deepseek/deepseek-v4-flash",
+        provider: "deepseek",
+        baseUrl: "https://api.deepseek.com/",
+        model: "deepseek-v4-flash",
         apiKeyEnv: "OPENAI_API_KEY",
       });
       expect(claim.modelUsageProvider).toBe("deepseek-v4-flash");
 
       if (!claim.encryptedSecrets) {
-        throw new Error("Expected OpenRouter claim to carry encrypted secrets");
+        throw new Error("Expected DeepSeek claim to carry encrypted secrets");
       }
       const resolved = await fw.requestFirewallAuth(
         sandboxHeaders,
         {
           encryptedSecrets: claim.encryptedSecrets,
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("OPENROUTER_API_KEY")}`,
+            Authorization: `Bearer ${secretTemplate("DEEPSEEK_API_KEY")}`,
           },
           secretConnectorMap: claim.secretConnectorMap ?? undefined,
           secretConnectorMetadataMap:
@@ -4946,14 +4941,12 @@ describe("CHAT-02: model-first provider policies", () => {
         [200],
       );
       if (resolved.status !== 200) {
-        throw new Error("Expected OpenRouter firewall auth to resolve");
+        throw new Error("Expected DeepSeek firewall auth to resolve");
       }
       expect(resolved.body.headers.Authorization).toBe(
         `Bearer ${selectedApiKey}`,
       );
-      expect(resolved.body.resolvedSecrets).toStrictEqual([
-        "OPENROUTER_API_KEY",
-      ]);
+      expect(resolved.body.resolvedSecrets).toStrictEqual(["DEEPSEEK_API_KEY"]);
     })().then(cleanupRunAndKeys, async (error: unknown) => {
       await cleanupRunAndKeys();
       throw error;

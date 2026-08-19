@@ -1,5 +1,5 @@
 import type { Computed } from "ccstate";
-import type { ZeroAgentResponse } from "@okouai/api-contracts/contracts/zero-agents";
+import type { AgentResponse } from "@okouai/api-contracts/contracts/agents";
 import type {
   PlatformConnectorPermissionMetadata,
   PlatformUserPermissionGrant,
@@ -23,7 +23,7 @@ import {
  */
 export interface PermissionSignals extends PermissionActionDescriptor {
   readonly href: string;
-  readonly agent$: Computed<Promise<ZeroAgentResponse>>;
+  readonly agent$: Computed<Promise<AgentResponse>>;
   readonly grants$: Computed<Promise<readonly PlatformUserPermissionGrant[]>>;
   readonly metadata$: Computed<
     Promise<PlatformConnectorPermissionMetadata | null>

@@ -9,12 +9,12 @@ import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { presentationTemplatesRoutes } from "../presentation-templates";
 
 const context = testContext();
 const bdd = createBddApi(context);
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 function webHeaders() {
   return { authorization: "Bearer clerk-session" };

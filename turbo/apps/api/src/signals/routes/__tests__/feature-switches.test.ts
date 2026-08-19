@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { featureSwitchesRoutes } from "../feature-switches";
 
 const context = testContext();
@@ -17,7 +17,7 @@ function client() {
 
 describe("/api/zero/feature-switches", () => {
   it("persists and activates a user override for a non-staff org", async () => {
-    createZeroRouteMocks(context).clerk.session(
+    createRouteMocks(context).clerk.session(
       "user_nonstaff_feature_switch_test",
       "org_nonstaff_feature_switch_test",
       "org:member",

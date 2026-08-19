@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { zeroAgentsByIdContract } from "@okouai/api-contracts/contracts/zero-agents";
+import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
 import { zeroClient$ } from "../../api-client.ts";
 import { accept } from "../../../lib/accept.ts";
 import type { AgentDetail } from "../agent-types.ts";
@@ -24,7 +24,7 @@ export const agentDetail$ = computed(
     if (!name) {
       return null;
     }
-    const client = get(zeroClient$)(zeroAgentsByIdContract);
+    const client = get(zeroClient$)(agentsByIdContract);
     const result = await accept(client.get({ params: { id: name } }), [200]);
     return result.body;
   },

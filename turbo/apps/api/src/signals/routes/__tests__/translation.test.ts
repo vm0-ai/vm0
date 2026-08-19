@@ -21,12 +21,12 @@ import {
 } from "../../../test-fixtures/system-config-seeds";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { translationRoutes } from "../translation";
 import { usageRecordRoutes } from "../usage-record";
 
 const context = testContext();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const TRANSLATION_MODEL = "qwen/qwen-2.5-7b-instruct";
 const STARTING_CREDITS = 1000;

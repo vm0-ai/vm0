@@ -19,7 +19,7 @@ import {
   expectApiError,
   type ApiTestUser,
 } from "./helpers/api-bdd";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { buildInfoRoutes } from "../build-info";
 import { healthRoutes } from "../health";
 import { featureSwitchesRoutes } from "../feature-switches";
@@ -33,7 +33,7 @@ builders for Stripe, Clerk, GitHub, storage, checkpoints, and generation runs.
 
 const context = testContext();
 const api = createBddApi(context);
-const routeMocks = createZeroRouteMocks(context);
+const routeMocks = createRouteMocks(context);
 
 function healthClient() {
   return setupApp({ context, routes: healthRoutes })(healthContract);
