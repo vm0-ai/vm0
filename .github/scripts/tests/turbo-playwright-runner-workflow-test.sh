@@ -99,6 +99,9 @@ expected_playwright_group =
 unless playwright.dig("concurrency", "group") == expected_playwright_group
   raise "each Playwright project must keep an independent concurrency group"
 end
+unless playwright.dig("concurrency", "cancel-in-progress") == true
+  raise "superseding runs must cancel only their matching Playwright project"
+end
 playwright_run = playwright.fetch("steps").find do |step|
   step["name"] == "Run Playwright E2E tests"
 end
