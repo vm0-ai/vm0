@@ -1209,109 +1209,118 @@ def run_codex_app_server(codex_home, prompt, resume_id=None):
             "no_proxy": "127.0.0.1,localhost",
         }
     )
-    process = subprocess.Popen(
-        [
-            current_codex,
-            "app-server",
-            "--listen",
-            "stdio://",
-        ],
-        cwd="/home/user/workspace",
-        env=env,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    messages = []
-    send_app_server_message(
-        process,
-        {
-            "id": 1,
-            "method": "initialize",
-            "params": {
-                "clientInfo": {
-                    "name": "vm0-runner-compatibility-probe",
-                    "title": None,
-                    "version": "0",
+    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as stderr_file:
+        process = subprocess.Popen(
+            [
+                current_codex,
+                "app-server",
+                "--listen",
+                "stdio://",
+            ],
+            cwd="/home/user/workspace",
+            env=env,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=stderr_file,
+            text=True,
+        )
+        try:
+            messages = []
+            send_app_server_message(
+                process,
+                {
+                    "id": 1,
+                    "method": "initialize",
+                    "params": {
+                        "clientInfo": {
+                            "name": "vm0-runner-compatibility-probe",
+                            "title": None,
+                            "version": "0",
+                        },
+                        "capabilities": {
+                            "experimentalApi": True,
+                            "requestAttestation": False,
+                        },
+                    },
                 },
-                "capabilities": {
-                    "experimentalApi": True,
-                    "requestAttestation": False,
-                },
-            },
-        },
-    )
-    wait_for_app_server_response(process, 1, messages)
-    send_app_server_message(process, {"method": "initialized"})
+            )
+            wait_for_app_server_response(process, 1, messages)
+            send_app_server_message(process, {"method": "initialized"})
 
-    thread_params = {
-        "cwd": "/home/user/workspace",
-        "approvalPolicy": "never",
-        "approvalsReviewer": "user",
-        "sandbox": "danger-full-access",
-        "config": {"features.memories": True},
-        "model": "gpt-5.1-codex-mini",
-        "modelProvider": "mock",
-    }
-    thread_method = "thread/start"
-    if resume_id is not None:
-        thread_method = "thread/resume"
-        thread_params["threadId"] = resume_id
-    send_app_server_message(
-        process,
-        {"id": 2, "method": thread_method, "params": thread_params},
-    )
-    thread_result = wait_for_app_server_response(process, 2, messages)
-    thread = thread_result["thread"]
-    thread_id = thread["id"]
-    assert thread["historyMode"] == "legacy", thread
-
-    send_app_server_message(
-        process,
-        {
-            "id": 3,
-            "method": "turn/start",
-            "params": {
-                "threadId": thread_id,
-                "input": [
-                    {
-                        "type": "text",
-                        "text": prompt,
-                        "text_elements": [],
-                    }
-                ],
+            thread_params = {
                 "cwd": "/home/user/workspace",
                 "approvalPolicy": "never",
                 "approvalsReviewer": "user",
-                "sandboxPolicy": {"type": "dangerFullAccess"},
+                "sandbox": "danger-full-access",
+                "config": {"features.memories": True},
                 "model": "gpt-5.1-codex-mini",
-            },
-        },
-    )
-    turn_result = wait_for_app_server_response(process, 3, messages)
-    turn_id = turn_result["turn"]["id"]
-    while True:
-        message = read_app_server_message(process)
-        messages.append(message)
-        if (
-            message.get("method") == "turn/completed"
-            and message.get("params", {}).get("threadId") == thread_id
-            and message.get("params", {}).get("turn", {}).get("id")
-            == turn_id
-        ):
-            break
+                "modelProvider": "mock",
+            }
+            thread_method = "thread/start"
+            if resume_id is not None:
+                thread_method = "thread/resume"
+                thread_params["threadId"] = resume_id
+            send_app_server_message(
+                process,
+                {"id": 2, "method": thread_method, "params": thread_params},
+            )
+            thread_result = wait_for_app_server_response(process, 2, messages)
+            thread = thread_result["thread"]
+            thread_id = thread["id"]
+            assert thread["historyMode"] == "legacy", thread
 
-    process.stdin.close()
-    return_code = process.wait(timeout=10)
-    stderr = process.stderr.read()
-    assert return_code == 0, stderr
-    return {
-        "thread_id": thread_id,
-        "turn_id": turn_id,
-        "messages": messages,
-        "stderr": stderr,
-    }
+            send_app_server_message(
+                process,
+                {
+                    "id": 3,
+                    "method": "turn/start",
+                    "params": {
+                        "threadId": thread_id,
+                        "input": [
+                            {
+                                "type": "text",
+                                "text": prompt,
+                                "text_elements": [],
+                            }
+                        ],
+                        "cwd": "/home/user/workspace",
+                        "approvalPolicy": "never",
+                        "approvalsReviewer": "user",
+                        "sandboxPolicy": {"type": "dangerFullAccess"},
+                        "model": "gpt-5.1-codex-mini",
+                    },
+                },
+            )
+            turn_result = wait_for_app_server_response(process, 3, messages)
+            turn_id = turn_result["turn"]["id"]
+            while True:
+                message = read_app_server_message(process)
+                messages.append(message)
+                if (
+                    message.get("method") == "turn/completed"
+                    and message.get("params", {}).get("threadId") == thread_id
+                    and message.get("params", {}).get("turn", {}).get("id")
+                    == turn_id
+                ):
+                    break
+
+            process.stdin.close()
+            return_code = process.wait(timeout=10)
+            stderr_file.seek(0)
+            stderr = stderr_file.read()
+            assert return_code == 0, stderr
+            return {
+                "thread_id": thread_id,
+                "turn_id": turn_id,
+                "messages": messages,
+                "stderr": stderr,
+            }
+        finally:
+            if process.poll() is None:
+                process.kill()
+            process.wait()
+            process.stdin.close()
+            process.stdout.close()
 
 
 def app_server_output(result):
