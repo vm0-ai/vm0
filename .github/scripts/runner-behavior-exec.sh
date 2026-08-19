@@ -1129,6 +1129,26 @@ seed_token = "CODEX-COMPACT-SEED-TOKEN"
 compacting_turn_token = "CODEX-COMPACTING-TURN-TOKEN"
 candidate_turn_token = "CODEX-COMPACT-CANDIDATE-TURN-TOKEN"
 append_token = "CODEX-COMPACT-APPEND-TOKEN"
+# [sync:codex-app-server-compatibility-params] Keep in sync with initialize in
+# codex_app_server.rs, thread/turn params in codex_app_server_backend.rs, and
+# IGNORED_NOTIFICATION_METHODS in codex_app_server_events.rs.
+opt_out_notification_methods = [
+    "command/exec/outputDelta",
+    "process/outputDelta",
+    "process/exited",
+    "item/agentMessage/delta",
+    "item/plan/delta",
+    "item/commandExecution/outputDelta",
+    "item/commandExecution/terminalInteraction",
+    "item/fileChange/outputDelta",
+    "item/fileChange/patchUpdated",
+    "item/mcpToolCall/progress",
+    "item/reasoning/summaryTextDelta",
+    "item/reasoning/summaryPartAdded",
+    "item/reasoning/textDelta",
+    "thread/realtime/transcript/delta",
+    "thread/realtime/outputAudio/delta",
+]
 requests = []
 current_codex = shutil.which("codex")
 assert current_codex is not None, "bundled Codex is not on PATH"
@@ -1177,7 +1197,28 @@ stream_max_retries = 0
     )
 
 
-def run_codex(codex_home, *args):
+def send_app_server_message(process, message):
+    process.stdin.write(json.dumps(message) + "\n")
+    process.stdin.flush()
+
+
+def read_app_server_message(process):
+    line = process.stdout.readline()
+    assert line, "Codex app-server closed stdout before completing the turn"
+    return json.loads(line)
+
+
+def wait_for_app_server_response(process, response_id, messages):
+    while True:
+        message = read_app_server_message(process)
+        messages.append(message)
+        if message.get("id") != response_id:
+            continue
+        assert "error" not in message, message
+        return message["result"]
+
+
+def run_codex_app_server(codex_home, prompt, resume_id=None):
     env = os.environ.copy()
     env.update(
         {
@@ -1188,21 +1229,127 @@ def run_codex(codex_home, *args):
             "no_proxy": "127.0.0.1,localhost",
         }
     )
-    return subprocess.run(
-        [
-            current_codex,
-            "exec",
-            *args,
-            "--skip-git-repo-check",
-            "--json",
-        ],
-        cwd="/home/user/workspace",
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=30,
-        check=False,
-    )
+    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as stderr_file:
+        process = subprocess.Popen(
+            [
+                current_codex,
+                "app-server",
+                "--listen",
+                "stdio://",
+            ],
+            cwd="/home/user/workspace",
+            env=env,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=stderr_file,
+            text=True,
+        )
+        try:
+            messages = []
+            send_app_server_message(
+                process,
+                {
+                    "id": 1,
+                    "method": "initialize",
+                    "params": {
+                        "clientInfo": {
+                            "name": "vm0-guest-agent",
+                            "title": None,
+                            "version": "0",
+                        },
+                        "capabilities": {
+                            "experimentalApi": True,
+                            "requestAttestation": False,
+                            "optOutNotificationMethods": (
+                                opt_out_notification_methods
+                            ),
+                        },
+                    },
+                },
+            )
+            wait_for_app_server_response(process, 1, messages)
+            send_app_server_message(
+                process,
+                {"method": "initialized", "params": None},
+            )
+
+            thread_params = {
+                "cwd": "/home/user/workspace",
+                "approvalPolicy": "never",
+                "approvalsReviewer": "user",
+                "sandbox": "danger-full-access",
+                "config": {"features.memories": True},
+                "model": "gpt-5.1-codex-mini",
+                "modelProvider": "mock",
+            }
+            thread_method = "thread/start"
+            if resume_id is not None:
+                thread_method = "thread/resume"
+                thread_params["threadId"] = resume_id
+            send_app_server_message(
+                process,
+                {"id": 2, "method": thread_method, "params": thread_params},
+            )
+            thread_result = wait_for_app_server_response(process, 2, messages)
+            thread = thread_result["thread"]
+            thread_id = thread["id"]
+            assert thread["historyMode"] == "legacy", thread
+
+            send_app_server_message(
+                process,
+                {
+                    "id": 3,
+                    "method": "turn/start",
+                    "params": {
+                        "threadId": thread_id,
+                        "input": [
+                            {
+                                "type": "text",
+                                "text": prompt,
+                                "text_elements": [],
+                            }
+                        ],
+                        "cwd": "/home/user/workspace",
+                        "approvalPolicy": "never",
+                        "approvalsReviewer": "user",
+                        "sandboxPolicy": {"type": "dangerFullAccess"},
+                        "model": "gpt-5.1-codex-mini",
+                    },
+                },
+            )
+            turn_result = wait_for_app_server_response(process, 3, messages)
+            turn_id = turn_result["turn"]["id"]
+            while True:
+                message = read_app_server_message(process)
+                messages.append(message)
+                if (
+                    message.get("method") == "turn/completed"
+                    and message.get("params", {}).get("threadId") == thread_id
+                    and message.get("params", {}).get("turn", {}).get("id")
+                    == turn_id
+                ):
+                    break
+
+            process.stdin.close()
+            return_code = process.wait(timeout=10)
+            stderr_file.seek(0)
+            stderr = stderr_file.read()
+            assert return_code == 0, stderr
+            return {
+                "thread_id": thread_id,
+                "messages": messages,
+                "stderr": stderr,
+            }
+        finally:
+            if process.poll() is None:
+                process.kill()
+            process.wait()
+            process.stdin.close()
+            process.stdout.close()
+
+
+def app_server_output(result):
+    return json.dumps(result["messages"]) + "\n" + result["stderr"]
 
 
 def zstd_compress(history_bytes):
@@ -1272,13 +1419,12 @@ def resume_history(
     original_size = history_file.stat().st_size
 
     requests.clear()
-    resumed = run_codex(
+    resumed = run_codex_app_server(
         codex_home,
-        "resume",
-        session_id,
         append_token,
+        session_id,
     )
-    output = resumed.stdout + resumed.stderr
+    output = app_server_output(resumed)
     assert (
         f"no rollout found for thread id {session_id}" not in output.lower()
     ), output
@@ -1325,17 +1471,7 @@ def probe_current_codex(
         "Codex did not reconstruct compact replacement history"
     )
 
-    started = [
-        json.loads(line)
-        for line in resumed.stdout.splitlines()
-        if line.startswith("{")
-    ]
-    thread_started = [
-        event
-        for event in started
-        if event.get("type") == "thread.started"
-    ]
-    assert thread_started and thread_started[0].get("thread_id") == session_id, (
+    assert resumed["thread_id"] == session_id, (
         "Codex changed the resumed thread ID"
     )
 
@@ -1384,13 +1520,12 @@ def probe_zstd_materialization(
     compressed_history_file.write_bytes(zstd_compress(candidate_bytes))
 
     requests.clear()
-    resumed = run_codex(
+    resumed = run_codex_app_server(
         codex_home,
-        "resume",
-        session_id,
         append_token,
+        session_id,
     )
-    output = resumed.stdout + resumed.stderr
+    output = app_server_output(resumed)
     assert (
         f"no rollout found for thread id {session_id}" not in output.lower()
     ), output
@@ -1411,17 +1546,7 @@ def probe_zstd_materialization(
         "Codex did not append to the materialized rollout"
     )
 
-    started = [
-        json.loads(line)
-        for line in resumed.stdout.splitlines()
-        if line.startswith("{")
-    ]
-    thread_started = [
-        event
-        for event in started
-        if event.get("type") == "thread.started"
-    ]
-    assert thread_started and thread_started[0].get("thread_id") == session_id, (
+    assert resumed["thread_id"] == session_id, (
         "Codex changed the zstd-restored thread ID"
     )
 
@@ -1438,7 +1563,7 @@ with tempfile.TemporaryDirectory(prefix="codex-compact-smoke-") as temp_root:
 
         seed_home = root / "seed" / ".codex"
         write_config(seed_home, port)
-        run_codex(
+        run_codex_app_server(
             seed_home,
             seed_token,
         )
@@ -1451,13 +1576,12 @@ with tempfile.TemporaryDirectory(prefix="codex-compact-smoke-") as temp_root:
         candidate_relative_path = source.relative_to(
             seed_home / "sessions"
         )
-        compacting_turn = run_codex(
+        compacting_turn = run_codex_app_server(
             seed_home,
-            "resume",
-            session_id,
             compacting_turn_token,
+            session_id,
         )
-        compacting_output = compacting_turn.stdout + compacting_turn.stderr
+        compacting_output = app_server_output(compacting_turn)
         assert (
             f"no rollout found for thread id {session_id}"
             not in compacting_output.lower()
@@ -1521,13 +1645,12 @@ with tempfile.TemporaryDirectory(prefix="codex-compact-smoke-") as temp_root:
             ).encode()
         )
 
-        candidate_turn = run_codex(
+        candidate_turn = run_codex_app_server(
             seed_home,
-            "resume",
-            session_id,
             candidate_turn_token,
+            session_id,
         )
-        candidate_output = candidate_turn.stdout + candidate_turn.stderr
+        candidate_output = app_server_output(candidate_turn)
         assert (
             f"no rollout found for thread id {session_id}"
             not in candidate_output.lower()
@@ -1550,7 +1673,10 @@ with tempfile.TemporaryDirectory(prefix="codex-compact-smoke-") as temp_root:
             len(candidate_starts) >= 3
             and len(candidate_completions) == 2
             and candidate_starts[-1] == candidate_completions[-1]
-        ), "failed to build a compacting turn delimited by the next turn"
+        ), (
+            "failed to build a compacting turn delimited by the next turn\n"
+            f"{candidate_output}"
+        )
         full_lines = source.read_bytes().splitlines(keepends=True)
         full_records = [json.loads(line) for line in full_lines]
         compact_index = max(
