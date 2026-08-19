@@ -8,6 +8,7 @@ import {
   upsertConnectorOwnedSecret,
   upsertConnectorOwnedVariable,
 } from "./connector-credential-storage-write.service";
+import { resolveConnectorAccount } from "./connector-account-resolution.service";
 
 export type PreparedCustomConnectorValue =
   | {
@@ -89,13 +90,49 @@ export async function deleteCustomConnectorMemberConnection(
   db: Db,
   args: CustomConnectorMemberConnection,
   signal: AbortSignal,
-): Promise<void> {
+): Promise<"deleted" | "missing" | "ambiguous"> {
+  const resolution = await resolveConnectorAccount(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    request: {
+      target: { kind: "custom", customConnectorId: args.connectorId },
+      selection: { kind: "legacy-singleton" },
+    },
+  });
+  signal.throwIfAborted();
+  if (resolution.kind === "ambiguous") {
+    return "ambiguous";
+  }
+  if (resolution.kind !== "resolved") {
+    return "missing";
+  }
+  await deleteCustomConnectorMemberConnectionById(
+    db,
+    {
+      orgId: args.orgId,
+      userId: args.userId,
+      connectorId: args.connectorId,
+      memberConnectorId: resolution.account.connectorId,
+    },
+    signal,
+  );
+  return "deleted";
+}
+
+export async function deleteCustomConnectorMemberConnectionById(
+  db: Db,
+  args: CustomConnectorMemberConnection & {
+    readonly memberConnectorId: string;
+  },
+  signal: AbortSignal,
+): Promise<boolean> {
   const [connection] = await db
     .select({ id: connectors.id })
     .from(connectors)
     .where(
       and(
         eq(connectors.customConnectorId, args.connectorId),
+        eq(connectors.id, args.memberConnectorId),
         eq(connectors.userId, args.userId),
         eq(connectors.orgId, args.orgId),
       ),
@@ -104,11 +141,12 @@ export async function deleteCustomConnectorMemberConnection(
     .limit(1);
   signal.throwIfAborted();
   if (!connection) {
-    return;
+    return false;
   }
   await deleteConnectorCredentialStorageConnection(
     db,
     { connectorId: connection.id },
     signal,
   );
+  return true;
 }

@@ -77,6 +77,8 @@ async function loadConnectedFeishuUsers(
     .select({
       installationId: feishuOrgConnections.installationId,
       userName: feishuOrgConnections.feishuUserName,
+      connectorId: feishuOrgConnections.connectorId,
+      feishuOpenId: feishuOrgConnections.feishuOpenId,
     })
     .from(feishuOrgConnections)
     .where(
@@ -96,6 +98,8 @@ async function loadConnectedFeishuUsers(
         orgId,
         userId,
         installationId: connection.installationId,
+        memberConnectorId: connection.connectorId,
+        feishuOpenId: connection.feishuOpenId,
       });
       return connected ? connection : null;
     }),

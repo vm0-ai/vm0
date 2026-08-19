@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { command } from "ccstate";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { FEISHU_OAUTH_SCOPES } from "@okouai/api-contracts/contracts/feishu-connect";
 import { connectors } from "@okouai/db/schema/connector";
+import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
 import { orgCustomConnectorOauthConfigs } from "@okouai/db/schema/org-custom-connector-oauth-config";
 import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
@@ -15,7 +16,8 @@ import {
   publishCustomConnectorOrganizationInvalidationAfterCommit,
   type CapturedConnectorClientInvalidationAbort,
 } from "./connector-client-invalidation.service";
-import { deleteCustomConnectorMemberConnection } from "./custom-connector-credential-storage.service";
+import { deleteCustomConnectorMemberConnectionById } from "./custom-connector-credential-storage.service";
+import { deleteConnectorSelectionsForCustomConnectorDefinition } from "./connector-credential-storage-write.service";
 import {
   commitPreparedCustomConnectorSkillStorage,
   prepareCustomConnectorSkillVolume$,
@@ -31,6 +33,7 @@ import {
 } from "./custom-connector-definition-selection";
 import type { Tx } from "../../lib/db-types";
 import type { PreparedServerSideVolume } from "./storage-volume-publication.service";
+import { resolveConnectorAccount } from "./connector-account-resolution.service";
 
 const FEISHU_API_PREFIX = "https://open.feishu.cn/open-apis/";
 const FEISHU_AUTHORIZATION_URL =
@@ -607,6 +610,11 @@ export const deleteFeishuInstallationAndCustomConnector$ = command(
       if (!connectorId) {
         return { installationDeleted: true, connectorId: null };
       }
+      await deleteConnectorSelectionsForCustomConnectorDefinition(
+        tx,
+        { customConnectorId: connectorId },
+        signal,
+      );
       const [deletedConnector] = await tx
         .delete(orgCustomConnectors)
         .where(
@@ -664,20 +672,95 @@ export async function hasFeishuCustomConnectorOAuthConnection(
     readonly orgId: string;
     readonly userId: string;
     readonly installationId: string;
+    readonly memberConnectorId?: string | null;
+    readonly feishuOpenId?: string;
   },
 ): Promise<boolean> {
-  const [connection] = await db
-    .select({ id: connectors.id })
+  return (await resolveFeishuCustomConnectorOAuthConnection(db, args)) !== null;
+}
+
+export async function resolveFeishuCustomConnectorOAuthConnection(
+  db: ReadonlyDb,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly installationId: string;
+    readonly memberConnectorId?: string | null;
+    readonly feishuOpenId?: string;
+  },
+): Promise<string | null> {
+  let memberConnectorId = args.memberConnectorId;
+  let feishuOpenId = args.feishuOpenId;
+  if (memberConnectorId === undefined || feishuOpenId === undefined) {
+    const connectionRows = await db
+      .select({
+        connectorId: feishuOrgConnections.connectorId,
+        feishuOpenId: feishuOrgConnections.feishuOpenId,
+      })
+      .from(feishuOrgConnections)
+      .where(
+        and(
+          eq(feishuOrgConnections.installationId, args.installationId),
+          eq(feishuOrgConnections.userId, args.userId),
+        ),
+      )
+      .limit(2);
+    if (connectionRows.length !== 1) {
+      return null;
+    }
+    const [connectionRow] = connectionRows;
+    if (
+      !connectionRow ||
+      (memberConnectorId !== undefined &&
+        memberConnectorId !== connectionRow.connectorId) ||
+      (feishuOpenId !== undefined &&
+        feishuOpenId !== connectionRow.feishuOpenId)
+    ) {
+      return null;
+    }
+    memberConnectorId = connectionRow.connectorId;
+    feishuOpenId = connectionRow.feishuOpenId;
+  }
+  if (feishuOpenId === undefined) {
+    return null;
+  }
+
+  const [installation] = await db
+    .select({ customConnectorId: feishuOrgInstallations.customConnectorId })
     .from(feishuOrgInstallations)
-    .innerJoin(
-      orgCustomConnectors,
+    .where(
       and(
-        eq(orgCustomConnectors.id, feishuOrgInstallations.customConnectorId),
-        eq(orgCustomConnectors.orgId, feishuOrgInstallations.orgId),
+        eq(feishuOrgInstallations.orgId, args.orgId),
+        eq(feishuOrgInstallations.id, args.installationId),
       ),
     )
+    .limit(1);
+  if (!installation?.customConnectorId) {
+    return null;
+  }
+
+  const resolution = await resolveConnectorAccount(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    request: {
+      target: {
+        kind: "custom",
+        customConnectorId: installation.customConnectorId,
+      },
+      selection: memberConnectorId
+        ? { kind: "exact", sourceId: memberConnectorId }
+        : { kind: "legacy-singleton" },
+    },
+  });
+  if (resolution.kind !== "resolved") {
+    return null;
+  }
+
+  const [connection] = await db
+    .select({ id: connectors.id })
+    .from(connectors)
     .innerJoin(
-      connectors,
+      orgCustomConnectors,
       and(
         eq(connectors.customConnectorId, orgCustomConnectors.id),
         eq(connectors.orgId, orgCustomConnectors.orgId),
@@ -694,15 +777,20 @@ export async function hasFeishuCustomConnectorOAuthConnection(
     )
     .where(
       and(
-        eq(feishuOrgInstallations.orgId, args.orgId),
-        eq(feishuOrgInstallations.id, args.installationId),
+        eq(orgCustomConnectors.id, installation.customConnectorId),
+        eq(orgCustomConnectors.orgId, args.orgId),
+        eq(connectors.id, resolution.account.connectorId),
         eq(connectors.userId, args.userId),
         eq(connectors.authMethod, "oauth"),
         eq(connectors.needsReconnect, false),
+        or(
+          isNull(connectors.externalId),
+          eq(connectors.externalId, feishuOpenId),
+        ),
       ),
     )
     .limit(1);
-  return Boolean(connection);
+  return connection?.id ?? null;
 }
 
 export async function disconnectFeishuCustomConnectorOAuthConnection(
@@ -711,11 +799,13 @@ export async function disconnectFeishuCustomConnectorOAuthConnection(
     readonly orgId: string;
     readonly userId: string;
     readonly installationId: string;
+    readonly memberConnectorId?: string | null;
+    readonly feishuOpenId?: string;
   },
   signal: AbortSignal,
 ): Promise<void> {
-  const [connector] = await db
-    .select({ id: feishuOrgInstallations.customConnectorId })
+  const [installation] = await db
+    .select({ customConnectorId: feishuOrgInstallations.customConnectorId })
     .from(feishuOrgInstallations)
     .where(
       and(
@@ -726,13 +816,28 @@ export async function disconnectFeishuCustomConnectorOAuthConnection(
     .for("update", { of: feishuOrgInstallations })
     .limit(1);
   signal.throwIfAborted();
-  if (!connector?.id) {
+  if (!installation?.customConnectorId) {
     return;
   }
-  await deleteCustomConnectorMemberConnection(
+  const memberConnectorId = await resolveFeishuCustomConnectorOAuthConnection(
     db,
     {
-      connectorId: connector.id,
+      orgId: args.orgId,
+      userId: args.userId,
+      installationId: args.installationId,
+      memberConnectorId: args.memberConnectorId,
+      feishuOpenId: args.feishuOpenId,
+    },
+  );
+  signal.throwIfAborted();
+  if (!memberConnectorId) {
+    return;
+  }
+  await deleteCustomConnectorMemberConnectionById(
+    db,
+    {
+      connectorId: installation.customConnectorId,
+      memberConnectorId,
       orgId: args.orgId,
       userId: args.userId,
     },

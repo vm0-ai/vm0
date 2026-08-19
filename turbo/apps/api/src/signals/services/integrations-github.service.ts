@@ -138,6 +138,7 @@ async function loadUserGithubConnectorUsername(args: {
   readonly db: ReadonlyDb;
   readonly orgId: string;
   readonly userId: string;
+  readonly githubUserId: string;
 }): Promise<string | null> {
   const [connector] = await args.db
     .select({ externalUsername: connectors.externalUsername })
@@ -147,6 +148,8 @@ async function loadUserGithubConnectorUsername(args: {
         eq(connectors.orgId, args.orgId),
         eq(connectors.userId, args.userId),
         eq(connectors.connectorSlug, "github"),
+        eq(connectors.isDefault, true),
+        eq(connectors.externalId, args.githubUserId),
       ),
     )
     .limit(1);
@@ -275,6 +278,7 @@ export const getGithubInstallation$ = command(
             db,
             orgId: auth.orgId,
             userId: auth.userId,
+            githubUserId: link.githubUserId,
           });
     signal.throwIfAborted();
 

@@ -1365,7 +1365,7 @@ export function createConnectorBddApi(context: TestContext) {
     async deleteConnectorBySlug(
       actor: ApiTestUser,
       connectorSlug: ConnectorSlug,
-      statuses: readonly (204 | 401 | 404)[] = [204],
+      statuses: readonly (204 | 401 | 404 | 409)[] = [204],
     ): Promise<void> {
       const client = setupApp({ context, routes: connectorsRoutes })(
         zeroConnectorsBySlugContract,
@@ -2083,7 +2083,7 @@ export function createConnectorBddApi(context: TestContext) {
     async requestDisconnectCustomConnector(
       actor: ApiTestUser | null,
       connectorId: string,
-      statuses: readonly (204 | 401 | 403 | 404 | 500)[],
+      statuses: readonly (204 | 401 | 403 | 404 | 409 | 500)[],
     ) {
       const client = setupApp({
         context,
@@ -2101,7 +2101,7 @@ export function createConnectorBddApi(context: TestContext) {
     async disconnectCustomConnector(
       actor: ApiTestUser,
       connectorId: string,
-      statuses: readonly (204 | 401 | 404 | 500)[] = [204],
+      statuses: readonly (204 | 401 | 404 | 409 | 500)[] = [204],
     ): Promise<void> {
       await api.requestDisconnectCustomConnector(actor, connectorId, statuses);
     },
@@ -2109,7 +2109,7 @@ export function createConnectorBddApi(context: TestContext) {
     async requestDisconnectCustomConnectorWithToken(
       token: string,
       connectorId: string,
-      statuses: readonly (204 | 401 | 403 | 404 | 500)[],
+      statuses: readonly (204 | 401 | 403 | 404 | 409 | 500)[],
     ) {
       const client = setupApp({
         context,

@@ -103,6 +103,7 @@ export interface FeishuDispatchInstallation {
 export interface FeishuDispatchConnection {
   readonly id: string;
   readonly userId: string;
+  readonly connectorId: string;
   readonly feishuUserName: string | null;
 }
 
@@ -792,6 +793,8 @@ async function handleDisconnectCommand(
         orgId: args.installation.orgId,
         userId: args.connection.userId,
         installationId: args.message.installationId,
+        memberConnectorId: args.connection.connectorId,
+        feishuOpenId: args.message.openId,
       },
       signal,
     );

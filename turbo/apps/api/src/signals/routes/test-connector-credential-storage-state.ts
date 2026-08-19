@@ -3,9 +3,11 @@ import {
   testConnectorCredentialStorageStateContract,
   type TestConnectorCredentialStorageStateActionBody,
 } from "@okouai/api-contracts/contracts/test-connector-credential-storage-state";
+import { chatThreadConnectorSelections } from "@okouai/db/schema/chat-thread-connector-selection";
 import { connectors } from "@okouai/db/schema/connector";
 import { connectorOauthStates } from "@okouai/db/schema/connector-oauth-state";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
+import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
 import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
 import { secrets } from "@okouai/db/schema/secret";
 import { userCustomConnectors } from "@okouai/db/schema/user-custom-connector";
@@ -304,6 +306,69 @@ async function clearFeishuConnectorOwnership(
       };
 }
 
+async function readFeishuMemberConnector(
+  db: Db,
+  body: ConnectorCredentialStorageAction<"read-feishu-member-connector">,
+  signal: AbortSignal,
+) {
+  const [connection] = await db
+    .select({
+      connectorId: feishuOrgConnections.connectorId,
+      connectorExternalId: connectors.externalId,
+      openId: feishuOrgConnections.feishuOpenId,
+    })
+    .from(feishuOrgConnections)
+    .innerJoin(
+      feishuOrgInstallations,
+      and(
+        eq(feishuOrgInstallations.id, feishuOrgConnections.installationId),
+        eq(feishuOrgInstallations.orgId, body.org_id),
+      ),
+    )
+    .leftJoin(connectors, eq(connectors.id, feishuOrgConnections.connectorId))
+    .where(
+      and(
+        eq(feishuOrgConnections.installationId, body.installation_id),
+        eq(feishuOrgConnections.userId, body.user_id),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+  return actionOk({
+    feishu_member_connection: connection
+      ? {
+          connector_id: connection.connectorId,
+          connector_external_id: connection.connectorExternalId,
+          open_id: connection.openId,
+        }
+      : null,
+  });
+}
+
+async function setFeishuMemberConnectorLink(
+  db: Db,
+  body: ConnectorCredentialStorageAction<"set-feishu-member-connector-link">,
+  signal: AbortSignal,
+) {
+  const [updated] = await db
+    .update(feishuOrgConnections)
+    .set({ connectorId: body.connector_id })
+    .where(
+      and(
+        eq(feishuOrgConnections.installationId, body.installation_id),
+        eq(feishuOrgConnections.userId, body.user_id),
+      ),
+    )
+    .returning({ id: feishuOrgConnections.id });
+  signal.throwIfAborted();
+  return updated
+    ? actionOk()
+    : {
+        status: 400 as const,
+        body: { error: "Feishu member connection test fixture was not found" },
+      };
+}
+
 async function seedLegacyCustomFeishuOAuthState(
   db: Db,
   body: ConnectorCredentialStorageAction<"seed-legacy-custom-feishu-oauth-state">,
@@ -487,6 +552,103 @@ async function setConnectorState(
       };
 }
 
+async function setConnectorDefault(
+  db: Db,
+  body: ConnectorCredentialStorageAction<"set-connector-default">,
+  signal: AbortSignal,
+) {
+  const [updated] = await db
+    .update(connectors)
+    .set({ isDefault: body.is_default })
+    .where(
+      and(
+        eq(connectors.id, body.connector_id),
+        eq(connectors.orgId, body.org_id),
+        eq(connectors.userId, body.user_id),
+      ),
+    )
+    .returning({ id: connectors.id });
+  signal.throwIfAborted();
+  return updated
+    ? actionOk()
+    : {
+        status: 400 as const,
+        body: { error: "Connector storage test fixture was not found" },
+      };
+}
+
+async function setConnectorExternalId(
+  db: Db,
+  body: ConnectorCredentialStorageAction<"set-connector-external-id">,
+  signal: AbortSignal,
+) {
+  const [updated] = await db
+    .update(connectors)
+    .set({ externalId: body.external_id })
+    .where(
+      and(
+        eq(connectors.id, body.connector_id),
+        eq(connectors.orgId, body.org_id),
+        eq(connectors.userId, body.user_id),
+      ),
+    )
+    .returning({ id: connectors.id });
+  signal.throwIfAborted();
+  return updated
+    ? actionOk()
+    : {
+        status: 400 as const,
+        body: { error: "Connector storage test fixture was not found" },
+      };
+}
+
+async function seedBuiltinThreadSelection(
+  db: Db,
+  body: ConnectorCredentialStorageAction<"seed-builtin-thread-selection">,
+  signal: AbortSignal,
+) {
+  await db.insert(chatThreadConnectorSelections).values({
+    chatThreadId: body.chat_thread_id,
+    connectorId: body.connector_id,
+    connectorSlug: body.connector_slug,
+  });
+  signal.throwIfAborted();
+  return actionOk();
+}
+
+async function seedCustomThreadSelection(
+  db: Db,
+  body: ConnectorCredentialStorageAction<"seed-custom-thread-selection">,
+  signal: AbortSignal,
+) {
+  await db.insert(chatThreadConnectorSelections).values({
+    chatThreadId: body.chat_thread_id,
+    connectorId: body.connector_id,
+    customConnectorId: body.custom_connector_id,
+  });
+  signal.throwIfAborted();
+  return actionOk();
+}
+
+async function readThreadSelection(
+  db: Db,
+  body: ConnectorCredentialStorageAction<"read-thread-selection">,
+  signal: AbortSignal,
+) {
+  const [selection] = await db
+    .select({ connectorId: chatThreadConnectorSelections.connectorId })
+    .from(chatThreadConnectorSelections)
+    .where(
+      and(
+        eq(chatThreadConnectorSelections.chatThreadId, body.chat_thread_id),
+        eq(chatThreadConnectorSelections.connectorId, body.connector_id),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+  return actionOk({ selection_exists: Boolean(selection) });
+}
+
 async function setCustomParentState(
   db: Db,
   body: ConnectorCredentialStorageAction<"set-custom-parent-state">,
@@ -570,6 +732,39 @@ async function setVariableOwner(
       };
 }
 
+async function mutateConnectorAccountCompatibilityState(
+  db: Db,
+  body: TestConnectorCredentialStorageStateActionBody,
+  signal: AbortSignal,
+) {
+  switch (body.action) {
+    case "read-feishu-member-connector": {
+      return await readFeishuMemberConnector(db, body, signal);
+    }
+    case "set-feishu-member-connector-link": {
+      return await setFeishuMemberConnectorLink(db, body, signal);
+    }
+    case "set-connector-default": {
+      return await setConnectorDefault(db, body, signal);
+    }
+    case "set-connector-external-id": {
+      return await setConnectorExternalId(db, body, signal);
+    }
+    case "seed-builtin-thread-selection": {
+      return await seedBuiltinThreadSelection(db, body, signal);
+    }
+    case "seed-custom-thread-selection": {
+      return await seedCustomThreadSelection(db, body, signal);
+    }
+    case "read-thread-selection": {
+      return await readThreadSelection(db, body, signal);
+    }
+    default: {
+      return null;
+    }
+  }
+}
+
 const mutateConnectorCredentialStorageState$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!isTestEndpointAllowed(get(request$))) {
@@ -584,6 +779,14 @@ const mutateConnectorCredentialStorageState$ = command(
 
     const db = set(writeDb$);
     const body = bodyResult.data;
+    const compatibilityResult = await mutateConnectorAccountCompatibilityState(
+      db,
+      body,
+      signal,
+    );
+    if (compatibilityResult) {
+      return compatibilityResult;
+    }
     switch (body.action) {
       case "read": {
         return await readState(db, body, signal);

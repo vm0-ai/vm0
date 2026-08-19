@@ -379,6 +379,27 @@ export async function resolveConnectorAccounts(
   return resolutions;
 }
 
+export async function resolveConnectorAccount(
+  db: ReadonlyDb,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly request: ConnectorAccountResolutionRequest;
+  },
+): Promise<ConnectorAccountResolution> {
+  const key = connectorAccountTargetKey(args.request.target);
+  const resolutions = await resolveConnectorAccounts(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    requests: [args.request],
+  });
+  const resolution = resolutions.get(key);
+  if (!resolution) {
+    throw new Error("Expected one connector account resolution");
+  }
+  return resolution;
+}
+
 export function resolvedConnectorAccountIdsByTarget(
   resolutions: ReadonlyMap<string, ConnectorAccountResolution>,
 ): ReadonlyMap<string, string> {

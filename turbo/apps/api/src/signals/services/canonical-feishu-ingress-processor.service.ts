@@ -27,7 +27,7 @@ import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
 import { buildFeishuChatOpenUrl } from "./feishu-config";
 import { ensureFeishuChatThreadRoute } from "./feishu-chat-ingress.service";
-import { hasFeishuCustomConnectorOAuthConnection } from "./feishu-custom-connector.service";
+import { resolveFeishuCustomConnectorOAuthConnection } from "./feishu-custom-connector.service";
 import {
   resolveIntegrationModelRouteForUser$,
   type IntegrationModelRoutePin,
@@ -186,6 +186,7 @@ async function loadConnection(
     .select({
       id: feishuOrgConnections.id,
       userId: feishuOrgConnections.userId,
+      connectorId: feishuOrgConnections.connectorId,
       feishuUserName: feishuOrgConnections.feishuUserName,
     })
     .from(feishuOrgConnections)
@@ -199,12 +200,14 @@ async function loadConnection(
   if (!connection) {
     return undefined;
   }
-  const hasOAuthConnection = await hasFeishuCustomConnectorOAuthConnection(db, {
+  const connectorId = await resolveFeishuCustomConnectorOAuthConnection(db, {
     orgId,
     userId: connection.userId,
     installationId: message.installationId,
+    memberConnectorId: connection.connectorId,
+    feishuOpenId: message.openId,
   });
-  return hasOAuthConnection ? connection : undefined;
+  return connectorId ? { ...connection, connectorId } : undefined;
 }
 
 async function markIngressProcessed(db: Db, ingressId: string): Promise<void> {

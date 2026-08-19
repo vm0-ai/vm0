@@ -275,6 +275,7 @@ async function loadStoredRuntimeState(
             eq(connectors.orgId, args.orgId),
             eq(connectors.userId, args.userId),
             isNotNull(connectors.connectorSlug),
+            eq(connectors.isDefault, true),
           ),
         );
 

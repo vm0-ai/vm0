@@ -121,6 +121,7 @@ function customConnectorStoredConnectionsQuery(
     readonly userId: string;
     readonly connectorIds?: readonly string[];
     readonly memberConnectorIds?: readonly string[];
+    readonly defaultOnly?: boolean;
   },
 ) {
   return db
@@ -188,6 +189,7 @@ function customConnectorStoredConnectionsQuery(
       and(
         eq(connectors.orgId, args.orgId),
         eq(connectors.userId, args.userId),
+        args.defaultOnly ? eq(connectors.isDefault, true) : undefined,
         args.connectorIds
           ? inArray(connectors.customConnectorId, [...args.connectorIds])
           : undefined,
@@ -209,7 +211,10 @@ async function loadCustomConnectorStoredConnections(
   if (args.connectorIds?.length === 0) {
     return [];
   }
-  return await customConnectorStoredConnectionsQuery(db, args);
+  return await customConnectorStoredConnectionsQuery(db, {
+    ...args,
+    defaultOnly: true,
+  });
 }
 
 function customConnectorStoredConnectionIsCurrent(
@@ -407,6 +412,7 @@ export async function loadCurrentCustomConnectorValueMarkers(
         eq(secrets.type, "connector"),
         eq(secrets.orgId, args.orgId),
         eq(secrets.userId, args.userId),
+        eq(connectors.isDefault, true),
         args.connectorIds
           ? inArray(orgCustomConnectors.id, [...args.connectorIds])
           : undefined,
@@ -443,6 +449,7 @@ export async function loadCurrentCustomConnectorValueMarkers(
         eq(variables.type, "connector"),
         eq(variables.orgId, args.orgId),
         eq(variables.userId, args.userId),
+        eq(connectors.isDefault, true),
         args.connectorIds
           ? inArray(orgCustomConnectors.id, [...args.connectorIds])
           : undefined,

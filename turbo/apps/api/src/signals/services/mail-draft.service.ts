@@ -257,6 +257,7 @@ async function loadMailConnections(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly agentId: string;
+  readonly sourceId?: string;
 }): Promise<readonly MailConnection[]> {
   const rows = await args.db
     .select({
@@ -287,6 +288,9 @@ async function loadMailConnections(args: {
         eq(userConnectors.userId, args.userId),
         eq(userConnectors.agentId, args.agentId),
         eq(userConnectors.connectorSlug, "gmail"),
+        args.sourceId
+          ? eq(connectors.id, args.sourceId)
+          : eq(connectors.isDefault, true),
       ),
     );
 
@@ -1041,6 +1045,7 @@ async function connectionForRow(args: {
     orgId: args.orgId,
     userId: args.userId,
     agentId: args.row.agentId,
+    sourceId: args.row.connectorId ?? undefined,
   });
   const linked = connections.find((connection) => {
     return connection.connectorId === args.row.connectorId;

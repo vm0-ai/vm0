@@ -66,6 +66,7 @@ export const zeroConnectorsBySlugContract = c.router({
       204: c.noBody(),
       401: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema,
     },
     summary: "Disconnect a connector (zero proxy)",
   },

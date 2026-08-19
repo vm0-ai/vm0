@@ -79,6 +79,7 @@ import { cleanupGmailWatchesForConnector } from "./gmail-automation-event.servic
 import { cleanupGoogleCalendarWatchesForConnector } from "./google-calendar-automation-event.service";
 import { cleanupGoogleFormsWatchesForConnector } from "./google-forms-automation-event.service";
 import { reconcileConnectorAccountState } from "./connector-account-state.service";
+import { resolveConnectorAccount } from "./connector-account-resolution.service";
 import {
   replaceConnectorConnection,
   type StoredConnectorConnectionRow as StoredConnectorRow,
@@ -476,6 +477,7 @@ export function connectorList(args: {
           eq(connectors.orgId, args.orgId),
           eq(connectors.userId, args.userId),
           isNotNull(connectors.connectorSlug),
+          eq(connectors.isDefault, true),
         ),
       );
     const [storedRows, snapshot] = await Promise.all([
@@ -580,6 +582,7 @@ function storedConnectorBySlug(args: {
           eq(connectors.orgId, args.orgId),
           eq(connectors.userId, args.userId),
           eq(connectors.connectorSlug, args.connectorSlug),
+          eq(connectors.isDefault, true),
         ),
       )
       .limit(1);
@@ -730,6 +733,59 @@ async function cleanupConnectorWatchesForDisconnect(
   }
 }
 
+type ConnectorAccountForDeletion =
+  | { readonly kind: "missing" | "ambiguous" }
+  | {
+      readonly kind: "resolved";
+      readonly connector: {
+        readonly id: string;
+        readonly authMethod: string;
+        readonly storageVersion: number;
+      };
+    };
+
+async function loadConnectorAccountForDeletion(
+  db: Tx,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorSlug: string;
+    readonly sourceId?: string;
+  },
+  signal: AbortSignal,
+): Promise<ConnectorAccountForDeletion> {
+  const resolution = await resolveConnectorAccount(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    request: {
+      target: { kind: "builtin", connectorSlug: args.connectorSlug },
+      selection: args.sourceId
+        ? { kind: "exact", sourceId: args.sourceId }
+        : { kind: "legacy-singleton" },
+    },
+  });
+  signal.throwIfAborted();
+  if (resolution.kind === "ambiguous") {
+    return { kind: "ambiguous" };
+  }
+  if (resolution.kind !== "resolved") {
+    return { kind: "missing" };
+  }
+
+  const [connector] = await db
+    .select({
+      id: connectors.id,
+      authMethod: connectors.authMethod,
+      storageVersion: connectors.storageVersion,
+    })
+    .from(connectors)
+    .where(eq(connectors.id, resolution.account.connectorId))
+    .for("update")
+    .limit(1);
+  signal.throwIfAborted();
+  return connector ? { kind: "resolved", connector } : { kind: "missing" };
+}
+
 export const deleteConnectorLocalState$ = command(
   async (
     { get, set },
@@ -737,10 +793,11 @@ export const deleteConnectorLocalState$ = command(
       readonly orgId: string;
       readonly userId: string;
       readonly connectorSlug: string;
+      readonly sourceId?: string;
       readonly snapshot?: ConnectorRuntimeSnapshot | null;
     },
     signal: AbortSignal,
-  ): Promise<boolean> => {
+  ): Promise<"deleted" | "missing" | "ambiguous"> => {
     const writeDb = set(writeDb$);
     const snapshot =
       args.snapshot === undefined
@@ -769,27 +826,11 @@ export const deleteConnectorLocalState$ = command(
       });
       signal.throwIfAborted();
 
-      const [existing] = await tx
-        .select({
-          id: connectors.id,
-          authMethod: connectors.authMethod,
-          storageVersion: connectors.storageVersion,
-        })
-        .from(connectors)
-        .where(
-          and(
-            eq(connectors.orgId, args.orgId),
-            eq(connectors.userId, args.userId),
-            eq(connectors.connectorSlug, args.connectorSlug),
-          ),
-        )
-        .for("update")
-        .limit(1);
-      signal.throwIfAborted();
-
-      if (!existing) {
-        return { deleted: false, pendingTokenRevoke: null };
+      const account = await loadConnectorAccountForDeletion(tx, args, signal);
+      if (account.kind !== "resolved") {
+        return { kind: account.kind, pendingTokenRevoke: null };
       }
+      const existing = account.connector;
 
       let pendingTokenRevoke: PendingConnectorTokenRevoke | null = null;
       if (snapshot !== null && featureSwitchContext !== null) {
@@ -837,15 +878,15 @@ export const deleteConnectorLocalState$ = command(
         signal,
       );
 
-      return { deleted: true, pendingTokenRevoke };
+      return { kind: "deleted" as const, pendingTokenRevoke };
     });
     if (signal.aborted) {
       postCommitAbort ??= signal.reason;
     }
 
-    if (!deleteResult.deleted) {
+    if (deleteResult.kind !== "deleted") {
       throwCapturedAbort(postCommitAbort);
-      return false;
+      return deleteResult.kind;
     }
 
     await finalizeConnectorStateChangeAfterCommit(
@@ -859,7 +900,7 @@ export const deleteConnectorLocalState$ = command(
     );
     signal.throwIfAborted();
 
-    return true;
+    return "deleted";
   },
 );
 
