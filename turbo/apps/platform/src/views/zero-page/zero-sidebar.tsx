@@ -666,7 +666,7 @@ function LabeledRailLink({
         )}
       </span>
       <span
-        className={`max-w-full truncate px-0.5 text-[9px] font-medium leading-none ${
+        className={`max-w-full truncate px-0.5 text-[9px] font-medium leading-[14px] ${
           isActive ? "text-sidebar-foreground" : "text-sidebar-foreground/60"
         }`}
       >
@@ -715,7 +715,7 @@ function LabeledNavRail() {
         aria-label={t(($) => {
           return $.appShell.sidebar.ariaLabel;
         })}
-        className="flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-y-auto pb-2"
+        className="flex min-h-0 w-full flex-1 flex-col items-center gap-3 overflow-y-auto pb-2"
       >
         {navItems.map((item) => {
           const isActive =
