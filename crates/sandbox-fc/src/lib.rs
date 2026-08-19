@@ -66,6 +66,7 @@ pub use network::{
 pub use paths::{
     FactoryPaths, LockPaths, RuntimePaths, SandboxPaths, SnapshotOutputPaths, SockPaths,
 };
+pub use prerequisites::runtime_required_commands;
 pub use runtime::{FirecrackerRuntime, FirecrackerRuntimeProvider};
 pub use sandbox::FirecrackerSandbox;
 pub use snapshot::{

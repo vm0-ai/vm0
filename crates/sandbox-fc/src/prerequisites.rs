@@ -74,6 +74,18 @@ const SNAPSHOT_PRIVATE_MOUNT_RESTORE_COMMANDS: &[&str] = &["unshare", "bash", "m
 const COW_POOL_SNAPSHOT_RESTORE_COMMANDS: &[&str] = &["cp"];
 const WORKSPACE_IMAGE_CREATE_COMMANDS: &[&str] = &["mkfs.ext4"];
 
+/// Return host commands required across Firecracker runtime modes.
+///
+/// This conservative aggregate covers fresh and snapshot-restoring factories
+/// plus DNS-filtered networking. Runtime entry points still validate their
+/// narrower, mode-specific command sets.
+pub fn runtime_required_commands() -> Vec<&'static str> {
+    let mut command_groups = FACTORY_FRESH_COMMAND_GROUPS.to_vec();
+    command_groups.extend_from_slice(FACTORY_SNAPSHOT_RESTORE_COMMAND_GROUPS);
+    command_groups.push(DNS_INPUT_FILTER_COMMANDS);
+    required_commands_for_groups(&command_groups)
+}
+
 /// Verify that all required system prerequisites are present.
 ///
 /// Checks firecracker binary, kernel, rootfs, `/dev/kvm`, runtime directory,
@@ -634,6 +646,25 @@ mod tests {
         for mode in modes {
             let commands = required_commands(&mode);
             assert!(commands.contains(&"conntrack"), "mode: {mode:?}");
+        }
+    }
+
+    #[test]
+    fn runtime_commands_cover_factory_modes_and_dns_networking() {
+        let runtime_commands = runtime_required_commands();
+        let snapshot = snapshot_config();
+        let modes = [
+            PrerequisiteMode::FactoryFresh,
+            PrerequisiteMode::FactorySnapshotRestore { snapshot },
+        ];
+
+        for mode in modes {
+            for command in required_commands(&mode) {
+                assert!(runtime_commands.contains(&command), "mode: {mode:?}");
+            }
+        }
+        for command in network_commands(true) {
+            assert!(runtime_commands.contains(&command));
         }
     }
 
