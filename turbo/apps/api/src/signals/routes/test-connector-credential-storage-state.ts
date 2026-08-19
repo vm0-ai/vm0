@@ -31,9 +31,10 @@ const actionBody$ = bodyResultOf(
 
 /**
  * This route is explicitly mounted only by tests. Connector owner/version
- * metadata has no production API, and cross-owner states cannot be constructed
- * through one. Keeping that exception here lets route tests exercise the real
- * public behavior without registering a production diagnostics surface.
+ * metadata, account links, and historical compatibility states have no
+ * production API, and cross-owner states cannot be constructed through one.
+ * Keeping that exception here lets route tests exercise the real public
+ * behavior without registering a production diagnostics surface.
  */
 type ConnectorCredentialStorageAction<
   TAction extends TestConnectorCredentialStorageStateActionBody["action"],

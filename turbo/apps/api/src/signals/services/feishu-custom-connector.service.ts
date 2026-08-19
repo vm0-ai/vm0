@@ -747,6 +747,9 @@ export async function resolveFeishuCustomConnectorOAuthConnection(
         kind: "custom",
         customConnectorId: installation.customConnectorId,
       },
+      // Old API instances can leave this link null during the DB/API rollout
+      // window (observed maximum: ~102 minutes). Remove the exactly-one
+      // compatibility path after drain and #27695 tail reconciliation.
       selection: memberConnectorId
         ? { kind: "exact", sourceId: memberConnectorId }
         : { kind: "legacy-singleton" },
@@ -783,6 +786,9 @@ export async function resolveFeishuCustomConnectorOAuthConnection(
         eq(connectors.userId, args.userId),
         eq(connectors.authMethod, "oauth"),
         eq(connectors.needsReconnect, false),
+        // Migration 0946 created exact links before Feishu external identity
+        // was stored. Remove this persisted-state compatibility after #27695
+        // reconciles those historical null identities.
         or(
           isNull(connectors.externalId),
           eq(connectors.externalId, feishuOpenId),
