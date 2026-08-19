@@ -803,6 +803,12 @@ describe("okou generate image command", () => {
     expect(helpOutput).toContain("nano-banana-2");
     expect(helpOutput).toContain("seedream5-pro");
     expect(helpOutput).toContain("seedream5-lite");
+    expect(normalizedHelpOutput).toContain(
+      "Omit it to generate with the model this chat is set to. Pass it only when the user names a specific model.",
+    );
+    expect(normalizedHelpOutput).toContain(
+      "(default: the model this chat is set to)",
+    );
     expect(normalizedHelpOutput).toContain("support varies");
     expect(helpOutput).toContain("3840x2160");
     expect(helpOutput).toContain("edges divisible by 16");

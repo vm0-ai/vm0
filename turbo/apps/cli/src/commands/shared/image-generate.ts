@@ -1,4 +1,4 @@
-import { Command, InvalidArgumentError } from "commander";
+import { Command, InvalidArgumentError, Option } from "commander";
 import chalk from "chalk";
 import { generateWebImage } from "../../lib/api/domains/web";
 import { decodeSandboxTokenPayload } from "../../lib/api/sandbox-token";
@@ -258,10 +258,14 @@ export function createImageGenerateCommand(
       "When listing providers (no --prompt given), include unavailable or not-yet-authorized connectors",
     )
     .option("--json", "Print the complete generation result as JSON")
-    .option(
-      "--model <model>",
-      "Model: gpt-image-1 (default), gpt-image-2, gpt-image-1.5, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4, seedream5-pro, seedream5-lite, or nano-banana-2",
-      IMAGE_MODEL_CONFIGS[DEFAULT_IMAGE_MODEL].alias,
+    .addOption(
+      new Option(
+        "--model <model>",
+        "Model: gpt-image-1, gpt-image-2, gpt-image-1.5, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4, seedream5-pro, seedream5-lite, or nano-banana-2. Omit it to generate with the model this chat is set to. Pass it only when the user names a specific model.",
+      ).default(
+        IMAGE_MODEL_CONFIGS[DEFAULT_IMAGE_MODEL].alias,
+        "the model this chat is set to",
+      ),
     )
     .option(
       "--size <size>",
