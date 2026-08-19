@@ -53,3 +53,40 @@ pub(crate) fn lock_system_log_test_state() -> tokio::sync::MutexGuard<'static, (
 pub(crate) async fn lock_system_log_test_state_async() -> tokio::sync::MutexGuard<'static, ()> {
     SYSTEM_LOG_TEST_MUTEX.lock().await
 }
+
+#[cfg(all(test, target_os = "linux"))]
+pub(crate) fn run_unprivileged_test(test_name: &str) -> Result<bool, String> {
+    const TEST_ENV: &str = "VM0_GUEST_AGENT_UNPRIVILEGED_TEST";
+    const UNPRIVILEGED_ID: u32 = 65_534;
+
+    if std::env::var(TEST_ENV).as_deref() == Ok(test_name) {
+        return Ok(true);
+    }
+    // SAFETY: `geteuid` only reads the effective process credential.
+    if unsafe { libc::geteuid() } != 0 {
+        return Ok(true);
+    }
+
+    use std::os::unix::process::CommandExt;
+
+    let current_exe = std::env::current_exe()
+        .map_err(|error| format!("failed to locate test executable: {error}"))?;
+    let output = std::process::Command::new(current_exe)
+        .arg("--exact")
+        .arg(test_name)
+        .arg("--nocapture")
+        .env(TEST_ENV, test_name)
+        .gid(UNPRIVILEGED_ID)
+        .uid(UNPRIVILEGED_ID)
+        .output()
+        .map_err(|error| format!("failed to launch unprivileged test {test_name}: {error}"))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !output.status.success() || !stdout.contains("1 passed") {
+        return Err(format!(
+            "unprivileged test {test_name} failed with {}; stdout:\n{stdout}\nstderr:\n{stderr}",
+            output.status
+        ));
+    }
+    Ok(false)
+}

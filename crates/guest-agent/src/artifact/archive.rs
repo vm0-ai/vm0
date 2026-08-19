@@ -7,14 +7,11 @@ use api_contracts::generated::constants::storages::{
 };
 use flate2::Compression;
 use flate2::write::GzEncoder;
-use guest_common::log_warn;
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, Metadata};
 use std::io::{self, Read};
 use std::path::{Component, Path, PathBuf};
 use thiserror::Error;
-
-const LOG_TAG: &str = "sandbox:guest-agent";
 
 /// Walk directory and compute SHA-256 for each file, skipping `.git` and `.vm0`.
 #[cfg(target_os = "linux")]
@@ -42,10 +39,12 @@ fn walk_dir(
     out: &mut Vec<FileEntry>,
     path_bytes: &mut u64,
 ) -> Result<(), ArchiveError> {
-    let entries = match current.read_dir() {
-        Ok(e) => e,
-        Err(_) => return Ok(()),
-    };
+    let entries = current
+        .read_dir()
+        .map_err(|source| ArchiveError::DirectoryRead {
+            path: relative.to_string(),
+            source,
+        })?;
     walk_entries(current, relative, entries, out, path_bytes)
 }
 
@@ -57,66 +56,93 @@ fn walk_entries(
     out: &mut Vec<FileEntry>,
     path_bytes: &mut u64,
 ) -> Result<(), ArchiveError> {
-    for entry in entries.flatten() {
-        let name = entry.file_name();
-        if is_excluded_artifact_entry(&name) {
-            continue;
-        }
+    for entry in entries {
+        let entry = entry.map_err(|source| ArchiveError::DirectoryEntryRead {
+            parent: artifact_directory_path(relative).to_string(),
+            source,
+        })?;
+        walk_entry(current, relative, entry, out, path_bytes)?;
+    }
+    Ok(())
+}
 
-        let (try_directory, try_file) = match entry.file_type() {
-            Ok(file_type) => (file_type.is_dir(), file_type.is_file()),
-            Err(_) => (true, true),
-        };
-        if try_directory && let Ok(dir) = current.open_child_dir(&name) {
-            let name_str = artifact_path_component(&name, relative)?;
-            let rel = relative_artifact_path(relative, name_str);
-            walk_dir(&dir, &rel, out, path_bytes)?;
-            continue;
-        }
-        if !try_file {
-            continue;
-        }
+#[cfg(target_os = "linux")]
+fn walk_entry(
+    current: &Dir,
+    relative: &str,
+    entry: fs::DirEntry,
+    out: &mut Vec<FileEntry>,
+    path_bytes: &mut u64,
+) -> Result<(), ArchiveError> {
+    let name = entry.file_name();
+    if is_excluded_artifact_entry(&name) {
+        return Ok(());
+    }
 
-        let Ok(file) = current.open_child_file(&name) else {
-            continue;
-        };
-        let Ok(metadata) = file.metadata() else {
-            continue;
-        };
-        if !metadata.is_file() {
-            continue;
-        }
+    let file_type = entry
+        .file_type()
+        .map_err(|source| ArchiveError::EntryType {
+            path: artifact_entry_display_path(relative, &name),
+            source,
+        })?;
+    if file_type.is_dir() {
         let name_str = artifact_path_component(&name, relative)?;
         let rel = relative_artifact_path(relative, name_str);
-        let observed_files = u64::try_from(out.len())
-            .unwrap_or(u64::MAX)
-            .saturating_add(1);
-        let observed_path_bytes =
-            path_bytes.saturating_add(u64::try_from(rel.len()).unwrap_or(u64::MAX));
-        if observed_files > STORAGE_MANIFEST_MAX_FILES
-            || observed_path_bytes > STORAGE_MANIFEST_MAX_PATH_BYTES
-        {
-            return Err(ArchiveError::ManifestLimitExceeded {
-                observed_files,
-                max_files: STORAGE_MANIFEST_MAX_FILES,
-                observed_path_bytes,
-                max_path_bytes: STORAGE_MANIFEST_MAX_PATH_BYTES,
-            });
-        }
-        match compute_file_hash_from_reader(file) {
-            Ok((hash, size)) => {
-                *path_bytes = observed_path_bytes;
-                out.push(FileEntry {
-                    path: rel,
-                    hash,
-                    size,
-                });
+        let dir = match current.open_child_dir(&name) {
+            Ok(dir) => dir,
+            Err(source) if is_excluded_root_lost_found(relative, &name, &source) => return Ok(()),
+            Err(source) => {
+                return Err(ArchiveError::DirectoryOpen { path: rel, source });
             }
-            Err(e) => {
-                log_warn!(LOG_TAG, "Could not process file {rel}: {e}");
-            }
-        }
+        };
+        return walk_dir(&dir, &rel, out, path_bytes);
     }
+    if !file_type.is_file() {
+        return Ok(());
+    }
+
+    let name_str = artifact_path_component(&name, relative)?;
+    let rel = relative_artifact_path(relative, name_str);
+    let file = current
+        .open_child_file(&name)
+        .map_err(|source| ArchiveError::Open {
+            path: rel.clone(),
+            source,
+        })?;
+    let metadata = file.metadata().map_err(|source| ArchiveError::Metadata {
+        path: rel.clone(),
+        source,
+    })?;
+    if !metadata.is_file() {
+        return Err(ArchiveError::NonRegular { path: rel });
+    }
+
+    let observed_files = u64::try_from(out.len())
+        .unwrap_or(u64::MAX)
+        .saturating_add(1);
+    let observed_path_bytes =
+        path_bytes.saturating_add(u64::try_from(rel.len()).unwrap_or(u64::MAX));
+    if observed_files > STORAGE_MANIFEST_MAX_FILES
+        || observed_path_bytes > STORAGE_MANIFEST_MAX_PATH_BYTES
+    {
+        return Err(ArchiveError::ManifestLimitExceeded {
+            observed_files,
+            max_files: STORAGE_MANIFEST_MAX_FILES,
+            observed_path_bytes,
+            max_path_bytes: STORAGE_MANIFEST_MAX_PATH_BYTES,
+        });
+    }
+    let (hash, size) =
+        compute_file_hash_from_reader(file).map_err(|source| ArchiveError::FileRead {
+            path: rel.clone(),
+            source,
+        })?;
+    *path_bytes = observed_path_bytes;
+    out.push(FileEntry {
+        path: rel,
+        hash,
+        size,
+    });
     Ok(())
 }
 
@@ -126,11 +152,34 @@ fn is_excluded_artifact_entry(name: &std::ffi::OsStr) -> bool {
 }
 
 #[cfg(target_os = "linux")]
+fn is_excluded_root_lost_found(relative: &str, name: &std::ffi::OsStr, error: &io::Error) -> bool {
+    relative.is_empty()
+        && name == std::ffi::OsStr::new("lost+found")
+        && error.kind() == io::ErrorKind::PermissionDenied
+}
+
+#[cfg(target_os = "linux")]
 fn relative_artifact_path(parent: &str, component: &str) -> String {
     if parent.is_empty() {
         component.to_string()
     } else {
         format!("{parent}/{component}")
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn artifact_directory_path(relative: &str) -> &str {
+    if relative.is_empty() { "." } else { relative }
+}
+
+#[cfg(target_os = "linux")]
+fn artifact_entry_display_path(parent: &str, name: &std::ffi::OsStr) -> String {
+    match name.to_str() {
+        Some(component) => format!("{:?}", relative_artifact_path(parent, component)),
+        None => format!(
+            "under {:?} for component {name:?}",
+            artifact_directory_path(parent)
+        ),
     }
 }
 
@@ -178,6 +227,14 @@ pub(super) enum ArchiveError {
     RootOpen { path: PathBuf, source: io::Error },
     #[error("failed to read artifact root {}: {source}", path.display())]
     RootRead { path: PathBuf, source: io::Error },
+    #[error("failed to open artifact directory {path:?}: {source}")]
+    DirectoryOpen { path: String, source: io::Error },
+    #[error("failed to read artifact directory {path:?}: {source}")]
+    DirectoryRead { path: String, source: io::Error },
+    #[error("failed to read artifact directory entry under {parent:?}: {source}")]
+    DirectoryEntryRead { parent: String, source: io::Error },
+    #[error("failed to inspect artifact entry {path}: {source}")]
+    EntryType { path: String, source: io::Error },
     #[cfg(not(target_os = "linux"))]
     #[error(
         "artifact root access requires Linux no-follow path opening: {}",
@@ -223,6 +280,8 @@ pub(super) enum ArchiveError {
     },
     #[error("failed to open {path:?}: {source}")]
     Open { path: String, source: io::Error },
+    #[error("failed to read artifact file {path:?}: {source}")]
+    FileRead { path: String, source: io::Error },
     #[error("failed to append {path:?} to archive: {source}")]
     Append { path: String, source: io::Error },
     #[error("failed to verify archived content for {path:?}: {source}")]
@@ -731,6 +790,95 @@ mod tests {
 
         assert!(paths.contains(&"real.txt"));
         assert!(!paths.contains(&"pipe"));
+    }
+
+    #[test]
+    fn collect_file_metadata_rejects_unreadable_regular_file() {
+        const TEST_NAME: &str =
+            "artifact::archive::tests::collect_file_metadata_rejects_unreadable_regular_file";
+        if !crate::run_unprivileged_test(TEST_NAME).unwrap() {
+            return;
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let unreadable = root.join("secret.txt");
+        std::fs::write(root.join("kept.txt"), "kept").unwrap();
+        std::fs::write(&unreadable, "secret").unwrap();
+        std::fs::set_permissions(&unreadable, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+        let result = collect_file_metadata(root.to_str().unwrap());
+
+        std::fs::set_permissions(&unreadable, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let error = result.unwrap_err();
+        assert!(
+            error.to_string().contains("failed to open \"secret.txt\""),
+            "got: {error}"
+        );
+    }
+
+    #[test]
+    fn collect_file_metadata_rejects_unreadable_nested_directory() {
+        const TEST_NAME: &str =
+            "artifact::archive::tests::collect_file_metadata_rejects_unreadable_nested_directory";
+        if !crate::run_unprivileged_test(TEST_NAME).unwrap() {
+            return;
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let unreadable = root.join("nested/lost+found");
+        std::fs::create_dir_all(&unreadable).unwrap();
+        std::fs::write(root.join("kept.txt"), "kept").unwrap();
+        std::fs::write(unreadable.join("secret.txt"), "secret").unwrap();
+        std::fs::set_permissions(&unreadable, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+        let result = collect_file_metadata(root.to_str().unwrap());
+
+        std::fs::set_permissions(&unreadable, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let error = result.unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("failed to open artifact directory \"nested/lost+found\""),
+            "got: {error}"
+        );
+    }
+
+    #[test]
+    fn collect_file_metadata_skips_unreadable_root_lost_found() {
+        const TEST_NAME: &str =
+            "artifact::archive::tests::collect_file_metadata_skips_unreadable_root_lost_found";
+        if !crate::run_unprivileged_test(TEST_NAME).unwrap() {
+            return;
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let lost_found = root.join("lost+found");
+        std::fs::create_dir(&lost_found).unwrap();
+        std::fs::write(root.join("kept.txt"), "kept").unwrap();
+        std::fs::set_permissions(&lost_found, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+        let result = collect_file_metadata(root.to_str().unwrap());
+
+        std::fs::set_permissions(&lost_found, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let files = result.unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "kept.txt");
+    }
+
+    #[test]
+    fn collect_file_metadata_includes_readable_root_lost_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir(root.join("lost+found")).unwrap();
+        std::fs::write(root.join("lost+found/recovered.txt"), "recovered").unwrap();
+
+        let files = collect_file_metadata(root.to_str().unwrap()).unwrap();
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "lost+found/recovered.txt");
     }
 
     #[test]

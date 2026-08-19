@@ -442,6 +442,69 @@ mod tests {
         commit.assert_calls(0);
     }
 
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn artifact_snapshot_unreadable_file_fails_before_storage_api_calls() {
+        use std::os::unix::fs::PermissionsExt;
+
+        const TEST_NAME: &str = "checkpoint::artifact::tests::artifact_snapshot_unreadable_file_fails_before_storage_api_calls";
+        if !crate::run_unprivileged_test(TEST_NAME).unwrap() {
+            return;
+        }
+
+        let server = MockServer::start();
+        let prepare = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/prepare");
+            then.status(200).json_body(json!({"unreachable": true}));
+        });
+        let commit = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/commit");
+            then.status(200).json_body(json!({"unreachable": true}));
+        });
+        let upload = server.mock(|when, then| {
+            when.method(PUT);
+            then.status(200);
+        });
+        let http = HttpClient::with_api_config(
+            server.base_url(),
+            "test-token",
+            "",
+            "test-run-001",
+            Duration::ZERO,
+        )
+        .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let mount = dir.path().join("artifact");
+        let unreadable = mount.join("secret.txt");
+        std::fs::create_dir(&mount).unwrap();
+        std::fs::write(mount.join("kept.txt"), "kept").unwrap();
+        std::fs::write(&unreadable, "secret").unwrap();
+        std::fs::set_permissions(&unreadable, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let entries = vec![env::ArtifactEnv {
+            name: "workspace".to_string(),
+            mount_path: mount.to_string_lossy().into_owned(),
+            storage_id: "storage-id".to_string(),
+            version_id: "parent-version".to_string(),
+            missing_root_policy: None,
+        }];
+
+        let result = snapshot_artifact_entries(&http, "test-run", &entries).await;
+
+        std::fs::set_permissions(&unreadable, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let error = result.unwrap_err();
+        let message = error.to_string();
+        assert!(
+            message.contains("Failed to walk artifact files"),
+            "got: {message}"
+        );
+        assert!(message.contains("secret.txt"), "got: {message}");
+        prepare.assert_calls(0);
+        upload.assert_calls(0);
+        commit.assert_calls(0);
+    }
+
     #[tokio::test]
     async fn artifact_snapshot_enforces_manifest_boundaries_before_storage_api_calls() {
         use api_contracts::generated::constants::storages::{
