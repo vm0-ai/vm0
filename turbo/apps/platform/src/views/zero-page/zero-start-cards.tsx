@@ -441,7 +441,9 @@ export function StartCards({
     if (kind === "workflow") {
       return {
         title: template?.title ?? "",
-        description: template?.description ?? "",
+        // The catalog's own `description` is written for the template picker
+        // and runs past the two lines this card has.
+        description: template?.shortDescription ?? "",
         prompt: template?.promptGuidance ?? "",
       };
     }
