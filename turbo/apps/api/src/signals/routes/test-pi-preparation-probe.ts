@@ -26,6 +26,7 @@ const runPiPreparationProbeRoute$ = command(
     const result = await runPiPreparationProbe(
       {
         iterations: bodyResult.data.iterations,
+        mode: bodyResult.data.mode,
         profile: bodyResult.data.profile,
         rebuildFixture: bodyResult.data.rebuild_fixture,
         region: optionalEnv("VERCEL_REGION") ?? null,

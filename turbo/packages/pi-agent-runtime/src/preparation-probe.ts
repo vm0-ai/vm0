@@ -1,11 +1,23 @@
 import {
   createAgentSessionFromServices,
   createAgentSessionServices,
+  createReadToolDefinition,
+  migrateSessionEntries,
   ModelRuntime,
+  parseSessionEntries,
   SessionManager,
   SettingsManager,
+  type FileEntry,
+  type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { registerSessionResourceCleanup } from "@earendil-works/pi-ai";
+
+import {
+  PiMemoryFileStore,
+  PiMemoryResourceLoader,
+  type PiMemoryFileInput,
+  type PiMemoryResourceSnapshot,
+} from "./memory-resource-loader";
 
 export interface PiOfficialPreparationProbeInput {
   readonly agentDir: string;
@@ -37,8 +49,39 @@ export interface PiNativeSessionFixtureInput {
   readonly targetBytes: number;
 }
 
+export interface PiMemoryPreparationProbeInput {
+  readonly agentDir: string;
+  readonly cwd: string;
+  readonly files: readonly PiMemoryFileInput[];
+  readonly logicalCwd: string;
+  readonly resources: PiMemoryResourceSnapshot;
+  readonly sessionId: string;
+  readonly sessionJsonl: Uint8Array;
+}
+
+export interface PiMemoryPreparationProbeResult {
+  readonly checkpoint: Buffer;
+  readonly checkpointMaterializeMs: number;
+  readonly official: PiOfficialPreparationProbeResult;
+  readonly preparationMs: number;
+}
+
 function elapsedMs(startedAt: number): number {
   return performance.now() - startedAt;
+}
+
+function serializePiSession(sessionManager: SessionManager): Buffer {
+  const header = sessionManager.getHeader();
+  if (!header) {
+    throw new Error("Pi preparation probe session has no header");
+  }
+  return Buffer.from(
+    `${[header, ...sessionManager.getEntries()]
+      .map((entry) => {
+        return JSON.stringify(entry);
+      })
+      .join("\n")}\n`,
+  );
 }
 
 /** Create a valid native Pi JSONL fixture without writing it to disk. */
@@ -70,6 +113,56 @@ export function createPiNativeSessionFixture(
       })
       .join("\n")}\n`,
   );
+}
+
+interface SessionManagerProbeInternals {
+  _buildIndex(): void;
+  fileEntries: FileEntry[];
+  flushed: boolean;
+  sessionId: string;
+}
+
+/**
+ * Preview-only bridge for measuring the API design against Pi 0.84.1.
+ *
+ * Pi already keeps preloaded entries internally, but its public in-memory
+ * factory can only create an empty session. The production implementation must
+ * use an upstream fromJSONL/fromEntries factory instead of reaching into these
+ * private fields.
+ */
+function hydratePiSessionForMemoryProbe(
+  sessionJsonl: Uint8Array,
+  logicalCwd: string,
+  expectedSessionId: string,
+): SessionManager {
+  const jsonlBuffer = Buffer.isBuffer(sessionJsonl)
+    ? sessionJsonl
+    : Buffer.from(
+        sessionJsonl.buffer as ArrayBuffer,
+        sessionJsonl.byteOffset,
+        sessionJsonl.byteLength,
+      );
+  const entries = parseSessionEntries(jsonlBuffer.toString("utf8"));
+  migrateSessionEntries(entries);
+  const header = entries[0];
+  if (header?.type !== "session") {
+    throw new Error("Pi preparation probe JSONL has no native session header");
+  }
+  if (header.id !== expectedSessionId) {
+    throw new Error(
+      `Pi preparation probe expected session ${expectedSessionId}, received ${header.id}`,
+    );
+  }
+
+  const sessionManager = SessionManager.inMemory(logicalCwd, {
+    id: header.id,
+  });
+  const internals = sessionManager as unknown as SessionManagerProbeInternals;
+  internals.fileEntries = entries;
+  internals.sessionId = header.id;
+  internals.flushed = true;
+  internals._buildIndex();
+  return sessionManager;
 }
 
 /**
@@ -163,4 +256,104 @@ export async function measurePiOfficialPreparation(
   await created.session.dispose();
   unregisterProbeResource();
   return result;
+}
+
+/**
+ * Measure Pi construction from an already-prewarmed resource snapshot and
+ * native JSONL bytes. No physical project, agent, or session path is created.
+ */
+export async function measurePiMemoryPreparation(
+  input: PiMemoryPreparationProbeInput,
+): Promise<PiMemoryPreparationProbeResult> {
+  const totalStartedAt = performance.now();
+
+  const modelRuntimeStartedAt = performance.now();
+  const modelRuntime = await ModelRuntime.create({
+    allowModelNetwork: false,
+    modelsPath: null,
+    refreshOnCreate: false,
+  });
+  const modelRuntimeCreateMs = elapsedMs(modelRuntimeStartedAt);
+
+  const settingsManagerStartedAt = performance.now();
+  const settingsManager = SettingsManager.inMemory();
+  const settingsManagerCreateMs = elapsedMs(settingsManagerStartedAt);
+
+  const sessionServicesStartedAt = performance.now();
+  const fileStore = new PiMemoryFileStore(input.files);
+  const resourceLoader = new PiMemoryResourceLoader(input.resources);
+  const services = {
+    agentDir: input.agentDir,
+    cwd: input.cwd,
+    diagnostics: [],
+    modelRuntime,
+    resourceLoader,
+    settingsManager,
+  };
+  const memoryReadTool = createReadToolDefinition(input.cwd, {
+    operations: fileStore.readOperations(),
+  }) as unknown as ToolDefinition;
+  const sessionServicesCreateMs = elapsedMs(sessionServicesStartedAt);
+
+  const sessionOpenStartedAt = performance.now();
+  const sessionManager = hydratePiSessionForMemoryProbe(
+    input.sessionJsonl,
+    input.logicalCwd,
+    input.sessionId,
+  );
+  const sessionOpenMs = elapsedMs(sessionOpenStartedAt);
+
+  const agentSessionStartedAt = performance.now();
+  const created = await createAgentSessionFromServices({
+    customTools: [memoryReadTool],
+    services,
+    sessionManager,
+    tools: ["read"],
+  });
+  const agentSessionCreateMs = elapsedMs(agentSessionStartedAt);
+
+  const { agentsFiles } = resourceLoader.getAgentsFiles();
+  const { skills } = resourceLoader.getSkills();
+  const firstSkill = skills[0];
+  if (firstSkill && !fileStore.has(firstSkill.filePath)) {
+    throw new Error(`Pi memory skill body is missing: ${firstSkill.filePath}`);
+  }
+  if (
+    firstSkill &&
+    !created.session.systemPrompt.includes(firstSkill.filePath)
+  ) {
+    throw new Error(
+      "Pi did not project the memory skill into its system prompt",
+    );
+  }
+
+  const official: PiOfficialPreparationProbeResult = {
+    agentSessionCreateMs,
+    agentsFileCount: agentsFiles.length,
+    diagnosticCount: services.diagnostics.length,
+    discoveredSkillCount: skills.length,
+    modelRuntimeCreateMs,
+    sessionEntryCount: sessionManager.getEntries().length,
+    sessionHeaderCwd: sessionManager.getHeader()?.cwd ?? null,
+    sessionListMs: 0,
+    sessionOpenMs,
+    sessionPersisted: sessionManager.isPersisted(),
+    sessionServicesCreateMs,
+    settingsManagerCreateMs,
+    totalMs: elapsedMs(totalStartedAt),
+  };
+
+  const unregisterProbeResource = registerSessionResourceCleanup(() => {});
+  await created.session.dispose();
+  unregisterProbeResource();
+  const preparationMs = elapsedMs(totalStartedAt);
+
+  const checkpointStartedAt = performance.now();
+  const checkpoint = serializePiSession(sessionManager);
+  return {
+    checkpoint,
+    checkpointMaterializeMs: elapsedMs(checkpointStartedAt),
+    official,
+    preparationMs,
+  };
 }

@@ -12,6 +12,8 @@ export const piPreparationProbeProfileSchema = z.enum([
   "assets-32-mib",
 ]);
 
+export const piPreparationProbeModeSchema = z.enum(["filesystem", "memory"]);
+
 const durationSchema = z.number().nonnegative();
 
 const officialPreparationSchema = z.object({
@@ -34,7 +36,7 @@ export const piPreparationProbeResponseSchema = z.object({
   ok: z.literal(true),
   fixture: z.object({
     agents_bytes: z.int().positive(),
-    archive_bytes: z.int().positive(),
+    archive_bytes: z.int().nonnegative(),
     build_ms: durationSchema,
     cache_hit: z.boolean(),
     expected_skill_count: z.int().positive(),
@@ -45,6 +47,7 @@ export const piPreparationProbeResponseSchema = z.object({
     skill_tree_bytes: z.int().positive(),
   }),
   measurement_limits: z.array(z.string()),
+  mode: piPreparationProbeModeSchema,
   network_download_measured: z.literal(false),
   profile: piPreparationProbeProfileSchema,
   runtime: z.object({
@@ -80,6 +83,7 @@ export const testPiPreparationProbeContract = c.router({
     path: "/api/test/pi-preparation-probe",
     body: z.object({
       profile: piPreparationProbeProfileSchema,
+      mode: piPreparationProbeModeSchema.default("filesystem"),
       iterations: z.int().min(1).max(5).default(1),
       rebuild_fixture: z.boolean().default(false),
     }),
@@ -87,9 +91,13 @@ export const testPiPreparationProbeContract = c.router({
       200: piPreparationProbeResponseSchema,
       404: z.string(),
     },
-    summary: "Measure native Pi filesystem preparation in preview",
+    summary: "Measure native Pi filesystem or memory preparation in preview",
   },
 });
+
+export type PiPreparationProbeMode = z.infer<
+  typeof piPreparationProbeModeSchema
+>;
 
 export type PiPreparationProbeProfile = z.infer<
   typeof piPreparationProbeProfileSchema

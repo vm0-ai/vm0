@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import type {
+  PiPreparationProbeMode,
   PiPreparationProbeProfile,
   PiPreparationProbeResponse,
 } from "@okouai/api-contracts/contracts/test-pi-preparation-probe";
@@ -22,7 +23,11 @@ import {
 } from "@okouai/api-contracts/contracts/runners";
 import {
   createPiNativeSessionFixture,
+  measurePiMemoryPreparation,
   measurePiOfficialPreparation,
+  type PiMemoryFileInput,
+  type PiMemoryResourceSnapshot,
+  type PiMemorySkillInput,
   type PiOfficialPreparationProbeResult,
 } from "@okouai/pi-agent-runtime/node";
 import { create as createTar, extract as extractTar } from "tar";
@@ -50,9 +55,22 @@ interface PreparedFixture {
   readonly archivePath: string;
   readonly buildMs: number;
   readonly config: ProbeProfileConfig;
+  readonly memoryFiles: readonly PiMemoryFileInput[];
+  readonly memoryResources: PiMemoryResourceSnapshot;
   readonly root: string;
   readonly sessionBytes: number;
+  readonly sessionContent: Buffer;
   readonly sessionPath: string;
+}
+
+interface PreparedMemorySkillTree {
+  readonly files: readonly PiMemoryFileInput[];
+  readonly skills: readonly PiMemorySkillInput[];
+}
+
+interface PreparedMemoryContext {
+  readonly agentsFiles: PiMemoryResourceSnapshot["agentsFiles"];
+  readonly files: readonly PiMemoryFileInput[];
 }
 
 interface FixtureResolution {
@@ -150,7 +168,7 @@ function relativePhysicalPath(canonicalPath: string): string {
 async function writeSkillTree(
   sourceRoot: string,
   config: ProbeProfileConfig,
-): Promise<void> {
+): Promise<PreparedMemorySkillTree> {
   const skillsRoot = join(
     sourceRoot,
     relativePhysicalPath(PI_AGENT_DIR),
@@ -158,54 +176,75 @@ async function writeSkillTree(
   );
   const assetFileCount = config.skillFileCount - config.skillCount;
   const assetBytes = config.skillTreeBytes - config.skillMdBytes;
+  const files: PiMemoryFileInput[] = [];
+  const skills: PiMemorySkillInput[] = [];
   const writes: Promise<void>[] = [];
   for (let index = 0; index < config.skillCount; index += 1) {
     const name = `probe-skill-${index.toString().padStart(3, "0")}`;
     const base = `---\nname: ${name}\ndescription: Synthetic preparation probe skill ${index}.\n---\n\n# ${name}\n\n`;
-    writes.push(
-      writeFixtureFile(
-        join(skillsRoot, name, "SKILL.md"),
-        paddedText(
-          base,
-          splitBytes(config.skillMdBytes, config.skillCount, index),
-        ),
-      ),
+    const content = paddedText(
+      base,
+      splitBytes(config.skillMdBytes, config.skillCount, index),
     );
+    const baseDir = join(PI_AGENT_DIR, "skills", name);
+    const filePath = join(baseDir, "SKILL.md");
+    files.push({ content, path: filePath });
+    skills.push({
+      baseDir,
+      description: `Synthetic preparation probe skill ${index}.`,
+      filePath,
+      name,
+      source: "prewarmed-probe",
+    });
+    writes.push(writeFixtureFile(join(skillsRoot, name, "SKILL.md"), content));
   }
   for (let index = 0; index < assetFileCount; index += 1) {
     const skillIndex = index % config.skillCount;
     const skillName = `probe-skill-${skillIndex.toString().padStart(3, "0")}`;
-    writes.push(
-      writeFixtureFile(
-        join(
-          skillsRoot,
-          skillName,
-          "references",
-          `asset-${index.toString().padStart(3, "0")}.bin`,
-        ),
-        deterministicBytes(
-          splitBytes(assetBytes, assetFileCount, index),
-          index,
-        ),
-      ),
+    const content = deterministicBytes(
+      splitBytes(assetBytes, assetFileCount, index),
+      index,
     );
+    const relativePath = join(
+      skillName,
+      "references",
+      `asset-${index.toString().padStart(3, "0")}.bin`,
+    );
+    files.push({
+      content,
+      path: join(PI_AGENT_DIR, "skills", relativePath),
+    });
+    writes.push(writeFixtureFile(join(skillsRoot, relativePath), content));
   }
   await Promise.all(writes);
+  return { files, skills };
 }
 
 async function writeContextAndMemory(
   sourceRoot: string,
   config: ProbeProfileConfig,
-): Promise<void> {
+): Promise<PreparedMemoryContext> {
   const globalAgentsBytes = Math.floor(config.agentsBytes / 2);
   const projectAgentsBytes = config.agentsBytes - globalAgentsBytes;
+  const globalAgents = paddedText(
+    "# Global preparation probe instructions\n\n",
+    globalAgentsBytes,
+  );
+  const projectAgents = paddedText(
+    "# Project preparation probe instructions\n\n",
+    projectAgentsBytes,
+  );
+  const memory = paddedText(
+    "# Preparation probe memory\n\n",
+    config.memoryBytes,
+  );
+  const globalAgentsPath = join(PI_AGENT_DIR, "AGENTS.md");
+  const projectAgentsPath = join(CANONICAL_WORKING_DIR, "AGENTS.md");
+  const memoryPath = join(PI_AGENT_DIR, "memory", "MEMORY.md");
   await Promise.all([
     writeFixtureFile(
       join(sourceRoot, relativePhysicalPath(PI_AGENT_DIR), "AGENTS.md"),
-      paddedText(
-        "# Global preparation probe instructions\n\n",
-        globalAgentsBytes,
-      ),
+      globalAgents,
     ),
     writeFixtureFile(
       join(
@@ -213,10 +252,7 @@ async function writeContextAndMemory(
         relativePhysicalPath(CANONICAL_WORKING_DIR),
         "AGENTS.md",
       ),
-      paddedText(
-        "# Project preparation probe instructions\n\n",
-        projectAgentsBytes,
-      ),
+      projectAgents,
     ),
     writeFixtureFile(
       join(
@@ -225,9 +261,20 @@ async function writeContextAndMemory(
         "memory",
         "MEMORY.md",
       ),
-      paddedText("# Preparation probe memory\n\n", config.memoryBytes),
+      memory,
     ),
   ]);
+  return {
+    agentsFiles: [
+      { content: globalAgents.toString("utf8"), path: globalAgentsPath },
+      { content: projectAgents.toString("utf8"), path: projectAgentsPath },
+    ],
+    files: [
+      { content: globalAgents, path: globalAgentsPath },
+      { content: projectAgents, path: projectAgentsPath },
+      { content: memory, path: memoryPath },
+    ],
+  };
 }
 
 async function buildFixture(
@@ -237,7 +284,7 @@ async function buildFixture(
   const config = profileConfig(profile);
   const root = await mkdtemp(join(tmpdir(), `pi-prep-fixture-${profile}-`));
   const sourceRoot = join(root, "source");
-  await Promise.all([
+  const [memorySkillTree, memoryContext] = await Promise.all([
     writeSkillTree(sourceRoot, config),
     writeContextAndMemory(sourceRoot, config),
   ]);
@@ -271,8 +318,14 @@ async function buildFixture(
     archivePath,
     buildMs: performance.now() - startedAt,
     config,
+    memoryFiles: [...memorySkillTree.files, ...memoryContext.files],
+    memoryResources: {
+      agentsFiles: memoryContext.agentsFiles,
+      skills: memorySkillTree.skills,
+    },
     root,
     sessionBytes: sessionStats.size,
+    sessionContent: sessionFixture,
     sessionPath,
   };
 }
@@ -325,7 +378,7 @@ function currentRss(): number {
   return process.memoryUsage().rss;
 }
 
-async function runPreparationSample(
+async function runFilesystemPreparationSample(
   fixture: PreparedFixture,
   signal: AbortSignal,
 ): Promise<PiPreparationProbeResponse["samples"][number]> {
@@ -404,9 +457,57 @@ async function runPreparationSample(
   });
 }
 
+async function runMemoryPreparationSample(
+  fixture: PreparedFixture,
+  signal: AbortSignal,
+): Promise<PiPreparationProbeResponse["samples"][number]> {
+  const totalStartedAt = performance.now();
+  let peakRss = currentRss();
+  const updatePeakRss = () => {
+    peakRss = Math.max(peakRss, currentRss());
+  };
+
+  signal.throwIfAborted();
+  const measured = await measurePiMemoryPreparation({
+    agentDir: PI_AGENT_DIR,
+    cwd: CANONICAL_WORKING_DIR,
+    files: fixture.memoryFiles,
+    logicalCwd: CANONICAL_WORKING_DIR,
+    resources: fixture.memoryResources,
+    sessionId: PROBE_SESSION_ID,
+    sessionJsonl: fixture.sessionContent,
+  });
+  updatePeakRss();
+  signal.throwIfAborted();
+
+  return {
+    archive_extract_ms: 0,
+    checkpoint_bytes: measured.checkpoint.length,
+    checkpoint_read_ms: measured.checkpointMaterializeMs,
+    cleanup_ms: 0,
+    lease_create_ms: 0,
+    official: officialResponse(measured.official),
+    peak_rss_bytes: peakRss,
+    preparation_ms: measured.preparationMs,
+    session_write_ms: 0,
+    total_ms: performance.now() - totalStartedAt,
+  };
+}
+
+async function runPreparationSample(
+  fixture: PreparedFixture,
+  mode: PiPreparationProbeMode,
+  signal: AbortSignal,
+): Promise<PiPreparationProbeResponse["samples"][number]> {
+  return mode === "memory"
+    ? await runMemoryPreparationSample(fixture, signal)
+    : await runFilesystemPreparationSample(fixture, signal);
+}
+
 export async function runPiPreparationProbe(
   args: {
     readonly iterations: number;
+    readonly mode: PiPreparationProbeMode;
     readonly profile: PiPreparationProbeProfile;
     readonly rebuildFixture: boolean;
     readonly region: string | null;
@@ -421,7 +522,9 @@ export async function runPiPreparationProbe(
     const samples: PiPreparationProbeResponse["samples"] = [];
     for (let index = 0; index < args.iterations; index += 1) {
       signal.throwIfAborted();
-      samples.push(await runPreparationSample(resolution.fixture, signal));
+      samples.push(
+        await runPreparationSample(resolution.fixture, args.mode, signal),
+      );
     }
     return samples;
   })();
@@ -448,12 +551,21 @@ export async function runPiPreparationProbe(
       skill_md_bytes: config.skillMdBytes,
       skill_tree_bytes: config.skillTreeBytes,
     },
-    measurement_limits: [
-      "Storage and R2 network download is excluded from timed preparation.",
-      "The representative file counts and byte totals match the current installed skill tree, but file contents are synthetic.",
-      "No model request, executable extension, or agent tool is invoked.",
-      "The probe initializes Pi's session resource registry through its core entrypoint before disposing a no-model AgentSession.",
-    ],
+    measurement_limits:
+      args.mode === "memory"
+        ? [
+            "Storage, database, and R2 network reads are excluded; the timed path starts with a prewarmed resource snapshot and native JSONL bytes already in process memory.",
+            "The representative file counts and byte totals match the current installed skill tree, but file contents are synthetic.",
+            "Pi 0.84.1 has no public fromJSONL/fromEntries in-memory SessionManager factory, so this preview-only probe hydrates the same internal preloaded entry state used by SessionManager.open.",
+            "No model request, executable extension, or agent tool is invoked; the memory read tool is registered and Pi projects its logical skill paths into the native system prompt.",
+          ]
+        : [
+            "Storage and R2 network download is excluded from timed preparation.",
+            "The representative file counts and byte totals match the current installed skill tree, but file contents are synthetic.",
+            "No model request, executable extension, or agent tool is invoked.",
+            "The probe initializes Pi's session resource registry through its core entrypoint before disposing a no-model AgentSession.",
+          ],
+    mode: args.mode,
     network_download_measured: false,
     profile: args.profile,
     runtime: {
