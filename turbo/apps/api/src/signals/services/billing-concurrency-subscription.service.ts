@@ -6,6 +6,7 @@ import type {
   ConcurrencySubscriptionChangeResponse,
 } from "@okouai/api-contracts/contracts/billing";
 import { orgConcurrencySubscriptions } from "@okouai/db/schema/org-concurrency-subscription";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
 import { orgUsageAllowanceEntitlements } from "@okouai/db/schema/org-usage-allowance";
 import {
@@ -44,7 +45,10 @@ import {
   setStripeSubscriptionPaymentMethod,
   type BillingPurchasePaymentMethod,
 } from "./billing-payment-method.service";
-import { subscriptionScheduleHasNoFutureChanges } from "./stripe-subscription-schedules.service";
+import {
+  canceledUsageAllowanceScheduleMetadata,
+  subscriptionScheduleHasNoFutureChanges,
+} from "./stripe-subscription-schedules.service";
 
 const CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX = 1000;
 const STRIPE_INVOICE_LINE_PAGE_SIZE = 100;
@@ -303,6 +307,7 @@ async function concurrencyScheduleOwner(
     .select({
       planPriceId: orgPlanEntitlements.stripePriceId,
       allowanceOrgId: orgUsageAllowanceEntitlements.orgId,
+      pendingPlanScheduleId: orgMetadata.pendingSubscriptionScheduleId,
     })
     .from(orgPlanEntitlements)
     .leftJoin(
@@ -315,6 +320,7 @@ async function concurrencyScheduleOwner(
         ),
       ),
     )
+    .leftJoin(orgMetadata, eq(orgMetadata.orgId, orgPlanEntitlements.orgId))
     .where(
       and(
         eq(orgPlanEntitlements.orgId, orgId),
@@ -324,7 +330,9 @@ async function concurrencyScheduleOwner(
     .limit(1);
   if (
     !sharedSubscription?.planPriceId ||
-    (!sharedSubscription.allowanceOrgId && schedule.end_behavior !== "cancel")
+    (!sharedSubscription.allowanceOrgId &&
+      schedule.end_behavior !== "cancel" &&
+      sharedSubscription.pendingPlanScheduleId !== schedule.id)
   ) {
     return null;
   }
@@ -510,21 +518,6 @@ function schedulePhaseParams(
   );
 }
 
-function canceledAllowancePhaseMetadata(
-  subscription: StripeSubscription,
-): Readonly<Record<string, string>> | null {
-  const metadata = subscription.metadata;
-  if (metadata?.allowanceStatus !== "canceled") {
-    return null;
-  }
-  return {
-    allowanceStatus: "canceled",
-    ...(metadata.allowanceCancelAt === undefined
-      ? {}
-      : { allowanceCancelAt: metadata.allowanceCancelAt }),
-  };
-}
-
 function concurrencySchedulePhaseItems(
   phase: StripeSchedulePhase,
   priceId: string,
@@ -557,7 +550,9 @@ function concurrencyScheduleMergeParams(args: {
   readonly targetQuantity: number;
   readonly prorationBehavior: "always_invoice" | "none";
 }): NonNullable<StripeInvoiceCreatePreviewParams["schedule_details"]> {
-  const metadataOverlay = canceledAllowancePhaseMetadata(args.subscription);
+  const metadataOverlay = canceledUsageAllowanceScheduleMetadata(
+    args.subscription,
+  );
   return {
     end_behavior: scheduleEndBehavior(args.schedule),
     proration_behavior: args.prorationBehavior,
@@ -592,7 +587,9 @@ function deferredConcurrencyScheduleMergeParams(args: {
   ) {
     throw new Error("Stripe subscription schedule cannot be safely updated");
   }
-  const metadataOverlay = canceledAllowancePhaseMetadata(args.subscription);
+  const metadataOverlay = canceledUsageAllowanceScheduleMetadata(
+    args.subscription,
+  );
   return {
     end_behavior: scheduleEndBehavior(args.schedule),
     proration_behavior: "none",
@@ -2218,10 +2215,7 @@ async function restoreScheduledConcurrencyChange(
     schedule,
   );
   signal.throwIfAborted();
-  if (owner === "plan") {
-    return "pending_update";
-  }
-  if (owner === "shared") {
+  if (owner === "plan" || owner === "shared") {
     await applyConcurrencyToSharedSchedule(
       stripe,
       {

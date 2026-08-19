@@ -250,6 +250,7 @@ type UsagePackChangeConfirmResult =
     }
   | { readonly status: "not_found" }
   | { readonly status: "expired" }
+  | { readonly status: "plan_ending" }
   | { readonly status: "conflict" };
 
 type UsagePackChangeInvoiceOutcome =
@@ -891,13 +892,26 @@ function usagePackSubscriptionWillEnd(
   );
 }
 
+function usagePackChangePreviewBlock(
+  subscription: UsagePackChangeSubscriptionInput,
+  kind: "upgrade" | "downgrade",
+): "plan_ending" | null | undefined {
+  if (subscription.pending_update) {
+    return null;
+  }
+  if (kind === "downgrade" && usagePackSubscriptionWillEnd(subscription)) {
+    return "plan_ending";
+  }
+  return undefined;
+}
+
 async function previewUsagePackChangeInStripe(
   context: UsagePackChangeContext,
   source: UsagePackAllocationRow,
   stripeSubscriptionId: string,
   targetUsagePackUsd: UsagePackUsd,
   signal: AbortSignal,
-): Promise<StripeUsagePackChangePreview | null> {
+): Promise<StripeUsagePackChangePreview | "plan_ending" | null> {
   const targetStripePriceId = activeUsagePackPriceId(targetUsagePackUsd);
   if (!targetStripePriceId) {
     throw new Error(
@@ -909,18 +923,18 @@ async function previewUsagePackChangeInStripe(
     await stripe.subscriptions.retrieve(stripeSubscriptionId);
   signal.throwIfAborted();
   validateCurrentStripeProjection(context, subscription);
-  if (subscription.pending_update) {
-    return null;
+  const kind =
+    targetUsagePackUsd > source.usagePackUsd ? "upgrade" : "downgrade";
+  const block = usagePackChangePreviewBlock(subscription, kind);
+  if (block !== undefined) {
+    return block;
   }
-
   const period = usagePackItemPeriod(subscription);
   const requestedProrationTimestamp = Math.floor(nowDate().getTime() / 1000);
   const prorationTimestamp = Math.min(
     Math.max(requestedProrationTimestamp, period.start),
     period.end - 1,
   );
-  const kind =
-    targetUsagePackUsd > source.usagePackUsd ? "upgrade" : "downgrade";
   const subscriptionWillEnd = usagePackSubscriptionWillEnd(subscription);
   const items = changeUpdateItems(
     subscription,
@@ -1136,6 +1150,9 @@ export async function previewUsagePackAllocationChange(
     args.targetUsagePackUsd,
     signal,
   );
+  if (preview === "plan_ending") {
+    return { status: "plan_ending" };
+  }
   if (!preview) {
     return { status: "conflict" };
   }
@@ -4008,6 +4025,27 @@ async function resumeUsagePackChangeConfirmation(
   return await storedUsagePackConfirmationResult(db, change.id);
 }
 
+async function failApplyingUsagePackChangeForEndingPlan(
+  db: Db,
+  changeId: string,
+): Promise<void> {
+  const failedAt = nowDate();
+  await db
+    .update(usagePackAllocationChanges)
+    .set({
+      status: "failed",
+      failureReason: "subscription_ending_conflict",
+      completedAt: failedAt,
+      updatedAt: failedAt,
+    })
+    .where(
+      and(
+        eq(usagePackAllocationChanges.id, changeId),
+        eq(usagePackAllocationChanges.status, "applying"),
+      ),
+    );
+}
+
 export async function confirmUsagePackAllocationChange(
   db: Db,
   args: {
@@ -4032,24 +4070,6 @@ export async function confirmUsagePackAllocationChange(
   if (!context || !context.subscription.stripeSubscriptionId) {
     throw new Error("Usage pack subscription disappeared during confirmation");
   }
-  if (change.kind === "downgrade" && context.subscription.cancelAtPeriodEnd) {
-    const failedAt = nowDate();
-    await db
-      .update(usagePackAllocationChanges)
-      .set({
-        status: "failed",
-        failureReason: "subscription_change_pending",
-        completedAt: failedAt,
-        updatedAt: failedAt,
-      })
-      .where(
-        and(
-          eq(usagePackAllocationChanges.id, change.id),
-          eq(usagePackAllocationChanges.status, "applying"),
-        ),
-      );
-    return { status: "conflict" };
-  }
   const stripe = getStripeClient();
   const subscription = await stripe.subscriptions.retrieve(
     context.subscription.stripeSubscriptionId,
@@ -4065,6 +4085,14 @@ export async function confirmUsagePackAllocationChange(
     return resumed;
   }
   validateCurrentStripeProjection(context, subscription);
+  if (
+    change.kind === "downgrade" &&
+    (context.subscription.cancelAtPeriodEnd ||
+      usagePackSubscriptionWillEnd(subscription))
+  ) {
+    await failApplyingUsagePackChangeForEndingPlan(db, change.id);
+    return { status: "plan_ending" };
+  }
   if (change.kind === "downgrade") {
     return await confirmUsagePackDowngrade(
       db,

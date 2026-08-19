@@ -57,7 +57,10 @@ import {
   setStripeSubscriptionPaymentMethod,
   type BillingPurchasePaymentMethod,
 } from "./billing-payment-method.service";
-import { subscriptionScheduleHasNoFutureChanges } from "./stripe-subscription-schedules.service";
+import {
+  canceledUsageAllowanceScheduleMetadata,
+  subscriptionScheduleHasNoFutureChanges,
+} from "./stripe-subscription-schedules.service";
 import {
   activeUsagePackPlanPriceId,
   activeUsagePackPriceId,
@@ -174,6 +177,7 @@ type UsagePackSubscriptionChangeConfirmResult =
     }
   | { readonly status: "not_found" }
   | { readonly status: "expired" }
+  | { readonly status: "plan_ending" }
   | { readonly status: "conflict" };
 
 type UsagePackSubscriptionChangeInvoiceOutcome =
@@ -309,6 +313,28 @@ function stripeObjectId(
   value: string | { readonly id: string } | null | undefined,
 ): string | null {
   return typeof value === "string" ? value : (value?.id ?? null);
+}
+
+function stripeSubscriptionWillEnd(
+  subscription: Pick<StripeSubscription, "cancel_at" | "cancel_at_period_end">,
+): boolean {
+  return (
+    subscription.cancel_at_period_end === true ||
+    (subscription.cancel_at !== null && subscription.cancel_at !== undefined)
+  );
+}
+
+function stripeSubscriptionChangeConflictStatus(
+  subscription: StripeSubscription,
+  hasScheduledChanges: boolean,
+): "plan_ending" | "conflict" | null {
+  if (subscription.pending_update) {
+    return "conflict";
+  }
+  if (hasScheduledChanges && stripeSubscriptionWillEnd(subscription)) {
+    return "plan_ending";
+  }
+  return null;
 }
 
 function isProjectedAllocation(allocation: UsagePackAllocationRow): boolean {
@@ -943,8 +969,12 @@ async function prepareSubscriptionChange(
   );
   signal.throwIfAborted();
   const stripeScheduleId = stripeObjectId(subscription.schedule);
-  if (subscription.pending_update) {
-    return { status: "conflict" };
+  const stripeConflictStatus = stripeSubscriptionChangeConflictStatus(
+    subscription,
+    hasScheduledChanges,
+  );
+  if (stripeConflictStatus) {
+    return { status: stripeConflictStatus };
   }
   if (existingScheduleId) {
     if (stripeScheduleId !== existingScheduleId) {
@@ -1092,7 +1122,7 @@ async function supersedePreviewedSubscriptionChanges(
 async function subscriptionChangeSnapshotMatches(
   tx: WriteTx,
   prepared: PreparedSubscriptionChange,
-): Promise<boolean> {
+): Promise<boolean | "plan_ending"> {
   const { context } = prepared;
   const [lockedSubscription] = await tx
     .select()
@@ -1107,6 +1137,9 @@ async function subscriptionChangeSnapshotMatches(
       context.subscription.stripePlanPriceId
   ) {
     return false;
+  }
+  if (prepared.hasScheduledChanges && lockedSubscription.cancelAtPeriodEnd) {
+    return "plan_ending";
   }
   const [openAllocation, openSubscription, orgs] = await Promise.all([
     tx
@@ -1264,7 +1297,7 @@ async function insertSubscriptionChangePreview(
 async function persistSubscriptionChangePreview(
   db: Db,
   args: PersistSubscriptionChangePreviewArgs,
-): Promise<UsagePackSubscriptionChangeRow | null> {
+): Promise<UsagePackSubscriptionChangeRow | "plan_ending" | null> {
   return await db.transaction(async (tx) => {
     const { context } = args.prepared;
     await lockUsagePackBillingOrg(tx, context.subscription.orgId);
@@ -1274,8 +1307,9 @@ async function persistSubscriptionChangePreview(
       context.subscription.orgId,
       args.createdAt,
     );
-    if (!(await subscriptionChangeSnapshotMatches(tx, args.prepared))) {
-      return null;
+    const snapshot = await subscriptionChangeSnapshotMatches(tx, args.prepared);
+    if (snapshot !== true) {
+      return snapshot === "plan_ending" ? snapshot : null;
     }
     return await insertSubscriptionChangePreview(tx, args);
   });
@@ -1365,9 +1399,7 @@ async function previewSubscriptionChangeInvoices(
 }> {
   const { prepared } = args;
   const stripe = getStripeClient();
-  const subscriptionWillEnd =
-    prepared.subscription.cancel_at_period_end ||
-    prepared.subscription.cancel_at !== null;
+  const subscriptionWillEnd = stripeSubscriptionWillEnd(prepared.subscription);
   const [recurringPreview, immediatePreview] = await Promise.all([
     subscriptionWillEnd
       ? null
@@ -1394,7 +1426,8 @@ async function previewSubscriptionChangeInvoices(
           subscription_details: {
             ...(prepared.subscription.cancel_at_period_end
               ? { cancel_at_period_end: false }
-              : prepared.subscription.cancel_at !== null
+              : prepared.subscription.cancel_at !== null &&
+                  prepared.subscription.cancel_at !== undefined
                 ? { cancel_at: "" as const }
                 : {}),
             items: [...args.immediateItems],
@@ -1497,6 +1530,9 @@ export async function previewUsagePackSubscriptionChange(
     expiresAt,
     effectiveAt,
   });
+  if (change === "plan_ending") {
+    return { status: "plan_ending" };
+  }
   if (!change) {
     return { status: "conflict" };
   }
@@ -2402,6 +2438,7 @@ function restoredUsagePackScheduleParams(
   if (activePackageItems.length === 0) {
     throw new Error("Usage pack subscription has no active packages");
   }
+  const metadataOverlay = canceledUsageAllowanceScheduleMetadata(subscription);
   return {
     end_behavior: schedule.end_behavior,
     proration_behavior: "none",
@@ -2423,7 +2460,9 @@ function restoredUsagePackScheduleParams(
           }),
           ...activePackageItems,
         ],
-        ...(phase.metadata ? { metadata: { ...phase.metadata } } : {}),
+        ...(phase.metadata || metadataOverlay
+          ? { metadata: { ...phase.metadata, ...metadataOverlay } }
+          : {}),
         proration_behavior: phase.proration_behavior ?? "none",
         ...(discounts.length > 0 ? { discounts } : {}),
       };
@@ -2677,6 +2716,14 @@ async function applyStoredSubscriptionChange(
     stored.allocationChanges.some((change) => {
       return change.kind === "downgrade";
     });
+  if (hasScheduledChanges && stripeSubscriptionWillEnd(subscription)) {
+    await failApplyingSubscriptionChange(
+      db,
+      stored.root,
+      "subscription_ending_conflict",
+    );
+    return { status: "plan_ending" };
+  }
   const applicable = await prepareApplicableSubscription(
     {
       db,

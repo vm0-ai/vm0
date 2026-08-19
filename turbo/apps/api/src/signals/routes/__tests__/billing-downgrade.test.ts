@@ -487,6 +487,279 @@ describe("POST /api/zero/billing/downgrade", () => {
     });
   });
 
+  it("preserves a Plan downgrade while restoring a concurrency reduction", async () => {
+    const subId = `sub-team-concurrency-pro-${randomUUID().slice(0, 8)}`;
+    const customerId = `cus-team-concurrency-pro-${randomUUID().slice(0, 8)}`;
+    const scheduleId = `sched-concurrency-pro-${randomUUID().slice(0, 8)}`;
+    const periodStart = Math.floor((now() - 86_400 * 1000) / 1000);
+    const periodEnd = Math.floor((now() + 30 * 86_400 * 1000) / 1000);
+    const futureEnd = periodEnd + 30 * 86_400;
+    const currentPeriodEnd = new Date(periodEnd * 1000);
+    const fixture = await track(
+      store.set(
+        seedInvoicesOrg$,
+        {
+          stripeCustomerId: customerId,
+          stripeSubscriptionId: subId,
+          subscriptionStatus: "active",
+          tier: "team",
+          currentPeriodEnd,
+        },
+        context.signal,
+      ),
+    );
+    await postConcurrencyEntitlementsInvoicePaid(context.signal, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      customerId,
+      subscriptionId: subId,
+      lines: [
+        {
+          slots: 5,
+          startsAt: new Date(periodStart * 1000),
+          expiresAt: currentPeriodEnd,
+        },
+      ],
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    const subscription = {
+      id: subId,
+      customer: customerId,
+      schedule: null,
+      pending_update: null,
+      default_payment_method: "pm_card",
+      discounts: [],
+      items: {
+        data: [
+          {
+            id: "si_item_team",
+            current_period_start: periodStart,
+            current_period_end: periodEnd,
+            quantity: 1,
+            price: {
+              id: TEST_PRICE_TEAM,
+              recurring: { interval: "month", interval_count: 1 },
+            },
+          },
+          {
+            id: "si_item_concurrency",
+            current_period_start: periodStart,
+            current_period_end: periodEnd,
+            quantity: 5,
+            price: {
+              id: TEST_PRICE_CONCURRENCY,
+              recurring: { interval: "month", interval_count: 1 },
+            },
+          },
+        ],
+      },
+    };
+    context.mocks.stripe.subscriptions.retrieve.mockReset();
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce(
+      subscription,
+    );
+    context.mocks.stripe.subscriptionSchedules.create.mockReset();
+    context.mocks.stripe.subscriptionSchedules.create.mockResolvedValueOnce({
+      id: scheduleId,
+    });
+    context.mocks.stripe.subscriptionSchedules.update.mockReset();
+    context.mocks.stripe.subscriptionSchedules.update.mockResolvedValue({
+      id: scheduleId,
+    });
+
+    await accept(
+      setupApp({
+        context,
+        routes: billingConcurrencySubscriptionRoutes,
+      })(zeroBillingConcurrencySubscriptionContract).confirmChange({
+        params: { subscriptionId: subId },
+        body: { quantity: 3 },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce({
+      ...subscription,
+      schedule: scheduleId,
+    });
+    context.mocks.stripe.subscriptionSchedules.retrieve.mockResolvedValueOnce({
+      id: scheduleId,
+      end_behavior: "release",
+      current_phase: { start_date: periodStart, end_date: periodEnd },
+      phases: [
+        {
+          start_date: periodStart,
+          end_date: periodEnd,
+          items: [
+            { price: TEST_PRICE_TEAM, quantity: 1 },
+            { price: TEST_PRICE_CONCURRENCY, quantity: 5 },
+          ],
+          proration_behavior: "none",
+        },
+        {
+          start_date: periodEnd,
+          end_date: futureEnd,
+          items: [
+            { price: TEST_PRICE_TEAM, quantity: 1 },
+            { price: TEST_PRICE_CONCURRENCY, quantity: 3 },
+          ],
+          proration_behavior: "none",
+        },
+      ],
+    });
+    context.mocks.stripe.subscriptionSchedules.update.mockClear();
+
+    const response = await accept(
+      setupApp({ context, routes: billingDowngradeRoutes })(
+        zeroBillingDowngradeContract,
+      ).create({
+        body: { targetTier: "pro" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      success: true,
+      effectiveDate: currentPeriodEnd.toISOString(),
+    });
+    expect(
+      context.mocks.stripe.subscriptionSchedules.update,
+    ).toHaveBeenCalledWith(scheduleId, {
+      end_behavior: "release",
+      proration_behavior: "none",
+      phases: [
+        {
+          start_date: periodStart,
+          end_date: periodEnd,
+          items: [
+            { price: TEST_PRICE_TEAM, quantity: 1 },
+            { price: TEST_PRICE_CONCURRENCY, quantity: 5 },
+          ],
+          proration_behavior: "none",
+        },
+        {
+          start_date: periodEnd,
+          end_date: futureEnd,
+          items: [
+            { price: TEST_PRICE_PRO, quantity: 1 },
+            { price: TEST_PRICE_CONCURRENCY, quantity: 3 },
+          ],
+          proration_behavior: "none",
+        },
+      ],
+    });
+    const status = await readBillingStatus();
+    expect(status.body.scheduledChange).toStrictEqual({
+      type: "downgrade",
+      targetTier: "pro",
+      effectiveDate: currentPeriodEnd.toISOString(),
+    });
+    expect(status.body.concurrencySubscriptions[0]?.scheduledQuantity).toBe(3);
+
+    const planSchedule = {
+      id: scheduleId,
+      end_behavior: "release" as const,
+      current_phase: { start_date: periodStart, end_date: periodEnd },
+      phases: [
+        {
+          start_date: periodStart,
+          end_date: periodEnd,
+          items: [
+            { price: TEST_PRICE_TEAM, quantity: 1 },
+            { price: TEST_PRICE_CONCURRENCY, quantity: 5 },
+          ],
+          proration_behavior: "none" as const,
+        },
+        {
+          start_date: periodEnd,
+          end_date: futureEnd,
+          items: [
+            { price: TEST_PRICE_PRO, quantity: 1 },
+            { price: TEST_PRICE_CONCURRENCY, quantity: 3 },
+          ],
+          proration_behavior: "none" as const,
+        },
+      ],
+    };
+    context.mocks.stripe.subscriptions.retrieve
+      .mockResolvedValueOnce({
+        ...subscription,
+        schedule: scheduleId,
+      })
+      .mockResolvedValueOnce({
+        ...subscription,
+        schedule: scheduleId,
+        latest_invoice: null,
+      });
+    context.mocks.stripe.subscriptionSchedules.retrieve.mockResolvedValueOnce(
+      planSchedule,
+    );
+    context.mocks.stripe.subscriptionSchedules.update.mockClear();
+    context.mocks.stripe.subscriptionSchedules.release.mockClear();
+
+    const restored = await accept(
+      setupApp({
+        context,
+        routes: billingConcurrencySubscriptionRoutes,
+      })(zeroBillingConcurrencySubscriptionContract).restore({
+        params: { subscriptionId: subId },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(restored.body).toStrictEqual({ success: true });
+    expect(
+      context.mocks.stripe.subscriptionSchedules.update,
+    ).toHaveBeenCalledWith(
+      scheduleId,
+      {
+        end_behavior: "release",
+        proration_behavior: "none",
+        phases: [
+          {
+            start_date: periodStart,
+            end_date: periodEnd,
+            items: [
+              { price: TEST_PRICE_TEAM, quantity: 1 },
+              { price: TEST_PRICE_CONCURRENCY, quantity: 5 },
+            ],
+            proration_behavior: "none",
+          },
+          {
+            start_date: periodEnd,
+            end_date: futureEnd,
+            items: [
+              { price: TEST_PRICE_PRO, quantity: 1 },
+              { price: TEST_PRICE_CONCURRENCY, quantity: 5 },
+            ],
+            proration_behavior: "none",
+          },
+        ],
+      },
+      {
+        idempotencyKey: expect.stringMatching(
+          /^concurrency-change:[^:]+:[^:]+:schedule-update$/u,
+        ),
+      },
+    );
+    expect(
+      context.mocks.stripe.subscriptionSchedules.release,
+    ).not.toHaveBeenCalled();
+    const restoredStatus = await readBillingStatus();
+    expect(restoredStatus.body.scheduledChange).toStrictEqual({
+      type: "downgrade",
+      targetTier: "pro",
+      effectiveDate: currentPeriodEnd.toISOString(),
+    });
+    expect(
+      restoredStatus.body.concurrencySubscriptions[0]?.scheduledQuantity,
+    ).toBeUndefined();
+  });
+
   it("returns branded setup checkout URLs when team to pro needs a payment method", async () => {
     const subId = `sub-team-pro-no-card-${randomUUID().slice(0, 8)}`;
     const customerId = `cus-team-pro-${randomUUID().slice(0, 8)}`;
@@ -760,6 +1033,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     const periodEnd = Math.floor((now() + 30 * 86_400 * 1000) / 1000);
     const futureEnd = periodEnd + 30 * 86_400;
     const currentPeriodEnd = new Date(periodEnd * 1000);
+    const allowanceCancelAt = currentPeriodEnd.toISOString();
     const fixture = await track(
       store.set(
         seedInvoicesOrg$,
@@ -791,6 +1065,10 @@ describe("POST /api/zero/billing/downgrade", () => {
       id: subId,
       schedule: null,
       pending_update: null,
+      metadata: {
+        allowanceStatus: "canceled",
+        allowanceCancelAt,
+      },
       items: {
         data: [
           {
@@ -857,6 +1135,7 @@ describe("POST /api/zero/billing/downgrade", () => {
         {
           start_date: periodStart,
           end_date: periodEnd,
+          metadata: { allowanceStatus: "active" },
           items: [
             { price: TEST_PRICE_TEAM, quantity: 1 },
             { price: TEST_PRICE_CONCURRENCY, quantity: 5 },
@@ -866,6 +1145,7 @@ describe("POST /api/zero/billing/downgrade", () => {
         {
           start_date: periodEnd,
           end_date: futureEnd,
+          metadata: { allowanceStatus: "active" },
           items: [
             { price: TEST_PRICE_TEAM, quantity: 1 },
             { price: TEST_PRICE_CONCURRENCY, quantity: 3 },
@@ -903,6 +1183,10 @@ describe("POST /api/zero/billing/downgrade", () => {
             { price: TEST_PRICE_TEAM, quantity: 1 },
             { price: TEST_PRICE_CONCURRENCY, quantity: 5 },
           ],
+          metadata: {
+            allowanceStatus: "canceled",
+            allowanceCancelAt,
+          },
           proration_behavior: "none",
         },
       ],

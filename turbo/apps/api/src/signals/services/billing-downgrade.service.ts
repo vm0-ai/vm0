@@ -19,9 +19,11 @@ import {
   type StripeSubscriptionSchedule,
 } from "../external/stripe-client";
 import {
+  canceledUsageAllowanceScheduleMetadata,
   subscriptionScheduleFinalEnd,
   subscriptionScheduleId,
   subscriptionSchedulePhasesEndingAt,
+  subscriptionSchedulePhasesReplacingPriceAt,
 } from "./stripe-subscription-schedules.service";
 import {
   activePriceId,
@@ -362,6 +364,7 @@ async function scheduleCancellationOnExistingSchedule(
       ...subscriptionSchedulePhasesEndingAt(
         schedule,
         dateUnixSeconds(effectiveDate),
+        canceledUsageAllowanceScheduleMetadata(subscription),
       ),
     ],
   });
@@ -499,35 +502,55 @@ async function scheduleDowngradeToPro(
   const currentPriceId = currentItem.price.id;
   const quantity = currentItem.quantity;
   const discounts = subscriptionSchedulePhaseDiscounts(subscription);
+  const concurrency = existingScheduleId
+    ? await concurrencyChangeState(context)
+    : null;
+  signal?.throwIfAborted();
+  const existingAddOnSchedule =
+    existingScheduleId &&
+    context.org.pendingSubscriptionScheduleId !== existingScheduleId &&
+    hasPendingConcurrencyChange(concurrency)
+      ? await context.stripe.subscriptionSchedules.retrieve(existingScheduleId)
+      : null;
+  signal?.throwIfAborted();
 
   await context.stripe.subscriptionSchedules.update(scheduleId, {
     end_behavior: "release",
     proration_behavior: "none",
-    phases: [
-      phaseWithDiscounts(
-        {
-          start_date: startDate,
-          end_date: endDate,
-          items: subscriptionPhaseItems(subscription),
-          proration_behavior: "none",
-        },
-        discounts,
-      ),
-      phaseWithDiscounts(
-        {
-          start_date: endDate,
-          duration: phaseDuration(currentItem.price),
-          items: subscription.items.data.map((item) => {
-            return schedulePhaseItem(
-              item.price.id === currentPriceId ? proPriceId : item.price.id,
-              item.price.id === currentPriceId ? quantity : item.quantity,
-            );
+    phases: existingAddOnSchedule
+      ? [
+          ...subscriptionSchedulePhasesReplacingPriceAt(existingAddOnSchedule, {
+            effectiveAt: endDate,
+            sourcePriceId: currentPriceId,
+            targetPriceId: proPriceId,
+            targetQuantity: quantity ?? 1,
           }),
-          proration_behavior: "none",
-        },
-        discounts,
-      ),
-    ],
+        ]
+      : [
+          phaseWithDiscounts(
+            {
+              start_date: startDate,
+              end_date: endDate,
+              items: subscriptionPhaseItems(subscription),
+              proration_behavior: "none",
+            },
+            discounts,
+          ),
+          phaseWithDiscounts(
+            {
+              start_date: endDate,
+              duration: phaseDuration(currentItem.price),
+              items: subscription.items.data.map((item) => {
+                return schedulePhaseItem(
+                  item.price.id === currentPriceId ? proPriceId : item.price.id,
+                  item.price.id === currentPriceId ? quantity : item.quantity,
+                );
+              }),
+              proration_behavior: "none",
+            },
+            discounts,
+          ),
+        ],
   });
   signal?.throwIfAborted();
 

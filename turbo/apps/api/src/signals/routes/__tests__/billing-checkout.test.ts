@@ -6405,6 +6405,9 @@ describe("usage pack allocation management", () => {
       async (input) => {
         if (!cancellationSynchronized) {
           cancellationSynchronized = true;
+          context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+            endingSubscription,
+          );
           await postManagedUsagePackEvent(
             "customer.subscription.updated",
             endingSubscription,
@@ -6443,6 +6446,78 @@ describe("usage pack allocation management", () => {
       fixture.usagePackSubscriptionId,
     );
     expect(state.subscription?.cancelAtPeriodEnd).toBeTruthy();
+  });
+
+  it("rejects a deferred usage pack change when the Plan cancellation webhook arrives during preview", async () => {
+    const userId = `user_${randomUUID()}`;
+    const fixture = await seedManagedUsagePack(
+      [{ userId, usagePackUsd: 50 }],
+      "team",
+    );
+    const activeSubscription = managedUsagePackSubscription(
+      fixture,
+      new Map([[TEST_PRICE_USAGE_PACK_50, 1]]),
+    );
+    const endingSubscription = {
+      ...activeSubscription,
+      cancel_at: fixture.billingPeriod.end,
+      cancel_at_period_end: true,
+    };
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      activeSubscription,
+    );
+    mockUsagePackSubscriptionPackagePreviews({
+      immediateAmountCents: 0,
+      nextRecurringAmountCents: 2000,
+      sourcePriceId: TEST_PRICE_USAGE_PACK_50,
+      targetPriceId: TEST_PRICE_USAGE_PACK_20,
+    });
+    const createPreview =
+      context.mocks.stripe.invoices.createPreview.getMockImplementation();
+    if (!createPreview) {
+      throw new Error("Usage pack preview mock is unavailable");
+    }
+    let cancellationSynchronized = false;
+    context.mocks.stripe.invoices.createPreview.mockImplementation(
+      async (input) => {
+        if (!cancellationSynchronized) {
+          cancellationSynchronized = true;
+          context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+            endingSubscription,
+          );
+          await postManagedUsagePackEvent(
+            "customer.subscription.updated",
+            endingSubscription,
+          );
+        }
+        return await createPreview(input);
+      },
+    );
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
+      zeroBillingUsagePackManagementContract,
+    );
+
+    const preview = await accept(
+      client.previewSubscriptionChange({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          targetTier: "team",
+          memberUsagePacks: [{ memberId: userId, usagePackUsd: 20 }],
+        },
+      }),
+      [409],
+    );
+
+    expect(preview.body.error.message).toBe(
+      "Your Plan is scheduled to end before this usage pack change can take effect. Restore your Plan first, then try again.",
+    );
+    expect(cancellationSynchronized).toBeTruthy();
+    const state = await readUsagePackState(
+      fixture.orgId,
+      fixture.usagePackSubscriptionId,
+    );
+    expect(state.subscription?.cancelAtPeriodEnd).toBeTruthy();
+    expect(state.changes).toStrictEqual([]);
   });
 
   it("applies an immediate grouped usage pack upgrade without restoring the Plan", async () => {
@@ -6594,6 +6669,176 @@ describe("usage pack allocation management", () => {
     );
     expect(subscriptionChange.body.error.message).toBe(expectedMessage);
     expect(context.mocks.stripe.subscriptions.retrieve).not.toHaveBeenCalled();
+  });
+
+  it("uses Stripe cancellation state when the Plan webhook is delayed", async () => {
+    const userId = `user_${randomUUID()}`;
+    const fixture = await seedManagedUsagePack(
+      [{ userId, usagePackUsd: 50 }],
+      "team",
+    );
+    const endingSubscription = {
+      ...managedUsagePackSubscription(
+        fixture,
+        new Map([[TEST_PRICE_USAGE_PACK_50, 1]]),
+      ),
+      cancel_at: fixture.billingPeriod.end,
+      cancel_at_period_end: true,
+    };
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      endingSubscription,
+    );
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
+      zeroBillingUsagePackManagementContract,
+    );
+    const expectedMessage =
+      "Your Plan is scheduled to end before this usage pack change can take effect. Restore your Plan first, then try again.";
+
+    const allocationChange = await accept(
+      client.previewChange({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { memberId: userId, targetUsagePackUsd: 20 },
+      }),
+      [409],
+    );
+    expect(allocationChange.body.error.message).toBe(expectedMessage);
+
+    const subscriptionChange = await accept(
+      client.previewSubscriptionChange({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          targetTier: "team",
+          memberUsagePacks: [{ memberId: userId, usagePackUsd: 20 }],
+        },
+      }),
+      [409],
+    );
+    expect(subscriptionChange.body.error.message).toBe(expectedMessage);
+    expect(context.mocks.stripe.subscriptions.retrieve).toHaveBeenCalledWith(
+      fixture.subscriptionId,
+    );
+    expect(context.mocks.stripe.subscriptions.retrieve).toHaveBeenCalledWith(
+      fixture.subscriptionId,
+      { expand: ["latest_invoice"] },
+    );
+    expect(context.mocks.stripe.invoices.createPreview).not.toHaveBeenCalled();
+    expect(
+      (await readUsagePackState(fixture.orgId, fixture.usagePackSubscriptionId))
+        .subscription?.cancelAtPeriodEnd,
+    ).toBeFalsy();
+  });
+
+  it("rejects an allocation downgrade when the Plan starts ending after preview", async () => {
+    const userId = `user_${randomUUID()}`;
+    const fixture = await seedManagedUsagePack(
+      [{ userId, usagePackUsd: 50 }],
+      "team",
+    );
+    const activeSubscription = managedUsagePackSubscription(
+      fixture,
+      new Map([[TEST_PRICE_USAGE_PACK_50, 1]]),
+    );
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      activeSubscription,
+    );
+    mockUsagePackChangePreviews(0, 2000);
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
+      zeroBillingUsagePackManagementContract,
+    );
+    const preview = await accept(
+      client.previewChange({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { memberId: userId, targetUsagePackUsd: 20 },
+      }),
+      [200],
+    );
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      ...activeSubscription,
+      cancel_at: fixture.billingPeriod.end,
+      cancel_at_period_end: true,
+    });
+
+    const confirmed = await accept(
+      client.confirmChange({
+        params: { changeId: preview.body.changeId },
+        headers: { authorization: "Bearer clerk-session" },
+        body: {},
+      }),
+      [409],
+    );
+
+    expect(confirmed.body.error.message).toBe(
+      "Your Plan is scheduled to end before this usage pack change can take effect. Restore your Plan first, then try again.",
+    );
+    expect(
+      (await readUsagePackState(fixture.orgId, fixture.usagePackSubscriptionId))
+        .changes,
+    ).toStrictEqual([
+      expect.objectContaining({
+        kind: "downgrade",
+        status: "failed",
+      }),
+    ]);
+  });
+
+  it("rejects a grouped downgrade when the Plan starts ending after preview", async () => {
+    const userId = `user_${randomUUID()}`;
+    const fixture = await seedManagedUsagePack(
+      [{ userId, usagePackUsd: 50 }],
+      "team",
+    );
+    const activeSubscription = managedUsagePackSubscription(
+      fixture,
+      new Map([[TEST_PRICE_USAGE_PACK_50, 1]]),
+    );
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      activeSubscription,
+    );
+    mockUsagePackSubscriptionPackagePreviews({
+      immediateAmountCents: 0,
+      nextRecurringAmountCents: 2000,
+      sourcePriceId: TEST_PRICE_USAGE_PACK_50,
+      targetPriceId: TEST_PRICE_USAGE_PACK_20,
+    });
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
+      zeroBillingUsagePackManagementContract,
+    );
+    const preview = await accept(
+      client.previewSubscriptionChange({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          targetTier: "team",
+          memberUsagePacks: [{ memberId: userId, usagePackUsd: 20 }],
+        },
+      }),
+      [200],
+    );
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      ...activeSubscription,
+      cancel_at: fixture.billingPeriod.end,
+      cancel_at_period_end: true,
+    });
+
+    const confirmed = await accept(
+      client.confirmSubscriptionChange({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { changeId: preview.body.changeId },
+      }),
+      [409],
+    );
+
+    expect(confirmed.body.error.message).toBe(
+      "Your Plan is scheduled to end before this usage pack change can take effect. Restore your Plan first, then try again.",
+    );
+    expect(
+      (await readUsagePackState(fixture.orgId, fixture.usagePackSubscriptionId))
+        .changes,
+    ).toStrictEqual([
+      expect.objectContaining({
+        kind: "downgrade",
+        status: "failed",
+      }),
+    ]);
   });
 
   it("reopens the same pending subscription change without creating another preview", async () => {
@@ -7796,6 +8041,9 @@ describe("usage pack allocation management", () => {
       targetPriceId: TEST_PRICE_USAGE_PACK_20,
     });
     const scheduleId = `sub_sched_usage_pack_plan_end_${randomUUID()}`;
+    const allowanceCancelAt = new Date(
+      fixture.billingPeriod.end * 1000,
+    ).toISOString();
     context.mocks.stripe.subscriptionSchedules.create.mockResolvedValue({
       id: scheduleId,
     });
@@ -7823,12 +8071,20 @@ describe("usage pack allocation management", () => {
       [200],
     );
 
-    const scheduledSubscription = managedUsagePackSubscription(
+    const baseScheduledSubscription = managedUsagePackSubscription(
       fixture,
       new Map([[TEST_PRICE_USAGE_PACK_50, 1]]),
       fixture.billingPeriod,
       { scheduleId },
     );
+    const scheduledSubscription = {
+      ...baseScheduledSubscription,
+      metadata: {
+        ...baseScheduledSubscription.metadata,
+        allowanceStatus: "canceled",
+        allowanceCancelAt,
+      },
+    };
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
       scheduledSubscription,
     );
@@ -7923,7 +8179,11 @@ describe("usage pack allocation management", () => {
               { price: TEST_PRICE_USAGE_PACK_PLAN_PRO, quantity: 1 },
               restoredPackage,
             ],
-            metadata: { planState: "ending" },
+            metadata: {
+              planState: "ending",
+              allowanceStatus: "canceled",
+              allowanceCancelAt,
+            },
             proration_behavior: "none",
             discounts: [{ coupon: "coupon_plan" }],
           },
@@ -7935,7 +8195,11 @@ describe("usage pack allocation management", () => {
               { price: TEST_PRICE_USAGE_PACK_PLAN_PRO, quantity: 1 },
               restoredPackage,
             ],
-            metadata: { planState: "ending" },
+            metadata: {
+              planState: "ending",
+              allowanceStatus: "canceled",
+              allowanceCancelAt,
+            },
             proration_behavior: "none",
             discounts: [{ coupon: "coupon_plan" }],
           },

@@ -129,11 +129,16 @@ const log = logger("api:zero:billing-checkout");
 type UsagePackSubscriptionChangePreviewResult = Awaited<
   ReturnType<typeof previewUsagePackSubscriptionChange>
 >;
+type UsagePackSubscriptionChangeConfirmResult = Awaited<
+  ReturnType<typeof confirmUsagePackSubscriptionChange>
+>;
+type UsagePackSubscriptionChangeResult =
+  | UsagePackSubscriptionChangePreviewResult
+  | UsagePackSubscriptionChangeConfirmResult;
 type UsagePackSubscriptionChangeConflictResult = Extract<
-  UsagePackSubscriptionChangePreviewResult,
+  UsagePackSubscriptionChangeResult,
   { readonly status: "plan_ending" | "conflict" }
 >;
-
 const USAGE_PACK_SUBSCRIPTION_CHANGE_CONFLICT_MESSAGES = {
   plan_ending: USAGE_PACK_PLAN_ENDING_MESSAGE,
   conflict: "Another usage pack billing change is in progress",
@@ -142,7 +147,7 @@ const USAGE_PACK_SUBSCRIPTION_CHANGE_CONFLICT_MESSAGES = {
 >;
 
 function isUsagePackSubscriptionChangeConflict(
-  result: UsagePackSubscriptionChangePreviewResult,
+  result: UsagePackSubscriptionChangeResult,
 ): result is UsagePackSubscriptionChangeConflictResult {
   return result.status === "plan_ending" || result.status === "conflict";
 }
@@ -1144,6 +1149,9 @@ const usagePackChangeConfirmAuthed$ = command(
     if (result.status === "expired") {
       return badRequestMessage("Usage pack change preview expired");
     }
+    if (result.status === "plan_ending") {
+      return conflict(USAGE_PACK_PLAN_ENDING_MESSAGE);
+    }
     if (result.status === "conflict") {
       return conflict("Usage pack allocation changed; create a new preview");
     }
@@ -1679,8 +1687,10 @@ const usagePackSubscriptionChangeConfirmAuthed$ = command(
     if (result.status === "expired") {
       return badRequestMessage("Usage pack subscription preview expired");
     }
-    if (result.status === "conflict") {
-      return conflict("Another usage pack billing change is in progress");
+    if (isUsagePackSubscriptionChangeConflict(result)) {
+      return conflict(
+        USAGE_PACK_SUBSCRIPTION_CHANGE_CONFLICT_MESSAGES[result.status],
+      );
     }
     return { status: 200 as const, body: result.response };
   },

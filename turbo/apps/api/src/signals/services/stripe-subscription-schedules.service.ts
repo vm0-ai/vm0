@@ -39,6 +39,21 @@ function stripeRefId(ref: StripeRef | undefined): string | null {
   return typeof ref === "string" ? ref : (ref?.id ?? null);
 }
 
+export function canceledUsageAllowanceScheduleMetadata(
+  subscription: Pick<StripeSubscription, "metadata">,
+): Readonly<Record<string, string>> | null {
+  const metadata = subscription.metadata;
+  if (metadata?.allowanceStatus !== "canceled") {
+    return null;
+  }
+  return {
+    allowanceStatus: "canceled",
+    ...(metadata.allowanceCancelAt === undefined
+      ? {}
+      : { allowanceCancelAt: metadata.allowanceCancelAt }),
+  };
+}
+
 function scheduleDiscountParam(
   discount: NonNullable<StripeSchedulePhase["discounts"]>[number],
 ): StripeSchedulePhaseDiscountParam {
@@ -84,19 +99,28 @@ function schedulePhaseItemParam(
 
 function schedulePhaseParam(
   phase: StripeSchedulePhase,
-  endDate: number,
+  args: {
+    readonly startDate?: number;
+    readonly endDate: number;
+    readonly items?: readonly StripeSchedulePhaseItemParam[];
+    readonly metadataOverlay: Readonly<Record<string, string>> | null;
+  },
 ): StripeSchedulePhaseParam {
-  const items = phase.items?.map(schedulePhaseItemParam);
-  if (!items || items.length === 0 || endDate <= phase.start_date) {
+  const startDate = args.startDate ?? phase.start_date;
+  const items = args.items ?? phase.items?.map(schedulePhaseItemParam);
+  if (!items || items.length === 0 || args.endDate <= startDate) {
     throw new Error("Stripe subscription schedule has an invalid phase");
   }
   const discounts = (phase.discounts ?? []).map(scheduleDiscountParam);
+  const metadata = args.metadataOverlay
+    ? { ...phase.metadata, ...args.metadataOverlay }
+    : phase.metadata;
   return {
-    start_date: phase.start_date,
-    end_date: endDate,
+    start_date: startDate,
+    end_date: args.endDate,
     ...(phase.currency ? { currency: phase.currency } : {}),
-    items,
-    ...(phase.metadata ? { metadata: { ...phase.metadata } } : {}),
+    items: [...items],
+    ...(metadata ? { metadata: { ...metadata } } : {}),
     proration_behavior: phase.proration_behavior ?? "none",
     ...(discounts.length > 0 ? { discounts } : {}),
   };
@@ -105,6 +129,7 @@ function schedulePhaseParam(
 export function subscriptionSchedulePhasesEndingAt(
   schedule: Pick<StripeSubscriptionSchedule, "current_phase" | "phases">,
   endDate: number,
+  metadataOverlay: Readonly<Record<string, string>> | null = null,
 ): readonly StripeSchedulePhaseParam[] {
   const currentPhase = schedule.current_phase;
   if (!currentPhase) {
@@ -133,7 +158,107 @@ export function subscriptionSchedulePhasesEndingAt(
     throw new Error("Stripe subscription schedule cannot end at this date");
   }
   return phases.map((phase) => {
-    return schedulePhaseParam(phase, Math.min(phase.end_date, endDate));
+    return schedulePhaseParam(phase, {
+      endDate: Math.min(phase.end_date, endDate),
+      metadataOverlay,
+    });
+  });
+}
+
+function schedulePhaseItemsReplacingPrice(
+  phase: StripeSchedulePhase,
+  sourcePriceId: string,
+  targetPriceId: string,
+  targetQuantity: number,
+): readonly StripeSchedulePhaseItemParam[] {
+  const items = phase.items?.map(schedulePhaseItemParam);
+  if (!items) {
+    throw new Error("Stripe subscription schedule has no phase items");
+  }
+  let replaced = false;
+  const replacedItems = items.map((item) => {
+    if (item.price !== sourcePriceId) {
+      return item;
+    }
+    replaced = true;
+    return { ...item, price: targetPriceId, quantity: targetQuantity };
+  });
+  if (!replaced) {
+    throw new Error("Stripe subscription schedule lost its Plan item");
+  }
+  return replacedItems;
+}
+
+export function subscriptionSchedulePhasesReplacingPriceAt(
+  schedule: Pick<StripeSubscriptionSchedule, "current_phase" | "phases">,
+  args: {
+    readonly effectiveAt: number;
+    readonly sourcePriceId: string;
+    readonly targetPriceId: string;
+    readonly targetQuantity: number;
+  },
+): readonly StripeSchedulePhaseParam[] {
+  const currentPhase = schedule.current_phase;
+  if (!currentPhase) {
+    throw new Error("Stripe subscription schedule has no current phase");
+  }
+  const currentPhaseIndex = schedule.phases.findIndex((phase) => {
+    return (
+      phase.start_date === currentPhase.start_date &&
+      phase.end_date === currentPhase.end_date
+    );
+  });
+  const phases =
+    currentPhaseIndex === -1 ? [] : schedule.phases.slice(currentPhaseIndex);
+  const firstPhase = phases[0];
+  const finalPhase = phases[phases.length - 1];
+  if (
+    !firstPhase ||
+    !finalPhase ||
+    args.effectiveAt <= firstPhase.start_date ||
+    args.effectiveAt >= finalPhase.end_date ||
+    phases.some((phase) => {
+      return (phase.add_invoice_items?.length ?? 0) > 0;
+    })
+  ) {
+    throw new Error("Stripe subscription schedule cannot change Plan here");
+  }
+  return phases.flatMap((phase) => {
+    if (phase.end_date <= args.effectiveAt) {
+      return [
+        schedulePhaseParam(phase, {
+          endDate: phase.end_date,
+          metadataOverlay: null,
+        }),
+      ];
+    }
+    const replacedItems = schedulePhaseItemsReplacingPrice(
+      phase,
+      args.sourcePriceId,
+      args.targetPriceId,
+      args.targetQuantity,
+    );
+    if (phase.start_date >= args.effectiveAt) {
+      return [
+        schedulePhaseParam(phase, {
+          endDate: phase.end_date,
+          items: replacedItems,
+          metadataOverlay: null,
+        }),
+      ];
+    }
+    return [
+      schedulePhaseParam(phase, {
+        endDate: args.effectiveAt,
+        metadataOverlay: null,
+      }),
+      schedulePhaseParam(phase, {
+        startDate: args.effectiveAt,
+        endDate: phase.end_date,
+        items: replacedItems,
+        metadataOverlay: null,
+      }),
+    ];
   });
 }
 
