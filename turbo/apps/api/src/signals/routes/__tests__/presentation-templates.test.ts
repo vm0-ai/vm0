@@ -11,7 +11,6 @@ import {
   PRESENTATION_TEMPLATE_SOURCE_CONTENT_TYPE,
   presentationTemplatesContract,
 } from "@okouai/api-contracts/contracts/presentation-templates";
-import { uploadsContract } from "@okouai/api-contracts/contracts/uploads";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import AdmZip from "adm-zip";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -24,7 +23,6 @@ import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { presentationTemplatesRoutes } from "../presentation-templates";
-import { uploadsPrepareRoutes } from "../uploads-prepare";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -82,7 +80,7 @@ function bodyBuffer(body: unknown): Buffer {
   throw new Error("Expected an S3 object body");
 }
 
-/** Preflight reads the PPTX header and central directory as byte ranges. */
+/** The slide count is read as a trailing byte range, not a full download. */
 function rangeSlice(body: Buffer, range: unknown): Buffer {
   if (typeof range !== "string") {
     return body;
@@ -209,14 +207,6 @@ function installS3Fixture() {
       });
       return target.key;
     },
-    keys(bucket: string): readonly string[] {
-      return [...objects.keys()].flatMap((storedId) => {
-        const separator = storedId.indexOf("\0");
-        return storedId.slice(0, separator) === bucket
-          ? [storedId.slice(separator + 1)]
-          : [];
-      });
-    },
   };
 }
 
@@ -266,73 +256,80 @@ function templateClient() {
   );
 }
 
-function uploadClient() {
-  return setupApp({ context, routes: uploadsPrepareRoutes })(uploadsContract);
-}
-
-async function preparePrivateFile(
+async function openImport(
   actor: ApiTestUser,
-  args: {
-    readonly filename: string;
-    readonly contentType: string;
-    readonly body: Buffer;
-  },
-) {
+  sourceFilename = "brand-system.pptx",
+): Promise<string> {
   mocks.clerk.session(actor.userId, actor.orgId);
-  const prepared = await accept(
-    uploadClient().prepare({
+  const opened = await accept(
+    templateClient().createImport({
       headers: webHeaders(),
-      body: {
-        filename: args.filename,
-        contentType: args.contentType,
-        size: args.body.length,
-      },
+      body: { requestId: randomUUID(), sourceFilename },
     }),
     [200],
   );
-  if (!("uploadUrl" in prepared.body)) {
-    throw new Error("Expected a single-part private upload");
-  }
-  return prepared.body;
+  return opened.body.id;
 }
 
-async function uploadPrivateFile(
+/** Request a slot from the import, then PUT the bytes to the URL it returns. */
+async function fillSlot(
   actor: ApiTestUser,
   fixture: ReturnType<typeof installS3Fixture>,
-  args: {
-    readonly filename: string;
-    readonly contentType: string;
-    readonly body: Buffer;
-  },
-) {
-  const prepared = await preparePrivateFile(actor, args);
-  return {
-    id: prepared.id,
-    key: fixture.upload(prepared.uploadUrl, args.body),
-  };
+  templateId: string,
+  slot:
+    | { readonly role: "source"; readonly filename: string }
+    | { readonly role: "page"; readonly pageIndex: number },
+  body: Buffer,
+): Promise<void> {
+  mocks.clerk.session(actor.userId, actor.orgId);
+  const requested = await accept(
+    templateClient().requestUpload({
+      headers: webHeaders(),
+      params: { templateId },
+      body:
+        slot.role === "source"
+          ? {
+              role: "source",
+              filename: slot.filename,
+              contentType: PRESENTATION_TEMPLATE_SOURCE_CONTENT_TYPE,
+              size: body.length,
+            }
+          : {
+              role: "page",
+              pageIndex: slot.pageIndex,
+              filename: `page-${(slot.pageIndex + 1).toString()}.png`,
+              contentType: PRESENTATION_TEMPLATE_PAGE_CONTENT_TYPE,
+              size: body.length,
+            },
+    }),
+    [200],
+  );
+  fixture.upload(requested.body.uploadUrl, body);
 }
 
-async function uploadValidManifest(
+async function fillImport(
   actor: ApiTestUser,
   fixture: ReturnType<typeof installS3Fixture>,
+  templateId: string,
   pageCount: number,
-) {
-  const source = await uploadPrivateFile(actor, fixture, {
-    filename: "brand-system.pptx",
-    contentType: PRESENTATION_TEMPLATE_SOURCE_CONTENT_TYPE,
-    body: pptxSource(pageCount),
-  });
-  const pages = [];
-  for (let index = 0; index < pageCount; index += 1) {
-    pages.push(
-      await uploadPrivateFile(actor, fixture, {
-        filename: `browser-page-${(index + 1).toString()}.png`,
-        contentType: PRESENTATION_TEMPLATE_PAGE_CONTENT_TYPE,
-        body: pngHeader(),
-      }),
+  slideCount = pageCount,
+): Promise<void> {
+  await fillSlot(
+    actor,
+    fixture,
+    templateId,
+    { role: "source", filename: "brand-system.pptx" },
+    pptxSource(slideCount),
+  );
+  for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
+    await fillSlot(
+      actor,
+      fixture,
+      templateId,
+      { role: "page", pageIndex },
+      pngHeader(),
     );
   }
-  return { source, pages };
 }
 
 beforeEach(() => {
@@ -381,148 +378,109 @@ describe("presentation template owner routes", () => {
   });
 });
 
-describe("browser-rendered presentation template commit", () => {
-  it("keeps commit feature-gated and rejects incomplete or invalid uploads", async () => {
+describe("presentation template import", () => {
+  it("keeps the import behind the feature switch and scopes slots to an open import", async () => {
     const actor = bdd.user();
-    const fixture = installS3Fixture();
     const client = templateClient();
     mocks.clerk.session(actor.userId, actor.orgId);
 
     await accept(
-      client.commit({
+      client.createImport({
         headers: webHeaders(),
-        body: {
-          requestId: randomUUID(),
-          sourceFileId: randomUUID(),
-          pageFileIds: [randomUUID()],
-        },
+        body: { requestId: randomUUID(), sourceFilename: "deck.pptx" },
       }),
       [403],
     );
 
     await enablePresentationTemplates(actor);
-    const source = await uploadPrivateFile(actor, fixture, {
-      filename: "two-slides.pptx",
-      contentType: PRESENTATION_TEMPLATE_SOURCE_CONTENT_TYPE,
-      body: pptxSource(2),
-    });
-    const missingPage = await preparePrivateFile(actor, {
-      filename: "missing.png",
-      contentType: PRESENTATION_TEMPLATE_PAGE_CONTENT_TYPE,
-      body: pngHeader(),
-    });
-    const missing = await accept(
-      client.commit({
+    await accept(
+      client.createImport({
         headers: webHeaders(),
-        body: {
-          requestId: randomUUID(),
-          sourceFileId: source.id,
-          pageFileIds: [missingPage.id],
-        },
+        body: { requestId: randomUUID(), sourceFilename: "deck.pdf" },
       }),
       [400],
     );
-    expect(missing.body.error.code).toBe("invalid_upload");
 
-    fixture.upload(missingPage.uploadUrl, pngHeader());
-    const countMismatch = await accept(
-      client.commit({
+    // A slot can only be taken from an import the caller owns.
+    await accept(
+      client.requestUpload({
         headers: webHeaders(),
+        params: { templateId: randomUUID() },
         body: {
-          requestId: randomUUID(),
-          sourceFileId: source.id,
-          pageFileIds: [missingPage.id],
+          role: "page",
+          pageIndex: 0,
+          filename: "page-1.png",
+          contentType: PRESENTATION_TEMPLATE_PAGE_CONTENT_TYPE,
+          size: 1024,
         },
       }),
-      [400],
+      [404],
     );
-    expect(countMismatch.body.error.code).toBe("page_count_mismatch");
-
-    const pdf = await uploadPrivateFile(actor, fixture, {
-      filename: "deck.pdf",
-      contentType: "application/pdf",
-      body: Buffer.from("pdf", "utf8"),
-    });
-    const unsupported = await accept(
+    await accept(
       client.commit({
         headers: webHeaders(),
-        body: {
-          requestId: randomUUID(),
-          sourceFileId: pdf.id,
-          pageFileIds: [missingPage.id],
-        },
+        params: { templateId: randomUUID() },
+        body: {},
       }),
-      [400],
+      [404],
     );
-    expect(unsupported.body.error.code).toBe("unsupported_format");
-
-    // Nothing re-validates the archive format, but a deck whose slide count
-    // cannot be read cannot be paired with its pages either.
-    const unreadable = await uploadPrivateFile(actor, fixture, {
-      filename: "corrupt.pptx",
-      contentType: PRESENTATION_TEMPLATE_SOURCE_CONTENT_TYPE,
-      body: Buffer.alloc(2048, 7),
-    });
-    const invalid = await accept(
-      client.commit({
-        headers: webHeaders(),
-        body: {
-          requestId: randomUUID(),
-          sourceFileId: unreadable.id,
-          pageFileIds: [missingPage.id],
-        },
-      }),
-      [400],
-    );
-    expect(invalid.body.error.code).toBe("invalid_file");
-
-    const listed = await accept(client.list({ headers: webHeaders() }), [200]);
-    expect(listed.body).toStrictEqual([]);
   });
 
-  it("records one pending template per request id and rejects drifted uploads", async () => {
+  it("commits the ordered set the API allocated without being told object ids", async () => {
     const actor = bdd.user();
     await enablePresentationTemplates(actor);
     const fixture = installS3Fixture();
-    const uploaded = await uploadValidManifest(actor, fixture, 2);
-    const body = {
-      requestId: randomUUID(),
-      sourceFileId: uploaded.source.id,
-      pageFileIds: uploaded.pages.map((page) => {
-        return page.id;
-      }),
-    };
-    mocks.clerk.session(actor.userId, actor.orgId);
     const client = templateClient();
 
-    const responses = await Promise.all([
-      accept(client.commit({ headers: webHeaders(), body }), [200]),
-      accept(client.commit({ headers: webHeaders(), body }), [200]),
-    ]);
-    expect(
-      responses.map((response) => {
-        return response.body.status;
+    const requestId = randomUUID();
+    mocks.clerk.session(actor.userId, actor.orgId);
+    const opened = await accept(
+      client.createImport({
+        headers: webHeaders(),
+        body: { requestId, sourceFilename: "brand-system.pptx" },
       }),
-    ).toStrictEqual(["pending", "pending"]);
-    const templateId = responses[0]?.body.id;
-    if (!templateId) {
-      throw new Error("Expected a committed template id");
-    }
-    expect(responses[1]?.body.id).toBe(templateId);
-
-    const retried = await accept(
-      client.commit({ headers: webHeaders(), body }),
       [200],
     );
-    expect(retried.body).toMatchObject({ id: templateId, status: "pending" });
+    const templateId = opened.body.id;
+    expect(opened.body.status).toBe("pending");
 
-    // A pending import is not a usable template, so the collection stays empty
-    // until analysis moves it on.
-    expect(
-      (await accept(client.list({ headers: webHeaders() }), [200])).body,
-    ).toStrictEqual([]);
+    // The same request id resolves to the same import instead of a second one.
+    const reopened = await accept(
+      client.createImport({
+        headers: webHeaders(),
+        body: { requestId, sourceFilename: "brand-system.pptx" },
+      }),
+      [200],
+    );
+    expect(reopened.body.id).toBe(templateId);
 
-    // Pages stay hidden until analysis has accepted the committed inputs.
+    await fillImport(actor, fixture, templateId, 2);
+
+    mocks.clerk.session(actor.userId, actor.orgId);
+    const committed = await accept(
+      client.commit({
+        headers: webHeaders(),
+        params: { templateId },
+        body: {},
+      }),
+      [200],
+    );
+    expect(committed.body).toMatchObject({ id: templateId, status: "pending" });
+
+    // Committing again returns the same template rather than redoing the work.
+    const recommitted = await accept(
+      client.commit({
+        headers: webHeaders(),
+        params: { templateId },
+        body: {},
+      }),
+      [200],
+    );
+    expect(recommitted.body).toMatchObject({ id: templateId });
+
+    // A pending import is not a usable template yet.
+    const listed = await accept(client.list({ headers: webHeaders() }), [200]);
+    expect(listed.body).toStrictEqual([]);
     const detail = await accept(
       client.get({ headers: webHeaders(), params: { templateId } }),
       [200],
@@ -534,32 +492,111 @@ describe("browser-rendered presentation template commit", () => {
       coverUrl: null,
     });
     expect(detail.body.pageUrls).toStrictEqual([]);
+  });
 
-    // The commit references the uploads in place instead of copying them.
-    expect(
-      fixture.keys(ARTIFACTS_BUCKET).some((key) => {
-        return key.startsWith("presentation-template-ingestions/");
-      }),
-    ).toBeFalsy();
+  it("refuses to commit a gapped or mismatched page set", async () => {
+    const actor = bdd.user();
+    await enablePresentationTemplates(actor);
+    const fixture = installS3Fixture();
+    const client = templateClient();
 
-    const replacementPage = await uploadPrivateFile(actor, fixture, {
-      filename: "replacement.png",
-      contentType: PRESENTATION_TEMPLATE_PAGE_CONTENT_TYPE,
-      body: pngHeader(),
-    });
-    const drift = await accept(
+    const gapped = await openImport(actor);
+    await fillSlot(
+      actor,
+      fixture,
+      gapped,
+      { role: "source", filename: "brand-system.pptx" },
+      pptxSource(2),
+    );
+    await fillSlot(
+      actor,
+      fixture,
+      gapped,
+      { role: "page", pageIndex: 1 },
+      pngHeader(),
+    );
+    mocks.clerk.session(actor.userId, actor.orgId);
+    const missingPage = await accept(
       client.commit({
         headers: webHeaders(),
+        params: { templateId: gapped },
+        body: {},
+      }),
+      [400],
+    );
+    expect(missingPage.body.error.message).toContain("Page 1 is missing");
+
+    const mismatched = await openImport(actor);
+    await fillImport(actor, fixture, mismatched, 2, 5);
+    mocks.clerk.session(actor.userId, actor.orgId);
+    const countMismatch = await accept(
+      client.commit({
+        headers: webHeaders(),
+        params: { templateId: mismatched },
+        body: {},
+      }),
+      [400],
+    );
+    expect(countMismatch.body.error.message).toContain("5 slides");
+
+    const unreadable = await openImport(actor);
+    await fillSlot(
+      actor,
+      fixture,
+      unreadable,
+      { role: "source", filename: "corrupt.pptx" },
+      Buffer.alloc(2048, 7),
+    );
+    await fillSlot(
+      actor,
+      fixture,
+      unreadable,
+      { role: "page", pageIndex: 0 },
+      pngHeader(),
+    );
+    mocks.clerk.session(actor.userId, actor.orgId);
+    const invalid = await accept(
+      client.commit({
+        headers: webHeaders(),
+        params: { templateId: unreadable },
+        body: {},
+      }),
+      [400],
+    );
+    expect(invalid.body.error.message).toContain("could not be read");
+  });
+
+  it("stops handing out slots once the import is committed", async () => {
+    const actor = bdd.user();
+    await enablePresentationTemplates(actor);
+    const fixture = installS3Fixture();
+    const client = templateClient();
+
+    const templateId = await openImport(actor);
+    await fillImport(actor, fixture, templateId, 1);
+    mocks.clerk.session(actor.userId, actor.orgId);
+    await accept(
+      client.commit({
+        headers: webHeaders(),
+        params: { templateId },
+        body: {},
+      }),
+      [200],
+    );
+
+    await accept(
+      client.requestUpload({
+        headers: webHeaders(),
+        params: { templateId },
         body: {
-          ...body,
-          pageFileIds: [
-            body.pageFileIds[0] ?? randomUUID(),
-            replacementPage.id,
-          ],
+          role: "page",
+          pageIndex: 1,
+          filename: "page-2.png",
+          contentType: PRESENTATION_TEMPLATE_PAGE_CONTENT_TYPE,
+          size: 1024,
         },
       }),
       [409],
     );
-    expect(drift.body.error.code).toBe("CONFLICT");
   });
 });

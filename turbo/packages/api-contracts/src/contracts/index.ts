@@ -1738,7 +1738,8 @@ export {
   PRESENTATION_TEMPLATE_SOURCE_CONTENT_TYPE,
   presentationTemplateStatusSchema,
   presentationTemplatesContract,
-  type CommitPresentationTemplateBody,
+  type CreatePresentationTemplateImportBody,
+  type PresentationTemplateUploadBody,
   type PresentationTemplateSummary,
   type PresentationTemplatesContract,
 } from "./presentation-templates";

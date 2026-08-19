@@ -71,8 +71,12 @@ export const presentationTemplates = pgTable(
       .notNull()
       .default("pending"),
     error: jsonb("error").$type<PresentationTemplateError>(),
-    /** Private artifact object key assigned by the normal upload route. */
-    sourceStorageKey: text("source_storage_key").notNull(),
+    /**
+     * Private artifact object key for the committed deck. Null while the import
+     * is still collecting uploads; commit freezes the value from
+     * `presentation_template_uploads`.
+     */
+    sourceStorageKey: text("source_storage_key"),
     sourceFilename: text("source_filename").notNull(),
     pageKeys: text("page_keys")
       .array()

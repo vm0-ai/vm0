@@ -14,7 +14,11 @@ import { bodyResultOf, pathParamsOf } from "../context/request";
 import { db$, writeDb$ } from "../external/db";
 import { generatePresignedGetUrl } from "../external/s3";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
-import { commitPresentationTemplate$ } from "../services/presentation-template-commit.service";
+import {
+  commitPresentationTemplateImport$,
+  createPresentationTemplateImport$,
+  requestPresentationTemplateUpload$,
+} from "../services/presentation-template-import.service";
 import {
   listOwnedPresentationTemplates,
   loadOwnedPresentationTemplate,
@@ -113,23 +117,74 @@ const listInner$ = computed(async (get) => {
   return { status: 200 as const, body: summaries };
 });
 
-const commitBody$ = bodyResultOf(presentationTemplatesContract.commit);
+const createImportBody$ = bodyResultOf(
+  presentationTemplatesContract.createImport,
+);
+const createImportInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    if (!(await get(presentationTemplatesEnabled$))) {
+      return presentationTemplatesDisabled;
+    }
+    const bodyResult = await get(createImportBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+    return await set(
+      createPresentationTemplateImport$,
+      {
+        orgId: auth.orgId,
+        ownerUserId: auth.userId,
+        body: bodyResult.data,
+      },
+      signal,
+    );
+  },
+);
+
+const requestUploadParams$ = pathParamsOf(
+  presentationTemplatesContract.requestUpload,
+);
+const requestUploadBody$ = bodyResultOf(
+  presentationTemplatesContract.requestUpload,
+);
+const requestUploadInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    if (!(await get(presentationTemplatesEnabled$))) {
+      return presentationTemplatesDisabled;
+    }
+    const bodyResult = await get(requestUploadBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+    return await set(
+      requestPresentationTemplateUpload$,
+      {
+        orgId: auth.orgId,
+        ownerUserId: auth.userId,
+        templateId: get(requestUploadParams$).templateId,
+        body: bodyResult.data,
+      },
+      signal,
+    );
+  },
+);
+
+const commitParams$ = pathParamsOf(presentationTemplatesContract.commit);
 const commitInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   if (!(await get(presentationTemplatesEnabled$))) {
     return presentationTemplatesDisabled;
   }
-  const bodyResult = await get(commitBody$);
-  signal.throwIfAborted();
-  if (!bodyResult.ok) {
-    return bodyResult.response;
-  }
   return await set(
-    commitPresentationTemplate$,
+    commitPresentationTemplateImport$,
     {
       orgId: auth.orgId,
       ownerUserId: auth.userId,
-      body: bodyResult.data,
+      templateId: get(commitParams$).templateId,
     },
     signal,
   );
@@ -247,6 +302,14 @@ export const presentationTemplatesRoutes: readonly RouteEntry[] = [
   {
     route: presentationTemplatesContract.list,
     handler: authRoute(templateReadAuth, listInner$),
+  },
+  {
+    route: presentationTemplatesContract.createImport,
+    handler: authRoute(templateWriteAuth, createImportInner$),
+  },
+  {
+    route: presentationTemplatesContract.requestUpload,
+    handler: authRoute(templateWriteAuth, requestUploadInner$),
   },
   {
     route: presentationTemplatesContract.commit,

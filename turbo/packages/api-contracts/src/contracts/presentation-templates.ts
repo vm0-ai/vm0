@@ -46,28 +46,48 @@ const presentationTemplateIdParamsSchema = z.object({
   templateId: z.uuid(),
 });
 
-const commitPresentationTemplateBodySchema = z
-  .object({
-    requestId: z.uuid(),
-    sourceFileId: z.uuid(),
-    pageFileIds: z.array(z.uuid()).min(1).max(MAX_PRESENTATION_TEMPLATE_PAGES),
-  })
-  .superRefine(({ sourceFileId, pageFileIds }, context) => {
-    if (new Set(pageFileIds).size !== pageFileIds.length) {
-      context.addIssue({
-        code: "custom",
-        path: ["pageFileIds"],
-        message: "Each page upload must be referenced exactly once",
-      });
-    }
-    if (pageFileIds.includes(sourceFileId)) {
-      context.addIssue({
-        code: "custom",
-        path: ["pageFileIds"],
-        message: "The source upload cannot also be a page upload",
-      });
-    }
-  });
+/**
+ * A caller-chosen request id makes import creation idempotent, so a repeated
+ * click resolves to the same import instead of starting a second one.
+ */
+const createPresentationTemplateImportBodySchema = z.object({
+  requestId: z.uuid(),
+  sourceFilename: z.string().trim().min(1).max(255),
+});
+
+/**
+ * Uploads are requested per slot. The API allocates the object and remembers
+ * which import and page it belongs to, so commit never takes object ids and a
+ * client cannot pair one deck's source with another deck's pages.
+ */
+const presentationTemplateUploadBodySchema = z.discriminatedUnion("role", [
+  z.object({
+    role: z.literal("source"),
+    filename: z.string().trim().min(1).max(255),
+    contentType: z.literal(PRESENTATION_TEMPLATE_SOURCE_CONTENT_TYPE),
+    size: z
+      .number()
+      .int()
+      .positive()
+      .max(MAX_PRESENTATION_TEMPLATE_SOURCE_BYTES),
+  }),
+  z.object({
+    role: z.literal("page"),
+    pageIndex: z
+      .number()
+      .int()
+      .min(0)
+      .max(MAX_PRESENTATION_TEMPLATE_PAGES - 1),
+    filename: z.string().trim().min(1).max(255),
+    contentType: z.literal(PRESENTATION_TEMPLATE_PAGE_CONTENT_TYPE),
+    size: z.number().int().positive().max(MAX_PRESENTATION_TEMPLATE_PAGE_BYTES),
+  }),
+]);
+
+const presentationTemplateUploadResponseSchema = z.object({
+  uploadUrl: z.string().url(),
+  uploadHeaders: z.record(z.string(), z.string()),
+});
 
 const updatePresentationTemplateBodySchema = z.object({
   title: z.string().trim().min(1).max(255),
@@ -91,11 +111,11 @@ export const presentationTemplatesContract = c.router({
     },
     summary: "List presentation templates owned by the current user",
   },
-  commit: {
+  createImport: {
     method: "POST",
-    path: "/api/okou/presentation-templates/commit",
+    path: "/api/okou/presentation-templates/imports",
     headers: authHeadersSchema,
-    body: commitPresentationTemplateBodySchema,
+    body: createPresentationTemplateImportBodySchema,
     responses: {
       200: mutationResponseSchema,
       400: apiErrorSchema,
@@ -104,7 +124,41 @@ export const presentationTemplatesContract = c.router({
       409: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Commit the uploaded PPTX and its ordered page image references",
+    summary: "Open a presentation template import and receive its template id",
+  },
+  requestUpload: {
+    method: "POST",
+    path: "/api/okou/presentation-templates/:templateId/uploads",
+    pathParams: presentationTemplateIdParamsSchema,
+    headers: authHeadersSchema,
+    body: presentationTemplateUploadBodySchema,
+    responses: {
+      200: presentationTemplateUploadResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Allocate one source or page upload slot inside an open import",
+  },
+  commit: {
+    method: "POST",
+    path: "/api/okou/presentation-templates/:templateId/commit",
+    pathParams: presentationTemplateIdParamsSchema,
+    headers: authHeadersSchema,
+    body: z.object({}),
+    responses: {
+      200: mutationResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Close an import once every allocated upload slot is filled",
   },
   get: {
     method: "GET",
@@ -157,6 +211,9 @@ export type PresentationTemplatesContract =
 export type PresentationTemplateSummary = z.infer<
   typeof presentationTemplateSummarySchema
 >;
-export type CommitPresentationTemplateBody = z.infer<
-  typeof commitPresentationTemplateBodySchema
+export type CreatePresentationTemplateImportBody = z.infer<
+  typeof createPresentationTemplateImportBodySchema
+>;
+export type PresentationTemplateUploadBody = z.infer<
+  typeof presentationTemplateUploadBodySchema
 >;
