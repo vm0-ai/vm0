@@ -222,11 +222,11 @@ jobs:
             fi
           done
 
-          if printf '%s\n' "$CHANGED_FILES" | grep -qE '^turbo/packages/db/(src/(migrations|schema|jsonb-contracts)/|scripts/(migration-runner|test-migration-runner-timeouts)\.ts$)'; then
-            echo "Migration, schema, JSONB contract, or migration runner changes detected"
+          if printf '%s\n' "$CHANGED_FILES" | grep -qE '^turbo/packages/db/(src/(migrations|schema|jsonb-contracts)/|scripts/)'; then
+            echo "Migration, schema, JSONB contract, or database script changes detected"
             echo "migration-changed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "No migration, schema, JSONB contract, or migration runner changes"
+            echo "No migration, schema, JSONB contract, or database script changes"
             echo "migration-changed=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -615,7 +615,7 @@ jobs:
     needs: prepare
     runs-on: ubuntu-latest
     timeout-minutes: 12
-    # Only run when migration, schema, or persistent JSONB contract files changed
+    # Only run when migration, schema, persistent JSONB contract, or database script files changed
     if: needs.prepare.outputs.migration-changed == 'true'
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
