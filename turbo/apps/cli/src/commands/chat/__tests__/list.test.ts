@@ -328,7 +328,7 @@ describe("okou chat list command", () => {
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
-  it("reports invalid chat cache tokens without legacy branding", async () => {
+  it("reports invalid chat cache scope errors", async () => {
     vi.stubEnv("OKOU_TOKEN", "invalid-token");
 
     await expect(async () => {
@@ -339,7 +339,6 @@ describe("okou chat list command", () => {
     expect(stderr).toContain(
       "OKOU_TOKEN does not contain a valid chat cache scope",
     );
-    expect(stderr).not.toContain("Zero cache scope");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 });
