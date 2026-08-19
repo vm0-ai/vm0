@@ -7437,11 +7437,6 @@ function ComposerRunModelPickerControl({
   const modelPickerOpen = useGet(signals.model.modelPickerOpen$);
   const setModelPickerOpen = useSet(signals.model.setModelPickerOpen$);
   const setLifecycleRef = useSet(signals.model.desktopModelPickerLifecycleRef$);
-  const desktopModeLabel = mediaModelPanel
-    ? t(($) => {
-        return $.appShell.sidebar.chat;
-      })
-    : undefined;
   return (
     <div ref={setLifecycleRef} className="contents sm:relative sm:flex">
       <ModelProviderPicker
@@ -7453,7 +7448,6 @@ function ComposerRunModelPickerControl({
         triggerClassName={composerModelPickerTriggerClassName()}
         compactTrigger
         mobileIconTrigger
-        desktopModeLabel={desktopModeLabel}
         open={modelPickerOpen}
         modal={mediaModelPanel ? !desktopLayout : undefined}
         onOpenChange={(open) => {
