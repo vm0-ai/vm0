@@ -2,7 +2,11 @@ import { screen } from "@testing-library/react";
 import { WORKFLOW_TEMPLATE_ITEMS } from "@okouai/core/workflow-template-items";
 import { describe, expect, it } from "vitest";
 
-import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  click,
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 
@@ -37,6 +41,15 @@ function startCards(): readonly HTMLElement[] {
   });
 }
 
+// The templates action is icon-only, so it is addressable by label alone.
+function templateButtons(): readonly HTMLElement[] {
+  return queryAllByRoleFast("button", screen.getByTestId("start-cards")).filter(
+    (element) => {
+      return element.getAttribute("aria-label") === "Templates";
+    },
+  );
+}
+
 function renderedTitles(titles: readonly string[]): readonly string[] {
   return titles.filter((title) => {
     return screen.queryByText(title) !== null;
@@ -65,7 +78,7 @@ describe("chat start cards", () => {
       renderedTitles(EN_TITLES).length + renderedTitles(workflowTitles).length,
     ).toBe(3);
     expect(screen.getAllByText("Start with a prompt")).toHaveLength(3);
-    expect(screen.getAllByText("Templates")).toHaveLength(3);
+    expect(templateButtons()).toHaveLength(3);
   });
 
   it("writes the card prompt into the composer", async () => {
@@ -94,7 +107,7 @@ describe("chat start cards", () => {
       screen.findByPlaceholderText(PLACEHOLDER),
     ).resolves.toBeInTheDocument();
 
-    click(screen.getAllByText("Templates")[0]);
+    click(templateButtons()[0]);
 
     await expect(screen.findByRole("dialog")).resolves.toBeInTheDocument();
   });

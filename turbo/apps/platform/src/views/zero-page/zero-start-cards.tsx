@@ -180,8 +180,12 @@ function StartCard({
   onOpenTemplates: () => void;
 }) {
   const { t } = useTranslation();
+  // `@container`: the footer drops its secondary action based on how wide the
+  // card actually is, which the viewport alone does not tell us — the same
+  // breakpoint yields a 292px card with the sidebar open and a wider one
+  // without it.
   return (
-    <div className="zero-card group relative flex flex-col p-4 transition-colors hover:bg-state-hover">
+    <div className="zero-card group @container relative flex flex-col p-4 transition-colors hover:bg-state-hover">
       {/* Stretched hit area so the whole card opens the template picker, kept as
           a real button so the hover actions stay focusable siblings. */}
       <button
@@ -203,36 +207,49 @@ function StartCard({
           </p>
         </div>
       </div>
-      <div className="relative mt-3 h-8">
-        <ArrowUpRight
-          size={14}
-          aria-hidden="true"
-          className="absolute left-0 top-1/2 -translate-y-1/2 text-muted-foreground transition-opacity group-focus-within:opacity-0 group-hover:opacity-0"
-        />
-        <div className="absolute inset-y-0 left-0 flex items-center gap-1.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => {
-              onSelectPrompt(content.prompt);
-            }}
-          >
-            <Sparkles />
-            {t(($) => {
-              return $.chat.startCards.startWithPrompt;
-            })}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={onOpenTemplates}
-          >
-            <LayoutTemplate />
-            {t(($) => {
-              return $.chat.startCards.templates;
-            })}
-          </Button>
+      {/* `mt-auto` keeps the footer on the card's bottom edge, so the arrow and
+          the hover actions share one baseline across the row however many lines
+          the title and description take. */}
+      <div className="mt-auto pt-3">
+        <div className="relative h-8">
+          <ArrowUpRight
+            size={14}
+            aria-hidden="true"
+            className="absolute left-0 top-1/2 -translate-y-1/2 text-muted-foreground transition-opacity group-focus-within:opacity-0 group-hover:opacity-0"
+          />
+          {/* Bounded by the card: the row is wider than a three-up card, so
+              without `inset-0` it spills over the neighbouring card. */}
+          <div className="absolute inset-0 flex items-center gap-1.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+            <Button
+              type="button"
+              size="sm"
+              className="min-w-0"
+              onClick={() => {
+                onSelectPrompt(content.prompt);
+              }}
+            >
+              <Sparkles />
+              <span className="truncate">
+                {t(($) => {
+                  return $.chat.startCards.startWithPrompt;
+                })}
+              </span>
+            </Button>
+            {/* Icon-only, and dropped entirely once the card is too narrow to
+                hold both actions. The card itself still opens the picker. */}
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="outline"
+              className="hidden shrink-0 @[16rem]:inline-flex"
+              aria-label={t(($) => {
+                return $.chat.startCards.templates;
+              })}
+              onClick={onOpenTemplates}
+            >
+              <LayoutTemplate />
+            </Button>
+          </div>
         </div>
       </div>
     </div>
