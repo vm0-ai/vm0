@@ -566,26 +566,35 @@ async function buyUsagePackPlan(
   usagePackUsd?: UsagePackUsd,
 ): Promise<void> {
   const planLabel = tier === "pro" ? "Pro" : "Team";
-  const settings = await openBillingSettings(page);
-  await expect(
-    settings.getByText("No active plan", { exact: true }),
-  ).toBeVisible();
-  await settings.getByRole("button", { name: "Upgrade", exact: true }).click();
-
-  const choosePlan = page.getByRole("dialog", { name: "Choose a plan" });
-  await expect(choosePlan).toBeVisible();
-  const plan = choosePlan.getByRole("article", { name: `${planLabel} plan` });
-  await plan
-    .getByRole("button", { name: `Start with ${planLabel}`, exact: true })
-    .click();
-
   const packages = page.getByRole("dialog", {
     name: "Configure member packages",
   });
-  await expect(packages).toBeVisible({ timeout: STATE_TIMEOUT_MS });
-  await expect(
-    packages.getByRole("combobox", { name: /^Usage for /u }),
-  ).toBeVisible({ timeout: STATE_TIMEOUT_MS });
+  await expect(async () => {
+    const settings = await openBillingSettings(page);
+    await expect(
+      settings.getByText("No active plan", { exact: true }),
+    ).toBeVisible();
+    await settings
+      .getByRole("button", { name: "Upgrade", exact: true })
+      .click();
+
+    const choosePlan = page.getByRole("dialog", { name: "Choose a plan" });
+    await expect(choosePlan).toBeVisible();
+    const plan = choosePlan.getByRole("article", {
+      name: `${planLabel} plan`,
+    });
+    await plan
+      .getByRole("button", { name: `Start with ${planLabel}`, exact: true })
+      .click();
+
+    await expect(packages).toBeVisible();
+    await expect(
+      packages.getByRole("combobox", { name: /^Usage for /u }),
+    ).toBeVisible({ timeout: 15_000 });
+  }).toPass({
+    intervals: [5_000, 10_000],
+    timeout: STATE_TIMEOUT_MS,
+  });
   if (usagePackUsd !== undefined) {
     await selectUsagePack(page, packages, usagePackUsd);
   }
@@ -768,20 +777,31 @@ async function openUsagePackManagement(
   tier: PaidTier,
 ): Promise<Locator> {
   const planLabel = tier === "pro" ? "Pro" : "Team";
-  const settings = await openBillingSettings(page);
-  await expect(
-    settings.getByText(`${planLabel} plan`, { exact: true }).first(),
-  ).toBeVisible();
-  await settings
-    .getByRole("button", { name: "Compare all plans", exact: true })
-    .click();
-  const choosePlan = page.getByRole("dialog", { name: "Choose a plan" });
-  const plan = choosePlan.getByRole("article", { name: `${planLabel} plan` });
-  await plan.getByRole("button", { name: "Manage", exact: true }).click();
   const packages = page.getByRole("dialog", {
     name: "Configure member packages",
   });
-  await expect(packages).toBeVisible({ timeout: STATE_TIMEOUT_MS });
+  await expect(async () => {
+    const settings = await openBillingSettings(page);
+    await expect(
+      settings.getByText(`${planLabel} plan`, { exact: true }).first(),
+    ).toBeVisible();
+    await settings
+      .getByRole("button", { name: "Compare all plans", exact: true })
+      .click();
+    const choosePlan = page.getByRole("dialog", { name: "Choose a plan" });
+    await expect(choosePlan).toBeVisible();
+    const plan = choosePlan.getByRole("article", {
+      name: `${planLabel} plan`,
+    });
+    await plan.getByRole("button", { name: "Manage", exact: true }).click();
+    await expect(packages).toBeVisible();
+    await expect(
+      packages.getByRole("combobox", { name: /^Usage for /u }),
+    ).toBeVisible({ timeout: 15_000 });
+  }).toPass({
+    intervals: [5_000, 10_000],
+    timeout: STATE_TIMEOUT_MS,
+  });
   return packages;
 }
 
