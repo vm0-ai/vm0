@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.461.1](https://github.com/vm0-ai/vm0/compare/api-v1.461.0...api-v1.461.1) (2026-08-19)
+
+
+### Bug Fixes
+
+* **api:** bypass stale network telemetry cache ([#28074](https://github.com/vm0-ai/vm0/issues/28074)) ([db41474](https://github.com/vm0-ai/vm0/commit/db41474b8d0a7046e2b182234787e0bd5f355836))
+
+
+### Refactoring
+
+* **api:** neutralize presentation template contract and route naming ([#28075](https://github.com/vm0-ai/vm0/issues/28075)) ([6ed4e6c](https://github.com/vm0-ai/vm0/commit/6ed4e6cf24f9ffb85062154e655802a5c8d52b6c)), closes [#27978](https://github.com/vm0-ai/vm0/issues/27978)
+* cut over proven historical environment authority ([#28073](https://github.com/vm0-ai/vm0/issues/28073)) ([6d60bbd](https://github.com/vm0-ai/vm0/commit/6d60bbd563b62e93935982838dd508b0b910e972))
+* remove expired deployment compatibility ([#28072](https://github.com/vm0-ai/vm0/issues/28072)) ([5567e65](https://github.com/vm0-ai/vm0/commit/5567e6501f446ab4f2953745dbaa8e7f6216c454))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.340.1
+    * @okouai/core bumped to 8.570.1
+    * @okouai/db bumped to 1.206.1
+
 ## [1.461.0](https://github.com/vm0-ai/vm0/compare/api-v1.460.0...api-v1.461.0) (2026-08-18)
 
 

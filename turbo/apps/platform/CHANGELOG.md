@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.772.1](https://github.com/vm0-ai/vm0/compare/app-v0.772.0...app-v0.772.1) (2026-08-19)
+
+
+### Bug Fixes
+
+* **app:** classify queued automation events by event type ([#28077](https://github.com/vm0-ai/vm0/issues/28077)) ([7eb0a85](https://github.com/vm0-ai/vm0/commit/7eb0a8546c218dd4cf0750799ac85f72fba63967)), closes [#28076](https://github.com/vm0-ai/vm0/issues/28076)
+
+
+### Refactoring
+
+* **chat:** remove inline thinking blocks feature switch ([#28067](https://github.com/vm0-ai/vm0/issues/28067)) ([399a46a](https://github.com/vm0-ai/vm0/commit/399a46ab821def13790639170c652d4455544744))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.340.1
+    * @okouai/core bumped to 8.570.1
+
 ## [0.772.0](https://github.com/vm0-ai/vm0/compare/app-v0.771.0...app-v0.772.0) (2026-08-18)
 
 

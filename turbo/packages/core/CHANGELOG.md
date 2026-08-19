@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.570.1](https://github.com/vm0-ai/vm0/compare/core-v8.570.0...core-v8.570.1) (2026-08-19)
+
+
+### Refactoring
+
+* **chat:** remove inline thinking blocks feature switch ([#28067](https://github.com/vm0-ai/vm0/issues/28067)) ([399a46a](https://github.com/vm0-ai/vm0/commit/399a46ab821def13790639170c652d4455544744))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.340.1
+
 ## [8.570.0](https://github.com/vm0-ai/vm0/compare/core-v8.569.1...core-v8.570.0) (2026-08-18)
 
 
