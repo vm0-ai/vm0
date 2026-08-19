@@ -1040,11 +1040,25 @@ function MediaModelPanelRow({ option }: { option: MediaModelPanelOption }) {
     const selectedVariant = variant.options.find((candidate) => {
       return candidate.selected;
     });
+    // A segment control reads as "one of these", so a family that is not the
+    // active model still fills its base variant instead of leaving the whole
+    // segment blank. The checkmark, gated on `groupSelected`, is what marks a
+    // real selection.
+    const highlightedVariant = selectedVariant ?? variant.options[0];
     return (
       // The segment is `xs` (h-7), so this row drops to `py-0.5` to land on the
       // same 32px as the plain rows around it -- `py-1.5` would make the one row
       // that carries variants 8px taller than its neighbours.
-      <div className="relative flex w-full select-none items-center gap-2 rounded-lg py-0.5 pl-2 pr-8 text-sm transition-colors hover:bg-state-hover hover:text-accent-foreground">
+      <div
+        // The segment always fills one variant, so its checked state no longer
+        // separates the active family from a default fill. `aria-current` is
+        // what the checkmark means, so assistive technology gets the same
+        // "this is the current model" cue sighted users get from the check.
+        // `aria-pressed` on the label button keeps its narrower meaning: the
+        // base model specifically, not the family.
+        aria-current={groupSelected ? "true" : undefined}
+        className="relative flex w-full select-none items-center gap-2 rounded-lg py-0.5 pl-2 pr-8 text-sm transition-colors hover:bg-state-hover hover:text-accent-foreground"
+      >
         <button
           type="button"
           aria-label={option.label}
@@ -1058,7 +1072,7 @@ function MediaModelPanelRow({ option }: { option: MediaModelPanelOption }) {
         <SegmentControl
           size="xs"
           aria-label={variant.label}
-          value={selectedVariant?.label ?? null}
+          value={highlightedVariant?.label ?? null}
           onValueChange={(next: string | null) => {
             variant.options
               .find((candidate) => {
@@ -1090,6 +1104,7 @@ function MediaModelPanelRow({ option }: { option: MediaModelPanelOption }) {
       type="button"
       aria-label={option.label}
       aria-pressed={option.selected}
+      aria-current={option.selected ? "true" : undefined}
       className={MEDIA_MODEL_PANEL_ROW_CLASS}
       onClick={option.onSelect}
     >

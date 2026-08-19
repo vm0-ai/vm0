@@ -15,6 +15,8 @@ interface ImageModelConfig {
   readonly alias: string;
   /** Human-facing name for pickers. */
   readonly label: string;
+  /** Compact label used when the model is shown as a sibling variant. */
+  readonly variantLabel?: string;
 }
 
 export const IMAGE_MODEL_CONFIGS = {
@@ -29,10 +31,12 @@ export const IMAGE_MODEL_CONFIGS = {
   "fal-ai/flux-pro/v1.1": {
     alias: "flux-pro-1.1",
     label: "Flux Pro v1.1",
+    variantLabel: "Standard",
   },
   "fal-ai/flux-pro/v1.1-ultra": {
     alias: "flux-pro-1.1-ultra",
     label: "Flux Pro v1.1 Ultra",
+    variantLabel: "Ultra",
   },
   "fal-ai/qwen-image": {
     alias: "qwen-image",
@@ -45,10 +49,12 @@ export const IMAGE_MODEL_CONFIGS = {
   "dola-seedream-5-0-pro-260628": {
     alias: "seedream5-pro",
     label: "Seedream 5 Pro",
+    variantLabel: "Pro",
   },
   "seedream-5-0-lite-260128": {
     alias: "seedream5-lite",
     label: "Seedream 5 Lite",
+    variantLabel: "Lite",
   },
   "fal-ai/nano-banana-2": {
     alias: "nano-banana-2",
@@ -64,7 +70,12 @@ export const DEFAULT_IMAGE_MODEL_ENV = "OKOU_DEFAULT_IMAGE_MODEL";
 /** All catalog models, in user-facing picker order. */
 export const IMAGE_MODELS: readonly ImageModel[] = IMAGE_MODEL_IDS;
 
-/** Every catalog model, ordered for the user-facing picker. */
+/**
+ * Catalog models offered by the user-facing picker, in display order. Seedream 4
+ * is deliberately absent: it stays generatable through its `seedream4` alias and
+ * through defaults that already point at it, but it is superseded by Seedream 5
+ * as a choice worth presenting.
+ */
 export const PUBLIC_IMAGE_MODELS = [
   "gpt-image-1",
   "gpt-image-2",
@@ -73,9 +84,34 @@ export const PUBLIC_IMAGE_MODELS = [
   "fal-ai/flux-pro/v1.1-ultra",
   "dola-seedream-5-0-pro-260628",
   "seedream-5-0-lite-260128",
-  "fal-ai/bytedance/seedream/v4/text-to-image",
   "fal-ai/qwen-image",
 ] as const satisfies readonly ImageModel[];
+
+interface ImageModelVariantGroup {
+  /**
+   * Family name for the row. It is stated rather than taken from the base
+   * model's own label, which would repeat the variant name the segment control
+   * already shows ("Seedream 5 Pro" next to a "Pro" chip).
+   */
+  readonly label: string;
+  /** Base model first: it owns the row, the rest are reachable only from it. */
+  readonly models: readonly [ImageModel, ...ImageModel[]];
+}
+
+/**
+ * Sibling models that collapse into one picker row with a variant segment, so
+ * one family costs one row instead of one row per variant.
+ */
+export const IMAGE_MODEL_VARIANT_GROUPS = [
+  {
+    label: "Flux Pro v1.1",
+    models: ["fal-ai/flux-pro/v1.1", "fal-ai/flux-pro/v1.1-ultra"],
+  },
+  {
+    label: "Seedream 5",
+    models: ["dola-seedream-5-0-pro-260628", "seedream-5-0-lite-260128"],
+  },
+] as const satisfies readonly ImageModelVariantGroup[];
 
 export const IMAGE_MODEL_ALIASES = {
   "gpt-image-2": "gpt-image-2",
