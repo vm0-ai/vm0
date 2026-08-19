@@ -602,7 +602,6 @@
     }
   },
   "sidebar": {
-    "addPin": "Pin",
     "bestMatches": "Best matches",
     "chatResult": "Chat",
     "clearSearch": "Clear search",

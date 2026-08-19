@@ -428,7 +428,7 @@ export function PinnedAgentListSection({
       horizontalPinnedAgents === null
         ? Array.from(
             {
-              length: cachedPinnedAgentGridRows * PINNED_AGENT_GRID_COLUMNS - 1,
+              length: cachedPinnedAgentGridRows * PINNED_AGENT_GRID_COLUMNS,
             },
             (_, index) => {
               return <PinnedAgentGridSkeletonCard key={index} />;
@@ -460,37 +460,50 @@ export function PinnedAgentListSection({
 
     return (
       <div className="shrink-0" data-testid="pinned-agents-horizontal">
-        <span className="flex h-8 items-center pl-2 text-[13px] font-medium leading-4 text-sidebar-foreground/50">
-          {t(($) => {
-            return $.sidebar.pinnedAgents;
-          })}
-        </span>
+        {/*
+          The pin entry lives in the section header rather than in the grid so
+          that it shares the trailing icon column with the chat header and the
+          chats section menu. A grid tile is 52px wide, so its center sits 10px
+          left of every other trailing control.
+        */}
+        <div className="flex h-8 items-center justify-between pl-2 pr-0">
+          <span className="flex-1 truncate text-[13px] font-medium leading-4 text-sidebar-foreground/50">
+            {t(($) => {
+              return $.sidebar.pinnedAgents;
+            })}
+          </span>
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => {
+                    openPinAgentDialog();
+                  }}
+                  aria-label={t(($) => {
+                    return $.sidebar.pinAgent;
+                  })}
+                  className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground hover:bg-state-selected-hover transition-colors"
+                >
+                  <Plus className="opacity-50" size={15} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p className="text-xs">
+                  {t(($) => {
+                    return $.sidebar.pinAgent;
+                  })}
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
         <div
           ref={cachePinnedAgentGridRowsRef}
           className="grid min-w-0 grid-cols-5 items-start gap-1"
           data-testid="pinned-agents-grid"
         >
-          {pinnedAgentCards.slice(0, 4)}
-          <button
-            type="button"
-            onClick={() => {
-              openPinAgentDialog();
-            }}
-            aria-label={t(($) => {
-              return $.sidebar.pinAgent;
-            })}
-            className="flex w-full min-w-0 flex-col items-center gap-1.5 rounded-lg p-1.5 text-sidebar-foreground opacity-70 transition-colors hover:opacity-100 hover:bg-state-hover"
-          >
-            <span className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-[hsl(var(--gray-300))]">
-              <Plus size={16} />
-            </span>
-            <span className="text-[11px] leading-tight">
-              {t(($) => {
-                return $.sidebar.addPin;
-              })}
-            </span>
-          </button>
-          {pinnedAgentCards.slice(4)}
+          {pinnedAgentCards}
         </div>
         <AgentListDialogContainer />
         <PinAgentDialogContainer />
