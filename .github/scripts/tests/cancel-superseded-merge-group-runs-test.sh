@@ -21,12 +21,10 @@ printf '%s\n' "$*" >>"$MOCK_GH_LOG"
 endpoint=""
 method="GET"
 status_filter=""
-jq_filter=""
 previous=""
 for argument in "$@"; do
   case "$previous" in
     --method) method=$argument ;;
-    --jq) jq_filter=$argument ;;
   esac
   case "$argument" in
     repos/*) endpoint=$argument ;;
@@ -94,34 +92,7 @@ JSON
       touch "$MOCK_RUNS_RELEASED"
     fi
     ;;
-  repos/vm0-ai/vm0/actions/runs/*/jobs)
-    run_id=${endpoint%/jobs}
-    run_id=${run_id##*/}
-    [ "$jq_filter" = '[.jobs[]? | select(.status != "queued")] | length' ] || {
-      echo "unexpected jobs jq filter: ${jq_filter}" >&2
-      exit 1
-    }
-    case " ${MOCK_CANCEL_FAILURE_RUN_IDS:-} " in
-      *" $run_id "*)
-        if [ "${MOCK_JOBS_QUERY_FAILURE:-0}" = "1" ]; then
-          echo 'gh: Failed to list jobs (HTTP 500)' >&2
-          exit 1
-        fi
-        printf '%s\n' "${MOCK_STARTED_JOB_COUNT:-0}"
-        ;;
-      *) printf '0\n' ;;
-    esac
-    ;;
   repos/vm0-ai/vm0/actions/runs/*)
-    run_id=${endpoint##*/}
-    case " ${MOCK_CANCEL_FAILURE_RUN_IDS:-} " in
-      *" $run_id "*)
-        if [ "${MOCK_STARTED_JOB_COUNT:-0}" = "0" ] && [ ! -f "$MOCK_RUNS_RELEASED" ]; then
-          printf 'queued\n'
-          exit 0
-        fi
-        ;;
-    esac
     if [ "${MOCK_DELAY_COMPLETION:-0}" = "1" ] && [ ! -f "$MOCK_RUNS_RELEASED" ]; then
       printf 'in_progress\n'
     else
@@ -290,18 +261,20 @@ rm -f "${tmp_dir}/runs-released"
 output=$(
   run_cancel \
     MOCK_CANCEL_FAILURE_RUN_IDS=100 \
-    MOCK_STARTED_JOB_COUNT=0 \
     MOCK_DELAY_COMPLETION=1 \
-    MOCK_FORCE_CANCEL_COMPLETION=1
+    MOCK_FORCE_CANCEL_COMPLETION=1 2>&1
 )
-grep -q "skipping uncancellable superseded run 100" <<<"$output" ||
-  fail "expected an uncancellable run with no started job to be skipped"
-# The uncancellable run reports "queued", so the barrier could only complete
-# if the run was excluded from it rather than merely skipped during cancel.
+grep -q "failed to cancel superseded run 100; continuing without cancellation" <<<"$output" ||
+  fail "expected a cancellation API failure to become a warning"
 grep -q "All superseded CI runs completed" <<<"$output" ||
   fail "expected the barrier to still complete for the remaining runs"
 [ ! -s "${tmp_dir}/sleep.log" ] ||
-  fail "skipped unstarted run must not be polled by the completion barrier"
+  fail "a failed cancellation target must not enter the completion barrier"
+if grep -Fq \
+  'api --method GET repos/vm0-ai/vm0/actions/runs/100' \
+  "${tmp_dir}/gh.log"; then
+  fail "a failed cancellation target must not receive follow-up API queries"
+fi
 
 : >"${tmp_dir}/gh.log"
 : >"${tmp_dir}/cancel.log"
@@ -309,44 +282,11 @@ grep -q "All superseded CI runs completed" <<<"$output" ||
 rm -f "${tmp_dir}/runs-released"
 output=$(
   run_cancel \
-    MOCK_CANCEL_FAILURE_RUN_IDS=100 \
-    MOCK_STARTED_JOB_COUNT=1 \
-    MOCK_DELAY_COMPLETION=1 2>&1
+    MOCK_CANCEL_FAILURE_RUN_IDS="100 110 120" 2>&1
 )
-grep -q "failed to cancel superseded run 100; awaiting terminal state" <<<"$output" ||
-  fail "expected a cancellation failure with started work to become a warning"
-grep -q "100:in_progress" <<<"$output" ||
-  fail "expected an uncancellable run with started work to remain in the barrier"
-[ "$(wc -l <"${tmp_dir}/sleep.log")" -eq 1 ] ||
-  fail "started work must reach terminal state before the handoff completes"
-
-: >"${tmp_dir}/gh.log"
-: >"${tmp_dir}/cancel.log"
-: >"${tmp_dir}/sleep.log"
-rm -f "${tmp_dir}/runs-released"
-output=$(
-  run_cancel \
-    MOCK_CANCEL_FAILURE_RUN_IDS=100 \
-    MOCK_JOBS_QUERY_FAILURE=1 \
-    MOCK_DELAY_COMPLETION=1 2>&1
-)
-grep -q "100:queued" <<<"$output" ||
-  fail "unknown job state must retain the uncancellable run in the barrier"
-[ "$(wc -l <"${tmp_dir}/sleep.log")" -eq 1 ] ||
-  fail "unknown job state must reach terminal run state before handoff"
-
-: >"${tmp_dir}/gh.log"
-: >"${tmp_dir}/cancel.log"
-: >"${tmp_dir}/sleep.log"
-rm -f "${tmp_dir}/runs-released"
-output=$(
-  run_cancel \
-    MOCK_CANCEL_FAILURE_RUN_IDS="100 110 120" \
-    MOCK_STARTED_JOB_COUNT=0
-)
-grep -q "nothing to await" <<<"$output" ||
-  fail "expected an all-unstarted target set to exit without a completion barrier"
+grep -q "continuing without a terminal-state barrier" <<<"$output" ||
+  fail "expected all failed cancellations to exit without a completion barrier"
 [ ! -s "${tmp_dir}/sleep.log" ] ||
-  fail "an all-unstarted target set must not poll"
+  fail "failed cancellation targets must not poll"
 
 echo "cancel-superseded-merge-group-runs tests passed"

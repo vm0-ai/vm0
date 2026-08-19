@@ -195,35 +195,15 @@ while IFS= read -r run_record; do
       gh api --method POST \
         "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/force-cancel" 2>&1
     ); then
-      current_status=$(
-        gh api --method GET \
-          "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" \
-          --jq '.status'
-      )
-      if [ "$current_status" != "completed" ]; then
-        # A run only claims the shared pr-N runner once a job starts. GitHub
-        # creates queued job records before that point, so count jobs that have
-        # left queued rather than treating every record as started work.
-        if ! started_jobs=$(
-          gh api --method GET \
-            "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/jobs" \
-            --jq '[.jobs[]? | select(.status != "queued")] | length' 2>&1
-        ); then
-          started_jobs=""
-        fi
-        if [ "$started_jobs" = "0" ]; then
-          echo "skipping uncancellable ${selected_run_label} ${run_id}: reported ${current_status} with no started job"
-          continue
-        fi
-        echo "::warning::failed to cancel ${selected_run_label} ${run_id}; awaiting terminal state: ${cancel_error}" >&2
-      fi
+      echo "::warning::failed to cancel ${selected_run_label} ${run_id}; continuing without cancellation: ${cancel_error}" >&2
+      continue
     fi
   fi
   run_ids+=("$run_id")
 done <<<"$selected_runs"
 
 if $cancel_selected_runs && [ "${#run_ids[@]}" -eq 0 ]; then
-  echo "All ${selected_runs_label} were uncancellable without starting a job; nothing to await."
+  echo "All ${selected_runs_label} failed cancellation; continuing without a terminal-state barrier."
   exit 0
 fi
 
