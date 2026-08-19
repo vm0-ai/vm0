@@ -4844,17 +4844,19 @@ describe("CHAT-02: model-first provider policies", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   }, 90_000);
 
-  it("routes vm0 DeepSeek through native Responses env bindings", async () => {
+  it("routes vm0 DeepSeek through OpenRouter Pi bindings", async () => {
+    const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const keyFixtureId = randomUUID();
+    const requestedApiKey = `vm0-key-bdd-dev-seed-${keyFixtureId}`;
 
-    // Keep a second DeepSeek fixture owner alive to cover vendor-unique row
+    // Keep a second OpenRouter fixture owner alive to cover vendor-unique row
     // arbitration instead of relying on another test file's scheduling.
     await seedVm0ManagedModelKey("deepseek-v4-flash");
-    await acquireBddVm0ApiKey({
+    const selectedApiKey = await acquireBddVm0ApiKey({
       fixtureId: keyFixtureId,
-      vendor: "deepseek",
-      apiKey: `vm0-key-bdd-dev-seed-${keyFixtureId}`,
+      vendor: "openrouter",
+      apiKey: requestedApiKey,
     });
 
     let runId: string | null = null;
@@ -4863,14 +4865,22 @@ describe("CHAT-02: model-first provider policies", () => {
         await api.requestCancelRun(actor, runId, [200]);
       }
     };
-    const releaseVm0DeepSeekKey = async () => {
+    const releaseVm0OpenRouterKey = async () => {
       await releaseBddVm0ApiKey({ fixtureId: keyFixtureId });
     };
     const cleanupRunAndKeys = async () => {
-      await Promise.all([releaseVm0DeepSeekKey(), cancelRunIfCreated()]);
+      await Promise.all([releaseVm0OpenRouterKey(), cancelRunIfCreated()]);
     };
 
     await (async () => {
+      if (!actor.orgId) {
+        throw new Error("Expected an organization-scoped chat actor");
+      }
+      await updateFeatureSwitchesForUser(
+        context,
+        { ...actor, orgId: actor.orgId },
+        { [FeatureSwitchKey.PiLoop]: true },
+      );
       await api.updateOrgModelPolicies(actor, [
         {
           model: "deepseek-v4-flash",
@@ -4888,13 +4898,62 @@ describe("CHAT-02: model-first provider policies", () => {
       });
       runId = run.runId;
 
-      const { claim } = await claimChatRun(runnerGroup, run.runId);
-      const environment = claimEnvironment(claim);
-      expect(environment.OPENAI_API_KEY).toBe(
-        modelProviderSecretPlaceholder("deepseek", "DEEPSEEK_API_KEY"),
+      const { claim, sandboxHeaders } = await claimChatRun(
+        runnerGroup,
+        run.runId,
       );
-      expect(environment.OPENAI_BASE_URL).toBe("https://api.deepseek.com/");
-      expect(environment.OPENAI_MODEL).toBe("deepseek-v4-flash");
+      const environment = claimEnvironment(claim);
+      expect(claim.cliAgentType).toBe("pi");
+      expect(environment.OPENAI_API_KEY).toBe(
+        modelProviderSecretPlaceholder(
+          "openrouter-codex",
+          "OPENROUTER_API_KEY",
+        ),
+      );
+      expect(environment.OPENAI_BASE_URL).toBe("https://openrouter.ai/api/v1");
+      expect(environment.OPENAI_MODEL).toBe("deepseek/deepseek-v4-flash");
+      expect(claim.firewalls).toContainEqual(
+        expect.objectContaining({
+          kind: "builtin",
+          name: "model-provider:openrouter-codex",
+        }),
+      );
+      expect(claim.billableFirewalls).toContain(
+        "model-provider:openrouter-codex",
+      );
+      expect(claim.piModelConfig).toStrictEqual({
+        provider: "openrouter",
+        baseUrl: "https://openrouter.ai/api/v1",
+        model: "deepseek/deepseek-v4-flash",
+        apiKeyEnv: "OPENAI_API_KEY",
+      });
+      expect(claim.modelUsageProvider).toBe("deepseek-v4-flash");
+
+      if (!claim.encryptedSecrets) {
+        throw new Error("Expected OpenRouter claim to carry encrypted secrets");
+      }
+      const resolved = await fw.requestFirewallAuth(
+        sandboxHeaders,
+        {
+          encryptedSecrets: claim.encryptedSecrets,
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("OPENROUTER_API_KEY")}`,
+          },
+          secretConnectorMap: claim.secretConnectorMap ?? undefined,
+          secretConnectorMetadataMap:
+            claim.secretConnectorMetadataMap ?? undefined,
+        },
+        [200],
+      );
+      if (resolved.status !== 200) {
+        throw new Error("Expected OpenRouter firewall auth to resolve");
+      }
+      expect(resolved.body.headers.Authorization).toBe(
+        `Bearer ${selectedApiKey}`,
+      );
+      expect(resolved.body.resolvedSecrets).toStrictEqual([
+        "OPENROUTER_API_KEY",
+      ]);
     })().then(cleanupRunAndKeys, async (error: unknown) => {
       await cleanupRunAndKeys();
       throw error;
@@ -5918,7 +5977,7 @@ describe("CHAT-02: run-level model overrides", () => {
       {
         model: "claude-sonnet-5",
         isDefault: true,
-        defaultProviderType: "vercel-ai-gateway",
+        defaultProviderType: "custom-anthropic-messages",
         credentialScope: "org",
         modelProviderId: null,
         modelProviderSurfaceId: surfaceId,
@@ -6425,7 +6484,7 @@ describe("CHAT-02: run-level model overrides", () => {
       {
         model: "claude-sonnet-5",
         isDefault: true,
-        defaultProviderType: "vercel-ai-gateway",
+        defaultProviderType: "custom-anthropic-messages",
         credentialScope: "org",
         modelProviderId: null,
         modelProviderSurfaceId: surfaceId,
@@ -6488,6 +6547,110 @@ describe("CHAT-02: run-level model overrides", () => {
       agent_session_run_id: second.runId,
       run_session_id: rotatedBinding.agent_session_id,
     });
+    expect(sandboxOperationEventsForRun(second.runId)).toContainEqual(
+      expect.objectContaining({
+        op_type: "chat_thread_session_binding_persisted",
+        chat_thread_id: first.threadId,
+        agent_session_id: rotatedBinding.agent_session_id,
+        agent_session_run_id: second.runId,
+        binding_action: "rotated",
+      }),
+    );
+    const secondClaim = await claimChatRun(runnerGroup, second.runId);
+    expect(secondClaim.claim.resumeSession).toBeNull();
+    await cancelChatRun(actor, second.runId);
+  }, 90_000);
+
+  it("rotates after a custom gateway is deleted and replaced by a direct vendor key", async () => {
+    const { actor, agentId, runnerGroup, providerId } =
+      await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const created = await accept(
+      modelProviderConnectionsClient().create({
+        headers: sessionHeaders(actor),
+        body: {
+          displayName: "Direct replacement gateway",
+          secret: "direct-replacement-gateway-secret",
+          surfaces: [
+            {
+              protocol: "anthropic-messages",
+              apiBaseUrl: "https://gateway.example.com/anthropic",
+              authHeaderName: "Authorization",
+              authHeaderTemplate: "Bearer {{secret}}",
+              modelMappings: {
+                "claude-sonnet-5": "anthropic/claude-sonnet-4.6",
+              },
+            },
+          ],
+        },
+      }),
+      [201],
+    );
+    const surfaceId = created.body.surfaces[0]?.id;
+    if (!surfaceId) {
+      throw new Error("Expected the custom gateway to have a surface");
+    }
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-5",
+        isDefault: true,
+        defaultProviderType: "custom-anthropic-messages",
+        credentialScope: "org",
+        modelProviderId: null,
+        modelProviderSurfaceId: surfaceId,
+      },
+    ]);
+
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "establish a custom gateway session",
+      model: "claude-sonnet-5",
+    });
+    const firstClaim = await claimChatRun(runnerGroup, first.runId);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
+    const originalBinding = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    if (!originalBinding.agent_session_id) {
+      throw new Error("Expected the custom gateway route to bind a session");
+    }
+
+    // A direct vendor key resolves to no upstream base URL because it uses the
+    // vendor default endpoint, and so does a custom gateway, whose endpoint is
+    // stored on the surface row. The session must still rotate: the deleted
+    // surface pointed somewhere else entirely.
+    await accept(
+      modelProviderConnectionsByIdClient().delete({
+        headers: sessionHeaders(actor),
+        params: { id: created.body.id },
+      }),
+      [204],
+    );
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-5",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+
+    const second = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "rotate onto the direct vendor key",
+    });
+    const rotatedBinding = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    expect(rotatedBinding.agent_session_id).not.toBe(
+      originalBinding.agent_session_id,
+    );
     expect(sandboxOperationEventsForRun(second.runId)).toContainEqual(
       expect.objectContaining({
         op_type: "chat_thread_session_binding_persisted",

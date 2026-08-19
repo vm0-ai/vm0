@@ -14,16 +14,12 @@ export type ModelProviderSurfaceProtocol = z.infer<
   typeof modelProviderSurfaceProtocolSchema
 >;
 
-/**
- * Custom gateways reuse the existing Claude Code and Codex runtime adapters.
- * The provider type is an internal adapter identity, not the gateway brand.
- */
 export function getModelProviderTypeForSurfaceProtocol(
   protocol: ModelProviderSurfaceProtocol,
 ): ModelProviderType {
   return protocol === "anthropic-messages"
-    ? "vercel-ai-gateway"
-    : "vercel-ai-gateway-codex";
+    ? "custom-anthropic-messages"
+    : "custom-openai-responses";
 }
 
 export const modelProviderSurfaceInputSchema = z.object({

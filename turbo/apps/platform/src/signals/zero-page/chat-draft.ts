@@ -287,6 +287,7 @@ function createChatAttachment(file: File): ZeroChatAttachment {
 
       if ("multipart" in prepared.body) {
         const multipart = prepared.body.multipart;
+        let completionStarted = false;
         return await onRejection(
           (async () => {
             signal.throwIfAborted();
@@ -301,6 +302,8 @@ function createChatAttachment(file: File): ZeroChatAttachment {
               );
             }
 
+            signal.throwIfAborted();
+            completionStarted = true;
             const completed = await accept(
               client.completeMultipart({
                 body: {
@@ -317,6 +320,11 @@ function createChatAttachment(file: File): ZeroChatAttachment {
             return uploadFileInfo(completed.body, prepared.body.contentType);
           })(),
           async () => {
+            // Aborting after completion starts can remove the upload while R2
+            // is still finalizing it, so only clean up pre-completion failures.
+            if (completionStarted) {
+              return;
+            }
             const cleanupSignal = AbortSignal.timeout(
               MULTIPART_ABORT_TIMEOUT_MS,
             );

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.169.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.11...runner-rs-v0.169.12) (2026-08-19)
+
+
+### Refactoring
+
+* **runner:** route host oom probe through bounded commands ([#28119](https://github.com/vm0-ai/vm0/issues/28119)) ([ef5d2cd](https://github.com/vm0-ai/vm0/commit/ef5d2cd3fc414c55acc67162835f3403d0c0db2a))
+
 ## [0.169.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.10...runner-rs-v0.169.11) (2026-08-19)
 
 

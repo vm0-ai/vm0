@@ -344,7 +344,7 @@ describe("custom model provider gateway routes", () => {
       {
         model: "claude-sonnet-5",
         isDefault: true,
-        defaultProviderType: "vercel-ai-gateway",
+        defaultProviderType: "custom-anthropic-messages",
         credentialScope: "org",
         modelProviderId: null,
         modelProviderSurfaceId: messagesSurface.id,
@@ -428,7 +428,7 @@ describe("custom model provider gateway routes", () => {
       {
         model: "gpt-5.6-sol",
         isDefault: true,
-        defaultProviderType: "vercel-ai-gateway-codex",
+        defaultProviderType: "custom-openai-responses",
         credentialScope: "org",
         modelProviderId: null,
         modelProviderSurfaceId: responsesSurface.id,
@@ -520,7 +520,7 @@ describe("custom model provider gateway routes", () => {
         {
           model: logicalModel,
           isDefault: true,
-          defaultProviderType: "vercel-ai-gateway-codex",
+          defaultProviderType: "custom-openai-responses",
           credentialScope: "org",
           modelProviderId: null,
           modelProviderSurfaceId: responsesSurface.id,

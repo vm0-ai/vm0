@@ -1250,6 +1250,99 @@ describe("chat drafts", () => {
     });
   });
 
+  it("does not abort multipart storage after completion starts", async () => {
+    const user = userEvent.setup({ delay: null });
+    let abortBody: unknown = null;
+
+    context.mocks.data.userModelPreference({
+      selectedModel: "claude-sonnet-4-6",
+      serviceTier: null,
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    mockThreadDetails();
+    context.mocks.http.post("*/api/okou/uploads/prepare", () => {
+      return HttpResponse.json({
+        id: "5bd696af-2b93-4fe7-b75d-df3671be17f2",
+        filename: "finalizing-recording.mp4",
+        contentType: "video/mp4",
+        size: 5 * 1024 * 1024 + 1,
+        url: "https://example.com/finalizing-recording.mp4",
+        multipart: {
+          uploadId: "multipart-upload-finalizing",
+          partSize: 5 * 1024 * 1024,
+          parts: [
+            {
+              partNumber: 1,
+              uploadUrl:
+                "https://mock-upload.example.com/finalizing-recording-part-1",
+            },
+            {
+              partNumber: 2,
+              uploadUrl:
+                "https://mock-upload.example.com/finalizing-recording-part-2",
+            },
+          ],
+        },
+      });
+    });
+    context.mocks.http.put(
+      "https://mock-upload.example.com/finalizing-recording-part-1",
+      () => {
+        return new HttpResponse(null, { status: 200 });
+      },
+    );
+    context.mocks.http.put(
+      "https://mock-upload.example.com/finalizing-recording-part-2",
+      () => {
+        return new HttpResponse(null, { status: 200 });
+      },
+    );
+    context.mocks.http.post("*/api/okou/uploads/multipart/complete", () => {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Multipart completion outcome is unknown",
+          },
+        },
+        { status: 500 },
+      );
+    });
+    context.mocks.http.post(
+      "*/api/okou/uploads/multipart/abort",
+      async ({ request }) => {
+        abortBody = await request.json();
+        return HttpResponse.json({
+          id: "5bd696af-2b93-4fe7-b75d-df3671be17f2",
+        });
+      },
+    );
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_UPLOADS_ID}` });
+
+    await waitFor(() => {
+      expect(textarea()).toBeInTheDocument();
+    });
+
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    await user.upload(
+      fileInput,
+      new File(
+        [new Uint8Array(5 * 1024 * 1024 + 1)],
+        "finalizing-recording.mp4",
+        { type: "video/mp4" },
+      ),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Failed to upload finalizing-recording.mp4"),
+      ).toBeInTheDocument();
+      expect(abortBody).toBeNull();
+    });
+  });
+
   it("aborts multipart storage after the final part retry fails", async () => {
     const user = userEvent.setup({ delay: null });
     let partAttempts = 0;

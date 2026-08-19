@@ -1399,6 +1399,69 @@ describe("zero sidebar", () => {
     });
   });
 
+  it("keeps virtualized chats visible after deletion refreshes a clamped viewport", async () => {
+    prepareDefaultAgent();
+    const overflowThreads = Array.from({ length: 23 }, (_, index) => {
+      return createThread(
+        `b3000000-0000-4000-a000-${String(index).padStart(12, "0")}`,
+        `Refresh overflow ${index + 1}`,
+      );
+    });
+    mockSidebarThreadStory(
+      [
+        createThread(EXISTING_THREAD_ID, "Release plan"),
+        createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
+      ],
+      [
+        ...overflowThreads,
+        createThread(ARCHIVED_THREAD_ID, "Archived context"),
+      ],
+    );
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("sidebar-chat-threads-virtual-list"),
+      ).toBeInTheDocument();
+    });
+
+    const scrollArea = screen.getByTestId("sidebar-scroll-area");
+    Object.defineProperties(scrollArea, {
+      clientHeight: { configurable: true, value: 200 },
+      scrollHeight: { configurable: true, value: 1000 },
+      scrollTop: { configurable: true, value: 780, writable: true },
+    });
+    fireEvent.scroll(scrollArea);
+
+    await waitFor(() => {
+      expect(
+        within(sidebar()).getByText("Archived context"),
+      ).toBeInTheDocument();
+    });
+    expect(within(sidebar()).queryByText("Release plan")).toBeNull();
+
+    openThreadMenu("Archived context");
+    click(menuItemByText("Delete chat"));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Delete chat?",
+    });
+    click(buttonByText("Delete", dialog));
+
+    // Model a browser-clamped live offset without another scroll event.
+    scrollArea.scrollTop = 0;
+
+    await waitFor(() => {
+      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+      expect(
+        within(sidebar()).queryByText("Archived context"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it("does not scroll the current chat into view from pointer focus after virtual scrolling", async () => {
     prepareDefaultAgent();
     const overflowThreads = Array.from({ length: 23 }, (_, index) => {
