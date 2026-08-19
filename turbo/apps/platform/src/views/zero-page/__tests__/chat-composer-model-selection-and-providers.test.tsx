@@ -3513,17 +3513,6 @@ describe("chat composer models", () => {
 });
 
 describe("chat composer image model", () => {
-  // One row per family: Flux and Seedream 5 collapse onto a variant segment,
-  // and Seedream 4 is no longer offered at all.
-  const imageModelControlLabels = [
-    "GPT Image 1",
-    "GPT Image 2",
-    "Nano Banana 2",
-    "Flux Pro v1.1",
-    "Seedream 5",
-    "Qwen Image",
-  ] as const;
-
   function imageCategoryTab(
     root: ParentNode = document,
   ): HTMLElement | undefined {
