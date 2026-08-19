@@ -33,7 +33,9 @@ import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
 import {
   getStripeClient,
+  type StripeClient,
   type StripeInvoice,
+  type StripeInvoiceLine,
   type StripePriceRecurring,
   type StripeRef,
   type StripeSchedulePhaseDiscountParam,
@@ -62,6 +64,7 @@ import {
 
 const PREVIEW_TTL_MS = 15 * 60 * 1000;
 const CHANGE_RECONCILIATION_DELAY_MS = 5 * 60 * 1000;
+const STRIPE_INVOICE_LINE_PAGE_SIZE = 100;
 const CREDITS_PER_DOLLAR = 1000;
 const CREDITS_PER_CENT = CREDITS_PER_DOLLAR / 100;
 const OPEN_CHANGE_STATUSES = [
@@ -731,6 +734,73 @@ function safeInvoiceAmount(invoice: StripeInvoice, label: string): number {
   return invoice.amount_due;
 }
 
+function invoiceLineAmountWithTax(line: StripeInvoiceLine): number {
+  const exclusiveTax = (line.taxes ?? []).reduce((total, tax) => {
+    return tax.tax_behavior === "exclusive" ? total + tax.amount : total;
+  }, 0);
+  const amount = line.amount + exclusiveTax;
+  if (!Number.isSafeInteger(amount)) {
+    throw new Error("Stripe usage pack preview line has an invalid amount");
+  }
+  return amount;
+}
+
+async function listCompleteInvoiceLines(
+  stripe: StripeClient,
+  invoice: StripeInvoice,
+  signal: AbortSignal,
+): Promise<readonly StripeInvoiceLine[]> {
+  if (!invoice.lines.has_more) {
+    return invoice.lines.data;
+  }
+  const lines: StripeInvoiceLine[] = [];
+  let startingAfter: string | undefined;
+  while (true) {
+    const page = await stripe.invoices.listLineItems(invoice.id, {
+      limit: STRIPE_INVOICE_LINE_PAGE_SIZE,
+      ...(startingAfter ? { starting_after: startingAfter } : {}),
+    });
+    signal.throwIfAborted();
+    lines.push(...page.data);
+    if (!page.has_more) {
+      return lines;
+    }
+    const last = page.data.at(-1);
+    if (!last?.id) {
+      throw new Error(
+        `Stripe invoice ${invoice.id} returned an incomplete line-item page`,
+      );
+    }
+    startingAfter = last.id;
+  }
+}
+
+function usagePackAllocationAdditionAmount(
+  invoice: StripeInvoice,
+  lines: readonly StripeInvoiceLine[],
+  stripePriceId: string,
+  prorationTimestamp: number,
+): number {
+  const prorationLines = lines.filter((line) => {
+    return (
+      invoiceLinePriceId(line) === stripePriceId &&
+      invoiceLineIsProration(line) &&
+      line.period.start === prorationTimestamp
+    );
+  });
+  const amount = prorationLines.reduce((total, line) => {
+    return total + invoiceLineAmountWithTax(line);
+  }, 0);
+  if (
+    invoice.currency.length !== 3 ||
+    prorationLines.length === 0 ||
+    !Number.isSafeInteger(amount)
+  ) {
+    throw new Error("Stripe invitation preview has an invalid amount");
+  }
+  return Math.max(0, amount);
+}
+
 export async function lockUsagePackBillingOrg(
   tx: Pick<WriteTx, "execute">,
   orgId: string,
@@ -1288,8 +1358,15 @@ export async function previewUsagePackAllocationAddition(
     },
   });
   signal.throwIfAborted();
+  const previewLines = await listCompleteInvoiceLines(stripe, preview, signal);
+  signal.throwIfAborted();
   return {
-    amountCents: safeInvoiceAmount(preview, "invitation"),
+    amountCents: usagePackAllocationAdditionAmount(
+      preview,
+      previewLines,
+      args.stripePriceId,
+      prorationTimestamp,
+    ),
     currency: preview.currency,
     currentPeriodStart: new Date(period.start * 1000),
     currentPeriodEnd: new Date(period.end * 1000),
