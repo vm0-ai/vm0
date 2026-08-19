@@ -429,8 +429,8 @@ function ComposerVideoOptionsChipBody({
  * actually in effect, so an illegal combination — the one the generation
  * endpoint has to reject with a 400 — cannot be selected here.
  *
- * It follows the composer's desktop category: the settings only mean anything
- * for a video run, and only the desktop control can switch to one.
+ * It follows the picker's desktop category: the settings only mean anything for
+ * a video run, and the desktop tab strip is the only control that selects one.
  */
 export function ComposerVideoOptionsChip({
   signals,
@@ -439,12 +439,12 @@ export function ComposerVideoOptionsChip({
 }) {
   const enabled = useGet(videoModelSelectionEnabled$);
   const desktopLayout = useGet(signals.model.desktopModelPickerLayout$);
-  const desktopModelCategory = useGet(signals.model.desktopModelCategory$);
+  const mediaModelCategory = useGet(signals.model.mediaModelCategory$);
   const videoModelSignals = signals.videoModel;
   if (
     !enabled ||
     !desktopLayout ||
-    desktopModelCategory !== "video" ||
+    mediaModelCategory !== "video" ||
     !videoModelSignals
   ) {
     return null;

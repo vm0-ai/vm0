@@ -8,11 +8,12 @@ import {
 } from "ccstate-react";
 import {
   Check,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Cpu,
+  Image as ImageIcon,
   MessageCircle,
+  Video,
   Zap,
 } from "lucide-react";
 import {
@@ -24,10 +25,8 @@ import {
   SelectSeparator,
   SelectTrigger,
   SelectValue,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
+  SegmentControl,
+  SegmentControlItem,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -81,10 +80,14 @@ export interface ModelProviderSelection {
   codexServiceTier?: CodexServiceTier;
 }
 
+/**
+ * Sibling variants of one model family (GPT Image 1 Standard/Mini, Seedance 2.0
+ * Standard/Fast/Mini). They render as a segment control on the model's own row:
+ * every variant stays visible, one click is a complete selection, and nothing
+ * overlays the rest of the list the way a nested menu did.
+ */
 interface MediaModelPanelVariantControl {
   readonly label: string;
-  readonly chipLabel: string;
-  readonly selected: boolean;
   readonly options: readonly {
     readonly label: string;
     readonly chipLabel: string;
@@ -108,13 +111,15 @@ export interface MediaModelPanelCategory {
   readonly id: MediaModelCategoryId;
   readonly label: string;
   readonly menuLabel: string;
+  /** Short form for the desktop category strip, where three tabs share a row. */
+  readonly tabLabel: string;
   readonly options: readonly MediaModelPanelOption[];
 }
 
 /**
  * Media-model categories share the run-model popover without joining its
- * Select value space. Mobile opens one nested category at a time; desktop
- * supplies the active mode and its control anchor through the same state.
+ * Select value space. Both layouts drive the same active category: desktop
+ * switches it from the tab strip, mobile from a nested drill-in.
  */
 export interface MediaModelPanelState {
   readonly activeCategory: MediaModelCategoryId | null;
@@ -122,7 +127,6 @@ export interface MediaModelPanelState {
   readonly onActiveCategoryChange: (
     category: MediaModelCategoryId | null,
   ) => void;
-  readonly contentAnchor?: Element | null;
 }
 
 interface ModelProviderPickerProps {
@@ -156,8 +160,6 @@ interface ModelProviderPickerProps {
   ) => void;
   /** Whether the open picker blocks interaction with surrounding controls. */
   modal?: boolean;
-  /** Whether this trigger is the control represented by the shared popup. */
-  triggerControlsPopup?: boolean;
   // When true, picker is read-only for the current caller state.
   disabled?: boolean;
   /**
@@ -1083,55 +1085,51 @@ function MediaModelPanelRow({ option }: { option: MediaModelPanelOption }) {
       variant.options.some((candidate) => {
         return candidate.selected;
       });
+    const selectedVariant = variant.options.find((candidate) => {
+      return candidate.selected;
+    });
     return (
-      <div className="relative flex w-full select-none items-center gap-2 rounded-lg pr-2 text-sm transition-colors hover:bg-state-hover hover:text-accent-foreground">
+      // The segment is `xs` (h-7), so this row drops to `py-0.5` to land on the
+      // same 32px as the plain rows around it -- `py-1.5` would make the one row
+      // that carries variants 8px taller than its neighbours.
+      <div className="relative flex w-full select-none items-center gap-2 rounded-lg py-0.5 pl-2 pr-8 text-sm transition-colors hover:bg-state-hover hover:text-accent-foreground">
         <button
           type="button"
           aria-label={option.label}
           aria-pressed={option.selected}
-          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg py-1.5 pl-2 text-left outline-none"
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg text-left outline-none"
           onClick={option.onSelect}
         >
           {option.icon}
           <span className="min-w-0 flex-1 truncate">{option.label}</span>
         </button>
+        <SegmentControl
+          size="xs"
+          aria-label={variant.label}
+          value={selectedVariant?.label ?? null}
+          onValueChange={(next: string | null) => {
+            variant.options
+              .find((candidate) => {
+                return candidate.label === next;
+              })
+              ?.onSelect();
+          }}
+        >
+          {variant.options.map((candidate) => {
+            return (
+              <SegmentControlItem
+                key={candidate.label}
+                value={candidate.label}
+                aria-label={candidate.label}
+              >
+                {candidate.chipLabel}
+              </SegmentControlItem>
+            );
+          })}
+        </SegmentControl>
         {groupSelected && (
-          <Check size={15} className="shrink-0 text-foreground" />
+          <Check size={15} className="absolute right-2 text-foreground" />
         )}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              aria-label={variant.label}
-              className={cn(
-                "flex min-w-15 shrink-0 cursor-pointer items-center justify-between gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium leading-none outline-none transition-colors",
-                variant.selected
-                  ? "bg-state-selected text-foreground ring-1 ring-border"
-                  : "bg-muted text-muted-foreground hover:bg-state-selected-hover hover:text-foreground",
-              )}
-            >
-              <span>{variant.chipLabel}</span>
-              <ChevronDown size={12} aria-hidden="true" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-32">
-            {variant.options.map((candidate) => {
-              return (
-                <DropdownMenuItem
-                  key={candidate.label}
-                  aria-label={candidate.label}
-                  className="justify-between gap-2"
-                  onSelect={candidate.onSelect}
-                >
-                  <span>{candidate.chipLabel}</span>
-                  {candidate.selected && (
-                    <Check size={14} className="shrink-0" aria-hidden />
-                  )}
-                </DropdownMenuItem>
-              );
-            })}
-          </DropdownMenuContent>
-        </DropdownMenu>
       </div>
     );
   }
@@ -1183,6 +1181,65 @@ function MediaModelPanel({
         })}
       </SelectGroup>
     </>
+  );
+}
+
+const MEDIA_MODEL_CATEGORY_ICONS = {
+  image: <ImageIcon size={16} aria-hidden="true" />,
+  video: <Video size={16} aria-hidden="true" />,
+} satisfies Record<MediaModelCategoryId, ReactNode>;
+
+const CHAT_CATEGORY_VALUE = "chat";
+
+/**
+ * Category switch for the desktop popover. This strip used to live in the
+ * composer as a filled track holding three controls, which read as heavy for a
+ * row of quiet controls; the composer keeps one trigger and the split happens
+ * here instead. Mobile still drills into a nested category, so the strip is
+ * desktop-only.
+ */
+function MediaModelCategoryTabs({ panel }: { panel: MediaModelPanelState }) {
+  const { t } = useTranslation();
+  return (
+    // Pinned so switching category never means scrolling back up for the strip.
+    // The negative margins bleed it over the list's own `p-1` inset so rows
+    // scroll under an opaque surface rather than beside it.
+    <div className="sticky top-0 z-10 -mx-1 -mt-1 hidden bg-card p-1 sm:block">
+      <SegmentControl
+        size="xs"
+        className="w-full"
+        aria-label={t(($) => {
+          return $.settings.models.picker.models;
+        })}
+        value={panel.activeCategory ?? CHAT_CATEGORY_VALUE}
+        onValueChange={(next: string) => {
+          panel.onActiveCategoryChange(
+            next === CHAT_CATEGORY_VALUE
+              ? null
+              : (next as MediaModelCategoryId),
+          );
+        }}
+      >
+        <SegmentControlItem value={CHAT_CATEGORY_VALUE} className="flex-1">
+          <MessageCircle size={16} aria-hidden="true" />
+          {t(($) => {
+            return $.settings.models.picker.categoryChat;
+          })}
+        </SegmentControlItem>
+        {panel.categories.map((category) => {
+          return (
+            <SegmentControlItem
+              key={category.id}
+              value={category.id}
+              className="flex-1"
+            >
+              {MEDIA_MODEL_CATEGORY_ICONS[category.id]}
+              {category.tabLabel}
+            </SegmentControlItem>
+          );
+        })}
+      </SegmentControl>
+    </div>
   );
 }
 
@@ -1243,13 +1300,18 @@ function ModelFirstModelPickerContentLayout({
     },
   );
   const mediaModelPanelOpen = activeMediaModelCategory !== undefined;
-  const contentAnchor = mediaModelPanelOpen
-    ? mediaModelPanel?.contentAnchor
-    : undefined;
   return (
     <SelectContent
-      anchor={contentAnchor}
-      className="max-h-[280px] min-w-[260px]"
+      className={cn(
+        mediaModelPanel
+          ? // Wide enough for the longest row this popover has to render: a
+            // model name beside a three-up variant segment (Seedance 2.0 with
+            // Standard/Fast/Mini). One width for every category, so switching
+            // tabs never resizes the popover. The extra height offsets the
+            // category strip so the list itself keeps its former room.
+            "max-h-[320px] min-w-[332px]"
+          : "max-h-[280px] min-w-[260px]",
+      )}
     >
       {/* A media-model panel replaces the model rows, so keep the selected run
           model measurable the same way a hidden select value is. */}
@@ -1268,6 +1330,7 @@ function ModelFirstModelPickerContentLayout({
           })}
         </SelectItem>
       )}
+      {mediaModelPanel && <MediaModelCategoryTabs panel={mediaModelPanel} />}
       {mediaModelPanel && activeMediaModelCategory ? (
         <MediaModelPanel
           panel={mediaModelPanel}
@@ -1363,7 +1426,6 @@ function ModelFirstSelectPicker({
   open,
   onOpenChange,
   modal,
-  triggerControlsPopup,
   onValueChange,
 }: {
   state: ModelFirstModelPickerState;
@@ -1384,7 +1446,6 @@ function ModelFirstSelectPicker({
       ) => void)
     | undefined;
   modal: boolean | undefined;
-  triggerControlsPopup: boolean | undefined;
   onValueChange: (raw: string) => void;
 }) {
   return (
@@ -1398,9 +1459,6 @@ function ModelFirstSelectPicker({
       <SelectTrigger
         aria-label={state.triggerAriaLabel}
         className={cn("h-9 w-full", triggerClassName)}
-        {...(triggerControlsPopup === false
-          ? { "aria-controls": undefined, "aria-expanded": false }
-          : {})}
       >
         <SelectValue placeholder={placeholder}>
           <ModelFirstTriggerContent
@@ -1441,7 +1499,6 @@ function SubscribedModelFirstModelPicker({
   open,
   onOpenChange,
   modal,
-  triggerControlsPopup,
   disabled,
   userPreference,
   resolveDefaultSelection,
@@ -1540,7 +1597,6 @@ function SubscribedModelFirstModelPicker({
       open={open}
       onOpenChange={onOpenChange}
       modal={modal}
-      triggerControlsPopup={triggerControlsPopup}
       onValueChange={handleRawValueChange}
     />
   );
@@ -1776,7 +1832,6 @@ function EnabledExplicitModelFirstModelPicker(
       open={props.open}
       onOpenChange={props.onOpenChange}
       modal={props.modal}
-      triggerControlsPopup={props.triggerControlsPopup}
       onValueChange={handleRawValueChange}
     />
   );
@@ -1838,7 +1893,6 @@ export function ModelProviderPicker({
   open,
   onOpenChange,
   modal,
-  triggerControlsPopup,
   disabled = false,
   resolveDefaultSelection = true,
   codexFastModeEnabled = false,
@@ -1864,7 +1918,6 @@ export function ModelProviderPicker({
     open,
     onOpenChange,
     modal,
-    triggerControlsPopup,
     disabled,
     codexFastModeEnabled,
     fastLabel,

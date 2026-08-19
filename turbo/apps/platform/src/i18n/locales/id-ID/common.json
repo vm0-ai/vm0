@@ -4236,6 +4236,9 @@
       "picker": {
         "builtInModel": "Model bawaan",
         "byokHelp": "Menggunakan provider yang Anda atur",
+        "categoryChat": "Chat",
+        "categoryImage": "Gambar",
+        "categoryVideo": "Video",
         "fast": "Cepat",
         "fastImpact": "Kecepatan model 1,5× · penggunaan kredit 2,5×",
         "imageModels": "Model gambar",

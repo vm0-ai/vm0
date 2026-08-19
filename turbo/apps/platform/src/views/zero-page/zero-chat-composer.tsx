@@ -4,7 +4,6 @@ import type {
   CSSProperties,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
-  ReactNode,
 } from "react";
 import type { DesktopProduct } from "@okouai/api-contracts/contracts/client-headers";
 import {
@@ -28,13 +27,11 @@ import {
   ArrowUp,
   Bolt,
   Check,
-  ChevronDown,
   Download,
   Globe,
   Image as ImageIcon,
   LayoutTemplate,
   Loader2,
-  MessageCircle,
   Mic,
   Monitor,
   Paperclip,
@@ -154,7 +151,6 @@ import {
   ImageModelBrandIcon,
   ModelProviderPicker,
   VideoModelBrandIcon,
-  type MediaModelCategoryId,
   type MediaModelPanelCategory,
   type MediaModelPanelState,
   type ModelProviderSelection,
@@ -7391,28 +7387,6 @@ function ComposerModelConfigurationWarning({
   );
 }
 
-function ComposerMediaModelModeContent({
-  expanded,
-  selectedModelLabel,
-}: {
-  expanded: boolean;
-  selectedModelLabel: string;
-}) {
-  return (
-    <span
-      aria-hidden={!expanded}
-      className={cn(
-        "hidden min-w-0 items-center gap-1.5 overflow-hidden opacity-0 transition-[max-width,opacity] duration-200 ease-out sm:flex",
-        expanded ? "max-w-[11rem] opacity-100" : "max-w-0",
-      )}
-    >
-      <span aria-hidden="true">·</span>
-      <span className="min-w-0 truncate">{selectedModelLabel}</span>
-      <ChevronDown size={16} aria-hidden="true" />
-    </span>
-  );
-}
-
 interface ComposerMediaModelPickerState<Model extends string> {
   readonly value: Model | null;
   readonly onChange: (next: Model | null) => void;
@@ -7431,33 +7405,15 @@ type ComposerVideoModelPickerState = ComposerMediaModelPickerState<VideoModel>;
 type ComposerResolvedVideoModelPickerState =
   ComposerResolvedMediaModelPickerState<VideoModel>;
 
-function composerModelPickerTriggerClassName(
-  mediaModelCategoriesAvailable: boolean,
-  mediaModelCategoryExpanded: boolean,
-): string {
+// One quiet trigger for every model category. It carries no fill of its own --
+// the composer's control row is a row of quiet controls, and a filled track
+// holding three of them read as the heaviest thing in the composer.
+function composerModelPickerTriggerClassName(): string {
   return cn(
-    "h-8 w-8 max-w-none gap-0 overflow-hidden border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-3 sm:transition-[max-width,padding,background-color,color] sm:duration-200 sm:ease-out",
-    "[&>[data-slot=select-value]]:flex [&>[data-slot=select-value]]:items-center [&>[data-slot=select-value]]:justify-center [&>[data-slot=select-value]]:transition-opacity [&>[data-slot=select-value]]:duration-150 sm:[&>[data-slot=select-value]]:justify-start",
-    "[&>[data-slot=select-icon]]:hidden [&>[data-slot=select-icon]]:transition-opacity [&>[data-slot=select-icon]]:duration-150 sm:[&>[data-slot=select-icon]]:block",
+    "h-8 w-8 max-w-none gap-0 overflow-hidden border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-3",
+    "[&>[data-slot=select-value]]:flex [&>[data-slot=select-value]]:items-center [&>[data-slot=select-value]]:justify-center sm:[&>[data-slot=select-value]]:justify-start",
+    "[&>[data-slot=select-icon]]:hidden sm:[&>[data-slot=select-icon]]:block",
     "hover:bg-state-hover hover:text-foreground data-popup-open:bg-state-hover data-popup-open:text-foreground",
-    // Inside the category track this trigger is a segment, so it takes the
-    // `SegmentControl` `sm` geometry: h-7 inside an h-8 track, `rounded-md` to
-    // stay concentric with the track's 8px radius minus its 2px inset, and one
-    // padding step tighter than a standalone trigger because the track inset
-    // already carries part of the optical gap. The weight stays regular though
-    // -- the track sits in the composer's quiet control row, where segment
-    // `font-medium` reads as emphasis the model name does not need.
-    mediaModelCategoriesAvailable &&
-      "sm:h-7 sm:rounded-md sm:px-2.5 sm:font-normal",
-    // The selected segment takes the segment control's opaque lift -- white in
-    // light, a step up the grey ramp in dark -- and never the translucent
-    // state layer, which replaces a fill instead of sitting on it and would
-    // drop the segment back to the track colour.
-    mediaModelCategoriesAvailable &&
-      !mediaModelCategoryExpanded &&
-      "sm:bg-segment-selected sm:text-foreground sm:shadow-segment-selected sm:hover:bg-segment-selected sm:data-popup-open:bg-segment-selected",
-    mediaModelCategoryExpanded &&
-      "sm:max-w-7 sm:px-0 sm:[&>[data-slot=select-value]]:opacity-0 sm:[&>[data-slot=select-icon]]:opacity-0",
     COMPOSER_CONTROL_FOCUS_CLASS,
   );
 }
@@ -7468,7 +7424,6 @@ function ComposerRunModelPickerControl({
   onChange,
   codexFastModeEnabled,
   desktopLayout,
-  mediaModelCategoryExpanded,
   mediaModelPanel,
 }: {
   signals: ComposerSignals;
@@ -7476,185 +7431,39 @@ function ComposerRunModelPickerControl({
   onChange: (selection: ModelProviderSelection | null) => void;
   codexFastModeEnabled: boolean;
   desktopLayout: boolean;
-  mediaModelCategoryExpanded: boolean;
   mediaModelPanel: MediaModelPanelState | undefined;
 }) {
   const { t } = useTranslation();
-  const setDesktopChatModeElement = useSet(
-    signals.model.setDesktopChatModeElement$,
-  );
   const modelPickerOpen = useGet(signals.model.modelPickerOpen$);
-  const handleModelPickerOpenChange = useSet(
-    signals.model.handleModelPickerOpenChange$,
-  );
+  const setModelPickerOpen = useSet(signals.model.setModelPickerOpen$);
+  const setLifecycleRef = useSet(signals.model.desktopModelPickerLifecycleRef$);
   const desktopModeLabel = mediaModelPanel
     ? t(($) => {
         return $.appShell.sidebar.chat;
       })
     : undefined;
   return (
-    <div
-      ref={setDesktopChatModeElement}
-      className="contents sm:relative sm:flex"
-    >
+    <div ref={setLifecycleRef} className="contents sm:relative sm:flex">
       <ModelProviderPicker
         value={value}
         onChange={onChange}
         placeholder={t(($) => {
           return $.chat.composer.selectModel;
         })}
-        triggerClassName={composerModelPickerTriggerClassName(
-          mediaModelPanel !== undefined,
-          mediaModelCategoryExpanded,
-        )}
+        triggerClassName={composerModelPickerTriggerClassName()}
         compactTrigger
         mobileIconTrigger
         desktopModeLabel={desktopModeLabel}
         open={modelPickerOpen}
         modal={mediaModelPanel ? !desktopLayout : undefined}
-        triggerControlsPopup={!mediaModelCategoryExpanded}
-        onOpenChange={(open, eventDetails) => {
-          const shouldCancel = handleModelPickerOpenChange(
-            open,
-            eventDetails.event,
-            mediaModelPanel !== undefined,
-          );
-          if (shouldCancel) {
-            eventDetails.cancel();
-          }
+        onOpenChange={(open) => {
+          setModelPickerOpen(open);
         }}
         resolveDefaultSelection={false}
         codexFastModeEnabled={codexFastModeEnabled}
         {...(mediaModelPanel ? { mediaModelPanel } : {})}
       />
-      {mediaModelPanel && (
-        <MessageCircle
-          size={16}
-          aria-hidden="true"
-          className={cn(
-            "pointer-events-none absolute inset-0 m-auto hidden opacity-0 transition-opacity duration-150 sm:block",
-            mediaModelCategoryExpanded && "opacity-100",
-          )}
-        />
-      )}
     </div>
-  );
-}
-
-function ComposerMediaModelControl({
-  signals,
-  category,
-  label,
-  expanded,
-  selectedModelLabel,
-  icon,
-}: {
-  signals: ComposerSignals;
-  category: MediaModelCategoryId;
-  label: string;
-  expanded: boolean;
-  selectedModelLabel: string;
-  icon: ReactNode;
-}) {
-  const modelPickerOpen = useGet(signals.model.modelPickerOpen$);
-  const setDesktopMediaModelAnchor = useSet(
-    signals.model.desktopMediaModelAnchorRefs[category],
-  );
-  const toggleDesktopMediaModelCategory = useSet(
-    signals.model.toggleDesktopMediaModelCategory$,
-  );
-  return (
-    <TooltipProvider delayDuration={300}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            ref={setDesktopMediaModelAnchor}
-            variant="quiet"
-            size="icon-xs"
-            className={cn(
-              // A media category is a segment inside the track, so it takes the
-              // same `SegmentControl` `sm` geometry as the chat segment beside
-              // it: h-7, `rounded-md`, a 16px glyph, and the regular weight
-              // `Button` would otherwise bump to medium. Collapsed padding
-              // keeps the resting state a 28px square.
-              "hidden shrink-0 overflow-hidden rounded-md font-normal sm:inline-flex sm:w-auto sm:gap-0 sm:px-1.5 sm:transition-[gap,padding,background-color,color] sm:duration-200 sm:ease-out",
-              expanded &&
-                "bg-segment-selected text-foreground shadow-segment-selected hover:bg-segment-selected active:bg-segment-selected sm:gap-1.5 sm:px-2.5",
-            )}
-            aria-label={label}
-            aria-expanded={expanded && modelPickerOpen}
-            aria-haspopup="listbox"
-            aria-pressed={expanded}
-            onClick={() => {
-              toggleDesktopMediaModelCategory(category);
-            }}
-          >
-            {icon}
-            <ComposerMediaModelModeContent
-              expanded={expanded}
-              selectedModelLabel={selectedModelLabel}
-            />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="top" className="text-xs">
-          {label}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
-
-function ComposerVideoModelControl({
-  signals,
-  expanded,
-  selectedModel,
-}: {
-  signals: ComposerSignals;
-  expanded: boolean;
-  selectedModel: VideoModel;
-}) {
-  const { t } = useTranslation();
-  const videoModelsLabel = t(($) => {
-    return $.settings.models.picker.videoModels;
-  });
-  // The glyph comes from the same icon family and nominal size as the chat
-  // segment's `MessageCircle`, so the two categories carry the same stroke
-  // weight inside the track.
-  return (
-    <ComposerMediaModelControl
-      signals={signals}
-      category="video"
-      label={videoModelsLabel}
-      expanded={expanded}
-      selectedModelLabel={getModelDisplayName(selectedModel)}
-      icon={<Video size={16} aria-hidden="true" />}
-    />
-  );
-}
-
-function ComposerImageModelControl({
-  signals,
-  expanded,
-  selectedModel,
-}: {
-  signals: ComposerSignals;
-  expanded: boolean;
-  selectedModel: ImageModel;
-}) {
-  const { t } = useTranslation();
-  const imageModelsLabel = t(($) => {
-    return $.settings.models.picker.imageModels;
-  });
-  return (
-    <ComposerMediaModelControl
-      signals={signals}
-      category="image"
-      label={imageModelsLabel}
-      expanded={expanded}
-      selectedModelLabel={IMAGE_MODEL_CONFIGS[selectedModel].label}
-      icon={<ImageIcon size={16} aria-hidden="true" />}
-    />
   );
 }
 
@@ -7662,24 +7471,22 @@ function composerImageModelPanelCategory({
   selectedModel,
   onChange,
   label,
-  variantMenuLabel,
+  tabLabel,
+  variantLabel,
 }: {
   selectedModel: ImageModel;
   onChange: (next: ImageModel | null) => void;
   label: string;
-  variantMenuLabel: string;
+  tabLabel: string;
+  variantLabel: string;
 }): MediaModelPanelCategory {
   const gptImage1Models = ["gpt-image-1", "gpt-image-1-mini"] as const;
   const baseModel = gptImage1Models[0];
-  const selectedGptImage1Model = gptImage1Models.find((candidate) => {
-    return candidate === selectedModel;
-  });
-  const selectedGptImage1Config =
-    IMAGE_MODEL_CONFIGS[selectedGptImage1Model ?? baseModel];
   return {
     id: "image",
     label,
     menuLabel: label,
+    tabLabel,
     options: PUBLIC_IMAGE_MODELS.filter((candidate) => {
       return candidate !== gptImage1Models[1];
     }).map((candidate) => {
@@ -7694,11 +7501,7 @@ function composerImageModelPanelCategory({
         ...(candidate === baseModel
           ? {
               variant: {
-                label: variantMenuLabel,
-                chipLabel: selectedGptImage1Config.variantLabel,
-                selected:
-                  selectedGptImage1Model !== undefined &&
-                  selectedGptImage1Model !== baseModel,
+                label: variantLabel,
                 options: gptImage1Models.map((variantModel) => {
                   const variantConfig = IMAGE_MODEL_CONFIGS[variantModel];
                   return {
@@ -7722,14 +7525,16 @@ function composerVideoModelPanelCategory({
   selectedModel,
   onChange,
   label,
+  tabLabel,
   menuLabel,
-  variantMenuLabel,
+  variantLabel,
 }: {
   selectedModel: VideoModel;
   onChange: (next: VideoModel | null) => void;
   label: string;
+  tabLabel: string;
   menuLabel: string;
-  variantMenuLabel: string;
+  variantLabel: string;
 }): MediaModelPanelCategory {
   const seedance2Models = [
     "dreamina-seedance-2-0-260128",
@@ -7737,15 +7542,11 @@ function composerVideoModelPanelCategory({
     "dreamina-seedance-2-0-mini-260615",
   ] as const satisfies readonly VideoModel[];
   const seedance2Model = seedance2Models[0];
-  const selectedSeedance2Model = seedance2Models.find((candidate) => {
-    return candidate === selectedModel;
-  });
-  const selectedSeedance2Config =
-    VIDEO_MODEL_CONFIGS[selectedSeedance2Model ?? seedance2Model];
   return {
     id: "video",
     label,
     menuLabel,
+    tabLabel,
     options: PUBLIC_VIDEO_MODELS.filter((candidate) => {
       return (
         candidate === seedance2Model ||
@@ -7765,11 +7566,7 @@ function composerVideoModelPanelCategory({
         ...(candidate === seedance2Model
           ? {
               variant: {
-                label: variantMenuLabel,
-                chipLabel: selectedSeedance2Config.variantLabel,
-                selected:
-                  selectedSeedance2Model !== undefined &&
-                  selectedSeedance2Model !== seedance2Model,
+                label: variantLabel,
                 options: seedance2Models.map((variantModel) => {
                   const variantConfig = VIDEO_MODEL_CONFIGS[variantModel];
                   return {
@@ -7806,13 +7603,8 @@ function ComposerModelPickerControls({
 }) {
   const { t } = useTranslation();
   const desktopLayout = useGet(signals.model.desktopModelPickerLayout$);
-  const mobileCategory = useGet(signals.model.mobileMediaModelCategory$);
-  const setMobileCategory = useSet(signals.model.setMobileMediaModelCategory$);
-  const setLifecycleRef = useSet(signals.model.desktopModelPickerLifecycleRef$);
-  const desktopActiveMediaModelAnchor = useGet(
-    signals.model.desktopActiveMediaModelAnchor$,
-  );
-  const desktopModelCategory = useGet(signals.model.desktopModelCategory$);
+  const category = useGet(signals.model.mediaModelCategory$);
+  const setCategory = useSet(signals.model.setMediaModelCategory$);
   const categories: MediaModelPanelCategory[] = [];
   if (imageModel) {
     categories.push(
@@ -7822,7 +7614,10 @@ function ComposerModelPickerControls({
         label: t(($) => {
           return $.settings.models.picker.imageModels;
         }),
-        variantMenuLabel: t(
+        tabLabel: t(($) => {
+          return $.settings.models.picker.categoryImage;
+        }),
+        variantLabel: t(
           ($) => {
             return $.settings.models.picker.modelVariants;
           },
@@ -7839,12 +7634,15 @@ function ComposerModelPickerControls({
         label: t(($) => {
           return $.settings.models.picker.videoModels;
         }),
+        tabLabel: t(($) => {
+          return $.settings.models.picker.categoryVideo;
+        }),
         menuLabel: t(($) => {
           return imageModel
             ? $.settings.models.picker.videoModels
             : $.settings.models.picker.manageMoreModels;
         }),
-        variantMenuLabel: t(
+        variantLabel: t(
           ($) => {
             return $.settings.models.picker.modelVariants;
           },
@@ -7853,77 +7651,29 @@ function ComposerModelPickerControls({
       }),
     );
   }
-  const desktopActiveCategory =
-    desktopModelCategory === "chat" ||
-    !categories.some((category) => {
-      return category.id === desktopModelCategory;
-    })
-      ? null
-      : desktopModelCategory;
-  const activeCategory = desktopLayout
-    ? desktopActiveCategory
-    : categories.some((category) => {
-          return category.id === mobileCategory;
-        })
-      ? mobileCategory
-      : null;
-  const mediaModelCategoryExpanded =
-    desktopLayout && desktopActiveCategory !== null;
-  const imageModeExpanded =
-    mediaModelCategoryExpanded && desktopActiveCategory === "image";
-  const videoModeExpanded =
-    mediaModelCategoryExpanded && desktopActiveCategory === "video";
+  const activeCategory = categories.some((candidate) => {
+    return candidate.id === category;
+  })
+    ? category
+    : null;
   const mediaModelPanel: MediaModelPanelState | undefined =
     categories.length > 0
       ? {
           activeCategory,
           categories,
-          onActiveCategoryChange: setMobileCategory,
-          contentAnchor:
-            desktopLayout && mediaModelCategoryExpanded
-              ? desktopActiveMediaModelAnchor
-              : undefined,
+          onActiveCategoryChange: setCategory,
         }
       : undefined;
   return (
     <>
-      <div
-        ref={setLifecycleRef}
-        className={cn(
-          "contents",
-          // The category track mirrors `SegmentControl` at `sm`: an h-8 shell
-          // with a 2px inset, so the whole group measures the same 32px as the
-          // icon-sm controls beside it instead of stretching the settings row.
-          // `bg-muted` is the segment track fill in both themes -- it has to be
-          // a recessed step, or the selected segment's opaque lift disappears.
-          mediaModelPanel &&
-            "sm:flex sm:h-8 sm:items-center sm:gap-0.5 sm:rounded-lg sm:bg-muted sm:p-0.5",
-        )}
-      >
-        <ComposerRunModelPickerControl
-          signals={signals}
-          value={value}
-          onChange={onChange}
-          codexFastModeEnabled={codexFastModeEnabled}
-          desktopLayout={desktopLayout}
-          mediaModelCategoryExpanded={mediaModelCategoryExpanded}
-          mediaModelPanel={mediaModelPanel}
-        />
-        {imageModel && (
-          <ComposerImageModelControl
-            signals={signals}
-            expanded={imageModeExpanded}
-            selectedModel={imageModel.selectedModel}
-          />
-        )}
-        {videoModel && (
-          <ComposerVideoModelControl
-            signals={signals}
-            expanded={videoModeExpanded}
-            selectedModel={videoModel.selectedModel}
-          />
-        )}
-      </div>
+      <ComposerRunModelPickerControl
+        signals={signals}
+        value={value}
+        onChange={onChange}
+        codexFastModeEnabled={codexFastModeEnabled}
+        desktopLayout={desktopLayout}
+        mediaModelPanel={mediaModelPanel}
+      />
       <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
     </>
   );
@@ -8370,7 +8120,7 @@ function ComposerTemporaryModelNoticeSlot({
   const enabled = useGet(signals.model.temporaryModelNoticeEnabled$);
   const imageModelEnabled = useGet(imageModelSelectionEnabled$);
   const videoModelEnabled = useGet(videoModelSelectionEnabled$);
-  const desktopModelCategory = useGet(signals.model.desktopModelCategory$);
+  const mediaModelCategory = useGet(signals.model.mediaModelCategory$);
   const imageModelSignals = signals.imageModel;
   const videoModelSignals = signals.videoModel;
   if (!enabled) {
@@ -8381,7 +8131,7 @@ function ComposerTemporaryModelNoticeSlot({
   if (
     imageModelEnabled &&
     imageModelSignals &&
-    desktopModelCategory === "image"
+    mediaModelCategory === "image"
   ) {
     return (
       <ComposerTemporaryImageModelNotice
@@ -8392,7 +8142,7 @@ function ComposerTemporaryModelNoticeSlot({
   if (
     videoModelEnabled &&
     videoModelSignals &&
-    desktopModelCategory === "video"
+    mediaModelCategory === "video"
   ) {
     return (
       <ComposerTemporaryVideoModelNotice

@@ -4287,6 +4287,9 @@
       "picker": {
         "builtInModel": "Modèle intégré",
         "byokHelp": "Utilise votre fournisseur configuré",
+        "categoryChat": "Chat",
+        "categoryImage": "Image",
+        "categoryVideo": "Vidéo",
         "fast": "Rapide",
         "fastImpact": "Vitesse du modèle 1,5× · consommation de crédits 2,5×",
         "imageModels": "Modèles d’image",

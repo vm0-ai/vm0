@@ -4237,6 +4237,9 @@
       "picker": {
         "builtInModel": "अंतर्निर्मित मॉडल",
         "byokHelp": "आपके कॉन्फ़िगर किए गए प्रोवाइडर का उपयोग करता है",
+        "categoryChat": "चैट",
+        "categoryImage": "इमेज",
+        "categoryVideo": "वीडियो",
         "fast": "तेज़",
         "fastImpact": "1.5× मॉडल गति · 2.5× क्रेडिट उपयोग",
         "imageModels": "इमेज मॉडल",
