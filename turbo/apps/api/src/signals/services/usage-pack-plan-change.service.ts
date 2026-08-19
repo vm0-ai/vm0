@@ -33,11 +33,14 @@ import {
   type StripeInvoiceCreatePreviewParams,
   type StripeInvoiceLine,
   type StripePriceRecurring,
+  type StripeSchedulePhase,
   type StripeSchedulePhaseDiscountParam,
   type StripeSchedulePhaseItemParam,
   type StripeSchedulePhaseParam,
   type StripeSubscription,
   type StripeSubscriptionItem,
+  type StripeSubscriptionSchedule,
+  type StripeSubscriptionScheduleUpdateParams,
   type StripeSubscriptionUpdateItemParam,
 } from "../external/stripe-client";
 import {
@@ -161,6 +164,7 @@ type UsagePackSubscriptionChangePreviewResult =
   | { readonly status: "not_found" }
   | { readonly status: "same_configuration" }
   | { readonly status: "invalid_members" }
+  | { readonly status: "plan_ending" }
   | { readonly status: "conflict" };
 
 type UsagePackSubscriptionChangeConfirmResult =
@@ -784,6 +788,7 @@ type SubscriptionChangePreparation =
         | "not_found"
         | "same_configuration"
         | "invalid_members"
+        | "plan_ending"
         | "conflict";
     };
 
@@ -883,9 +888,6 @@ async function prepareSubscriptionChange(
   if (resumed) {
     return resumed;
   }
-  if (context.subscription.cancelAtPeriodEnd) {
-    return { status: "conflict" };
-  }
   const allocationChanges = prepareAllocationChanges(
     args.memberUsagePacks,
     activeMemberAllocations(context.allocations),
@@ -901,6 +903,14 @@ async function prepareSubscriptionChange(
     allocationChanges.some((change) => {
       return change.kind === "addition" || change.kind === "upgrade";
     });
+  const hasScheduledChanges =
+    planIsDowngrade(context.subscription.tier, args.targetTier) ||
+    allocationChanges.some((change) => {
+      return change.kind === "downgrade";
+    });
+  if (context.subscription.cancelAtPeriodEnd && hasScheduledChanges) {
+    return { status: "plan_ending" };
+  }
   const ownedPlanScheduleId =
     planIsDowngrade(context.subscription.tier, args.targetTier) &&
     context.pendingPlanTargetTier === args.targetTier
@@ -966,11 +976,7 @@ async function prepareSubscriptionChange(
       period,
       prorationTimestamp,
       hasImmediateChanges,
-      hasScheduledChanges:
-        planIsDowngrade(context.subscription.tier, args.targetTier) ||
-        allocationChanges.some((change) => {
-          return change.kind === "downgrade";
-        }),
+      hasScheduledChanges,
       existingScheduleId,
       hasAttachedSchedule: stripeScheduleId !== null,
     },
@@ -1098,8 +1104,7 @@ async function subscriptionChangeSnapshotMatches(
     !lockedSubscription ||
     lockedSubscription.tier !== context.subscription.tier ||
     lockedSubscription.stripePlanPriceId !==
-      context.subscription.stripePlanPriceId ||
-    lockedSubscription.cancelAtPeriodEnd
+      context.subscription.stripePlanPriceId
   ) {
     return false;
   }
@@ -1346,6 +1351,63 @@ function subscriptionChangeEffectiveAt(
   return new Date(timestamp * 1000);
 }
 
+async function previewSubscriptionChangeInvoices(
+  args: {
+    readonly prepared: PreparedSubscriptionChange;
+    readonly immediateItems: readonly StripeSubscriptionUpdateItemParam[];
+    readonly finalItems: readonly StripeSubscriptionUpdateItemParam[];
+    readonly finalPackageQuantities: ReadonlyMap<string, number>;
+  },
+  signal: AbortSignal,
+): Promise<{
+  readonly recurringPreview: StripeInvoice | null;
+  readonly immediatePreview: StripeInvoice | null;
+}> {
+  const { prepared } = args;
+  const stripe = getStripeClient();
+  const subscriptionWillEnd =
+    prepared.subscription.cancel_at_period_end ||
+    prepared.subscription.cancel_at !== null;
+  const [recurringPreview, immediatePreview] = await Promise.all([
+    subscriptionWillEnd
+      ? null
+      : stripe.invoices.createPreview(
+          prepared.hasAttachedSchedule
+            ? scheduledSubscriptionRecurringPreviewParams(
+                prepared.subscription,
+                finalScheduleItems(
+                  prepared.subscription,
+                  prepared.targetPlanPriceId,
+                  args.finalPackageQuantities,
+                ),
+              )
+            : {
+                subscription: prepared.subscription.id,
+                preview_mode: "recurring",
+                subscription_details: { items: [...args.finalItems] },
+              },
+        ),
+    prepared.hasImmediateChanges
+      ? stripe.invoices.createPreview({
+          subscription: prepared.subscription.id,
+          preview_mode: "next",
+          subscription_details: {
+            ...(prepared.subscription.cancel_at_period_end
+              ? { cancel_at_period_end: false }
+              : prepared.subscription.cancel_at !== null
+                ? { cancel_at: "" as const }
+                : {}),
+            items: [...args.immediateItems],
+            proration_behavior: "always_invoice",
+            proration_date: prepared.prorationTimestamp,
+          },
+        })
+      : null,
+  ]);
+  signal.throwIfAborted();
+  return { recurringPreview, immediatePreview };
+}
+
 export async function previewUsagePackSubscriptionChange(
   db: Db,
   args: {
@@ -1395,40 +1457,20 @@ export async function previewUsagePackSubscriptionChange(
     prepared.targetPlanPriceId,
     finalPackageQuantities,
   );
-  const stripe = getStripeClient();
-  const [recurringPreview, immediatePreview, immediateCreditGrant] =
-    await Promise.all([
-      stripe.invoices.createPreview(
-        prepared.hasAttachedSchedule
-          ? scheduledSubscriptionRecurringPreviewParams(
-              prepared.subscription,
-              finalScheduleItems(
-                prepared.subscription,
-                prepared.targetPlanPriceId,
-                finalPackageQuantities,
-              ),
-            )
-          : {
-              subscription: prepared.subscription.id,
-              preview_mode: "recurring",
-              subscription_details: { items: finalItems },
-            },
-      ),
-      prepared.hasImmediateChanges
-        ? stripe.invoices.createPreview({
-            subscription: prepared.subscription.id,
-            preview_mode: "next",
-            subscription_details: {
-              items: immediateItems,
-              proration_behavior: "always_invoice",
-              proration_date: prepared.prorationTimestamp,
-            },
-          })
-        : null,
-      immediateUsagePackUpgradeCreditGrant(prepared),
-    ]);
-  signal.throwIfAborted();
+  const [invoicePreviews, immediateCreditGrant] = await Promise.all([
+    previewSubscriptionChangeInvoices(
+      { prepared, immediateItems, finalItems, finalPackageQuantities },
+      signal,
+    ),
+    immediateUsagePackUpgradeCreditGrant(prepared),
+  ]);
+  const { recurringPreview, immediatePreview } = invoicePreviews;
+  const currency = recurringPreview?.currency ?? immediatePreview?.currency;
+  if (!currency) {
+    throw new Error("Stripe subscription preview has no currency");
+  }
   if (
+    recurringPreview &&
     immediatePreview &&
     recurringPreview.currency !== immediatePreview.currency
   ) {
@@ -1442,13 +1484,15 @@ export async function previewUsagePackSubscriptionChange(
   const immediateAmountCents = immediatePreview
     ? immediateProrationAmount(immediatePreview, prepared.prorationTimestamp)
     : 0;
-  const nextRecurringAmountCents = recurringAmount(recurringPreview);
+  const nextRecurringAmountCents = recurringPreview
+    ? recurringAmount(recurringPreview)
+    : 0;
   const change = await persistSubscriptionChangePreview(db, {
     prepared,
     targetTier: args.targetTier,
     immediateAmountCents,
     nextRecurringAmountCents,
-    currency: recurringPreview.currency,
+    currency,
     createdAt,
     expiresAt,
     effectiveAt,
@@ -1465,54 +1509,12 @@ export async function previewUsagePackSubscriptionChange(
       immediateAmountCents,
       immediateCreditGrant,
       nextRecurringAmountCents,
-      currency: recurringPreview.currency,
+      currency,
       effectiveAt: effectiveAt.toISOString(),
       prorationDate: new Date(prepared.prorationTimestamp * 1000).toISOString(),
       expiresAt: expiresAt.toISOString(),
     },
   };
-}
-
-export async function discardUsagePackSubscriptionChangePreviewForPaymentSetup(
-  db: Db,
-  args: { readonly orgId: string; readonly changeId: string },
-): Promise<void> {
-  const discardedAt = nowDate();
-  await db.transaction(async (tx) => {
-    const discarded = await tx
-      .update(usagePackSubscriptionChanges)
-      .set({
-        status: "failed",
-        failureReason: "payment_method_setup_required",
-        completedAt: discardedAt,
-        updatedAt: discardedAt,
-      })
-      .where(
-        and(
-          eq(usagePackSubscriptionChanges.id, args.changeId),
-          eq(usagePackSubscriptionChanges.orgId, args.orgId),
-          eq(usagePackSubscriptionChanges.status, "previewed"),
-        ),
-      )
-      .returning({ id: usagePackSubscriptionChanges.id });
-    if (discarded.length === 0) {
-      return;
-    }
-    await tx
-      .update(usagePackAllocationChanges)
-      .set({
-        status: "failed",
-        failureReason: "payment_method_setup_required",
-        completedAt: discardedAt,
-        updatedAt: discardedAt,
-      })
-      .where(
-        and(
-          eq(usagePackAllocationChanges.subscriptionChangeId, args.changeId),
-          eq(usagePackAllocationChanges.status, "previewed"),
-        ),
-      );
-  });
 }
 
 function subscriptionPhaseItems(
@@ -2284,6 +2286,151 @@ function isScheduledSubscriptionRestore(
   );
 }
 
+function schedulePhaseDiscounts(
+  discounts: NonNullable<StripeSchedulePhase["discounts"]>,
+): StripeSchedulePhaseDiscountParam[] {
+  return discounts.map((discount) => {
+    const discountId = stripeObjectId(discount.discount);
+    if (discountId) {
+      return { discount: discountId };
+    }
+    const couponId = stripeObjectId(discount.coupon);
+    if (couponId) {
+      return { coupon: couponId };
+    }
+    const promotionCodeId = stripeObjectId(discount.promotion_code);
+    if (promotionCodeId) {
+      return { promotion_code: promotionCodeId };
+    }
+    throw new Error(
+      "Stripe subscription schedule phase has an invalid discount",
+    );
+  });
+}
+
+function schedulePhaseItem(
+  item: NonNullable<StripeSchedulePhase["items"]>[number],
+): StripeSchedulePhaseItemParam {
+  const price = stripeObjectId(item.price);
+  const quantity = item.quantity ?? 1;
+  if (!price || !Number.isSafeInteger(quantity) || quantity < 1) {
+    throw new Error("Stripe subscription schedule phase has invalid items");
+  }
+  const discounts = schedulePhaseDiscounts(item.discounts ?? []);
+  const taxRates = (item.tax_rates ?? []).map((taxRate) => {
+    const id = stripeObjectId(taxRate);
+    if (!id) {
+      throw new Error(
+        "Stripe subscription schedule item has an invalid tax rate",
+      );
+    }
+    return id;
+  });
+  return {
+    price,
+    quantity,
+    ...(discounts.length > 0 ? { discounts } : {}),
+    ...(item.metadata ? { metadata: { ...item.metadata } } : {}),
+    ...(taxRates.length > 0 ? { tax_rates: taxRates } : {}),
+  };
+}
+
+function currentAndFutureSchedulePhases(
+  schedule: StripeSubscriptionSchedule,
+): readonly StripeSchedulePhase[] {
+  const currentPhase = schedule.current_phase;
+  if (!currentPhase) {
+    throw new Error("Stripe subscription schedule has no current phase");
+  }
+  const currentPhaseIndex = schedule.phases.findIndex((phase) => {
+    return (
+      phase.start_date === currentPhase.start_date &&
+      phase.end_date === currentPhase.end_date
+    );
+  });
+  if (currentPhaseIndex === -1) {
+    throw new Error("Stripe subscription schedule lost its current phase");
+  }
+  const phases = schedule.phases.slice(currentPhaseIndex);
+  if (
+    phases.length === 0 ||
+    phases.some((phase) => {
+      return (phase.add_invoice_items?.length ?? 0) > 0;
+    })
+  ) {
+    throw new Error("Stripe subscription schedule cannot be safely restored");
+  }
+  return phases;
+}
+
+function restoredUsagePackScheduleParams(
+  subscription: StripeSubscription,
+  schedule: StripeSubscriptionSchedule,
+): StripeSubscriptionScheduleUpdateParams {
+  if (
+    schedule.end_behavior !== "cancel" &&
+    schedule.end_behavior !== "release"
+  ) {
+    throw new Error("Stripe subscription schedule cannot be safely restored");
+  }
+  const phases = currentAndFutureSchedulePhases(schedule);
+  const currentItems = phases[0]?.items;
+  if (!currentItems) {
+    throw new Error("Stripe subscription schedule has no current items");
+  }
+  const currentPackageItems = new Map(
+    currentItems.flatMap((item) => {
+      const priceId = stripeObjectId(item.price);
+      return priceId && usagePackUsdForKnownPriceId(priceId) !== null
+        ? [[priceId, item] as const]
+        : [];
+    }),
+  );
+  const activePackageItems = subscription.items.data.flatMap((item) => {
+    if (usagePackUsdForKnownPriceId(item.price.id) === null) {
+      return [];
+    }
+    const currentItem = currentPackageItems.get(item.price.id);
+    return [
+      {
+        ...(currentItem ? schedulePhaseItem(currentItem) : {}),
+        price: item.price.id,
+        quantity: item.quantity ?? 1,
+      },
+    ];
+  });
+  if (activePackageItems.length === 0) {
+    throw new Error("Usage pack subscription has no active packages");
+  }
+  return {
+    end_behavior: schedule.end_behavior,
+    proration_behavior: "none",
+    phases: phases.map((phase) => {
+      if (!phase.items) {
+        throw new Error("Stripe subscription schedule phase has no items");
+      }
+      const discounts = schedulePhaseDiscounts(phase.discounts ?? []);
+      return {
+        start_date: phase.start_date,
+        end_date: phase.end_date,
+        ...(phase.currency ? { currency: phase.currency } : {}),
+        items: [
+          ...phase.items.flatMap((item) => {
+            const priceId = stripeObjectId(item.price);
+            return priceId && usagePackUsdForKnownPriceId(priceId) !== null
+              ? []
+              : [schedulePhaseItem(item)];
+          }),
+          ...activePackageItems,
+        ],
+        ...(phase.metadata ? { metadata: { ...phase.metadata } } : {}),
+        proration_behavior: phase.proration_behavior ?? "none",
+        ...(discounts.length > 0 ? { discounts } : {}),
+      };
+    }),
+  };
+}
+
 async function restoreScheduledSubscriptionChange(
   db: Db,
   stored: StoredSubscriptionChange,
@@ -2317,7 +2464,17 @@ async function restoreScheduledSubscriptionChange(
     return { status: "conflict" };
   }
   if (stripeScheduleId === scheduleId) {
-    await getStripeClient().subscriptionSchedules.release(scheduleId);
+    const stripe = getStripeClient();
+    const schedule = await stripe.subscriptionSchedules.retrieve(scheduleId);
+    signal.throwIfAborted();
+    await stripe.subscriptionSchedules.update(
+      scheduleId,
+      restoredUsagePackScheduleParams(subscription, schedule),
+      {
+        idempotencyKey: `usage-pack-subscription-change:${stored.root.id}:restore-schedule`,
+      },
+    );
+    signal.throwIfAborted();
   }
   const completedAt = nowDate();
   await db.transaction(async (tx) => {
@@ -2338,21 +2495,6 @@ async function restoreScheduledSubscriptionChange(
         and(
           eq(usagePackSubscriptionChanges.id, stored.root.id),
           eq(usagePackSubscriptionChanges.status, "applying"),
-        ),
-      );
-    await tx
-      .update(orgMetadata)
-      .set({
-        cancelAtPeriodEnd: false,
-        pendingSubscriptionScheduleId: null,
-        pendingSubscriptionTargetTier: null,
-        pendingSubscriptionChangeAt: null,
-        updatedAt: completedAt,
-      })
-      .where(
-        and(
-          eq(orgMetadata.orgId, stored.root.orgId),
-          eq(orgMetadata.pendingSubscriptionScheduleId, scheduleId),
         ),
       );
   });

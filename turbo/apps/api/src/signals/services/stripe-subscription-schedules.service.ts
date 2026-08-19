@@ -4,6 +4,9 @@ import {
   getStripeClient,
   type StripeRef,
   type StripeSchedulePhase,
+  type StripeSchedulePhaseDiscountParam,
+  type StripeSchedulePhaseItemParam,
+  type StripeSchedulePhaseParam,
   type StripeSubscription,
   type StripeSubscriptionSchedule,
 } from "../external/stripe-client";
@@ -32,8 +35,106 @@ export function subscriptionScheduleFinalEnd(
   return finalEnd === null ? null : new Date(finalEnd * 1000);
 }
 
-function stripeRefId(ref: StripeRef): string | null {
+function stripeRefId(ref: StripeRef | undefined): string | null {
   return typeof ref === "string" ? ref : (ref?.id ?? null);
+}
+
+function scheduleDiscountParam(
+  discount: NonNullable<StripeSchedulePhase["discounts"]>[number],
+): StripeSchedulePhaseDiscountParam {
+  const discountId = stripeRefId(discount.discount);
+  if (discountId) {
+    return { discount: discountId };
+  }
+  const couponId = stripeRefId(discount.coupon);
+  if (couponId) {
+    return { coupon: couponId };
+  }
+  const promotionCodeId = stripeRefId(discount.promotion_code);
+  if (promotionCodeId) {
+    return { promotion_code: promotionCodeId };
+  }
+  throw new Error("Stripe subscription schedule has an invalid discount");
+}
+
+function schedulePhaseItemParam(
+  item: NonNullable<StripeSchedulePhase["items"]>[number],
+): StripeSchedulePhaseItemParam {
+  const price = stripeRefId(item.price);
+  const quantity = item.quantity ?? 1;
+  if (!price || !Number.isSafeInteger(quantity) || quantity < 1) {
+    throw new Error("Stripe subscription schedule has an invalid item");
+  }
+  const discounts = (item.discounts ?? []).map(scheduleDiscountParam);
+  const taxRates = (item.tax_rates ?? []).map((taxRate) => {
+    const id = stripeRefId(taxRate);
+    if (!id) {
+      throw new Error("Stripe subscription schedule has an invalid tax rate");
+    }
+    return id;
+  });
+  return {
+    price,
+    quantity,
+    ...(discounts.length > 0 ? { discounts } : {}),
+    ...(item.metadata ? { metadata: { ...item.metadata } } : {}),
+    ...(taxRates.length > 0 ? { tax_rates: taxRates } : {}),
+  };
+}
+
+function schedulePhaseParam(
+  phase: StripeSchedulePhase,
+  endDate: number,
+): StripeSchedulePhaseParam {
+  const items = phase.items?.map(schedulePhaseItemParam);
+  if (!items || items.length === 0 || endDate <= phase.start_date) {
+    throw new Error("Stripe subscription schedule has an invalid phase");
+  }
+  const discounts = (phase.discounts ?? []).map(scheduleDiscountParam);
+  return {
+    start_date: phase.start_date,
+    end_date: endDate,
+    ...(phase.currency ? { currency: phase.currency } : {}),
+    items,
+    ...(phase.metadata ? { metadata: { ...phase.metadata } } : {}),
+    proration_behavior: phase.proration_behavior ?? "none",
+    ...(discounts.length > 0 ? { discounts } : {}),
+  };
+}
+
+export function subscriptionSchedulePhasesEndingAt(
+  schedule: Pick<StripeSubscriptionSchedule, "current_phase" | "phases">,
+  endDate: number,
+): readonly StripeSchedulePhaseParam[] {
+  const currentPhase = schedule.current_phase;
+  if (!currentPhase) {
+    throw new Error("Stripe subscription schedule has no current phase");
+  }
+  const currentPhaseIndex = schedule.phases.findIndex((phase) => {
+    return (
+      phase.start_date === currentPhase.start_date &&
+      phase.end_date === currentPhase.end_date
+    );
+  });
+  if (currentPhaseIndex === -1) {
+    throw new Error("Stripe subscription schedule lost its current phase");
+  }
+  const phases = schedule.phases.slice(currentPhaseIndex).filter((phase) => {
+    return phase.start_date < endDate;
+  });
+  const finalPhase = phases[phases.length - 1];
+  if (
+    !finalPhase ||
+    endDate > finalPhase.end_date ||
+    phases.some((phase) => {
+      return (phase.add_invoice_items?.length ?? 0) > 0;
+    })
+  ) {
+    throw new Error("Stripe subscription schedule cannot end at this date");
+  }
+  return phases.map((phase) => {
+    return schedulePhaseParam(phase, Math.min(phase.end_date, endDate));
+  });
 }
 
 function schedulePhaseSettings(

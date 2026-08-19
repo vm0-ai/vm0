@@ -81,6 +81,10 @@ const appOrigin = new URL(appUrl).origin;
 const STATE_TIMEOUT_MS = 60_000;
 const TOKEN_REUSE_MS = 30_000;
 const POLL_INTERVALS_MS = [500, 1_000, 2_000];
+const USAGE_PACK_PLAN_ENDING_MESSAGE =
+  "Your Plan is scheduled to end before this usage pack change can take effect. Restore your Plan first, then try again.";
+const CONCURRENCY_PLAN_ENDING_MESSAGE =
+  "Your Plan is scheduled to end before this concurrency reduction can take effect. Restore your Plan first, then try again.";
 const USAGE_PACK_OPTION_PATTERNS: Readonly<Record<UsagePackUsd, RegExp>> = {
   20: /^\$20(?:\s|·)/u,
   50: /^\$50(?:\s|·)/u,
@@ -351,6 +355,177 @@ test("restored Team plan preserves package and concurrency changes", async ({
         tier: "team",
         usagePackUsd: 100,
       });
+    },
+  );
+});
+
+test("add-on upgrades and restores preserve pending Plan changes", async ({
+  page,
+}) => {
+  test.setTimeout(360_000);
+
+  await withBillingOwner(
+    page,
+    "E2E Ending Team Add-on Upgrades",
+    async (owner) => {
+      const activePlan = {
+        cancelAtPeriodEnd: false,
+        hasSubscription: true,
+        scheduledChange: null,
+        tier: "team",
+      } as const;
+      const endingPlan = {
+        cancelAtPeriodEnd: true,
+        hasSubscription: true,
+        scheduledChange: {
+          targetTier: "limited-free-1",
+          type: "cancel",
+        },
+        tier: "team",
+      } as const;
+      const downgradingPlan = {
+        cancelAtPeriodEnd: false,
+        hasSubscription: true,
+        scheduledChange: { targetTier: "pro", type: "downgrade" },
+        tier: "team",
+      } as const;
+      await buyUsagePackPlan(page, "team");
+      await expectPlanState(page, owner, activePlan);
+      await expectUsagePackState(page, owner, owner.userId, {
+        pendingChange: null,
+        tier: "team",
+        usagePackUsd: 20,
+      });
+
+      await buyConcurrency(page, owner, 5);
+      await expectConcurrencyState(page, owner, {
+        cancelAtPeriodEnd: false,
+        concurrencyLimit: 15,
+        quantity: 5,
+        scheduledQuantity: null,
+        subscriptionCount: 1,
+      });
+
+      const upgradePackages = await openUsagePackManagement(page, "team");
+      await selectUsagePack(page, upgradePackages, 50);
+      const controlPage = await page.context().newPage();
+      try {
+        await cancelPlan(controlPage, "team");
+        await expectPlanState(page, owner, endingPlan);
+        await expectConcurrencyState(page, owner, {
+          cancelAtPeriodEnd: false,
+          concurrencyLimit: 15,
+          quantity: 5,
+          scheduledQuantity: null,
+          subscriptionCount: 1,
+        });
+
+        await submitUsagePackConfiguration(page, upgradePackages, "Confirm");
+        await expectUsagePackState(page, owner, owner.userId, {
+          pendingChange: null,
+          tier: "team",
+          usagePackUsd: 50,
+        });
+        await expectPlanState(page, owner, endingPlan);
+        await expectUsagePackReductionRejectedWhilePlanEnds(
+          page,
+          upgradePackages,
+          20,
+        );
+        await expectUsagePackState(page, owner, owner.userId, {
+          pendingChange: null,
+          tier: "team",
+          usagePackUsd: 50,
+        });
+
+        await changeConcurrency(page, 10);
+        await expectConcurrencyState(page, owner, {
+          cancelAtPeriodEnd: false,
+          concurrencyLimit: 20,
+          quantity: 10,
+          scheduledQuantity: null,
+          subscriptionCount: 1,
+        });
+        await expectPlanState(page, owner, endingPlan);
+        await expectConcurrencyReductionRejectedWhilePlanEnds(page, 5);
+        await expectConcurrencyState(page, owner, {
+          cancelAtPeriodEnd: false,
+          concurrencyLimit: 20,
+          quantity: 10,
+          scheduledQuantity: null,
+          subscriptionCount: 1,
+        });
+
+        await restorePlan(page, "team");
+        await expectPlanState(page, owner, activePlan);
+
+        await changeUsagePack(page, "team", 20, "Confirm");
+        await expectUsagePackState(page, owner, owner.userId, {
+          pendingChange: {
+            kind: "downgrade",
+            status: "scheduled",
+            targetUsagePackUsd: 20,
+          },
+          tier: "team",
+          usagePackUsd: 50,
+        });
+        await changeConcurrency(page, 5);
+        await expectConcurrencyState(page, owner, {
+          cancelAtPeriodEnd: false,
+          concurrencyLimit: 20,
+          quantity: 10,
+          scheduledQuantity: 5,
+          subscriptionCount: 1,
+        });
+
+        const restorePackages = await openUsagePackManagement(page, "team");
+        await selectUsagePack(page, restorePackages, 50);
+        await downgradeTeamToPro(controlPage);
+        await expectPlanState(page, owner, downgradingPlan);
+        await expectUsagePackState(page, owner, owner.userId, {
+          pendingChange: {
+            kind: "downgrade",
+            status: "scheduled",
+            targetUsagePackUsd: 20,
+          },
+          tier: "team",
+          usagePackUsd: 50,
+        });
+        await expectConcurrencyState(page, owner, {
+          cancelAtPeriodEnd: false,
+          concurrencyLimit: 20,
+          quantity: 10,
+          scheduledQuantity: 5,
+          subscriptionCount: 1,
+        });
+
+        await submitUsagePackConfiguration(page, restorePackages, "Restore");
+        await expectUsagePackState(page, owner, owner.userId, {
+          pendingChange: null,
+          tier: "team",
+          usagePackUsd: 50,
+        });
+        await expectPlanState(page, owner, downgradingPlan);
+        await expectConcurrencyState(page, owner, {
+          cancelAtPeriodEnd: false,
+          concurrencyLimit: 20,
+          quantity: 10,
+          scheduledQuantity: 5,
+          subscriptionCount: 1,
+        });
+
+        await restoreConcurrency(page);
+        await expectConcurrencyState(page, owner, {
+          cancelAtPeriodEnd: false,
+          concurrencyLimit: 20,
+          quantity: 10,
+          scheduledQuantity: null,
+          subscriptionCount: 1,
+        });
+        await expectPlanState(page, owner, downgradingPlan);
+      } finally {
+        await controlPage.close();
+      }
     },
   );
 });
@@ -822,6 +997,27 @@ async function submitUsagePackConfiguration(
   await expect(review).toBeHidden({ timeout: 30_000 });
 }
 
+async function expectUsagePackReductionRejectedWhilePlanEnds(
+  page: Page,
+  packages: Locator,
+  target: UsagePackUsd,
+): Promise<void> {
+  await selectUsagePack(page, packages, target);
+  const summary = packages.getByRole("region", { name: "Order summary" });
+  const confirm = summary.getByRole("button", {
+    name: "Confirm",
+    exact: true,
+  });
+  await expect(confirm).toBeEnabled();
+  await confirm.click();
+  await expect(
+    page.getByText(USAGE_PACK_PLAN_ENDING_MESSAGE, { exact: true }),
+  ).toBeVisible({ timeout: 30_000 });
+  await expect(
+    page.getByRole("dialog", { name: "Review package change" }),
+  ).toHaveCount(0);
+}
+
 async function cancelPlan(page: Page, tier: PaidTier): Promise<void> {
   const settings = await openBillingSettings(page);
   const planLabel = tier === "pro" ? "Pro" : "Team";
@@ -975,6 +1171,27 @@ async function changeConcurrency(
     })
     .click();
   await expect(review).toBeHidden({ timeout: 30_000 });
+}
+
+async function expectConcurrencyReductionRejectedWhilePlanEnds(
+  page: Page,
+  targetQuantity: number,
+): Promise<void> {
+  const settings = await openBillingSettings(page);
+  await settings.getByRole("button", { name: "Change", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Change concurrency" });
+  const input = dialog.getByRole("textbox", { name: "Slots" });
+  const reviewButton = dialog.getByRole("button", {
+    name: "Review change",
+    exact: true,
+  });
+  await input.fill(String(targetQuantity));
+  await expect(reviewButton).toBeEnabled();
+  await reviewButton.click();
+  await expect(
+    page.getByText(CONCURRENCY_PLAN_ENDING_MESSAGE, { exact: true }),
+  ).toBeVisible({ timeout: 30_000 });
+  await expect(dialog).toBeVisible();
 }
 
 async function cancelConcurrency(page: Page): Promise<void> {

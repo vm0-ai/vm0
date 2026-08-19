@@ -366,8 +366,9 @@ function concurrencySubscriptionState(
     slots,
     subscriptionStatus: subscription.status,
     currentPeriodEnd: concurrencySubscriptionPeriodEnd(subscription),
-    // `cancel_at` can be the main-plan grant expiry on a shared subscription.
-    cancelAtPeriodEnd: subscription.cancel_at_period_end,
+    cancelAtPeriodEnd:
+      subscription.cancel_at_period_end &&
+      knownBillingPlanPriceItem(subscription.items.data) === undefined,
   };
 }
 

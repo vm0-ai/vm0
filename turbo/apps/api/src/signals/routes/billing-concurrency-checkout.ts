@@ -113,7 +113,6 @@ async function loadConcurrencyPaymentPreview(
   | {
       readonly kind: "ready";
       readonly paymentMethodPreviewToken?: string;
-      readonly checkoutUrl?: string;
     }
 > {
   const subscriptionId =
@@ -141,12 +140,12 @@ async function loadConcurrencyPaymentPreview(
     },
     signal,
   );
-  return route.kind === "checkout"
-    ? { kind: "ready", checkoutUrl: route.url }
-    : {
-        kind: "ready",
-        paymentMethodPreviewToken: route.paymentMethodPreviewToken,
-      };
+  return {
+    kind: "ready",
+    ...(route.paymentMethodPreviewToken
+      ? { paymentMethodPreviewToken: route.paymentMethodPreviewToken }
+      : {}),
+  };
 }
 
 async function revalidateConcurrencyPaymentPreview(
@@ -161,10 +160,9 @@ async function revalidateConcurrencyPaymentPreview(
 ): Promise<
   | {
       readonly kind: "continue";
-      readonly paymentMethod: BillingPurchasePaymentMethod;
+      readonly paymentMethod?: BillingPurchasePaymentMethod;
     }
   | { readonly kind: "invalid_preview" }
-  | { readonly kind: "checkout"; readonly url: string }
 > {
   const subscriptionId =
     args.target.existingSubscription?.id ??
@@ -203,8 +201,8 @@ async function revalidateConcurrencyPaymentPreview(
   if (revalidated.kind === "invalid_preview") {
     return { kind: "invalid_preview" };
   }
-  return revalidated.kind === "checkout"
-    ? { kind: "checkout", url: revalidated.url }
+  return revalidated.kind === "hosted_invoice"
+    ? { kind: "continue" }
     : { kind: "continue", paymentMethod: revalidated };
 }
 
@@ -312,6 +310,11 @@ const concurrencyCheckoutPreviewAuthed$ = command(
             "Complete the pending concurrency update before adding slots",
           );
         }
+        case "plan_ending": {
+          return conflict(
+            "Your Plan is scheduled to end before this concurrency change can take effect. Restore your Plan first, then try again.",
+          );
+        }
       }
     }
 
@@ -324,9 +327,6 @@ const concurrencyCheckoutPreviewAuthed$ = command(
               paymentMethodPreviewToken:
                 paymentPreview.paymentMethodPreviewToken,
             }
-          : {}),
-        ...(paymentPreview.checkoutUrl
-          ? { checkoutUrl: paymentPreview.checkoutUrl }
           : {}),
       },
     };
@@ -400,9 +400,6 @@ const concurrencyCheckoutAuthed$ = command(
       if (revalidated.kind === "invalid_preview") {
         return conflict("Concurrency purchase preview is no longer valid");
       }
-      if (revalidated.kind === "checkout") {
-        return { status: 200 as const, body: { url: revalidated.url } };
-      }
       paymentMethod = revalidated.paymentMethod;
     }
 
@@ -437,6 +434,11 @@ const concurrencyCheckoutAuthed$ = command(
         case "pending_update": {
           return conflict(
             "Complete the pending concurrency update before adding slots",
+          );
+        }
+        case "plan_ending": {
+          return conflict(
+            "Your Plan is scheduled to end before this concurrency change can take effect. Restore your Plan first, then try again.",
           );
         }
       }

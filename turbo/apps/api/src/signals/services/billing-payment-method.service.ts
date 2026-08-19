@@ -168,9 +168,10 @@ export const billingPurchasePreviewEnabled$ = command(
   },
 );
 
-type BillingPurchasePreviewRoute =
-  | { readonly kind: "checkout"; readonly url: string }
-  | { readonly kind: "preview"; readonly paymentMethodPreviewToken: string };
+type BillingPurchasePreviewRoute = {
+  readonly kind: "preview";
+  readonly paymentMethodPreviewToken?: string;
+};
 
 export async function resolveBillingPurchaseRoute(
   args: {
@@ -276,20 +277,7 @@ export async function routeBillingPurchasePreview(
     signal,
   );
   if (route.kind === "checkout") {
-    if (!route.customerId) {
-      throw new Error("Stripe billing purchase has no customer");
-    }
-    return {
-      kind: "checkout",
-      url: await createBillingSetupCheckout({
-        stripe: args.stripe,
-        purpose: BILLING_PURCHASE_PURPOSE,
-        orgId: args.orgId,
-        customerId: route.customerId,
-        subscriptionId: args.subscriptionId,
-        returnUrl: args.returnUrl,
-      }),
-    };
+    return { kind: "preview" };
   }
   return {
     kind: "preview",
@@ -309,7 +297,7 @@ export async function routeBillingPurchasePreview(
 
 type RevalidatedBillingPurchase =
   | ({ readonly kind: "preview" } & BillingPurchasePaymentMethod)
-  | { readonly kind: "checkout"; readonly url: string }
+  | { readonly kind: "hosted_invoice" }
   | { readonly kind: "invalid_preview" };
 
 export async function revalidateBillingPurchase(
@@ -338,17 +326,7 @@ export async function revalidateBillingPurchase(
     return { kind: "invalid_preview" };
   }
   if (route.kind === "checkout") {
-    return {
-      kind: "checkout",
-      url: await createBillingSetupCheckout({
-        stripe: args.stripe,
-        purpose: BILLING_PURCHASE_PURPOSE,
-        orgId: args.orgId,
-        customerId: args.customerId,
-        subscriptionId: args.subscriptionId,
-        returnUrl: args.returnUrl,
-      }),
-    };
+    return { kind: "hosted_invoice" };
   }
   return route.paymentMethodId === args.paymentMethodId
     ? {

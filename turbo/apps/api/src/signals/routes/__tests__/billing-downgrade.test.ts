@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  billingConcurrencySubscriptionContract,
   billingDowngradeContract,
   billingStatusContract,
 } from "@okouai/api-contracts/contracts/billing";
@@ -16,6 +17,11 @@ import {
   type InvoicesOrgFixture,
 } from "./helpers/billing-invoices";
 import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
+import {
+  postConcurrencyEntitlementsInvoicePaid,
+  TEST_PRICE_CONCURRENCY,
+} from "./helpers/stripe-billing-webhook";
+import { billingConcurrencySubscriptionRoutes } from "../billing-concurrency-subscriptions";
 import { billingDowngradeRoutes } from "../billing-downgrade";
 import { billingStatusRoutes } from "../billing-status";
 
@@ -744,6 +750,171 @@ describe("POST /api/zero/billing/downgrade", () => {
       subId,
       { cancel_at_period_end: true },
     );
+  });
+
+  it("does not delay Team cancellation for a pending concurrency reduction", async () => {
+    const subId = `sub-team-concurrency-${randomUUID().slice(0, 8)}`;
+    const customerId = `cus-team-concurrency-${randomUUID().slice(0, 8)}`;
+    const scheduleId = `sched-concurrency-${randomUUID().slice(0, 8)}`;
+    const periodStart = Math.floor((now() - 86_400 * 1000) / 1000);
+    const periodEnd = Math.floor((now() + 30 * 86_400 * 1000) / 1000);
+    const futureEnd = periodEnd + 30 * 86_400;
+    const currentPeriodEnd = new Date(periodEnd * 1000);
+    const fixture = await track(
+      store.set(
+        seedInvoicesOrg$,
+        {
+          stripeCustomerId: customerId,
+          stripeSubscriptionId: subId,
+          subscriptionStatus: "active",
+          tier: "team",
+          currentPeriodEnd,
+        },
+        context.signal,
+      ),
+    );
+    await postConcurrencyEntitlementsInvoicePaid(context.signal, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      customerId,
+      subscriptionId: subId,
+      lines: [
+        {
+          slots: 5,
+          startsAt: new Date(periodStart * 1000),
+          expiresAt: currentPeriodEnd,
+        },
+      ],
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    const subscription = {
+      id: subId,
+      schedule: null,
+      pending_update: null,
+      items: {
+        data: [
+          {
+            id: "si_item_team",
+            current_period_start: periodStart,
+            current_period_end: periodEnd,
+            quantity: 1,
+            price: {
+              id: TEST_PRICE_TEAM,
+              recurring: { interval: "month", interval_count: 1 },
+            },
+          },
+          {
+            id: "si_item_concurrency",
+            current_period_start: periodStart,
+            current_period_end: periodEnd,
+            quantity: 5,
+            price: {
+              id: TEST_PRICE_CONCURRENCY,
+              recurring: { interval: "month", interval_count: 1 },
+            },
+          },
+        ],
+      },
+    };
+    context.mocks.stripe.subscriptions.retrieve.mockReset();
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce(
+      subscription,
+    );
+    context.mocks.stripe.subscriptionSchedules.create.mockReset();
+    context.mocks.stripe.subscriptionSchedules.create.mockResolvedValueOnce({
+      id: scheduleId,
+    });
+    context.mocks.stripe.subscriptionSchedules.update.mockReset();
+    context.mocks.stripe.subscriptionSchedules.update.mockResolvedValue({
+      id: scheduleId,
+    });
+
+    await accept(
+      setupApp({
+        context,
+        routes: billingConcurrencySubscriptionRoutes,
+      })(billingConcurrencySubscriptionContract).confirmChange({
+        params: { subscriptionId: subId },
+        body: { quantity: 3 },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(
+      (await readBillingStatus()).body.concurrencySubscriptions[0]
+        ?.scheduledQuantity,
+    ).toBe(3);
+
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce({
+      ...subscription,
+      schedule: scheduleId,
+    });
+    context.mocks.stripe.subscriptionSchedules.retrieve.mockResolvedValueOnce({
+      id: scheduleId,
+      end_behavior: "release",
+      current_phase: { start_date: periodStart, end_date: periodEnd },
+      phases: [
+        {
+          start_date: periodStart,
+          end_date: periodEnd,
+          items: [
+            { price: TEST_PRICE_TEAM, quantity: 1 },
+            { price: TEST_PRICE_CONCURRENCY, quantity: 5 },
+          ],
+          proration_behavior: "none",
+        },
+        {
+          start_date: periodEnd,
+          end_date: futureEnd,
+          items: [
+            { price: TEST_PRICE_TEAM, quantity: 1 },
+            { price: TEST_PRICE_CONCURRENCY, quantity: 3 },
+          ],
+          proration_behavior: "none",
+        },
+      ],
+    });
+    context.mocks.stripe.subscriptionSchedules.update.mockClear();
+
+    const response = await accept(
+      setupApp({ context, routes: billingDowngradeRoutes })(
+        billingDowngradeContract,
+      ).create({
+        body: { targetTier: "limited-free-1" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      success: true,
+      effectiveDate: currentPeriodEnd.toISOString(),
+    });
+    expect(
+      context.mocks.stripe.subscriptionSchedules.update,
+    ).toHaveBeenCalledWith(scheduleId, {
+      end_behavior: "cancel",
+      proration_behavior: "none",
+      phases: [
+        {
+          start_date: periodStart,
+          end_date: periodEnd,
+          items: [
+            { price: TEST_PRICE_TEAM, quantity: 1 },
+            { price: TEST_PRICE_CONCURRENCY, quantity: 5 },
+          ],
+          proration_behavior: "none",
+        },
+      ],
+    });
+    const status = await readBillingStatus();
+    expect(status.body.currentPeriodEnd).toBe(currentPeriodEnd.toISOString());
+    expect(
+      status.body.concurrencySubscriptions[0]?.scheduledQuantity,
+    ).toBeUndefined();
+    expect(
+      status.body.concurrencySubscriptions[0]?.cancelAtPeriodEnd,
+    ).toBeFalsy();
   });
 
   it("cancels a product-backed Custom Plan at period end", async () => {

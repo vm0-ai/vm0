@@ -112,6 +112,11 @@ const previewConcurrencySubscriptionChangeAuthed$ = command(
             "Complete the pending concurrency update before changing slots",
           );
         }
+        case "plan_ending": {
+          return conflict(
+            "Your Plan is scheduled to end before this concurrency reduction can take effect. Restore your Plan first, then try again.",
+          );
+        }
       }
     }
 
@@ -128,17 +133,13 @@ const previewConcurrencySubscriptionChangeAuthed$ = command(
         },
         signal,
       );
-      if (route.kind === "checkout") {
-        return {
-          status: 200 as const,
-          body: { ...result.preview, checkoutUrl: route.url },
-        };
-      }
       return {
         status: 200 as const,
         body: {
           ...result.preview,
-          paymentMethodPreviewToken: route.paymentMethodPreviewToken,
+          ...(route.paymentMethodPreviewToken
+            ? { paymentMethodPreviewToken: route.paymentMethodPreviewToken }
+            : {}),
         },
       };
     }
@@ -216,16 +217,9 @@ const confirmConcurrencySubscriptionChangeAuthed$ = command(
       if (revalidated.kind === "invalid_preview") {
         return conflict("Concurrency change preview is no longer valid");
       }
-      if (revalidated.kind === "checkout") {
-        return {
-          status: 200 as const,
-          body: {
-            status: "checkout_required" as const,
-            checkoutUrl: revalidated.url,
-          },
-        };
+      if (revalidated.kind === "preview") {
+        paymentMethod = revalidated;
       }
-      paymentMethod = revalidated;
     }
     const result = await set(
       changeConcurrencySubscription$,
@@ -257,6 +251,11 @@ const confirmConcurrencySubscriptionChangeAuthed$ = command(
         case "pending_update": {
           return conflict(
             "Complete the pending concurrency update before changing slots",
+          );
+        }
+        case "plan_ending": {
+          return conflict(
+            "Your Plan is scheduled to end before this concurrency reduction can take effect. Restore your Plan first, then try again.",
           );
         }
       }
@@ -345,6 +344,11 @@ const reduceConcurrencySubscriptionAuthed$ = command(
             "Complete the pending concurrency update before reducing slots",
           );
         }
+        case "plan_ending": {
+          return conflict(
+            "Your Plan is scheduled to end before this concurrency reduction can take effect. Restore your Plan first, then try again.",
+          );
+        }
       }
     }
 
@@ -394,11 +398,21 @@ const cancelConcurrencySubscriptionAuthed$ = command(
     signal.throwIfAborted();
 
     if (!result.ok) {
-      return result.reason === "not_found"
-        ? notFound("Concurrency subscription not found")
-        : conflict(
+      switch (result.reason) {
+        case "not_found": {
+          return notFound("Concurrency subscription not found");
+        }
+        case "pending_update": {
+          return conflict(
             "Complete the pending subscription update before canceling concurrency",
           );
+        }
+        case "plan_ending": {
+          return conflict(
+            "Your Plan is scheduled to end before the concurrency cancellation can take effect. Restore your Plan first, then try again.",
+          );
+        }
+      }
     }
 
     return {
@@ -450,7 +464,11 @@ const restoreConcurrencySubscriptionAuthed$ = command(
     signal.throwIfAborted();
 
     if (!result.ok) {
-      return notFound("Concurrency subscription not found");
+      return result.reason === "not_found"
+        ? notFound("Concurrency subscription not found")
+        : conflict(
+            "Complete the pending subscription update before restoring concurrency",
+          );
     }
 
     return {

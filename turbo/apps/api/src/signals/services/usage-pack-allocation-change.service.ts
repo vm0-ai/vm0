@@ -167,6 +167,8 @@ interface UsagePackChangeSubscriptionInput {
   readonly id: string;
   readonly customer?: string | { readonly id: string } | null;
   readonly status: string;
+  readonly cancel_at?: number | null;
+  readonly cancel_at_period_end?: boolean;
   readonly metadata?: Record<string, string> | null;
   readonly schedule?: string | { readonly id: string } | null;
   readonly discounts?: readonly StripeRef[];
@@ -238,6 +240,7 @@ type UsagePackChangePreviewResult =
     }
   | { readonly status: "not_found" }
   | { readonly status: "same_package" }
+  | { readonly status: "plan_ending" }
   | { readonly status: "conflict" };
 
 type UsagePackChangeConfirmResult =
@@ -879,6 +882,15 @@ export async function getUsagePackManagement(
   };
 }
 
+function usagePackSubscriptionWillEnd(
+  subscription: UsagePackChangeSubscriptionInput,
+): boolean {
+  return (
+    subscription.cancel_at_period_end === true ||
+    (subscription.cancel_at !== null && subscription.cancel_at !== undefined)
+  );
+}
+
 async function previewUsagePackChangeInStripe(
   context: UsagePackChangeContext,
   source: UsagePackAllocationRow,
@@ -909,24 +921,33 @@ async function previewUsagePackChangeInStripe(
   );
   const kind =
     targetUsagePackUsd > source.usagePackUsd ? "upgrade" : "downgrade";
+  const subscriptionWillEnd = usagePackSubscriptionWillEnd(subscription);
   const items = changeUpdateItems(
     subscription,
     source.stripePriceId,
     targetStripePriceId,
   );
-  const recurringPreviewPromise = stripe.invoices.createPreview({
-    subscription: subscription.id,
-    preview_mode: "recurring",
-    subscription_details: {
-      items,
-    },
-  });
+  const recurringPreviewPromise = subscriptionWillEnd
+    ? null
+    : stripe.invoices.createPreview({
+        subscription: subscription.id,
+        preview_mode: "recurring",
+        subscription_details: {
+          items,
+        },
+      });
   const immediatePreviewPromise =
     kind === "upgrade"
       ? stripe.invoices.createPreview({
           subscription: subscription.id,
           preview_mode: "next",
           subscription_details: {
+            ...(subscription.cancel_at_period_end === true
+              ? { cancel_at_period_end: false }
+              : subscription.cancel_at !== null &&
+                  subscription.cancel_at !== undefined
+                ? { cancel_at: "" as const }
+                : {}),
             items,
             proration_behavior: "always_invoice",
             proration_date: prorationTimestamp,
@@ -938,8 +959,15 @@ async function previewUsagePackChangeInStripe(
     immediatePreviewPromise,
   ]);
   signal.throwIfAborted();
-  const currency = recurringPreview.currency;
-  if (immediatePreview && immediatePreview.currency !== currency) {
+  const currency = recurringPreview?.currency ?? immediatePreview?.currency;
+  if (!currency) {
+    throw new Error("Stripe usage pack preview has no currency");
+  }
+  if (
+    recurringPreview &&
+    immediatePreview &&
+    immediatePreview.currency !== currency
+  ) {
     throw new Error("Stripe usage pack previews returned different currencies");
   }
   const createdAt = nowDate();
@@ -950,7 +978,9 @@ async function previewUsagePackChangeInStripe(
     immediateAmountCents: immediatePreview
       ? safeInvoiceAmount(immediatePreview, "immediate")
       : 0,
-    nextRecurringAmountCents: safeInvoiceAmount(recurringPreview, "recurring"),
+    nextRecurringAmountCents: recurringPreview
+      ? safeInvoiceAmount(recurringPreview, "recurring")
+      : 0,
     currency,
     effectiveAt:
       kind === "upgrade"
@@ -1086,15 +1116,18 @@ export async function previewUsagePackAllocationChange(
       ? { status: "ready", preview: storedUsagePackChangePreview(existing) }
       : { status: "conflict" };
   }
-  if (context.subscription.cancelAtPeriodEnd) {
-    return { status: "conflict" };
-  }
   const source = activeAllocationForMember(context, args.userId);
   if (!source) {
     return { status: "not_found" };
   }
   if (source.usagePackUsd === args.targetUsagePackUsd) {
     return { status: "same_package" };
+  }
+  if (
+    context.subscription.cancelAtPeriodEnd &&
+    args.targetUsagePackUsd < source.usagePackUsd
+  ) {
+    return { status: "plan_ending" };
   }
   const preview = await previewUsagePackChangeInStripe(
     context,
@@ -1131,28 +1164,6 @@ export async function previewUsagePackAllocationChange(
       expiresAt: preview.expiresAt.toISOString(),
     },
   };
-}
-
-export async function discardUsagePackAllocationChangePreviewForPaymentSetup(
-  db: Db,
-  args: { readonly orgId: string; readonly changeId: string },
-): Promise<void> {
-  const discardedAt = nowDate();
-  await db
-    .update(usagePackAllocationChanges)
-    .set({
-      status: "failed",
-      failureReason: "payment_method_setup_required",
-      completedAt: discardedAt,
-      updatedAt: discardedAt,
-    })
-    .where(
-      and(
-        eq(usagePackAllocationChanges.id, args.changeId),
-        eq(usagePackAllocationChanges.orgId, args.orgId),
-        eq(usagePackAllocationChanges.status, "previewed"),
-      ),
-    );
 }
 
 function subscriptionPhaseItems(
@@ -4021,7 +4032,7 @@ export async function confirmUsagePackAllocationChange(
   if (!context || !context.subscription.stripeSubscriptionId) {
     throw new Error("Usage pack subscription disappeared during confirmation");
   }
-  if (context.subscription.cancelAtPeriodEnd) {
+  if (change.kind === "downgrade" && context.subscription.cancelAtPeriodEnd) {
     const failedAt = nowDate();
     await db
       .update(usagePackAllocationChanges)
