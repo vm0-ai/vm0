@@ -6,14 +6,14 @@
 //! endpoint with the TS-compatible payload shape.
 //!
 
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use std::time::Duration;
 
 use super::{
-    AxiomLayer, CHANNEL_CAP, INTERNAL_TARGET, init_from_env_values, init_with_base_url,
-    with_ingest_filter,
+    AxiomLayer, CHANNEL_CAP, DEBUG_FIELD_MAX_BYTES, INTERNAL_TARGET, init_from_env_values,
+    init_with_base_url, with_ingest_filter,
 };
 use httpmock::Method::POST;
 use httpmock::MockServer;
@@ -507,6 +507,53 @@ async fn non_success_ingest_response_does_not_hang_shutdown_or_panic() {
 }
 
 // -- Debug field truncation (DEBUG_FIELD_MAX_BYTES = 4 KiB) ------------------
+
+#[tokio::test]
+async fn debug_field_formatting_stops_after_reaching_limit() {
+    const CHUNK_BYTES: usize = 8;
+    const TOTAL_CHUNKS: usize = 10_000;
+
+    struct IncrementalDebug<'a>(&'a AtomicUsize);
+
+    impl std::fmt::Debug for IncrementalDebug<'_> {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            for _ in 0..TOTAL_CHUNKS {
+                self.0.fetch_add(1, Ordering::Relaxed);
+                formatter.write_str("12345678")?;
+            }
+            Ok(())
+        }
+    }
+
+    let server = MockServer::start_async().await;
+    let (ingest, captured) = capture_axiom_ingest(&server).await;
+    let formatted_chunks = AtomicUsize::new(0);
+
+    let (layer, guard) =
+        init_with_base_url(&server.base_url(), "t", "test").expect("init must succeed");
+    let subscriber = tracing_subscriber::registry().with(with_ingest_filter(layer));
+    {
+        let _sub = tracing::subscriber::set_default(subscriber);
+        tracing::warn!(
+            value = ?IncrementalDebug(&formatted_chunks),
+            "bounded-formatting",
+        );
+    }
+    guard.shutdown().await;
+
+    ingest.assert_calls_async(1).await;
+    let events = captured.events();
+    let event = event_with_message(&events, "bounded-formatting");
+    assert!(
+        string_field(event, "value").contains("…[truncated]"),
+        "oversized incrementally formatted field should include the truncation marker: {event:#?}",
+    );
+    assert_eq!(
+        formatted_chunks.load(Ordering::Relaxed),
+        DEBUG_FIELD_MAX_BYTES / CHUNK_BYTES + 1,
+        "formatting should stop on the first chunk beyond the byte limit instead of visiting all {TOTAL_CHUNKS} chunks",
+    );
+}
 
 #[tokio::test]
 async fn debug_field_over_limit_is_truncated_with_marker() {

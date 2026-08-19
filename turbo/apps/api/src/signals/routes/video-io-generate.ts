@@ -32,6 +32,7 @@ import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.s
 import {
   checkVideoCredits$,
   getMissingVideoPricing,
+  namesVideoModel,
   parseVideoOptions,
   submitBytePlusVideoGeneration,
   submitFalVideoGeneration,
@@ -69,7 +70,7 @@ async function loadRunVideoModel(
     .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)))
     .limit(1);
   if (!run) {
-    throw new Error("Expected a Zero run row for video model enforcement");
+    throw new Error("Expected a Zero run row for the default video model");
   }
   if (run.selectedVideoModel === null) {
     return null;
@@ -80,7 +81,7 @@ async function loadRunVideoModel(
   return run.selectedVideoModel;
 }
 
-async function loadEnforcedRunVideoModel(
+async function loadDefaultRunVideoModel(
   db: ReadonlyDb,
   orgId: string,
   userId: string,
@@ -110,21 +111,25 @@ async function loadEnforcedRunVideoModel(
 }
 
 /**
- * Swap in the run's pinned model and drop any caller parameter the pin cannot
+ * Fill in the run's pinned model and drop any caller parameter the pin cannot
  * honour.
  *
- * The caller picks aspect ratio, duration, and resolution to match the model it
- * asked for. Enforcement replaces that model, so those values can be valid for
- * the request and invalid for the pin — a caller asking for
- * `dreamina-seedance-2.0-fast` at 720p against a `MiniMax-H3` pin used to get
+ * Only reached when the request names no model. The caller still picks aspect
+ * ratio, duration, and resolution, and it sized them for whichever model it
+ * assumed it would get, so those values can be valid for that assumption and
+ * invalid for the pin — a caller sizing for `dreamina-seedance-2.0-fast` at
+ * 720p against a `MiniMax-H3` pin used to get
  * `Unsupported video resolution for minimax-h3: 720p`, an error about a model
  * it never named. Dropping the field lets the pinned model's own default apply
  * instead of failing a request the caller could not have written correctly.
  *
+ * A request that does name a model keeps its parameters untouched: that caller
+ * chose both, so the normal validation error is the right answer.
+ *
  * The effective values come back on the response, so the caller can report what
  * was actually used.
  */
-function withEnforcedRunVideoModel(
+function withDefaultRunVideoModel(
   body: VideoIoGenerateRequest,
   runVideoModel: VideoModelId,
 ): VideoIoGenerateRequest {
@@ -418,17 +423,20 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     auth.tokenType === "zero" || auth.tokenType === "sandbox"
       ? auth.runId
       : undefined;
-  const runVideoModel = await loadEnforcedRunVideoModel(
+  const runVideoModel = await loadDefaultRunVideoModel(
     db,
     auth.orgId,
     auth.userId,
     runId,
     signal,
   );
+  // The run's model is a default, not an override: it applies only when the
+  // request names no model of its own. A caller that asks for a specific model
+  // — because the user asked for it in the prompt — gets that model.
   const options = parseVideoOptions(
-    runVideoModel === null
+    runVideoModel === null || namesVideoModel(bodyResult.data)
       ? bodyResult.data
-      : withEnforcedRunVideoModel(bodyResult.data, runVideoModel),
+      : withDefaultRunVideoModel(bodyResult.data, runVideoModel),
   );
   if ("status" in options) {
     return options;

@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.463.1](https://github.com/vm0-ai/vm0/compare/api-v1.463.0...api-v1.463.1) (2026-08-19)
+
+
+### Bug Fixes
+
+* **api:** resolve exact connector credential sources ([#28131](https://github.com/vm0-ai/vm0/issues/28131)) ([2c9ac1e](https://github.com/vm0-ai/vm0/commit/2c9ac1e3541ffbb14f732fcf98a62a117681ad04))
+
+
+### Refactoring
+
+* give custom model gateways their own provider types ([#28120](https://github.com/vm0-ai/vm0/issues/28120)) ([1de777f](https://github.com/vm0-ai/vm0/commit/1de777f7bc1e5df798ba384af30be07df2b23151))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.341.2
+    * @okouai/core bumped to 8.572.1
+    * @okouai/db bumped to 1.208.1
+
 ## [1.463.0](https://github.com/vm0-ai/vm0/compare/api-v1.462.0...api-v1.463.0) (2026-08-19)
 
 
