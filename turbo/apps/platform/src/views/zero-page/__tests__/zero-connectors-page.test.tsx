@@ -731,6 +731,32 @@ describe("connectors page", () => {
     ).resolves.toBeInTheDocument();
   });
 
+  it("prefers the reported catalog size over the response array length", async () => {
+    mockConnectors([]);
+    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+      return respond(200, {
+        connectors: [
+          publicStatusItem({
+            connectorSlug: "github",
+            label: "GitHub",
+            authMethods: [],
+          }),
+        ],
+        totalConnectorCount: 1234,
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorCatalogCount]: true },
+    });
+
+    await expect(
+      screen.findByText("Connect 1,234 services for your agents to use."),
+    ).resolves.toBeInTheDocument();
+  });
+
   it("keeps the catalog description count-free while the count loads", async () => {
     mockConnectors([]);
     let catalogRequestStarted = false;

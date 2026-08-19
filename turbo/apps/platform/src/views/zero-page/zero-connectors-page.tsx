@@ -856,10 +856,12 @@ function effectiveConnectorCatalogCount(
   if (catalogStatusLoadable.state !== "hasData") {
     return null;
   }
-  if (connectorDiscoveryEnabled) {
-    return catalogStatusLoadable.data.totalConnectorCount ?? null;
+  if (catalogStatusLoadable.data.totalConnectorCount !== undefined) {
+    return catalogStatusLoadable.data.totalConnectorCount;
   }
-  return catalogStatusLoadable.data.connectors.length;
+  return connectorDiscoveryEnabled
+    ? null
+    : catalogStatusLoadable.data.connectors.length;
 }
 
 export function ZeroConnectorsPage() {
