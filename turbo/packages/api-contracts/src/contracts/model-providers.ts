@@ -259,12 +259,14 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
     vendor: "anthropic",
   },
   "deepseek-v4-flash": {
-    concreteType: "deepseek",
-    vendor: "deepseek",
+    concreteType: "openrouter-codex",
+    vendor: "openrouter",
+    apiModel: "deepseek/deepseek-v4-flash",
   },
   "deepseek-v4-pro": {
-    concreteType: "deepseek",
-    vendor: "deepseek",
+    concreteType: "openrouter-codex",
+    vendor: "openrouter",
+    apiModel: "deepseek/deepseek-v4-pro",
   },
   "gpt-5.6-sol": {
     concreteType: "openai-api-key",
