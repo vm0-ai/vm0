@@ -504,15 +504,15 @@ describe("model-first canonical catalog", () => {
     );
   });
 
-  it.each([
-    ["deepseek-v4-flash", "deepseek/deepseek-v4-flash"],
-    ["deepseek-v4-pro", "deepseek/deepseek-v4-pro"],
-  ] as const)("routes vm0 managed %s through OpenRouter", (model, apiModel) => {
-    expect(getVm0ConcreteProviderType(model)).toBe("openrouter-codex");
-    expect(getVm0Vendor(model)).toBe("openrouter");
-    expect(getVm0ApiModel(model)).toBe(apiModel);
-    expect(getProviderRuntimeModel("vm0", model)).toBe(apiModel);
-  });
+  it.each(["deepseek-v4-flash", "deepseek-v4-pro"] as const)(
+    "routes vm0 managed %s directly through DeepSeek",
+    (model) => {
+      expect(getVm0ConcreteProviderType(model)).toBe("deepseek");
+      expect(getVm0Vendor(model)).toBe("deepseek");
+      expect(getVm0ApiModel(model)).toBe(model);
+      expect(getProviderRuntimeModel("vm0", model)).toBe(model);
+    },
+  );
 
   it.each([
     "claude-fable-5",
