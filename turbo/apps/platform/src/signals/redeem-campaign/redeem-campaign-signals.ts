@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import type { RedeemResponse } from "@okouai/api-contracts/contracts/zero-billing";
+import type { RedeemResponse } from "@okouai/api-contracts/contracts/billing";
 
 /**
  * The current response from the redeem API. `null` during the initial fetch

@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import { initializeI18n } from "../../../i18n/index.ts";
@@ -171,7 +171,7 @@ describe("chat lifecycle", () => {
   });
 
   it("shows run model names for limited-free-1 workspaces", async () => {
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(
         200,
         billingStatus("limited-free-1", {
@@ -1843,7 +1843,7 @@ describe("chat lifecycle", () => {
 
   it("shows limited-free recovery models with Pro gating", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000789";
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       return respond(
         200,
         billingStatus("limited-free-1", {

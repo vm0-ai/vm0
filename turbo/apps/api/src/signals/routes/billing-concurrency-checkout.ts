@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroBillingConcurrencyCheckoutContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingConcurrencyCheckoutContract } from "@okouai/api-contracts/contracts/billing";
 
 import { optionalEnv } from "../../lib/env";
 import { billingRedirectAllowed } from "../../lib/billing-redirect";
@@ -217,7 +217,7 @@ const concurrencyCheckoutPreviewAuthed$ = command(
     signal.throwIfAborted();
 
     const bodyResult = await get(
-      bodyResultOf(zeroBillingConcurrencyCheckoutContract.preview),
+      bodyResultOf(billingConcurrencyCheckoutContract.preview),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -361,7 +361,7 @@ const concurrencyCheckoutAuthed$ = command(
     signal.throwIfAborted();
 
     const bodyResult = await get(
-      bodyResultOf(zeroBillingConcurrencyCheckoutContract.create),
+      bodyResultOf(billingConcurrencyCheckoutContract.create),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -466,11 +466,11 @@ const concurrencyCheckout$ = command(async ({ set }, signal: AbortSignal) => {
 
 export const billingConcurrencyCheckoutRoutes: readonly RouteEntry[] = [
   {
-    route: zeroBillingConcurrencyCheckoutContract.preview,
+    route: billingConcurrencyCheckoutContract.preview,
     handler: concurrencyCheckoutPreview$,
   },
   {
-    route: zeroBillingConcurrencyCheckoutContract.create,
+    route: billingConcurrencyCheckoutContract.create,
     handler: concurrencyCheckout$,
   },
 ];

@@ -1,7 +1,7 @@
 import {
-  zeroBillingStatusContract,
+  billingStatusContract,
   type BillingStatusResponse,
-} from "@okouai/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/billing";
 import { mapsContract } from "@okouai/api-contracts/contracts/maps";
 
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
@@ -86,7 +86,7 @@ export function createMapsBillingApi(context: TestContext) {
     async readBillingStatus(
       actor: ApiTestUser,
     ): Promise<BillingStatusResponse> {
-      const client = mapsBillingApp(context)(zeroBillingStatusContract);
+      const client = mapsBillingApp(context)(billingStatusContract);
       const response = await accept(
         client.get({ headers: authenticate(context, actor) }),
         [200],

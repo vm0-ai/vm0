@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroBillingUsagePackCreditsContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingUsagePackCreditsContract } from "@okouai/api-contracts/contracts/billing";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
@@ -66,7 +66,7 @@ const getUsagePackCredits$ = command(async ({ get }, signal: AbortSignal) => {
 
 export const billingUsagePackCreditsRoutes: readonly RouteEntry[] = [
   {
-    route: zeroBillingUsagePackCreditsContract.get,
+    route: billingUsagePackCreditsContract.get,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       getUsagePackCredits$,

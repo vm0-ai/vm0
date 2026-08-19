@@ -1,4 +1,4 @@
-import { zeroBillingInvoicesContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingInvoicesContract } from "@okouai/api-contracts/contracts/billing";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
@@ -38,7 +38,7 @@ function mockInvoicesStory(): void {
     name: "Test Org",
     role: "admin",
   });
-  context.mocks.api(zeroBillingInvoicesContract.get, ({ respond }) => {
+  context.mocks.api(billingInvoicesContract.get, ({ respond }) => {
     return respond(200, {
       receiptDownloadsSupported: true,
       invoices: [
@@ -97,7 +97,7 @@ describe("organization invoices settings", () => {
       role: "admin",
     });
     const invoicesReady = context.mocks.deferred<void>();
-    context.mocks.api(zeroBillingInvoicesContract.get, async ({ respond }) => {
+    context.mocks.api(billingInvoicesContract.get, async ({ respond }) => {
       await invoicesReady.promise;
       return respond(200, { invoices: [] });
     });
@@ -196,7 +196,7 @@ describe("organization invoices settings", () => {
       name: "Test Org",
       role: "admin",
     });
-    context.mocks.api(zeroBillingInvoicesContract.get, ({ respond }) => {
+    context.mocks.api(billingInvoicesContract.get, ({ respond }) => {
       return respond(200, {
         invoices: [
           {
@@ -230,7 +230,7 @@ describe("organization invoices settings", () => {
     const receiptsReady = context.mocks.deferred<void>();
     mockInvoicesStory();
     context.mocks.api(
-      zeroBillingInvoicesContract.downloadReceipts,
+      billingInvoicesContract.downloadReceipts,
       async ({ query, respond }) => {
         requestedRange = query;
         await receiptsReady.promise;
@@ -289,7 +289,7 @@ describe("organization invoices settings", () => {
     const user = userEvent.setup();
     mockInvoicesStory();
     context.mocks.api(
-      zeroBillingInvoicesContract.downloadReceipts,
+      billingInvoicesContract.downloadReceipts,
       ({ respond }) => {
         return respond(502, {
           error: {

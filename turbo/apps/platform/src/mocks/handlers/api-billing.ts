@@ -1,22 +1,22 @@
 import {
-  zeroBillingStatusContract,
-  zeroBillingCheckoutContract,
-  zeroBillingUsagePackCheckoutContract,
-  zeroBillingUsagePackCreditsContract,
-  zeroBillingUsagePackMigrationContract,
-  zeroBillingConcurrencyCheckoutContract,
-  zeroBillingConcurrencySubscriptionContract,
-  zeroBillingPortalContract,
-  zeroBillingDowngradeContract,
-  zeroBillingRestoreContract,
-  zeroBillingAutoRechargeContract,
-  zeroBillingInvoicesContract,
-  zeroBillingRedeemContract,
-  zeroBillingRedeemCodeContract,
+  billingStatusContract,
+  billingCheckoutContract,
+  billingUsagePackCheckoutContract,
+  billingUsagePackCreditsContract,
+  billingUsagePackMigrationContract,
+  billingConcurrencyCheckoutContract,
+  billingConcurrencySubscriptionContract,
+  billingPortalContract,
+  billingDowngradeContract,
+  billingRestoreContract,
+  billingAutoRechargeContract,
+  billingInvoicesContract,
+  billingRedeemContract,
+  billingRedeemCodeContract,
   type BillingStatusResponse,
   type BillingInvoice,
   type RedeemResponse,
-} from "@okouai/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/billing";
 import { mockApi } from "../msw-contract.ts";
 
 let mockBillingInvoices: BillingInvoice[] = [];
@@ -67,27 +67,27 @@ export function resetMockBilling(): void {
 }
 
 export const apiBillingHandlers = [
-  mockApi(zeroBillingStatusContract.get, ({ respond }) => {
+  mockApi(billingStatusContract.get, ({ respond }) => {
     return respond(200, mockBillingStatus);
   }),
 
-  mockApi(zeroBillingCheckoutContract.create, ({ body, respond }) => {
+  mockApi(billingCheckoutContract.create, ({ body, respond }) => {
     return respond(200, {
       url: `https://checkout.stripe.com/test?tier=${body.tier}`,
     });
   }),
 
-  mockApi(zeroBillingCheckoutContract.complete, ({ respond }) => {
+  mockApi(billingCheckoutContract.complete, ({ respond }) => {
     return respond(200, { completed: true });
   }),
 
-  mockApi(zeroBillingUsagePackCheckoutContract.create, ({ body, respond }) => {
+  mockApi(billingUsagePackCheckoutContract.create, ({ body, respond }) => {
     return respond(200, {
       url: `https://checkout.stripe.com/test?usage-pack-tier=${body.tier}`,
     });
   }),
 
-  mockApi(zeroBillingUsagePackCreditsContract.get, ({ respond }) => {
+  mockApi(billingUsagePackCreditsContract.get, ({ respond }) => {
     return respond(200, {
       totalCredits: 0,
       purchasedCredits: 0,
@@ -96,7 +96,7 @@ export const apiBillingHandlers = [
     });
   }),
 
-  mockApi(zeroBillingUsagePackMigrationContract.get, ({ respond }) => {
+  mockApi(billingUsagePackMigrationContract.get, ({ respond }) => {
     return respond(404, {
       error: {
         message: "Legacy subscription migration is not available",
@@ -105,17 +105,14 @@ export const apiBillingHandlers = [
     });
   }),
 
-  mockApi(
-    zeroBillingConcurrencyCheckoutContract.create,
-    ({ body, respond }) => {
-      return respond(200, {
-        url: `https://checkout.stripe.com/test?concurrency=${body.quantity}`,
-      });
-    },
-  ),
+  mockApi(billingConcurrencyCheckoutContract.create, ({ body, respond }) => {
+    return respond(200, {
+      url: `https://checkout.stripe.com/test?concurrency=${body.quantity}`,
+    });
+  }),
 
   mockApi(
-    zeroBillingConcurrencySubscriptionContract.previewChange,
+    billingConcurrencySubscriptionContract.previewChange,
     ({ body, params, respond }) => {
       const subscription = mockBillingStatus.concurrencySubscriptions.find(
         (candidate) => {
@@ -135,7 +132,7 @@ export const apiBillingHandlers = [
   ),
 
   mockApi(
-    zeroBillingConcurrencySubscriptionContract.confirmChange,
+    billingConcurrencySubscriptionContract.confirmChange,
     ({ body, params, respond }) => {
       mockBillingStatus.concurrencySubscriptions =
         mockBillingStatus.concurrencySubscriptions.map((subscription) => {
@@ -151,7 +148,7 @@ export const apiBillingHandlers = [
   ),
 
   mockApi(
-    zeroBillingConcurrencySubscriptionContract.cancel,
+    billingConcurrencySubscriptionContract.cancel,
     ({ params, respond }) => {
       mockBillingStatus.concurrencySubscriptions =
         mockBillingStatus.concurrencySubscriptions.map((subscription) => {
@@ -176,7 +173,7 @@ export const apiBillingHandlers = [
   ),
 
   mockApi(
-    zeroBillingConcurrencySubscriptionContract.reduce,
+    billingConcurrencySubscriptionContract.reduce,
     ({ body, respond }) => {
       return respond(200, {
         url: `https://billing.stripe.com/test-concurrency-reduction?quantity=${body.quantity}`,
@@ -185,7 +182,7 @@ export const apiBillingHandlers = [
   ),
 
   mockApi(
-    zeroBillingConcurrencySubscriptionContract.restore,
+    billingConcurrencySubscriptionContract.restore,
     ({ params, respond }) => {
       mockBillingStatus.concurrencySubscriptions =
         mockBillingStatus.concurrencySubscriptions.map((subscription) => {
@@ -203,30 +200,30 @@ export const apiBillingHandlers = [
     },
   ),
 
-  mockApi(zeroBillingPortalContract.create, ({ respond }) => {
+  mockApi(billingPortalContract.create, ({ respond }) => {
     return respond(200, {
       url: "https://billing.stripe.com/test-portal",
     });
   }),
 
-  mockApi(zeroBillingDowngradeContract.create, ({ respond }) => {
+  mockApi(billingDowngradeContract.create, ({ respond }) => {
     return respond(200, {
       success: true,
       effectiveDate: null,
     });
   }),
 
-  mockApi(zeroBillingRestoreContract.create, ({ respond }) => {
+  mockApi(billingRestoreContract.create, ({ respond }) => {
     mockBillingStatus.cancelAtPeriodEnd = false;
     mockBillingStatus.scheduledChange = null;
     return respond(200, { status: "restored" });
   }),
 
-  mockApi(zeroBillingAutoRechargeContract.get, ({ respond }) => {
+  mockApi(billingAutoRechargeContract.get, ({ respond }) => {
     return respond(200, mockBillingStatus.autoRecharge);
   }),
 
-  mockApi(zeroBillingAutoRechargeContract.update, ({ body, respond }) => {
+  mockApi(billingAutoRechargeContract.update, ({ body, respond }) => {
     mockBillingStatus.autoRecharge = {
       enabled: body.enabled,
       threshold: body.enabled ? (body.threshold ?? null) : null,
@@ -235,25 +232,25 @@ export const apiBillingHandlers = [
     return respond(200, mockBillingStatus.autoRecharge);
   }),
 
-  mockApi(zeroBillingInvoicesContract.get, ({ respond }) => {
+  mockApi(billingInvoicesContract.get, ({ respond }) => {
     return respond(200, {
       invoices: mockBillingInvoices,
       receiptDownloadsSupported: true,
     });
   }),
 
-  mockApi(zeroBillingInvoicesContract.downloadReceipts, ({ respond }) => {
+  mockApi(billingInvoicesContract.downloadReceipts, ({ respond }) => {
     return respond(
       200,
       new Blob(["mock receipts"], { type: "application/zip" }),
     );
   }),
 
-  mockApi(zeroBillingRedeemContract.create, ({ respond }) => {
+  mockApi(billingRedeemContract.create, ({ respond }) => {
     return respond(200, mockRedeemResponse);
   }),
 
-  mockApi(zeroBillingRedeemCodeContract.create, ({ body, respond }) => {
+  mockApi(billingRedeemCodeContract.create, ({ body, respond }) => {
     mockRedeemCodeHandler?.(body.code);
     return respond(200, { redeemed: true });
   }),

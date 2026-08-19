@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroBillingRedeemCodeContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingRedeemCodeContract } from "@okouai/api-contracts/contracts/billing";
 import { http, HttpResponse } from "msw";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -59,7 +59,7 @@ describe("POST /api/zero/billing/redeem-code", () => {
 
   it("returns 401 when not authenticated", async () => {
     const client = setupApp({ context, routes: billingRedeemCodeRoutes })(
-      zeroBillingRedeemCodeContract,
+      billingRedeemCodeContract,
     );
 
     const response = await accept(
@@ -93,7 +93,7 @@ describe("POST /api/zero/billing/redeem-code", () => {
     );
 
     const client = setupApp({ context, routes: billingRedeemCodeRoutes })(
-      zeroBillingRedeemCodeContract,
+      billingRedeemCodeContract,
     );
     const response = await accept(
       client.create({
@@ -119,7 +119,7 @@ describe("POST /api/zero/billing/redeem-code", () => {
     setAdminSession();
 
     const client = setupApp({ context, routes: billingRedeemCodeRoutes })(
-      zeroBillingRedeemCodeContract,
+      billingRedeemCodeContract,
     );
     const response = await accept(
       client.create({
@@ -143,7 +143,7 @@ describe("POST /api/zero/billing/redeem-code", () => {
     setAdminSession();
 
     const client = setupApp({ context, routes: billingRedeemCodeRoutes })(
-      zeroBillingRedeemCodeContract,
+      billingRedeemCodeContract,
     );
     const response = await accept(
       client.create({
@@ -176,7 +176,7 @@ describe("POST /api/zero/billing/redeem-code", () => {
     setAdminSession();
 
     const client = setupApp({ context, routes: billingRedeemCodeRoutes })(
-      zeroBillingRedeemCodeContract,
+      billingRedeemCodeContract,
     );
     const response = await accept(
       client.create({
@@ -204,7 +204,7 @@ describe("POST /api/zero/billing/redeem-code", () => {
     setAdminSession();
 
     const client = setupApp({ context, routes: billingRedeemCodeRoutes })(
-      zeroBillingRedeemCodeContract,
+      billingRedeemCodeContract,
     );
     const response = await accept(
       client.create({
@@ -231,7 +231,7 @@ describe("POST /api/zero/billing/redeem-code", () => {
     setAdminSession();
 
     const client = setupApp({ context, routes: billingRedeemCodeRoutes })(
-      zeroBillingRedeemCodeContract,
+      billingRedeemCodeContract,
     );
     const response = await accept(
       client.create({
@@ -285,7 +285,7 @@ describe("POST /api/zero/billing/redeem-code", () => {
       setAdminSession();
 
       const client = setupApp({ context, routes: billingRedeemCodeRoutes })(
-        zeroBillingRedeemCodeContract,
+        billingRedeemCodeContract,
       );
       const response = await accept(
         client.create({
@@ -316,7 +316,7 @@ describe("POST /api/zero/billing/redeem-code", () => {
     setAdminSession();
 
     const client = setupApp({ context, routes: billingRedeemCodeRoutes })(
-      zeroBillingRedeemCodeContract,
+      billingRedeemCodeContract,
     );
     const response = await accept(
       client.create({
@@ -347,7 +347,7 @@ describe("POST /api/zero/billing/redeem-code", () => {
     );
 
     const client = setupApp({ context, routes: billingRedeemCodeRoutes })(
-      zeroBillingRedeemCodeContract,
+      billingRedeemCodeContract,
     );
     const response = await accept(
       client.create({

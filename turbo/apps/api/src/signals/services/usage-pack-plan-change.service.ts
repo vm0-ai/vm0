@@ -3,7 +3,7 @@ import type {
   UsagePackChangeConfirmResponse,
   UsagePackSubscriptionChangePreviewResponse,
   UsagePackUsd,
-} from "@okouai/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/billing";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import {
   usagePackAllocationChanges,

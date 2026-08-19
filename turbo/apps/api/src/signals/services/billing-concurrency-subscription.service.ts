@@ -4,7 +4,7 @@ import { command } from "ccstate";
 import type {
   ConcurrencySubscriptionChangePreviewResponse,
   ConcurrencySubscriptionChangeResponse,
-} from "@okouai/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/billing";
 import { orgConcurrencySubscriptions } from "@okouai/db/schema/org-concurrency-subscription";
 import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
 import { orgUsageAllowanceEntitlements } from "@okouai/db/schema/org-usage-allowance";

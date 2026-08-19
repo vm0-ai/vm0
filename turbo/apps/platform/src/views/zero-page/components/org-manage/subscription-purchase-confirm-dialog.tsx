@@ -2,7 +2,7 @@ import { FeatureSwitchKey } from "@okouai/core";
 import type {
   PlanPurchasePreviewResponse,
   UsagePackPurchasePreviewResponse,
-} from "@okouai/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/billing";
 import { Button } from "@okouai/ui";
 import {
   Dialog,

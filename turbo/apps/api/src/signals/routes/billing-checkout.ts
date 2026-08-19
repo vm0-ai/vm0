@@ -1,14 +1,14 @@
 import { command } from "ccstate";
 import {
-  zeroBillingCheckoutContract,
-  zeroBillingUsagePackCatalogContract,
-  zeroBillingUsagePackCheckoutContract,
-  zeroBillingUsagePackManagementContract,
-  zeroBillingUsagePackMigrationContract,
+  billingCheckoutContract,
+  billingUsagePackCatalogContract,
+  billingUsagePackCheckoutContract,
+  billingUsagePackManagementContract,
+  billingUsagePackMigrationContract,
   type MemberUsagePack,
   type UsagePackCatalogItem,
   type UsagePackSubscriptionChangePreviewResponse,
-} from "@okouai/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/billing";
 import { adAttributionMetadataSchema } from "@okouai/api-contracts/contracts/acquisition-attribution";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -478,9 +478,7 @@ const checkoutAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
   signal.throwIfAborted();
 
-  const bodyResult = await get(
-    bodyResultOf(zeroBillingCheckoutContract.create),
-  );
+  const bodyResult = await get(bodyResultOf(billingCheckoutContract.create));
   signal.throwIfAborted();
   if (!bodyResult.ok) {
     return bodyResult.response;
@@ -612,9 +610,7 @@ const checkoutConfirmAuthed$ = command(
     if (auth.orgRole !== "admin") {
       return adminRequired;
     }
-    const bodyResult = await get(
-      bodyResultOf(zeroBillingCheckoutContract.confirm),
-    );
+    const bodyResult = await get(bodyResultOf(billingCheckoutContract.confirm));
     signal.throwIfAborted();
     if (!bodyResult.ok) {
       return bodyResult.response;
@@ -678,7 +674,7 @@ const usagePackCheckoutAuthed$ = command(
     }
 
     const bodyResult = await get(
-      bodyResultOf(zeroBillingUsagePackCheckoutContract.create),
+      bodyResultOf(billingUsagePackCheckoutContract.create),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -814,7 +810,7 @@ const usagePackCheckoutConfirmAuthed$ = command(
       return adminRequired;
     }
     const bodyResult = await get(
-      bodyResultOf(zeroBillingUsagePackCheckoutContract.confirm),
+      bodyResultOf(billingUsagePackCheckoutContract.confirm),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -961,7 +957,7 @@ const usagePackChangePreviewAuthed$ = command(
       return access.response;
     }
     const bodyResult = await get(
-      bodyResultOf(zeroBillingUsagePackManagementContract.previewChange),
+      bodyResultOf(billingUsagePackManagementContract.previewChange),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -1067,14 +1063,14 @@ const usagePackChangeConfirmAuthed$ = command(
       return access.response;
     }
     const bodyResult = await get(
-      bodyResultOf(zeroBillingUsagePackManagementContract.confirmChange),
+      bodyResultOf(billingUsagePackManagementContract.confirmChange),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
     const { changeId } = get(
-      pathParamsOf(zeroBillingUsagePackManagementContract.confirmChange),
+      pathParamsOf(billingUsagePackManagementContract.confirmChange),
     );
     const db = set(writeDb$);
     const [subscriptionSchema, changeSchema] = await Promise.all([
@@ -1201,7 +1197,7 @@ const usagePackMigrationPreviewAuthed$ = command(
       return access.response;
     }
     const bodyResult = await get(
-      bodyResultOf(zeroBillingUsagePackMigrationContract.preview),
+      bodyResultOf(billingUsagePackMigrationContract.preview),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -1256,14 +1252,14 @@ const usagePackMigrationConfirmAuthed$ = command(
       return access.response;
     }
     const bodyResult = await get(
-      bodyResultOf(zeroBillingUsagePackMigrationContract.confirm),
+      bodyResultOf(billingUsagePackMigrationContract.confirm),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
     const { migrationId } = get(
-      pathParamsOf(zeroBillingUsagePackMigrationContract.confirm),
+      pathParamsOf(billingUsagePackMigrationContract.confirm),
     );
     const db = set(writeDb$);
     if (!(await usagePackMigrationSchemasAvailable(db))) {
@@ -1319,14 +1315,14 @@ const usagePackMigrationRevisionPreviewAuthed$ = command(
       return access.response;
     }
     const bodyResult = await get(
-      bodyResultOf(zeroBillingUsagePackMigrationContract.previewRevision),
+      bodyResultOf(billingUsagePackMigrationContract.previewRevision),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
     const { migrationId } = get(
-      pathParamsOf(zeroBillingUsagePackMigrationContract.previewRevision),
+      pathParamsOf(billingUsagePackMigrationContract.previewRevision),
     );
     const db = set(writeDb$);
     if (!(await usagePackMigrationSchemasAvailable(db))) {
@@ -1381,14 +1377,14 @@ const usagePackMigrationRevisionConfirmAuthed$ = command(
       return access.response;
     }
     const bodyResult = await get(
-      bodyResultOf(zeroBillingUsagePackMigrationContract.confirmRevision),
+      bodyResultOf(billingUsagePackMigrationContract.confirmRevision),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
     const { migrationId } = get(
-      pathParamsOf(zeroBillingUsagePackMigrationContract.confirmRevision),
+      pathParamsOf(billingUsagePackMigrationContract.confirmRevision),
     );
     const db = set(writeDb$);
     if (!(await usagePackMigrationSchemasAvailable(db))) {
@@ -1492,7 +1488,7 @@ const usagePackSubscriptionChangePreviewAuthed$ = command(
     }
     const bodyResult = await get(
       bodyResultOf(
-        zeroBillingUsagePackManagementContract.previewSubscriptionChange,
+        billingUsagePackManagementContract.previewSubscriptionChange,
       ),
     );
     signal.throwIfAborted();
@@ -1612,7 +1608,7 @@ const usagePackSubscriptionChangeConfirmAuthed$ = command(
     }
     const bodyResult = await get(
       bodyResultOf(
-        zeroBillingUsagePackManagementContract.confirmSubscriptionChange,
+        billingUsagePackManagementContract.confirmSubscriptionChange,
       ),
     );
     signal.throwIfAborted();
@@ -1818,7 +1814,7 @@ const checkoutCompleteAuthed$ = command(
     signal.throwIfAborted();
 
     const bodyResult = await get(
-      bodyResultOf(zeroBillingCheckoutContract.complete),
+      bodyResultOf(billingCheckoutContract.complete),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -1869,67 +1865,67 @@ const checkoutComplete$ = command(async ({ set }, signal: AbortSignal) => {
 
 export const billingCheckoutRoutes: readonly RouteEntry[] = [
   {
-    route: zeroBillingCheckoutContract.create,
+    route: billingCheckoutContract.create,
     handler: checkout$,
   },
   {
-    route: zeroBillingCheckoutContract.confirm,
+    route: billingCheckoutContract.confirm,
     handler: checkoutConfirm$,
   },
   {
-    route: zeroBillingCheckoutContract.complete,
+    route: billingCheckoutContract.complete,
     handler: checkoutComplete$,
   },
   {
-    route: zeroBillingUsagePackCheckoutContract.create,
+    route: billingUsagePackCheckoutContract.create,
     handler: usagePackCheckout$,
   },
   {
-    route: zeroBillingUsagePackCheckoutContract.confirm,
+    route: billingUsagePackCheckoutContract.confirm,
     handler: usagePackCheckoutConfirm$,
   },
   {
-    route: zeroBillingUsagePackCatalogContract.get,
+    route: billingUsagePackCatalogContract.get,
     handler: usagePackCatalog$,
   },
   {
-    route: zeroBillingUsagePackManagementContract.get,
+    route: billingUsagePackManagementContract.get,
     handler: usagePackManagementGet$,
   },
   {
-    route: zeroBillingUsagePackManagementContract.previewChange,
+    route: billingUsagePackManagementContract.previewChange,
     handler: usagePackChangePreview$,
   },
   {
-    route: zeroBillingUsagePackManagementContract.confirmChange,
+    route: billingUsagePackManagementContract.confirmChange,
     handler: usagePackChangeConfirm$,
   },
   {
-    route: zeroBillingUsagePackManagementContract.previewSubscriptionChange,
+    route: billingUsagePackManagementContract.previewSubscriptionChange,
     handler: usagePackSubscriptionChangePreview$,
   },
   {
-    route: zeroBillingUsagePackManagementContract.confirmSubscriptionChange,
+    route: billingUsagePackManagementContract.confirmSubscriptionChange,
     handler: usagePackSubscriptionChangeConfirm$,
   },
   {
-    route: zeroBillingUsagePackMigrationContract.get,
+    route: billingUsagePackMigrationContract.get,
     handler: usagePackMigrationGet$,
   },
   {
-    route: zeroBillingUsagePackMigrationContract.preview,
+    route: billingUsagePackMigrationContract.preview,
     handler: usagePackMigrationPreview$,
   },
   {
-    route: zeroBillingUsagePackMigrationContract.confirm,
+    route: billingUsagePackMigrationContract.confirm,
     handler: usagePackMigrationConfirm$,
   },
   {
-    route: zeroBillingUsagePackMigrationContract.previewRevision,
+    route: billingUsagePackMigrationContract.previewRevision,
     handler: usagePackMigrationRevisionPreview$,
   },
   {
-    route: zeroBillingUsagePackMigrationContract.confirmRevision,
+    route: billingUsagePackMigrationContract.confirmRevision,
     handler: usagePackMigrationRevisionConfirm$,
   },
 ];

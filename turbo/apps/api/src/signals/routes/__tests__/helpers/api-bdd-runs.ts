@@ -11,7 +11,7 @@ import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agentComposeApiContentSchema } from "@okouai/api-contracts/contracts/composes";
 import { webhookStripeContract } from "@okouai/api-contracts/contracts/webhooks";
-import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import {
   zeroUserPermissionGrantsContract,
   type ApplyUserPermissionGrant,
@@ -437,7 +437,7 @@ export function createRunsApi(context: TestContext) {
       );
 
       const billingStatus = await accept(
-        runApp(context)(zeroBillingStatusContract).get({
+        runApp(context)(billingStatusContract).get({
           headers: authenticate(context, actor),
         }),
         [200],
@@ -940,7 +940,7 @@ export function createRunsApi(context: TestContext) {
 
     async readBillingStatus(actor: ApiTestUser) {
       const response = await accept(
-        runApp(context)(zeroBillingStatusContract).get({
+        runApp(context)(billingStatusContract).get({
           headers: authenticate(context, actor),
         }),
         [200],

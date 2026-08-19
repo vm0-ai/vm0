@@ -5,23 +5,23 @@ import { testUsageSettlementContract } from "@okouai/api-contracts/contracts/tes
 import { acquisitionAttributionContract } from "@okouai/api-contracts/contracts/acquisition-attribution";
 import { bankingContract } from "@okouai/api-contracts/contracts/banking";
 import {
-  zeroBillingAutoRechargeContract,
-  zeroBillingCheckoutContract,
-  zeroBillingCreditCheckoutContract,
-  zeroBillingDowngradeContract,
-  zeroBillingInvoicesContract,
-  zeroBillingPortalContract,
-  zeroBillingRedeemCodeContract,
-  zeroBillingRedeemContract,
-  zeroBillingRestoreContract,
-  zeroBillingStatusContract,
+  billingAutoRechargeContract,
+  billingCheckoutContract,
+  billingCreditCheckoutContract,
+  billingDowngradeContract,
+  billingInvoicesContract,
+  billingPortalContract,
+  billingRedeemCodeContract,
+  billingRedeemContract,
+  billingRestoreContract,
+  billingStatusContract,
   type AutoRechargeConfig,
   type BillingInvoicesResponse,
   type BillingStatusResponse,
   type CreditCheckoutRequest,
   type RedeemCodeRequest,
   type RedeemRequest,
-} from "@okouai/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/billing";
 import { builtInGenerationContract } from "@okouai/api-contracts/contracts/built-in-generation";
 import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
 import { imageIoGenerateContract } from "@okouai/api-contracts/contracts/image-io-generate";
@@ -291,7 +291,7 @@ export function createBillingMediaApi(context: TestContext) {
       actor: ApiTestUser,
     ): Promise<BillingStatusResponse> {
       const client = setupApp({ context, routes: billingStatusRoutes })(
-        zeroBillingStatusContract,
+        billingStatusContract,
       );
       const response = await accept(
         client.get({ headers: authenticate(actor) }),
@@ -302,7 +302,7 @@ export function createBillingMediaApi(context: TestContext) {
 
     async startCheckout(actor: ApiTestUser, body: CheckoutBody) {
       const client = setupApp({ context, routes: billingCheckoutRoutes })(
-        zeroBillingCheckoutContract,
+        billingCheckoutContract,
       );
       return await accept(
         client.create({ headers: authenticate(actor), body }),
@@ -316,7 +316,7 @@ export function createBillingMediaApi(context: TestContext) {
       statuses: readonly CheckoutStatus[],
     ) {
       const client = setupApp({ context, routes: billingCheckoutRoutes })(
-        zeroBillingCheckoutContract,
+        billingCheckoutContract,
       );
       return await accept(
         client.create({ headers: authenticate(actor), body }),
@@ -330,7 +330,7 @@ export function createBillingMediaApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 500 | 503)[],
     ) {
       const client = setupApp({ context, routes: billingCheckoutRoutes })(
-        zeroBillingCheckoutContract,
+        billingCheckoutContract,
       );
       return await accept(
         client.complete({ headers: authenticate(actor), body }),
@@ -342,7 +342,7 @@ export function createBillingMediaApi(context: TestContext) {
       const client = setupApp({
         context,
         routes: billingCreditCheckoutRoutes,
-      })(zeroBillingCreditCheckoutContract);
+      })(billingCreditCheckoutContract);
       return await accept(
         client.create({ headers: authenticate(actor), body }),
         [200],
@@ -357,7 +357,7 @@ export function createBillingMediaApi(context: TestContext) {
       const client = setupApp({
         context,
         routes: billingCreditCheckoutRoutes,
-      })(zeroBillingCreditCheckoutContract);
+      })(billingCreditCheckoutContract);
       return await accept(
         client.create({ headers: authenticate(actor), body }),
         statuses,
@@ -366,7 +366,7 @@ export function createBillingMediaApi(context: TestContext) {
 
     async openPortal(actor: ApiTestUser, body: PortalBody) {
       const client = setupApp({ context, routes: billingPortalRoutes })(
-        zeroBillingPortalContract,
+        billingPortalContract,
       );
       return await accept(
         client.create({ headers: authenticate(actor), body }),
@@ -378,7 +378,7 @@ export function createBillingMediaApi(context: TestContext) {
       const client = setupApp({
         context,
         routes: billingAutoRechargeRoutes,
-      })(zeroBillingAutoRechargeContract);
+      })(billingAutoRechargeContract);
       const response = await accept(
         client.get({ headers: authenticate(actor) }),
         [200],
@@ -394,7 +394,7 @@ export function createBillingMediaApi(context: TestContext) {
       const client = setupApp({
         context,
         routes: billingAutoRechargeRoutes,
-      })(zeroBillingAutoRechargeContract);
+      })(billingAutoRechargeContract);
       return await accept(
         client.update({ headers: authenticate(actor), body }),
         statuses,
@@ -403,7 +403,7 @@ export function createBillingMediaApi(context: TestContext) {
 
     async readInvoices(actor: ApiTestUser): Promise<BillingInvoicesResponse> {
       const client = setupApp({ context, routes: billingInvoicesRoutes })(
-        zeroBillingInvoicesContract,
+        billingInvoicesContract,
       );
       const response = await accept(
         client.get({ headers: authenticate(actor) }),
@@ -417,7 +417,7 @@ export function createBillingMediaApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403 | 500)[],
     ) {
       const client = setupApp({ context, routes: billingInvoicesRoutes })(
-        zeroBillingInvoicesContract,
+        billingInvoicesContract,
       );
       return await accept(
         client.get({ headers: authenticate(actor) }),
@@ -434,7 +434,7 @@ export function createBillingMediaApi(context: TestContext) {
       statuses: readonly BillingMutationStatus[],
     ) {
       const client = setupApp({ context, routes: billingDowngradeRoutes })(
-        zeroBillingDowngradeContract,
+        billingDowngradeContract,
       );
       return await accept(
         client.create({ headers: authenticate(actor), body }),
@@ -448,7 +448,7 @@ export function createBillingMediaApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403 | 409 | 500 | 503)[],
     ) {
       const client = setupApp({ context, routes: billingRestoreRoutes })(
-        zeroBillingRestoreContract,
+        billingRestoreContract,
       );
       return await accept(
         client.create({ headers: authenticate(actor), body }),
@@ -462,7 +462,7 @@ export function createBillingMediaApi(context: TestContext) {
       body: RedeemRequest,
     ) {
       const client = setupApp({ context, routes: billingRedeemRoutes })(
-        zeroBillingRedeemContract,
+        billingRedeemContract,
       );
       return await accept(
         client.create({
@@ -480,7 +480,7 @@ export function createBillingMediaApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 500 | 503)[],
     ) {
       const client = setupApp({ context, routes: billingRedeemCodeRoutes })(
-        zeroBillingRedeemCodeContract,
+        billingRedeemCodeContract,
       );
       return await accept(
         client.create({ headers: authenticate(actor), body }),

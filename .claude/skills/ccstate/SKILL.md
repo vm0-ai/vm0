@@ -324,7 +324,7 @@ For `computed` (background data fetching), call `accept` directly and let errors
 
 ```typescript
 export const billingStatus$ = computed(async (get) => {
-  const client = get(zeroClient$)(zeroBillingStatusContract);
+  const client = get(zeroClient$)(billingStatusContract);
   const result = await accept(client.get(), [200]);
   return result.body;
 });

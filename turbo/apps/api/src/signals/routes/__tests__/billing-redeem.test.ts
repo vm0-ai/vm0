@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import StripeSDK from "stripe";
-import { zeroBillingRedeemContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingRedeemContract } from "@okouai/api-contracts/contracts/billing";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -49,7 +49,7 @@ function postRedeem(options?: {
   readonly headers?: { readonly authorization?: string };
 }) {
   const client = setupApp({ context, routes: billingRedeemRoutes })(
-    zeroBillingRedeemContract,
+    billingRedeemContract,
   );
   return client.create({
     params: { campaign: options?.campaign ?? CAMPAIGN },

@@ -8,7 +8,7 @@ import type {
   CreditPurchasePreviewResponse,
   PlanPurchasePreviewResponse,
   UsagePackUsd,
-} from "@okouai/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/billing";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
 import { and, eq } from "drizzle-orm";
