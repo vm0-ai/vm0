@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomInt, randomUUID } from "node:crypto";
 
-import { OFFICIAL_TELEGRAM_BOT_ID } from "@okouai/api-contracts/contracts/zero-integrations-telegram";
+import { OFFICIAL_TELEGRAM_BOT_ID } from "@okouai/api-contracts/contracts/integrations-telegram";
 import type { ChatEvent } from "@okouai/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";

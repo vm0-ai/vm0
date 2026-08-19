@@ -235,10 +235,10 @@ function htmlAttribute(html, attributeName) {
   return tag ? (parseAttributes(tag).get(attributeName) ?? null) : null;
 }
 
-async function requestAppPage(origin) {
+async function requestAppPage(origin, apiOrigin = "") {
   const response = await worker.fetch(
     new Request(`${origin}/settings/profile`),
-    assetEnvironment(),
+    assetEnvironment(apiOrigin),
   );
   const html = await response.text();
   return { html, response };
@@ -276,6 +276,10 @@ assert.equal(
   metaContent(vm0Page.html, "property", "og:url"),
   "https://app.vm0.ai/",
 );
+assert.equal(
+  metaContent(vm0Page.html, "name", "vm0-api-origin"),
+  "https://api.vm0.ai",
+);
 
 const okouPage = await requestAppPage("https://app.okou.ai");
 assert.equal(
@@ -301,12 +305,23 @@ assert.equal(
   metaContent(okouPage.html, "property", "og:url"),
   "https://app.okou.ai/",
 );
+assert.equal(
+  metaContent(okouPage.html, "name", "vm0-api-origin"),
+  "https://api.okou.ai",
+);
 
-const okouPreview = await requestAppPage("https://3508a2f5.okou-app.pages.dev");
+const okouPreview = await requestAppPage(
+  "https://3508a2f5.okou-app.pages.dev",
+  previewOrigin,
+);
 assert.equal(htmlAttribute(okouPreview.html, "data-app-brand-name"), "Okou");
 assert.equal(
   tagAttribute(okouPreview.html, "link", "rel", "canonical", "href"),
   "https://app.okou.ai/",
+);
+assert.equal(
+  metaContent(okouPreview.html, "name", "vm0-api-origin"),
+  previewOrigin,
 );
 
 const untrustedSuffix = await requestAppPage("https://okou.ai.evil.example");
@@ -384,6 +399,7 @@ assert.equal(
 const previewHtml = await preview.response.text();
 assert.equal(documentTitle(previewHtml), "Preview conversation | Okou");
 assert.equal(htmlAttribute(previewHtml, "data-app-brand-name"), "Okou");
+assert.equal(metaContent(previewHtml, "name", "vm0-api-origin"), previewOrigin);
 assert.equal(
   metaContent(previewHtml, "property", "og:title"),
   "Preview conversation",
@@ -399,6 +415,7 @@ assert.equal(
 
 const production = await requestSharedPage({
   appOrigin: "https://app.okou.ai",
+  apiOrigin: previewOrigin,
   query: "?x-vercel-protection-bypass=must-not-forward",
   metaResponse() {
     return Response.json({
@@ -415,6 +432,11 @@ assert.equal(
 assert.equal(
   production.observedHeaders.get("x-vercel-protection-bypass"),
   null,
+);
+const productionHtml = await production.response.text();
+assert.equal(
+  metaContent(productionHtml, "name", "vm0-api-origin"),
+  "https://api.okou.ai",
 );
 
 const vm0SharedOnOkouHost = await requestSharedPage({
@@ -471,6 +493,10 @@ assert.equal(
 assert.equal(missing.response.headers.get("x-robots-tag"), "noindex, nofollow");
 const missingHtml = await missing.response.text();
 assert.equal(documentTitle(missingHtml), "Shared conversation not found | VM0");
+assert.equal(
+  metaContent(missingHtml, "name", "vm0-api-origin"),
+  "https://api.vm0.ai",
+);
 assert.equal(metaContent(missingHtml, "property", "og:title"), null);
 assert.equal(metaContent(missingHtml, "name", "twitter:title"), null);
 

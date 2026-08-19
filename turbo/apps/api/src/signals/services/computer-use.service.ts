@@ -30,7 +30,7 @@ import {
   type ComputerUseWriteCommandKind,
   type StoredPluginContentPointer,
   type StoredScreenshotPointer,
-} from "@okouai/api-contracts/contracts/zero-computer-use";
+} from "@okouai/api-contracts/contracts/computer-use";
 import {
   COMPUTER_USE_PLUGIN_CALL_KIND,
   COMPUTER_USE_PLUGIN_RESULT_BLOB_MAX_BYTES,

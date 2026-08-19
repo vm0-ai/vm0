@@ -8,7 +8,7 @@ import {
 import type {
   ModelProviderConnectionResponse,
   ModelProviderSurfaceProtocol,
-} from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
+} from "@okouai/api-contracts/contracts/model-provider-gateways";
 
 import {
   createModelProviderConnection$,

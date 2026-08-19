@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroComputerUseAuthorizationRequestsContract } from "@okouai/api-contracts/contracts/zero-computer-use";
+import { computerUseAuthorizationRequestsContract } from "@okouai/api-contracts/contracts/computer-use";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -29,17 +29,13 @@ const unsupportedContext = conflict(
 );
 
 const createBody$ = bodyResultOf(
-  zeroComputerUseAuthorizationRequestsContract.create,
+  computerUseAuthorizationRequestsContract.create,
 );
-const getParams$ = pathParamsOf(
-  zeroComputerUseAuthorizationRequestsContract.get,
-);
+const getParams$ = pathParamsOf(computerUseAuthorizationRequestsContract.get);
 const applyParams$ = pathParamsOf(
-  zeroComputerUseAuthorizationRequestsContract.apply,
+  computerUseAuthorizationRequestsContract.apply,
 );
-const applyBody$ = bodyResultOf(
-  zeroComputerUseAuthorizationRequestsContract.apply,
-);
+const applyBody$ = bodyResultOf(computerUseAuthorizationRequestsContract.apply);
 
 const computerUseAuthorizationAuthOptions = {
   requireOrganization: true,
@@ -183,21 +179,21 @@ const applyAuthorizationRequestInner$ = command(
 
 export const computerUseAuthorizationRoutes: readonly RouteEntry[] = [
   {
-    route: zeroComputerUseAuthorizationRequestsContract.create,
+    route: computerUseAuthorizationRequestsContract.create,
     handler: authRoute(
       computerUseAuthorizationCreateAuthOptions,
       createAuthorizationRequestInner$,
     ),
   },
   {
-    route: zeroComputerUseAuthorizationRequestsContract.get,
+    route: computerUseAuthorizationRequestsContract.get,
     handler: authRoute(
       computerUseAuthorizationAuthOptions,
       getAuthorizationRequestInner$,
     ),
   },
   {
-    route: zeroComputerUseAuthorizationRequestsContract.apply,
+    route: computerUseAuthorizationRequestsContract.apply,
     handler: authRoute(
       computerUseAuthorizationAuthOptions,
       applyAuthorizationRequestInner$,

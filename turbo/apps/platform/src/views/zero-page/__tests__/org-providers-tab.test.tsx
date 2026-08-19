@@ -10,11 +10,11 @@ import type {
   OrgModelPolicy,
 } from "@okouai/api-contracts/contracts/model-providers";
 import {
-  zeroModelProviderConnectionsByIdContract,
-  zeroModelProviderConnectionsMainContract,
+  modelProviderConnectionsByIdContract,
+  modelProviderConnectionsMainContract,
   type CreateModelProviderConnectionRequest,
   type ModelProviderConnectionResponse,
-} from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
+} from "@okouai/api-contracts/contracts/model-provider-gateways";
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -259,13 +259,13 @@ function mockGatewayConnectionLifecycle() {
   let deleteCount = 0;
 
   context.mocks.api(
-    zeroModelProviderConnectionsMainContract.list,
+    modelProviderConnectionsMainContract.list,
     ({ respond }) => {
       return respond(200, { connections });
     },
   );
   context.mocks.api(
-    zeroModelProviderConnectionsMainContract.create,
+    modelProviderConnectionsMainContract.create,
     ({ body, respond }) => {
       createSecret = body.secret;
       createSurfaces = body.surfaces;
@@ -275,7 +275,7 @@ function mockGatewayConnectionLifecycle() {
     },
   );
   context.mocks.api(
-    zeroModelProviderConnectionsByIdContract.update,
+    modelProviderConnectionsByIdContract.update,
     ({ body, respond }) => {
       updateCount += 1;
       updateSecret = body.secret;
@@ -285,7 +285,7 @@ function mockGatewayConnectionLifecycle() {
     },
   );
   context.mocks.api(
-    zeroModelProviderConnectionsByIdContract.delete,
+    modelProviderConnectionsByIdContract.delete,
     ({ respond }) => {
       deleteCount += 1;
       connections = [];

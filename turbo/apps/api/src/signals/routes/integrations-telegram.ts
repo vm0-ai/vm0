@@ -2,7 +2,7 @@ import { command, computed } from "ccstate";
 import { initContract } from "@okouai/api-contracts/contracts/trpc-contract";
 import { z } from "zod";
 import { integrationsTelegramBotListContract } from "@okouai/api-contracts/contracts/integrations";
-import { zeroIntegrationsTelegramContract } from "@okouai/api-contracts/contracts/zero-integrations-telegram";
+import { integrationsTelegramContract } from "@okouai/api-contracts/contracts/integrations-telegram";
 import { authHeadersSchema } from "@okouai/api-contracts/contracts/base";
 import { apiErrorSchema } from "@okouai/api-contracts/contracts/errors";
 
@@ -192,7 +192,7 @@ const getIntegrationTelegramListInner$ = computed(async (get) => {
 
 const getIntegrationTelegramLinkStatusInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const query = get(queryOf(zeroIntegrationsTelegramContract.getLinkStatus));
+  const query = get(queryOf(integrationsTelegramContract.getLinkStatus));
   return await get(
     telegramIntegrationLinkStatus({
       orgId: auth.orgId,
@@ -320,10 +320,8 @@ const setupTelegramStatusInner$ = command(
 
 const getIntegrationTelegramAvatar$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
-    const pathParams = get(
-      pathParamsOf(zeroIntegrationsTelegramContract.avatar),
-    );
-    const query = get(queryOf(zeroIntegrationsTelegramContract.avatar));
+    const pathParams = get(pathParamsOf(integrationsTelegramContract.avatar));
+    const query = get(queryOf(integrationsTelegramContract.avatar));
 
     let botToken: string | null = null;
     let profileUserId: string | number = telegramProfileUserId(
@@ -512,34 +510,34 @@ export const integrationsTelegramRoutes: readonly RouteEntry[] = [
   ...integrationsTelegramLinkRoutes,
   ...integrationsTelegramBotIdRoutes,
   {
-    route: zeroIntegrationsTelegramContract.list,
+    route: integrationsTelegramContract.list,
     handler: authRoute(telegramReadAuth, getIntegrationTelegramListInner$),
   },
   {
-    route: zeroIntegrationsTelegramContract.getLinkStatus,
+    route: integrationsTelegramContract.getLinkStatus,
     handler: authRoute(
       telegramReadAuth,
       getIntegrationTelegramLinkStatusInner$,
     ),
   },
   {
-    route: zeroIntegrationsTelegramContract.authCallback,
+    route: integrationsTelegramContract.authCallback,
     handler: getIntegrationTelegramAuthCallback$,
   },
   {
-    route: zeroIntegrationsTelegramContract.register,
+    route: integrationsTelegramContract.register,
     handler: authRoute(telegramSetupAuth, registerTelegramBotInner$),
   },
   {
-    route: zeroIntegrationsTelegramContract.setupStatus,
+    route: integrationsTelegramContract.setupStatus,
     handler: authRoute(telegramSetupAuth, setupTelegramStatusInner$),
   },
   {
-    route: zeroIntegrationsTelegramContract.webhook,
+    route: integrationsTelegramContract.webhook,
     handler: telegramWebhook$,
   },
   {
-    route: zeroIntegrationsTelegramContract.avatar,
+    route: integrationsTelegramContract.avatar,
     handler: getIntegrationTelegramAvatar$,
   },
   {

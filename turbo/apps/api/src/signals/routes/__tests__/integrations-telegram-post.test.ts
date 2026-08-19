@@ -3,8 +3,8 @@ import { createHash, randomUUID } from "node:crypto";
 
 import {
   OFFICIAL_TELEGRAM_BOT_ID,
-  zeroIntegrationsTelegramContract,
-} from "@okouai/api-contracts/contracts/zero-integrations-telegram";
+  integrationsTelegramContract,
+} from "@okouai/api-contracts/contracts/integrations-telegram";
 import type {
   TestTelegramStateActionBody,
   TestTelegramStateActionResponse,
@@ -293,7 +293,7 @@ afterEach(() => {
 
 function telegramClient() {
   return setupApp({ context, routes: integrationsTelegramRoutes })(
-    zeroIntegrationsTelegramContract,
+    integrationsTelegramContract,
   );
 }
 
