@@ -15,7 +15,7 @@ import urllib.request
 from contextlib import suppress
 from dataclasses import dataclass, field
 from email.message import Message
-from typing import NamedTuple, Protocol, cast
+from typing import NamedTuple, Protocol
 
 import h11
 import mitmproxy_rs
@@ -93,10 +93,6 @@ class FirewallAuthApiError(Exception):
 class _AddressResolver(Protocol):
     async def lookup_ip(self, host: str) -> list[str]:
         raise NotImplementedError
-
-
-class _CPythonStreamReader(Protocol):
-    _buffer: bytearray
 
 
 class _ResolvedAddress(NamedTuple):
@@ -384,9 +380,9 @@ async def _abort_connection_attempts(
             _abort_socket(attempt.result())
 
 
-async def _open_connected_stream(
+async def _open_connected_socket(
     addresses: tuple[_ResolvedAddress, ...],
-) -> _ConnectedStream:
+) -> socket.socket:
     if not addresses:
         raise OSError("Firewall auth connection failed")
 
@@ -441,15 +437,7 @@ async def _open_connected_stream(
                 await _abort_connection_attempts(tuple(attempts))
                 attempts.clear()
                 unclaimed_sockets.clear()
-                try:
-                    reader, writer = await asyncio.open_connection(
-                        sock=winner_socket,
-                        limit=_MAX_FIREWALL_AUTH_RESPONSE_HEADER_BYTES,
-                    )
-                except BaseException:
-                    _abort_socket(winner_socket)
-                    raise
-                return _ConnectedStream(reader, writer, winner_socket)
+                return winner_socket
 
             if not attempts:
                 if next_address_index >= len(addresses):
@@ -481,10 +469,25 @@ def _abort_stream(stream: _ConnectedStream) -> None:
         _abort_socket(stream.socket)
 
 
-async def _read_proxy_connect_status(reader: asyncio.StreamReader) -> int:
+async def _read_proxy_connect_status(sock: socket.socket) -> tuple[int, bool]:
+    loop = asyncio.get_running_loop()
+    buffer = bytearray()
     total_header_bytes = 0
     while True:
-        header_block = await reader.readuntil(b"\r\n\r\n")
+        header_end = buffer.find(b"\r\n\r\n")
+        if header_end < 0:
+            remaining_bytes = _MAX_FIREWALL_AUTH_RESPONSE_HEADER_BYTES - total_header_bytes
+            if len(buffer) > remaining_bytes:
+                raise ValueError("Firewall auth HTTP proxy response headers too large")
+            chunk = await loop.sock_recv(sock, remaining_bytes + 1 - len(buffer))
+            if not chunk:
+                raise asyncio.IncompleteReadError(bytes(buffer), None)
+            buffer.extend(chunk)
+            continue
+
+        header_end += len(b"\r\n\r\n")
+        header_block = bytes(buffer[:header_end])
+        del buffer[:header_end]
         total_header_bytes += len(header_block)
         if total_header_bytes > _MAX_FIREWALL_AUTH_RESPONSE_HEADER_BYTES:
             raise ValueError("Firewall auth HTTP proxy response headers too large")
@@ -497,12 +500,11 @@ async def _read_proxy_connect_status(reader: asyncio.StreamReader) -> int:
         except ValueError as exc:
             raise ValueError("Invalid firewall auth HTTP proxy response") from exc
         if not _HTTP_STATUS_INFORMATIONAL_MIN <= status < _HTTP_STATUS_SUCCESS_MIN:
-            return status
+            return status, bool(buffer)
 
 
 async def _establish_proxy_tunnel(
-    writer: asyncio.StreamWriter,
-    reader: asyncio.StreamReader,
+    sock: socket.socket,
     plan: _ConnectionPlan,
 ) -> None:
     lines = [
@@ -511,33 +513,37 @@ async def _establish_proxy_tunnel(
     ]
     if plan.proxy_authorization is not None:
         lines.append(f"Proxy-Authorization: {plan.proxy_authorization}")
-    writer.write(("\r\n".join(lines) + "\r\n\r\n").encode("latin-1"))
-    await writer.drain()
-    status = await _read_proxy_connect_status(reader)
+    loop = asyncio.get_running_loop()
+    await loop.sock_sendall(sock, ("\r\n".join(lines) + "\r\n\r\n").encode("latin-1"))
+    status, has_trailing_data = await _read_proxy_connect_status(sock)
     if not _HTTP_STATUS_SUCCESS_MIN <= status < _HTTP_STATUS_REDIRECTION_MIN:
         raise OSError(f"Firewall auth HTTP proxy CONNECT failed with status {status}")
-    cast(asyncio.Transport, writer.transport).pause_reading()
-    # asyncio has no public nonblocking buffer query. Keep this check adjacent to
-    # the caller's start_tls() call so proxy plaintext cannot enter this reader.
-    if cast(_CPythonStreamReader, reader)._buffer:
+    if has_trailing_data:
         raise ValueError("Firewall auth HTTP proxy sent data before TLS")
 
 
 async def _open_stream(plan: _ConnectionPlan) -> _ConnectedStream:
     addresses = await _resolve_addresses(plan.connect_host, plan.connect_port)
-    stream = await _open_connected_stream(addresses)
+    sock = await _open_connected_socket(addresses)
     try:
         if plan.use_proxy_tunnel:
-            await _establish_proxy_tunnel(stream.writer, stream.reader, plan)
+            await _establish_proxy_tunnel(sock, plan)
         if plan.origin_scheme == "https":
-            await stream.writer.start_tls(
-                _get_https_context(),
+            reader, writer = await asyncio.open_connection(
+                sock=sock,
+                limit=_MAX_FIREWALL_AUTH_RESPONSE_HEADER_BYTES,
+                ssl=_get_https_context(),
                 server_hostname=plan.origin_host,
             )
+        else:
+            reader, writer = await asyncio.open_connection(
+                sock=sock,
+                limit=_MAX_FIREWALL_AUTH_RESPONSE_HEADER_BYTES,
+            )
     except BaseException:
-        _abort_stream(stream)
+        _abort_socket(sock)
         raise
-    return stream
+    return _ConnectedStream(reader, writer, sock)
 
 
 def _request_headers(
