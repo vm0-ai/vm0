@@ -7662,27 +7662,16 @@ function composerImageModelPanelCategory({
   selectedModel,
   onChange,
   label,
-  variantMenuLabel,
 }: {
   selectedModel: ImageModel;
   onChange: (next: ImageModel | null) => void;
   label: string;
-  variantMenuLabel: string;
 }): MediaModelPanelCategory {
-  const gptImage1Models = ["gpt-image-1", "gpt-image-1-mini"] as const;
-  const baseModel = gptImage1Models[0];
-  const selectedGptImage1Model = gptImage1Models.find((candidate) => {
-    return candidate === selectedModel;
-  });
-  const selectedGptImage1Config =
-    IMAGE_MODEL_CONFIGS[selectedGptImage1Model ?? baseModel];
   return {
     id: "image",
     label,
     menuLabel: label,
-    options: PUBLIC_IMAGE_MODELS.filter((candidate) => {
-      return candidate !== gptImage1Models[1];
-    }).map((candidate) => {
+    options: PUBLIC_IMAGE_MODELS.map((candidate) => {
       return {
         key: candidate,
         label: IMAGE_MODEL_CONFIGS[candidate].label,
@@ -7691,28 +7680,6 @@ function composerImageModelPanelCategory({
         onSelect: () => {
           onChange(candidate);
         },
-        ...(candidate === baseModel
-          ? {
-              variant: {
-                label: variantMenuLabel,
-                chipLabel: selectedGptImage1Config.variantLabel,
-                selected:
-                  selectedGptImage1Model !== undefined &&
-                  selectedGptImage1Model !== baseModel,
-                options: gptImage1Models.map((variantModel) => {
-                  const variantConfig = IMAGE_MODEL_CONFIGS[variantModel];
-                  return {
-                    label: variantConfig.label,
-                    chipLabel: variantConfig.variantLabel,
-                    selected: selectedModel === variantModel,
-                    onSelect: () => {
-                      onChange(variantModel);
-                    },
-                  };
-                }),
-              },
-            }
-          : {}),
       };
     }),
   };
@@ -7822,12 +7789,6 @@ function ComposerModelPickerControls({
         label: t(($) => {
           return $.settings.models.picker.imageModels;
         }),
-        variantMenuLabel: t(
-          ($) => {
-            return $.settings.models.picker.modelVariants;
-          },
-          { model: IMAGE_MODEL_CONFIGS["gpt-image-1"].label },
-        ),
       }),
     );
   }

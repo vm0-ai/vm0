@@ -58,21 +58,8 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
   image: [
     {
       label: "Built-in fal.ai",
-      model: "gpt-image-1",
-      command: "okou generate image --provider built-in --model gpt-image-1 -h",
-      reason: "available without connector setup",
-    },
-    {
-      label: "Built-in fal.ai",
       model: "gpt-image-2",
       command: "okou generate image --provider built-in --model gpt-image-2 -h",
-      reason: "available without connector setup",
-    },
-    {
-      label: "Built-in fal.ai",
-      model: "gpt-image-1.5",
-      command:
-        "okou generate image --provider built-in --model gpt-image-1.5 -h",
       reason: "available without connector setup",
     },
     {
@@ -207,7 +194,7 @@ const BUILT_IN_GENERATION_COMMANDS: Partial<
     label: "Built-in image generation",
     command: "okou generate image --provider built-in -h",
     models:
-      "fal.ai: gpt-image-1 (default), gpt-image-2, gpt-image-1.5, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4, nano-banana-2; BytePlus: seedream5-pro, seedream5-lite",
+      "fal.ai: gpt-image-2 (default), gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4, nano-banana-2; BytePlus: seedream5-pro, seedream5-lite",
   },
   video: {
     label: "Built-in video generation",

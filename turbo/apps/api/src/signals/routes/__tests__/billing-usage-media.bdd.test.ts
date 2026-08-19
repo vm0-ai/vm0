@@ -981,7 +981,7 @@ describe("FILE-02 and CHAIN-BILLING-MEDIA: media generation, quota, and status A
     );
     expectApiError(unsupportedImageSeed.body);
     expect(unsupportedImageSeed.body.error.message).toBe(
-      "seed is not supported for gpt-image-1",
+      "seed is not supported for gpt-image-2",
     );
 
     const unsupportedImageSafetyTolerance = await api.requestImageIoGenerate(
@@ -994,7 +994,7 @@ describe("FILE-02 and CHAIN-BILLING-MEDIA: media generation, quota, and status A
     );
     expectApiError(unsupportedImageSafetyTolerance.body);
     expect(unsupportedImageSafetyTolerance.body.error.message).toBe(
-      "safetyTolerance is not supported for gpt-image-1",
+      "safetyTolerance is not supported for gpt-image-2",
     );
 
     const unsupportedImageEnhancePrompt = await api.requestImageIoGenerate(
@@ -1007,7 +1007,7 @@ describe("FILE-02 and CHAIN-BILLING-MEDIA: media generation, quota, and status A
     );
     expectApiError(unsupportedImageEnhancePrompt.body);
     expect(unsupportedImageEnhancePrompt.body.error.message).toBe(
-      "enhancePrompt is not supported for gpt-image-1",
+      "enhancePrompt is not supported for gpt-image-2",
     );
 
     const invalidSourceImages = await api.requestImageIoGenerate(

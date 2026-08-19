@@ -25,7 +25,7 @@ const IMAGE_RESULT = {
   size: 19,
   url: "http://localhost:3000/f/user-1/image-file-id/image-image-fi.png",
   creditsCharged: 65,
-  model: "gpt-image-1",
+  model: "gpt-image-2",
   provider: "fal",
   imageSize: "1024x1024",
   quality: "medium",
@@ -113,7 +113,7 @@ describe("okou generate image command", () => {
 
     expect(capturedBody).toEqual({
       prompt: "A watercolor fox",
-      model: "gpt-image-1",
+      model: "gpt-image-2",
       size: "1024x1024",
       quality: "auto",
       background: "opaque",
@@ -131,7 +131,7 @@ describe("okou generate image command", () => {
     expect(stdout).toContain("Compression: 50");
     expect(stdout).toContain("Moderation: low");
     expect(stdout).toContain("Credits charged: 65");
-    expect(stdout).toContain("Model: gpt-image-1");
+    expect(stdout).toContain("Model: gpt-image-2");
     expect(stdout).toContain("Provider: fal");
   });
 
@@ -141,7 +141,7 @@ describe("okou generate image command", () => {
       insideRun: false,
       runDefaultImageModel: undefined,
       modelArguments: [],
-      expectedModel: "gpt-image-1",
+      expectedModel: "gpt-image-2",
     },
     {
       name: "outside a run with an explicit model",
@@ -175,8 +175,8 @@ describe("okou generate image command", () => {
       name: "inside a gated run with an explicit value equal to the CLI default",
       insideRun: true,
       runDefaultImageModel: "qwen-image",
-      modelArguments: ["--model", "gpt-image-1"],
-      expectedModel: "gpt-image-1",
+      modelArguments: ["--model", "gpt-image-2"],
+      expectedModel: "gpt-image-2",
     },
   ])(
     "should serialize image model precedence for $name",
@@ -608,7 +608,7 @@ describe("okou generate image command", () => {
       "Run default model if direct image generation is used: seedream4; omit --model so the server applies it",
     );
     expect(implicitStdout).not.toContain(
-      "Model preference if direct image generation is used: gpt-image-1",
+      "Model preference if direct image generation is used: gpt-image-2",
     );
 
     mockConsoleLog.mockClear();
@@ -796,8 +796,8 @@ describe("okou generate image command", () => {
     imageCommand.outputHelp();
     const normalizedHelpOutput = helpOutput.replace(/\s+/g, " ");
 
-    expect(helpOutput).toContain("gpt-image-1.5");
-    expect(helpOutput).toContain("gpt-image-1 (default)");
+    expect(helpOutput).toContain("gpt-image-1-mini");
+    expect(helpOutput).toContain("gpt-image-2 (default)");
     expect(helpOutput).toContain("flux-pro-1.1");
     expect(helpOutput).toContain("qwen-image");
     expect(helpOutput).toContain("nano-banana-2");
