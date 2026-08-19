@@ -38,7 +38,10 @@ import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
-import { mockStripeClient } from "../../external/stripe-client";
+import {
+  mockStripeClient,
+  type StripeInvoiceCreatePreviewParams,
+} from "../../external/stripe-client";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
 import {
@@ -5247,6 +5250,63 @@ describe("usage pack allocation management", () => {
     }
   }
 
+  type PreviewSubscriptionDetails = NonNullable<
+    StripeInvoiceCreatePreviewParams["subscription_details"]
+  >;
+
+  function previewSubscriptionDetails(
+    input: unknown,
+  ): PreviewSubscriptionDetails | null {
+    if (typeof input !== "object" || input === null) {
+      return null;
+    }
+    const details = Reflect.get(input, "subscription_details");
+    if (
+      typeof details !== "object" ||
+      details === null ||
+      !Array.isArray(Reflect.get(details, "items"))
+    ) {
+      return null;
+    }
+    return details as PreviewSubscriptionDetails;
+  }
+
+  function previewTargetPriceId(
+    details: PreviewSubscriptionDetails | null,
+  ): string | null {
+    const item = details?.items.at(-1);
+    if (!item) {
+      return null;
+    }
+    if ("price" in item && item.price) {
+      return item.price;
+    }
+    return "id" in item && item.id?.startsWith("si_") ? item.id.slice(3) : null;
+  }
+
+  function mockUsagePackProrationLines(
+    details: PreviewSubscriptionDetails | null,
+    amountCents: number,
+  ) {
+    const targetPriceId = previewTargetPriceId(details);
+    const prorationTimestamp = details?.proration_date;
+    if (!targetPriceId || typeof prorationTimestamp !== "number") {
+      return [];
+    }
+    return [
+      {
+        id: `il_preview_${randomUUID()}`,
+        amount: amountCents,
+        price: { id: targetPriceId },
+        period: { start: prorationTimestamp },
+        parent: {
+          type: "subscription_item_details" as const,
+          subscription_item_details: { proration: true },
+        },
+      },
+    ];
+  }
+
   function mockUsagePackChangePreviews(
     immediateAmountCents: number,
     nextRecurringAmountCents: number,
@@ -5266,12 +5326,22 @@ describe("usage pack allocation management", () => {
       ) {
         throw new Error("Recurring previews cannot include prorations");
       }
+      const immediate =
+        "preview_mode" in input && input.preview_mode === "next";
+      const subscriptionDetails = previewSubscriptionDetails(input);
       return Promise.resolve({
-        amount_due:
-          "preview_mode" in input && input.preview_mode === "next"
-            ? immediateAmountCents
-            : nextRecurringAmountCents,
+        id: `in_preview_${randomUUID()}`,
+        amount_due: immediate ? immediateAmountCents : nextRecurringAmountCents,
         currency: "usd",
+        lines: {
+          has_more: false,
+          data: immediate
+            ? mockUsagePackProrationLines(
+                subscriptionDetails,
+                immediateAmountCents,
+              )
+            : [],
+        },
       });
     });
   }
@@ -9520,6 +9590,106 @@ describe("usage pack allocation management", () => {
     );
 
     expect(response.body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("prices an invitation from only the added package proration", async () => {
+    const existingMemberUserId = `user_${randomUUID()}`;
+    const fixture = await seedManagedUsagePack([
+      { userId: existingMemberUserId, usagePackUsd: 20 },
+    ]);
+    const email = `incremental-invite-${randomUUID()}@example.test`;
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      managedUsagePackSubscription(
+        fixture,
+        new Map([[TEST_PRICE_USAGE_PACK_20, 1]]),
+      ),
+    );
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
+      {
+        data: [
+          {
+            publicUserData: {
+              userId: existingMemberUserId,
+              identifier: `${existingMemberUserId}@example.test`,
+            },
+            createdAt: now(),
+          },
+        ],
+      },
+    );
+    context.mocks.clerk.organizations.getOrganizationInvitationList.mockResolvedValue(
+      { data: [] },
+    );
+    context.mocks.stripe.invoices.createPreview.mockImplementation((input) => {
+      const details = previewSubscriptionDetails(input);
+      const prorationTimestamp = details?.proration_date;
+      if (!details || typeof prorationTimestamp !== "number") {
+        throw new Error("Expected an invitation proration timestamp");
+      }
+      expect(details.items).toStrictEqual([
+        { id: `si_${TEST_PRICE_USAGE_PACK_20}`, quantity: 2 },
+      ]);
+      return Promise.resolve({
+        id: `in_preview_${randomUUID()}`,
+        amount_due: 4000,
+        currency: "usd",
+        lines: {
+          has_more: false,
+          data: [
+            {
+              id: `il_renewal_${randomUUID()}`,
+              amount: 4000,
+              price: { id: TEST_PRICE_USAGE_PACK_20 },
+              period: {
+                start: fixture.billingPeriod.end,
+                end: fixture.billingPeriod.end + 30 * 86_400,
+              },
+              parent: {
+                type: "subscription_item_details" as const,
+                subscription_item_details: { proration: false },
+              },
+            },
+            {
+              id: `il_proration_${randomUUID()}`,
+              amount: 2000,
+              price: { id: TEST_PRICE_USAGE_PACK_20 },
+              period: {
+                start: prorationTimestamp,
+                end: fixture.billingPeriod.end,
+              },
+              parent: {
+                type: "subscription_item_details" as const,
+                subscription_item_details: { proration: true },
+              },
+            },
+          ],
+        },
+      });
+    });
+
+    const response = await accept(
+      setupApp({ context, routes: orgInviteRoutes })(
+        orgInviteContract,
+      ).previewPurchase({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { email, role: "member", usagePackUsd: 20 },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      purchaseId: expect.any(String),
+      usagePackUsd: 20,
+      immediateAmountCents: 2000,
+      currency: "usd",
+      purchasedCredits: 20_000,
+      bonusCredits: 400,
+      totalCredits: 20_400,
+      currentPeriodEnd: new Date(
+        fixture.billingPeriod.end * 1000,
+      ).toISOString(),
+      expiresAt: expect.any(String),
+    });
   });
 
   it("creates fresh Setup Checkouts when an invitation preview return URL changes", async () => {

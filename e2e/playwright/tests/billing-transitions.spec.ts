@@ -355,13 +355,14 @@ test("restored Team plan preserves package and concurrency changes", async ({
   );
 });
 
-test("paid invitation purchases and revokes a pending member package", async ({
+test("paid invitations charge one package each and revoke pending packages", async ({
   page,
 }) => {
   test.setTimeout(360_000);
 
   await withBillingOwner(page, "E2E Paid Member Invitation", async (owner) => {
-    const inviteeEmail = generateTestEmail("paid-onboarding");
+    const firstInviteeEmail = generateTestEmail("paid-onboarding");
+    const secondInviteeEmail = generateTestEmail("paid-onboarding");
     await buyUsagePackPlan(page, "pro");
     await expectUsagePackState(page, owner, owner.userId, {
       pendingChange: null,
@@ -377,15 +378,35 @@ test("paid invitation purchases and revokes a pending member package", async ({
     });
     await expectUsagePackCreditsUi(page);
 
-    await purchasePaidInvitation(page, inviteeEmail, 50);
-    await expectPendingInvitationState(page, owner, inviteeEmail, {
-      email: inviteeEmail,
+    const firstAmountCents = await purchasePaidInvitation(
+      page,
+      firstInviteeEmail,
+      20,
+    );
+    await expectPendingInvitationState(page, owner, firstInviteeEmail, {
+      email: firstInviteeEmail,
       role: "member",
-      usagePackUsd: 50,
+      usagePackUsd: 20,
     });
 
-    await revokePaidInvitation(page, inviteeEmail);
-    await expectPendingInvitationState(page, owner, inviteeEmail, null);
+    const secondAmountCents = await purchasePaidInvitation(
+      page,
+      secondInviteeEmail,
+      20,
+    );
+    await expectPendingInvitationState(page, owner, secondInviteeEmail, {
+      email: secondInviteeEmail,
+      role: "member",
+      usagePackUsd: 20,
+    });
+    expect(Math.abs(secondAmountCents - firstAmountCents)).toBeLessThanOrEqual(
+      1,
+    );
+
+    await revokePaidInvitation(page, firstInviteeEmail);
+    await expectPendingInvitationState(page, owner, firstInviteeEmail, null);
+    await revokePaidInvitation(page, secondInviteeEmail);
+    await expectPendingInvitationState(page, owner, secondInviteeEmail, null);
   });
 });
 
@@ -598,7 +619,7 @@ async function purchasePaidInvitation(
   page: Page,
   email: string,
   usagePackUsd: UsagePackUsd,
-): Promise<void> {
+): Promise<number> {
   const settings = await openPeopleSettings(page);
   await settings
     .getByRole("button", { name: "Add member", exact: true })
@@ -612,12 +633,39 @@ async function purchasePaidInvitation(
   await page
     .getByRole("option", { name: USAGE_PACK_OPTION_PATTERNS[usagePackUsd] })
     .click();
+  const previewResponsePromise = page.waitForResponse(
+    (response) => {
+      return (
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname ===
+          "/api/okou/org/invite/purchase/preview"
+      );
+    },
+    { timeout: STATE_TIMEOUT_MS },
+  );
   await invite.getByRole("button", { name: "Continue", exact: true }).click();
+  const previewResponse = await previewResponsePromise;
+  expect(previewResponse.status()).toBe(200);
+  const previewBody = requireRecord(
+    await previewResponse.json(),
+    "invitation purchase preview",
+  );
+  const immediateAmountCents = requireNumber(
+    previewBody.immediateAmountCents,
+    "invitation purchase amount",
+  );
+  expect(immediateAmountCents).toBeGreaterThan(0);
+  expect(immediateAmountCents).toBeLessThanOrEqual(usagePackUsd * 100);
 
   const review = page.getByRole("dialog", { name: "Review invitation" });
   await expect(review).toBeVisible({ timeout: 30_000 });
   await expect(review.getByText(email, { exact: true })).toBeVisible();
   await expect(review.getByText(/^Member · /u)).toBeVisible();
+  await expect(
+    review.getByText(`$${(immediateAmountCents / 100).toFixed(2)}`, {
+      exact: true,
+    }),
+  ).toBeVisible();
   const responsePromise = page.waitForResponse(
     (response) => {
       return (
@@ -642,6 +690,7 @@ async function purchasePaidInvitation(
     row.getByText(`$${usagePackUsd}/month`, { exact: true }),
   ).toBeVisible();
   await expect(row.getByText("Pending", { exact: true })).toBeVisible();
+  return immediateAmountCents;
 }
 
 async function revokePaidInvitation(page: Page, email: string): Promise<void> {
