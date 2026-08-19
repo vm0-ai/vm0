@@ -658,7 +658,7 @@ describe("connectors page", () => {
       screen.findByTestId("connector-card-label"),
     ).resolves.toHaveTextContent("GitHub");
     await expect(
-      screen.findByText("Connect 1000+ services for your agents to use."),
+      screen.findByText("Connect 1100+ services for your agents to use."),
     ).resolves.toBeInTheDocument();
 
     await fill(await screen.findByPlaceholderText("Find connectors"), "Slack");
@@ -692,7 +692,7 @@ describe("connectors page", () => {
     });
 
     await expect(
-      screen.findByText("Connect 1000+ services for your agents to use."),
+      screen.findByText("Connect 1100+ services for your agents to use."),
     ).resolves.toBeInTheDocument();
   });
 
@@ -721,7 +721,7 @@ describe("connectors page", () => {
       screen.findByText("Connect third-party services for your agents to use."),
     ).resolves.toBeInTheDocument();
     expect(
-      screen.queryByText("Connect 1000+ services for your agents to use."),
+      screen.queryByText("Connect 1100+ services for your agents to use."),
     ).not.toBeInTheDocument();
   });
 
