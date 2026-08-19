@@ -981,6 +981,13 @@
       "when": 1787110580902,
       "tag": "0947_add_seedance_2_5_1080p_pricing",
       "breakpoints": true
+    },
+    {
+      "idx": 948,
+      "version": "7",
+      "when": 1787113271527,
+      "tag": "0948_checkpoint_agent_compose_snapshot_nullable",
+      "breakpoints": true
     }
   ]
 }

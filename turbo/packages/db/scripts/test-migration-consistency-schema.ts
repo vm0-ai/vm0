@@ -52,6 +52,10 @@ import {
   validateAgentRunLaunchSnapshotMigration,
   validateAgentRunLaunchSnapshotSchema,
 } from "./test-agent-run-launch-snapshot";
+import {
+  validateCheckpointAgentComposeSnapshotNullableMigration,
+  validateCheckpointAgentComposeSnapshotNullableSchema,
+} from "./test-checkpoint-agent-compose-snapshot-nullable";
 import { validateAgentComposeConsolidationPreflight } from "./test-agent-compose-consolidation-preflight";
 import { validateConnectorAccountExpansion } from "./test-connector-account-expansion";
 import {
@@ -11586,6 +11590,7 @@ async function main(): Promise<void> {
     await validateAgentRunMetadataStage2Final();
     await validateAgentRunMetadataStage2Runner();
     await validateAgentRunLaunchSnapshotMigration();
+    await validateCheckpointAgentComposeSnapshotNullableMigration();
     await validateFeishuConnectorOwnershipCleanup();
     await validateConnectorAccountExpansion();
 
@@ -11612,6 +11617,7 @@ async function main(): Promise<void> {
     await validatePermanentArtifactTriggerBehavior(dbUrl1);
     await validatePermanentAgentRunMetadataState(dbUrl1);
     await validateAgentRunLaunchSnapshotSchema(dbUrl1);
+    await validateCheckpointAgentComposeSnapshotNullableSchema(dbUrl1);
     await validateExpandedBrowserSchema(dbUrl1);
     await validateChatEventSourcesAreAppendOnly(dbUrl1);
     await validateChatEventContextPointerConstraints(dbUrl1);
@@ -11631,6 +11637,7 @@ async function main(): Promise<void> {
     await runMigrations(dbUrl2);
     console.log("   ✅ Fresh migrations applied successfully\n");
     await validateAgentRunLaunchSnapshotSchema(dbUrl2);
+    await validateCheckpointAgentComposeSnapshotNullableSchema(dbUrl2);
 
     // Step 4: Restore original migrations
     await restoreMigrations();

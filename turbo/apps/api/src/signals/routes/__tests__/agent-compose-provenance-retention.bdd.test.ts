@@ -6,17 +6,21 @@ import { onTestFinished } from "vitest";
 import { testContext } from "../../../__tests__/test-context";
 import { isLockNotAvailable } from "../../../lib/pg-errors";
 import {
+  clearAgentRunVersionFixture,
   holdAgentComposeVersionRowFixture,
   readAgentComposeVersionProvenanceFixture,
   readAgentComposeVersionReferenceCountsFixture,
   readAgentHeadVersionIdFixture,
-  readCheckpointAgentComposeVersionIdFixture,
+  readCheckpointAgentComposeSnapshotBytesFixture,
+  readCheckpointAgentComposeSnapshotFixture,
   setAgentComposeVersionCreatorFixture,
+  writeCheckpointAgentComposeSnapshotFixture,
 } from "../../../test-fixtures/agent-compose-provenance";
 import {
   referenceAgentHeadFixture,
   referenceAgentRunVersionFixture,
 } from "../../../test-fixtures/agent-deletion";
+import { readHistoricalAgentComposeHeadFixture } from "../../../test-fixtures/historical-agent-composes";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { settle } from "../../utils";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
@@ -78,6 +82,86 @@ async function deliverClerkDeletion(
 }
 
 describe("Agent Compose nullable transition provenance", () => {
+  it("checkpoints without legacy provenance and continues from the latest Agent head", async () => {
+    const actor = bdd.user();
+    await prepareRunCreation(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "Checkpoint Configuration Independent Agent",
+    });
+    const firstRun = await runs.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "checkpoint without legacy provenance",
+      modelProvider: "anthropic-api-key",
+    });
+    await clearAgentRunVersionFixture(firstRun.runId);
+
+    const checkpoint = await webhooks.requestAgentCheckpoint(
+      {
+        runId: firstRun.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `configuration-independent-${firstRun.runId}`,
+        cliAgentSessionHistoryDisposition: "unavailable",
+      },
+      {
+        authorization: `Bearer ${runs.sandboxTokenForRun(
+          actor,
+          firstRun.runId,
+        )}`,
+      },
+      [200],
+    );
+    expect(checkpoint.status).toBe(200);
+    if (checkpoint.status !== 200) {
+      throw new Error("Expected the initial checkpoint to succeed");
+    }
+    await expect(
+      readCheckpointAgentComposeSnapshotFixture(firstRun.runId),
+    ).resolves.toBeNull();
+    await webhooks.requestAgentComplete(
+      { runId: firstRun.runId, exitCode: 0, lastEventSequence: 0 },
+      {
+        authorization: `Bearer ${runs.sandboxTokenForRun(
+          actor,
+          firstRun.runId,
+        )}`,
+      },
+      [200],
+    );
+    await flushWaitUntilForTest();
+
+    const currentHead = await readHistoricalAgentComposeHeadFixture(
+      agent.agentId,
+    );
+    const replacementHead = await runs.createHistoricalCompose(actor, {
+      version: "1",
+      agents: {
+        [currentHead.name]: {
+          framework: "claude-code",
+          instructions: "CLAUDE.md",
+          description: "latest configuration after a NULL checkpoint",
+          environment: {
+            OKOU_AGENT_ID: `\${{ vars.OKOU_AGENT_ID }}`,
+            OKOU_TOKEN: `\${{ secrets.OKOU_TOKEN }}`,
+          },
+        },
+      },
+    });
+    const continuation = await runs.createRun(actor, {
+      agentId: agent.agentId,
+      sessionId: firstRun.sessionId,
+      prompt: "continue using the latest Agent configuration",
+      modelProvider: "anthropic-api-key",
+    });
+    const continuationRun = await runs.readRun(actor, continuation.runId);
+    expect(continuation.sessionId).toBe(firstRun.sessionId);
+    expect(continuationRun.agentComposeVersionId).toBe(
+      replacementHead.versionId,
+    );
+
+    await runs.requestCancelRun(actor, continuation.runId, [200]);
+    await flushWaitUntilForTest();
+  });
+
   it("retains shared and unreferenced versions after duplicate user deletion", async () => {
     configureClerkDeletion();
     const doomed = bdd.user();
@@ -191,9 +275,46 @@ describe("Agent Compose nullable transition provenance", () => {
       [200],
     );
     expect(checkpoint.status).toBe(200);
+    if (checkpoint.status !== 200) {
+      throw new Error("Expected the nullable checkpoint to succeed");
+    }
     await expect(
-      readCheckpointAgentComposeVersionIdFixture(survivingRun.runId),
-    ).resolves.toBe(sharedVersionId);
+      readCheckpointAgentComposeSnapshotFixture(survivingRun.runId),
+    ).resolves.toBeNull();
+    await writeCheckpointAgentComposeSnapshotFixture({
+      runId: survivingRun.runId,
+      snapshot: {
+        agentComposeVersionId: sharedVersionId,
+        vars: { LEGACY_CHECKPOINT_VALUE: "preserve byte-for-byte" },
+        secretNames: ["LEGACY_CHECKPOINT_SECRET"],
+      },
+    });
+    const legacySnapshotBytes =
+      await readCheckpointAgentComposeSnapshotBytesFixture(survivingRun.runId);
+    const refreshedCheckpoint = await webhooks.requestAgentCheckpoint(
+      {
+        runId: survivingRun.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `nullable-provenance-${survivingRun.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      {
+        authorization: `Bearer ${runs.sandboxTokenForRun(
+          survivor,
+          survivingRun.runId,
+        )}`,
+      },
+      [200],
+    );
+    if (refreshedCheckpoint.status !== 200) {
+      throw new Error("Expected the refreshed checkpoint to succeed");
+    }
+    expect(refreshedCheckpoint.body.checkpointId).toBe(
+      checkpoint.body.checkpointId,
+    );
+    await expect(
+      readCheckpointAgentComposeSnapshotBytesFixture(survivingRun.runId),
+    ).resolves.toStrictEqual(legacySnapshotBytes);
     const repeatedHistory = await webhooks.requestAgentCheckpointPrepareHistory(
       {
         runId: survivingRun.runId,

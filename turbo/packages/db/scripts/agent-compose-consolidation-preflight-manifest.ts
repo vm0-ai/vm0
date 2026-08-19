@@ -87,7 +87,7 @@ export const EXPECTED_CATALOG_DEPENDENCIES = {
     "public.chat_agentphone_context|agentphone_agent_id|text|nullable=true",
     "public.chat_event_search_messages|agent_compose_id|uuid|nullable=false",
     "public.chat_thread_events|agent_compose_id|uuid|nullable=false",
-    "public.checkpoints|agent_compose_snapshot|jsonb|nullable=false",
+    "public.checkpoints|agent_compose_snapshot|jsonb|nullable=true",
     "public.connector_external_code_sessions|agent_id|uuid|nullable=true",
     "public.connector_oauth_device_authorization_sessions|agent_id|uuid|nullable=true",
     "public.connector_oauth_states|agent_id|uuid|nullable=true",
@@ -280,7 +280,6 @@ export const EXPECTED_REPOSITORY_DEPENDENCIES = {
     "turbo/apps/api/src/signals/services/agent-run-create.service.ts|agentComposeId,agentComposeVersionId,agentComposeVersions,agentComposes,headVersionId",
     "turbo/apps/api/src/signals/services/agent-run-storage.service.ts|headVersionId",
     "turbo/apps/api/src/signals/services/agent-runs.service.ts|agentComposeId,agentComposeVersionId,agentComposes,zeroAgents",
-    "turbo/apps/api/src/signals/services/agent-webhook-checkpoints.service.ts|agentComposeSnapshot,agentComposeVersionId",
     "turbo/apps/api/src/signals/services/agentphone-chat-ingress.service.ts|agentComposeId",
     "turbo/apps/api/src/signals/services/agentphone-queued-launch-context.service.ts|agentComposeId",
     "turbo/apps/api/src/signals/services/agentphone-shared.service.ts|agentComposes,zeroAgents",
@@ -409,6 +408,8 @@ export const EXPECTED_REPOSITORY_DEPENDENCIES = {
     "#28056|historical-product-builder-preflight-partition|removal-owner:#26938-stage-8",
     "#28070|historical-product-builder-environment-authority-and-telemetry|removal-owner:#26938-stage-8",
     "#28070|historical-product-builder-v6-authority-lineage-partition|removal-owner:#26938-stage-8",
+    "#28080|checkpoint-configuration-independence-runtime-manifest|removal-owner:#26938-stage-8",
+    "#28080|checkpoint-v7-protected-partition|removal-owner:#26938-stage-8",
   ],
 } as const satisfies RepositoryDependencyManifest;
 
