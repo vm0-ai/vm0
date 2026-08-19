@@ -41,12 +41,16 @@ function getFixedVirtualRange({
   viewportHeight: number;
 }) {
   const localScrollTop = Math.max(0, scrollTop - scrollMargin);
-  const firstVisibleIndex = Math.floor(
+  const requestedFirstVisibleIndex = Math.floor(
     localScrollTop / CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
   );
   const visibleCount = Math.max(
     1,
     Math.ceil(viewportHeight / CHAT_THREAD_VIRTUAL_ROW_HEIGHT),
+  );
+  const firstVisibleIndex = Math.min(
+    requestedFirstVisibleIndex,
+    Math.max(0, itemCount - visibleCount),
   );
   const startIndex = Math.max(
     0,
@@ -90,7 +94,7 @@ export const sidebarChatThreadWindow$ = computed(
       scrollMetrics.clientHeight || scrollViewport?.clientHeight;
     const viewportHeight =
       measuredViewportHeight || CHAT_THREAD_VIRTUAL_FALLBACK_VIEWPORT_HEIGHT;
-    const scrollTop = scrollMetrics.scrollTop;
+    const scrollTop = scrollViewport?.scrollTop ?? scrollMetrics.scrollTop;
     const { startIndex, endIndex } = getFixedVirtualRange({
       itemCount: chatThreads.length,
       scrollMargin,
