@@ -171,8 +171,6 @@ export interface ChatPanelSignals {
   // True when the event list is scrolled away from the bottom - drives the
   // feature-gated scroll-to-bottom button. Read-only outside scroll signals.
   readonly awayFromBottom$: Computed<boolean>;
-  readonly ignoreContentResizeScroll$: Computed<boolean>;
-  readonly setIgnoreContentResizeScroll$: Command<void, [boolean]>;
   readonly composer: ComposerSignals;
   readonly feedback: ChatThreadFeedbackSignals;
   readonly sharing: ChatThreadSharingSignals;

@@ -60,7 +60,6 @@ export enum FeatureSwitchKey {
   ChatMarkUnread = "chatMarkUnread",
   ChatQuoteOnlyFeedback = "chatQuoteOnlyFeedback",
   ChatRunContinuationPresentation = "chatRunContinuationPresentation",
-  ChatSmoothAutoScroll = "chatSmoothAutoScroll",
   ResponsiveFollowupCards = "responsiveFollowupCards",
   HomeStartCards = "homeStartCards",
   ConnectorDiscovery = "connectorDiscovery",

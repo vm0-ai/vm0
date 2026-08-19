@@ -5,7 +5,6 @@ import { onDomEventFn, onRef } from "../utils.ts";
 
 const L = logger("AutoScroll");
 const AT_BOTTOM_THRESHOLD_PX = 10;
-const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
 const SCROLL_ANCHOR_ATTRIBUTE = "data-chat-scroll-anchor-event-id";
 const SCROLL_COMMIT_REVISION_ATTRIBUTE = "data-chat-scroll-commit-revision";
 const SCROLL_COMMIT_TO_TAIL_ATTRIBUTE = "data-chat-scroll-commit-to-tail";
@@ -43,8 +42,6 @@ export interface ChatThreadScrollSignals {
   readonly scrollContainer$: Computed<HTMLElement | null>;
   readonly threadScrollPosition$: Computed<ThreadScrollPosition | null>;
   readonly awayFromBottom$: Computed<boolean>;
-  readonly ignoreContentResizeScroll$: Computed<boolean>;
-  readonly setIgnoreContentResizeScroll$: Command<void, [boolean]>;
   readonly readRenderedThreadScrollPosition$: Command<
     ThreadScrollPosition | null,
     []
@@ -87,17 +84,6 @@ function isAtBottom(container: HTMLElement): boolean {
   return (
     container.scrollHeight - container.scrollTop - container.clientHeight <=
     AT_BOTTOM_THRESHOLD_PX
-  );
-}
-
-function maximumScrollTop(container: HTMLElement): number {
-  return Math.max(0, container.scrollHeight - container.clientHeight);
-}
-
-function prefersReducedMotion(container: HTMLElement): boolean {
-  return (
-    container.ownerDocument.defaultView?.matchMedia(REDUCED_MOTION_QUERY)
-      .matches ?? false
   );
 }
 
@@ -217,21 +203,6 @@ interface ScrollRuntime {
   // event measure as "not at the bottom" and park the thread on an anchor
   // nobody chose.
   programmaticScrollTop: number | null;
-  smoothAutoScrollTarget: number | null;
-}
-
-function clearSmoothAutoScrollRuntime(runtime: ScrollRuntime): void {
-  runtime.smoothAutoScrollTarget = null;
-}
-
-function smoothScrollToBottom(
-  runtime: ScrollRuntime,
-  container: HTMLElement,
-): void {
-  const target = maximumScrollTop(container);
-  runtime.programmaticScrollTop = null;
-  runtime.smoothAutoScrollTarget = target;
-  container.scrollTo({ top: target, behavior: "smooth" });
 }
 
 function createInternalScrollSignals(
@@ -240,21 +211,10 @@ function createInternalScrollSignals(
   afterThreadScrollPositionChanged$: Command<Promise<void>, [AbortSignal]>,
 ) {
   const internalScrollContainer$ = state<HTMLElement | null>(null);
-  const internalIgnoreContentResizeScroll$ = state(false);
   const scrollContainer$ = computed((get) => {
     return get(internalScrollContainer$);
   });
   const { threadScrollPosition$, awayFromBottom$ } = position;
-  const ignoreContentResizeScroll$ = computed((get) => {
-    return get(internalIgnoreContentResizeScroll$);
-  });
-  const setIgnoreContentResizeScroll$ = command(
-    ({ get, set }, ignore: boolean): void => {
-      if (get(internalIgnoreContentResizeScroll$) !== ignore) {
-        set(internalIgnoreContentResizeScroll$, ignore);
-      }
-    },
-  );
 
   // The held position feeds the render window, so every write below runs the
   // window's ensure step afterwards — parsing is command-driven, and this is
@@ -351,8 +311,6 @@ function createInternalScrollSignals(
     scrollContainer$,
     threadScrollPosition$,
     awayFromBottom$,
-    ignoreContentResizeScroll$,
-    setIgnoreContentResizeScroll$,
     readRenderedThreadScrollPosition$,
     syncThreadScrollPosition$,
     clearThreadScrollPosition$,
@@ -363,49 +321,17 @@ function createInternalScrollSignals(
 
 type InternalScrollSignals = ReturnType<typeof createInternalScrollSignals>;
 
-function createContentResizeRestoreSignal(
-  threadId: string,
-  scroll: InternalScrollSignals,
-  runtime: ScrollRuntime,
-  restoreAfterResize$: Command<Promise<void>, [AbortSignal]>,
-) {
-  return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    if (!runtime.initialized) {
-      return;
-    }
-    if (get(scroll.ignoreContentResizeScroll$)) {
-      const container = get(scroll.scrollContainer$);
-      if (!container) {
-        throw new Error("Chat scroll container is not mounted");
-      }
-      if (isAtBottom(container)) {
-        clearSmoothAutoScrollRuntime(runtime);
-        set(scroll.setIgnoreContentResizeScroll$, false);
-        return;
-      }
-      if (runtime.smoothAutoScrollTarget !== maximumScrollTop(container)) {
-        smoothScrollToBottom(runtime, container);
-      }
-      return;
-    }
-    L.debug("content resize scroll restore", { threadId });
-    await set(restoreAfterResize$, signal);
-  });
-}
-
 function createScrollNavigationSignals(
   threadId: string,
   scroll: InternalScrollSignals,
   runtime: ScrollRuntime,
   pendingScrollAfterRenderRequest$: Computed<ScrollAfterRenderRequest | null>,
 ) {
-  const scrollTo$ = command(({ get, set }, position: ThreadScrollPosition) => {
+  const scrollTo$ = command(({ get }, position: ThreadScrollPosition) => {
     const container = get(scroll.scrollContainer$);
     if (!container) {
       throw new Error("Chat scroll container is not mounted");
     }
-    set(scroll.setIgnoreContentResizeScroll$, false);
-    clearSmoothAutoScrollRuntime(runtime);
     if (!scrollToPosition(runtime, container, position)) {
       throw new Error(
         `Chat scroll target is not rendered: ${position.targetEventId}`,
@@ -413,6 +339,7 @@ function createScrollNavigationSignals(
     }
     runtime.initialized = true;
   });
+
   const scrollToBottom$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
       const container = get(scroll.scrollContainer$);
@@ -426,8 +353,6 @@ function createScrollNavigationSignals(
         heldTargetEventId:
           get(scroll.threadScrollPosition$)?.targetEventId ?? null,
       });
-      set(scroll.setIgnoreContentResizeScroll$, false);
-      clearSmoothAutoScrollRuntime(runtime);
       // The DOM write happens before the awaited state clear so the jump is
       // part of the current task and cannot paint at the old offset first.
       applyScrollTop(runtime, container, container.scrollHeight);
@@ -435,14 +360,13 @@ function createScrollNavigationSignals(
       await set(scroll.clearThreadScrollPosition$, signal);
     },
   );
+
   const scrollToTop$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
       const container = get(scroll.scrollContainer$);
       if (!container) {
         throw new Error("Chat scroll container is not mounted");
       }
-      set(scroll.setIgnoreContentResizeScroll$, false);
-      clearSmoothAutoScrollRuntime(runtime);
       applyScrollTop(runtime, container, 0);
       runtime.initialized = true;
       await set(scroll.syncThreadScrollPosition$, container, true, signal);
@@ -462,8 +386,6 @@ function createScrollNavigationSignals(
         throw new Error("Chat scroll container is not mounted");
       }
       if (position) {
-        set(scroll.setIgnoreContentResizeScroll$, false);
-        clearSmoothAutoScrollRuntime(runtime);
         if (scrollToPosition(runtime, container, position)) {
           runtime.initialized = true;
           return;
@@ -510,16 +432,21 @@ function createScrollNavigationSignals(
     },
   );
 
-  // Content growth normally restores in the same frame that produced it.
-  // While smooth tail-follow is active, the render commit already owns the
-  // motion, so this observer only retargets that animation when the bottom
-  // moves. Otherwise ResizeObserver's before-paint delivery keeps the existing
-  // exact anchor-or-tail correction and avoids a one-frame flash.
-  const restoreAfterContentResize$ = createContentResizeRestoreSignal(
-    threadId,
-    scroll,
-    runtime,
-    restoreAfterResize$,
+  // Content growth restores in the same frame that produced it. ResizeObserver
+  // callbacks run after layout and before paint, so a scroll written here is
+  // part of that frame; waiting for the next one would paint the grown content
+  // at the old offset first, which reads as a flash before the view snaps back.
+  // Deliberately outside `resizeScheduled`: sharing that flag would fold this
+  // restore into the deferred pass, which is the frame of delay it exists to
+  // avoid.
+  const restoreAfterContentResize$ = command(
+    async ({ set }, signal: AbortSignal): Promise<void> => {
+      if (!runtime.initialized) {
+        return;
+      }
+      L.debug("content resize scroll restore", { threadId });
+      await set(restoreAfterResize$, signal);
+    },
   );
 
   return {
@@ -536,7 +463,6 @@ function createRenderScrollSignals(
   threadId: string,
   scroll: InternalScrollSignals,
   runtime: ScrollRuntime,
-  smoothAutoScrollEnabled$: Computed<boolean>,
 ) {
   const internalPendingRequest$ = state<ScrollAfterRenderRequest | null>(null);
   const pendingScrollAfterRenderRequest$ = computed((get) => {
@@ -579,29 +505,14 @@ function createRenderScrollSignals(
           SCROLL_COMMIT_TO_TAIL_ATTRIBUTE,
         );
         if (commitToTail) {
-          const smooth =
-            runtime.initialized &&
-            get(smoothAutoScrollEnabled$) &&
-            !prefersReducedMotion(container) &&
-            !isAtBottom(container);
-          set(scroll.setIgnoreContentResizeScroll$, smooth);
-          if (smooth) {
-            smoothScrollToBottom(runtime, container);
-          } else {
-            clearSmoothAutoScrollRuntime(runtime);
-            applyScrollTop(runtime, container, container.scrollHeight);
-          }
-        } else {
-          set(scroll.setIgnoreContentResizeScroll$, false);
-          clearSmoothAutoScrollRuntime(runtime);
-          if (
-            !request.position ||
-            !scrollToPosition(runtime, container, request.position)
-          ) {
-            throw new Error(
-              `Chat scroll target is not rendered: ${request.position?.targetEventId ?? "none"}`,
-            );
-          }
+          applyScrollTop(runtime, container, container.scrollHeight);
+        } else if (
+          !request.position ||
+          !scrollToPosition(runtime, container, request.position)
+        ) {
+          throw new Error(
+            `Chat scroll target is not rendered: ${request.position?.targetEventId ?? "none"}`,
+          );
         }
         runtime.initialized = true;
         set(clearPendingRequest$, revision);
@@ -613,8 +524,8 @@ function createRenderScrollSignals(
           scrollTop: container.scrollTop,
         });
         if (commitToTail) {
-          // After selecting the initial instant position or starting the later
-          // smooth motion: the render window can now resume following the tail.
+          // After the DOM write: the commit runs during React's ref phase, and
+          // the offset must be applied before this frame paints.
           await set(scroll.clearThreadScrollPosition$, signal);
         }
       },
@@ -654,77 +565,14 @@ function createRenderScrollSignals(
 
 type ScrollNavigationSignals = ReturnType<typeof createScrollNavigationSignals>;
 
-function isUserScrollKey(key: string): boolean {
-  return (
-    key === "PageUp" ||
-    key === "PageDown" ||
-    key === "ArrowUp" ||
-    key === "ArrowDown" ||
-    key === "Home" ||
-    key === "End" ||
-    key === " "
-  );
-}
-
-function createInterruptSmoothAutoScrollSignal(
-  scroll: InternalScrollSignals,
-  runtime: ScrollRuntime,
-) {
-  return command(
-    async (
-      { get, set },
-      container: HTMLElement,
-      signal: AbortSignal,
-    ): Promise<void> => {
-      if (!get(scroll.ignoreContentResizeScroll$)) {
-        return;
-      }
-      applyScrollTop(runtime, container, container.scrollTop);
-      clearSmoothAutoScrollRuntime(runtime);
-      set(scroll.setIgnoreContentResizeScroll$, false);
-      await set(scroll.syncThreadScrollPosition$, container, true, signal);
-    },
-  );
-}
-
-function attachSmoothAutoScrollInterruptionListeners(
-  container: HTMLElement,
-  interrupt: (event: Event) => void,
-  signal: AbortSignal,
-): void {
-  const handleKeyDown = (event: KeyboardEvent) => {
-    if (isUserScrollKey(event.key)) {
-      interrupt(event);
-    }
-  };
-  container.addEventListener("wheel", interrupt, { passive: true });
-  container.addEventListener("touchmove", interrupt, { passive: true });
-  container.addEventListener("pointerdown", interrupt, { passive: true });
-  container.addEventListener("keydown", handleKeyDown, { passive: true });
-  signal.addEventListener(
-    "abort",
-    () => {
-      container.removeEventListener("wheel", interrupt);
-      container.removeEventListener("touchmove", interrupt);
-      container.removeEventListener("pointerdown", interrupt);
-      container.removeEventListener("keydown", handleKeyDown);
-    },
-    { once: true },
-  );
-}
-
 function createScrollContainerOnRef(
   threadId: string,
   scroll: InternalScrollSignals,
   navigation: ScrollNavigationSignals,
   runtime: ScrollRuntime,
 ) {
-  const interruptSmoothAutoScroll$ = createInterruptSmoothAutoScrollSignal(
-    scroll,
-    runtime,
-  );
   return onRef(
-    command(({ get, set }, container: HTMLElement, signal: AbortSignal) => {
+    command(({ set }, container: HTMLElement, signal: AbortSignal) => {
       set(scroll.bindScrollContainer$, container);
       L.debug("container bound", {
         threadId,
@@ -742,19 +590,6 @@ function createScrollContainerOnRef(
           // too. Where they sit says nothing about where the thread sits.
           return;
         }
-        if (get(scroll.ignoreContentResizeScroll$)) {
-          if (!isAtBottom(container)) {
-            return;
-          }
-          clearSmoothAutoScrollRuntime(runtime);
-          set(scroll.setIgnoreContentResizeScroll$, false);
-          return set(
-            scroll.syncThreadScrollPosition$,
-            container,
-            false,
-            signal,
-          );
-        }
         const programmatic =
           runtime.programmaticScrollTop === container.scrollTop;
         if (!programmatic) {
@@ -771,9 +606,6 @@ function createScrollContainerOnRef(
           signal,
         );
       });
-      const handleSmoothInterruption = onDomEventFn((_event: Event) => {
-        return set(interruptSmoothAutoScroll$, container, signal);
-      });
       const scheduleRestoreAfterResize = () => {
         set(navigation.scheduleRestoreAfterResize$, signal);
       };
@@ -783,11 +615,6 @@ function createScrollContainerOnRef(
         capture: true,
         passive: true,
       });
-      attachSmoothAutoScrollInterruptionListeners(
-        container,
-        handleSmoothInterruption,
-        signal,
-      );
       resizeObserver.observe(container);
       container.ownerDocument.defaultView?.visualViewport?.addEventListener(
         "resize",
@@ -810,8 +637,6 @@ function createScrollContainerOnRef(
           set(scroll.clearScrollContainer$, container);
           runtime.initialized = false;
           runtime.programmaticScrollTop = null;
-          clearSmoothAutoScrollRuntime(runtime);
-          set(scroll.setIgnoreContentResizeScroll$, false);
           L.debug("container unbound", { threadId });
         },
         { once: true },
@@ -861,26 +686,19 @@ export function createChatThreadScrollSignals(
   threadId: string,
   position: ThreadScrollPositionSignals,
   afterThreadScrollPositionChanged$: Command<Promise<void>, [AbortSignal]>,
-  smoothAutoScrollEnabled$: Computed<boolean>,
 ): ChatThreadScrollSignals {
   const runtime: ScrollRuntime = {
     initialized: false,
     resizeScheduled: false,
     latestRenderRequestRevision: 0,
     programmaticScrollTop: null,
-    smoothAutoScrollTarget: null,
   };
   const scroll = createInternalScrollSignals(
     threadId,
     position,
     afterThreadScrollPositionChanged$,
   );
-  const render = createRenderScrollSignals(
-    threadId,
-    scroll,
-    runtime,
-    smoothAutoScrollEnabled$,
-  );
+  const render = createRenderScrollSignals(threadId, scroll, runtime);
   const navigation = createScrollNavigationSignals(
     threadId,
     scroll,
@@ -903,8 +721,6 @@ export function createChatThreadScrollSignals(
     scrollContainer$: scroll.scrollContainer$,
     threadScrollPosition$: scroll.threadScrollPosition$,
     awayFromBottom$: scroll.awayFromBottom$,
-    ignoreContentResizeScroll$: scroll.ignoreContentResizeScroll$,
-    setIgnoreContentResizeScroll$: scroll.setIgnoreContentResizeScroll$,
     readRenderedThreadScrollPosition$: scroll.readRenderedThreadScrollPosition$,
     autoScroll$: render.autoScroll$,
     scrollTo$: navigation.scrollTo$,
