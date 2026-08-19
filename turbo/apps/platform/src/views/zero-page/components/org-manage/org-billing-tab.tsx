@@ -1513,7 +1513,11 @@ function ConcurrencySubscriptionRow({
   }) => void;
   subscription: ConcurrencySubscription;
 }) {
-  const action = canceled ? "restore" : "change";
+  const restoreAvailable =
+    canceled ||
+    (subscription.scheduledQuantity !== null &&
+      subscription.scheduledQuantity !== undefined);
+  const action = restoreAvailable ? "restore" : "change";
   return (
     <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
@@ -1551,7 +1555,7 @@ function ConcurrencySubscriptionRow({
         ) : null}
       </div>
       <Button
-        variant={canceled ? "default" : "outline"}
+        variant={restoreAvailable ? "default" : "outline"}
         size="sm"
         className="h-8 shrink-0 text-xs"
         onClick={() => {
@@ -1567,7 +1571,7 @@ function ConcurrencySubscriptionRow({
           });
         }}
       >
-        {canceled
+        {restoreAvailable
           ? i18n.t(($) => {
               return $.billing.common.restore;
             })

@@ -88,15 +88,27 @@ export interface StripeSchedulePhase {
   readonly start_date: number;
   readonly end_date: number;
   readonly add_invoice_items?: readonly unknown[];
+  readonly currency?: string | null;
+  readonly metadata?: Record<string, string> | null;
+  readonly proration_behavior?:
+    | "always_invoice"
+    | "create_prorations"
+    | "none"
+    | null;
   readonly items?: readonly {
     readonly price: StripeRef;
     readonly quantity?: number;
+    readonly discounts?: readonly StripeScheduleDiscount[] | null;
+    readonly metadata?: Record<string, string> | null;
+    readonly tax_rates?: readonly StripeRef[] | null;
   }[];
-  readonly discounts?: readonly {
-    readonly coupon: StripeRef;
-    readonly discount: StripeRef;
-    readonly promotion_code: StripeRef;
-  }[];
+  readonly discounts?: readonly StripeScheduleDiscount[] | null;
+}
+
+export interface StripeScheduleDiscount {
+  readonly coupon?: StripeRef;
+  readonly discount?: StripeRef;
+  readonly promotion_code?: StripeRef;
 }
 
 export interface StripeSubscriptionSchedule {
@@ -109,17 +121,23 @@ export interface StripeSubscriptionSchedule {
 export interface StripeSchedulePhaseItemParam {
   readonly price: string;
   readonly quantity?: number;
+  readonly discounts?: StripeSchedulePhaseDiscountParam[];
+  readonly metadata?: StripeMetadataParam;
+  readonly tax_rates?: string[];
 }
 
-export interface StripeSchedulePhaseDiscountParam {
-  readonly discount: string;
-}
+export type StripeSchedulePhaseDiscountParam =
+  | { readonly coupon: string }
+  | { readonly discount: string }
+  | { readonly promotion_code: string };
 
 export interface StripeSchedulePhaseParam {
   readonly start_date?: number;
   readonly end_date?: number;
   readonly duration?: StripePriceRecurring;
+  readonly currency?: string;
   readonly items: StripeSchedulePhaseItemParam[];
+  readonly metadata?: StripeMetadataParam;
   readonly proration_behavior?: "always_invoice" | "create_prorations" | "none";
   readonly discounts?: StripeSchedulePhaseDiscountParam[];
 }
@@ -521,6 +539,16 @@ export interface StripeInvoicesApi {
   ): Promise<StripeInvoice>;
 }
 
+type StripeInvoicePreviewCancellationParams =
+  | {
+      readonly cancel_at?: never;
+      readonly cancel_at_period_end?: boolean;
+    }
+  | {
+      readonly cancel_at?: "" | number | "max_period_end" | "min_period_end";
+      readonly cancel_at_period_end?: never;
+    };
+
 export interface StripeInvoiceCreatePreviewParams {
   readonly customer?: string;
   readonly subscription?: string;
@@ -532,7 +560,7 @@ export interface StripeInvoiceCreatePreviewParams {
     readonly quantity: number;
     readonly metadata?: StripeMetadataParam;
   }[];
-  readonly subscription_details?: {
+  readonly subscription_details?: StripeInvoicePreviewCancellationParams & {
     readonly items: StripeSubscriptionUpdateItemParam[];
     readonly proration_behavior?:
       | "always_invoice"

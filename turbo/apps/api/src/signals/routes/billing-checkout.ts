@@ -64,14 +64,12 @@ import {
 } from "../services/billing-payment-method.service";
 import {
   confirmUsagePackAllocationChange,
-  discardUsagePackAllocationChangePreviewForPaymentSetup,
   getUsagePackManagement,
   previewUsagePackAllocationChange,
   usagePackAllocationChangeSchemaAvailable,
 } from "../services/usage-pack-allocation-change.service";
 import {
   confirmUsagePackSubscriptionChange,
-  discardUsagePackSubscriptionChangePreviewForPaymentSetup,
   previewUsagePackSubscriptionChange,
   usagePackMemberAdditionSchemaAvailable,
   usagePackSubscriptionChangeSchemaAvailable,
@@ -124,7 +122,35 @@ const usagePackManagementDisabled = Object.freeze({
 });
 
 const SIGNUP_ATTRIBUTION_KEY = "signup_attribution";
+const USAGE_PACK_PLAN_ENDING_MESSAGE =
+  "Your Plan is scheduled to end before this usage pack change can take effect. Restore your Plan first, then try again.";
 const log = logger("api:zero:billing-checkout");
+
+type UsagePackSubscriptionChangePreviewResult = Awaited<
+  ReturnType<typeof previewUsagePackSubscriptionChange>
+>;
+type UsagePackSubscriptionChangeConfirmResult = Awaited<
+  ReturnType<typeof confirmUsagePackSubscriptionChange>
+>;
+type UsagePackSubscriptionChangeResult =
+  | UsagePackSubscriptionChangePreviewResult
+  | UsagePackSubscriptionChangeConfirmResult;
+type UsagePackSubscriptionChangeConflictResult = Extract<
+  UsagePackSubscriptionChangeResult,
+  { readonly status: "plan_ending" | "conflict" }
+>;
+const USAGE_PACK_SUBSCRIPTION_CHANGE_CONFLICT_MESSAGES = {
+  plan_ending: USAGE_PACK_PLAN_ENDING_MESSAGE,
+  conflict: "Another usage pack billing change is in progress",
+} satisfies Readonly<
+  Record<UsagePackSubscriptionChangeConflictResult["status"], string>
+>;
+
+function isUsagePackSubscriptionChangeConflict(
+  result: UsagePackSubscriptionChangeResult,
+): result is UsagePackSubscriptionChangeConflictResult {
+  return result.status === "plan_ending" || result.status === "conflict";
+}
 
 async function signupAttributionForUser(
   clerk: ClerkClient,
@@ -268,22 +294,13 @@ async function routeUsagePackSubscriptionChangePayment(
     },
     signal,
   );
-  if (route.kind === "checkout") {
-    await discardUsagePackSubscriptionChangePreviewForPaymentSetup(args.db, {
-      orgId: args.orgId,
-      changeId: args.preview.changeId,
-    });
-    signal.throwIfAborted();
-    return {
-      kind: "response",
-      body: { ...args.preview, checkoutUrl: route.url },
-    };
-  }
   return {
     kind: "response",
     body: {
       ...args.preview,
-      paymentMethodPreviewToken: route.paymentMethodPreviewToken,
+      ...(route.paymentMethodPreviewToken
+        ? { paymentMethodPreviewToken: route.paymentMethodPreviewToken }
+        : {}),
     },
   };
 }
@@ -1005,6 +1022,9 @@ const usagePackChangePreviewAuthed$ = command(
     if (result.status === "same_package") {
       return badRequestMessage("Member already has this usage pack");
     }
+    if (result.status === "plan_ending") {
+      return conflict(USAGE_PACK_PLAN_ENDING_MESSAGE);
+    }
     if (result.status === "conflict") {
       return conflict("Another usage pack billing change is in progress");
     }
@@ -1033,22 +1053,13 @@ const usagePackChangePreviewAuthed$ = command(
         },
         signal,
       );
-      if (route.kind === "checkout") {
-        await discardUsagePackAllocationChangePreviewForPaymentSetup(db, {
-          orgId: access.auth.orgId,
-          changeId: result.preview.changeId,
-        });
-        signal.throwIfAborted();
-        return {
-          status: 200 as const,
-          body: { ...result.preview, checkoutUrl: route.url },
-        };
-      }
       return {
         status: 200 as const,
         body: {
           ...result.preview,
-          paymentMethodPreviewToken: route.paymentMethodPreviewToken,
+          ...(route.paymentMethodPreviewToken
+            ? { paymentMethodPreviewToken: route.paymentMethodPreviewToken }
+            : {}),
         },
       };
     }
@@ -1119,21 +1130,9 @@ const usagePackChangeConfirmAuthed$ = command(
       if (revalidated.kind === "invalid_preview") {
         return conflict("Usage pack change preview is no longer valid");
       }
-      if (revalidated.kind === "checkout") {
-        await discardUsagePackAllocationChangePreviewForPaymentSetup(db, {
-          orgId: access.auth.orgId,
-          changeId,
-        });
-        signal.throwIfAborted();
-        return {
-          status: 200 as const,
-          body: {
-            status: "checkout_required" as const,
-            checkoutUrl: revalidated.url,
-          },
-        };
+      if (revalidated.kind === "preview") {
+        paymentMethod = revalidated;
       }
-      paymentMethod = revalidated;
     }
     const result = await confirmUsagePackAllocationChange(
       db,
@@ -1149,6 +1148,9 @@ const usagePackChangeConfirmAuthed$ = command(
     }
     if (result.status === "expired") {
       return badRequestMessage("Usage pack change preview expired");
+    }
+    if (result.status === "plan_ending") {
+      return conflict(USAGE_PACK_PLAN_ENDING_MESSAGE);
     }
     if (result.status === "conflict") {
       return conflict("Usage pack allocation changed; create a new preview");
@@ -1574,8 +1576,10 @@ const usagePackSubscriptionChangePreviewAuthed$ = command(
         "Organization members changed; refresh billing and try again",
       );
     }
-    if (result.status === "conflict") {
-      return conflict("Another usage pack billing change is in progress");
+    if (isUsagePackSubscriptionChangeConflict(result)) {
+      return conflict(
+        USAGE_PACK_SUBSCRIPTION_CHANGE_CONFLICT_MESSAGES[result.status],
+      );
     }
     if (
       result.preview.immediateAmountCents > 0 &&
@@ -1664,21 +1668,9 @@ const usagePackSubscriptionChangeConfirmAuthed$ = command(
       if (revalidated.kind === "invalid_preview") {
         return conflict("Usage pack subscription preview is no longer valid");
       }
-      if (revalidated.kind === "checkout") {
-        await discardUsagePackSubscriptionChangePreviewForPaymentSetup(db, {
-          orgId: access.auth.orgId,
-          changeId: bodyResult.data.changeId,
-        });
-        signal.throwIfAborted();
-        return {
-          status: 200 as const,
-          body: {
-            status: "checkout_required" as const,
-            checkoutUrl: revalidated.url,
-          },
-        };
+      if (revalidated.kind === "preview") {
+        paymentMethod = revalidated;
       }
-      paymentMethod = revalidated;
     }
     const result = await confirmUsagePackSubscriptionChange(
       db,
@@ -1695,8 +1687,10 @@ const usagePackSubscriptionChangeConfirmAuthed$ = command(
     if (result.status === "expired") {
       return badRequestMessage("Usage pack subscription preview expired");
     }
-    if (result.status === "conflict") {
-      return conflict("Another usage pack billing change is in progress");
+    if (isUsagePackSubscriptionChangeConflict(result)) {
+      return conflict(
+        USAGE_PACK_SUBSCRIPTION_CHANGE_CONFLICT_MESSAGES[result.status],
+      );
     }
     return { status: 200 as const, body: result.response };
   },

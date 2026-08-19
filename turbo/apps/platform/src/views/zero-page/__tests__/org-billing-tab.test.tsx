@@ -1221,6 +1221,7 @@ describe("organization billing settings", () => {
   );
 
   it("previews and confirms an in-place legacy Team migration", async () => {
+    const successToast = vi.spyOn(toast, "success");
     let migrationState: UsagePackMigrationStateResponse = {
       tier: "team",
       targetTier: null,
@@ -1555,6 +1556,10 @@ describe("organization billing settings", () => {
     await expect(
       screen.findByText("Switches to Team on Sep 1, 2026"),
     ).resolves.toBeVisible();
+    expect(successToast).toHaveBeenCalledTimes(1);
+    expect(successToast).toHaveBeenLastCalledWith(
+      "Subscription change confirmed.",
+    );
     expect(
       screen.queryByText(
         "Conversion scheduled for Sep 1, 2026. Your current plan and entitlements remain active until then.",
@@ -3216,6 +3221,110 @@ describe("organization billing settings", () => {
     expect(changeButton).toBeEnabled();
   });
 
+  it("reports a Plan-ending concurrency conflict after submission", async () => {
+    const errorToast = vi.spyOn(toast, "error");
+    let previewedQuantity: number | null = null;
+    let canceledSubscriptionId: string | null = null;
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Ending Team Concurrency Org",
+      role: "admin",
+    });
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
+      return respond(200, {
+        ...activeTeamBillingStatus(),
+        cancelAtPeriodEnd: true,
+        scheduledChange: {
+          type: "cancel",
+          targetTier: "pro-suspend",
+          effectiveDate: "2026-06-01T00:00:00Z",
+        },
+        concurrencyLimit: 15,
+        concurrencySubscriptions: [
+          {
+            id: "sub_concurrency_ending_plan",
+            quantity: 5,
+            currentPeriodEnd: "2026-06-01T00:00:00Z",
+            cancelAtPeriodEnd: false,
+            canReduce: true,
+            canChangeInApp: true,
+          },
+        ],
+      });
+    });
+    context.mocks.api(
+      billingConcurrencySubscriptionContract.previewChange,
+      ({ body, respond }) => {
+        previewedQuantity = body.quantity;
+        return respond(409, {
+          error: {
+            code: "CONFLICT",
+            message:
+              "Your Plan is scheduled to end before this concurrency reduction can take effect. Restore your Plan first, then try again.",
+          },
+        });
+      },
+    );
+    context.mocks.api(
+      billingConcurrencySubscriptionContract.cancel,
+      ({ params, respond }) => {
+        canceledSubscriptionId = params.subscriptionId;
+        return respond(409, {
+          error: {
+            code: "CONFLICT",
+            message:
+              "Your Plan is scheduled to end before the concurrency cancellation can take effect. Restore your Plan first, then try again.",
+          },
+        });
+      },
+    );
+
+    await openBillingTab();
+
+    click(buttonByText("Change"));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Change concurrency",
+    });
+    const quantityInput = within(dialog).getByRole("textbox", {
+      name: "Slots",
+    });
+    const decreaseQuantity = within(dialog).getByLabelText(
+      "Decrease additional concurrency quantity",
+    );
+    const increaseQuantity = within(dialog).getByLabelText(
+      "Increase additional concurrency quantity",
+    );
+
+    expect(quantityInput).toHaveValue("5");
+    expect(decreaseQuantity).toBeEnabled();
+    expect(increaseQuantity).toBeEnabled();
+    expect(buttonByText("Cancel entire subscription", dialog)).toBeEnabled();
+
+    click(decreaseQuantity);
+    expect(quantityInput).toHaveValue("4");
+    click(buttonByText("Review change", dialog));
+
+    await waitFor(() => {
+      expect(previewedQuantity).toBe(4);
+      expect(errorToast).toHaveBeenCalledWith(
+        "Your Plan is scheduled to end before this concurrency reduction can take effect. Restore your Plan first, then try again.",
+      );
+    });
+
+    click(buttonByText("Cancel entire subscription", dialog));
+    const cancelDialog = await screen.findByRole("dialog", {
+      name: "Cancel entire subscription",
+    });
+    click(buttonByText("Cancel subscription", cancelDialog));
+
+    await waitFor(() => {
+      expect(canceledSubscriptionId).toBe("sub_concurrency_ending_plan");
+      expect(errorToast).toHaveBeenCalledWith(
+        "Your Plan is scheduled to end before the concurrency cancellation can take effect. Restore your Plan first, then try again.",
+      );
+    });
+  });
+
   it("manages an active concurrency subscription through Change", async () => {
     let previewedQuantity: number | null = null;
     let confirmedQuantity: number | null = null;
@@ -3532,6 +3641,7 @@ describe("organization billing settings", () => {
   it("lets an admin adjust to a lower concurrency subscription quantity", async () => {
     let previewedQuantity: number | null = null;
     let confirmedQuantity: number | null = null;
+    let restoredSubscriptionId: string | null = null;
     let billingStatus: BillingStatusResponse = {
       ...activeTeamBillingStatus(),
       concurrencyLimit: 15,
@@ -3594,6 +3704,25 @@ describe("organization billing settings", () => {
         });
       },
     );
+    context.mocks.api(
+      billingConcurrencySubscriptionContract.restore,
+      ({ params, respond }) => {
+        restoredSubscriptionId = params.subscriptionId;
+        billingStatus = {
+          ...billingStatus,
+          concurrencySubscriptions: billingStatus.concurrencySubscriptions.map(
+            (subscription) => {
+              return {
+                ...subscription,
+                scheduledQuantity: null,
+                scheduledChangeAt: null,
+              };
+            },
+          ),
+        };
+        return respond(200, { success: true });
+      },
+    );
 
     await openBillingTab();
 
@@ -3642,6 +3771,21 @@ describe("organization billing settings", () => {
       expect(
         screen.getByText("Changes to 3 slots on Jun 1, 2026"),
       ).toBeInTheDocument();
+      expect(buttonByText("Restore")).toBeEnabled();
+    });
+
+    click(buttonByText("Restore"));
+    const restoreDialog = await screen.findByRole("dialog", {
+      name: "Restore concurrency subscription?",
+    });
+    click(buttonByText("Restore subscription", restoreDialog));
+
+    await waitFor(() => {
+      expect(restoredSubscriptionId).toBe("sub_concurrency_reduce");
+      expect(
+        screen.queryByText("Changes to 3 slots on Jun 1, 2026"),
+      ).not.toBeInTheDocument();
+      expect(buttonByText("Change")).toBeEnabled();
     });
   });
 

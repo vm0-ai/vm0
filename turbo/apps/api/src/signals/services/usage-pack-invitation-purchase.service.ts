@@ -1366,23 +1366,24 @@ export async function confirmUsagePackInvitationPurchase(
     },
     signal,
   );
-  if (route.kind === "checkout") {
-    return { status: "conflict" };
-  }
   if (
     args.paymentMethod &&
-    (args.paymentMethod.paymentMethodId !== route.paymentMethodId ||
+    (route.kind === "checkout" ||
+      args.paymentMethod.paymentMethodId !== route.paymentMethodId ||
       args.paymentMethod.paymentMethodType !== route.paymentMethodType)
   ) {
     return { status: "conflict" };
   }
-  const paymentMethod = args.paymentMethod ?? route;
+  const paymentMethod =
+    args.paymentMethod ?? (route.kind === "preview" ? route : undefined);
   const metadata = checkoutMetadata(purchase.id);
   const invoice = await stripe.invoices.create(
     {
       customer: subscription.stripeCustomerId,
       auto_advance: false,
-      ...stripeBillingPurchasePaymentParams(paymentMethod),
+      ...(paymentMethod
+        ? stripeBillingPurchasePaymentParams(paymentMethod)
+        : {}),
       metadata,
     },
     { idempotencyKey: `usage-pack-invitation:${purchase.id}:invoice` },

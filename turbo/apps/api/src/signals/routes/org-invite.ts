@@ -266,17 +266,13 @@ const purchasePreviewInner$ = command(
         },
         signal,
       );
-      if (route.kind === "checkout") {
-        return {
-          status: 200 as const,
-          body: { ...result.preview, checkoutUrl: route.url },
-        };
-      }
       return {
         status: 200 as const,
         body: {
           ...result.preview,
-          paymentMethodPreviewToken: route.paymentMethodPreviewToken,
+          ...(route.paymentMethodPreviewToken
+            ? { paymentMethodPreviewToken: route.paymentMethodPreviewToken }
+            : {}),
         },
       };
     }
@@ -295,10 +291,9 @@ async function revalidateInvitationPurchasePreview(
 ): Promise<
   | {
       readonly kind: "continue";
-      readonly paymentMethod: BillingPurchasePaymentMethod;
+      readonly paymentMethod?: BillingPurchasePaymentMethod;
     }
   | { readonly kind: "invalid_preview" }
-  | { readonly kind: "checkout"; readonly url: string }
 > {
   const preview = parseBillingPaymentMethodPreviewToken(
     args.paymentMethodPreviewToken,
@@ -333,8 +328,8 @@ async function revalidateInvitationPurchasePreview(
   if (revalidated.kind === "invalid_preview") {
     return { kind: "invalid_preview" };
   }
-  return revalidated.kind === "checkout"
-    ? { kind: "checkout", url: revalidated.url }
+  return revalidated.kind === "hosted_invoice"
+    ? { kind: "continue" }
     : { kind: "continue", paymentMethod: revalidated };
 }
 
@@ -388,15 +383,6 @@ const purchaseConfirmInner$ = command(
       if (revalidated.kind === "invalid_preview") {
         return conflict("Invitation purchase preview is no longer valid");
       }
-      if (revalidated.kind === "checkout") {
-        return {
-          status: 200 as const,
-          body: {
-            status: "checkout_required" as const,
-            checkoutUrl: revalidated.url,
-          },
-        };
-      }
       paymentMethod = revalidated.paymentMethod;
     }
     const result = await confirmUsagePackInvitationPurchase(
@@ -417,9 +403,6 @@ const purchaseConfirmInner$ = command(
       );
     }
     if (result.status === "pending_payment") {
-      if (!body.data.paymentMethodPreviewToken) {
-        return conflict("Payment confirmation is required");
-      }
       return {
         status: 200 as const,
         body: {

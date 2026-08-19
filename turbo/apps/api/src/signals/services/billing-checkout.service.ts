@@ -136,7 +136,8 @@ type StartConcurrencyPurchaseResult =
       readonly reason:
         | "invalid_quantity"
         | "missing_plan_subscription"
-        | "pending_update";
+        | "pending_update"
+        | "plan_ending";
     };
 
 type PreviewInitialConcurrencyPurchaseResult =
@@ -152,7 +153,8 @@ type PreviewInitialConcurrencyPurchaseResult =
         | "not_found"
         | "canceling"
         | "no_change"
-        | "pending_update";
+        | "pending_update"
+        | "plan_ending";
     };
 
 const CREDITS_PER_DOLLAR = 1000;

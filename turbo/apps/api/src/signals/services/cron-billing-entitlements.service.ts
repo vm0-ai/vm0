@@ -1322,8 +1322,9 @@ async function reconcileConcurrencyCandidate(
   const isPaymentFailed = subscriptionIsPaymentFailed(subscription);
   const syncedFields = {
     subscriptionStatus: subscription.status,
-    // `cancel_at` can be the main-plan grant expiry on a shared subscription.
-    cancelAtPeriodEnd: subscription.cancel_at_period_end,
+    cancelAtPeriodEnd:
+      subscription.cancel_at_period_end &&
+      knownBillingPlanPriceItem(subscription.items.data) === undefined,
     updatedAt: now,
     ...(periodEnd ? { currentPeriodEnd: periodEnd } : {}),
     ...(item ? { stripePriceId: item.price.id } : {}),

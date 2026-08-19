@@ -1069,6 +1069,11 @@ export const confirmUsagePackMigration$ = command(
       [200],
     );
     signal.throwIfAborted();
+    toast.success(
+      i18n.t(($) => {
+        return $.billing.toasts.subscriptionChangeConfirmed;
+      }),
+    );
     set(setUsagePackMigrationPreview$, null);
     set(reloadUsagePackMigration$);
     set(reloadUsagePackManagement$);
