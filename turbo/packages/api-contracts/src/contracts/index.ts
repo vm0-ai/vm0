@@ -1749,6 +1749,7 @@ export {
   PRESENTATION_TEMPLATE_PAGE_CONTENT_TYPE,
   PRESENTATION_TEMPLATE_SOURCE_CONTENT_TYPE,
   presentationTemplateStatusSchema,
+  presentationTemplateImportErrorCodeSchema,
   presentationTemplatesContract,
   type CreatePresentationTemplateImportBody,
   type PresentationTemplateUploadBody,

@@ -1,4 +1,6 @@
 import type { PresentationTemplateSummary } from "@okouai/api-contracts/contracts/presentation-templates";
+import { agentRuns } from "@okouai/db/schema/agent-run-session-conversation";
+import { presentationTemplateImportThreads } from "@okouai/db/schema/presentation-template-import-thread";
 import { presentationTemplates } from "@okouai/db/schema/presentation-template";
 import { and, desc, eq, ne } from "drizzle-orm";
 import { v5 as uuidv5 } from "uuid";
@@ -80,4 +82,46 @@ export async function listOwnedPresentationTemplates(
       ),
     )
     .orderBy(desc(presentationTemplates.createdAt));
+}
+
+/**
+ * A run may only reach the import whose analysis thread it belongs to. The
+ * thread comes from the run row and the mapping is written before the first
+ * message is sent, so neither side of the link is caller-supplied.
+ */
+export async function loadRunOwnedPresentationTemplate(
+  db: ReadonlyDb,
+  auth: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly runId: string;
+  },
+  templateId: string,
+): Promise<PresentationTemplateRow | null> {
+  const [link] = await db
+    .select({ templateId: presentationTemplateImportThreads.templateId })
+    .from(agentRuns)
+    .innerJoin(
+      presentationTemplateImportThreads,
+      eq(
+        presentationTemplateImportThreads.chatThreadId,
+        agentRuns.chatThreadId,
+      ),
+    )
+    .where(
+      and(
+        eq(agentRuns.id, auth.runId),
+        eq(agentRuns.orgId, auth.orgId),
+        eq(agentRuns.userId, auth.userId),
+      ),
+    )
+    .limit(1);
+  if (link?.templateId !== templateId) {
+    return null;
+  }
+  return await loadOwnedPresentationTemplate(db, {
+    orgId: auth.orgId,
+    ownerUserId: auth.userId,
+    templateId,
+  });
 }

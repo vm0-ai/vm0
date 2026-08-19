@@ -127,6 +127,7 @@ import * as mailDraftSchema from "./schema/mail-draft";
 import * as browserSessionSchema from "./schema/browser-session";
 import * as presentationTemplateSchema from "./schema/presentation-template";
 import * as presentationTemplateUploadSchema from "./schema/presentation-template-upload";
+import * as presentationTemplateImportThreadSchema from "./schema/presentation-template-import-thread";
 
 export const schema = {
   ...userSchema,
@@ -258,6 +259,7 @@ export const schema = {
   ...browserSessionSchema,
   ...presentationTemplateSchema,
   ...presentationTemplateUploadSchema,
+  ...presentationTemplateImportThreadSchema,
 };
 
 export type DatabaseSchema = typeof schema;

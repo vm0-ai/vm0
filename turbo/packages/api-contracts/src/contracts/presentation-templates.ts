@@ -89,6 +89,29 @@ const presentationTemplateUploadResponseSchema = z.object({
   uploadHeaders: z.record(z.string(), z.string()),
 });
 
+export const presentationTemplateImportErrorCodeSchema = z.enum([
+  "analysis_failed",
+  "publish_failed",
+]);
+
+const sourceResponseSchema = z.object({
+  url: z.string().url(),
+  filename: z.string(),
+  contentType: z.literal(PRESENTATION_TEMPLATE_SOURCE_CONTENT_TYPE),
+});
+
+const pageDownloadSchema = z.object({
+  index: z.number().int().nonnegative(),
+  filename: z.string(),
+  url: z.string().url(),
+  contentType: z.literal(PRESENTATION_TEMPLATE_PAGE_CONTENT_TYPE),
+});
+
+const failImportBodySchema = z.object({
+  code: presentationTemplateImportErrorCodeSchema,
+  message: z.string().trim().min(1).max(2000),
+});
+
 const updatePresentationTemplateBodySchema = z.object({
   title: z.string().trim().min(1).max(255),
 });
@@ -96,6 +119,15 @@ const updatePresentationTemplateBodySchema = z.object({
 const mutationResponseSchema = z.object({
   id: z.uuid(),
   status: presentationTemplateStatusSchema,
+});
+
+/**
+ * Commit hands back the chat thread the analysis runs in so the caller can open
+ * it. It is null only for an import committed before its thread existed, which
+ * a repeated commit resolves.
+ */
+const commitResponseSchema = mutationResponseSchema.extend({
+  chatThreadId: z.uuid().nullable(),
 });
 
 export const presentationTemplatesContract = c.router({
@@ -150,15 +182,62 @@ export const presentationTemplatesContract = c.router({
     headers: authHeadersSchema,
     body: z.object({}),
     responses: {
-      200: mutationResponseSchema,
+      200: commitResponseSchema,
       400: apiErrorSchema,
+      401: apiErrorSchema,
+      402: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      429: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Close an import and start its analysis in a chat thread",
+  },
+  source: {
+    method: "GET",
+    path: "/api/okou/presentation-templates/:templateId/source",
+    pathParams: presentationTemplateIdParamsSchema,
+    headers: authHeadersSchema,
+    responses: {
+      200: sourceResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Prepare a run-scoped source PPTX download",
+  },
+  pages: {
+    method: "GET",
+    path: "/api/okou/presentation-templates/:templateId/pages",
+    pathParams: presentationTemplateIdParamsSchema,
+    headers: authHeadersSchema,
+    responses: {
+      200: z.object({ pages: z.array(pageDownloadSchema) }),
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Prepare ordered run-scoped page PNG downloads",
+  },
+  fail: {
+    method: "POST",
+    path: "/api/okou/presentation-templates/:templateId/fail",
+    pathParams: presentationTemplateIdParamsSchema,
+    headers: authHeadersSchema,
+    body: failImportBodySchema,
+    responses: {
+      200: mutationResponseSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
       409: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Close an import once every allocated upload slot is filled",
+    summary: "Mark a presentation template analysis as failed",
   },
   get: {
     method: "GET",

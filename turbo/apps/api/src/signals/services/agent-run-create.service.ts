@@ -98,7 +98,11 @@ import {
   getSkillStorageName,
   MEMORY_ARTIFACT_NAME,
 } from "@okouai/core/storage-names";
-import { SEED_SKILLS, GOAL_SKILL_NAME } from "@okouai/core/seed-skills";
+import {
+  SEED_SKILLS,
+  GOAL_SKILL_NAME,
+  PRESENTATION_TEMPLATE_IMPORT_SKILL_NAME,
+} from "@okouai/core/seed-skills";
 import {
   expandVariables,
   expandVariablesInString,
@@ -1227,7 +1231,11 @@ function buildInjectedSkillVolumes(
   if (!args.injectSkillVolumes) {
     return undefined;
   }
-  const seedSkillNames = [...SEED_SKILLS, GOAL_SKILL_NAME];
+  const seedSkillNames = [
+    ...SEED_SKILLS,
+    GOAL_SKILL_NAME,
+    PRESENTATION_TEMPLATE_IMPORT_SKILL_NAME,
+  ];
   // Connector rollout switches govern discovery only. Once a connector slug is
   // part of a run, its accepted catalog skill remains executable and mountable.
   const systemSkillVolumes = [

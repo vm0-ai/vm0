@@ -16,3 +16,12 @@ export const SEED_SKILLS: readonly string[] = [
  * other skill in the repo, so run creation can mount it without listing it here.
  */
 export const GOAL_SKILL_NAME = "goal";
+
+/**
+ * The presentation template import contract. Mounted alongside `goal` rather
+ * than listed above, because it is guidance the API's own import message points
+ * at, not a skill users compose an agent from. Keeping it in the skills
+ * repository lets the extraction contract be revised without an API deploy.
+ */
+export const PRESENTATION_TEMPLATE_IMPORT_SKILL_NAME =
+  "presentation-template-import";

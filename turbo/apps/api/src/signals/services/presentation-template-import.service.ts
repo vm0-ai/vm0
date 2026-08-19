@@ -7,15 +7,21 @@ import {
   type CreatePresentationTemplateImportBody,
   type PresentationTemplateUploadBody,
 } from "@okouai/api-contracts/contracts/presentation-templates";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { presentationTemplateImportThreads } from "@okouai/db/schema/presentation-template-import-thread";
 import { presentationTemplates } from "@okouai/db/schema/presentation-template";
 import { presentationTemplateUploads } from "@okouai/db/schema/presentation-template-upload";
+import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { and, asc, eq, isNull } from "drizzle-orm";
 
 import type { Tx } from "../../lib/db-types";
 import { conflict, notFound } from "../../lib/error";
 import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
-import { writeDb$ } from "../external/db";
+import { templateImportPrompt } from "../../lib/template-import-prompt";
+import { organizationAuthContext$ } from "../auth/auth-context";
+import { publicBrand$ } from "../context/hono";
+import { writeDb$, type ReadonlyDb } from "../external/db";
 import {
   deleteS3Objects,
   generatePresignedPutUrl,
@@ -23,9 +29,12 @@ import {
   s3ObjectHead,
 } from "../external/s3";
 import { allocateArtifactObject$ } from "./artifact-storage.service";
+import { sendNormalEvent$ } from "./chat-events.command";
+import { createUserMessageDocument } from "./chat-user-message.service";
 import { presentationTemplateIdForRequest } from "./presentation-template-data.service";
 import { lockPresentationTemplateLifecycle } from "./presentation-template-lifecycle.service";
 import { countPresentationTemplateSlides$ } from "./presentation-template-slide-count.service";
+import { createAutomationChatThread } from "./workflow-user-automation-thread.service";
 
 const PUT_URL_TTL_SECONDS = 3600;
 
@@ -51,15 +60,29 @@ function importNotFound(templateId: string) {
 }
 
 /**
- * An import is open while it is still collecting uploads. Commit freezes the
- * ordered result onto the template row, so a template that already carries a
- * source key is closed.
+ * Commit has two halves that fail independently — freezing the ordered set, and
+ * starting the analysis that reads it — so the template's own columns say which
+ * half still has to run:
+ *
+ * - open: still collecting uploads (`pending`, no source key)
+ * - frozen: the ordered set is committed but no analysis has started yet
+ * - anything else: analysis has started and the import owns a chat thread
+ *
+ * A commit that is repeated after a crash therefore resumes at the right half
+ * instead of redoing the whole thing or leaving the import stranded.
  */
 function isOpenImport(row: {
   readonly status: string;
   readonly sourceStorageKey: string | null;
 }): boolean {
   return row.status === "pending" && row.sourceStorageKey === null;
+}
+
+function isFrozenImport(row: {
+  readonly status: string;
+  readonly sourceStorageKey: string | null;
+}): boolean {
+  return row.status === "pending" && row.sourceStorageKey !== null;
 }
 
 export const createPresentationTemplateImport$ = command(
@@ -394,50 +417,84 @@ async function collectImportUploads(
   return collectUploads(rows);
 }
 
-export const commitPresentationTemplateImport$ = command(
+/**
+ * Freezing the verified set is the point of no return for the uploads: the
+ * ordered keys move onto the template row and the staging rows are dropped. The
+ * import stays `pending` until analysis actually starts, so a commit that dies
+ * here can be repeated.
+ */
+const freezeImport$ = command(
   async (
     { set },
     args: {
       readonly orgId: string;
       readonly ownerUserId: string;
       readonly templateId: string;
+      readonly uploads: CollectedUploads;
     },
     signal: AbortSignal,
   ) => {
     const db = set(writeDb$);
-    const collected = await db.transaction(async (tx) => {
+    return await db.transaction(async (tx) => {
+      await lockPresentationTemplateLifecycle(tx, args.templateId);
+      signal.throwIfAborted();
       const template = await loadOpenImport(tx, args);
       signal.throwIfAborted();
       if (!template) {
         return { kind: "not-found" as const };
       }
-      // Committing twice returns the committed template unchanged.
       if (!isOpenImport(template)) {
-        return { kind: "committed" as const, template };
+        return { kind: "frozen" as const };
       }
-      return {
-        kind: "open" as const,
-        uploads: await collectImportUploads(tx, args.templateId),
-      };
+      // A slot allocated while the bytes were being measured would make the
+      // measured set stale, so freeze only the set that was verified.
+      const current = await collectImportUploads(tx, args.templateId);
+      signal.throwIfAborted();
+      if ("error" in current || !sameUploads(current, args.uploads)) {
+        return { kind: "changed" as const };
+      }
+      const [committed] = await tx
+        .update(presentationTemplates)
+        .set({
+          sourceStorageKey: args.uploads.sourceKey,
+          pageKeys: [...args.uploads.pageKeys],
+          updatedAt: nowDate(),
+          updatedBy: args.ownerUserId,
+        })
+        .where(eq(presentationTemplates.id, args.templateId))
+        .returning({ id: presentationTemplates.id });
+      if (!committed) {
+        throw new Error("Failed to commit presentation template import");
+      }
+      // Staging rows have served their purpose once the set is frozen.
+      await tx
+        .delete(presentationTemplateUploads)
+        .where(eq(presentationTemplateUploads.templateId, args.templateId));
+      return { kind: "frozen" as const };
     });
-    signal.throwIfAborted();
+  },
+);
 
-    if (collected.kind === "not-found") {
-      return importNotFound(args.templateId);
+/**
+ * Prove the collected set actually exists in storage and belongs to the
+ * committed deck, then freeze it. Resolves to an error response, or to null
+ * once the import is frozen and only its analysis is left to start.
+ */
+const freezeUploads$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly ownerUserId: string;
+      readonly templateId: string;
+      readonly uploads: CollectedUploads | { readonly error: string };
+    },
+    signal: AbortSignal,
+  ) => {
+    if ("error" in args.uploads) {
+      return badRequest(args.uploads.error);
     }
-    if (collected.kind === "committed") {
-      return {
-        status: 200 as const,
-        body: {
-          id: collected.template.id,
-          status: collected.template.status,
-        },
-      };
-    }
-    if ("error" in collected.uploads) {
-      return badRequest(collected.uploads.error);
-    }
-    const uploads = collected.uploads;
+    const uploads = args.uploads;
 
     const measured = await set(measureStoredUploads$, uploads, signal);
     signal.throwIfAborted();
@@ -467,50 +524,263 @@ export const commitPresentationTemplateImport$ = command(
       );
     }
 
-    return await db.transaction(async (tx) => {
-      await lockPresentationTemplateLifecycle(tx, args.templateId);
-      signal.throwIfAborted();
+    const frozen = await set(freezeImport$, { ...args, uploads }, signal);
+    signal.throwIfAborted();
+    if (frozen.kind === "not-found") {
+      return importNotFound(args.templateId);
+    }
+    if (frozen.kind === "changed") {
+      return conflict(
+        "The import changed while it was being committed; commit it again",
+      );
+    }
+    return null;
+  },
+);
+
+interface AnalysisAgent {
+  readonly id: string;
+  readonly orgId: string;
+  readonly owner: string;
+  readonly visibility: "public" | "private";
+}
+
+/** Analysis runs on the organization's default agent, like any other chat. */
+async function loadDefaultAgent(
+  tx: Tx,
+  orgId: string,
+): Promise<AnalysisAgent | null> {
+  const [agent] = await tx
+    .select({
+      id: zeroAgents.id,
+      orgId: zeroAgents.orgId,
+      owner: zeroAgents.owner,
+      visibility: zeroAgents.visibility,
+    })
+    .from(orgMetadata)
+    .innerJoin(zeroAgents, eq(zeroAgents.id, orgMetadata.defaultAgentId))
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+  return agent ?? null;
+}
+
+/**
+ * The thread is what authorizes the run to read the deck and pages back, so the
+ * mapping is written together with the thread and before any message is sent.
+ * The lifecycle lock is what keeps two concurrent commits from opening two.
+ */
+async function ensureImportThread(
+  tx: Tx,
+  args: {
+    readonly orgId: string;
+    readonly ownerUserId: string;
+    readonly templateId: string;
+    readonly agentId: string;
+    readonly title: string;
+    readonly currentTime: Date;
+  },
+): Promise<string> {
+  await lockPresentationTemplateLifecycle(tx, args.templateId);
+  const [existing] = await tx
+    .select({ chatThreadId: presentationTemplateImportThreads.chatThreadId })
+    .from(presentationTemplateImportThreads)
+    .where(eq(presentationTemplateImportThreads.templateId, args.templateId))
+    .limit(1);
+  if (existing) {
+    return existing.chatThreadId;
+  }
+  const chatThreadId = await createAutomationChatThread(tx, {
+    userId: args.ownerUserId,
+    orgId: args.orgId,
+    agentId: args.agentId,
+    title: args.title,
+    currentTime: args.currentTime,
+  });
+  await tx
+    .insert(presentationTemplateImportThreads)
+    .values({ templateId: args.templateId, chatThreadId });
+  return chatThreadId;
+}
+
+/**
+ * Analysis is started the way the owner would start it: open a thread they can
+ * watch, then send it a message. Nothing about this run is privileged — it
+ * reaches the import only because the thread it runs in is mapped to it.
+ */
+const startImportAnalysis$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly orgId: string;
+      readonly ownerUserId: string;
+      readonly templateId: string;
+      readonly title: string;
+    },
+    signal: AbortSignal,
+  ) => {
+    const db = set(writeDb$);
+    const currentTime = nowDate();
+    const started = await db.transaction(async (tx) => {
+      const agent = await loadDefaultAgent(tx, args.orgId);
+      if (!agent) {
+        return { kind: "no-agent" as const };
+      }
+      return {
+        kind: "thread" as const,
+        agent,
+        chatThreadId: await ensureImportThread(tx, {
+          ...args,
+          agentId: agent.id,
+          currentTime,
+        }),
+      };
+    });
+    signal.throwIfAborted();
+    if (started.kind === "no-agent") {
+      return conflict(
+        "This organization has no default agent to analyse the import with",
+      );
+    }
+
+    const prompt = templateImportPrompt(args.templateId);
+    const sent = await set(
+      sendNormalEvent$,
+      {
+        auth: get(organizationAuthContext$),
+        body: {
+          agentId: started.agent.id,
+          threadId: started.chatThreadId,
+          prompt,
+          userMessage: createUserMessageDocument({ text: prompt }),
+          hasTextContent: true,
+        },
+        userId: args.ownerUserId,
+        orgId: args.orgId,
+        apiStartTime: currentTime.getTime(),
+        publicBrand: get(publicBrand$),
+        preloadedAgent: started.agent,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (sent.status !== 201) {
+      return sent;
+    }
+
+    // Only a started analysis moves the import out of `pending`, so a commit
+    // that failed to send is retried rather than reported as processing.
+    const [processing] = await db
+      .update(presentationTemplates)
+      .set({
+        status: "processing",
+        updatedAt: nowDate(),
+        updatedBy: args.ownerUserId,
+      })
+      .where(
+        and(
+          eq(presentationTemplates.id, args.templateId),
+          eq(presentationTemplates.status, "pending"),
+        ),
+      )
+      .returning({ status: presentationTemplates.status });
+    signal.throwIfAborted();
+    return {
+      status: 200 as const,
+      body: {
+        id: args.templateId,
+        status: processing?.status ?? "processing",
+        chatThreadId: started.chatThreadId,
+      },
+    };
+  },
+);
+
+/**
+ * Report a committed import without restarting anything. The thread is part of
+ * the answer because it is where the caller watches the analysis happen.
+ */
+async function committedImportResponse(
+  db: ReadonlyDb,
+  template: { readonly id: string; readonly status: string },
+) {
+  const [link] = await db
+    .select({ chatThreadId: presentationTemplateImportThreads.chatThreadId })
+    .from(presentationTemplateImportThreads)
+    .where(eq(presentationTemplateImportThreads.templateId, template.id))
+    .limit(1);
+  return {
+    status: 200 as const,
+    body: {
+      id: template.id,
+      status: template.status,
+      chatThreadId: link?.chatThreadId ?? null,
+    },
+  };
+}
+
+export const commitPresentationTemplateImport$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly ownerUserId: string;
+      readonly templateId: string;
+    },
+    signal: AbortSignal,
+  ) => {
+    const db = set(writeDb$);
+    const collected = await db.transaction(async (tx) => {
       const template = await loadOpenImport(tx, args);
       signal.throwIfAborted();
       if (!template) {
-        return importNotFound(args.templateId);
+        return { kind: "not-found" as const };
+      }
+      // A frozen import already owns its uploads; it only needs its analysis
+      // started. Anything further along is reported as it stands.
+      if (isFrozenImport(template)) {
+        return { kind: "frozen" as const, template };
       }
       if (!isOpenImport(template)) {
-        return {
-          status: 200 as const,
-          body: { id: template.id, status: template.status },
-        };
+        return { kind: "started" as const, template };
       }
-      // A slot allocated while the bytes above were being measured would make
-      // the measured set stale, so freeze only the set that was verified.
-      const current = await collectImportUploads(tx, args.templateId);
-      signal.throwIfAborted();
-      if ("error" in current || !sameUploads(current, uploads)) {
-        return conflict(
-          "The import changed while it was being committed; commit it again",
-        );
-      }
-      const [committed] = await tx
-        .update(presentationTemplates)
-        .set({
-          sourceStorageKey: uploads.sourceKey,
-          pageKeys: [...uploads.pageKeys],
-          updatedAt: nowDate(),
-          updatedBy: args.ownerUserId,
-        })
-        .where(eq(presentationTemplates.id, args.templateId))
-        .returning();
-      if (!committed) {
-        throw new Error("Failed to commit presentation template import");
-      }
-      // Staging rows have served their purpose once the ordered set is frozen.
-      await tx
-        .delete(presentationTemplateUploads)
-        .where(eq(presentationTemplateUploads.templateId, args.templateId));
       return {
-        status: 200 as const,
-        body: { id: committed.id, status: committed.status },
+        kind: "open" as const,
+        uploads: await collectImportUploads(tx, args.templateId),
       };
     });
+    signal.throwIfAborted();
+
+    if (collected.kind === "not-found") {
+      return importNotFound(args.templateId);
+    }
+    if (collected.kind === "started") {
+      return await committedImportResponse(db, collected.template);
+    }
+    if (collected.kind === "open") {
+      const rejected = await set(
+        freezeUploads$,
+        { ...args, uploads: collected.uploads },
+        signal,
+      );
+      signal.throwIfAborted();
+      if (rejected) {
+        return rejected;
+      }
+    }
+
+    const [template] = await db
+      .select({ title: presentationTemplates.title })
+      .from(presentationTemplates)
+      .where(eq(presentationTemplates.id, args.templateId))
+      .limit(1);
+    signal.throwIfAborted();
+    if (!template) {
+      return importNotFound(args.templateId);
+    }
+    return await set(
+      startImportAnalysis$,
+      { ...args, title: template.title },
+      signal,
+    );
   },
 );

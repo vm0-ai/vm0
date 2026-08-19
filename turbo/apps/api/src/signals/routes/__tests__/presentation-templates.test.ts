@@ -12,6 +12,7 @@ import {
   PRESENTATION_TEMPLATE_SOURCE_CONTENT_TYPE,
   presentationTemplatesContract,
 } from "@okouai/api-contracts/contracts/presentation-templates";
+import { logsListContract } from "@okouai/api-contracts/contracts/logs";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import AdmZip from "adm-zip";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -21,12 +22,17 @@ import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { nowDate } from "../../../lib/time";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { logsRoutes } from "../logs";
 import { presentationTemplatesRoutes } from "../presentation-templates";
 
 const context = testContext();
 const bdd = createBddApi(context);
+const runs = createRunsApi(context);
+const chat = createChatFilesBddApi(context);
 const mocks = createZeroRouteMocks(context);
 const ARTIFACTS_BUCKET = "test-user-artifacts";
 
@@ -275,6 +281,75 @@ function webHeaders() {
   return { authorization: "Bearer clerk-session" };
 }
 
+/** Commit starts the analysis chat, so an import actor needs a default agent. */
+async function prepareImportActor(actor: ApiTestUser): Promise<string> {
+  await enablePresentationTemplates(actor);
+  bdd.acceptAgentStorageWrites();
+  runs.configureRunnerGroup();
+  runs.acceptStorageDownloads();
+  runs.acceptTelemetryIngest();
+  const agentId = await bdd.bootstrapLimitedFreeOnboarding(actor, {
+    displayName: "Presentation import agent",
+  });
+  await runs.grantProEntitlement(actor);
+  await runs.ensureOrgModelProvider(actor);
+  return agentId;
+}
+
+/**
+ * The analysis run is the one commit started, so the test finds it the way an
+ * operator would: the import prompt names the template it is analysing.
+ */
+async function analysisRunId(
+  actor: ApiTestUser,
+  templateId: string,
+): Promise<string> {
+  mocks.clerk.session(actor.userId, actor.orgId);
+  const listed = await accept(
+    setupApp({ context, routes: logsRoutes })(logsListContract).list({
+      headers: webHeaders(),
+      query: {},
+    }),
+    [200],
+  );
+  const analysis = listed.body.data.find((entry) => {
+    return entry.prompt.includes(templateId);
+  });
+  if (!analysis) {
+    throw new Error(`No analysis run was started for ${templateId}`);
+  }
+  return analysis.id;
+}
+
+/** A run in a thread no import is mapped to, used as the negative control. */
+async function unrelatedRunId(
+  actor: ApiTestUser,
+  agentId: string,
+): Promise<string> {
+  const sent = await chat.requestSendEvent(
+    actor,
+    { agentId, prompt: "something else entirely" },
+    [201],
+  );
+  if (sent.status !== 201 || sent.body.runId === null) {
+    throw new Error("Expected the chat send to create a run");
+  }
+  return sent.body.runId;
+}
+
+function runHeaders(
+  actor: ApiTestUser,
+  runId: string,
+  capability: "presentation-template:read" | "presentation-template:write",
+) {
+  context.mocks.clerk.authenticateRequest.mockResolvedValue({
+    isAuthenticated: false,
+  });
+  return {
+    authorization: `Bearer ${runs.zeroTokenForRunWithCapabilities(actor, runId, [capability])}`,
+  };
+}
+
 async function enablePresentationTemplates(actor: ApiTestUser): Promise<void> {
   if (!actor.orgId) {
     throw new Error("Presentation template tests require an organization");
@@ -484,7 +559,7 @@ describe("presentation template import", () => {
 
   it("commits the ordered set the API allocated without being told object ids", async () => {
     const actor = bdd.user();
-    await enablePresentationTemplates(actor);
+    await prepareImportActor(actor);
     const fixture = installS3Fixture();
     const client = templateClient();
 
@@ -521,7 +596,10 @@ describe("presentation template import", () => {
       }),
       [200],
     );
-    expect(committed.body).toMatchObject({ id: templateId, status: "pending" });
+    expect(committed.body).toMatchObject({
+      id: templateId,
+      status: "processing",
+    });
 
     // Committing again returns the same template rather than redoing the work.
     const recommitted = await accept(
@@ -534,25 +612,24 @@ describe("presentation template import", () => {
     );
     expect(recommitted.body).toMatchObject({ id: templateId });
 
-    // A pending import is not a usable template yet.
+    // Commit moves the import into analysis, so its pages become visible.
     const listed = await accept(client.list({ headers: webHeaders() }), [200]);
-    expect(listed.body).toStrictEqual([]);
+    expect(listed.body).toHaveLength(1);
     const detail = await accept(
       client.get({ headers: webHeaders(), params: { templateId } }),
       [200],
     );
     expect(detail.body).toMatchObject({
-      status: "pending",
+      status: "processing",
       sourceFilename: "brand-system.pptx",
-      pageCount: 0,
-      coverUrl: null,
+      pageCount: 2,
     });
-    expect(detail.body.pageUrls).toStrictEqual([]);
+    expect(detail.body.pageUrls).toHaveLength(2);
   });
 
   it("refuses to commit a gapped or mismatched page set", async () => {
     const actor = bdd.user();
-    await enablePresentationTemplates(actor);
+    await prepareImportActor(actor);
     const fixture = installS3Fixture();
     const client = templateClient();
 
@@ -624,7 +701,7 @@ describe("presentation template import", () => {
 
   it("stops handing out slots once the import is committed", async () => {
     const actor = bdd.user();
-    await enablePresentationTemplates(actor);
+    await prepareImportActor(actor);
     const fixture = installS3Fixture();
     const client = templateClient();
 
@@ -658,7 +735,7 @@ describe("presentation template import", () => {
 
   it("refuses to commit a slot whose bytes were never uploaded", async () => {
     const actor = bdd.user();
-    await enablePresentationTemplates(actor);
+    await prepareImportActor(actor);
     const fixture = installS3Fixture();
     const client = templateClient();
 
@@ -726,7 +803,7 @@ describe("presentation template import", () => {
 
   it("measures the stored bytes instead of the declared size", async () => {
     const actor = bdd.user();
-    await enablePresentationTemplates(actor);
+    await prepareImportActor(actor);
     const fixture = installS3Fixture();
     const client = templateClient();
 
@@ -787,9 +864,173 @@ describe("presentation template import", () => {
     expect(fixture.stored(ARTIFACTS_BUCKET)).toContain(secondKey);
   });
 
+  it("hands back the analysis thread and lets a run in it read the committed inputs", async () => {
+    const actor = bdd.user();
+    const agentId = await prepareImportActor(actor);
+    const fixture = installS3Fixture();
+    const client = templateClient();
+
+    const templateId = await openImport(actor);
+    await fillImport(actor, fixture, templateId, 2);
+    mocks.clerk.session(actor.userId, actor.orgId);
+    const committed = await accept(
+      client.commit({
+        headers: webHeaders(),
+        params: { templateId },
+        body: {},
+      }),
+      [200],
+    );
+    const chatThreadId = committed.body.chatThreadId;
+    expect(chatThreadId).not.toBeNull();
+    if (chatThreadId === null) {
+      throw new Error("Expected commit to open an analysis thread");
+    }
+
+    // Committing again resolves to the same thread instead of opening another.
+    mocks.clerk.session(actor.userId, actor.orgId);
+    const recommitted = await accept(
+      client.commit({
+        headers: webHeaders(),
+        params: { templateId },
+        body: {},
+      }),
+      [200],
+    );
+    expect(recommitted.body.chatThreadId).toBe(chatThreadId);
+
+    const runId = await analysisRunId(actor, templateId);
+    const source = await accept(
+      client.source({
+        headers: runHeaders(actor, runId, "presentation-template:read"),
+        params: { templateId },
+      }),
+      [200],
+    );
+    expect(source.body).toMatchObject({
+      filename: "brand-system.pptx",
+      contentType: PRESENTATION_TEMPLATE_SOURCE_CONTENT_TYPE,
+    });
+
+    const pages = await accept(
+      client.pages({
+        headers: runHeaders(actor, runId, "presentation-template:read"),
+        params: { templateId },
+      }),
+      [200],
+    );
+    expect(
+      pages.body.pages.map((page) => {
+        return page.index;
+      }),
+    ).toStrictEqual([0, 1]);
+  });
+
+  it("keeps an import unreachable from a run in another thread", async () => {
+    const actor = bdd.user();
+    const agentId = await prepareImportActor(actor);
+    const fixture = installS3Fixture();
+    const client = templateClient();
+
+    const templateId = await openImport(actor);
+    await fillImport(actor, fixture, templateId, 1);
+    mocks.clerk.session(actor.userId, actor.orgId);
+    await accept(
+      client.commit({
+        headers: webHeaders(),
+        params: { templateId },
+        body: {},
+      }),
+      [200],
+    );
+
+    // Same owner, same organization — but a run that no import is mapped to.
+    const stranger = await unrelatedRunId(actor, agentId);
+    await accept(
+      client.source({
+        headers: runHeaders(actor, stranger, "presentation-template:read"),
+        params: { templateId },
+      }),
+      [404],
+    );
+    await accept(
+      client.pages({
+        headers: runHeaders(actor, stranger, "presentation-template:read"),
+        params: { templateId },
+      }),
+      [404],
+    );
+    await accept(
+      client.fail({
+        headers: runHeaders(actor, stranger, "presentation-template:write"),
+        params: { templateId },
+        body: { code: "analysis_failed", message: "not my import" },
+      }),
+      [404],
+    );
+
+    // The owner's own browser session carries no run at all, so these routes
+    // resolve nothing for it either.
+    mocks.clerk.session(actor.userId, actor.orgId);
+    await accept(
+      client.source({ headers: webHeaders(), params: { templateId } }),
+      [404],
+    );
+  });
+
+  it("records the failure the analysis run reports", async () => {
+    const actor = bdd.user();
+    const agentId = await prepareImportActor(actor);
+    const fixture = installS3Fixture();
+    const client = templateClient();
+
+    const templateId = await openImport(actor);
+    await fillImport(actor, fixture, templateId, 1);
+    mocks.clerk.session(actor.userId, actor.orgId);
+    const committed = await accept(
+      client.commit({
+        headers: webHeaders(),
+        params: { templateId },
+        body: {},
+      }),
+      [200],
+    );
+    const chatThreadId = committed.body.chatThreadId;
+    if (chatThreadId === null) {
+      throw new Error("Expected commit to open an analysis thread");
+    }
+
+    const runId = await analysisRunId(actor, templateId);
+    const failed = await accept(
+      client.fail({
+        headers: runHeaders(actor, runId, "presentation-template:write"),
+        params: { templateId },
+        body: {
+          code: "analysis_failed",
+          message: "The deck flattens every slide to one image",
+        },
+      }),
+      [200],
+    );
+    expect(failed.body).toStrictEqual({ id: templateId, status: "failed" });
+
+    mocks.clerk.session(actor.userId, actor.orgId);
+    const detail = await accept(
+      client.get({ headers: webHeaders(), params: { templateId } }),
+      [200],
+    );
+    expect(detail.body).toMatchObject({
+      status: "failed",
+      error: {
+        code: "analysis_failed",
+        message: "The deck flattens every slide to one image",
+      },
+    });
+  });
+
   it("removes the committed objects when the template is deleted", async () => {
     const actor = bdd.user();
-    await enablePresentationTemplates(actor);
+    await prepareImportActor(actor);
     const fixture = installS3Fixture();
     const client = templateClient();
 
