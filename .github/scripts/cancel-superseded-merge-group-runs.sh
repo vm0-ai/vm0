@@ -201,25 +201,21 @@ while IFS= read -r run_record; do
           --jq '.status'
       )
       if [ "$current_status" != "completed" ]; then
-        # GitHub can wedge a run so that it keeps reporting an active status
-        # while refusing force cancellation with HTTP 409. A run only claims
-        # the shared pr-N runner once it starts a job, so a wedged run whose
-        # latest attempt started no job cannot be the writer this barrier
-        # protects against, and it would never reach "completed" for the
-        # barrier below. Skip it; every other cancel failure still fails closed.
+        # A run only claims the shared pr-N runner once a job starts. GitHub
+        # creates queued job records before that point, so count jobs that have
+        # left queued rather than treating every record as started work.
         if ! started_jobs=$(
           gh api --method GET \
             "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/jobs" \
-            --jq '.total_count' 2>&1
+            --jq '[.jobs[]? | select(.status != "queued")] | length' 2>&1
         ); then
           started_jobs=""
         fi
-        if [[ "$cancel_error" == *"HTTP 409"* ]] && [ "$started_jobs" = "0" ]; then
-          echo "skipping wedged ${selected_run_label} ${run_id}: reported ${current_status} with no started job"
+        if [ "$started_jobs" = "0" ]; then
+          echo "skipping uncancellable ${selected_run_label} ${run_id}: reported ${current_status} with no started job"
           continue
         fi
-        echo "failed to cancel ${selected_run_label} ${run_id}: ${cancel_error}" >&2
-        exit 1
+        echo "::warning::failed to cancel ${selected_run_label} ${run_id}; awaiting terminal state: ${cancel_error}" >&2
       fi
     fi
   fi
@@ -227,7 +223,7 @@ while IFS= read -r run_record; do
 done <<<"$selected_runs"
 
 if $cancel_selected_runs && [ "${#run_ids[@]}" -eq 0 ]; then
-  echo "All ${selected_runs_label} were wedged without starting a job; nothing to await."
+  echo "All ${selected_runs_label} were uncancellable without starting a job; nothing to await."
   exit 0
 fi
 
