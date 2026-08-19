@@ -14,7 +14,6 @@ import {
   currentPlanAllowsVideo,
   currentTokenCanReadBilling,
 } from "./billing-capabilities";
-import { decodeSandboxTokenPayload } from "../../lib/api/sandbox-token";
 import { dispatchGenerate } from "../generate/lib/dispatch";
 import type { GenerationType } from "../generate/lib/lister";
 
@@ -331,14 +330,6 @@ async function validateVideoOptions(options: VideoOptions): Promise<void> {
   ]);
 }
 
-/**
- * An agent run authenticates with a run-scoped token, so the token payload
- * itself says whether this process belongs to a run.
- */
-function insideAgentRun(): boolean {
-  return decodeSandboxTokenPayload() !== undefined;
-}
-
 function formatOptionalVideoParameter(
   value: string | number | undefined,
   fallback = "none",
@@ -408,7 +399,7 @@ export function createVideoGenerateCommand(
     .option("--json", "Print the complete generation result as JSON")
     .option(
       "--model <model>",
-      "Model: dreamina-seedance-2.0-fast, dreamina-seedance-2.5, dreamina-seedance-2.0, dreamina-seedance-2.0-mini, seedance-1.5-pro, minimax-h3, veo3.1-fast, or kling-v3-4k; ignored inside an agent run, which generates with the model the run is set to",
+      "Model: dreamina-seedance-2.0-fast, dreamina-seedance-2.5, dreamina-seedance-2.0, dreamina-seedance-2.0-mini, seedance-1.5-pro, minimax-h3, veo3.1-fast, or kling-v3-4k. Do not pass this unless the user named a model",
     )
     .option(
       "--aspect-ratio <ratio>",
@@ -485,14 +476,7 @@ Models:
     4k output, negative prompts, and optional audio.`,
     )
     .action(
-      withErrorHandler(async (rawOptions: VideoOptions) => {
-        // Inside an agent run the server generates with the model the run is
-        // set to and ignores whatever the request names, so keep `--model` out
-        // of everything downstream rather than reporting a model that will not
-        // be used. Outside a run the flag is the only way to choose.
-        const options: VideoOptions = insideAgentRun()
-          ? { ...rawOptions, model: undefined }
-          : rawOptions;
+      withErrorHandler(async (options: VideoOptions) => {
         const dispatch = await dispatchGenerate({
           generationType: config.generationType,
           provider: options.provider,
