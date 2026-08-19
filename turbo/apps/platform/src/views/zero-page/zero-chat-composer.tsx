@@ -239,6 +239,7 @@ import { ComposerVideoOptionsChip } from "./composer-video-options.tsx";
 import {
   DEFAULT_IMAGE_MODEL,
   IMAGE_MODEL_CONFIGS,
+  IMAGE_MODEL_VARIANT_GROUPS,
   PUBLIC_IMAGE_MODELS,
   type ImageModel,
 } from "@okouai/core/image-model-catalog";
@@ -7478,30 +7479,40 @@ function composerImageModelPanelCategory({
   onChange: (next: ImageModel | null) => void;
   label: string;
   tabLabel: string;
-  variantLabel: string;
+  /** Segment aria-label, resolved per family rather than for a single one. */
+  variantLabel: (family: string) => string;
 }): MediaModelPanelCategory {
-  const gptImage1Models = ["gpt-image-1", "gpt-image-1-mini"] as const;
-  const baseModel = gptImage1Models[0];
+  // Only base models get a row; the rest of a family lives on that row's
+  // segment control.
+  const variantOnlyModels = new Set<ImageModel>(
+    IMAGE_MODEL_VARIANT_GROUPS.flatMap((group) => {
+      return group.models.slice(1);
+    }),
+  );
   return {
     id: "image",
     label,
     tabLabel,
     options: PUBLIC_IMAGE_MODELS.filter((candidate) => {
-      return candidate !== gptImage1Models[1];
+      return !variantOnlyModels.has(candidate);
     }).map((candidate) => {
+      const group = IMAGE_MODEL_VARIANT_GROUPS.find((candidateGroup) => {
+        return candidateGroup.models[0] === candidate;
+      });
+      const rowLabel = group?.label ?? IMAGE_MODEL_CONFIGS[candidate].label;
       return {
         key: candidate,
-        label: IMAGE_MODEL_CONFIGS[candidate].label,
+        label: rowLabel,
         icon: <ImageModelBrandIcon model={candidate} />,
         selected: selectedModel === candidate,
         onSelect: () => {
           onChange(candidate);
         },
-        ...(candidate === baseModel
+        ...(group
           ? {
               variant: {
-                label: variantLabel,
-                options: gptImage1Models.map((variantModel) => {
+                label: variantLabel(rowLabel),
+                options: group.models.map((variantModel) => {
                   const variantConfig = IMAGE_MODEL_CONFIGS[variantModel];
                   return {
                     label: variantConfig.label,
@@ -7613,12 +7624,14 @@ function ComposerModelPickerControls({
         tabLabel: t(($) => {
           return $.settings.models.picker.categoryImage;
         }),
-        variantLabel: t(
-          ($) => {
-            return $.settings.models.picker.modelVariants;
-          },
-          { model: IMAGE_MODEL_CONFIGS["gpt-image-1"].label },
-        ),
+        variantLabel: (family: string) => {
+          return t(
+            ($) => {
+              return $.settings.models.picker.modelVariants;
+            },
+            { model: family },
+          );
+        },
       }),
     );
   }

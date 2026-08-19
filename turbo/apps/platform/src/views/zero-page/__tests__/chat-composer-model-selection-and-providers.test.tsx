@@ -3512,16 +3512,15 @@ describe("chat composer models", () => {
 });
 
 describe("chat composer image model", () => {
+  // One row per family: Flux and Seedream 5 collapse onto a variant segment,
+  // and Seedream 4 is no longer offered at all.
   const imageModelControlLabels = [
     "GPT Image 1",
     "GPT Image 2",
     "GPT Image 1.5",
     "Nano Banana 2",
     "Flux Pro v1.1",
-    "Flux Pro v1.1 Ultra",
-    "Seedream 5 Pro",
-    "Seedream 5 Lite",
-    "Seedream 4",
+    "Seedream 5",
     "Qwen Image",
   ] as const;
 
@@ -3813,13 +3812,13 @@ describe("chat composer image model", () => {
     });
 
     await openImageModels(user);
-    await user.click(await findMediaPanelButton("Seedream 4"));
+    await user.click(await findMediaPanelButton("Nano Banana 2"));
     await waitFor(() => {
       expect(updates).toStrictEqual([
         {
           selectedModel: null,
           serviceTier: null,
-          selectedImageModel: "fal-ai/bytedance/seedream/v4/text-to-image",
+          selectedImageModel: "fal-ai/nano-banana-2",
         },
       ]);
     });
@@ -3830,9 +3829,7 @@ describe("chat composer image model", () => {
       "Persist and pin my image choice",
     );
     await waitFor(() => {
-      expect(createdImageModel).toBe(
-        "fal-ai/bytedance/seedream/v4/text-to-image",
-      );
+      expect(createdImageModel).toBe("fal-ai/nano-banana-2");
     });
   });
 
@@ -4120,23 +4117,32 @@ describe("chat composer image model", () => {
       variantSegments.map((candidate) => {
         return candidate.getAttribute("aria-label");
       }),
-    ).toStrictEqual(["GPT Image 1", "GPT Image 1 Mini"]);
+    ).toStrictEqual([
+      "GPT Image 1",
+      "GPT Image 1 Mini",
+      "Flux Pro v1.1",
+      "Flux Pro v1.1 Ultra",
+      "Seedream 5 Pro",
+      "Seedream 5 Lite",
+    ]);
     expect(
       variantSegments.map((candidate) => {
         return candidate.textContent;
       }),
-    ).toStrictEqual(["Standard", "Mini"]);
+    ).toStrictEqual(["Standard", "Mini", "Standard", "Ultra", "Pro", "Lite"]);
     expect(
       variantSegments.every((candidate) => {
         return candidate.getAttribute("aria-checked") === "false";
       }),
     ).toBeTruthy();
     expect(within(listbox).queryByText("GPT Image 1 Mini")).toBeNull();
+    expect(within(listbox).queryByText("Flux Pro v1.1 Ultra")).toBeNull();
+    expect(within(listbox).queryByText("Seedream 5 Lite")).toBeNull();
+    expect(within(listbox).queryByText("Seedream 4")).toBeNull();
     const openAiIcon = imageModelBrandIcon("GPT Image 2").outerHTML;
     expect(openAiIcon).toContain("openai");
     expect(imageModelBrandIcon("GPT Image 1.5").outerHTML).toBe(openAiIcon);
     const fluxIcon = imageModelBrandIcon("Flux Pro v1.1").outerHTML;
-    expect(imageModelBrandIcon("Flux Pro v1.1 Ultra").outerHTML).toBe(fluxIcon);
     const qwenIcon = imageModelBrandIcon("Qwen Image").outerHTML;
     expect(qwenIcon).toContain("image-model-qwen-gradient");
     const nanoBananaIcon = imageModelBrandIcon("Nano Banana 2").outerHTML;
@@ -4146,7 +4152,7 @@ describe("chat composer image model", () => {
         openAiIcon,
         fluxIcon,
         qwenIcon,
-        imageModelBrandIcon("Seedream 4").outerHTML,
+        imageModelBrandIcon("Seedream 5").outerHTML,
         nanoBananaIcon,
       ]).size,
     ).toBe(5);
@@ -4155,7 +4161,15 @@ describe("chat composer image model", () => {
       within(listbox).queryByText(/clarity upscaler/i),
     ).not.toBeInTheDocument();
     expect(within(listbox).queryByText("BYOK")).not.toBeInTheDocument();
-    expect(within(listbox).queryByText("Pro")).not.toBeInTheDocument();
+    // "Pro" is a Seedream 5 variant chip here, so the run-model price tier is
+    // ruled out by role rather than by the bare word.
+    expect(
+      within(listbox)
+        .queryAllByText("Pro")
+        .filter((candidate) => {
+          return candidate.getAttribute("role") !== "radio";
+        }),
+    ).toStrictEqual([]);
     expect(
       within(listbox).queryByText(/aspect ratio/i),
     ).not.toBeInTheDocument();
@@ -4230,6 +4244,67 @@ describe("chat composer image model", () => {
     });
   });
 
+  it("selects Flux and Seedream 5 variants from their family rows", async () => {
+    const user = userEvent.setup({ delay: null });
+    const updates: { threadId: string; model: string | null }[] = [];
+    context.mocks.browser.matchMedia(true);
+    mockOrgModelRoutes("claude-fable-5");
+    mockAgent();
+    mockThread({
+      selectedModel: "claude-fable-5",
+      selectedImageModel: "gpt-image-2",
+    });
+    context.mocks.api(
+      chatThreadImageModelContract.update,
+      ({ params, body, respond }) => {
+        updates.push({ threadId: params.id, model: body.model });
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.ImageModelSelection]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    // The family row carries the shared name; the variant name lives on the
+    // segment, so picking Lite is one click rather than a drill-in.
+    await openImageModels(user);
+    await user.click(await findImageVariantSegment("Seedream 5 Lite"));
+
+    await waitFor(() => {
+      expect(updates).toStrictEqual([
+        { threadId: THREAD_ID, model: "seedream-5-0-lite-260128" },
+      ]);
+    });
+    // Any click closes the popover, so the follow-up read reopens it.
+    await openImageModels(user);
+    await waitFor(() => {
+      expect(selectedImageModelLabel()).toBe("Seedream 5 Lite");
+    });
+    expect(mediaPanelButton("Seedream 5")).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+
+    await user.click(await findImageVariantSegment("Flux Pro v1.1 Ultra"));
+
+    await waitFor(() => {
+      expect(updates).toStrictEqual([
+        { threadId: THREAD_ID, model: "seedream-5-0-lite-260128" },
+        { threadId: THREAD_ID, model: "fal-ai/flux-pro/v1.1-ultra" },
+      ]);
+    });
+    await openImageModels(user);
+    await waitFor(() => {
+      expect(selectedImageModelLabel()).toBe("Flux Pro v1.1 Ultra");
+    });
+    await expect(
+      findImageVariantSegment("Seedream 5 Pro"),
+    ).resolves.toHaveAttribute("aria-checked", "false");
+  });
+
   it("switches category from the same strip on mobile", async () => {
     const user = userEvent.setup({ delay: null });
     context.mocks.browser.matchMedia(false);
@@ -4265,7 +4340,7 @@ describe("chat composer image model", () => {
       "aria-pressed",
       "true",
     );
-    expect(mediaPanelButton("Seedream 4")).toBeInTheDocument();
+    expect(mediaPanelButton("Seedream 5")).toBeInTheDocument();
 
     await user.click(await findCategoryTab("Chat"));
 
@@ -4327,19 +4402,19 @@ describe("chat composer image model", () => {
     await waitFor(() => {
       expect(selectedImageModelLabel()).toBe("GPT Image 2");
     });
-    await user.click(await findMediaPanelButton("Seedream 4"));
+    await user.click(await findMediaPanelButton("Nano Banana 2"));
 
     await waitFor(() => {
       expect(updates).toStrictEqual([
         {
           threadId: THREAD_ID,
-          model: "fal-ai/bytedance/seedream/v4/text-to-image",
+          model: "fal-ai/nano-banana-2",
         },
       ]);
     });
     await openImageModels(user, firstThread);
     await waitFor(() => {
-      expect(selectedImageModelLabel()).toBe("Seedream 4");
+      expect(selectedImageModelLabel()).toBe("Nano Banana 2");
     });
     await user.keyboard("{Escape}");
 
