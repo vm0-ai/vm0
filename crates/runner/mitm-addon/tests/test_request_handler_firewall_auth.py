@@ -16,6 +16,7 @@ import mitm_addon
 import upstream_destination_binding
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
+from tests.auth_endpoint_helpers import FakeAuthEndpoint, firewall_auth_success_response
 from tests.auth_state_helpers import (
     cached_headers,
     force_refresh_pending,
@@ -87,6 +88,67 @@ async def test_repeated_firewall_requests_reuse_snapshot_auth_identity(
     assert flows[1].metadata[metadata_keys.AUTH_CACHE_HIT] is True
     assert flows[0].request.headers["Authorization"] == "Bearer resolved"
     assert flows[1].request.headers["Authorization"] == "Bearer resolved"
+
+
+async def test_initial_firewall_fetch_reuses_identity_request_bytes(tmp_path, real_flow, mitm_ctx):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    endpoint = FakeAuthEndpoint()
+    endpoint.queue_json_response(
+        firewall_auth_success_response({"Authorization": "Bearer initial"})
+    )
+    endpoint.queue_json_response(
+        firewall_auth_success_response({"Authorization": "Bearer refreshed"})
+    )
+    flows = [
+        real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="api.github.com",
+            path="/repos",
+        )
+        for _ in range(3)
+    ]
+    serialized_force_refresh: list[bool] = []
+    original_to_bytes = auth_client.FirewallAuthRequest.to_bytes
+
+    def observe_to_bytes(
+        request: auth_client.FirewallAuthRequest,
+        *,
+        force_refresh: bool = False,
+    ) -> bytes:
+        serialized_force_refresh.append(force_refresh)
+        return original_to_bytes(request, force_refresh=force_refresh)
+
+    with (
+        endpoint.run(),
+        mitm_ctx(registry_path=str(reg_path), api_url=endpoint.api_url),
+        patch.object(auth_client.FirewallAuthRequest, "to_bytes", new=observe_to_bytes),
+    ):
+        await mitm_addon.request(flows[0])
+        cache_key = flows[0].metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]
+
+        await mitm_addon.request(flows[1])
+
+        auth_cache.clear_cached_firewall_headers(cache_key)
+        auth_cache.request_force_refresh(cache_key)
+        await mitm_addon.request(flows[2])
+
+    assert serialized_force_refresh == [False, True]
+    assert endpoint.request_count == 2
+    assert [flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] for flow in flows] == [
+        cache_key
+    ] * 3
+    assert flows[0].metadata[metadata_keys.AUTH_CACHE_HIT] is False
+    assert flows[1].metadata[metadata_keys.AUTH_CACHE_HIT] is True
+    assert flows[2].metadata[metadata_keys.AUTH_CACHE_HIT] is False
+    assert flows[0].request.headers["Authorization"] == "Bearer initial"
+    assert flows[1].request.headers["Authorization"] == "Bearer initial"
+    assert flows[2].request.headers["Authorization"] == "Bearer refreshed"
+
+    normal_body = endpoint.requests[0].json_body()
+    refreshed_body = endpoint.requests[1].json_body()
+    assert "forceRefresh" not in normal_body
+    assert refreshed_body == normal_body | {"forceRefresh": True}
 
 
 async def test_head_firewall_auth_failure_is_bodyless(tmp_path, real_flow, mitm_ctx, headers):

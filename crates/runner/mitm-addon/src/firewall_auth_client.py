@@ -13,7 +13,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from contextlib import suppress
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from email.message import Message
 from typing import NamedTuple, Protocol
 
@@ -142,6 +142,7 @@ class FirewallAuthRequest:
     vars_map: dict | None = None
     firewall_billable: bool = False
     matched_firewall: dict | None = None
+    prepared_normal_body: bytes | None = field(default=None, repr=False, compare=False)
 
     def to_body(self, *, force_refresh: bool = False) -> dict:
         """Build the webhook JSON body while preserving omission semantics."""
@@ -168,6 +169,18 @@ class FirewallAuthRequest:
         if force_refresh:
             body["forceRefresh"] = True
         return body
+
+    def to_bytes(self, *, force_refresh: bool = False) -> bytes:
+        """Serialize the webhook body with stable content-derived bytes."""
+        return json.dumps(
+            self.to_body(force_refresh=force_refresh),
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+
+    def with_prepared_normal_body(self, body: bytes) -> "FirewallAuthRequest":
+        """Attach normal request bytes for the request-local fetch path."""
+        return replace(self, prepared_normal_body=body)
 
 
 @dataclass(frozen=True)
@@ -908,7 +921,11 @@ async def fetch_firewall_headers(
     """
     api_url = platform_api.get_api_url()
     url = f"{api_url}/api/webhooks/agent/firewall/auth"
-    body = json.dumps(request.to_body(force_refresh=force_refresh)).encode()
+    body = (
+        request.prepared_normal_body
+        if not force_refresh and request.prepared_normal_body is not None
+        else request.to_bytes(force_refresh=force_refresh)
+    )
     req = platform_api.make_api_request(url, body, request.sandbox_token)
     plan = _build_connection_plan(req)
     timeout = asyncio.timeout(FIREWALL_AUTH_FETCH_DEADLINE_SECONDS)
