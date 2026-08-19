@@ -1177,7 +1177,28 @@ stream_max_retries = 0
     )
 
 
-def run_codex(codex_home, *args):
+def send_app_server_message(process, message):
+    process.stdin.write(json.dumps(message) + "\n")
+    process.stdin.flush()
+
+
+def read_app_server_message(process):
+    line = process.stdout.readline()
+    assert line, "Codex app-server closed stdout before completing the turn"
+    return json.loads(line)
+
+
+def wait_for_app_server_response(process, response_id, messages):
+    while True:
+        message = read_app_server_message(process)
+        messages.append(message)
+        if message.get("id") != response_id:
+            continue
+        assert "error" not in message, message
+        return message["result"]
+
+
+def run_codex_app_server(codex_home, prompt, resume_id=None):
     env = os.environ.copy()
     env.update(
         {
@@ -1188,21 +1209,113 @@ def run_codex(codex_home, *args):
             "no_proxy": "127.0.0.1,localhost",
         }
     )
-    return subprocess.run(
+    process = subprocess.Popen(
         [
             current_codex,
-            "exec",
-            *args,
-            "--skip-git-repo-check",
-            "--json",
+            "app-server",
+            "--listen",
+            "stdio://",
         ],
         cwd="/home/user/workspace",
         env=env,
-        capture_output=True,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
-        timeout=30,
-        check=False,
     )
+    messages = []
+    send_app_server_message(
+        process,
+        {
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "clientInfo": {
+                    "name": "vm0-runner-compatibility-probe",
+                    "title": None,
+                    "version": "0",
+                },
+                "capabilities": {
+                    "experimentalApi": True,
+                    "requestAttestation": False,
+                },
+            },
+        },
+    )
+    wait_for_app_server_response(process, 1, messages)
+    send_app_server_message(process, {"method": "initialized"})
+
+    thread_params = {
+        "cwd": "/home/user/workspace",
+        "approvalPolicy": "never",
+        "approvalsReviewer": "user",
+        "sandbox": "danger-full-access",
+        "config": {"features.memories": True},
+        "model": "gpt-5.1-codex-mini",
+        "modelProvider": "mock",
+    }
+    thread_method = "thread/start"
+    if resume_id is not None:
+        thread_method = "thread/resume"
+        thread_params["threadId"] = resume_id
+    send_app_server_message(
+        process,
+        {"id": 2, "method": thread_method, "params": thread_params},
+    )
+    thread_result = wait_for_app_server_response(process, 2, messages)
+    thread = thread_result["thread"]
+    thread_id = thread["id"]
+    assert thread["historyMode"] == "legacy", thread
+
+    send_app_server_message(
+        process,
+        {
+            "id": 3,
+            "method": "turn/start",
+            "params": {
+                "threadId": thread_id,
+                "input": [
+                    {
+                        "type": "text",
+                        "text": prompt,
+                        "text_elements": [],
+                    }
+                ],
+                "cwd": "/home/user/workspace",
+                "approvalPolicy": "never",
+                "approvalsReviewer": "user",
+                "sandboxPolicy": {"type": "dangerFullAccess"},
+                "model": "gpt-5.1-codex-mini",
+            },
+        },
+    )
+    turn_result = wait_for_app_server_response(process, 3, messages)
+    turn_id = turn_result["turn"]["id"]
+    while True:
+        message = read_app_server_message(process)
+        messages.append(message)
+        if (
+            message.get("method") == "turn/completed"
+            and message.get("params", {}).get("threadId") == thread_id
+            and message.get("params", {}).get("turn", {}).get("id")
+            == turn_id
+        ):
+            break
+
+    process.stdin.close()
+    return_code = process.wait(timeout=10)
+    stderr = process.stderr.read()
+    assert return_code == 0, stderr
+    return {
+        "thread_id": thread_id,
+        "turn_id": turn_id,
+        "messages": messages,
+        "stderr": stderr,
+    }
+
+
+def app_server_output(result):
+    return json.dumps(result["messages"]) + "\n" + result["stderr"]
 
 
 def zstd_compress(history_bytes):
@@ -1272,13 +1385,12 @@ def resume_history(
     original_size = history_file.stat().st_size
 
     requests.clear()
-    resumed = run_codex(
+    resumed = run_codex_app_server(
         codex_home,
-        "resume",
-        session_id,
         append_token,
+        session_id,
     )
-    output = resumed.stdout + resumed.stderr
+    output = app_server_output(resumed)
     assert (
         f"no rollout found for thread id {session_id}" not in output.lower()
     ), output
@@ -1325,17 +1437,7 @@ def probe_current_codex(
         "Codex did not reconstruct compact replacement history"
     )
 
-    started = [
-        json.loads(line)
-        for line in resumed.stdout.splitlines()
-        if line.startswith("{")
-    ]
-    thread_started = [
-        event
-        for event in started
-        if event.get("type") == "thread.started"
-    ]
-    assert thread_started and thread_started[0].get("thread_id") == session_id, (
+    assert resumed["thread_id"] == session_id, (
         "Codex changed the resumed thread ID"
     )
 
@@ -1384,13 +1486,12 @@ def probe_zstd_materialization(
     compressed_history_file.write_bytes(zstd_compress(candidate_bytes))
 
     requests.clear()
-    resumed = run_codex(
+    resumed = run_codex_app_server(
         codex_home,
-        "resume",
-        session_id,
         append_token,
+        session_id,
     )
-    output = resumed.stdout + resumed.stderr
+    output = app_server_output(resumed)
     assert (
         f"no rollout found for thread id {session_id}" not in output.lower()
     ), output
@@ -1411,17 +1512,7 @@ def probe_zstd_materialization(
         "Codex did not append to the materialized rollout"
     )
 
-    started = [
-        json.loads(line)
-        for line in resumed.stdout.splitlines()
-        if line.startswith("{")
-    ]
-    thread_started = [
-        event
-        for event in started
-        if event.get("type") == "thread.started"
-    ]
-    assert thread_started and thread_started[0].get("thread_id") == session_id, (
+    assert resumed["thread_id"] == session_id, (
         "Codex changed the zstd-restored thread ID"
     )
 
@@ -1438,7 +1529,7 @@ with tempfile.TemporaryDirectory(prefix="codex-compact-smoke-") as temp_root:
 
         seed_home = root / "seed" / ".codex"
         write_config(seed_home, port)
-        run_codex(
+        run_codex_app_server(
             seed_home,
             seed_token,
         )
@@ -1451,13 +1542,12 @@ with tempfile.TemporaryDirectory(prefix="codex-compact-smoke-") as temp_root:
         candidate_relative_path = source.relative_to(
             seed_home / "sessions"
         )
-        compacting_turn = run_codex(
+        compacting_turn = run_codex_app_server(
             seed_home,
-            "resume",
-            session_id,
             compacting_turn_token,
+            session_id,
         )
-        compacting_output = compacting_turn.stdout + compacting_turn.stderr
+        compacting_output = app_server_output(compacting_turn)
         assert (
             f"no rollout found for thread id {session_id}"
             not in compacting_output.lower()
@@ -1471,12 +1561,11 @@ with tempfile.TemporaryDirectory(prefix="codex-compact-smoke-") as temp_root:
             for index, record in enumerate(records)
             if event_type(record) in {"task_complete", "turn_complete"}
         )
-        removed_completion = records.pop(complete_index)
+        records.pop(complete_index)
         records.insert(
             complete_index,
             {
                 "timestamp": "2026-01-01T00:00:00.000Z",
-                "ordinal": removed_completion["ordinal"],
                 "type": "compacted",
                 "payload": {
                     "message": summary_token,
@@ -1522,13 +1611,12 @@ with tempfile.TemporaryDirectory(prefix="codex-compact-smoke-") as temp_root:
             ).encode()
         )
 
-        candidate_turn = run_codex(
+        candidate_turn = run_codex_app_server(
             seed_home,
-            "resume",
-            session_id,
             candidate_turn_token,
+            session_id,
         )
-        candidate_output = candidate_turn.stdout + candidate_turn.stderr
+        candidate_output = app_server_output(candidate_turn)
         assert (
             f"no rollout found for thread id {session_id}"
             not in candidate_output.lower()
