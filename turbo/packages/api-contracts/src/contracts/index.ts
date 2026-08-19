@@ -1028,6 +1028,7 @@ export {
   type PublicConnectorCatalogAuthMethodSummary,
   type PublicConnectorCatalogDetail,
   type PublicConnectorCatalogDetailResponse,
+  type PublicConnectorCatalogDiscoveryResponse,
   type PublicConnectorCatalogConnection,
   type PublicConnectorCatalogConnectionStatus,
   type PublicConnectorCatalogItem,

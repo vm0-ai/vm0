@@ -2,6 +2,7 @@ import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connecto
 import type { ConnectorSearchItem } from "@okouai/api-contracts/contracts/zero-connectors";
 import type {
   PublicConnectorCatalogListResponse,
+  PublicConnectorCatalogDiscoveryResponse,
   PublicConnectorCatalogPermissionDetail,
   PublicConnectorCatalogStatusItem,
   PublicConnectorCatalogStatusResponse,
@@ -75,7 +76,7 @@ export async function discoverPublicConnectorCatalogStatus(
     readonly connectors: readonly ConnectorResponse[];
     readonly keyword: string | undefined;
   },
-): Promise<PublicConnectorCatalogStatusResponse> {
+): Promise<PublicConnectorCatalogDiscoveryResponse> {
   const read = await discoverExternalPublicConnectorCatalogStatus({
     ...args,
     referenceConnectorSlugs: [],

@@ -636,7 +636,7 @@ describe("connectors page", () => {
         discoveryKeywords.push(query.keyword);
         return respond(200, {
           connectors: query.keyword ? [slack] : [github],
-          totalConnectorCount: 347,
+          totalConnectorCount: 1234,
         });
       },
     );
@@ -658,7 +658,7 @@ describe("connectors page", () => {
       screen.findByTestId("connector-card-label"),
     ).resolves.toHaveTextContent("GitHub");
     await expect(
-      screen.findByText("Connect 1100+ services for your agents to use."),
+      screen.findByText("Connect 1,234 services for your agents to use."),
     ).resolves.toBeInTheDocument();
 
     await fill(await screen.findByPlaceholderText("Find connectors"), "Slack");
@@ -668,9 +668,12 @@ describe("connectors page", () => {
     });
     expect(discoveryKeywords).toContain("Slack");
     expect(legacyStatusRequests).toBe(0);
+    expect(
+      screen.getByText("Connect 1,234 services for your agents to use."),
+    ).toBeInTheDocument();
   });
 
-  it("shows the static connector catalog size in the page description", async () => {
+  it("shows the full connector catalog size in the page description", async () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
       publicStatusItem({
@@ -692,7 +695,55 @@ describe("connectors page", () => {
     });
 
     await expect(
-      screen.findByText("Connect 1100+ services for your agents to use."),
+      screen.findByText("Connect 2 services for your agents to use."),
+    ).resolves.toBeInTheDocument();
+  });
+
+  it("keeps the catalog description count-free while the count loads", async () => {
+    mockConnectors([]);
+    let catalogRequestStarted = false;
+    let resolveCatalog = (): void => {
+      throw new Error("Catalog request did not start");
+    };
+    context.mocks.api(
+      connectorCatalogContract.discovery,
+      async ({ deferred, respond }) => {
+        const catalogDeferred = deferred<void>();
+        resolveCatalog = () => {
+          catalogDeferred.resolve();
+        };
+        catalogRequestStarted = true;
+        await catalogDeferred.promise;
+        return respond(200, {
+          connectors: [],
+          totalConnectorCount: 1234,
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: {
+        [FeatureSwitchKey.ConnectorDiscovery]: true,
+        [FeatureSwitchKey.ConnectorCatalogCount]: true,
+      },
+    });
+
+    await expect(
+      screen.findByText("Connect third-party services for your agents to use."),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByText("Connect 1,234 services for your agents to use."),
+    ).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(catalogRequestStarted).toBeTruthy();
+    });
+
+    resolveCatalog();
+
+    await expect(
+      screen.findByText("Connect 1,234 services for your agents to use."),
     ).resolves.toBeInTheDocument();
   });
 
@@ -721,7 +772,7 @@ describe("connectors page", () => {
       screen.findByText("Connect third-party services for your agents to use."),
     ).resolves.toBeInTheDocument();
     expect(
-      screen.queryByText("Connect 1100+ services for your agents to use."),
+      screen.queryByText("Connect 2 services for your agents to use."),
     ).not.toBeInTheDocument();
   });
 
