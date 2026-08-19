@@ -3712,7 +3712,7 @@ describe("zero sidebar", () => {
 
     const dialogList = await screen.findByTestId("pin-agent-dialog-list");
     const pinnedRow = commandItemByText(dialogList, "Support Agent");
-    click(within(pinnedRow).getByRole("button", { name: "Unpin" }));
+    click(buttonByText("Unpin", pinnedRow));
 
     await waitFor(() => {
       expect(pinnedAgentNames(grid)).toStrictEqual(["Zero", "Research Agent"]);
@@ -3741,7 +3741,7 @@ describe("zero sidebar", () => {
 
     const dialogList = await screen.findByTestId("pin-agent-dialog-list");
     const unpinnedRow = commandItemByText(dialogList, "Support Agent");
-    click(within(unpinnedRow).getByRole("button", { name: "Pin" }));
+    click(buttonByText("Pin", unpinnedRow));
 
     await waitFor(() => {
       expect(pinnedAgentNames(grid)).toStrictEqual(["Zero", "Support Agent"]);
