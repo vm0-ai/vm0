@@ -974,6 +974,13 @@
       "when": 1787075567656,
       "tag": "0946_connector_account_expansion",
       "breakpoints": true
+    },
+    {
+      "idx": 947,
+      "version": "7",
+      "when": 1787110580902,
+      "tag": "0947_add_seedance_2_5_1080p_pricing",
+      "breakpoints": true
     }
   ]
 }
