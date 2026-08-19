@@ -46,6 +46,7 @@ import {
   type ModelProviderType,
 } from "../model-providers";
 import { findMatchingPermissions } from "@okouai/connectors/firewall-rule-matcher";
+import { getModelProviderTypeForSurfaceProtocol } from "../zero-model-provider-gateways";
 
 describe("model-first canonical catalog", () => {
   it("recognizes GPT 5.6 Codex fast mode models", () => {
@@ -1370,4 +1371,119 @@ describe("codex-framework gateway providers (openrouter-codex, vercel-ai-gateway
       });
     },
   );
+});
+
+describe("custom model gateway provider types", () => {
+  it("mirror the surface protocol instead of an unrelated vendor", () => {
+    expect(getModelProviderTypeForSurfaceProtocol("anthropic-messages")).toBe(
+      "custom-anthropic-messages",
+    );
+    expect(getModelProviderTypeForSurfaceProtocol("openai-responses")).toBe(
+      "custom-openai-responses",
+    );
+  });
+
+  it("resolve the framework the runtime adapter needs", () => {
+    expect(getFrameworkForType("custom-anthropic-messages")).toBe(
+      "claude-code",
+    );
+    expect(getFrameworkForType("custom-openai-responses")).toBe("codex");
+  });
+
+  it("stay out of the provider picker", () => {
+    const selectable = getSelectableProviderTypes();
+    expect(selectable).not.toContain("custom-anthropic-messages");
+    expect(selectable).not.toContain("custom-openai-responses");
+  });
+
+  it("are accepted by modelProviderTypeSchema so stored rows parse", () => {
+    expect(
+      modelProviderTypeSchema.safeParse("custom-anthropic-messages").success,
+    ).toBe(true);
+    expect(
+      modelProviderTypeSchema.safeParse("custom-openai-responses").success,
+    ).toBe(true);
+  });
+
+  it("carry no static credential, binding, or model catalog", () => {
+    // The runtime is compiled from the surface row, so a static entry here
+    // would be a second source of truth.
+    for (const type of [
+      "custom-anthropic-messages",
+      "custom-openai-responses",
+    ] as const) {
+      expect(getSecretNameForType(type)).toBeUndefined();
+      expect(getAuthMethodsForType(type)).toBeUndefined();
+      expect(getModelProviderEnvBindings(type)).toBeUndefined();
+      expect(getModels(type)).toBeUndefined();
+      expect(getDefaultModel(type)).toBeUndefined();
+      expect(hasModelSelection(type)).toBe(false);
+    }
+  });
+
+  it("leave the genuine Vercel BYOK types intact", () => {
+    expect(getSecretNameForType("vercel-ai-gateway")).toBe(
+      "VERCEL_AI_GATEWAY_API_KEY",
+    );
+    expect(getProviderBaseUrl("vercel-ai-gateway-codex")).toBe(
+      "https://ai-gateway.vercel.sh/v1",
+    );
+    const selectable = getSelectableProviderTypes();
+    expect(selectable).toContain("vercel-ai-gateway");
+    expect(selectable).toContain("vercel-ai-gateway-codex");
+  });
+
+  it.each([
+    "vm0",
+    "anthropic-api-key",
+    "claude-code-oauth-token",
+    "openai-api-key",
+    "codex-oauth-token",
+    "aws-bedrock",
+    "azure-foundry",
+  ] as const)(
+    "are not session-compatible with %s despite sharing an absent base URL",
+    (type) => {
+      // These providers resolve to no base URL because they use the vendor
+      // default endpoint. A custom gateway resolves to none because its
+      // endpoint lives on the surface row, so the two must not be conflated.
+      expect(getProviderBaseUrl(type)).toBeNull();
+      expect(areProvidersCompatible("custom-anthropic-messages", type)).toBe(
+        false,
+      );
+      expect(areProvidersCompatible("custom-openai-responses", type)).toBe(
+        false,
+      );
+    },
+  );
+
+  it("are session-compatible only with themselves", () => {
+    expect(
+      areProvidersCompatible(
+        "custom-anthropic-messages",
+        "custom-anthropic-messages",
+      ),
+    ).toBe(true);
+    expect(
+      areProvidersCompatible(
+        "custom-openai-responses",
+        "custom-openai-responses",
+      ),
+    ).toBe(true);
+    expect(
+      areProvidersCompatible(
+        "custom-anthropic-messages",
+        "custom-openai-responses",
+      ),
+    ).toBe(false);
+    expect(
+      areProvidersCompatible("custom-anthropic-messages", "vercel-ai-gateway"),
+    ).toBe(false);
+    expect(
+      areProvidersCompatible(
+        "custom-openai-responses",
+        "vercel-ai-gateway-codex",
+      ),
+    ).toBe(false);
+  });
 });

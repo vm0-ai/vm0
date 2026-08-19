@@ -393,7 +393,7 @@ impl FinalizationPhase {
             );
         }
         let (finalization_action, finalization_success, finalization_error) = match disposition {
-            RunCleanupDisposition::IdlePoolOwned => {
+            RunCleanupDisposition::IdlePoolOwned | RunCleanupDisposition::HandoffOwned => {
                 ("runner_host_finalization_reusable_sandbox", true, None)
             }
             _ if reuse_state_changed => ("runner_host_finalization_workspace_cache", true, None),
@@ -821,6 +821,9 @@ pub(super) async fn cleanup_panicked_job(
         RunCleanupDisposition::IdlePoolOwned => {
             let snapshot = idle_pool.lock().await.status_snapshot();
             ownership.active_idle_pool_owned(run, snapshot).await;
+        }
+        RunCleanupDisposition::HandoffOwned => {
+            ownership.active_completed(run).await;
         }
         RunCleanupDisposition::ActiveOrUnknown => {
             warn!(
@@ -1318,6 +1321,52 @@ mod tests {
             panic!("parked sandbox should unpark");
         };
         assert!(sandbox.restored_session_identity().is_none());
+    }
+
+    #[tokio::test]
+    async fn finalization_delivers_requested_exact_handoff_without_idle_publication() {
+        let fixture = FinalizationTelemetryFixture::new().await;
+        let (_budget, lease) = test_budget_lease();
+        let run_id = RunId::new_v4();
+        let successor_run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let reuse_key = "thread:direct-finalization-handoff";
+        let cleanup_state = RunCleanupState::new();
+        let finalization =
+            fixture.finalization_phase(run_id, sandbox_id, reuse_key, lease, cleanup_state.clone());
+        let proof = fixture
+            .active_runs
+            .finalizing_predecessor(run_id, reuse_key, "vm0/default")
+            .expect("registered predecessor should be available");
+        let mut handoff = proof
+            .request_handoff(successor_run_id)
+            .expect("exact successor should register one handoff");
+
+        let finalized = finalization
+            .finalize(executor_phase_outcome(run_id, "direct-handoff", None))
+            .await;
+
+        assert_telemetry_action(&finalized.telemetry, "runner_host_exact_sandbox_handoff");
+        assert_telemetry_outcome(
+            &finalized.telemetry,
+            "runner_host_exact_sandbox_handoff",
+            Some("after_full_park"),
+        );
+        assert_no_telemetry_action(&finalized.telemetry, "runner_host_idle_publication");
+        assert_eq!(
+            cleanup_state.disposition(),
+            RunCleanupDisposition::HandoffOwned
+        );
+        assert_eq!(fixture.idle_pool.lock().await.len(), 0);
+        assert!(handoff.accepted().await);
+        let candidate = handoff
+            .receive()
+            .await
+            .expect("accepted exact handoff should deliver its sandbox");
+        candidate
+            .into_destroy_job()
+            .run_with_context("test_direct_handoff_cleanup")
+            .await;
     }
 
     #[tokio::test]

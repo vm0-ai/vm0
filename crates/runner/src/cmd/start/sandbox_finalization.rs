@@ -11,12 +11,13 @@ use std::time::{Duration, Instant};
 use chrono::SecondsFormat;
 use futures_util::FutureExt;
 use sandbox::{
-    Sandbox, SandboxFactory, SandboxFinalExecParkObserver, SandboxFinalExecParkStage,
-    SandboxFinalExecParkSubstage, SandboxFinalExecParkSubstageOutcome, SandboxId,
+    Sandbox, SandboxFactory, SandboxFinalExecParkHandoffPoint, SandboxFinalExecParkObserver,
+    SandboxFinalExecParkStage, SandboxFinalExecParkSubstage, SandboxFinalExecParkSubstageOutcome,
+    SandboxId,
 };
 use tracing::{info, warn};
 
-use super::active_runs::ActiveRunReusePublisher;
+use super::active_runs::{ActiveRunHandoffDeliveryResult, ActiveRunReusePublisher};
 use super::heartbeat::WorkspaceCacheStateSnapshot;
 use super::idle_lifecycle::{
     SharedIdlePool, destroy_idle_jobs_and_wait, destroy_idle_payload_and_wait,
@@ -30,8 +31,9 @@ use super::{OuterJobPanicPoint, StartLoopTestObserver, maybe_panic_outer_job};
 use crate::executor::{SandboxReuseDisposition, SandboxReuseTerminal};
 use crate::guest_timezone::GuestTimezoneIntent;
 use crate::idle_pool::{
-    DestroyOutcome, IdleDestroyPayload, IdleParkActiveParts, IdleParkFailureParts, IdleParkRequest,
-    IdleParkRequestParts, ParkResult, ParkingGate,
+    DestroyOutcome, IdleDestroyPayload, IdleParkActiveParts, IdleParkCandidate,
+    IdleParkFailureParts, IdleParkRequest, IdleParkRequestParts, ParkResult, ParkedIdleCandidate,
+    ParkingGate,
 };
 use crate::ids::RunId;
 use crate::network_log_drain::NetworkLogDrainCoordinator;
@@ -92,6 +94,23 @@ impl<'a> FinalizationTelemetry<'a> {
             telemetry.record(action_type, Duration::ZERO, false, Some(error));
         }
     }
+
+    fn record_handoff(
+        &mut self,
+        success: bool,
+        error: Option<&'static str>,
+        outcome: &'static str,
+    ) {
+        if let Some(telemetry) = self.telemetry.as_deref_mut() {
+            telemetry.record_with_outcome(
+                "runner_host_exact_sandbox_handoff",
+                Duration::ZERO,
+                success,
+                error,
+                Some(outcome),
+            );
+        }
+    }
 }
 
 impl SandboxFinalExecParkObserver for FinalizationTelemetry<'_> {
@@ -149,6 +168,66 @@ impl SandboxFinalExecParkObserver for FinalizationTelemetry<'_> {
                 error,
                 outcome.map(SandboxFinalExecParkSubstageOutcome::as_str),
             );
+        }
+    }
+}
+
+enum ExactHandoffAttempt {
+    Delivered {
+        handoff_point: Option<SandboxFinalExecParkHandoffPoint>,
+    },
+    ContinueIdle(ParkedIdleCandidate),
+    Destroy {
+        candidate: IdleParkCandidate,
+        error: &'static str,
+    },
+}
+
+enum UndeliveredExactHandoff {
+    ContinueIdle(ParkedIdleCandidate),
+    Destroy {
+        candidate: IdleParkCandidate,
+        error: &'static str,
+    },
+}
+
+fn deliver_exact_handoff(
+    publisher: &ActiveRunReusePublisher,
+    candidate: IdleParkCandidate,
+    predecessor_run_id: RunId,
+) -> ExactHandoffAttempt {
+    match candidate {
+        IdleParkCandidate::Ordinary(candidate) => {
+            match publisher.deliver_exact_handoff(candidate, predecessor_run_id) {
+                ActiveRunHandoffDeliveryResult::Delivered => ExactHandoffAttempt::Delivered {
+                    handoff_point: None,
+                },
+                ActiveRunHandoffDeliveryResult::NotRequested(candidate) => {
+                    ExactHandoffAttempt::ContinueIdle(candidate)
+                }
+                ActiveRunHandoffDeliveryResult::Failed(candidate) => ExactHandoffAttempt::Destroy {
+                    candidate: IdleParkCandidate::Ordinary(candidate),
+                    error: "receiver_unavailable",
+                },
+            }
+        }
+        IdleParkCandidate::Immediate(candidate) => {
+            let handoff_point = candidate.handoff_point();
+            match publisher.deliver_exact_immediate_handoff(candidate, predecessor_run_id) {
+                ActiveRunHandoffDeliveryResult::Delivered => ExactHandoffAttempt::Delivered {
+                    handoff_point: Some(handoff_point),
+                },
+                ActiveRunHandoffDeliveryResult::NotRequested(candidate) => {
+                    ExactHandoffAttempt::Destroy {
+                        candidate: IdleParkCandidate::Immediate(candidate),
+                        error: "request_unavailable",
+                    }
+                }
+                ActiveRunHandoffDeliveryResult::Failed(candidate) => ExactHandoffAttempt::Destroy {
+                    candidate: IdleParkCandidate::Immediate(candidate),
+                    error: "receiver_unavailable",
+                },
+            }
         }
     }
 }
@@ -380,6 +459,7 @@ async fn finalize_sandbox_for_completion_inner(
             guest_timezone_intent,
             workspace_image_size_bytes,
             workspace_promotion,
+            handoff: publishes_exact_sandbox.then(|| active_run_reuse.handoff_signal()),
         });
         let park_outcome = match park_request
             .park_for_idle_with_observer(&mut telemetry)
@@ -601,6 +681,119 @@ async fn finalize_sandbox_for_completion_inner(
             destroy_result.budget
         } else {
             close_network_log_session(run_id, network_log_session.take(), &network_log_drain).await;
+            let candidate = candidate.with_last_completed_at(completed_at.clone());
+            let handoff_attempt = if publishes_exact_sandbox {
+                let transfer_guard = cancel.transfer_guard().await;
+                if cancel.is_hard_cancelled() {
+                    drop(transfer_guard);
+                    telemetry.record_outcome("runner_host_finalization_cancelled", "cancelled");
+                    telemetry.record_handoff(false, Some("cancelled"), "cancelled");
+                    let (payload, budget_lease) = candidate.into_active_destroy_parts();
+                    let destroy_result = destroy_active_owned_idle_payload(
+                        payload,
+                        budget_lease,
+                        "hard_cancellation",
+                        destroy_bookkeeping,
+                    )
+                    .await;
+                    let workspace_cache_promoted = mark_workspace_cache_snapshot_promoted(
+                        &workspace_cache_snapshot,
+                        Some(&reuse_key),
+                        &profile_name,
+                        &completed_at,
+                        destroy_result.workspace_cache_promoted,
+                    );
+                    return mark_reuse_state_refresh(
+                        FinalizationReady::new(destroy_result.budget),
+                        workspace_cache_promoted,
+                    );
+                }
+                match deliver_exact_handoff(&active_run_reuse, candidate, run_id) {
+                    ExactHandoffAttempt::Delivered { handoff_point } => {
+                        cleanup_state.mark_handoff_owned();
+                        #[cfg(test)]
+                        maybe_panic_outer_job(
+                            outer_job_panic,
+                            OuterJobPanicPoint::HandoffOwned,
+                            run_id,
+                        );
+                        drop(transfer_guard);
+                        let handoff_path = match handoff_point {
+                            Some(SandboxFinalExecParkHandoffPoint::BeforeBalloon) => {
+                                "before_balloon"
+                            }
+                            Some(SandboxFinalExecParkHandoffPoint::DuringBalloonSettle) => {
+                                "during_balloon"
+                            }
+                            None => "after_full_park",
+                        };
+                        telemetry.record_handoff(true, None, handoff_path);
+                        info!(
+                            run_id = %run_id,
+                            reuse_key_fingerprint = %reuse_key_fingerprint,
+                            reuse_key_kind = reuse_kind,
+                            handoff_path,
+                            "parked sandbox delivered directly to claimed exact successor"
+                        );
+                        return FinalizationReady::new(BudgetOwnership::handoff_owned());
+                    }
+                    ExactHandoffAttempt::ContinueIdle(candidate) => {
+                        drop(transfer_guard);
+                        UndeliveredExactHandoff::ContinueIdle(candidate)
+                    }
+                    ExactHandoffAttempt::Destroy { candidate, error } => {
+                        drop(transfer_guard);
+                        UndeliveredExactHandoff::Destroy { candidate, error }
+                    }
+                }
+            } else {
+                match candidate {
+                    IdleParkCandidate::Ordinary(candidate) => {
+                        UndeliveredExactHandoff::ContinueIdle(candidate)
+                    }
+                    IdleParkCandidate::Immediate(candidate) => UndeliveredExactHandoff::Destroy {
+                        candidate: IdleParkCandidate::Immediate(candidate),
+                        error: "request_unavailable",
+                    },
+                }
+            };
+            let candidate = match handoff_attempt {
+                UndeliveredExactHandoff::ContinueIdle(candidate) => candidate,
+                UndeliveredExactHandoff::Destroy { candidate, error } => {
+                    let handoff_outcome = if error == "receiver_unavailable" {
+                        "receiver_closed_destroyed"
+                    } else {
+                        "request_unavailable_destroyed"
+                    };
+                    telemetry.record_handoff(false, Some(error), handoff_outcome);
+                    warn!(
+                        run_id = %run_id,
+                        reuse_key_fingerprint = %reuse_key_fingerprint,
+                        reuse_key_kind = reuse_kind,
+                        handoff_error = error,
+                        "exact handoff unavailable, destroying parked sandbox"
+                    );
+                    let (payload, budget_lease) = candidate.into_active_destroy_parts();
+                    let destroy_result = destroy_active_owned_idle_payload(
+                        payload,
+                        budget_lease,
+                        "exact_handoff_unavailable",
+                        destroy_bookkeeping,
+                    )
+                    .await;
+                    let workspace_cache_promoted = mark_workspace_cache_snapshot_promoted(
+                        &workspace_cache_snapshot,
+                        Some(&reuse_key),
+                        &profile_name,
+                        &completed_at,
+                        destroy_result.workspace_cache_promoted,
+                    );
+                    return mark_reuse_state_refresh(
+                        FinalizationReady::new(destroy_result.budget),
+                        workspace_cache_promoted,
+                    );
+                }
+            };
             #[cfg(test)]
             test_observer.notify_before_idle_pool_ownership_transfer(run_id);
             loop {
@@ -676,7 +869,6 @@ async fn finalize_sandbox_for_completion_inner(
                         workspace_cache_promoted,
                     );
                 }
-                let candidate = candidate.with_last_completed_at(completed_at.clone());
                 break match pool.park(candidate) {
                     ParkResult::Parked => {
                         info!(
@@ -2753,6 +2945,7 @@ mod tests {
             guest_timezone_intent: GuestTimezoneIntent::Unknown,
             workspace_image_size_bytes: b"image".len() as u64,
             workspace_promotion: Some(old_promotion),
+            handoff: None,
         })
         .park_for_idle()
         .await

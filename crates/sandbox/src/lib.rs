@@ -45,7 +45,8 @@ pub use factory::{
 };
 pub use runtime::{RuntimeProvider, SandboxRuntime};
 pub use sandbox::{
-    GuestMemorySnapshot, Sandbox, SandboxFinalExecParkObserver, SandboxFinalExecParkOutcome,
+    GuestMemorySnapshot, Sandbox, SandboxFinalExecParkHandoff, SandboxFinalExecParkHandoffOutcome,
+    SandboxFinalExecParkHandoffPoint, SandboxFinalExecParkObserver, SandboxFinalExecParkOutcome,
     SandboxFinalExecParkStage, SandboxFinalExecParkSubstage, SandboxFinalExecParkSubstageOutcome,
     SandboxParkNonReusableReason, SandboxParkOutcome, SandboxStartObserver, SandboxStartStage,
     SevereMemoryRetentionDiagnostics,
