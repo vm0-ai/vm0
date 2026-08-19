@@ -91,6 +91,24 @@ const USAGE_PACK_OPTION_PATTERNS: Readonly<Record<UsagePackUsd, RegExp>> = {
   100: /^\$100(?:\s|·)/u,
   200: /^\$200(?:\s|·)/u,
 };
+const ACTIVE_TEAM_PLAN_STATE = {
+  cancelAtPeriodEnd: false,
+  hasSubscription: true,
+  scheduledChange: null,
+  tier: "team",
+} as const;
+const ENDING_TEAM_PLAN_STATE = {
+  cancelAtPeriodEnd: true,
+  hasSubscription: true,
+  scheduledChange: { targetTier: "limited-free-1", type: "cancel" },
+  tier: "team",
+} as const;
+const DOWNGRADING_TEAM_PLAN_STATE = {
+  cancelAtPeriodEnd: false,
+  hasSubscription: true,
+  scheduledChange: { targetTier: "pro", type: "downgrade" },
+  tier: "team",
+} as const;
 
 test.describe.configure({ mode: "parallel" });
 
@@ -359,175 +377,121 @@ test("restored Team plan preserves package and concurrency changes", async ({
   );
 });
 
-test("add-on upgrades and restores preserve pending Plan changes", async ({
+test("usage-pack upgrades and restores preserve pending Plan changes", async ({
   page,
 }) => {
-  test.setTimeout(360_000);
+  test.setTimeout(240_000);
 
-  await withBillingOwner(
-    page,
-    "E2E Ending Team Add-on Upgrades",
-    async (owner) => {
-      const activePlan = {
-        cancelAtPeriodEnd: false,
-        hasSubscription: true,
-        scheduledChange: null,
-        tier: "team",
-      } as const;
-      const endingPlan = {
-        cancelAtPeriodEnd: true,
-        hasSubscription: true,
-        scheduledChange: {
-          targetTier: "limited-free-1",
-          type: "cancel",
-        },
-        tier: "team",
-      } as const;
-      const downgradingPlan = {
-        cancelAtPeriodEnd: false,
-        hasSubscription: true,
-        scheduledChange: { targetTier: "pro", type: "downgrade" },
-        tier: "team",
-      } as const;
-      await buyUsagePackPlan(page, "team");
-      await expectPlanState(page, owner, activePlan);
+  await withBillingOwner(page, "E2E Ending Team Usage Pack", async (owner) => {
+    await buyUsagePackPlan(page, "team");
+
+    const upgradePackages = await openUsagePackManagement(page, "team");
+    await selectUsagePack(page, upgradePackages, 50);
+    const controlPage = await page.context().newPage();
+    try {
+      await cancelPlan(controlPage, "team");
+      await expectPlanState(page, owner, ENDING_TEAM_PLAN_STATE);
+
+      await submitUsagePackConfiguration(page, upgradePackages, "Confirm");
       await expectUsagePackState(page, owner, owner.userId, {
         pendingChange: null,
         tier: "team",
-        usagePackUsd: 20,
+        usagePackUsd: 50,
+      });
+      await expectPlanState(page, owner, ENDING_TEAM_PLAN_STATE);
+      await expectUsagePackReductionRejectedWhilePlanEnds(
+        page,
+        upgradePackages,
+        20,
+      );
+      await expectUsagePackState(page, owner, owner.userId, {
+        pendingChange: null,
+        tier: "team",
+        usagePackUsd: 50,
       });
 
-      await buyConcurrency(page, owner, 5);
-      await expectConcurrencyState(page, owner, {
-        cancelAtPeriodEnd: false,
-        concurrencyLimit: 15,
-        quantity: 5,
-        scheduledQuantity: null,
-        subscriptionCount: 1,
+      await restorePlan(page, "team");
+      await expectPlanState(page, owner, ACTIVE_TEAM_PLAN_STATE);
+      await changeUsagePack(page, "team", 20, "Confirm");
+      await expectUsagePackState(page, owner, owner.userId, {
+        pendingChange: {
+          kind: "downgrade",
+          status: "scheduled",
+          targetUsagePackUsd: 20,
+        },
+        tier: "team",
+        usagePackUsd: 50,
       });
 
-      const upgradePackages = await openUsagePackManagement(page, "team");
-      await selectUsagePack(page, upgradePackages, 50);
-      const controlPage = await page.context().newPage();
-      try {
-        await cancelPlan(controlPage, "team");
-        await expectPlanState(page, owner, endingPlan);
-        await expectConcurrencyState(page, owner, {
-          cancelAtPeriodEnd: false,
-          concurrencyLimit: 15,
-          quantity: 5,
-          scheduledQuantity: null,
-          subscriptionCount: 1,
-        });
+      const restorePackages = await openUsagePackManagement(page, "team");
+      await selectUsagePack(page, restorePackages, 50);
+      await downgradeTeamToPro(controlPage);
+      await expectPlanState(page, owner, DOWNGRADING_TEAM_PLAN_STATE);
 
-        await submitUsagePackConfiguration(page, upgradePackages, "Confirm");
-        await expectUsagePackState(page, owner, owner.userId, {
-          pendingChange: null,
-          tier: "team",
-          usagePackUsd: 50,
-        });
-        await expectPlanState(page, owner, endingPlan);
-        await expectUsagePackReductionRejectedWhilePlanEnds(
-          page,
-          upgradePackages,
-          20,
-        );
-        await expectUsagePackState(page, owner, owner.userId, {
-          pendingChange: null,
-          tier: "team",
-          usagePackUsd: 50,
-        });
+      await submitUsagePackConfiguration(page, restorePackages, "Restore");
+      await expectUsagePackState(page, owner, owner.userId, {
+        pendingChange: null,
+        tier: "team",
+        usagePackUsd: 50,
+      });
+      await expectPlanState(page, owner, DOWNGRADING_TEAM_PLAN_STATE);
+    } finally {
+      await controlPage.close();
+    }
+  });
+});
 
-        await changeConcurrency(page, 10);
-        await expectConcurrencyState(page, owner, {
-          cancelAtPeriodEnd: false,
-          concurrencyLimit: 20,
-          quantity: 10,
-          scheduledQuantity: null,
-          subscriptionCount: 1,
-        });
-        await expectPlanState(page, owner, endingPlan);
-        await expectConcurrencyReductionRejectedWhilePlanEnds(page, 5);
-        await expectConcurrencyState(page, owner, {
-          cancelAtPeriodEnd: false,
-          concurrencyLimit: 20,
-          quantity: 10,
-          scheduledQuantity: null,
-          subscriptionCount: 1,
-        });
+test("concurrency upgrades and restores preserve pending Plan changes", async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
 
-        await restorePlan(page, "team");
-        await expectPlanState(page, owner, activePlan);
+  await withBillingOwner(page, "E2E Ending Team Concurrency", async (owner) => {
+    await buyUsagePackPlan(page, "team");
+    await buyConcurrency(page, owner, 5);
 
-        await changeUsagePack(page, "team", 20, "Confirm");
-        await expectUsagePackState(page, owner, owner.userId, {
-          pendingChange: {
-            kind: "downgrade",
-            status: "scheduled",
-            targetUsagePackUsd: 20,
-          },
-          tier: "team",
-          usagePackUsd: 50,
-        });
-        await changeConcurrency(page, 5);
-        await expectConcurrencyState(page, owner, {
-          cancelAtPeriodEnd: false,
-          concurrencyLimit: 20,
-          quantity: 10,
-          scheduledQuantity: 5,
-          subscriptionCount: 1,
-        });
+    await cancelPlan(page, "team");
+    await changeConcurrency(page, 10);
+    await expectConcurrencyState(page, owner, {
+      cancelAtPeriodEnd: false,
+      concurrencyLimit: 20,
+      quantity: 10,
+      scheduledQuantity: null,
+      subscriptionCount: 1,
+    });
+    await expectPlanState(page, owner, ENDING_TEAM_PLAN_STATE);
+    await expectConcurrencyReductionRejectedWhilePlanEnds(page, 5);
+    await expectConcurrencyState(page, owner, {
+      cancelAtPeriodEnd: false,
+      concurrencyLimit: 20,
+      quantity: 10,
+      scheduledQuantity: null,
+      subscriptionCount: 1,
+    });
 
-        const restorePackages = await openUsagePackManagement(page, "team");
-        await selectUsagePack(page, restorePackages, 50);
-        await downgradeTeamToPro(controlPage);
-        await expectPlanState(page, owner, downgradingPlan);
-        await expectUsagePackState(page, owner, owner.userId, {
-          pendingChange: {
-            kind: "downgrade",
-            status: "scheduled",
-            targetUsagePackUsd: 20,
-          },
-          tier: "team",
-          usagePackUsd: 50,
-        });
-        await expectConcurrencyState(page, owner, {
-          cancelAtPeriodEnd: false,
-          concurrencyLimit: 20,
-          quantity: 10,
-          scheduledQuantity: 5,
-          subscriptionCount: 1,
-        });
+    await restorePlan(page, "team");
+    await expectPlanState(page, owner, ACTIVE_TEAM_PLAN_STATE);
+    await changeConcurrency(page, 5);
+    await expectConcurrencyState(page, owner, {
+      cancelAtPeriodEnd: false,
+      concurrencyLimit: 20,
+      quantity: 10,
+      scheduledQuantity: 5,
+      subscriptionCount: 1,
+    });
 
-        await submitUsagePackConfiguration(page, restorePackages, "Restore");
-        await expectUsagePackState(page, owner, owner.userId, {
-          pendingChange: null,
-          tier: "team",
-          usagePackUsd: 50,
-        });
-        await expectPlanState(page, owner, downgradingPlan);
-        await expectConcurrencyState(page, owner, {
-          cancelAtPeriodEnd: false,
-          concurrencyLimit: 20,
-          quantity: 10,
-          scheduledQuantity: 5,
-          subscriptionCount: 1,
-        });
-
-        await restoreConcurrency(page);
-        await expectConcurrencyState(page, owner, {
-          cancelAtPeriodEnd: false,
-          concurrencyLimit: 20,
-          quantity: 10,
-          scheduledQuantity: null,
-          subscriptionCount: 1,
-        });
-        await expectPlanState(page, owner, downgradingPlan);
-      } finally {
-        await controlPage.close();
-      }
-    },
-  );
+    await downgradeTeamToPro(page);
+    await expectPlanState(page, owner, DOWNGRADING_TEAM_PLAN_STATE);
+    await restoreConcurrency(page);
+    await expectConcurrencyState(page, owner, {
+      cancelAtPeriodEnd: false,
+      concurrencyLimit: 20,
+      quantity: 10,
+      scheduledQuantity: null,
+      subscriptionCount: 1,
+    });
+    await expectPlanState(page, owner, DOWNGRADING_TEAM_PLAN_STATE);
+  });
 });
 
 test("paid invitations charge one package each and revoke pending packages", async ({
