@@ -1648,6 +1648,38 @@
       "unread": "Belum dibaca",
       "unreadOnly": "Hanya yang belum dibaca"
     },
+    "startCards": {
+      "kinds": {
+        "avatar": {
+          "description": "Buat presenter untuk konten Anda berikutnya",
+          "prompt": "Buatkan presenter avatar yang berbicara untuk video saya berikutnya.",
+          "title": "Buat avatar"
+        },
+        "illustration": {
+          "description": "Buat visual jadi dengan gaya yang Anda inginkan",
+          "prompt": "Buatkan ilustrasi dengan gaya yang saya jelaskan.",
+          "title": "Buat ilustrasi"
+        },
+        "slides": {
+          "description": "Ubah topik atau dokumen menjadi dek yang rapi",
+          "prompt": "Buatkan presentasi dari topik atau dokumen yang saya berikan.",
+          "title": "Buat presentasi"
+        },
+        "video": {
+          "description": "Ubah ide atau aset Anda menjadi video jadi",
+          "prompt": "Ubah ide atau aset saya menjadi video jadi.",
+          "title": "Buat video"
+        },
+        "website": {
+          "description": "Buat halaman yang bisa dibagikan",
+          "prompt": "Buat dan terbitkan halaman web yang bisa saya bagikan.",
+          "title": "Buat situs web"
+        }
+      },
+      "openTemplatesAria": "Jelajahi templat",
+      "startWithPrompt": "Buat",
+      "templates": "Templat"
+    },
     "templates": {
       "categories": {
         "illustration": "Ilustrasi",
