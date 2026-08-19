@@ -7472,23 +7472,17 @@ function composerImageModelPanelCategory({
   onChange,
   label,
   tabLabel,
-  variantLabel,
 }: {
   selectedModel: ImageModel;
   onChange: (next: ImageModel | null) => void;
   label: string;
   tabLabel: string;
-  variantLabel: string;
 }): MediaModelPanelCategory {
-  const gptImage1Models = ["gpt-image-1", "gpt-image-1-mini"] as const;
-  const baseModel = gptImage1Models[0];
   return {
     id: "image",
     label,
     tabLabel,
-    options: PUBLIC_IMAGE_MODELS.filter((candidate) => {
-      return candidate !== gptImage1Models[1];
-    }).map((candidate) => {
+    options: PUBLIC_IMAGE_MODELS.map((candidate) => {
       return {
         key: candidate,
         label: IMAGE_MODEL_CONFIGS[candidate].label,
@@ -7497,24 +7491,6 @@ function composerImageModelPanelCategory({
         onSelect: () => {
           onChange(candidate);
         },
-        ...(candidate === baseModel
-          ? {
-              variant: {
-                label: variantLabel,
-                options: gptImage1Models.map((variantModel) => {
-                  const variantConfig = IMAGE_MODEL_CONFIGS[variantModel];
-                  return {
-                    label: variantConfig.label,
-                    chipLabel: variantConfig.variantLabel,
-                    selected: selectedModel === variantModel,
-                    onSelect: () => {
-                      onChange(variantModel);
-                    },
-                  };
-                }),
-              },
-            }
-          : {}),
       };
     }),
   };
@@ -7613,12 +7589,6 @@ function ComposerModelPickerControls({
         tabLabel: t(($) => {
           return $.settings.models.picker.categoryImage;
         }),
-        variantLabel: t(
-          ($) => {
-            return $.settings.models.picker.modelVariants;
-          },
-          { model: IMAGE_MODEL_CONFIGS["gpt-image-1"].label },
-        ),
       }),
     );
   }
