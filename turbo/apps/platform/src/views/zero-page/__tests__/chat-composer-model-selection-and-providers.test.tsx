@@ -3580,19 +3580,20 @@ describe("chat composer image model", () => {
   function selectedImageModelLabel(
     root: ParentNode = document,
   ): string | undefined {
-    const row = queryAllByRoleFast("button", root).find((candidate) => {
-      return candidate.getAttribute("aria-pressed") === "true";
-    });
-    if (row) {
-      return row.getAttribute("aria-label") ?? undefined;
+    // Every family segment fills one variant by default, so a checked radio no
+    // longer proves selection. `data-media-selected` marks the one row that is
+    // truly selected: a family row then names the exact variant from its
+    // checked segment, and a plain row carries the label itself.
+    const selected = root.querySelector("[data-media-selected='true']");
+    if (!selected) {
+      return undefined;
     }
-    const variant = queryAllByRoleFast("radio", root).find((candidate) => {
-      return (
-        candidate.getAttribute("aria-checked") === "true" &&
-        candidate.hasAttribute("aria-label")
-      );
+    const checkedVariant = Array.from(
+      selected.querySelectorAll("[role='radio']"),
+    ).find((candidate) => {
+      return candidate.getAttribute("aria-checked") === "true";
     });
-    return variant?.getAttribute("aria-label") ?? undefined;
+    return (checkedVariant ?? selected).getAttribute("aria-label") ?? undefined;
   }
 
   function imageVariantSegment(label: string): HTMLElement | undefined {
@@ -4130,11 +4131,17 @@ describe("chat composer image model", () => {
         return candidate.textContent;
       }),
     ).toStrictEqual(["Standard", "Mini", "Standard", "Ultra", "Pro", "Lite"]);
+    // Qwen is the selection, so no family carries the checkmark, yet each
+    // segment still fills its base variant so the control never reads as empty.
     expect(
-      variantSegments.every((candidate) => {
-        return candidate.getAttribute("aria-checked") === "false";
-      }),
-    ).toBeTruthy();
+      variantSegments
+        .filter((candidate) => {
+          return candidate.getAttribute("aria-checked") === "true";
+        })
+        .map((candidate) => {
+          return candidate.getAttribute("aria-label");
+        }),
+    ).toStrictEqual(["GPT Image 1", "Flux Pro v1.1", "Seedream 5 Pro"]);
     expect(within(listbox).queryByText("GPT Image 1 Mini")).toBeNull();
     expect(within(listbox).queryByText("Flux Pro v1.1 Ultra")).toBeNull();
     expect(within(listbox).queryByText("Seedream 5 Lite")).toBeNull();
@@ -4300,8 +4307,13 @@ describe("chat composer image model", () => {
     await waitFor(() => {
       expect(selectedImageModelLabel()).toBe("Flux Pro v1.1 Ultra");
     });
+    // Seedream 5 is no longer the selection, so its segment falls back to the
+    // filled base (Pro) rather than holding the Lite picked earlier.
     await expect(
       findImageVariantSegment("Seedream 5 Pro"),
+    ).resolves.toHaveAttribute("aria-checked", "true");
+    await expect(
+      findImageVariantSegment("Seedream 5 Lite"),
     ).resolves.toHaveAttribute("aria-checked", "false");
   });
 
