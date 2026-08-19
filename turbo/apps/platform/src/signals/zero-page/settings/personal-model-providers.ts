@@ -1,7 +1,7 @@
 import { command, computed, state } from "ccstate";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import {
-  MODEL_PROVIDER_TYPES,
+  getModelProviderPresentationLabel,
   type ModelProviderType,
 } from "@okouai/api-contracts/contracts/model-providers";
 import {
@@ -76,8 +76,7 @@ export const personalConfiguredProviders$ = computed(async (get) => {
 
 export const disconnectPersonalOAuthCredential$ = command(
   async ({ set }, providerType: ModelProviderType, signal: AbortSignal) => {
-    const providerLabel =
-      MODEL_PROVIDER_TYPES[providerType]?.label ?? providerType;
+    const providerLabel = getModelProviderPresentationLabel(providerType);
 
     const promise = (async () => {
       await set(deletePersonalModelProvider$, providerType, signal);

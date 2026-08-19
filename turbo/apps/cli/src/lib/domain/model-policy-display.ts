@@ -1,5 +1,5 @@
 import {
-  MODEL_PROVIDER_TYPES,
+  getModelProviderPresentationLabel,
   type ModelProviderType,
   type OrgModelPolicy,
 } from "@okouai/api-contracts/contracts/model-providers";
@@ -21,7 +21,7 @@ export function getModelProviderRouteKind(
 }
 
 export function getModelProviderTypeLabel(type: ModelProviderType): string {
-  return MODEL_PROVIDER_TYPES[type].label;
+  return getModelProviderPresentationLabel(type);
 }
 
 export function formatModelProviderRoute(policy: OrgModelPolicy): string {
