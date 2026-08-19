@@ -2372,6 +2372,61 @@ describe("zero sidebar", () => {
     expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
   });
 
+  it("opens three-column conversation search with mod+k from the composer", async () => {
+    prepareAgentTeam();
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    await screen.findByPlaceholderText(PLACEHOLDER);
+    const composer = mountedComposer();
+    composer.focus();
+    const event = new KeyboardEvent("keydown", {
+      key: "k",
+      code: "KeyK",
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    composer.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBeTruthy();
+    const dialog = await screen.findByRole("dialog", {
+      name: "Search chats and messages...",
+    });
+    expect(dialog).toBeInTheDocument();
+  });
+
+  it("leaves mod+k to the browser without three-column navigation", async () => {
+    prepareAgentTeam();
+
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    await waitFor(() => {
+      expect(sidebar()).toBeInTheDocument();
+    });
+    const event = new KeyboardEvent("keydown", {
+      key: "k",
+      code: "KeyK",
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    document.body.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBeFalsy();
+    expect(
+      screen.queryByRole("dialog", {
+        name: "Search chats and messages...",
+      }),
+    ).not.toBeInTheDocument();
+  });
+
   it("moves to the next pinned agent chat from the composer", async () => {
     prepareAgentTeam();
     context.mocks.data.userPreferences({
@@ -3109,6 +3164,10 @@ describe("zero sidebar", () => {
     expect(within(list).getByText("Chat")).toBeInTheDocument();
     const searchButton = within(list).getByLabelText("Search conversations");
     const newChatButton = within(list).getByLabelText("New chat");
+    expect(searchButton).toHaveAttribute(
+      "aria-keyshortcuts",
+      "Meta+K Control+K",
+    );
     const searchIcon = searchButton.querySelector("svg");
     const newChatIcon = newChatButton.querySelector("svg");
     if (!(searchIcon instanceof SVGElement)) {

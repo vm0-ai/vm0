@@ -177,7 +177,7 @@ export const VIDEO_MODEL_CONFIGS = {
     family: "seedance-2-5",
     aspectRatios: VIDEO_ASPECT_RATIOS,
     durations: SEEDANCE_2_5_DURATIONS,
-    resolutions: SEEDANCE_FAST_RESOLUTIONS,
+    resolutions: SEEDANCE_RESOLUTIONS,
     defaultResolution: "720p",
     supportsGenerateAudio: true,
     supportsSeed: false,

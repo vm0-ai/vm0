@@ -20,6 +20,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
   cn,
+  getShortcutLabel,
 } from "@okouai/ui";
 import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
 import {
@@ -774,6 +775,7 @@ function ChatListColumn() {
   const searchLabel = t(($) => {
     return $.appShell.sidebar.searchConversations;
   });
+  const searchShortcutLabel = getShortcutLabel("mod+k");
   const newChatLabel = t(($) => {
     return $.appShell.sidebar.navigation.newChat;
   });
@@ -807,6 +809,7 @@ function ChatListColumn() {
                     openThreeColumnSearch();
                   }}
                   aria-label={searchLabel}
+                  aria-keyshortcuts="Meta+K Control+K"
                   variant="quiet"
                   size="icon-sm"
                 >
@@ -814,7 +817,10 @@ function ChatListColumn() {
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                <p className="text-xs">{searchLabel}</p>
+                <p className="text-xs">
+                  {searchLabel}
+                  <span aria-hidden="true">{` · ${searchShortcutLabel}`}</span>
+                </p>
               </TooltipContent>
             </Tooltip>
             <Tooltip>
