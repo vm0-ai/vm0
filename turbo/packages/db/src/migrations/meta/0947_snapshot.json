@@ -1,6 +1,6 @@
 {
-  "id": "8a781146-0222-4fe8-9208-403f8063ffc6",
-  "prevId": "2c023afa-637a-40ba-8717-70cefaa98e19",
+  "id": "7d3cd197-4cde-429c-b130-f472d113e8d6",
+  "prevId": "8a781146-0222-4fe8-9208-403f8063ffc6",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -17439,6 +17439,158 @@
       },
       "isRLSEnabled": false
     },
+    "public.presentation_template_uploads": {
+      "name": "presentation_template_uploads",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "template_id": {
+          "name": "template_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "page_index": {
+          "name": "page_index",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "storage_key": {
+          "name": "storage_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "filename": {
+          "name": "filename",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content_type": {
+          "name": "content_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "size_bytes": {
+          "name": "size_bytes",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_presentation_template_uploads_template": {
+          "name": "idx_presentation_template_uploads_template",
+          "columns": [
+            {
+              "expression": "template_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "page_index",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_presentation_template_uploads_source": {
+          "name": "idx_presentation_template_uploads_source",
+          "columns": [
+            {
+              "expression": "template_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "role = 'source'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_presentation_template_uploads_page": {
+          "name": "idx_presentation_template_uploads_page",
+          "columns": [
+            {
+              "expression": "template_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "page_index",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "role = 'page'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "presentation_template_uploads_template_id_presentation_templates_id_fk": {
+          "name": "presentation_template_uploads_template_id_presentation_templates_id_fk",
+          "tableFrom": "presentation_template_uploads",
+          "tableTo": "presentation_templates",
+          "columnsFrom": [
+            "template_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "chk_presentation_template_uploads_role": {
+          "name": "chk_presentation_template_uploads_role",
+          "value": "\"presentation_template_uploads\".\"role\" IN ('source', 'page')"
+        },
+        "chk_presentation_template_uploads_page_index": {
+          "name": "chk_presentation_template_uploads_page_index",
+          "value": "(\"presentation_template_uploads\".\"role\" = 'page' AND \"presentation_template_uploads\".\"page_index\" >= 0) OR (\"presentation_template_uploads\".\"role\" = 'source' AND \"presentation_template_uploads\".\"page_index\" IS NULL)"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.presentation_templates": {
       "name": "presentation_templates",
       "schema": "",
@@ -17492,7 +17644,7 @@
           "name": "source_storage_key",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "source_filename": {
           "name": "source_filename",

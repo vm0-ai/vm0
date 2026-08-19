@@ -366,6 +366,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ComposerImeSubmitFlush]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Flush pending IME DOM changes into the composer document before reading a submission.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ChatForward]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -453,6 +460,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Allow personal Codex and Claude Code subscriptions to store and manually switch between multiple accounts.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ConnectorAccounts]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Enable multiple credential accounts per built-in or custom connector.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

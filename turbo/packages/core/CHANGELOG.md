@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.570.2](https://github.com/vm0-ai/vm0/compare/core-v8.570.1...core-v8.570.2) (2026-08-19)
+
+
+### Bug Fixes
+
+* **composer:** flush pending ime dom changes before submit ([#28045](https://github.com/vm0-ai/vm0/issues/28045)) ([2ad0862](https://github.com/vm0-ai/vm0/commit/2ad08627c7599840af4c82103032edab250e5e4d))
+
 ## [8.570.1](https://github.com/vm0-ai/vm0/compare/core-v8.570.0...core-v8.570.1) (2026-08-19)
 
 

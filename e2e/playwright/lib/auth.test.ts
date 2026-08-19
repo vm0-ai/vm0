@@ -4,9 +4,18 @@ import { test } from "node:test";
 
 import { chromium } from "@playwright/test";
 
-import { withLoadedClerkTestingPage } from "./auth";
+import {
+  getCurrentClerkSessionToken,
+  type ClerkSessionTokenCache,
+  withLoadedClerkTestingPage,
+} from "./auth";
 
-type ClerkFixtureMode = "absent" | "incomplete" | "loaded" | "recover";
+type ClerkFixtureMode =
+  | "absent"
+  | "incomplete"
+  | "loaded"
+  | "loaded-without-token"
+  | "recover";
 
 interface ClerkFixture {
   readonly appUrl: string;
@@ -135,6 +144,78 @@ test("isolates runner Clerk bootstrap recovery before side effects", async (cont
   }
 });
 
+test("keeps Clerk session tokens current across repeated observers", async (context) => {
+  const browser = await chromium.launch();
+  try {
+    await context.test(
+      "reuses recent tokens and refreshes aged tokens",
+      async () => {
+        await withClerkFixture("loaded", async (fixture) => {
+          await withLoadedClerkTestingPage(
+            browser,
+            {
+              appUrl: fixture.appUrl,
+              contextOptions: {},
+            },
+            async (page) => {
+              const cache: ClerkSessionTokenCache = {
+                refreshedAt: Date.now(),
+                token: "seed-token",
+              };
+              const options = {
+                activeOrganizationId: "org_fixture",
+                reuseMs: 30_000,
+              };
+
+              assert.equal(
+                await getCurrentClerkSessionToken(page, cache, options),
+                "seed-token",
+              );
+
+              cache.refreshedAt = Date.now() - options.reuseMs;
+              assert.equal(
+                await getCurrentClerkSessionToken(page, cache, options),
+                "fixture-token-1",
+              );
+              assert.equal(
+                await getCurrentClerkSessionToken(page, cache, options),
+                "fixture-token-1",
+              );
+            },
+          );
+        });
+      },
+    );
+
+    await context.test("surfaces a failed token refresh", async () => {
+      await withClerkFixture("loaded-without-token", async (fixture) => {
+        await assert.rejects(
+          withLoadedClerkTestingPage(
+            browser,
+            {
+              appUrl: fixture.appUrl,
+              contextOptions: {},
+            },
+            async (page) => {
+              const cache: ClerkSessionTokenCache = {
+                refreshedAt: 0,
+                token: "expired-token",
+              };
+              await getCurrentClerkSessionToken(page, cache, {
+                activeOrganizationId: "org_fixture",
+                reuseMs: 30_000,
+              });
+            },
+          ),
+          /Clerk session token unavailable after refresh/u,
+        );
+      });
+    });
+  } finally {
+    await browser.close();
+  }
+});
+
 async function withClerkFixture<Result>(
   mode: ClerkFixtureMode,
   use: (fixture: ClerkFixture) => Promise<Result>,
@@ -192,8 +273,20 @@ function clerkFixtureDocument(
   mode: ClerkFixtureMode,
   documentRequest: number,
 ): string {
-  if (mode === "loaded") {
-    return `<!doctype html><script>window.Clerk = { loaded: true };</script>`;
+  if (mode === "loaded" || mode === "loaded-without-token") {
+    const tokenResult =
+      mode === "loaded-without-token"
+        ? "null"
+        : "`fixture-token-${++tokenRequests}`";
+    return `<!doctype html>
+<script>
+  let tokenRequests = 0;
+  window.Clerk = {
+    loaded: true,
+    organization: { id: "org_fixture" },
+    session: { getToken: async () => ${tokenResult} },
+  };
+</script>`;
   }
   if (mode === "absent") {
     return `<!doctype html><script>fetch("/v1/client?__clerk_testing_token=${FIXTURE_QUERY_SECRET}");</script>`;

@@ -109,6 +109,7 @@ type PlanSelectionAction =
   | "downgrade"
   | "manage"
   | "select"
+  | "unavailable"
   | "upgrade";
 
 const USAGE_PACK_PLANS = [
@@ -155,6 +156,9 @@ function usagePackPlanAction(
   managedTier: UsagePackPlanTier | null,
   targetTier: UsagePackPlanTier,
 ): PlanSelectionAction {
+  if (currentTier === "custom") {
+    return "unavailable";
+  }
   if (managedTier === targetTier) {
     return "manage";
   }
@@ -903,28 +907,32 @@ function PlanSelectionCard({
 }) {
   const name = planName(plan.tier);
   const actionLabel =
-    action === "convert"
+    action === "unavailable"
       ? i18n.t(($) => {
-          return $.billing.plans.usagePacks.migration.convertPlan;
+          return $.billing.common.unavailable;
         })
-      : action === "manage"
+      : action === "convert"
         ? i18n.t(($) => {
-            return $.billing.common.manage;
+            return $.billing.plans.usagePacks.migration.convertPlan;
           })
-        : action === "upgrade"
+        : action === "manage"
           ? i18n.t(($) => {
-              return $.billing.plans.upgrade;
+              return $.billing.common.manage;
             })
-          : action === "downgrade"
+          : action === "upgrade"
             ? i18n.t(($) => {
-                return $.billing.plans.downgrade;
+                return $.billing.plans.upgrade;
               })
-            : i18n.t(
-                ($) => {
-                  return $.billing.plans.usagePacks.selectPlan;
-                },
-                { plan: name },
-              );
+            : action === "downgrade"
+              ? i18n.t(($) => {
+                  return $.billing.plans.downgrade;
+                })
+              : i18n.t(
+                  ($) => {
+                    return $.billing.plans.usagePacks.selectPlan;
+                  },
+                  { plan: name },
+                );
   return (
     <article
       aria-label={i18n.t(
@@ -964,7 +972,7 @@ function PlanSelectionCard({
           type="button"
           variant={plan.popular ? "default" : "outline"}
           className="h-10 w-full text-sm font-medium"
-          disabled={action === "disabled" || busy}
+          disabled={action === "disabled" || action === "unavailable" || busy}
           onClick={onAction}
         >
           {actionLabel}
@@ -3061,11 +3069,13 @@ function MigrationPlanComparison(props: MigrationPlanComparisonProps) {
 
 export function UsagePackMigrationPlanSelectionPage({
   configuration,
+  currentTier,
   inDialog = false,
   onBack,
   onSelect,
 }: {
   readonly configuration: UsagePackMigrationConfiguration | null;
+  readonly currentTier: BillingTier;
   readonly inDialog?: boolean;
   readonly onBack: () => void;
   readonly onSelect: (tier: UsagePackPlanTier) => void;
@@ -3078,6 +3088,9 @@ export function UsagePackMigrationPlanSelectionPage({
   const resolveAction = (
     targetTier: UsagePackPlanTier,
   ): PlanSelectionAction => {
+    if (currentTier === "custom") {
+      return "unavailable";
+    }
     return configuration
       ? usagePackPlanAction(
           false,
@@ -3398,6 +3411,7 @@ export function UsagePackMigrationPage({
 }
 
 export function UsagePackMigrationDialogs({
+  currentTier,
   migration,
   migrationOpen,
   migrationTargetTier,
@@ -3405,6 +3419,7 @@ export function UsagePackMigrationDialogs({
   onClose,
   onSelect,
 }: {
+  readonly currentTier: BillingTier;
   readonly migration: UsagePackMigrationStateResponse;
   readonly migrationOpen: boolean;
   readonly migrationTargetTier: UsagePackPlanTier | null;
@@ -3476,6 +3491,7 @@ export function UsagePackMigrationDialogs({
       ) : (
         <UsagePackMigrationPlanSelectionPage
           configuration={migration.configuration ?? null}
+          currentTier={currentTier}
           inDialog
           onBack={onClose}
           onSelect={onSelect}
@@ -3568,7 +3584,7 @@ export function UsagePackPricingDialogs({
         <PlanSelectionStep
           catalog={catalog}
           onAction={(plan, action) => {
-            if (action === "disabled") {
+            if (action === "disabled" || action === "unavailable") {
               return;
             }
             if (
