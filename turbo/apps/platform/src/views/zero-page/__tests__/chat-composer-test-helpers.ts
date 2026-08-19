@@ -19,9 +19,9 @@ import type {
   OrgModelPolicy,
 } from "@okouai/api-contracts/contracts/model-providers";
 import {
-  zeroAgentsByIdContract,
-  zeroAgentInstructionsContract,
-} from "@okouai/api-contracts/contracts/zero-agents";
+  agentsByIdContract,
+  agentInstructionsContract,
+} from "@okouai/api-contracts/contracts/agents";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
   zeroBillingStatusContract,
@@ -302,7 +302,7 @@ export function mockAgent(options?: {
       : []),
   ];
   context.mocks.data.team(agents);
-  context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
+  context.mocks.api(agentsByIdContract.get, ({ params, respond }) => {
     const isOtherAgent = params.id === OTHER_AGENT_ID;
     return respond(200, {
       agentId: params.id,
@@ -317,7 +317,7 @@ export function mockAgent(options?: {
       visibility: "public",
     });
   });
-  context.mocks.api(zeroAgentInstructionsContract.get, ({ respond }) => {
+  context.mocks.api(agentInstructionsContract.get, ({ respond }) => {
     return respond(200, { content: null, filename: null });
   });
 }

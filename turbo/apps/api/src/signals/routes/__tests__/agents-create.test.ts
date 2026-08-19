@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 
 import {
-  zeroAgentsByIdContract,
-  zeroAgentsMainContract,
-} from "@okouai/api-contracts/contracts/zero-agents";
+  agentsByIdContract,
+  agentsMainContract,
+} from "@okouai/api-contracts/contracts/agents";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -42,11 +42,11 @@ function authHeaders() {
 }
 
 function agentsClient() {
-  return setupApp({ context, routes: agentsRoutes })(zeroAgentsMainContract);
+  return setupApp({ context, routes: agentsRoutes })(agentsMainContract);
 }
 
 function agentsByIdClient() {
-  return setupApp({ context, routes: agentsRoutes })(zeroAgentsByIdContract);
+  return setupApp({ context, routes: agentsRoutes })(agentsByIdContract);
 }
 
 function currentSecond(): number {

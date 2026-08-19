@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroAgentsMainContract } from "@okouai/api-contracts/contracts/zero-agents";
+import { agentsMainContract } from "@okouai/api-contracts/contracts/agents";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -24,7 +24,7 @@ function authHeaders() {
 }
 
 function apiClient() {
-  return setupApp({ context, routes: agentsRoutes })(zeroAgentsMainContract);
+  return setupApp({ context, routes: agentsRoutes })(agentsMainContract);
 }
 
 describe("GET /api/zero/agents", () => {

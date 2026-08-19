@@ -1,6 +1,6 @@
 import { computed, type Computed } from "ccstate";
-import type { ZeroAgentResponse } from "@okouai/api-contracts/contracts/zero-agents";
-import type { TeamComposeItem } from "@okouai/api-contracts/contracts/zero-team";
+import type { AgentResponse } from "@okouai/api-contracts/contracts/agents";
+import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
   connectorSlugSchema,
@@ -35,7 +35,7 @@ export function agentResponse(
     readonly visibility: "public" | "private";
   },
   publicBrand: PublicBrand,
-): ZeroAgentResponse {
+): AgentResponse {
   const ownerId = row.owner ?? row.composeUserId;
   if (!ownerId) {
     throw new Error(`Agent ${row.agentId} is missing an owner`);
@@ -63,7 +63,7 @@ export function agentResponse(
 export function defaultAgentResponse(args: {
   readonly agentId: string;
   readonly ownerId: string;
-}): ZeroAgentResponse {
+}): AgentResponse {
   return {
     agentId: args.agentId,
     ownerId: args.ownerId,
@@ -116,8 +116,8 @@ export function agentList(
   orgId: string,
   userId: string,
   publicBrand: PublicBrand,
-): Computed<Promise<readonly ZeroAgentResponse[]>> {
-  return computed(async (get): Promise<readonly ZeroAgentResponse[]> => {
+): Computed<Promise<readonly AgentResponse[]>> {
+  return computed(async (get): Promise<readonly AgentResponse[]> => {
     const rows = await get(db$)
       .select({
         agentId: zeroAgents.id,
@@ -149,8 +149,8 @@ export function agentDetail(args: {
   readonly userId: string;
   readonly agentId: string;
   readonly publicBrand: PublicBrand;
-}): Computed<Promise<ZeroAgentResponse | null>> {
-  return computed(async (get): Promise<ZeroAgentResponse | null> => {
+}): Computed<Promise<AgentResponse | null>> {
+  return computed(async (get): Promise<AgentResponse | null> => {
     const [row] = await get(db$)
       .select({
         agentId: zeroAgents.id,

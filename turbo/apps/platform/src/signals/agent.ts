@@ -7,10 +7,10 @@
  */
 import { command, computed, type Computed, state } from "ccstate";
 import {
-  zeroAgentsByIdContract,
-  type ZeroAgentResponse,
-} from "@okouai/api-contracts/contracts/zero-agents";
-import { zeroTeamContract } from "@okouai/api-contracts/contracts/zero-team";
+  agentsByIdContract,
+  type AgentResponse,
+} from "@okouai/api-contracts/contracts/agents";
+import { teamContract } from "@okouai/api-contracts/contracts/team";
 import { pathParams$ } from "./route.ts";
 import { activeRoute$ } from "./active-route.ts";
 import { zeroOnboardingStatus$ } from "./zero-page/zero-onboarding.ts";
@@ -33,10 +33,10 @@ export const defaultAgentId$ = computed(async (get) => {
 
 const internalAgentByIdReload$ = state(0);
 
-export function agentById(id: string): Computed<Promise<ZeroAgentResponse>> {
+export function agentById(id: string): Computed<Promise<AgentResponse>> {
   return computed(async (get) => {
     get(internalAgentByIdReload$);
-    const client = get(zeroClient$)(zeroAgentsByIdContract);
+    const client = get(zeroClient$)(agentsByIdContract);
     const result = await retryTransientLoad((signal) => {
       return accept(
         client.get({ params: { id }, fetchOptions: { signal } }),
@@ -104,7 +104,7 @@ const internalReloadAgents$ = state(0);
 /** All agents in the user's org (from /api/okou/team). */
 export const agents$ = computed(async (get) => {
   get(internalReloadAgents$);
-  const zeroClient = get(zeroClient$)(zeroTeamContract);
+  const zeroClient = get(zeroClient$)(teamContract);
   const result = await accept(zeroClient.list(), [200]);
   return result.body;
 });

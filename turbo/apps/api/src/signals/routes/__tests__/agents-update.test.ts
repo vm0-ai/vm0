@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 
 import {
-  zeroAgentInstructionsContract,
-  zeroAgentsByIdContract,
-  zeroAgentsMainContract,
-  type ZeroAgentRequest,
-} from "@okouai/api-contracts/contracts/zero-agents";
+  agentInstructionsContract,
+  agentsByIdContract,
+  agentsMainContract,
+  type AgentRequest,
+} from "@okouai/api-contracts/contracts/agents";
 import { workflowsCollectionContract } from "@okouai/api-contracts/contracts/workflows";
 import {
   cliAuthApproveContract,
@@ -89,23 +89,23 @@ async function cliAuthHeaders(
 }
 
 function agentsClient() {
-  return setupApp({ context, routes: agentsRoutes })(zeroAgentsByIdContract);
+  return setupApp({ context, routes: agentsRoutes })(agentsByIdContract);
 }
 
 function agentsCollectionClient() {
-  return setupApp({ context, routes: agentsRoutes })(zeroAgentsMainContract);
+  return setupApp({ context, routes: agentsRoutes })(agentsMainContract);
 }
 
 function instructionsClient() {
   return setupApp({ context, routes: agentInstructionsRoutes })(
-    zeroAgentInstructionsContract,
+    agentInstructionsContract,
   );
 }
 
 /** Creates an agent through POST /api/zero/agents with the user as owner. */
 async function createAgentAs(
   user: OrgUser,
-  body: ZeroAgentRequest = {},
+  body: AgentRequest = {},
 ): Promise<{ readonly agentId: string }> {
   mocks.clerk.session(user.userId, user.orgId);
   context.mocks.s3.send.mockResolvedValue({});

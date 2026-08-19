@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroAgentsMainContract } from "@okouai/api-contracts/contracts/zero-agents";
+import { agentsMainContract } from "@okouai/api-contracts/contracts/agents";
 import { orgDeleteContract } from "@okouai/api-contracts/contracts/org-routes";
 import { createStore } from "ccstate";
 import type StripeSDK from "stripe";
@@ -624,7 +624,7 @@ test("does not delete the org when its proportional refund fails", async () => {
     exp: deletionTimestamp + 60,
   });
   const agents = setupApp({ context, routes: agentsRoutes })(
-    zeroAgentsMainContract,
+    agentsMainContract,
   );
   const misc = createMiscRoutesApi(context);
 

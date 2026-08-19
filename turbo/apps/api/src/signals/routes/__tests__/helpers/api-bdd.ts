@@ -8,13 +8,13 @@ import {
 } from "@okouai/api-contracts/contracts/onboarding";
 import type { ApiErrorResponse } from "@okouai/api-contracts/contracts/errors";
 import {
-  zeroAgentsByIdContract,
-  zeroAgentInstructionsContract,
-  zeroAgentsMainContract,
-  type ZeroAgentMetadataRequest,
-  type ZeroAgentRequest,
-  type ZeroAgentResponse,
-} from "@okouai/api-contracts/contracts/zero-agents";
+  agentsByIdContract,
+  agentInstructionsContract,
+  agentsMainContract,
+  type AgentMetadataRequest,
+  type AgentRequest,
+  type AgentResponse,
+} from "@okouai/api-contracts/contracts/agents";
 import { orgContract } from "@okouai/api-contracts/contracts/org-routes";
 import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-preferences";
 
@@ -152,21 +152,21 @@ export function createBddApi(context: TestContext) {
     return setupAppWithRoutes({
       context,
       routes: agentsRoutes,
-    })(zeroAgentsMainContract);
+    })(agentsMainContract);
   }
 
   function agentsByIdClient() {
     return setupAppWithRoutes({
       context,
       routes: agentsRoutes,
-    })(zeroAgentsByIdContract);
+    })(agentsByIdContract);
   }
 
   function agentInstructionsClient() {
     return setupAppWithRoutes({
       context,
       routes: agentInstructionsRoutes,
-    })(zeroAgentInstructionsContract);
+    })(agentInstructionsContract);
   }
 
   function user(options: ApiTestUserOptions = {}): ApiTestUser {
@@ -351,8 +351,8 @@ export function createBddApi(context: TestContext) {
 
     async createAgent(
       nextUser: ApiTestUser,
-      body: ZeroAgentRequest = {},
-    ): Promise<ZeroAgentResponse> {
+      body: AgentRequest = {},
+    ): Promise<AgentResponse> {
       const response = await accept(
         agentsClient().create({
           headers: authenticate(nextUser),
@@ -365,7 +365,7 @@ export function createBddApi(context: TestContext) {
 
     async requestCreateAgent(
       nextUser: ApiTestUser | null,
-      body: ZeroAgentRequest,
+      body: AgentRequest,
       statuses: readonly (201 | 400 | 401 | 403 | 409 | 422)[],
     ) {
       return await accept(
@@ -377,9 +377,7 @@ export function createBddApi(context: TestContext) {
       );
     },
 
-    async listAgents(
-      nextUser: ApiTestUser,
-    ): Promise<readonly ZeroAgentResponse[]> {
+    async listAgents(nextUser: ApiTestUser): Promise<readonly AgentResponse[]> {
       const response = await accept(
         agentsClient().list({ headers: authenticate(nextUser) }),
         [200],
@@ -390,7 +388,7 @@ export function createBddApi(context: TestContext) {
     async readAgent(
       nextUser: ApiTestUser,
       agentId: string,
-    ): Promise<ZeroAgentResponse> {
+    ): Promise<AgentResponse> {
       const response = await accept(
         agentsByIdClient().get({
           params: { id: agentId },
@@ -418,8 +416,8 @@ export function createBddApi(context: TestContext) {
     async updateAgentMetadata(
       nextUser: ApiTestUser,
       agentId: string,
-      body: ZeroAgentMetadataRequest,
-    ): Promise<ZeroAgentResponse> {
+      body: AgentMetadataRequest,
+    ): Promise<AgentResponse> {
       const response = await accept(
         agentsByIdClient().updateMetadata({
           params: { id: agentId },
@@ -434,8 +432,8 @@ export function createBddApi(context: TestContext) {
     async updateAgent(
       nextUser: ApiTestUser,
       agentId: string,
-      body: ZeroAgentRequest,
-    ): Promise<ZeroAgentResponse> {
+      body: AgentRequest,
+    ): Promise<AgentResponse> {
       const response = await accept(
         agentsByIdClient().update({
           params: { id: agentId },
@@ -451,7 +449,7 @@ export function createBddApi(context: TestContext) {
       nextUser: ApiTestUser,
       agentId: string,
       content: string,
-    ): Promise<ZeroAgentResponse> {
+    ): Promise<AgentResponse> {
       const response = await accept(
         agentInstructionsClient().update({
           params: { id: agentId },

@@ -21,12 +21,12 @@ import {
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { zeroAgentsByIdContract } from "@okouai/api-contracts/contracts/zero-agents";
+import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
 import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-preferences";
 import {
-  zeroTeamContract,
+  teamContract,
   type TeamComposeItem,
-} from "@okouai/api-contracts/contracts/zero-team";
+} from "@okouai/api-contracts/contracts/team";
 
 import {
   createMockWorkflowAutomation,
@@ -138,7 +138,7 @@ function prepareAgentTeam(targetContext = context): TeamComposeItem[] {
     },
   ];
   targetContext.mocks.data.team(team);
-  targetContext.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
+  targetContext.mocks.api(agentsByIdContract.get, ({ params, respond }) => {
     const displayNameById: Record<string, string> = {
       [AGENT_ID]: "Zero",
       [RESEARCH_AGENT_ID]: "Research Agent",
@@ -1942,7 +1942,7 @@ describe("zero sidebar", () => {
     const team = prepareAgentTeam();
     const releaseRefresh = context.mocks.deferred<void>();
     let initialTeamServed = false;
-    context.mocks.api(zeroTeamContract.list, async ({ respond }) => {
+    context.mocks.api(teamContract.list, async ({ respond }) => {
       if (initialTeamServed) {
         await releaseRefresh.promise;
       }

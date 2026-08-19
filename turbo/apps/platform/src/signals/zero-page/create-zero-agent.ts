@@ -1,8 +1,8 @@
 import {
-  zeroAgentsMainContract,
-  zeroAgentInstructionsContract,
-  type ZeroAgentResponse,
-} from "@okouai/api-contracts/contracts/zero-agents";
+  agentsMainContract,
+  agentInstructionsContract,
+  type AgentResponse,
+} from "@okouai/api-contracts/contracts/agents";
 import { SEED_INSTRUCTIONS } from "@okouai/core/seed-instructions";
 import type { ZeroClientFactory } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
@@ -24,10 +24,10 @@ export async function createZeroAgent(
   createClient: ZeroClientFactory,
   params: CreateZeroAgentParams,
   signal: AbortSignal,
-): Promise<ZeroAgentResponse> {
+): Promise<AgentResponse> {
   // Step 1: Create agent (compose). The API assigns a random preset avatar
   // when none is provided.
-  const agentsClient = createClient(zeroAgentsMainContract);
+  const agentsClient = createClient(agentsMainContract);
   const createResult = await accept(
     agentsClient.create({
       body: {
@@ -42,10 +42,10 @@ export async function createZeroAgent(
   );
   signal.throwIfAborted();
 
-  const agent = (createResult as { body: ZeroAgentResponse }).body;
+  const agent = (createResult as { body: AgentResponse }).body;
 
   // Step 2: Upload seed instructions
-  const instrClient = createClient(zeroAgentInstructionsContract);
+  const instrClient = createClient(agentInstructionsContract);
   await accept(
     instrClient.update({
       params: { id: agent.agentId },

@@ -3,9 +3,9 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import {
-  zeroAgentInstructionsContract,
-  zeroAgentsByIdContract,
-} from "@okouai/api-contracts/contracts/zero-agents";
+  agentInstructionsContract,
+  agentsByIdContract,
+} from "@okouai/api-contracts/contracts/agents";
 
 import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -48,7 +48,7 @@ function prepareAgentInstructions(content: string | null): void {
       updatedAt: "2024-01-02T00:00:00Z",
     },
   ]);
-  context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
+  context.mocks.api(agentsByIdContract.get, ({ respond }) => {
     return respond(200, {
       agentId: AGENT_ID,
       ownerId: "test-user-123",
@@ -62,7 +62,7 @@ function prepareAgentInstructions(content: string | null): void {
       visibility: "public",
     });
   });
-  context.mocks.api(zeroAgentInstructionsContract.get, ({ respond }) => {
+  context.mocks.api(agentInstructionsContract.get, ({ respond }) => {
     return respond(200, { content, filename: null });
   });
 }
@@ -114,28 +114,25 @@ describe("zero instructions tab", () => {
     let savedInstructions = "Review release notes";
     let capturedBody: unknown = null;
     prepareAgentInstructions(savedInstructions);
-    context.mocks.api(zeroAgentInstructionsContract.get, ({ respond }) => {
+    context.mocks.api(agentInstructionsContract.get, ({ respond }) => {
       return respond(200, { content: savedInstructions, filename: null });
     });
-    context.mocks.api(
-      zeroAgentInstructionsContract.update,
-      ({ body, respond }) => {
-        capturedBody = body;
-        savedInstructions = body.content;
-        return respond(200, {
-          agentId: AGENT_ID,
-          ownerId: "test-user-123",
-          description: "A helpful agent",
-          displayName: "Research Agent",
-          sound: null,
-          avatarUrl: null,
-          modelProviderId: null,
-          selectedModel: null,
-          preferPersonalProvider: false,
-          visibility: "public",
-        });
-      },
-    );
+    context.mocks.api(agentInstructionsContract.update, ({ body, respond }) => {
+      capturedBody = body;
+      savedInstructions = body.content;
+      return respond(200, {
+        agentId: AGENT_ID,
+        ownerId: "test-user-123",
+        description: "A helpful agent",
+        displayName: "Research Agent",
+        sound: null,
+        avatarUrl: null,
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
+        visibility: "public",
+      });
+    });
 
     detachedSetupPage({
       context,
