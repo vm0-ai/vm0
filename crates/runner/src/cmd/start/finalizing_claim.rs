@@ -277,6 +277,9 @@ async fn run_finalizing_claim(
                             .run_with_context("finalizing_handoff_identity_mismatch")
                             .await;
                         ctx.reuse_state_notify.notify_one();
+                        pre_spawn_timing.record_finalizing_handoff_outcome(
+                            FinalizingHandoffOutcome::ActivationFailed,
+                        );
                         return complete_claimed_without_sandbox(
                             claimed,
                             cancellation,
@@ -309,18 +312,28 @@ async fn run_finalizing_claim(
                     active_lease,
                     reuse_result,
                     idle_snapshot,
-                } => ReadyClaimedResource {
-                    reuse_entry: reuse_entry.map(|entry| *entry),
-                    active_lease,
-                    reuse_result,
-                    idle_snapshot: Some(idle_snapshot),
-                },
+                } => {
+                    pre_spawn_timing.record_finalizing_handoff_outcome(if reuse_entry.is_some() {
+                        FinalizingHandoffOutcome::Accepted
+                    } else {
+                        FinalizingHandoffOutcome::ActivationFailed
+                    });
+                    ReadyClaimedResource {
+                        reuse_entry: reuse_entry.map(|entry| *entry),
+                        active_lease,
+                        reuse_result,
+                        idle_snapshot: Some(idle_snapshot),
+                    }
+                }
                 ReservedActivation::CannotStart {
                     budget_lease,
                     reuse_result,
                     error,
                 } => {
                     drop(active_run_guard);
+                    pre_spawn_timing.record_finalizing_handoff_outcome(
+                        FinalizingHandoffOutcome::ActivationFailed,
+                    );
                     let cancellation = complete_claimed_without_sandbox(
                         claimed,
                         cancellation,
@@ -403,10 +416,7 @@ async fn prepare_finalizing_resource(
     )
     .await
     {
-        FinalizingWaitOutcome::Handoff(candidate) => {
-            pre_spawn_timing.record_finalizing_handoff_outcome(FinalizingHandoffOutcome::Accepted);
-            Ok(FinalizingResource::Handoff(candidate))
-        }
+        FinalizingWaitOutcome::Handoff(candidate) => Ok(FinalizingResource::Handoff(candidate)),
         FinalizingWaitOutcome::Exact(reservation) => {
             pre_spawn_timing
                 .record_finalizing_handoff_outcome(FinalizingHandoffOutcome::PublishedExact);

@@ -32,6 +32,7 @@ pub(crate) enum RunnerPreSpawnPhase {
 #[derive(Clone, Copy)]
 pub(crate) enum FinalizingHandoffOutcome {
     Accepted,
+    ActivationFailed,
     PublishedExact,
     NotAcceptedBeforeDeadline,
     NoExact,
@@ -42,6 +43,7 @@ impl FinalizingHandoffOutcome {
     const fn as_str(self) -> &'static str {
         match self {
             Self::Accepted => "accepted",
+            Self::ActivationFailed => "activation_failed",
             Self::PublishedExact => "published_exact",
             Self::NotAcceptedBeforeDeadline => "not_accepted_before_deadline",
             Self::NoExact => "no_exact",
