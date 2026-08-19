@@ -41,7 +41,7 @@ import {
   subscriptionScheduleCancellationEnd,
   subscriptionScheduleId,
 } from "./stripe-subscription-schedules.service";
-import { downgradeSubscriptionForOrg } from "./zero-billing-downgrade.service";
+import { downgradeSubscriptionForOrg } from "./billing-downgrade.service";
 import {
   BILLING_DOWNGRADE_PURPOSE,
   BILLING_PURCHASE_PURPOSE,
