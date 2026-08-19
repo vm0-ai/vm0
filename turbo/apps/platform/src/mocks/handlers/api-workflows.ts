@@ -1,15 +1,15 @@
 import {
-  zeroWorkflowsCollectionContract,
-  zeroWorkflowsDetailContract,
-  zeroWorkflowAutomationsContract,
-  zeroWorkflowVisibilityContract,
+  workflowsCollectionContract,
+  workflowsDetailContract,
+  workflowAutomationsContract,
+  workflowVisibilityContract,
   type ChatThreadWorkflowAutomation,
-  type ZeroWorkflowDetailResponse,
-  type ZeroWorkflowSummary,
-  type ZeroWorkflowAutomationsListEntry,
-  type ZeroWorkflowAutomationCreateRequest,
-  type ZeroWorkflowAutomationSummary,
-} from "@okouai/api-contracts/contracts/zero-workflows";
+  type WorkflowDetailResponse,
+  type WorkflowSummary,
+  type WorkflowAutomationsListEntry,
+  type WorkflowAutomationCreateRequest,
+  type WorkflowAutomationSummary,
+} from "@okouai/api-contracts/contracts/workflows";
 
 import { mockApi } from "../msw-contract.ts";
 import {
@@ -17,9 +17,9 @@ import {
   setMockWorkflowAutomations,
 } from "./workflow-automations-store.ts";
 
-const DEFAULT_WORKFLOWS: ZeroWorkflowDetailResponse[] = [];
+const DEFAULT_WORKFLOWS: WorkflowDetailResponse[] = [];
 
-let mockWorkflows: ZeroWorkflowDetailResponse[] = [...DEFAULT_WORKFLOWS];
+let mockWorkflows: WorkflowDetailResponse[] = [...DEFAULT_WORKFLOWS];
 
 function notFound(workflowId: string) {
   return {
@@ -27,7 +27,7 @@ function notFound(workflowId: string) {
   };
 }
 
-function summary(workflow: ZeroWorkflowDetailResponse): ZeroWorkflowSummary {
+function summary(workflow: WorkflowDetailResponse): WorkflowSummary {
   return {
     id: workflow.id,
     agentId: workflow.agentId,
@@ -59,7 +59,7 @@ function automationSummaryBase(automation: ChatThreadWorkflowAutomation) {
 
 function automationSummary(
   automation: ChatThreadWorkflowAutomation,
-): ZeroWorkflowAutomationSummary {
+): WorkflowAutomationSummary {
   if (automation.kind === "event") {
     return {
       ...automationSummaryBase(automation),
@@ -68,7 +68,7 @@ function automationSummary(
       eventConfig: automation.eventConfig,
       schedule: null,
       scheduleSummary: null,
-    } as ZeroWorkflowAutomationSummary;
+    } as WorkflowAutomationSummary;
   }
   return {
     ...automationSummaryBase(automation),
@@ -79,8 +79,8 @@ function automationSummary(
 }
 
 function publicWorkflowAutomation(
-  automation: ZeroWorkflowAutomationSummary,
-): ZeroWorkflowAutomationSummary {
+  automation: WorkflowAutomationSummary,
+): WorkflowAutomationSummary {
   if (
     automation.kind !== "event" ||
     automation.eventType !== "webhook-received"
@@ -100,7 +100,7 @@ export function resetMockWorkflows(): void {
 }
 
 export const apiWorkflowsHandlers = [
-  mockApi(zeroWorkflowsCollectionContract.list, ({ query, respond }) => {
+  mockApi(workflowsCollectionContract.list, ({ query, respond }) => {
     const agentId = query.agentId;
     const visible = agentId
       ? mockWorkflows.filter((workflow) => {
@@ -110,9 +110,9 @@ export const apiWorkflowsHandlers = [
     return respond(200, visible.map(summary));
   }),
 
-  mockApi(zeroWorkflowsCollectionContract.create, ({ body, respond }) => {
+  mockApi(workflowsCollectionContract.create, ({ body, respond }) => {
     const now = new Date().toISOString();
-    const created: ZeroWorkflowDetailResponse = {
+    const created: WorkflowDetailResponse = {
       id: crypto.randomUUID(),
       agentId: body.agentId,
       agentName: null,
@@ -142,7 +142,7 @@ export const apiWorkflowsHandlers = [
     return respond(201, summary(created));
   }),
 
-  mockApi(zeroWorkflowsDetailContract.get, ({ params, respond }) => {
+  mockApi(workflowsDetailContract.get, ({ params, respond }) => {
     const workflow = mockWorkflows.find((item) => {
       return item.id === params.workflowId;
     });
@@ -152,7 +152,7 @@ export const apiWorkflowsHandlers = [
     return respond(200, workflow);
   }),
 
-  mockApi(zeroWorkflowsDetailContract.update, ({ body, params, respond }) => {
+  mockApi(workflowsDetailContract.update, ({ body, params, respond }) => {
     const index = mockWorkflows.findIndex((item) => {
       return item.id === params.workflowId;
     });
@@ -163,7 +163,7 @@ export const apiWorkflowsHandlers = [
     const existing = mockWorkflows[index]!;
     const now = new Date().toISOString();
     const files = body.files ?? existing.fileContents ?? [];
-    const updated: ZeroWorkflowDetailResponse = {
+    const updated: WorkflowDetailResponse = {
       ...existing,
       updatedByUserId: "test-user-123",
       updatedAt: now,
@@ -192,20 +192,17 @@ export const apiWorkflowsHandlers = [
     return respond(200, updated);
   }),
 
-  mockApi(
-    zeroWorkflowsDetailContract.connectorReadiness,
-    ({ params, respond }) => {
-      const workflow = mockWorkflows.find((item) => {
-        return item.id === params.workflowId;
-      });
-      if (!workflow) {
-        return respond(404, notFound(params.workflowId));
-      }
-      return respond(200, { connectors: [] });
-    },
-  ),
+  mockApi(workflowsDetailContract.connectorReadiness, ({ params, respond }) => {
+    const workflow = mockWorkflows.find((item) => {
+      return item.id === params.workflowId;
+    });
+    if (!workflow) {
+      return respond(404, notFound(params.workflowId));
+    }
+    return respond(200, { connectors: [] });
+  }),
 
-  mockApi(zeroWorkflowsDetailContract.delete, ({ params, respond }) => {
+  mockApi(workflowsDetailContract.delete, ({ params, respond }) => {
     const index = mockWorkflows.findIndex((item) => {
       return item.id === params.workflowId;
     });
@@ -218,7 +215,7 @@ export const apiWorkflowsHandlers = [
     return respond(204);
   }),
 
-  mockApi(zeroWorkflowsDetailContract.copy, ({ body, params, respond }) => {
+  mockApi(workflowsDetailContract.copy, ({ body, params, respond }) => {
     const source = mockWorkflows.find((item) => {
       return item.id === params.workflowId;
     });
@@ -226,7 +223,7 @@ export const apiWorkflowsHandlers = [
       return respond(404, notFound(params.workflowId));
     }
     const now = new Date().toISOString();
-    const copied: ZeroWorkflowDetailResponse = {
+    const copied: WorkflowDetailResponse = {
       ...source,
       id: crypto.randomUUID(),
       agentId: body.toAgentId,
@@ -250,7 +247,7 @@ export const apiWorkflowsHandlers = [
     return respond(201, summary(copied));
   }),
 
-  mockApi(zeroWorkflowsDetailContract.run, ({ params, respond }) => {
+  mockApi(workflowsDetailContract.run, ({ params, respond }) => {
     const workflow = mockWorkflows.find((item) => {
       return item.id === params.workflowId;
     });
@@ -263,7 +260,7 @@ export const apiWorkflowsHandlers = [
     });
   }),
 
-  mockApi(zeroWorkflowsDetailContract.chatThread, ({ params, respond }) => {
+  mockApi(workflowsDetailContract.chatThread, ({ params, respond }) => {
     const workflow = mockWorkflows.find((item) => {
       return item.id === params.workflowId;
     });
@@ -283,8 +280,8 @@ export const apiWorkflowsHandlers = [
 function visibilityHandlers() {
   const transition = (
     workflowId: string,
-    apply: (workflow: ZeroWorkflowDetailResponse) => ZeroWorkflowDetailResponse,
-  ): ZeroWorkflowSummary | null => {
+    apply: (workflow: WorkflowDetailResponse) => WorkflowDetailResponse,
+  ): WorkflowSummary | null => {
     const index = mockWorkflows.findIndex((item) => {
       return item.id === workflowId;
     });
@@ -302,7 +299,7 @@ function visibilityHandlers() {
   };
 
   return [
-    mockApi(zeroWorkflowVisibilityContract.publish, ({ params, respond }) => {
+    mockApi(workflowVisibilityContract.publish, ({ params, respond }) => {
       const result = transition(params.workflowId, (workflow) => {
         return { ...workflow, visibility: "public" };
       });
@@ -310,7 +307,7 @@ function visibilityHandlers() {
         ? respond(200, result)
         : respond(404, notFound(params.workflowId));
     }),
-    mockApi(zeroWorkflowVisibilityContract.demote, ({ params, respond }) => {
+    mockApi(workflowVisibilityContract.demote, ({ params, respond }) => {
       const result = transition(params.workflowId, (workflow) => {
         return { ...workflow, visibility: "private" };
       });
@@ -323,10 +320,8 @@ function visibilityHandlers() {
 
 function updateDetailAutomation(
   automationId: string,
-  apply: (
-    automation: ZeroWorkflowAutomationSummary,
-  ) => ZeroWorkflowAutomationSummary,
-): ZeroWorkflowAutomationSummary | null {
+  apply: (automation: WorkflowAutomationSummary) => WorkflowAutomationSummary,
+): WorkflowAutomationSummary | null {
   for (const workflow of mockWorkflows) {
     const automationIndex = workflow.automations.findIndex((automation) => {
       return automation.id === automationId;
@@ -348,7 +343,7 @@ function updateChatThreadAutomation(
   apply: (
     automation: ChatThreadWorkflowAutomation,
   ) => ChatThreadWorkflowAutomation,
-): ZeroWorkflowAutomationSummary | null {
+): WorkflowAutomationSummary | null {
   const automations = getMockWorkflowAutomations();
   const automation = automations.find((item) => {
     return item.id === automationId;
@@ -389,7 +384,7 @@ function mockWorkflowAutomationExists(automationId: string): boolean {
 
 function mockScheduleSummary(
   schedule: Extract<
-    ZeroWorkflowAutomationSummary,
+    WorkflowAutomationSummary,
     { kind: "schedule" }
   >["schedule"],
 ): string {
@@ -404,8 +399,8 @@ function mockScheduleSummary(
 
 function workflowAutomationListHandlers() {
   return [
-    mockApi(zeroWorkflowAutomationsContract.listWorkspace, ({ respond }) => {
-      const entries: ZeroWorkflowAutomationsListEntry[] = mockWorkflows.flatMap(
+    mockApi(workflowAutomationsContract.listWorkspace, ({ respond }) => {
+      const entries: WorkflowAutomationsListEntry[] = mockWorkflows.flatMap(
         (workflow) => {
           return workflow.automations.map((automation) => {
             return {
@@ -420,7 +415,7 @@ function workflowAutomationListHandlers() {
       return respond(200, entries as never);
     }),
 
-    mockApi(zeroWorkflowAutomationsContract.list, ({ params, respond }) => {
+    mockApi(workflowAutomationsContract.list, ({ params, respond }) => {
       const workflow = mockWorkflows.find((item) => {
         return item.id === params.workflowId;
       });
@@ -431,7 +426,7 @@ function workflowAutomationListHandlers() {
     }),
 
     mockApi(
-      zeroWorkflowAutomationsContract.listForChatThread,
+      workflowAutomationsContract.listForChatThread,
       ({ params, respond }) => {
         return respond(
           200,
@@ -456,7 +451,7 @@ type WorkflowAutomationCreateBase = {
 function createNotionChildPageAutomationSummary(
   base: WorkflowAutomationCreateBase,
   parentPageUrl: string,
-): ZeroWorkflowAutomationSummary {
+): WorkflowAutomationSummary {
   return {
     ...base,
     kind: "event",
@@ -480,7 +475,7 @@ function createNotionChildPageAutomationSummary(
 function createNotionDatabaseItemAutomationSummary(
   base: WorkflowAutomationCreateBase,
   databaseUrl: string,
-): ZeroWorkflowAutomationSummary {
+): WorkflowAutomationSummary {
   return {
     ...base,
     kind: "event",
@@ -504,7 +499,7 @@ function createNotionDatabaseItemAutomationSummary(
 function createNotionPageContentUpdatedAutomationSummary(
   base: WorkflowAutomationCreateBase,
   args: { readonly pageUrl?: string; readonly databaseUrl?: string },
-): ZeroWorkflowAutomationSummary {
+): WorkflowAutomationSummary {
   return {
     ...base,
     kind: "event",
@@ -546,7 +541,7 @@ function createNotionPageContentUpdatedAutomationSummary(
 function passthroughEventAutomationSummaryForRequest(
   base: WorkflowAutomationCreateBase,
   body: Extract<
-    ZeroWorkflowAutomationCreateRequest,
+    WorkflowAutomationCreateRequest,
     {
       readonly eventType:
         | "google-calendar-event-created"
@@ -557,7 +552,7 @@ function passthroughEventAutomationSummaryForRequest(
         | "chat-run-finished";
     }
   >,
-): ZeroWorkflowAutomationSummary {
+): WorkflowAutomationSummary {
   return {
     ...base,
     kind: "event",
@@ -565,16 +560,16 @@ function passthroughEventAutomationSummaryForRequest(
     eventConfig: body.eventConfig,
     schedule: null,
     scheduleSummary: null,
-  } as ZeroWorkflowAutomationSummary;
+  } as WorkflowAutomationSummary;
 }
 
 function createStripeInvoicePaidAutomationSummary(
   base: WorkflowAutomationCreateBase,
   body: Extract<
-    ZeroWorkflowAutomationCreateRequest,
+    WorkflowAutomationCreateRequest,
     { readonly eventType: "stripe-invoice-paid" }
   >,
-): ZeroWorkflowAutomationSummary {
+): WorkflowAutomationSummary {
   return {
     ...base,
     kind: "event",
@@ -598,8 +593,8 @@ function createStripeInvoicePaidAutomationSummary(
 
 function createWorkflowAutomationSummaryForRequest(
   base: WorkflowAutomationCreateBase,
-  body: ZeroWorkflowAutomationCreateRequest,
-): ZeroWorkflowAutomationSummary {
+  body: WorkflowAutomationCreateRequest,
+): WorkflowAutomationSummary {
   if ("schedule" in body) {
     return {
       ...base,
@@ -662,7 +657,7 @@ function createWorkflowAutomationSummaryForRequest(
       eventConfig: body.eventConfig,
       schedule: null,
       scheduleSummary: null,
-    } as ZeroWorkflowAutomationSummary;
+    } as WorkflowAutomationSummary;
   }
   if (body.eventType === "notion-child-page-created") {
     return createNotionChildPageAutomationSummary(
@@ -713,32 +708,26 @@ function createWorkflowAutomationSummaryForRequest(
 
 function workflowAutomationCreateHandlers() {
   return [
-    mockApi(
-      zeroWorkflowAutomationsContract.create,
-      ({ body, params, respond }) => {
-        const workflow = mockWorkflows.find((item) => {
-          return item.id === params.workflowId;
-        });
-        if (!workflow) {
-          return respond(404, notFound(params.workflowId));
-        }
+    mockApi(workflowAutomationsContract.create, ({ body, params, respond }) => {
+      const workflow = mockWorkflows.find((item) => {
+        return item.id === params.workflowId;
+      });
+      if (!workflow) {
+        return respond(404, notFound(params.workflowId));
+      }
 
-        const base = {
-          id: crypto.randomUUID(),
-          ownerUserId: "test-user-123",
-          enabled: body.enabled ?? true,
-          chatThreadId: "00000000-0000-4000-a000-000000000301",
-          nextRunAt: null,
-          lastRunAt: null,
-        };
-        const automation = createWorkflowAutomationSummaryForRequest(
-          base,
-          body,
-        );
-        workflow.automations = [...workflow.automations, automation];
-        return respond(201, automation);
-      },
-    ),
+      const base = {
+        id: crypto.randomUUID(),
+        ownerUserId: "test-user-123",
+        enabled: body.enabled ?? true,
+        chatThreadId: "00000000-0000-4000-a000-000000000301",
+        nextRunAt: null,
+        lastRunAt: null,
+      };
+      const automation = createWorkflowAutomationSummaryForRequest(base, body);
+      workflow.automations = [...workflow.automations, automation];
+      return respond(201, automation);
+    }),
   ];
 }
 
@@ -764,13 +753,13 @@ function setMockWorkflowAutomationEnabled(
 
 function workflowAutomationEnabledHandlers() {
   return [
-    mockApi(zeroWorkflowAutomationsContract.enable, ({ params, respond }) => {
+    mockApi(workflowAutomationsContract.enable, ({ params, respond }) => {
       const updated = setMockWorkflowAutomationEnabled(params.id, true);
       return updated
         ? respond(200, updated)
         : respond(404, notFoundAutomation());
     }),
-    mockApi(zeroWorkflowAutomationsContract.disable, ({ params, respond }) => {
+    mockApi(workflowAutomationsContract.disable, ({ params, respond }) => {
       const updated = setMockWorkflowAutomationEnabled(params.id, false);
       return updated
         ? respond(200, updated)
@@ -782,7 +771,7 @@ function workflowAutomationEnabledHandlers() {
 function workflowAutomationRunHandlers() {
   return [
     mockApi(
-      zeroWorkflowAutomationsContract.revealWebhookSecret,
+      workflowAutomationsContract.revealWebhookSecret,
       ({ params, respond }) => {
         for (const workflow of mockWorkflows) {
           const detailAutomation = workflow.automations.find((item) => {
@@ -806,7 +795,7 @@ function workflowAutomationRunHandlers() {
         return respond(404, notFoundAutomation());
       },
     ),
-    mockApi(zeroWorkflowAutomationsContract.run, ({ params, respond }) => {
+    mockApi(workflowAutomationsContract.run, ({ params, respond }) => {
       if (!mockWorkflowAutomationExists(params.id)) {
         return respond(404, notFoundAutomation());
       }
@@ -820,42 +809,39 @@ function workflowAutomationRunHandlers() {
 
 function workflowAutomationUpdateHandlers() {
   return [
-    mockApi(
-      zeroWorkflowAutomationsContract.update,
-      ({ body, params, respond }) => {
-        const updatedChatAutomation = updateChatThreadAutomation(
-          params.id,
-          (automation) => {
-            if (automation.kind !== "event" || !("eventConfig" in body)) {
-              return automation;
-            }
-            return {
-              ...automation,
-              eventConfig: body.eventConfig,
-            } as ChatThreadWorkflowAutomation;
-          },
-        );
-        if (updatedChatAutomation) {
-          return respond(200, updatedChatAutomation);
-        }
+    mockApi(workflowAutomationsContract.update, ({ body, params, respond }) => {
+      const updatedChatAutomation = updateChatThreadAutomation(
+        params.id,
+        (automation) => {
+          if (automation.kind !== "event" || !("eventConfig" in body)) {
+            return automation;
+          }
+          return {
+            ...automation,
+            eventConfig: body.eventConfig,
+          } as ChatThreadWorkflowAutomation;
+        },
+      );
+      if (updatedChatAutomation) {
+        return respond(200, updatedChatAutomation);
+      }
 
-        const updatedDetailAutomation = updateDetailAutomation(
-          params.id,
-          (automation) => {
-            if (automation.kind !== "event" || !("eventConfig" in body)) {
-              return automation;
-            }
-            return {
-              ...automation,
-              eventConfig: body.eventConfig,
-            } as ZeroWorkflowAutomationSummary;
-          },
-        );
-        return updatedDetailAutomation
-          ? respond(200, updatedDetailAutomation)
-          : respond(404, notFoundAutomation());
-      },
-    ),
+      const updatedDetailAutomation = updateDetailAutomation(
+        params.id,
+        (automation) => {
+          if (automation.kind !== "event" || !("eventConfig" in body)) {
+            return automation;
+          }
+          return {
+            ...automation,
+            eventConfig: body.eventConfig,
+          } as WorkflowAutomationSummary;
+        },
+      );
+      return updatedDetailAutomation
+        ? respond(200, updatedDetailAutomation)
+        : respond(404, notFoundAutomation());
+    }),
   ];
 }
 

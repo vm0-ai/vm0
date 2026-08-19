@@ -6,7 +6,7 @@ import { zeroCustomConnectorOAuth2Contract } from "@okouai/api-contracts/contrac
 import {
   publicConnectorCatalogIconSchema,
   type PublicConnectorCatalogIcon,
-} from "@okouai/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/connector-catalog";
 import { CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY } from "@okouai/connectors/app-oauth-callback";
 import {
   connectorSlugSchema,

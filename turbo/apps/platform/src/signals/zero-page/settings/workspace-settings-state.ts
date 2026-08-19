@@ -16,7 +16,7 @@ import type {
   OrgInvitationPurchasePreviewResponse,
   OrgRole,
 } from "@okouai/api-contracts/contracts/org-members";
-import type { UsagePackUsd } from "@okouai/api-contracts/contracts/zero-billing";
+import type { UsagePackUsd } from "@okouai/api-contracts/contracts/billing";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { isOrgAdmin$, org$, refreshOrg$ } from "../../org.ts";

@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 
 import {
-  zeroBillingDowngradeContract,
-  zeroBillingStatusContract,
-} from "@okouai/api-contracts/contracts/zero-billing";
+  billingDowngradeContract,
+  billingStatusContract,
+} from "@okouai/api-contracts/contracts/billing";
 import { createStore } from "ccstate";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -15,16 +15,13 @@ import {
   seedInvoicesOrg$,
   type InvoicesOrgFixture,
 } from "./helpers/billing-invoices";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
 import { billingDowngradeRoutes } from "../billing-downgrade";
 import { billingStatusRoutes } from "../billing-status";
 
 const context = testContext();
 const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 const TEST_PRICE_PRO = "price_test_pro";
 const TEST_PRICE_TEAM = "price_test_team";
@@ -36,7 +33,7 @@ const TEST_USAGE_PACK_50 = "price_test_usage_pack_50";
 async function readBillingStatus() {
   return await accept(
     setupApp({ context, routes: billingStatusRoutes })(
-      zeroBillingStatusContract,
+      billingStatusContract,
     ).get({
       headers: { authorization: "Bearer clerk-session" },
     }),
@@ -58,7 +55,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     mockOptionalEnv("STRIPE_SECRET_KEY", undefined);
 
     const client = setupApp({ context, routes: billingDowngradeRoutes })(
-      zeroBillingDowngradeContract,
+      billingDowngradeContract,
     );
     const response = await accept(
       client.create({
@@ -78,7 +75,7 @@ describe("POST /api/zero/billing/downgrade", () => {
 
   it("returns 401 when not authenticated", async () => {
     const client = setupApp({ context, routes: billingDowngradeRoutes })(
-      zeroBillingDowngradeContract,
+      billingDowngradeContract,
     );
     const response = await accept(
       client.create({
@@ -98,7 +95,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
     const client = setupApp({ context, routes: billingDowngradeRoutes })(
-      zeroBillingDowngradeContract,
+      billingDowngradeContract,
     );
     const response = await accept(
       client.create({
@@ -123,7 +120,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
     const client = setupApp({ context, routes: billingDowngradeRoutes })(
-      zeroBillingDowngradeContract,
+      billingDowngradeContract,
     );
     const response = await client.create({
       body: { targetTier: "team" as "pro" },
@@ -140,7 +137,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
     const client = setupApp({ context, routes: billingDowngradeRoutes })(
-      zeroBillingDowngradeContract,
+      billingDowngradeContract,
     );
     const response = await accept(
       client.create({
@@ -174,7 +171,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
     const client = setupApp({ context, routes: billingDowngradeRoutes })(
-      zeroBillingDowngradeContract,
+      billingDowngradeContract,
     );
     const response = await accept(
       client.create({
@@ -243,7 +240,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     });
 
     const client = setupApp({ context, routes: billingDowngradeRoutes })(
-      zeroBillingDowngradeContract,
+      billingDowngradeContract,
     );
     const response = await accept(
       client.create({
@@ -354,7 +351,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     });
 
     const client = setupApp({ context, routes: billingDowngradeRoutes })(
-      zeroBillingDowngradeContract,
+      billingDowngradeContract,
     );
     const response = await accept(
       client.create({
@@ -438,7 +435,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     });
 
     const client = setupApp({ context, routes: billingDowngradeRoutes })(
-      zeroBillingDowngradeContract,
+      billingDowngradeContract,
     );
     const response = await accept(
       client.create({
@@ -540,7 +537,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     });
 
     const client = setupApp({ context, routes: billingDowngradeRoutes })(
-      zeroBillingDowngradeContract,
+      billingDowngradeContract,
     );
     const response = await accept(
       client.create({
@@ -657,7 +654,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     context.mocks.stripe.subscriptions.update.mockResolvedValue({ id: subId });
 
     const client = setupApp({ context, routes: billingDowngradeRoutes })(
-      zeroBillingDowngradeContract,
+      billingDowngradeContract,
     );
     const response = await accept(
       client.create({
@@ -729,7 +726,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     context.mocks.stripe.subscriptions.update.mockResolvedValue({ id: subId });
 
     const client = setupApp({ context, routes: billingDowngradeRoutes })(
-      zeroBillingDowngradeContract,
+      billingDowngradeContract,
     );
     const response = await accept(
       client.create({
@@ -793,7 +790,7 @@ describe("POST /api/zero/billing/downgrade", () => {
 
     const response = await accept(
       setupApp({ context, routes: billingDowngradeRoutes })(
-        zeroBillingDowngradeContract,
+        billingDowngradeContract,
       ).create({
         body: { targetTier: "limited-free-1" },
         headers: { authorization: "Bearer clerk-session" },
@@ -852,7 +849,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     context.mocks.stripe.subscriptions.update.mockResolvedValue({ id: subId });
 
     const client = setupApp({ context, routes: billingDowngradeRoutes })(
-      zeroBillingDowngradeContract,
+      billingDowngradeContract,
     );
     const response = await accept(
       client.create({
@@ -927,7 +924,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     });
 
     const client = setupApp({ context, routes: billingDowngradeRoutes })(
-      zeroBillingDowngradeContract,
+      billingDowngradeContract,
     );
     const response = await accept(
       client.create({
@@ -1011,7 +1008,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     });
 
     const client = setupApp({ context, routes: billingDowngradeRoutes })(
-      zeroBillingDowngradeContract,
+      billingDowngradeContract,
     );
     const response = await accept(
       client.create({
@@ -1091,7 +1088,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     });
 
     const client = setupApp({ context, routes: billingDowngradeRoutes })(
-      zeroBillingDowngradeContract,
+      billingDowngradeContract,
     );
     const response = await accept(
       client.create({

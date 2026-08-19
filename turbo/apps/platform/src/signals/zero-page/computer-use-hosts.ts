@@ -1,9 +1,9 @@
 import { command, computed, state } from "ccstate";
 import { desktopProductFromClientHeader } from "@okouai/api-contracts/contracts/client-headers";
 import {
-  zeroComputerUseHostsContract,
+  computerUseHostsContract,
   type ComputerUseHost,
-} from "@okouai/api-contracts/contracts/zero-computer-use";
+} from "@okouai/api-contracts/contracts/computer-use";
 import { accept } from "../../lib/accept.ts";
 import { resolveApiBaseForNavigation } from "../api-base.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -165,7 +165,7 @@ export const computerUseHosts$ = computed(
   async (get): Promise<ListedComputerUseHost[]> => {
     get(computerUseHostsReload$);
 
-    const client = get(zeroClient$)(zeroComputerUseHostsContract);
+    const client = get(zeroClient$)(computerUseHostsContract);
     const result = await accept(client.list({}), [200, 403]);
     if (result.status !== 200) {
       return [];

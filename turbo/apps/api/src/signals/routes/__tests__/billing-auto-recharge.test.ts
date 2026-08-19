@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroBillingAutoRechargeContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingAutoRechargeContract } from "@okouai/api-contracts/contracts/billing";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -8,14 +8,14 @@ import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { billingAutoRechargeRoutes } from "../billing-auto-recharge";
 
 const context = testContext();
 const bdd = createBddApi(context);
 const billingApi = createBillingMediaApi(context);
 const runsApi = createRunsApi(context);
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 const defaultAutoRechargeConfig = Object.freeze({
   enabled: false,
@@ -27,7 +27,7 @@ type AutoRechargeActor = ApiTestUser & { readonly orgId: string };
 
 function autoRechargeClient() {
   return setupApp({ context, routes: billingAutoRechargeRoutes })(
-    zeroBillingAutoRechargeContract,
+    billingAutoRechargeContract,
   );
 }
 

@@ -5,7 +5,7 @@ import {
   scrapeContract,
   type ScrapeRequest,
 } from "@okouai/api-contracts/contracts/scrape";
-import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 
 import { mockEnv } from "../../../lib/env";
 import { createAppWithRoutes } from "../../../app-factory-core";
@@ -28,7 +28,7 @@ import {
   expectApiError,
   type ApiTestUser,
 } from "./helpers/api-bdd";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 
 const context = testContext();
 const FIRECRAWL_SCRAPE_URL = "https://api.firecrawl.dev/v2/scrape";
@@ -60,7 +60,7 @@ function authenticate(actor: ApiTestUser | null): AuthHeaders {
     return {};
   }
 
-  createZeroRouteMocks(context).clerk.session(
+  createRouteMocks(context).clerk.session(
     actor.userId,
     actor.orgId,
     actor.orgRole,
@@ -120,7 +120,7 @@ async function fundActor(actor: ApiTestUser): Promise<void> {
 
 async function credits(actor: ApiTestUser): Promise<number> {
   const response = await accept(
-    client()(zeroBillingStatusContract).get({
+    client()(billingStatusContract).get({
       headers: authenticate(actor),
     }),
     [200],

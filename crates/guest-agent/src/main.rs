@@ -578,12 +578,8 @@ async fn execute(
                     log_info!(LOG_TAG, "{pressure}");
                 }
                 if let Some(hard_limit) = diagnostics.hard_limit {
-                    let message = apply_workload_resource_limit(
-                        exit_code,
-                        &mut error_message,
-                        &mut failure_diagnostic,
-                        hard_limit,
-                    );
+                    let message =
+                        apply_workload_resource_limit(&mut failure_diagnostic, hard_limit);
                     log_warn!(LOG_TAG, "{message}");
                 }
             }
@@ -639,8 +635,6 @@ async fn execute(
 }
 
 fn apply_workload_resource_limit(
-    exit_code: i32,
-    error_message: &mut String,
     failure_diagnostic: &mut Option<FailureDiagnostic>,
     hard_limit: WorkloadResourceLimitDiagnostic,
 ) -> String {
@@ -652,19 +646,6 @@ fn apply_workload_resource_limit(
         hard_limit.memory_oom_group_kill_events,
         hard_limit.pids_max_events,
     );
-    if exit_code == 0 {
-        return message;
-    }
-
-    let has_classified_failure = failure_diagnostic
-        .as_ref()
-        .is_some_and(|diagnostic| diagnostic.failure_reason.is_some());
-    if error_message.is_empty() {
-        error_message.clone_from(&message);
-    } else if !has_classified_failure {
-        error_message.push_str("; ");
-        error_message.push_str(&message);
-    }
     if let Some(diagnostic) = failure_diagnostic.take() {
         *failure_diagnostic = Some(diagnostic.with_workload_resource_limit(hard_limit));
     }
@@ -1536,16 +1517,16 @@ mod tests {
     }
 
     #[test]
-    fn complete_execution_preserves_workload_resource_failure_semantics() {
+    fn complete_execution_keeps_workload_resource_counters_out_of_messages() {
         let _test_state_guard = lock_test_state();
         tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap()
-            .block_on(complete_execution_preserves_workload_resource_failure_semantics_inner());
+            .block_on(complete_execution_keeps_workload_resource_counters_out_of_messages_inner());
     }
 
-    async fn complete_execution_preserves_workload_resource_failure_semantics_inner() {
+    async fn complete_execution_keeps_workload_resource_counters_out_of_messages_inner() {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         let _ = std::fs::remove_dir_all(&*MAIN_TEST_RUNTIME_ROOT);
         let _runtime_root_guard = TestEnvGuard;
@@ -1604,14 +1585,35 @@ mod tests {
         .await;
 
         assert_eq!(exit_code, 137);
-        assert_eq!(
-            error.as_deref(),
-            Some(
-                "Agent exited with code 137; workload resource limit reached (memory_max=1882956, memory_oom=3, memory_oom_kill=3, memory_oom_group_kill=0, pids_max=0)"
-            )
-        );
+        assert_eq!(error.as_deref(), Some(generic_message));
         let diagnostic = diagnostic.expect("expected generic failure diagnostic");
         assert_eq!(diagnostic.failure_reason, None);
+        assert_eq!(diagnostic.workload_resource_limit, Some(hard_limit));
+
+        let timeout_message = "Agent execution timed out after 7200 seconds";
+        let timeout_termination =
+            CliTerminationDiagnostic::new(CliTerminationReason::ExecutionTimeout);
+        let timeout_diagnostic = FailureDiagnostic::new(
+            FailureClass::CliExecutionError,
+            AgentFramework::Codex,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_cli_exit_code(AGENT_EXECUTION_TIMEOUT_EXIT_CODE)
+        .with_cli_termination(timeout_termination);
+
+        let (exit_code, error, diagnostic) = complete_after_workload_resource_limit(
+            server,
+            AGENT_EXECUTION_TIMEOUT_EXIT_CODE,
+            timeout_message,
+            Some(timeout_diagnostic),
+            hard_limit,
+        )
+        .await;
+
+        assert_eq!(exit_code, AGENT_EXECUTION_TIMEOUT_EXIT_CODE);
+        assert_eq!(error.as_deref(), Some(timeout_message));
+        let diagnostic = diagnostic.expect("expected timeout failure diagnostic");
+        assert_eq!(diagnostic.cli_termination, Some(timeout_termination));
         assert_eq!(diagnostic.workload_resource_limit, Some(hard_limit));
 
         let (exit_code, error, diagnostic) =
@@ -1643,13 +1645,8 @@ mod tests {
         let telemetry =
             Telemetry::spawn_for_paths(config.run_id.clone(), &guest_paths, masker, http.clone());
         let runtime = test_guest_runtime(config, http);
-        let mut error_message = initial_error_message.to_string();
-        apply_workload_resource_limit(
-            cli_exit_code,
-            &mut error_message,
-            &mut failure_diagnostic,
-            hard_limit,
-        );
+        let error_message = initial_error_message.to_string();
+        apply_workload_resource_limit(&mut failure_diagnostic, hard_limit);
         let exit_code = complete_execution(
             cli_exit_code,
             cli_exit_code,

@@ -4272,6 +4272,7 @@
         "categoryChat": "Chat",
         "categoryImage": "Image",
         "categoryVideo": "Video",
+        "chatModels": "Chat models",
         "fast": "Fast",
         "fastImpact": "1.5× model speed · 2.5× credit usage",
         "imageModels": "Image models",

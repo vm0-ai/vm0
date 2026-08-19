@@ -34,7 +34,7 @@ import {
   healthAuthProbeRoutes,
 } from "../../health-auth-probe";
 import type { ApiTestUser } from "./api-bdd";
-import { createZeroRouteMocks } from "./zero-route-test";
+import { createRouteMocks } from "./route-test";
 
 type ClerkOrgRole = "org:admin" | "org:member";
 
@@ -125,7 +125,7 @@ function requireOrgId(actor: ApiTestUser): string {
 }
 
 export function createUserConfigBddApi(context: TestContext) {
-  const routeMocks = createZeroRouteMocks(context);
+  const routeMocks = createRouteMocks(context);
 
   function authenticate(credential: Credential | null): AuthHeaders {
     if (credential === null) {

@@ -9,11 +9,11 @@ import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { now } from "../../../lib/time";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { presentationImagesRoutes } from "../presentation-images";
 
 const context = testContext();
-const routeMocks = createZeroRouteMocks(context);
+const routeMocks = createRouteMocks(context);
 const UNSPLASH_SEARCH_URL = "https://api.unsplash.com/search/photos";
 
 interface PresentationImagesFixture {

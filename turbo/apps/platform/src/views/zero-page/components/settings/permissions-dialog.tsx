@@ -26,7 +26,7 @@ import {
   Input,
 } from "@okouai/ui";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
-import type { PublicConnectorCatalogIcon } from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import type { PublicConnectorCatalogIcon } from "@okouai/api-contracts/contracts/connector-catalog";
 import { groupFirewallMetadataPermissionsByCategory } from "@okouai/connectors/firewall-metadata/policy";
 import {
   UNKNOWN_PERMISSION_GRANT,

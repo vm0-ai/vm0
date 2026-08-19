@@ -7,10 +7,7 @@ import { createApp } from "../../../app-factory";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { flushWaitUntilForTest } from "../../context/wait-until";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import {
   deleteSlackConnectOrg$,
@@ -25,7 +22,7 @@ const TEST_APP_ROUTES = Object.freeze([...slackConnectRoutes]);
 
 const context = testContext();
 const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const storages = createStoragesBddApi(context);
 const SLACK_CONNECT_PATH = "/api/zero/integrations/slack/connect";
 

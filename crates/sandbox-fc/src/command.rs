@@ -1,3 +1,4 @@
+use std::ffi::OsStr;
 use std::process::{ExitStatus, Stdio};
 use std::time::Duration;
 
@@ -152,10 +153,14 @@ impl StreamOutputPolicy {
 }
 
 /// Format a human-readable display string for a command invocation.
-fn format_command_display(program: &str, args: &[&str]) -> String {
+fn format_command_display<P, A>(program: &P, args: &[A]) -> String
+where
+    P: AsRef<OsStr> + ?Sized,
+    A: AsRef<OsStr>,
+{
     let mut parts = Vec::with_capacity(args.len() + 1);
-    parts.push(program);
-    parts.extend_from_slice(args);
+    parts.push(program.as_ref().to_string_lossy());
+    parts.extend(args.iter().map(|arg| arg.as_ref().to_string_lossy()));
     parts.join(" ")
 }
 
@@ -202,7 +207,24 @@ pub async fn exec_status_with_timeout(
     args: &[&str],
     timeout: Duration,
 ) -> Result<(), CommandError> {
-    let cmd_display = format_command_display(program, args);
+    exec_status(program, args, timeout).await
+}
+
+/// Execute a command with native OS arguments and bounded runtime, discarding stdout.
+pub async fn exec_status_os_with_timeout(
+    program: &OsStr,
+    args: &[&OsStr],
+    timeout: Duration,
+) -> Result<(), CommandError> {
+    exec_status(program, args, timeout).await
+}
+
+async fn exec_status<P, A>(program: P, args: &[A], timeout: Duration) -> Result<(), CommandError>
+where
+    P: AsRef<OsStr>,
+    A: AsRef<OsStr>,
+{
+    let cmd_display = format_command_display(&program, args);
 
     let output =
         command_output_with_policy(program, args, timeout, CommandOutputPolicy::status_only())
@@ -265,12 +287,16 @@ async fn command_output_with_timeout(
     .await
 }
 
-async fn command_output_with_policy(
-    program: &str,
-    args: &[&str],
+async fn command_output_with_policy<P, A>(
+    program: P,
+    args: &[A],
     timeout: Duration,
     output_policy: CommandOutputPolicy,
-) -> std::result::Result<CommandOutput, CommandRunError> {
+) -> std::result::Result<CommandOutput, CommandRunError>
+where
+    P: AsRef<OsStr>,
+    A: AsRef<OsStr>,
+{
     command_output_with_policy_and_exit_notifier(
         program,
         args,
@@ -298,13 +324,17 @@ async fn command_output_with_timeout_with_exit_notifier(
     .await
 }
 
-async fn command_output_with_policy_and_exit_notifier(
-    program: &str,
-    args: &[&str],
+async fn command_output_with_policy_and_exit_notifier<P, A>(
+    program: P,
+    args: &[A],
     timeout: Duration,
     output_policy: CommandOutputPolicy,
     open_exit_notifier: impl FnOnce(&Child) -> ChildExitNotifier,
-) -> std::result::Result<CommandOutput, CommandRunError> {
+) -> std::result::Result<CommandOutput, CommandRunError>
+where
+    P: AsRef<OsStr>,
+    A: AsRef<OsStr>,
+{
     let mut command = Command::new(program);
     command
         .args(args)
@@ -865,6 +895,42 @@ mod tests {
 
         assert!(err.detail.contains("status-failed"), "err was: {err}");
         assert_eq!(err.exit_code, Some(7));
+    }
+
+    #[tokio::test]
+    async fn exec_status_os_with_timeout_preserves_non_utf8_argument() {
+        use std::os::unix::ffi::OsStringExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir
+            .path()
+            .join(std::ffi::OsString::from_vec(b"native-\xff".to_vec()));
+        std::fs::write(&path, b"present").unwrap();
+        let args = [OsStr::new("-e"), path.as_os_str()];
+
+        exec_status_os_with_timeout(OsStr::new("test"), &args, Duration::from_secs(1))
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn exec_status_os_with_timeout_bounds_failure_stderr() {
+        let script = format!(
+            "head -c {} /dev/zero | tr '\\0' x >&2; exit 9",
+            DEFAULT_DIAGNOSTIC_OUTPUT_LIMIT_BYTES + 1
+        );
+        let args = [OsStr::new("-c"), OsStr::new(&script)];
+
+        let err = exec_status_os_with_timeout(OsStr::new("sh"), &args, Duration::from_secs(1))
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.exit_code, Some(9));
+        assert_eq!(
+            err.detail.len(),
+            DEFAULT_DIAGNOSTIC_OUTPUT_LIMIT_BYTES + "\n[output truncated]".len()
+        );
+        assert!(err.detail.ends_with("\n[output truncated]"));
     }
 
     #[test]

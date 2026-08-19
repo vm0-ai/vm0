@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 import { generateKeyPairSync, sign as signData } from "node:crypto";
 
-import { zeroWorkflowAutomationsContract } from "@okouai/api-contracts/contracts/zero-workflows";
+import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
 import { HttpResponse, http } from "msw";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -13,13 +13,13 @@ import { server } from "../../../mocks/server";
 import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { chatEventDisplayText } from "./helpers/chat-event";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { webhooksGoogleWorkspaceEventsRoutes } from "../webhooks-google-workspace-events";
 import { workflowAutomationsRoutes } from "../workflow-automations";
 
 const context = testContext();
 const connectors = createConnectorBddApi(context);
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const workflows = createWorkflowsBddApi(context);
 
 const TOPIC_NAME = "projects/vm0-ai-488909/topics/google-workspace-events";
@@ -41,7 +41,7 @@ function authHeaders() {
 
 function automationsClient() {
   return setupApp({ context, routes: workflowAutomationsRoutes })(
-    zeroWorkflowAutomationsContract,
+    workflowAutomationsContract,
   );
 }
 

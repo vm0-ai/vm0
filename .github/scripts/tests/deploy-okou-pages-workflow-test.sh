@@ -104,6 +104,7 @@ require_fragments(
     [
         "verify-okou-production-domains.sh",
         '"https://${CF_PAGES_PROJECT_NAME}.pages.dev"',
+        "api-promotion",
     ],
 )
 if release_api_verification_step.get("shell") != "bash":
@@ -117,6 +118,11 @@ require_fragments(
         '"https://${CF_PAGES_PROJECT_NAME}.pages.dev"',
     ],
 )
+for step in (release_step, rollback_verification_step):
+    if "api-promotion" in str(step.get("run", "")):
+        raise RuntimeError(
+            f"post-App verification must enforce the API origin marker: {step['name']}"
+        )
 
 for fragment in (
     "https://app.vm0.ai",
@@ -126,6 +132,12 @@ for fragment in (
     "sign-in",
     "sign-up",
     "%{redirect_url}",
+    "vm0-api-origin",
+    "Access-Control-Request-Method: GET",
+    "%header{access-control-allow-origin}",
+    "%header{access-control-allow-credentials}",
+    "/api/okou/__brand-smoke__",
+    "api-promotion",
 ):
     if fragment not in production_verifier_source:
         raise RuntimeError(f"production verifier is missing: {fragment}")
@@ -134,9 +146,14 @@ for api_origin, app_origin in (
     ("https://api.vm0.ai", "https://app.vm0.ai"),
     ("https://api.okou.ai", "https://app.okou.ai"),
 ):
-    invocation = f'verify_auth_redirect "{api_origin}" "{app_origin}"'
-    if invocation not in production_verifier_source:
-        raise RuntimeError(f"production verifier is missing mapping: {invocation}")
+    invocations = (
+        f'verify_auth_redirect "{api_origin}" "{app_origin}"',
+        f'verify_api_origin_marker "{app_origin}" "{api_origin}"',
+        f'verify_api_cors "{api_origin}" "{app_origin}"',
+    )
+    for invocation in invocations:
+        if invocation not in production_verifier_source:
+            raise RuntimeError(f"production verifier is missing mapping: {invocation}")
 
 print("deploy-okou-pages workflow tests passed")
 PY

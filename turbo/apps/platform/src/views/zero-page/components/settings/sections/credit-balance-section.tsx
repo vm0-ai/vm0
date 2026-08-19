@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import type { OrgMember } from "@okouai/api-contracts/contracts/org-members";
-import type { UsagePackCreditsResponse } from "@okouai/api-contracts/contracts/zero-billing";
+import type { UsagePackCreditsResponse } from "@okouai/api-contracts/contracts/billing";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { ArrowRight, ChevronRight, Users } from "lucide-react";
 import {

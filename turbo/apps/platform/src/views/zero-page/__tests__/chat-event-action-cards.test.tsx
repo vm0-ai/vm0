@@ -9,13 +9,13 @@ import {
   browserContract,
   type BrowserSession,
 } from "@okouai/api-contracts/contracts/browser";
-import { zeroAgentsByIdContract } from "@okouai/api-contracts/contracts/zero-agents";
+import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
 import { mailContract } from "@okouai/api-contracts/contracts/mail";
 import {
-  zeroConnectorCatalogContract,
+  connectorCatalogContract,
   type PublicConnectorCatalogPermissionDetail,
   type PublicConnectorCatalogStatusItem,
-} from "@okouai/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/connector-catalog";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
   zeroAgentCustomConnectorsContract,
@@ -156,7 +156,7 @@ function mockConnectorCatalogStatus(
 ): void {
   // Register the dynamic slug route first so the subsequently registered
   // static /status route takes precedence in runtime MSW handlers.
-  context.mocks.api(zeroConnectorCatalogContract.get, ({ params, respond }) => {
+  context.mocks.api(connectorCatalogContract.get, ({ params, respond }) => {
     const connector = connectors.find((candidate) => {
       return candidate.slug === params.connectorSlug;
     });
@@ -166,7 +166,7 @@ function mockConnectorCatalogStatus(
           error: { message: "Connector not found", code: "NOT_FOUND" },
         });
   });
-  context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+  context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
     return respond(200, { connectors: [...connectors] });
   });
 }
@@ -368,7 +368,7 @@ describe("chat event action cards", () => {
       throw new Error("Catalog request did not start");
     };
     context.mocks.api(
-      zeroConnectorCatalogContract.get,
+      connectorCatalogContract.get,
       async ({ deferred, respond }) => {
         const catalogDeferred = deferred<void>();
         resolveCatalog = () => {
@@ -1321,7 +1321,7 @@ describe("chat event action cards", () => {
         reconnectReason: "authorization_expired_or_revoked",
       }),
     ]);
-    context.mocks.api(zeroConnectorCatalogContract.get, ({ respond }) => {
+    context.mocks.api(connectorCatalogContract.get, ({ respond }) => {
       return respond(200, {
         connector: publicConnectorStatusItem({
           slug: "gmail",
@@ -1441,7 +1441,7 @@ describe("chat event action cards", () => {
     });
     context.mocks.browser.open(authWindow);
     context.mocks.data.connectors([]);
-    context.mocks.api(zeroConnectorCatalogContract.get, ({ respond }) => {
+    context.mocks.api(connectorCatalogContract.get, ({ respond }) => {
       return respond(200, {
         connector: publicConnectorStatusItem({
           slug: "github",
@@ -1553,7 +1553,7 @@ describe("chat event action cards", () => {
     let connected = false;
     let authorized = false;
     let connectCalls = 0;
-    context.mocks.api(zeroConnectorCatalogContract.get, ({ respond }) => {
+    context.mocks.api(connectorCatalogContract.get, ({ respond }) => {
       return respond(200, {
         connector: publicConnectorStatusItem({
           slug: "stripe",
@@ -1747,7 +1747,7 @@ describe("chat event action cards", () => {
         reconnectReason: "authorization_expired_or_revoked",
       }),
     ]);
-    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+    context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
       catalogRequests += 1;
       return respond(200, {
         connectors: [
@@ -1989,7 +1989,7 @@ describe("chat event action cards", () => {
     ]);
     mockAgentConnectorAuthorizations([]);
     context.mocks.api(
-      zeroConnectorCatalogContract.permissions,
+      connectorCatalogContract.permissions,
       ({ params, respond }) => {
         expect(params.connectorSlug).toBe("slack");
         return respond(200, {
@@ -2130,7 +2130,7 @@ describe("chat event action cards", () => {
     const capturedPermissionGrantBodies: unknown[] = [];
 
     context.mocks.api(
-      zeroConnectorCatalogContract.permissions,
+      connectorCatalogContract.permissions,
       ({ params, respond }) => {
         expect(params.connectorSlug).toBe("google-sheets");
         return respond(200, {
@@ -2278,23 +2278,20 @@ describe("chat event action cards", () => {
       userMessage?: unknown;
     }[] = [];
 
-    context.mocks.api(
-      zeroConnectorCatalogContract.permissions,
-      ({ respond }) => {
-        return respond(200, {
-          permissions: catalogPermissionDetail({
-            connectorSlug: "slack",
-            label: "Slack",
-            permissions: [
-              {
-                name: "channels.read",
-                description: "Read channels",
-              },
-            ],
-          }),
-        });
-      },
-    );
+    context.mocks.api(connectorCatalogContract.permissions, ({ respond }) => {
+      return respond(200, {
+        permissions: catalogPermissionDetail({
+          connectorSlug: "slack",
+          label: "Slack",
+          permissions: [
+            {
+              name: "channels.read",
+              description: "Read channels",
+            },
+          ],
+        }),
+      });
+    });
     context.mocks.api(
       zeroUserPermissionGrantsContract.apply,
       ({ body, respond }) => {
@@ -2493,14 +2490,14 @@ describe("chat event action cards", () => {
     let connected = false;
     let authorized = false;
     let fullCatalogRequests = 0;
-    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+    context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
       fullCatalogRequests += 1;
       return respond(200, { connectors: [] });
     });
-    context.mocks.api(zeroConnectorCatalogContract.discovery, ({ respond }) => {
+    context.mocks.api(connectorCatalogContract.discovery, ({ respond }) => {
       return respond(200, { connectors: [], totalConnectorCount: 347 });
     });
-    context.mocks.api(zeroConnectorCatalogContract.get, ({ respond }) => {
+    context.mocks.api(connectorCatalogContract.get, ({ respond }) => {
       return respond(200, {
         connector: publicConnectorStatusItem({
           slug: "future-connector",
@@ -2616,14 +2613,11 @@ describe("chat event action cards", () => {
     const threadId = "e4000000-0000-4000-a000-000000000013";
     context.mocks.browser.url(`https://app.vm0.ai/chats/${threadId}`);
     const permissionAuthorizeUrl = `https://app.okou.ai/agents/${AGENT_ID}/permissions?connectorSlug=hidden-connector&permission=hidden.permission&action=allow&expiresIn=1h`;
-    context.mocks.api(
-      zeroConnectorCatalogContract.permissions,
-      ({ respond }) => {
-        return respond(404, {
-          error: { message: "Connector not found", code: "NOT_FOUND" },
-        });
-      },
-    );
+    context.mocks.api(connectorCatalogContract.permissions, ({ respond }) => {
+      return respond(404, {
+        error: { message: "Connector not found", code: "NOT_FOUND" },
+      });
+    });
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Hidden permission metadata",
@@ -3508,7 +3502,7 @@ describe("chat event action cards", () => {
     let pendingRequest = true;
     let staleRequestSignal: AbortSignal | undefined;
 
-    context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
+    context.mocks.api(agentsByIdContract.get, ({ params, respond }) => {
       return respond(200, {
         agentId: params.id,
         ownerId: "test-user-123",
@@ -3903,7 +3897,7 @@ describe("chat event action cards", () => {
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=gmail&permission=messages.write&action=allow&expiresIn=1h`;
     let holdAgentResponse = false;
     context.mocks.api(
-      zeroAgentsByIdContract.get,
+      agentsByIdContract.get,
       async ({ deferred, params, respond }) => {
         if (holdAgentResponse) {
           const agentDeferred = deferred<void>();

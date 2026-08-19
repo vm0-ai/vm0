@@ -697,4 +697,84 @@ mod tests {
         ));
         assert!(!is_guest_agent_tuning_env_key(API_URL_ENV));
     }
+
+    /// Contract sources scanned for declared environment key constants.
+    ///
+    /// Every module declaring a `*_ENV` bootstrap key must be listed here, or
+    /// its keys escape the protection check below.
+    const CONTRACT_ENV_SOURCES: &[(&str, &str)] = &[
+        ("env.rs", include_str!("env.rs")),
+        ("runtime_paths.rs", include_str!("runtime_paths.rs")),
+        (
+            "process_containment.rs",
+            include_str!("process_containment.rs"),
+        ),
+    ];
+
+    /// Extracts every `pub const NAME_ENV: &str = "VALUE";` declaration from a
+    /// contract source as a `(name, value)` pair.
+    ///
+    /// Reading declarations out of the source keeps the check exhaustive. A
+    /// hand-maintained list would only cover the keys someone remembered to
+    /// register, which is the failure this check exists to prevent.
+    ///
+    /// Only declarations starting a line are matched, so prose mentioning the
+    /// pattern inside a comment is not treated as a declaration.
+    ///
+    /// Every current declaration occupies a single line. A `_ENV` declaration
+    /// this cannot parse yields an empty value, which fails the protection
+    /// check rather than being skipped, so an unparsed declaration fails closed.
+    fn declared_env_key_constants(source: &str) -> Vec<(&str, &str)> {
+        source
+            .lines()
+            .filter_map(|line| {
+                let declaration = line.trim_start().strip_prefix("pub const ")?;
+                let (name, rest) = declaration.split_once(':')?;
+                let name = name.trim();
+                if !name.ends_with("_ENV") {
+                    return None;
+                }
+                let (_, rest) = rest.split_once('=')?;
+                let value = rest
+                    .trim_start()
+                    .strip_prefix('"')
+                    .and_then(|literal| literal.split_once('"'))
+                    .map_or("", |(value, _)| value);
+                Some((name, value))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn every_declared_env_key_is_classified_for_user_env_protection() {
+        let mut unprotected = Vec::new();
+        let mut total = 0;
+
+        for (file, source) in CONTRACT_ENV_SOURCES {
+            let declared = declared_env_key_constants(source);
+            assert!(
+                !declared.is_empty(),
+                "{file} yielded no *_ENV declarations; the source scan is broken"
+            );
+            total += declared.len();
+
+            for (name, value) in declared {
+                if !is_runner_owned_env_key(value) {
+                    unprotected.push(format!("{file}: {name} = {value:?}"));
+                }
+            }
+        }
+
+        assert!(
+            total >= 37,
+            "expected at least 37 declared *_ENV keys across the contract sources, found {total}; \
+             lower this bound only when a key is deliberately removed"
+        );
+        assert!(
+            unprotected.is_empty(),
+            "these bootstrap env keys are not protected from user env injection. Add each to \
+             EXPLICIT_RUNNER_OWNED_ENV_KEYS, or keep the VM0_ prefix:\n  {}",
+            unprotected.join("\n  ")
+        );
+    }
 }

@@ -2,7 +2,7 @@ import type {
   OrgInvitationPurchasePreviewResponse,
   OrgRole,
 } from "@okouai/api-contracts/contracts/org-members";
-import type { UsagePackUsd } from "@okouai/api-contracts/contracts/zero-billing";
+import type { UsagePackUsd } from "@okouai/api-contracts/contracts/billing";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import {
@@ -55,7 +55,7 @@ import {
   isCurrentStripePreviewMetadata,
   stripePreviewMetadata,
 } from "./stripe-preview-metadata.service";
-import { activeUsagePackPriceId } from "./zero-billing-checkout.service";
+import { activeUsagePackPriceId } from "./billing-checkout.service";
 import {
   resolveBillingPurchaseRoute,
   stripeBillingPurchasePaymentParams,

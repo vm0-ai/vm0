@@ -5,7 +5,7 @@ import {
   zeroConnectorOpenIdStartContract,
   zeroConnectorsBySlugContract,
 } from "@okouai/api-contracts/contracts/zero-connectors";
-import { zeroConnectorCatalogContract } from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import { connectorCatalogContract } from "@okouai/api-contracts/contracts/connector-catalog";
 import { steamPlayerContract } from "@okouai/api-contracts/contracts/steam-player";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
@@ -14,14 +14,14 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { connectorsSlugCallbackRoutes } from "../connectors-slug-callback";
 import { connectorCatalogRoutes } from "../connector-catalog";
 import { connectorsRoutes } from "../connectors";
 import { steamPlayerRoutes } from "../steam-player";
 
 const context = testContext();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 const STEAM_ID = "76561198000000000";
 
@@ -315,7 +315,7 @@ describe("Steam OpenID connector", () => {
     mockSession(actor);
 
     const client = setupApp({ context, routes: connectorCatalogRoutes })(
-      zeroConnectorCatalogContract,
+      connectorCatalogContract,
     );
     const visible = await accept(
       client.status({ headers: authHeaders() }),

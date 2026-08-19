@@ -21,12 +21,12 @@ import {
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { zeroAgentsByIdContract } from "@okouai/api-contracts/contracts/zero-agents";
+import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
 import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-preferences";
 import {
-  zeroTeamContract,
+  teamContract,
   type TeamComposeItem,
-} from "@okouai/api-contracts/contracts/zero-team";
+} from "@okouai/api-contracts/contracts/team";
 
 import {
   createMockWorkflowAutomation,
@@ -138,7 +138,7 @@ function prepareAgentTeam(targetContext = context): TeamComposeItem[] {
     },
   ];
   targetContext.mocks.data.team(team);
-  targetContext.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
+  targetContext.mocks.api(agentsByIdContract.get, ({ params, respond }) => {
     const displayNameById: Record<string, string> = {
       [AGENT_ID]: "Zero",
       [RESEARCH_AGENT_ID]: "Research Agent",
@@ -1399,6 +1399,128 @@ describe("zero sidebar", () => {
     });
   });
 
+  it("keeps three-column desktop and mobile chat virtualization isolated", async () => {
+    prepareDefaultAgent();
+    const overflowThreads = Array.from({ length: 23 }, (_, index) => {
+      return createThread(
+        `b2050000-0000-4000-a000-${String(index).padStart(12, "0")}`,
+        `Isolated overflow ${index + 1}`,
+      );
+    });
+    mockSidebarThreadStory(
+      [
+        createThread(EXISTING_THREAD_ID, "Release plan"),
+        createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
+      ],
+      [
+        ...overflowThreads,
+        createThread(ARCHIVED_THREAD_ID, "Archived context"),
+      ],
+    );
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const desktopList = await screen.findByTestId("chat-list-column");
+    const mobileList = mobileSidebar();
+    const desktopScrollArea = await within(desktopList).findByTestId(
+      "sidebar-scroll-area",
+    );
+    const mobileScrollArea = await within(mobileList).findByTestId(
+      "sidebar-scroll-area",
+    );
+    Object.defineProperties(desktopScrollArea, {
+      clientHeight: { configurable: true, value: 200 },
+      scrollHeight: { configurable: true, value: 1000 },
+      scrollTop: { configurable: true, value: 780, writable: true },
+    });
+    Object.defineProperties(mobileScrollArea, {
+      clientHeight: { configurable: true, value: 200 },
+      scrollHeight: { configurable: true, value: 1000 },
+      scrollTop: { configurable: true, value: 0, writable: true },
+    });
+
+    fireEvent.scroll(mobileScrollArea);
+    fireEvent.scroll(desktopScrollArea);
+
+    await waitFor(() => {
+      expect(
+        within(desktopList).getByText("Archived context"),
+      ).toBeInTheDocument();
+      expect(within(desktopList).queryByText("Release plan")).toBeNull();
+      expect(within(mobileList).getByText("Release plan")).toBeInTheDocument();
+      expect(within(mobileList).queryByText("Archived context")).toBeNull();
+    });
+  });
+
+  it("keeps virtualized chats visible after deletion refreshes a clamped viewport", async () => {
+    prepareDefaultAgent();
+    const overflowThreads = Array.from({ length: 23 }, (_, index) => {
+      return createThread(
+        `b3000000-0000-4000-a000-${String(index).padStart(12, "0")}`,
+        `Refresh overflow ${index + 1}`,
+      );
+    });
+    mockSidebarThreadStory(
+      [
+        createThread(EXISTING_THREAD_ID, "Release plan"),
+        createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
+      ],
+      [
+        ...overflowThreads,
+        createThread(ARCHIVED_THREAD_ID, "Archived context"),
+      ],
+    );
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("sidebar-chat-threads-virtual-list"),
+      ).toBeInTheDocument();
+    });
+
+    const scrollArea = screen.getByTestId("sidebar-scroll-area");
+    Object.defineProperties(scrollArea, {
+      clientHeight: { configurable: true, value: 200 },
+      scrollHeight: { configurable: true, value: 1000 },
+      scrollTop: { configurable: true, value: 780, writable: true },
+    });
+    fireEvent.scroll(scrollArea);
+
+    await waitFor(() => {
+      expect(
+        within(sidebar()).getByText("Archived context"),
+      ).toBeInTheDocument();
+    });
+    expect(within(sidebar()).queryByText("Release plan")).toBeNull();
+
+    openThreadMenu("Archived context");
+    click(menuItemByText("Delete chat"));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Delete chat?",
+    });
+    click(buttonByText("Delete", dialog));
+
+    // Model a browser-clamped live offset without another scroll event.
+    scrollArea.scrollTop = 0;
+
+    await waitFor(() => {
+      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+      expect(
+        within(sidebar()).queryByText("Archived context"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it("does not scroll the current chat into view from pointer focus after virtual scrolling", async () => {
     prepareDefaultAgent();
     const overflowThreads = Array.from({ length: 23 }, (_, index) => {
@@ -1651,6 +1773,37 @@ describe("zero sidebar", () => {
     });
   });
 
+  it("scrolls the current chat in the three-column desktop list on page setup", async () => {
+    prepareDefaultAgent();
+    const leadingThreads = Array.from({ length: 24 }, (_, index) => {
+      return createThread(
+        `b3050000-0000-4000-a000-${String(index).padStart(12, "0")}`,
+        `Three-column leading chat ${index + 1}`,
+      );
+    });
+    mockSidebarThreadStory([
+      ...leadingThreads,
+      createThread(EXISTING_THREAD_ID, "Release plan"),
+      createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
+    ]);
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const desktopList = await screen.findByTestId("chat-list-column");
+    await waitFor(() => {
+      expect(within(desktopList).getByText("Release plan")).toBeInTheDocument();
+      expect(
+        within(desktopList).getByTestId("sidebar-scroll-area").scrollTop,
+      ).toBeGreaterThan(0);
+    });
+  });
+
   it("renders 100 chat threads before the sidebar viewport is measured", async () => {
     prepareDefaultAgent();
     const firstThread = createThread(EXISTING_THREAD_ID, "Fallback chat 1");
@@ -1789,7 +1942,7 @@ describe("zero sidebar", () => {
     const team = prepareAgentTeam();
     const releaseRefresh = context.mocks.deferred<void>();
     let initialTeamServed = false;
-    context.mocks.api(zeroTeamContract.list, async ({ respond }) => {
+    context.mocks.api(teamContract.list, async ({ respond }) => {
       if (initialTeamServed) {
         await releaseRefresh.promise;
       }
@@ -3196,6 +3349,47 @@ describe("zero sidebar", () => {
     ).toBeInTheDocument();
   });
 
+  it("keeps the three-column chat list on one text and box inset", async () => {
+    prepareDefaultAgent();
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const list = await waitFor(() => {
+      return screen.getByTestId("chat-list-column");
+    });
+
+    const pinnedSection = within(list).getByTestId("pinned-agents-horizontal");
+    const scroller = pinnedSection.parentElement;
+    if (!(scroller instanceof HTMLElement)) {
+      throw new Error("Chat list content wrapper is not rendered");
+    }
+
+    // Rows, the pinned grid and the section labels all sit on a 12px content
+    // inset, and each label adds its own pl-2 so every text in the column
+    // starts at the same 20px. Dropping either half pulls one of them out of
+    // line with the rest.
+    expect(scroller).toHaveClass("px-3");
+    expect(scroller).not.toHaveClass("px-2");
+    expect(within(list).getByText("Chat")).toHaveClass("pl-2");
+
+    // The pinned label carries the same h-8 row box as the chats section title
+    // below it, which is what keeps the gap above the two section headers even.
+    const pinnedLabel = within(pinnedSection).getByText("Pinned agents");
+    expect(pinnedLabel).toHaveClass("flex", "h-8", "items-center", "pl-2");
+    expect(pinnedLabel).not.toHaveClass("pb-2");
+
+    // The label row supplies that bottom gap, so the grid must not stack a
+    // second one under the avatars.
+    const grid = within(pinnedSection).getByTestId("pinned-agents-grid");
+    expect(grid).not.toHaveClass("pb-1");
+  });
+
   it("searches chats and messages in the three-column spotlight", async () => {
     prepareAgentTeam();
     mockSidebarThreadStory([
@@ -3679,12 +3873,72 @@ describe("zero sidebar", () => {
 
     const dialogList = await screen.findByTestId("pin-agent-dialog-list");
     const pinnedOption = commandItemByText(dialogList, "Research Agent");
-    expect(pinnedOption.getAttribute("aria-disabled")).toBe("true");
+    expect(pinnedOption.getAttribute("aria-disabled")).not.toBe("true");
 
     click(commandItemByText(dialogList, "Support Agent"));
 
     await waitFor(() => {
       expect(pinnedAgentLink(grid, "Support Agent")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("pin-agent-dialog-list")).toBeNull();
+  });
+
+  it("unpins an agent from the grid pin entry", async () => {
+    prepareAgentTeam();
+    context.mocks.data.userPreferences({
+      pinnedAgentIds: [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID],
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    await waitFor(() => {
+      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(3);
+    });
+
+    click(screen.getByLabelText("Pin an agent"));
+
+    const dialogList = await screen.findByTestId("pin-agent-dialog-list");
+    const pinnedRow = commandItemByText(dialogList, "Support Agent");
+    click(buttonByText("Unpin", pinnedRow));
+
+    await waitFor(() => {
+      expect(pinnedAgentNames(grid)).toStrictEqual(["Zero", "Research Agent"]);
+    });
+    expect(screen.queryByTestId("pin-agent-dialog-list")).toBeNull();
+  });
+
+  it("pins an agent from the pin dialog row action", async () => {
+    prepareAgentTeam();
+    context.mocks.data.userPreferences({ pinnedAgentIds: [] });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    await waitFor(() => {
+      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(1);
+    });
+
+    click(screen.getByLabelText("Pin an agent"));
+
+    const dialogList = await screen.findByTestId("pin-agent-dialog-list");
+    const unpinnedRow = commandItemByText(dialogList, "Support Agent");
+    click(buttonByText("Pin", unpinnedRow));
+
+    await waitFor(() => {
+      expect(pinnedAgentNames(grid)).toStrictEqual(["Zero", "Support Agent"]);
     });
     expect(screen.queryByTestId("pin-agent-dialog-list")).toBeNull();
   });
@@ -3730,6 +3984,99 @@ describe("zero sidebar", () => {
         "Billing Agent",
         "Support Agent",
       ]);
+    });
+  });
+
+  it("shows a drag handle on reorderable pinned agents but not on the lead agent", async () => {
+    const pinnedAgentIds = prepareOverflowingPinnedAgents();
+    context.mocks.data.userPreferences({ pinnedAgentIds });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    await waitFor(() => {
+      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
+    });
+
+    expect(
+      within(pinnedAgentLink(grid, "Support Agent")).getByTestId(
+        "pinned-agent-drag-handle",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(pinnedAgentLink(grid, "Zero")).queryByTestId(
+        "pinned-agent-drag-handle",
+      ),
+    ).toBeNull();
+  });
+
+  it("marks the landing slot with an insertion caret while dragging", async () => {
+    const pinnedAgentIds = prepareOverflowingPinnedAgents();
+    context.mocks.data.userPreferences({ pinnedAgentIds });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    await waitFor(() => {
+      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
+    });
+
+    // Billing Agent sits after Support Agent, so a forwards drag lands after it.
+    const forwards = createDataTransferStub();
+    fireEvent.dragStart(pinnedAgentLink(grid, "Support Agent"), {
+      dataTransfer: forwards,
+    });
+    fireEvent.dragOver(pinnedAgentLink(grid, "Billing Agent"), {
+      dataTransfer: forwards,
+    });
+
+    await waitFor(() => {
+      expect(
+        within(grid).getAllByTestId("pinned-agent-drop-caret"),
+      ).toHaveLength(1);
+    });
+    expect(
+      within(pinnedAgentLink(grid, "Billing Agent")).getByTestId(
+        "pinned-agent-drop-caret",
+      ).className,
+    ).toContain("-right-");
+
+    fireEvent.dragEnd(pinnedAgentLink(grid, "Support Agent"), {
+      dataTransfer: forwards,
+    });
+    await waitFor(() => {
+      expect(
+        within(grid).queryAllByTestId("pinned-agent-drop-caret"),
+      ).toHaveLength(0);
+    });
+
+    // Research Agent sits before Support Agent, so a backwards drag lands before it.
+    const backwards = createDataTransferStub();
+    fireEvent.dragStart(pinnedAgentLink(grid, "Support Agent"), {
+      dataTransfer: backwards,
+    });
+    fireEvent.dragOver(pinnedAgentLink(grid, "Research Agent"), {
+      dataTransfer: backwards,
+    });
+
+    await waitFor(() => {
+      expect(
+        within(pinnedAgentLink(grid, "Research Agent")).getByTestId(
+          "pinned-agent-drop-caret",
+        ).className,
+      ).toContain("-left-");
     });
   });
 

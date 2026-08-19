@@ -24,10 +24,9 @@ import {
   type ConnectorAuthMethodId,
   type ConnectorSlug,
 } from "@okouai/api-contracts/contracts/connector-identity";
-import { modelProviderSurfaceProtocolSchema } from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
+import { modelProviderSurfaceProtocolSchema } from "@okouai/api-contracts/contracts/model-provider-gateways";
 import {
   getDefaultModel,
-  getModelProviderCodexCatalogForModel,
   getModelProviderCodexRuntimeConfig,
   getModelProviderEnvBindings,
   getModelImageInputSupport,
@@ -281,7 +280,7 @@ import {
   type QueueFirstRunClaimResult,
   type QueueFirstRunSessionSnapshotState,
 } from "./chat-queued-event.service";
-import { recordFirstAssistantEventEligibility } from "./zero-chat-first-assistant-event-metric.service";
+import { recordFirstAssistantEventEligibility } from "./chat-first-assistant-event-metric.service";
 import { isWebChatTriggerSource } from "./chat-trigger-source.service";
 import { resolveImageModelForRun } from "./image-model.service";
 import { resolveVideoModelForRun } from "./video-model.service";
@@ -589,6 +588,9 @@ type PersistedPlan = Omit<
 > & {
   readonly content: unknown;
 };
+
+const MISSING_AGENT_CONFIGURATION_MESSAGE =
+  "Agent configuration is unavailable. Edit the agent, or ask its owner to edit it, then try again.";
 
 type ConnectorScopeSource = "explicit" | "zero_agent" | "empty";
 
@@ -2306,43 +2308,18 @@ async function vm0ModelProviderEnvironment(
   if (!apiKey || !secretName) {
     return null;
   }
-  const environment = providerEnvironmentFromSecretRefs(
-    concreteType,
-    secretName,
-    apiKey,
-    apiModel,
-  );
-  let codexRuntimeConfig = getModelProviderCodexRuntimeConfig(concreteType);
-  if (!codexRuntimeConfig) {
-    const modelCatalog = getModelProviderCodexCatalogForModel(
-      selectedModel,
-      apiModel,
-    );
-    if (modelCatalog) {
-      const baseUrl = environment.OPENAI_BASE_URL;
-      if (!baseUrl) {
-        throw new Error(
-          `Missing OPENAI_BASE_URL for VM0 Codex provider ${concreteType}`,
-        );
-      }
-      codexRuntimeConfig = {
-        providerId: concreteType,
-        name: MODEL_PROVIDER_TYPES[concreteType].label,
-        baseUrl,
-        envKey: "OPENAI_API_KEY",
-        requiresOpenaiAuth: false,
-        wireApi: "responses",
-        supportsWebsockets: false,
-        modelCatalog,
-      };
-    }
-  }
+  const codexRuntimeConfig = getModelProviderCodexRuntimeConfig(concreteType);
 
   return {
     id: null,
     type: "vm0",
     concreteType,
-    environment,
+    environment: providerEnvironmentFromSecretRefs(
+      concreteType,
+      secretName,
+      apiKey,
+      apiModel,
+    ),
     secrets: { [secretName]: apiKey },
     selectedModel,
     ...(codexRuntimeConfig ? { codexRuntimeConfig } : {}),
@@ -5477,9 +5454,7 @@ async function resolveByAgentId(
     return notFound("Agent compose not found");
   }
   if (!row.headVersionId || !row.versionId) {
-    return badRequestMessage(
-      "Agent compose has no versions. Run 'vm0 build' first.",
-    );
+    return badRequestMessage(MISSING_AGENT_CONFIGURATION_MESSAGE);
   }
 
   return {
@@ -5665,9 +5640,7 @@ function resolveBySessionId(
       return notFound("Agent compose not found");
     }
     if (!snapshot.compose.headVersionId || !snapshot.version) {
-      return badRequestMessage(
-        "Agent compose has no versions. Run 'vm0 build' first.",
-      );
+      return badRequestMessage(MISSING_AGENT_CONFIGURATION_MESSAGE);
     }
 
     const conversation = snapshot.conversation;

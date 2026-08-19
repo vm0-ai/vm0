@@ -5,7 +5,7 @@ import type {
 import type {
   PublicConnectorCatalogAuthMethodDetail,
   PublicConnectorCatalogDetail,
-} from "@okouai/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/connector-catalog";
 import {
   getConnectorAuthProviderRegistrationCapabilities,
   type ConnectorAuthProviderRegistrationCapability,

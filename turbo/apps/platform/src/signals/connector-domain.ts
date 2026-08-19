@@ -2,12 +2,12 @@ import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connecto
 import type {
   PublicConnectorCatalogPermissionDetail,
   PublicConnectorCatalogStatusItem,
-} from "@okouai/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/connector-catalog";
 import type { UserPermissionGrantResponse } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
 import type {
-  ZeroWorkflowConnectorReadinessEntry,
-  ZeroWorkflowConnectorReadinessResponse,
-} from "@okouai/api-contracts/contracts/zero-workflows";
+  WorkflowConnectorReadinessEntry,
+  WorkflowConnectorReadinessResponse,
+} from "@okouai/api-contracts/contracts/workflows";
 
 export type PlatformConnector = ConnectorResponse;
 export type PlatformConnectorCatalogStatusItem =
@@ -16,6 +16,6 @@ export type PlatformConnectorPermissionMetadata =
   PublicConnectorCatalogPermissionDetail;
 export type PlatformUserPermissionGrant = UserPermissionGrantResponse;
 export type PlatformWorkflowConnectorReadinessEntry =
-  ZeroWorkflowConnectorReadinessEntry;
+  WorkflowConnectorReadinessEntry;
 export type PlatformWorkflowConnectorReadinessResponse =
-  ZeroWorkflowConnectorReadinessResponse;
+  WorkflowConnectorReadinessResponse;

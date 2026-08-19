@@ -8,7 +8,7 @@ import {
   type RunnerJobNotification,
 } from "./runner-dispatch.service";
 import { recordSameThreadRunnerJobPersisted } from "./runner-job-queue-lifecycle.service";
-import { recordFirstAssistantEventEligibility } from "./zero-chat-first-assistant-event-metric.service";
+import { recordFirstAssistantEventEligibility } from "./chat-first-assistant-event-metric.service";
 
 export interface PendingRunActivation {
   readonly apiStartTime: number;

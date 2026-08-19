@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroBillingInvoicesContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingInvoicesContract } from "@okouai/api-contracts/contracts/billing";
 import AdmZip from "adm-zip";
 import { createStore } from "ccstate";
 import { http, HttpResponse } from "msw";
@@ -15,15 +15,12 @@ import {
   seedInvoicesOrg$,
   type InvoicesOrgFixture,
 } from "./helpers/billing-invoices";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
 import { billingInvoicesRoutes } from "../billing-invoices";
 
 const context = testContext();
 const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 describe("GET /api/zero/billing/invoices", () => {
   const track = createFixtureTracker<InvoicesOrgFixture>((fixture) => {
@@ -32,7 +29,7 @@ describe("GET /api/zero/billing/invoices", () => {
 
   it("returns 401 when the request is unauthenticated", async () => {
     const client = setupApp({ context, routes: billingInvoicesRoutes })(
-      zeroBillingInvoicesContract,
+      billingInvoicesContract,
     );
 
     const response = await accept(client.get({ headers: {} }), [401]);
@@ -50,7 +47,7 @@ describe("GET /api/zero/billing/invoices", () => {
     mocks.clerk.session(userId, null);
 
     const client = setupApp({ context, routes: billingInvoicesRoutes })(
-      zeroBillingInvoicesContract,
+      billingInvoicesContract,
     );
 
     const response = await accept(
@@ -75,7 +72,7 @@ describe("GET /api/zero/billing/invoices", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
     const client = setupApp({ context, routes: billingInvoicesRoutes })(
-      zeroBillingInvoicesContract,
+      billingInvoicesContract,
     );
 
     const response = await accept(
@@ -135,7 +132,7 @@ describe("GET /api/zero/billing/invoices", () => {
     });
 
     const client = setupApp({ context, routes: billingInvoicesRoutes })(
-      zeroBillingInvoicesContract,
+      billingInvoicesContract,
     );
 
     const response = await accept(
@@ -226,7 +223,7 @@ describe("GET /api/zero/billing/invoices", () => {
     );
 
     const client = setupApp({ context, routes: billingInvoicesRoutes })(
-      zeroBillingInvoicesContract,
+      billingInvoicesContract,
     );
     const response = await accept(
       client.downloadReceipts({
@@ -332,7 +329,7 @@ describe("GET /api/zero/billing/invoices", () => {
     );
 
     const client = setupApp({ context, routes: billingInvoicesRoutes })(
-      zeroBillingInvoicesContract,
+      billingInvoicesContract,
     );
     const responsePromise = accept(
       client.downloadReceipts({
@@ -397,7 +394,7 @@ describe("GET /api/zero/billing/invoices", () => {
     );
 
     const client = setupApp({ context, routes: billingInvoicesRoutes })(
-      zeroBillingInvoicesContract,
+      billingInvoicesContract,
     );
     const response = await accept(
       client.downloadReceipts({
@@ -426,7 +423,7 @@ describe("GET /api/zero/billing/invoices", () => {
     });
 
     const client = setupApp({ context, routes: billingInvoicesRoutes })(
-      zeroBillingInvoicesContract,
+      billingInvoicesContract,
     );
 
     const response = await accept(
@@ -462,7 +459,7 @@ describe("GET /api/zero/billing/invoices", () => {
     });
 
     const client = setupApp({ context, routes: billingInvoicesRoutes })(
-      zeroBillingInvoicesContract,
+      billingInvoicesContract,
     );
 
     const response = await accept(

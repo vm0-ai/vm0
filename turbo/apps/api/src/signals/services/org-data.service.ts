@@ -17,7 +17,7 @@ import {
   type OrgMembersResponse,
   type OrgRole,
 } from "@okouai/api-contracts/contracts/org-members";
-import { usagePackUsdSchema } from "@okouai/api-contracts/contracts/zero-billing";
+import { usagePackUsdSchema } from "@okouai/api-contracts/contracts/billing";
 
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { clerk$, type ClerkUser } from "../external/clerk";

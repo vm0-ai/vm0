@@ -13,14 +13,14 @@ import {
   manualHttpCustomConnectorCreateBody,
 } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { mcpConnectorsRoutes } from "../mcp-connectors";
 
 const context = testContext();
 const bdd = createBddApi(context);
 const connectors = createConnectorBddApi(context);
 const runs = createRunsApi(context);
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 type McpCreateBody = Extract<
   CreateCustomConnectorBody,

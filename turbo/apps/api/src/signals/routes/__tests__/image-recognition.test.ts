@@ -24,13 +24,13 @@ import {
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { readUsageStorageCounts$ } from "./helpers/usage-state";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { imageRecognitionRoutes } from "../image-recognition";
 import { usageRecordRoutes } from "../usage-record";
 
 const context = testContext();
 const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const STARTING_CREDITS = 1000;
 const EXPECTED_CHARGE = 3;

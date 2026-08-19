@@ -553,7 +553,7 @@ export const computerUseAuditEventListResponseSchema = z.object({
   auditEvents: z.array(computerUseAuditEventSchema),
 });
 
-export const zeroComputerUseHostsContract = c.router({
+export const computerUseHostsContract = c.router({
   start: {
     method: "POST",
     path: "/api/okou/computer-use/hosts/start",
@@ -580,7 +580,7 @@ export const zeroComputerUseHostsContract = c.router({
   },
 });
 
-export const zeroComputerUseHeartbeatContract = c.router({
+export const computerUseHeartbeatContract = c.router({
   heartbeat: {
     method: "POST",
     path: "/api/okou/computer-use/heartbeat",
@@ -606,7 +606,7 @@ export const zeroComputerUseHeartbeatContract = c.router({
   },
 });
 
-export const zeroComputerUseAuthorizationRequestsContract = c.router({
+export const computerUseAuthorizationRequestsContract = c.router({
   create: {
     method: "POST",
     path: "/api/okou/computer-use/authorization-requests",
@@ -655,7 +655,7 @@ export const zeroComputerUseAuthorizationRequestsContract = c.router({
   },
 });
 
-export const zeroComputerUseCommandContract = c.router({
+export const computerUseCommandContract = c.router({
   create: {
     method: "POST",
     path: "/api/okou/computer-use/commands",
@@ -712,7 +712,7 @@ export const zeroComputerUseCommandContract = c.router({
   },
 });
 
-export const zeroComputerUseWriteCommandContract = c.router({
+export const computerUseWriteCommandContract = c.router({
   create: {
     method: "POST",
     path: "/api/okou/computer-use/write-commands",
@@ -730,7 +730,7 @@ export const zeroComputerUseWriteCommandContract = c.router({
   },
 });
 
-export const zeroComputerUsePluginCommandContract = c.router({
+export const computerUsePluginCommandContract = c.router({
   create: {
     method: "POST",
     path: "/api/okou/computer-use/plugin-commands",
@@ -748,7 +748,7 @@ export const zeroComputerUsePluginCommandContract = c.router({
   },
 });
 
-export const zeroComputerUseHostCommandsContract = c.router({
+export const computerUseHostCommandsContract = c.router({
   next: {
     method: "POST",
     path: "/api/okou/computer-use/host/commands/next",
@@ -777,7 +777,7 @@ export const zeroComputerUseHostCommandsContract = c.router({
   },
 });
 
-export const zeroComputerUseAuditEventsContract = c.router({
+export const computerUseAuditEventsContract = c.router({
   list: {
     method: "GET",
     path: "/api/okou/computer-use/audit-events",
@@ -844,18 +844,16 @@ export type ComputerUseWriteCommandKind = z.infer<
 export type ComputerUsePluginCommandKind = z.infer<
   typeof computerUsePluginCommandKindSchema
 >;
-export type ZeroComputerUseAuditEventsContract =
-  typeof zeroComputerUseAuditEventsContract;
-export type ZeroComputerUseCommandContract =
-  typeof zeroComputerUseCommandContract;
-export type ZeroComputerUseHeartbeatContract =
-  typeof zeroComputerUseHeartbeatContract;
-export type ZeroComputerUseAuthorizationRequestsContract =
-  typeof zeroComputerUseAuthorizationRequestsContract;
-export type ZeroComputerUseHostCommandsContract =
-  typeof zeroComputerUseHostCommandsContract;
-export type ZeroComputerUseHostsContract = typeof zeroComputerUseHostsContract;
-export type ZeroComputerUseWriteCommandContract =
-  typeof zeroComputerUseWriteCommandContract;
-export type ZeroComputerUsePluginCommandContract =
-  typeof zeroComputerUsePluginCommandContract;
+export type ComputerUseAuditEventsContract =
+  typeof computerUseAuditEventsContract;
+export type ComputerUseCommandContract = typeof computerUseCommandContract;
+export type ComputerUseHeartbeatContract = typeof computerUseHeartbeatContract;
+export type ComputerUseAuthorizationRequestsContract =
+  typeof computerUseAuthorizationRequestsContract;
+export type ComputerUseHostCommandsContract =
+  typeof computerUseHostCommandsContract;
+export type ComputerUseHostsContract = typeof computerUseHostsContract;
+export type ComputerUseWriteCommandContract =
+  typeof computerUseWriteCommandContract;
+export type ComputerUsePluginCommandContract =
+  typeof computerUsePluginCommandContract;

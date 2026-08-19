@@ -3,8 +3,8 @@ import { createHash, randomUUID } from "node:crypto";
 
 import {
   OFFICIAL_TELEGRAM_BOT_ID,
-  zeroIntegrationsTelegramContract,
-} from "@okouai/api-contracts/contracts/zero-integrations-telegram";
+  integrationsTelegramContract,
+} from "@okouai/api-contracts/contracts/integrations-telegram";
 import type {
   TestTelegramStateActionBody,
   TestTelegramStateActionResponse,
@@ -26,10 +26,7 @@ import {
   setTelegramThinkingMessageIdFixture,
 } from "../../../test-fixtures/chat-events";
 import { flushWaitUntilForTest } from "../../context/wait-until";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
@@ -41,7 +38,7 @@ import { integrationsTelegramRoutes } from "../integrations-telegram";
 const TEST_APP_ROUTES = Object.freeze([...integrationsTelegramRoutes]);
 
 const context = testContext();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const authOrgApi = createAuthOrgAgentsBddApi(context);
 const chatApi = createChatFilesBddApi(context);
 const runsApi = createRunsApi(context);
@@ -293,7 +290,7 @@ afterEach(() => {
 
 function telegramClient() {
   return setupApp({ context, routes: integrationsTelegramRoutes })(
-    zeroIntegrationsTelegramContract,
+    integrationsTelegramContract,
   );
 }
 

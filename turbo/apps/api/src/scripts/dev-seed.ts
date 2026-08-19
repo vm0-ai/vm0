@@ -40,7 +40,6 @@ function writeLine(message: string): void {
  *   DEV_MODEL_{VENDOR_UPPER}_KEY (e.g., DEV_MODEL_ANTHROPIC_KEY, DEV_MODEL_OPENAI_KEY)
  * Anthropic and OpenAI also fall back to their provider env names because
  * CI and local dev already use them for real model smoke tests.
- * DeepSeek also falls back to its provider env name.
  */
 
 /** 1 USD = 1000 credits */
@@ -537,7 +536,8 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   // Fal-hosted GPT Image models. The endpoints return image URLs without
   // token usage, so built-in generation bills per output image tier at the
   // raw provider cost. Large tiers use the highest documented non-1024x1024
-  // price.
+  // price. gpt-image-1.5 and gpt-image-1-mini are no longer selectable, but
+  // their rows stay so already-recorded usage keeps pricing.
   ...usageGroup("image", "gpt-image-2", [
     ["output_image.low.standard", usd(0.006), 1],
     ["output_image.low.large", usd(0.012), 1],

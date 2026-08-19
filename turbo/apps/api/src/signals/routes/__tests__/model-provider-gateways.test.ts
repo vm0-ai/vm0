@@ -1,21 +1,21 @@
 import { randomUUID } from "node:crypto";
 import { MODEL_PROVIDER_ENV_PLACEHOLDERS } from "@okouai/api-contracts/contracts/model-providers";
 import {
-  zeroModelProviderConnectionsByIdContract,
-  zeroModelProviderConnectionsMainContract,
+  modelProviderConnectionsByIdContract,
+  modelProviderConnectionsMainContract,
   type CreateModelProviderConnectionRequest,
-} from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
+} from "@okouai/api-contracts/contracts/model-provider-gateways";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { createBddApi } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { modelProviderGatewayRoutes } from "../model-provider-gateways";
 
 const context = testContext();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const chat = createChatFilesBddApi(context);
 
@@ -32,13 +32,13 @@ function useSession(role: "org:admin" | "org:member" = "org:admin") {
 
 function mainClient() {
   return setupApp({ context, routes: modelProviderGatewayRoutes })(
-    zeroModelProviderConnectionsMainContract,
+    modelProviderConnectionsMainContract,
   );
 }
 
 function byIdClient() {
   return setupApp({ context, routes: modelProviderGatewayRoutes })(
-    zeroModelProviderConnectionsByIdContract,
+    modelProviderConnectionsByIdContract,
   );
 }
 

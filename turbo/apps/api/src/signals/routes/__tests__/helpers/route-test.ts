@@ -4,7 +4,7 @@ import type { TestContext } from "../../../../__tests__/test-context";
 
 type ClerkOrgRole = "org:admin" | "org:member";
 
-interface ZeroRouteClerkMocks {
+interface RouteClerkMocks {
   readonly session: (
     userId: string,
     orgId: string | null,
@@ -19,13 +19,13 @@ interface MockS3Object {
   readonly lastModified?: Date;
 }
 
-interface ZeroRouteS3Mocks {
+interface RouteS3Mocks {
   readonly listObjects: (objects: readonly MockS3Object[]) => void;
 }
 
-interface ZeroRouteMocks {
-  readonly clerk: ZeroRouteClerkMocks;
-  readonly s3: ZeroRouteS3Mocks;
+interface RouteMocks {
+  readonly clerk: RouteClerkMocks;
+  readonly s3: RouteS3Mocks;
 }
 
 function setClerkSessionMock(
@@ -84,7 +84,7 @@ function setS3ListObjectsMock(
   });
 }
 
-export function createZeroRouteMocks(context: TestContext): ZeroRouteMocks {
+export function createRouteMocks(context: TestContext): RouteMocks {
   return {
     clerk: {
       session: (

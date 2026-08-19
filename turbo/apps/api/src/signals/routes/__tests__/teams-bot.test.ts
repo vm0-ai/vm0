@@ -40,17 +40,14 @@ import {
   teamsFixtureExternalId,
   type TeamsConnectFixture,
 } from "./helpers/teams-connect";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { chatThreadRoutes } from "../chat-threads";
 import { teamsConnectRoutes } from "../teams-connect";
 
 const context = testContext();
 const callbackStore = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const authOrgApi = createAuthOrgAgentsBddApi(context);
 const computerUseApi = createComputerUseBddApi(context);
 const runsApi = createRunsApi(context);

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { usagePackUsdSchema } from "./zero-billing";
+import { usagePackUsdSchema } from "./billing";
 
 /**
  * Org role enum

@@ -38,7 +38,7 @@ import { chatEventDisplayText } from "./helpers/chat-event";
 import { readProjectedChatEvents } from "./helpers/chat-event-test-reader";
 import { mockGoogleCalendarConnectorOAuth } from "./helpers/api-bdd-workflows";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
   holdOrgAdmissionLockFixture,
@@ -54,7 +54,7 @@ import { readAgentRunCallbacks$ } from "./helpers/agent-run-callback";
 import { cronExecuteMorningBriefsRoutes } from "../cron-execute-morning-briefs";
 import { emailMorningBriefUnsubscribeRoutes } from "../email-morning-brief-unsubscribe";
 import { chatThreadRoutes } from "../chat-threads";
-import { zeroModelProvidersRoutes } from "../zero-model-providers";
+import { modelProvidersRoutes } from "../model-providers";
 import { morningBriefRoutes } from "../morning-brief";
 import { userPreferencesRoutes } from "../user-preferences";
 
@@ -62,7 +62,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...cronExecuteMorningBriefsRoutes,
   ...emailMorningBriefUnsubscribeRoutes,
   ...chatThreadRoutes,
-  ...zeroModelProvidersRoutes,
+  ...modelProvidersRoutes,
   ...morningBriefRoutes,
   ...userPreferencesRoutes,
 ]);
@@ -85,7 +85,7 @@ const webhooks = createWebhookCallbackApi(context);
 const connectors = createConnectorBddApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const outbox = createEmailOutboxStateApi(context);
-const routeMocks = createZeroRouteMocks(context);
+const routeMocks = createRouteMocks(context);
 const callbackStore = createStore();
 const CRON_SECRET = "test-morning-brief-cron-secret";
 const TIMEZONE = "Asia/Shanghai";
@@ -244,7 +244,7 @@ function morningBriefTriggerClient() {
 }
 
 function modelProvidersByTypeClient() {
-  return setupApp({ context, routes: zeroModelProvidersRoutes })(
+  return setupApp({ context, routes: modelProvidersRoutes })(
     modelProvidersByTypeContract,
   );
 }

@@ -3,7 +3,7 @@ import type {
   UsagePackChangeConfirmResponse,
   UsagePackSubscriptionChangePreviewResponse,
   UsagePackUsd,
-} from "@okouai/api-contracts/contracts/zero-billing";
+} from "@okouai/api-contracts/contracts/billing";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import {
   usagePackAllocationChanges,
@@ -61,7 +61,7 @@ import {
   isUsagePackPlanPriceId,
   tierForKnownPriceId,
   usagePackUsdForKnownPriceId,
-} from "./zero-billing-checkout.service";
+} from "./billing-checkout.service";
 
 const PREVIEW_TTL_MS = 15 * 60 * 1000;
 const RECONCILIATION_DELAY_MS = 5 * 60 * 1000;

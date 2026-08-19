@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroBillingRedeemContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingRedeemContract } from "@okouai/api-contracts/contracts/billing";
 
 import { optionalEnv } from "../../lib/env";
 import { billingRedirectAllowed } from "../../lib/billing-redirect";
@@ -37,8 +37,8 @@ const campaignMisconfigured = Object.freeze({
 
 const redeemAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(zeroBillingRedeemContract.create));
-  const bodyResult = await get(bodyResultOf(zeroBillingRedeemContract.create));
+  const params = get(pathParamsOf(billingRedeemContract.create));
+  const bodyResult = await get(bodyResultOf(billingRedeemContract.create));
   signal.throwIfAborted();
   if (!bodyResult.ok) {
     return bodyResult.response;
@@ -125,7 +125,7 @@ const redeem$ = command(async ({ set }, signal: AbortSignal) => {
 
 export const billingRedeemRoutes: readonly RouteEntry[] = [
   {
-    route: zeroBillingRedeemContract.create,
+    route: billingRedeemContract.create,
     handler: redeem$,
   },
 ];

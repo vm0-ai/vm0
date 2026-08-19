@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 
-import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import { seoContract } from "@okouai/api-contracts/contracts/seo";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
@@ -23,7 +23,7 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { billingStatusRoutes } from "../billing-status";
 import { seoRoutes } from "../seo";
 
@@ -47,7 +47,7 @@ const SEO_PRICING_ROWS = [
 ] as const satisfies readonly UsagePricingRow[];
 
 function authenticate(actor: ApiTestUser) {
-  createZeroRouteMocks(context).clerk.session(
+  createRouteMocks(context).clerk.session(
     actor.userId,
     actor.orgId,
     actor.orgRole,
@@ -93,7 +93,7 @@ async function seedUnfundedActor(): Promise<OrgApiTestUser> {
 
 async function credits(actor: OrgApiTestUser): Promise<number> {
   const response = await accept(
-    client(actor.usagePricingResolution)(zeroBillingStatusContract).get({
+    client(actor.usagePricingResolution)(billingStatusContract).get({
       headers: authenticate(actor),
     }),
     [200],

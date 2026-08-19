@@ -458,6 +458,14 @@ impl PooledNbdCowDevice {
 
     /// Mark the device as abandoned and retire the pool lease as uncertain.
     ///
+    /// The underlying [`NbdCowDevice::abandon`] leaves the kernel device
+    /// connected. `runner gc` considers it eligible only after the connecting
+    /// TID recorded in `/sys/block/nbdN/pid` no longer exists; it skips the
+    /// device while that TID is still alive. The kernel may also disconnect an
+    /// orphan with pending I/O after its configured dead-connection timeout.
+    /// Retiring the pool lease does not make the connected device immediately
+    /// reusable.
+    ///
     /// Must be called from a Tokio runtime.
     pub fn abandon(self) -> impl std::future::Future<Output = ()> + Send + 'static {
         let finalizer = Self::run_finalizer(async move {

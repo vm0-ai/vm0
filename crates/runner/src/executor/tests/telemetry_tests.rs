@@ -25,6 +25,7 @@ use super::support::{
 use crate::guest_timezone::GuestTimezoneAssumption;
 use crate::http::{HttpClient, HttpClientConfig};
 use crate::ids::RunId;
+use crate::provider::ApiClaimTiming;
 use crate::run_cancellation::RunCancellationSignals;
 use crate::telemetry::{JobTelemetry, RunnerStartupPath};
 use crate::types::{SandboxReuseResult, WorkspaceReuseResult};
@@ -156,6 +157,23 @@ fn assert_action_duration(telemetry: &JobTelemetry, action: &str, duration_ms: u
         .find(|op| op.0 == action)
         .unwrap_or_else(|| panic!("expected telemetry action {action}, got: {ops:?}"));
     assert_eq!(op.1, duration_ms, "{action} duration");
+}
+
+fn assert_action_once_with_duration(telemetry: &JobTelemetry, action: &str, duration_ms: u64) {
+    let ops = telemetry.pending_ops_with_duration_snapshot();
+    let matching: Vec<_> = ops.iter().filter(|op| op.0 == action).collect();
+    assert_eq!(matching.len(), 1, "expected one {action}, got: {ops:?}");
+    assert_eq!(matching[0].1, duration_ms, "{action} duration");
+}
+
+fn assert_lacks_api_claim_timing(telemetry: &JobTelemetry) {
+    for action in [
+        "runner_claim_http_request",
+        "runner_claim_response_body_read",
+        "runner_claim_response_decode",
+    ] {
+        assert_lacks_action(telemetry, action);
+    }
 }
 
 struct ObservedStartSandbox {
@@ -517,8 +535,14 @@ fn assert_pre_spawn_phase_actions_succeeded(telemetry: &JobTelemetry) {
 }
 
 fn pre_spawn_timing_with_phases() -> RunnerPreSpawnTiming {
-    let mut timing =
-        RunnerPreSpawnTiming::start_at(Instant::now(), Some(Duration::from_millis(42)));
+    let mut timing = RunnerPreSpawnTiming::start_at(
+        Instant::now(),
+        Some(ApiClaimTiming::new(
+            Duration::from_millis(42),
+            Duration::from_millis(7),
+            Duration::from_millis(3),
+        )),
+    );
     for (phase, duration_ms) in [
         (RunnerPreSpawnPhase::ResumeSessionValidation, 1),
         (RunnerPreSpawnPhase::SessionHistoryMaterializerStart, 2),
@@ -614,7 +638,7 @@ async fn execute_job_records_sandbox_reuse_miss_in_telemetry() {
     assert_eq!(reuse_events.len(), 1);
     assert_eq!(reuse_events[0].0, "sandbox_reuse_miss");
     assert_lacks_action(&telemetry, "runner_claim_to_executor_start");
-    assert_lacks_action(&telemetry, "runner_claim_http_request");
+    assert_lacks_api_claim_timing(&telemetry);
     assert_lacks_action(&telemetry, "runner_claim_resume_session_validation");
     assert_lacks_action(&telemetry, "runner_claim_task_schedule_wait");
     assert_action_success(&telemetry, "runner_fresh_sandbox_start", true);
@@ -699,6 +723,8 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
 
     for action in [
         "runner_claim_http_request",
+        "runner_claim_response_body_read",
+        "runner_claim_response_decode",
         "runner_claim_to_executor_start",
         "runner_executor_start_to_spawn",
         "runner_claim_to_spawn",
@@ -719,7 +745,9 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
     ] {
         assert_has_action(&telemetry, action);
     }
-    assert_action_duration(&telemetry, "runner_claim_http_request", 42);
+    assert_action_once_with_duration(&telemetry, "runner_claim_http_request", 42);
+    assert_action_once_with_duration(&telemetry, "runner_claim_response_body_read", 7);
+    assert_action_once_with_duration(&telemetry, "runner_claim_response_decode", 3);
     assert_action_duration(&telemetry, "workspace_drive_mount_guest_exec", 23);
     assert_lacks_action(&telemetry, "workspace_drive_mount_guest_exec_unavailable");
     assert!(
@@ -1057,6 +1085,8 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
 
     for action in [
         "runner_claim_http_request",
+        "runner_claim_response_body_read",
+        "runner_claim_response_decode",
         "runner_claim_to_executor_start",
         "runner_executor_start_to_spawn",
         "runner_claim_to_spawn",
@@ -1070,7 +1100,9 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
     ] {
         assert_has_action(&telemetry, action);
     }
-    assert_action_duration(&telemetry, "runner_claim_http_request", 42);
+    assert_action_once_with_duration(&telemetry, "runner_claim_http_request", 42);
+    assert_action_once_with_duration(&telemetry, "runner_claim_response_body_read", 7);
+    assert_action_once_with_duration(&telemetry, "runner_claim_response_decode", 3);
     assert_pre_spawn_phase_actions_succeeded(&telemetry);
     assert_lacks_action(&telemetry, "runner_fresh_sandbox_prepare");
     assert_lacks_action(&telemetry, "runner_fresh_sandbox_factory_create");
@@ -1121,7 +1153,7 @@ async fn start_process_failure_records_phase_failure_without_spawn_completion() 
 
     assert_action_success(&telemetry, "runner_agent_start_process", false);
     assert_action_success(&telemetry, "agent_execute", false);
-    assert_lacks_action(&telemetry, "runner_claim_http_request");
+    assert_lacks_api_claim_timing(&telemetry);
     assert_lacks_action(&telemetry, "runner_executor_start_to_spawn");
     assert_lacks_action(&telemetry, "runner_claim_to_spawn");
 }

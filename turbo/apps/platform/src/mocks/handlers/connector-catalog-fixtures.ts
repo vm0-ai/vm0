@@ -4,7 +4,7 @@ import type {
   PublicConnectorCatalogIcon,
   PublicConnectorCatalogPermissionDetail,
   PublicConnectorCatalogPermissionSummary,
-} from "@okouai/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/connector-catalog";
 import type {
   ConnectorAuthMethodId,
   ConnectorSlug,

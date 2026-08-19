@@ -9,7 +9,7 @@ import {
   type ModelProviderType,
 } from "@okouai/api-contracts/contracts/model-providers";
 import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
-import { zeroModelProviderConnectionsMainContract } from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
+import { modelProviderConnectionsMainContract } from "@okouai/api-contracts/contracts/model-provider-gateways";
 import { userModelPreferenceContract } from "@okouai/api-contracts/contracts/user-model-preference";
 import type { ImageModelId } from "@okouai/api-contracts/contracts/image-models";
 import type { VideoModelId } from "@okouai/api-contracts/contracts/video-models";
@@ -20,7 +20,7 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import {
   createAuthOrgAgentsBddApi,
   type ApiTestUser,
@@ -40,7 +40,7 @@ const TEST_APP_ROUTES = Object.freeze([
 type ModelPolicyFixture = ApiTestUser & { readonly orgId: string };
 
 const context = testContext();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const authOrgApi = createAuthOrgAgentsBddApi(context);
 const runsApi = createRunsApi(context);
 const MODEL_POLICIES_PATH = "/api/zero/model-policies";
@@ -731,7 +731,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
     const gatewayClient = setupApp({
       context,
       routes: modelProviderGatewayRoutes,
-    })(zeroModelProviderConnectionsMainContract);
+    })(modelProviderConnectionsMainContract);
     const created = await accept(
       gatewayClient.create({
         headers: authHeaders(),

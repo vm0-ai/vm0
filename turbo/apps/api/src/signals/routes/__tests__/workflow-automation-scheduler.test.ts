@@ -1,11 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { testWorkflowAutomationExecutionContract } from "@okouai/api-contracts/contracts/test-workflow-automation-execution";
-import { zeroWorkflowAutomationsContract } from "@okouai/api-contracts/contracts/zero-workflows";
+import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
 import {
-  zeroAgentsByIdContract,
-  zeroAgentsMainContract,
-} from "@okouai/api-contracts/contracts/zero-agents";
+  agentsByIdContract,
+  agentsMainContract,
+} from "@okouai/api-contracts/contracts/agents";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { createStore } from "ccstate";
 
@@ -28,7 +28,7 @@ import {
   chatEventDisplayText,
 } from "./helpers/chat-event";
 import { seedOrgMembership$ } from "./helpers/org-membership";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
 import { agentsRoutes } from "../agents";
 import { workflowAutomationsRoutes } from "../workflow-automations";
@@ -43,7 +43,7 @@ const TEST_APP_ROUTES = Object.freeze([
 
 const context = testContext();
 const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
 const runsApi = createRunsApi(context);
 const runReadsApi = createRunReadsApi(context);
@@ -68,7 +68,7 @@ function authHeaders() {
 
 function automationsClient() {
   return setupApp({ context, routes: workflowAutomationsRoutes })(
-    zeroWorkflowAutomationsContract,
+    workflowAutomationsContract,
   );
 }
 
@@ -540,7 +540,7 @@ describe("okou workflow automation scheduler", () => {
     mocks.clerk.session(member.userId, scenario.orgId, "org:member");
     const apiKey = await runsApi.createCliToken(member);
     await accept(
-      setupApp({ context, routes: agentsRoutes })(zeroAgentsMainContract).list({
+      setupApp({ context, routes: agentsRoutes })(agentsMainContract).list({
         headers: { authorization: `Bearer ${apiKey.token}` },
       }),
       [200],
@@ -564,7 +564,7 @@ describe("okou workflow automation scheduler", () => {
     mocks.clerk.session(scenario.userId, scenario.orgId);
     await accept(
       setupApp({ context, routes: agentsRoutes })(
-        zeroAgentsByIdContract,
+        agentsByIdContract,
       ).updateMetadata({
         headers: authHeaders(),
         params: { id: scenario.agentId },
@@ -579,7 +579,7 @@ describe("okou workflow automation scheduler", () => {
     // already happened during the tick above.
     await accept(
       setupApp({ context, routes: agentsRoutes })(
-        zeroAgentsByIdContract,
+        agentsByIdContract,
       ).updateMetadata({
         headers: authHeaders(),
         params: { id: scenario.agentId },

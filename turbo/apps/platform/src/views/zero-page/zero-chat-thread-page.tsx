@@ -111,8 +111,8 @@ import { avatarTemplateSelection } from "../../signals/zero-page/avatar-template
 import { steerAcknowledgementRef$ } from "../../signals/zero-page/steer-acknowledgement.ts";
 import type {
   ChatThreadWorkflowAutomation,
-  ZeroWorkflowSchedule,
-} from "@okouai/api-contracts/contracts/zero-workflows";
+  WorkflowSchedule,
+} from "@okouai/api-contracts/contracts/workflows";
 import { getModelDisplayName } from "@okouai/core/model-display-name";
 import { emptyChatImg } from "./platform-assets.ts";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -2259,7 +2259,7 @@ function localDateTimeInputValue(value: string): string {
 function scheduleFromHeaderAutomationForm(
   automation: Extract<ChatThreadWorkflowAutomation, { kind: "schedule" }>,
   form: FormData,
-): ZeroWorkflowSchedule | null {
+): WorkflowSchedule | null {
   const schedule = automation.schedule;
   if (schedule.type === "loop") {
     const intervalSeconds = Number(form.get("intervalSeconds"));

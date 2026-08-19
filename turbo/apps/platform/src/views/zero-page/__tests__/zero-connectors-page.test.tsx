@@ -27,14 +27,14 @@ import {
   zeroConnectorsMainContract,
 } from "@okouai/api-contracts/contracts/zero-connectors";
 import {
-  zeroConnectorCatalogContract,
+  connectorCatalogContract,
   type PublicConnectorCatalogCategoryMetadata,
   type PublicConnectorCatalogStatusItem,
-} from "@okouai/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/connector-catalog";
 import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { zeroUserPermissionGrantsContract } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
-import type { TeamComposeItem } from "@okouai/api-contracts/contracts/zero-team";
+import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import type {
   ConnectorAuthMethodId,
@@ -392,7 +392,7 @@ function mockPublicConnectorStatus(
   connectors: readonly PublicConnectorCatalogStatusItem[],
   categoryMetadata?: PublicConnectorCatalogCategoryMetadata,
 ): void {
-  context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+  context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
     return respond(200, {
       connectors: [...connectors],
       ...(categoryMetadata ? { categoryMetadata } : {}),
@@ -631,7 +631,7 @@ describe("connectors page", () => {
     const discoveryKeywords: (string | undefined)[] = [];
     let legacyStatusRequests = 0;
     context.mocks.api(
-      zeroConnectorCatalogContract.discovery,
+      connectorCatalogContract.discovery,
       ({ query, respond }) => {
         discoveryKeywords.push(query.keyword);
         return respond(200, {
@@ -640,7 +640,7 @@ describe("connectors page", () => {
         });
       },
     );
-    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+    context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
       legacyStatusRequests += 1;
       return respond(200, { connectors: [github, slack] });
     });
@@ -2857,7 +2857,7 @@ describe("connectors page", () => {
     ];
     let catalogStatusRequestCount = 0;
     let manualGrantConnectResponded = false;
-    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+    context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
       catalogStatusRequestCount += 1;
       return respond(200, { connectors: [...catalogStatusItems] });
     });

@@ -93,7 +93,7 @@ function cacheRoot(): string {
 async function cachePath(): Promise<string> {
   const token = decodeSandboxTokenPayload();
   if (!token) {
-    throw new Error("OKOU_TOKEN does not contain a valid Zero cache scope");
+    throw new Error("OKOU_TOKEN does not contain a valid chat cache scope");
   }
   const apiUrl = await getApiUrl();
   const scope = createHash("sha256")

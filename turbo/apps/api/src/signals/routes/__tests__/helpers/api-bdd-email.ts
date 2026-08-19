@@ -9,14 +9,14 @@ import { flushWaitUntilForTest } from "../../../context/wait-until";
 import { userExportRoutes } from "../../user-export";
 import type { ApiTestUser } from "./api-bdd";
 import { createEmailOutboxStateApi } from "./email-outbox-state";
-import { createZeroRouteMocks } from "./zero-route-test";
+import { createRouteMocks } from "./route-test";
 
 function emailApp(context: TestContext) {
   return setupApp({ context, routes: userExportRoutes });
 }
 
 function authenticate(context: TestContext, actor: ApiTestUser) {
-  createZeroRouteMocks(context).clerk.session(
+  createRouteMocks(context).clerk.session(
     actor.userId,
     actor.orgId,
     actor.orgRole,

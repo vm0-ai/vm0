@@ -4,7 +4,7 @@ import {
   peopleSearchContract,
   type PeopleSearchRequest,
 } from "@okouai/api-contracts/contracts/people-search";
-import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import { usageRecordContract } from "@okouai/api-contracts/contracts/usage-record";
 import { webSearchContract } from "@okouai/api-contracts/contracts/web-search";
 import { HttpResponse, http, type JsonBodyType } from "msw";
@@ -34,7 +34,7 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { usageRecordRoutes } from "../usage-record";
 
 const context = testContext();
@@ -62,7 +62,7 @@ function authenticate(actor: ApiTestUser | null): AuthHeaders {
     });
     return {};
   }
-  createZeroRouteMocks(context).clerk.session(
+  createRouteMocks(context).clerk.session(
     actor.userId,
     actor.orgId,
     actor.orgRole,
@@ -147,7 +147,7 @@ async function createPricingFixture(
 
 async function credits(actor: ApiTestUser): Promise<number> {
   const response = await accept(
-    client()(zeroBillingStatusContract).get({
+    client()(billingStatusContract).get({
       headers: authenticate(actor),
     }),
     [200],

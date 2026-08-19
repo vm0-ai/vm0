@@ -1,9 +1,9 @@
 import { command, computed, state } from "ccstate";
 import {
-  zeroWorkflowsCollectionContract,
-  zeroWorkflowsDetailContract,
-  zeroWorkflowAutomationsContract,
-  zeroWorkflowVisibilityContract,
+  workflowsCollectionContract,
+  workflowsDetailContract,
+  workflowAutomationsContract,
+  workflowVisibilityContract,
   type ChatRunFinishedEventConfig,
   type GmailLabelAppliedEventConfig,
   type GmailNewMessageEventConfig,
@@ -24,15 +24,15 @@ import {
   type NotionPageContentUpdatedEventCreateConfig,
   type StripeInvoiceBillingReason,
   type StrapiEntryPublishedEventConfig,
-  type ZeroWorkflowDetailResponse,
-  type ZeroWorkflowSchedule,
-  type ZeroWorkflowWebhookSecretResponse,
-  type ZeroWorkflowSummary,
-  type ZeroWorkflowAutomationsListEntry,
-  type ZeroWorkflowAutomationCreateRequest,
-  type ZeroWorkflowAutomationSummary,
-  type ZeroWorkflowUpdateRequest,
-} from "@okouai/api-contracts/contracts/zero-workflows";
+  type WorkflowDetailResponse,
+  type WorkflowSchedule,
+  type WorkflowWebhookSecretResponse,
+  type WorkflowSummary,
+  type WorkflowAutomationsListEntry,
+  type WorkflowAutomationCreateRequest,
+  type WorkflowAutomationSummary,
+  type WorkflowUpdateRequest,
+} from "@okouai/api-contracts/contracts/workflows";
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -126,10 +126,10 @@ type WorkflowAutomationCategoryKey =
   | "notion"
   | "integrations";
 type WorkflowWebhookAutomationSummary = Extract<
-  ZeroWorkflowAutomationSummary,
+  WorkflowAutomationSummary,
   { readonly kind: "event"; readonly eventType: "webhook-received" }
 >;
-export type WorkflowAutomationEntry = ZeroWorkflowAutomationsListEntry;
+export type WorkflowAutomationEntry = WorkflowAutomationsListEntry;
 const WORKFLOW_DETAIL_FILE_PARAM = "file";
 
 function workflowDetailTabFromRoute(route: RouteKey | null): WorkflowDetailTab {
@@ -724,23 +724,23 @@ export const reloadWorkflows$ = command(({ set }) => {
 
 /** The current agent detail route's visible workflows. */
 export const currentAgentVisibleWorkflows$ = computed(
-  async (get): Promise<readonly ZeroWorkflowSummary[]> => {
+  async (get): Promise<readonly WorkflowSummary[]> => {
     get(workflowReloadVersion$);
     const agentId = get(currentAgentId$);
     if (!agentId) {
       return [];
     }
-    const client = get(zeroClient$)(zeroWorkflowsCollectionContract);
+    const client = get(zeroClient$)(workflowsCollectionContract);
     const result = await accept(client.list({ query: { agentId } }), [200]);
     return result.body;
   },
 );
 
 export const allVisibleWorkflows$ = computed(
-  async (get): Promise<readonly ZeroWorkflowSummary[]> => {
+  async (get): Promise<readonly WorkflowSummary[]> => {
     get(workflowReloadVersion$);
     const locale = get(locale$);
-    const client = get(zeroClient$)(zeroWorkflowsCollectionContract);
+    const client = get(zeroClient$)(workflowsCollectionContract);
     const result = await accept(client.list({ query: {} }), [200]);
     return [...result.body].sort((a, b) => {
       if (a.visibility !== b.visibility) {
@@ -757,7 +757,7 @@ export const allWorkflowAutomationEntries$ = computed(
   async (get): Promise<readonly WorkflowAutomationEntry[]> => {
     get(workflowReloadVersion$);
     const locale = get(locale$);
-    const automationClient = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    const automationClient = get(zeroClient$)(workflowAutomationsContract);
     const automationResult = await accept(
       automationClient.listWorkspace(),
       [200],
@@ -783,13 +783,13 @@ export const allWorkflowAutomationEntries$ = computed(
 
 /** The workflow detail derived from the active route. */
 export const currentWorkflowDetail$ = computed(
-  async (get): Promise<ZeroWorkflowDetailResponse | null> => {
+  async (get): Promise<WorkflowDetailResponse | null> => {
     get(workflowReloadVersion$);
     const workflowId = get(currentWorkflowId$);
     if (!workflowId) {
       return null;
     }
-    const client = get(zeroClient$)(zeroWorkflowsDetailContract);
+    const client = get(zeroClient$)(workflowsDetailContract);
     const result = await accept(
       client.get({ params: { workflowId } }),
       [200, 404],
@@ -806,7 +806,7 @@ export const checkWorkflowConnectorReadiness$ = command(
       requestId,
       status: "pending",
     });
-    const client = get(zeroClient$)(zeroWorkflowsDetailContract);
+    const client = get(zeroClient$)(workflowsDetailContract);
     const result = await accept(
       client.connectorReadiness({
         params: { workflowId },
@@ -844,10 +844,10 @@ export const checkWorkflowConnectorReadiness$ = command(
 export const updateWorkflow$ = command(
   async (
     { get, set },
-    input: { workflowId: string; body: ZeroWorkflowUpdateRequest },
+    input: { workflowId: string; body: WorkflowUpdateRequest },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowsDetailContract);
+    const client = get(zeroClient$)(workflowsDetailContract);
     await accept(
       client.update({
         params: { workflowId: input.workflowId },
@@ -863,7 +863,7 @@ export const updateWorkflow$ = command(
 
 export const deleteWorkflow$ = command(
   async ({ get, set }, workflowId: string, signal: AbortSignal) => {
-    const client = get(zeroClient$)(zeroWorkflowsDetailContract);
+    const client = get(zeroClient$)(workflowsDetailContract);
     await accept(
       client.delete({
         params: { workflowId },
@@ -881,8 +881,8 @@ export const copyWorkflow$ = command(
     { get, set },
     input: { workflowId: string; toAgentId: string },
     signal: AbortSignal,
-  ): Promise<ZeroWorkflowSummary> => {
-    const client = get(zeroClient$)(zeroWorkflowsDetailContract);
+  ): Promise<WorkflowSummary> => {
+    const client = get(zeroClient$)(workflowsDetailContract);
     const result = await accept(
       client.copy({
         params: { workflowId: input.workflowId },
@@ -898,7 +898,7 @@ export const copyWorkflow$ = command(
 );
 export const openWorkflowChat$ = command(
   async ({ get, set }, workflowId: string, signal: AbortSignal) => {
-    const client = get(zeroClient$)(zeroWorkflowsDetailContract);
+    const client = get(zeroClient$)(workflowsDetailContract);
     const result = await accept(
       client.chatThread({
         params: { workflowId },
@@ -924,7 +924,7 @@ export const changeWorkflowVisibility$ = command(
     input: { workflowId: string; action: WorkflowVisibilityAction },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowVisibilityContract);
+    const client = get(zeroClient$)(workflowVisibilityContract);
     const params = { workflowId: input.workflowId };
     const options = { params, fetchOptions: { signal } };
     const request =
@@ -940,10 +940,10 @@ export const changeWorkflowVisibility$ = command(
 export const createWorkflowScheduleAutomation$ = command(
   async (
     { get, set },
-    input: { workflowId: string; schedule: ZeroWorkflowSchedule },
+    input: { workflowId: string; schedule: WorkflowSchedule },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    const client = get(zeroClient$)(workflowAutomationsContract);
     await accept(
       client.create({
         params: { workflowId: input.workflowId },
@@ -966,7 +966,7 @@ export const createWorkflowGmailNewMessageAutomation$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    const client = get(zeroClient$)(workflowAutomationsContract);
     await accept(
       client.create({
         params: { workflowId: input.workflowId },
@@ -993,7 +993,7 @@ export const createWorkflowGmailLabelAppliedAutomation$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    const client = get(zeroClient$)(workflowAutomationsContract);
     await accept(
       client.create({
         params: { workflowId: input.workflowId },
@@ -1020,7 +1020,7 @@ export const createWorkflowGithubWorkflowRunCompletedAutomation$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    const client = get(zeroClient$)(workflowAutomationsContract);
     await accept(
       client.create({
         params: { workflowId: input.workflowId },
@@ -1071,8 +1071,8 @@ export const createWorkflowGithubWebhookAutomation$ = command(
     input: GithubWebhookAutomationCreateInput,
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
-    const body: ZeroWorkflowAutomationCreateRequest =
+    const client = get(zeroClient$)(workflowAutomationsContract);
+    const body: WorkflowAutomationCreateRequest =
       input.eventType === "github-pull-request"
         ? {
             kind: "event",
@@ -1136,8 +1136,8 @@ export const createWorkflowGoogleCalendarEventAutomation$ = command(
         },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
-    const body: ZeroWorkflowAutomationCreateRequest =
+    const client = get(zeroClient$)(workflowAutomationsContract);
+    const body: WorkflowAutomationCreateRequest =
       input.eventType === "google-calendar-event-created"
         ? {
             kind: "event",
@@ -1177,7 +1177,7 @@ export const createWorkflowGoogleFormsResponseSubmittedAutomation$ = command(
     },
     signal: AbortSignal,
   ): Promise<string | undefined> => {
-    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    const client = get(zeroClient$)(workflowAutomationsContract);
     const result = await accept(
       client.create({
         params: { workflowId: input.workflowId },
@@ -1212,7 +1212,7 @@ export const createWorkflowChatRunFinishedAutomation$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    const client = get(zeroClient$)(workflowAutomationsContract);
     await accept(
       client.create({
         params: { workflowId: input.workflowId },
@@ -1239,7 +1239,7 @@ export const createWorkflowGoogleMeetTranscriptGeneratedAutomation$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    const client = get(zeroClient$)(workflowAutomationsContract);
     await accept(
       client.create({
         params: { workflowId: input.workflowId },
@@ -1270,7 +1270,7 @@ export const createWorkflowNotionChildPageAutomation$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    const client = get(zeroClient$)(workflowAutomationsContract);
     await accept(
       client.create({
         params: { workflowId: input.workflowId },
@@ -1297,7 +1297,7 @@ export const createWorkflowNotionDatabaseItemAutomation$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    const client = get(zeroClient$)(workflowAutomationsContract);
     await accept(
       client.create({
         params: { workflowId: input.workflowId },
@@ -1324,7 +1324,7 @@ export const createWorkflowNotionPageContentUpdatedAutomation$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    const client = get(zeroClient$)(workflowAutomationsContract);
     await accept(
       client.create({
         params: { workflowId: input.workflowId },
@@ -1351,7 +1351,7 @@ export const createWorkflowStrapiEntryPublishedAutomation$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    const client = get(zeroClient$)(workflowAutomationsContract);
     await accept(
       client.create({
         params: { workflowId: input.workflowId },
@@ -1378,7 +1378,7 @@ export const createWorkflowStripeInvoicePaidAutomation$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    const client = get(zeroClient$)(workflowAutomationsContract);
     await accept(
       client.create({
         params: { workflowId: input.workflowId },
@@ -1410,7 +1410,7 @@ export const createWorkflowWebhookAutomation$ = command(
     input: { readonly workflowId: string },
     signal: AbortSignal,
   ): Promise<WorkflowWebhookAutomationSummary | null> => {
-    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    const client = get(zeroClient$)(workflowAutomationsContract);
     const result = await accept(
       client.create({
         params: { workflowId: input.workflowId },
@@ -1453,8 +1453,8 @@ export const revealWorkflowWebhookSecret$ = command(
     { get },
     input: { readonly automationId: string },
     signal: AbortSignal,
-  ): Promise<ZeroWorkflowWebhookSecretResponse> => {
-    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+  ): Promise<WorkflowWebhookSecretResponse> => {
+    const client = get(zeroClient$)(workflowAutomationsContract);
     const result = await accept(
       client.revealWebhookSecret({
         params: { id: input.automationId },
@@ -1477,7 +1477,7 @@ export const updateWorkflowGmailNewMessageAutomation$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    const client = get(zeroClient$)(workflowAutomationsContract);
     await accept(
       client.update({
         params: { id: input.automationId },
@@ -1500,7 +1500,7 @@ export const updateWorkflowGmailLabelAppliedAutomation$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    const client = get(zeroClient$)(workflowAutomationsContract);
     await accept(
       client.update({
         params: { id: input.automationId },
@@ -1523,7 +1523,7 @@ export const updateWorkflowGithubWorkflowRunCompletedAutomation$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    const client = get(zeroClient$)(workflowAutomationsContract);
     await accept(
       client.update({
         params: { id: input.automationId },
@@ -1551,7 +1551,7 @@ export const updateWorkflowGithubWebhookAutomation$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    const client = get(zeroClient$)(workflowAutomationsContract);
     await accept(
       client.update({
         params: { id: input.automationId },
@@ -1570,11 +1570,11 @@ export const updateWorkflowScheduleAutomation$ = command(
     { get, set },
     input: {
       readonly automationId: string;
-      readonly schedule: ZeroWorkflowSchedule;
+      readonly schedule: WorkflowSchedule;
     },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    const client = get(zeroClient$)(workflowAutomationsContract);
     await accept(
       client.update({
         params: { id: input.automationId },
@@ -1594,7 +1594,7 @@ export const setWorkflowAutomationEnabled$ = command(
     input: { automationId: string; enabled: boolean },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    const client = get(zeroClient$)(workflowAutomationsContract);
     const request = input.enabled
       ? client.enable({
           params: { id: input.automationId },
@@ -1630,7 +1630,7 @@ export const pauseWorkflowAutomations$ = command(
       return { pausedCount: 0 };
     }
 
-    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    const client = get(zeroClient$)(workflowAutomationsContract);
     await Promise.all(
       automationIds.map((automationId) => {
         return accept(
@@ -1654,7 +1654,7 @@ export const runWorkflowAutomationNow$ = command(
     automationId: string,
     signal: AbortSignal,
   ): Promise<{ chatThreadId: string; runId: string | null }> => {
-    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    const client = get(zeroClient$)(workflowAutomationsContract);
     const result = await accept(
       client.run({
         params: { id: automationId },
@@ -1669,7 +1669,7 @@ export const runWorkflowAutomationNow$ = command(
 
 export const deleteWorkflowAutomation$ = command(
   async ({ get, set }, automationId: string, signal: AbortSignal) => {
-    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    const client = get(zeroClient$)(workflowAutomationsContract);
     await accept(
       client.delete({ params: { id: automationId }, fetchOptions: { signal } }),
       [204],

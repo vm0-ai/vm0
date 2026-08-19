@@ -5,7 +5,7 @@ import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import type {
   ComputerUseAuthorizationSource,
   ComputerUseHostListResponse,
-} from "@okouai/api-contracts/contracts/zero-computer-use";
+} from "@okouai/api-contracts/contracts/computer-use";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { agentRuns } from "@okouai/db/schema/agent-run";

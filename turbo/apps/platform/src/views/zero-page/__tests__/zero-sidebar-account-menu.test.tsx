@@ -12,9 +12,9 @@ import { describe, expect, it, vi } from "vitest";
 import type { ModelProviderResponse } from "@okouai/api-contracts/contracts/model-providers";
 import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import {
-  zeroBillingStatusContract,
-  zeroBillingUsagePackCreditsContract,
-} from "@okouai/api-contracts/contracts/zero-billing";
+  billingStatusContract,
+  billingUsagePackCreditsContract,
+} from "@okouai/api-contracts/contracts/billing";
 import {
   zeroPersonalModelProvidersByTypeContract,
   zeroPersonalModelProvidersMainContract,
@@ -221,7 +221,7 @@ function mockAdminBillingStatus(
 ): void {
   let requestCount = 0;
   context.mocks.api(
-    zeroBillingStatusContract.get,
+    billingStatusContract.get,
     async ({ respond, withSignal }) => {
       requestCount += 1;
       options.onRequest?.();
@@ -417,7 +417,7 @@ describe("zero sidebar account menu", () => {
   it("does not request or show member usage pack credits when the switch is disabled", async () => {
     mockMemberAccountSidebar();
     let billingRequests = 0;
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       billingRequests += 1;
       return respond(200, {
         tier: "pro",
@@ -437,18 +437,15 @@ describe("zero sidebar account menu", () => {
       });
     });
     let usagePackCreditRequests = 0;
-    context.mocks.api(
-      zeroBillingUsagePackCreditsContract.get,
-      ({ respond }) => {
-        usagePackCreditRequests += 1;
-        return respond(200, {
-          totalCredits: 20_400,
-          purchasedCredits: 20_000,
-          bonusCredits: 400,
-          creditGrants: [],
-        });
-      },
-    );
+    context.mocks.api(billingUsagePackCreditsContract.get, ({ respond }) => {
+      usagePackCreditRequests += 1;
+      return respond(200, {
+        totalCredits: 20_400,
+        purchasedCredits: 20_000,
+        bonusCredits: 400,
+        creditGrants: [],
+      });
+    });
 
     detachedSetupPage({
       context,
@@ -481,7 +478,7 @@ describe("zero sidebar account menu", () => {
     let usagePackCredits = 20_400;
     let usagePackCreditRequests = 0;
     let billingRequests = 0;
-    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
       billingRequests += 1;
       return respond(200, {
         tier: "pro",
@@ -500,18 +497,15 @@ describe("zero sidebar account menu", () => {
         concurrencySubscriptions: [],
       });
     });
-    context.mocks.api(
-      zeroBillingUsagePackCreditsContract.get,
-      ({ respond }) => {
-        usagePackCreditRequests += 1;
-        return respond(200, {
-          totalCredits: usagePackCredits,
-          purchasedCredits: Math.max(0, usagePackCredits - 400),
-          bonusCredits: 400,
-          creditGrants: [],
-        });
-      },
-    );
+    context.mocks.api(billingUsagePackCreditsContract.get, ({ respond }) => {
+      usagePackCreditRequests += 1;
+      return respond(200, {
+        totalCredits: usagePackCredits,
+        purchasedCredits: Math.max(0, usagePackCredits - 400),
+        bonusCredits: 400,
+        creditGrants: [],
+      });
+    });
 
     detachedSetupPage({
       context,
@@ -570,17 +564,14 @@ describe("zero sidebar account menu", () => {
 
   it("shows admins one total combining organization and personal usage pack credits", async () => {
     mockAdminAccountSidebar();
-    context.mocks.api(
-      zeroBillingUsagePackCreditsContract.get,
-      ({ respond }) => {
-        return respond(200, {
-          totalCredits: 20_400,
-          purchasedCredits: 20_000,
-          bonusCredits: 400,
-          creditGrants: [],
-        });
-      },
-    );
+    context.mocks.api(billingUsagePackCreditsContract.get, ({ respond }) => {
+      return respond(200, {
+        totalCredits: 20_400,
+        purchasedCredits: 20_000,
+        bonusCredits: 400,
+        creditGrants: [],
+      });
+    });
 
     detachedSetupPage({
       context,

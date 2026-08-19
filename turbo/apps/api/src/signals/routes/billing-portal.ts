@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroBillingPortalContract } from "@okouai/api-contracts/contracts/zero-billing";
+import { billingPortalContract } from "@okouai/api-contracts/contracts/billing";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -29,7 +29,7 @@ const portalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return adminRequired;
   }
 
-  const bodyResult = await get(bodyResultOf(zeroBillingPortalContract.create));
+  const bodyResult = await get(bodyResultOf(billingPortalContract.create));
   signal.throwIfAborted();
   if (!bodyResult.ok) {
     return bodyResult.response;
@@ -52,7 +52,7 @@ const portalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 export const billingPortalRoutes: readonly RouteEntry[] = [
   {
-    route: zeroBillingPortalContract.create,
+    route: billingPortalContract.create,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       portalInner$,

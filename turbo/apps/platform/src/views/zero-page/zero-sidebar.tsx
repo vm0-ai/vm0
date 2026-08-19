@@ -52,6 +52,10 @@ import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { slackOrgScopeMismatch$ } from "../../signals/zero-page/zero-slack.ts";
 import { AccountDropdown } from "./zero-sidebar-account.tsx";
 import { ChatThreadsSection } from "./sidebar-threads.tsx";
+import {
+  responsiveSidebarChatThreadScrollSignals,
+  threeColumnSidebarChatThreadScrollSignals,
+} from "../../signals/chat-page/sidebar-chat-thread-scroll.ts";
 import { PinnedAgentListSection } from "./zero-sidebar-pinned.tsx";
 import { ThreeColumnSearchDialog } from "./zero-sidebar-dialogs.tsx";
 import { SidebarUpgradeCard } from "./zero-sidebar-upgrade.tsx";
@@ -501,7 +505,9 @@ function ExpandedSidebarSections() {
   return (
     <div className="flex-1 min-h-0 -mx-2 px-2 mt-2 pt-2 flex flex-col overflow-hidden">
       <PinnedAgentListSection />
-      <ChatThreadsSection />
+      <ChatThreadsSection
+        scrollSignals={responsiveSidebarChatThreadScrollSignals}
+      />
     </div>
   );
 }
@@ -795,7 +801,7 @@ function ChatListColumn() {
         className="zero-nav hidden md:flex h-full w-[300px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar"
       >
         <div className="flex shrink-0 items-center gap-1 px-3 pb-2 pt-3">
-          <span className="flex-1 text-[15px] font-semibold text-sidebar-foreground">
+          <span className="flex-1 pl-2 text-[15px] font-semibold text-sidebar-foreground">
             {t(($) => {
               return $.appShell.sidebar.chat;
             })}
@@ -842,11 +848,14 @@ function ChatListColumn() {
             </Tooltip>
           </TooltipProvider>
         </div>
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-2 pt-1">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 pt-1">
           <PinnedAgentListSection layout="horizontal" />
-          <ChatThreadsSection showMarkAllRead />
+          <ChatThreadsSection
+            scrollSignals={threeColumnSidebarChatThreadScrollSignals}
+            showMarkAllRead
+          />
         </div>
-        <div className="px-2 pb-2">
+        <div className="px-3 pb-3">
           <SidebarUpgradeCard />
         </div>
       </aside>

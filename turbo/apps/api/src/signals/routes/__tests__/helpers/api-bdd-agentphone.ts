@@ -26,13 +26,13 @@ import {
   createBddIntegrationApi,
 } from "./api-bdd-integrations";
 import { sessionHistoryBlobBodyForKey } from "./api-bdd-session-history";
-import { createZeroRouteMocks } from "./zero-route-test";
+import { createRouteMocks } from "./route-test";
 import { integrationsPhoneUploadCompleteRoutes } from "../../integrations-phone-upload-complete";
 import { integrationsPhoneUploadInitRoutes } from "../../integrations-phone-upload-init";
 import { integrationsPhoneDownloadFileRoutes } from "../../integrations-phone-download-file";
 import { logsRoutes } from "../../logs";
 import { modelPoliciesRoutes } from "../../model-policies";
-import { zeroModelProvidersRoutes } from "../../zero-model-providers";
+import { modelProvidersRoutes } from "../../model-providers";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...integrationsPhoneDownloadFileRoutes,
@@ -40,7 +40,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...integrationsPhoneUploadInitRoutes,
   ...logsRoutes,
   ...modelPoliciesRoutes,
-  ...zeroModelProvidersRoutes,
+  ...modelProvidersRoutes,
 ]);
 
 export const AGENTPHONE_BDD_AGENT_ID = "agt-bdd-agentphone";
@@ -136,7 +136,7 @@ function authenticate(
   context: TestContext,
   actor: ApiTestUser,
 ): { readonly authorization: string } {
-  createZeroRouteMocks(context).clerk.session(
+  createRouteMocks(context).clerk.session(
     actor.userId,
     actor.orgId,
     actor.orgRole,
@@ -452,7 +452,7 @@ export function createAgentPhoneBddApi(context: TestContext) {
     async switchDefaultModelRouteToOpenRouter(
       actor: ApiTestUser,
     ): Promise<void> {
-      const providers = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      const providers = setupApp({ context, routes: modelProvidersRoutes })(
         modelProvidersMainContract,
       );
       const upserted = await accept(

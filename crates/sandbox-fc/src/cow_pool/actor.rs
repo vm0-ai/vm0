@@ -82,7 +82,7 @@ impl CowPoolHandle {
         response.await.map_err(|_| CowPoolError::ActorStopped)?
     }
 
-    /// Clean up the producer. Pending blocking creation workers are drained.
+    /// Clean up the producer. Pending slot creation tasks are drained.
     pub(crate) async fn cleanup(&self) {
         let (done, done_rx) = oneshot::channel();
         if self.cleanup.send(done).is_ok() {

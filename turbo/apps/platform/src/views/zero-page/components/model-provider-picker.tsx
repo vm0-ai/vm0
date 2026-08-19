@@ -146,8 +146,6 @@ interface ModelProviderPickerProps {
    * the normal label on larger screens.
    */
   mobileIconTrigger?: boolean;
-  /** Optional desktop-only mode label shown before the selected model. */
-  desktopModeLabel?: string;
   /** Controlled open state for programmatic toggle (e.g. keyboard shortcut). */
   open?: boolean;
   /** Callback when the open state changes. */
@@ -235,12 +233,10 @@ function ProBadge() {
 
 function ResponsiveTriggerContent({
   mobileIcon,
-  showDesktopIcon,
   iconType,
   label,
 }: {
   mobileIcon: boolean;
-  showDesktopIcon: boolean;
   iconType: ModelProviderType | undefined;
   label: ReactNode;
 }) {
@@ -257,9 +253,7 @@ function ResponsiveTriggerContent({
         )}
       </span>
       <span className="hidden min-w-0 sm:inline-flex sm:items-center sm:gap-1.5">
-        {showDesktopIcon && iconType && (
-          <ProviderIcon type={iconType} size={16} />
-        )}
+        {iconType && <ProviderIcon type={iconType} size={16} />}
         {label}
       </span>
     </span>
@@ -389,14 +383,12 @@ function ModelFirstTriggerLabel({
   selection,
   placeholder,
   mobileIcon,
-  showDesktopIcon,
   codexFastModeEnabled,
   fastLabel,
 }: {
   selection: ModelProviderSelection | null;
   placeholder: string;
   mobileIcon: boolean;
-  showDesktopIcon: boolean;
   codexFastModeEnabled: boolean;
   fastLabel: string;
 }) {
@@ -404,7 +396,6 @@ function ModelFirstTriggerLabel({
     return (
       <ResponsiveTriggerContent
         mobileIcon={mobileIcon}
-        showDesktopIcon={showDesktopIcon}
         iconType={undefined}
         label={<span>{placeholder}</span>}
       />
@@ -414,7 +405,6 @@ function ModelFirstTriggerLabel({
   return (
     <ResponsiveTriggerContent
       mobileIcon={mobileIcon}
-      showDesktopIcon={showDesktopIcon}
       iconType={iconType}
       label={
         <span className="min-w-0 truncate">
@@ -430,46 +420,10 @@ function ModelFirstTriggerLabel({
   );
 }
 
-function ModelFirstTriggerContent({
-  desktopModeLabel,
-  selection,
-  placeholder,
-  mobileIcon,
-  codexFastModeEnabled,
-  fastLabel,
-}: {
-  desktopModeLabel: string | undefined;
-  selection: ModelProviderSelection | null;
-  placeholder: string;
-  mobileIcon: boolean;
-  codexFastModeEnabled: boolean;
-  fastLabel: string;
-}) {
-  return (
-    <span className="flex min-w-0 items-center gap-1.5">
-      {desktopModeLabel && (
-        <span className="hidden shrink-0 sm:inline-flex sm:items-center sm:gap-1.5">
-          <MessageCircle size={16} aria-hidden="true" />
-          <span aria-hidden="true">·</span>
-        </span>
-      )}
-      <ModelFirstTriggerLabel
-        selection={selection}
-        placeholder={placeholder}
-        mobileIcon={mobileIcon}
-        showDesktopIcon={desktopModeLabel === undefined}
-        codexFastModeEnabled={codexFastModeEnabled}
-        fastLabel={fastLabel}
-      />
-    </span>
-  );
-}
-
 function ModelFirstDisabledPickerLabel({
   value,
   placeholder,
   mobileIconTrigger,
-  desktopModeLabel,
   triggerClassName,
   userPreference,
   policies,
@@ -481,7 +435,6 @@ function ModelFirstDisabledPickerLabel({
   | "placeholder"
   | "compactTrigger"
   | "mobileIconTrigger"
-  | "desktopModeLabel"
   | "triggerClassName"
 > & {
   placeholder: string;
@@ -507,8 +460,7 @@ function ModelFirstDisabledPickerLabel({
         stripInteractiveClasses(triggerClassName),
       )}
     >
-      <ModelFirstTriggerContent
-        desktopModeLabel={desktopModeLabel}
+      <ModelFirstTriggerLabel
         selection={resolved}
         placeholder={placeholder}
         mobileIcon={mobileIconTrigger}
@@ -722,12 +674,15 @@ function ModelFirstPolicyItems({
   modelCapabilities,
   codexFastModeEnabled,
   showSeparator = true,
+  showModelsLabel = true,
 }: {
   policies: OrgModelPolicy[];
   selection: ModelProviderSelection | null;
   modelCapabilities: ModelPlanCapabilities;
   codexFastModeEnabled: boolean;
   showSeparator?: boolean;
+  /** When false, the media-model header already carries the category title. */
+  showModelsLabel?: boolean;
 }) {
   const { t } = useTranslation();
   const explicitSelectedModel = selection?.selectedModel ?? null;
@@ -759,11 +714,13 @@ function ModelFirstPolicyItems({
         </div>
       ) : (
         <SelectGroup>
-          <SelectLabel className="pl-2 pr-8 py-1.5 text-xs font-medium text-muted-foreground">
-            {t(($) => {
-              return $.settings.models.picker.models;
-            })}
-          </SelectLabel>
+          {showModelsLabel && (
+            <SelectLabel className="pl-2 pr-8 py-1.5 text-xs font-medium text-muted-foreground">
+              {t(($) => {
+                return $.settings.models.picker.models;
+              })}
+            </SelectLabel>
+          )}
           {policies.map((policy) => {
             return (
               <ModelFirstPolicyRow
@@ -900,9 +857,7 @@ function GeminiImageModelIcon() {
 export function ImageModelBrandIcon({ model }: { model: ImageModel }) {
   switch (model) {
     case "gpt-image-1":
-    case "gpt-image-2":
-    case "gpt-image-1.5":
-    case "gpt-image-1-mini": {
+    case "gpt-image-2": {
       return <ProviderIcon type="openai-api-key" size={16} />;
     }
     case "fal-ai/flux-pro/v1.1":
@@ -1148,18 +1103,38 @@ function MediaModelPanelRow({ option }: { option: MediaModelPanelOption }) {
 }
 
 function MediaModelPanel({ category }: { category: MediaModelPanelCategory }) {
-  const { t } = useTranslation();
   return (
     <SelectGroup>
-      <SelectLabel className="py-1.5 pl-2 pr-8 text-xs font-medium text-muted-foreground">
-        {t(($) => {
-          return $.settings.models.picker.models;
-        })}
-      </SelectLabel>
       {category.options.map((option) => {
         return <MediaModelPanelRow key={option.key} option={option} />;
       })}
     </SelectGroup>
+  );
+}
+
+/**
+ * The list header carries the category title beside the category switch on one
+ * row, so the switch stays quiet: it borrows the label's height instead of
+ * adding a band of its own above it. It is rendered once for the whole popover
+ * (rather than once per panel) so switching category keeps the same switch.
+ */
+function ModelPickerListHeader({
+  label,
+  categorySwitch,
+}: {
+  label: string;
+  categorySwitch: ReactNode;
+}) {
+  return (
+    // Pinned so switching category never means scrolling back up for the
+    // switch. The negative margins bleed the row over the list's own `p-1`
+    // inset so rows scroll under an opaque surface rather than beside it.
+    <div className="sticky top-0 z-10 -mx-1 -mt-1 flex items-center gap-2 bg-card py-1 pl-3 pr-2">
+      <span className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground">
+        {label}
+      </span>
+      {categorySwitch}
+    </div>
   );
 }
 
@@ -1170,55 +1145,60 @@ const MEDIA_MODEL_CATEGORY_ICONS = {
 
 const CHAT_CATEGORY_VALUE = "chat";
 
+// Icon-only, and trackless: three glyphs sitting straight on the popover
+// surface. A filled track was the darkest thing in a popover otherwise made of
+// quiet rows, and the labels it carried repeated the group label beside it.
+// The selected glyph takes the shared selected layer, which reads on any
+// surface and reverses in dark, in place of the raised segment fill.
+const MEDIA_MODEL_CATEGORY_SEGMENT_CLASS =
+  "w-7 px-0 data-checked:bg-state-selected data-checked:shadow-none";
+
 /**
- * Category switch for the popover. This strip used to live in the composer as a
- * filled track holding three controls, which read as heavy for a row of quiet
+ * Category switch for the popover. It used to live in the composer as a filled
+ * track holding three controls, which read as heavy for a row of quiet
  * controls; the composer keeps one trigger and the split happens here instead.
- * Every viewport gets the same strip -- mobile previously drilled into a nested
- * category from a root menu, which was a second way to express one choice.
+ * Every viewport gets the same switch -- mobile previously drilled into a
+ * nested category from a root menu, which was a second way to express one
+ * choice.
  */
-function MediaModelCategoryTabs({ panel }: { panel: MediaModelPanelState }) {
+function MediaModelCategorySwitch({ panel }: { panel: MediaModelPanelState }) {
   const { t } = useTranslation();
   return (
-    // Pinned so switching category never means scrolling back up for the strip.
-    // The negative margins bleed it over the list's own `p-1` inset so rows
-    // scroll under an opaque surface rather than beside it.
-    <div className="sticky top-0 z-10 -mx-1 -mt-1 bg-card p-1">
-      <SegmentControl
-        size="xs"
-        className="w-full"
+    <SegmentControl
+      size="xs"
+      className="shrink-0 gap-0.5 bg-transparent p-0"
+      aria-label={t(($) => {
+        return $.settings.models.picker.models;
+      })}
+      value={panel.activeCategory ?? CHAT_CATEGORY_VALUE}
+      onValueChange={(next: string) => {
+        panel.onActiveCategoryChange(
+          next === CHAT_CATEGORY_VALUE ? null : (next as MediaModelCategoryId),
+        );
+      }}
+    >
+      <SegmentControlItem
+        value={CHAT_CATEGORY_VALUE}
         aria-label={t(($) => {
-          return $.settings.models.picker.models;
+          return $.settings.models.picker.categoryChat;
         })}
-        value={panel.activeCategory ?? CHAT_CATEGORY_VALUE}
-        onValueChange={(next: string) => {
-          panel.onActiveCategoryChange(
-            next === CHAT_CATEGORY_VALUE
-              ? null
-              : (next as MediaModelCategoryId),
-          );
-        }}
+        className={MEDIA_MODEL_CATEGORY_SEGMENT_CLASS}
       >
-        <SegmentControlItem value={CHAT_CATEGORY_VALUE} className="flex-1">
-          <MessageCircle size={16} aria-hidden="true" />
-          {t(($) => {
-            return $.settings.models.picker.categoryChat;
-          })}
-        </SegmentControlItem>
-        {panel.categories.map((category) => {
-          return (
-            <SegmentControlItem
-              key={category.id}
-              value={category.id}
-              className="flex-1"
-            >
-              {MEDIA_MODEL_CATEGORY_ICONS[category.id]}
-              {category.tabLabel}
-            </SegmentControlItem>
-          );
-        })}
-      </SegmentControl>
-    </div>
+        <MessageCircle size={16} aria-hidden="true" />
+      </SegmentControlItem>
+      {panel.categories.map((category) => {
+        return (
+          <SegmentControlItem
+            key={category.id}
+            value={category.id}
+            aria-label={category.tabLabel}
+            className={MEDIA_MODEL_CATEGORY_SEGMENT_CLASS}
+          >
+            {MEDIA_MODEL_CATEGORY_ICONS[category.id]}
+          </SegmentControlItem>
+        );
+      })}
+    </SegmentControl>
   );
 }
 
@@ -1243,6 +1223,7 @@ function ModelFirstModelPickerContentLayout({
   fastLabel,
   mediaModelPanel,
 }: ModelFirstModelPickerContentBaseProps) {
+  const { t } = useTranslation();
   const activeMediaModelCategoryId = mediaModelPanel?.activeCategory;
   const activeMediaModelCategory = mediaModelPanel?.categories.find(
     (category) => {
@@ -1282,19 +1263,28 @@ function ModelFirstModelPickerContentLayout({
           })}
         </SelectItem>
       )}
-      {mediaModelPanel && <MediaModelCategoryTabs panel={mediaModelPanel} />}
+      {mediaModelPanel && (
+        <ModelPickerListHeader
+          label={
+            activeMediaModelCategory?.label ??
+            t(($) => {
+              return $.settings.models.picker.chatModels;
+            })
+          }
+          categorySwitch={<MediaModelCategorySwitch panel={mediaModelPanel} />}
+        />
+      )}
       {mediaModelPanel && activeMediaModelCategory ? (
         <MediaModelPanel category={activeMediaModelCategory} />
       ) : (
-        <>
-          <ModelFirstPolicyItems
-            policies={policies}
-            selection={selection}
-            modelCapabilities={modelCapabilities}
-            codexFastModeEnabled={codexFastModeEnabled}
-            showSeparator={false}
-          />
-        </>
+        <ModelFirstPolicyItems
+          policies={policies}
+          selection={selection}
+          modelCapabilities={modelCapabilities}
+          codexFastModeEnabled={codexFastModeEnabled}
+          showSeparator={false}
+          showModelsLabel={!mediaModelPanel}
+        />
       )}
     </SelectContent>
   );
@@ -1366,7 +1356,6 @@ function ModelFirstSelectPicker({
   placeholder,
   triggerClassName,
   mobileIconTrigger,
-  desktopModeLabel,
   modelCapabilities,
   codexFastModeEnabled,
   fastLabel,
@@ -1381,7 +1370,6 @@ function ModelFirstSelectPicker({
   placeholder: string;
   triggerClassName: string | undefined;
   mobileIconTrigger: boolean;
-  desktopModeLabel: string | undefined;
   modelCapabilities: ModelPlanCapabilities;
   codexFastModeEnabled: boolean;
   fastLabel: string;
@@ -1409,8 +1397,7 @@ function ModelFirstSelectPicker({
         className={cn("h-9 w-full", triggerClassName)}
       >
         <SelectValue placeholder={placeholder}>
-          <ModelFirstTriggerContent
-            desktopModeLabel={desktopModeLabel}
+          <ModelFirstTriggerLabel
             selection={state.selection}
             placeholder={placeholder}
             mobileIcon={mobileIconTrigger}
@@ -1443,7 +1430,6 @@ function SubscribedModelFirstModelPicker({
   triggerClassName,
   compactTrigger,
   mobileIconTrigger,
-  desktopModeLabel,
   open,
   onOpenChange,
   modal,
@@ -1491,7 +1477,6 @@ function SubscribedModelFirstModelPicker({
         placeholder={placeholder}
         compactTrigger={compactTrigger}
         mobileIconTrigger={mobileIconTrigger}
-        desktopModeLabel={desktopModeLabel}
         triggerClassName={triggerClassName}
         userPreference={resolveDefaultSelection ? userPreference : null}
         policies={resolveDefaultSelection ? state.selectablePolicies : []}
@@ -1537,7 +1522,6 @@ function SubscribedModelFirstModelPicker({
       placeholder={placeholder}
       triggerClassName={triggerClassName}
       mobileIconTrigger={mobileIconTrigger}
-      desktopModeLabel={desktopModeLabel}
       modelCapabilities={modelCapabilities}
       codexFastModeEnabled={codexFastModeEnabled}
       fastLabel={fastLabel}
@@ -1772,7 +1756,6 @@ function EnabledExplicitModelFirstModelPicker(
       placeholder={props.placeholder}
       triggerClassName={props.triggerClassName}
       mobileIconTrigger={props.mobileIconTrigger}
-      desktopModeLabel={props.desktopModeLabel}
       modelCapabilities={DEFAULT_MODEL_PLAN_CAPABILITIES}
       codexFastModeEnabled={props.codexFastModeEnabled ?? false}
       fastLabel={props.fastLabel}
@@ -1800,7 +1783,6 @@ function ModelFirstModelPicker(
         placeholder={props.placeholder}
         compactTrigger={props.compactTrigger}
         mobileIconTrigger={props.mobileIconTrigger}
-        desktopModeLabel={props.desktopModeLabel}
         triggerClassName={props.triggerClassName}
         userPreference={null}
         policies={[]}
@@ -1837,7 +1819,6 @@ export function ModelProviderPicker({
   triggerClassName,
   compactTrigger = false,
   mobileIconTrigger = false,
-  desktopModeLabel,
   open,
   onOpenChange,
   modal,
@@ -1862,7 +1843,6 @@ export function ModelProviderPicker({
     triggerClassName,
     compactTrigger,
     mobileIconTrigger,
-    desktopModeLabel,
     open,
     onOpenChange,
     modal,

@@ -72,7 +72,7 @@ export type UpdateModelProviderConnectionRequest = z.infer<
   typeof updateModelProviderConnectionRequestSchema
 >;
 
-export const zeroModelProviderConnectionsMainContract = c.router({
+export const modelProviderConnectionsMainContract = c.router({
   list: {
     method: "GET",
     path: "/api/okou/model-provider-connections",
@@ -101,7 +101,7 @@ export const zeroModelProviderConnectionsMainContract = c.router({
   },
 });
 
-export const zeroModelProviderConnectionsByIdContract = c.router({
+export const modelProviderConnectionsByIdContract = c.router({
   update: {
     method: "PUT",
     path: "/api/okou/model-provider-connections/:id",

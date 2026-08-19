@@ -16,14 +16,11 @@ import {
   readConnectorCredentialStorageState,
   seedConnectorStorageRow,
 } from "./helpers/connector-credential-storage-state";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
 import { connectorsRoutes } from "../connectors";
 
 const context = testContext();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 interface AuthenticatedFixture {
   readonly orgId: string;

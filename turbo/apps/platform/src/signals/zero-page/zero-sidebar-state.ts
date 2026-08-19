@@ -307,81 +307,11 @@ export const cachePinnedAgentGridRowsRef$ = onRef(
 );
 
 // ---------------------------------------------------------------------------
-// Custom scrollbar thumb style (OverlayScrollArea)
-// ---------------------------------------------------------------------------
-interface ThumbStyle {
-  top: number;
-  height: number;
-  visible: boolean;
-}
-const internalThumbStyle$ = state<ThumbStyle>({
-  top: 0,
-  height: 0,
-  visible: false,
-});
-export const thumbStyle$ = computed((get) => {
-  return get(internalThumbStyle$);
-});
-export const setThumbStyle$ = command(({ set }, style: ThumbStyle) => {
-  set(internalThumbStyle$, style);
-});
-
-// ---------------------------------------------------------------------------
-// Overlay scroll viewport (OverlayScrollArea)
-// ---------------------------------------------------------------------------
-const internalOverlayScrollViewport$ = state<HTMLElement | null>(null);
-interface OverlayScrollMetrics {
-  scrollTop: number;
-  scrollHeight: number;
-  clientHeight: number;
-}
-
-const internalOverlayScrollMetrics$ = state<OverlayScrollMetrics>(
-  emptyOverlayScrollMetrics(),
-);
-
-function emptyOverlayScrollMetrics(): OverlayScrollMetrics {
-  return {
-    scrollTop: 0,
-    scrollHeight: 0,
-    clientHeight: 0,
-  };
-}
-
-export const overlayScrollViewport$ = computed((get) => {
-  return get(internalOverlayScrollViewport$);
-});
-export const overlayScrollMetrics$ = computed((get) => {
-  return get(internalOverlayScrollMetrics$);
-});
-export const setOverlayScrollViewport$ = command(
-  ({ set }, viewport: HTMLElement | null) => {
-    set(internalOverlayScrollViewport$, viewport);
-    set(
-      internalOverlayScrollMetrics$,
-      viewport
-        ? {
-            scrollTop: viewport.scrollTop,
-            scrollHeight: viewport.scrollHeight,
-            clientHeight: viewport.clientHeight,
-          }
-        : emptyOverlayScrollMetrics(),
-    );
-  },
-);
-export const setOverlayScrollMetrics$ = command(
-  ({ set }, metrics: OverlayScrollMetrics) => {
-    set(internalOverlayScrollMetrics$, metrics);
-  },
-);
-
-// ---------------------------------------------------------------------------
-// Chat thread virtual list DOM state (RecentChatSection)
+// Chat thread virtual list geometry (RecentChatSection)
 // ---------------------------------------------------------------------------
 export const CHAT_THREAD_VIRTUAL_ROW_HEIGHT = 36;
 export const CHAT_THREAD_VIRTUAL_FALLBACK_VIEWPORT_HEIGHT =
   CHAT_THREAD_VIRTUAL_ROW_HEIGHT * 12;
-const internalChatThreadVirtualListElement$ = state<HTMLElement | null>(null);
 export type ChatThreadVirtualListScrollAlign = "top" | "bottom";
 
 function hasUsableLayoutPosition(rect: DOMRectReadOnly): boolean {
@@ -410,71 +340,3 @@ export function getChatThreadVirtualListScrollMargin(
 
   return Math.max(0, virtualListElement.offsetTop - scrollViewport.offsetTop);
 }
-
-export const chatThreadVirtualListElement$ = computed((get) => {
-  return get(internalChatThreadVirtualListElement$);
-});
-export const setChatThreadVirtualListElement$ = command(
-  ({ set }, element: HTMLElement | null) => {
-    set(internalChatThreadVirtualListElement$, element);
-  },
-);
-export const scrollChatThreadVirtualListToIndex$ = command(
-  (
-    { get, set },
-    index: number,
-    align: ChatThreadVirtualListScrollAlign = "top",
-  ): boolean => {
-    if (!Number.isInteger(index) || index < 0) {
-      return false;
-    }
-
-    const scrollViewport = get(internalOverlayScrollViewport$);
-    const virtualListElement = get(internalChatThreadVirtualListElement$);
-    if (!scrollViewport || !virtualListElement) {
-      return false;
-    }
-
-    const currentMetrics = get(internalOverlayScrollMetrics$);
-    const scrollMargin = getChatThreadVirtualListScrollMargin(
-      scrollViewport,
-      virtualListElement,
-    );
-    const viewportHeight =
-      currentMetrics.clientHeight ||
-      scrollViewport.clientHeight ||
-      CHAT_THREAD_VIRTUAL_FALLBACK_VIEWPORT_HEIGHT;
-    const rowTop = scrollMargin + index * CHAT_THREAD_VIRTUAL_ROW_HEIGHT;
-    const rowBottom = rowTop + CHAT_THREAD_VIRTUAL_ROW_HEIGHT;
-    const viewportTop = scrollViewport.scrollTop;
-    const viewportBottom = viewportTop + viewportHeight;
-    let nextScrollTop = viewportTop;
-    if (rowBottom > viewportBottom) {
-      nextScrollTop =
-        align === "bottom"
-          ? Math.max(0, rowBottom - viewportHeight)
-          : Math.max(0, rowTop);
-    } else if (rowTop < viewportTop) {
-      nextScrollTop = Math.max(0, rowTop);
-    }
-
-    scrollViewport.scrollTop = nextScrollTop;
-    set(internalOverlayScrollMetrics$, {
-      scrollTop: nextScrollTop,
-      scrollHeight: scrollViewport.scrollHeight,
-      clientHeight: scrollViewport.clientHeight,
-    });
-    return true;
-  },
-);
-
-// ---------------------------------------------------------------------------
-// Main sidebar scroll tracking (ZeroSidebar)
-// ---------------------------------------------------------------------------
-const internalIsScrolled$ = state(false);
-export const isScrolled$ = computed((get) => {
-  return get(internalIsScrolled$);
-});
-export const setIsScrolled$ = command(({ set }, scrolled: boolean) => {
-  set(internalIsScrolled$, scrolled);
-});
