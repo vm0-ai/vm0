@@ -1629,12 +1629,12 @@ export function PinAgentDialog({
   open,
   onOpenChange,
   subagents,
-  onPinAgent,
+  onSetAgentPinned,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   subagents: SubagentInfo[];
-  onPinAgent: (agentId: string) => void;
+  onSetAgentPinned: (agentId: string, pinned: boolean) => void;
 }) {
   const { t } = useTranslation("agents");
   const query = useGet(pinAgentDialogQuery$);
@@ -1660,10 +1660,13 @@ export function PinAgentDialog({
     return matchedIds.has(agent.id);
   });
 
-  const pinAgent = (agentId: string) => {
+  const setAgentPinned = (agentId: string, pinned: boolean) => {
     onOpenChange(false);
-    onPinAgent(agentId);
+    onSetAgentPinned(agentId, pinned);
   };
+  const unpinLabel = t(($) => {
+    return $.sidebar.unpin;
+  });
 
   return (
     <CommandDialog
@@ -1721,7 +1724,7 @@ export function PinAgentDialog({
                   key={agent.id}
                   value={agent.id}
                   onSelect={() => {
-                    return pinAgent(agent.id);
+                    return setAgentPinned(agent.id, true);
                   }}
                   className="group w-full gap-2 px-1 py-2"
                 >
@@ -1744,15 +1747,14 @@ export function PinAgentDialog({
                 <CommandItem
                   key={agent.id}
                   value={agent.id}
-                  disabled
-                  className="w-full gap-2 px-1 py-2 opacity-60"
+                  onSelect={() => {
+                    return setAgentPinned(agent.id, false);
+                  }}
+                  title={unpinLabel}
+                  className="group w-full gap-2 px-1 py-2"
                 >
                   <AgentCommandAgentContent agent={agent} />
-                  <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-                    {t(($) => {
-                      return $.sidebar.pinned;
-                    })}
-                  </span>
+                  <PinOff size={16} className="ml-auto shrink-0 opacity-50" />
                 </CommandItem>
               );
             })}

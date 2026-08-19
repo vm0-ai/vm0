@@ -3742,12 +3742,42 @@ describe("zero sidebar", () => {
 
     const dialogList = await screen.findByTestId("pin-agent-dialog-list");
     const pinnedOption = commandItemByText(dialogList, "Research Agent");
-    expect(pinnedOption.getAttribute("aria-disabled")).toBe("true");
+    expect(pinnedOption.getAttribute("aria-disabled")).not.toBe("true");
 
     click(commandItemByText(dialogList, "Support Agent"));
 
     await waitFor(() => {
       expect(pinnedAgentLink(grid, "Support Agent")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("pin-agent-dialog-list")).toBeNull();
+  });
+
+  it("unpins an agent from the grid pin entry", async () => {
+    prepareAgentTeam();
+    context.mocks.data.userPreferences({
+      pinnedAgentIds: [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID],
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    await waitFor(() => {
+      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(3);
+    });
+
+    click(screen.getByLabelText("Pin an agent"));
+
+    const dialogList = await screen.findByTestId("pin-agent-dialog-list");
+    click(commandItemByText(dialogList, "Support Agent"));
+
+    await waitFor(() => {
+      expect(pinnedAgentNames(grid)).toStrictEqual(["Zero", "Research Agent"]);
     });
     expect(screen.queryByTestId("pin-agent-dialog-list")).toBeNull();
   });
