@@ -15,7 +15,7 @@ import urllib.request
 from contextlib import suppress
 from dataclasses import dataclass, field
 from email.message import Message
-from typing import NamedTuple, Protocol
+from typing import NamedTuple, Protocol, cast
 
 import h11
 import mitmproxy_rs
@@ -93,6 +93,10 @@ class FirewallAuthApiError(Exception):
 class _AddressResolver(Protocol):
     async def lookup_ip(self, host: str) -> list[str]:
         raise NotImplementedError
+
+
+class _CPythonStreamReader(Protocol):
+    _buffer: bytearray
 
 
 class _ResolvedAddress(NamedTuple):
@@ -512,6 +516,11 @@ async def _establish_proxy_tunnel(
     status = await _read_proxy_connect_status(reader)
     if not _HTTP_STATUS_SUCCESS_MIN <= status < _HTTP_STATUS_REDIRECTION_MIN:
         raise OSError(f"Firewall auth HTTP proxy CONNECT failed with status {status}")
+    cast(asyncio.Transport, writer.transport).pause_reading()
+    # asyncio has no public nonblocking buffer query. Keep this check adjacent to
+    # the caller's start_tls() call so proxy plaintext cannot enter this reader.
+    if cast(_CPythonStreamReader, reader)._buffer:
+        raise ValueError("Firewall auth HTTP proxy sent data before TLS")
 
 
 async def _open_stream(plan: _ConnectionPlan) -> _ConnectedStream:
