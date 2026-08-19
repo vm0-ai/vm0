@@ -235,12 +235,17 @@ pub(super) fn sync_snapshot_output_dir(output: &SnapshotOutputPaths) -> Result<(
 pub(super) fn publish_snapshot_complete_marker(
     output: &SnapshotOutputPaths,
 ) -> Result<(), SnapshotError> {
-    publish_snapshot_complete_marker_with_marker_sync(output, std::fs::File::sync_all)
+    publish_snapshot_complete_marker_with_syncs(
+        output,
+        std::fs::File::sync_all,
+        std::fs::File::sync_all,
+    )
 }
 
-fn publish_snapshot_complete_marker_with_marker_sync(
+fn publish_snapshot_complete_marker_with_syncs(
     output: &SnapshotOutputPaths,
     sync_marker: impl FnOnce(&std::fs::File) -> io::Result<()>,
+    mut sync_output_dir: impl FnMut(&std::fs::File) -> io::Result<()>,
 ) -> Result<(), SnapshotError> {
     let marker = output.complete_marker();
     let mut marker_created = false;
@@ -259,7 +264,8 @@ fn publish_snapshot_complete_marker_with_marker_sync(
         sync_marker(&file)?;
         drop(file);
 
-        std::fs::File::open(output.dir())?.sync_all()?;
+        let output_dir = std::fs::File::open(output.dir())?;
+        sync_output_dir(&output_dir)?;
         Ok(())
     })();
 
@@ -268,7 +274,7 @@ fn publish_snapshot_complete_marker_with_marker_sync(
             // If marker publication fails after creating the file, remove it so
             // future readers do not treat an uncommitted publish as complete.
             let _ = std::fs::remove_file(&marker);
-            let _ = std::fs::File::open(output.dir()).and_then(|dir| dir.sync_all());
+            let _ = std::fs::File::open(output.dir()).and_then(|dir| sync_output_dir(&dir));
         }
         return Err(SnapshotError::Io(e));
     }
@@ -435,11 +441,16 @@ mod tests {
         write_required_snapshot_artifacts(&output).await;
         let marker = output.complete_marker();
 
-        let err = publish_snapshot_complete_marker_with_marker_sync(&output, |_| {
-            let content = std::fs::read(&marker).expect("read marker before injected sync failure");
-            assert_eq!(content, SNAPSHOT_COMPLETE_MARKER_CONTENT);
-            Err(io::Error::other("injected marker sync failure"))
-        })
+        let err = publish_snapshot_complete_marker_with_syncs(
+            &output,
+            |_| {
+                let content =
+                    std::fs::read(&marker).expect("read marker before injected sync failure");
+                assert_eq!(content, SNAPSHOT_COMPLETE_MARKER_CONTENT);
+                Err(io::Error::other("injected marker sync failure"))
+            },
+            std::fs::File::sync_all,
+        )
         .expect_err("marker sync failure should fail publication");
 
         match err {
@@ -448,6 +459,73 @@ mod tests {
                 assert_eq!(error.to_string(), "injected marker sync failure");
             }
             other => panic!("expected marker sync I/O error, got: {other:?}"),
+        }
+        assert!(
+            !tokio::fs::try_exists(&marker).await.unwrap(),
+            "failed publication must remove its complete marker"
+        );
+        for artifact in output.required_artifacts() {
+            let content = tokio::fs::read(&artifact)
+                .await
+                .unwrap_or_else(|e| panic!("read {}: {e}", artifact.display()));
+            assert_eq!(
+                content,
+                b"snapshot artifact",
+                "failed publication must preserve {}",
+                artifact.display()
+            );
+        }
+
+        let provider = FirecrackerSnapshotProvider;
+        assert!(
+            !provider.is_complete(output.dir()).await.unwrap(),
+            "failed publication must leave the snapshot incomplete"
+        );
+
+        publish_snapshot_complete_marker(&output).expect("retry marker publication");
+        assert!(
+            provider.is_complete(output.dir()).await.unwrap(),
+            "retry must publish a complete snapshot"
+        );
+    }
+
+    #[tokio::test]
+    async fn publish_snapshot_complete_marker_cleans_up_after_output_directory_sync_failure() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().to_path_buf());
+        write_required_snapshot_artifacts(&output).await;
+        let marker = output.complete_marker();
+        let mut directory_sync_attempts = 0;
+
+        let err =
+            publish_snapshot_complete_marker_with_syncs(&output, std::fs::File::sync_all, |_| {
+                directory_sync_attempts += 1;
+                match directory_sync_attempts {
+                    1 => {
+                        let content = std::fs::read(&marker)
+                            .expect("read marker before injected directory sync failure");
+                        assert_eq!(content, SNAPSHOT_COMPLETE_MARKER_CONTENT);
+                        Err(io::Error::other("injected output directory sync failure"))
+                    }
+                    2 => Err(io::Error::new(
+                        io::ErrorKind::PermissionDenied,
+                        "injected cleanup directory sync failure",
+                    )),
+                    attempt => panic!("unexpected directory sync attempt: {attempt}"),
+                }
+            })
+            .expect_err("output directory sync failure should fail publication");
+
+        assert_eq!(
+            directory_sync_attempts, 2,
+            "failed publication should re-sync after marker cleanup"
+        );
+        match err {
+            SnapshotError::Io(error) => {
+                assert_eq!(error.kind(), io::ErrorKind::Other);
+                assert_eq!(error.to_string(), "injected output directory sync failure");
+            }
+            other => panic!("expected output directory sync I/O error, got: {other:?}"),
         }
         assert!(
             !tokio::fs::try_exists(&marker).await.unwrap(),
