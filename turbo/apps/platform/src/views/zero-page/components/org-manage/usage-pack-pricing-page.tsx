@@ -53,7 +53,6 @@ import {
 import {
   orgMembers$,
   orgPendingInvitations$,
-  refreshOrgMembers$,
   type OrgMember,
 } from "../../../../signals/external/org-members.ts";
 import {
@@ -98,14 +97,6 @@ interface MemberDisplay {
   readonly name: string;
   readonly usagePackUsd?: UsagePackUsd;
 }
-
-type UsagePackMembersLoadState =
-  | { readonly state: "loading" }
-  | { readonly state: "error" }
-  | {
-      readonly state: "loaded";
-      readonly members: readonly MemberDisplay[];
-    };
 
 interface MemberUsageDowngrade {
   readonly effectiveAt: string | null;
@@ -654,7 +645,6 @@ function MemberUsageConfiguration({
   comparisonRows,
   management,
   members,
-  membersError,
   onSelectionChange,
   pendingMembers = [],
   plan,
@@ -664,7 +654,6 @@ function MemberUsageConfiguration({
   readonly comparisonRows?: readonly SubscriptionComparisonRow[];
   readonly management: UsagePackManagementResponse | null;
   readonly members: readonly MemberDisplay[] | undefined;
-  readonly membersError: boolean;
   readonly onSelectionChange?: () => void;
   readonly pendingMembers?: readonly MemberDisplay[];
   readonly plan: UsagePackPlan;
@@ -672,33 +661,7 @@ function MemberUsageConfiguration({
 }) {
   const selections = useGet(memberUsageSelections$);
   const setSelection = useSet(setMemberUsageSelection$);
-  const refreshMembers = useSet(refreshOrgMembers$);
 
-  if (membersError) {
-    return (
-      <div
-        className="rounded-xl bg-card px-5 py-6 text-center zero-border"
-        role="alert"
-      >
-        <p className="mb-3 text-sm text-muted-foreground">
-          {i18n.t(($) => {
-            return $.billing.common.unavailable;
-          })}
-        </p>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => {
-            refreshMembers();
-          }}
-        >
-          {i18n.t(($) => {
-            return $.billing.common.retry;
-          })}
-        </Button>
-      </div>
-    );
-  }
   if (!members) {
     return <div className="h-36 animate-pulse rounded-xl bg-muted/40" />;
   }
@@ -1373,16 +1336,10 @@ function PlanSelectionStep({
   );
 }
 
-function useUsagePackMembers(): UsagePackMembersLoadState {
+function useUsagePackMembers(): readonly MemberDisplay[] | undefined {
   const userLoadable = useLastLoadable(currentUserInfo$);
   const membersLoadable = useLoadable(orgMembers$);
   const pendingInvitationsLoadable = useLoadable(orgPendingInvitations$);
-  if (
-    membersLoadable.state === "hasError" ||
-    pendingInvitationsLoadable.state === "hasError"
-  ) {
-    return { state: "error" };
-  }
   const user = userLoadable.state === "hasData" ? userLoadable.data : undefined;
   const orgMembers =
     membersLoadable.state === "hasData" ? membersLoadable.data : undefined;
@@ -1391,53 +1348,50 @@ function useUsagePackMembers(): UsagePackMembersLoadState {
       ? pendingInvitationsLoadable.data
       : undefined;
   if (!user || !orgMembers || !pendingInvitations) {
-    return { state: "loading" };
+    return undefined;
   }
-  return {
-    state: "loaded",
-    members: [
-      {
-        id: user.id,
-        email: user.primaryEmailAddress?.emailAddress,
-        imageUrl: user.imageUrl,
-        isCurrent: true,
-        isPending: false,
-        name:
-          user.fullName ??
-          user.primaryEmailAddress?.emailAddress ??
-          i18n.t(($) => {
-            return $.billing.plans.usagePacks.currentMember;
-          }),
-      },
-      ...orgMembers
-        .filter((member) => {
-          return member.userId !== user.id;
-        })
-        .map((member): MemberDisplay => {
-          return {
-            id: member.userId,
-            email: member.email,
-            imageUrl: member.imageUrl,
-            isCurrent: false,
-            isPending: false,
-            name: memberName(member),
-          };
+  return [
+    {
+      id: user.id,
+      email: user.primaryEmailAddress?.emailAddress,
+      imageUrl: user.imageUrl,
+      isCurrent: true,
+      isPending: false,
+      name:
+        user.fullName ??
+        user.primaryEmailAddress?.emailAddress ??
+        i18n.t(($) => {
+          return $.billing.plans.usagePacks.currentMember;
         }),
-      ...pendingInvitations.map((invitation): MemberDisplay => {
+    },
+    ...orgMembers
+      .filter((member) => {
+        return member.userId !== user.id;
+      })
+      .map((member): MemberDisplay => {
         return {
-          id: invitation.id,
-          email: invitation.email,
-          imageUrl: undefined,
+          id: member.userId,
+          email: member.email,
+          imageUrl: member.imageUrl,
           isCurrent: false,
-          isPending: true,
-          name: invitation.email,
-          ...(invitation.usagePackUsd === undefined
-            ? {}
-            : { usagePackUsd: invitation.usagePackUsd }),
+          isPending: false,
+          name: memberName(member),
         };
       }),
-    ],
-  };
+    ...pendingInvitations.map((invitation): MemberDisplay => {
+      return {
+        id: invitation.id,
+        email: invitation.email,
+        imageUrl: undefined,
+        isCurrent: false,
+        isPending: true,
+        name: invitation.email,
+        ...(invitation.usagePackUsd === undefined
+          ? {}
+          : { usagePackUsd: invitation.usagePackUsd }),
+      };
+    }),
+  ];
 }
 
 /* A review dialog is too narrow for the page ledger's control column, so its
@@ -2427,11 +2381,7 @@ function PackageConfigurationStep({
   readonly preview: UsagePackSubscriptionChangePreviewResponse | null;
 }) {
   const selections = useGet(memberUsageSelections$);
-  const allMembersLoadState = useUsagePackMembers();
-  const allMembers =
-    allMembersLoadState.state === "loaded"
-      ? allMembersLoadState.members
-      : undefined;
+  const allMembers = useUsagePackMembers();
   const activeMembers = allMembers?.filter((member) => {
     return !member.isPending;
   });
@@ -2480,7 +2430,6 @@ function PackageConfigurationStep({
         comparisonRows={comparisonRows}
         management={management}
         members={members}
-        membersError={allMembersLoadState.state === "error"}
         pendingMembers={paidPendingMembers}
         plan={plan}
         totals={totals}
@@ -3286,7 +3235,6 @@ function UsagePackMigrationConfigurationStep({
   effectiveAt,
   inDialog,
   members,
-  membersError,
   migrationId,
   onBack,
   plan,
@@ -3300,7 +3248,6 @@ function UsagePackMigrationConfigurationStep({
   readonly effectiveAt: string;
   readonly inDialog: boolean;
   readonly members: readonly MemberDisplay[] | undefined;
-  readonly membersError: boolean;
   readonly migrationId: string | null;
   readonly onBack: () => void;
   readonly plan: UsagePackPlan;
@@ -3329,7 +3276,6 @@ function UsagePackMigrationConfigurationStep({
               : {})}
             management={null}
             members={members}
-            membersError={membersError}
             plan={plan}
             totals={totals}
           />
@@ -3398,9 +3344,7 @@ export function UsagePackMigrationPage({
   readonly targetTier: UsagePackPlanTier;
 }) {
   const selections = useGet(memberUsageSelections$);
-  const membersLoadState = useUsagePackMembers();
-  const members =
-    membersLoadState.state === "loaded" ? membersLoadState.members : undefined;
+  const members = useUsagePackMembers();
   const migrationPreview = useGet(usagePackMigrationPreview$);
   const migrationRevisionPreview = useGet(usagePackMigrationRevisionPreview$);
   const catalogLoadable = useLoadable(usagePackCatalogAsync$);
@@ -3455,7 +3399,6 @@ export function UsagePackMigrationPage({
       effectiveAt={effectiveAt}
       inDialog={inDialog}
       members={members}
-      membersError={membersLoadState.state === "error"}
       migrationId={migrationId}
       onBack={onBack}
       plan={plan}
