@@ -416,6 +416,7 @@ export interface StripeSubscriptionsApi {
     price?: string;
     limit?: number;
     starting_after?: string;
+    expand?: string[];
   }): Promise<StripeList<StripeSubscription>>;
   cancel(
     id: string,
@@ -848,6 +849,121 @@ export type StripeWebhookEvent =
       readonly type: string;
       readonly created: number;
     };
+
+export interface UndeliveredStripePaidInvoice {
+  readonly eventId: string;
+  readonly created: number;
+  readonly invoice: StripeInvoice;
+}
+
+export interface UndeliveredStripePaidCheckoutSession {
+  readonly eventId: string;
+  readonly eventType:
+    | "checkout.session.completed"
+    | "checkout.session.async_payment_succeeded";
+  readonly created: number;
+  readonly session: StripeCheckoutSession;
+}
+
+const PAID_CHECKOUT_EVENT_TYPES = [
+  "checkout.session.completed",
+  "checkout.session.async_payment_succeeded",
+] as const;
+
+/**
+ * Lists still-undelivered paid Checkout events, oldest first. Immediate
+ * payments settle on `checkout.session.completed`; delayed methods settle on
+ * `checkout.session.async_payment_succeeded`.
+ */
+export async function listUndeliveredStripePaidCheckoutSessions(
+  signal: AbortSignal,
+): Promise<readonly UndeliveredStripePaidCheckoutSession[]> {
+  const stripe = stripeSdk();
+  const sessions: UndeliveredStripePaidCheckoutSession[] = [];
+  for (const type of PAID_CHECKOUT_EVENT_TYPES) {
+    let startingAfter: string | undefined;
+    while (true) {
+      const page = await stripe.events.list({
+        delivery_success: false,
+        type,
+        limit: 100,
+        ...(startingAfter ? { starting_after: startingAfter } : {}),
+      });
+      signal.throwIfAborted();
+      for (const event of page.data) {
+        if (
+          event.type === "checkout.session.completed" ||
+          event.type === "checkout.session.async_payment_succeeded"
+        ) {
+          sessions.push({
+            eventId: event.id,
+            eventType: event.type,
+            created: event.created,
+            session: event.data.object,
+          });
+        }
+      }
+      if (!page.has_more) {
+        break;
+      }
+      const last = page.data.at(-1);
+      if (!last) {
+        throw new Error("Stripe returned an empty Event page with has_more");
+      }
+      startingAfter = last.id;
+    }
+  }
+  return sessions.sort((left, right) => {
+    return (
+      left.created - right.created || left.eventId.localeCompare(right.eventId)
+    );
+  });
+}
+
+/**
+ * Lists Stripe's still-undelivered `invoice.paid` events, oldest first.
+ * Stripe retains Events for 30 days, which is substantially longer than the
+ * twice-daily billing reconciliation interval. Keeping the SDK event union at
+ * this gateway lets the billing service consume only vm0-owned invoice types.
+ */
+export async function listUndeliveredStripePaidInvoices(
+  signal: AbortSignal,
+): Promise<readonly UndeliveredStripePaidInvoice[]> {
+  const stripe = stripeSdk();
+  const invoices: UndeliveredStripePaidInvoice[] = [];
+  let startingAfter: string | undefined;
+  while (true) {
+    const page = await stripe.events.list({
+      delivery_success: false,
+      type: "invoice.paid",
+      limit: 100,
+      ...(startingAfter ? { starting_after: startingAfter } : {}),
+    });
+    signal.throwIfAborted();
+    for (const event of page.data) {
+      if (event.type === "invoice.paid") {
+        invoices.push({
+          eventId: event.id,
+          created: event.created,
+          invoice: event.data.object,
+        });
+      }
+    }
+    if (!page.has_more) {
+      return invoices.sort((left, right) => {
+        return (
+          left.created - right.created ||
+          left.eventId.localeCompare(right.eventId)
+        );
+      });
+    }
+    const last = page.data.at(-1);
+    if (!last) {
+      throw new Error("Stripe returned an empty Event page with has_more");
+    }
+    startingAfter = last.id;
+  }
+}
 
 type StripeWebhookEventConstructor = (
   rawBody: string,
