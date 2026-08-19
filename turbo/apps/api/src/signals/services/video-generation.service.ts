@@ -120,6 +120,14 @@ const SEEDANCE_2_5_DIMENSIONS = {
     "3:4": { width: 834, height: 1112 },
     "9:16": { width: 720, height: 1280 },
   },
+  "1080p": {
+    "21:9": { width: 2206, height: 946 },
+    "16:9": { width: 1920, height: 1080 },
+    "4:3": { width: 1664, height: 1248 },
+    "1:1": { width: 1440, height: 1440 },
+    "3:4": { width: 1248, height: 1664 },
+    "9:16": { width: 1080, height: 1920 },
+  },
 } as const satisfies DimensionTable;
 
 const SEEDANCE_2_DIMENSIONS = {
@@ -871,6 +879,19 @@ function parseVideoAspectRatio(
     );
   }
   return aspectRatio;
+}
+
+/**
+ * Whether the request chose a model of its own.
+ *
+ * `parseVideoOptions` reads `model` through `readString`, which treats a blank
+ * value as unset and applies its own default. A caller that decides whether to
+ * substitute a different default has to answer the same question the same way;
+ * two independent answers disagree exactly on `model: ""`, and the substitution
+ * is then skipped for a request that never named anything.
+ */
+export function namesVideoModel(body: unknown): boolean {
+  return isRecord(body) && readString(body, "model", "") !== "";
 }
 
 export function parseVideoOptions(

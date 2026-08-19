@@ -1651,6 +1651,7 @@ async fn reusable_idle_sandbox_with_workspace_promotion(
         guest_timezone_intent: crate::guest_timezone::GuestTimezoneIntent::Unknown,
         workspace_image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
         workspace_promotion: Some(promotion),
+        handoff: None,
     })
     .park_for_idle()
     .await
@@ -1760,6 +1761,7 @@ async fn reusable_idle_sandbox_with_fresh_workspace_promotion(
         guest_timezone_intent: crate::guest_timezone::GuestTimezoneIntent::Unknown,
         workspace_image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
         workspace_promotion: Some(promotion),
+        handoff: None,
     })
     .park_for_idle()
     .await

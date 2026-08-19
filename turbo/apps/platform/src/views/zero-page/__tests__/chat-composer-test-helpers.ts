@@ -22,7 +22,7 @@ import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
 } from "@okouai/api-contracts/contracts/zero-agents";
-import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
   zeroBillingStatusContract,
   type BillingStatusResponse,
@@ -480,10 +480,10 @@ export function mockAgentConnectorAuthorizations(
   initialConnectorSlugs: readonly string[],
 ): void {
   let enabledConnectorSlugs: string[] = [...initialConnectorSlugs];
-  context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+  context.mocks.api(userConnectorsContract.get, ({ respond }) => {
     return respond(200, { enabledConnectorSlugs: enabledConnectorSlugs });
   });
-  context.mocks.api(zeroUserConnectorsContract.update, ({ body, respond }) => {
+  context.mocks.api(userConnectorsContract.update, ({ body, respond }) => {
     enabledConnectorSlugs = applyUserConnectorUpdate(
       enabledConnectorSlugs,
       body,

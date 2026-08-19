@@ -36,7 +36,7 @@ import {
   registerTelegramBot$,
   setupTelegramStatus$,
   telegramWebhook$,
-} from "../services/zero-telegram-post.service";
+} from "../services/telegram-post.service";
 import { inferMimetype } from "../../lib/mimetype";
 import { tapError } from "../utils";
 import type { RouteEntry } from "../route-entry";

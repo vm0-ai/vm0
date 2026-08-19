@@ -206,16 +206,6 @@ jobs:
             production \
             "$TARGET_COMMIT"
 
-          for url in "https://${CF_PAGES_PROJECT_NAME}.pages.dev" "https://app.vm0.ai"; do
-            curl -fsSL \
-              --retry 12 \
-              --retry-delay 5 \
-              --retry-max-time 120 \
-              --retry-all-errors \
-              "$url" \
-              --output /dev/null
-          done
-
       - name: Finish GitHub Deployment
         if: always()
         uses: bobheadxi/deployments@648679e8e4915b27893bd7dbc35cb504dc915bc8 # v1
@@ -236,7 +226,7 @@ jobs:
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*Production* ✅ App rolled back to `${{ needs.resolve-target.outputs.target_commit }}`"
+            text: "*Production* ✅ App rolled back to `${{ needs.resolve-target.outputs.target_commit }}`\n🌐 <https://app.vm0.ai|VM0 App> · <https://app.okou.ai|Okou App>"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
@@ -431,3 +421,19 @@ jobs:
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
             text: "*Production* ❌ API rollback failed for `${{ needs.resolve-target.outputs.target_commit }}`"
+
+  verify-production-domains:
+    name: Verify production domains after rollback
+    needs: [rollback-app, rollback-api]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+      - name: Verify production App and API domains
+        env:
+          CF_PAGES_PROJECT_NAME: ${{ vars.CF_PAGES_PROJECT_NAME }}
+        run: |
+          set -euo pipefail
+          bash .github/scripts/verify-okou-production-domains.sh \
+            "https://${CF_PAGES_PROJECT_NAME}.pages.dev"

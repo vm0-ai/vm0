@@ -4,6 +4,7 @@ import { zeroWorkflowAutomationsContract } from "@okouai/api-contracts/contracts
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
+import { publicBrand$ } from "../context/hono";
 import { db$ } from "../external/db";
 import {
   AUTONOMY_BUDGET_EXHAUSTED_MESSAGE,
@@ -186,6 +187,7 @@ const createAutomationInner$ = command(
     const result = await set(
       createWorkflowAutomation$,
       { ...bodyResult.data, ...automationInputBase },
+      auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$),
       signal,
     );
     signal.throwIfAborted();
@@ -224,6 +226,8 @@ const revealWebhookSecretInner$ = computed(async (get) => {
     orgId: auth.orgId,
     member: memberFromAuth(auth),
     automationId: params.id,
+    publicBrand:
+      auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$),
   });
   if (!secret) {
     return notFound("Workflow webhook automation not found");

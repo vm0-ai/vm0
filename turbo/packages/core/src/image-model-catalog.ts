@@ -54,6 +54,14 @@ export const IMAGE_MODEL_CONFIGS = {
     alias: "seedream4",
     label: "Seedream 4",
   },
+  "dola-seedream-5-0-pro-260628": {
+    alias: "seedream5-pro",
+    label: "Seedream 5 Pro",
+  },
+  "seedream-5-0-lite-260128": {
+    alias: "seedream5-lite",
+    label: "Seedream 5 Lite",
+  },
   "fal-ai/nano-banana-2": {
     alias: "nano-banana-2",
     label: "Nano Banana 2",
@@ -77,6 +85,8 @@ export const PUBLIC_IMAGE_MODELS = [
   "fal-ai/nano-banana-2",
   "fal-ai/flux-pro/v1.1",
   "fal-ai/flux-pro/v1.1-ultra",
+  "dola-seedream-5-0-pro-260628",
+  "seedream-5-0-lite-260128",
   "fal-ai/bytedance/seedream/v4/text-to-image",
   "fal-ai/qwen-image",
 ] as const satisfies readonly ImageModel[];
@@ -90,6 +100,8 @@ export const IMAGE_MODEL_ALIASES = {
   "flux-pro-1.1-ultra": "fal-ai/flux-pro/v1.1-ultra",
   "qwen-image": "fal-ai/qwen-image",
   seedream4: "fal-ai/bytedance/seedream/v4/text-to-image",
+  "seedream5-pro": "dola-seedream-5-0-pro-260628",
+  "seedream5-lite": "seedream-5-0-lite-260128",
   "nano-banana-2": "fal-ai/nano-banana-2",
   "nano-banana2": "fal-ai/nano-banana-2",
 } as const satisfies Readonly<Record<string, ImageModel>>;

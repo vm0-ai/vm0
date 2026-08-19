@@ -1,5 +1,79 @@
 # Changelog
 
+## [0.169.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.12...runner-rs-v0.169.13) (2026-08-19)
+
+
+### Performance Improvements
+
+* **runner:** hand off finalizing sandboxes before idle compaction ([#28063](https://github.com/vm0-ai/vm0/issues/28063)) ([543aae3](https://github.com/vm0-ai/vm0/commit/543aae384b1d6311d0bcceef487ab37bea3f3147))
+
+## [0.169.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.11...runner-rs-v0.169.12) (2026-08-19)
+
+
+### Refactoring
+
+* **runner:** route host oom probe through bounded commands ([#28119](https://github.com/vm0-ai/vm0/issues/28119)) ([ef5d2cd](https://github.com/vm0-ai/vm0/commit/ef5d2cd3fc414c55acc67162835f3403d0c0db2a))
+
+## [0.169.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.10...runner-rs-v0.169.11) (2026-08-19)
+
+
+### Bug Fixes
+
+* **python:** track generator advancement failures ([#28107](https://github.com/vm0-ai/vm0/issues/28107)) ([c56f8d5](https://github.com/vm0-ai/vm0/commit/c56f8d5cc628c754880c27dc690d5704cf493df0))
+
+
+### Documentation
+
+* **runner:** document workspace image cache GC policy ([#28104](https://github.com/vm0-ai/vm0/issues/28104)) ([e178040](https://github.com/vm0-ai/vm0/commit/e178040179027bea9f2863aa5bea3332f3f25016))
+
+## [0.169.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.9...runner-rs-v0.169.10) (2026-08-19)
+
+
+### Documentation
+
+* **python:** document webhook delivery callback lifecycle ([#28096](https://github.com/vm0-ai/vm0/issues/28096)) ([e94991b](https://github.com/vm0-ai/vm0/commit/e94991becd85d9b350a804ff011b9369b8488791))
+
+## [0.169.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.8...runner-rs-v0.169.9) (2026-08-18)
+
+## [0.169.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.7...runner-rs-v0.169.8) (2026-08-18)
+
+
+### Performance Improvements
+
+* **runner:** attribute workspace mount guest duration ([#28059](https://github.com/vm0-ai/vm0/issues/28059)) ([7b94559](https://github.com/vm0-ai/vm0/commit/7b94559e3942ebbcfb88e7d287b59cc777386977))
+
+## [0.169.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.6...runner-rs-v0.169.7) (2026-08-18)
+
+
+### Documentation
+
+* **python:** clarify Anthropic JSON metadata-only results ([#28012](https://github.com/vm0-ai/vm0/issues/28012)) ([bfcb999](https://github.com/vm0-ai/vm0/commit/bfcb999669fa226f88bc26a89fa27edc94d885d1))
+* **python:** clarify X tweet body refinement conditions ([#27968](https://github.com/vm0-ai/vm0/issues/27968)) ([bd19e2d](https://github.com/vm0-ai/vm0/commit/bd19e2dbdc3554420b05d665008d9039c005aca3))
+
+
+### Refactoring
+
+* **runner:** centralize private file validation ([#28019](https://github.com/vm0-ai/vm0/issues/28019)) ([2f7f7da](https://github.com/vm0-ai/vm0/commit/2f7f7dafe3c2801e270d2d6baf07e6c6fd105c08))
+* **rust:** generate codex runtime config ([#28035](https://github.com/vm0-ai/vm0/issues/28035)) ([de3d53b](https://github.com/vm0-ai/vm0/commit/de3d53ba1c521a9a623552fe33e71e61da37b145))
+
+
+### Performance Improvements
+
+* **runner:** defer workspace cache gc to routine maintenance ([#28026](https://github.com/vm0-ai/vm0/issues/28026)) ([c408e32](https://github.com/vm0-ai/vm0/commit/c408e32f4e09d1c6484e4df8744f6d351fff7166))
+* **runner:** measure claim http duration ([#28029](https://github.com/vm0-ai/vm0/issues/28029)) ([974ba54](https://github.com/vm0-ai/vm0/commit/974ba54e70dbf7e6f12a9516d62d61e17f7c88cd))
+
+## [0.169.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.5...runner-rs-v0.169.6) (2026-08-18)
+
+
+### Bug Fixes
+
+* **python:** fail closed on unsafe platform api paths ([#27944](https://github.com/vm0-ai/vm0/issues/27944)) ([490b2f5](https://github.com/vm0-ai/vm0/commit/490b2f5ab57211c277f295f48a8dab9b6144973b))
+
+
+### Performance Improvements
+
+* **python:** batch firewall auth query injection ([#27932](https://github.com/vm0-ai/vm0/issues/27932)) ([d46487f](https://github.com/vm0-ai/vm0/commit/d46487f9911378c1ea7dff89c4bc08b3d04f30ee))
+
 ## [0.169.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.4...runner-rs-v0.169.5) (2026-08-18)
 
 

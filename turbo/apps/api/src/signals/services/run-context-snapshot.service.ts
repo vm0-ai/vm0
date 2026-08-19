@@ -1,4 +1,4 @@
-import type { RunContextResponse } from "@okouai/api-contracts/contracts/zero-runs";
+import type { RunContextResponse } from "@okouai/api-contracts/contracts/run-routes";
 import {
   executionFirewallBuiltinEntrySchema,
   executionFirewallInlineEntrySchema,
@@ -15,6 +15,10 @@ import type {
   EnvironmentShadowClassification,
   EnvironmentShadowCountBucket,
 } from "./agent-environment-shadow";
+import type {
+  AgentExecutionAuthority,
+  AgentExecutionAuthorityClassification,
+} from "./agent-execution-authority";
 
 type UnknownRecord = Record<string, unknown>;
 type NetworkPolicy = NetworkPolicies[string];
@@ -103,6 +107,8 @@ export type RunContextAxiomSnapshot = Omit<
   readonly environmentShadowLegacyOnlyCountBucket?: EnvironmentShadowCountBucket;
   readonly environmentShadowCandidateOnlyCountBucket?: EnvironmentShadowCountBucket;
   readonly environmentShadowSharedValueDifferenceCountBucket?: EnvironmentShadowCountBucket;
+  readonly agentExecutionAuthority?: AgentExecutionAuthority;
+  readonly agentExecutionAuthorityClassification?: AgentExecutionAuthorityClassification;
 };
 
 interface NormalizedRunContextSnapshot {

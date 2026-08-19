@@ -17,6 +17,7 @@ const pinnedAgentStory = [
     displayName: "Operations Agent",
   },
 ] as const;
+type PinnedAgentStoryEntry = (typeof pinnedAgentStory)[number];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -25,7 +26,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 async function mockPinnedAgentGrid(
   page: Page,
   defaultAgentId: string,
-): Promise<void> {
+): Promise<(agents: readonly PinnedAgentStoryEntry[]) => void> {
+  let pinnedAgents: readonly PinnedAgentStoryEntry[] = pinnedAgentStory;
+
   await page.route("**/api/okou/feature-switches", async (route) => {
     const response = await route.fetch();
     const body: unknown = await response.json();
@@ -85,12 +88,16 @@ async function mockPinnedAgentGrid(
       response,
       json: {
         ...body,
-        pinnedAgentIds: pinnedAgentStory.map((agent) => {
+        pinnedAgentIds: pinnedAgents.map((agent) => {
           return agent.id;
         }),
       },
     });
   });
+
+  return (agents) => {
+    pinnedAgents = agents;
+  };
 }
 
 test("navigate to agents page and verify heading", async ({ page }) => {
@@ -100,7 +107,7 @@ test("navigate to agents page and verify heading", async ({ page }) => {
   });
 });
 
-test("pinned agents use four equal columns without horizontal overflow", async ({
+test("pinned agents use five equal columns and keep Pin in the first row", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -113,7 +120,7 @@ test("pinned agents use four equal columns without horizontal overflow", async (
     throw new Error("Could not resolve the default agent from the sidebar");
   }
 
-  await mockPinnedAgentGrid(page, defaultAgentId);
+  const setPinnedAgents = await mockPinnedAgentGrid(page, defaultAgentId);
   await Promise.all([
     ...[
       "/api/okou/feature-switches",
@@ -133,11 +140,11 @@ test("pinned agents use four equal columns without horizontal overflow", async (
 
   const grid = page.getByTestId("pinned-agents-grid");
   const cards = grid.getByTestId("pinned-agent-card");
-  const newAgent = grid.getByRole("button", {
-    name: "Open a conversation",
+  const pinAgent = grid.getByRole("button", {
+    name: "Pin an agent",
   });
   await expect(cards).toHaveCount(4);
-  await expect(newAgent).toBeVisible();
+  await expect(pinAgent).toBeVisible();
 
   await expect
     .poll(async () => {
@@ -145,7 +152,8 @@ test("pinned agents use four equal columns without horizontal overflow", async (
         cards.nth(0).boundingBox(),
         cards.nth(1).boundingBox(),
         cards.nth(2).boundingBox(),
-        newAgent.boundingBox(),
+        cards.nth(3).boundingBox(),
+        pinAgent.boundingBox(),
       ]);
       if (boxes.some((box) => box === null)) {
         return Number.POSITIVE_INFINITY;
@@ -161,7 +169,8 @@ test("pinned agents use four equal columns without horizontal overflow", async (
         cards.nth(0).boundingBox(),
         cards.nth(1).boundingBox(),
         cards.nth(2).boundingBox(),
-        newAgent.boundingBox(),
+        cards.nth(3).boundingBox(),
+        pinAgent.boundingBox(),
       ]);
       if (boxes.some((box) => box === null)) {
         return 0;
@@ -170,6 +179,7 @@ test("pinned agents use four equal columns without horizontal overflow", async (
         boxes[1]!.x - boxes[0]!.x,
         boxes[2]!.x - boxes[1]!.x,
         boxes[3]!.x - boxes[2]!.x,
+        boxes[4]!.x - boxes[3]!.x,
       );
     })
     .toBeGreaterThan(1);
@@ -181,7 +191,7 @@ test("pinned agents use four equal columns without horizontal overflow", async (
         cards.nth(1).boundingBox(),
         cards.nth(2).boundingBox(),
         cards.nth(3).boundingBox(),
-        newAgent.boundingBox(),
+        pinAgent.boundingBox(),
       ]);
       if (boxes.some((box) => box === null)) {
         return Number.POSITIVE_INFINITY;
@@ -193,42 +203,16 @@ test("pinned agents use four equal columns without horizontal overflow", async (
 
   await expect
     .poll(async () => {
-      const [gridBox, newAgentBox] = await Promise.all([
+      const [gridBox, pinAgentBox] = await Promise.all([
         grid.boundingBox(),
-        newAgent.boundingBox(),
+        pinAgent.boundingBox(),
       ]);
-      if (!gridBox || !newAgentBox) {
+      if (!gridBox || !pinAgentBox) {
         return Number.POSITIVE_INFINITY;
       }
       return Math.abs(
-        newAgentBox.x + newAgentBox.width - (gridBox.x + gridBox.width),
+        pinAgentBox.x + pinAgentBox.width - (gridBox.x + gridBox.width),
       );
-    })
-    .toBeLessThan(2);
-
-  await expect
-    .poll(async () => {
-      const [firstCardBox, wrappedCardBox] = await Promise.all([
-        cards.nth(0).boundingBox(),
-        cards.nth(3).boundingBox(),
-      ]);
-      if (!firstCardBox || !wrappedCardBox) {
-        return 0;
-      }
-      return wrappedCardBox.y - firstCardBox.y;
-    })
-    .toBeGreaterThan(1);
-
-  await expect
-    .poll(async () => {
-      const [firstCardBox, wrappedCardBox] = await Promise.all([
-        cards.nth(0).boundingBox(),
-        cards.nth(3).boundingBox(),
-      ]);
-      if (!firstCardBox || !wrappedCardBox) {
-        return Number.POSITIVE_INFINITY;
-      }
-      return Math.abs(wrappedCardBox.x - firstCardBox.x);
     })
     .toBeLessThan(2);
 
@@ -239,6 +223,37 @@ test("pinned agents use four equal columns without horizontal overflow", async (
       });
     })
     .toBe(0);
+
+  setPinnedAgents(pinnedAgentStory.slice(0, 2));
+  await Promise.all([
+    page.waitForResponse((response) => {
+      return (
+        response.request().method() === "GET" &&
+        new URL(response.url()).pathname === "/api/okou/user-preferences"
+      );
+    }),
+    page.reload(),
+  ]);
+
+  await expect(cards).toHaveCount(3);
+  await expect
+    .poll(async () => {
+      const boxes = await Promise.all([
+        cards.nth(0).boundingBox(),
+        cards.nth(1).boundingBox(),
+        cards.nth(2).boundingBox(),
+        pinAgent.boundingBox(),
+      ]);
+      if (boxes.some((box) => box === null)) {
+        return Number.POSITIVE_INFINITY;
+      }
+      const columnStep = boxes[1]!.x - boxes[0]!.x;
+      return Math.max(
+        Math.abs(boxes[3]!.x - boxes[2]!.x - columnStep),
+        Math.abs(boxes[3]!.y - boxes[2]!.y),
+      );
+    })
+    .toBeLessThan(2);
 });
 
 test("reveal the default agent unread action from the whole row", async ({

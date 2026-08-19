@@ -16,7 +16,7 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { zeroAgentsByIdContract } from "@okouai/api-contracts/contracts/zero-agents";
-import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { zeroAgentCustomConnectorsContract } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroConnectorCatalogContract,
@@ -50,6 +50,7 @@ import {
   setChatPageModelSelection$,
 } from "../../../signals/zero-page/zero-chat-page.ts";
 import { loadLeftThread$ } from "../../../signals/chat-page/chat-thread-panes.ts";
+import { eventDrivenChatThread } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
 import {
   click,
   detachedSetupPage,
@@ -104,6 +105,44 @@ async function navigateToChatThread(threadId: string): Promise<void> {
     return candidate;
   });
   click(link);
+}
+
+/**
+ * The composer carries one model trigger for every category; the Chat / Image /
+ * Video split is a segment control inside the popover it opens.
+ */
+function findComposerModelPickerTrigger(
+  root: ParentNode = document,
+): Promise<HTMLElement> {
+  return waitFor(() => {
+    const trigger = root.querySelector<HTMLElement>('[role="combobox"]');
+    if (!trigger) {
+      throw new Error("Composer model picker trigger not found");
+    }
+    return trigger;
+  });
+}
+
+function categoryTab(
+  name: string,
+  root: ParentNode = document,
+): HTMLElement | undefined {
+  return queryAllByRoleFast("radio", root).find((candidate) => {
+    return candidate.textContent?.replace(/\s+/gu, " ").trim() === name;
+  });
+}
+
+function findCategoryTab(
+  name: string,
+  root: ParentNode = document,
+): Promise<HTMLElement> {
+  return waitFor(() => {
+    const tab = categoryTab(name, root);
+    if (!tab) {
+      throw new Error(`${name} category tab not found`);
+    }
+    return tab;
+  });
 }
 
 function queryFastModeOption(
@@ -277,8 +316,66 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(document.title).toContain("Scout");
     });
-    await expectComposerModel("Claude Fable 5");
+    const modelPicker = await findComposerModel("Claude Fable 5");
+    expect(
+      Array.from(
+        modelPicker.querySelectorAll<HTMLImageElement>("img"),
+        (icon) => {
+          return icon.width;
+        },
+      ),
+    ).toStrictEqual([18, 16]);
   });
+
+  it.each([
+    {
+      kind: "image",
+      featureSwitch: FeatureSwitchKey.ImageModelSelection,
+      categoryTab: "Image",
+    },
+    {
+      kind: "video",
+      featureSwitch: FeatureSwitchKey.VideoModelSelection,
+      categoryTab: "Video",
+    },
+  ])(
+    "keeps the mobile model brand icon and hides the desktop icon when $kind model selection is enabled",
+    async ({ featureSwitch, categoryTab }) => {
+      const user = userEvent.setup({ delay: null });
+      context.mocks.browser.matchMedia(true);
+      mockOrgModelRoutes("claude-fable-5");
+      mockAgent();
+      mockThread({ selectedModel: "claude-fable-5" });
+
+      detachedSetupPage({
+        context,
+        featureSwitches: { [featureSwitch]: true },
+        path: `/chats/${THREAD_ID}`,
+      });
+
+      const modelPicker = await findComposerModel("Claude Fable 5");
+      // The category now lives inside the popover, so open it to confirm the
+      // media panel resolved before reading the trigger's icons.
+      await user.click(modelPicker);
+      await waitFor(() => {
+        expect(
+          queryAllByRoleFast("radio").find((radio) => {
+            return (
+              radio.textContent?.replace(/\s+/gu, " ").trim() === categoryTab
+            );
+          }),
+        ).toBeInTheDocument();
+      });
+      expect(
+        Array.from(
+          modelPicker.querySelectorAll<HTMLImageElement>("img"),
+          (icon) => {
+            return icon.width;
+          },
+        ),
+      ).toStrictEqual([18]);
+    },
+  );
 
   it("shows user preference over workspace default", async () => {
     mockOrgModelRoutes("claude-fable-5");
@@ -2933,7 +3030,7 @@ describe("chat composer models", () => {
         visibility: "public",
       });
     });
-    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(userConnectorsContract.get, ({ respond }) => {
       return respond(200, { enabledConnectorSlugs: ["github"] });
     });
     context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
@@ -3028,7 +3125,7 @@ describe("chat composer models", () => {
       },
     ]);
     context.mocks.api(
-      zeroUserConnectorsContract.get,
+      userConnectorsContract.get,
       async ({ respond, withSignal }) => {
         authorizationRequestCount += 1;
         if (authorizationRequestCount > 1) {
@@ -3123,7 +3220,7 @@ describe("chat composer models", () => {
       },
     ]);
     context.mocks.api(
-      zeroUserConnectorsContract.get,
+      userConnectorsContract.get,
       async ({ params, respond, withSignal }) => {
         authorizationAgentIds.push(params.id);
         if (params.id === OTHER_AGENT_ID) {
@@ -3191,7 +3288,7 @@ describe("chat composer models", () => {
       },
     ]);
     context.mocks.api(
-      zeroUserConnectorsContract.get,
+      userConnectorsContract.get,
       async ({ respond, withSignal }) => {
         authorizationRequestCount += 1;
         if (authorizationRequestCount === 1) {
@@ -3201,7 +3298,7 @@ describe("chat composer models", () => {
       },
     );
     context.mocks.api(
-      zeroUserConnectorsContract.update,
+      userConnectorsContract.update,
       ({ params, body, respond }) => {
         updatedAuthorizationAgentId = params.id;
         enabledConnectorSlugs = applyUserConnectorUpdate(
@@ -3284,7 +3381,7 @@ describe("chat composer models", () => {
         hasMore: false,
       });
     });
-    context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
+    context.mocks.api(userConnectorsContract.get, ({ params, respond }) => {
       authorizationAgentIds.push(params.id);
       return respond(200, {
         enabledConnectorSlugs: enabledByAgent.get(params.id) ?? [],
@@ -3300,7 +3397,7 @@ describe("chat composer models", () => {
       },
     );
     context.mocks.api(
-      zeroUserConnectorsContract.update,
+      userConnectorsContract.update,
       ({ params, body, respond }) => {
         updatedAuthorizationAgentId = params.id;
         const enabledConnectorSlugs = applyUserConnectorUpdate(
@@ -3422,45 +3519,47 @@ describe("chat composer image model", () => {
     "Nano Banana 2",
     "Flux Pro v1.1",
     "Flux Pro v1.1 Ultra",
+    "Seedream 5 Pro",
+    "Seedream 5 Lite",
     "Seedream 4",
     "Qwen Image",
   ] as const;
 
-  function desktopImageModelButton(
+  function imageCategoryTab(
     root: ParentNode = document,
   ): HTMLElement | undefined {
-    return Array.from(root.querySelectorAll("button")).find((candidate) => {
-      return (
-        candidate.getAttribute("aria-label") === "Image models" &&
-        candidate.hasAttribute("aria-pressed")
-      );
-    });
+    return categoryTab("Image", root);
   }
 
-  function findDesktopImageModelButton(
+  function findImageCategoryTab(
     root: ParentNode = document,
   ): Promise<HTMLElement> {
     return waitFor(() => {
-      const button = desktopImageModelButton(root);
-      if (!button) {
-        throw new Error("Desktop image model button not found");
+      const tab = imageCategoryTab(root);
+      if (!tab) {
+        throw new Error("Image category tab not found");
       }
-      return button;
+      return tab;
     });
+  }
+
+  /**
+   * Opens the single composer entry point and switches to the image models.
+   * `root` scopes the trigger only -- the popover is portalled to the body.
+   */
+  async function openImageModels(
+    user: ReturnType<typeof userEvent.setup>,
+    root: ParentNode = document,
+  ): Promise<HTMLElement> {
+    await user.click(await findComposerModelPickerTrigger(root));
+    const tab = await findImageCategoryTab();
+    await user.click(tab);
+    return tab;
   }
 
   function mediaPanelButton(label: string): HTMLElement | undefined {
     return queryAllByRoleFast("button").find((candidate) => {
       return candidate.textContent?.replace(/\s+/g, " ").trim() === label;
-    });
-  }
-
-  function mediaPanelButtonByAccessibleLabel(
-    label: string,
-    root: ParentNode = document,
-  ): HTMLElement | undefined {
-    return queryAllByRoleFast("button", root).find((candidate) => {
-      return candidate.getAttribute("aria-label") === label;
     });
   }
 
@@ -3474,15 +3573,38 @@ describe("chat composer image model", () => {
     });
   }
 
-  function imageVariantMenuItem(label: string): HTMLElement | undefined {
-    return queryAllByRoleFast("menuitem").find((candidate) => {
+  /**
+   * The composer no longer prints the image model, so the selection is read
+   * from the open panel: a plain row carries `aria-pressed`, while a family
+   * with variants marks the choice on its segment instead.
+   */
+  function selectedImageModelLabel(
+    root: ParentNode = document,
+  ): string | undefined {
+    const row = queryAllByRoleFast("button", root).find((candidate) => {
+      return candidate.getAttribute("aria-pressed") === "true";
+    });
+    if (row) {
+      return row.getAttribute("aria-label") ?? undefined;
+    }
+    const variant = queryAllByRoleFast("radio", root).find((candidate) => {
+      return (
+        candidate.getAttribute("aria-checked") === "true" &&
+        candidate.hasAttribute("aria-label")
+      );
+    });
+    return variant?.getAttribute("aria-label") ?? undefined;
+  }
+
+  function imageVariantSegment(label: string): HTMLElement | undefined {
+    return queryAllByRoleFast("radio").find((candidate) => {
       return candidate.getAttribute("aria-label") === label;
     });
   }
 
-  function findImageVariantMenuItem(label: string): Promise<HTMLElement> {
+  function findImageVariantSegment(label: string): Promise<HTMLElement> {
     return waitFor(() => {
-      const item = imageVariantMenuItem(label);
+      const item = imageVariantSegment(label);
       if (!item) {
         throw new Error(`${label} image variant not found`);
       }
@@ -3497,6 +3619,442 @@ describe("chat composer image model", () => {
     }
     return icon;
   }
+
+  it("uses the live member image default for an untouched new chat", async () => {
+    const user = userEvent.setup({ delay: null });
+    context.mocks.browser.matchMedia(true);
+    const initialPreference: UserModelPreferenceResponse = {
+      selectedModel: null,
+      serviceTier: null,
+      selectedImageModel: "fal-ai/qwen-image",
+      updatedAt: "2026-08-18T00:00:00Z",
+    };
+    let createdImageModel: string | undefined;
+
+    mockOrgModelRoutes("claude-fable-5");
+    context.mocks.data.userModelPreference(initialPreference);
+    mockAgent();
+    mockChatLifecycle(context, {
+      onThreadCreate: (body) => {
+        createdImageModel = body.imageModel;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.ImageModelSelection]: true },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await openImageModels(user);
+    await waitFor(() => {
+      expect(selectedImageModelLabel()).toBe("Qwen Image");
+    });
+
+    context.mocks.data.userModelPreference({
+      ...initialPreference,
+      selectedImageModel: "gpt-image-2",
+      updatedAt: "2026-08-18T00:01:00Z",
+    });
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("userPreferenceChanged"),
+      ).toBeTruthy();
+    });
+    act(() => {
+      triggerAblyEvent("userPreferenceChanged", {
+        kinds: ["defaultImageModel"],
+      });
+    });
+    await waitFor(() => {
+      expect(selectedImageModelLabel()).toBe("GPT Image 2");
+    });
+    await user.keyboard("{Escape}");
+
+    await sendMessageInUI(
+      user,
+      screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+      "Use my current image default",
+    );
+
+    // Untouched: the thread is created unpinned so it follows the live member
+    // default (already reflected in the button above) instead of freezing it.
+    await waitFor(() => {
+      expect(createdImageModel).toBeUndefined();
+    });
+  });
+
+  it("keeps a mobile image pick temporary, pins it, and resets after send", async () => {
+    const user = userEvent.setup({ delay: null });
+    context.mocks.browser.matchMedia(false);
+    const updates: UpdateUserModelPreferenceRequest[] = [];
+    let createdThreadId: string | undefined;
+    let createdImageModel: string | undefined;
+
+    mockOrgModelRoutes("claude-fable-5");
+    context.mocks.data.userModelPreference({
+      selectedModel: null,
+      serviceTier: null,
+      selectedImageModel: "fal-ai/qwen-image",
+      selectedVideoModel: "MiniMax-H3",
+      updatedAt: "2026-08-18T00:00:00Z",
+    });
+    context.mocks.api(
+      userModelPreferenceContract.update,
+      ({ body, respond }) => {
+        updates.push(body);
+        return respond(200, {
+          ...body,
+          updatedAt: "2026-08-18T00:01:00Z",
+        });
+      },
+    );
+    mockAgent();
+    mockChatLifecycle(context, {
+      onThreadCreate: (body) => {
+        createdThreadId = body.clientThreadId;
+        createdImageModel = body.imageModel;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.ImageModelSelection]: true,
+        [FeatureSwitchKey.VideoModelSelection]: true,
+        [FeatureSwitchKey.NewChatDefaultModelAction]: true,
+      },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await user.click(await findComposerModel("Claude Fable 5"));
+    await user.click(await findCategoryTab("Image"));
+    expect(
+      screen.queryByText("Temporarily switched to Qwen Image for images"),
+    ).not.toBeInTheDocument();
+    await user.click(await findMediaPanelButton("GPT Image 2"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Temporarily switched to GPT Image 2 for images"),
+      ).toBeInTheDocument();
+    });
+    expect(updates).toStrictEqual([]);
+
+    await sendMessageInUI(
+      user,
+      screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+      "Use my temporary image choice",
+    );
+
+    await waitFor(() => {
+      expect(createdThreadId).toBeDefined();
+      expect(createdImageModel).toBe("gpt-image-2");
+    });
+    if (!createdThreadId) {
+      throw new Error("Created thread id not captured");
+    }
+    const optimisticThreadId = createdThreadId;
+    await waitFor(() => {
+      expect(
+        context.store.get(eventDrivenChatThread(optimisticThreadId)),
+      ).toMatchObject({ selectedImageModel: "gpt-image-2" });
+    });
+
+    act(() => {
+      context.store.set(detachedNavigateTo$, ROUTES.agentChat, {
+        pathParams: { agentId: AGENT_ID },
+      });
+    });
+    await user.click(await findComposerModel("Claude Fable 5"));
+    await user.click(await findCategoryTab("Image"));
+    await expect(findMediaPanelButton("Qwen Image")).resolves.toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(updates).toStrictEqual([]);
+  });
+
+  it("writes an image pick immediately when the default action is off", async () => {
+    const user = userEvent.setup({ delay: null });
+    context.mocks.browser.matchMedia(true);
+    const updates: UpdateUserModelPreferenceRequest[] = [];
+    let createdImageModel: string | undefined;
+
+    mockOrgModelRoutes("claude-fable-5");
+    context.mocks.data.userModelPreference({
+      selectedModel: null,
+      serviceTier: null,
+      selectedImageModel: "fal-ai/qwen-image",
+      selectedVideoModel: "MiniMax-H3",
+      updatedAt: "2026-08-18T00:00:00Z",
+    });
+    context.mocks.api(
+      userModelPreferenceContract.update,
+      ({ body, respond }) => {
+        updates.push(body);
+        return respond(200, {
+          ...body,
+          updatedAt: "2026-08-18T00:01:00Z",
+        });
+      },
+    );
+    mockAgent();
+    mockChatLifecycle(context, {
+      onThreadCreate: (body) => {
+        createdImageModel = body.imageModel;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.ImageModelSelection]: true },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await openImageModels(user);
+    await user.click(await findMediaPanelButton("Seedream 4"));
+    await waitFor(() => {
+      expect(updates).toStrictEqual([
+        {
+          selectedModel: null,
+          serviceTier: null,
+          selectedImageModel: "fal-ai/bytedance/seedream/v4/text-to-image",
+        },
+      ]);
+    });
+
+    await sendMessageInUI(
+      user,
+      screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+      "Persist and pin my image choice",
+    );
+    await waitFor(() => {
+      expect(createdImageModel).toBe(
+        "fal-ai/bytedance/seedream/v4/text-to-image",
+      );
+    });
+  });
+
+  it("sets only the image default from a fresh member preference", async () => {
+    const user = userEvent.setup({ delay: null });
+    const updateGate = context.mocks.deferred<void>();
+    const updates: UpdateUserModelPreferenceRequest[] = [];
+    context.mocks.browser.matchMedia(true);
+    let stored: UserModelPreferenceResponse = {
+      selectedModel: "claude-fable-5",
+      serviceTier: null,
+      selectedImageModel: "fal-ai/qwen-image",
+      selectedVideoModel: "MiniMax-H3",
+      updatedAt: "2026-08-18T00:00:00Z",
+    };
+
+    mockOrgModelRoutes("claude-fable-5");
+    context.mocks.api(userModelPreferenceContract.get, ({ respond }) => {
+      return respond(200, stored);
+    });
+    context.mocks.api(
+      userModelPreferenceContract.update,
+      async ({ body, respond, withSignal }) => {
+        updates.push(body);
+        await withSignal(updateGate.promise);
+        stored = {
+          ...stored,
+          ...body,
+          updatedAt: "2026-08-18T00:02:00Z",
+        };
+        return respond(200, stored);
+      },
+    );
+    mockAgent();
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.ImageModelSelection]: true,
+        [FeatureSwitchKey.NewChatDefaultModelAction]: true,
+      },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await openImageModels(user);
+    await user.click(await findMediaPanelButton("GPT Image 2"));
+    expect(updates).toStrictEqual([]);
+    await screen.findByText("Temporarily switched to GPT Image 2 for images");
+
+    stored = {
+      ...stored,
+      selectedModel: "gpt-5.6-sol",
+      serviceTier: "priority",
+      selectedVideoModel: "fal-ai/veo3.1/fast",
+      updatedAt: "2026-08-18T00:01:00Z",
+    };
+    const setAsDefault = buttonContainingText("Set as default", document.body);
+    await user.click(setAsDefault);
+
+    await waitFor(() => {
+      expect(updates).toStrictEqual([
+        {
+          selectedModel: "gpt-5.6-sol",
+          serviceTier: "priority",
+          selectedImageModel: "gpt-image-2",
+        },
+      ]);
+      expect(setAsDefault).toBeDisabled();
+      expect(setAsDefault).toHaveAttribute("aria-busy", "true");
+    });
+    fireEvent.click(setAsDefault);
+    expect(updates).toHaveLength(1);
+    updateGate.resolve();
+
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("userPreferenceChanged"),
+      ).toBeTruthy();
+    });
+    act(() => {
+      triggerAblyEvent("userPreferenceChanged", {
+        kinds: ["defaultImageModel"],
+      });
+    });
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Temporarily switched to GPT Image 2 for images"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows only the active Chat, Image, or Video notice", async () => {
+    const user = userEvent.setup({ delay: null });
+    const updates: UpdateUserModelPreferenceRequest[] = [];
+    context.mocks.browser.matchMedia(true);
+    mockOrgModelRoutes("claude-fable-5");
+    context.mocks.data.userModelPreference({
+      selectedModel: "claude-fable-5",
+      serviceTier: null,
+      selectedImageModel: "fal-ai/qwen-image",
+      selectedVideoModel: "MiniMax-H3",
+      updatedAt: "2026-08-18T00:00:00Z",
+    });
+    context.mocks.api(
+      userModelPreferenceContract.update,
+      ({ body, respond }) => {
+        updates.push(body);
+        return respond(200, {
+          ...body,
+          updatedAt: "2026-08-18T00:01:00Z",
+        });
+      },
+    );
+    mockAgent();
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.ImageModelSelection]: true,
+        [FeatureSwitchKey.VideoModelSelection]: true,
+        [FeatureSwitchKey.NewChatDefaultModelAction]: true,
+      },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    const chatNotice = "Temporarily switched to Claude Sonnet 4.6";
+    const imageNotice = "Temporarily switched to GPT Image 2 for images";
+    const videoNotice = "Temporarily switched to Veo 3.1 Fast for video";
+
+    await user.click(await findComposerModel("Claude Fable 5"));
+    await user.click(
+      await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
+    );
+    await screen.findByText(chatNotice);
+
+    await openImageModels(user);
+    await user.click(await findMediaPanelButton("GPT Image 2"));
+    await screen.findByText(imageNotice);
+    expect(screen.queryByText(chatNotice)).not.toBeInTheDocument();
+
+    // Switching category is enough to re-point the composer, so the notice
+    // follows the tab even before a model in it is picked.
+    await user.click(await findComposerModelPickerTrigger());
+    await user.click(await findCategoryTab("Video"));
+    await waitFor(() => {
+      expect(screen.queryByText(imageNotice)).not.toBeInTheDocument();
+    });
+    await user.click(await findMediaPanelButton("Veo 3.1 fast"));
+    await screen.findByText(videoNotice);
+    expect(screen.queryByText(imageNotice)).not.toBeInTheDocument();
+
+    await user.click(await findComposerModelPickerTrigger());
+    await user.click(await findCategoryTab("Image"));
+    await screen.findByText(imageNotice);
+    expect(screen.queryByText(videoNotice)).not.toBeInTheDocument();
+
+    await user.click(await findCategoryTab("Video"));
+    await screen.findByText(videoNotice);
+    expect(screen.queryByText(imageNotice)).not.toBeInTheDocument();
+
+    await user.click(await findCategoryTab("Chat"));
+    await screen.findByText(chatNotice);
+    expect(screen.queryByText(imageNotice)).not.toBeInTheDocument();
+    expect(screen.queryByText(videoNotice)).not.toBeInTheDocument();
+    expect(updates).toStrictEqual([]);
+  });
+
+  it("omits image UI, preference writes, and thread pins when disabled", async () => {
+    const user = userEvent.setup({ delay: null });
+    let preferenceUpdateCount = 0;
+    let createdThreadId: string | undefined;
+    let createdImageModel: string | undefined;
+    context.mocks.browser.matchMedia(true);
+
+    mockOrgModelRoutes("claude-fable-5");
+    context.mocks.data.userModelPreference({
+      selectedModel: null,
+      serviceTier: null,
+      selectedImageModel: "fal-ai/qwen-image",
+      updatedAt: "2026-08-18T00:00:00Z",
+    });
+    context.mocks.api(
+      userModelPreferenceContract.update,
+      ({ body, respond }) => {
+        preferenceUpdateCount += 1;
+        return respond(200, {
+          ...body,
+          updatedAt: "2026-08-18T00:01:00Z",
+        });
+      },
+    );
+    mockAgent();
+    mockChatLifecycle(context, {
+      onThreadCreate: (body) => {
+        createdThreadId = body.clientThreadId;
+        createdImageModel = body.imageModel;
+      },
+    });
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    await user.click(await findComposerModel("Claude Fable 5"));
+    await screen.findByRole("option", { name: /Claude Fable 5/ });
+    expect(imageCategoryTab()).toBeUndefined();
+    await user.keyboard("{Escape}");
+    await sendMessageInUI(
+      user,
+      screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+      "Keep image selection disabled",
+    );
+    await waitFor(() => {
+      expect(createdThreadId).toBeDefined();
+    });
+    expect(createdImageModel).toBeUndefined();
+    expect(preferenceUpdateCount).toBe(0);
+    if (!createdThreadId) {
+      throw new Error("Created thread id not captured");
+    }
+    expect(
+      context.store.get(eventDrivenChatThread(createdThreadId)),
+    ).toMatchObject({ selectedImageModel: null });
+  });
 
   it("shows the effective member default and pins an image model optimistically", async () => {
     const user = userEvent.setup({ delay: null });
@@ -3534,16 +4092,12 @@ describe("chat composer image model", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
-    const imageModelButton = await findDesktopImageModelButton();
+    const imageTab = await openImageModels(user);
+
+    expect(imageTab).toHaveAttribute("aria-checked", "true");
     await waitFor(() => {
-      expect(imageModelButton).toHaveTextContent("Qwen Image");
+      expect(selectedImageModelLabel()).toBe("Qwen Image");
     });
-    expect(imageModelButton).toHaveAttribute("aria-pressed", "false");
-
-    await user.click(imageModelButton);
-
-    expect(imageModelButton).toHaveAttribute("aria-pressed", "true");
-    expect(imageModelButton).toHaveTextContent(/·\s*Qwen Image/);
     const listbox = screen.getByRole("listbox");
     const imageModelButtons = queryAllByRoleFast("button", listbox);
     expect(
@@ -3555,14 +4109,28 @@ describe("chat composer image model", () => {
           return button.getAttribute("aria-label");
         }),
     ).toStrictEqual(imageModelControlLabels);
-    const variantMenuButton = mediaPanelButtonByAccessibleLabel(
-      "GPT Image 1 variants",
-      listbox,
+    // Both variants are on the row at once, and neither is marked while a
+    // different family is the selection.
+    const variantSegments = queryAllByRoleFast("radio", listbox).filter(
+      (candidate) => {
+        return candidate.hasAttribute("aria-label");
+      },
     );
-    if (!variantMenuButton) {
-      throw new Error("GPT Image 1 variant menu not found");
-    }
-    expect(variantMenuButton).toHaveTextContent(/^Standard$/);
+    expect(
+      variantSegments.map((candidate) => {
+        return candidate.getAttribute("aria-label");
+      }),
+    ).toStrictEqual(["GPT Image 1", "GPT Image 1 Mini"]);
+    expect(
+      variantSegments.map((candidate) => {
+        return candidate.textContent;
+      }),
+    ).toStrictEqual(["Standard", "Mini"]);
+    expect(
+      variantSegments.every((candidate) => {
+        return candidate.getAttribute("aria-checked") === "false";
+      }),
+    ).toBeTruthy();
     expect(within(listbox).queryByText("GPT Image 1 Mini")).toBeNull();
     const openAiIcon = imageModelBrandIcon("GPT Image 2").outerHTML;
     expect(openAiIcon).toContain("openai");
@@ -3592,11 +4160,8 @@ describe("chat composer image model", () => {
       within(listbox).queryByText(/aspect ratio/i),
     ).not.toBeInTheDocument();
 
-    await user.click(variantMenuButton);
-    await expect(
-      findImageVariantMenuItem("GPT Image 1"),
-    ).resolves.toHaveTextContent("Standard");
-    await user.click(await findImageVariantMenuItem("GPT Image 1 Mini"));
+    // One click on the segment is a complete selection -- no menu to open.
+    await user.click(await findImageVariantSegment("GPT Image 1 Mini"));
 
     await waitFor(() => {
       expect(updates).toStrictEqual([
@@ -3605,16 +4170,14 @@ describe("chat composer image model", () => {
           model: "gpt-image-1-mini",
         },
       ]);
-      expect(imageModelButton).toHaveTextContent(/·\s*GPT Image 1 Mini/);
     });
-    await user.click(imageModelButton);
-    const reopenedListbox = screen.getByRole("listbox");
-    expect(
-      mediaPanelButtonByAccessibleLabel(
-        "GPT Image 1 variants",
-        reopenedListbox,
-      ),
-    ).toHaveTextContent(/^Mini$/);
+    await openImageModels(user);
+    await waitFor(() => {
+      expect(selectedImageModelLabel()).toBe("GPT Image 1 Mini");
+    });
+    await expect(
+      findImageVariantSegment("GPT Image 1 Mini"),
+    ).resolves.toHaveAttribute("aria-checked", "true");
     expect(mediaPanelButton("GPT Image 1")).toHaveAttribute(
       "aria-pressed",
       "false",
@@ -3646,33 +4209,28 @@ describe("chat composer image model", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
-    const imageModelButton = await findDesktopImageModelButton();
+    await openImageModels(user);
     await waitFor(() => {
-      expect(imageModelButton).toHaveTextContent("GPT Image 1 Mini");
+      expect(selectedImageModelLabel()).toBe("GPT Image 1 Mini");
     });
-    await user.click(imageModelButton);
-    const listbox = screen.getByRole("listbox");
-    const variantMenuButton = mediaPanelButtonByAccessibleLabel(
-      "GPT Image 1 variants",
-      listbox,
-    );
-    if (!variantMenuButton) {
-      throw new Error("GPT Image 1 variant menu not found");
-    }
-    expect(variantMenuButton).toHaveTextContent(/^Mini$/);
+    await expect(
+      findImageVariantSegment("GPT Image 1 Mini"),
+    ).resolves.toHaveAttribute("aria-checked", "true");
 
-    await user.click(variantMenuButton);
-    await user.click(await findImageVariantMenuItem("GPT Image 1"));
+    await user.click(await findImageVariantSegment("GPT Image 1"));
 
     await waitFor(() => {
       expect(updates).toStrictEqual([
         { threadId: THREAD_ID, model: "gpt-image-1" },
       ]);
-      expect(imageModelButton).toHaveTextContent(/·\s*GPT Image 1$/);
+    });
+    await openImageModels(user);
+    await waitFor(() => {
+      expect(selectedImageModelLabel()).toBe("GPT Image 1");
     });
   });
 
-  it("opens Image models and Video models as direct mobile rows", async () => {
+  it("switches category from the same strip on mobile", async () => {
     const user = userEvent.setup({ delay: null });
     context.mocks.browser.matchMedia(false);
     mockOrgModelRoutes("claude-fable-5");
@@ -3693,11 +4251,15 @@ describe("chat composer image model", () => {
 
     await user.click(await findComposerModel("Claude Fable 5"));
 
-    expect(mediaPanelButton("Image models")).toBeInTheDocument();
-    expect(mediaPanelButton("Video models")).toBeInTheDocument();
-    expect(mediaPanelButton("Manage more models")).toBeUndefined();
+    // Mobile gets the same three tabs as desktop, not a root menu of rows.
+    await expect(findCategoryTab("Chat")).resolves.toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(categoryTab("Image")).toBeInTheDocument();
+    expect(categoryTab("Video")).toBeInTheDocument();
 
-    await user.click(await findMediaPanelButton("Image models"));
+    await user.click(await findCategoryTab("Image"));
 
     await expect(findMediaPanelButton("GPT Image 2")).resolves.toHaveAttribute(
       "aria-pressed",
@@ -3705,10 +4267,13 @@ describe("chat composer image model", () => {
     );
     expect(mediaPanelButton("Seedream 4")).toBeInTheDocument();
 
-    await user.click(await findMediaPanelButton("Image models"));
+    await user.click(await findCategoryTab("Chat"));
 
-    expect(mediaPanelButton("Video models")).toBeInTheDocument();
     expect(mediaPanelButton("GPT Image 2")).toBeUndefined();
+    await expect(findCategoryTab("Chat")).resolves.toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
   });
 
   it("keeps image model pins independent across split chat composers", async () => {
@@ -3757,14 +4322,11 @@ describe("chat composer image model", () => {
     if (!firstThread || !secondThread) {
       throw new Error("Split chat threads not found");
     }
-    const firstImageModelButton =
-      await findDesktopImageModelButton(firstThread);
-    const secondImageModelButton =
-      await findDesktopImageModelButton(secondThread);
-    expect(firstImageModelButton).toHaveTextContent("GPT Image 2");
-    expect(secondImageModelButton).toHaveTextContent("Qwen Image");
-
-    await user.click(firstImageModelButton);
+    // Each composer owns a popover, so the two pins are read one at a time.
+    await openImageModels(user, firstThread);
+    await waitFor(() => {
+      expect(selectedImageModelLabel()).toBe("GPT Image 2");
+    });
     await user.click(await findMediaPanelButton("Seedream 4"));
 
     await waitFor(() => {
@@ -3774,30 +4336,54 @@ describe("chat composer image model", () => {
           model: "fal-ai/bytedance/seedream/v4/text-to-image",
         },
       ]);
-      expect(firstImageModelButton).toHaveTextContent("Seedream 4");
-      expect(secondImageModelButton).toHaveTextContent("Qwen Image");
+    });
+    await openImageModels(user, firstThread);
+    await waitFor(() => {
+      expect(selectedImageModelLabel()).toBe("Seedream 4");
+    });
+    await user.keyboard("{Escape}");
+
+    await openImageModels(user, secondThread);
+    await waitFor(() => {
+      expect(selectedImageModelLabel()).toBe("Qwen Image");
     });
   });
 });
 
 describe("chat composer video model", () => {
-  function desktopVideoModelButton(): HTMLElement | undefined {
-    return queryAllByRoleFast("button").find((candidate) => {
-      return (
-        candidate.getAttribute("aria-label") === "Video models" &&
-        candidate.hasAttribute("aria-pressed")
-      );
-    });
+  function videoCategoryTab(): HTMLElement | undefined {
+    return categoryTab("Video");
   }
 
-  function findDesktopVideoModelButton(): Promise<HTMLElement> {
-    return waitFor(() => {
-      const button = desktopVideoModelButton();
-      if (!button) {
-        throw new Error("Desktop video model button not found");
-      }
-      return button;
+  /** Opens the single composer entry point and switches to the video models. */
+  async function openVideoModels(
+    user: ReturnType<typeof userEvent.setup>,
+  ): Promise<HTMLElement> {
+    await user.click(await findComposerModelPickerTrigger());
+    const tab = await findCategoryTab("Video");
+    await user.click(tab);
+    return tab;
+  }
+
+  /**
+   * The composer no longer prints the video model, so the selection is read
+   * from the open panel: a plain row carries `aria-pressed`, while Seedance 2.0
+   * marks the choice on its variant segment instead.
+   */
+  function selectedVideoModelLabel(): string | undefined {
+    const row = queryAllByRoleFast("button").find((candidate) => {
+      return candidate.getAttribute("aria-pressed") === "true";
     });
+    if (row) {
+      return row.getAttribute("aria-label") ?? undefined;
+    }
+    const variant = queryAllByRoleFast("radio").find((candidate) => {
+      return (
+        candidate.getAttribute("aria-checked") === "true" &&
+        candidate.hasAttribute("aria-label")
+      );
+    });
+    return variant?.getAttribute("aria-label") ?? undefined;
   }
 
   function videoPanelButton(label: string): HTMLElement | undefined {
@@ -3816,35 +4402,15 @@ describe("chat composer video model", () => {
     });
   }
 
-  function videoPanelButtonByAccessibleLabel(
-    label: string,
-  ): HTMLElement | undefined {
-    return queryAllByRoleFast("button").find((candidate) => {
+  function videoVariantSegment(label: string): HTMLElement | undefined {
+    return queryAllByRoleFast("radio").find((candidate) => {
       return candidate.getAttribute("aria-label") === label;
     });
   }
 
-  function findVideoPanelButtonByAccessibleLabel(
-    label: string,
-  ): Promise<HTMLElement> {
+  function findVideoVariantSegment(label: string): Promise<HTMLElement> {
     return waitFor(() => {
-      const button = videoPanelButtonByAccessibleLabel(label);
-      if (!button) {
-        throw new Error(`${label} button not found`);
-      }
-      return button;
-    });
-  }
-
-  function videoVariantMenuItem(label: string): HTMLElement | undefined {
-    return queryAllByRoleFast("menuitem").find((candidate) => {
-      return candidate.getAttribute("aria-label") === label;
-    });
-  }
-
-  function findVideoVariantMenuItem(label: string): Promise<HTMLElement> {
-    return waitFor(() => {
-      const item = videoVariantMenuItem(label);
+      const item = videoVariantSegment(label);
       if (!item) {
         throw new Error(`${label} video variant not found`);
       }
@@ -3896,7 +4462,7 @@ describe("chat composer video model", () => {
     });
 
     await user.click(await findComposerModel("Claude Fable 5"));
-    await user.click(await findVideoPanelButton("Manage more models"));
+    await user.click(await findCategoryTab("Video"));
     await expect(findVideoPanelButton("MiniMax H3")).resolves.toHaveAttribute(
       "aria-pressed",
       "true",
@@ -3929,8 +4495,10 @@ describe("chat composer video model", () => {
       "Use my current video default",
     );
 
+    // Untouched: the thread is created unpinned so it follows the live member
+    // default (already reflected in the panel above) instead of freezing it.
     await waitFor(() => {
-      expect(createdVideoModel).toBe("fal-ai/veo3.1/fast");
+      expect(createdVideoModel).toBeUndefined();
     });
   });
 
@@ -3975,7 +4543,7 @@ describe("chat composer video model", () => {
     });
 
     await user.click(await findComposerModel("Claude Fable 5"));
-    await user.click(await findVideoPanelButton("Manage more models"));
+    await user.click(await findCategoryTab("Video"));
     await user.click(await findVideoPanelButton("Veo 3.1 fast"));
 
     await waitFor(() => {
@@ -4058,15 +4626,8 @@ describe("chat composer video model", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
-    const videoModelButton = await findDesktopVideoModelButton();
-    expect(videoModelButton).toHaveAttribute("aria-pressed", "false");
-    // The first category switch opens the list behind the category it lands on.
-    await user.click(videoModelButton);
-    expect(videoModelButton).toHaveAttribute("aria-pressed", "true");
-    await expect(findComposerModel("Claude Fable 5")).resolves.toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
+    const videoTab = await openVideoModels(user);
+    expect(videoTab).toHaveAttribute("aria-checked", "true");
 
     // Every public catalog model is offered, with no plan or provider filter.
     await expect(
@@ -4075,34 +4636,41 @@ describe("chat composer video model", () => {
     expect(videoPanelButton("Veo 3.1 fast")).toBeInTheDocument();
     expect(videoPanelButton("Kling v3 4K")).toBeInTheDocument();
     expect(videoPanelButton("MiniMax H3")).toBeInTheDocument();
+    // The three Seedance 2.0 siblings collapse onto one row's segment.
     expect(videoPanelButton("Seedance 2.0 fast")).toBeUndefined();
     expect(videoPanelButton("Seedance 2.0 Mini")).toBeUndefined();
+    const variantSegments = queryAllByRoleFast("radio").filter((candidate) => {
+      return candidate.hasAttribute("aria-label");
+    });
     expect(
-      videoPanelButtonByAccessibleLabel("Seedance 2.0 variants"),
-    ).toHaveTextContent(/^Fast$/);
+      variantSegments.map((candidate) => {
+        return candidate.textContent;
+      }),
+    ).toStrictEqual(["Standard", "Fast", "Mini"]);
+    expect(selectedVideoModelLabel()).toBe("Seedance 2.0 fast");
 
     await user.click(await findVideoPanelButton("Veo 3.1 fast"));
 
     await waitFor(() => {
       expect(bodies).toStrictEqual([{ model: "fal-ai/veo3.1/fast" }]);
     });
-    // Choosing closes the shared popover. Switching back to Chat keeps it
-    // closed; clicking the expanded Chat mode opens the run-model list.
+    // Choosing closes the popover. Desktop reopens on the category it was left
+    // on, and the strip is what walks back to the chat models.
     await waitFor(() => {
       expect(videoPanelButton("Veo 3.1 fast")).toBeUndefined();
     });
     await user.click(await findComposerModel("Claude Fable 5"));
-    await expect(findComposerModel("Claude Fable 5")).resolves.toHaveAttribute(
-      "aria-expanded",
-      "false",
+    await expect(findCategoryTab("Video")).resolves.toHaveAttribute(
+      "aria-checked",
+      "true",
     );
-    await user.click(await findComposerModel("Claude Fable 5"));
+    await user.click(await findCategoryTab("Chat"));
     await expect(
-      findVideoPanelButton("Manage more models"),
+      screen.findByRole("option", { name: /Claude Fable 5/ }),
     ).resolves.toBeInTheDocument();
   });
 
-  it("preserves the shared popup state while switching desktop model modes", async () => {
+  it("switches category inside one popover opened from a single trigger", async () => {
     const user = userEvent.setup({ delay: null });
     context.mocks.browser.matchMedia(true);
     mockVideoModelThread(null);
@@ -4113,74 +4681,44 @@ describe("chat composer video model", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
+    // The composer carries exactly one model control, and it names the chat
+    // model -- no image or video control sits beside it.
     const chatModelButton = await findComposerModel("Claude Fable 5");
-    const videoModelButton = await findDesktopVideoModelButton();
-    expect(
-      queryAllByRoleFast("button").some((candidate) => {
-        return candidate.getAttribute("aria-label") === "Image models";
-      }),
-    ).toBeFalsy();
+    expect(screen.getAllByRole("combobox")).toHaveLength(1);
     expect(chatModelButton).toHaveAttribute("aria-expanded", "false");
-    expect(videoModelButton).toHaveAttribute("aria-expanded", "false");
-    const expandedChatModeIcon = chatModelButton.querySelector(
+    const chatModeIcon = chatModelButton.querySelector(
       ".lucide-message-circle",
     );
-    expect(expandedChatModeIcon).toBeInTheDocument();
-    expect(expandedChatModeIcon).toHaveAttribute("width", "16");
-    expect(expandedChatModeIcon).toHaveAttribute("height", "16");
+    expect(chatModeIcon).toBeInTheDocument();
+    expect(chatModeIcon).toHaveAttribute("width", "16");
+    expect(chatModeIcon).toHaveAttribute("height", "16");
     expect(chatModelButton).toHaveTextContent(/·\s*Claude Fable 5/);
     expect(chatModelButton).not.toHaveTextContent("Chat");
-
-    await user.click(videoModelButton);
-
-    expect(videoModelButton).toHaveTextContent(/·\s*Seedance 2\.0 Fast/);
-    expect(videoModelButton).not.toHaveTextContent("Video");
-    expect(videoModelButton).toHaveAttribute("aria-pressed", "true");
-    // The first category switch opens the list behind the category it lands on.
-    await expect(findVideoPanelButton("Seedance 2.5")).resolves.toBeVisible();
-    expect(chatModelButton).toHaveAttribute("aria-expanded", "false");
-    expect(videoModelButton).toHaveAttribute("aria-expanded", "true");
-
-    // Close it again so the rest of the walk starts from a closed popup.
-    await user.click(videoModelButton);
-    await waitFor(() => {
-      expect(videoPanelButton("Seedance 2.5")).toBeUndefined();
-    });
-    expect(videoModelButton).toHaveAttribute("aria-expanded", "false");
-    const collapsedChatModeIcon = Array.from(
-      chatModelButton.parentElement?.querySelectorAll(
-        ".lucide-message-circle",
-      ) ?? [],
-    ).find((icon) => {
-      return !chatModelButton.contains(icon);
-    });
-    expect(collapsedChatModeIcon).toBeInTheDocument();
-    expect(collapsedChatModeIcon).toHaveAttribute("width", "16");
-    expect(collapsedChatModeIcon).toHaveAttribute("height", "16");
-
-    chatModelButton.focus();
-    await user.keyboard("{Enter}");
-    expect(videoModelButton).toHaveAttribute("aria-pressed", "false");
-    expect(chatModelButton).toHaveAttribute("aria-expanded", "false");
-    expect(videoModelButton).toHaveAttribute("aria-expanded", "false");
-
-    await user.click(chatModelButton);
-    await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ });
-    expect(chatModelButton).toHaveAttribute("aria-expanded", "true");
-    expect(videoModelButton).toHaveAttribute("aria-expanded", "false");
-
-    await user.click(videoModelButton);
-
-    await expect(findVideoPanelButton("Seedance 2.5")).resolves.toBeVisible();
-    expect(chatModelButton).toHaveAttribute("aria-expanded", "false");
-    expect(videoModelButton).toHaveAttribute("aria-expanded", "true");
+    expect(videoCategoryTab()).toBeUndefined();
 
     await user.click(chatModelButton);
 
     await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ });
     expect(chatModelButton).toHaveAttribute("aria-expanded", "true");
-    expect(videoModelButton).toHaveAttribute("aria-expanded", "false");
+    // Only the categories the composer actually offers get a tab.
+    expect(categoryTab("Image")).toBeUndefined();
 
+    // Switching category swaps the list without closing the popover.
+    await user.click(await findCategoryTab("Video"));
+
+    await expect(findVideoPanelButton("Seedance 2.5")).resolves.toBeVisible();
+    expect(chatModelButton).toHaveAttribute("aria-expanded", "true");
+    expect(
+      screen.queryByRole("option", { name: /Claude Sonnet 4\.6/ }),
+    ).not.toBeInTheDocument();
+
+    await user.click(await findCategoryTab("Chat"));
+
+    await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ });
+    expect(videoPanelButton("Seedance 2.5")).toBeUndefined();
+    expect(chatModelButton).toHaveAttribute("aria-expanded", "true");
+
+    // The same trigger closes it.
     await user.click(chatModelButton);
     await waitFor(() => {
       expect(
@@ -4188,7 +4726,6 @@ describe("chat composer video model", () => {
       ).not.toBeInTheDocument();
     });
     expect(chatModelButton).toHaveAttribute("aria-expanded", "false");
-    expect(videoModelButton).toHaveAttribute("aria-expanded", "false");
   });
 
   it("pins the visible fallback model to the current thread", async () => {
@@ -4203,28 +4740,28 @@ describe("chat composer video model", () => {
     });
 
     await user.click(await findComposerModel("Claude Fable 5"));
-    expect(videoPanelButton("Manage more models")).toBeInTheDocument();
-    expect(videoPanelButton("Image models")).toBeUndefined();
-    await user.click(await findVideoPanelButton("Manage more models"));
-    expect(videoPanelButton("Video models")).toBeInTheDocument();
-    expect(videoPanelButton("Image models")).toBeUndefined();
+    // Only the categories the composer offers get a tab, on mobile too.
+    expect(categoryTab("Image")).toBeUndefined();
+    await user.click(await findCategoryTab("Video"));
     expect(videoPanelButton("MiniMax H3")).toHaveAttribute(
       "aria-pressed",
       "true",
     );
-    await user.click(await findVideoPanelButton("Video models"));
-    expect(videoPanelButton("Manage more models")).toBeInTheDocument();
+    await user.click(await findCategoryTab("Chat"));
     expect(videoPanelButton("MiniMax H3")).toBeUndefined();
-    await user.click(await findVideoPanelButton("Manage more models"));
+    await user.click(await findCategoryTab("Video"));
 
-    await user.click(
-      await findVideoPanelButtonByAccessibleLabel("Seedance 2.0 variants"),
-    );
-    await expect(
-      findVideoVariantMenuItem("Seedance 2.0"),
-    ).resolves.toBeInTheDocument();
-    expect(videoVariantMenuItem("Seedance 2.0 Mini")).toBeInTheDocument();
-    await user.click(await findVideoVariantMenuItem("Seedance 2.0 fast"));
+    // All three siblings sit on the row, so the pick is a single click.
+    expect(
+      queryAllByRoleFast("radio")
+        .filter((candidate) => {
+          return candidate.hasAttribute("aria-label");
+        })
+        .map((candidate) => {
+          return candidate.getAttribute("aria-label");
+        }),
+    ).toStrictEqual(["Seedance 2.0", "Seedance 2.0 fast", "Seedance 2.0 Mini"]);
+    await user.click(await findVideoVariantSegment("Seedance 2.0 fast"));
 
     await waitFor(() => {
       expect(bodies).toStrictEqual([
@@ -4251,7 +4788,7 @@ describe("chat composer video model", () => {
     });
 
     await user.click(await findComposerModel("Claude Fable 5"));
-    await user.click(await findVideoPanelButton("Manage more models"));
+    await user.click(await findCategoryTab("Video"));
 
     await expect(findVideoPanelButton("Veo 3.1 fast")).resolves.toHaveAttribute(
       "aria-pressed",
@@ -4267,8 +4804,7 @@ describe("chat composer video model", () => {
 
     await user.click(await findComposerModel("Claude Fable 5"));
     await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ });
-    expect(desktopVideoModelButton()).toBeUndefined();
-    expect(videoPanelButton("Manage more models")).toBeUndefined();
+    expect(videoCategoryTab()).toBeUndefined();
   });
 
   it("sends the video parameters chosen on the composer chip", async () => {
@@ -4295,7 +4831,7 @@ describe("chat composer video model", () => {
     await screen.findByPlaceholderText(PLACEHOLDER);
     expect(screen.queryByLabelText(/^Video options /)).not.toBeInTheDocument();
 
-    await user.click(await findDesktopVideoModelButton());
+    await openVideoModels(user);
 
     // Seedance 2.0 fast is the system default, and the chip states what that
     // model would use before anything is touched.
@@ -4342,7 +4878,7 @@ describe("chat composer video model", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
-    await user.click(await findDesktopVideoModelButton());
+    await openVideoModels(user);
 
     // MiniMax H3 accepts neither 720p nor 1080p, so the chip reads its own
     // default instead and the panel never offers a value it would reject.
@@ -4413,7 +4949,7 @@ describe("chat composer video model", () => {
 
     // Entering video mode with the member default still selected says nothing.
     // The first category switch also opens the video list.
-    await user.click(await findDesktopVideoModelButton());
+    await openVideoModels(user);
     expect(
       noticeText("Temporarily switched to MiniMax H3 for video"),
     ).toBeNull();
@@ -4488,10 +5024,9 @@ describe("chat composer video model", () => {
       expect(noticeText(chatNotice)).toBeInTheDocument();
     });
 
-    // Video mode, video model still on the member default: nothing pending.
-    const videoModelButton = await findDesktopVideoModelButton();
-    await user.click(videoModelButton);
-    expect(videoModelButton).toHaveAttribute("aria-pressed", "true");
+    // Video category, video model still on the member default: nothing pending.
+    const videoTab = await openVideoModels(user);
+    expect(videoTab).toHaveAttribute("aria-checked", "true");
     await waitFor(() => {
       expect(noticeText(chatNotice)).toBeNull();
     });
@@ -4503,18 +5038,16 @@ describe("chat composer video model", () => {
     });
     expect(noticeText(chatNotice)).toBeNull();
 
-    // Back to chat mode: the run-model notice returns, the video one leaves.
-    const chatModelButton = await findComposerModel("Claude Sonnet 4.6");
-    chatModelButton.focus();
-    await user.keyboard("{Enter}");
-    expect(videoModelButton).toHaveAttribute("aria-pressed", "false");
+    // Back to the chat tab: the run-model notice returns, the video one leaves.
+    await user.click(await findComposerModelPickerTrigger());
+    await user.click(await findCategoryTab("Chat"));
     await waitFor(() => {
       expect(noticeText(chatNotice)).toBeInTheDocument();
     });
     expect(noticeText(videoNotice)).toBeNull();
 
-    // And back again — still one at a time, still the current mode's.
-    await user.click(videoModelButton);
+    // And back again — still one at a time, still the current category's.
+    await user.click(await findCategoryTab("Video"));
     await waitFor(() => {
       expect(noticeText(videoNotice)).toBeInTheDocument();
     });
@@ -4568,8 +5101,7 @@ describe("chat composer video model", () => {
 
     // No `userPreferenceChanged` push is delivered, so the cached preference
     // still holds the pre-write run model. The video write must not resend it.
-    const videoModelButton = await findDesktopVideoModelButton();
-    await user.click(videoModelButton);
+    await openVideoModels(user);
     await user.click(await findVideoPanelButton("Veo 3.1 fast"));
     await waitFor(() => {
       expect(

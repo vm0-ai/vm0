@@ -222,11 +222,11 @@ jobs:
             fi
           done
 
-          if printf '%s\n' "$CHANGED_FILES" | grep -qE '^turbo/packages/db/(src/(migrations|schema|jsonb-contracts)/|scripts/(migration-runner|test-migration-runner-timeouts)\.ts$)'; then
-            echo "Migration, schema, JSONB contract, or migration runner changes detected"
+          if printf '%s\n' "$CHANGED_FILES" | grep -qE '^turbo/packages/db/(src/(migrations|schema|jsonb-contracts)/|scripts/)'; then
+            echo "Migration, schema, JSONB contract, or database script changes detected"
             echo "migration-changed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "No migration, schema, JSONB contract, or migration runner changes"
+            echo "No migration, schema, JSONB contract, or database script changes"
             echo "migration-changed=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -615,7 +615,7 @@ jobs:
     needs: prepare
     runs-on: ubuntu-latest
     timeout-minutes: 12
-    # Only run when migration, schema, or persistent JSONB contract files changed
+    # Only run when migration, schema, persistent JSONB contract, or database script files changed
     if: needs.prepare.outputs.migration-changed == 'true'
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
@@ -733,6 +733,8 @@ jobs:
         run: pnpm vitest run --project=@okouai/cli --coverage.enabled --coverage.reporter=json
       - name: Upload coverage to Codecov
         if: success() || failure()
+        continue-on-error: true
+        timeout-minutes: 1
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -740,6 +742,8 @@ jobs:
           files: turbo/coverage/coverage-final.json
       - name: Upload test results to Codecov
         if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 1
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -765,6 +769,8 @@ jobs:
         run: pnpm vitest run --project=@okouai/app --shard=${{ matrix.shard }}/8 --coverage.enabled --coverage.reporter=json
       - name: Upload coverage to Codecov
         if: success() || failure()
+        continue-on-error: true
+        timeout-minutes: 1
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -772,6 +778,8 @@ jobs:
           files: turbo/coverage/coverage-final.json
       - name: Upload test results to Codecov
         if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 1
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -819,6 +827,8 @@ jobs:
         run: pnpm vitest run --project=api --shard=${{ matrix.shard }}/8 --coverage.enabled --coverage.reporter=json
       - name: Upload coverage to Codecov
         if: success() || failure()
+        continue-on-error: true
+        timeout-minutes: 1
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -826,6 +836,8 @@ jobs:
           files: turbo/coverage/coverage-final.json
       - name: Upload test results to Codecov
         if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 1
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -854,6 +866,8 @@ jobs:
         run: pnpm -F @okouai/eslint-config test
       - name: Upload coverage to Codecov
         if: success() || failure()
+        continue-on-error: true
+        timeout-minutes: 1
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -861,6 +875,8 @@ jobs:
           files: turbo/coverage/coverage-final.json
       - name: Upload test results to Codecov
         if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 1
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -945,7 +961,6 @@ jobs:
           DEV_MODEL_ANTHROPIC_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
           DEV_MODEL_OPENAI_KEY: ${{ secrets.OPENAI_API_KEY }}
           DEV_MODEL_OPENROUTER_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          DEV_MODEL_DEEPSEEK_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           DEV_MODEL_MOONSHOT_KEY: ${{ secrets.MOONSHOT_API_KEY }}
           DEV_MODEL_MINIMAX_KEY: ${{ secrets.MINIMAX_API_KEY }}
         run: |
@@ -961,7 +976,6 @@ jobs:
             DEV_MODEL_ANTHROPIC_KEY
             DEV_MODEL_OPENAI_KEY
             DEV_MODEL_OPENROUTER_KEY
-            DEV_MODEL_DEEPSEEK_KEY
             DEV_MODEL_MOONSHOT_KEY
             DEV_MODEL_MINIMAX_KEY
           )
@@ -2242,6 +2256,8 @@ jobs:
 
       - name: Upload test results to Codecov
         if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 1
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -2782,6 +2798,8 @@ jobs:
           fi
       - name: Upload runner E2E test results to Codecov
         if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 1
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

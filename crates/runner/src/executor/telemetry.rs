@@ -29,6 +29,43 @@ pub(crate) enum RunnerPreSpawnPhase {
     SpawnJobSetup,
 }
 
+#[derive(Clone, Copy)]
+pub(crate) enum FinalizingHandoffOutcome {
+    Accepted,
+    ActivationFailed,
+    PublishedExact,
+    NotAcceptedBeforeDeadline,
+    NoExact,
+    Cancelled,
+}
+
+impl FinalizingHandoffOutcome {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Accepted => "accepted",
+            Self::ActivationFailed => "activation_failed",
+            Self::PublishedExact => "published_exact",
+            Self::NotAcceptedBeforeDeadline => "not_accepted_before_deadline",
+            Self::NoExact => "no_exact",
+            Self::Cancelled => "cancelled",
+        }
+    }
+
+    const fn succeeded(self) -> bool {
+        matches!(self, Self::Accepted | Self::PublishedExact)
+    }
+
+    pub(crate) fn record(self, telemetry: &mut JobTelemetry) {
+        telemetry.record_with_outcome(
+            "runner_claim_finalizing_handoff",
+            Duration::ZERO,
+            self.succeeded(),
+            (!self.succeeded()).then_some(self.as_str()),
+            Some(self.as_str()),
+        );
+    }
+}
+
 impl RunnerPreSpawnPhase {
     const ALL: [Self; 10] = [
         Self::ResumeSessionValidation,
@@ -119,9 +156,11 @@ impl RunnerPreSpawnPhaseDurations {
 
 pub(crate) struct RunnerPreSpawnTiming {
     claim_returned_at: Instant,
+    api_claim_request_elapsed: Option<Duration>,
     phase_durations: RunnerPreSpawnPhaseDurations,
     task_enqueued_at: Option<Instant>,
     exact_reuse_speculation: Option<ExactReuseSpeculationTiming>,
+    finalizing_handoff_outcome: Option<FinalizingHandoffOutcome>,
 }
 
 #[derive(Clone, Copy)]
@@ -148,20 +187,33 @@ pub(super) struct RunnerSpawnTiming {
 impl RunnerPreSpawnTiming {
     #[cfg(test)]
     pub(crate) fn start_after_claim() -> Self {
-        Self::start_at(Instant::now())
+        Self::start_at(Instant::now(), None)
     }
 
-    pub(crate) fn start_at(claim_returned_at: Instant) -> Self {
+    pub(crate) fn start_at(
+        claim_returned_at: Instant,
+        api_claim_request_elapsed: Option<Duration>,
+    ) -> Self {
         Self {
             claim_returned_at,
+            api_claim_request_elapsed,
             phase_durations: RunnerPreSpawnPhaseDurations::default(),
             task_enqueued_at: None,
             exact_reuse_speculation: None,
+            finalizing_handoff_outcome: None,
         }
     }
 
     pub(crate) fn record_exact_reuse_speculation(&mut self, timing: ExactReuseSpeculationTiming) {
         self.exact_reuse_speculation = Some(timing);
+    }
+
+    pub(crate) fn record_finalizing_handoff_outcome(&mut self, outcome: FinalizingHandoffOutcome) {
+        self.finalizing_handoff_outcome = Some(outcome);
+    }
+
+    pub(crate) fn finalizing_handoff_outcome(&self) -> Option<FinalizingHandoffOutcome> {
+        self.finalizing_handoff_outcome
     }
 
     pub(crate) fn record_phase(&mut self, phase: RunnerPreSpawnPhase, duration: Duration) {
@@ -181,6 +233,9 @@ impl RunnerPreSpawnTiming {
     }
 
     fn record_collected_phases(&self, telemetry: &mut JobTelemetry, executor_started_at: Instant) {
+        if let Some(duration) = self.api_claim_request_elapsed {
+            telemetry.record("runner_claim_http_request", duration, true, None);
+        }
         for phase in RunnerPreSpawnPhase::ALL {
             if let Some(duration) = self.phase_durations.get(phase) {
                 telemetry.record(phase.action_type(), duration, true, None);
@@ -193,6 +248,9 @@ impl RunnerPreSpawnTiming {
                 true,
                 None,
             );
+        }
+        if let Some(outcome) = self.finalizing_handoff_outcome {
+            outcome.record(telemetry);
         }
         if let Some(timing) = self.exact_reuse_speculation.as_ref() {
             telemetry.record(

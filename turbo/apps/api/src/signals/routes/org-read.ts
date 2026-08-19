@@ -1,9 +1,9 @@
 import { command, computed } from "ccstate";
 import {
-  zeroOrgContract,
-  zeroOrgLeaveContract,
-} from "@okouai/api-contracts/contracts/zero-org";
-import { zeroOrgMembersContract } from "@okouai/api-contracts/contracts/zero-org-members";
+  orgContract,
+  orgLeaveContract,
+} from "@okouai/api-contracts/contracts/org-routes";
+import { orgMembersContract } from "@okouai/api-contracts/contracts/org-member-routes";
 
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -40,7 +40,7 @@ const updateOrgInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return badRequestMessage("No organization is selected for this request");
   }
 
-  const bodyResult = await get(bodyResultOf(zeroOrgContract.update));
+  const bodyResult = await get(bodyResultOf(orgContract.update));
   signal.throwIfAborted();
   if (!bodyResult.ok) {
     return bodyResult.response;
@@ -71,7 +71,7 @@ const updateOrgInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
 });
 
-const leaveOrgBody$ = bodyResultOf(zeroOrgLeaveContract.leave);
+const leaveOrgBody$ = bodyResultOf(orgLeaveContract.leave);
 
 const leaveOrgInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
@@ -115,19 +115,19 @@ const membersInner$ = computed(async (get) => {
 
 export const orgReadRoutes: readonly RouteEntry[] = [
   {
-    route: zeroOrgContract.get,
+    route: orgContract.get,
     handler: authRoute({ acceptAnySandboxCapability: true }, getOrgInner$),
   },
   {
-    route: zeroOrgContract.update,
+    route: orgContract.update,
     handler: authRoute({}, updateOrgInner$),
   },
   {
-    route: zeroOrgLeaveContract.leave,
+    route: orgLeaveContract.leave,
     handler: authRoute({ requireOrganization: true }, leaveOrgInner$),
   },
   {
-    route: zeroOrgMembersContract.members,
+    route: orgMembersContract.members,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       membersInner$,

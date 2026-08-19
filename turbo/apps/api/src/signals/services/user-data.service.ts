@@ -45,8 +45,9 @@ function toStringArray(value: unknown): string[] {
   });
 }
 
+/** Dedupe while keeping caller order — pinned order is user-controlled. */
 function normalizePinnedAgentIds(ids: readonly string[]): string[] {
-  return [...new Set(ids)].sort();
+  return [...new Set(ids)];
 }
 
 function parseSendMode(value: unknown): SendMode {

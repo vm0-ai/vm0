@@ -454,6 +454,8 @@ jobs:
 
       - name: Upload coverage to Codecov
         if: success() || failure()
+        continue-on-error: true
+        timeout-minutes: 1
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

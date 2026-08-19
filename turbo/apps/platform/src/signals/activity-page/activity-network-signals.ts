@@ -1,5 +1,5 @@
 import { state, computed, command } from "ccstate";
-import { zeroRunNetworkLogsContract } from "@okouai/api-contracts/contracts/zero-runs";
+import { runNetworkLogsContract } from "@okouai/api-contracts/contracts/run-routes";
 import type { NetworkLogEntry } from "@okouai/api-contracts/contracts/runs";
 import type {
   InitClientArgs,
@@ -13,7 +13,7 @@ const PAGE_LIMIT = 500;
 const MAX_PAGES = 20;
 
 type NetworkLogsClient = InitClientReturn<
-  typeof zeroRunNetworkLogsContract,
+  typeof runNetworkLogsContract,
   InitClientArgs
 >;
 
@@ -106,7 +106,7 @@ const firstPage$ = computed(async (get) => {
   if (!runId) {
     return null;
   }
-  const client = get(zeroClient$)(zeroRunNetworkLogsContract);
+  const client = get(zeroClient$)(runNetworkLogsContract);
   return {
     runId,
     ...(await fetchPage(client, runId)),
@@ -213,7 +213,7 @@ export const loadNetworkLogsNextPage$ = command(
       });
     };
 
-    const client = get(zeroClient$)(zeroRunNetworkLogsContract);
+    const client = get(zeroClient$)(runNetworkLogsContract);
     const { logs, hasMore, nextCursor } = await fetchPage(
       client,
       runId,

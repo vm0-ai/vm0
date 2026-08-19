@@ -8,9 +8,9 @@ import {
 } from "@okouai/api-contracts/contracts/teams-connect";
 import {
   FEISHU_OAUTH_SCOPES,
-  zeroFeishuConnectContract,
+  feishuConnectContract,
   type FeishuConnectStatus,
-} from "@okouai/api-contracts/contracts/zero-feishu-connect";
+} from "@okouai/api-contracts/contracts/feishu-connect";
 import { strapiIntegrationsContract } from "@okouai/api-contracts/contracts/strapi-integrations";
 import { integrationsGithubContract } from "@okouai/api-contracts/contracts/integrations-github";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -106,10 +106,10 @@ function mockFeishuAPI(overrides: Partial<FeishuConnectStatus> = {}): void {
     defaultAgentId: null,
     defaultAgentName: "Okou",
   };
-  context.mocks.api(zeroFeishuConnectContract.getStatus, ({ respond }) => {
+  context.mocks.api(feishuConnectContract.getStatus, ({ respond }) => {
     return respond(200, { ...defaults, ...overrides });
   });
-  context.mocks.api(zeroFeishuConnectContract.checkAppId, ({ respond }) => {
+  context.mocks.api(feishuConnectContract.checkAppId, ({ respond }) => {
     return respond(200, { available: true });
   });
 }
@@ -183,25 +183,22 @@ async function disconnectAndReopenAgentPhone(): Promise<HTMLElement> {
 describe("works page", () => {
   it("shows skeleton rows while Feishu settings load", async () => {
     const responseReady = context.mocks.deferred<void>();
-    context.mocks.api(
-      zeroFeishuConnectContract.getStatus,
-      async ({ respond }) => {
-        await responseReady.promise;
-        return respond(200, {
-          isConnected: false,
-          isInstalled: false,
-          isAdmin: true,
-          appId: null,
-          callbackUrl: null,
-          callbackVerified: false,
-          messageReceived: false,
-          tenantKey: null,
-          tenantName: null,
-          defaultAgentId: null,
-          defaultAgentName: "Okou",
-        });
-      },
-    );
+    context.mocks.api(feishuConnectContract.getStatus, async ({ respond }) => {
+      await responseReady.promise;
+      return respond(200, {
+        isConnected: false,
+        isInstalled: false,
+        isAdmin: true,
+        appId: null,
+        callbackUrl: null,
+        callbackVerified: false,
+        messageReceived: false,
+        tenantKey: null,
+        tenantName: null,
+        defaultAgentId: null,
+        defaultAgentName: "Okou",
+      });
+    });
 
     detachedSetupPage({
       context,
@@ -943,7 +940,7 @@ describe("works page", () => {
     let callbackVerified = false;
     let isConnected = false;
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
-    context.mocks.api(zeroFeishuConnectContract.getStatus, ({ respond }) => {
+    context.mocks.api(feishuConnectContract.getStatus, ({ respond }) => {
       const installation = {
         id: installationId,
         isConnected,
@@ -1070,7 +1067,7 @@ describe("works page", () => {
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     mockFeishuAPI({ isAdmin: true });
     context.mocks.api(
-      zeroFeishuConnectContract.checkAppId,
+      feishuConnectContract.checkAppId,
       ({ query, respond }) => {
         expect(query.appId).toBe("cli_registered");
         return respond(409, {

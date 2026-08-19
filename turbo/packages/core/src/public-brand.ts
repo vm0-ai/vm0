@@ -58,3 +58,21 @@ export function apiUrlForPublicBrand(
   }
   return url.toString().replace(/\/$/u, "");
 }
+
+/**
+ * Both brands are served at the same time, so a single configured sending
+ * domain cannot be correct for both. Map the production pair explicitly and
+ * leave every other configured domain (preview, development, tests) untouched.
+ */
+export function fromDomainForPublicBrand(
+  configuredFromDomain: string,
+  publicBrand: PublicBrand,
+): string {
+  if (publicBrand === "okou" && configuredFromDomain === "vm0.bot") {
+    return "okou.io";
+  }
+  if (publicBrand === "vm0" && configuredFromDomain === "okou.io") {
+    return "vm0.bot";
+  }
+  return configuredFromDomain;
+}

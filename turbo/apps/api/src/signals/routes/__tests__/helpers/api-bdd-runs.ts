@@ -7,7 +7,7 @@ import {
   cliAuthDeviceContract,
   cliAuthTokenContract,
 } from "@okouai/api-contracts/contracts/cli-auth";
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
+import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agentComposeApiContentSchema } from "@okouai/api-contracts/contracts/composes";
 import { webhookStripeContract } from "@okouai/api-contracts/contracts/webhooks";
@@ -20,7 +20,7 @@ import {
 } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
 import { runnerRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
 import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
-import { zeroModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-model-providers";
+import { modelProvidersMainContract } from "@okouai/api-contracts/contracts/model-provider-routes";
 import type { ModelProviderResponse } from "@okouai/api-contracts/contracts/model-providers";
 import {
   cronProcessUsageEventsContract,
@@ -37,14 +37,14 @@ import {
   type StorageManifest,
 } from "@okouai/api-contracts/contracts/runners";
 import {
-  zeroRunsCancelContract,
-  zeroRunCreateBodySchema,
-  zeroRunContextContract,
-  zeroRunRunnerContract,
-  zeroRunsByIdContract,
-  zeroRunsQueueContract,
-} from "@okouai/api-contracts/contracts/zero-runs";
-import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+  runsCancelContract,
+  runCreateBodySchema,
+  runContextContract,
+  runRunnerContract,
+  runsByIdContract,
+  runsQueueContract,
+} from "@okouai/api-contracts/contracts/run-routes";
+import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 
 import { createAppWithRoutes } from "../../../../app-factory-core";
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
@@ -72,19 +72,16 @@ import { billingStatusRoutes } from "../../billing-status";
 import { modelPoliciesRoutes } from "../../model-policies";
 import { zeroModelProvidersRoutes } from "../../zero-model-providers";
 import { runDetailRoutes } from "../../run-detail";
-import { zeroRunsCancelRoutes } from "../../zero-runs-cancel";
+import { runsCancelRoutes } from "../../runs-cancel";
 import { zeroRunsRoutes } from "../../zero-runs";
-import {
-  zeroRunFixtureContract,
-  zeroRunFixtureRoutes,
-} from "../../test-zero-run-fixture";
+import { runFixtureContract, runFixtureRoutes } from "../../test-run-fixture";
 import { testBillingReconciliationStateRoutes } from "../../test-billing-reconciliation-state";
 import { userPermissionGrantsRoutes } from "../../user-permission-grants";
 import { createBddApi, type ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 type AuthHeaders = { readonly authorization?: string };
-type ZeroRunRequest = z.infer<typeof zeroRunCreateBodySchema>;
+type ZeroRunRequest = z.infer<typeof runCreateBodySchema>;
 type DirectRunRequest = DirectRunFixtureRequest;
 interface RunsListQuery {
   readonly status?: string;
@@ -106,7 +103,7 @@ type OrgModelPolicyRequest = z.infer<
   (typeof modelPoliciesMainContract.update)["body"]
 >;
 type OrgModelProviderUpsertRequest = z.infer<
-  (typeof zeroModelProvidersMainContract.upsert)["body"]
+  (typeof modelProvidersMainContract.upsert)["body"]
 >;
 type RunnerHeartbeatBody = z.infer<
   (typeof runnersHeartbeatContract.heartbeat)["body"]
@@ -158,9 +155,9 @@ const runRoutes = [
   ...modelPoliciesRoutes,
   ...zeroModelProvidersRoutes,
   ...runDetailRoutes,
-  ...zeroRunFixtureRoutes,
+  ...runFixtureRoutes,
   ...zeroRunsRoutes,
-  ...zeroRunsCancelRoutes,
+  ...runsCancelRoutes,
   ...agentsRoutes,
   ...userPermissionGrantsRoutes,
 ] as const;
@@ -471,7 +468,7 @@ export function createRunsApi(context: TestContext) {
 
     async createRun(actor: ApiTestUser, body: ZeroRunRequest) {
       const response = await accept(
-        runApp(context)(zeroRunFixtureContract).create({
+        runApp(context)(runFixtureContract).create({
           headers: authenticate(context, actor),
           body,
         }),
@@ -687,7 +684,7 @@ export function createRunsApi(context: TestContext) {
     zeroTokenForRunWithCapabilities(
       actor: ApiTestUser,
       runId: string,
-      capabilities: readonly ZeroCapability[],
+      capabilities: readonly Capability[],
       publicBrand?: PublicBrand,
     ): string {
       if (!actor.orgId) {
@@ -848,7 +845,7 @@ export function createRunsApi(context: TestContext) {
       connectorSlugs: readonly string[],
     ): Promise<readonly string[]> {
       const response = await accept(
-        runApp(context)(zeroUserConnectorsContract).update({
+        runApp(context)(userConnectorsContract).update({
           headers: authenticate(context, actor),
           params: { id: agentId },
           body: { enabledConnectorSlugs: [...connectorSlugs] },
@@ -862,7 +859,7 @@ export function createRunsApi(context: TestContext) {
       actor: ApiTestUser,
     ): Promise<readonly ModelProviderResponse[]> {
       const response = await accept(
-        runApp(context)(zeroModelProvidersMainContract).list({
+        runApp(context)(modelProvidersMainContract).list({
           headers: authenticate(context, actor),
         }),
         [200],
@@ -879,7 +876,7 @@ export function createRunsApi(context: TestContext) {
       body: OrgModelProviderUpsertRequest,
     ): Promise<{ readonly providerId: string }> {
       const response = await accept(
-        runApp(context)(zeroModelProvidersMainContract).upsert({
+        runApp(context)(modelProvidersMainContract).upsert({
           headers: authenticate(context, actor),
           body,
         }),
@@ -909,7 +906,7 @@ export function createRunsApi(context: TestContext) {
       actor: ApiTestUser,
     ): Promise<{ readonly providerId: string }> {
       const providerResponse = await accept(
-        runApp(context)(zeroModelProvidersMainContract).upsert({
+        runApp(context)(modelProvidersMainContract).upsert({
           headers: authenticate(context, actor),
           body: {
             type: "anthropic-api-key",
@@ -958,7 +955,7 @@ export function createRunsApi(context: TestContext) {
       extraHeaders?: Readonly<Record<string, string>>,
     ) {
       return await accept(
-        runApp(context)(zeroRunFixtureContract).create({
+        runApp(context)(runFixtureContract).create({
           headers: {
             ...authenticate(context, actor),
             ...extraHeaders,
@@ -975,7 +972,7 @@ export function createRunsApi(context: TestContext) {
       statuses: readonly (201 | 400 | 401 | 402 | 403 | 404 | 429 | 503)[],
     ) {
       return await accept(
-        runApp(context)(zeroRunFixtureContract).create({
+        runApp(context)(runFixtureContract).create({
           headers: authenticate(context, actor),
           body: body as ZeroRunRequest,
         }),
@@ -985,7 +982,7 @@ export function createRunsApi(context: TestContext) {
 
     async readRun(actor: ApiTestUser, runId: string) {
       const response = await accept(
-        runApp(context)(zeroRunsByIdContract).getById({
+        runApp(context)(runsByIdContract).getById({
           headers: authenticate(context, actor),
           params: { id: runId },
         }),
@@ -1000,7 +997,7 @@ export function createRunsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        runApp(context)(zeroRunsByIdContract).getById({
+        runApp(context)(runsByIdContract).getById({
           headers: authenticate(context, actor),
           params: { id: runId },
         }),
@@ -1014,7 +1011,7 @@ export function createRunsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        runApp(context)(zeroRunContextContract).getContext({
+        runApp(context)(runContextContract).getContext({
           headers: authenticate(context, actor),
           params: { id: runId },
         }),
@@ -1028,7 +1025,7 @@ export function createRunsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        runApp(context)(zeroRunRunnerContract).getRunner({
+        runApp(context)(runRunnerContract).getRunner({
           headers: authenticate(context, actor),
           params: { id: runId },
         }),
@@ -1038,7 +1035,7 @@ export function createRunsApi(context: TestContext) {
 
     async readRunQueue(actor: ApiTestUser) {
       return await accept(
-        runApp(context)(zeroRunsQueueContract).getQueue({
+        runApp(context)(runsQueueContract).getQueue({
           headers: authenticate(context, actor),
         }),
         [200],
@@ -1050,7 +1047,7 @@ export function createRunsApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403)[],
     ) {
       return await accept(
-        runApp(context)(zeroRunsQueueContract).getQueue({
+        runApp(context)(runsQueueContract).getQueue({
           headers: authenticate(context, actor),
         }),
         statuses,
@@ -1063,7 +1060,7 @@ export function createRunsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        runApp(context)(zeroRunsCancelContract).cancel({
+        runApp(context)(runsCancelContract).cancel({
           headers: authenticate(context, actor),
           params: { id: runId },
         }),
@@ -1077,7 +1074,7 @@ export function createRunsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        runApp(context)(zeroRunsCancelContract).cancel({
+        runApp(context)(runsCancelContract).cancel({
           headers: { authorization },
           params: { id: runId },
         }),

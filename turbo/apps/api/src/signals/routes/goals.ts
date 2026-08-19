@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroGoalsContract } from "@okouai/api-contracts/contracts/zero-goals";
+import { goalsContract } from "@okouai/api-contracts/contracts/goals";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -30,9 +30,9 @@ import {
 } from "../services/goal.service";
 import type { RouteEntry } from "../route-entry";
 import type { AuthContext } from "../../types/auth";
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
+import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 
-const log = logger("ZeroGoals");
+const log = logger("Goals");
 
 const goalReadAuth = {
   requireOrganization: true,
@@ -73,7 +73,7 @@ interface GoalAuth {
   readonly orgId: string;
   readonly userId: string;
   readonly runId: string;
-  readonly capabilities: readonly ZeroCapability[];
+  readonly capabilities: readonly Capability[];
 }
 
 interface SessionGoalAuth {
@@ -121,7 +121,7 @@ function goalErrorResponse(
   }
 }
 
-const createGoalBody$ = bodyResultOf(zeroGoalsContract.create);
+const createGoalBody$ = bodyResultOf(goalsContract.create);
 
 const createGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = goalAuth(get(organizationAuthContext$));
@@ -170,7 +170,7 @@ const createGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return goalErrorResponse(result);
 });
 
-const editGoalBody$ = bodyResultOf(zeroGoalsContract.edit);
+const editGoalBody$ = bodyResultOf(goalsContract.edit);
 
 const editGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = goalAuth(get(organizationAuthContext$));
@@ -206,7 +206,7 @@ const getGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const getChatThreadGoalInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = sessionGoalAuth(get(organizationAuthContext$));
-    const params = get(pathParamsOf(zeroGoalsContract.getForChatThread));
+    const params = get(pathParamsOf(goalsContract.getForChatThread));
     const db = set(writeDb$);
     const result = await getGoalForChatThread(db, {
       orgId: auth.orgId,
@@ -259,7 +259,7 @@ const pauseGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const pauseChatThreadGoalInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = sessionGoalAuth(get(organizationAuthContext$));
-    const params = get(pathParamsOf(zeroGoalsContract.pauseForChatThread));
+    const params = get(pathParamsOf(goalsContract.pauseForChatThread));
     const db = set(writeDb$);
     const result = await pauseGoalForChatThread(db, {
       orgId: auth.orgId,
@@ -298,46 +298,46 @@ const clearGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 export const goalsRoutes: readonly RouteEntry[] = [
   {
-    route: zeroGoalsContract.create,
+    route: goalsContract.create,
     handler: authRoute(goalUserControlWriteAuth, createGoalInner$),
   },
   {
-    route: zeroGoalsContract.edit,
+    route: goalsContract.edit,
     handler: authRoute(goalUserControlWriteAuth, editGoalInner$),
   },
   {
-    route: zeroGoalsContract.get,
+    route: goalsContract.get,
     handler: authRoute(goalReadAuth, getGoalInner$),
   },
   {
-    route: zeroGoalsContract.getForChatThread,
+    route: goalsContract.getForChatThread,
     handler: authRoute(sessionGoalReadAuth, getChatThreadGoalInner$),
   },
   {
-    route: zeroGoalsContract.complete,
+    route: goalsContract.complete,
     handler: authRoute(goalAgentResultWriteAuth, completeGoalInner$),
   },
   {
-    route: zeroGoalsContract.block,
+    route: goalsContract.block,
     handler: authRoute(goalAgentResultWriteAuth, blockGoalInner$),
   },
   {
-    route: zeroGoalsContract.pause,
+    route: goalsContract.pause,
     handler: authRoute(goalUserControlWriteAuth, pauseGoalInner$),
   },
   {
-    route: zeroGoalsContract.pauseForChatThread,
+    route: goalsContract.pauseForChatThread,
     handler: authRoute(
       sessionGoalUserControlWriteAuth,
       pauseChatThreadGoalInner$,
     ),
   },
   {
-    route: zeroGoalsContract.resume,
+    route: goalsContract.resume,
     handler: authRoute(goalUserControlWriteAuth, resumeGoalInner$),
   },
   {
-    route: zeroGoalsContract.clear,
+    route: goalsContract.clear,
     handler: authRoute(goalUserControlWriteAuth, clearGoalInner$),
   },
 ];

@@ -5,9 +5,9 @@ import {
 } from "@okouai/api-contracts/contracts/logs";
 import { queuePositionContract } from "@okouai/api-contracts/contracts/queue-position";
 import {
-  zeroRunAgentEventsContract,
-  zeroRunNetworkLogsContract,
-} from "@okouai/api-contracts/contracts/zero-runs";
+  runAgentEventsContract,
+  runNetworkLogsContract,
+} from "@okouai/api-contracts/contracts/run-routes";
 
 import { createApp } from "../../../../app-factory";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
@@ -41,10 +41,10 @@ interface RunsListQuery {
   readonly limit?: number;
 }
 type ZeroAgentEventsQuery = z.input<
-  (typeof zeroRunAgentEventsContract.getAgentEvents)["query"]
+  (typeof runAgentEventsContract.getAgentEvents)["query"]
 >;
 type ZeroNetworkLogsQuery = z.input<
-  (typeof zeroRunNetworkLogsContract.getNetworkLogs)["query"]
+  (typeof runNetworkLogsContract.getNetworkLogs)["query"]
 >;
 type LogsListQuery = z.input<(typeof logsListContract.list)["query"]>;
 
@@ -162,7 +162,7 @@ export function createRunReadsApi(context: TestContext) {
     ) {
       return await accept(
         setupApp({ context, routes: runDetailRoutes })(
-          zeroRunAgentEventsContract,
+          runAgentEventsContract,
         ).getAgentEvents({
           headers: authenticate(context, actor),
           params: { id: runId },
@@ -182,7 +182,7 @@ export function createRunReadsApi(context: TestContext) {
     ) {
       return await accept(
         setupApp({ context, routes: runDetailRoutes })(
-          zeroRunNetworkLogsContract,
+          runNetworkLogsContract,
         ).getNetworkLogs({
           headers: authenticate(context, actor),
           params: { id: runId },

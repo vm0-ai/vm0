@@ -5,6 +5,7 @@ import { reloadBillingStatus$, usagePackManagementAsync$ } from "../billing.ts";
 import { isOrgAdmin$ } from "../../org.ts";
 import { reloadPersonalModelProviders$ } from "../../external/personal-model-providers.ts";
 import { resetSignal } from "../../utils.ts";
+import { reloadConnectorCatalogDiagnostics$ } from "./connector-catalog-diagnostics.ts";
 import {
   clearBillingScrollTarget$,
   clearPendingLogo$,
@@ -55,8 +56,6 @@ const internalSettingsDialogOpen$ = state(false);
 const internalSettingsDialogSignal$ = state<AbortSignal | null>(null);
 const resetSettingsDialogSignal$ = resetSignal();
 const internalSettingsDialogSessionActive$ = state(false);
-const internalSettingsDialogInitialized$ = state(false);
-const internalSettingsDialogHandoffPending$ = state(false);
 const pendingAccountMenuSettingsSection$ = state<{
   readonly ownerId: string;
   readonly section: SettingsSection;
@@ -100,6 +99,9 @@ export const settingsActiveSection$ = computed((get) => {
 
 export const setSettingsActiveSection$ = command(
   ({ get, set }, section: SettingsSection) => {
+    if (section === "debug" && get(internalActiveSection$) !== "debug") {
+      set(reloadConnectorCatalogDiagnostics$);
+    }
     set(internalActiveSection$, section);
     if (section !== "billing") {
       set(clearBillingScrollTarget$);
@@ -167,34 +169,17 @@ export const openSettingsUsagePackUpgrade$ = command(
   },
 );
 
-const releaseSettingsDialogSession$ = command(({ get, set }) => {
+const releaseSettingsDialogSession$ = command(({ set }) => {
   set(internalSettingsDialogSignal$, null);
   set(internalSettingsDialogSessionActive$, false);
   set(clearPendingLogo$);
   set(resetUsagePackPricing$);
-
-  const handoffPending = get(internalSettingsDialogHandoffPending$);
-  set(internalSettingsDialogHandoffPending$, false);
-  if (!handoffPending) {
-    set(internalSettingsDialogOpen$, false);
-    set(internalSettingsDialogInitialized$, false);
-  }
-});
-
-const clearSettingsDialogSession$ = command(({ set }) => {
-  set(releaseSettingsDialogSession$);
   set(internalSettingsDialogOpen$, false);
-  set(internalSettingsDialogInitialized$, false);
-  set(internalSettingsDialogHandoffPending$, false);
-});
-
-export const handoffSettingsDialogSession$ = command(({ set }) => {
-  set(internalSettingsDialogHandoffPending$, true);
 });
 
 export const closeSettingsModal$ = command(({ get, set }) => {
   set(resetSettingsDialogSignal$);
-  set(clearSettingsDialogSession$);
+  set(releaseSettingsDialogSession$);
   set(clearBillingScrollTarget$);
 
   const params = new URLSearchParams(get(searchParams$));
@@ -217,7 +202,6 @@ export const setSettingsDialogOpen$ = command(
       return;
     }
 
-    const dialogInitialized = get(internalSettingsDialogInitialized$);
     const modalSignal = set(resetSettingsDialogSignal$, pageSignal);
     modalSignal.addEventListener(
       "abort",
@@ -228,14 +212,14 @@ export const setSettingsDialogOpen$ = command(
     );
     set(internalSettingsDialogSignal$, modalSignal);
     set(internalSettingsDialogSessionActive$, true);
-    set(internalSettingsDialogOpen$, true);
-    if (!dialogInitialized) {
-      await set(initProfileName$, modalSignal);
-      pageSignal.throwIfAborted();
-      modalSignal.throwIfAborted();
-      set(reloadBillingStatus$);
-      set(internalSettingsDialogInitialized$, true);
+    set(reloadBillingStatus$);
+    if (get(internalActiveSection$) === "debug") {
+      set(reloadConnectorCatalogDiagnostics$);
     }
+    set(internalSettingsDialogOpen$, true);
+    await set(initProfileName$, modalSignal);
+    pageSignal.throwIfAborted();
+    modalSignal.throwIfAborted();
     const params = new URLSearchParams(get(searchParams$));
     const section = get(internalActiveSection$);
     if (section === "model") {

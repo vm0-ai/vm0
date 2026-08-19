@@ -46,7 +46,10 @@ import type { ConnectorFeatureStates } from "./connector-catalog-feature-states"
 import { ConnectorCatalogLoadTiming } from "./connector-catalog-load-timing.service";
 import {
   createAcceptedConnectorServerFirewallCatalog,
+  selectConnectorServerFirewalls,
   type ConnectorServerFirewallCatalog,
+  type ConnectorServerFirewallMetadataCatalog,
+  type ConnectorServerFirewallSelection,
 } from "./connector-server-firewall-catalog.service";
 
 export interface ConnectorRuntimeMethod {
@@ -66,10 +69,17 @@ export interface ConnectorRuntimeConnector {
   readonly skill: ConnectorCatalogSkill;
 }
 
-export interface ConnectorRuntimeSnapshot {
-  readonly acceptedSnapshot: AcceptedConnectorCatalogSnapshot;
+export interface ConnectorRuntimeSelection {
+  readonly catalogIdentity: ExternalCatalogIdentity;
   readonly connectors: ReadonlyMap<ConnectorSlug, ConnectorRuntimeConnector>;
+  readonly serverFirewalls: ConnectorServerFirewallSelection;
+  readonly serverFirewallMetadata: ConnectorServerFirewallMetadataCatalog;
+}
+
+export interface ConnectorRuntimeSnapshot extends ConnectorRuntimeSelection {
+  readonly acceptedSnapshot: AcceptedConnectorCatalogSnapshot;
   readonly serverFirewalls: ConnectorServerFirewallCatalog;
+  readonly serverFirewallMetadata: ConnectorServerFirewallCatalog;
 }
 
 function methodKey(connectorSlug: string, authMethodId: string): string {
@@ -441,114 +451,64 @@ function runtimeMethodEntry(args: {
   };
 }
 
-function runtimeConnectors(
+function runtimeConnector(
   acceptedSnapshot: AcceptedConnectorCatalogSnapshot,
-): ReadonlyMap<ConnectorSlug, ConnectorRuntimeConnector> {
-  const connectors = new Map<ConnectorSlug, ConnectorRuntimeConnector>();
-
-  for (const connector of acceptedSnapshot.artifact.connectors) {
-    const connectorSlug = connector.slug;
-    const catalogConnector = getAcceptedConnectorCatalogResolutionDetail({
-      snapshot: acceptedSnapshot,
-      connectorSlug,
-    });
-    if (catalogConnector === null) {
-      throw new Error("Accepted connector runtime relationship is incomplete");
+  connectorSlug: ConnectorSlug,
+): ConnectorRuntimeConnector {
+  const connector = acceptedSnapshot.connectorBySlug.get(connectorSlug);
+  if (connector === undefined) {
+    throw new Error("Accepted connector runtime source is unavailable");
+  }
+  const catalogConnector = getAcceptedConnectorCatalogResolutionDetail({
+    snapshot: acceptedSnapshot,
+    connectorSlug,
+  });
+  if (catalogConnector === null) {
+    throw new Error("Accepted connector runtime relationship is incomplete");
+  }
+  const catalogMethods = new Map(
+    catalogConnector.authMethods.map((method) => {
+      return [method.id, method];
+    }),
+  );
+  const methods = new Map<ConnectorAuthMethodId, ConnectorRuntimeMethod>();
+  const authoredVisibleMethodIds = new Set<ConnectorAuthMethodId>();
+  for (const method of connector.authMethods) {
+    if (method.visible) {
+      authoredVisibleMethodIds.add(method.id);
     }
-    const catalogMethods = new Map(
-      catalogConnector.authMethods.map((method) => {
-        return [method.id, method];
+    if (
+      !acceptedConnectorCatalogMethodIsCompatible({
+        snapshot: acceptedSnapshot,
+        connectorSlug,
+        authMethodId: method.id,
+      })
+    ) {
+      continue;
+    }
+    const catalogMethod = catalogMethods.get(method.id);
+    if (catalogMethod === undefined) {
+      throw new Error("Accepted connector auth method alignment is incomplete");
+    }
+    methods.set(
+      method.id,
+      runtimeMethodEntry({
+        connectorSlug,
+        catalogMethod,
+        method: runtimeMethod(method),
       }),
     );
-    const methods = new Map<ConnectorAuthMethodId, ConnectorRuntimeMethod>();
-    const authoredVisibleMethodIds = new Set<ConnectorAuthMethodId>();
-    for (const method of connector.authMethods) {
-      if (method.visible) {
-        authoredVisibleMethodIds.add(method.id);
-      }
-      if (
-        !acceptedConnectorCatalogMethodIsCompatible({
-          snapshot: acceptedSnapshot,
-          connectorSlug,
-          authMethodId: method.id,
-        })
-      ) {
-        continue;
-      }
-      const catalogMethod = catalogMethods.get(method.id);
-      if (catalogMethod === undefined) {
-        throw new Error(
-          "Accepted connector auth method alignment is incomplete",
-        );
-      }
-      methods.set(
-        method.id,
-        runtimeMethodEntry({
-          connectorSlug,
-          catalogMethod,
-          method: runtimeMethod(method),
-        }),
-      );
-    }
-    connectors.set(connectorSlug, {
-      connectorSlug,
-      catalogConnector,
-      methods,
-      authoredVisibleMethodIds,
-      skill: connector.skill,
-    });
   }
-  return connectors;
-}
-
-function runtimeSnapshot(
-  acceptedSnapshot: AcceptedConnectorCatalogSnapshot,
-  timing: ConnectorCatalogLoadTiming | undefined,
-): ConnectorRuntimeSnapshot {
-  const connectors = timing
-    ? timing.measureSync(
-        "api_dispatch_connector_catalog_materialize_runtime_snapshot",
-        () => {
-          return runtimeConnectors(acceptedSnapshot);
-        },
-      )
-    : runtimeConnectors(acceptedSnapshot);
-  const serverFirewalls = timing
-    ? timing.measureSync(
-        "api_dispatch_connector_catalog_materialize_server_firewalls",
-        () => {
-          return runtimeServerFirewalls(acceptedSnapshot, connectors);
-        },
-      )
-    : runtimeServerFirewalls(acceptedSnapshot, connectors);
   return {
-    acceptedSnapshot,
-    connectors,
-    serverFirewalls,
+    connectorSlug,
+    catalogConnector,
+    methods,
+    authoredVisibleMethodIds,
+    skill: connector.skill,
   };
 }
 
-function runtimeServerFirewalls(
-  acceptedSnapshot: AcceptedConnectorCatalogSnapshot,
-  connectors: ReadonlyMap<ConnectorSlug, ConnectorRuntimeConnector>,
-): ConnectorServerFirewallCatalog {
-  const runtimeMethodsBySlug = new Map(
-    [...connectors.entries()].map(([connectorSlug, connector]) => {
-      return [
-        connectorSlug,
-        [...connector.methods.values()].map((method) => {
-          return method.method;
-        }),
-      ];
-    }),
-  );
-  return createAcceptedConnectorServerFirewallCatalog({
-    artifact: acceptedSnapshot.artifact,
-    runtimeMethodsBySlug,
-  });
-}
-
-function runtimeSnapshotKey(identity: ExternalCatalogIdentity): string {
+function runtimeCatalogKey(identity: ExternalCatalogIdentity): string {
   return [
     identity.sourceId,
     identity.schemaVersion,
@@ -558,68 +518,202 @@ function runtimeSnapshotKey(identity: ExternalCatalogIdentity): string {
   ].join("\0");
 }
 
-interface RuntimeSnapshotCache {
-  key: string | undefined;
+interface ConnectorRuntimeState {
+  readonly acceptedSnapshot: AcceptedConnectorCatalogSnapshot;
+  readonly connectors: Map<ConnectorSlug, ConnectorRuntimeConnector>;
+  readonly serverFirewalls: ConnectorServerFirewallCatalog;
   snapshot: ConnectorRuntimeSnapshot | undefined;
 }
 
-const runtimeSnapshotCache = singleton((): RuntimeSnapshotCache => {
-  return { key: undefined, snapshot: undefined };
+interface RuntimeCatalogCache {
+  key: string | undefined;
+  state: ConnectorRuntimeState | undefined;
+}
+
+const runtimeCatalogCache = singleton((): RuntimeCatalogCache => {
+  return { key: undefined, state: undefined };
 });
 
-async function loadConnectorRuntimeSnapshotWithTiming(
-  db: ReadonlyDb,
-  timing: ConnectorCatalogLoadTiming | undefined,
-): Promise<ConnectorRuntimeSnapshot> {
-  const acceptedSnapshot = await loadAcceptedConnectorCatalogSnapshot(
-    db,
-    timing,
-  );
-  timing?.recordCatalogFacts({
-    rawSize: acceptedSnapshot.catalogRawSize,
-    connectorCount: acceptedSnapshot.artifact.connectors.length,
-  });
-  const key = runtimeSnapshotKey(acceptedSnapshot.identity);
-  const cache = runtimeSnapshotCache();
-  if (cache.key === key && cache.snapshot !== undefined) {
-    timing?.recordRuntimeCacheOutcome("hit");
-    return cache.snapshot;
+function materializeConnectorRuntimeEntry(
+  acceptedSnapshot: AcceptedConnectorCatalogSnapshot,
+  connectors: Map<ConnectorSlug, ConnectorRuntimeConnector>,
+  connectorSlug: ConnectorSlug,
+): ConnectorRuntimeConnector {
+  const cached = connectors.get(connectorSlug);
+  if (cached !== undefined) {
+    return cached;
   }
-  timing?.recordRuntimeCacheOutcome("miss");
-  const snapshot = runtimeSnapshot(acceptedSnapshot, timing);
+  const connector = runtimeConnector(acceptedSnapshot, connectorSlug);
+  connectors.set(connectorSlug, connector);
+  return connector;
+}
+
+function connectorRuntimeState(
+  acceptedSnapshot: AcceptedConnectorCatalogSnapshot,
+  timing: ConnectorCatalogLoadTiming | undefined,
+): { readonly state: ConnectorRuntimeState; readonly created: boolean } {
+  const key = runtimeCatalogKey(acceptedSnapshot.identity);
+  const cache = runtimeCatalogCache();
+  if (cache.key === key && cache.state !== undefined) {
+    return { state: cache.state, created: false };
+  }
+  const connectors = new Map<ConnectorSlug, ConnectorRuntimeConnector>();
+  const createServerFirewalls = (): ConnectorServerFirewallCatalog => {
+    return createAcceptedConnectorServerFirewallCatalog({
+      artifact: acceptedSnapshot.artifact,
+      runtimeMethodsForSlug: (connectorSlug) => {
+        return [
+          ...materializeConnectorRuntimeEntry(
+            acceptedSnapshot,
+            connectors,
+            connectorSlug,
+          ).methods.values(),
+        ].map((method) => {
+          return method.method;
+        });
+      },
+    });
+  };
+  const state: ConnectorRuntimeState = {
+    acceptedSnapshot,
+    connectors,
+    serverFirewalls: timing
+      ? timing.measureSync(
+          "api_dispatch_connector_catalog_materialize_server_firewalls",
+          () => {
+            return createServerFirewalls();
+          },
+        )
+      : createServerFirewalls(),
+    snapshot: undefined,
+  };
   cache.key = key;
-  cache.snapshot = snapshot;
-  return snapshot;
+  cache.state = state;
+  return { state, created: true };
+}
+
+function acceptedRequestedConnectorSlugs(
+  acceptedSnapshot: AcceptedConnectorCatalogSnapshot,
+  requestedConnectorSlugs: readonly ConnectorSlug[],
+): readonly ConnectorSlug[] {
+  return [...new Set(requestedConnectorSlugs)].filter((connectorSlug) => {
+    return acceptedSnapshot.connectorBySlug.has(connectorSlug);
+  });
+}
+
+function selectedRuntimeConnectors(
+  state: ConnectorRuntimeState,
+  connectorSlugs: readonly ConnectorSlug[],
+): ReadonlyMap<ConnectorSlug, ConnectorRuntimeConnector> {
+  return new Map(
+    connectorSlugs.map(
+      (connectorSlug): [ConnectorSlug, ConnectorRuntimeConnector] => {
+        return [
+          connectorSlug,
+          materializeConnectorRuntimeEntry(
+            state.acceptedSnapshot,
+            state.connectors,
+            connectorSlug,
+          ),
+        ];
+      },
+    ),
+  );
+}
+
+export async function loadConnectorRuntimeSelection(
+  db: ReadonlyDb,
+  options: {
+    readonly timing: ApiDispatchTimingCollector;
+    readonly requestedConnectorSlugs: readonly ConnectorSlug[];
+  },
+): Promise<ConnectorRuntimeSelection> {
+  const timing = new ConnectorCatalogLoadTiming(
+    options.timing,
+    options.requestedConnectorSlugs.length,
+  );
+  return await timing.measureComplete(async () => {
+    const acceptedSnapshot = await loadAcceptedConnectorCatalogSnapshot(
+      db,
+      timing,
+    );
+    const connectorSlugs = acceptedRequestedConnectorSlugs(
+      acceptedSnapshot,
+      options.requestedConnectorSlugs,
+    );
+    timing.recordCatalogFacts({
+      rawSize: acceptedSnapshot.catalogRawSize,
+      compressedSize: acceptedSnapshot.catalogCompressedSize,
+      connectorCount: acceptedSnapshot.artifact.connectors.length,
+      resolvedConnectorCount: connectorSlugs.length,
+    });
+    const { state, created } = connectorRuntimeState(acceptedSnapshot, timing);
+    const missingConnectorSlugs = connectorSlugs.filter((connectorSlug) => {
+      return !state.connectors.has(connectorSlug);
+    });
+    const cacheMiss = created || missingConnectorSlugs.length > 0;
+    timing.recordRuntimeCacheOutcome(cacheMiss ? "miss" : "hit");
+    timing.recordMaterializedConnectorCount(missingConnectorSlugs.length);
+    if (cacheMiss) {
+      timing.measureSync(
+        "api_dispatch_connector_catalog_materialize_runtime_snapshot",
+        () => {
+          for (const connectorSlug of missingConnectorSlugs) {
+            materializeConnectorRuntimeEntry(
+              state.acceptedSnapshot,
+              state.connectors,
+              connectorSlug,
+            );
+          }
+        },
+      );
+    }
+    const connectors = selectedRuntimeConnectors(state, connectorSlugs);
+    return {
+      catalogIdentity: acceptedSnapshot.identity,
+      connectors,
+      serverFirewalls: selectConnectorServerFirewalls({
+        catalog: state.serverFirewalls,
+        connectorSlugs,
+      }),
+      serverFirewallMetadata: state.serverFirewalls,
+    };
+  });
 }
 
 export async function loadConnectorRuntimeSnapshot(
   db: ReadonlyDb,
-  options?: {
-    readonly timing: ApiDispatchTimingCollector;
-    readonly requestedConnectorCount: number | undefined;
-  },
 ): Promise<ConnectorRuntimeSnapshot> {
-  if (options === undefined) {
-    return await loadConnectorRuntimeSnapshotWithTiming(db, undefined);
+  const acceptedSnapshot = await loadAcceptedConnectorCatalogSnapshot(db);
+  const { state } = connectorRuntimeState(acceptedSnapshot, undefined);
+  if (state.snapshot !== undefined) {
+    return state.snapshot;
   }
-  const timing = new ConnectorCatalogLoadTiming(
-    options.timing,
-    options.requestedConnectorCount,
+  const connectorSlugs = acceptedSnapshot.artifact.connectors.map(
+    (connector) => {
+      return connector.slug;
+    },
   );
-  return await timing.measureComplete(async () => {
-    return await loadConnectorRuntimeSnapshotWithTiming(db, timing);
-  });
+  const snapshot: ConnectorRuntimeSnapshot = {
+    acceptedSnapshot,
+    catalogIdentity: acceptedSnapshot.identity,
+    connectors: selectedRuntimeConnectors(state, connectorSlugs),
+    serverFirewalls: state.serverFirewalls,
+    serverFirewallMetadata: state.serverFirewalls,
+  };
+  state.snapshot = snapshot;
+  return snapshot;
 }
 
 export function getConnectorRuntimeConnector(
-  snapshot: ConnectorRuntimeSnapshot,
+  snapshot: ConnectorRuntimeSelection,
   connectorSlug: string,
 ): ConnectorRuntimeConnector | undefined {
   return snapshot.connectors.get(connectorSlug);
 }
 
 export function getConnectorRuntimeMethod(args: {
-  readonly snapshot: ConnectorRuntimeSnapshot;
+  readonly snapshot: ConnectorRuntimeSelection;
   readonly connectorSlug: string;
   readonly authMethodId: string;
   readonly requireExecutable?: boolean;

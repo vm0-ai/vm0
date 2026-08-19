@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import { modelProviderCodexRuntimeConfigSchema } from "../contracts/model-providers";
 import {
   activeInputDeliveryReserveResponseSchema,
   activeInputDeliveryReceiptResponseSchema,
@@ -97,6 +98,42 @@ export const rustTypeModuleDocs = [
 ] satisfies readonly RustTypeModuleDoc[];
 
 export const rustTypeBindings = [
+  {
+    schema: modelProviderCodexRuntimeConfigSchema,
+    rustModulePath: ["runners", "runs"],
+    rustTypeName: "CodexRuntimeConfig",
+    direction: "response",
+    fieldTypeOverrides: {
+      modelCatalog: "serde_json::Value",
+    },
+    declarations: [
+      {
+        rustTypeName: "CodexRuntimeConfig",
+        rustDoc: [
+          "API-owned provider configuration forwarded to Codex in the sandbox.",
+        ],
+        fields: {
+          providerId: [
+            "Codex provider key used in generated startup settings.",
+          ],
+          name: ["Display name recorded for the Codex provider."],
+          baseUrl: ["Base URL for the provider's Responses API."],
+          envKey: ["Environment variable containing the provider credential."],
+          httpHeaders: ["Optional static HTTP headers for provider requests."],
+          requiresOpenaiAuth: [
+            "Optional override for Codex's built-in OpenAI authentication requirement.",
+          ],
+          wireApi: ["Codex wire protocol selected for the provider."],
+          supportsWebsockets: [
+            "Whether the provider supports the Codex websocket transport.",
+          ],
+          modelCatalog: [
+            "Optional opaque Codex model catalog supplied by the API.",
+          ],
+        },
+      },
+    ],
+  },
   {
     schema: activeInputDeliveryReserveResponseSchema,
     rustModulePath: ["runners", "runs", "active_inputs", "reserve"],

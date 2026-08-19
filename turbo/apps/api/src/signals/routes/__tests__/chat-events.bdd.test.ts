@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
+
+import { HeadObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import {
@@ -45,11 +47,15 @@ import {
   zeroModelProviderConnectionsByIdContract,
   zeroModelProviderConnectionsMainContract,
 } from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
-import { zeroModelProvidersMainContract } from "@okouai/api-contracts/contracts/zero-model-providers";
+import { modelProvidersMainContract } from "@okouai/api-contracts/contracts/model-provider-routes";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { z } from "zod";
 import { createApp } from "../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import {
+  buildArtifactKeyV2,
+  buildArtifactPrefixV2,
+} from "../../../lib/file-url";
 import {
   clearMockNow,
   mockNow,
@@ -92,6 +98,7 @@ import {
 } from "./helpers/api-bdd-connectors";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createFirewallApi, secretTemplate } from "./helpers/api-bdd-firewall";
+import { createGithubBddApi } from "./helpers/api-bdd-github";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
@@ -128,8 +135,10 @@ import {
   holdThreadSessionConversationClearFixture,
   readCanonicalChatEventStorageFixture,
   releaseBddVm0ApiKey,
+  removeChatCallbackPublicBrandFixture,
   replayPendingChatInputQueueEventFixture,
   replaceThreadSessionBindingFixture,
+  setChatCallbackGitHubDeliveryFixture,
   timeoutRunWithoutCallbacksFixture,
 } from "../../../test-fixtures/chat-events";
 import { cronSteerRunTimeBudgetRoutes } from "../cron-steer-run-time-budget";
@@ -165,6 +174,7 @@ const chat = createChatFilesBddApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const connectors = createConnectorBddApi(context);
+const github = createGithubBddApi(context);
 const cu = createComputerUseBddApi(context);
 const misc = createMiscRoutesApi(context);
 const authDevice = createAuthDeviceApiActions(context);
@@ -1000,7 +1010,7 @@ function modelProviderSecretPlaceholder(
 
 function modelProvidersClient() {
   return setupApp({ context, routes: zeroModelProvidersRoutes })(
-    zeroModelProvidersMainContract,
+    modelProvidersMainContract,
   );
 }
 
@@ -1142,9 +1152,10 @@ async function requestSendEventRaw(
     readonly userMessage: UserMessageInputDocument;
     readonly hasTextContent: boolean;
   },
+  signal: AbortSignal = context.signal,
 ): Promise<{ readonly status: number; readonly body: unknown }> {
   const headers = sessionHeaders(actor);
-  const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
+  const app = createApp({ signal, routes: TEST_APP_ROUTES });
   const response = await app.request("/api/zero/chat/events", {
     method: "POST",
     headers: { ...headers, "content-type": "application/json" },
@@ -4833,17 +4844,19 @@ describe("CHAT-02: model-first provider policies", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   }, 90_000);
 
-  it("routes vm0 DeepSeek through native Responses env bindings", async () => {
+  it("routes vm0 DeepSeek through OpenRouter Pi bindings", async () => {
+    const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const keyFixtureId = randomUUID();
+    const requestedApiKey = `vm0-key-bdd-dev-seed-${keyFixtureId}`;
 
-    // Keep a second DeepSeek fixture owner alive to cover vendor-unique row
+    // Keep a second OpenRouter fixture owner alive to cover vendor-unique row
     // arbitration instead of relying on another test file's scheduling.
     await seedVm0ManagedModelKey("deepseek-v4-flash");
-    await acquireBddVm0ApiKey({
+    const selectedApiKey = await acquireBddVm0ApiKey({
       fixtureId: keyFixtureId,
-      vendor: "deepseek",
-      apiKey: `vm0-key-bdd-dev-seed-${keyFixtureId}`,
+      vendor: "openrouter",
+      apiKey: requestedApiKey,
     });
 
     let runId: string | null = null;
@@ -4852,14 +4865,22 @@ describe("CHAT-02: model-first provider policies", () => {
         await api.requestCancelRun(actor, runId, [200]);
       }
     };
-    const releaseVm0DeepSeekKey = async () => {
+    const releaseVm0OpenRouterKey = async () => {
       await releaseBddVm0ApiKey({ fixtureId: keyFixtureId });
     };
     const cleanupRunAndKeys = async () => {
-      await Promise.all([releaseVm0DeepSeekKey(), cancelRunIfCreated()]);
+      await Promise.all([releaseVm0OpenRouterKey(), cancelRunIfCreated()]);
     };
 
     await (async () => {
+      if (!actor.orgId) {
+        throw new Error("Expected an organization-scoped chat actor");
+      }
+      await updateFeatureSwitchesForUser(
+        context,
+        { ...actor, orgId: actor.orgId },
+        { [FeatureSwitchKey.PiLoop]: true },
+      );
       await api.updateOrgModelPolicies(actor, [
         {
           model: "deepseek-v4-flash",
@@ -4877,13 +4898,62 @@ describe("CHAT-02: model-first provider policies", () => {
       });
       runId = run.runId;
 
-      const { claim } = await claimChatRun(runnerGroup, run.runId);
-      const environment = claimEnvironment(claim);
-      expect(environment.OPENAI_API_KEY).toBe(
-        modelProviderSecretPlaceholder("deepseek", "DEEPSEEK_API_KEY"),
+      const { claim, sandboxHeaders } = await claimChatRun(
+        runnerGroup,
+        run.runId,
       );
-      expect(environment.OPENAI_BASE_URL).toBe("https://api.deepseek.com/");
-      expect(environment.OPENAI_MODEL).toBe("deepseek-v4-flash");
+      const environment = claimEnvironment(claim);
+      expect(claim.cliAgentType).toBe("pi");
+      expect(environment.OPENAI_API_KEY).toBe(
+        modelProviderSecretPlaceholder(
+          "openrouter-codex",
+          "OPENROUTER_API_KEY",
+        ),
+      );
+      expect(environment.OPENAI_BASE_URL).toBe("https://openrouter.ai/api/v1");
+      expect(environment.OPENAI_MODEL).toBe("deepseek/deepseek-v4-flash");
+      expect(claim.firewalls).toContainEqual(
+        expect.objectContaining({
+          kind: "builtin",
+          name: "model-provider:openrouter-codex",
+        }),
+      );
+      expect(claim.billableFirewalls).toContain(
+        "model-provider:openrouter-codex",
+      );
+      expect(claim.piModelConfig).toStrictEqual({
+        provider: "openrouter",
+        baseUrl: "https://openrouter.ai/api/v1",
+        model: "deepseek/deepseek-v4-flash",
+        apiKeyEnv: "OPENAI_API_KEY",
+      });
+      expect(claim.modelUsageProvider).toBe("deepseek-v4-flash");
+
+      if (!claim.encryptedSecrets) {
+        throw new Error("Expected OpenRouter claim to carry encrypted secrets");
+      }
+      const resolved = await fw.requestFirewallAuth(
+        sandboxHeaders,
+        {
+          encryptedSecrets: claim.encryptedSecrets,
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("OPENROUTER_API_KEY")}`,
+          },
+          secretConnectorMap: claim.secretConnectorMap ?? undefined,
+          secretConnectorMetadataMap:
+            claim.secretConnectorMetadataMap ?? undefined,
+        },
+        [200],
+      );
+      if (resolved.status !== 200) {
+        throw new Error("Expected OpenRouter firewall auth to resolve");
+      }
+      expect(resolved.body.headers.Authorization).toBe(
+        `Bearer ${selectedApiKey}`,
+      );
+      expect(resolved.body.resolvedSecrets).toStrictEqual([
+        "OPENROUTER_API_KEY",
+      ]);
     })().then(cleanupRunAndKeys, async (error: unknown) => {
       await cleanupRunAndKeys();
       throw error;
@@ -5907,7 +5977,7 @@ describe("CHAT-02: run-level model overrides", () => {
       {
         model: "claude-sonnet-5",
         isDefault: true,
-        defaultProviderType: "vercel-ai-gateway",
+        defaultProviderType: "custom-anthropic-messages",
         credentialScope: "org",
         modelProviderId: null,
         modelProviderSurfaceId: surfaceId,
@@ -6414,7 +6484,7 @@ describe("CHAT-02: run-level model overrides", () => {
       {
         model: "claude-sonnet-5",
         isDefault: true,
-        defaultProviderType: "vercel-ai-gateway",
+        defaultProviderType: "custom-anthropic-messages",
         credentialScope: "org",
         modelProviderId: null,
         modelProviderSurfaceId: surfaceId,
@@ -6477,6 +6547,110 @@ describe("CHAT-02: run-level model overrides", () => {
       agent_session_run_id: second.runId,
       run_session_id: rotatedBinding.agent_session_id,
     });
+    expect(sandboxOperationEventsForRun(second.runId)).toContainEqual(
+      expect.objectContaining({
+        op_type: "chat_thread_session_binding_persisted",
+        chat_thread_id: first.threadId,
+        agent_session_id: rotatedBinding.agent_session_id,
+        agent_session_run_id: second.runId,
+        binding_action: "rotated",
+      }),
+    );
+    const secondClaim = await claimChatRun(runnerGroup, second.runId);
+    expect(secondClaim.claim.resumeSession).toBeNull();
+    await cancelChatRun(actor, second.runId);
+  }, 90_000);
+
+  it("rotates after a custom gateway is deleted and replaced by a direct vendor key", async () => {
+    const { actor, agentId, runnerGroup, providerId } =
+      await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const created = await accept(
+      modelProviderConnectionsClient().create({
+        headers: sessionHeaders(actor),
+        body: {
+          displayName: "Direct replacement gateway",
+          secret: "direct-replacement-gateway-secret",
+          surfaces: [
+            {
+              protocol: "anthropic-messages",
+              apiBaseUrl: "https://gateway.example.com/anthropic",
+              authHeaderName: "Authorization",
+              authHeaderTemplate: "Bearer {{secret}}",
+              modelMappings: {
+                "claude-sonnet-5": "anthropic/claude-sonnet-4.6",
+              },
+            },
+          ],
+        },
+      }),
+      [201],
+    );
+    const surfaceId = created.body.surfaces[0]?.id;
+    if (!surfaceId) {
+      throw new Error("Expected the custom gateway to have a surface");
+    }
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-5",
+        isDefault: true,
+        defaultProviderType: "custom-anthropic-messages",
+        credentialScope: "org",
+        modelProviderId: null,
+        modelProviderSurfaceId: surfaceId,
+      },
+    ]);
+
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "establish a custom gateway session",
+      model: "claude-sonnet-5",
+    });
+    const firstClaim = await claimChatRun(runnerGroup, first.runId);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
+    const originalBinding = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    if (!originalBinding.agent_session_id) {
+      throw new Error("Expected the custom gateway route to bind a session");
+    }
+
+    // A direct vendor key resolves to no upstream base URL because it uses the
+    // vendor default endpoint, and so does a custom gateway, whose endpoint is
+    // stored on the surface row. The session must still rotate: the deleted
+    // surface pointed somewhere else entirely.
+    await accept(
+      modelProviderConnectionsByIdClient().delete({
+        headers: sessionHeaders(actor),
+        params: { id: created.body.id },
+      }),
+      [204],
+    );
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-5",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+
+    const second = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "rotate onto the direct vendor key",
+    });
+    const rotatedBinding = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    expect(rotatedBinding.agent_session_id).not.toBe(
+      originalBinding.agent_session_id,
+    );
     expect(sandboxOperationEventsForRun(second.runId)).toContainEqual(
       expect.objectContaining({
         op_type: "chat_thread_session_binding_persisted",
@@ -8282,6 +8456,317 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(events.body.events).toStrictEqual([]);
   }, 60_000);
 
+  it("resolves attachment metadata in ordered waves of four", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const files = Array.from({ length: 5 }, (_, index) => {
+      return {
+        id: randomUUID(),
+        filename: `bounded-${index + 1}.txt`,
+        contentType: `text/x-bounded-${index + 1}`,
+        size: 100 + index,
+      };
+    });
+    const objects = files.map((file) => {
+      return {
+        ...file,
+        key: buildArtifactKeyV2(file.id, file.filename),
+        prefix: buildArtifactPrefixV2(file.id),
+      };
+    });
+    const objectsByPrefix = new Map(
+      objects.map((object) => {
+        return [object.prefix, object];
+      }),
+    );
+    const objectsByKey = new Map(
+      objects.map((object) => {
+        return [object.key, object];
+      }),
+    );
+    const firstWaveStarted = createDeferredPromise<void>(context.signal);
+    const releaseFirstWave = createDeferredPromise<void>(context.signal);
+    let startedLists = 0;
+    let activeLists = 0;
+    let peakActiveLists = 0;
+    context.mocks.s3.send.mockImplementation(
+      async (command: unknown): Promise<unknown> => {
+        if (command instanceof ListObjectsV2Command) {
+          const prefix = command.input.Prefix;
+          const object =
+            typeof prefix === "string"
+              ? objectsByPrefix.get(prefix)
+              : undefined;
+          if (!object) {
+            return { Contents: [] };
+          }
+          startedLists += 1;
+          activeLists += 1;
+          peakActiveLists = Math.max(peakActiveLists, activeLists);
+          if (startedLists === 4) {
+            firstWaveStarted.resolve(undefined);
+          }
+          await releaseFirstWave.promise;
+          activeLists -= 1;
+          return {
+            Contents: [
+              {
+                Key: object.key,
+                Size: object.size,
+                LastModified: new Date("2026-08-18T00:00:00.000Z"),
+              },
+            ],
+          };
+        }
+        if (command instanceof HeadObjectCommand) {
+          const key = command.input.Key;
+          const object =
+            typeof key === "string" ? objectsByKey.get(key) : undefined;
+          if (!object) {
+            return {};
+          }
+          return {
+            ContentLength: object.size,
+            ContentType: object.contentType,
+            LastModified: new Date("2026-08-18T00:00:00.000Z"),
+            Metadata: {
+              "artifact-id": object.id,
+              filename: encodeURIComponent(object.filename),
+              "user-id": encodeURIComponent(actor.userId),
+            },
+          };
+        }
+        return {};
+      },
+    );
+
+    const prompt = "read the bounded attachment set";
+    const send = chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        prompt,
+        userMessage: {
+          version: 1,
+          parts: [
+            ...files.map((file) => {
+              return {
+                type: "file" as const,
+                fileId: file.id,
+                filenameSnapshot: file.filename,
+                contentType: file.contentType,
+              };
+            }),
+            { type: "text", text: prompt },
+          ],
+        },
+      },
+      [201],
+    );
+    onTestFinished(async () => {
+      if (!releaseFirstWave.settled()) {
+        releaseFirstWave.resolve(undefined);
+      }
+      const response = await send;
+      if (response.status === 201 && response.body.runId) {
+        await cancelChatRun(actor, response.body.runId);
+      }
+    });
+
+    await firstWaveStarted.promise;
+    expect(startedLists).toBe(4);
+    expect(activeLists).toBe(4);
+    expect(peakActiveLists).toBe(4);
+    releaseFirstWave.resolve(undefined);
+
+    const sent = await send;
+    expect(sent.status).toBe(201);
+    if (sent.status !== 201 || !sent.body.runId) {
+      throw new Error("Expected the bounded attachment send to create a run");
+    }
+    expect(startedLists).toBe(5);
+    expect(peakActiveLists).toBe(4);
+
+    const run = await api.readRun(actor, sent.body.runId);
+    const promptPositions = files.map((file) => {
+      return run.prompt.indexOf(`[ID] ${file.id}`);
+    });
+    expect(
+      promptPositions.every((position) => {
+        return position >= 0;
+      }),
+    ).toBeTruthy();
+    expect(promptPositions).toStrictEqual(
+      [...promptPositions].sort((a, b) => {
+        return a - b;
+      }),
+    );
+
+    const catalog = await chat.listArtifactCatalog(actor, {
+      chatThreadId: sent.body.threadId,
+      kind: "file",
+      limit: 20,
+    });
+    for (const file of files) {
+      const summary = catalog.artifacts.find((artifact) => {
+        return artifact.title === file.filename;
+      });
+      if (!summary) {
+        throw new Error(`Expected catalog entry for ${file.filename}`);
+      }
+      const detail = await chat.getArtifactCatalogEntry(actor, summary.id);
+      expect(detail.kind).toBe("file");
+      if (detail.kind !== "file") {
+        throw new Error(`Expected file catalog entry for ${file.filename}`);
+      }
+      expect(detail.file).toMatchObject({
+        filename: file.filename,
+        contentType: file.contentType,
+        size: file.size,
+      });
+    }
+    expect(apiDispatchTimingEventsForRun(sent.body.runId)).toContainEqual(
+      expect.objectContaining({
+        op_type: API_DISPATCH_NORMAL_SEND_ATTACHMENT_METADATA_ACTION_TYPE,
+        normal_send_attachment_count_bucket: "5_plus",
+      }),
+    );
+  }, 60_000);
+
+  it("does not create a run when an attachment is missing", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chat.mockEmptyObjectStorage();
+    const model = await chat.getDefaultCreateThreadModel(actor);
+    const prompt = "reject the missing attachment";
+    const response = await requestSendEventRaw(actor, {
+      agentId,
+      model,
+      prompt,
+      userMessage: {
+        version: 1,
+        parts: [
+          {
+            type: "file",
+            fileId: randomUUID(),
+            filenameSnapshot: "missing.txt",
+            contentType: "text/plain",
+          },
+          { type: "text", text: prompt },
+        ],
+      },
+      hasTextContent: true,
+    });
+
+    expect(response).toStrictEqual({
+      status: 500,
+      body: { error: "Internal server error" },
+    });
+    const runs = await api.listAgentRuns(actor, {
+      status: "queued,pending,running,completed,failed,timeout,cancelled",
+      limit: 100,
+    });
+    expect(
+      runs.runs.some((run) => {
+        return run.prompt === prompt;
+      }),
+    ).toBeFalsy();
+  }, 60_000);
+
+  it("does not create a run when attachment storage fails", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    const model = await chat.getDefaultCreateThreadModel(actor);
+    context.mocks.s3.send.mockRejectedValue(
+      new Error("object storage unavailable"),
+    );
+    const prompt = "reject the failed attachment lookup";
+    const response = await requestSendEventRaw(actor, {
+      agentId,
+      model,
+      prompt,
+      userMessage: {
+        version: 1,
+        parts: [
+          {
+            type: "file",
+            fileId: randomUUID(),
+            filenameSnapshot: "unavailable.txt",
+            contentType: "text/plain",
+          },
+          { type: "text", text: prompt },
+        ],
+      },
+      hasTextContent: true,
+    });
+
+    expect(response).toStrictEqual({
+      status: 500,
+      body: { error: "Internal server error" },
+    });
+    const runs = await api.listAgentRuns(actor, {
+      status: "queued,pending,running,completed,failed,timeout,cancelled",
+      limit: 100,
+    });
+    expect(
+      runs.runs.some((run) => {
+        return run.prompt === prompt;
+      }),
+    ).toBeFalsy();
+  }, 60_000);
+
+  it("does not create a run when attachment resolution is aborted", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    const model = await chat.getDefaultCreateThreadModel(actor);
+    const controller = new AbortController();
+    const abortError = new Error(
+      "client disconnected during attachment lookup",
+    );
+    abortError.name = "AbortError";
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      if (command instanceof ListObjectsV2Command) {
+        controller.abort(abortError);
+      }
+      return Promise.resolve({ Contents: [] });
+    });
+    const prompt = "abort the attachment lookup";
+    const response = await requestSendEventRaw(
+      actor,
+      {
+        agentId,
+        model,
+        prompt,
+        userMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "file",
+              fileId: randomUUID(),
+              filenameSnapshot: "aborted.txt",
+              contentType: "text/plain",
+            },
+            { type: "text", text: prompt },
+          ],
+        },
+        hasTextContent: true,
+      },
+      controller.signal,
+    );
+
+    expect(controller.signal.aborted).toBeTruthy();
+    expect(response).toStrictEqual({
+      status: 500,
+      body: { error: "Internal server error" },
+    });
+    const runs = await api.listAgentRuns(actor, {
+      status: "queued,pending,running,completed,failed,timeout,cancelled",
+      limit: 100,
+    });
+    expect(
+      runs.runs.some((run) => {
+        return run.prompt === prompt;
+      }),
+    ).toBeFalsy();
+  }, 60_000);
+
   it("persists attachments and injects them into the run prompt", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -8736,6 +9221,95 @@ describe("CHAT-02: public-brand default assistant identity", () => {
     });
 
     await cancelChatRun(actor, customRun.runId);
+  }, 90_000);
+
+  it("posts brand-matched GitHub Audit links with a VM0 legacy fallback", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    bdd.acceptAgentStorageWrites();
+    if (!actor.orgId) {
+      throw new Error("Expected an organization-scoped chat actor");
+    }
+    const orgId = actor.orgId;
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      {
+        [FeatureSwitchKey.ZeroDebug]: true,
+      },
+    );
+    const installation = await github.installGithubApp(actor, agentId);
+    const postedComments: string[] = [];
+    server.use(
+      http.post(
+        "https://api.github.com/repos/:owner/:repo/issues/:issueNumber/comments",
+        async ({ request, params }) => {
+          expect(params.owner).toBe("vm0-ai");
+          expect(params.repo).toBe("vm0");
+          const body = (await request.json()) as Record<string, unknown>;
+          if (typeof body.body !== "string") {
+            return HttpResponse.json(
+              { message: "Expected a comment body" },
+              { status: 400 },
+            );
+          }
+          postedComments.push(body.body);
+          return HttpResponse.json({ id: postedComments.length });
+        },
+      ),
+    );
+
+    const expectGitHubCallbackBrand = async (args: {
+      readonly requestBrand: PublicBrand;
+      readonly expectedBrand: PublicBrand;
+      readonly legacy: boolean;
+      readonly subjectNumber: number;
+    }): Promise<void> => {
+      const run = await sendChatRun(
+        actor,
+        {
+          agentId,
+          prompt: `deliver a ${args.requestBrand}-branded GitHub response`,
+        },
+        args.requestBrand,
+      );
+      const claim = await claimChatRun(runnerGroup, run.runId);
+      await setChatCallbackGitHubDeliveryFixture({
+        runId: run.runId,
+        remoteInstallationId: installation.remoteInstallationId,
+        repo: "vm0-ai/vm0",
+        subjectNumber: args.subjectNumber,
+        subjectKind: "issue",
+        agentId,
+      });
+      if (args.legacy) {
+        await removeChatCallbackPublicBrandFixture(run.runId);
+      }
+
+      chatCallbacks.mockChatOutputEvents([
+        assistantEvent(0, "GitHub callback brand response"),
+      ]);
+      await completeChatRunOk(run.runId, claim.sandboxHeaders);
+      await flushWaitUntilForTest();
+
+      expect(postedComments.at(-1)).toContain(
+        `📋 [Audit](https://app.${args.expectedBrand === "okou" ? "okou.ai" : "vm0.ai"}/activities/${run.runId})`,
+      );
+    };
+
+    await expectGitHubCallbackBrand({
+      requestBrand: "okou",
+      expectedBrand: "okou",
+      legacy: false,
+      subjectNumber: 1,
+    });
+    await expectGitHubCallbackBrand({
+      requestBrand: "okou",
+      expectedBrand: "vm0",
+      legacy: true,
+      subjectNumber: 2,
+    });
+    expect(postedComments).toHaveLength(2);
   }, 90_000);
 });
 

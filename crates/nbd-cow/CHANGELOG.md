@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.76](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.75...nbd-cow-v0.4.76) (2026-08-18)
+
+
+### Bug Fixes
+
+* **nbd-cow:** observe detached owned disconnect results ([#27977](https://github.com/vm0-ai/vm0/issues/27977)) ([340195f](https://github.com/vm0-ai/vm0/commit/340195f5be5819807f38fccd40dd4e1867a8ebb2))
+
 ## [0.4.75](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.74...nbd-cow-v0.4.75) (2026-08-14)
 
 

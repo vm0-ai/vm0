@@ -77,6 +77,7 @@ interface PrivateAuthMethodFacts {
 export interface AcceptedConnectorCatalogSnapshot {
   readonly identity: ExternalCatalogIdentity;
   readonly catalogRawSize: number;
+  readonly catalogCompressedSize: number;
   readonly artifact: ConnectorCatalogArtifact;
   readonly connectorBySlug: ReadonlyMap<
     string,
@@ -433,6 +434,7 @@ async function readCurrentCatalog(args: {
       return {
         identity: args.identity,
         catalogRawSize: row.catalogRawSize,
+        catalogCompressedSize: row.catalogGzip.byteLength,
         artifact,
         connectorBySlug: new Map(
           artifact.connectors.map((connector) => {

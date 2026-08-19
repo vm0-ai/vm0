@@ -10,6 +10,7 @@ import {
   type RustTypeBinding,
   rustTypeBindings,
 } from "../types";
+import { modelProviderCodexRuntimeConfigSchema } from "../../contracts/model-providers";
 import { storageMountEntrySchema } from "../../contracts/runners";
 import { fileEntryWithHashSchema } from "../../contracts/storages";
 import {
@@ -19,6 +20,11 @@ import {
 } from "../../contracts/webhooks";
 
 const expectedBindings = [
+  {
+    rustModulePath: ["runners", "runs"],
+    rustTypeName: "CodexRuntimeConfig",
+    direction: "response",
+  },
   {
     rustModulePath: ["runners", "runs", "active_inputs", "reserve"],
     rustTypeName: "Response",
@@ -202,6 +208,14 @@ describe("Rust type bindings", () => {
     expect(firstRender).not.toContain("pub struct RequestFile {");
     expect(firstRender).toContain("pub uploads: Option<ResponseUploads>,");
     expect(firstRender).toContain("pub struct StorageMountEntry {");
+    expect(firstRender).toContain("pub struct CodexRuntimeConfig {");
+    expect(firstRender).toContain(
+      "pub http_headers: Option<std::collections::BTreeMap<String, String>>",
+    );
+    expect(firstRender).toContain("pub requires_openai_auth: Option<bool>,");
+    expect(firstRender).toContain(
+      "pub model_catalog: Option<serde_json::Value>,",
+    );
     expect(firstRender).toContain("pub storage_id: String,");
     expect(firstRender).toContain("pub version_id: String,");
     expect(firstRender).toContain("pub writeback: Option<bool>,");
@@ -241,6 +255,43 @@ describe("Rust type bindings", () => {
     );
     expect(firstRender.match(/pub archive_size: Option<u64>,/g)).toHaveLength(
       1,
+    );
+  });
+
+  it("keeps the Codex runtime override aligned with its canonical schema", () => {
+    const binding: RustTypeBinding | undefined = rustTypeBindings.find(
+      ({ rustModulePath, rustTypeName }) => {
+        return (
+          rustTypeName === "CodexRuntimeConfig" &&
+          rustModulePath.join("/") === "runners/runs"
+        );
+      },
+    );
+
+    expect(binding?.schema).toBe(modelProviderCodexRuntimeConfigSchema);
+    expect(binding?.fieldTypeOverrides).toEqual({
+      modelCatalog: "serde_json::Value",
+    });
+    expect(z.toJSONSchema(modelProviderCodexRuntimeConfigSchema)).toMatchObject(
+      {
+        required: [
+          "providerId",
+          "name",
+          "baseUrl",
+          "envKey",
+          "wireApi",
+          "supportsWebsockets",
+        ],
+        properties: {
+          httpHeaders: {
+            additionalProperties: { type: "string" },
+          },
+          requiresOpenaiAuth: { type: "boolean" },
+          modelCatalog: {
+            additionalProperties: {},
+          },
+        },
+      },
     );
   });
 

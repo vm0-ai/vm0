@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import type { ImageModel } from "@okouai/core/image-model-catalog";
 import type { VideoModel } from "@okouai/core/video-model-catalog";
 import {
   type UserPreferenceChangedPayload,
@@ -80,6 +81,28 @@ export const updateDefaultVideoModel$ = command(
         selectedModel: preference.selectedModel,
         serviceTier: preference.serviceTier,
         selectedVideoModel: videoModel,
+      },
+      signal,
+    );
+  },
+);
+
+/** Makes an image model the member default without disturbing sibling fields. */
+export const updateDefaultImageModel$ = command(
+  async (
+    { get, set },
+    imageModel: ImageModel,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    set(reloadUserModelPreference$);
+    const preference = await get(userModelPreference$);
+    signal.throwIfAborted();
+    await set(
+      updateUserModelPreference$,
+      {
+        selectedModel: preference.selectedModel,
+        serviceTier: preference.serviceTier,
+        selectedImageModel: imageModel,
       },
       signal,
     );

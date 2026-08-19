@@ -1153,14 +1153,6 @@ impl WorkspaceImageCache {
             allocated_bytes = allocated,
             "workspace image cache promoted"
         );
-        if let Err(e) = self.gc_locked(false).await {
-            warn!(
-                run_id = %input.run_id,
-                cache_key = input.cache_key,
-                error = %e,
-                "workspace image cache GC failed after promotion"
-            );
-        }
         Ok(WorkspaceImagePromotionOutcome::Promoted)
     }
 }

@@ -9,7 +9,7 @@ import {
   type ZeroAgentVisibility,
 } from "@okouai/api-contracts/contracts/zero-agents";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { randomPresetAvatar } from "@okouai/core/agent-avatar";
 import { publicBrandPresentation } from "@okouai/core/public-brand";
 import { agentComposes } from "@okouai/db/schema/agent-compose";
@@ -508,7 +508,7 @@ const getAgentInner$ = computed(async (get) => {
 
 const getAgentUserConnectorsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(zeroUserConnectorsContract.get));
+  const params = get(pathParamsOf(userConnectorsContract.get));
   const exists = await get(
     agentExists({
       orgId: auth.orgId,
@@ -853,13 +853,13 @@ const updateAgentCustomConnectorsInner$ = command(
 );
 
 const updateAgentUserConnectorsBody$ = bodyResultOf(
-  zeroUserConnectorsContract.update,
+  userConnectorsContract.update,
 );
 
 const updateAgentUserConnectorsInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const params = get(pathParamsOf(zeroUserConnectorsContract.update));
+    const params = get(pathParamsOf(userConnectorsContract.update));
     const body = await get(updateAgentUserConnectorsBody$);
     signal.throwIfAborted();
     if (!body.ok) {
@@ -997,7 +997,7 @@ export const agentsRoutes: readonly RouteEntry[] = [
     handler: authRoute(agentDeleteAuth, deleteAgentInner$),
   },
   {
-    route: zeroUserConnectorsContract.get,
+    route: userConnectorsContract.get,
     handler: authRoute(agentReadAuth, getAgentUserConnectorsInner$),
   },
   {
@@ -1009,7 +1009,7 @@ export const agentsRoutes: readonly RouteEntry[] = [
     handler: authRoute(agentReadAuth, updateAgentCustomConnectorsInner$),
   },
   {
-    route: zeroUserConnectorsContract.update,
+    route: userConnectorsContract.update,
     handler: authRoute(agentReadAuth, updateAgentUserConnectorsInner$),
   },
 ];

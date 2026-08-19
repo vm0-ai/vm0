@@ -342,6 +342,7 @@ async fn restore_session_rejects_truncated_codex_cleanup_success_output() {
     let sandbox = MockSandbox::new("test");
     sandbox.push_exec_result(Ok(ExecResult {
         termination: ExecTermination::Exited { exit_code: 0 },
+        guest_duration_ms: None,
         stdout: format!("{CODEX_EXISTING_ROLLOUT_PATH}\n").into_bytes(),
         stderr: Vec::new(),
         diagnostic: String::new(),
@@ -400,6 +401,7 @@ async fn restore_session_preserves_non_exited_codex_cleanup_failure_output() {
     );
     sandbox.push_exec_result(Ok(ExecResult {
         termination: ExecTermination::WaitFailed,
+        guest_duration_ms: None,
         stdout: format!("stdout includes {CODEX_SESSION_ID_NO_DASHES}").into_bytes(),
         stderr: format!("find: {CODEX_CANONICAL_ROLLOUT_PATH}: Permission denied").into_bytes(),
         diagnostic: String::new(),

@@ -14,7 +14,7 @@
  * statement — the rule treats that as an explicit, reviewable exemption.
  *
  * Good:
- *   server.use(mockApi(zeroOrgContract.get, ({ respond }) => respond(200, {...})));
+ *   server.use(mockApi(orgContract.get, ({ respond }) => respond(200, {...})));
  *
  * Bad:
  *   server.use(http.get("*\/api/zero/org", () => HttpResponse.json({...})));

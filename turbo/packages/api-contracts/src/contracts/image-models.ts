@@ -15,6 +15,8 @@ export const IMAGE_MODEL_IDS = [
   "fal-ai/flux-pro/v1.1-ultra",
   "fal-ai/qwen-image",
   "fal-ai/bytedance/seedream/v4/text-to-image",
+  "dola-seedream-5-0-pro-260628",
+  "seedream-5-0-lite-260128",
   "fal-ai/nano-banana-2",
 ] as const;
 

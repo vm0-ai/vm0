@@ -13,6 +13,7 @@ import {
   fingerprintSortedSet,
   type SetFingerprint,
 } from "./agent-compose-consolidation-preflight-fingerprint";
+import { isExactHistoricalProductBuilderCandidate } from "../../../apps/api/src/signals/services/historical-product-builder";
 
 export const ENVIRONMENT_PRIMARY_CLASSES = [
   "variableReferenceOnly",
@@ -25,6 +26,16 @@ export const ENVIRONMENT_PRIMARY_CLASSES = [
 
 export type EnvironmentPrimaryClass =
   (typeof ENVIRONMENT_PRIMARY_CLASSES)[number];
+
+/** Transition-only #28056 output classes; removed by #26938 Stage 8. */
+export const HISTORICAL_PRODUCT_BUILDER_ORIGIN_CLASSES = [
+  "exactHistoricalProductBuilder",
+  "referenceOnlyButUnproven",
+  "literalOrOtherUnproven",
+] as const;
+
+export type HistoricalProductBuilderOriginClass =
+  (typeof HISTORICAL_PRODUCT_BUILDER_ORIGIN_CLASSES)[number];
 
 export const ENVIRONMENT_OVERLAP_DIMENSIONS = [
   "officialModelProviderBindingCollision",
@@ -449,6 +460,24 @@ function environmentClassification(
   };
 }
 
+/** Transition-only #28056 classifier adapter; removed by #26938 Stage 8. */
+function historicalProductBuilderOrigin(
+  row: ExceptionRefinementInventoryRow,
+): HistoricalProductBuilderOriginClass {
+  if (isExactHistoricalProductBuilderCandidate(row)) {
+    return "exactHistoricalProductBuilder";
+  }
+  const primary = environmentClassification(row).primary;
+  if (
+    primary === "variableReferenceOnly" ||
+    primary === "secretReferenceOnly" ||
+    primary === "mixedVariableSecretReferenceOnly"
+  ) {
+    return "referenceOnlyButUnproven";
+  }
+  return "literalOrOtherUnproven";
+}
+
 type StrippedDisposition = "ignored" | "inactive" | "reachable" | "unknown";
 
 interface StrippedNode {
@@ -805,7 +834,9 @@ export function classifyExceptionRefinements(args: {
     string,
     readonly ExceptionRefinementInventoryRow[]
   >;
-  readonly environmentIds: readonly string[];
+  readonly legacyEnvironmentIds: readonly string[];
+  readonly residualEnvironmentIds: readonly string[];
+  readonly applicationHistoricalProductBuilderEnvironmentIds: readonly string[];
   readonly unsupportedIds: readonly string[];
   readonly unclassifiedIds: readonly string[];
   readonly failureGates: Set<string>;
@@ -821,7 +852,7 @@ export function classifyExceptionRefinements(args: {
   >();
   const environment = primaryClassification({
     domain: "agentExecutionPlans.refinements.systemEnvironmentDifferences",
-    parentIds: args.environmentIds,
+    parentIds: args.legacyEnvironmentIds,
     primaryClasses: ENVIRONMENT_PRIMARY_CLASSES,
     rowsById: args.rowsById,
     failureGates: args.failureGates,
@@ -841,7 +872,7 @@ export function classifyExceptionRefinements(args: {
       }),
     ),
   ];
-  const expectedOverlapUnionIds = args.environmentIds.filter((id) => {
+  const expectedOverlapUnionIds = args.legacyEnvironmentIds.filter((id) => {
     return (environmentClassifications.get(id)?.overlaps.size ?? 0) > 0;
   });
   const overlapUnionClosure = setComparison(
@@ -859,6 +890,110 @@ export function classifyExceptionRefinements(args: {
     args.failureGates.add(
       "agentExecutionPlans.refinements.systemEnvironmentDifferences.unclassifiedValueShape",
     );
+  }
+
+  // Transition-only #28056 evidence partition; removed by #26938 Stage 8.
+  const historicalProductBuilderOriginClassification = primaryClassification({
+    domain:
+      "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin",
+    parentIds: args.legacyEnvironmentIds,
+    primaryClasses: HISTORICAL_PRODUCT_BUILDER_ORIGIN_CLASSES,
+    rowsById: args.rowsById,
+    failureGates: args.failureGates,
+    classify: historicalProductBuilderOrigin,
+  });
+  const originAssignments = HISTORICAL_PRODUCT_BUILDER_ORIGIN_CLASSES.flatMap(
+    (primaryClass) => {
+      return historicalProductBuilderOriginClassification.idsByClass[
+        primaryClass
+      ];
+    },
+  );
+  const originAssignmentCounts = new Map<string, number>();
+  for (const id of originAssignments) {
+    originAssignmentCounts.set(id, (originAssignmentCounts.get(id) ?? 0) + 1);
+  }
+  const duplicateOriginIds = [...originAssignmentCounts]
+    .filter(([, count]) => {
+      return count > 1;
+    })
+    .map(([id]) => {
+      return id;
+    });
+  const originDisjointnessClosure = setComparison(
+    "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin:primary-disjointness-closure",
+    [],
+    duplicateOriginIds,
+    false,
+  );
+  if (originDisjointnessClosure.classification === "drift") {
+    args.failureGates.add(
+      "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin.primaryDisjointnessClosure",
+    );
+  }
+
+  const exactHistoricalProductBuilderIds =
+    historicalProductBuilderOriginClassification.idsByClass
+      .exactHistoricalProductBuilder;
+  const unprovenHistoricalProductBuilderIds = [
+    ...historicalProductBuilderOriginClassification.idsByClass
+      .referenceOnlyButUnproven,
+    ...historicalProductBuilderOriginClassification.idsByClass
+      .literalOrOtherUnproven,
+  ];
+  const legacyEnvironmentLineage = fingerprintSortedSet(
+    "agent-execution-plans:systemEnvironmentDifferences:agent-ids",
+    args.legacyEnvironmentIds,
+  );
+  const applicationAuthorityMembershipLineageClosure = setComparison(
+    "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin:application-authority-membership-lineage-closure",
+    exactHistoricalProductBuilderIds,
+    args.applicationHistoricalProductBuilderEnvironmentIds,
+    true,
+  );
+  const residualEnvironmentMembershipLineageClosure = setComparison(
+    "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin:residual-environment-membership-lineage-closure",
+    unprovenHistoricalProductBuilderIds,
+    args.residualEnvironmentIds,
+    true,
+  );
+  const authorityPartitionClosure = setComparison(
+    "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin:authority-partition-closure",
+    args.legacyEnvironmentIds,
+    [
+      ...args.applicationHistoricalProductBuilderEnvironmentIds,
+      ...args.residualEnvironmentIds,
+    ],
+    true,
+  );
+  const residualEnvironmentSet = new Set(args.residualEnvironmentIds);
+  const authorityIntersectionIds =
+    args.applicationHistoricalProductBuilderEnvironmentIds.filter((id) => {
+      return residualEnvironmentSet.has(id);
+    });
+  const authorityDisjointnessClosure = setComparison(
+    "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin:authority-disjointness-closure",
+    [],
+    authorityIntersectionIds,
+    true,
+  );
+  for (const [name, closure] of [
+    [
+      "applicationAuthorityMembershipLineageClosure",
+      applicationAuthorityMembershipLineageClosure,
+    ],
+    [
+      "residualEnvironmentMembershipLineageClosure",
+      residualEnvironmentMembershipLineageClosure,
+    ],
+    ["authorityPartitionClosure", authorityPartitionClosure],
+    ["authorityDisjointnessClosure", authorityDisjointnessClosure],
+  ] as const) {
+    if (closure.classification === "drift") {
+      args.failureGates.add(
+        `agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin.${name}`,
+      );
+    }
   }
 
   const unsupported = primaryClassification({
@@ -909,6 +1044,21 @@ export function classifyExceptionRefinements(args: {
       primaryUnionClosure: environment.unionClosure,
       overlapUnionClosure,
       activity: environment.activity,
+      /** Transition-only #28056 and #28070 output; removed by #26938 Stage 8. */
+      historicalProductBuilderOrigin: {
+        legacyEnvironmentLineage,
+        primary: historicalProductBuilderOriginClassification.primary,
+        primaryPartitionClosure:
+          historicalProductBuilderOriginClassification.partitionClosure,
+        primaryDisjointnessClosure: originDisjointnessClosure,
+        primaryUnionClosure:
+          historicalProductBuilderOriginClassification.unionClosure,
+        applicationAuthorityMembershipLineageClosure,
+        residualEnvironmentMembershipLineageClosure,
+        authorityPartitionClosure,
+        authorityDisjointnessClosure,
+        activity: historicalProductBuilderOriginClassification.activity,
+      },
     },
     unsupportedOrInvalidContent: {
       primary: unsupported.primary,

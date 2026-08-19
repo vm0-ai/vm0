@@ -34,6 +34,7 @@ import * as modelUsageObservationSchema from "./schema/model-usage-observation";
 import * as variableSchema from "./schema/variable";
 import * as composeJobSchema from "./schema/compose-job";
 import * as connectorSchema from "./schema/connector";
+import * as chatThreadConnectorSelectionSchema from "./schema/chat-thread-connector-selection";
 import * as connectorExternalCodeSessionSchema from "./schema/connector-external-code-session";
 import * as modelProviderAuthSessionSchema from "./schema/model-provider-auth-session";
 import * as connectorOauthDeviceAuthorizationSessionSchema from "./schema/connector-oauth-device-authorization-session";
@@ -92,7 +93,7 @@ import * as userPermissionGrantSchema from "./schema/user-permission-grant";
 import * as threadGoalSchema from "./schema/thread-goal";
 import * as storageVersionLineageSchema from "./schema/storage-version-lineage";
 import * as runUploadedFileSchema from "./schema/run-uploaded-file";
-import * as vm0ApiKeySchema from "./schema/vm0-api-key";
+import * as builtInModelKeySchema from "./schema/built-in-model-key";
 import * as workflowSchema from "./schema/workflow";
 import * as morningBriefSchema from "./schema/morning-brief";
 import * as computerUseHostSchema from "./schema/computer-use-host";
@@ -178,6 +179,7 @@ export const schema = {
   ...variableSchema,
   ...composeJobSchema,
   ...connectorSchema,
+  ...chatThreadConnectorSelectionSchema,
   ...connectorExternalCodeSessionSchema,
   ...modelProviderAuthSessionSchema,
   ...connectorOauthDeviceAuthorizationSessionSchema,
@@ -221,7 +223,7 @@ export const schema = {
   ...threadGoalSchema,
   ...storageVersionLineageSchema,
   ...runUploadedFileSchema,
-  ...vm0ApiKeySchema,
+  ...builtInModelKeySchema,
   ...workflowSchema,
   ...morningBriefSchema,
   ...computerUseHostSchema,

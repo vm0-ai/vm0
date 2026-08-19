@@ -200,6 +200,7 @@ struct PreferenceCandidateRequest<'a> {
 pub(super) struct ReservedActivationRequest<'a> {
     pub(super) run_id: RunId,
     pub(super) profile_name: &'a str,
+    pub(super) device_rate_limits: &'a Option<sandbox::DeviceRateLimits>,
     pub(super) workspace_disk_mb: u32,
     pub(super) context: &'a ExecutionContext,
 }
@@ -317,7 +318,8 @@ pub(super) async fn handle_discovered_job(
         .await;
         return DiscoveredJobResult::completed(true);
     }
-    let mut pre_spawn_timing = RunnerPreSpawnTiming::start_at(claim_returned_at);
+    let mut pre_spawn_timing =
+        RunnerPreSpawnTiming::start_at(claim_returned_at, claimed.api_claim_request_elapsed());
     let started_at = Instant::now();
     let resume_session_error = validate_resume_session_id(claimed.context()).err();
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::ResumeSessionValidation, started_at);
@@ -389,6 +391,7 @@ pub(super) async fn handle_discovered_job(
                 ReservedActivationRequest {
                     run_id,
                     profile_name: &profile_name,
+                    device_rate_limits: &device_rate_limits,
                     workspace_disk_mb: job_workspace_disk_mb,
                     context: claimed.context(),
                 },
@@ -435,6 +438,7 @@ pub(super) async fn handle_discovered_job(
                 ReservedActivationRequest {
                     run_id,
                     profile_name: &profile_name,
+                    device_rate_limits: &device_rate_limits,
                     workspace_disk_mb: job_workspace_disk_mb,
                     context: claimed.context(),
                 },
@@ -1471,6 +1475,7 @@ async fn activate_speculated_exact(
     let ReservedActivationRequest {
         run_id,
         profile_name,
+        device_rate_limits: _,
         workspace_disk_mb,
         context,
     } = request;
@@ -1738,6 +1743,7 @@ pub(super) async fn activate_reserved_idle(
     let ReservedActivationRequest {
         run_id,
         profile_name,
+        device_rate_limits,
         workspace_disk_mb,
         context,
     } = request;
@@ -1745,6 +1751,27 @@ pub(super) async fn activate_reserved_idle(
     let requested_reuse_key = context.reuse_key();
     let reserved_reuse_key = reservation.reuse_key().to_owned();
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
+
+    if reservation.profile_name() != profile_name
+        || reservation.device_rate_limits() != device_rate_limits
+    {
+        let reuse_key_fingerprint = diagnostic_reuse_key_fingerprint(&reserved_reuse_key);
+        warn!(
+            run_id = %run_id,
+            reuse_key_fingerprint = %reuse_key_fingerprint,
+            reuse_key_kind = reuse_key_kind(&reserved_reuse_key),
+            profile = %profile_name,
+            "reserved idle VM configuration does not match claimed job, destroying before fresh fallback"
+        );
+        return cleanup_reserved_for_fresh_fallback(
+            reservation.into_destroy_job(),
+            SandboxReuseResult::PoolMiss,
+            "reserved_reuse_configuration_mismatch",
+            ctx,
+        )
+        .await
+        .into();
+    }
 
     if requested_reuse_key != Some(reserved_reuse_key.as_str()) {
         let reuse_result = if requested_reuse_key.is_none() {

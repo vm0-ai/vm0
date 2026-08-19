@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroUploadsContract } from "@okouai/api-contracts/contracts/zero-uploads";
+import { uploadsContract } from "@okouai/api-contracts/contracts/uploads";
 
 import { env } from "../../lib/env";
 import { badRequestMessage } from "../../lib/error";
@@ -30,7 +30,7 @@ const prepareUploadInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(authContext$);
 
-    const bodyResult = await get(bodyResultOf(zeroUploadsContract.prepare));
+    const bodyResult = await get(bodyResultOf(uploadsContract.prepare));
     signal.throwIfAborted();
     if (!bodyResult.ok) {
       return bodyResult.response;
@@ -143,7 +143,7 @@ const prepareUploadInner$ = command(
 
 export const uploadsPrepareRoutes: readonly RouteEntry[] = [
   {
-    route: zeroUploadsContract.prepare,
+    route: uploadsContract.prepare,
     handler: authRoute(
       { requiredCapability: "file:write" },
       prepareUploadInner$,

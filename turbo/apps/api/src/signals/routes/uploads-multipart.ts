@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { zeroUploadsContract } from "@okouai/api-contracts/contracts/zero-uploads";
+import { uploadsContract } from "@okouai/api-contracts/contracts/uploads";
 
 import { env } from "../../lib/env";
 import { badRequestMessage } from "../../lib/error";
@@ -18,7 +18,7 @@ const completeMultipartInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(authContext$);
     const bodyResult = await get(
-      bodyResultOf(zeroUploadsContract.completeMultipart),
+      bodyResultOf(uploadsContract.completeMultipart),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -73,9 +73,7 @@ const completeMultipartInner$ = command(
 const abortMultipartInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(authContext$);
-    const bodyResult = await get(
-      bodyResultOf(zeroUploadsContract.abortMultipart),
-    );
+    const bodyResult = await get(bodyResultOf(uploadsContract.abortMultipart));
     signal.throwIfAborted();
     if (!bodyResult.ok) {
       return bodyResult.response;
@@ -113,14 +111,14 @@ const abortMultipartInner$ = command(
 
 export const uploadsMultipartRoutes: readonly RouteEntry[] = [
   {
-    route: zeroUploadsContract.completeMultipart,
+    route: uploadsContract.completeMultipart,
     handler: authRoute(
       { requiredCapability: "file:write" },
       completeMultipartInner$,
     ),
   },
   {
-    route: zeroUploadsContract.abortMultipart,
+    route: uploadsContract.abortMultipart,
     handler: authRoute(
       { requiredCapability: "file:write" },
       abortMultipartInner$,

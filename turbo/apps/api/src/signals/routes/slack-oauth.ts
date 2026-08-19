@@ -25,17 +25,13 @@ import {
   connectSlackWorkspace$,
   notifySlackConnect$,
   publishSlackAdminSignal$,
-} from "../services/zero-slack-connect.service";
-import { SLACK_BOT_SCOPES } from "../services/zero-slack-data.service";
+} from "../services/slack-connect.service";
+import { SLACK_BOT_SCOPES } from "../services/slack-data.service";
 import type { RouteEntry } from "../route-entry";
 import {
   getOAuthCanonicalRedirectUrl,
   getOAuthWebOrigin,
 } from "../../lib/oauth-origin";
-import {
-  logIntegrationIdentityCompatibility,
-  resolveIntegrationUserId,
-} from "../../lib/integration-user-id-compat";
 
 const L = logger("SlackOAuth");
 const SLACK_OAUTH_URL = "https://slack.com/oauth/v2/authorize";
@@ -130,23 +126,9 @@ function parseOAuthState(state: string | undefined): OAuthState | null {
   }
 
   const record = parsed as Record<string, unknown>;
-  const userId = resolveIntegrationUserId(
-    optionalString(record.userId),
-    // Old web/app OAuth state fallback (observed maximum: ~2 days).
-    // Remove in #27602 after legacy producers and callbacks have drained.
-    optionalString(record.vm0UserId),
-  );
-  logIntegrationIdentityCompatibility({
-    provider: "slack",
-    surface: "state",
-    outcome: userId.outcome,
-  });
-  if (!userId.ok) {
-    return null;
-  }
   return {
     orgId: optionalString(record.orgId),
-    userId: userId.userId,
+    userId: optionalString(record.userId),
     flow: record.flow === "connect" ? "connect" : "install",
     reinstall: optionalBoolean(record.reinstall),
     prompt: optionalString(record.prompt),
@@ -186,15 +168,7 @@ const installOauth$ = computed((get) => {
   }
 
   const query = get(queryOf(slackOauthContract.install));
-  const userId = resolveIntegrationUserId(query.userId, query.vm0UserId);
-  logIntegrationIdentityCompatibility({
-    provider: "slack",
-    surface: "query",
-    outcome: userId.outcome,
-  });
-  if (!userId.ok) {
-    return failedRedirect("Invalid OAuth identity.", publicBrand);
-  }
+  const userId = query.userId;
   const stateObj: {
     orgId?: string;
     userId?: string;
@@ -205,8 +179,8 @@ const installOauth$ = computed((get) => {
   if (query.orgId) {
     stateObj.orgId = query.orgId;
   }
-  if (userId.userId) {
-    stateObj.userId = userId.userId;
+  if (userId) {
+    stateObj.userId = userId;
   }
   if (query.reinstall === "1") {
     stateObj.reinstall = true;
@@ -242,16 +216,8 @@ const connectOauth$ = command(async ({ get }, signal: AbortSignal) => {
   }
 
   const query = get(queryOf(slackOauthContract.connect));
-  const userId = resolveIntegrationUserId(query.userId, query.vm0UserId);
-  logIntegrationIdentityCompatibility({
-    provider: "slack",
-    surface: "query",
-    outcome: userId.outcome,
-  });
-  if (!userId.ok) {
-    return jsonErrorResponse("Conflicting userId values", 400);
-  }
-  if (!query.orgId || !userId.userId) {
+  const userId = query.userId;
+  if (!query.orgId || !userId) {
     return jsonErrorResponse("Missing orgId or userId", 400);
   }
 
@@ -278,7 +244,7 @@ const connectOauth$ = command(async ({ get }, signal: AbortSignal) => {
     publicBrand: PublicBrand;
   } = {
     orgId: query.orgId,
-    userId: userId.userId,
+    userId,
     flow: "connect",
     publicBrand,
   };

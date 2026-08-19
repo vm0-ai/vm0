@@ -1,6 +1,6 @@
 import { PLAN_UPGRADE_CLI_HINT } from "@okouai/api-contracts/contracts/errors";
 import { CANONICAL_WORKING_DIR } from "@okouai/api-contracts/contracts/runners";
-import { zeroRunCreateBodySchema } from "@okouai/api-contracts/contracts/zero-runs";
+import { runCreateBodySchema } from "@okouai/api-contracts/contracts/run-routes";
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
@@ -65,7 +65,7 @@ import {
   type UserInfo,
 } from "./run-bootstrap-context.service";
 import type { RunWorkflowRef } from "./workflow-data.service";
-import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
+import { loadConnectorRuntimeSelection } from "./connector-catalog-runtime.service";
 import { expandConnectorServerFirewallPolicies } from "./connector-server-firewall-catalog.service";
 import type { QueueFirstRunAssociation } from "./chat-queued-event.service";
 import {
@@ -73,7 +73,7 @@ import {
   type WebChatSessionPromptContext,
 } from "./web-chat-session-prompt.service";
 
-type ZeroRunCreateBody = z.infer<typeof zeroRunCreateBodySchema>;
+type ZeroRunCreateBody = z.infer<typeof runCreateBodySchema>;
 type ZeroRunOrigin = "zero_run" | "workflow_automation" | "goal_continuation";
 export type ZeroPreCreateSource =
   | "chat_callback_auto_send"
@@ -102,6 +102,7 @@ const TONE_INSTRUCTIONS: Readonly<Record<string, string>> = {
 
 interface ZeroAgentRunRecord {
   readonly id: string;
+  readonly name: string;
   readonly orgId: string;
   readonly defaultAgentId: string | null;
   readonly owner: string;
@@ -503,6 +504,7 @@ async function loadZeroAgent(
   const [agent] = await db
     .select({
       id: zeroAgents.id,
+      name: zeroAgents.name,
       orgId: zeroAgents.orgId,
       defaultAgentId: orgMetadata.defaultAgentId,
       owner: zeroAgents.owner,
@@ -785,11 +787,10 @@ async function loadZeroRunPostAuthorizationContext(
     isEmptyRunConnectorScope(bootstrapContext)
       ? { kind: "empty" }
       : {
-          kind: "complete",
-          snapshot: await loadConnectorRuntimeSnapshot(db, {
+          kind: "scoped",
+          selection: await loadConnectorRuntimeSelection(db, {
             timing: args.timing,
-            requestedConnectorCount:
-              bootstrapContext.allowedConnectorSlugs.length,
+            requestedConnectorSlugs: bootstrapContext.allowedConnectorSlugs,
           }),
         };
   signal.throwIfAborted();
@@ -804,7 +805,7 @@ async function loadZeroRunPostAuthorizationContext(
         return storedPermissionPolicies;
       }
       return await expandConnectorServerFirewallPolicies({
-        catalog: connectorCatalogSelection.snapshot.serverFirewalls,
+        catalog: connectorCatalogSelection.selection.serverFirewalls,
         stored: storedPermissionPolicies,
         connectorSlugs: [...bootstrapContext.allowedConnectorSlugs],
       });
@@ -868,6 +869,7 @@ function buildZeroCreateAgentRunArgs(args: {
     }),
     callbacks: command.callbacks,
     includeZeroTokenSecret: true,
+    productAgentName: args.agent.name,
     zeroTokenPublicBrand: command.publicBrand,
     zeroTokenComputerUseHostId: command.computerUseHostId,
     zeroTokenCloudBrowserEnabled: args.cloudBrowserEnabled,
@@ -1019,10 +1021,10 @@ const createAgentRunAfterZeroPreCreate$ = command(
           checkOrgPlanStatusBeforeContext: false,
           preloadedFeatureSwitchContext: input.featureSwitchContext,
           preloadedUserTimezone: input.userInfo.timezone,
-          ...(input.connectorCatalogSelection.kind === "complete"
+          ...(input.connectorCatalogSelection.kind === "scoped"
             ? {
                 preloadedConnectorCatalogSnapshot:
-                  input.connectorCatalogSelection.snapshot,
+                  input.connectorCatalogSelection.selection,
               }
             : {}),
         },

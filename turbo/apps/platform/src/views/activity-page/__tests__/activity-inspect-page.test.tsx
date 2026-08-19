@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { NetworkLogEntry } from "@okouai/api-contracts/contracts/runs";
-import type { RunContextResponse } from "@okouai/api-contracts/contracts/zero-runs";
+import type { RunContextResponse } from "@okouai/api-contracts/contracts/run-routes";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 

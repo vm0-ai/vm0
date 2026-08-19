@@ -106,6 +106,11 @@ import {
   type ConnectorCredentialAccess,
 } from "./connector-credential-access.service";
 import {
+  connectorAccountTargetKey,
+  resolveConnectorAccounts,
+  type ConnectorAccountResolutionRequest,
+} from "./connector-account-resolution.service";
+import {
   CustomConnectorOAuth2TokenRefreshError,
   resolveCurrentCustomConnectorOAuth2AccessToken,
 } from "./custom-connector-oauth2.service";
@@ -847,10 +852,30 @@ function isReconnectRequiredRefreshErrorCode(
   errorCode: string | null | undefined,
 ): boolean {
   return (
+    isTerminalChatgptRefreshErrorCode(errorCode) ||
+    errorCode === "invalid_grant"
+  );
+}
+
+function isTerminalChatgptRefreshErrorCode(
+  errorCode: string | null | undefined,
+): boolean {
+  return (
     errorCode === "refresh_token_expired" ||
     errorCode === "refresh_token_reused" ||
-    errorCode === "refresh_token_invalidated" ||
-    errorCode === "invalid_grant"
+    errorCode === "refresh_token_invalidated"
+  );
+}
+
+function isTerminalCodexRefreshState(
+  prepared: PreparedRefreshTokenContext,
+  state: RefreshState,
+): boolean {
+  return (
+    prepared.sourceType === "model-provider" &&
+    prepared.providerKey === "codex-oauth-token" &&
+    state.needsReconnect &&
+    isTerminalChatgptRefreshErrorCode(state.lastRefreshErrorCode)
   );
 }
 
@@ -1217,11 +1242,28 @@ async function loadConnectorAccessStates(
   db: Db,
   orgId: string,
   userId: string,
-  connectorSlugs: readonly string[],
+  requests: readonly ConnectorAccountResolutionRequest[],
   snapshot: ConnectorRuntimeSnapshot,
 ): Promise<Map<string, ConnectorAccessState>> {
   const result = new Map<string, ConnectorAccessState>();
-  if (connectorSlugs.length === 0) {
+  if (requests.length === 0) {
+    return result;
+  }
+
+  const accountResolutions = await resolveConnectorAccounts(db, {
+    orgId,
+    userId,
+    requests,
+  });
+  const connectorIds = requests.flatMap((request) => {
+    const resolution = accountResolutions.get(
+      connectorAccountTargetKey(request.target),
+    );
+    return resolution?.kind === "resolved"
+      ? [resolution.account.connectorId]
+      : [];
+  });
+  if (connectorIds.length === 0) {
     return result;
   }
 
@@ -1242,7 +1284,7 @@ async function loadConnectorAccessStates(
         eq(connectors.orgId, orgId),
         eq(connectors.userId, userId),
         isNotNull(connectors.connectorSlug),
-        inArray(connectors.connectorSlug, [...connectorSlugs]),
+        inArray(connectors.id, connectorIds),
       ),
     );
 
@@ -1553,7 +1595,10 @@ async function loadCurrentSourceStateSnapshot(args: {
     args.db,
     args.orgId,
     args.userId,
-    connectorSlugs,
+    builtinConnectorAccountRequestsForMetadata({
+      connectorSlugs,
+      metadataByAccessSource: args.metadataByAccessSource,
+    }),
     args.connectorCatalogSnapshot,
   );
   return {
@@ -2027,6 +2072,11 @@ async function loadConnectorRefreshStateRow(
   lockRow: boolean,
 ): Promise<RefreshStateRow | null> {
   const connectorSlug = args.accessSourceKey;
+  const connectorId =
+    args.connectorAccessBySlug.get(connectorSlug)?.connectorId;
+  if (connectorId === undefined) {
+    return null;
+  }
   const query = db
     .select({
       authMethod: connectors.authMethod,
@@ -2045,6 +2095,7 @@ async function loadConnectorRefreshStateRow(
       and(
         eq(connectors.orgId, args.orgId),
         eq(connectors.userId, args.userId),
+        eq(connectors.id, connectorId),
         eq(connectors.connectorSlug, connectorSlug),
       ),
     );
@@ -2344,6 +2395,11 @@ async function markRefreshFailure(
   }
 
   const connectorSlug = args.accessSourceKey;
+  const connectorId =
+    args.connectorAccessBySlug.get(connectorSlug)?.connectorId;
+  if (connectorId === undefined) {
+    return;
+  }
   await args.db
     .update(connectors)
     .set(
@@ -2359,6 +2415,7 @@ async function markRefreshFailure(
       and(
         eq(connectors.orgId, args.orgId),
         eq(connectors.userId, args.userId),
+        eq(connectors.id, connectorId),
         eq(connectors.connectorSlug, connectorSlug),
       ),
     );
@@ -2640,6 +2697,10 @@ async function refreshLockedAccessToken(args: {
   });
   if (!lockedState) {
     return sourceMissingResult();
+  }
+
+  if (isTerminalCodexRefreshState(args.prepared, lockedState)) {
+    return refreshFailedResult("reconnect_required");
   }
 
   if (
@@ -3592,6 +3653,79 @@ function firewallAuthReferencedConnectorSlugs(args: {
   ];
 }
 
+function builtinConnectorAccountRequestsForMetadata(args: {
+  readonly connectorSlugs: readonly string[];
+  readonly metadataByAccessSource: ReadonlyMap<string, SecretConnectorMetadata>;
+}): readonly ConnectorAccountResolutionRequest[] {
+  return args.connectorSlugs.map((connectorSlug) => {
+    const metadata = resolveRefreshMetadata(
+      connectorSlug,
+      args.metadataByAccessSource.get(connectorSlug),
+    );
+    return {
+      target: { kind: "builtin", connectorSlug },
+      selection:
+        metadata.sourceId === undefined
+          ? { kind: "legacy-singleton" }
+          : { kind: "exact", sourceId: metadata.sourceId },
+    };
+  });
+}
+
+function builtinConnectorSourceIdsForFirewall(args: {
+  readonly body: FirewallAuthBody;
+  readonly referencedSecretKeys: ReadonlySet<string>;
+  readonly connectorSlug: string;
+}): ReadonlySet<string> {
+  const sourceIds = new Set<string>();
+  const matchedFirewall = args.body.matchedFirewall;
+  if (
+    matchedFirewall?.connectorSlug === args.connectorSlug &&
+    matchedFirewall.sourceId !== undefined
+  ) {
+    sourceIds.add(matchedFirewall.sourceId);
+  }
+  for (const key of args.referencedSecretKeys) {
+    const accessSourceKey = args.body.secretConnectorMap?.[key];
+    if (accessSourceKey !== args.connectorSlug) {
+      continue;
+    }
+    const metadata = resolveRefreshMetadata(
+      accessSourceKey,
+      args.body.secretConnectorMetadataMap?.[key],
+    );
+    if (
+      metadata.sourceType === "connector" &&
+      metadata.sourceId !== undefined
+    ) {
+      sourceIds.add(metadata.sourceId);
+    }
+  }
+  return sourceIds;
+}
+
+function builtinConnectorAccountRequestsForFirewall(args: {
+  readonly body: FirewallAuthBody;
+  readonly referencedSecretKeys: ReadonlySet<string>;
+}): readonly ConnectorAccountResolutionRequest[] {
+  return firewallAuthReferencedConnectorSlugs({
+    body: args.body,
+    referencedSecretKeys: new Set(args.referencedSecretKeys),
+  }).map((connectorSlug) => {
+    const [sourceId] = builtinConnectorSourceIdsForFirewall({
+      ...args,
+      connectorSlug,
+    });
+    return {
+      target: { kind: "builtin", connectorSlug },
+      selection:
+        sourceId === undefined
+          ? { kind: "legacy-singleton" }
+          : { kind: "exact", sourceId },
+    };
+  });
+}
+
 function matchedBuiltinConnectorVariableAliases(args: {
   readonly connectorSlug: ConnectorSlug | undefined;
   readonly connectorAccessBySlug: ReadonlyMap<string, ConnectorAccessState>;
@@ -3657,7 +3791,7 @@ async function prepareFirewallAuthResolutionContext(args: {
     args.db,
     args.orgId,
     args.auth.userId,
-    firewallAuthReferencedConnectorSlugs({
+    builtinConnectorAccountRequestsForFirewall({
       body: args.body,
       referencedSecretKeys: referenced.secrets,
     }),
@@ -3967,15 +4101,17 @@ async function refreshSelectedTokens(
         featureSwitchContext: context.featureSwitchContext,
       });
       if (!refreshResult.ok) {
-        L.warn(
-          `[${context.auth.runId}] Failed to refresh ${accessSourceKey} token`,
-          {
-            sourceType: metadata.sourceType,
-            sourceUserId: metadata.sourceUserId,
-            metadataKey: metadata.metadataKey,
-            reason: refreshResult.reason,
-          },
-        );
+        if (refreshResult.reason !== "refresh-failed") {
+          L.warn(
+            `[${context.auth.runId}] Failed to refresh ${accessSourceKey} token`,
+            {
+              sourceType: metadata.sourceType,
+              sourceUserId: metadata.sourceUserId,
+              metadataKey: metadata.metadataKey,
+              reason: refreshResult.reason,
+            },
+          );
+        }
         if (refreshResult.reason === "source-missing") {
           return {
             accessSourceKey,
@@ -4268,7 +4404,10 @@ async function refreshExpiredTokens(
           args.db,
           args.orgId,
           args.auth.userId,
-          connectorSlugs,
+          builtinConnectorAccountRequestsForMetadata({
+            connectorSlugs,
+            metadataByAccessSource,
+          }),
           args.connectorCatalogSnapshot,
         )),
       ])
@@ -4503,14 +4642,14 @@ function hasEmptyAwsSigv4Credential(
 type CurrentCustomConnectorAuthRef =
   | {
       readonly secretName: string;
-      readonly connectorId: string;
+      readonly memberConnectorId: string;
       readonly kind: "secret";
       readonly key: string;
       readonly encryptedValue: string | null;
     }
   | {
       readonly secretName: string;
-      readonly connectorId: string;
+      readonly memberConnectorId: string;
       readonly kind: "variable";
       readonly key: string;
       readonly value: string | null;
@@ -4524,16 +4663,56 @@ type CurrentCustomConnectorAuthRefsResolution =
     }
   | { readonly kind: "unavailable" };
 
+async function resolveCurrentCustomConnectorMemberId(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly customConnectorId: string;
+  readonly sourceId?: string;
+}): Promise<string | undefined> {
+  const target = {
+    kind: "custom" as const,
+    customConnectorId: args.customConnectorId,
+  };
+  const accountResolutions = await resolveConnectorAccounts(args.db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    requests: [
+      {
+        target,
+        selection:
+          args.sourceId === undefined
+            ? { kind: "legacy-singleton" }
+            : { kind: "exact", sourceId: args.sourceId },
+      },
+    ],
+  });
+  const accountResolution = accountResolutions.get(
+    connectorAccountTargetKey(target),
+  );
+  return accountResolution?.kind === "resolved"
+    ? accountResolution.account.connectorId
+    : undefined;
+}
+
 async function loadCurrentCustomConnectorAuthRefs(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
   readonly customConnectorId: string;
+  readonly sourceId?: string;
 }): Promise<CurrentCustomConnectorAuthRefsResolution> {
+  const memberConnectorId = await resolveCurrentCustomConnectorMemberId(args);
+  if (memberConnectorId === undefined) {
+    return { kind: "unavailable" };
+  }
   const [runtime] = await loadCustomConnectorRuntimeData(args.db, {
     orgId: args.orgId,
     userId: args.userId,
     connectorIds: [args.customConnectorId],
+    memberConnectorIdsByCustomConnectorId: new Map([
+      [args.customConnectorId, memberConnectorId],
+    ]),
   });
   if (!runtime) {
     return { kind: "unavailable" };
@@ -4542,6 +4721,9 @@ async function loadCurrentCustomConnectorAuthRefs(args: {
     return { kind: "unavailable" };
   }
   if (runtime.credentialAccess.kind === "absent") {
+    return { kind: "unavailable" };
+  }
+  if (runtime.credentialAccess.memberConnectorId !== memberConnectorId) {
     return { kind: "unavailable" };
   }
 
@@ -4573,14 +4755,14 @@ async function loadCurrentCustomConnectorAuthRefs(args: {
       value.kind === "secret"
         ? {
             secretName,
-            connectorId: runtime.connector.id,
+            memberConnectorId,
             kind: "secret",
             key: value.key,
             encryptedValue: value.encryptedValue,
           }
         : {
             secretName,
-            connectorId: runtime.connector.id,
+            memberConnectorId,
             kind: "variable",
             key: value.key,
             value: value.value,
@@ -4596,14 +4778,14 @@ async function loadCurrentCustomConnectorAuthRefs(args: {
       field.kind === "secret"
         ? {
             secretName,
-            connectorId: runtime.connector.id,
+            memberConnectorId,
             kind: "secret",
             key: field.key,
             encryptedValue: null,
           }
         : {
             secretName,
-            connectorId: runtime.connector.id,
+            memberConnectorId,
             kind: "variable",
             key: field.key,
             value: null,
@@ -4618,7 +4800,7 @@ async function loadCurrentCustomConnectorAuthRefs(args: {
     });
     refs.set(secretName, {
       secretName,
-      connectorId: runtime.connector.id,
+      memberConnectorId,
       kind: "secret",
       key: CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
       encryptedValue: null,
@@ -4660,6 +4842,7 @@ async function prepareCurrentCustomConnectorFirewallAuth(args: {
   readonly orgId: string;
   readonly referenced: ReferencedAuthKeys;
   readonly customConnectorId: string;
+  readonly sourceId?: string;
   readonly routingVariables: Record<string, string>;
 }): Promise<FirewallAuthPreparation<PreparedCustomFirewallAuth>> {
   // The trusted host already matched this request against its effective
@@ -4671,6 +4854,7 @@ async function prepareCurrentCustomConnectorFirewallAuth(args: {
     orgId: args.orgId,
     userId: args.auth.userId,
     customConnectorId: args.customConnectorId,
+    ...(args.sourceId === undefined ? {} : { sourceId: args.sourceId }),
   });
   if (authRefsResolution.kind === "unavailable") {
     return { ok: false, response: connectorNotConfigured() };
@@ -4781,7 +4965,8 @@ async function resolveCurrentCustomConnectorSecrets(args: {
           db: args.db,
           orgId: args.auth.orgId,
           userId: args.auth.userId,
-          connectorId: ref.connectorId,
+          customConnectorId: args.prepared.customConnectorId,
+          memberConnectorId: ref.memberConnectorId,
           featureContext: args.prepared.featureSwitchContext,
           forceRefresh: args.forceRefresh,
         },
@@ -4805,7 +4990,7 @@ async function resolveCurrentCustomConnectorSecrets(args: {
       ? Math.floor(accessToken.value.tokenExpiresAt.getTime() / 1000)
       : null;
     if (accessToken.value.status === "refreshed") {
-      refreshedConnectors.push(ref.connectorId);
+      refreshedConnectors.push(args.prepared.customConnectorId);
       refreshedSecrets.push(alias);
     }
     currentSecrets[alias] = await decryptStoredSecretValue(
@@ -5101,28 +5286,15 @@ function matchedConnectorSourceConflicts(args: {
   readonly body: FirewallAuthBody;
   readonly referencedSecretKeys: ReadonlySet<string>;
 }): boolean {
-  const matchedFirewall = args.body.matchedFirewall;
-  if (
-    matchedFirewall?.connectorSlug === undefined ||
-    matchedFirewall.sourceId === undefined
-  ) {
-    return false;
-  }
-  const connectorSlug = matchedFirewall.connectorSlug;
-  const sourceId = matchedFirewall.sourceId;
-  return [...args.referencedSecretKeys].some((key) => {
-    const accessSourceKey = args.body.secretConnectorMap?.[key];
-    if (accessSourceKey !== connectorSlug) {
-      return false;
-    }
-    const metadata = resolveRefreshMetadata(
-      accessSourceKey,
-      args.body.secretConnectorMetadataMap?.[key],
-    );
+  return firewallAuthReferencedConnectorSlugs({
+    body: args.body,
+    referencedSecretKeys: new Set(args.referencedSecretKeys),
+  }).some((connectorSlug) => {
     return (
-      metadata.sourceType === "connector" &&
-      metadata.sourceId !== undefined &&
-      metadata.sourceId !== sourceId
+      builtinConnectorSourceIdsForFirewall({
+        ...args,
+        connectorSlug,
+      }).size > 1
     );
   });
 }
@@ -5167,6 +5339,9 @@ export async function resolveFirewallAuth(
         orgId,
         referenced,
         customConnectorId,
+        ...(matchedFirewall.sourceId === undefined
+          ? {}
+          : { sourceId: matchedFirewall.sourceId }),
         routingVariables: matchedFirewall.routingVariables,
       })
     : await prepareNonCustomFirewallAuth({

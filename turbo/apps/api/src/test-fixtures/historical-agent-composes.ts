@@ -10,6 +10,7 @@ import type { z } from "zod";
 
 import { db } from "../lib/db";
 import { nowDate } from "../lib/time";
+import { buildHistoricalProductBuilderContent } from "../signals/services/historical-product-builder";
 
 // Production Agent APIs intentionally do not expose internal Compose names,
 // immutable version ids, or arbitrary legacy version content. Surviving tests
@@ -23,6 +24,16 @@ type HistoricalAgentComposeContent = z.infer<
 interface HistoricalAgentComposeActor {
   readonly userId: string;
   readonly orgId: string;
+}
+
+/** Transition-only #28070 fixture; removed by #26938 Stage 8. */
+export function historicalProductBuilderContentFixture(
+  agentName: string,
+): Record<string, unknown> {
+  return buildHistoricalProductBuilderContent(
+    "zero-connector-catalog-at-3b45e4e",
+    agentName,
+  );
 }
 
 function sortObjectKeys(value: unknown): unknown {
@@ -172,4 +183,59 @@ export async function readHistoricalAgentComposeHeadFixture(
         ? null
         : agentComposeApiContentSchema.parse(row.content),
   };
+}
+
+export async function replaceHistoricalAgentComposeHeadFixture(
+  args: {
+    readonly composeId: string;
+    readonly userId: string;
+    readonly content: Record<string, unknown>;
+  },
+  signal: AbortSignal,
+): Promise<{ readonly versionId: string }> {
+  const versionId = composeVersionId(args.content);
+  await db().transaction(async (tx) => {
+    await tx
+      .insert(agentComposeVersions)
+      .values({
+        id: versionId,
+        composeId: args.composeId,
+        content: args.content,
+        createdBy: args.userId,
+      })
+      .onConflictDoNothing();
+    signal.throwIfAborted();
+
+    await tx
+      .update(agentComposes)
+      .set({ headVersionId: versionId, updatedAt: nowDate() })
+      .where(eq(agentComposes.id, args.composeId));
+    signal.throwIfAborted();
+  });
+  signal.throwIfAborted();
+  return { versionId };
+}
+
+export async function readRawHistoricalAgentComposeHeadFixture(
+  composeId: string,
+): Promise<{
+  readonly headVersionId: string | null;
+  readonly content: unknown;
+}> {
+  const [row] = await db()
+    .select({
+      headVersionId: agentComposes.headVersionId,
+      content: agentComposeVersions.content,
+    })
+    .from(agentComposes)
+    .leftJoin(
+      agentComposeVersions,
+      eq(agentComposes.headVersionId, agentComposeVersions.id),
+    )
+    .where(eq(agentComposes.id, composeId))
+    .limit(1);
+  if (!row) {
+    throw new Error("Expected a raw historical Agent Compose fixture");
+  }
+  return row;
 }

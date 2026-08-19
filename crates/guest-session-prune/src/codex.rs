@@ -47,6 +47,12 @@ impl CodexHistoryCandidate {
         self.bytes.len() as u64
     }
 
+    /// Borrow the exact raw JSONL bytes selected for checkpointing.
+    #[must_use]
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+
     /// Consume the candidate and return its exact raw JSONL bytes.
     #[must_use]
     pub fn into_bytes(self) -> Vec<u8> {
@@ -1100,7 +1106,12 @@ mod tests {
 
     fn candidate_bytes(selection: CodexHistorySelection) -> Vec<u8> {
         match selection {
-            CodexHistorySelection::Candidate(candidate) => candidate.into_bytes(),
+            CodexHistorySelection::Candidate(candidate) => {
+                let borrowed = candidate.as_bytes().to_vec();
+                assert_eq!(candidate.candidate_size(), borrowed.len() as u64);
+                assert_eq!(candidate.into_bytes(), borrowed);
+                borrowed
+            }
             CodexHistorySelection::Ineligible(reason) => {
                 panic!("expected candidate, got {reason:?}")
             }

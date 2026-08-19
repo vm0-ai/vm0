@@ -1,8 +1,8 @@
 import {
-  ZERO_BROWSER_IDLE_LEASE_MINUTES,
-  zeroBrowserContract,
-  type ZeroBrowserSession,
-} from "@okouai/api-contracts/contracts/zero-browser";
+  BROWSER_IDLE_LEASE_MINUTES,
+  browserContract,
+  type BrowserSession,
+} from "@okouai/api-contracts/contracts/browser";
 import { browserSessionChangedPayloadSchema } from "@okouai/api-contracts/contracts/realtime";
 import {
   command,
@@ -38,8 +38,8 @@ export interface BrowserSessionDescriptor {
 export interface BrowserSessionSignals extends BrowserSessionDescriptor {
   /** Load state of the session's screenshot thumbnail. */
   readonly screenshotImageLoad: ImageLoadSignals;
-  readonly session$: Computed<Promise<ZeroBrowserSession | null>>;
-  readonly panelSession$: Computed<Promise<ZeroBrowserSession | null>>;
+  readonly session$: Computed<Promise<BrowserSession | null>>;
+  readonly panelSession$: Computed<Promise<BrowserSession | null>>;
   readonly starting$: Computed<boolean>;
   readonly fittingWindow$: Computed<boolean>;
   readonly reload$: Command<void, []>;
@@ -111,10 +111,7 @@ interface BrowserFitDomSignals extends Pick<
   BrowserSessionSignals,
   "fitViewportRef$" | "syncFitActionVisibility$"
 > {
-  readonly syncFitActionForScreen$: Command<
-    void,
-    [ZeroBrowserSession["screen"]]
-  >;
+  readonly syncFitActionForScreen$: Command<void, [BrowserSession["screen"]]>;
   readonly viewportAspectRatio$: Command<number | null, []>;
 }
 
@@ -192,7 +189,7 @@ function createBrowserFitDomSignals(): BrowserFitDomSignals {
     updateFitActionVisibility(browserAspectRatio, canFitWindow);
   });
   const syncFitActionForScreen$ = command(
-    (_, screen: ZeroBrowserSession["screen"]): void => {
+    (_, screen: BrowserSession["screen"]): void => {
       updateFitActionVisibility(
         screen ? screen.width / screen.height : Number.NaN,
         screen?.resizable === true,
@@ -236,9 +233,9 @@ async function fetchBrowserSession(
   createClient: ZeroClientFactory,
   threadId: string,
   signal: AbortSignal,
-): Promise<ZeroBrowserSession | null> {
+): Promise<BrowserSession | null> {
   const response = await accept(
-    createClient(zeroBrowserContract).get({
+    createClient(browserContract).get({
       params: { threadId },
       fetchOptions: { signal },
     }),
@@ -249,7 +246,7 @@ async function fetchBrowserSession(
 
 function createFitWindowSignals(
   descriptor: BrowserSessionDescriptor,
-  sessionOverride$: State<ZeroBrowserSession | null | undefined>,
+  sessionOverride$: State<BrowserSession | null | undefined>,
   browserFitDom: BrowserFitDomSignals,
 ): Pick<BrowserSessionSignals, "fittingWindow$" | "fitViewport$"> {
   const fittingWindowState$ = state(false);
@@ -266,7 +263,7 @@ function createFitWindowSignals(
       const fitted = await settle(
         withCleanup(
           accept(
-            get(zeroClient$)(zeroBrowserContract).resizeByThread({
+            get(zeroClient$)(browserContract).resizeByThread({
               params: { threadId: descriptor.threadId },
               body: { aspectRatio },
               fetchOptions: { signal },
@@ -299,7 +296,7 @@ function createFitWindowSignals(
 
 interface BrowserMutationSignalContext {
   readonly descriptor: BrowserSessionDescriptor;
-  readonly sessionOverride$: State<ZeroBrowserSession | null | undefined>;
+  readonly sessionOverride$: State<BrowserSession | null | undefined>;
   readonly reload$: Command<void, []>;
   readonly optimisticEvents?: BrowserLifecycleOptimisticEvents;
 }
@@ -330,7 +327,7 @@ function createStartBrowserSignals({
     }
     const started = await settle(
       accept(
-        get(zeroClient$)(zeroBrowserContract).open({
+        get(zeroClient$)(browserContract).open({
           params: { threadId: descriptor.threadId },
           body: { eventId },
           fetchOptions: { signal },
@@ -374,7 +371,7 @@ function createCloseBrowserSignals({
     }
     await settle(
       accept(
-        get(zeroClient$)(zeroBrowserContract).close({
+        get(zeroClient$)(browserContract).close({
           params: { threadId: descriptor.threadId },
           body: { eventId },
           fetchOptions: { signal },
@@ -443,10 +440,8 @@ export function createBrowserSessionSignals(
   };
   const reloadVersion$ = state(0);
   const screenshotImageLoad = createImageLoadSignals();
-  const sessionOverride$ = state<ZeroBrowserSession | null | undefined>(
-    undefined,
-  );
-  const session$ = computed(async (get): Promise<ZeroBrowserSession | null> => {
+  const sessionOverride$ = state<BrowserSession | null | undefined>(undefined);
+  const session$ = computed(async (get): Promise<BrowserSession | null> => {
     get(reloadVersion$);
     const override = get(sessionOverride$);
     return override === undefined
@@ -494,7 +489,7 @@ export function createBrowserSessionSignals(
               return false;
             }
             const response = await accept(
-              get(zeroClient$)(zeroBrowserContract).leaseByThread({
+              get(zeroClient$)(browserContract).leaseByThread({
                 params: { threadId: descriptor.threadId },
                 body: {},
                 fetchOptions: { signal },
@@ -548,7 +543,7 @@ export function createBrowserSessionSignals(
 }
 
 export function browserSessionReclaimHint(
-  session: ZeroBrowserSession,
+  session: BrowserSession,
 ): string | null {
   return session.status === "active"
     ? i18n.t(
@@ -556,8 +551,8 @@ export function browserSessionReclaimHint(
           return $.browserSession.reclaimHint;
         },
         {
-          count: ZERO_BROWSER_IDLE_LEASE_MINUTES,
-          formattedCount: formatAppNumber(ZERO_BROWSER_IDLE_LEASE_MINUTES),
+          count: BROWSER_IDLE_LEASE_MINUTES,
+          formattedCount: formatAppNumber(BROWSER_IDLE_LEASE_MINUTES),
         },
       )
     : null;

@@ -1,4 +1,4 @@
-import { command, computed, state, type State } from "ccstate";
+import { command, computed, state } from "ccstate";
 import type { GenerationTemplateRequest } from "@okouai/api-contracts/contracts/chat-threads";
 import type { PresentationTemplateItem } from "@okouai/core/presentation-template-items";
 import { localStorageSignals } from "../external/local-storage.ts";
@@ -249,63 +249,12 @@ async function loadPresentationTemplateHtmlPreview(
   return draft.slides.length > 0 ? draft : null;
 }
 
-function eventTouchesElement(
-  event: Event,
-  element: HTMLElement | null,
-): boolean {
-  if (element === null) {
-    return false;
-  }
-  if (event.target instanceof Node && element.contains(event.target)) {
-    return true;
-  }
-  return (
-    event instanceof FocusEvent &&
-    event.relatedTarget instanceof Node &&
-    element.contains(event.relatedTarget)
-  );
-}
-
 type MediaModelCategory = "image" | "video";
-type DesktopModelCategory = "chat" | MediaModelCategory;
-
-function createDesktopMediaModelAnchorSignals(
-  desktopModelCategory$: State<DesktopModelCategory>,
-) {
-  const internalAnchors$ = state<
-    Readonly<Record<MediaModelCategory, HTMLElement | null>>
-  >({ image: null, video: null });
-  const activeAnchor$ = computed((get) => {
-    const category = get(desktopModelCategory$);
-    if (category === "chat") {
-      return null;
-    }
-    return get(internalAnchors$)[category];
-  });
-  const createAnchorRef = (category: MediaModelCategory) => {
-    return onRef(
-      command(({ set }, element: HTMLElement, signal: AbortSignal) => {
-        set(internalAnchors$, (anchors) => {
-          return { ...anchors, [category]: element };
-        });
-        signal.addEventListener("abort", () => {
-          set(internalAnchors$, (anchors) => {
-            return { ...anchors, [category]: null };
-          });
-        });
-      }),
-    );
-  };
-  const anchorRefs = {
-    image: createAnchorRef("image"),
-    video: createAnchorRef("video"),
-  } satisfies Record<MediaModelCategory, ReturnType<typeof createAnchorRef>>;
-  return { internalAnchors$, activeAnchor$, anchorRefs };
-}
 
 /**
- * Tracks whether the composer is wide enough for the desktop category track.
- * Mobile reaches the same models through a nested panel instead.
+ * Tracks whether the composer is wide enough for the desktop popover layout.
+ * Both layouts show the same picker; the flag only decides whether the popover
+ * is modal, since a phone-sized popup covers the page behind it anyway.
  */
 function createDesktopModelPickerLayoutSignals() {
   const internalDesktopModelPickerLayout$ = state(false);
@@ -332,124 +281,33 @@ function createBasicComposerUiSignals() {
   const { desktopModelPickerLayout$, desktopModelPickerLifecycleRef$ } =
     createDesktopModelPickerLayoutSignals();
   const internalModelPickerOpen$ = state(false);
-  const internalDesktopModelCategory$ = state<DesktopModelCategory>("chat");
-  // The category track looks like a two-state toggle, so the first switch opens
-  // the list behind the category the user landed on -- that is what makes it
-  // read as a picker. Once they have seen it, switching is just switching.
-  const internalDesktopCategorySwitched$ = state(false);
-  const internalDesktopChatModeElement$ = state<HTMLElement | null>(null);
-  const desktopMediaModelAnchors = createDesktopMediaModelAnchorSignals(
-    internalDesktopModelCategory$,
-  );
-  // Mobile reaches media models through a nested category. Desktop derives
-  // the visible category from its persistent selection instead.
-  const internalMobileMediaModelCategory$ = state<MediaModelCategory | null>(
-    null,
-  );
+  // Every viewport drives this from the same category strip. Null means the
+  // chat models. It survives close the way the old composer track kept its
+  // expanded category -- the video options chip and the temporary-model notice
+  // both read it to tell which model the composer is pointed at.
+  const internalMediaModelCategory$ = state<MediaModelCategory | null>(null);
   const modelPickerOpen$ = computed((get) => {
     return get(internalModelPickerOpen$);
   });
   const setModelPickerOpen$ = command(({ set }, open: boolean) => {
     set(internalModelPickerOpen$, open);
-    if (!open) {
-      set(internalMobileMediaModelCategory$, null);
-    }
   });
-  const mobileMediaModelCategory$ = computed((get) => {
-    return get(internalMobileMediaModelCategory$);
+  const mediaModelCategory$ = computed((get) => {
+    return get(internalMediaModelCategory$);
   });
-  const setMobileMediaModelCategory$ = command(
+  const setMediaModelCategory$ = command(
     ({ set }, category: MediaModelCategory | null) => {
-      set(internalMobileMediaModelCategory$, category);
-    },
-  );
-  const desktopModelCategory$ = computed((get) => {
-    return get(internalDesktopModelCategory$);
-  });
-  const openPickerOnFirstCategorySwitch$ = command(({ get, set }) => {
-    if (get(internalDesktopCategorySwitched$)) {
-      return;
-    }
-    set(internalDesktopCategorySwitched$, true);
-    set(setModelPickerOpen$, true);
-  });
-  const toggleDesktopMediaModelCategory$ = command(
-    ({ get, set }, category: MediaModelCategory) => {
-      if (get(internalDesktopModelCategory$) === category) {
-        set(setModelPickerOpen$, !get(internalModelPickerOpen$));
-        return;
-      }
-      set(internalDesktopModelCategory$, category);
-      set(openPickerOnFirstCategorySwitch$);
-    },
-  );
-  const setDesktopChatModeElement$ = onRef(
-    command(({ set }, element: HTMLElement, signal: AbortSignal) => {
-      signal.addEventListener("abort", () => {
-        set(internalDesktopChatModeElement$, null);
-      });
-      set(internalDesktopChatModeElement$, element);
-    }),
-  );
-  const handleModelPickerOpenChange$ = command(
-    (
-      { get, set },
-      open: boolean,
-      event: Event,
-      mediaModelCategoriesAvailable: boolean,
-    ): boolean => {
-      const touchesChatMode = eventTouchesElement(
-        event,
-        get(internalDesktopChatModeElement$),
-      );
-      const touchesMediaModelCategory = Object.values(
-        get(desktopMediaModelAnchors.internalAnchors$),
-      ).some((element) => {
-        return eventTouchesElement(event, element);
-      });
-      const desktopMediaModelCategoriesAvailable =
-        mediaModelCategoriesAvailable && get(desktopModelPickerLayout$);
-      if (
-        desktopMediaModelCategoriesAvailable &&
-        !open &&
-        event.type === "focusout" &&
-        (touchesChatMode || touchesMediaModelCategory)
-      ) {
-        return true;
-      }
-      if (
-        desktopMediaModelCategoriesAvailable &&
-        !open &&
-        touchesMediaModelCategory
-      ) {
-        return true;
-      }
-      const mediaModelCategoryExpanded =
-        desktopMediaModelCategoriesAvailable &&
-        get(internalDesktopModelCategory$) !== "chat";
-      if (mediaModelCategoryExpanded && touchesChatMode) {
-        set(internalDesktopModelCategory$, "chat");
-        set(openPickerOnFirstCategorySwitch$);
-        return true;
-      }
-      set(setModelPickerOpen$, open);
-      return false;
+      set(internalMediaModelCategory$, category);
     },
   );
   return {
     model: {
       modelPickerOpen$,
       setModelPickerOpen$,
-      mobileMediaModelCategory$,
-      setMobileMediaModelCategory$,
-      desktopModelCategory$,
-      toggleDesktopMediaModelCategory$,
+      mediaModelCategory$,
+      setMediaModelCategory$,
       desktopModelPickerLayout$,
       desktopModelPickerLifecycleRef$,
-      setDesktopChatModeElement$,
-      desktopActiveMediaModelAnchor$: desktopMediaModelAnchors.activeAnchor$,
-      desktopMediaModelAnchorRefs: desktopMediaModelAnchors.anchorRefs,
-      handleModelPickerOpenChange$,
     },
   };
 }

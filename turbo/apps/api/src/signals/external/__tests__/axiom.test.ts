@@ -34,7 +34,7 @@ describe("queryAxiom", () => {
     ]);
   });
 
-  it("sends the pagination cursor in the documented Axiom request body", async () => {
+  it("sends pagination cursor reads without using the Axiom cache", async () => {
     const { queryAxiom } =
       await vi.importActual<typeof import("../axiom")>("../axiom");
     const mocks = getApiTestMocks();
@@ -73,6 +73,7 @@ describe("queryAxiom", () => {
     const rows = await createStore().get(
       queryAxiom(apl, {
         cursor: "cursor-next-page",
+        noCache: true,
       }),
     );
 
@@ -84,7 +85,7 @@ describe("queryAxiom", () => {
           apl,
           cursor: "cursor-next-page",
         },
-        url: "https://api.axiom.co/v1/datasets/_apl?format=legacy",
+        url: "https://api.axiom.co/v1/datasets/_apl?format=legacy&nocache=true",
       },
     ]);
     expect(rows).toStrictEqual([

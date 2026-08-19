@@ -30,10 +30,6 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { readAgentRunCallbacks$ } from "./helpers/agent-run-callback";
 import { readThreadSessionBinding } from "./helpers/runtime-state";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
-import {
-  expectedIntegrationIdentityCompatibilityEvent,
-  integrationIdentityCompatibilityEvents,
-} from "./helpers/integration-identity-compatibility";
 
 /*
 helper gap:
@@ -622,15 +618,6 @@ function githubConnectSignature(args: {
         args.githubUsername?.trim().replace(/^@+/, "") ?? "",
       ].join(":"),
     )
-    .digest("hex");
-}
-
-function legacyGithubOauthStateSignature(args: {
-  readonly userId: string;
-  readonly composeId: string | null;
-}): string {
-  return createHmac("sha256", env("SECRETS_ENCRYPTION_KEY"))
-    .update(`${args.userId}:${args.composeId ?? ""}`)
     .digest("hex");
 }
 
@@ -5647,50 +5634,6 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     ).toBeTruthy();
     expect(install.headers.get("Cache-Control")).toBe("no-store");
 
-    context.mocks.axiomLogging.warn.mockClear();
-    const legacyInstall = await integrations.requestGithubOauthInstall(
-      { vm0UserId: "user_legacy_query" },
-      [307],
-    );
-    const legacyInstallState = JSON.parse(
-      new URL(legacyInstall.headers.get("location") ?? "").searchParams.get(
-        "state",
-      ) ?? "{}",
-    ) as Record<string, unknown>;
-    expect(legacyInstallState.userId).toBe("user_legacy_query");
-    expect(legacyInstallState).not.toHaveProperty("vm0UserId");
-    expect(
-      integrationIdentityCompatibilityEvents(
-        context.mocks.axiomLogging.warn.mock.calls,
-      ),
-    ).toStrictEqual([
-      expectedIntegrationIdentityCompatibilityEvent({
-        provider: "github",
-        surface: "query",
-        outcome: "legacy_only_accepted",
-      }),
-    ]);
-
-    context.mocks.axiomLogging.warn.mockClear();
-    const conflictingInstall = await integrations.requestGithubOauthInstall(
-      { userId: "user_canonical", vm0UserId: "user_legacy" },
-      [307],
-    );
-    expect(conflictingInstall.headers.get("location") ?? "").toContain(
-      "Invalid%20OAuth%20identity",
-    );
-    expect(
-      integrationIdentityCompatibilityEvents(
-        context.mocks.axiomLogging.warn.mock.calls,
-      ),
-    ).toStrictEqual([
-      expectedIntegrationIdentityCompatibilityEvent({
-        provider: "github",
-        surface: "query",
-        outcome: "conflicting_dual_rejected",
-      }),
-    ]);
-
     const admin = integrations.user();
     const orgId = admin.orgId;
     if (!orgId) {
@@ -5812,6 +5755,94 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     expect(response.headers.get("Cache-Control")).toBe("no-store");
   });
 
+  it("preserves signed GitHub install brand across provider callbacks", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("VM0_WEB_URL", "https://www.vm0.test");
+    integrations.clearGithubAppProvider();
+    integrations.configureGithubAppInstallProvider();
+
+    const installQuery = {
+      userId: `user_${randomUUID()}`,
+      composeId: `agent_${randomUUID()}`,
+    };
+    const okouInstall = await integrations.requestGithubOauthInstall(
+      installQuery,
+      [307],
+      "okou",
+    );
+    const okouStateString =
+      new URL(okouInstall.headers.get("location") ?? "").searchParams.get(
+        "state",
+      ) ?? "";
+    expect(okouStateString).not.toBe("");
+    const okouState: unknown = JSON.parse(okouStateString);
+    expect(okouState).toMatchObject({
+      publicBrand: "okou",
+      publicBrandSig: expect.stringMatching(/^[0-9a-f]{64}$/u),
+      sig: expect.stringMatching(/^[0-9a-f]{64}$/u),
+    });
+
+    const vm0Install = await integrations.requestGithubOauthInstall(
+      installQuery,
+      [307],
+    );
+    const vm0StateString =
+      new URL(vm0Install.headers.get("location") ?? "").searchParams.get(
+        "state",
+      ) ?? "";
+    expect(vm0StateString).not.toBe("");
+    const vm0State: unknown = JSON.parse(vm0StateString);
+    expect(vm0State).not.toHaveProperty("publicBrand");
+    expect(vm0State).not.toHaveProperty("publicBrandSig");
+
+    integrations.configureGithubAppCallbackProvider();
+    const okouError = await integrations.requestGithubAppSetupCallback(
+      {
+        error: "access_denied",
+        error_description: "Provider denied access",
+        state: okouStateString,
+      },
+      [307],
+    );
+    expect(new URL(okouError.headers.get("location") ?? "").origin).toBe(
+      "https://app.okou.ai",
+    );
+
+    const vm0Error = await integrations.requestGithubAppSetupCallback(
+      {
+        error: "access_denied",
+        error_description: "Provider denied access",
+        state: vm0StateString,
+      },
+      [307],
+      "okou",
+    );
+    expect(new URL(vm0Error.headers.get("location") ?? "").origin).toBe(
+      "https://app.vm0.ai",
+    );
+
+    if (!isRecord(vm0State)) {
+      throw new Error("Expected VM0 GitHub OAuth state to be an object");
+    }
+    const tamperedState = JSON.stringify({
+      ...vm0State,
+      publicBrand: "okou",
+      publicBrandSig: "0".repeat(64),
+    });
+    const tamperedError = await integrations.requestGithubAppSetupCallback(
+      {
+        error: "access_denied",
+        error_description: "Provider denied access",
+        state: tamperedState,
+      },
+      [307],
+      "okou",
+    );
+    expect(new URL(tamperedError.headers.get("location") ?? "").origin).toBe(
+      "https://app.vm0.ai",
+    );
+  });
+
   it("keeps GitHub user OAuth callback errors visible through redirects", async () => {
     const githubError = await integrations.requestGithubOauthConnectCallback(
       {
@@ -5913,122 +5944,6 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     if (!isRecord(parsedSignedState)) {
       throw new Error("Expected signed GitHub state to be an object");
     }
-    const { userId: signedUserId, ...signedStateWithoutUserId } =
-      parsedSignedState;
-    if (typeof signedUserId !== "string") {
-      throw new Error("Expected signed GitHub state to contain userId");
-    }
-    const legacySignedState = JSON.stringify({
-      ...signedStateWithoutUserId,
-      vm0UserId: signedUserId,
-    });
-    context.mocks.axiomLogging.warn.mockClear();
-    const setupLegacyState = await integrations.requestGithubAppSetupCallback(
-      {
-        setup_action: "request",
-        state: legacySignedState,
-      },
-      [307],
-    );
-    expect(setupLegacyState.headers.get("location") ?? "").toContain(
-      "permission%20to%20install%20this%20GitHub%20App",
-    );
-    expect(
-      integrationIdentityCompatibilityEvents(
-        context.mocks.axiomLogging.warn.mock.calls,
-      ),
-    ).toStrictEqual([
-      expectedIntegrationIdentityCompatibilityEvent({
-        provider: "github",
-        surface: "state",
-        outcome: "legacy_only_accepted",
-      }),
-    ]);
-
-    const conflictingSignedState = JSON.stringify({
-      ...parsedSignedState,
-      vm0UserId: "user_conflict",
-    });
-    context.mocks.axiomLogging.warn.mockClear();
-    const setupConflictingState =
-      await integrations.requestGithubAppSetupCallback(
-        {
-          installation_id: "12345",
-          setup_action: "install",
-          state: conflictingSignedState,
-        },
-        [307],
-      );
-    expect(setupConflictingState.headers.get("location") ?? "").toContain(
-      "Invalid%20OAuth%20state",
-    );
-    expect(
-      integrationIdentityCompatibilityEvents(
-        context.mocks.axiomLogging.warn.mock.calls,
-      ),
-    ).toStrictEqual([
-      expectedIntegrationIdentityCompatibilityEvent({
-        provider: "github",
-        surface: "state",
-        outcome: "conflicting_dual_rejected",
-      }),
-    ]);
-
-    const legacySignatureState = JSON.stringify({
-      userId: signedUserId,
-      composeId: agent.agentId,
-      sig: legacyGithubOauthStateSignature({
-        userId: signedUserId,
-        composeId: agent.agentId,
-      }),
-    });
-    context.mocks.axiomLogging.warn.mockClear();
-    const setupLegacySignature =
-      await integrations.requestGithubAppSetupCallback(
-        {
-          setup_action: "request",
-          state: legacySignatureState,
-        },
-        [307],
-      );
-    expect(setupLegacySignature.headers.get("location") ?? "").toContain(
-      "permission%20to%20install%20this%20GitHub%20App",
-    );
-    expect(
-      integrationIdentityCompatibilityEvents(
-        context.mocks.axiomLogging.warn.mock.calls,
-      ),
-    ).toStrictEqual([
-      expectedIntegrationIdentityCompatibilityEvent({
-        provider: "github",
-        surface: "signature",
-        outcome: "legacy_signature_accepted",
-      }),
-    ]);
-
-    const rejectedLegacySignatureState = JSON.stringify({
-      userId: signedUserId,
-      composeId: agent.agentId,
-      sig: "0".repeat(64),
-    });
-    context.mocks.axiomLogging.warn.mockClear();
-    const setupRejectedLegacySignature =
-      await integrations.requestGithubAppSetupCallback(
-        {
-          setup_action: "request",
-          state: rejectedLegacySignatureState,
-        },
-        [307],
-      );
-    expect(
-      setupRejectedLegacySignature.headers.get("location") ?? "",
-    ).toContain("Invalid%20state%20signature");
-    expect(
-      integrationIdentityCompatibilityEvents(
-        context.mocks.axiomLogging.warn.mock.calls,
-      ),
-    ).toStrictEqual([]);
-
     const tamperedState = JSON.stringify({
       ...parsedSignedState,
       sig: "0".repeat(64),

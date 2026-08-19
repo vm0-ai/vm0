@@ -52,6 +52,7 @@ use crate::masker::SecretMasker;
 use crate::paths;
 use crate::session_metadata::{SessionHistoryLaunchSource, SessionMetadataStore};
 use crate::timing;
+use api_contracts::generated::types::runners::runs::CodexRuntimeConfig;
 use event_delivery::{EventDeliveryRuntime, EventDeliverySender};
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_info, log_warn};
@@ -330,7 +331,7 @@ pub(super) struct CliRuntimeConfig<'a> {
     anthropic_model: Cow<'a, str>,
     openai_model: Cow<'a, str>,
     openai_base_url: Cow<'a, str>,
-    codex_runtime_config: Option<codex_runtime_config::CodexRuntimeConfig>,
+    codex_runtime_config: Option<CodexRuntimeConfig>,
     codex_oauth_mode: bool,
     codex_fast_mode: bool,
     disable_builtin_web_search: bool,
@@ -1947,14 +1948,14 @@ mod tests {
     use super::{
         CliExitObservation, CliFailureDiagnostic, CliRuntimeConfig, child_env,
         claude_initial_prompt_frame, cli_exit_summary_from_status, codex_home_for_home_dir,
-        codex_runtime_config, command, exec_boundary, pi_child_env_values, record_cli_exit,
-        select_failure_diagnostic, set_cli_current_dir, with_carried_failure_reason,
-        write_pi_launch_payload_file,
+        command, exec_boundary, pi_child_env_values, record_cli_exit, select_failure_diagnostic,
+        set_cli_current_dir, with_carried_failure_reason, write_pi_launch_payload_file,
     };
     use crate::active_input::ActiveInputRuntime;
     use crate::paths;
     use crate::session_metadata::SessionHistoryLaunchSource;
     use crate::{constants, env};
+    use api_contracts::generated::types::runners::runs::CodexRuntimeConfig;
     use guest_contracts::diagnostics::{FailureDetailSource, FailureReason};
     use std::borrow::Cow;
     use std::collections::HashMap;
@@ -2214,7 +2215,7 @@ mod tests {
         let user_env = HashMap::new();
         let mut runtime = runtime_for_command_test(env::Framework::Codex, "prompt", "", &user_env);
         runtime.disable_builtin_web_search = true;
-        runtime.codex_runtime_config = Some(codex_runtime_config::CodexRuntimeConfig {
+        runtime.codex_runtime_config = Some(CodexRuntimeConfig {
             provider_id: "deepseek".to_string(),
             name: "DeepSeek".to_string(),
             base_url: "https://api.deepseek.com/".to_string(),
@@ -2298,7 +2299,7 @@ mod tests {
             ),
         ]);
         let mut runtime = runtime_for_command_test(env::Framework::Codex, "prompt", "", &user_env);
-        runtime.codex_runtime_config = Some(codex_runtime_config::CodexRuntimeConfig {
+        runtime.codex_runtime_config = Some(CodexRuntimeConfig {
             provider_id: "deepseek".to_string(),
             name: "DeepSeek".to_string(),
             base_url: "https://api.deepseek.com/".to_string(),

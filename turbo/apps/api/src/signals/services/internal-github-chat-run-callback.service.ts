@@ -1,5 +1,7 @@
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
@@ -257,6 +259,7 @@ async function buildGitHubDeliveryComment(
     readonly run: GitHubChatRunContext;
     readonly target: GitHubDeliveryTarget;
     readonly messageContent: string;
+    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<string> {
@@ -267,7 +270,7 @@ async function buildGitHubDeliveryComment(
   );
   signal.throwIfAborted();
   const logsUrl = isFeatureEnabled(FeatureSwitchKey.ZeroDebug, featureContext)
-    ? `${env("APP_URL")}/activities/${encodeURIComponent(args.runId)}`
+    ? `${appUrlForPublicBrand(env("APP_URL"), args.publicBrand)}/activities/${encodeURIComponent(args.runId)}`
     : undefined;
   const footerText = await resolveGithubAgentReplyFooterText({
     db: args.db,
@@ -310,6 +313,7 @@ async function deliverClaimedGitHubChatCallback(
       run: context.run,
       target: context.payload,
       messageContent: context.messageContent,
+      publicBrand: context.payload.publicBrand,
     },
     signal,
   );

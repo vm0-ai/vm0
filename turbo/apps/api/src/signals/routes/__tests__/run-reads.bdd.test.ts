@@ -1872,7 +1872,10 @@ function expectTimeCursorAxiomResume(
   },
 ): void {
   const apl = call[0];
-  expect(call[1]).toStrictEqual({ cursor: expected.cursor });
+  expect(call[1]).toStrictEqual({
+    cursor: expected.cursor,
+    noCache: true,
+  });
   expect(apl).toContain(`| order by _time ${expected.order}`);
   if (expected.hasCreatedAtBound) {
     expect(apl).toContain("| where _time >= datetime(");
@@ -2181,6 +2184,8 @@ describe("RUN-04: agent run telemetry families", () => {
       hasMore: true,
       nextCursor: expectedNextCursor,
     });
+    const networkQuery = axiomCallAt(axiomCallCount() - 1);
+    expect(networkQuery[1]).toStrictEqual({ noCache: true });
   });
 
   it("keeps same-timestamp network rows reachable across time cursor pages", async () => {
@@ -2700,6 +2705,9 @@ describe("RUN-04: agent run telemetry families", () => {
             environmentShadowLegacyOnlyCountBucket: "2_4",
             environmentShadowCandidateOnlyCountBucket: "1",
             environmentShadowSharedValueDifferenceCountBucket: "5_8",
+            agentExecutionAuthority: "version_content",
+            agentExecutionAuthorityClassification:
+              "systemEnvironmentDifferences",
             environment: { LEGACY_IGNORED: "legacy-map" },
             environmentEntries: [
               { name: "NODE_ENV", value: "production" },
@@ -2859,6 +2867,10 @@ describe("RUN-04: agent run telemetry families", () => {
     });
     expect(contextRead.body).not.toHaveProperty(
       "environmentShadowClassification",
+    );
+    expect(contextRead.body).not.toHaveProperty("agentExecutionAuthority");
+    expect(contextRead.body).not.toHaveProperty(
+      "agentExecutionAuthorityClassification",
     );
     expect(Object.keys(contextRead.body.networkPolicies ?? {})).toStrictEqual([
       "github",

@@ -363,7 +363,7 @@ export default [
       "src/**/__tests__/**/*.ts",
       "src/**/*.test.ts",
       "src/test-fixtures/thread-bound-run-admission.ts",
-      "src/signals/routes/test-zero-run-fixture.ts",
+      "src/signals/routes/test-run-fixture.ts",
     ],
     rules: {
       "no-restricted-imports": [

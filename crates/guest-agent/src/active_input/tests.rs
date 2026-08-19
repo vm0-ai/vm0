@@ -194,7 +194,7 @@ fn active_input_capacity_counts_pending_inputs() {
     ));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn active_input_can_release_capacity_for_sink_without_replay() {
     let runtime = enabled_runtime();
     let controller = runtime.controller();

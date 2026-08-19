@@ -1,6 +1,10 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { z } from "zod";
+import {
+  publicBrandSchema,
+  type PublicBrand,
+} from "@okouai/api-contracts/contracts/public-brand";
 
 import { env } from "../../lib/env";
 import { now } from "../../lib/time";
@@ -15,6 +19,7 @@ const feishuOAuthStateSchema = z.object({
   userId: z.string().min(1),
   callbackTarget: z.literal("app").optional(),
   oauthRedirectTarget: z.literal("app").optional(),
+  publicBrand: publicBrandSchema.default("vm0"),
   timestamp: z.number().int(),
 });
 
@@ -32,11 +37,14 @@ function createFeishuOAuthState(args: {
   readonly userId: string;
   readonly callbackTarget?: "app";
   readonly oauthRedirectTarget?: "app";
+  readonly publicBrand: PublicBrand;
   readonly timestamp?: number;
 }): string {
+  const { publicBrand, ...stateArgs } = args;
   const encodedPayload = Buffer.from(
     JSON.stringify({
-      ...args,
+      ...stateArgs,
+      ...(publicBrand === "okou" ? { publicBrand } : {}),
       timestamp: args.timestamp ?? Math.floor(now() / 1000),
     }),
   ).toString("base64url");
@@ -75,6 +83,7 @@ export function buildFeishuOAuthConnectUrl(args: {
   readonly installationId: string;
   readonly orgId: string;
   readonly userId: string;
+  readonly publicBrand: PublicBrand;
 }): string {
   return feishuOAuthConnectUrl(createFeishuOAuthState(args));
 }

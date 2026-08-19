@@ -15,10 +15,6 @@ import {
   seedSlackConnectOrg$,
   type SlackConnectFixture,
 } from "./helpers/slack-connect";
-import {
-  expectedIntegrationIdentityCompatibilityEvent,
-  integrationIdentityCompatibilityEvents,
-} from "./helpers/integration-identity-compatibility";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 import { seedOrgMembership$ } from "./helpers/org-membership";
 
@@ -149,11 +145,6 @@ describe("Slack OAuth API routes", () => {
         publicBrand: "vm0",
       });
       expect(response.headers.get("cache-control")).toBe("no-store");
-      expect(
-        integrationIdentityCompatibilityEvents(
-          context.mocks.axiomLogging.warn.mock.calls,
-        ),
-      ).toStrictEqual([]);
     });
 
     it("includes platform state and truncates prompt by codepoint", async () => {
@@ -176,91 +167,6 @@ describe("Slack OAuth API routes", () => {
       for (const char of state.prompt) {
         expect(char).toBe("\u{1F600}");
       }
-      expect(
-        integrationIdentityCompatibilityEvents(
-          context.mocks.axiomLogging.warn.mock.calls,
-        ),
-      ).toStrictEqual([]);
-    });
-
-    it("accepts the legacy query key but writes only canonical state", async () => {
-      const response = await appRequest(
-        "/api/zero/slack/oauth/install?orgId=org_1&vm0UserId=user_1",
-      );
-
-      expect(response.status).toBe(307);
-      const redirectUrl = new URL(response.headers.get("location")!);
-      const state = JSON.parse(
-        redirectUrl.searchParams.get("state")!,
-      ) as Record<string, unknown>;
-      expect(state).toStrictEqual({
-        orgId: "org_1",
-        publicBrand: "vm0",
-        userId: "user_1",
-      });
-      expect(state).not.toHaveProperty("vm0UserId");
-      expect(
-        integrationIdentityCompatibilityEvents(
-          context.mocks.axiomLogging.warn.mock.calls,
-        ),
-      ).toStrictEqual([
-        expectedIntegrationIdentityCompatibilityEvent({
-          provider: "slack",
-          surface: "query",
-          outcome: "legacy_only_accepted",
-        }),
-      ]);
-    });
-
-    it("accepts matching canonical and legacy query keys", async () => {
-      const response = await appRequest(
-        "/api/zero/slack/oauth/install?orgId=org_1&userId=user_1&vm0UserId=user_1",
-      );
-
-      expect(response.status).toBe(307);
-      const redirectUrl = new URL(response.headers.get("location")!);
-      const state = JSON.parse(
-        redirectUrl.searchParams.get("state")!,
-      ) as Record<string, unknown>;
-      expect(state).toStrictEqual({
-        orgId: "org_1",
-        publicBrand: "vm0",
-        userId: "user_1",
-      });
-      expect(state).not.toHaveProperty("vm0UserId");
-      expect(
-        integrationIdentityCompatibilityEvents(
-          context.mocks.axiomLogging.warn.mock.calls,
-        ),
-      ).toStrictEqual([
-        expectedIntegrationIdentityCompatibilityEvent({
-          provider: "slack",
-          surface: "query",
-          outcome: "matching_dual_accepted",
-        }),
-      ]);
-    });
-
-    it("fails closed when canonical and legacy query keys conflict", async () => {
-      const response = await appRequest(
-        "/api/zero/slack/oauth/install?userId=user_1&vm0UserId=user_2",
-      );
-
-      expect(response.status).toBe(307);
-      expect(response.headers.get("location")).toContain(
-        "/slack/failed?error=",
-      );
-      expect(
-        integrationIdentityCompatibilityEvents(
-          context.mocks.axiomLogging.warn.mock.calls,
-        ),
-      ).toStrictEqual([
-        expectedIntegrationIdentityCompatibilityEvent({
-          provider: "slack",
-          surface: "query",
-          outcome: "conflicting_dual_rejected",
-        }),
-      ]);
     });
 
     it("includes the pending prompt in install state when provided", async () => {
@@ -429,61 +335,6 @@ describe("Slack OAuth API routes", () => {
         orgId: fixture.orgId,
         userId: fixture.userId,
       });
-    });
-
-    it("accepts the legacy user query key for connect", async () => {
-      const fixture = await track(
-        store.set(seedSlackConnectOrg$, {}, context.signal),
-      );
-
-      const response = await appRequest(
-        `/api/zero/slack/oauth/connect?orgId=${fixture.orgId}&vm0UserId=${fixture.userId}`,
-      );
-
-      expect(response.status).toBe(307);
-      const redirectUrl = new URL(response.headers.get("location")!);
-      const state = JSON.parse(
-        redirectUrl.searchParams.get("state")!,
-      ) as Record<string, unknown>;
-      expect(state).toMatchObject({
-        flow: "connect",
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-      });
-      expect(state).not.toHaveProperty("vm0UserId");
-      expect(
-        integrationIdentityCompatibilityEvents(
-          context.mocks.axiomLogging.warn.mock.calls,
-        ),
-      ).toStrictEqual([
-        expectedIntegrationIdentityCompatibilityEvent({
-          provider: "slack",
-          surface: "query",
-          outcome: "legacy_only_accepted",
-        }),
-      ]);
-    });
-
-    it("fails closed when connect query keys conflict", async () => {
-      const response = await appRequest(
-        "/api/zero/slack/oauth/connect?orgId=org_1&userId=user_1&vm0UserId=user_2",
-      );
-
-      expect(response.status).toBe(400);
-      await expect(response.json()).resolves.toStrictEqual({
-        error: "Conflicting userId values",
-      });
-      expect(
-        integrationIdentityCompatibilityEvents(
-          context.mocks.axiomLogging.warn.mock.calls,
-        ),
-      ).toStrictEqual([
-        expectedIntegrationIdentityCompatibilityEvent({
-          provider: "slack",
-          surface: "query",
-          outcome: "conflicting_dual_rejected",
-        }),
-      ]);
     });
 
     it("uses the web rewrite origin for connect callback URLs", async () => {
@@ -1127,86 +978,6 @@ describe("Slack OAuth API routes", () => {
       expect(
         slackPostMessageContaining("would you like me to run"),
       ).toBeFalsy();
-    });
-
-    it("accepts legacy in-flight state in the connect callback", async () => {
-      const fixture = await track(
-        store.set(seedSlackConnectOrg$, {}, context.signal),
-      );
-      await seedMembership(fixture.orgId, fixture.userId, "member");
-      mockOAuthSuccess({
-        teamId: fixture.slackWorkspaceId,
-        authedUserId: fixture.slackUserId,
-      });
-      const state = JSON.stringify({
-        orgId: fixture.orgId,
-        vm0UserId: fixture.userId,
-        flow: "connect",
-        prompt: "summarize my inbox",
-      });
-
-      const response = await appRequest(
-        `/api/zero/slack/oauth/callback?code=connect-code&state=${encodeURIComponent(state)}`,
-      );
-
-      expect(response.status).toBe(307);
-      expect(response.headers.get("location")).toContain(
-        `${APP_ORIGIN}/settings/slack?status=connected`,
-      );
-
-      const connection = await store.set(
-        findSlackOrgConnection$,
-        {
-          slackWorkspaceId: fixture.slackWorkspaceId,
-          slackUserId: fixture.slackUserId,
-        },
-        context.signal,
-      );
-      expect(connection).toMatchObject({ userId: fixture.userId });
-
-      await flushWaitUntilForTest();
-      expect(slackPostMessageContaining("summarize my inbox")).toBeTruthy();
-      expect(
-        integrationIdentityCompatibilityEvents(
-          context.mocks.axiomLogging.warn.mock.calls,
-        ),
-      ).toStrictEqual([
-        expectedIntegrationIdentityCompatibilityEvent({
-          provider: "slack",
-          surface: "state",
-          outcome: "legacy_only_accepted",
-        }),
-      ]);
-    });
-
-    it("fails closed when canonical and legacy callback state conflicts", async () => {
-      const state = JSON.stringify({
-        orgId: "org_conflict",
-        userId: "user_canonical",
-        vm0UserId: "user_legacy",
-        flow: "connect",
-      });
-
-      const response = await appRequest(
-        `/api/zero/slack/oauth/callback?code=connect-code&state=${encodeURIComponent(state)}`,
-      );
-
-      expect(response.status).toBe(307);
-      expect(response.headers.get("location")).toContain(
-        "/slack/failed?error=",
-      );
-      expect(context.mocks.slack.oauth.v2.access).not.toHaveBeenCalled();
-      expect(
-        integrationIdentityCompatibilityEvents(
-          context.mocks.axiomLogging.warn.mock.calls,
-        ),
-      ).toStrictEqual([
-        expectedIntegrationIdentityCompatibilityEvent({
-          provider: "slack",
-          surface: "state",
-          outcome: "conflicting_dual_rejected",
-        }),
-      ]);
     });
 
     it("does not send a pending prompt DM in the connect flow without a prompt", async () => {

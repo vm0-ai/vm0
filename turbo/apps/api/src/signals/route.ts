@@ -121,7 +121,7 @@ import { imageRecognitionRoutes } from "./routes/image-recognition";
 import { translationRoutes } from "./routes/translation";
 import { runDetailRoutes } from "./routes/run-detail";
 import { zeroRunsRoutes } from "./routes/zero-runs";
-import { zeroRunsCancelRoutes } from "./routes/zero-runs-cancel";
+import { runsCancelRoutes } from "./routes/runs-cancel";
 import { meModelProvidersDeleteRoutes } from "./routes/me-model-providers-delete";
 import { meModelProviderAccountRoutes } from "./routes/me-model-provider-accounts";
 import { meModelProvidersListRoutes } from "./routes/me-model-providers-list";
@@ -179,7 +179,7 @@ import { teamRoutes } from "./routes/team";
 import { uploadsCompleteRoutes } from "./routes/uploads-complete";
 import { uploadsMultipartRoutes } from "./routes/uploads-multipart";
 import { uploadsPrepareRoutes } from "./routes/uploads-prepare";
-import { zeroPresentationTemplatesRoutes } from "./routes/zero-presentation-templates";
+import { presentationTemplatesRoutes } from "./routes/presentation-templates";
 import { usageMembersRoutes } from "./routes/usage-members";
 import { usageRecordRoutes } from "./routes/usage-record";
 import { userPreferencesRoutes } from "./routes/user-preferences";
@@ -321,7 +321,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...translationRoutes,
   ...runDetailRoutes,
   ...zeroRunsRoutes,
-  ...zeroRunsCancelRoutes,
+  ...runsCancelRoutes,
   ...onboardingCompleteRoutes,
   ...onboardingStatusRoutes,
   ...orgInviteRoutes,
@@ -380,7 +380,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...uploadsCompleteRoutes,
   ...uploadsMultipartRoutes,
   ...uploadsPrepareRoutes,
-  ...zeroPresentationTemplatesRoutes,
+  ...presentationTemplatesRoutes,
   ...registryResourceDownloadRoutes,
   ...usageMembersRoutes,
   ...usageRecordRoutes,

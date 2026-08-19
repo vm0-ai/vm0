@@ -631,7 +631,10 @@ impl JobProvider for ApiProvider {
 
     async fn claim(&self, candidate: JobCandidate) -> Option<ClaimedJob> {
         let run_id = candidate.run_id();
-        match self.api.claim(&candidate, &self.runner_identity).await {
+        let claim_request_started_at = Instant::now();
+        let claim_result = self.api.claim(&candidate, &self.runner_identity).await;
+        let claim_request_elapsed = claim_request_started_at.elapsed();
+        match claim_result {
             Ok(Some(ctx)) => {
                 let active_input_source = (ctx.cli_agent_type != "pi"
                     && supports_thread_active_input(ctx.reuse_key.as_deref()))
@@ -644,9 +647,14 @@ impl JobProvider for ApiProvider {
                     )
                 });
                 let claimed = match if let Some(active_input_source) = active_input_source {
-                    ClaimedJob::api_with_active_input_source(run_id, ctx, active_input_source)
+                    ClaimedJob::api_with_active_input_source(
+                        run_id,
+                        ctx,
+                        active_input_source,
+                        claim_request_elapsed,
+                    )
                 } else {
-                    ClaimedJob::api(run_id, ctx)
+                    ClaimedJob::api(run_id, ctx, claim_request_elapsed)
                 } {
                     Ok(claimed) => claimed,
                     Err(error) => {
@@ -3901,6 +3909,7 @@ mod tests {
             ))
             .await
             .expect("shared current claim response should decode");
+        assert!(claimed.api_claim_request_elapsed().is_some());
         let context = claimed.context();
 
         assert_eq!(context.run_id, run_id);

@@ -767,7 +767,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
       return policy.model === "claude-sonnet-5"
         ? {
             ...policy,
-            defaultProviderType: "vercel-ai-gateway" as const,
+            defaultProviderType: "custom-anthropic-messages" as const,
             credentialScope: "org" as const,
             modelProviderId: null,
             modelProviderSurfaceId: surfaceId,
@@ -787,7 +787,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
     });
 
     expect(sonnet).toMatchObject({
-      defaultProviderType: "vercel-ai-gateway",
+      defaultProviderType: "custom-anthropic-messages",
       credentialScope: "org",
       modelProviderId: null,
       modelProviderSurfaceId: surfaceId,
@@ -815,7 +815,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
         return policy.model === "claude-sonnet-5";
       }),
     ).toMatchObject({
-      defaultProviderType: "vercel-ai-gateway",
+      defaultProviderType: "custom-anthropic-messages",
       credentialScope: "org",
       modelProviderId: null,
       modelProviderSurfaceId: surfaceId,

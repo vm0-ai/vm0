@@ -45,6 +45,17 @@ interface LoadedClerkContext {
 
 export interface ClerkTestingSignInOptions {
   readonly activeOrganizationId?: string;
+  readonly preserveAppPage?: boolean;
+}
+
+export interface ClerkSessionTokenCache {
+  refreshedAt: number;
+  token: string;
+}
+
+export interface CurrentClerkSessionTokenOptions {
+  readonly activeOrganizationId?: string;
+  readonly reuseMs: number;
 }
 
 export interface LoadedClerkTestingPageOptions {
@@ -86,6 +97,22 @@ export async function refreshClerkSessionToken(
   if (!token) {
     throw new Error("Clerk session token unavailable after refresh");
   }
+  return token;
+}
+
+export async function getCurrentClerkSessionToken(
+  page: Page,
+  cache: ClerkSessionTokenCache,
+  options: CurrentClerkSessionTokenOptions,
+): Promise<string> {
+  if (Date.now() - cache.refreshedAt < options.reuseMs) {
+    return cache.token;
+  }
+  const token = await refreshClerkSessionToken(page, {
+    activeOrganizationId: options.activeOrganizationId,
+  });
+  cache.refreshedAt = Date.now();
+  cache.token = token;
   return token;
 }
 
@@ -160,7 +187,9 @@ export async function signInWithLoadedClerkTestingHelper(
     ...clerkState,
   });
 
-  await gotoAboutBlankAfterClerkNavigation(page);
+  if (!options.preserveAppPage) {
+    await gotoAboutBlankAfterClerkNavigation(page);
+  }
   return token;
 }
 

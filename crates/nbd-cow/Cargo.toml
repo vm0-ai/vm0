@@ -1,6 +1,6 @@
 [package]
 name = "nbd-cow"
-version = "0.4.75"
+version = "0.4.76"
 edition.workspace = true
 
 [[bin]]
@@ -26,6 +26,8 @@ which = { workspace = true, optional = true }
 [dev-dependencies]
 nix = { workspace = true, features = ["user"] }
 tempfile = { workspace = true }
+tracing-subscriber.workspace = true
+tracing-test-support.workspace = true
 
 [lints]
 workspace = true

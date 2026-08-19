@@ -27,6 +27,7 @@ import {
 import { modelProviderSurfaceProtocolSchema } from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
 import {
   getDefaultModel,
+  getModelProviderCodexCatalogForModel,
   getModelProviderCodexRuntimeConfig,
   getModelProviderEnvBindings,
   getModelImageInputSupport,
@@ -131,7 +132,7 @@ import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import { secrets as secretsTable } from "@okouai/db/schema/secret";
 import { userCache } from "@okouai/db/schema/user-cache";
-import { vm0ApiKeys } from "@okouai/db/schema/vm0-api-key";
+import { builtInModelKeys } from "@okouai/db/schema/built-in-model-key";
 import { variables } from "@okouai/db/schema/variable";
 import type { PersistedStorageMount } from "@okouai/db/types";
 import {
@@ -181,6 +182,11 @@ import {
   compareApplicationOwnedEnvironment,
   type EnvironmentShadowObservation,
 } from "./agent-environment-shadow";
+import { buildZeroAgentComposeContent } from "./agent-compose-content";
+import {
+  classifyAgentExecutionAuthority,
+  type AgentExecutionAuthorityDecision,
+} from "./agent-execution-authority";
 import {
   decryptStoredSecretValue,
   encryptPersistentSecretValue,
@@ -238,9 +244,9 @@ import {
 } from "./connector-credential-status.service";
 import {
   getConnectorRuntimeConnector,
-  loadConnectorRuntimeSnapshot,
+  loadConnectorRuntimeSelection,
   type ConnectorRuntimeMethod,
-  type ConnectorRuntimeSnapshot,
+  type ConnectorRuntimeSelection,
 } from "./connector-catalog-runtime.service";
 import {
   connectorCredentialSecretReadCondition,
@@ -248,6 +254,10 @@ import {
   type ConnectorCredentialAccess,
   type ConnectorCredentialReadGroup,
 } from "./connector-credential-access.service";
+import {
+  connectorAccountTargetKey,
+  resolveConnectorAccounts,
+} from "./connector-account-resolution.service";
 import {
   defaultFirewallPolicyForPermissionIndex,
   networkPolicyForFirewallPolicy,
@@ -552,6 +562,7 @@ interface AgentComposeContent {
 }
 
 interface ResolvedCompose {
+  readonly headVersionId: string;
   readonly agentComposeVersionId: string;
   readonly composeId: string;
   readonly composeUserId: string;
@@ -566,7 +577,18 @@ interface ResolvedCompose {
   readonly agentSessionId?: string;
   readonly continuedFromAgentSessionId?: string;
   readonly resumeSession?: StoredExecutionContext["resumeSession"];
+  readonly agentExecutionAuthorityObservation?: Pick<
+    AgentExecutionAuthorityDecision,
+    "authority" | "classification"
+  >;
 }
+
+type PersistedPlan = Omit<
+  ResolvedCompose,
+  "content" | "agentExecutionAuthorityObservation"
+> & {
+  readonly content: unknown;
+};
 
 type ConnectorScopeSource = "explicit" | "zero_agent" | "empty";
 
@@ -582,8 +604,8 @@ interface EffectiveConnectorScope {
 export type RunConnectorCatalogSelection =
   | { readonly kind: "empty" }
   | {
-      readonly kind: "complete";
-      readonly snapshot: ConnectorRuntimeSnapshot;
+      readonly kind: "scoped";
+      readonly selection: ConnectorRuntimeSelection;
     };
 
 export function isEmptyRunConnectorScope(scope: {
@@ -864,6 +886,10 @@ interface BuiltStoredExecutionContext {
   // Plain secret values used for run-context redaction; values, not names.
   readonly secretValues: readonly string[];
   readonly environmentShadowObservation?: EnvironmentShadowObservation;
+  readonly agentExecutionAuthorityObservation?: Pick<
+    AgentExecutionAuthorityDecision,
+    "authority" | "classification"
+  >;
 }
 
 type BuiltStoredExecutionContextDraft = Omit<
@@ -917,6 +943,7 @@ export interface CreateAgentRunArgs {
   readonly chatThreadId?: string;
   readonly threadSessionResolution?: ChatThreadSessionResolution;
   readonly includeZeroTokenSecret?: boolean;
+  readonly productAgentName?: string;
   readonly zeroTokenPublicBrand?: PublicBrand;
   readonly zeroTokenComputerUseHostId?: string;
   readonly zeroTokenCloudBrowserEnabled?: boolean;
@@ -1139,7 +1166,7 @@ function buildLegacySystemSkillVolumes(
 
 function buildConnectorSkillVolumes(
   connectorSlugs: readonly ConnectorSlug[],
-  snapshot: ConnectorRuntimeSnapshot,
+  snapshot: ConnectorRuntimeSelection,
   skillsRoot: string,
 ): readonly PreparedAdditionalVolume[] {
   return connectorSlugs.flatMap((connectorSlug) => {
@@ -1213,10 +1240,10 @@ function buildInjectedSkillVolumes(
       buildLegacySystemSkillVolumes(seedSkillNames, skillsRoot),
       "system_skill",
     ) ?? []),
-    ...(args.connectorCatalogSelection.kind === "complete"
+    ...(args.connectorCatalogSelection.kind === "scoped"
       ? buildConnectorSkillVolumes(
           args.allowedConnectorSlugs,
-          args.connectorCatalogSelection.snapshot,
+          args.connectorCatalogSelection.selection,
           skillsRoot,
         )
       : []),
@@ -1306,12 +1333,42 @@ function canonicalOkouComposeContent(
 // Content-addressed compose versions remain persisted unchanged. New branded
 // contexts interpret legacy versions through this runtime-only projection.
 function runtimeResolvedCompose(
-  resolved: ResolvedCompose,
-  canonicalOkouRuntime: boolean,
+  resolved: PersistedPlan,
+  productAgentName: string | undefined,
 ): ResolvedCompose {
-  return canonicalOkouRuntime
-    ? { ...resolved, content: canonicalOkouComposeContent(resolved.content) }
-    : resolved;
+  if (productAgentName === undefined) {
+    return { ...resolved, content: resolved.content as AgentComposeContent };
+  }
+  const decision = classifyAgentExecutionAuthority({
+    agentName: productAgentName,
+    headVersionId: resolved.headVersionId,
+    versionId: resolved.agentComposeVersionId,
+    content: resolved.content,
+  });
+  const observation = {
+    authority: decision.authority,
+    classification: decision.classification,
+  };
+  if (decision.authority === "application") {
+    // Persisted JSON stops at the classifier. Every downstream launch
+    // consumer receives a fresh projection of the application-owned plan.
+    return {
+      ...resolved,
+      content: buildZeroAgentComposeContent(
+        productAgentName,
+      ) as AgentComposeContent,
+      agentExecutionAuthorityObservation: observation,
+    };
+  }
+  // Stage 4B transition: fail-closed exception domains retain the exact
+  // pre-Stage-4B runtime projection until #26938 Stage 8 removes this path.
+  return {
+    ...resolved,
+    content: canonicalOkouComposeContent(
+      resolved.content as AgentComposeContent,
+    ),
+    agentExecutionAuthorityObservation: observation,
+  };
 }
 
 function resolveFramework(
@@ -2240,27 +2297,52 @@ async function vm0ModelProviderEnvironment(
   const vendor = getVm0Vendor(selectedModel);
   const apiModel = getProviderRuntimeModel("vm0", selectedModel);
   const rows = await db
-    .select({ apiKey: vm0ApiKeys.apiKey })
-    .from(vm0ApiKeys)
-    .where(eq(vm0ApiKeys.vendor, vendor))
+    .select({ apiKey: builtInModelKeys.apiKey })
+    .from(builtInModelKeys)
+    .where(eq(builtInModelKeys.vendor, vendor))
     .limit(1);
   const apiKey = rows[0]?.apiKey;
   const secretName = getSecretNameForType(concreteType);
   if (!apiKey || !secretName) {
     return null;
   }
-  const codexRuntimeConfig = getModelProviderCodexRuntimeConfig(concreteType);
+  const environment = providerEnvironmentFromSecretRefs(
+    concreteType,
+    secretName,
+    apiKey,
+    apiModel,
+  );
+  let codexRuntimeConfig = getModelProviderCodexRuntimeConfig(concreteType);
+  if (!codexRuntimeConfig) {
+    const modelCatalog = getModelProviderCodexCatalogForModel(
+      selectedModel,
+      apiModel,
+    );
+    if (modelCatalog) {
+      const baseUrl = environment.OPENAI_BASE_URL;
+      if (!baseUrl) {
+        throw new Error(
+          `Missing OPENAI_BASE_URL for VM0 Codex provider ${concreteType}`,
+        );
+      }
+      codexRuntimeConfig = {
+        providerId: concreteType,
+        name: MODEL_PROVIDER_TYPES[concreteType].label,
+        baseUrl,
+        envKey: "OPENAI_API_KEY",
+        requiresOpenaiAuth: false,
+        wireApi: "responses",
+        supportsWebsockets: false,
+        modelCatalog,
+      };
+    }
+  }
 
   return {
     id: null,
     type: "vm0",
     concreteType,
-    environment: providerEnvironmentFromSecretRefs(
-      concreteType,
-      secretName,
-      apiKey,
-      apiModel,
-    ),
+    environment,
     secrets: { [secretName]: apiKey },
     selectedModel,
     ...(codexRuntimeConfig ? { codexRuntimeConfig } : {}),
@@ -3009,7 +3091,7 @@ function emptyConnectorRuntimeContext(): ConnectorRuntimeContext {
 function allowedStoredConnectorRows(
   rows: readonly StoredConnectorRuntimeRowCandidate[],
   allowedConnectorSlugs: readonly ConnectorSlug[],
-  snapshot: ConnectorRuntimeSnapshot,
+  snapshot: ConnectorRuntimeSelection,
   now: Date,
 ): readonly StoredConnectorRuntimeRow[] {
   const validRows = rows.flatMap((row) => {
@@ -3646,7 +3728,7 @@ async function loadStoredConnectorMaterializationPlan(
     readonly userId: string;
     readonly allowedConnectorSlugs: readonly ConnectorSlug[];
     readonly scopeSource: ConnectorScopeSource;
-    readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+    readonly connectorCatalogSnapshot: ConnectorRuntimeSelection;
   },
   timing?: ApiDispatchTimingCollector,
 ): Promise<StoredConnectorMaterializationSnapshot | null> {
@@ -3675,7 +3757,7 @@ function storedConnectorSnapshotQuery(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedConnectorSlugs: readonly ConnectorSlug[];
+    readonly connectorIds: readonly string[];
   },
 ) {
   const selectedConnectors = db.$with("stored_connector_candidates").as(
@@ -3704,7 +3786,7 @@ function storedConnectorSnapshotQuery(
           eq(connectors.orgId, args.orgId),
           eq(connectors.userId, args.userId),
           isNotNull(connectors.connectorSlug),
-          inArray(connectors.connectorSlug, args.allowedConnectorSlugs),
+          inArray(connectors.id, args.connectorIds),
         ),
       ),
   );
@@ -3783,7 +3865,7 @@ async function loadStoredConnectorSnapshotRows(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedConnectorSlugs: readonly ConnectorSlug[];
+    readonly connectorIds: readonly string[];
     readonly timingDimensions: ApiDispatchTimingDimensions;
   },
   timing?: ApiDispatchTimingCollector,
@@ -3814,7 +3896,7 @@ async function loadStoredConnectorSnapshotRows(
 function buildStoredConnectorMaterializationPlan(args: {
   readonly connectorRows: readonly StoredConnectorRuntimeRowCandidate[];
   readonly allowedConnectorSlugs: readonly ConnectorSlug[];
-  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+  readonly connectorCatalogSnapshot: ConnectorRuntimeSelection;
 }): StoredConnectorMaterializationPlan | null {
   const allowedConnectorRows = allowedStoredConnectorRows(
     args.connectorRows,
@@ -3837,7 +3919,7 @@ function materializeStoredConnectorSnapshotRows(
   args: {
     readonly rows: readonly StoredConnectorMaterializationSnapshotRow[];
     readonly allowedConnectorSlugs: readonly ConnectorSlug[];
-    readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+    readonly connectorCatalogSnapshot: ConnectorRuntimeSelection;
     readonly timingDimensions: ApiDispatchTimingDimensions;
   },
   timing?: ApiDispatchTimingCollector,
@@ -3922,19 +4004,40 @@ async function loadStoredConnectorMaterializationSnapshot(
     readonly userId: string;
     readonly allowedConnectorSlugs: readonly ConnectorSlug[];
     readonly scopeSource: ConnectorScopeSource;
-    readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+    readonly connectorCatalogSnapshot: ConnectorRuntimeSelection;
   },
   timing?: ApiDispatchTimingCollector,
 ): Promise<StoredConnectorMaterializationSnapshot | null> {
   const baseTimingDimensions = storedConnectorTimingDimensions({
     scopeSource: args.scopeSource,
   });
+  const accountResolutions = await resolveConnectorAccounts(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    requests: args.allowedConnectorSlugs.map((connectorSlug) => {
+      return {
+        target: { kind: "builtin" as const, connectorSlug },
+        selection: { kind: "default" as const },
+      };
+    }),
+  });
+  const connectorIds = args.allowedConnectorSlugs.flatMap((connectorSlug) => {
+    const resolution = accountResolutions.get(
+      connectorAccountTargetKey({ kind: "builtin", connectorSlug }),
+    );
+    return resolution?.kind === "resolved"
+      ? [resolution.account.connectorId]
+      : [];
+  });
+  if (connectorIds.length === 0) {
+    return null;
+  }
   const rows = await loadStoredConnectorSnapshotRows(
     db,
     {
       orgId: args.orgId,
       userId: args.userId,
-      allowedConnectorSlugs: args.allowedConnectorSlugs,
+      connectorIds,
       timingDimensions: baseTimingDimensions,
     },
     timing,
@@ -4258,7 +4361,7 @@ function jsonArrayEqual(
 interface BuildCustomConnectorRuntimeContextArgs {
   readonly rows: CustomConnectorRuntimeDataRows;
   readonly featureSwitchContext: FeatureSwitchContext;
-  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+  readonly connectorCatalogSnapshot: ConnectorRuntimeSelection;
   readonly grants: readonly AgentCustomConnectorGrant[] | undefined;
   readonly baseUrlVarsByConnectorId?: ReadonlyMap<
     string,
@@ -4326,7 +4429,7 @@ function unavailableCustomConnectorRuntimeRow(
 
 export async function loadEffectiveCustomConnectorPermissionBundle(args: {
   readonly row: CustomConnectorRuntimeDataRows[number];
-  readonly snapshot: ConnectorRuntimeSnapshot;
+  readonly snapshot: ConnectorRuntimeSelection;
 }): Promise<CustomConnectorPermissionBundle | null | undefined> {
   if (args.row.connector.kind === "mcp") {
     return null;
@@ -4341,7 +4444,7 @@ export async function loadEffectiveCustomConnectorPermissionBundle(args: {
   });
   return ref
     ? ((await loadCustomConnectorPermissionBundle({
-        snapshot: args.snapshot,
+        catalog: args.snapshot.serverFirewallMetadata,
         ref,
       })) ?? undefined)
     : null;
@@ -4610,7 +4713,7 @@ async function loadCustomConnectorContext(
       | readonly AgentCustomConnectorGrant[]
       | undefined;
     readonly featureSwitchContext: FeatureSwitchContext;
-    readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+    readonly connectorCatalogSnapshot: ConnectorRuntimeSelection;
   },
   signal: AbortSignal,
   timing?: ApiDispatchTimingCollector,
@@ -4619,10 +4722,33 @@ async function loadCustomConnectorContext(
     return emptyCustomConnectorRuntimeContext();
   }
 
+  const accountResolutions = await resolveConnectorAccounts(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    requests: args.allowedCustomConnectorIds.map((customConnectorId) => {
+      return {
+        target: { kind: "custom" as const, customConnectorId },
+        selection: { kind: "default" as const },
+      };
+    }),
+  });
+  const memberConnectorIdsByCustomConnectorId = new Map<string, string>();
+  for (const customConnectorId of args.allowedCustomConnectorIds) {
+    const resolution = accountResolutions.get(
+      connectorAccountTargetKey({ kind: "custom", customConnectorId }),
+    );
+    if (resolution?.kind === "resolved") {
+      memberConnectorIdsByCustomConnectorId.set(
+        customConnectorId,
+        resolution.account.connectorId,
+      );
+    }
+  }
   const rows = await loadCustomConnectorRuntimeData(db, {
     orgId: args.orgId,
     userId: args.userId,
     connectorIds: args.allowedCustomConnectorIds,
+    memberConnectorIdsByCustomConnectorId,
     measure: async (step, operation) => {
       const actionType =
         step === "connectorRows"
@@ -4708,7 +4834,7 @@ function resolveConnectorNetworkPolicy(args: {
 }
 
 async function loadRequiredFirewallPermissionIndex(args: {
-  readonly snapshot: ConnectorRuntimeSnapshot;
+  readonly snapshot: ConnectorRuntimeSelection;
   readonly connectorSlug: string;
 }): Promise<ConnectorServerFirewallPermissionIndex> {
   const index = await args.snapshot.serverFirewalls.loadPermissionIndex(
@@ -4723,7 +4849,7 @@ async function loadRequiredFirewallPermissionIndex(args: {
 }
 
 function getRequiredFirewallExecutionMetadata(
-  snapshot: ConnectorRuntimeSnapshot,
+  snapshot: ConnectorRuntimeSelection,
   connectorSlug: string,
 ): ConnectorServerFirewallExecutionMetadata {
   const metadata = snapshot.serverFirewalls.getExecutionMetadata(connectorSlug);
@@ -4943,13 +5069,13 @@ interface BuiltinConnectorManifestSource {
 }
 
 function buildConnectorPermissionBaseline(
-  snapshot: ConnectorRuntimeSnapshot,
+  snapshot: ConnectorRuntimeSelection,
   sources: readonly BuiltinConnectorManifestSource[],
 ): StoredConnectorPermissionBaseline {
   const validationAuthority = currentConnectorCatalogValidatorIdentity();
   return {
     version: 1,
-    catalogIdentity: snapshot.acceptedSnapshot.identity,
+    catalogIdentity: snapshot.catalogIdentity,
     validationAuthority: {
       backendVersion: validationAuthority.backendVersion,
       buildCommitSha: validationAuthority.buildCommitSha,
@@ -5081,10 +5207,10 @@ function mergePermissionManifests(args: {
       return undefined;
     }
     if (args.connectorCatalogSelection.kind === "empty") {
-      throw new Error("Builtin connector sources require a complete catalog");
+      throw new Error("Builtin connector sources require a catalog selection");
     }
     return buildConnectorPermissionBaseline(
-      args.connectorCatalogSelection.snapshot,
+      args.connectorCatalogSelection.selection,
       args.builtinSources,
     );
   })();
@@ -5141,7 +5267,7 @@ async function buildPermissionManifest(
       if (args.connectorCatalogSelection.kind === "empty") {
         return [];
       }
-      const snapshot = args.connectorCatalogSelection.snapshot;
+      const snapshot = args.connectorCatalogSelection.selection;
       const connectorSlugs =
         args.connectorSlugs ??
         Object.keys(args.permissionPolicies ?? {}).filter((connectorSlug) => {
@@ -5321,7 +5447,7 @@ async function resolveByAgentId(
   db: Db,
   agentId: string,
   timing?: ApiDispatchTimingCollector,
-): Promise<ResolvedCompose | CreateRunErrorResult> {
+): Promise<PersistedPlan | CreateRunErrorResult> {
   const [row] = await measureApiDispatchTiming(
     timing,
     "api_dispatch_resolve_compose_lookup_agent",
@@ -5357,6 +5483,7 @@ async function resolveByAgentId(
   }
 
   return {
+    headVersionId: row.headVersionId,
     agentComposeVersionId: row.versionId,
     composeId: row.composeId,
     composeUserId: row.composeUserId,
@@ -5461,8 +5588,8 @@ function resolveBySessionId(
   userId: string,
   orgId: string,
   timing?: ApiDispatchTimingCollector,
-): Computed<Promise<ResolvedCompose | CreateRunErrorResult>> {
-  return computed(async (): Promise<ResolvedCompose | CreateRunErrorResult> => {
+): Computed<Promise<PersistedPlan | CreateRunErrorResult>> {
+  return computed(async (): Promise<PersistedPlan | CreateRunErrorResult> => {
     const [snapshot] = await measureApiDispatchTiming(
       timing,
       "api_dispatch_resolve_compose_lookup_session_snapshot",
@@ -5560,6 +5687,7 @@ function resolveBySessionId(
       : undefined;
 
     return {
+      headVersionId: snapshot.compose.headVersionId,
       agentComposeVersionId: snapshot.version.id,
       composeId: snapshot.compose.id,
       composeUserId: snapshot.compose.userId,
@@ -5583,9 +5711,9 @@ function resolveCompose(
   userId: string,
   orgId: string,
   timing?: ApiDispatchTimingCollector,
-): Computed<Promise<ResolvedCompose | CreateRunErrorResult>> {
+): Computed<Promise<PersistedPlan | CreateRunErrorResult>> {
   return computed(
-    async (get): Promise<ResolvedCompose | CreateRunErrorResult> => {
+    async (get): Promise<PersistedPlan | CreateRunErrorResult> => {
       if (body.sessionId) {
         const sessionId = body.sessionId;
         const resolved = await measureApiDispatchTiming(
@@ -6076,6 +6204,8 @@ async function buildStoredExecutionContextDraft(args: {
     secretNames,
     secretValues,
     environmentShadowObservation,
+    agentExecutionAuthorityObservation:
+      args.resolved.agentExecutionAuthorityObservation,
   };
 }
 
@@ -6133,6 +6263,8 @@ function buildRunContextSnapshot(args: {
   const cliAgentSessionId =
     storedContext.piSessionId ?? storedContext.resumeSession?.sessionId ?? null;
   const environmentShadow = args.builtContext.environmentShadowObservation;
+  const agentExecutionAuthority =
+    args.builtContext.agentExecutionAuthorityObservation;
   let environmentShadowFields: Partial<
     Pick<
       RunContextAxiomSnapshot,
@@ -6175,6 +6307,13 @@ function buildRunContextSnapshot(args: {
     artifact: args.builtContext.runContextStorage.artifact,
     featureFlagEntries: featureFlagsRecordToEntries(storedContext.featureFlags),
     ...environmentShadowFields,
+    ...(agentExecutionAuthority
+      ? {
+          agentExecutionAuthority: agentExecutionAuthority.authority,
+          agentExecutionAuthorityClassification:
+            agentExecutionAuthority.classification,
+        }
+      : {}),
   };
   return snapshot;
 }
@@ -7884,7 +8023,7 @@ async function loadRunConnectorContexts(
     readonly orgId: string;
     readonly userId: string;
     readonly connectorScope: EffectiveConnectorScope;
-    readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+    readonly connectorCatalogSnapshot: ConnectorRuntimeSelection;
     readonly featureSwitchContext: FeatureSwitchContext;
     readonly timing: ApiDispatchTimingCollector | undefined;
   },
@@ -8121,7 +8260,7 @@ interface PreparedRuntimeContext {
 
 function connectorScopeForRuntimeSnapshot(
   scope: EffectiveConnectorScope,
-  snapshot: ConnectorRuntimeSnapshot,
+  snapshot: ConnectorRuntimeSelection,
 ): EffectiveConnectorScope {
   return {
     ...scope,
@@ -8221,9 +8360,12 @@ async function prepareRunBodyContext(
     return persistedResolved;
   }
   const canonicalOkouRuntime = args.createArgs.includeZeroTokenSecret === true;
+  if (canonicalOkouRuntime && args.createArgs.productAgentName === undefined) {
+    throw new Error("Product Agent name is required for canonical runtime");
+  }
   const resolved = runtimeResolvedCompose(
     persistedResolved,
-    canonicalOkouRuntime,
+    canonicalOkouRuntime ? args.createArgs.productAgentName : undefined,
   );
   if (resolved.orgId !== args.createArgs.orgId) {
     return notFound("Resource not found");
@@ -8339,7 +8481,7 @@ async function prepareRunConnectorContexts(
             orgId: args.createArgs.orgId,
             userId: args.createArgs.userId,
             connectorScope: args.connectorScope,
-            connectorCatalogSnapshot: args.connectorCatalogSelection.snapshot,
+            connectorCatalogSnapshot: args.connectorCatalogSelection.selection,
             featureSwitchContext: args.featureSwitchContext,
             timing: args.timing,
           },
@@ -8391,7 +8533,7 @@ async function prepareRunRuntimeContext(
     readonly db: Db;
     readonly createArgs: CreateAgentRunArgs;
     readonly connectorScope: EffectiveConnectorScope;
-    readonly preloadedConnectorCatalogSnapshot?: ConnectorRuntimeSnapshot;
+    readonly preloadedConnectorCatalogSnapshot?: ConnectorRuntimeSelection;
     readonly timing: ApiDispatchTimingCollector;
     readonly bodyContext: PreparedRunBodyContext;
   },
@@ -8402,10 +8544,10 @@ async function prepareRunRuntimeContext(
   const connectorCatalogSelection = await connectorCatalogSelectionForRun(args);
   signal.throwIfAborted();
   const connectorScope =
-    connectorCatalogSelection.kind === "complete"
+    connectorCatalogSelection.kind === "scoped"
       ? connectorScopeForRuntimeSnapshot(
           args.connectorScope,
-          connectorCatalogSelection.snapshot,
+          connectorCatalogSelection.selection,
         )
       : args.connectorScope;
   const modelProvider = await resolvePreparedRunModelProvider(args, signal);
@@ -8513,20 +8655,20 @@ async function prepareRunRuntimeContext(
 
 async function connectorCatalogSelectionForRun(args: {
   readonly db: Db;
-  readonly preloadedConnectorCatalogSnapshot?: ConnectorRuntimeSnapshot;
+  readonly preloadedConnectorCatalogSnapshot?: ConnectorRuntimeSelection;
   readonly connectorScope: EffectiveConnectorScope;
   readonly timing: ApiDispatchTimingCollector;
 }): Promise<RunConnectorCatalogSelection> {
   if (isEmptyRunConnectorScope(args.connectorScope)) {
     return { kind: "empty" };
   }
-  const snapshot =
+  const selection =
     args.preloadedConnectorCatalogSnapshot ??
-    (await loadConnectorRuntimeSnapshot(args.db, {
+    (await loadConnectorRuntimeSelection(args.db, {
       timing: args.timing,
-      requestedConnectorCount: args.connectorScope.allowedConnectorSlugs.length,
+      requestedConnectorSlugs: args.connectorScope.allowedConnectorSlugs,
     }));
-  return { kind: "complete", snapshot };
+  return { kind: "scoped", selection };
 }
 
 function prepareRunOutputMetadata(args: {
@@ -8587,7 +8729,7 @@ interface PrepareRunContextInput {
   readonly preloadedFeatureSwitchContext: FeatureSwitchContext | undefined;
   readonly preloadedUserTimezone: string | null | undefined;
   readonly preloadedConnectorCatalogSnapshot:
-    | ConnectorRuntimeSnapshot
+    | ConnectorRuntimeSelection
     | undefined;
 }
 
@@ -9125,7 +9267,7 @@ interface PrepareAgentRunArgs {
   readonly preloadedFeatureSwitchContext?: FeatureSwitchContext;
   // Undefined means not preloaded; null is an authoritative missing value.
   readonly preloadedUserTimezone?: string | null;
-  readonly preloadedConnectorCatalogSnapshot?: ConnectorRuntimeSnapshot;
+  readonly preloadedConnectorCatalogSnapshot?: ConnectorRuntimeSelection;
 }
 
 interface CompleteAgentRunArgs {

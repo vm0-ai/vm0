@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.25](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.24...guest-session-prune-v0.3.25) (2026-08-18)
+
+
+### Performance Improvements
+
+* **guest-agent:** avoid reparsing native history candidates ([#28034](https://github.com/vm0-ai/vm0/issues/28034)) ([c72e2ca](https://github.com/vm0-ai/vm0/commit/c72e2cabd608f46cc00b3522c0775c3904646e45))
+
 ## [0.3.24](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.23...guest-session-prune-v0.3.24) (2026-08-18)
 
 ## [0.3.23](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.22...guest-session-prune-v0.3.23) (2026-08-17)

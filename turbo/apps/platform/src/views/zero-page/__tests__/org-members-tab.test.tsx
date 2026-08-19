@@ -1,9 +1,9 @@
 import type { OrgMembersResponse } from "@okouai/api-contracts/contracts/org-members";
 import {
-  zeroOrgInviteContract,
-  zeroOrgMembersContract,
-  zeroOrgMembershipRequestsContract,
-} from "@okouai/api-contracts/contracts/zero-org-members";
+  orgInviteContract,
+  orgMembersContract,
+  orgMembershipRequestsContract,
+} from "@okouai/api-contracts/contracts/org-member-routes";
 import {
   zeroBillingStatusContract,
   zeroBillingUsagePackCatalogContract,
@@ -65,7 +65,9 @@ function mockMembersStory(): {
   readonly addPendingInvitation: (
     invitation: NonNullable<OrgMembersResponse["pendingInvitations"]>[number],
   ) => void;
+  readonly membersRequestCount: () => number;
 } {
+  let membersRequestCount = 0;
   let response: OrgMembersResponse = {
     name: "Test Org",
     role: "admin",
@@ -134,10 +136,11 @@ function mockMembersStory(): {
     name: "Test Org",
     role: "admin",
   });
-  context.mocks.api(zeroOrgMembersContract.members, ({ respond }) => {
+  context.mocks.api(orgMembersContract.members, ({ respond }) => {
+    membersRequestCount += 1;
     return respond(200, response);
   });
-  context.mocks.api(zeroOrgInviteContract.invite, ({ body, respond }) => {
+  context.mocks.api(orgInviteContract.invite, ({ body, respond }) => {
     response = {
       ...response,
       pendingInvitations: [
@@ -152,7 +155,7 @@ function mockMembersStory(): {
     };
     return respond(200, { message: "Invitation sent" });
   });
-  context.mocks.api(zeroOrgInviteContract.revoke, ({ body, respond }) => {
+  context.mocks.api(orgInviteContract.revoke, ({ body, respond }) => {
     response = {
       ...response,
       pendingInvitations: response.pendingInvitations?.filter((candidate) => {
@@ -161,7 +164,7 @@ function mockMembersStory(): {
     };
     return respond(200, { message: "Invitation revoked" });
   });
-  context.mocks.api(zeroOrgMembersContract.updateRole, ({ body, respond }) => {
+  context.mocks.api(orgMembersContract.updateRole, ({ body, respond }) => {
     response = {
       ...response,
       members: response.members.map((member) => {
@@ -172,20 +175,17 @@ function mockMembersStory(): {
     };
     return respond(200, { message: "Role updated" });
   });
+  context.mocks.api(orgMembersContract.removeMember, ({ body, respond }) => {
+    response = {
+      ...response,
+      members: response.members.filter((member) => {
+        return member.email !== body.email;
+      }),
+    };
+    return respond(200, { message: "Member removed" });
+  });
   context.mocks.api(
-    zeroOrgMembersContract.removeMember,
-    ({ body, respond }) => {
-      response = {
-        ...response,
-        members: response.members.filter((member) => {
-          return member.email !== body.email;
-        }),
-      };
-      return respond(200, { message: "Member removed" });
-    },
-  );
-  context.mocks.api(
-    zeroOrgMembershipRequestsContract.accept,
+    orgMembershipRequestsContract.accept,
     ({ body, respond }) => {
       const request = response.membershipRequests?.find((candidate) => {
         return candidate.id === body.requestId;
@@ -214,7 +214,7 @@ function mockMembersStory(): {
     },
   );
   context.mocks.api(
-    zeroOrgMembershipRequestsContract.reject,
+    orgMembershipRequestsContract.reject,
     ({ body, respond }) => {
       response = {
         ...response,
@@ -234,6 +234,9 @@ function mockMembersStory(): {
           invitation,
         ],
       };
+    },
+    membersRequestCount() {
+      return membersRequestCount;
     },
   };
 }
@@ -404,7 +407,7 @@ describe("organization members settings", () => {
     let previewBody: unknown;
     let confirmedPurchaseId: string | null = null;
     context.mocks.api(
-      zeroOrgInviteContract.previewPurchase,
+      orgInviteContract.previewPurchase,
       ({ body, respond }) => {
         previewBody = body;
         return respond(200, {
@@ -421,16 +424,9 @@ describe("organization members settings", () => {
       },
     );
     context.mocks.api(
-      zeroOrgInviteContract.confirmPurchase,
+      orgInviteContract.confirmPurchase,
       ({ params, respond }) => {
         confirmedPurchaseId = params.purchaseId;
-        membersStory.addPendingInvitation({
-          id: "inv-paid",
-          email: "paid.invitee@example.com",
-          role: "member",
-          createdAt: "2026-01-06T00:00:00Z",
-          usagePackUsd: 50,
-        });
         return respond(200, {
           message: "Invitation purchased and sent",
         });
@@ -448,6 +444,11 @@ describe("organization members settings", () => {
       ).toBeInTheDocument();
     });
     await expect(screen.findByText("Usage pack")).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("billing:changed"),
+      ).toBeTruthy();
+    });
     expect(
       within(rowByEmail("alice@example.com")).getByText("$20/month"),
     ).toBeInTheDocument();
@@ -504,13 +505,37 @@ describe("organization members settings", () => {
       ).toString(),
     });
     expect(window.location.href).toBe(initialHref);
+    const membersRequestsBeforeConfirm = membersStory.membersRequestCount();
     click(buttonByText("Pay and invite", confirmationDialog));
 
     await waitFor(() => {
       expect(confirmedPurchaseId).toBe("c08a5fab-a05d-43f9-a1ee-10feaf27584c");
+      expect(membersStory.membersRequestCount()).toBeGreaterThan(
+        membersRequestsBeforeConfirm,
+      );
       expect(
         screen.queryByRole("dialog", { name: "Review invitation" }),
       ).not.toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText("paid.invitee@example.com"),
+    ).not.toBeInTheDocument();
+
+    membersStory.addPendingInvitation({
+      id: "inv-paid",
+      email: "paid.invitee@example.com",
+      role: "member",
+      createdAt: "2026-01-06T00:00:00Z",
+      usagePackUsd: 50,
+    });
+    const membersRequestsBeforeBillingChange =
+      membersStory.membersRequestCount();
+    context.mocks.ably.trigger("billing:changed");
+
+    await waitFor(() => {
+      expect(membersStory.membersRequestCount()).toBeGreaterThan(
+        membersRequestsBeforeBillingChange,
+      );
     });
     await screen.findByText("paid.invitee@example.com");
     expect(
@@ -526,7 +551,7 @@ describe("organization members settings", () => {
     mockUsagePackCatalog();
     let previewCount = 0;
     context.mocks.api(
-      zeroOrgInviteContract.previewPurchase,
+      orgInviteContract.previewPurchase,
       ({ body, respond }) => {
         previewCount += 1;
         return respond(200, {
@@ -546,7 +571,7 @@ describe("organization members settings", () => {
         });
       },
     );
-    context.mocks.api(zeroOrgInviteContract.confirmPurchase, ({ respond }) => {
+    context.mocks.api(orgInviteContract.confirmPurchase, ({ respond }) => {
       return respond(409, {
         error: {
           code: "CONFLICT",

@@ -11,8 +11,7 @@ import type {
 } from "@okouai/api-contracts/contracts/zero-billing";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
-import { orgUsageAllowanceEntitlements } from "@okouai/db/schema/org-usage-allowance";
-import { and, eq, gt, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { env } from "../../lib/env";
@@ -160,15 +159,9 @@ const CREDITS_PER_DOLLAR = 1000;
 const CREDIT_PURCHASE_PREVIEW_TTL_MS = 15 * 60 * 1000;
 const CREDIT_PURCHASE_PREVIEW_LINE_METADATA_KEY = "credit_purchase_preview_id";
 const STRIPE_SUBSCRIPTION_PRICE_TIERS = ["pro", "team"] as const;
-const ACTIVE_USAGE_ALLOWANCE_STATUSES = [
-  "active",
-  "manual_active",
-  "trialing",
-  "past_due",
-  "unpaid",
-] as const;
 export type SubscriptionCheckoutTier =
   (typeof STRIPE_SUBSCRIPTION_PRICE_TIERS)[number];
+export type BillingSubscriptionTier = SubscriptionCheckoutTier | "custom";
 
 export async function orgPlanSubscriptionId(
   db: ReadonlyDb,
@@ -176,43 +169,12 @@ export async function orgPlanSubscriptionId(
 ): Promise<string | null> {
   const [plan] = await db
     .select({
-      planKey: orgPlanEntitlements.planKey,
       stripeSubscriptionId: orgPlanEntitlements.stripeSubscriptionId,
     })
     .from(orgPlanEntitlements)
     .where(eq(orgPlanEntitlements.orgId, orgId))
     .limit(1);
-  if (plan?.stripeSubscriptionId) {
-    return plan.stripeSubscriptionId;
-  }
-  if (plan?.planKey !== "custom") {
-    return null;
-  }
-
-  // Forever Custom Atom grants do not have a Plan subscription. Their usage
-  // allowance subscription owns the recurring billing cycle instead.
-  const currentTime = nowDate();
-  const [allowance] = await db
-    .select({
-      stripeSubscriptionId: orgUsageAllowanceEntitlements.stripeSubscriptionId,
-    })
-    .from(orgUsageAllowanceEntitlements)
-    .where(
-      and(
-        eq(orgUsageAllowanceEntitlements.orgId, orgId),
-        inArray(orgUsageAllowanceEntitlements.status, [
-          ...ACTIVE_USAGE_ALLOWANCE_STATUSES,
-        ]),
-        isNotNull(orgUsageAllowanceEntitlements.stripeSubscriptionId),
-        lte(orgUsageAllowanceEntitlements.effectiveAt, currentTime),
-        or(
-          isNull(orgUsageAllowanceEntitlements.expiresAt),
-          gt(orgUsageAllowanceEntitlements.expiresAt, currentTime),
-        ),
-      ),
-    )
-    .limit(1);
-  return allowance?.stripeSubscriptionId ?? null;
+  return plan?.stripeSubscriptionId ?? null;
 }
 
 const creditPurchasePreviewTokenSchema = z.object({
@@ -360,6 +322,31 @@ interface PlanPriceItem {
   readonly price: { readonly id: string };
 }
 
+interface BillingPlanPriceItem {
+  readonly price: { readonly id: string };
+}
+
+export function tierForKnownPlanPrice(
+  price: BillingPlanPriceItem["price"],
+): BillingSubscriptionTier | null {
+  const checkoutTier = tierForKnownPriceId(price.id);
+  if (checkoutTier) {
+    return checkoutTier;
+  }
+  return env("OKOU_PRICE_CUSTOM")?.includes(price.id) ? "custom" : null;
+}
+
+export function knownBillingPlanPriceItem<
+  T extends { readonly price?: { readonly id?: string } },
+>(items: readonly T[]): (T & BillingPlanPriceItem) | undefined {
+  return items.find((item): item is T & BillingPlanPriceItem => {
+    return (
+      typeof item.price?.id === "string" &&
+      tierForKnownPlanPrice({ id: item.price.id }) !== null
+    );
+  });
+}
+
 export function knownPlanPriceItem<T extends PlanPriceItem>(
   items: readonly T[],
 ): T | undefined {
@@ -368,7 +355,7 @@ export function knownPlanPriceItem<T extends PlanPriceItem>(
   });
 }
 
-export function tierFromPriceId(priceId: string): SubscriptionCheckoutTier {
+function tierFromPriceId(priceId: string): SubscriptionCheckoutTier {
   const tier = tierForKnownPriceId(priceId);
   if (tier) {
     return tier;
@@ -424,14 +411,14 @@ function billingTierLabel(tier: string | null | undefined): string {
 
 export function checkoutWouldReplaceWithSameOrLowerTier(args: {
   readonly currentTier: string | null | undefined;
-  readonly targetTier: SubscriptionCheckoutTier;
+  readonly targetTier: BillingSubscriptionTier;
 }): boolean {
   return billingTierRank(args.currentTier) >= billingTierRank(args.targetTier);
 }
 
 export function checkoutTierConflictMessage(args: {
   readonly currentTier: string | null | undefined;
-  readonly targetTier: SubscriptionCheckoutTier;
+  readonly targetTier: BillingSubscriptionTier;
 }): string {
   return `Cannot create ${billingTierLabel(args.targetTier)} checkout while current tier is ${billingTierLabel(args.currentTier)}; use billing management to change plans`;
 }
@@ -1515,6 +1502,7 @@ export const previewInitialConcurrencyPurchase$ = command(
     return await set(
       previewStripeConcurrencySubscriptionChange$,
       {
+        orgId: args.orgId,
         subscriptionId,
         priceId: args.priceId,
         quantity: args.quantity,
@@ -1539,6 +1527,7 @@ export const startConcurrencyPurchase$ = command(
       const result = await set(
         applyStripeConcurrencySubscriptionChange$,
         {
+          orgId: args.orgId,
           subscriptionId: args.existingSubscriptionId,
           quantity: args.quantity,
           mode: "increase",
@@ -1577,6 +1566,7 @@ export const startConcurrencyPurchase$ = command(
     const result = await set(
       addStripeConcurrencySubscriptionItem$,
       {
+        orgId: args.orgId,
         subscriptionId,
         priceId: args.priceId,
         quantity: args.quantity,

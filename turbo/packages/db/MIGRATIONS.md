@@ -35,13 +35,31 @@ expired transition validator must be deleted.
 The repository inventory below is machine-checked. The removal owner must
 delete the workflow, probe, focused validator, and this entry together.
 
-| Issue                             | Validator                                         | Removal owner  |
-| --------------------------------- | ------------------------------------------------- | -------------- |
-| #27613 / #27656 / #27671 / #27792 | Agent/Compose consolidation production preflight  | #26938 Stage 8 |
-| #27665                            | Integration identity Contract readiness preflight | #27602         |
+| Issue                             | Validator                                          | Removal owner  |
+| --------------------------------- | -------------------------------------------------- | -------------- |
+| #27613 / #27656 / #27671 / #27792 | Agent/Compose consolidation production preflight   | #26938 Stage 8 |
+| #27896                            | Agent execution authority classifier and helpers   | #26938 Stage 8 |
+| #27896                            | Application Compose projection adapter             | #26938 Stage 8 |
+| #27896                            | Legacy exception runtime path                      | #26938 Stage 8 |
+| #27896                            | Run-context authority telemetry                    | #26938 Stage 8 |
+| #27997                            | Framework-fallback authority classification        | #26938 Stage 8 |
+| #27997                            | Framework-fallback preflight partition             | #26938 Stage 8 |
+| #28056                            | Historical product-builder classifier and variants | #26938 Stage 8 |
+| #28056                            | Historical product-builder preflight partition     | #26938 Stage 8 |
+| #28070                            | Historical builder environment authority telemetry | #26938 Stage 8 |
+| #28070                            | Historical builder v6 authority-lineage partition  | #26938 Stage 8 |
 
 <!-- vm0-transition-validator:#27613+#27656+#27671+#27792|agent-compose-consolidation-preflight|removal-owner:#26938-stage-8 -->
-<!-- vm0-transition-validator:#27665|integration-identity-contract-readiness-preflight|removal-owner:#27602 -->
+<!-- vm0-transition-validator:#27896|agent-execution-authority-classifier-and-helpers|removal-owner:#26938-stage-8 -->
+<!-- vm0-transition-validator:#27896|application-compose-projection-adapter|removal-owner:#26938-stage-8 -->
+<!-- vm0-transition-validator:#27896|legacy-exception-runtime-path|removal-owner:#26938-stage-8 -->
+<!-- vm0-transition-validator:#27896|run-context-authority-telemetry|removal-owner:#26938-stage-8 -->
+<!-- vm0-transition-validator:#27997|framework-fallback-authority-classification-and-telemetry|removal-owner:#26938-stage-8 -->
+<!-- vm0-transition-validator:#27997|framework-fallback-preflight-partition|removal-owner:#26938-stage-8 -->
+<!-- vm0-transition-validator:#28056|historical-product-builder-classifier-and-variants|removal-owner:#26938-stage-8 -->
+<!-- vm0-transition-validator:#28056|historical-product-builder-preflight-partition|removal-owner:#26938-stage-8 -->
+<!-- vm0-transition-validator:#28070|historical-product-builder-environment-authority-and-telemetry|removal-owner:#26938-stage-8 -->
+<!-- vm0-transition-validator:#28070|historical-product-builder-v6-authority-lineage-partition|removal-owner:#26938-stage-8 -->
 
 ## Migration patterns
 

@@ -16,8 +16,6 @@ _CHECK_SCRIPT = _ADDON_ROOT / "scripts" / "check-flow-metadata-keys.py"
 _CLI_TIMEOUT_SECONDS = 30
 _COMPLEX_STAR_ARGS_TIMEOUT_SECONDS = 2
 _COMPLEX_STAR_ARGS_BRANCH_COUNT = 24
-_SUPPORTS_EXCEPT_STAR_SYNTAX = sys.version_info >= (3, 11)
-_SUPPORTS_PEP695_SYNTAX = sys.version_info >= (3, 12)
 
 
 def _fixture_text(*names: str) -> str:
@@ -34,14 +32,6 @@ def _write_python_source(path: Path, *fixture_names: str) -> None:
 
 def _normalized_violations(source_path: Path, violations: list[str]) -> list[str]:
     return [violation.replace(str(source_path), source_path.name) for violation in violations]
-
-
-def _violations_expected_fixture_name() -> str:
-    if _SUPPORTS_PEP695_SYNTAX:
-        return "violations.expected.py312.txt"
-    if _SUPPORTS_EXCEPT_STAR_SYNTAX:
-        return "violations.expected.py311.txt"
-    return "violations.expected.py310.txt"
 
 
 def _run_check_script(
@@ -177,17 +167,17 @@ def test_check_flow_metadata_keys_cli_bounds_conditional_starred_arguments(tmp_p
 
 def test_registered_flow_metadata_guard_flags_direct_literals(tmp_path):
     source_path = tmp_path / "violations.py"
-    fixture_names = ["violations.base.py.txt"]
-    if _SUPPORTS_EXCEPT_STAR_SYNTAX:
-        fixture_names.append("violations.py311.py.txt")
-    if _SUPPORTS_PEP695_SYNTAX:
-        fixture_names.append("violations.py312.py.txt")
+    fixture_names = [
+        "violations.base.py.txt",
+        "violations.py311.py.txt",
+        "violations.py312.py.txt",
+    ]
     _write_python_source(source_path, *fixture_names)
 
     violations = flow_metadata_key_linter.metadata_key_violations(source_path)
 
     assert _normalized_violations(source_path, violations) == _expected_lines(
-        _violations_expected_fixture_name()
+        "violations.expected.py312.txt"
     )
 
 
@@ -347,9 +337,7 @@ def test_registered_flow_metadata_guard_accepts_utf8_bom(tmp_path):
 
 def test_registered_flow_metadata_guard_ignores_external_schema_and_private_markers(tmp_path):
     source_path = tmp_path / "allowed.py"
-    fixture_names = ["allowed.base.py.txt"]
-    if _SUPPORTS_PEP695_SYNTAX:
-        fixture_names.append("allowed.py312.py.txt")
+    fixture_names = ["allowed.base.py.txt", "allowed.py312.py.txt"]
     _write_python_source(source_path, *fixture_names)
 
     assert flow_metadata_key_linter.metadata_key_violations(source_path) == []

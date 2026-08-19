@@ -32,7 +32,7 @@ import {
   type PublicConnectorCatalogStatusItem,
 } from "@okouai/api-contracts/contracts/zero-connector-catalog";
 import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
-import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { zeroUserPermissionGrantsContract } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
 import type { TeamComposeItem } from "@okouai/api-contracts/contracts/zero-team";
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
@@ -530,7 +530,7 @@ function setupConnectorStatusFilterPage(path = "/connectors"): void {
   context.mocks.data.team([
     teamAgent("c0000000-0000-4000-a000-000000000020", "Research", "preset:0"),
   ]);
-  context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+  context.mocks.api(userConnectorsContract.get, ({ respond }) => {
     return respond(200, { enabledConnectorSlugs: ["github"] });
   });
 
@@ -658,7 +658,7 @@ describe("connectors page", () => {
       screen.findByTestId("connector-card-label"),
     ).resolves.toHaveTextContent("GitHub");
     await expect(
-      screen.findByText("Connect 1000+ services for your agents to use."),
+      screen.findByText("Connect 1100+ services for your agents to use."),
     ).resolves.toBeInTheDocument();
 
     await fill(await screen.findByPlaceholderText("Find connectors"), "Slack");
@@ -692,7 +692,7 @@ describe("connectors page", () => {
     });
 
     await expect(
-      screen.findByText("Connect 1000+ services for your agents to use."),
+      screen.findByText("Connect 1100+ services for your agents to use."),
     ).resolves.toBeInTheDocument();
   });
 
@@ -721,7 +721,7 @@ describe("connectors page", () => {
       screen.findByText("Connect third-party services for your agents to use."),
     ).resolves.toBeInTheDocument();
     expect(
-      screen.queryByText("Connect 1000+ services for your agents to use."),
+      screen.queryByText("Connect 1100+ services for your agents to use."),
     ).not.toBeInTheDocument();
   });
 
@@ -756,7 +756,7 @@ describe("connectors page", () => {
       },
     ]);
     context.mocks.data.team([teamAgent(researchAgentId, "Research Agent")]);
-    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(userConnectorsContract.get, ({ respond }) => {
       return respond(200, { enabledConnectorSlugs: ["github"] });
     });
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
@@ -1432,7 +1432,7 @@ describe("connectors page", () => {
     const agentId = "c0000000-0000-4000-a000-000000000010";
     mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
     context.mocks.data.team([teamAgent(agentId, "Research Agent", "preset:0")]);
-    context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
+    context.mocks.api(userConnectorsContract.get, ({ params, respond }) => {
       return respond(200, {
         enabledConnectorSlugs: params.id === agentId ? ["github"] : [],
       });
@@ -1572,13 +1572,13 @@ describe("connectors page", () => {
       teamAgent(researchAgentId, "Research Agent"),
       teamAgent(supportAgentId, "Support Agent"),
     ]);
-    context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
+    context.mocks.api(userConnectorsContract.get, ({ params, respond }) => {
       return respond(200, {
         enabledConnectorSlugs: enabledByAgent.get(params.id) ?? [],
       });
     });
     context.mocks.api(
-      zeroUserConnectorsContract.update,
+      userConnectorsContract.update,
       ({ params, body, respond }) => {
         const nextEnabledConnectorSlugs = applyUserConnectorUpdate(
           enabledByAgent.get(params.id) ?? [],
@@ -1639,7 +1639,7 @@ describe("connectors page", () => {
       teamAgent(activeAgentId, "Research Agent"),
       teamAgent(staleAgentId, "Deleted Agent"),
     ]);
-    context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
+    context.mocks.api(userConnectorsContract.get, ({ params, respond }) => {
       if (params.id === staleAgentId) {
         return respond(404, {
           error: { message: "Agent not found", code: "NOT_FOUND" },
@@ -1677,7 +1677,7 @@ describe("connectors page", () => {
       teamAgent(activeAgentId, "Research Agent"),
       teamAgent(staleAgentId, "Deleted Agent"),
     ]);
-    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(userConnectorsContract.get, ({ respond }) => {
       return respond(200, { enabledConnectorSlugs: ["github"] });
     });
     context.mocks.api(
@@ -1733,7 +1733,7 @@ describe("connectors page", () => {
       teamAgent(agentIds[2], "Growth"),
       teamAgent(agentIds[3], "Ops", "preset:3"),
     ]);
-    context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
+    context.mocks.api(userConnectorsContract.get, ({ params, respond }) => {
       return respond(200, {
         enabledConnectorSlugs: enabledByAgent.get(params.id) ?? [],
       });
@@ -1769,7 +1769,7 @@ describe("connectors page", () => {
     const agentId = "c0000000-0000-4000-a000-000000000001";
     mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
     context.mocks.data.team([teamAgent(agentId, "Research Agent", "preset:0")]);
-    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(userConnectorsContract.get, ({ respond }) => {
       return respond(200, { enabledConnectorSlugs: [] });
     });
 
@@ -1806,7 +1806,7 @@ describe("connectors page", () => {
       },
     ]);
     context.mocks.data.team([teamAgent(mediaAgentId, "Media Agent")]);
-    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(userConnectorsContract.get, ({ respond }) => {
       return respond(200, {
         enabledConnectorSlugs: ["cloudinary"],
       });
@@ -2295,13 +2295,10 @@ describe("connectors page", () => {
       },
     );
     const authorizedAgentIds: string[] = [];
-    context.mocks.api(
-      zeroUserConnectorsContract.update,
-      ({ params, respond }) => {
-        authorizedAgentIds.push(params.id);
-        return respond(200, { enabledConnectorSlugs: ["stripe"] });
-      },
-    );
+    context.mocks.api(userConnectorsContract.update, ({ params, respond }) => {
+      authorizedAgentIds.push(params.id);
+      return respond(200, { enabledConnectorSlugs: ["stripe"] });
+    });
     let connectorListRequests = 0;
     const catchUpObserved = context.mocks.deferred<void>();
     context.mocks.api(zeroConnectorsMainContract.list, ({ respond }) => {
@@ -2447,13 +2444,10 @@ describe("connectors page", () => {
       },
     );
     const authorizedAgentIds: string[] = [];
-    context.mocks.api(
-      zeroUserConnectorsContract.update,
-      ({ params, respond }) => {
-        authorizedAgentIds.push(params.id);
-        return respond(200, { enabledConnectorSlugs: ["stripe"] });
-      },
-    );
+    context.mocks.api(userConnectorsContract.update, ({ params, respond }) => {
+      authorizedAgentIds.push(params.id);
+      return respond(200, { enabledConnectorSlugs: ["stripe"] });
+    });
 
     detachedSetupPage({ context, path: "/connectors" });
 
@@ -3141,10 +3135,10 @@ describe("connectors page", () => {
       },
     );
     let authorizationUpdateCount = 0;
-    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(userConnectorsContract.get, ({ respond }) => {
       return respond(200, { enabledConnectorSlugs: [] });
     });
-    context.mocks.api(zeroUserConnectorsContract.update, ({ respond }) => {
+    context.mocks.api(userConnectorsContract.update, ({ respond }) => {
       authorizationUpdateCount += 1;
       return respond(200, { enabledConnectorSlugs: [] });
     });
@@ -3253,12 +3247,12 @@ describe("connectors page", () => {
         });
       },
     );
-    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(userConnectorsContract.get, ({ respond }) => {
       return respond(200, { enabledConnectorSlugs: [] });
     });
     const authorizedAgentIds: string[] = [];
     context.mocks.api(
-      zeroUserConnectorsContract.update,
+      userConnectorsContract.update,
       ({ body, params, respond }) => {
         authorizedAgentIds.push(params.id);
         expect(body).toStrictEqual({

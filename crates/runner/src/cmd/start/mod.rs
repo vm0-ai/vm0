@@ -29,6 +29,8 @@
 //!   main reactor or overlap a newer snapshot;
 //! - workspace-cache watcher work is pinned across reactor turns so async
 //!   metadata classification cannot lose already-drained kernel events;
+//! - routine workspace-cache GC is pinned and single-flight so its I/O does
+//!   not stall the main reactor or queue behind another capacity-lock owner;
 //! - the first routine heartbeat tick is deferred;
 //! - teardown drains heartbeat work and drops discovery before provider
 //!   shutdown.
@@ -118,6 +120,8 @@ use signals::{
 };
 
 const READY_DIRECT_CANDIDATE_DRAIN_LIMIT: usize = 8;
+/// Bounds routine cache-budget and stale-state cleanup without returning full scans to promotions.
+const WORKSPACE_CACHE_GC_PERIOD: Duration = Duration::from_secs(60);
 
 fn candidate_for_admission(
     candidate: JobCandidate,
@@ -178,6 +182,21 @@ async fn next_workspace_cache_change(
     WorkspaceCacheWatcher,
     RunnerResult<crate::workspace_image_cache::WorkspaceCacheChange>,
 ) {
+    match future {
+        Some(future) => future.await,
+        None => std::future::pending().await,
+    }
+}
+
+type WorkspaceCacheGcFuture = BoxFuture<'static, RunnerResult<Option<u64>>>;
+
+fn workspace_cache_gc_future(cache: WorkspaceImageCache) -> WorkspaceCacheGcFuture {
+    Box::pin(async move { cache.try_gc().await })
+}
+
+async fn next_workspace_cache_gc(
+    future: &mut Option<WorkspaceCacheGcFuture>,
+) -> RunnerResult<Option<u64>> {
     match future {
         Some(future) => future.await,
         None => std::future::pending().await,
@@ -1323,6 +1342,7 @@ enum OuterJobPanicPoint {
     ClaimedWithoutSandbox,
     ActiveOrUnknown,
     IdlePoolOwned,
+    HandoffOwned,
     DestroyCompleted,
 }
 
@@ -1696,6 +1716,12 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         #[cfg(test)]
         test_observer: test_hooks.test_observer.clone(),
     };
+    let mut workspace_cache_gc_tick = tokio::time::interval_at(
+        tokio::time::Instant::now() + WORKSPACE_CACHE_GC_PERIOD,
+        WORKSPACE_CACHE_GC_PERIOD,
+    );
+    workspace_cache_gc_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut workspace_cache_gc_fut = None;
     let mut draining_idle_pool_drained = false;
     let mut pending_finalizing_candidate = None;
     let mut terminal_error = None;
@@ -1885,6 +1911,28 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     }
                 }
             }
+            result = next_workspace_cache_gc(&mut workspace_cache_gc_fut) => {
+                workspace_cache_gc_fut = None;
+                workspace_cache_gc_tick.reset();
+                match result {
+                    Ok(Some(freed_bytes)) if freed_bytes > 0 => info!(
+                        freed_bytes,
+                        "periodic workspace image cache GC completed"
+                    ),
+                    Ok(Some(_) | None) => {}
+                    Err(error) => warn!(
+                        error = %error,
+                        "periodic workspace image cache GC failed"
+                    ),
+                }
+            }
+            _ = workspace_cache_gc_tick.tick() => {
+                if workspace_cache_gc_fut.is_none()
+                    && let Some(cache) = exec_config.workspace_cache.clone()
+                {
+                    workspace_cache_gc_fut = Some(workspace_cache_gc_future(cache));
+                }
+            }
             // Mode changes (signals)
             _ = mode_rx.changed() => {}
             // Signal handler task should run until teardown aborts it. If it
@@ -2060,6 +2108,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // -----------------------------------------------------------------------
     // Shutdown — drain idle pool, release discovery resources, then drain running jobs
     // -----------------------------------------------------------------------
+    drop(workspace_cache_gc_fut);
     let teardown = TeardownTimer::start();
     memory_prefetch.cancel();
     teardown.event("memory_prefetch_cancelled");

@@ -24,9 +24,24 @@ runner_api_curl() {
     local path="$1"
     shift
 
-    local token base
+    local token base request_url diagnostic_url request_host request_path
+    local request_host_search request_path_search vercel_logs_url_prefix
+    local vercel_logs_url_prefix_write_out vercel_log_write_out
     token="$(runner_api_token)" || return 1
     base="$(runner_api_url)" || return 1
+    request_url="$base$path"
+    diagnostic_url="${request_url%%\?*}"
+    request_host="${base#*://}"
+    request_host="${request_host%%/*}"
+    request_path="${path%%\?*}"
+    request_host_search="${request_host//%/%25}"
+    request_host_search="${request_host_search//:/%3A}"
+    request_path_search="${request_path//%/%25}"
+    request_path_search="${request_path_search//\//%2F}"
+    request_path_search="${request_path_search//:/%3A}"
+    vercel_logs_url_prefix="https://vercel.com/vm0/vm0-api/logs?search=requestHost%3A${request_host_search}+requestPath%3A${request_path_search}+status%3A"
+    vercel_logs_url_prefix_write_out="${vercel_logs_url_prefix//%/%%}"
+    vercel_log_write_out="%{onerror}%{stderr}Vercel logs: ${vercel_logs_url_prefix_write_out}%{http_code}&timeline=past12Hours\n"
 
     local -a headers=(
         -H "Authorization: Bearer $token"
@@ -38,12 +53,20 @@ runner_api_curl() {
         )
     fi
 
-    curl -fsS \
+    local curl_status=0
+    curl --fail-with-body --silent --show-error \
+        --write-out "$vercel_log_write_out" \
         --connect-timeout "${E2E_CURL_CONNECT_TIMEOUT_SECONDS:-10}" \
         --max-time "${E2E_CURL_MAX_TIME_SECONDS:-30}" \
         "${headers[@]}" \
         "$@" \
-        "$base$path"
+        "$request_url" || curl_status=$?
+
+    if ((curl_status != 0)); then
+        printf 'runner_api_curl failed: url=%s curl_status=%d\n' \
+            "$diagnostic_url" "$curl_status" >&2
+    fi
+    return "$curl_status"
 }
 
 runner_chat_event_rows() {
@@ -139,7 +162,7 @@ delete_runner_agent_for_stage0_teardown() {
     response="$(runner_api_curl \
         "/api/okou/agents/$agent_id" \
         -X DELETE \
-        --no-fail \
+        --no-fail-with-body \
         --write-out $'\n%{http_code}')" || return
     http_status="${response##*$'\n'}"
     response_body="${response%$'\n'*}"

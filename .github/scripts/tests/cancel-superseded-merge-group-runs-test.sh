@@ -35,9 +35,17 @@ done
 
 case "$endpoint" in
   repos/vm0-ai/vm0/pulls/42)
+    if [ "${MOCK_PR_LOOKUP_FAILURE:-0}" = "1" ]; then
+      echo 'gh: failed to resolve PR head (HTTP 500)' >&2
+      exit 1
+    fi
     printf 'feature/safe-shared-runner\tvm0-ai/vm0\n'
     ;;
   repos/vm0-ai/vm0/actions/runs)
+    if [ "${MOCK_DISCOVERY_FAILURE_STATUS:-}" = "$status_filter" ]; then
+      echo 'gh: failed to list workflow runs (HTTP 500)' >&2
+      exit 1
+    fi
     if [ "${MOCK_NO_TARGETS:-0}" = "1" ]; then
       printf '[{"workflow_runs":[]}]\n'
       exit 0
@@ -82,9 +90,9 @@ JSON
     run_id=${endpoint%/force-cancel}
     run_id=${run_id##*/}
     printf '%s\n' "$run_id" >>"$MOCK_CANCEL_LOG"
-    case " ${MOCK_WEDGED_RUN_IDS:-} " in
+    case " ${MOCK_CANCEL_FAILURE_RUN_IDS:-} " in
       *" $run_id "*)
-        echo 'gh: Cannot cancel a workflow re-run that has not yet queued. (HTTP 409)' >&2
+        echo 'gh: Failed to cancel workflow run (HTTP 500)' >&2
         exit 1
         ;;
     esac
@@ -92,20 +100,12 @@ JSON
       touch "$MOCK_RUNS_RELEASED"
     fi
     ;;
-  repos/vm0-ai/vm0/actions/runs/*/jobs)
-    run_id=${endpoint%/jobs}
-    run_id=${run_id##*/}
-    case " ${MOCK_WEDGED_RUN_IDS:-} " in
-      *" $run_id "*) printf '%s\n' "${MOCK_WEDGED_JOB_COUNT:-0}" ;;
-      *) printf '0\n' ;;
-    esac
-    ;;
   repos/vm0-ai/vm0/actions/runs/*)
     run_id=${endpoint##*/}
-    case " ${MOCK_WEDGED_RUN_IDS:-} " in
+    case " ${MOCK_RUN_STATUS_FAILURE_RUN_IDS:-} " in
       *" $run_id "*)
-        printf 'queued\n'
-        exit 0
+        echo 'gh: failed to query workflow run (HTTP 500)' >&2
+        exit 1
         ;;
     esac
     if [ "${MOCK_DELAY_COMPLETION:-0}" = "1" ] && [ ! -f "$MOCK_RUNS_RELEASED" ]; then
@@ -272,29 +272,65 @@ fi
 : >"${tmp_dir}/gh.log"
 : >"${tmp_dir}/cancel.log"
 : >"${tmp_dir}/sleep.log"
-output=$(run_cancel MOCK_WEDGED_RUN_IDS=100 MOCK_WEDGED_JOB_COUNT=0)
-grep -q "skipping wedged superseded run 100" <<<"$output" ||
-  fail "expected an uncancellable run with no started job to be skipped"
-# The wedged run reports "queued" forever, so the barrier could only complete
-# if the run was excluded from it rather than merely skipped during cancel.
+rm -f "${tmp_dir}/runs-released"
+output=$(
+  run_cancel \
+    MOCK_CANCEL_FAILURE_RUN_IDS=100 \
+    MOCK_DELAY_COMPLETION=1 \
+    MOCK_FORCE_CANCEL_COMPLETION=1 2>&1
+)
+grep -q "failed to cancel superseded run 100; continuing without cancellation" <<<"$output" ||
+  fail "expected a cancellation API failure to become a warning"
 grep -q "All superseded CI runs completed" <<<"$output" ||
   fail "expected the barrier to still complete for the remaining runs"
 [ ! -s "${tmp_dir}/sleep.log" ] ||
-  fail "skipped wedged run must not be polled by the completion barrier"
-
-: >"${tmp_dir}/gh.log"
-: >"${tmp_dir}/cancel.log"
-if run_cancel MOCK_WEDGED_RUN_IDS=100 MOCK_WEDGED_JOB_COUNT=3 >/dev/null 2>&1; then
-  fail "an uncancellable run that already started a job must fail closed"
+  fail "a failed cancellation target must not enter the completion barrier"
+if grep -Fq \
+  'api --method GET repos/vm0-ai/vm0/actions/runs/100' \
+  "${tmp_dir}/gh.log"; then
+  fail "a failed cancellation target must not receive follow-up API queries"
 fi
 
 : >"${tmp_dir}/gh.log"
 : >"${tmp_dir}/cancel.log"
 : >"${tmp_dir}/sleep.log"
-output=$(run_cancel MOCK_WEDGED_RUN_IDS="100 110 120" MOCK_WEDGED_JOB_COUNT=0)
-grep -q "nothing to await" <<<"$output" ||
-  fail "expected an all-wedged target set to exit without a completion barrier"
+rm -f "${tmp_dir}/runs-released"
+output=$(
+  run_cancel \
+    MOCK_CANCEL_FAILURE_RUN_IDS="100 110 120" 2>&1
+)
+grep -q "continuing without a terminal-state barrier" <<<"$output" ||
+  fail "expected all failed cancellations to exit without a completion barrier"
 [ ! -s "${tmp_dir}/sleep.log" ] ||
-  fail "an all-wedged target set must not poll"
+  fail "failed cancellation targets must not poll"
+
+: >"${tmp_dir}/gh.log"
+: >"${tmp_dir}/cancel.log"
+output=$(run_cancel MOCK_PR_LOOKUP_FAILURE=1 2>&1)
+grep -q "failed to resolve PR #42 head; continuing without cancellation" <<<"$output" ||
+  fail "expected a PR lookup API failure to become a warning"
+[ ! -s "${tmp_dir}/cancel.log" ] ||
+  fail "a PR lookup API failure must not attempt cancellation"
+
+: >"${tmp_dir}/gh.log"
+: >"${tmp_dir}/cancel.log"
+output=$(run_cancel MOCK_DISCOVERY_FAILURE_STATUS=queued 2>&1)
+grep -q "failed to discover superseded CI runs; continuing without cancellation" <<<"$output" ||
+  fail "expected a run discovery API failure to become a warning"
+[ ! -s "${tmp_dir}/cancel.log" ] ||
+  fail "a run discovery API failure must not attempt cancellation"
+
+: >"${tmp_dir}/gh.log"
+: >"${tmp_dir}/cancel.log"
+: >"${tmp_dir}/sleep.log"
+output=$(run_cancel MOCK_RUN_STATUS_FAILURE_RUN_IDS=100 2>&1)
+grep -q "failed to query superseded run 100; continuing without a terminal-state barrier" <<<"$output" ||
+  fail "expected a run status API failure to become a warning"
+[ ! -s "${tmp_dir}/sleep.log" ] ||
+  fail "a run status API failure must release the completion barrier"
+
+if run_closed_pr_cleanup MOCK_DISCOVERY_FAILURE_STATUS=queued >/dev/null 2>&1; then
+  fail "closed-PR cleanup must fail closed when run discovery fails"
+fi
 
 echo "cancel-superseded-merge-group-runs tests passed"

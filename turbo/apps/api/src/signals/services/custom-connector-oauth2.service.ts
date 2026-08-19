@@ -6,6 +6,7 @@ import { request as httpsRequest } from "node:https";
 import { command } from "ccstate";
 import { and, eq, exists } from "drizzle-orm";
 import { z } from "zod";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { isIntegrationManagedCustomConnector } from "@okouai/api-contracts/contracts/zero-custom-connectors";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import {
@@ -478,6 +479,7 @@ export const startCustomConnectorOAuth2$ = command(
       readonly userId: string;
       readonly connectorId: string;
       readonly redirectUri: string;
+      readonly publicBrand: PublicBrand;
       readonly agentId?: string;
       readonly feishuContext?: {
         readonly installationId?: string;
@@ -515,7 +517,7 @@ export const startCustomConnectorOAuth2$ = command(
     }
     const providerAdapter = connector.oauthConfig.providerAdapter;
     const redirectUri = args.redirectUri;
-    const state = generateConnectorOAuthState();
+    const state = generateConnectorOAuthState(args.publicBrand);
     const codeVerifier =
       connector.oauthConfig.pkceMethod === "S256" ? createPkceVerifier() : null;
     const authorizationUrl = buildCustomConnectorOAuth2AuthorizationUrl({
@@ -819,7 +821,8 @@ async function loadConnection(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly connectorId: string;
+  readonly customConnectorId: string;
+  readonly memberConnectorId: string;
   readonly storageVersion: number;
   readonly lockRow?: boolean;
 }): Promise<StoredConnection | null> {
@@ -832,7 +835,8 @@ async function loadConnection(args: {
     .from(connectors)
     .where(
       and(
-        eq(connectors.customConnectorId, args.connectorId),
+        eq(connectors.id, args.memberConnectorId),
+        eq(connectors.customConnectorId, args.customConnectorId),
         eq(connectors.orgId, args.orgId),
         eq(connectors.userId, args.userId),
         eq(connectors.authMethod, "oauth"),
@@ -843,7 +847,7 @@ async function loadConnection(args: {
             .from(orgCustomConnectors)
             .where(
               and(
-                eq(orgCustomConnectors.id, args.connectorId),
+                eq(orgCustomConnectors.id, args.customConnectorId),
                 eq(orgCustomConnectors.orgId, args.orgId),
                 eq(orgCustomConnectors.authMode, "oauth"),
                 eq(orgCustomConnectors.storageVersion, args.storageVersion),
@@ -880,7 +884,7 @@ async function loadConnection(args: {
     .where(
       and(
         eq(connectors.id, connection.id),
-        eq(connectors.customConnectorId, args.connectorId),
+        eq(connectors.customConnectorId, args.customConnectorId),
         eq(connectors.orgId, args.orgId),
         eq(connectors.userId, args.userId),
         eq(connectors.authMethod, "oauth"),
@@ -971,6 +975,7 @@ interface ResolveCustomConnectorOAuth2AccessTokenArgs {
   readonly orgId: string;
   readonly userId: string;
   readonly connector: CustomConnectorRow;
+  readonly memberConnectorId: string;
   readonly featureContext: FeatureSwitchContext;
   readonly forceRefresh?: boolean;
 }
@@ -987,7 +992,8 @@ async function resolveCustomConnectorOAuth2AccessToken(
     db: args.db,
     orgId: args.orgId,
     userId: args.userId,
-    connectorId: args.connector.id,
+    customConnectorId: args.connector.id,
+    memberConnectorId: args.memberConnectorId,
     storageVersion: args.connector.storageVersion,
   });
   signal.throwIfAborted();
@@ -1008,7 +1014,8 @@ async function resolveCustomConnectorOAuth2AccessToken(
       db: tx,
       orgId: args.orgId,
       userId: args.userId,
-      connectorId: args.connector.id,
+      customConnectorId: args.connector.id,
+      memberConnectorId: args.memberConnectorId,
       storageVersion: args.connector.storageVersion,
       lockRow: true,
     });
@@ -1101,7 +1108,7 @@ async function resolveCustomConnectorOAuth2AccessToken(
 async function loadLiveCustomConnector(args: {
   readonly db: Db;
   readonly orgId: string;
-  readonly connectorId: string;
+  readonly customConnectorId: string;
 }): Promise<CustomConnectorRow | null> {
   const [row] = await args.db
     .select({
@@ -1118,7 +1125,7 @@ async function loadLiveCustomConnector(args: {
     )
     .where(
       and(
-        eq(orgCustomConnectors.id, args.connectorId),
+        eq(orgCustomConnectors.id, args.customConnectorId),
         eq(orgCustomConnectors.orgId, args.orgId),
         eq(orgCustomConnectors.enabled, true),
       ),
@@ -1134,7 +1141,8 @@ export async function resolveCurrentCustomConnectorOAuth2AccessToken(
     readonly db: Db;
     readonly orgId: string;
     readonly userId: string;
-    readonly connectorId: string;
+    readonly customConnectorId: string;
+    readonly memberConnectorId: string;
     readonly featureContext: FeatureSwitchContext;
     readonly forceRefresh?: boolean;
   },

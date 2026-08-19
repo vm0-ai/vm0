@@ -54,6 +54,7 @@ export {
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
 } from "./components/ui/dropdown-menu";
+export { ContextMenu, ContextMenuTrigger } from "./components/ui/context-menu";
 export {
   Popover,
   PopoverTrigger,

@@ -1,9 +1,7 @@
 import { command, computed } from "ccstate";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import {
-  DEFAULT_VIDEO_MODEL,
-  type VideoModel,
-} from "@okouai/core/video-model-catalog";
+import type { ImageModel } from "@okouai/core/image-model-catalog";
+import type { VideoModel } from "@okouai/core/video-model-catalog";
 import {
   chatThreadModelSelectionContract,
   chatThreadsContract,
@@ -42,6 +40,7 @@ import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
 import {
   featureSwitch$,
+  imageModelSelectionEnabled$,
   imageRecognitionAvailable$,
   videoModelSelectionEnabled$,
 } from "../external/feature-switch.ts";
@@ -83,6 +82,7 @@ interface SendNewThreadMessageRequest {
   editorDocument?: EditorDocumentSnapshot;
   computerUseHostId?: string | null;
   cloudBrowserEnabled?: boolean;
+  imageModel?: ImageModel;
   videoModel?: VideoModel;
   videoRunOptions?: ChatRunVideoOptionsRequest;
   routeSearchParams?: URLSearchParams;
@@ -132,6 +132,27 @@ function userMessageForNewThread(
     throw new Error("Failed to serialize user message");
   }
   return userMessage;
+}
+
+function annotatedMessagesForNewThread(
+  request: SendNewThreadMessageRequest,
+  userMessage: UserMessageInputDocument,
+  modelSelection: ModelProviderSelection,
+): {
+  readonly annotatedUserMessage: UserMessageDocument;
+  readonly optimisticUserMessage: UserMessageDocument;
+} {
+  const annotatedUserMessage = withSelectedModelAnnotation(
+    userMessage,
+    modelSelection.selectedModel,
+    modelSelection.codexServiceTier === "fast" ? "priority" : undefined,
+  );
+  return {
+    annotatedUserMessage,
+    optimisticUserMessage: request.forward
+      ? withOptimisticAgentRunSource(annotatedUserMessage, request.forward)
+      : annotatedUserMessage,
+  };
 }
 
 function createNewThreadOptimisticEventEntry({
@@ -331,6 +352,7 @@ const mintOptimisticThreadWithEvent$ = command(
       readonly serviceTier: "priority" | null;
       readonly computerUseHostId: string | null;
       readonly cloudBrowserEnabled: boolean;
+      readonly selectedImageModel: ImageModel | null;
       readonly selectedVideoModel: VideoModel | null;
     },
     signal: AbortSignal,
@@ -352,7 +374,7 @@ const mintOptimisticThreadWithEvent$ = command(
       computerUseHostId: args.computerUseHostId,
       cloudBrowserEnabled: args.cloudBrowserEnabled,
       selectedVideoModel: args.selectedVideoModel,
-      selectedImageModel: null,
+      selectedImageModel: args.selectedImageModel,
       createdAt,
     } satisfies OptimisticChatThreadEvent);
   },
@@ -366,6 +388,7 @@ async function createChatThread(
     readonly clientThreadId: string;
     readonly eventId: string;
     readonly modelSelection: ModelProviderSelection;
+    readonly imageModel?: ImageModel;
     readonly videoModel?: VideoModel;
   },
   signal: AbortSignal,
@@ -380,6 +403,7 @@ async function createChatThread(
         model: args.modelSelection.selectedModel,
         serviceTier:
           args.modelSelection.codexServiceTier === "fast" ? "priority" : null,
+        ...(args.imageModel ? { imageModel: args.imageModel } : {}),
         ...(args.videoModel ? { videoModel: args.videoModel } : {}),
         ...(args.title ? { title: args.title } : {}),
       },
@@ -432,10 +456,10 @@ const startNewChatThreadCreate$ = command(
     if (!modelSelection) {
       throw new Error("A model selection is required");
     }
-    const videoModel =
-      (featureSwitches[FeatureSwitchKey.VideoModelSelection] ?? false)
-        ? (userPreference.selectedVideoModel ?? DEFAULT_VIDEO_MODEL)
-        : undefined;
+    // A blank thread carries no image or video model pin, so it follows the
+    // member's live default: changing that default later updates every thread
+    // that was never explicitly repinned, matching the run-model behavior.
+    signal.throwIfAborted();
     await set(
       mintOptimisticThreadWithEvent$,
       {
@@ -447,7 +471,8 @@ const startNewChatThreadCreate$ = command(
           modelSelection.codexServiceTier === "fast" ? "priority" : null,
         computerUseHostId: null,
         cloudBrowserEnabled: false,
-        selectedVideoModel: videoModel ?? null,
+        selectedImageModel: null,
+        selectedVideoModel: null,
       },
       signal,
     );
@@ -463,7 +488,6 @@ const startNewChatThreadCreate$ = command(
           clientThreadId: threadId,
           eventId,
           modelSelection,
-          videoModel,
         },
         signal,
       );
@@ -542,20 +566,19 @@ const sendNewThreadMessage$ = command(
       return null;
     }
     const features = get(featureSwitch$);
-    const videoModel = get(videoModelSelectionEnabled$)
-      ? request.videoModel
+    // Pin only an explicit per-thread pick; an unpinned (null) thread follows
+    // the member's live default, so changing the default later updates it.
+    const imageModel = get(imageModelSelectionEnabled$)
+      ? request.imageModel
       : undefined;
-    const userMessage = userMessageForNewThread(request, prepared);
-    const annotatedUserMessage = withSelectedModelAnnotation(
-      userMessage,
-      resolvedModelSelection.selectedModel,
-      resolvedModelSelection.codexServiceTier === "fast"
-        ? "priority"
-        : undefined,
-    );
-    const optimisticUserMessage = request.forward
-      ? withOptimisticAgentRunSource(annotatedUserMessage, request.forward)
-      : annotatedUserMessage;
+    const videoModelEnabled = get(videoModelSelectionEnabled$);
+    const videoModel = videoModelEnabled ? request.videoModel : undefined;
+    const { annotatedUserMessage, optimisticUserMessage } =
+      annotatedMessagesForNewThread(
+        request,
+        userMessageForNewThread(request, prepared),
+        resolvedModelSelection,
+      );
     const threadId = crypto.randomUUID();
     const clientEventId = crypto.randomUUID();
     const chatThreadEventId = crypto.randomUUID();
@@ -582,6 +605,7 @@ const sendNewThreadMessage$ = command(
             : null,
         computerUseHostId: computerUseHostId ?? null,
         cloudBrowserEnabled: cloudBrowserEnabled ?? false,
+        selectedImageModel: imageModel ?? null,
         selectedVideoModel: videoModel ?? null,
       },
       signal,
@@ -601,6 +625,7 @@ const sendNewThreadMessage$ = command(
         clientThreadId: threadId,
         eventId: chatThreadEventId,
         modelSelection: resolvedModelSelection,
+        imageModel,
         videoModel,
       },
       signal,
@@ -617,15 +642,12 @@ const sendNewThreadMessage$ = command(
       userMessage: annotatedUserMessage,
       computerUseHostId,
       cloudBrowserEnabled,
-      // Gated with the control that produces them, like the pin above.
-      videoRunOptions:
-        videoModel === undefined ? undefined : request.videoRunOptions,
+      videoRunOptions: videoModelEnabled ? request.videoRunOptions : undefined,
       sourceRunId: request.forward?.runId,
     });
     const sendResult = (async (): Promise<SendNewThreadMessageResult> => {
       await Promise.all([clearDraftResult, createResult]);
       signal.throwIfAborted();
-
       const result = await sendChatEvent(createClient, sendBody, signal);
       signal.throwIfAborted();
       L.debug("sendNewThreadMessage$ POST chat/events 201", {

@@ -16,7 +16,7 @@ import {
   Trash,
   Pencil,
   Ellipsis,
-  Mail,
+  MessageSquareDot,
   Pin,
   PinOff,
 } from "lucide-react";
@@ -195,7 +195,7 @@ function ChatThreadMarkUnreadMenuItem({
         detach(markUnread(pageSignal), Reason.DomCallback);
       }}
     >
-      <Mail size={16} className="mr-2" />
+      <MessageSquareDot size={16} className="mr-2" />
       {t(($) => {
         return $.chat.sidebar.markUnread;
       })}

@@ -71,10 +71,10 @@ export {
   type DesktopAuthHandoffContract,
 } from "./desktop-auth";
 export {
-  ZERO_CAPABILITIES,
-  ZERO_CAPABILITY_META,
-  type ZeroCapability,
-  type ZeroCapabilityMeta,
+  CAPABILITIES,
+  CAPABILITY_META,
+  type Capability,
+  type CapabilityMeta,
 } from "./capabilities";
 export {
   AGENT_NAME_REGEX,
@@ -737,6 +737,18 @@ export {
 } from "./logs";
 
 export {
+  connectorAccountDisplayNameSchema,
+  connectorAccountTargetSchema,
+  connectorAccountConnectionSchema,
+  connectorAccountSelectionSchema,
+  connectorAccountMutationIntentSchema,
+  type ConnectorAccountTarget,
+  type ConnectorAccountConnection,
+  type ConnectorAccountSelection,
+  type ConnectorAccountMutationIntent,
+} from "./connector-accounts";
+
+export {
   connectorResponseConnectionStatusSchema,
   connectorResponseSchema,
   connectorListResponseSchema,
@@ -970,10 +982,10 @@ export {
   type ZeroWorkflowAutomationsContract,
 } from "./zero-workflows";
 export {
-  zeroUserConnectorsContract,
+  userConnectorsContract,
   userConnectorEnabledSlugsSchema,
   type UserConnectorEnabledSlugs,
-  type ZeroUserConnectorsContract,
+  type UserConnectorsContract,
 } from "./user-connectors";
 export {
   zeroUserPermissionGrantsContract,
@@ -1059,13 +1071,13 @@ export {
   type ClaudeCodeDeviceAuthContract,
 } from "./claude-code-device-auth";
 export {
-  zeroOrgContract,
-  zeroOrgLeaveContract,
-  zeroOrgDeleteContract,
-  type ZeroOrgContract,
-  type ZeroOrgLeaveContract,
-  type ZeroOrgDeleteContract,
-} from "./zero-org";
+  orgContract,
+  orgLeaveContract,
+  orgDeleteContract,
+  type OrgContract,
+  type OrgLeaveContract,
+  type OrgDeleteContract,
+} from "./org-routes";
 export {
   orgLogoContract,
   orgLogoResponseSchema,
@@ -1073,35 +1085,35 @@ export {
   type OrgLogoResponse,
 } from "./org-logo";
 export {
-  zeroOrgMembersContract,
-  zeroOrgInviteContract,
-  zeroOrgMembershipRequestsContract,
-  type ZeroOrgMembersContract,
-  type ZeroOrgInviteContract,
-  type ZeroOrgMembershipRequestsContract,
-} from "./zero-org-members";
+  orgMembersContract,
+  orgInviteContract,
+  orgMembershipRequestsContract,
+  type OrgMembersContract,
+  type OrgInviteContract,
+  type OrgMembershipRequestsContract,
+} from "./org-member-routes";
 export {
-  zeroRunsByIdContract,
-  zeroRunsCancelContract,
-  zeroRunsQueueContract,
-  zeroRunContextContract,
-  zeroRunNetworkLogsContract,
-  zeroRunRunnerContract,
-  type ZeroRunsByIdContract,
-  type ZeroRunsCancelContract,
-  type ZeroRunsQueueContract,
-  type ZeroRunContextContract,
-  type ZeroRunNetworkLogsContract,
-  type ZeroRunRunnerContract,
+  runsByIdContract,
+  runsCancelContract,
+  runsQueueContract,
+  runContextContract,
+  runNetworkLogsContract,
+  runRunnerContract,
+  type RunsByIdContract,
+  type RunsCancelContract,
+  type RunsQueueContract,
+  type RunContextContract,
+  type RunNetworkLogsContract,
+  type RunRunnerContract,
   type RunContextResponse,
   type RunRunnerResponse,
-} from "./zero-runs";
+} from "./run-routes";
 export {
-  zeroModelProvidersMainContract,
-  zeroModelProvidersByTypeContract,
-  type ZeroModelProvidersMainContract,
-  type ZeroModelProvidersByTypeContract,
-} from "./zero-model-providers";
+  modelProvidersMainContract,
+  modelProvidersByTypeContract,
+  type ModelProvidersMainContract,
+  type ModelProvidersByTypeContract,
+} from "./model-provider-routes";
 export {
   zeroPersonalModelProvidersMainContract,
   zeroPersonalModelProvidersByTypeContract,
@@ -1725,10 +1737,10 @@ export {
   type VoiceIoSttResponse,
 } from "./voice-io-stt";
 export {
-  zeroUploadsContract,
-  type ZeroUploadsContract,
+  uploadsContract,
+  type UploadsContract,
   type UploadPrepareResponse,
-} from "./zero-uploads";
+} from "./uploads";
 export {
   MAX_PRESENTATION_TEMPLATE_PAGE_BYTES,
   MAX_PRESENTATION_TEMPLATE_PAGES,
@@ -1737,26 +1749,26 @@ export {
   PRESENTATION_TEMPLATE_PAGE_CONTENT_TYPE,
   PRESENTATION_TEMPLATE_SOURCE_CONTENT_TYPE,
   presentationTemplateStatusSchema,
-  zeroPresentationTemplatesContract,
+  presentationTemplatesContract,
   type PresentationTemplateSummary,
-  type ZeroPresentationTemplatesContract,
-} from "./zero-presentation-templates";
+  type PresentationTemplatesContract,
+} from "./presentation-templates";
 export {
-  zeroGoalsContract,
-  zeroGoalCreateRequestSchema,
-  zeroGoalEditRequestSchema,
-  zeroGoalEventSchema,
-  zeroGoalResponseSchema,
-  zeroGoalStatusSchema,
-  type ZeroGoalCreateRequest,
-  type ZeroGoalEditRequest,
-  type ZeroGoalEvent,
-  type ZeroGoalResponse,
-  type ZeroGoalStatus,
-  type ZeroGoalsContract,
-} from "./zero-goals";
+  goalsContract,
+  goalCreateRequestSchema,
+  goalEditRequestSchema,
+  goalEventSchema,
+  goalResponseSchema,
+  goalStatusSchema,
+  type GoalCreateRequest,
+  type GoalEditRequest,
+  type GoalEvent,
+  type GoalResponse,
+  type GoalStatus,
+  type GoalsContract,
+} from "./goals";
 export {
-  zeroHostContract,
+  hostContract,
   hostedSiteFileSchema,
   hostedSitePrepareRequestSchema,
   hostedSitePrepareResponseSchema,
@@ -1765,8 +1777,8 @@ export {
   type HostedSitePrepareRequest,
   type HostedSitePrepareResponse,
   type HostedSiteCompleteResponse,
-  type ZeroHostContract,
-} from "./zero-host";
+  type HostContract,
+} from "./host";
 export {
   zeroIntegrationsTelegramContract,
   type ZeroIntegrationsTelegramContract,

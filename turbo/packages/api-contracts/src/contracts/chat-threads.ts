@@ -6,7 +6,7 @@ import { CHAT_EVENT_TYPES } from "./chat-events";
 import { apiErrorSchema } from "./errors";
 import { imageModelIdSchema } from "./image-models";
 import { requireUserMessageForDraftAttachments } from "./draft-user-message";
-import { hostedArtifactKindSchema } from "./zero-host";
+import { hostedArtifactKindSchema } from "./host";
 import { runStatusSchema } from "./runs";
 import { supportedRunModelSchema } from "./model-providers";
 import {

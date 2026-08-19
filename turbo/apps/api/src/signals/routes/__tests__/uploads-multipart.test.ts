@@ -8,7 +8,7 @@ import {
   ListObjectsV2Command,
   ListPartsCommand,
 } from "@aws-sdk/client-s3";
-import { zeroUploadsContract } from "@okouai/api-contracts/contracts/zero-uploads";
+import { uploadsContract } from "@okouai/api-contracts/contracts/uploads";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -17,7 +17,7 @@ import { uploadsCompleteRoutes } from "../uploads-complete";
 import { uploadsMultipartRoutes } from "../uploads-multipart";
 import { uploadsPrepareRoutes } from "../uploads-prepare";
 
-const zeroUploadsTestRoutes = Object.freeze([
+const uploadsTestRoutes = Object.freeze([
   ...uploadsCompleteRoutes,
   ...uploadsMultipartRoutes,
   ...uploadsPrepareRoutes,
@@ -27,9 +27,7 @@ const context = testContext();
 const mocks = createZeroRouteMocks(context);
 
 function apiClient() {
-  return setupApp({ context, routes: zeroUploadsTestRoutes })(
-    zeroUploadsContract,
-  );
+  return setupApp({ context, routes: uploadsTestRoutes })(uploadsContract);
 }
 
 function authHeaders() {
@@ -176,8 +174,8 @@ describe("multipart user artifact uploads", () => {
 
     const response = await setupApp({
       context: ownerContext,
-      routes: zeroUploadsTestRoutes,
-    })(zeroUploadsContract).prepare({
+      routes: uploadsTestRoutes,
+    })(uploadsContract).prepare({
       body: {
         filename: "cancelled.mp4",
         contentType: "video/mp4",

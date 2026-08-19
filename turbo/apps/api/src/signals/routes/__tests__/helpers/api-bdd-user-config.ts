@@ -2,10 +2,10 @@ import { randomUUID } from "node:crypto";
 
 import { initContract } from "@okouai/api-contracts/contracts/trpc-contract";
 import { authContract } from "@okouai/api-contracts/contracts/auth";
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
+import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { pushSubscriptionsContract } from "@okouai/api-contracts/contracts/push-subscriptions";
-import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
   userModelPreferenceContract,
   type UpdateUserModelPreferenceRequest,
@@ -196,7 +196,7 @@ export function createUserConfigBddApi(context: TestContext) {
 
     zeroBearer(
       actor: ApiTestUser,
-      capabilities: readonly ZeroCapability[],
+      capabilities: readonly Capability[],
       publicBrand?: PublicBrand,
     ): MintedBearer {
       const seconds = Math.floor(now() / 1000);
@@ -257,7 +257,7 @@ export function createUserConfigBddApi(context: TestContext) {
       agentId: string,
     ): Promise<{ readonly enabledConnectorSlugs: string[] }> {
       const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
-        zeroUserConnectorsContract,
+        userConnectorsContract,
       );
       const response = await accept(
         client.get({
@@ -275,7 +275,7 @@ export function createUserConfigBddApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
-        zeroUserConnectorsContract,
+        userConnectorsContract,
       );
       return await accept(
         client.get({
@@ -293,7 +293,7 @@ export function createUserConfigBddApi(context: TestContext) {
       operation?: "replace" | "add" | "remove",
     ): Promise<{ readonly enabledConnectorSlugs: string[] }> {
       const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
-        zeroUserConnectorsContract,
+        userConnectorsContract,
       );
       const body =
         operation === undefined
@@ -318,7 +318,7 @@ export function createUserConfigBddApi(context: TestContext) {
       operation?: "replace" | "add" | "remove",
     ) {
       const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
-        zeroUserConnectorsContract,
+        userConnectorsContract,
       );
       const body =
         operation === undefined

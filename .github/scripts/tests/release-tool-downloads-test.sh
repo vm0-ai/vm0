@@ -25,12 +25,14 @@ assert_not_contains() {
   fi
 }
 
-if [[ "$(grep -Fc 'bash .github/scripts/download-verified.sh' "$security_workflow")" != "2" ]]; then
-  echo "Expected both security tool installers to use download-verified.sh" >&2
+if [[ "$(grep -Fc 'bash .github/scripts/download-verified.sh' "$security_workflow")" != "3" ]]; then
+  echo "Expected all security tool installers to use download-verified.sh" >&2
   exit 1
 fi
 assert_contains "$security_workflow" "ACTIONLINT_VERSION=1.7.12"
 assert_contains "$security_workflow" "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
+assert_contains "$security_workflow" "RIPGREP_VERSION=14.1.1"
+assert_contains "$security_workflow" "4cf9f2741e6c465ffdb7c26f38056a59e2a2544b51f7cc128ef28337eeae4d8e"
 assert_contains "$security_workflow" "GITLEAKS_VERSION=8.30.1"
 assert_contains "$security_workflow" "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
 assert_not_contains "$security_workflow" "download-actionlint.bash"

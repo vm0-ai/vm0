@@ -10,7 +10,7 @@ use guest_agent::masker::SecretMasker;
 use serde_json::Value;
 use std::time::Duration;
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn codex_app_server_backend_fails_visible_on_stale_active_turn()
 -> Result<(), Box<dyn std::error::Error>> {
     let mock = common::build_and_locate_mock_codex()?;

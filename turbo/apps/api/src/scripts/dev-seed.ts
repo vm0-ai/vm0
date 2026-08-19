@@ -13,7 +13,7 @@ import {
 } from "@okouai/core/storage-names";
 import { GOAL_SKILL_NAME, SEED_SKILLS } from "@okouai/core/seed-skills";
 import { usagePricing } from "@okouai/db/schema/usage-pricing";
-import { vm0ApiKeys } from "@okouai/db/schema/vm0-api-key";
+import { builtInModelKeys } from "@okouai/db/schema/built-in-model-key";
 import { skills } from "@okouai/db/schema/skill";
 import { storages } from "@okouai/db/schema/storage";
 import { createStore } from "ccstate";
@@ -50,7 +50,7 @@ function usd(amount: number): number {
   return Math.round(amount * USD_TO_CREDITS);
 }
 
-/** Video price with a 20% gross margin: provider cost / 0.8. */
+/** Video price with a 25% markup (20% gross margin): provider cost / 0.8. */
 function videoUsd(providerCost: number): number {
   return Math.round((providerCost * USD_TO_CREDITS) / 0.8);
 }
@@ -400,8 +400,8 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["tokens.cache_read", usd(1), 1_000_000],
     ["tokens.cache_creation", usd(12.5), 1_000_000],
   ]),
-  // DeepSeek API pricing retrieved 2026-07-31 from:
-  // https://api-docs.deepseek.com/quick_start/pricing/
+  // Canonical VM0 customer credit pricing for managed DeepSeek V4 Flash.
+  // Keep this product rate independent of the selected upstream route.
   ...usageGroup("model", "deepseek-v4-flash", [
     ["tokens.input", usd(0.14), 1_000_000],
     ["tokens.output", usd(0.28), 1_000_000],
@@ -585,6 +585,16 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   ...usageGroup("image", "fal-ai/bytedance/seedream/v4/text-to-image", [
     ["output_image", usd(0.03), 1],
   ]),
+  // BytePlus Seedream 5 pricing, retrieved 2026-08-18 from:
+  // https://docs.byteplus.com/en/docs/ModelArk/1544106
+  // The service records the request's actual provider cost in micro-USD;
+  // 1250 credits per USD applies the requested 25% markup once to the total.
+  ...usageGroup("image", "dola-seedream-5-0-pro-260628", [
+    ["provider_cost_usd_micros", 1250, 1_000_000],
+  ]),
+  ...usageGroup("image", "seedream-5-0-lite-260128", [
+    ["provider_cost_usd_micros", 1250, 1_000_000],
+  ]),
   ...usageGroup("image", "fal-ai/nano-banana-2", [
     ["output_image", usd(0.08), 1],
   ]),
@@ -595,10 +605,12 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["output_megapixel", usd(0.03), 1],
   ]),
 
-  // Video generation uses a 20% gross margin: price = provider cost / 0.8.
+  // Video generation uses a 25% markup (20% gross margin): cost / 0.8.
   ...usageGroup("video", "dreamina-seedance-2-5-260628", [
     ["output_video_tokens.480p_720p.no_video", videoUsd(10.7), 1_000_000],
     ["output_video_tokens.480p_720p.with_video", videoUsd(6.4), 1_000_000],
+    ["output_video_tokens.1080p.no_video", videoUsd(11.7), 1_000_000],
+    ["output_video_tokens.1080p.with_video", videoUsd(7), 1_000_000],
   ]),
   ...usageGroup("video", "dreamina-seedance-2-0-260128", [
     ["output_video_tokens.480p_720p.no_video", videoUsd(7), 1_000_000],
@@ -657,9 +669,6 @@ function getVendorApiKeyEnvVars(vendor: string): string[] {
   if (vendor === "openai") {
     return [envVar, "OPENAI_API_KEY"];
   }
-  if (vendor === "deepseek") {
-    return [envVar, "DEEPSEEK_API_KEY"];
-  }
   return [envVar];
 }
 
@@ -674,14 +683,14 @@ type LineWriter = (message: string) => void;
 export function buildVm0ApiKeys(
   readEnv: OptionalEnvReader = optionalEnv,
   logLine: LineWriter = writeLine,
-): (typeof vm0ApiKeys.$inferInsert)[] {
+): (typeof builtInModelKeys.$inferInsert)[] {
   const vendors = new Set(
     Object.values(VM0_MODEL_TO_PROVIDER).map(({ vendor }) => {
       return vendor;
     }),
   );
 
-  const keys: (typeof vm0ApiKeys.$inferInsert)[] = [];
+  const keys: (typeof builtInModelKeys.$inferInsert)[] = [];
   for (const vendor of vendors) {
     const envVars = getVendorApiKeyEnvVars(vendor);
     const apiKey = envVars
@@ -726,9 +735,9 @@ async function devSeed() {
   writeLine("Seeding vm0_api_keys");
   const apiKeys = buildVm0ApiKeys();
   await database.transaction(async (tx) => {
-    await tx.delete(vm0ApiKeys);
+    await tx.delete(builtInModelKeys);
     if (apiKeys.length > 0) {
-      await tx.insert(vm0ApiKeys).values(apiKeys);
+      await tx.insert(builtInModelKeys).values(apiKeys);
     }
   });
   for (const k of apiKeys) {

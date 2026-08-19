@@ -3,6 +3,7 @@ import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
 import { orgConcurrencySubscriptions } from "@okouai/db/schema/org-concurrency-subscription";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { orgUsageAllowanceEntitlements } from "@okouai/db/schema/org-usage-allowance";
+import { usagePackSubscriptions } from "@okouai/db/schema/usage-pack-subscription";
 import { command } from "ccstate";
 import {
   and,
@@ -12,6 +13,7 @@ import {
   isNotNull,
   isNull,
   lte,
+  notInArray,
   or,
   sql,
 } from "drizzle-orm";
@@ -20,7 +22,16 @@ import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { clerk$ } from "../external/clerk";
-import { getStripeClient } from "../external/stripe-client";
+import {
+  getStripeClient,
+  isStripeResourceMissingError,
+  listUndeliveredStripePaidCheckoutSessions,
+  listUndeliveredStripePaidInvoices,
+  type StripeInvoice,
+  type StripeSubscription,
+  type StripeSubscriptionListStatus,
+} from "../external/stripe-client";
+import { settle } from "../utils";
 import type { BillingReconciliationScope } from "./billing-reconciliation-scope";
 import {
   CONCURRENCY_SUBSCRIPTION_PAYMENT_FAILED_STATUSES,
@@ -31,17 +42,26 @@ import {
   writeOrgMetadataWithPlanEntitlements,
 } from "./org-plan-entitlements.service";
 import {
+  knownBillingPlanPriceItem,
   knownPlanPriceItem,
-  tierFromPriceId,
+  tierForKnownPlanPrice,
 } from "./zero-billing-checkout.service";
 import {
   reconcileUsagePackSubscriptions,
-  USAGE_PACK_SUBSCRIPTION_PURPOSE,
+  stripeSubscriptionUsesMemberUsagePacks,
 } from "./usage-pack-subscription.service";
 import { reconcileUsagePackCreditRefunds } from "./usage-pack-credit-refund.service";
 import { reconcileUsagePackInvitationPurchases } from "./usage-pack-invitation-purchase.service";
 import { reconcileUsagePackSubscriptionMigrations } from "./usage-pack-subscription-migration.service";
 import { disableIneligibleWorkflowWebhookAutomationsForOrg } from "./workflow-webhook-automation-entitlement.service";
+import { isCurrentStripePreviewMetadata } from "./stripe-preview-metadata.service";
+import {
+  reconcileMissingStripeSubscription,
+  reconcilePaidStripeCheckoutSession$,
+  reconcilePaidStripeInvoice$,
+  reconcileStripeSubscriptionSnapshot,
+  type StripeSubscriptionSnapshotReconciliation,
+} from "./webhooks-stripe.service";
 import type { Tx } from "../../lib/db-types";
 
 const L = logger("CronBillingEntitlements");
@@ -59,6 +79,19 @@ const TERMINAL_USAGE_ALLOWANCE_STATUSES = [
   "incomplete_expired",
 ] as const;
 const CANCELED_SUBSCRIPTION_TARGET_TIER = "limited-free-1";
+const DISCOVERABLE_STRIPE_SUBSCRIPTION_STATUSES = [
+  "active",
+  "trialing",
+  "past_due",
+  "unpaid",
+  "paused",
+  "incomplete",
+] as const satisfies readonly StripeSubscriptionListStatus[];
+const TERMINAL_LOCAL_SUBSCRIPTION_STATUSES = [
+  "canceled",
+  "incomplete_expired",
+  "invalid",
+] as const;
 
 interface SubscriptionInput {
   readonly id: string;
@@ -68,7 +101,11 @@ interface SubscriptionInput {
   readonly cancel_at_period_end: boolean;
   readonly items: {
     readonly data: readonly {
-      readonly price: { readonly id: string };
+      readonly id?: string;
+      readonly price: {
+        readonly id: string;
+        readonly product?: string | { readonly id: string } | null;
+      };
       readonly quantity?: number | null;
       readonly current_period_end?: number | null;
     }[];
@@ -163,7 +200,530 @@ interface ReconcileBillingContext {
   readonly staleBefore: Date;
 }
 
+interface ReconciledCandidateRows {
+  readonly downgraded: readonly DowngradedSubscription[];
+  readonly expiredConcurrency: readonly ExpiredConcurrencySubscription[];
+  readonly reconciledUsageAllowances: readonly ReconciledUsageAllowance[];
+}
+
 type ReconcileTx = Tx;
+type ClerkClient = ReturnType<typeof clerk$.read>;
+
+interface StripeSubscriptionDiscovery {
+  readonly subscriptions: readonly StripeSubscription[];
+  readonly missingSubscriptionIds: readonly string[];
+  readonly failedSubscriptionIds: readonly string[];
+}
+
+interface StripeSubscriptionSweepResult {
+  readonly attempted: number;
+  readonly reconciled: number;
+  readonly failed: number;
+  readonly paidInvoices: number;
+  readonly changedOrgIds: readonly string[];
+  readonly downgraded: readonly DowngradedSubscription[];
+}
+
+interface UndeliveredPaidInvoiceSweepResult {
+  readonly discovered: number;
+  readonly replayed: number;
+  readonly failed: number;
+  readonly orgIds: readonly string[];
+}
+
+interface UndeliveredPaidCheckoutSweepResult {
+  readonly discovered: number;
+  readonly replayed: number;
+  readonly failed: number;
+  readonly orgIds: readonly string[];
+}
+
+function localSubscriptionStatusIsReconcileable(
+  status: string | null,
+): boolean {
+  return (
+    status === null ||
+    !TERMINAL_LOCAL_SUBSCRIPTION_STATUSES.includes(
+      status as (typeof TERMINAL_LOCAL_SUBSCRIPTION_STATUSES)[number],
+    )
+  );
+}
+
+function stripeSubscriptionIsDiscoverable(
+  subscription: StripeSubscription,
+): boolean {
+  return DISCOVERABLE_STRIPE_SUBSCRIPTION_STATUSES.includes(
+    subscription.status as (typeof DISCOVERABLE_STRIPE_SUBSCRIPTION_STATUSES)[number],
+  );
+}
+
+function stripeSubscriptionLooksBillingRelated(
+  subscription: StripeSubscription,
+): boolean {
+  return (
+    Boolean(subscription.metadata?.orgId) ||
+    knownBillingPlanPriceItem(subscription.items.data) !== undefined
+  );
+}
+
+async function listStripeSubscriptionPages(
+  stripe: ReturnType<typeof getStripeClient>,
+  params: {
+    readonly customer?: string;
+    readonly status: StripeSubscriptionListStatus;
+  },
+  signal: AbortSignal,
+): Promise<readonly StripeSubscription[]> {
+  const subscriptions: StripeSubscription[] = [];
+  let startingAfter: string | undefined;
+  while (true) {
+    const page = await stripe.subscriptions.list({
+      ...params,
+      limit: 100,
+      expand: ["data.latest_invoice"],
+      ...(startingAfter ? { starting_after: startingAfter } : {}),
+    });
+    signal.throwIfAborted();
+    subscriptions.push(...page.data);
+    if (!page.has_more) {
+      return subscriptions;
+    }
+    const last = page.data.at(-1);
+    if (!last) {
+      throw new Error(
+        "Stripe returned an empty subscription page with has_more",
+      );
+    }
+    startingAfter = last.id;
+  }
+}
+
+async function loadScopedStripeCustomerIds(
+  db: Db,
+  scope: BillingReconciliationScope | undefined,
+): Promise<readonly string[]> {
+  if (!scope) {
+    return [];
+  }
+  const rows = await db
+    .select({ stripeCustomerId: orgMetadata.stripeCustomerId })
+    .from(orgMetadata)
+    .where(
+      and(
+        inArray(orgMetadata.orgId, [...scope.orgIds]),
+        isNotNull(orgMetadata.stripeCustomerId),
+      ),
+    );
+  return [
+    ...new Set(
+      rows.flatMap((row) => {
+        return row.stripeCustomerId ? [row.stripeCustomerId] : [];
+      }),
+    ),
+  ];
+}
+
+async function loadKnownStripeSubscriptionIds(
+  db: Db,
+  scope: BillingReconciliationScope | undefined,
+): Promise<readonly string[]> {
+  const [planRows, concurrencyRows, allowanceRows, usagePackRows] =
+    await Promise.all([
+      db
+        .select({ subscriptionId: orgMetadata.stripeSubscriptionId })
+        .from(orgMetadata)
+        .where(
+          and(
+            scope ? inArray(orgMetadata.orgId, [...scope.orgIds]) : undefined,
+            isNotNull(orgMetadata.stripeSubscriptionId),
+          ),
+        ),
+      db
+        .select({
+          subscriptionId: orgConcurrencySubscriptions.stripeSubscriptionId,
+          status: orgConcurrencySubscriptions.subscriptionStatus,
+        })
+        .from(orgConcurrencySubscriptions)
+        .where(
+          scope
+            ? inArray(orgConcurrencySubscriptions.orgId, [...scope.orgIds])
+            : undefined,
+        ),
+      db
+        .select({
+          subscriptionId: orgUsageAllowanceEntitlements.stripeSubscriptionId,
+          status: orgUsageAllowanceEntitlements.status,
+        })
+        .from(orgUsageAllowanceEntitlements)
+        .where(
+          and(
+            scope
+              ? inArray(orgUsageAllowanceEntitlements.orgId, [...scope.orgIds])
+              : undefined,
+            isNotNull(orgUsageAllowanceEntitlements.stripeSubscriptionId),
+            notInArray(orgUsageAllowanceEntitlements.status, [
+              ...TERMINAL_LOCAL_SUBSCRIPTION_STATUSES,
+            ]),
+          ),
+        ),
+      db
+        .select({
+          subscriptionId: usagePackSubscriptions.stripeSubscriptionId,
+          status: usagePackSubscriptions.subscriptionStatus,
+        })
+        .from(usagePackSubscriptions)
+        .where(
+          and(
+            scope
+              ? inArray(usagePackSubscriptions.orgId, [...scope.orgIds])
+              : undefined,
+            isNotNull(usagePackSubscriptions.stripeSubscriptionId),
+            notInArray(usagePackSubscriptions.subscriptionStatus, [
+              ...TERMINAL_LOCAL_SUBSCRIPTION_STATUSES,
+            ]),
+          ),
+        ),
+    ]);
+
+  return [
+    ...new Set([
+      ...planRows.flatMap((row) => {
+        return row.subscriptionId ? [row.subscriptionId] : [];
+      }),
+      ...concurrencyRows.flatMap((row) => {
+        return localSubscriptionStatusIsReconcileable(row.status)
+          ? [row.subscriptionId]
+          : [];
+      }),
+      ...allowanceRows.flatMap((row) => {
+        return row.subscriptionId ? [row.subscriptionId] : [];
+      }),
+      ...usagePackRows.flatMap((row) => {
+        return row.subscriptionId ? [row.subscriptionId] : [];
+      }),
+    ]),
+  ];
+}
+
+async function discoverStripeSubscriptions(
+  db: Db,
+  stripe: ReturnType<typeof getStripeClient>,
+  scope: BillingReconciliationScope | undefined,
+  signal: AbortSignal,
+): Promise<StripeSubscriptionDiscovery> {
+  const discovered = new Map<string, StripeSubscription>();
+  const scopedCustomerIds = await loadScopedStripeCustomerIds(db, scope);
+  signal.throwIfAborted();
+  const listedSubscriptions = scope
+    ? (
+        await Promise.all(
+          scopedCustomerIds.map(async (customerId) => {
+            return await listStripeSubscriptionPages(
+              stripe,
+              { customer: customerId, status: "all" },
+              signal,
+            );
+          }),
+        )
+      ).flat()
+    : (
+        await Promise.all(
+          DISCOVERABLE_STRIPE_SUBSCRIPTION_STATUSES.map(async (status) => {
+            return await listStripeSubscriptionPages(
+              stripe,
+              { status },
+              signal,
+            );
+          }),
+        )
+      ).flat();
+  signal.throwIfAborted();
+
+  for (const subscription of listedSubscriptions) {
+    if (
+      stripeSubscriptionIsDiscoverable(subscription) &&
+      isCurrentStripePreviewMetadata(subscription.metadata) &&
+      (scope || stripeSubscriptionLooksBillingRelated(subscription))
+    ) {
+      discovered.set(subscription.id, subscription);
+    }
+  }
+
+  const knownSubscriptionIds = await loadKnownStripeSubscriptionIds(db, scope);
+  signal.throwIfAborted();
+  const missingSubscriptionIds: string[] = [];
+  const failedSubscriptionIds: string[] = [];
+  for (const subscriptionId of knownSubscriptionIds) {
+    if (discovered.has(subscriptionId)) {
+      continue;
+    }
+    const retrieved = await settle(
+      stripe.subscriptions.retrieve(subscriptionId, {
+        expand: ["latest_invoice"],
+      }),
+    );
+    signal.throwIfAborted();
+    if (retrieved.ok) {
+      discovered.set(retrieved.value.id, retrieved.value);
+    } else if (isStripeResourceMissingError(retrieved.error)) {
+      missingSubscriptionIds.push(subscriptionId);
+    } else {
+      failedSubscriptionIds.push(subscriptionId);
+      L.warn("Stripe subscription retrieval failed during discovery", {
+        subscriptionId,
+        error: retrieved.error,
+      });
+    }
+  }
+
+  return {
+    subscriptions: [...discovered.values()],
+    missingSubscriptionIds,
+    failedSubscriptionIds,
+  };
+}
+
+function collectStripeSubscriptionSnapshot(
+  changedOrgIds: Set<string>,
+  downgraded: DowngradedSubscription[],
+  subscriptionId: string,
+  status: string | null,
+  result: StripeSubscriptionSnapshotReconciliation,
+): number {
+  for (const orgId of result.orgIds) {
+    changedOrgIds.add(orgId);
+  }
+  for (const orgId of result.downgradedOrgIds) {
+    downgraded.push({ orgId, subscriptionId, status });
+  }
+  return result.paidInvoiceId ? 1 : 0;
+}
+
+async function reconcileStripeSubscriptionSnapshots(
+  db: Db,
+  stripe: ReturnType<typeof getStripeClient>,
+  clerk: ClerkClient,
+  scope: BillingReconciliationScope | undefined,
+  signal: AbortSignal,
+): Promise<StripeSubscriptionSweepResult> {
+  const discovery = await discoverStripeSubscriptions(
+    db,
+    stripe,
+    scope,
+    signal,
+  );
+  const changedOrgIds = new Set<string>();
+  const downgraded: DowngradedSubscription[] = [];
+  let paidInvoices = 0;
+  let reconciled = 0;
+  let failed = discovery.failedSubscriptionIds.length;
+
+  for (const subscription of discovery.subscriptions) {
+    const result = await settle(
+      reconcileStripeSubscriptionSnapshot(
+        db,
+        () => {
+          return clerk;
+        },
+        subscription,
+        signal,
+      ),
+      signal,
+    );
+    if (!result.ok) {
+      failed += 1;
+      L.warn("Stripe subscription snapshot reconciliation failed", {
+        subscriptionId: subscription.id,
+        status: subscription.status,
+        error: result.error,
+      });
+      continue;
+    }
+    reconciled += 1;
+    paidInvoices += collectStripeSubscriptionSnapshot(
+      changedOrgIds,
+      downgraded,
+      subscription.id,
+      subscription.status,
+      result.value,
+    );
+  }
+  for (const subscriptionId of discovery.missingSubscriptionIds) {
+    const result = await settle(
+      reconcileMissingStripeSubscription(db, subscriptionId, signal),
+      signal,
+    );
+    if (!result.ok) {
+      failed += 1;
+      L.warn("missing Stripe subscription reconciliation failed", {
+        subscriptionId,
+        error: result.error,
+      });
+      continue;
+    }
+    reconciled += 1;
+    collectStripeSubscriptionSnapshot(
+      changedOrgIds,
+      downgraded,
+      subscriptionId,
+      null,
+      result.value,
+    );
+  }
+
+  return {
+    attempted:
+      discovery.subscriptions.length +
+      discovery.missingSubscriptionIds.length +
+      discovery.failedSubscriptionIds.length,
+    reconciled,
+    failed,
+    paidInvoices,
+    changedOrgIds: [...changedOrgIds],
+    downgraded,
+  };
+}
+
+async function disableIneligibleWorkflowWebhooksForOrgs(
+  db: Db,
+  orgIds: ReadonlySet<string>,
+  signal: AbortSignal,
+): Promise<void> {
+  for (const orgId of orgIds) {
+    await disableIneligibleWorkflowWebhookAutomationsForOrg(
+      db,
+      { orgId },
+      signal,
+    );
+    signal.throwIfAborted();
+  }
+}
+
+function logStripeSubscriptionSweep(
+  sweep: StripeSubscriptionSweepResult,
+): void {
+  if (sweep.attempted > 0) {
+    L.warn("Stripe subscription snapshots reconciled", {
+      attempted: sweep.attempted,
+      reconciled: sweep.reconciled,
+      failed: sweep.failed,
+      paidInvoices: sweep.paidInvoices,
+      orgs: sweep.changedOrgIds.length,
+    });
+  }
+}
+
+function paidInvoiceBelongsToCurrentEnvironment(
+  invoice: StripeInvoice,
+): boolean {
+  return [
+    invoice.metadata,
+    invoice.parent?.subscription_details?.metadata,
+  ].some((metadata) => {
+    return isCurrentStripePreviewMetadata(metadata);
+  });
+}
+
+export const reconcileUndeliveredStripePaidCheckoutSessions$ = command(
+  async (
+    { set },
+    signal: AbortSignal,
+  ): Promise<UndeliveredPaidCheckoutSweepResult> => {
+    const events = await listUndeliveredStripePaidCheckoutSessions(signal);
+    const orgIds = new Set<string>();
+    let replayed = 0;
+    let failed = 0;
+    for (const event of events) {
+      const result = await settle(
+        set(
+          reconcilePaidStripeCheckoutSession$,
+          {
+            session: event.session,
+            paidAt: new Date(event.created * 1000),
+          },
+          signal,
+        ),
+        signal,
+      );
+      if (!result.ok) {
+        failed += 1;
+        L.warn("undelivered Stripe paid Checkout reconciliation failed", {
+          eventId: event.eventId,
+          eventType: event.eventType,
+          sessionId: event.session.id,
+          error: result.error,
+        });
+        continue;
+      }
+      replayed += 1;
+      for (const orgId of result.value) {
+        orgIds.add(orgId);
+      }
+    }
+    if (events.length > 0) {
+      L.warn("undelivered Stripe paid Checkouts reconciled", {
+        discovered: events.length,
+        replayed,
+        failed,
+        orgs: orgIds.size,
+      });
+    }
+    return {
+      discovered: events.length,
+      replayed,
+      failed,
+      orgIds: [...orgIds],
+    };
+  },
+);
+
+export const reconcileUndeliveredStripePaidInvoices$ = command(
+  async (
+    { set },
+    signal: AbortSignal,
+  ): Promise<UndeliveredPaidInvoiceSweepResult> => {
+    const events = await listUndeliveredStripePaidInvoices(signal);
+    const orgIds = new Set<string>();
+    let replayed = 0;
+    let failed = 0;
+    for (const event of events) {
+      if (!paidInvoiceBelongsToCurrentEnvironment(event.invoice)) {
+        continue;
+      }
+      const result = await settle(
+        set(reconcilePaidStripeInvoice$, event.invoice, signal),
+        signal,
+      );
+      if (!result.ok) {
+        failed += 1;
+        L.warn("undelivered Stripe paid invoice reconciliation failed", {
+          eventId: event.eventId,
+          invoiceId: event.invoice.id,
+          error: result.error,
+        });
+        continue;
+      }
+      replayed += 1;
+      if (result.value) {
+        orgIds.add(result.value);
+      }
+    }
+    if (events.length > 0) {
+      L.warn("undelivered Stripe paid invoices reconciled", {
+        discovered: events.length,
+        replayed,
+        failed,
+        orgs: orgIds.size,
+      });
+    }
+    return {
+      discovered: events.length,
+      replayed,
+      failed,
+      orgIds: [...orgIds],
+    };
+  },
+);
 
 function subscriptionPeriodEnd(subscription: SubscriptionInput): Date | null {
   const periodEndUnix = subscription.items.data[0]?.current_period_end;
@@ -230,7 +790,17 @@ function usageAllowanceSubscriptionEnd(
   if (!periodEnd) {
     return null;
   }
-  return cancelAt && cancelAt < periodEnd ? cancelAt : periodEnd;
+  const allowanceCancelAtValue = subscription.metadata?.allowanceCancelAt;
+  const allowanceCancelAt = allowanceCancelAtValue
+    ? new Date(allowanceCancelAtValue)
+    : null;
+  return [cancelAt, allowanceCancelAt]
+    .filter((value): value is Date => {
+      return value !== null && !Number.isNaN(value.getTime());
+    })
+    .reduce((earliest, value) => {
+      return value < earliest ? value : earliest;
+    }, periodEnd);
 }
 
 function subscriptionCanRefreshPaidThrough(
@@ -250,8 +820,11 @@ function subscriptionIsPaymentFailed(subscription: SubscriptionInput): boolean {
 function subscriptionIsTerminalUsageAllowance(
   subscription: SubscriptionInput,
 ): boolean {
-  return TERMINAL_USAGE_ALLOWANCE_STATUSES.includes(
-    subscription.status as (typeof TERMINAL_USAGE_ALLOWANCE_STATUSES)[number],
+  return (
+    subscription.metadata?.allowanceStatus === "canceled" ||
+    TERMINAL_USAGE_ALLOWANCE_STATUSES.includes(
+      subscription.status as (typeof TERMINAL_USAGE_ALLOWANCE_STATUSES)[number],
+    )
   );
 }
 
@@ -286,6 +859,13 @@ async function upsertStripeSubscriptionPlanSnapshot(
   const cancelAt = subscriptionWillCancel(args.subscription)
     ? scheduledEnd
     : null;
+  const memberInviteUsagePackRequired =
+    args.stripeSubscriptionId !== null &&
+    (args.tier === "pro" || args.tier === "team" || args.tier === "custom") &&
+    (await stripeSubscriptionUsesMemberUsagePacks(tx, {
+      orgId: args.orgId,
+      stripeSubscriptionId: args.stripeSubscriptionId,
+    }));
   await upsertOrgPlanEntitlement(tx, {
     orgId: args.orgId,
     tier: args.tier,
@@ -296,9 +876,7 @@ async function upsertStripeSubscriptionPlanSnapshot(
     currentPeriodEnd: scheduledEnd,
     cancelAt,
     expiresAt: cancelAt,
-    memberInviteUsagePackRequired:
-      (args.tier === "pro" || args.tier === "team") &&
-      args.subscription.metadata?.purpose === USAGE_PACK_SUBSCRIPTION_PURPOSE,
+    memberInviteUsagePackRequired,
     sourceMetadata: args.subscription.metadata ?? {},
   });
 }
@@ -359,7 +937,7 @@ function currentBillingCandidateWhere(candidate: StripeBillingCandidate) {
   return and(
     eq(orgMetadata.orgId, candidate.orgId),
     eq(orgMetadata.stripeSubscriptionId, candidate.stripeSubscriptionId),
-    inArray(orgMetadata.tier, ["pro", "team"]),
+    inArray(orgMetadata.tier, PAID_TIERS),
     inArray(orgMetadata.subscriptionStatus, [
       ...PAYMENT_FAILED_SUBSCRIPTION_STATUSES,
     ]),
@@ -417,10 +995,11 @@ async function refreshRecoveredBillingCandidate(
   signal: AbortSignal,
 ): Promise<void> {
   const { db } = context;
-  const priceId =
-    knownPlanPriceItem(subscription.items.data)?.price.id ??
-    subscription.items.data[0]?.price.id;
-  const tier = priceId ? tierFromPriceId(priceId) : undefined;
+  const planItem = knownBillingPlanPriceItem(subscription.items.data);
+  const priceId = planItem?.price.id ?? subscription.items.data[0]?.price.id;
+  const tier = planItem
+    ? (tierForKnownPlanPrice(planItem.price) ?? undefined)
+    : undefined;
 
   await db.transaction(async (tx) => {
     await writeOrgMetadataWithPlanEntitlements(tx, {
@@ -743,7 +1322,8 @@ async function reconcileConcurrencyCandidate(
   const isPaymentFailed = subscriptionIsPaymentFailed(subscription);
   const syncedFields = {
     subscriptionStatus: subscription.status,
-    cancelAtPeriodEnd: subscriptionWillCancel(subscription),
+    // `cancel_at` can be the main-plan grant expiry on a shared subscription.
+    cancelAtPeriodEnd: subscription.cancel_at_period_end,
     updatedAt: now,
     ...(periodEnd ? { currentPeriodEnd: periodEnd } : {}),
     ...(item ? { stripePriceId: item.price.id } : {}),
@@ -847,6 +1427,36 @@ async function reconcileUsageAllowanceCandidate(
   const periodEnd = usageAllowanceSubscriptionEnd(subscription);
   const canRefreshPaidThrough = subscriptionCanRefreshPaidThrough(subscription);
   const isPaymentFailed = subscriptionIsPaymentFailed(subscription);
+  const allowancePriceId = subscription.metadata?.allowancePriceId;
+  const sharedAllowanceItem = allowancePriceId
+    ? subscription.items.data.find((item) => {
+        return item.price.id === allowancePriceId;
+      })
+    : undefined;
+
+  if (
+    periodEnd &&
+    periodEnd <= now &&
+    sharedAllowanceItem?.id &&
+    knownBillingPlanPriceItem(subscription.items.data)
+  ) {
+    await stripe.subscriptions.update(subscription.id, {
+      items: [{ id: sharedAllowanceItem.id, deleted: true }],
+      metadata: {
+        ...subscription.metadata,
+        allowanceStatus: "canceled",
+        allowanceCancelAt: periodEnd.toISOString(),
+      },
+      proration_behavior: "none",
+    });
+    signal.throwIfAborted();
+    return await updateUsageAllowanceCandidate(
+      context,
+      candidate,
+      { status: "canceled", expiresAt: periodEnd },
+      signal,
+    );
+  }
 
   if (subscriptionIsTerminalUsageAllowance(subscription)) {
     return await updateUsageAllowanceCandidate(
@@ -953,10 +1563,7 @@ async function loadReconcileCandidateRows(
             ...PAYMENT_FAILED_SUBSCRIPTION_STATUSES,
           ]),
           or(
-            and(
-              isNull(orgMetadata.currentPeriodEnd),
-              lte(orgMetadata.updatedAt, staleBefore),
-            ),
+            isNull(orgMetadata.currentPeriodEnd),
             lte(orgMetadata.currentPeriodEnd, staleBefore),
           ),
         ),
@@ -991,10 +1598,7 @@ async function loadReconcileCandidateRows(
             ...CONCURRENCY_SUBSCRIPTION_PAYMENT_FAILED_STATUSES,
           ]),
           or(
-            and(
-              isNull(orgConcurrencySubscriptions.currentPeriodEnd),
-              lte(orgConcurrencySubscriptions.updatedAt, staleBefore),
-            ),
+            isNull(orgConcurrencySubscriptions.currentPeriodEnd),
             lte(orgConcurrencySubscriptions.currentPeriodEnd, staleBefore),
           ),
         ),
@@ -1029,6 +1633,91 @@ async function loadReconcileCandidateRows(
   };
 }
 
+async function reconcileCandidateRows(
+  context: ReconcileBillingContext,
+  rows: ReconcileCandidateRows,
+  signal: AbortSignal,
+): Promise<ReconciledCandidateRows> {
+  const downgraded: DowngradedSubscription[] = [];
+  const expiredConcurrency: ExpiredConcurrencySubscription[] = [];
+  const reconciledUsageAllowances: ReconciledUsageAllowance[] = [];
+
+  for (const candidate of rows.candidates) {
+    const result = await settle(
+      reconcileBillingCandidate(context, candidate, signal),
+      signal,
+    );
+    if (!result.ok) {
+      L.warn("billing plan candidate reconciliation failed", {
+        orgId: candidate.orgId,
+        subscriptionId: candidate.stripeSubscriptionId,
+        error: result.error,
+      });
+      continue;
+    }
+    downgraded.push(...result.value);
+  }
+  for (const candidate of rows.atomGrantCandidates) {
+    const result = await settle(
+      reconcileAtomGrantCandidate(context, candidate, signal),
+      signal,
+    );
+    if (!result.ok) {
+      L.warn("Atom grant candidate reconciliation failed", {
+        orgId: candidate.orgId,
+        error: result.error,
+      });
+      continue;
+    }
+    downgraded.push(...result.value);
+  }
+  for (const candidate of rows.concurrencyCandidates) {
+    const result = await settle(
+      reconcileConcurrencyCandidate(context, candidate, signal),
+      signal,
+    );
+    if (!result.ok) {
+      L.warn("concurrency candidate reconciliation failed", {
+        orgId: candidate.orgId,
+        subscriptionId: candidate.stripeSubscriptionId,
+        error: result.error,
+      });
+      continue;
+    }
+    expiredConcurrency.push(...result.value);
+  }
+  for (const candidate of rows.usageAllowanceCandidates) {
+    if (!candidate.stripeSubscriptionId) {
+      L.warn("usage allowance candidate has no Stripe subscription", {
+        orgId: candidate.orgId,
+      });
+      continue;
+    }
+    const result = await settle(
+      reconcileUsageAllowanceCandidate(
+        context,
+        {
+          orgId: candidate.orgId,
+          stripeSubscriptionId: candidate.stripeSubscriptionId,
+        },
+        signal,
+      ),
+      signal,
+    );
+    if (!result.ok) {
+      L.warn("usage allowance candidate reconciliation failed", {
+        orgId: candidate.orgId,
+        subscriptionId: candidate.stripeSubscriptionId,
+        error: result.error,
+      });
+      continue;
+    }
+    reconciledUsageAllowances.push(...result.value);
+  }
+
+  return { downgraded, expiredConcurrency, reconciledUsageAllowances };
+}
+
 const reconcileBillingEntitlementsForScope$ = command(
   async (
     { get, set },
@@ -1041,6 +1730,30 @@ const reconcileBillingEntitlementsForScope$ = command(
     const staleBefore = new Date(
       now.getTime() - PAYMENT_FAILURE_DOWNGRADE_GRACE_MS,
     );
+
+    if (!scope) {
+      const checkoutReplay = await settle(
+        set(reconcileUndeliveredStripePaidCheckoutSessions$, signal),
+        signal,
+      );
+      if (!checkoutReplay.ok) {
+        L.warn("undelivered Stripe paid Checkout sweep failed", {
+          error: checkoutReplay.error,
+        });
+      }
+      signal.throwIfAborted();
+
+      const replay = await settle(
+        set(reconcileUndeliveredStripePaidInvoices$, signal),
+        signal,
+      );
+      if (!replay.ok) {
+        L.warn("undelivered Stripe paid invoice sweep failed", {
+          error: replay.error,
+        });
+      }
+    }
+    signal.throwIfAborted();
 
     const usagePackMigrationReconciliation =
       await reconcileUsagePackSubscriptionMigrations(db, scope, signal);
@@ -1057,81 +1770,47 @@ const reconcileBillingEntitlementsForScope$ = command(
     const invitationPurchasesReconciled =
       await reconcileUsagePackInvitationPurchases(db, clerk, scope, signal);
     signal.throwIfAborted();
-
-    const {
-      candidates,
-      atomGrantCandidates,
-      concurrencyCandidates,
-      usageAllowanceCandidates,
-    } = await loadReconcileCandidateRows(db, now, staleBefore, scope);
+    const stripeSubscriptionSweep = await reconcileStripeSubscriptionSnapshots(
+      db,
+      stripe,
+      clerk,
+      scope,
+      signal,
+    );
     signal.throwIfAborted();
 
-    const downgraded: DowngradedSubscription[] = [];
-    const expiredConcurrency: ExpiredConcurrencySubscription[] = [];
-    const reconciledUsageAllowances: ReconciledUsageAllowance[] = [];
+    const candidateRows = await loadReconcileCandidateRows(
+      db,
+      now,
+      staleBefore,
+      scope,
+    );
+    signal.throwIfAborted();
 
-    for (const candidate of candidates) {
-      downgraded.push(
-        ...(await reconcileBillingCandidate(
-          { db, stripe, now, staleBefore },
-          candidate,
-          signal,
-        )),
-      );
-    }
-    for (const candidate of atomGrantCandidates) {
-      downgraded.push(
-        ...(await reconcileAtomGrantCandidate(
-          { db, stripe, now, staleBefore },
-          candidate,
-          signal,
-        )),
-      );
-    }
-    for (const candidate of concurrencyCandidates) {
-      expiredConcurrency.push(
-        ...(await reconcileConcurrencyCandidate(
-          { db, stripe, now, staleBefore },
-          candidate,
-          signal,
-        )),
-      );
-    }
-    for (const candidate of usageAllowanceCandidates) {
-      if (!candidate.stripeSubscriptionId) {
-        throw new Error(
-          `Usage allowance entitlement for org ${candidate.orgId} is missing its Stripe subscription ID`,
-        );
-      }
-      reconciledUsageAllowances.push(
-        ...(await reconcileUsageAllowanceCandidate(
-          { db, stripe, now, staleBefore },
-          {
-            orgId: candidate.orgId,
-            stripeSubscriptionId: candidate.stripeSubscriptionId,
-          },
-          signal,
-        )),
-      );
-    }
+    const reconciledCandidates = await reconcileCandidateRows(
+      { db, stripe, now, staleBefore },
+      candidateRows,
+      signal,
+    );
+    const downgraded = [
+      ...stripeSubscriptionSweep.downgraded,
+      ...reconciledCandidates.downgraded,
+    ];
+    const { expiredConcurrency, reconciledUsageAllowances } =
+      reconciledCandidates;
 
-    for (const orgId of new Set(
-      downgraded.map((subscription) => {
-        return subscription.orgId;
-      }),
-    )) {
-      await disableIneligibleWorkflowWebhookAutomationsForOrg(
-        db,
-        {
-          orgId,
-        },
-        signal,
-      );
-      signal.throwIfAborted();
-    }
+    await disableIneligibleWorkflowWebhooksForOrgs(
+      db,
+      new Set(
+        downgraded.map((subscription) => {
+          return subscription.orgId;
+        }),
+      ),
+      signal,
+    );
 
     if (downgraded.length > 0) {
-      L.warn("stale payment-failed subscriptions downgraded", {
+      L.warn("billing subscriptions downgraded during reconciliation", {
         count: downgraded.length,
         subscriptionIds: downgraded.slice(0, 10).map((row) => {
           return row.subscriptionId;
@@ -1156,6 +1835,7 @@ const reconcileBillingEntitlementsForScope$ = command(
     }
     logUsagePackSubscriptionReconciliation(usagePackReconciliation);
     logUsagePackMigrationReconciliation(usagePackMigrationReconciliation);
+    logStripeSubscriptionSweep(stripeSubscriptionSweep);
     if (invitationPurchasesReconciled > 0) {
       L.warn("usage pack invitation purchases reconciled", {
         count: invitationPurchasesReconciled,

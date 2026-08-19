@@ -26,6 +26,7 @@ const mocks = createZeroRouteMocks(context);
 
 const BASE_URL = "https://app.vm0.test";
 const API_ORIGIN = "https://api.vm0.ai";
+const OKOU_API_ORIGIN = "https://api.okou.ai";
 const WEB_ORIGIN = "https://www.vm0.ai";
 const LOCAL_ORIGIN = "http://localhost:3000";
 const LOCAL_WEB_ORIGIN = "https://www.vm0.ai:8443";
@@ -262,6 +263,63 @@ describe("POST /api/zero/connectors/:connectorSlug/oauth/start", () => {
       "https://app.vm0.test/connectors/google-maps/callback",
     );
     await rejectProviderAuthorization(authorizationUrl);
+  });
+
+  it("uses persisted brand context for App callback redirects", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
+
+    const callbackLocation = async (
+      publicBrand: "vm0" | "okou",
+      connectorSlug = "google-maps",
+    ): Promise<{ readonly state: string; readonly location: URL }> => {
+      mockAuthenticatedSession();
+      const response = await requestOauthStart(connectorSlug, {
+        callbackTarget: "app",
+        headers: authHeaders(),
+        origin: publicBrand === "okou" ? OKOU_API_ORIGIN : API_ORIGIN,
+      });
+      expect(response.status).toBe(200);
+      const authorizationUrl = await authorizationUrlFromResponse(response);
+      expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+        connectorSlug === "slack"
+          ? `${WEB_ORIGIN}/api/connectors/slack/callback`
+          : "https://app.vm0.ai/connectors/google-maps/callback",
+      );
+      const state = authorizationUrl.searchParams.get("state") ?? "";
+
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
+      const callback = await app.request(
+        `${OKOU_API_ORIGIN}/api/connectors/${connectorSlug}/callback?${new URLSearchParams(
+          {
+            error: "access_denied",
+            state,
+          },
+        )}`,
+        { headers: { "x-vm0-web-origin": "https://okou.ai" } },
+      );
+      expect(callback.status).toBe(307);
+      return {
+        state,
+        location: new URL(callback.headers.get("location") ?? ""),
+      };
+    };
+
+    const okou = await callbackLocation("okou");
+    expect(okou.state).toMatch(/^okou\.[0-9a-f]{64}$/u);
+    expect(okou.location.origin).toBe("https://app.okou.ai");
+    expect(okou.location.pathname).toBe("/connector/error");
+
+    const legacyCallback = await callbackLocation("okou", "slack");
+    expect(legacyCallback.state).toMatch(/^okou\.[0-9a-f]{64}$/u);
+    expect(legacyCallback.location.origin).toBe("https://app.okou.ai");
+
+    const vm0 = await callbackLocation("vm0");
+    expect(vm0.state).toMatch(/^[0-9a-f]{64}$/u);
+    expect(vm0.location.origin).toBe("https://app.vm0.ai");
+    expect(vm0.location.pathname).toBe("/connector/error");
   });
 
   it("stores provider PKCE context for server-side OAuth handoff", async () => {

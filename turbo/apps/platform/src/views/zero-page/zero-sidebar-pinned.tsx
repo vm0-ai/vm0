@@ -16,6 +16,7 @@ import {
   Skeleton,
 } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
+import type { ReactNode } from "react";
 import {
   isChatRoute,
   setSidebarExpanded$,
@@ -32,6 +33,14 @@ import {
   pinnedAgentGridRows$,
   cachePinnedAgentGridRowsRef$,
   PINNED_AGENT_GRID_COLUMNS,
+  openPinAgentDialog$,
+  pinAgentDialogOpen$,
+  setPinAgentDialogOpen$,
+  draggingPinnedAgentId$,
+  pinnedAgentDropTargetId$,
+  startPinnedAgentDrag$,
+  setPinnedAgentDropTarget$,
+  endPinnedAgentDrag$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import {
   subagents$,
@@ -41,6 +50,7 @@ import {
 import {
   displayedPinnedAgents$,
   setAgentPinned$,
+  movePinnedAgent$,
   pinnedAgents$,
 } from "../../signals/zero-page/zero-pinned-agents.ts";
 import { unreadAgentIds$ } from "../../signals/chat-page/chat-thread-indicators.ts";
@@ -51,8 +61,12 @@ import { equalSets } from "../../lib/equality.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { assistantName$ } from "../../signals/branding.ts";
-import { AgentListDialog } from "./zero-sidebar-dialogs.tsx";
-import { AgentRowSideActions } from "./zero-sidebar-agent-row-actions.tsx";
+import { AgentListDialog, PinAgentDialog } from "./zero-sidebar-dialogs.tsx";
+import {
+  AgentRowContextActions,
+  AgentRowSideActions,
+  type AgentRowMenuAction,
+} from "./zero-sidebar-agent-row-actions.tsx";
 
 function PinnedAgentGridSkeletonCard() {
   return (
@@ -67,19 +81,19 @@ function PinnedAgentGridSkeletonCard() {
   );
 }
 
-function PinnedAgentSideDecorator({
+interface PinnedAgentActionProps {
+  readonly agentId: string;
+  readonly isDefaultAgent: boolean;
+  readonly isPinned: boolean;
+  readonly hasUnread: boolean;
+}
+
+function usePinnedAgentMenuActions({
   agentId,
   isDefaultAgent,
   isPinned,
-  isPrimarySelected,
   hasUnread,
-}: {
-  agentId: string;
-  isDefaultAgent: boolean;
-  isPinned: boolean;
-  isPrimarySelected: boolean;
-  hasUnread: boolean;
-}) {
+}: PinnedAgentActionProps): AgentRowMenuAction[] {
   const { t } = useTranslation("agents");
   const [pinLoadable, saveAgentPinned] = useLoadableSet(setAgentPinned$);
   const [markReadLoadable, markAgentThreadsRead] = useLoadableSet(
@@ -111,7 +125,7 @@ function PinnedAgentSideDecorator({
     );
   }
 
-  const actions = [
+  return [
     ...(hasUnread
       ? [
           {
@@ -146,14 +160,37 @@ function PinnedAgentSideDecorator({
         ]
       : []),
   ];
+}
+
+function PinnedAgentSideDecorator({
+  isPrimarySelected,
+  ...actionProps
+}: PinnedAgentActionProps & {
+  readonly isPrimarySelected: boolean;
+}) {
+  const actions = usePinnedAgentMenuActions(actionProps);
 
   return (
     <AgentRowSideActions
       variant="sidebar"
       isPrimarySelected={isPrimarySelected}
-      hasUnread={hasUnread}
+      hasUnread={actionProps.hasUnread}
       actions={actions}
     />
+  );
+}
+
+function PinnedAgentContextDecorator({
+  children,
+  ...actionProps
+}: PinnedAgentActionProps & {
+  readonly children: ReactNode;
+}) {
+  const actions = usePinnedAgentMenuActions(actionProps);
+  return (
+    <AgentRowContextActions actions={actions}>
+      {children}
+    </AgentRowContextActions>
   );
 }
 
@@ -211,6 +248,135 @@ function OpenAgentListDialog({
   );
 }
 
+interface PinnedGridAgent {
+  readonly id: string;
+  readonly displayName?: string | null;
+}
+
+function PinnedAgentGridCard({
+  agent,
+  isPrimarySelected,
+  hasUnread,
+  isReorderable,
+}: {
+  readonly agent: PinnedGridAgent;
+  readonly isPrimarySelected: boolean;
+  readonly hasUnread: boolean;
+  readonly isReorderable: boolean;
+}) {
+  const { t } = useTranslation("agents");
+  const pageSignal = useGet(pageSignal$);
+  const draggingAgentId = useGet(draggingPinnedAgentId$);
+  const dropTargetAgentId = useGet(pinnedAgentDropTargetId$);
+  const startDrag = useSet(startPinnedAgentDrag$);
+  const setDropTarget = useSet(setPinnedAgentDropTarget$);
+  const endDrag = useSet(endPinnedAgentDrag$);
+  const [, moveAgent] = useLoadableSet(movePinnedAgent$);
+
+  const isDragging = draggingAgentId === agent.id;
+  const acceptsDrop =
+    isReorderable && draggingAgentId !== null && draggingAgentId !== agent.id;
+  const isDropTarget = acceptsDrop && dropTargetAgentId === agent.id;
+
+  return (
+    <Link
+      pathname="/agents/:agentId/chat"
+      options={{ pathParams: { agentId: agent.id } }}
+      data-testid="pinned-agent-card"
+      draggable={isReorderable}
+      title={
+        isReorderable
+          ? t(($) => {
+              return $.sidebar.dragToReorder;
+            })
+          : undefined
+      }
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", agent.id);
+        startDrag(agent.id);
+      }}
+      onDragEnd={() => {
+        endDrag();
+      }}
+      onDragOver={(e) => {
+        if (!acceptsDrop) {
+          return;
+        }
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        setDropTarget(agent.id);
+      }}
+      onDragLeave={() => {
+        if (dropTargetAgentId === agent.id) {
+          setDropTarget(null);
+        }
+      }}
+      onDrop={(e) => {
+        if (!acceptsDrop || draggingAgentId === null) {
+          return;
+        }
+        e.preventDefault();
+        detach(
+          moveAgent(
+            { agentId: draggingAgentId, targetAgentId: agent.id },
+            pageSignal,
+          ),
+          Reason.DomCallback,
+        );
+        endDrag();
+      }}
+      className={`group flex w-full min-w-0 flex-col items-center gap-1.5 rounded-lg p-1.5 no-underline transition-colors duration-200 ${
+        isPrimarySelected
+          ? "bg-state-selected text-sidebar-foreground"
+          : "text-sidebar-foreground hover:bg-state-hover"
+      } ${isDragging ? "opacity-40" : ""} ${
+        isDropTarget ? "ring-2 ring-[hsl(var(--primary-700))]" : ""
+      }`}
+    >
+      <span className="relative">
+        <AgentAvatarImg
+          name={agent.id}
+          alt={agent.displayName ?? agent.id}
+          className="h-9 w-9 rounded-full object-cover object-top"
+        />
+        {hasUnread && (
+          <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-[hsl(var(--primary-700))] ring-2 ring-sidebar" />
+        )}
+      </span>
+      <span className="w-full truncate text-center text-[11px] leading-tight">
+        {agent.displayName ?? agent.id}
+      </span>
+    </Link>
+  );
+}
+
+function PinAgentDialogContainer() {
+  const open = useGet(pinAgentDialogOpen$);
+  const onOpenChange = useSet(setPinAgentDialogOpen$);
+  const subagents = useLastResolved(subagents$) ?? [];
+  const pageSignal = useGet(pageSignal$);
+  const [, saveAgentPinned] = useLoadableSet(setAgentPinned$);
+
+  if (!open) {
+    return null;
+  }
+
+  return (
+    <PinAgentDialog
+      open
+      onOpenChange={onOpenChange}
+      subagents={subagents}
+      onPinAgent={(agentId) => {
+        detach(
+          saveAgentPinned({ agentId, pinned: true }, pageSignal),
+          Reason.DomCallback,
+        );
+      }}
+    />
+  );
+}
+
 export function PinnedAgentListSection({
   layout = "vertical",
 }: {
@@ -231,6 +397,7 @@ export function PinnedAgentListSection({
   });
 
   const openAgentListDialog = useSet(openAgentListDialog$);
+  const openPinAgentDialog = useSet(openPinAgentDialog$);
   const setExpanded = useSet(setSidebarExpanded$);
   const collapsed = useGet(agentCardCollapsed$);
   const setCollapsed = useSet(setAgentCardCollapsed$);
@@ -271,32 +438,23 @@ export function PinnedAgentListSection({
             const isPrimarySelected =
               isChatRoute(activeRoute) && selectedAgentId === agent.id;
             const hasUnread = unreadAgentIds?.has(agent.id) ?? false;
+            const isPinned = pinnedAgentIds.has(agent.id);
+            const isDefaultAgent = agent.id === defaultAgentId;
             return (
-              <Link
+              <PinnedAgentContextDecorator
                 key={agent.id}
-                pathname="/agents/:agentId/chat"
-                options={{ pathParams: { agentId: agent.id } }}
-                data-testid="pinned-agent-card"
-                className={`group flex w-full min-w-0 flex-col items-center gap-1.5 rounded-lg p-1.5 no-underline transition-colors duration-200 ${
-                  isPrimarySelected
-                    ? "bg-state-selected text-sidebar-foreground"
-                    : "text-sidebar-foreground hover:bg-state-hover"
-                }`}
+                agentId={agent.id}
+                isDefaultAgent={isDefaultAgent}
+                isPinned={isPinned}
+                hasUnread={hasUnread}
               >
-                <span className="relative">
-                  <AgentAvatarImg
-                    name={agent.id}
-                    alt={agent.displayName ?? agent.id}
-                    className="h-9 w-9 rounded-full object-cover object-top"
-                  />
-                  {hasUnread && (
-                    <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-[hsl(var(--primary-700))] ring-2 ring-sidebar" />
-                  )}
-                </span>
-                <span className="w-full truncate text-center text-[11px] leading-tight">
-                  {agent.displayName ?? agent.id}
-                </span>
-              </Link>
+                <PinnedAgentGridCard
+                  agent={agent}
+                  isPrimarySelected={isPrimarySelected}
+                  hasUnread={hasUnread}
+                  isReorderable={isPinned && !isDefaultAgent}
+                />
+              </PinnedAgentContextDecorator>
             );
           });
 
@@ -309,32 +467,33 @@ export function PinnedAgentListSection({
         </span>
         <div
           ref={cachePinnedAgentGridRowsRef}
-          className="grid min-w-0 grid-cols-4 items-start gap-1 pb-1"
+          className="grid min-w-0 grid-cols-5 items-start gap-1 pb-1"
           data-testid="pinned-agents-grid"
         >
-          {pinnedAgentCards.slice(0, 3)}
+          {pinnedAgentCards.slice(0, 4)}
           <button
             type="button"
             onClick={() => {
-              openAgentListDialog();
+              openPinAgentDialog();
             }}
             aria-label={t(($) => {
-              return $.sidebar.openConversation;
+              return $.sidebar.pinAgent;
             })}
-            className="col-start-4 row-start-1 flex w-full min-w-0 flex-col items-center gap-1.5 rounded-lg p-1.5 text-sidebar-foreground opacity-70 transition-colors hover:opacity-100 hover:bg-state-hover"
+            className="flex w-full min-w-0 flex-col items-center gap-1.5 rounded-lg p-1.5 text-sidebar-foreground opacity-70 transition-colors hover:opacity-100 hover:bg-state-hover"
           >
             <span className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-[hsl(var(--gray-300))]">
               <Plus size={16} />
             </span>
             <span className="text-[11px] leading-tight">
               {t(($) => {
-                return $.sidebar.new;
+                return $.sidebar.addPin;
               })}
             </span>
           </button>
-          {pinnedAgentCards.slice(3)}
+          {pinnedAgentCards.slice(4)}
         </div>
         <AgentListDialogContainer />
+        <PinAgentDialogContainer />
       </div>
     );
   }

@@ -86,6 +86,13 @@ pub(crate) struct LifecycleOverrideState {
     /// FIFO queue of park results consumed by every sandbox built with
     /// these overrides. Empty queue → default reusable outcome.
     pub(crate) park_behaviors: LifecycleBehaviors<SandboxParkOutcome>,
+    /// FIFO handoff points returned by `final_exec_and_park_for_handoff` when
+    /// an exact-successor request is pending. Empty queue preserves full park.
+    pub(crate) final_exec_park_handoff_points: Mutex<VecDeque<SandboxFinalExecParkHandoffPoint>>,
+    /// Completed handoff points returned across all sandboxes built with these
+    /// overrides.
+    pub(crate) completed_final_exec_park_handoff_points:
+        Mutex<Vec<SandboxFinalExecParkHandoffPoint>>,
     /// Optional gate that records and blocks every `park()` entry until released.
     pub(crate) park_gate: Mutex<Option<MockLifecycleGate>>,
     /// FIFO queue of unpark results consumed by every sandbox built with
@@ -117,6 +124,9 @@ pub(crate) struct ProcessOverrideState {
     /// Optional durable gate that records and blocks every `wait_process`
     /// entry until released.
     pub(crate) wait_process_lifecycle_gate: Mutex<Option<MockLifecycleGate>>,
+    /// FIFO queue of start-process errors consumed by factory-created
+    /// sandboxes. Empty queue follows the default successful start behavior.
+    pub(crate) start_process_errors: Mutex<VecDeque<SandboxError>>,
     /// When `Some`, `wait_process` returns a wait-process operation error to
     /// simulate timeout or crash.
     pub(crate) wait_process_error: Option<String>,
@@ -174,6 +184,7 @@ impl Default for ProcessOverrideState {
             wait_process_code: None,
             wait_process_gate: None,
             wait_process_lifecycle_gate: Mutex::new(None),
+            start_process_errors: Mutex::new(VecDeque::new()),
             wait_process_error: None,
             wait_process_error_reason: SandboxOperationReason::Timeout,
             wait_process_exits: Mutex::new(VecDeque::new()),
@@ -294,6 +305,16 @@ impl MockSandboxOverrides {
             .process
             .wait_process_lifecycle_gate
             .lock_ignoring_poison() = None;
+    }
+
+    /// Queue a start-process error applied to the next matching start call.
+    /// Consumed FIFO across all sandboxes; empty queue follows the default
+    /// successful start behavior.
+    pub fn push_start_process_error(&self, error: SandboxError) {
+        self.process
+            .start_process_errors
+            .lock_ignoring_poison()
+            .push_back(error);
     }
 
     /// Create overrides that make `wait_process` return an error (simulating
@@ -612,6 +633,28 @@ impl MockSandboxOverrides {
     /// Used by runner tests to exercise panic-safe cleanup boundaries.
     pub fn push_park_panic(&self, message: impl Into<String>) {
         self.lifecycle.park_behaviors.push_panic(message);
+    }
+
+    /// Queue an interrupt point for the next handoff-aware final park.
+    ///
+    /// The point is returned only when a live exact-successor request can be
+    /// accepted after the final guest operation. Otherwise the mock completes
+    /// the ordinary park path.
+    pub fn push_final_exec_park_handoff_point(&self, point: SandboxFinalExecParkHandoffPoint) {
+        self.lifecycle
+            .final_exec_park_handoff_points
+            .lock_ignoring_poison()
+            .push_back(point);
+    }
+
+    /// Return handoff points successfully returned by handoff-aware final park.
+    pub fn completed_final_exec_park_handoff_points(
+        &self,
+    ) -> Vec<SandboxFinalExecParkHandoffPoint> {
+        self.lifecycle
+            .completed_final_exec_park_handoff_points
+            .lock_ignoring_poison()
+            .clone()
     }
 
     /// Block every `park()` call with a durable lifecycle gate.

@@ -2,6 +2,7 @@ import type {
   ChatRunVideoOptionsRequest,
   GenerationTemplateRequest,
   PersistedAttachment,
+  UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { foldActiveChatGoalObjective } from "@okouai/api-contracts/contracts/chat-events";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -117,18 +118,11 @@ export type ComposerPrimaryAction =
   | "stop"
   | "disabled";
 
-export type ComposerPendingEvent =
-  | {
-      readonly kind: "message";
-      readonly id: string;
-      readonly text: string;
-    }
-  | {
-      readonly kind: "automation";
-      readonly id: string;
-      readonly workflowName: string;
-      readonly automationBrief: string | undefined;
-    };
+export interface ComposerPendingEvent {
+  readonly kind: "message" | "automation";
+  readonly id: string;
+  readonly text: string;
+}
 
 interface ComposerWorkflowSignals extends ComposerWorkflowEditorSignals {
   readonly createWorkflowPrompt$: Command<Promise<void>, [AbortSignal]>;
@@ -188,7 +182,7 @@ export interface ComposerVideoModelSignals {
   >;
 }
 
-/** Image model selected for an existing chat composer. */
+/** Image model selected for a composer that supports image generation. */
 export interface ComposerImageModelSignals {
   readonly selectedImageModel$: Computed<
     ImageModel | null | Promise<ImageModel | null>
@@ -593,6 +587,25 @@ export function createComposerSignals(
   };
 }
 
+/**
+ * Automation events fired by a watched chat run carry an agent-run source
+ * annotation instead of an automation part, so the document text is the label
+ * whenever no workflow annotation survived.
+ */
+function pendingAutomationEventText(
+  userMessage: UserMessageDocument | undefined,
+): string {
+  const automationPart = userMessage?.parts.find((part) => {
+    return part.type === "automation";
+  });
+  if (automationPart?.type === "automation") {
+    return (
+      automationPart.automationBrief ?? automationPart.workflowName
+    ).trim();
+  }
+  return (messageDocumentToDisplayText(userMessage) ?? "").trim();
+}
+
 function createComposerChatEventSignals(chatEvents$: Computed<ChatEvent[]>) {
   const semanticEvents$ = computed((get) => {
     return semanticChatEventsFromChatEvents(get(chatEvents$));
@@ -632,31 +645,19 @@ function createComposerChatEventSignals(chatEvents$: Computed<ChatEvent[]>) {
     (get): Promise<readonly ComposerPendingEvent[]> => {
       return Promise.resolve(
         queuedEventsFromSemanticEvents(get(semanticEvents$)).map((event) => {
-          if (event.eventType === "input.automation") {
-            const automationPart = event.userMessage?.parts.find((part) => {
-              return part.type === "automation";
-            });
-            if (!automationPart || automationPart.type !== "automation") {
-              return {
+          return event.eventType === "input.automation"
+            ? {
+                kind: "automation" as const,
+                id: event.id,
+                text: pendingAutomationEventText(event.userMessage),
+              }
+            : {
                 kind: "message" as const,
                 id: event.id,
-                text: "",
+                text: (
+                  messageDocumentToDisplayText(event.userMessage) ?? ""
+                ).trim(),
               };
-            }
-            return {
-              kind: "automation" as const,
-              id: event.id,
-              workflowName: automationPart.workflowName,
-              automationBrief: automationPart.automationBrief,
-            };
-          }
-          return {
-            kind: "message" as const,
-            id: event.id,
-            text: (
-              messageDocumentToDisplayText(event.userMessage) ?? ""
-            ).trim(),
-          };
         }),
       );
     },

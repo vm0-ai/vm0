@@ -1,8 +1,8 @@
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
+import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import type {
-  ZeroGoalResponse,
-  ZeroGoalStatus,
-} from "@okouai/api-contracts/contracts/zero-goals";
+  GoalResponse,
+  GoalStatus,
+} from "@okouai/api-contracts/contracts/goals";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
@@ -44,7 +44,7 @@ export interface GoalBootstrap {
 export type GoalResult =
   | {
       readonly kind: "ok";
-      readonly goal: ZeroGoalResponse;
+      readonly goal: GoalResponse;
       readonly bootstrapGoal?: GoalBootstrap;
     }
   | { readonly kind: "not-found" }
@@ -79,7 +79,7 @@ interface GoalAuth {
   readonly orgId: string;
   readonly userId: string;
   readonly runId: string;
-  readonly capabilities: readonly ZeroCapability[];
+  readonly capabilities: readonly Capability[];
 }
 
 function hasUserControlCapability(auth: GoalAuth): boolean {
@@ -88,14 +88,14 @@ function hasUserControlCapability(auth: GoalAuth): boolean {
   });
 }
 
-function goalResponse(row: GoalRow): ZeroGoalResponse {
+function goalResponse(row: GoalRow): GoalResponse {
   return {
     objective: row.objective,
     objectiveBrief: normalizeGoalObjectiveBrief({
       objective: row.objective,
       objectiveBrief: row.objectiveBrief,
     }),
-    status: row.status as ZeroGoalStatus,
+    status: row.status as GoalStatus,
   };
 }
 

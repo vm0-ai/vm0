@@ -387,6 +387,7 @@ runs:
           PRICE_TEAM
           PRICE_USAGE_PACK_PLAN_PRO
           PRICE_USAGE_PACK_PLAN_TEAM
+          PRICE_CUSTOM
           PRICE_USAGE_PACK_20
           PRICE_USAGE_PACK_50
           PRICE_USAGE_PACK_100

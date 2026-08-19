@@ -162,7 +162,7 @@ import {
   generateChatNotificationSummary,
   loadChatThreadRecommendedFollowupContext,
   scheduleChatThreadTitleGeneration,
-} from "./zero-chat-title.service";
+} from "./chat-title.service";
 import { createQueueFirstZeroRun$ } from "./zero-runs-create.service";
 import { loadActiveGoalForThread } from "./goal.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
@@ -172,7 +172,7 @@ import { resolveThreadGenerationTemplatePrompt } from "../../lib/thread-generati
 import { resolveChatThreadSession } from "./chat-session-continuity.service";
 import { loadComputerUseHostGrantForAutoSend } from "./chat-computer-use-host.service";
 import { resolveRunChatThreadModelContext } from "./chat-run-event.service";
-import { releaseThreadBrowsersForRun$ } from "./zero-browser.service";
+import { releaseThreadBrowsersForRun$ } from "./browser.service";
 import type { ModelFirstPin } from "./model-selection.service";
 import {
   chatEventTextCondition,
@@ -406,6 +406,7 @@ function assistantEventInsertInput(
     ...args,
     items: args.items.map((item) => {
       return {
+        eventType: "output.message",
         runEventSequenceNumber: item.sequenceNumber,
         content: item.content,
         runEventId: `callback:${item.sequenceNumber}`,
@@ -1380,6 +1381,7 @@ async function insertGitHubChatDeliveryCallback(args: {
   readonly sourceCallbackId?: string;
   readonly target: GitHubDeliveryTarget;
   readonly chatEventId: string;
+  readonly publicBrand: PublicBrand;
 }): Promise<string> {
   const callbackCondition = args.sourceCallbackId
     ? and(
@@ -1409,6 +1411,7 @@ async function insertGitHubChatDeliveryCallback(args: {
       payload: {
         ...args.target,
         chatEventId: args.chatEventId,
+        publicBrand: args.publicBrand,
       },
     })
     .returning({ id: agentRunCallbacks.id });
@@ -1433,6 +1436,7 @@ async function insertAssistantErrorEvent(args: {
   readonly agentphoneDelivery?: AgentPhoneDeliveryTarget;
   readonly githubDelivery?: GitHubDeliveryTarget;
   readonly sourceCallbackId?: string;
+  readonly publicBrand: PublicBrand;
 }): Promise<FailedChatCallbackResult> {
   const displayErrorMessage = await args.getFormattedError();
   const goalId = await goalIdForRun(args.db, args.runId);
@@ -1505,6 +1509,7 @@ async function insertAssistantErrorEvent(args: {
           sourceCallbackId: args.sourceCallbackId,
           target: args.githubDelivery,
           chatEventId: event.id,
+          publicBrand: args.publicBrand,
         })
       : undefined;
     await touchChatThreadLastMessageAt(tx, args.threadId, event.createdAt);
@@ -1636,6 +1641,7 @@ interface RunLifecycleMarkerArgs {
   readonly agentphoneDelivery?: AgentPhoneDeliveryTarget;
   readonly githubDelivery?: GitHubDeliveryTarget;
   readonly sourceCallbackId?: string;
+  readonly publicBrand: PublicBrand;
 }
 
 interface RunLifecycleDeliveryCallbacks {
@@ -1775,6 +1781,7 @@ async function insertRunLifecycleMarkerTransaction(args: {
           sourceCallbackId: input.sourceCallbackId,
           target: input.githubDelivery,
           chatEventId: deliveryEvent.id,
+          publicBrand: input.publicBrand,
         })
       : undefined;
   await touchChatThreadLastMessageAt(
@@ -1958,6 +1965,7 @@ async function handleCompletedChatCallback(
     readonly agentphoneDelivery?: AgentPhoneDeliveryTarget;
     readonly githubDelivery?: GitHubDeliveryTarget;
     readonly sourceCallbackId?: string;
+    readonly publicBrand: PublicBrand;
     readonly insertAssistantItems: (
       items: readonly AssistantEventItem[],
     ) => Promise<void>;
@@ -2018,6 +2026,7 @@ async function handleCompletedChatCallback(
         agentphoneDelivery: args.agentphoneDelivery,
         githubDelivery: args.githubDelivery,
         sourceCallbackId: args.sourceCallbackId,
+        publicBrand: args.publicBrand,
       });
     },
   );
@@ -2166,6 +2175,7 @@ async function handleFailedChatCallback(args: {
   readonly agentphoneDelivery?: AgentPhoneDeliveryTarget;
   readonly githubDelivery?: GitHubDeliveryTarget;
   readonly sourceCallbackId?: string;
+  readonly publicBrand: PublicBrand;
 }): Promise<FailedChatCallbackResult> {
   const lifecycleEvent =
     args.errorMessage.trim().toLowerCase() === "run cancelled"
@@ -2186,6 +2196,7 @@ async function handleFailedChatCallback(args: {
     agentphoneDelivery: args.agentphoneDelivery,
     githubDelivery: args.githubDelivery,
     sourceCallbackId: args.sourceCallbackId,
+    publicBrand: args.publicBrand,
   });
 }
 
@@ -4145,6 +4156,7 @@ async function prepareCompletedTerminalChatCallbackWork(
     readonly agentphoneDelivery?: AgentPhoneDeliveryTarget;
     readonly githubDelivery?: GitHubDeliveryTarget;
     readonly sourceCallbackId?: string;
+    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<TerminalChatCallbackWork> {
@@ -4167,6 +4179,7 @@ async function prepareCompletedTerminalChatCallbackWork(
           agentphoneDelivery: args.agentphoneDelivery,
           githubDelivery: args.githubDelivery,
           sourceCallbackId: args.sourceCallbackId,
+          publicBrand: args.publicBrand,
           insertAssistantItems: async (items) => {
             await args.dependencies.insertAssistantItems(
               {
@@ -4275,6 +4288,7 @@ async function prepareFailedTerminalChatCallbackWork(
         agentphoneDelivery: args.agentphoneDelivery,
         githubDelivery: args.githubDelivery,
         sourceCallbackId: args.sourceCallbackId,
+        publicBrand: args.publicBrand,
       });
     },
   );
@@ -4667,6 +4681,7 @@ async function processTerminalChatCallback(
             suppressWebPushForActiveGoal: args.suppressWebPushForActiveGoal,
             dependencies: args.dependencies,
             timing,
+            publicBrand: args.payload.publicBrand ?? "vm0",
             ...terminalIntegrationDeliveries(args.payload),
             sourceCallbackId: args.callback.callbackId,
           },

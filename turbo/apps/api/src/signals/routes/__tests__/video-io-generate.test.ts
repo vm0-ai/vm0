@@ -81,6 +81,18 @@ const VIDEO_PRICING_DEFAULTS = [
     unitSize: 1_000_000,
   },
   {
+    provider: SEEDANCE_2_5_MODEL,
+    category: "output_video_tokens.1080p.no_video",
+    unitPrice: 14_625,
+    unitSize: 1_000_000,
+  },
+  {
+    provider: SEEDANCE_2_5_MODEL,
+    category: "output_video_tokens.1080p.with_video",
+    unitPrice: 8750,
+    unitSize: 1_000_000,
+  },
+  {
     provider: "dreamina-seedance-2-0-260128",
     category: "output_video_tokens.480p_720p.no_video",
     unitPrice: 8750,
@@ -673,7 +685,240 @@ describe("POST /api/zero/video-io/generate", () => {
     expect(calledBytePlus).toBeTruthy();
   });
 
-  it("enforces the run video model over the request model and reports it", async () => {
+  it("keeps the request model over the run's default video model and reports it", async () => {
+    // The run's model is a default, not an override. A caller that names a
+    // model — because the user named one in the prompt — gets that model, and
+    // its own parameters survive with it even when the default could not have
+    // honoured them: the Kling pin is 4k-only, and 1080p still reaches Veo.
+    const fixture = await seedVideoFixture();
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        triggerSource: "web",
+      },
+      context.signal,
+    );
+    await setRunVideoModelFixture({
+      runId,
+      selectedVideoModel: KLING_V3_4K_MODEL,
+    });
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.VideoModelSelection]: true,
+    });
+
+    let observedRequestUrl: string | null = null;
+    let calledKling = false;
+    server.use(
+      http.post(FAL_VEO_FAST_QUEUE_URL, ({ request }) => {
+        observedRequestUrl = request.url;
+        return HttpResponse.json({
+          request_id: "requested-veo-request",
+          status_url: FAL_STATUS_URL,
+          response_url: FAL_RESPONSE_URL,
+        });
+      }),
+      http.post(KLING_V3_4K_QUEUE_URL, () => {
+        calledKling = true;
+        return HttpResponse.json({
+          request_id: "unexpected-kling-request",
+          status_url: KLING_STATUS_URL,
+          response_url: KLING_RESPONSE_URL,
+        });
+      }),
+      http.get(FAL_VIDEO_URL, () => {
+        return new HttpResponse(VIDEO_BYTES, {
+          headers: { "content-type": "video/mp4" },
+        });
+      }),
+    );
+
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      runId,
+    });
+    const app = createVideoIoTestApp(fixture.pricingResolution);
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        prompt: "a vertical concert stage reveal",
+        model: "veo3.1-fast",
+        duration: "8s",
+        resolution: "1080p",
+        aspectRatio: "9:16",
+        generateAudio: true,
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    expect(calledKling).toBeFalsy();
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "video",
+      fixture.userId,
+    );
+    await postFalWebhook(app, observedRequestUrl, {
+      video: {
+        url: FAL_VIDEO_URL,
+        content_type: "video/mp4",
+      },
+    });
+    await flushWaitUntilForTest();
+
+    const statusResponse = await app.request(
+      `/api/zero/built-in-generations/${generationId}`,
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(statusResponse.status).toBe(200);
+    expect(readGenerationResult(await statusResponse.json())).toMatchObject({
+      model: FAL_VEO_FAST_MODEL,
+      resolution: "1080p",
+      requestId: "requested-veo-request",
+    });
+  });
+
+  it("rejects a resolution the request model cannot honour", async () => {
+    // The caller chose both the model and the resolution, so the mismatch is
+    // its own and the normal validation error is the right answer. The error
+    // names the model the caller sent, never the run's default.
+    const fixture = await seedVideoFixture();
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        triggerSource: "web",
+      },
+      context.signal,
+    );
+    await setRunVideoModelFixture({
+      runId,
+      selectedVideoModel: KLING_V3_4K_MODEL,
+    });
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.VideoModelSelection]: true,
+    });
+
+    let calledFal = false;
+    server.use(
+      http.post(FAL_VEO_FAST_QUEUE_URL, () => {
+        calledFal = true;
+        return HttpResponse.json({ request_id: "unexpected-veo-request" });
+      }),
+      http.post(KLING_V3_4K_QUEUE_URL, () => {
+        calledFal = true;
+        return HttpResponse.json({ request_id: "unexpected-kling-request" });
+      }),
+    );
+
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      runId,
+    });
+    const app = createVideoIoTestApp(fixture.pricingResolution);
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        prompt: "a vertical concert stage reveal",
+        model: "veo3.1-fast",
+        resolution: "2k",
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "Unsupported video resolution for veo3.1-fast: 2k",
+        code: "BAD_REQUEST",
+      },
+    });
+    expect(calledFal).toBeFalsy();
+  });
+
+  it("applies the run's video model when the request sends a blank model", async () => {
+    // `parseVideoOptions` reads `model` through a helper that treats a blank
+    // value as unset, so a caller sending `model: ""` has named nothing. If the
+    // route answered that question differently it would skip the run's model
+    // and silently generate with the catalog default instead.
+    const fixture = await seedVideoFixture();
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        triggerSource: "web",
+      },
+      context.signal,
+    );
+    await setRunVideoModelFixture({
+      runId,
+      selectedVideoModel: KLING_V3_4K_MODEL,
+    });
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.VideoModelSelection]: true,
+    });
+
+    let calledKling = false;
+    let calledBytePlus = false;
+    server.use(
+      http.post(KLING_V3_4K_QUEUE_URL, () => {
+        calledKling = true;
+        return HttpResponse.json({
+          request_id: "blank-model-kling-request",
+          status_url: KLING_STATUS_URL,
+          response_url: KLING_RESPONSE_URL,
+        });
+      }),
+      http.post(BYTEPLUS_VIDEO_TASKS_URL, () => {
+        calledBytePlus = true;
+        return HttpResponse.json({ id: "unexpected-byteplus-task" });
+      }),
+    );
+
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      runId,
+    });
+    const app = createVideoIoTestApp(fixture.pricingResolution);
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        prompt: "a vertical concert stage reveal",
+        model: "",
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    expect(calledKling).toBeTruthy();
+    expect(calledBytePlus).toBeFalsy();
+  });
+
+  it("applies the run's video model when the request names none", async () => {
     const fixture = await seedVideoFixture();
     const { composeId } = await store.set(
       seedCompose$,
@@ -726,9 +971,7 @@ describe("POST /api/zero/video-io/generate", () => {
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
         prompt: "a vertical concert stage reveal",
-        model: "dreamina-seedance-2.0-fast",
         duration: "5s",
-        resolution: "4k",
         aspectRatio: "9:16",
         generateAudio: true,
       }),
@@ -760,12 +1003,14 @@ describe("POST /api/zero/video-io/generate", () => {
     });
   });
 
-  it("drops a request parameter the pinned model cannot honour", async () => {
+  it("drops a request parameter the run's video model cannot honour", async () => {
     // Reproduces the production failure: the caller sized its parameters for
-    // the model it asked for, enforcement swapped the model, and the request
-    // died on `Unsupported video resolution for minimax-h3: 720p` — an error
-    // naming a model the caller never sent. 720p is valid for
-    // dreamina-seedance-2.0-fast and invalid for the Kling pin.
+    // whichever model it assumed it would get, the run's default replaced that
+    // assumption, and the request died on
+    // `Unsupported video resolution for minimax-h3: 720p` — an error naming a
+    // model the caller never sent. 720p is valid for the catalog default and
+    // invalid for the Kling pin. Only reachable when the request names no
+    // model; a request that names one keeps its own parameters.
     const fixture = await seedVideoFixture();
     const { composeId } = await store.set(
       seedCompose$,
@@ -818,7 +1063,6 @@ describe("POST /api/zero/video-io/generate", () => {
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
         prompt: "a fluffy golden retriever puppy",
-        model: "dreamina-seedance-2.0-fast",
         resolution: "720p",
       }),
     });
@@ -842,8 +1086,8 @@ describe("POST /api/zero/video-io/generate", () => {
       { headers: { authorization: `Bearer ${token}` } },
     );
     expect(statusResponse.status).toBe(200);
-    // The pinned model's own resolution, not the one the caller sized for the
-    // model it named, and reported back so the caller can say what was used.
+    // The run model's own resolution, not the one the caller sized for the
+    // model it assumed, and reported back so the caller can say what was used.
     expect(readGenerationResult(await statusResponse.json())).toMatchObject({
       model: KLING_V3_4K_MODEL,
       resolution: "4k",
@@ -1295,8 +1539,8 @@ describe("POST /api/zero/video-io/generate", () => {
     await expect(orgCredits(fixture)).resolves.toBe(10_000 - 263);
   });
 
-  it("generates Seedance 2.5 with expanded references and 20% gross-margin pricing", async () => {
-    const fixture = await seedVideoFixture();
+  it("generates Seedance 2.5 at 1080p with expanded references and 25% markup", async () => {
+    const fixture = await seedVideoFixture({ credits: 20_000 });
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const referenceImageUrls = Array.from({ length: 30 }, (_, index) => {
       return `https://example.com/reference-${index + 1}.png`;
@@ -1331,7 +1575,7 @@ describe("POST /api/zero/video-io/generate", () => {
         prompt: "tell a complete cinematic story",
         model: "dreamina-seedance-2.5",
         duration: "30s",
-        resolution: "720p",
+        resolution: "1080p",
         aspectRatio: "16:9",
         imageUrls: referenceImageUrls,
         videoUrls: referenceVideoUrls,
@@ -1349,7 +1593,7 @@ describe("POST /api/zero/video-io/generate", () => {
     expect(observedBody).toMatchObject({
       model: SEEDANCE_2_5_MODEL,
       callback_url: callbackUrl,
-      resolution: "720p",
+      resolution: "1080p",
       ratio: "16:9",
       duration: 30,
       generate_audio: true,
@@ -1395,15 +1639,15 @@ describe("POST /api/zero/video-io/generate", () => {
     expect(statusResponse.status).toBe(200);
     const body = readGenerationResult(await statusResponse.json());
     expect(body).toMatchObject({
-      creditsCharged: 800,
+      creditsCharged: 875,
       model: SEEDANCE_2_5_MODEL,
       duration: "30s",
       durationSeconds: 30,
-      resolution: "720p",
+      resolution: "1080p",
       sourceUrl: BYTEPLUS_VIDEO_URL,
       requestId: "seedance-2-5-video-task",
     });
-    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 800);
+    await expect(orgCredits(fixture)).resolves.toBe(20_000 - 875);
   });
 
   it("allows Seedance 2.5 audio-only references", async () => {

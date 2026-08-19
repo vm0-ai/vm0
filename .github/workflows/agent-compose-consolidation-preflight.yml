@@ -21,7 +21,7 @@ jobs:
       run:
         shell: bash
     steps:
-      # transition-validator: #27613 + #27656 + #27671 + #27792; removal-owner: #26938 Stage 8
+      # transition-validator: #27613 + #27656 + #27671 + #27792 + #28056 + #28070; removal-owner: #26938 Stage 8
       # The workflow definition and implementation always come from main.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -49,7 +49,7 @@ jobs:
               --ssl verify-full \
               2>/dev/null
           ); then
-            echo '{"schemaVersion":"vm0.agent-compose-consolidation-preflight.v4","status":"failed","failureGates":["probe.database_resolution"]}'
+            echo '{"schemaVersion":"vm0.agent-compose-consolidation-preflight.v6","status":"failed","failureGates":["probe.database_resolution"]}'
             exit 1
           fi
           if [[ -z "$database_url" ||
@@ -57,7 +57,7 @@ jobs:
                 "$database_url" == *$'\r'* ||
                 ( "$database_url" != postgres://* &&
                   "$database_url" != postgresql://* ) ]]; then
-            echo '{"schemaVersion":"vm0.agent-compose-consolidation-preflight.v4","status":"failed","failureGates":["probe.database_resolution"]}'
+            echo '{"schemaVersion":"vm0.agent-compose-consolidation-preflight.v6","status":"failed","failureGates":["probe.database_resolution"]}'
             exit 1
           fi
           WORKFLOW_COMMAND_DATA="${database_url//%/%25}"

@@ -4,6 +4,8 @@ import type {
   StrapiIntegration,
   StrapiIntegrationSecret,
 } from "@okouai/api-contracts/contracts/strapi-integrations";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { apiUrlForPublicBrand } from "@okouai/core/public-brand";
 import {
   strapiIntegrations,
   strapiWorkflowAutomations,
@@ -21,10 +23,13 @@ import {
 
 type StrapiIntegrationRow = typeof strapiIntegrations.$inferSelect;
 
-function strapiWebhookUrl(integrationId: string): string {
+function strapiWebhookUrl(
+  integrationId: string,
+  publicBrand: PublicBrand,
+): string {
   return new URL(
     `/api/okou/strapi/events/${encodeURIComponent(integrationId)}`,
-    env("VM0_WEB_URL"),
+    apiUrlForPublicBrand(env("VM0_WEB_URL"), publicBrand),
   ).toString();
 }
 
@@ -53,12 +58,15 @@ function normalizeStrapiBaseUrl(value: string): string | null {
   return url.toString().replace(/\/$/, "");
 }
 
-function integrationSummary(row: StrapiIntegrationRow): StrapiIntegration {
+function integrationSummary(
+  row: StrapiIntegrationRow,
+  publicBrand: PublicBrand,
+): StrapiIntegration {
   return {
     id: row.id,
     name: row.name,
     baseUrl: row.baseUrl,
-    webhookUrl: strapiWebhookUrl(row.id),
+    webhookUrl: strapiWebhookUrl(row.id, publicBrand),
     secretLastFour: row.secretLastFour,
     lastTestedAt: row.lastTestedAt?.toISOString() ?? null,
     lastReceivedAt: row.lastReceivedAt?.toISOString() ?? null,
@@ -68,14 +76,16 @@ function integrationSummary(row: StrapiIntegrationRow): StrapiIntegration {
 
 export async function listStrapiIntegrations(
   db: ReadonlyDb,
-  orgId: string,
+  args: { readonly orgId: string; readonly publicBrand: PublicBrand },
 ): Promise<readonly StrapiIntegration[]> {
   const rows = await db
     .select()
     .from(strapiIntegrations)
-    .where(eq(strapiIntegrations.orgId, orgId))
+    .where(eq(strapiIntegrations.orgId, args.orgId))
     .orderBy(asc(strapiIntegrations.createdAt));
-  return rows.map(integrationSummary);
+  return rows.map((row) => {
+    return integrationSummary(row, args.publicBrand);
+  });
 }
 
 type CreateStrapiIntegrationResult =
@@ -94,6 +104,7 @@ export async function createStrapiIntegration(args: {
   readonly userId: string;
   readonly name: string;
   readonly baseUrl: string;
+  readonly publicBrand: PublicBrand;
 }): Promise<CreateStrapiIntegrationResult> {
   const normalizedBaseUrl = normalizeStrapiBaseUrl(args.baseUrl);
   if (!normalizedBaseUrl) {
@@ -126,7 +137,7 @@ export async function createStrapiIntegration(args: {
   return {
     kind: "ok",
     integration: {
-      ...integrationSummary(created),
+      ...integrationSummary(created, args.publicBrand),
       authorizationHeader: `Bearer ${token}`,
     },
   };
@@ -134,7 +145,11 @@ export async function createStrapiIntegration(args: {
 
 export async function revealStrapiIntegrationSecret(
   db: ReadonlyDb,
-  args: { readonly orgId: string; readonly integrationId: string },
+  args: {
+    readonly orgId: string;
+    readonly integrationId: string;
+    readonly publicBrand: PublicBrand;
+  },
 ): Promise<StrapiIntegrationSecret | null> {
   const [row] = await db
     .select()
@@ -154,7 +169,7 @@ export async function revealStrapiIntegrationSecret(
     userId: row.createdByUserId,
   });
   return {
-    webhookUrl: strapiWebhookUrl(row.id),
+    webhookUrl: strapiWebhookUrl(row.id, args.publicBrand),
     authorizationHeader: `Bearer ${token}`,
   };
 }

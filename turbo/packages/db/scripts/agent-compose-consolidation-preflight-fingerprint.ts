@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 export const PREFLIGHT_SCHEMA_VERSION =
-  "vm0.agent-compose-consolidation-preflight.v4";
+  "vm0.agent-compose-consolidation-preflight.v6";
 
 // Keep the accepted Stage 0 aggregate digests stable while the output schema
 // grows additively. New sets use their own domain strings at each call site.

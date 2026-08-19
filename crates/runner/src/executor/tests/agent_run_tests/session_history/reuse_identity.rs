@@ -631,6 +631,7 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_times_o
         "sess-final-helper-timeout-123",
         ExecResult {
             termination: ExecTermination::TimedOut,
+            guest_duration_ms: None,
             stdout: Vec::new(),
             stderr: Vec::new(),
             diagnostic: "session history identity helper timed out".to_string(),

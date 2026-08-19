@@ -49,7 +49,6 @@ import {
 } from "./zero-zoomable-image-canvas.tsx";
 import type { ChatPanelSignals } from "../../signals/chat-page/chat-panel-signals.ts";
 import type { ChatThreadArtifactFile } from "@okouai/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   ArtifactActionSeparator,
   ArtifactActionTooltip,
@@ -69,7 +68,6 @@ import {
 } from "./zero-artifact-image-navigation.ts";
 import { AutoFocusedArtifactIframe } from "./auto-focused-artifact-iframe.tsx";
 import { PresentationArtifactViewport } from "./presentation-artifact-viewport.tsx";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 
 // ---------------------------------------------------------------------------
 // ArtifactSidebar — thread-owned pane for rendering kind-specific artifact
@@ -161,18 +159,11 @@ function ArtifactSidebarWithThreadContext({
     equalityFn: equalEventImageGroups,
   });
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
-  const presentationArtifactViewportEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.PresentationArtifactViewport] ??
-    false;
   const text$ = providedText$ ?? artifactRef.text$;
   const markdownTree$ = providedMarkdownTree$ ?? artifactRef.markdownTree$;
   const item =
     loadable.state === "hasData"
-      ? findArtifactItemForUrl(
-          loadable.data,
-          artifactRef.url,
-          presentationArtifactViewportEnabled,
-        )
+      ? findArtifactItemForUrl(loadable.data, artifactRef.url)
       : undefined;
   const imageNavigation =
     loadable.state === "hasData"
@@ -495,14 +486,12 @@ type ArtifactKindForBody =
 function findArtifactItemForUrl(
   runs: { runId: string; files: ChatThreadArtifactFile[] }[],
   url: string,
-  includeAliasUrl: boolean,
 ): ArtifactSidebarItem | undefined {
   for (const run of runs) {
     const file = run.files.find((candidate) => {
       return (
         artifactPreviewUrlsMatch(candidate.url, url) ||
-        (includeAliasUrl &&
-          candidate.aliasUrl !== undefined &&
+        (candidate.aliasUrl !== undefined &&
           artifactPreviewUrlsMatch(candidate.aliasUrl, url))
       );
     });
@@ -1427,9 +1416,6 @@ function ArtifactIframeBody({
   fullscreen: boolean;
 }) {
   const { t } = useTranslation();
-  const presentationArtifactViewportEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.PresentationArtifactViewport] ??
-    false;
   const resourceUrl = useResolvedAttachmentUrl(url);
   // PDF Open Parameters: #navpanes=0 hides Chromium's built-in left rail
   // (thumbnails / bookmarks) so the embedded preview shows just the page
@@ -1439,9 +1425,7 @@ function ArtifactIframeBody({
       ? `${resourceUrl}#navpanes=0`
       : resourceUrl;
   const isPresentationHtml =
-    presentationArtifactViewportEnabled &&
-    kind === "html" &&
-    artifactKind === "presentation-html";
+    kind === "html" && artifactKind === "presentation-html";
   if (resourceUrl === null || src === null) {
     return <ArtifactSpinner />;
   }

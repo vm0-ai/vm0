@@ -441,6 +441,187 @@ async fn flush_propagates_error_then_loop_recovers() {
 }
 
 #[tokio::test]
+async fn flush_reports_position_persistence_status_after_upload_then_recovers() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+    let files = ExplicitTelemetryFiles::new("position-write-failure-upload").unwrap();
+    let paths = &files.paths;
+    let system_log = paths.system_log_file();
+    let system_log_pos = paths.telemetry_system_log_pos_file();
+    let metrics_log = paths.metrics_log_file();
+    let metrics_pos = paths.telemetry_metrics_pos_file();
+    let marker = "position-persistence-upload";
+    let metric = serde_json::json!({"name": "position-persistence-metric"});
+    ensure_parent_dir(system_log);
+    ensure_parent_dir(system_log_pos);
+    std::fs::write(system_log, format!("{marker}\n")).expect("system log should be written");
+    std::fs::write(metrics_log, format!("{metric}\n")).expect("metrics log should be written");
+    std::fs::create_dir(system_log_pos).expect("position failure directory should be created");
+
+    let request_bodies = Arc::new(Mutex::new(Vec::new()));
+    let request_bodies_for_mock = Arc::clone(&request_bodies);
+    let upload_mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/telemetry");
+        then.respond_with(move |request| {
+            request_bodies_for_mock
+                .lock()
+                .unwrap()
+                .push(request.body_vec());
+            http_status(200)
+        });
+    });
+
+    let masker = Arc::new(SecretMasker::from_raw(""));
+    let telemetry = guest_agent::telemetry::Telemetry::spawn_for_paths(
+        "test-run-001".to_string(),
+        paths,
+        masker,
+        http_client!(),
+    );
+
+    let first_report = telemetry
+        .flush(guest_agent::telemetry::UploadMode::Live)
+        .await;
+    assert_eq!(
+        first_report.expect("upload should succeed despite position persistence failure"),
+        guest_agent::telemetry::FlushReport {
+            uploaded: true,
+            position_persisted: false,
+        },
+    );
+    upload_mock.assert_calls_async(1).await;
+    {
+        let request_bodies = request_bodies.lock().unwrap();
+        assert_eq!(
+            request_bodies.len(),
+            1,
+            "first flush should make one upload"
+        );
+        let payload: serde_json::Value = serde_json::from_slice(&request_bodies[0])
+            .expect("first telemetry request should contain valid JSON");
+        let expected_log = format!("{marker}\n");
+        assert_eq!(payload["systemLog"].as_str(), Some(expected_log.as_str()));
+        assert_eq!(payload["metrics"], serde_json::json!([metric]));
+    }
+    let persisted_metrics_pos: u64 = std::fs::read_to_string(metrics_pos)
+        .expect("metrics position should persist after the earlier system position fails")
+        .trim()
+        .parse()
+        .expect("metrics position should be numeric");
+    assert_eq!(
+        persisted_metrics_pos,
+        std::fs::metadata(metrics_log)
+            .expect("metrics metadata should be available")
+            .len(),
+        "a later advanced position must persist after an earlier position write fails"
+    );
+
+    std::fs::remove_dir(system_log_pos).expect("position failure directory should be removed");
+    let second_report = telemetry
+        .flush(guest_agent::telemetry::UploadMode::Live)
+        .await;
+    assert_eq!(
+        second_report.expect("flush should recover after the position path is restored"),
+        guest_agent::telemetry::FlushReport {
+            uploaded: true,
+            position_persisted: true,
+        },
+    );
+    upload_mock.assert_calls_async(2).await;
+    {
+        let request_bodies = request_bodies.lock().unwrap();
+        assert_eq!(
+            request_bodies.len(),
+            2,
+            "recovery should make a second upload"
+        );
+        let payload: serde_json::Value = serde_json::from_slice(&request_bodies[1])
+            .expect("recovery telemetry request should contain valid JSON");
+        let expected_log = format!("{marker}\n");
+        assert_eq!(payload["systemLog"].as_str(), Some(expected_log.as_str()));
+        assert_eq!(payload["metrics"], serde_json::json!([]));
+    }
+
+    telemetry.shutdown().await;
+
+    let pos: u64 = std::fs::read_to_string(system_log_pos)
+        .expect("system log telemetry position should be written after recovery")
+        .trim()
+        .parse()
+        .expect("system log telemetry position should be numeric");
+    assert_eq!(
+        pos,
+        std::fs::metadata(system_log)
+            .expect("system log metadata should be available")
+            .len(),
+        "recovered position must match the source file length"
+    );
+
+    upload_mock.delete_async().await;
+    remove_telemetry_files(paths);
+}
+
+#[tokio::test]
+async fn flush_ignores_unadvanced_position_write_failures() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+    let files = ExplicitTelemetryFiles::new("unadvanced-position-write-failure").unwrap();
+    let paths = &files.paths;
+    let system_log = paths.system_log_file();
+    let metrics_pos = paths.telemetry_metrics_pos_file();
+    let marker = "unadvanced-position-write-failure";
+    ensure_parent_dir(system_log);
+    ensure_parent_dir(metrics_pos);
+    std::fs::write(system_log, format!("{marker}\n")).expect("system log should be written");
+    std::fs::create_dir(metrics_pos).expect("unadvanced position directory should be created");
+    let system_log_guard = SystemLogOverrideGuard::set(system_log);
+
+    let upload_mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/telemetry");
+        then.status(200);
+    });
+
+    let masker = Arc::new(SecretMasker::from_raw(""));
+    let telemetry = guest_agent::telemetry::Telemetry::spawn_for_paths(
+        "test-run-001".to_string(),
+        paths,
+        masker,
+        http_client!(),
+    );
+
+    let first_report = telemetry
+        .flush(guest_agent::telemetry::UploadMode::Live)
+        .await
+        .expect("system log upload should ignore an unadvanced metrics position");
+    assert_eq!(
+        first_report,
+        guest_agent::telemetry::FlushReport {
+            uploaded: true,
+            position_persisted: true,
+        },
+    );
+
+    let second_report = telemetry
+        .flush(guest_agent::telemetry::UploadMode::Live)
+        .await
+        .expect("empty follow-up flush should remain successful");
+    assert_eq!(
+        second_report,
+        guest_agent::telemetry::FlushReport {
+            uploaded: false,
+            position_persisted: true,
+        },
+    );
+    upload_mock.assert_calls_async(1).await;
+
+    telemetry.shutdown().await;
+    drop(system_log_guard);
+    std::fs::remove_dir(metrics_pos).expect("unadvanced position directory should be removed");
+    upload_mock.delete_async().await;
+    remove_telemetry_files(paths);
+}
+
+#[tokio::test]
 async fn skip_only_metrics_progress_saves_position_without_posting_empty_payload() {
     let api = SharedApiMock::new().await;
     let server = api.server();
@@ -482,6 +663,93 @@ async fn skip_only_metrics_progress_saves_position_without_posting_empty_payload
         .parse()
         .expect("metrics telemetry position should be numeric");
     assert_eq!(pos, TELEMETRY_DELTA_READ_LIMIT as u64);
+
+    upload_mock.delete_async().await;
+    remove_telemetry_files(paths);
+}
+
+#[tokio::test]
+async fn skip_only_flush_reports_position_persistence_status_then_recovers() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+    let files = ExplicitTelemetryFiles::new("position-write-failure-skip-only").unwrap();
+    let paths = &files.paths;
+    let metrics_file = paths.metrics_log_file();
+    let metrics_pos_file = paths.telemetry_metrics_pos_file();
+    ensure_parent_dir(metrics_file);
+    ensure_parent_dir(metrics_pos_file);
+    assert!(
+        std::fs::write(metrics_file, "x".repeat(TELEMETRY_DELTA_READ_LIMIT + 1)).is_ok(),
+        "oversized metrics log should be written",
+    );
+    std::fs::create_dir(metrics_pos_file).expect("position failure directory should be created");
+
+    let upload_mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/telemetry");
+        then.status(200);
+    });
+
+    let masker = Arc::new(SecretMasker::from_raw(""));
+    let telemetry = guest_agent::telemetry::Telemetry::spawn_for_paths(
+        "test-run-001".to_string(),
+        paths,
+        masker,
+        http_client!(),
+    );
+
+    let first_report = telemetry
+        .flush(guest_agent::telemetry::UploadMode::Live)
+        .await;
+    assert_eq!(
+        first_report.expect("skip-only progress should remain a successful flush"),
+        guest_agent::telemetry::FlushReport {
+            uploaded: false,
+            position_persisted: false,
+        },
+    );
+    upload_mock.assert_calls_async(0).await;
+
+    std::fs::remove_dir(metrics_pos_file).expect("position failure directory should be removed");
+    let second_report = telemetry
+        .flush(guest_agent::telemetry::UploadMode::Live)
+        .await;
+    assert_eq!(
+        second_report.expect("skip-only flush should recover after the position path is restored"),
+        guest_agent::telemetry::FlushReport {
+            uploaded: false,
+            position_persisted: true,
+        },
+    );
+    upload_mock.assert_calls_async(0).await;
+
+    // The bounded live read consumes the oversized entry in two chunks after
+    // the failed position write falls back to offset zero.
+    let third_report = telemetry
+        .flush(guest_agent::telemetry::UploadMode::Live)
+        .await;
+    assert_eq!(
+        third_report.expect("skip-only tail flush should complete recovery"),
+        guest_agent::telemetry::FlushReport {
+            uploaded: false,
+            position_persisted: true,
+        },
+    );
+    upload_mock.assert_calls_async(0).await;
+
+    telemetry.shutdown().await;
+
+    let pos: u64 = std::fs::read_to_string(metrics_pos_file)
+        .expect("metrics telemetry position should be written after recovery")
+        .trim()
+        .parse()
+        .expect("metrics telemetry position should be numeric");
+    assert_eq!(
+        pos,
+        std::fs::metadata(metrics_file)
+            .expect("metrics metadata should be available")
+            .len(),
+        "recovered position must match the source file length"
+    );
 
     upload_mock.delete_async().await;
     remove_telemetry_files(paths);

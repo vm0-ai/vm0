@@ -239,6 +239,10 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::process::{Command, Output};
 
+    use sandbox::{ExecResult, ExecTermination};
+
+    use crate::error::RunnerError;
+
     const SESSION_ID: &str = "019e9154-c304-70f0-adde-36efb1be1701";
     const SESSION_ID_NO_DASHES: &str = "019e9154c30470f0adde36efb1be1701";
 
@@ -345,6 +349,183 @@ mod tests {
             stderr.contains(expected),
             "expected stderr to contain {expected:?}, got {stderr:?}"
         );
+    }
+
+    fn exec_result(stdout: Vec<u8>, stdout_truncated: bool) -> ExecResult {
+        ExecResult {
+            termination: ExecTermination::Exited { exit_code: 0 },
+            guest_duration_ms: None,
+            stdout,
+            stderr: Vec::new(),
+            diagnostic: String::new(),
+            stdout_truncated,
+            stderr_truncated: false,
+        }
+    }
+
+    fn canonical_sessions_logical_path(date: &str, time: &str) -> String {
+        let mut date_components = date.split('-');
+        let year = date_components.next().unwrap();
+        let month = date_components.next().unwrap();
+        let day = date_components.next().unwrap();
+        assert!(date_components.next().is_none());
+        format!(
+            "{CODEX_SESSIONS_ROOT}/{year}/{month}/{day}/rollout-{date}T{time}-{SESSION_ID}.jsonl"
+        )
+    }
+
+    type CleanupOutputCase<'a> = (&'a str, Vec<u8>, bool, Result<Option<&'a str>, &'a str>);
+
+    #[test]
+    fn parse_codex_cleanup_output_accepts_and_rejects_expected_stdout() {
+        let canonical = canonical_sessions_logical_path("2026-06-04", "07-18-08");
+        let canonical_with_newline = format!("{canonical}\n");
+        let different_session_id = "00000000-0000-0000-0000-000000000000";
+
+        let cases: &[CleanupOutputCase<'_>] = &[
+            (
+                "empty stdout selects the fallback path",
+                Vec::new(),
+                false,
+                Ok(None),
+            ),
+            (
+                "one canonical newline-terminated path is accepted",
+                canonical_with_newline.clone().into_bytes(),
+                false,
+                Ok(Some(canonical.as_str())),
+            ),
+            (
+                "truncated stdout is rejected",
+                canonical_with_newline.clone().into_bytes(),
+                true,
+                Err(INVALID_CODEX_CLEANUP_OUTPUT),
+            ),
+            (
+                "invalid UTF-8 stdout is rejected",
+                vec![0xff, 0xfe, 0xfd],
+                false,
+                Err(INVALID_CODEX_CLEANUP_OUTPUT),
+            ),
+            (
+                "newline-only stdout is rejected",
+                b"\n".to_vec(),
+                false,
+                Err(INVALID_CODEX_CLEANUP_OUTPUT),
+            ),
+            (
+                "missing newline terminator is rejected",
+                canonical.clone().into_bytes(),
+                false,
+                Err(INVALID_CODEX_CLEANUP_OUTPUT),
+            ),
+            (
+                "extra newline terminator is rejected",
+                format!("{canonical}\n\n").into_bytes(),
+                false,
+                Err(INVALID_CODEX_CLEANUP_OUTPUT),
+            ),
+            (
+                "CRLF terminator is rejected",
+                format!("{canonical}\r\n").into_bytes(),
+                false,
+                Err(INVALID_CODEX_CLEANUP_OUTPUT),
+            ),
+            (
+                "multiple line terminators are rejected",
+                format!("{canonical}\n{canonical}\n").into_bytes(),
+                false,
+                Err(INVALID_CODEX_CLEANUP_OUTPUT),
+            ),
+            (
+                "path outside the sessions root is rejected",
+                format!(
+                    "/home/user/.codex/other/2026/06/04/rollout-2026-06-04T07-18-08-{SESSION_ID}.jsonl\n"
+                )
+                .into_bytes(),
+                false,
+                Err(INVALID_CODEX_CLEANUP_OUTPUT),
+            ),
+            (
+                "extra path component is rejected",
+                format!(
+                    "{CODEX_SESSIONS_ROOT}/2026/06/04/extra/rollout-2026-06-04T07-18-08-{SESSION_ID}.jsonl\n"
+                )
+                .into_bytes(),
+                false,
+                Err(INVALID_CODEX_CLEANUP_OUTPUT),
+            ),
+            (
+                "mismatched session id is rejected",
+                format!(
+                    "{CODEX_SESSIONS_ROOT}/2026/06/04/rollout-2026-06-04T07-18-08-{different_session_id}.jsonl\n"
+                )
+                .into_bytes(),
+                false,
+                Err(INVALID_CODEX_CLEANUP_OUTPUT),
+            ),
+            (
+                "invalid calendar date is rejected",
+                format!(
+                    "{CODEX_SESSIONS_ROOT}/2026/02/31/rollout-2026-02-31T07-18-08-{SESSION_ID}.jsonl\n"
+                )
+                .into_bytes(),
+                false,
+                Err(INVALID_CODEX_CLEANUP_OUTPUT),
+            ),
+            (
+                "out-of-range hour is rejected",
+                format!(
+                    "{CODEX_SESSIONS_ROOT}/2026/06/04/rollout-2026-06-04T24-01-04-{SESSION_ID}.jsonl\n"
+                )
+                .into_bytes(),
+                false,
+                Err(INVALID_CODEX_CLEANUP_OUTPUT),
+            ),
+            (
+                "out-of-range minute is rejected",
+                format!(
+                    "{CODEX_SESSIONS_ROOT}/2026/06/04/rollout-2026-06-04T07-60-04-{SESSION_ID}.jsonl\n"
+                )
+                .into_bytes(),
+                false,
+                Err(INVALID_CODEX_CLEANUP_OUTPUT),
+            ),
+            (
+                "out-of-range second is rejected",
+                format!(
+                    "{CODEX_SESSIONS_ROOT}/2026/06/04/rollout-2026-06-04T07-18-60-{SESSION_ID}.jsonl\n"
+                )
+                .into_bytes(),
+                false,
+                Err(INVALID_CODEX_CLEANUP_OUTPUT),
+            ),
+        ];
+
+        for (name, stdout, stdout_truncated, expected) in cases {
+            let result = parse_codex_cleanup_output(
+                &exec_result(stdout.clone(), *stdout_truncated),
+                SESSION_ID,
+            );
+            match *expected {
+                Ok(None) => assert!(
+                    matches!(result, Ok(None)),
+                    "{name}: expected the fallback path, got {result:?}"
+                ),
+                Ok(Some(expected_path)) => {
+                    let actual = result.unwrap_or_else(|error| {
+                        panic!("{name}: expected a canonical path, got {error:?}")
+                    });
+                    assert_eq!(actual.as_deref(), Some(expected_path), "{name}");
+                }
+                Err(expected_message) => match result {
+                    Err(RunnerError::Internal(message)) => {
+                        assert_eq!(message.as_str(), expected_message, "{name}")
+                    }
+                    other => panic!("{name}: expected internal error, got {other:?}"),
+                },
+            }
+        }
     }
 
     #[test]

@@ -1,9 +1,9 @@
 import { computed } from "ccstate";
 import {
-  zeroRunRunnerContract,
-  zeroRunsByIdContract,
-  zeroRunsQueueContract,
-} from "@okouai/api-contracts/contracts/zero-runs";
+  runRunnerContract,
+  runsByIdContract,
+  runsQueueContract,
+} from "@okouai/api-contracts/contracts/run-routes";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -27,7 +27,7 @@ const runNotFound = notFound("Agent run not found");
 
 const getRunByIdInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(zeroRunsByIdContract.getById));
+  const params = get(pathParamsOf(runsByIdContract.getById));
   const run = await get(
     agentRunById({ runId: params.id, userId: auth.userId, orgId: auth.orgId }),
   );
@@ -39,7 +39,7 @@ const getRunByIdInner$ = computed(async (get) => {
 
 const getRunRunnerInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(zeroRunRunnerContract.getRunner));
+  const params = get(pathParamsOf(runRunnerContract.getRunner));
   const runner = await get(
     agentRunRunner({
       runId: params.id,
@@ -68,15 +68,15 @@ const getRunQueueInner$ = computed(async (get) => {
 
 export const zeroRunsRoutes: readonly RouteEntry[] = [
   {
-    route: zeroRunsQueueContract.getQueue,
+    route: runsQueueContract.getQueue,
     handler: authRoute(runReadAuth, getRunQueueInner$),
   },
   {
-    route: zeroRunRunnerContract.getRunner,
+    route: runRunnerContract.getRunner,
     handler: authRoute(runReadAuth, getRunRunnerInner$),
   },
   {
-    route: zeroRunsByIdContract.getById,
+    route: runsByIdContract.getById,
     handler: authRoute(runReadAuth, getRunByIdInner$),
   },
 ];

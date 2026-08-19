@@ -142,9 +142,17 @@ async function openOnboarding(
   page: Page,
   options: OnboardingFlowOptions,
 ): Promise<void> {
-  await page.goto(new URL("/onboarding", options.appUrl).toString(), {
-    waitUntil: "domcontentloaded",
-  });
+  const onboardingUrl = new URL("/onboarding", options.appUrl);
+  const currentUrl = new URL(page.url());
+  const canReuseAppPage =
+    currentUrl.origin === onboardingUrl.origin &&
+    (currentUrl.pathname === "/" || currentUrl.pathname === "/onboarding");
+
+  if (!canReuseAppPage) {
+    await page.goto(onboardingUrl.toString(), {
+      waitUntil: "domcontentloaded",
+    });
+  }
   await expect(
     page.getByRole("heading", { name: "What do you want to make first" }),
   ).toBeVisible({ timeout: 60_000 });

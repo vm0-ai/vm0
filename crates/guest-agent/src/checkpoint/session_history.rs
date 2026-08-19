@@ -21,8 +21,9 @@ use guest_common::telemetry::{
 use guest_common::{log_info, log_warn};
 use guest_contracts::session_history_identity::SessionHistorySourceRef;
 use guest_session_prune::{
-    ClaudeHistoryIneligibleReason, ClaudeHistorySelection, CodexHistoryIneligibleReason,
-    CodexHistorySelection, select_claude_compact_generation_from_file,
+    ClaudeHistoryCandidate, ClaudeHistoryIneligibleReason, ClaudeHistorySelection,
+    CodexHistoryCandidate, CodexHistoryIneligibleReason, CodexHistorySelection,
+    select_claude_compact_generation_from_file,
     select_claude_compact_generation_from_file_with_candidate_limit_for_test,
     select_codex_compact_generation, select_codex_compact_generation_with_candidate_limit_for_test,
 };
@@ -166,6 +167,22 @@ struct PreparedSessionHistory {
 enum PreparedSessionHistoryOutcome {
     Upload(PreparedSessionHistory),
     DiscardedOversized,
+}
+
+trait NativeSessionHistoryCandidate {
+    fn into_bytes(self) -> Vec<u8>;
+}
+
+impl NativeSessionHistoryCandidate for ClaudeHistoryCandidate {
+    fn into_bytes(self) -> Vec<u8> {
+        self.into_bytes()
+    }
+}
+
+impl NativeSessionHistoryCandidate for CodexHistoryCandidate {
+    fn into_bytes(self) -> Vec<u8> {
+        self.into_bytes()
+    }
 }
 
 pub(super) enum PreparedLiveHistory {
@@ -532,10 +549,9 @@ fn prepare_session_history(
                 Ok(ClaudeHistorySelection::Candidate(candidate)) => {
                     let source_size = candidate.source_size();
                     let candidate_size = candidate.candidate_size();
-                    let candidate = candidate.into_bytes();
                     let replacement = PendingNativeHistoryReplacement::stage(
                         resolved.replacement_target(),
-                        &candidate,
+                        candidate.as_bytes(),
                     )
                     .ok();
                     log_info!(
@@ -548,7 +564,8 @@ fn prepare_session_history(
                         SessionHistoryPruneOutcome::Selected,
                         None,
                     );
-                    let mut prepared = prepare_raw_session_history(history_read_start, candidate)?;
+                    let mut prepared =
+                        prepare_native_session_history(history_read_start, candidate)?;
                     prepared.live_history = PreparedLiveHistory::NativeCandidate {
                         kind: NativeHistoryKind::ClaudeCode,
                         replacement,
@@ -596,10 +613,9 @@ fn prepare_session_history(
                 Ok(CodexHistorySelection::Candidate(candidate)) => {
                     let source_size = candidate.source_size();
                     let candidate_size = candidate.candidate_size();
-                    let candidate = candidate.into_bytes();
                     let replacement = PendingNativeHistoryReplacement::stage(
                         resolved.replacement_target(),
-                        &candidate,
+                        candidate.as_bytes(),
                     )
                     .ok();
                     log_info!(
@@ -612,7 +628,8 @@ fn prepare_session_history(
                         SessionHistoryPruneOutcome::Selected,
                         None,
                     );
-                    let mut prepared = prepare_raw_session_history(history_read_start, candidate)?;
+                    let mut prepared =
+                        prepare_native_session_history(history_read_start, candidate)?;
                     prepared.live_history = PreparedLiveHistory::NativeCandidate {
                         kind: NativeHistoryKind::Codex,
                         replacement,
@@ -686,9 +703,36 @@ fn prepare_raw_session_history(
     history_read_start: std::time::Instant,
     history_bytes: Vec<u8>,
 ) -> Result<PreparedSessionHistory, AgentError> {
-    let history_size = history_bytes.len() as u64;
+    let session_history = require_session_history_text(history_read_start, &history_bytes)?;
+    let line_count = validate_session_history(session_history)
+        .map_err(|msg| history_failure("session_history_validate", history_read_start, msg))?;
+    Ok(finalize_raw_session_history(
+        history_read_start,
+        history_bytes,
+        line_count,
+    ))
+}
 
-    let session_history = std::str::from_utf8(&history_bytes).map_err(|error| {
+fn prepare_native_session_history(
+    history_read_start: std::time::Instant,
+    candidate: impl NativeSessionHistoryCandidate,
+) -> Result<PreparedSessionHistory, AgentError> {
+    let history_bytes = candidate.into_bytes();
+    let line_count = require_session_history_text(history_read_start, &history_bytes)?
+        .lines()
+        .count();
+    Ok(finalize_raw_session_history(
+        history_read_start,
+        history_bytes,
+        line_count,
+    ))
+}
+
+fn require_session_history_text(
+    history_read_start: std::time::Instant,
+    history_bytes: &[u8],
+) -> Result<&str, AgentError> {
+    let session_history = std::str::from_utf8(history_bytes).map_err(|error| {
         history_failure(
             "session_history_read",
             history_read_start,
@@ -704,10 +748,15 @@ fn prepare_raw_session_history(
         ));
     }
 
-    validate_session_history(session_history)
-        .map_err(|msg| history_failure("session_history_validate", history_read_start, msg))?;
+    Ok(session_history)
+}
 
-    let line_count = session_history.lines().count();
+fn finalize_raw_session_history(
+    history_read_start: std::time::Instant,
+    history_bytes: Vec<u8>,
+    line_count: usize,
+) -> PreparedSessionHistory {
+    let history_size = history_bytes.len() as u64;
     log_info!(LOG_TAG, "Session history loaded ({line_count} lines)");
     record_sandbox_op(
         "session_history_read",
@@ -722,12 +771,12 @@ fn prepare_raw_session_history(
         "Session history hash={}, size={history_size}",
         &history_hash[..8]
     );
-    Ok(PreparedSessionHistory {
+    PreparedSessionHistory {
         hash: history_hash,
         raw_size: history_size,
         upload_source: PreparedSessionHistoryUploadSource::Raw(history_bytes),
         live_history: PreparedLiveHistory::MatchesCheckpoint,
-    })
+    }
 }
 
 fn prepare_reused_zstd_session_history(
@@ -1113,7 +1162,7 @@ pub(super) fn write_final_session_history_identity(
     }
 }
 
-fn validate_session_history(session_history: &str) -> Result<(), String> {
+fn validate_session_history(session_history: &str) -> Result<usize, String> {
     let mut line_count = 0usize;
     for (index, line) in session_history.lines().enumerate() {
         validate_session_history_line(index + 1, line)?;
@@ -1124,7 +1173,7 @@ fn validate_session_history(session_history: &str) -> Result<(), String> {
         return Err("Session history has no JSONL entries".into());
     }
 
-    Ok(())
+    Ok(line_count)
 }
 
 fn validate_session_history_line(index: usize, line: &str) -> Result<(), String> {
@@ -1171,7 +1220,7 @@ mod tests {
     fn session_history_validation_accepts_valid_jsonl() {
         let history = r#"{"type":"system"}"#.to_string() + "\n" + r#"{"type":"assistant"}"#;
 
-        assert!(validate_session_history(&history).is_ok());
+        assert_eq!(validate_session_history(&history), Ok(2));
     }
 
     #[test]

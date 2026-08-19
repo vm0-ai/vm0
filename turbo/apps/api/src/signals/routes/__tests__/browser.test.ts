@@ -3,9 +3,9 @@ import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 import { testBrowserReconcileContract } from "@okouai/api-contracts/contracts/test-browser-reconcile";
 import {
-  zeroBrowserAuthorizationRequestsContract,
-  zeroBrowserContract,
-} from "@okouai/api-contracts/contracts/zero-browser";
+  browserAuthorizationRequestsContract,
+  browserContract,
+} from "@okouai/api-contracts/contracts/browser";
 import {
   chatThreadComputerUseHostContract,
   chatThreadsContract,
@@ -84,7 +84,7 @@ function isoAt(offsetMs: number): string {
 }
 
 function client() {
-  return setupApp({ context, routes: browserRoutes })(zeroBrowserContract);
+  return setupApp({ context, routes: browserRoutes })(browserContract);
 }
 
 function authorizationClient(baseUrl = "http://api.test") {
@@ -92,7 +92,7 @@ function authorizationClient(baseUrl = "http://api.test") {
     baseUrl,
     context,
     routes: browserAuthorizationRoutes,
-  })(zeroBrowserAuthorizationRequestsContract);
+  })(browserAuthorizationRequestsContract);
 }
 
 function chatThreadsClient() {
@@ -308,6 +308,27 @@ async function reconcileBrowsers(
 }
 
 describe("okou browser route", () => {
+  it("projects the assistant name in run-required errors by authenticated brand", async () => {
+    const { runs, actor } = await setupBrowserScenario();
+
+    for (const [publicBrand, origin, assistantName] of [
+      ["vm0", "https://app.okou.ai", "Zero"],
+      ["okou", "https://app.vm0.ai", "Okou"],
+    ] as const) {
+      const rejected = await requestBrowserUse({
+        ...browserHeadersForRun(runs, actor, randomUUID(), publicBrand),
+        origin,
+      });
+      expect(rejected.status).toBe(400);
+      await expect(rejected.json()).resolves.toStrictEqual({
+        error: {
+          code: "BROWSER_CHAT_THREAD_REQUIRED",
+          message: `Managed browsers can only be started from a ${assistantName} chat run`,
+        },
+      });
+    }
+  });
+
   it("keeps managed browser access off for a default chat thread", async () => {
     const { runs, chat, actor, agent } = await setupBrowserScenario();
     const sent = await chat.requestSendEvent(

@@ -1,6 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { zeroBrowserAuthorizationRequestsContract } from "@okouai/api-contracts/contracts/zero-browser";
+import { browserAuthorizationRequestsContract } from "@okouai/api-contracts/contracts/browser";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -31,7 +31,7 @@ describe("browser authorization page", () => {
     );
 
     context.mocks.api(
-      zeroBrowserAuthorizationRequestsContract.get,
+      browserAuthorizationRequestsContract.get,
       ({ respond }) => {
         return respond(200, {
           expiresAt: "2026-07-27T12:00:00Z",
@@ -41,7 +41,7 @@ describe("browser authorization page", () => {
       },
     );
     context.mocks.api(
-      zeroBrowserAuthorizationRequestsContract.apply,
+      browserAuthorizationRequestsContract.apply,
       ({ respond }) => {
         enabled = true;
         return respond(200, { ok: true, cloudBrowserEnabled: true });
@@ -78,7 +78,7 @@ describe("browser authorization page", () => {
       "https://app.okou.ai/browser/authorize/vm0_browser_authorization_request_test",
     );
     context.mocks.api(
-      zeroBrowserAuthorizationRequestsContract.get,
+      browserAuthorizationRequestsContract.get,
       ({ respond }) => {
         return respond(200, {
           expiresAt: "2026-07-27T12:00:00Z",

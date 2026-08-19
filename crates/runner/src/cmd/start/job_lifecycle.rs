@@ -19,6 +19,8 @@ pub(super) enum RunCleanupDisposition {
     ActiveOrUnknown,
     /// The sandbox has been accepted by the idle pool.
     IdlePoolOwned,
+    /// The sandbox and budget were delivered to a claimed exact successor.
+    HandoffOwned,
     /// The active sandbox was explicitly destroyed and destroy returned normally.
     DestroyCompleted,
     /// Normal completion already cleared, or no longer owns, active status.
@@ -35,7 +37,8 @@ impl RunCleanupState {
     const ACTIVE_OR_UNKNOWN: u8 = 0;
     const DESTROY_COMPLETED: u8 = 1;
     const IDLE_POOL_OWNED: u8 = 2;
-    const STATUS_REMOVED: u8 = 3;
+    const HANDOFF_OWNED: u8 = 3;
+    const STATUS_REMOVED: u8 = 4;
 
     pub(super) fn new() -> Self {
         Self {
@@ -47,6 +50,7 @@ impl RunCleanupState {
         match self.state.load(Ordering::Acquire) {
             Self::STATUS_REMOVED => RunCleanupDisposition::StatusRemoved,
             Self::IDLE_POOL_OWNED => RunCleanupDisposition::IdlePoolOwned,
+            Self::HANDOFF_OWNED => RunCleanupDisposition::HandoffOwned,
             Self::DESTROY_COMPLETED => RunCleanupDisposition::DestroyCompleted,
             _ => RunCleanupDisposition::ActiveOrUnknown,
         }
@@ -58,6 +62,10 @@ impl RunCleanupState {
 
     pub(super) fn mark_destroy_completed(&self) {
         self.mark_at_least(Self::DESTROY_COMPLETED);
+    }
+
+    pub(super) fn mark_handoff_owned(&self) {
+        self.mark_at_least(Self::HANDOFF_OWNED);
     }
 
     pub(super) fn mark_status_removed(&self) {
@@ -102,6 +110,8 @@ pub(super) enum BudgetOwnership {
     /// The idle pool accepted the sandbox and its lease, so settlement performs no
     /// release. Reuse transfers the lease; idle destruction drops it.
     IdleOwned,
+    /// A claimed exact successor owns the sandbox and lease directly.
+    HandoffOwned,
 }
 
 impl BudgetOwnership {
@@ -113,10 +123,14 @@ impl BudgetOwnership {
         Self::IdleOwned
     }
 
+    pub(super) fn handoff_owned() -> Self {
+        Self::HandoffOwned
+    }
+
     fn release(self) {
         match self {
             Self::Active(lease) => drop(lease),
-            Self::IdleOwned => {}
+            Self::IdleOwned | Self::HandoffOwned => {}
         }
     }
 }
@@ -504,5 +518,16 @@ mod tests {
         state.mark_status_removed();
         state.mark_idle_pool_owned();
         assert_eq!(state.disposition(), RunCleanupDisposition::StatusRemoved);
+    }
+
+    #[test]
+    fn run_cleanup_state_tracks_direct_handoff_ownership() {
+        let state = RunCleanupState::new();
+
+        state.mark_handoff_owned();
+        assert_eq!(state.disposition(), RunCleanupDisposition::HandoffOwned);
+
+        state.mark_destroy_completed();
+        assert_eq!(state.disposition(), RunCleanupDisposition::HandoffOwned);
     }
 }

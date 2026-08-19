@@ -13,7 +13,7 @@ import {
   cliAuthTestEnableConnectorContract,
   cliAuthTestTokenContract,
 } from "@okouai/api-contracts/contracts/cli-auth-test";
-import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { zeroBillingStatusContract } from "@okouai/api-contracts/contracts/zero-billing";
 import {
   type DesktopAuthCallbackScheme,
@@ -29,7 +29,7 @@ import {
   type CodexDeviceAuthScope,
   codexDeviceAuthContract,
 } from "@okouai/api-contracts/contracts/codex-device-auth";
-import { zeroModelProvidersByTypeContract } from "@okouai/api-contracts/contracts/zero-model-providers";
+import { modelProvidersByTypeContract } from "@okouai/api-contracts/contracts/model-provider-routes";
 import { http, HttpResponse } from "msw";
 
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
@@ -573,7 +573,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
     },
 
     async readUserConnectors(actor: ApiTestUser, agentId: string) {
-      const client = authDeviceApp(context)(zeroUserConnectorsContract);
+      const client = authDeviceApp(context)(userConnectorsContract);
       const response = await accept(
         client.get({ params: { id: agentId }, headers: authenticate(actor) }),
         [200],
@@ -768,7 +768,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       actor: ApiTestUser,
       type: "claude-code-oauth-token" | "codex-oauth-token",
     ): Promise<void> {
-      const client = authDeviceApp(context)(zeroModelProvidersByTypeContract);
+      const client = authDeviceApp(context)(modelProvidersByTypeContract);
       await accept(
         client.delete({
           params: { type },

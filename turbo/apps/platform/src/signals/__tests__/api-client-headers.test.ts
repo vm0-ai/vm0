@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { waitFor } from "@testing-library/react";
 import { HttpResponse } from "msw";
 import { CLIENT_FORCE_UPGRADE_STATUS } from "@okouai/api-contracts/contracts/client-headers";
-import { zeroUserConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
+import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { toast } from "@okouai/ui/components/ui/sonner";
 
 import {
@@ -77,15 +77,12 @@ describe("api client headers", () => {
   it("adds type, version, session, and per-request ids to contract requests", async () => {
     const observedHeaders: ObservedClientHeaders[] = [];
     const agentId = "c0000000-0000-4000-a000-000000000001";
-    context.mocks.api(
-      zeroUserConnectorsContract.get,
-      ({ request, respond }) => {
-        observedHeaders.push(observedClientHeaders(request));
-        return respond(200, { enabledConnectorSlugs: [] });
-      },
-    );
+    context.mocks.api(userConnectorsContract.get, ({ request, respond }) => {
+      observedHeaders.push(observedClientHeaders(request));
+      return respond(200, { enabledConnectorSlugs: [] });
+    });
 
-    const client = context.store.get(zeroClient$)(zeroUserConnectorsContract);
+    const client = context.store.get(zeroClient$)(userConnectorsContract);
 
     await accept(
       client.get({
@@ -411,15 +408,12 @@ describe("api client headers", () => {
     mockSignedInUser();
     const observedBypassHeaders: (string | null)[] = [];
     const agentId = "c0000000-0000-4000-a000-000000000001";
-    context.mocks.api(
-      zeroUserConnectorsContract.get,
-      ({ request, respond }) => {
-        observedBypassHeaders.push(
-          request.headers.get("x-vercel-protection-bypass"),
-        );
-        return respond(200, { enabledConnectorSlugs: [] });
-      },
-    );
+    context.mocks.api(userConnectorsContract.get, ({ request, respond }) => {
+      observedBypassHeaders.push(
+        request.headers.get("x-vercel-protection-bypass"),
+      );
+      return respond(200, { enabledConnectorSlugs: [] });
+    });
     context.mocks.http.get("*/api/okou/preview-bypass-test", ({ request }) => {
       observedBypassHeaders.push(
         request.headers.get("x-vercel-protection-bypass"),
@@ -427,7 +421,7 @@ describe("api client headers", () => {
       return new Response(null, { status: 204 });
     });
 
-    const client = context.store.get(zeroClient$)(zeroUserConnectorsContract);
+    const client = context.store.get(zeroClient$)(userConnectorsContract);
     await accept(client.get({ params: { id: agentId } }), [200]);
     await getFetchForTest()("/api/okou/preview-bypass-test");
 
@@ -457,13 +451,13 @@ describe("api client headers", () => {
     await initializeI18n(DEFAULT_LOCALE);
     const toastError = vi.spyOn(toast, "error").mockReturnValue("toast-id");
     const agentId = "c0000000-0000-4000-a000-000000000001";
-    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+    context.mocks.api(userConnectorsContract.get, ({ respond }) => {
       return respond(403, {
         error: { code: "FORBIDDEN", message: "" },
       });
     });
 
-    const client = context.store.get(zeroClient$)(zeroUserConnectorsContract);
+    const client = context.store.get(zeroClient$)(userConnectorsContract);
 
     await expect(
       accept(client.get({ params: { id: agentId } }), [200]),
@@ -481,7 +475,7 @@ describe("api client headers", () => {
       );
     });
 
-    const client = context.store.get(zeroClient$)(zeroUserConnectorsContract);
+    const client = context.store.get(zeroClient$)(userConnectorsContract);
     const response = await client.get({ params: { id: agentId } });
 
     expect(response.status).toBe(CLIENT_FORCE_UPGRADE_STATUS);

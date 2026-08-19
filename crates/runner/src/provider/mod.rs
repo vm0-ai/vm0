@@ -516,6 +516,7 @@ pub struct ClaimedJob {
     context: ExecutionContext,
     completion_auth: CompletionAuth,
     active_input_source: Option<ActiveInputSource>,
+    api_claim_request_elapsed: Option<Duration>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -542,22 +543,30 @@ impl ClaimedJob {
     pub(crate) fn api(
         expected_run_id: RunId,
         context: ExecutionContext,
+        api_claim_request_elapsed: Duration,
     ) -> Result<Self, ClaimedJobRunIdMismatch> {
-        Self::api_with_optional_source(expected_run_id, context, None)
+        Self::api_with_optional_source(expected_run_id, context, None, api_claim_request_elapsed)
     }
 
     pub(crate) fn api_with_active_input_source(
         expected_run_id: RunId,
         context: ExecutionContext,
         active_input_source: ActiveInputSource,
+        api_claim_request_elapsed: Duration,
     ) -> Result<Self, ClaimedJobRunIdMismatch> {
-        Self::api_with_optional_source(expected_run_id, context, Some(active_input_source))
+        Self::api_with_optional_source(
+            expected_run_id,
+            context,
+            Some(active_input_source),
+            api_claim_request_elapsed,
+        )
     }
 
     fn api_with_optional_source(
         expected_run_id: RunId,
         context: ExecutionContext,
         active_input_source: Option<ActiveInputSource>,
+        api_claim_request_elapsed: Duration,
     ) -> Result<Self, ClaimedJobRunIdMismatch> {
         Self::validate_run_id(expected_run_id, &context)?;
         let completion_auth =
@@ -566,6 +575,7 @@ impl ClaimedJob {
             context,
             completion_auth,
             active_input_source,
+            api_claim_request_elapsed: Some(api_claim_request_elapsed),
         })
     }
 
@@ -587,6 +597,7 @@ impl ClaimedJob {
             context,
             completion_auth: CompletionAuth::local(),
             active_input_source,
+            api_claim_request_elapsed: None,
         })
     }
 
@@ -598,6 +609,10 @@ impl ClaimedJob {
 
     pub(crate) fn context(&self) -> &ExecutionContext {
         &self.context
+    }
+
+    pub(crate) fn api_claim_request_elapsed(&self) -> Option<Duration> {
+        self.api_claim_request_elapsed
     }
 
     #[cfg(test)]
@@ -775,7 +790,11 @@ mod tests {
         let expected_run_id = RunId::nil();
         let context_run_id = RunId::new_v4();
 
-        let Err(err) = ClaimedJob::api(expected_run_id, minimal_context(context_run_id)) else {
+        let Err(err) = ClaimedJob::api(
+            expected_run_id,
+            minimal_context(context_run_id),
+            Duration::from_millis(1),
+        ) else {
             panic!("mismatched context must be rejected");
         };
 
@@ -792,8 +811,8 @@ mod tests {
     fn claimed_job_accepts_matching_api_context() {
         let run_id = RunId::nil();
 
-        let claimed =
-            ClaimedJob::api(run_id, minimal_context(run_id)).expect("matching context is valid");
+        let claimed = ClaimedJob::api(run_id, minimal_context(run_id), Duration::from_millis(1))
+            .expect("matching context is valid");
         let (context, completion_auth, active_input_source) = claimed.into_parts();
 
         assert_eq!(context.run_id, run_id);

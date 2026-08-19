@@ -1,5 +1,137 @@
 # Changelog
 
+## [8.572.1](https://github.com/vm0-ai/vm0/compare/core-v8.572.0...core-v8.572.1) (2026-08-19)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.341.2
+
+## [8.572.0](https://github.com/vm0-ai/vm0/compare/core-v8.571.0...core-v8.572.0) (2026-08-19)
+
+
+### Features
+
+* support seedance 2.5 1080p video generation ([#28113](https://github.com/vm0-ai/vm0/issues/28113)) ([53bcc41](https://github.com/vm0-ai/vm0/commit/53bcc411e5ca63f00eac1be61269940e1a43560c))
+
+
+### Bug Fixes
+
+* route managed deepseek models through openrouter ([#28145](https://github.com/vm0-ai/vm0/issues/28145)) ([3a805bc](https://github.com/vm0-ai/vm0/commit/3a805bc0de34e678ed888fa26a44e202b779d5d1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.341.1
+
+## [8.571.0](https://github.com/vm0-ai/vm0/compare/core-v8.570.2...core-v8.571.0) (2026-08-19)
+
+
+### Features
+
+* **connectors:** add account storage foundation ([#28066](https://github.com/vm0-ai/vm0/issues/28066)) ([71aa5ef](https://github.com/vm0-ai/vm0/commit/71aa5ef49d8f1c439e6af1c98d8830fbcbc80d55))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.341.0
+
+## [8.570.2](https://github.com/vm0-ai/vm0/compare/core-v8.570.1...core-v8.570.2) (2026-08-19)
+
+
+### Bug Fixes
+
+* **composer:** flush pending ime dom changes before submit ([#28045](https://github.com/vm0-ai/vm0/issues/28045)) ([2ad0862](https://github.com/vm0-ai/vm0/commit/2ad08627c7599840af4c82103032edab250e5e4d))
+
+## [8.570.1](https://github.com/vm0-ai/vm0/compare/core-v8.570.0...core-v8.570.1) (2026-08-19)
+
+
+### Refactoring
+
+* **chat:** remove inline thinking blocks feature switch ([#28067](https://github.com/vm0-ai/vm0/issues/28067)) ([399a46a](https://github.com/vm0-ai/vm0/commit/399a46ab821def13790639170c652d4455544744))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.340.1
+
+## [8.570.0](https://github.com/vm0-ai/vm0/compare/core-v8.569.1...core-v8.570.0) (2026-08-18)
+
+
+### Features
+
+* add byteplus seedream 5 image models ([#28064](https://github.com/vm0-ai/vm0/issues/28064)) ([a0f3faa](https://github.com/vm0-ai/vm0/commit/a0f3faaa9fb9cd5850d7b994d00284dc9598e587))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.340.0
+
+## [8.569.1](https://github.com/vm0-ai/vm0/compare/core-v8.569.0...core-v8.569.1) (2026-08-18)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.339.2
+
+## [8.569.0](https://github.com/vm0-ai/vm0/compare/core-v8.568.0...core-v8.569.0) (2026-08-18)
+
+
+### Features
+
+* **app:** add new-chat image model defaults ([#27959](https://github.com/vm0-ai/vm0/issues/27959)) ([d4c0489](https://github.com/vm0-ai/vm0/commit/d4c048946bc46f692c7a868854adf7f456561219))
+* **core:** enable imageModelSelection for the staff org ([#28011](https://github.com/vm0-ai/vm0/issues/28011)) ([fe811f6](https://github.com/vm0-ai/vm0/commit/fe811f65836975447f1ead620dd36e1fd2098b6d))
+* render thinking blocks inline in chat ([#27923](https://github.com/vm0-ai/vm0/issues/27923)) ([960d256](https://github.com/vm0-ai/vm0/commit/960d25691194d9ec7bf4454eb7d6a0fc7580c4dc))
+
+
+### Refactoring
+
+* **connectors:** neutralize the user connectors contract declarations ([#28001](https://github.com/vm0-ai/vm0/issues/28001)) ([56cc9f8](https://github.com/vm0-ai/vm0/commit/56cc9f81029a44b98f1ffd9d264b88a9292470d6)), closes [#27992](https://github.com/vm0-ai/vm0/issues/27992)
+* **contracts:** neutralize the capability contract declarations ([#28000](https://github.com/vm0-ai/vm0/issues/28000)) ([d767712](https://github.com/vm0-ai/vm0/commit/d7677123266cd6acfe35d36603ea936a71cc2ba6)), closes [#27432](https://github.com/vm0-ai/vm0/issues/27432)
+* **contracts:** neutralize uploads goals and host contract naming ([#27934](https://github.com/vm0-ai/vm0/issues/27934)) ([3f5f274](https://github.com/vm0-ai/vm0/commit/3f5f274ad182f1162c6f0165de054b9ffcf9b077)), closes [#27911](https://github.com/vm0-ai/vm0/issues/27911)
+* **contracts:** rename the org member route contract module ([#27954](https://github.com/vm0-ai/vm0/issues/27954)) ([66d5014](https://github.com/vm0-ai/vm0/commit/66d50149f552adf85e8625e2df14daf6c3520f06)), closes [#27942](https://github.com/vm0-ai/vm0/issues/27942)
+* **contracts:** rename the run route contract module ([#27949](https://github.com/vm0-ai/vm0/issues/27949)) ([7404f55](https://github.com/vm0-ai/vm0/commit/7404f5565480aedb84833d9142430fecdc3f8c9f)), closes [#27943](https://github.com/vm0-ai/vm0/issues/27943)
+* remove presentationArtifactViewport feature switch ([#28013](https://github.com/vm0-ai/vm0/issues/28013)) ([172743f](https://github.com/vm0-ai/vm0/commit/172743f2814636af0d7dc7dfce38058b03c18c52))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.339.1
+
+## [8.568.0](https://github.com/vm0-ai/vm0/compare/core-v8.567.0...core-v8.568.0) (2026-08-18)
+
+
+### Features
+
+* **chat:** add mark unread action ([#27886](https://github.com/vm0-ai/vm0/issues/27886)) ([e6e1e79](https://github.com/vm0-ai/vm0/commit/e6e1e79e3df60e0564b2186503faaf6f3cb8290c))
+
+
+### Refactoring
+
+* **contracts:** neutralize usage and model policy contract naming ([#27928](https://github.com/vm0-ai/vm0/issues/27928)) ([62ed800](https://github.com/vm0-ai/vm0/commit/62ed800549a54e26f9c04826864f804bc748b9c9)), closes [#27912](https://github.com/vm0-ai/vm0/issues/27912)
+* **contracts:** rename the org route contract module ([#27950](https://github.com/vm0-ai/vm0/issues/27950)) ([91dc1e4](https://github.com/vm0-ai/vm0/commit/91dc1e4c0e9475ecc18edcda30c6a918b2eab0ee))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.339.0
+
 ## [8.567.0](https://github.com/vm0-ai/vm0/compare/core-v8.566.2...core-v8.567.0) (2026-08-18)
 
 

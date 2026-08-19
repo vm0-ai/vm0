@@ -1487,7 +1487,7 @@ async function validatePermissionBundleRef(
   }
   const snapshot = await loadConnectorRuntimeSnapshot(db);
   const bundle = await loadCustomConnectorPermissionBundle({
-    snapshot,
+    catalog: snapshot.serverFirewallMetadata,
     ref: permissionBundleRef,
   });
   return bundle
@@ -2502,7 +2502,7 @@ export function getCustomConnectorPermissionBundle(args: {
     }
     const snapshot = await loadConnectorRuntimeSnapshot(db);
     const bundle = await loadCustomConnectorPermissionBundle({
-      snapshot,
+      catalog: snapshot.serverFirewallMetadata,
       ref: permissionBundleRef,
     });
     if (!bundle) {
@@ -3152,6 +3152,7 @@ export async function loadCustomConnectorRuntimeData(
     readonly orgId: string;
     readonly userId: string;
     readonly connectorIds: readonly string[] | undefined;
+    readonly memberConnectorIdsByCustomConnectorId: ReadonlyMap<string, string>;
     readonly measure?: CustomConnectorRuntimeDataTimingMeasure;
   },
 ): Promise<
@@ -3215,6 +3216,8 @@ export async function loadCustomConnectorRuntimeData(
       orgId: args.orgId,
       userId: args.userId,
       definitions,
+      memberConnectorIdsByCustomConnectorId:
+        args.memberConnectorIdsByCustomConnectorId,
     });
     const valuesByConnectorId = new Map<string, StoredValueRow[]>();
     for (const value of runtimeStorage.values) {
