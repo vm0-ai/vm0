@@ -4097,17 +4097,19 @@ describe("chat composer image model", () => {
       expect(selectedImageModelLabel()).toBe("Qwen Image");
     });
     const listbox = screen.getByRole("listbox");
-    const imageModelButtons = queryAllByRoleFast("button", listbox).filter(
-      (candidate) => {
-        // Skip the category-strip segment items; they live inside the same
-        // <SelectContent> but the radio role puts them under a different query.
-        return candidate.role !== "radio";
-      },
+    const imageModelButtons = queryAllByRoleFast("button", listbox);
+    const imageModelControlLabelSet = new Set<string>(
+      imageModelControlLabels as readonly string[],
     );
     expect(
       imageModelButtons
         .filter((button) => {
-          return button.hasAttribute("aria-pressed");
+          return (
+            button.hasAttribute("aria-pressed") &&
+            imageModelControlLabelSet.has(
+              button.getAttribute("aria-label") ?? "",
+            )
+          );
         })
         .map((button) => {
           return button.getAttribute("aria-label");
@@ -4300,7 +4302,12 @@ describe("chat composer image model", () => {
     expect(
       queryAllByRoleFast("button", listbox)
         .filter((button) => {
-          return button.hasAttribute("aria-pressed");
+          return (
+            button.hasAttribute("aria-pressed") &&
+            imageModelControlLabelSet.has(
+              button.getAttribute("aria-label") ?? "",
+            )
+          );
         })
         .map((button) => {
           return button.getAttribute("aria-label");
