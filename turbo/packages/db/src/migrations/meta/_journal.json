@@ -974,6 +974,13 @@
       "when": 1787075567656,
       "tag": "0946_connector_account_expansion",
       "breakpoints": true
+    },
+    {
+      "idx": 947,
+      "version": "7",
+      "when": 1787110000184,
+      "tag": "0947_custom_model_gateway_provider_types",
+      "breakpoints": true
     }
   ]
 }

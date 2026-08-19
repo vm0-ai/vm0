@@ -5918,7 +5918,7 @@ describe("CHAT-02: run-level model overrides", () => {
       {
         model: "claude-sonnet-5",
         isDefault: true,
-        defaultProviderType: "vercel-ai-gateway",
+        defaultProviderType: "custom-anthropic-messages",
         credentialScope: "org",
         modelProviderId: null,
         modelProviderSurfaceId: surfaceId,
@@ -6425,7 +6425,7 @@ describe("CHAT-02: run-level model overrides", () => {
       {
         model: "claude-sonnet-5",
         isDefault: true,
-        defaultProviderType: "vercel-ai-gateway",
+        defaultProviderType: "custom-anthropic-messages",
         credentialScope: "org",
         modelProviderId: null,
         modelProviderSurfaceId: surfaceId,
