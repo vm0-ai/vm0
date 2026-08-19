@@ -4,10 +4,10 @@ import { command, computed } from "ccstate";
 import { and, count, eq } from "drizzle-orm";
 import { zeroAgentCustomConnectorsContract } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 import {
-  zeroAgentsByIdContract,
-  zeroAgentsMainContract,
-  type ZeroAgentVisibility,
-} from "@okouai/api-contracts/contracts/zero-agents";
+  agentsByIdContract,
+  agentsMainContract,
+  type AgentVisibility,
+} from "@okouai/api-contracts/contracts/agents";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { randomPresetAvatar } from "@okouai/core/agent-avatar";
@@ -58,12 +58,12 @@ interface AgentUpdateBody {
   readonly description?: string;
   readonly sound?: string;
   readonly avatarUrl?: string | null;
-  readonly visibility?: ZeroAgentVisibility;
+  readonly visibility?: AgentVisibility;
 }
 
 interface ExistingAgentVisibility {
   readonly owner: string | null;
-  readonly visibility: ZeroAgentVisibility | null;
+  readonly visibility: AgentVisibility | null;
 }
 
 interface ExistingAgentForUpdate extends ExistingAgentVisibility {
@@ -216,7 +216,7 @@ function requireAgentConfigurationPermission(
 function visibilityOwnerError(
   existing: ExistingAgentVisibility,
   member: AgentMember,
-  requestedVisibility: ZeroAgentVisibility | undefined,
+  requestedVisibility: AgentVisibility | undefined,
 ) {
   if (
     requestedVisibility === undefined ||
@@ -233,8 +233,8 @@ async function publicVisibilitySlotError(
   args: {
     readonly writeDb: Db;
     readonly orgId: string;
-    readonly currentVisibility: ZeroAgentVisibility | null;
-    readonly nextVisibility: ZeroAgentVisibility;
+    readonly currentVisibility: AgentVisibility | null;
+    readonly nextVisibility: AgentVisibility;
   },
   signal: AbortSignal,
 ) {
@@ -264,8 +264,8 @@ function validateAgentVisibilityUpdate(
     readonly orgId: string;
     readonly member: AgentMember;
     readonly existing: ExistingAgentVisibility;
-    readonly requestedVisibility: ZeroAgentVisibility | undefined;
-    readonly nextVisibility: ZeroAgentVisibility;
+    readonly requestedVisibility: AgentVisibility | undefined;
+    readonly nextVisibility: AgentVisibility;
   },
   signal: AbortSignal,
 ) {
@@ -291,7 +291,7 @@ function validateAgentVisibilityUpdate(
 
 function requireExistingAgentVisibility(
   existing: ExistingAgentVisibility,
-): ZeroAgentVisibility {
+): AgentVisibility {
   if (existing.visibility === null) {
     throw new Error("Existing zero agent is missing visibility");
   }
@@ -306,7 +306,7 @@ function upsertZeroAgentAfterCompose(
     readonly name: string;
     readonly owner: string;
     readonly body: AgentUpdateBody;
-    readonly visibility: ZeroAgentVisibility;
+    readonly visibility: AgentVisibility;
   },
 ) {
   return writeDb
@@ -357,7 +357,7 @@ async function readAgentForResponse(
   return rows[0] ?? null;
 }
 
-const createAgentBody$ = bodyResultOf(zeroAgentsMainContract.create);
+const createAgentBody$ = bodyResultOf(agentsMainContract.create);
 
 const createAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
@@ -491,7 +491,7 @@ const listAgentsInner$ = computed(async (get) => {
 
 const getAgentInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(zeroAgentsByIdContract.get));
+  const params = get(pathParamsOf(agentsByIdContract.get));
   const agent = await get(
     agentDetail({
       orgId: auth.orgId,
@@ -580,13 +580,13 @@ const updateAgentCustomConnectorsBody$ = bodyResultOf(
   zeroAgentCustomConnectorsContract.update,
 );
 
-const updateAgentBody$ = bodyResultOf(zeroAgentsByIdContract.update);
+const updateAgentBody$ = bodyResultOf(agentsByIdContract.update);
 
 const updateAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const publicBrand = get(publicBrand$);
   const member = { userId: auth.userId, role: auth.orgRole ?? "member" };
-  const params = get(pathParamsOf(zeroAgentsByIdContract.update));
+  const params = get(pathParamsOf(agentsByIdContract.update));
   const body = await get(updateAgentBody$);
   signal.throwIfAborted();
   if (!body.ok) {
@@ -661,7 +661,7 @@ const updateAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const updateAgentMetadataBody$ = bodyResultOf(
-  zeroAgentsByIdContract.updateMetadata,
+  agentsByIdContract.updateMetadata,
 );
 
 const updateAgentMetadataInner$ = command(
@@ -669,7 +669,7 @@ const updateAgentMetadataInner$ = command(
     const auth = get(organizationAuthContext$);
     const publicBrand = get(publicBrand$);
     const member = { userId: auth.userId, role: auth.orgRole ?? "member" };
-    const params = get(pathParamsOf(zeroAgentsByIdContract.updateMetadata));
+    const params = get(pathParamsOf(agentsByIdContract.updateMetadata));
     const body = await get(updateAgentMetadataBody$);
     signal.throwIfAborted();
     if (!body.ok) {
@@ -740,7 +740,7 @@ const updateAgentMetadataInner$ = command(
 const deleteAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const member = { userId: auth.userId, role: auth.orgRole ?? "member" };
-  const params = get(pathParamsOf(zeroAgentsByIdContract.delete));
+  const params = get(pathParamsOf(agentsByIdContract.delete));
 
   const writeDb = set(writeDb$);
   const [agent] = await writeDb
@@ -973,27 +973,27 @@ const agentDeleteAuth = {
 
 export const agentsRoutes: readonly RouteEntry[] = [
   {
-    route: zeroAgentsMainContract.create,
+    route: agentsMainContract.create,
     handler: authRoute(agentWriteAuth, createAgentInner$),
   },
   {
-    route: zeroAgentsMainContract.list,
+    route: agentsMainContract.list,
     handler: authRoute(agentReadAuth, listAgentsInner$),
   },
   {
-    route: zeroAgentsByIdContract.get,
+    route: agentsByIdContract.get,
     handler: authRoute(agentReadAuth, getAgentInner$),
   },
   {
-    route: zeroAgentsByIdContract.update,
+    route: agentsByIdContract.update,
     handler: authRoute(agentWriteAuth, updateAgentInner$),
   },
   {
-    route: zeroAgentsByIdContract.updateMetadata,
+    route: agentsByIdContract.updateMetadata,
     handler: authRoute(agentWriteAuth, updateAgentMetadataInner$),
   },
   {
-    route: zeroAgentsByIdContract.delete,
+    route: agentsByIdContract.delete,
     handler: authRoute(agentDeleteAuth, deleteAgentInner$),
   },
   {

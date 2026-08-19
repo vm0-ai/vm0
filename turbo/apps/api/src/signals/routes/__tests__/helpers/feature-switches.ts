@@ -2,7 +2,7 @@ import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zer
 
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { setupApp } from "../../../../__tests__/test-helpers";
-import { createZeroRouteMocks } from "./zero-route-test";
+import { createRouteMocks } from "./route-test";
 import { featureSwitchesRoutes } from "../../feature-switches";
 
 type ClerkOrgRole = "org:admin" | "org:member";
@@ -27,7 +27,7 @@ function authenticateFeatureSwitchActor(
   context: TestContext,
   actor: FeatureSwitchActor,
 ): void {
-  createZeroRouteMocks(context).clerk.session(
+  createRouteMocks(context).clerk.session(
     actor.userId,
     actor.orgId,
     actor.orgRole,

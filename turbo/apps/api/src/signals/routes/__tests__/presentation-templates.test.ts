@@ -22,12 +22,12 @@ import { mockEnv } from "../../../lib/env";
 import { nowDate } from "../../../lib/time";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { presentationTemplatesRoutes } from "../presentation-templates";
 
 const context = testContext();
 const bdd = createBddApi(context);
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const ARTIFACTS_BUCKET = "test-user-artifacts";
 
 interface StoredObject {

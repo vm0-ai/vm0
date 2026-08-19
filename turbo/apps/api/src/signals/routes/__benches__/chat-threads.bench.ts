@@ -53,7 +53,7 @@ import { currentConnectorCatalogValidatorIdentity } from "../../services/connect
 import { normalizeRunMetadata } from "../../services/agent-run-metadata-write.service";
 import { seedUserModelProvider$ } from "./helpers/model-providers";
 import { seedOrgMembership$ } from "../__tests__/helpers/org-membership";
-import { createZeroRouteMocks } from "../__tests__/helpers/zero-route-test";
+import { createRouteMocks } from "../__tests__/helpers/route-test";
 import { billingStatusRoutes } from "../billing-status";
 import { chatThreadRoutes } from "../chat-threads";
 import { connectorsRoutes } from "../connectors";
@@ -84,7 +84,7 @@ const zeroPersonalModelProvidersMainTestRoutes = Object.freeze([
 
 const context = testContext();
 const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 const TARGET_RUN_COUNT = 200;
 const TARGET_MESSAGES_PER_RUN = 3;

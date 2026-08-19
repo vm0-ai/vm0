@@ -14,7 +14,7 @@ import {
 } from "../../../test-fixtures/connector-catalog";
 import { connectorsSlugCallbackRoutes } from "../connectors-slug-callback";
 import { connectorsRoutes } from "../connectors";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...connectorsSlugCallbackRoutes,
@@ -22,7 +22,7 @@ const TEST_APP_ROUTES = Object.freeze([
 ]);
 
 const context = testContext();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 const BASE_URL = "https://app.vm0.test";
 const API_ORIGIN = "https://api.vm0.ai";

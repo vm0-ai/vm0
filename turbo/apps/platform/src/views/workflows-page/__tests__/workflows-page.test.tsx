@@ -16,10 +16,10 @@ import {
   type WorkflowSummary,
   type WorkflowAutomationSummary,
 } from "@okouai/api-contracts/contracts/workflows";
-import { zeroAgentsByIdContract } from "@okouai/api-contracts/contracts/zero-agents";
+import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
 import { integrationsGithubContract } from "@okouai/api-contracts/contracts/integrations-github";
 import { strapiIntegrationsContract } from "@okouai/api-contracts/contracts/strapi-integrations";
-import type { TeamComposeItem } from "@okouai/api-contracts/contracts/zero-team";
+import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
@@ -701,7 +701,7 @@ function mockAgentPageApis(): void {
     agent(AGENT_ID, "Research Bot"),
     agent(OTHER_AGENT_ID, "Support Bot"),
   ]);
-  context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
+  context.mocks.api(agentsByIdContract.get, ({ params, respond }) => {
     const displayName =
       params.id === OTHER_AGENT_ID ? "Support Bot" : "Research Bot";
     return respond(200, {

@@ -18,7 +18,7 @@ import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { setupApp } from "../../../../__tests__/test-helpers";
 import type { ApiTestUser } from "./api-bdd";
 import { mockClerkMembership } from "./api-bdd-clerk";
-import { createZeroRouteMocks } from "./zero-route-test";
+import { createRouteMocks } from "./route-test";
 import { integrationsGithubRoutes } from "../../integrations-github";
 import { githubOauthRoutes } from "../../github-oauth";
 import { connectorsRoutes } from "../../connectors";
@@ -241,7 +241,7 @@ function mockGithubUserOAuthExchange(args: {
 }
 
 export function createGithubBddApi(context: TestContext) {
-  const routeMocks = createZeroRouteMocks(context);
+  const routeMocks = createRouteMocks(context);
 
   function authenticate(auth: GithubActorAuth): {
     readonly authorization?: string;

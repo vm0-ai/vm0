@@ -40,7 +40,7 @@ import {
   generatedStripeCustomerId,
   postUsageAllowanceInvoicePaid,
 } from "./helpers/stripe-billing-webhook";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { usageRecordRoutes } from "../usage-record";
 
 const context = testContext();
@@ -74,7 +74,7 @@ function authenticate(actor: ApiTestUser | null): AuthHeaders {
     return {};
   }
 
-  createZeroRouteMocks(context).clerk.session(
+  createRouteMocks(context).clerk.session(
     actor.userId,
     actor.orgId,
     actor.orgRole,

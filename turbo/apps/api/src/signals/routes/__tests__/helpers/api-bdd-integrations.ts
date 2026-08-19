@@ -57,7 +57,7 @@ import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { setupApp } from "../../../../__tests__/test-helpers";
 import type { ApiTestUser, ApiTestUserOptions } from "./api-bdd";
 import { sessionHistoryBlobBodyForKey } from "./api-bdd-session-history";
-import { createZeroRouteMocks } from "./zero-route-test";
+import { createRouteMocks } from "./route-test";
 import { githubOauthRoutes } from "../../github-oauth";
 import { integrationsGithubRoutes } from "../../integrations-github";
 import { testSlackStateRoutes } from "../../test-slack-state";
@@ -388,7 +388,7 @@ function configureClerkDirectory(
 
 function authenticate(
   context: TestContext,
-  routeMocks: ReturnType<typeof createZeroRouteMocks>,
+  routeMocks: ReturnType<typeof createRouteMocks>,
   actor: ApiTestUser | null,
 ): AuthHeaders {
   configureClerkDirectory(context, actor);
@@ -598,7 +598,7 @@ async function requestRawSlackDownloadFile(
 }
 
 export function createBddIntegrationApi(context: TestContext) {
-  const routeMocks = createZeroRouteMocks(context);
+  const routeMocks = createRouteMocks(context);
 
   return {
     user: createUser,

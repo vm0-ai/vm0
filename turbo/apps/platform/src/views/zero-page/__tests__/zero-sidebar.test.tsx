@@ -21,12 +21,12 @@ import {
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { zeroAgentsByIdContract } from "@okouai/api-contracts/contracts/zero-agents";
+import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
 import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-preferences";
 import {
-  zeroTeamContract,
+  teamContract,
   type TeamComposeItem,
-} from "@okouai/api-contracts/contracts/zero-team";
+} from "@okouai/api-contracts/contracts/team";
 
 import {
   createMockWorkflowAutomation,
@@ -138,7 +138,7 @@ function prepareAgentTeam(targetContext = context): TeamComposeItem[] {
     },
   ];
   targetContext.mocks.data.team(team);
-  targetContext.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
+  targetContext.mocks.api(agentsByIdContract.get, ({ params, respond }) => {
     const displayNameById: Record<string, string> = {
       [AGENT_ID]: "Zero",
       [RESEARCH_AGENT_ID]: "Research Agent",
@@ -1942,7 +1942,7 @@ describe("zero sidebar", () => {
     const team = prepareAgentTeam();
     const releaseRefresh = context.mocks.deferred<void>();
     let initialTeamServed = false;
-    context.mocks.api(zeroTeamContract.list, async ({ respond }) => {
+    context.mocks.api(teamContract.list, async ({ respond }) => {
       if (initialTeamServed) {
         await releaseRefresh.promise;
       }
@@ -3943,6 +3943,99 @@ describe("zero sidebar", () => {
         "Billing Agent",
         "Support Agent",
       ]);
+    });
+  });
+
+  it("shows a drag handle on reorderable pinned agents but not on the lead agent", async () => {
+    const pinnedAgentIds = prepareOverflowingPinnedAgents();
+    context.mocks.data.userPreferences({ pinnedAgentIds });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    await waitFor(() => {
+      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
+    });
+
+    expect(
+      within(pinnedAgentLink(grid, "Support Agent")).getByTestId(
+        "pinned-agent-drag-handle",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(pinnedAgentLink(grid, "Zero")).queryByTestId(
+        "pinned-agent-drag-handle",
+      ),
+    ).toBeNull();
+  });
+
+  it("marks the landing slot with an insertion caret while dragging", async () => {
+    const pinnedAgentIds = prepareOverflowingPinnedAgents();
+    context.mocks.data.userPreferences({ pinnedAgentIds });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    await waitFor(() => {
+      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
+    });
+
+    // Billing Agent sits after Support Agent, so a forwards drag lands after it.
+    const forwards = createDataTransferStub();
+    fireEvent.dragStart(pinnedAgentLink(grid, "Support Agent"), {
+      dataTransfer: forwards,
+    });
+    fireEvent.dragOver(pinnedAgentLink(grid, "Billing Agent"), {
+      dataTransfer: forwards,
+    });
+
+    await waitFor(() => {
+      expect(
+        within(grid).getAllByTestId("pinned-agent-drop-caret"),
+      ).toHaveLength(1);
+    });
+    expect(
+      within(pinnedAgentLink(grid, "Billing Agent")).getByTestId(
+        "pinned-agent-drop-caret",
+      ).className,
+    ).toContain("-right-");
+
+    fireEvent.dragEnd(pinnedAgentLink(grid, "Support Agent"), {
+      dataTransfer: forwards,
+    });
+    await waitFor(() => {
+      expect(
+        within(grid).queryAllByTestId("pinned-agent-drop-caret"),
+      ).toHaveLength(0);
+    });
+
+    // Research Agent sits before Support Agent, so a backwards drag lands before it.
+    const backwards = createDataTransferStub();
+    fireEvent.dragStart(pinnedAgentLink(grid, "Support Agent"), {
+      dataTransfer: backwards,
+    });
+    fireEvent.dragOver(pinnedAgentLink(grid, "Research Agent"), {
+      dataTransfer: backwards,
+    });
+
+    await waitFor(() => {
+      expect(
+        within(pinnedAgentLink(grid, "Research Agent")).getByTestId(
+          "pinned-agent-drop-caret",
+        ).className,
+      ).toContain("-left-");
     });
   });
 

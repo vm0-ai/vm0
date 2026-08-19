@@ -4,7 +4,7 @@ import {
   chatThreadByIdContract,
   chatThreadDraftContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import type { TeamComposeItem } from "@okouai/api-contracts/contracts/zero-team";
+import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
 import { workflowsCollectionContract } from "@okouai/api-contracts/contracts/workflows";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { pathname } from "../../../signals/location.ts";
