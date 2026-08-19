@@ -23,7 +23,7 @@ import {
   type PresentationTemplateRow,
 } from "./presentation-template-data.service";
 import { lockPresentationTemplateLifecycle } from "./presentation-template-lifecycle.service";
-import { preflightPresentationTemplate$ } from "./presentation-template-preflight.service";
+import { countPresentationTemplateSlides$ } from "./presentation-template-slide-count.service";
 
 const OBJECT_VALIDATION_CONCURRENCY = 8;
 
@@ -36,7 +36,6 @@ type VerificationResult =
         | "invalid_upload"
         | "page_count_mismatch"
         | "unsupported_format"
-        | "encrypted_file"
         | "too_large";
       readonly message: string;
     };
@@ -200,32 +199,36 @@ const resolvePresentationTemplateManifest$ = command(
   },
 );
 
-const verifyPresentationTemplateContents$ = command(
+/**
+ * The browser rendered these pages from a deck it opened successfully, so the
+ * archive is not re-validated here. What rendering cannot show is that the page
+ * images and the PPTX are the same deck: they arrive as two independent uploads
+ * paired only by the caller. Reading the slide count from the archive is the
+ * only independent check on that pairing.
+ */
+const verifyCommittedPageCount$ = command(
   async (
     { set },
     manifest: ResolvedPresentationTemplateManifest,
     signal: AbortSignal,
   ): Promise<VerificationResult> => {
-    const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
-    const preflight = await set(
-      preflightPresentationTemplate$,
+    const counted = await set(
+      countPresentationTemplateSlides$,
       {
-        bucket,
+        bucket: env("R2_USER_ARTIFACTS_BUCKET_NAME"),
         key: manifest.source.key,
-        filename: manifest.source.filename,
-        contentType: manifest.source.contentType,
         size: manifest.source.size,
       },
       signal,
     );
     signal.throwIfAborted();
-    if (!preflight.ok) {
-      return preflight;
+    if (!counted.ok) {
+      return verificationFailure("invalid_file", counted.message);
     }
-    if (preflight.slideCount !== manifest.pages.length) {
+    if (counted.slideCount !== manifest.pages.length) {
       return verificationFailure(
         "page_count_mismatch",
-        `The PPTX contains ${preflight.slideCount.toString()} slides but ${manifest.pages.length.toString()} page images were committed`,
+        `The PPTX contains ${counted.slideCount.toString()} slides but ${manifest.pages.length.toString()} page images were committed`,
       );
     }
     return { ok: true };
@@ -354,7 +357,7 @@ export const commitPresentationTemplate$ = command(
       return verificationError(resolved);
     }
     const verification = await set(
-      verifyPresentationTemplateContents$,
+      verifyCommittedPageCount$,
       resolved.manifest,
       signal,
     );

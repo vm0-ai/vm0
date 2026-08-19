@@ -456,6 +456,26 @@ describe("browser-rendered presentation template commit", () => {
     );
     expect(unsupported.body.error.code).toBe("unsupported_format");
 
+    // Nothing re-validates the archive format, but a deck whose slide count
+    // cannot be read cannot be paired with its pages either.
+    const unreadable = await uploadPrivateFile(actor, fixture, {
+      filename: "corrupt.pptx",
+      contentType: PRESENTATION_TEMPLATE_SOURCE_CONTENT_TYPE,
+      body: Buffer.alloc(2048, 7),
+    });
+    const invalid = await accept(
+      client.commit({
+        headers: webHeaders(),
+        body: {
+          requestId: randomUUID(),
+          sourceFileId: unreadable.id,
+          pageFileIds: [missingPage.id],
+        },
+      }),
+      [400],
+    );
+    expect(invalid.body.error.code).toBe("invalid_file");
+
     const listed = await accept(client.list({ headers: webHeaders() }), [200]);
     expect(listed.body).toStrictEqual([]);
   });
