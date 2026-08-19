@@ -7,6 +7,7 @@ import { testContext } from "../../../__tests__/test-context";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { createHistoricalAgentComposeFixture } from "../../../test-fixtures/historical-agent-composes";
+import { createDeferredPromise } from "../../utils";
 import {
   createAuthOrgAgentsBddApi,
   type ApiTestUser,
@@ -447,6 +448,48 @@ describe("ORG-02: membership admin matrix", () => {
     expect(exhausted.headers.get("Cache-Control")).toBe("no-store");
     expect(requests.listCalls()).toBe(3);
     expect(context.mocks.signalTimers.delay).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops sibling Clerk retries when a directory read is exhausted", async () => {
+    const admin = api.user();
+    api.mockClerkOrg(admin);
+    let siblingDelayAborted = false;
+    context.mocks.signalTimers.delay.mockImplementation((ms, options) => {
+      if (ms < 10_000) {
+        return Promise.resolve();
+      }
+      const signal = options?.signal;
+      if (!signal) {
+        throw new Error("Expected retry delay to receive an abort signal");
+      }
+      signal.throwIfAborted();
+      const deferred = createDeferredPromise<void>(signal);
+      signal.addEventListener(
+        "abort",
+        () => {
+          siblingDelayAborted = true;
+        },
+        { once: true },
+      );
+      return deferred.promise;
+    });
+    context.mocks.clerk.organizations.getOrganization.mockRejectedValueOnce(
+      new ClerkApiResponseTestError(10),
+    );
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockRejectedValue(
+      new ClerkApiResponseTestError(1),
+    );
+
+    const exhausted = await api.requestListMembers(admin, [503]);
+
+    expect(exhausted.headers.get("Retry-After")).toBe("1");
+    expect(
+      context.mocks.clerk.organizations.getOrganizationMembershipList,
+    ).toHaveBeenCalledTimes(3);
+    expect(
+      context.mocks.clerk.organizations.getOrganization,
+    ).toHaveBeenCalledTimes(1);
+    expect(siblingDelayAborted).toBeTruthy();
   });
 
   it("rejects Clerk member records without required user identifiers", async () => {

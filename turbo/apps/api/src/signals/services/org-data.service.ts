@@ -731,17 +731,28 @@ async function fetchOrgMemberDirectory(
   orgId: string,
   signal: AbortSignal,
 ) {
-  const [organization, memberships, invitations] = await Promise.all([
-    retryClerkRead(() => {
-      return client.organizations.getOrganization({ organizationId: orgId });
-    }, signal),
-    retryClerkRead(() => {
-      return listAllOrganizationMemberships(client.organizations, orgId);
-    }, signal),
-    retryClerkRead(() => {
-      return listAllPendingOrganizationInvitations(client.organizations, orgId);
-    }, signal),
-  ]);
+  const controller = new AbortController();
+  const readSignal = AbortSignal.any([signal, controller.signal]);
+  const [organization, memberships, invitations] = await onRejection(
+    Promise.all([
+      retryClerkRead(() => {
+        return client.organizations.getOrganization({ organizationId: orgId });
+      }, readSignal),
+      retryClerkRead(() => {
+        return listAllOrganizationMemberships(client.organizations, orgId);
+      }, readSignal),
+      retryClerkRead(() => {
+        return listAllPendingOrganizationInvitations(
+          client.organizations,
+          orgId,
+        );
+      }, readSignal),
+    ]),
+    () => {
+      controller.abort();
+    },
+  );
+  controller.abort();
   signal.throwIfAborted();
   return { organization, memberships, invitations };
 }
