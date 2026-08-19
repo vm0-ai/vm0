@@ -62,7 +62,9 @@ with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as connection:
     connection.sendto(b"vm0-udp-probe", ("192.0.2.1", 9999))
 print("UDP_PROBE_DONE")
 
-udp_query = dns_query(0x4501, "udp-dns.invalid")
+# Keep the protocol round trips on the runner-owned dnsmasq zone instead of
+# making an external upstream DNS response part of the test oracle.
+udp_query = dns_query(0x4501, "udp-dns.vm0-readiness.invalid")
 with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as connection:
     connection.settimeout(5)
     connection.sendto(udp_query, ("192.0.2.1", 53))
@@ -70,7 +72,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as connection:
 assert udp_response[:2] == udp_query[:2] and udp_response[2] & 0x80
 print("UDP_DNS_PROBE_DONE")
 
-tcp_query = dns_query(0x4502, "tcp-dns.invalid")
+tcp_query = dns_query(0x4502, "tcp-dns.vm0-readiness.invalid")
 with socket.create_connection(("192.0.2.1", 53), timeout=5) as connection:
     connection.sendall(struct.pack("!H", len(tcp_query)) + tcp_query)
     response_size = struct.unpack("!H", read_exact(connection, 2))[0]
@@ -147,12 +149,12 @@ EOF
                     .port == 9999) and
                 any(.[];
                     .type == "dns" and
-                    .host == "udp-dns.invalid" and
+                    .host == "udp-dns.vm0-readiness.invalid" and
                     .port == 53 and
                     .dns_event == "query") and
                 any(.[];
                     .type == "dns" and
-                    .host == "tcp-dns.invalid" and
+                    .host == "tcp-dns.vm0-readiness.invalid" and
                     .port == 53 and
                     .dns_event == "query") and
                 any(.[];
@@ -190,7 +192,8 @@ EOF
                 dns: [.[] |
                     select(
                         .type == "dns" and
-                        (.host == "udp-dns.invalid" or .host == "tcp-dns.invalid")) |
+                        (.host == "udp-dns.vm0-readiness.invalid" or
+                            .host == "tcp-dns.vm0-readiness.invalid")) |
                     {host, port, dns_event}],
                 replicate: [.[] |
                     select(.type == "http" and .host == "api.replicate.com") |
