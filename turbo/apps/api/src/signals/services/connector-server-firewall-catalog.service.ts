@@ -122,9 +122,7 @@ export interface ConnectorServerFirewallCatalog extends ConnectorServerFirewallS
 
 interface AcceptedConnectorServerFirewallEntry {
   readonly connector: ConnectorCatalogArtifactConnector;
-  readonly runtimeMethods: () =>
-    | readonly ConnectorAuthMethodRuntimeConfig[]
-    | undefined;
+  readonly runtimeMethods: () => readonly ConnectorAuthMethodRuntimeConfig[];
   firewall: AcceptedServerFirewall | undefined;
   routing: ConnectorCatalogFirewallRouting | undefined;
   permissionIndex: ConnectorServerFirewallPermissionIndex | undefined;
@@ -422,7 +420,7 @@ function acceptedEntries(args: {
   readonly artifact: ConnectorCatalogArtifact;
   readonly runtimeMethodsForSlug: (
     connectorSlug: ConnectorSlug,
-  ) => readonly ConnectorAuthMethodRuntimeConfig[] | undefined;
+  ) => readonly ConnectorAuthMethodRuntimeConfig[];
 }): ReadonlyMap<ConnectorSlug, AcceptedConnectorServerFirewallEntry> {
   const entries = new Map<
     ConnectorSlug,
@@ -508,16 +506,10 @@ function acceptedEntryExecutionMetadata(
   if (entry.executionMetadata !== undefined) {
     return entry.executionMetadata;
   }
-  const methods = entry.runtimeMethods();
-  if (methods === undefined) {
-    throw new Error(
-      `Accepted connector server firewall runtime is missing: ${entry.connector.slug}`,
-    );
-  }
   const executionMetadata = acceptedExecutionMetadata({
     firewall: acceptedEntryFirewall(entry),
     routing: acceptedEntryRouting(entry),
-    methods,
+    methods: entry.runtimeMethods(),
   });
   entry.executionMetadata = executionMetadata;
   return executionMetadata;
@@ -585,7 +577,7 @@ export function createAcceptedConnectorServerFirewallCatalog(args: {
   readonly artifact: ConnectorCatalogArtifact;
   readonly runtimeMethodsForSlug: (
     connectorSlug: ConnectorSlug,
-  ) => readonly ConnectorAuthMethodRuntimeConfig[] | undefined;
+  ) => readonly ConnectorAuthMethodRuntimeConfig[];
 }): ConnectorServerFirewallCatalog {
   const entries = acceptedEntries({
     artifact: args.artifact,
