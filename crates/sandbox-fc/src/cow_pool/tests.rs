@@ -1,4 +1,4 @@
-use super::create::{CowFileConfig, create_slot};
+use super::create::{CowFileConfig, create_slot, create_slot_with_copy_timeout};
 use super::state::CowPool;
 use super::*;
 use std::collections::VecDeque;
@@ -1191,25 +1191,95 @@ async fn warmup_with_bad_config_does_not_panic() {
     handle.cleanup().await;
 }
 
-#[test]
-fn create_slot_with_nonexistent_golden_cow_fails() {
+#[tokio::test]
+async fn create_slot_with_nonexistent_golden_cow_fails() {
     let tmp = tempfile::tempdir().unwrap();
     let config = CowFileConfig {
         workspaces_dir: tmp.path().to_owned(),
         base_size: 64 * 1024 * 1024,
         golden_cow: Some(PathBuf::from("/nonexistent/golden.img")),
     };
-    let err = create_slot(&config).unwrap_err();
+    let err = create_slot(&config).await.unwrap_err();
+    assert!(matches!(err, CowPoolError::CowFileCreation(_)));
     assert!(
-        matches!(err, CowPoolError::CowFileCreation(_)),
-        "expected CowFileCreation, got {err}"
+        err.to_string()
+            .contains("command failed: cp --sparse=always --"),
+        "expected bounded command failure, got {err}"
     );
     let entries: Vec<_> = std::fs::read_dir(tmp.path()).unwrap().collect();
     assert_eq!(entries.len(), 0);
 }
 
-#[test]
-fn create_slot_with_bad_golden_bitmap_removes_partial_workspace() {
+#[tokio::test]
+async fn create_slot_stalled_copy_times_out_and_removes_partial_workspace() {
+    let tmp = tempfile::tempdir().unwrap();
+    let workspaces = tmp.path().join("workspaces");
+    let golden = tmp.path().join("stalled-golden.img");
+    nix::unistd::mkfifo(
+        &golden,
+        nix::sys::stat::Mode::S_IRUSR | nix::sys::stat::Mode::S_IWUSR,
+    )
+    .unwrap();
+    let config = CowFileConfig {
+        workspaces_dir: workspaces.clone(),
+        base_size: nbd_cow::BLOCK_SIZE as u64,
+        golden_cow: Some(golden),
+    };
+
+    let err = create_slot_with_copy_timeout(&config, Duration::from_millis(50))
+        .await
+        .unwrap_err();
+
+    assert!(
+        err.to_string().contains("timed out after 50ms"),
+        "expected copy timeout, got {err}"
+    );
+    let entries: Vec<_> = std::fs::read_dir(&workspaces).unwrap().collect();
+    assert_eq!(entries.len(), 0);
+}
+
+#[tokio::test]
+async fn cleanup_completes_after_stalled_copy_timeout() {
+    let tmp = tempfile::tempdir().unwrap();
+    let workspaces = tmp.path().join("workspaces");
+    let golden = tmp.path().join("cleanup-stalled-golden.img");
+    nix::unistd::mkfifo(
+        &golden,
+        nix::sys::stat::Mode::S_IRUSR | nix::sys::stat::Mode::S_IWUSR,
+    )
+    .unwrap();
+    let file_config = CowFileConfig {
+        workspaces_dir: workspaces.clone(),
+        base_size: nbd_cow::BLOCK_SIZE as u64,
+        golden_cow: Some(golden),
+    };
+    let spawner: SlotSpawner = Arc::new(move |_config| {
+        let file_config = file_config.clone();
+        tokio::spawn(async move {
+            create_slot_with_copy_timeout(&file_config, Duration::from_millis(50))
+                .await
+                .map(PreparedCowSlot::new_for_test)
+        })
+    });
+    let pool = test_pool_with_spawner(test_config(tmp.path()), 1, 1, 1, Duration::ZERO, spawner);
+    let handle = CowPoolHandle::new_for_test(pool);
+    let warmup = tokio::spawn({
+        let handle = handle.clone();
+        async move { handle.warmup().await }
+    });
+    wait_for_snapshot(&handle, |snapshot| snapshot.pending == 1).await;
+
+    tokio::time::timeout(Duration::from_secs(2), handle.cleanup())
+        .await
+        .expect("cleanup remained blocked after copy timeout");
+    warmup.await.unwrap();
+
+    let entries: Vec<_> = std::fs::read_dir(&workspaces).unwrap().collect();
+    assert_eq!(entries.len(), 0);
+}
+
+#[tokio::test]
+async fn create_slot_with_bad_golden_bitmap_removes_partial_workspace() {
     let tmp = tempfile::tempdir().unwrap();
     let workspaces = tmp.path().join("workspaces");
     let golden = tmp.path().join("golden.img");
@@ -1221,7 +1291,7 @@ fn create_slot_with_bad_golden_bitmap_removes_partial_workspace() {
         base_size: 64 * 1024 * 1024,
         golden_cow: Some(golden),
     };
-    let err = create_slot(&config).unwrap_err();
+    let err = create_slot(&config).await.unwrap_err();
     assert!(
         matches!(err, CowPoolError::CowFileCreation(_)),
         "expected CowFileCreation, got {err}"
@@ -1230,8 +1300,8 @@ fn create_slot_with_bad_golden_bitmap_removes_partial_workspace() {
     assert_eq!(entries.len(), 0);
 }
 
-#[test]
-fn create_slot_with_golden_cow_without_bitmap_fails() {
+#[tokio::test]
+async fn create_slot_with_golden_cow_without_bitmap_fails() {
     let tmp = tempfile::tempdir().unwrap();
     let workspaces = tmp.path().join("workspaces");
     let golden = tmp.path().join("golden.img");
@@ -1242,7 +1312,7 @@ fn create_slot_with_golden_cow_without_bitmap_fails() {
         base_size: 64 * 1024 * 1024,
         golden_cow: Some(golden),
     };
-    let err = create_slot(&config).unwrap_err();
+    let err = create_slot(&config).await.unwrap_err();
     assert!(
         matches!(err, CowPoolError::CowFileCreation(_)),
         "expected CowFileCreation, got {err}"
@@ -1251,8 +1321,8 @@ fn create_slot_with_golden_cow_without_bitmap_fails() {
     assert_eq!(entries.len(), 0);
 }
 
-#[test]
-fn create_slot_with_invalid_golden_bitmap_removes_partial_workspace() {
+#[tokio::test]
+async fn create_slot_with_invalid_golden_bitmap_removes_partial_workspace() {
     let tmp = tempfile::tempdir().unwrap();
     let workspaces = tmp.path().join("workspaces");
     let golden = tmp.path().join("golden.img");
@@ -1265,7 +1335,7 @@ fn create_slot_with_invalid_golden_bitmap_removes_partial_workspace() {
         base_size: nbd_cow::BLOCK_SIZE as u64,
         golden_cow: Some(golden),
     };
-    let err = create_slot(&config).unwrap_err();
+    let err = create_slot(&config).await.unwrap_err();
     assert!(
         matches!(err, CowPoolError::CowFileCreation(_)),
         "expected CowFileCreation, got {err}"
@@ -1274,8 +1344,8 @@ fn create_slot_with_invalid_golden_bitmap_removes_partial_workspace() {
     assert_eq!(entries.len(), 0);
 }
 
-#[test]
-fn create_slot_with_dirty_bitmap_beyond_golden_cow_removes_partial_workspace() {
+#[tokio::test]
+async fn create_slot_with_dirty_bitmap_beyond_golden_cow_removes_partial_workspace() {
     let tmp = tempfile::tempdir().unwrap();
     let workspaces = tmp.path().join("workspaces");
     let golden = tmp.path().join("golden.img");
@@ -1288,7 +1358,7 @@ fn create_slot_with_dirty_bitmap_beyond_golden_cow_removes_partial_workspace() {
         base_size: nbd_cow::BLOCK_SIZE as u64,
         golden_cow: Some(golden),
     };
-    let err = create_slot(&config).unwrap_err();
+    let err = create_slot(&config).await.unwrap_err();
     assert!(
         matches!(err, CowPoolError::CowFileCreation(_)),
         "expected CowFileCreation, got {err}"
@@ -1297,8 +1367,8 @@ fn create_slot_with_dirty_bitmap_beyond_golden_cow_removes_partial_workspace() {
     assert_eq!(entries.len(), 0);
 }
 
-#[test]
-fn create_slot_with_non_utf8_golden_cow_copies_bitmap() {
+#[tokio::test]
+async fn create_slot_with_non_utf8_golden_cow_copies_bitmap() {
     let tmp = tempfile::tempdir().unwrap();
     let workspaces = tmp.path().join("workspaces");
     let golden_name = OsString::from_vec(b"golden-\xff.img".to_vec());
@@ -1312,7 +1382,7 @@ fn create_slot_with_non_utf8_golden_cow_copies_bitmap() {
         base_size: nbd_cow::BLOCK_SIZE as u64,
         golden_cow: Some(golden),
     };
-    let slot = create_slot(&config).unwrap();
+    let slot = create_slot(&config).await.unwrap();
     let cow_bitmap = nbd_cow::cow::bitmap_path_for(&slot.cow_file());
     assert_eq!(
         std::fs::read(cow_bitmap).unwrap(),
@@ -1321,8 +1391,8 @@ fn create_slot_with_non_utf8_golden_cow_copies_bitmap() {
     destroy_slot_sync(slot);
 }
 
-#[test]
-fn create_slot_with_read_only_golden_cow_makes_workspace_cow_writable() {
+#[tokio::test]
+async fn create_slot_with_read_only_golden_cow_makes_workspace_cow_writable() {
     let tmp = tempfile::tempdir().unwrap();
     let workspaces = tmp.path().join("workspaces");
     let golden = tmp.path().join("golden.img");
@@ -1336,7 +1406,7 @@ fn create_slot_with_read_only_golden_cow_makes_workspace_cow_writable() {
         base_size: nbd_cow::BLOCK_SIZE as u64,
         golden_cow: Some(golden),
     };
-    let slot = create_slot(&config).unwrap();
+    let slot = create_slot(&config).await.unwrap();
     let cow_file = slot.cow_file();
 
     assert_eq!(
@@ -1351,11 +1421,11 @@ fn create_slot_with_read_only_golden_cow_makes_workspace_cow_writable() {
     destroy_slot_sync(slot);
 }
 
-#[test]
-fn create_slot_fresh_mode_creates_cow_file() {
+#[tokio::test]
+async fn create_slot_fresh_mode_creates_cow_file() {
     let tmp = tempfile::tempdir().unwrap();
     let config = test_file_config(tmp.path());
-    let slot = create_slot(&config).unwrap();
+    let slot = create_slot(&config).await.unwrap();
     let cow_file = slot.cow_file();
     assert!(cow_file.exists());
     let meta = std::fs::metadata(&cow_file).unwrap();
@@ -1363,8 +1433,8 @@ fn create_slot_fresh_mode_creates_cow_file() {
     destroy_slot_sync(slot);
 }
 
-#[test]
-fn create_slot_fresh_mode_rejects_empty_base_size() {
+#[tokio::test]
+async fn create_slot_fresh_mode_rejects_empty_base_size() {
     let tmp = tempfile::tempdir().unwrap();
     let workspaces = tmp.path().join("workspaces");
     let config = CowFileConfig {
@@ -1373,7 +1443,7 @@ fn create_slot_fresh_mode_rejects_empty_base_size() {
         golden_cow: None,
     };
 
-    let err = create_slot(&config).unwrap_err();
+    let err = create_slot(&config).await.unwrap_err();
 
     assert!(
         err.to_string().contains("base image size is empty"),
@@ -1383,8 +1453,8 @@ fn create_slot_fresh_mode_rejects_empty_base_size() {
     assert_eq!(entries.len(), 0);
 }
 
-#[test]
-fn create_slot_fresh_mode_rejects_unaligned_base_size() {
+#[tokio::test]
+async fn create_slot_fresh_mode_rejects_unaligned_base_size() {
     let tmp = tempfile::tempdir().unwrap();
     let workspaces = tmp.path().join("workspaces");
     let config = CowFileConfig {
@@ -1393,7 +1463,7 @@ fn create_slot_fresh_mode_rejects_unaligned_base_size() {
         golden_cow: None,
     };
 
-    let err = create_slot(&config).unwrap_err();
+    let err = create_slot(&config).await.unwrap_err();
 
     assert!(
         err.to_string().contains("not a multiple"),
@@ -1403,11 +1473,11 @@ fn create_slot_fresh_mode_rejects_unaligned_base_size() {
     assert_eq!(entries.len(), 0);
 }
 
-#[test]
-fn destroy_slot_sync_removes_workspace() {
+#[tokio::test]
+async fn destroy_slot_sync_removes_workspace() {
     let tmp = tempfile::tempdir().unwrap();
     let config = test_file_config(tmp.path());
-    let slot = create_slot(&config).unwrap();
+    let slot = create_slot(&config).await.unwrap();
     let ws = slot.workspace().to_owned();
     assert!(ws.exists());
     destroy_slot_sync(slot);
