@@ -182,7 +182,16 @@ run_real_claude_steer() {
 
     run runner_api_curl "/api/okou/runs/${run_id}/context"
     assert_success
-    run jq -e '.cliAgentType == "pi"' <<<"$output"
+    run jq -e '
+        .cliAgentType == "pi" and
+        .environment.OPENAI_BASE_URL == "https://api.deepseek.com/" and
+        .environment.OPENAI_MODEL == "deepseek-v4-flash" and
+        any(
+            .firewalls[];
+            .kind == "builtin" and
+            .name == "model-provider:deepseek"
+        )
+    ' <<<"$output"
     assert_success
 }
 

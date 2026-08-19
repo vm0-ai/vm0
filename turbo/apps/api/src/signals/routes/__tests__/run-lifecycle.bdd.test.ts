@@ -6813,17 +6813,27 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
         name: "DeepSeek",
         baseUrl: "https://api.deepseek.com/",
         envKey: "OPENAI_API_KEY",
+        requiresOpenaiAuth: false,
         wireApi: "responses",
         supportsWebsockets: false,
-        modelCatalog: {
-          models: expect.arrayContaining([
-            expect.objectContaining({
-              slug: selectedModel,
-              default_reasoning_level: "high",
-            }),
-          ]),
-        },
       });
+      const catalogModels = claim.codexRuntimeConfig?.modelCatalog?.models;
+      if (!Array.isArray(catalogModels)) {
+        throw new Error(
+          `Expected a native DeepSeek Codex catalog for ${selectedModel}`,
+        );
+      }
+      expect(catalogModels).toContainEqual(
+        expect.objectContaining({
+          slug: selectedModel,
+          default_reasoning_level: "high",
+          input_modalities: ["text"],
+          base_instructions: expect.stringContaining("You are Codex"),
+          model_messages: expect.objectContaining({
+            instructions_template: expect.stringContaining("You are Codex"),
+          }),
+        }),
+      );
       expect(
         claim.firewalls?.map((firewall) => {
           return firewallEntryName(firewall);

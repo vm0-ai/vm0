@@ -67,18 +67,11 @@ describe("buildVm0ApiKeys", () => {
     ]);
   });
 
-  it("falls back to DEEPSEEK_API_KEY for DeepSeek dev seed rows", () => {
+  it("requires DEV_MODEL_DEEPSEEK_KEY for DeepSeek dev seed rows", () => {
     const deepSeekKeys = buildVendorKeys("deepseek", {
-      DEV_MODEL_DEEPSEEK_KEY: "",
       DEEPSEEK_API_KEY: "provider-deepseek-key",
     });
 
-    expect(deepSeekKeys).toStrictEqual([
-      {
-        apiKey: "provider-deepseek-key",
-        label: "dev-seed",
-        vendor: "deepseek",
-      },
-    ]);
+    expect(deepSeekKeys).toStrictEqual([]);
   });
 });
