@@ -3,8 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CHECK_RELEASES="${SCRIPT_DIR}/check-release-please-component-releases.sh"
-TMPDIR="$(mktemp -d)"
-trap 'rm -rf "$TMPDIR"' EXIT
+TEST_ROOT="$(mktemp -d)"
+trap 'rm -rf "$TEST_ROOT"' EXIT
 
 fail() {
   echo "FAIL: $1" >&2
@@ -48,7 +48,7 @@ expect_failure() {
 
 setup_repo() {
   local name=$1
-  REPO="${TMPDIR}/${name}"
+  REPO="${TEST_ROOT}/${name}"
   mkdir -p \
     "${REPO}/native/helper/src" \
     "${REPO}/native/runner/mitm-addon/src" \
