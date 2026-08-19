@@ -172,6 +172,9 @@ export interface ApiTestMocks {
     readonly fetchFile: AsyncMock;
   };
   readonly stripe: {
+    readonly events: {
+      readonly list: AsyncMock;
+    };
     readonly paymentMethods: {
       readonly list: AsyncMock;
       readonly retrieve: AsyncMock;
@@ -367,6 +370,9 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
   };
 
   const stripe = {
+    events: {
+      list: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    },
     paymentMethods: {
       list: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -933,6 +939,9 @@ vi.mock("stripe", async (importOriginal) => {
   const MockStripe = Object.assign(
     vi.fn(() => {
       return {
+        events: {
+          list: apiTestMocks.stripe.events.list,
+        },
         paymentMethods: {
           list: apiTestMocks.stripe.paymentMethods.list,
           retrieve: apiTestMocks.stripe.paymentMethods.retrieve,
@@ -1225,6 +1234,11 @@ export function resetApiTestMocks(): void {
   apiTestMocks.stripe.paymentMethods.list.mockResolvedValue({ data: [] });
   apiTestMocks.stripe.invoices.list.mockReset();
   apiTestMocks.stripe.invoices.list.mockResolvedValue({
+    data: [],
+    has_more: false,
+  });
+  apiTestMocks.stripe.events.list.mockReset();
+  apiTestMocks.stripe.events.list.mockResolvedValue({
     data: [],
     has_more: false,
   });

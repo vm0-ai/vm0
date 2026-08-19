@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.47](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.46...sandbox-v0.19.47) (2026-08-19)
+
+
+### Performance Improvements
+
+* **runner:** hand off finalizing sandboxes before idle compaction ([#28063](https://github.com/vm0-ai/vm0/issues/28063)) ([543aae3](https://github.com/vm0-ai/vm0/commit/543aae384b1d6311d0bcceef487ab37bea3f3147))
+
 ## [0.19.46](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.45...sandbox-v0.19.46) (2026-08-18)
 
 

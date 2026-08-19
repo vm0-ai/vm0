@@ -75,7 +75,8 @@ describe("okou model command", () => {
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain("Allowed Models:");
     expect(logCalls).toContain("Claude Sonnet 4.6");
-    expect(logCalls).toContain("provider: built-in");
+    expect(logCalls).toContain("provider: built-in (Built-in model; vm0)");
+    expect(logCalls).not.toContain("VM0 Managed");
     expect(logCalls).toContain("price tier: $$");
     expect(logCalls).toContain("GPT 5.5");
     expect(logCalls).toContain("provider: api key");

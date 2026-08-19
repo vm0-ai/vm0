@@ -51,6 +51,19 @@ const MODEL_POLICIES_RESPONSE = {
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
     },
+    {
+      id: "00000000-0000-4000-8000-000000000103",
+      model: "deepseek-v4-flash",
+      modelLabel: "DeepSeek V4 Flash",
+      isDefault: false,
+      defaultProviderType: "vm0",
+      credentialScope: "org",
+      modelProviderId: null,
+      routeStatus: "valid",
+      routeStatusReason: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    },
   ],
 };
 
@@ -119,6 +132,8 @@ describe("okou chat model command", () => {
     expect(output).toContain("Chat thread loaded");
     expect(output).toContain("Model:  Claude Sonnet 5 (claude-sonnet-5)");
     expect(output).toContain("Switchable models:");
+    expect(output).toContain("provider: built-in (Built-in model; vm0)");
+    expect(output).not.toContain("VM0 Managed");
     expect(output).toContain(`okou chat model --thread ${THREAD_ID} <model>`);
   });
 

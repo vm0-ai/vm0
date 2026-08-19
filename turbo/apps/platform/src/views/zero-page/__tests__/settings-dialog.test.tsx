@@ -17,6 +17,7 @@ import {
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { localeStorageKey } from "../../../i18n/locale-storage.ts";
 import { localStorageSignals } from "../../../signals/external/local-storage.ts";
+import { openSettingsDialogAt$ } from "../../../signals/zero-page/settings/settings-dialog.ts";
 import { billingStatus } from "./chat-composer-test-helpers.ts";
 
 const context = testContext();
@@ -913,6 +914,95 @@ describe("settings dialog", () => {
     expect(
       within(diagnostics).getByText("Unresolved bridge credentials"),
     ).toBeInTheDocument();
+  });
+
+  it("refreshes connector catalog diagnostics on every Debug entry", async () => {
+    let requestCount = 0;
+    context.mocks.api(
+      zeroConnectorCatalogContract.diagnostics,
+      ({ respond }) => {
+        requestCount += 1;
+        const requestedAt = "2026-08-19T04:00:00.000Z";
+        return respond(200, {
+          state: "current",
+          active: {
+            catalogVersion: `2026-08-19.${requestCount}`,
+            catalogDigest: `sha256:${"a".repeat(64)}`,
+            activatedAt: requestedAt,
+          },
+          lastAttempt: {
+            at: requestedAt,
+            outcome: "accepted",
+            failureCode: null,
+            reusedCachedRejection: false,
+          },
+          lastSuccessAt: requestedAt,
+          rejectedCandidate: null,
+          filtering: {
+            capabilityDigest: `sha256:${"b".repeat(64)}`,
+            evaluatedAt: requestedAt,
+            stale: false,
+            filteredAuthMethods: [],
+          },
+          credentialStorage: {
+            missingConnectorVersions: 0,
+            unownedConnectorSecrets: 0,
+            unownedConnectorVariables: 0,
+            unresolvedBridgeCredentials: 0,
+          },
+        });
+      },
+    );
+
+    await openDialog("admin", "debug");
+
+    await expect(
+      screen.findByText("2026-08-19.1"),
+    ).resolves.toBeInTheDocument();
+    expect(requestCount).toBe(1);
+
+    click(screen.getByRole("switch"));
+    await expect(
+      screen.findByText("Enabled for the next 3 runs"),
+    ).resolves.toBeInTheDocument();
+    expect(requestCount).toBe(1);
+
+    const dialog = screen.getByRole("dialog");
+    const dialogButton = (label: string): HTMLElement => {
+      const button = queryAllByRoleFast("button", dialog).find((candidate) => {
+        return (
+          candidate.textContent?.trim() === label ||
+          candidate.getAttribute("aria-label") === label
+        );
+      });
+      if (!button) {
+        throw new Error(`${label} button not found`);
+      }
+      return button;
+    };
+
+    click(dialogButton("Preference"));
+    await expect(
+      screen.findByRole("heading", { name: "Preference" }),
+    ).resolves.toBeInTheDocument();
+
+    click(dialogButton("Debug"));
+    await expect(
+      screen.findByText("2026-08-19.2"),
+    ).resolves.toBeInTheDocument();
+    expect(requestCount).toBe(2);
+
+    click(dialogButton("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    await context.store.set(openSettingsDialogAt$, "debug", context.signal);
+
+    await expect(
+      screen.findByText("2026-08-19.3"),
+    ).resolves.toBeInTheDocument();
+    expect(requestCount).toBe(3);
   });
 
   it("does not describe an uncached rejection as a fresh evaluation", async () => {
