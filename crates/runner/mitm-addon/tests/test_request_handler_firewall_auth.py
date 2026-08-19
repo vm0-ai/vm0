@@ -519,6 +519,62 @@ async def test_registry_reload_reuses_unchanged_firewall_auth_identity(
     assert flows[1].metadata[metadata_keys.AUTH_CACHE_HIT] is True
 
 
+async def test_registry_reload_coalesces_unchanged_in_flight_firewall_auth(
+    tmp_path, real_flow, mitm_ctx
+):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    flows = [
+        real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="api.github.com",
+            path="/repos",
+        )
+        for _ in range(2)
+    ]
+    auth_fetch_started = asyncio.Event()
+    release_auth_fetch = asyncio.Event()
+
+    async def fetch_auth(
+        request: auth_client.FirewallAuthRequest,
+        *,
+        force_refresh: bool,
+    ) -> auth_client.FirewallAuthSuccess:
+        assert request.encrypted_secrets == "iv:tag:data"
+        assert force_refresh is False
+        auth_fetch_started.set()
+        await release_auth_fetch.wait()
+        return _resolved_firewall_auth()
+
+    requests: list[asyncio.Task[None] | None] = [None, None]
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth_cache, "fetch_firewall_headers", side_effect=fetch_auth) as auth_fetch,
+    ):
+        requests[0] = asyncio.create_task(mitm_addon.request(flows[0]))
+        try:
+            await asyncio.wait_for(auth_fetch_started.wait(), timeout=1)
+            _write_github_firewall_registry(
+                tmp_path,
+                vm_fields={"captureNetworkBodies": False},
+            )
+            requests[1] = asyncio.create_task(mitm_addon.request(flows[1]))
+            release_auth_fetch.set()
+            await asyncio.gather(*(request for request in requests if request is not None))
+        finally:
+            release_auth_fetch.set()
+            for request in requests:
+                await cancel_pending_task(request)
+
+    first_key = flows[0].metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]
+    second_key = flows[1].metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]
+    assert first_key == second_key
+    assert first_key.registry_generation != second_key.registry_generation
+    auth_fetch.assert_awaited_once()
+    assert flows[0].request.headers["Authorization"] == "Bearer resolved"
+    assert flows[1].request.headers["Authorization"] == "Bearer resolved"
+
+
 async def test_superseded_fetch_completion_does_not_repopulate_auth_state(
     tmp_path, real_flow, mitm_ctx
 ):
