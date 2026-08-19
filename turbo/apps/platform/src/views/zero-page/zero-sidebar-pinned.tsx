@@ -540,29 +540,14 @@ export function PinnedAgentListSection({
               </PinnedAgentContextDecorator>
             );
           });
-    // Reordering only means something once two agents can trade places, so the
-    // hint stays out of the way for a lone pinned agent.
-    const canReorder =
-      (horizontalPinnedAgents ?? []).filter((agent) => {
-        return pinnedAgentIds.has(agent.id) && agent.id !== defaultAgentId;
-      }).length >= 2;
 
     return (
       <div className="shrink-0" data-testid="pinned-agents-horizontal">
-        <div className="flex items-baseline justify-between px-1 pb-2">
-          <span className="text-[13px] font-medium leading-4 text-sidebar-foreground/50">
-            {t(($) => {
-              return $.sidebar.pinnedAgents;
-            })}
-          </span>
-          {canReorder && (
-            <span className="text-[11px] leading-4 text-sidebar-foreground/50">
-              {t(($) => {
-                return $.sidebar.dragToReorder;
-              })}
-            </span>
-          )}
-        </div>
+        <span className="block px-1 pb-2 text-[13px] font-medium leading-4 text-sidebar-foreground/50">
+          {t(($) => {
+            return $.sidebar.pinnedAgents;
+          })}
+        </span>
         <div
           ref={cachePinnedAgentGridRowsRef}
           className="grid min-w-0 grid-cols-5 items-start gap-x-1 gap-y-2 pb-1"

@@ -3823,11 +3823,6 @@ describe("zero sidebar", () => {
         "pinned-agent-drag-handle",
       ),
     ).toBeNull();
-    expect(
-      within(screen.getByTestId("pinned-agents-horizontal")).getByText(
-        "Drag to reorder",
-      ),
-    ).toBeInTheDocument();
   });
 
   it("marks the landing slot with an insertion caret while dragging", async () => {
