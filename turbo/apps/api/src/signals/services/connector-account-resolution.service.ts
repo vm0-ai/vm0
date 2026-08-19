@@ -20,6 +20,8 @@ const L = logger("connector-account-resolution");
 export type ConnectorAccountSelectionMode =
   | { readonly kind: "exact"; readonly sourceId: string }
   | { readonly kind: "default" }
+  // Compatibility for source-less Runner and firewall payloads. Remove in
+  // #27695 after every run admitted before source propagation has drained.
   | { readonly kind: "legacy-singleton" };
 
 export interface ConnectorAccountResolutionRequest {
