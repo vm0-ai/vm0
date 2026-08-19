@@ -107,7 +107,7 @@ test("navigate to agents page and verify heading", async ({ page }) => {
   });
 });
 
-test("pinned agents use five equal columns and keep Pin in the first row", async ({
+test("pinned agents use five equal columns and align the trailing controls", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -138,13 +138,22 @@ test("pinned agents use five equal columns and keep Pin in the first row", async
     page.reload(),
   ]);
 
+  const pinnedSection = page.getByTestId("pinned-agents-horizontal");
   const grid = page.getByTestId("pinned-agents-grid");
   const cards = grid.getByTestId("pinned-agent-card");
-  const pinAgent = grid.getByRole("button", {
+  const pinAgent = pinnedSection.getByRole("button", {
     name: "Pin an agent",
   });
+  const chatsMenu = page
+    .getByTestId("chat-list-column")
+    .getByRole("button", { name: "Open chat list menu" });
   await expect(cards).toHaveCount(4);
   await expect(pinAgent).toBeVisible();
+  // The pin entry belongs to the section header, so the grid stays a plain
+  // agent grid and the five columns hold five agents.
+  await expect(grid.getByRole("button", { name: "Pin an agent" })).toHaveCount(
+    0,
+  );
 
   await expect
     .poll(async () => {
@@ -153,7 +162,6 @@ test("pinned agents use five equal columns and keep Pin in the first row", async
         cards.nth(1).boundingBox(),
         cards.nth(2).boundingBox(),
         cards.nth(3).boundingBox(),
-        pinAgent.boundingBox(),
       ]);
       if (boxes.some((box) => box === null)) {
         return Number.POSITIVE_INFINITY;
@@ -170,7 +178,6 @@ test("pinned agents use five equal columns and keep Pin in the first row", async
         cards.nth(1).boundingBox(),
         cards.nth(2).boundingBox(),
         cards.nth(3).boundingBox(),
-        pinAgent.boundingBox(),
       ]);
       if (boxes.some((box) => box === null)) {
         return 0;
@@ -179,7 +186,6 @@ test("pinned agents use five equal columns and keep Pin in the first row", async
         boxes[1]!.x - boxes[0]!.x,
         boxes[2]!.x - boxes[1]!.x,
         boxes[3]!.x - boxes[2]!.x,
-        boxes[4]!.x - boxes[3]!.x,
       );
     })
     .toBeGreaterThan(1);
@@ -191,7 +197,6 @@ test("pinned agents use five equal columns and keep Pin in the first row", async
         cards.nth(1).boundingBox(),
         cards.nth(2).boundingBox(),
         cards.nth(3).boundingBox(),
-        pinAgent.boundingBox(),
       ]);
       if (boxes.some((box) => box === null)) {
         return Number.POSITIVE_INFINITY;
@@ -201,17 +206,19 @@ test("pinned agents use five equal columns and keep Pin in the first row", async
     })
     .toBeLessThan(2);
 
+  // Every trailing control in the column shares one center: the pin entry and
+  // the chats section menu are both 32px icon buttons flush with the inset.
   await expect
     .poll(async () => {
-      const [gridBox, pinAgentBox] = await Promise.all([
-        grid.boundingBox(),
+      const [pinBox, chatsMenuBox] = await Promise.all([
         pinAgent.boundingBox(),
+        chatsMenu.boundingBox(),
       ]);
-      if (!gridBox || !pinAgentBox) {
+      if (!pinBox || !chatsMenuBox) {
         return Number.POSITIVE_INFINITY;
       }
       return Math.abs(
-        pinAgentBox.x + pinAgentBox.width - (gridBox.x + gridBox.width),
+        pinBox.x + pinBox.width / 2 - (chatsMenuBox.x + chatsMenuBox.width / 2),
       );
     })
     .toBeLessThan(2);
@@ -242,15 +249,16 @@ test("pinned agents use five equal columns and keep Pin in the first row", async
         cards.nth(0).boundingBox(),
         cards.nth(1).boundingBox(),
         cards.nth(2).boundingBox(),
-        pinAgent.boundingBox(),
+        grid.boundingBox(),
       ]);
       if (boxes.some((box) => box === null)) {
         return Number.POSITIVE_INFINITY;
       }
       const columnStep = boxes[1]!.x - boxes[0]!.x;
       return Math.max(
-        Math.abs(boxes[3]!.x - boxes[2]!.x - columnStep),
-        Math.abs(boxes[3]!.y - boxes[2]!.y),
+        Math.abs(boxes[2]!.x - boxes[1]!.x - columnStep),
+        Math.abs(boxes[0]!.x - boxes[3]!.x),
+        Math.abs(boxes[2]!.y - boxes[0]!.y),
       );
     })
     .toBeLessThan(2);
