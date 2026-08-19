@@ -169,6 +169,17 @@ describe("GET /api/zero/connectors", () => {
       connectors: [],
       connectorProvidedBindings: [],
     });
+
+    const detail = await accept(
+      setupApp({ context, routes: connectorsRoutes })(
+        zeroConnectorsBySlugContract,
+      ).get({
+        params: { connectorSlug: "gitlab" },
+        headers: authHeaders(),
+      }),
+      [404],
+    );
+    expect(detail.body.error.code).toBe("NOT_FOUND");
   });
 
   it("skips stored connectors whose runtime method is unavailable", async () => {

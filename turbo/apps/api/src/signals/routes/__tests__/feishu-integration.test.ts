@@ -267,6 +267,21 @@ async function expectExactFeishuMemberConnector(args: {
     [200],
   );
   expect(identityMismatch.body.installations?.[0]?.isConnected).toBeFalsy();
+
+  await setConnectorExternalIdState(context, {
+    orgId,
+    userId: args.member.userId,
+    connectorId: memberConnectorId,
+    externalId: null,
+  });
+  const historicalExactLink = await accept(
+    args.client.getStatus({
+      headers: { authorization: "Bearer clerk-session" },
+    }),
+    [200],
+  );
+  expect(historicalExactLink.body.installations?.[0]?.isConnected).toBeTruthy();
+
   await setConnectorExternalIdState(context, {
     orgId,
     userId: args.member.userId,
