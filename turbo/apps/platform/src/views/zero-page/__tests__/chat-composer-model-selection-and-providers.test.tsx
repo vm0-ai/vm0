@@ -4101,19 +4101,17 @@ describe("chat composer image model", () => {
     const imageModelControlLabelSet = new Set<string>(
       imageModelControlLabels as readonly string[],
     );
+    const visibleLabels = imageModelButtons
+      .filter((button) => {
+        return button.hasAttribute("aria-pressed");
+      })
+      .map((button) => {
+        return button.getAttribute("aria-label");
+      });
     expect(
-      imageModelButtons
-        .filter((button) => {
-          return (
-            button.hasAttribute("aria-pressed") &&
-            imageModelControlLabelSet.has(
-              button.getAttribute("aria-label") ?? "",
-            )
-          );
-        })
-        .map((button) => {
-          return button.getAttribute("aria-label");
-        }),
+      visibleLabels.filter((label) => {
+        return imageModelControlLabelSet.has(label ?? "");
+      }),
     ).toStrictEqual(imageModelControlLabels);
     // Both variants are on the row at once, and neither is marked while a
     // different family is the selection.
@@ -4299,19 +4297,19 @@ describe("chat composer image model", () => {
       expect(mediaPanelButton("Qwen Image")).toBeInTheDocument();
     });
     const listbox = screen.getByRole("listbox");
+    const allLabels = queryAllByRoleFast("button", listbox)
+      .filter((button) => {
+        return button.hasAttribute("aria-pressed");
+      })
+      .map((button) => {
+        return button.getAttribute("aria-label");
+      });
     expect(
-      queryAllByRoleFast("button", listbox)
-        .filter((button) => {
-          return (
-            button.hasAttribute("aria-pressed") &&
-            (imageModelControlLabels as readonly string[]).includes(
-              button.getAttribute("aria-label") ?? "",
-            )
-          );
-        })
-        .map((button) => {
-          return button.getAttribute("aria-label");
-        }),
+      allLabels.filter((label) => {
+        return (imageModelControlLabels as readonly string[]).includes(
+          label ?? "",
+        );
+      }),
     ).toStrictEqual(imageModelControlLabels);
     // Nothing claims the pin, so no row is current and every family shows its
     // default base chip rather than a stale highlight.
