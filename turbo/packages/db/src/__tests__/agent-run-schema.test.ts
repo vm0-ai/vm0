@@ -112,6 +112,9 @@ describe("agentRuns circular foreign keys", () => {
       "model_provider_id",
       "model_provider_credential_scope",
       "selected_model",
+      "model_runtime_provider",
+      "model_runtime_model",
+      "vm0_model_key_id",
       "codex_service_tier",
       "selected_video_model",
       "selected_image_model",
@@ -124,7 +127,7 @@ describe("agentRuns circular foreign keys", () => {
     for (const column of metadataColumns) {
       expect(metadataPresenceSql).toContain(`"agent_runs"."${column}" IS NULL`);
     }
-    expect(metadataPresenceSql.match(/ IS NULL/gu)).toHaveLength(16);
+    expect(metadataPresenceSql.match(/ IS NULL/gu)).toHaveLength(19);
     expect(metadataPresenceSql.match(/ IS NOT NULL/gu)).toHaveLength(2);
     expect(metadataPresenceSql).toContain(
       '"agent_runs"."trigger_source" IS NOT NULL',

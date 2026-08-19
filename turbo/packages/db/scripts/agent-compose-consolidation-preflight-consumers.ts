@@ -253,7 +253,7 @@ export const EXPECTED_RUNTIME_CONTENT_CONSUMER_MANIFEST: RuntimeContentConsumerM
       "turbo/apps/api/src/signals/services/agent-environment-shadow.ts|compose-independent-environment-shadow|4|bb1c66722499e90deb9a6471567a6d374aefe0f68b878249d0fc4822ddaf3f13",
       "turbo/apps/api/src/signals/services/agent-execution-authority.ts|application-authority-classifier|15|5ba45d2323d6fc74359a77f3b2c99926ff0ad3dbf8a8e30a523a655cf3149d4a",
       "turbo/apps/api/src/signals/services/agent-instructions.service.ts|first-plural-schema-parse|2|5e0e03733f7327b9e719691adccd8ef9e643f7945e7a2011884b50c17cd0d5ca",
-      "turbo/apps/api/src/signals/services/agent-run-create.service.ts|singular-or-first-plural-launch|17|3ba4be01b537988945707f15b9e9e8c60f67bcb8f212be00749e4343c7f2a336",
+      "turbo/apps/api/src/signals/services/agent-run-create.service.ts|singular-or-first-plural-launch|17|24972503353839341879362889b070eb2d2874847d7982a03d7f1b70d541ff32",
       "turbo/apps/api/src/signals/services/agent-run-storage.service.ts|singular-or-first-plural-storage-and-volumes|8|f892995687452b9c164950e90aab24e9da198326187dea19b646864d71d35cf9",
       "turbo/apps/api/src/signals/services/agent-webhook-checkpoints.service.ts|checkpoint-configuration-independent|4|f2f501ed8d094d3edb950966b5a1cee4f149a41f12d10b5cdac55f14b20af714",
       "turbo/apps/api/src/signals/services/historical-product-builder.ts|historical-product-builder-authority-classifier|14|7b8681f9a1922c125881223a9265b5b3642f5ceb74a410b7f21d1ee3694692f2",

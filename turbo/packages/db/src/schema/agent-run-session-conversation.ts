@@ -118,6 +118,9 @@ export const agentRuns = pgTable(
       length: 20,
     }),
     selectedModel: varchar("selected_model", { length: 255 }),
+    modelRuntimeProvider: varchar("model_runtime_provider", { length: 100 }),
+    modelRuntimeModel: varchar("model_runtime_model", { length: 255 }),
+    vm0ModelKeyId: uuid("vm0_model_key_id"),
     codexServiceTier: varchar("codex_service_tier", {
       length: 20,
     }).$type<CodexServiceTier>(),
@@ -186,6 +189,9 @@ export const agentRuns = pgTable(
             ${table.modelProviderId} IS NULL AND
             ${table.modelProviderCredentialScope} IS NULL AND
             ${table.selectedModel} IS NULL AND
+            ${table.modelRuntimeProvider} IS NULL AND
+            ${table.modelRuntimeModel} IS NULL AND
+            ${table.vm0ModelKeyId} IS NULL AND
             ${table.codexServiceTier} IS NULL AND
             ${table.selectedVideoModel} IS NULL AND
             ${table.selectedImageModel} IS NULL AND

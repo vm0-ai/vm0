@@ -26,6 +26,10 @@ import { workflowAutomationCanFire } from "./workflow-automation-access.service"
 import { loadComputerUseHostGrantForAutoSend } from "./chat-computer-use-host.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import type { ChatAgentRunSourceAnnotation } from "./chat-user-message.service";
+import {
+  resolveVm0ModelRuntimeRoute,
+  type Vm0ModelRuntimeRoute,
+} from "./vm0-model-runtime-route.service";
 
 export type AutomationRow = typeof workflowAutomations.$inferSelect;
 
@@ -71,6 +75,7 @@ type ModelContext =
       readonly ok: true;
       readonly modelPin: ModelFirstPin;
       readonly effectiveModelProvider: string | null | undefined;
+      readonly vm0ModelRuntimeRoute: Vm0ModelRuntimeRoute | undefined;
       readonly cliAgentType: string | null;
       readonly codexServiceTier: "fast" | undefined;
     }
@@ -294,10 +299,37 @@ async function resolveModelContext(
     };
   }
 
+  const effectiveModelProvider = providerAdmission.effectiveModelProvider;
+  const selectedModel = pin.selectedModel;
+  const vm0ModelRuntimeRoute =
+    effectiveModelProvider === "vm0" && selectedModel
+      ? await resolveVm0ModelRuntimeRoute(args.db, selectedModel)
+      : undefined;
+  signal.throwIfAborted();
+  if (effectiveModelProvider === "vm0" && !vm0ModelRuntimeRoute) {
+    return {
+      ok: false,
+      failure: {
+        kind: "run_error",
+        response: {
+          status: 503,
+          body: {
+            error: {
+              code: "PROVIDER_UNAVAILABLE",
+              message:
+                "No model provider configured: no VM0 managed model key is configured",
+            },
+          },
+        },
+      },
+    };
+  }
+
   return {
     ok: true,
     modelPin: pin,
-    effectiveModelProvider: providerAdmission.effectiveModelProvider,
+    effectiveModelProvider,
+    vm0ModelRuntimeRoute: vm0ModelRuntimeRoute ?? undefined,
     cliAgentType: providerAdmission.cliAgentType,
     codexServiceTier: runCodexServiceTier,
   };
@@ -310,6 +342,9 @@ function workflowThreadSessionRoute(
     selectedModel: modelContext.modelPin.selectedModel,
     modelProvider: modelContext.effectiveModelProvider ?? null,
     modelProviderId: modelContext.modelPin.modelProviderId,
+    modelRuntimeProvider:
+      modelContext.vm0ModelRuntimeRoute?.providerType ?? null,
+    modelRuntimeModel: modelContext.vm0ModelRuntimeRoute?.upstreamModel ?? null,
     cliAgentType: modelContext.cliAgentType,
   };
 }
@@ -558,7 +593,12 @@ export const launchQueuedWorkflowAutomation$ = command(
     if (!modelContext.ok) {
       return modelContext.failure;
     }
-    const { modelPin, effectiveModelProvider, codexServiceTier } = modelContext;
+    const {
+      modelPin,
+      effectiveModelProvider,
+      vm0ModelRuntimeRoute,
+      codexServiceTier,
+    } = modelContext;
 
     const computerUseHostGrant = await loadComputerUseHostGrantForAutoSend({
       db,
@@ -604,6 +644,7 @@ export const launchQueuedWorkflowAutomation$ = command(
         modelProviderCredentialScope:
           modelPin.modelProviderCredentialScope ?? undefined,
         selectedModelOverride: modelPin.selectedModel ?? undefined,
+        ...(vm0ModelRuntimeRoute ? { vm0ModelRuntimeRoute } : {}),
         threadSessionRoute: workflowThreadSessionRoute(modelContext),
         codexServiceTier,
         appendSystemPrompt: runInput.appendSystemPrompt,

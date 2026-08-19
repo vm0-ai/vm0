@@ -48,6 +48,7 @@ import {
   type ChatThreadSessionResolution,
   type ChatThreadSessionRoute,
 } from "./chat-session-continuity.service";
+import type { Vm0ModelRuntimeRoute } from "./vm0-model-runtime-route.service";
 import {
   ApiDispatchPhaseCollector,
   ApiDispatchTimingCollector,
@@ -179,6 +180,7 @@ interface CreateZeroRunCommandArgs {
   readonly modelProviderId?: string;
   readonly modelProviderCredentialScope?: ModelProviderCredentialScope;
   readonly selectedModelOverride?: string;
+  readonly vm0ModelRuntimeRoute?: Vm0ModelRuntimeRoute;
   readonly codexServiceTier?: CodexServiceTier;
   readonly zeroRunMetadata?: ZeroRunMetadata;
   readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
@@ -854,6 +856,9 @@ function buildZeroCreateAgentRunArgs(args: {
     modelProviderCredentialScope: command.modelProviderCredentialScope,
     modelProviderType: command.body.modelProvider,
     selectedModelOverride: command.selectedModelOverride ?? agentSelectedModel,
+    ...(command.vm0ModelRuntimeRoute
+      ? { vm0ModelRuntimeRoute: command.vm0ModelRuntimeRoute }
+      : {}),
     ...(command.codexServiceTier === "fast"
       ? { codexServiceTier: command.codexServiceTier }
       : {}),

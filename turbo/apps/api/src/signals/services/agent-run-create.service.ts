@@ -35,7 +35,6 @@ import {
   getSecretNameForType,
   getSecretsForAuthMethod,
   getVm0ConcreteProviderType,
-  getVm0Vendor,
   hasAuthMethods,
   isSupportedRunModel,
   MODEL_PROVIDER_TYPES,
@@ -318,6 +317,12 @@ import {
   normalizeRunMetadata,
   type RunMetadataValues,
 } from "./agent-run-metadata-write.service";
+import {
+  hasIncompatibleVm0ModelRuntimeRoute,
+  vm0ModelRuntimeTarget,
+  type ModelRuntimeSessionRoute,
+  type Vm0ModelRuntimeRoute,
+} from "./vm0-model-runtime-route.service";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const AUTO_MEMORY_ARTIFACT_NAME = MEMORY_ARTIFACT_NAME;
@@ -576,6 +581,7 @@ interface ResolvedCompose {
   readonly agentSessionId?: string;
   readonly continuedFromAgentSessionId?: string;
   readonly resumeSession?: StoredExecutionContext["resumeSession"];
+  readonly resumeSessionModelRoute?: ModelRuntimeSessionRoute;
   readonly agentExecutionAuthorityObservation?: Pick<
     AgentExecutionAuthorityDecision,
     "authority" | "classification"
@@ -845,6 +851,7 @@ interface ResolvedModelProviderEnvironment {
   readonly secretConnectorMap?: Record<string, string>;
   readonly secretConnectorMetadataMap?: Record<string, SecretConnectorMetadata>;
   readonly codexRuntimeConfig?: ModelProviderCodexRuntimeConfig;
+  readonly vm0ModelRuntimeRoute?: Vm0ModelRuntimeRoute;
 }
 
 type BuiltinRuntimeTargetRegistration = Extract<
@@ -940,6 +947,7 @@ export interface CreateAgentRunArgs {
   readonly modelProviderCredentialScope?: ModelProviderCredentialScope;
   readonly modelProviderType?: string;
   readonly selectedModelOverride?: string;
+  readonly vm0ModelRuntimeRoute?: Vm0ModelRuntimeRoute;
   readonly codexServiceTier?: "fast";
   readonly callbacks?: readonly RunCallback[];
   readonly chatThreadId?: string;
@@ -2294,34 +2302,61 @@ async function multiAuthModelProviderEnvironment(
 async function vm0ModelProviderEnvironment(
   db: Db,
   selectedModel: string,
+  resolvedRoute?: Vm0ModelRuntimeRoute,
 ): Promise<ResolvedModelProviderEnvironment | null> {
-  const concreteType = getVm0ConcreteProviderType(selectedModel);
-  const vendor = getVm0Vendor(selectedModel);
-  const apiModel = getProviderRuntimeModel("vm0", selectedModel);
-  const rows = await db
-    .select({ apiKey: builtInModelKeys.apiKey })
-    .from(builtInModelKeys)
-    .where(eq(builtInModelKeys.vendor, vendor))
-    .limit(1);
-  const apiKey = rows[0]?.apiKey;
-  const secretName = getSecretNameForType(concreteType);
-  if (!apiKey || !secretName) {
+  if (resolvedRoute && resolvedRoute.selectedModel !== selectedModel) {
     return null;
   }
-  const codexRuntimeConfig = getModelProviderCodexRuntimeConfig(concreteType);
+  let route: Vm0ModelRuntimeRoute;
+  let key: { readonly id: string; readonly apiKey: string } | undefined;
+  if (resolvedRoute) {
+    [key] = await db
+      .select({ id: builtInModelKeys.id, apiKey: builtInModelKeys.apiKey })
+      .from(builtInModelKeys)
+      .where(eq(builtInModelKeys.id, resolvedRoute.modelKeyId))
+      .limit(1);
+    route = resolvedRoute;
+  } else {
+    const target = vm0ModelRuntimeTarget(selectedModel);
+    [key] = await db
+      .select({ id: builtInModelKeys.id, apiKey: builtInModelKeys.apiKey })
+      .from(builtInModelKeys)
+      .where(eq(builtInModelKeys.vendor, target.vendor))
+      .limit(1);
+    if (!key) {
+      return null;
+    }
+    route = {
+      selectedModel: target.selectedModel,
+      providerType: target.providerType,
+      upstreamModel: target.upstreamModel,
+      modelKeyId: key.id,
+    };
+  }
+  if (!key?.apiKey) {
+    return null;
+  }
+  const secretName = getSecretNameForType(route.providerType);
+  if (!secretName) {
+    return null;
+  }
+  const codexRuntimeConfig = getModelProviderCodexRuntimeConfig(
+    route.providerType,
+  );
 
   return {
     id: null,
     type: "vm0",
-    concreteType,
+    concreteType: route.providerType,
     environment: providerEnvironmentFromSecretRefs(
-      concreteType,
+      route.providerType,
       secretName,
-      apiKey,
-      apiModel,
+      key.apiKey,
+      route.upstreamModel,
     ),
-    secrets: { [secretName]: apiKey },
+    secrets: { [secretName]: key.apiKey },
     selectedModel,
+    vm0ModelRuntimeRoute: route,
     ...(codexRuntimeConfig ? { codexRuntimeConfig } : {}),
   };
 }
@@ -2334,6 +2369,7 @@ interface ResolveModelProviderEnvironmentArgs {
   readonly modelProviderCredentialScope?: ModelProviderCredentialScope;
   readonly modelProviderType?: string;
   readonly selectedModelOverride?: string;
+  readonly vm0ModelRuntimeRoute?: Vm0ModelRuntimeRoute;
   readonly featureSwitchContext: FeatureSwitchContext;
 }
 
@@ -2628,7 +2664,11 @@ async function resolveCandidateModelProviderEnvironment(
       args.selectedModelOverride ??
       row.selectedModel ??
       MODEL_PROVIDER_TYPES.vm0.defaultModel;
-    const provider = await vm0ModelProviderEnvironment(db, selectedModel);
+    const provider = await vm0ModelProviderEnvironment(
+      db,
+      selectedModel,
+      args.vm0ModelRuntimeRoute,
+    );
     return provider?.concreteType &&
       getFrameworkForType(provider.concreteType) === args.framework
       ? provider
@@ -2698,6 +2738,7 @@ async function resolveModelProviderEnvironment(
     const provider = await vm0ModelProviderEnvironment(
       db,
       args.selectedModelOverride ?? MODEL_PROVIDER_TYPES.vm0.defaultModel,
+      args.vm0ModelRuntimeRoute,
     );
     return provider?.concreteType &&
       getFrameworkForType(provider.concreteType) === args.framework
@@ -5557,6 +5598,12 @@ function resolvedSessionStorage(session: {
   };
 }
 
+function resolvedSessionModelRoute(
+  previousRun: ModelRuntimeSessionRoute | null,
+): Pick<ResolvedCompose, "resumeSessionModelRoute"> {
+  return previousRun ? { resumeSessionModelRoute: previousRun } : {};
+}
+
 function resolveBySessionId(
   db: Db,
   agentSessionId: string,
@@ -5602,6 +5649,9 @@ function resolveBySessionId(
             previousRun: {
               id: agentRuns.id,
               vars: agentRuns.vars,
+              modelProvider: agentRuns.modelProvider,
+              modelRuntimeProvider: agentRuns.modelRuntimeProvider,
+              modelRuntimeModel: agentRuns.modelRuntimeModel,
             },
           })
           .from(agentSessions)
@@ -5674,6 +5724,7 @@ function resolveBySessionId(
       agentSessionId: snapshot.session.id,
       continuedFromAgentSessionId: snapshot.session.id,
       resumeSession,
+      ...resolvedSessionModelRoute(snapshot.previousRun),
     };
   });
 }
@@ -5968,6 +6019,7 @@ function launchRunMetadataValues(args: LaunchRunRowsArgs): RunMetadataValues {
   const metadata: ZeroRunMetadata = args.zeroRunMetadata ?? {};
   const modelPin =
     args.zeroRunModelPin ?? zeroRunModelProviderValues(args.modelProvider);
+  const runtimeRoute = args.modelProvider?.vm0ModelRuntimeRoute;
   return normalizeRunMetadata({
     triggerSource: args.body.triggerSource,
     autonomyBudget: metadata.autonomyBudget,
@@ -5977,6 +6029,9 @@ function launchRunMetadataValues(args: LaunchRunRowsArgs): RunMetadataValues {
     modelProviderId: modelPin.modelProviderId,
     modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
     selectedModel: modelPin.selectedModel,
+    modelRuntimeProvider: runtimeRoute?.providerType ?? null,
+    modelRuntimeModel: runtimeRoute?.upstreamModel ?? null,
+    vm0ModelKeyId: runtimeRoute?.modelKeyId ?? null,
     codexServiceTier: metadata.codexServiceTier ?? null,
     selectedVideoModel: args.selectedVideoModel,
     selectedImageModel: args.selectedImageModel,
@@ -7902,6 +7957,7 @@ async function resolveRunModelProvider(
         modelProviderCredentialScope: args.modelProviderCredentialScope,
         modelProviderType: args.modelProviderType,
         selectedModelOverride: args.selectedModelOverride,
+        vm0ModelRuntimeRoute: args.vm0ModelRuntimeRoute,
         featureSwitchContext: options.featureSwitchContext,
       })
     : null;
@@ -8750,6 +8806,27 @@ async function prepareRunContexts(
   return { bodyContext, runtimeContext };
 }
 
+function resolveCompatibleDirectResumeSession(args: {
+  readonly resolved: ResolvedCompose;
+  readonly modelProvider: ResolvedModelProviderEnvironment | null;
+}): ResolvedCompose {
+  if (!args.resolved.resumeSessionModelRoute) {
+    return args.resolved;
+  }
+  const runtimeRoute = args.modelProvider?.vm0ModelRuntimeRoute;
+  const incompatible = hasIncompatibleVm0ModelRuntimeRoute({
+    previous: args.resolved.resumeSessionModelRoute,
+    next: {
+      modelProvider: args.modelProvider?.type ?? null,
+      modelRuntimeProvider: runtimeRoute?.providerType ?? null,
+      modelRuntimeModel: runtimeRoute?.upstreamModel ?? null,
+    },
+  });
+  return incompatible
+    ? { ...args.resolved, resumeSession: undefined }
+    : args.resolved;
+}
+
 function prepareRunContext(
   input: PrepareRunContextInput,
   signal: AbortSignal,
@@ -8778,7 +8855,11 @@ function prepareRunContext(
         return contexts;
       }
       const { bodyContext, runtimeContext } = contexts;
-      const { body, resolved } = bodyContext;
+      const { body } = bodyContext;
+      const resolved = resolveCompatibleDirectResumeSession({
+        resolved: bodyContext.resolved,
+        modelProvider: runtimeContext.modelProvider,
+      });
       const piSandbox = resolvePreparedPiModelConfig({
         createArgs: args,
         featureSwitchContext: bodyContext.featureSwitchContext,

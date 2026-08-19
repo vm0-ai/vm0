@@ -189,6 +189,9 @@ async function readAgentDigest(client: Client): Promise<string> {
             to_jsonb("run")
             - 'launch_snapshot'
             - 'selected_image_model'
+            - 'model_runtime_provider'
+            - 'model_runtime_model'
+            - 'vm0_model_key_id'
           )::text,
           ''
           ORDER BY "run"."id"
