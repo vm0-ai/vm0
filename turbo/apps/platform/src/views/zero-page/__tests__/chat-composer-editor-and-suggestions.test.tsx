@@ -4,8 +4,8 @@ import {
   chatThreadByIdContract,
   chatThreadDraftContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import type { TeamComposeItem } from "@okouai/api-contracts/contracts/zero-team";
-import { zeroWorkflowsCollectionContract } from "@okouai/api-contracts/contracts/zero-workflows";
+import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
+import { workflowsCollectionContract } from "@okouai/api-contracts/contracts/workflows";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { pathname } from "../../../signals/location.ts";
 import {
@@ -125,7 +125,7 @@ describe("chat composer models", () => {
   it("keeps the agent chat slash composer at three-line height", async () => {
     mockOrgModelRoutes("claude-fable-5");
     mockAgent();
-    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+    context.mocks.api(workflowsCollectionContract.list, ({ respond }) => {
       return respond(200, []);
     });
 
@@ -143,7 +143,7 @@ describe("chat composer models", () => {
     mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     mockThread();
-    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+    context.mocks.api(workflowsCollectionContract.list, ({ respond }) => {
       return respond(200, []);
     });
 
@@ -183,7 +183,7 @@ describe("chat composer models", () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("claude-fable-5");
     mockAgent();
-    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+    context.mocks.api(workflowsCollectionContract.list, ({ respond }) => {
       return respond(200, [
         workflowSummary({
           name: "sales-research",
@@ -249,7 +249,7 @@ describe("chat composer models", () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("claude-fable-5");
     mockAgent();
-    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+    context.mocks.api(workflowsCollectionContract.list, ({ respond }) => {
       return respond(200, [
         workflowSummary({
           name: "sales-research",
@@ -326,7 +326,7 @@ describe("chat composer models", () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("claude-fable-5");
     mockAgent();
-    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+    context.mocks.api(workflowsCollectionContract.list, ({ respond }) => {
       return respond(200, [
         workflowSummary({
           name: "dummy-pr-to-release",
@@ -387,7 +387,7 @@ describe("chat composer models", () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("claude-fable-5");
     mockAgent();
-    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+    context.mocks.api(workflowsCollectionContract.list, ({ respond }) => {
       return respond(200, [
         workflowSummary({
           name: "pr-review",
@@ -709,7 +709,7 @@ describe("chat composer models", () => {
     mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     mockThread();
-    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+    context.mocks.api(workflowsCollectionContract.list, ({ respond }) => {
       return respond(200, workflows);
     });
 
@@ -789,35 +789,32 @@ describe("chat composer models", () => {
       { id: THREAD_ID, agentId: AGENT_ID, title: "Left thread" },
       { id: SUGGESTED_THREAD_ID, agentId: AGENT_ID, title: "Right thread" },
     ]);
-    context.mocks.api(
-      zeroWorkflowsCollectionContract.list,
-      async ({ respond }) => {
-        if (reloadPhase === "stale") {
-          staleRequestCount += 1;
-          if (staleRequestCount === 2) {
-            staleRequestsStarted.resolve();
-          }
-          await releaseStaleRequests.promise;
-          return respond(200, []);
+    context.mocks.api(workflowsCollectionContract.list, async ({ respond }) => {
+      if (reloadPhase === "stale") {
+        staleRequestCount += 1;
+        if (staleRequestCount === 2) {
+          staleRequestsStarted.resolve();
         }
-        if (reloadPhase === "fresh") {
-          freshRequestCount += 1;
-          if (freshRequestCount === 2) {
-            freshRequestsStarted.resolve();
-          }
-          return respond(200, [latestWorkflow]);
-        }
-        if (reloadPhase === "barrier") {
-          barrierRequestCount += 1;
-          if (barrierRequestCount === 4) {
-            barrierRequestsStarted.resolve();
-          }
-          await releaseBarrierRequests.promise;
-          return respond(200, [latestWorkflow]);
-        }
+        await releaseStaleRequests.promise;
         return respond(200, []);
-      },
-    );
+      }
+      if (reloadPhase === "fresh") {
+        freshRequestCount += 1;
+        if (freshRequestCount === 2) {
+          freshRequestsStarted.resolve();
+        }
+        return respond(200, [latestWorkflow]);
+      }
+      if (reloadPhase === "barrier") {
+        barrierRequestCount += 1;
+        if (barrierRequestCount === 4) {
+          barrierRequestsStarted.resolve();
+        }
+        await releaseBarrierRequests.promise;
+        return respond(200, [latestWorkflow]);
+      }
+      return respond(200, []);
+    });
 
     detachedSetupPage({
       context,
@@ -921,7 +918,7 @@ describe("chat composer models", () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("claude-fable-5");
     mockAgent();
-    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+    context.mocks.api(workflowsCollectionContract.list, ({ respond }) => {
       return respond(200, [
         workflowSummary({
           name: "sales-research",
@@ -958,7 +955,7 @@ describe("chat composer models", () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("claude-fable-5");
     mockAgent();
-    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+    context.mocks.api(workflowsCollectionContract.list, ({ respond }) => {
       return respond(200, [
         workflowSummary({
           name: "sales-research",
@@ -996,7 +993,7 @@ describe("chat composer models", () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("claude-fable-5");
     mockAgent();
-    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+    context.mocks.api(workflowsCollectionContract.list, ({ respond }) => {
       return respond(200, [
         workflowSummary({
           name: "deep-dive",
@@ -1031,7 +1028,7 @@ describe("chat composer models", () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("claude-fable-5");
     mockAgent();
-    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+    context.mocks.api(workflowsCollectionContract.list, ({ respond }) => {
       return respond(200, [
         workflowSummary({
           name: "deep-dive",
@@ -1073,7 +1070,7 @@ describe("chat composer models", () => {
       return `custom-workflow-${index + 1}`;
     });
     mockAgent();
-    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+    context.mocks.api(workflowsCollectionContract.list, ({ respond }) => {
       return respond(
         200,
         customWorkflows.map((name) => {
@@ -1113,7 +1110,7 @@ describe("chat composer models", () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("claude-fable-5");
     mockAgent();
-    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+    context.mocks.api(workflowsCollectionContract.list, ({ respond }) => {
       return respond(200, []);
     });
 

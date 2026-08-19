@@ -29,7 +29,7 @@ import {
   applyUserPermissionGrantsRequestSchema,
   userPermissionGrantResponseSchema,
 } from "../zero-user-permission-grants";
-import { zeroWorkflowConnectorReadinessResponseSchema } from "../zero-workflows";
+import { workflowConnectorReadinessResponseSchema } from "../workflows";
 import { initClient } from "../trpc-contract";
 
 const AGENT_ID = "00000000-0000-4000-a000-000000000001";
@@ -219,7 +219,7 @@ describe("connector client response contracts", () => {
       }),
     ).toMatchObject({ connectorSlug: "github" });
     expect(
-      zeroWorkflowConnectorReadinessResponseSchema.parse({
+      workflowConnectorReadinessResponseSchema.parse({
         connectors: [
           {
             connectorSlug: "github",

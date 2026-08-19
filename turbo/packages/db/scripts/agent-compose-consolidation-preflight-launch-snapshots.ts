@@ -344,12 +344,13 @@ function strictLaunchSnapshot(value: unknown): {
   };
 }
 
-type CheckpointReference =
+export type CheckpointReference =
   | { readonly classification: "absent" }
   | { readonly classification: "invalid" }
   | { readonly classification: "valid"; readonly versionId: string };
 
-function checkpointReference(snapshot: unknown): CheckpointReference {
+export function checkpointReference(snapshot: unknown): CheckpointReference {
+  if (snapshot === null) return { classification: "absent" };
   if (!isRecord(snapshot)) return { classification: "invalid" };
   const allowedKeys = new Set(["agentComposeVersionId", "secretNames", "vars"]);
   if (
@@ -378,7 +379,7 @@ function checkpointReference(snapshot: unknown): CheckpointReference {
     return { classification: "invalid" };
   }
   if (!("agentComposeVersionId" in snapshot)) {
-    return { classification: "absent" };
+    return { classification: "invalid" };
   }
   if (
     typeof snapshot.agentComposeVersionId !== "string" ||

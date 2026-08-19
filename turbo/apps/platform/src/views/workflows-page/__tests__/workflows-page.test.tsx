@@ -5,21 +5,21 @@ import {
   type BillingStatusResponse,
 } from "@okouai/api-contracts/contracts/zero-billing";
 import {
-  zeroWorkflowsCollectionContract,
-  zeroWorkflowsDetailContract,
-  zeroWorkflowVisibilityContract,
-  zeroWorkflowAutomationsContract,
-  type ZeroWorkflowAutomationCreateRequest,
-  type ZeroWorkflowAutomationUpdateRequest,
-  type ZeroWorkflowUpdateRequest,
-  type ZeroWorkflowDetailResponse,
-  type ZeroWorkflowSummary,
-  type ZeroWorkflowAutomationSummary,
-} from "@okouai/api-contracts/contracts/zero-workflows";
-import { zeroAgentsByIdContract } from "@okouai/api-contracts/contracts/zero-agents";
+  workflowsCollectionContract,
+  workflowsDetailContract,
+  workflowVisibilityContract,
+  workflowAutomationsContract,
+  type WorkflowAutomationCreateRequest,
+  type WorkflowAutomationUpdateRequest,
+  type WorkflowUpdateRequest,
+  type WorkflowDetailResponse,
+  type WorkflowSummary,
+  type WorkflowAutomationSummary,
+} from "@okouai/api-contracts/contracts/workflows";
+import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
 import { integrationsGithubContract } from "@okouai/api-contracts/contracts/integrations-github";
 import { strapiIntegrationsContract } from "@okouai/api-contracts/contracts/strapi-integrations";
-import type { TeamComposeItem } from "@okouai/api-contracts/contracts/zero-team";
+import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
@@ -143,63 +143,63 @@ async function expectComposerText(text: string): Promise<void> {
 }
 
 type WorkflowScheduleAutomationSummary = Extract<
-  ZeroWorkflowAutomationSummary,
+  WorkflowAutomationSummary,
   { kind: "schedule" }
 >;
 type WorkflowGmailNewMessageAutomationSummary = Extract<
-  ZeroWorkflowAutomationSummary,
+  WorkflowAutomationSummary,
   { kind: "event"; eventType: "gmail-new-message" }
 >;
 type WorkflowWebhookAutomationSummary = Extract<
-  ZeroWorkflowAutomationSummary,
+  WorkflowAutomationSummary,
   { kind: "event"; eventType: "webhook-received" }
 >;
 type WorkflowGmailLabelAppliedAutomationSummary = Extract<
-  ZeroWorkflowAutomationSummary,
+  WorkflowAutomationSummary,
   { kind: "event"; eventType: "gmail-label-applied" }
 >;
 type WorkflowGithubPullRequestAutomationSummary = Extract<
-  ZeroWorkflowAutomationSummary,
+  WorkflowAutomationSummary,
   { kind: "event"; eventType: "github-pull-request" }
 >;
 type WorkflowGoogleCalendarEventCreatedAutomationSummary = Extract<
-  ZeroWorkflowAutomationSummary,
+  WorkflowAutomationSummary,
   { kind: "event"; eventType: "google-calendar-event-created" }
 >;
 type WorkflowGoogleCalendarEventUpdatedAutomationSummary = Extract<
-  ZeroWorkflowAutomationSummary,
+  WorkflowAutomationSummary,
   { kind: "event"; eventType: "google-calendar-event-updated" }
 >;
 type WorkflowGoogleCalendarEventCancelledAutomationSummary = Extract<
-  ZeroWorkflowAutomationSummary,
+  WorkflowAutomationSummary,
   { kind: "event"; eventType: "google-calendar-event-cancelled" }
 >;
 type WorkflowGoogleFormsResponseSubmittedAutomationSummary = Extract<
-  ZeroWorkflowAutomationSummary,
+  WorkflowAutomationSummary,
   { kind: "event"; eventType: "google-forms-response-submitted" }
 >;
 type WorkflowGoogleMeetTranscriptGeneratedAutomationSummary = Extract<
-  ZeroWorkflowAutomationSummary,
+  WorkflowAutomationSummary,
   { kind: "event"; eventType: "google-meet-transcript-generated" }
 >;
 type WorkflowNotionChildPageCreatedAutomationSummary = Extract<
-  ZeroWorkflowAutomationSummary,
+  WorkflowAutomationSummary,
   { kind: "event"; eventType: "notion-child-page-created" }
 >;
 type WorkflowNotionDatabaseItemCreatedAutomationSummary = Extract<
-  ZeroWorkflowAutomationSummary,
+  WorkflowAutomationSummary,
   { kind: "event"; eventType: "notion-database-item-created" }
 >;
 type WorkflowNotionPageContentUpdatedAutomationSummary = Extract<
-  ZeroWorkflowAutomationSummary,
+  WorkflowAutomationSummary,
   { kind: "event"; eventType: "notion-page-content-updated" }
 >;
 type WorkflowStripeInvoicePaidAutomationSummary = Extract<
-  ZeroWorkflowAutomationSummary,
+  WorkflowAutomationSummary,
   { kind: "event"; eventType: "stripe-invoice-paid" }
 >;
 
-function workflowAutomations(): ZeroWorkflowAutomationSummary[] {
+function workflowAutomations(): WorkflowAutomationSummary[] {
   return [weekdayWorkflowAutomation()];
 }
 
@@ -530,8 +530,8 @@ function stripeInvoicePaidWorkflowAutomation(
 }
 
 function publicWorkflowAutomation(
-  automation: ZeroWorkflowAutomationSummary,
-): ZeroWorkflowAutomationSummary {
+  automation: WorkflowAutomationSummary,
+): WorkflowAutomationSummary {
   if (
     automation.kind !== "event" ||
     automation.eventType !== "webhook-received"
@@ -547,15 +547,15 @@ function publicWorkflowAutomation(
 }
 
 function publicWorkflowDetail(
-  detail: ZeroWorkflowDetailResponse,
-): ZeroWorkflowDetailResponse {
+  detail: WorkflowDetailResponse,
+): WorkflowDetailResponse {
   return {
     ...detail,
     automations: detail.automations.map(publicWorkflowAutomation),
   };
 }
 
-function salesResearch(): ZeroWorkflowDetailResponse {
+function salesResearch(): WorkflowDetailResponse {
   return {
     id: SALES_WORKFLOW_ID,
     agentId: AGENT_ID,
@@ -591,7 +591,7 @@ function salesResearch(): ZeroWorkflowDetailResponse {
   };
 }
 
-function opsPlaybook(): ZeroWorkflowDetailResponse {
+function opsPlaybook(): WorkflowDetailResponse {
   return {
     id: OPS_WORKFLOW_ID,
     agentId: AGENT_ID,
@@ -615,7 +615,7 @@ function opsPlaybook(): ZeroWorkflowDetailResponse {
   };
 }
 
-function launchChecklistWorkflow(): ZeroWorkflowDetailResponse {
+function launchChecklistWorkflow(): WorkflowDetailResponse {
   return {
     id: CHECKLIST_WORKFLOW_ID,
     agentId: AGENT_ID,
@@ -639,7 +639,7 @@ function launchChecklistWorkflow(): ZeroWorkflowDetailResponse {
   };
 }
 
-function otherAgentWorkflow(): ZeroWorkflowDetailResponse {
+function otherAgentWorkflow(): WorkflowDetailResponse {
   return {
     id: OTHER_WORKFLOW_ID,
     agentId: OTHER_AGENT_ID,
@@ -677,7 +677,7 @@ function agent(id: string, displayName: string): TeamComposeItem {
   };
 }
 
-function summary(workflow: ZeroWorkflowDetailResponse): ZeroWorkflowSummary {
+function summary(workflow: WorkflowDetailResponse): WorkflowSummary {
   return {
     id: workflow.id,
     agentId: workflow.agentId,
@@ -701,7 +701,7 @@ function mockAgentPageApis(): void {
     agent(AGENT_ID, "Research Bot"),
     agent(OTHER_AGENT_ID, "Support Bot"),
   ]);
-  context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
+  context.mocks.api(agentsByIdContract.get, ({ params, respond }) => {
     const displayName =
       params.id === OTHER_AGENT_ID ? "Support Bot" : "Research Bot";
     return respond(200, {
@@ -720,9 +720,9 @@ function mockAgentPageApis(): void {
 }
 
 function applyWorkflowUpdate(
-  workflow: ZeroWorkflowDetailResponse,
-  body: ZeroWorkflowUpdateRequest,
-): ZeroWorkflowDetailResponse {
+  workflow: WorkflowDetailResponse,
+  body: WorkflowUpdateRequest,
+): WorkflowDetailResponse {
   return {
     ...workflow,
     ...(body.name !== undefined ? { name: body.name } : {}),
@@ -749,13 +749,13 @@ function applyWorkflowUpdate(
 }
 
 function mockWorkflowApis(
-  workflows: ZeroWorkflowDetailResponse[],
-  onUpdate?: (body: ZeroWorkflowUpdateRequest) => void,
+  workflows: WorkflowDetailResponse[],
+  onUpdate?: (body: WorkflowUpdateRequest) => void,
 ): void {
   const setAutomationEnabled = (
     automationId: string,
     enabled: boolean,
-  ): ZeroWorkflowAutomationSummary | null => {
+  ): WorkflowAutomationSummary | null => {
     for (const workflow of workflows) {
       const automationIndex = workflow.automations.findIndex((automation) => {
         return automation.id === automationId;
@@ -774,18 +774,15 @@ function mockWorkflowApis(
     return null;
   };
 
-  context.mocks.api(
-    zeroWorkflowsCollectionContract.list,
-    ({ query, respond }) => {
-      const visible = query.agentId
-        ? workflows.filter((workflow) => {
-            return workflow.agentId === query.agentId;
-          })
-        : workflows;
-      return respond(200, visible.map(summary));
-    },
-  );
-  context.mocks.api(zeroWorkflowsDetailContract.get, ({ params, respond }) => {
+  context.mocks.api(workflowsCollectionContract.list, ({ query, respond }) => {
+    const visible = query.agentId
+      ? workflows.filter((workflow) => {
+          return workflow.agentId === query.agentId;
+        })
+      : workflows;
+    return respond(200, visible.map(summary));
+  });
+  context.mocks.api(workflowsDetailContract.get, ({ params, respond }) => {
     const detail = workflows.find((workflow) => {
       return workflow.id === params.workflowId;
     });
@@ -798,7 +795,7 @@ function mockWorkflowApis(
     return respond(200, publicDetail);
   });
   context.mocks.api(
-    zeroWorkflowAutomationsContract.listWorkspace,
+    workflowAutomationsContract.listWorkspace,
     ({ respond }) => {
       return respond(
         200,
@@ -814,7 +811,7 @@ function mockWorkflowApis(
     },
   );
   context.mocks.api(
-    zeroWorkflowAutomationsContract.revealWebhookSecret,
+    workflowAutomationsContract.revealWebhookSecret,
     ({ params, respond }) => {
       const automation = workflows
         .flatMap((workflow) => {
@@ -841,7 +838,7 @@ function mockWorkflowApis(
     },
   );
   context.mocks.api(
-    zeroWorkflowAutomationsContract.enable,
+    workflowAutomationsContract.enable,
     ({ params, respond }) => {
       const automation = setAutomationEnabled(params.id, true);
       if (!automation) {
@@ -853,7 +850,7 @@ function mockWorkflowApis(
     },
   );
   context.mocks.api(
-    zeroWorkflowAutomationsContract.disable,
+    workflowAutomationsContract.disable,
     ({ params, respond }) => {
       const automation = setAutomationEnabled(params.id, false);
       if (!automation) {
@@ -865,7 +862,7 @@ function mockWorkflowApis(
     },
   );
   context.mocks.api(
-    zeroWorkflowsDetailContract.update,
+    workflowsDetailContract.update,
     ({ params, body, respond }) => {
       const index = workflows.findIndex((workflow) => {
         return workflow.id === params.workflowId;
@@ -884,11 +881,11 @@ function mockWorkflowApis(
 }
 
 function mockDeleteWorkflow(
-  workflows: ZeroWorkflowDetailResponse[],
+  workflows: WorkflowDetailResponse[],
   onDelete: (workflowId: string) => void | Promise<void>,
 ): void {
   context.mocks.api(
-    zeroWorkflowsDetailContract.delete,
+    workflowsDetailContract.delete,
     async ({ params, respond }) => {
       await onDelete(params.workflowId);
       const index = workflows.findIndex((workflow) => {
@@ -936,11 +933,8 @@ function mockConnectedAutomationConnectors(): void {
 }
 
 function mockConfiguredEventAutomation(
-  body: Extract<
-    ZeroWorkflowAutomationCreateRequest,
-    { readonly kind: "event" }
-  >,
-): ZeroWorkflowAutomationSummary {
+  body: Extract<WorkflowAutomationCreateRequest, { readonly kind: "event" }>,
+): WorkflowAutomationSummary {
   if (body.eventType === "stripe-invoice-paid") {
     return {
       ...gmailWorkflowAutomation(),
@@ -963,15 +957,12 @@ function mockConfiguredEventAutomation(
     ...gmailWorkflowAutomation(),
     eventType: body.eventType,
     eventConfig: body.eventConfig,
-  } as ZeroWorkflowAutomationSummary;
+  } as WorkflowAutomationSummary;
 }
 
 function mockGoogleCalendarEventAutomation(
-  body: Extract<
-    ZeroWorkflowAutomationCreateRequest,
-    { readonly kind: "event" }
-  >,
-): ZeroWorkflowAutomationSummary {
+  body: Extract<WorkflowAutomationCreateRequest, { readonly kind: "event" }>,
+): WorkflowAutomationSummary {
   switch (body.eventType) {
     case "google-calendar-event-created": {
       return {
@@ -998,137 +989,134 @@ function mockGoogleCalendarEventAutomation(
 }
 
 function mockCreateWorkflowAutomation(
-  onCreate: (body: ZeroWorkflowAutomationCreateRequest) => void,
+  onCreate: (body: WorkflowAutomationCreateRequest) => void,
 ): void {
-  context.mocks.api(
-    zeroWorkflowAutomationsContract.create,
-    ({ body, respond }) => {
-      onCreate(body);
-      if (body.kind !== "event") {
-        return respond(201, weekdayWorkflowAutomation());
-      }
-      if (body.eventType === "webhook-received") {
-        return respond(201, {
-          ...webhookWorkflowAutomation(),
-          eventConfig:
-            body.eventConfig ?? webhookWorkflowAutomation().eventConfig,
-          webhookSecret: "webhook-secret",
-        });
-      }
-      if (body.eventType === "gmail-label-applied") {
-        return respond(201, {
-          ...gmailLabelWorkflowAutomation(),
-          eventConfig: body.eventConfig,
-        });
-      }
-      if (body.eventType === "github-pull-request") {
-        return respond(201, {
-          ...githubPullRequestWorkflowAutomation(),
-          eventConfig: body.eventConfig,
-        });
-      }
-      if (body.eventType === "github-workflow-run-completed") {
-        return respond(201, {
-          ...githubPullRequestWorkflowAutomation(),
-          eventType: "github-workflow-run-completed",
-          eventConfig: body.eventConfig,
-        });
-      }
-      if (body.eventConfig.provider === "google-calendar") {
-        return respond(201, mockGoogleCalendarEventAutomation(body));
-      }
-      if (body.eventType === "google-meet-transcript-generated") {
-        return respond(201, {
-          ...googleMeetTranscriptGeneratedWorkflowAutomation(),
-          eventConfig: body.eventConfig,
-        });
-      }
-      if (body.eventType === "notion-child-page-created") {
-        return respond(201, {
-          ...notionChildPageWorkflowAutomation(),
-          eventConfig: {
-            provider: "notion",
-            event: "child_page_created",
-            connectorId: "00000000-0000-4000-a000-000000000410",
-            parentPage: {
-              id: "11111111-1111-4111-8111-111111111111",
-              url: body.eventConfig.parentPageUrl,
-              title: "Roadmap",
-              rawUrl: body.eventConfig.parentPageUrl,
-            },
-          },
-        });
-      }
-      if (body.eventType === "notion-database-item-created") {
-        return respond(201, {
-          ...notionDatabaseItemWorkflowAutomation(),
-          eventConfig: {
-            provider: "notion",
-            event: "database_item_created",
-            connectorId: "00000000-0000-4000-a000-000000000410",
-            dataSource: {
-              id: "22222222-2222-4222-8222-222222222222",
-              url: body.eventConfig.databaseUrl,
-              title: "Bug Bash",
-              rawUrl: body.eventConfig.databaseUrl,
-            },
-          },
-        });
-      }
-      if (body.eventType === "notion-page-content-updated") {
-        return respond(201, {
-          ...notionPageContentUpdatedWorkflowAutomation(),
-          eventConfig: {
-            provider: "notion",
-            event: "page_content_updated",
-            connectorId: "00000000-0000-4000-a000-000000000410",
-            scope: body.eventConfig.pageUrl
-              ? {
-                  type: "page",
-                  page: {
-                    id: "33333333-3333-4333-8333-333333333333",
-                    url: body.eventConfig.pageUrl,
-                    title: "Release plan",
-                    rawUrl: body.eventConfig.pageUrl,
-                  },
-                }
-              : {
-                  type: "data_source",
-                  dataSource: {
-                    id: "22222222-2222-4222-8222-222222222222",
-                    url: body.eventConfig.databaseUrl ?? "",
-                    title: "Bug Bash",
-                    rawUrl: body.eventConfig.databaseUrl,
-                  },
-                },
-          },
-        });
-      }
-      if (
-        body.eventConfig.provider === "github" ||
-        body.eventConfig.provider === "google-forms" ||
-        body.eventConfig.provider === "stripe" ||
-        body.eventConfig.provider === "strapi" ||
-        body.eventConfig.provider === "chat"
-      ) {
-        return respond(201, mockConfiguredEventAutomation(body));
-      }
+  context.mocks.api(workflowAutomationsContract.create, ({ body, respond }) => {
+    onCreate(body);
+    if (body.kind !== "event") {
+      return respond(201, weekdayWorkflowAutomation());
+    }
+    if (body.eventType === "webhook-received") {
       return respond(201, {
-        ...gmailWorkflowAutomation(),
+        ...webhookWorkflowAutomation(),
+        eventConfig:
+          body.eventConfig ?? webhookWorkflowAutomation().eventConfig,
+        webhookSecret: "webhook-secret",
+      });
+    }
+    if (body.eventType === "gmail-label-applied") {
+      return respond(201, {
+        ...gmailLabelWorkflowAutomation(),
         eventConfig: body.eventConfig,
       });
-    },
-  );
+    }
+    if (body.eventType === "github-pull-request") {
+      return respond(201, {
+        ...githubPullRequestWorkflowAutomation(),
+        eventConfig: body.eventConfig,
+      });
+    }
+    if (body.eventType === "github-workflow-run-completed") {
+      return respond(201, {
+        ...githubPullRequestWorkflowAutomation(),
+        eventType: "github-workflow-run-completed",
+        eventConfig: body.eventConfig,
+      });
+    }
+    if (body.eventConfig.provider === "google-calendar") {
+      return respond(201, mockGoogleCalendarEventAutomation(body));
+    }
+    if (body.eventType === "google-meet-transcript-generated") {
+      return respond(201, {
+        ...googleMeetTranscriptGeneratedWorkflowAutomation(),
+        eventConfig: body.eventConfig,
+      });
+    }
+    if (body.eventType === "notion-child-page-created") {
+      return respond(201, {
+        ...notionChildPageWorkflowAutomation(),
+        eventConfig: {
+          provider: "notion",
+          event: "child_page_created",
+          connectorId: "00000000-0000-4000-a000-000000000410",
+          parentPage: {
+            id: "11111111-1111-4111-8111-111111111111",
+            url: body.eventConfig.parentPageUrl,
+            title: "Roadmap",
+            rawUrl: body.eventConfig.parentPageUrl,
+          },
+        },
+      });
+    }
+    if (body.eventType === "notion-database-item-created") {
+      return respond(201, {
+        ...notionDatabaseItemWorkflowAutomation(),
+        eventConfig: {
+          provider: "notion",
+          event: "database_item_created",
+          connectorId: "00000000-0000-4000-a000-000000000410",
+          dataSource: {
+            id: "22222222-2222-4222-8222-222222222222",
+            url: body.eventConfig.databaseUrl,
+            title: "Bug Bash",
+            rawUrl: body.eventConfig.databaseUrl,
+          },
+        },
+      });
+    }
+    if (body.eventType === "notion-page-content-updated") {
+      return respond(201, {
+        ...notionPageContentUpdatedWorkflowAutomation(),
+        eventConfig: {
+          provider: "notion",
+          event: "page_content_updated",
+          connectorId: "00000000-0000-4000-a000-000000000410",
+          scope: body.eventConfig.pageUrl
+            ? {
+                type: "page",
+                page: {
+                  id: "33333333-3333-4333-8333-333333333333",
+                  url: body.eventConfig.pageUrl,
+                  title: "Release plan",
+                  rawUrl: body.eventConfig.pageUrl,
+                },
+              }
+            : {
+                type: "data_source",
+                dataSource: {
+                  id: "22222222-2222-4222-8222-222222222222",
+                  url: body.eventConfig.databaseUrl ?? "",
+                  title: "Bug Bash",
+                  rawUrl: body.eventConfig.databaseUrl,
+                },
+              },
+        },
+      });
+    }
+    if (
+      body.eventConfig.provider === "github" ||
+      body.eventConfig.provider === "google-forms" ||
+      body.eventConfig.provider === "stripe" ||
+      body.eventConfig.provider === "strapi" ||
+      body.eventConfig.provider === "chat"
+    ) {
+      return respond(201, mockConfiguredEventAutomation(body));
+    }
+    return respond(201, {
+      ...gmailWorkflowAutomation(),
+      eventConfig: body.eventConfig,
+    });
+  });
 }
 
 function mockUpdateWorkflowAutomation(
   onUpdate: (
     automationId: string,
-    body: ZeroWorkflowAutomationUpdateRequest,
+    body: WorkflowAutomationUpdateRequest,
   ) => void,
 ): void {
   context.mocks.api(
-    zeroWorkflowAutomationsContract.update,
+    workflowAutomationsContract.update,
     ({ params, body, respond }) => {
       onUpdate(params.id, body);
       if ("eventConfig" in body) {
@@ -1154,7 +1142,7 @@ function mockUpdateWorkflowAutomation(
                       ? "github-deployment-status-created"
                       : "github-issue-comment-created",
               eventConfig: body.eventConfig,
-            } as ZeroWorkflowAutomationSummary);
+            } as WorkflowAutomationSummary);
           }
           return respond(200, {
             ...githubPullRequestWorkflowAutomation(),
@@ -1187,23 +1175,20 @@ function mockUpdateWorkflowAutomation(
 function mockRunWorkflowAutomation(
   onRun: (automationId: string) => void,
 ): void {
-  context.mocks.api(
-    zeroWorkflowAutomationsContract.run,
-    ({ params, respond }) => {
-      onRun(params.id);
-      return respond(201, {
-        runId: null,
-        chatThreadId: AUTOMATION_RUN_THREAD_ID,
-      });
-    },
-  );
+  context.mocks.api(workflowAutomationsContract.run, ({ params, respond }) => {
+    onRun(params.id);
+    return respond(201, {
+      runId: null,
+      chatThreadId: AUTOMATION_RUN_THREAD_ID,
+    });
+  });
 }
 
 function mockDisableWorkflowAutomation(
   onDisable: (automationId: string) => void,
 ): void {
   context.mocks.api(
-    zeroWorkflowAutomationsContract.disable,
+    workflowAutomationsContract.disable,
     ({ params, respond }) => {
       onDisable(params.id);
       return respond(200, {
@@ -1217,7 +1202,7 @@ function mockDisableWorkflowAutomation(
 
 function mockOpenWorkflowChat(onOpen: (workflowId: string) => void): void {
   context.mocks.api(
-    zeroWorkflowsDetailContract.chatThread,
+    workflowsDetailContract.chatThread,
     ({ params, respond }) => {
       onOpen(params.workflowId);
       return respond(200, {
@@ -1826,7 +1811,7 @@ describe("workflow detail page", () => {
     let requestCount = 0;
     mockWorkflowApis([workflow]);
     context.mocks.api(
-      zeroWorkflowsDetailContract.connectorReadiness,
+      workflowsDetailContract.connectorReadiness,
       async ({ params, respond }) => {
         expect(params.workflowId).toBe(SALES_WORKFLOW_ID);
         requestCount += 1;
@@ -1972,7 +1957,7 @@ describe("workflow detail page", () => {
     let requestCount = 0;
     mockWorkflowApis([salesResearch()]);
     context.mocks.api(
-      zeroWorkflowsDetailContract.connectorReadiness,
+      workflowsDetailContract.connectorReadiness,
       ({ respond }) => {
         requestCount += 1;
         if (requestCount === 1) {
@@ -2025,7 +2010,7 @@ describe("workflow detail page", () => {
     const workflow = salesResearch();
     mockWorkflowApis([workflow]);
     context.mocks.api(
-      zeroWorkflowsDetailContract.connectorReadiness,
+      workflowsDetailContract.connectorReadiness,
       ({ respond }) => {
         return respond(200, {
           connectors: [
@@ -2183,7 +2168,7 @@ describe("workflow detail page", () => {
     const demotedIds: string[] = [];
     mockWorkflowApis([salesResearch()]);
     context.mocks.api(
-      zeroWorkflowVisibilityContract.demote,
+      workflowVisibilityContract.demote,
       ({ params, respond }) => {
         demotedIds.push(params.workflowId);
         return respond(
@@ -2230,7 +2215,7 @@ describe("workflow detail page", () => {
 
   it("copies a workflow to another agent from the info tab", async () => {
     const workflows = [salesResearch()];
-    const copiedWorkflow: ZeroWorkflowDetailResponse = {
+    const copiedWorkflow: WorkflowDetailResponse = {
       ...salesResearch(),
       id: COPIED_WORKFLOW_ID,
       agentId: OTHER_AGENT_ID,
@@ -2254,7 +2239,7 @@ describe("workflow detail page", () => {
       deletedWorkflowIds.push(workflowId);
     });
     context.mocks.api(
-      zeroWorkflowsDetailContract.copy,
+      workflowsDetailContract.copy,
       ({ params, body, respond }) => {
         copyRequests.push({
           workflowId: params.workflowId,
@@ -2300,7 +2285,7 @@ describe("workflow detail page", () => {
   it("keeps the copy dialog open when copying fails", async () => {
     mockAgentPageApis();
     mockWorkflowApis([salesResearch()]);
-    context.mocks.api(zeroWorkflowsDetailContract.copy, ({ respond }) => {
+    context.mocks.api(workflowsDetailContract.copy, ({ respond }) => {
       return respond(400, {
         error: {
           code: "BAD_REQUEST",
@@ -2326,7 +2311,7 @@ describe("workflow detail page", () => {
   it("moves a workflow by removing the original after copying", async () => {
     const user = userEvent.setup();
     const workflows = [salesResearch()];
-    const copiedWorkflow: ZeroWorkflowDetailResponse = {
+    const copiedWorkflow: WorkflowDetailResponse = {
       ...salesResearch(),
       id: COPIED_WORKFLOW_ID,
       agentId: OTHER_AGENT_ID,
@@ -2350,7 +2335,7 @@ describe("workflow detail page", () => {
       deletedWorkflowIds.push(workflowId);
     });
     context.mocks.api(
-      zeroWorkflowsDetailContract.copy,
+      workflowsDetailContract.copy,
       ({ params, body, respond }) => {
         copyRequests.push({
           workflowId: params.workflowId,
@@ -2410,7 +2395,7 @@ describe("workflow detail page", () => {
   });
 
   it("prefills and updates workflow metadata from the info tab", async () => {
-    const updateBodies: ZeroWorkflowUpdateRequest[] = [];
+    const updateBodies: WorkflowUpdateRequest[] = [];
     mockWorkflowApis([salesResearch()], (body) => {
       updateBodies.push(body);
     });
@@ -2556,7 +2541,7 @@ describe("workflow detail page", () => {
   });
 
   it("creates a Gmail new message automation with text match rules", async () => {
-    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
+    const createBodies: WorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
     mockCreateWorkflowAutomation((body) => {
       createBodies.push(body);
@@ -2620,7 +2605,7 @@ describe("workflow detail page", () => {
   });
 
   it("creates a Gmail label applied automation with a label name", async () => {
-    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
+    const createBodies: WorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
     mockCreateWorkflowAutomation((body) => {
       createBodies.push(body);
@@ -2661,7 +2646,7 @@ describe("workflow detail page", () => {
   });
 
   it("creates a GitHub workflow run automation with native filters", async () => {
-    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
+    const createBodies: WorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
     mockCreateWorkflowAutomation((body) => {
       createBodies.push(body);
@@ -2779,7 +2764,7 @@ describe("workflow detail page", () => {
   });
 
   it("creates a GitHub issue comment automation", async () => {
-    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
+    const createBodies: WorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
     mockCreateWorkflowAutomation((body) => {
       createBodies.push(body);
@@ -2832,7 +2817,7 @@ describe("workflow detail page", () => {
   });
 
   it("creates a Google Calendar event-updated automation", async () => {
-    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
+    const createBodies: WorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
     mockCreateWorkflowAutomation((body) => {
       createBodies.push(body);
@@ -2873,7 +2858,7 @@ describe("workflow detail page", () => {
   });
 
   it("creates a Google Calendar event-cancelled automation", async () => {
-    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
+    const createBodies: WorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
     mockCreateWorkflowAutomation((body) => {
       createBodies.push(body);
@@ -2933,11 +2918,11 @@ describe("workflow detail page", () => {
   });
 
   it("creates a Google Forms automation and shows the API warning", async () => {
-    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
+    const createBodies: WorkflowAutomationCreateRequest[] = [];
     const warning = "This Google Form is not accepting responses yet.";
     mockWorkflowApis([salesResearch()]);
     context.mocks.api(
-      zeroWorkflowAutomationsContract.create,
+      workflowAutomationsContract.create,
       ({ body, respond }) => {
         createBodies.push(body);
         return respond(
@@ -2983,7 +2968,7 @@ describe("workflow detail page", () => {
     const guidance =
       "Please open the form's edit page and copy the link from the address bar.";
     mockWorkflowApis([salesResearch()]);
-    context.mocks.api(zeroWorkflowAutomationsContract.create, ({ respond }) => {
+    context.mocks.api(workflowAutomationsContract.create, ({ respond }) => {
       return respond(400, {
         error: { code: "BAD_REQUEST", message: guidance },
       });
@@ -3011,7 +2996,7 @@ describe("workflow detail page", () => {
   });
 
   it("creates a Google Meet transcript-generated automation", async () => {
-    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
+    const createBodies: WorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
     mockCreateWorkflowAutomation((body) => {
       createBodies.push(body);
@@ -3048,7 +3033,7 @@ describe("workflow detail page", () => {
   });
 
   it("creates a Notion database item automation", async () => {
-    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
+    const createBodies: WorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
     mockCreateWorkflowAutomation((body) => {
       createBodies.push(body);
@@ -3176,11 +3161,11 @@ describe("workflow detail page", () => {
 
   it("creates a Stripe automation with selected billing reasons and refreshes the detail", async () => {
     const user = userEvent.setup();
-    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
+    const createBodies: WorkflowAutomationCreateRequest[] = [];
     const workflow = salesResearch();
     mockWorkflowApis([workflow]);
     context.mocks.api(
-      zeroWorkflowAutomationsContract.create,
+      workflowAutomationsContract.create,
       ({ body, respond }) => {
         createBodies.push(body);
         if (body.kind !== "event" || body.eventType !== "stripe-invoice-paid") {
@@ -3249,7 +3234,7 @@ describe("workflow detail page", () => {
   });
 
   it("omits billingReasons when creating a Stripe automation with no selection", async () => {
-    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
+    const createBodies: WorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
     mockCreateWorkflowAutomation((body) => {
       createBodies.push(body);
@@ -3282,7 +3267,7 @@ describe("workflow detail page", () => {
     const serverMessage =
       "Stripe invoice-paid automations require Live mode; reconnect Stripe in Live mode";
     mockWorkflowApis([salesResearch()]);
-    context.mocks.api(zeroWorkflowAutomationsContract.create, ({ respond }) => {
+    context.mocks.api(workflowAutomationsContract.create, ({ respond }) => {
       return respond(409, {
         error: { code: "CONFLICT", message: serverMessage },
       });
@@ -3324,7 +3309,7 @@ describe("workflow detail page", () => {
 
   it("creates a Strapi entry-published automation behind the feature switch", async () => {
     const integrationId = "00000000-0000-4000-8000-000000000092";
-    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
+    const createBodies: WorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
     mockCreateWorkflowAutomation((body) => {
       createBodies.push(body);
@@ -3376,7 +3361,7 @@ describe("workflow detail page", () => {
   });
 
   it("creates a webhook automation and shows one-time signing details", async () => {
-    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
+    const createBodies: WorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
     mockCreateWorkflowAutomation((body) => {
       createBodies.push(body);
@@ -3495,7 +3480,7 @@ describe("workflow detail page", () => {
       role: "admin",
     });
     mockWorkflowApis([salesResearch()]);
-    context.mocks.api(zeroWorkflowAutomationsContract.create, ({ respond }) => {
+    context.mocks.api(workflowAutomationsContract.create, ({ respond }) => {
       return respond(402, {
         error: {
           code: "TEAM_REQUIRED",
@@ -3569,7 +3554,7 @@ describe("workflow detail page", () => {
       ],
     };
     mockWorkflowApis([workflow]);
-    context.mocks.api(zeroWorkflowAutomationsContract.enable, ({ respond }) => {
+    context.mocks.api(workflowAutomationsContract.enable, ({ respond }) => {
       return respond(402, {
         error: {
           code: "TEAM_REQUIRED",
@@ -3630,7 +3615,7 @@ describe("workflow detail page", () => {
   });
 
   it("creates a cron schedule automation from the preferred time zone", async () => {
-    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
+    const createBodies: WorkflowAutomationCreateRequest[] = [];
     context.mocks.data.userPreferences({ timezone: "Asia/Shanghai" });
     mockWorkflowApis([salesResearch()]);
     mockCreateWorkflowAutomation((body) => {
@@ -3669,7 +3654,7 @@ describe("workflow detail page", () => {
   });
 
   it("creates an interval automation from the automation menu", async () => {
-    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
+    const createBodies: WorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
     mockCreateWorkflowAutomation((body) => {
       createBodies.push(body);
@@ -3703,7 +3688,7 @@ describe("workflow detail page", () => {
   });
 
   it("creates a one-time automation from the automation menu", async () => {
-    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
+    const createBodies: WorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
     mockCreateWorkflowAutomation((body) => {
       createBodies.push(body);
@@ -3742,7 +3727,7 @@ describe("workflow detail page", () => {
   it("updates a cron schedule automation from the preferred time zone", async () => {
     const updateBodies: {
       readonly automationId: string;
-      readonly body: ZeroWorkflowAutomationUpdateRequest;
+      readonly body: WorkflowAutomationUpdateRequest;
     }[] = [];
     context.mocks.data.userPreferences({ timezone: "Asia/Shanghai" });
     const workflow = {
@@ -3795,7 +3780,7 @@ describe("workflow detail page", () => {
   it("updates a loop schedule automation from the edit dialog", async () => {
     const updateBodies: {
       readonly automationId: string;
-      readonly body: ZeroWorkflowAutomationUpdateRequest;
+      readonly body: WorkflowAutomationUpdateRequest;
     }[] = [];
     const workflow = {
       ...salesResearch(),
@@ -3845,7 +3830,7 @@ describe("workflow detail page", () => {
   it("updates a Gmail new message automation with text match rules", async () => {
     const updateBodies: {
       readonly automationId: string;
-      readonly body: ZeroWorkflowAutomationUpdateRequest;
+      readonly body: WorkflowAutomationUpdateRequest;
     }[] = [];
     const workflow = {
       ...salesResearch(),
@@ -3943,7 +3928,7 @@ describe("workflow detail page", () => {
   it("updates a Gmail label applied automation with a label name", async () => {
     const updateBodies: {
       readonly automationId: string;
-      readonly body: ZeroWorkflowAutomationUpdateRequest;
+      readonly body: WorkflowAutomationUpdateRequest;
     }[] = [];
     const workflow = {
       ...salesResearch(),
@@ -4005,7 +3990,7 @@ describe("workflow detail page", () => {
   });
 
   it("deletes the selected supplementary file through the workflow update endpoint", async () => {
-    const updateBodies: ZeroWorkflowUpdateRequest[] = [];
+    const updateBodies: WorkflowUpdateRequest[] = [];
     mockWorkflowApis([salesResearch()], (body) => {
       updateBodies.push(body);
     });
@@ -4033,7 +4018,7 @@ describe("workflow detail page", () => {
   });
 
   it("uploads supplementary files through the workflow update endpoint", async () => {
-    const updateBodies: ZeroWorkflowUpdateRequest[] = [];
+    const updateBodies: WorkflowUpdateRequest[] = [];
     mockWorkflowApis([salesResearch()], (body) => {
       updateBodies.push(body);
     });

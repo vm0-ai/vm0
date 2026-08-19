@@ -24,8 +24,8 @@ import {
   type TelegramBotStatus,
   type TelegramSetupStatus,
   OFFICIAL_TELEGRAM_BOT_ID,
-} from "@okouai/api-contracts/contracts/zero-integrations-telegram";
-import type { TeamComposeItem } from "@okouai/api-contracts/contracts/zero-team";
+} from "@okouai/api-contracts/contracts/integrations-telegram";
+import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
 import { Button } from "@okouai/ui/components/ui/button";
 import {
   Dialog,

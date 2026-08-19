@@ -1,7 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { chatEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
-import { zeroAgentsByIdContract } from "@okouai/api-contracts/contracts/zero-agents";
+import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogPermissionDetail,
@@ -76,7 +76,7 @@ describe("permission allow page", () => {
     let capturedBody: unknown = null;
     let capturedContinuationBody: unknown = null;
 
-    context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
+    context.mocks.api(agentsByIdContract.get, ({ respond }) => {
       return respond(200, {
         agentId,
         ownerId: "test-user-123",
@@ -201,7 +201,7 @@ describe("permission allow page", () => {
   it("fails closed when catalog permissions returns not found", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000009";
 
-    context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
+    context.mocks.api(agentsByIdContract.get, ({ respond }) => {
       return respond(200, {
         agentId,
         ownerId: "test-user-123",
@@ -256,7 +256,7 @@ describe("permission allow page", () => {
       },
     ];
 
-    context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
+    context.mocks.api(agentsByIdContract.get, ({ respond }) => {
       return respond(200, {
         agentId,
         ownerId: "test-user-123",
@@ -333,7 +333,7 @@ describe("permission allow page", () => {
     mockNow(context.signal);
     const agentId = "c0000000-0000-4000-a000-000000000003";
 
-    context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
+    context.mocks.api(agentsByIdContract.get, ({ respond }) => {
       return respond(200, {
         agentId,
         ownerId: "test-user-123",
@@ -386,7 +386,7 @@ describe("permission allow page", () => {
     mockNow(context.signal);
     const agentId = "c0000000-0000-4000-a000-000000000009";
 
-    context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
+    context.mocks.api(agentsByIdContract.get, ({ respond }) => {
       return respond(200, {
         agentId,
         ownerId: "test-user-123",
@@ -437,7 +437,7 @@ describe("permission allow page", () => {
     mockNow(context.signal);
     const agentId = "c0000000-0000-4000-a000-000000000011";
 
-    context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
+    context.mocks.api(agentsByIdContract.get, ({ respond }) => {
       return respond(200, {
         agentId,
         ownerId: "test-user-123",
@@ -488,7 +488,7 @@ describe("permission allow page", () => {
     mockNow(context.signal);
     const agentId = "c0000000-0000-4000-a000-000000000010";
 
-    context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
+    context.mocks.api(agentsByIdContract.get, ({ respond }) => {
       return respond(200, {
         agentId,
         ownerId: "test-user-123",
@@ -558,7 +558,7 @@ describe("permission allow page", () => {
   it("shows already denied when the permission is already denied", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000006";
 
-    context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
+    context.mocks.api(agentsByIdContract.get, ({ respond }) => {
       return respond(200, {
         agentId,
         ownerId: "test-user-123",
@@ -612,7 +612,7 @@ describe("permission allow page", () => {
     const agentId = "c0000000-0000-4000-a000-000000000004";
     let grants: UserPermissionGrantResponse[] = [];
 
-    context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
+    context.mocks.api(agentsByIdContract.get, ({ respond }) => {
       return respond(200, {
         agentId,
         ownerId: "test-user-123",
@@ -690,7 +690,7 @@ describe("permission allow page", () => {
   it("shows the completed state when an unknown endpoint grant already applies", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000005";
 
-    context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
+    context.mocks.api(agentsByIdContract.get, ({ respond }) => {
       return respond(200, {
         agentId,
         ownerId: "test-user-123",
@@ -740,7 +740,7 @@ describe("permission allow page", () => {
   it("shows a load error without a confirm action", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000007";
 
-    context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
+    context.mocks.api(agentsByIdContract.get, ({ respond }) => {
       return respond(200, {
         agentId,
         ownerId: "test-user-123",
@@ -784,7 +784,7 @@ describe("permission allow page", () => {
   it("keeps the permission form visible after a save failure", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000008";
 
-    context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
+    context.mocks.api(agentsByIdContract.get, ({ respond }) => {
       return respond(200, {
         agentId,
         ownerId: "test-user-123",

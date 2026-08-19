@@ -18,7 +18,7 @@ import {
   type DirectRunFixtureRequest,
 } from "../../../../test-fixtures/agent-runs";
 import type { ApiTestUser } from "./api-bdd";
-import { createZeroRouteMocks } from "./zero-route-test";
+import { createRouteMocks } from "./route-test";
 import { logsRoutes } from "../../logs";
 import { queuePositionRoutes } from "../../queue-position";
 import { runDetailRoutes } from "../../run-detail";
@@ -81,7 +81,7 @@ function authenticate(
     return {};
   }
 
-  createZeroRouteMocks(context).clerk.session(
+  createRouteMocks(context).clerk.session(
     nextActor.userId,
     nextActor.orgId,
     nextActor.orgRole,

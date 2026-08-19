@@ -10,7 +10,7 @@ export { rewritePlatformHostname };
 
 const OKOU_PAGES_PREVIEW_HOST_SUFFIX = ".okou-app.pages.dev";
 const PREVIEW_API_HOSTNAME_PATTERN = /^(?:staging|pr-[0-9]+)-api\.vm6\.ai$/u;
-const PREVIEW_API_ORIGIN_SELECTOR = 'meta[name="vm0-api-origin"]';
+const API_ORIGIN_SELECTOR = 'meta[name="vm0-api-origin"]';
 
 function trimTrailingSlash(base: string): string {
   return base.endsWith("/") ? base.slice(0, -1) : base;
@@ -23,18 +23,54 @@ function browserOrigin(): string | null {
   return location.origin;
 }
 
-function configuredPreviewApiOrigin(currentOrigin: string): string | null {
-  const currentUrl = new URL(currentOrigin);
+function apiOriginMarker(): HTMLMetaElement | null {
+  if (typeof document === "undefined") {
+    return null;
+  }
+  const element = document.querySelector(API_ORIGIN_SELECTOR);
+  return element instanceof HTMLMetaElement ? element : null;
+}
+
+function expectedProductionApiOrigin(hostname: string): string | null {
+  if (hostname === "app.okou.ai") {
+    return "https://api.okou.ai";
+  }
+  if (hostname === "app.vm0.ai") {
+    return "https://api.vm0.ai";
+  }
+  return null;
+}
+
+function configuredProductionApiOrigin(currentUrl: URL): string | null {
+  const expectedOrigin = expectedProductionApiOrigin(currentUrl.hostname);
+  if (!expectedOrigin) {
+    return null;
+  }
+
+  const configuredOrigin = apiOriginMarker()?.content.trim();
+  if (!configuredOrigin) {
+    throw new Error(
+      `Missing production API origin marker for ${currentUrl.hostname}`,
+    );
+  }
+  if (configuredOrigin !== expectedOrigin) {
+    throw new Error(
+      `Production API origin marker mismatch for ${currentUrl.hostname}`,
+    );
+  }
+  return configuredOrigin;
+}
+
+function configuredPreviewApiOrigin(currentUrl: URL): string | null {
   if (
     currentUrl.protocol !== "https:" ||
-    !currentUrl.hostname.endsWith(OKOU_PAGES_PREVIEW_HOST_SUFFIX) ||
-    typeof document === "undefined"
+    !currentUrl.hostname.endsWith(OKOU_PAGES_PREVIEW_HOST_SUFFIX)
   ) {
     return null;
   }
 
-  const element = document.querySelector(PREVIEW_API_ORIGIN_SELECTOR);
-  if (!(element instanceof HTMLMetaElement)) {
+  const element = apiOriginMarker();
+  if (!element) {
     return null;
   }
 
@@ -60,12 +96,20 @@ function configuredPreviewApiOrigin(currentOrigin: string): string | null {
   return configuredUrl.origin;
 }
 
+function configuredApiOrigin(currentOrigin: string): string | null {
+  const currentUrl = new URL(currentOrigin);
+  return (
+    configuredProductionApiOrigin(currentUrl) ??
+    configuredPreviewApiOrigin(currentUrl)
+  );
+}
+
 function platformOriginForTarget(
   origin: string,
   target: PlatformHostTarget,
 ): string {
   if (target === "api") {
-    const configuredOrigin = configuredPreviewApiOrigin(origin);
+    const configuredOrigin = configuredApiOrigin(origin);
     if (configuredOrigin) {
       return configuredOrigin;
     }

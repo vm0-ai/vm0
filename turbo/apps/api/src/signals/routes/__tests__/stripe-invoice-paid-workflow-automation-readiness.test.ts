@@ -5,7 +5,7 @@ import {
   testStripeInvoicePaidFixtureContract,
   type TestStripeInvoicePaidFixtureState,
 } from "@okouai/api-contracts/contracts/test-stripe-invoice-paid-readiness";
-import { zeroWorkflowAutomationsContract } from "@okouai/api-contracts/contracts/zero-workflows";
+import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
@@ -19,14 +19,14 @@ import {
   mockStripeConnectorOAuth,
 } from "./helpers/api-bdd-connectors";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { testStripeInvoicePaidReadinessRoutes } from "../test-stripe-invoice-paid-readiness";
 import { workflowAutomationsRoutes } from "../workflow-automations";
 
 const context = testContext();
 const connectors = createConnectorBddApi(context);
 const workflows = createWorkflowsBddApi(context);
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 const STRIPE_ACCOUNT_ID = "acct_live_workflow";
 
@@ -63,7 +63,7 @@ function authenticate(scenario: StripeAutomationScenario): void {
 
 function automationsClient() {
   return setupApp({ context, routes: workflowAutomationsRoutes })(
-    zeroWorkflowAutomationsContract,
+    workflowAutomationsContract,
   );
 }
 

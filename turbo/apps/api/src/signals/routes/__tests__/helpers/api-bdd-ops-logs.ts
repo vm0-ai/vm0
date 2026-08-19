@@ -6,7 +6,7 @@ import { setupApp } from "../../../../__tests__/test-helpers";
 import { createDeferredPromise } from "../../../utils";
 import { modelStatsContract, modelStatsPublicRoutes } from "../../model-stats";
 import type { ApiTestUser } from "./api-bdd";
-import { createZeroRouteMocks } from "./zero-route-test";
+import { createRouteMocks } from "./route-test";
 import { userExportRoutes } from "../../user-export";
 
 type AuthHeaders = { readonly authorization?: string };
@@ -44,7 +44,7 @@ function authenticate(
     return {};
   }
 
-  createZeroRouteMocks(context).clerk.session(
+  createRouteMocks(context).clerk.session(
     nextActor.userId,
     nextActor.orgId,
     nextActor.orgRole,

@@ -21,12 +21,12 @@ import {
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { zeroAgentsByIdContract } from "@okouai/api-contracts/contracts/zero-agents";
+import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
 import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-preferences";
 import {
-  zeroTeamContract,
+  teamContract,
   type TeamComposeItem,
-} from "@okouai/api-contracts/contracts/zero-team";
+} from "@okouai/api-contracts/contracts/team";
 
 import {
   createMockWorkflowAutomation,
@@ -138,7 +138,7 @@ function prepareAgentTeam(targetContext = context): TeamComposeItem[] {
     },
   ];
   targetContext.mocks.data.team(team);
-  targetContext.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
+  targetContext.mocks.api(agentsByIdContract.get, ({ params, respond }) => {
     const displayNameById: Record<string, string> = {
       [AGENT_ID]: "Zero",
       [RESEARCH_AGENT_ID]: "Research Agent",
@@ -1399,6 +1399,128 @@ describe("zero sidebar", () => {
     });
   });
 
+  it("keeps three-column desktop and mobile chat virtualization isolated", async () => {
+    prepareDefaultAgent();
+    const overflowThreads = Array.from({ length: 23 }, (_, index) => {
+      return createThread(
+        `b2050000-0000-4000-a000-${String(index).padStart(12, "0")}`,
+        `Isolated overflow ${index + 1}`,
+      );
+    });
+    mockSidebarThreadStory(
+      [
+        createThread(EXISTING_THREAD_ID, "Release plan"),
+        createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
+      ],
+      [
+        ...overflowThreads,
+        createThread(ARCHIVED_THREAD_ID, "Archived context"),
+      ],
+    );
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const desktopList = await screen.findByTestId("chat-list-column");
+    const mobileList = mobileSidebar();
+    const desktopScrollArea = await within(desktopList).findByTestId(
+      "sidebar-scroll-area",
+    );
+    const mobileScrollArea = await within(mobileList).findByTestId(
+      "sidebar-scroll-area",
+    );
+    Object.defineProperties(desktopScrollArea, {
+      clientHeight: { configurable: true, value: 200 },
+      scrollHeight: { configurable: true, value: 1000 },
+      scrollTop: { configurable: true, value: 780, writable: true },
+    });
+    Object.defineProperties(mobileScrollArea, {
+      clientHeight: { configurable: true, value: 200 },
+      scrollHeight: { configurable: true, value: 1000 },
+      scrollTop: { configurable: true, value: 0, writable: true },
+    });
+
+    fireEvent.scroll(mobileScrollArea);
+    fireEvent.scroll(desktopScrollArea);
+
+    await waitFor(() => {
+      expect(
+        within(desktopList).getByText("Archived context"),
+      ).toBeInTheDocument();
+      expect(within(desktopList).queryByText("Release plan")).toBeNull();
+      expect(within(mobileList).getByText("Release plan")).toBeInTheDocument();
+      expect(within(mobileList).queryByText("Archived context")).toBeNull();
+    });
+  });
+
+  it("keeps virtualized chats visible after deletion refreshes a clamped viewport", async () => {
+    prepareDefaultAgent();
+    const overflowThreads = Array.from({ length: 23 }, (_, index) => {
+      return createThread(
+        `b3000000-0000-4000-a000-${String(index).padStart(12, "0")}`,
+        `Refresh overflow ${index + 1}`,
+      );
+    });
+    mockSidebarThreadStory(
+      [
+        createThread(EXISTING_THREAD_ID, "Release plan"),
+        createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
+      ],
+      [
+        ...overflowThreads,
+        createThread(ARCHIVED_THREAD_ID, "Archived context"),
+      ],
+    );
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("sidebar-chat-threads-virtual-list"),
+      ).toBeInTheDocument();
+    });
+
+    const scrollArea = screen.getByTestId("sidebar-scroll-area");
+    Object.defineProperties(scrollArea, {
+      clientHeight: { configurable: true, value: 200 },
+      scrollHeight: { configurable: true, value: 1000 },
+      scrollTop: { configurable: true, value: 780, writable: true },
+    });
+    fireEvent.scroll(scrollArea);
+
+    await waitFor(() => {
+      expect(
+        within(sidebar()).getByText("Archived context"),
+      ).toBeInTheDocument();
+    });
+    expect(within(sidebar()).queryByText("Release plan")).toBeNull();
+
+    openThreadMenu("Archived context");
+    click(menuItemByText("Delete chat"));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Delete chat?",
+    });
+    click(buttonByText("Delete", dialog));
+
+    // Model a browser-clamped live offset without another scroll event.
+    scrollArea.scrollTop = 0;
+
+    await waitFor(() => {
+      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+      expect(
+        within(sidebar()).queryByText("Archived context"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it("does not scroll the current chat into view from pointer focus after virtual scrolling", async () => {
     prepareDefaultAgent();
     const overflowThreads = Array.from({ length: 23 }, (_, index) => {
@@ -1651,6 +1773,37 @@ describe("zero sidebar", () => {
     });
   });
 
+  it("scrolls the current chat in the three-column desktop list on page setup", async () => {
+    prepareDefaultAgent();
+    const leadingThreads = Array.from({ length: 24 }, (_, index) => {
+      return createThread(
+        `b3050000-0000-4000-a000-${String(index).padStart(12, "0")}`,
+        `Three-column leading chat ${index + 1}`,
+      );
+    });
+    mockSidebarThreadStory([
+      ...leadingThreads,
+      createThread(EXISTING_THREAD_ID, "Release plan"),
+      createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
+    ]);
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const desktopList = await screen.findByTestId("chat-list-column");
+    await waitFor(() => {
+      expect(within(desktopList).getByText("Release plan")).toBeInTheDocument();
+      expect(
+        within(desktopList).getByTestId("sidebar-scroll-area").scrollTop,
+      ).toBeGreaterThan(0);
+    });
+  });
+
   it("renders 100 chat threads before the sidebar viewport is measured", async () => {
     prepareDefaultAgent();
     const firstThread = createThread(EXISTING_THREAD_ID, "Fallback chat 1");
@@ -1789,7 +1942,7 @@ describe("zero sidebar", () => {
     const team = prepareAgentTeam();
     const releaseRefresh = context.mocks.deferred<void>();
     let initialTeamServed = false;
-    context.mocks.api(zeroTeamContract.list, async ({ respond }) => {
+    context.mocks.api(teamContract.list, async ({ respond }) => {
       if (initialTeamServed) {
         await releaseRefresh.promise;
       }
@@ -3831,6 +3984,99 @@ describe("zero sidebar", () => {
         "Billing Agent",
         "Support Agent",
       ]);
+    });
+  });
+
+  it("shows a drag handle on reorderable pinned agents but not on the lead agent", async () => {
+    const pinnedAgentIds = prepareOverflowingPinnedAgents();
+    context.mocks.data.userPreferences({ pinnedAgentIds });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    await waitFor(() => {
+      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
+    });
+
+    expect(
+      within(pinnedAgentLink(grid, "Support Agent")).getByTestId(
+        "pinned-agent-drag-handle",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(pinnedAgentLink(grid, "Zero")).queryByTestId(
+        "pinned-agent-drag-handle",
+      ),
+    ).toBeNull();
+  });
+
+  it("marks the landing slot with an insertion caret while dragging", async () => {
+    const pinnedAgentIds = prepareOverflowingPinnedAgents();
+    context.mocks.data.userPreferences({ pinnedAgentIds });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    await waitFor(() => {
+      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
+    });
+
+    // Billing Agent sits after Support Agent, so a forwards drag lands after it.
+    const forwards = createDataTransferStub();
+    fireEvent.dragStart(pinnedAgentLink(grid, "Support Agent"), {
+      dataTransfer: forwards,
+    });
+    fireEvent.dragOver(pinnedAgentLink(grid, "Billing Agent"), {
+      dataTransfer: forwards,
+    });
+
+    await waitFor(() => {
+      expect(
+        within(grid).getAllByTestId("pinned-agent-drop-caret"),
+      ).toHaveLength(1);
+    });
+    expect(
+      within(pinnedAgentLink(grid, "Billing Agent")).getByTestId(
+        "pinned-agent-drop-caret",
+      ).className,
+    ).toContain("-right-");
+
+    fireEvent.dragEnd(pinnedAgentLink(grid, "Support Agent"), {
+      dataTransfer: forwards,
+    });
+    await waitFor(() => {
+      expect(
+        within(grid).queryAllByTestId("pinned-agent-drop-caret"),
+      ).toHaveLength(0);
+    });
+
+    // Research Agent sits before Support Agent, so a backwards drag lands before it.
+    const backwards = createDataTransferStub();
+    fireEvent.dragStart(pinnedAgentLink(grid, "Support Agent"), {
+      dataTransfer: backwards,
+    });
+    fireEvent.dragOver(pinnedAgentLink(grid, "Research Agent"), {
+      dataTransfer: backwards,
+    });
+
+    await waitFor(() => {
+      expect(
+        within(pinnedAgentLink(grid, "Research Agent")).getByTestId(
+          "pinned-agent-drop-caret",
+        ).className,
+      ).toContain("-left-");
     });
   });
 

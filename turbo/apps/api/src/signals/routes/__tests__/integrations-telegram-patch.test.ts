@@ -6,8 +6,8 @@ import { http, HttpResponse } from "msw";
 import {
   OFFICIAL_TELEGRAM_BOT_ID,
   type TelegramBot,
-  zeroIntegrationsTelegramContract,
-} from "@okouai/api-contracts/contracts/zero-integrations-telegram";
+  integrationsTelegramContract,
+} from "@okouai/api-contracts/contracts/integrations-telegram";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -17,13 +17,13 @@ import {
   type TelegramFixture,
 } from "./helpers/telegram";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { server } from "../../../mocks/server";
 import { integrationsTelegramRoutes } from "../integrations-telegram";
 
 const context = testContext();
 const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const bdd = createBddApi(context);
 const AUTH_HEADERS = { authorization: "Bearer clerk-session" } as const;
 
@@ -74,7 +74,7 @@ describe("PATCH /api/integrations/telegram/:botId", () => {
 
   function client() {
     return setupApp({ context, routes: integrationsTelegramRoutes })(
-      zeroIntegrationsTelegramContract,
+      integrationsTelegramContract,
     );
   }
 

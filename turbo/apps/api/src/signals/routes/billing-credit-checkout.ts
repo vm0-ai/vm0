@@ -19,7 +19,7 @@ import {
   confirmExistingBillingCreditPurchase$,
   createCreditCheckoutSession$,
   previewExistingBillingCreditPurchase$,
-} from "../services/zero-billing-checkout.service";
+} from "../services/billing-checkout.service";
 import { updateAutoRechargeConfig$ } from "../services/billing.service";
 import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
 import { billingPurchasePreviewEnabled$ } from "../services/billing-payment-method.service";

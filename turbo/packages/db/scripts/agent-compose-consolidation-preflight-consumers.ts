@@ -11,6 +11,7 @@ export interface RuntimeContentConsumerManifest {
 
 type RuntimeContentConsumerMode =
   | "application-authority-classifier"
+  | "checkpoint-configuration-independent"
   | "compose-independent-environment-shadow"
   | "first-plural-schema-parse"
   | "first-plural-framework-display"
@@ -44,6 +45,15 @@ interface ReviewedConsumer {
  * forwarding edge, schema parse, or indirect content-type consumer.
  */
 const REVIEWED_CONSUMERS: readonly ReviewedConsumer[] = [
+  // Transition-only #28080 negative consumer proof; removed by #26938 Stage 8.
+  {
+    relativePath:
+      "turbo/apps/api/src/signals/services/agent-webhook-checkpoints.service.ts",
+    mode: "checkpoint-configuration-independent",
+    interfaces: ["CheckpointRunContext"],
+    functions: ["checkpointStorageMounts", "loadCheckpointRunContext"],
+    variables: ["createAgentCheckpoint$"],
+  },
   {
     relativePath: "turbo/apps/api/src/signals/routes/integrations-slack.ts",
     mode: "raw-recursive-variable-secret-scan",
@@ -245,6 +255,7 @@ export const EXPECTED_RUNTIME_CONTENT_CONSUMER_MANIFEST: RuntimeContentConsumerM
       "turbo/apps/api/src/signals/services/agent-instructions.service.ts|first-plural-schema-parse|2|5e0e03733f7327b9e719691adccd8ef9e643f7945e7a2011884b50c17cd0d5ca",
       "turbo/apps/api/src/signals/services/agent-run-create.service.ts|singular-or-first-plural-launch|17|3ba4be01b537988945707f15b9e9e8c60f67bcb8f212be00749e4343c7f2a336",
       "turbo/apps/api/src/signals/services/agent-run-storage.service.ts|singular-or-first-plural-storage-and-volumes|8|f892995687452b9c164950e90aab24e9da198326187dea19b646864d71d35cf9",
+      "turbo/apps/api/src/signals/services/agent-webhook-checkpoints.service.ts|checkpoint-configuration-independent|4|f2f501ed8d094d3edb950966b5a1cee4f149a41f12d10b5cdac55f14b20af714",
       "turbo/apps/api/src/signals/services/historical-product-builder.ts|historical-product-builder-authority-classifier|14|7b8681f9a1922c125881223a9265b5b3642f5ceb74a410b7f21d1ee3694692f2",
       "turbo/apps/api/src/signals/services/logs.service.ts|first-plural-framework-display|1|ea68586f0591ce59e883d688f75c0a37ac6022e9eb4e5a2fb2cda1be037123ce",
       "turbo/apps/api/src/signals/services/teams-connect.service.ts|raw-recursive-variable-secret-scan|1|0357a0f694d2882516d811fff5f28d57abb01a6df4f2bdcb1f8435d0827ea17f",

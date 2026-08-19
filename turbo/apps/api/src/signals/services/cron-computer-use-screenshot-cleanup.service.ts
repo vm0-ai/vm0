@@ -1,7 +1,7 @@
 import { command } from "ccstate";
 import { and, eq, inArray, lt, or, sql } from "drizzle-orm";
 
-import { isStoredScreenshotPointer } from "@okouai/api-contracts/contracts/zero-computer-use";
+import { isStoredScreenshotPointer } from "@okouai/api-contracts/contracts/computer-use";
 import { computerUseCommands } from "@okouai/db/schema/computer-use-host";
 
 import { nowDate } from "../../lib/time";

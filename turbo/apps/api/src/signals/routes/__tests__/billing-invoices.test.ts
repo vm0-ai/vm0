@@ -15,15 +15,12 @@ import {
   seedInvoicesOrg$,
   type InvoicesOrgFixture,
 } from "./helpers/billing-invoices";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
 import { billingInvoicesRoutes } from "../billing-invoices";
 
 const context = testContext();
 const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 
 describe("GET /api/zero/billing/invoices", () => {
   const track = createFixtureTracker<InvoicesOrgFixture>((fixture) => {

@@ -18,7 +18,7 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { testSlackStateRoutes } from "../test-slack-state";
 import { testTelegramStateRoutes } from "../test-telegram-state";
 import { seedRun$ } from "./helpers/usage-state";
-import { createFixtureTracker } from "./helpers/zero-route-test";
+import { createFixtureTracker } from "./helpers/route-test";
 
 const context = testContext();
 const store = createStore();

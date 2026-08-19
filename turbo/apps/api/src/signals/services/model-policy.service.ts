@@ -22,7 +22,7 @@ import {
 import {
   getModelProviderTypeForSurfaceProtocol,
   modelProviderSurfaceProtocolSchema,
-} from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
+} from "@okouai/api-contracts/contracts/model-provider-gateways";
 import { modelProviders } from "@okouai/db/schema/model-provider";
 import {
   modelProviderConnections,

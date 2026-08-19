@@ -12,12 +12,12 @@ import {
   gmailNewMessageEventConfigSchema,
   chatThreadWorkflowAutomationSchema,
   stripeInvoicePaidEventConfigSchema,
-  zeroWorkflowAutomationSummarySchema,
-  zeroWorkflowConnectorReadinessResponseSchema,
-  zeroWorkflowUpdateRequestSchema,
-  zeroWorkflowAutomationCreateRequestSchema,
-  zeroWorkflowAutomationUpdateRequestSchema,
-} from "../zero-workflows";
+  workflowAutomationSummarySchema,
+  workflowConnectorReadinessResponseSchema,
+  workflowUpdateRequestSchema,
+  workflowAutomationCreateRequestSchema,
+  workflowAutomationUpdateRequestSchema,
+} from "../workflows";
 
 describe("Gmail new message workflow automation contract", () => {
   it("accepts only explicit text match fields", () => {
@@ -69,7 +69,7 @@ describe("Gmail label applied workflow automation contract", () => {
   });
 
   it("accepts label applied automation create requests", () => {
-    const parsed = zeroWorkflowAutomationCreateRequestSchema.safeParse({
+    const parsed = workflowAutomationCreateRequestSchema.safeParse({
       kind: "event",
       eventType: "gmail-label-applied",
       eventConfig: {
@@ -114,7 +114,7 @@ describe("GitHub pull request workflow automation contract", () => {
   });
 
   it("accepts pull request automation create requests", () => {
-    const parsed = zeroWorkflowAutomationCreateRequestSchema.safeParse({
+    const parsed = workflowAutomationCreateRequestSchema.safeParse({
       kind: "event",
       eventType: "github-pull-request",
       eventConfig: {
@@ -145,7 +145,7 @@ describe("Google Calendar event-created workflow automation contract", () => {
   });
 
   it("accepts event-created automation create requests without explicit config", () => {
-    const parsed = zeroWorkflowAutomationCreateRequestSchema.parse({
+    const parsed = workflowAutomationCreateRequestSchema.parse({
       kind: "event",
       eventType: "google-calendar-event-created",
     });
@@ -177,7 +177,7 @@ describe("Google Calendar event-updated workflow automation contract", () => {
   });
 
   it("accepts event-updated automation create requests without explicit config", () => {
-    const parsed = zeroWorkflowAutomationCreateRequestSchema.parse({
+    const parsed = workflowAutomationCreateRequestSchema.parse({
       kind: "event",
       eventType: "google-calendar-event-updated",
     });
@@ -209,7 +209,7 @@ describe("Google Calendar event-cancelled workflow automation contract", () => {
   });
 
   it("accepts event-cancelled automation create requests without explicit config", () => {
-    const parsed = zeroWorkflowAutomationCreateRequestSchema.parse({
+    const parsed = workflowAutomationCreateRequestSchema.parse({
       kind: "event",
       eventType: "google-calendar-event-cancelled",
     });
@@ -263,7 +263,7 @@ describe("Google Forms response-submitted workflow automation contract", () => {
 
   it("accepts a response-submitted create request", () => {
     expect(
-      zeroWorkflowAutomationCreateRequestSchema.safeParse({
+      workflowAutomationCreateRequestSchema.safeParse({
         kind: "event",
         eventType: "google-forms-response-submitted",
         eventConfig: {
@@ -291,7 +291,7 @@ describe("Google Meet transcript-generated workflow automation contract", () => 
   });
 
   it("accepts transcript-generated automation create requests without explicit config", () => {
-    const parsed = zeroWorkflowAutomationCreateRequestSchema.parse({
+    const parsed = workflowAutomationCreateRequestSchema.parse({
       kind: "event",
       eventType: "google-meet-transcript-generated",
     });
@@ -325,7 +325,7 @@ describe("Stripe invoice-paid workflow automation contract", () => {
     "accepts supported billing reason filters %#",
     (filter) => {
       expect(
-        zeroWorkflowAutomationCreateRequestSchema.safeParse({
+        workflowAutomationCreateRequestSchema.safeParse({
           kind: "event",
           eventType: "stripe-invoice-paid",
           eventConfig: {
@@ -340,7 +340,7 @@ describe("Stripe invoice-paid workflow automation contract", () => {
 
   it("rejects unknown billing reasons and client-owned binding fields", () => {
     expect(
-      zeroWorkflowAutomationCreateRequestSchema.safeParse({
+      workflowAutomationCreateRequestSchema.safeParse({
         kind: "event",
         eventType: "stripe-invoice-paid",
         eventConfig: {
@@ -357,7 +357,7 @@ describe("Stripe invoice-paid workflow automation contract", () => {
       { mode: "live" },
     ]) {
       expect(
-        zeroWorkflowAutomationCreateRequestSchema.safeParse({
+        workflowAutomationCreateRequestSchema.safeParse({
           kind: "event",
           eventType: "stripe-invoice-paid",
           eventConfig: {
@@ -399,7 +399,7 @@ describe("Stripe invoice-paid workflow automation contract", () => {
       },
     } as const;
 
-    expect(zeroWorkflowAutomationSummarySchema.parse(summary)).toStrictEqual(
+    expect(workflowAutomationSummarySchema.parse(summary)).toStrictEqual(
       summary,
     );
     expect(
@@ -419,7 +419,7 @@ describe("Stripe invoice-paid workflow automation contract", () => {
 
   it("keeps Stripe event configuration out of the update contract", () => {
     expect(
-      zeroWorkflowAutomationUpdateRequestSchema.safeParse({
+      workflowAutomationUpdateRequestSchema.safeParse({
         eventConfig: {
           provider: "stripe",
           event: "invoice_paid",
@@ -432,7 +432,7 @@ describe("Stripe invoice-paid workflow automation contract", () => {
 
 describe("workflow update contract", () => {
   it("accepts slug metadata updates", () => {
-    const parsed = zeroWorkflowUpdateRequestSchema.safeParse({
+    const parsed = workflowUpdateRequestSchema.safeParse({
       name: "follow-up",
       displayName: "Follow up",
       description: "Use when a prospect needs a next step.",
@@ -442,7 +442,7 @@ describe("workflow update contract", () => {
   });
 
   it("rejects invalid workflow slugs", () => {
-    const parsed = zeroWorkflowUpdateRequestSchema.safeParse({
+    const parsed = workflowUpdateRequestSchema.safeParse({
       name: "Follow Up",
     });
 
@@ -461,7 +461,7 @@ describe("workflow connector readiness contract", () => {
       { connectorSlug: "google-drive", status: "unavailable" },
     ] as const;
 
-    const parsed = zeroWorkflowConnectorReadinessResponseSchema.parse({
+    const parsed = workflowConnectorReadinessResponseSchema.parse({
       connectors: entries.map((entry, index) => {
         return {
           connectorSlug: entry.connectorSlug,
@@ -481,7 +481,7 @@ describe("workflow connector readiness contract", () => {
 
   it("rejects unknown readiness states", () => {
     expect(
-      zeroWorkflowConnectorReadinessResponseSchema.safeParse({
+      workflowConnectorReadinessResponseSchema.safeParse({
         connectors: [
           {
             connectorSlug: "github",

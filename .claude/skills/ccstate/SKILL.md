@@ -311,7 +311,7 @@ When a specific error code has business meaning, include it in the accept list:
 
 ```typescript
 export const getAgent$ = computed(async (get) => {
-  const client = get(zeroClient$)(zeroAgentsByIdContract);
+  const client = get(zeroClient$)(agentsByIdContract);
   const result = await accept(client.get({ params: { id } }), [200, 404]);
   if (result.status === 404) return null;
   return result.body;

@@ -1,9 +1,9 @@
 import { createHmac, randomUUID } from "node:crypto";
 
 import {
-  zeroWorkflowAutomationsContract,
-  type ZeroWorkflowAutomationCreateRequest,
-} from "@okouai/api-contracts/contracts/zero-workflows";
+  workflowAutomationsContract,
+  type WorkflowAutomationCreateRequest,
+} from "@okouai/api-contracts/contracts/workflows";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -19,7 +19,7 @@ import {
   chatEventAutomationPart,
   chatEventDisplayText,
 } from "./helpers/chat-event";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { workflowAutomationsRoutes } from "../workflow-automations";
 import { webhooksGithubRoutes } from "../webhooks-github";
 
@@ -29,7 +29,7 @@ const TEST_APP_ROUTES = Object.freeze([
 ]);
 
 const context = testContext();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
 const gh = createGithubBddApi(context);
 const runsApi = createRunsApi(context);
@@ -43,7 +43,7 @@ function authHeaders() {
 
 function automationsClient() {
   return setupApp({ context, routes: workflowAutomationsRoutes })(
-    zeroWorkflowAutomationsContract,
+    workflowAutomationsContract,
   );
 }
 
@@ -240,7 +240,7 @@ async function postGithubWebhook(args: {
 
 type GithubWebhookAutomationCase = {
   readonly name: string;
-  readonly body: ZeroWorkflowAutomationCreateRequest;
+  readonly body: WorkflowAutomationCreateRequest;
   readonly event:
     | "deployment_status"
     | "issue_comment"
@@ -255,7 +255,7 @@ type GithubWebhookAutomationCase = {
   readonly excludedPrompt?: readonly string[];
 };
 
-function githubPullRequestReviewAutomationBody(): ZeroWorkflowAutomationCreateRequest {
+function githubPullRequestReviewAutomationBody(): WorkflowAutomationCreateRequest {
   return {
     kind: "event",
     eventType: "github-pull-request-review-submitted",
@@ -663,7 +663,7 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", GITHUB_WEBHOOK_SECRET);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
-    const mergedAutomationBody: ZeroWorkflowAutomationCreateRequest = {
+    const mergedAutomationBody: WorkflowAutomationCreateRequest = {
       kind: "event",
       eventType: "github-pull-request",
       eventConfig: {

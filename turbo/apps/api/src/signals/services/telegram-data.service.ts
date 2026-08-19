@@ -3,7 +3,7 @@ import type {
   TelegramBot,
   TelegramBotStatus,
   TelegramLinkStatusResponse,
-} from "@okouai/api-contracts/contracts/zero-integrations-telegram";
+} from "@okouai/api-contracts/contracts/integrations-telegram";
 import { guaranteedConnectorProvidedBindingNames } from "@okouai/api-contracts/contracts/connector-schemas";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import { extractAndGroupVariables } from "@okouai/core/variable-expander";

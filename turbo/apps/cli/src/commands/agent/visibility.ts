@@ -1,15 +1,15 @@
 import {
-  zeroAgentVisibilitySchema,
-  type ZeroAgentVisibility,
-} from "@okouai/api-contracts/contracts/zero-agents";
+  agentVisibilitySchema,
+  type AgentVisibility,
+} from "@okouai/api-contracts/contracts/agents";
 import { InvalidArgumentError } from "commander";
 
-export function parseAgentVisibility(value: string): ZeroAgentVisibility {
-  const result = zeroAgentVisibilitySchema.safeParse(value);
+export function parseAgentVisibility(value: string): AgentVisibility {
+  const result = agentVisibilitySchema.safeParse(value);
   if (result.success) {
     return result.data;
   }
   throw new InvalidArgumentError(
-    `visibility must be one of: ${zeroAgentVisibilitySchema.options.join(", ")}`,
+    `visibility must be one of: ${agentVisibilitySchema.options.join(", ")}`,
   );
 }

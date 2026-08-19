@@ -1,8 +1,8 @@
 import { command, computed, state } from "ccstate";
 import {
-  zeroComputerUseAuthorizationRequestsContract,
+  computerUseAuthorizationRequestsContract,
   type ComputerUseHost,
-} from "@okouai/api-contracts/contracts/zero-computer-use";
+} from "@okouai/api-contracts/contracts/computer-use";
 import { accept } from "../../lib/accept.ts";
 import { pathParams$ } from "../route.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -22,7 +22,7 @@ export const computerUseAuthorizationRequest$ = computed(async (get) => {
     return null;
   }
 
-  const client = get(zeroClient$)(zeroComputerUseAuthorizationRequestsContract);
+  const client = get(zeroClient$)(computerUseAuthorizationRequestsContract);
   const result = await accept(client.get({ params: { requestToken } }), [200]);
   return result.body;
 });
@@ -38,9 +38,7 @@ export const applyComputerUseAuthorizationRequest$ = command(
       throw new Error("Computer Use authorization request token is missing");
     }
 
-    const client = get(zeroClient$)(
-      zeroComputerUseAuthorizationRequestsContract,
-    );
+    const client = get(zeroClient$)(computerUseAuthorizationRequestsContract);
     const result = await accept(
       client.apply({
         params: { requestToken },

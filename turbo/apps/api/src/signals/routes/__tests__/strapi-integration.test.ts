@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { testWorkflowAutomationExecutionContract } from "@okouai/api-contracts/contracts/test-workflow-automation-execution";
 import { strapiIntegrationsContract } from "@okouai/api-contracts/contracts/strapi-integrations";
-import { zeroWorkflowAutomationsContract } from "@okouai/api-contracts/contracts/zero-workflows";
+import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
 import { fnv1a } from "@okouai/core/identity-hash";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -17,7 +17,7 @@ import {
   chatEventAutomationPart,
   chatEventDisplayText,
 } from "./helpers/chat-event";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
 import { strapiIntegrationsRoutes } from "../strapi-integrations";
 import { strapiEventsRoutes } from "../strapi-events";
@@ -31,7 +31,7 @@ const TEST_APP_ROUTES = Object.freeze([
 ]);
 
 const context = testContext();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const workflows = createWorkflowsBddApi(context);
 const runs = createRunsApi(context);
 
@@ -116,7 +116,7 @@ function integrationsClient() {
 
 function automationsClient() {
   return setupApp({ context, routes: workflowAutomationsRoutes })(
-    zeroWorkflowAutomationsContract,
+    workflowAutomationsContract,
   );
 }
 

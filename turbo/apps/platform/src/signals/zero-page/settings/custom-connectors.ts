@@ -17,7 +17,7 @@ import {
   zeroAgentCustomConnectorsContract,
   type AgentCustomConnectorGrants,
 } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
-import type { TeamComposeItem } from "@okouai/api-contracts/contracts/zero-team";
+import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
 import { IN_VITEST } from "../../../env.ts";
 import { i18n } from "../../../i18n/index.ts";
 import { accept } from "../../../lib/accept.ts";

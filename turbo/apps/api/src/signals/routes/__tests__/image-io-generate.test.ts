@@ -36,13 +36,13 @@ import {
   generatedStripeCustomerId,
   postUsageAllowanceInvoicePaid,
 } from "./helpers/stripe-billing-webhook";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { setRunImageModelFixture } from "../../../test-fixtures/run-image-model";
 
 const context = testContext();
 const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const TEST_BUCKET = "test-user-artifacts";
 const IMAGE_BYTES = Buffer.from("fake image bytes");
 const IMAGE_IO_MODEL = "gpt-image-1";

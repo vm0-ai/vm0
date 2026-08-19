@@ -37,18 +37,9 @@ interface CheckpointAuthInput<TBody> {
   readonly body: TBody;
 }
 
-interface AgentComposeSnapshot {
-  readonly agentComposeVersionId: string;
-  readonly vars?: Record<string, string>;
-  readonly secretNames?: readonly string[];
-}
-
 interface CheckpointRunContext {
-  readonly agentComposeVersionId: string | null;
   readonly storageMounts: typeof agentRuns.$inferSelect.storageMounts;
-  readonly secretNames: readonly string[] | null;
   readonly sessionId: string;
-  readonly vars: unknown;
 }
 
 interface SessionHistoryBlobMetadata {
@@ -63,25 +54,6 @@ interface PreparedSessionHistoryBlob {
 }
 
 const L = logger("webhooks:agent:checkpoints");
-
-function recordOfStringsOrUndefined(
-  value: unknown,
-): Record<string, string> | undefined {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return undefined;
-  }
-
-  const entries = Object.entries(value);
-  const result: Record<string, string> = {};
-  for (const [key, entryValue] of entries) {
-    if (typeof entryValue !== "string") {
-      return undefined;
-    }
-    result[key] = entryValue;
-  }
-
-  return result;
-}
 
 function responseArtifacts(
   snapshots: CheckpointCreateBody["artifactSnapshots"],
@@ -135,11 +107,8 @@ async function loadCheckpointRunContext(
 ): Promise<CheckpointRunContext | undefined> {
   const [run] = await db
     .select({
-      agentComposeVersionId: agentRuns.agentComposeVersionId,
       storageMounts: agentRuns.storageMounts,
-      secretNames: agentRuns.secretNames,
       sessionId: agentRuns.sessionId,
-      vars: agentRuns.vars,
     })
     .from(agentRuns)
     .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
@@ -357,12 +326,6 @@ export const createAgentCheckpoint$ = command(
       return notFound("Agent run not found");
     }
 
-    if (!run.agentComposeVersionId) {
-      return notFound(
-        "Agent compose version not found (agent may have been deleted)",
-      );
-    }
-
     const storageMounts = checkpointStorageMounts({
       runStorageMounts: run.storageMounts,
       artifactSnapshots: input.body.artifactSnapshots,
@@ -417,16 +380,8 @@ export const createAgentCheckpoint$ = command(
       throw new Error("Failed to upsert conversation record");
     }
 
-    const vars = recordOfStringsOrUndefined(run.vars);
-    const agentComposeSnapshot: AgentComposeSnapshot = {
-      agentComposeVersionId: run.agentComposeVersionId,
-      ...(vars ? { vars } : {}),
-      ...(run.secretNames ? { secretNames: run.secretNames } : {}),
-    };
-
     const checkpointFields = {
       conversationId: conversation.id,
-      agentComposeSnapshot,
       storageMounts,
     };
     const [checkpoint] = await db

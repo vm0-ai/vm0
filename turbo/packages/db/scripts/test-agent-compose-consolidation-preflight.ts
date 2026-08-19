@@ -26,6 +26,7 @@ import {
 import {
   fingerprintMember,
   fingerprintSortedSet,
+  type SetFingerprint,
 } from "./agent-compose-consolidation-preflight-fingerprint";
 import {
   HISTORICAL_PRODUCT_BUILDER_VARIANTS,
@@ -48,6 +49,7 @@ import {
   validateLaunchSnapshotBackfillDatabase,
   validateLaunchSnapshotBackfillStatic,
 } from "./test-agent-run-launch-snapshot-backfill";
+import { validateCheckpointAgentComposeSnapshotNullableStatic } from "./test-checkpoint-agent-compose-snapshot-nullable";
 import {
   PREFLIGHT_OUTPUT_ALLOWLIST,
   SanitizedPreflightError,
@@ -72,6 +74,12 @@ const packageDirectory = path.resolve(dirname, "..");
 const repositoryRoot = path.resolve(dirname, "../../../..");
 const testDatabase = "agent_compose_consolidation_preflight_test";
 const ACTIVITY_TIME_ZONES = ["UTC", "Asia/Shanghai"] as const;
+
+interface CheckpointLineageTimeZoneProjection {
+  readonly expectedSurvivors: SetFingerprint;
+  readonly observedSurvivors: SetFingerprint;
+  readonly growth: SetFingerprint;
+}
 
 const capabilities: PreflightCapabilities = {
   serverVersionClassification: "supported",
@@ -483,6 +491,25 @@ function runRow(
   };
 }
 
+function checkpointRow(
+  id: string,
+  runId: string,
+  snapshot: unknown,
+  overrides: Partial<PreflightInventory["checkpoints"][number]> = {},
+): PreflightInventory["checkpoints"][number] {
+  return {
+    id,
+    runId,
+    snapshot,
+    preCutover: false,
+    runReferenceValid: true,
+    conversationReferenceValid: true,
+    sessionReferenceValid: true,
+    storageReferenceValid: true,
+    ...overrides,
+  };
+}
+
 function acceptedV3DomainProjection(
   result: ReturnType<typeof classifyPreflightInventory>,
 ) {
@@ -544,6 +571,7 @@ function testSchemaV3DomainsRemainByteStable(): void {
 function testSchemaV4OutputContractRemainsByteStable(): void {
   const acceptedV4Paths = PREFLIGHT_OUTPUT_ALLOWLIST.filter((outputPath) => {
     return (
+      !outputPath.startsWith("checkpoints.transition.") &&
       !outputPath.includes(".historicalProductBuilderOrigin.") &&
       !outputPath.includes(".applicationHistoricalProductBuilderEnvironment.")
     );
@@ -573,9 +601,12 @@ function testSchemaV5OutputContractRemainsByteStable(): void {
     ".authorityDisjointnessClosure.",
   ];
   const acceptedV5Paths = PREFLIGHT_OUTPUT_ALLOWLIST.filter((outputPath) => {
-    return !v6Markers.some((marker) => {
-      return outputPath.includes(marker);
-    });
+    return (
+      !outputPath.startsWith("checkpoints.transition.") &&
+      !v6Markers.some((marker) => {
+        return outputPath.includes(marker);
+      })
+    );
   });
   assert.deepEqual(
     fingerprintSortedSet(
@@ -586,6 +617,24 @@ function testSchemaV5OutputContractRemainsByteStable(): void {
       count: 971,
       digest:
         "931140875c0a0d3c568166d61a680fedbd219f1d5bdffdbc5a660962263b49e1",
+    },
+  );
+}
+
+/** Transition-only #28080 contract test; removed by #26938 Stage 8. */
+function testSchemaV6OutputContractRemainsByteStable(): void {
+  const acceptedV6Paths = PREFLIGHT_OUTPUT_ALLOWLIST.filter((outputPath) => {
+    return !outputPath.startsWith("checkpoints.transition.");
+  });
+  assert.deepEqual(
+    fingerprintSortedSet(
+      "agent-compose-consolidation-preflight:v6-output-paths",
+      acceptedV6Paths,
+    ),
+    {
+      count: 995,
+      digest:
+        "516c8c5c6d26d1a1fca334f33ef81c8cd61abad6759775087b4d6341e6f72bd8",
     },
   );
 }
@@ -629,16 +678,16 @@ function testVersionHeadRunAndCheckpointClassifications(): void {
         runRow("00000000-0000-4000-8000-000000000212", version.id, true),
       ],
       checkpoints: [
-        {
-          id: "00000000-0000-4000-8000-000000000221",
-          runId: "00000000-0000-4000-8000-000000000211",
-          snapshot: { agentComposeVersionId: version.id },
-        },
-        {
-          id: "00000000-0000-4000-8000-000000000222",
-          runId: "00000000-0000-4000-8000-000000000212",
-          snapshot: { agentComposeVersionId: version.id },
-        },
+        checkpointRow(
+          "00000000-0000-4000-8000-000000000221",
+          "00000000-0000-4000-8000-000000000211",
+          { agentComposeVersionId: version.id },
+        ),
+        checkpointRow(
+          "00000000-0000-4000-8000-000000000222",
+          "00000000-0000-4000-8000-000000000212",
+          { agentComposeVersionId: version.id },
+        ),
       ],
     }),
     classificationOptions(),
@@ -660,16 +709,16 @@ function testVersionHeadRunAndCheckpointClassifications(): void {
         runRow("00000000-0000-4000-8000-000000000231", missingHash, false),
       ],
       checkpoints: [
-        {
-          id: "00000000-0000-4000-8000-000000000232",
-          runId: "00000000-0000-4000-8000-000000000231",
-          snapshot: { agentComposeVersionId: missingHash },
-        },
-        {
-          id: "00000000-0000-4000-8000-000000000233",
-          runId: "00000000-0000-4000-8000-000000000233",
-          snapshot: { agentComposeVersionId: "invalid" },
-        },
+        checkpointRow(
+          "00000000-0000-4000-8000-000000000232",
+          "00000000-0000-4000-8000-000000000231",
+          { agentComposeVersionId: missingHash },
+        ),
+        checkpointRow(
+          "00000000-0000-4000-8000-000000000233",
+          "00000000-0000-4000-8000-000000000233",
+          { agentComposeVersionId: "invalid" },
+        ),
       ],
     }),
     classificationOptions(),
@@ -677,6 +726,11 @@ function testVersionHeadRunAndCheckpointClassifications(): void {
   gatePresent(missingReferences, "runs.missing_version");
   gatePresent(missingReferences, "checkpoints.missing_version");
   gatePresent(missingReferences, "checkpoints.invalid_reference");
+  assert.equal(
+    missingReferences.checkpoints.transition.partitions
+      .malformedOrInvalidLegacySnapshot.count,
+    2,
+  );
 
   const legacyContent = buildZeroAgentComposeContent("legacy-shape") as {
     agents: Record<string, Record<string, unknown>>;
@@ -749,6 +803,310 @@ function testVersionHeadRunAndCheckpointClassifications(): void {
   assert.deepEqual(
     orphanCompose.versions.orphanComposeIds,
     fingerprintSortedSet("versions:orphan-compose-ids", [missingComposeId]),
+  );
+}
+
+/** Transition-only #28080 checkpoint partition; removed by #26938 Stage 8. */
+function testCheckpointTransitionPartitionAndClosures(): void {
+  const version = canonicalVersion("checkpoint-transition", null, false);
+  const presentRunId = "00000000-0000-4000-8000-000000000241";
+  const safeAbsentRunId = "00000000-0000-4000-8000-000000000242";
+  const unsafeAbsentRunId = "00000000-0000-4000-8000-000000000243";
+  const malformedRunId = "00000000-0000-4000-8000-000000000244";
+  const deletedRunId = "00000000-0000-4000-8000-000000000245";
+  const growthRunId = "00000000-0000-4000-8000-000000000246";
+  const completeLaunchSnapshot = {
+    schemaVersion: 1,
+    framework: "claude-code",
+    runnerProfile: "vm0/default",
+  } as const;
+  const presentCheckpoint = checkpointRow(
+    "00000000-0000-4000-8000-000000000251",
+    presentRunId,
+    { agentComposeVersionId: version.id },
+    { preCutover: true },
+  );
+  const options = classificationOptions();
+  const partitioned = classifyPreflightInventory(
+    capabilities,
+    emptyInventory({
+      versions: [version],
+      runs: [
+        runRow(presentRunId, version.id, true, {
+          launchSnapshot: completeLaunchSnapshot,
+        }),
+        runRow(safeAbsentRunId, null, false, {
+          launchSnapshot: completeLaunchSnapshot,
+        }),
+        runRow(unsafeAbsentRunId, null, false),
+        runRow(malformedRunId, version.id, true, {
+          launchSnapshot: completeLaunchSnapshot,
+        }),
+      ],
+      checkpoints: [
+        presentCheckpoint,
+        checkpointRow(
+          "00000000-0000-4000-8000-000000000252",
+          safeAbsentRunId,
+          null,
+        ),
+        checkpointRow(
+          "00000000-0000-4000-8000-000000000253",
+          unsafeAbsentRunId,
+          null,
+        ),
+        checkpointRow("00000000-0000-4000-8000-000000000254", malformedRunId, {
+          vars: { unsafe: "raw-value" },
+        }),
+      ],
+    }),
+    options,
+  );
+  assert.deepEqual(
+    Object.fromEntries(
+      Object.entries(partitioned.checkpoints.transition.partitions).map(
+        ([partition, metric]) => {
+          return [partition, metric.count];
+        },
+      ),
+    ),
+    {
+      legacySnapshotPresentValid: 1,
+      snapshotAbsentWithCompleteLaunchSnapshot: 1,
+      snapshotAbsentWithoutCompleteLaunchSnapshot: 1,
+      malformedOrInvalidLegacySnapshot: 1,
+    },
+  );
+  for (const closure of [
+    partitioned.checkpoints.transition.populationClosure,
+    partitioned.checkpoints.transition.partitionCardinalityClosure,
+    partitioned.checkpoints.transition.partitionDisjointnessClosure,
+    partitioned.checkpoints.transition.partitionUnionClosure,
+    partitioned.checkpoints.transition.runReferenceClosure,
+    partitioned.checkpoints.transition.conversationReferenceClosure,
+    partitioned.checkpoints.transition.sessionReferenceClosure,
+    partitioned.checkpoints.transition.storageReferenceClosure,
+    partitioned.checkpoints.transition.legacySnapshotLineage,
+  ]) {
+    assert.equal(closure.classification, "exact");
+  }
+  gatePresent(
+    partitioned,
+    "checkpoints.snapshot_absent_without_complete_launch_snapshot",
+  );
+  gatePresent(partitioned, "checkpoints.invalid_reference");
+  assert.deepEqual(
+    partitioned.checkpoints.transition.acceptedV6LegacySnapshotEvidence,
+    {
+      count: 131_986,
+      digest:
+        "e6311454e1623b825e10aafb7329c8e00777d71a5075be28f2c44d187bfb80b9",
+    },
+  );
+
+  const safeAbsentOnly = classifyPreflightInventory(
+    capabilities,
+    emptyInventory({
+      runs: [
+        runRow(safeAbsentRunId, null, false, {
+          launchSnapshot: completeLaunchSnapshot,
+        }),
+      ],
+      checkpoints: [
+        checkpointRow(
+          "00000000-0000-4000-8000-000000000255",
+          safeAbsentRunId,
+          null,
+        ),
+      ],
+    }),
+    classificationOptions(),
+  );
+  assert.equal(safeAbsentOnly.status, "passed");
+  assert.equal(
+    safeAbsentOnly.checkpoints.transition.partitions
+      .snapshotAbsentWithCompleteLaunchSnapshot.count,
+    1,
+  );
+
+  for (const [field, gate] of [
+    ["runReferenceValid", "checkpoints.run_reference"],
+    ["conversationReferenceValid", "checkpoints.conversation_reference"],
+    ["sessionReferenceValid", "checkpoints.session_reference"],
+    ["storageReferenceValid", "checkpoints.storage_reference"],
+  ] as const) {
+    const brokenReference = classifyPreflightInventory(
+      capabilities,
+      emptyInventory({
+        runs: [
+          runRow(safeAbsentRunId, null, false, {
+            launchSnapshot: completeLaunchSnapshot,
+          }),
+        ],
+        checkpoints: [
+          checkpointRow(
+            "00000000-0000-4000-8000-000000000256",
+            safeAbsentRunId,
+            null,
+            { [field]: false },
+          ),
+        ],
+      }),
+      classificationOptions(),
+    );
+    gatePresent(brokenReference, gate);
+  }
+
+  const deletedPreCutoverCheckpoint = checkpointRow(
+    "00000000-0000-4000-8000-000000000257",
+    deletedRunId,
+    { agentComposeVersionId: version.id },
+    { preCutover: true },
+  );
+  const postCutoverAddition = checkpointRow(
+    "00000000-0000-4000-8000-000000000258",
+    growthRunId,
+    { agentComposeVersionId: version.id },
+  );
+  const lineageWithGrowth = classifyPreflightInventory(
+    capabilities,
+    emptyInventory({
+      versions: [version],
+      runs: [
+        runRow(presentRunId, version.id, true, {
+          launchSnapshot: completeLaunchSnapshot,
+        }),
+        runRow(deletedRunId, version.id, true, {
+          launchSnapshot: completeLaunchSnapshot,
+        }),
+        runRow(growthRunId, version.id, true, {
+          launchSnapshot: completeLaunchSnapshot,
+        }),
+      ],
+      checkpoints: [
+        presentCheckpoint,
+        deletedPreCutoverCheckpoint,
+        postCutoverAddition,
+      ],
+    }),
+    options,
+  );
+  assert.equal(
+    lineageWithGrowth.checkpoints.transition.legacySnapshotLineage
+      .classification,
+    "exact",
+  );
+  assert.equal(
+    lineageWithGrowth.checkpoints.transition.legacySnapshotGrowth.count,
+    1,
+  );
+  assert.equal(
+    lineageWithGrowth.checkpoints.transition.legacySnapshotLineage.expected
+      .count,
+    2,
+  );
+  assert.equal(
+    lineageWithGrowth.checkpoints.transition.populationClosure.classification,
+    "exact",
+  );
+
+  // A cascaded Run deletion removes the checkpoint from the inventory entirely.
+  // Later old-writer growth has a distinct Run and cannot shift into the
+  // protected cohort.
+  const lineageAfterCascadeDeletion = classifyPreflightInventory(
+    capabilities,
+    emptyInventory({
+      versions: [version],
+      runs: [
+        runRow(presentRunId, version.id, true, {
+          launchSnapshot: completeLaunchSnapshot,
+        }),
+        runRow(growthRunId, version.id, true, {
+          launchSnapshot: completeLaunchSnapshot,
+        }),
+      ],
+      checkpoints: [presentCheckpoint, postCutoverAddition],
+    }),
+    options,
+  );
+  assert.equal(
+    lineageAfterCascadeDeletion.checkpoints.transition.legacySnapshotLineage
+      .classification,
+    "exact",
+  );
+  assert.equal(
+    lineageAfterCascadeDeletion.checkpoints.transition.legacySnapshotLineage
+      .expected.count,
+    1,
+  );
+  assert.equal(
+    lineageAfterCascadeDeletion.checkpoints.transition.legacySnapshotGrowth
+      .count,
+    1,
+  );
+
+  const reclassifiedSurvivingMember = classifyPreflightInventory(
+    capabilities,
+    emptyInventory({
+      versions: [version],
+      runs: [
+        runRow(presentRunId, version.id, true, {
+          launchSnapshot: completeLaunchSnapshot,
+        }),
+        runRow(growthRunId, version.id, true, {
+          launchSnapshot: completeLaunchSnapshot,
+        }),
+      ],
+      checkpoints: [
+        checkpointRow(presentCheckpoint.id, presentRunId, null, {
+          preCutover: true,
+        }),
+        postCutoverAddition,
+      ],
+    }),
+    options,
+  );
+  gatePresent(
+    reclassifiedSurvivingMember,
+    "checkpoints.legacy_snapshot_lineage",
+  );
+  assert.equal(
+    reclassifiedSurvivingMember.checkpoints.transition.legacySnapshotLineage
+      .classification,
+    "drift",
+  );
+
+  const duplicateId = checkpointRow(
+    "00000000-0000-4000-8000-000000000259",
+    safeAbsentRunId,
+    null,
+  );
+  const duplicatePopulation = classifyPreflightInventory(
+    capabilities,
+    emptyInventory({
+      runs: [
+        runRow(safeAbsentRunId, null, false, {
+          launchSnapshot: completeLaunchSnapshot,
+        }),
+      ],
+      checkpoints: [duplicateId, duplicateId],
+    }),
+    classificationOptions(),
+  );
+  gatePresent(duplicatePopulation, "checkpoints.transition_closure");
+  assert.equal(
+    duplicatePopulation.checkpoints.transition.populationClosure.classification,
+    "drift",
+  );
+  assert.equal(
+    duplicatePopulation.checkpoints.transition.partitionCardinalityClosure
+      .classification,
+    "drift",
+  );
+  assert.equal(
+    duplicatePopulation.checkpoints.transition.partitionDisjointnessClosure
+      .classification,
+    "drift",
   );
 }
 
@@ -2636,6 +2994,8 @@ function testOutputRedaction(): void {
   const rawName = "never-emit-agent-name";
   const historicalId = "00000000-0000-4000-8000-000000000502";
   const historicalName = "historical-redaction-agent";
+  const checkpointId = "00000000-0000-4000-8000-000000000503";
+  const checkpointRunId = "00000000-0000-4000-8000-000000000504";
   const dangling = danglingRow({ composeId: rawId, name: rawName });
   const rawPlanContent = mutableAgentContent(rawName);
   rawPlanContent.agents[rawName]!.environment = {
@@ -2670,6 +3030,22 @@ function testOutputRedaction(): void {
           content: { payload: "never-emit-version-content" },
         },
       ],
+      runs: [
+        runRow(checkpointRunId, "d".repeat(64), true, {
+          launchSnapshot: {
+            schemaVersion: 1,
+            framework: "claude-code",
+            runnerProfile: "vm0/default",
+          },
+        }),
+      ],
+      checkpoints: [
+        checkpointRow(checkpointId, checkpointRunId, {
+          agentComposeVersionId: "d".repeat(64),
+          vars: { RAW_CHECKPOINT_VARIABLE: "never-emit-checkpoint-value" },
+          secretNames: ["NEVER_EMIT_CHECKPOINT_SECRET"],
+        }),
+      ],
       danglingStart: [dangling],
       danglingEnd: [dangling],
     }),
@@ -2678,12 +3054,19 @@ function testOutputRedaction(): void {
   const serialized = JSON.stringify(result);
   for (const forbidden of [
     rawId,
+    checkpointId,
+    checkpointRunId,
     rawName,
     "never-emit-version-content",
     "never-emit-environment-value",
+    "never-emit-checkpoint-value",
+    "RAW_CHECKPOINT_VARIABLE",
+    "NEVER_EMIT_CHECKPOINT_SECRET",
+    "d".repeat(64),
     "RAW_SECRET_KEY",
     "2026-08-16T12:34:56.000Z",
     "2026-08-17T00:00:00.000Z",
+    "2026-08-20T00:00:00.000Z",
     "OKOU_TOKEN",
     "ZERO_AGENT_ID",
     "GH_TOKEN",
@@ -2735,7 +3118,7 @@ function testOutputRedaction(): void {
     (error: unknown) => {
       assert.ok(error instanceof SanitizedPreflightError);
       assert.deepEqual(sanitizedFailureResult(error), {
-        schemaVersion: "vm0.agent-compose-consolidation-preflight.v6",
+        schemaVersion: "vm0.agent-compose-consolidation-preflight.v7",
         status: "failed",
         failureGates: ["probe.output_shape"],
       });
@@ -2778,7 +3161,7 @@ function assertSafeAggregateValues(value: unknown, pathPrefix = ""): void {
     return;
   }
   const allowedClassifications = new Set([
-    "vm0.agent-compose-consolidation-preflight.v6",
+    "vm0.agent-compose-consolidation-preflight.v7",
     "passed",
     "failed",
     "exact",
@@ -3199,11 +3582,11 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
   assert.match(workflow, /scripts\/agent-compose-consolidation-preflight\.ts/u);
   assert.match(
     workflow,
-    /#27613 \+ #27656 \+ #27671 \+ #27792 \+ #28056 \+ #28070/u,
+    /#27613 \+ #27656 \+ #27671 \+ #27792 \+ #28056 \+ #28070 \+ #28080/u,
   );
-  assert.match(workflow, /vm0\.agent-compose-consolidation-preflight\.v6/u);
+  assert.match(workflow, /vm0\.agent-compose-consolidation-preflight\.v7/u);
   assert.equal(
-    /vm0\.agent-compose-consolidation-preflight\.v[1-5]/u.test(workflow),
+    /vm0\.agent-compose-consolidation-preflight\.v[1-6]/u.test(workflow),
     false,
   );
   assert.equal(
@@ -3388,7 +3771,10 @@ function catalogCount(
 async function testDatabaseBoundariesForTimeZone(
   databaseUrl: string,
   timeZone: (typeof ACTIVITY_TIME_ZONES)[number],
-): Promise<void> {
+): Promise<CheckpointLineageTimeZoneProjection> {
+  let checkpointLineageProjection:
+    | CheckpointLineageTimeZoneProjection
+    | undefined;
   const sourceUrl = new URL(databaseUrl);
   const admin = new Client({
     connectionString: databaseUrlFor(sourceUrl, "postgres"),
@@ -3697,6 +4083,213 @@ async function testDatabaseBoundariesForTimeZone(
         "exact",
       );
 
+      const lineageSurvivor = {
+        sessionId: "00000000-0000-4000-8000-000000027631",
+        runId: "00000000-0000-4000-8000-000000027632",
+        conversationId: "00000000-0000-4000-8000-000000027633",
+        checkpointId: "00000000-0000-4000-8000-000000027634",
+      } as const;
+      const lineageDeleted = {
+        sessionId: "00000000-0000-4000-8000-000000027635",
+        runId: "00000000-0000-4000-8000-000000027636",
+        conversationId: "00000000-0000-4000-8000-000000027637",
+        checkpointId: "00000000-0000-4000-8000-000000027638",
+      } as const;
+      const lineageGrowth = {
+        sessionId: "00000000-0000-4000-8000-000000027639",
+        runId: "00000000-0000-4000-8000-000000027640",
+        conversationId: "00000000-0000-4000-8000-000000027641",
+        checkpointId: "00000000-0000-4000-8000-000000027642",
+      } as const;
+      const completeLaunchSnapshot = {
+        schemaVersion: 1,
+        framework: "claude-code",
+        runnerProfile: "vm0/default",
+      } as const;
+      const insertCheckpointLineageRun = async (
+        ids: {
+          readonly sessionId: string;
+          readonly runId: string;
+          readonly conversationId: string;
+          readonly checkpointId: string;
+        },
+        checkpointCreatedAt: string,
+      ): Promise<void> => {
+        await client.query(
+          `INSERT INTO "agent_sessions" (
+             "id", "user_id", "org_id", "agent_compose_id"
+           ) VALUES (
+             $1, 'exercising-agent-user', 'exercising-agent-org', $2
+           )`,
+          [ids.sessionId, exercisingAgentId],
+        );
+        await client.query(
+          `INSERT INTO "agent_runs" (
+             "id", "user_id", "org_id", "session_id", "status", "prompt",
+             "agent_compose_version_id", "launch_snapshot", "trigger_source",
+             "autonomy_budget", "created_at"
+           ) VALUES (
+             $1, 'exercising-agent-user', 'exercising-agent-org', $2,
+             'completed', 'checkpoint survivor lineage fixture', $3,
+             $4::jsonb, 'slack', 10, $5::timestamp
+           )`,
+          [
+            ids.runId,
+            ids.sessionId,
+            sharedVersionId,
+            completeLaunchSnapshot,
+            checkpointCreatedAt,
+          ],
+        );
+        await client.query(
+          `INSERT INTO "conversations" (
+             "id", "run_id", "cli_agent_type", "cli_agent_session_id"
+           ) VALUES ($1, $2, 'claude-code', $3)`,
+          [ids.conversationId, ids.runId, `lineage-${ids.runId}`],
+        );
+        await client.query(
+          `UPDATE "agent_sessions" SET "conversation_id" = $1
+           WHERE "id" = $2`,
+          [ids.conversationId, ids.sessionId],
+        );
+        await client.query(
+          `INSERT INTO "checkpoints" (
+             "id", "run_id", "conversation_id", "agent_compose_snapshot",
+             "created_at"
+           ) VALUES (
+             $1, $2, $3,
+             jsonb_build_object('agentComposeVersionId', $4::text),
+             $5::timestamp
+           )`,
+          [
+            ids.checkpointId,
+            ids.runId,
+            ids.conversationId,
+            sharedVersionId,
+            checkpointCreatedAt,
+          ],
+        );
+      };
+
+      await insertCheckpointLineageRun(
+        lineageSurvivor,
+        "2026-08-19 01:00:00.000000",
+      );
+      await insertCheckpointLineageRun(
+        lineageDeleted,
+        "2026-08-19 01:00:01.000000",
+      );
+      const beforeCascade = await executeAgentComposeConsolidationPreflight({
+        connectionString: testUrl,
+        repositoryRoot,
+        classification: {
+          ...executionOptions,
+          expectedDanglingHeadCount: 1,
+        },
+      });
+      assert.equal(
+        beforeCascade.checkpoints.transition.legacySnapshotLineage
+          .classification,
+        "exact",
+      );
+      assert.equal(
+        beforeCascade.checkpoints.transition.legacySnapshotLineage.expected
+          .count,
+        2,
+      );
+      assert.equal(
+        beforeCascade.checkpoints.transition.legacySnapshotGrowth.count,
+        0,
+      );
+
+      const deletedRun = await client.query(
+        `DELETE FROM "agent_runs" WHERE "id" = $1`,
+        [lineageDeleted.runId],
+      );
+      assert.equal(deletedRun.rowCount, 1);
+      const deletedCheckpoint = await client.query<{ count: number }>(
+        `SELECT count(*)::integer AS "count" FROM "checkpoints"
+         WHERE "run_id" = $1`,
+        [lineageDeleted.runId],
+      );
+      assert.equal(deletedCheckpoint.rows[0]?.count, 0);
+
+      await insertCheckpointLineageRun(
+        lineageGrowth,
+        "2026-08-19 01:12:08.000000",
+      );
+      const afterCascadeAndGrowth =
+        await executeAgentComposeConsolidationPreflight({
+          connectionString: testUrl,
+          repositoryRoot,
+          classification: {
+            ...executionOptions,
+            expectedDanglingHeadCount: 1,
+          },
+        });
+      assert.equal(
+        afterCascadeAndGrowth.checkpoints.transition.legacySnapshotLineage
+          .classification,
+        "exact",
+      );
+      assert.equal(
+        afterCascadeAndGrowth.checkpoints.transition.legacySnapshotLineage
+          .expected.count,
+        1,
+      );
+      assert.equal(
+        afterCascadeAndGrowth.checkpoints.transition.legacySnapshotGrowth.count,
+        1,
+      );
+      checkpointLineageProjection = {
+        expectedSurvivors:
+          afterCascadeAndGrowth.checkpoints.transition.legacySnapshotLineage
+            .expected,
+        observedSurvivors:
+          afterCascadeAndGrowth.checkpoints.transition.legacySnapshotLineage
+            .observed,
+        growth:
+          afterCascadeAndGrowth.checkpoints.transition.legacySnapshotGrowth,
+      };
+      for (const closure of [
+        afterCascadeAndGrowth.checkpoints.transition.populationClosure,
+        afterCascadeAndGrowth.checkpoints.transition.runReferenceClosure,
+        afterCascadeAndGrowth.checkpoints.transition
+          .conversationReferenceClosure,
+        afterCascadeAndGrowth.checkpoints.transition.sessionReferenceClosure,
+        afterCascadeAndGrowth.checkpoints.transition.storageReferenceClosure,
+      ]) {
+        assert.equal(closure.classification, "exact");
+      }
+
+      await client.query(
+        `UPDATE "checkpoints" SET "agent_compose_snapshot" = NULL
+         WHERE "id" = $1`,
+        [lineageSurvivor.checkpointId],
+      );
+      const reclassifiedSurvivor =
+        await executeAgentComposeConsolidationPreflight({
+          connectionString: testUrl,
+          repositoryRoot,
+          classification: {
+            ...executionOptions,
+            expectedDanglingHeadCount: 1,
+          },
+        });
+      gatePresent(reclassifiedSurvivor, "checkpoints.legacy_snapshot_lineage");
+      assert.equal(
+        reclassifiedSurvivor.checkpoints.transition.legacySnapshotLineage
+          .classification,
+        "drift",
+      );
+      await client.query(
+        `UPDATE "checkpoints"
+         SET "agent_compose_snapshot" =
+           jsonb_build_object('agentComposeVersionId', $1::text)
+         WHERE "id" = $2`,
+        [sharedVersionId, lineageSurvivor.checkpointId],
+      );
+
       const baselineCatalog = await catalogRows(client);
       for (const kind of CATALOG_DEPENDENCY_KINDS) {
         assert.equal(
@@ -3866,23 +4459,45 @@ async function testDatabaseBoundariesForTimeZone(
     await admin.query(`DROP DATABASE IF EXISTS "${testDatabase}" WITH (FORCE)`);
     await admin.end();
   }
+  assert.ok(checkpointLineageProjection);
+  return checkpointLineageProjection;
 }
 
 async function testDatabaseBoundaries(databaseUrl: string): Promise<void> {
-  for (const timeZone of ACTIVITY_TIME_ZONES) {
-    await testDatabaseBoundariesForTimeZone(databaseUrl, timeZone);
+  const projections = ACTIVITY_TIME_ZONES.map((timeZone) => {
+    return execFileSync(
+      "tsx",
+      [
+        path.join(dirname, "test-agent-compose-consolidation-preflight.ts"),
+        "--checkpoint-lineage-time-zone",
+        timeZone,
+      ],
+      {
+        cwd: packageDirectory,
+        encoding: "utf8",
+        env: { ...process.env, DATABASE_URL: databaseUrl, TZ: timeZone },
+      },
+    ).trim();
+  });
+  for (const projection of projections) {
+    assert.notEqual(projection, "");
   }
+  assert.equal(projections.length, ACTIVITY_TIME_ZONES.length);
+  assert.equal(projections[1], projections[0]);
 }
 
 export async function validateAgentComposeConsolidationPreflightStatic(): Promise<void> {
+  await validateCheckpointAgentComposeSnapshotNullableStatic();
   await validateLaunchSnapshotRecoverabilityStatic();
   await validateLaunchSnapshotBackfillStatic();
   testSchemaV3DomainsRemainByteStable();
   testSchemaV4OutputContractRemainsByteStable();
   testSchemaV5OutputContractRemainsByteStable();
+  testSchemaV6OutputContractRemainsByteStable();
   testApplicationOwnedPlanAndCanonicalCompatibility();
   testIdentityAndApprovedArtifacts();
   testVersionHeadRunAndCheckpointClassifications();
+  testCheckpointTransitionPartitionAndClosures();
   testDanglingClassifications();
   testAgentExecutionPlanClassifications();
   testHistoricalProductBuilderVariantAndClassifier();
@@ -3907,8 +4522,26 @@ export async function validateAgentComposeConsolidationPreflight(): Promise<void
   console.log("agent compose consolidation preflight passed");
 }
 
+async function runFromCommandLine(): Promise<void> {
+  if (process.argv[2] === "--checkpoint-lineage-time-zone") {
+    const timeZone = process.argv[3];
+    if (timeZone !== "UTC" && timeZone !== "Asia/Shanghai") {
+      throw new Error("Expected a reviewed checkpoint lineage time zone");
+    }
+    const databaseUrl = process.env.DATABASE_URL;
+    assert.ok(databaseUrl, "DATABASE_URL is required");
+    const projection = await testDatabaseBoundariesForTimeZone(
+      databaseUrl,
+      timeZone,
+    );
+    console.log(JSON.stringify(projection));
+    return;
+  }
+  await validateAgentComposeConsolidationPreflight();
+}
+
 if (fileURLToPath(import.meta.url) === path.resolve(process.argv[1] ?? "")) {
-  validateAgentComposeConsolidationPreflight().catch((error: unknown) => {
+  runFromCommandLine().catch((error: unknown) => {
     console.error(error);
     process.exitCode = 1;
   });

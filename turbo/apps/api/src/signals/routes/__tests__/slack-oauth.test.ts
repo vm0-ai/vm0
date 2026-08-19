@@ -15,7 +15,7 @@ import {
   seedSlackConnectOrg$,
   type SlackConnectFixture,
 } from "./helpers/slack-connect";
-import { createFixtureTracker } from "./helpers/zero-route-test";
+import { createFixtureTracker } from "./helpers/route-test";
 import { seedOrgMembership$ } from "./helpers/org-membership";
 
 const context = testContext();

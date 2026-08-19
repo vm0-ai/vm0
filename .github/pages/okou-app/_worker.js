@@ -47,16 +47,17 @@ function appMetadata(hostname) {
 }
 
 function apiOrigin(requestUrl, indexHtml) {
+  const productionApiOrigin = PRODUCTION_API_ORIGINS.get(requestUrl.hostname);
+  if (productionApiOrigin) {
+    return productionApiOrigin;
+  }
+
   const marker = API_ORIGIN_MARKER_PATTERN.exec(indexHtml)?.[1]?.trim();
   if (marker) {
     if (!PREVIEW_API_ORIGIN_PATTERN.test(marker)) {
       throw new Error("Invalid shared-thread preview API origin");
     }
     return marker;
-  }
-  const productionApiOrigin = PRODUCTION_API_ORIGINS.get(requestUrl.hostname);
-  if (productionApiOrigin) {
-    return productionApiOrigin;
   }
   throw new Error("Shared-thread API origin is unavailable");
 }
@@ -109,8 +110,8 @@ function noIndexResponse(response) {
   });
 }
 
-function rewriteAppPage(response, metadata) {
-  const rewrittenResponse = new HTMLRewriter()
+function rewriteAppPage(response, metadata, productionApiOrigin) {
+  const rewriter = new HTMLRewriter()
     .on("html", setBrandContext(metadata.brandName))
     .on("title", {
       element(element) {
@@ -155,8 +156,14 @@ function rewriteAppPage(response, metadata) {
           { html: true },
         );
       },
-    })
-    .transform(response);
+    });
+  if (productionApiOrigin) {
+    rewriter.on(
+      'meta[name="vm0-api-origin"]',
+      setMetaContent(productionApiOrigin),
+    );
+  }
+  const rewrittenResponse = rewriter.transform(response);
   return noIndexResponse(rewrittenResponse);
 }
 
@@ -178,10 +185,11 @@ async function rewriteManifest(response, metadata) {
   });
 }
 
-function rewriteFound(response, title, canonicalUrl, metadata) {
+function rewriteFound(response, title, canonicalUrl, metadata, apiOrigin) {
   const sharedDescription = `A conversation shared from ${metadata.brandName}`;
   return new HTMLRewriter()
     .on("html", setBrandContext(metadata.brandName))
+    .on('meta[name="vm0-api-origin"]', setMetaContent(apiOrigin))
     .on('meta[name="application-name"]', setMetaContent(metadata.brandName))
     .on(
       'meta[name="apple-mobile-web-app-title"]',
@@ -215,9 +223,10 @@ function rewriteFound(response, title, canonicalUrl, metadata) {
     .transform(response);
 }
 
-function rewriteNotFound(response, metadata) {
+function rewriteNotFound(response, metadata, apiOrigin) {
   return new HTMLRewriter()
     .on("html", setBrandContext(metadata.brandName))
+    .on('meta[name="vm0-api-origin"]', setMetaContent(apiOrigin))
     .on('meta[name="application-name"]', setMetaContent(metadata.brandName))
     .on(
       'meta[name="apple-mobile-web-app-title"]',
@@ -303,6 +312,7 @@ export default {
             "public, max-age=60, s-maxage=60",
           ),
           appMetadata(requestUrl.hostname),
+          origin,
         );
       }
       if (!metaResponse.ok) {
@@ -343,6 +353,7 @@ export default {
         metadata.title,
         canonicalUrl,
         sharedAppMetadata,
+        origin,
       );
     }
 
@@ -363,6 +374,10 @@ export default {
     ) {
       return assetResponse;
     }
-    return rewriteAppPage(assetResponse, metadata);
+    return rewriteAppPage(
+      assetResponse,
+      metadata,
+      PRODUCTION_API_ORIGINS.get(requestUrl.hostname),
+    );
   },
 };

@@ -1352,6 +1352,22 @@ def app_server_output(result):
     return json.dumps(result["messages"]) + "\n" + result["stderr"]
 
 
+def response_request_for_prompt(prompt):
+    prompt_content = [{"type": "input_text", "text": prompt}]
+    matching_requests = [
+        payload
+        for path, payload in requests
+        if path == "/v1/responses"
+        and payload["input"][-1].get("role") == "user"
+        and payload["input"][-1].get("content") == prompt_content
+    ]
+    assert len(matching_requests) == 1, (
+        "expected exactly one Responses request for the probe prompt, "
+        f"found {len(matching_requests)} among {len(requests)} requests"
+    )
+    return matching_requests[0]
+
+
 def zstd_compress(history_bytes):
     result = subprocess.run(
         [
@@ -1428,10 +1444,8 @@ def resume_history(
     assert (
         f"no rollout found for thread id {session_id}" not in output.lower()
     ), output
-    assert requests and requests[-1][0] == "/v1/responses", (
-        f"Codex did not reach the loopback Responses endpoint\n{output}"
-    )
-    return resumed, history_file, original_size, requests[-1][1]
+    response_request = response_request_for_prompt(append_token)
+    return resumed, history_file, original_size, response_request
 
 
 def probe_current_codex(
@@ -1529,9 +1543,7 @@ def probe_zstd_materialization(
     assert (
         f"no rollout found for thread id {session_id}" not in output.lower()
     ), output
-    assert requests and requests[-1][0] == "/v1/responses", (
-        f"Codex did not resume the zstd rollout\n{output}"
-    )
+    response_request_for_prompt(append_token)
     assert not compressed_history_file.exists(), (
         "Codex left the compressed rollout after append"
     )

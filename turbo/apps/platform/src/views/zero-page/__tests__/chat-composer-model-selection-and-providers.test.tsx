@@ -15,7 +15,7 @@ import {
   type ChatThreadServiceTier,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { zeroAgentsByIdContract } from "@okouai/api-contracts/contracts/zero-agents";
+import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { zeroAgentCustomConnectorsContract } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 import {
@@ -33,7 +33,7 @@ import {
   type UpdateUserModelPreferenceRequest,
   type UserModelPreferenceResponse,
 } from "@okouai/api-contracts/contracts/user-model-preference";
-import { zeroWorkflowsCollectionContract } from "@okouai/api-contracts/contracts/zero-workflows";
+import { workflowsCollectionContract } from "@okouai/api-contracts/contracts/workflows";
 import { IMAGE_RECOGNITION_MAX_FILE_BYTES } from "@okouai/api-contracts/contracts/image-recognition";
 import { beforeEach, describe, expect, it } from "vitest";
 import { triggerAblyEvent } from "../../../mocks/ably.ts";
@@ -3015,7 +3015,7 @@ describe("chat composer models", () => {
         title: "Second Scout thread",
       },
     ]);
-    context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
+    context.mocks.api(agentsByIdContract.get, ({ params, respond }) => {
       agentRequestCount += 1;
       return respond(200, {
         agentId: params.id,
@@ -3388,7 +3388,7 @@ describe("chat composer models", () => {
       });
     });
     context.mocks.api(
-      zeroWorkflowsCollectionContract.list,
+      workflowsCollectionContract.list,
       ({ query, respond }) => {
         if (query.agentId) {
           workflowAgentIds.push(query.agentId);

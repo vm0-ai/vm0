@@ -52,6 +52,10 @@ import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { slackOrgScopeMismatch$ } from "../../signals/zero-page/zero-slack.ts";
 import { AccountDropdown } from "./zero-sidebar-account.tsx";
 import { ChatThreadsSection } from "./sidebar-threads.tsx";
+import {
+  responsiveSidebarChatThreadScrollSignals,
+  threeColumnSidebarChatThreadScrollSignals,
+} from "../../signals/chat-page/sidebar-chat-thread-scroll.ts";
 import { PinnedAgentListSection } from "./zero-sidebar-pinned.tsx";
 import { ThreeColumnSearchDialog } from "./zero-sidebar-dialogs.tsx";
 import { SidebarUpgradeCard } from "./zero-sidebar-upgrade.tsx";
@@ -501,7 +505,9 @@ function ExpandedSidebarSections() {
   return (
     <div className="flex-1 min-h-0 -mx-2 px-2 mt-2 pt-2 flex flex-col overflow-hidden">
       <PinnedAgentListSection />
-      <ChatThreadsSection />
+      <ChatThreadsSection
+        scrollSignals={responsiveSidebarChatThreadScrollSignals}
+      />
     </div>
   );
 }
@@ -844,7 +850,10 @@ function ChatListColumn() {
         </div>
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 pt-1">
           <PinnedAgentListSection layout="horizontal" />
-          <ChatThreadsSection showMarkAllRead />
+          <ChatThreadsSection
+            scrollSignals={threeColumnSidebarChatThreadScrollSignals}
+            showMarkAllRead
+          />
         </div>
         <div className="px-3 pb-3">
           <SidebarUpgradeCard />

@@ -18,7 +18,7 @@ import {
   mockGmailConnectorOAuth,
 } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import {
   seedConnectorStorageRow,
   setConnectorCredentialStorageState,
@@ -31,7 +31,7 @@ const bdd = createBddApi(context);
 const chat = createChatFilesBddApi(context);
 const connectors = createConnectorBddApi(context);
 const runs = createRunsApi(context);
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
 const GMAIL_DRAFT_ID = "r-test-draft";
 const GMAIL_THREAD_ID = "gmail-thread-id";

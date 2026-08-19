@@ -1,7 +1,7 @@
 import {
-  zeroWorkflowAutomationsContract,
+  workflowAutomationsContract,
   type ChatThreadWorkflowAutomation,
-} from "@okouai/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/workflows";
 import { accept } from "../../lib/accept.ts";
 import type { ZeroClientFactory } from "../api-client.ts";
 
@@ -15,7 +15,7 @@ export async function listThreadWorkflowAutomations(
   fetchOptions?: RequestInit,
 ): Promise<ChatThreadWorkflowAutomation[]> {
   const result = await accept(
-    client(zeroWorkflowAutomationsContract).listForChatThread({
+    client(workflowAutomationsContract).listForChatThread({
       params: { threadId: params.threadId },
       fetchOptions,
     }),

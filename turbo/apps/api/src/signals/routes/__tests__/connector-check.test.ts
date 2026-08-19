@@ -26,16 +26,13 @@ import {
   seedOrgMembership$,
   type OrgMembershipFixture,
 } from "./helpers/org-membership";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
 import { connectorCheckRoutes } from "../connector-check";
 
 const TEST_APP_ROUTES = Object.freeze([...connectorCheckRoutes]);
 
 const context = testContext();
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const bdd = createBddApi(context);
 const connectorsApi = createConnectorBddApi(context);
 const authDevice = createAuthDeviceApiActions(context);

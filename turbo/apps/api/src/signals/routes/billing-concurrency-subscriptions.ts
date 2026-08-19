@@ -19,7 +19,7 @@ import {
   previewConcurrencySubscriptionChange$,
   reduceConcurrencySubscription$,
   restoreConcurrencySubscription$,
-} from "../services/zero-billing-concurrency-subscription.service";
+} from "../services/billing-concurrency-subscription.service";
 import { getStripeClient } from "../external/stripe-client";
 import { parseBillingPaymentMethodPreviewToken } from "../services/billing-purchase-preview-token.service";
 import {

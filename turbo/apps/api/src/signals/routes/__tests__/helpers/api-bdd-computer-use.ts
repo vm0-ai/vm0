@@ -8,14 +8,14 @@ import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { cronComputerUseScreenshotCleanupContract } from "@okouai/api-contracts/contracts/cron";
 import {
-  zeroComputerUseAuthorizationRequestsContract,
-  zeroComputerUseAuditEventsContract,
-  zeroComputerUseCommandContract,
-  zeroComputerUseHeartbeatContract,
-  zeroComputerUseHostCommandsContract,
-  zeroComputerUseHostsContract,
-  zeroComputerUsePluginCommandContract,
-  zeroComputerUseWriteCommandContract,
+  computerUseAuthorizationRequestsContract,
+  computerUseAuditEventsContract,
+  computerUseCommandContract,
+  computerUseHeartbeatContract,
+  computerUseHostCommandsContract,
+  computerUseHostsContract,
+  computerUsePluginCommandContract,
+  computerUseWriteCommandContract,
   type ComputerUseAuthorizationRequestApplyResponse,
   type ComputerUseAuthorizationRequestCreateResponse,
   type ComputerUseAuthorizationRequestResponse,
@@ -27,7 +27,7 @@ import {
   type ComputerUseHostListResponse,
   type ComputerUseReadCommandKind,
   type ComputerUseWriteCommandKind,
-} from "@okouai/api-contracts/contracts/zero-computer-use";
+} from "@okouai/api-contracts/contracts/computer-use";
 import type { ComputerUseAnyPluginCallBody } from "@okouai/api-contracts/contracts/computer-use-plugins";
 
 import { now } from "../../../../lib/time";
@@ -35,7 +35,7 @@ import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { setupApp } from "../../../../__tests__/test-helpers";
 import { signSandboxJwtForTests } from "../../../auth/tokens";
 import type { ApiTestUser } from "./api-bdd";
-import { createZeroRouteMocks } from "./zero-route-test";
+import { createRouteMocks } from "./route-test";
 import { cronComputerUseScreenshotCleanupRoutesForTest } from "../../cron-computer-use-screenshot-cleanup";
 import { computerUseRoutes } from "../../computer-use";
 import { computerUseAuthorizationRoutes } from "../../computer-use-authorization";
@@ -317,7 +317,7 @@ function bodyStream(buffer: Buffer): AsyncIterable<Uint8Array> {
  * in api-bdd-github.ts. Returns the runId so audit events created by the
  * token's commands can be read back through the audit-events list API.
  */
-export function zeroComputerUseToken(args: {
+export function computerUseToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly capabilities: readonly Capability[];
@@ -346,7 +346,7 @@ export function zeroComputerUseToken(args: {
 }
 
 export function createComputerUseBddApi(context: TestContext) {
-  const mocks = createZeroRouteMocks(context);
+  const mocks = createRouteMocks(context);
 
   function authenticate(auth: ComputerUseAuth): AuthHeaders {
     if (auth === null) {
@@ -364,49 +364,49 @@ export function createComputerUseBddApi(context: TestContext) {
 
   function hostsClient() {
     return setupApp({ context, routes: computerUseRoutes })(
-      zeroComputerUseHostsContract,
+      computerUseHostsContract,
     );
   }
 
   function heartbeatClient() {
     return setupApp({ context, routes: computerUseRoutes })(
-      zeroComputerUseHeartbeatContract,
+      computerUseHeartbeatContract,
     );
   }
 
   function commandClient() {
     return setupApp({ context, routes: computerUseRoutes })(
-      zeroComputerUseCommandContract,
+      computerUseCommandContract,
     );
   }
 
   function writeCommandClient() {
     return setupApp({ context, routes: computerUseRoutes })(
-      zeroComputerUseWriteCommandContract,
+      computerUseWriteCommandContract,
     );
   }
 
   function pluginCommandClient() {
     return setupApp({ context, routes: computerUseRoutes })(
-      zeroComputerUsePluginCommandContract,
+      computerUsePluginCommandContract,
     );
   }
 
   function hostCommandsClient() {
     return setupApp({ context, routes: computerUseRoutes })(
-      zeroComputerUseHostCommandsContract,
+      computerUseHostCommandsContract,
     );
   }
 
   function auditEventsClient() {
     return setupApp({ context, routes: computerUseRoutes })(
-      zeroComputerUseAuditEventsContract,
+      computerUseAuditEventsContract,
     );
   }
 
   function authorizationRequestsClient() {
     return setupApp({ context, routes: computerUseAuthorizationRoutes })(
-      zeroComputerUseAuthorizationRequestsContract,
+      computerUseAuthorizationRequestsContract,
     );
   }
 

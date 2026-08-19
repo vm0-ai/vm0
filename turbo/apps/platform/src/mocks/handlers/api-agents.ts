@@ -1,7 +1,7 @@
 import {
-  zeroTeamContract,
+  teamContract,
   type TeamComposeItem,
-} from "@okouai/api-contracts/contracts/zero-team";
+} from "@okouai/api-contracts/contracts/team";
 import {
   zeroAgentCustomConnectorsContract,
   type AgentCustomConnectorGrant,
@@ -9,9 +9,9 @@ import {
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { agentDraftContract } from "@okouai/api-contracts/contracts/agent-draft";
 import {
-  zeroAgentsByIdContract,
-  zeroAgentInstructionsContract,
-} from "@okouai/api-contracts/contracts/zero-agents";
+  agentsByIdContract,
+  agentInstructionsContract,
+} from "@okouai/api-contracts/contracts/agents";
 import {
   chatSearchContract,
   chatThreadsContract,
@@ -106,7 +106,7 @@ function mockCustomConnectorGrantUpdateResponse(
 
 export const apiAgentsHandlers = [
   // GET /api/okou/team
-  mockApi(zeroTeamContract.list, ({ respond }) => {
+  mockApi(teamContract.list, ({ respond }) => {
     return respond(200, mockTeam);
   }),
 
@@ -154,7 +154,7 @@ export const apiAgentsHandlers = [
   ),
 
   // GET /api/okou/agents/:id
-  mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+  mockApi(agentsByIdContract.get, ({ respond }) => {
     return respond(200, {
       agentId: "c0000000-0000-4000-a000-000000000001",
       ownerId: "test-user-123",
@@ -170,7 +170,7 @@ export const apiAgentsHandlers = [
   }),
 
   // GET /api/okou/agents/:id/instructions
-  mockApi(zeroAgentInstructionsContract.get, ({ respond }) => {
+  mockApi(agentInstructionsContract.get, ({ respond }) => {
     return respond(200, {
       content: null,
       filename: null,

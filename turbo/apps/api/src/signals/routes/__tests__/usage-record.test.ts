@@ -23,7 +23,7 @@ import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createRouteMocks } from "./helpers/route-test";
 import {
   materializeHourlyUsage$,
   readUsageStorageCounts$,
@@ -38,7 +38,7 @@ const billing = createBillingMediaApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const chatApi = createChatFilesBddApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
-const mocks = createZeroRouteMocks(context);
+const mocks = createRouteMocks(context);
 const store = createStore();
 
 /*
