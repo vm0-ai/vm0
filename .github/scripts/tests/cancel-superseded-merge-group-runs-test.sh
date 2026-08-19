@@ -21,10 +21,12 @@ printf '%s\n' "$*" >>"$MOCK_GH_LOG"
 endpoint=""
 method="GET"
 status_filter=""
+jq_filter=""
 previous=""
 for argument in "$@"; do
   case "$previous" in
     --method) method=$argument ;;
+    --jq) jq_filter=$argument ;;
   esac
   case "$argument" in
     repos/*) endpoint=$argument ;;
@@ -95,6 +97,10 @@ JSON
   repos/vm0-ai/vm0/actions/runs/*/jobs)
     run_id=${endpoint%/jobs}
     run_id=${run_id##*/}
+    [ "$jq_filter" = '[.jobs[]? | select(.status != "queued")] | length' ] || {
+      echo "unexpected jobs jq filter: ${jq_filter}" >&2
+      exit 1
+    }
     case " ${MOCK_CANCEL_FAILURE_RUN_IDS:-} " in
       *" $run_id "*)
         if [ "${MOCK_JOBS_QUERY_FAILURE:-0}" = "1" ]; then
