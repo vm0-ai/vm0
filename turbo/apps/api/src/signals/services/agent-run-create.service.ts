@@ -281,7 +281,7 @@ import {
   type QueueFirstRunClaimResult,
   type QueueFirstRunSessionSnapshotState,
 } from "./chat-queued-event.service";
-import { recordFirstAssistantEventEligibility } from "./zero-chat-first-assistant-event-metric.service";
+import { recordFirstAssistantEventEligibility } from "./chat-first-assistant-event-metric.service";
 import { isWebChatTriggerSource } from "./chat-trigger-source.service";
 import { resolveImageModelForRun } from "./image-model.service";
 import { resolveVideoModelForRun } from "./video-model.service";
