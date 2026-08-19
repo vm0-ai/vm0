@@ -53,7 +53,7 @@ import {
   setStripeSubscriptionPaymentMethod,
   type BillingPurchasePaymentMethod,
 } from "./billing-payment-method.service";
-import { downgradeSubscriptionForOrg } from "./zero-billing-downgrade.service";
+import { downgradeSubscriptionForOrg } from "./billing-downgrade.service";
 import {
   activeUsagePackPriceId,
   isUsagePackPlanPriceId,
