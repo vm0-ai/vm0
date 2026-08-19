@@ -3349,6 +3349,47 @@ describe("zero sidebar", () => {
     ).toBeInTheDocument();
   });
 
+  it("keeps the three-column chat list on one text and box inset", async () => {
+    prepareDefaultAgent();
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const list = await waitFor(() => {
+      return screen.getByTestId("chat-list-column");
+    });
+
+    const pinnedSection = within(list).getByTestId("pinned-agents-horizontal");
+    const scroller = pinnedSection.parentElement;
+    if (!(scroller instanceof HTMLElement)) {
+      throw new Error("Chat list content wrapper is not rendered");
+    }
+
+    // Rows, the pinned grid and the section labels all sit on a 12px content
+    // inset, and each label adds its own pl-2 so every text in the column
+    // starts at the same 20px. Dropping either half pulls one of them out of
+    // line with the rest.
+    expect(scroller).toHaveClass("px-3");
+    expect(scroller).not.toHaveClass("px-2");
+    expect(within(list).getByText("Chat")).toHaveClass("pl-2");
+
+    // The pinned label carries the same h-8 row box as the chats section title
+    // below it, which is what keeps the gap above the two section headers even.
+    const pinnedLabel = within(pinnedSection).getByText("Pinned agents");
+    expect(pinnedLabel).toHaveClass("flex", "h-8", "items-center", "pl-2");
+    expect(pinnedLabel).not.toHaveClass("pb-2");
+
+    // The label row supplies that bottom gap, so the grid must not stack a
+    // second one under the avatars.
+    const grid = within(pinnedSection).getByTestId("pinned-agents-grid");
+    expect(grid).not.toHaveClass("pb-1");
+  });
+
   it("searches chats and messages in the three-column spotlight", async () => {
     prepareAgentTeam();
     mockSidebarThreadStory([
