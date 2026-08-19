@@ -202,7 +202,10 @@ function StartCard({
           <p className="text-sm font-semibold text-foreground">
             {content.title}
           </p>
-          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+          {/* Two lines: the catalog descriptions on the workflow card run far
+              longer than the fixed copy on the others, and the row is only as
+              short as its tallest card. */}
+          <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-muted-foreground">
             {content.description}
           </p>
         </div>
@@ -216,9 +219,12 @@ function StartCard({
           touch device where `hover` never resolves, falls through to the card.
           */}
       <div className="pointer-events-none absolute inset-x-4 bottom-4 flex h-14 items-end gap-1.5 bg-gradient-to-t from-card from-[57%] to-transparent opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 group-focus-within:[&>button]:pointer-events-auto group-hover:[&>button]:pointer-events-auto">
+        {/* Peers, not a primary and a secondary: both open a way in, and the
+            card's own click already carries the emphasis. */}
         <Button
           type="button"
           size="sm"
+          variant="outline"
           className="min-w-0"
           onClick={() => {
             onSelectPrompt(content.prompt);
@@ -231,19 +237,19 @@ function StartCard({
             })}
           </span>
         </Button>
-        {/* Icon-only, and dropped entirely once the card is too narrow to hold
-            both actions. The card itself still opens the picker. */}
+        {/* Dropped once the card is too narrow to hold both. The card itself
+            still opens the picker. */}
         <Button
           type="button"
-          size="icon-sm"
+          size="sm"
           variant="outline"
-          className="hidden shrink-0 @[16rem]:inline-flex"
-          aria-label={t(($) => {
-            return $.chat.startCards.templates;
-          })}
+          className="hidden shrink-0 @[17rem]:inline-flex"
           onClick={onOpenTemplates}
         >
           <LayoutTemplate />
+          {t(($) => {
+            return $.chat.startCards.templates;
+          })}
         </Button>
       </div>
     </div>
