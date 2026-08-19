@@ -10,7 +10,11 @@ from mitmproxy import ctx
 import matching
 import registry_firewalls
 import state_file
-from firewall_auth_cache import evict_all_cache_keys, evict_stale_cache_keys
+from firewall_auth_cache import (
+    FIREWALL_AUTH_REGISTRY_GENERATION_ATTRIBUTE,
+    evict_all_cache_keys,
+    evict_stale_cache_keys,
+)
 
 VmContext = tuple[
     dict,
@@ -19,6 +23,10 @@ VmContext = tuple[
 ]
 type _RegistryFileKey = state_file.StateFileIdentity
 MAX_REGISTRY_BYTES = 16 * 1024 * 1024
+
+
+class _RegistryVmInfo(dict):
+    """Published VM mapping with private process-local ownership state."""
 
 
 class _RegistryFormatError(ValueError):
@@ -91,12 +99,23 @@ class _RegistryCacheState:
 
 
 _registry_state = _RegistryCacheState()
+_next_firewall_auth_registry_generation = 0
 
 
 def reset_cache_for_tests() -> None:
     """Reset module cache state between tests."""
+    global _next_firewall_auth_registry_generation
+
     _registry_state.reset()
+    _next_firewall_auth_registry_generation = 0
     registry_firewalls.reset_cache_for_tests()
+
+
+def _allocate_firewall_auth_registry_generation() -> int:
+    global _next_firewall_auth_registry_generation
+
+    _next_firewall_auth_registry_generation += 1
+    return _next_firewall_auth_registry_generation
 
 
 def _path_key(path: Path) -> str:
@@ -331,7 +350,8 @@ def _classify_registry_vms(
             invalid_vms[client_ip] = InvalidVmEntry("invalid_firewalls", str(e))
             continue
 
-        vm = dict(vm)
+        vm = _RegistryVmInfo(vm)
+        vm.pop(FIREWALL_AUTH_REGISTRY_GENERATION_ATTRIBUTE, None)
         if resolved_firewalls.firewalls is not None:
             vm["firewalls"] = resolved_firewalls.firewalls
             if resolved_firewalls.builtin_cache_keys is not None:
@@ -503,9 +523,18 @@ def load_registry_state(registry_path: str) -> RegistryState:
         state.builtin_firewall_core_cache,
     )
 
-    # Evict cache entries for runs no longer in the registry.
-    active_run_ids = {vm["runId"] for vm in new_registry.values()}
-    evict_stale_cache_keys(active_run_ids)
+    firewall_auth_registry_generation = _allocate_firewall_auth_registry_generation()
+    for vm in new_registry.values():
+        setattr(
+            vm,
+            FIREWALL_AUTH_REGISTRY_GENERATION_ATTRIBUTE,
+            firewall_auth_registry_generation,
+        )
+
+    active_run_generations = {
+        vm["runId"]: firewall_auth_registry_generation for vm in new_registry.values()
+    }
+    evict_stale_cache_keys(active_run_generations)
 
     state.snapshot = _RegistrySnapshot(
         new_registry,

@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from mitmproxy import connection
+from mitmproxy.test import tutils
 
 import auth
 import firewall_auth_cache as auth_cache
@@ -15,6 +16,12 @@ import mitm_addon
 import upstream_destination_binding
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
+from tests.auth_state_helpers import (
+    cached_headers,
+    force_refresh_pending,
+    has_auth_state,
+    require_cached_headers,
+)
 from tests.firewall_helpers import cancel_pending_task
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.request_handler_helpers import (
@@ -42,7 +49,8 @@ async def test_repeated_firewall_requests_reuse_snapshot_auth_identity(
         vm_fields={
             "_firewallAuthIdentityCache": {
                 "entries": {"forged": {"authIdentity": "caller-controlled"}}
-            }
+            },
+            "_firewall_auth_registry_generation": "caller-controlled",
         },
     )
     flows = [
@@ -72,6 +80,7 @@ async def test_repeated_firewall_requests_reuse_snapshot_auth_identity(
     second_key = flows[1].metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]
     assert first_key == second_key
     assert first_key.auth_identity != "caller-controlled"
+    assert type(first_key.registry_generation) is int
     assert build_identity.call_count == 1
     auth_fetch.assert_awaited_once()
     assert flows[0].metadata[metadata_keys.AUTH_CACHE_HIT] is False
@@ -428,20 +437,17 @@ async def test_requestheaders_and_request_share_snapshot_auth_identity(
     assert normal_flow.request.headers["Authorization"] == "Bearer resolved"
 
 
-async def test_registry_reload_recomputes_firewall_auth_identity(tmp_path, real_flow, mitm_ctx):
+async def test_registry_reload_replaces_firewall_auth_identity(tmp_path, real_flow, mitm_ctx):
     reg_path = _write_github_firewall_registry(tmp_path)
-    first_flow = real_flow(
-        with_response=False,
-        client_ip="10.200.0.5",
-        host="api.github.com",
-        path="/repos",
-    )
-    second_flow = real_flow(
-        with_response=False,
-        client_ip="10.200.0.5",
-        host="api.github.com",
-        path="/repos",
-    )
+    flows = [
+        real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="api.github.com",
+            path="/repos",
+        )
+        for _ in range(3)
+    ]
     auth_fetch = AsyncMock(return_value=_resolved_firewall_auth())
 
     with (
@@ -453,20 +459,173 @@ async def test_registry_reload_recomputes_firewall_auth_identity(tmp_path, real_
             wraps=auth._build_firewall_auth_identity,
         ) as build_identity,
     ):
-        await mitm_addon.request(first_flow)
+        for index, flow in enumerate(flows):
+            if index:
+                _write_github_firewall_registry(
+                    tmp_path,
+                    vm_fields={"encryptedSecrets": f"iv:tag:data-updated-{index}"},
+                )
+            await mitm_addon.request(flow)
+
+    keys = [flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] for flow in flows]
+    assert {key.run_id for key in keys} == {"run-conn-1"}
+    assert {key.api_id for key in keys} == {"run-conn-1:0"}
+    assert len({key.auth_identity for key in keys}) == 3
+    assert len({key.registry_generation for key in keys}) == 3
+    assert not has_auth_state(keys[0])
+    assert not has_auth_state(keys[1])
+    assert cached_headers(keys[2]) is not None
+    assert build_identity.call_count == 3
+    assert auth_fetch.await_count == 3
+
+
+async def test_registry_reload_reuses_unchanged_firewall_auth_identity(
+    tmp_path, real_flow, mitm_ctx
+):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    flows = [
+        real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="api.github.com",
+            path="/repos",
+        )
+        for _ in range(2)
+    ]
+    auth_fetch = AsyncMock(return_value=_resolved_firewall_auth())
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth_cache, "fetch_firewall_headers", auth_fetch),
+        patch.object(
+            auth,
+            "_build_firewall_auth_identity",
+            wraps=auth._build_firewall_auth_identity,
+        ) as build_identity,
+    ):
+        await mitm_addon.request(flows[0])
+        _write_github_firewall_registry(
+            tmp_path,
+            vm_fields={"captureNetworkBodies": False},
+        )
+        await mitm_addon.request(flows[1])
+
+    first_key = flows[0].metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]
+    second_key = flows[1].metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]
+    assert first_key == second_key
+    assert first_key.registry_generation != second_key.registry_generation
+    assert build_identity.call_count == 2
+    auth_fetch.assert_awaited_once()
+    assert flows[1].metadata[metadata_keys.AUTH_CACHE_HIT] is True
+
+
+async def test_superseded_fetch_completion_does_not_repopulate_auth_state(
+    tmp_path, real_flow, mitm_ctx
+):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    old_flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        path="/repos",
+    )
+    new_flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        path="/repos",
+    )
+    old_fetch_started = asyncio.Event()
+    release_old_fetch = asyncio.Event()
+
+    async def fetch_auth(
+        request: auth_client.FirewallAuthRequest,
+        *,
+        force_refresh: bool,
+    ) -> auth_client.FirewallAuthSuccess:
+        assert force_refresh is False
+        if request.encrypted_secrets == "iv:tag:data":
+            old_fetch_started.set()
+            await release_old_fetch.wait()
+            return auth_client.FirewallAuthSuccess(
+                payload=auth_client.FirewallAuthPayload(headers={"Authorization": "Bearer old"})
+            )
+        return auth_client.FirewallAuthSuccess(
+            payload=auth_client.FirewallAuthPayload(headers={"Authorization": "Bearer new"})
+        )
+
+    old_request: asyncio.Task[None] | None = None
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth_cache, "fetch_firewall_headers", side_effect=fetch_auth) as auth_fetch,
+    ):
+        old_request = asyncio.create_task(mitm_addon.request(old_flow))
+        try:
+            await asyncio.wait_for(old_fetch_started.wait(), timeout=1)
+            _write_github_firewall_registry(
+                tmp_path,
+                vm_fields={"encryptedSecrets": "iv:tag:data-updated"},
+            )
+            await mitm_addon.request(new_flow)
+
+            old_key = old_flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]
+            new_key = new_flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]
+            assert not has_auth_state(old_key)
+            assert cached_headers(new_key) is not None
+
+            release_old_fetch.set()
+            await asyncio.wait_for(old_request, timeout=1)
+        finally:
+            release_old_fetch.set()
+            await cancel_pending_task(old_request)
+
+    assert auth_fetch.await_count == 2
+    assert old_flow.response is None
+    assert old_flow.request.headers["Authorization"] == "Bearer old"
+    assert not has_auth_state(old_key)
+    assert require_cached_headers(new_key).headers == {"Authorization": "Bearer new"}
+
+
+async def test_superseded_401_does_not_mutate_current_auth_state(tmp_path, real_flow, mitm_ctx):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    flows = [
+        real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="api.github.com",
+            path="/repos",
+        )
+        for _ in range(2)
+    ]
+    auth_fetch = AsyncMock(
+        side_effect=(
+            auth_client.FirewallAuthSuccess(
+                payload=auth_client.FirewallAuthPayload(headers={"Authorization": "Bearer old"})
+            ),
+            auth_client.FirewallAuthSuccess(
+                payload=auth_client.FirewallAuthPayload(headers={"Authorization": "Bearer new"})
+            ),
+        )
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth_cache, "fetch_firewall_headers", auth_fetch),
+    ):
+        await mitm_addon.request(flows[0])
         _write_github_firewall_registry(
             tmp_path,
             vm_fields={"encryptedSecrets": "iv:tag:data-updated"},
         )
-        await mitm_addon.request(second_flow)
+        await mitm_addon.request(flows[1])
+        old_key = flows[0].metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]
+        new_key = flows[1].metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]
+        flows[0].response = tutils.tresp(status_code=401)
+        mitm_addon.response(flows[0])
 
-    first_key = first_flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]
-    second_key = second_flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]
-    assert first_key.run_id == second_key.run_id == "run-conn-1"
-    assert first_key.api_id == second_key.api_id == "run-conn-1:0"
-    assert first_key.auth_identity != second_key.auth_identity
-    assert build_identity.call_count == 2
-    assert auth_fetch.await_count == 2
+    assert not has_auth_state(old_key)
+    assert require_cached_headers(new_key).headers == {"Authorization": "Bearer new"}
+    assert not force_refresh_pending(new_key)
 
 
 async def test_local_response_preserves_shared_binding_for_concurrent_auth(

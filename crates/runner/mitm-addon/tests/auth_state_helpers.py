@@ -13,11 +13,13 @@ def auth_cache_key(
     run_id: str = "run-1",
     api_id: str = "api-1",
     auth_identity: str = "auth-identity-1",
+    registry_generation: int | None = None,
 ) -> auth_cache.FirewallAuthCacheKey:
     return auth_cache.FirewallAuthCacheKey(
         run_id=run_id,
         api_id=api_id,
         auth_identity=auth_identity,
+        registry_generation=registry_generation,
     )
 
 

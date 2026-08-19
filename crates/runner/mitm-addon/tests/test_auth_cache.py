@@ -388,8 +388,52 @@ class TestFirewallHeaderCache:
         assert endpoint.request_count == 2
         assert explicit["headers"] == {"Authorization": "Bearer explicit"}
         assert default["headers"] == {"Authorization": "Bearer default"}
-        assert require_cached_headers(explicit_key).headers == {"Authorization": "Bearer explicit"}
+        assert not has_auth_state(explicit_key)
         assert require_cached_headers(default_key).headers == {"Authorization": "Bearer default"}
+
+    async def test_stale_registry_generation_cannot_reacquire_replaced_identity(self):
+        old_key = auth_cache_key(auth_identity="old-auth", registry_generation=1)
+        new_key = auth_cache_key(auth_identity="new-auth", registry_generation=2)
+        auth_request = firewall_auth_request()
+        auth_fetch = AsyncMock(
+            side_effect=(
+                firewall_auth_success(headers={"Authorization": "Bearer old"}),
+                firewall_auth_success(headers={"Authorization": "Bearer new"}),
+                firewall_auth_success(headers={"Authorization": "Bearer detached-old"}),
+            )
+        )
+
+        with patch.object(auth_cache, "fetch_firewall_headers", auth_fetch):
+            auth_cache.evict_stale_cache_keys({"run-1": 1})
+            await auth_cache.get_firewall_headers(old_key, auth_request)
+
+            auth_cache.evict_stale_cache_keys({"run-1": 2})
+            await auth_cache.get_firewall_headers(new_key, auth_request)
+            stale_result = await auth_cache.get_firewall_headers(old_key, auth_request)
+
+        assert stale_result["headers"] == {"Authorization": "Bearer detached-old"}
+        assert not has_auth_state(old_key)
+        assert require_cached_headers(new_key).headers == {"Authorization": "Bearer new"}
+        assert auth_fetch.await_count == 3
+
+    async def test_same_identity_reuses_state_across_registry_generations(self):
+        old_key = auth_cache_key(registry_generation=1)
+        new_key = auth_cache_key(registry_generation=2)
+        auth_cache.evict_stale_cache_keys({"run-1": 1})
+        set_cached_headers(old_key, headers={"Authorization": "Bearer cached"})
+        mark_force_refresh(old_key)
+        set_last_force_refresh_monotonic_at(old_key, 123.0)
+
+        auth_cache.evict_stale_cache_keys({"run-1": 2})
+        auth_fetch = AsyncMock()
+        with patch.object(auth_cache, "fetch_firewall_headers", auth_fetch):
+            result = await auth_cache.get_firewall_headers(new_key, firewall_auth_request())
+
+        assert result["headers"] == {"Authorization": "Bearer cached"}
+        assert result["cache_hit"] is True
+        assert force_refresh_pending(new_key)
+        assert last_force_refresh_monotonic_at(new_key) == 123.0
+        auth_fetch.assert_not_awaited()
 
     def test_cached_header_snapshot_is_detached_from_internal_state(self):
         """Seeded inputs and returned snapshots cannot mutate live cache state."""
@@ -1012,7 +1056,7 @@ class TestGetFirewallHeaders:
         # No consume timestamp written when force-refresh didn't happen
         assert last_force_refresh_monotonic_at(cache_key) is None
 
-    async def test_force_refresh_marker_is_scoped_to_auth_identity(self, headers):
+    async def test_replacement_identity_does_not_inherit_force_refresh_marker(self, headers):
         old_key = auth_cache_key(auth_identity="old-auth")
         new_key = auth_cache_key(auth_identity="new-auth")
         mark_force_refresh(old_key)
@@ -1022,7 +1066,7 @@ class TestGetFirewallHeaders:
             await auth_cache.get_firewall_headers(new_key, firewall_auth_request())
 
         assert mock_fetch.call_args.kwargs["force_refresh"] is False
-        assert force_refresh_pending(old_key)
+        assert not has_auth_state(old_key)
         assert not force_refresh_pending(new_key)
 
     async def test_force_refresh_marker_ignored_on_cache_hit(self, headers):
