@@ -52,6 +52,16 @@ impl FinalizingHandoffOutcome {
     const fn succeeded(self) -> bool {
         matches!(self, Self::Accepted | Self::PublishedExact)
     }
+
+    pub(crate) fn record(self, telemetry: &mut JobTelemetry) {
+        telemetry.record_with_outcome(
+            "runner_claim_finalizing_handoff",
+            Duration::ZERO,
+            self.succeeded(),
+            (!self.succeeded()).then_some(self.as_str()),
+            Some(self.as_str()),
+        );
+    }
 }
 
 impl RunnerPreSpawnPhase {
@@ -200,6 +210,10 @@ impl RunnerPreSpawnTiming {
         self.finalizing_handoff_outcome = Some(outcome);
     }
 
+    pub(crate) fn finalizing_handoff_outcome(&self) -> Option<FinalizingHandoffOutcome> {
+        self.finalizing_handoff_outcome
+    }
+
     pub(crate) fn record_phase(&mut self, phase: RunnerPreSpawnPhase, duration: Duration) {
         *self.phase_durations.get_mut(phase) = Some(duration);
     }
@@ -234,13 +248,7 @@ impl RunnerPreSpawnTiming {
             );
         }
         if let Some(outcome) = self.finalizing_handoff_outcome {
-            telemetry.record_with_outcome(
-                "runner_claim_finalizing_handoff",
-                Duration::ZERO,
-                outcome.succeeded(),
-                (!outcome.succeeded()).then_some(outcome.as_str()),
-                Some(outcome.as_str()),
-            );
+            outcome.record(telemetry);
         }
         if let Some(timing) = self.exact_reuse_speculation.as_ref() {
             telemetry.record(

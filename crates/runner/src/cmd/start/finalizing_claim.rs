@@ -29,6 +29,7 @@ use crate::ids::RunId;
 use crate::provider::ClaimedJob;
 use crate::resource_budget::{BudgetLease, ResourceBudget};
 use crate::run_cancellation::RunCancellationRegistration;
+use crate::telemetry::JobTelemetry;
 use crate::types::{CompleteRequest, SandboxReuseResult};
 
 pub(super) const FINALIZING_HANDOFF_ACCEPTANCE_GRACE: Duration = Duration::from_millis(1500);
@@ -177,8 +178,15 @@ async fn run_finalizing_claim(
             if let Some(reservation) = reserved_exact.take() {
                 rollback_reserved_idle_for_spawn(*reservation, &ctx).await;
             }
-            return complete_claimed_without_sandbox(claimed, cancellation, failure, None, &ctx)
-                .await;
+            return complete_claimed_without_sandbox(
+                claimed,
+                cancellation,
+                failure,
+                None,
+                pre_spawn_timing.finalizing_handoff_outcome(),
+                &ctx,
+            )
+            .await;
         }
         Err(payload) => {
             if let Some(reservation) = reserved_exact.take() {
@@ -191,6 +199,7 @@ async fn run_finalizing_claim(
                     "runner panicked while preparing a claimed finalizing successor",
                 ),
                 None,
+                pre_spawn_timing.finalizing_handoff_outcome(),
                 &ctx,
             )
             .await;
@@ -248,6 +257,7 @@ async fn run_finalizing_claim(
                         cancellation,
                         ExecutionFailure::from_error(error),
                         Some(reuse_result),
+                        pre_spawn_timing.finalizing_handoff_outcome(),
                         &ctx,
                     )
                     .await;
@@ -274,6 +284,7 @@ async fn run_finalizing_claim(
                                 "finalizing handoff identity did not match claimed successor",
                             ),
                             None,
+                            pre_spawn_timing.finalizing_handoff_outcome(),
                             &ctx,
                         )
                         .await;
@@ -315,6 +326,7 @@ async fn run_finalizing_claim(
                         cancellation,
                         ExecutionFailure::from_error(error),
                         Some(reuse_result),
+                        pre_spawn_timing.finalizing_handoff_outcome(),
                         &ctx,
                     )
                     .await;
@@ -754,10 +766,21 @@ async fn complete_claimed_without_sandbox(
     cancellation: RunCancellationRegistration,
     failure: ExecutionFailure,
     reuse_result: Option<SandboxReuseResult>,
+    handoff_outcome: Option<FinalizingHandoffOutcome>,
     ctx: &SpawnContext,
 ) -> RunCancellationRegistration {
     let (context, completion_auth, active_input_source) = claimed.into_parts();
     drop(active_input_source);
+    let telemetry = handoff_outcome.map(|outcome| {
+        let mut telemetry = JobTelemetry::new(
+            ctx.exec_config.http.clone(),
+            context.run_id,
+            context.sandbox_token.clone(),
+            ctx.exec_config.runner_name.clone(),
+        );
+        outcome.record(&mut telemetry);
+        telemetry
+    });
     ctx.provider
         .complete(
             CompleteRequest {
@@ -772,6 +795,9 @@ async fn complete_claimed_without_sandbox(
             completion_auth,
         )
         .await;
+    if let Some(telemetry) = telemetry {
+        telemetry.flush().await;
+    }
     cancellation
 }
 

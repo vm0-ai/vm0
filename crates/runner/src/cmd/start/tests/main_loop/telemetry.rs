@@ -2,7 +2,7 @@ use super::super::super::*;
 use super::super::support::{
     context_with_session, minimal_context, mock_run_config_with_api_url,
     mock_run_config_with_overrides_and_api_url, push_job, seed_idle_pool, shutdown, test_profiles,
-    wait_discover_entered,
+    test_runner_identity, wait_cancel_handle, wait_discover_entered,
 };
 use crate::paths::RunnerPaths;
 use crate::workspace_image_cache::WorkspaceImageCache;
@@ -325,4 +325,68 @@ async fn invalid_resume_session_emits_no_reuse_telemetry() {
     shutdown(&env, run_handle).await;
 
     reuse_telemetry_mock.assert_calls_async(0).await;
+}
+
+#[tokio::test]
+async fn cancelled_finalizing_handoff_flushes_outcome_without_executor() {
+    use httpmock::prelude::*;
+
+    let server = MockServer::start_async().await;
+    let telemetry_mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/telemetry")
+                .body_includes("runner_claim_finalizing_handoff")
+                .body_includes(r#""outcome":"cancelled""#);
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"{"success":true,"id":"ok"}"#);
+        })
+        .await;
+
+    let (config, env) =
+        mock_run_config_with_api_url(test_profiles(), 2, 4096, 1, &server.base_url());
+    let reuse_key = "thread:cancelled-finalizing-handoff-telemetry";
+    let predecessor_run_id = RunId::new_v4();
+    let predecessor_guard = env.active_runs.register(
+        predecessor_run_id,
+        Some(reuse_key.to_owned()),
+        "vm0/default".into(),
+    );
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    let mut context = minimal_context(run_id);
+    context.reuse_key = Some(reuse_key.to_owned());
+    env.provider.set_claim_result(run_id, Some(context));
+    env.handle
+        .discover_tx
+        .send(
+            crate::provider::JobCandidate::new(run_id, "vm0/default".into())
+                .with_reuse_key(Some(reuse_key.to_owned()))
+                .with_history_generation_run_id(Some(predecessor_run_id))
+                .with_runner_preference_for_test(
+                    crate::provider::ActiveRunnerPreference::ranked_for_test(
+                        test_runner_identity(),
+                        crate::provider::RunnerPreferenceTier::FinalizingPredecessor,
+                        std::time::Instant::now() + Duration::from_secs(30),
+                    ),
+                ),
+        )
+        .unwrap();
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+    let cancellation = wait_cancel_handle(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+
+    cancellation.request_hard_cancellation().await;
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("cancelled finalizing handoff should report completion");
+    assert_eq!(completion.exit_code, 137);
+
+    drop(predecessor_guard);
+    shutdown(&env, run_handle).await;
+    telemetry_mock.assert_calls_async(1).await;
 }
