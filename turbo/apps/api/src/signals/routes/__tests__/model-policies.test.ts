@@ -9,7 +9,7 @@ import {
   type ModelProviderType,
 } from "@okouai/api-contracts/contracts/model-providers";
 import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
-import { zeroModelProviderConnectionsMainContract } from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
+import { modelProviderConnectionsMainContract } from "@okouai/api-contracts/contracts/model-provider-gateways";
 import { userModelPreferenceContract } from "@okouai/api-contracts/contracts/user-model-preference";
 import type { ImageModelId } from "@okouai/api-contracts/contracts/image-models";
 import type { VideoModelId } from "@okouai/api-contracts/contracts/video-models";
@@ -731,7 +731,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
     const gatewayClient = setupApp({
       context,
       routes: modelProviderGatewayRoutes,
-    })(zeroModelProviderConnectionsMainContract);
+    })(modelProviderConnectionsMainContract);
     const created = await accept(
       gatewayClient.create({
         headers: authHeaders(),

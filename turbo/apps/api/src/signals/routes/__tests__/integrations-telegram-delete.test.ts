@@ -4,8 +4,8 @@ import { createStore } from "ccstate";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   OFFICIAL_TELEGRAM_BOT_ID,
-  zeroIntegrationsTelegramContract,
-} from "@okouai/api-contracts/contracts/zero-integrations-telegram";
+  integrationsTelegramContract,
+} from "@okouai/api-contracts/contracts/integrations-telegram";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -199,7 +199,7 @@ describe("DELETE /api/integrations/telegram", () => {
 
   function client() {
     return setupApp({ context, routes: integrationsTelegramRoutes })(
-      zeroIntegrationsTelegramContract,
+      integrationsTelegramContract,
     );
   }
 

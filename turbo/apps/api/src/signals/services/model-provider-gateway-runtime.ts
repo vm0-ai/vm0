@@ -7,7 +7,7 @@ import {
 import {
   getModelProviderTypeForSurfaceProtocol,
   type ModelProviderSurfaceProtocol,
-} from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
+} from "@okouai/api-contracts/contracts/model-provider-gateways";
 import type { ExpandedFirewallConfig } from "@okouai/connectors/firewall-types";
 
 export const GATEWAY_RUNTIME_SECRET_NAME = "VM0_MODEL_PROVIDER_API_KEY";

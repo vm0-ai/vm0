@@ -39,7 +39,7 @@ import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { testSlackStateContract } from "@okouai/api-contracts/contracts/test-slack-state";
 import { integrationsAgentPhoneContract } from "@okouai/api-contracts/contracts/integrations-agentphone";
 import { integrationsSlackContract } from "@okouai/api-contracts/contracts/integrations-slack";
-import { zeroIntegrationsTelegramContract } from "@okouai/api-contracts/contracts/zero-integrations-telegram";
+import { integrationsTelegramContract } from "@okouai/api-contracts/contracts/integrations-telegram";
 import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
 import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
 import { modelProvidersMainContract } from "@okouai/api-contracts/contracts/model-provider-routes";
@@ -1384,7 +1384,7 @@ export function createBddIntegrationApi(context: TestContext) {
       const client = setupApp({
         context,
         routes: integrationsTelegramRoutes,
-      })(zeroIntegrationsTelegramContract);
+      })(integrationsTelegramContract);
       return await accept(
         client.list({
           headers: authenticate(context, routeMocks, actor),
@@ -1413,7 +1413,7 @@ export function createBddIntegrationApi(context: TestContext) {
       const client = setupApp({
         context,
         routes: integrationsTelegramRoutes,
-      })(zeroIntegrationsTelegramContract);
+      })(integrationsTelegramContract);
       const response = await accept(
         client.getLinkStatus({
           headers: authenticate(context, routeMocks, actor),
@@ -1428,7 +1428,7 @@ export function createBddIntegrationApi(context: TestContext) {
       const client = setupApp({
         context,
         routes: integrationsTelegramRoutes,
-      })(zeroIntegrationsTelegramContract);
+      })(integrationsTelegramContract);
       return await accept(client.authCallback(), statuses);
     },
 
@@ -1441,7 +1441,7 @@ export function createBddIntegrationApi(context: TestContext) {
       const client = setupApp({
         context,
         routes: integrationsTelegramRoutes,
-      })(zeroIntegrationsTelegramContract);
+      })(integrationsTelegramContract);
       return await accept(
         client.avatar({
           headers: authenticate(context, routeMocks, actor),
@@ -1461,7 +1461,7 @@ export function createBddIntegrationApi(context: TestContext) {
       const client = setupApp({
         context,
         routes: integrationsTelegramRoutes,
-      })(zeroIntegrationsTelegramContract);
+      })(integrationsTelegramContract);
       return await accept(
         client.link({
           headers: authenticate(context, routeMocks, actor),
@@ -1482,7 +1482,7 @@ export function createBddIntegrationApi(context: TestContext) {
       const client = setupApp({
         context,
         routes: integrationsTelegramRoutes,
-      })(zeroIntegrationsTelegramContract);
+      })(integrationsTelegramContract);
       return await accept(
         client.unlink({
           headers: authenticate(context, routeMocks, actor),
@@ -1501,7 +1501,7 @@ export function createBddIntegrationApi(context: TestContext) {
       const client = setupApp({
         context,
         routes: integrationsTelegramRoutes,
-      })(zeroIntegrationsTelegramContract);
+      })(integrationsTelegramContract);
       return await accept(
         client.updateBot({
           headers: authenticate(context, routeMocks, actor),
@@ -1520,7 +1520,7 @@ export function createBddIntegrationApi(context: TestContext) {
       const client = setupApp({
         context,
         routes: integrationsTelegramRoutes,
-      })(zeroIntegrationsTelegramContract);
+      })(integrationsTelegramContract);
       return await accept(
         client.disconnect({
           headers: authenticate(context, routeMocks, actor),
@@ -1549,7 +1549,7 @@ export function createBddIntegrationApi(context: TestContext) {
       const client = setupApp({
         context,
         routes: integrationsTelegramRoutes,
-      })(zeroIntegrationsTelegramContract);
+      })(integrationsTelegramContract);
       return await accept(
         client.register({
           headers: authenticate(context, routeMocks, actor),
@@ -1570,7 +1570,7 @@ export function createBddIntegrationApi(context: TestContext) {
       const client = setupApp({
         context,
         routes: integrationsTelegramRoutes,
-      })(zeroIntegrationsTelegramContract);
+      })(integrationsTelegramContract);
       return await accept(
         client.setupStatus({
           headers: authenticate(context, routeMocks, actor),

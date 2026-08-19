@@ -27,7 +27,7 @@ import {
 } from "./helpers/api-bdd";
 import {
   createComputerUseBddApi,
-  zeroComputerUseToken,
+  computerUseToken,
 } from "./helpers/api-bdd-computer-use";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
@@ -191,7 +191,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
     expect(new URL(legacyCreated.authorizationUrl).origin).toBe(
       "https://app.vm0.ai",
     );
-    const token = zeroComputerUseToken({
+    const token = computerUseToken({
       userId: actor.userId,
       orgId,
       runId: run.runId,
@@ -270,7 +270,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
       hostName: "Studio Mac",
     });
     mockClerkMembership(context, actor, "org:admin");
-    const token = zeroComputerUseToken({
+    const token = computerUseToken({
       userId: actor.userId,
       orgId,
       runId: run.runId,
@@ -342,7 +342,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
       hostName: "Canonical Slack Desktop",
     });
     mockClerkMembership(context, actor, "org:admin");
-    const token = zeroComputerUseToken({
+    const token = computerUseToken({
       userId: actor.userId,
       orgId,
       runId: run.runId,
@@ -388,7 +388,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
       hostName: "Canonical Teams Desktop",
     });
     mockClerkMembership(context, actor, "org:admin");
-    const token = zeroComputerUseToken({
+    const token = computerUseToken({
       userId: actor.userId,
       orgId,
       runId: run.runId,
@@ -655,7 +655,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
     });
     mockClerkMembership(context, actor, "org:admin");
 
-    const bound = zeroComputerUseToken({
+    const bound = computerUseToken({
       userId: actor.userId,
       orgId: requireOrg(actor),
       capabilities: ["computer-use:write"],
@@ -672,7 +672,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
       ],
     });
 
-    const unbound = zeroComputerUseToken({
+    const unbound = computerUseToken({
       userId: actor.userId,
       orgId: requireOrg(actor),
       capabilities: ["computer-use:write"],
@@ -867,7 +867,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
 
     const missingCapability = await api.requestCreateComputerUseReadCommand(
       {
-        bearer: zeroComputerUseToken({
+        bearer: computerUseToken({
           userId,
           orgId,
           capabilities: ["connector:read"],
@@ -883,7 +883,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
 
     const ungranted = await api.requestCreateComputerUseReadCommand(
       {
-        bearer: zeroComputerUseToken({
+        bearer: computerUseToken({
           userId,
           orgId,
           capabilities: ["computer-use:write"],
@@ -897,7 +897,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
       "Computer-use host is not authorized for this run",
     );
 
-    const granted = zeroComputerUseToken({
+    const granted = computerUseToken({
       userId,
       orgId,
       capabilities: ["computer-use:write"],
@@ -1029,7 +1029,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
     const idleB = await api.claimNextComputerUseCommand(hostB.hostToken);
     expect(idleB.status).toBe("idle");
 
-    const grantedOffline = zeroComputerUseToken({
+    const grantedOffline = computerUseToken({
       userId,
       orgId,
       capabilities: ["computer-use:write"],
@@ -1190,7 +1190,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
       supportedCapabilities: pluginCapabilities,
     });
     mockClerkMembership(context, actor, "org:admin");
-    const granted = zeroComputerUseToken({
+    const granted = computerUseToken({
       userId,
       orgId,
       capabilities: ["computer-use:write"],

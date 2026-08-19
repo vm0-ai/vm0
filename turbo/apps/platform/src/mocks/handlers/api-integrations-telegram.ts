@@ -1,11 +1,11 @@
 import {
-  zeroIntegrationsTelegramContract,
+  integrationsTelegramContract,
   type TelegramBot,
   type TelegramBotStatus,
   type TelegramLinkStatusResponse,
   type TelegramListResponse,
   type TelegramSetupStatus,
-} from "@okouai/api-contracts/contracts/zero-integrations-telegram";
+} from "@okouai/api-contracts/contracts/integrations-telegram";
 import { mockApi } from "../msw-contract.ts";
 
 type TelegramConnectedUser = NonNullable<TelegramBot["connectedUser"]>;
@@ -56,7 +56,7 @@ let mockTelegramSetupStatus: TelegramSetupStatus = {
 
 // Default link-status: unlinked with no installation. Tests that need the
 // linked (telegramUserId) or unlinked-with-installation variants should
-// override this handler via server.use(mockApi(zeroIntegrationsTelegramContract.getLinkStatus, ...)).
+// override this handler via server.use(mockApi(integrationsTelegramContract.getLinkStatus, ...)).
 let mockLinkStatus: TelegramLinkStatusResponse = { linked: false };
 
 function formatTelegramAuthDisplayName(
@@ -154,12 +154,12 @@ export function setMockTelegramIntegration(input: {
 }
 
 export const apiIntegrationsTelegramHandlers = [
-  mockApi(zeroIntegrationsTelegramContract.list, ({ respond }) => {
+  mockApi(integrationsTelegramContract.list, ({ respond }) => {
     return respond(200, mockTelegramList);
   }),
 
   mockApi(
-    zeroIntegrationsTelegramContract.updateBot,
+    integrationsTelegramContract.updateBot,
     ({ params, body, respond }) => {
       const status = mockTelegramStatuses[params.botId];
       if (!status) {
@@ -191,47 +191,44 @@ export const apiIntegrationsTelegramHandlers = [
     },
   ),
 
-  mockApi(
-    zeroIntegrationsTelegramContract.getLinkStatus,
-    ({ query, respond }) => {
-      if (query.botId) {
-        const status = mockTelegramStatuses[query.botId];
-        if (status?.isConnected) {
-          return respond(200, {
-            linked: true,
-            telegramUserId: mockLinkStatus.linked
-              ? mockLinkStatus.telegramUserId
-              : "99002",
-            botUsername: status.username ?? undefined,
-          });
-        }
-        if (status) {
-          return respond(200, {
-            linked: false,
-            installation: {
-              id: status.id,
-              botUsername: status.username ?? "telegram_bot",
-              domainConfigured: status.domainConfigured,
-            },
-          });
-        }
-      }
-
-      if (mockLinkStatus.linked) {
+  mockApi(integrationsTelegramContract.getLinkStatus, ({ query, respond }) => {
+    if (query.botId) {
+      const status = mockTelegramStatuses[query.botId];
+      if (status?.isConnected) {
         return respond(200, {
-          ...mockLinkStatus,
-          botUsername:
-            Object.values(mockTelegramStatuses).find((status) => {
-              return status.isConnected;
-            })?.username ?? undefined,
+          linked: true,
+          telegramUserId: mockLinkStatus.linked
+            ? mockLinkStatus.telegramUserId
+            : "99002",
+          botUsername: status.username ?? undefined,
         });
       }
+      if (status) {
+        return respond(200, {
+          linked: false,
+          installation: {
+            id: status.id,
+            botUsername: status.username ?? "telegram_bot",
+            domainConfigured: status.domainConfigured,
+          },
+        });
+      }
+    }
 
-      return respond(200, mockLinkStatus);
-    },
-  ),
+    if (mockLinkStatus.linked) {
+      return respond(200, {
+        ...mockLinkStatus,
+        botUsername:
+          Object.values(mockTelegramStatuses).find((status) => {
+            return status.isConnected;
+          })?.username ?? undefined,
+      });
+    }
 
-  mockApi(zeroIntegrationsTelegramContract.link, ({ body, respond }) => {
+    return respond(200, mockLinkStatus);
+  }),
+
+  mockApi(integrationsTelegramContract.link, ({ body, respond }) => {
     const status = mockTelegramStatuses[body.telegramBotId];
     if (!status) {
       return respond(404, {
@@ -258,7 +255,7 @@ export const apiIntegrationsTelegramHandlers = [
     });
   }),
 
-  mockApi(zeroIntegrationsTelegramContract.unlink, ({ query, respond }) => {
+  mockApi(integrationsTelegramContract.unlink, ({ query, respond }) => {
     if (query.botId) {
       updateMockBotConnection(query.botId, false);
     } else {
@@ -270,22 +267,19 @@ export const apiIntegrationsTelegramHandlers = [
     return respond(204);
   }),
 
-  mockApi(
-    zeroIntegrationsTelegramContract.disconnect,
-    ({ params, respond }) => {
-      delete mockTelegramStatuses[params.botId];
-      mockTelegramList.bots = mockTelegramList.bots.filter((bot) => {
-        return bot.id !== params.botId;
-      });
-      return respond(204);
-    },
-  ),
+  mockApi(integrationsTelegramContract.disconnect, ({ params, respond }) => {
+    delete mockTelegramStatuses[params.botId];
+    mockTelegramList.bots = mockTelegramList.bots.filter((bot) => {
+      return bot.id !== params.botId;
+    });
+    return respond(204);
+  }),
 
-  mockApi(zeroIntegrationsTelegramContract.setupStatus, ({ respond }) => {
+  mockApi(integrationsTelegramContract.setupStatus, ({ respond }) => {
     return respond(200, mockTelegramSetupStatus);
   }),
 
-  mockApi(zeroIntegrationsTelegramContract.register, ({ body, respond }) => {
+  mockApi(integrationsTelegramContract.register, ({ body, respond }) => {
     if (body.reinstallBotId) {
       const existing = mockTelegramStatuses[body.reinstallBotId];
       if (!existing) {

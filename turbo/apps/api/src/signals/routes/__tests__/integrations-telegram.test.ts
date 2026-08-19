@@ -3,9 +3,9 @@ import { createHash, createHmac, randomUUID } from "node:crypto";
 import { integrationsTelegramBotListContract } from "@okouai/api-contracts/contracts/integrations";
 import {
   OFFICIAL_TELEGRAM_BOT_ID,
-  zeroIntegrationsTelegramContract,
+  integrationsTelegramContract,
   type TelegramListResponse,
-} from "@okouai/api-contracts/contracts/zero-integrations-telegram";
+} from "@okouai/api-contracts/contracts/integrations-telegram";
 import { createStore } from "ccstate";
 import { afterEach, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
@@ -161,7 +161,7 @@ async function listTelegramBots(
   token: string,
 ): Promise<TelegramListResponse["bots"]> {
   const client = setupApp({ context, routes: integrationsTelegramRoutes })(
-    zeroIntegrationsTelegramContract,
+    integrationsTelegramContract,
   );
   const response = await accept(
     client.list({ headers: { authorization: `Bearer ${token}` } }),
@@ -439,7 +439,7 @@ describe("GET /api/integrations/telegram", () => {
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
-    })(zeroIntegrationsTelegramContract);
+    })(integrationsTelegramContract);
 
     const response = await accept(client.list({ headers: {} }), [401]);
 
@@ -460,7 +460,7 @@ describe("GET /api/integrations/telegram", () => {
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
-    })(zeroIntegrationsTelegramContract);
+    })(integrationsTelegramContract);
 
     const response = await accept(
       client.list({ headers: { authorization: `Bearer ${token}` } }),
@@ -545,7 +545,7 @@ describe("GET /api/integrations/telegram", () => {
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
-    })(zeroIntegrationsTelegramContract);
+    })(integrationsTelegramContract);
 
     const response = await accept(
       client.list({ headers: { authorization: `Bearer ${token}` } }),
@@ -613,7 +613,7 @@ describe("GET /api/integrations/telegram", () => {
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
-    })(zeroIntegrationsTelegramContract);
+    })(integrationsTelegramContract);
 
     const response = await accept(
       client.list({ headers: { authorization: `Bearer ${token}` } }),
@@ -709,7 +709,7 @@ describe("GET /api/integrations/telegram", () => {
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
-    })(zeroIntegrationsTelegramContract);
+    })(integrationsTelegramContract);
 
     const response = await accept(
       client.list({ headers: { authorization: `Bearer ${token}` } }),
@@ -786,7 +786,7 @@ describe("GET /api/integrations/telegram/link", () => {
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
-    })(zeroIntegrationsTelegramContract);
+    })(integrationsTelegramContract);
 
     const response = await accept(
       client.getLinkStatus({
@@ -804,7 +804,7 @@ describe("GET /api/integrations/telegram/link", () => {
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
-    })(zeroIntegrationsTelegramContract);
+    })(integrationsTelegramContract);
 
     const response = await accept(
       client.getLinkStatus({
@@ -841,7 +841,7 @@ describe("GET /api/integrations/telegram/link", () => {
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
-    })(zeroIntegrationsTelegramContract);
+    })(integrationsTelegramContract);
 
     const response = await accept(
       client.getLinkStatus({
@@ -887,7 +887,7 @@ describe("GET /api/integrations/telegram/link", () => {
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
-    })(zeroIntegrationsTelegramContract);
+    })(integrationsTelegramContract);
     const linkedResponse = await accept(
       client.getLinkStatus({
         query: { botId: linkedBotId },
@@ -935,7 +935,7 @@ describe("GET /api/integrations/telegram/link", () => {
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
-    })(zeroIntegrationsTelegramContract);
+    })(integrationsTelegramContract);
 
     const response = await accept(
       client.getLinkStatus({
@@ -964,7 +964,7 @@ describe("GET /api/integrations/telegram/link", () => {
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
-    })(zeroIntegrationsTelegramContract);
+    })(integrationsTelegramContract);
 
     const response = await accept(
       client.getLinkStatus({
@@ -1008,7 +1008,7 @@ describe("GET /api/integrations/telegram/link", () => {
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
-    })(zeroIntegrationsTelegramContract);
+    })(integrationsTelegramContract);
 
     const response = await accept(
       client.getLinkStatus({
@@ -1026,7 +1026,7 @@ describe("GET /api/integrations/telegram/link", () => {
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
-    })(zeroIntegrationsTelegramContract);
+    })(integrationsTelegramContract);
 
     const response = await accept(
       client.getLinkStatus({
@@ -1091,7 +1091,7 @@ describe("POST /api/integrations/telegram/link", () => {
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
-    })(zeroIntegrationsTelegramContract);
+    })(integrationsTelegramContract);
 
     const response = await accept(
       client.link({
@@ -1109,7 +1109,7 @@ describe("POST /api/integrations/telegram/link", () => {
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
-    })(zeroIntegrationsTelegramContract);
+    })(integrationsTelegramContract);
 
     const response = await accept(
       client.link({
@@ -1127,7 +1127,7 @@ describe("POST /api/integrations/telegram/link", () => {
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
-    })(zeroIntegrationsTelegramContract);
+    })(integrationsTelegramContract);
 
     const response = await accept(
       client.link({
@@ -1158,7 +1158,7 @@ describe("POST /api/integrations/telegram/link", () => {
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
-    })(zeroIntegrationsTelegramContract);
+    })(integrationsTelegramContract);
 
     const response = await accept(
       client.link({
@@ -1189,7 +1189,7 @@ describe("POST /api/integrations/telegram/link", () => {
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
-    })(zeroIntegrationsTelegramContract);
+    })(integrationsTelegramContract);
 
     const response = await accept(
       client.link({
@@ -1245,7 +1245,7 @@ describe("POST /api/integrations/telegram/link", () => {
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
-    })(zeroIntegrationsTelegramContract);
+    })(integrationsTelegramContract);
     server.use(telegramOauthHead("0"));
 
     const response = await accept(
@@ -1285,7 +1285,7 @@ describe("POST /api/integrations/telegram/link", () => {
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
-    })(zeroIntegrationsTelegramContract);
+    })(integrationsTelegramContract);
 
     const response = await accept(
       client.link({
@@ -1335,7 +1335,7 @@ describe("POST /api/integrations/telegram/link", () => {
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
-    })(zeroIntegrationsTelegramContract);
+    })(integrationsTelegramContract);
 
     const body = {
       telegramBotId: OFFICIAL_TELEGRAM_BOT_ID,
@@ -1398,7 +1398,7 @@ describe("POST /api/integrations/telegram/link", () => {
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
-    })(zeroIntegrationsTelegramContract);
+    })(integrationsTelegramContract);
 
     const body = {
       telegramBotId,
@@ -1455,7 +1455,7 @@ describe("POST /api/integrations/telegram/link", () => {
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
-    })(zeroIntegrationsTelegramContract);
+    })(integrationsTelegramContract);
 
     const response = await accept(
       client.link({
@@ -1509,7 +1509,7 @@ describe("POST /api/integrations/telegram/link", () => {
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
-    })(zeroIntegrationsTelegramContract);
+    })(integrationsTelegramContract);
 
     const response = await accept(
       client.link({
@@ -1556,7 +1556,7 @@ describe("POST /api/integrations/telegram/link", () => {
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
-    })(zeroIntegrationsTelegramContract);
+    })(integrationsTelegramContract);
 
     const response = await accept(
       client.link({
@@ -1614,7 +1614,7 @@ describe("POST /api/integrations/telegram/link", () => {
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
-    })(zeroIntegrationsTelegramContract);
+    })(integrationsTelegramContract);
 
     const response = await accept(
       client.link({
@@ -1677,7 +1677,7 @@ describe("POST /api/integrations/telegram/link", () => {
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
-    })(zeroIntegrationsTelegramContract);
+    })(integrationsTelegramContract);
 
     const response = await accept(
       client.link({
@@ -1708,7 +1708,7 @@ describe("POST /api/integrations/telegram/link", () => {
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
-    })(zeroIntegrationsTelegramContract);
+    })(integrationsTelegramContract);
 
     const response = await accept(
       client.link({
@@ -1744,7 +1744,7 @@ describe("POST /api/integrations/telegram/link", () => {
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
-    })(zeroIntegrationsTelegramContract);
+    })(integrationsTelegramContract);
 
     const response = await accept(
       client.link({
@@ -1783,7 +1783,7 @@ describe("POST /api/integrations/telegram/link", () => {
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
-    })(zeroIntegrationsTelegramContract);
+    })(integrationsTelegramContract);
 
     const response = await accept(
       client.link({
