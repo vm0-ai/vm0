@@ -163,7 +163,6 @@ if [ "$node_component_count" -ne 0 ]; then
     [.plugins[]? | select(.type == "node-workspace")]
     | select(length == 1)
     | .[0]
-    | select((.alwaysLinkLocal // true) == true)
   ' <<<"$release_config" 2>/dev/null) ||
     fail "Release Please config must enable one node-workspace dependency propagation plugin"
   include_node_peer_dependencies=$(jq -r \
@@ -179,16 +178,20 @@ if [ "$rust_component_count" -ne 0 ]; then
   ' <<<"$release_config" 2>/dev/null) ||
     fail "Release Please config must enable one cargo-workspace dependency propagation plugin"
   cargo_workspace_path=$(jq -er '
-    (.cargoWorkspacePath // ".")
-    | select(type == "string" and length > 0)
+    (.cargoWorkspacePath // "")
+    | select(type == "string")
   ' <<<"$cargo_workspace_plugin" 2>/dev/null) ||
     fail "Release Please cargo-workspace plugin has an invalid workspace path"
-  if [[ ! "$cargo_workspace_path" =~ ^[A-Za-z0-9._/-]+$ ]] ||
-    [[ "$cargo_workspace_path" == /* || "$cargo_workspace_path" == */ ||
-      "/$cargo_workspace_path/" == *"/../"* ||
-      "/$cargo_workspace_path/" == *"//"* ]] ||
-    [[ "$cargo_workspace_path" != "." &&
-      "/$cargo_workspace_path/" == *"/./"* ]]; then
+  cargo_workspace_path=${cargo_workspace_path#./}
+  while [[ "$cargo_workspace_path" == */ ]]; do
+    cargo_workspace_path=${cargo_workspace_path%/}
+  done
+  if [ -n "$cargo_workspace_path" ] &&
+    { [[ ! "$cargo_workspace_path" =~ ^[A-Za-z0-9._/-]+$ ]] ||
+      [[ "$cargo_workspace_path" == /* ||
+        "/$cargo_workspace_path/" == *"/../"* ||
+        "/$cargo_workspace_path/" == *"//"* ||
+        "/$cargo_workspace_path/" == *"/./"* ]]; }; then
     fail "unsafe Cargo workspace path in Release Please config: ${cargo_workspace_path}"
   fi
 fi
@@ -270,7 +273,7 @@ done
 if [ "$rust_component_count" -ne 0 ]; then
   command -v cargo >/dev/null || fail "cargo is required for Cargo workspace metadata"
   cargo_workspace_manifest="${repo_root}/Cargo.toml"
-  if [ "$cargo_workspace_path" != "." ]; then
+  if [ -n "$cargo_workspace_path" ]; then
     cargo_workspace_manifest="${repo_root}/${cargo_workspace_path}/Cargo.toml"
   fi
   cargo_metadata=$(

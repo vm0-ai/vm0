@@ -117,7 +117,7 @@ setup_repo() {
     >"${REPO}/turbo/packages/shared/package.json"
 
   printf '%s\n' \
-    '{"packages":{"crates/helper":{"release-type":"rust"},"crates/runner":{"release-type":"rust","component":"runner-rs"},"turbo/apps/api":{"release-type":"node"},"turbo/apps/app":{"release-type":"node"},"turbo/packages/shared":{"release-type":"node"}},"plugins":[{"type":"node-workspace","alwaysLinkLocal":true},{"type":"cargo-workspace","cargoWorkspacePath":"."}]}' \
+    '{"packages":{"crates/helper":{"release-type":"rust"},"crates/runner":{"release-type":"rust","component":"runner-rs"},"turbo/apps/api":{"release-type":"node"},"turbo/apps/app":{"release-type":"node"},"turbo/packages/shared":{"release-type":"node"}},"plugins":[{"type":"node-workspace","alwaysLinkLocal":true},{"type":"cargo-workspace","cargoWorkspacePath":"./"}]}' \
     >"${REPO}/release-please-config.json"
   printf '%s\n' \
     '{"crates/helper":"1.0.0","crates/runner":"1.0.0","turbo/apps/api":"1.0.0","turbo/apps/app":"1.0.0","turbo/packages/shared":"1.0.0"}' \
