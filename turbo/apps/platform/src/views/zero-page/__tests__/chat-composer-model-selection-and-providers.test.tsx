@@ -3728,7 +3728,7 @@ describe("chat composer image model", () => {
     });
 
     await user.click(await findComposerModel("Claude Fable 5"));
-    await user.click(await findMediaPanelButton("Image models"));
+    await user.click(await findCategoryTab("Image"));
     expect(
       screen.queryByText("Temporarily switched to Qwen Image for images"),
     ).not.toBeInTheDocument();
@@ -3767,7 +3767,7 @@ describe("chat composer image model", () => {
       });
     });
     await user.click(await findComposerModel("Claude Fable 5"));
-    await user.click(await findMediaPanelButton("Image models"));
+    await user.click(await findCategoryTab("Image"));
     await expect(findMediaPanelButton("Qwen Image")).resolves.toHaveAttribute(
       "aria-pressed",
       "true",
@@ -4230,7 +4230,7 @@ describe("chat composer image model", () => {
     });
   });
 
-  it("opens Image models and Video models as direct mobile rows", async () => {
+  it("switches category from the same strip on mobile", async () => {
     const user = userEvent.setup({ delay: null });
     context.mocks.browser.matchMedia(false);
     mockOrgModelRoutes("claude-fable-5");
@@ -4251,11 +4251,15 @@ describe("chat composer image model", () => {
 
     await user.click(await findComposerModel("Claude Fable 5"));
 
-    expect(mediaPanelButton("Image models")).toBeInTheDocument();
-    expect(mediaPanelButton("Video models")).toBeInTheDocument();
-    expect(mediaPanelButton("Manage more models")).toBeUndefined();
+    // Mobile gets the same three tabs as desktop, not a root menu of rows.
+    await expect(findCategoryTab("Chat")).resolves.toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(categoryTab("Image")).toBeInTheDocument();
+    expect(categoryTab("Video")).toBeInTheDocument();
 
-    await user.click(await findMediaPanelButton("Image models"));
+    await user.click(await findCategoryTab("Image"));
 
     await expect(findMediaPanelButton("GPT Image 2")).resolves.toHaveAttribute(
       "aria-pressed",
@@ -4263,10 +4267,13 @@ describe("chat composer image model", () => {
     );
     expect(mediaPanelButton("Seedream 4")).toBeInTheDocument();
 
-    await user.click(await findMediaPanelButton("Image models"));
+    await user.click(await findCategoryTab("Chat"));
 
-    expect(mediaPanelButton("Video models")).toBeInTheDocument();
     expect(mediaPanelButton("GPT Image 2")).toBeUndefined();
+    await expect(findCategoryTab("Chat")).resolves.toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
   });
 
   it("keeps image model pins independent across split chat composers", async () => {
@@ -4455,7 +4462,7 @@ describe("chat composer video model", () => {
     });
 
     await user.click(await findComposerModel("Claude Fable 5"));
-    await user.click(await findVideoPanelButton("Manage more models"));
+    await user.click(await findCategoryTab("Video"));
     await expect(findVideoPanelButton("MiniMax H3")).resolves.toHaveAttribute(
       "aria-pressed",
       "true",
@@ -4536,7 +4543,7 @@ describe("chat composer video model", () => {
     });
 
     await user.click(await findComposerModel("Claude Fable 5"));
-    await user.click(await findVideoPanelButton("Manage more models"));
+    await user.click(await findCategoryTab("Video"));
     await user.click(await findVideoPanelButton("Veo 3.1 fast"));
 
     await waitFor(() => {
@@ -4659,7 +4666,7 @@ describe("chat composer video model", () => {
     );
     await user.click(await findCategoryTab("Chat"));
     await expect(
-      findVideoPanelButton("Manage more models"),
+      screen.findByRole("option", { name: /Claude Fable 5/ }),
     ).resolves.toBeInTheDocument();
   });
 
@@ -4733,19 +4740,16 @@ describe("chat composer video model", () => {
     });
 
     await user.click(await findComposerModel("Claude Fable 5"));
-    expect(videoPanelButton("Manage more models")).toBeInTheDocument();
-    expect(videoPanelButton("Image models")).toBeUndefined();
-    await user.click(await findVideoPanelButton("Manage more models"));
-    expect(videoPanelButton("Video models")).toBeInTheDocument();
-    expect(videoPanelButton("Image models")).toBeUndefined();
+    // Only the categories the composer offers get a tab, on mobile too.
+    expect(categoryTab("Image")).toBeUndefined();
+    await user.click(await findCategoryTab("Video"));
     expect(videoPanelButton("MiniMax H3")).toHaveAttribute(
       "aria-pressed",
       "true",
     );
-    await user.click(await findVideoPanelButton("Video models"));
-    expect(videoPanelButton("Manage more models")).toBeInTheDocument();
+    await user.click(await findCategoryTab("Chat"));
     expect(videoPanelButton("MiniMax H3")).toBeUndefined();
-    await user.click(await findVideoPanelButton("Manage more models"));
+    await user.click(await findCategoryTab("Video"));
 
     // All three siblings sit on the row, so the pick is a single click.
     expect(
@@ -4784,7 +4788,7 @@ describe("chat composer video model", () => {
     });
 
     await user.click(await findComposerModel("Claude Fable 5"));
-    await user.click(await findVideoPanelButton("Manage more models"));
+    await user.click(await findCategoryTab("Video"));
 
     await expect(findVideoPanelButton("Veo 3.1 fast")).resolves.toHaveAttribute(
       "aria-pressed",
@@ -4801,7 +4805,6 @@ describe("chat composer video model", () => {
     await user.click(await findComposerModel("Claude Fable 5"));
     await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ });
     expect(videoCategoryTab()).toBeUndefined();
-    expect(videoPanelButton("Manage more models")).toBeUndefined();
   });
 
   it("sends the video parameters chosen on the composer chip", async () => {

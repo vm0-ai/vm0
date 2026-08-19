@@ -4245,7 +4245,6 @@
         "inheritDefault": "조직 기본값 상속",
         "loadError": "모델을 불러올 수 없습니다.",
         "loading": "모델 불러오는 중...",
-        "manageMoreModels": "더 많은 모델 관리",
         "models": "모델",
         "modelVariants": "{{model}} 변형",
         "noConfiguredModels": "구성된 모델 없음",

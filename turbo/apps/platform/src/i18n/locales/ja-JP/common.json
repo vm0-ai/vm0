@@ -4245,7 +4245,6 @@
         "inheritDefault": "組織のデフォルトから継承",
         "loadError": "モデルをロードできません。",
         "loading": "モデルをロード中...",
-        "manageMoreModels": "他のモデルを管理",
         "models": "モデル",
         "modelVariants": "{{model}} のバリエーション",
         "noConfiguredModels": "設定されたモデルはありません",

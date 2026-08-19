@@ -4296,7 +4296,6 @@
         "inheritDefault": "Herdar o padrão da organização",
         "loadError": "Não foi possível carregar os modelos.",
         "loading": "Carregando modelos...",
-        "manageMoreModels": "Gerenciar mais modelos",
         "models": "Modelos",
         "modelVariants": "Variantes de {{model}}",
         "noConfiguredModels": "Nenhum modelo configurado",

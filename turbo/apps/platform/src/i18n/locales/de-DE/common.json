@@ -4246,7 +4246,6 @@
         "inheritDefault": "Von der Standardeinstellung der Organisation übernehmen",
         "loadError": "Modelle können nicht geladen werden.",
         "loading": "Modelle werden geladen...",
-        "manageMoreModels": "Weitere Modelle verwalten",
         "models": "Modelle",
         "modelVariants": "Varianten von {{model}}",
         "noConfiguredModels": "Keine konfigurierten Modelle",

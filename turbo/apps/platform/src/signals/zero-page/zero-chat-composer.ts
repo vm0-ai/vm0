@@ -253,8 +253,8 @@ type MediaModelCategory = "image" | "video";
 
 /**
  * Tracks whether the composer is wide enough for the desktop popover layout.
- * Mobile gets a modal popover and reaches categories by drilling in, so it is
- * the only layout that needs interaction with the page behind blocked.
+ * Both layouts show the same picker; the flag only decides whether the popover
+ * is modal, since a phone-sized popup covers the page behind it anyway.
  */
 function createDesktopModelPickerLayoutSignals() {
   const internalDesktopModelPickerLayout$ = state(false);
@@ -281,21 +281,16 @@ function createBasicComposerUiSignals() {
   const { desktopModelPickerLayout$, desktopModelPickerLifecycleRef$ } =
     createDesktopModelPickerLayoutSignals();
   const internalModelPickerOpen$ = state(false);
-  // One category for both layouts: desktop switches it from the popover's tab
-  // strip, mobile from the nested drill-in. Null means the chat models.
+  // Every viewport drives this from the same category strip. Null means the
+  // chat models. It survives close the way the old composer track kept its
+  // expanded category -- the video options chip and the temporary-model notice
+  // both read it to tell which model the composer is pointed at.
   const internalMediaModelCategory$ = state<MediaModelCategory | null>(null);
   const modelPickerOpen$ = computed((get) => {
     return get(internalModelPickerOpen$);
   });
-  const setModelPickerOpen$ = command(({ get, set }, open: boolean) => {
+  const setModelPickerOpen$ = command(({ set }, open: boolean) => {
     set(internalModelPickerOpen$, open);
-    // Desktop keeps the last category the way the old composer track kept its
-    // expanded one -- the video options chip and the temporary-model notice
-    // both read it to tell which model the composer is pointed at. Mobile has
-    // no category strip and drills in from the root, so it opens at the root.
-    if (open && !get(desktopModelPickerLayout$)) {
-      set(internalMediaModelCategory$, null);
-    }
   });
   const mediaModelCategory$ = computed((get) => {
     return get(internalMediaModelCategory$);

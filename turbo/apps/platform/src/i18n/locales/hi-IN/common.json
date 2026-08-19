@@ -4246,7 +4246,6 @@
         "inheritDefault": "ऑर्ग डिफॉल्ट से इनहेरिट करें",
         "loadError": "मॉडल लोड करने में असमर्थ.",
         "loading": "मॉडल लोड हो रहे हैं...",
-        "manageMoreModels": "और मॉडल प्रबंधित करें",
         "models": "मॉडल",
         "modelVariants": "{{model}} के वेरिएंट",
         "noConfiguredModels": "कोई कॉन्फ़िगर मॉडल नहीं",

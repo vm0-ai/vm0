@@ -4246,7 +4246,6 @@
         "inheritDefault": "Inherit from org default",
         "loadError": "Unable to load models.",
         "loading": "Loading models...",
-        "manageMoreModels": "Manage more models",
         "models": "Models",
         "modelVariants": "{{model}} variants",
         "noConfiguredModels": "No configured models",

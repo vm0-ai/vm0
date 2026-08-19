@@ -8,8 +8,6 @@ import {
 } from "ccstate-react";
 import {
   Check,
-  ChevronLeft,
-  ChevronRight,
   Cpu,
   Image as ImageIcon,
   MessageCircle,
@@ -110,7 +108,6 @@ export type MediaModelCategoryId = "image" | "video";
 export interface MediaModelPanelCategory {
   readonly id: MediaModelCategoryId;
   readonly label: string;
-  readonly menuLabel: string;
   /** Short form for the desktop category strip, where three tabs share a row. */
   readonly tabLabel: string;
   readonly options: readonly MediaModelPanelOption[];
@@ -1150,37 +1147,19 @@ function MediaModelPanelRow({ option }: { option: MediaModelPanelOption }) {
   );
 }
 
-function MediaModelPanel({
-  panel,
-  category,
-}: {
-  panel: MediaModelPanelState;
-  category: MediaModelPanelCategory;
-}) {
+function MediaModelPanel({ category }: { category: MediaModelPanelCategory }) {
   const { t } = useTranslation();
   return (
-    <>
-      <button
-        type="button"
-        className="flex w-full items-center gap-1 rounded-lg py-1.5 pl-1 pr-2 text-left text-xs font-medium text-muted-foreground outline-none transition-colors hover:bg-state-hover hover:text-foreground sm:hidden"
-        onClick={() => {
-          panel.onActiveCategoryChange(null);
-        }}
-      >
-        <ChevronLeft size={14} className="shrink-0" aria-hidden="true" />
-        <span className="min-w-0 truncate">{category.label}</span>
-      </button>
-      <SelectGroup>
-        <SelectLabel className="hidden py-1.5 pl-2 pr-8 text-xs font-medium text-muted-foreground sm:block">
-          {t(($) => {
-            return $.settings.models.picker.models;
-          })}
-        </SelectLabel>
-        {category.options.map((option) => {
-          return <MediaModelPanelRow key={option.key} option={option} />;
+    <SelectGroup>
+      <SelectLabel className="py-1.5 pl-2 pr-8 text-xs font-medium text-muted-foreground">
+        {t(($) => {
+          return $.settings.models.picker.models;
         })}
-      </SelectGroup>
-    </>
+      </SelectLabel>
+      {category.options.map((option) => {
+        return <MediaModelPanelRow key={option.key} option={option} />;
+      })}
+    </SelectGroup>
   );
 }
 
@@ -1192,11 +1171,11 @@ const MEDIA_MODEL_CATEGORY_ICONS = {
 const CHAT_CATEGORY_VALUE = "chat";
 
 /**
- * Category switch for the desktop popover. This strip used to live in the
- * composer as a filled track holding three controls, which read as heavy for a
- * row of quiet controls; the composer keeps one trigger and the split happens
- * here instead. Mobile still drills into a nested category, so the strip is
- * desktop-only.
+ * Category switch for the popover. This strip used to live in the composer as a
+ * filled track holding three controls, which read as heavy for a row of quiet
+ * controls; the composer keeps one trigger and the split happens here instead.
+ * Every viewport gets the same strip -- mobile previously drilled into a nested
+ * category from a root menu, which was a second way to express one choice.
  */
 function MediaModelCategoryTabs({ panel }: { panel: MediaModelPanelState }) {
   const { t } = useTranslation();
@@ -1204,7 +1183,7 @@ function MediaModelCategoryTabs({ panel }: { panel: MediaModelPanelState }) {
     // Pinned so switching category never means scrolling back up for the strip.
     // The negative margins bleed it over the list's own `p-1` inset so rows
     // scroll under an opaque surface rather than beside it.
-    <div className="sticky top-0 z-10 -mx-1 -mt-1 hidden bg-card p-1 sm:block">
+    <div className="sticky top-0 z-10 -mx-1 -mt-1 bg-card p-1">
       <SegmentControl
         size="xs"
         className="w-full"
@@ -1240,35 +1219,6 @@ function MediaModelCategoryTabs({ panel }: { panel: MediaModelPanelState }) {
         })}
       </SegmentControl>
     </div>
-  );
-}
-
-function MediaModelPanelMenu({ panel }: { panel: MediaModelPanelState }) {
-  return (
-    <>
-      <SelectSeparator className="my-0 sm:hidden" />
-      {panel.categories.map((category) => {
-        return (
-          <button
-            key={category.id}
-            type="button"
-            className={cn(MEDIA_MODEL_PANEL_ROW_CLASS, "sm:hidden")}
-            onClick={() => {
-              panel.onActiveCategoryChange(category.id);
-            }}
-          >
-            <span className="min-w-0 flex-1 truncate">
-              {category.menuLabel}
-            </span>
-            <ChevronRight
-              size={15}
-              className="absolute right-2 text-muted-foreground"
-              aria-hidden="true"
-            />
-          </button>
-        );
-      })}
-    </>
   );
 }
 
@@ -1308,8 +1258,10 @@ function ModelFirstModelPickerContentLayout({
             // model name beside a three-up variant segment (Seedance 2.0 with
             // Standard/Fast/Mini). One width for every category, so switching
             // tabs never resizes the popover. The extra height offsets the
-            // category strip so the list itself keeps its former room.
-            "max-h-[320px] min-w-[332px]"
+            // category strip so the list itself keeps its former room. The
+            // max-width only bites below a 348px viewport, where 332px would
+            // otherwise run past the screen edge.
+            "max-h-[320px] min-w-[332px] max-w-[calc(100vw-1rem)]"
           : "max-h-[280px] min-w-[260px]",
       )}
     >
@@ -1332,10 +1284,7 @@ function ModelFirstModelPickerContentLayout({
       )}
       {mediaModelPanel && <MediaModelCategoryTabs panel={mediaModelPanel} />}
       {mediaModelPanel && activeMediaModelCategory ? (
-        <MediaModelPanel
-          panel={mediaModelPanel}
-          category={activeMediaModelCategory}
-        />
+        <MediaModelPanel category={activeMediaModelCategory} />
       ) : (
         <>
           <ModelFirstPolicyItems
@@ -1345,7 +1294,6 @@ function ModelFirstModelPickerContentLayout({
             codexFastModeEnabled={codexFastModeEnabled}
             showSeparator={false}
           />
-          {mediaModelPanel && <MediaModelPanelMenu panel={mediaModelPanel} />}
         </>
       )}
     </SelectContent>

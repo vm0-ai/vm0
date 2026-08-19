@@ -7485,7 +7485,6 @@ function composerImageModelPanelCategory({
   return {
     id: "image",
     label,
-    menuLabel: label,
     tabLabel,
     options: PUBLIC_IMAGE_MODELS.filter((candidate) => {
       return candidate !== gptImage1Models[1];
@@ -7526,14 +7525,12 @@ function composerVideoModelPanelCategory({
   onChange,
   label,
   tabLabel,
-  menuLabel,
   variantLabel,
 }: {
   selectedModel: VideoModel;
   onChange: (next: VideoModel | null) => void;
   label: string;
   tabLabel: string;
-  menuLabel: string;
   variantLabel: string;
 }): MediaModelPanelCategory {
   const seedance2Models = [
@@ -7545,7 +7542,6 @@ function composerVideoModelPanelCategory({
   return {
     id: "video",
     label,
-    menuLabel,
     tabLabel,
     options: PUBLIC_VIDEO_MODELS.filter((candidate) => {
       return (
@@ -7636,11 +7632,6 @@ function ComposerModelPickerControls({
         }),
         tabLabel: t(($) => {
           return $.settings.models.picker.categoryVideo;
-        }),
-        menuLabel: t(($) => {
-          return imageModel
-            ? $.settings.models.picker.videoModels
-            : $.settings.models.picker.manageMoreModels;
         }),
         variantLabel: t(
           ($) => {
