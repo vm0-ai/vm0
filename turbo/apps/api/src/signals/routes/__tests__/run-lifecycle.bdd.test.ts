@@ -6814,6 +6814,29 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
         OPENAI_MODEL: apiModel,
       });
       expect(claim.environment).not.toHaveProperty("ANTHROPIC_MODEL");
+      expect(claim.codexRuntimeConfig).toMatchObject({
+        providerId: "openrouter-codex",
+        name: "OpenRouter (Codex)",
+        baseUrl: "https://openrouter.ai/api/v1",
+        envKey: "OPENAI_API_KEY",
+        requiresOpenaiAuth: false,
+        wireApi: "responses",
+        supportsWebsockets: false,
+      });
+      const catalogModels = claim.codexRuntimeConfig?.modelCatalog?.models;
+      if (!Array.isArray(catalogModels) || catalogModels.length !== 1) {
+        throw new Error(
+          `Expected one OpenRouter Codex catalog model for ${selectedModel}`,
+        );
+      }
+      expect(catalogModels[0]).toMatchObject({
+        slug: apiModel,
+        input_modalities: ["text"],
+        base_instructions: expect.stringContaining("You are Codex"),
+        model_messages: {
+          instructions_template: expect.stringContaining("You are Codex"),
+        },
+      });
       expect(
         claim.firewalls?.map((firewall) => {
           return firewallEntryName(firewall);

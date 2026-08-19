@@ -1073,6 +1073,42 @@ export function getModelProviderCodexRuntimeConfig(
 }
 
 /**
+ * Project a provider-owned Codex catalog record onto the model ID used at
+ * runtime. Returns undefined when no provider has authoritative metadata for
+ * the logical model.
+ */
+export function getModelProviderCodexCatalogForModel(
+  logicalModel: string,
+  runtimeModel: string,
+): Record<string, unknown> | undefined {
+  for (const type of getProvidersForModel(logicalModel)) {
+    const sourceCatalog =
+      MODEL_PROVIDER_CODEX_RUNTIME_CONFIGS[type]?.modelCatalog;
+    const sourceModels = sourceCatalog?.models;
+    const sourceModel = Array.isArray(sourceModels)
+      ? sourceModels.find(
+          (model: unknown): model is Record<string, unknown> => {
+            return (
+              typeof model === "object" &&
+              model !== null &&
+              !Array.isArray(model) &&
+              "slug" in model &&
+              model.slug === logicalModel
+            );
+          },
+        )
+      : undefined;
+    if (sourceCatalog && sourceModel) {
+      return {
+        ...sourceCatalog,
+        models: [{ ...sourceModel, slug: runtimeModel }],
+      };
+    }
+  }
+  return undefined;
+}
+
+/**
  * Get the upstream base URL for a model provider type.
  *
  * Returns the framework-appropriate upstream base URL from envBindings —
