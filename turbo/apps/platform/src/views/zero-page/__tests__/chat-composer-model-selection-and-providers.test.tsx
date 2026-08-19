@@ -4105,7 +4105,7 @@ describe("chat composer image model", () => {
       .map((button) => {
         return button.getAttribute("aria-label");
       });
-    // Every model family must be visible. The exact list of aria-pressed buttons
+    // Every model family must be visible — the exact list of aria-pressed buttons
     // may include the open category tab, but every family name must appear.
     for (const expected of imageModelControlLabels) {
       expect(visibleLabels).toContain(expected);
