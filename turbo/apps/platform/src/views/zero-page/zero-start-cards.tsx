@@ -15,8 +15,8 @@ import {
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 
 // Every kind draws into the same square slot so the row reads as one family.
-// The card is only ~292px wide, so the tile stays small enough to leave the
-// title on one line and the description on two.
+// The tile is taller than a wrapped title, so it alone sets the height of the
+// row it shares with the title and every card in the grid comes out even.
 const THUMBNAIL_CLASS =
   "grid size-[72px] shrink-0 place-items-center overflow-hidden rounded-xl";
 
@@ -200,19 +200,21 @@ function StartCard({
         })}
         onClick={onOpenTemplates}
       />
-      <div className="pointer-events-none flex items-center gap-3">
-        <div className={`${THUMBNAIL_CLASS} ${thumbnailTint(kind)}`}>{art}</div>
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-foreground">
+      <div className="pointer-events-none">
+        <div className="flex items-center gap-3">
+          <div className={`${THUMBNAIL_CLASS} ${thumbnailTint(kind)}`}>
+            {art}
+          </div>
+          <p className="min-w-0 text-sm font-semibold text-foreground">
             {content.title}
           </p>
-          {/* Two lines: the catalog descriptions on the workflow card run far
-              longer than the fixed copy on the others, and the row is only as
-              short as its tallest card. */}
-          <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-muted-foreground">
-            {content.description}
-          </p>
         </div>
+        {/* Full card width, not the column left of the thumbnail: beside it a
+            catalog description needs three lines and gets cut. The clamp is
+            only a guard — every description is written to fit two. */}
+        <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-muted-foreground">
+          {content.description}
+        </p>
       </div>
       {/* An overlay rather than a row in the flow: the actions must not reserve
           height while hidden, and `inset-x-4` keeps them inside the card, which

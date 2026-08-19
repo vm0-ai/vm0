@@ -70,8 +70,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:auto-inbox-label",
     category: "Everyone",
     title: "Auto-inbox label",
-    description:
-      "Create a workflow that runs when a Gmail label is applied and handles the labeled inbox item.",
+    description: "Run a workflow whenever you apply a Gmail label.",
     connectorSlugs: ["gmail"],
     behavior: [
       "Create a workflow that reacts when a named Gmail label is applied to a message.",
@@ -87,7 +86,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     category: "Engineering",
     title: "Daily standup report",
     description:
-      "Pull product and engineering signals each morning, create a short report, and post it to Slack.",
+      "Pull product and engineering signals into a morning Slack report.",
     connectorSlugs: ["github", "sentry", "axiom", "plausible", "slack"],
     behavior: [
       "Create a scheduled workflow that runs every weekday or every morning.",
@@ -102,8 +101,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:github-pr-summarizer",
     category: "Engineering",
     title: "GitHub PR summarizer",
-    description:
-      "Collect merged pull requests, save a structured report in Notion, and optionally post to Slack.",
+    description: "Collect merged pull requests into a Notion report.",
     connectorSlugs: ["github", "notion", "slack"],
     behavior: [
       "Create a daily or weekly scheduled workflow for one or more GitHub repositories.",
@@ -135,7 +133,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     category: "Engineering",
     title: "Vercel deploy digest",
     description:
-      "Monitor Vercel deployments, link them to GitHub commits, and alert Slack on failures.",
+      "Link Vercel deployments to commits and alert Slack on failures.",
     connectorSlugs: ["vercel", "github", "slack"],
     behavior: [
       "Create a workflow that monitors selected Vercel projects on a schedule or via webhook when available.",
@@ -150,8 +148,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:auto-merge-github-prs",
     category: "Engineering",
     title: "Auto-merge GitHub PRs",
-    description:
-      "Review PRs labeled ready-to-merge, wait for CI, then merge and post to Slack.",
+    description: "Merge PRs labeled ready-to-merge once CI passes.",
     connectorSlugs: ["github", "vercel", "slack"],
     behavior: [
       "A PR is labeled ready-to-merge",
@@ -195,8 +192,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:feedback-router",
     category: "Product",
     title: "Feedback router",
-    description:
-      "Watch a Slack channel and route product feedback into Notion with labels and owners.",
+    description: "Route product feedback from Slack into Notion.",
     connectorSlugs: ["slack", "notion"],
     behavior: [
       "Create a workflow that reviews messages from a selected Slack feedback channel.",
@@ -284,8 +280,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:revenuecat-subscription-digest",
     category: "Data",
     title: "RevenueCat subscription digest",
-    description:
-      "Track subscriptions in Sheets and alert Slack when churn or cancellation patterns change.",
+    description: "Track subscriptions in Sheets and alert Slack on churn.",
     connectorSlugs: ["revenuecat", "google-sheets", "slack"],
     behavior: [
       "Create a daily scheduled workflow that pulls RevenueCat subscription activity.",
@@ -390,7 +385,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     category: "Marketing",
     title: "Competitive intel monitor",
     description:
-      "Monitor competitor sites for pricing and feature changes, save findings to Notion, and alert Slack.",
+      "Watch competitor pricing and feature changes, and log them in Notion.",
     connectorSlugs: ["firecrawl", "notion", "slack"],
     behavior: [
       "Create a weekly or daily scheduled workflow for a list of competitor pages.",
@@ -406,7 +401,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     category: "Marketing",
     title: "X brand monitor",
     description:
-      "Track brand mentions on X, save relevant posts in Notion, and alert Slack on high-signal mentions.",
+      "Track brand mentions on X and alert Slack on the strong ones.",
     connectorSlugs: ["x", "notion", "slack"],
     behavior: [
       "Create a scheduled workflow that searches X for product, company, or keyword mentions.",
@@ -496,8 +491,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:salesforce-pipeline-digest",
     category: "Sales",
     title: "Salesforce pipeline digest",
-    description:
-      "Summarize Salesforce opportunity changes and close-date risks in Slack each week.",
+    description: "Summarize Salesforce opportunity risks in Slack each week.",
     connectorSlugs: ["salesforce", "slack"],
     behavior: [
       "Create a weekly scheduled workflow that reviews selected Salesforce opportunities.",
@@ -599,8 +593,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     id: "workflow-template:support-ticket-router",
     category: "Support",
     title: "Support ticket router",
-    description:
-      "Classify support emails, create Notion records, and alert Slack for critical tickets.",
+    description: "Classify support emails and alert Slack on critical ones.",
     connectorSlugs: ["gmail", "notion", "slack"],
     behavior: [
       "Create a workflow that runs from a Gmail trigger or scheduled inbox scan.",
@@ -878,7 +871,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
     category: "Everyone",
     title: "Personal weekly digest",
     description:
-      "Summarize GitHub, Gmail, and Calendar activity into one weekly Slack update.",
+      "Summarize GitHub, Gmail, and Calendar into a weekly Slack update.",
     connectorSlugs: ["github", "gmail", "google-calendar", "slack"],
     behavior: [
       "Create a weekly scheduled workflow for the selected owner.",
