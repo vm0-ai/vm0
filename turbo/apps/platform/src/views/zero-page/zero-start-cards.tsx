@@ -20,7 +20,7 @@ import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 const THUMBNAIL_CLASS =
   "grid size-[72px] shrink-0 place-items-center overflow-hidden rounded-xl";
 
-const NODE_CLASS = "rounded-md border border-border bg-card";
+const NODE_CLASS = "rounded-md border bg-card";
 
 // The only illustrated palette the product already owns is the agent avatar's:
 // five hair colours over one skin tone. Taking the tiles from there keeps the
@@ -49,27 +49,39 @@ function kindAccent(kind: StartCardKind): string {
   }
 }
 
-const TILE_ALPHA = "2E";
+// One colour per kind, laid down at four strengths: the tile wash, the rules
+// and edges, the muted marks, and the solid shapes. Nothing inside a tile is
+// grey — a neutral border reads as a different material from the wash it sits
+// on, so every edge is the same colour a few steps darker.
+const TILE_ALPHA = "24";
+const LINE_ALPHA = "59";
+const SOFT_ALPHA = "40";
 const FILL_ALPHA = "8C";
 
 /** A resolved connector mark, or `undefined` while the catalog is loading. */
 type WorkflowArtIcon = StartCardConnectorIcon | undefined;
 
 function SlidesArt({ accent }: { accent: string }) {
+  const edge = { borderColor: `${accent}${LINE_ALPHA}` };
   return (
     <div className="relative h-[31px] w-[42px]">
       <span
         className={`absolute inset-0 -translate-x-[3px] translate-y-[2px] -rotate-6 ${NODE_CLASS}`}
+        style={edge}
       />
       <span
         className={`absolute inset-0 translate-x-[3px] translate-y-px rotate-6 ${NODE_CLASS}`}
+        style={edge}
       />
-      <span className={`absolute inset-0 ${NODE_CLASS}`}>
+      <span className={`absolute inset-0 ${NODE_CLASS}`} style={edge}>
         <span
           className="absolute left-[11px] top-[11px] h-[3px] w-5 rounded-full"
           style={{ backgroundColor: accent }}
         />
-        <span className="absolute left-[11px] top-[17px] h-[3px] w-5 rounded-full bg-muted-foreground/20" />
+        <span
+          className="absolute left-[11px] top-[17px] h-[3px] w-5 rounded-full"
+          style={{ backgroundColor: `${accent}${SOFT_ALPHA}` }}
+        />
       </span>
     </div>
   );
@@ -77,13 +89,31 @@ function SlidesArt({ accent }: { accent: string }) {
 
 function WebsiteArt({ accent }: { accent: string }) {
   return (
-    <div className="h-[34px] w-[44px] overflow-hidden rounded-md border border-border bg-card">
+    <div
+      className="h-[34px] w-[44px] overflow-hidden rounded-md border bg-card"
+      style={{ borderColor: `${accent}${LINE_ALPHA}` }}
+    >
       {/* A browser chrome bar reads as a page far more clearly than a coloured
           block does, and the traffic lights give the tile its detail. */}
-      <div className="flex h-[10px] items-center gap-[2px] border-b border-border bg-muted px-[3px]">
-        <span className="size-[2px] rounded-full bg-muted-foreground/40" />
-        <span className="size-[2px] rounded-full bg-muted-foreground/25" />
-        <span className="size-[2px] rounded-full bg-muted-foreground/25" />
+      <div
+        className="flex h-[10px] items-center gap-[2px] border-b px-[3px]"
+        style={{
+          borderColor: `${accent}${LINE_ALPHA}`,
+          backgroundColor: `${accent}${TILE_ALPHA}`,
+        }}
+      >
+        <span
+          className="size-[2px] rounded-full"
+          style={{ backgroundColor: `${accent}${LINE_ALPHA}` }}
+        />
+        <span
+          className="size-[2px] rounded-full"
+          style={{ backgroundColor: `${accent}${SOFT_ALPHA}` }}
+        />
+        <span
+          className="size-[2px] rounded-full"
+          style={{ backgroundColor: `${accent}${SOFT_ALPHA}` }}
+        />
       </div>
       <div className="flex gap-[3px] p-[4px]">
         <span
@@ -91,8 +121,14 @@ function WebsiteArt({ accent }: { accent: string }) {
           style={{ backgroundColor: `${accent}${FILL_ALPHA}` }}
         />
         <span className="mt-[1px] flex flex-1 flex-col gap-[2px]">
-          <span className="h-[2px] rounded-full bg-muted-foreground/25" />
-          <span className="h-[2px] w-3/5 rounded-full bg-muted-foreground/20" />
+          <span
+            className="h-[2px] rounded-full"
+            style={{ backgroundColor: `${accent}${SOFT_ALPHA}` }}
+          />
+          <span
+            className="h-[2px] w-3/5 rounded-full"
+            style={{ backgroundColor: `${accent}${SOFT_ALPHA}` }}
+          />
         </span>
       </div>
     </div>
@@ -101,7 +137,10 @@ function WebsiteArt({ accent }: { accent: string }) {
 
 function IllustrationArt({ accent }: { accent: string }) {
   return (
-    <div className="h-[37px] w-[44px] rounded-md border border-border bg-card p-1">
+    <div
+      className="h-[37px] w-[44px] rounded-md border bg-card p-1"
+      style={{ borderColor: `${accent}${LINE_ALPHA}` }}
+    >
       <div
         className="size-[7px] rounded-full"
         style={{ backgroundColor: accent }}
@@ -120,10 +159,13 @@ function IllustrationArt({ accent }: { accent: string }) {
 
 function VideoArt({ accent }: { accent: string }) {
   return (
-    <div className="grid h-[30px] w-[42px] place-items-center rounded-md border border-border bg-card">
+    <div
+      className="grid h-[30px] w-[42px] place-items-center rounded-md border bg-card"
+      style={{ borderColor: `${accent}${LINE_ALPHA}` }}
+    >
       <span
         className="grid size-4 place-items-center rounded-full"
-        style={{ backgroundColor: `${accent}${TILE_ALPHA}`, color: accent }}
+        style={{ backgroundColor: `${accent}${SOFT_ALPHA}`, color: accent }}
       >
         <Play size={7} fill="currentColor" />
       </span>
@@ -137,7 +179,10 @@ function AvatarArt({ accent }: { accent: string }) {
     // account glyph every product has, and it is the speaking that makes this
     // an avatar video.
     <div className="flex items-center gap-[5px]">
-      <span className="relative size-[32px] shrink-0 overflow-hidden rounded-full border border-border bg-card">
+      <span
+        className="relative size-[32px] shrink-0 overflow-hidden rounded-full border bg-card"
+        style={{ borderColor: `${accent}${LINE_ALPHA}` }}
+      >
         <span
           className="absolute left-1/2 top-[7px] size-[10px] -translate-x-1/2 rounded-full"
           style={{ backgroundColor: accent }}
@@ -165,9 +210,18 @@ function AvatarArt({ accent }: { accent: string }) {
   );
 }
 
-function WorkflowNode({ icon }: { icon: WorkflowArtIcon }) {
+function WorkflowNode({
+  icon,
+  accent,
+}: {
+  icon: WorkflowArtIcon;
+  accent: string;
+}) {
   return (
-    <span className={`grid h-[17px] w-[22px] place-items-center ${NODE_CLASS}`}>
+    <span
+      className={`grid h-[17px] w-[22px] place-items-center ${NODE_CLASS}`}
+      style={{ borderColor: `${accent}${LINE_ALPHA}` }}
+    >
       <ConnectorIcon icon={icon?.icon} size={10} />
     </span>
   );
@@ -178,7 +232,7 @@ function WorkflowNode({ icon }: { icon: WorkflowArtIcon }) {
  * trigger, the rest are the tools the workflow writes to. Only this card needs
  * connector marks, so the lookups start when it is actually drawn.
  */
-function WorkflowArt() {
+function WorkflowArt({ accent }: { accent: string }) {
   const resolved = useLastResolved(startCardWorkflowConnectorIcons$);
   // Hold the diagram shape while the marks are still loading.
   const icons: readonly WorkflowArtIcon[] =
@@ -186,25 +240,40 @@ function WorkflowArt() {
   const [trigger, ...steps] = icons;
   return (
     <div className="flex w-[54px] flex-col items-center">
-      <div className="flex h-[17px] w-full items-center gap-1 rounded-md border border-border bg-card px-1">
+      <div
+        className="flex h-[17px] w-full items-center gap-1 rounded-md border bg-card px-1"
+        style={{ borderColor: `${accent}${LINE_ALPHA}` }}
+      >
         <ConnectorIcon icon={trigger?.icon} size={9} />
-        <span className="h-[3px] flex-1 rounded-full bg-muted-foreground/20" />
+        <span
+          className="h-[3px] flex-1 rounded-full"
+          style={{ backgroundColor: `${accent}${SOFT_ALPHA}` }}
+        />
       </div>
-      <span className="h-1.5 w-px bg-border" />
+      <span
+        className="h-1.5 w-px"
+        style={{ backgroundColor: `${accent}${LINE_ALPHA}` }}
+      />
       {steps.length > 1 ? (
         <div className="relative flex w-full justify-between">
-          <span className="absolute left-[11px] right-[11px] top-0 h-px bg-border" />
+          <span
+            className="absolute left-[11px] right-[11px] top-0 h-px"
+            style={{ backgroundColor: `${accent}${LINE_ALPHA}` }}
+          />
           {steps.slice(0, 2).map((icon, index) => {
             return (
               <span key={icon?.slug ?? index} className="relative mt-1.5">
-                <span className="absolute -top-1.5 left-1/2 h-1.5 w-px bg-border" />
-                <WorkflowNode icon={icon} />
+                <span
+                  className="absolute -top-1.5 left-1/2 h-1.5 w-px"
+                  style={{ backgroundColor: `${accent}${LINE_ALPHA}` }}
+                />
+                <WorkflowNode icon={icon} accent={accent} />
               </span>
             );
           })}
         </div>
       ) : (
-        <WorkflowNode icon={steps[0]} />
+        <WorkflowNode icon={steps[0]} accent={accent} />
       )}
     </div>
   );
@@ -387,7 +456,7 @@ export function StartCards({
       illustration: <IllustrationArt accent={accent} />,
       video: <VideoArt accent={accent} />,
       avatar: <AvatarArt accent={accent} />,
-      workflow: <WorkflowArt />,
+      workflow: <WorkflowArt accent={accent} />,
     };
     return art[kind];
   };
