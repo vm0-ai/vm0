@@ -44,6 +44,7 @@ export const orgMembersContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      503: apiErrorSchema,
       500: apiErrorSchema,
     },
     summary: "Get org members (zero proxy)",

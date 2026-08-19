@@ -1,4 +1,4 @@
-import { command, computed } from "ccstate";
+import { command } from "ccstate";
 import {
   orgContract,
   orgLeaveContract,
@@ -8,14 +8,21 @@ import { orgMembersContract } from "@okouai/api-contracts/contracts/org-member-r
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
-import { badRequestMessage, notFound } from "../../lib/error";
+import { setResHeader$ } from "../context/hono";
+import {
+  badRequestMessage,
+  notFound,
+  providerUnavailable,
+} from "../../lib/error";
 import type { RouteEntry } from "../route-entry";
+import { clerkRateLimit } from "../external/clerk";
 import {
   leaveOrg$,
   orgDetail$,
-  orgMembersList,
+  orgMembersList$,
   updateOrg$,
 } from "../services/org-data.service";
+import { settle } from "../utils";
 
 const getOrgInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(authContext$);
@@ -99,18 +106,35 @@ const leaveOrgInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 200 as const, body: result };
 });
 
-const membersInner$ = computed(async (get) => {
+const membersInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const body = await get(
-    orgMembersList({
-      orgId: auth.orgId,
-      userId: auth.userId,
-      // Fall back to "member" when the auth context lacks an explicit role
-      // (rare: Zero tokens whose membership lookup did not return a role).
-      callerRole: auth.orgRole ?? "member",
-    }),
+  const result = await settle(
+    set(
+      orgMembersList$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        // Fall back to "member" when the auth context lacks an explicit role
+        // (rare: Zero tokens whose membership lookup did not return a role).
+        callerRole: auth.orgRole ?? "member",
+      },
+      signal,
+    ),
+    signal,
   );
-  return { status: 200 as const, body };
+  if (result.ok) {
+    return { status: 200 as const, body: result.value };
+  }
+
+  const rateLimit = clerkRateLimit(result.error);
+  if (!rateLimit) {
+    throw result.error;
+  }
+  set(setResHeader$, "Retry-After", String(rateLimit.retryAfterSeconds));
+  set(setResHeader$, "Cache-Control", "no-store");
+  return providerUnavailable(
+    "Organization members are temporarily unavailable",
+  );
 });
 
 export const orgReadRoutes: readonly RouteEntry[] = [

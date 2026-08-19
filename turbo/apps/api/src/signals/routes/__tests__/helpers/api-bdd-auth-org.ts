@@ -177,7 +177,8 @@ interface ClerkLogoState {
 
 interface MembershipRequestHandlerOptions {
   readonly requests?: readonly BddMembershipRequest[];
-  readonly listStatus?: 200 | 404;
+  readonly listStatus?: 200 | 404 | 429;
+  readonly retryAfterSeconds?: number;
   readonly acceptStatus?: 200 | 404;
   readonly rejectStatus?: 200 | 404;
 }
@@ -240,6 +241,17 @@ function installClerkMembershipRequestHandlers(
           return HttpResponse.json({ data: [] });
         }
         listCalls += 1;
+        if (listStatus === 429) {
+          return HttpResponse.json(
+            { error: "Membership requests rate limited" },
+            {
+              status: 429,
+              headers: {
+                "Retry-After": String(options.retryAfterSeconds ?? 1),
+              },
+            },
+          );
+        }
         if (listStatus !== 200) {
           return HttpResponse.json(
             { error: "Membership requests unavailable" },
@@ -869,7 +881,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       return response.body;
     },
 
-    async requestListMembers<S extends 200 | 400 | 401 | 403 | 404 | 500>(
+    async requestListMembers<S extends 200 | 400 | 401 | 403 | 404 | 500 | 503>(
       actor: ApiTestUser,
       statuses: readonly S[],
     ) {
@@ -910,7 +922,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     },
 
     async requestListMembersWithBearer<
-      S extends 200 | 400 | 401 | 403 | 404 | 500,
+      S extends 200 | 400 | 401 | 403 | 404 | 500 | 503,
     >(token: string, statuses: readonly S[]) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
         orgMembersContract,

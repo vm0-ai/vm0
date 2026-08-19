@@ -755,7 +755,7 @@ async function submitUsagePackConfiguration(
     name: action,
     exact: true,
   });
-  await expect(actionButton).toBeEnabled();
+  await expect(actionButton).toBeEnabled({ timeout: STATE_TIMEOUT_MS });
   await actionButton.click();
 
   let review = page.getByRole("dialog", { name: "Review package change" });
@@ -763,7 +763,7 @@ async function submitUsagePackConfiguration(
   if (backFromReviewOnce) {
     await review.getByRole("button", { name: "Back", exact: true }).click();
     await expect(review).toBeHidden();
-    await expect(actionButton).toBeEnabled();
+    await expect(actionButton).toBeEnabled({ timeout: STATE_TIMEOUT_MS });
     await actionButton.click();
     review = page.getByRole("dialog", { name: "Review package change" });
     await expect(review).toBeVisible();

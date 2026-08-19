@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { env } from "../../lib/env";
+import { ClerkRateLimitError } from "./clerk";
 
 const CLERK_API_BASE = "https://api.clerk.com/v1";
 
@@ -27,18 +28,26 @@ type ClerkMembershipRequestData = z.infer<typeof membershipRequestDataSchema>;
  */
 export async function fetchClerkMembershipRequests(
   orgId: string,
+  signal: AbortSignal,
 ): Promise<readonly ClerkMembershipRequestData[]> {
   const secretKey = env("CLERK_SECRET_KEY");
   const res = await fetch(
     `${CLERK_API_BASE}/organizations/${orgId}/membership_requests?status=pending`,
     {
       headers: { Authorization: `Bearer ${secretKey}` },
+      signal,
     },
   );
   if (res.status === 404) {
     return [];
   }
   if (!res.ok) {
+    if (res.status === 429) {
+      throw new ClerkRateLimitError(
+        `Failed to fetch membership requests for org ${orgId}: HTTP 429`,
+        Number(res.headers.get("Retry-After")),
+      );
+    }
     throw new Error(
       `Failed to fetch membership requests for org ${orgId}: HTTP ${res.status}`,
     );

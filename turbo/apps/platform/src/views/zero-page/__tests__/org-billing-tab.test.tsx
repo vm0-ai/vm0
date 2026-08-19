@@ -17,6 +17,7 @@ import {
   type CreditCheckoutRequest,
   type UsagePackMigrationStateResponse,
 } from "@okouai/api-contracts/contracts/billing";
+import { orgMembersContract } from "@okouai/api-contracts/contracts/org-member-routes";
 import { FeatureSwitchKey } from "@okouai/core";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -698,6 +699,86 @@ describe("organization billing settings", () => {
         "https://checkout.stripe.com/test-usage-pack",
       );
     });
+  });
+
+  it("recovers member package configuration after a directory load failure", async () => {
+    let memberRequests = 0;
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Usage Pack Org",
+      role: "admin",
+    });
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
+      return respond(200, noActiveBillingStatus());
+    });
+    context.mocks.api(billingUsagePackCatalogContract.get, ({ respond }) => {
+      return respond(200, usagePackCatalogResponse());
+    });
+    context.mocks.api(orgMembersContract.members, ({ respond }) => {
+      memberRequests += 1;
+      if (memberRequests === 1) {
+        return respond(503, {
+          error: {
+            code: "PROVIDER_UNAVAILABLE",
+            message: "Organization members are temporarily unavailable",
+          },
+        });
+      }
+      return respond(200, {
+        name: "Usage Pack Org",
+        role: "admin",
+        members: [
+          {
+            userId: "user_1",
+            email: "alex@example.com",
+            firstName: "Alex",
+            lastName: "Chen",
+            imageUrl: "",
+            role: "admin",
+            joinedAt: "2026-01-01T00:00:00Z",
+          },
+        ],
+        pendingInvitations: [],
+        membershipRequests: [],
+        createdAt: "2026-01-01T00:00:00Z",
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/?settings=billing",
+      user: {
+        id: "user_1",
+        fullName: "Alex Chen",
+        email: "alex@example.com",
+      },
+      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
+    });
+
+    await screen.findByText("No active plan");
+    click(buttonByText("Upgrade"));
+    const proPlan = await screen.findByRole("article", { name: "Pro plan" });
+    click(buttonByText("Start with Pro", proPlan));
+
+    const packages = await screen.findByRole("dialog", {
+      name: "Configure member packages",
+    });
+    const unavailable = await within(packages).findByRole("alert");
+    expect(unavailable).toHaveTextContent("Unavailable");
+    expect(
+      within(packages).queryByRole("group", { name: "Member usage" }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(buttonByText("Retry", unavailable));
+    const memberUsage = await within(packages).findByRole("group", {
+      name: "Member usage",
+    });
+    expect(
+      within(memberUsage).getByRole("combobox", {
+        name: "Usage for Alex Chen",
+      }),
+    ).toBeInTheDocument();
+    expect(memberRequests).toBe(2);
   });
 
   it("lets admins add packages for active members missing an allocation", async () => {

@@ -37,6 +37,15 @@ const context = testContext();
 const api = createAuthOrgAgentsBddApi(context);
 const DEFAULT_AGENT_AVATAR_URL = "svg:r1s0h1c5f4h";
 
+class ClerkApiResponseTestError extends Error {
+  static readonly kind = "ClerkAPIResponseError";
+  readonly status = 429;
+
+  constructor(readonly retryAfter: number) {
+    super("Clerk Backend API rate limit exceeded");
+  }
+}
+
 function shortId(): string {
   return randomUUID().replace(/-/g, "").slice(0, 10);
 }
@@ -395,6 +404,51 @@ describe("ORG-01: org update and delete error matrix", () => {
 });
 
 describe("ORG-02: membership admin matrix", () => {
+  it("retries transient Clerk reads and exposes exhausted rate limits", async () => {
+    const admin = api.user();
+    const orgId = orgIdOf(admin);
+    api.mockClerkOrg(admin);
+    context.mocks.signalTimers.delay.mockResolvedValue(undefined);
+
+    context.mocks.clerk.organizations.getOrganizationMembershipList
+      .mockRejectedValueOnce(new ClerkApiResponseTestError(2))
+      .mockResolvedValue({
+        data: [
+          {
+            role: "org:admin",
+            publicUserData: { userId: admin.userId },
+            createdAt: now(),
+          },
+        ],
+      });
+
+    const recovered = await api.requestListMembers(admin, [200]);
+    expect(recovered.body.members).toHaveLength(1);
+    expect(
+      context.mocks.clerk.organizations.getOrganizationMembershipList,
+    ).toHaveBeenCalledTimes(2);
+    expect(context.mocks.signalTimers.delay).toHaveBeenCalledTimes(1);
+
+    api.mockClerkOrg(admin);
+    context.mocks.signalTimers.delay.mockClear();
+    const requests = api.mockClerkMembershipRequestHandlers(orgId, {
+      listStatus: 429,
+      retryAfterSeconds: 7,
+    });
+    const exhausted = await api.requestListMembers(admin, [503]);
+
+    expect(exhausted.body).toStrictEqual({
+      error: {
+        message: "Organization members are temporarily unavailable",
+        code: "PROVIDER_UNAVAILABLE",
+      },
+    });
+    expect(exhausted.headers.get("Retry-After")).toBe("7");
+    expect(exhausted.headers.get("Cache-Control")).toBe("no-store");
+    expect(requests.listCalls()).toBe(3);
+    expect(context.mocks.signalTimers.delay).toHaveBeenCalledTimes(2);
+  });
+
   it("rejects Clerk member records without required user identifiers", async () => {
     const admin = api.user();
     const orgId = orgIdOf(admin);
