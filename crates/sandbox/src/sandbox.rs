@@ -135,6 +135,11 @@ impl SandboxFinalExecParkHandoff {
         }
     }
 
+    /// Return whether the provider has already accepted the one-shot request.
+    pub fn is_accepted(&self) -> bool {
+        self.inner.state.load(Ordering::Acquire) == HANDOFF_ACCEPTED
+    }
+
     /// Accept a pending request, or confirm that it was already accepted.
     pub fn accept_if_requested(&self) -> bool {
         loop {

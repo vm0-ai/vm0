@@ -109,6 +109,22 @@ impl ActiveRunHandoffRequest {
         self.receiver.try_recv().ok()
     }
 
+    pub(super) fn expire_if_unaccepted(&mut self) -> bool {
+        let mut broker = lock_handoff(&self.broker);
+        if !self.signal.cancel() && self.signal.is_accepted() {
+            return false;
+        }
+        self.receiver.close();
+        if broker
+            .delivery
+            .as_ref()
+            .is_some_and(|delivery| delivery.successor_run_id == self.successor_run_id)
+        {
+            broker.delivery = None;
+        }
+        true
+    }
+
     fn close_delivery(&mut self) {
         let mut broker = lock_handoff(&self.broker);
         self.receiver.close();
@@ -651,6 +667,48 @@ mod tests {
             .cancel_and_recover_delivery()
             .expect("cancellation must recover a candidate sent before receiver closure");
         let (payload, lease) = recovered
+            .into_parked_candidate()
+            .into_active_destroy_parts();
+        drop(payload);
+        drop(lease);
+        assert_eq!(budget.allocated(), (0, 0, 0));
+    }
+
+    #[tokio::test]
+    async fn deadline_preserves_accepted_handoff_before_delivery() {
+        let active_runs = ActiveRuns::new(Arc::new(Notify::new()));
+        let predecessor_run_id = RunId::new_v4();
+        let successor_run_id = RunId::new_v4();
+        let guard = active_runs.register(
+            predecessor_run_id,
+            Some("thread:deadline-handoff".into()),
+            "vm0/default".into(),
+        );
+        let publisher = guard.reuse_publisher();
+        let proof = active_runs
+            .finalizing_predecessor(predecessor_run_id, "thread:deadline-handoff", "vm0/default")
+            .unwrap();
+        let mut request = proof
+            .request_handoff(successor_run_id)
+            .expect("exact successor should register a handoff");
+        assert!(publisher.handoff_signal().accept_if_requested());
+
+        assert!(!request.expire_if_unaccepted());
+
+        let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
+        let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
+        let candidate = ParkedIdleCandidateBuilder::new("thread:deadline-handoff", lease)
+            .with_history_generation_run_id(predecessor_run_id)
+            .build();
+        assert!(matches!(
+            publisher.deliver_exact_handoff(candidate, predecessor_run_id),
+            ActiveRunHandoffDeliveryResult::Delivered
+        ));
+        let candidate = request
+            .receive()
+            .await
+            .expect("accepted handoff should remain deliverable after its deadline");
+        let (payload, lease) = candidate
             .into_parked_candidate()
             .into_active_destroy_parts();
         drop(payload);

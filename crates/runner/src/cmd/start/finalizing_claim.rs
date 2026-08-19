@@ -66,16 +66,6 @@ impl FinalizingWaitOutcome {
         }
     }
 
-    fn deadline(reason: &'static str, request: &mut ActiveRunHandoffRequest) -> Self {
-        match request.cancel_and_recover_delivery() {
-            Some(candidate) => Self::Handoff(candidate),
-            None => Self::Fallback {
-                reason,
-                handoff_outcome: FinalizingHandoffOutcome::NotAcceptedBeforeDeadline,
-            },
-        }
-    }
-
     fn cancelled(request: Option<&mut ActiveRunHandoffRequest>) -> Self {
         Self::Cancelled(request.and_then(ActiveRunHandoffRequest::cancel_and_recover_delivery))
     }
@@ -564,10 +554,20 @@ async fn wait_for_finalizing_resource(
                         if cancel.is_cancelled() {
                             return FinalizingWaitOutcome::cancelled(Some(request));
                         }
-                        return FinalizingWaitOutcome::deadline(
-                            "handoff_acceptance_deadline",
+                        if request.expire_if_unaccepted() {
+                            return FinalizingWaitOutcome::Fallback {
+                                reason: "handoff_acceptance_deadline",
+                                handoff_outcome:
+                                    FinalizingHandoffOutcome::NotAcceptedBeforeDeadline,
+                            };
+                        }
+                        return receive_finalizing_handoff(
                             request,
-                        );
+                            run_id,
+                            admission.history_generation_run_id,
+                            cancellation,
+                        )
+                        .await;
                     }
                 }
             }
@@ -892,10 +892,11 @@ mod tests {
     async fn deadline_race_prefers_an_already_delivered_handoff() {
         let (mut request, budget, overrides) = delivered_handoff_request();
 
-        let candidate = match FinalizingWaitOutcome::deadline("test_deadline", &mut request) {
-            FinalizingWaitOutcome::Handoff(candidate) => candidate,
-            _ => panic!("deadline should not discard a handoff that already won delivery"),
-        };
+        assert!(!request.expire_if_unaccepted());
+        let candidate = request
+            .receive()
+            .await
+            .expect("deadline should not discard a handoff that already won delivery");
         candidate.into_destroy_job().run().await;
 
         assert_eq!(overrides.destroy_call_count(), 1);
