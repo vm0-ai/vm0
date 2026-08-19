@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   getModelProviderFirewall,
+  getVm0ApiModel,
   getVm0ConcreteProviderType,
   type ModelProviderType,
   type SupportedRunModel,
@@ -6563,7 +6564,9 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       await api.heartbeatRunner(runnerGroup);
       const claim = await api.claimRunnerJob(sent.body.runId);
       expect(claim.cliAgentType).toBe("codex");
-      expect(claim.environment).toMatchObject({ OPENAI_MODEL: model });
+      expect(claim.environment).toMatchObject({
+        OPENAI_MODEL: getVm0ApiModel(model),
+      });
       expect(claim.modelUsageProvider).toBe(model);
       await api.requestCancelRun(actor, sent.body.runId, [200]);
     }
@@ -6764,9 +6767,12 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     await api.requestCancelRun(actor, sent.body.runId, [200]);
   });
 
-  it.each(["deepseek-v4-flash", "deepseek-v4-pro"] as const)(
-    "claims vm0 %s runs with the Responses adapter",
-    async (selectedModel) => {
+  it.each([
+    ["deepseek-v4-flash", "deepseek/deepseek-v4-flash"],
+    ["deepseek-v4-pro", "deepseek/deepseek-v4-pro"],
+  ] as const)(
+    "claims vm0 %s runs through OpenRouter",
+    async (selectedModel, apiModel) => {
       const api = createRunsApi(context);
       const chat = createChatFilesBddApi(context);
       await seedVm0ManagedModelKey(selectedModel);
@@ -6801,35 +6807,44 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       expect(claim.cliAgentType).toBe("codex");
       expect(claim.environment).toMatchObject({
         OPENAI_API_KEY: modelProviderPlaceholder(
-          "deepseek",
-          "DEEPSEEK_API_KEY",
+          "openrouter-codex",
+          "OPENROUTER_API_KEY",
         ),
-        OPENAI_BASE_URL: "https://api.deepseek.com/",
-        OPENAI_MODEL: selectedModel,
+        OPENAI_BASE_URL: "https://openrouter.ai/api/v1",
+        OPENAI_MODEL: apiModel,
       });
       expect(claim.environment).not.toHaveProperty("ANTHROPIC_MODEL");
       expect(claim.codexRuntimeConfig).toMatchObject({
-        providerId: "deepseek",
-        name: "DeepSeek",
-        baseUrl: "https://api.deepseek.com/",
+        providerId: "openrouter-codex",
+        name: "OpenRouter (Codex)",
+        baseUrl: "https://openrouter.ai/api/v1",
         envKey: "OPENAI_API_KEY",
+        requiresOpenaiAuth: false,
         wireApi: "responses",
         supportsWebsockets: false,
-        modelCatalog: {
-          models: expect.arrayContaining([
-            expect.objectContaining({
-              slug: selectedModel,
-              default_reasoning_level: "high",
-            }),
-          ]),
+      });
+      const catalogModels = claim.codexRuntimeConfig?.modelCatalog?.models;
+      if (!Array.isArray(catalogModels) || catalogModels.length !== 1) {
+        throw new Error(
+          `Expected one OpenRouter Codex catalog model for ${selectedModel}`,
+        );
+      }
+      expect(catalogModels[0]).toMatchObject({
+        slug: apiModel,
+        input_modalities: ["text"],
+        base_instructions: expect.stringContaining("You are Codex"),
+        model_messages: {
+          instructions_template: expect.stringContaining("You are Codex"),
         },
       });
       expect(
         claim.firewalls?.map((firewall) => {
           return firewallEntryName(firewall);
         }),
-      ).toContain("model-provider:deepseek");
-      expect(claim.billableFirewalls).toContain("model-provider:deepseek");
+      ).toContain("model-provider:openrouter-codex");
+      expect(claim.billableFirewalls).toContain(
+        "model-provider:openrouter-codex",
+      );
       expect(claim.modelUsageProvider).toBe(selectedModel);
 
       await api.requestCancelRun(actor, sent.body.runId, [200]);
@@ -8167,6 +8182,12 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
         appSecret: "lark-app-secret",
       },
     );
+    const wrongTargetConnection = await connectors.connectManualGrant(
+      actor,
+      "figma",
+      "api-token",
+      { accessToken: "unrelated-figma-token" },
+    );
     await api.enableAgentConnectors(actor, agentId, ["lark"]);
 
     const run = await api.createRun(actor, {
@@ -8201,6 +8222,34 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
         sourceId: connected.id,
       }),
     );
+    const larkTarget = claim.connectorRuntimeTargets.find((target) => {
+      return target.kind === "builtin" && target.connectorSlug === "lark";
+    });
+    if (!larkTarget || larkTarget.kind !== "builtin") {
+      throw new Error("Expected the lark runtime target");
+    }
+    const [exactRuntime] = await api.syncConnectorRuntime(run.runId, {
+      targets: [larkTarget],
+    });
+    expect(exactRuntime).toMatchObject({
+      target: { kind: "builtin", connectorSlug: "lark" },
+      state: "available",
+    });
+    const [legacyRuntime] = await api.syncConnectorRuntime(run.runId, {
+      targets: [{ kind: "builtin", connectorSlug: "lark" }],
+    });
+    expect(legacyRuntime).toMatchObject({
+      target: { kind: "builtin", connectorSlug: "lark" },
+      state: "available",
+    });
+    const [missingExactRuntime] = await api.syncConnectorRuntime(run.runId, {
+      targets: [{ ...larkTarget, sourceId: wrongTargetConnection.id }],
+    });
+    expect(missingExactRuntime).toStrictEqual({
+      target: { kind: "builtin", connectorSlug: "lark" },
+      state: "unresolved",
+      reason: "connector-unavailable",
+    });
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
@@ -8328,6 +8377,29 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       [400],
     );
     expect(conflictingSource.status).toBe(400);
+
+    const missingExactSource = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: {
+          Authorization: `Bearer \${{ secrets.GOOGLE_ADS_TOKEN }}`,
+        },
+        secretConnectorMap: claim.secretConnectorMap ?? undefined,
+        secretConnectorMetadataMap: {
+          ...claim.secretConnectorMetadataMap,
+          GOOGLE_ADS_TOKEN: {
+            sourceType: "connector",
+            sourceId: randomUUID(),
+          },
+        },
+      },
+      [424],
+    );
+    if (missingExactSource.status !== 424) {
+      throw new Error("Expected a missing exact built-in connector source");
+    }
+    expect(missingExactSource.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
@@ -8820,6 +8892,12 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       { key: "secret", kind: "secret", value: "custom-secret-value" },
       { key: "tenant", kind: "variable", value: "acme" },
     ]);
+    const wrongTargetConnection = await connectors.connectManualGrant(
+      actor,
+      "figma",
+      "api-token",
+      { accessToken: "unrelated-custom-source" },
+    );
     await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
 
     const run = await api.createRun(actor, {
@@ -8897,6 +8975,30 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       headers: { Authorization: "Bearer custom-secret-value" },
       expiresAt: null,
     });
+
+    const [missingExactRuntime] = await api.syncConnectorRuntime(run.runId, {
+      targets: [{ ...target, sourceId: wrongTargetConnection.id }],
+    });
+    expect(missingExactRuntime).toStrictEqual({
+      target: targetIdentity,
+      state: "absent",
+      reason: "connector-unavailable",
+    });
+    const missingExactAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        ...currentAuthBody,
+        matchedFirewall: {
+          ...currentAuthBody.matchedFirewall,
+          sourceId: randomUUID(),
+        },
+      },
+      [424],
+    );
+    if (missingExactAuth.status !== 424) {
+      throw new Error("Expected a missing exact custom connector source");
+    }
+    expect(missingExactAuth.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
 
     await connectors.setCustomConnectorSecret(
       actor,
@@ -8988,7 +9090,11 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       headers: { Authorization: "Bearer recovered-custom-secret-value" },
     });
 
-    await connectors.disconnectCustomConnector(actor, custom.id);
+    await deleteCustomConnectorCredentialValues(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      customConnectorId: custom.id,
+    });
     const [missingCredentialsRuntime] = await api.syncConnectorRuntime(
       run.runId,
       { targets: [target] },
@@ -9081,14 +9187,11 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const [incompatibleRuntime] = await api.syncConnectorRuntime(run.runId, {
       targets: [target],
     });
-    const incompatibleAvailable =
-      availableCustomConnectorRuntime(incompatibleRuntime);
-    expect(incompatibleAvailable.firewall).toStrictEqual(
-      updatedAvailable.firewall,
-    );
-    expect(incompatibleAvailable.networkPolicy).toStrictEqual(
-      updatedAvailable.networkPolicy,
-    );
+    expect(incompatibleRuntime).toStrictEqual({
+      target: targetIdentity,
+      state: "absent",
+      reason: "connector-unavailable",
+    });
     const incompatibleAuth = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       currentAuthBody,
@@ -9110,15 +9213,11 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       run.runId,
       { targets: [target] },
     );
-    const incompatibleAuthMethodAvailable = availableCustomConnectorRuntime(
-      incompatibleAuthMethodRuntime,
-    );
-    expect(incompatibleAuthMethodAvailable.firewall).toStrictEqual(
-      updatedAvailable.firewall,
-    );
-    expect(incompatibleAuthMethodAvailable.networkPolicy).toStrictEqual(
-      updatedAvailable.networkPolicy,
-    );
+    expect(incompatibleAuthMethodRuntime).toStrictEqual({
+      target: targetIdentity,
+      state: "absent",
+      reason: "connector-unavailable",
+    });
     const incompatibleAuthMethod = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       currentAuthBody,
@@ -9217,6 +9316,16 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     }
     expect(orphanedFieldAuth.body.error).toMatchObject({
       code: "CONNECTOR_NOT_CONFIGURED",
+    });
+
+    await connectors.disconnectCustomConnector(actor, custom.id);
+    const [deletedExactRuntime] = await api.syncConnectorRuntime(run.runId, {
+      targets: [target],
+    });
+    expect(deletedExactRuntime).toStrictEqual({
+      target: targetIdentity,
+      state: "absent",
+      reason: "connector-unavailable",
     });
 
     await api.requestCancelRun(actor, run.runId, [200]);
@@ -9358,11 +9467,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       }),
     );
 
-    const target = {
-      kind: "custom" as const,
-      customConnectorId: mcp.id,
-      baseUrlVars: {},
-    };
+    const target = mcpTarget;
     const [initialResult] = await api.syncConnectorRuntime(run.runId, {
       targets: [target],
     });
@@ -9387,6 +9492,26 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     expect(initialAuth.body).toMatchObject({
       headers: { Authorization: "Bearer mcp-runtime-token" },
+    });
+    const [legacySourceResult] = await api.syncConnectorRuntime(run.runId, {
+      targets: [
+        {
+          kind: "custom",
+          customConnectorId: mcp.id,
+          baseUrlVars: {},
+        },
+      ],
+    });
+    expect(
+      availableCustomConnectorRuntime(legacySourceResult).firewall,
+    ).toStrictEqual(initialRuntime.firewall);
+    const [missingExactResult] = await api.syncConnectorRuntime(run.runId, {
+      targets: [{ ...target, sourceId: randomUUID() }],
+    });
+    expect(missingExactResult).toStrictEqual({
+      target: { kind: "custom", customConnectorId: mcp.id },
+      state: "absent",
+      reason: "connector-unavailable",
     });
 
     await connectors.updateFeatureSwitches(actor, {
@@ -9424,7 +9549,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       unknownPolicy: "allow",
     });
 
-    await connectors.disconnectCustomConnector(actor, mcp.id);
+    if (!actor.orgId) {
+      throw new Error("Expected an organization-scoped MCP actor");
+    }
+    await deleteCustomConnectorCredentialValues(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      customConnectorId: mcp.id,
+    });
     const [disconnectedResult] = await api.syncConnectorRuntime(run.runId, {
       targets: [target],
     });
@@ -10288,6 +10420,23 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       runtime,
       fw.encryptedSecretsBody({}),
     );
+    const missingExactOAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        ...currentAuthBody,
+        forceRefresh: true,
+        matchedFirewall: {
+          ...currentAuthBody.matchedFirewall,
+          sourceId: randomUUID(),
+        },
+      },
+      [424],
+    );
+    if (missingExactOAuth.status !== 424) {
+      throw new Error("Expected a missing exact custom OAuth source");
+    }
+    expect(missingExactOAuth.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
+    expect(provider.tokenBodies).toHaveLength(1);
 
     const firstRefreshAt = now() + 2 * 3_600_000;
     mockNow(firstRefreshAt);

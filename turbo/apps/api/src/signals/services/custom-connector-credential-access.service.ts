@@ -120,6 +120,7 @@ function customConnectorStoredConnectionsQuery(
     readonly orgId: string;
     readonly userId: string;
     readonly connectorIds?: readonly string[];
+    readonly memberConnectorIds?: readonly string[];
   },
 ) {
   return db
@@ -189,6 +190,9 @@ function customConnectorStoredConnectionsQuery(
         eq(connectors.userId, args.userId),
         args.connectorIds
           ? inArray(connectors.customConnectorId, [...args.connectorIds])
+          : undefined,
+        args.memberConnectorIds
+          ? inArray(connectors.id, [...args.memberConnectorIds])
           : undefined,
       ),
     );
@@ -260,20 +264,23 @@ function currentCustomConnectorStoredConnectionIsRuntimeAvailable(
 function customConnectorCredentialAccesses(
   definitions: readonly CustomConnectorCredentialDefinition[],
   rows: readonly CustomConnectorStoredConnection[],
+  memberConnectorIdsByCustomConnectorId: ReadonlyMap<string, string>,
 ): ReadonlyMap<string, CustomConnectorCredentialAccess> {
-  const memberByConnectorId = new Map<
-    string,
-    CustomConnectorStoredConnection
-  >();
+  const memberById = new Map<string, CustomConnectorStoredConnection>();
   for (const row of rows) {
-    memberByConnectorId.set(row.customConnectorId, row);
+    memberById.set(row.id, row);
   }
 
   const accesses = new Map<string, CustomConnectorCredentialAccess>();
   const now = nowDate();
   for (const definition of definitions) {
-    const member = memberByConnectorId.get(definition.id);
-    if (!member) {
+    const memberConnectorId = memberConnectorIdsByCustomConnectorId.get(
+      definition.id,
+    );
+    const member = memberConnectorId
+      ? memberById.get(memberConnectorId)
+      : undefined;
+    if (!member || member.customConnectorId !== definition.id) {
       accesses.set(definition.id, { kind: "absent" });
     } else if (
       member.definitionAuthMethod === definition.authMode &&
@@ -305,14 +312,17 @@ function customConnectorCredentialAccesses(
 function customConnectorRuntimeStorageSnapshot(
   definitions: readonly CustomConnectorCredentialDefinition[],
   rows: readonly CustomConnectorRuntimeStorageRow[],
+  memberConnectorIdsByCustomConnectorId: ReadonlyMap<string, string>,
 ): CustomConnectorRuntimeStorageSnapshot {
   const connectionsById = new Map<string, CustomConnectorStoredConnection>();
   for (const row of rows) {
     connectionsById.set(row.id, row);
   }
-  const accesses = customConnectorCredentialAccesses(definitions, [
-    ...connectionsById.values(),
-  ]);
+  const accesses = customConnectorCredentialAccesses(
+    definitions,
+    [...connectionsById.values()],
+    memberConnectorIdsByCustomConnectorId,
+  );
   const expectedByMemberConnectorId = new Map(
     definitions.flatMap((definition) => {
       const access = accesses.get(definition.id);
@@ -462,6 +472,7 @@ export async function loadCurrentCustomConnectorStoredValues(
     readonly orgId: string;
     readonly userId: string;
     readonly definitions: readonly CustomConnectorCredentialDefinition[];
+    readonly memberConnectorIdsByCustomConnectorId: ReadonlyMap<string, string>;
   },
 ): Promise<CustomConnectorRuntimeStorageSnapshot> {
   if (args.definitions.length === 0) {
@@ -471,11 +482,25 @@ export async function loadCurrentCustomConnectorStoredValues(
   const connectorIds = args.definitions.map((definition) => {
     return definition.id;
   });
+  const memberConnectorIds = args.definitions.flatMap((definition) => {
+    const memberConnectorId = args.memberConnectorIdsByCustomConnectorId.get(
+      definition.id,
+    );
+    return memberConnectorId ? [memberConnectorId] : [];
+  });
+  if (memberConnectorIds.length === 0) {
+    return customConnectorRuntimeStorageSnapshot(
+      args.definitions,
+      [],
+      args.memberConnectorIdsByCustomConnectorId,
+    );
+  }
   const storedConnections = db.$with("custom_connector_runtime_connections").as(
     customConnectorStoredConnectionsQuery(db, {
       orgId: args.orgId,
       userId: args.userId,
       connectorIds,
+      memberConnectorIds,
     }),
   );
   const secretQuery = db
@@ -559,7 +584,11 @@ export async function loadCurrentCustomConnectorStoredValues(
       storedValues,
       eq(storedValues.memberConnectorId, storedConnections.id),
     );
-  return customConnectorRuntimeStorageSnapshot(args.definitions, rows);
+  return customConnectorRuntimeStorageSnapshot(
+    args.definitions,
+    rows,
+    args.memberConnectorIdsByCustomConnectorId,
+  );
 }
 
 export async function loadConnectedCustomConnectorConnections(

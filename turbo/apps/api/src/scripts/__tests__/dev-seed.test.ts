@@ -37,17 +37,16 @@ describe("buildVm0ApiKeys", () => {
     ]);
   });
 
-  it("builds DeepSeek dev seed rows from DEV_MODEL_DEEPSEEK_KEY", () => {
-    const deepSeekKeys = buildVendorKeys("deepseek", {
-      DEV_MODEL_DEEPSEEK_KEY: "dev-deepseek-key",
-      DEEPSEEK_API_KEY: "provider-deepseek-key",
+  it("builds OpenRouter dev seed rows from DEV_MODEL_OPENROUTER_KEY", () => {
+    const openRouterKeys = buildVendorKeys("openrouter", {
+      DEV_MODEL_OPENROUTER_KEY: "dev-openrouter-key",
     });
 
-    expect(deepSeekKeys).toStrictEqual([
+    expect(openRouterKeys).toStrictEqual([
       {
-        apiKey: "dev-deepseek-key",
+        apiKey: "dev-openrouter-key",
         label: "dev-seed",
-        vendor: "deepseek",
+        vendor: "openrouter",
       },
     ]);
   });
@@ -63,21 +62,6 @@ describe("buildVm0ApiKeys", () => {
         apiKey: "dev-openai-key",
         label: "dev-seed",
         vendor: "openai",
-      },
-    ]);
-  });
-
-  it("falls back to DEEPSEEK_API_KEY for DeepSeek dev seed rows", () => {
-    const deepSeekKeys = buildVendorKeys("deepseek", {
-      DEV_MODEL_DEEPSEEK_KEY: "",
-      DEEPSEEK_API_KEY: "provider-deepseek-key",
-    });
-
-    expect(deepSeekKeys).toStrictEqual([
-      {
-        apiKey: "provider-deepseek-key",
-        label: "dev-seed",
-        vendor: "deepseek",
       },
     ]);
   });

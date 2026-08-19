@@ -1266,6 +1266,40 @@ mod tests {
     }
 
     #[test]
+    fn failed_turn_completed_classifies_misalignment_policy_violation() {
+        let event = mapped_event(
+            "turn/completed",
+            json!({
+                "threadId": "thread-1",
+                "turn": {
+                    "id": "turn-1",
+                    "status": "failed",
+                    "error": {
+                        "message": "This request violates the provider's alignment policy.",
+                        "codexErrorInfo": "misalignmentPolicyViolation"
+                    },
+                    "startedAt": 10,
+                    "completedAt": 20,
+                    "durationMs": 1000
+                }
+            }),
+        );
+
+        assert_eq!(
+            event["turn"]["error"]["codex_error_info"],
+            "misalignmentPolicyViolation"
+        );
+        assert_eq!(
+            events::masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(events::CodexFailureDiagnostic {
+                event_type: "turn.completed",
+                message: "This request violates the provider's alignment policy.".to_string(),
+                failure_reason: Some(FailureReason::SafetyPolicyRefusal),
+            })
+        );
+    }
+
+    #[test]
     fn interrupted_turn_completed_stays_turn_completed() {
         let event = mapped_event(
             "turn/completed",
