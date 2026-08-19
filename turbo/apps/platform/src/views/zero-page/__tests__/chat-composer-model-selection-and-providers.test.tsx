@@ -3470,6 +3470,7 @@ describe("chat composer models", () => {
 describe("chat composer image model", () => {
   const imageModelControlLabels = [
     "GPT Image 2",
+    "GPT Image 1",
     "Nano Banana 2",
     "Flux Pro v1.1",
     "Flux Pro v1.1 Ultra",
@@ -4043,6 +4044,7 @@ describe("chat composer image model", () => {
     ).toBeUndefined();
     const openAiIcon = imageModelBrandIcon("GPT Image 2").outerHTML;
     expect(openAiIcon).toContain("openai");
+    expect(imageModelBrandIcon("GPT Image 1").outerHTML).toBe(openAiIcon);
     const fluxIcon = imageModelBrandIcon("Flux Pro v1.1").outerHTML;
     expect(imageModelBrandIcon("Flux Pro v1.1 Ultra").outerHTML).toBe(fluxIcon);
     const qwenIcon = imageModelBrandIcon("Qwen Image").outerHTML;

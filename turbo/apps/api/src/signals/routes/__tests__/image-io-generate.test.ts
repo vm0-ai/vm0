@@ -47,6 +47,8 @@ const TEST_BUCKET = "test-user-artifacts";
 const IMAGE_BYTES = Buffer.from("fake image bytes");
 const IMAGE_IO_MODEL = "gpt-image-2";
 const FAL_GPT_IMAGE_2_URL = "https://queue.fal.run/openai/gpt-image-2";
+const FAL_GPT_IMAGE_1_URL =
+  "https://queue.fal.run/fal-ai/gpt-image-1/text-to-image";
 const BYTEPLUS_IMAGE_GENERATIONS_URL =
   "https://ark.ap-southeast.bytepluses.com/api/v3/images/generations";
 const BYTEPLUS_SEEDREAM_5_LITE_MEDIA_URL =
@@ -56,6 +58,7 @@ const BYTEPLUS_SEEDREAM_5_PRO_LOW_MEDIA_URL =
 const BYTEPLUS_SEEDREAM_5_PRO_HIGH_MEDIA_URL =
   "https://ark-content.byteplus.example/files/seedream-5-pro-high.jpg";
 const FAL_GPT_MEDIA_URL = "https://fal.media/files/test/gpt-image-2.webp";
+const FAL_GPT_1_MEDIA_URL = "https://fal.media/files/test/gpt-image-1.png";
 const FAL_QWEN_IMAGE_URL = "https://queue.fal.run/fal-ai/qwen-image";
 const FAL_MEDIA_URL = "https://fal.media/files/test/qwen.jpg";
 const FAL_FLUX_REDUX_URL = "https://queue.fal.run/fal-ai/flux-pro/v1.1/redux";
@@ -380,6 +383,51 @@ const CLARITY_UPSCALER_IMAGE_PRICING = [
     provider: "fal-ai/clarity-upscaler",
     category: "output_megapixel",
     unitPrice: 30,
+    unitSize: 1,
+  },
+] satisfies readonly UsagePricingRow[];
+
+const GPT_IMAGE_1_PRICING = [
+  {
+    kind: "image",
+    provider: "gpt-image-1",
+    category: "output_image.low.standard",
+    unitPrice: 13,
+    unitSize: 1,
+  },
+  {
+    kind: "image",
+    provider: "gpt-image-1",
+    category: "output_image.low.large",
+    unitPrice: 19,
+    unitSize: 1,
+  },
+  {
+    kind: "image",
+    provider: "gpt-image-1",
+    category: "output_image.medium.standard",
+    unitPrice: 50,
+    unitSize: 1,
+  },
+  {
+    kind: "image",
+    provider: "gpt-image-1",
+    category: "output_image.medium.large",
+    unitPrice: 76,
+    unitSize: 1,
+  },
+  {
+    kind: "image",
+    provider: "gpt-image-1",
+    category: "output_image.high.standard",
+    unitPrice: 200,
+    unitSize: 1,
+  },
+  {
+    kind: "image",
+    provider: "gpt-image-1",
+    category: "output_image.high.large",
+    unitPrice: 300,
     unitSize: 1,
   },
 ] satisfies readonly UsagePricingRow[];
@@ -2190,6 +2238,103 @@ describe("POST /api/zero/image-io/generate", () => {
     });
     expect(falCalls).toBe(0);
     await expect(orgCredits(fixture)).resolves.toBe(1000);
+  });
+
+  it("generates GPT Image 1 through fal with its fixed size shape", async () => {
+    const fixture = await seedImageFixture({ credits: 1000 });
+    const pricingFixture = await createScopedImagePricing({
+      configured: GPT_IMAGE_1_PRICING,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    let falCalls = 0;
+    let observedAuthorization: string | null = null;
+    let observedBody: Record<string, unknown> | null = null;
+    let observedRequestUrl: string | null = null;
+    server.use(
+      http.post(FAL_GPT_IMAGE_1_URL, async ({ request }) => {
+        falCalls += 1;
+        observedAuthorization = request.headers.get("authorization");
+        observedRequestUrl = request.url;
+        observedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(falQueueHandle("gpt-image-1-request"));
+      }),
+      http.get(FAL_GPT_1_MEDIA_URL, () => {
+        return new HttpResponse(IMAGE_BYTES, {
+          headers: { "Content-Type": "image/png" },
+        });
+      }),
+    );
+
+    const app = createImageIoTestApp(pricingFixture.resolution);
+    const response = await app.request("/api/zero/image-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "a precise medical infographic",
+        model: "gpt-image-1",
+        size: "1024x1536",
+        quality: "low",
+        background: "transparent",
+        outputFormat: "png",
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "image",
+      fixture.userId,
+    );
+
+    await postFalWebhook(app, observedRequestUrl, {
+      images: [
+        {
+          url: FAL_GPT_1_MEDIA_URL,
+          width: 1024,
+          height: 1536,
+          content_type: "image/png",
+        },
+      ],
+      prompt: "A precise medical infographic.",
+    });
+    await flushWaitUntilForTest();
+
+    const statusResponse = await app.request(
+      `/api/zero/built-in-generations/${generationId}`,
+      { headers: authHeaders() },
+    );
+    expect(statusResponse.status).toBe(200);
+    const body = readGenerationResult(await statusResponse.json());
+    expect(body).toMatchObject({
+      contentType: "image/png",
+      size: IMAGE_BYTES.byteLength,
+      creditsCharged: 19,
+      model: "gpt-image-1",
+      provider: "fal",
+      imageSize: "1024x1536",
+      quality: "low",
+      background: "transparent",
+      outputFormat: "png",
+      billingCategory: "output_image.low.large",
+      billingQuantity: 1,
+      sourceUrl: FAL_GPT_1_MEDIA_URL,
+    });
+    expect(falCalls).toBe(1);
+    expect(observedAuthorization).toBe("Key test-fal-key");
+    // gpt-image-1 keeps fal's fixed WIDTHxHEIGHT string instead of the
+    // flexible {width, height} shape the other models use.
+    expect(observedBody).toStrictEqual({
+      prompt: "a precise medical infographic",
+      image_size: "1024x1536",
+      num_images: 1,
+      quality: "low",
+      background: "transparent",
+      output_format: "png",
+      openai_api_key: "test-openai-key",
+    });
+
+    await expect(orgCredits(fixture)).resolves.toBe(1000 - 19);
   });
 
   it("records a failed job when fal image generation fails", async () => {

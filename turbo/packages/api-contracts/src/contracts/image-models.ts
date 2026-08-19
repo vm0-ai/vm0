@@ -8,6 +8,7 @@ import { z } from "zod";
 
 export const IMAGE_MODEL_IDS = [
   "gpt-image-2",
+  "gpt-image-1",
   "fal-ai/flux-pro/v1.1",
   "fal-ai/flux-pro/v1.1-ultra",
   "fal-ai/qwen-image",

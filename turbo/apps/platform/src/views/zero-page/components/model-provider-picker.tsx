@@ -900,7 +900,8 @@ function GeminiImageModelIcon() {
 
 export function ImageModelBrandIcon({ model }: { model: ImageModel }) {
   switch (model) {
-    case "gpt-image-2": {
+    case "gpt-image-2":
+    case "gpt-image-1": {
       return <ProviderIcon type="openai-api-key" size={16} />;
     }
     case "fal-ai/flux-pro/v1.1":

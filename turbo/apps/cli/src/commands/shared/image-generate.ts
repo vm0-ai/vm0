@@ -260,7 +260,7 @@ export function createImageGenerateCommand(
     .option("--json", "Print the complete generation result as JSON")
     .option(
       "--model <model>",
-      "Model: gpt-image-2 (default), flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4, seedream5-pro, seedream5-lite, or nano-banana-2",
+      "Model: gpt-image-2 (default), gpt-image-1, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4, seedream5-pro, seedream5-lite, or nano-banana-2",
       IMAGE_MODEL_CONFIGS[DEFAULT_IMAGE_MODEL].alias,
     )
     .option(
@@ -338,9 +338,9 @@ Notes:
   - Uses fal.ai and BytePlus for built-in image model execution
 
 Models:
-  - fal.ai: gpt-image-2 (default), flux-pro-1.1, flux-pro-1.1-ultra,
-    qwen-image, seedream4, nano-banana-2.
-    GPT Image 2 bills by fal output image quality and size.
+  - fal.ai: gpt-image-2 (default), gpt-image-1, flux-pro-1.1,
+    flux-pro-1.1-ultra, qwen-image, seedream4, nano-banana-2.
+    GPT Image models bill by fal output image quality and size.
     Other fal generations bill by output image or rounded-up output
     megapixel, depending on the model.
   - BytePlus: seedream5-pro and seedream5-lite.
@@ -358,13 +358,14 @@ Options:
     1536x1024, 1024x1536, 2048x2048, 2048x1152, 3840x2160,
     and 2160x3840. Custom sizes must have edges <= 3840px, both
     edges divisible by 16, long:short ratio <= 3:1, and total pixels
-    between 655,360 and 8,294,400.
+    between 655,360 and 8,294,400. gpt-image-1 uses auto, 1024x1024,
+    1536x1024, or 1024x1536.
     seedream5-pro accepts 1K, 1.5K, 2K, auto, or supported custom sizes;
     seedream5-lite accepts 2K, 3K, 4K, auto, or supported custom sizes.
   - Quality: low, medium, high, or auto. Low is fastest for drafts.
   - Background: auto, opaque, or transparent when supported. gpt-image-2,
     Flux, Qwen, and Seedream do not support transparent backgrounds.
-  - Format: png, jpeg, or webp for GPT Image 2 and Nano Banana 2; png or
+  - Format: png, jpeg, or webp for GPT Image and Nano Banana 2 models; png or
     jpeg for the other fal and BytePlus models.
   - fal-only controls: --seed and --safety-tolerance for supported fal models;
     --enhance-prompt for flux-pro-1.1. --compression and --moderation low are
