@@ -1436,6 +1436,70 @@ describe("chat inline feedback", () => {
     await expect(findComposerEditor()).resolves.toBe(composerEditor);
   });
 
+  it("does not rewrite feedback note attributes while typing into it", async () => {
+    const user = userEvent.setup({ delay: null });
+    const assistantReply = "The rollout dates are unclear in this summary.";
+
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback review",
+      chatEvents: [
+        {
+          id: "msg-feedback-rerender-user",
+          role: "user",
+          content: "Review this launch summary",
+          runId: "run-feedback-rerender",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-feedback-rerender-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-feedback-rerender",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+    });
+
+    selectTextForInlineFeedback(await screen.findByText(assistantReply));
+    await user.click(await screen.findByText("Quote"));
+
+    const feedbackComment = await findFeedbackNote();
+    await user.click(feedbackComment);
+    await user.keyboard("first");
+    await waitFor(() => {
+      expect(feedbackComment).toHaveTextContent("first");
+    });
+
+    // Attribute writes inside the note are read by ProseMirror as content
+    // changes, so a re-render that rewrites unchanged values can discard an
+    // in-flight IME composition.
+    const attributeWrites: (string | null)[] = [];
+    const collect = (records: MutationRecord[]): void => {
+      for (const record of records) {
+        if (record.type === "attributes") {
+          attributeWrites.push(record.attributeName);
+        }
+      }
+    };
+    const observer = new MutationObserver(collect);
+    observer.observe(feedbackComment, { attributes: true });
+
+    await user.keyboard(" second");
+    await waitFor(() => {
+      expect(feedbackComment).toHaveTextContent("first second");
+    });
+    collect(observer.takeRecords());
+    observer.disconnect();
+
+    expect(attributeWrites).toStrictEqual([]);
+  });
+
   it("submits the committed inline feedback after IME composition ends", async () => {
     const user = userEvent.setup({ delay: null });
     const assistantReply = "The rollout dates are unclear in this summary.";
