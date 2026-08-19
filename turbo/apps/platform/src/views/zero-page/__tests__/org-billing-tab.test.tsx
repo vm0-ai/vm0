@@ -3166,6 +3166,89 @@ describe("organization billing settings", () => {
     }
   });
 
+  it.each(["managed subscription", "scheduled migration"] as const)(
+    "keeps usage pack plans unavailable for a custom workspace with %s",
+    async (source) => {
+      context.mocks.data.org({
+        id: "org_1",
+        name: "Custom Usage Pack Org",
+        role: "admin",
+      });
+      context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+        return respond(200, activeCustomBillingStatus());
+      });
+      context.mocks.api(
+        zeroBillingUsagePackCatalogContract.get,
+        ({ respond }) => {
+          return respond(200, usagePackCatalogResponse());
+        },
+      );
+      if (source === "managed subscription") {
+        context.mocks.api(
+          zeroBillingUsagePackManagementContract.get,
+          ({ respond }) => {
+            return respond(200, {
+              tier: "team",
+              currentPeriodEnd: "2026-04-01T00:00:00Z",
+              allocations: [],
+            });
+          },
+        );
+      } else {
+        context.mocks.api(
+          zeroBillingUsagePackMigrationContract.get,
+          ({ respond }) => {
+            return respond(200, {
+              tier: "team",
+              targetTier: "team",
+              status: "scheduled",
+              migrationId: "3ea4b7cf-d71e-45dc-8273-8bc8b9712490",
+              effectiveAt: "2026-09-01T00:00:00.000Z",
+              hostedInvoiceUrl: null,
+              configuration: {
+                tier: "team",
+                memberUsagePacks: [{ memberId: "user_1", usagePackUsd: 20 }],
+                recurringAmountCents: 16_000,
+                currency: "usd",
+              },
+            });
+          },
+        );
+      }
+
+      await openBillingTab("/?settings=billing", {
+        [FeatureSwitchKey.UsagePackPlans]: true,
+      });
+
+      await screen.findByText("Custom plan");
+      if (source === "scheduled migration") {
+        await screen.findByText("Legacy");
+      }
+
+      for (let openCount = 0; openCount < 2; openCount += 1) {
+        click(buttonByText("Compare all plans"));
+
+        const choosePlanDialog = await screen.findByRole("dialog", {
+          name: "Choose a plan",
+        });
+        expect(
+          within(choosePlanDialog).getByText("Step 1 of 3"),
+        ).toBeInTheDocument();
+        for (const name of ["Pro plan", "Team plan"]) {
+          const plan = within(choosePlanDialog).getByRole("article", { name });
+          expect(buttonByText("Unavailable", plan)).toBeDisabled();
+        }
+
+        click(within(choosePlanDialog).getByLabelText("Close"));
+        await waitFor(() => {
+          expect(
+            screen.queryByRole("dialog", { name: "Choose a plan" }),
+          ).not.toBeInTheDocument();
+        });
+      }
+    },
+  );
+
   it("shows only the end date for a cancelled custom plan", async () => {
     context.mocks.data.org({
       id: "org_1",
