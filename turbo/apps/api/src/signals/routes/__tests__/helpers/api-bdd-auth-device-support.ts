@@ -18,7 +18,7 @@ import { featureSwitchesRoutes } from "../../feature-switches";
 import { meModelProvidersDeleteRoutes } from "../../me-model-providers-delete";
 import { meModelProviderAccountRoutes } from "../../me-model-provider-accounts";
 import { meModelProvidersListRoutes } from "../../me-model-providers-list";
-import { zeroModelProvidersRoutes } from "../../zero-model-providers";
+import { modelProvidersRoutes } from "../../model-providers";
 import { userPreferencesRoutes } from "../../user-preferences";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
@@ -33,7 +33,7 @@ const authDeviceSupportRoutes: readonly RouteEntry[] = [
   ...meModelProviderAccountRoutes,
   ...meModelProvidersDeleteRoutes,
   ...meModelProvidersListRoutes,
-  ...zeroModelProvidersRoutes,
+  ...modelProvidersRoutes,
   ...userPreferencesRoutes,
 ];
 

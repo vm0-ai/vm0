@@ -48,7 +48,7 @@ import {
 } from "../../../test-fixtures/chat-events";
 import { chatEventsRoutes } from "../chat-events";
 import { chatThreadRoutes } from "../chat-threads";
-import { zeroModelProvidersRoutes } from "../zero-model-providers";
+import { modelProvidersRoutes } from "../model-providers";
 import { workflowAutomationsRoutes } from "../workflow-automations";
 import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
 import { webhooksWorkflowAutomationsRoutes } from "../webhooks-workflow-automations";
@@ -58,7 +58,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...webhooksWorkflowAutomationsRoutes,
   ...chatEventsRoutes,
   ...chatThreadRoutes,
-  ...zeroModelProvidersRoutes,
+  ...modelProvidersRoutes,
   ...workflowAutomationsRoutes,
 ]);
 
@@ -110,7 +110,7 @@ function chatEventsClient() {
 }
 
 function modelProvidersByTypeClient() {
-  return setupApp({ context, routes: zeroModelProvidersRoutes })(
+  return setupApp({ context, routes: modelProvidersRoutes })(
     modelProvidersByTypeContract,
   );
 }
