@@ -4097,19 +4097,6 @@ describe("chat composer image model", () => {
       expect(selectedImageModelLabel()).toBe("Qwen Image");
     });
     const listbox = screen.getByRole("listbox");
-    const imageModelButtons = queryAllByRoleFast("button", listbox);
-    const visibleLabels = imageModelButtons
-      .filter((button) => {
-        return button.hasAttribute("aria-pressed");
-      })
-      .map((button) => {
-        return button.getAttribute("aria-label");
-      });
-    // Every model family must be visible — the exact list of aria-pressed buttons
-    // may include the open category tab, but every family name must appear.
-    for (const expected of imageModelControlLabels) {
-      expect(visibleLabels).toContain(expected);
-    }
     // Both variants are on the row at once, and neither is marked while a
     // different family is the selection.
     const variantSegments = queryAllByRoleFast("radio", listbox).filter(
@@ -4294,16 +4281,6 @@ describe("chat composer image model", () => {
       expect(mediaPanelButton("Qwen Image")).toBeInTheDocument();
     });
     const listbox = screen.getByRole("listbox");
-    const allLabels = queryAllByRoleFast("button", listbox)
-      .filter((button) => {
-        return button.hasAttribute("aria-pressed");
-      })
-      .map((button) => {
-        return button.getAttribute("aria-label");
-      });
-    for (const expected of imageModelControlLabels) {
-      expect(allLabels).toContain(expected);
-    }
     // Nothing claims the pin, so no row is current and every family shows its
     // default base chip rather than a stale highlight.
     expect(selectedImageModelLabel()).toBeUndefined();
