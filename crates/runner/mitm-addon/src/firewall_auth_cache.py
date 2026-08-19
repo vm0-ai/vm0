@@ -162,7 +162,7 @@ def clear_cached_firewall_headers(cache_key: FirewallAuthCacheKey) -> None:
         state.cache = None
 
 
-def evict_stale_cache_keys(active_run_generations: dict[str, int]) -> None:
+def reconcile_registry_cache_ownership(active_run_generations: dict[str, int]) -> None:
     """Reconcile cache ownership with the current registry generation."""
     _active_registry_generations.clear()
     _active_registry_generations.update(active_run_generations)

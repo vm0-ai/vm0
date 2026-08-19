@@ -404,10 +404,10 @@ class TestFirewallHeaderCache:
         )
 
         with patch.object(auth_cache, "fetch_firewall_headers", auth_fetch):
-            auth_cache.evict_stale_cache_keys({"run-1": 1})
+            auth_cache.reconcile_registry_cache_ownership({"run-1": 1})
             await auth_cache.get_firewall_headers(old_key, auth_request)
 
-            auth_cache.evict_stale_cache_keys({"run-1": 2})
+            auth_cache.reconcile_registry_cache_ownership({"run-1": 2})
             await auth_cache.get_firewall_headers(new_key, auth_request)
             stale_result = await auth_cache.get_firewall_headers(old_key, auth_request)
 
@@ -419,12 +419,12 @@ class TestFirewallHeaderCache:
     async def test_same_identity_reuses_state_across_registry_generations(self):
         old_key = auth_cache_key(registry_generation=1)
         new_key = auth_cache_key(registry_generation=2)
-        auth_cache.evict_stale_cache_keys({"run-1": 1})
+        auth_cache.reconcile_registry_cache_ownership({"run-1": 1})
         set_cached_headers(old_key, headers={"Authorization": "Bearer cached"})
         mark_force_refresh(old_key)
         set_last_force_refresh_monotonic_at(old_key, 123.0)
 
-        auth_cache.evict_stale_cache_keys({"run-1": 2})
+        auth_cache.reconcile_registry_cache_ownership({"run-1": 2})
         auth_fetch = AsyncMock()
         with patch.object(auth_cache, "fetch_firewall_headers", auth_fetch):
             result = await auth_cache.get_firewall_headers(new_key, firewall_auth_request())

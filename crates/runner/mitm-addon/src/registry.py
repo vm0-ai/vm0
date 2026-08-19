@@ -13,7 +13,7 @@ import state_file
 from firewall_auth_cache import (
     FIREWALL_AUTH_REGISTRY_GENERATION_ATTRIBUTE,
     evict_all_cache_keys,
-    evict_stale_cache_keys,
+    reconcile_registry_cache_ownership,
 )
 
 VmContext = tuple[
@@ -112,6 +112,7 @@ def reset_cache_for_tests() -> None:
 
 
 def _allocate_firewall_auth_registry_generation() -> int:
+    """Allocate ownership generations independently of registry path resets."""
     global _next_firewall_auth_registry_generation
 
     _next_firewall_auth_registry_generation += 1
@@ -534,7 +535,7 @@ def load_registry_state(registry_path: str) -> RegistryState:
     active_run_generations = {
         vm["runId"]: firewall_auth_registry_generation for vm in new_registry.values()
     }
-    evict_stale_cache_keys(active_run_generations)
+    reconcile_registry_cache_ownership(active_run_generations)
 
     state.snapshot = _RegistrySnapshot(
         new_registry,
