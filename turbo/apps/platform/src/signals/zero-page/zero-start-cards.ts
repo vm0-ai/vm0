@@ -4,7 +4,7 @@ import {
   type WorkflowTemplateItem,
 } from "@okouai/core/workflow-template-items";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
-import type { PublicConnectorCatalogIcon } from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import type { PublicConnectorCatalogIcon } from "@okouai/api-contracts/contracts/connector-catalog";
 import { avatarTemplatesEnabled$ } from "../external/feature-switch.ts";
 import { connectorCatalogItemBySlug } from "../external/connectors.ts";
 
