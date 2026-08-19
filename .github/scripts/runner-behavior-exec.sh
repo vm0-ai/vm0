@@ -1471,11 +1471,12 @@ with tempfile.TemporaryDirectory(prefix="codex-compact-smoke-") as temp_root:
             for index, record in enumerate(records)
             if event_type(record) in {"task_complete", "turn_complete"}
         )
-        records.pop(complete_index)
+        removed_completion = records.pop(complete_index)
         records.insert(
             complete_index,
             {
                 "timestamp": "2026-01-01T00:00:00.000Z",
+                "ordinal": removed_completion["ordinal"],
                 "type": "compacted",
                 "payload": {
                     "message": summary_token,
@@ -1550,7 +1551,10 @@ with tempfile.TemporaryDirectory(prefix="codex-compact-smoke-") as temp_root:
             len(candidate_starts) >= 3
             and len(candidate_completions) == 2
             and candidate_starts[-1] == candidate_completions[-1]
-        ), "failed to build a compacting turn delimited by the next turn"
+        ), (
+            "failed to build a compacting turn delimited by the next turn\n"
+            f"{candidate_output}"
+        )
         full_lines = source.read_bytes().splitlines(keepends=True)
         full_records = [json.loads(line) for line in full_lines]
         compact_index = max(
