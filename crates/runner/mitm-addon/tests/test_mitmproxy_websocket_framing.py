@@ -510,6 +510,136 @@ async def test_aggregate_limit_is_shared_across_directions_and_released(
     assert aggregate_diagnostic["observed_value"] == 13
 
 
+async def test_completed_message_holds_aggregate_through_hook_and_forwarding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(websocket_framing, "MAX_DECODED_MESSAGE_BYTES", 8)
+    monkeypatch.setattr(websocket_framing, "MAX_AGGREGATE_DECODED_BYTES", 8)
+
+    with (
+        patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
+        taddons.context(Proxyserver(), mitm_addon) as addon_context,
+    ):
+        holder = await _start_websocket(addon_context)
+        pending = list(
+            holder.layer.handle_event(
+                events.DataReceived(
+                    holder.client,
+                    _peer(from_client=True).send(_message_event(b"12345678")),
+                )
+            )
+        )
+        hooks = _message_hooks(pending)
+        assert len(hooks) == 1
+        assert _data_sends(pending) == []
+
+        blocked_during_hook = await _start_websocket(addon_context)
+        hook_contention = await _handle_event(
+            addon_context,
+            blocked_during_hook,
+            events.DataReceived(
+                blocked_during_hook.server,
+                _peer(from_client=False).send(_message_event(b"x")),
+            ),
+        )
+
+        await addon_context.master.addons.invoke_addon(mitm_addon, hooks[0])
+        forwarded = await _handle_event(
+            addon_context,
+            holder,
+            events.HookCompleted(hooks[0], None),
+        )
+
+        blocked_before_deferred_release = await _start_websocket(addon_context)
+        deferred_contention = await _handle_event(
+            addon_context,
+            blocked_before_deferred_release,
+            events.DataReceived(
+                blocked_before_deferred_release.client,
+                _peer(from_client=True).send(_message_event(b"x")),
+            ),
+        )
+
+        await asyncio.sleep(0)
+        after_release = await _start_websocket(addon_context)
+        delivered = await _handle_event(
+            addon_context,
+            after_release,
+            events.DataReceived(
+                after_release.client,
+                _peer(from_client=True).send(_message_event(b"12345678")),
+            ),
+        )
+
+    assert blocked_during_hook.flow.websocket is not None
+    assert blocked_during_hook.flow.websocket.close_code == 1009
+    assert _message_hooks(hook_contention) == []
+    assert _data_sends(hook_contention) == []
+
+    assert len(_data_sends(forwarded)) == 1
+    assert holder.flow.websocket is not None
+    assert holder.flow.websocket.messages[-1].content == b"12345678"
+
+    assert blocked_before_deferred_release.flow.websocket is not None
+    assert blocked_before_deferred_release.flow.websocket.close_code == 1009
+    assert _message_hooks(deferred_contention) == []
+    assert _data_sends(deferred_contention) == []
+
+    assert len(_message_hooks(delivered)) == 1
+    assert len(_data_sends(delivered)) == 1
+    assert after_release.flow.websocket is not None
+    assert after_release.flow.websocket.messages[-1].content == b"12345678"
+
+
+async def test_partial_message_releases_aggregate_on_connection_close(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(websocket_framing, "MAX_DECODED_MESSAGE_BYTES", 8)
+    monkeypatch.setattr(websocket_framing, "MAX_AGGREGATE_DECODED_BYTES", 8)
+
+    with (
+        patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
+        taddons.context(Proxyserver(), mitm_addon) as addon_context,
+    ):
+        holder = await _start_websocket(addon_context)
+        prefix = await _handle_event(
+            addon_context,
+            holder,
+            events.DataReceived(
+                holder.client,
+                _peer(from_client=True).send(_message_event(b"12345678", message_finished=False)),
+            ),
+        )
+
+        await _handle_event(
+            addon_context,
+            holder,
+            events.ConnectionClosed(holder.client),
+        )
+
+        after_close = await _start_websocket(addon_context)
+        delivered = await _handle_event(
+            addon_context,
+            after_close,
+            events.DataReceived(
+                after_close.server,
+                _peer(from_client=False).send(_message_event(b"12345678")),
+            ),
+        )
+
+    assert prefix == []
+    assert holder.flow.websocket is not None
+    assert holder.flow.websocket.timestamp_end is not None
+    assert not holder.flow.live
+
+    assert len(_message_hooks(delivered)) == 1
+    assert len(_data_sends(delivered)) == 1
+    assert after_close.flow.websocket is not None
+    assert after_close.flow.websocket.messages[-1].content == b"12345678"
+
+
 @pytest.mark.parametrize(
     ("frame_limit", "content", "message_finished", "expected_reason", "expected_unit"),
     [
