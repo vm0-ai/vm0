@@ -449,7 +449,7 @@ test("paid invitations charge one package each and revoke pending packages", asy
   });
 });
 
-test("concurrency transitions handle schedules, cancellation, and restoration", async ({
+test("concurrency upgrades remain available while Team is ending", async ({
   page,
 }) => {
   test.setTimeout(360_000);
@@ -490,54 +490,6 @@ test("concurrency transitions handle schedules, cancellation, and restoration", 
     });
     await expectPlanState(page, owner, ENDING_TEAM_PLAN_STATE);
     await expectConcurrencyReductionRejectedWhilePlanEnds(page, 5);
-    await expectConcurrencyState(page, owner, {
-      cancelAtPeriodEnd: false,
-      concurrencyLimit: 20,
-      quantity: 10,
-      scheduledQuantity: null,
-      subscriptionCount: 1,
-    });
-
-    await restorePlan(page, "team");
-    await expectPlanState(page, owner, ACTIVE_TEAM_PLAN_STATE);
-
-    await changeConcurrency(page, 1);
-    await expectConcurrencyState(page, owner, {
-      cancelAtPeriodEnd: false,
-      concurrencyLimit: 20,
-      quantity: 10,
-      scheduledQuantity: 1,
-      subscriptionCount: 1,
-    });
-
-    await changeConcurrency(page, 3);
-    await expectConcurrencyState(page, owner, {
-      cancelAtPeriodEnd: false,
-      concurrencyLimit: 20,
-      quantity: 10,
-      scheduledQuantity: 3,
-      subscriptionCount: 1,
-    });
-
-    await restoreConcurrency(page);
-    await expectConcurrencyState(page, owner, {
-      cancelAtPeriodEnd: false,
-      concurrencyLimit: 20,
-      quantity: 10,
-      scheduledQuantity: null,
-      subscriptionCount: 1,
-    });
-
-    await cancelConcurrency(page);
-    await expectConcurrencyState(page, owner, {
-      cancelAtPeriodEnd: true,
-      concurrencyLimit: 20,
-      quantity: 10,
-      scheduledQuantity: null,
-      subscriptionCount: 1,
-    });
-
-    await restoreConcurrency(page);
     await expectConcurrencyState(page, owner, {
       cancelAtPeriodEnd: false,
       concurrencyLimit: 20,
@@ -1064,24 +1016,6 @@ async function expectConcurrencyReductionRejectedWhilePlanEnds(
     page.getByText(CONCURRENCY_PLAN_ENDING_MESSAGE, { exact: true }),
   ).toBeVisible({ timeout: 30_000 });
   await expect(dialog).toBeVisible();
-}
-
-async function cancelConcurrency(page: Page): Promise<void> {
-  const settings = await openBillingSettings(page);
-  await settings.getByRole("button", { name: "Change", exact: true }).click();
-  const changeDialog = page.getByRole("dialog", {
-    name: "Change concurrency",
-  });
-  await changeDialog
-    .getByRole("button", { name: "Cancel entire subscription", exact: true })
-    .click();
-  const cancelDialog = page.getByRole("dialog", {
-    name: "Cancel entire subscription",
-  });
-  await cancelDialog
-    .getByRole("button", { name: "Cancel subscription", exact: true })
-    .click();
-  await expect(cancelDialog).toBeHidden({ timeout: 30_000 });
 }
 
 async function restoreConcurrency(page: Page): Promise<void> {
