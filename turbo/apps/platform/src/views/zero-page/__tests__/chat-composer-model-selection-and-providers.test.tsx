@@ -4101,9 +4101,7 @@ describe("chat composer image model", () => {
       (candidate) => {
         // Skip the category-strip segment items; they live inside the same
         // <SelectContent> but the radio role puts them under a different query.
-        return (
-          candidate.getAttribute("data-slot") !== "segment-control-item"
-        );
+        return candidate.getAttribute("data-slot") !== "segment-control-item";
       },
     );
     expect(
