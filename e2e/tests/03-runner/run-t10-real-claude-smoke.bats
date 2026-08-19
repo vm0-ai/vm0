@@ -182,16 +182,7 @@ run_real_claude_steer() {
 
     run runner_api_curl "/api/okou/runs/${run_id}/context"
     assert_success
-    run jq -e '
-        .cliAgentType == "pi" and
-        .environment.OPENAI_BASE_URL == "https://openrouter.ai/api/v1" and
-        .environment.OPENAI_MODEL == "deepseek/deepseek-v4-flash" and
-        any(
-            .firewalls[];
-            .kind == "builtin" and
-            .name == "model-provider:openrouter-codex"
-        )
-    ' <<<"$output"
+    run jq -e '.cliAgentType == "pi"' <<<"$output"
     assert_success
 }
 

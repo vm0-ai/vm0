@@ -259,14 +259,12 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
     vendor: "anthropic",
   },
   "deepseek-v4-flash": {
-    concreteType: "openrouter-codex",
-    vendor: "openrouter",
-    apiModel: "deepseek/deepseek-v4-flash",
+    concreteType: "deepseek",
+    vendor: "deepseek",
   },
   "deepseek-v4-pro": {
-    concreteType: "openrouter-codex",
-    vendor: "openrouter",
-    apiModel: "deepseek/deepseek-v4-pro",
+    concreteType: "deepseek",
+    vendor: "deepseek",
   },
   "gpt-5.6-sol": {
     concreteType: "openai-api-key",
@@ -508,7 +506,7 @@ export const MODEL_PROVIDER_TYPES = {
   },
   // Codex-framework twin of openrouter-api-key. Same upstream gateway (OpenRouter)
   // and same API key (shared secretName), but routes through OpenRouter's
-  // OpenAI-compatible endpoint surface for models that use the Codex framework.
+  // OpenAI-compatible endpoint surface for GPT models that codex CLI requires.
   // Pairing rule: the claude-code entry serves Anthropic Messages API
   // (/v1/messages); this codex entry serves OpenAI Chat Completions / Responses
   // (/v1/chat/completions, /v1/responses) under the same /api/v1 prefix.
@@ -1089,42 +1087,6 @@ export function getModelProviderCodexRuntimeConfig(
   type: ModelProviderType,
 ): ModelProviderCodexRuntimeConfig | undefined {
   return MODEL_PROVIDER_CODEX_RUNTIME_CONFIGS[type];
-}
-
-/**
- * Project a provider-owned Codex catalog record onto the model ID used at
- * runtime. Returns undefined when no provider has authoritative metadata for
- * the logical model.
- */
-export function getModelProviderCodexCatalogForModel(
-  logicalModel: string,
-  runtimeModel: string,
-): Record<string, unknown> | undefined {
-  for (const type of getProvidersForModel(logicalModel)) {
-    const sourceCatalog =
-      MODEL_PROVIDER_CODEX_RUNTIME_CONFIGS[type]?.modelCatalog;
-    const sourceModels = sourceCatalog?.models;
-    const sourceModel = Array.isArray(sourceModels)
-      ? sourceModels.find(
-          (model: unknown): model is Record<string, unknown> => {
-            return (
-              typeof model === "object" &&
-              model !== null &&
-              !Array.isArray(model) &&
-              "slug" in model &&
-              model.slug === logicalModel
-            );
-          },
-        )
-      : undefined;
-    if (sourceCatalog && sourceModel) {
-      return {
-        ...sourceCatalog,
-        models: [{ ...sourceModel, slug: runtimeModel }],
-      };
-    }
-  }
-  return undefined;
 }
 
 /**

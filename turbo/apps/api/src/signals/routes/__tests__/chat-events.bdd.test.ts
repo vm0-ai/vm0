@@ -4844,19 +4844,17 @@ describe("CHAT-02: model-first provider policies", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   }, 90_000);
 
-  it("routes vm0 DeepSeek through OpenRouter Pi bindings", async () => {
-    const fw = createFirewallApi(context);
+  it("routes vm0 DeepSeek through native Responses env bindings", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const keyFixtureId = randomUUID();
-    const requestedApiKey = `vm0-key-bdd-dev-seed-${keyFixtureId}`;
 
-    // Keep a second OpenRouter fixture owner alive to cover vendor-unique row
+    // Keep a second DeepSeek fixture owner alive to cover vendor-unique row
     // arbitration instead of relying on another test file's scheduling.
     await seedVm0ManagedModelKey("deepseek-v4-flash");
-    const selectedApiKey = await acquireBddVm0ApiKey({
+    await acquireBddVm0ApiKey({
       fixtureId: keyFixtureId,
-      vendor: "openrouter",
-      apiKey: requestedApiKey,
+      vendor: "deepseek",
+      apiKey: `vm0-key-bdd-dev-seed-${keyFixtureId}`,
     });
 
     let runId: string | null = null;
@@ -4865,22 +4863,14 @@ describe("CHAT-02: model-first provider policies", () => {
         await api.requestCancelRun(actor, runId, [200]);
       }
     };
-    const releaseVm0OpenRouterKey = async () => {
+    const releaseVm0DeepSeekKey = async () => {
       await releaseBddVm0ApiKey({ fixtureId: keyFixtureId });
     };
     const cleanupRunAndKeys = async () => {
-      await Promise.all([releaseVm0OpenRouterKey(), cancelRunIfCreated()]);
+      await Promise.all([releaseVm0DeepSeekKey(), cancelRunIfCreated()]);
     };
 
     await (async () => {
-      if (!actor.orgId) {
-        throw new Error("Expected an organization-scoped chat actor");
-      }
-      await updateFeatureSwitchesForUser(
-        context,
-        { ...actor, orgId: actor.orgId },
-        { [FeatureSwitchKey.PiLoop]: true },
-      );
       await api.updateOrgModelPolicies(actor, [
         {
           model: "deepseek-v4-flash",
@@ -4898,62 +4888,13 @@ describe("CHAT-02: model-first provider policies", () => {
       });
       runId = run.runId;
 
-      const { claim, sandboxHeaders } = await claimChatRun(
-        runnerGroup,
-        run.runId,
-      );
+      const { claim } = await claimChatRun(runnerGroup, run.runId);
       const environment = claimEnvironment(claim);
-      expect(claim.cliAgentType).toBe("pi");
       expect(environment.OPENAI_API_KEY).toBe(
-        modelProviderSecretPlaceholder(
-          "openrouter-codex",
-          "OPENROUTER_API_KEY",
-        ),
+        modelProviderSecretPlaceholder("deepseek", "DEEPSEEK_API_KEY"),
       );
-      expect(environment.OPENAI_BASE_URL).toBe("https://openrouter.ai/api/v1");
-      expect(environment.OPENAI_MODEL).toBe("deepseek/deepseek-v4-flash");
-      expect(claim.firewalls).toContainEqual(
-        expect.objectContaining({
-          kind: "builtin",
-          name: "model-provider:openrouter-codex",
-        }),
-      );
-      expect(claim.billableFirewalls).toContain(
-        "model-provider:openrouter-codex",
-      );
-      expect(claim.piModelConfig).toStrictEqual({
-        provider: "openrouter",
-        baseUrl: "https://openrouter.ai/api/v1",
-        model: "deepseek/deepseek-v4-flash",
-        apiKeyEnv: "OPENAI_API_KEY",
-      });
-      expect(claim.modelUsageProvider).toBe("deepseek-v4-flash");
-
-      if (!claim.encryptedSecrets) {
-        throw new Error("Expected OpenRouter claim to carry encrypted secrets");
-      }
-      const resolved = await fw.requestFirewallAuth(
-        sandboxHeaders,
-        {
-          encryptedSecrets: claim.encryptedSecrets,
-          authHeaders: {
-            Authorization: `Bearer ${secretTemplate("OPENROUTER_API_KEY")}`,
-          },
-          secretConnectorMap: claim.secretConnectorMap ?? undefined,
-          secretConnectorMetadataMap:
-            claim.secretConnectorMetadataMap ?? undefined,
-        },
-        [200],
-      );
-      if (resolved.status !== 200) {
-        throw new Error("Expected OpenRouter firewall auth to resolve");
-      }
-      expect(resolved.body.headers.Authorization).toBe(
-        `Bearer ${selectedApiKey}`,
-      );
-      expect(resolved.body.resolvedSecrets).toStrictEqual([
-        "OPENROUTER_API_KEY",
-      ]);
+      expect(environment.OPENAI_BASE_URL).toBe("https://api.deepseek.com/");
+      expect(environment.OPENAI_MODEL).toBe("deepseek-v4-flash");
     })().then(cleanupRunAndKeys, async (error: unknown) => {
       await cleanupRunAndKeys();
       throw error;

@@ -400,8 +400,8 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["tokens.cache_read", usd(1), 1_000_000],
     ["tokens.cache_creation", usd(12.5), 1_000_000],
   ]),
-  // Canonical VM0 customer credit pricing for managed DeepSeek V4 Flash.
-  // Keep this product rate independent of the selected upstream route.
+  // DeepSeek API pricing retrieved 2026-07-31 from:
+  // https://api-docs.deepseek.com/quick_start/pricing/
   ...usageGroup("model", "deepseek-v4-flash", [
     ["tokens.input", usd(0.14), 1_000_000],
     ["tokens.output", usd(0.28), 1_000_000],
@@ -668,6 +668,9 @@ function getVendorApiKeyEnvVars(vendor: string): string[] {
   }
   if (vendor === "openai") {
     return [envVar, "OPENAI_API_KEY"];
+  }
+  if (vendor === "deepseek") {
+    return [envVar, "DEEPSEEK_API_KEY"];
   }
   return [envVar];
 }
