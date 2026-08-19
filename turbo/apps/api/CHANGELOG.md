@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.461.2](https://github.com/vm0-ai/vm0/compare/api-v1.461.1...api-v1.461.2) (2026-08-19)
+
+
+### Bug Fixes
+
+* **api:** raise connector catalog size limit ([#28082](https://github.com/vm0-ai/vm0/issues/28082)) ([fe75820](https://github.com/vm0-ai/vm0/commit/fe758209487000ca0487a9a4a1f8ddff28e7715c))
+* **api:** run queued automation events before goal continuation ([#28092](https://github.com/vm0-ai/vm0/issues/28092)) ([1403973](https://github.com/vm0-ai/vm0/commit/14039736f05cb3059d47def41c6aad9c155c8ab3)), closes [#28078](https://github.com/vm0-ai/vm0/issues/28078)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.570.2
+    * @okouai/db bumped to 1.206.2
+
 ## [1.461.1](https://github.com/vm0-ai/vm0/compare/api-v1.461.0...api-v1.461.1) (2026-08-19)
 
 
