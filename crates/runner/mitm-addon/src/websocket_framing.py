@@ -5,48 +5,182 @@ from __future__ import annotations
 import zlib
 from collections.abc import Generator
 from dataclasses import dataclass
-from typing import cast
+from typing import Literal, cast
 
 import wsproto
-from mitmproxy import connection
+from mitmproxy import connection, http
 from mitmproxy.proxy import commands
 from mitmproxy.proxy.layers import websocket
 from wsproto import events
 from wsproto.extensions import Extension, PerMessageDeflate
 from wsproto.frame_protocol import CloseReason, FrameDecoder, FrameProtocol, Opcode, RsvBits
 
-MAX_DECODED_MESSAGE_BYTES = 16 * 1024 * 1024
+import deferred_callbacks
+import flow_metadata
+from logging_utils import log_proxy_entry
+
+MAX_DECODED_MESSAGE_BYTES = 256 * 1024 * 1024
+MAX_AGGREGATE_DECODED_BYTES = 1024 * 1024 * 1024
 MAX_MESSAGE_DATA_FRAMES = 8_192
 
 _EMPTY_DEFLATE_BLOCK = b"\x00\x00\xff\xff"
 _CONNECTION_MARKER_ATTRIBUTE = "_vm0_bounded_websocket_framing"
+_MESSAGE_LIMIT_VIOLATION_ATTRIBUTE = "_vm0_websocket_message_limit_violation"
 _ORIGINAL_WEBSOCKET_CONNECTION = websocket.WebsocketConnection
+
+_MessageLimitReason = Literal[
+    "decoded_message_bytes",
+    "aggregate_decoded_bytes",
+    "message_data_frames",
+]
+_MessageLimitUnit = Literal["bytes", "frames"]
+
+
+@dataclass(frozen=True)
+class _MessageLimitViolation:
+    reason: _MessageLimitReason
+    unit: _MessageLimitUnit
+    limit_value: int
+    observed_value: int
+    observed_is_lower_bound: bool
 
 
 @dataclass
-class _MessageBudget:
-    max_decoded_bytes: int
-    max_data_frames: int
+class _AggregateDecodedBudget:
+    """Decoded-byte ownership shared on mitmproxy's event-loop thread."""
+
     decoded_bytes: int = 0
-    data_frames: int = 0
 
     @property
     def remaining_bytes(self) -> int:
-        return self.max_decoded_bytes - self.decoded_bytes
+        return max(
+            0,
+            MAX_AGGREGATE_DECODED_BYTES - self.decoded_bytes,
+        )
 
-    def reserve_bytes(self, size: int) -> bool:
+    def reserve(self, size: int) -> bool:
         if size > self.remaining_bytes:
             return False
         self.decoded_bytes += size
         return True
 
+    def release(self, size: int) -> None:
+        if size > self.decoded_bytes:
+            raise RuntimeError("WebSocket aggregate decoded-byte ownership underflow")
+        self.decoded_bytes -= size
+
+    def reset_for_tests(self) -> None:
+        self.decoded_bytes = 0
+
+
+_aggregate_decoded_budget = _AggregateDecodedBudget()
+
+
+@dataclass
+class _MessageBudget:
+    conn: connection.Connection
+    max_decoded_bytes: int
+    max_data_frames: int
+    aggregate_budget: _AggregateDecodedBudget
+    decoded_bytes: int = 0
+    data_frames: int = 0
+
+    @property
+    def remaining_bytes(self) -> int:
+        message_remaining = self.max_decoded_bytes - self.decoded_bytes
+        return min(message_remaining, self.aggregate_budget.remaining_bytes)
+
+    def _record_violation(
+        self,
+        *,
+        reason: _MessageLimitReason,
+        unit: _MessageLimitUnit,
+        limit_value: int,
+        observed_value: int,
+        observed_is_lower_bound: bool = False,
+    ) -> None:
+        if isinstance(
+            getattr(self.conn, _MESSAGE_LIMIT_VIOLATION_ATTRIBUTE, None),
+            _MessageLimitViolation,
+        ):
+            return
+        setattr(
+            self.conn,
+            _MESSAGE_LIMIT_VIOLATION_ATTRIBUTE,
+            _MessageLimitViolation(
+                reason=reason,
+                unit=unit,
+                limit_value=limit_value,
+                observed_value=observed_value,
+                observed_is_lower_bound=observed_is_lower_bound,
+            ),
+        )
+
+    def reserve_bytes(self, size: int) -> bool:
+        observed_message_bytes = self.decoded_bytes + size
+        if observed_message_bytes > self.max_decoded_bytes:
+            self._record_violation(
+                reason="decoded_message_bytes",
+                unit="bytes",
+                limit_value=self.max_decoded_bytes,
+                observed_value=observed_message_bytes,
+            )
+            return False
+        if not self.aggregate_budget.reserve(size):
+            self._record_violation(
+                reason="aggregate_decoded_bytes",
+                unit="bytes",
+                limit_value=MAX_AGGREGATE_DECODED_BYTES,
+                observed_value=self.aggregate_budget.decoded_bytes + size,
+            )
+            return False
+        self.decoded_bytes += size
+        return True
+
+    def reject_bounded_decode_output(self, minimum_size: int) -> None:
+        observed_message_bytes = self.decoded_bytes + minimum_size
+        if observed_message_bytes > self.max_decoded_bytes:
+            self._record_violation(
+                reason="decoded_message_bytes",
+                unit="bytes",
+                limit_value=self.max_decoded_bytes,
+                observed_value=observed_message_bytes,
+                observed_is_lower_bound=True,
+            )
+            return
+        observed_aggregate_bytes = self.aggregate_budget.decoded_bytes + minimum_size
+        if observed_aggregate_bytes <= MAX_AGGREGATE_DECODED_BYTES:
+            raise RuntimeError("WebSocket bounded decode rejected below its aggregate limit")
+        self._record_violation(
+            reason="aggregate_decoded_bytes",
+            unit="bytes",
+            limit_value=MAX_AGGREGATE_DECODED_BYTES,
+            observed_value=observed_aggregate_bytes,
+            observed_is_lower_bound=True,
+        )
+
     def reserve_frame(self) -> bool:
         if self.data_frames >= self.max_data_frames:
+            self._record_violation(
+                reason="message_data_frames",
+                unit="frames",
+                limit_value=self.max_data_frames,
+                observed_value=self.data_frames + 1,
+            )
             return False
         self.data_frames += 1
         return True
 
+    def finish_message(self) -> None:
+        decoded_bytes = self.decoded_bytes
+        if decoded_bytes:
+            deferred_callbacks.call_soon(self.aggregate_budget.release, decoded_bytes)
+        self.decoded_bytes = 0
+        self.data_frames = 0
+
     def reset(self) -> None:
+        if self.decoded_bytes:
+            self.aggregate_budget.release(self.decoded_bytes)
         self.decoded_bytes = 0
         self.data_frames = 0
 
@@ -105,11 +239,8 @@ class _DecodedMessageLimit(Extension):
         opcode = self._opcode
         if opcode is None:
             raise RuntimeError("WebSocket frame completed without a frame header")
-        is_control = opcode.iscontrol()
         self._opcode = None
         self._frame_started = False
-        if fin and not is_control:
-            self._budget.reset()
 
     def clear(self) -> None:
         self._opcode = None
@@ -154,6 +285,7 @@ class _BoundedPerMessageDeflate(PerMessageDeflate):
             return CloseReason.INVALID_FRAME_PAYLOAD_DATA
 
         if len(decoded) > remaining or decompressor.unconsumed_tail:
+            self._budget.reject_bounded_decode_output(remaining + 1)
             self._discard_inbound_state()
             return CloseReason.MESSAGE_TOO_BIG
         return decoded
@@ -211,8 +343,10 @@ class _BoundedWebsocketConnection(_ORIGINAL_WEBSOCKET_CONNECTION):
         conn: connection.Connection,
     ) -> None:
         budget = _MessageBudget(
+            conn=conn,
             max_decoded_bytes=MAX_DECODED_MESSAGE_BYTES,
             max_data_frames=MAX_MESSAGE_DATA_FRAMES,
+            aggregate_budget=_aggregate_decoded_budget,
         )
         bounded_extensions: list[Extension] = []
         bounded_deflates: list[_BoundedPerMessageDeflate] = []
@@ -259,8 +393,12 @@ class _BoundedWebsocketConnection(_ORIGINAL_WEBSOCKET_CONNECTION):
             for event in super().events():
                 if isinstance(event, events.CloseConnection):
                     self._clear_partial_state()
-                yield event
-                self._ensure_mutable_fragment()
+                try:
+                    yield event
+                finally:
+                    if isinstance(event, events.Message) and event.message_finished:
+                        self._vm0_message_limit._budget.finish_message()
+                    self._ensure_mutable_fragment()
         finally:
             self._ensure_mutable_fragment()
 
@@ -271,6 +409,46 @@ class _BoundedWebsocketConnection(_ORIGINAL_WEBSOCKET_CONNECTION):
 
 
 setattr(_BoundedWebsocketConnection, _CONNECTION_MARKER_ATTRIBUTE, True)
+
+
+def log_limit_violation(flow: http.HTTPFlow) -> None:
+    """Write and consume content-free framing diagnostics for a terminal flow."""
+    for direction, conn in (
+        ("client_to_server", flow.client_conn),
+        ("server_to_client", flow.server_conn),
+    ):
+        violation = getattr(conn, _MESSAGE_LIMIT_VIOLATION_ATTRIBUTE, None)
+        if not isinstance(violation, _MessageLimitViolation):
+            continue
+        delattr(conn, _MESSAGE_LIMIT_VIOLATION_ATTRIBUTE)
+        log_proxy_entry(
+            flow_metadata.proxy_log_path(flow.metadata),
+            "warn",
+            "WebSocket message rejected by framing limit",
+            type="websocket_framing_limit",
+            reason=violation.reason,
+            direction=direction,
+            limit_unit=violation.unit,
+            limit_value=violation.limit_value,
+            observed_value=violation.observed_value,
+            observed_is_lower_bound=violation.observed_is_lower_bound,
+            close_code=int(CloseReason.MESSAGE_TOO_BIG),
+            run_id=flow_metadata.run_id(flow.metadata),
+            flow_id=flow.id,
+            firewall_name=flow_metadata.firewall_name(flow.metadata),
+        )
+
+
+def release_flow_state(flow: http.HTTPFlow) -> None:
+    """Release connection-scoped diagnostic state."""
+    for conn in (flow.client_conn, flow.server_conn):
+        if hasattr(conn, _MESSAGE_LIMIT_VIOLATION_ATTRIBUTE):
+            delattr(conn, _MESSAGE_LIMIT_VIOLATION_ATTRIBUTE)
+
+
+def reset_aggregate_budget_for_tests() -> None:
+    """Reset aggregate decoded-byte ownership between tests."""
+    _aggregate_decoded_budget.reset_for_tests()
 
 
 def install_websocket_framing() -> None:
