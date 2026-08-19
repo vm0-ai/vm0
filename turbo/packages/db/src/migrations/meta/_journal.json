@@ -978,8 +978,15 @@
     {
       "idx": 947,
       "version": "7",
-      "when": 1787110879033,
-      "tag": "0947_yellow_maginty",
+      "when": 1787110580902,
+      "tag": "0947_add_seedance_2_5_1080p_pricing",
+      "breakpoints": true
+    },
+    {
+      "idx": 948,
+      "version": "7",
+      "when": 1787113897933,
+      "tag": "0948_tearful_miss_america",
       "breakpoints": true
     }
   ]

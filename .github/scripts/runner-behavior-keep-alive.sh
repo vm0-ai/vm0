@@ -246,10 +246,19 @@ fi
 wait "$OVERLAP_EXEC_PID" 2>/dev/null || true
 OVERLAP_EXEC_PID=""
 
-OVERLAP_LOGS=$(sudo journalctl --no-pager \
-  "_SYSTEMD_INVOCATION_ID=$INVOCATION_ID" 2>&1) \
-  || fail "failed to read overlap runner logs"
-grep -F 'normal operations busy while preparing park' <<<"$OVERLAP_LOGS" >/dev/null \
+OVERLAP_BUSY_LOGGED=false
+for _ in $(seq 1 10); do
+  OVERLAP_LOGS=$(sudo journalctl --no-pager \
+    "_SYSTEMD_INVOCATION_ID=$INVOCATION_ID" 2>&1) \
+    || fail "failed to read overlap runner logs"
+  if grep -F 'normal operations busy while preparing park' \
+    <<<"$OVERLAP_LOGS" >/dev/null; then
+    OVERLAP_BUSY_LOGGED=true
+    break
+  fi
+  sleep 0.5
+done
+[ "$OVERLAP_BUSY_LOGGED" = true ] \
   || fail "overlapping runner exec did not reject idle admission as busy"
 
 echo "--- Overlap turn 2: busy sandbox was not reused ---"
