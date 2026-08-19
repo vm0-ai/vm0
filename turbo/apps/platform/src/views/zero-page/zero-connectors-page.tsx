@@ -851,14 +851,15 @@ function connectorLabelForSlug(
 
 function effectiveConnectorCatalogCount(
   catalogStatusLoadable: Loadable<PublicConnectorCatalogStatusResponse>,
+  connectorDiscoveryEnabled: boolean,
 ): number | null {
   if (catalogStatusLoadable.state !== "hasData") {
     return null;
   }
-  return (
-    catalogStatusLoadable.data.totalConnectorCount ??
-    catalogStatusLoadable.data.connectors.length
-  );
+  if (connectorDiscoveryEnabled) {
+    return catalogStatusLoadable.data.totalConnectorCount ?? null;
+  }
+  return catalogStatusLoadable.data.connectors.length;
 }
 
 export function ZeroConnectorsPage() {
@@ -868,8 +869,11 @@ export function ZeroConnectorsPage() {
     filteredConnectorCatalogItems$,
   );
   const catalogStatusLoadable = useLastLoadable(connectorCatalogDiscovery$);
+  const featureSwitches = useGet(featureSwitch$);
   const connectorCatalogCountEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.ConnectorCatalogCount] ?? false;
+    featureSwitches[FeatureSwitchKey.ConnectorCatalogCount] ?? false;
+  const connectorDiscoveryEnabled =
+    featureSwitches[FeatureSwitchKey.ConnectorDiscovery] ?? false;
   const pollingAuthCodeSlug = useGet(pollingOAuthAuthCodeConnectorSlug$);
   const pollingDeviceAuthSlug = useGet(pollingOAuthDeviceAuthConnectorSlug$);
   const connectFlowSlug = useGet(connectFlowConnectorSlug$);
@@ -913,6 +917,7 @@ export function ZeroConnectorsPage() {
       : [];
   const connectorCatalogCount = effectiveConnectorCatalogCount(
     catalogStatusLoadable,
+    connectorDiscoveryEnabled,
   );
   const categoryMetadata = localizeConnectorCategoryMetadata(
     catalogStatusLoadable.state === "hasData"
