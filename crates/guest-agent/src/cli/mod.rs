@@ -78,7 +78,6 @@ use tokio_util::sync::CancellationToken;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 const OPENAI_BASE_URL_ENV_KEY: &str = "OPENAI_BASE_URL";
-const ZERO_AGENT_ID_ENV_KEY: &str = "ZERO_AGENT_ID";
 const OKOU_AGENT_ID_ENV_KEY: &str = "OKOU_AGENT_ID";
 const CLI_PACKAGE_URL_ENV_KEY: &str = "CLI_PKG_URL";
 const WEB_SEARCH_TOOL_NAME: &str = "WebSearch";
@@ -359,8 +358,7 @@ impl<'a> CliRuntimeConfig<'a> {
         } else {
             None
         };
-        let disable_builtin_web_search = config.user_env.contains_key(OKOU_AGENT_ID_ENV_KEY)
-            || config.user_env.contains_key(ZERO_AGENT_ID_ENV_KEY);
+        let disable_builtin_web_search = config.user_env.contains_key(OKOU_AGENT_ID_ENV_KEY);
         let disallowed_tools = disallowed_tools_with_builtin_web_search_disabled(
             &config.disallowed_tools,
             disable_builtin_web_search,
@@ -2191,23 +2189,21 @@ mod tests {
     }
 
     #[test]
-    fn codex_runtime_accepts_okou_and_zero_agent_contexts() {
-        for key in [super::OKOU_AGENT_ID_ENV_KEY, super::ZERO_AGENT_ID_ENV_KEY] {
-            let config = guest_config_for_agent_context(HashMap::from([(
-                key.to_string(),
-                "agent-test".to_string(),
-            )]));
-            let paths = crate::paths::GuestPaths::from_runtime_dir("/tmp/okou-env-test");
+    fn codex_runtime_accepts_okou_agent_context() {
+        let config = guest_config_for_agent_context(HashMap::from([(
+            super::OKOU_AGENT_ID_ENV_KEY.to_string(),
+            "agent-test".to_string(),
+        )]));
+        let paths = crate::paths::GuestPaths::from_runtime_dir("/tmp/okou-env-test");
 
-            let runtime = CliRuntimeConfig::from_config(&config, &paths, Instant::now()).unwrap();
+        let runtime = CliRuntimeConfig::from_config(&config, &paths, Instant::now()).unwrap();
 
-            assert!(runtime.disable_builtin_web_search);
-            assert!(
-                runtime
-                    .codex_startup_config_overrides()
-                    .contains(&super::CODEX_WEB_SEARCH_DISABLED_CONFIG.to_string())
-            );
-        }
+        assert!(runtime.disable_builtin_web_search);
+        assert!(
+            runtime
+                .codex_startup_config_overrides()
+                .contains(&super::CODEX_WEB_SEARCH_DISABLED_CONFIG.to_string())
+        );
     }
 
     #[test]
