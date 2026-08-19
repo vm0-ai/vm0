@@ -153,18 +153,12 @@ async function publishCatalogPermissionBundleWakeupsInner(args: {
   readonly previousSnapshot: ConnectorRuntimeSnapshot | undefined;
   readonly currentArtifact: ConnectorCatalogArtifact;
 }): Promise<void> {
-  const currentSnapshot = {
-    serverFirewalls: createAcceptedConnectorServerFirewallCatalog({
-      artifact: args.currentArtifact,
-      runtimeMethodsBySlug: new Map(
-        args.currentArtifact.connectors.flatMap((connector) => {
-          return connector.firewall.kind === "none"
-            ? []
-            : [[connector.slug, []] as const];
-        }),
-      ),
-    }),
-  };
+  const currentCatalog = createAcceptedConnectorServerFirewallCatalog({
+    artifact: args.currentArtifact,
+    runtimeMethodsForSlug: () => {
+      return [];
+    },
+  });
   const rows = await args.db
     .select({
       id: orgCustomConnectors.id,
@@ -210,12 +204,12 @@ async function publishCatalogPermissionBundleWakeupsInner(args: {
     const [previousBundle, currentBundle] = await Promise.all([
       args.previousSnapshot
         ? loadCustomConnectorPermissionBundle({
-            snapshot: args.previousSnapshot,
+            catalog: args.previousSnapshot.serverFirewallMetadata,
             ref,
           })
         : null,
       loadCustomConnectorPermissionBundle({
-        snapshot: currentSnapshot,
+        catalog: currentCatalog,
         ref,
       }),
     ]);

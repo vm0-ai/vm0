@@ -142,6 +142,7 @@ export class ConnectorCatalogLoadTiming {
   private catalogCompressedSize: number | undefined;
   private connectorCount: number | undefined;
   private resolvedConnectorCount: number | undefined;
+  private materializedConnectorCount: number | undefined;
 
   constructor(
     private readonly collector: ApiDispatchTimingCollector,
@@ -180,6 +181,10 @@ export class ConnectorCatalogLoadTiming {
     this.catalogCompressedSize = args.compressedSize;
     this.connectorCount = args.connectorCount;
     this.resolvedConnectorCount = args.resolvedConnectorCount;
+  }
+
+  recordMaterializedConnectorCount(count: number): void {
+    this.materializedConnectorCount = count;
   }
 
   async measure<T>(
@@ -260,6 +265,13 @@ export class ConnectorCatalogLoadTiming {
         this.requestedConnectorCount === undefined
           ? "not_applicable"
           : countBucket(this.requestedConnectorCount),
+      ...(this.materializedConnectorCount === undefined
+        ? {}
+        : {
+            connector_catalog_materialized_connector_count_bucket: countBucket(
+              this.materializedConnectorCount,
+            ),
+          }),
     };
   }
 }

@@ -246,6 +246,115 @@ test("usage-pack and Plan transitions preserve scheduled intent", async ({
   });
 });
 
+test("restored Team plan preserves package and concurrency changes", async ({
+  page,
+}) => {
+  test.setTimeout(360_000);
+
+  await withBillingOwner(
+    page,
+    "E2E Combined Billing Transitions",
+    async (owner) => {
+      await buyUsagePackPlan(page, "team", 100);
+      await expectPlanState(page, owner, {
+        cancelAtPeriodEnd: false,
+        hasSubscription: true,
+        scheduledChange: null,
+        tier: "team",
+      });
+      await expectUsagePackState(page, owner, owner.userId, {
+        pendingChange: null,
+        tier: "team",
+        usagePackUsd: 100,
+      });
+      await expectConcurrencyState(page, owner, {
+        cancelAtPeriodEnd: null,
+        concurrencyLimit: 10,
+        quantity: null,
+        scheduledQuantity: null,
+        subscriptionCount: 0,
+      });
+
+      await downgradeTeamToPro(page, 20);
+      await expectPlanState(page, owner, {
+        cancelAtPeriodEnd: false,
+        hasSubscription: true,
+        scheduledChange: { targetTier: "pro", type: "downgrade" },
+        tier: "team",
+      });
+      await expectUsagePackState(page, owner, owner.userId, {
+        pendingChange: {
+          kind: "downgrade",
+          status: "scheduled",
+          targetUsagePackUsd: 20,
+        },
+        tier: "team",
+        usagePackUsd: 100,
+      });
+
+      await restorePlan(page, "team");
+      await expectPlanState(page, owner, {
+        cancelAtPeriodEnd: false,
+        hasSubscription: true,
+        scheduledChange: null,
+        tier: "team",
+      });
+      await expectUsagePackState(page, owner, owner.userId, {
+        pendingChange: null,
+        tier: "team",
+        usagePackUsd: 100,
+      });
+
+      await changeUsagePack(page, "team", 50, "Confirm");
+      await expectUsagePackState(page, owner, owner.userId, {
+        pendingChange: {
+          kind: "downgrade",
+          status: "scheduled",
+          targetUsagePackUsd: 50,
+        },
+        tier: "team",
+        usagePackUsd: 100,
+      });
+
+      await buyConcurrency(page, owner, 10);
+      await expectConcurrencyState(page, owner, {
+        cancelAtPeriodEnd: false,
+        concurrencyLimit: 20,
+        quantity: 10,
+        scheduledQuantity: null,
+        subscriptionCount: 1,
+      });
+      await expectUsagePackState(page, owner, owner.userId, {
+        pendingChange: {
+          kind: "downgrade",
+          status: "scheduled",
+          targetUsagePackUsd: 50,
+        },
+        tier: "team",
+        usagePackUsd: 100,
+      });
+
+      await changeConcurrency(page, 5);
+      await expectConcurrencyState(page, owner, {
+        cancelAtPeriodEnd: false,
+        concurrencyLimit: 20,
+        quantity: 10,
+        scheduledQuantity: 5,
+        subscriptionCount: 1,
+      });
+      await expectUsagePackState(page, owner, owner.userId, {
+        pendingChange: {
+          kind: "downgrade",
+          status: "scheduled",
+          targetUsagePackUsd: 50,
+        },
+        tier: "team",
+        usagePackUsd: 100,
+      });
+    },
+  );
+});
+
 test("paid invitation purchases and revokes a pending member package", async ({
   page,
 }) => {
@@ -426,7 +535,11 @@ async function enableUsagePackPlans(page: Page, token: string): Promise<void> {
   }
 }
 
-async function buyUsagePackPlan(page: Page, tier: PaidTier): Promise<void> {
+async function buyUsagePackPlan(
+  page: Page,
+  tier: PaidTier,
+  usagePackUsd?: UsagePackUsd,
+): Promise<void> {
   const planLabel = tier === "pro" ? "Pro" : "Team";
   const settings = await openBillingSettings(page);
   await expect(
@@ -448,6 +561,9 @@ async function buyUsagePackPlan(page: Page, tier: PaidTier): Promise<void> {
   await expect(
     packages.getByRole("combobox", { name: /^Usage for /u }),
   ).toBeVisible();
+  if (usagePackUsd !== undefined) {
+    await selectUsagePack(page, packages, usagePackUsd);
+  }
   const summary = packages.getByRole("region", { name: "Order summary" });
   await summary
     .getByRole("button", { name: `Upgrade to ${planLabel}`, exact: true })
@@ -712,7 +828,10 @@ async function upgradeProToTeam(page: Page): Promise<void> {
   await submitUsagePackConfiguration(page, packages, "Confirm");
 }
 
-async function downgradeTeamToPro(page: Page): Promise<void> {
+async function downgradeTeamToPro(
+  page: Page,
+  usagePackUsd?: UsagePackUsd,
+): Promise<void> {
   const settings = await openBillingSettings(page);
   await settings
     .getByRole("button", { name: "Compare all plans", exact: true })
@@ -724,6 +843,9 @@ async function downgradeTeamToPro(page: Page): Promise<void> {
     name: "Configure member packages",
   });
   await expect(packages).toBeVisible();
+  if (usagePackUsd !== undefined) {
+    await selectUsagePack(page, packages, usagePackUsd);
+  }
   await submitUsagePackConfiguration(page, packages, "Confirm");
 }
 

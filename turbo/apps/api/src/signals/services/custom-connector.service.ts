@@ -1487,7 +1487,7 @@ async function validatePermissionBundleRef(
   }
   const snapshot = await loadConnectorRuntimeSnapshot(db);
   const bundle = await loadCustomConnectorPermissionBundle({
-    snapshot,
+    catalog: snapshot.serverFirewallMetadata,
     ref: permissionBundleRef,
   });
   return bundle
@@ -2502,7 +2502,7 @@ export function getCustomConnectorPermissionBundle(args: {
     }
     const snapshot = await loadConnectorRuntimeSnapshot(db);
     const bundle = await loadCustomConnectorPermissionBundle({
-      snapshot,
+      catalog: snapshot.serverFirewallMetadata,
       ref: permissionBundleRef,
     });
     if (!bundle) {

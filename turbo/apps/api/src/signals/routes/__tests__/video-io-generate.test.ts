@@ -81,6 +81,18 @@ const VIDEO_PRICING_DEFAULTS = [
     unitSize: 1_000_000,
   },
   {
+    provider: SEEDANCE_2_5_MODEL,
+    category: "output_video_tokens.1080p.no_video",
+    unitPrice: 14_625,
+    unitSize: 1_000_000,
+  },
+  {
+    provider: SEEDANCE_2_5_MODEL,
+    category: "output_video_tokens.1080p.with_video",
+    unitPrice: 8750,
+    unitSize: 1_000_000,
+  },
+  {
     provider: "dreamina-seedance-2-0-260128",
     category: "output_video_tokens.480p_720p.no_video",
     unitPrice: 8750,
@@ -1295,8 +1307,8 @@ describe("POST /api/zero/video-io/generate", () => {
     await expect(orgCredits(fixture)).resolves.toBe(10_000 - 263);
   });
 
-  it("generates Seedance 2.5 with expanded references and 20% gross-margin pricing", async () => {
-    const fixture = await seedVideoFixture();
+  it("generates Seedance 2.5 at 1080p with expanded references and 25% markup", async () => {
+    const fixture = await seedVideoFixture({ credits: 20_000 });
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const referenceImageUrls = Array.from({ length: 30 }, (_, index) => {
       return `https://example.com/reference-${index + 1}.png`;
@@ -1331,7 +1343,7 @@ describe("POST /api/zero/video-io/generate", () => {
         prompt: "tell a complete cinematic story",
         model: "dreamina-seedance-2.5",
         duration: "30s",
-        resolution: "720p",
+        resolution: "1080p",
         aspectRatio: "16:9",
         imageUrls: referenceImageUrls,
         videoUrls: referenceVideoUrls,
@@ -1349,7 +1361,7 @@ describe("POST /api/zero/video-io/generate", () => {
     expect(observedBody).toMatchObject({
       model: SEEDANCE_2_5_MODEL,
       callback_url: callbackUrl,
-      resolution: "720p",
+      resolution: "1080p",
       ratio: "16:9",
       duration: 30,
       generate_audio: true,
@@ -1395,15 +1407,15 @@ describe("POST /api/zero/video-io/generate", () => {
     expect(statusResponse.status).toBe(200);
     const body = readGenerationResult(await statusResponse.json());
     expect(body).toMatchObject({
-      creditsCharged: 800,
+      creditsCharged: 875,
       model: SEEDANCE_2_5_MODEL,
       duration: "30s",
       durationSeconds: 30,
-      resolution: "720p",
+      resolution: "1080p",
       sourceUrl: BYTEPLUS_VIDEO_URL,
       requestId: "seedance-2-5-video-task",
     });
-    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 800);
+    await expect(orgCredits(fixture)).resolves.toBe(20_000 - 875);
   });
 
   it("allows Seedance 2.5 audio-only references", async () => {

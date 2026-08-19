@@ -7,12 +7,21 @@ audit_script="${repo_root}/.github/scripts/audit-okou-cli-cutover.sh"
 security_workflow="${repo_root}/.github/workflows/security.yml"
 turbo_workflow="${repo_root}/.github/workflows/turbo.yml"
 
-install_line="$(grep -nF 'sudo apt-get install -y --no-install-recommends ansible-core ripgrep' "${security_workflow}" | cut -d: -f1 || true)"
+ripgrep_step_line="$(grep -nF -- '- name: Install ripgrep' "${security_workflow}" | cut -d: -f1 || true)"
+ripgrep_download_line="$(grep -nF 'BurntSushi/ripgrep/releases/download/' "${security_workflow}" | cut -d: -f1 || true)"
 audit_step_line="$(grep -nF -- '- name: Audit Okou CLI cutover' "${security_workflow}" | cut -d: -f1 || true)"
 audit_run_line="$(grep -nF 'run: .github/scripts/audit-okou-cli-cutover.sh' "${security_workflow}" | cut -d: -f1 || true)"
-if [[ -z "${install_line}" || -z "${audit_step_line}" || -z "${audit_run_line}" ||
-  "${audit_step_line}" -le "${install_line}" || "${audit_run_line}" -le "${audit_step_line}" ]]; then
-  echo "Security CI does not run the Okou cutover audit after installing ripgrep" >&2
+if [[ -z "${ripgrep_step_line}" || -z "${ripgrep_download_line}" ||
+  -z "${audit_step_line}" || -z "${audit_run_line}" ||
+  "${ripgrep_download_line}" -le "${ripgrep_step_line}" ||
+  "${audit_step_line}" -le "${ripgrep_download_line}" ||
+  "${audit_run_line}" -le "${audit_step_line}" ]]; then
+  echo "Security CI does not run the Okou cutover audit after installing verified ripgrep" >&2
+  exit 1
+fi
+actionlint_job="$(sed -n '/^  actionlint:/,/^  gitleaks:/p' "${security_workflow}")"
+if grep -Fq 'apt-get' <<< "${actionlint_job}"; then
+  echo "Workflow Lint must not install dependencies through apt" >&2
   exit 1
 fi
 if grep -Fq 'run: .github/scripts/audit-okou-cli-cutover.sh' "${turbo_workflow}"; then

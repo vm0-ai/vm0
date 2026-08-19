@@ -12,6 +12,8 @@ import {
 
 const AXIOM_API_ORIGIN = "https://api.axiom.co";
 const AXIOM_QUERY_TIMEOUT_MS = 120_000;
+const AXIOM_INGEST_FAILURE_DETAIL_LIMIT = 3;
+const AXIOM_INGEST_FAILURE_ERROR_MAX_LENGTH = 512;
 
 const L = logger("api:axiom");
 
@@ -90,21 +92,54 @@ type DirectAxiomIngestResult =
   | { readonly configured: false }
   | { readonly configured: true };
 
+type DirectAxiomIngestErrorOptions =
+  | {
+      readonly reason: "http_status";
+      readonly dataset: string;
+      readonly status: number;
+    }
+  | {
+      readonly reason: "invalid_response";
+      readonly dataset: string;
+    }
+  | {
+      readonly reason: "partial_ingest";
+      readonly dataset: string;
+      readonly expected: number;
+      readonly ingested: number;
+      readonly failed: number;
+      readonly failureDetailsReturned: number;
+      readonly failureDetails: readonly AxiomIngestFailure[];
+      readonly failureDetailsOmitted: number;
+    };
+
 class DirectAxiomIngestError extends Error {
   readonly reason: "http_status" | "invalid_response" | "partial_ingest";
+  readonly dataset: string;
   readonly status?: number;
+  readonly expected?: number;
+  readonly ingested?: number;
+  readonly failed?: number;
+  readonly failureDetailsReturned?: number;
+  readonly failureDetails?: readonly AxiomIngestFailure[];
+  readonly failureDetailsOmitted?: number;
 
-  constructor(
-    message: string,
-    options: {
-      readonly reason: "http_status" | "invalid_response" | "partial_ingest";
-      readonly status?: number;
-    },
-  ) {
+  constructor(message: string, options: DirectAxiomIngestErrorOptions) {
     super(message);
     this.name = "DirectAxiomIngestError";
     this.reason = options.reason;
-    this.status = options.status;
+    this.dataset = options.dataset;
+    if (options.reason === "http_status") {
+      this.status = options.status;
+    }
+    if (options.reason === "partial_ingest") {
+      this.expected = options.expected;
+      this.ingested = options.ingested;
+      this.failed = options.failed;
+      this.failureDetailsReturned = options.failureDetailsReturned;
+      this.failureDetails = options.failureDetails;
+      this.failureDetailsOmitted = options.failureDetailsOmitted;
+    }
   }
 }
 
@@ -135,6 +170,14 @@ function isAxiomIngestStatus(value: unknown): value is AxiomIngestStatus {
       (Array.isArray(value.failures) &&
         value.failures.every(isAxiomIngestFailure)))
   );
+}
+
+function boundedAxiomIngestFailureError(error: string): string {
+  const normalized = error.replace(/\s+/g, " ").trim();
+  if (normalized.length <= AXIOM_INGEST_FAILURE_ERROR_MAX_LENGTH) {
+    return normalized;
+  }
+  return `${normalized.slice(0, AXIOM_INGEST_FAILURE_ERROR_MAX_LENGTH - 3)}...`;
 }
 
 function axiomIngestUrl(dataset: string): string {
@@ -175,6 +218,7 @@ export async function ingestAxiomDirect(
       `Axiom ingest failed with status ${response.status}`,
       {
         reason: "http_status",
+        dataset,
         status: response.status,
       },
     );
@@ -184,7 +228,7 @@ export async function ingestAxiomDirect(
   if (!isAxiomIngestStatus(payload)) {
     throw new DirectAxiomIngestError(
       "Axiom ingest returned an unexpected response shape",
-      { reason: "invalid_response" },
+      { reason: "invalid_response", dataset },
     );
   }
   if (
@@ -192,9 +236,28 @@ export async function ingestAxiomDirect(
     (payload.failures?.length ?? 0) !== 0 ||
     payload.ingested !== events.length
   ) {
+    const returnedFailureDetails = payload.failures ?? [];
+    const failureDetails = returnedFailureDetails
+      .slice(0, AXIOM_INGEST_FAILURE_DETAIL_LIMIT)
+      .map((failure) => {
+        return {
+          timestamp: failure.timestamp,
+          error: boundedAxiomIngestFailureError(failure.error),
+        };
+      });
     throw new DirectAxiomIngestError(
       `Axiom ingest accepted ${payload.ingested} of ${events.length} events with ${payload.failed} failed events and ${payload.failures?.length ?? 0} failure details`,
-      { reason: "partial_ingest" },
+      {
+        reason: "partial_ingest",
+        dataset,
+        expected: events.length,
+        ingested: payload.ingested,
+        failed: payload.failed,
+        failureDetailsReturned: returnedFailureDetails.length,
+        failureDetails,
+        failureDetailsOmitted:
+          returnedFailureDetails.length - failureDetails.length,
+      },
     );
   }
 

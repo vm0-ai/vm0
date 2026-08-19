@@ -32,7 +32,16 @@ enum WorkspaceImageCacheCommand {
     /// Status-category, temporary-path, and size summary values are lower bounds
     /// when `lockedEntries` is greater than zero.
     List(WorkspaceImageCacheListArgs),
-    /// Clean up workspace image cache entries
+    /// Clean up workspace image cache entries.
+    ///
+    /// The first phase removes stale, unusable, and temporary cache contents before evaluating
+    /// capacity. It may also evict valid reusable entries, oldest-first, when the cache exceeds
+    /// its maximum byte budget, filesystem free space falls below the minimum, or the cache
+    /// exceeds the 1,024-entry cap. When budget pressure triggers eviction, it continues until
+    /// the post-GC target and minimum-free-space thresholds are met. Locked entries are skipped
+    /// during reusable-entry eviction, and candidates are revalidated before deletion. Use
+    /// `--dry-run` to evaluate this same policy and report prospective cleanup without deleting
+    /// data.
     Gc(WorkspaceImageCacheGcArgs),
 }
 
@@ -55,7 +64,7 @@ struct WorkspaceImageCacheListArgs {
 
 #[derive(Args)]
 struct WorkspaceImageCacheGcArgs {
-    /// Show what would be deleted without actually deleting.
+    /// Evaluate the same cleanup policy and report what would be deleted without deleting data.
     #[arg(long)]
     dry_run: bool,
 }

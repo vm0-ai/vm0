@@ -60,6 +60,7 @@ import {
   installApiTestConnectorCatalog,
   readApiTestConnectorCatalogCompatibilityEvaluations,
   readApiTestConnectorCatalogValidationAuthority,
+  replaceApiTestConnectorCatalogFilteredAuthMethods,
   replaceApiTestConnectorCatalogStoredBytes,
   setApiTestConnectorCatalogValidationAuthority,
 } from "../../../test-fixtures/connector-catalog";
@@ -95,6 +96,7 @@ import {
 import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { postSubscriptionInvoicePaid } from "./helpers/stripe-billing-webhook";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import {
   readAgentRunCallbacks$,
@@ -1093,6 +1095,7 @@ function expectConnectorCatalogLoadTiming(args: {
   readonly runtimeCacheOutcome: "hit" | "miss";
   readonly requestedConnectorCount: "known" | "not_applicable";
   readonly requestedConnectorCountBucket?: (typeof CONNECTOR_CATALOG_COUNT_BUCKETS)[number];
+  readonly materializedConnectorCountBucket: (typeof CONNECTOR_CATALOG_COUNT_BUCKETS)[number];
   readonly resolvedConnectorFraction: (typeof CONNECTOR_CATALOG_RESOLVED_CONNECTOR_FRACTION_BUCKETS)[number];
   readonly validation:
     | { readonly outcome: "attested" | "not_run" }
@@ -1113,6 +1116,8 @@ function expectConnectorCatalogLoadTiming(args: {
       span_kind: "nested",
       connector_catalog_accepted_cache_outcome: args.acceptedCacheOutcome,
       connector_catalog_runtime_cache_outcome: args.runtimeCacheOutcome,
+      connector_catalog_materialized_connector_count_bucket:
+        args.materializedConnectorCountBucket,
       connector_catalog_validation_outcome: args.validation.outcome,
     }),
   );
@@ -1780,6 +1785,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       runtimeCacheOutcome: "miss",
       requestedConnectorCount: "known",
       requestedConnectorCountBucket: "2_4",
+      materializedConnectorCountBucket: "0",
       resolvedConnectorFraction: "none",
       validation: {
         outcome: "full_fallback",
@@ -1842,6 +1848,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       acceptedCacheOutcome: "miss",
       runtimeCacheOutcome: "miss",
       requestedConnectorCount: "known",
+      materializedConnectorCountBucket: "1",
       resolvedConnectorFraction: "up_to_25_percent",
       validation: {
         outcome: "full_fallback",
@@ -1906,6 +1913,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       acceptedCacheOutcome: "miss",
       runtimeCacheOutcome: "miss",
       requestedConnectorCount: "known",
+      materializedConnectorCountBucket: "1",
       resolvedConnectorFraction: "up_to_25_percent",
       validation: {
         outcome: "full_fallback",
@@ -1954,6 +1962,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       acceptedCacheOutcome: "hit",
       runtimeCacheOutcome: "hit",
       requestedConnectorCount: "known",
+      materializedConnectorCountBucket: "0",
       resolvedConnectorFraction: "up_to_25_percent",
       validation: { outcome: "not_run" },
     });
@@ -2038,6 +2047,20 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         }),
       ),
     ).toStrictEqual(new Set(["attested", "not_run"]));
+    expect(
+      new Set(
+        concurrentLoadEvents.map((event) => {
+          return event.connector_catalog_runtime_cache_outcome;
+        }),
+      ),
+    ).toStrictEqual(new Set(["miss", "hit"]));
+    expect(
+      new Set(
+        concurrentLoadEvents.map((event) => {
+          return event.connector_catalog_materialized_connector_count_bucket;
+        }),
+      ),
+    ).toStrictEqual(new Set(["0", "1"]));
     for (const event of concurrentLoadEvents) {
       expect(CONNECTOR_CATALOG_COMPRESSED_SIZE_BUCKETS).toContain(
         event.connector_catalog_compressed_size_bucket,
@@ -2060,6 +2083,153 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         "fixture-confidential-secret",
       ]);
     }
+  });
+
+  it("memoizes scoped runtime entries by exact catalog identity", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const fw = createFirewallApi(context);
+    mockEnv(
+      "R2_USER_STORAGES_BUCKET_NAME",
+      `test-run-lifecycle-scoped-runtime-${randomUUID()}`,
+    );
+    const initialCatalogVersion = `api-test-scoped-runtime-${randomUUID()}`;
+    await installApiTestConnectorCatalog({
+      catalogVersion: initialCatalogVersion,
+    });
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const createScopedRun = async (
+      prompt: string,
+      allowedConnectorSlugs: readonly string[],
+    ) => {
+      return await api.createDirectRun(actor, {
+        ...zeroBackedDirectRunBody({ agentId, prompt }),
+        connectorScope: {
+          allowedConnectorSlugs,
+          allowedCustomConnectorIds: [],
+        },
+      });
+    };
+
+    const firstRun = await createScopedRun("cold scoped connector runtime", [
+      "x",
+      "x",
+      "catalog-runtime-unknown",
+    ]);
+    expectConnectorCatalogLoadTiming({
+      events: apiDispatchTimingEventsForRun(firstRun.runId),
+      acceptedCacheOutcome: "miss",
+      runtimeCacheOutcome: "miss",
+      requestedConnectorCount: "known",
+      requestedConnectorCountBucket: "2_4",
+      materializedConnectorCountBucket: "1",
+      resolvedConnectorFraction: "up_to_25_percent",
+      validation: { outcome: "attested" },
+    });
+    await api.requestCancelRun(actor, firstRun.runId, [200]);
+
+    const repeatedRun = await createScopedRun(
+      "warm repeated scoped connector runtime",
+      ["x", "x", "catalog-runtime-unknown"],
+    );
+    expectConnectorCatalogLoadTiming({
+      events: apiDispatchTimingEventsForRun(repeatedRun.runId),
+      acceptedCacheOutcome: "hit",
+      runtimeCacheOutcome: "hit",
+      requestedConnectorCount: "known",
+      requestedConnectorCountBucket: "2_4",
+      materializedConnectorCountBucket: "0",
+      resolvedConnectorFraction: "up_to_25_percent",
+      validation: { outcome: "not_run" },
+    });
+    await api.requestCancelRun(actor, repeatedRun.runId, [200]);
+
+    const additionalRun = await createScopedRun(
+      "materialize another scoped connector",
+      ["slack"],
+    );
+    expectConnectorCatalogLoadTiming({
+      events: apiDispatchTimingEventsForRun(additionalRun.runId),
+      acceptedCacheOutcome: "hit",
+      runtimeCacheOutcome: "miss",
+      requestedConnectorCount: "known",
+      requestedConnectorCountBucket: "1",
+      materializedConnectorCountBucket: "1",
+      resolvedConnectorFraction: "up_to_25_percent",
+      validation: { outcome: "not_run" },
+    });
+    await api.requestCancelRun(actor, additionalRun.runId, [200]);
+
+    const completeSearch = await connectors.searchConnectors(actor, "youtube");
+    expect(completeSearch.connectors).toContainEqual(
+      expect.objectContaining({ slug: "youtube" }),
+    );
+
+    const rotatedCatalogVersion = `api-test-scoped-runtime-${randomUUID()}`;
+    await installApiTestConnectorCatalog({
+      catalogVersion: rotatedCatalogVersion,
+    });
+    const rotatedRun = await createScopedRun(
+      "materialize after catalog identity rotation",
+      ["x"],
+    );
+    expectConnectorCatalogLoadTiming({
+      events: apiDispatchTimingEventsForRun(rotatedRun.runId),
+      acceptedCacheOutcome: "miss",
+      runtimeCacheOutcome: "miss",
+      requestedConnectorCount: "known",
+      requestedConnectorCountBucket: "1",
+      materializedConnectorCountBucket: "1",
+      resolvedConnectorFraction: "up_to_25_percent",
+      validation: { outcome: "attested" },
+    });
+    await api.requestCancelRun(actor, rotatedRun.runId, [200]);
+    await fw.seedTestConnector(actor, {
+      connectorSlug: "x",
+      authMethod: "oauth",
+      accessToken: "x-filtered-access",
+      refreshToken: "x-filtered-refresh",
+    });
+    await installApiTestConnectorCatalog({
+      catalogVersion: `api-test-scoped-runtime-${randomUUID()}`,
+    });
+    await replaceApiTestConnectorCatalogFilteredAuthMethods([
+      {
+        connectorSlug: "x",
+        authMethodId: "oauth",
+        reasons: ["missing-grant-provider"],
+      },
+    ]);
+
+    const filteredRun = await createScopedRun(
+      "omit a compatibility-filtered connector method",
+      ["x"],
+    );
+    expectConnectorCatalogLoadTiming({
+      events: apiDispatchTimingEventsForRun(filteredRun.runId),
+      acceptedCacheOutcome: "miss",
+      runtimeCacheOutcome: "miss",
+      requestedConnectorCount: "known",
+      requestedConnectorCountBucket: "1",
+      materializedConnectorCountBucket: "1",
+      resolvedConnectorFraction: "up_to_25_percent",
+      validation: { outcome: "attested" },
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const filteredClaim = await api.claimRunnerJob(filteredRun.runId);
+    expect(filteredClaim.environment ?? {}).not.toHaveProperty("X_TOKEN");
+    expect(filteredClaim.secretConnectorMap ?? {}).not.toHaveProperty(
+      "X_TOKEN",
+    );
+    expect(findFirewallEntry(filteredClaim.firewalls, "x")).toBeUndefined();
+    expect(filteredClaim.billableFirewalls).not.toContain("x");
+    expect(filteredClaim.networkPolicies ?? {}).not.toHaveProperty("x");
+    expect(filteredClaim).not.toHaveProperty("connectorPermissionBaseline");
+    expectClaimNetworkPolicyRefreshPath(
+      filteredRun.runId,
+      "no_builtin_targets",
+    );
+    await api.requestCancelRun(actor, filteredRun.runId, [200]);
   });
 
   it("keeps exact-empty create and claim independent from catalog availability", async () => {
@@ -7314,6 +7484,13 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
   it("injects oauth connector tokens with billable firewalls and resolvable secrets", async () => {
     const api = createRunsApi(context);
     const fw = createFirewallApi(context);
+    mockEnv(
+      "R2_USER_STORAGES_BUCKET_NAME",
+      `test-run-lifecycle-zero-scoped-runtime-${randomUUID()}`,
+    );
+    await installApiTestConnectorCatalog({
+      catalogVersion: `api-test-zero-scoped-runtime-setup-${randomUUID()}`,
+    });
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
     await fw.seedTestConnector(actor, {
@@ -7329,6 +7506,9 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     });
     const enabled = await api.enableAgentConnectors(actor, agentId, ["x"]);
     expect(enabled).toContain("x");
+    await installApiTestConnectorCatalog({
+      catalogVersion: `api-test-zero-scoped-runtime-run-${randomUUID()}`,
+    });
 
     const run = await api.createRun(actor, {
       agentId,
@@ -7340,6 +7520,16 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       timingEvents,
       API_DISPATCH_CONNECTOR_CATALOG_ALWAYS_ACTION_TYPES,
     );
+    expectConnectorCatalogLoadTiming({
+      events: timingEvents,
+      acceptedCacheOutcome: "miss",
+      runtimeCacheOutcome: "miss",
+      requestedConnectorCount: "known",
+      requestedConnectorCountBucket: "1",
+      materializedConnectorCountBucket: "1",
+      resolvedConnectorFraction: "up_to_25_percent",
+      validation: { outcome: "attested" },
+    });
     expectApiDispatchActions(
       timingEvents,
       API_DISPATCH_STORED_CONNECTOR_SNAPSHOT_ACTION_TYPES,
@@ -9610,6 +9800,13 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     createBddApi(context).acceptAgentStorageWrites();
     const connectors = createConnectorBddApi(context);
     const storages = createStoragesBddApi(context);
+    mockEnv(
+      "R2_USER_STORAGES_BUCKET_NAME",
+      `test-run-lifecycle-custom-permission-runtime-${randomUUID()}`,
+    );
+    await installApiTestConnectorCatalog({
+      catalogVersion: `api-test-custom-permission-setup-${randomUUID()}`,
+    });
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     const slug = `_bdd-permission-skill-${randomUUID().slice(0, 8)}`;
     const custom = await connectors.createCustomConnector(actor, {
@@ -9707,6 +9904,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       { key: "workspace", kind: "variable", value: "restored" },
     ]);
     await api.requestCancelRun(actor, disconnectedRun.runId, [200]);
+    await installApiTestConnectorCatalog({
+      catalogVersion: `api-test-custom-permission-run-${randomUUID()}`,
+    });
 
     const restoredRun = await api.createRun(actor, {
       agentId,
@@ -9717,6 +9917,16 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       apiDispatchTimingEventsForRun(restoredRun.runId),
       API_DISPATCH_CONNECTOR_CATALOG_ALWAYS_ACTION_TYPES,
     );
+    expectConnectorCatalogLoadTiming({
+      events: apiDispatchTimingEventsForRun(restoredRun.runId),
+      acceptedCacheOutcome: "miss",
+      runtimeCacheOutcome: "miss",
+      requestedConnectorCount: "known",
+      requestedConnectorCountBucket: "0",
+      materializedConnectorCountBucket: "0",
+      resolvedConnectorFraction: "none",
+      validation: { outcome: "attested" },
+    });
     const restoredClaim = await api.claimRunnerJob(restoredRun.runId);
     const customApis = inlineFirewallApis(
       restoredClaim.firewalls,
@@ -16881,6 +17091,7 @@ describe("BILL-01: billing entitlement reconciliation cron", () => {
     readonly customerId: string;
     readonly status: string;
     readonly periodEndUnix: number;
+    readonly priceId?: string;
   }): unknown {
     return {
       type: "customer.subscription.updated",
@@ -16897,7 +17108,7 @@ describe("BILL-01: billing entitlement reconciliation cron", () => {
           items: {
             data: [
               {
-                price: { id: "price_bdd_pro" },
+                price: { id: args.priceId ?? "price_bdd_pro" },
                 current_period_end: args.periodEndUnix,
               },
             ],
@@ -16910,6 +17121,7 @@ describe("BILL-01: billing entitlement reconciliation cron", () => {
   async function failSubscription(args: {
     readonly subscriptionId: string;
     readonly customerId: string;
+    readonly priceId?: string;
   }): Promise<void> {
     const webhooks = createWebhookCallbackApi(context);
     const event = subscriptionEvent({
@@ -17062,6 +17274,65 @@ describe("BILL-01: billing entitlement reconciliation cron", () => {
       stripePriceId: "price_bdd_pro",
       currentPeriodEnd: new Date(stalePeriodEndUnix * 1000).toISOString(),
       expiresAt: null,
+    });
+  });
+
+  it("downgrades a stale payment-failed Custom subscription", async () => {
+    const api = createRunsApi(context);
+    const billing = createBillingMediaApi(context);
+    const actor = createBddApi(context).user();
+    const orgId = billingActorOrgId(actor);
+    const customerId = `cus_bdd_custom_${randomUUID().slice(0, 8)}`;
+    const subscriptionId = `sub_bdd_custom_${randomUUID().slice(0, 8)}`;
+    const customPriceId = "price_test_custom";
+    context.mocks.stripe.subscriptions.list.mockResolvedValue({
+      data: [],
+      has_more: false,
+    });
+    await postSubscriptionInvoicePaid(context.signal, {
+      orgId,
+      userId: actor.userId,
+      tier: "custom",
+      customerId,
+      subscriptionId,
+      currentPeriodEnd: new Date(now() + 30 * 86_400_000),
+    });
+    await failSubscription({
+      subscriptionId,
+      customerId,
+      priceId: customPriceId,
+    });
+
+    const stalePeriodEndUnix = Math.floor(now() / 1000) - 2 * 86_400;
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      id: subscriptionId,
+      status: "past_due",
+      customer: customerId,
+      cancel_at: null,
+      cancel_at_period_end: false,
+      schedule: null,
+      trial_end: null,
+      metadata: { orgId, purpose: "custom_plan_subscription" },
+      items: {
+        data: [
+          {
+            price: { id: customPriceId },
+            current_period_end: stalePeriodEndUnix,
+          },
+        ],
+      },
+    });
+    await api.reconcileBillingOrganizations([orgId]);
+
+    const status = await billing.readBillingStatus(actor);
+    expect(status.tier).toBe("limited-free-1");
+    await expect(readOrgPlanEntitlementFixture(orgId)).resolves.toMatchObject({
+      orgId,
+      planKey: "limited-free-1",
+      source: "stripe_subscription",
+      stripeSubscriptionId: subscriptionId,
+      stripePriceId: customPriceId,
+      currentPeriodEnd: new Date(stalePeriodEndUnix * 1000).toISOString(),
     });
   });
 

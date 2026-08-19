@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.571.0](https://github.com/vm0-ai/vm0/compare/core-v8.570.2...core-v8.571.0) (2026-08-19)
+
+
+### Features
+
+* **connectors:** add account storage foundation ([#28066](https://github.com/vm0-ai/vm0/issues/28066)) ([71aa5ef](https://github.com/vm0-ai/vm0/commit/71aa5ef49d8f1c439e6af1c98d8830fbcbc80d55))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.341.0
+
 ## [8.570.2](https://github.com/vm0-ai/vm0/compare/core-v8.570.1...core-v8.570.2) (2026-08-19)
 
 
