@@ -4492,8 +4492,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     await setRunModelRuntimeRouteFixture({
       runId: resumed.runId,
-      modelRuntimeProvider: null,
-      modelRuntimeModel: null,
+      modelRuntimeProvider: "openai-api-key",
+      modelRuntimeModel: getProviderRuntimeModel("vm0", selectedModel),
     });
     await api.requestHeartbeatRunner(true, [200], {
       runnerId: randomUUID(),
@@ -4504,7 +4504,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const rotated = await api.createRun(actor, {
       agentId,
       sessionId: first.sessionId,
-      prompt: "discard a legacy managed checkpoint",
+      prompt: "discard a checkpoint from another managed provider route",
       modelProvider: "vm0",
     });
     expect(rotated.sessionId).toBe(first.sessionId);

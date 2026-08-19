@@ -2333,7 +2333,7 @@ async function vm0ModelProviderEnvironment(
       modelKeyId: key.id,
     };
   }
-  if (!key) {
+  if (!key?.apiKey) {
     return null;
   }
   const secretName = getSecretNameForType(route.providerType);
