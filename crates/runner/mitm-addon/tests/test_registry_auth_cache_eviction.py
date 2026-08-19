@@ -4,6 +4,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 import registry
+from firewall_auth_cache import FIREWALL_AUTH_REGISTRY_GENERATION_ATTRIBUTE
 from tests.auth_state_helpers import (
     auth_cache_key,
     cached_headers,
@@ -23,16 +24,27 @@ class TestRegistryAuthCacheEviction:
         path_b = tmp_path / "registry-b.json"
         write_simple_registry(path_a, run_id="run-one")
         write_simple_registry(path_b, run_id="run-two")
-        registry.load_registry(str(path_a))
+        first_registry = registry.load_registry(str(path_a))
+        first_generation = getattr(
+            first_registry["10.200.0.1"],
+            FIREWALL_AUTH_REGISTRY_GENERATION_ATTRIBUTE,
+        )
         cache_key = auth_cache_key(run_id="run-one", api_id="api-0")
         set_cached_headers(
             cache_key,
             headers={"Authorization": "Bearer old"},
         )
 
-        registry.load_registry(str(path_b))
+        second_registry = registry.load_registry(str(path_b))
+        second_generation = getattr(
+            second_registry["10.200.0.1"],
+            FIREWALL_AUTH_REGISTRY_GENERATION_ATTRIBUTE,
+        )
 
         assert not has_auth_state(cache_key)
+        assert type(first_generation) is int
+        assert type(second_generation) is int
+        assert second_generation > first_generation
 
     def test_evicts_header_cache_on_run_removal(self, registry_file):
         """When a run disappears from registry, its header cache entries are evicted."""

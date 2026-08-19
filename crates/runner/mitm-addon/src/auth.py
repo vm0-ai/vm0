@@ -50,6 +50,7 @@ from aws_sigv4 import (
 )
 from aws_sigv4_body_admission import MAX_AWS_SIGV4_REQUEST_BODY_BYTES
 from firewall_auth_cache import (
+    FIREWALL_AUTH_REGISTRY_GENERATION_ATTRIBUTE,
     FirewallAuthCacheKey,
     FirewallAuthFetchSaturatedError,
     InvalidBillableAuthExpiryError,
@@ -307,6 +308,7 @@ def _build_firewall_auth_context(
             firewall_base=firewall_base,
             auth_request=auth_request,
         ),
+        registry_generation=_firewall_auth_registry_generation(vm_info),
     )
     flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = auth_cache_key
     return _FirewallAuthContext(
@@ -316,6 +318,13 @@ def _build_firewall_auth_context(
         auth_request=auth_request,
         auth_cache_key=auth_cache_key,
     )
+
+
+def _firewall_auth_registry_generation(vm_info: dict) -> int | None:
+    generation = getattr(vm_info, FIREWALL_AUTH_REGISTRY_GENERATION_ATTRIBUTE, None)
+    if isinstance(generation, bool) or not isinstance(generation, int):
+        return None
+    return generation
 
 
 def _build_firewall_auth_identity(
