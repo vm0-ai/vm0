@@ -509,7 +509,6 @@ function createJump(
   store: LocatorStore,
   threadId: string,
   scrollContainer$: Computed<HTMLElement | null>,
-  setIgnoreContentResizeScroll$: Command<void, [boolean]>,
   signal: AbortSignal,
 ) {
   const resetLandedSignal$ = resetSignal();
@@ -520,7 +519,6 @@ function createJump(
     if (!container || !turn) {
       return;
     }
-    set(setIgnoreContentResizeScroll$, false);
     L.debug("jump to turn", { threadId, turnIndex });
     container.scrollTo({
       top: Math.max(0, turn.top - container.clientHeight * JUMP_VIEWPORT_RATIO),
@@ -886,24 +884,16 @@ export function createChatConversationLocatorSignals(
   {
     threadId,
     scrollContainer$,
-    setIgnoreContentResizeScroll$,
   }: {
     threadId: string;
     scrollContainer$: Computed<HTMLElement | null>;
-    setIgnoreContentResizeScroll$: Command<void, [boolean]>;
   },
   signal: AbortSignal,
 ): ChatConversationLocatorSignals {
   const store = createStore();
   const recompute$ = createRecompute(store, scrollContainer$);
   const paint$ = createPaint(store);
-  const jumpToTurn$ = createJump(
-    store,
-    threadId,
-    scrollContainer$,
-    setIgnoreContentResizeScroll$,
-    signal,
-  );
+  const jumpToTurn$ = createJump(store, threadId, scrollContainer$, signal);
   const railOnRef$ = createRailOnRef(store, threadId, scrollContainer$, {
     recompute$,
     paint$,

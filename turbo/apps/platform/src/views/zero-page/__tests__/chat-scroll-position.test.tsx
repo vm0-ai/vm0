@@ -40,11 +40,6 @@ interface ResizeObserverController {
   trigger: (target: Element) => void;
 }
 
-interface SmoothScrollController {
-  readonly calls: readonly ScrollToOptions[];
-  finish: (container: HTMLElement) => void;
-}
-
 const CHAT_VIEWPORT_TOP = 100;
 
 function domRect(top: number, height: number): DOMRect {
@@ -237,41 +232,6 @@ function installChatLayout(layouts: ReadonlyMap<string, ThreadLayout>): void {
     },
     { once: true },
   );
-}
-
-function installSmoothScroll(): SmoothScrollController {
-  const prototype = HTMLElement.prototype;
-  const scrollToDescriptor = Object.getOwnPropertyDescriptor(
-    prototype,
-    "scrollTo",
-  );
-  const calls: ScrollToOptions[] = [];
-
-  Object.defineProperty(prototype, "scrollTo", {
-    configurable: true,
-    value(this: HTMLElement, options: ScrollToOptions): void {
-      calls.push(options);
-    },
-  });
-  context.signal.addEventListener(
-    "abort",
-    () => {
-      restorePrototypeProperty(prototype, "scrollTo", scrollToDescriptor);
-    },
-    { once: true },
-  );
-
-  return {
-    calls,
-    finish: (container) => {
-      const top = calls.at(-1)?.top;
-      if (top === undefined) {
-        throw new Error("No smooth scroll to finish");
-      }
-      container.scrollTop = top;
-      fireEvent.scroll(container);
-    },
-  };
 }
 
 function installImmediateAnimationFrames(): void {
@@ -729,7 +689,6 @@ describe("chat scroll position", () => {
       initialEvents,
       appendedEvents,
     });
-    const smoothScroll = installSmoothScroll();
     installChatLayout(
       new Map([
         [
@@ -756,13 +715,7 @@ describe("chat scroll position", () => {
       ]),
     );
 
-    detachedSetupPage({
-      context,
-      path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatSmoothAutoScroll]: false,
-      },
-    });
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
 
     const container = await waitFor(() => {
       expect(screen.getByText("tail-follow message 7")).toBeInTheDocument();
@@ -776,111 +729,6 @@ describe("chat scroll position", () => {
     await waitFor(() => {
       expect(screen.getByText("tail-follow message 8")).toBeInTheDocument();
       expect(container.scrollTop).toBe(800);
-      expect(smoothScroll.calls).toHaveLength(0);
-    });
-  });
-
-  it("smoothly follows later messages without letting content resize snap to the tail", async () => {
-    const threadId = "b0000000-0000-4000-a000-000000000817";
-    const initialEvents = simpleUserEvents(threadId, "smooth-tail", 8);
-    const appendedEvents = simpleUserEvents(threadId, "smooth-tail", 9).slice(
-      8,
-    );
-    const { publishAppendedEvents } = mockLiveThread({
-      threadId,
-      initialEvents,
-      appendedEvents,
-    });
-    const smoothScroll = installSmoothScroll();
-    const resizeObserver = installResizeObserver();
-    let lateGrowth = 0;
-    installChatLayout(
-      new Map([
-        [
-          threadId,
-          {
-            clientHeight: () => {
-              return 300;
-            },
-            scrollHeight: () => {
-              const rendered = document.body.textContent?.includes(
-                "smooth-tail message 8",
-              )
-                ? 1100
-                : 1000;
-              return rendered + lateGrowth;
-            },
-            eventRect: (eventId) => {
-              const index = Number(eventId.split("-").at(-1));
-              return Number.isFinite(index)
-                ? { top: index * 100, height: 80 }
-                : undefined;
-            },
-          },
-        ],
-      ]),
-    );
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatSmoothAutoScroll]: true,
-      },
-    });
-
-    const container = await waitFor(() => {
-      expect(screen.getByText("smooth-tail message 7")).toBeInTheDocument();
-      const current = chatScrollContainer();
-      expect(current.scrollTop).toBe(700);
-      expect(smoothScroll.calls).toHaveLength(0);
-      return current;
-    });
-
-    await publishAppendedEvents();
-
-    await waitFor(() => {
-      expect(screen.getByText("smooth-tail message 8")).toBeInTheDocument();
-      expect(smoothScroll.calls).toStrictEqual([
-        { top: 800, behavior: "smooth" },
-      ]);
-      expect(container.scrollTop).toBe(700);
-    });
-    const messageContainer = container.querySelector(
-      "[data-message-container]",
-    );
-    if (!messageContainer) {
-      throw new Error("Chat message container not found");
-    }
-
-    // The observer delivery for the event batch is already represented by the
-    // active smooth target, so it must not replace the animation with an
-    // immediate scroll.
-    resizeObserver.trigger(messageContainer);
-    expect(smoothScroll.calls).toHaveLength(1);
-    expect(container.scrollTop).toBe(700);
-
-    // Content that grows while the animation is active retargets that same
-    // smooth scroll instead of snapping or abandoning the tail.
-    lateGrowth = 400;
-    resizeObserver.trigger(messageContainer);
-    expect(smoothScroll.calls).toStrictEqual([
-      { top: 800, behavior: "smooth" },
-      { top: 1200, behavior: "smooth" },
-    ]);
-    expect(container.scrollTop).toBe(700);
-
-    smoothScroll.finish(container);
-    await waitFor(() => {
-      expect(container.scrollTop).toBe(1200);
-      expect(document.querySelector("[data-scroll-to-bottom]")).toBeNull();
-    });
-
-    lateGrowth = 500;
-    resizeObserver.trigger(messageContainer);
-    await waitFor(() => {
-      expect(container.scrollTop).toBe(1300);
-      expect(smoothScroll.calls).toHaveLength(2);
     });
   });
 
