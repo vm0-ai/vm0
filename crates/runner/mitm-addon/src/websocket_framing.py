@@ -19,18 +19,15 @@ import deferred_callbacks
 import flow_metadata
 from logging_utils import log_proxy_entry
 
-MAX_DECODED_MESSAGE_BYTES = 16 * 1024 * 1024
-MAX_OPENAI_RESPONSES_CLIENT_DECODED_MESSAGE_BYTES = 256 * 1024 * 1024
-MAX_OPENAI_RESPONSES_CLIENT_AGGREGATE_DECODED_BYTES = 1024 * 1024 * 1024
+MAX_DECODED_MESSAGE_BYTES = 256 * 1024 * 1024
+MAX_AGGREGATE_DECODED_BYTES = 1024 * 1024 * 1024
 MAX_MESSAGE_DATA_FRAMES = 8_192
 
 _EMPTY_DEFLATE_BLOCK = b"\x00\x00\xff\xff"
 _CONNECTION_MARKER_ATTRIBUTE = "_vm0_bounded_websocket_framing"
-_OPENAI_RESPONSES_CLIENT_LIMIT_ATTRIBUTE = "_vm0_openai_responses_client_websocket_limit"
 _MESSAGE_LIMIT_VIOLATION_ATTRIBUTE = "_vm0_websocket_message_limit_violation"
 _ORIGINAL_WEBSOCKET_CONNECTION = websocket.WebsocketConnection
 
-_MessageLimitClass = Literal["ordinary", "openai_responses_client"]
 _MessageLimitReason = Literal[
     "decoded_message_bytes",
     "aggregate_decoded_bytes",
@@ -41,7 +38,6 @@ _MessageLimitUnit = Literal["bytes", "frames"]
 
 @dataclass(frozen=True)
 class _MessageLimitViolation:
-    limit_class: _MessageLimitClass
     reason: _MessageLimitReason
     unit: _MessageLimitUnit
     limit_value: int
@@ -59,7 +55,7 @@ class _AggregateDecodedBudget:
     def remaining_bytes(self) -> int:
         return max(
             0,
-            MAX_OPENAI_RESPONSES_CLIENT_AGGREGATE_DECODED_BYTES - self.decoded_bytes,
+            MAX_AGGREGATE_DECODED_BYTES - self.decoded_bytes,
         )
 
     def reserve(self, size: int) -> bool:
@@ -77,24 +73,21 @@ class _AggregateDecodedBudget:
         self.decoded_bytes = 0
 
 
-_openai_responses_client_aggregate_budget = _AggregateDecodedBudget()
+_aggregate_decoded_budget = _AggregateDecodedBudget()
 
 
 @dataclass
 class _MessageBudget:
     conn: connection.Connection
-    limit_class: _MessageLimitClass
     max_decoded_bytes: int
     max_data_frames: int
-    aggregate_budget: _AggregateDecodedBudget | None
+    aggregate_budget: _AggregateDecodedBudget
     decoded_bytes: int = 0
     data_frames: int = 0
 
     @property
     def remaining_bytes(self) -> int:
         message_remaining = self.max_decoded_bytes - self.decoded_bytes
-        if self.aggregate_budget is None:
-            return message_remaining
         return min(message_remaining, self.aggregate_budget.remaining_bytes)
 
     def _record_violation(
@@ -115,7 +108,6 @@ class _MessageBudget:
             self.conn,
             _MESSAGE_LIMIT_VIOLATION_ATTRIBUTE,
             _MessageLimitViolation(
-                limit_class=self.limit_class,
                 reason=reason,
                 unit=unit,
                 limit_value=limit_value,
@@ -134,11 +126,11 @@ class _MessageBudget:
                 observed_value=observed_message_bytes,
             )
             return False
-        if self.aggregate_budget is not None and not self.aggregate_budget.reserve(size):
+        if not self.aggregate_budget.reserve(size):
             self._record_violation(
                 reason="aggregate_decoded_bytes",
                 unit="bytes",
-                limit_value=MAX_OPENAI_RESPONSES_CLIENT_AGGREGATE_DECODED_BYTES,
+                limit_value=MAX_AGGREGATE_DECODED_BYTES,
                 observed_value=self.aggregate_budget.decoded_bytes + size,
             )
             return False
@@ -156,16 +148,13 @@ class _MessageBudget:
                 observed_is_lower_bound=True,
             )
             return
-        aggregate_budget = self.aggregate_budget
-        if aggregate_budget is None:
-            raise RuntimeError("WebSocket bounded decode rejected below its byte limit")
-        observed_aggregate_bytes = aggregate_budget.decoded_bytes + minimum_size
-        if observed_aggregate_bytes <= MAX_OPENAI_RESPONSES_CLIENT_AGGREGATE_DECODED_BYTES:
+        observed_aggregate_bytes = self.aggregate_budget.decoded_bytes + minimum_size
+        if observed_aggregate_bytes <= MAX_AGGREGATE_DECODED_BYTES:
             raise RuntimeError("WebSocket bounded decode rejected below its aggregate limit")
         self._record_violation(
             reason="aggregate_decoded_bytes",
             unit="bytes",
-            limit_value=MAX_OPENAI_RESPONSES_CLIENT_AGGREGATE_DECODED_BYTES,
+            limit_value=MAX_AGGREGATE_DECODED_BYTES,
             observed_value=observed_aggregate_bytes,
             observed_is_lower_bound=True,
         )
@@ -184,13 +173,13 @@ class _MessageBudget:
 
     def finish_message(self) -> None:
         decoded_bytes = self.decoded_bytes
-        if self.aggregate_budget is not None and decoded_bytes:
+        if decoded_bytes:
             deferred_callbacks.call_soon(self.aggregate_budget.release, decoded_bytes)
         self.decoded_bytes = 0
         self.data_frames = 0
 
     def reset(self) -> None:
-        if self.aggregate_budget is not None and self.decoded_bytes:
+        if self.decoded_bytes:
             self.aggregate_budget.release(self.decoded_bytes)
         self.decoded_bytes = 0
         self.data_frames = 0
@@ -353,25 +342,11 @@ class _BoundedWebsocketConnection(_ORIGINAL_WEBSOCKET_CONNECTION):
         *,
         conn: connection.Connection,
     ) -> None:
-        uses_openai_responses_client_limit = bool(
-            getattr(conn, _OPENAI_RESPONSES_CLIENT_LIMIT_ATTRIBUTE, False)
-        )
-        if uses_openai_responses_client_limit:
-            limit_class: _MessageLimitClass = "openai_responses_client"
-            max_decoded_bytes = MAX_OPENAI_RESPONSES_CLIENT_DECODED_MESSAGE_BYTES
-            aggregate_budget: _AggregateDecodedBudget | None = (
-                _openai_responses_client_aggregate_budget
-            )
-        else:
-            limit_class = "ordinary"
-            max_decoded_bytes = MAX_DECODED_MESSAGE_BYTES
-            aggregate_budget = None
         budget = _MessageBudget(
             conn=conn,
-            limit_class=limit_class,
-            max_decoded_bytes=max_decoded_bytes,
+            max_decoded_bytes=MAX_DECODED_MESSAGE_BYTES,
             max_data_frames=MAX_MESSAGE_DATA_FRAMES,
-            aggregate_budget=aggregate_budget,
+            aggregate_budget=_aggregate_decoded_budget,
         )
         bounded_extensions: list[Extension] = []
         bounded_deflates: list[_BoundedPerMessageDeflate] = []
@@ -436,16 +411,6 @@ class _BoundedWebsocketConnection(_ORIGINAL_WEBSOCKET_CONNECTION):
 setattr(_BoundedWebsocketConnection, _CONNECTION_MARKER_ATTRIBUTE, True)
 
 
-def configure_openai_responses_client_limit(flow: http.HTTPFlow) -> None:
-    """Select the enlarged request boundary for one confirmed upgrade."""
-    setattr(flow.client_conn, _OPENAI_RESPONSES_CLIENT_LIMIT_ATTRIBUTE, True)
-
-
-def uses_openai_responses_client_limit(flow: http.HTTPFlow) -> bool:
-    """Return whether this flow's client decoder uses the enlarged boundary."""
-    return bool(getattr(flow.client_conn, _OPENAI_RESPONSES_CLIENT_LIMIT_ATTRIBUTE, False))
-
-
 def log_limit_violation(flow: http.HTTPFlow) -> None:
     """Write and consume content-free framing diagnostics for a terminal flow."""
     for direction, conn in (
@@ -463,7 +428,6 @@ def log_limit_violation(flow: http.HTTPFlow) -> None:
             type="websocket_framing_limit",
             reason=violation.reason,
             direction=direction,
-            limit_class=violation.limit_class,
             limit_unit=violation.unit,
             limit_value=violation.limit_value,
             observed_value=violation.observed_value,
@@ -476,19 +440,15 @@ def log_limit_violation(flow: http.HTTPFlow) -> None:
 
 
 def release_flow_state(flow: http.HTTPFlow) -> None:
-    """Release connection-scoped policy and diagnostic state."""
+    """Release connection-scoped diagnostic state."""
     for conn in (flow.client_conn, flow.server_conn):
-        for attribute in (
-            _OPENAI_RESPONSES_CLIENT_LIMIT_ATTRIBUTE,
-            _MESSAGE_LIMIT_VIOLATION_ATTRIBUTE,
-        ):
-            if hasattr(conn, attribute):
-                delattr(conn, attribute)
+        if hasattr(conn, _MESSAGE_LIMIT_VIOLATION_ATTRIBUTE):
+            delattr(conn, _MESSAGE_LIMIT_VIOLATION_ATTRIBUTE)
 
 
 def reset_aggregate_budget_for_tests() -> None:
-    """Reset enlarged-message aggregate ownership between tests."""
-    _openai_responses_client_aggregate_budget.reset_for_tests()
+    """Reset aggregate decoded-byte ownership between tests."""
+    _aggregate_decoded_budget.reset_for_tests()
 
 
 def install_websocket_framing() -> None:

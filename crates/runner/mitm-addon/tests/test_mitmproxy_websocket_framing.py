@@ -124,7 +124,6 @@ async def _start_websocket(
     *,
     permessage_deflate: str | None = None,
     run_id: str | None = None,
-    openai_responses_client_limit: bool = False,
     proxy_log_path: Path | None = None,
 ) -> _RunningWebSocket:
     client = connection.Client(
@@ -158,8 +157,6 @@ async def _start_websocket(
         flow.metadata[metadata_keys.VM_RUN_ID] = run_id
     if proxy_log_path is not None:
         flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log_path)
-    if openai_responses_client_limit:
-        websocket_framing.configure_openai_responses_client_limit(flow)
 
     running = _RunningWebSocket(
         layer=websocket.WebsocketLayer(context, flow),
@@ -433,103 +430,19 @@ def test_install_websocket_framing_preserves_marked_connection_class(
     assert websocket.WebsocketConnection is MarkedWebsocketConnection
 
 
-async def test_openai_responses_client_limit_is_direction_specific(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(websocket_framing, "MAX_DECODED_MESSAGE_BYTES", 4)
-    monkeypatch.setattr(
-        websocket_framing,
-        "MAX_OPENAI_RESPONSES_CLIENT_DECODED_MESSAGE_BYTES",
-        8,
-    )
-    monkeypatch.setattr(
-        websocket_framing,
-        "MAX_OPENAI_RESPONSES_CLIENT_AGGREGATE_DECODED_BYTES",
-        32,
-    )
-
-    with (
-        patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
-        taddons.context(Proxyserver(), mitm_addon) as addon_context,
-    ):
-        marked = await _start_websocket(
-            addon_context,
-            openai_responses_client_limit=True,
-        )
-        marked_client = await _handle_event(
-            addon_context,
-            marked,
-            events.DataReceived(
-                marked.client,
-                _peer(from_client=True).send(_message_event(b"12345678")),
-            ),
-        )
-        assert marked.flow.websocket is not None
-        assert marked.flow.websocket.messages[-1].content == b"12345678"
-
-        ordinary = await _start_websocket(addon_context)
-        ordinary_client = await _handle_event(
-            addon_context,
-            ordinary,
-            events.DataReceived(
-                ordinary.client,
-                _peer(from_client=True).send(_message_event(b"12345")),
-            ),
-        )
-
-        marked_server = await _start_websocket(
-            addon_context,
-            openai_responses_client_limit=True,
-        )
-        server_event = await _handle_event(
-            addon_context,
-            marked_server,
-            events.DataReceived(
-                marked_server.server,
-                _peer(from_client=False).send(_message_event(b"12345")),
-            ),
-        )
-
-    assert len(_message_hooks(marked_client)) == 1
-    assert len(_data_sends(marked_client)) == 1
-
-    assert _message_hooks(ordinary_client) == []
-    assert _data_sends(ordinary_client) == []
-    assert ordinary.flow.websocket is not None
-    assert ordinary.flow.websocket.close_code == 1009
-
-    assert _message_hooks(server_event) == []
-    assert _data_sends(server_event) == []
-    assert marked_server.flow.websocket is not None
-    assert marked_server.flow.websocket.close_code == 1009
-
-
-async def test_openai_responses_client_aggregate_limit_is_shared_and_released(
+async def test_aggregate_limit_is_shared_across_directions_and_released(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     aggregate_log = tmp_path / "aggregate.jsonl"
-    monkeypatch.setattr(websocket_framing, "MAX_DECODED_MESSAGE_BYTES", 4)
-    monkeypatch.setattr(
-        websocket_framing,
-        "MAX_OPENAI_RESPONSES_CLIENT_DECODED_MESSAGE_BYTES",
-        10,
-    )
-    monkeypatch.setattr(
-        websocket_framing,
-        "MAX_OPENAI_RESPONSES_CLIENT_AGGREGATE_DECODED_BYTES",
-        12,
-    )
+    monkeypatch.setattr(websocket_framing, "MAX_DECODED_MESSAGE_BYTES", 10)
+    monkeypatch.setattr(websocket_framing, "MAX_AGGREGATE_DECODED_BYTES", 12)
 
     with (
         patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
         taddons.context(Proxyserver(), mitm_addon) as addon_context,
     ):
-        holder = await _start_websocket(
-            addon_context,
-            openai_responses_client_limit=True,
-        )
+        holder = await _start_websocket(addon_context, run_id="run-aggregate-holder")
         holder_peer = _peer(from_client=True)
         prefix = await _handle_event(
             addon_context,
@@ -543,15 +456,14 @@ async def test_openai_responses_client_aggregate_limit_is_shared_and_released(
         rejected = await _start_websocket(
             addon_context,
             run_id="run-aggregate-rejected",
-            openai_responses_client_limit=True,
             proxy_log_path=aggregate_log,
         )
         over_aggregate = await _handle_event(
             addon_context,
             rejected,
             events.DataReceived(
-                rejected.client,
-                _peer(from_client=True).send(_message_event(b"12345")),
+                rejected.server,
+                _peer(from_client=False).send(_message_event(b"12345")),
             ),
         )
 
@@ -567,18 +479,14 @@ async def test_openai_responses_client_aggregate_limit_is_shared_and_released(
         assert holder.flow.websocket is not None
         assert holder.flow.websocket.messages[-1].content == b"1234567890"
         await asyncio.sleep(0)
-        assert holder.flow.websocket.messages == []
 
-        after_release = await _start_websocket(
-            addon_context,
-            openai_responses_client_limit=True,
-        )
+        after_release = await _start_websocket(addon_context)
         delivered_after_release = await _handle_event(
             addon_context,
             after_release,
             events.DataReceived(
-                after_release.client,
-                _peer(from_client=True).send(_message_event(b"1234567890")),
+                after_release.server,
+                _peer(from_client=False).send(_message_event(b"1234567890")),
             ),
         )
 
@@ -597,6 +505,7 @@ async def test_openai_responses_client_aggregate_limit_is_shared_and_released(
         entry for entry in aggregate_entries if entry.get("type") == "websocket_framing_limit"
     )
     assert aggregate_diagnostic["reason"] == "aggregate_decoded_bytes"
+    assert aggregate_diagnostic["direction"] == "server_to_client"
     assert aggregate_diagnostic["limit_value"] == 12
     assert aggregate_diagnostic["observed_value"] == 13
 
@@ -619,16 +528,8 @@ async def test_framing_limit_rejection_writes_content_free_diagnostic(
 ) -> None:
     proxy_log = tmp_path / f"{expected_reason}.jsonl"
     monkeypatch.setattr(websocket_framing, "MAX_MESSAGE_DATA_FRAMES", frame_limit)
-    monkeypatch.setattr(
-        websocket_framing,
-        "MAX_OPENAI_RESPONSES_CLIENT_DECODED_MESSAGE_BYTES",
-        4,
-    )
-    monkeypatch.setattr(
-        websocket_framing,
-        "MAX_OPENAI_RESPONSES_CLIENT_AGGREGATE_DECODED_BYTES",
-        16,
-    )
+    monkeypatch.setattr(websocket_framing, "MAX_DECODED_MESSAGE_BYTES", 4)
+    monkeypatch.setattr(websocket_framing, "MAX_AGGREGATE_DECODED_BYTES", 16)
 
     with (
         patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
@@ -637,7 +538,6 @@ async def test_framing_limit_rejection_writes_content_free_diagnostic(
         running = await _start_websocket(
             addon_context,
             run_id="run-rejected",
-            openai_responses_client_limit=True,
             proxy_log_path=proxy_log,
         )
         rejected = await _handle_event(
@@ -664,7 +564,6 @@ async def test_framing_limit_rejection_writes_content_free_diagnostic(
         "type": "websocket_framing_limit",
         "reason": expected_reason,
         "direction": "client_to_server",
-        "limit_class": "openai_responses_client",
         "limit_unit": expected_unit,
         "limit_value": 4 if expected_unit == "bytes" else 0,
         "observed_value": 5 if expected_unit == "bytes" else 1,
@@ -1126,7 +1025,7 @@ async def test_compressed_overflow_is_bounded_and_does_not_affect_another_flow(
     assert healthy.flow.websocket.messages[-1].content == b"healthy"
 
 
-async def test_compressed_openai_responses_client_uses_aggregate_output_budget(
+async def test_compressed_message_uses_aggregate_output_budget(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1135,12 +1034,12 @@ async def test_compressed_openai_responses_client_uses_aggregate_output_budget(
     content = hashlib.shake_256(b"vm0 aggregate compressed output").digest(160 * 1024)
     monkeypatch.setattr(
         websocket_framing,
-        "MAX_OPENAI_RESPONSES_CLIENT_DECODED_MESSAGE_BYTES",
+        "MAX_DECODED_MESSAGE_BYTES",
         256 * 1024,
     )
     monkeypatch.setattr(
         websocket_framing,
-        "MAX_OPENAI_RESPONSES_CLIENT_AGGREGATE_DECODED_BYTES",
+        "MAX_AGGREGATE_DECODED_BYTES",
         aggregate_limit,
     )
     stats = _track_zlib_decompression(monkeypatch)
@@ -1152,7 +1051,6 @@ async def test_compressed_openai_responses_client_uses_aggregate_output_budget(
         rejected = await _start_websocket(
             addon_context,
             permessage_deflate=_PERMESSAGE_DEFLATE,
-            openai_responses_client_limit=True,
         )
         compressed_peer = _peer(
             from_client=True,
@@ -1183,10 +1081,7 @@ async def test_compressed_openai_responses_client_uses_aggregate_output_budget(
             ),
         )
 
-        healthy = await _start_websocket(
-            addon_context,
-            openai_responses_client_limit=True,
-        )
+        healthy = await _start_websocket(addon_context)
         delivered = await _handle_event(
             addon_context,
             healthy,

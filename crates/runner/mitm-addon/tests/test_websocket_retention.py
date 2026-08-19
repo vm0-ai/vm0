@@ -8,7 +8,7 @@ from mitmproxy.flow import Error
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import usage
-import websocket_framing
+import websocket_retention
 from tests.model_provider_flow_helpers import (
     make_openai_responses_websocket_flow,
     model_provider_usage_sources,
@@ -241,7 +241,7 @@ class TestModelProviderWebSocketRetention:
         deferred_websocket_trim_scheduler: list[ScheduledWebSocketTrim],
         monkeypatch: pytest.MonkeyPatch,
     ):
-        monkeypatch.setattr(websocket_framing, "MAX_DECODED_MESSAGE_BYTES", 4)
+        monkeypatch.setattr(websocket_retention, "MAX_RETAINED_MESSAGE_BYTES", 4)
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
         large_client = append_websocket_message(
@@ -314,6 +314,29 @@ class TestRegisteredWebSocketRetention:
         assert deferred_websocket_trim_scheduler == []
         assert flow.websocket is not None
         assert flow.websocket.messages == [first, second]
+
+    def test_unregistered_websocket_releases_only_large_messages(
+        self,
+        real_flow,
+        deferred_websocket_trim_scheduler: list[ScheduledWebSocketTrim],
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        monkeypatch.setattr(websocket_retention, "MAX_RETAINED_MESSAGE_BYTES", 4)
+        flow = real_flow(with_response=False, host="example.com")
+        first = append_websocket_message(flow, from_client=True, content=b"one")
+        mitm_addon.websocket_message(flow)
+        large = append_websocket_message(flow, from_client=False, content=b"large")
+        mitm_addon.websocket_message(flow)
+        latest = append_websocket_message(flow, from_client=True, content=b"two")
+        mitm_addon.websocket_message(flow)
+
+        assert len(deferred_websocket_trim_scheduler) == 1
+        assert flow.websocket is not None
+        assert flow.websocket.messages == [first, large, latest]
+
+        run_deferred_websocket_trims(deferred_websocket_trim_scheduler)
+
+        assert flow.websocket.messages == [first, latest]
 
     def test_non_model_websocket_end_clears_final_retained_message(
         self,

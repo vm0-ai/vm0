@@ -7,7 +7,6 @@ import pytest
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import usage
-import websocket_framing
 from tests.model_provider_flow_helpers import (
     make_openai_responses_websocket_flow,
     model_provider_usage_sources,
@@ -30,24 +29,6 @@ def deferred_websocket_trim_scheduler(
 
 class TestModelProviderWebSocketUsageMetadata:
     """Tests for WebSocket usage metadata parsing without webhook reporting."""
-
-    def test_confirmed_openai_responses_upgrade_marks_only_client_limit(self, tmp_path, real_flow):
-        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
-
-        assert not websocket_framing.uses_openai_responses_client_limit(flow)
-
-        mitm_addon.responseheaders(flow)
-
-        assert websocket_framing.uses_openai_responses_client_limit(flow)
-
-    def test_non_upgrade_openai_response_keeps_ordinary_client_limit(self, tmp_path, real_flow):
-        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
-        assert flow.response is not None
-        flow.response.status_code = 200
-
-        mitm_addon.responseheaders(flow)
-
-        assert not websocket_framing.uses_openai_responses_client_limit(flow)
 
     def test_model_websocket_malformed_frame_preserves_prior_usage(self, tmp_path, real_flow):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
