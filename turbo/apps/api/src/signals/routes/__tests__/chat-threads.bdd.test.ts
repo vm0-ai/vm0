@@ -3463,7 +3463,7 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
         return file.id === csvId;
       })?.googleDriveSync,
     ).toMatchObject({ status: "synced", id: "drive-file-refreshed" });
-    artifacts = await chat.listThreadArtifacts(actor, run.threadId);
+    await chat.listThreadArtifacts(actor, run.threadId);
     expect(successfulRefresh.refreshBodies).toHaveLength(1);
     expect(refreshedList.authorizationHeaders).toStrictEqual([
       "Bearer drive-access-drive-ok",
