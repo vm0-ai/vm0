@@ -2,11 +2,11 @@ import { command, computed, state } from "ccstate";
 import { timeout } from "signal-timers";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import {
-  zeroIntegrationsTelegramContract,
+  integrationsTelegramContract,
   type TelegramBot,
   type TelegramBotStatus,
   type TelegramSetupStatus,
-} from "@okouai/api-contracts/contracts/zero-integrations-telegram";
+} from "@okouai/api-contracts/contracts/integrations-telegram";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import { setAblyLoop$ } from "../realtime.ts";
@@ -342,7 +342,7 @@ export const resetTelegramSettingsUi$ = command(({ set }) => {
 
 export const telegramBots$ = computed(async (get): Promise<TelegramBot[]> => {
   get(internalReload$);
-  const client = get(zeroClient$)(zeroIntegrationsTelegramContract);
+  const client = get(zeroClient$)(integrationsTelegramContract);
   const result = await accept(client.list({ headers: {} }), [200]);
   return result.body.bots;
 });
@@ -377,7 +377,7 @@ export const registerTelegramBot$ = command(
     input: { botToken: string; defaultAgentId?: string },
     signal: AbortSignal,
   ): Promise<TelegramBotStatus> => {
-    const client = get(zeroClient$)(zeroIntegrationsTelegramContract);
+    const client = get(zeroClient$)(integrationsTelegramContract);
     const result = await accept(
       client.register({
         headers: {},
@@ -403,7 +403,7 @@ const checkTelegramBotSetupStatus$ = command(
     input: { botToken: string; origin?: string },
     signal: AbortSignal,
   ): Promise<TelegramSetupStatus> => {
-    const client = get(zeroClient$)(zeroIntegrationsTelegramContract);
+    const client = get(zeroClient$)(integrationsTelegramContract);
     const result = await accept(
       client.setupStatus({
         headers: {},
@@ -465,7 +465,7 @@ export const reinstallTelegramBot$ = command(
     input: { botId: string; botToken: string },
     signal: AbortSignal,
   ): Promise<TelegramBotStatus> => {
-    const client = get(zeroClient$)(zeroIntegrationsTelegramContract);
+    const client = get(zeroClient$)(integrationsTelegramContract);
     const result = await accept(
       client.register({
         headers: {},
@@ -501,7 +501,7 @@ export const updateTelegramBotAgent$ = command(
     signal.addEventListener("abort", () => {
       return toast.dismiss(toastId);
     });
-    const client = get(zeroClient$)(zeroIntegrationsTelegramContract);
+    const client = get(zeroClient$)(integrationsTelegramContract);
     const result = await accept(
       client.updateBot({
         headers: {},
@@ -528,7 +528,7 @@ export const updateTelegramBotAgent$ = command(
 
 export const disconnectTelegramAccount$ = command(
   async ({ get, set }, botId: string, signal: AbortSignal): Promise<void> => {
-    const client = get(zeroClient$)(zeroIntegrationsTelegramContract);
+    const client = get(zeroClient$)(integrationsTelegramContract);
     await accept(
       client.unlink({
         headers: {},
@@ -549,7 +549,7 @@ export const disconnectTelegramAccount$ = command(
 
 export const uninstallTelegramBot$ = command(
   async ({ get, set }, botId: string, signal: AbortSignal): Promise<void> => {
-    const client = get(zeroClient$)(zeroIntegrationsTelegramContract);
+    const client = get(zeroClient$)(integrationsTelegramContract);
     await accept(
       client.disconnect({
         headers: {},

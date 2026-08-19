@@ -2,8 +2,8 @@ import { command } from "ccstate";
 import { and, eq, inArray } from "drizzle-orm";
 import {
   OFFICIAL_TELEGRAM_BOT_ID,
-  zeroIntegrationsTelegramContract,
-} from "@okouai/api-contracts/contracts/zero-integrations-telegram";
+  integrationsTelegramContract,
+} from "@okouai/api-contracts/contracts/integrations-telegram";
 import { agentComposes } from "@okouai/db/schema/agent-compose";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { telegramInstallations } from "@okouai/db/schema/telegram-installation";
@@ -44,9 +44,7 @@ import { publicBrandPresentation } from "@okouai/core/public-brand";
 
 const log = logger("api:telegram:link");
 
-type TelegramLinkBody = z.infer<
-  typeof zeroIntegrationsTelegramContract.link.body
->;
+type TelegramLinkBody = z.infer<typeof integrationsTelegramContract.link.body>;
 type OrganizationAuth = AuthContext & { readonly orgId: string };
 type ErrorStatus = 400 | 403 | 404 | 409;
 type LinkTelegramUserConflictReason = Extract<
@@ -264,7 +262,7 @@ async function resolveOfficialConnectComposeId(
 
 const unlinkInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const { botId } = get(queryOf(zeroIntegrationsTelegramContract.unlink));
+  const { botId } = get(queryOf(integrationsTelegramContract.unlink));
   const writeDb = set(writeDb$);
 
   if (botId === OFFICIAL_TELEGRAM_BOT_ID) {
@@ -578,7 +576,7 @@ const linkCustomInner$ = command(
 
 const linkInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const body = await get(bodyResultOf(zeroIntegrationsTelegramContract.link));
+  const body = await get(bodyResultOf(integrationsTelegramContract.link));
   signal.throwIfAborted();
 
   if (!body.ok) {
@@ -593,14 +591,14 @@ const linkInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 export const integrationsTelegramLinkRoutes: readonly RouteEntry[] = [
   {
-    route: zeroIntegrationsTelegramContract.link,
+    route: integrationsTelegramContract.link,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       linkInner$,
     ),
   },
   {
-    route: zeroIntegrationsTelegramContract.unlink,
+    route: integrationsTelegramContract.unlink,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       unlinkInner$,

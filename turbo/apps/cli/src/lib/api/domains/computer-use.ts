@@ -6,15 +6,15 @@ import type {
   ComputerUseHost,
   ComputerUseReadCommandKind,
   ComputerUseWriteCommandKind,
-} from "@okouai/api-contracts/contracts/zero-computer-use";
+} from "@okouai/api-contracts/contracts/computer-use";
 import type { ComputerUseAnyPluginCallBody } from "@okouai/api-contracts/contracts/computer-use-plugins";
 import {
-  zeroComputerUseAuthorizationRequestsContract,
-  zeroComputerUseCommandContract,
-  zeroComputerUseHostsContract,
-  zeroComputerUsePluginCommandContract,
-  zeroComputerUseWriteCommandContract,
-} from "@okouai/api-contracts/contracts/zero-computer-use";
+  computerUseAuthorizationRequestsContract,
+  computerUseCommandContract,
+  computerUseHostsContract,
+  computerUsePluginCommandContract,
+  computerUseWriteCommandContract,
+} from "@okouai/api-contracts/contracts/computer-use";
 import {
   ApiRequestError,
   getBaseUrl,
@@ -100,7 +100,7 @@ export async function createComputerUseReadCommand(
   params: ComputerUseCommandParams<ComputerUseReadCommandKind>,
 ): Promise<ComputerUseCommandCreateResponse> {
   const config = await getComputerUseClientConfig();
-  const client = initClient(zeroComputerUseCommandContract, config);
+  const client = initClient(computerUseCommandContract, config);
   const result = await client.create({ body: commandBody(params) });
 
   if (result.status === 200) {
@@ -114,7 +114,7 @@ export async function createComputerUseWriteCommand(
   params: ComputerUseCommandParams<ComputerUseWriteCommandKind>,
 ): Promise<ComputerUseCommandCreateResponse> {
   const config = await getComputerUseClientConfig();
-  const client = initClient(zeroComputerUseWriteCommandContract, config);
+  const client = initClient(computerUseWriteCommandContract, config);
   const result = await client.create({ body: commandBody(params) });
 
   if (result.status === 200) {
@@ -128,7 +128,7 @@ export async function createComputerUsePluginCommand(
   params: ComputerUseAnyPluginCallBody,
 ): Promise<ComputerUseCommandCreateResponse> {
   const config = await getComputerUseClientConfig();
-  const client = initClient(zeroComputerUsePluginCommandContract, config);
+  const client = initClient(computerUsePluginCommandContract, config);
   const result = await client.create({ body: params });
 
   if (result.status === 200) {
@@ -142,7 +142,7 @@ export async function listComputerUseHosts(): Promise<
   readonly ComputerUseHost[]
 > {
   const config = await getComputerUseClientConfig();
-  const client = initClient(zeroComputerUseHostsContract, config);
+  const client = initClient(computerUseHostsContract, config);
   const result = await client.list({});
 
   if (result.status === 200) {
@@ -156,7 +156,7 @@ export async function getComputerUseCommand(
   commandId: string,
 ): Promise<ComputerUseCommandResponse> {
   const config = await getComputerUseClientConfig();
-  const client = initClient(zeroComputerUseCommandContract, config);
+  const client = initClient(computerUseCommandContract, config);
   const result = await client.get({ params: { commandId } });
 
   if (result.status === 200) {
@@ -168,10 +168,7 @@ export async function getComputerUseCommand(
 
 export async function createComputerUseAuthorizationRequest(): Promise<ComputerUseAuthorizationRequestCreateResponse> {
   const config = await getComputerUseClientConfig();
-  const client = initClient(
-    zeroComputerUseAuthorizationRequestsContract,
-    config,
-  );
+  const client = initClient(computerUseAuthorizationRequestsContract, config);
   const result = await client.create({ body: {} });
 
   if (result.status === 200) {

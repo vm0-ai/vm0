@@ -44,9 +44,9 @@ import {
 } from "@okouai/api-contracts/contracts/model-providers";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
-  zeroModelProviderConnectionsByIdContract,
-  zeroModelProviderConnectionsMainContract,
-} from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
+  modelProviderConnectionsByIdContract,
+  modelProviderConnectionsMainContract,
+} from "@okouai/api-contracts/contracts/model-provider-gateways";
 import { modelProvidersMainContract } from "@okouai/api-contracts/contracts/model-provider-routes";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { z } from "zod";
@@ -1016,13 +1016,13 @@ function modelProvidersClient() {
 
 function modelProviderConnectionsClient() {
   return setupApp({ context, routes: modelProviderGatewayRoutes })(
-    zeroModelProviderConnectionsMainContract,
+    modelProviderConnectionsMainContract,
   );
 }
 
 function modelProviderConnectionsByIdClient() {
   return setupApp({ context, routes: modelProviderGatewayRoutes })(
-    zeroModelProviderConnectionsByIdContract,
+    modelProviderConnectionsByIdContract,
   );
 }
 

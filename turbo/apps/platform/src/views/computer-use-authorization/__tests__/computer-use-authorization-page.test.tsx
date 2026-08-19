@@ -1,7 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { zeroComputerUseAuthorizationRequestsContract } from "@okouai/api-contracts/contracts/zero-computer-use";
+import { computerUseAuthorizationRequestsContract } from "@okouai/api-contracts/contracts/computer-use";
 
 import {
   detachedSetupPage,
@@ -105,7 +105,7 @@ describe("computer use authorization page", () => {
     let completedHostId: string | null = null;
 
     context.mocks.api(
-      zeroComputerUseAuthorizationRequestsContract.get,
+      computerUseAuthorizationRequestsContract.get,
       ({ respond }) => {
         return respond(200, {
           source: "chat",
@@ -134,7 +134,7 @@ describe("computer use authorization page", () => {
       },
     );
     context.mocks.api(
-      zeroComputerUseAuthorizationRequestsContract.apply,
+      computerUseAuthorizationRequestsContract.apply,
       ({ body, respond }) => {
         appliedHostId = body.computerUseHostId;
         completedHostId = body.computerUseHostId;
@@ -195,7 +195,7 @@ describe("computer use authorization page", () => {
 
   it("labels Teams authorization requests", async () => {
     context.mocks.api(
-      zeroComputerUseAuthorizationRequestsContract.get,
+      computerUseAuthorizationRequestsContract.get,
       ({ respond }) => {
         return respond(200, {
           source: "teams",
@@ -228,7 +228,7 @@ describe("computer use authorization page", () => {
 
   it("shows desktop guidance when there are no online hosts", async () => {
     context.mocks.api(
-      zeroComputerUseAuthorizationRequestsContract.get,
+      computerUseAuthorizationRequestsContract.get,
       ({ respond }) => {
         return respond(200, {
           source: "slack",
@@ -279,7 +279,7 @@ describe("computer use authorization page", () => {
   it("shows Okou desktop guidance on an Okou host", async () => {
     context.mocks.browser.url("https://app.okou.ai/");
     context.mocks.api(
-      zeroComputerUseAuthorizationRequestsContract.get,
+      computerUseAuthorizationRequestsContract.get,
       ({ respond }) => {
         return respond(200, {
           source: "slack",
@@ -315,7 +315,7 @@ describe("computer use authorization page", () => {
   it("blocks the desktop download when the browser identifies an Intel Mac", async () => {
     mockMacUserAgentData("x86");
     context.mocks.api(
-      zeroComputerUseAuthorizationRequestsContract.get,
+      computerUseAuthorizationRequestsContract.get,
       ({ respond }) => {
         return respond(200, {
           source: "slack",

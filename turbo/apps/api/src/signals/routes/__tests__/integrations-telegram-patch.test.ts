@@ -6,8 +6,8 @@ import { http, HttpResponse } from "msw";
 import {
   OFFICIAL_TELEGRAM_BOT_ID,
   type TelegramBot,
-  zeroIntegrationsTelegramContract,
-} from "@okouai/api-contracts/contracts/zero-integrations-telegram";
+  integrationsTelegramContract,
+} from "@okouai/api-contracts/contracts/integrations-telegram";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -74,7 +74,7 @@ describe("PATCH /api/integrations/telegram/:botId", () => {
 
   function client() {
     return setupApp({ context, routes: integrationsTelegramRoutes })(
-      zeroIntegrationsTelegramContract,
+      integrationsTelegramContract,
     );
   }
 

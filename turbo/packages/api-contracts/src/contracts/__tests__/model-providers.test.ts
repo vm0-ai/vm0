@@ -46,7 +46,7 @@ import {
   type ModelProviderType,
 } from "../model-providers";
 import { findMatchingPermissions } from "@okouai/connectors/firewall-rule-matcher";
-import { getModelProviderTypeForSurfaceProtocol } from "../zero-model-provider-gateways";
+import { getModelProviderTypeForSurfaceProtocol } from "../model-provider-gateways";
 
 describe("model-first canonical catalog", () => {
   it("recognizes GPT 5.6 Codex fast mode models", () => {
