@@ -737,6 +737,18 @@ export {
 } from "./logs";
 
 export {
+  connectorAccountDisplayNameSchema,
+  connectorAccountTargetSchema,
+  connectorAccountConnectionSchema,
+  connectorAccountSelectionSchema,
+  connectorAccountMutationIntentSchema,
+  type ConnectorAccountTarget,
+  type ConnectorAccountConnection,
+  type ConnectorAccountSelection,
+  type ConnectorAccountMutationIntent,
+} from "./connector-accounts";
+
+export {
   connectorResponseConnectionStatusSchema,
   connectorResponseSchema,
   connectorListResponseSchema,

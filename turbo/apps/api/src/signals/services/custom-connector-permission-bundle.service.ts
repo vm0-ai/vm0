@@ -8,7 +8,7 @@ import type {
   FirewallPolicyValue,
 } from "@okouai/connectors/firewall-types";
 
-import type { ConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
+import type { ConnectorServerFirewallMetadataCatalog } from "./connector-server-firewall-catalog.service";
 import {
   FEISHU_CUSTOM_CONNECTOR_DEFAULT_POLICIES,
   FEISHU_CUSTOM_CONNECTOR_PERMISSION_BUNDLE_REF,
@@ -38,7 +38,7 @@ function customConnectorPermissionBundleSlug(
 }
 
 export async function loadCustomConnectorPermissionBundle(args: {
-  readonly snapshot: Pick<ConnectorRuntimeSnapshot, "serverFirewalls">;
+  readonly catalog: ConnectorServerFirewallMetadataCatalog;
   readonly ref: CustomConnectorPermissionBundleRef;
 }): Promise<CustomConnectorPermissionBundle | null> {
   if (args.ref === FEISHU_CUSTOM_CONNECTOR_PERMISSION_BUNDLE_REF) {
@@ -56,13 +56,13 @@ export async function loadCustomConnectorPermissionBundle(args: {
   }
 
   const connectorSlug = customConnectorPermissionBundleSlug(args.ref);
-  if (!connectorSlug || !args.snapshot.serverFirewalls.has(connectorSlug)) {
+  if (!connectorSlug || !args.catalog.has(connectorSlug)) {
     return null;
   }
 
   const [permissionIndex, routingMetadata] = await Promise.all([
-    args.snapshot.serverFirewalls.loadPermissionIndex(connectorSlug),
-    args.snapshot.serverFirewalls.loadRoutingMetadata(connectorSlug),
+    args.catalog.loadPermissionIndex(connectorSlug),
+    args.catalog.loadRoutingMetadata(connectorSlug),
   ]);
   if (!permissionIndex || !routingMetadata) {
     return null;

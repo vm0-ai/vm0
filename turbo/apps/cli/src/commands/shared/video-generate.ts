@@ -466,8 +466,8 @@ Notes:
 
 Models:
   - Dreamina Seedance 2.5: dreamina-seedance-2.5. Supports 4s-30s,
-    480p/720p, optional audio, up to 30 image references, and up to 10
-    video and 10 audio references, plus first/last frames.
+    480p/720p/1080p, optional audio, up to 30 image references, and up to
+    10 video and 10 audio references, plus first/last frames.
   - Dreamina Seedance 2.0: dreamina-seedance-2.0,
     dreamina-seedance-2.0-fast (default), dreamina-seedance-2.0-mini.
     Supports 4s-15s,

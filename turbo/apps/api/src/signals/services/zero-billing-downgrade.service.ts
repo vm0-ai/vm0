@@ -25,7 +25,7 @@ import {
   activePriceId,
   activeUsagePackPlanPriceId,
   isUsagePackPlanPriceId,
-  knownPlanPriceItem,
+  knownBillingPlanPriceItem,
 } from "./zero-billing-checkout.service";
 import {
   BILLING_DOWNGRADE_PURPOSE,
@@ -173,7 +173,7 @@ function phaseWithDiscounts(
 function subscriptionCurrentItem(
   subscription: StripeSubscription,
 ): StripeSubscriptionItem {
-  const currentItem = knownPlanPriceItem(subscription.items.data);
+  const currentItem = knownBillingPlanPriceItem(subscription.items.data);
   if (!currentItem) {
     throw new Error("Subscription has no known plan item");
   }

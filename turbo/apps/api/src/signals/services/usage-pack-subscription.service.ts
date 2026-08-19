@@ -66,6 +66,7 @@ import {
   activeUsagePackPlanPriceId,
   activeUsagePackPriceId,
   isUsagePackPlanPriceId,
+  tierForKnownPlanPrice,
   tierForKnownPriceId,
   type SubscriptionCheckoutTier,
   usagePackUsdForKnownPriceId,
@@ -75,7 +76,7 @@ import {
   stripeBillingPurchasePaymentParams,
 } from "./billing-payment-method.service";
 
-export const USAGE_PACK_SUBSCRIPTION_PURPOSE = "usage_pack_subscription";
+const USAGE_PACK_SUBSCRIPTION_PURPOSE = "usage_pack_subscription";
 const USAGE_PACK_SUBSCRIPTION_ID_METADATA_KEY = "usagePackSubscriptionId";
 
 const CREDITS_PER_DOLLAR = 1000;
@@ -83,6 +84,10 @@ const PAYABLE_USAGE_PACK_ALLOCATION_STATUSES = [
   "pending_payment",
   "active",
   "pending_invitation",
+] as const;
+const MANAGED_USAGE_PACK_ALLOCATION_STATUSES = [
+  ...PAYABLE_USAGE_PACK_ALLOCATION_STATUSES,
+  "paid_pending_invitation",
 ] as const;
 const CANCELED_USAGE_PACK_ALLOCATION_STATUSES = [
   "pending_payment",
@@ -242,6 +247,7 @@ export interface UsagePackInvoiceInput {
 interface ValidatedSubscriptionShape {
   readonly tier: SubscriptionCheckoutTier;
   readonly planPriceId: string;
+  readonly projectsOrgPlan: boolean;
   readonly periodStart: Date | null;
   readonly periodEnd: Date;
   readonly packageQuantities: ReadonlyMap<string, number>;
@@ -250,6 +256,7 @@ interface ValidatedSubscriptionShape {
 interface UsagePackBasePlanShape {
   readonly tier: SubscriptionCheckoutTier;
   readonly priceId: string;
+  readonly projectsOrgPlan: boolean;
 }
 
 type InspectedSubscriptionShape =
@@ -1417,7 +1424,13 @@ export function usagePackSubscriptionIdFromMetadata(
   if (metadata?.purpose !== USAGE_PACK_SUBSCRIPTION_PURPOSE) {
     return null;
   }
-  const id = metadata[USAGE_PACK_SUBSCRIPTION_ID_METADATA_KEY];
+  return embeddedUsagePackSubscriptionId(metadata);
+}
+
+function embeddedUsagePackSubscriptionId(
+  metadata: Readonly<Record<string, string>> | null | undefined,
+): string | null {
+  const id = metadata?.[USAGE_PACK_SUBSCRIPTION_ID_METADATA_KEY];
   if (!id) {
     return null;
   }
@@ -1448,6 +1461,116 @@ function oneUsagePackSubscriptionId(
     throw new Error("Stripe usage pack metadata has conflicting local IDs");
   }
   return ids.values().next().value ?? null;
+}
+
+async function boundUsagePackSubscriptionId(
+  db: Pick<Db, "select">,
+  stripeSubscriptionId: string | null,
+  includeTerminal: boolean,
+): Promise<string | null> {
+  if (!stripeSubscriptionId) {
+    return null;
+  }
+  const [subscription] = await db
+    .select({ id: usagePackSubscriptions.id })
+    .from(usagePackSubscriptions)
+    .where(
+      includeTerminal
+        ? eq(usagePackSubscriptions.stripeSubscriptionId, stripeSubscriptionId)
+        : and(
+            eq(
+              usagePackSubscriptions.stripeSubscriptionId,
+              stripeSubscriptionId,
+            ),
+            notInArray(usagePackSubscriptions.subscriptionStatus, [
+              ...TERMINAL_USAGE_PACK_SUBSCRIPTION_STATUSES,
+            ]),
+          ),
+    )
+    .limit(1);
+  return subscription?.id ?? null;
+}
+
+async function activeMetadataUsagePackSubscriptionId(
+  db: Pick<Db, "select">,
+  metadata: readonly (Readonly<Record<string, string>> | null | undefined)[],
+): Promise<string | null> {
+  const metadataId = oneUsagePackSubscriptionId(...metadata);
+  if (!metadataId) {
+    return null;
+  }
+  const [subscription] = await db
+    .select({ id: usagePackSubscriptions.id })
+    .from(usagePackSubscriptions)
+    .where(
+      and(
+        eq(usagePackSubscriptions.id, metadataId),
+        notInArray(usagePackSubscriptions.subscriptionStatus, [
+          ...TERMINAL_USAGE_PACK_SUBSCRIPTION_STATUSES,
+        ]),
+      ),
+    )
+    .limit(1);
+  return subscription?.id ?? null;
+}
+
+export async function stripeSubscriptionUsesMemberUsagePacks(
+  db: Pick<Db, "select">,
+  args: {
+    readonly orgId: string;
+    readonly stripeSubscriptionId: string;
+  },
+): Promise<boolean> {
+  const [allocation] = await db
+    .select({ id: usagePackAllocations.id })
+    .from(usagePackSubscriptions)
+    .innerJoin(
+      usagePackAllocations,
+      eq(
+        usagePackAllocations.usagePackSubscriptionId,
+        usagePackSubscriptions.id,
+      ),
+    )
+    .where(
+      and(
+        eq(usagePackSubscriptions.orgId, args.orgId),
+        eq(
+          usagePackSubscriptions.stripeSubscriptionId,
+          args.stripeSubscriptionId,
+        ),
+        notInArray(usagePackSubscriptions.subscriptionStatus, [
+          ...TERMINAL_USAGE_PACK_SUBSCRIPTION_STATUSES,
+        ]),
+        inArray(usagePackAllocations.status, [
+          ...MANAGED_USAGE_PACK_ALLOCATION_STATUSES,
+        ]),
+      ),
+    )
+    .limit(1);
+  return allocation !== undefined;
+}
+
+async function resolveUsagePackSubscriptionId(
+  db: Pick<Db, "select">,
+  args: {
+    readonly stripeSubscriptionId: string | null;
+    readonly metadata: readonly (
+      | Readonly<Record<string, string>>
+      | null
+      | undefined
+    )[];
+    readonly includeTerminalBinding?: boolean;
+  },
+): Promise<string | null> {
+  const boundId = await boundUsagePackSubscriptionId(
+    db,
+    args.stripeSubscriptionId,
+    args.includeTerminalBinding ?? false,
+  );
+  if (boundId) {
+    return boundId;
+  }
+  return await activeMetadataUsagePackSubscriptionId(db, args.metadata);
 }
 
 function stripeObjectId(value: StripeObjectReference | null | undefined) {
@@ -1528,9 +1651,63 @@ function usagePackSubscriptionWillCancel(
   );
 }
 
+function subscriptionHasCustomPlan(
+  subscription: UsagePackSubscriptionInput,
+): boolean {
+  return subscription.items.data.some((item) => {
+    return tierForKnownPlanPrice(item.price) === "custom";
+  });
+}
+
+function customSubscriptionRemovedUsagePacks(
+  subscription: UsagePackSubscriptionInput,
+): boolean {
+  const hasUsagePack = subscription.items.data.some((item) => {
+    return usagePackUsdForKnownPriceId(item.price.id) !== null;
+  });
+  return subscriptionHasCustomPlan(subscription) && !hasUsagePack;
+}
+
 function inspectUsagePackBasePlan(
+  context: UsagePackContext,
   subscription: UsagePackSubscriptionInput,
 ): InspectedValue<UsagePackBasePlanShape> {
+  const customPlanItems = subscription.items.data.filter((item) => {
+    return tierForKnownPlanPrice(item.price) === "custom";
+  });
+  if (customPlanItems.length > 1) {
+    return {
+      valid: false,
+      reason: `expected at most one Custom base plan, received ${customPlanItems.length}`,
+    };
+  }
+  const customPlanItem = customPlanItems[0];
+  if (customPlanItem) {
+    const quantity = customPlanItem.quantity ?? 1;
+    if (quantity !== 1) {
+      return {
+        valid: false,
+        reason: `Custom base plan quantity must be one, received ${quantity}`,
+      };
+    }
+    if (
+      tierForKnownPriceId(context.subscription.stripePlanPriceId) !==
+      context.subscription.tier
+    ) {
+      return {
+        valid: false,
+        reason: "local usage pack base plan is not recognized",
+      };
+    }
+    return {
+      valid: true,
+      value: {
+        tier: context.subscription.tier,
+        priceId: context.subscription.stripePlanPriceId,
+        projectsOrgPlan: false,
+      },
+    };
+  }
   const planItems = subscription.items.data.filter((item) => {
     return isUsagePackPlanPriceId(item.price.id);
   });
@@ -1558,7 +1735,14 @@ function inspectUsagePackBasePlan(
       reason: `usage pack base plan ${planItem.price.id} is not recognized`,
     };
   }
-  return { valid: true, value: { tier, priceId: planItem.price.id } };
+  return {
+    valid: true,
+    value: {
+      tier,
+      priceId: planItem.price.id,
+      projectsOrgPlan: true,
+    },
+  };
 }
 
 function inspectStripeUsagePackPackages(
@@ -1698,7 +1882,7 @@ function inspectUsagePackSubscriptionShape(
   context: UsagePackContext,
   subscription: UsagePackSubscriptionInput,
 ): InspectedSubscriptionShape {
-  const basePlan = inspectUsagePackBasePlan(subscription);
+  const basePlan = inspectUsagePackBasePlan(context, subscription);
   if (!basePlan.valid) {
     return basePlan;
   }
@@ -1719,6 +1903,7 @@ function inspectUsagePackSubscriptionShape(
     shape: {
       tier: basePlan.value.tier,
       planPriceId: basePlan.value.priceId,
+      projectsOrgPlan: basePlan.value.projectsOrgPlan,
       periodStart: packages.value.periodStart,
       periodEnd: packages.value.periodEnd,
       packageQuantities: packages.value.quantities,
@@ -1757,6 +1942,9 @@ function validateUsagePackSubscriptionCorrelation(
     throw new Error(
       `Stripe subscription ${subscription.id} does not match the locally bound subscription`,
     );
+  }
+  if (context.subscription.stripeSubscriptionId) {
+    return;
   }
   const metadataId = oneUsagePackSubscriptionId(subscription.metadata);
   if (metadataId !== usagePackSubscriptionId) {
@@ -1810,19 +1998,21 @@ async function synchronizeUsagePackSubscriptionState(
           : {}),
       })
       .where(eq(usagePackSubscriptions.id, args.usagePackSubscriptionId));
-    await tx
-      .update(orgMetadata)
-      .set({
-        subscriptionStatus: args.subscription.status,
-        cancelAtPeriodEnd,
-        updatedAt,
-      })
-      .where(
-        and(
-          eq(orgMetadata.orgId, context.subscription.orgId),
-          eq(orgMetadata.stripeSubscriptionId, args.subscription.id),
-        ),
-      );
+    if (shape.projectsOrgPlan) {
+      await tx
+        .update(orgMetadata)
+        .set({
+          subscriptionStatus: args.subscription.status,
+          cancelAtPeriodEnd,
+          updatedAt,
+        })
+        .where(
+          and(
+            eq(orgMetadata.orgId, context.subscription.orgId),
+            eq(orgMetadata.stripeSubscriptionId, args.subscription.id),
+          ),
+        );
+    }
   });
   return context;
 }
@@ -1895,6 +2085,10 @@ async function deactivateInvalidUsagePackSubscription(
         ),
       );
 
+    if (subscriptionHasCustomPlan(subscription)) {
+      return;
+    }
+
     const downgraded = await tx
       .update(orgMetadata)
       .set({
@@ -1931,18 +2125,38 @@ async function handleUsagePackSubscriptionChanged(
   eventSubscription: UsagePackSubscriptionInput,
   invalidShape: "throw" | "deactivate",
 ): Promise<UsagePackLifecycleOutcome> {
-  const usagePackSubscriptionId = oneUsagePackSubscriptionId(
-    eventSubscription.metadata,
-  );
+  if (!(await usagePackSubscriptionSchemaAvailable(db))) {
+    const metadataId = oneUsagePackSubscriptionId(eventSubscription.metadata);
+    if (metadataId) {
+      throw new Error("Usage pack subscription schema is unavailable");
+    }
+    return { handled: false, orgId: null };
+  }
+  const usagePackSubscriptionId = await resolveUsagePackSubscriptionId(db, {
+    stripeSubscriptionId: eventSubscription.id,
+    metadata: [eventSubscription.metadata],
+  });
   if (!usagePackSubscriptionId) {
     return { handled: false, orgId: null };
   }
-  await requireUsagePackSubscriptionSchema(db);
 
   const currentSubscription = (await getStripeClient().subscriptions.retrieve(
     eventSubscription.id,
   )) as UsagePackSubscriptionInput;
-  await reconcileUsagePackAllocationChangeSubscription(db, currentSubscription);
+  const removedUsagePacksFromCustom =
+    invalidShape === "deactivate" &&
+    customSubscriptionRemovedUsagePacks(currentSubscription);
+  if (removedUsagePacksFromCustom) {
+    await reconcileUsagePackAllocationChangeSubscriptionDeleted(
+      db,
+      currentSubscription,
+    );
+  } else {
+    await reconcileUsagePackAllocationChangeSubscription(
+      db,
+      currentSubscription,
+    );
+  }
   const context = await loadUsagePackContext(db, usagePackSubscriptionId);
   validateUsagePackSubscriptionCorrelation(
     context,
@@ -1953,6 +2167,24 @@ async function handleUsagePackSubscriptionChanged(
     context,
     currentSubscription,
   );
+  if (removedUsagePacksFromCustom && !inspected.valid) {
+    await deactivateInvalidUsagePackSubscription(
+      db,
+      context,
+      currentSubscription,
+      inspected.reason,
+      "canceled",
+    );
+    L.debug("usage pack component removed from Custom subscription", {
+      usagePackSubscriptionId,
+      stripeSubscriptionId: currentSubscription.id,
+    });
+    return {
+      handled: true,
+      orgId: context.subscription.orgId,
+      subscription: currentSubscription,
+    };
+  }
   if (
     invalidShape === "deactivate" &&
     (currentSubscription.status === "canceled" ||
@@ -2029,13 +2261,20 @@ export async function handleUsagePackSubscriptionDeleted(
   db: Db,
   subscription: Pick<UsagePackSubscriptionInput, "id" | "metadata">,
 ): Promise<UsagePackLifecycleOutcome> {
-  const usagePackSubscriptionId = oneUsagePackSubscriptionId(
-    subscription.metadata,
-  );
+  if (!(await usagePackSubscriptionSchemaAvailable(db))) {
+    const metadataId = oneUsagePackSubscriptionId(subscription.metadata);
+    if (metadataId) {
+      throw new Error("Usage pack subscription schema is unavailable");
+    }
+    return { handled: false, orgId: null };
+  }
+  const usagePackSubscriptionId = await resolveUsagePackSubscriptionId(db, {
+    stripeSubscriptionId: subscription.id,
+    metadata: [subscription.metadata],
+  });
   if (!usagePackSubscriptionId) {
     return { handled: false, orgId: null };
   }
-  await requireUsagePackSubscriptionSchema(db);
   await reconcileUsagePackAllocationChangeSubscriptionDeleted(db, subscription);
   const context = await loadUsagePackContext(db, usagePackSubscriptionId);
   if (
@@ -2089,7 +2328,7 @@ function invoiceLineAmount(line: UsagePackInvoiceLineInput): number | null {
 }
 
 function invoiceHasUsagePackLine(invoice: UsagePackInvoiceInput): boolean {
-  return invoice.lines.data.some((line) => {
+  return (invoice.lines?.data ?? []).some((line) => {
     const priceId = invoiceLinePriceId(line);
     return priceId !== null && usagePackUsdForKnownPriceId(priceId) !== null;
   });
@@ -2486,6 +2725,10 @@ async function persistUsagePackPlanState(
     })
     .where(eq(usagePackSubscriptions.id, subscription.id));
 
+  if (!args.shape.projectsOrgPlan) {
+    return;
+  }
+
   const orgRows = await tx
     .update(orgMetadata)
     .set({
@@ -2526,7 +2769,6 @@ async function persistUsagePackPlanState(
     cancelAt,
     expiresAt: cancelAt,
     memberInviteUsagePackRequired: true,
-    sourceMetadata: args.stripeSubscription.metadata ?? {},
   });
 }
 
@@ -2576,13 +2818,14 @@ async function activateUsagePackPlanFromSubscription(
   db: Db,
   subscription: UsagePackSubscriptionInput,
 ): Promise<UsagePackLifecycleOutcome> {
-  const usagePackSubscriptionId = oneUsagePackSubscriptionId(
-    subscription.metadata,
-  );
+  await requireUsagePackSubscriptionSchema(db);
+  const usagePackSubscriptionId = await resolveUsagePackSubscriptionId(db, {
+    stripeSubscriptionId: subscription.id,
+    metadata: [subscription.metadata],
+  });
   if (!usagePackSubscriptionId) {
     return { handled: false, orgId: null };
   }
-  await requireUsagePackSubscriptionSchema(db);
   const context = await loadUsagePackContext(db, usagePackSubscriptionId);
   validateUsagePackSubscriptionCorrelation(
     context,
@@ -2675,14 +2918,28 @@ export async function handleUsagePackInvoicePaid(
   db: Db,
   invoice: UsagePackInvoiceInput,
 ): Promise<UsagePackLifecycleOutcome> {
-  const usagePackSubscriptionId = oneUsagePackSubscriptionId(
-    invoice.metadata,
-    invoice.parent?.subscription_details?.metadata,
-  );
+  const hasUsagePackLine = invoiceHasUsagePackLine(invoice);
+  if (!(await usagePackSubscriptionSchemaAvailable(db))) {
+    const metadataId = oneUsagePackSubscriptionId(
+      invoice.metadata,
+      invoice.parent?.subscription_details?.metadata,
+    );
+    if (!metadataId && !hasUsagePackLine) {
+      return { handled: false, orgId: null };
+    }
+    throw new Error("Usage pack subscription schema is unavailable");
+  }
+  const usagePackSubscriptionId = await resolveUsagePackSubscriptionId(db, {
+    stripeSubscriptionId: invoiceSubscriptionId(invoice),
+    metadata: [
+      invoice.metadata,
+      invoice.parent?.subscription_details?.metadata,
+    ],
+    includeTerminalBinding: hasUsagePackLine,
+  });
   if (!usagePackSubscriptionId) {
     return { handled: false, orgId: null };
   }
-  await requireUsagePackSubscriptionSchema(db);
   const subscriptionChangeOutcome =
     await handleUsagePackSubscriptionChangeInvoicePaid(db, invoice);
   if (subscriptionChangeOutcome.handled) {
@@ -2703,7 +2960,7 @@ export async function handleUsagePackInvoicePaid(
   if (changeOutcome.handled) {
     return changeOutcome;
   }
-  if (!invoiceHasUsagePackLine(invoice)) {
+  if (!hasUsagePackLine) {
     return { handled: false, orgId: null };
   }
   const context = await loadUsagePackContext(db, usagePackSubscriptionId);

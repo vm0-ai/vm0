@@ -50,7 +50,7 @@ function usd(amount: number): number {
   return Math.round(amount * USD_TO_CREDITS);
 }
 
-/** Video price with a 20% gross margin: provider cost / 0.8. */
+/** Video price with a 25% markup (20% gross margin): provider cost / 0.8. */
 function videoUsd(providerCost: number): number {
   return Math.round((providerCost * USD_TO_CREDITS) / 0.8);
 }
@@ -605,10 +605,12 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["output_megapixel", usd(0.03), 1],
   ]),
 
-  // Video generation uses a 20% gross margin: price = provider cost / 0.8.
+  // Video generation uses a 25% markup (20% gross margin): cost / 0.8.
   ...usageGroup("video", "dreamina-seedance-2-5-260628", [
     ["output_video_tokens.480p_720p.no_video", videoUsd(10.7), 1_000_000],
     ["output_video_tokens.480p_720p.with_video", videoUsd(6.4), 1_000_000],
+    ["output_video_tokens.1080p.no_video", videoUsd(11.7), 1_000_000],
+    ["output_video_tokens.1080p.with_video", videoUsd(7), 1_000_000],
   ]),
   ...usageGroup("video", "dreamina-seedance-2-0-260128", [
     ["output_video_tokens.480p_720p.no_video", videoUsd(7), 1_000_000],

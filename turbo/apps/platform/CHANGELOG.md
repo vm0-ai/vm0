@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.773.0](https://github.com/vm0-ai/vm0/compare/app-v0.772.2...app-v0.773.0) (2026-08-19)
+
+
+### Features
+
+* **app:** add conversation search shortcut ([#28102](https://github.com/vm0-ai/vm0/issues/28102)) ([0c4f4cf](https://github.com/vm0-ai/vm0/commit/0c4f4cf200990d4199ffbbc565ac5e8ef757d2f8))
+* **billing:** support custom main subscriptions ([#27764](https://github.com/vm0-ai/vm0/issues/27764)) ([fe3c377](https://github.com/vm0-ai/vm0/commit/fe3c377460349c7d9644a193cf30168e21f4c314))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.341.0
+    * @okouai/core bumped to 8.571.0
+
+## [0.772.2](https://github.com/vm0-ai/vm0/compare/app-v0.772.1...app-v0.772.2) (2026-08-19)
+
+
+### Bug Fixes
+
+* **composer:** flush pending ime dom changes before submit ([#28045](https://github.com/vm0-ai/vm0/issues/28045)) ([2ad0862](https://github.com/vm0-ai/vm0/commit/2ad08627c7599840af4c82103032edab250e5e4d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.570.2
+
 ## [0.772.1](https://github.com/vm0-ai/vm0/compare/app-v0.772.0...app-v0.772.1) (2026-08-19)
 
 

@@ -65,7 +65,7 @@ import {
   type UserInfo,
 } from "./run-bootstrap-context.service";
 import type { RunWorkflowRef } from "./workflow-data.service";
-import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
+import { loadConnectorRuntimeSelection } from "./connector-catalog-runtime.service";
 import { expandConnectorServerFirewallPolicies } from "./connector-server-firewall-catalog.service";
 import type { QueueFirstRunAssociation } from "./chat-queued-event.service";
 import {
@@ -787,8 +787,8 @@ async function loadZeroRunPostAuthorizationContext(
     isEmptyRunConnectorScope(bootstrapContext)
       ? { kind: "empty" }
       : {
-          kind: "complete",
-          snapshot: await loadConnectorRuntimeSnapshot(db, {
+          kind: "scoped",
+          selection: await loadConnectorRuntimeSelection(db, {
             timing: args.timing,
             requestedConnectorSlugs: bootstrapContext.allowedConnectorSlugs,
           }),
@@ -805,7 +805,7 @@ async function loadZeroRunPostAuthorizationContext(
         return storedPermissionPolicies;
       }
       return await expandConnectorServerFirewallPolicies({
-        catalog: connectorCatalogSelection.snapshot.serverFirewalls,
+        catalog: connectorCatalogSelection.selection.serverFirewalls,
         stored: storedPermissionPolicies,
         connectorSlugs: [...bootstrapContext.allowedConnectorSlugs],
       });
@@ -1021,10 +1021,10 @@ const createAgentRunAfterZeroPreCreate$ = command(
           checkOrgPlanStatusBeforeContext: false,
           preloadedFeatureSwitchContext: input.featureSwitchContext,
           preloadedUserTimezone: input.userInfo.timezone,
-          ...(input.connectorCatalogSelection.kind === "complete"
+          ...(input.connectorCatalogSelection.kind === "scoped"
             ? {
                 preloadedConnectorCatalogSnapshot:
-                  input.connectorCatalogSelection.snapshot,
+                  input.connectorCatalogSelection.selection,
               }
             : {}),
         },

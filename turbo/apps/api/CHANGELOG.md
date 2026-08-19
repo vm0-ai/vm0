@@ -1,5 +1,47 @@
 # Changelog
 
+## [1.462.0](https://github.com/vm0-ai/vm0/compare/api-v1.461.2...api-v1.462.0) (2026-08-19)
+
+
+### Features
+
+* **billing:** support custom main subscriptions ([#27764](https://github.com/vm0-ai/vm0/issues/27764)) ([fe3c377](https://github.com/vm0-ai/vm0/commit/fe3c377460349c7d9644a193cf30168e21f4c314))
+
+
+### Bug Fixes
+
+* **api:** retain axiom partial ingest diagnostics ([#28093](https://github.com/vm0-ai/vm0/issues/28093)) ([c1e7966](https://github.com/vm0-ai/vm0/commit/c1e79664e8aaa742f13b05bd42985bf6be0966c4))
+
+
+### Performance Improvements
+
+* **api:** scope connector runtime materialization ([#28099](https://github.com/vm0-ai/vm0/issues/28099)) ([b2d9952](https://github.com/vm0-ai/vm0/commit/b2d99526883ff4b2cfd5d349cb070edab8b7acef))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.341.0
+    * @okouai/core bumped to 8.571.0
+    * @okouai/db bumped to 1.207.0
+
+## [1.461.2](https://github.com/vm0-ai/vm0/compare/api-v1.461.1...api-v1.461.2) (2026-08-19)
+
+
+### Bug Fixes
+
+* **api:** raise connector catalog size limit ([#28082](https://github.com/vm0-ai/vm0/issues/28082)) ([fe75820](https://github.com/vm0-ai/vm0/commit/fe758209487000ca0487a9a4a1f8ddff28e7715c))
+* **api:** run queued automation events before goal continuation ([#28092](https://github.com/vm0-ai/vm0/issues/28092)) ([1403973](https://github.com/vm0-ai/vm0/commit/14039736f05cb3059d47def41c6aad9c155c8ab3)), closes [#28078](https://github.com/vm0-ai/vm0/issues/28078)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.570.2
+    * @okouai/db bumped to 1.206.2
+
 ## [1.461.1](https://github.com/vm0-ai/vm0/compare/api-v1.461.0...api-v1.461.1) (2026-08-19)
 
 

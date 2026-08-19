@@ -53,6 +53,7 @@ import {
   validateAgentRunLaunchSnapshotSchema,
 } from "./test-agent-run-launch-snapshot";
 import { validateAgentComposeConsolidationPreflight } from "./test-agent-compose-consolidation-preflight";
+import { validateConnectorAccountExpansion } from "./test-connector-account-expansion";
 import {
   AgentComposeProvenanceSchemaUnavailableError,
   deleteClerkAgentLifecycleData,
@@ -11586,6 +11587,7 @@ async function main(): Promise<void> {
     await validateAgentRunMetadataStage2Runner();
     await validateAgentRunLaunchSnapshotMigration();
     await validateFeishuConnectorOwnershipCleanup();
+    await validateConnectorAccountExpansion();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();

@@ -492,6 +492,31 @@ mod tests {
     }
 
     #[test]
+    fn workspace_image_cache_help_documents_gc_eviction_policy() {
+        let error = Cli::try_parse_from(["runner", "workspace-image-cache", "gc", "--help"])
+            .err()
+            .expect("workspace-image-cache gc --help should exit through clap");
+        assert_eq!(error.kind(), clap::error::ErrorKind::DisplayHelp);
+        let help = error
+            .to_string()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        assert!(help.contains(
+            "first phase removes stale, unusable, and temporary cache contents before evaluating capacity"
+        ));
+        assert!(help.contains("valid reusable entries, oldest-first"));
+        assert!(help.contains("maximum byte budget"));
+        assert!(help.contains("minimum-free-space thresholds"));
+        assert!(help.contains("post-GC target"));
+        assert!(help.contains("1,024-entry cap"));
+        assert!(help.contains("Locked entries are skipped during reusable-entry eviction"));
+        assert!(help.contains("`--dry-run` to evaluate this same policy"));
+        assert!(help.contains("without deleting data"));
+    }
+
+    #[test]
     fn service_unit_state_command_is_registered() {
         assert!(
             Cli::try_parse_from([
