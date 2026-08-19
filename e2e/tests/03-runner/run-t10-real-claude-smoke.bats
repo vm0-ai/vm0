@@ -184,12 +184,13 @@ run_real_claude_steer() {
     assert_success
     run jq -e '
         .cliAgentType == "pi" and
-        .piModelConfig == {
-            provider: "openrouter",
-            baseUrl: "https://openrouter.ai/api/v1",
-            model: "deepseek/deepseek-v4-flash",
-            apiKeyEnv: "OPENAI_API_KEY"
-        }
+        .environment.OPENAI_BASE_URL == "https://openrouter.ai/api/v1" and
+        .environment.OPENAI_MODEL == "deepseek/deepseek-v4-flash" and
+        any(
+            .firewalls[];
+            .kind == "builtin" and
+            .name == "model-provider:openrouter-codex"
+        )
     ' <<<"$output"
     assert_success
 }
