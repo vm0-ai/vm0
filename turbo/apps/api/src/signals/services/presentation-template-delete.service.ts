@@ -1,14 +1,17 @@
 import { command } from "ccstate";
 import { presentationTemplates } from "@okouai/db/schema/presentation-template";
+import { presentationTemplateUploads } from "@okouai/db/schema/presentation-template-upload";
 import { and, eq } from "drizzle-orm";
 
+import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
+import { deleteS3Objects } from "../external/s3";
 import { lockPresentationTemplateLifecycle } from "./presentation-template-lifecycle.service";
 
 export const deletePresentationTemplate$ = command(
   async (
-    { set },
+    { get, set },
     args: {
       readonly orgId: string;
       readonly ownerUserId: string;
@@ -21,7 +24,11 @@ export const deletePresentationTemplate$ = command(
       await lockPresentationTemplateLifecycle(tx, args.templateId);
       signal.throwIfAborted();
       const [row] = await tx
-        .select({ id: presentationTemplates.id })
+        .select({
+          id: presentationTemplates.id,
+          sourceStorageKey: presentationTemplates.sourceStorageKey,
+          pageKeys: presentationTemplates.pageKeys,
+        })
         .from(presentationTemplates)
         .where(
           and(
@@ -49,8 +56,14 @@ export const deletePresentationTemplate$ = command(
       return false;
     }
 
-    // Source and page objects are normal user uploads. Deleting a template must
-    // not delete independently owned attachments that may be reused elsewhere.
+    // Staging rows for an import that never committed cascade with the template
+    // row, so their keys have to be collected before it is deleted.
+    const staged = await db
+      .select({ storageKey: presentationTemplateUploads.storageKey })
+      .from(presentationTemplateUploads)
+      .where(eq(presentationTemplateUploads.templateId, template.id));
+    signal.throwIfAborted();
+
     const [deleted] = await db
       .delete(presentationTemplates)
       .where(
@@ -63,6 +76,24 @@ export const deletePresentationTemplate$ = command(
       )
       .returning({ id: presentationTemplates.id });
     signal.throwIfAborted();
-    return deleted !== undefined;
+    if (!deleted) {
+      return false;
+    }
+
+    // The API allocates the source and page objects for one import. Nothing
+    // else can reference them and they never enter the artifact catalog, so
+    // they are deleted with the template rather than left in the bucket.
+    const keys = [
+      ...(template.sourceStorageKey === null
+        ? []
+        : [template.sourceStorageKey]),
+      ...template.pageKeys,
+      ...staged.map((row) => {
+        return row.storageKey;
+      }),
+    ];
+    await get(deleteS3Objects(env("R2_USER_ARTIFACTS_BUCKET_NAME"), keys));
+    signal.throwIfAborted();
+    return true;
   },
 );

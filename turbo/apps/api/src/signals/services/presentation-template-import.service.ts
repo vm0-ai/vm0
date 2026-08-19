@@ -1,20 +1,27 @@
 import { command } from "ccstate";
 import {
+  MAX_PRESENTATION_TEMPLATE_PAGE_BYTES,
   MAX_PRESENTATION_TEMPLATE_PAGES,
+  MAX_PRESENTATION_TEMPLATE_SOURCE_BYTES,
   MAX_PRESENTATION_TEMPLATE_TOTAL_PAGE_BYTES,
   type CreatePresentationTemplateImportBody,
   type PresentationTemplateUploadBody,
 } from "@okouai/api-contracts/contracts/presentation-templates";
 import { presentationTemplates } from "@okouai/db/schema/presentation-template";
 import { presentationTemplateUploads } from "@okouai/db/schema/presentation-template-upload";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 
 import type { Tx } from "../../lib/db-types";
 import { conflict, notFound } from "../../lib/error";
 import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
-import { generatePresignedPutUrl, s3MetadataHeaders } from "../external/s3";
+import {
+  deleteS3Objects,
+  generatePresignedPutUrl,
+  s3MetadataHeaders,
+  s3ObjectHead,
+} from "../external/s3";
 import { allocateArtifactObject$ } from "./artifact-storage.service";
 import { presentationTemplateIdForRequest } from "./presentation-template-data.service";
 import { lockPresentationTemplateLifecycle } from "./presentation-template-lifecycle.service";
@@ -168,6 +175,24 @@ export const requestPresentationTemplateUpload$ = command(
         return { kind: "closed" as const };
       }
 
+      const pageIndex = args.body.role === "page" ? args.body.pageIndex : null;
+      // Re-requesting a slot replaces its object, so the previous one has to be
+      // read before the upsert overwrites the key and then deleted.
+      const [previous] = await tx
+        .select({ storageKey: presentationTemplateUploads.storageKey })
+        .from(presentationTemplateUploads)
+        .where(
+          and(
+            eq(presentationTemplateUploads.templateId, args.templateId),
+            eq(presentationTemplateUploads.role, args.body.role),
+            pageIndex === null
+              ? isNull(presentationTemplateUploads.pageIndex)
+              : eq(presentationTemplateUploads.pageIndex, pageIndex),
+          ),
+        )
+        .limit(1);
+      signal.throwIfAborted();
+
       // The API picks the object, so the caller never names one.
       const artifact = await set(
         allocateArtifactObject$,
@@ -176,7 +201,6 @@ export const requestPresentationTemplateUpload$ = command(
       );
       signal.throwIfAborted();
 
-      const pageIndex = args.body.role === "page" ? args.body.pageIndex : null;
       await tx
         .insert(presentationTemplateUploads)
         .values({
@@ -204,7 +228,11 @@ export const requestPresentationTemplateUpload$ = command(
             sizeBytes: args.body.size,
           },
         });
-      return { kind: "allocated" as const, artifact };
+      return {
+        kind: "allocated" as const,
+        artifact,
+        replacedKey: previous?.storageKey,
+      };
     });
     signal.throwIfAborted();
 
@@ -215,9 +243,15 @@ export const requestPresentationTemplateUpload$ = command(
       return conflict("This presentation template import is already committed");
     }
 
+    const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
+    if (slot.replacedKey && slot.replacedKey !== slot.artifact.key) {
+      await get(deleteS3Objects(bucket, [slot.replacedKey]));
+      signal.throwIfAborted();
+    }
+
     const uploadUrl = await get(
       generatePresignedPutUrl(
-        env("R2_USER_ARTIFACTS_BUCKET_NAME"),
+        bucket,
         slot.artifact.key,
         args.body.contentType,
         PUT_URL_TTL_SECONDS,
@@ -237,8 +271,13 @@ export const requestPresentationTemplateUpload$ = command(
 
 interface CollectedUploads {
   readonly sourceKey: string;
-  readonly sourceSize: number;
   readonly pageKeys: readonly string[];
+}
+
+/** A slot may be allocated and then abandoned, so commit measures the bytes. */
+interface StoredUploads {
+  readonly sourceSize: number;
+  readonly totalPageBytes: number;
 }
 
 function collectUploads(
@@ -267,21 +306,92 @@ function collectUploads(
   if (missing !== -1) {
     return { error: `Page ${(missing + 1).toString()} is missing` };
   }
-  const totalPageBytes = pages.reduce((total, row) => {
-    return total + row.sizeBytes;
-  }, 0);
-  if (totalPageBytes > MAX_PRESENTATION_TEMPLATE_TOTAL_PAGE_BYTES) {
-    return {
-      error: `Page images must total ${MAX_PRESENTATION_TEMPLATE_TOTAL_PAGE_BYTES.toString()} bytes or fewer`,
-    };
-  }
   return {
     sourceKey: source.storageKey,
-    sourceSize: source.sizeBytes,
     pageKeys: pages.map((row) => {
       return row.storageKey;
     }),
   };
+}
+
+/**
+ * Allocating a slot only reserves an object; the caller still has to PUT the
+ * bytes. Commit therefore measures every allocated object instead of trusting
+ * the size the caller declared when it asked for the slot.
+ */
+const measureStoredUploads$ = command(
+  async (
+    { get },
+    uploads: CollectedUploads,
+    signal: AbortSignal,
+  ): Promise<StoredUploads | { readonly error: string }> => {
+    const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
+    const heads = await Promise.all(
+      [uploads.sourceKey, ...uploads.pageKeys].map(async (key) => {
+        return await get(s3ObjectHead(bucket, key));
+      }),
+    );
+    signal.throwIfAborted();
+
+    const missing = heads.findIndex((head) => {
+      return head.kind !== "found" || head.contentLength === undefined;
+    });
+    if (missing === 0) {
+      return { error: "The source deck was never uploaded" };
+    }
+    if (missing > 0) {
+      return { error: `Page ${missing.toString()} was never uploaded` };
+    }
+
+    const sizes = heads.map((head) => {
+      return head.kind === "found" ? (head.contentLength ?? 0) : 0;
+    });
+    const [sourceSize = 0, ...pageSizes] = sizes;
+    if (sourceSize > MAX_PRESENTATION_TEMPLATE_SOURCE_BYTES) {
+      return {
+        error: `Presentation files must be ${MAX_PRESENTATION_TEMPLATE_SOURCE_BYTES.toString()} bytes or smaller`,
+      };
+    }
+    const oversizedPage = pageSizes.findIndex((size) => {
+      return size > MAX_PRESENTATION_TEMPLATE_PAGE_BYTES;
+    });
+    if (oversizedPage !== -1) {
+      return {
+        error: `Page ${(oversizedPage + 1).toString()} must be no larger than ${MAX_PRESENTATION_TEMPLATE_PAGE_BYTES.toString()} bytes`,
+      };
+    }
+    const totalPageBytes = pageSizes.reduce((total, size) => {
+      return total + size;
+    }, 0);
+    if (totalPageBytes > MAX_PRESENTATION_TEMPLATE_TOTAL_PAGE_BYTES) {
+      return {
+        error: `Page images must total ${MAX_PRESENTATION_TEMPLATE_TOTAL_PAGE_BYTES.toString()} bytes or fewer`,
+      };
+    }
+    return { sourceSize, totalPageBytes };
+  },
+);
+
+function sameUploads(left: CollectedUploads, right: CollectedUploads): boolean {
+  return (
+    left.sourceKey === right.sourceKey &&
+    left.pageKeys.length === right.pageKeys.length &&
+    left.pageKeys.every((key, index) => {
+      return key === right.pageKeys[index];
+    })
+  );
+}
+
+async function collectImportUploads(
+  tx: Tx,
+  templateId: string,
+): Promise<CollectedUploads | { readonly error: string }> {
+  const rows = await tx
+    .select()
+    .from(presentationTemplateUploads)
+    .where(eq(presentationTemplateUploads.templateId, templateId))
+    .orderBy(asc(presentationTemplateUploads.pageIndex));
+  return collectUploads(rows);
 }
 
 export const commitPresentationTemplateImport$ = command(
@@ -305,12 +415,10 @@ export const commitPresentationTemplateImport$ = command(
       if (!isOpenImport(template)) {
         return { kind: "committed" as const, template };
       }
-      const rows = await tx
-        .select()
-        .from(presentationTemplateUploads)
-        .where(eq(presentationTemplateUploads.templateId, args.templateId))
-        .orderBy(asc(presentationTemplateUploads.pageIndex));
-      return { kind: "open" as const, uploads: collectUploads(rows) };
+      return {
+        kind: "open" as const,
+        uploads: await collectImportUploads(tx, args.templateId),
+      };
     });
     signal.throwIfAborted();
 
@@ -331,6 +439,12 @@ export const commitPresentationTemplateImport$ = command(
     }
     const uploads = collected.uploads;
 
+    const measured = await set(measureStoredUploads$, uploads, signal);
+    signal.throwIfAborted();
+    if ("error" in measured) {
+      return badRequest(measured.error);
+    }
+
     // The browser rendered these pages from a deck it opened, so the archive is
     // not re-validated. Reading the slide count is the one check on whether it
     // exported every page.
@@ -339,7 +453,7 @@ export const commitPresentationTemplateImport$ = command(
       {
         bucket: env("R2_USER_ARTIFACTS_BUCKET_NAME"),
         key: uploads.sourceKey,
-        size: uploads.sourceSize,
+        size: measured.sourceSize,
       },
       signal,
     );
@@ -366,6 +480,15 @@ export const commitPresentationTemplateImport$ = command(
           status: 200 as const,
           body: { id: template.id, status: template.status },
         };
+      }
+      // A slot allocated while the bytes above were being measured would make
+      // the measured set stale, so freeze only the set that was verified.
+      const current = await collectImportUploads(tx, args.templateId);
+      signal.throwIfAborted();
+      if ("error" in current || !sameUploads(current, uploads)) {
+        return conflict(
+          "The import changed while it was being committed; commit it again",
+        );
       }
       const [committed] = await tx
         .update(presentationTemplates)

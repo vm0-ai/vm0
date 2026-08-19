@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  DeleteObjectsCommand,
   GetObjectCommand,
   HeadObjectCommand,
   ListObjectsV2Command,
@@ -100,6 +101,28 @@ function byteStream(body: Buffer): AsyncIterable<Uint8Array> {
   };
 }
 
+function deleteStoredObjects(
+  objects: Map<string, StoredObject>,
+  bucket: string,
+  deletion: unknown,
+): void {
+  if (typeof deletion !== "object" || deletion === null) {
+    return;
+  }
+  const candidates = (deletion as { readonly Objects?: readonly unknown[] })
+    .Objects;
+  for (const candidate of candidates ?? []) {
+    if (
+      typeof candidate === "object" &&
+      candidate !== null &&
+      "Key" in candidate &&
+      typeof candidate.Key === "string"
+    ) {
+      objects.delete(objectId(bucket, candidate.Key));
+    }
+  }
+}
+
 function installS3Fixture() {
   const objects = new Map<string, StoredObject>();
   const signedPuts = new Map<string, SignedPut>();
@@ -146,7 +169,8 @@ function installS3Fixture() {
     if (command instanceof HeadObjectCommand) {
       const object = objects.get(id);
       if (!object) {
-        throw notFoundError(key);
+        // The SDK rejects on a missing object; it does not throw synchronously.
+        return Promise.reject(notFoundError(key));
       }
       return Promise.resolve({
         ContentLength: object.body.length,
@@ -158,7 +182,7 @@ function installS3Fixture() {
     if (command instanceof GetObjectCommand) {
       const object = objects.get(id);
       if (!object) {
-        throw notFoundError(key);
+        return Promise.reject(notFoundError(key));
       }
       const body = rangeSlice(object.body, input.Range);
       return Promise.resolve({
@@ -166,6 +190,10 @@ function installS3Fixture() {
         ContentLength: body.length,
         ContentType: object.contentType,
       });
+    }
+    if (command instanceof DeleteObjectsCommand) {
+      deleteStoredObjects(objects, bucket, input.Delete);
+      return Promise.resolve({});
     }
     return Promise.resolve({});
   });
@@ -206,6 +234,14 @@ function installS3Fixture() {
         lastModified: nowDate(),
       });
       return target.key;
+    },
+    stored(bucket: string): readonly string[] {
+      return [...objects.keys()].flatMap((storedId) => {
+        const separator = storedId.indexOf("\0");
+        return storedId.slice(0, separator) === bucket
+          ? [storedId.slice(separator + 1)]
+          : [];
+      });
     },
   };
 }
@@ -271,16 +307,16 @@ async function openImport(
   return opened.body.id;
 }
 
-/** Request a slot from the import, then PUT the bytes to the URL it returns. */
-async function fillSlot(
+/** Ask the import for a slot without uploading anything to it. */
+async function requestSlot(
   actor: ApiTestUser,
   fixture: ReturnType<typeof installS3Fixture>,
   templateId: string,
   slot:
     | { readonly role: "source"; readonly filename: string }
     | { readonly role: "page"; readonly pageIndex: number },
-  body: Buffer,
-): Promise<void> {
+  declaredSize: number,
+): Promise<string> {
   mocks.clerk.session(actor.userId, actor.orgId);
   const requested = await accept(
     templateClient().requestUpload({
@@ -292,19 +328,39 @@ async function fillSlot(
               role: "source",
               filename: slot.filename,
               contentType: PRESENTATION_TEMPLATE_SOURCE_CONTENT_TYPE,
-              size: body.length,
+              size: declaredSize,
             }
           : {
               role: "page",
               pageIndex: slot.pageIndex,
               filename: `page-${(slot.pageIndex + 1).toString()}.png`,
               contentType: PRESENTATION_TEMPLATE_PAGE_CONTENT_TYPE,
-              size: body.length,
+              size: declaredSize,
             },
     }),
     [200],
   );
-  fixture.upload(requested.body.uploadUrl, body);
+  return requested.body.uploadUrl;
+}
+
+/** Request a slot from the import, then PUT the bytes to the URL it returns. */
+async function fillSlot(
+  actor: ApiTestUser,
+  fixture: ReturnType<typeof installS3Fixture>,
+  templateId: string,
+  slot:
+    | { readonly role: "source"; readonly filename: string }
+    | { readonly role: "page"; readonly pageIndex: number },
+  body: Buffer,
+): Promise<string> {
+  const uploadUrl = await requestSlot(
+    actor,
+    fixture,
+    templateId,
+    slot,
+    body.length,
+  );
+  return fixture.upload(uploadUrl, body);
 }
 
 async function fillImport(
@@ -598,5 +654,162 @@ describe("presentation template import", () => {
       }),
       [409],
     );
+  });
+
+  it("refuses to commit a slot whose bytes were never uploaded", async () => {
+    const actor = bdd.user();
+    await enablePresentationTemplates(actor);
+    const fixture = installS3Fixture();
+    const client = templateClient();
+
+    // Every slot allocated, nothing PUT.
+    const empty = await openImport(actor);
+    await requestSlot(
+      actor,
+      fixture,
+      empty,
+      { role: "source", filename: "brand-system.pptx" },
+      2048,
+    );
+    await requestSlot(
+      actor,
+      fixture,
+      empty,
+      { role: "page", pageIndex: 0 },
+      24,
+    );
+    mocks.clerk.session(actor.userId, actor.orgId);
+    const noSource = await accept(
+      client.commit({
+        headers: webHeaders(),
+        params: { templateId: empty },
+        body: {},
+      }),
+      [400],
+    );
+    expect(noSource.body.error.message).toContain("source deck was never");
+
+    // Source uploaded, pages allocated but never PUT.
+    const pagesMissing = await openImport(actor);
+    await fillSlot(
+      actor,
+      fixture,
+      pagesMissing,
+      { role: "source", filename: "brand-system.pptx" },
+      pptxSource(2),
+    );
+    await requestSlot(
+      actor,
+      fixture,
+      pagesMissing,
+      { role: "page", pageIndex: 0 },
+      24,
+    );
+    await fillSlot(
+      actor,
+      fixture,
+      pagesMissing,
+      { role: "page", pageIndex: 1 },
+      pngHeader(),
+    );
+    mocks.clerk.session(actor.userId, actor.orgId);
+    const noPage = await accept(
+      client.commit({
+        headers: webHeaders(),
+        params: { templateId: pagesMissing },
+        body: {},
+      }),
+      [400],
+    );
+    expect(noPage.body.error.message).toContain("Page 1 was never uploaded");
+  });
+
+  it("measures the stored bytes instead of the declared size", async () => {
+    const actor = bdd.user();
+    await enablePresentationTemplates(actor);
+    const fixture = installS3Fixture();
+    const client = templateClient();
+
+    // The declared size is deliberately wrong; commit must still read the deck.
+    const templateId = await openImport(actor);
+    const deck = pptxSource(1);
+    const uploadUrl = await requestSlot(
+      actor,
+      fixture,
+      templateId,
+      { role: "source", filename: "brand-system.pptx" },
+      deck.length + 4096,
+    );
+    fixture.upload(uploadUrl, deck);
+    await fillSlot(
+      actor,
+      fixture,
+      templateId,
+      { role: "page", pageIndex: 0 },
+      pngHeader(),
+    );
+
+    mocks.clerk.session(actor.userId, actor.orgId);
+    await accept(
+      client.commit({
+        headers: webHeaders(),
+        params: { templateId },
+        body: {},
+      }),
+      [200],
+    );
+  });
+
+  it("deletes the replaced object when a slot is requested again", async () => {
+    const actor = bdd.user();
+    await enablePresentationTemplates(actor);
+    const fixture = installS3Fixture();
+
+    const templateId = await openImport(actor);
+    const firstKey = await fillSlot(
+      actor,
+      fixture,
+      templateId,
+      { role: "page", pageIndex: 0 },
+      pngHeader(),
+    );
+    expect(fixture.stored(ARTIFACTS_BUCKET)).toContain(firstKey);
+
+    const secondKey = await fillSlot(
+      actor,
+      fixture,
+      templateId,
+      { role: "page", pageIndex: 0 },
+      pngHeader(1600, 901),
+    );
+    expect(secondKey).not.toBe(firstKey);
+    expect(fixture.stored(ARTIFACTS_BUCKET)).not.toContain(firstKey);
+    expect(fixture.stored(ARTIFACTS_BUCKET)).toContain(secondKey);
+  });
+
+  it("removes the committed objects when the template is deleted", async () => {
+    const actor = bdd.user();
+    await enablePresentationTemplates(actor);
+    const fixture = installS3Fixture();
+    const client = templateClient();
+
+    const templateId = await openImport(actor);
+    await fillImport(actor, fixture, templateId, 2);
+    mocks.clerk.session(actor.userId, actor.orgId);
+    await accept(
+      client.commit({
+        headers: webHeaders(),
+        params: { templateId },
+        body: {},
+      }),
+      [200],
+    );
+    expect(fixture.stored(ARTIFACTS_BUCKET)).toHaveLength(3);
+
+    await accept(
+      client.delete({ headers: webHeaders(), params: { templateId } }),
+      [204],
+    );
+    expect(fixture.stored(ARTIFACTS_BUCKET)).toStrictEqual([]);
   });
 });
