@@ -873,6 +873,19 @@ function parseVideoAspectRatio(
   return aspectRatio;
 }
 
+/**
+ * Whether the request chose a model of its own.
+ *
+ * `parseVideoOptions` reads `model` through `readString`, which treats a blank
+ * value as unset and applies its own default. A caller that decides whether to
+ * substitute a different default has to answer the same question the same way;
+ * two independent answers disagree exactly on `model: ""`, and the substitution
+ * is then skipped for a request that never named anything.
+ */
+export function namesVideoModel(body: unknown): boolean {
+  return isRecord(body) && readString(body, "model", "") !== "";
+}
+
 export function parseVideoOptions(
   body: unknown,
 ): VideoOptions | VideoErrorResponse {

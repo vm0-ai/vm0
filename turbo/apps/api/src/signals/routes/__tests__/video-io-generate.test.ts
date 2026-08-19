@@ -840,6 +840,72 @@ describe("POST /api/zero/video-io/generate", () => {
     expect(calledFal).toBeFalsy();
   });
 
+  it("applies the run's video model when the request sends a blank model", async () => {
+    // `parseVideoOptions` reads `model` through a helper that treats a blank
+    // value as unset, so a caller sending `model: ""` has named nothing. If the
+    // route answered that question differently it would skip the run's model
+    // and silently generate with the catalog default instead.
+    const fixture = await seedVideoFixture();
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        triggerSource: "web",
+      },
+      context.signal,
+    );
+    await setRunVideoModelFixture({
+      runId,
+      selectedVideoModel: KLING_V3_4K_MODEL,
+    });
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.VideoModelSelection]: true,
+    });
+
+    let calledKling = false;
+    let calledBytePlus = false;
+    server.use(
+      http.post(KLING_V3_4K_QUEUE_URL, () => {
+        calledKling = true;
+        return HttpResponse.json({
+          request_id: "blank-model-kling-request",
+          status_url: KLING_STATUS_URL,
+          response_url: KLING_RESPONSE_URL,
+        });
+      }),
+      http.post(BYTEPLUS_VIDEO_TASKS_URL, () => {
+        calledBytePlus = true;
+        return HttpResponse.json({ id: "unexpected-byteplus-task" });
+      }),
+    );
+
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      runId,
+    });
+    const app = createVideoIoTestApp(fixture.pricingResolution);
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        prompt: "a vertical concert stage reveal",
+        model: "",
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    expect(calledKling).toBeTruthy();
+    expect(calledBytePlus).toBeFalsy();
+  });
+
   it("applies the run's video model when the request names none", async () => {
     const fixture = await seedVideoFixture();
     const { composeId } = await store.set(

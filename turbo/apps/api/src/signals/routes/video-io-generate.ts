@@ -32,6 +32,7 @@ import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.s
 import {
   checkVideoCredits$,
   getMissingVideoPricing,
+  namesVideoModel,
   parseVideoOptions,
   submitBytePlusVideoGeneration,
   submitFalVideoGeneration,
@@ -433,7 +434,7 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   // request names no model of its own. A caller that asks for a specific model
   // — because the user asked for it in the prompt — gets that model.
   const options = parseVideoOptions(
-    runVideoModel === null || bodyResult.data.model !== undefined
+    runVideoModel === null || namesVideoModel(bodyResult.data)
       ? bodyResult.data
       : withDefaultRunVideoModel(bodyResult.data, runVideoModel),
   );
