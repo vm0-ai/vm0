@@ -523,7 +523,7 @@ describe("GET /api/zero/connector-catalog", () => {
     assertPublicConnectorCatalogHasNoPrivateFields(featured.body);
     expect(featured.body.connectors.length).toBeGreaterThan(0);
     expect(featured.body.connectors.length).toBeLessThanOrEqual(100);
-    expect(featured.body.totalConnectorCount ?? 0).toBeGreaterThanOrEqual(
+    expect(featured.body.totalConnectorCount).toBeGreaterThanOrEqual(
       featured.body.connectors.length,
     );
 

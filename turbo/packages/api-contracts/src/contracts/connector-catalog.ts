@@ -140,8 +140,12 @@ const publicConnectorCatalogDetailResponseSchema = z.object({
 const publicConnectorCatalogStatusResponseSchema = z.object({
   connectors: z.array(publicConnectorCatalogStatusItemSchema),
   categoryMetadata: publicConnectorCatalogCategoryMetadataSchema.optional(),
-  totalConnectorCount: z.number().int().nonnegative().optional(),
 });
+
+const publicConnectorCatalogDiscoveryResponseSchema =
+  publicConnectorCatalogStatusResponseSchema.extend({
+    totalConnectorCount: z.number().int().nonnegative(),
+  });
 
 const publicFirewallPolicyValueSchema = z.enum(["allow", "deny", "ask"]);
 
@@ -230,6 +234,9 @@ export type PublicConnectorCatalogStatusItem = z.infer<
 export type PublicConnectorCatalogStatusResponse = z.infer<
   typeof publicConnectorCatalogStatusResponseSchema
 >;
+export type PublicConnectorCatalogDiscoveryResponse = z.infer<
+  typeof publicConnectorCatalogDiscoveryResponseSchema
+>;
 export type PublicConnectorCatalogPermissionDetail = z.infer<
   typeof publicConnectorCatalogPermissionDetailSchema
 >;
@@ -268,7 +275,7 @@ export const connectorCatalogContract = c.router({
     headers: authHeadersSchema,
     query: z.object({ keyword: z.string().optional() }),
     responses: {
-      200: publicConnectorCatalogStatusResponseSchema,
+      200: publicConnectorCatalogDiscoveryResponseSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,

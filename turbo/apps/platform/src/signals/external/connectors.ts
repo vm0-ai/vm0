@@ -5,6 +5,7 @@ import {
 } from "@okouai/api-contracts/contracts/zero-connectors";
 import {
   connectorCatalogContract,
+  type PublicConnectorCatalogDiscoveryResponse,
   type PublicConnectorCatalogStatusResponse,
 } from "@okouai/api-contracts/contracts/connector-catalog";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
@@ -61,7 +62,12 @@ export const connectorCatalogStatusBySlug$ = computed(async (get) => {
 
 export function relatedConnectorCatalog(
   keyword$: Computed<string>,
-): Computed<Promise<PublicConnectorCatalogStatusResponse>> {
+): Computed<
+  Promise<
+    | PublicConnectorCatalogDiscoveryResponse
+    | PublicConnectorCatalogStatusResponse
+  >
+> {
   return computed(async (get) => {
     const featureStates = get(featureSwitch$);
     if (!featureStates[FeatureSwitchKey.ConnectorDiscovery]) {

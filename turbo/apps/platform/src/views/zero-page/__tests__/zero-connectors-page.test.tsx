@@ -673,38 +673,6 @@ describe("connectors page", () => {
     ).toBeInTheDocument();
   });
 
-  it("does not treat bounded discovery results as the catalog size", async () => {
-    mockConnectors([]);
-    context.mocks.api(zeroConnectorCatalogContract.discovery, ({ respond }) => {
-      return respond(200, {
-        connectors: [
-          publicStatusItem({
-            connectorSlug: "github",
-            label: "GitHub",
-            authMethods: [],
-          }),
-        ],
-      });
-    });
-
-    detachedSetupPage({
-      context,
-      path: "/connectors",
-      featureSwitches: {
-        [FeatureSwitchKey.ConnectorDiscovery]: true,
-        [FeatureSwitchKey.ConnectorCatalogCount]: true,
-      },
-    });
-
-    await expect(
-      screen.findByTestId("connector-card-label"),
-    ).resolves.toHaveTextContent("GitHub");
-    expect(
-      screen.getByText("Connect third-party services for your agents to use."),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/^Connect 1 service/)).not.toBeInTheDocument();
-  });
-
   it("shows the full connector catalog size in the page description", async () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
@@ -731,32 +699,6 @@ describe("connectors page", () => {
     ).resolves.toBeInTheDocument();
   });
 
-  it("prefers the reported catalog size over the response array length", async () => {
-    mockConnectors([]);
-    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
-      return respond(200, {
-        connectors: [
-          publicStatusItem({
-            connectorSlug: "github",
-            label: "GitHub",
-            authMethods: [],
-          }),
-        ],
-        totalConnectorCount: 1234,
-      });
-    });
-
-    detachedSetupPage({
-      context,
-      path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.ConnectorCatalogCount]: true },
-    });
-
-    await expect(
-      screen.findByText("Connect 1,234 services for your agents to use."),
-    ).resolves.toBeInTheDocument();
-  });
-
   it("keeps the catalog description count-free while the count loads", async () => {
     mockConnectors([]);
     let catalogRequestStarted = false;
@@ -764,7 +706,7 @@ describe("connectors page", () => {
       throw new Error("Catalog request did not start");
     };
     context.mocks.api(
-      zeroConnectorCatalogContract.discovery,
+      connectorCatalogContract.discovery,
       async ({ deferred, respond }) => {
         const catalogDeferred = deferred<void>();
         resolveCatalog = () => {

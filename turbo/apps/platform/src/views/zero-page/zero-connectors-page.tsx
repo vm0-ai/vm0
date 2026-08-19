@@ -14,6 +14,7 @@ import { Search, Plus, Filter, ChevronDown, Check } from "lucide-react";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type {
   PublicConnectorCatalogCategoryMetadata,
+  PublicConnectorCatalogDiscoveryResponse,
   PublicConnectorCatalogStatusResponse,
 } from "@okouai/api-contracts/contracts/connector-catalog";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
@@ -850,18 +851,18 @@ function connectorLabelForSlug(
 }
 
 function effectiveConnectorCatalogCount(
-  catalogStatusLoadable: Loadable<PublicConnectorCatalogStatusResponse>,
-  connectorDiscoveryEnabled: boolean,
+  catalogStatusLoadable: Loadable<
+    | PublicConnectorCatalogDiscoveryResponse
+    | PublicConnectorCatalogStatusResponse
+  >,
 ): number | null {
   if (catalogStatusLoadable.state !== "hasData") {
     return null;
   }
-  if (catalogStatusLoadable.data.totalConnectorCount !== undefined) {
+  if ("totalConnectorCount" in catalogStatusLoadable.data) {
     return catalogStatusLoadable.data.totalConnectorCount;
   }
-  return connectorDiscoveryEnabled
-    ? null
-    : catalogStatusLoadable.data.connectors.length;
+  return catalogStatusLoadable.data.connectors.length;
 }
 
 export function ZeroConnectorsPage() {
@@ -871,11 +872,8 @@ export function ZeroConnectorsPage() {
     filteredConnectorCatalogItems$,
   );
   const catalogStatusLoadable = useLastLoadable(connectorCatalogDiscovery$);
-  const featureSwitches = useGet(featureSwitch$);
   const connectorCatalogCountEnabled =
-    featureSwitches[FeatureSwitchKey.ConnectorCatalogCount] ?? false;
-  const connectorDiscoveryEnabled =
-    featureSwitches[FeatureSwitchKey.ConnectorDiscovery] ?? false;
+    useGet(featureSwitch$)[FeatureSwitchKey.ConnectorCatalogCount] ?? false;
   const pollingAuthCodeSlug = useGet(pollingOAuthAuthCodeConnectorSlug$);
   const pollingDeviceAuthSlug = useGet(pollingOAuthDeviceAuthConnectorSlug$);
   const connectFlowSlug = useGet(connectFlowConnectorSlug$);
@@ -919,7 +917,6 @@ export function ZeroConnectorsPage() {
       : [];
   const connectorCatalogCount = effectiveConnectorCatalogCount(
     catalogStatusLoadable,
-    connectorDiscoveryEnabled,
   );
   const categoryMetadata = localizeConnectorCategoryMetadata(
     catalogStatusLoadable.state === "hasData"
