@@ -27,6 +27,7 @@ import {
 import { modelProviderSurfaceProtocolSchema } from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
 import {
   getDefaultModel,
+  getModelProviderCodexCatalogForModel,
   getModelProviderCodexRuntimeConfig,
   getModelProviderEnvBindings,
   getModelImageInputSupport,
@@ -2301,18 +2302,43 @@ async function vm0ModelProviderEnvironment(
   if (!apiKey || !secretName) {
     return null;
   }
-  const codexRuntimeConfig = getModelProviderCodexRuntimeConfig(concreteType);
+  const environment = providerEnvironmentFromSecretRefs(
+    concreteType,
+    secretName,
+    apiKey,
+    apiModel,
+  );
+  let codexRuntimeConfig = getModelProviderCodexRuntimeConfig(concreteType);
+  if (!codexRuntimeConfig) {
+    const modelCatalog = getModelProviderCodexCatalogForModel(
+      selectedModel,
+      apiModel,
+    );
+    if (modelCatalog) {
+      const baseUrl = environment.OPENAI_BASE_URL;
+      if (!baseUrl) {
+        throw new Error(
+          `Missing OPENAI_BASE_URL for VM0 Codex provider ${concreteType}`,
+        );
+      }
+      codexRuntimeConfig = {
+        providerId: concreteType,
+        name: MODEL_PROVIDER_TYPES[concreteType].label,
+        baseUrl,
+        envKey: "OPENAI_API_KEY",
+        requiresOpenaiAuth: false,
+        wireApi: "responses",
+        supportsWebsockets: false,
+        modelCatalog,
+      };
+    }
+  }
 
   return {
     id: null,
     type: "vm0",
     concreteType,
-    environment: providerEnvironmentFromSecretRefs(
-      concreteType,
-      secretName,
-      apiKey,
-      apiModel,
-    ),
+    environment,
     secrets: { [secretName]: apiKey },
     selectedModel,
     ...(codexRuntimeConfig ? { codexRuntimeConfig } : {}),

@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   getModelProviderFirewall,
+  getVm0ApiModel,
   getVm0ConcreteProviderType,
   type ModelProviderType,
   type SupportedRunModel,
@@ -6563,7 +6564,9 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       await api.heartbeatRunner(runnerGroup);
       const claim = await api.claimRunnerJob(sent.body.runId);
       expect(claim.cliAgentType).toBe("codex");
-      expect(claim.environment).toMatchObject({ OPENAI_MODEL: model });
+      expect(claim.environment).toMatchObject({
+        OPENAI_MODEL: getVm0ApiModel(model),
+      });
       expect(claim.modelUsageProvider).toBe(model);
       await api.requestCancelRun(actor, sent.body.runId, [200]);
     }
@@ -6764,9 +6767,12 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     await api.requestCancelRun(actor, sent.body.runId, [200]);
   });
 
-  it.each(["deepseek-v4-flash", "deepseek-v4-pro"] as const)(
-    "claims vm0 %s runs with the Responses adapter",
-    async (selectedModel) => {
+  it.each([
+    ["deepseek-v4-flash", "deepseek/deepseek-v4-flash"],
+    ["deepseek-v4-pro", "deepseek/deepseek-v4-pro"],
+  ] as const)(
+    "claims vm0 %s runs through OpenRouter",
+    async (selectedModel, apiModel) => {
       const api = createRunsApi(context);
       const chat = createChatFilesBddApi(context);
       await seedVm0ManagedModelKey(selectedModel);
@@ -6801,35 +6807,44 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       expect(claim.cliAgentType).toBe("codex");
       expect(claim.environment).toMatchObject({
         OPENAI_API_KEY: modelProviderPlaceholder(
-          "deepseek",
-          "DEEPSEEK_API_KEY",
+          "openrouter-codex",
+          "OPENROUTER_API_KEY",
         ),
-        OPENAI_BASE_URL: "https://api.deepseek.com/",
-        OPENAI_MODEL: selectedModel,
+        OPENAI_BASE_URL: "https://openrouter.ai/api/v1",
+        OPENAI_MODEL: apiModel,
       });
       expect(claim.environment).not.toHaveProperty("ANTHROPIC_MODEL");
       expect(claim.codexRuntimeConfig).toMatchObject({
-        providerId: "deepseek",
-        name: "DeepSeek",
-        baseUrl: "https://api.deepseek.com/",
+        providerId: "openrouter-codex",
+        name: "OpenRouter (Codex)",
+        baseUrl: "https://openrouter.ai/api/v1",
         envKey: "OPENAI_API_KEY",
+        requiresOpenaiAuth: false,
         wireApi: "responses",
         supportsWebsockets: false,
-        modelCatalog: {
-          models: expect.arrayContaining([
-            expect.objectContaining({
-              slug: selectedModel,
-              default_reasoning_level: "high",
-            }),
-          ]),
+      });
+      const catalogModels = claim.codexRuntimeConfig?.modelCatalog?.models;
+      if (!Array.isArray(catalogModels) || catalogModels.length !== 1) {
+        throw new Error(
+          `Expected one OpenRouter Codex catalog model for ${selectedModel}`,
+        );
+      }
+      expect(catalogModels[0]).toMatchObject({
+        slug: apiModel,
+        input_modalities: ["text"],
+        base_instructions: expect.stringContaining("You are Codex"),
+        model_messages: {
+          instructions_template: expect.stringContaining("You are Codex"),
         },
       });
       expect(
         claim.firewalls?.map((firewall) => {
           return firewallEntryName(firewall);
         }),
-      ).toContain("model-provider:deepseek");
-      expect(claim.billableFirewalls).toContain("model-provider:deepseek");
+      ).toContain("model-provider:openrouter-codex");
+      expect(claim.billableFirewalls).toContain(
+        "model-provider:openrouter-codex",
+      );
       expect(claim.modelUsageProvider).toBe(selectedModel);
 
       await api.requestCancelRun(actor, sent.body.runId, [200]);
