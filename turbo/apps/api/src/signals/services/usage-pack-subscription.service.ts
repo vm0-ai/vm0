@@ -1466,6 +1466,7 @@ function oneUsagePackSubscriptionId(
 async function boundUsagePackSubscriptionId(
   db: Pick<Db, "select">,
   stripeSubscriptionId: string | null,
+  includeTerminal: boolean,
 ): Promise<string | null> {
   if (!stripeSubscriptionId) {
     return null;
@@ -1474,12 +1475,17 @@ async function boundUsagePackSubscriptionId(
     .select({ id: usagePackSubscriptions.id })
     .from(usagePackSubscriptions)
     .where(
-      and(
-        eq(usagePackSubscriptions.stripeSubscriptionId, stripeSubscriptionId),
-        notInArray(usagePackSubscriptions.subscriptionStatus, [
-          ...TERMINAL_USAGE_PACK_SUBSCRIPTION_STATUSES,
-        ]),
-      ),
+      includeTerminal
+        ? eq(usagePackSubscriptions.stripeSubscriptionId, stripeSubscriptionId)
+        : and(
+            eq(
+              usagePackSubscriptions.stripeSubscriptionId,
+              stripeSubscriptionId,
+            ),
+            notInArray(usagePackSubscriptions.subscriptionStatus, [
+              ...TERMINAL_USAGE_PACK_SUBSCRIPTION_STATUSES,
+            ]),
+          ),
     )
     .limit(1);
   return subscription?.id ?? null;
@@ -1553,11 +1559,13 @@ async function resolveUsagePackSubscriptionId(
       | null
       | undefined
     )[];
+    readonly includeTerminalBinding?: boolean;
   },
 ): Promise<string | null> {
   const boundId = await boundUsagePackSubscriptionId(
     db,
     args.stripeSubscriptionId,
+    args.includeTerminalBinding ?? false,
   );
   if (boundId) {
     return boundId;
@@ -2927,6 +2935,7 @@ export async function handleUsagePackInvoicePaid(
       invoice.metadata,
       invoice.parent?.subscription_details?.metadata,
     ],
+    includeTerminalBinding: hasUsagePackLine,
   });
   if (!usagePackSubscriptionId) {
     return { handled: false, orgId: null };
