@@ -196,7 +196,7 @@ describe("POST /api/okou/chat-threads/:id/image-model", () => {
         imageModelClient().update({
           headers: { authorization: `Bearer ${token}` },
           params: { id: fixture.threadId },
-          body: { model: "gpt-image-1.5", eventId },
+          body: { model: "gpt-image-2", eventId },
         }),
         [204],
       );
