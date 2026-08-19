@@ -289,16 +289,15 @@ function AgentCommandPinToggle({
     <Button
       type="button"
       variant="quiet"
-      size="icon-sm"
-      aria-label={label}
-      title={label}
-      className="ml-auto shrink-0 opacity-0 transition-opacity duration-150 group-data-[selected=true]:opacity-100 focus-visible:opacity-100"
+      size="xs"
+      className="ml-auto shrink-0 gap-1.5 opacity-0 transition-opacity duration-150 group-data-[selected=true]:opacity-100 focus-visible:opacity-100"
       onClick={(e) => {
         e.stopPropagation();
         onToggle();
       }}
     >
       {icon}
+      {label}
     </Button>
   );
 }
@@ -1697,7 +1696,7 @@ export function PinAgentDialog({
     onSetAgentPinned(agentId, pinned);
   };
   const pinLabel = t(($) => {
-    return $.sidebar.pin;
+    return $.sidebar.addPin;
   });
   const unpinLabel = t(($) => {
     return $.sidebar.unpin;
