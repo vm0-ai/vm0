@@ -13,7 +13,7 @@ import {
 } from "@okouai/core/storage-names";
 import { GOAL_SKILL_NAME, SEED_SKILLS } from "@okouai/core/seed-skills";
 import { usagePricing } from "@okouai/db/schema/usage-pricing";
-import { vm0ApiKeys } from "@okouai/db/schema/vm0-api-key";
+import { builtInModelKeys } from "@okouai/db/schema/built-in-model-key";
 import { skills } from "@okouai/db/schema/skill";
 import { storages } from "@okouai/db/schema/storage";
 import { createStore } from "ccstate";
@@ -585,6 +585,16 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   ...usageGroup("image", "fal-ai/bytedance/seedream/v4/text-to-image", [
     ["output_image", usd(0.03), 1],
   ]),
+  // BytePlus Seedream 5 pricing, retrieved 2026-08-18 from:
+  // https://docs.byteplus.com/en/docs/ModelArk/1544106
+  // The service records the request's actual provider cost in micro-USD;
+  // 1250 credits per USD applies the requested 25% markup once to the total.
+  ...usageGroup("image", "dola-seedream-5-0-pro-260628", [
+    ["provider_cost_usd_micros", 1250, 1_000_000],
+  ]),
+  ...usageGroup("image", "seedream-5-0-lite-260128", [
+    ["provider_cost_usd_micros", 1250, 1_000_000],
+  ]),
   ...usageGroup("image", "fal-ai/nano-banana-2", [
     ["output_image", usd(0.08), 1],
   ]),
@@ -674,14 +684,14 @@ type LineWriter = (message: string) => void;
 export function buildVm0ApiKeys(
   readEnv: OptionalEnvReader = optionalEnv,
   logLine: LineWriter = writeLine,
-): (typeof vm0ApiKeys.$inferInsert)[] {
+): (typeof builtInModelKeys.$inferInsert)[] {
   const vendors = new Set(
     Object.values(VM0_MODEL_TO_PROVIDER).map(({ vendor }) => {
       return vendor;
     }),
   );
 
-  const keys: (typeof vm0ApiKeys.$inferInsert)[] = [];
+  const keys: (typeof builtInModelKeys.$inferInsert)[] = [];
   for (const vendor of vendors) {
     const envVars = getVendorApiKeyEnvVars(vendor);
     const apiKey = envVars
@@ -726,9 +736,9 @@ async function devSeed() {
   writeLine("Seeding vm0_api_keys");
   const apiKeys = buildVm0ApiKeys();
   await database.transaction(async (tx) => {
-    await tx.delete(vm0ApiKeys);
+    await tx.delete(builtInModelKeys);
     if (apiKeys.length > 0) {
-      await tx.insert(vm0ApiKeys).values(apiKeys);
+      await tx.insert(builtInModelKeys).values(apiKeys);
     }
   });
   for (const k of apiKeys) {

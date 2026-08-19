@@ -281,7 +281,7 @@ type OutputErrorEvent = ChatEventIdentity &
   };
 
 type OutputThinkingEvent = ChatEventIdentity &
-  Pick<CanonicalChatEventInsert, "runEventId"> & {
+  ChatEventOutputSequence & {
     readonly eventType: "output.thinking";
     readonly content?: null;
     readonly thinking: string;

@@ -12,6 +12,7 @@ import {
 import {
   AGENT_EXECUTION_PLAN_DIMENSIONS,
   classifyAgentExecutionAuthority,
+  type AgentExecutionAuthorityDecision,
   type AgentExecutionPlanDimension,
 } from "../../../apps/api/src/signals/services/agent-execution-authority";
 import {
@@ -47,6 +48,7 @@ import {
   ACTIVITY_BUCKETS,
   ENVIRONMENT_OVERLAP_DIMENSIONS,
   ENVIRONMENT_PRIMARY_CLASSES,
+  HISTORICAL_PRODUCT_BUILDER_ORIGIN_CLASSES,
   UNCLASSIFIED_PRIMARY_CLASSES,
   UNSUPPORTED_PRIMARY_REASONS,
   classifyExceptionRefinements,
@@ -378,6 +380,7 @@ const PREFLIGHT_V3_OUTPUT_ALLOWLIST = [
 ];
 
 const PREFLIGHT_V4_OUTPUT_ALLOWLIST = [
+  ...setOutputPaths("agentExecutionPlans.applicationFrameworkFallback"),
   "launchSnapshots.total",
   ...setOutputPaths("launchSnapshots.population"),
   ...LAUNCH_SNAPSHOT_DISPOSITIONS.flatMap((disposition) => {
@@ -395,11 +398,46 @@ const PREFLIGHT_V4_OUTPUT_ALLOWLIST = [
   ...comparisonOutputPaths("launchSnapshots.reasonCompatibilityClosure"),
 ];
 
-/** Every and only approved scalar/array path in a complete v4 result. */
+/** Transition-only #28056 output; removed by #26938 Stage 8. */
+const PREFLIGHT_V5_OUTPUT_ALLOWLIST = [
+  ...refinementDomainOutputPaths(
+    "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin",
+    HISTORICAL_PRODUCT_BUILDER_ORIGIN_CLASSES,
+  ),
+  ...comparisonOutputPaths(
+    "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin.primaryDisjointnessClosure",
+  ),
+];
+
+/** Transition-only #28070 authority/lineage output; removed by #26938 Stage 8. */
+const PREFLIGHT_V6_OUTPUT_ALLOWLIST = [
+  ...setOutputPaths(
+    "agentExecutionPlans.applicationHistoricalProductBuilderEnvironment",
+  ),
+  ...setOutputPaths(
+    "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin.legacyEnvironmentLineage",
+  ),
+  ...comparisonOutputPaths(
+    "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin.applicationAuthorityMembershipLineageClosure",
+  ),
+  ...comparisonOutputPaths(
+    "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin.residualEnvironmentMembershipLineageClosure",
+  ),
+  ...comparisonOutputPaths(
+    "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin.authorityPartitionClosure",
+  ),
+  ...comparisonOutputPaths(
+    "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin.authorityDisjointnessClosure",
+  ),
+];
+
+/** Every and only approved scalar/array path in a complete v6 result. */
 export const PREFLIGHT_OUTPUT_ALLOWLIST = [
   ...PREFLIGHT_V2_OUTPUT_ALLOWLIST,
   ...PREFLIGHT_V3_OUTPUT_ALLOWLIST,
   ...PREFLIGHT_V4_OUTPUT_ALLOWLIST,
+  ...PREFLIGHT_V5_OUTPUT_ALLOWLIST,
+  ...PREFLIGHT_V6_OUTPUT_ALLOWLIST,
 ].sort();
 
 export interface IdentityInventoryRow extends QueryResultRow {
@@ -975,17 +1013,25 @@ function cardinalityAwareComparison(
   };
 }
 
-function dimensionsForAgentExecutionPlanRows(
+function decisionForAgentExecutionPlanRows(
   rows: readonly AgentExecutionPlanInventoryRow[],
-): Set<AgentExecutionPlanDimension> {
+): AgentExecutionAuthorityDecision {
   if (rows.length === 0) {
-    return new Set(["danglingOrMissingHeadVersion"]);
+    return {
+      authority: "version_content",
+      classification: "danglingOrMissingHeadVersion",
+      dimensions: ["danglingOrMissingHeadVersion"],
+    };
   }
   const row = rows[0];
   if (rows.length !== 1 || !row) {
-    return new Set(["unclassifiedContent"]);
+    return {
+      authority: "version_content",
+      classification: "unclassifiedContent",
+      dimensions: ["unclassifiedContent"],
+    };
   }
-  return new Set(classifyAgentExecutionAuthority(row).dimensions);
+  return classifyAgentExecutionAuthority(row);
 }
 
 function classifyAgentExecutionPlans(
@@ -1018,20 +1064,31 @@ function classifyAgentExecutionPlans(
     }),
   ) as Record<AgentExecutionPlanDimension, Set<string>>;
   const parityIds: string[] = [];
+  const frameworkFallbackIds: string[] = [];
+  const historicalProductBuilderEnvironmentIds: string[] = [];
   const exceptionIds: string[] = [];
   const multiDimensionIds: string[] = [];
 
   for (const id of expectedMatchedIds) {
     const matches = rowsById.get(id) ?? [];
-    const dimensions = dimensionsForAgentExecutionPlanRows(matches);
+    const decision = decisionForAgentExecutionPlanRows(matches);
 
-    if (dimensions.size === 0) {
-      parityIds.push(id);
+    if (decision.authority === "application") {
+      if (decision.classification === "applicationFrameworkFallback") {
+        frameworkFallbackIds.push(id);
+      } else if (
+        decision.classification ===
+        "applicationHistoricalProductBuilderEnvironment"
+      ) {
+        historicalProductBuilderEnvironmentIds.push(id);
+      } else {
+        parityIds.push(id);
+      }
       continue;
     }
     exceptionIds.push(id);
-    if (dimensions.size > 1) multiDimensionIds.push(id);
-    for (const dimension of dimensions) {
+    if (decision.dimensions.length > 1) multiDimensionIds.push(id);
+    for (const dimension of decision.dimensions) {
       dimensionIds[dimension].add(id);
     }
   }
@@ -1044,7 +1101,12 @@ function classifyAgentExecutionPlans(
   const partitionClosure = cardinalityAwareComparison(
     "agent-execution-plans:partition-closure",
     expectedMatchedIds,
-    [...parityIds, ...exceptionIds],
+    [
+      ...parityIds,
+      ...frameworkFallbackIds,
+      ...historicalProductBuilderEnvironmentIds,
+      ...exceptionIds,
+    ],
   );
   const dimensionUnionIds = [
     ...new Set(
@@ -1095,9 +1157,16 @@ function classifyAgentExecutionPlans(
     }
   }
 
+  const legacyEnvironmentIds = [
+    ...historicalProductBuilderEnvironmentIds,
+    ...dimensionIds.systemEnvironmentDifferences,
+  ];
   const refinements = classifyExceptionRefinements({
     rowsById,
-    environmentIds: [...dimensionIds.systemEnvironmentDifferences],
+    legacyEnvironmentIds,
+    residualEnvironmentIds: [...dimensionIds.systemEnvironmentDifferences],
+    applicationHistoricalProductBuilderEnvironmentIds:
+      historicalProductBuilderEnvironmentIds,
     unsupportedIds: [...dimensionIds.unsupportedOrInvalidContent],
     unclassifiedIds: [...dimensionIds.unclassifiedContent],
     failureGates,
@@ -1105,11 +1174,13 @@ function classifyAgentExecutionPlans(
 
   const dimensionOutput = Object.fromEntries(
     AGENT_EXECUTION_PLAN_DIMENSIONS.map((dimension) => {
+      const domain =
+        dimension === "systemEnvironmentDifferences"
+          ? "agent-execution-plans:v6:residual-system-environment-differences:agent-ids"
+          : `agent-execution-plans:${dimension}:agent-ids`;
       return [
         dimension,
-        fingerprintSortedSet(`agent-execution-plans:${dimension}:agent-ids`, [
-          ...dimensionIds[dimension],
-        ]),
+        fingerprintSortedSet(domain, [...dimensionIds[dimension]]),
       ];
     }),
   ) as Record<AgentExecutionPlanDimension, SetFingerprint>;
@@ -1122,6 +1193,14 @@ function classifyAgentExecutionPlans(
     completeSemanticParity: fingerprintSortedSet(
       "agent-execution-plans:complete-semantic-parity-agent-ids",
       parityIds,
+    ),
+    applicationFrameworkFallback: fingerprintSortedSet(
+      "agent-execution-plans:application-framework-fallback-agent-ids",
+      frameworkFallbackIds,
+    ),
+    applicationHistoricalProductBuilderEnvironment: fingerprintSortedSet(
+      "agent-execution-plans:v6:application-historical-product-builder-environment-agent-ids",
+      historicalProductBuilderEnvironmentIds,
     ),
     exceptions: fingerprintSortedSet(
       "agent-execution-plans:exception-agent-ids",

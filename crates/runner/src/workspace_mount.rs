@@ -25,10 +25,16 @@ const WORKSPACE_DEVICE: &str = "/dev/vdb";
 const WORKSPACE_MOUNT_SCRIPT: &str = include_str!("../scripts/mount-workspace-drive.sh");
 const WORKSPACE_FREEZE_SCRIPT: &str = include_str!("../scripts/freeze-workspace-drive.sh");
 
+#[derive(Debug)]
+pub(crate) struct WorkspaceDriveMountError {
+    pub(crate) error: RunnerError,
+    pub(crate) guest_duration: Option<Duration>,
+}
+
 pub(crate) async fn ensure_workspace_drive_mounted(
     sandbox: &dyn Sandbox,
     diagnostic_id: impl std::fmt::Display,
-) -> RunnerResult<()> {
+) -> Result<Option<Duration>, WorkspaceDriveMountError> {
     run_workspace_drive_command(
         sandbox,
         diagnostic_id,
@@ -53,6 +59,8 @@ pub(crate) async fn freeze_workspace_drive(
         WORKSPACE_FREEZE_TIMEOUT,
     )
     .await
+    .map(|_| ())
+    .map_err(|error| error.error)
 }
 
 async fn run_workspace_drive_command(
@@ -62,7 +70,7 @@ async fn run_workspace_drive_command(
     operation: &'static str,
     label: &'static str,
     timeout: Duration,
-) -> RunnerResult<()> {
+) -> Result<Option<Duration>, WorkspaceDriveMountError> {
     let result = sandbox
         .exec_with_diagnostic_label(
             &ExecRequest {
@@ -77,14 +85,23 @@ async fn run_workspace_drive_command(
             label,
         )
         .await
-        .map_err(RunnerError::from)?;
+        .map_err(|error| WorkspaceDriveMountError {
+            error: RunnerError::from(error),
+            guest_duration: None,
+        })?;
+    let guest_duration = result
+        .guest_duration_ms
+        .map(|duration_ms| Duration::from_millis(u64::from(duration_ms)));
     if helper_exec_succeeded(&result) {
-        return Ok(());
+        return Ok(guest_duration);
     }
 
     let mut message = format_helper_exec_failure(operation, &result);
     message.push_str(&format!("; diagnostic id: {diagnostic_id}"));
-    Err(RunnerError::Internal(message))
+    Err(WorkspaceDriveMountError {
+        error: RunnerError::Internal(message),
+        guest_duration,
+    })
 }
 
 pub(crate) fn workspace_mount_command() -> String {

@@ -6,7 +6,7 @@ import {
   TableHeader,
   TableRow,
 } from "@okouai/ui";
-import type { RunContextResponse } from "@okouai/api-contracts/contracts/zero-runs";
+import type { RunContextResponse } from "@okouai/api-contracts/contracts/run-routes";
 import { useTranslation } from "react-i18next";
 
 function SectionHeader({ title }: { title: string }) {

@@ -118,7 +118,7 @@ dependencies = [
 
 [[package]]
 name = "api-contracts"
-version = "0.18.0"
+version = "0.18.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -1248,7 +1248,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.74.11"
+version = "0.74.13"
 dependencies = [
  "aho-corasick",
  "api-contracts",
@@ -1338,7 +1338,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-claude"
-version = "0.21.67"
+version = "0.21.68"
 dependencies = [
  "api-contracts",
  "guest-contracts",
@@ -1370,7 +1370,7 @@ dependencies = [
 
 [[package]]
 name = "guest-session-prune"
-version = "0.3.24"
+version = "0.3.25"
 dependencies = [
  "guest-contracts",
  "proptest",
@@ -2046,7 +2046,7 @@ dependencies = [
 
 [[package]]
 name = "nbd-cow"
-version = "0.4.75"
+version = "0.4.76"
 dependencies = [
  "bitvec",
  "libc",
@@ -2582,7 +2582,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.169.6"
+version = "0.169.9"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -2773,7 +2773,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox"
-version = "0.19.44"
+version = "0.19.46"
 dependencies = [
  "async-trait",
  "serde",
@@ -2785,7 +2785,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.225"
+version = "0.37.227"
 dependencies = [
  "async-trait",
  "clap",
@@ -2816,7 +2816,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.9.16"
+version = "0.9.18"
 dependencies = [
  "async-trait",
  "guest-contracts",

@@ -10,7 +10,7 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { mockEnv } from "../../../lib/env";
-import { clearMockNow, mockNow, now } from "../../../lib/time";
+import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import {
@@ -346,6 +346,73 @@ describe("Strapi integration", () => {
       }),
       [204],
     );
+  });
+
+  it("projects webhook credentials by request brand without changing the endpoint", async () => {
+    mockEnv("VM0_WEB_URL", "https://api.vm0.ai");
+    const actor = workflows.user({
+      orgId: STAFF_ORG_ID,
+      orgRole: "org:admin",
+    });
+    mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+
+    const created = await accept(
+      integrationsClient().create({
+        headers: authHeaders(),
+        extraHeaders: { origin: "https://app.okou.ai" },
+        body: {
+          name: "Branded CMS",
+          baseUrl: `https://brand-${randomUUID()}.example.com`,
+        },
+      }),
+      [201],
+    );
+    const okouWebhookUrl = new URL(created.body.webhookUrl);
+    expect(okouWebhookUrl.hostname).toBe("api.okou.ai");
+
+    const listed = await accept(
+      integrationsClient().list({ headers: authHeaders() }),
+      [200],
+    );
+    const listedIntegration = listed.body.find((integration) => {
+      return integration.id === created.body.id;
+    });
+    if (!listedIntegration) {
+      throw new Error("Expected the created Strapi integration");
+    }
+    const vm0WebhookUrl = new URL(listedIntegration.webhookUrl);
+    expect(vm0WebhookUrl.hostname).toBe("api.vm0.ai");
+    expect(vm0WebhookUrl.pathname).toBe(okouWebhookUrl.pathname);
+
+    const revealed = await accept(
+      integrationsClient().revealSecret({
+        headers: authHeaders(),
+        extraHeaders: { origin: "https://app.okou.ai" },
+        params: { integrationId: created.body.id },
+        body: undefined,
+      }),
+      [200],
+    );
+    expect(revealed.body).toStrictEqual({
+      webhookUrl: created.body.webhookUrl,
+      authorizationHeader: created.body.authorizationHeader,
+    });
+
+    for (const webhookUrl of [
+      created.body.webhookUrl,
+      listedIntegration.webhookUrl,
+    ]) {
+      const response = await postStrapiEvent({
+        webhookUrl,
+        authorizationHeader: created.body.authorizationHeader,
+        eventHeader: "trigger-test",
+        payload: { event: "trigger-test", createdAt: nowDate().toISOString() },
+      });
+      expect(response).toStrictEqual({
+        status: 200,
+        body: { success: true, kind: "test", queued: 0 },
+      });
+    }
   });
 
   it("tests the external webhook and coalesces localized publishes", async () => {

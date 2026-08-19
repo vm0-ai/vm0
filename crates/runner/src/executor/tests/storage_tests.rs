@@ -244,6 +244,7 @@ async fn non_exited_helper_result_is_failure() {
     let sandbox = MockSandbox::new("test");
     sandbox.push_exec_result(Ok(ExecResult {
         termination: ExecTermination::TimedOut,
+        guest_duration_ms: None,
         stdout: b"partial stdout".to_vec(),
         stderr: b"Timeout".to_vec(),
         diagnostic: String::new(),

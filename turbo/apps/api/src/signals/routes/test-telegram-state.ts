@@ -38,7 +38,7 @@ import { telegramMessages } from "@okouai/db/schema/telegram-message";
 import { telegramOfficialUserLinks } from "@okouai/db/schema/telegram-official-user-link";
 import { telegramUserAgentPreferences } from "@okouai/db/schema/telegram-user-agent-preference";
 import { telegramUserLinks } from "@okouai/db/schema/telegram-user-link";
-import { vm0ApiKeys } from "@okouai/db/schema/vm0-api-key";
+import { builtInModelKeys } from "@okouai/db/schema/built-in-model-key";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { pgTextDecoder } from "../../lib/db-structured-result";
 import { request$ } from "../context/hono";
@@ -877,7 +877,7 @@ async function seedTelegramPostModelKeys(
   signal: AbortSignal,
 ): Promise<void> {
   await db
-    .insert(vm0ApiKeys)
+    .insert(builtInModelKeys)
     .values([
       {
         vendor: getVm0Vendor(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL),
@@ -895,7 +895,7 @@ async function seedTelegramPostModelKeys(
         label: seed.composeId,
       },
     ])
-    .onConflictDoNothing({ target: vm0ApiKeys.vendor });
+    .onConflictDoNothing({ target: builtInModelKeys.vendor });
   signal.throwIfAborted();
 }
 
@@ -1062,7 +1062,9 @@ async function deleteTelegramPostFixtureForAction(
       ),
     );
   signal.throwIfAborted();
-  await db.delete(vm0ApiKeys).where(eq(vm0ApiKeys.label, composeId));
+  await db
+    .delete(builtInModelKeys)
+    .where(eq(builtInModelKeys.label, composeId));
   signal.throwIfAborted();
   await db
     .delete(telegramMessages)
@@ -1444,13 +1446,13 @@ async function seedModelPoliciesForAction(
   ]);
   signal.throwIfAborted();
   await db
-    .insert(vm0ApiKeys)
+    .insert(builtInModelKeys)
     .values({
       vendor: "anthropic",
       apiKey: "vm0-key-anthropic",
       label: required.compose_id!,
     })
-    .onConflictDoNothing({ target: vm0ApiKeys.vendor });
+    .onConflictDoNothing({ target: builtInModelKeys.vendor });
   signal.throwIfAborted();
   await db
     .insert(orgMembersMetadata)

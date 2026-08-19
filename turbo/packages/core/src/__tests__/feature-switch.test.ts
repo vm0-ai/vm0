@@ -108,7 +108,7 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.VideoModelSelection]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ImageModelSelection]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.ImageModelSelection]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       true,
     );
@@ -117,9 +117,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ConnectorDiscovery]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ConnectorCatalogCount]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PersonalModelProviderAccounts]).toBe(
-      true,
-    );
-    expect(staffOrgStates[FeatureSwitchKey.PresentationArtifactViewport]).toBe(
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.LatestWebsiteTemplates]).toBe(true);
@@ -154,9 +151,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ConnectorDiscovery]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ConnectorCatalogCount]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PersonalModelProviderAccounts]).toBe(
-      false,
-    );
-    expect(otherOrgStates[FeatureSwitchKey.PresentationArtifactViewport]).toBe(
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.LatestWebsiteTemplates]).toBe(false);

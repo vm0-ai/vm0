@@ -7,7 +7,7 @@ import {
   cliAuthDeviceContract,
   cliAuthTokenContract,
 } from "@okouai/api-contracts/contracts/cli-auth";
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
+import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agentComposeApiContentSchema } from "@okouai/api-contracts/contracts/composes";
 import { webhookStripeContract } from "@okouai/api-contracts/contracts/webhooks";
@@ -37,13 +37,13 @@ import {
   type StorageManifest,
 } from "@okouai/api-contracts/contracts/runners";
 import {
-  zeroRunsCancelContract,
-  zeroRunCreateBodySchema,
-  zeroRunContextContract,
-  zeroRunRunnerContract,
-  zeroRunsByIdContract,
-  zeroRunsQueueContract,
-} from "@okouai/api-contracts/contracts/zero-runs";
+  runsCancelContract,
+  runCreateBodySchema,
+  runContextContract,
+  runRunnerContract,
+  runsByIdContract,
+  runsQueueContract,
+} from "@okouai/api-contracts/contracts/run-routes";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 
 import { createAppWithRoutes } from "../../../../app-factory-core";
@@ -81,7 +81,7 @@ import { createBddApi, type ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 type AuthHeaders = { readonly authorization?: string };
-type ZeroRunRequest = z.infer<typeof zeroRunCreateBodySchema>;
+type ZeroRunRequest = z.infer<typeof runCreateBodySchema>;
 type DirectRunRequest = DirectRunFixtureRequest;
 interface RunsListQuery {
   readonly status?: string;
@@ -684,7 +684,7 @@ export function createRunsApi(context: TestContext) {
     zeroTokenForRunWithCapabilities(
       actor: ApiTestUser,
       runId: string,
-      capabilities: readonly ZeroCapability[],
+      capabilities: readonly Capability[],
       publicBrand?: PublicBrand,
     ): string {
       if (!actor.orgId) {
@@ -982,7 +982,7 @@ export function createRunsApi(context: TestContext) {
 
     async readRun(actor: ApiTestUser, runId: string) {
       const response = await accept(
-        runApp(context)(zeroRunsByIdContract).getById({
+        runApp(context)(runsByIdContract).getById({
           headers: authenticate(context, actor),
           params: { id: runId },
         }),
@@ -997,7 +997,7 @@ export function createRunsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        runApp(context)(zeroRunsByIdContract).getById({
+        runApp(context)(runsByIdContract).getById({
           headers: authenticate(context, actor),
           params: { id: runId },
         }),
@@ -1011,7 +1011,7 @@ export function createRunsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        runApp(context)(zeroRunContextContract).getContext({
+        runApp(context)(runContextContract).getContext({
           headers: authenticate(context, actor),
           params: { id: runId },
         }),
@@ -1025,7 +1025,7 @@ export function createRunsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        runApp(context)(zeroRunRunnerContract).getRunner({
+        runApp(context)(runRunnerContract).getRunner({
           headers: authenticate(context, actor),
           params: { id: runId },
         }),
@@ -1035,7 +1035,7 @@ export function createRunsApi(context: TestContext) {
 
     async readRunQueue(actor: ApiTestUser) {
       return await accept(
-        runApp(context)(zeroRunsQueueContract).getQueue({
+        runApp(context)(runsQueueContract).getQueue({
           headers: authenticate(context, actor),
         }),
         [200],
@@ -1047,7 +1047,7 @@ export function createRunsApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403)[],
     ) {
       return await accept(
-        runApp(context)(zeroRunsQueueContract).getQueue({
+        runApp(context)(runsQueueContract).getQueue({
           headers: authenticate(context, actor),
         }),
         statuses,
@@ -1060,7 +1060,7 @@ export function createRunsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        runApp(context)(zeroRunsCancelContract).cancel({
+        runApp(context)(runsCancelContract).cancel({
           headers: authenticate(context, actor),
           params: { id: runId },
         }),
@@ -1074,7 +1074,7 @@ export function createRunsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        runApp(context)(zeroRunsCancelContract).cancel({
+        runApp(context)(runsCancelContract).cancel({
           headers: { authorization },
           params: { id: runId },
         }),

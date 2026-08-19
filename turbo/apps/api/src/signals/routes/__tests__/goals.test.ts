@@ -1,4 +1,4 @@
-import type { ZeroCapability } from "@okouai/api-contracts/contracts/capabilities";
+import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { goalsContract } from "@okouai/api-contracts/contracts/goals";
 
@@ -33,7 +33,7 @@ const ALL_GOAL_CAPABILITIES = [
   "goal:read",
   "goal:agent-result:write",
   "goal:user-control:write",
-] as const satisfies readonly ZeroCapability[];
+] as const satisfies readonly Capability[];
 
 interface GoalApiAuthFixture {
   readonly orgId: string;
@@ -57,7 +57,7 @@ function goalsClient() {
 
 function zeroToken(
   fixture: GoalApiAuthFixture,
-  capabilities: readonly ZeroCapability[],
+  capabilities: readonly Capability[],
 ): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({
@@ -73,7 +73,7 @@ function zeroToken(
 
 function headers(
   fixture: GoalApiAuthFixture,
-  capabilities: readonly ZeroCapability[] = ALL_GOAL_CAPABILITIES,
+  capabilities: readonly Capability[] = ALL_GOAL_CAPABILITIES,
 ) {
   return { authorization: `Bearer ${zeroToken(fixture, capabilities)}` };
 }

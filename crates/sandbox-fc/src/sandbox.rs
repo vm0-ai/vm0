@@ -1778,6 +1778,7 @@ fn exec_result_from_operation_result(
 
     Ok(ExecResult {
         termination: exec_termination_from_vsock_termination(result.termination),
+        guest_duration_ms: Some(result.duration_ms),
         stdout,
         stderr,
         diagnostic: result.diagnostic,

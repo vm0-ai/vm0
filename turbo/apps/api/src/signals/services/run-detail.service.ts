@@ -1,5 +1,5 @@
 import { computed, type Computed } from "ccstate";
-import type { RunContextResponse } from "@okouai/api-contracts/contracts/zero-runs";
+import type { RunContextResponse } from "@okouai/api-contracts/contracts/run-routes";
 import {
   runStatusSchema,
   type AgentEventsResponse,
@@ -255,8 +255,11 @@ ${buildTimeCursorProjection()}
         queryAxiom(
           apl,
           previousCursorBoundary
-            ? { cursor: previousCursorBoundary.tieBreaker }
-            : undefined,
+            ? {
+                cursor: previousCursorBoundary.tieBreaker,
+                noCache: true,
+              }
+            : { noCache: true },
         ),
       )
     ).slice();

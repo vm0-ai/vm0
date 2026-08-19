@@ -3,7 +3,7 @@ import {
   MAX_PRESENTATION_TEMPLATE_PAGES,
   MAX_PRESENTATION_TEMPLATE_SOURCE_BYTES,
   PRESENTATION_TEMPLATE_SOURCE_CONTENT_TYPE,
-} from "@okouai/api-contracts/contracts/zero-presentation-templates";
+} from "@okouai/api-contracts/contracts/presentation-templates";
 
 import { downloadS3BufferRange } from "../external/s3";
 

@@ -1,7 +1,7 @@
 import chalk from "chalk";
 import type { ConnectorCatalogStatus } from "../../../lib/api/domains/connectors";
 import { getBillingStatus } from "../../../lib/api/domains/billing";
-import { getZeroAgentUserConnectors } from "../../../lib/api/domains/zero-agents";
+import { getAgentUserConnectors } from "../../../lib/api/domains/agents";
 import { listConnectorCatalogStatus } from "../../../lib/api/domains/connectors";
 import { getPlatformOrigin } from "../../doctor/platform-url";
 import {
@@ -109,6 +109,20 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
       reason: "available without connector setup",
     },
     {
+      label: "Built-in BytePlus",
+      model: "dola-seedream-5-0-pro-260628",
+      command:
+        "okou generate image --provider built-in --model seedream5-pro -h",
+      reason: "available without connector setup",
+    },
+    {
+      label: "Built-in BytePlus",
+      model: "seedream-5-0-lite-260128",
+      command:
+        "okou generate image --provider built-in --model seedream5-lite -h",
+      reason: "available without connector setup",
+    },
+    {
       label: "Built-in fal.ai",
       model: "fal-ai/nano-banana-2",
       command:
@@ -193,7 +207,7 @@ const BUILT_IN_GENERATION_COMMANDS: Partial<
     label: "Built-in image generation",
     command: "okou generate image --provider built-in -h",
     models:
-      "fal.ai: gpt-image-1 (default), gpt-image-2, gpt-image-1.5, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4, nano-banana-2",
+      "fal.ai: gpt-image-1 (default), gpt-image-2, gpt-image-1.5, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4, nano-banana-2; BytePlus: seedream5-pro, seedream5-lite",
   },
   video: {
     label: "Built-in video generation",
@@ -631,7 +645,7 @@ export async function runLister(
   const [catalog, enabledConnectorSlugs, platformOrigin, billing] =
     await Promise.all([
       listConnectorCatalogStatus(),
-      agentId ? getZeroAgentUserConnectors(agentId) : Promise.resolve(null),
+      agentId ? getAgentUserConnectors(agentId) : Promise.resolve(null),
       getPlatformOrigin(),
       (generationType === "video" || generationType === "avatar-video") &&
       currentTokenCanReadBilling()

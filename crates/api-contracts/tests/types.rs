@@ -1,11 +1,100 @@
+use std::collections::BTreeMap;
+
 use api_contracts::generated::types::{
-    runners::storage as runner_storage,
+    runners::{runs::CodexRuntimeConfig, storage as runner_storage},
     webhooks::agent::{
         checkpoints,
         storages::{FileEntryWithHash, commit, prepare},
     },
 };
 use serde_json::json;
+
+#[test]
+fn generated_codex_runtime_config_round_trips_full_wire_shape() {
+    let config = CodexRuntimeConfig {
+        provider_id: "gateway".to_string(),
+        name: "Gateway".to_string(),
+        base_url: "https://gateway.example.test/v1".to_string(),
+        env_key: "OPENAI_API_KEY".to_string(),
+        http_headers: Some(BTreeMap::from([(
+            "x-api-key".to_string(),
+            "__VM0_OPENAI_API_KEY_PLACEHOLDER__".to_string(),
+        )])),
+        requires_openai_auth: Some(false),
+        wire_api: "responses".to_string(),
+        supports_websockets: false,
+        model_catalog: Some(json!({
+            "models": [{
+                "slug": "upstream-model",
+                "input_modalities": ["text"],
+            }],
+        })),
+    };
+
+    let value = serde_json::to_value(&config).unwrap();
+    assert_eq!(
+        value,
+        json!({
+            "providerId": "gateway",
+            "name": "Gateway",
+            "baseUrl": "https://gateway.example.test/v1",
+            "envKey": "OPENAI_API_KEY",
+            "httpHeaders": {
+                "x-api-key": "__VM0_OPENAI_API_KEY_PLACEHOLDER__",
+            },
+            "requiresOpenaiAuth": false,
+            "wireApi": "responses",
+            "supportsWebsockets": false,
+            "modelCatalog": {
+                "models": [{
+                    "slug": "upstream-model",
+                    "input_modalities": ["text"],
+                }],
+            },
+        })
+    );
+
+    let round_trip: CodexRuntimeConfig = serde_json::from_value(value).unwrap();
+    assert_eq!(round_trip, config);
+}
+
+#[test]
+fn generated_codex_runtime_config_omits_absent_options_and_accepts_legacy_null() {
+    let canonical = json!({
+        "providerId": "deepseek",
+        "name": "DeepSeek",
+        "baseUrl": "https://api.deepseek.com/",
+        "envKey": "OPENAI_API_KEY",
+        "wireApi": "responses",
+        "supportsWebsockets": false,
+    });
+    let config = CodexRuntimeConfig {
+        provider_id: "deepseek".to_string(),
+        name: "DeepSeek".to_string(),
+        base_url: "https://api.deepseek.com/".to_string(),
+        env_key: "OPENAI_API_KEY".to_string(),
+        http_headers: None,
+        requires_openai_auth: None,
+        wire_api: "responses".to_string(),
+        supports_websockets: false,
+        model_catalog: None,
+    };
+
+    assert_eq!(serde_json::to_value(&config).unwrap(), canonical);
+
+    let legacy: CodexRuntimeConfig = serde_json::from_value(json!({
+        "providerId": "deepseek",
+        "name": "DeepSeek",
+        "baseUrl": "https://api.deepseek.com/",
+        "envKey": "OPENAI_API_KEY",
+        "wireApi": "responses",
+        "supportsWebsockets": false,
+        "modelCatalog": null,
+    }))
+    .unwrap();
+    assert_eq!(legacy.model_catalog, None);
+    assert_eq!(serde_json::to_value(legacy).unwrap(), canonical);
+}
 
 #[test]
 fn generated_checkpoint_request_omits_absent_snapshots() {

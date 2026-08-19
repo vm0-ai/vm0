@@ -10,7 +10,7 @@ import {
   getConnectorCatalogPermissions,
   type ConnectorCatalogPermissionDetail,
 } from "../../lib/api/domains/connectors";
-import type { ZeroUserPermissionGrant } from "../../lib/api/domains/zero-agents";
+import type { UserPermissionGrant } from "../../lib/api/domains/agents";
 
 export interface ConnectorPermissionInfo {
   readonly connectorSlug: string;
@@ -115,7 +115,7 @@ export async function loadConnectorPermissionInfos(args: {
 }
 
 export function connectorPermissionGrantsToFirewallPolicies(
-  grants: readonly ZeroUserPermissionGrant[],
+  grants: readonly UserPermissionGrant[],
 ): FirewallPolicies | null {
   return permissionGrantsToFirewallPolicies(grants);
 }

@@ -236,10 +236,12 @@ function ProBadge() {
 
 function ResponsiveTriggerContent({
   mobileIcon,
+  showDesktopIcon,
   iconType,
   label,
 }: {
   mobileIcon: boolean;
+  showDesktopIcon: boolean;
   iconType: ModelProviderType | undefined;
   label: ReactNode;
 }) {
@@ -256,7 +258,9 @@ function ResponsiveTriggerContent({
         )}
       </span>
       <span className="hidden min-w-0 sm:inline-flex sm:items-center sm:gap-1.5">
-        {iconType && <ProviderIcon type={iconType} size={16} />}
+        {showDesktopIcon && iconType && (
+          <ProviderIcon type={iconType} size={16} />
+        )}
         {label}
       </span>
     </span>
@@ -386,12 +390,14 @@ function ModelFirstTriggerLabel({
   selection,
   placeholder,
   mobileIcon,
+  showDesktopIcon,
   codexFastModeEnabled,
   fastLabel,
 }: {
   selection: ModelProviderSelection | null;
   placeholder: string;
   mobileIcon: boolean;
+  showDesktopIcon: boolean;
   codexFastModeEnabled: boolean;
   fastLabel: string;
 }) {
@@ -399,6 +405,7 @@ function ModelFirstTriggerLabel({
     return (
       <ResponsiveTriggerContent
         mobileIcon={mobileIcon}
+        showDesktopIcon={showDesktopIcon}
         iconType={undefined}
         label={<span>{placeholder}</span>}
       />
@@ -408,6 +415,7 @@ function ModelFirstTriggerLabel({
   return (
     <ResponsiveTriggerContent
       mobileIcon={mobileIcon}
+      showDesktopIcon={showDesktopIcon}
       iconType={iconType}
       label={
         <span className="min-w-0 truncate">
@@ -450,6 +458,7 @@ function ModelFirstTriggerContent({
         selection={selection}
         placeholder={placeholder}
         mobileIcon={mobileIcon}
+        showDesktopIcon={desktopModeLabel === undefined}
         codexFastModeEnabled={codexFastModeEnabled}
         fastLabel={fastLabel}
       />
@@ -905,6 +914,10 @@ export function ImageModelBrandIcon({ model }: { model: ImageModel }) {
       return <QwenImageModelIcon />;
     }
     case "fal-ai/bytedance/seedream/v4/text-to-image": {
+      return <ImageModelBrandSvg path={BYTEDANCE_ICON_PATH} />;
+    }
+    case "dola-seedream-5-0-pro-260628":
+    case "seedream-5-0-lite-260128": {
       return <ImageModelBrandSvg path={BYTEDANCE_ICON_PATH} />;
     }
     case "fal-ai/nano-banana-2": {

@@ -246,9 +246,9 @@ export async function flushAxiom(
   }
 }
 
-// Minimal options surface. Agent-event reads bypass Axiom's per-request cache
-// while the frontend waits for the terminal event watermark; `cursor` is used
-// for Axiom-managed time pagination.
+// Minimal options surface. Fresh-read consumers bypass Axiom's per-request
+// cache while waiting for asynchronously ingested terminal data; `cursor` is
+// used for Axiom-managed time pagination.
 interface QueryAxiomOptions {
   readonly noCache?: boolean;
   readonly cursor?: string;

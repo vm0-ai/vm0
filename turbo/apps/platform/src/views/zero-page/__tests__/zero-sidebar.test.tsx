@@ -41,6 +41,8 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { pathname } from "../../../signals/location.ts";
+import { eventDrivenChatThread } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
+import { setChatPageImageModelSelection$ } from "../../../signals/zero-page/zero-chat-page.ts";
 import {
   CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
   getChatThreadVirtualListScrollMargin,
@@ -171,8 +173,8 @@ const OVERFLOW_PINNED_AGENTS = [
 ] as const;
 
 /**
- * Pins five agents so the grid holds six cards plus New, which overflows the
- * five-column row and puts cards on both sides of the New button.
+ * Pins five agents so the grid holds six cards plus Pin, which overflows the
+ * five-column row and puts cards on both sides of the Pin button.
  */
 function prepareOverflowingPinnedAgents(targetContext = context): string[] {
   const team = prepareAgentTeam(targetContext);
@@ -333,6 +335,64 @@ function setupSidebarPage(
   options: Parameters<typeof detachedSetupPage>[0],
 ): void {
   detachedSetupPage(options);
+}
+
+function pinnedAgentNames(container: HTMLElement): string[] {
+  return within(container)
+    .getAllByTestId("pinned-agent-card")
+    .map((card) => {
+      return card.textContent?.trim() ?? "";
+    });
+}
+
+/** Names of the given agents as the dialog lists them, in rendered order. */
+function dialogAgentOrder(
+  dialog: HTMLElement,
+  names: readonly string[],
+): string[] {
+  return within(dialog)
+    .getAllByRole("option")
+    .map((option) => {
+      return names.find((name) => {
+        return option.textContent?.replace(/\s+/g, " ").trim().startsWith(name);
+      });
+    })
+    .filter((name): name is string => {
+      return name !== undefined;
+    });
+}
+
+function commandItemByText(container: HTMLElement, text: string): HTMLElement {
+  const item = within(container)
+    .getAllByRole("option")
+    .find((candidate) => {
+      return candidate.textContent
+        ?.replace(/\s+/g, " ")
+        .trim()
+        .startsWith(text);
+    });
+  if (!item) {
+    throw new Error(`${text} command item not found`);
+  }
+  return item;
+}
+
+/**
+ * jsdom does not implement DataTransfer, so drag events need a stub that keeps
+ * the payload the pinned grid writes on drag start.
+ */
+function createDataTransferStub(): DataTransfer {
+  const values = new Map<string, string>();
+  return {
+    effectAllowed: "none",
+    dropEffect: "none",
+    setData: (format: string, value: string) => {
+      values.set(format, value);
+    },
+    getData: (format: string) => {
+      return values.get(format) ?? "";
+    },
+  } as unknown as DataTransfer;
 }
 
 function threadRowByTitle(title: string): HTMLElement {
@@ -1755,6 +1815,73 @@ describe("zero sidebar", () => {
     ).resolves.toBeInTheDocument();
   });
 
+  it("keeps pinned agents in team order without the three-column nav", async () => {
+    prepareAgentTeam();
+    // Reverse of the team order, so preference order and team order disagree.
+    context.mocks.data.userPreferences({
+      pinnedAgentIds: [SUPPORT_AGENT_ID, RESEARCH_AGENT_ID],
+    });
+
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    const sidebar = await waitFor(() => {
+      const currentSidebar = screen.getByRole("navigation", {
+        name: "Sidebar",
+      });
+      expect(
+        pinnedAgentLink(currentSidebar, "Support Agent"),
+      ).toBeInTheDocument();
+      return currentSidebar;
+    });
+
+    expect(pinnedAgentNames(sidebar)).toStrictEqual([
+      "Zero",
+      "Research Agent",
+      "Support Agent",
+    ]);
+
+    click(within(sidebar).getByLabelText("Open a conversation"));
+
+    const dialog = await screen.findByRole("dialog", { name: "Talk to" });
+    await waitFor(() => {
+      expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
+    });
+    expect(
+      dialogAgentOrder(dialog, ["Research Agent", "Support Agent"]),
+    ).toStrictEqual(["Research Agent", "Support Agent"]);
+  });
+
+  it("lists pinned agents in pinned order under the three-column nav", async () => {
+    prepareAgentTeam();
+    context.mocks.data.userPreferences({
+      pinnedAgentIds: [SUPPORT_AGENT_ID, RESEARCH_AGENT_ID],
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    await waitFor(() => {
+      expect(pinnedAgentNames(grid)).toStrictEqual([
+        "Zero",
+        "Support Agent",
+        "Research Agent",
+      ]);
+    });
+
+    click(screen.getByLabelText("Pin an agent"));
+
+    const dialogList = await screen.findByTestId("pin-agent-dialog-list");
+    expect(
+      dialogAgentOrder(dialogList, ["Research Agent", "Support Agent"]),
+    ).toStrictEqual(["Support Agent", "Research Agent"]);
+  });
+
   it("pins an agent from the conversation picker and opens that agent chat", async () => {
     prepareAgentTeam();
     let createRequests = 0;
@@ -3010,6 +3137,111 @@ describe("zero sidebar", () => {
     ).toBeInTheDocument();
   });
 
+  it("searches chats and messages in the three-column spotlight", async () => {
+    prepareAgentTeam();
+    mockSidebarThreadStory([
+      createThread(RESEARCH_THREAD_ID, "Deployment notes", {
+        agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
+      }),
+      createThread(INCIDENT_THREAD_ID, "Incident response", {
+        agent: { id: SUPPORT_AGENT_ID, avatarUrl: null },
+      }),
+    ]);
+    context.mocks.api(chatSearchContract.search, ({ query, respond }) => {
+      return respond(200, {
+        results:
+          query.keyword === "deploy"
+            ? [
+                {
+                  chatThreadId: INCIDENT_THREAD_ID,
+                  agentName: "Support Agent",
+                  matchedMessage: {
+                    chatThreadId: INCIDENT_THREAD_ID,
+                    role: "user" as const,
+                    content: "Production deploy completed successfully",
+                    createdAt: "2026-03-10T00:10:00Z",
+                    seqId: 1,
+                    runId: null,
+                  },
+                  matchedRanges: [{ start: 11, end: 17 }],
+                  contextBefore: [],
+                  contextAfter: [],
+                },
+              ]
+            : [],
+        hasMore: false,
+      });
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const list = await screen.findByTestId("chat-list-column");
+    click(within(list).getByLabelText("Search conversations"));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Search chats and messages...",
+    });
+    expect(
+      screen.queryByRole("dialog", { name: "Talk to" }),
+    ).not.toBeInTheDocument();
+    await fill(
+      within(dialog).getByPlaceholderText("Search chats and messages..."),
+      "deploy",
+    );
+
+    await waitFor(() => {
+      expect(within(dialog).getByText("2 results")).toBeInTheDocument();
+      expect(within(dialog).getByText("Deployment notes")).toBeInTheDocument();
+      expect(within(dialog).getByText("Incident response")).toBeInTheDocument();
+      expect(
+        within(dialog).queryByText("Research Agent"),
+      ).not.toBeInTheDocument();
+    });
+
+    click(buttonByText("Messages", dialog));
+    expect(
+      within(dialog).queryByText("Deployment notes"),
+    ).not.toBeInTheDocument();
+    expect(within(dialog).getByText("Incident response")).toBeInTheDocument();
+
+    await fill(
+      within(dialog).getByPlaceholderText("Search chats and messages..."),
+      "missing",
+    );
+    await waitFor(() => {
+      expect(within(dialog).getByText("No results found")).toBeInTheDocument();
+      expect(within(dialog).getByText("0 results")).toBeInTheDocument();
+    });
+
+    await fill(
+      within(dialog).getByPlaceholderText("Search chats and messages..."),
+      "deploy",
+    );
+    click(buttonByText("Chats", dialog));
+    await waitFor(() => {
+      expect(within(dialog).getByText("Deployment notes")).toBeInTheDocument();
+      expect(
+        within(dialog).queryByText("Incident response"),
+      ).not.toBeInTheDocument();
+    });
+
+    click(within(dialog).getByText("Deployment notes"));
+    await waitFor(() => {
+      expect(pathname()).toBe(`/chats/${RESEARCH_THREAD_ID}`);
+      expect(
+        screen.queryByRole("dialog", {
+          name: "Search chats and messages...",
+        }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it("opens horizontal pinned agent actions from context interactions", async () => {
     prepareAgentTeam();
     context.mocks.data.userPreferences({
@@ -3136,14 +3368,22 @@ describe("zero sidebar", () => {
 
   it("creates a new chat thread from the three-column header", async () => {
     prepareDefaultAgent();
+    context.mocks.data.userModelPreference({
+      selectedModel: null,
+      serviceTier: null,
+      selectedImageModel: "fal-ai/qwen-image",
+      updatedAt: "2026-08-18T00:00:00Z",
+    });
     mockSidebarThreadStory([
       createThread(EXISTING_THREAD_ID, "Existing conversation"),
     ]);
     let createdThreadId: string | undefined;
     let createdAgentId: string | undefined;
+    let createdImageModel: string | undefined;
     context.mocks.api(chatThreadsContract.create, ({ body, respond }) => {
       createdThreadId = body.clientThreadId ?? "created-thread-id";
       createdAgentId = body.agentId;
+      createdImageModel = body.imageModel;
       return respond(201, {
         id: createdThreadId,
         title: null,
@@ -3158,6 +3398,7 @@ describe("zero sidebar", () => {
       path: `/chats/${EXISTING_THREAD_ID}`,
       featureSwitches: {
         [FeatureSwitchKey.ThreeColumnNav]: true,
+        [FeatureSwitchKey.ImageModelSelection]: true,
       },
     });
 
@@ -3171,10 +3412,77 @@ describe("zero sidebar", () => {
     expect(pathname()).not.toBe("/");
     await waitFor(() => {
       expect(createdAgentId).toBe(AGENT_ID);
+      // A blank thread pins no image model, so it follows the live member
+      // default instead of freezing it at creation time.
+      expect(createdImageModel).toBeUndefined();
       expect(createdThreadId).toBeDefined();
       expect(pathname()).toBe(`/chats/${createdThreadId}`);
       expect(within(list).getByText("New chat")).toBeInTheDocument();
     });
+    if (!createdThreadId) {
+      throw new Error("Created thread id not captured");
+    }
+    expect(
+      context.store.get(eventDrivenChatThread(createdThreadId)),
+    ).toMatchObject({ selectedImageModel: null });
+  });
+
+  it("ignores a temporary landing image pick when creating a blank thread", async () => {
+    prepareDefaultAgent();
+    context.mocks.data.userModelPreference({
+      selectedModel: null,
+      serviceTier: null,
+      selectedImageModel: "fal-ai/qwen-image",
+      updatedAt: "2026-08-18T00:00:00Z",
+    });
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Existing conversation"),
+    ]);
+    let createdThreadId: string | undefined;
+    let createdImageModel: string | undefined;
+    context.mocks.api(chatThreadsContract.create, ({ body, respond }) => {
+      createdThreadId = body.clientThreadId ?? "created-thread-id";
+      createdImageModel = body.imageModel;
+      return respond(201, {
+        id: createdThreadId,
+        title: null,
+        createdAt: "2026-03-10T00:00:00Z",
+        selectedModel: body.model ?? "claude-sonnet-4-6",
+        serviceTier: body.serviceTier ?? null,
+      });
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+        [FeatureSwitchKey.ImageModelSelection]: true,
+      },
+    });
+
+    // The user temporarily switched the landing composer image model without
+    // pressing "Set as default". A blank thread must not pin that pick; it
+    // stays unpinned (null) so it follows the live member default.
+    context.store.set(setChatPageImageModelSelection$, "fal-ai/flux-pro/v1.1");
+
+    const list = await screen.findByTestId("chat-list-column");
+    const newChatButton = within(list).getByLabelText("New chat");
+    await waitFor(() => {
+      expect(newChatButton).toBeEnabled();
+    });
+    click(newChatButton);
+
+    await waitFor(() => {
+      expect(createdThreadId).toBeDefined();
+    });
+    expect(createdImageModel).toBeUndefined();
+    if (!createdThreadId) {
+      throw new Error("Created thread id not captured");
+    }
+    expect(
+      context.store.get(eventDrivenChatThread(createdThreadId)),
+    ).toMatchObject({ selectedImageModel: null });
   });
 
   it("preserves pinned agent rows across a loading refresh", async () => {
@@ -3238,7 +3546,7 @@ describe("zero sidebar", () => {
     });
 
     const grid = await screen.findByTestId("pinned-agents-grid");
-    // Six cards plus New cached two rows, so the skeleton grid must restore
+    // Six cards plus Pin cached two rows, so the skeleton grid must restore
     // 2 * 5 - 1 placeholders rather than the single-row default of 4.
     expect(within(grid).getAllByTestId("pinned-agent-skeleton")).toHaveLength(
       9,
@@ -3252,7 +3560,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("keeps New after the first four pinned agents in navigation order", async () => {
+  it("keeps Pin after the first four pinned agents in navigation order", async () => {
     const pinnedAgentIds = prepareOverflowingPinnedAgents();
     context.mocks.data.userPreferences({ pinnedAgentIds });
 
@@ -3270,25 +3578,198 @@ describe("zero sidebar", () => {
       expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
     });
 
-    const newAgent = queryAllByRoleFast("button", grid).find((candidate) => {
-      return candidate.getAttribute("aria-label") === "Open a conversation";
+    const pinAgent = queryAllByRoleFast("button", grid).find((candidate) => {
+      return candidate.getAttribute("aria-label") === "Pin an agent";
     });
-    if (!newAgent) {
-      throw new Error("New agent button not found");
+    if (!pinAgent) {
+      throw new Error("Pin agent button not found");
     }
-    // Cards render as Zero, Research, Support, Operations, New, Analytics,
-    // Billing, so New closes the first row and the rest wrap after it.
+    // Cards render as Zero, Research, Support, Operations, Pin, Analytics,
+    // Billing, so Pin closes the first row and the rest wrap after it.
     const fourthAgent = pinnedAgentLink(grid, "Operations Agent");
     const fifthAgent = pinnedAgentLink(grid, "Analytics Agent");
 
     expect(
-      fourthAgent.compareDocumentPosition(newAgent) &
+      fourthAgent.compareDocumentPosition(pinAgent) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(
-      newAgent.compareDocumentPosition(fifthAgent) &
+      pinAgent.compareDocumentPosition(fifthAgent) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it("pins an agent from the grid pin entry", async () => {
+    prepareAgentTeam();
+    context.mocks.data.userPreferences({ pinnedAgentIds: [RESEARCH_AGENT_ID] });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    await waitFor(() => {
+      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(2);
+    });
+
+    click(screen.getByLabelText("Pin an agent"));
+
+    const dialogList = await screen.findByTestId("pin-agent-dialog-list");
+    const pinnedOption = commandItemByText(dialogList, "Research Agent");
+    expect(pinnedOption.getAttribute("aria-disabled")).toBe("true");
+
+    click(commandItemByText(dialogList, "Support Agent"));
+
+    await waitFor(() => {
+      expect(pinnedAgentLink(grid, "Support Agent")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("pin-agent-dialog-list")).toBeNull();
+  });
+
+  it("reorders pinned agents with drag and drop", async () => {
+    const pinnedAgentIds = prepareOverflowingPinnedAgents();
+    context.mocks.data.userPreferences({ pinnedAgentIds });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    await waitFor(() => {
+      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
+    });
+    expect(pinnedAgentNames(grid)).toStrictEqual([
+      "Zero",
+      "Research Agent",
+      "Support Agent",
+      "Operations Agent",
+      "Analytics Agent",
+      "Billing Agent",
+    ]);
+
+    const dataTransfer = createDataTransferStub();
+    const dragged = pinnedAgentLink(grid, "Support Agent");
+    const target = pinnedAgentLink(grid, "Billing Agent");
+    fireEvent.dragStart(dragged, { dataTransfer });
+    fireEvent.dragOver(target, { dataTransfer });
+    fireEvent.drop(target, { dataTransfer });
+
+    await waitFor(() => {
+      expect(pinnedAgentNames(grid)).toStrictEqual([
+        "Zero",
+        "Research Agent",
+        "Operations Agent",
+        "Analytics Agent",
+        "Billing Agent",
+        "Support Agent",
+      ]);
+    });
+  });
+
+  it("leaves the lead agent in place when it is dragged", async () => {
+    const pinnedAgentIds = prepareOverflowingPinnedAgents();
+    context.mocks.data.userPreferences({ pinnedAgentIds });
+    const savedPinnedOrders: string[][] = [];
+    let storedPinnedAgentIds = [...pinnedAgentIds];
+    context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
+      // Boot also writes unrelated preferences such as the timezone, so only a
+      // request that carries pinned ids counts as a reorder.
+      if (body.pinnedAgentIds !== undefined) {
+        storedPinnedAgentIds = [...body.pinnedAgentIds];
+        savedPinnedOrders.push([...body.pinnedAgentIds]);
+      }
+      const nextPinnedAgentIds = storedPinnedAgentIds;
+      context.mocks.data.userPreferences({
+        pinnedAgentIds: [...nextPinnedAgentIds],
+      });
+      return respond(200, {
+        timezone: null,
+        locale: null,
+        supportedLocales: [
+          "en-US",
+          "pt-BR",
+          "ja-JP",
+          "ko-KR",
+          "id-ID",
+          "de-DE",
+          "es-ES",
+          "it-IT",
+          "fr-FR",
+          "hi-IN",
+        ],
+        pinnedAgentIds: [...nextPinnedAgentIds],
+        sendMode: "enter",
+        morningBriefEnabled: false,
+        morningBriefNextRunAt: null,
+        captureNetworkBodiesRemaining: 0,
+      });
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    await waitFor(() => {
+      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
+    });
+
+    const leadDragTransfer = createDataTransferStub();
+    const lead = pinnedAgentLink(grid, "Zero");
+    fireEvent.dragStart(pinnedAgentLink(grid, "Support Agent"), {
+      dataTransfer: leadDragTransfer,
+    });
+    fireEvent.dragOver(lead, { dataTransfer: leadDragTransfer });
+    fireEvent.drop(lead, { dataTransfer: leadDragTransfer });
+    fireEvent.dragEnd(pinnedAgentLink(grid, "Support Agent"), {
+      dataTransfer: leadDragTransfer,
+    });
+
+    // A later reorder gives the lead drop time to land if it were not a no-op,
+    // so the recorded requests below prove it never reached the API.
+    const reorderTransfer = createDataTransferStub();
+    fireEvent.dragStart(pinnedAgentLink(grid, "Support Agent"), {
+      dataTransfer: reorderTransfer,
+    });
+    fireEvent.dragOver(pinnedAgentLink(grid, "Billing Agent"), {
+      dataTransfer: reorderTransfer,
+    });
+    fireEvent.drop(pinnedAgentLink(grid, "Billing Agent"), {
+      dataTransfer: reorderTransfer,
+    });
+
+    await waitFor(() => {
+      expect(pinnedAgentNames(grid)).toStrictEqual([
+        "Zero",
+        "Research Agent",
+        "Operations Agent",
+        "Analytics Agent",
+        "Billing Agent",
+        "Support Agent",
+      ]);
+    });
+    expect(savedPinnedOrders).toStrictEqual([
+      [
+        RESEARCH_AGENT_ID,
+        OVERFLOW_PINNED_AGENTS[0].id,
+        OVERFLOW_PINNED_AGENTS[1].id,
+        OVERFLOW_PINNED_AGENTS[2].id,
+        SUPPORT_AGENT_ID,
+      ],
+    ]);
+    expect(pinnedAgentLink(grid, "Zero")).toBeInTheDocument();
   });
 
   it("keeps the single-column sidebar when the three-column flag is off", async () => {

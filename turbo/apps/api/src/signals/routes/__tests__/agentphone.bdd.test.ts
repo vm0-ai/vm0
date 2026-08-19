@@ -1300,13 +1300,30 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     await ap.linkViaWebhookConnectPrompt(owner, ownedPhone, sends);
 
     const rival = bdd.user();
-    const conflicted = await integrations.requestStartAgentPhoneLink(
+    const vm0Conflict = await integrations.requestStartAgentPhoneLink(
       rival,
       { phoneHandle: ownedPhone },
       [409],
     );
-    expectApiError(conflicted.body);
-    expect(conflicted.body.error.code).toBe("CONFLICT");
+    expectApiError(vm0Conflict.body);
+    expect(vm0Conflict.body.error).toStrictEqual({
+      code: "CONFLICT",
+      message:
+        "This phone number is already connected to another VM0 account or organization. Disconnect it first.",
+    });
+
+    const okouConflict = await integrations.requestStartAgentPhoneLink(
+      rival,
+      { phoneHandle: ownedPhone },
+      [409],
+      "okou",
+    );
+    expectApiError(okouConflict.body);
+    expect(okouConflict.body.error).toStrictEqual({
+      code: "CONFLICT",
+      message:
+        "This phone number is already connected to another Okou account or organization. Disconnect it first.",
+    });
 
     server.use(
       http.post("https://api.agentphone.test/v1/messages", () => {

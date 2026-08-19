@@ -71,10 +71,10 @@ export {
   type DesktopAuthHandoffContract,
 } from "./desktop-auth";
 export {
-  ZERO_CAPABILITIES,
-  ZERO_CAPABILITY_META,
-  type ZeroCapability,
-  type ZeroCapabilityMeta,
+  CAPABILITIES,
+  CAPABILITY_META,
+  type Capability,
+  type CapabilityMeta,
 } from "./capabilities";
 export {
   AGENT_NAME_REGEX,
@@ -1081,21 +1081,21 @@ export {
   type OrgMembershipRequestsContract,
 } from "./org-member-routes";
 export {
-  zeroRunsByIdContract,
-  zeroRunsCancelContract,
-  zeroRunsQueueContract,
-  zeroRunContextContract,
-  zeroRunNetworkLogsContract,
-  zeroRunRunnerContract,
-  type ZeroRunsByIdContract,
-  type ZeroRunsCancelContract,
-  type ZeroRunsQueueContract,
-  type ZeroRunContextContract,
-  type ZeroRunNetworkLogsContract,
-  type ZeroRunRunnerContract,
+  runsByIdContract,
+  runsCancelContract,
+  runsQueueContract,
+  runContextContract,
+  runNetworkLogsContract,
+  runRunnerContract,
+  type RunsByIdContract,
+  type RunsCancelContract,
+  type RunsQueueContract,
+  type RunContextContract,
+  type RunNetworkLogsContract,
+  type RunRunnerContract,
   type RunContextResponse,
   type RunRunnerResponse,
-} from "./zero-runs";
+} from "./run-routes";
 export {
   modelProvidersMainContract,
   modelProvidersByTypeContract,
@@ -1737,11 +1737,11 @@ export {
   PRESENTATION_TEMPLATE_PAGE_CONTENT_TYPE,
   PRESENTATION_TEMPLATE_SOURCE_CONTENT_TYPE,
   presentationTemplateStatusSchema,
-  zeroPresentationTemplatesContract,
+  presentationTemplatesContract,
   type CommitPresentationTemplateBody,
   type PresentationTemplateSummary,
-  type ZeroPresentationTemplatesContract,
-} from "./zero-presentation-templates";
+  type PresentationTemplatesContract,
+} from "./presentation-templates";
 export {
   goalsContract,
   goalCreateRequestSchema,

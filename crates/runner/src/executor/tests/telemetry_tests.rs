@@ -1,5 +1,5 @@
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use sandbox::{
@@ -231,7 +231,14 @@ impl Sandbox for ObservedStartSandbox {
         request: &ExecRequest<'_>,
         label: &'static str,
     ) -> sandbox::Result<ExecResult> {
-        self.inner.exec_with_diagnostic_label(request, label).await
+        let mut result = self
+            .inner
+            .exec_with_diagnostic_label(request, label)
+            .await?;
+        if label == "workspace-mount" {
+            result.guest_duration_ms = Some(23);
+        }
+        Ok(result)
     }
 
     async fn read_file(&self, path: &str, max_bytes: u64) -> sandbox::Result<Option<Vec<u8>>> {
@@ -510,7 +517,8 @@ fn assert_pre_spawn_phase_actions_succeeded(telemetry: &JobTelemetry) {
 }
 
 fn pre_spawn_timing_with_phases() -> RunnerPreSpawnTiming {
-    let mut timing = RunnerPreSpawnTiming::start_after_claim();
+    let mut timing =
+        RunnerPreSpawnTiming::start_at(Instant::now(), Some(Duration::from_millis(42)));
     for (phase, duration_ms) in [
         (RunnerPreSpawnPhase::ResumeSessionValidation, 1),
         (RunnerPreSpawnPhase::SessionHistoryMaterializerStart, 2),
@@ -605,9 +613,16 @@ async fn execute_job_records_sandbox_reuse_miss_in_telemetry() {
     assert_eq!(reuse_events.len(), 1);
     assert_eq!(reuse_events[0].0, "sandbox_reuse_miss");
     assert_lacks_action(&telemetry, "runner_claim_to_executor_start");
+    assert_lacks_action(&telemetry, "runner_claim_http_request");
     assert_lacks_action(&telemetry, "runner_claim_resume_session_validation");
     assert_lacks_action(&telemetry, "runner_claim_task_schedule_wait");
     assert_action_success(&telemetry, "runner_fresh_sandbox_start", true);
+    assert_action_success(
+        &telemetry,
+        "workspace_drive_mount_guest_exec_unavailable",
+        true,
+    );
+    assert_lacks_action(&telemetry, "workspace_drive_mount_guest_exec");
     for action in FRESH_SANDBOX_START_STAGE_ACTIONS {
         assert_lacks_action(&telemetry, action);
     }
@@ -682,6 +697,7 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
     .await;
 
     for action in [
+        "runner_claim_http_request",
         "runner_claim_to_executor_start",
         "runner_executor_start_to_spawn",
         "runner_claim_to_spawn",
@@ -696,10 +712,14 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
         "sandbox_reuse_miss",
         "vm_create",
         "workspace_drive_mount",
+        "workspace_drive_mount_guest_exec",
         "agent_execute",
     ] {
         assert_has_action(&telemetry, action);
     }
+    assert_action_duration(&telemetry, "runner_claim_http_request", 42);
+    assert_action_duration(&telemetry, "workspace_drive_mount_guest_exec", 23);
+    assert_lacks_action(&telemetry, "workspace_drive_mount_guest_exec_unavailable");
     for action in FRESH_SANDBOX_FACTORY_STAGE_ACTIONS {
         assert_action_success(&telemetry, action, true);
     }
@@ -1025,6 +1045,7 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
     .await;
 
     for action in [
+        "runner_claim_http_request",
         "runner_claim_to_executor_start",
         "runner_executor_start_to_spawn",
         "runner_claim_to_spawn",
@@ -1038,6 +1059,7 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
     ] {
         assert_has_action(&telemetry, action);
     }
+    assert_action_duration(&telemetry, "runner_claim_http_request", 42);
     assert_pre_spawn_phase_actions_succeeded(&telemetry);
     assert_lacks_action(&telemetry, "runner_fresh_sandbox_prepare");
     assert_lacks_action(&telemetry, "runner_fresh_sandbox_factory_create");
@@ -1048,6 +1070,8 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
     assert_lacks_action(&telemetry, "runner_fresh_sandbox_start");
     assert_lacks_action(&telemetry, "runner_guest_timezone_sync");
     assert_lacks_action(&telemetry, "workspace_drive_mount");
+    assert_lacks_action(&telemetry, "workspace_drive_mount_guest_exec");
+    assert_lacks_action(&telemetry, "workspace_drive_mount_guest_exec_unavailable");
 }
 
 #[tokio::test]
@@ -1086,6 +1110,7 @@ async fn start_process_failure_records_phase_failure_without_spawn_completion() 
 
     assert_action_success(&telemetry, "runner_agent_start_process", false);
     assert_action_success(&telemetry, "agent_execute", false);
+    assert_lacks_action(&telemetry, "runner_claim_http_request");
     assert_lacks_action(&telemetry, "runner_executor_start_to_spawn");
     assert_lacks_action(&telemetry, "runner_claim_to_spawn");
 }

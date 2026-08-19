@@ -1,8 +1,8 @@
 import { createHmac, hkdfSync } from "node:crypto";
 
 import {
-  ZERO_CAPABILITIES,
-  ZeroCapability,
+  CAPABILITIES,
+  Capability,
 } from "@okouai/api-contracts/contracts/capabilities";
 import {
   publicBrandSchema,
@@ -31,11 +31,11 @@ const SANDBOX_TOKEN_TTL_SECONDS = 3 * 60 * 60;
 
 const CONDITIONAL_CAPABILITIES = [
   ["banking:read", FeatureSwitchKey.Banking],
-] as const satisfies readonly (readonly [ZeroCapability, FeatureSwitchKey])[];
+] as const satisfies readonly (readonly [Capability, FeatureSwitchKey])[];
 
 const AGENT_EXCLUDED_CAPABILITIES = [
   "agent:delete",
-] as const satisfies readonly ZeroCapability[];
+] as const satisfies readonly Capability[];
 
 interface ZeroTokenOptions {
   readonly scope?: "zero" | "okou";
@@ -58,8 +58,8 @@ const sandboxTokenPayloadSchema = jwtBaseSchema.extend({
   orgId: z.string().min(1),
 });
 
-function isZeroCapability(value: string): value is ZeroCapability {
-  return ZERO_CAPABILITIES.some((capability) => {
+function isZeroCapability(value: string): value is Capability {
+  return CAPABILITIES.some((capability) => {
     return capability === value;
   });
 }
@@ -122,8 +122,8 @@ function deriveJwtKey(): Buffer {
 }
 
 function featureSwitchForCapability(
-  capabilitySwitches: readonly (readonly [ZeroCapability, FeatureSwitchKey])[],
-  capability: ZeroCapability,
+  capabilitySwitches: readonly (readonly [Capability, FeatureSwitchKey])[],
+  capability: Capability,
 ): FeatureSwitchKey | undefined {
   return capabilitySwitches.find(([entryCapability]) => {
     return entryCapability === capability;
@@ -131,7 +131,7 @@ function featureSwitchForCapability(
 }
 
 function isZeroCapabilityEnabled(
-  capability: ZeroCapability,
+  capability: Capability,
   userId: string,
   orgId: string,
   overrides: Partial<Record<FeatureSwitchKey, boolean>> | undefined,
@@ -148,7 +148,7 @@ function isZeroCapabilityEnabled(
 }
 
 function isCapabilityAvailableToAgent(
-  capability: ZeroCapability,
+  capability: Capability,
   options: ZeroTokenOptions | undefined,
 ): boolean {
   if (
@@ -345,8 +345,8 @@ function buildZeroTokenClaims(
   options: Omit<ZeroTokenOptions, "scope"> | undefined,
 ): ZeroTokenClaims {
   const nowSeconds = Math.floor(now() / 1000);
-  const capabilities: ZeroCapability[] = [];
-  for (const capability of ZERO_CAPABILITIES) {
+  const capabilities: Capability[] = [];
+  for (const capability of CAPABILITIES) {
     if (!isCapabilityAvailableToAgent(capability, options)) {
       continue;
     }

@@ -932,6 +932,41 @@
       "when": 1787035104437,
       "tag": "0940_reconcile_feishu_custom_connector_ownership",
       "breakpoints": true
+    },
+    {
+      "idx": 941,
+      "version": "7",
+      "when": 1787044887151,
+      "tag": "0941_silly_argent",
+      "breakpoints": true
+    },
+    {
+      "idx": 942,
+      "version": "7",
+      "when": 1787047261770,
+      "tag": "0942_shocking_captain_stacy",
+      "breakpoints": true
+    },
+    {
+      "idx": 943,
+      "version": "7",
+      "when": 1787049522452,
+      "tag": "0943_contract_legacy_integration_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 944,
+      "version": "7",
+      "when": 1787059908710,
+      "tag": "0944_allow_multiple_chat_thinking_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 945,
+      "version": "7",
+      "when": 1787066957764,
+      "tag": "0945_add_byteplus_seedream_5_pricing",
+      "breakpoints": true
     }
   ]
 }

@@ -53,7 +53,6 @@ import {
   validateAgentRunLaunchSnapshotSchema,
 } from "./test-agent-run-launch-snapshot";
 import { validateAgentComposeConsolidationPreflight } from "./test-agent-compose-consolidation-preflight";
-import { validateIntegrationIdentityContractReadinessPreflight } from "./test-integration-identity-contract-readiness-preflight";
 import {
   AgentComposeProvenanceSchemaUnavailableError,
   deleteClerkAgentLifecycleData,
@@ -1043,801 +1042,453 @@ async function expectDatabaseError(
   throw new Error(`Expected database error ${args.code}`);
 }
 
-const INTEGRATION_USER_ID_EXPANSION_PREVIOUS_MIGRATION = "0929_cold_azazel";
-const INTEGRATION_USER_ID_EXPANSION_MIGRATION = "0930_past_jetstream";
-const INTEGRATION_USER_ID_SWITCH_MIGRATION = "0932_lovely_red_wolf";
-const INTEGRATION_USER_ID_SYNC_FUNCTION = "sync_integration_user_identity_0930";
+const INTEGRATION_USER_ID_CONTRACT_PREVIOUS_MIGRATION =
+  "0940_reconcile_feishu_custom_connector_ownership";
+const INTEGRATION_USER_ID_CONTRACT_MIGRATION =
+  "0943_contract_legacy_integration_identity";
+const RETIRED_INTEGRATION_ID_COLUMN = ["vm0", "user", "id"].join("_");
 
 const INTEGRATION_USER_ID_TABLES = [
+  "agentphone_user_agent_preferences",
+  "agentphone_user_links",
+  "feishu_org_connections",
+  "feishu_user_agent_preferences",
+  "github_user_links",
+  "slack_org_connections",
+  "slack_user_agent_preferences",
+  "teams_org_connections",
+  "teams_user_agent_preferences",
+  "telegram_official_user_links",
+  "telegram_user_agent_preferences",
+  "telegram_user_links",
+] as const;
+
+const INTEGRATION_USER_ID_PREFERENCE_PRIMARY_KEYS = [
   {
+    constraintName: "agentphone_user_agent_preferences_user_id_org_id_pk",
     tableName: "agentphone_user_agent_preferences",
-    triggerName: "sync_agentphone_user_agent_preferences_identity_0930",
   },
   {
-    tableName: "agentphone_user_links",
-    triggerName: "sync_agentphone_user_links_identity_0930",
-  },
-  {
-    tableName: "feishu_org_connections",
-    triggerName: "sync_feishu_org_connections_identity_0930",
-  },
-  {
+    constraintName: "feishu_user_agent_preferences_user_id_org_id_pk",
     tableName: "feishu_user_agent_preferences",
-    triggerName: "sync_feishu_user_agent_preferences_identity_0930",
   },
   {
-    tableName: "github_user_links",
-    triggerName: "sync_github_user_links_identity_0930",
-  },
-  {
-    tableName: "slack_org_connections",
-    triggerName: "sync_slack_org_connections_identity_0930",
-  },
-  {
+    constraintName: "slack_user_agent_preferences_user_id_org_id_pk",
     tableName: "slack_user_agent_preferences",
-    triggerName: "sync_slack_user_agent_preferences_identity_0930",
   },
   {
-    tableName: "teams_org_connections",
-    triggerName: "sync_teams_org_connections_identity_0930",
-  },
-  {
+    constraintName: "teams_user_agent_preferences_user_id_org_id_pk",
     tableName: "teams_user_agent_preferences",
-    triggerName: "sync_teams_user_agent_preferences_identity_0930",
   },
   {
-    tableName: "telegram_official_user_links",
-    triggerName: "sync_telegram_official_user_links_identity_0930",
-  },
-  {
+    constraintName: "telegram_user_agent_preferences_user_id_org_id_pk",
     tableName: "telegram_user_agent_preferences",
-    triggerName: "sync_telegram_user_agent_preferences_identity_0930",
-  },
-  {
-    tableName: "telegram_user_links",
-    triggerName: "sync_telegram_user_links_identity_0930",
   },
 ] as const;
 
-const INTEGRATION_USER_ID_INDEXES = [
+const INTEGRATION_USER_ID_CANONICAL_INDEXES = [
   {
     definition:
-      "CREATE UNIQUE INDEX idx_agentphone_user_agent_preferences_user_org ON public.agentphone_user_agent_preferences USING btree (user_id, org_id)",
+      "CREATE UNIQUE INDEX agentphone_user_agent_preferences_user_id_org_id_pk ON public.agentphone_user_agent_preferences USING btree (user_id, org_id)",
+    isPrimary: true,
     isUnique: true,
-    name: "idx_agentphone_user_agent_preferences_user_org",
+    name: "agentphone_user_agent_preferences_user_id_org_id_pk",
+    tableName: "agentphone_user_agent_preferences",
   },
   {
     definition:
       "CREATE UNIQUE INDEX idx_agentphone_user_links_user_org ON public.agentphone_user_links USING btree (user_id, org_id)",
+    isPrimary: false,
     isUnique: true,
     name: "idx_agentphone_user_links_user_org",
+    tableName: "agentphone_user_links",
   },
   {
     definition:
       "CREATE INDEX idx_feishu_org_connections_user_id_installation ON public.feishu_org_connections USING btree (user_id, installation_id)",
+    isPrimary: false,
     isUnique: false,
     name: "idx_feishu_org_connections_user_id_installation",
+    tableName: "feishu_org_connections",
   },
   {
     definition:
-      "CREATE UNIQUE INDEX idx_feishu_user_agent_preferences_user_org ON public.feishu_user_agent_preferences USING btree (user_id, org_id)",
+      "CREATE UNIQUE INDEX feishu_user_agent_preferences_user_id_org_id_pk ON public.feishu_user_agent_preferences USING btree (user_id, org_id)",
+    isPrimary: true,
     isUnique: true,
-    name: "idx_feishu_user_agent_preferences_user_org",
+    name: "feishu_user_agent_preferences_user_id_org_id_pk",
+    tableName: "feishu_user_agent_preferences",
   },
   {
     definition:
       "CREATE INDEX idx_slack_org_connections_user_id_workspace ON public.slack_org_connections USING btree (user_id, slack_workspace_id)",
+    isPrimary: false,
     isUnique: false,
     name: "idx_slack_org_connections_user_id_workspace",
+    tableName: "slack_org_connections",
   },
   {
     definition:
-      "CREATE UNIQUE INDEX idx_slack_user_agent_preferences_user_org ON public.slack_user_agent_preferences USING btree (user_id, org_id)",
+      "CREATE UNIQUE INDEX slack_user_agent_preferences_user_id_org_id_pk ON public.slack_user_agent_preferences USING btree (user_id, org_id)",
+    isPrimary: true,
     isUnique: true,
-    name: "idx_slack_user_agent_preferences_user_org",
+    name: "slack_user_agent_preferences_user_id_org_id_pk",
+    tableName: "slack_user_agent_preferences",
   },
   {
     definition:
       "CREATE INDEX idx_teams_org_connections_user_id_tenant ON public.teams_org_connections USING btree (user_id, teams_tenant_id)",
+    isPrimary: false,
     isUnique: false,
     name: "idx_teams_org_connections_user_id_tenant",
+    tableName: "teams_org_connections",
   },
   {
     definition:
-      "CREATE UNIQUE INDEX idx_teams_user_agent_preferences_user_org ON public.teams_user_agent_preferences USING btree (user_id, org_id)",
+      "CREATE UNIQUE INDEX teams_user_agent_preferences_user_id_org_id_pk ON public.teams_user_agent_preferences USING btree (user_id, org_id)",
+    isPrimary: true,
     isUnique: true,
-    name: "idx_teams_user_agent_preferences_user_org",
+    name: "teams_user_agent_preferences_user_id_org_id_pk",
+    tableName: "teams_user_agent_preferences",
   },
   {
     definition:
       "CREATE UNIQUE INDEX idx_telegram_official_user_links_user_org ON public.telegram_official_user_links USING btree (user_id, org_id)",
+    isPrimary: false,
     isUnique: true,
     name: "idx_telegram_official_user_links_user_org",
+    tableName: "telegram_official_user_links",
   },
   {
     definition:
-      "CREATE UNIQUE INDEX idx_telegram_user_agent_preferences_user_org ON public.telegram_user_agent_preferences USING btree (user_id, org_id)",
+      "CREATE UNIQUE INDEX telegram_user_agent_preferences_user_id_org_id_pk ON public.telegram_user_agent_preferences USING btree (user_id, org_id)",
+    isPrimary: true,
     isUnique: true,
-    name: "idx_telegram_user_agent_preferences_user_org",
+    name: "telegram_user_agent_preferences_user_id_org_id_pk",
+    tableName: "telegram_user_agent_preferences",
   },
   {
     definition:
       "CREATE UNIQUE INDEX idx_telegram_user_links_user_id_installation ON public.telegram_user_links USING btree (user_id, installation_id)",
+    isPrimary: false,
     isUnique: true,
     name: "idx_telegram_user_links_user_id_installation",
+    tableName: "telegram_user_links",
   },
 ] as const;
 
-const INTEGRATION_USER_ID_PREFERENCE_TABLES = [
-  "agentphone_user_agent_preferences",
-  "feishu_user_agent_preferences",
-  "slack_user_agent_preferences",
-  "teams_user_agent_preferences",
-  "telegram_user_agent_preferences",
-] as const;
-
-async function assertIntegrationIdentityInvariant(
+async function assertCanonicalIntegrationIdentitySchema(
   client: Client,
 ): Promise<void> {
-  for (const { tableName } of INTEGRATION_USER_ID_TABLES) {
-    const result = await client.query<{
-      invalidCount: number;
-      totalCount: number;
-    }>(`
-      SELECT
-        count(*)::integer AS "totalCount",
-        count(*) FILTER (
-          WHERE "user_id" IS NULL
-            OR "vm0_user_id" IS NULL
-            OR "user_id" IS DISTINCT FROM "vm0_user_id"
-        )::integer AS "invalidCount"
-      FROM "${tableName}"
-    `);
-    assert.equal(result.rows.length, 1);
-    assert.ok((result.rows[0]?.totalCount ?? 0) > 0);
-    assert.equal(result.rows[0]?.invalidCount, 0);
-  }
+  const tableNames = [...INTEGRATION_USER_ID_TABLES];
+  const columns = await client.query<{
+    columnName: string;
+    isNullable: "NO" | "YES";
+    tableName: string;
+  }>(
+    [
+      'SELECT "table_name" AS "tableName",',
+      '  "column_name" AS "columnName",',
+      '  "is_nullable" AS "isNullable"',
+      'FROM "information_schema"."columns"',
+      "WHERE \"table_schema\" = 'public'",
+      '  AND "table_name" = ANY($1::text[])',
+      '  AND "column_name" = ANY($2::text[])',
+      'ORDER BY "table_name", "column_name"',
+    ].join("\n"),
+    [tableNames, ["user_id", RETIRED_INTEGRATION_ID_COLUMN]],
+  );
+  assert.deepEqual(
+    columns.rows,
+    INTEGRATION_USER_ID_TABLES.map((tableName) => {
+      return { columnName: "user_id", isNullable: "NO", tableName };
+    }),
+  );
+
+  const primaryKeys = await client.query<{
+    constraintName: string;
+    definition: string;
+    tableName: string;
+  }>(
+    [
+      'SELECT "relation"."relname" AS "tableName",',
+      '  "constraint"."conname" AS "constraintName",',
+      '  pg_get_constraintdef("constraint"."oid", false) AS "definition"',
+      'FROM "pg_constraint" AS "constraint"',
+      'INNER JOIN "pg_class" AS "relation"',
+      '  ON "relation"."oid" = "constraint"."conrelid"',
+      'INNER JOIN "pg_namespace" AS "namespace"',
+      '  ON "namespace"."oid" = "relation"."relnamespace"',
+      'WHERE "namespace"."nspname" = \'public\'',
+      '  AND "constraint"."contype" = \'p\'',
+      '  AND "relation"."relname" = ANY($1::text[])',
+      'ORDER BY "relation"."relname"',
+    ].join("\n"),
+    [
+      INTEGRATION_USER_ID_PREFERENCE_PRIMARY_KEYS.map(({ tableName }) => {
+        return tableName;
+      }),
+    ],
+  );
+  assert.deepEqual(
+    primaryKeys.rows,
+    INTEGRATION_USER_ID_PREFERENCE_PRIMARY_KEYS.map(
+      ({ constraintName, tableName }) => {
+        return {
+          constraintName,
+          definition: "PRIMARY KEY (user_id, org_id)",
+          tableName,
+        };
+      },
+    ),
+  );
+
+  await client.query("SET search_path TO public, pg_catalog");
+  const indexes = await client.query<{
+    definition: string;
+    isPrimary: boolean;
+    isUnique: boolean;
+    name: string;
+    tableName: string;
+  }>(
+    [
+      'SELECT "table"."relname" AS "tableName",',
+      '  "index_class"."relname" AS "name",',
+      '  "index"."indisprimary" AS "isPrimary",',
+      '  "index"."indisunique" AS "isUnique",',
+      '  pg_get_indexdef("index"."indexrelid") AS "definition"',
+      'FROM "pg_index" AS "index"',
+      'INNER JOIN "pg_class" AS "index_class"',
+      '  ON "index_class"."oid" = "index"."indexrelid"',
+      'INNER JOIN "pg_class" AS "table"',
+      '  ON "table"."oid" = "index"."indrelid"',
+      'WHERE "index_class"."relname" = ANY($1::text[])',
+      'ORDER BY "table"."relname"',
+    ].join("\n"),
+    [
+      INTEGRATION_USER_ID_CANONICAL_INDEXES.map(({ name }) => {
+        return name;
+      }),
+    ],
+  );
+  assert.deepEqual(indexes.rows, INTEGRATION_USER_ID_CANONICAL_INDEXES);
 }
 
-async function validateIntegrationUserIdTransition(): Promise<void> {
-  console.log("=== Validate integration user identity transition ===\n");
-  const testDb = "migration_integration_user_identity_transition_test";
+async function validateIntegrationUserIdContractMigration(): Promise<void> {
+  console.log("=== Validate canonical integration identity Contract ===\n");
+  const migrationSql = await fs.readFile(
+    path.join(MIGRATIONS_DIR, INTEGRATION_USER_ID_CONTRACT_MIGRATION + ".sql"),
+    "utf8",
+  );
+  assert.ok(!migrationSql.includes(NON_TRANSACTIONAL_MIGRATION_MARKER));
+  assert.doesNotMatch(migrationSql, /\bLOCK\s+TABLE\b/iu);
+  assert.doesNotMatch(migrationSql, /\bCASCADE\b/iu);
+
+  const validationOffset = migrationSql.indexOf(
+    "integration identity Contract validation failed",
+  );
+  assert.ok(validationOffset >= 0);
+  const firstDestructiveOffset = Math.min(
+    ...[
+      "DROP CONSTRAINT",
+      "DROP INDEX",
+      "DROP TRIGGER",
+      "DROP COLUMN",
+      "DROP FUNCTION",
+    ]
+      .map((statement) => {
+        return migrationSql.indexOf(statement);
+      })
+      .filter((offset) => {
+        return offset >= 0;
+      }),
+  );
+  assert.ok(validationOffset < firstDestructiveOffset);
+
+  for (const tableName of INTEGRATION_USER_ID_TABLES) {
+    const backfill =
+      'UPDATE "' +
+      tableName +
+      '" SET "user_id" = "' +
+      RETIRED_INTEGRATION_ID_COLUMN +
+      '" WHERE "user_id" IS NULL';
+    const dropColumn =
+      'ALTER TABLE "' +
+      tableName +
+      '" DROP COLUMN "' +
+      RETIRED_INTEGRATION_ID_COLUMN +
+      '"';
+    const dropTrigger =
+      'DROP TRIGGER "sync_' +
+      tableName +
+      '_identity_0930" ON "' +
+      tableName +
+      '"';
+    const validation =
+      'FROM "' +
+      tableName +
+      '" WHERE "user_id" IS NULL OR "' +
+      RETIRED_INTEGRATION_ID_COLUMN +
+      '" IS NULL OR "user_id" IS DISTINCT FROM "' +
+      RETIRED_INTEGRATION_ID_COLUMN +
+      '"';
+    const backfillOffset = migrationSql.indexOf(backfill);
+    const validationPredicateOffset = migrationSql.indexOf(validation);
+    const dropTriggerOffset = migrationSql.indexOf(dropTrigger);
+    const dropColumnOffset = migrationSql.indexOf(dropColumn);
+    assert.ok(backfillOffset >= 0);
+    assert.ok(backfillOffset < validationOffset);
+    assert.ok(validationPredicateOffset >= 0);
+    assert.ok(validationPredicateOffset < validationOffset);
+    assert.ok(dropTriggerOffset > validationOffset);
+    assert.ok(dropColumnOffset > dropTriggerOffset);
+  }
+  assert.equal((migrationSql.match(/\bDROP\s+CONSTRAINT\b/gu) ?? []).length, 5);
+  assert.equal((migrationSql.match(/\bDROP\s+INDEX\b/gu) ?? []).length, 6);
+  assert.equal((migrationSql.match(/\bDROP\s+TRIGGER\b/gu) ?? []).length, 12);
+  assert.equal((migrationSql.match(/\bDROP\s+COLUMN\b/gu) ?? []).length, 12);
+  assert.equal((migrationSql.match(/\bDROP\s+FUNCTION\b/gu) ?? []).length, 1);
+  assert.equal(
+    (migrationSql.match(/\bPRIMARY\s+KEY\s+USING\s+INDEX\b/gu) ?? []).length,
+    5,
+  );
+
+  const testDb = "migration_integration_user_identity_contract_test";
   await createDatabase(testDb);
   const client = new Client({ connectionString: createTestDbUrl(testDb) });
   await client.connect();
 
+  const fixture = {
+    orgId: "contract-integration-identity-org",
+    tableName: "agentphone_user_agent_preferences",
+    triggerName: "sync_agentphone_user_agent_preferences_identity_0930",
+    userId: "contract-integration-identity-user",
+  } as const;
+
   try {
-    const migrationSql = await fs.readFile(
-      path.join(
-        MIGRATIONS_DIR,
-        `${INTEGRATION_USER_ID_EXPANSION_MIGRATION}.sql`,
-      ),
-      "utf8",
-    );
-    assert.ok(!migrationSql.includes(NON_TRANSACTIONAL_MIGRATION_MARKER));
-    assert.doesNotMatch(migrationSql, /\bLOCK\s+TABLE\b/iu);
-    assert.doesNotMatch(migrationSql, /\bRENAME\s+COLUMN\b/iu);
-    assert.doesNotMatch(migrationSql, /\bSET\s+LOCAL\b/iu);
-
-    const switchMigrationSql = await fs.readFile(
-      path.join(MIGRATIONS_DIR, `${INTEGRATION_USER_ID_SWITCH_MIGRATION}.sql`),
-      "utf8",
-    );
-    assert.ok(!switchMigrationSql.includes(NON_TRANSACTIONAL_MIGRATION_MARKER));
-    assert.doesNotMatch(switchMigrationSql, /\bLOCK\s+TABLE\b/iu);
-    assert.doesNotMatch(switchMigrationSql, /\bRENAME\s+COLUMN\b/iu);
-    assert.doesNotMatch(switchMigrationSql, /\bDROP\s+COLUMN\b/iu);
-    assert.doesNotMatch(
-      switchMigrationSql,
-      /\bDROP\s+(?:FUNCTION|INDEX|TRIGGER)\b/iu,
-    );
-    assert.match(switchMigrationSql, /\bIS\s+DISTINCT\s+FROM\b/iu);
-    for (const { tableName } of INTEGRATION_USER_ID_TABLES) {
-      assert.ok(
-        switchMigrationSql.includes(
-          `UPDATE "${tableName}" SET "user_id" = "vm0_user_id" WHERE "user_id" IS NULL`,
-        ),
-      );
-      assert.ok(
-        switchMigrationSql.includes(
-          `ALTER TABLE "${tableName}" ALTER COLUMN "user_id" SET NOT NULL`,
-        ),
-      );
-    }
-
     await applyMigrationsUpToTag(
       client,
-      INTEGRATION_USER_ID_EXPANSION_PREVIOUS_MIGRATION,
+      INTEGRATION_USER_ID_CONTRACT_PREVIOUS_MIGRATION,
     );
-    await client.query(`
-      INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
-      VALUES (
-        '00000000-0000-4000-8000-000000093001',
-        'user-0930-parent',
-        'migration-0930-parent',
-        'org-0930-parent'
-      );
-
-      INSERT INTO "feishu_org_installations" (
-        "id", "org_id", "app_id", "encrypted_app_secret",
-        "encrypted_verification_token", "encrypted_encrypt_key",
-        "default_compose_id"
-      ) VALUES (
-        '00000000-0000-4000-8000-000000093002',
-        'org-0930-parent',
-        'app-0930',
-        'secret-0930',
-        'verification-0930',
-        'encrypt-key-0930',
-        '00000000-0000-4000-8000-000000093001'
-      );
-
-      INSERT INTO "github_installations" (
-        "id", "org_id", "default_compose_id"
-      ) VALUES (
-        '00000000-0000-4000-8000-000000093003',
-        'org-0930-parent',
-        '00000000-0000-4000-8000-000000093001'
-      );
-
-      INSERT INTO "slack_org_installations" (
-        "slack_workspace_id", "org_id", "encrypted_bot_token", "bot_user_id"
-      ) VALUES (
-        'workspace-0930',
-        'org-0930-slack-installation',
-        'slack-token-0930',
-        'slack-bot-0930'
-      );
-
-      INSERT INTO "teams_org_installations" ("teams_tenant_id", "org_id")
-      VALUES ('tenant-0930', 'org-0930-teams-installation');
-
-      INSERT INTO "telegram_installations" (
-        "telegram_bot_id", "encrypted_bot_token", "webhook_secret",
-        "default_compose_id", "owner_user_id", "org_id"
-      ) VALUES (
-        'bot-0930',
-        'telegram-token-0930',
-        'telegram-webhook-0930',
-        '00000000-0000-4000-8000-000000093001',
-        'user-0930-parent',
-        'org-0930-parent'
-      );
-
-      INSERT INTO "agentphone_user_agent_preferences" (
-        "vm0_user_id", "org_id"
-      ) VALUES ('backfill-agentphone-preference', 'org-backfill-agentphone');
-      INSERT INTO "agentphone_user_links" (
-        "id", "phone_handle", "vm0_user_id", "org_id"
-      ) VALUES (
-        '00000000-0000-4000-8000-000000093101',
-        '+15550009301',
-        'backfill-agentphone-link',
-        'org-backfill-agentphone-link'
-      );
-      INSERT INTO "feishu_org_connections" (
-        "id", "installation_id", "feishu_open_id", "vm0_user_id"
-      ) VALUES (
-        '00000000-0000-4000-8000-000000093102',
-        '00000000-0000-4000-8000-000000093002',
-        'feishu-open-backfill-0930',
-        'backfill-feishu-connection'
-      );
-      INSERT INTO "feishu_user_agent_preferences" (
-        "vm0_user_id", "org_id"
-      ) VALUES ('backfill-feishu-preference', 'org-backfill-feishu');
-      INSERT INTO "github_user_links" (
-        "id", "github_user_id", "installation_id", "vm0_user_id"
-      ) VALUES (
-        '00000000-0000-4000-8000-000000093103',
-        'github-backfill-0930',
-        '00000000-0000-4000-8000-000000093003',
-        'backfill-github-link'
-      );
-      INSERT INTO "slack_org_connections" (
-        "id", "slack_user_id", "slack_workspace_id", "vm0_user_id"
-      ) VALUES (
-        '00000000-0000-4000-8000-000000093104',
-        'slack-backfill-0930',
-        'workspace-0930',
-        'backfill-slack-connection'
-      );
-      INSERT INTO "slack_user_agent_preferences" (
-        "vm0_user_id", "org_id"
-      ) VALUES ('backfill-slack-preference', 'org-backfill-slack');
-      INSERT INTO "teams_org_connections" (
-        "id", "teams_user_id", "teams_tenant_id", "vm0_user_id"
-      ) VALUES (
-        '00000000-0000-4000-8000-000000093105',
-        'teams-backfill-0930',
-        'tenant-0930',
-        'backfill-teams-connection'
-      );
-      INSERT INTO "teams_user_agent_preferences" (
-        "vm0_user_id", "org_id"
-      ) VALUES ('backfill-teams-preference', 'org-backfill-teams');
-      INSERT INTO "telegram_official_user_links" (
-        "id", "telegram_user_id", "vm0_user_id", "org_id"
-      ) VALUES (
-        '00000000-0000-4000-8000-000000093106',
-        'telegram-official-backfill-0930',
-        'backfill-telegram-official-link',
-        'org-backfill-telegram-official'
-      );
-      INSERT INTO "telegram_user_agent_preferences" (
-        "vm0_user_id", "org_id"
-      ) VALUES ('backfill-telegram-preference', 'org-backfill-telegram');
-      INSERT INTO "telegram_user_links" (
-        "id", "telegram_user_id", "installation_id", "vm0_user_id"
-      ) VALUES (
-        '00000000-0000-4000-8000-000000093107',
-        'telegram-backfill-0930',
-        'bot-0930',
-        'backfill-telegram-link'
-      );
-    `);
-
-    await applyMigrationsUpToTag(
-      client,
-      INTEGRATION_USER_ID_EXPANSION_MIGRATION,
+    await client.query(
+      'INSERT INTO "' +
+        fixture.tableName +
+        '" ("user_id", "org_id") VALUES ($1, $2)',
+      [fixture.userId, fixture.orgId],
     );
-    await assertIntegrationIdentityInvariant(client);
-
-    const columns = await client.query<{
-      columnName: string;
-      isNullable: "NO" | "YES";
-      tableName: string;
-    }>(
-      `
-      SELECT
-        "table_name" AS "tableName",
-        "column_name" AS "columnName",
-        "is_nullable" AS "isNullable"
-      FROM "information_schema"."columns"
-      WHERE "table_schema" = 'public'
-        AND "table_name" = ANY($1::text[])
-        AND "column_name" IN ('user_id', 'vm0_user_id')
-      ORDER BY "table_name", "column_name"
-    `,
-      [
-        INTEGRATION_USER_ID_TABLES.map(({ tableName }) => {
-          return tableName;
-        }),
-      ],
+    await client.query(
+      'ALTER TABLE "' +
+        fixture.tableName +
+        '" DISABLE TRIGGER "' +
+        fixture.triggerName +
+        '"',
     );
-    assert.deepEqual(
-      columns.rows,
-      INTEGRATION_USER_ID_TABLES.flatMap(({ tableName }) => {
-        return [
-          { columnName: "user_id", isNullable: "YES", tableName },
-          { columnName: "vm0_user_id", isNullable: "NO", tableName },
-        ];
-      }),
+    await client.query(
+      'UPDATE "' +
+        fixture.tableName +
+        '" SET "user_id" = $1 WHERE "org_id" = $2',
+      ["contract-conflicting-user", fixture.orgId],
+    );
+    await client.query(
+      'ALTER TABLE "' +
+        fixture.tableName +
+        '" ENABLE TRIGGER "' +
+        fixture.triggerName +
+        '"',
     );
 
-    // Bypass the compatibility trigger to prove the Switch migration itself
-    // rejects a pre-existing mismatch before changing nullability.
-    await client.query(`
-      ALTER TABLE "agentphone_user_links"
-      DISABLE TRIGGER "sync_agentphone_user_links_identity_0930";
-      UPDATE "agentphone_user_links"
-      SET "user_id" = 'mismatched-before-switch'
-      WHERE "id" = '00000000-0000-4000-8000-000000093101';
-      ALTER TABLE "agentphone_user_links"
-      ENABLE TRIGGER "sync_agentphone_user_links_identity_0930";
-    `);
     await assert.rejects(
-      applyMigrationsUpToTag(client, INTEGRATION_USER_ID_SWITCH_MIGRATION),
+      applyMigrationsUpToTag(client, INTEGRATION_USER_ID_CONTRACT_MIGRATION),
       (error: unknown) => {
         return (
           databaseErrorCode(error) === "23514" &&
           error instanceof Error &&
-          error.message.includes("null or mismatched values")
+          error.message.includes("Contract validation failed")
         );
       },
     );
-
-    // Repair the deliberate mismatch, then leave a canonical null to prove
-    // the idempotent backfill runs before SET NOT NULL.
-    await client.query(`
-      ALTER TABLE "agentphone_user_links"
-      DISABLE TRIGGER "sync_agentphone_user_links_identity_0930";
-      UPDATE "agentphone_user_links"
-      SET "user_id" = "vm0_user_id"
-      WHERE "id" = '00000000-0000-4000-8000-000000093101';
-      ALTER TABLE "agentphone_user_links"
-      ENABLE TRIGGER "sync_agentphone_user_links_identity_0930";
-
-      ALTER TABLE "feishu_org_connections"
-      DISABLE TRIGGER "sync_feishu_org_connections_identity_0930";
-      UPDATE "feishu_org_connections"
-      SET "user_id" = NULL
-      WHERE "id" = '00000000-0000-4000-8000-000000093102';
-      ALTER TABLE "feishu_org_connections"
-      ENABLE TRIGGER "sync_feishu_org_connections_identity_0930";
-    `);
-    await applyMigrationsUpToTag(client, INTEGRATION_USER_ID_SWITCH_MIGRATION);
-    await assertIntegrationIdentityInvariant(client);
-
-    const switchedColumns = await client.query<{
-      columnName: string;
-      isNullable: "NO" | "YES";
-      tableName: string;
-    }>(
-      `
-      SELECT
-        "table_name" AS "tableName",
-        "column_name" AS "columnName",
-        "is_nullable" AS "isNullable"
-      FROM "information_schema"."columns"
-      WHERE "table_schema" = 'public'
-        AND "table_name" = ANY($1::text[])
-        AND "column_name" IN ('user_id', 'vm0_user_id')
-      ORDER BY "table_name", "column_name"
-    `,
+    const retainedColumn = await client.query<{ count: number }>(
       [
-        INTEGRATION_USER_ID_TABLES.map(({ tableName }) => {
-          return tableName;
-        }),
-      ],
+        'SELECT count(*)::integer AS "count"',
+        'FROM "information_schema"."columns"',
+        "WHERE \"table_schema\" = 'public'",
+        '  AND "table_name" = $1',
+        '  AND "column_name" = $2',
+      ].join("\n"),
+      [fixture.tableName, RETIRED_INTEGRATION_ID_COLUMN],
     );
-    assert.deepEqual(
-      switchedColumns.rows,
-      INTEGRATION_USER_ID_TABLES.flatMap(({ tableName }) => {
-        return [
-          { columnName: "user_id", isNullable: "NO", tableName },
-          { columnName: "vm0_user_id", isNullable: "NO", tableName },
-        ];
-      }),
-    );
+    assert.deepEqual(retainedColumn.rows, [{ count: 1 }]);
 
-    await client.query(`SET search_path TO public, pg_catalog`);
-    const triggers = await client.query<{
-      definition: string;
-      tableName: string;
-      triggerName: string;
-    }>(
-      `
-      SELECT
-        "relation"."relname" AS "tableName",
-        "trigger"."tgname" AS "triggerName",
-        pg_get_triggerdef("trigger"."oid") AS "definition"
-      FROM "pg_trigger" AS "trigger"
-      INNER JOIN "pg_class" AS "relation"
-        ON "relation"."oid" = "trigger"."tgrelid"
-      WHERE NOT "trigger"."tgisinternal"
-        AND "trigger"."tgname" = ANY($1::text[])
-      ORDER BY "relation"."relname"
-    `,
-      [
-        INTEGRATION_USER_ID_TABLES.map(({ triggerName }) => {
-          return triggerName;
-        }),
-      ],
+    await client.query(
+      'ALTER TABLE "' +
+        fixture.tableName +
+        '" DISABLE TRIGGER "' +
+        fixture.triggerName +
+        '"',
     );
-    assert.deepEqual(
-      triggers.rows,
-      INTEGRATION_USER_ID_TABLES.map(({ tableName, triggerName }) => {
-        return {
-          definition:
-            `CREATE TRIGGER ${triggerName} BEFORE INSERT OR UPDATE OF ` +
-            `vm0_user_id, user_id ON public.${tableName} FOR EACH ROW ` +
-            `EXECUTE FUNCTION ${INTEGRATION_USER_ID_SYNC_FUNCTION}()`,
-          tableName,
-          triggerName,
-        };
-      }),
+    await client.query(
+      'UPDATE "' +
+        fixture.tableName +
+        '" SET "user_id" = "' +
+        RETIRED_INTEGRATION_ID_COLUMN +
+        '" WHERE "org_id" = $1',
+      [fixture.orgId],
+    );
+    await client.query(
+      'ALTER TABLE "' +
+        fixture.tableName +
+        '" ENABLE TRIGGER "' +
+        fixture.triggerName +
+        '"',
     );
 
-    const functions = await client.query<{
-      bodyHash: string;
-      functionName: string;
-      languageName: string;
-      resultType: string;
-    }>(
-      `
-      SELECT
-        "function"."proname" AS "functionName",
-        "language"."lanname" AS "languageName",
-        pg_get_function_result("function"."oid") AS "resultType",
-        md5("function"."prosrc") AS "bodyHash"
-      FROM "pg_proc" AS "function"
-      INNER JOIN "pg_language" AS "language"
-        ON "language"."oid" = "function"."prolang"
-      WHERE "function"."pronamespace" = 'public'::regnamespace
-        AND "function"."proname" = $1
-    `,
-      [INTEGRATION_USER_ID_SYNC_FUNCTION],
+    await applyMigrationsUpToTag(
+      client,
+      INTEGRATION_USER_ID_CONTRACT_MIGRATION,
     );
-    assert.deepEqual(functions.rows, [
-      {
-        bodyHash: "a2fdd6127c4d3efea23d729aecea2198",
-        functionName: INTEGRATION_USER_ID_SYNC_FUNCTION,
-        languageName: "plpgsql",
-        resultType: "trigger",
-      },
-    ]);
-
-    const indexes = await client.query<{
-      definition: string;
-      isUnique: boolean;
-      name: string;
-    }>(
-      `
-      SELECT
-        "index_class"."relname" AS "name",
-        "index"."indisunique" AS "isUnique",
-        pg_get_indexdef("index"."indexrelid") AS "definition"
-      FROM "pg_index" AS "index"
-      INNER JOIN "pg_class" AS "index_class"
-        ON "index_class"."oid" = "index"."indexrelid"
-      WHERE "index_class"."relname" = ANY($1::text[])
-      ORDER BY "index_class"."relname"
-    `,
-      [
-        INTEGRATION_USER_ID_INDEXES.map(({ name }) => {
-          return name;
-        }),
-      ],
-    );
-    assert.deepEqual(indexes.rows, INTEGRATION_USER_ID_INDEXES);
-
-    await client.query(`
-      INSERT INTO "agentphone_user_agent_preferences" ("vm0_user_id", "org_id")
-      VALUES ('legacy-agentphone-preference', 'org-legacy-agentphone');
-      INSERT INTO "agentphone_user_links" (
-        "phone_handle", "vm0_user_id", "org_id"
-      ) VALUES (
-        '+15550009311', 'legacy-agentphone-link', 'org-legacy-agentphone-link'
-      );
-      INSERT INTO "feishu_org_connections" (
-        "installation_id", "feishu_open_id", "vm0_user_id"
-      ) VALUES (
-        '00000000-0000-4000-8000-000000093002',
-        'feishu-open-legacy-0930',
-        'legacy-feishu-connection'
-      );
-      INSERT INTO "feishu_user_agent_preferences" ("vm0_user_id", "org_id")
-      VALUES ('legacy-feishu-preference', 'org-legacy-feishu');
-      INSERT INTO "github_user_links" (
-        "github_user_id", "installation_id", "vm0_user_id"
-      ) VALUES (
-        'github-legacy-0930',
-        '00000000-0000-4000-8000-000000093003',
-        'legacy-github-link'
-      );
-      INSERT INTO "slack_org_connections" (
-        "slack_user_id", "slack_workspace_id", "vm0_user_id"
-      ) VALUES (
-        'slack-legacy-0930', 'workspace-0930', 'legacy-slack-connection'
-      );
-      INSERT INTO "slack_user_agent_preferences" ("vm0_user_id", "org_id")
-      VALUES ('legacy-slack-preference', 'org-legacy-slack');
-      INSERT INTO "teams_org_connections" (
-        "teams_user_id", "teams_tenant_id", "vm0_user_id"
-      ) VALUES (
-        'teams-legacy-0930', 'tenant-0930', 'legacy-teams-connection'
-      );
-      INSERT INTO "teams_user_agent_preferences" ("vm0_user_id", "org_id")
-      VALUES ('legacy-teams-preference', 'org-legacy-teams');
-      INSERT INTO "telegram_official_user_links" (
-        "telegram_user_id", "vm0_user_id", "org_id"
-      ) VALUES (
-        'telegram-official-legacy-0930',
-        'legacy-telegram-official-link',
-        'org-legacy-telegram-official'
-      );
-      INSERT INTO "telegram_user_agent_preferences" (
-        "vm0_user_id", "org_id"
-      ) VALUES ('legacy-telegram-preference', 'org-legacy-telegram');
-      INSERT INTO "telegram_user_links" (
-        "telegram_user_id", "installation_id", "vm0_user_id"
-      ) VALUES (
-        'telegram-legacy-0930', 'bot-0930', 'legacy-telegram-link'
-      );
-
-      INSERT INTO "agentphone_user_agent_preferences" ("user_id", "org_id")
-      VALUES ('canonical-agentphone-preference', 'org-canonical-agentphone');
-      INSERT INTO "agentphone_user_links" (
-        "phone_handle", "user_id", "org_id"
-      ) VALUES (
-        '+15550009312',
-        'canonical-agentphone-link',
-        'org-canonical-agentphone-link'
-      );
-      INSERT INTO "feishu_org_connections" (
-        "installation_id", "feishu_open_id", "user_id"
-      ) VALUES (
-        '00000000-0000-4000-8000-000000093002',
-        'feishu-open-canonical-0930',
-        'canonical-feishu-connection'
-      );
-      INSERT INTO "feishu_user_agent_preferences" ("user_id", "org_id")
-      VALUES ('canonical-feishu-preference', 'org-canonical-feishu');
-      INSERT INTO "github_user_links" (
-        "github_user_id", "installation_id", "user_id"
-      ) VALUES (
-        'github-canonical-0930',
-        '00000000-0000-4000-8000-000000093003',
-        'canonical-github-link'
-      );
-      INSERT INTO "slack_org_connections" (
-        "slack_user_id", "slack_workspace_id", "user_id"
-      ) VALUES (
-        'slack-canonical-0930', 'workspace-0930', 'canonical-slack-connection'
-      );
-      INSERT INTO "slack_user_agent_preferences" ("user_id", "org_id")
-      VALUES ('canonical-slack-preference', 'org-canonical-slack');
-      INSERT INTO "teams_org_connections" (
-        "teams_user_id", "teams_tenant_id", "user_id"
-      ) VALUES (
-        'teams-canonical-0930', 'tenant-0930', 'canonical-teams-connection'
-      );
-      INSERT INTO "teams_user_agent_preferences" ("user_id", "org_id")
-      VALUES ('canonical-teams-preference', 'org-canonical-teams');
-      INSERT INTO "telegram_official_user_links" (
-        "telegram_user_id", "user_id", "org_id"
-      ) VALUES (
-        'telegram-official-canonical-0930',
-        'canonical-telegram-official-link',
-        'org-canonical-telegram-official'
-      );
-      INSERT INTO "telegram_user_agent_preferences" ("user_id", "org_id")
-      VALUES ('canonical-telegram-preference', 'org-canonical-telegram');
-      INSERT INTO "telegram_user_links" (
-        "telegram_user_id", "installation_id", "user_id"
-      ) VALUES (
-        'telegram-canonical-0930', 'bot-0930', 'canonical-telegram-link'
-      );
-    `);
-    await assertIntegrationIdentityInvariant(client);
-
-    await client.query(`
-      UPDATE "agentphone_user_links"
-      SET "vm0_user_id" = 'legacy-update-agentphone-link'
-      WHERE "id" = '00000000-0000-4000-8000-000000093101'
-    `);
-    let updated = await client.query<{
+    await assertCanonicalIntegrationIdentitySchema(client);
+    const retainedRow = await client.query<{
+      orgId: string;
       userId: string;
-      legacyUserId: string;
-    }>(`
-      SELECT "user_id" AS "userId", "vm0_user_id" AS "legacyUserId"
-      FROM "agentphone_user_links"
-      WHERE "id" = '00000000-0000-4000-8000-000000093101'
-    `);
-    assert.deepEqual(updated.rows, [
-      {
-        userId: "legacy-update-agentphone-link",
-        legacyUserId: "legacy-update-agentphone-link",
-      },
+    }>(
+      'SELECT "user_id" AS "userId", "org_id" AS "orgId" FROM "' +
+        fixture.tableName +
+        '" WHERE "org_id" = $1',
+      [fixture.orgId],
+    );
+    assert.deepEqual(retainedRow.rows, [
+      { orgId: fixture.orgId, userId: fixture.userId },
     ]);
 
-    await client.query(`
-      UPDATE "agentphone_user_links"
-      SET "user_id" = 'canonical-update-agentphone-link'
-      WHERE "id" = '00000000-0000-4000-8000-000000093101'
-    `);
-    updated = await client.query<{
-      userId: string;
-      legacyUserId: string;
-    }>(`
-      SELECT "user_id" AS "userId", "vm0_user_id" AS "legacyUserId"
-      FROM "agentphone_user_links"
-      WHERE "id" = '00000000-0000-4000-8000-000000093101'
-    `);
-    assert.deepEqual(updated.rows, [
-      {
-        userId: "canonical-update-agentphone-link",
-        legacyUserId: "canonical-update-agentphone-link",
-      },
-    ]);
-
-    await expectDatabaseError(client, {
-      code: "23514",
-      messageIncludes: "conflicting integration identities",
-      query: `
-        INSERT INTO "agentphone_user_links" (
-          "phone_handle", "vm0_user_id", "user_id", "org_id"
-        ) VALUES (
-          '+15550009313',
-          'conflicting-legacy-agentphone-link',
-          'conflicting-canonical-agentphone-link',
-          'org-conflicting-agentphone-link'
-        )
-      `,
-    });
-    await expectDatabaseError(client, {
-      code: "23514",
-      messageIncludes: "conflicting integration identities",
-      query: `
-        UPDATE "agentphone_user_links"
-        SET
-          "vm0_user_id" = 'conflicting-legacy-update',
-          "user_id" = 'conflicting-canonical-update'
-        WHERE "id" = '00000000-0000-4000-8000-000000093101'
-      `,
-    });
-    await expectDatabaseError(client, {
-      code: "23502",
-      messageIncludes: "integration identity cannot be null",
-      query: `
-        INSERT INTO "agentphone_user_links" ("phone_handle", "org_id")
-        VALUES ('+15550009314', 'org-null-agentphone-link')
-      `,
-    });
-
-    for (const tableName of INTEGRATION_USER_ID_PREFERENCE_TABLES) {
-      const userId = `canonical-conflict-${tableName}`;
-      const orgId = `org-canonical-conflict-${tableName}`;
-      await client.query(
-        `
-          INSERT INTO "${tableName}" ("user_id", "org_id")
-          VALUES ($1, $2)
-          ON CONFLICT ("user_id", "org_id") DO NOTHING
-        `,
-        [userId, orgId],
-      );
-      await client.query(
-        `
-          INSERT INTO "${tableName}" ("user_id", "org_id")
-          VALUES ($1, $2)
-          ON CONFLICT ("user_id", "org_id") DO NOTHING
-        `,
-        [userId, orgId],
-      );
-      const rows = await client.query<{ count: number }>(
-        `
-          SELECT count(*)::integer AS "count"
-          FROM "${tableName}"
-          WHERE "user_id" = $1 AND "org_id" = $2
-        `,
-        [userId, orgId],
-      );
-      assert.deepEqual(rows.rows, [{ count: 1 }]);
-
-      const legacyUserId = `legacy-conflict-${tableName}`;
-      const legacyOrgId = `org-legacy-conflict-${tableName}`;
-      await client.query(
-        `
-          INSERT INTO "${tableName}" ("vm0_user_id", "org_id")
-          VALUES ($1, $2)
-          ON CONFLICT ("vm0_user_id", "org_id") DO NOTHING
-        `,
-        [legacyUserId, legacyOrgId],
-      );
-      await client.query(
-        `
-          INSERT INTO "${tableName}" ("vm0_user_id", "org_id")
-          VALUES ($1, $2)
-          ON CONFLICT ("vm0_user_id", "org_id") DO NOTHING
-        `,
-        [legacyUserId, legacyOrgId],
-      );
-      const legacyRows = await client.query<{ count: number }>(
-        `
-          SELECT count(*)::integer AS "count"
-          FROM "${tableName}"
-          WHERE "vm0_user_id" = $1 AND "org_id" = $2
-        `,
-        [legacyUserId, legacyOrgId],
-      );
-      assert.deepEqual(legacyRows.rows, [{ count: 1 }]);
-    }
-
-    await assertIntegrationIdentityInvariant(client);
-    console.log("   ✅ all 12 canonical identity columns are non-null");
-    console.log("   ✅ Switch backfill repairs nulls and rejects mismatches");
+    console.log("   ✅ Contract validation aborts before destructive DDL");
+    console.log("   ✅ canonical data survives the identity contraction");
     console.log(
-      "   ✅ legacy and canonical writes synchronize both directions",
+      "   ✅ 12 columns, 5 primary keys, and 11 indexes are canonical\n",
     );
-    console.log("   ✅ conflicting and null identities fail closed");
-    console.log("   ✅ canonical lookup and conflict-target indexes match\n");
   } finally {
     await client.end();
     await dropDatabase(testDb);
   }
 }
 
+async function validateCanonicalIntegrationIdentitySchema(
+  dbUrl: string,
+): Promise<void> {
+  console.log(
+    "=== Phase 2.5.2: Validate canonical integration identity schema ===\n",
+  );
+  const client = new Client({ connectionString: dbUrl });
+  await client.connect();
+
+  try {
+    await assertCanonicalIntegrationIdentitySchema(client);
+    console.log(
+      "   ✅ Canonical integration identity columns, keys, and indexes match\n",
+    );
+  } finally {
+    await client.end();
+  }
+}
 const MCP_CUSTOM_CONNECTOR_READERS_PREVIOUS_MIGRATION =
   "0872_curious_yellow_claw";
 const MCP_CUSTOM_CONNECTOR_READERS_MIGRATION =
@@ -2656,92 +2307,6 @@ type PermanentFunction = {
 // Exported from a database built by the existing migration chain. Extension-owned
 // pgcrypto and vector functions are deliberately absent from the function list.
 const EXPECTED_PERMANENT_TRIGGERS = [
-  // Expand-phase integration identity compatibility. Remove in #27602 only
-  // after the Switch release and rollback/callback windows have drained.
-  {
-    definition:
-      "CREATE TRIGGER sync_agentphone_user_agent_preferences_identity_0930 BEFORE INSERT OR UPDATE OF vm0_user_id, user_id ON public.agentphone_user_agent_preferences FOR EACH ROW EXECUTE FUNCTION sync_integration_user_identity_0930()",
-    schemaName: "public",
-    tableName: "agentphone_user_agent_preferences",
-    triggerName: "sync_agentphone_user_agent_preferences_identity_0930",
-  },
-  {
-    definition:
-      "CREATE TRIGGER sync_agentphone_user_links_identity_0930 BEFORE INSERT OR UPDATE OF vm0_user_id, user_id ON public.agentphone_user_links FOR EACH ROW EXECUTE FUNCTION sync_integration_user_identity_0930()",
-    schemaName: "public",
-    tableName: "agentphone_user_links",
-    triggerName: "sync_agentphone_user_links_identity_0930",
-  },
-  {
-    definition:
-      "CREATE TRIGGER sync_feishu_org_connections_identity_0930 BEFORE INSERT OR UPDATE OF vm0_user_id, user_id ON public.feishu_org_connections FOR EACH ROW EXECUTE FUNCTION sync_integration_user_identity_0930()",
-    schemaName: "public",
-    tableName: "feishu_org_connections",
-    triggerName: "sync_feishu_org_connections_identity_0930",
-  },
-  {
-    definition:
-      "CREATE TRIGGER sync_feishu_user_agent_preferences_identity_0930 BEFORE INSERT OR UPDATE OF vm0_user_id, user_id ON public.feishu_user_agent_preferences FOR EACH ROW EXECUTE FUNCTION sync_integration_user_identity_0930()",
-    schemaName: "public",
-    tableName: "feishu_user_agent_preferences",
-    triggerName: "sync_feishu_user_agent_preferences_identity_0930",
-  },
-  {
-    definition:
-      "CREATE TRIGGER sync_github_user_links_identity_0930 BEFORE INSERT OR UPDATE OF vm0_user_id, user_id ON public.github_user_links FOR EACH ROW EXECUTE FUNCTION sync_integration_user_identity_0930()",
-    schemaName: "public",
-    tableName: "github_user_links",
-    triggerName: "sync_github_user_links_identity_0930",
-  },
-  {
-    definition:
-      "CREATE TRIGGER sync_slack_org_connections_identity_0930 BEFORE INSERT OR UPDATE OF vm0_user_id, user_id ON public.slack_org_connections FOR EACH ROW EXECUTE FUNCTION sync_integration_user_identity_0930()",
-    schemaName: "public",
-    tableName: "slack_org_connections",
-    triggerName: "sync_slack_org_connections_identity_0930",
-  },
-  {
-    definition:
-      "CREATE TRIGGER sync_slack_user_agent_preferences_identity_0930 BEFORE INSERT OR UPDATE OF vm0_user_id, user_id ON public.slack_user_agent_preferences FOR EACH ROW EXECUTE FUNCTION sync_integration_user_identity_0930()",
-    schemaName: "public",
-    tableName: "slack_user_agent_preferences",
-    triggerName: "sync_slack_user_agent_preferences_identity_0930",
-  },
-  {
-    definition:
-      "CREATE TRIGGER sync_teams_org_connections_identity_0930 BEFORE INSERT OR UPDATE OF vm0_user_id, user_id ON public.teams_org_connections FOR EACH ROW EXECUTE FUNCTION sync_integration_user_identity_0930()",
-    schemaName: "public",
-    tableName: "teams_org_connections",
-    triggerName: "sync_teams_org_connections_identity_0930",
-  },
-  {
-    definition:
-      "CREATE TRIGGER sync_teams_user_agent_preferences_identity_0930 BEFORE INSERT OR UPDATE OF vm0_user_id, user_id ON public.teams_user_agent_preferences FOR EACH ROW EXECUTE FUNCTION sync_integration_user_identity_0930()",
-    schemaName: "public",
-    tableName: "teams_user_agent_preferences",
-    triggerName: "sync_teams_user_agent_preferences_identity_0930",
-  },
-  {
-    definition:
-      "CREATE TRIGGER sync_telegram_official_user_links_identity_0930 BEFORE INSERT OR UPDATE OF vm0_user_id, user_id ON public.telegram_official_user_links FOR EACH ROW EXECUTE FUNCTION sync_integration_user_identity_0930()",
-    schemaName: "public",
-    tableName: "telegram_official_user_links",
-    triggerName: "sync_telegram_official_user_links_identity_0930",
-  },
-  {
-    definition:
-      "CREATE TRIGGER sync_telegram_user_agent_preferences_identity_0930 BEFORE INSERT OR UPDATE OF vm0_user_id, user_id ON public.telegram_user_agent_preferences FOR EACH ROW EXECUTE FUNCTION sync_integration_user_identity_0930()",
-    schemaName: "public",
-    tableName: "telegram_user_agent_preferences",
-    triggerName: "sync_telegram_user_agent_preferences_identity_0930",
-  },
-  {
-    definition:
-      "CREATE TRIGGER sync_telegram_user_links_identity_0930 BEFORE INSERT OR UPDATE OF vm0_user_id, user_id ON public.telegram_user_links FOR EACH ROW EXECUTE FUNCTION sync_integration_user_identity_0930()",
-    schemaName: "public",
-    tableName: "telegram_user_links",
-    triggerName: "sync_telegram_user_links_identity_0930",
-  },
   {
     definition:
       "CREATE TRIGGER chat_events_reject_update BEFORE UPDATE ON public.chat_events FOR EACH ROW EXECUTE FUNCTION reject_chat_event_source_update()",
@@ -2911,15 +2476,6 @@ const EXPECTED_PERMANENT_TRIGGERS = [
 ] as const satisfies readonly PermanentTrigger[];
 
 const EXPECTED_PERMANENT_FUNCTIONS = [
-  // Same expand-phase integration identity compatibility and #27602 gate as
-  // the 12 synchronization triggers above.
-  {
-    bodyHash: "a2fdd6127c4d3efea23d729aecea2198",
-    functionName: "sync_integration_user_identity_0930",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
   {
     bodyHash: "6b1b5ad47ec35bcbaad3fa95d86ef027",
     functionName: "allocate_legacy_chat_thread_event_seq_id",
@@ -4389,46 +3945,6 @@ interface ExtractedSchema {
   constraints: Map<string, Set<string>>;
 }
 
-// Migration 0930 physically retains these rollback objects while migration
-// 0937 advances the runtime/current-snapshot contract past them. #27602 owns
-// their eventual physical removal and these temporary assertions.
-const TRANSITIONAL_INTEGRATION_IDENTITY_COLUMNS = new Set([
-  "agentphone_user_agent_preferences.vm0_user_id",
-  "agentphone_user_links.vm0_user_id",
-  "feishu_org_connections.vm0_user_id",
-  "feishu_user_agent_preferences.vm0_user_id",
-  "github_user_links.vm0_user_id",
-  "slack_org_connections.vm0_user_id",
-  "slack_user_agent_preferences.vm0_user_id",
-  "teams_org_connections.vm0_user_id",
-  "teams_user_agent_preferences.vm0_user_id",
-  "telegram_official_user_links.vm0_user_id",
-  "telegram_user_agent_preferences.vm0_user_id",
-  "telegram_user_links.vm0_user_id",
-]);
-
-const TRANSITIONAL_INTEGRATION_IDENTITY_INDEXES = new Set([
-  "agentphone_user_agent_preferences.agentphone_user_agent_preferences_pkey",
-  "agentphone_user_links.idx_agentphone_user_links_vm0_org",
-  "feishu_org_connections.idx_feishu_org_connections_vm0_installation",
-  "feishu_user_agent_preferences.feishu_user_agent_preferences_pkey",
-  "slack_org_connections.idx_slack_org_connections_vm0_user_workspace",
-  "slack_user_agent_preferences.slack_user_agent_preferences_pkey",
-  "teams_org_connections.idx_teams_org_connections_vm0_tenant",
-  "teams_user_agent_preferences.teams_user_agent_preferences_pkey",
-  "telegram_official_user_links.idx_telegram_official_user_links_vm0_org",
-  "telegram_user_agent_preferences.telegram_user_agent_preferences_pkey",
-  "telegram_user_links.idx_telegram_user_links_vm0_installation",
-]);
-
-const TRANSITIONAL_INTEGRATION_IDENTITY_CONSTRAINTS = new Set([
-  "agentphone_user_agent_preferences.agentphone_user_agent_preferences_pkey",
-  "feishu_user_agent_preferences.feishu_user_agent_preferences_pkey",
-  "slack_user_agent_preferences.slack_user_agent_preferences_pkey",
-  "teams_user_agent_preferences.teams_user_agent_preferences_pkey",
-  "telegram_user_agent_preferences.telegram_user_agent_preferences_pkey",
-]);
-
 function groupSchemaObjects(
   rows: Array<{ object_name: string; table_name: string }>,
 ): Map<string, Set<string>> {
@@ -4601,10 +4117,7 @@ function compareSchemas(
     ).sort();
 
     const missingCols = dbCols.filter((column) => {
-      return (
-        !snapshotCols.includes(column) &&
-        !TRANSITIONAL_INTEGRATION_IDENTITY_COLUMNS.has(`${tableName}.${column}`)
-      );
+      return !snapshotCols.includes(column);
     });
     const extraCols = snapshotCols.filter((c) => {
       return !dbCols.includes(c);
@@ -4626,56 +4139,6 @@ function compareSchemas(
     matches: differences.length === 0,
     differences,
   };
-}
-
-function assertDirectionalSnapshotResiduals(
-  dbSchema: ExtractedSchema,
-  snapshotSchema: ExtractedSchema,
-): void {
-  const assertPhysicalAndSnapshotOmission = (
-    expectedObjects: ReadonlySet<string>,
-    dbObjects: Map<string, Set<string>>,
-    snapshotObjects: Map<string, Set<string>>,
-    objectKind: string,
-  ): void => {
-    for (const qualifiedName of expectedObjects) {
-      const separator = qualifiedName.indexOf(".");
-      const tableName = qualifiedName.slice(0, separator);
-      const objectName = qualifiedName.slice(separator + 1);
-      assert.equal(
-        dbObjects.get(tableName)?.has(objectName),
-        true,
-        `${qualifiedName} ${objectKind} must remain physical during #27796`,
-      );
-      assert.equal(
-        snapshotObjects.get(tableName)?.has(objectName),
-        false,
-        `${qualifiedName} ${objectKind} must be absent from the current snapshot`,
-      );
-    }
-  };
-
-  assert.equal(TRANSITIONAL_INTEGRATION_IDENTITY_COLUMNS.size, 12);
-  assert.equal(TRANSITIONAL_INTEGRATION_IDENTITY_INDEXES.size, 11);
-  assert.equal(TRANSITIONAL_INTEGRATION_IDENTITY_CONSTRAINTS.size, 5);
-  assertPhysicalAndSnapshotOmission(
-    TRANSITIONAL_INTEGRATION_IDENTITY_COLUMNS,
-    dbSchema.columns,
-    snapshotSchema.columns,
-    "column",
-  );
-  assertPhysicalAndSnapshotOmission(
-    TRANSITIONAL_INTEGRATION_IDENTITY_INDEXES,
-    dbSchema.indexes,
-    snapshotSchema.indexes,
-    "index",
-  );
-  assertPhysicalAndSnapshotOmission(
-    TRANSITIONAL_INTEGRATION_IDENTITY_CONSTRAINTS,
-    dbSchema.constraints,
-    snapshotSchema.constraints,
-    "constraint",
-  );
 }
 
 async function validateTimestampOrdering(): Promise<void> {
@@ -7312,14 +6775,6 @@ async function validateLatestSnapshotAccuracy(): Promise<void> {
       `${String(latestIdx).padStart(4, "0")}_snapshot.json`,
     );
     const snapshotSchema = extractSchemaFromSnapshot(snapshotPath);
-
-    // Keep the code-only contraction directional: migrations still install
-    // every rollback object, while the new baseline cannot teach future
-    // db:generate runs to emit these destructive drops implicitly.
-    assertDirectionalSnapshotResiduals(dbSchema, snapshotSchema);
-    console.log(
-      "   ✅ 12 legacy columns, 11 indexes, and 5 constraints remain physical but absent from the current snapshot",
-    );
 
     // Compare
     const { matches, differences } = compareSchemas(
@@ -12103,7 +11558,7 @@ async function main(): Promise<void> {
     // Step 0.5: Validate timestamp ordering
     await validateTimestampOrdering();
 
-    await validateIntegrationUserIdTransition();
+    await validateIntegrationUserIdContractMigration();
     await validateRunEventSequenceNumberRollout();
     await validateGoalOnlyRunGroupsCleanup();
     await validateTeamsMessageFileScopeBackfill();
@@ -12124,7 +11579,6 @@ async function main(): Promise<void> {
     await validateChatEventSnapshotContraction();
     await validateAgentComposeProvenanceMigration();
     await validateAgentComposeConsolidationPreflight();
-    await validateIntegrationIdentityContractReadinessPreflight();
     await validateAgentRunMetadataStage2Preflight();
     await validateAgentRunMetadataStage2Lock();
     await validateAgentRunMetadataStage2Index();
@@ -12149,6 +11603,7 @@ async function main(): Promise<void> {
     await runMigrations(dbUrl1);
     console.log("   ✅ Consecutive database resets completed successfully\n");
 
+    await validateCanonicalIntegrationIdentitySchema(dbUrl1);
     await validatePermanentTriggerAndFunctionInventory(dbUrl1);
     await validateFreshAgentComposeProvenanceSchema(dbUrl1);
     await validateZeroAgentDefaultAvatarCompatibility(dbUrl1);

@@ -810,6 +810,15 @@ impl Sandbox for MockSandbox {
                     control: request.control,
                 });
         }
+        if let Some(overrides) = &self.overrides
+            && let Some(error) = overrides
+                .process
+                .start_process_errors
+                .lock_ignoring_poison()
+                .pop_front()
+        {
+            return Err(error);
+        }
         let (mut tx, rx) = match request.output {
             ProcessOutputMode::Stream { queue_capacity, .. } => {
                 let (tx, rx) = tokio::sync::mpsc::channel(queue_capacity.max(1));
@@ -1012,6 +1021,7 @@ impl Sandbox for MockSandbox {
 fn clone_exec_result(result: &ExecResult) -> ExecResult {
     ExecResult {
         termination: result.termination,
+        guest_duration_ms: result.guest_duration_ms,
         stdout: result.stdout.clone(),
         stderr: result.stderr.clone(),
         diagnostic: result.diagnostic.clone(),

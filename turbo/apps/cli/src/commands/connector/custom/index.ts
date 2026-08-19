@@ -1,9 +1,9 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import {
-  getZeroAgent,
-  getZeroAgentCustomConnectorGrants,
-} from "../../../lib/api/domains/zero-agents";
+  getAgent,
+  getAgentCustomConnectorGrants,
+} from "../../../lib/api/domains/agents";
 import {
   getCustomConnector,
   listCustomConnectors,
@@ -38,8 +38,8 @@ async function resolveCustomAgentContext(agentId: string | undefined): Promise<{
     return null;
   }
   const [agent, grants] = await Promise.all([
-    getZeroAgent(resolvedAgentId),
-    getZeroAgentCustomConnectorGrants(resolvedAgentId),
+    getAgent(resolvedAgentId),
+    getAgentCustomConnectorGrants(resolvedAgentId),
   ]);
   return {
     agentId: agent.agentId,

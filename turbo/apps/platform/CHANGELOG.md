@@ -1,5 +1,101 @@
 # Changelog
 
+## [0.772.1](https://github.com/vm0-ai/vm0/compare/app-v0.772.0...app-v0.772.1) (2026-08-19)
+
+
+### Bug Fixes
+
+* **app:** classify queued automation events by event type ([#28077](https://github.com/vm0-ai/vm0/issues/28077)) ([7eb0a85](https://github.com/vm0-ai/vm0/commit/7eb0a8546c218dd4cf0750799ac85f72fba63967)), closes [#28076](https://github.com/vm0-ai/vm0/issues/28076)
+
+
+### Refactoring
+
+* **chat:** remove inline thinking blocks feature switch ([#28067](https://github.com/vm0-ai/vm0/issues/28067)) ([399a46a](https://github.com/vm0-ai/vm0/commit/399a46ab821def13790639170c652d4455544744))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.340.1
+    * @okouai/core bumped to 8.570.1
+
+## [0.772.0](https://github.com/vm0-ai/vm0/compare/app-v0.771.0...app-v0.772.0) (2026-08-18)
+
+
+### Features
+
+* add byteplus seedream 5 image models ([#28064](https://github.com/vm0-ai/vm0/issues/28064)) ([a0f3faa](https://github.com/vm0-ai/vm0/commit/a0f3faaa9fb9cd5850d7b994d00284dc9598e587))
+
+
+### Bug Fixes
+
+* **app:** refresh members after billing changes ([#28062](https://github.com/vm0-ai/vm0/issues/28062)) ([2146cf5](https://github.com/vm0-ai/vm0/commit/2146cf518d8c7b94277ee51d2422a73a92a44d96))
+* **platform:** refine thinking disclosure icons ([#28065](https://github.com/vm0-ai/vm0/issues/28065)) ([7816273](https://github.com/vm0-ai/vm0/commit/78162734d36c05e3fd7facd65e67ddf8ed95e94a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.340.0
+    * @okouai/core bumped to 8.570.0
+
+## [0.771.0](https://github.com/vm0-ai/vm0/compare/app-v0.770.0...app-v0.771.0) (2026-08-18)
+
+
+### Features
+
+* **app:** separate three-column pin and search ([#28042](https://github.com/vm0-ai/vm0/issues/28042)) ([aa64f44](https://github.com/vm0-ai/vm0/commit/aa64f44a5e65bb82229e26d1ff296e7560e43cc9))
+* **app:** turn the pinned grid entry into an agent pin picker ([#28041](https://github.com/vm0-ai/vm0/issues/28041)) ([2d06fa7](https://github.com/vm0-ai/vm0/commit/2d06fa7bf5c534fda96972bfb093e76a7bea567f))
+
+
+### Bug Fixes
+
+* **app:** hide chat model brand icon in media picker ([#28048](https://github.com/vm0-ai/vm0/issues/28048)) ([b27e778](https://github.com/vm0-ai/vm0/commit/b27e7784df0073f81e327566541e6dec8e22cbb6))
+* **platform:** defer settings until home route stabilizes ([#28043](https://github.com/vm0-ai/vm0/issues/28043)) ([d19e2bd](https://github.com/vm0-ai/vm0/commit/d19e2bd970ccbc3995f29fb59b4fd68f1eafd880))
+* **platform:** separate progress from thinking blocks ([#28055](https://github.com/vm0-ai/vm0/issues/28055)) ([484697f](https://github.com/vm0-ai/vm0/commit/484697fee139c2e38298390b948b24c97e26bd5b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.339.2
+    * @okouai/core bumped to 8.569.1
+
+## [0.770.0](https://github.com/vm0-ai/vm0/compare/app-v0.769.0...app-v0.770.0) (2026-08-18)
+
+
+### Features
+
+* **app:** add new-chat image model defaults ([#27959](https://github.com/vm0-ai/vm0/issues/27959)) ([d4c0489](https://github.com/vm0-ai/vm0/commit/d4c048946bc46f692c7a868854adf7f456561219))
+* render thinking blocks inline in chat ([#27923](https://github.com/vm0-ai/vm0/issues/27923)) ([960d256](https://github.com/vm0-ai/vm0/commit/960d25691194d9ec7bf4454eb7d6a0fc7580c4dc))
+
+
+### Bug Fixes
+
+* **platform:** use chat icon for mark unread ([#28018](https://github.com/vm0-ai/vm0/issues/28018)) ([5a6b34b](https://github.com/vm0-ai/vm0/commit/5a6b34b9f5a7f90c4b79d36505eee968092c3a7d))
+* **ui:** show five pinned agents per row ([#27922](https://github.com/vm0-ai/vm0/issues/27922)) ([56a2dfa](https://github.com/vm0-ai/vm0/commit/56a2dfac6effac52303b286b3a8a42a98addd343))
+
+
+### Refactoring
+
+* **browser:** neutralize the browser contract and service naming ([#27999](https://github.com/vm0-ai/vm0/issues/27999)) ([53e70a5](https://github.com/vm0-ai/vm0/commit/53e70a57f49923a644f914fcd9ad7e0468d81ec7)), closes [#27988](https://github.com/vm0-ai/vm0/issues/27988)
+* **connectors:** neutralize the user connectors contract declarations ([#28001](https://github.com/vm0-ai/vm0/issues/28001)) ([56cc9f8](https://github.com/vm0-ai/vm0/commit/56cc9f81029a44b98f1ffd9d264b88a9292470d6)), closes [#27992](https://github.com/vm0-ai/vm0/issues/27992)
+* **contracts:** neutralize uploads goals and host contract naming ([#27934](https://github.com/vm0-ai/vm0/issues/27934)) ([3f5f274](https://github.com/vm0-ai/vm0/commit/3f5f274ad182f1162c6f0165de054b9ffcf9b077)), closes [#27911](https://github.com/vm0-ai/vm0/issues/27911)
+* **contracts:** rename the org member route contract module ([#27954](https://github.com/vm0-ai/vm0/issues/27954)) ([66d5014](https://github.com/vm0-ai/vm0/commit/66d50149f552adf85e8625e2df14daf6c3520f06)), closes [#27942](https://github.com/vm0-ai/vm0/issues/27942)
+* **contracts:** rename the run route contract module ([#27949](https://github.com/vm0-ai/vm0/issues/27949)) ([7404f55](https://github.com/vm0-ai/vm0/commit/7404f5565480aedb84833d9142430fecdc3f8c9f)), closes [#27943](https://github.com/vm0-ai/vm0/issues/27943)
+* remove presentationArtifactViewport feature switch ([#28013](https://github.com/vm0-ai/vm0/issues/28013)) ([172743f](https://github.com/vm0-ai/vm0/commit/172743f2814636af0d7dc7dfce38058b03c18c52))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.339.1
+    * @okouai/core bumped to 8.569.0
+
 ## [0.769.0](https://github.com/vm0-ai/vm0/compare/app-v0.768.0...app-v0.769.0) (2026-08-18)
 
 

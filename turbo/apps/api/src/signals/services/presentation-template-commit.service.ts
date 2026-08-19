@@ -6,7 +6,7 @@ import {
   PRESENTATION_TEMPLATE_PAGE_CONTENT_TYPE,
   PRESENTATION_TEMPLATE_SOURCE_CONTENT_TYPE,
   type CommitPresentationTemplateBody,
-} from "@okouai/api-contracts/contracts/zero-presentation-templates";
+} from "@okouai/api-contracts/contracts/presentation-templates";
 import { presentationTemplates } from "@okouai/db/schema/presentation-template";
 import { eq } from "drizzle-orm";
 

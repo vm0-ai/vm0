@@ -299,6 +299,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Let the chat composer model picker choose the default built-in image model for a chat thread.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.PiLoop]: {
     maintainer: "ethan@vm0.ai",
@@ -312,13 +313,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Enable owner-scoped presentation template imports and catalog APIs.",
     enabled: false,
-  },
-  [FeatureSwitchKey.PresentationArtifactViewport]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Fit presentation HTML artifacts into dialog, sidebar, and fullscreen previews and resolve their hosted aliases.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.LatestWebsiteTemplates]: {
     maintainer: "bingjie@vm0.ai",

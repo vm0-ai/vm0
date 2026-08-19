@@ -371,7 +371,10 @@ async function startOrgConcurrencyBlocker(scenario: Scenario): Promise<string> {
   return response.body.runId;
 }
 
-async function completeRunThroughSandbox(scenario: Scenario, runId: string) {
+async function requestRunCompletionThroughSandbox(
+  scenario: Scenario,
+  runId: string,
+) {
   await runsApi.heartbeatRunner(scenario.runnerGroup);
   const claim = await runsApi.claimRunnerJob(runId);
   const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
@@ -412,6 +415,11 @@ async function completeRunThroughSandbox(scenario: Scenario, runId: string) {
     sandboxHeaders,
     [200],
   );
+  return claim;
+}
+
+async function completeRunThroughSandbox(scenario: Scenario, runId: string) {
+  const claim = await requestRunCompletionThroughSandbox(scenario, runId);
   await flushWaitUntilForTest();
   return claim;
 }
@@ -968,10 +976,28 @@ describe("workflow queue", () => {
     );
 
     mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
-    await completeRunThroughSandbox(scenario, firstRunId);
+    await requestRunCompletionThroughSandbox(scenario, firstRunId);
 
+    // The completion response precedes its waitUntil callback. Observe the
+    // successor through the product APIs instead of waiting for unrelated
+    // summary, notification, org-queue, and usage side effects to finish.
+    await expect
+      .poll(() => {
+        return workflowRunIds(automation.threadId);
+      })
+      .toHaveLength(2);
     const runIds = await workflowRunIds(automation.threadId);
-    expect(runIds).toHaveLength(2);
+    const queue = await runsApi.readRunQueue(scenario.actor);
+    expect(queue.body.concurrency).toMatchObject({
+      limit: 1,
+      active: 1,
+      available: 0,
+    });
+    expect(queue.body.queue).toHaveLength(1);
+    expect(queue.body.queue[0]).toMatchObject({
+      runId: runIds[1],
+      triggerSource: "automation-event",
+    });
     await runsApi.requestCancelRun(scenario.actor, runIds[1]!, [200]);
     await runsApi.requestCancelRun(scenario.actor, blockerRunId, [200]);
   });

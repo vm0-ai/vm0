@@ -98,6 +98,7 @@ import {
 } from "./helpers/api-bdd-connectors";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createFirewallApi, secretTemplate } from "./helpers/api-bdd-firewall";
+import { createGithubBddApi } from "./helpers/api-bdd-github";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
@@ -134,8 +135,10 @@ import {
   holdThreadSessionConversationClearFixture,
   readCanonicalChatEventStorageFixture,
   releaseBddVm0ApiKey,
+  removeChatCallbackPublicBrandFixture,
   replayPendingChatInputQueueEventFixture,
   replaceThreadSessionBindingFixture,
+  setChatCallbackGitHubDeliveryFixture,
   timeoutRunWithoutCallbacksFixture,
 } from "../../../test-fixtures/chat-events";
 import { cronSteerRunTimeBudgetRoutes } from "../cron-steer-run-time-budget";
@@ -171,6 +174,7 @@ const chat = createChatFilesBddApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const connectors = createConnectorBddApi(context);
+const github = createGithubBddApi(context);
 const cu = createComputerUseBddApi(context);
 const misc = createMiscRoutesApi(context);
 const authDevice = createAuthDeviceApiActions(context);
@@ -9054,6 +9058,95 @@ describe("CHAT-02: public-brand default assistant identity", () => {
     });
 
     await cancelChatRun(actor, customRun.runId);
+  }, 90_000);
+
+  it("posts brand-matched GitHub Audit links with a VM0 legacy fallback", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    bdd.acceptAgentStorageWrites();
+    if (!actor.orgId) {
+      throw new Error("Expected an organization-scoped chat actor");
+    }
+    const orgId = actor.orgId;
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      {
+        [FeatureSwitchKey.ZeroDebug]: true,
+      },
+    );
+    const installation = await github.installGithubApp(actor, agentId);
+    const postedComments: string[] = [];
+    server.use(
+      http.post(
+        "https://api.github.com/repos/:owner/:repo/issues/:issueNumber/comments",
+        async ({ request, params }) => {
+          expect(params.owner).toBe("vm0-ai");
+          expect(params.repo).toBe("vm0");
+          const body = (await request.json()) as Record<string, unknown>;
+          if (typeof body.body !== "string") {
+            return HttpResponse.json(
+              { message: "Expected a comment body" },
+              { status: 400 },
+            );
+          }
+          postedComments.push(body.body);
+          return HttpResponse.json({ id: postedComments.length });
+        },
+      ),
+    );
+
+    const expectGitHubCallbackBrand = async (args: {
+      readonly requestBrand: PublicBrand;
+      readonly expectedBrand: PublicBrand;
+      readonly legacy: boolean;
+      readonly subjectNumber: number;
+    }): Promise<void> => {
+      const run = await sendChatRun(
+        actor,
+        {
+          agentId,
+          prompt: `deliver a ${args.requestBrand}-branded GitHub response`,
+        },
+        args.requestBrand,
+      );
+      const claim = await claimChatRun(runnerGroup, run.runId);
+      await setChatCallbackGitHubDeliveryFixture({
+        runId: run.runId,
+        remoteInstallationId: installation.remoteInstallationId,
+        repo: "vm0-ai/vm0",
+        subjectNumber: args.subjectNumber,
+        subjectKind: "issue",
+        agentId,
+      });
+      if (args.legacy) {
+        await removeChatCallbackPublicBrandFixture(run.runId);
+      }
+
+      chatCallbacks.mockChatOutputEvents([
+        assistantEvent(0, "GitHub callback brand response"),
+      ]);
+      await completeChatRunOk(run.runId, claim.sandboxHeaders);
+      await flushWaitUntilForTest();
+
+      expect(postedComments.at(-1)).toContain(
+        `📋 [Audit](https://app.${args.expectedBrand === "okou" ? "okou.ai" : "vm0.ai"}/activities/${run.runId})`,
+      );
+    };
+
+    await expectGitHubCallbackBrand({
+      requestBrand: "okou",
+      expectedBrand: "okou",
+      legacy: false,
+      subjectNumber: 1,
+    });
+    await expectGitHubCallbackBrand({
+      requestBrand: "okou",
+      expectedBrand: "vm0",
+      legacy: true,
+      subjectNumber: 2,
+    });
+    expect(postedComments).toHaveLength(2);
   }, 90_000);
 });
 

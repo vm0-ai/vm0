@@ -20,7 +20,7 @@ import { teamsChatThreadRoutes } from "@okouai/db/schema/teams-chat-thread-route
 import { teamsOrgConnections } from "@okouai/db/schema/teams-org-connection";
 import { teamsOrgInstallations } from "@okouai/db/schema/teams-org-installation";
 import { teamsUserAgentPreferences } from "@okouai/db/schema/teams-user-agent-preference";
-import { vm0ApiKeys } from "@okouai/db/schema/vm0-api-key";
+import { builtInModelKeys } from "@okouai/db/schema/built-in-model-key";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import {
   and,
@@ -270,11 +270,13 @@ async function seedDefaultAgent(
 }
 
 async function seedVm0ManagedKeys(db: Db, composeId: string): Promise<void> {
-  await db.delete(vm0ApiKeys).where(eq(vm0ApiKeys.label, composeId));
   await db
-    .insert(vm0ApiKeys)
+    .delete(builtInModelKeys)
+    .where(eq(builtInModelKeys.label, composeId));
+  await db
+    .insert(builtInModelKeys)
     .values(vm0ManagedKeyRows(composeId))
-    .onConflictDoNothing({ target: vm0ApiKeys.vendor });
+    .onConflictDoNothing({ target: builtInModelKeys.vendor });
 }
 
 function vm0ManagedKeyRows(composeId: string) {
@@ -319,11 +321,11 @@ async function deleteVm0ManagedKeysForSeededDefaultAgent(
     return row.apiKey;
   });
   await db
-    .delete(vm0ApiKeys)
+    .delete(builtInModelKeys)
     .where(
       and(
-        eq(vm0ApiKeys.label, compose.id),
-        inArray(vm0ApiKeys.apiKey, apiKeys),
+        eq(builtInModelKeys.label, compose.id),
+        inArray(builtInModelKeys.apiKey, apiKeys),
       ),
     );
 }

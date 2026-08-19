@@ -1,11 +1,11 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import {
-  getZeroAgent,
-  getZeroAgentInstructions,
-  getZeroAgentUserConnectors,
-  listZeroUserPermissionGrants,
-} from "../../lib/api/domains/zero-agents";
+  getAgent,
+  getAgentInstructions,
+  getAgentUserConnectors,
+  listUserPermissionGrants,
+} from "../../lib/api/domains/agents";
 import { listConnectors } from "../../lib/api/domains/connectors";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import type { Connector } from "../../lib/api/domains/connectors";
@@ -102,8 +102,8 @@ Examples:
         options: { instructions?: boolean; permissions?: boolean },
       ) => {
         const [agent, connectorSlugs, connectorIdentities] = await Promise.all([
-          getZeroAgent(agentId),
-          getZeroAgentUserConnectors(agentId),
+          getAgent(agentId),
+          getAgentUserConnectors(agentId),
           listConnectors().catch(() => {
             return { connectors: [] as Connector[] };
           }),
@@ -123,7 +123,7 @@ Examples:
 
         const storedPolicies = options.permissions
           ? connectorPermissionGrantsToFirewallPolicies(
-              await listZeroUserPermissionGrants(agent.agentId),
+              await listUserPermissionGrants(agent.agentId),
             )
           : null;
         const connectorInfos = await loadConnectorPermissionInfos({
@@ -164,7 +164,7 @@ Examples:
 
         if (options.instructions) {
           console.log();
-          const result = await getZeroAgentInstructions(agentId);
+          const result = await getAgentInstructions(agentId);
           if (result.content) {
             console.log(chalk.dim("── Instructions ──"));
             console.log(result.content);

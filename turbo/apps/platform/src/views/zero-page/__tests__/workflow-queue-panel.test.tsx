@@ -18,6 +18,11 @@ const context = testContext();
 const THREAD_ID = "d0000000-0000-4000-a000-0000000000aa";
 const EVENT_ID_1 = "f0000001-0000-4000-a000-000000000001";
 const EVENT_ID_2 = "f0000002-0000-4000-a000-000000000002";
+const SOURCE_EVENT_ID = "f0000003-0000-4000-a000-000000000003";
+const SOURCE_RUN_ID = "e0000001-0000-4000-a000-000000000001";
+const SOURCE_THREAD_ID = "e0000002-0000-4000-a000-000000000002";
+const SOURCE_AGENT_ID = "e0000003-0000-4000-a000-000000000003";
+const SOURCE_EVENT_TEXT = "A run in the watched chat thread completed.";
 
 function buttonByLabel(label: string): HTMLElement {
   const button = queryAllByRoleFast("button").find((candidate) => {
@@ -27,6 +32,70 @@ function buttonByLabel(label: string): HTMLElement {
     throw new Error(`${label} button not found`);
   }
   return button;
+}
+
+/**
+ * A chat-run-finished automation replaces its workflow annotation with the
+ * watched run's source annotation, so the queued document carries no
+ * automation part.
+ */
+function setupSourceAnnotatedAutomationPage({
+  onRecallEventAppend,
+}: {
+  onRecallEventAppend?: (body: {
+    revokesEventId: string;
+    clientEventId: string;
+  }) => void;
+} = {}): void {
+  mockChatLifecycle(context, {
+    threadId: THREAD_ID,
+    threadTitle: "Workflow queue thread",
+    chatEvents: [
+      {
+        id: "msg-workflow-running-user",
+        role: "user",
+        content: "Automation run",
+        runId: "run-workflow-1",
+        createdAt: "2026-07-10T00:59:00Z",
+      },
+      {
+        id: "msg-workflow-running-assistant",
+        role: "assistant",
+        content: null,
+        runId: "run-workflow-1",
+        createdAt: "2026-07-10T00:59:01Z",
+      },
+      {
+        id: SOURCE_EVENT_ID,
+        eventType: "input.automation",
+        content: null,
+        userMessage: {
+          version: 1,
+          parts: [
+            { type: "text", text: SOURCE_EVENT_TEXT },
+            {
+              type: "source",
+              kind: "agent",
+              runId: SOURCE_RUN_ID,
+              threadId: SOURCE_THREAD_ID,
+              agentId: SOURCE_AGENT_ID,
+              titleSnapshot: "Watched chat run",
+              href: `/chats/${SOURCE_THREAD_ID}#run-${SOURCE_RUN_ID}`,
+            },
+          ],
+        },
+        runId: undefined,
+        createdAt: "2026-07-10T01:03:00Z",
+      },
+    ],
+    activeRunIds: ["run-workflow-1"],
+    onRecallEventAppend,
+  });
+
+  detachedSetupPage({
+    context,
+    path: `/chats/${THREAD_ID}`,
+  });
 }
 
 function setupWorkflowQueuePage({
@@ -187,6 +256,38 @@ describe("workflow queue panel", () => {
       );
       expect(screen.queryByText("customer-followup")).not.toBeInTheDocument();
       expect(screen.getByText("Webhook event third")).toBeInTheDocument();
+    });
+  });
+
+  it("queues a source-annotated automation event as an event row", async () => {
+    setupSourceAnnotatedAutomationPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("1 event waiting")).toBeInTheDocument();
+    });
+    expect(screen.getByText(SOURCE_EVENT_TEXT)).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Pending automation event"),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
+  });
+
+  it("skips a source-annotated automation event", async () => {
+    let recall: { revokesEventId: string; clientEventId: string } | undefined;
+    setupSourceAnnotatedAutomationPage({
+      onRecallEventAppend: (body) => {
+        recall = body;
+      },
+    });
+    await waitFor(() => {
+      expect(screen.getByText(SOURCE_EVENT_TEXT)).toBeInTheDocument();
+    });
+
+    click(buttonByLabel("Skip automation event"));
+
+    await waitFor(() => {
+      expect(recall?.revokesEventId).toBe(SOURCE_EVENT_ID);
+      expect(screen.queryByText(SOURCE_EVENT_TEXT)).not.toBeInTheDocument();
     });
   });
 });

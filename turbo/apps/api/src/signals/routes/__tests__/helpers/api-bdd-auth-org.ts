@@ -924,12 +924,17 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     async inviteMember(
       actor: ApiTestUser,
       body: InviteOrgMemberRequest,
+      publicBrand: PublicBrand = "vm0",
     ): Promise<OrgMessageResponse> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
         orgInviteContract,
       );
       const response = await accept(
-        client.invite({ headers: authenticate(actor), body }),
+        client.invite({
+          headers: authenticate(actor),
+          body,
+          ...publicBrandHeaders(publicBrand),
+        }),
         [200],
       );
       return response.body;

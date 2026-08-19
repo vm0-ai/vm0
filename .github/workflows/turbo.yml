@@ -733,6 +733,8 @@ jobs:
         run: pnpm vitest run --project=@okouai/cli --coverage.enabled --coverage.reporter=json
       - name: Upload coverage to Codecov
         if: success() || failure()
+        continue-on-error: true
+        timeout-minutes: 1
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -740,6 +742,8 @@ jobs:
           files: turbo/coverage/coverage-final.json
       - name: Upload test results to Codecov
         if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 1
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -765,6 +769,8 @@ jobs:
         run: pnpm vitest run --project=@okouai/app --shard=${{ matrix.shard }}/8 --coverage.enabled --coverage.reporter=json
       - name: Upload coverage to Codecov
         if: success() || failure()
+        continue-on-error: true
+        timeout-minutes: 1
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -772,6 +778,8 @@ jobs:
           files: turbo/coverage/coverage-final.json
       - name: Upload test results to Codecov
         if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 1
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -819,6 +827,8 @@ jobs:
         run: pnpm vitest run --project=api --shard=${{ matrix.shard }}/8 --coverage.enabled --coverage.reporter=json
       - name: Upload coverage to Codecov
         if: success() || failure()
+        continue-on-error: true
+        timeout-minutes: 1
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -826,6 +836,8 @@ jobs:
           files: turbo/coverage/coverage-final.json
       - name: Upload test results to Codecov
         if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 1
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -854,6 +866,8 @@ jobs:
         run: pnpm -F @okouai/eslint-config test
       - name: Upload coverage to Codecov
         if: success() || failure()
+        continue-on-error: true
+        timeout-minutes: 1
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -861,6 +875,8 @@ jobs:
           files: turbo/coverage/coverage-final.json
       - name: Upload test results to Codecov
         if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 1
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -2242,6 +2258,8 @@ jobs:
 
       - name: Upload test results to Codecov
         if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 1
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -2782,6 +2800,8 @@ jobs:
           fi
       - name: Upload runner E2E test results to Codecov
         if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 1
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

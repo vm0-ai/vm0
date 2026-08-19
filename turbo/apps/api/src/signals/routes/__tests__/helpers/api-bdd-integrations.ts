@@ -1718,6 +1718,7 @@ export function createBddIntegrationApi(context: TestContext) {
       actor: ApiTestUser | null,
       body: { readonly phoneHandle: string },
       statuses: readonly (200 | 400 | 401 | 409 | 429 | 503)[],
+      publicBrand: PublicBrand = "vm0",
     ) {
       const client = setupApp({
         context,
@@ -1726,6 +1727,9 @@ export function createBddIntegrationApi(context: TestContext) {
       return await accept(
         client.startLink({
           headers: authenticate(context, routeMocks, actor),
+          ...(publicBrand === "okou"
+            ? { extraHeaders: { origin: "https://app.okou.ai" } }
+            : {}),
           body,
         }),
         statuses,

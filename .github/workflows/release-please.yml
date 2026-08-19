@@ -1293,6 +1293,15 @@ jobs:
           skip-finish: "true"
           skip-setup: "true"
 
+      - name: Verify production App and API domains
+        shell: bash
+        env:
+          CF_PAGES_PROJECT_NAME: ${{ vars.CF_PAGES_PROJECT_NAME }}
+        run: |
+          set -euo pipefail
+          bash .github/scripts/verify-okou-production-domains.sh \
+            "https://${CF_PAGES_PROJECT_NAME}.pages.dev"
+
       - name: Resolve Vercel dashboard URL
         id: vercel-dashboard
         if: ${{ steps.deploy.outputs.url != '' }}
@@ -1595,16 +1604,7 @@ jobs:
 
           pages_url="https://${CF_PAGES_PROJECT_NAME}.pages.dev"
           production_url="https://app.vm0.ai"
-          for url in "$pages_url" "$production_url"; do
-            curl -fsSL \
-              --retry 12 \
-              --retry-delay 5 \
-              --retry-max-time 120 \
-              --retry-all-errors \
-              "$url" \
-              --output /dev/null
-            echo "Cloudflare Pages production is serving: $url"
-          done
+          bash .github/scripts/verify-okou-production-domains.sh "$pages_url"
           echo "url=$production_url" >> "$GITHUB_OUTPUT"
 
       - name: Resolve Cloudflare Pages dashboard URL
@@ -1653,7 +1653,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*App* ✅ Deployed to Cloudflare Pages\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🌐 <https://app.vm0.ai|Open App>\n🔄 <${{ github.server_url }}/${{ github.repository }}/issues/${{ vars.ROLLBACK_ISSUE_NUMBER }}|Rollback Dashboard>"
+                  text: "*App* ✅ Deployed to Cloudflare Pages\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🌐 <https://app.vm0.ai|VM0 App> · <https://app.okou.ai|Okou App>\n🔄 <${{ github.server_url }}/${{ github.repository }}/issues/${{ vars.ROLLBACK_ISSUE_NUMBER }}|Rollback Dashboard>"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}

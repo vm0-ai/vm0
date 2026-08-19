@@ -1,10 +1,7 @@
 import { command } from "ccstate";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
-import {
-  checkUnifiedSettingsParam$,
-  handoffSettingsDialogSession$,
-} from "./settings/settings-dialog.ts";
 import { homeAgentId$ } from "../agent.ts";
+import { setupAgentsPage$ } from "../agents-page/agents-page-setup.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
 
 export const setupHomePage$ = command(
@@ -13,14 +10,13 @@ export const setupHomePage$ = command(
       return;
     }
 
-    await set(checkUnifiedSettingsParam$, signal);
-
     // Redirect bare / to /agents/:id/chat. Keep prompt deep links intact so
     // paid-onboarding handoffs can prefill the chat composer on arrival.
     // ?queue= is also forwarded so the queue drawer opens on arrival.
     const homeAgentId = await get(homeAgentId$);
     signal.throwIfAborted();
     if (!homeAgentId) {
+      await set(setupAgentsPage$, signal);
       return;
     }
     const params = get(searchParams$);
@@ -40,9 +36,6 @@ export const setupHomePage$ = command(
     }
     if (billingView) {
       forwardParams.set("billingView", billingView);
-    }
-    if (settings) {
-      set(handoffSettingsDialogSession$);
     }
     set(detachedNavigateTo$, "/agents/:agentId/chat", {
       pathParams: { agentId: homeAgentId },

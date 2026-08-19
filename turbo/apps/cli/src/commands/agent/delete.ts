@@ -1,9 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import {
-  getZeroAgent,
-  deleteZeroAgent,
-} from "../../lib/api/domains/zero-agents";
+import { getAgent, deleteAgent } from "../../lib/api/domains/agents";
 import { isInteractive, promptConfirm } from "../../lib/utils/prompt-utils";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 
@@ -25,7 +22,7 @@ Notes:
   )
   .action(
     withErrorHandler(async (agentId: string, options: { yes?: boolean }) => {
-      await getZeroAgent(agentId);
+      await getAgent(agentId);
 
       if (!options.yes) {
         if (!isInteractive()) {
@@ -41,7 +38,7 @@ Notes:
         }
       }
 
-      await deleteZeroAgent(agentId);
+      await deleteAgent(agentId);
       console.log(chalk.green(`✓ Agent "${agentId}" deleted`));
     }),
   );

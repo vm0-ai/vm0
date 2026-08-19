@@ -301,6 +301,7 @@ async fn execute_inner_ignores_non_exited_dmesg_oom_output() {
         "dmesg",
         ExecResult {
             termination: ExecTermination::TimedOut,
+            guest_duration_ms: None,
             stdout: b"Out of memory: Killed process 1234".to_vec(),
             stderr: b"Timeout".to_vec(),
             diagnostic: String::new(),
@@ -1053,6 +1054,7 @@ async fn execute_inner_keeps_partial_resource_output_when_diagnostic_helper_fail
         "guest-agent-binary",
         ExecResult {
             termination: ExecTermination::WaitFailed,
+            guest_duration_ms: None,
             stdout: b"/dev/root       7.8G  7.4G   20K 100% /\n/dev/vdb         16G   24K   15G   1% /home/user/workspace\nMem:            3934        3310         255           0         552         624\n".to_vec(),
             stderr: b"wait failed".to_vec(),
             diagnostic: String::new(),

@@ -3,11 +3,11 @@ import { describe, expect, it } from "vitest";
 import { logsByIdContract } from "@okouai/api-contracts/contracts/logs";
 import type { NetworkLogEntry } from "@okouai/api-contracts/contracts/runs";
 import {
-  zeroRunAgentEventsContract,
-  zeroRunContextContract,
-  zeroRunNetworkLogsContract,
+  runAgentEventsContract,
+  runContextContract,
+  runNetworkLogsContract,
   type RunContextResponse,
-} from "@okouai/api-contracts/contracts/zero-runs";
+} from "@okouai/api-contracts/contracts/run-routes";
 
 import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -105,29 +105,23 @@ describe("activity retained diagnostic data", () => {
     context.mocks.api(logsByIdContract.getById, ({ respond }) => {
       return respond(200, logDetail());
     });
-    context.mocks.api(
-      zeroRunAgentEventsContract.getAgentEvents,
-      ({ respond }) => {
-        return respond(200, {
-          events: [activityEvent()],
-          hasMore: false,
-          status: "completed",
-          lastEventSequence: 0,
-        });
-      },
-    );
-    context.mocks.api(zeroRunContextContract.getContext, ({ respond }) => {
+    context.mocks.api(runAgentEventsContract.getAgentEvents, ({ respond }) => {
+      return respond(200, {
+        events: [activityEvent()],
+        hasMore: false,
+        status: "completed",
+        lastEventSequence: 0,
+      });
+    });
+    context.mocks.api(runContextContract.getContext, ({ respond }) => {
       return respond(200, runContext());
     });
-    context.mocks.api(
-      zeroRunNetworkLogsContract.getNetworkLogs,
-      ({ respond }) => {
-        return respond(200, {
-          networkLogs: [networkLog()],
-          hasMore: false,
-        });
-      },
-    );
+    context.mocks.api(runNetworkLogsContract.getNetworkLogs, ({ respond }) => {
+      return respond(200, {
+        networkLogs: [networkLog()],
+        hasMore: false,
+      });
+    });
 
     detachedSetupPage({ context, path: `/activities/${RUN_ID}` });
     await waitFor(() => {
@@ -169,17 +163,14 @@ describe("activity retained diagnostic data", () => {
     context.mocks.api(logsByIdContract.getById, ({ respond }) => {
       return respond(200, logDetail());
     });
-    context.mocks.api(zeroRunContextContract.getContext, ({ respond }) => {
+    context.mocks.api(runContextContract.getContext, ({ respond }) => {
       return respond(404, {
         error: { code: "NOT_FOUND", message: "Run context not available" },
       });
     });
-    context.mocks.api(
-      zeroRunNetworkLogsContract.getNetworkLogs,
-      ({ respond }) => {
-        return respond(200, { networkLogs: [], hasMore: false });
-      },
-    );
+    context.mocks.api(runNetworkLogsContract.getNetworkLogs, ({ respond }) => {
+      return respond(200, { networkLogs: [], hasMore: false });
+    });
 
     detachedSetupPage({ context, path: `/activities/${RUN_ID}` });
     await waitFor(() => {

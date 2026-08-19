@@ -14,6 +14,8 @@ import {
   type NotionPageContentUpdatedScope,
   type NotionPageReference,
 } from "@okouai/api-contracts/contracts/zero-workflows";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { publicBrandPresentation } from "@okouai/core/public-brand";
 import {
   notionWebhookEvents,
   notionWebhookSecrets,
@@ -668,6 +670,7 @@ export async function prepareNotionChildPageEventConfigForPersist(
   args: {
     readonly orgId: string;
     readonly userId: string;
+    readonly publicBrand: PublicBrand;
     readonly eventConfig: NotionChildPageCreatedEventCreateConfig;
   },
   signal: AbortSignal,
@@ -712,7 +715,7 @@ export async function prepareNotionChildPageEventConfigForPersist(
   if (pageResult.kind === "not_found" || pageResult.kind === "unauthorized") {
     return {
       kind: "bad-request",
-      message: "Zero cannot access this Notion page",
+      message: `${publicBrandPresentation(args.publicBrand).assistantName} cannot access this Notion page`,
     };
   }
   if (pageResult.kind !== "ok") {
@@ -747,6 +750,7 @@ export async function prepareNotionDatabaseItemEventConfigForPersist(
   args: {
     readonly orgId: string;
     readonly userId: string;
+    readonly publicBrand: PublicBrand;
     readonly eventConfig: NotionDatabaseItemCreatedEventCreateConfig;
   },
   signal: AbortSignal,
@@ -806,7 +810,7 @@ export async function prepareNotionDatabaseItemEventConfigForPersist(
     ) {
       return {
         kind: "bad-request",
-        message: "Zero cannot access this Notion database",
+        message: `${publicBrandPresentation(args.publicBrand).assistantName} cannot access this Notion database`,
       };
     }
     if (dataSourceResult.kind !== "ok") {
@@ -847,7 +851,7 @@ export async function prepareNotionDatabaseItemEventConfigForPersist(
   ) {
     return {
       kind: "bad-request",
-      message: "Zero cannot access this Notion database",
+      message: `${publicBrandPresentation(args.publicBrand).assistantName} cannot access this Notion database`,
     };
   }
   if (dataSourceResult.kind !== "ok") {
@@ -877,6 +881,7 @@ export async function prepareNotionPageContentUpdatedEventConfigForPersist(
   args: {
     readonly orgId: string;
     readonly userId: string;
+    readonly publicBrand: PublicBrand;
     readonly eventConfig: NotionPageContentUpdatedEventCreateConfig;
   },
   signal: AbortSignal,
@@ -893,6 +898,7 @@ export async function prepareNotionPageContentUpdatedEventConfigForPersist(
       {
         orgId: args.orgId,
         userId: args.userId,
+        publicBrand: args.publicBrand,
         eventConfig: {
           provider: "notion",
           event: "child_page_created",
@@ -930,6 +936,7 @@ export async function prepareNotionPageContentUpdatedEventConfigForPersist(
     {
       orgId: args.orgId,
       userId: args.userId,
+      publicBrand: args.publicBrand,
       eventConfig: {
         provider: "notion",
         event: "database_item_created",

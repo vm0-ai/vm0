@@ -5,7 +5,7 @@ import {
 } from "@okouai/api-contracts/contracts/base";
 import { apiErrorSchema } from "@okouai/api-contracts/contracts/errors";
 import { createRunResponseSchema } from "@okouai/api-contracts/contracts/runs";
-import { zeroRunCreateBodySchema } from "@okouai/api-contracts/contracts/zero-runs";
+import { runCreateBodySchema } from "@okouai/api-contracts/contracts/run-routes";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { publicBrand$ } from "../context/hono";
@@ -22,7 +22,7 @@ export const runFixtureContract = c.router({
     method: "POST",
     path: "/api/test/zero-run-fixture",
     headers: authHeadersSchema,
-    body: zeroRunCreateBodySchema,
+    body: runCreateBodySchema,
     responses: {
       201: createRunResponseSchema,
       400: apiErrorSchema,

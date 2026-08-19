@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.74.13](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.12...guest-agent-v0.74.13) (2026-08-18)
+
+
+### Bug Fixes
+
+* **guest-agent:** report telemetry position persistence status ([#28040](https://github.com/vm0-ai/vm0/issues/28040)) ([112e8ad](https://github.com/vm0-ai/vm0/commit/112e8adfd0a3cef07222930d65f391169dc7073d))
+
+## [0.74.12](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.11...guest-agent-v0.74.12) (2026-08-18)
+
+
+### Refactoring
+
+* **rust:** generate codex runtime config ([#28035](https://github.com/vm0-ai/vm0/issues/28035)) ([de3d53b](https://github.com/vm0-ai/vm0/commit/de3d53ba1c521a9a623552fe33e71e61da37b145))
+
+
+### Performance Improvements
+
+* **guest-agent:** avoid reparsing native history candidates ([#28034](https://github.com/vm0-ai/vm0/issues/28034)) ([c72e2ca](https://github.com/vm0-ai/vm0/commit/c72e2cabd608f46cc00b3522c0775c3904646e45))
+* **guest:** isolate receipt journal fsyncs from tokio workers ([#27983](https://github.com/vm0-ai/vm0/issues/27983)) ([841c229](https://github.com/vm0-ai/vm0/commit/841c229bb7cb4b105bd1776a7a88a86171d72beb))
+
 ## [0.74.11](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.10...guest-agent-v0.74.11) (2026-08-18)
 
 

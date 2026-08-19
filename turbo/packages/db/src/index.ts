@@ -92,7 +92,7 @@ import * as userPermissionGrantSchema from "./schema/user-permission-grant";
 import * as threadGoalSchema from "./schema/thread-goal";
 import * as storageVersionLineageSchema from "./schema/storage-version-lineage";
 import * as runUploadedFileSchema from "./schema/run-uploaded-file";
-import * as vm0ApiKeySchema from "./schema/vm0-api-key";
+import * as builtInModelKeySchema from "./schema/built-in-model-key";
 import * as workflowSchema from "./schema/workflow";
 import * as morningBriefSchema from "./schema/morning-brief";
 import * as computerUseHostSchema from "./schema/computer-use-host";
@@ -221,7 +221,7 @@ export const schema = {
   ...threadGoalSchema,
   ...storageVersionLineageSchema,
   ...runUploadedFileSchema,
-  ...vm0ApiKeySchema,
+  ...builtInModelKeySchema,
   ...workflowSchema,
   ...morningBriefSchema,
   ...computerUseHostSchema,

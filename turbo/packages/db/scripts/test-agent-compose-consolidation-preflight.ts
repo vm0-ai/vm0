@@ -28,6 +28,13 @@ import {
   fingerprintSortedSet,
 } from "./agent-compose-consolidation-preflight-fingerprint";
 import {
+  HISTORICAL_PRODUCT_BUILDER_VARIANTS,
+  buildHistoricalProductBuilderContent,
+  computeHistoricalProductBuilderReviewFingerprint,
+  isExactHistoricalProductBuilderCandidate,
+  type HistoricalProductBuilderCandidate,
+} from "../../../apps/api/src/signals/services/historical-product-builder";
+import {
   EXPECTED_RUNTIME_CONTENT_CONSUMER_MANIFEST,
   collectRuntimeContentConsumerManifest,
   runtimeContentConsumerManifestsEqual,
@@ -175,6 +182,11 @@ interface MutableAgentContent extends Record<string, unknown> {
   >;
   artifacts?: { name: string; version?: string; mount_path?: string }[];
   futureField?: unknown;
+}
+
+/** Transition-only #28056 test helper; removed by #26938 Stage 8. */
+function isUnknownRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function mutableAgentContent(name: string): MutableAgentContent {
@@ -528,6 +540,56 @@ function testSchemaV3DomainsRemainByteStable(): void {
   );
 }
 
+/** Transition-only #28056 contract test; removed by #26938 Stage 8. */
+function testSchemaV4OutputContractRemainsByteStable(): void {
+  const acceptedV4Paths = PREFLIGHT_OUTPUT_ALLOWLIST.filter((outputPath) => {
+    return (
+      !outputPath.includes(".historicalProductBuilderOrigin.") &&
+      !outputPath.includes(".applicationHistoricalProductBuilderEnvironment.")
+    );
+  });
+  assert.equal(acceptedV4Paths.length, 874);
+  assert.deepEqual(
+    fingerprintSortedSet(
+      "agent-compose-consolidation-preflight:v4-output-paths",
+      acceptedV4Paths,
+    ),
+    {
+      count: 874,
+      digest:
+        "24a68ad3c32b2d796e42477c2424a0dd8206f89e6c1ce5f0cdda4d418da47b94",
+    },
+  );
+}
+
+/** Transition-only #28070 contract test; removed by #26938 Stage 8. */
+function testSchemaV5OutputContractRemainsByteStable(): void {
+  const v6Markers = [
+    ".applicationHistoricalProductBuilderEnvironment.",
+    ".legacyEnvironmentLineage.",
+    ".applicationAuthorityMembershipLineageClosure.",
+    ".residualEnvironmentMembershipLineageClosure.",
+    ".authorityPartitionClosure.",
+    ".authorityDisjointnessClosure.",
+  ];
+  const acceptedV5Paths = PREFLIGHT_OUTPUT_ALLOWLIST.filter((outputPath) => {
+    return !v6Markers.some((marker) => {
+      return outputPath.includes(marker);
+    });
+  });
+  assert.deepEqual(
+    fingerprintSortedSet(
+      "agent-compose-consolidation-preflight:v5-output-paths",
+      acceptedV5Paths,
+    ),
+    {
+      count: 971,
+      digest:
+        "931140875c0a0d3c568166d61a680fedbd219f1d5bdffdbc5a660962263b49e1",
+    },
+  );
+}
+
 function testVersionHeadRunAndCheckpointClassifications(): void {
   const firstAgent = "00000000-0000-4000-8000-000000000201";
   const secondAgent = "00000000-0000-4000-8000-000000000202";
@@ -807,6 +869,252 @@ function testAgentExecutionPlanClassifications(): void {
     classification: "completeSemanticParity",
     dimensions: [],
   });
+
+  const frameworkFallbackContent = (
+    name: string,
+    variant: "missing" | "unsupported",
+  ): MutableAgentContent => {
+    const content = mutableAgentContent(name);
+    const agent = content.agents[name] as unknown as Record<string, unknown>;
+    if (variant === "missing") {
+      delete agent.framework;
+    } else {
+      agent.framework = "future-framework";
+    }
+    return content;
+  };
+  const missingFramework = frameworkFallbackContent(
+    "missing-framework-agent",
+    "missing",
+  );
+  const unsupportedFramework = frameworkFallbackContent(
+    "unsupported-framework-agent",
+    "unsupported",
+  );
+  const missingFrameworkBefore = structuredClone(missingFramework);
+  const unsupportedFrameworkBefore = structuredClone(unsupportedFramework);
+  const missingFrameworkRow = executionPlanRow({
+    id: id(627),
+    agentName: "missing-framework-agent",
+    content: missingFramework,
+  });
+  const unsupportedFrameworkRow = executionPlanRow({
+    id: id(628),
+    agentName: "unsupported-framework-agent",
+    content: unsupportedFramework,
+  });
+  for (const row of [missingFrameworkRow, unsupportedFrameworkRow]) {
+    assert.deepEqual(classifyAgentExecutionAuthority(row), {
+      authority: "application",
+      classification: "applicationFrameworkFallback",
+      dimensions: [],
+    });
+  }
+  assert.deepEqual(missingFramework, missingFrameworkBefore);
+  assert.deepEqual(unsupportedFramework, unsupportedFrameworkBefore);
+
+  const frameworkFallbackResult = classifyPlanRows([
+    executionPlanRow({ id: id(629), agentName: "separate-parity-agent" }),
+    missingFrameworkRow,
+    unsupportedFrameworkRow,
+  ]);
+  assert.equal(frameworkFallbackResult.status, "passed");
+  assert.equal(
+    frameworkFallbackResult.agentExecutionPlans.completeSemanticParity.count,
+    1,
+  );
+  assert.deepEqual(
+    frameworkFallbackResult.agentExecutionPlans.applicationFrameworkFallback,
+    fingerprintSortedSet(
+      "agent-execution-plans:application-framework-fallback-agent-ids",
+      [id(627), id(628)],
+    ),
+  );
+  assert.equal(frameworkFallbackResult.agentExecutionPlans.exceptions.count, 0);
+  assert.equal(
+    frameworkFallbackResult.agentExecutionPlans.partitionClosure.classification,
+    "exact",
+  );
+
+  const mixedFrameworkFallbackCases: readonly {
+    readonly suffix: number;
+    readonly name: string;
+    readonly agentName?: string;
+    readonly mutate: (
+      content: MutableAgentContent,
+      agent: Record<string, unknown>,
+    ) => void;
+  }[] = [
+    {
+      suffix: 630,
+      name: "fallback-environment-agent",
+      mutate: (_content, agent) => {
+        agent.environment = { CUSTOM_RUNTIME_VALUE: "legacy-value" };
+      },
+    },
+    {
+      suffix: 631,
+      name: "fallback-unknown-agent",
+      mutate: (content) => {
+        content.futureField = { retained: true };
+      },
+    },
+    {
+      suffix: 632,
+      name: "fallback-runner-agent",
+      mutate: (_content, agent) => {
+        agent.experimental_runner = { group: "vm0/custom" };
+      },
+    },
+    {
+      suffix: 633,
+      name: "fallback-profile-agent",
+      mutate: (_content, agent) => {
+        agent.experimental_profile = "vm0/large";
+      },
+    },
+    {
+      suffix: 634,
+      name: "fallback-instructions-agent",
+      mutate: (_content, agent) => {
+        delete agent.instructions;
+      },
+    },
+    {
+      suffix: 635,
+      name: "fallback-artifact-agent",
+      mutate: (content) => {
+        content.artifacts = [{ name: "legacy-artifact" }];
+      },
+    },
+    {
+      suffix: 636,
+      name: "fallback-volume-agent",
+      mutate: (content, agent) => {
+        agent.volumes = ["legacy-volume:/data"];
+        content.volumes = {
+          "legacy-volume": { name: "legacy-storage", version: "latest" },
+        };
+      },
+    },
+    {
+      suffix: 637,
+      name: "fallback-other-name",
+      agentName: "fallback-product-name",
+      mutate: () => {},
+    },
+    {
+      suffix: 641,
+      name: "fallback-ambiguous-agent",
+      mutate: (content) => {
+        content.agents["fallback-second-agent"] = {
+          framework: "claude-code",
+        };
+      },
+    },
+  ];
+  const mixedFrameworkFallbackRows = mixedFrameworkFallbackCases.map(
+    ({ suffix, name, agentName, mutate }) => {
+      const content = frameworkFallbackContent(name, "missing");
+      mutate(
+        content,
+        content.agents[name] as unknown as Record<string, unknown>,
+      );
+      const row = executionPlanRow({
+        id: id(suffix),
+        agentName: agentName ?? name,
+        content,
+      });
+      assert.deepEqual(classifyAgentExecutionAuthority(row), {
+        authority: "version_content",
+        classification: "unsupportedOrInvalidContent",
+        dimensions: ["unsupportedOrInvalidContent"],
+      });
+      return row;
+    },
+  );
+  const mixedFrameworkFallbackResult = classifyPlanRows(
+    mixedFrameworkFallbackRows,
+  );
+  assert.equal(
+    mixedFrameworkFallbackResult.agentExecutionPlans
+      .applicationFrameworkFallback.count,
+    0,
+  );
+  assert.equal(
+    mixedFrameworkFallbackResult.agentExecutionPlans.unsupportedOrInvalidContent
+      .count,
+    mixedFrameworkFallbackRows.length,
+  );
+  assert.equal(
+    mixedFrameworkFallbackResult.agentExecutionPlans.refinements
+      .unsupportedOrInvalidContent.primaryPartitionClosure.expected.count,
+    mixedFrameworkFallbackRows.length,
+  );
+
+  const hashDriftFramework = frameworkFallbackContent(
+    "fallback-hash-drift-agent",
+    "missing",
+  );
+  assert.equal(
+    classifyAgentExecutionAuthority(
+      executionPlanRow({
+        id: id(638),
+        agentName: "fallback-hash-drift-agent",
+        content: hashDriftFramework,
+        headVersionId: "e".repeat(64),
+        versionId: "e".repeat(64),
+      }),
+    ).authority,
+    "version_content",
+  );
+  assert.equal(
+    classifyAgentExecutionAuthority(
+      executionPlanRow({
+        id: id(639),
+        agentName: "fallback-missing-version-agent",
+        content: frameworkFallbackContent(
+          "fallback-missing-version-agent",
+          "missing",
+        ),
+        versionId: null,
+      }),
+    ).classification,
+    "danglingOrMissingHeadVersion",
+  );
+  assert.equal(
+    classifyAgentExecutionAuthority(
+      executionPlanRow({
+        id: id(642),
+        agentName: "fallback-dangling-head-agent",
+        content: frameworkFallbackContent(
+          "fallback-dangling-head-agent",
+          "missing",
+        ),
+        headVersionId: null,
+      }),
+    ).classification,
+    "danglingOrMissingHeadVersion",
+  );
+  const duplicateFrameworkFallbackRow = executionPlanRow({
+    id: id(640),
+    agentName: "fallback-duplicate-agent",
+    content: frameworkFallbackContent("fallback-duplicate-agent", "missing"),
+  });
+  const duplicateFrameworkFallbackResult = classifyPlanRows([
+    duplicateFrameworkFallbackRow,
+    duplicateFrameworkFallbackRow,
+  ]);
+  assert.equal(
+    duplicateFrameworkFallbackResult.agentExecutionPlans
+      .applicationFrameworkFallback.count,
+    0,
+  );
+  assert.equal(
+    duplicateFrameworkFallbackResult.agentExecutionPlans.unclassifiedContent
+      .count,
+    1,
+  );
 
   const injected = mutableAgentContent("injected-agent");
   injected.agents["injected-agent"]!.environment = {
@@ -1217,6 +1525,500 @@ function testAgentExecutionPlanClassifications(): void {
   gatePresent(duplicate, "agentExecutionPlans.activity.partitionClosure");
 }
 
+/** Transition-only #28056 test fixture; removed by #26938 Stage 8. */
+function historicalCandidate(
+  agentName: string,
+  content: unknown = buildHistoricalProductBuilderContent(
+    "zero-connector-catalog-at-3b45e4e",
+    agentName,
+  ),
+): HistoricalProductBuilderCandidate {
+  const versionId =
+    content !== null && typeof content === "object" && !Array.isArray(content)
+      ? computeComposeVersionId(content as Record<string, unknown>)
+      : "f".repeat(64);
+  return { agentName, headVersionId: versionId, versionId, content };
+}
+
+/** Transition-only #28056 test fixture; removed by #26938 Stage 8. */
+function mutableHistoricalContent(agentName: string): {
+  readonly content: MutableAgentContent;
+  readonly agent: MutableAgentDefinition;
+  readonly environment: Record<string, string>;
+} {
+  const content = structuredClone(
+    buildHistoricalProductBuilderContent(
+      "zero-connector-catalog-at-3b45e4e",
+      agentName,
+    ),
+  ) as MutableAgentContent;
+  const agent = content.agents[agentName];
+  assert.ok(agent);
+  const environment = agent.environment;
+  assert.ok(environment);
+  return { content, agent, environment };
+}
+
+/** Transition-only #28056 and #28070 focused test; removed by #26938 Stage 8. */
+function testHistoricalProductBuilderVariantAndClassifier(): void {
+  assert.equal(HISTORICAL_PRODUCT_BUILDER_VARIANTS.length, 1);
+  const variant = HISTORICAL_PRODUCT_BUILDER_VARIANTS[0];
+  assert.ok(variant);
+  assert.deepEqual(variant, {
+    id: "zero-connector-catalog-at-3b45e4e",
+    identityBranding: "zero",
+    sourceCommit: "3b45e4eab8f1ca26f7187800c6e475b198ec0f28",
+    sourcePullRequest: 14831,
+    removalCommit: "68a48441b4c05ccd25d9599dd2b4e7be808aa450",
+    removalPullRequest: 14820,
+    eligibleConnectorCount: 229,
+    environmentBindingCount: 281,
+    variableBindingCount: 34,
+    secretBindingCount: 247,
+    reviewFingerprint:
+      "26b88c167bd412c090e532c3d01a4c7ec03bd59465a60b78e27675f3c55ac959",
+  });
+  assert.equal(
+    computeHistoricalProductBuilderReviewFingerprint(variant),
+    variant.reviewFingerprint,
+  );
+
+  const reviewContent = buildHistoricalProductBuilderContent(
+    variant.id,
+    "historical-product-builder-review-agent",
+  );
+  assert.equal(
+    computeComposeVersionId(reviewContent),
+    "68b228b4d1c92baed368d360cc14379d9d9d46bb0d70d14ce4baa28505f579f7",
+  );
+  const reviewAgents = reviewContent.agents;
+  assert.ok(isUnknownRecord(reviewAgents));
+  const reviewAgent = reviewAgents["historical-product-builder-review-agent"];
+  assert.ok(isUnknownRecord(reviewAgent));
+  const reviewEnvironment = reviewAgent.environment;
+  assert.ok(isUnknownRecord(reviewEnvironment));
+  const entries = Object.entries(reviewEnvironment);
+  assert.equal(entries.length, variant.environmentBindingCount);
+  assert.equal(
+    entries.filter(([, value]) => {
+      return typeof value === "string" && value.startsWith("${{ vars.");
+    }).length,
+    variant.variableBindingCount,
+  );
+  assert.equal(
+    entries.filter(([, value]) => {
+      return typeof value === "string" && value.startsWith("${{ secrets.");
+    }).length,
+    variant.secretBindingCount,
+  );
+  for (const [key, value] of entries) {
+    assert.ok(
+      value === `\${{ vars.${key} }}` || value === `\${{ secrets.${key} }}`,
+    );
+  }
+
+  const agentName = "historical-exact-agent";
+  const exact = historicalCandidate(agentName);
+  const unchanged = structuredClone(exact);
+  assert.equal(isExactHistoricalProductBuilderCandidate(exact), true);
+  assert.deepEqual(classifyAgentExecutionAuthority(exact), {
+    authority: "application",
+    classification: "applicationHistoricalProductBuilderEnvironment",
+    dimensions: [],
+  });
+  assert.deepEqual(exact, unchanged);
+
+  const changedKey = mutableHistoricalContent(agentName);
+  const changedKeyValue = changedKey.environment.GH_TOKEN;
+  assert.ok(changedKeyValue);
+  delete changedKey.environment.GH_TOKEN;
+  changedKey.environment.GH_TOKEN_CHANGED = changedKeyValue;
+
+  const changedReference = mutableHistoricalContent(agentName);
+  changedReference.environment.GH_TOKEN = "${{ secrets.OTHER_TOKEN }}";
+
+  const sourceSwap = mutableHistoricalContent(agentName);
+  sourceSwap.environment.ZERO_AGENT_ID = "${{ secrets.ZERO_AGENT_ID }}";
+
+  const missingKey = mutableHistoricalContent(agentName);
+  delete missingKey.environment.GH_TOKEN;
+
+  const extraKey = mutableHistoricalContent(agentName);
+  extraKey.environment.EXTRA_TOKEN = "${{ secrets.EXTRA_TOKEN }}";
+
+  const partial = mutableHistoricalContent(agentName);
+  partial.agent.environment = {
+    GH_TOKEN: "${{ secrets.GH_TOKEN }}",
+    ZERO_AGENT_ID: "${{ vars.ZERO_AGENT_ID }}",
+    ZERO_TOKEN: "${{ secrets.ZERO_TOKEN }}",
+  };
+
+  const merged = mutableHistoricalContent(agentName);
+  merged.environment.OKOU_AGENT_ID = "${{ vars.OKOU_AGENT_ID }}";
+  merged.environment.OKOU_TOKEN = "${{ secrets.OKOU_TOKEN }}";
+
+  const literal = mutableHistoricalContent(agentName);
+  literal.environment.GH_TOKEN = "literal-value";
+
+  const unknownField = mutableHistoricalContent(agentName);
+  unknownField.agent.futureField = true;
+
+  const residualRuntimeField = mutableHistoricalContent(agentName);
+  residualRuntimeField.agent.firewalls = { default: "allow" };
+
+  const framework = mutableHistoricalContent(agentName);
+  framework.agent.framework = "codex";
+
+  const instructions = mutableHistoricalContent(agentName);
+  instructions.agent.instructions = "AGENTS.md";
+
+  const runner = mutableHistoricalContent(agentName);
+  runner.agent.experimental_runner = { group: "vm0/custom" };
+
+  const profile = mutableHistoricalContent(agentName);
+  profile.agent.experimental_profile = "vm0/large";
+
+  const storage = mutableHistoricalContent(agentName);
+  storage.content.volumes = {
+    data: { name: "historical-storage", version: "v1" },
+  };
+  storage.agent.volumes = ["data:/data"];
+
+  const artifact = mutableHistoricalContent(agentName);
+  artifact.content.artifacts = [{ name: "historical-artifact" }];
+
+  const otherPlan = mutableHistoricalContent(agentName);
+  otherPlan.agent.description = "historical-description";
+
+  const ambiguous = mutableHistoricalContent(agentName);
+  ambiguous.content.agents["second-agent"] = structuredClone(ambiguous.agent);
+
+  const arbitrarySelfReference = mutableHistoricalContent(agentName);
+  arbitrarySelfReference.agent.environment = {
+    ARBITRARY_TOKEN: "${{ secrets.ARBITRARY_TOKEN }}",
+  };
+
+  const okouSubstitution = mutableHistoricalContent(agentName);
+  delete okouSubstitution.environment.ZERO_AGENT_ID;
+  delete okouSubstitution.environment.ZERO_TOKEN;
+  okouSubstitution.environment.OKOU_AGENT_ID = "${{ vars.OKOU_AGENT_ID }}";
+  okouSubstitution.environment.OKOU_TOKEN = "${{ secrets.OKOU_TOKEN }}";
+
+  const mismatchedName = historicalCandidate(
+    "different-product-agent",
+    exact.content,
+  );
+  const hashDrift = {
+    ...exact,
+    versionId: "0".repeat(64),
+    headVersionId: "0".repeat(64),
+  };
+  const headDrift = { ...exact, headVersionId: "1".repeat(64) };
+  const danglingHead = { ...exact, headVersionId: null };
+  const missingVersion = { ...exact, versionId: null };
+
+  const unproven = [
+    changedKey,
+    changedReference,
+    sourceSwap,
+    missingKey,
+    extraKey,
+    partial,
+    merged,
+    literal,
+    unknownField,
+    residualRuntimeField,
+    framework,
+    instructions,
+    runner,
+    profile,
+    storage,
+    artifact,
+    otherPlan,
+    ambiguous,
+    arbitrarySelfReference,
+    okouSubstitution,
+  ].map(({ content }) => {
+    return historicalCandidate(agentName, content);
+  });
+  unproven.push(
+    mismatchedName,
+    hashDrift,
+    headDrift,
+    danglingHead,
+    missingVersion,
+    historicalCandidate(agentName, null),
+  );
+  for (const [index, candidate] of unproven.entries()) {
+    const unchangedCandidate = structuredClone(candidate);
+    assert.equal(isExactHistoricalProductBuilderCandidate(candidate), false);
+    const authorityDecision = classifyAgentExecutionAuthority(candidate);
+    assert.equal(
+      authorityDecision.authority,
+      "version_content",
+      `unproven candidate ${index}: ${authorityDecision.classification}`,
+    );
+    assert.deepEqual(candidate, unchangedCandidate);
+  }
+}
+
+/** Transition-only #28056 and #28070 focused test; removed by #26938 Stage 8. */
+function testHistoricalProductBuilderOriginPartition(): void {
+  const snapshot = new Date("2026-08-17T00:00:00.000Z");
+  const id = (suffix: number): string => {
+    return `00000000-0000-4000-8000-${suffix.toString().padStart(12, "0")}`;
+  };
+  const exactIds: string[] = [];
+  const legacyEnvironmentRows: AgentExecutionPlanInventoryRow[] = [];
+  for (let index = 0; index < 8; index += 1) {
+    const exactId = id(800 + index);
+    const exactName = `historical-origin-exact-${index}`;
+    exactIds.push(exactId);
+    legacyEnvironmentRows.push(
+      executionPlanRow({
+        id: exactId,
+        agentName: exactName,
+        content: buildHistoricalProductBuilderContent(
+          "zero-connector-catalog-at-3b45e4e",
+          exactName,
+        ),
+        activitySnapshotTime: snapshot,
+        latestAttributedRunAt:
+          index < 6 ? new Date("2026-06-15T00:00:00.000Z") : null,
+        currentHeadEverExercised: index < 5,
+      }),
+    );
+  }
+  const referenceIds: string[] = [];
+  for (let index = 0; index < 650; index += 1) {
+    const rowId = id(808 + index);
+    const name = `historical-origin-reference-${index}`;
+    const content = mutableAgentContent(name);
+    content.agents[name]!.environment = {
+      [`LEGACY_CONNECTOR_${index}`]: `\${{ secrets.LEGACY_CONNECTOR_${index} }}`,
+    };
+    referenceIds.push(rowId);
+    legacyEnvironmentRows.push(
+      executionPlanRow({ id: rowId, agentName: name, content }),
+    );
+  }
+  const literalId = id(1458);
+  const literalName = "historical-origin-literal";
+  const literalContent = mutableAgentContent(literalName);
+  literalContent.agents[literalName]!.environment = {
+    LEGACY_LITERAL: "literal-value",
+  };
+  legacyEnvironmentRows.push(
+    executionPlanRow({
+      id: literalId,
+      agentName: literalName,
+      content: literalContent,
+      activitySnapshotTime: snapshot,
+      latestAttributedRunAt: new Date("2026-01-01T00:00:00.000Z"),
+    }),
+  );
+
+  const unclassifiedIds: string[] = [];
+  const unclassifiedRows: AgentExecutionPlanInventoryRow[] = [];
+  for (let index = 0; index < 167; index += 1) {
+    const rowId = id(1459 + index);
+    const name = `residual-content-${index}`;
+    const content = mutableAgentContent(name);
+    content.futureField = { reviewedRuntimeReachable: index };
+    unclassifiedIds.push(rowId);
+    unclassifiedRows.push(
+      executionPlanRow({ id: rowId, agentName: name, content }),
+    );
+  }
+  const unsupportedIds: string[] = [];
+  const unsupportedRows: AgentExecutionPlanInventoryRow[] = [];
+  for (let index = 0; index < 70; index += 1) {
+    const rowId = id(1626 + index);
+    unsupportedIds.push(rowId);
+    unsupportedRows.push(
+      executionPlanRow({
+        id: rowId,
+        agentName: `unsupported-content-${index}`,
+        content: { version: "1", agents: {} },
+      }),
+    );
+  }
+  const danglingIds: string[] = [];
+  const danglingRows: AgentExecutionPlanInventoryRow[] = [];
+  for (let index = 0; index < 17; index += 1) {
+    const rowId = id(1696 + index);
+    danglingIds.push(rowId);
+    danglingRows.push(
+      executionPlanRow({
+        id: rowId,
+        agentName: `dangling-head-${index}`,
+        content: null,
+        headVersionId: "a".repeat(64),
+        versionId: null,
+      }),
+    );
+  }
+  const rows = [
+    ...legacyEnvironmentRows,
+    ...unclassifiedRows,
+    ...unsupportedRows,
+    ...danglingRows,
+  ];
+
+  const result = classifyPlanRows(rows);
+  const environment =
+    result.agentExecutionPlans.refinements.systemEnvironmentDifferences;
+  const origin = environment.historicalProductBuilderOrigin;
+  assert.equal(
+    result.agentExecutionPlans.systemEnvironmentDifferences.count,
+    651,
+  );
+  assert.equal(
+    result.agentExecutionPlans.systemEnvironmentDifferences.digest,
+    fingerprintSortedSet(
+      "agent-execution-plans:v6:residual-system-environment-differences:agent-ids",
+      [...referenceIds, literalId],
+    ).digest,
+  );
+  assert.equal(
+    result.agentExecutionPlans.applicationHistoricalProductBuilderEnvironment
+      .count,
+    8,
+  );
+  assert.equal(
+    result.agentExecutionPlans.applicationHistoricalProductBuilderEnvironment
+      .digest,
+    fingerprintSortedSet(
+      "agent-execution-plans:v6:application-historical-product-builder-environment-agent-ids",
+      exactIds,
+    ).digest,
+  );
+  assert.equal(result.agentExecutionPlans.exceptions.count, 905);
+  assert.equal(result.agentExecutionPlans.unclassifiedContent.count, 167);
+  assert.equal(
+    result.agentExecutionPlans.unclassifiedContent.digest,
+    fingerprintSortedSet(
+      "agent-execution-plans:unclassifiedContent:agent-ids",
+      unclassifiedIds,
+    ).digest,
+  );
+  assert.equal(
+    result.agentExecutionPlans.unsupportedOrInvalidContent.count,
+    70,
+  );
+  assert.equal(
+    result.agentExecutionPlans.unsupportedOrInvalidContent.digest,
+    fingerprintSortedSet(
+      "agent-execution-plans:unsupportedOrInvalidContent:agent-ids",
+      unsupportedIds,
+    ).digest,
+  );
+  assert.equal(
+    result.agentExecutionPlans.danglingOrMissingHeadVersion.count,
+    17,
+  );
+  assert.equal(
+    result.agentExecutionPlans.danglingOrMissingHeadVersion.digest,
+    fingerprintSortedSet(
+      "agent-execution-plans:danglingOrMissingHeadVersion:agent-ids",
+      danglingIds,
+    ).digest,
+  );
+  assert.equal(origin.legacyEnvironmentLineage.count, 659);
+  assert.equal(
+    origin.legacyEnvironmentLineage.digest,
+    fingerprintSortedSet(
+      "agent-execution-plans:systemEnvironmentDifferences:agent-ids",
+      legacyEnvironmentRows.map((row) => {
+        return row.id;
+      }),
+    ).digest,
+  );
+  assert.equal(origin.primary.exactHistoricalProductBuilder.count, 8);
+  assert.equal(origin.primary.referenceOnlyButUnproven.count, 650);
+  assert.equal(origin.primary.literalOrOtherUnproven.count, 1);
+  assert.equal(origin.primaryPartitionClosure.classification, "exact");
+  assert.equal(origin.primaryPartitionClosure.expected.count, 659);
+  assert.equal(origin.primaryPartitionClosure.observed.count, 659);
+  assert.equal(origin.primaryDisjointnessClosure.classification, "exact");
+  assert.equal(origin.primaryDisjointnessClosure.observed.count, 0);
+  assert.equal(origin.primaryUnionClosure.classification, "exact");
+  assert.equal(origin.primaryUnionClosure.expected.count, 659);
+  assert.equal(origin.primaryUnionClosure.observed.count, 659);
+  assert.equal(
+    origin.primary.exactHistoricalProductBuilder.digest,
+    fingerprintSortedSet(
+      "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin:primary:exactHistoricalProductBuilder:agent-ids",
+      exactIds,
+    ).digest,
+  );
+  assert.equal(
+    origin.primary.referenceOnlyButUnproven.digest,
+    fingerprintSortedSet(
+      "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin:primary:referenceOnlyButUnproven:agent-ids",
+      referenceIds,
+    ).digest,
+  );
+  assert.equal(
+    origin.primary.literalOrOtherUnproven.digest,
+    fingerprintSortedSet(
+      "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin:primary:literalOrOtherUnproven:agent-ids",
+      [literalId],
+    ).digest,
+  );
+  const exactActivity = origin.activity.primary.exactHistoricalProductBuilder;
+  const referenceActivity = origin.activity.primary.referenceOnlyButUnproven;
+  const literalActivity = origin.activity.primary.literalOrOtherUnproven;
+  assert.ok(exactActivity);
+  assert.ok(referenceActivity);
+  assert.ok(literalActivity);
+  assert.equal(exactActivity.currentHeadEverExercised.count, 5);
+  assert.equal(exactActivity.latestAttributedRun.over30Through90Days.count, 6);
+  assert.equal(exactActivity.latestAttributedRun.noAttributedRun.count, 2);
+  assert.equal(
+    referenceActivity.latestAttributedRun.noAttributedRun.count,
+    650,
+  );
+  assert.equal(literalActivity.latestAttributedRun.over90Days.count, 1);
+  assert.equal(
+    origin.applicationAuthorityMembershipLineageClosure.classification,
+    "exact",
+  );
+  assert.equal(
+    origin.residualEnvironmentMembershipLineageClosure.classification,
+    "exact",
+  );
+  assert.equal(origin.authorityPartitionClosure.classification, "exact");
+  assert.equal(origin.authorityPartitionClosure.expected.count, 659);
+  assert.equal(origin.authorityPartitionClosure.observed.count, 659);
+  assert.equal(origin.authorityDisjointnessClosure.classification, "exact");
+  assert.equal(origin.authorityDisjointnessClosure.observed.count, 0);
+
+  const duplicateFailureGates = new Set<string>();
+  const duplicate = classifyExceptionRefinements({
+    rowsById: new Map([[exactIds[0]!, [legacyEnvironmentRows[0]!]]]),
+    legacyEnvironmentIds: [exactIds[0]!, exactIds[0]!],
+    residualEnvironmentIds: [],
+    applicationHistoricalProductBuilderEnvironmentIds: [exactIds[0]!],
+    unsupportedIds: [],
+    unclassifiedIds: [],
+    failureGates: duplicateFailureGates,
+  }).systemEnvironmentDifferences.historicalProductBuilderOrigin;
+  assert.equal(duplicate.primaryPartitionClosure.classification, "drift");
+  assert.equal(duplicate.primaryDisjointnessClosure.classification, "drift");
+  assert.equal(duplicate.primaryUnionClosure.classification, "exact");
+  assert.ok(
+    duplicateFailureGates.has(
+      "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin.primaryPartitionClosure",
+    ),
+  );
+  assert.ok(
+    duplicateFailureGates.has(
+      "agentExecutionPlans.refinements.systemEnvironmentDifferences.historicalProductBuilderOrigin.primaryDisjointnessClosure",
+    ),
+  );
+}
+
 function testEnvironmentExceptionRefinements(): void {
   const id = (suffix: number): string => {
     return `00000000-0000-4000-8000-${suffix.toString().padStart(12, "0")}`;
@@ -1271,6 +2073,36 @@ function testEnvironmentExceptionRefinements(): void {
   assert.equal(refinement.primaryPartitionClosure.classification, "exact");
   assert.equal(refinement.primaryUnionClosure.classification, "exact");
   assert.equal(refinement.overlapUnionClosure.classification, "exact");
+  assert.equal(
+    refinement.historicalProductBuilderOrigin.primary
+      .exactHistoricalProductBuilder.count,
+    0,
+  );
+  assert.equal(
+    refinement.historicalProductBuilderOrigin.primary.referenceOnlyButUnproven
+      .count,
+    3,
+  );
+  assert.equal(
+    refinement.historicalProductBuilderOrigin.primary.literalOrOtherUnproven
+      .count,
+    2,
+  );
+  assert.equal(
+    refinement.historicalProductBuilderOrigin.primaryPartitionClosure
+      .classification,
+    "exact",
+  );
+  assert.equal(
+    refinement.historicalProductBuilderOrigin.primaryDisjointnessClosure
+      .classification,
+    "exact",
+  );
+  assert.equal(
+    refinement.historicalProductBuilderOrigin.primaryUnionClosure
+      .classification,
+    "exact",
+  );
 
   const unclassifiedId = id(706);
   const unclassifiedRow = executionPlanRow({
@@ -1280,7 +2112,9 @@ function testEnvironmentExceptionRefinements(): void {
   const failureGates = new Set<string>();
   const forced = classifyExceptionRefinements({
     rowsById: new Map([[unclassifiedId, [unclassifiedRow]]]),
-    environmentIds: [unclassifiedId],
+    legacyEnvironmentIds: [unclassifiedId],
+    residualEnvironmentIds: [unclassifiedId],
+    applicationHistoricalProductBuilderEnvironmentIds: [],
     unsupportedIds: [],
     unclassifiedIds: [],
     failureGates,
@@ -1800,6 +2634,8 @@ function testDependencyDriftAndDeterminism(): void {
 function testOutputRedaction(): void {
   const rawId = "00000000-0000-4000-8000-000000000501";
   const rawName = "never-emit-agent-name";
+  const historicalId = "00000000-0000-4000-8000-000000000502";
+  const historicalName = "historical-redaction-agent";
   const dangling = danglingRow({ composeId: rawId, name: rawName });
   const rawPlanContent = mutableAgentContent(rawName);
   rawPlanContent.agents[rawName]!.environment = {
@@ -1808,13 +2644,21 @@ function testOutputRedaction(): void {
   const result = classifyPreflightInventory(
     capabilities,
     emptyInventory({
-      identity: [identityRow(rawId)],
+      identity: [identityRow(rawId), identityRow(historicalId)],
       agentExecutionPlans: [
         executionPlanRow({
           id: rawId,
           agentName: rawName,
           content: rawPlanContent,
           latestAttributedRunAt: new Date("2026-08-16T12:34:56.000Z"),
+        }),
+        executionPlanRow({
+          id: historicalId,
+          agentName: historicalName,
+          content: buildHistoricalProductBuilderContent(
+            "zero-connector-catalog-at-3b45e4e",
+            historicalName,
+          ),
         }),
       ],
       versions: [
@@ -1841,6 +2685,12 @@ function testOutputRedaction(): void {
     "2026-08-16T12:34:56.000Z",
     "2026-08-17T00:00:00.000Z",
     "OKOU_TOKEN",
+    "ZERO_AGENT_ID",
+    "GH_TOKEN",
+    "${{ secrets.GH_TOKEN }}",
+    "zero-connector-catalog-at-3b45e4e",
+    "3b45e4eab8f1ca26f7187800c6e475b198ec0f28",
+    "26b88c167bd412c090e532c3d01a4c7ec03bd59465a60b78e27675f3c55ac959",
     "user_clerk_fixture",
     "postgresql://user:secret@host/database",
   ]) {
@@ -1885,7 +2735,7 @@ function testOutputRedaction(): void {
     (error: unknown) => {
       assert.ok(error instanceof SanitizedPreflightError);
       assert.deepEqual(sanitizedFailureResult(error), {
-        schemaVersion: "vm0.agent-compose-consolidation-preflight.v4",
+        schemaVersion: "vm0.agent-compose-consolidation-preflight.v6",
         status: "failed",
         failureGates: ["probe.output_shape"],
       });
@@ -1928,7 +2778,7 @@ function assertSafeAggregateValues(value: unknown, pathPrefix = ""): void {
     return;
   }
   const allowedClassifications = new Set([
-    "vm0.agent-compose-consolidation-preflight.v4",
+    "vm0.agent-compose-consolidation-preflight.v6",
     "passed",
     "failed",
     "exact",
@@ -2347,10 +3197,13 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
       workflow.indexOf('>> "$GITHUB_OUTPUT"'),
   );
   assert.match(workflow, /scripts\/agent-compose-consolidation-preflight\.ts/u);
-  assert.match(workflow, /#27613 \+ #27656 \+ #27671 \+ #27792/u);
-  assert.match(workflow, /vm0\.agent-compose-consolidation-preflight\.v4/u);
+  assert.match(
+    workflow,
+    /#27613 \+ #27656 \+ #27671 \+ #27792 \+ #28056 \+ #28070/u,
+  );
+  assert.match(workflow, /vm0\.agent-compose-consolidation-preflight\.v6/u);
   assert.equal(
-    /vm0\.agent-compose-consolidation-preflight\.v[123]/u.test(workflow),
+    /vm0\.agent-compose-consolidation-preflight\.v[1-5]/u.test(workflow),
     false,
   );
   assert.equal(
@@ -2381,6 +3234,63 @@ async function testRepositoryAndWorkflowValidators(): Promise<void> {
     ),
     false,
   );
+  const inventoryStart = preflightSource.indexOf(
+    "async function collectDatabaseInventory(",
+  );
+  const inventoryEnd = preflightSource.indexOf(
+    "export async function executeAgentComposeConsolidationPreflight(",
+  );
+  assert.ok(inventoryStart >= 0 && inventoryEnd > inventoryStart);
+  const inventorySource = preflightSource.slice(inventoryStart, inventoryEnd);
+  assert.equal(inventorySource.match(/safeQuery</gu)?.length, 10);
+
+  const historicalClassifierPath = path.join(
+    repositoryRoot,
+    "turbo/apps/api/src/signals/services/historical-product-builder.ts",
+  );
+  const historicalClassifierSource = await fs.readFile(
+    historicalClassifierPath,
+    "utf8",
+  );
+  assert.equal(historicalClassifierSource.includes('from "pg"'), false);
+  assert.equal(historicalClassifierSource.includes("safeQuery"), false);
+  assert.equal(
+    historicalClassifierSource.includes("activitySnapshotTime"),
+    false,
+  );
+  assert.equal(
+    historicalClassifierSource.includes("latestAttributedRunAt"),
+    false,
+  );
+  assert.equal(historicalClassifierSource.includes("createdAt"), false);
+  assert.equal(
+    /\b(?:SELECT\s+|UPDATE\s+\S+\s+SET\s+|INSERT\s+INTO\s+|DELETE\s+FROM\s+|CREATE\s+(?:TABLE|INDEX|VIEW)\s+|ALTER\s+TABLE\s+|DROP\s+(?:TABLE|INDEX|VIEW)\s+|TRUNCATE\s+)\b/iu.test(
+      historicalClassifierSource,
+    ),
+    false,
+  );
+  const historicalClassifierCallers = execFileSync(
+    "rg",
+    [
+      "-l",
+      "-F",
+      "isExactHistoricalProductBuilderCandidate(",
+      "--glob",
+      "*.ts",
+      "turbo/apps/api/src/signals",
+      "turbo/packages/db/scripts",
+    ],
+    { cwd: repositoryRoot, encoding: "utf8" },
+  )
+    .trim()
+    .split("\n")
+    .sort();
+  assert.deepEqual(historicalClassifierCallers, [
+    "turbo/apps/api/src/signals/services/agent-execution-authority.ts",
+    "turbo/apps/api/src/signals/services/historical-product-builder.ts",
+    "turbo/packages/db/scripts/agent-compose-consolidation-preflight-refinements.ts",
+    "turbo/packages/db/scripts/test-agent-compose-consolidation-preflight.ts",
+  ]);
 
   const service = await fs.readFile(
     path.join(
@@ -2968,11 +3878,15 @@ export async function validateAgentComposeConsolidationPreflightStatic(): Promis
   await validateLaunchSnapshotRecoverabilityStatic();
   await validateLaunchSnapshotBackfillStatic();
   testSchemaV3DomainsRemainByteStable();
+  testSchemaV4OutputContractRemainsByteStable();
+  testSchemaV5OutputContractRemainsByteStable();
   testApplicationOwnedPlanAndCanonicalCompatibility();
   testIdentityAndApprovedArtifacts();
   testVersionHeadRunAndCheckpointClassifications();
   testDanglingClassifications();
   testAgentExecutionPlanClassifications();
+  testHistoricalProductBuilderVariantAndClassifier();
+  testHistoricalProductBuilderOriginPartition();
   testEnvironmentExceptionRefinements();
   testUnsupportedExceptionRefinements();
   testUnclassifiedExceptionRefinements();

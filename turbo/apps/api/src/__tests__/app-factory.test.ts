@@ -121,25 +121,6 @@ const errorTestContract = c.router({
 describe("createApp", () => {
   const context = testContext();
 
-  it("holds traffic until the public-brand schema is ready", async () => {
-    const app = createAppWithRoutes({
-      routes: healthRoutes,
-      schemaReadiness: () => {
-        return Promise.resolve(false);
-      },
-      signal: context.signal,
-    });
-
-    const response = await app.request("http://api.test/health");
-
-    expect(response.status).toBe(503);
-    expect(response.headers.get("cache-control")).toBe("no-store");
-    expect(response.headers.get("retry-after")).toBe("1");
-    await expect(response.json()).resolves.toStrictEqual({
-      error: "Service unavailable",
-    });
-  });
-
   it.each([
     [
       "literal dot segment",
@@ -160,9 +141,6 @@ describe("createApp", () => {
     });
     const app = createAppWithRoutes({
       routes: [{ route: errorTestContract.pathIdentity, handler: handler$ }],
-      schemaReadiness: () => {
-        return Promise.resolve(true);
-      },
       signal: context.signal,
     });
 
@@ -178,9 +156,6 @@ describe("createApp", () => {
     });
     const app = createAppWithRoutes({
       routes: [{ route: errorTestContract.pathIdentity, handler: handler$ }],
-      schemaReadiness: () => {
-        return Promise.resolve(true);
-      },
       signal: context.signal,
     });
 
@@ -681,6 +656,35 @@ describe("createApp", () => {
       expect(response.status).toBe(302);
       expect(response.headers.get("location")).toBe(expected);
     });
+
+    it.each([
+      [
+        "https://api.okou.ai",
+        "https://app.vm0.ai",
+        "/sign-in?redirect_url=%2Fchats",
+        "https://app.okou.ai/sign-in?redirect_url=%2Fchats",
+      ],
+      [
+        "https://api.vm0.ai",
+        "https://app.okou.ai",
+        "/sign-up/verify?redirect_url=%2Fonboarding",
+        "https://app.vm0.ai/sign-up/verify?redirect_url=%2Fonboarding",
+      ],
+    ])(
+      "redirects auth requests on %s to its matching app domain",
+      async (apiUrl, configuredAppUrl, path, expected) => {
+        mockEnv("APP_URL", configuredAppUrl);
+        const app = createApp({
+          signal: context.signal,
+          routes: TEST_APP_ROUTES,
+        });
+
+        const response = await app.request(`${apiUrl}${path}`);
+
+        expect(response.status).toBe(302);
+        expect(response.headers.get("location")).toBe(expected);
+      },
+    );
 
     it("returns a 404 JSON response for unmatched routes", async () => {
       const app = createApp({

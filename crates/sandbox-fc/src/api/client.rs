@@ -94,6 +94,16 @@ pub struct ApiClient {
 }
 
 impl ApiClient {
+    /// Construct a client configured for the Firecracker API Unix socket.
+    ///
+    /// This configures the HTTP transport for `socket_path` without checking
+    /// whether the socket exists or connecting to Firecracker. The constructor
+    /// can therefore succeed before the socket is created or the API is ready.
+    /// Missing, unavailable, or not-yet-ready sockets are reported when
+    /// [`Self::wait_for_ready`] or another request method is awaited.
+    ///
+    /// Call [`Self::wait_for_ready`] before issuing Firecracker API operations
+    /// when a readiness guarantee is required.
     pub fn new(socket_path: &Path) -> Result<Self, ApiError> {
         Ok(Self {
             socket_path: socket_path.to_owned(),

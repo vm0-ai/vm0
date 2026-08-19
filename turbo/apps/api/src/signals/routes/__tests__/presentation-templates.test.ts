@@ -6,12 +6,12 @@ import {
   ListObjectsV2Command,
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
-import { uploadsContract } from "@okouai/api-contracts/contracts/uploads";
 import {
   PRESENTATION_TEMPLATE_PAGE_CONTENT_TYPE,
   PRESENTATION_TEMPLATE_SOURCE_CONTENT_TYPE,
-  zeroPresentationTemplatesContract,
-} from "@okouai/api-contracts/contracts/zero-presentation-templates";
+  presentationTemplatesContract,
+} from "@okouai/api-contracts/contracts/presentation-templates";
+import { uploadsContract } from "@okouai/api-contracts/contracts/uploads";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import AdmZip from "adm-zip";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -23,8 +23,8 @@ import { nowDate } from "../../../lib/time";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { presentationTemplatesRoutes } from "../presentation-templates";
 import { uploadsPrepareRoutes } from "../uploads-prepare";
-import { zeroPresentationTemplatesRoutes } from "../zero-presentation-templates";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -261,8 +261,8 @@ async function enablePresentationTemplates(actor: ApiTestUser): Promise<void> {
 }
 
 function templateClient() {
-  return setupApp({ context, routes: zeroPresentationTemplatesRoutes })(
-    zeroPresentationTemplatesContract,
+  return setupApp({ context, routes: presentationTemplatesRoutes })(
+    presentationTemplatesContract,
   );
 }
 

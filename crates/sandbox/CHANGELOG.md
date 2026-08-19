@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.19.46](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.45...sandbox-v0.19.46) (2026-08-18)
+
+
+### Performance Improvements
+
+* **runner:** attribute workspace mount guest duration ([#28059](https://github.com/vm0-ai/vm0/issues/28059)) ([7b94559](https://github.com/vm0-ai/vm0/commit/7b94559e3942ebbcfb88e7d287b59cc777386977))
+
+## [0.19.45](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.44...sandbox-v0.19.45) (2026-08-18)
+
+
+### Documentation
+
+* **rust:** document workspace seed image size contract ([#27969](https://github.com/vm0-ai/vm0/issues/27969)) ([8af4053](https://github.com/vm0-ai/vm0/commit/8af4053a44e7867c6a7110aa6ecade1d5f8f1ba8))
+
 ## [0.19.44](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.43...sandbox-v0.19.44) (2026-08-16)
 
 

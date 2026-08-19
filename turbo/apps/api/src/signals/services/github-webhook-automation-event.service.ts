@@ -84,7 +84,7 @@ export interface GithubWorkflowJobEventPayload {
 }
 
 export interface GithubPullRequestReviewEventPayload {
-  readonly action: string;
+  readonly action: "submitted";
   readonly review: {
     readonly id: number;
     readonly user: GithubWebhookUser;

@@ -231,10 +231,12 @@ class AnthropicMessagesJsonUsageExtractor:
     """Incrementally extract usage from non-SSE Anthropic Messages JSON chunks.
 
     Callers feed decoded response chunks with ``feed()`` and call ``finish()``
-    once. ``finish()`` returns ``(usage, None)`` when selected usage quantities
-    or model metadata were parsed, ``(None, error)`` when parsing fails or an
-    extractor bound is exceeded, and ``(None, None)`` when the complete JSON
-    contains no reportable usage or model metadata.
+    once. ``finish()`` returns ``(usage, None)`` when the complete JSON contains
+    at least one valid usage quantity (including zero) or a non-empty ``model``.
+    A non-empty ``message_id`` is included only with an otherwise reportable
+    result; an ID alone is not reportable. It returns ``(None, error)`` when
+    parsing fails or an extractor bound is exceeded, and ``(None, None)`` when
+    the complete JSON contains no reportable usage or model metadata.
     """
 
     def __init__(self) -> None:
@@ -290,8 +292,10 @@ def extract_anthropic_messages_usage_with_error_from_json(
     """Extract usage from a non-streaming Anthropic API JSON response.
 
     This is the diagnostic API: it returns ``(None, error)`` when decoding or
-    parsing fails, and ``(None, None)`` when the decoded body is empty or no
-    selected usage or metadata fields are found.
+    parsing fails, and ``(None, None)`` when the decoded body is empty or the
+    complete JSON contains no valid usage quantity or non-empty ``model``.
+    A non-empty response ``id`` is returned as ``message_id`` only with an
+    otherwise reportable result; an ID alone is not reportable.
     """
     if headers:
         body, decompress_error = body_decoding.decompress_json_usage_body(

@@ -1342,6 +1342,7 @@
       "setAsDefault": "기본값으로 설정",
       "temporaryFastModeDisabledNotice": "이 실행에서는 빠른 모드가 일시적으로 비활성화되었습니다",
       "temporaryFastModeEnabledNotice": "이 실행에서는 빠른 모드가 일시적으로 활성화되었습니다",
+      "temporaryImageModelNotice": "이미지 모델을 일시적으로 {{model}}(으)로 전환함",
       "temporaryModelNotice": "일시적으로 {{model}}(으)로 전환됨",
       "temporaryVideoModelNotice": "동영상 모델을 일시적으로 {{model}}(으)로 전환함",
       "threadSuggestions": "채팅 스레드",

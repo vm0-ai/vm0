@@ -78,7 +78,7 @@ const mutationResponseSchema = z.object({
   status: presentationTemplateStatusSchema,
 });
 
-export const zeroPresentationTemplatesContract = c.router({
+export const presentationTemplatesContract = c.router({
   list: {
     method: "GET",
     path: "/api/okou/presentation-templates",
@@ -152,8 +152,8 @@ export const zeroPresentationTemplatesContract = c.router({
   },
 });
 
-export type ZeroPresentationTemplatesContract =
-  typeof zeroPresentationTemplatesContract;
+export type PresentationTemplatesContract =
+  typeof presentationTemplatesContract;
 export type PresentationTemplateSummary = z.infer<
   typeof presentationTemplateSummarySchema
 >;

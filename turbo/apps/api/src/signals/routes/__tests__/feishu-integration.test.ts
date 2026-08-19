@@ -56,6 +56,7 @@ import {
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { readProjectedChatEvents } from "./helpers/chat-event-test-reader";
 import {
+  clearFeishuConnectorOwnership,
   readCustomConnectorCredentialStorageParent,
   seedLegacyCustomFeishuOAuthState,
 } from "./helpers/connector-credential-storage-state";
@@ -1282,12 +1283,26 @@ describe("Feishu integration", () => {
     expect(secondSetup.body.error.message).toBe(
       "This workspace already has a Feishu bot",
     );
-    await accept(
+    const vm0Conflict = await accept(
       client.checkAppId({
         headers: { authorization: "Bearer clerk-session" },
         query: { appId: firstAppId },
       }),
       [409],
+    );
+    expect(vm0Conflict.body.error.message).toBe(
+      "This Feishu App ID is already registered in VM0",
+    );
+    const okouConflict = await accept(
+      client.checkAppId({
+        headers: { authorization: "Bearer clerk-session" },
+        extraHeaders: { origin: "https://app.okou.ai" },
+        query: { appId: firstAppId },
+      }),
+      [409],
+    );
+    expect(okouConflict.body.error.message).toBe(
+      "This Feishu App ID is already registered in Okou",
     );
     await accept(
       client.checkAppId({
@@ -1532,6 +1547,82 @@ describe("Feishu integration", () => {
       }),
       [200],
     );
+  });
+
+  it("preserves an unlinked connector when removing its installation", async () => {
+    const actor = authOrgApi.user({
+      userId: `user_${randomUUID()}`,
+      orgId: `org_${randomUUID()}`,
+      orgRole: "org:admin",
+    });
+    authOrgApi.acceptAgentStorageWrites();
+    await enableFeishuIntegration(actor);
+    const agent = await authOrgApi.createAgent(actor, {
+      displayName: "Feishu unlinked removal agent",
+      visibility: "public",
+    });
+    mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const client = setupApp({ context, routes: feishuConnectRoutes })(
+      feishuConnectContract,
+    );
+    const configured = await accept(
+      client.setup({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          appId: `cli_${randomUUID()}`,
+          appSecret: APP_SECRET,
+          verificationToken: VERIFICATION_TOKEN,
+          defaultAgentId: agent.agentId,
+          createNew: true,
+        },
+      }),
+      [200],
+    );
+    const installationId = requireValue(
+      configured.body.installationId,
+      "Expected Feishu setup to return an installation id",
+    );
+    const customConnectorClient = setupApp({
+      context,
+      routes: customConnectorsRoutes,
+    })(zeroCustomConnectorsContract);
+    const connectorBeforeRemoval = requireValue(
+      (
+        await accept(
+          customConnectorClient.list({
+            headers: { authorization: "Bearer clerk-session" },
+          }),
+          [200],
+        )
+      ).body.connectors[0],
+      "Expected Feishu setup to create a managed connector",
+    );
+
+    // Production APIs cannot clear this relationship. This scoped test-only
+    // transition models historical ownership loss before exercising removal
+    // and verification through production routes.
+    await clearFeishuConnectorOwnership(context, {
+      orgId: requireValue(actor.orgId, "Expected an organization"),
+      installationId,
+    });
+
+    await accept(
+      client.removeInstallation({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { installationId },
+      }),
+      [200],
+    );
+
+    const connectorsAfterRemoval = await accept(
+      customConnectorClient.list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(connectorsAfterRemoval.body.connectors).toMatchObject([
+      { id: connectorBeforeRemoval.id },
+    ]);
   });
 
   it("keeps the managed connector and skill HEAD active when repair publication fails", async () => {

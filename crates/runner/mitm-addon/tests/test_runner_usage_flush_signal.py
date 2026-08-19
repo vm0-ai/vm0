@@ -175,6 +175,31 @@ class _PhaseHandoffLock:
         self.release()
 
 
+class _ExitBoundaryHandoffLock:
+    """Gate the real lock release to control a runner worker exit boundary."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.release_started = threading.Event()
+        self.allow_release = threading.Event()
+        self.non_blocking_acquire_failed = threading.Event()
+
+    def acquire(self, blocking: bool = True, timeout: float = -1) -> bool:
+        if timeout < 0:
+            acquired = self._lock.acquire(blocking)
+        else:
+            acquired = self._lock.acquire(blocking, timeout)
+        if not blocking and not acquired:
+            self.non_blocking_acquire_failed.set()
+        return acquired
+
+    def release(self) -> None:
+        self.release_started.set()
+        if not self.allow_release.wait(timeout=1):
+            raise AssertionError("runner flush lock release was not allowed")
+        self._lock.release()
+
+
 class TestRunnerUsageFlushSignal:
     """Tests for runner-triggered usage buffer flush requests."""
 
@@ -649,6 +674,69 @@ class TestRunnerUsageFlushSignal:
 
         assert not worker_timed_out.is_set()
         assert flush_triggers == ["runner", "runner"]
+
+    def test_signal_at_worker_exit_runs_successor_flush(
+        self, runner_usage_flush_files: RunnerUsageFlushFiles
+    ) -> None:
+        handoff_lock = _ExitBoundaryHandoffLock()
+        second_flush_completed = threading.Event()
+        flush_triggers: list[str] = []
+        pending_snapshot_writes = 0
+        runner_usage_flush_files.write_usage_flush_request()
+
+        def flush_usage_events(*, trigger: str) -> int:
+            flush_triggers.append(trigger)
+            if len(flush_triggers) == 2:
+                second_flush_completed.set()
+            return 0
+
+        original_write_pending_snapshot = usage.write_pending_snapshot
+
+        def write_pending_snapshot(*, flush_request_id: str | None = None) -> None:
+            nonlocal pending_snapshot_writes
+            pending_snapshot_writes += 1
+            original_write_pending_snapshot(flush_request_id=flush_request_id)
+
+        try:
+            with (
+                patch.object(
+                    runner_flush_lifecycle,
+                    "_usage_flush_signal_lock",
+                    handoff_lock,
+                ),
+                patch.object(usage, "flush_usage_events", side_effect=flush_usage_events),
+                patch.object(
+                    usage,
+                    "write_pending_snapshot",
+                    side_effect=write_pending_snapshot,
+                ),
+            ):
+                runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
+                assert handoff_lock.release_started.wait(timeout=1)
+
+                runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
+                assert handoff_lock.non_blocking_acquire_failed.wait(timeout=1)
+
+                handoff_lock.allow_release.set()
+                assert second_flush_completed.wait(timeout=1)
+                wait_for_usage_flush_worker_to_stop()
+
+                assert flush_triggers == ["runner", "runner"]
+                assert pending_snapshot_writes == 2
+                assert not runner_flush_lifecycle._usage_flush_requested
+                assert handoff_lock.acquire(blocking=False)
+                handoff_lock.release()
+
+            assert_pending(
+                runner_usage_flush_files.pending_path,
+                flows=0,
+                buffered=0,
+                reports=0,
+                flush_request_id="request-1",
+            )
+        finally:
+            handoff_lock.allow_release.set()
+            wait_for_usage_flush_worker_to_stop()
 
     def test_wait_for_worker_drains_stranded_pending_signal(self):
         flush_count = 0

@@ -64,7 +64,12 @@ import {
   setApiTestConnectorCatalogValidationAuthority,
 } from "../../../test-fixtures/connector-catalog";
 import { readStorageS3PrefixFixture } from "../../../test-fixtures/storage";
-import { readHistoricalAgentComposeHeadFixture } from "../../../test-fixtures/historical-agent-composes";
+import {
+  historicalProductBuilderContentFixture,
+  readHistoricalAgentComposeHeadFixture,
+  readRawHistoricalAgentComposeHeadFixture,
+  replaceHistoricalAgentComposeHeadFixture,
+} from "../../../test-fixtures/historical-agent-composes";
 import { readRunIdentityMismatchWriteCountsFixture } from "../../../test-fixtures/agent-runs";
 import {
   createBddApi,
@@ -813,17 +818,27 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function runContextSnapshotForRun(runId: string): Record<string, unknown> {
+function runContextSnapshotsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  const snapshots: Record<string, unknown>[] = [];
   for (const [dataset, events] of context.mocks.axiom.ingest.mock.calls) {
     if (dataset !== "run-context" || !Array.isArray(events)) {
       continue;
     }
-    const snapshot = events.find((event) => {
-      return isRecord(event) && event.runId === runId;
-    });
-    if (isRecord(snapshot)) {
-      return snapshot;
+    for (const event of events) {
+      if (isRecord(event) && event.runId === runId) {
+        snapshots.push(event);
+      }
     }
+  }
+  return snapshots;
+}
+
+function runContextSnapshotForRun(runId: string): Record<string, unknown> {
+  const snapshot = runContextSnapshotsForRun(runId)[0];
+  if (snapshot) {
+    return snapshot;
   }
   throw new Error(`Expected a run-context snapshot for ${runId}`);
 }
@@ -12597,6 +12612,398 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     ).toBe(persistedOnlyMarker);
   });
 
+  it("uses application authority for framework-only historical heads", async () => {
+    const api = createRunsApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("Expected a framework-fallback organization");
+    }
+    const canonicalHead = await readHistoricalAgentComposeHeadFixture(agentId);
+    if (!canonicalHead.content) {
+      throw new Error("Expected a canonical Agent head");
+    }
+    const frameworkVariant = (
+      framework: "missing" | "future-framework",
+    ): Record<string, unknown> => {
+      const content = structuredClone(
+        canonicalHead.content,
+      ) as unknown as Record<string, unknown>;
+      const agents = content.agents;
+      if (!isRecord(agents)) {
+        throw new Error("Expected raw historical Agent definitions");
+      }
+      const activeAgent = agents[canonicalHead.name];
+      if (!isRecord(activeAgent)) {
+        throw new Error("Expected a raw historical active Agent");
+      }
+      if (framework === "missing") {
+        delete activeAgent.framework;
+      } else {
+        activeAgent.framework = framework;
+      }
+      return content;
+    };
+    await fw.seedOrgCodexProvider(actor, {
+      accessToken: "framework-fallback-access",
+      refreshToken: "framework-fallback-refresh",
+      accountId: "framework-fallback-workspace",
+      idToken: "framework-fallback-id-token",
+      expiresIn: 3600,
+    });
+
+    const missingFrameworkContent = frameworkVariant("missing");
+    const missingFrameworkHead = await replaceHistoricalAgentComposeHeadFixture(
+      {
+        composeId: agentId,
+        userId: actor.userId,
+        content: missingFrameworkContent,
+      },
+      context.signal,
+    );
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "launch a missing-framework historical Agent",
+      modelProvider: "codex-oauth-token",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const firstPoll = await api.pollRunner(runnerGroup);
+    expect(firstPoll.body.job).toMatchObject({
+      runId: first.runId,
+      experimentalProfile: DEFAULT_PROFILE,
+    });
+    const firstClaim = await api.claimRunnerJob(first.runId);
+    expect(firstClaim.agentComposeVersionId).toBe(
+      missingFrameworkHead.versionId,
+    );
+    expect(firstClaim.cliAgentType).toBe("codex");
+    expect(firstClaim.environment).toMatchObject({
+      OPENAI_MODEL: "gpt-5.6-sol",
+    });
+    expectCanonicalOkouRunEnvironment({
+      environment: firstClaim.environment,
+      secretValues: firstClaim.secretValues,
+      appUrl: env("APP_URL"),
+      agentId,
+      userId: actor.userId,
+      orgId: actor.orgId,
+      runId: first.runId,
+    });
+    expect(agentExecutionAuthorityFieldsForRun(first.runId)).toStrictEqual({
+      agentExecutionAuthority: "application",
+      agentExecutionAuthorityClassification: "applicationFrameworkFallback",
+    });
+    expect(runContextSnapshotsForRun(first.runId)).toHaveLength(1);
+    expect(JSON.stringify(runContextSnapshotForRun(first.runId))).not.toContain(
+      "future-framework",
+    );
+    await expect(
+      readRunLaunchSnapshotFixture(context, first.runId),
+    ).resolves.toStrictEqual({
+      exists: true,
+      launch_snapshot: {
+        schemaVersion: 1,
+        framework: "codex",
+        runnerProfile: DEFAULT_PROFILE,
+      },
+    });
+    await expect(
+      readRawHistoricalAgentComposeHeadFixture(agentId),
+    ).resolves.toStrictEqual({
+      headVersionId: missingFrameworkHead.versionId,
+      content: missingFrameworkContent,
+    });
+    await api.requestCancelRun(actor, first.runId, [200]);
+
+    const unsupportedFrameworkContent = frameworkVariant("future-framework");
+    const unsupportedFrameworkHead =
+      await replaceHistoricalAgentComposeHeadFixture(
+        {
+          composeId: agentId,
+          userId: actor.userId,
+          content: unsupportedFrameworkContent,
+        },
+        context.signal,
+      );
+    const resumedPrompt = "continue with the latest unsupported-framework head";
+    context.mocks.axiom.ingest.mockImplementation((dataset, events) => {
+      if (
+        dataset === "run-context" &&
+        Array.isArray(events) &&
+        events.some((event) => {
+          return isRecord(event) && event.prompt === resumedPrompt;
+        })
+      ) {
+        throw new Error("framework-fallback observation failed");
+      }
+      return true;
+    });
+    const resumed = await api.createRun(actor, {
+      agentId,
+      sessionId: first.sessionId,
+      prompt: resumedPrompt,
+      modelProvider: "codex-oauth-token",
+    });
+    expect(resumed.sessionId).toBe(first.sessionId);
+    await api.heartbeatRunner(runnerGroup);
+    const resumedPoll = await api.pollRunner(runnerGroup);
+    expect(resumedPoll.body.job).toMatchObject({
+      runId: resumed.runId,
+      experimentalProfile: DEFAULT_PROFILE,
+    });
+    const resumedClaim = await api.claimRunnerJob(resumed.runId);
+    expect(resumedClaim.agentComposeVersionId).toBe(
+      unsupportedFrameworkHead.versionId,
+    );
+    expect(resumedClaim.cliAgentType).toBe("codex");
+    expect(agentExecutionAuthorityFieldsForRun(resumed.runId)).toStrictEqual({
+      agentExecutionAuthority: "application",
+      agentExecutionAuthorityClassification: "applicationFrameworkFallback",
+    });
+    expect(runContextSnapshotsForRun(resumed.runId)).toHaveLength(1);
+    expect(JSON.stringify(resumedClaim)).not.toContain("future-framework");
+    expect(
+      JSON.stringify(runContextSnapshotForRun(resumed.runId)),
+    ).not.toContain("future-framework");
+    await expect(
+      readRunLaunchSnapshotFixture(context, resumed.runId),
+    ).resolves.toStrictEqual({
+      exists: true,
+      launch_snapshot: {
+        schemaVersion: 1,
+        framework: "codex",
+        runnerProfile: DEFAULT_PROFILE,
+      },
+    });
+    await expect(
+      readRawHistoricalAgentComposeHeadFixture(agentId),
+    ).resolves.toStrictEqual({
+      headVersionId: unsupportedFrameworkHead.versionId,
+      content: unsupportedFrameworkContent,
+    });
+    await api.requestCancelRun(actor, resumed.runId, [200]);
+  });
+
+  // Transition-only #28070 coverage; removed by #26938 Stage 8.
+  it("uses application environment authority for exact historical builder heads", async () => {
+    const appUrl = "https://app.stage-4e.example.test";
+    mockEnv("APP_URL", appUrl);
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("Expected a historical-builder organization");
+    }
+    const canonicalHead = await readHistoricalAgentComposeHeadFixture(agentId);
+    if (!canonicalHead.content) {
+      throw new Error("Expected a canonical Agent head");
+    }
+
+    await connectors.connectManualGrant(actor, "gitlab", "api-token", {
+      accessToken: "glpat-stage-4e-current",
+      host: "gitlab-before-stage-4e.example.com",
+    });
+    await api.enableAgentConnectors(actor, agentId, ["gitlab"]);
+
+    const baseline = await api.createRun(actor, {
+      agentId,
+      prompt: "establish the pre-transition session",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const baselinePoll = await api.pollRunner(runnerGroup);
+    expect(baselinePoll.body.job).toMatchObject({ runId: baseline.runId });
+    const baselineClaim = await api.claimRunnerJob(baseline.runId);
+    expect(baselineClaim.environment?.GITLAB_HOST).toBe(
+      "gitlab-before-stage-4e.example.com",
+    );
+    await api.requestCancelRun(actor, baseline.runId, [200]);
+
+    const historicalContent = historicalProductBuilderContentFixture(
+      canonicalHead.name,
+    );
+    const historicalHead = await replaceHistoricalAgentComposeHeadFixture(
+      {
+        composeId: agentId,
+        userId: actor.userId,
+        content: historicalContent,
+      },
+      context.signal,
+    );
+    await connectors.connectManualGrant(actor, "gitlab", "api-token", {
+      accessToken: "glpat-stage-4e-current",
+      host: "gitlab-stage-4e-current.example.com",
+    });
+
+    const continuationPrompt =
+      "continue with the exact latest historical builder head";
+    context.mocks.axiom.ingest.mockImplementation((dataset, events) => {
+      if (
+        dataset === "run-context" &&
+        Array.isArray(events) &&
+        events.some((event) => {
+          return isRecord(event) && event.prompt === continuationPrompt;
+        })
+      ) {
+        throw new Error("historical-builder observation failed");
+      }
+      return true;
+    });
+
+    const resumed = await api.createRun(actor, {
+      agentId,
+      sessionId: baseline.sessionId,
+      prompt: continuationPrompt,
+      modelProvider: "anthropic-api-key",
+    });
+    expect(resumed.sessionId).toBe(baseline.sessionId);
+    await api.heartbeatRunner(runnerGroup);
+    const resumedPoll = await api.pollRunner(runnerGroup);
+    expect(resumedPoll.body.job).toMatchObject({ runId: resumed.runId });
+    const resumedClaim = await api.claimRunnerJob(resumed.runId);
+    expect(resumedClaim.resumeSession).toBeNull();
+    await api.requestCancelRun(actor, resumed.runId, [200]);
+
+    const fresh = await api.createRun(actor, {
+      agentId,
+      prompt: "launch the exact historical builder head as a new Run",
+      modelProvider: "anthropic-api-key",
+    });
+    const freshTimingEvents = apiDispatchTimingEventsForRun(fresh.runId);
+    expectApiDispatchActions(
+      freshTimingEvents,
+      API_DISPATCH_TIMING_ACTION_TYPES,
+    );
+    expectApiDispatchActions(
+      freshTimingEvents,
+      API_DISPATCH_CONNECTOR_CATALOG_ALWAYS_ACTION_TYPES,
+    );
+    expectApiDispatchActions(
+      freshTimingEvents,
+      API_DISPATCH_STORED_CONNECTOR_SNAPSHOT_ACTION_TYPES,
+    );
+    expectApiDispatchActions(
+      freshTimingEvents,
+      API_DISPATCH_PERMISSION_MANIFEST_SUBSTEP_ACTION_TYPES,
+    );
+    expectNoApiDispatchActions(freshTimingEvents, [
+      "api_dispatch_prepare_context_decrypt_stored_connector_secrets",
+    ]);
+    for (const existingOwnerAction of [
+      "api_dispatch_resolve_compose_lookup_agent",
+      "api_dispatch_prepare_context_resolve_model_provider",
+      "api_dispatch_prepare_context_load_stored_connector_snapshot_rows",
+      "api_dispatch_prepare_context_load_builtin_permission_indexes",
+      "api_dispatch_prepare_storage_manifest_load_storage_index",
+    ]) {
+      expect(
+        freshTimingEvents.filter((event) => {
+          return event.op_type === existingOwnerAction;
+        }),
+      ).toHaveLength(1);
+    }
+    await api.heartbeatRunner(runnerGroup);
+    const freshPoll = await api.pollRunner(runnerGroup);
+    expect(freshPoll.body.job).toMatchObject({ runId: fresh.runId });
+    const freshClaim = await api.claimRunnerJob(fresh.runId);
+
+    for (const { run, claim } of [
+      { run: resumed, claim: resumedClaim },
+      { run: fresh, claim: freshClaim },
+    ]) {
+      expect(claim.agentComposeVersionId).toBe(historicalHead.versionId);
+      expect(claim.cliAgentType).toBe("claude-code");
+      expect(claim.environment).toMatchObject({
+        ANTHROPIC_API_KEY: modelProviderPlaceholder(
+          "anthropic-api-key",
+          "ANTHROPIC_API_KEY",
+        ),
+        ANTHROPIC_MODEL: "claude-sonnet-5",
+        GITLAB_TOKEN: connectorPlaceholder("gitlab", "GITLAB_TOKEN"),
+        GITLAB_HOST: "gitlab-stage-4e-current.example.com",
+        CLI_PKG_URL: "https://static.vm0.io/okou-cli/test-commit/package.tgz",
+        [WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]: "previous",
+      });
+      expect(claim.vars).toMatchObject({
+        GITLAB_HOST: "gitlab-stage-4e-current.example.com",
+      });
+      expect(claim.secretConnectorMap).toMatchObject({
+        GITLAB_TOKEN: "gitlab",
+      });
+      expect(claim.secretValues ?? []).not.toContain("glpat-stage-4e-current");
+      expectCanonicalOkouRunEnvironment({
+        environment: claim.environment,
+        secretValues: claim.secretValues,
+        appUrl,
+        agentId,
+        userId: actor.userId,
+        orgId: actor.orgId,
+        runId: run.runId,
+      });
+      const serializedClaim = JSON.stringify(claim);
+      const serializedAuthorityEnvironment = JSON.stringify({
+        environment: claim.environment,
+        vars: claim.vars,
+        secretConnectorMap: claim.secretConnectorMap,
+      });
+      for (const discardedHistoricalBinding of [
+        "ADZUNA_APP_ID",
+        "ANTHROPIC_MANAGED_AGENTS_TOKEN",
+        "GH_TOKEN",
+        "GITHUB_TOKEN",
+        "ZERO_AGENT_ID",
+        "ZERO_TOKEN",
+      ]) {
+        expect(serializedAuthorityEnvironment).not.toContain(
+          discardedHistoricalBinding,
+        );
+      }
+      expect(environmentShadowFieldsForRun(run.runId)).toStrictEqual({
+        environmentShadowClassification: "exact",
+        environmentShadowLegacyOnlyCountBucket: "0",
+        environmentShadowCandidateOnlyCountBucket: "0",
+        environmentShadowSharedValueDifferenceCountBucket: "0",
+      });
+      const authorityFields = agentExecutionAuthorityFieldsForRun(run.runId);
+      expect(authorityFields).toStrictEqual({
+        agentExecutionAuthority: "application",
+        agentExecutionAuthorityClassification:
+          "applicationHistoricalProductBuilderEnvironment",
+      });
+      const serializedAuthorityFields = JSON.stringify(authorityFields);
+      for (const forbidden of [
+        canonicalHead.name,
+        agentId,
+        run.runId,
+        "GITLAB_TOKEN",
+        "gitlab-stage-4e-current.example.com",
+      ]) {
+        expect(serializedAuthorityFields).not.toContain(forbidden);
+      }
+      expect(runContextSnapshotsForRun(run.runId)).toHaveLength(1);
+      expect(serializedClaim).not.toContain("agentExecutionAuthority");
+      expect(serializedClaim).not.toContain("environmentShadow");
+      await expect(
+        readRunLaunchSnapshotFixture(context, run.runId),
+      ).resolves.toStrictEqual({
+        exists: true,
+        launch_snapshot: {
+          schemaVersion: 1,
+          framework: "claude-code",
+          runnerProfile: DEFAULT_PROFILE,
+        },
+      });
+    }
+
+    await expect(
+      readRawHistoricalAgentComposeHeadFixture(agentId),
+    ).resolves.toStrictEqual({
+      headVersionId: historicalHead.versionId,
+      content: historicalContent,
+    });
+    await api.requestCancelRun(actor, fresh.runId, [200]);
+  });
+
   it("classifies active legacy environment value shapes without exposing them", async () => {
     const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -14800,7 +15207,8 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       },
     ]);
 
-    // Codex item.completed batches persist only non-blank agent_message text.
+    // Codex item.completed batches persist non-blank reasoning and
+    // agent_message text as separate transcript events.
     await webhooks.requestAgentEvents(
       {
         runId,
@@ -14809,16 +15217,34 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
             type: "item.completed",
             sequenceNumber: 3,
             item: {
-              id: "item_bdd_3",
-              type: "agent_message",
-              text: "Codex follow-up note",
+              id: "reasoning_bdd_3",
+              type: "reasoning",
+              text: "Inspecting the event projection.\nComparing transcript order.",
             },
           },
           {
             type: "item.completed",
             sequenceNumber: 4,
             item: {
-              id: "cmd_bdd_4",
+              id: "item_bdd_4",
+              type: "agent_message",
+              text: "Codex follow-up note",
+            },
+          },
+          {
+            type: "item.completed",
+            sequenceNumber: 5,
+            item: {
+              id: "reasoning_bdd_5",
+              type: "reasoning",
+              text: "Preparing the next response.",
+            },
+          },
+          {
+            type: "item.completed",
+            sequenceNumber: 6,
+            item: {
+              id: "cmd_bdd_6",
               type: "command_execution",
               command: "ls",
               exit_code: 0,
@@ -14827,8 +15253,13 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
           },
           {
             type: "item.completed",
-            sequenceNumber: 5,
-            item: { id: "item_bdd_5", type: "agent_message", text: "   " },
+            sequenceNumber: 7,
+            item: { id: "item_bdd_7", type: "agent_message", text: "   " },
+          },
+          {
+            type: "item.completed",
+            sequenceNumber: 8,
+            item: { id: "reasoning_bdd_8", type: "reasoning", text: "   " },
           },
         ],
       },
@@ -14846,6 +15277,26 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
         return message.content;
       }),
     ).toContain("Codex follow-up note");
+    const codexThinking = afterCodex.events.filter((message) => {
+      return (
+        message.eventType === "output.thinking" &&
+        message.runId === runId &&
+        message.runEventId !== "thinking:initial"
+      );
+    });
+    expect(codexThinking).toStrictEqual([
+      expect.objectContaining({
+        runEventId: "reasoning_bdd_3",
+        sequenceNumber: 3,
+        thinking:
+          "Inspecting the event projection.\nComparing transcript order.",
+      }),
+      expect.objectContaining({
+        runEventId: "reasoning_bdd_5",
+        sequenceNumber: 5,
+        thinking: "Preparing the next response.",
+      }),
+    ]);
 
     // Assistant batches without visible text leave the thread unchanged.
     await webhooks.requestAgentEvents(
@@ -14854,9 +15305,9 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
         events: [
           {
             type: "assistant",
-            sequenceNumber: 6,
+            sequenceNumber: 9,
             message: {
-              id: "msg_bdd_6",
+              id: "msg_bdd_9",
               content: [
                 { type: "tool_use", id: "tool_bdd_1", name: "bash", input: {} },
               ],
@@ -14864,9 +15315,9 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
           },
           {
             type: "assistant",
-            sequenceNumber: 7,
+            sequenceNumber: 10,
             message: {
-              id: "msg_bdd_7",
+              id: "msg_bdd_10",
               content: [{ type: "text", text: "" }],
             },
           },
@@ -14891,7 +15342,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
         events: [
           {
             type: "assistant",
-            sequenceNumber: 8,
+            sequenceNumber: 11,
             message: {
               id: "msg_bdd_1",
               content: [{ type: "text", text: "Duplicate text" }],

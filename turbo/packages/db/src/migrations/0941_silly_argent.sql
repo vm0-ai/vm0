@@ -1,0 +1,1 @@
+ALTER TABLE "usage_pack_invitation_purchases" ADD COLUMN "public_brand" text DEFAULT 'vm0' NOT NULL;

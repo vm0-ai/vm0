@@ -1,8 +1,10 @@
 import { command, computed } from "ccstate";
 import { eq } from "drizzle-orm";
 import { feishuConnectContract } from "@okouai/api-contracts/contracts/feishu-connect";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { publicBrandPresentation } from "@okouai/core/public-brand";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
 
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
@@ -56,6 +58,12 @@ const feishuIntegrationEnabled$ = computed(async (get) => {
   return isFeatureEnabled(FeatureSwitchKey.FeishuIntegration, context);
 });
 
+function appIdInUse(publicBrand: PublicBrand) {
+  return conflict(
+    `This Feishu App ID is already registered in ${publicBrandPresentation(publicBrand).brandName}`,
+  );
+}
+
 const getStatus$ = computed(async (get) => {
   if (!(await get(feishuIntegrationEnabled$))) {
     return feishuIntegrationDisabled;
@@ -77,6 +85,8 @@ const checkAppId$ = computed(async (get) => {
     return feishuIntegrationDisabled;
   }
   const auth = get(organizationAuthContext$);
+  const publicBrand =
+    auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
   if (auth.orgRole !== "admin") {
     return adminRequired();
   }
@@ -87,7 +97,7 @@ const checkAppId$ = computed(async (get) => {
     .where(eq(feishuOrgInstallations.appId, query.appId))
     .limit(1);
   return installation
-    ? conflict("This Feishu App ID is already registered in VM0")
+    ? appIdInUse(publicBrand)
     : { status: 200 as const, body: { available: true as const } };
 });
 
@@ -96,7 +106,8 @@ const setup$ = command(async ({ get, set }, signal: AbortSignal) => {
     return feishuIntegrationDisabled;
   }
   const auth = get(organizationAuthContext$);
-  const publicBrand = get(publicBrand$);
+  const publicBrand =
+    auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
   if (auth.orgRole !== "admin") {
     return adminRequired();
   }
@@ -135,7 +146,7 @@ const setup$ = command(async ({ get, set }, signal: AbortSignal) => {
     return notFound("Feishu integration not found");
   }
   if (result.kind === "app_in_use") {
-    return conflict("This Feishu App ID is already registered in VM0");
+    return appIdInUse(publicBrand);
   }
   if (result.kind === "installation_exists") {
     return conflict("This workspace already has a Feishu bot");

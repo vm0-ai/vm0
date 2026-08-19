@@ -7,7 +7,6 @@ import {
   real,
   text,
   timestamp,
-  uniqueIndex,
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
@@ -94,11 +93,6 @@ export const presentationTemplates = pgTable(
         table.ownerUserId,
         table.createdAt.desc(),
       ),
-      // One import at a time per user, enforced in the database so repeated
-      // upload clicks cannot launch several conversion runs.
-      uniqueIndex("idx_presentation_templates_active_import")
-        .on(table.ownerUserId)
-        .where(sql`status IN ('pending', 'processing')`),
       check(
         "chk_presentation_templates_visibility",
         sql`${table.visibility} IN ('private', 'public')`,

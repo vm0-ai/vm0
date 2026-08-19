@@ -50,6 +50,7 @@ import {
   setChatPageModelSelection$,
 } from "../../../signals/zero-page/zero-chat-page.ts";
 import { loadLeftThread$ } from "../../../signals/chat-page/chat-thread-panes.ts";
+import { eventDrivenChatThread } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
 import {
   click,
   detachedSetupPage,
@@ -277,8 +278,60 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(document.title).toContain("Scout");
     });
-    await expectComposerModel("Claude Fable 5");
+    const modelPicker = await findComposerModel("Claude Fable 5");
+    expect(
+      Array.from(
+        modelPicker.querySelectorAll<HTMLImageElement>("img"),
+        (icon) => {
+          return icon.width;
+        },
+      ),
+    ).toStrictEqual([18, 16]);
   });
+
+  it.each([
+    {
+      kind: "image",
+      featureSwitch: FeatureSwitchKey.ImageModelSelection,
+      categoryLabel: "Image models",
+    },
+    {
+      kind: "video",
+      featureSwitch: FeatureSwitchKey.VideoModelSelection,
+      categoryLabel: "Video models",
+    },
+  ])(
+    "keeps the mobile model brand icon and hides the desktop icon when $kind model selection is enabled",
+    async ({ featureSwitch, categoryLabel }) => {
+      context.mocks.browser.matchMedia(true);
+      mockOrgModelRoutes("claude-fable-5");
+      mockAgent();
+      mockThread({ selectedModel: "claude-fable-5" });
+
+      detachedSetupPage({
+        context,
+        featureSwitches: { [featureSwitch]: true },
+        path: `/chats/${THREAD_ID}`,
+      });
+
+      const modelPicker = await findComposerModel("Claude Fable 5");
+      await waitFor(() => {
+        expect(
+          queryAllByRoleFast("button").find((button) => {
+            return button.getAttribute("aria-label") === categoryLabel;
+          }),
+        ).toBeInTheDocument();
+      });
+      expect(
+        Array.from(
+          modelPicker.querySelectorAll<HTMLImageElement>("img"),
+          (icon) => {
+            return icon.width;
+          },
+        ),
+      ).toStrictEqual([18]);
+    },
+  );
 
   it("shows user preference over workspace default", async () => {
     mockOrgModelRoutes("claude-fable-5");
@@ -3422,6 +3475,8 @@ describe("chat composer image model", () => {
     "Nano Banana 2",
     "Flux Pro v1.1",
     "Flux Pro v1.1 Ultra",
+    "Seedream 5 Pro",
+    "Seedream 5 Lite",
     "Seedream 4",
     "Qwen Image",
   ] as const;
@@ -3497,6 +3552,452 @@ describe("chat composer image model", () => {
     }
     return icon;
   }
+
+  function desktopVideoModelButton(): HTMLElement | undefined {
+    return queryAllByRoleFast("button").find((candidate) => {
+      return (
+        candidate.getAttribute("aria-label") === "Video models" &&
+        candidate.hasAttribute("aria-pressed")
+      );
+    });
+  }
+
+  it("uses the live member image default for an untouched new chat", async () => {
+    const user = userEvent.setup({ delay: null });
+    context.mocks.browser.matchMedia(true);
+    const initialPreference: UserModelPreferenceResponse = {
+      selectedModel: null,
+      serviceTier: null,
+      selectedImageModel: "fal-ai/qwen-image",
+      updatedAt: "2026-08-18T00:00:00Z",
+    };
+    let createdImageModel: string | undefined;
+
+    mockOrgModelRoutes("claude-fable-5");
+    context.mocks.data.userModelPreference(initialPreference);
+    mockAgent();
+    mockChatLifecycle(context, {
+      onThreadCreate: (body) => {
+        createdImageModel = body.imageModel;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.ImageModelSelection]: true },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    const imageModelButton = await findDesktopImageModelButton();
+    await waitFor(() => {
+      expect(imageModelButton).toHaveTextContent("Qwen Image");
+    });
+
+    context.mocks.data.userModelPreference({
+      ...initialPreference,
+      selectedImageModel: "gpt-image-2",
+      updatedAt: "2026-08-18T00:01:00Z",
+    });
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("userPreferenceChanged"),
+      ).toBeTruthy();
+    });
+    act(() => {
+      triggerAblyEvent("userPreferenceChanged", {
+        kinds: ["defaultImageModel"],
+      });
+    });
+    await waitFor(() => {
+      expect(imageModelButton).toHaveTextContent("GPT Image 2");
+    });
+
+    await sendMessageInUI(
+      user,
+      screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+      "Use my current image default",
+    );
+
+    // Untouched: the thread is created unpinned so it follows the live member
+    // default (already reflected in the button above) instead of freezing it.
+    await waitFor(() => {
+      expect(createdImageModel).toBeUndefined();
+    });
+  });
+
+  it("keeps a mobile image pick temporary, pins it, and resets after send", async () => {
+    const user = userEvent.setup({ delay: null });
+    context.mocks.browser.matchMedia(false);
+    const updates: UpdateUserModelPreferenceRequest[] = [];
+    let createdThreadId: string | undefined;
+    let createdImageModel: string | undefined;
+
+    mockOrgModelRoutes("claude-fable-5");
+    context.mocks.data.userModelPreference({
+      selectedModel: null,
+      serviceTier: null,
+      selectedImageModel: "fal-ai/qwen-image",
+      selectedVideoModel: "MiniMax-H3",
+      updatedAt: "2026-08-18T00:00:00Z",
+    });
+    context.mocks.api(
+      userModelPreferenceContract.update,
+      ({ body, respond }) => {
+        updates.push(body);
+        return respond(200, {
+          ...body,
+          updatedAt: "2026-08-18T00:01:00Z",
+        });
+      },
+    );
+    mockAgent();
+    mockChatLifecycle(context, {
+      onThreadCreate: (body) => {
+        createdThreadId = body.clientThreadId;
+        createdImageModel = body.imageModel;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.ImageModelSelection]: true,
+        [FeatureSwitchKey.VideoModelSelection]: true,
+        [FeatureSwitchKey.NewChatDefaultModelAction]: true,
+      },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await user.click(await findComposerModel("Claude Fable 5"));
+    await user.click(await findMediaPanelButton("Image models"));
+    expect(
+      screen.queryByText("Temporarily switched to Qwen Image for images"),
+    ).not.toBeInTheDocument();
+    await user.click(await findMediaPanelButton("GPT Image 2"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Temporarily switched to GPT Image 2 for images"),
+      ).toBeInTheDocument();
+    });
+    expect(updates).toStrictEqual([]);
+
+    await sendMessageInUI(
+      user,
+      screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+      "Use my temporary image choice",
+    );
+
+    await waitFor(() => {
+      expect(createdThreadId).toBeDefined();
+      expect(createdImageModel).toBe("gpt-image-2");
+    });
+    if (!createdThreadId) {
+      throw new Error("Created thread id not captured");
+    }
+    const optimisticThreadId = createdThreadId;
+    await waitFor(() => {
+      expect(
+        context.store.get(eventDrivenChatThread(optimisticThreadId)),
+      ).toMatchObject({ selectedImageModel: "gpt-image-2" });
+    });
+
+    act(() => {
+      context.store.set(detachedNavigateTo$, ROUTES.agentChat, {
+        pathParams: { agentId: AGENT_ID },
+      });
+    });
+    await user.click(await findComposerModel("Claude Fable 5"));
+    await user.click(await findMediaPanelButton("Image models"));
+    await expect(findMediaPanelButton("Qwen Image")).resolves.toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(updates).toStrictEqual([]);
+  });
+
+  it("writes an image pick immediately when the default action is off", async () => {
+    const user = userEvent.setup({ delay: null });
+    context.mocks.browser.matchMedia(true);
+    const updates: UpdateUserModelPreferenceRequest[] = [];
+    let createdImageModel: string | undefined;
+
+    mockOrgModelRoutes("claude-fable-5");
+    context.mocks.data.userModelPreference({
+      selectedModel: null,
+      serviceTier: null,
+      selectedImageModel: "fal-ai/qwen-image",
+      selectedVideoModel: "MiniMax-H3",
+      updatedAt: "2026-08-18T00:00:00Z",
+    });
+    context.mocks.api(
+      userModelPreferenceContract.update,
+      ({ body, respond }) => {
+        updates.push(body);
+        return respond(200, {
+          ...body,
+          updatedAt: "2026-08-18T00:01:00Z",
+        });
+      },
+    );
+    mockAgent();
+    mockChatLifecycle(context, {
+      onThreadCreate: (body) => {
+        createdImageModel = body.imageModel;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.ImageModelSelection]: true },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await user.click(await findDesktopImageModelButton());
+    await user.click(await findMediaPanelButton("Seedream 4"));
+    await waitFor(() => {
+      expect(updates).toStrictEqual([
+        {
+          selectedModel: null,
+          serviceTier: null,
+          selectedImageModel: "fal-ai/bytedance/seedream/v4/text-to-image",
+        },
+      ]);
+    });
+
+    await sendMessageInUI(
+      user,
+      screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+      "Persist and pin my image choice",
+    );
+    await waitFor(() => {
+      expect(createdImageModel).toBe(
+        "fal-ai/bytedance/seedream/v4/text-to-image",
+      );
+    });
+  });
+
+  it("sets only the image default from a fresh member preference", async () => {
+    const user = userEvent.setup({ delay: null });
+    const updateGate = context.mocks.deferred<void>();
+    const updates: UpdateUserModelPreferenceRequest[] = [];
+    context.mocks.browser.matchMedia(true);
+    let stored: UserModelPreferenceResponse = {
+      selectedModel: "claude-fable-5",
+      serviceTier: null,
+      selectedImageModel: "fal-ai/qwen-image",
+      selectedVideoModel: "MiniMax-H3",
+      updatedAt: "2026-08-18T00:00:00Z",
+    };
+
+    mockOrgModelRoutes("claude-fable-5");
+    context.mocks.api(userModelPreferenceContract.get, ({ respond }) => {
+      return respond(200, stored);
+    });
+    context.mocks.api(
+      userModelPreferenceContract.update,
+      async ({ body, respond, withSignal }) => {
+        updates.push(body);
+        await withSignal(updateGate.promise);
+        stored = {
+          ...stored,
+          ...body,
+          updatedAt: "2026-08-18T00:02:00Z",
+        };
+        return respond(200, stored);
+      },
+    );
+    mockAgent();
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.ImageModelSelection]: true,
+        [FeatureSwitchKey.NewChatDefaultModelAction]: true,
+      },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await user.click(await findDesktopImageModelButton());
+    await user.click(await findMediaPanelButton("GPT Image 2"));
+    expect(updates).toStrictEqual([]);
+    await screen.findByText("Temporarily switched to GPT Image 2 for images");
+
+    stored = {
+      ...stored,
+      selectedModel: "gpt-5.6-sol",
+      serviceTier: "priority",
+      selectedVideoModel: "fal-ai/veo3.1/fast",
+      updatedAt: "2026-08-18T00:01:00Z",
+    };
+    const setAsDefault = buttonContainingText("Set as default", document.body);
+    await user.click(setAsDefault);
+
+    await waitFor(() => {
+      expect(updates).toStrictEqual([
+        {
+          selectedModel: "gpt-5.6-sol",
+          serviceTier: "priority",
+          selectedImageModel: "gpt-image-2",
+        },
+      ]);
+      expect(setAsDefault).toBeDisabled();
+      expect(setAsDefault).toHaveAttribute("aria-busy", "true");
+    });
+    fireEvent.click(setAsDefault);
+    expect(updates).toHaveLength(1);
+    updateGate.resolve();
+
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("userPreferenceChanged"),
+      ).toBeTruthy();
+    });
+    act(() => {
+      triggerAblyEvent("userPreferenceChanged", {
+        kinds: ["defaultImageModel"],
+      });
+    });
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Temporarily switched to GPT Image 2 for images"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows only the active Chat, Image, or Video notice", async () => {
+    const user = userEvent.setup({ delay: null });
+    const updates: UpdateUserModelPreferenceRequest[] = [];
+    context.mocks.browser.matchMedia(true);
+    mockOrgModelRoutes("claude-fable-5");
+    context.mocks.data.userModelPreference({
+      selectedModel: "claude-fable-5",
+      serviceTier: null,
+      selectedImageModel: "fal-ai/qwen-image",
+      selectedVideoModel: "MiniMax-H3",
+      updatedAt: "2026-08-18T00:00:00Z",
+    });
+    context.mocks.api(
+      userModelPreferenceContract.update,
+      ({ body, respond }) => {
+        updates.push(body);
+        return respond(200, {
+          ...body,
+          updatedAt: "2026-08-18T00:01:00Z",
+        });
+      },
+    );
+    mockAgent();
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.ImageModelSelection]: true,
+        [FeatureSwitchKey.VideoModelSelection]: true,
+        [FeatureSwitchKey.NewChatDefaultModelAction]: true,
+      },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    const chatNotice = "Temporarily switched to Claude Sonnet 4.6";
+    const imageNotice = "Temporarily switched to GPT Image 2 for images";
+    const videoNotice = "Temporarily switched to Veo 3.1 Fast for video";
+
+    await user.click(await findComposerModel("Claude Fable 5"));
+    await user.click(
+      await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
+    );
+    await screen.findByText(chatNotice);
+
+    const imageModelButton = await findDesktopImageModelButton();
+    await user.click(imageModelButton);
+    await user.click(await findMediaPanelButton("GPT Image 2"));
+    await screen.findByText(imageNotice);
+    expect(screen.queryByText(chatNotice)).not.toBeInTheDocument();
+
+    const videoModelButton = desktopVideoModelButton();
+    if (!videoModelButton) {
+      throw new Error("Desktop video model button not found");
+    }
+    await user.click(videoModelButton);
+    await waitFor(() => {
+      expect(screen.queryByText(imageNotice)).not.toBeInTheDocument();
+    });
+    await user.click(videoModelButton);
+    await user.click(await findMediaPanelButton("Veo 3.1 fast"));
+    await screen.findByText(videoNotice);
+    expect(screen.queryByText(imageNotice)).not.toBeInTheDocument();
+
+    await user.click(imageModelButton);
+    await screen.findByText(imageNotice);
+    expect(screen.queryByText(videoNotice)).not.toBeInTheDocument();
+
+    await user.click(videoModelButton);
+    await screen.findByText(videoNotice);
+    expect(screen.queryByText(imageNotice)).not.toBeInTheDocument();
+
+    const chatModelButton = await findComposerModel("Claude Sonnet 4.6");
+    chatModelButton.focus();
+    await user.keyboard("{Enter}");
+    await screen.findByText(chatNotice);
+    expect(screen.queryByText(imageNotice)).not.toBeInTheDocument();
+    expect(screen.queryByText(videoNotice)).not.toBeInTheDocument();
+    expect(updates).toStrictEqual([]);
+  });
+
+  it("omits image UI, preference writes, and thread pins when disabled", async () => {
+    const user = userEvent.setup({ delay: null });
+    let preferenceUpdateCount = 0;
+    let createdThreadId: string | undefined;
+    let createdImageModel: string | undefined;
+    context.mocks.browser.matchMedia(true);
+
+    mockOrgModelRoutes("claude-fable-5");
+    context.mocks.data.userModelPreference({
+      selectedModel: null,
+      serviceTier: null,
+      selectedImageModel: "fal-ai/qwen-image",
+      updatedAt: "2026-08-18T00:00:00Z",
+    });
+    context.mocks.api(
+      userModelPreferenceContract.update,
+      ({ body, respond }) => {
+        preferenceUpdateCount += 1;
+        return respond(200, {
+          ...body,
+          updatedAt: "2026-08-18T00:01:00Z",
+        });
+      },
+    );
+    mockAgent();
+    mockChatLifecycle(context, {
+      onThreadCreate: (body) => {
+        createdThreadId = body.clientThreadId;
+        createdImageModel = body.imageModel;
+      },
+    });
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    await findComposerModel("Claude Fable 5");
+    expect(desktopImageModelButton()).toBeUndefined();
+    await sendMessageInUI(
+      user,
+      screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+      "Keep image selection disabled",
+    );
+    await waitFor(() => {
+      expect(createdThreadId).toBeDefined();
+    });
+    expect(createdImageModel).toBeUndefined();
+    expect(preferenceUpdateCount).toBe(0);
+    if (!createdThreadId) {
+      throw new Error("Created thread id not captured");
+    }
+    expect(
+      context.store.get(eventDrivenChatThread(createdThreadId)),
+    ).toMatchObject({ selectedImageModel: null });
+  });
 
   it("shows the effective member default and pins an image model optimistically", async () => {
     const user = userEvent.setup({ delay: null });
@@ -3929,8 +4430,10 @@ describe("chat composer video model", () => {
       "Use my current video default",
     );
 
+    // Untouched: the thread is created unpinned so it follows the live member
+    // default (already reflected in the panel above) instead of freezing it.
     await waitFor(() => {
-      expect(createdVideoModel).toBe("fal-ai/veo3.1/fast");
+      expect(createdVideoModel).toBeUndefined();
     });
   });
 

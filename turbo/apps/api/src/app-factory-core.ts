@@ -14,6 +14,7 @@ import {
   desktopProductFromClientHeader,
 } from "@okouai/api-contracts/contracts/client-headers";
 import { serializeError } from "@okouai/core/log-utils";
+import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 // oxlint-disable-next-line no-restricted-imports -- app factory owns the Hono instance, confirmed by ethan@vm0.ai
 import { Hono, type Context, type Next } from "hono";
 import { HTTPException } from "hono/http-exception";
@@ -42,7 +43,6 @@ import {
   withApiNamespaceAliases,
 } from "./signals/route-entry";
 import { configureChatRunFinishedEventDispatcher } from "./signals/services/chat-run-finished-event-registration.service";
-import { publicBrandSchemaReady } from "./signals/services/public-brand-schema-readiness.service";
 import type { UsagePricingResolution } from "./signals/context/usage-pricing-resolution";
 import {
   isAbortError,
@@ -106,10 +106,14 @@ function captureError(error: unknown): void {
 
 function redirectToApp(context: Context): Response {
   const incoming = new URL(context.req.url);
-  const target = new URL(
-    `${incoming.pathname}${incoming.search}`,
-    env("APP_URL"),
-  );
+  const configuredAppUrl = env("APP_URL");
+  const appUrl =
+    incoming.hostname === "api.okou.ai"
+      ? appUrlForPublicBrand(configuredAppUrl, "okou")
+      : incoming.hostname === "api.vm0.ai"
+        ? appUrlForPublicBrand(configuredAppUrl, "vm0")
+        : configuredAppUrl;
+  const target = new URL(`${incoming.pathname}${incoming.search}`, appUrl);
   return context.redirect(target.toString());
 }
 
@@ -551,12 +555,10 @@ interface CreateAppWithRoutesOptions {
   readonly signal: AbortSignal;
   readonly routes: readonly RouteEntry[];
   readonly usagePricingResolution?: UsagePricingResolution;
-  readonly schemaReadiness?: () => Promise<boolean>;
 }
 
 export function createAppWithRoutes({
   routes,
-  schemaReadiness = publicBrandSchemaReady,
   signal,
   usagePricingResolution,
 }: CreateAppWithRoutesOptions): Hono {
@@ -588,16 +590,6 @@ export function createAppWithRoutes({
   // matching a registered method, and so registered route responses receive
   // Access-Control-Allow-Origin without relying on the legacy web proxy.
   app.use("*", corsMiddleware);
-
-  app.use("*", async (context, next) => {
-    if (!(await schemaReadiness())) {
-      return context.json({ error: "Service unavailable" }, 503, {
-        "Cache-Control": "no-store",
-        "Retry-After": "1",
-      });
-    }
-    return next();
-  });
 
   // Flush buffered Axiom logs after the response is sent so logging doesn't
   // add latency to the user-visible request.
