@@ -1096,10 +1096,12 @@ function MediaModelPanelRow({ option }: { option: MediaModelPanelOption }) {
       // that carries variants 8px taller than its neighbours.
       <div
         // The segment always fills one variant, so its checked state no longer
-        // separates the active family from a default fill. This marks the real
-        // selection instead. Base UI's own `data-selected` is avoided here to
-        // keep the two from colliding on the same subtree.
-        data-media-selected={groupSelected ? "true" : undefined}
+        // separates the active family from a default fill. `aria-current` is
+        // what the checkmark means, so assistive technology gets the same
+        // "this is the current model" cue sighted users get from the check.
+        // `aria-pressed` on the label button keeps its narrower meaning: the
+        // base model specifically, not the family.
+        aria-current={groupSelected ? "true" : undefined}
         className="relative flex w-full select-none items-center gap-2 rounded-lg py-0.5 pl-2 pr-8 text-sm transition-colors hover:bg-state-hover hover:text-accent-foreground"
       >
         <button
@@ -1147,7 +1149,7 @@ function MediaModelPanelRow({ option }: { option: MediaModelPanelOption }) {
       type="button"
       aria-label={option.label}
       aria-pressed={option.selected}
-      data-media-selected={option.selected ? "true" : undefined}
+      aria-current={option.selected ? "true" : undefined}
       className={MEDIA_MODEL_PANEL_ROW_CLASS}
       onClick={option.onSelect}
     >

@@ -3581,10 +3581,11 @@ describe("chat composer image model", () => {
     root: ParentNode = document,
   ): string | undefined {
     // Every family segment fills one variant by default, so a checked radio no
-    // longer proves selection. `data-media-selected` marks the one row that is
-    // truly selected: a family row then names the exact variant from its
-    // checked segment, and a plain row carries the label itself.
-    const selected = root.querySelector("[data-media-selected='true']");
+    // longer proves selection. `aria-current` marks the one row that is truly
+    // selected -- the same cue the checkmark gives sighted users. A family row
+    // then names the exact variant from its checked segment, and a plain row
+    // carries the label itself.
+    const selected = root.querySelector("[aria-current='true']");
     if (!selected) {
       return undefined;
     }
@@ -4145,7 +4146,6 @@ describe("chat composer image model", () => {
     expect(within(listbox).queryByText("GPT Image 1 Mini")).toBeNull();
     expect(within(listbox).queryByText("Flux Pro v1.1 Ultra")).toBeNull();
     expect(within(listbox).queryByText("Seedream 5 Lite")).toBeNull();
-    expect(within(listbox).queryByText("Seedream 4")).toBeNull();
     const openAiIcon = imageModelBrandIcon("GPT Image 2").outerHTML;
     expect(openAiIcon).toContain("openai");
     expect(imageModelBrandIcon("GPT Image 1.5").outerHTML).toBe(openAiIcon);
@@ -4315,6 +4315,47 @@ describe("chat composer image model", () => {
     await expect(
       findImageVariantSegment("Seedream 5 Lite"),
     ).resolves.toHaveAttribute("aria-checked", "false");
+  });
+
+  it("shows no selection when the pinned model is no longer offered", async () => {
+    const user = userEvent.setup({ delay: null });
+    context.mocks.browser.matchMedia(true);
+    mockOrgModelRoutes("claude-fable-5");
+    mockAgent();
+    // Seedream 4 keeps working everywhere else, so a thread pinned to it before
+    // it left the picker is a state the panel still has to render.
+    mockThread({
+      selectedModel: "claude-fable-5",
+      selectedImageModel: "fal-ai/bytedance/seedream/v4/text-to-image",
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.ImageModelSelection]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await openImageModels(user);
+    await waitFor(() => {
+      expect(mediaPanelButton("Qwen Image")).toBeInTheDocument();
+    });
+    const listbox = screen.getByRole("listbox");
+    expect(
+      queryAllByRoleFast("button", listbox)
+        .filter((button) => {
+          return button.hasAttribute("aria-pressed");
+        })
+        .map((button) => {
+          return button.getAttribute("aria-label");
+        }),
+    ).toStrictEqual(imageModelControlLabels);
+    // Nothing claims the pin, so no row is current and every family shows its
+    // default base chip rather than a stale highlight.
+    expect(selectedImageModelLabel()).toBeUndefined();
+    expect(listbox.querySelector("[aria-current='true']")).toBeNull();
+    await expect(
+      findImageVariantSegment("Seedream 5 Pro"),
+    ).resolves.toHaveAttribute("aria-checked", "true");
   });
 
   it("switches category from the same strip on mobile", async () => {
