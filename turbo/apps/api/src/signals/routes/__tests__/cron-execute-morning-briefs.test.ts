@@ -54,7 +54,7 @@ import { readAgentRunCallbacks$ } from "./helpers/agent-run-callback";
 import { cronExecuteMorningBriefsRoutes } from "../cron-execute-morning-briefs";
 import { emailMorningBriefUnsubscribeRoutes } from "../email-morning-brief-unsubscribe";
 import { chatThreadRoutes } from "../chat-threads";
-import { zeroModelProvidersRoutes } from "../zero-model-providers";
+import { modelProvidersRoutes } from "../model-providers";
 import { morningBriefRoutes } from "../morning-brief";
 import { userPreferencesRoutes } from "../user-preferences";
 
@@ -62,7 +62,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...cronExecuteMorningBriefsRoutes,
   ...emailMorningBriefUnsubscribeRoutes,
   ...chatThreadRoutes,
-  ...zeroModelProvidersRoutes,
+  ...modelProvidersRoutes,
   ...morningBriefRoutes,
   ...userPreferencesRoutes,
 ]);
@@ -244,7 +244,7 @@ function morningBriefTriggerClient() {
 }
 
 function modelProvidersByTypeClient() {
-  return setupApp({ context, routes: zeroModelProvidersRoutes })(
+  return setupApp({ context, routes: modelProvidersRoutes })(
     modelProvidersByTypeContract,
   );
 }

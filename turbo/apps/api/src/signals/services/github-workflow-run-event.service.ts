@@ -4,7 +4,7 @@ import {
   githubWorkflowRunCompletedEventConfigSchema,
   type GithubWorkflowRunCompletedEventConfig,
   type GithubWorkflowRunConclusion,
-} from "@okouai/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/workflows";
 import { githubInstallations } from "@okouai/db/schema/github-installation";
 import {
   workflowUserAutomationThreads,

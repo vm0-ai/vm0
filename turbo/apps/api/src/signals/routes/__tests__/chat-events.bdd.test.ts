@@ -44,9 +44,9 @@ import {
 } from "@okouai/api-contracts/contracts/model-providers";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
-  zeroModelProviderConnectionsByIdContract,
-  zeroModelProviderConnectionsMainContract,
-} from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
+  modelProviderConnectionsByIdContract,
+  modelProviderConnectionsMainContract,
+} from "@okouai/api-contracts/contracts/model-provider-gateways";
 import { modelProvidersMainContract } from "@okouai/api-contracts/contracts/model-provider-routes";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { z } from "zod";
@@ -146,14 +146,14 @@ import { chatEventsRoutes } from "../chat-events";
 import { chatThreadRoutes } from "../chat-threads";
 import { mailRoutes } from "../mail";
 import { modelProviderGatewayRoutes } from "../model-provider-gateways";
-import { zeroModelProvidersRoutes } from "../zero-model-providers";
+import { modelProvidersRoutes } from "../model-providers";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...chatEventsRoutes,
   ...chatThreadRoutes,
   ...mailRoutes,
   ...modelProviderGatewayRoutes,
-  ...zeroModelProvidersRoutes,
+  ...modelProvidersRoutes,
 ]);
 
 /**
@@ -1009,20 +1009,20 @@ function modelProviderSecretPlaceholder(
 }
 
 function modelProvidersClient() {
-  return setupApp({ context, routes: zeroModelProvidersRoutes })(
+  return setupApp({ context, routes: modelProvidersRoutes })(
     modelProvidersMainContract,
   );
 }
 
 function modelProviderConnectionsClient() {
   return setupApp({ context, routes: modelProviderGatewayRoutes })(
-    zeroModelProviderConnectionsMainContract,
+    modelProviderConnectionsMainContract,
   );
 }
 
 function modelProviderConnectionsByIdClient() {
   return setupApp({ context, routes: modelProviderGatewayRoutes })(
-    zeroModelProviderConnectionsByIdContract,
+    modelProviderConnectionsByIdContract,
   );
 }
 

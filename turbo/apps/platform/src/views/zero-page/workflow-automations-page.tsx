@@ -7,9 +7,9 @@ import {
 import { useLoadableSet } from "ccstate-react/experimental";
 import type { TeamComposeItem } from "@okouai/api-contracts/contracts/zero-team";
 import type {
-  ZeroWorkflowSummary,
-  ZeroWorkflowAutomationSummary,
-} from "@okouai/api-contracts/contracts/zero-workflows";
+  WorkflowSummary,
+  WorkflowAutomationSummary,
+} from "@okouai/api-contracts/contracts/workflows";
 import {
   CalendarClock,
   Clock,
@@ -218,7 +218,7 @@ function quote(value: string): string {
 }
 
 function notionReadableAutomationRuleLabel(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
 ): string | null {
   if (automation.kind !== "event") {
     return null;
@@ -279,10 +279,7 @@ function notionReadableAutomationRuleLabel(
 }
 
 function githubAutomationRuleLabel(
-  automation: Extract<
-    ZeroWorkflowAutomationSummary,
-    { readonly kind: "event" }
-  >,
+  automation: Extract<WorkflowAutomationSummary, { readonly kind: "event" }>,
 ): string | null {
   if (automation.eventType === "github-pull-request") {
     return i18n.t(
@@ -358,7 +355,7 @@ function githubAutomationRuleLabel(
 }
 
 function googleAutomationRuleLabel(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
 ): string | null {
   if (automation.kind !== "event") {
     return null;
@@ -408,7 +405,7 @@ function googleAutomationRuleLabel(
 }
 
 export function humanReadableAutomationRuleLabel(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
   displayTimezone: string,
 ): string {
   if (
@@ -514,7 +511,7 @@ export function humanReadableAutomationRuleLabel(
 }
 
 function googleAutomationTypeLabel(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
 ): string | null {
   if (automation.kind !== "event") {
     return null;
@@ -544,7 +541,7 @@ function googleAutomationTypeLabel(
 }
 
 export function automationTypeLabel(
-  automation: ZeroWorkflowAutomationSummary,
+  automation: WorkflowAutomationSummary,
 ): string {
   if (automation.kind === "schedule") {
     return i18n.t(($) => {
@@ -639,7 +636,7 @@ export function AutomationListIcon({
   automation,
   size = "md",
 }: {
-  readonly automation: ZeroWorkflowAutomationSummary;
+  readonly automation: WorkflowAutomationSummary;
   readonly size?: "sm" | "md";
 }) {
   const Icon = (() => {
@@ -774,10 +771,10 @@ function WorkflowSelectionStep({
   onSelectWorkflow,
   onCreateWorkflow,
 }: {
-  readonly workflows: readonly ZeroWorkflowSummary[];
+  readonly workflows: readonly WorkflowSummary[];
   readonly agents: readonly TeamComposeItem[];
   readonly loading: boolean;
-  readonly onSelectWorkflow: (workflow: ZeroWorkflowSummary) => void;
+  readonly onSelectWorkflow: (workflow: WorkflowSummary) => void;
   readonly onCreateWorkflow: () => void;
 }) {
   const { t } = useTranslation();
@@ -1051,7 +1048,7 @@ export function CreateWorkflowAutomationDialog() {
     );
   };
 
-  const openWorkflowAutomations = (workflow: ZeroWorkflowSummary) => {
+  const openWorkflowAutomations = (workflow: WorkflowSummary) => {
     setOpen(false);
     navigate(ROUTES.workflowDetailAutomations, {
       pathParams: { workflowId: workflow.id },

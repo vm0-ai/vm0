@@ -32,7 +32,7 @@ import { integrationsPhoneUploadInitRoutes } from "../../integrations-phone-uplo
 import { integrationsPhoneDownloadFileRoutes } from "../../integrations-phone-download-file";
 import { logsRoutes } from "../../logs";
 import { modelPoliciesRoutes } from "../../model-policies";
-import { zeroModelProvidersRoutes } from "../../zero-model-providers";
+import { modelProvidersRoutes } from "../../model-providers";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...integrationsPhoneDownloadFileRoutes,
@@ -40,7 +40,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...integrationsPhoneUploadInitRoutes,
   ...logsRoutes,
   ...modelPoliciesRoutes,
-  ...zeroModelProvidersRoutes,
+  ...modelProvidersRoutes,
 ]);
 
 export const AGENTPHONE_BDD_AGENT_ID = "agt-bdd-agentphone";
@@ -452,7 +452,7 @@ export function createAgentPhoneBddApi(context: TestContext) {
     async switchDefaultModelRouteToOpenRouter(
       actor: ApiTestUser,
     ): Promise<void> {
-      const providers = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      const providers = setupApp({ context, routes: modelProvidersRoutes })(
         modelProvidersMainContract,
       );
       const upserted = await accept(

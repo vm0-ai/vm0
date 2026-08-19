@@ -35,7 +35,7 @@ import {
   knownBillingPlanPriceItem,
   type BillingSubscriptionTier,
   tierForKnownPlanPrice,
-} from "./zero-billing-checkout.service";
+} from "./billing-checkout.service";
 import { isCurrentStripePreviewMetadata } from "./stripe-preview-metadata.service";
 import {
   subscriptionScheduleCancellationEnd,

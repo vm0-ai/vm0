@@ -7,7 +7,7 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import type { OrgModelPolicy } from "@okouai/api-contracts/contracts/model-providers";
 import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
-import { zeroWorkflowsCollectionContract } from "@okouai/api-contracts/contracts/zero-workflows";
+import { workflowsCollectionContract } from "@okouai/api-contracts/contracts/workflows";
 import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@okouai/core";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { toast } from "@okouai/ui/components/ui/sonner";
@@ -1193,7 +1193,7 @@ describe("chat inline feedback", () => {
   it("uses slash workflow suggestions inside an inline feedback note", async () => {
     const user = userEvent.setup({ delay: null });
     const assistantReply = "The launch plan needs a concrete owner.";
-    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+    context.mocks.api(workflowsCollectionContract.list, ({ respond }) => {
       return respond(200, [
         {
           id: "a0000000-0000-4000-a000-000000000705",

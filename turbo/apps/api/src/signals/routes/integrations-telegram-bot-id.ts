@@ -2,8 +2,8 @@ import { command } from "ccstate";
 import { eq } from "drizzle-orm";
 import {
   OFFICIAL_TELEGRAM_BOT_ID,
-  zeroIntegrationsTelegramContract,
-} from "@okouai/api-contracts/contracts/zero-integrations-telegram";
+  integrationsTelegramContract,
+} from "@okouai/api-contracts/contracts/integrations-telegram";
 import { agentComposes } from "@okouai/db/schema/agent-compose";
 import { telegramInstallations } from "@okouai/db/schema/telegram-installation";
 import { telegramUserAgentPreferences } from "@okouai/db/schema/telegram-user-agent-preference";
@@ -199,11 +199,9 @@ const updateCustomBot$ = command(
 
 const updateBotInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const { botId } = get(
-    pathParamsOf(zeroIntegrationsTelegramContract.updateBot),
-  );
+  const { botId } = get(pathParamsOf(integrationsTelegramContract.updateBot));
   const bodyResult = await get(
-    bodyResultOf(zeroIntegrationsTelegramContract.updateBot),
+    bodyResultOf(integrationsTelegramContract.updateBot),
   );
   signal.throwIfAborted();
 
@@ -240,9 +238,7 @@ const updateBotInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 const disconnectInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const { botId } = get(
-    pathParamsOf(zeroIntegrationsTelegramContract.disconnect),
-  );
+  const { botId } = get(pathParamsOf(integrationsTelegramContract.disconnect));
 
   if (botId === OFFICIAL_TELEGRAM_BOT_ID) {
     return forbiddenResponse("The official Telegram bot cannot be uninstalled");
@@ -294,14 +290,14 @@ const disconnectInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 export const integrationsTelegramBotIdRoutes: readonly RouteEntry[] = [
   {
-    route: zeroIntegrationsTelegramContract.updateBot,
+    route: integrationsTelegramContract.updateBot,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       updateBotInner$,
     ),
   },
   {
-    route: zeroIntegrationsTelegramContract.disconnect,
+    route: integrationsTelegramContract.disconnect,
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       disconnectInner$,

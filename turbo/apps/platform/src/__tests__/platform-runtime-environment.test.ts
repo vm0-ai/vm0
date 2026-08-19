@@ -64,18 +64,8 @@ const originalHeadAppendChild = document.head.appendChild.bind(document.head);
 const appendedPlausibleScripts: HTMLScriptElement[] = [];
 const context = testContext();
 
-function setBrowserUrl(url: string): void {
-  context.mocks.browser.url(url);
-}
-
-function setPreviewApiOrigin(origin: string): void {
-  const element = document.createElement("meta");
-  element.name = "vm0-api-origin";
-  element.content = origin;
-  document.head.append(element);
-  context.signal.addEventListener("abort", () => element.remove(), {
-    once: true,
-  });
+function setBrowserUrl(url: string, apiOriginMarker?: string | null): void {
+  context.mocks.browser.url(url, { apiOriginMarker });
 }
 
 function installImmediateIdleCallback(): void {
@@ -203,6 +193,49 @@ describe("portable platform runtime environment", () => {
       }),
     );
   });
+
+  it("selects the VM0 API service on app.vm0.ai", async () => {
+    setBrowserUrl("https://app.vm0.ai/agents");
+    const runtime = await loadRuntimeSurfaces();
+
+    expect(runtime.apiBase.resolveApiBase()).toBe("https://api.vm0.ai");
+    expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
+      environment: "production",
+      publicBrand: "vm0",
+    });
+  });
+
+  it.each([
+    ["missing", "https://app.okou.ai/agents", undefined, "app.okou.ai"],
+    ["empty", "https://app.okou.ai/agents", "", "app.okou.ai"],
+    ["missing", "https://app.vm0.ai/agents", undefined, "app.vm0.ai"],
+    ["empty", "https://app.vm0.ai/agents", "", "app.vm0.ai"],
+  ])(
+    "fails closed when the production API origin marker is %s on %s",
+    async (_state, appUrl, marker, hostname) => {
+      setBrowserUrl(appUrl, marker ?? null);
+      const runtime = await loadRuntimeSurfaces();
+
+      expect(() => runtime.apiBase.resolveApiBase()).toThrow(
+        `Missing production API origin marker for ${hostname}`,
+      );
+    },
+  );
+
+  it.each([
+    ["https://app.okou.ai/agents", "https://api.vm0.ai", "app.okou.ai"],
+    ["https://app.vm0.ai/agents", "https://api.okou.ai", "app.vm0.ai"],
+  ])(
+    "rejects a mismatched production API origin marker on %s",
+    async (appUrl, apiOrigin, hostname) => {
+      setBrowserUrl(appUrl, apiOrigin);
+      const runtime = await loadRuntimeSurfaces();
+
+      expect(() => runtime.apiBase.resolveApiBase()).toThrow(
+        `Production API origin marker mismatch for ${hostname}`,
+      );
+    },
+  );
 
   it("selects canonical services and production telemetry on an alternate production host", async () => {
     setBrowserUrl("https://cf-app.vm0.ai/agents");
@@ -416,8 +449,10 @@ describe("portable platform runtime environment", () => {
   });
 
   it("uses the configured API for an immutable Pages deployment", async () => {
-    setBrowserUrl("https://3508a2f5.okou-app.pages.dev/agents");
-    setPreviewApiOrigin("https://pr-23364-api.vm6.ai");
+    setBrowserUrl(
+      "https://3508a2f5.okou-app.pages.dev/agents",
+      "https://pr-23364-api.vm6.ai",
+    );
     const runtime = await loadRuntimeSurfaces();
 
     expect(runtime.apiBase.resolveApiBase()).toBe(
@@ -432,8 +467,10 @@ describe("portable platform runtime environment", () => {
   });
 
   it("rejects an invalid API origin on an immutable Pages deployment", async () => {
-    setBrowserUrl("https://3508a2f5.okou-app.pages.dev/agents");
-    setPreviewApiOrigin("https://example.com");
+    setBrowserUrl(
+      "https://3508a2f5.okou-app.pages.dev/agents",
+      "https://example.com",
+    );
     const runtime = await loadRuntimeSurfaces();
 
     expect(() => runtime.apiBase.resolveApiBase()).toThrow(
@@ -442,8 +479,10 @@ describe("portable platform runtime environment", () => {
   });
 
   it("keeps unrecognized provider hosts on the same origin", async () => {
-    setBrowserUrl("https://deployment.pages.dev/agents");
-    setPreviewApiOrigin("https://pr-23364-api.vm6.ai");
+    setBrowserUrl(
+      "https://deployment.pages.dev/agents",
+      "https://pr-23364-api.vm6.ai",
+    );
     const runtime = await loadRuntimeSurfaces();
 
     expect(runtime.apiBase.resolveApiBase()).toBe(

@@ -31,7 +31,7 @@ import {
   addStripeConcurrencySubscriptionItem$,
   applyStripeConcurrencySubscriptionChange$,
   previewStripeConcurrencySubscriptionChange$,
-} from "./zero-billing-concurrency-subscription.service";
+} from "./billing-concurrency-subscription.service";
 import { stripePreviewMetadata } from "./stripe-preview-metadata.service";
 import {
   completeBillingOperationInvoice,

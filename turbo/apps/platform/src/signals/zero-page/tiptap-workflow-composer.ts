@@ -29,7 +29,7 @@ import {
   type GenerationTemplateRequest,
   type UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import type { ZeroWorkflowSummary } from "@okouai/api-contracts/contracts/zero-workflows";
+import type { WorkflowSummary } from "@okouai/api-contracts/contracts/workflows";
 import { agents$ } from "../agent.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 import { composerImeSubmitFlushEnabled$ } from "../external/feature-switch.ts";
@@ -198,7 +198,7 @@ export interface WorkflowComposerSignals {
     Promise<ComposerChatThreadSuggestionResult>
   >;
   readonly agentId$: Computed<Promise<string | null>>;
-  readonly workflows$: Computed<Promise<readonly ZeroWorkflowSummary[]>>;
+  readonly workflows$: Computed<Promise<readonly WorkflowSummary[]>>;
   readonly reloadWorkflows$: Command<Promise<void>, [AbortSignal]>;
   readonly selectedSuggestionIndex$: Computed<number>;
   readonly setSelectedSuggestionIndex$: Command<void, [number]>;
@@ -1894,7 +1894,7 @@ function applyWorkflowNames(editor: Editor, names: readonly string[]): void {
 function createSyncWorkflowNamesCommand(
   editor: Editor,
   agentId$: Computed<Promise<string | null>>,
-  workflows$: Computed<Promise<readonly ZeroWorkflowSummary[]>>,
+  workflows$: Computed<Promise<readonly WorkflowSummary[]>>,
 ): WorkflowNamesSyncCommand {
   const resetWorkflowNamesSyncSignal$ = resetSignal();
   return command(

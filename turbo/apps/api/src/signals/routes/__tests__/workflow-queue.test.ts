@@ -4,7 +4,7 @@ import { chatEventsContract } from "@okouai/api-contracts/contracts/chat-threads
 import { testCronCleanupSandboxesStateContract } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
 import { testWorkflowAutomationExecutionContract } from "@okouai/api-contracts/contracts/test-workflow-automation-execution";
 import { modelProvidersByTypeContract } from "@okouai/api-contracts/contracts/model-provider-routes";
-import { zeroWorkflowAutomationsContract } from "@okouai/api-contracts/contracts/zero-workflows";
+import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
 import { onTestFinished, test as vitestTest } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -48,7 +48,7 @@ import {
 } from "../../../test-fixtures/chat-events";
 import { chatEventsRoutes } from "../chat-events";
 import { chatThreadRoutes } from "../chat-threads";
-import { zeroModelProvidersRoutes } from "../zero-model-providers";
+import { modelProvidersRoutes } from "../model-providers";
 import { workflowAutomationsRoutes } from "../workflow-automations";
 import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
 import { webhooksWorkflowAutomationsRoutes } from "../webhooks-workflow-automations";
@@ -58,7 +58,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...webhooksWorkflowAutomationsRoutes,
   ...chatEventsRoutes,
   ...chatThreadRoutes,
-  ...zeroModelProvidersRoutes,
+  ...modelProvidersRoutes,
   ...workflowAutomationsRoutes,
 ]);
 
@@ -87,7 +87,7 @@ function authHeaders() {
 
 function automationsClient() {
   return setupApp({ context, routes: workflowAutomationsRoutes })(
-    zeroWorkflowAutomationsContract,
+    workflowAutomationsContract,
   );
 }
 
@@ -110,7 +110,7 @@ function chatEventsClient() {
 }
 
 function modelProvidersByTypeClient() {
-  return setupApp({ context, routes: zeroModelProvidersRoutes })(
+  return setupApp({ context, routes: modelProvidersRoutes })(
     modelProvidersByTypeContract,
   );
 }

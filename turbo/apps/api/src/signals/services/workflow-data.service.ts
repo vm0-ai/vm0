@@ -1,5 +1,5 @@
 import { computed, type Computed } from "ccstate";
-import type { ZeroWorkflowSummary } from "@okouai/api-contracts/contracts/zero-workflows";
+import type { WorkflowSummary } from "@okouai/api-contracts/contracts/workflows";
 import { zeroAgents } from "@okouai/db/schema/zero-agent";
 import { workflows } from "@okouai/db/schema/workflow";
 import { userCache } from "@okouai/db/schema/user-cache";
@@ -246,7 +246,7 @@ export function workflowSummary(args: {
   readonly member: WorkflowMember;
   readonly ownerProfile?: WorkflowOwnerProfile | null;
   readonly shadowedBy?: WorkflowShadow | null;
-}): ZeroWorkflowSummary {
+}): WorkflowSummary {
   return {
     id: args.workflow.id,
     agentId: args.workflow.agentId,
@@ -445,8 +445,8 @@ export function workflowList(args: {
   readonly orgId: string;
   readonly member: WorkflowMember;
   readonly agentId?: string;
-}): Computed<Promise<readonly ZeroWorkflowSummary[]>> {
-  return computed(async (get): Promise<readonly ZeroWorkflowSummary[]> => {
+}): Computed<Promise<readonly WorkflowSummary[]>> {
+  return computed(async (get): Promise<readonly WorkflowSummary[]> => {
     const db = get(db$);
     const rows = await db
       .select({

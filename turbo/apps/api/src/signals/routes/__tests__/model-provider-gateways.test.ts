@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { MODEL_PROVIDER_ENV_PLACEHOLDERS } from "@okouai/api-contracts/contracts/model-providers";
 import {
-  zeroModelProviderConnectionsByIdContract,
-  zeroModelProviderConnectionsMainContract,
+  modelProviderConnectionsByIdContract,
+  modelProviderConnectionsMainContract,
   type CreateModelProviderConnectionRequest,
-} from "@okouai/api-contracts/contracts/zero-model-provider-gateways";
+} from "@okouai/api-contracts/contracts/model-provider-gateways";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { createBddApi } from "./helpers/api-bdd";
@@ -32,13 +32,13 @@ function useSession(role: "org:admin" | "org:member" = "org:admin") {
 
 function mainClient() {
   return setupApp({ context, routes: modelProviderGatewayRoutes })(
-    zeroModelProviderConnectionsMainContract,
+    modelProviderConnectionsMainContract,
   );
 }
 
 function byIdClient() {
   return setupApp({ context, routes: modelProviderGatewayRoutes })(
-    zeroModelProviderConnectionsByIdContract,
+    modelProviderConnectionsByIdContract,
   );
 }
 

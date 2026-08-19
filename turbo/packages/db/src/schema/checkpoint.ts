@@ -29,9 +29,12 @@ export const checkpoints = pgTable("checkpoints", {
       { onDelete: "cascade" },
     )
     .notNull(),
-  agentComposeSnapshot: jsonb("agent_compose_snapshot")
-    .$type<CheckpointAgentComposeSnapshot>()
-    .notNull(),
+  // DB/API rollout compatibility: old binaries may write the legacy JSON while
+  // new binaries leave it NULL. Preserve through the ~102-minute observed
+  // exposure window and rollback floor; remove in Parent #26938 Stage 8.
+  agentComposeSnapshot: jsonb(
+    "agent_compose_snapshot",
+  ).$type<CheckpointAgentComposeSnapshot>(),
   // Canonical exact mount snapshot.
   storageMounts: jsonb("storage_mounts").$type<CheckpointStorageMounts>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
