@@ -15,8 +15,8 @@ import {
 } from "@okouai/api-contracts/contracts/model-providers";
 import {
   OFFICIAL_TELEGRAM_BOT_ID,
-  zeroIntegrationsTelegramContract,
-} from "@okouai/api-contracts/contracts/zero-integrations-telegram";
+  integrationsTelegramContract,
+} from "@okouai/api-contracts/contracts/integrations-telegram";
 import { agentComposes } from "@okouai/db/schema/agent-compose";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
@@ -617,7 +617,7 @@ export const registerTelegramBot$ = command(
   ) => {
     const { auth } = args;
     const bodyResult = await get(
-      bodyResultOf(zeroIntegrationsTelegramContract.register),
+      bodyResultOf(integrationsTelegramContract.register),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -770,7 +770,7 @@ function isInvalidTelegramTokenError(error: unknown): boolean {
 export const setupTelegramStatus$ = command(
   async ({ get, set }, auth: OrganizationAuth, signal: AbortSignal) => {
     const bodyResult = await get(
-      bodyResultOf(zeroIntegrationsTelegramContract.setupStatus),
+      bodyResultOf(integrationsTelegramContract.setupStatus),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -2954,7 +2954,7 @@ export const telegramWebhook$ = command(
     const apiStartTime = now();
     const request = get(request$).raw;
     const { telegramBotId } = get(
-      pathParamsOf(zeroIntegrationsTelegramContract.webhook),
+      pathParamsOf(integrationsTelegramContract.webhook),
     );
 
     if (isOfficialTelegramBotId(telegramBotId)) {

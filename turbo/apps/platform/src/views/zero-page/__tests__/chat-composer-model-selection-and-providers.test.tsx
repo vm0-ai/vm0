@@ -33,7 +33,7 @@ import {
   type UpdateUserModelPreferenceRequest,
   type UserModelPreferenceResponse,
 } from "@okouai/api-contracts/contracts/user-model-preference";
-import { zeroWorkflowsCollectionContract } from "@okouai/api-contracts/contracts/zero-workflows";
+import { workflowsCollectionContract } from "@okouai/api-contracts/contracts/workflows";
 import { IMAGE_RECOGNITION_MAX_FILE_BYTES } from "@okouai/api-contracts/contracts/image-recognition";
 import { beforeEach, describe, expect, it } from "vitest";
 import { triggerAblyEvent } from "../../../mocks/ably.ts";
@@ -3388,7 +3388,7 @@ describe("chat composer models", () => {
       });
     });
     context.mocks.api(
-      zeroWorkflowsCollectionContract.list,
+      workflowsCollectionContract.list,
       ({ query, respond }) => {
         if (query.agentId) {
           workflowAgentIds.push(query.agentId);
@@ -3515,7 +3515,6 @@ describe("chat composer image model", () => {
   const imageModelControlLabels = [
     "GPT Image 1",
     "GPT Image 2",
-    "GPT Image 1.5",
     "Nano Banana 2",
     "Flux Pro v1.1",
     "Flux Pro v1.1 Ultra",
@@ -3575,8 +3574,7 @@ describe("chat composer image model", () => {
 
   /**
    * The composer no longer prints the image model, so the selection is read
-   * from the open panel: a plain row carries `aria-pressed`, while a family
-   * with variants marks the choice on its segment instead.
+   * from the open panel's pressed row.
    */
   function selectedImageModelLabel(
     root: ParentNode = document,
@@ -3584,32 +3582,7 @@ describe("chat composer image model", () => {
     const row = queryAllByRoleFast("button", root).find((candidate) => {
       return candidate.getAttribute("aria-pressed") === "true";
     });
-    if (row) {
-      return row.getAttribute("aria-label") ?? undefined;
-    }
-    const variant = queryAllByRoleFast("radio", root).find((candidate) => {
-      return (
-        candidate.getAttribute("aria-checked") === "true" &&
-        candidate.hasAttribute("aria-label")
-      );
-    });
-    return variant?.getAttribute("aria-label") ?? undefined;
-  }
-
-  function imageVariantSegment(label: string): HTMLElement | undefined {
-    return queryAllByRoleFast("radio").find((candidate) => {
-      return candidate.getAttribute("aria-label") === label;
-    });
-  }
-
-  function findImageVariantSegment(label: string): Promise<HTMLElement> {
-    return waitFor(() => {
-      const item = imageVariantSegment(label);
-      if (!item) {
-        throw new Error(`${label} image variant not found`);
-      }
-      return item;
-    });
+    return row?.getAttribute("aria-label") ?? undefined;
   }
 
   function imageModelBrandIcon(label: string): Element {
@@ -4109,32 +4082,9 @@ describe("chat composer image model", () => {
           return button.getAttribute("aria-label");
         }),
     ).toStrictEqual(imageModelControlLabels);
-    // Both variants are on the row at once, and neither is marked while a
-    // different family is the selection.
-    const variantSegments = queryAllByRoleFast("radio", listbox).filter(
-      (candidate) => {
-        return candidate.hasAttribute("aria-label");
-      },
-    );
-    expect(
-      variantSegments.map((candidate) => {
-        return candidate.getAttribute("aria-label");
-      }),
-    ).toStrictEqual(["GPT Image 1", "GPT Image 1 Mini"]);
-    expect(
-      variantSegments.map((candidate) => {
-        return candidate.textContent;
-      }),
-    ).toStrictEqual(["Standard", "Mini"]);
-    expect(
-      variantSegments.every((candidate) => {
-        return candidate.getAttribute("aria-checked") === "false";
-      }),
-    ).toBeTruthy();
-    expect(within(listbox).queryByText("GPT Image 1 Mini")).toBeNull();
     const openAiIcon = imageModelBrandIcon("GPT Image 2").outerHTML;
     expect(openAiIcon).toContain("openai");
-    expect(imageModelBrandIcon("GPT Image 1.5").outerHTML).toBe(openAiIcon);
+    expect(imageModelBrandIcon("GPT Image 1").outerHTML).toBe(openAiIcon);
     const fluxIcon = imageModelBrandIcon("Flux Pro v1.1").outerHTML;
     expect(imageModelBrandIcon("Flux Pro v1.1 Ultra").outerHTML).toBe(fluxIcon);
     const qwenIcon = imageModelBrandIcon("Qwen Image").outerHTML;
@@ -4160,74 +4110,29 @@ describe("chat composer image model", () => {
       within(listbox).queryByText(/aspect ratio/i),
     ).not.toBeInTheDocument();
 
-    // One click on the segment is a complete selection -- no menu to open.
-    await user.click(await findImageVariantSegment("GPT Image 1 Mini"));
+    await user.click(await findMediaPanelButton("GPT Image 1"));
 
     await waitFor(() => {
       expect(updates).toStrictEqual([
         {
           threadId: THREAD_ID,
-          model: "gpt-image-1-mini",
+          model: "gpt-image-1",
         },
-      ]);
-    });
-    await openImageModels(user);
-    await waitFor(() => {
-      expect(selectedImageModelLabel()).toBe("GPT Image 1 Mini");
-    });
-    await expect(
-      findImageVariantSegment("GPT Image 1 Mini"),
-    ).resolves.toHaveAttribute("aria-checked", "true");
-    expect(mediaPanelButton("GPT Image 1")).toHaveAttribute(
-      "aria-pressed",
-      "false",
-    );
-    updateGate.resolve();
-  });
-
-  it("selects Standard from the GPT Image 1 variant menu", async () => {
-    const user = userEvent.setup({ delay: null });
-    const updates: { threadId: string; model: string | null }[] = [];
-    context.mocks.browser.matchMedia(true);
-    mockOrgModelRoutes("claude-fable-5");
-    mockAgent();
-    mockThread({
-      selectedModel: "claude-fable-5",
-      selectedImageModel: "gpt-image-1-mini",
-    });
-    context.mocks.api(
-      chatThreadImageModelContract.update,
-      ({ params, body, respond }) => {
-        updates.push({ threadId: params.id, model: body.model });
-        return respond(204);
-      },
-    );
-
-    detachedSetupPage({
-      context,
-      featureSwitches: { [FeatureSwitchKey.ImageModelSelection]: true },
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    await openImageModels(user);
-    await waitFor(() => {
-      expect(selectedImageModelLabel()).toBe("GPT Image 1 Mini");
-    });
-    await expect(
-      findImageVariantSegment("GPT Image 1 Mini"),
-    ).resolves.toHaveAttribute("aria-checked", "true");
-
-    await user.click(await findImageVariantSegment("GPT Image 1"));
-
-    await waitFor(() => {
-      expect(updates).toStrictEqual([
-        { threadId: THREAD_ID, model: "gpt-image-1" },
       ]);
     });
     await openImageModels(user);
     await waitFor(() => {
       expect(selectedImageModelLabel()).toBe("GPT Image 1");
     });
+    expect(mediaPanelButton("GPT Image 1")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(mediaPanelButton("Qwen Image")).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    updateGate.resolve();
   });
 
   it("switches category from the same strip on mobile", async () => {

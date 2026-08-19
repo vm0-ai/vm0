@@ -70,6 +70,43 @@ const AXIOM_SUFFIX_ENV: &str = "AXIOM_DATASET_SUFFIX";
 /// from looping back into this layer and re-flooding the dispatcher.
 const INTERNAL_TARGET: &str = "runner::axiom_layer::internal";
 
+#[derive(Default)]
+struct BoundedDebugOutput {
+    value: String,
+    truncated: bool,
+}
+
+impl BoundedDebugOutput {
+    fn finish(mut self) -> String {
+        if self.truncated {
+            self.value.push_str("…[truncated]");
+        }
+        self.value
+    }
+}
+
+impl std::fmt::Write for BoundedDebugOutput {
+    fn write_str(&mut self, value: &str) -> std::fmt::Result {
+        if self.truncated {
+            return Err(std::fmt::Error);
+        }
+
+        let remaining = DEBUG_FIELD_MAX_BYTES - self.value.len();
+        if value.len() <= remaining {
+            self.value.push_str(value);
+            return Ok(());
+        }
+
+        let mut end = remaining;
+        while !value.is_char_boundary(end) {
+            end -= 1;
+        }
+        self.value.push_str(&value[..end]);
+        self.truncated = true;
+        Err(std::fmt::Error)
+    }
+}
+
 /// Holds the dispatcher task. `shutdown().await` drains the queue; dropping
 /// without calling `shutdown` leaves the tokio runtime to abort the task.
 ///
@@ -192,8 +229,7 @@ where
     S: Subscriber + for<'a> LookupSpan<'a>,
 {
     fn on_event(&self, event: &Event<'_>, _: Context<'_, S>) {
-        let value = serialize_event(event);
-        if self.tx.try_send(Msg::Event(value)).is_err() {
+        let Ok(permit) = self.tx.try_reserve() else {
             // Bounded-channel full or dispatcher gone. Emit a periodic
             // best-effort diagnostic under `INTERNAL_TARGET`; if tracing
             // observes it, the Axiom per-layer filter keeps it out of remote
@@ -206,7 +242,10 @@ where
                     "axiom channel full",
                 );
             }
-        }
+            return;
+        };
+
+        permit.send(Msg::Event(serialize_event(event)));
     }
 }
 
@@ -330,19 +369,10 @@ fn serialize_event(event: &Event<'_>) -> Value {
         fn record_debug(&mut self, f: &Field, v: &dyn std::fmt::Debug) {
             // Cap per-field size so a user who logs a huge struct via `?v`
             // can't blow past Axiom's body limit or starve the dispatcher.
-            let mut s = String::new();
-            let _ = write!(s, "{v:?}");
-            if s.len() > DEBUG_FIELD_MAX_BYTES {
-                // Truncate on a char boundary so the resulting String is
-                // still valid UTF-8.
-                let mut cut = DEBUG_FIELD_MAX_BYTES;
-                while !s.is_char_boundary(cut) {
-                    cut -= 1;
-                }
-                s.truncate(cut);
-                s.push_str("…[truncated]");
-            }
-            self.0.insert(f.name().into(), Value::String(s));
+            let mut output = BoundedDebugOutput::default();
+            let _ = write!(output, "{v:?}");
+            self.0
+                .insert(f.name().into(), Value::String(output.finish()));
         }
     }
 

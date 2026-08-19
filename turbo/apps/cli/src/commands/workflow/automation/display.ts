@@ -1,6 +1,6 @@
 import chalk from "chalk";
 import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
-import type { GmailNewMessageEventConfig } from "@okouai/api-contracts/contracts/zero-workflows";
+import type { GmailNewMessageEventConfig } from "@okouai/api-contracts/contracts/workflows";
 import type { WorkflowAutomationSummary } from "../../../lib/api/domains/workflows";
 import { formatRelativeTime } from "../../../lib/domain/relative-time";
 import { formatDurationSeconds } from "../../shared/duration";

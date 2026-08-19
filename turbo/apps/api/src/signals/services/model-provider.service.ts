@@ -2,6 +2,7 @@ import { command, computed, type Computed } from "ccstate";
 import {
   getAuthMethodsForType,
   getFrameworkForType,
+  getModelProviderPresentationLabel,
   getSecretNameForType,
   getSecretNamesForAuthMethod,
   getSecretsForAuthMethod,
@@ -379,7 +380,7 @@ function assertVm0OrgOnly(
 ): BadRequestResponse | null {
   if (type === "vm0" && userId !== ORG_SENTINEL_USER_ID) {
     return badRequestMessage(
-      "VM0 managed provider is org-only and cannot be configured per-user",
+      `${getModelProviderPresentationLabel(type)} provider is org-only and cannot be configured per-user`,
     );
   }
   return null;

@@ -13,7 +13,7 @@ import {
   type NotionPageContentUpdatedEventCreateConfig,
   type NotionPageContentUpdatedScope,
   type NotionPageReference,
-} from "@okouai/api-contracts/contracts/zero-workflows";
+} from "@okouai/api-contracts/contracts/workflows";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { publicBrandPresentation } from "@okouai/core/public-brand";
 import {

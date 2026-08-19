@@ -5,7 +5,7 @@ import type {
   ComputerUseCommandResponse,
   ComputerUseReadCommandKind,
   ComputerUseWriteCommandKind,
-} from "@okouai/api-contracts/contracts/zero-computer-use";
+} from "@okouai/api-contracts/contracts/computer-use";
 import {
   COMPUTER_USE_FILESYSTEM_PLUGIN,
   COMPUTER_USE_MCP_LIST_TOOLS,

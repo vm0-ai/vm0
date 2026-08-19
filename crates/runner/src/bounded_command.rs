@@ -324,7 +324,7 @@ mod tests {
         let mut command = Command::new("sh");
         command
             .arg("-c")
-            .arg("printf '%s' \"$$\" > \"$1\"; exec sleep 60")
+            .arg("printf '%s' \"$$\" > \"$1.tmp\"; mv \"$1.tmp\" \"$1\"; exec sleep 60")
             .arg("sh")
             .arg(pid_path);
         command

@@ -1399,6 +1399,65 @@ describe("zero sidebar", () => {
     });
   });
 
+  it("keeps three-column desktop and mobile chat virtualization isolated", async () => {
+    prepareDefaultAgent();
+    const overflowThreads = Array.from({ length: 23 }, (_, index) => {
+      return createThread(
+        `b2050000-0000-4000-a000-${String(index).padStart(12, "0")}`,
+        `Isolated overflow ${index + 1}`,
+      );
+    });
+    mockSidebarThreadStory(
+      [
+        createThread(EXISTING_THREAD_ID, "Release plan"),
+        createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
+      ],
+      [
+        ...overflowThreads,
+        createThread(ARCHIVED_THREAD_ID, "Archived context"),
+      ],
+    );
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const desktopList = await screen.findByTestId("chat-list-column");
+    const mobileList = mobileSidebar();
+    const desktopScrollArea = await within(desktopList).findByTestId(
+      "sidebar-scroll-area",
+    );
+    const mobileScrollArea = await within(mobileList).findByTestId(
+      "sidebar-scroll-area",
+    );
+    Object.defineProperties(desktopScrollArea, {
+      clientHeight: { configurable: true, value: 200 },
+      scrollHeight: { configurable: true, value: 1000 },
+      scrollTop: { configurable: true, value: 780, writable: true },
+    });
+    Object.defineProperties(mobileScrollArea, {
+      clientHeight: { configurable: true, value: 200 },
+      scrollHeight: { configurable: true, value: 1000 },
+      scrollTop: { configurable: true, value: 0, writable: true },
+    });
+
+    fireEvent.scroll(mobileScrollArea);
+    fireEvent.scroll(desktopScrollArea);
+
+    await waitFor(() => {
+      expect(
+        within(desktopList).getByText("Archived context"),
+      ).toBeInTheDocument();
+      expect(within(desktopList).queryByText("Release plan")).toBeNull();
+      expect(within(mobileList).getByText("Release plan")).toBeInTheDocument();
+      expect(within(mobileList).queryByText("Archived context")).toBeNull();
+    });
+  });
+
   it("keeps virtualized chats visible after deletion refreshes a clamped viewport", async () => {
     prepareDefaultAgent();
     const overflowThreads = Array.from({ length: 23 }, (_, index) => {
@@ -1711,6 +1770,37 @@ describe("zero sidebar", () => {
       ).toBeInTheDocument();
       expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
       expect(scrollArea.scrollTop).toBeGreaterThan(0);
+    });
+  });
+
+  it("scrolls the current chat in the three-column desktop list on page setup", async () => {
+    prepareDefaultAgent();
+    const leadingThreads = Array.from({ length: 24 }, (_, index) => {
+      return createThread(
+        `b3050000-0000-4000-a000-${String(index).padStart(12, "0")}`,
+        `Three-column leading chat ${index + 1}`,
+      );
+    });
+    mockSidebarThreadStory([
+      ...leadingThreads,
+      createThread(EXISTING_THREAD_ID, "Release plan"),
+      createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
+    ]);
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const desktopList = await screen.findByTestId("chat-list-column");
+    await waitFor(() => {
+      expect(within(desktopList).getByText("Release plan")).toBeInTheDocument();
+      expect(
+        within(desktopList).getByTestId("sidebar-scroll-area").scrollTop,
+      ).toBeGreaterThan(0);
     });
   });
 
@@ -3742,12 +3832,72 @@ describe("zero sidebar", () => {
 
     const dialogList = await screen.findByTestId("pin-agent-dialog-list");
     const pinnedOption = commandItemByText(dialogList, "Research Agent");
-    expect(pinnedOption.getAttribute("aria-disabled")).toBe("true");
+    expect(pinnedOption.getAttribute("aria-disabled")).not.toBe("true");
 
     click(commandItemByText(dialogList, "Support Agent"));
 
     await waitFor(() => {
       expect(pinnedAgentLink(grid, "Support Agent")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("pin-agent-dialog-list")).toBeNull();
+  });
+
+  it("unpins an agent from the grid pin entry", async () => {
+    prepareAgentTeam();
+    context.mocks.data.userPreferences({
+      pinnedAgentIds: [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID],
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    await waitFor(() => {
+      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(3);
+    });
+
+    click(screen.getByLabelText("Pin an agent"));
+
+    const dialogList = await screen.findByTestId("pin-agent-dialog-list");
+    const pinnedRow = commandItemByText(dialogList, "Support Agent");
+    click(buttonByText("Unpin", pinnedRow));
+
+    await waitFor(() => {
+      expect(pinnedAgentNames(grid)).toStrictEqual(["Zero", "Research Agent"]);
+    });
+    expect(screen.queryByTestId("pin-agent-dialog-list")).toBeNull();
+  });
+
+  it("pins an agent from the pin dialog row action", async () => {
+    prepareAgentTeam();
+    context.mocks.data.userPreferences({ pinnedAgentIds: [] });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+      },
+    });
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    await waitFor(() => {
+      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(1);
+    });
+
+    click(screen.getByLabelText("Pin an agent"));
+
+    const dialogList = await screen.findByTestId("pin-agent-dialog-list");
+    const unpinnedRow = commandItemByText(dialogList, "Support Agent");
+    click(buttonByText("Pin", unpinnedRow));
+
+    await waitFor(() => {
+      expect(pinnedAgentNames(grid)).toStrictEqual(["Zero", "Support Agent"]);
     });
     expect(screen.queryByTestId("pin-agent-dialog-list")).toBeNull();
   });

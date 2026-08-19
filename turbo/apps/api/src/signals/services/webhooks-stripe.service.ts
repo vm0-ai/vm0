@@ -20,6 +20,7 @@ import { writeDb$, type Db } from "../external/db";
 import {
   getStripeClient,
   isStripeResourceMissingError,
+  type StripeCheckoutSession,
   type StripeInvoice,
   type StripePaymentIntent,
   type StripeSubscription,
@@ -30,10 +31,11 @@ import { getCampaign } from "./one-time-products";
 import {
   checkoutTierConflictMessage,
   checkoutWouldReplaceWithSameOrLowerTier,
+  isUsagePackPlanPriceId,
   knownBillingPlanPriceItem,
   type BillingSubscriptionTier,
   tierForKnownPlanPrice,
-} from "./zero-billing-checkout.service";
+} from "./billing-checkout.service";
 import { isCurrentStripePreviewMetadata } from "./stripe-preview-metadata.service";
 import {
   subscriptionScheduleCancellationEnd,
@@ -2016,6 +2018,7 @@ async function handleAtomGrantInvoicePaid(
 async function handleOneTimePurchaseCompleted(
   db: Db,
   session: CheckoutSessionInput,
+  paidAt: Date,
 ): Promise<string | null> {
   const metadata = session.metadata ?? {};
   const orgId = metadata.orgId;
@@ -2040,7 +2043,7 @@ async function handleOneTimePurchaseCompleted(
   }
 
   const expiresAt = new Date(
-    now() + campaign.expiresDays * 24 * 60 * 60 * 1000,
+    paidAt.getTime() + campaign.expiresDays * 24 * 60 * 60 * 1000,
   );
 
   await db.transaction(async (tx) => {
@@ -2129,6 +2132,7 @@ async function handlePaidCheckoutPurpose(
   db: Db,
   session: CheckoutSessionInput,
   purpose: "one_time_purchase",
+  paidAt: Date,
 ): Promise<PaidWebhookOutcome> {
   if (session.metadata?.purpose !== purpose) {
     return { handled: false, drainOrgId: null };
@@ -2142,7 +2146,7 @@ async function handlePaidCheckoutPurpose(
     return { handled: true, drainOrgId: null };
   }
 
-  const drainOrgId = await handleOneTimePurchaseCompleted(db, session);
+  const drainOrgId = await handleOneTimePurchaseCompleted(db, session, paidAt);
   return { handled: true, drainOrgId };
 }
 
@@ -3427,6 +3431,7 @@ async function subscriptionInvoiceDetails(
     return null;
   }
   const priceId = planItem.price.id;
+  const usagePackPlan = isUsagePackPlanPriceId(priceId);
 
   const hasPlanInvoiceLine = invoice.lines.data.some((line) => {
     return (
@@ -3438,8 +3443,8 @@ async function subscriptionInvoiceDetails(
     return null;
   }
 
-  const credits = monthlyCreditsForTier(tier);
-  if (credits <= 0 && tier !== "custom") {
+  const credits = usagePackPlan ? 0 : monthlyCreditsForTier(tier);
+  if (credits <= 0 && tier !== "custom" && !usagePackPlan) {
     L.warn("no credits to grant for tier", {
       tier,
       invoiceId: invoice.id,
@@ -3556,7 +3561,7 @@ function subscriptionPlanEntitlementIsCurrent(
   );
 }
 
-async function processCustomSubscriptionInvoicePaid(
+async function processNoCreditSubscriptionInvoicePaid(
   tx: WriteTx,
   args: {
     readonly invoice: InvoiceInput;
@@ -3672,8 +3677,8 @@ async function processSubscriptionInvoicePaid(
     return false;
   }
 
-  if (args.details.tier === "custom") {
-    await processCustomSubscriptionInvoicePaid(tx, {
+  if (args.details.credits === 0) {
+    await processNoCreditSubscriptionInvoicePaid(tx, {
       ...args,
       replacedSubscriptionId,
     });
@@ -3830,6 +3835,7 @@ async function handleCheckoutCompleted(
     db,
     session,
     "one_time_purchase",
+    paidAt,
   );
   if (oneTimePurchaseResult.handled) {
     return {
@@ -4799,6 +4805,161 @@ async function handleSubscriptionDeleted(
   ];
 }
 
+export interface StripeSubscriptionSnapshotReconciliation {
+  readonly orgIds: readonly string[];
+  readonly downgradedOrgIds: readonly string[];
+  readonly paidInvoiceId: string | null;
+}
+
+async function latestPaidInvoiceForSubscription(
+  subscription: StripeSubscription,
+  signal: AbortSignal,
+): Promise<StripeInvoice | null> {
+  const latestInvoice = subscription.latest_invoice;
+  if (
+    latestInvoice &&
+    typeof latestInvoice !== "string" &&
+    latestInvoice.status === "paid"
+  ) {
+    return latestInvoice;
+  }
+
+  const page = await getStripeClient().invoices.list({
+    subscription: subscription.id,
+    status: "paid",
+    limit: 1,
+  });
+  signal.throwIfAborted();
+  return page.data[0] ?? null;
+}
+
+function reconciliationPreviousAttributes(
+  subscription: StripeSubscription,
+): SubscriptionPreviousAttributes {
+  return {
+    // A current-state reconciliation has no event delta. Supplying a previous
+    // schedule marker lets the normal update path clear a pending change when
+    // Stripe no longer has a cancellation or attached schedule.
+    schedule: "billing-reconciliation",
+    ...(subscription.status === "trialing" &&
+    typeof subscription.trial_end === "number"
+      ? { trial_end: subscription.trial_end + 1 }
+      : {}),
+  };
+}
+
+async function paidPlanOrgIdForSubscription(
+  db: Db,
+  subscriptionId: string,
+): Promise<string | null> {
+  const [row] = await db
+    .select({ orgId: orgMetadata.orgId, tier: orgMetadata.tier })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.stripeSubscriptionId, subscriptionId))
+    .limit(1);
+  return row &&
+    (row.tier === "pro" || row.tier === "team" || row.tier === "custom")
+    ? row.orgId
+    : null;
+}
+
+/**
+ * Replays the idempotent Stripe webhook projections from a current
+ * subscription snapshot. The billing cron uses this when delivery of any
+ * subscription or paid-invoice webhook may have been missed.
+ */
+export async function reconcileStripeSubscriptionSnapshot(
+  db: Db,
+  getClerk: ClerkClientProvider,
+  subscription: StripeSubscription,
+  signal: AbortSignal,
+): Promise<StripeSubscriptionSnapshotReconciliation> {
+  const terminal =
+    subscription.status === "canceled" ||
+    subscription.status === "ended" ||
+    subscription.status === "incomplete_expired";
+  if (terminal) {
+    const downgradedOrgId = await paidPlanOrgIdForSubscription(
+      db,
+      subscription.id,
+    );
+    signal.throwIfAborted();
+    const orgIds = await handleSubscriptionDeleted(db, subscription);
+    signal.throwIfAborted();
+    return {
+      orgIds,
+      downgradedOrgIds: downgradedOrgId ? [downgradedOrgId] : [],
+      paidInvoiceId: null,
+    };
+  }
+
+  const orgIds = new Set<string>();
+  // A snapshot is current state, not a creation event. The strict usage-pack
+  // creation path intentionally rejects an invalid initial shape, but that is
+  // wrong for reconciliation: a valid Custom subscription can currently have
+  // no usage-pack items because their removal webhook was missed. Bind any
+  // unrecorded main plan first, then let the update projection deactivate or
+  // repair the usage-pack component from current Stripe truth.
+  for (const orgId of await handleSubscriptionCreatedLegacy(
+    db,
+    getClerk,
+    subscription,
+  )) {
+    orgIds.add(orgId);
+  }
+  signal.throwIfAborted();
+
+  for (const orgId of await handleSubscriptionUpdated(
+    db,
+    subscription,
+    reconciliationPreviousAttributes(subscription),
+  )) {
+    orgIds.add(orgId);
+  }
+  signal.throwIfAborted();
+
+  const paidInvoice = await latestPaidInvoiceForSubscription(
+    subscription,
+    signal,
+  );
+  const invoiceOrgId = paidInvoice
+    ? await handleInvoicePaid(db, getClerk, paidInvoice)
+    : null;
+  signal.throwIfAborted();
+  if (invoiceOrgId) {
+    orgIds.add(invoiceOrgId);
+  }
+
+  return {
+    orgIds: [...orgIds],
+    downgradedOrgIds: [],
+    paidInvoiceId: paidInvoice?.id ?? null,
+  };
+}
+
+/** Reconciles a locally referenced subscription that Stripe no longer has. */
+export async function reconcileMissingStripeSubscription(
+  db: Db,
+  subscriptionId: string,
+  signal: AbortSignal,
+): Promise<StripeSubscriptionSnapshotReconciliation> {
+  const downgradedOrgId = await paidPlanOrgIdForSubscription(
+    db,
+    subscriptionId,
+  );
+  signal.throwIfAborted();
+  const orgIds = await handleSubscriptionDeleted(db, {
+    id: subscriptionId,
+    metadata: {},
+  });
+  signal.throwIfAborted();
+  return {
+    orgIds,
+    downgradedOrgIds: downgradedOrgId ? [downgradedOrgId] : [],
+    paidInvoiceId: null,
+  };
+}
+
 async function publishBillingChanges(
   db: Db,
   orgIds: ReadonlySet<string>,
@@ -4815,6 +4976,44 @@ async function publishBillingChanges(
     signal.throwIfAborted();
   }
 }
+
+export const reconcilePaidStripeCheckoutSession$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly session: StripeCheckoutSession;
+      readonly paidAt: Date;
+    },
+    signal: AbortSignal,
+  ): Promise<readonly string[]> => {
+    if (!isCurrentStripePreviewMetadata(input.session.metadata)) {
+      return [];
+    }
+
+    const db = set(writeDb$);
+    const getClerk = (): ClerkClient => {
+      return get(clerk$);
+    };
+    const result = await handleCheckoutCompleted(
+      db,
+      getClerk,
+      input.session,
+      input.paidAt,
+    );
+    signal.throwIfAborted();
+
+    const orgIds = new Set(result.orgIds);
+    if (result.drainOrgId) {
+      orgIds.add(result.drainOrgId);
+    }
+    await publishBillingChanges(db, orgIds, signal);
+    if (result.drainOrgId) {
+      await set(drainOrgQueueToCapacity$, { orgId: result.drainOrgId }, signal);
+      signal.throwIfAborted();
+    }
+    return [...orgIds];
+  },
+);
 
 export const reconcilePaidStripeInvoice$ = command(
   async (

@@ -367,9 +367,9 @@ function PinAgentDialogContainer() {
       open
       onOpenChange={onOpenChange}
       subagents={subagents}
-      onPinAgent={(agentId) => {
+      onSetAgentPinned={(agentId, pinned) => {
         detach(
-          saveAgentPinned({ agentId, pinned: true }, pageSignal),
+          saveAgentPinned({ agentId, pinned }, pageSignal),
           Reason.DomCallback,
         );
       }}

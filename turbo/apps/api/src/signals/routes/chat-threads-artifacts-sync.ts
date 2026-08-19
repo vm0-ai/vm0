@@ -3,6 +3,7 @@ import { chatThreadArtifactsContract } from "@okouai/api-contracts/contracts/cha
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
+import { publicBrand$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { isBadRequestResponse, isNotFoundResponse } from "../../lib/error";
 import { syncArtifactToGoogleDrive$ } from "../services/google-drive-artifact-sync.service";
@@ -28,6 +29,8 @@ const syncInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       threadId: params.threadId,
       runId: bodyResult.data.runId,
       fileId: bodyResult.data.fileId,
+      publicBrand:
+        auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$),
     },
     signal,
   );
@@ -46,7 +49,12 @@ export const chatThreadsArtifactsSyncRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadArtifactsContract.syncGoogleDrive,
     handler: authRoute(
-      { requireOrganization: true, missingOrganizationStatus: 401 },
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "file:write",
+        accept: ["session", "pat", "zero"],
+      },
       syncInner$,
     ),
   },

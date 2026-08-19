@@ -1,4 +1,4 @@
-import type { ChatRunFinishedRunStatus } from "@okouai/api-contracts/contracts/zero-workflows";
+import type { ChatRunFinishedRunStatus } from "@okouai/api-contracts/contracts/workflows";
 
 export interface ChatRunFinishedEvent {
   readonly chatThreadId: string;

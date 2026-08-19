@@ -6,14 +6,14 @@
 //! endpoint with the TS-compatible payload shape.
 //!
 
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use std::time::Duration;
 
 use super::{
-    AxiomLayer, CHANNEL_CAP, INTERNAL_TARGET, init_from_env_values, init_with_base_url,
-    with_ingest_filter,
+    AxiomLayer, CHANNEL_CAP, DEBUG_FIELD_MAX_BYTES, INTERNAL_TARGET, init_from_env_values,
+    init_with_base_url, with_ingest_filter,
 };
 use httpmock::Method::POST;
 use httpmock::MockServer;
@@ -33,6 +33,15 @@ struct RecordedEvent {
 #[derive(Clone, Default)]
 struct RecordingLayer {
     events: Arc<Mutex<Vec<RecordedEvent>>>,
+}
+
+struct FormattingProbe<'a>(&'a AtomicUsize);
+
+impl std::fmt::Debug for FormattingProbe<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fetch_add(1, Ordering::Relaxed);
+        formatter.write_str("formatted")
+    }
 }
 
 impl RecordingLayer {
@@ -452,6 +461,27 @@ fn burst_past_channel_cap_drops_without_blocking() {
     );
 }
 
+#[test]
+fn rejected_events_are_not_serialized() {
+    let (tx, receiver) = tokio::sync::mpsc::channel(1);
+    assert!(tx.try_send(super::Msg::Event(json!({}))).is_ok());
+
+    let layer = AxiomLayer {
+        tx,
+        dropped: AtomicU64::new(0),
+    };
+    let subscriber = tracing_subscriber::registry().with(with_ingest_filter(layer));
+    let formatting_count = AtomicUsize::new(0);
+
+    let _sub = tracing::subscriber::set_default(subscriber);
+    tracing::warn!(probe = ?FormattingProbe(&formatting_count), "full channel");
+    assert_eq!(formatting_count.load(Ordering::Relaxed), 0);
+
+    drop(receiver);
+    tracing::warn!(probe = ?FormattingProbe(&formatting_count), "closed channel");
+    assert_eq!(formatting_count.load(Ordering::Relaxed), 0);
+}
+
 #[tokio::test]
 async fn non_success_ingest_response_does_not_hang_shutdown_or_panic() {
     const TEST_SHUTDOWN_DEADLINE: Duration = Duration::from_secs(5);
@@ -507,6 +537,53 @@ async fn non_success_ingest_response_does_not_hang_shutdown_or_panic() {
 }
 
 // -- Debug field truncation (DEBUG_FIELD_MAX_BYTES = 4 KiB) ------------------
+
+#[tokio::test]
+async fn debug_field_formatting_stops_after_reaching_limit() {
+    const CHUNK_BYTES: usize = 8;
+    const TOTAL_CHUNKS: usize = 10_000;
+
+    struct IncrementalDebug<'a>(&'a AtomicUsize);
+
+    impl std::fmt::Debug for IncrementalDebug<'_> {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            for _ in 0..TOTAL_CHUNKS {
+                self.0.fetch_add(1, Ordering::Relaxed);
+                formatter.write_str("12345678")?;
+            }
+            Ok(())
+        }
+    }
+
+    let server = MockServer::start_async().await;
+    let (ingest, captured) = capture_axiom_ingest(&server).await;
+    let formatted_chunks = AtomicUsize::new(0);
+
+    let (layer, guard) =
+        init_with_base_url(&server.base_url(), "t", "test").expect("init must succeed");
+    let subscriber = tracing_subscriber::registry().with(with_ingest_filter(layer));
+    {
+        let _sub = tracing::subscriber::set_default(subscriber);
+        tracing::warn!(
+            value = ?IncrementalDebug(&formatted_chunks),
+            "bounded-formatting",
+        );
+    }
+    guard.shutdown().await;
+
+    ingest.assert_calls_async(1).await;
+    let events = captured.events();
+    let event = event_with_message(&events, "bounded-formatting");
+    assert!(
+        string_field(event, "value").contains("…[truncated]"),
+        "oversized incrementally formatted field should include the truncation marker: {event:#?}",
+    );
+    assert_eq!(
+        formatted_chunks.load(Ordering::Relaxed),
+        DEBUG_FIELD_MAX_BYTES / CHUNK_BYTES + 1,
+        "formatting should stop on the first chunk beyond the byte limit instead of visiting all {TOTAL_CHUNKS} chunks",
+    );
+}
 
 #[tokio::test]
 async fn debug_field_over_limit_is_truncated_with_marker() {

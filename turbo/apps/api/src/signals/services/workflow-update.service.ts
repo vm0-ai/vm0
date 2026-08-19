@@ -1,6 +1,6 @@
 import { getCustomSkillStorageName } from "@okouai/core/storage-names";
 import { synthesizeWorkflowSkillMd } from "@okouai/core/skill-document";
-import type { ZeroWorkflowUpdateRequest } from "@okouai/api-contracts/contracts/zero-workflows";
+import type { WorkflowUpdateRequest } from "@okouai/api-contracts/contracts/workflows";
 import { workflows } from "@okouai/db/schema/workflow";
 import { command } from "ccstate";
 import { eq } from "drizzle-orm";
@@ -16,7 +16,7 @@ import type { WorkflowRow } from "./workflow-data.service";
 
 interface UpdateWorkflowInput {
   readonly workflow: WorkflowRow;
-  readonly body: ZeroWorkflowUpdateRequest;
+  readonly body: WorkflowUpdateRequest;
   readonly updatedByUserId: string;
 }
 

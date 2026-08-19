@@ -11,8 +11,8 @@ import {
 import { goalsContract } from "@okouai/api-contracts/contracts/goals";
 import type {
   ChatThreadWorkflowAutomation,
-  ZeroWorkflowAutomationUpdateRequest,
-} from "@okouai/api-contracts/contracts/zero-workflows";
+  WorkflowAutomationUpdateRequest,
+} from "@okouai/api-contracts/contracts/workflows";
 import {
   createMockWorkflowAutomation,
   setMockWorkflowAutomations,
@@ -517,7 +517,7 @@ describe("chat lifecycle", () => {
   it("updates a schedule workflow automation from the sidebar", async () => {
     const updateBodies: {
       readonly automationId: string;
-      readonly body: ZeroWorkflowAutomationUpdateRequest;
+      readonly body: WorkflowAutomationUpdateRequest;
     }[] = [];
     const sidebar = await openAutomationSidebarWithWorkflowAutomation(
       createMockWorkflowAutomation({
@@ -556,7 +556,7 @@ describe("chat lifecycle", () => {
   it("updates a Gmail workflow automation match from the sidebar", async () => {
     const updateBodies: {
       readonly automationId: string;
-      readonly body: ZeroWorkflowAutomationUpdateRequest;
+      readonly body: WorkflowAutomationUpdateRequest;
     }[] = [];
     const sidebar = await openAutomationSidebarWithWorkflowAutomation(
       createMockWorkflowAutomation({
@@ -630,7 +630,7 @@ describe("chat lifecycle", () => {
   it("updates a Gmail label workflow automation from the sidebar", async () => {
     const updateBodies: {
       readonly automationId: string;
-      readonly body: ZeroWorkflowAutomationUpdateRequest;
+      readonly body: WorkflowAutomationUpdateRequest;
     }[] = [];
     const sidebar = await openAutomationSidebarWithWorkflowAutomation(
       createMockWorkflowAutomation({

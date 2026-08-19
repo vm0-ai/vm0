@@ -271,6 +271,37 @@ function AgentCommandAgentContent({
   );
 }
 
+/**
+ * Trailing pin toggle for a pin-dialog row. It stays hidden until cmdk selects
+ * the row — hovering or arrowing onto it — so a resting row never shows the
+ * pin glyph the rest of the app uses to mean "already pinned".
+ */
+function AgentCommandPinToggle({
+  label,
+  icon,
+  onToggle,
+}: {
+  readonly label: string;
+  readonly icon: ReactNode;
+  readonly onToggle: () => void;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="quiet"
+      size="xs"
+      className="ml-auto shrink-0 gap-1.5 opacity-0 transition-opacity duration-150 group-data-[selected=true]:opacity-100 focus-visible:opacity-100"
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+    >
+      {icon}
+      {label}
+    </Button>
+  );
+}
+
 /** Keep a dialog's pinned section in the same order as the sidebar. */
 function agentsInRenderOrder(
   subagents: readonly SubagentInfo[],
@@ -1629,12 +1660,12 @@ export function PinAgentDialog({
   open,
   onOpenChange,
   subagents,
-  onPinAgent,
+  onSetAgentPinned,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   subagents: SubagentInfo[];
-  onPinAgent: (agentId: string) => void;
+  onSetAgentPinned: (agentId: string, pinned: boolean) => void;
 }) {
   const { t } = useTranslation("agents");
   const query = useGet(pinAgentDialogQuery$);
@@ -1660,10 +1691,16 @@ export function PinAgentDialog({
     return matchedIds.has(agent.id);
   });
 
-  const pinAgent = (agentId: string) => {
+  const setAgentPinned = (agentId: string, pinned: boolean) => {
     onOpenChange(false);
-    onPinAgent(agentId);
+    onSetAgentPinned(agentId, pinned);
   };
+  const pinLabel = t(($) => {
+    return $.sidebar.addPin;
+  });
+  const unpinLabel = t(($) => {
+    return $.sidebar.unpin;
+  });
 
   return (
     <CommandDialog
@@ -1721,12 +1758,18 @@ export function PinAgentDialog({
                   key={agent.id}
                   value={agent.id}
                   onSelect={() => {
-                    return pinAgent(agent.id);
+                    return setAgentPinned(agent.id, true);
                   }}
                   className="group w-full gap-2 px-1 py-2"
                 >
                   <AgentCommandAgentContent agent={agent} />
-                  <Pin size={16} className="ml-auto shrink-0 opacity-50" />
+                  <AgentCommandPinToggle
+                    label={pinLabel}
+                    icon={<Pin size={16} />}
+                    onToggle={() => {
+                      return setAgentPinned(agent.id, true);
+                    }}
+                  />
                 </CommandItem>
               );
             })}
@@ -1744,15 +1787,19 @@ export function PinAgentDialog({
                 <CommandItem
                   key={agent.id}
                   value={agent.id}
-                  disabled
-                  className="w-full gap-2 px-1 py-2 opacity-60"
+                  onSelect={() => {
+                    return setAgentPinned(agent.id, false);
+                  }}
+                  className="group w-full gap-2 px-1 py-2"
                 >
                   <AgentCommandAgentContent agent={agent} />
-                  <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-                    {t(($) => {
-                      return $.sidebar.pinned;
-                    })}
-                  </span>
+                  <AgentCommandPinToggle
+                    label={unpinLabel}
+                    icon={<PinOff size={16} />}
+                    onToggle={() => {
+                      return setAgentPinned(agent.id, false);
+                    }}
+                  />
                 </CommandItem>
               );
             })}

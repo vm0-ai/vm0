@@ -516,7 +516,40 @@ pub struct ClaimedJob {
     context: ExecutionContext,
     completion_auth: CompletionAuth,
     active_input_source: Option<ActiveInputSource>,
-    api_claim_request_elapsed: Option<Duration>,
+    api_claim_timing: Option<ApiClaimTiming>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct ApiClaimTiming {
+    request_elapsed: Duration,
+    response_body_read_elapsed: Duration,
+    response_decode_elapsed: Duration,
+}
+
+impl ApiClaimTiming {
+    pub(crate) const fn new(
+        request_elapsed: Duration,
+        response_body_read_elapsed: Duration,
+        response_decode_elapsed: Duration,
+    ) -> Self {
+        Self {
+            request_elapsed,
+            response_body_read_elapsed,
+            response_decode_elapsed,
+        }
+    }
+
+    pub(crate) const fn request_elapsed(self) -> Duration {
+        self.request_elapsed
+    }
+
+    pub(crate) const fn response_body_read_elapsed(self) -> Duration {
+        self.response_body_read_elapsed
+    }
+
+    pub(crate) const fn response_decode_elapsed(self) -> Duration {
+        self.response_decode_elapsed
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -543,22 +576,22 @@ impl ClaimedJob {
     pub(crate) fn api(
         expected_run_id: RunId,
         context: ExecutionContext,
-        api_claim_request_elapsed: Duration,
+        api_claim_timing: ApiClaimTiming,
     ) -> Result<Self, ClaimedJobRunIdMismatch> {
-        Self::api_with_optional_source(expected_run_id, context, None, api_claim_request_elapsed)
+        Self::api_with_optional_source(expected_run_id, context, None, api_claim_timing)
     }
 
     pub(crate) fn api_with_active_input_source(
         expected_run_id: RunId,
         context: ExecutionContext,
         active_input_source: ActiveInputSource,
-        api_claim_request_elapsed: Duration,
+        api_claim_timing: ApiClaimTiming,
     ) -> Result<Self, ClaimedJobRunIdMismatch> {
         Self::api_with_optional_source(
             expected_run_id,
             context,
             Some(active_input_source),
-            api_claim_request_elapsed,
+            api_claim_timing,
         )
     }
 
@@ -566,7 +599,7 @@ impl ClaimedJob {
         expected_run_id: RunId,
         context: ExecutionContext,
         active_input_source: Option<ActiveInputSource>,
-        api_claim_request_elapsed: Duration,
+        api_claim_timing: ApiClaimTiming,
     ) -> Result<Self, ClaimedJobRunIdMismatch> {
         Self::validate_run_id(expected_run_id, &context)?;
         let completion_auth =
@@ -575,7 +608,7 @@ impl ClaimedJob {
             context,
             completion_auth,
             active_input_source,
-            api_claim_request_elapsed: Some(api_claim_request_elapsed),
+            api_claim_timing: Some(api_claim_timing),
         })
     }
 
@@ -597,7 +630,7 @@ impl ClaimedJob {
             context,
             completion_auth: CompletionAuth::local(),
             active_input_source,
-            api_claim_request_elapsed: None,
+            api_claim_timing: None,
         })
     }
 
@@ -611,8 +644,8 @@ impl ClaimedJob {
         &self.context
     }
 
-    pub(crate) fn api_claim_request_elapsed(&self) -> Option<Duration> {
-        self.api_claim_request_elapsed
+    pub(crate) fn api_claim_timing(&self) -> Option<ApiClaimTiming> {
+        self.api_claim_timing
     }
 
     #[cfg(test)]
@@ -785,6 +818,14 @@ mod tests {
         ctx
     }
 
+    fn api_claim_timing() -> ApiClaimTiming {
+        ApiClaimTiming::new(
+            Duration::from_millis(10),
+            Duration::from_millis(2),
+            Duration::from_millis(3),
+        )
+    }
+
     #[test]
     fn claimed_job_rejects_mismatched_api_context() {
         let expected_run_id = RunId::nil();
@@ -793,7 +834,7 @@ mod tests {
         let Err(err) = ClaimedJob::api(
             expected_run_id,
             minimal_context(context_run_id),
-            Duration::from_millis(1),
+            api_claim_timing(),
         ) else {
             panic!("mismatched context must be rejected");
         };
@@ -811,12 +852,23 @@ mod tests {
     fn claimed_job_accepts_matching_api_context() {
         let run_id = RunId::nil();
 
-        let claimed = ClaimedJob::api(run_id, minimal_context(run_id), Duration::from_millis(1))
+        let claimed = ClaimedJob::api(run_id, minimal_context(run_id), api_claim_timing())
             .expect("matching context is valid");
+        assert_eq!(claimed.api_claim_timing(), Some(api_claim_timing()));
         let (context, completion_auth, active_input_source) = claimed.into_parts();
 
         assert_eq!(context.run_id, run_id);
         assert!(active_input_source.is_none());
         assert!(completion_auth.matches_sandbox_token_for_test(run_id, "sandbox-token"));
+    }
+
+    #[test]
+    fn claimed_job_local_context_has_no_api_claim_timing() {
+        let run_id = RunId::nil();
+
+        let claimed = ClaimedJob::local(run_id, minimal_context(run_id))
+            .expect("matching local context is valid");
+
+        assert!(claimed.api_claim_timing().is_none());
     }
 }
