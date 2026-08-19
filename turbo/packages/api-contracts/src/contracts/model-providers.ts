@@ -508,7 +508,7 @@ export const MODEL_PROVIDER_TYPES = {
   },
   // Codex-framework twin of openrouter-api-key. Same upstream gateway (OpenRouter)
   // and same API key (shared secretName), but routes through OpenRouter's
-  // OpenAI-compatible endpoint surface for GPT models that codex CLI requires.
+  // OpenAI-compatible endpoint surface for models that use the Codex framework.
   // Pairing rule: the claude-code entry serves Anthropic Messages API
   // (/v1/messages); this codex entry serves OpenAI Chat Completions / Responses
   // (/v1/chat/completions, /v1/responses) under the same /api/v1 prefix.
