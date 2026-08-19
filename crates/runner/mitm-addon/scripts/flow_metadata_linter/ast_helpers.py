@@ -453,14 +453,15 @@ def _static_truth_value(node: ast.AST) -> bool | None:
     return None
 
 
-def _iteration_may_raise(node: ast.AST) -> bool:
-    """Return whether obtaining or advancing this iterable may invoke user code."""
+def _iteration_may_raise(node: ast.AST, *, advances: bool) -> bool:
+    """Return whether obtaining and optionally advancing this iterable may invoke user code."""
+    if isinstance(node, ast.GeneratorExp):
+        return advances
     if isinstance(
         node,
         (
             ast.Dict,
             ast.DictComp,
-            ast.GeneratorExp,
             ast.JoinedStr,
             ast.List,
             ast.ListComp,

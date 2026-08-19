@@ -623,3 +623,20 @@ def function_decorator_application_before_return_is_suppressible(flow, manager):
 
         return
     return metadata["firewall_base"]
+
+
+def nested_generator_construction_stays_deferred(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        values = (item for item in (operation() for _item in (None,)))
+        metadata = {}
+    return metadata["vm_run_id"]
+
+
+def later_generator_advance_preserves_body_alias(flow, manager):
+    metadata = {}
+    with manager:
+        for _item in (1 / divisor for divisor in (1, 0)):
+            metadata = flow.metadata
+        metadata = {}
+    return metadata["vm_run_id"]
