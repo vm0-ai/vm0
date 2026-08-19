@@ -78,7 +78,7 @@ import { integrationsTelegramMessageRoutes } from "../../integrations-telegram-m
 import { integrationsTelegramUploadCompleteRoutes } from "../../integrations-telegram-upload-complete";
 import { integrationsTelegramUploadInitRoutes } from "../../integrations-telegram-upload-init";
 import { modelPoliciesRoutes } from "../../model-policies";
-import { zeroModelProvidersRoutes } from "../../zero-model-providers";
+import { modelProvidersRoutes } from "../../model-providers";
 import { slackChannelsRoutes } from "../../slack-channels";
 import { slackCommandsRoutes } from "../../slack-commands";
 import { slackConnectRoutes } from "../../slack-connect";
@@ -108,7 +108,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...integrationsTelegramUploadInitRoutes,
   ...integrationsTelegramRoutes,
   ...modelPoliciesRoutes,
-  ...zeroModelProvidersRoutes,
+  ...modelProvidersRoutes,
   ...slackChannelsRoutes,
   ...slackCommandsRoutes,
   ...slackConnectRoutes,
@@ -1241,7 +1241,7 @@ export function createBddIntegrationApi(context: TestContext) {
     },
 
     async configureSlackRunModelPolicies(actor: ApiTestUser): Promise<void> {
-      const providers = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      const providers = setupApp({ context, routes: modelProvidersRoutes })(
         modelProvidersMainContract,
       );
       const anthropic = await accept(

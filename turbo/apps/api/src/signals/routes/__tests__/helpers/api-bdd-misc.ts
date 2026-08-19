@@ -43,7 +43,7 @@ import { meModelProvidersListRoutes } from "../../me-model-providers-list";
 import { meModelProvidersResetSubscriptionRoutes } from "../../me-model-providers-reset-subscription";
 import { meModelProvidersUpsertRoutes } from "../../me-model-providers-upsert";
 import { modelPoliciesRoutes } from "../../model-policies";
-import { zeroModelProvidersRoutes } from "../../zero-model-providers";
+import { modelProvidersRoutes } from "../../model-providers";
 import { orgLogoRoutes } from "../../org-logo";
 import { pushSubscriptionsRoutes } from "../../push-subscriptions";
 import { userPreferencesRoutes } from "../../user-preferences";
@@ -441,7 +441,7 @@ export function createMiscRoutesApi(context: TestContext) {
 
     async listModelProviders(actor: ApiTestUser) {
       return await accept(
-        setupApp({ context, routes: zeroModelProvidersRoutes })(
+        setupApp({ context, routes: modelProvidersRoutes })(
           modelProvidersMainContract,
         ).list({
           headers: authenticate(context, actor),
@@ -455,7 +455,7 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (200 | 201 | 400 | 401 | 403 | 404 | 500)[],
     ) {
       return await accept(
-        setupApp({ context, routes: zeroModelProvidersRoutes })(
+        setupApp({ context, routes: modelProvidersRoutes })(
           modelProvidersMainContract,
         ).upsert({
           headers: authenticate(context, actor),
@@ -471,7 +471,7 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (200 | 201 | 400 | 401 | 403 | 404 | 500)[],
     ) {
       return await accept(
-        setupApp({ context, routes: zeroModelProvidersRoutes })(
+        setupApp({ context, routes: modelProvidersRoutes })(
           modelProvidersMainContract,
         ).upsert({
           headers: authenticate(context, actor),
@@ -486,7 +486,7 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (204 | 401 | 403 | 404 | 500)[],
     ) {
       return await accept(
-        setupApp({ context, routes: zeroModelProvidersRoutes })(
+        setupApp({ context, routes: modelProvidersRoutes })(
           modelProvidersByTypeContract,
         ).delete({
           headers: authenticate(context, actor),
@@ -502,7 +502,7 @@ export function createMiscRoutesApi(context: TestContext) {
       statuses: readonly (204 | 401 | 403 | 404 | 500)[],
     ) {
       return await accept(
-        setupApp({ context, routes: zeroModelProvidersRoutes })(
+        setupApp({ context, routes: modelProvidersRoutes })(
           modelProvidersByTypeContract,
         ).delete({
           headers: authenticate(context, actor),
