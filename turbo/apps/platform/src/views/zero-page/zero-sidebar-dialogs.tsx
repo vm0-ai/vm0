@@ -271,37 +271,6 @@ function AgentCommandAgentContent({
   );
 }
 
-/**
- * Trailing pin toggle for a pin-dialog row. The row itself carries the same
- * action, so the button only has to make that action look like one.
- */
-function AgentCommandPinToggle({
-  label,
-  icon,
-  onToggle,
-}: {
-  readonly label: string;
-  readonly icon: ReactNode;
-  readonly onToggle: () => void;
-}) {
-  return (
-    <Button
-      type="button"
-      variant="quiet"
-      size="icon-sm"
-      aria-label={label}
-      title={label}
-      className="ml-auto shrink-0"
-      onClick={(e) => {
-        e.stopPropagation();
-        onToggle();
-      }}
-    >
-      {icon}
-    </Button>
-  );
-}
-
 /** Keep a dialog's pinned section in the same order as the sidebar. */
 function agentsInRenderOrder(
   subagents: readonly SubagentInfo[],
@@ -1763,13 +1732,18 @@ export function PinAgentDialog({
                   className="group w-full gap-2 px-1 py-2"
                 >
                   <AgentCommandAgentContent agent={agent} />
-                  <AgentCommandPinToggle
-                    label={pinLabel}
-                    icon={<Pin size={16} />}
-                    onToggle={() => {
-                      return setAgentPinned(agent.id, true);
-                    }}
-                  />
+                  <AgentCommandSideActions>
+                    <AgentRowSideActions
+                      hasUnread={false}
+                      action={{
+                        label: pinLabel,
+                        icon: <Pin size={16} />,
+                        onSelect: () => {
+                          return setAgentPinned(agent.id, true);
+                        },
+                      }}
+                    />
+                  </AgentCommandSideActions>
                 </CommandItem>
               );
             })}
@@ -1793,13 +1767,18 @@ export function PinAgentDialog({
                   className="group w-full gap-2 px-1 py-2"
                 >
                   <AgentCommandAgentContent agent={agent} />
-                  <AgentCommandPinToggle
-                    label={unpinLabel}
-                    icon={<PinOff size={16} />}
-                    onToggle={() => {
-                      return setAgentPinned(agent.id, false);
-                    }}
-                  />
+                  <AgentCommandSideActions>
+                    <AgentRowSideActions
+                      hasUnread={false}
+                      action={{
+                        label: unpinLabel,
+                        icon: <PinOff size={16} />,
+                        onSelect: () => {
+                          return setAgentPinned(agent.id, false);
+                        },
+                      }}
+                    />
+                  </AgentCommandSideActions>
                 </CommandItem>
               );
             })}

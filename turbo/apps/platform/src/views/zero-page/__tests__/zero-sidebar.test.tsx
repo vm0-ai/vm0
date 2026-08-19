@@ -3774,8 +3774,8 @@ describe("zero sidebar", () => {
     click(screen.getByLabelText("Pin an agent"));
 
     const dialogList = await screen.findByTestId("pin-agent-dialog-list");
-    const pinnedRow = commandItemByText(dialogList, "Support Agent");
-    click(within(pinnedRow).getByLabelText("Unpin"));
+    openAgentRowMenu(dialogList, "Support Agent");
+    click(menuItemByText("Unpin"));
 
     await waitFor(() => {
       expect(pinnedAgentNames(grid)).toStrictEqual(["Zero", "Research Agent"]);
@@ -3783,7 +3783,7 @@ describe("zero sidebar", () => {
     expect(screen.queryByTestId("pin-agent-dialog-list")).toBeNull();
   });
 
-  it("pins an agent with the pin dialog row button", async () => {
+  it("pins an agent from the pin dialog row menu", async () => {
     prepareAgentTeam();
     context.mocks.data.userPreferences({ pinnedAgentIds: [] });
 
@@ -3803,8 +3803,8 @@ describe("zero sidebar", () => {
     click(screen.getByLabelText("Pin an agent"));
 
     const dialogList = await screen.findByTestId("pin-agent-dialog-list");
-    const unpinnedRow = commandItemByText(dialogList, "Support Agent");
-    click(within(unpinnedRow).getByLabelText("Pin to sidebar"));
+    openAgentRowMenu(dialogList, "Support Agent");
+    click(menuItemByText("Pin to sidebar"));
 
     await waitFor(() => {
       expect(pinnedAgentNames(grid)).toStrictEqual(["Zero", "Support Agent"]);
