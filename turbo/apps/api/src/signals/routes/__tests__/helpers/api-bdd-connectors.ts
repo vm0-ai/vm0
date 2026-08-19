@@ -474,29 +474,63 @@ interface GoogleDriveConnectorOAuthOptions {
    * connector has no refresh path (Drive 401s then resolve to "unknown").
    */
   readonly omitRefreshToken?: boolean;
+  readonly refreshOutcome?:
+    | { readonly type: "ok"; readonly accessToken: string }
+    | { readonly type: "server-error" }
+    | {
+        readonly type: "invalid-grant";
+        readonly errorSubtype?: string;
+      };
+}
+
+interface GoogleDriveConnectorOAuthRecorder {
+  readonly refreshBodies: URLSearchParams[];
 }
 
 /**
  * Google Drive connector OAuth provider boundary: env client credentials,
- * the oauth2 token endpoint (authorization_code exchanges succeed; refresh
- * grants fail with invalid_grant so refresh outcomes stay deterministic),
- * and the Google userinfo endpoint.
+ * the oauth2 token endpoint with configurable refresh outcomes, and the
+ * Google userinfo endpoint.
  */
 export function mockGoogleDriveConnectorOAuth(
   options: GoogleDriveConnectorOAuthOptions = {},
-): void {
+): GoogleDriveConnectorOAuthRecorder {
   mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_ID", "google-client-id");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-client-secret");
+  const recorded: GoogleDriveConnectorOAuthRecorder = { refreshBodies: [] };
 
   server.use(
     http.post(GOOGLE_OAUTH_TOKEN_URL, async ({ request }) => {
       const body = new URLSearchParams(await request.text());
       if (body.get("grant_type") !== "authorization_code") {
+        recorded.refreshBodies.push(body);
+        const outcome = options.refreshOutcome ?? {
+          type: "invalid-grant",
+        };
+        if (outcome.type === "ok") {
+          return HttpResponse.json({
+            access_token: outcome.accessToken,
+            expires_in: 3600,
+            token_type: "Bearer",
+          });
+        }
+        if (outcome.type === "server-error") {
+          return HttpResponse.json(
+            {
+              error: "server_error",
+              error_description: "Temporary Google OAuth failure",
+            },
+            { status: 503 },
+          );
+        }
         return HttpResponse.json(
           {
             error: "invalid_grant",
             error_description: "Refresh is not granted by this fixture",
+            ...(outcome.errorSubtype === undefined
+              ? {}
+              : { error_subtype: outcome.errorSubtype }),
           },
           { status: 400 },
         );
@@ -521,6 +555,7 @@ export function mockGoogleDriveConnectorOAuth(
       });
     }),
   );
+  return recorded;
 }
 
 interface GmailConnectorOAuthOptions {
@@ -617,6 +652,7 @@ type GoogleDriveFilesListResponse =
   | { readonly status: 401 | 500 };
 
 interface GoogleDriveFilesListRecorder {
+  readonly authorizationHeaders: (string | null)[];
   readonly queries: string[];
 }
 
@@ -627,14 +663,18 @@ interface GoogleDriveFilesListRecorder {
  * under an AbortSignal.timeout(2000).
  */
 export function mockGoogleDriveFilesList(
-  respond: () => GoogleDriveFilesListResponse,
+  respond: (request: Request) => GoogleDriveFilesListResponse,
 ): GoogleDriveFilesListRecorder {
-  const recorded: GoogleDriveFilesListRecorder = { queries: [] };
+  const recorded: GoogleDriveFilesListRecorder = {
+    authorizationHeaders: [],
+    queries: [],
+  };
 
   server.use(
     http.get(GOOGLE_DRIVE_FILES_URL, ({ request }) => {
+      recorded.authorizationHeaders.push(request.headers.get("authorization"));
       recorded.queries.push(new URL(request.url).searchParams.get("q") ?? "");
-      const response = respond();
+      const response = respond(request);
       if (response.status !== 200) {
         return new HttpResponse(null, { status: response.status });
       }

@@ -267,33 +267,37 @@ const listChatThreadUnreadsInner$ = computed(async (get) => {
   return { status: 200 as const, body: { unreads: [...unreads] } };
 });
 
-const listChatThreadArtifactsInner$ = computed(async (get) => {
-  const auth = get(authContext$);
-  const params = get(pathParamsOf(chatThreadArtifactsContract.list));
-  const [runs, lookup] = await Promise.all([
-    get(
-      chatThreadArtifacts({
-        threadId: params.threadId,
-        userId: auth.userId,
-      }),
-    ),
-    get(
-      googleDriveArtifactStatusLookup({
-        threadId: params.threadId,
-        orgId: auth.orgId,
-        userId: auth.userId,
-      }),
-    ),
-  ]);
-  if (!runs) {
-    return chatThreadNotFound();
-  }
+const listChatThreadArtifactsInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(authContext$);
+    const params = get(pathParamsOf(chatThreadArtifactsContract.list));
+    const [runs, lookup] = await Promise.all([
+      get(
+        chatThreadArtifacts({
+          threadId: params.threadId,
+          userId: auth.userId,
+        }),
+      ),
+      set(
+        googleDriveArtifactStatusLookup({
+          threadId: params.threadId,
+          orgId: auth.orgId,
+          userId: auth.userId,
+        }),
+        signal,
+      ),
+    ]);
+    signal.throwIfAborted();
+    if (!runs) {
+      return chatThreadNotFound();
+    }
 
-  return {
-    status: 200 as const,
-    body: { runs: applyGoogleDriveArtifactSyncStatuses(runs, lookup) },
-  };
-});
+    return {
+      status: 200 as const,
+      body: { runs: applyGoogleDriveArtifactSyncStatuses(runs, lookup) },
+    };
+  },
+);
 
 const searchChatInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
