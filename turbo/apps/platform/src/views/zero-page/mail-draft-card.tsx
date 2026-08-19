@@ -3,7 +3,7 @@ import type {
   MailDraft,
   MailDraftStatus,
 } from "@okouai/api-contracts/contracts/mail";
-import type { PublicConnectorCatalogIcon } from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import type { PublicConnectorCatalogIcon } from "@okouai/api-contracts/contracts/connector-catalog";
 import { cn } from "@okouai/ui";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";

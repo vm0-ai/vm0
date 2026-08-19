@@ -9,12 +9,12 @@ import {
   zeroConnectorsMainContract,
 } from "@okouai/api-contracts/contracts/zero-connectors";
 import {
-  zeroConnectorCatalogContract,
+  connectorCatalogContract,
   type PublicConnectorCatalogListResponse,
   type PublicConnectorCatalogPermissionDetail,
   type PublicConnectorCatalogStatusItem,
   type PublicConnectorCatalogStatusResponse,
-} from "@okouai/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/connector-catalog";
 import {
   connectorCheckContract,
   type ConnectorCheckDiagnosticResult,
@@ -68,7 +68,7 @@ export async function listConnectors(): Promise<ZeroConnectorListResponse> {
 
 export async function listConnectorCatalog(): Promise<ZeroConnectorCatalogListResponse> {
   const config = await getClientConfig();
-  const client = initClient(zeroConnectorCatalogContract, config);
+  const client = initClient(connectorCatalogContract, config);
 
   const result = await client.list({ headers: {} });
 
@@ -81,7 +81,7 @@ export async function listConnectorCatalog(): Promise<ZeroConnectorCatalogListRe
 
 export async function listConnectorCatalogStatus(): Promise<ZeroConnectorCatalogStatusResponse> {
   const config = await getClientConfig();
-  const client = initClient(zeroConnectorCatalogContract, config);
+  const client = initClient(connectorCatalogContract, config);
 
   const result = await client.status({ headers: {} });
 
@@ -96,7 +96,7 @@ export async function getConnectorCatalogPermissions(
   connectorSlug: string,
 ): Promise<ConnectorCatalogPermissionDetail | null> {
   const config = await getClientConfig();
-  const client = initClient(zeroConnectorCatalogContract, config);
+  const client = initClient(connectorCatalogContract, config);
 
   const result = await client.permissions({
     params: { connectorSlug },

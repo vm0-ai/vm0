@@ -5,7 +5,7 @@ import type {
   PublicConnectorCatalogPermissionDetail,
   PublicConnectorCatalogStatusItem,
   PublicConnectorCatalogStatusResponse,
-} from "@okouai/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/connector-catalog";
 
 import type { ReadonlyDb } from "../external/db";
 import type { ConnectorFeatureStates } from "./connector-catalog-feature-states";

@@ -6,7 +6,7 @@ import type {
   PublicConnectorCatalogManualField,
   PublicConnectorCatalogPermissionDetail,
   PublicConnectorCatalogStatusItem,
-} from "@okouai/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/connector-catalog";
 
 function permissionSummary(): PublicConnectorCatalogStatusItem["permissionSummary"] {
   return {

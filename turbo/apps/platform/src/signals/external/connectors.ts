@@ -4,9 +4,9 @@ import {
   zeroConnectorsBySlugContract,
 } from "@okouai/api-contracts/contracts/zero-connectors";
 import {
-  zeroConnectorCatalogContract,
+  connectorCatalogContract,
   type PublicConnectorCatalogStatusResponse,
-} from "@okouai/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/connector-catalog";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { zeroClient$ } from "../api-client";
@@ -45,7 +45,7 @@ export const connectorCatalogStatus$ = computed(async (get) => {
   get(featureSwitch$);
 
   const createClient = get(zeroClient$);
-  const client = createClient(zeroConnectorCatalogContract);
+  const client = createClient(connectorCatalogContract);
   const result = await accept(client.status(), [200]);
   return result.body;
 });
@@ -71,7 +71,7 @@ export function relatedConnectorCatalog(
     get(connectorsReloadVersion$);
     const keyword = get(keyword$).trim();
     const createClient = get(zeroClient$);
-    const client = createClient(zeroConnectorCatalogContract);
+    const client = createClient(connectorCatalogContract);
     const result = await accept(
       client.discovery({ query: keyword ? { keyword } : {} }),
       [200],
@@ -93,7 +93,7 @@ export function connectorCatalogItemBySlug(
     }
 
     const createClient = get(zeroClient$);
-    const client = createClient(zeroConnectorCatalogContract);
+    const client = createClient(connectorCatalogContract);
     const result = await accept(
       client.get({ params: { connectorSlug } }),
       [200, 404],

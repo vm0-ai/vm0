@@ -5,7 +5,7 @@ import {
 import {
   publicConnectorCatalogIconSchema,
   type PublicConnectorCatalogIcon,
-} from "@okouai/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/connector-catalog";
 import { command } from "ccstate";
 import { createElement } from "react";
 import { i18n } from "../../i18n/index.ts";

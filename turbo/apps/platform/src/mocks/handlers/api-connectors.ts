@@ -9,13 +9,13 @@ import type {
   ConnectorResponse,
 } from "@okouai/api-contracts/contracts/connector-schemas";
 import {
-  zeroConnectorCatalogContract,
+  connectorCatalogContract,
   type PublicConnectorCatalogAuthMethodDetail,
   type PublicConnectorCatalogConnection,
   type PublicConnectorCatalogConnectionStatus,
   type PublicConnectorCatalogPermissionDetail,
   type PublicConnectorCatalogStatusItem,
-} from "@okouai/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/connector-catalog";
 import {
   zeroConnectorExternalCodeSessionContract,
   zeroConnectorManualGrantContract,
@@ -313,7 +313,7 @@ export const apiConnectorsHandlers = [
     });
   }),
 
-  mockApi(zeroConnectorCatalogContract.status, ({ respond }) => {
+  mockApi(connectorCatalogContract.status, ({ respond }) => {
     const connectors = mockConnectorCatalogStatus();
     return respond(200, {
       connectors,
@@ -321,7 +321,7 @@ export const apiConnectorsHandlers = [
     });
   }),
 
-  mockApi(zeroConnectorCatalogContract.discovery, ({ query, respond }) => {
+  mockApi(connectorCatalogContract.discovery, ({ query, respond }) => {
     const allConnectors = mockConnectorCatalogStatus();
     const keyword = query.keyword?.trim().toLowerCase();
     const connectors = keyword
@@ -345,7 +345,7 @@ export const apiConnectorsHandlers = [
     return respond(200, { connectors: [] });
   }),
 
-  mockApi(zeroConnectorCatalogContract.diagnostics, ({ respond }) => {
+  mockApi(connectorCatalogContract.diagnostics, ({ respond }) => {
     return respond(200, {
       state: "stale",
       active: {
@@ -389,7 +389,7 @@ export const apiConnectorsHandlers = [
 
   // Keep this parameterized route after the static /diagnostics route so the
   // mock server does not interpret "diagnostics" as a connector slug.
-  mockApi(zeroConnectorCatalogContract.get, ({ params, respond }) => {
+  mockApi(connectorCatalogContract.get, ({ params, respond }) => {
     const connector = mockConnectorCatalogStatus().find((candidate) => {
       return candidate.slug === params.connectorSlug;
     });
@@ -401,7 +401,7 @@ export const apiConnectorsHandlers = [
     return respond(200, { connector });
   }),
 
-  mockApi(zeroConnectorCatalogContract.permissions, ({ params, respond }) => {
+  mockApi(connectorCatalogContract.permissions, ({ params, respond }) => {
     const permissions = mockPermissionDetail(params.connectorSlug);
     if (!permissions) {
       return respond(404, {

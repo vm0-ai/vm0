@@ -1,4 +1,4 @@
-import { zeroConnectorCatalogContract } from "@okouai/api-contracts/contracts/zero-connector-catalog";
+import { connectorCatalogContract } from "@okouai/api-contracts/contracts/connector-catalog";
 import { getAllFeatureStates } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { command } from "ccstate";
@@ -145,7 +145,7 @@ const listConnectorCatalogStatusInner$ = command(
 const discoverConnectorCatalogInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const query = get(queryOf(zeroConnectorCatalogContract.discovery));
+    const query = get(queryOf(connectorCatalogContract.discovery));
     const context = await set(connectorCatalogRequestContext$);
     signal.throwIfAborted();
     if (!context.featureStates[FeatureSwitchKey.ConnectorDiscovery]) {
@@ -216,7 +216,7 @@ const getConnectorCatalogInner$ = command(
     }
     signal.throwIfAborted();
 
-    const params = get(pathParamsOf(zeroConnectorCatalogContract.get));
+    const params = get(pathParamsOf(connectorCatalogContract.get));
     const connector = await settleConnectorCatalogRead(
       getPublicConnectorCatalogStatus({
         db: context.db,
@@ -242,7 +242,7 @@ const getConnectorCatalogPermissionsInner$ = command(
     const context = await set(connectorCatalogRequestContext$);
     signal.throwIfAborted();
 
-    const params = get(pathParamsOf(zeroConnectorCatalogContract.permissions));
+    const params = get(pathParamsOf(connectorCatalogContract.permissions));
     const permissions = await settleConnectorCatalogRead(
       getPublicConnectorCatalogPermissionDetail({
         db: context.db,
@@ -264,30 +264,30 @@ const getConnectorCatalogPermissionsInner$ = command(
 
 export const connectorCatalogRoutes: readonly RouteEntry[] = [
   {
-    route: zeroConnectorCatalogContract.list,
+    route: connectorCatalogContract.list,
     handler: authRoute(connectorCatalogAuth, listConnectorCatalogInner$),
   },
   {
-    route: zeroConnectorCatalogContract.status,
+    route: connectorCatalogContract.status,
     handler: authRoute(connectorCatalogAuth, listConnectorCatalogStatusInner$),
   },
   {
-    route: zeroConnectorCatalogContract.discovery,
+    route: connectorCatalogContract.discovery,
     handler: authRoute(connectorCatalogAuth, discoverConnectorCatalogInner$),
   },
   {
-    route: zeroConnectorCatalogContract.diagnostics,
+    route: connectorCatalogContract.diagnostics,
     handler: authRoute(
       connectorCatalogDiagnosticsAuth,
       getConnectorCatalogDiagnosticsInner$,
     ),
   },
   {
-    route: zeroConnectorCatalogContract.get,
+    route: connectorCatalogContract.get,
     handler: authRoute(connectorCatalogAuth, getConnectorCatalogInner$),
   },
   {
-    route: zeroConnectorCatalogContract.permissions,
+    route: connectorCatalogContract.permissions,
     handler: authRoute(
       connectorCatalogAuth,
       getConnectorCatalogPermissionsInner$,

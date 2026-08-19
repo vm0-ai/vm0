@@ -1023,7 +1023,7 @@ export {
 } from "./zero-connectors";
 export {
   publicConnectorCatalogIconSchema,
-  zeroConnectorCatalogContract,
+  connectorCatalogContract,
   type PublicConnectorCatalogAuthMethodDetail,
   type PublicConnectorCatalogAuthMethodSummary,
   type PublicConnectorCatalogDetail,
@@ -1040,8 +1040,8 @@ export {
   type PublicConnectorCatalogStartOption,
   type PublicConnectorCatalogStatusItem,
   type PublicConnectorCatalogStatusResponse,
-  type ZeroConnectorCatalogContract,
-} from "./zero-connector-catalog";
+  type ConnectorCatalogContract,
+} from "./connector-catalog";
 export {
   connectorCheckContract,
   connectorCheckDiagnosticResultSchema,

@@ -19,9 +19,9 @@ import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { zeroAgentCustomConnectorsContract } from "@okouai/api-contracts/contracts/zero-agent-custom-connectors";
 import {
-  zeroConnectorCatalogContract,
+  connectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
-} from "@okouai/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/connector-catalog";
 import { zeroUserPermissionGrantsContract } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
 import { claudeCodeDeviceAuthContract } from "@okouai/api-contracts/contracts/claude-code-device-auth";
 import { codexDeviceAuthContract } from "@okouai/api-contracts/contracts/codex-device-auth";
@@ -3146,7 +3146,7 @@ describe("chat composer models", () => {
       },
     );
     context.mocks.api(
-      zeroConnectorCatalogContract.discovery,
+      connectorCatalogContract.discovery,
       async ({ respond, withSignal }) => {
         discoveryRequestCount += 1;
         if (discoveryRequestCount > 1) {

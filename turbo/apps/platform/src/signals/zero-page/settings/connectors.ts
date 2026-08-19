@@ -34,7 +34,7 @@ import type {
   PublicConnectorCatalogAuthMethodDetail,
   PublicConnectorCatalogConnectionStatus,
   PublicConnectorCatalogIcon,
-} from "@okouai/api-contracts/contracts/zero-connector-catalog";
+} from "@okouai/api-contracts/contracts/connector-catalog";
 import {
   connectors$,
   deleteConnector$,
