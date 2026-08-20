@@ -145,6 +145,15 @@ const TEST_PRICE_CUSTOM_CREDIT_UNIT = "price_test_custom_credit_unit";
 const TEST_PRICE_CONCURRENCY = "price_test_concurrency";
 const STRIPE_WEBHOOK_SECRET = "whsec_checkout_test";
 
+class ClerkApiResponseTestError extends Error {
+  static readonly kind = "ClerkAPIResponseError";
+  readonly status = 429;
+
+  constructor(readonly retryAfter: number) {
+    super("Clerk Backend API rate limit exceeded");
+  }
+}
+
 interface BillingOrgFixture {
   readonly orgId: string;
   readonly userId: string;
@@ -261,6 +270,15 @@ function createOrgFixture(orgId = `org_${randomUUID()}`): BillingOrgFixture {
   return {
     orgId,
     userId: `user_${randomUUID()}`,
+  };
+}
+
+function usagePackCheckoutBody(memberId: string) {
+  return {
+    tier: "pro" as const,
+    memberUsagePacks: [{ memberId, usagePackUsd: 20 as const }],
+    successUrl: `${APP_ORIGIN}/billing?billing=success`,
+    cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
   };
 }
 
@@ -2475,6 +2493,222 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
       limit: 100,
       offset: 100,
     });
+  });
+
+  it("recovers usage pack checkout from a transient Clerk rate limit", async () => {
+    const fixture = createOrgFixture();
+    const checkoutSessionId = `cs_${randomUUID()}`;
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.UsagePackPlans]: true,
+    });
+    context.mocks.signalTimers.delay.mockResolvedValue(undefined);
+    context.mocks.clerk.organizations.getOrganizationMembershipList
+      .mockRejectedValueOnce(new ClerkApiResponseTestError(2))
+      .mockResolvedValue({
+        data: [
+          {
+            role: "org:admin",
+            publicUserData: { userId: fixture.userId },
+            createdAt: now(),
+          },
+        ],
+      });
+    context.mocks.clerk.organizations.getOrganizationInvitationList.mockResolvedValue(
+      { data: [] },
+    );
+    context.mocks.stripe.customers.create.mockResolvedValueOnce({
+      id: `cus_${randomUUID()}`,
+    });
+    context.mocks.stripe.checkout.sessions.create.mockResolvedValueOnce({
+      id: checkoutSessionId,
+      url: "https://checkout.stripe.com/session/usage-pack-recovered",
+    });
+
+    const response = await accept(
+      setupApp({ context, routes: billingCheckoutRoutes })(
+        billingUsagePackCheckoutContract,
+      ).create({
+        body: usagePackCheckoutBody(fixture.userId),
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    const checkoutCall =
+      context.mocks.stripe.checkout.sessions.create.mock.calls[0];
+    const usagePackSubscriptionId = checkoutCall
+      ? stripeInputMetadata(checkoutCall[0]).usagePackSubscriptionId
+      : undefined;
+    if (!usagePackSubscriptionId) {
+      throw new Error("Checkout did not expose its usage pack subscription ID");
+    }
+    onTestFinished(async () => {
+      await usagePackStateAction({
+        action: "cleanup",
+        orgId: fixture.orgId,
+        usagePackSubscriptionId,
+        deleteGrants: true,
+        deleteOrgMetadata: true,
+      });
+    });
+
+    expect(response.body).toStrictEqual({
+      url: "https://checkout.stripe.com/session/usage-pack-recovered",
+    });
+    expect(
+      context.mocks.clerk.organizations.getOrganizationMembershipList,
+    ).toHaveBeenCalledTimes(2);
+    expect(context.mocks.signalTimers.delay).toHaveBeenCalledTimes(1);
+    expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledTimes(
+      1,
+    );
+  });
+
+  it("returns a non-cacheable 503 when Clerk rate limits persist", async () => {
+    const fixture = createOrgFixture();
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.UsagePackPlans]: true,
+    });
+    context.mocks.signalTimers.delay.mockResolvedValue(undefined);
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockRejectedValue(
+      new ClerkApiResponseTestError(7),
+    );
+    context.mocks.clerk.organizations.getOrganizationInvitationList.mockResolvedValue(
+      { data: [] },
+    );
+
+    const response = await accept(
+      setupApp({ context, routes: billingCheckoutRoutes })(
+        billingUsagePackCheckoutContract,
+      ).create({
+        body: usagePackCheckoutBody(fixture.userId),
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [503],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Billing organization members are temporarily unavailable",
+        code: "PROVIDER_UNAVAILABLE",
+      },
+    });
+    expect(response.headers.get("Retry-After")).toBe("7");
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(
+      context.mocks.clerk.organizations.getOrganizationMembershipList,
+    ).toHaveBeenCalledTimes(3);
+    expect(context.mocks.signalTimers.delay).toHaveBeenCalledTimes(2);
+    expect(context.mocks.stripe.customers.create).not.toHaveBeenCalled();
+    expect(
+      context.mocks.stripe.checkout.sessions.create,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("stops sibling Clerk pagination after checkout directory exhaustion", async () => {
+    const fixture = createOrgFixture();
+    const invitationPage = createDeferredPromise<{
+      readonly data: readonly {
+        readonly id: string;
+        readonly emailAddress: string;
+        readonly role: string;
+        readonly createdAt: number;
+      }[];
+    }>(context.signal);
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.UsagePackPlans]: true,
+    });
+    context.mocks.signalTimers.delay.mockResolvedValue(undefined);
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockRejectedValue(
+      new ClerkApiResponseTestError(1),
+    );
+    context.mocks.clerk.organizations.getOrganizationInvitationList.mockReturnValueOnce(
+      invitationPage.promise,
+    );
+
+    const response = await accept(
+      setupApp({ context, routes: billingCheckoutRoutes })(
+        billingUsagePackCheckoutContract,
+      ).create({
+        body: usagePackCheckoutBody(fixture.userId),
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [503],
+    );
+
+    expect(response.headers.get("Retry-After")).toBe("1");
+    expect(
+      context.mocks.clerk.organizations.getOrganizationMembershipList,
+    ).toHaveBeenCalledTimes(3);
+    expect(
+      context.mocks.clerk.organizations.getOrganizationInvitationList,
+    ).toHaveBeenCalledTimes(1);
+    expect(context.mocks.stripe.customers.create).not.toHaveBeenCalled();
+    expect(
+      context.mocks.stripe.checkout.sessions.create,
+    ).not.toHaveBeenCalled();
+
+    invitationPage.resolve({
+      data: Array.from({ length: 100 }, (_, index) => {
+        return {
+          id: `inv_${index}`,
+          emailAddress: `pending-${index}@example.com`,
+          role: "org:member",
+          createdAt: now(),
+        };
+      }),
+    });
+    await invitationPage.promise;
+    expect(
+      context.mocks.clerk.organizations.getOrganizationInvitationList,
+    ).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops Clerk retries when usage pack checkout is cancelled", async () => {
+    const fixture = createOrgFixture();
+    const controller = new AbortController();
+    const retryStarted = createDeferredPromise<void>(context.signal);
+    let retrySignal: AbortSignal | undefined;
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.UsagePackPlans]: true,
+    });
+    context.mocks.signalTimers.delay.mockImplementation((_ms, options) => {
+      const signal = options?.signal;
+      if (!signal) {
+        throw new Error("Expected Clerk retry delay to receive a signal");
+      }
+      retrySignal = signal;
+      retryStarted.resolve();
+      return createDeferredPromise<void>(signal).promise;
+    });
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockRejectedValue(
+      new ClerkApiResponseTestError(1),
+    );
+    context.mocks.clerk.organizations.getOrganizationInvitationList.mockResolvedValue(
+      { data: [] },
+    );
+    const request = setupApp({ context, routes: billingCheckoutRoutes })(
+      billingUsagePackCheckoutContract,
+    ).create({
+      body: usagePackCheckoutBody(fixture.userId),
+      headers: { authorization: "Bearer clerk-session" },
+      fetchOptions: { signal: controller.signal },
+    });
+
+    await retryStarted.promise;
+    const abortError = new Error("usage pack checkout cancelled");
+    abortError.name = "AbortError";
+    controller.abort(abortError);
+    const response = await accept(request, [500]);
+
+    expect(response.status).toBe(500);
+    expect(retrySignal?.aborted).toBeTruthy();
+    expect(
+      context.mocks.clerk.organizations.getOrganizationMembershipList,
+    ).toHaveBeenCalledTimes(1);
+    expect(context.mocks.stripe.customers.create).not.toHaveBeenCalled();
+    expect(
+      context.mocks.stripe.checkout.sessions.create,
+    ).not.toHaveBeenCalled();
   });
 
   it.each(["pro", "team"] as const)(
