@@ -21,6 +21,7 @@ import {
   type PresentationTemplateRow,
 } from "../services/presentation-template-data.service";
 import { deletePresentationTemplate$ } from "../services/presentation-template-delete.service";
+import { publishPresentationTemplate$ } from "../services/presentation-template-publish.service";
 import type { RouteEntry } from "../route-entry";
 
 const PRESIGNED_URL_TTL_SECONDS = 15 * 60;
@@ -35,6 +36,13 @@ const templateWriteAuth = {
   requireOrganization: true,
   missingOrganizationStatus: 401,
   requiredCapability: "agent:write",
+} as const;
+
+/** Publishing is done by the analysis run, not by the browser session. */
+const templatePublishAuth = {
+  requireOrganization: true,
+  missingOrganizationStatus: 401,
+  requiredCapability: "presentation-template:write",
 } as const;
 
 const presentationTemplatesDisabled = Object.freeze({
@@ -80,6 +88,53 @@ async function signedPageUrls(
     }),
   );
 }
+
+const publishBody$ = bodyResultOf(presentationTemplatesContract.publish);
+const publishInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  if (!(await get(presentationTemplatesEnabled$))) {
+    return presentationTemplatesDisabled;
+  }
+  const bodyResult = await get(publishBody$);
+  signal.throwIfAborted();
+  if (!bodyResult.ok) {
+    return bodyResult.response;
+  }
+  const result = await set(
+    publishPresentationTemplate$,
+    { orgId: auth.orgId, ownerUserId: auth.userId, body: bodyResult.data },
+    signal,
+  );
+  signal.throwIfAborted();
+  if (result.kind === "rejected") {
+    return result.response;
+  }
+  const row = await loadOwnedPresentationTemplate(get(db$), {
+    orgId: auth.orgId,
+    ownerUserId: auth.userId,
+    templateId: result.templateId,
+  });
+  signal.throwIfAborted();
+  if (!row) {
+    throw new Error(`Published template not found: ${result.templateId}`);
+  }
+  const coverKey = row.pageKeys[0];
+  const coverUrl = coverKey
+    ? await get(
+        generatePresignedGetUrl(
+          env("R2_USER_ARTIFACTS_BUCKET_NAME"),
+          coverKey,
+          PRESIGNED_URL_TTL_SECONDS,
+          presentationTemplatePageFilename(0),
+          true,
+        ),
+      )
+    : null;
+  return {
+    status: 200 as const,
+    body: presentationTemplateSummary(row, coverUrl),
+  };
+});
 
 const listInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
@@ -221,6 +276,10 @@ const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 export const presentationTemplatesRoutes: readonly RouteEntry[] = [
+  {
+    route: presentationTemplatesContract.publish,
+    handler: authRoute(templatePublishAuth, publishInner$),
+  },
   {
     route: presentationTemplatesContract.list,
     handler: authRoute(templateReadAuth, listInner$),
