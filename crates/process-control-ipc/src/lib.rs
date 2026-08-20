@@ -4,11 +4,10 @@
 //!
 //! This crate defines the local, blocking protocol used after `vsock-guest`
 //! exposes an operation-control endpoint and `guest-agent` connects back to it.
-//! The transport is a Linux abstract Unix stream socket. Endpoint names are
-//! abstract-socket names, not filesystem paths. A second operation-local
-//! endpoint transfers one root-owned workload-placement descriptor with
-//! `SCM_RIGHTS`; the descriptor is never inherited through the sandbox-user
-//! launch chain.
+//! The control and companion placement channels use Linux abstract Unix stream
+//! sockets, so endpoint names are not filesystem paths. Root-owned placement
+//! descriptors move with `SCM_RIGHTS` and are never inherited through the
+//! sandbox-user launch chain.
 //!
 //! The endpoint is bootstrapped through [`BOOTSTRAP_ENV`]. `vsock-guest`
 //! creates the endpoint name with [`endpoint_name`], binds it with
@@ -16,6 +15,14 @@
 //! then drives request/response exchange. `guest-agent` reads the endpoint name
 //! from the environment, connects with [`connect_abstract`], sends a hello
 //! frame, then reads requests and writes responses.
+//!
+//! Two companion placement endpoints are derived from the same operation-local
+//! control name. The one-shot runtime endpoint transfers a root-opened
+//! `workload/runtime/cgroup.procs` descriptor to Guest Agent. The tool endpoint
+//! serves repeated authenticated Bash-launcher connections: root creates a
+//! unique tool cgroup, transfers its write-only `cgroup.procs` descriptor, and
+//! acknowledges only after the launcher confirms and root revalidates exact
+//! placement. User shell code does not run before that acknowledgement.
 //!
 //! ## Frame format
 //!

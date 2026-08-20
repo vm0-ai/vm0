@@ -1,12 +1,14 @@
 //! Secure workload-cgroup placement owned by Guest Agent.
 //!
 //! The root guest supervisor places Guest Agent in an operation's `control`
-//! leaf and transfers a write-only descriptor for the sibling `workload` leaf
-//! over a nonce-authenticated local socket with `SCM_RIGHTS`. Guest Agent adopts
-//! that descriptor before starting its async runtime and uses a cloned
-//! descriptor only in each CLI child's `pre_exec` hook. The descriptor is never
-//! inherited through the sandbox-user launch chain or copied into a workload
-//! environment.
+//! leaf and transfers a write-only descriptor for `workload/runtime` over a
+//! nonce-authenticated local socket with `SCM_RIGHTS`. Guest Agent adopts that
+//! descriptor before starting its async runtime and uses a cloned descriptor
+//! only in each CLI child's `pre_exec` hook. The descriptor is never inherited
+//! through the sandbox-user launch chain or copied into a workload environment.
+//! Guest Agent separately injects the operation-local tool-placement broker
+//! endpoint into the managed CLI environment so the Bash launcher can request
+//! one root-owned tool cgroup before executing user code.
 
 use std::fs;
 use std::io;
