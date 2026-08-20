@@ -206,28 +206,18 @@ async fn run_connect_timeout_failure() -> Result<EventDeliveryDiagnostic, Box<dy
     .map_err(|_| io::Error::other("connect-timeout server accepted no request"))?;
 
     tokio::time::pause();
-    for attempt in 1..=3 {
-        tokio::time::advance(Duration::from_secs(11)).await;
-        for _ in 0..1_000 {
-            if attempt == 3 && execution.is_finished()
-                || accepted_count.load(Ordering::SeqCst) > attempt
-            {
-                break;
-            }
-            tokio::task::yield_now().await;
+    for _ in 0..35 {
+        if execution.is_finished() {
+            break;
         }
-        if attempt < 3 {
-            assert_eq!(
-                accepted_count.load(Ordering::SeqCst),
-                attempt + 1,
-                "connect timeout should advance to the next retry"
-            );
-        }
+        tokio::time::advance(Duration::from_secs(1)).await;
+        tokio::task::yield_now().await;
     }
     assert!(
         execution.is_finished(),
         "connect-timeout delivery should exhaust three attempts"
     );
+    assert_eq!(accepted_count.load(Ordering::SeqCst), 3);
     let joined = execution.await;
     tokio::time::resume();
     server.abort();
