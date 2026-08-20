@@ -92,20 +92,10 @@ end
 expected_playwright_lanes = [
   { "lane" => "features", "project" => "features" },
   { "lane" => "paid-onboarding", "project" => "paid-onboarding" },
-  {
-    "lane" => "billing-transitions-1",
-    "project" => "billing-transitions",
-    "shard" => "1/2",
-  },
-  {
-    "lane" => "billing-transitions-2",
-    "project" => "billing-transitions",
-    "shard" => "2/2",
-  },
 ]
 unless playwright.dig("strategy", "matrix", "include") ==
     expected_playwright_lanes
-  raise "Playwright matrix must shard the measured billing bottleneck"
+  raise "Playwright matrix must contain the expected project lanes"
 end
 expected_playwright_group =
   "cli-e2e-02-playwright-${{ matrix.lane }}-${{ needs.prepare.outputs.job-ref }}"
@@ -120,12 +110,9 @@ playwright_run = playwright.fetch("steps").find do |step|
 end
 unless playwright_run&.fetch("shell") == "bash" &&
     playwright_run.fetch("run").include?('--project="$PLAYWRIGHT_PROJECT"') &&
-    playwright_run.fetch("run").include?('--shard="$PLAYWRIGHT_SHARD"') &&
     playwright_run.dig("env", "PLAYWRIGHT_PROJECT") ==
-      "${{ matrix.project }}" &&
-    playwright_run.dig("env", "PLAYWRIGHT_SHARD") ==
-      "${{ matrix.shard || '' }}"
-  raise "each Playwright lane must select its matrix project and optional shard"
+      "${{ matrix.project }}"
+  raise "each Playwright lane must select its matrix project"
 end
 playwright_blob_upload = playwright.fetch("steps").find do |step|
   step["name"] == "Upload Playwright blob report"
