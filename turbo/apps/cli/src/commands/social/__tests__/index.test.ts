@@ -213,7 +213,17 @@ describe("okou social command", () => {
     const transcript = socialCommand.commands.find((command) => {
       return command.name() === "transcript";
     });
+    let socialHelp = "";
+    socialCommand.configureOutput({
+      writeOut: (value) => {
+        socialHelp += value;
+      },
+    });
+    socialCommand.outputHelp();
+
     expect(transcript?.helpInformation()).toContain("timestamped segments");
     expect(transcript?.helpInformation()).toContain("--json");
+    expect(socialHelp).toContain("vm0 credits");
+    expect(socialHelp).toContain("submitted URL");
   });
 });

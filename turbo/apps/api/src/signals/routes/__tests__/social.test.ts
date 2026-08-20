@@ -3,7 +3,10 @@ import { randomUUID } from "node:crypto";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
 
-import { socialContract } from "@okouai/api-contracts/contracts/social";
+import {
+  SOCIAL_TRANSCRIPT_MAX_URL_CHARS,
+  socialContract,
+} from "@okouai/api-contracts/contracts/social";
 import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import { usageRecordContract } from "@okouai/api-contracts/contracts/usage-record";
 
@@ -316,11 +319,13 @@ describe("okou social transcript route", () => {
     await fundActor(actor);
     const beforeCredits = await credits(actor);
     const providerUrls: string[] = [];
+    const providerQueryKeys: string[][] = [];
     const accessKeys: (string | null)[] = [];
     server.use(
       http.get(SOCIALKIT_TRANSCRIPT_URL, ({ request }) => {
         const providerUrl = new URL(request.url);
         providerUrls.push(providerUrl.searchParams.get("url") ?? "");
+        providerQueryKeys.push([...providerUrl.searchParams.keys()]);
         accessKeys.push(request.headers.get("x-access-key"));
         return HttpResponse.json(providerResponse());
       }),
@@ -346,6 +351,11 @@ describe("okou social transcript route", () => {
     const afterCredits = await credits(actor);
 
     expect(providerUrls).toStrictEqual(urls);
+    expect(providerQueryKeys).toStrictEqual(
+      Array.from({ length: 4 }, () => {
+        return ["url"];
+      }),
+    );
     expect(accessKeys).toStrictEqual(
       Array.from({ length: 4 }, () => {
         return "test-socialkit-key";
@@ -398,14 +408,36 @@ describe("okou social transcript route", () => {
   });
 
   it.each([
-    "https://example.com/watch?v=video123",
-    "https://evil.youtube.com/watch?v=video123",
-    "https://youtube.com/embed/video123",
-    "https://youtube.com/watch",
-    "https://youtu.be/one/two",
-    "https://user:password@youtube.com/watch?v=video123",
-    "file:///tmp/video",
-  ])("rejects unsupported URL %s before provider work", async (url) => {
+    {
+      caseName: "an unsupported host",
+      url: "https://example.com/watch?v=video123",
+    },
+    {
+      caseName: "a youtube lookalike host",
+      url: "https://evil.youtube.com/watch?v=video123",
+    },
+    {
+      caseName: "an unsupported youtube path",
+      url: "https://youtube.com/embed/video123",
+    },
+    {
+      caseName: "a missing video id",
+      url: "https://youtube.com/watch",
+    },
+    {
+      caseName: "multiple youtu.be path segments",
+      url: "https://youtu.be/one/two",
+    },
+    {
+      caseName: "embedded credentials",
+      url: "https://user:password@youtube.com/watch?v=video123",
+    },
+    { caseName: "a non-http scheme", url: "file:///tmp/video" },
+    {
+      caseName: "an overlong URL",
+      url: `https://youtu.be/${"x".repeat(SOCIAL_TRANSCRIPT_MAX_URL_CHARS)}`,
+    },
+  ])("rejects $caseName before provider work", async ({ url }) => {
     const actor = createBddApi(context).user();
     let providerRequests = 0;
     configureProvider();
