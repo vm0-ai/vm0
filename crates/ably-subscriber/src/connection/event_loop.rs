@@ -247,6 +247,7 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: CloseRec
 
     'outer: loop {
         let mut disconnected_sent = false;
+        let mut refresh_token = false;
         let mut immediate_retry = false;
         let mut disconnect_reason = None;
         let mut close_before_reconnect = false;
@@ -283,11 +284,15 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: CloseRec
                     {
                         match send_attach(&mut p, &mut close_rx).await {
                             LoopAction::Stop => return,
-                            LoopAction::Reconnect { disconnected_event } => {
+                            LoopAction::Reconnect {
+                                disconnected_event,
+                                refresh_token: action_refresh_token,
+                            } => {
                                 record_reconnect_disconnected_event(
                                     &mut disconnected_sent,
                                     disconnected_event,
                                 );
+                                refresh_token |= action_refresh_token;
                                 immediate_retry = true;
                                 break;
                             }
@@ -386,11 +391,15 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: CloseRec
                     {
                         match send_attach(&mut p, &mut close_rx).await {
                             LoopAction::Stop => return,
-                            LoopAction::Reconnect { disconnected_event } => {
+                            LoopAction::Reconnect {
+                                disconnected_event,
+                                refresh_token: action_refresh_token,
+                            } => {
                                 record_reconnect_disconnected_event(
                                     &mut disconnected_sent,
                                     disconnected_event,
                                 );
+                                refresh_token |= action_refresh_token;
                                 immediate_retry = true;
                                 break;
                             }
@@ -403,11 +412,15 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: CloseRec
                         Some(Ok(tungstenite::Message::Binary(data))) => match decode_msg(&data) {
                             Ok(msg) => match handle_message(&mut p, msg, &mut close_rx).await {
                                 LoopAction::Stop => return,
-                                LoopAction::Reconnect { disconnected_event } => {
+                                LoopAction::Reconnect {
+                                    disconnected_event,
+                                    refresh_token: action_refresh_token,
+                                } => {
                                     record_reconnect_disconnected_event(
                                         &mut disconnected_sent,
                                         disconnected_event,
                                     );
+                                    refresh_token |= action_refresh_token;
                                     immediate_retry = true;
                                     break;
                                 }
@@ -550,7 +563,7 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: CloseRec
                     }
                     continue;
                 }
-                result = attempt_reconnect(&mut p) => result,
+                result = attempt_reconnect(&mut p, refresh_token) => result,
             };
 
             match reconnect_result {
@@ -617,6 +630,7 @@ enum LoopAction {
     Stop,
     Reconnect {
         disconnected_event: DisconnectedEvent,
+        refresh_token: bool,
     },
 }
 
@@ -661,6 +675,7 @@ async fn send_attach(p: &mut EventLoopState, close_rx: &mut CloseReceiver) -> Lo
             close_websocket_transport(p);
             return LoopAction::Reconnect {
                 disconnected_event: DisconnectedEvent::Pending,
+                refresh_token: false,
             };
         }
     };
@@ -670,6 +685,7 @@ async fn send_attach(p: &mut EventLoopState, close_rx: &mut CloseReceiver) -> Lo
         tracing::warn!("Missing websocket transport for attach");
         return LoopAction::Reconnect {
             disconnected_event: DisconnectedEvent::Pending,
+            refresh_token: false,
         };
     };
     let send_result = tokio::select! {
@@ -691,6 +707,7 @@ async fn send_attach(p: &mut EventLoopState, close_rx: &mut CloseReceiver) -> Lo
             close_websocket_transport(p);
             LoopAction::Reconnect {
                 disconnected_event: DisconnectedEvent::Pending,
+                refresh_token: false,
             }
         }
         Err(_) => {
@@ -698,6 +715,7 @@ async fn send_attach(p: &mut EventLoopState, close_rx: &mut CloseReceiver) -> Lo
             close_websocket_transport(p);
             LoopAction::Reconnect {
                 disconnected_event: DisconnectedEvent::Pending,
+                refresh_token: false,
             }
         }
     }
@@ -764,6 +782,10 @@ async fn handle_message(
             // of retriability. The server may send DISCONNECTED with a non-
             // retriable error (e.g. 429 rate limit) but still expect the client
             // to reconnect after backoff. Only connection-level ERROR is fatal.
+            let refresh_token = msg
+                .error
+                .as_ref()
+                .is_some_and(|error| error.code == error_code::TOKEN_EXPIRED);
             let reason = Some(protocol_disconnect_reason(msg.error));
             p.session.notify_protocol_disconnected();
             close_websocket_transport(p);
@@ -773,6 +795,7 @@ async fn handle_message(
             }
             return LoopAction::Reconnect {
                 disconnected_event: DisconnectedEvent::Sent,
+                refresh_token,
             };
         }
         action::ERROR => {
@@ -987,15 +1010,18 @@ async fn renew_token(p: &mut EventLoopState) -> Result<(), Error> {
 /// channel attach attempt has produced a definitive outcome. If the server
 /// responds DETACHED to the ATTACH, the connected transport is kept and the
 /// caller moves the channel into suspended retry, matching ably-js.
-async fn attempt_reconnect(p: &mut EventLoopState) -> Result<ReconnectOutcome, Error> {
+async fn attempt_reconnect(
+    p: &mut EventLoopState,
+    refresh_token: bool,
+) -> Result<ReconnectOutcome, Error> {
     let reconnect_timeout = p.timing.reconnect_timeout;
     let (connected_msg, mut transport, new_token) =
         tokio::time::timeout(reconnect_timeout, async {
             let use_resume = p.session.can_resume();
 
-            // For fresh connects, obtain a new token up front (kept in a local until
-            // we know the transport connected).
-            let new_token = if !use_resume {
+            // Obtain a new token for fresh connects or after the server rejects
+            // the active token. Keep it local until the transport connects.
+            let new_token = if refresh_token || !use_resume {
                 let token_request = (p.get_token)().await.map_err(Error::TokenFetch)?;
                 Some(exchange_token(&p.http, &token_request, &p.rest_host).await?)
             } else {
@@ -1256,7 +1282,8 @@ mod tests {
         assert_eq!(
             action,
             LoopAction::Reconnect {
-                disconnected_event: DisconnectedEvent::Sent
+                disconnected_event: DisconnectedEvent::Sent,
+                refresh_token: false,
             }
         );
         match event_rx.try_recv().expect("disconnected event") {
@@ -1372,7 +1399,8 @@ mod tests {
         assert_eq!(
             action,
             LoopAction::Reconnect {
-                disconnected_event: DisconnectedEvent::Pending
+                disconnected_event: DisconnectedEvent::Pending,
+                refresh_token: false,
             }
         );
         assert_event_channel_empty(&mut event_rx);
@@ -1403,7 +1431,8 @@ mod tests {
         assert_eq!(
             action,
             LoopAction::Reconnect {
-                disconnected_event: DisconnectedEvent::Pending
+                disconnected_event: DisconnectedEvent::Pending,
+                refresh_token: false,
             }
         );
         assert_event_channel_empty(&mut event_rx);
