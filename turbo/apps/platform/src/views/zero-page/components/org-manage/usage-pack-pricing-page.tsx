@@ -1128,8 +1128,10 @@ function pricingStepTitle(step: PricingStep): string {
    the outer edges hold still. That is also why the review is a step and not a
    dialog of its own: stacking a third modal on the flow would bury both the
    billing tab and the packages the review is about. The height is the tallest
-   step's (plan selection), and the body insets its content so no rule, tint or
-   column runs into the frame.
+   step's (plan selection) measured against its content, so it has to come down
+   whenever that step gets shorter -- left at the old figure it would hold a
+   band of empty column open above both actions. The body insets its content so
+   no rule, tint or column runs into the frame.
 
    The dialog is mounted only while the flow is open, so the plan catalog and
    the subscription it loads stay owned by the flow rather than by every visit
@@ -1164,7 +1166,7 @@ function PricingStepDialog({
       <DialogContent
         aria-describedby={undefined}
         showCloseButton={false}
-        className="flex h-[min(46rem,calc(100dvh-4rem))] w-[calc(100vw-2rem)] max-w-[860px] flex-col gap-0 overflow-hidden p-0"
+        className="flex h-[min(41rem,calc(100dvh-4rem))] w-[calc(100vw-2rem)] max-w-[860px] flex-col gap-0 overflow-hidden p-0"
       >
         {/* The close button is an item in this row rather than a box pinned to
             the frame, so the title, the step counter and the close glyph share
