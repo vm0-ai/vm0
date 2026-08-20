@@ -1,3 +1,4 @@
+import { brandedApiNamespace } from "@okouai/api-contracts/contracts/api-namespaces";
 import { initContract } from "@okouai/api-contracts/contracts/trpc-contract";
 import { computed } from "ccstate";
 import { z } from "zod";
@@ -265,19 +266,32 @@ describe("branded paths for migrated neutral routes", () => {
     expect(movedWithRow).toStrictEqual([]);
   });
 
-  // The table ships empty, so this slice adds a capability and no route.
-  it("changes no registration while the shipped table is empty", () => {
+  // The shipped table gains rows one #28278 slice at a time, so this cannot
+  // name them; which paths a slice owes is restated literally in that slice's
+  // own test file. What holds for every row is that it only ever adds a branded
+  // registration, and never disturbs one an earlier stage produced.
+  it("only adds branded registrations to the shipped route table", () => {
     const beforeTable = withApiNamespaceAliases(
       withFinalProviderConsolePaths(ROUTES),
     );
     const afterTable = withMigratedBrandedPaths(beforeTable);
+    const declared = new Set(beforeTable);
+    const added = afterTable.filter((entry) => {
+      return !declared.has(entry);
+    });
 
-    expect(afterTable).toHaveLength(beforeTable.length);
     expect(
-      afterTable.filter((entry, index) => {
-        return entry !== beforeTable[index];
+      afterTable.filter((entry) => {
+        return declared.has(entry);
       }),
-    ).toStrictEqual([]);
+    ).toStrictEqual(beforeTable);
+    // A migration slice has landed, so the mechanism runs over the real route
+    // table rather than only over the synthetic ones above.
+    expect(added.length).toBeGreaterThan(0);
+    for (const entry of added) {
+      expect(brandedApiNamespace(entry.route.path)).toBeDefined();
+      expect(entry.viaNamespaceAliasFallback).toBeUndefined();
+    }
   });
 
   // Hono keeps both registrations for a duplicated path and answers with the
