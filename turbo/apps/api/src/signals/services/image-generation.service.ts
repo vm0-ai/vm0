@@ -1985,6 +1985,7 @@ export const recordGeneratedImage$ = command(
           sizeBytes: params.generation.imageBytes.byteLength,
           url,
           s3Key,
+          publicBrand: params.publicBrand,
           metadata: {
             generatedBy: "zero-official-image",
             model: params.generation.model,

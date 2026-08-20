@@ -31,6 +31,7 @@ export interface ArtifactObjectLocation {
   readonly id: string;
   readonly key: string;
   readonly url: string;
+  readonly publicBrand: PublicBrand;
   readonly metadata: Readonly<Record<string, string>>;
 }
 
@@ -45,6 +46,7 @@ type StoredGeneratedArtifactObject = Omit<
 export interface ResolvedArtifactObject {
   readonly key: string;
   readonly url: string;
+  readonly publicBrand: PublicBrand;
   readonly filename: string;
   readonly contentType: string;
   readonly size: number;
@@ -76,9 +78,17 @@ export function artifactObjectMetadata(
 function publicBrandFromMetadata(
   metadata: Readonly<Record<string, string>>,
 ): PublicBrand {
-  return metadata[ARTIFACT_PUBLIC_BRAND_METADATA_KEY] === "okou"
-    ? "okou"
-    : "vm0";
+  const publicBrand = metadata[ARTIFACT_PUBLIC_BRAND_METADATA_KEY];
+  if (publicBrand === undefined) {
+    // Pre-brand V2 objects remain reachable for their persisted-object
+    // lifetime. Remove after all reachable objects are migrated or deleted;
+    // tracked by #28449. Present invalid values must fail below.
+    return "vm0";
+  }
+  if (publicBrand === "vm0" || publicBrand === "okou") {
+    return publicBrand;
+  }
+  throw new Error(`Invalid artifact public brand: ${publicBrand}`);
 }
 
 function filenameFromMetadata(
@@ -132,6 +142,7 @@ export const allocateArtifactObject$ = command(
           id,
           key,
           url: buildFileUrlFromKey(key, args.publicBrand),
+          publicBrand: args.publicBrand,
           metadata: artifactObjectMetadata(
             args.userId,
             id,
@@ -160,6 +171,7 @@ export const allocateArtifactObject$ = command(
               id,
               key,
               url: buildFileUrlFromKey(key, publicBrand),
+              publicBrand,
               metadata: artifactObjectMetadata(
                 args.userId,
                 id,
@@ -245,12 +257,11 @@ function resolveV2ArtifactObject(
       const filename =
         filenameFromMetadata(head.metadata) ??
         filenameFromLegacyKey(object.key);
+      const publicBrand = publicBrandFromMetadata(head.metadata);
       return {
         key: object.key,
-        url: buildFileUrlFromKey(
-          object.key,
-          publicBrandFromMetadata(head.metadata),
-        ),
+        url: buildFileUrlFromKey(object.key, publicBrand),
+        publicBrand,
         filename,
         contentType: head.contentType ?? inferMimetype(filename),
         size: head.contentLength ?? object.size,
@@ -266,6 +277,9 @@ function resolveV1ArtifactObject(
   userId: string,
   id: string,
 ): Computed<Promise<ResolvedArtifactObject | null>> {
+  // V1 objects predate publicBrand and remain VM0 for their persisted-object
+  // lifetime. Remove with V1 reads once no V1 object remains reachable;
+  // tracked by #28449.
   return computed(async (get): Promise<ResolvedArtifactObject | null> => {
     const objects = await get(
       listS3Objects(bucket, buildArtifactPrefix(userId, id)),
@@ -278,6 +292,7 @@ function resolveV1ArtifactObject(
     return {
       key: object.key,
       url: buildFileUrlFromKey(object.key, "vm0"),
+      publicBrand: "vm0",
       filename,
       contentType: inferMimetype(filename),
       size: object.size,

@@ -542,6 +542,7 @@ const completeUpload$ = command(async ({ get, set }, signal: AbortSignal) => {
     contentType,
     sizeBytes: object.size,
     url: fileUrl,
+    publicBrand: object.publicBrand,
     metadata: uploadMetadata({
       body,
       installationId: installation.id,

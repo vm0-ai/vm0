@@ -1,5 +1,6 @@
 import { command } from "ccstate";
 import type { HostedArtifactKind } from "@okouai/api-contracts/contracts/host";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import {
@@ -9,7 +10,6 @@ import {
 } from "@okouai/db/schema/run-uploaded-file";
 
 import { logger } from "../../lib/log";
-import { publicBrandFromArtifactUrl } from "../../lib/file-url";
 import { isForeignKeyViolation } from "../../lib/pg-errors";
 import { type Db, writeDb$ } from "../external/db";
 import { settle } from "../utils";
@@ -30,6 +30,7 @@ interface RecordWebUploadedFileArgs {
   readonly sizeBytes: number;
   readonly url: string;
   readonly s3Key: string;
+  readonly publicBrand: PublicBrand;
   readonly metadata: Record<string, unknown>;
 }
 
@@ -49,6 +50,7 @@ interface RecordHostedSiteArtifactArgs {
   readonly sizeBytes: number;
   readonly entrypoint: string;
   readonly spaFallback: boolean;
+  readonly publicBrand: PublicBrand;
 }
 
 function isRunUploadedFileSource(
@@ -109,6 +111,7 @@ function videoArtifactPreviewArgs(
     readonly orgId: string | null | undefined;
     readonly url: string | null;
     readonly contentType: string | null;
+    readonly publicBrand: PublicBrand;
   },
   row: RecordedUploadedFile | undefined,
 ): RenderArtifactPreviewArgs | null {
@@ -128,7 +131,7 @@ function videoArtifactPreviewArgs(
     orgId: args.orgId,
     url: args.url,
     contentType: args.contentType,
-    publicBrand: publicBrandFromArtifactUrl(args.url),
+    publicBrand: args.publicBrand,
   };
 }
 
@@ -180,6 +183,7 @@ export const recordHostedSiteArtifact$ = command(
           fileCount: args.fileCount,
           entrypoint: args.entrypoint,
           spaFallback: args.spaFallback,
+          publicBrand: args.publicBrand,
         },
       })
       .onConflictDoUpdate({
@@ -206,6 +210,7 @@ export const recordHostedSiteArtifact$ = command(
             fileCount: args.fileCount,
             entrypoint: args.entrypoint,
             spaFallback: args.spaFallback,
+            publicBrand: args.publicBrand,
           },
           // Legacy redeploys reuse a mutable alias row. Preserve the preview
           // when the same deployment is completed again, but clear it when a
@@ -267,6 +272,7 @@ export const recordWebUploadedFile$ = command(
     const metadata = {
       ...args.metadata,
       s3Key: args.s3Key,
+      publicBrand: args.publicBrand,
     };
 
     const write = writeDb
@@ -322,6 +328,7 @@ export const recordWebUploadedFile$ = command(
           orgId: args.orgId,
           url: args.url,
           contentType: args.contentType,
+          publicBrand: args.publicBrand,
         },
         row,
       ),
@@ -338,6 +345,7 @@ interface RecordTelegramUploadedFileArgs {
   readonly contentType: string;
   readonly sizeBytes: number;
   readonly url: string;
+  readonly publicBrand: PublicBrand;
   readonly metadata: Record<string, unknown>;
 }
 
@@ -375,7 +383,7 @@ export const recordTelegramUploadedFile$ = command(
         contentType: args.contentType,
         sizeBytes: args.sizeBytes,
         url: args.url,
-        metadata: args.metadata,
+        metadata: { ...args.metadata, publicBrand: args.publicBrand },
       })
       .onConflictDoUpdate({
         target: [
@@ -390,7 +398,7 @@ export const recordTelegramUploadedFile$ = command(
           contentType: args.contentType,
           sizeBytes: args.sizeBytes,
           url: args.url,
-          metadata: args.metadata,
+          metadata: { ...args.metadata, publicBrand: args.publicBrand },
           updatedAt: sql`now()`,
         },
       })
@@ -416,6 +424,7 @@ export const recordTelegramUploadedFile$ = command(
           orgId: args.orgId,
           url: args.url,
           contentType: args.contentType,
+          publicBrand: args.publicBrand,
         },
         row,
       ),
@@ -432,6 +441,7 @@ interface RecordSlackUploadedFileArgs {
   readonly contentType: string | null;
   readonly sizeBytes: number | null;
   readonly url: string | null;
+  readonly publicBrand: PublicBrand;
   readonly metadata: Record<string, unknown>;
 }
 
@@ -444,6 +454,7 @@ interface RecordFeishuUploadedFileArgs {
   readonly contentType: string;
   readonly sizeBytes: number;
   readonly url: string;
+  readonly publicBrand: PublicBrand;
   readonly metadata: Record<string, unknown>;
 }
 
@@ -456,6 +467,7 @@ interface RecordTeamsUploadedFileArgs {
   readonly contentType: string;
   readonly sizeBytes: number;
   readonly url: string;
+  readonly publicBrand: PublicBrand;
   readonly metadata: Record<string, unknown>;
 }
 
@@ -468,6 +480,7 @@ interface RecordAgentPhoneUploadedFileArgs {
   readonly contentType: string;
   readonly sizeBytes: number;
   readonly url: string;
+  readonly publicBrand: PublicBrand;
   readonly metadata: Record<string, unknown>;
 }
 
@@ -480,6 +493,7 @@ interface RecordGithubUploadedFileArgs {
   readonly contentType: string;
   readonly sizeBytes: number;
   readonly url: string;
+  readonly publicBrand: PublicBrand;
   readonly metadata: Record<string, unknown>;
 }
 
@@ -507,7 +521,7 @@ export const recordGithubUploadedFile$ = command(
         contentType: args.contentType,
         sizeBytes: args.sizeBytes,
         url: args.url,
-        metadata: args.metadata,
+        metadata: { ...args.metadata, publicBrand: args.publicBrand },
       })
       .onConflictDoUpdate({
         target: [
@@ -522,7 +536,7 @@ export const recordGithubUploadedFile$ = command(
           contentType: args.contentType,
           sizeBytes: args.sizeBytes,
           url: args.url,
-          metadata: args.metadata,
+          metadata: { ...args.metadata, publicBrand: args.publicBrand },
           updatedAt: sql`now()`,
         },
       })
@@ -548,6 +562,7 @@ export const recordGithubUploadedFile$ = command(
           orgId: args.orgId,
           url: args.url,
           contentType: args.contentType,
+          publicBrand: args.publicBrand,
         },
         row,
       ),
@@ -579,7 +594,7 @@ export const recordFeishuUploadedFile$ = command(
         contentType: args.contentType,
         sizeBytes: args.sizeBytes,
         url: args.url,
-        metadata: args.metadata,
+        metadata: { ...args.metadata, publicBrand: args.publicBrand },
       })
       .onConflictDoUpdate({
         target: [
@@ -594,7 +609,7 @@ export const recordFeishuUploadedFile$ = command(
           contentType: args.contentType,
           sizeBytes: args.sizeBytes,
           url: args.url,
-          metadata: args.metadata,
+          metadata: { ...args.metadata, publicBrand: args.publicBrand },
           updatedAt: sql`now()`,
         },
       })
@@ -620,6 +635,7 @@ export const recordFeishuUploadedFile$ = command(
           orgId: args.orgId,
           url: args.url,
           contentType: args.contentType,
+          publicBrand: args.publicBrand,
         },
         row,
       ),
@@ -651,7 +667,7 @@ export const recordTeamsUploadedFile$ = command(
         contentType: args.contentType,
         sizeBytes: args.sizeBytes,
         url: args.url,
-        metadata: args.metadata,
+        metadata: { ...args.metadata, publicBrand: args.publicBrand },
       })
       .onConflictDoUpdate({
         target: [
@@ -666,7 +682,7 @@ export const recordTeamsUploadedFile$ = command(
           contentType: args.contentType,
           sizeBytes: args.sizeBytes,
           url: args.url,
-          metadata: args.metadata,
+          metadata: { ...args.metadata, publicBrand: args.publicBrand },
           updatedAt: sql`now()`,
         },
       })
@@ -692,6 +708,7 @@ export const recordTeamsUploadedFile$ = command(
           orgId: args.orgId,
           url: args.url,
           contentType: args.contentType,
+          publicBrand: args.publicBrand,
         },
         row,
       ),
@@ -734,7 +751,7 @@ export const recordAgentPhoneUploadedFile$ = command(
         contentType: args.contentType,
         sizeBytes: args.sizeBytes,
         url: args.url,
-        metadata: args.metadata,
+        metadata: { ...args.metadata, publicBrand: args.publicBrand },
       })
       .onConflictDoUpdate({
         target: [
@@ -749,7 +766,7 @@ export const recordAgentPhoneUploadedFile$ = command(
           contentType: args.contentType,
           sizeBytes: args.sizeBytes,
           url: args.url,
-          metadata: args.metadata,
+          metadata: { ...args.metadata, publicBrand: args.publicBrand },
           updatedAt: sql`now()`,
         },
       })
@@ -775,6 +792,7 @@ export const recordAgentPhoneUploadedFile$ = command(
           orgId: args.orgId,
           url: args.url,
           contentType: args.contentType,
+          publicBrand: args.publicBrand,
         },
         row,
       ),
@@ -817,7 +835,7 @@ export const recordSlackUploadedFile$ = command(
         contentType: args.contentType,
         sizeBytes: args.sizeBytes,
         url: args.url,
-        metadata: args.metadata,
+        metadata: { ...args.metadata, publicBrand: args.publicBrand },
       })
       .onConflictDoUpdate({
         target: [
@@ -832,7 +850,7 @@ export const recordSlackUploadedFile$ = command(
           contentType: args.contentType,
           sizeBytes: args.sizeBytes,
           url: args.url,
-          metadata: args.metadata,
+          metadata: { ...args.metadata, publicBrand: args.publicBrand },
           updatedAt: sql`now()`,
         },
       })
@@ -858,6 +876,7 @@ export const recordSlackUploadedFile$ = command(
           orgId: args.orgId,
           url: args.url,
           contentType: args.contentType,
+          publicBrand: args.publicBrand,
         },
         row,
       ),

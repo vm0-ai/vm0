@@ -591,6 +591,7 @@ function hostedSiteArtifactArgs(deployment: HostedDeploymentRow) {
     sizeBytes: deployment.sizeBytes,
     entrypoint: deployment.entrypoint,
     spaFallback: deployment.spaFallback,
+    publicBrand: deployment.publicBrand,
   };
 }
 

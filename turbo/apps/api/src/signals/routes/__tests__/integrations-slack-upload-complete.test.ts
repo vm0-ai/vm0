@@ -1207,7 +1207,7 @@ describe("POST /api/okou/integrations/slack/upload-file/complete", () => {
     const frameRequests: string[] = [];
     server.use(
       http.get(
-        /^https:\/\/cdn\.vm7\.io\/cdn-cgi\/media\/mode=frame,time=1s,width=640,format=jpg\//,
+        /^https:\/\/cdn\.okou\.io\/cdn-cgi\/media\/mode=frame,time=1s,width=640,format=jpg\//,
         ({ request }) => {
           frameRequests.push(request.url);
           return new HttpResponse(new Uint8Array([0xff, 0xd8, 0xff]), {
@@ -1216,7 +1216,12 @@ describe("POST /api/okou/integrations/slack/upload-file/complete", () => {
         },
       ),
     );
-    const token = okouToken({ userId, orgId, runId });
+    const token = okouToken({
+      userId,
+      orgId,
+      runId,
+      publicBrand: "okou",
+    });
 
     const client = setupApp({
       context,
@@ -1232,14 +1237,15 @@ describe("POST /api/okou/integrations/slack/upload-file/complete", () => {
     await flushWaitUntilForTest();
 
     expect(frameRequests).toStrictEqual([
-      `https://cdn.vm7.io/cdn-cgi/media/mode=frame,time=1s,width=640,format=jpg/${permalink}`,
+      `https://cdn.okou.io/cdn-cgi/media/mode=frame,time=1s,width=640,format=jpg/${permalink}`,
     ]);
     expect(
       objectStore.puts.some((put) => {
         return (
           put.bucket === "test-user-artifacts" &&
           /^artifacts\/[0-9a-z]{10}\.jpg$/u.test(put.key) &&
-          put.contentType === "image/jpeg"
+          put.contentType === "image/jpeg" &&
+          put.metadata?.["public-brand"] === "okou"
         );
       }),
     ).toBeTruthy();
@@ -1253,7 +1259,7 @@ describe("POST /api/okou/integrations/slack/upload-file/complete", () => {
     expect(files[0]).toMatchObject({
       id: fileId,
       previewImageUrl: expect.stringMatching(
-        /\/artifacts\/[0-9a-z]{10}\.jpg$/u,
+        /^https:\/\/cdn\.okou\.io\/artifacts\/[0-9a-z]{10}\.jpg$/u,
       ),
     });
   });

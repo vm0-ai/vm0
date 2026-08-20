@@ -287,6 +287,36 @@ describe("POST /api/zero/uploads/complete", () => {
     });
   });
 
+  it("rejects corrupt persisted artifact brand metadata", async () => {
+    const fixture = await createRunUploadFixture();
+    const prepared = await chat.prepareUpload(fixture.actor, {
+      filename: "corrupt-brand.pdf",
+      contentType: "application/pdf",
+      size: 17,
+    });
+    const key = new URL(prepared.url).pathname.replace(/^\/+/u, "");
+    fixture.objectStore.addObject({
+      bucket: "test-user-artifacts",
+      key,
+      size: 17,
+      contentType: "application/pdf",
+      metadata: {
+        "artifact-id": prepared.id,
+        filename: "corrupt-brand.pdf",
+        "public-brand": "unexpected",
+        "user-id": encodeURIComponent(fixture.actor.userId),
+      },
+    });
+
+    const response = await chat.completeUploadWithBearer(
+      fixture.bearer,
+      { id: prepared.id },
+      [500],
+    );
+
+    expect(response.body).toStrictEqual({ error: "Internal server error" });
+  });
+
   it("uses a recognized complete content type when provided", async () => {
     const fixture = await createRunUploadFixture();
     const fileId = randomUUID();

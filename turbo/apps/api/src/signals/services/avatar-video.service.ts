@@ -770,6 +770,7 @@ export const recordGeneratedAvatarVideo$ = command(
         sizeBytes: params.generation.videoBytes.byteLength,
         url: artifact.url,
         s3Key: artifact.key,
+        publicBrand: params.publicBrand,
         metadata: compactObject({
           generatedBy: "zero-joggai-avatar-video",
           provider: "joggai",

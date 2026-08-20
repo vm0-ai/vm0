@@ -120,13 +120,21 @@ export function readBuiltInGenerationRequestInternal(
   if (!isRecord(value)) {
     return {};
   }
+  const publicBrand = value.publicBrand;
+  if (
+    Object.hasOwn(value, "publicBrand") &&
+    publicBrand !== "vm0" &&
+    publicBrand !== "okou"
+  ) {
+    throw new Error(
+      `Invalid built-in generation public brand: ${String(publicBrand)}`,
+    );
+  }
   return {
     admissionId:
       typeof value.admissionId === "string" ? value.admissionId : undefined,
     publicBrand:
-      value.publicBrand === "vm0" || value.publicBrand === "okou"
-        ? value.publicBrand
-        : undefined,
+      publicBrand === "vm0" || publicBrand === "okou" ? publicBrand : undefined,
     provider:
       value.provider === "openai" ||
       value.provider === "fal" ||
@@ -152,6 +160,9 @@ export function readBuiltInGenerationRequestInternal(
 }
 
 export function builtInGenerationPublicBrand(request: unknown): PublicBrand {
+  // Old API writers can omit publicBrand during the observed ~102-minute
+  // rollout window. Their jobs can then run for up to one hour. Remove after
+  // both windows close; tracked by #28449. Invalid present values throw above.
   return readBuiltInGenerationRequestInternal(request).publicBrand ?? "vm0";
 }
 

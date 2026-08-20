@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import {
   getVm0ManagedRouteCandidates,
   getVm0Vendor,
@@ -30,6 +32,7 @@ import { and, count, desc, eq, isNotNull, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { closeDbPool } from "../../lib/db";
 import { executeRawRows } from "../../lib/db-raw-rows";
+import { pgBooleanDecoder } from "../../lib/db-structured-result";
 import { bodyResultOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
@@ -50,6 +53,13 @@ import {
   type BuiltInModelRuntimeRoute,
 } from "../services/built-in-model-runtime-route.service";
 import { browserScreenshotSchemaAvailable } from "../services/browser-screenshot-schema.service";
+import {
+  browserPublicBrandSchemaAvailable,
+  browserSessionPublicBrand,
+  browserSessionPublicBrandSelection,
+  browserSessionsBeforePublicBrandMigration,
+  persistBrowserPublicBrandIfAvailable,
+} from "../services/browser-public-brand-schema.service";
 import { usagePackInvitationPurchaseSchemaAvailable } from "../services/usage-pack-invitation-purchase.service";
 import { usagePackPurchaseSerializationSchemaAvailable } from "../services/usage-pack-subscription.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
@@ -890,6 +900,10 @@ type ReadBrowserScreenshotSchemaStateAction = Extract<
   TestRuntimeStateActionBody,
   { action: "read-browser-screenshot-schema-state" }
 >;
+type ValidateBrowserPublicBrandRolloutAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "validate-browser-public-brand-rollout" }
+>;
 type ReadUsagePackInvitationSchemaStateAction = Extract<
   TestRuntimeStateActionBody,
   { action: "read-usage-pack-invitation-schema-state" }
@@ -909,6 +923,7 @@ type PersistenceStateAction =
   | ReadRunClaimOwnerAction
   | ReadRunLaunchSnapshotAction
   | ReadBrowserScreenshotSchemaStateAction
+  | ValidateBrowserPublicBrandRolloutAction
   | ReadUsagePackInvitationSchemaStateAction
   | ReadUsagePackPurchaseSerializationSchemaStateAction
   | ResetDatabasePoolAction;
@@ -927,6 +942,9 @@ function isPersistenceStateAction(
       return true;
     }
     case "read-browser-screenshot-schema-state": {
+      return true;
+    }
+    case "validate-browser-public-brand-rollout": {
       return true;
     }
     case "read-usage-pack-invitation-schema-state": {
@@ -951,6 +969,103 @@ async function mutateStorageState(
 ): Promise<void> {
   await removeRunCanonicalStorageState(db, body.run_id, signal);
   signal.throwIfAborted();
+}
+
+async function validateBrowserPublicBrandRolloutResponse(
+  db: Db,
+  signal: AbortSignal,
+) {
+  const available = await browserPublicBrandSchemaAvailable(db);
+  signal.throwIfAborted();
+  const [tableState] = await db
+    .select({
+      available: sql`
+        to_regclass('public.browser_sessions') IS NOT NULL
+      `.mapWith(pgBooleanDecoder),
+    })
+    .from(sql`(SELECT 1) AS browser_table_probe`)
+    .limit(1);
+  const fixtureTableRequired = tableState?.available !== true;
+  if (fixtureTableRequired) {
+    // template1 is the test suite's pre-migration database. Reproduce the
+    // 0955 browser_sessions shape so this action executes the new API's
+    // real INSERT and SELECT expressions without migration 0956.
+    await db.execute(sql`
+      CREATE TABLE public.browser_sessions (
+        id uuid DEFAULT gen_random_uuid() NOT NULL,
+        chat_thread_id uuid NOT NULL,
+        run_id uuid,
+        org_id text NOT NULL,
+        user_id text NOT NULL,
+        name varchar(64) NOT NULL,
+        browser_profile_id uuid,
+        status varchar(20) NOT NULL,
+        proxy_country_code varchar(2),
+        timeout_minutes integer NOT NULL,
+        suspended_at timestamp,
+        suspension_reason varchar(20),
+        created_at timestamp DEFAULT now() NOT NULL,
+        updated_at timestamp DEFAULT now() NOT NULL,
+        browser_thread_profile_id uuid
+      )
+    `);
+  }
+  const chatThreadId = randomUUID();
+  // Match the previous API's INSERT shape by intentionally omitting the
+  // new column. Migration 0956 must supply the VM0 compatibility value.
+  await db.insert(browserSessionsBeforePublicBrandMigration).values({
+    chatThreadId,
+    runId: null,
+    orgId: "browser-public-brand-rollout",
+    userId: "browser-public-brand-rollout",
+    name: "Browser rollout fixture",
+    status: "suspended",
+    proxyCountryCode: null,
+    timeoutMinutes: 30,
+    suspendedAt: nowDate(),
+    suspensionReason: "reconcile",
+  });
+  const [browser] = await db
+    .select({ publicBrand: browserSessionPublicBrandSelection })
+    .from(browserSessions)
+    .where(eq(browserSessions.chatThreadId, chatThreadId))
+    .limit(1);
+  if (!browser) {
+    throw new Error("Previous-API browser rollout row is missing");
+  }
+  const previousApiPublicBrand = browserSessionPublicBrand(browser.publicBrand);
+  const persisted = await persistBrowserPublicBrandIfAvailable(db, {
+    chatThreadId,
+    publicBrand: "okou",
+  });
+  const [updatedBrowser] = await db
+    .select({ publicBrand: browserSessionPublicBrandSelection })
+    .from(browserSessions)
+    .where(eq(browserSessions.chatThreadId, chatThreadId))
+    .limit(1);
+  if (!updatedBrowser) {
+    throw new Error("New-API browser rollout row is missing");
+  }
+  const response = {
+    status: 200 as const,
+    body: {
+      ok: true as const,
+      browser_public_brand_schema_available: available,
+      previous_api_browser_public_brand: previousApiPublicBrand,
+      new_api_browser_public_brand_persisted: persisted,
+      new_api_browser_public_brand: browserSessionPublicBrand(
+        updatedBrowser.publicBrand,
+      ),
+    },
+  };
+  if (fixtureTableRequired) {
+    await db.execute(sql`DROP TABLE public.browser_sessions`);
+  } else {
+    await db
+      .delete(browserSessions)
+      .where(eq(browserSessions.chatThreadId, chatThreadId));
+  }
+  return response;
 }
 
 async function persistenceStateActionResponse(
@@ -1020,6 +1135,9 @@ async function persistenceStateActionResponse(
           browser_screenshot_schema_available: available,
         },
       };
+    }
+    case "validate-browser-public-brand-rollout": {
+      return await validateBrowserPublicBrandRolloutResponse(db, signal);
     }
     case "read-usage-pack-invitation-schema-state": {
       const available = await usagePackInvitationPurchaseSchemaAvailable(db);

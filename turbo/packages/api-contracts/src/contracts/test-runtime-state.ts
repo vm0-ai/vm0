@@ -56,6 +56,9 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     action: z.literal("read-browser-screenshot-schema-state"),
   }),
   z.object({
+    action: z.literal("validate-browser-public-brand-rollout"),
+  }),
+  z.object({
     action: z.literal("read-usage-pack-invitation-schema-state"),
   }),
   z.object({
@@ -241,6 +244,10 @@ export const testRuntimeStateActionResponseSchema = z.object({
   selected_model: z.string().optional(),
   managed_model_route: managedModelRuntimeRouteSchema.nullable().optional(),
   browser_screenshot_schema_available: z.boolean().optional(),
+  browser_public_brand_schema_available: z.boolean().optional(),
+  previous_api_browser_public_brand: z.enum(["vm0", "okou"]).optional(),
+  new_api_browser_public_brand_persisted: z.boolean().optional(),
+  new_api_browser_public_brand: z.enum(["vm0", "okou"]).optional(),
   usage_pack_invitation_schema_available: z.boolean().optional(),
   usage_pack_purchase_serialization_schema_available: z.boolean().optional(),
   autonomy_budget: z.int().min(0).max(10).nullable().optional(),

@@ -83,6 +83,9 @@ export const browserSessions = pgTable(
     ),
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
+    // Old API after migration compatibility for the observed ~102-minute
+    // DB/API rollout window. Remove the default after old writers and rollback
+    // have drained; tracked by #28449.
     publicBrand: text("public_brand")
       .$type<PublicBrand>()
       .default("vm0")

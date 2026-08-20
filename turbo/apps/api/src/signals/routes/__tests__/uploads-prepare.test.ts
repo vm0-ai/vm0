@@ -131,6 +131,43 @@ describe("POST /api/zero/uploads/prepare", () => {
     });
   });
 
+  it("falls back to the VM0 CDN until the Okou CDN config is deployed", async () => {
+    const userId = `user_${randomUUID().slice(0, 8)}`;
+    const orgId = `org_${randomUUID().slice(0, 8)}`;
+    const runId = `run_${randomUUID()}`;
+    await store.set(seedOrgMembership$, { orgId, userId }, context.signal);
+    const seconds = currentSecond();
+    const token = signSandboxJwtForTests({
+      scope: "zero",
+      userId,
+      orgId,
+      runId,
+      capabilities: ["file:write"],
+      publicBrand: "okou",
+      iat: seconds,
+      exp: seconds + 60,
+    });
+    mockEnv("OKOU_PUBLIC_ARTIFACTS_BASE_URL", undefined);
+
+    const response = await setupApp({ context, routes: uploadsTestRoutes })(
+      uploadsContract,
+    ).prepare({
+      body: validBody(),
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(response.status).toBe(200);
+    if (response.status !== 200) {
+      return;
+    }
+    expect(response.body.url).toMatch(
+      /^https:\/\/cdn\.vm7\.io\/artifacts\/[0-9a-z]{10}\.txt$/u,
+    );
+    expect(response.body).toMatchObject({
+      uploadHeaders: { "x-amz-meta-public-brand": "okou" },
+    });
+  });
+
   it("uses the trusted request brand when no zero token is present", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;

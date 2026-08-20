@@ -1098,6 +1098,7 @@ export const recordGeneratedSpeech$ = command(
         sizeBytes: params.audioBytes.byteLength,
         url,
         s3Key,
+        publicBrand: params.publicBrand,
         metadata: {
           generatedBy: "zero-official-voice",
           model: VOICE_IO_TTS_MODEL,

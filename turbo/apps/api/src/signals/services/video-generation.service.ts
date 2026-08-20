@@ -2029,6 +2029,7 @@ export const recordGeneratedVideo$ = command(
         sizeBytes: params.generation.videoBytes.byteLength,
         url,
         s3Key,
+        publicBrand: params.publicBrand,
         metadata: compactObject({
           generatedBy: "zero-official-video",
           model: params.generation.model,

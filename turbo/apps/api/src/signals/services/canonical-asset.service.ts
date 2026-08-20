@@ -91,7 +91,19 @@ interface CanonicalAssetRow {
 function canonicalAssetPublicBrand(
   metadata: RunUploadedFileMetadata,
 ): PublicBrand {
-  return metadata.publicBrand === "okou" ? "okou" : "vm0";
+  const publicBrand: unknown = metadata.publicBrand;
+  if (publicBrand === undefined) {
+    // Old API writers can omit the field during the observed ~102-minute
+    // DB/API rollout window, and their persisted rows remain reachable until
+    // expiry or backfill. Remove after both conditions hold; tracked by #28449.
+    return "vm0";
+  }
+  if (publicBrand === "vm0" || publicBrand === "okou") {
+    return publicBrand;
+  }
+  throw new Error(
+    `Invalid canonical asset public brand: ${String(publicBrand)}`,
+  );
 }
 
 function slackFileFilename(file: SlackFile): string {
