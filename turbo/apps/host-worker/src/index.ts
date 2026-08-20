@@ -231,7 +231,9 @@ function hostedSiteRequestTarget(
 function storedPublicBrand(
   value: ActiveSitePointer | HostedSiteManifest,
 ): PublicBrand {
-  // Payloads written before publicBrand existed are historical VM0 content.
+  // Persisted hosted-site R2 pointers and manifests have no drain window.
+  // Brandless objects are historical VM0 content until #27750 backfills every
+  // retained object and verifies that this compatibility read can be removed.
   return value.publicBrand ?? "vm0";
 }
 

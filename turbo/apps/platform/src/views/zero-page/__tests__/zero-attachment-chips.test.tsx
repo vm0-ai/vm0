@@ -2971,6 +2971,79 @@ describe("zero attachment chips", () => {
     expect(screen.getByLabelText("Preview abcdefghij.mp4")).toBeInTheDocument();
   });
 
+  it("renders exact Okou public links without trusting lookalike hosts", async () => {
+    context.mocks.browser.url(`https://app.okou.ai/chats/${THREAD_ID}`);
+    const legacySiteUrl = "https://legacy-site.sites.vm0.io/";
+    const okouSiteUrl = "https://okou-site.okou.app/";
+    const okouArtifactUrl =
+      "https://cdn.okou.io/artifacts/user_1/artifact_1/report.pdf";
+    const lookalikeSiteUrl =
+      "https://okou-site.okou.app.attacker.example/";
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatEvents: [
+        {
+          id: "msg-okou-public-links",
+          role: "assistant",
+          content: [
+            `[Legacy site](${legacySiteUrl})`,
+            `[Okou site](${okouSiteUrl})`,
+            `[Okou report](${okouArtifactUrl})`,
+            `[Lookalike site](${lookalikeSiteUrl})`,
+          ].join("\n"),
+          runId: "run-okou-public-links",
+          createdAt: "2026-08-20T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await expect(
+      screen.findByLabelText("Open html preview for Legacy site"),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open html preview for Okou site"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open pdf preview for Okou report"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Open html preview for Lookalike site"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Lookalike site" }),
+    ).toHaveAttribute("href", lookalikeSiteUrl);
+
+    click(screen.getByLabelText("Open pdf preview for Okou report"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-dialog-document-frame"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByTitle("Okou report preview")).toHaveAttribute(
+      "src",
+      `${okouArtifactUrl}#navpanes=0`,
+    );
+
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("attachment-lightbox"),
+      ).not.toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Open html preview for Okou site"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-dialog-body-html")).toHaveAttribute(
+        "src",
+        okouSiteUrl,
+      );
+    });
+  });
+
   it("recognizes historical Okou and preview file links without trusting Okou subdomains", async () => {
     context.mocks.browser.url(`https://app.vm0.ai/chats/${THREAD_ID}`);
     const okouFileUrl =
