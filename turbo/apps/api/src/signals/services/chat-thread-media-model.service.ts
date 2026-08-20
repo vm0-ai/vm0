@@ -40,11 +40,6 @@ export interface NewChatThreadMediaModels {
   readonly selectedImageModel: ImageModel | null;
 }
 
-const UNPINNED: NewChatThreadMediaModels = {
-  selectedVideoModel: null,
-  selectedImageModel: null,
-};
-
 /**
  * A stored id that has left its catalog counts as unset, matching how dispatch
  * narrows an existing pin.
@@ -104,7 +99,7 @@ export async function resolveNewChatThreadMediaModels(
     args.featureSwitchContext,
   );
   if (!videoEnabled && !imageEnabled) {
-    return UNPINNED;
+    return { selectedVideoModel: null, selectedImageModel: null };
   }
 
   const member = await memberMediaModels(db, args);
