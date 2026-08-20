@@ -698,7 +698,7 @@
   "auth": {
     "clerk": {
       "accessNotAllowed": "L'accès n'est pas autorisé.",
-      "userBanned": "L'accès au compte a été suspendu car l'activité sur ce compte a violé les Conditions d'utilisation de {{brandName}}. Si vous avez des questions, contactez support@vm0.ai."
+      "userBanned": "L'accès au compte a été suspendu car l'activité sur ce compte a violé les Conditions d'utilisation de {{brandName}}. Si vous avez des questions, contactez {{supportEmail}}."
     },
     "documentTitles": {
       "signIn": "Se connecter",

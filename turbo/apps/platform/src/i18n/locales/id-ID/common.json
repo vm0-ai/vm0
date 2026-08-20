@@ -681,7 +681,7 @@
   "auth": {
     "clerk": {
       "accessNotAllowed": "Akses tidak diizinkan.",
-      "userBanned": "Akses akun ditangguhkan karena aktivitas pada akun ini melanggar Ketentuan Penggunaan {{brandName}}. Jika ada pertanyaan, hubungi support@vm0.ai."
+      "userBanned": "Akses akun ditangguhkan karena aktivitas pada akun ini melanggar Ketentuan Penggunaan {{brandName}}. Jika ada pertanyaan, hubungi {{supportEmail}}."
     },
     "documentTitles": {
       "signIn": "Masuk",

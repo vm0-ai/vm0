@@ -681,7 +681,7 @@
   "auth": {
     "clerk": {
       "accessNotAllowed": "접근이 허용되지 않습니다.",
-      "userBanned": "이 계정의 활동이 {{brandName}} 이용 약관을 위반하여 계정 접근이 중단되었습니다. 문의 사항은 support@vm0.ai로 연락해 주세요."
+      "userBanned": "이 계정의 활동이 {{brandName}} 이용 약관을 위반하여 계정 접근이 중단되었습니다. 문의 사항은 {{supportEmail}}로 연락해 주세요."
     },
     "documentTitles": {
       "signIn": "로그인",
