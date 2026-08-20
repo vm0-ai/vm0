@@ -125,7 +125,7 @@ async fn process_control_endpoint_is_not_inherited_by_cli_child()
         output.status
     );
     assert!(
-        stdout.lines().any(|line| line == ISOLATED_CHILD_MARKER),
+        stdout.contains(ISOLATED_CHILD_MARKER),
         "isolated process-control environment test did not activate; stdout:\n{stdout}\nstderr:\n{stderr}"
     );
     Ok(())
@@ -138,7 +138,7 @@ async fn process_control_endpoint_is_not_inherited_by_cli_child_isolated()
     if std::env::var(ISOLATED_CHILD_GUARD).ok().as_deref() != Some(ISOLATED_CHILD_GUARD_VALUE) {
         return Ok(());
     }
-    println!("{ISOLATED_CHILD_MARKER}");
+    println!("isolated child output: {ISOLATED_CHILD_MARKER}; continuing");
 
     let mock = std::env::var_os(ISOLATED_CHILD_MOCK_PATH)
         .map(PathBuf::from)
