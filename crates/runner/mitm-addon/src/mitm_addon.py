@@ -118,6 +118,8 @@ _HTTP_OWS_CHARS = " \t"
 # Consumer: request() and terminal cleanup.
 # Release: auth marker is popped by terminal cleanup.
 # _REQUEST_HEADERS_TERMINATED is a flow-local sentinel for request() early exit.
+_HTTP_STATUS_REQUEST_HEADER_FIELDS_TOO_LARGE = 431
+_MAX_REQUEST_HEADER_NAME_BYTES = 4096
 _REQUEST_HEADERS_TERMINATED = "_request_headers_terminated"
 _FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS = "_firewall_auth_applied_in_requestheaders"
 _STALE_FIREWALL_AUTHORIZATION_METADATA_KEYS = (
@@ -746,6 +748,19 @@ def client_disconnected(client: connection.Client) -> None:
 def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
     """Handle request-header-only decisions before mitmproxy buffers bodies."""
     request_end_stream = mitmproxy_compat.take_request_end_stream(flow)
+    request_header_fields = flow.request.headers.fields
+    if any(len(name) > _MAX_REQUEST_HEADER_NAME_BYTES for name, _value in request_header_fields):
+        # Mitmproxy performs an Expect lookup after this hook, so rejected names
+        # must be gone before control returns while ordinary protocol fields stay.
+        flow.request.headers.fields = tuple(
+            (name, value)
+            for name, value in request_header_fields
+            if len(name) <= _MAX_REQUEST_HEADER_NAME_BYTES
+        )
+        flow.response = http.Response.make(_HTTP_STATUS_REQUEST_HEADER_FIELDS_TOO_LARGE)
+        flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
+        return None
+
     codex_model_catalog_cache.capture_and_strip_prefetch_marker(flow)
     connector_intent.capture_and_strip(flow)
 
@@ -1303,15 +1318,15 @@ async def request(flow: http.HTTPFlow) -> None:
     `request_classification.classify_request()`, which owns the canonical decision
     order. This hook dispatches the current-state result.
     """
-    codex_model_catalog_cache.capture_and_strip_prefetch_marker(flow)
-    connector_intent.capture_and_strip(flow)
-
     if flow.metadata.get(_REQUEST_HEADERS_TERMINATED):
         auth_base_forwarder.release_forward_request_admission_from_flow(flow)
         aws_sigv4_body_admission.release_from_flow(flow)
         release_aws_sigv4_request_inspection(flow)
         request_classification.pop_cached_classification(flow)
         return
+
+    codex_model_catalog_cache.capture_and_strip_prefetch_marker(flow)
+    connector_intent.capture_and_strip(flow)
 
     if flow.response is not None or flow.error is not None:
         auth_base_forwarder.release_forward_request_admission_from_flow(flow)
