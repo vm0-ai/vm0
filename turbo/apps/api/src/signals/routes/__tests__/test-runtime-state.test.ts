@@ -1,9 +1,15 @@
 import { randomUUID } from "node:crypto";
 
+import { ALL_RUN_STATUSES } from "@okouai/api-contracts/contracts/runs";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
 import { withMockNowForTest } from "../../../lib/time";
+import { createBddApi } from "./helpers/api-bdd";
+import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
+import { createRunsApi } from "./helpers/api-bdd-runs";
+import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import {
   applyVm0ManagedModelOutcomeFixture,
   clearVm0ManagedModelHealthFixture,
@@ -14,6 +20,9 @@ import {
 } from "./helpers/runtime-state";
 
 const context = testContext();
+const bdd = createBddApi(context);
+const chat = createChatFilesBddApi(context);
+const runs = createRunsApi(context);
 
 describe("POST /api/test/runtime-state/action", () => {
   it("keeps overlapping VM0 managed model-key fixtures independently releasable", async () => {
@@ -231,6 +240,59 @@ describe("POST /api/test/runtime-state/action", () => {
       await expect(
         resolveVm0ManagedModelRouteFixture(context, "gpt-5.6-sol", true),
       ).resolves.toBeNull();
+    });
+
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    await runs.grantProEntitlement(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD managed fallback unavailable agent",
+    });
+    await runs.updateOrgModelPolicies(actor, [
+      {
+        model: "gpt-5.6-sol",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+    ]);
+    if (!actor.orgId) {
+      throw new Error("Expected managed fallback actor to have an org");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      {
+        [FeatureSwitchKey.ManagedModelProviderFallback]: true,
+      },
+    );
+    const rejected = await withMockNowForTest(startedAt, async () => {
+      return await chat.requestSendEvent(
+        actor,
+        {
+          agentId: agent.agentId,
+          prompt: "reject before constructing a managed-model run",
+          model: "gpt-5.6-sol",
+          clientEventId: randomUUID(),
+        },
+        [503],
+      );
+    });
+    expect(rejected.body).toStrictEqual({
+      error: {
+        code: "MODEL_PROVIDER_UNAVAILABLE",
+        message:
+          "Every managed route for this model is temporarily unavailable",
+      },
+    });
+    await expect(
+      runs.listAgentRuns(actor, {
+        status: ALL_RUN_STATUSES.join(","),
+        limit: 20,
+      }),
+    ).resolves.toStrictEqual({
+      runs: [],
     });
   });
 });

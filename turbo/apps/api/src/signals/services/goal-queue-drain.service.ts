@@ -261,15 +261,17 @@ async function resolveModelContext(
 
   const effectiveModelProvider = providerAdmission.effectiveModelProvider;
   const selectedModel = pin.selectedModel;
-  const featureSwitchContext = await loadUserFeatureSwitchContext(
-    args.db,
-    args.goal.orgId,
-    args.goal.userId,
-  );
-  const fallbackEnabled = isFeatureEnabled(
-    FeatureSwitchKey.ManagedModelProviderFallback,
-    featureSwitchContext,
-  );
+  const fallbackEnabled =
+    effectiveModelProvider === "vm0"
+      ? isFeatureEnabled(
+          FeatureSwitchKey.ManagedModelProviderFallback,
+          await loadUserFeatureSwitchContext(
+            args.db,
+            args.goal.orgId,
+            args.goal.userId,
+          ),
+        )
+      : false;
   const builtInModelRuntimeRoute =
     effectiveModelProvider === "vm0" && selectedModel
       ? await resolveBuiltInModelRuntimeRoute(
