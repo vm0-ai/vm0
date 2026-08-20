@@ -112,9 +112,9 @@ import { registerCanonicalWebInputAssets } from "./canonical-asset.service";
 import { resolveArtifactObject$ } from "./artifact-storage.service";
 import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 import {
-  resolveVm0ModelRuntimeRoute,
-  type Vm0ModelRuntimeRoute,
-} from "./vm0-model-runtime-route.service";
+  resolveBuiltInModelRuntimeRoute,
+  type BuiltInModelRuntimeRoute,
+} from "./built-in-model-runtime-route.service";
 import {
   chatEventTypeIn,
   runOwnedChatEventCondition,
@@ -201,7 +201,7 @@ type ModelFirstProviderAdmission = Awaited<
 interface ResolvedRunConfiguration {
   readonly modelPin: ThreadModelPin;
   readonly providerAdmission: ModelFirstProviderAdmission;
-  readonly vm0ModelRuntimeRoute?: Vm0ModelRuntimeRoute;
+  readonly builtInModelRuntimeRoute?: BuiltInModelRuntimeRoute;
   readonly codexServiceTier: "fast" | undefined;
 }
 
@@ -900,7 +900,7 @@ function emptyModelFirstThreadPin(): ThreadModelPin {
   };
 }
 
-async function withVm0ModelRuntimeRoute(
+async function withBuiltInModelRuntimeRoute(
   db: Db,
   configuration: ResolvedRunConfiguration,
 ): Promise<ResolvedRunConfiguration | NormalSendFailure> {
@@ -916,12 +916,12 @@ async function withVm0ModelRuntimeRoute(
       "No model provider configured: no VM0 managed model is selected",
     );
   }
-  const vm0ModelRuntimeRoute = await resolveVm0ModelRuntimeRoute(
+  const builtInModelRuntimeRoute = await resolveBuiltInModelRuntimeRoute(
     db,
     selectedModel,
   );
-  return vm0ModelRuntimeRoute
-    ? { ...configuration, vm0ModelRuntimeRoute }
+  return builtInModelRuntimeRoute
+    ? { ...configuration, builtInModelRuntimeRoute }
     : providerUnavailable(
         "No model provider configured: no VM0 managed model key is configured",
       );
@@ -987,7 +987,7 @@ async function resolveExplicitRunConfiguration(params: {
   if (codexServiceTierError) {
     return codexServiceTierError;
   }
-  return await withVm0ModelRuntimeRoute(params.db, {
+  return await withBuiltInModelRuntimeRoute(params.db, {
     modelPin,
     providerAdmission,
     codexServiceTier: codexServiceTierForRun({
@@ -1516,11 +1516,14 @@ async function resolveThread(params: {
     if ("status" in persisted) {
       return persisted;
     }
-    const resolvedRunConfiguration = await withVm0ModelRuntimeRoute(params.db, {
-      modelPin: persisted.pin,
-      providerAdmission: persisted.providerAdmission,
-      codexServiceTier: persisted.runCodexServiceTier,
-    });
+    const resolvedRunConfiguration = await withBuiltInModelRuntimeRoute(
+      params.db,
+      {
+        modelPin: persisted.pin,
+        providerAdmission: persisted.providerAdmission,
+        codexServiceTier: persisted.runCodexServiceTier,
+      },
+    );
     if ("status" in resolvedRunConfiguration) {
       return resolvedRunConfiguration;
     }
@@ -2993,7 +2996,7 @@ function buildCreateZeroRunArgs(params: {
   const {
     modelPin,
     providerAdmission,
-    vm0ModelRuntimeRoute,
+    builtInModelRuntimeRoute,
     codexServiceTier,
   } = prepared.runConfiguration;
   const webChatSessionPromptContext: WebChatSessionPromptContext = {
@@ -3014,7 +3017,7 @@ function buildCreateZeroRunArgs(params: {
     modelProviderCredentialScope:
       modelPin.modelProviderCredentialScope ?? undefined,
     selectedModelOverride: modelPin.selectedModel ?? undefined,
-    ...(vm0ModelRuntimeRoute ? { vm0ModelRuntimeRoute } : {}),
+    ...(builtInModelRuntimeRoute ? { builtInModelRuntimeRoute } : {}),
     zeroRunModelPin: {
       modelProvider: providerAdmission.effectiveModelProvider ?? null,
       modelProviderId: modelPin.modelProviderId,
@@ -3025,8 +3028,8 @@ function buildCreateZeroRunArgs(params: {
       selectedModel: modelPin.selectedModel,
       modelProvider: providerAdmission.effectiveModelProvider ?? null,
       modelProviderId: modelPin.modelProviderId,
-      modelRuntimeProvider: vm0ModelRuntimeRoute?.providerType ?? null,
-      modelRuntimeModel: vm0ModelRuntimeRoute?.upstreamModel ?? null,
+      modelRuntimeProvider: builtInModelRuntimeRoute?.providerType ?? null,
+      modelRuntimeModel: builtInModelRuntimeRoute?.upstreamModel ?? null,
       cliAgentType: providerAdmission.cliAgentType,
     },
     codexServiceTier,
