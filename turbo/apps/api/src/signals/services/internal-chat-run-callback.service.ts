@@ -847,7 +847,9 @@ interface TerminalChatCallbackWork {
   readonly telegramDeliveryCallbackId?: string;
   readonly agentphoneDeliveryCallbackId?: string;
   readonly githubDeliveryCallbackId?: string;
-  readonly deferredSideEffects?: () => Promise<void>;
+  readonly deferredSideEffects?: (
+    suppressChatRunFinishedForActiveGoal: boolean,
+  ) => Promise<void>;
 }
 
 type DrainOutcome =
@@ -4186,7 +4188,6 @@ async function prepareCompletedTerminalChatCallbackWork(
     readonly run: ChatRunInfo;
     readonly chatThread: ChatThreadForRunRow;
     readonly suppressWebPushForActiveGoal: boolean;
-    readonly suppressChatRunFinishedForActiveGoal: boolean;
     readonly dependencies: ChatCallbackDependencies;
     readonly timing: ChatCallbackPreCreateTimingCollector;
     readonly slackDelivery?: SlackDeliveryTarget;
@@ -4250,7 +4251,7 @@ async function prepareCompletedTerminalChatCallbackWork(
     telegramDeliveryCallbackId: completed.telegramDeliveryCallbackId,
     agentphoneDeliveryCallbackId: completed.agentphoneDeliveryCallbackId,
     githubDeliveryCallbackId: completed.githubDeliveryCallbackId,
-    deferredSideEffects: () => {
+    deferredSideEffects: (suppressChatRunFinishedForActiveGoal) => {
       return runCompletedChatCallbackSideEffects(
         {
           db: args.db,
@@ -4258,8 +4259,7 @@ async function prepareCompletedTerminalChatCallbackWork(
           run: args.run,
           chatThread: args.chatThread,
           suppressWebPushForActiveGoal: args.suppressWebPushForActiveGoal,
-          suppressChatRunFinishedForActiveGoal:
-            args.suppressChatRunFinishedForActiveGoal,
+          suppressChatRunFinishedForActiveGoal,
           lastResultText: completed.lastResultText,
           followupContext: completed.followupContext,
           saveRunSummary: (resultText) => {
@@ -4286,7 +4286,6 @@ async function prepareFailedTerminalChatCallbackWork(
     readonly run: ChatRunInfo;
     readonly chatThread: ChatThreadForRunRow;
     readonly suppressWebPushForActiveGoal: boolean;
-    readonly suppressChatRunFinishedForActiveGoal: boolean;
     readonly errorMessage: string;
     readonly publicBrand: PublicBrand;
     readonly dependencies: ChatCallbackDependencies;
@@ -4347,7 +4346,7 @@ async function prepareFailedTerminalChatCallbackWork(
     telegramDeliveryCallbackId: failed.telegramDeliveryCallbackId,
     agentphoneDeliveryCallbackId: failed.agentphoneDeliveryCallbackId,
     githubDeliveryCallbackId: failed.githubDeliveryCallbackId,
-    deferredSideEffects: () => {
+    deferredSideEffects: (suppressChatRunFinishedForActiveGoal) => {
       return runFailedChatCallbackSideEffects(
         {
           db: args.db,
@@ -4355,8 +4354,7 @@ async function prepareFailedTerminalChatCallbackWork(
           run: args.run,
           chatThread: args.chatThread,
           suppressWebPushForActiveGoal: args.suppressWebPushForActiveGoal,
-          suppressChatRunFinishedForActiveGoal:
-            args.suppressChatRunFinishedForActiveGoal,
+          suppressChatRunFinishedForActiveGoal,
           displayErrorMessage: failed.displayErrorMessage,
           runStatus:
             args.errorMessage.trim().toLowerCase() === "run cancelled"
@@ -4611,7 +4609,6 @@ interface TerminalChatCallbackArgs {
   readonly callback: InternalRunCallbackEnvelope;
   readonly payload: ChatCallbackPayload;
   readonly suppressWebPushForActiveGoal: boolean;
-  readonly suppressChatRunFinishedForActiveGoal: boolean;
   readonly dependencies: ChatCallbackDependencies;
 }
 
@@ -4725,8 +4722,6 @@ async function processTerminalChatCallback(
             run,
             chatThread,
             suppressWebPushForActiveGoal: args.suppressWebPushForActiveGoal,
-            suppressChatRunFinishedForActiveGoal:
-              args.suppressChatRunFinishedForActiveGoal,
             dependencies: args.dependencies,
             timing,
             publicBrand: args.payload.publicBrand ?? "vm0",
@@ -4742,8 +4737,6 @@ async function processTerminalChatCallback(
             run,
             chatThread,
             suppressWebPushForActiveGoal: args.suppressWebPushForActiveGoal,
-            suppressChatRunFinishedForActiveGoal:
-              args.suppressChatRunFinishedForActiveGoal,
             errorMessage: terminalCallbackErrorMessage(
               args.callback.error,
               run.error,
@@ -4801,11 +4794,23 @@ async function processTerminalChatCallback(
   );
   await clearTerminalIntegrationStatus(args, chatThread.chatThreadId, signal);
 
-  if (work.deferredSideEffects) {
+  const deferredSideEffects = work.deferredSideEffects;
+  if (deferredSideEffects) {
+    // Queue drain may launch another goal iteration or pause the goal when
+    // continuation cannot launch. Decide only after that transition so the
+    // last real run fires when the goal stops, while intermediate runs stay
+    // quiet.
+    const suppressChatRunFinishedForActiveGoal = await runHasActiveGoal(
+      args.db,
+      runId,
+    );
+    signal.throwIfAborted();
     await runTerminalChatCallbackSideEffects({
       runId,
       status: callbackStatus,
-      run: work.deferredSideEffects,
+      run: () => {
+        return deferredSideEffects(suppressChatRunFinishedForActiveGoal);
+      },
     });
   }
 
@@ -4899,7 +4904,6 @@ function buildQueuedChatDispatchFailedCallbacks(
         },
         payload,
         suppressWebPushForActiveGoal: suppressForActiveGoal,
-        suppressChatRunFinishedForActiveGoal: suppressForActiveGoal,
         dependencies: withoutQueuedRunDependency(args.dependencies),
       },
       signal,
@@ -4991,15 +4995,6 @@ async function handleChatInternalCallback(
   signal.throwIfAborted();
   await args.dependencies.handleTerminalGoal?.(args.callback.runId, signal);
   signal.throwIfAborted();
-  // Goal completion and blocking happen before the terminal callback, while
-  // failures and cancellations pause the goal above. Read the resulting state
-  // so active iterations stay quiet and the run that stops the goal fires.
-  const suppressChatRunFinishedForActiveGoal = await runHasActiveGoal(
-    args.db,
-    args.callback.runId,
-  );
-  signal.throwIfAborted();
-
   // The webhook sender (dispatchRunCallbacks) awaits this response only to
   // record delivery; it does not retry and nothing downstream reads the body.
   // The frontend learns about new messages through Ably realtime signals, not
@@ -5017,7 +5012,6 @@ async function handleChatInternalCallback(
           callback: args.callback,
           payload: payload.data,
           suppressWebPushForActiveGoal,
-          suppressChatRunFinishedForActiveGoal,
           dependencies: args.dependencies,
         },
         backgroundSignal,

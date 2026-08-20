@@ -21,6 +21,7 @@ import {
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
+import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
@@ -40,6 +41,7 @@ const api = createRunsApi(context);
 const chat = createChatFilesBddApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
+const misc = createMiscRoutesApi(context);
 const wf = createWorkflowsBddApi(context);
 const WATCHED_THREAD_TITLE = "Watched chat run";
 const GOAL_CAPABILITIES = [
@@ -65,6 +67,7 @@ function authHeaders() {
 interface ChatAutomationFixture {
   readonly actor: ApiTestUser & { readonly orgId: string };
   readonly agentId: string;
+  readonly providerId: string;
   readonly workflowId: string;
   readonly runnerGroup: string;
 }
@@ -81,7 +84,7 @@ async function setupChatAutomationFixture(): Promise<ChatAutomationFixture> {
   chatCallbacks.disableVapid();
   const runnerGroup = api.configureRunnerGroup();
   await api.grantProEntitlement(actor);
-  await api.ensureOrgModelProvider(actor);
+  const { providerId } = await api.ensureOrgModelProvider(actor);
   const agent = await bdd.createAgent(actor, {
     displayName: "Chat run finished automation agent",
     description: "Exercises chat-run-finished automation dispatch.",
@@ -95,6 +98,7 @@ async function setupChatAutomationFixture(): Promise<ChatAutomationFixture> {
   return {
     actor: { ...actor, orgId: actor.orgId },
     agentId: agent.agentId,
+    providerId,
     workflowId,
     runnerGroup,
   };
@@ -112,10 +116,14 @@ async function createChatRunFinishedAutomation(
     readonly runStatuses?: readonly ("completed" | "failed" | "cancelled")[];
     readonly outputPattern?: string;
   },
+  options: { readonly workflowChatThreadId?: string } = {},
 ): Promise<string> {
   const workflowId = await wf.createWorkflow(fixture.actor, {
     agentId: fixture.agentId,
     name: `crf-${randomUUID().slice(0, 8)}`,
+    ...(options.workflowChatThreadId
+      ? { chatThreadId: options.workflowChatThreadId }
+      : {}),
   });
   const created = await accept(
     automationsClient().create({
@@ -717,6 +725,81 @@ describe("chat-run-finished workflow automations", () => {
       await expectGoalStatus(fixture.actor, run.runId, "paused");
       await expectAutomationFired(automationId);
       await expectAutomationSourceAnnotation(fixture, automationId, run);
+    },
+  );
+
+  it(
+    "fires the completed-run automation when continuation launch failure pauses the goal",
+    { timeout: 60_000 },
+    async () => {
+      const fixture = await setupChatAutomationFixture();
+      const firstRun = await startWatchedChatRun(
+        fixture,
+        "continue into a failed goal launch",
+      );
+      await createGoalForRun(
+        fixture.actor,
+        firstRun.runId,
+        "Pause after the continuation fails to launch",
+      );
+      const automationProvider = await misc.upsertOrgModelProvider(
+        fixture.actor,
+        {
+          type: "openai-api-key",
+          secret: "goal-stop-automation-openai-key",
+        },
+        [201],
+      );
+      if (automationProvider.status !== 201) {
+        throw new Error("Expected the automation model provider to be created");
+      }
+      await api.updateOrgModelPolicies(fixture.actor, [
+        {
+          model: "claude-sonnet-5",
+          isDefault: true,
+          defaultProviderType: "anthropic-api-key",
+          credentialScope: "org",
+          modelProviderId: fixture.providerId,
+        },
+        {
+          model: "gpt-5.6-terra",
+          isDefault: false,
+          defaultProviderType: "openai-api-key",
+          credentialScope: "org",
+          modelProviderId: automationProvider.body.provider.id,
+        },
+      ]);
+      const automationThread = await chat.createThread(fixture.actor, {
+        agentId: fixture.agentId,
+        model: "gpt-5.6-terra",
+      });
+      const automationId = await createChatRunFinishedAutomation(
+        fixture,
+        {
+          chatThreadId: firstRun.threadId,
+          runStatuses: ["completed"],
+        },
+        { workflowChatThreadId: automationThread.id },
+      );
+      await misc.deleteOrgModelProvider(
+        fixture.actor,
+        "anthropic-api-key",
+        [204],
+      );
+
+      const sandboxHeaders = await claimChatRun(
+        fixture.runnerGroup,
+        firstRun.runId,
+      );
+      await completeChatRunOk(firstRun.runId, sandboxHeaders);
+      await flushWaitUntilForTest();
+
+      await expectGoalStatus(fixture.actor, firstRun.runId, "paused");
+      await expectAutomationFired(automationId);
+      await expectAutomationSourceAnnotation(fixture, automationId, {
+        runId: firstRun.runId,
+        threadId: firstRun.threadId,
+      });
     },
   );
 
