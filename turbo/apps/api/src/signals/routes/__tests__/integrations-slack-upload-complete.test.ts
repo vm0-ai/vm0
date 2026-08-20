@@ -543,7 +543,7 @@ describe("POST /api/okou/integrations/slack/upload-file/complete", () => {
       /^\/+/u,
       "",
     );
-    expect(initialized.body.url).toMatch(/^https:\/\/cdn\.okou\.test\//u);
+    expect(initialized.body.url).toMatch(/^https:\/\/cdn\.okou\.io\//u);
     objectStore.addObject({
       bucket: "test-user-artifacts",
       key: storageKey,
