@@ -3996,6 +3996,14 @@ describe("CHAT-02: model-first provider policies", () => {
         ]),
       },
     });
+    const directCatalogModels = claim.codexRuntimeConfig?.modelCatalog?.models;
+    if (!Array.isArray(directCatalogModels)) {
+      throw new Error("Expected a direct DeepSeek model catalog");
+    }
+    expect(directCatalogModels).toHaveLength(2);
+    for (const model of directCatalogModels) {
+      expect(model).not.toHaveProperty("apply_patch_tool_type");
+    }
 
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(run.runId, sandboxHeaders, {

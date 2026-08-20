@@ -5,6 +5,7 @@ import {
   hasModelSelection,
   getModels,
   getDefaultModel,
+  getModelProviderCodexCatalogForModel,
   getModelProviderCodexRuntimeConfig,
   getModelProviderEnvBindings,
   getFrameworkForType,
@@ -839,7 +840,8 @@ describe("deepseek Responses provider", () => {
   });
 
   it("configures the official DeepSeek Responses model catalog", () => {
-    expect(getModelProviderCodexRuntimeConfig("deepseek")).toMatchObject({
+    const runtimeConfig = getModelProviderCodexRuntimeConfig("deepseek");
+    expect(runtimeConfig).toMatchObject({
       providerId: "deepseek",
       name: "DeepSeek",
       baseUrl: "https://api.deepseek.com/",
@@ -875,7 +877,36 @@ describe("deepseek Responses provider", () => {
         ],
       },
     });
+    const directModels = runtimeConfig?.modelCatalog?.models;
+    if (!Array.isArray(directModels)) {
+      throw new Error("Expected a direct DeepSeek model catalog");
+    }
+    expect(directModels).toHaveLength(2);
+    for (const model of directModels) {
+      expect(model).not.toHaveProperty("apply_patch_tool_type");
+    }
   });
+
+  it.each([
+    ["deepseek-v4-flash", "gateway/deepseek-flash"],
+    ["deepseek-v4-pro", "gateway/deepseek-pro"],
+  ])(
+    "retains native apply_patch metadata when projecting %s for a compatible gateway",
+    (logicalModel, runtimeModel) => {
+      expect(
+        getModelProviderCodexCatalogForModel(logicalModel, runtimeModel),
+      ).toMatchObject({
+        models: [
+          expect.objectContaining({
+            slug: runtimeModel,
+            apply_patch_tool_type: "freeform",
+            default_reasoning_level: "high",
+            context_window: 1_048_576,
+          }),
+        ],
+      });
+    },
+  );
 
   it("scopes the firewall to the native Responses endpoint", () => {
     const config = MODEL_PROVIDER_FIREWALL_CONFIGS.deepseek;

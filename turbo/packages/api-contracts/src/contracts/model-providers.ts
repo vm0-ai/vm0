@@ -41,6 +41,15 @@ const DEEPSEEK_MODEL_CATALOG = {
   ],
 };
 
+const DEEPSEEK_DIRECT_MODEL_CATALOG = {
+  ...DEEPSEEK_MODEL_CATALOG,
+  models: DEEPSEEK_MODEL_CATALOG.models.map((model) => {
+    const directModel: Record<string, unknown> = { ...model };
+    delete directModel.apply_patch_tool_type;
+    return directModel;
+  }),
+};
+
 export {
   MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS,
   SUPPORTED_RUN_MODELS,
@@ -104,6 +113,12 @@ export type ModelProviderCodexRuntimeConfig = z.infer<
   typeof modelProviderCodexRuntimeConfigSchema
 >;
 
+const MODEL_PROVIDER_CODEX_SOURCE_CATALOGS: Partial<
+  Record<ModelProviderType, Record<string, unknown>>
+> = {
+  deepseek: DEEPSEEK_MODEL_CATALOG,
+};
+
 const MODEL_PROVIDER_CODEX_RUNTIME_CONFIGS: Partial<
   Record<ModelProviderType, ModelProviderCodexRuntimeConfig>
 > = {
@@ -115,7 +130,7 @@ const MODEL_PROVIDER_CODEX_RUNTIME_CONFIGS: Partial<
     requiresOpenaiAuth: false,
     wireApi: "responses",
     supportsWebsockets: false,
-    modelCatalog: DEEPSEEK_MODEL_CATALOG,
+    modelCatalog: DEEPSEEK_DIRECT_MODEL_CATALOG,
   },
 };
 
@@ -1108,8 +1123,7 @@ export function getModelProviderCodexCatalogForModel(
   runtimeModel: string,
 ): Record<string, unknown> | undefined {
   for (const type of getProvidersForModel(logicalModel)) {
-    const sourceCatalog =
-      MODEL_PROVIDER_CODEX_RUNTIME_CONFIGS[type]?.modelCatalog;
+    const sourceCatalog = MODEL_PROVIDER_CODEX_SOURCE_CATALOGS[type];
     const sourceModels = sourceCatalog?.models;
     const sourceModel = Array.isArray(sourceModels)
       ? sourceModels.find(

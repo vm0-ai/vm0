@@ -568,6 +568,7 @@ describe("custom model provider gateway routes", () => {
       }
       expect(catalogModel).toMatchObject({
         slug: upstreamModel,
+        apply_patch_tool_type: "freeform",
         input_modalities: ["text"],
         base_instructions: expect.stringContaining("You are Codex"),
         model_messages: {

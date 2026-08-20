@@ -7027,6 +7027,9 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
           `Expected a native DeepSeek Codex catalog for ${selectedModel}`,
         );
       }
+      for (const model of catalogModels) {
+        expect(model).not.toHaveProperty("apply_patch_tool_type");
+      }
       expect(catalogModels).toContainEqual(
         expect.objectContaining({
           slug: selectedModel,
