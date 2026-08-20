@@ -5,7 +5,14 @@ import {
   assertUniqueRouteRegistrations,
   type RouteEntry,
   withApiNamespaceAliases,
+  withUnbrandedProviderOauthCallbacks,
 } from "../signals/route-entry";
+
+const UNBRANDED_PROVIDER_OAUTH_CALLBACK_SUFFIXES = [
+  "/slack/oauth/callback",
+  "/teams/oauth/callback",
+  "/feishu/oauth/callback",
+] as const;
 
 function routeKey(entry: RouteEntry): string {
   return `${entry.route.method} ${entry.route.path}`;
@@ -21,8 +28,20 @@ function requireBrandedRoute(): RouteEntry {
   return entry;
 }
 
+function requireCallbackRoute(suffix: string): RouteEntry {
+  const entry = ROUTES.find(({ route }) => {
+    return route.method === "GET" && route.path.endsWith(suffix);
+  });
+  if (!entry) {
+    throw new Error(`Expected a provider OAuth callback route for ${suffix}`);
+  }
+  return entry;
+}
+
 describe("API namespace compatibility", () => {
-  const registeredRoutes = withApiNamespaceAliases(ROUTES);
+  const registeredRoutes = withApiNamespaceAliases(
+    withUnbrandedProviderOauthCallbacks(ROUTES),
+  );
 
   it("registers symmetric Zero and Okou paths with the same handler and schema", () => {
     const registrationCounts = new Map<string, number>();
@@ -57,6 +76,48 @@ describe("API namespace compatibility", () => {
     expect(() => {
       assertUniqueRouteRegistrations(registeredRoutes);
     }).not.toThrow();
+  });
+
+  it("serves each provider OAuth callback from both branded namespaces and its unbranded path", () => {
+    for (const suffix of UNBRANDED_PROVIDER_OAUTH_CALLBACK_SUFFIXES) {
+      const source = requireCallbackRoute(suffix);
+      const paths = [
+        `/api/okou${suffix}`,
+        `/api/zero${suffix}`,
+        `/api${suffix}`,
+      ];
+
+      for (const path of paths) {
+        const matches = registeredRoutes.filter(({ route }) => {
+          return route.method === "GET" && route.path === path;
+        });
+        expect(matches).toHaveLength(1);
+        const match = matches[0];
+        if (!match) {
+          throw new Error(`Missing provider OAuth callback route for ${path}`);
+        }
+        expect(match.handler).toBe(source.handler);
+        expect(match.route).toStrictEqual({ ...source.route, path });
+      }
+    }
+  });
+
+  it("adds an unbranded path for the provider OAuth callbacks and nothing else", () => {
+    const brandedOnlyKeys = new Set(
+      withApiNamespaceAliases(ROUTES).map(routeKey),
+    );
+    const addedKeys = registeredRoutes
+      .map(routeKey)
+      .filter((key) => {
+        return !brandedOnlyKeys.has(key);
+      })
+      .sort();
+
+    expect(addedKeys).toStrictEqual(
+      UNBRANDED_PROVIDER_OAUTH_CALLBACK_SUFFIXES.map((suffix) => {
+        return `GET /api${suffix}`;
+      }).sort(),
+    );
   });
 
   it("keeps neutral health, webhook, and product-scoped Desktop routes single", () => {
