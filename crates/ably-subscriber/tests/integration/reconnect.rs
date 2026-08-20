@@ -704,7 +704,7 @@ async fn token_expired_disconnected_refreshes_token_and_resumes() {
     let server_task = tokio::spawn(async move {
         let mut conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
 
-        // Send DISCONNECTED with a non-retriable error (401 + non-connection code)
+        // Expire the active token before its local expiry timestamp.
         let disconnected = ProtocolMessage {
             action: action::DISCONNECTED,
             error: Some(ErrorInfo {
