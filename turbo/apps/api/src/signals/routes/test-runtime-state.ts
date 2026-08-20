@@ -1,4 +1,5 @@
 import {
+  getVm0ManagedRouteCandidates,
   getVm0Vendor,
   MODEL_PROVIDER_TYPES,
 } from "@okouai/api-contracts/contracts/model-providers";
@@ -11,6 +12,7 @@ import { compatibleStoredExecutionContextSchema } from "@okouai/api-contracts/co
 import { agentComposes } from "@okouai/db/schema/agent-compose";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
+import { managedModelCandidateCooldown } from "@okouai/db/schema/managed-model-cooldown";
 import {
   browserSessionTabSnapshots,
   browserSessions,
@@ -43,6 +45,10 @@ import {
   acquireManagedModelKeyFixture,
   releaseManagedModelKeyFixture,
 } from "../services/managed-model-key-fixture";
+import {
+  resolveBuiltInModelRuntimeRoute,
+  type BuiltInModelRuntimeRoute,
+} from "../services/built-in-model-runtime-route.service";
 import { browserScreenshotSchemaAvailable } from "../services/browser-screenshot-schema.service";
 import { usagePackInvitationPurchaseSchemaAvailable } from "../services/usage-pack-invitation-purchase.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
@@ -233,6 +239,31 @@ async function seedVm0ManagedModelKey(
   return selectedModel;
 }
 
+async function seedVm0ManagedModelCandidateKeys(
+  db: Db,
+  fixtureId: string,
+  selectedModel: string,
+  signal: AbortSignal,
+): Promise<string> {
+  const vendors = new Set(
+    getVm0ManagedRouteCandidates(selectedModel).map((candidate) => {
+      return candidate.vendor;
+    }),
+  );
+  await acquireManagedModelKeyFixture(
+    db,
+    fixtureId,
+    [...vendors].map((vendor) => {
+      return {
+        vendor,
+        apiKey: `${VM0_MANAGED_MODEL_KEY_FIXTURE_PREFIX}${fixtureId}-${vendor}`,
+      };
+    }),
+  );
+  signal.throwIfAborted();
+  return selectedModel;
+}
+
 async function deleteVm0ManagedModelKey(
   db: Db,
   fixtureId: string,
@@ -242,29 +273,45 @@ async function deleteVm0ManagedModelKey(
   signal.throwIfAborted();
 }
 
-type Vm0ManagedModelKeyAction = Extract<
+function serializeManagedModelRuntimeRoute(route: BuiltInModelRuntimeRoute) {
+  return {
+    provider_type: route.providerType,
+    upstream_model: route.upstreamModel,
+    model_key_id: route.modelKeyId,
+  };
+}
+
+type Vm0ManagedModelAction = Extract<
   TestRuntimeStateActionBody,
   {
     action:
       | "seed-vm0-managed-default-model-key"
       | "seed-vm0-managed-model-key"
-      | "delete-vm0-managed-model-key";
+      | "seed-vm0-managed-model-candidate-keys"
+      | "delete-vm0-managed-model-key"
+      | "resolve-vm0-managed-model-route"
+      | "set-vm0-managed-candidate-cooldown"
+      | "delete-vm0-managed-candidate-cooldown";
   }
 >;
 
-function isVm0ManagedModelKeyAction(
+function isVm0ManagedModelAction(
   body: TestRuntimeStateActionBody,
-): body is Vm0ManagedModelKeyAction {
-  return (
-    body.action === "seed-vm0-managed-default-model-key" ||
-    body.action === "seed-vm0-managed-model-key" ||
-    body.action === "delete-vm0-managed-model-key"
-  );
+): body is Vm0ManagedModelAction {
+  return [
+    "seed-vm0-managed-default-model-key",
+    "seed-vm0-managed-model-key",
+    "seed-vm0-managed-model-candidate-keys",
+    "delete-vm0-managed-model-key",
+    "resolve-vm0-managed-model-route",
+    "set-vm0-managed-candidate-cooldown",
+    "delete-vm0-managed-candidate-cooldown",
+  ].includes(body.action);
 }
 
-async function vm0ManagedModelKeyActionResponse(
+async function vm0ManagedModelActionResponse(
   db: Db,
-  body: Vm0ManagedModelKeyAction,
+  body: Vm0ManagedModelAction,
   signal: AbortSignal,
 ) {
   switch (body.action) {
@@ -295,8 +342,78 @@ async function vm0ManagedModelKeyActionResponse(
         },
       };
     }
+    case "seed-vm0-managed-model-candidate-keys": {
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          selected_model: await seedVm0ManagedModelCandidateKeys(
+            db,
+            body.fixture_id,
+            body.selected_model,
+            signal,
+          ),
+        },
+      };
+    }
     case "delete-vm0-managed-model-key": {
       await deleteVm0ManagedModelKey(db, body.fixture_id, signal);
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+    case "resolve-vm0-managed-model-route": {
+      const route = await resolveBuiltInModelRuntimeRoute(
+        db,
+        body.selected_model,
+        body.fallback_enabled,
+      );
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          managed_model_route: route
+            ? serializeManagedModelRuntimeRoute(route)
+            : null,
+        },
+      };
+    }
+    case "set-vm0-managed-candidate-cooldown": {
+      await db
+        .insert(managedModelCandidateCooldown)
+        .values({
+          selectedModel: body.selected_model,
+          providerType: body.provider_type,
+          upstreamModel: body.upstream_model,
+          unavailableUntil: new Date(body.unavailable_until),
+        })
+        .onConflictDoUpdate({
+          target: [
+            managedModelCandidateCooldown.selectedModel,
+            managedModelCandidateCooldown.providerType,
+            managedModelCandidateCooldown.upstreamModel,
+          ],
+          set: { unavailableUntil: new Date(body.unavailable_until) },
+        });
+      signal.throwIfAborted();
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+    case "delete-vm0-managed-candidate-cooldown": {
+      await db
+        .delete(managedModelCandidateCooldown)
+        .where(
+          and(
+            eq(
+              managedModelCandidateCooldown.selectedModel,
+              body.selected_model,
+            ),
+            eq(managedModelCandidateCooldown.providerType, body.provider_type),
+            eq(
+              managedModelCandidateCooldown.upstreamModel,
+              body.upstream_model,
+            ),
+          ),
+        );
+      signal.throwIfAborted();
       return { status: 200 as const, body: { ok: true as const } };
     }
   }
@@ -1513,8 +1630,8 @@ const postRuntimeStateAction$ = command(
     if (isCompatibilityFixtureAction(body)) {
       return await compatibilityFixtureActionResponse(db, body, signal);
     }
-    if (isVm0ManagedModelKeyAction(body)) {
-      return await vm0ManagedModelKeyActionResponse(db, body, signal);
+    if (isVm0ManagedModelAction(body)) {
+      return await vm0ManagedModelActionResponse(db, body, signal);
     }
     if (isCustomConnectorAuthTemplateFixtureAction(body)) {
       return await customConnectorAuthTemplateFixtureActionResponse(
