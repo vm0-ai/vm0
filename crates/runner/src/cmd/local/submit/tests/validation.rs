@@ -172,36 +172,37 @@ async fn oversized_timeouts_are_rejected_before_publishing_job() {
     }
 }
 
-#[test]
-fn serialized_job_at_size_limit_is_accepted_and_published() {
+#[tokio::test]
+async fn serialized_job_at_size_limit_is_accepted() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
     let prompt_len = prompt_len_for_serialized_job_size(root, local_queue::LOCAL_JOB_MAX_BYTES);
     let mut args = submit_args_for_test();
     args.prompt = "x".repeat(prompt_len);
 
-    let plan = SubmitPlan::from_args(args, HomePaths::with_root(root.to_path_buf())).unwrap();
+    let (exit_code, request) =
+        run_submit_and_write_success(args, HomePaths::with_root(root.to_path_buf()))
+            .await
+            .unwrap();
 
-    assert_eq!(plan.request_json.len(), local_queue::LOCAL_JOB_MAX_BYTES);
-    plan.write_job_file().unwrap();
+    assert_eq!(exit_code, ExitCode::SUCCESS);
     assert_eq!(
-        std::fs::metadata(&plan.queue.job).unwrap().len(),
-        local_queue::LOCAL_JOB_MAX_BYTES as u64
+        serde_json::to_vec(&request).unwrap().len(),
+        local_queue::LOCAL_JOB_MAX_BYTES
     );
 }
 
-#[test]
-fn serialized_job_over_size_limit_is_rejected_before_publication() {
+#[tokio::test]
+async fn serialized_job_over_size_limit_is_rejected_before_publication() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
     let prompt_len = prompt_len_for_serialized_job_size(root, local_queue::LOCAL_JOB_MAX_BYTES) + 1;
     let mut args = submit_args_for_test();
     args.prompt = "x".repeat(prompt_len);
 
-    let error = match SubmitPlan::from_args(args, HomePaths::with_root(root.to_path_buf())) {
-        Ok(_) => panic!("expected oversized serialized job to be rejected"),
-        Err(error) => error,
-    };
+    let error = run_submit_with_home(args, HomePaths::with_root(root.to_path_buf()))
+        .await
+        .unwrap_err();
 
     assert!(matches!(error, RunnerError::Config(_)), "got: {error:?}");
     assert!(
