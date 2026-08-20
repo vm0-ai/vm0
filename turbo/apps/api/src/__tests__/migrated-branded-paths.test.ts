@@ -116,6 +116,19 @@ const MIGRATED_CONSOLE_TABLE: Readonly<Record<string, readonly string[]>> = {
   ],
 };
 
+// The seven operations #28417 moved off `/api/okou/maps/**`, written out rather
+// than read from `mapsContract` or `MIGRATED_BRANDED_PATHS`, so dropping a
+// contract path or a table row fails the test that uses this.
+const MAPS_OPERATIONS = [
+  "geocode",
+  "reverse-geocode",
+  "directions",
+  "places/search",
+  "places/details",
+  "osm/download",
+  "osm/render",
+] as const;
+
 function registeredPaths(entries: readonly RouteEntry[]): readonly string[] {
   return entries.map((entry) => {
     return entry.route.path;
@@ -315,6 +328,46 @@ describe("branded paths for migrated neutral routes", () => {
       "/api/zero/synthetic/thing",
     ]);
     expect(movedWithRow).toStrictEqual([]);
+  });
+
+  // #28417 fills the table for maps. The contract declares the neutral paths,
+  // so the blanket expansion no longer derives a branded form for them and
+  // every branded maps path below exists only because of a table row. The paths
+  // are written out here rather than derived from the table, so deleting a row
+  // fails this test instead of changing what it asserts.
+  it("serves the migrated maps routes on neutral and branded paths", () => {
+    const registered = withMigratedBrandedPaths(
+      withApiNamespaceAliases(withFinalProviderConsolePaths(ROUTES)),
+    );
+
+    function requireRoute(path: string): RouteEntry {
+      const matches = registered.filter((entry) => {
+        return entry.route.method === "POST" && entry.route.path === path;
+      });
+      const match = matches[0];
+      if (!match) {
+        throw new Error(`Missing maps registration for POST ${path}`);
+      }
+      expect(matches).toHaveLength(1);
+      return match;
+    }
+
+    for (const operation of MAPS_OPERATIONS) {
+      const neutral = requireRoute(`/api/maps/${operation}`);
+
+      // One contract route behind all three paths, so a branded form cannot
+      // drift into a second handler or a stale schema.
+      for (const namespace of ["okou", "zero"]) {
+        const brandedPath = `/api/${namespace}/maps/${operation}`;
+        const branded = requireRoute(brandedPath);
+
+        expect(branded.handler).toBe(neutral.handler);
+        expect(branded.route).toStrictEqual({
+          ...neutral.route,
+          path: brandedPath,
+        });
+      }
+    }
   });
 
   // The synthetic cases above cover the mechanism; this runs the real route

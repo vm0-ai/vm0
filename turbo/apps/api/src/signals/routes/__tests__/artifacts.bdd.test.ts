@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import { HttpResponse, http } from "msw";
 import type { ArtifactSummary } from "@okouai/api-contracts/contracts/artifact-catalog";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { describe, expect, it } from "vitest";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
@@ -138,8 +139,15 @@ async function sendChatRun(
     readonly prompt: string;
     readonly threadId?: string;
   },
+  publicBrand: PublicBrand = "vm0",
 ): Promise<{ readonly runId: string; readonly threadId: string }> {
-  const sent = await chat.requestSendEvent(actor, body, [201]);
+  const sent = await chat.requestSendEvent(
+    actor,
+    body,
+    [201],
+    undefined,
+    publicBrand,
+  );
   if (sent.status !== 201 || sent.body.runId === null) {
     throw new Error("Expected chat send to create a run");
   }
@@ -215,6 +223,7 @@ async function createHostedArtifact(args: {
   readonly runnerGroup: string;
   readonly site: string;
   readonly artifactKind?: "hosted-site" | "presentation-html";
+  readonly publicBrand?: PublicBrand;
 }): Promise<{
   readonly threadId: string;
   readonly url: string;
@@ -222,10 +231,14 @@ async function createHostedArtifact(args: {
   readonly deploymentId: string;
   readonly bearer: string;
 }> {
-  const run = await sendChatRun(args.actor, {
-    agentId: args.agentId,
-    prompt: `create ${args.site}`,
-  });
+  const run = await sendChatRun(
+    args.actor,
+    {
+      agentId: args.agentId,
+      prompt: `create ${args.site}`,
+    },
+    args.publicBrand,
+  );
   const { claim, sandboxHeaders } = await claimChatRun(
     args.runnerGroup,
     run.runId,
@@ -485,6 +498,43 @@ describe("GET /api/zero/chat-threads/:threadId/artifacts", () => {
 });
 
 describe("hosted Artifact previews", () => {
+  it("renders Okou deployments from their branded hosted-site domain", async () => {
+    const owner = await artifactActor("Artifacts API Okou preview image agent");
+    mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", "preview-token");
+    mockEnv("ARTIFACT_PREVIEW_WAF_SECRET", ARTIFACT_PREVIEW_WAF_SECRET);
+    mockEnv("OKOU_PUBLIC_HOST_DOMAIN", "okou.app");
+    mockEnv("OKOU_HOST_SCHEME", "https");
+    const snapshotRequests = mockCloudflareSnapshot();
+    const site = `okou-preview-${randomUUID().slice(0, 8)}`;
+
+    const artifact = await createHostedArtifact({
+      actor: owner.actor,
+      agentId: owner.agentId,
+      runnerGroup: owner.runnerGroup,
+      site,
+      publicBrand: "okou",
+    });
+    await flushWaitUntilForTest();
+
+    expect(artifact.aliasUrl).toBe(`https://${site}.okou.app`);
+    expect(artifact.url).toBe(`https://dpl-${artifact.deploymentId}.okou.app`);
+    expect(snapshotRequests).toHaveLength(1);
+    expect(snapshotRequests[0]).toMatchObject({
+      body: {
+        url: artifact.url,
+        cookies: [
+          expect.objectContaining({
+            url: new URL(artifact.url).origin,
+          }),
+        ],
+      },
+    });
+    const previewedArtifact = await findCatalogArtifact(owner.actor, site);
+    expect(previewedArtifact?.thumbnail?.url).toMatch(
+      /\/artifacts\/[0-9a-z]{10}\.webp$/u,
+    );
+  }, 120_000);
+
   it("generates deploy-time preview images once per deployment", async () => {
     const owner = await artifactActor("Artifacts API preview image agent");
     mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", "preview-token");
