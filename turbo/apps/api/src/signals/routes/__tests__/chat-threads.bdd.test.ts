@@ -3,6 +3,7 @@ import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import {
   cronCompactChatThreadSnapshotsContract,
+  cronProcessUsageEventsContract,
   cronProjectChatEventSearchContract,
 } from "@okouai/api-contracts/contracts/cron";
 import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@okouai/api-contracts/contracts/runners";
@@ -86,6 +87,7 @@ import {
   materializeHourlyUsage$,
 } from "./helpers/usage-state";
 import { cronCompactChatThreadSnapshotsRoutes } from "../cron-compact-chat-thread-snapshots";
+import { cronProcessUsageEventsRoutes } from "../cron-process-usage-events";
 import { cronProjectChatEventSearchRoutes } from "../cron-project-chat-event-search";
 import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
 import { chatThreadRoutes } from "../chat-threads";
@@ -123,6 +125,7 @@ const connectorsApi = createConnectorBddApi(context);
 const authOrg = createAuthOrgAgentsBddApi(context);
 const store = createStore();
 const CHAT_THREAD_SNAPSHOT_CRON_SECRET = "chat-thread-snapshot-cron-secret";
+const CHAT_USAGE_CRON_SECRET = "chat-usage-cron-secret";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const FORWARD_CLEANUP_CUTOFF_MS = Date.parse("2026-08-03T05:40:26.000Z");
 const FORWARD_CLEANUP_TEST_CREATED_AT = "2026-08-03T05:40:26.001Z";
@@ -156,6 +159,19 @@ async function compactChatThreadSnapshots() {
     [200],
   );
   return response.body;
+}
+
+async function processUsageEvents() {
+  const client = setupApp({
+    context,
+    routes: cronProcessUsageEventsRoutes,
+  })(cronProcessUsageEventsContract);
+  return await accept(
+    client.process({
+      headers: { authorization: `Bearer ${CHAT_USAGE_CRON_SECRET}` },
+    }),
+    [200],
+  );
 }
 
 interface EntitledChatActor {
@@ -2411,12 +2427,10 @@ describe("CHAT-03 run usage events", () => {
     const response = await requestPromise;
     expect(response.status).toBe(200);
 
-    const finalized = await webhooks.requestAgentUsageFinalized(
-      { runId: run.runId },
-      sandboxHeaders,
-      [200],
-    );
-    expect(finalized.body).toStrictEqual({ success: true, finalized: true });
+    mockEnv("CRON_SECRET", CHAT_USAGE_CRON_SECRET);
+    await expect(processUsageEvents()).resolves.toMatchObject({
+      body: { success: true },
+    });
     const [published] = await usageEventsForRun(actor, run.threadId, run.runId);
     expect(published?.usage).toMatchObject({ totalCredits: 7 });
   }, 60_000);
