@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.37.231](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.230...sandbox-fc-v0.37.231) (2026-08-20)
+
+
+### Documentation
+
+* **rust:** document namespace dns probe thread isolation ([#28396](https://github.com/vm0-ai/vm0/issues/28396)) ([6e1b085](https://github.com/vm0-ai/vm0/commit/6e1b085658665c839f93b85ac8277b146e4d1eac))
+* **sandbox:** document firecracker snapshot id constraints ([#28325](https://github.com/vm0-ai/vm0/issues/28325)) ([3f5ff12](https://github.com/vm0-ai/vm0/commit/3f5ff12c79dd4702d50bcb1b6f761ae2631c94d2))
+
 ## [0.37.230](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.229...sandbox-fc-v0.37.230) (2026-08-20)
 
 
