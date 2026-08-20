@@ -194,6 +194,8 @@ pub struct GuestConfigRaw {
     pub home: Option<String>,
     pub runtime_home: Option<PathBuf>,
     pub guest_runtime_dir: Option<PathBuf>,
+    #[cfg(debug_assertions)]
+    pub test_codex_home_dir: Option<PathBuf>,
     pub stuck_tool_timeout_secs: String,
     pub post_result_sigterm_grace_secs: String,
     pub post_result_total_cap_secs: String,
@@ -231,6 +233,10 @@ impl GuestConfigRaw {
             home: std::env::var("HOME").ok(),
             runtime_home: std::env::var_os("HOME").map(PathBuf::from),
             guest_runtime_dir,
+            #[cfg(debug_assertions)]
+            test_codex_home_dir: std::env::var_os(TEST_CODEX_HOME_DIR_ENV_KEY)
+                .filter(|value| !value.is_empty())
+                .map(PathBuf::from),
             stuck_tool_timeout_secs: env_or_empty(
                 guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
             ),
@@ -325,6 +331,7 @@ impl GuestConfig {
         user_env: HashMap<String, String>,
     ) -> Result<Self, String> {
         let home_dir = resolve_home_dir(&user_env, raw.home.as_deref())?;
+        let codex_home_dir = resolve_codex_home_dir(&raw);
         let artifacts = parse_artifacts_value(&payload.artifacts)
             .map_err(|e| format!("parse {} JSON: {e}", guest_contracts::env::ARTIFACTS_ENV))?;
         let feature_flags = parse_feature_flags_value(&payload.feature_flags).map_err(|e| {
@@ -368,7 +375,7 @@ impl GuestConfig {
                 DEFAULT_MOCK_CODEX_PATH,
             ),
             home_dir,
-            codex_home_dir: resolve_codex_home_dir(),
+            codex_home_dir,
             artifacts,
             feature_flags,
             codex_runtime_config: payload.codex_runtime_config,
@@ -647,10 +654,12 @@ fn resolve_home_dir(
         .ok_or_else(|| "HOME must be set in guest sandbox (rootfs init contract)".to_string())
 }
 
-fn resolve_codex_home_dir() -> String {
+fn resolve_codex_home_dir(raw: &GuestConfigRaw) -> String {
     #[cfg(debug_assertions)]
-    if let Some(path) =
-        std::env::var_os(TEST_CODEX_HOME_DIR_ENV_KEY).filter(|path| !path.is_empty())
+    if let Some(path) = raw
+        .test_codex_home_dir
+        .as_deref()
+        .filter(|path| !path.as_os_str().is_empty())
     {
         return path.to_string_lossy().into_owned();
     }
@@ -927,6 +936,19 @@ mod tests {
         );
         assert!(!user_env_path.exists());
         assert!(!user_env_dir.exists());
+    }
+
+    #[test]
+    fn guest_config_from_raw_uses_captured_test_codex_home() {
+        let (_tmp, raw) = raw_config_fixture_with_default_run_payload();
+        let raw = GuestConfigRaw {
+            test_codex_home_dir: Some(PathBuf::from("/tmp/captured-codex-home")),
+            ..raw
+        };
+
+        let config = GuestConfig::from_raw(raw).unwrap();
+
+        assert_eq!(config.codex_home_dir, "/tmp/captured-codex-home");
     }
 
     #[test]
