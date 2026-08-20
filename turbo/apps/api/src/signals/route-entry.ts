@@ -266,6 +266,12 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // form (`callWeather` built it by hand rather than from the contract, so it
   // shipped independently of this path), and the `zero` form was reachable
   // through the blanket expansion until the contract moved. Both are owed.
+  //
+  // Surface: commit-addressed CLI packages pinned by run contexts created
+  // before this deploy, so the branded form outlives the deploy by the queue
+  // and claimed-execution drain — up to the 2h runner/sandbox window — plus any
+  // external holder of the `zero` brand path, which has no time box. Removal
+  // therefore follows the table's #26701 evidence gate above, not a clock.
   "/api/weather/current": [
     "/api/okou/weather/current",
     "/api/zero/weather/current",

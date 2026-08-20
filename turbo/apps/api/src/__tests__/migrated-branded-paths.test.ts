@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { createAppWithRoutes } from "../app-factory-core";
 import { ROUTES } from "../signals/route";
+import { weatherRoutes } from "../signals/routes/weather";
 import {
   assertUniqueRouteRegistrations,
   type RouteEntry,
@@ -333,6 +334,43 @@ describe("branded paths for migrated neutral routes", () => {
         ),
       );
     }).not.toThrow();
+  });
+
+  // The route-table assertion above rebuilds the composition itself, so it
+  // cannot see how `createAppWithRoutes` wires it. This one goes through the
+  // app factory production uses: if `withMigratedBrandedPaths` were dropped
+  // from or reordered in that chain, the branded weather paths would 404 here
+  // while the table assertion still passed. Requests are unauthenticated, so
+  // the status is whatever the auth layer returns — the point is that all
+  // three forms reach the same handler instead of falling through to 404.
+  it("serves the migrated weather paths through the production app factory", async () => {
+    const app = createAppWithRoutes({
+      signal: context.signal,
+      routes: weatherRoutes,
+    });
+
+    async function statusFor(path: string): Promise<number> {
+      const response = await app.request(`${REQUEST_ORIGIN}${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+      return response.status;
+    }
+
+    for (const operation of WEATHER_OPERATIONS) {
+      const neutral = await statusFor(`/api/weather/${operation}`);
+      const okou = await statusFor(`/api/okou/weather/${operation}`);
+      const zero = await statusFor(`/api/zero/weather/${operation}`);
+
+      expect({ operation, neutral, okou, zero }).toStrictEqual({
+        operation,
+        neutral,
+        okou: neutral,
+        zero: neutral,
+      });
+      expect(neutral).not.toBe(404);
+    }
   });
 
   it("builds an app that serves every path it registers", async () => {
