@@ -5,7 +5,18 @@ use async_trait::async_trait;
 /// Configuration for creating a snapshot.
 #[derive(Debug)]
 pub struct SnapshotCreateConfig {
-    /// Unique identifier for this snapshot (used for runtime socket directory).
+    /// Unique identifier for this snapshot.
+    ///
+    /// The format is provider-specific. The Firecracker provider uses this
+    /// value as its runtime socket directory name and requires a single,
+    /// non-empty ASCII path segment containing only letters, digits, `.`, `-`,
+    /// and `_`. Nested or composite values such as `<rootfs>/<snapshot>` are
+    /// invalid, and the generated
+    /// `/run/vm0/sock/<id>/vsock/vsock.sock` path must be at most 107 bytes.
+    /// Invalid Firecracker IDs are reported as `SnapshotError::Setup` before
+    /// snapshot-output cleanup. Other providers may impose different
+    /// requirements; this provider-specific contract is not enforced by the
+    /// provider-neutral configuration type.
     pub id: String,
     /// Path to the sandbox backend binary (e.g., firecracker).
     pub binary_path: PathBuf,
