@@ -574,8 +574,28 @@ interface CheckpointCoreInventoryRow
   readonly sessionReferenceValid: boolean;
 }
 
-interface InvalidCheckpointStorageReferenceRow extends QueryResultRow {
+interface CheckpointStorageReferenceRow extends QueryResultRow {
   readonly id: string;
+  readonly storageMountsNull: boolean;
+  readonly storageMounts: unknown;
+}
+
+interface StorageReferenceIdentityRow extends QueryResultRow {
+  readonly id: string;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly name: string;
+}
+
+interface StorageReferenceVersionRow extends QueryResultRow {
+  readonly id: string;
+  readonly storageId: string;
+}
+
+export interface CheckpointStorageReferenceValidation {
+  readonly checkpointCount: number;
+  readonly invalidCheckpointIds: ReadonlySet<string>;
+  readonly expandedMountCount: number;
 }
 
 export type ConversationInventoryRow = QueryResultRow &
@@ -2202,136 +2222,246 @@ WHERE "compose"."head_version_id" IS NOT NULL
 ORDER BY "compose"."id"
 `;
 
-// Build both reference catalogs once before expanding checkpoint mounts. A
-// direct relational join leaves PostgreSQL free to choose one catalog probe per
-// mount, which is unbounded under a cold cache. These materialized JSONB maps
-// preserve the exact identity/version predicates while making catalog access
-// independent of join-plan selection.
-export const CHECKPOINT_STORAGE_REFERENCE_QUERY = `
-WITH
-"storageCatalog" AS MATERIALIZED (
-  SELECT coalesce(
-    jsonb_object_agg(
-      "storage"."id"::text,
-      jsonb_build_object(
-        'orgId', "storage"."org_id",
-        'userId', "storage"."user_id",
-        'name', "storage"."name"
-      )
-    ),
-    '{}'::jsonb
-  ) AS "entries"
-  FROM "storages" AS "storage"
-),
-"storageVersionCatalog" AS MATERIALIZED (
-  SELECT coalesce(
-    jsonb_object_agg(
-      "storage_version"."id",
-      to_jsonb("storage_version"."storage_id"::text)
-    ),
-    '{}'::jsonb
-  ) AS "entries"
-  FROM "storage_versions" AS "storage_version"
-),
-"invalidCheckpointStorageReferences" AS (
-  SELECT "checkpoint"."id"
-  FROM "checkpoints" AS "checkpoint"
-  WHERE
-    "checkpoint"."storage_mounts" IS NOT NULL AND
-    jsonb_typeof("checkpoint"."storage_mounts") <> 'array'
-  UNION
-  SELECT "checkpoint"."id"
-  FROM "checkpoints" AS "checkpoint"
-  CROSS JOIN LATERAL jsonb_array_elements(
-    CASE
-      WHEN jsonb_typeof("checkpoint"."storage_mounts") = 'array'
-        THEN "checkpoint"."storage_mounts"
-      ELSE '[]'::jsonb
-    END
-  ) AS "entry"("mount")
-  CROSS JOIN "storageCatalog"
-  CROSS JOIN "storageVersionCatalog"
-  WHERE
-    jsonb_typeof("entry"."mount") <> 'object' OR
-    NOT (
-      "entry"."mount" ?& ARRAY[
-        'orgId',
-        'userId',
-        'name',
-        'storageId',
-        'version',
-        'mountPath'
-      ]
-    ) OR
-    (
-      "entry"."mount" -
-      'orgId' -
-      'userId' -
-      'name' -
-      'storageId' -
-      'version' -
-      'mountPath' -
-      'optional' -
-      'writeback' -
-      'instructionsTargetFilename' -
-      'missingRootPolicy'
-    ) <> '{}'::jsonb OR
-    jsonb_typeof("entry"."mount" -> 'orgId') <> 'string' OR
-    jsonb_typeof("entry"."mount" -> 'userId') <> 'string' OR
-    jsonb_typeof("entry"."mount" -> 'name') <> 'string' OR
-    jsonb_typeof("entry"."mount" -> 'storageId') <> 'string' OR
-    jsonb_typeof("entry"."mount" -> 'version') <> 'string' OR
-    jsonb_typeof("entry"."mount" -> 'mountPath') <> 'string' OR
-    (
-      "entry"."mount" ? 'optional' AND
-      jsonb_typeof("entry"."mount" -> 'optional') <> 'boolean'
-    ) OR
-    (
-      "entry"."mount" ? 'writeback' AND
-      jsonb_typeof("entry"."mount" -> 'writeback') <> 'boolean'
-    ) OR
-    (
-      "entry"."mount" ? 'instructionsTargetFilename' AND
-      jsonb_typeof(
-        "entry"."mount" -> 'instructionsTargetFilename'
-      ) <> 'string'
-    ) OR
-    (
-      "entry"."mount" ? 'missingRootPolicy' AND
-      (
-        jsonb_typeof(
-          "entry"."mount" -> 'missingRootPolicy'
-        ) <> 'string' OR
-        "entry"."mount" ->> 'missingRootPolicy' NOT IN (
-          'fail',
-          'preserveParentVersion'
-        )
-      )
-    ) OR
-    (
-      "storageCatalog"."entries" ->
-      ("entry"."mount" ->> 'storageId') ->>
-      'orgId'
-    ) IS DISTINCT FROM "entry"."mount" ->> 'orgId' OR
-    (
-      "storageCatalog"."entries" ->
-      ("entry"."mount" ->> 'storageId') ->>
-      'userId'
-    ) IS DISTINCT FROM "entry"."mount" ->> 'userId' OR
-    (
-      "storageCatalog"."entries" ->
-      ("entry"."mount" ->> 'storageId') ->>
-      'name'
-    ) IS DISTINCT FROM "entry"."mount" ->> 'name' OR
-    (
-      "storageVersionCatalog"."entries" ->>
-      ("entry"."mount" ->> 'version')
-    ) IS DISTINCT FROM "entry"."mount" ->> 'storageId'
-)
-SELECT "invalid"."id"::text AS "id"
-FROM "invalidCheckpointStorageReferences" AS "invalid"
-ORDER BY "invalid"."id"
+// Stream each source relation exactly once inside the owning read-only snapshot.
+// PostgreSQL never expands mounts or joins catalogs; the exact mount shape and
+// reference closure are validated in one linear in-process pass with only the
+// two bounded reference catalogs retained between rows.
+export const STORAGE_REFERENCE_IDENTITY_QUERY = `
+SELECT
+  "storage"."id"::text AS "id",
+  "storage"."org_id" AS "orgId",
+  "storage"."user_id" AS "userId",
+  "storage"."name"::text AS "name"
+FROM "storages" AS "storage"
 `;
+
+export const STORAGE_REFERENCE_VERSION_QUERY = `
+SELECT
+  "storage_version"."id" AS "id",
+  "storage_version"."storage_id"::text AS "storageId"
+FROM "storage_versions" AS "storage_version"
+`;
+
+export const CHECKPOINT_STORAGE_REFERENCE_QUERY = `
+SELECT
+  "checkpoint"."id"::text AS "id",
+  "checkpoint"."storage_mounts" IS NULL AS "storageMountsNull",
+  "checkpoint"."storage_mounts" AS "storageMounts"
+FROM "checkpoints" AS "checkpoint"
+`;
+
+const REQUIRED_CHECKPOINT_STORAGE_MOUNT_KEYS = [
+  "orgId",
+  "userId",
+  "name",
+  "storageId",
+  "version",
+  "mountPath",
+] as const;
+const ALLOWED_CHECKPOINT_STORAGE_MOUNT_KEYS: ReadonlySet<string> = new Set([
+  ...REQUIRED_CHECKPOINT_STORAGE_MOUNT_KEYS,
+  "optional",
+  "writeback",
+  "instructionsTargetFilename",
+  "missingRootPolicy",
+]);
+
+interface ValidCheckpointStorageMount {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly name: string;
+  readonly storageId: string;
+  readonly version: string;
+  readonly mountPath: string;
+  readonly optional?: boolean;
+  readonly writeback?: boolean;
+  readonly instructionsTargetFilename?: string;
+  readonly missingRootPolicy?: "fail" | "preserveParentVersion";
+}
+
+interface StorageReferenceIdentity {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly name: string;
+}
+
+function isJsonObject(
+  value: unknown,
+): value is Readonly<Record<string, unknown>> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isValidCheckpointStorageMount(
+  value: unknown,
+): value is ValidCheckpointStorageMount {
+  if (!isJsonObject(value)) return false;
+  const keys = Object.keys(value);
+  if (
+    !REQUIRED_CHECKPOINT_STORAGE_MOUNT_KEYS.every((key) => {
+      return Object.hasOwn(value, key);
+    }) ||
+    !keys.every((key) => {
+      return ALLOWED_CHECKPOINT_STORAGE_MOUNT_KEYS.has(key);
+    })
+  ) {
+    return false;
+  }
+  if (
+    typeof value.orgId !== "string" ||
+    typeof value.userId !== "string" ||
+    typeof value.name !== "string" ||
+    typeof value.storageId !== "string" ||
+    typeof value.version !== "string" ||
+    typeof value.mountPath !== "string"
+  ) {
+    return false;
+  }
+  if (
+    (Object.hasOwn(value, "optional") && typeof value.optional !== "boolean") ||
+    (Object.hasOwn(value, "writeback") &&
+      typeof value.writeback !== "boolean") ||
+    (Object.hasOwn(value, "instructionsTargetFilename") &&
+      typeof value.instructionsTargetFilename !== "string")
+  ) {
+    return false;
+  }
+  return (
+    !Object.hasOwn(value, "missingRootPolicy") ||
+    value.missingRootPolicy === "fail" ||
+    value.missingRootPolicy === "preserveParentVersion"
+  );
+}
+
+function hasValidCheckpointStorageReferences(
+  mount: ValidCheckpointStorageMount,
+  storageIdentities: ReadonlyMap<string, StorageReferenceIdentity>,
+  storageVersionOwners: ReadonlyMap<string, string>,
+): boolean {
+  const storage = storageIdentities.get(mount.storageId);
+  return (
+    storage !== undefined &&
+    storage.orgId === mount.orgId &&
+    storage.userId === mount.userId &&
+    storage.name === mount.name &&
+    storageVersionOwners.get(mount.version) === mount.storageId
+  );
+}
+
+const STORAGE_REFERENCE_CURSOR_BATCH_SIZE = 512;
+type StorageReferenceCursorName =
+  | "checkpointStorageIdentities"
+  | "checkpointStorageVersions"
+  | "checkpointStorageMounts";
+
+async function streamCursorRows<Row extends QueryResultRow>(
+  client: Client,
+  signal: AbortSignal | undefined,
+  cursorName: StorageReferenceCursorName,
+  text: string,
+  consume: (row: Row) => void,
+): Promise<number> {
+  assertNotAborted(signal);
+  let declared = false;
+  let queryFailed = false;
+  try {
+    await client.query(`DECLARE "${cursorName}" NO SCROLL CURSOR FOR ${text}`);
+    declared = true;
+    let rowCount = 0;
+    for (;;) {
+      assertNotAborted(signal);
+      let result: { readonly rows: readonly Row[] };
+      try {
+        result = await client.query<Row>(
+          `FETCH FORWARD ${STORAGE_REFERENCE_CURSOR_BATCH_SIZE} FROM "${cursorName}"`,
+        );
+      } catch (error) {
+        queryFailed = true;
+        throw error;
+      }
+      if (result.rows.length === 0) break;
+      rowCount += result.rows.length;
+      for (const row of result.rows) {
+        assertNotAborted(signal);
+        consume(row);
+      }
+    }
+    assertNotAborted(signal);
+    return rowCount;
+  } finally {
+    if (declared && !queryFailed) {
+      await client.query(`CLOSE "${cursorName}"`);
+    }
+  }
+}
+
+export async function validateCheckpointStorageReferences(
+  client: Client,
+  signal: AbortSignal | undefined,
+  expectedCheckpointIds: ReadonlySet<string>,
+): Promise<CheckpointStorageReferenceValidation> {
+  const storageIdentities = new Map<string, StorageReferenceIdentity>();
+  const storageVersionOwners = new Map<string, string>();
+  await streamCursorRows<StorageReferenceIdentityRow>(
+    client,
+    signal,
+    "checkpointStorageIdentities",
+    STORAGE_REFERENCE_IDENTITY_QUERY,
+    (row) => {
+      storageIdentities.set(row.id, {
+        orgId: row.orgId,
+        userId: row.userId,
+        name: row.name,
+      });
+    },
+  );
+  await streamCursorRows<StorageReferenceVersionRow>(
+    client,
+    signal,
+    "checkpointStorageVersions",
+    STORAGE_REFERENCE_VERSION_QUERY,
+    (row) => {
+      storageVersionOwners.set(row.id, row.storageId);
+    },
+  );
+
+  const invalidCheckpointIds = new Set<string>();
+  let expandedMountCount = 0;
+  const checkpointCount = await streamCursorRows<CheckpointStorageReferenceRow>(
+    client,
+    signal,
+    "checkpointStorageMounts",
+    CHECKPOINT_STORAGE_REFERENCE_QUERY,
+    (row) => {
+      if (!expectedCheckpointIds.has(row.id)) {
+        throw new SanitizedPreflightError("probe.inventory");
+      }
+      if (row.storageMountsNull) return;
+      if (!Array.isArray(row.storageMounts)) {
+        invalidCheckpointIds.add(row.id);
+        return;
+      }
+      let valid = true;
+      for (const mount of row.storageMounts) {
+        expandedMountCount += 1;
+        if (
+          !isValidCheckpointStorageMount(mount) ||
+          !hasValidCheckpointStorageReferences(
+            mount,
+            storageIdentities,
+            storageVersionOwners,
+          )
+        ) {
+          valid = false;
+        }
+      }
+      if (!valid) invalidCheckpointIds.add(row.id);
+    },
+  );
+  if (checkpointCount !== expectedCheckpointIds.size) {
+    throw new SanitizedPreflightError("probe.inventory");
+  }
+  return { checkpointCount, invalidCheckpointIds, expandedMountCount };
+}
 
 async function collectDatabaseInventory(
   client: Client,
@@ -2542,26 +2672,29 @@ async function collectDatabaseInventory(
      ORDER BY "checkpoint"."id"`,
     [CHECKPOINT_PRE_CUTOVER_BOUNDARY],
   );
-  const invalidCheckpointStorageReferences =
-    await safeQuery<InvalidCheckpointStorageReferenceRow>(
-      client,
-      signal,
-      phaseRecorder,
-      "checkpointStorageReferences",
-      CHECKPOINT_STORAGE_REFERENCE_QUERY,
-    );
-  const invalidCheckpointStorageReferenceIds = new Set(
-    invalidCheckpointStorageReferences.map((row) => {
-      return row.id;
-    }),
+  const checkpointStorageReferenceValidation = await phaseRecorder.measure(
+    "checkpointStorageReferences",
+    async () => {
+      const expectedCheckpointIds = new Set(
+        checkpointCoreRows.map((row) => {
+          return row.id;
+        }),
+      );
+      return validateCheckpointStorageReferences(
+        client,
+        signal,
+        expectedCheckpointIds,
+      );
+    },
   );
   const checkpoints: CheckpointInventoryRow[] = checkpointCoreRows.map(
     (row) => {
       return {
         ...row,
-        storageReferenceValid: !invalidCheckpointStorageReferenceIds.has(
-          row.id,
-        ),
+        storageReferenceValid:
+          !checkpointStorageReferenceValidation.invalidCheckpointIds.has(
+            row.id,
+          ),
       };
     },
   );
