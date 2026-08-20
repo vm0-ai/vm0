@@ -5,6 +5,7 @@ import { env } from "../../lib/env";
 import { sanitizeArtifactFilename } from "../../lib/file-url";
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
+import { publicBrand$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { generatePresignedPutUrl, s3MetadataHeaders } from "../external/s3";
 import { allocateArtifactObject$ } from "../services/artifact-storage.service";
@@ -30,6 +31,8 @@ const initInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     {
       userId: auth.userId,
       filename,
+      publicBrand:
+        auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$),
     },
     signal,
   );

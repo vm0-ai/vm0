@@ -3,6 +3,7 @@ import { integrationsSlackUploadInitContract } from "@okouai/api-contracts/contr
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
+import { publicBrand$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { createSlackClient } from "../external/slack-message-client";
 import { MAX_SLACK_FILE_SIZE_BYTES } from "../external/slack-file-fetcher";
@@ -64,6 +65,8 @@ const initInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         contentType,
         size: body.length,
         checksumSha256: body.canonical.checksumSha256,
+        publicBrand:
+          auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$),
         destination: {
           channelId: body.canonical.channel,
           ...(body.canonical.threadTs

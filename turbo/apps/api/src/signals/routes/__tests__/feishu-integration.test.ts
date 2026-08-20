@@ -9,7 +9,10 @@ import { Buffer } from "node:buffer";
 
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
-import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
+import {
+  chatThreadConnectorSelectionContract,
+  chatThreadsContract,
+} from "@okouai/api-contracts/contracts/chat-threads";
 import {
   zeroCustomConnectorByIdContract,
   zeroCustomConnectorConnectionContract,
@@ -102,6 +105,12 @@ const BOT_OPEN_ID = "ou_feishu_bot";
 function feishuConnectClient() {
   return setupApp({ context, routes: feishuConnectRoutes })(
     feishuConnectContract,
+  );
+}
+
+function chatThreadConnectorSelectionsClient() {
+  return setupApp({ context, routes: chatThreadRoutes })(
+    chatThreadConnectorSelectionContract,
   );
 }
 
@@ -3539,6 +3548,81 @@ describe("Feishu integration", () => {
     expect(claim.appendSystemPrompt).not.toContain("# Feishu Thread Context");
     await runsApi.requestCancelRun(actor, run.id, [200]);
     await flushWaitUntilForTest();
+  });
+
+  it("uses the exact Feishu source without persisting a thread override", async () => {
+    const fixture = await setupFeishuRunFixture();
+    const { actor, runnerGroup, appId, callbackUrl } = fixture;
+    await enableFeishuIntegration(actor, {
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+      [FeatureSwitchKey.ZeroDebug]: true,
+    });
+    await connectFixtureUser(fixture);
+    const orgId = requireValue(actor.orgId, "Expected an organization");
+    const connectionState = await readFeishuMemberConnectorState(context, {
+      orgId,
+      userId: actor.userId,
+      installationId: fixture.installationId,
+    });
+    const connectorId = requireValue(
+      connectionState.feishu_member_connection?.connector_id,
+      "Expected an exact Feishu member connector",
+    );
+    const customConnectors = await accept(
+      setupApp({ context, routes: customConnectorsRoutes })(
+        zeroCustomConnectorsContract,
+      ).list({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    const customConnector = requireValue(
+      customConnectors.body.connectors[0],
+      "Expected the managed Feishu custom connector",
+    );
+
+    const prompt = "use this Feishu connector account";
+    context.mocks.ably.publish.mockClear();
+    await postEvent(callbackUrl, directMessage(appId, prompt), {
+      encrypted: true,
+    });
+    await flushWaitUntilForTest();
+    const run = await findRun(actor, prompt);
+    await runsApi.heartbeatRunner(runnerGroup);
+    const claim = await runsApi.claimRunnerJob(run.id);
+    expect(claim.connectorRuntimeTargets).toContainEqual({
+      kind: "custom",
+      customConnectorId: customConnector.id,
+      baseUrlVars: {},
+      sourceId: connectorId,
+    });
+
+    mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const lifecycle = await accept(
+      setupApp({ context, routes: chatThreadRoutes })(
+        chatThreadsContract,
+      ).events({
+        headers: { authorization: "Bearer clerk-session" },
+        query: {},
+      }),
+      [200],
+    );
+    const created = requireValue(
+      lifecycle.body.events.find((event) => {
+        return event.kind === "created";
+      }),
+      "Expected the canonical Feishu chat thread",
+    );
+    const selections = await accept(
+      chatThreadConnectorSelectionsClient().get({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { id: created.chatThreadId },
+      }),
+      [200],
+    );
+    expect(selections.body.selections).toStrictEqual([]);
+    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+      `chatThreadDetailChanged:${created.chatThreadId}`,
+      null,
+    );
   });
 
   it("builds Feishu DM context and canonical response metadata", async () => {

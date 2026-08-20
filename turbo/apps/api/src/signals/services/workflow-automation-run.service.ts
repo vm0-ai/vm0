@@ -56,6 +56,7 @@ export const runWorkflowAutomationNow$ = command(
             persistedWorkflowAutomationEventPayload(
               args.automationContext.event,
             ),
+          connectorSourceId: args.connectorSourceId,
           chatThreadId,
           triggerSource: args.triggerSource ?? "automation-schedule",
           triggerBrief: args.triggerBrief,

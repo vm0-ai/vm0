@@ -1,5 +1,44 @@
 # Changelog
 
+## [1.467.0](https://github.com/vm0-ai/vm0/compare/api-v1.466.0...api-v1.467.0) (2026-08-20)
+
+
+### Features
+
+* **api:** add managed model fallback resolver ([#28301](https://github.com/vm0-ai/vm0/issues/28301)) ([745a08f](https://github.com/vm0-ai/vm0/commit/745a08fa51b6b0b51208fae1a02ec599664be115))
+* **connectors:** route ready oauth callbacks directly to okou ([#28408](https://github.com/vm0-ai/vm0/issues/28408)) ([5beedda](https://github.com/vm0-ai/vm0/commit/5beedda00ed8e28df54f293b0190fb7592756f73))
+* **host:** emit branded hosted site urls ([#28387](https://github.com/vm0-ai/vm0/issues/28387)) ([d098306](https://github.com/vm0-ai/vm0/commit/d09830659571868c9e79cd9c9e7e501661bd05d7))
+
+
+### Bug Fixes
+
+* **api:** harden usage pack purchase billing ([#28304](https://github.com/vm0-ai/vm0/issues/28304)) ([17ba3cd](https://github.com/vm0-ai/vm0/commit/17ba3cdfd57c8c980dedab902c2ed49ed51d0a4f))
+* **automation:** defer run-finished events until goals stop ([#28410](https://github.com/vm0-ai/vm0/issues/28410)) ([d393d05](https://github.com/vm0-ai/vm0/commit/d393d054e17c215a6635b1e6eb598c41b6297235))
+* revise chat usage after late settlement ([#28378](https://github.com/vm0-ai/vm0/issues/28378)) ([21ca637](https://github.com/vm0-ai/vm0/commit/21ca637a2975b12d44aa1dce9d62633e89fb0556))
+* **runner:** bound firewall catalog response bodies ([#28399](https://github.com/vm0-ai/vm0/issues/28399)) ([1732568](https://github.com/vm0-ai/vm0/commit/17325687f4950e089ce565d1e33737b5822b19be))
+
+
+### Refactoring
+
+* **api:** move user config and personal model provider routes off the brand namespace ([#28429](https://github.com/vm0-ai/vm0/issues/28429)) ([6ef5bd2](https://github.com/vm0-ai/vm0/commit/6ef5bd26a731fe5372c2fedd6dad7c173e1ff591))
+* **maps:** move the maps routes off the brand namespace ([#28426](https://github.com/vm0-ai/vm0/issues/28426)) ([3fbbed5](https://github.com/vm0-ai/vm0/commit/3fbbed5759ab8feb027af247513a5507fa0fcb00))
+* **weather:** move the weather routes off the brand namespace ([#28413](https://github.com/vm0-ai/vm0/issues/28413)) ([0386bee](https://github.com/vm0-ai/vm0/commit/0386beebc6a31d1f25b6ba50d47d8aff84dd7dfb))
+
+
+### Performance Improvements
+
+* **api:** remove speculative queue scan lock ([#28436](https://github.com/vm0-ai/vm0/issues/28436)) ([bd31c7c](https://github.com/vm0-ai/vm0/commit/bd31c7c0fc420ee55e3df8d4a2ab28e9c2a2a708))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.344.0
+    * @okouai/connectors bumped to 1.208.0
+    * @okouai/core bumped to 8.575.0
+    * @okouai/db bumped to 1.211.0
+
 ## [1.466.0](https://github.com/vm0-ai/vm0/compare/api-v1.465.0...api-v1.466.0) (2026-08-20)
 
 

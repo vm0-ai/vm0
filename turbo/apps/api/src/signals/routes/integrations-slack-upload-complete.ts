@@ -3,10 +3,12 @@ import {
   integrationsSlackUploadCompleteContract,
   type SlackUploadCompleteBody,
 } from "@okouai/api-contracts/contracts/integrations";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
+import { publicBrand$ } from "../context/hono";
 import {
   createSlackClient,
   type SlackClient,
@@ -124,6 +126,7 @@ interface DirectCompletionArgs {
   readonly runId: string | undefined;
   readonly userId: string;
   readonly orgId: string;
+  readonly publicBrand: PublicBrand;
   readonly client: SlackClient;
 }
 
@@ -176,6 +179,7 @@ const completeDirectUpload$ = command(
         contentType: file?.mimetype ?? null,
         sizeBytes: file?.size ?? null,
         url: permalink || null,
+        publicBrand: args.publicBrand,
         metadata: buildSlackUploadMetadata(body, file),
       },
       signal,
@@ -193,6 +197,8 @@ const completeDirectUpload$ = command(
 
 const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
+  const publicBrand =
+    auth.tokenType === "zero" ? auth.publicBrand : get(publicBrand$);
   const runId =
     "runId" in auth && typeof auth.runId === "string" ? auth.runId : undefined;
 
@@ -236,6 +242,7 @@ const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       runId,
       userId: auth.userId,
       orgId: auth.orgId,
+      publicBrand,
       client,
     },
     signal,

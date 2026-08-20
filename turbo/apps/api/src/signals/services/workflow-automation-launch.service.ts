@@ -89,6 +89,8 @@ export interface RunWorkflowAutomationNowArgs {
   readonly automationContext: WorkflowAutomationContext;
   readonly apiStartTime: number;
   readonly agentRunSource?: ChatAgentRunSourceAnnotation;
+  /** Exact member connector that durably delivered this provider event. */
+  readonly connectorSourceId?: string;
   // Display-only trigger summary used by workflow annotations and run history.
   readonly triggerBrief?: string;
   readonly triggerSource?: TriggerSource;
@@ -110,6 +112,7 @@ interface WorkflowAutomationLaunchArgs {
   readonly prompt: string;
   readonly triggerBrief?: string;
   readonly triggerSource?: TriggerSource;
+  readonly connectorSourceId?: string;
   readonly appendSystemPrompt: string | undefined;
   readonly callbacks: readonly InternalRunCallbackInput[];
   readonly activePreviousRunPolicy: ActivePreviousRunPolicy;
@@ -657,6 +660,9 @@ export const launchQueuedWorkflowAutomation$ = command(
         apiStartTime: args.apiStartTime,
         triggerSource: args.triggerSource ?? "automation-schedule",
         chatThreadId,
+        ...(args.connectorSourceId
+          ? { connectorSourceId: args.connectorSourceId }
+          : {}),
         computerUseHostId: computerUseHostGrant?.hostId,
         modelProviderId: modelPin.modelProviderId ?? undefined,
         modelProviderCredentialScope:

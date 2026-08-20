@@ -215,7 +215,7 @@ describe("POST /api/zero/uploads/complete", () => {
     });
   });
 
-  it("recovers a v2 original filename from object metadata", async () => {
+  it("keeps legacy v2 objects without brand metadata on the VM0 CDN", async () => {
     const fixture = await createRunUploadFixture();
     const prepared = await chat.prepareUpload(fixture.actor, {
       filename: "财务 报告.pdf",
@@ -247,6 +247,74 @@ describe("POST /api/zero/uploads/complete", () => {
       size: 17,
       url: prepared.url,
     });
+    if ("error" in response.body) {
+      throw new Error("Expected the upload to complete successfully");
+    }
+    expect(response.body.url).toMatch(/^https:\/\/cdn\.vm7\.io\//u);
+  });
+
+  it("resolves the CDN from immutable object brand metadata", async () => {
+    const fixture = await createRunUploadFixture();
+    const prepared = await chat.prepareUpload(fixture.actor, {
+      filename: "okou-report.pdf",
+      contentType: "application/pdf",
+      size: 17,
+    });
+    const key = new URL(prepared.url).pathname.replace(/^\/+/u, "");
+    fixture.objectStore.addObject({
+      bucket: "test-user-artifacts",
+      key,
+      size: 17,
+      contentType: "application/pdf",
+      metadata: {
+        "artifact-id": prepared.id,
+        filename: "okou-report.pdf",
+        "public-brand": "okou",
+        "user-id": encodeURIComponent(fixture.actor.userId),
+      },
+    });
+
+    const response = await chat.completeUploadWithBearer(
+      fixture.bearer,
+      { id: prepared.id },
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      id: prepared.id,
+      filename: "okou-report.pdf",
+      url: expect.stringMatching(/^https:\/\/cdn\.okou\.io\//u),
+    });
+  });
+
+  it("rejects corrupt persisted artifact brand metadata", async () => {
+    const fixture = await createRunUploadFixture();
+    const prepared = await chat.prepareUpload(fixture.actor, {
+      filename: "corrupt-brand.pdf",
+      contentType: "application/pdf",
+      size: 17,
+    });
+    const key = new URL(prepared.url).pathname.replace(/^\/+/u, "");
+    fixture.objectStore.addObject({
+      bucket: "test-user-artifacts",
+      key,
+      size: 17,
+      contentType: "application/pdf",
+      metadata: {
+        "artifact-id": prepared.id,
+        filename: "corrupt-brand.pdf",
+        "public-brand": "unexpected",
+        "user-id": encodeURIComponent(fixture.actor.userId),
+      },
+    });
+
+    const response = await chat.completeUploadWithBearer(
+      fixture.bearer,
+      { id: prepared.id },
+      [500],
+    );
+
+    expect(response.body).toStrictEqual({ error: "Internal server error" });
   });
 
   it("uses a recognized complete content type when provided", async () => {
