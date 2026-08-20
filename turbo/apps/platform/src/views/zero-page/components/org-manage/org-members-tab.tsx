@@ -109,7 +109,7 @@ function memberRowGrid(showUsagePack: boolean): string {
   return cn(
     ROW_GRID,
     showUsagePack
-      ? "grid-cols-[minmax(0,1fr)_6rem_7rem_5.5rem_2rem]"
+      ? "grid-cols-[minmax(0,1fr)_6rem_13rem_5.5rem_2rem]"
       : "grid-cols-[minmax(0,1fr)_6rem_5.5rem_2rem]",
   );
 }
@@ -159,6 +159,14 @@ function formatDate(iso: string, locale: string): string {
   return new Intl.DateTimeFormat(locale).format(new Date(iso));
 }
 
+function formatBillingDate(iso: string, locale: string): string {
+  return new Intl.DateTimeFormat(locale, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(iso));
+}
+
 export function OrgMembersTab() {
   const { t } = useTranslation();
   const membersLoadable = useLoadable(orgMembers$);
@@ -186,9 +194,9 @@ export function OrgMembersTab() {
       ? usagePackManagementLoadable.data
       : null;
   const showUsagePack = usagePackManagement !== null;
-  const usagePackByMemberId = new Map(
+  const usagePackAllocationByMemberId = new Map(
     usagePackManagement?.allocations.map((allocation) => {
-      return [allocation.memberId, allocation.usagePackUsd] as const;
+      return [allocation.memberId, allocation] as const;
     }),
   );
   const isLoading = membersLoadable.state === "loading";
@@ -316,7 +324,9 @@ export function OrgMembersTab() {
                   isOnlyAdmin={adminCount < 2}
                   showUsagePack={showUsagePack}
                   usagePackManagement={usagePackManagement}
-                  usagePackUsd={usagePackByMemberId.get(m.userId) ?? null}
+                  usagePackAllocation={
+                    usagePackAllocationByMemberId.get(m.userId) ?? null
+                  }
                 />
               </div>
             );
@@ -924,6 +934,72 @@ function InvitePurchaseConfirmationDialog() {
   );
 }
 
+type ManagedUsagePackAllocation =
+  UsagePackManagementResponse["allocations"][number];
+
+function UsagePackCell({
+  allocation,
+  fallbackPeriodEnd,
+}: {
+  allocation: ManagedUsagePackAllocation | null;
+  fallbackPeriodEnd: string | null;
+}) {
+  const { i18n, t } = useTranslation();
+  if (!allocation) {
+    return <div className="text-[13px] text-muted-foreground">—</div>;
+  }
+
+  const pendingChange = allocation.pendingChange;
+  const downgradeTarget =
+    pendingChange?.kind === "downgrade" && pendingChange.status !== "previewed"
+      ? pendingChange.targetUsagePackUsd
+      : null;
+  const effectiveAt =
+    pendingChange?.effectiveAt ??
+    allocation.currentPeriodEnd ??
+    fallbackPeriodEnd;
+  const downgradeSummary =
+    downgradeTarget === null
+      ? null
+      : effectiveAt
+        ? t(
+            ($) => {
+              return $.billing.plans.usagePacks.management.downgradesToDate;
+            },
+            {
+              package: formatUsd(downgradeTarget, 0),
+              date: formatBillingDate(
+                effectiveAt,
+                i18n.resolvedLanguage ?? i18n.language,
+              ),
+            },
+          )
+        : t(
+            ($) => {
+              return $.billing.plans.usagePacks.management.downgradesToPeriod;
+            },
+            { package: formatUsd(downgradeTarget, 0) },
+          );
+
+  return (
+    <div className="min-w-0 tabular-nums">
+      <div className="text-[13px] text-muted-foreground">
+        {t(
+          ($) => {
+            return $.billing.plans.pricePerMonth;
+          },
+          { price: formatUsd(allocation.usagePackUsd, 0) },
+        )}
+      </div>
+      {downgradeSummary && (
+        <p className="mt-0.5 text-[11px] font-medium leading-4 text-yellow-700 dark:text-yellow-300">
+          {downgradeSummary}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function MemberRow({
   member,
   isCurrentUser,
@@ -931,7 +1007,7 @@ function MemberRow({
   isOnlyAdmin,
   showUsagePack,
   usagePackManagement,
-  usagePackUsd,
+  usagePackAllocation,
 }: {
   member: OrgMember;
   isCurrentUser: boolean;
@@ -939,7 +1015,7 @@ function MemberRow({
   isOnlyAdmin: boolean;
   showUsagePack: boolean;
   usagePackManagement: UsagePackManagementResponse | null;
-  usagePackUsd: UsagePackUsd | null;
+  usagePackAllocation: ManagedUsagePackAllocation | null;
 }) {
   const { i18n, t } = useTranslation();
   const name = displayName(member);
@@ -981,16 +1057,10 @@ function MemberRow({
         {formatDate(member.joinedAt, i18n.resolvedLanguage ?? i18n.language)}
       </div>
       {showUsagePack && (
-        <div className="text-[13px] text-muted-foreground tabular-nums">
-          {usagePackUsd === null
-            ? "—"
-            : t(
-                ($) => {
-                  return $.billing.plans.pricePerMonth;
-                },
-                { price: formatUsd(usagePackUsd, 0) },
-              )}
-        </div>
+        <UsagePackCell
+          allocation={usagePackAllocation}
+          fallbackPeriodEnd={usagePackManagement?.currentPeriodEnd ?? null}
+        />
       )}
       <div>
         <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground zero-badge">

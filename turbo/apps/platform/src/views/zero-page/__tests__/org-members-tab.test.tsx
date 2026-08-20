@@ -541,6 +541,48 @@ describe("organization members settings", () => {
     expect(window.location.href).toBe(initialHref);
   });
 
+  it("shows a scheduled usage pack downgrade beside the current package", async () => {
+    mockMembersStory();
+    mockMemberInviteEntitlement(true);
+    context.mocks.api(billingUsagePackManagementContract.get, ({ respond }) => {
+      return respond(200, {
+        tier: "pro",
+        currentPeriodEnd: "2026-09-01T00:00:00.000Z",
+        allocations: [
+          {
+            id: "4875750e-c7a1-4740-bafb-3466443955f4",
+            memberId: "user-eve",
+            usagePackUsd: 100,
+            currentPeriodEnd: "2026-09-01T00:00:00.000Z",
+            pendingChange: {
+              id: "8044563e-ef31-4fb6-aa31-e7ecb2b1a5f6",
+              kind: "downgrade",
+              status: "scheduled",
+              targetUsagePackUsd: 50,
+              effectiveAt: "2026-09-01T00:00:00.000Z",
+            },
+          },
+        ],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/?settings=people",
+      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
+    });
+
+    await expect(screen.findByText("Usage pack")).resolves.toBeInTheDocument();
+    const eveRow = rowByEmail("eve@example.com");
+    expect(within(eveRow).getByText("$100/month")).toBeVisible();
+    expect(
+      within(eveRow).getByText("Downgrades to $50 on Sep 1, 2026."),
+    ).toBeVisible();
+    expect(
+      within(rowByEmail("alice@example.com")).queryByText(/Downgrades to/u),
+    ).not.toBeInTheDocument();
+  });
+
   it("clears a failed invitation purchase before its dialog reopens", async () => {
     mockMembersStory();
     mockMemberInviteEntitlement(true);
