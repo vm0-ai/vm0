@@ -29,8 +29,8 @@
 //!   main reactor or overlap a newer snapshot;
 //! - workspace-cache watcher work is pinned across reactor turns so async
 //!   metadata classification cannot lose already-drained kernel events;
-//! - routine workspace-cache GC is pinned and single-flight so its I/O does
-//!   not stall the main reactor or queue behind another capacity-lock owner;
+//! - routine workspace-cache GC is pinned and process-local single-flight, and
+//!   its host-global cadence is coordinated through the capacity lock;
 //! - the first routine heartbeat tick is deferred;
 //! - teardown drains heartbeat work and drops discovery before provider
 //!   shutdown.
@@ -191,7 +191,7 @@ async fn next_workspace_cache_change(
 type WorkspaceCacheGcFuture = BoxFuture<'static, RunnerResult<Option<u64>>>;
 
 fn workspace_cache_gc_future(cache: WorkspaceImageCache) -> WorkspaceCacheGcFuture {
-    Box::pin(async move { cache.try_gc().await })
+    Box::pin(async move { cache.try_routine_gc(WORKSPACE_CACHE_GC_PERIOD).await })
 }
 
 async fn next_workspace_cache_gc(

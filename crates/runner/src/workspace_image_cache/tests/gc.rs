@@ -1,3 +1,5 @@
+use std::time::{Duration, SystemTime};
+
 use tokio::fs;
 
 use super::super::fs::{allocated_bytes, workspace_cache_path_allocated_bytes};
@@ -14,6 +16,7 @@ use super::support::{
     TEST_PROFILE_NAME, local_cache, promote_current_cache_entry, timestamp_for_index,
     write_current_cache_entry,
 };
+use crate::error::RunnerError;
 use crate::ids::RunId;
 use crate::paths::{HomePaths, RunnerPaths, workspace_image_cache_key};
 use crate::storage_fingerprints::StorageFingerprints;
@@ -115,10 +118,14 @@ async fn routine_gc_cleans_stale_entries_when_capacity_lock_is_available() {
         .unwrap();
     cache.reset_gc_root_scan_count();
 
-    let freed = cache.try_gc().await.unwrap();
+    let freed = cache.try_routine_gc(Duration::from_secs(60)).await.unwrap();
 
     assert!(freed.is_some());
     assert_eq!(cache.gc_root_scan_count(), 1);
+    assert!(
+        std::fs::metadata(cache.capacity_lock_path()).unwrap().len() > 0,
+        "successful routine GC should record host-global completion"
+    );
     assert!(
         !cache
             .entry_paths(&cache_key)
@@ -136,10 +143,124 @@ async fn routine_gc_skips_without_scanning_when_capacity_lock_is_busy() {
         .unwrap();
     cache.reset_gc_root_scan_count();
 
-    let freed = cache.try_gc().await.unwrap();
+    let freed = cache.try_routine_gc(Duration::from_secs(60)).await.unwrap();
 
     assert_eq!(freed, None);
     assert_eq!(cache.gc_root_scan_count(), 0);
+}
+
+#[tokio::test]
+async fn routine_gc_runs_once_per_interval_across_shared_cache_instances() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = HomePaths::with_root(dir.path().join("home"));
+    let runner_a = RunnerPaths::new(dir.path().join("runner-a"));
+    let runner_b = RunnerPaths::new(dir.path().join("runner-b"));
+    tokio::fs::create_dir_all(runner_a.base_dir())
+        .await
+        .unwrap();
+    tokio::fs::create_dir_all(runner_b.base_dir())
+        .await
+        .unwrap();
+    let cache_a = WorkspaceImageCache::shared(runner_a, &home, "group-a");
+    let cache_b = WorkspaceImageCache::shared(runner_b, &home, "group-b");
+    let stale_key = workspace_image_cache_key("sess-stale", "/workspace");
+    tokio::fs::create_dir_all(cache_a.entry_paths(&stale_key).entry_dir())
+        .await
+        .unwrap();
+
+    let first = cache_a
+        .try_routine_gc(Duration::from_secs(60))
+        .await
+        .unwrap();
+    let second = cache_b
+        .try_routine_gc(Duration::from_secs(60))
+        .await
+        .unwrap();
+
+    assert!(first.is_some());
+    assert_eq!(second, None);
+    assert_eq!(cache_a.gc_root_scan_count(), 1);
+    assert_eq!(cache_b.gc_root_scan_count(), 0);
+}
+
+#[tokio::test]
+async fn routine_gc_runs_again_after_shared_completion_expires() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = HomePaths::with_root(dir.path().join("home"));
+    let runner_a = RunnerPaths::new(dir.path().join("runner-a"));
+    let runner_b = RunnerPaths::new(dir.path().join("runner-b"));
+    tokio::fs::create_dir_all(runner_a.base_dir())
+        .await
+        .unwrap();
+    tokio::fs::create_dir_all(runner_b.base_dir())
+        .await
+        .unwrap();
+    let cache_a = WorkspaceImageCache::shared(runner_a, &home, "group-a");
+    let cache_b = WorkspaceImageCache::shared(runner_b, &home, "group-b");
+    cache_a
+        .try_routine_gc(Duration::from_secs(60))
+        .await
+        .unwrap()
+        .expect("first routine GC should record completion");
+    let future_completion = SystemTime::now() + Duration::from_secs(60);
+    std::fs::File::options()
+        .write(true)
+        .open(cache_a.capacity_lock_path())
+        .unwrap()
+        .set_times(std::fs::FileTimes::new().set_modified(future_completion))
+        .unwrap();
+    cache_b.reset_gc_root_scan_count();
+
+    let future = cache_b
+        .try_routine_gc(Duration::from_secs(60))
+        .await
+        .unwrap();
+
+    assert_eq!(future, None);
+    assert_eq!(cache_b.gc_root_scan_count(), 0);
+    let old_completion = SystemTime::now() - Duration::from_secs(61);
+    std::fs::File::options()
+        .write(true)
+        .open(cache_a.capacity_lock_path())
+        .unwrap()
+        .set_times(std::fs::FileTimes::new().set_modified(old_completion))
+        .unwrap();
+    cache_b.reset_gc_root_scan_count();
+
+    let next = cache_b
+        .try_routine_gc(Duration::from_secs(60))
+        .await
+        .unwrap();
+
+    assert!(next.is_some());
+    assert_eq!(cache_b.gc_root_scan_count(), 1);
+}
+
+#[tokio::test]
+async fn failed_routine_gc_does_not_suppress_retry() {
+    let (_dir, paths, cache) = local_cache().await;
+    let cache_root = paths.workspace_image_cache_dir();
+    tokio::fs::write(&cache_root, b"not a directory")
+        .await
+        .unwrap();
+
+    let error = cache
+        .try_routine_gc(Duration::from_secs(60))
+        .await
+        .unwrap_err();
+
+    assert!(matches!(error, RunnerError::Io(_)));
+    assert_eq!(
+        std::fs::metadata(cache.capacity_lock_path()).unwrap().len(),
+        0,
+        "failed routine GC must not record completion"
+    );
+    tokio::fs::remove_file(&cache_root).await.unwrap();
+
+    let retry = cache.try_routine_gc(Duration::from_secs(60)).await.unwrap();
+
+    assert!(retry.is_some());
+    assert_eq!(cache.gc_root_scan_count(), 2);
 }
 
 #[tokio::test]
@@ -335,7 +456,7 @@ async fn global_gc_evicts_old_entry_from_other_group_under_free_space_pressure()
     .await;
 
     let freed = cache_b
-        .try_gc()
+        .try_routine_gc(Duration::from_secs(60))
         .await
         .unwrap()
         .expect("routine GC should acquire the idle capacity lock");
