@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.575.0](https://github.com/vm0-ai/vm0/compare/core-v8.574.0...core-v8.575.0) (2026-08-20)
+
+
+### Features
+
+* **api:** add managed model fallback resolver ([#28301](https://github.com/vm0-ai/vm0/issues/28301)) ([745a08f](https://github.com/vm0-ai/vm0/commit/745a08fa51b6b0b51208fae1a02ec599664be115))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.344.0
+
 ## [8.574.0](https://github.com/vm0-ai/vm0/compare/core-v8.573.1...core-v8.574.0) (2026-08-20)
 
 
