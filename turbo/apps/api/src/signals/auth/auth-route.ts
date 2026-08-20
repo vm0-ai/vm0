@@ -67,17 +67,19 @@ export function authRoute<T>(
         return admission;
       }
 
-      return await withCleanup(
-        async () => {
-          signal.throwIfAborted();
-          return isCommand(handler$)
-            ? await set(handler$, signal)
-            : await get(handler$);
-        },
-        async () => {
-          await set(completeRunApiUsageAdmission$, admission);
-        },
-      );
+      const runHandler = async (): Promise<T> => {
+        signal.throwIfAborted();
+        return isCommand(handler$)
+          ? await set(handler$, signal)
+          : await get(handler$);
+      };
+      if (admission === null) {
+        return await runHandler();
+      }
+
+      return await withCleanup(runHandler, async () => {
+        await set(completeRunApiUsageAdmission$, admission);
+      });
     },
   );
 }

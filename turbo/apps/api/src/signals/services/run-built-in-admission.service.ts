@@ -257,10 +257,7 @@ export const startRunApiUsageAdmission$ = command(
 );
 
 export const completeRunApiUsageAdmission$ = command(
-  async ({ set }, admission: RunBuiltInAdmission | null): Promise<void> => {
-    if (!admission) {
-      return;
-    }
+  async ({ set }, admission: RunBuiltInAdmission): Promise<void> => {
     await set(writeDb$)
       .delete(runBuiltInAdmissions)
       .where(
