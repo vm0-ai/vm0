@@ -180,7 +180,7 @@ function invitationPurchaseError(args: {
   >;
 }) {
   const error = INVITATION_PURCHASE_ERRORS[args.reason];
-  log.info("Usage pack invitation purchase rejected", {
+  log.debug("Usage pack invitation purchase rejected", {
     ...args.diagnostics,
     type: "usage_pack_invitation_purchase_rejected",
     phase: args.phase,
