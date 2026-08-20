@@ -57,6 +57,9 @@ export default defineConfig({
   testDir: "./tests",
   globalSetup: "./global-setup",
   globalTeardown: "./global-teardown",
+  reporter: process.env.CI
+    ? [["list"], ["blob", { outputDir: "blob-report" }]]
+    : "list",
   timeout: 120_000,
   use: {
     baseURL: appUrl,
