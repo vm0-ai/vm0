@@ -10,7 +10,8 @@ use tracing::{error, info, warn};
 
 use api_contracts::generated::{
     constants::runners::{
-        CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE, RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
+        BUILTIN_FIREWALL_CATALOG_MAX_BYTES, CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
+        RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
     },
     decode_paths, routes,
     types::runners::runs::active_inputs::{
@@ -1183,7 +1184,9 @@ impl ApiClient {
     pub(super) async fn resolve_builtin_firewall_catalog(
         &self,
     ) -> RunnerResult<BuiltinFirewallCatalog> {
-        let resp = send_api(
+        const LABEL: &str = "builtin firewall catalog resolve";
+
+        let mut resp = send_api(
             self.http
                 .request_route(
                     routes::runners::builtin_firewalls::resolve::RESOLVE,
@@ -1191,13 +1194,59 @@ impl ApiClient {
                 )
                 .timeout(BUILTIN_FIREWALL_CATALOG_RESOLVE_TIMEOUT)
                 .json(&serde_json::json!({})),
-            "builtin firewall catalog resolve",
+            LABEL,
         )
         .await?;
 
-        let resp = check_api_status(resp, "builtin firewall catalog resolve").await?;
-        let catalog: BuiltinFirewallCatalog =
-            decode_api_json(resp, "builtin firewall catalog resolve").await?;
+        let status = resp.status();
+        let max_bytes = BUILTIN_FIREWALL_CATALOG_MAX_BYTES;
+        let content_length = resp.content_length();
+        if content_length.is_some_and(|length| length > max_bytes) {
+            return Err(RunnerError::Api(format!(
+                "{LABEL} response body exceeds {max_bytes} bytes"
+            )));
+        }
+
+        let initial_capacity = content_length
+            .and_then(|length| usize::try_from(length).ok())
+            .unwrap_or_default();
+        let mut body = Vec::with_capacity(initial_capacity);
+        let mut body_len = 0_u64;
+        loop {
+            let chunk = match resp.chunk().await {
+                Ok(Some(chunk)) => chunk,
+                Ok(None) => break,
+                Err(_) if !status.is_success() => return Err(api_status_error(LABEL, status, "")),
+                Err(error) => {
+                    return Err(RunnerError::Api(format!(
+                        "{LABEL} decode read body: {error}"
+                    )));
+                }
+            };
+            let chunk_len = u64::try_from(chunk.len()).map_err(|error| {
+                RunnerError::Api(format!("{LABEL} response body chunk length: {error}"))
+            })?;
+            let next_body_len = body_len.checked_add(chunk_len).ok_or_else(|| {
+                RunnerError::Api(format!("{LABEL} response body length overflow"))
+            })?;
+            if next_body_len > max_bytes {
+                return Err(RunnerError::Api(format!(
+                    "{LABEL} response body exceeds {max_bytes} bytes"
+                )));
+            }
+            body.extend_from_slice(&chunk);
+            body_len = next_body_len;
+        }
+
+        if !status.is_success() {
+            return Err(api_status_error(
+                LABEL,
+                status,
+                &String::from_utf8_lossy(&body),
+            ));
+        }
+        let catalog: BuiltinFirewallCatalog = decode_api_json_bytes(&body)
+            .map_err(|e| RunnerError::Api(format!("{LABEL} decode: {e}")))?;
         catalog.validate_for_api_response().map_err(|e| {
             RunnerError::Api(format!(
                 "builtin firewall catalog resolve invalid catalog: {e}"
@@ -1539,6 +1588,18 @@ mod tests {
 
     const TEST_HEARTBEAT_GENERATION: u64 = 7;
 
+    fn api_client_for_url(api_url: String) -> ApiClient {
+        ApiClient::new(
+            HttpClient::new(HttpClientConfig {
+                api_url,
+                vercel_bypass: None,
+                client_session_id: "runner-session-test".to_string(),
+            })
+            .unwrap(),
+            "runner-token".to_string(),
+        )
+    }
+
     fn test_runner_identity() -> RunnerProcessIdentity {
         RunnerProcessIdentity::new(TEST_RUNNER_ID.parse().unwrap(), TEST_HEARTBEAT_GENERATION)
             .unwrap()
@@ -1557,15 +1618,7 @@ mod tests {
     }
 
     fn api_client_for_server(server: &MockServer) -> ApiClient {
-        ApiClient::new(
-            HttpClient::new(HttpClientConfig {
-                api_url: server.base_url(),
-                vercel_bypass: None,
-                client_session_id: "runner-session-test".to_string(),
-            })
-            .unwrap(),
-            "runner-token".to_string(),
-        )
+        api_client_for_url(server.base_url())
     }
 
     async fn claim_decode_error(
@@ -1712,6 +1765,101 @@ mod tests {
             other => panic!("expected RunnerError::Api, got {other:?}"),
         }
         mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn api_client_bounds_builtin_firewall_catalog_response_body() {
+        let max_bytes = BUILTIN_FIREWALL_CATALOG_MAX_BYTES;
+        let max_bytes_usize = usize::try_from(max_bytes).unwrap();
+        let expected_error =
+            format!("builtin firewall catalog resolve response body exceeds {max_bytes} bytes");
+
+        let declared_oversized_response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            max_bytes + 1
+        )
+        .into_bytes();
+        let mut server =
+            RawHttpTestServer::spawn(vec![RawHttpAction::Respond(declared_oversized_response)])
+                .await;
+        let api = api_client_for_url(server.url());
+
+        let error = api.resolve_builtin_firewall_catalog().await.unwrap_err();
+
+        match error {
+            RunnerError::Api(message) => assert!(
+                message.contains(&expected_error),
+                "unexpected error: {message}"
+            ),
+            other => panic!("expected RunnerError::Api, got {other:?}"),
+        }
+        let request = server
+            .next_request("declared oversized builtin firewall catalog request")
+            .await;
+        assert!(
+            request.contains(routes::runners::builtin_firewalls::resolve::RESOLVE.path),
+            "unexpected request: {request}"
+        );
+        server.assert_finished().await;
+
+        let mut exact_limit_response = format!(
+            "HTTP/1.1 500 Internal Server Error\r\nContent-Length: {max_bytes}\r\nConnection: close\r\n\r\n"
+        )
+        .into_bytes();
+        let body_start = exact_limit_response.len();
+        exact_limit_response.resize(body_start + max_bytes_usize, b'x');
+        let mut server =
+            RawHttpTestServer::spawn(vec![RawHttpAction::Respond(exact_limit_response)]).await;
+        let api = api_client_for_url(server.url());
+
+        let error = api.resolve_builtin_firewall_catalog().await.unwrap_err();
+
+        match error {
+            RunnerError::ApiStatus(error) => {
+                assert_eq!(error.status, StatusCode::INTERNAL_SERVER_ERROR);
+                assert_eq!(error.body.len(), max_bytes_usize);
+            }
+            other => panic!("expected RunnerError::ApiStatus, got {other:?}"),
+        }
+        let request = server
+            .next_request("exact-limit builtin firewall catalog request")
+            .await;
+        assert!(
+            request.contains(routes::runners::builtin_firewalls::resolve::RESOLVE.path),
+            "unexpected request: {request}"
+        );
+        server.assert_finished().await;
+
+        let chunked_body_len = max_bytes_usize + 1;
+        let mut chunked_oversized_response = format!(
+            "HTTP/1.1 500 Internal Server Error\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n{chunked_body_len:x}\r\n"
+        )
+        .into_bytes();
+        let body_start = chunked_oversized_response.len();
+        chunked_oversized_response.resize(body_start + chunked_body_len, b'x');
+        chunked_oversized_response.extend_from_slice(b"\r\n0\r\n\r\n");
+        let mut server =
+            RawHttpTestServer::spawn(vec![RawHttpAction::Respond(chunked_oversized_response)])
+                .await;
+        let api = api_client_for_url(server.url());
+
+        let error = api.resolve_builtin_firewall_catalog().await.unwrap_err();
+
+        match error {
+            RunnerError::Api(message) => assert!(
+                message.contains(&expected_error),
+                "unexpected error: {message}"
+            ),
+            other => panic!("expected RunnerError::Api, got {other:?}"),
+        }
+        let request = server
+            .next_request("chunked oversized builtin firewall catalog request")
+            .await;
+        assert!(
+            request.contains(routes::runners::builtin_firewalls::resolve::RESOLVE.path),
+            "unexpected request: {request}"
+        );
+        server.assert_finished().await;
     }
 
     fn assert_api_status_error(

@@ -104,6 +104,10 @@ pub mod runners {
     /// The API validates the materialized prompt against this shared limit before committing claimed chat events.
     pub const ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES: u64 = 1048576;
 
+    /// Maximum builtin firewall catalog response and cache size accepted by runners.
+    /// This is generated from the TypeScript connector catalog raw-byte contract so source ingestion and runner delivery stay aligned.
+    pub const BUILTIN_FIREWALL_CATALOG_MAX_BYTES: u64 = 16777216;
+
     /// Maximum API admission hold after public user cancellation when recovery completion is lost.
     /// The stale queue sweep reconsiders expired recovery barriers independently of the generic queue-item age.
     pub const CANCELLATION_RECOVERY_STALE_AFTER_MS: u64 = 120000;

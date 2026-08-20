@@ -510,6 +510,7 @@ const startConnectorOauthInner$ = command(
       method,
       connectorSlug: resolved.connectorSlug,
       callbackTarget: bodyResult.data.callbackTarget,
+      publicBrand,
     });
     const prepared = prepareConnectorAuthCodeStartWithMethod({
       method,
