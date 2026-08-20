@@ -1143,8 +1143,9 @@
       "paidAddOn": "kostenpflichtiges Add-on",
       "payAndAddSlots": "Bezahlen und Slots hinzufügen",
       "payAndUpdate": "Bezahlen und aktualisieren",
-      "restoreDescription": "Dadurch wird die Verlängerung für dieses Parallelitätsabonnement fortgesetzt.",
-      "restoreSubscription": "Abonnement wiederherstellen",
+      "restoreConcurrency": "Parallelität wiederherstellen",
+      "restoreQuantityDescription": "Dadurch wird die Verlängerung Ihrer kostenpflichtigen Parallelität ({{quantity}}) wiederhergestellt. Ihr Plan ändert sich nicht.",
+      "restoreTeamPlan": "Team-Plan wiederherstellen",
       "restoreTitle": "Parallelitätsabonnement wiederherstellen?",
       "reviewChange": "Änderung prüfen",
       "reviewDescription": "Prüfen Sie den jetzt fälligen Betrag und Ihr aktualisiertes Monatsabonnement.",
@@ -1181,6 +1182,8 @@
     "downgrade": {
       "cancelSubscription": "Abo kündigen",
       "chooseTarget": "Wählen Sie den Plan aus, auf den Sie ein Downgrade durchführen möchten.",
+      "concurrencyEndsDate": "Ihre kostenpflichtige Parallelität ({{quantity}}) bleibt bis zum {{date}} aktiv und endet dann zusammen mit Ihrem Team-Plan. Alle bis dahin hinzugefügten Slots enden am selben Datum.",
+      "concurrencyEndsPeriod": "Ihre kostenpflichtige Parallelität ({{quantity}}) bleibt bis zum Ende des Abrechnungszeitraums aktiv und endet dann zusammen mit Ihrem Team-Plan. Alle bis dahin hinzugefügten Slots enden zum selben Zeitpunkt.",
       "confirmProCancellation": "Sind Sie sicher, dass Sie Ihren Pro-Plan kündigen möchten?",
       "confirmTarget": "Downgrade auf {{plan}}?",
       "inProgress": "Herabstufung...",
@@ -1356,6 +1359,7 @@
     "restore": {
       "cancellationDescription": "Dadurch wird die geplante Kündigung für Ihren {{plan}}-Plan rückgängig gemacht.",
       "cancellationDescriptionDate": "Dadurch wird die geplante Kündigung für Ihren {{plan}}-Plan rückgängig gemacht. Es wird am {{date}} erneuert.",
+      "concurrencyContinues": "Ihre kostenpflichtige Parallelität ({{quantity}}) bleibt aktiv und wird zusammen mit Ihrem Plan weiter verlängert.",
       "downgradeDescription": "Dadurch wird das geplante Downgrade auf {{target}} abgebrochen. Ihr {{plan}}-Plan wird weiterhin verlängert.",
       "inProgress": "Wiederherstellung...",
       "title": "{{plan}}-Plan wiederherstellen?"

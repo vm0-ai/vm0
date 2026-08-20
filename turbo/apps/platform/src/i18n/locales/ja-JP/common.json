@@ -1143,8 +1143,9 @@
       "paidAddOn": "有料アドオン",
       "payAndAddSlots": "支払ってスロットを追加",
       "payAndUpdate": "支払って更新",
-      "restoreDescription": "これにより、この同時実行サブスクリプションの更新が再開されます。",
-      "restoreSubscription": "サブスクリプションを復元する",
+      "restoreConcurrency": "同時実行枠を復元",
+      "restoreQuantityDescription": "有料の同時実行枠（{{quantity}}）の更新を再開します。プランは変更されません。",
+      "restoreTeamPlan": "Teamプランを復元",
       "restoreTitle": "同時実行サブスクリプションを復元しますか?",
       "reviewChange": "変更を確認",
       "reviewDescription": "今回のお支払い額と更新後の月額サブスクリプションを確認してください。",
@@ -1181,6 +1182,8 @@
     "downgrade": {
       "cancelSubscription": "サブスクリプションをキャンセルする",
       "chooseTarget": "どのプランにダウングレードするかを選択します。",
+      "concurrencyEndsDate": "有料の同時実行枠（{{quantity}}）は{{date}}まで有効で、その後Teamプランとともに終了します。それまでに追加したスロットも同じ日に終了します。",
+      "concurrencyEndsPeriod": "有料の同時実行枠（{{quantity}}）は請求期間の終了まで有効で、その後Teamプランとともに終了します。それまでに追加したスロットも同時に終了します。",
       "confirmProCancellation": "Pro プランをキャンセルしてもよろしいですか?",
       "confirmTarget": "{{plan}} にダウングレードしますか?",
       "inProgress": "ダウングレード中...",
@@ -1356,6 +1359,7 @@
     "restore": {
       "cancellationDescription": "これにより、{{plan}} プランの予定されたキャンセルが取り消されます。",
       "cancellationDescriptionDate": "これにより、{{plan}} プランの予定されたキャンセルが取り消されます。 {{date}} に更新されます。",
+      "concurrencyContinues": "有料の同時実行枠（{{quantity}}）は引き続き有効で、プランとともに更新されます。",
       "downgradeDescription": "これにより、{{target}} へのスケジュールされたダウングレードがキャンセルされます。 {{plan}} プランは引き続き更新されます。",
       "inProgress": "復元中...",
       "title": "{{plan}} プランを復元しますか?"

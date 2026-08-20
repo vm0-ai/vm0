@@ -1143,8 +1143,9 @@
       "paidAddOn": "add-on berbayar",
       "payAndAddSlots": "Bayar dan tambahkan slot",
       "payAndUpdate": "Bayar dan perbarui",
-      "restoreDescription": "Ini melanjutkan perpanjangan untuk langganan concurrency ini.",
-      "restoreSubscription": "Pulihkan langganan",
+      "restoreConcurrency": "Pulihkan konkurensi",
+      "restoreQuantityDescription": "Tindakan ini memulihkan perpanjangan konkurensi berbayar Anda ({{quantity}}). Paket Anda tidak akan berubah.",
+      "restoreTeamPlan": "Pulihkan paket Team",
       "restoreTitle": "Pulihkan langganan concurrency?",
       "reviewChange": "Tinjau perubahan",
       "reviewDescription": "Tinjau jumlah yang harus dibayar sekarang dan langganan bulanan Anda yang diperbarui.",
@@ -1181,6 +1182,8 @@
     "downgrade": {
       "cancelSubscription": "Batalkan langganan",
       "chooseTarget": "Pilih paket yang ingin diturunkan.",
+      "concurrencyEndsDate": "Konkurensi berbayar Anda ({{quantity}}) akan tetap aktif hingga {{date}}, lalu berakhir bersama paket Team Anda. Semua slot yang ditambahkan sebelum itu akan berakhir pada tanggal yang sama.",
+      "concurrencyEndsPeriod": "Konkurensi berbayar Anda ({{quantity}}) akan tetap aktif hingga akhir periode penagihan, lalu berakhir bersama paket Team Anda. Semua slot yang ditambahkan sebelum itu akan berakhir pada waktu yang sama.",
       "confirmProCancellation": "Yakin ingin membatalkan paket Pro Anda?",
       "confirmTarget": "Turunkan ke {{plan}}?",
       "inProgress": "Menurunkan paket...",
@@ -1356,6 +1359,7 @@
     "restore": {
       "cancellationDescription": "Ini akan membatalkan pembatalan terjadwal untuk paket {{plan}} Anda.",
       "cancellationDescriptionDate": "Ini akan membatalkan pembatalan terjadwal untuk paket {{plan}} Anda. Paket akan diperbarui pada {{date}}.",
+      "concurrencyContinues": "Konkurensi berbayar Anda ({{quantity}}) akan tetap aktif dan terus diperpanjang bersama paket Anda.",
       "downgradeDescription": "Ini akan membatalkan penurunan paket terjadwal ke {{target}}. Paket {{plan}} Anda akan terus diperbarui.",
       "inProgress": "Memulihkan...",
       "title": "Pulihkan paket {{plan}}?"

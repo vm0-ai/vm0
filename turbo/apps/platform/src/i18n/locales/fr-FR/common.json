@@ -1163,8 +1163,9 @@
       "paidAddOn": "option payante",
       "payAndAddSlots": "Payer et ajouter des créneaux",
       "payAndUpdate": "Payer et mettre à jour",
-      "restoreDescription": "Cela reprend le renouvellement de cet abonnement de concurrence.",
-      "restoreSubscription": "Restaurer l'abonnement",
+      "restoreConcurrency": "Restaurer la concurrence",
+      "restoreQuantityDescription": "Cela rétablit le renouvellement de votre concurrence payante ({{quantity}}). Votre forfait ne changera pas.",
+      "restoreTeamPlan": "Restaurer le forfait Team",
       "restoreTitle": "Restaurer l'abonnement de concurrence ?",
       "reviewChange": "Vérifier la modification",
       "reviewDescription": "Vérifiez le montant à payer maintenant et votre abonnement mensuel mis à jour.",
@@ -1202,6 +1203,8 @@
     "downgrade": {
       "cancelSubscription": "Annuler l'abonnement",
       "chooseTarget": "Choisissez le plan vers lequel rétrograder.",
+      "concurrencyEndsDate": "Votre concurrence payante ({{quantity}}) restera active jusqu’au {{date}}, puis prendra fin avec votre forfait Team. Tous les slots ajoutés d’ici là prendront fin à la même date.",
+      "concurrencyEndsPeriod": "Votre concurrence payante ({{quantity}}) restera active jusqu’à la fin de la période de facturation, puis prendra fin avec votre forfait Team. Tous les slots ajoutés d’ici là prendront fin au même moment.",
       "confirmProCancellation": "Êtes-vous sûr de vouloir annuler votre plan Pro ?",
       "confirmTarget": "Rétrograder vers {{plan}} ?",
       "inProgress": "Rétrogradation en cours...",
@@ -1377,6 +1380,7 @@
     "restore": {
       "cancellationDescription": "Cela annulera l'annulation programmée de votre forfait {{plan}}.",
       "cancellationDescriptionDate": "Cela annulera l'annulation programmée de votre forfait {{plan}}. Il sera renouvelé le {{date}}.",
+      "concurrencyContinues": "Votre concurrence payante ({{quantity}}) restera active et continuera à être renouvelée avec votre forfait.",
       "downgradeDescription": "Cela annulera la rétrogradation programmée vers {{target}}. Votre forfait {{plan}} continuera à se renouveler.",
       "inProgress": "Restauration...",
       "title": "Restaurer le forfait {{plan}} ?"
