@@ -574,11 +574,11 @@ function usagePackCheckoutAllocationsMatch(
   );
 }
 
-async function pendingUsagePackCheckout(
-  db: Pick<Db, "select">,
+async function pendingUsagePackCheckoutContexts(
+  db: Pick<WriteTx, "select">,
   orgId: string,
-): Promise<UsagePackContext | null> {
-  const [subscription] = await db
+): Promise<readonly UsagePackContext[]> {
+  const subscriptions = await db
     .select()
     .from(usagePackSubscriptions)
     .where(
@@ -587,109 +587,153 @@ async function pendingUsagePackCheckout(
         eq(usagePackSubscriptions.subscriptionStatus, "checkout_pending"),
       ),
     )
-    .orderBy(desc(usagePackSubscriptions.updatedAt))
-    .limit(1);
-  if (!subscription) {
-    return null;
-  }
-  const allocations = await db
-    .select()
-    .from(usagePackAllocations)
-    .where(eq(usagePackAllocations.usagePackSubscriptionId, subscription.id));
-  return { subscription, allocations };
+    .orderBy(desc(usagePackSubscriptions.updatedAt));
+  return await Promise.all(
+    subscriptions.map(async (subscription) => {
+      const allocations = await db
+        .select()
+        .from(usagePackAllocations)
+        .where(
+          eq(usagePackAllocations.usagePackSubscriptionId, subscription.id),
+        );
+      return { subscription, allocations };
+    }),
+  );
 }
 
 async function retireUsagePackCheckout(
-  db: Db,
+  tx: Pick<WriteTx, "select" | "update">,
   usagePackSubscriptionId: string,
 ): Promise<void> {
   const at = nowDate();
-  await db.transaction(async (tx) => {
-    const [pending] = await tx
-      .select({ id: usagePackSubscriptions.id })
-      .from(usagePackSubscriptions)
-      .where(
-        and(
-          eq(usagePackSubscriptions.id, usagePackSubscriptionId),
-          eq(usagePackSubscriptions.subscriptionStatus, "checkout_pending"),
-        ),
-      )
-      .for("update")
-      .limit(1);
-    if (!pending) {
-      return;
-    }
-    await tx
-      .update(usagePackAllocations)
-      .set({ status: "inactive", updatedAt: at })
-      .where(
-        eq(
-          usagePackAllocations.usagePackSubscriptionId,
-          usagePackSubscriptionId,
-        ),
-      );
-    await tx
-      .update(usagePackSubscriptions)
-      .set({ subscriptionStatus: "checkout_expired", updatedAt: at })
-      .where(eq(usagePackSubscriptions.id, usagePackSubscriptionId));
-  });
+  const [pending] = await tx
+    .select({ id: usagePackSubscriptions.id })
+    .from(usagePackSubscriptions)
+    .where(
+      and(
+        eq(usagePackSubscriptions.id, usagePackSubscriptionId),
+        eq(usagePackSubscriptions.subscriptionStatus, "checkout_pending"),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  if (!pending) {
+    return;
+  }
+  await tx
+    .update(usagePackAllocations)
+    .set({ status: "inactive", updatedAt: at })
+    .where(
+      eq(usagePackAllocations.usagePackSubscriptionId, usagePackSubscriptionId),
+    );
+  await tx
+    .update(usagePackSubscriptions)
+    .set({ subscriptionStatus: "checkout_expired", updatedAt: at })
+    .where(eq(usagePackSubscriptions.id, usagePackSubscriptionId));
 }
 
 type PendingUsagePackCheckoutResolution =
-  | { readonly kind: "create" }
   | { readonly kind: "redirect"; readonly url: string }
+  | { readonly kind: "retry" }
   | { readonly kind: "reuse"; readonly usagePackSubscriptionId: string };
 
 async function resolvePendingUsagePackCheckout(
-  db: Db,
+  tx: WriteTx,
   args: CreateUsagePackCheckoutSessionArgs,
   customerId: string,
+  preferredSnapshotId: string,
   signal: AbortSignal,
 ): Promise<PendingUsagePackCheckoutResolution> {
-  const context = await pendingUsagePackCheckout(db, args.orgId);
-  signal.throwIfAborted();
-  if (!context) {
-    return { kind: "create" };
+  const matches = (context: UsagePackContext) => {
+    return (
+      context.subscription.tier === args.tier &&
+      context.subscription.stripePlanPriceId === args.planPriceId &&
+      context.subscription.stripeCustomerId === customerId &&
+      usagePackCheckoutAllocationsMatch(context.allocations, args.allocations)
+    );
+  };
+  const stripe = getStripeClient();
+  const contexts = await pendingUsagePackCheckoutContexts(tx, args.orgId);
+  const snapshots = contexts.filter((context) => {
+    return !context.subscription.stripeCheckoutSessionId;
+  });
+  const resolved: {
+    readonly context: UsagePackContext;
+    readonly session: UsagePackCheckoutSessionInput;
+  }[] = [];
+  for (const context of contexts) {
+    const sessionId = context.subscription.stripeCheckoutSessionId;
+    if (!sessionId) {
+      continue;
+    }
+    const session = (await stripe.checkout.sessions.retrieve(
+      sessionId,
+    )) as UsagePackCheckoutSessionInput;
+    signal.throwIfAborted();
+    resolved.push({ context, session });
   }
-  const matches =
-    context.subscription.tier === args.tier &&
-    context.subscription.stripePlanPriceId === args.planPriceId &&
-    context.subscription.stripeCustomerId === customerId &&
-    usagePackCheckoutAllocationsMatch(context.allocations, args.allocations);
-  const sessionId = context.subscription.stripeCheckoutSessionId;
-  if (!sessionId) {
-    if (matches) {
+  const retained =
+    resolved.find(({ session }) => {
+      return session.status === "complete";
+    }) ??
+    resolved.find(({ context, session }) => {
+      return (
+        session.status === "open" && Boolean(session.url) && matches(context)
+      );
+    });
+  for (const entry of resolved) {
+    if (entry === retained) {
+      continue;
+    }
+    if (entry.session.status === "open") {
+      await stripe.checkout.sessions.expire(entry.session.id);
+      signal.throwIfAborted();
+    }
+    await retireUsagePackCheckout(tx, entry.context.subscription.id);
+  }
+  if (retained) {
+    for (const snapshot of snapshots) {
+      await retireUsagePackCheckout(tx, snapshot.subscription.id);
+    }
+    if (retained.session.status === "complete") {
       return {
-        kind: "reuse",
-        usagePackSubscriptionId: context.subscription.id,
+        kind: "redirect",
+        url: args.successUrl.replace(
+          "{CHECKOUT_SESSION_ID}",
+          retained.session.id,
+        ),
       };
     }
-    await retireUsagePackCheckout(db, context.subscription.id);
-    signal.throwIfAborted();
-    return { kind: "create" };
-  }
-
-  const stripe = getStripeClient();
-  const session = (await stripe.checkout.sessions.retrieve(
-    sessionId,
-  )) as UsagePackCheckoutSessionInput;
-  signal.throwIfAborted();
-  if (session.status === "complete") {
+    if (!retained.session.url) {
+      throw new Error("Stripe checkout session did not return a URL");
+    }
     return {
       kind: "redirect",
-      url: args.successUrl.replace("{CHECKOUT_SESSION_ID}", session.id),
+      url: retained.session.url,
     };
   }
-  if (session.status === "open" && matches && session.url) {
-    return { kind: "redirect", url: session.url };
+  const preferred = snapshots.find((context) => {
+    return context.subscription.id === preferredSnapshotId;
+  });
+  if (
+    !preferred ||
+    preferred.subscription.orgId !== args.orgId ||
+    preferred.subscription.subscriptionStatus !== "checkout_pending" ||
+    preferred.subscription.stripeCheckoutSessionId ||
+    preferred.subscription.stripeSubscriptionId ||
+    !matches(preferred)
+  ) {
+    return { kind: "retry" };
   }
-  if (session.status === "open") {
-    await stripe.checkout.sessions.expire(session.id);
-    signal.throwIfAborted();
+  for (const snapshot of snapshots) {
+    if (snapshot.subscription.id !== preferredSnapshotId) {
+      await retireUsagePackCheckout(tx, snapshot.subscription.id);
+    }
   }
-  await retireUsagePackCheckout(db, context.subscription.id);
-  signal.throwIfAborted();
-  return { kind: "create" };
+  return {
+    kind: "reuse",
+    usagePackSubscriptionId: preferredSnapshotId,
+  };
 }
 
 function definedAttribution(
@@ -791,7 +835,6 @@ async function createUsagePackPurchaseSnapshot(
   customerId: string,
 ): Promise<string> {
   return await db.transaction(async (tx) => {
-    await lockBillingPurchaseOrg(tx, args.orgId);
     const reusableSnapshotId = await reusableUsagePackPurchaseSnapshot(
       tx,
       args,
@@ -864,7 +907,6 @@ async function createUsagePackCheckoutForSnapshot(
       idempotencyKey: `usage-pack-checkout:${args.usagePackSubscriptionId}`,
     },
   );
-  signal.throwIfAborted();
   await args.db
     .update(usagePackSubscriptions)
     .set({ stripeCheckoutSessionId: session.id, updatedAt: nowDate() })
@@ -874,6 +916,57 @@ async function createUsagePackCheckoutForSnapshot(
     throw new Error("Stripe checkout session did not return a URL");
   }
   return session.url;
+}
+
+async function createSerializedUsagePackCheckout(
+  db: Db,
+  args: CreateUsagePackCheckoutSessionArgs,
+  customerId: string,
+  initialSnapshotId: string,
+  signal: AbortSignal,
+): Promise<string> {
+  let preferredSnapshotId = initialSnapshotId;
+  while (true) {
+    const attempt = await db.transaction(async (lockTx) => {
+      await lockBillingPurchaseOrg(lockTx, args.orgId);
+      signal.throwIfAborted();
+      const resolution = await resolvePendingUsagePackCheckout(
+        lockTx,
+        args,
+        customerId,
+        preferredSnapshotId,
+        signal,
+      );
+      if (resolution.kind === "redirect") {
+        return { kind: "complete" as const, url: resolution.url };
+      }
+      if (resolution.kind === "retry") {
+        return resolution;
+      }
+      return {
+        kind: "complete" as const,
+        url: await createUsagePackCheckoutForSnapshot(
+          {
+            db: lockTx,
+            stripe: getStripeClient(),
+            purchase: args,
+            customerId,
+            usagePackSubscriptionId: resolution.usagePackSubscriptionId,
+          },
+          signal,
+        ),
+      };
+    });
+    if (attempt.kind === "complete") {
+      return attempt.url;
+    }
+    preferredSnapshotId = await createUsagePackPurchaseSnapshot(
+      db,
+      args,
+      customerId,
+    );
+    signal.throwIfAborted();
+  }
 }
 
 const createUsagePackCheckoutSession$ = command(
@@ -897,32 +990,165 @@ const createUsagePackCheckoutSession$ = command(
     );
     signal.throwIfAborted();
     const db = set(writeDb$);
-    const pending = await resolvePendingUsagePackCheckout(
+    const preferredSnapshotId = await createUsagePackPurchaseSnapshot(
       db,
       args,
       customerId,
-      signal,
     );
-    if (pending.kind === "redirect") {
-      return pending.url;
-    }
-    const usagePackSubscriptionId =
-      pending.kind === "reuse"
-        ? pending.usagePackSubscriptionId
-        : await createUsagePackPurchaseSnapshot(db, args, customerId);
     signal.throwIfAborted();
-    return await createUsagePackCheckoutForSnapshot(
-      {
-        db,
-        stripe: getStripeClient(),
-        purchase: args,
-        customerId,
-        usagePackSubscriptionId,
-      },
+    return await createSerializedUsagePackCheckout(
+      db,
+      args,
+      customerId,
+      preferredSnapshotId,
       signal,
     );
   },
 );
+
+function safeInvoiceAmount(invoice: StripeInvoice, label: string): number {
+  if (
+    !Number.isSafeInteger(invoice.amount_due) ||
+    invoice.amount_due < 0 ||
+    invoice.currency.length !== 3
+  ) {
+    throw new Error(`Stripe ${label} preview is invalid`);
+  }
+  return invoice.amount_due;
+}
+
+interface SerializedUsagePackPurchasePreviewInput {
+  readonly db: Db;
+  readonly stripe: StripeClient;
+  readonly purchase: StartUsagePackPurchaseArgs;
+  readonly customerId: string;
+  readonly preferredSnapshotId: string;
+  readonly route: {
+    readonly customerId: string;
+    readonly paymentMethodId: string;
+  };
+}
+
+type SerializedUsagePackPurchasePreviewAttempt =
+  | { readonly kind: "retry" }
+  | {
+      readonly kind: "complete";
+      readonly result: StartUsagePackPurchaseResult;
+    };
+
+async function createSerializedUsagePackPurchasePreviewAttempt(
+  input: SerializedUsagePackPurchasePreviewInput,
+  signal: AbortSignal,
+): Promise<SerializedUsagePackPurchasePreviewAttempt> {
+  const { purchase, route, stripe } = input;
+  return await input.db.transaction(async (lockTx) => {
+    await lockBillingPurchaseOrg(lockTx, purchase.orgId);
+    signal.throwIfAborted();
+    const resolution = await resolvePendingUsagePackCheckout(
+      lockTx,
+      purchase,
+      input.customerId,
+      input.preferredSnapshotId,
+      signal,
+    );
+    if (resolution.kind === "redirect") {
+      return {
+        kind: "complete",
+        result: { status: "checkout", url: resolution.url },
+      };
+    }
+    if (resolution.kind === "retry") {
+      return resolution;
+    }
+    const items = [
+      { price: purchase.planPriceId, quantity: 1 },
+      ...usagePackLineItems(purchase.allocations),
+    ];
+    const [immediateInvoice, recurringInvoice] = await Promise.all([
+      stripe.invoices.createPreview({
+        customer: route.customerId,
+        preview_mode: "next",
+        subscription_details: { items },
+      }),
+      stripe.invoices.createPreview({
+        customer: route.customerId,
+        preview_mode: "recurring",
+        subscription_details: { items },
+      }),
+    ]);
+    signal.throwIfAborted();
+    const immediateAmountCents = safeInvoiceAmount(
+      immediateInvoice,
+      "usage pack purchase immediate",
+    );
+    const nextRecurringAmountCents = safeInvoiceAmount(
+      recurringInvoice,
+      "usage pack purchase recurring",
+    );
+    if (immediateInvoice.currency !== recurringInvoice.currency) {
+      throw new Error(
+        "Stripe usage pack purchase previews disagree on currency",
+      );
+    }
+    const expiresAt = billingPreviewExpiresAt();
+    const attribution = definedAttribution(purchase.adAttribution);
+    const payload: UsagePackPurchasePreviewToken = {
+      version: 1,
+      usagePackSubscriptionId: resolution.usagePackSubscriptionId,
+      orgId: purchase.orgId,
+      customerId: route.customerId,
+      sourceSubscriptionId: purchase.sourceSubscriptionId,
+      paymentMethodId: route.paymentMethodId,
+      tier: purchase.tier,
+      planPriceId: purchase.planPriceId,
+      immediateAmountCents,
+      nextRecurringAmountCents,
+      currency: immediateInvoice.currency,
+      successUrl: purchase.successUrl,
+      cancelUrl: purchase.cancelUrl,
+      ...(attribution ? { adAttribution: attribution } : {}),
+      expiresAt,
+    };
+    return {
+      kind: "complete",
+      result: {
+        status: "preview",
+        preview: {
+          status: "preview",
+          purchaseType: "usage_pack",
+          tier: purchase.tier,
+          immediateAmountCents,
+          nextRecurringAmountCents,
+          currency: immediateInvoice.currency,
+          expiresAt,
+          previewToken: createBillingPreviewToken(payload),
+        },
+      },
+    };
+  });
+}
+
+async function createSerializedUsagePackPurchasePreview(
+  input: SerializedUsagePackPurchasePreviewInput,
+  signal: AbortSignal,
+): Promise<StartUsagePackPurchaseResult> {
+  let preferredSnapshotId = input.preferredSnapshotId;
+  while (true) {
+    const attempt = await createSerializedUsagePackPurchasePreviewAttempt(
+      { ...input, preferredSnapshotId },
+      signal,
+    );
+    if (attempt.kind === "complete") {
+      return attempt.result;
+    }
+    preferredSnapshotId = await createUsagePackPurchaseSnapshot(
+      input.db,
+      input.purchase,
+      input.customerId,
+    );
+    signal.throwIfAborted();
+  }
+}
 
 export const startUsagePackPurchase$ = command(
   async (
@@ -951,20 +1177,6 @@ export const startUsagePackPurchase$ = command(
     );
     signal.throwIfAborted();
     const db = set(writeDb$);
-    const pending = await resolvePendingUsagePackCheckout(
-      db,
-      args,
-      customerId,
-      signal,
-    );
-    if (pending.kind === "redirect") {
-      return { status: "checkout", url: pending.url };
-    }
-    const usagePackSubscriptionId =
-      pending.kind === "reuse"
-        ? pending.usagePackSubscriptionId
-        : await createUsagePackPurchaseSnapshot(db, args, customerId);
-    signal.throwIfAborted();
     const stripe = getStripeClient();
     const route = await resolveBillingPurchaseRoute(
       {
@@ -975,70 +1187,35 @@ export const startUsagePackPurchase$ = command(
       },
       signal,
     );
+    const preferredSnapshotId = await createUsagePackPurchaseSnapshot(
+      db,
+      args,
+      customerId,
+    );
+    signal.throwIfAborted();
     if (route.kind === "checkout") {
       return {
         status: "checkout",
-        url: await createUsagePackCheckoutForSnapshot(
-          {
-            db,
-            stripe,
-            purchase: args,
-            customerId,
-            usagePackSubscriptionId,
-          },
+        url: await createSerializedUsagePackCheckout(
+          db,
+          args,
+          customerId,
+          preferredSnapshotId,
           signal,
         ),
       };
     }
-    const items = [
-      { price: args.planPriceId, quantity: 1 },
-      ...usagePackLineItems(args.allocations),
-    ];
-    const invoice = await stripe.invoices.createPreview({
-      customer: route.customerId,
-      preview_mode: "next",
-      subscription_details: { items },
-    });
-    signal.throwIfAborted();
-    if (
-      !Number.isSafeInteger(invoice.amount_due) ||
-      invoice.amount_due < 0 ||
-      invoice.currency.length !== 3
-    ) {
-      throw new Error("Stripe usage pack purchase preview is invalid");
-    }
-    const expiresAt = billingPreviewExpiresAt();
-    const attribution = definedAttribution(args.adAttribution);
-    const payload: UsagePackPurchasePreviewToken = {
-      version: 1,
-      usagePackSubscriptionId,
-      orgId: args.orgId,
-      customerId: route.customerId,
-      sourceSubscriptionId: args.sourceSubscriptionId,
-      paymentMethodId: route.paymentMethodId,
-      tier: args.tier,
-      planPriceId: args.planPriceId,
-      immediateAmountCents: invoice.amount_due,
-      nextRecurringAmountCents: invoice.amount_due,
-      currency: invoice.currency,
-      successUrl: args.successUrl,
-      cancelUrl: args.cancelUrl,
-      ...(attribution ? { adAttribution: attribution } : {}),
-      expiresAt,
-    };
-    return {
-      status: "preview",
-      preview: {
-        status: "preview",
-        purchaseType: "usage_pack",
-        tier: args.tier,
-        immediateAmountCents: invoice.amount_due,
-        nextRecurringAmountCents: invoice.amount_due,
-        currency: invoice.currency,
-        expiresAt,
-        previewToken: createBillingPreviewToken(payload),
+    return await createSerializedUsagePackPurchasePreview(
+      {
+        db,
+        stripe,
+        purchase: args,
+        customerId,
+        preferredSnapshotId,
+        route,
       },
-    };
+      signal,
+    );
   },
 );
 
@@ -1252,6 +1429,39 @@ async function existingUsagePackPurchaseResult(
   };
 }
 
+async function usagePackPurchasePreviewStillMatches(
+  stripe: StripeClient,
+  preview: UsagePackPurchasePreviewToken,
+  items: readonly { readonly price: string; readonly quantity: number }[],
+  signal: AbortSignal,
+): Promise<boolean> {
+  const [currentImmediatePreview, currentRecurringPreview] = await Promise.all([
+    stripe.invoices.createPreview({
+      customer: preview.customerId,
+      preview_mode: "next",
+      subscription_details: { items: [...items] },
+    }),
+    stripe.invoices.createPreview({
+      customer: preview.customerId,
+      preview_mode: "recurring",
+      subscription_details: { items: [...items] },
+    }),
+  ]);
+  signal.throwIfAborted();
+  return (
+    safeInvoiceAmount(
+      currentImmediatePreview,
+      "usage pack purchase immediate",
+    ) === preview.immediateAmountCents &&
+    safeInvoiceAmount(
+      currentRecurringPreview,
+      "usage pack purchase recurring",
+    ) === preview.nextRecurringAmountCents &&
+    currentImmediatePreview.currency === preview.currency &&
+    currentRecurringPreview.currency === preview.currency
+  );
+}
+
 async function confirmUsagePackPurchaseSnapshot(
   db: UsagePackPurchaseDb,
   orgId: string,
@@ -1320,15 +1530,13 @@ async function confirmUsagePackPurchaseSnapshot(
     { price: preview.planPriceId, quantity: 1 },
     ...usagePackLineItems(allocations),
   ];
-  const currentPreview = await stripe.invoices.createPreview({
-    customer: preview.customerId,
-    preview_mode: "next",
-    subscription_details: { items },
-  });
-  signal.throwIfAborted();
   if (
-    currentPreview.amount_due !== preview.immediateAmountCents ||
-    currentPreview.currency !== preview.currency
+    !(await usagePackPurchasePreviewStillMatches(
+      stripe,
+      preview,
+      items,
+      signal,
+    ))
   ) {
     return { status: "invalid_preview" };
   }
@@ -3045,6 +3253,13 @@ async function reconcileUsagePackSubscriptionCandidate(
 ): Promise<ReconcileUsagePackSubscriptionResult> {
   const orgIds = new Set<string>();
   let subscriptionId = candidate.stripeSubscriptionId;
+  if (!subscriptionId && !candidate.stripeCheckoutSessionId) {
+    await db.transaction(async (tx) => {
+      await retireUsagePackCheckout(tx, candidate.id);
+    });
+    signal.throwIfAborted();
+    return { reconciled: 0, orgIds: [] };
+  }
   if (!subscriptionId && candidate.stripeCheckoutSessionId) {
     const session = (await stripe.checkout.sessions.retrieve(
       candidate.stripeCheckoutSessionId,
@@ -3052,13 +3267,9 @@ async function reconcileUsagePackSubscriptionCandidate(
     signal.throwIfAborted();
     if (session.status !== "complete") {
       if (session.status === "expired") {
-        await db
-          .update(usagePackSubscriptions)
-          .set({
-            subscriptionStatus: "checkout_expired",
-            updatedAt: nowDate(),
-          })
-          .where(eq(usagePackSubscriptions.id, candidate.id));
+        await db.transaction(async (tx) => {
+          await retireUsagePackCheckout(tx, candidate.id);
+        });
         signal.throwIfAborted();
       }
       return { reconciled: 0, orgIds: [] };
@@ -3171,6 +3382,12 @@ export async function reconcileUsagePackSubscriptions(
           ? inArray(usagePackSubscriptions.orgId, [...scope.orgIds])
           : undefined,
         or(
+          and(
+            isNull(usagePackSubscriptions.stripeSubscriptionId),
+            isNull(usagePackSubscriptions.stripeCheckoutSessionId),
+            eq(usagePackSubscriptions.subscriptionStatus, "checkout_pending"),
+            lte(usagePackSubscriptions.updatedAt, staleBefore),
+          ),
           and(
             isNull(usagePackSubscriptions.stripeSubscriptionId),
             isNotNull(usagePackSubscriptions.stripeCheckoutSessionId),

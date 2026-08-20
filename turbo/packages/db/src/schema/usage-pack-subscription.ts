@@ -474,6 +474,7 @@ export const usagePackInvitationPurchases = pgTable(
     prorationTimestamp: bigint("proration_timestamp", {
       mode: "number",
     }).notNull(),
+    invoiceVersion: integer("invoice_version").notNull().default(1),
     unitAmountCents: integer("unit_amount_cents").notNull(),
     expectedAmountCents: integer("expected_amount_cents").notNull(),
     amountPaidCents: integer("amount_paid_cents"),
@@ -545,6 +546,10 @@ export const usagePackInvitationPurchases = pgTable(
       check(
         "chk_usage_pack_invitation_purchases_amounts",
         sql`${table.unitAmountCents} > 0 AND ${table.expectedAmountCents} >= 0 AND (${table.amountPaidCents} IS NULL OR ${table.amountPaidCents} >= 0) AND ${table.purchasedCredits} >= 0 AND ${table.bonusCredits} >= 0 AND ${table.refundAttempt} > 0`,
+      ),
+      check(
+        "chk_usage_pack_invitation_purchases_invoice_version",
+        sql`${table.invoiceVersion} IN (1, 2)`,
       ),
     ];
   },
