@@ -81,6 +81,7 @@ describe("link navigation", () => {
   });
 
   it("localizes the shared error page", async () => {
+    context.mocks.browser.url("https://app.vm0.ai/_/error");
     context.mocks.data.userPreferences({
       locale: "pt-BR",
       supportedLocales: ["en-US", "pt-BR"],
@@ -99,6 +100,22 @@ describe("link navigation", () => {
       expect(screen.getByText("suporte")).toHaveAttribute(
         "href",
         "mailto:contact@vm0.ai",
+      );
+    });
+  });
+
+  it("uses the Okou contact address on the Okou error page", async () => {
+    context.mocks.browser.url("https://app.okou.ai/_/error");
+
+    detachedSetupPage({
+      context,
+      path: "/_/error",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("support")).toHaveAttribute(
+        "href",
+        "mailto:contact@okou.ai",
       );
     });
   });

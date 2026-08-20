@@ -1,8 +1,7 @@
 """Helpers shared by built-in registry cache tests."""
 
-import json
-
 import matching
+from tests.builtin_firewall_cache_helpers import serialize_builtin_firewall_catalog_cache
 from tests.registry_helpers import (
     write_multi_vm_registry,
     write_trusted_catalog_cache_text,
@@ -57,15 +56,10 @@ def write_catalog_cache(
 ) -> None:
     write_trusted_catalog_cache_text(
         path,
-        json.dumps(
-            {
-                "schemaVersion": 1,
-                "catalogDigest": digest,
-                "catalogVersion": version,
-                "updatedAt": "2026-07-07T00:00:00.000Z",
-                "firewalls": firewalls,
-            },
-            sort_keys=True,
+        serialize_builtin_firewall_catalog_cache(
+            digest=digest,
+            version=version,
+            firewalls=firewalls,
         ),
     )
 
