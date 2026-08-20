@@ -123,7 +123,6 @@ interface StartConcurrencyPurchaseArgs {
   readonly orgId: string;
   readonly quantity: number;
   readonly priceId: string;
-  readonly existingSubscriptionId?: string;
   readonly hasScheduledConcurrencyChange: boolean;
   readonly successUrl: string;
   readonly paymentMethod?: BillingPurchasePaymentMethod;
@@ -1522,40 +1521,6 @@ export const startConcurrencyPurchase$ = command(
     args: StartConcurrencyPurchaseArgs,
     signal: AbortSignal,
   ): Promise<StartConcurrencyPurchaseResult> => {
-    // Old web/app clients can send existing subscriptions through this legacy
-    // checkout endpoint for the ~2-day client version-skew window. Remove this
-    // branch with #26152 after #26116 has been deployed beyond that window.
-    if (args.existingSubscriptionId) {
-      const result = await set(
-        applyStripeConcurrencySubscriptionChange$,
-        {
-          orgId: args.orgId,
-          subscriptionId: args.existingSubscriptionId,
-          quantity: args.quantity,
-          mode: "increase",
-          hasScheduledConcurrencyChange: args.hasScheduledConcurrencyChange,
-          paymentMethod: args.paymentMethod,
-        },
-        signal,
-      );
-      if (!result.ok) {
-        return {
-          ok: false,
-          reason:
-            result.reason === "invalid_quantity"
-              ? "invalid_quantity"
-              : "pending_update",
-        };
-      }
-      return {
-        ok: true,
-        url:
-          result.response.status === "pending_payment"
-            ? result.response.hostedInvoiceUrl
-            : args.successUrl,
-      };
-    }
-
     const subscriptionId = await orgPlanSubscriptionId(
       set(writeDb$),
       args.orgId,

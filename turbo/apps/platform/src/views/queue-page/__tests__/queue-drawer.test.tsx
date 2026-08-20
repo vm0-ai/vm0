@@ -638,60 +638,6 @@ describe("queue drawer", () => {
     });
   });
 
-  it("keeps the Checkout fallback for an active subscription from an older API", async () => {
-    let checkoutQuantity: number | null = null;
-    mockConcurrencyCapability(true, [
-      {
-        id: "sub_concurrency_legacy",
-        quantity: 2,
-        currentPeriodEnd: "2026-09-01T00:00:00Z",
-        cancelAtPeriodEnd: false,
-      },
-    ]);
-    context.mocks.data.org({
-      id: "org_1",
-      name: "Test Org",
-      role: "admin",
-    });
-    context.mocks.api(runsQueueContract.getQueue, ({ respond }) => {
-      return respond(
-        200,
-        queueResponse({
-          concurrency: {
-            tier: "team",
-            limit: 12,
-            active: 12,
-            available: 0,
-            memberUsage: [],
-          },
-          queue: [queuedEntry()],
-        }),
-      );
-    });
-    context.mocks.api(
-      billingConcurrencyCheckoutContract.create,
-      ({ body, respond }) => {
-        checkoutQuantity = body.quantity;
-        return respond(200, {
-          url: "https://checkout.stripe.com/legacy-concurrency",
-        });
-      },
-    );
-
-    await openDrawer();
-    await waitFor(() => {
-      expect(screen.getByText("Buy $100/month")).toBeInTheDocument();
-    });
-    click(screen.getByText("Buy $100/month"));
-
-    await waitFor(() => {
-      expect(checkoutQuantity).toBe(1);
-      expect(window.location.href).toBe(
-        "https://checkout.stripe.com/legacy-concurrency",
-      );
-    });
-  });
-
   it("hides additional concurrency checkout when the plan capability is disabled", async () => {
     context.mocks.data.org({
       id: "org_1",

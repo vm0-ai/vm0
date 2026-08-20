@@ -66,10 +66,6 @@ interface ConfirmedConcurrencySubscriptionChangeArgs extends ConcurrencySubscrip
   readonly paymentMethod?: BillingPurchasePaymentMethod;
 }
 
-interface ReduceConcurrencySubscriptionArgs extends ConcurrencySubscriptionChangeArgs {
-  readonly successUrl: string;
-}
-
 interface StripeConcurrencySubscriptionChangeArgs extends ConcurrencySubscriptionArgs {
   readonly quantity: number;
   readonly mode: "absolute" | "increase" | "reduce";
@@ -133,18 +129,6 @@ type StripeConcurrencySubscriptionChangeResult =
   | {
       readonly ok: false;
       readonly reason: "invalid_quantity" | "pending_update" | "plan_ending";
-    };
-
-type ReduceConcurrencySubscriptionResult =
-  | { readonly ok: true; readonly url: string }
-  | {
-      readonly ok: false;
-      readonly reason:
-        | "not_found"
-        | "canceling"
-        | "not_reduction"
-        | "pending_update"
-        | "plan_ending";
     };
 
 async function findActiveConcurrencySubscription(
@@ -2321,74 +2305,6 @@ export const cancelConcurrencySubscription$ = command(
     return {
       ok: true,
       currentPeriodEnd: subscription.currentPeriodEnd?.toISOString() ?? null,
-    };
-  },
-);
-
-// Old web/app clients can call this legacy reduction endpoint for the ~2-day
-// client version-skew window. Remove the route, contract, and client fallback
-// with #26152 after #26116 has been deployed beyond that window.
-export const reduceConcurrencySubscription$ = command(
-  async (
-    { get, set },
-    args: ReduceConcurrencySubscriptionArgs,
-    signal: AbortSignal,
-  ): Promise<ReduceConcurrencySubscriptionResult> => {
-    const subscription = await findActiveConcurrencySubscription(
-      get(db$),
-      args,
-    );
-    signal.throwIfAborted();
-    if (!subscription) {
-      return { ok: false, reason: "not_found" };
-    }
-    if (subscription.cancelAtPeriodEnd) {
-      return { ok: false, reason: "canceling" };
-    }
-    if (args.quantity >= subscription.quantity) {
-      return { ok: false, reason: "not_reduction" };
-    }
-
-    const result = await set(
-      applyStripeConcurrencySubscriptionChange$,
-      {
-        orgId: args.orgId,
-        subscriptionId: args.subscriptionId,
-        quantity: args.quantity,
-        mode: "reduce",
-        hasScheduledConcurrencyChange: subscription.scheduledQuantity !== null,
-      },
-      signal,
-    );
-    if (!result.ok) {
-      return {
-        ok: false,
-        reason:
-          result.reason === "pending_update"
-            ? "pending_update"
-            : result.reason === "plan_ending"
-              ? "plan_ending"
-              : "not_reduction",
-      };
-    }
-    if (result.response.status === "checkout_required") {
-      throw new Error(
-        "Stripe concurrency reduction unexpectedly required Checkout",
-      );
-    }
-    await writeScheduledConcurrencyChange(set(writeDb$), {
-      orgId: args.orgId,
-      subscriptionId: args.subscriptionId,
-      quantity: args.quantity,
-      effectiveAt: result.response.effectiveAt ?? null,
-    });
-    signal.throwIfAborted();
-    return {
-      ok: true,
-      url:
-        result.response.status === "pending_payment"
-          ? result.response.hostedInvoiceUrl
-          : args.successUrl,
     };
   },
 );
