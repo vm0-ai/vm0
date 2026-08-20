@@ -1,5 +1,46 @@
 # Changelog
 
+## [0.775.0](https://github.com/vm0-ai/vm0/compare/app-v0.774.0...app-v0.775.0) (2026-08-20)
+
+
+### Features
+
+* **app:** replace home suggested prompts with entry cards ([#27987](https://github.com/vm0-ai/vm0/issues/27987)) ([67aadb6](https://github.com/vm0-ai/vm0/commit/67aadb6fcab723f39b3fc5744bf6f65c80d60095))
+* collapse flux and seedream 5 image models into variant groups ([#28174](https://github.com/vm0-ai/vm0/issues/28174)) ([5018b97](https://github.com/vm0-ai/vm0/commit/5018b970a21976c98c72e57466e6e107d3a3fd9f))
+* **platform:** make pinned agent reordering discoverable ([#28173](https://github.com/vm0-ai/vm0/issues/28173)) ([8493aa4](https://github.com/vm0-ai/vm0/commit/8493aa455c953d2e194e45d0e81253dd33941d5c))
+* **platform:** show scheduled usage pack downgrades ([#28233](https://github.com/vm0-ai/vm0/issues/28233)) ([86dfac0](https://github.com/vm0-ai/vm0/commit/86dfac02563c42dedea8af7ab803baf9a62b0e07))
+* **platform:** support unpin in the pin agent dialog ([#28149](https://github.com/vm0-ai/vm0/issues/28149)) ([5589af9](https://github.com/vm0-ai/vm0/commit/5589af9834e6b09b99e7ebf17b2763c4b255d77e))
+* retire the gpt-image-1.5 and gpt-image-1-mini image models ([#28147](https://github.com/vm0-ai/vm0/issues/28147)) ([c28f7fc](https://github.com/vm0-ai/vm0/commit/c28f7fcd5ea6b0c690f698d8219b7b9834adfe07))
+* simplify model picker trigger and category switch ([#28235](https://github.com/vm0-ai/vm0/issues/28235)) ([a102083](https://github.com/vm0-ai/vm0/commit/a1020834149c8aaa1afba14df8fbc0195abf49f5))
+
+
+### Bug Fixes
+
+* **app:** enforce production api origin contract ([#28105](https://github.com/vm0-ai/vm0/issues/28105)) ([20f1d4d](https://github.com/vm0-ai/vm0/commit/20f1d4d3c94064b5586431c732d9c61347eff13f))
+* **billing:** stabilize shared subscription updates ([#28232](https://github.com/vm0-ai/vm0/issues/28232)) ([972eaff](https://github.com/vm0-ai/vm0/commit/972eaffad4ad62fadd5ff7a64d944f414fe74ac6))
+* neutralize built-in model provider presentation ([#28171](https://github.com/vm0-ai/vm0/issues/28171)) ([b2142fb](https://github.com/vm0-ai/vm0/commit/b2142fb91324118fcfe529286c8c87c412609c43))
+* **platform:** even out chat list column spacing ([#28151](https://github.com/vm0-ai/vm0/issues/28151)) ([16bcb44](https://github.com/vm0-ai/vm0/commit/16bcb4418bb59b0b67d7a5b722cbf49b3e65634b))
+* **platform:** isolate sidebar thread scroll instances ([#28210](https://github.com/vm0-ai/vm0/issues/28210)) ([ee51723](https://github.com/vm0-ai/vm0/commit/ee5172391722babf277b658bd26f534ad9fbfe0b))
+* **platform:** show exact connector catalog count ([#28226](https://github.com/vm0-ai/vm0/issues/28226)) ([3bbc265](https://github.com/vm0-ai/vm0/commit/3bbc265321226c3d1ce3b4df75558569c8b04162))
+
+
+### Refactoring
+
+* **contracts:** neutralize agent and team contract naming ([#28214](https://github.com/vm0-ai/vm0/issues/28214)) ([116eebb](https://github.com/vm0-ai/vm0/commit/116eebb7d10a996ec550aa88e26bd98a89711cff)), closes [#28186](https://github.com/vm0-ai/vm0/issues/28186)
+* **contracts:** neutralize billing contract naming ([#28222](https://github.com/vm0-ai/vm0/issues/28222)) ([20ea434](https://github.com/vm0-ai/vm0/commit/20ea434f806fcac8132d8eaddb28ddaec156438c)), closes [#28208](https://github.com/vm0-ai/vm0/issues/28208)
+* **contracts:** neutralize computer use telegram and gateway contract naming ([#28215](https://github.com/vm0-ai/vm0/issues/28215)) ([2c00002](https://github.com/vm0-ai/vm0/commit/2c000023fdf2cc2dbddc9318e36fb38b68fb0d5c)), closes [#28191](https://github.com/vm0-ai/vm0/issues/28191)
+* **contracts:** neutralize connector catalog contract naming ([#28224](https://github.com/vm0-ai/vm0/issues/28224)) ([fff24fa](https://github.com/vm0-ai/vm0/commit/fff24fa789b95600f3b29d7b0d24e546bb1a7fd8)), closes [#28207](https://github.com/vm0-ai/vm0/issues/28207)
+* **contracts:** neutralize workflow contract naming ([#28203](https://github.com/vm0-ai/vm0/issues/28203)) ([22084ad](https://github.com/vm0-ai/vm0/commit/22084adce51a62685ed1d94eb05d27da39e8ef5d)), closes [#28188](https://github.com/vm0-ai/vm0/issues/28188)
+* remove chat smooth auto scroll feature switch ([#28244](https://github.com/vm0-ai/vm0/issues/28244)) ([36a269d](https://github.com/vm0-ai/vm0/commit/36a269dcdb698fb5afe7b7a6f92b78d98935a7c8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.342.0
+    * @okouai/core bumped to 8.573.0
+
 ## [0.774.0](https://github.com/vm0-ai/vm0/compare/app-v0.773.1...app-v0.774.0) (2026-08-19)
 
 

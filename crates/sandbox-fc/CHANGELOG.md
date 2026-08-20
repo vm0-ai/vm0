@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.37.229](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.228...sandbox-fc-v0.37.229) (2026-08-20)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** bound cow pool sparse copies ([#28163](https://github.com/vm0-ai/vm0/issues/28163)) ([79b74d3](https://github.com/vm0-ai/vm0/commit/79b74d328679d37fbf029af7fb5fca1569213f5e))
+
+
+### Refactoring
+
+* **runner:** centralize sandbox command prerequisites ([#28246](https://github.com/vm0-ai/vm0/issues/28246)) ([8054bc6](https://github.com/vm0-ai/vm0/commit/8054bc6ecaa46dc80f6d2d5d75943af73a36a828))
+
 ## [0.37.228](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.227...sandbox-fc-v0.37.228) (2026-08-19)
 
 

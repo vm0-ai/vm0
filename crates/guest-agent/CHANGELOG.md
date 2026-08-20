@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.74.14](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.13...guest-agent-v0.74.14) (2026-08-20)
+
+
+### Bug Fixes
+
+* **guest-agent:** keep resource counters out of failure messages ([#28225](https://github.com/vm0-ai/vm0/issues/28225)) ([2ccc0d8](https://github.com/vm0-ai/vm0/commit/2ccc0d88072b231b68f6d852228317b3a65e8d4e))
+
+
+### Documentation
+
+* **guest-agent:** document heartbeat interval contract ([#28166](https://github.com/vm0-ai/vm0/issues/28166)) ([7d689f5](https://github.com/vm0-ai/vm0/commit/7d689f580d7478b41538f1b25280f2dc49a516df))
+
+
+### Refactoring
+
+* **guest-agent:** drop the legacy agent context env key ([#28177](https://github.com/vm0-ai/vm0/issues/28177)) ([0f16e8e](https://github.com/vm0-ai/vm0/commit/0f16e8ee08c718ffaaf59298efa0f71a93ea4a2f)), closes [#28170](https://github.com/vm0-ai/vm0/issues/28170)
+
 ## [0.74.13](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.74.12...guest-agent-v0.74.13) (2026-08-18)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.77](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.76...nbd-cow-v0.4.77) (2026-08-20)
+
+
+### Documentation
+
+* **nbd-cow:** qualify abandoned device cleanup ([#28157](https://github.com/vm0-ai/vm0/issues/28157)) ([b3e7f17](https://github.com/vm0-ai/vm0/commit/b3e7f17f58671009243a9604ff39a7f8ef801d3d))
+
 ## [0.4.76](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.75...nbd-cow-v0.4.76) (2026-08-18)
 
 
