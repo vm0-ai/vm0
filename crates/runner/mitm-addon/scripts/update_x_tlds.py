@@ -78,6 +78,9 @@ def fetch_source() -> str:
                 raise TldFetchError(
                     f"failed to fetch {SOURCE_URL}: response body exceeds {MAX_SOURCE_BYTES} bytes"
                 )
+            remaining = response.length
+            if remaining is not None and remaining > 0:
+                raise http.client.IncompleteRead(body, remaining)
             return body.decode("utf-8")
     except urllib.error.HTTPError as exc:
         with exc:

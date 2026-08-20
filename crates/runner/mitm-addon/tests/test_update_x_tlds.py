@@ -63,6 +63,7 @@ class _ReadFailureOpener:
 
 class _InvalidUtf8Response:
     status = update_x_tlds.HTTPStatus.OK
+    length = None
 
     def __enter__(self) -> _InvalidUtf8Response:
         return self
@@ -82,8 +83,9 @@ class _InvalidUtf8Opener:
 class _BodyResponse:
     status = update_x_tlds.HTTPStatus.OK
 
-    def __init__(self, body: bytes) -> None:
+    def __init__(self, body: bytes, *, declared_length: int | None = None) -> None:
         self._body = io.BytesIO(body)
+        self.length = declared_length
         self.read_amounts: list[int] = []
 
     def __enter__(self) -> _BodyResponse:
@@ -94,7 +96,10 @@ class _BodyResponse:
 
     def read(self, amount: int) -> bytes:
         self.read_amounts.append(amount)
-        return self._body.read(amount)
+        body = self._body.read(amount)
+        if self.length is not None:
+            self.length -= len(body)
+        return body
 
 
 class _BodyOpener:
@@ -254,6 +259,29 @@ def test_update_generated_rejects_oversized_network_source_without_replacing_out
         update_x_tlds.TldFetchError,
         match=rf"response body exceeds {update_x_tlds.MAX_SOURCE_BYTES} bytes",
     ):
+        update_x_tlds.update_generated(None)
+
+    assert response.read_amounts == [update_x_tlds.MAX_SOURCE_BYTES + 1]
+    assert output.read_text(encoding="utf-8") == original
+
+
+def test_update_generated_rejects_truncated_network_source_without_replacing_output(
+    tmp_path, monkeypatch
+):
+    body = b"# Version 1, Last Updated test\nCOM\n"
+    response = _BodyResponse(body, declared_length=len(body) + 1)
+    opener = _BodyOpener(response)
+    output = tmp_path / "x_tlds.py"
+    original = "# existing generated snapshot\n"
+    output.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(update_x_tlds, "OUTPUT_PATH", output)
+    monkeypatch.setattr(
+        update_x_tlds.urllib.request,
+        "build_opener",
+        lambda *handlers: opener,
+    )
+
+    with pytest.raises(update_x_tlds.TldFetchError, match="IncompleteRead"):
         update_x_tlds.update_generated(None)
 
     assert response.read_amounts == [update_x_tlds.MAX_SOURCE_BYTES + 1]
