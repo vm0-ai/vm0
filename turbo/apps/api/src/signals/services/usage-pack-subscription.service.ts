@@ -676,6 +676,7 @@ function previousUsagePackCheckoutWriterPending(
   snapshot: UsagePackContext,
   at: Date,
 ): boolean {
+  // DB/API revisions have overlapped for an observed maximum of ~102 minutes.
   // Previous API versions only write checkout_pending and may still create a
   // Stripe Session after releasing the organization lock. New snapshots use
   // purchase_pending so the previous reader cannot take them over. Preserve

@@ -24,10 +24,11 @@ WHERE "subscription_status" IN ('checkout_pending', 'purchase_pending')
 GROUP BY "org_id";--> statement-breakpoint
 
 -- This trigger is the DB/API rollout bridge for #28304. It makes the seeded
--- count converge atomically while old and new API revisions may coexist. In
--- #28372, after the API rollback/drain window and every pre-0952 pending
--- snapshot/Session have been reconciled, replace this bridge with the direct
--- partial unique index and drop the guard objects.
+-- count converge atomically while old and new API revisions coexist for the
+-- observed maximum of approximately 102 minutes. In #28372, after the API
+-- rollback/drain window and every pre-0952 pending snapshot/Session have been
+-- reconciled, replace this bridge with the direct partial unique index and drop
+-- the guard objects.
 CREATE FUNCTION "sync_usage_pack_pending_snapshot_guard_0952"()
 RETURNS trigger
 LANGUAGE plpgsql
