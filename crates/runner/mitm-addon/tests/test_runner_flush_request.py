@@ -195,12 +195,10 @@ class TestRunnerFlushRequest:
                 assert usage.read_usage_flush_request_id() is None
                 return
 
-            with patch.object(
-                runner_flush_lifecycle,
-                "__file__",
-                str(runner_flush_request_files.lifecycle_file),
-            ):
-                runner_flush_lifecycle._flush_jsonl_for_runner_request()
+            runner_flush_lifecycle._flush_jsonl_for_runner_request(
+                runner_flush_request_files.jsonl_flush_request_path,
+                runner_flush_request_files.jsonl_flush_state_path,
+            )
 
             assert not runner_flush_request_files.jsonl_flush_state_path.exists()
 

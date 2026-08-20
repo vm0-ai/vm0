@@ -114,9 +114,13 @@ def start_runner_jsonl_flush_worker() -> None:
         if _jsonl_flush_worker is not None and _jsonl_flush_worker.is_alive():
             return
 
+        marker_directory = Path(__file__).resolve().parent
+        request_path = marker_directory / _JSONL_FLUSH_REQUEST_FILE
+        state_path = marker_directory / _JSONL_FLUSH_STATE_FILE
         _jsonl_flush_stop.clear()
         worker = threading.Thread(
             target=_run_runner_jsonl_flush_worker,
+            args=(request_path, state_path),
             name="runner-jsonl-flush",
             daemon=True,
         )
@@ -128,12 +132,12 @@ def stop_runner_jsonl_flush_worker_for_tests() -> None:
     _stop_runner_jsonl_flush_worker()
 
 
-def _run_runner_jsonl_flush_worker() -> None:
+def _run_runner_jsonl_flush_worker(request_path: Path, state_path: Path) -> None:
     """Observe current-generation JSONL markers independently of usage."""
     while True:
-        _flush_jsonl_for_runner_request()
+        _flush_jsonl_for_runner_request(request_path, state_path)
         if _jsonl_flush_stop.wait(RUNNER_JSONL_FLUSH_POLL_SECONDS):
-            _flush_jsonl_for_runner_request()
+            _flush_jsonl_for_runner_request(request_path, state_path)
             return
 
 
@@ -224,10 +228,10 @@ def _flush_delivery_work(*, trigger: _DeliveryFlushTrigger) -> None:
     codex_output_timing.retry_all_pending()
 
 
-def _flush_jsonl_for_runner_request() -> None:
+def _flush_jsonl_for_runner_request(request_path: Path, state_path: Path) -> None:
     global _last_jsonl_flush_request_id
 
-    request = _read_jsonl_flush_request()
+    request = _read_jsonl_flush_request(request_path)
     if request is None:
         return
 
@@ -246,15 +250,19 @@ def _flush_jsonl_for_runner_request() -> None:
         pending = 1
         ctx.log.warn(f"Failed to flush JSONL logs after runner request ({type(exc).__name__})")
     finally:
-        state_written = _write_jsonl_flush_state(log_path, flush_request_id, pending=pending)
+        state_written = _write_jsonl_flush_state(
+            state_path,
+            log_path,
+            flush_request_id,
+            pending=pending,
+        )
         if state_written and (pending == 0 or timed_out):
             _last_jsonl_flush_request_id = flush_request_id
 
 
-def _read_jsonl_flush_request() -> tuple[str, str] | None:
-    marker_path = Path(__file__).resolve().parent / _JSONL_FLUSH_REQUEST_FILE
+def _read_jsonl_flush_request(request_path: Path) -> tuple[str, str] | None:
     request = runner_flush_request.read_runner_flush_request(
-        marker_path,
+        request_path,
         get_usage_state_id=usage.current_usage_state_id,
     )
     if request is None:
@@ -279,12 +287,12 @@ def _is_safe_jsonl_flush_request_id(flush_request_id: str) -> bool:
 
 
 def _write_jsonl_flush_state(
+    state_path: Path,
     log_path: str,
     flush_request_id: str,
     *,
     pending: int = 0,
 ) -> bool:
-    state_path = Path(__file__).resolve().parent / _JSONL_FLUSH_STATE_FILE
     state = {
         "pid": os.getpid(),
         "usageStateId": usage.current_usage_state_id(),

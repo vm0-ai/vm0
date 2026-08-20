@@ -630,6 +630,8 @@ pub enum FailureReason {
     InvalidApiKey,
     /// The configured credentials are invalid.
     InvalidCredentials,
+    /// The provider account must accept updated consumer terms.
+    TermsAcceptanceRequired,
     /// The model context window was exhausted.
     ContextWindowExceeded,
     /// The provider stopped because an output-token limit was reached.
@@ -657,6 +659,7 @@ impl FailureReason {
             Self::InsufficientCredits => "insufficient_credits",
             Self::InvalidApiKey => "invalid_api_key",
             Self::InvalidCredentials => "invalid_credentials",
+            Self::TermsAcceptanceRequired => "terms_acceptance_required",
             Self::ContextWindowExceeded => "context_window_exceeded",
             Self::OutputTokenLimit => "output_token_limit",
             Self::ProviderOverloaded => "provider_overloaded",
@@ -1215,6 +1218,28 @@ mod tests {
 
         let json = serde_json::to_value(&diagnostic).unwrap();
         assert_eq!(json["failureReason"], "invalid_credentials");
+
+        let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
+        assert_eq!(round_trip, diagnostic);
+    }
+
+    #[test]
+    fn failure_diagnostic_serializes_terms_acceptance_required_reason() {
+        assert_eq!(
+            FailureReason::TermsAcceptanceRequired.as_str(),
+            "terms_acceptance_required"
+        );
+
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("debug failure"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_reason(FailureReason::TermsAcceptanceRequired);
+
+        let json = serde_json::to_value(&diagnostic).unwrap();
+        assert_eq!(json["failureReason"], "terms_acceptance_required");
 
         let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
         assert_eq!(round_trip, diagnostic);

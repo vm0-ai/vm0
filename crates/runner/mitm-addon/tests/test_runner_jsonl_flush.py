@@ -99,25 +99,26 @@ def wait_for_jsonl_flush_state(
 def running_jsonl_flush_worker(files: RunnerJsonlFlushFiles) -> Iterator[None]:
     with patch.object(runner_flush_lifecycle, "__file__", str(files.lifecycle_file)):
         runner_flush_lifecycle.start_runner_jsonl_flush_worker()
-        try:
-            yield
-        finally:
-            runner_flush_lifecycle.stop_runner_jsonl_flush_worker_for_tests()
+    try:
+        yield
+    finally:
+        runner_flush_lifecycle.stop_runner_jsonl_flush_worker_for_tests()
 
 
 class TestRunnerJsonlFlush:
     """Tests for the independently polled JSONL flush protocol."""
 
-    def test_jsonl_watcher_acknowledges_flush_request(
+    def test_jsonl_watcher_acknowledges_request_in_startup_directory(
         self, runner_jsonl_flush_files: RunnerJsonlFlushFiles
     ):
-        log_path = runner_jsonl_flush_files.write_jsonl_flush_request()
+        log_path = runner_jsonl_flush_files.network_log_path
         logging_utils.log_network_entry(str(log_path), {"action": "ALLOW"})
 
         with (
             patch.object(logging_utils.ctx, "log", MagicMock(), create=True),
             running_jsonl_flush_worker(runner_jsonl_flush_files),
         ):
+            runner_jsonl_flush_files.write_jsonl_flush_request()
             state = wait_for_jsonl_flush_state(runner_jsonl_flush_files)
 
         entry = json.loads(log_path.read_text().strip())
@@ -166,13 +167,13 @@ class TestRunnerJsonlFlush:
         log = MagicMock()
 
         with (
-            patch.object(
-                runner_flush_lifecycle, "__file__", str(runner_jsonl_flush_files.lifecycle_file)
-            ),
             patch.object(logging_utils, "flush_log_path", side_effect=RuntimeError("secret")),
             patch.object(runner_flush_lifecycle.ctx, "log", log, create=True),
         ):
-            runner_flush_lifecycle._flush_jsonl_for_runner_request()
+            runner_flush_lifecycle._flush_jsonl_for_runner_request(
+                runner_jsonl_flush_files.jsonl_flush_request_path,
+                runner_jsonl_flush_files.jsonl_flush_state_path,
+            )
 
         state = json.loads(runner_jsonl_flush_files.jsonl_flush_state_path.read_text())
         assert state == {
