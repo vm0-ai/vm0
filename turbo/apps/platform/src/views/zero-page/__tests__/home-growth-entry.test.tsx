@@ -53,12 +53,12 @@ describe("home growth entry", () => {
     setupGrowthEntry({ isConnected: false, isInstalled: false });
 
     const entry = await screen.findByTestId("growth-entry");
-    expect(entry).toHaveTextContent("Add Okou in Slack");
+    expect(entry).toHaveTextContent("Add Zero in Slack");
 
     await user.click(entry);
     const menu = await screen.findByRole("menu");
     const slackAction = within(menu).getByTestId("growth-slack");
-    expect(slackAction).toHaveTextContent("Add Okou in Slack");
+    expect(slackAction).toHaveTextContent("Add Zero in Slack");
     expect(slackAction).toHaveTextContent("Connect");
 
     await user.click(slackAction);
@@ -77,7 +77,7 @@ describe("home growth entry", () => {
     await user.click(entry);
     const menu = await screen.findByRole("menu");
     const slackStatus = within(menu).getByTestId("growth-slack");
-    expect(slackStatus).toHaveTextContent("Okou is in Slack");
+    expect(slackStatus).toHaveTextContent("Zero is in Slack");
     expect(slackStatus).not.toHaveTextContent("Connect");
 
     await user.click(within(menu).getByTestId("growth-invite"));
