@@ -1,11 +1,17 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
+import type { ChatEvent } from "@okouai/api-contracts/contracts/chat-threads";
+import { goalsContract } from "@okouai/api-contracts/contracts/goals";
 import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
 import { describe, expect, it } from "vitest";
 
 import { mockOptionalEnv } from "../../../lib/env";
+import { now } from "../../../lib/time";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
+import { signSandboxJwtForTests } from "../../auth/tokens";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
   readLatestWorkflowAutomationRunFixture,
   readWorkflowAutomationAutonomyFixture,
@@ -19,6 +25,8 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { chatEventDisplayText } from "./helpers/chat-event";
+import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
+import { goalsRoutes } from "../goals";
 import { workflowAutomationsRoutes } from "../workflow-automations";
 
 /**
@@ -34,11 +42,20 @@ const webhooks = createWebhookCallbackApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const wf = createWorkflowsBddApi(context);
 const WATCHED_THREAD_TITLE = "Watched chat run";
+const GOAL_CAPABILITIES = [
+  "goal:read",
+  "goal:agent-result:write",
+  "goal:user-control:write",
+] as const satisfies readonly Capability[];
 
 function automationsClient() {
   return setupApp({ context, routes: workflowAutomationsRoutes })(
     workflowAutomationsContract,
   );
+}
+
+function goalsClient() {
+  return setupApp({ context, routes: goalsRoutes })(goalsContract);
 }
 
 function authHeaders() {
@@ -164,6 +181,107 @@ async function startWatchedChatRun(
     WATCHED_THREAD_TITLE,
   );
   return { runId: sent.body.runId, threadId: sent.body.threadId };
+}
+
+function goalHeaders(
+  actor: ApiTestUser,
+  runId: string,
+): { readonly authorization: string } {
+  if (!actor.orgId) {
+    throw new Error("Expected an org-scoped actor for goal auth");
+  }
+  const seconds = Math.floor(now() / 1000);
+  return {
+    authorization: `Bearer ${signSandboxJwtForTests({
+      scope: "zero",
+      userId: actor.userId,
+      orgId: actor.orgId,
+      runId,
+      capabilities: [...GOAL_CAPABILITIES],
+      iat: seconds,
+      exp: seconds + 600,
+    })}`,
+  };
+}
+
+async function createGoalForRun(
+  actor: ApiTestUser,
+  runId: string,
+  objective: string,
+): Promise<string> {
+  if (!actor.orgId) {
+    throw new Error("Expected an org-scoped actor for goal workflows");
+  }
+  await updateFeatureSwitchesForUser(
+    context,
+    {
+      userId: actor.userId,
+      orgId: actor.orgId,
+      orgRole: actor.orgRole,
+    },
+    {},
+  );
+  const created = await accept(
+    goalsClient().create({
+      headers: goalHeaders(actor, runId),
+      body: { objective },
+    }),
+    [201],
+  );
+  return created.body.objectiveBrief;
+}
+
+function goalContinuationRunId(
+  events: readonly ChatEvent[],
+  objectiveBrief: string,
+): string | undefined {
+  return events.find((event) => {
+    return (
+      event.eventType === "input.prompt" &&
+      event.runId !== undefined &&
+      event.userMessage.parts.some((part) => {
+        return part.type === "goal" && part.goalBrief === objectiveBrief;
+      })
+    );
+  })?.runId;
+}
+
+async function waitForGoalContinuationRun(
+  fixture: ChatAutomationFixture,
+  threadId: string,
+  objectiveBrief: string,
+): Promise<string> {
+  let runId: string | undefined;
+  await expect
+    .poll(
+      async () => {
+        const events = await chat.listThreadEvents(fixture.actor, threadId);
+        runId = goalContinuationRunId(events.events, objectiveBrief);
+        return runId;
+      },
+      { interval: 100, timeout: 10_000 },
+    )
+    .toEqual(expect.any(String));
+  if (!runId) {
+    throw new Error("Expected a goal continuation run");
+  }
+  return runId;
+}
+
+async function expectGoalStatus(
+  actor: ApiTestUser,
+  runId: string,
+  status: "paused" | "blocked" | "complete",
+): Promise<void> {
+  await expect
+    .poll(async () => {
+      const goal = await accept(
+        goalsClient().get({ headers: goalHeaders(actor, runId) }),
+        [200],
+      );
+      return goal.body.status;
+    })
+    .toBe(status);
 }
 
 async function claimChatRun(
@@ -478,6 +596,127 @@ describe("chat-run-finished workflow automations", () => {
         throw new Error("Expected a triggered automation run");
       }
       await claimChatRun(fixture.runnerGroup, automationRunId);
+    },
+  );
+
+  it(
+    "defers a completed-run automation until the active goal completes",
+    { timeout: 60_000 },
+    async () => {
+      const fixture = await setupChatAutomationFixture();
+      const firstRun = await startWatchedChatRun(
+        fixture,
+        "continue before the goal completes",
+      );
+      const automationId = await createChatRunFinishedAutomation(fixture, {
+        chatThreadId: firstRun.threadId,
+        runStatuses: ["completed"],
+      });
+      const objectiveBrief = await createGoalForRun(
+        fixture.actor,
+        firstRun.runId,
+        "Complete the watched thread goal",
+      );
+
+      const firstHeaders = await claimChatRun(
+        fixture.runnerGroup,
+        firstRun.runId,
+      );
+      await completeChatRunOk(firstRun.runId, firstHeaders);
+      const continuationRunId = await waitForGoalContinuationRun(
+        fixture,
+        firstRun.threadId,
+        objectiveBrief,
+      );
+      await flushWaitUntilForTest();
+      await expect(automationLastRunAt(automationId)).resolves.toBeNull();
+
+      const continuationHeaders = await claimChatRun(
+        fixture.runnerGroup,
+        continuationRunId,
+      );
+      const completedGoal = await accept(
+        goalsClient().complete({
+          headers: goalHeaders(fixture.actor, continuationRunId),
+        }),
+        [200],
+      );
+      expect(completedGoal.body.status).toBe("complete");
+      await completeChatRunOk(continuationRunId, continuationHeaders);
+
+      await expectAutomationFired(automationId);
+      await expectAutomationSourceAnnotation(fixture, automationId, {
+        runId: continuationRunId,
+        threadId: firstRun.threadId,
+      });
+    },
+  );
+
+  it(
+    "fires a completed-run automation when the goal is blocked",
+    { timeout: 30_000 },
+    async () => {
+      const fixture = await setupChatAutomationFixture();
+      const run = await startWatchedChatRun(
+        fixture,
+        "finish after blocking the goal",
+      );
+      const automationId = await createChatRunFinishedAutomation(fixture, {
+        chatThreadId: run.threadId,
+        runStatuses: ["completed"],
+      });
+      await createGoalForRun(
+        fixture.actor,
+        run.runId,
+        "Block the watched thread goal",
+      );
+      const sandboxHeaders = await claimChatRun(fixture.runnerGroup, run.runId);
+      const blockedGoal = await accept(
+        goalsClient().block({ headers: goalHeaders(fixture.actor, run.runId) }),
+        [200],
+      );
+      expect(blockedGoal.body.status).toBe("blocked");
+
+      await completeChatRunOk(run.runId, sandboxHeaders);
+
+      await expectAutomationFired(automationId);
+      await expectAutomationSourceAnnotation(fixture, automationId, run);
+    },
+  );
+
+  it.each(["failed", "cancelled"] as const)(
+    "fires a %s-run automation when the terminal run pauses the goal",
+    { timeout: 30_000 },
+    async (terminalStatus) => {
+      const fixture = await setupChatAutomationFixture();
+      const run = await startWatchedChatRun(
+        fixture,
+        `${terminalStatus} run pauses the goal`,
+      );
+      const automationId = await createChatRunFinishedAutomation(fixture, {
+        chatThreadId: run.threadId,
+        runStatuses: [terminalStatus],
+      });
+      await createGoalForRun(
+        fixture.actor,
+        run.runId,
+        "Pause the watched thread goal",
+      );
+      const sandboxHeaders = await claimChatRun(fixture.runnerGroup, run.runId);
+
+      if (terminalStatus === "failed") {
+        await webhooks.requestAgentComplete(
+          { runId: run.runId, exitCode: 1, error: "goal iteration failed" },
+          sandboxHeaders,
+          [200],
+        );
+      } else {
+        await api.requestCancelRun(fixture.actor, run.runId, [200]);
+      }
+
+      await expectGoalStatus(fixture.actor, run.runId, "paused");
+      await expectAutomationFired(automationId);
+      await expectAutomationSourceAnnotation(fixture, automationId, run);
     },
   );
 
