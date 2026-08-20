@@ -781,25 +781,36 @@ function PlanPrice({
   );
 }
 
+/* Concurrency is the one number that scales between the plans -- 2 against 10
+   -- and it is what the base price actually buys. Set at the size of the
+   price it sits under, the gap does the arguing on its own; buried as one
+   more check line it read as the smallest claim on the list, which left the
+   dearer plan looking like the lesser one. */
+function PlanConcurrencyStat({ tier }: { readonly tier: UsagePackPlanTier }) {
+  return (
+    <p className="mt-5 flex items-baseline gap-2">
+      <span className="text-[28px] font-medium leading-none tracking-tight tabular-nums text-foreground">
+        {formatLocalizedNumber(planConcurrentSlots(tier))}
+      </span>
+      <span className="text-sm leading-snug text-muted-foreground">
+        {i18n.t(($) => {
+          return $.billing.plans.highlights.agentsAtOnce;
+        })}
+      </span>
+    </p>
+  );
+}
+
 /* Pro carries the whole list; Team names only what it adds on top. Spelling
    both columns out in full meant six of the twelve lines said the same thing
    twice, and lifting those six into a band under the columns only moved the
    repetition somewhere else -- either way the reader pays for words that do
    not help them choose. "Everything in Pro, plus" is what removes them.
 
-   These are phrases, not label/value rows: "2 concurrent runs" is shorter
-   than "Concurrent runs ... 2" and reads as something you get rather than a
-   cell in a spec sheet. */
+   Team's lines name what the plan lets a workspace do, not the setting that
+   does it: "Trigger agents from your own systems" is the same entitlement as
+   "Webhook automations" and is the reason someone pays for it. */
 function planHighlights(tier: UsagePackPlanTier): readonly string[] {
-  const concurrentRuns = i18n.t(
-    ($) => {
-      return $.billing.concurrency.concurrentRun;
-    },
-    {
-      count: planConcurrentSlots(tier),
-      value: formatLocalizedNumber(planConcurrentSlots(tier)),
-    },
-  );
   const voiceInput = i18n.t(
     ($) => {
       return $.billing.plans.highlights.voiceInput;
@@ -808,7 +819,6 @@ function planHighlights(tier: UsagePackPlanTier): readonly string[] {
   );
   if (tier === "team") {
     return [
-      concurrentRuns,
       i18n.t(($) => {
         return $.billing.plans.highlights.addOnConcurrency;
       }),
@@ -822,7 +832,6 @@ function planHighlights(tier: UsagePackPlanTier): readonly string[] {
     ];
   }
   return [
-    concurrentRuns,
     i18n.t(
       ($) => {
         return $.billing.plans.highlights.agents;
@@ -863,7 +872,7 @@ function planHighlightsLabel(tier: UsagePackPlanTier): string {
    slack the CTA takes up, not a hole to pad with "—" rows. */
 function PlanHighlights({ tier }: { readonly tier: UsagePackPlanTier }) {
   return (
-    <div className="mt-5">
+    <div className="mt-6">
       <p className="text-xs font-medium text-muted-foreground">
         {planHighlightsLabel(tier)}
       </p>
@@ -971,6 +980,8 @@ function PlanSelectionCard({
       </p>
 
       <PlanPrice basePriceUsd={plan.basePriceUsd} catalog={catalog} />
+
+      <PlanConcurrencyStat tier={plan.tier} />
 
       <PlanHighlights tier={plan.tier} />
 

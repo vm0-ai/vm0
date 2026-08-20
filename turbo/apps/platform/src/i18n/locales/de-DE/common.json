@@ -926,8 +926,9 @@
         "name": "Frei"
       },
       "highlights": {
-        "addOnConcurrency": "Parallelität bei Bedarf zukaufen",
+        "addOnConcurrency": "Parallelität jederzeit aufstocken",
         "agents": "{{shared}} geteilte Agents, unbegrenzt private",
+        "agentsAtOnce": "Agents gleichzeitig",
         "automations": "Zeit- und ereignisgesteuerte Automationen",
         "everythingInPlus": "Alles aus {{plan}}, plus",
         "included": "Enthalten",
@@ -936,7 +937,7 @@
         "supportPriority": "Priorisierter Support",
         "videoGeneration": "Video- und Avatar-Generierung",
         "voiceInput": "Spracheingabe, {{requests}} pro Tag",
-        "webhookAutomations": "Webhook-Automationen"
+        "webhookAutomations": "Agents aus den eigenen Systemen auslösen"
       },
       "legacy": "Legacy",
       "limitedFree": {
@@ -963,7 +964,7 @@
       "sectionTitle": "Planen",
       "selectedPlan": "den ausgewählten Plan",
       "team": {
-        "description": "Für ein ganzes Team, das ganztägig Agents einsetzt.",
+        "description": "Für ein Team, das Agents den ganzen Tag laufen lässt.",
         "legacyDescription": "Platz für ein Team aus KI-Mitarbeitern: hohes Credit-Volumen und 10 gleichzeitig laufende Agents.",
         "name": "Team"
       },

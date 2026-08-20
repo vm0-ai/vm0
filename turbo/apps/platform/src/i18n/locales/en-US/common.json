@@ -926,8 +926,9 @@
         "name": "Free"
       },
       "highlights": {
-        "addOnConcurrency": "Extra concurrency on demand",
+        "addOnConcurrency": "Add more concurrency any time",
         "agents": "{{shared}} shared agents, unlimited private",
+        "agentsAtOnce": "agents running at once",
         "automations": "Scheduled and event automations",
         "everythingInPlus": "Everything in {{plan}}, plus",
         "included": "Included",
@@ -936,7 +937,7 @@
         "supportPriority": "Priority support",
         "videoGeneration": "Video and avatar generation",
         "voiceInput": "Voice input, {{requests}} a day",
-        "webhookAutomations": "Webhook automations"
+        "webhookAutomations": "Trigger agents from your own systems"
       },
       "legacy": "Legacy",
       "limitedFree": {
@@ -963,7 +964,7 @@
       "sectionTitle": "Plan",
       "selectedPlan": "the selected plan",
       "team": {
-        "description": "For a whole team, running agents all day.",
+        "description": "For a team that keeps agents running all day.",
         "legacyDescription": "Room for a team of AI employees: high credit volume and 10 agents running at once.",
         "name": "Team"
       },

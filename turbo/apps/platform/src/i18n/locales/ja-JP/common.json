@@ -926,8 +926,9 @@
         "name": "無料"
       },
       "highlights": {
-        "addOnConcurrency": "同時実行を必要に応じて追加",
+        "addOnConcurrency": "同時実行はいつでも追加できます",
         "agents": "共有エージェント {{shared}}、プライベート無制限",
+        "agentsAtOnce": "エージェントが同時に稼働",
         "automations": "スケジュールとイベントの自動化",
         "everythingInPlus": "{{plan}} のすべて、さらに",
         "included": "含まれるもの",
@@ -936,7 +937,7 @@
         "supportPriority": "優先サポート",
         "videoGeneration": "動画とアバターの生成",
         "voiceInput": "音声入力 1 日 {{requests}} 回",
-        "webhookAutomations": "Webhook 自動化"
+        "webhookAutomations": "自社システムからエージェントを起動"
       },
       "legacy": "旧プラン",
       "limitedFree": {
@@ -963,7 +964,7 @@
       "sectionTitle": "計画",
       "selectedPlan": "選択したプラン",
       "team": {
-        "description": "終日エージェントを動かすチーム全体に。",
+        "description": "エージェントを一日中動かし続けるチームに。",
         "legacyDescription": "AI従業員チームのための余裕：大容量のクレジットと10エージェントの同時実行。",
         "name": "チーム"
       },

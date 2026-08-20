@@ -470,14 +470,24 @@ describe("organization billing settings", () => {
     expect(within(proPlan).queryByText("20,000 credits / month")).toBeNull();
     expect(within(proPlan).queryByText("Pay as you go after that")).toBeNull();
     expect(
-      within(teamPlan).getByText("For a whole team, running agents all day."),
+      within(teamPlan).getByText(
+        "For a team that keeps agents running all day.",
+      ),
     ).toBeInTheDocument();
     expect(within(teamPlan).queryByText("120,000 credits / month")).toBeNull();
+
+    /* Concurrency is the number the base price buys and the one that scales
+       between the plans, so each column states it at price size rather than
+       spending a check line on it. */
+    expect(within(proPlan).getByText("2")).toBeInTheDocument();
+    expect(within(teamPlan).getByText("10")).toBeInTheDocument();
+    for (const plan of [proPlan, teamPlan]) {
+      expect(within(plan).getByText("agents running at once")).toBeVisible();
+    }
 
     // Pro carries the whole list.
     expect(within(proPlan).getByText("Included")).toBeInTheDocument();
     for (const item of [
-      "2 concurrent runs",
       "7 shared agents, unlimited private",
       "Every model, or bring your own keys",
       "Scheduled and event automations",
@@ -488,15 +498,15 @@ describe("organization billing settings", () => {
       expect(within(proPlan).getByText(item)).toBeInTheDocument();
     }
 
-    /* Team names only what it adds. Repeating Pro's list here is what made the
-       two columns twice as long as the choice between them needs. */
+    /* Team names only what it adds, in terms of what a workspace can do with
+       it. Repeating Pro's list here is what made the two columns twice as long
+       as the choice between them needs. */
     expect(
       within(teamPlan).getByText("Everything in Pro, plus"),
     ).toBeInTheDocument();
     for (const item of [
-      "10 concurrent runs",
-      "Extra concurrency on demand",
-      "Webhook automations",
+      "Add more concurrency any time",
+      "Trigger agents from your own systems",
       "Voice input, 500 a day",
       "Priority support",
     ]) {

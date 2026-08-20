@@ -926,8 +926,9 @@
         "name": "Gratis"
       },
       "highlights": {
-        "addOnConcurrency": "Tambah konkurensi sesuai kebutuhan",
+        "addOnConcurrency": "Tambah konkurensi kapan saja",
         "agents": "{{shared}} agen bersama, privat tanpa batas",
+        "agentsAtOnce": "agen sekaligus",
         "automations": "Otomatisasi terjadwal dan berbasis event",
         "everythingInPlus": "Semua di {{plan}}, plus",
         "included": "Termasuk",
@@ -936,7 +937,7 @@
         "supportPriority": "Dukungan prioritas",
         "videoGeneration": "Pembuatan video dan avatar",
         "voiceInput": "Input suara, {{requests}} per hari",
-        "webhookAutomations": "Otomatisasi webhook"
+        "webhookAutomations": "Picu agen dari sistem Anda sendiri"
       },
       "legacy": "Lama",
       "limitedFree": {
@@ -963,7 +964,7 @@
       "sectionTitle": "Paket",
       "selectedPlan": "paket yang dipilih",
       "team": {
-        "description": "Untuk satu tim penuh yang menjalankan agen sepanjang hari.",
+        "description": "Untuk tim yang menjalankan agen sepanjang hari.",
         "legacyDescription": "Ruang untuk tim pekerja AI: volume kredit tinggi dan 10 agen berjalan bersamaan.",
         "name": "Tim"
       },

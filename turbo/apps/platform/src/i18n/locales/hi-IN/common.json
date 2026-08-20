@@ -926,8 +926,9 @@
         "name": "फ्री"
       },
       "highlights": {
-        "addOnConcurrency": "ज़रूरत पर अतिरिक्त समवर्तिता",
+        "addOnConcurrency": "जब चाहें और समवर्तिता जोड़ें",
         "agents": "{{shared}} साझा एजेंट, असीमित निजी",
+        "agentsAtOnce": "एजेंट एक साथ",
         "automations": "शेड्यूल और इवेंट ऑटोमेशन",
         "everythingInPlus": "{{plan}} का सब कुछ, साथ में",
         "included": "शामिल",
@@ -936,7 +937,7 @@
         "supportPriority": "प्राथमिकता सहायता",
         "videoGeneration": "वीडियो और अवतार जनरेशन",
         "voiceInput": "वॉइस इनपुट, {{requests}} रोज़",
-        "webhookAutomations": "वेबहुक ऑटोमेशन"
+        "webhookAutomations": "अपने सिस्टम से एजेंट ट्रिगर करें"
       },
       "legacy": "पुराना",
       "limitedFree": {
@@ -963,7 +964,7 @@
       "sectionTitle": "योजना",
       "selectedPlan": "चयनित योजना",
       "team": {
-        "description": "पूरी टीम के लिए, जो दिनभर एजेंट चलाती है।",
+        "description": "उस टीम के लिए जो दिनभर एजेंट चलाती रहती है।",
         "legacyDescription": "AI कर्मचारियों की टीम के लिए जगह: अधिक क्रेडिट और एक साथ चलने वाले 10 एजेंट।",
         "name": "टीम"
       },

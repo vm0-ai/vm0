@@ -947,8 +947,9 @@
         "name": "Gratuit"
       },
       "highlights": {
-        "addOnConcurrency": "Simultanéité supplémentaire à la demande",
+        "addOnConcurrency": "Ajoutez de la simultanéité quand vous voulez",
         "agents": "{{shared}} agents partagés, privés illimités",
+        "agentsAtOnce": "agents en parallèle",
         "automations": "Automatisations planifiées et sur événement",
         "everythingInPlus": "Tout {{plan}}, et en plus",
         "included": "Inclus",
@@ -957,7 +958,7 @@
         "supportPriority": "Assistance prioritaire",
         "videoGeneration": "Génération de vidéos et d’avatars",
         "voiceInput": "Saisie vocale, {{requests}} par jour",
-        "webhookAutomations": "Automatisations par webhook"
+        "webhookAutomations": "Déclenchez des agents depuis vos propres systèmes"
       },
       "legacy": "Historique",
       "limitedFree": {
@@ -984,7 +985,7 @@
       "sectionTitle": "Forfait",
       "selectedPlan": "le forfait sélectionné",
       "team": {
-        "description": "Pour toute une équipe qui utilise des agents toute la journée.",
+        "description": "Pour une équipe qui fait tourner des agents toute la journée.",
         "legacyDescription": "De la place pour une équipe d’employés IA : un volume élevé de crédits et 10 agents exécutés simultanément.",
         "name": "Team"
       },

@@ -947,8 +947,9 @@
         "name": "Gratuito"
       },
       "highlights": {
-        "addOnConcurrency": "Concorrenza extra su richiesta",
+        "addOnConcurrency": "Aggiungi concorrenza quando vuoi",
         "agents": "{{shared}} agenti condivisi, privati illimitati",
+        "agentsAtOnce": "agenti in parallelo",
         "automations": "Automazioni pianificate e su evento",
         "everythingInPlus": "Tutto di {{plan}}, più",
         "included": "Incluso",
@@ -957,7 +958,7 @@
         "supportPriority": "Assistenza prioritaria",
         "videoGeneration": "Generazione di video e avatar",
         "voiceInput": "Input vocale, {{requests}} al giorno",
-        "webhookAutomations": "Automazioni webhook"
+        "webhookAutomations": "Attiva gli agenti dai tuoi sistemi"
       },
       "legacy": "Precedente",
       "limitedFree": {
@@ -984,7 +985,7 @@
       "sectionTitle": "Piano",
       "selectedPlan": "il piano selezionato",
       "team": {
-        "description": "Per un intero team che usa agenti tutto il giorno.",
+        "description": "Per un team che tiene gli agenti attivi tutto il giorno.",
         "legacyDescription": "Spazio per un team di dipendenti IA: molti crediti e 10 agent in esecuzione contemporaneamente.",
         "name": "Team"
       },
