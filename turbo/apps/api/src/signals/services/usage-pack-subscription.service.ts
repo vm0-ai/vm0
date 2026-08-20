@@ -481,12 +481,12 @@ export async function usagePackPurchaseSerializationSchemaAvailable(
           AND to_regclass('public.usage_pack_invoice_fulfillments') IS NOT NULL
           AND to_regclass('public.usage_pack_pending_snapshot_guards') IS NOT NULL
           AND to_regclass('public.uq_usage_pack_subscriptions_pending_org') IS NOT NULL
-          AND to_regprocedure('public.sync_usage_pack_pending_snapshot_guard_0953()') IS NOT NULL
+          AND to_regprocedure('public.sync_usage_pack_pending_snapshot_guard_0954()') IS NOT NULL
           AND EXISTS (
             SELECT 1
             FROM pg_trigger
             WHERE tgrelid = to_regclass('public.usage_pack_subscriptions')
-              AND tgname = 'sync_usage_pack_pending_snapshot_guard_0953'
+              AND tgname = 'sync_usage_pack_pending_snapshot_guard_0954'
               AND NOT tgisinternal
           )`.mapWith(pgBooleanDecoder),
     })

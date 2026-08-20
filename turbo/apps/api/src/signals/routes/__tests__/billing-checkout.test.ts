@@ -3253,7 +3253,7 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
     }
   });
 
-  it("reconciles competing pre-0953 Checkout Sessions before creating a replacement", async () => {
+  it("reconciles competing pre-0954 Checkout Sessions before creating a replacement", async () => {
     const fixture = createOrgFixture();
     const customerId = `cus_${randomUUID()}`;
     await prepareUsagePackCheckoutOrg(fixture, customerId);
@@ -3287,7 +3287,7 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
         ],
       });
       if (seeded.action !== "seeded") {
-        throw new Error("Failed to seed a pre-0953 Checkout snapshot");
+        throw new Error("Failed to seed a pre-0954 Checkout snapshot");
       }
       legacySnapshots.push({
         sessionId,

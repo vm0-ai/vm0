@@ -38,7 +38,7 @@ function orgActor(role: "org:admin" | "org:member" = "org:admin") {
   } as const;
 }
 
-describe("GET /api/okou/onboarding/status", () => {
+describe("GET /api/onboarding/status", () => {
   it("returns 401 when the request is unauthenticated", async () => {
     const response = await accept(
       onboardingStatusClient().getStatus({ headers: {} }),
@@ -71,7 +71,7 @@ describe("GET /api/okou/onboarding/status", () => {
   });
 });
 
-describe("POST /api/okou/onboarding/complete", () => {
+describe("POST /api/onboarding/complete", () => {
   it("returns 403 when an organization member tries to complete onboarding", async () => {
     const actor = orgActor("org:member");
     mocks.clerk.session(actor.userId, actor.orgId, actor.role);

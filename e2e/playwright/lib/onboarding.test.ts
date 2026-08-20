@@ -90,7 +90,7 @@ test("synchronizes runner organization onboarding through the public status rout
         authorization: "Bearer clerk-session-token",
         bypass: "preview-bypass",
         method: "GET",
-        url: "/api/okou/onboarding/status",
+        url: "/api/onboarding/status",
       },
     ]);
   } finally {

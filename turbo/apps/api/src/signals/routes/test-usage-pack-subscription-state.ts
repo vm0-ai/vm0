@@ -564,7 +564,7 @@ async function seedUsagePackState(
           ),
         );
       if (!pendingState) {
-        throw new Error("Failed to reconstruct pre-0953 pending state");
+        throw new Error("Failed to reconstruct pre-0954 pending state");
       }
       await tx
         .update(usagePackPendingSnapshotGuards)

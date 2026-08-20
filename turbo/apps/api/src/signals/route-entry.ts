@@ -251,13 +251,21 @@ export function withApiNamespaceAliases(
  * A migrated route generally owes both branded forms, so a value is a list
  * rather than a single path.
  *
- * The table ships empty. Each #28278 slice adds the rows for the paths it
- * moves, so a move and the compatibility it owes land in one commit.
+ * Each #28278 slice adds the rows for the paths it moves, so a move and the
+ * compatibility it owes land in one commit.
  *
  * Every row is compatibility debt under the same removal gate as
  * `LEGACY_ZERO_PATHS`: a row is removed only under #26701's evidence rules. The
  * request log retains about three days, which by itself cannot prove a row is
  * drained — it cannot tell a caller that left from one that calls weekly.
+ *
+ * The surfaces a row holds open, and the window each one bounds: an open web or
+ * app page keeps the bundle it loaded for about two days, and an execution
+ * context pins its commit-addressed CLI package at creation, so a run queued
+ * before this deploy can still start the older CLI and hold it for the two-hour
+ * `JOB_TIMEOUT` drain. An installed CLI or desktop build has no window at all,
+ * which is why removal is gated on #26701's request-log evidence rather than on
+ * a date.
  */
 type MigratedBrandedPathTable = Readonly<Record<string, readonly string[]>>;
 
@@ -299,6 +307,48 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   "/api/maps/osm/render": [
     "/api/okou/maps/osm/render",
     "/api/zero/maps/osm/render",
+  ],
+  // #28421: personal model providers, onboarding, team, and user preferences.
+  "/api/me/model-provider-accounts/:id": [
+    "/api/okou/me/model-provider-accounts/:id",
+    "/api/zero/me/model-provider-accounts/:id",
+  ],
+  "/api/me/model-provider-accounts/:id/activate": [
+    "/api/okou/me/model-provider-accounts/:id/activate",
+    "/api/zero/me/model-provider-accounts/:id/activate",
+  ],
+  "/api/me/model-provider-accounts/:id/subscription-reset": [
+    "/api/okou/me/model-provider-accounts/:id/subscription-reset",
+    "/api/zero/me/model-provider-accounts/:id/subscription-reset",
+  ],
+  "/api/me/model-providers": [
+    "/api/okou/me/model-providers",
+    "/api/zero/me/model-providers",
+  ],
+  "/api/me/model-providers/:type": [
+    "/api/okou/me/model-providers/:type",
+    "/api/zero/me/model-providers/:type",
+  ],
+  "/api/me/model-providers/:type/subscription-reset": [
+    "/api/okou/me/model-providers/:type/subscription-reset",
+    "/api/zero/me/model-providers/:type/subscription-reset",
+  ],
+  "/api/onboarding/complete": [
+    "/api/okou/onboarding/complete",
+    "/api/zero/onboarding/complete",
+  ],
+  "/api/onboarding/status": [
+    "/api/okou/onboarding/status",
+    "/api/zero/onboarding/status",
+  ],
+  "/api/team": ["/api/okou/team", "/api/zero/team"],
+  "/api/user-model-preference": [
+    "/api/okou/user-model-preference",
+    "/api/zero/user-model-preference",
+  ],
+  "/api/user-preferences": [
+    "/api/okou/user-preferences",
+    "/api/zero/user-preferences",
   ],
   // #28357, the first #28278 slice. Published CLI builds post to the `okou`
   // form (`callWeather` built it by hand rather than from the contract, so it

@@ -27,10 +27,10 @@ GROUP BY "org_id";--> statement-breakpoint
 -- This trigger is the DB/API rollout bridge for #28304. It makes the seeded
 -- count converge atomically while old and new API revisions coexist for the
 -- observed maximum of approximately 102 minutes. In #28372, after the API
--- rollback/drain window and every pre-0953 pending snapshot/Session have been
+-- rollback/drain window and every pre-0954 pending snapshot/Session have been
 -- reconciled, replace this bridge with the direct partial unique index and drop
 -- the guard objects.
-CREATE FUNCTION "sync_usage_pack_pending_snapshot_guard_0953"()
+CREATE FUNCTION "sync_usage_pack_pending_snapshot_guard_0954"()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
@@ -105,8 +105,8 @@ BEGIN
 END;
 $$;--> statement-breakpoint
 
-CREATE TRIGGER "sync_usage_pack_pending_snapshot_guard_0953"
+CREATE TRIGGER "sync_usage_pack_pending_snapshot_guard_0954"
 AFTER INSERT OR DELETE OR UPDATE OF "org_id", "subscription_status"
 ON "usage_pack_subscriptions"
 FOR EACH ROW
-EXECUTE FUNCTION "sync_usage_pack_pending_snapshot_guard_0953"();
+EXECUTE FUNCTION "sync_usage_pack_pending_snapshot_guard_0954"();

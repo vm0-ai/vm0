@@ -108,6 +108,62 @@ export async function seedVm0ManagedModelKey(
   return vm0ManagedModelKeyFixture(context, fixtureId, response.selected_model);
 }
 
+export async function seedVm0ManagedModelCandidateKeys(
+  context: TestContext,
+  selectedModel: string,
+): Promise<Vm0ManagedModelKeyFixture> {
+  const fixtureId = randomUUID();
+  const response = await postAction(context, {
+    action: "seed-vm0-managed-model-candidate-keys",
+    fixture_id: fixtureId,
+    selected_model: selectedModel,
+  });
+  if (!response.selected_model) {
+    throw new Error("seedVm0ManagedModelCandidateKeys missing selected_model");
+  }
+  return vm0ManagedModelKeyFixture(context, fixtureId, response.selected_model);
+}
+
+type ManagedModelRuntimeRouteFixture = NonNullable<
+  TestRuntimeStateActionResponse["managed_model_route"]
+>;
+
+export async function resolveVm0ManagedModelRouteFixture(
+  context: TestContext,
+  selectedModel: string,
+  fallbackEnabled: boolean,
+): Promise<ManagedModelRuntimeRouteFixture | null> {
+  const response = await postAction(context, {
+    action: "resolve-vm0-managed-model-route",
+    selected_model: selectedModel,
+    fallback_enabled: fallbackEnabled,
+  });
+  return response.managed_model_route ?? null;
+}
+
+export async function setVm0ManagedCandidateCooldownFixture(
+  context: TestContext,
+  selectedModel: string,
+  route: ManagedModelRuntimeRouteFixture,
+  unavailableUntil: Date,
+): Promise<void> {
+  await postAction(context, {
+    action: "set-vm0-managed-candidate-cooldown",
+    selected_model: selectedModel,
+    provider_type: route.provider_type,
+    upstream_model: route.upstream_model,
+    unavailable_until: unavailableUntil.toISOString(),
+  });
+  onTestFinished(async () => {
+    await postAction(context, {
+      action: "delete-vm0-managed-candidate-cooldown",
+      selected_model: selectedModel,
+      provider_type: route.provider_type,
+      upstream_model: route.upstream_model,
+    });
+  });
+}
+
 export async function readBrowserScreenshotSchemaAvailable(
   context: TestContext,
 ): Promise<boolean> {

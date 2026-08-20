@@ -282,7 +282,7 @@ export const usagePackSubscriptions = pgTable(
 );
 
 /**
- * One database-owned pending count per organization. Migration 0953 preserves
+ * One database-owned pending count per organization. Migration 0954 preserves
  * the exact count when legacy writers already left competing snapshots. New
  * writers may claim the organization only after reconciliation reaches zero.
  */
