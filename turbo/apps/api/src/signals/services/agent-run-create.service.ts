@@ -941,8 +941,6 @@ type CreateRunErrorResult = Exclude<
   { readonly status: 201 }
 >;
 
-class ConnectorSelectionAdmissionError extends Error {}
-
 export type DispatchFailedRunCallbacks = (
   db: Db,
   runId: string,
@@ -4066,6 +4064,17 @@ function materializeStoredConnectorSnapshotRows(
   return snapshot;
 }
 
+function retainMaterializedConnectorSelections<TKey>(
+  selections: ReadonlyMap<TKey, string>,
+  materializedConnectorIds: ReadonlySet<string>,
+): ReadonlyMap<TKey, string> {
+  return new Map(
+    [...selections].filter(([, connectorId]) => {
+      return materializedConnectorIds.has(connectorId);
+    }),
+  );
+}
+
 async function loadStoredConnectorMaterializationSnapshot(
   db: Db,
   args: {
@@ -4104,14 +4113,11 @@ async function loadStoredConnectorMaterializationSnapshot(
       : [];
   });
   if (connectorIds.length === 0) {
-    if (
-      args.connectorIdsBySlug !== undefined &&
-      args.allowedConnectorSlugs.some((connectorSlug) => {
-        return args.connectorIdsBySlug?.has(connectorSlug);
-      })
-    ) {
-      throw new ConnectorSelectionAdmissionError(
-        "Selected connector account is no longer available",
+    if (args.connectorIdsBySlug && args.connectorIdsBySlug.size > 0) {
+      return await loadStoredConnectorMaterializationSnapshot(
+        db,
+        { ...args, connectorIdsBySlug: undefined },
+        timing,
       );
     }
     return null;
@@ -4127,12 +4133,11 @@ async function loadStoredConnectorMaterializationSnapshot(
     timing,
   );
   if (rows.length === 0) {
-    if (
-      args.connectorIdsBySlug !== undefined &&
-      args.connectorIdsBySlug.size > 0
-    ) {
-      throw new ConnectorSelectionAdmissionError(
-        "Selected connector account is no longer available",
+    if (args.connectorIdsBySlug && args.connectorIdsBySlug.size > 0) {
+      return await loadStoredConnectorMaterializationSnapshot(
+        db,
+        { ...args, connectorIdsBySlug: undefined },
+        timing,
       );
     }
     return null;
@@ -4153,16 +4158,20 @@ async function loadStoredConnectorMaterializationSnapshot(
         return row.access.connectorId;
       }),
     );
-    for (const connectorSlug of args.allowedConnectorSlugs) {
-      const connectorId = args.connectorIdsBySlug.get(connectorSlug);
-      if (
-        connectorId !== undefined &&
-        !materializedConnectorIds.has(connectorId)
-      ) {
-        throw new ConnectorSelectionAdmissionError(
-          `Selected ${connectorSlug} account is unavailable`,
-        );
-      }
+    const availableSelections = retainMaterializedConnectorSelections(
+      args.connectorIdsBySlug,
+      materializedConnectorIds,
+    );
+    if (availableSelections.size !== args.connectorIdsBySlug.size) {
+      return await loadStoredConnectorMaterializationSnapshot(
+        db,
+        {
+          ...args,
+          connectorIdsBySlug:
+            availableSelections.size > 0 ? availableSelections : undefined,
+        },
+        timing,
+      );
     }
   }
   return snapshot;
@@ -4883,13 +4892,14 @@ async function loadCustomConnectorContext(
   });
   if (rows.length === 0) {
     if (
-      args.connectorIdsByCustomConnectorId !== undefined &&
-      args.allowedCustomConnectorIds.some((customConnectorId) => {
-        return args.connectorIdsByCustomConnectorId?.has(customConnectorId);
-      })
+      args.connectorIdsByCustomConnectorId &&
+      args.connectorIdsByCustomConnectorId.size > 0
     ) {
-      throw new ConnectorSelectionAdmissionError(
-        "Selected custom connector account is no longer available",
+      return await loadCustomConnectorContext(
+        db,
+        { ...args, connectorIdsByCustomConnectorId: undefined },
+        signal,
+        timing,
       );
     }
     return emptyCustomConnectorRuntimeContext();
@@ -4918,38 +4928,39 @@ async function loadCustomConnectorContext(
       });
     },
   );
-  assertSelectedCustomConnectorAccountsMaterialized({
-    context,
-    allowedCustomConnectorIds: args.allowedCustomConnectorIds,
-    connectorIdsByCustomConnectorId: args.connectorIdsByCustomConnectorId,
-  });
-  return context;
-}
-
-function assertSelectedCustomConnectorAccountsMaterialized(args: {
-  readonly context: CustomConnectorRuntimeContext;
-  readonly allowedCustomConnectorIds: readonly string[];
-  readonly connectorIdsByCustomConnectorId:
-    | ReadonlyMap<string, string>
-    | undefined;
-}): void {
-  if (args.connectorIdsByCustomConnectorId === undefined) {
-    return;
-  }
-  const materializedSourceIds = new Set(
-    args.context.targets.flatMap((target) => {
-      return target.sourceId === undefined ? [] : [target.sourceId];
-    }),
-  );
-  for (const customConnectorId of args.allowedCustomConnectorIds) {
-    const connectorId =
-      args.connectorIdsByCustomConnectorId.get(customConnectorId);
-    if (connectorId !== undefined && !materializedSourceIds.has(connectorId)) {
-      throw new ConnectorSelectionAdmissionError(
-        "Selected custom connector account is unavailable or incompatible",
+  if (args.connectorIdsByCustomConnectorId !== undefined) {
+    const availableSelections = retainMaterializedCustomConnectorSelections(
+      context,
+      args.connectorIdsByCustomConnectorId,
+    );
+    if (
+      availableSelections.size !== args.connectorIdsByCustomConnectorId.size
+    ) {
+      return await loadCustomConnectorContext(
+        db,
+        {
+          ...args,
+          connectorIdsByCustomConnectorId:
+            availableSelections.size > 0 ? availableSelections : undefined,
+        },
+        signal,
+        timing,
       );
     }
   }
+  return context;
+}
+
+function retainMaterializedCustomConnectorSelections(
+  context: CustomConnectorRuntimeContext,
+  selections: ReadonlyMap<string, string>,
+): ReadonlyMap<string, string> {
+  const sourceIds = new Set(
+    context.targets.flatMap((target) => {
+      return target.sourceId === undefined ? [] : [target.sourceId];
+    }),
+  );
+  return retainMaterializedConnectorSelections(selections, sourceIds);
 }
 
 function collectPermissionNames(
@@ -8715,9 +8726,6 @@ async function prepareRunConnectorContexts(
   );
   if (result.ok) {
     return result.value;
-  }
-  if (result.error instanceof ConnectorSelectionAdmissionError) {
-    return badRequestMessage(result.error.message);
   }
   throw result.error;
 }

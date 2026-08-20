@@ -420,24 +420,8 @@ export async function resolveChatThreadConnectorSelections(
       userId: args.userId,
       connectorId: args.connectorSourceId,
     });
-    if (!target) {
-      return {
-        kind: "invalid",
-        message: "Connector source is no longer available",
-      };
-    }
-    if (targetIsAuthorized(args.scope, target)) {
+    if (target && targetIsAuthorized(args.scope, target)) {
       const key = connectorAccountTargetKey(target);
-      const selected = activeSelections.get(key);
-      if (
-        selected !== undefined &&
-        selected.connectionId !== args.connectorSourceId
-      ) {
-        return {
-          kind: "invalid",
-          message: "Connector source conflicts with the chat thread selection",
-        };
-      }
       activeSelections.set(key, {
         connectionId: args.connectorSourceId,
         target,
@@ -463,10 +447,7 @@ export async function resolveChatThreadConnectorSelections(
   for (const selection of activeSelections.values()) {
     const resolution = exact.get(connectorAccountTargetKey(selection.target));
     if (resolution?.kind !== "resolved") {
-      return {
-        kind: "invalid",
-        message: "Selected connector account is no longer available",
-      };
+      continue;
     }
     if (selection.target.kind === "builtin") {
       connectorIdsBySlug.set(

@@ -15,12 +15,14 @@ import { createApp } from "../../../app-factory";
 import { mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now } from "../../../lib/time";
 import { mockStripeWebhookEventConstructor } from "../../external/stripe-client";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import {
   createConnectorBddApi,
   mockStripeConnectorOAuth,
 } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { chatEventDisplayText } from "./helpers/chat-event";
 import { createRouteMocks } from "./helpers/route-test";
@@ -33,6 +35,7 @@ import { workflowAutomationsRoutes } from "../workflow-automations";
 const context = testContext();
 const connectors = createConnectorBddApi(context);
 const runs = createRunsApi(context);
+const webhooks = createWebhookCallbackApi(context);
 const workflows = createWorkflowsBddApi(context);
 const mocks = createRouteMocks(context);
 
@@ -607,6 +610,74 @@ describe("Stripe automation event webhook", () => {
       `chatThreadDetailChanged:${scenario.chatThreadId}`,
       null,
     );
+  });
+
+  it("falls back when a queued event's Stripe source is deleted", async () => {
+    const scenario = await setupScenario();
+    await connectors.updateFeatureSwitches(scenario.actor, {
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+    });
+    await runs.enableAgentConnectors(scenario.actor, scenario.agentId, [
+      "stripe",
+    ]);
+    await runs.heartbeatRunner(scenario.runnerGroup);
+
+    const firstEventId = "evt_thread_connector_source_active";
+    await postStripeAutomationEvent(
+      invoicePaidEvent({ eventId: firstEventId }),
+    );
+    expect((await executeAutomation(scenario)).body).toStrictEqual(
+      EXECUTED_EXECUTION,
+    );
+    const firstClaim = await claimScenarioRun(scenario, firstEventId);
+
+    const queuedEventId = "evt_thread_connector_source_queued";
+    await postStripeAutomationEvent(
+      invoicePaidEvent({ eventId: queuedEventId }),
+    );
+    expect((await executeAutomation(scenario)).body).toStrictEqual(
+      EXECUTED_EXECUTION,
+    );
+
+    await connectors.deleteConnectorBySlug(scenario.actor, "stripe");
+    const replacement = await connectStripeOAuth(
+      scenario.actor,
+      STRIPE_ACCOUNT_ID,
+    );
+    expect(replacement.id).not.toBe(scenario.connector.id);
+
+    await runs.requestCancelRun(scenario.actor, firstClaim.runId, [200]);
+    await webhooks.requestAgentComplete(
+      {
+        runId: firstClaim.runId,
+        exitCode: 1,
+        error: "Run cancelled",
+      },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+    await flushWaitUntilForTest();
+
+    mocks.clerk.session(scenario.actor.userId, scenario.actor.orgId);
+    const queuedRunId = (
+      await workflows.readThreadEvents(scenario.chatThreadId)
+    )
+      .flatMap((event) => {
+        return event.runId && event.runId !== firstClaim.runId
+          ? [event.runId]
+          : [];
+      })
+      .at(0);
+    if (!queuedRunId) {
+      throw new Error("Expected the queued Stripe event to start a run");
+    }
+    const queuedClaim = await runs.claimRunnerJob(queuedRunId);
+    expect(
+      `${queuedClaim.prompt}\n${queuedClaim.appendSystemPrompt ?? ""}`,
+    ).toContain(queuedEventId);
+    expect(
+      Object.values(queuedClaim.secretConnectorMetadataMap ?? {}),
+    ).toContainEqual(expect.objectContaining({ sourceId: replacement.id }));
   });
 
   it("queues every embedded line and current relationship identities without Stripe enrichment", async () => {

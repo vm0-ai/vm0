@@ -1381,8 +1381,8 @@ describe("CHAT-02: thread connector account selection", () => {
     await cancelChatRun(actor, run.runId, claimed.sandboxHeaders);
   });
 
-  it("rejects an unavailable selected custom connector without fallback", async () => {
-    const { actor, agentId } = await entitledChatActor();
+  it("starts the run when a selected custom connector becomes unavailable", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
     const orgId = actor.orgId;
     if (!orgId) {
       throw new Error("Expected an organization-scoped chat actor");
@@ -1450,19 +1450,27 @@ describe("CHAT-02: thread connector account selection", () => {
       needsReconnect: true,
     });
 
-    const rejected = await chat.requestSendEvent(
-      actor,
-      {
-        agentId,
-        threadId: first.threadId,
-        prompt: "Do not switch to another custom connector account",
-      },
-      [400],
+    const fallback = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "Continue despite the unavailable connector account",
+    });
+    const claimed = await claimChatRun(runnerGroup, fallback.runId);
+    expect(claimed.claim.connectorRuntimeTargets).not.toContainEqual(
+      expect.objectContaining({ customConnectorId: customConnector.id }),
     );
-    expectApiError(rejected.body);
-    expect(rejected.body.error.message).toContain(
-      "Selected custom connector account",
+    const selections = await accept(
+      chatThreadConnectorSelectionsClient().get({
+        headers: sessionHeaders(actor),
+        params: { id: first.threadId },
+      }),
+      [200],
     );
+    expect(selections.body.selections).toContainEqual({
+      connectionId: connectorId,
+      target: { kind: "custom", customConnectorId: customConnector.id },
+    });
+    await cancelChatRun(actor, fallback.runId, claimed.sandboxHeaders);
   });
 });
 

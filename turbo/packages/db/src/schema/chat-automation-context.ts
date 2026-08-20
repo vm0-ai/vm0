@@ -29,8 +29,9 @@ export const chatAutomationContext = pgTable(
     /**
      * Exact account that delivered the event. This is run-scoped launch
      * material, not a persisted thread account preference. It intentionally
-     * has no foreign key: a deleted source must stay identifiable so launch
-     * fails closed instead of silently falling back to the current default.
+     * has no foreign key so queued event provenance survives account deletion;
+     * launch falls back to the thread preference or current default when the
+     * recorded source is no longer usable.
      */
     connectorSourceId: uuid("connector_source_id"),
     /**
