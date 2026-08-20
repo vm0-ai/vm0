@@ -125,8 +125,8 @@ def record_allow_context(
     no-op.
 
     On success, the flow records diagnostic eligibility, active firewall names,
-    and one classification-compatible catalog snapshot. Response and error
-    phases resolve candidates only from that pinned snapshot.
+    and one classification-compatible catalog snapshot. Response phases resolve
+    candidates only from that pinned snapshot.
     """
     if classification.is_asterisk_form:
         return
