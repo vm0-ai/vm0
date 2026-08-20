@@ -16,9 +16,10 @@ import { testContext } from "./test-context";
 const c = initContract();
 const REQUEST_ORIGIN = "http://api.test";
 
-// Synthetic contracts rather than real ones. `MIGRATED_BRANDED_PATHS` ships
-// empty, so no real route can exercise the mechanism yet, and a fixture keeps a
-// later migration slice from quietly changing what these tests assert.
+// Synthetic contracts rather than real ones, so that what the mechanism tests
+// below assert stays fixed no matter which contracts a #28278 slice moves. The
+// rows the shipped table actually holds are covered separately, over the real
+// route table, at the end of this file.
 const migrationContract = c.router({
   // The shape a migrated contract has: the neutral path it declares after
   // #28278 moves it off `/api/okou/**`.
@@ -265,19 +266,51 @@ describe("branded paths for migrated neutral routes", () => {
     expect(movedWithRow).toStrictEqual([]);
   });
 
-  // The table ships empty, so this slice adds a capability and no route.
-  it("changes no registration while the shipped table is empty", () => {
-    const beforeTable = withApiNamespaceAliases(
-      withFinalProviderConsolePaths(ROUTES),
+  // The rows the shipped table holds, run over the real route table. Each
+  // migrated route must answer at the neutral path its contract now declares
+  // and at both branded paths a released caller may still hold. The paths are
+  // written out here rather than read back from the table or derived from
+  // `apiNamespaceAliasPaths` — the table is the thing under test, and that
+  // function returns a neutral path unchanged, so either source would assert
+  // nothing.
+  it("serves every migrated route at its neutral path and both branded paths", () => {
+    const migratedPaths: Readonly<Record<string, readonly string[]>> = {
+      // #28416
+      "/api/recognize": ["/api/okou/recognize", "/api/zero/recognize"],
+      "/api/scrape": ["/api/okou/scrape", "/api/zero/scrape"],
+      "/api/translate": ["/api/okou/translate", "/api/zero/translate"],
+      "/api/web-search": ["/api/okou/web-search", "/api/zero/web-search"],
+    };
+    const registered = withMigratedBrandedPaths(
+      withApiNamespaceAliases(withFinalProviderConsolePaths(ROUTES)),
     );
-    const afterTable = withMigratedBrandedPaths(beforeTable);
 
-    expect(afterTable).toHaveLength(beforeTable.length);
-    expect(
-      afterTable.filter((entry, index) => {
-        return entry !== beforeTable[index];
-      }),
-    ).toStrictEqual([]);
+    for (const [neutral, branded] of Object.entries(migratedPaths)) {
+      const sources = registered.filter((entry) => {
+        return entry.route.path === neutral;
+      });
+      expect(sources, `Expected a route declaring ${neutral}`).toHaveLength(1);
+      const source = sources[0];
+      if (!source) {
+        throw new Error(`Missing route declaring ${neutral}`);
+      }
+
+      for (const path of branded) {
+        const matches = registered.filter((entry) => {
+          return entry.route.path === path;
+        });
+        expect(matches, `Missing registration for ${path}`).toHaveLength(1);
+        const match = matches[0];
+        if (!match) {
+          throw new Error(`Missing registration for ${path}`);
+        }
+        expect(match.handler).toBe(source.handler);
+        expect(match.route).toStrictEqual({ ...source.route, path });
+        // A row is compatibility promised on purpose, never a gap the
+        // compatibility table missed.
+        expect(match.viaNamespaceAliasFallback).toBeUndefined();
+      }
+    }
   });
 
   // Hono keeps both registrations for a duplicated path and answers with the

@@ -251,8 +251,8 @@ export function withApiNamespaceAliases(
  * A migrated route generally owes both branded forms, so a value is a list
  * rather than a single path.
  *
- * The table ships empty. Each #28278 slice adds the rows for the paths it
- * moves, so a move and the compatibility it owes land in one commit.
+ * Each #28278 slice adds the rows for the paths it moves, so a move and the
+ * compatibility it owes land in one commit.
  *
  * Every row is compatibility debt under the same removal gate as
  * `LEGACY_ZERO_PATHS`: a row is removed only under #26701's evidence rules. The
@@ -262,7 +262,11 @@ export function withApiNamespaceAliases(
 type MigratedBrandedPathTable = Readonly<Record<string, readonly string[]>>;
 
 const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
-  // Empty until the first #28278 migration slice moves a contract path.
+  // #28416: the managed web-content and model product routes.
+  "/api/recognize": ["/api/okou/recognize", "/api/zero/recognize"],
+  "/api/scrape": ["/api/okou/scrape", "/api/zero/scrape"],
+  "/api/translate": ["/api/okou/translate", "/api/zero/translate"],
+  "/api/web-search": ["/api/okou/web-search", "/api/zero/web-search"],
 };
 
 /**
