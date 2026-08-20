@@ -62,6 +62,7 @@ describe("Okou CLI program", () => {
       "scrape",
       "web-search",
       "people-search",
+      "social",
       "recognize",
       "translate",
       "finance",
