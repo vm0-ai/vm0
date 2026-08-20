@@ -5,6 +5,10 @@ import type {
 } from "./api-dispatch-timing.service";
 
 type AcceptedConnectorCatalogCacheOutcome = "hit" | "miss" | "in_flight";
+type AcceptedConnectorCatalogCacheMissReason =
+  | "process_empty"
+  | "catalog_identity_changed"
+  | "capability_identity_changed";
 type ConnectorRuntimeSnapshotCacheOutcome = "hit" | "miss";
 type ConnectorCatalogValidationResult =
   | { readonly outcome: "attested" }
@@ -136,6 +140,9 @@ export class ConnectorCatalogLoadTiming {
   private acceptedCacheOutcome:
     | AcceptedConnectorCatalogCacheOutcome
     | undefined;
+  private acceptedCacheMissReason:
+    | AcceptedConnectorCatalogCacheMissReason
+    | undefined;
   private runtimeCacheOutcome: ConnectorRuntimeSnapshotCacheOutcome | undefined;
   private validationResult: ConnectorCatalogValidationResult | undefined;
   private catalogRawSize: number | undefined;
@@ -159,6 +166,12 @@ export class ConnectorCatalogLoadTiming {
     ) {
       this.acceptedCacheOutcome = outcome;
     }
+  }
+
+  recordAcceptedCacheMissReason(
+    reason: AcceptedConnectorCatalogCacheMissReason,
+  ): void {
+    this.acceptedCacheMissReason ??= reason;
   }
 
   recordRuntimeCacheOutcome(
@@ -218,6 +231,12 @@ export class ConnectorCatalogLoadTiming {
         ? {}
         : {
             connector_catalog_accepted_cache_outcome: this.acceptedCacheOutcome,
+          }),
+      ...(this.acceptedCacheMissReason === undefined
+        ? {}
+        : {
+            connector_catalog_accepted_cache_miss_reason:
+              this.acceptedCacheMissReason,
           }),
       ...(this.runtimeCacheOutcome === undefined
         ? {}
