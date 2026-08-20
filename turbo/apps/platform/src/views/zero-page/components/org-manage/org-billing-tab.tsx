@@ -162,8 +162,8 @@ function planName(tier: BillingPlan["tier"] | BillingTier): string {
 }
 
 /* The legacy plan cards need their own copy. A legacy plan pools its credits
-   in the organization, so the usage-pack description -- which is about each
-   member holding their own -- is not true of the plan this card sells. */
+   in the organization, so the usage-pack description's per-member pricing is
+   not true of the plan this card sells. */
 function planDescription(tier: BillingPlan["tier"]): string {
   if (tier === "pro") {
     return i18n.t(($) => {

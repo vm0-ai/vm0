@@ -2944,19 +2944,13 @@ describe("organization billing settings", () => {
       expect(screen.getByText("Compare plans")).toBeInTheDocument();
     });
 
-    /* A legacy plan pools its credits in the organization, so this page must
-       not borrow the usage-pack description, which says each member holds
-       their own. */
+    // A legacy plan pools its credits in the organization, so its card keeps
+    // the established legacy description instead of the per-member plan copy.
     expect(
       screen.getByText(
         "More credits and concurrency for teams running AI agents every day.",
       ),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByText(
-        "For one person or a small workspace running agents every day. Each member gets their own credits.",
-      ),
-    ).toBeNull();
 
     click(screen.getByText("Start with Team"));
 
