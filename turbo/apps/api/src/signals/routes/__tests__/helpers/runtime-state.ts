@@ -141,24 +141,6 @@ export async function resolveVm0ManagedModelRouteFixture(
   return response.managed_model_route ?? null;
 }
 
-export async function setVm0ManagedCredentialCooldownFixture(
-  context: TestContext,
-  route: ManagedModelRuntimeRouteFixture,
-  unavailableUntil: Date,
-): Promise<void> {
-  await postAction(context, {
-    action: "set-vm0-managed-credential-cooldown",
-    model_key_id: route.model_key_id,
-    unavailable_until: unavailableUntil.toISOString(),
-  });
-  onTestFinished(async () => {
-    await postAction(context, {
-      action: "delete-vm0-managed-credential-cooldown",
-      model_key_id: route.model_key_id,
-    });
-  });
-}
-
 export async function setVm0ManagedCandidateCooldownFixture(
   context: TestContext,
   selectedModel: string,

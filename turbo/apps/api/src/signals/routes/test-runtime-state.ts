@@ -12,10 +12,7 @@ import { compatibleStoredExecutionContextSchema } from "@okouai/api-contracts/co
 import { agentComposes } from "@okouai/db/schema/agent-compose";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
-import {
-  managedModelCandidateCooldown,
-  managedModelCredentialCooldown,
-} from "@okouai/db/schema/managed-model-cooldown";
+import { managedModelCandidateCooldown } from "@okouai/db/schema/managed-model-cooldown";
 import {
   browserSessionTabSnapshots,
   browserSessions,
@@ -365,8 +362,6 @@ type Vm0ManagedModelRuntimeAction = Extract<
   {
     action:
       | "resolve-vm0-managed-model-route"
-      | "set-vm0-managed-credential-cooldown"
-      | "delete-vm0-managed-credential-cooldown"
       | "set-vm0-managed-candidate-cooldown"
       | "delete-vm0-managed-candidate-cooldown";
   }
@@ -377,8 +372,6 @@ function isVm0ManagedModelRuntimeAction(
 ): body is Vm0ManagedModelRuntimeAction {
   return [
     "resolve-vm0-managed-model-route",
-    "set-vm0-managed-credential-cooldown",
-    "delete-vm0-managed-credential-cooldown",
     "set-vm0-managed-candidate-cooldown",
     "delete-vm0-managed-candidate-cooldown",
   ].includes(body.action);
@@ -406,29 +399,6 @@ async function vm0ManagedModelRuntimeActionResponse(
             : null,
         },
       };
-    }
-    case "set-vm0-managed-credential-cooldown": {
-      await db
-        .insert(managedModelCredentialCooldown)
-        .values({
-          modelKeyId: body.model_key_id,
-          unavailableUntil: new Date(body.unavailable_until),
-        })
-        .onConflictDoUpdate({
-          target: [managedModelCredentialCooldown.modelKeyId],
-          set: { unavailableUntil: new Date(body.unavailable_until) },
-        });
-      signal.throwIfAborted();
-      return { status: 200 as const, body: { ok: true as const } };
-    }
-    case "delete-vm0-managed-credential-cooldown": {
-      await db
-        .delete(managedModelCredentialCooldown)
-        .where(
-          eq(managedModelCredentialCooldown.modelKeyId, body.model_key_id),
-        );
-      signal.throwIfAborted();
-      return { status: 200 as const, body: { ok: true as const } };
     }
     case "set-vm0-managed-candidate-cooldown": {
       await db

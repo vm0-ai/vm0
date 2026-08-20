@@ -4,10 +4,7 @@ import {
   type Vm0ManagedRouteTarget,
 } from "@okouai/api-contracts/contracts/model-providers";
 import { builtInModelKeys } from "@okouai/db/schema/built-in-model-key";
-import {
-  managedModelCandidateCooldown,
-  managedModelCredentialCooldown,
-} from "@okouai/db/schema/managed-model-cooldown";
+import { managedModelCandidateCooldown } from "@okouai/db/schema/managed-model-cooldown";
 import { and, eq, gt } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
@@ -78,22 +75,6 @@ export async function resolveBuiltInModelRuntimeRoute(
       .where(eq(builtInModelKeys.vendor, target.vendor))
       .limit(1);
     if (!key) {
-      continue;
-    }
-
-    const [credentialCooldown] = await db
-      .select({
-        unavailableUntil: managedModelCredentialCooldown.unavailableUntil,
-      })
-      .from(managedModelCredentialCooldown)
-      .where(
-        and(
-          eq(managedModelCredentialCooldown.modelKeyId, key.id),
-          gt(managedModelCredentialCooldown.unavailableUntil, timestamp),
-        ),
-      )
-      .limit(1);
-    if (credentialCooldown) {
       continue;
     }
 

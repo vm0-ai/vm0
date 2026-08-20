@@ -40,15 +40,6 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     fallback_enabled: z.boolean(),
   }),
   z.object({
-    action: z.literal("set-vm0-managed-credential-cooldown"),
-    model_key_id: z.uuid(),
-    unavailable_until: z.iso.datetime(),
-  }),
-  z.object({
-    action: z.literal("delete-vm0-managed-credential-cooldown"),
-    model_key_id: z.uuid(),
-  }),
-  z.object({
     action: z.literal("set-vm0-managed-candidate-cooldown"),
     selected_model: z.string(),
     provider_type: z.string(),
