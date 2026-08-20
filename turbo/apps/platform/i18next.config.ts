@@ -26,6 +26,8 @@ export default defineConfig({
     defaultNS: "common",
     functions: ["i18n.t"],
     preservePatterns: [
+      "artifacts.templates.workflowCatalog.*",
+      "artifacts.templates.workflowCategories.*",
       "onboarding.categories.*",
       "onboarding.make.options.*",
       "onboarding.templates.*.*",

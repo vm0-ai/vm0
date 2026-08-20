@@ -2,11 +2,13 @@ import { randomUUID } from "node:crypto";
 
 import type { ConnectorAuthMethodId } from "@okouai/api-contracts/contracts/connector-identity";
 import { connectorOauthStartResponseSchema } from "@okouai/api-contracts/contracts/connector-schemas";
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../../../app-factory";
 import { testContext } from "../../../__tests__/test-context";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { server } from "../../../mocks/server";
 import { clearMockNow } from "../../../lib/time";
 import {
   API_TEST_CONNECTOR_CATALOG,
@@ -30,6 +32,11 @@ const OKOU_API_ORIGIN = "https://api.okou.ai";
 const WEB_ORIGIN = "https://www.vm0.ai";
 const LOCAL_ORIGIN = "http://localhost:3000";
 const LOCAL_WEB_ORIGIN = "https://www.vm0.ai:8443";
+const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const GOOGLE_OPENID_USERINFO_URL =
+  "https://openidconnect.googleapis.com/v1/userinfo";
+const AIRTABLE_OAUTH_TOKEN_URL = "https://airtable.com/oauth2/v1/token";
+const AIRTABLE_WHOAMI_URL = "https://api.airtable.com/v0/meta/whoami";
 const AUTH_REQUEST_USER_ID_PREFIX = "user_zero_connectors_oauth_start_";
 const YOUTUBE_OAUTH_SCOPES = [
   "https://www.googleapis.com/auth/youtube",
@@ -141,6 +148,12 @@ function expectOauthState(authorizationUrl: URL): string {
   return state!;
 }
 
+function expectOkouOauthState(authorizationUrl: URL): string {
+  const state = authorizationUrl.searchParams.get("state");
+  expect(state).toMatch(/^okou\.[0-9a-f]{64}$/u);
+  return state!;
+}
+
 async function rejectProviderAuthorization(
   authorizationUrl: URL,
 ): Promise<void> {
@@ -178,12 +191,12 @@ describe("POST /api/zero/connectors/:connectorSlug/oauth/start", () => {
     expectOauthState(authorizationUrl);
   });
 
-  it("starts YouTube OAuth without a feature switch", async () => {
+  it("keeps an omitted callback target on the existing Web callback", async () => {
     mockAuthenticatedSession();
 
     const response = await requestOauthStart("youtube", {
       headers: authHeaders(),
-      origin: API_ORIGIN,
+      origin: OKOU_API_ORIGIN,
     });
 
     expect(response.status).toBe(200);
@@ -202,7 +215,7 @@ describe("POST /api/zero/connectors/:connectorSlug/oauth/start", () => {
     ).toStrictEqual([...YOUTUBE_OAUTH_SCOPES]);
     expect(authorizationUrl.searchParams.get("access_type")).toBe("offline");
     expect(authorizationUrl.searchParams.get("prompt")).toBe("consent");
-    expectOauthState(authorizationUrl);
+    expectOkouOauthState(authorizationUrl);
     await rejectProviderAuthorization(authorizationUrl);
   });
 
@@ -247,8 +260,27 @@ describe("POST /api/zero/connectors/:connectorSlug/oauth/start", () => {
     await rejectProviderAuthorization(authorizationUrl);
   });
 
-  it("uses App callbacks for allowlisted connectors", async () => {
-    mockEnv("APP_URL", "https://app.vm0.test");
+  it("uses the direct Okou App callback for a ready Google connector", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockAuthenticatedSession();
+
+    const response = await requestOauthStart("google-maps", {
+      callbackTarget: "app",
+      headers: authHeaders(),
+      origin: OKOU_API_ORIGIN,
+    });
+
+    expect(response.status).toBe(200);
+    const authorizationUrl = await authorizationUrlFromResponse(response);
+    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+      "https://app.okou.ai/connectors/google-maps/callback",
+    );
+    expectOkouOauthState(authorizationUrl);
+    await rejectProviderAuthorization(authorizationUrl);
+  });
+
+  it("keeps the VM0 App callback for a ready Google connector", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
     mockAuthenticatedSession();
 
     const response = await requestOauthStart("google-maps", {
@@ -260,8 +292,9 @@ describe("POST /api/zero/connectors/:connectorSlug/oauth/start", () => {
     expect(response.status).toBe(200);
     const authorizationUrl = await authorizationUrlFromResponse(response);
     expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
-      "https://app.vm0.test/connectors/google-maps/callback",
+      "https://app.vm0.ai/connectors/google-maps/callback",
     );
+    expectOauthState(authorizationUrl);
     await rejectProviderAuthorization(authorizationUrl);
   });
 
@@ -283,7 +316,7 @@ describe("POST /api/zero/connectors/:connectorSlug/oauth/start", () => {
       expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
         connectorSlug === "slack"
           ? `${WEB_ORIGIN}/api/connectors/slack/callback`
-          : "https://app.vm0.ai/connectors/google-maps/callback",
+          : `https://app.${publicBrand === "okou" ? "okou" : "vm0"}.ai/connectors/google-maps/callback`,
       );
       const state = authorizationUrl.searchParams.get("state") ?? "";
 
@@ -322,12 +355,32 @@ describe("POST /api/zero/connectors/:connectorSlug/oauth/start", () => {
     expect(vm0.location.pathname).toBe("/connector/error");
   });
 
-  it("stores provider PKCE context for server-side OAuth handoff", async () => {
+  it("reuses the persisted exact redirect URI for a PKCE token exchange", async () => {
+    const tokenBodies: URLSearchParams[] = [];
+    server.use(
+      http.post(AIRTABLE_OAUTH_TOKEN_URL, async ({ request }) => {
+        tokenBodies.push(new URLSearchParams(await request.text()));
+        return HttpResponse.json({
+          access_token: "airtable-test-token",
+          refresh_token: "airtable-refresh-token",
+          expires_in: 3600,
+          scope: "data.records:read",
+        });
+      }),
+      http.get(AIRTABLE_WHOAMI_URL, () => {
+        return HttpResponse.json({
+          id: "airtable-user-123",
+          email: "airtable@example.test",
+        });
+      }),
+    );
+    mockEnv("APP_URL", "https://app.vm0.ai");
     mockAuthenticatedSession();
 
     const response = await requestOauthStart("airtable", {
+      callbackTarget: "app",
       headers: authHeaders(),
-      origin: API_ORIGIN,
+      origin: OKOU_API_ORIGIN,
     });
 
     expect(response.status).toBe(200);
@@ -338,35 +391,104 @@ describe("POST /api/zero/connectors/:connectorSlug/oauth/start", () => {
     expect(authorizationUrl.searchParams.get("client_id")).toBe(
       "airtable-test-client-id",
     );
-    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
-      `${WEB_ORIGIN}/api/connectors/airtable/callback`,
-    );
+    const redirectUri = authorizationUrl.searchParams.get("redirect_uri");
+    expect(redirectUri).toBe("https://app.vm0.ai/connectors/airtable/callback");
     expect(authorizationUrl.searchParams.get("code_challenge")).toMatch(
       /^[A-Za-z0-9_-]+$/,
     );
     expect(authorizationUrl.searchParams.get("code_challenge_method")).toBe(
       "S256",
     );
-    expectOauthState(authorizationUrl);
-    await rejectProviderAuthorization(authorizationUrl);
+    const state = expectOkouOauthState(authorizationUrl);
+
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
+    const callback = await app.request(
+      `${OKOU_API_ORIGIN}/api/connectors/airtable/callback?${new URLSearchParams(
+        {
+          code: "airtable-authorization-code",
+          state,
+        },
+      )}`,
+      { headers: { "x-vm0-web-origin": "https://okou.ai" } },
+    );
+
+    expect(callback.status).toBe(307);
+    expect(new URL(callback.headers.get("location") ?? "").origin).toBe(
+      "https://app.okou.ai",
+    );
+    expect(tokenBodies).toHaveLength(1);
+    expect(tokenBodies[0]?.get("redirect_uri")).toBe(redirectUri);
+    expect(tokenBodies[0]?.get("code_verifier")).toMatch(/^[A-Za-z0-9_-]+$/u);
   });
 
-  it("uses App callbacks by default outside the legacy callback list", async () => {
-    mockEnv("APP_URL", "https://app.vm0.test");
+  it("reuses the direct Okou redirect URI for a Google token exchange", async () => {
+    const tokenBodies: URLSearchParams[] = [];
+    server.use(
+      http.post(GOOGLE_OAUTH_TOKEN_URL, async ({ request }) => {
+        tokenBodies.push(new URLSearchParams(await request.text()));
+        return HttpResponse.json({
+          access_token: "gmail-test-token",
+          refresh_token: "gmail-refresh-token",
+          expires_in: 3600,
+          scope: "https://www.googleapis.com/auth/gmail.modify",
+        });
+      }),
+      http.get(GOOGLE_OPENID_USERINFO_URL, () => {
+        return HttpResponse.json({
+          sub: "gmail-user-123",
+          email: "gmail@example.test",
+          name: "Gmail Test User",
+        });
+      }),
+    );
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockAuthenticatedSession();
+
+    const response = await requestOauthStart("gmail", {
+      callbackTarget: "app",
+      headers: authHeaders(),
+      origin: OKOU_API_ORIGIN,
+    });
+
+    expect(response.status).toBe(200);
+    const authorizationUrl = await authorizationUrlFromResponse(response);
+    const redirectUri = authorizationUrl.searchParams.get("redirect_uri");
+    expect(redirectUri).toBe("https://app.okou.ai/connectors/gmail/callback");
+    const state = expectOkouOauthState(authorizationUrl);
+
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
+    const callback = await app.request(
+      `${OKOU_API_ORIGIN}/api/connectors/gmail/callback?${new URLSearchParams({
+        code: "gmail-authorization-code",
+        state,
+      })}`,
+      { headers: { "x-vm0-web-origin": "https://okou.ai" } },
+    );
+
+    expect(callback.status).toBe(307);
+    const callbackLocation = new URL(callback.headers.get("location") ?? "");
+    expect(callbackLocation.origin).toBe("https://app.okou.ai");
+    expect(callbackLocation.pathname).toBe("/connector/success");
+    expect(tokenBodies).toHaveLength(1);
+    expect(tokenBodies[0]?.get("redirect_uri")).toBe(redirectUri);
+  });
+
+  it("keeps an Okou start on the VM0 App callback when the provider is not ready", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
     mockAuthenticatedSession();
 
     const response = await requestOauthStart("test-oauth", {
       headers: authHeaders(),
-      origin: API_ORIGIN,
+      origin: OKOU_API_ORIGIN,
       callbackTarget: "app",
     });
 
     expect(response.status).toBe(200);
     const authorizationUrl = await authorizationUrlFromResponse(response);
     expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
-      "https://app.vm0.test/connectors/test-oauth/callback",
+      "https://app.vm0.ai/connectors/test-oauth/callback",
     );
-    expectOauthState(authorizationUrl);
+    expectOkouOauthState(authorizationUrl);
     await rejectProviderAuthorization(authorizationUrl);
   });
 
@@ -397,12 +519,12 @@ describe("POST /api/zero/connectors/:connectorSlug/oauth/start", () => {
   });
 
   it("keeps denylisted callbacks on the legacy path", async () => {
-    mockEnv("APP_URL", "https://app.vm0.test");
+    mockEnv("APP_URL", "https://app.vm0.ai");
     mockAuthenticatedSession();
 
     const response = await requestOauthStart("slack", {
       headers: authHeaders(),
-      origin: WEB_ORIGIN,
+      origin: OKOU_API_ORIGIN,
       callbackTarget: "app",
     });
 
@@ -411,7 +533,7 @@ describe("POST /api/zero/connectors/:connectorSlug/oauth/start", () => {
     expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
       `${WEB_ORIGIN}/api/connectors/slack/callback`,
     );
-    expectOauthState(authorizationUrl);
+    expectOkouOauthState(authorizationUrl);
     await rejectProviderAuthorization(authorizationUrl);
   });
 

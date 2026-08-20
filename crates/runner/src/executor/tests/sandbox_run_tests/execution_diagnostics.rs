@@ -1214,6 +1214,8 @@ async fn execute_inner_nonzero_with_failure_diagnostic_skips_abnormal_exit_diagn
                 elapsed_ms: 10_000,
                 failure_kind: EventDeliveryAttemptFailureKind::Timeout,
                 http_status: None,
+                timeout_observed: None,
+                connect_observed: None,
             }],
         }),
         drain_timeout: None,

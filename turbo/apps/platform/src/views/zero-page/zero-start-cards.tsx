@@ -13,6 +13,7 @@ import {
   type StartCardKind,
 } from "../../signals/zero-page/zero-start-cards.ts";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
+import { localizedWorkflowTemplate } from "./workflow-template-copy.ts";
 
 // Every kind draws into the same square slot so the row reads as one family.
 // The card is only ~292px wide, so the tile stays small enough to leave the
@@ -439,11 +440,14 @@ export function StartCards({
     template: WorkflowTemplateItem | undefined,
   ): StartCardContent => {
     if (kind === "workflow") {
+      const localized = template
+        ? localizedWorkflowTemplate(template)
+        : undefined;
       return {
-        title: template?.title ?? "",
+        title: localized?.title ?? "",
         // The catalog's own `description` is written for the template picker
         // and runs past the two lines this card has.
-        description: template?.shortDescription ?? "",
+        description: localized?.shortDescription ?? "",
         prompt: template?.promptGuidance ?? "",
       };
     }

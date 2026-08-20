@@ -8,6 +8,7 @@ import {
   assertUniqueRouteRegistrations,
   type RouteEntry,
   withApiNamespaceAliases,
+  withMigratedBrandedPaths,
 } from "../signals/route-entry";
 
 const CANONICAL_PREFIX = "/api/okou";
@@ -58,8 +59,6 @@ const LEGACY_ZERO_PATHS: Readonly<Record<string, string>> = {
     "/api/zero/billing/concurrency-checkout/preview",
   "/api/okou/feishu/events/:installationId":
     "/api/zero/feishu/events/:installationId",
-  "/api/okou/github/oauth/connect/callback":
-    "/api/zero/github/oauth/connect/callback",
   "/api/okou/computer-use/hosts/start": "/api/zero/computer-use/hosts/start",
   "/api/okou/logs/:id": "/api/zero/logs/:id",
   "/api/okou/mail/drafts/:mailDraftId": "/api/zero/mail/drafts/:mailDraftId",
@@ -95,11 +94,15 @@ function compatibilityPaths(): readonly string[] {
   return Object.entries(LEGACY_ZERO_PATHS).flat();
 }
 
+// Composed the way production registers routes, so a slice that moves a listed
+// contract to its neutral path can satisfy this list by naming the two branded
+// paths in the migrated-branded table. Keeping the path listed here is the
+// point; which mechanism serves it is not.
 function missingCompatibilityPaths(
   routes: readonly RouteEntry[],
 ): readonly string[] {
   const registeredPaths = new Set(
-    withApiNamespaceAliases(routes).map((entry) => {
+    withMigratedBrandedPaths(withApiNamespaceAliases(routes)).map((entry) => {
       return entry.route.path;
     }),
   );

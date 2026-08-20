@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.11.12](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.11...guest-contracts-v0.11.12) (2026-08-20)
+
+
+### Bug Fixes
+
+* **events:** preserve timeout and connect observations ([#28397](https://github.com/vm0-ai/vm0/issues/28397)) ([c3d536e](https://github.com/vm0-ai/vm0/commit/c3d536eab61fca8e2006a7664a982b993537db00))
+* **guest-agent:** classify mid-response failures ([#28393](https://github.com/vm0-ai/vm0/issues/28393)) ([4ca21bd](https://github.com/vm0-ai/vm0/commit/4ca21bdbe47a2ce99f34c343b074f83c45775483))
+* surface claude terms acceptance failures ([#28314](https://github.com/vm0-ai/vm0/issues/28314)) ([dc0674c](https://github.com/vm0-ai/vm0/commit/dc0674cd33b9b5ec44e592814c4f7b0c3d952575))
+
 ## [0.11.11](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.11.10...guest-contracts-v0.11.11) (2026-08-18)
 
 

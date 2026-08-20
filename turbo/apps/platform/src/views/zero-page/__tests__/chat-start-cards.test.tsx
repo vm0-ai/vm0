@@ -31,6 +31,10 @@ const PT_BR_TITLES = [
   "Criar um vídeo",
   "Criar um avatar",
 ] as const;
+// The catalog's own English wording, which only en-US readers should see.
+const EN_WORKFLOW_TITLES = WORKFLOW_TEMPLATE_ITEMS.map((item) => {
+  return item.title;
+});
 const PT_BR_PLACEHOLDER =
   "Peça para automatizar fluxos de trabalho, gerenciar tarefas...";
 
@@ -69,14 +73,12 @@ describe("chat start cards", () => {
     ).resolves.toBeInTheDocument();
 
     expect(startCards()).toHaveLength(3);
-    const workflowTitles = WORKFLOW_TEMPLATE_ITEMS.map((item) => {
-      return item.title;
-    });
     // At most one of the three kinds is the workflow card, so at least two
     // titles always come from the localized catalog.
     expect(renderedTitles(EN_TITLES).length).toBeGreaterThanOrEqual(2);
     expect(
-      renderedTitles(EN_TITLES).length + renderedTitles(workflowTitles).length,
+      renderedTitles(EN_TITLES).length +
+        renderedTitles(EN_WORKFLOW_TITLES).length,
     ).toBe(3);
     expect(screen.getAllByText("Create")).toHaveLength(3);
     expect(templateButtons()).toHaveLength(3);
@@ -134,6 +136,8 @@ describe("chat start cards", () => {
 
     expect(renderedTitles(PT_BR_TITLES).length).toBeGreaterThanOrEqual(2);
     expect(renderedTitles(EN_TITLES)).toStrictEqual([]);
+    // The workflow card names a catalog template, which is localized too.
+    expect(renderedTitles(EN_WORKFLOW_TITLES)).toStrictEqual([]);
     expect(screen.getAllByText("Modelos")).toHaveLength(3);
     expect(screen.queryByText("Templates")).toBeNull();
   });

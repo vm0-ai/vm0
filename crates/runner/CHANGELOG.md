@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.169.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.15...runner-rs-v0.169.16) (2026-08-20)
+
+
+### Bug Fixes
+
+* **events:** preserve timeout and connect observations ([#28397](https://github.com/vm0-ai/vm0/issues/28397)) ([c3d536e](https://github.com/vm0-ai/vm0/commit/c3d536eab61fca8e2006a7664a982b993537db00))
+* **guest-agent:** classify mid-response failures ([#28393](https://github.com/vm0-ai/vm0/issues/28393)) ([4ca21bd](https://github.com/vm0-ai/vm0/commit/4ca21bdbe47a2ce99f34c343b074f83c45775483))
+* **guest:** isolate managed claude config from user home ([#28324](https://github.com/vm0-ai/vm0/issues/28324)) ([c6a20ba](https://github.com/vm0-ai/vm0/commit/c6a20babf5f75ffac7ac97f69c570ba1ddb2ef23))
+* **python:** bound request header name work ([#28342](https://github.com/vm0-ai/vm0/issues/28342)) ([ffcd0fa](https://github.com/vm0-ai/vm0/commit/ffcd0fa83312ab7f20ed517ba717ee01721fca28))
+* **python:** handle x tld snapshot write failures ([#28340](https://github.com/vm0-ai/vm0/issues/28340)) ([9493c43](https://github.com/vm0-ai/vm0/commit/9493c4391e159d3a59bc8c27c73bdb347344bb0d))
+* **python:** reject oversized firewall auth expiries ([#28390](https://github.com/vm0-ai/vm0/issues/28390)) ([424cefa](https://github.com/vm0-ai/vm0/commit/424cefa243b6045847ac53cfc6bc831ae4187311))
+* **python:** retain multiple prewarm response ids ([#28401](https://github.com/vm0-ai/vm0/issues/28401)) ([dbc7222](https://github.com/vm0-ai/vm0/commit/dbc722260de69a3124d8981e6cb3bb1b56c1ef25))
+* **runner:** reconcile stale drain override cleanup ([#28363](https://github.com/vm0-ai/vm0/issues/28363)) ([6e631e3](https://github.com/vm0-ai/vm0/commit/6e631e340efd2084a5a174487e901d0982ddd4fb))
+* surface claude terms acceptance failures ([#28314](https://github.com/vm0-ai/vm0/issues/28314)) ([dc0674c](https://github.com/vm0-ai/vm0/commit/dc0674cd33b9b5ec44e592814c4f7b0c3d952575))
+* **usage:** bound model usage quantities ([#28351](https://github.com/vm0-ai/vm0/issues/28351)) ([d91265c](https://github.com/vm0-ai/vm0/commit/d91265c8761b3c40eb7e91a8ac6bcfaa0bdad4f8))
+
+
+### Documentation
+
+* **python:** document conditional authority IPv6 predicate ([#28323](https://github.com/vm0-ai/vm0/issues/28323)) ([c32cbcd](https://github.com/vm0-ai/vm0/commit/c32cbcdb1f02ef7ecc3fc5e4296c2f9faa04609c))
+* **python:** document provider timing store locking and retention contract ([#28394](https://github.com/vm0-ai/vm0/issues/28394)) ([7bbaf7d](https://github.com/vm0-ai/vm0/commit/7bbaf7d410c1b7ac0b7d21ede9a08973c367861b))
+* **rust:** correct runner gc keep-latest help ([#28336](https://github.com/vm0-ai/vm0/issues/28336)) ([7d457c7](https://github.com/vm0-ai/vm0/commit/7d457c7ba7084e2293e600055cb4056505fecca9))
+
+
+### Refactoring
+
+* **python:** centralize catalog cache fixtures ([#28339](https://github.com/vm0-ai/vm0/issues/28339)) ([787480b](https://github.com/vm0-ai/vm0/commit/787480b043d6369c245f430e85a130dcec246871))
+
+
+### Performance Improvements
+
+* **python:** resolve jsonl flush paths once per watcher ([#28349](https://github.com/vm0-ai/vm0/issues/28349)) ([7e730de](https://github.com/vm0-ai/vm0/commit/7e730dec29d40eaf539ad17362bfdaf1f4540e25))
+* **runner:** bound local queue job reads ([#28395](https://github.com/vm0-ai/vm0/issues/28395)) ([bf6499b](https://github.com/vm0-ai/vm0/commit/bf6499bebd8d138a75f1bae1547e96178b50c750))
+* **runner:** coordinate routine cache gc per host ([#28373](https://github.com/vm0-ai/vm0/issues/28373)) ([ab154d5](https://github.com/vm0-ai/vm0/commit/ab154d56a6545cbd716661d9c57e407d6838bfb5))
+
 ## [0.169.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.169.14...runner-rs-v0.169.15) (2026-08-20)
 
 

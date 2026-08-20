@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.15](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.14...guest-download-v0.23.15) (2026-08-20)
+
+
+### Refactoring
+
+* **guest-download:** unify integration child lifecycle ([#28326](https://github.com/vm0-ai/vm0/issues/28326)) ([95fa4d3](https://github.com/vm0-ai/vm0/commit/95fa4d333ab4034679d4cf1767c60d0a5e8e1e87))
+
 ## [0.23.14](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.13...guest-download-v0.23.14) (2026-08-18)
 
 
