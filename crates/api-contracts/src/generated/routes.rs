@@ -300,15 +300,5 @@ pub mod webhooks {
                 path: "/api/webhooks/agent/telemetry",
             };
         }
-
-        /// Generated route bindings under `webhooks::agent::usage_finalized`.
-        pub mod usage_finalized {
-            /// Finalize billing usage delivery for an agent run.
-            /// Route contract: `POST /api/webhooks/agent/usage-finalized`.
-            pub const FINALIZE: crate::Route = crate::Route {
-                method: crate::Method::Post,
-                path: "/api/webhooks/agent/usage-finalized",
-            };
-        }
     }
 }

@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from mitmproxy import connection, http
+from mitmproxy import connection
 
 import flow_metadata_keys as metadata_keys
 import mitm_addon
@@ -10,7 +10,6 @@ import platform_api
 import request_classification
 import upstream_admission
 import upstream_destination_binding
-import usage
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.request_handler_helpers import _vm_without_firewalls, _write_registry
 from tests.requestheaders_helpers import (
@@ -55,21 +54,16 @@ async def test_capture_enabled_api_allow_retargets_unconnected_upstream(
 
         assert callable(flow.request.stream)
         assert flow.server_conn.address == ("api.vm0.ai", 443)
-        assert usage.run_usage_delivery_state("run-conn-1").flows == 1
 
         await mitm_addon.request(flow)
-        assert usage.run_usage_delivery_state("run-conn-1").flows == 1
-        assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
-        assert flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] is True
-        binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
-        assert binding.host == "api.vm0.ai"
-        assert binding.kinds == frozenset(("api_allow",))
-        assert binding.original_address == ("203.0.113.10", 443)
 
-        flow.response = http.Response.make(200, b"{}")
-        assert mitm_addon.response(flow) is None
-
-    assert usage.run_usage_delivery_state("run-conn-1").flows == 0
+    assert flow.response is None
+    assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
+    assert flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] is True
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
+    assert binding.host == "api.vm0.ai"
+    assert binding.kinds == frozenset(("api_allow",))
+    assert binding.original_address == ("203.0.113.10", 443)
 
 
 async def test_streamed_api_allow_injects_runner_preview_bypass_before_body(

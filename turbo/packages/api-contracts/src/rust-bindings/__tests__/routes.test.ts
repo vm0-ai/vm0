@@ -96,12 +96,6 @@ const expectedBindings = [
   },
   {
     method: "POST",
-    path: "/api/webhooks/agent/usage-finalized",
-    rustModulePath: ["webhooks", "agent", "usage_finalized"],
-    rustConstName: "FINALIZE",
-  },
-  {
-    method: "POST",
     path: "/api/webhooks/agent/heartbeat",
     rustModulePath: ["webhooks", "agent", "heartbeat"],
     rustConstName: "SEND",

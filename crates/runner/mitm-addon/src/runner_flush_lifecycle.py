@@ -6,7 +6,6 @@ import signal
 import threading
 import time
 from contextlib import suppress
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
@@ -50,24 +49,10 @@ _jsonl_flush_worker_lock = threading.Lock()
 _jsonl_flush_stop = threading.Event()
 _jsonl_flush_worker: threading.Thread | None = None
 _last_jsonl_flush_request_id: str | None = None
-_run_usage_flush_worker_lock = threading.Lock()
-_run_usage_flush_workers: dict[str, threading.Thread] = {}
-_run_usage_flush_stop = threading.Event()
 _JSONL_FLUSH_REQUEST_FILE = "jsonl-flush-request"
 _JSONL_FLUSH_STATE_FILE = "jsonl-flush-state"
-_RUN_USAGE_FLUSH_REQUEST_DIR = "run-usage-flush-requests"
-_RUN_USAGE_FLUSH_RESULT_DIR = "run-usage-flush-results"
 RUNNER_JSONL_FLUSH_TIMEOUT_SECONDS = 4.0
 RUNNER_JSONL_FLUSH_POLL_SECONDS = 0.1
-RUNNER_RUN_USAGE_FLUSH_TIMEOUT_SECONDS = 30.0
-RUNNER_RUN_USAGE_FLUSH_POLL_SECONDS = 0.1
-
-
-@dataclass(frozen=True)
-class _RunUsageFlushRequest:
-    run_id: str
-    flush_request_id: str
-    result_path: Path
 
 
 def handle_runner_usage_flush_signal(signum: int, _frame: object) -> None:
@@ -108,7 +93,6 @@ def reset_runner_usage_flush_state_for_tests(timeout: float = 1.0) -> None:
     global _last_jsonl_flush_request_id, _runner_flush_phase, _usage_flush_requested
 
     _stop_runner_jsonl_flush_worker()
-    _stop_run_usage_flush_workers(timeout=timeout)
     acquired = _usage_flush_signal_lock.acquire(timeout=timeout)
     if not acquired:
         raise AssertionError("runner usage flush worker did not stop")
@@ -116,7 +100,6 @@ def reset_runner_usage_flush_state_for_tests(timeout: float = 1.0) -> None:
         _runner_flush_phase = "running"
         _usage_flush_requested = False
         _last_jsonl_flush_request_id = None
-        _run_usage_flush_stop.clear()
     finally:
         _usage_flush_signal_lock.release()
 
@@ -235,136 +218,6 @@ def _flush_usage_for_runner_request() -> None:
         ctx.log.warn(f"Failed to flush delivery work after runner request ({type(exc).__name__})")
     finally:
         usage.write_pending_snapshot(flush_request_id=flush_request_id)
-        _start_run_usage_flush_workers()
-
-
-def _start_run_usage_flush_workers() -> None:
-    request_dir, result_dir = _run_usage_flush_paths()
-    try:
-        request_paths = sorted(request_dir.glob("*.json"))
-    except OSError as exc:
-        ctx.log.warn(f"Failed to scan run usage flush requests: {type(exc).__name__}: {exc}")
-        return
-
-    for request_path in request_paths:
-        request = _read_run_usage_flush_request(request_path, result_dir)
-        if request is None or request.result_path.exists():
-            continue
-        with _run_usage_flush_worker_lock:
-            if request.flush_request_id in _run_usage_flush_workers:
-                continue
-            worker = threading.Thread(
-                target=_run_run_usage_flush_worker,
-                args=(request,),
-                name=f"run-usage-flush-{request.flush_request_id}",
-                daemon=True,
-            )
-            _run_usage_flush_workers[request.flush_request_id] = worker
-            try:
-                worker.start()
-            except Exception:
-                del _run_usage_flush_workers[request.flush_request_id]
-                raise
-
-
-def _run_usage_flush_paths() -> tuple[Path, Path]:
-    addon_dir = Path(__file__).resolve().parent
-    return (
-        addon_dir / _RUN_USAGE_FLUSH_REQUEST_DIR,
-        addon_dir / _RUN_USAGE_FLUSH_RESULT_DIR,
-    )
-
-
-def _read_run_usage_flush_request(
-    request_path: Path,
-    result_dir: Path,
-) -> _RunUsageFlushRequest | None:
-    request = runner_flush_request.read_runner_flush_request(
-        request_path,
-        get_usage_state_id=usage.current_usage_state_id,
-    )
-    if request is None:
-        return None
-    flush_request_id = request.flush_request_id
-    if (
-        not _is_safe_jsonl_flush_request_id(flush_request_id)
-        or request_path.name != f"{flush_request_id}.json"
-    ):
-        return None
-    run_id = request.marker.get("runId")
-    if not isinstance(run_id, str) or not run_id:
-        return None
-    return _RunUsageFlushRequest(
-        run_id=run_id,
-        flush_request_id=flush_request_id,
-        result_path=result_dir / request_path.name,
-    )
-
-
-def _run_run_usage_flush_worker(request: _RunUsageFlushRequest) -> None:
-    try:
-        deadline = time.monotonic() + RUNNER_RUN_USAGE_FLUSH_TIMEOUT_SECONDS
-        while not _run_usage_flush_stop.is_set():
-            try:
-                usage.flush_usage_events(trigger="runner")
-            except Exception as exc:
-                ctx.log.warn(f"Failed to flush run usage delivery work ({type(exc).__name__})")
-            state = usage.run_usage_delivery_state(request.run_id)
-            if state.delivery_lost:
-                _write_run_usage_flush_result(request, "deliveryLost", state)
-                return
-            if state.flows == 0 and state.buffered == 0:
-                _write_run_usage_flush_result(request, "ready", state)
-                return
-            if time.monotonic() >= deadline:
-                return
-            _run_usage_flush_stop.wait(RUNNER_RUN_USAGE_FLUSH_POLL_SECONDS)
-    finally:
-        with _run_usage_flush_worker_lock:
-            _run_usage_flush_workers.pop(request.flush_request_id, None)
-
-
-def _write_run_usage_flush_result(
-    request: _RunUsageFlushRequest,
-    status: Literal["ready", "deliveryLost"],
-    state: usage.RunUsageDeliveryState,
-) -> None:
-    result = {
-        "pid": os.getpid(),
-        "usageStateId": usage.current_usage_state_id(),
-        "updatedAtMs": int(time.time() * 1000),
-        "flushRequestId": request.flush_request_id,
-        "runId": request.run_id,
-        "status": status,
-        "flows": state.flows,
-        "buffered": state.buffered,
-    }
-    tmp_path = request.result_path.with_name(
-        f"{request.result_path.name}.{request.flush_request_id}.tmp"
-    )
-    try:
-        request.result_path.parent.mkdir(parents=True, exist_ok=True)
-        with tmp_path.open("w") as f:
-            json.dump(result, f, separators=(",", ":"))
-        tmp_path.replace(request.result_path)
-    except OSError as exc:
-        with suppress(OSError):
-            tmp_path.unlink()
-        ctx.log.warn(f"Failed to write run usage flush result: {type(exc).__name__}: {exc}")
-
-
-def _stop_run_usage_flush_workers(*, timeout: float | None = None) -> None:
-    _run_usage_flush_stop.set()
-    with _run_usage_flush_worker_lock:
-        workers = list(_run_usage_flush_workers.values())
-    deadline = None if timeout is None else time.monotonic() + timeout
-    for worker in workers:
-        remaining = None if deadline is None else max(0.0, deadline - time.monotonic())
-        worker.join(timeout=remaining)
-    if timeout is not None:
-        running = [worker.name for worker in workers if worker.is_alive()]
-        if running:
-            raise AssertionError(f"run usage flush workers did not stop: {running}")
 
 
 def _flush_delivery_work(*, trigger: _DeliveryFlushTrigger) -> None:
@@ -479,4 +332,3 @@ def drain_and_close() -> None:
                 _drain_runner_usage_flush_requests()
     finally:
         _stop_runner_jsonl_flush_worker()
-        _stop_run_usage_flush_workers()

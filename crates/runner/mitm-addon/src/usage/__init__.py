@@ -28,8 +28,6 @@ boundary used by buffered usage and diagnostic telemetry; retry and transport
 helpers remain private.
 """
 
-from typing import NamedTuple
-
 from . import webhook
 from .anthropic_messages import (
     create_anthropic_messages_json_usage_extractor,
@@ -46,14 +44,12 @@ from .buffer import (
     drain_usage_events_after_executor_shutdown,
     flush_usage_events,
     reset_usage_buffer_for_tests,
-    run_usage_buffer_state,
 )
 from .counters import (
     BufferedReportLease,
     admit_buffered_report,
     current_usage_state_id,
     decrement_in_flight_flows,
-    in_flight_flow_count,
     increment_in_flight_flows,
     read_usage_flush_request_id,
     set_pending_path,
@@ -101,27 +97,6 @@ from .providers.model_provider import (
     report_model_provider_usage_source,
 )
 
-
-class RunUsageDeliveryState(NamedTuple):
-    flows: int
-    buffered: int
-    delivery_lost: bool
-
-
-def run_usage_delivery_state(run_id: str) -> RunUsageDeliveryState:
-    """Return the credit-delivery barrier state for one run."""
-    # Terminal hooks enqueue usage before releasing their flow. Read the flow
-    # count first so observing zero guarantees the following buffer snapshot
-    # cannot miss a later enqueue from an already-tracked flow.
-    flows = in_flight_flow_count(run_id)
-    buffer_state = run_usage_buffer_state(run_id)
-    return RunUsageDeliveryState(
-        flows=flows,
-        buffered=buffer_state.pending_events,
-        delivery_lost=buffer_state.delivery_lost,
-    )
-
-
 __all__ = [
     "DEFAULT_FLUSH_INTERVAL_SECONDS",
     "OPENAI_RESPONSES_WEBSOCKET_WORK_LIMIT_ERROR",
@@ -131,7 +106,6 @@ __all__ = [
     "OpenAIResponsesEvent",
     "OpenAIResponsesServerEventInspection",
     "OpenAIResponsesServerLifecycle",
-    "RunUsageDeliveryState",
     "admit_buffered_report",
     "buffer_model_usage_observations",
     "buffer_source_model_usage_observations",
@@ -173,7 +147,6 @@ __all__ = [
     "report_model_provider_usage_observation",
     "report_model_provider_usage_source",
     "reset_usage_buffer_for_tests",
-    "run_usage_delivery_state",
     "set_pending_path",
     "webhook",
     "write_pending_snapshot",

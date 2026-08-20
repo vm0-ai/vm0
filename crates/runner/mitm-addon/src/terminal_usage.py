@@ -7,7 +7,6 @@ import model_websocket_usage
 import usage
 
 _USAGE_FLOW_TRACKED = "_usage_flow_tracked"
-_USAGE_FLOW_RUN_ID = "_usage_flow_run_id"
 _MODEL_PROVIDER_USAGE_REPORTED = "_model_provider_usage_reported"
 
 
@@ -22,26 +21,16 @@ def track_flow_if_needed(
     upgrades release from websocket_end/error because the 101 response does not
     complete the usage reporting lifecycle.
     """
-    if firewall_billable or model_usage_observable:
-        track_run_scoped_flow(flow)
-
-
-def track_run_scoped_flow(flow: http.HTTPFlow) -> None:
-    """Keep a run's usage barrier open until this request terminates."""
     if flow.metadata.get(_USAGE_FLOW_TRACKED):
         return
-    run_id = flow.metadata.get(metadata_keys.VM_RUN_ID)
-    tracked_run_id = run_id if isinstance(run_id, str) and run_id else None
-    usage.increment_in_flight_flows(tracked_run_id)
-    flow.metadata[_USAGE_FLOW_TRACKED] = True
-    if tracked_run_id is not None:
-        flow.metadata[_USAGE_FLOW_RUN_ID] = tracked_run_id
+    if firewall_billable or model_usage_observable:
+        usage.increment_in_flight_flows()
+        flow.metadata[_USAGE_FLOW_TRACKED] = True
 
 
 def release_tracked_flow(flow: http.HTTPFlow) -> None:
     if flow.metadata.pop(_USAGE_FLOW_TRACKED, False):
-        run_id = flow.metadata.pop(_USAGE_FLOW_RUN_ID, None)
-        usage.decrement_in_flight_flows(run_id if isinstance(run_id, str) else None)
+        usage.decrement_in_flight_flows()
 
 
 def report_model_provider_usage_once(flow: http.HTTPFlow, run_id: str) -> None:

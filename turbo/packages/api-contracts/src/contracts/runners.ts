@@ -1012,7 +1012,6 @@ export const runnersJobClaimContract = c.router({
     body: z.object({
       runnerIdentity: runnerProcessIdentitySchema.optional(),
       telemetry: runnerClaimTelemetrySchema.optional(),
-      usageFinalizationRequired: z.literal(true).optional(),
     }),
     responses: {
       200: executionContextSchema,

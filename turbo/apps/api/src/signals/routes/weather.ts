@@ -97,7 +97,6 @@ const weatherAuth = {
   requireOrganization: true,
   missingOrganizationStatus: 401,
   requiredCapability: "weather:read",
-  runUsageBarrier: true,
 } as const;
 
 export const weatherRoutes: readonly RouteEntry[] = [

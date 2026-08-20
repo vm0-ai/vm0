@@ -277,65 +277,6 @@ class TestRunnerUsageFlushSignal:
             flush_request_id="request-1",
         )
 
-    def test_signal_finalizes_ready_runs_without_waiting_for_other_runs(
-        self,
-        runner_usage_flush_files: RunnerUsageFlushFiles,
-        tmp_path: Path,
-    ) -> None:
-        request_dir = tmp_path / "run-usage-flush-requests"
-        result_dir = tmp_path / "run-usage-flush-results"
-        request_dir.mkdir()
-        state_id = usage.current_usage_state_id()
-        for request_id, run_id in (("request-a", "run-a"), ("request-b", "run-b")):
-            (request_dir / f"{request_id}.json").write_text(
-                json.dumps(
-                    {
-                        "usageStateId": state_id,
-                        "flushRequestId": request_id,
-                        "requestedAtMs": _REQUESTED_AT_MS,
-                        "runId": run_id,
-                    }
-                ),
-                encoding="utf-8",
-            )
-        runner_usage_flush_files.write_usage_flush_request()
-        allow_run_b = threading.Event()
-        run_a_written = threading.Event()
-        run_b_written = threading.Event()
-        original_write_result = runner_flush_lifecycle._write_run_usage_flush_result
-
-        def run_state(run_id: str) -> usage.RunUsageDeliveryState:
-            if run_id == "run-b" and not allow_run_b.is_set():
-                return usage.RunUsageDeliveryState(flows=1, buffered=0, delivery_lost=False)
-            return usage.RunUsageDeliveryState(flows=0, buffered=0, delivery_lost=False)
-
-        def write_result(request, status, state) -> None:
-            original_write_result(request, status, state)
-            (run_a_written if request.run_id == "run-a" else run_b_written).set()
-
-        with (
-            patch.object(
-                runner_flush_lifecycle,
-                "_run_usage_flush_paths",
-                return_value=(request_dir, result_dir),
-            ),
-            patch.object(usage, "run_usage_delivery_state", side_effect=run_state),
-            patch.object(
-                runner_flush_lifecycle,
-                "_write_run_usage_flush_result",
-                side_effect=write_result,
-            ),
-        ):
-            runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
-            assert run_a_written.wait(timeout=1)
-            assert not run_b_written.is_set()
-            allow_run_b.set()
-            assert run_b_written.wait(timeout=1)
-            wait_for_usage_flush_worker_to_stop()
-
-        assert json.loads((result_dir / "request-a.json").read_text())["status"] == "ready"
-        assert json.loads((result_dir / "request-b.json").read_text())["status"] == "ready"
-
     def test_signal_worker_start_handoff_to_closed_shutdown_does_not_spawn_worker(
         self, runner_usage_flush_files: RunnerUsageFlushFiles
     ) -> None:

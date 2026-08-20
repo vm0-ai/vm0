@@ -3,11 +3,9 @@ import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import {
   cronCompactChatThreadSnapshotsContract,
-  cronProcessUsageEventsContract,
   cronProjectChatEventSearchContract,
 } from "@okouai/api-contracts/contracts/cron";
 import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@okouai/api-contracts/contracts/runners";
-import { webSearchContract } from "@okouai/api-contracts/contracts/web-search";
 import { testCronCleanupSandboxesStateContract } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
 import {
   chatThreadsContract,
@@ -34,7 +32,6 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import {
-  createUsagePricingFixture,
   seedOrgMetadata,
   seedUsagePricingRows,
 } from "../../../test-fixtures/system-config-seeds";
@@ -50,13 +47,8 @@ import {
   setChatThreadVideoModelFixture,
 } from "../../../test-fixtures/chat-thread-events";
 import { setAgentRunCreatedAtFixture } from "../../../test-fixtures/run-deletion";
-import {
-  completeRunBuiltInAdmissionFixture,
-  insertActiveRunBuiltInAdmissionFixture,
-} from "../../../test-fixtures/run-built-in-admission";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
-import { createDeferredPromise } from "../../utils";
 import {
   createBddApi,
   expectApiError,
@@ -87,12 +79,10 @@ import {
   materializeHourlyUsage$,
 } from "./helpers/usage-state";
 import { cronCompactChatThreadSnapshotsRoutes } from "../cron-compact-chat-thread-snapshots";
-import { cronProcessUsageEventsRoutes } from "../cron-process-usage-events";
 import { cronProjectChatEventSearchRoutes } from "../cron-project-chat-event-search";
 import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
 import { chatThreadRoutes } from "../chat-threads";
 import { goalsRoutes } from "../goals";
-import { webSearchRoutes } from "../web-search";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...cronCompactChatThreadSnapshotsRoutes,
@@ -125,7 +115,6 @@ const connectorsApi = createConnectorBddApi(context);
 const authOrg = createAuthOrgAgentsBddApi(context);
 const store = createStore();
 const CHAT_THREAD_SNAPSHOT_CRON_SECRET = "chat-thread-snapshot-cron-secret";
-const CHAT_USAGE_CRON_SECRET = "chat-usage-cron-secret";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const FORWARD_CLEANUP_CUTOFF_MS = Date.parse("2026-08-03T05:40:26.000Z");
 const FORWARD_CLEANUP_TEST_CREATED_AT = "2026-08-03T05:40:26.001Z";
@@ -159,19 +148,6 @@ async function compactChatThreadSnapshots() {
     [200],
   );
   return response.body;
-}
-
-async function processUsageEvents() {
-  const client = setupApp({
-    context,
-    routes: cronProcessUsageEventsRoutes,
-  })(cronProcessUsageEventsContract);
-  return await accept(
-    client.process({
-      headers: { authorization: `Bearer ${CHAT_USAGE_CRON_SECRET}` },
-    }),
-    [200],
-  );
 }
 
 interface EntitledChatActor {
@@ -231,13 +207,12 @@ async function sendChatRun(
 async function claimChatRun(
   runnerGroup: string,
   runId: string,
-  options: { readonly usageFinalizationRequired?: true } = {},
 ): Promise<{
   readonly claim: RunnerClaim;
   readonly sandboxHeaders: { readonly authorization: string };
 }> {
   await api.heartbeatRunner(runnerGroup);
-  const claim = await api.claimRunnerJob(runId, options);
+  const claim = await api.claimRunnerJob(runId);
   return {
     claim,
     sandboxHeaders: { authorization: `Bearer ${claim.sandboxToken}` },
@@ -2154,360 +2129,6 @@ describe("CHAT-01 chat thread read state", () => {
 });
 
 describe("CHAT-03 run usage events", () => {
-  it("publishes capable-run usage only after delivery is sealed", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor(
-      "Sealed usage message agent",
-    );
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor");
-    }
-    const provider = `sealed-chat-${randomUUID().slice(0, 8)}`;
-    const category = "api_request";
-    await seedUsagePricingRows([
-      { kind: "connector", provider, category, unitPrice: 5, unitSize: 1 },
-    ]);
-
-    const run = await sendChatRun(actor, {
-      agentId,
-      prompt: "seal usage before publishing it",
-    });
-    const { sandboxHeaders } = await claimChatRun(runnerGroup, run.runId, {
-      usageFinalizationRequired: true,
-    });
-    const usage = {
-      idempotencyKey: randomUUID(),
-      kind: "connector" as const,
-      provider,
-      category,
-      quantity: 2,
-    };
-    await webhooks.requestAgentUsageEvent(
-      { runId: run.runId, events: [usage] },
-      sandboxHeaders,
-      [200],
-    );
-
-    await completeChatRunOk(run.runId, sandboxHeaders);
-    await flushWaitUntilForTest();
-    await expect(
-      usageEventsForRun(actor, run.threadId, run.runId),
-    ).resolves.toHaveLength(0);
-
-    const finalized = await webhooks.requestAgentUsageFinalized(
-      { runId: run.runId },
-      sandboxHeaders,
-      [200],
-    );
-    expect(finalized.body).toStrictEqual({ success: true, finalized: true });
-
-    const [published] = await usageEventsForRun(actor, run.threadId, run.runId);
-    expect(published?.usage).toMatchObject({
-      version: 1,
-      totalCredits: 10,
-      breakdown: [
-        {
-          kind: "connector",
-          credits: 10,
-          providers: [{ provider, credits: 10 }],
-        },
-      ],
-    });
-
-    await webhooks.requestAgentUsageEvent(
-      { runId: run.runId, events: [usage] },
-      sandboxHeaders,
-      [200],
-    );
-    const lateUsage = {
-      ...usage,
-      idempotencyKey: randomUUID(),
-      quantity: 1,
-    };
-    const rejected = await webhooks.requestAgentUsageEvent(
-      { runId: run.runId, events: [lateUsage] },
-      sandboxHeaders,
-      [409],
-    );
-    expect(rejected.body).toStrictEqual({
-      error: {
-        code: "CONFLICT",
-        message: "Run usage is finalized",
-      },
-    });
-    await expect(
-      store.set(
-        insertUsageEvent$,
-        {
-          orgId: actor.orgId,
-          userId: actor.userId,
-          runId: run.runId,
-          kind: lateUsage.kind,
-          provider: lateUsage.provider,
-          category: lateUsage.category,
-          quantity: lateUsage.quantity,
-          idempotencyKey: randomUUID(),
-        },
-        context.signal,
-      ),
-    ).rejects.toThrow("usage state action insert-usage-event failed with 500");
-    await expect(
-      usageEventsForRun(actor, run.threadId, run.runId),
-    ).resolves.toStrictEqual([published]);
-  }, 60_000);
-
-  it("finalizes capable-run usage when delivery is acknowledged first", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor(
-      "Early usage acknowledgement agent",
-    );
-    const provider = `early-seal-${randomUUID().slice(0, 8)}`;
-    const category = "api_request";
-    await seedUsagePricingRows([
-      { kind: "connector", provider, category, unitPrice: 3, unitSize: 1 },
-    ]);
-    const run = await sendChatRun(actor, {
-      agentId,
-      prompt: "acknowledge delivery before completion",
-    });
-    const { sandboxHeaders } = await claimChatRun(runnerGroup, run.runId, {
-      usageFinalizationRequired: true,
-    });
-    await webhooks.requestAgentUsageEvent(
-      {
-        runId: run.runId,
-        events: [
-          {
-            idempotencyKey: randomUUID(),
-            kind: "connector",
-            provider,
-            category,
-            quantity: 2,
-          },
-        ],
-      },
-      sandboxHeaders,
-      [200],
-    );
-
-    const waiting = await webhooks.requestAgentUsageFinalized(
-      { runId: run.runId },
-      sandboxHeaders,
-      [200],
-    );
-    expect(waiting.body).toStrictEqual({ success: true, finalized: false });
-    await expect(
-      usageEventsForRun(actor, run.threadId, run.runId),
-    ).resolves.toHaveLength(0);
-
-    await completeChatRunOk(run.runId, sandboxHeaders);
-    await flushWaitUntilForTest();
-    const [published] = await usageEventsForRun(actor, run.threadId, run.runId);
-    expect(published?.usage).toMatchObject({ totalCredits: 6 });
-  }, 60_000);
-
-  it("waits for admitted built-in usage before finalizing a capable run", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor(
-      "In-flight built-in usage agent",
-    );
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor");
-    }
-    const provider = `built-in-seal-${randomUUID().slice(0, 8)}`;
-    const category = "output";
-    await seedUsagePricingRows([
-      { kind: "image", provider, category, unitPrice: 7, unitSize: 1 },
-    ]);
-    const run = await sendChatRun(actor, {
-      agentId,
-      prompt: "wait for the admitted built-in charge",
-    });
-    const { sandboxHeaders } = await claimChatRun(runnerGroup, run.runId, {
-      usageFinalizationRequired: true,
-    });
-    const admissionId = await insertActiveRunBuiltInAdmissionFixture(run.runId);
-
-    await completeChatRunOk(run.runId, sandboxHeaders);
-    const waiting = await webhooks.requestAgentUsageFinalized(
-      { runId: run.runId },
-      sandboxHeaders,
-      [200],
-    );
-    expect(waiting.body).toStrictEqual({ success: true, finalized: false });
-
-    await store.set(
-      insertUsageEvent$,
-      {
-        orgId: actor.orgId,
-        userId: actor.userId,
-        runId: run.runId,
-        kind: "image",
-        provider,
-        category,
-        quantity: 2,
-        idempotencyKey: randomUUID(),
-      },
-      context.signal,
-    );
-    await completeRunBuiltInAdmissionFixture(admissionId);
-
-    const finalized = await webhooks.requestAgentUsageFinalized(
-      { runId: run.runId },
-      sandboxHeaders,
-      [200],
-    );
-    expect(finalized.body).toStrictEqual({ success: true, finalized: true });
-    const [published] = await usageEventsForRun(actor, run.threadId, run.runId);
-    expect(published?.usage).toMatchObject({ totalCredits: 14 });
-  }, 60_000);
-
-  it("waits for in-flight run API usage before finalizing a capable run", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor(
-      "In-flight API usage agent",
-    );
-    const provider = "perplexity";
-    const category = "request";
-    const pricing = await createUsagePricingFixture({
-      configured: [
-        { kind: "web-search", provider, category, unitPrice: 7, unitSize: 1 },
-      ],
-    });
-    onTestFinished(pricing.cleanup);
-    mockEnv("OKOU_WEB_SEARCH_PERPLEXITY_TOKEN", "test-perplexity-token");
-
-    const run = await sendChatRun(actor, {
-      agentId,
-      prompt: "wait for the in-flight API charge",
-    });
-    const { sandboxHeaders } = await claimChatRun(runnerGroup, run.runId, {
-      usageFinalizationRequired: true,
-    });
-    const providerStarted = createDeferredPromise<void>(context.signal);
-    const releaseProvider = createDeferredPromise<void>(context.signal);
-    server.use(
-      http.post("https://api.perplexity.ai/search", async () => {
-        providerStarted.resolve(undefined);
-        await releaseProvider.promise;
-        return HttpResponse.json({
-          id: "in-flight-search",
-          results: [
-            {
-              title: "Finalization barrier",
-              url: "https://example.com/finalization",
-              snippet: "The API usage completed before finalization.",
-            },
-          ],
-        });
-      }),
-    );
-
-    const requestPromise = setupApp({
-      context,
-      routes: webSearchRoutes,
-      usagePricingResolution: pricing.resolution,
-    })(webSearchContract).search({
-      headers: zeroCapabilityHeaders(actor, run.runId, ["web-search:read"]),
-      body: { query: "usage finalization", limit: 1 },
-    });
-    onTestFinished(async () => {
-      if (!releaseProvider.settled()) {
-        releaseProvider.resolve(undefined);
-      }
-      await Promise.allSettled([requestPromise]);
-    });
-    await providerStarted.promise;
-
-    await completeChatRunOk(run.runId, sandboxHeaders);
-    const waiting = await webhooks.requestAgentUsageFinalized(
-      { runId: run.runId },
-      sandboxHeaders,
-      [200],
-    );
-    expect(waiting.body).toStrictEqual({ success: true, finalized: false });
-
-    releaseProvider.resolve(undefined);
-    const response = await requestPromise;
-    expect(response.status).toBe(200);
-
-    mockEnv("CRON_SECRET", CHAT_USAGE_CRON_SECRET);
-    await expect(processUsageEvents()).resolves.toMatchObject({
-      body: { success: true },
-    });
-    const [published] = await usageEventsForRun(actor, run.threadId, run.runId);
-    expect(published?.usage).toMatchObject({ totalCredits: 7 });
-  }, 60_000);
-
-  it("keeps cancelled capable-run usage hidden until delivery is sealed", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor(
-      "Cancelled sealed usage agent",
-    );
-    const provider = `cancelled-seal-${randomUUID().slice(0, 8)}`;
-    const category = "api_request";
-    await seedUsagePricingRows([
-      { kind: "connector", provider, category, unitPrice: 4, unitSize: 1 },
-    ]);
-    const run = await sendChatRun(actor, {
-      agentId,
-      prompt: "cancel after recording usage",
-    });
-    const { sandboxHeaders } = await claimChatRun(runnerGroup, run.runId, {
-      usageFinalizationRequired: true,
-    });
-    await webhooks.requestAgentUsageEvent(
-      {
-        runId: run.runId,
-        events: [
-          {
-            idempotencyKey: randomUUID(),
-            kind: "connector",
-            provider,
-            category,
-            quantity: 2,
-          },
-        ],
-      },
-      sandboxHeaders,
-      [200],
-    );
-
-    await cancelChatRun(actor, run.runId);
-    await flushWaitUntilForTest();
-    await expect(
-      usageEventsForRun(actor, run.threadId, run.runId),
-    ).resolves.toHaveLength(0);
-
-    const finalized = await webhooks.requestAgentUsageFinalized(
-      { runId: run.runId },
-      sandboxHeaders,
-      [200],
-    );
-    expect(finalized.body).toStrictEqual({ success: true, finalized: true });
-    const [published] = await usageEventsForRun(actor, run.threadId, run.runId);
-    expect(published?.usage).toMatchObject({ totalCredits: 8 });
-  }, 60_000);
-
-  it("seals capable runs without fabricating a zero-usage event", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor(
-      "Sealed no-usage agent",
-    );
-    const run = await sendChatRun(actor, {
-      agentId,
-      prompt: "finish without billable usage",
-    });
-    const { sandboxHeaders } = await claimChatRun(runnerGroup, run.runId, {
-      usageFinalizationRequired: true,
-    });
-
-    await completeChatRunOk(run.runId, sandboxHeaders);
-    const finalized = await webhooks.requestAgentUsageFinalized(
-      { runId: run.runId },
-      sandboxHeaders,
-      [200],
-    );
-    expect(finalized.body).toStrictEqual({ success: true, finalized: true });
-    await expect(
-      usageEventsForRun(actor, run.threadId, run.runId),
-    ).resolves.toHaveLength(0);
-  }, 60_000);
-
   it("emits aggregate-only usage with the run completion timestamp", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor(
       "Hourly usage event agent",
@@ -2577,7 +2198,7 @@ describe("CHAT-03 run usage events", () => {
     ]);
   }, 60_000);
 
-  it("preserves completion-time immutable usage for legacy runs", async () => {
+  it("revises run usage when later usage settles", async () => {
     const { actor, agentId } = await entitledChatActorWithoutRunner(
       "Usage message agent",
     );
@@ -2638,11 +2259,11 @@ describe("CHAT-03 run usage events", () => {
 
     let usageEvents = await usageEventsForRun(actor, threadId, runId);
     expect(usageEvents).toHaveLength(1);
-    const usageEvent = usageEvents[0];
-    if (!usageEvent) {
+    const initialUsageEvent = usageEvents[0];
+    if (!initialUsageEvent) {
       throw new Error("Expected one usage event");
     }
-    expect(usageEvent).toMatchObject({
+    expect(initialUsageEvent).toMatchObject({
       eventType: "usage.recorded",
       content: null,
       usage: {
@@ -2686,7 +2307,7 @@ describe("CHAT-03 run usage events", () => {
     mockNow(new Date("2030-01-01T00:00:00.000Z"));
     await billing.processOrgUsageEvents(actor);
     usageEvents = await usageEventsForRun(actor, threadId, runId);
-    expect(usageEvents).toStrictEqual([usageEvent]);
+    expect(usageEvents).toStrictEqual([initialUsageEvent]);
 
     clearMockNow();
     await webhooks.requestAgentUsageEvent(
@@ -2708,7 +2329,73 @@ describe("CHAT-03 run usage events", () => {
     mockNow(new Date("2030-01-01T00:00:01.000Z"));
     await billing.processOrgUsageEvents(actor);
     usageEvents = await usageEventsForRun(actor, threadId, runId);
-    expect(usageEvents).toStrictEqual([usageEvent]);
+    expect(usageEvents).toHaveLength(2);
+    const firstRevision = usageEvents[1];
+    if (!firstRevision) {
+      throw new Error("Expected the first usage revision");
+    }
+    expect(firstRevision).toMatchObject({
+      eventType: "usage.recorded",
+      content: null,
+      revokesEventId: initialUsageEvent.id,
+      usage: {
+        version: 1,
+        totalCredits: 29,
+        settledAt: initialUsageEvent.usage.settledAt,
+        breakdown: [
+          {
+            kind: "connector",
+            credits: 29,
+            providers: expect.arrayContaining([
+              { provider, credits: 29 },
+              { provider: missingProvider, credits: 0 },
+            ]),
+          },
+        ],
+      },
+    });
+
+    clearMockNow();
+    await webhooks.requestAgentUsageEvent(
+      {
+        runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            kind: "connector",
+            provider,
+            category,
+            quantity: 2,
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    mockNow(new Date("2030-01-01T00:00:02.000Z"));
+    await billing.processOrgUsageEvents(actor);
+    usageEvents = await usageEventsForRun(actor, threadId, runId);
+    expect(usageEvents).toHaveLength(3);
+    expect(usageEvents[2]).toMatchObject({
+      eventType: "usage.recorded",
+      content: null,
+      revokesEventId: firstRevision.id,
+      usage: {
+        version: 1,
+        totalCredits: 36,
+        settledAt: initialUsageEvent.usage.settledAt,
+        breakdown: [
+          {
+            kind: "connector",
+            credits: 36,
+            providers: expect.arrayContaining([
+              { provider, credits: 36 },
+              { provider: missingProvider, credits: 0 },
+            ]),
+          },
+        ],
+      },
+    });
   }, 60_000);
 
   it("emits complete allowance-covered usage in one event", async () => {

@@ -28,15 +28,6 @@ import type {
   AgentSessionStorageMounts,
 } from "@okouai/db/jsonb-contracts/agent-run-session-conversation";
 
-export const agentRunUsageFinalizationStates = [
-  "pending",
-  "deliveryFinalized",
-  "finalized",
-] as const;
-
-export type AgentRunUsageFinalizationState =
-  (typeof agentRunUsageFinalizationStates)[number];
-
 /**
  * Agent Runs table
  * Created when developer executes agent via SDK
@@ -82,11 +73,6 @@ export const agentRuns = pgTable(
     // Final workspace reuse outcome after sandbox preparation. Null means the
     // runner did not reach a reliable decision or predates this field.
     workspaceReuseResult: varchar("workspace_reuse_result", { length: 50 }),
-    // Null preserves completion-time usage publication for legacy runners.
-    // Capable runners move through the explicit per-run billing barrier.
-    usageFinalizationState: varchar("usage_finalization_state", {
-      length: 32,
-    }).$type<AgentRunUsageFinalizationState>(),
     // Null identifies a historical claim without cancellation recovery.
     // Current claims initialize false; false/true records whether recovery
     // completion has been reported. The barrier is active only while the
@@ -187,13 +173,6 @@ export const agentRuns = pgTable(
       index("idx_agent_runs_goal")
         .on(table.goalId)
         .where(sql`${table.goalId} IS NOT NULL`),
-      index("idx_agent_runs_usage_delivery_finalized")
-        .on(table.id)
-        .where(sql`${table.usageFinalizationState} = 'deliveryFinalized'`),
-      check(
-        "agent_runs_usage_finalization_state_check",
-        sql`${table.usageFinalizationState} IN ('pending', 'deliveryFinalized', 'finalized')`,
-      ),
       check(
         "agent_runs_autonomy_budget_check",
         sql`${table.autonomyBudget} >= 0 AND ${table.autonomyBudget} <= 10`,

@@ -1,10 +1,6 @@
 import { command } from "ccstate";
-import {
-  webhookCompleteContract,
-  webhookUsageFinalizedContract,
-} from "@okouai/api-contracts/contracts/webhooks";
+import { webhookCompleteContract } from "@okouai/api-contracts/contracts/webhooks";
 
-import { notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { apiStartTime$, authorization$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
@@ -14,7 +10,6 @@ import {
   completeAgentRun$,
   dispatchCompleteSideEffects$,
 } from "../services/agent-webhook-complete.service";
-import { acknowledgeRunUsageDelivery$ } from "../services/run-usage-finalization.service";
 import { tapError } from "../utils";
 import {
   getSandboxAuthForRun,
@@ -24,9 +19,6 @@ import {
 const L = logger("webhook:complete");
 
 const completeBody$ = bodyResultOf(webhookCompleteContract.complete);
-const usageFinalizedBody$ = bodyResultOf(
-  webhookUsageFinalizedContract.finalize,
-);
 
 const completeAgentRunRoute$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -73,43 +65,9 @@ const completeAgentRunRoute$ = command(
   },
 );
 
-const finalizeRunUsageRoute$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const bodyResult = await get(usageFinalizedBody$);
-    signal.throwIfAborted();
-    if (!bodyResult.ok) {
-      return bodyResult.response;
-    }
-
-    const body = bodyResult.data;
-    const auth = getSandboxAuthForRun(body.runId, get(authorization$));
-    if (!auth) {
-      return unauthorizedRunMismatch;
-    }
-
-    const finalized = await set(
-      acknowledgeRunUsageDelivery$,
-      { runId: body.runId, userId: auth.userId },
-      signal,
-    );
-    signal.throwIfAborted();
-    if (finalized === null) {
-      return notFound("Agent run not found");
-    }
-    return {
-      status: 200 as const,
-      body: { success: true as const, finalized },
-    };
-  },
-);
-
 export const webhooksAgentCompleteRoutes: readonly RouteEntry[] = [
   {
     route: webhookCompleteContract.complete,
     handler: completeAgentRunRoute$,
-  },
-  {
-    route: webhookUsageFinalizedContract.finalize,
-    handler: finalizeRunUsageRoute$,
   },
 ];

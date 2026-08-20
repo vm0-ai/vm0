@@ -219,7 +219,6 @@ impl CompletionPayload {
                 CompleteRequest {
                     run_id,
                     exit_code,
-                    usage_finalization_required: true,
                     error,
                     sandbox_id: Some(sandbox_id),
                     sandbox_reuse_result: Some(reuse_result),

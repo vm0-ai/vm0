@@ -91,7 +91,6 @@ const seoAuth = {
   requireOrganization: true,
   missingOrganizationStatus: 401,
   requiredCapability: "seo:read",
-  runUsageBarrier: true,
 } as const;
 
 export const seoRoutes: readonly RouteEntry[] = [

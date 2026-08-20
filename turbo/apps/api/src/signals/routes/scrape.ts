@@ -27,7 +27,6 @@ export const scrapeRoutes: readonly RouteEntry[] = [
         requireOrganization: true,
         missingOrganizationStatus: 401,
         requiredCapability: "scrape:read",
-        runUsageBarrier: true,
       },
       scrapeInner$,
     ),

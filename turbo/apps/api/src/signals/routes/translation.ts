@@ -31,7 +31,6 @@ export const translationRoutes: readonly RouteEntry[] = [
         requireOrganization: true,
         missingOrganizationStatus: 401,
         requiredCapability: "translation:write",
-        runUsageBarrier: true,
       },
       translateInner$,
     ),

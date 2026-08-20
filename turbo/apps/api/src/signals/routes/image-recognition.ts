@@ -31,7 +31,6 @@ export const imageRecognitionRoutes: readonly RouteEntry[] = [
         requireOrganization: true,
         missingOrganizationStatus: 401,
         requiredCapability: "image-recognition:write",
-        runUsageBarrier: true,
       },
       recognizeInner$,
     ),

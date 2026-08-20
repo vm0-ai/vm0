@@ -37,7 +37,6 @@ from .models import (
     USAGE_EVENT_BATCH_SIZE,
     ModelUsageObservation,
     ResourceFieldName,
-    RunUsageBufferState,
     UsageEvent,
     UsageFlushTrigger,
 )
@@ -54,7 +53,6 @@ __all__ = [
     "USAGE_EVENT_BATCH_SIZE",
     "ModelUsageObservation",
     "ResourceFieldName",
-    "RunUsageBufferState",
     "UsageEvent",
     "UsageEventBuffer",
     "UsageFlushTrigger",
@@ -66,7 +64,6 @@ __all__ = [
     "drain_usage_events_after_executor_shutdown",
     "flush_usage_events",
     "reset_usage_buffer_for_tests",
-    "run_usage_buffer_state",
 ]
 
 _usage_event_buffer = UsageEventBuffer()
@@ -191,11 +188,6 @@ def flush_usage_events(*, trigger: UsageFlushTrigger) -> int:
     schedule another timer.
     """
     return _usage_event_buffer.flush_usage_events(trigger=trigger)
-
-
-def run_usage_buffer_state(run_id: str) -> RunUsageBufferState:
-    """Return buffered and admitted credit delivery state for one run."""
-    return _usage_event_buffer.run_usage_buffer_state(run_id)
 
 
 def drain_usage_events_after_executor_shutdown() -> None:

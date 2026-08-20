@@ -3,7 +3,7 @@
 import json
 
 import pytest
-from mitmproxy import connection, http
+from mitmproxy import connection
 
 import flow_metadata_keys as metadata_keys
 import mitm_addon
@@ -11,7 +11,6 @@ import platform_api
 import registry
 import request_classification
 import upstream_destination_binding
-import usage
 from tests.request_handler_helpers import _single_firewall_vm, _write_registry
 from tests.upstream_connection_helpers import (
     bind_flow_upstream,
@@ -95,25 +94,6 @@ async def test_matching_sni_and_host_retargets_unconnected_vm0_api_auto_allow(
     assert binding.host == "api.vm0.ai"
     assert binding.kinds == frozenset(("api_allow",))
     assert binding.original_address == ("203.0.113.10", 443)
-
-
-async def test_vm0_api_request_keeps_run_usage_barrier_open_until_response(
-    registry_file, real_flow, mitm_ctx
-):
-    flow = real_flow(
-        with_response=False,
-        host="api.vm0.ai",
-        path="/api/zero/web-search",
-    )
-
-    with mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"):
-        await mitm_addon.request(flow)
-        assert usage.run_usage_delivery_state("run-abc-123").flows == 1
-
-        flow.response = http.Response.make(200, b"{}")
-        assert mitm_addon.response(flow) is None
-
-    assert usage.run_usage_delivery_state("run-abc-123").flows == 0
 
 
 async def test_vm0_api_auto_allow_injects_runner_preview_bypass(

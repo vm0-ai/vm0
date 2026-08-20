@@ -28,7 +28,6 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 struct CompletePayload<'a> {
     run_id: &'a str,
     exit_code: i32,
-    usage_finalization_required: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     last_event_sequence: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -126,7 +125,6 @@ fn payload_for_run<'a>(
     CompletePayload {
         run_id,
         exit_code,
-        usage_finalization_required: true,
         last_event_sequence,
         sandbox_id: as_optional(sandbox_id),
         sandbox_reuse_result: as_optional(sandbox_reuse_result),
@@ -164,7 +162,6 @@ mod tests {
         let payload = CompletePayload {
             run_id: "run-123",
             exit_code: 0,
-            usage_finalization_required: true,
             last_event_sequence: None,
             sandbox_id: None,
             sandbox_reuse_result: None,
@@ -172,10 +169,7 @@ mod tests {
             active_input_delivery_ids: None,
         };
         let json = serde_json::to_string(&payload).unwrap();
-        assert_eq!(
-            json,
-            r#"{"runId":"run-123","exitCode":0,"usageFinalizationRequired":true}"#
-        );
+        assert_eq!(json, r#"{"runId":"run-123","exitCode":0}"#);
     }
 
     #[test]
@@ -183,7 +177,6 @@ mod tests {
         let payload = CompletePayload {
             run_id: "run-123",
             exit_code: 0,
-            usage_finalization_required: true,
             last_event_sequence: None,
             sandbox_id: Some("abc"),
             sandbox_reuse_result: Some("reused"),
@@ -203,7 +196,6 @@ mod tests {
         let payload = CompletePayload {
             run_id: "run-123",
             exit_code: 0,
-            usage_finalization_required: true,
             last_event_sequence: None,
             sandbox_id: None,
             sandbox_reuse_result: Some("poolMiss"),
@@ -220,7 +212,6 @@ mod tests {
         let payload = CompletePayload {
             run_id: "run-123",
             exit_code: 0,
-            usage_finalization_required: true,
             last_event_sequence: None,
             sandbox_id: Some("sid"),
             sandbox_reuse_result: None,
@@ -244,7 +235,6 @@ mod tests {
         let payload = CompletePayload {
             run_id: "run-123",
             exit_code: 0,
-            usage_finalization_required: true,
             last_event_sequence: Some(7),
             sandbox_id: None,
             sandbox_reuse_result: None,
@@ -254,7 +244,7 @@ mod tests {
         let json = serde_json::to_string(&payload).unwrap();
         assert_eq!(
             json,
-            r#"{"runId":"run-123","exitCode":0,"usageFinalizationRequired":true,"lastEventSequence":7}"#
+            r#"{"runId":"run-123","exitCode":0,"lastEventSequence":7}"#
         );
     }
 }

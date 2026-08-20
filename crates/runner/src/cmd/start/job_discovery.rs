@@ -1913,7 +1913,6 @@ async fn complete_claimed_failure(
 ) -> RunId {
     let (context, completion_auth, active_input_source) = claimed.into_parts();
     let run_id = context.run_id;
-    let sandbox_token = context.sandbox_token.clone();
     drop(active_input_source);
     ctx.spawn_ctx
         .provider
@@ -1921,7 +1920,6 @@ async fn complete_claimed_failure(
             CompleteRequest {
                 run_id,
                 exit_code: failure.exit_code,
-                usage_finalization_required: true,
                 error: Some(failure.error),
                 sandbox_id: None,
                 sandbox_reuse_result: reuse_result,
@@ -1930,10 +1928,6 @@ async fn complete_claimed_failure(
             },
             completion_auth,
         )
-        .await;
-    ctx.spawn_ctx
-        .provider
-        .finalize_usage(run_id, &sandbox_token)
         .await;
     cancellation.unregister().await;
     run_id

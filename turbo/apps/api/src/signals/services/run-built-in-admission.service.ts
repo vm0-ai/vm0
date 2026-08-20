@@ -1,19 +1,13 @@
 import { command } from "ccstate";
 import { runBuiltInAdmissions } from "@okouai/db/schema/run-built-in-admission";
-import {
-  agentRuns,
-  type AgentRunUsageFinalizationState,
-} from "@okouai/db/schema/agent-run";
-import { and, count, eq, lte, ne, sql } from "drizzle-orm";
+import { and, count, eq, lte, sql } from "drizzle-orm";
 
-import type { Tx } from "../../lib/db-types";
 import { writeDb$ } from "../external/db";
 import { nowDate } from "../../lib/time";
 
 const RUN_BUILT_IN_MAX_IN_FLIGHT = 3;
 const RUN_BUILT_IN_MAX_STARTED = 50;
 const RUN_BUILT_IN_ADMISSION_TTL_MS = 30 * 60 * 1000;
-const RUN_API_USAGE_ADMISSION_KIND = "api-request";
 
 type RunBuiltInGenerationKind =
   | "image"
@@ -33,13 +27,8 @@ interface RunBuiltInAdmissionErrorBody {
   };
 }
 
-type RunUsageFinalizedError = {
-  readonly status: 403;
-  readonly body: RunBuiltInAdmissionErrorBody;
-};
-
 type RunBuiltInAdmissionError = {
-  readonly status: 403 | 429;
+  readonly status: 429;
   readonly body: RunBuiltInAdmissionErrorBody;
 };
 
@@ -79,68 +68,6 @@ function runUsageLimit(): RunBuiltInAdmissionError {
   };
 }
 
-function runUsageFinalized(): RunUsageFinalizedError {
-  return {
-    status: 403,
-    body: {
-      error: {
-        message: "This run has already finalized usage.",
-        code: "BUILT_IN_RUN_USAGE_FINALIZED",
-      },
-    },
-  };
-}
-
-function runApiUsageFinalized(): RunUsageFinalizedError {
-  return {
-    status: 403,
-    body: {
-      error: {
-        message: "This run no longer accepts API usage.",
-        code: "RUN_USAGE_FINALIZED",
-      },
-    },
-  };
-}
-
-export function isRunApiUsageAdmissionError(
-  result: RunBuiltInAdmission | RunUsageFinalizedError | null,
-): result is RunUsageFinalizedError {
-  return result !== null && "status" in result;
-}
-
-async function prepareRunUsageAdmission(
-  tx: Tx,
-  runId: string,
-): Promise<{
-  readonly now: Date;
-  readonly state: AgentRunUsageFinalizationState | null | undefined;
-}> {
-  // Keep the historical lock namespace so mixed API deployments serialize.
-  await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtext('run_builtin_' || ${runId}))`,
-  );
-
-  const now = nowDate();
-  await tx
-    .update(runBuiltInAdmissions)
-    .set({ status: "expired", completedAt: now, updatedAt: now })
-    .where(
-      and(
-        eq(runBuiltInAdmissions.runId, runId),
-        eq(runBuiltInAdmissions.status, "active"),
-        lte(runBuiltInAdmissions.expiresAt, now),
-      ),
-    );
-
-  const [run] = await tx
-    .select({ state: agentRuns.usageFinalizationState })
-    .from(agentRuns)
-    .where(eq(agentRuns.id, runId))
-    .limit(1);
-  return { now, state: run?.state };
-}
-
 export const startRunBuiltInAdmission$ = command(
   async (
     { set },
@@ -157,14 +84,21 @@ export const startRunBuiltInAdmission$ = command(
     const runId = args.runId;
     const writeDb = set(writeDb$);
     return await writeDb.transaction(async (tx) => {
-      const prepared = await prepareRunUsageAdmission(tx, runId);
-      signal.throwIfAborted();
-      if (
-        prepared.state === "deliveryFinalized" ||
-        prepared.state === "finalized"
-      ) {
-        return runUsageFinalized();
-      }
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext('run_builtin_' || ${runId}))`,
+      );
+
+      const now = nowDate();
+      await tx
+        .update(runBuiltInAdmissions)
+        .set({ status: "expired", completedAt: now, updatedAt: now })
+        .where(
+          and(
+            eq(runBuiltInAdmissions.runId, runId),
+            eq(runBuiltInAdmissions.status, "active"),
+            lte(runBuiltInAdmissions.expiresAt, now),
+          ),
+        );
 
       const [activeResult] = await tx
         .select({ total: count() })
@@ -173,7 +107,6 @@ export const startRunBuiltInAdmission$ = command(
           and(
             eq(runBuiltInAdmissions.runId, runId),
             eq(runBuiltInAdmissions.status, "active"),
-            ne(runBuiltInAdmissions.kind, RUN_API_USAGE_ADMISSION_KIND),
           ),
         );
       signal.throwIfAborted();
@@ -184,20 +117,13 @@ export const startRunBuiltInAdmission$ = command(
       const [startedResult] = await tx
         .select({ total: count() })
         .from(runBuiltInAdmissions)
-        .where(
-          and(
-            eq(runBuiltInAdmissions.runId, runId),
-            ne(runBuiltInAdmissions.kind, RUN_API_USAGE_ADMISSION_KIND),
-          ),
-        );
+        .where(eq(runBuiltInAdmissions.runId, runId));
       signal.throwIfAborted();
       if (Number(startedResult?.total ?? 0) >= RUN_BUILT_IN_MAX_STARTED) {
         return runUsageLimit();
       }
 
-      const expiresAt = new Date(
-        prepared.now.getTime() + RUN_BUILT_IN_ADMISSION_TTL_MS,
-      );
+      const expiresAt = new Date(now.getTime() + RUN_BUILT_IN_ADMISSION_TTL_MS);
       const [row] = await tx
         .insert(runBuiltInAdmissions)
         .values({
@@ -214,58 +140,6 @@ export const startRunBuiltInAdmission$ = command(
 
       return row;
     });
-  },
-);
-
-export const startRunApiUsageAdmission$ = command(
-  async (
-    { set },
-    runId: string,
-    signal: AbortSignal,
-  ): Promise<RunBuiltInAdmission | RunUsageFinalizedError | null> => {
-    return await set(writeDb$).transaction(async (tx) => {
-      const prepared = await prepareRunUsageAdmission(tx, runId);
-      signal.throwIfAborted();
-      if (
-        prepared.state === "deliveryFinalized" ||
-        prepared.state === "finalized"
-      ) {
-        return runApiUsageFinalized();
-      }
-      if (prepared.state !== "pending") {
-        return null;
-      }
-
-      const [admission] = await tx
-        .insert(runBuiltInAdmissions)
-        .values({
-          runId,
-          kind: RUN_API_USAGE_ADMISSION_KIND,
-          status: "active",
-          expiresAt: new Date(
-            prepared.now.getTime() + RUN_BUILT_IN_ADMISSION_TTL_MS,
-          ),
-        })
-        .returning({ id: runBuiltInAdmissions.id });
-      signal.throwIfAborted();
-      if (!admission) {
-        throw new Error("run API usage admission insert returned no row");
-      }
-      return admission;
-    });
-  },
-);
-
-export const completeRunApiUsageAdmission$ = command(
-  async ({ set }, admission: RunBuiltInAdmission): Promise<void> => {
-    await set(writeDb$)
-      .delete(runBuiltInAdmissions)
-      .where(
-        and(
-          eq(runBuiltInAdmissions.id, admission.id),
-          eq(runBuiltInAdmissions.kind, RUN_API_USAGE_ADMISSION_KIND),
-        ),
-      );
   },
 );
 

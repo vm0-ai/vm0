@@ -109,16 +109,6 @@ export async function normalizeThrown<T>(run: () => Promise<T>): Promise<T> {
   }
 }
 
-/** Run required cleanup after an async operation, whether it succeeds or fails. */
-export async function withCleanup<T>(
-  operation: () => Promise<T>,
-  cleanup: () => Promise<unknown>,
-): Promise<T> {
-  const value = await onRejection(operation(), cleanup);
-  await cleanup();
-  return value;
-}
-
 export function isValidTimeZone(input: string): boolean {
   // eslint-disable-next-line no-restricted-syntax -- centralized guarded Intl timezone validation
   try {

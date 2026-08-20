@@ -18,7 +18,6 @@ import {
   webhookStoragesPrepareContract,
   webhookTelemetryContract,
   webhookUsageEventContract,
-  webhookUsageFinalizedContract,
 } from "../contracts/webhooks";
 
 export interface RuntimeApiRouteLike {
@@ -89,11 +88,6 @@ export const runtimeApiRouteBindings = [
     id: "webhooks.agent.complete",
     owner: "guest-agent",
     route: webhookCompleteContract.complete,
-  },
-  {
-    id: "webhooks.agent.usageFinalized",
-    owner: "runner",
-    route: webhookUsageFinalizedContract.finalize,
   },
   {
     id: "webhooks.agent.heartbeat",

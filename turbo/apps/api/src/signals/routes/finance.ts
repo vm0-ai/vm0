@@ -76,7 +76,6 @@ const financeAuth = {
   requireOrganization: true,
   missingOrganizationStatus: 401,
   requiredCapability: "finance:read",
-  runUsageBarrier: true,
 } as const;
 
 export const financeRoutes: readonly RouteEntry[] = [

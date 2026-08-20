@@ -29,7 +29,6 @@ export const peopleSearchRoutes: readonly RouteEntry[] = [
         requireOrganization: true,
         missingOrganizationStatus: 401,
         requiredCapability: "people-search:read",
-        runUsageBarrier: true,
       },
       peopleSearchInner$,
     ),

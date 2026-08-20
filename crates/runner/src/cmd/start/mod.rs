@@ -43,13 +43,14 @@ use std::time::{Duration, Instant};
 use clap::Args;
 use futures_util::future::BoxFuture;
 use sandbox::{RuntimeProvider, SandboxRuntime};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::duration::duration_ms as saturated_duration_ms;
+#[cfg(test)]
 use crate::ids::RunId;
 
 use crate::config::{self, ProfileConfig};
@@ -723,7 +724,7 @@ async fn run_start_with_home(
     ));
 
     // Create provider — handles discovery + claim + complete
-    let (usage_flush_tx, usage_flush_rx) = mpsc::channel(16);
+    let (usage_flush_tx, usage_flush_rx) = mpsc::channel(1);
     let (provider, group_name, connector_runtime_sync): (
         Arc<dyn JobProvider>,
         String,
@@ -881,17 +882,12 @@ struct RunConfig {
     proxy: ProxyState,
     exec_config: Arc<ExecutorConfig>,
     shutdown: ShutdownHandles,
-    usage_flush_tx: mpsc::Sender<RunUsageFlushMessage>,
-    usage_flush_rx: mpsc::Receiver<RunUsageFlushMessage>,
+    usage_flush_tx: mpsc::Sender<()>,
+    usage_flush_rx: mpsc::Receiver<()>,
     signals: SignalState,
     orphan_reap: OrphanReapState,
     #[cfg(test)]
     test_hooks: RunTestHooks,
-}
-
-pub(super) struct RunUsageFlushMessage {
-    run_id: RunId,
-    result_tx: oneshot::Sender<proxy::RunUsageFlushOutcome>,
 }
 
 struct RunnerInfo {
@@ -2019,10 +2015,10 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     ).await;
                 }
             }
-            Some(request) = usage_flush_rx.recv() => {
+            Some(()) = usage_flush_rx.recv() => {
                 #[cfg(test)]
                 test_hooks.test_observer.notify_usage_flush_requested();
-                start_run_usage_flush(request, &paths.base_dir, &mut mitm).await;
+                mitm.request_usage_flush();
             }
             // Reconcile active runs left visible after an outer job-task panic.
             _ = orphan_reap_tick.tick(), if !orphaned_active_runs.is_empty() => {
@@ -2212,10 +2208,10 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                         ).await;
                     }
                 }
-                Some(request) = usage_flush_rx.recv() => {
+                Some(()) = usage_flush_rx.recv() => {
                     #[cfg(test)]
                     test_hooks.test_observer.notify_usage_flush_requested();
-                    start_run_usage_flush(request, &paths.base_dir, &mut mitm).await;
+                    mitm.request_usage_flush();
                 }
                 _ = mitm_crash_rx.recv() => {
                     error!(
@@ -2356,42 +2352,6 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     } else {
         Ok(())
     }
-}
-
-async fn start_run_usage_flush(
-    request: RunUsageFlushMessage,
-    base_dir: &std::path::Path,
-    mitm: &mut proxy::MitmProxy,
-) {
-    let RunUsageFlushMessage { run_id, result_tx } = request;
-    let Some(target) = mitm.usage_flush_target() else {
-        let _ = result_tx.send(proxy::RunUsageFlushOutcome::Failed);
-        return;
-    };
-    let addon_dir = base_dir.join("mitm-addon");
-    let flush_request =
-        match proxy::write_run_usage_flush_request(&addon_dir, &target, run_id).await {
-            Ok(request) => request,
-            Err(error) => {
-                error!(
-                    run_id = %run_id,
-                    error = %error,
-                    "failed to create run usage flush request"
-                );
-                let _ = result_tx.send(proxy::RunUsageFlushOutcome::Failed);
-                return;
-            }
-        };
-    if !mitm.request_usage_flush() {
-        warn!(run_id = %run_id, "proxy usage flush signal failed");
-        proxy::discard_run_usage_flush(flush_request).await;
-        let _ = result_tx.send(proxy::RunUsageFlushOutcome::Failed);
-        return;
-    }
-    tokio::spawn(async move {
-        let outcome = proxy::wait_run_usage_flush(flush_request, proxy::USAGE_FLUSH_TIMEOUT).await;
-        let _ = result_tx.send(outcome);
-    });
 }
 
 #[cfg(test)]

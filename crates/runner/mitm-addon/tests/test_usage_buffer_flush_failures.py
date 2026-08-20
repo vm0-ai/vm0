@@ -26,44 +26,6 @@ def assert_usage_buffer_drained(enqueue: RecordingEnqueue) -> None:
     enqueue.assert_not_called()
 
 
-def test_run_delivery_state_tracks_success_and_loss_independently(tmp_path):
-    callbacks: dict[str, DeliveryOutcomeCallback] = {}
-
-    def enqueue_without_completion(
-        url,
-        sandbox_token,
-        payload,
-        path,
-        log_type,
-        delivery_outcome_callback,
-    ):
-        del url, sandbox_token, path, log_type
-        callbacks[payload["runId"]] = delivery_outcome_callback
-        return True
-
-    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue_without_completion)
-    proxy_log_path = str(tmp_path / "proxy.jsonl")
-    for run_id in ("run-a", "run-b"):
-        usage.buffer_usage_events(
-            "https://api.test/api/webhooks/agent/usage-event",
-            "token",
-            run_id,
-            [event(source_key=f"source-{run_id}")],
-            proxy_log_path,
-        )
-
-    assert usage.run_usage_delivery_state("run-a") == (0, 1, False)
-    assert usage.run_usage_delivery_state("run-b") == (0, 1, False)
-    assert usage.flush_usage_events(trigger="test") == 2
-
-    callbacks["run-a"]("success")
-    assert usage.run_usage_delivery_state("run-a") == (0, 0, False)
-    assert usage.run_usage_delivery_state("run-b") == (0, 1, False)
-
-    callbacks["run-b"]("permanent_failure")
-    assert usage.run_usage_delivery_state("run-b") == (0, 0, True)
-
-
 def test_flush_failure_preserves_retryable_payload_with_same_idempotency_key(tmp_path):
     failed_payloads = []
     pending_path = tmp_path / "usage-pending"

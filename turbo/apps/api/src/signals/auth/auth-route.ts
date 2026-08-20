@@ -8,17 +8,9 @@ import {
   type AuthErrorResponse,
   type AuthOptions,
 } from "./auth-context";
-import {
-  completeRunApiUsageAdmission$,
-  isRunApiUsageAdmissionError,
-  startRunApiUsageAdmission$,
-} from "../services/run-built-in-admission.service";
-import { withCleanup } from "../utils";
 
 interface AuthRouteOptions extends AuthOptions {
   readonly accept?: readonly AuthTokenType[];
-  /** Keep capable-run usage open while this route can persist billable work. */
-  readonly runUsageBarrier?: true;
 }
 
 const FORBIDDEN_TOKEN_TYPE: AuthErrorResponse = Object.freeze({
@@ -57,29 +49,9 @@ export function authRoute<T>(
 
       set(setAuthContext$, result);
 
-      const admission =
-        options.runUsageBarrier &&
-        (result.tokenType === "zero" || result.tokenType === "sandbox")
-          ? await set(startRunApiUsageAdmission$, result.runId, signal)
-          : null;
-      if (isRunApiUsageAdmissionError(admission)) {
-        signal.throwIfAborted();
-        return admission;
-      }
-
-      const runHandler = async (): Promise<T> => {
-        signal.throwIfAborted();
-        return isCommand(handler$)
-          ? await set(handler$, signal)
-          : await get(handler$);
-      };
-      if (admission === null) {
-        return await runHandler();
-      }
-
-      return await withCleanup(runHandler, async () => {
-        await set(completeRunApiUsageAdmission$, admission);
-      });
+      return isCommand(handler$)
+        ? await set(handler$, signal)
+        : await get(handler$);
     },
   );
 }

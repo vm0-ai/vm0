@@ -50,7 +50,6 @@ class _PendingCounter:
 _in_flight_flows = _PendingCounter("flows")
 _buffered_reports = _PendingCounter("buffered_reports")
 _pending_reports = _PendingCounter("reports")
-_in_flight_flows_by_run: dict[str, int] = {}
 
 
 def reset_for_tests() -> None:
@@ -61,7 +60,6 @@ def reset_for_tests() -> None:
             counter.value = 0
             counter.underflow_logged = False
         _buffered_usage_events = 0
-        _in_flight_flows_by_run.clear()
         _pending_path = ""
         _usage_state_id = str(uuid.uuid4())
         _pending_write_error_logged = False
@@ -157,7 +155,7 @@ def _write_pending_state(pending_path: str, state: dict[str, Any]) -> None:
                 )
 
 
-def increment_in_flight_flows(run_id: str | None = None) -> None:
+def increment_in_flight_flows() -> None:
     """Track a newly admitted usage flow (call from request).
 
     Admission is owned by ``terminal_usage.track_flow_if_needed`` and includes
@@ -166,18 +164,12 @@ def increment_in_flight_flows(run_id: str | None = None) -> None:
     terminal hooks enqueue billing events and model-usage observations before
     the runner shutdown drain advances.
     """
-    _increment_counter(_in_flight_flows, run_id=run_id)
+    _increment_counter(_in_flight_flows)
 
 
-def decrement_in_flight_flows(run_id: str | None = None) -> None:
+def decrement_in_flight_flows() -> None:
     """Mark a tracked in-flight flow as complete (call from response/error)."""
-    _decrement_counter(_in_flight_flows, run_id=run_id)
-
-
-def in_flight_flow_count(run_id: str) -> int:
-    """Return tracked usage flows that can still report for one run."""
-    with _counter_lock:
-        return _in_flight_flows_by_run.get(run_id, 0)
+    _decrement_counter(_in_flight_flows)
 
 
 class _CounterLease:
@@ -252,26 +244,18 @@ def admit_buffered_report() -> BufferedReportLease:
     return BufferedReportLease()
 
 
-def _increment_counter(counter: _PendingCounter, *, run_id: str | None = None) -> None:
+def _increment_counter(counter: _PendingCounter) -> None:
     with _counter_lock:
         counter.value += 1
-        if counter is _in_flight_flows and run_id:
-            _in_flight_flows_by_run[run_id] = _in_flight_flows_by_run.get(run_id, 0) + 1
 
 
-def _decrement_counter(counter: _PendingCounter, *, run_id: str | None = None) -> None:
+def _decrement_counter(counter: _PendingCounter) -> None:
     should_log = False
     with _counter_lock:
         if counter.value > 0:
             counter.value -= 1
         else:
             should_log = _mark_counter_underflow_locked(counter)
-        if counter is _in_flight_flows and run_id:
-            run_count = _in_flight_flows_by_run.get(run_id, 0)
-            if run_count <= 1:
-                _in_flight_flows_by_run.pop(run_id, None)
-            else:
-                _in_flight_flows_by_run[run_id] = run_count - 1
     if should_log:
         _log_counter_underflow(counter.name)
 

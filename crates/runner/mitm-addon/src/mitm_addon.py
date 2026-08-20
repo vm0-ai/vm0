@@ -905,8 +905,6 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
         if classification.kind == "api_allow" and not _admit_platform_api_request(flow):
             _restore_request_headers_probe_metadata(flow, metadata_snapshot)
             return None
-        if classification.kind == "api_allow":
-            terminal_usage.track_run_scoped_flow(flow)
         if classification.kind == "allow":
             connector_diagnostics.record_allow_context(flow, classification)
         request_classification.cache_classification(flow, classification)
@@ -1368,10 +1366,6 @@ async def request(flow: http.HTTPFlow) -> None:
             if not _admit_platform_api_request(flow):
                 _block_upstream_destination_unbound(flow, reason="api_allow")
                 return
-            # Platform API handlers can record usage directly. Keep the same
-            # per-run delivery barrier as proxy-metered provider requests until
-            # the API response is terminal.
-            terminal_usage.track_run_scoped_flow(flow)
             flow_metadata.set_firewall_decision(flow.metadata, "ALLOW")
             return
         if classification.kind == "browser_allow":

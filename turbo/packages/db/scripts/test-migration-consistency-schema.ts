@@ -2434,13 +2434,6 @@ const EXPECTED_PERMANENT_TRIGGERS = [
   },
   {
     definition:
-      "CREATE TRIGGER usage_event_enforce_agent_run_usage_seal BEFORE INSERT ON public.usage_event FOR EACH ROW EXECUTE FUNCTION enforce_agent_run_usage_seal()",
-    schemaName: "public",
-    tableName: "usage_event",
-    triggerName: "usage_event_enforce_agent_run_usage_seal",
-  },
-  {
-    definition:
       "CREATE TRIGGER video_artifacts_delete_artifact_registry AFTER DELETE ON public.video_artifacts FOR EACH ROW EXECUTE FUNCTION delete_artifact_registry_entity('video')",
     schemaName: "public",
     tableName: "video_artifacts",
@@ -2535,13 +2528,6 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
   {
     bodyHash: "6f52cca2ad2bdcb63072a8c4269c9b49",
     functionName: "enforce_hosted_deployment_scope_0753",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "a9c9366daf66b6577e0137dd6f53b49f",
-    functionName: "enforce_agent_run_usage_seal",
     identityArguments: "",
     kind: "f",
     schemaName: "public",

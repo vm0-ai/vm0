@@ -55,8 +55,6 @@ request="$base_dir/mitm-addon/usage-flush-request"
 pending="$base_dir/mitm-addon/usage-pending"
 jsonl_request="$base_dir/mitm-addon/jsonl-flush-request"
 jsonl_state="$base_dir/mitm-addon/jsonl-flush-state"
-run_usage_requests="$base_dir/mitm-addon/run-usage-flush-requests"
-run_usage_results="$base_dir/mitm-addon/run-usage-flush-results"
 write_pending_snapshot() {
   [[ -f "$request" ]] || return 0
   flush_id="$(sed -n 's/.*"flushRequestId":"\([^"]*\)".*/\1/p' "$request")"
@@ -64,18 +62,6 @@ write_pending_snapshot() {
   [[ -n "$flush_id" && -n "$state_id" ]] || return 0
   now_ms="$(date +%s%3N)"
   printf '{"pid":%s,"usageStateId":"%s","updatedAtMs":%s,"flows":0,"buffered":0,"reports":0,"flushRequestId":"%s"}' "$$" "$state_id" "$now_ms" "$flush_id" > "$pending"
-}
-write_run_usage_flush_results() {
-  mkdir -p "$run_usage_results"
-  for run_request in "$run_usage_requests"/*.json; do
-    [[ -f "$run_request" ]] || continue
-    flush_id="$(sed -n 's/.*"flushRequestId":"\([^"]*\)".*/\1/p' "$run_request")"
-    state_id="$(sed -n 's/.*"usageStateId":"\([^"]*\)".*/\1/p' "$run_request")"
-    run_id="$(sed -n 's/.*"runId":"\([^"]*\)".*/\1/p' "$run_request")"
-    [[ -n "$flush_id" && -n "$state_id" && -n "$run_id" ]] || continue
-    now_ms="$(date +%s%3N)"
-    printf '{"pid":%s,"usageStateId":"%s","updatedAtMs":%s,"flushRequestId":"%s","runId":"%s","status":"ready","flows":0,"buffered":0}' "$$" "$state_id" "$now_ms" "$flush_id" "$run_id" > "$run_usage_results/$flush_id.json"
-  done
 }
 write_jsonl_flush_state() {
   [[ -f "$jsonl_request" ]] || return 0
@@ -96,7 +82,6 @@ echo ready
 while true; do
   if read -r -t 0.05 _ <&3; then
     write_pending_snapshot
-    write_run_usage_flush_results
   fi
   write_jsonl_flush_state
 done

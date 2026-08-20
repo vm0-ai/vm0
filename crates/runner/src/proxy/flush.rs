@@ -14,7 +14,6 @@ use tracing::{error, warn};
 use uuid::Uuid;
 
 use crate::error::{RunnerError, RunnerResult};
-use crate::ids::RunId;
 
 /// Maximum time to wait for buffered work and pending reports before stopping.
 ///
@@ -43,8 +42,6 @@ const JSONL_FLUSH_POLL: Duration = Duration::from_millis(50);
 
 /// Tolerated wall-clock skew when validating addon timestamps.
 const USAGE_PENDING_CLOCK_SKEW: Duration = Duration::from_secs(300);
-const RUN_USAGE_FLUSH_REQUEST_DIR: &str = "run-usage-flush-requests";
-const RUN_USAGE_FLUSH_RESULT_DIR: &str = "run-usage-flush-results";
 
 #[derive(Debug, Clone)]
 pub struct UsageFlushTarget {
@@ -65,81 +62,12 @@ pub struct UsageFlushRequest {
     core: FlushRequestCore,
 }
 
-#[derive(Debug, Clone)]
-pub struct RunUsageFlushRequest {
-    core: FlushRequestCore,
-    run_id: String,
-    request_path: PathBuf,
-    result_path: PathBuf,
-}
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub enum RunUsageFlushOutcome {
-    Ready,
-    DeliveryLost,
-    Failed,
-}
-
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct UsageFlushRequestMarker<'a> {
     usage_state_id: &'a str,
     flush_request_id: &'a str,
     requested_at_ms: u64,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct RunUsageFlushRequestMarker<'a> {
-    usage_state_id: &'a str,
-    flush_request_id: &'a str,
-    requested_at_ms: u64,
-    run_id: &'a str,
-}
-
-#[derive(Debug, Clone, Copy, Deserialize)]
-#[serde(rename_all = "camelCase")]
-enum RunUsageFlushStatus {
-    Ready,
-    DeliveryLost,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct RunUsageFlushState {
-    pid: u32,
-    usage_state_id: String,
-    updated_at_ms: u64,
-    flush_request_id: String,
-    run_id: String,
-    status: RunUsageFlushStatus,
-    flows: u32,
-    buffered: u32,
-}
-
-#[derive(Debug, Clone)]
-struct RunUsageFlushSnapshot {
-    pid: u32,
-    usage_state_id: String,
-    updated_at_ms: u64,
-    flush_request_id: String,
-    run_id: String,
-    flows: u32,
-    buffered: u32,
-}
-
-impl From<&RunUsageFlushState> for RunUsageFlushSnapshot {
-    fn from(state: &RunUsageFlushState) -> Self {
-        Self {
-            pid: state.pid,
-            usage_state_id: state.usage_state_id.clone(),
-            updated_at_ms: state.updated_at_ms,
-            flush_request_id: state.flush_request_id.clone(),
-            run_id: state.run_id.clone(),
-            flows: state.flows,
-            buffered: state.buffered,
-        }
-    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -311,19 +239,6 @@ impl UsageFlushRequest {
     }
 }
 
-impl RunUsageFlushRequest {
-    fn new(addon_dir: &Path, target: &UsageFlushTarget, run_id: RunId) -> Self {
-        let core = FlushRequestCore::new(target);
-        let file_name = format!("{}.json", core.flush_request_id);
-        Self {
-            run_id: run_id.to_string(),
-            request_path: addon_dir.join(RUN_USAGE_FLUSH_REQUEST_DIR).join(&file_name),
-            result_path: addon_dir.join(RUN_USAGE_FLUSH_RESULT_DIR).join(file_name),
-            core,
-        }
-    }
-}
-
 impl JsonlFlushRequest {
     fn new(target: &UsageFlushTarget, path: &Path) -> Self {
         Self {
@@ -426,30 +341,6 @@ pub async fn write_usage_flush_request(
     Ok(request)
 }
 
-pub async fn write_run_usage_flush_request(
-    addon_dir: &Path,
-    target: &UsageFlushTarget,
-    run_id: RunId,
-) -> RunnerResult<RunUsageFlushRequest> {
-    let request = RunUsageFlushRequest::new(addon_dir, target, run_id);
-    let marker = RunUsageFlushRequestMarker {
-        usage_state_id: &request.core.expected_usage_state_id,
-        flush_request_id: &request.core.flush_request_id,
-        requested_at_ms: request.core.requested_at_ms,
-        run_id: &request.run_id,
-    };
-    tokio::fs::create_dir_all(addon_dir.join(RUN_USAGE_FLUSH_REQUEST_DIR))
-        .await
-        .map_err(|e| RunnerError::Internal(format!("create run usage request directory: {e}")))?;
-    tokio::fs::create_dir_all(addon_dir.join(RUN_USAGE_FLUSH_RESULT_DIR))
-        .await
-        .map_err(|e| RunnerError::Internal(format!("create run usage result directory: {e}")))?;
-    let content = serde_json::to_vec(&marker)
-        .map_err(|e| RunnerError::Internal(format!("serialize run usage flush request: {e}")))?;
-    crate::state_file::write_private_atomic(&request.request_path, &content).await?;
-    Ok(request)
-}
-
 async fn write_jsonl_flush_request(
     addon_dir: &Path,
     target: &UsageFlushTarget,
@@ -507,35 +398,6 @@ fn validate_usage_pending_state(
         "usage flush request id is missing",
         now_ms,
     )
-}
-
-fn parse_run_usage_flush_state(content: &str) -> Result<RunUsageFlushState, String> {
-    let trimmed = content.trim();
-    if trimmed.is_empty() {
-        return Err("state file is empty".to_string());
-    }
-    serde_json::from_str::<RunUsageFlushState>(trimmed)
-        .map_err(|e| format!("state file is not valid run usage flush JSON: {e}"))
-}
-
-fn validate_run_usage_flush_state(
-    state: &RunUsageFlushState,
-    request: &RunUsageFlushRequest,
-    now_ms: u64,
-) -> Result<(), String> {
-    validate_flush_state_core(
-        &state.usage_state_id,
-        state.updated_at_ms,
-        Some(&state.flush_request_id),
-        &request.core,
-        "run usage flush request id does not match current request",
-        "run usage flush request id is missing",
-        now_ms,
-    )?;
-    if state.run_id != request.run_id {
-        return Err("run usage flush run id does not match current request".to_string());
-    }
-    Ok(())
 }
 
 fn parse_jsonl_flush_state(content: &str) -> Result<JsonlFlushState, String> {
@@ -723,164 +585,6 @@ pub async fn wait_usage_flush_requesting(
             }
             false
         }
-    }
-}
-
-pub async fn wait_run_usage_flush(
-    request: RunUsageFlushRequest,
-    timeout: Duration,
-) -> RunUsageFlushOutcome {
-    let Some(result_dir) = request.result_path.parent() else {
-        error!(
-            r#type = "usage_underbilling",
-            reason = "run_usage_flush_invalid_result_path",
-            underbilling_class = "risk",
-            component = "runner",
-            run_id = %request.run_id,
-            path = %request.result_path.display(),
-            "run usage flush result path has no parent; leaving chat usage unpublished"
-        );
-        return RunUsageFlushOutcome::Failed;
-    };
-    let Some(result_file_name) = request
-        .result_path
-        .file_name()
-        .and_then(|name| name.to_str())
-    else {
-        error!(
-            r#type = "usage_underbilling",
-            reason = "run_usage_flush_invalid_result_path",
-            underbilling_class = "risk",
-            component = "runner",
-            run_id = %request.run_id,
-            path = %request.result_path.display(),
-            "run usage flush result path has no UTF-8 file name; leaving chat usage unpublished"
-        );
-        return RunUsageFlushOutcome::Failed;
-    };
-    let wait_result = wait_flush::<_, fn() -> bool>(
-        result_dir,
-        result_file_name,
-        timeout,
-        USAGE_FLUSH_POLL,
-        |content| match parse_run_usage_flush_state(content) {
-            Ok(state) => {
-                let snapshot = Some(RunUsageFlushSnapshot::from(&state));
-                match validate_run_usage_flush_state(&state, &request, now_millis()) {
-                    Ok(()) => FlushReadiness::Ready,
-                    Err(not_ready) => FlushReadiness::NotReady {
-                        phase: "state_validation",
-                        not_ready,
-                        snapshot,
-                    },
-                }
-            }
-            Err(not_ready) => FlushReadiness::NotReady {
-                phase: "state_read",
-                not_ready,
-                snapshot: None,
-            },
-        },
-        None,
-    )
-    .await;
-
-    let outcome = match wait_result {
-        Ok(()) => match read_addon_state_file(&request.result_path).await {
-            Ok(Some(content)) => match parse_run_usage_flush_state(&content) {
-                Ok(state)
-                    if validate_run_usage_flush_state(&state, &request, now_millis()).is_ok() =>
-                {
-                    match state.status {
-                        RunUsageFlushStatus::Ready => RunUsageFlushOutcome::Ready,
-                        RunUsageFlushStatus::DeliveryLost => {
-                            error!(
-                                r#type = "usage_underbilling",
-                                reason = "run_usage_delivery_lost",
-                                underbilling_class = "confirmed",
-                                component = "runner",
-                                run_id = %request.run_id,
-                                request_id = %request.core.flush_request_id,
-                                flows = state.flows,
-                                buffered = state.buffered,
-                                "run usage delivery was lost; leaving chat usage unpublished"
-                            );
-                            RunUsageFlushOutcome::DeliveryLost
-                        }
-                    }
-                }
-                _ => RunUsageFlushOutcome::Failed,
-            },
-            _ => RunUsageFlushOutcome::Failed,
-        },
-        Err(FlushWaitFailure::RequestFailed { phase, not_ready }) => {
-            error!(
-                r#type = "usage_underbilling",
-                reason = "run_usage_flush_request_failed",
-                underbilling_class = "risk",
-                component = "runner",
-                run_id = %request.run_id,
-                phase,
-                not_ready = %not_ready,
-                "run usage flush request failed; leaving chat usage unpublished"
-            );
-            RunUsageFlushOutcome::Failed
-        }
-        Err(FlushWaitFailure::TimedOut {
-            phase,
-            not_ready,
-            snapshot,
-        }) => {
-            if let Some(snapshot) = snapshot {
-                error!(
-                    r#type = "usage_underbilling",
-                    reason = "run_usage_flush_timeout",
-                    underbilling_class = "risk",
-                    component = "runner",
-                    run_id = %request.run_id,
-                    phase,
-                    not_ready = %not_ready,
-                    pid = snapshot.pid,
-                    usage_state_id = %snapshot.usage_state_id,
-                    updated_at_ms = snapshot.updated_at_ms,
-                    flush_request_id = %snapshot.flush_request_id,
-                    result_run_id = %snapshot.run_id,
-                    flows = snapshot.flows,
-                    buffered = snapshot.buffered,
-                    "run usage flush timed out; leaving chat usage unpublished"
-                );
-            } else {
-                error!(
-                    r#type = "usage_underbilling",
-                    reason = "run_usage_flush_timeout",
-                    underbilling_class = "risk",
-                    component = "runner",
-                    run_id = %request.run_id,
-                    phase,
-                    not_ready = %not_ready,
-                    "run usage flush timed out; leaving chat usage unpublished"
-                );
-            }
-            RunUsageFlushOutcome::Failed
-        }
-    };
-
-    remove_run_usage_flush_file(&request.request_path).await;
-    remove_run_usage_flush_file(&request.result_path).await;
-    outcome
-}
-
-/// Remove a per-run flush exchange that could not be signalled to the addon.
-pub async fn discard_run_usage_flush(request: RunUsageFlushRequest) {
-    remove_run_usage_flush_file(&request.request_path).await;
-    remove_run_usage_flush_file(&request.result_path).await;
-}
-
-async fn remove_run_usage_flush_file(path: &Path) {
-    if let Err(error) = tokio::fs::remove_file(path).await
-        && error.kind() != std::io::ErrorKind::NotFound
-    {
-        warn!(error = %error, path = %path.display(), "failed to remove run usage flush file");
     }
 }
 
@@ -1185,20 +889,6 @@ mod tests {
         }
     }
 
-    fn run_usage_state(request: &RunUsageFlushRequest, status: &str) -> String {
-        serde_json::json!({
-            "pid": 1234,
-            "usageStateId": request.core.expected_usage_state_id,
-            "updatedAtMs": now_millis(),
-            "flushRequestId": request.core.flush_request_id,
-            "runId": request.run_id,
-            "status": status,
-            "flows": 0,
-            "buffered": 0,
-        })
-        .to_string()
-    }
-
     fn jsonl_request(path: &Path) -> JsonlFlushRequest {
         JsonlFlushRequest {
             core: FlushRequestCore {
@@ -1263,62 +953,6 @@ mod tests {
         assert_eq!(marker["usageStateId"], "state-test");
         assert_eq!(marker["flushRequestId"], request.core.flush_request_id);
         assert_eq!(marker["requestedAtMs"], request.core.requested_at_ms);
-    }
-
-    #[tokio::test]
-    async fn run_usage_flush_ready_result_is_correlated_and_cleaned_up() {
-        let dir = tempfile::tempdir().unwrap();
-        let run_id = RunId::new_v4();
-        let request = write_run_usage_flush_request(dir.path(), &usage_target(), run_id)
-            .await
-            .unwrap();
-
-        let marker: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(&request.request_path).unwrap()).unwrap();
-        assert_eq!(marker["usageStateId"], "state-test");
-        assert_eq!(marker["flushRequestId"], request.core.flush_request_id);
-        assert_eq!(marker["runId"], run_id.to_string());
-        std::fs::write(&request.result_path, run_usage_state(&request, "ready")).unwrap();
-        let request_path = request.request_path.clone();
-        let result_path = request.result_path.clone();
-
-        assert_eq!(
-            wait_run_usage_flush(request, Duration::from_millis(50)).await,
-            RunUsageFlushOutcome::Ready
-        );
-        assert!(!request_path.exists());
-        assert!(!result_path.exists());
-    }
-
-    #[tokio::test]
-    async fn run_usage_flush_reports_delivery_loss_and_rejects_wrong_run() {
-        let dir = tempfile::tempdir().unwrap();
-        let lost_request =
-            write_run_usage_flush_request(dir.path(), &usage_target(), RunId::new_v4())
-                .await
-                .unwrap();
-        std::fs::write(
-            &lost_request.result_path,
-            run_usage_state(&lost_request, "deliveryLost"),
-        )
-        .unwrap();
-        assert_eq!(
-            wait_run_usage_flush(lost_request, Duration::from_millis(50)).await,
-            RunUsageFlushOutcome::DeliveryLost
-        );
-
-        let mismatched_request =
-            write_run_usage_flush_request(dir.path(), &usage_target(), RunId::new_v4())
-                .await
-                .unwrap();
-        let mut mismatched: serde_json::Value =
-            serde_json::from_str(&run_usage_state(&mismatched_request, "ready")).unwrap();
-        mismatched["runId"] = serde_json::json!(RunId::new_v4());
-        std::fs::write(&mismatched_request.result_path, mismatched.to_string()).unwrap();
-        assert_eq!(
-            wait_run_usage_flush(mismatched_request, Duration::from_millis(20)).await,
-            RunUsageFlushOutcome::Failed
-        );
     }
 
     #[tokio::test]

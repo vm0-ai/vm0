@@ -1,16 +1,13 @@
 import { command } from "ccstate";
 import type { z } from "zod";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   runStatusSchema,
   type RunResult,
   type RunStatus,
 } from "@okouai/api-contracts/contracts/runs";
 import { webhookCompleteContract } from "@okouai/api-contracts/contracts/webhooks";
-import {
-  agentRuns,
-  type AgentRunUsageFinalizationState,
-} from "@okouai/db/schema/agent-run";
+import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { checkpoints } from "@okouai/db/schema/checkpoint";
 
@@ -41,7 +38,6 @@ import { projectLegacyCheckpointStorage } from "./storage-legacy-projection.serv
 import { maybeEmitRunUsageEvent$ } from "./chat-usage-event.service";
 import { processOrgUsageEvents$ } from "./credit-usage.service";
 import { drainOrgQueue$ } from "./run-queue.service";
-import { finalizeRunUsage$ } from "./run-usage-finalization.service";
 
 type WebhookCompleteBody = z.infer<
   typeof webhookCompleteContract.complete.body
@@ -60,7 +56,6 @@ interface TerminalSideEffectsInput {
   readonly orgId: string;
   readonly status: TerminalStatus;
   readonly error?: string;
-  readonly usageFinalizationState?: AgentRunUsageFinalizationState | null;
 }
 
 interface CancellationRecoverySideEffectsInput {
@@ -110,7 +105,6 @@ interface RunRecord {
   readonly status: RunStatus;
   readonly userId: string;
   readonly chatThreadId: string | null;
-  readonly usageFinalizationState: AgentRunUsageFinalizationState | null;
 }
 
 interface PreparedCompletion {
@@ -189,7 +183,6 @@ async function loadCompletionRun(
       userId: agentRuns.userId,
       cancellationRecoveryCompleted: agentRuns.cancellationRecoveryCompleted,
       chatThreadId: agentRuns.chatThreadId,
-      usageFinalizationState: agentRuns.usageFinalizationState,
     })
     .from(agentRuns)
     .where(
@@ -260,7 +253,6 @@ async function lockCompletionRun(
       userId: agentRuns.userId,
       cancellationRecoveryCompleted: agentRuns.cancellationRecoveryCompleted,
       chatThreadId: agentRuns.chatThreadId,
-      usageFinalizationState: agentRuns.usageFinalizationState,
     })
     .from(agentRuns)
     .where(
@@ -275,30 +267,6 @@ async function lockCompletionRun(
     return null;
   }
   return { ...run, status: runStatusSchema.parse(run.status) };
-}
-
-async function applyUsageFinalizationCapability(
-  tx: Tx,
-  input: CompleteAgentRunInput,
-  run: RunRecord,
-): Promise<RunRecord> {
-  if (
-    input.body.usageFinalizationRequired !== true ||
-    run.usageFinalizationState !== null
-  ) {
-    return run;
-  }
-  await tx
-    .update(agentRuns)
-    .set({ usageFinalizationState: "pending" })
-    .where(
-      and(
-        eq(agentRuns.id, input.body.runId),
-        eq(agentRuns.userId, input.auth.userId),
-        isNull(agentRuns.usageFinalizationState),
-      ),
-    );
-  return { ...run, usageFinalizationState: "pending" };
 }
 
 async function applyCancelledCompletionMetadata(
@@ -388,11 +356,10 @@ async function completeAgentRunTransition(
     expectedChatThreadId === null
       ? false
       : await lockChatQueueThread(tx, expectedChatThreadId);
-  const lockedRun = await lockCompletionRun(tx, input);
-  if (!lockedRun) {
+  const run = await lockCompletionRun(tx, input);
+  if (!run) {
     return { kind: "not-found" };
   }
-  const run = await applyUsageFinalizationCapability(tx, input, lockedRun);
   if (run.chatThreadId !== expectedChatThreadId) {
     return { kind: "retry", chatThreadId: run.chatThreadId };
   }
@@ -466,7 +433,6 @@ function completionResponse(
       ...(commit.transitionError !== undefined
         ? { error: commit.transitionError }
         : {}),
-      usageFinalizationState: commit.run.usageFinalizationState,
     };
   } else if (
     commit.run.status === "cancelled" &&
@@ -576,28 +542,19 @@ const dispatchTerminalCompleteSideEffects$ = command(
     );
     signal.throwIfAborted();
 
-    if (
-      input.usageFinalizationState === null ||
-      input.usageFinalizationState === undefined
-    ) {
-      await set(processOrgUsageEvents$, input.orgId, signal);
-      signal.throwIfAborted();
+    await set(processOrgUsageEvents$, input.orgId, signal);
+    signal.throwIfAborted();
 
-      await tapError(
-        set(maybeEmitRunUsageEvent$, input.runId, signal),
-        (error) => {
-          L.error("Failed to emit chat usage message after run completion", {
-            runId: input.runId,
-            orgId: input.orgId,
-            error,
-          });
-        },
-      );
-      signal.throwIfAborted();
-      return;
-    }
-
-    await set(finalizeRunUsage$, input.runId, signal);
+    await tapError(
+      set(maybeEmitRunUsageEvent$, input.runId, signal),
+      (error) => {
+        L.error("Failed to emit chat usage message after run completion", {
+          runId: input.runId,
+          orgId: input.orgId,
+          error,
+        });
+      },
+    );
     signal.throwIfAborted();
   },
 );

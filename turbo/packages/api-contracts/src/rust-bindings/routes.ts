@@ -11,7 +11,6 @@ import {
   webhookCheckpointsContract,
   webhookCheckpointsPrepareHistoryContract,
   webhookCompleteContract,
-  webhookUsageFinalizedContract,
   webhookEventsContract,
   webhookHeartbeatContract,
   webhookStoragesCommitContract,
@@ -111,11 +110,6 @@ export const rustRouteBindings = [
     route: webhookCompleteContract.complete,
     rustModulePath: ["webhooks", "agent", "complete"],
     rustConstName: "COMPLETE",
-  },
-  {
-    route: webhookUsageFinalizedContract.finalize,
-    rustModulePath: ["webhooks", "agent", "usage_finalized"],
-    rustConstName: "FINALIZE",
   },
   {
     route: webhookHeartbeatContract.send,

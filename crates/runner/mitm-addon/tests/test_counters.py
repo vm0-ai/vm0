@@ -6,7 +6,6 @@ from unittest.mock import patch
 import pytest
 
 import flow_metadata_keys as metadata_keys
-import terminal_usage
 import usage
 from tests.pending_helpers import assert_current_pending, assert_pending
 from tests.usage_buffer_helpers import RecordingEnqueue, event
@@ -95,23 +94,6 @@ class TestUsagePendingCounter:
         assert_current_pending(
             pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-3"
         )
-
-    def test_terminal_flow_release_uses_the_admitted_run_id(self, real_flow):
-        flow = real_flow(with_response=False)
-        flow.metadata[metadata_keys.VM_RUN_ID] = "run-a"
-
-        terminal_usage.track_flow_if_needed(
-            flow,
-            firewall_billable=True,
-            model_usage_observable=False,
-        )
-        assert usage.run_usage_delivery_state("run-a").flows == 1
-
-        flow.metadata[metadata_keys.VM_RUN_ID] = "run-b"
-        terminal_usage.release_tracked_flow(flow)
-
-        assert usage.run_usage_delivery_state("run-a").flows == 0
-        assert usage.run_usage_delivery_state("run-b").flows == 0
 
     def test_pending_report_lease_release_drains_report(self, tmp_path):
         pending_path = tmp_path / "usage-pending"
