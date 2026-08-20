@@ -1948,7 +1948,6 @@ function ConcurrencyConfirmDialogContent({
   const [cancelLoadable, cancelSubscription] = useLoadableSet(
     cancelConcurrencySubscription$,
   );
-  const [checkoutLoadable] = useLoadableSet(startConcurrencyCheckout$);
   const [previewLoadable, previewChange] = useLoadableSet(
     previewConcurrencySubscriptionChange$,
   );
@@ -1960,7 +1959,6 @@ function ConcurrencyConfirmDialogContent({
   );
   const loading = [
     cancelLoadable.state,
-    checkoutLoadable.state,
     previewLoadable.state,
     confirmLoadable.state,
     restoreLoadable.state,

@@ -17298,6 +17298,73 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     ]);
   });
 
+  it("returns the pending invoice when confirming a matching pending update", async () => {
+    const subscriptionId = `sub_${randomUUID()}`;
+    const subscriptionItemId = `si_${randomUUID()}`;
+    const hostedInvoiceUrl =
+      "https://invoice.stripe.test/pending-concurrency-confirm";
+    const fixture = await createConcurrencySubscriptionOrg({
+      subscriptionId,
+      slots: 2,
+      periodEnd: new Date("2099-05-20T00:00:00Z"),
+      tier: "team",
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce({
+      id: subscriptionId,
+      customer: fixture.customerId,
+      latest_invoice: {
+        id: `in_${randomUUID()}`,
+        status: "open",
+        hosted_invoice_url: hostedInvoiceUrl,
+      },
+      pending_update: {
+        expires_at: 4_102_444_800,
+        subscription_items: [
+          {
+            id: subscriptionItemId,
+            price: { id: TEST_PRICE_CONCURRENCY },
+            quantity: 4,
+          },
+        ],
+      },
+      items: {
+        data: [
+          {
+            id: subscriptionItemId,
+            price: { id: TEST_PRICE_CONCURRENCY },
+            quantity: 2,
+          },
+        ],
+      },
+    });
+
+    const confirmed = await accept(
+      setupApp({
+        context,
+        routes: billingConcurrencySubscriptionRoutes,
+      })(billingConcurrencySubscriptionContract).confirmChange({
+        params: { subscriptionId },
+        body: { quantity: 4 },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(confirmed.body).toStrictEqual({
+      status: "pending_payment",
+      hostedInvoiceUrl,
+    });
+    expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
+    expect(
+      context.mocks.stripe.subscriptionSchedules.update,
+    ).not.toHaveBeenCalled();
+    const status = await readBillingStatus(fixture);
+    expect(status.concurrencySubscriptions).toStrictEqual([
+      expect.objectContaining({ id: subscriptionId, quantity: 2 }),
+    ]);
+  });
+
   it("previews a concurrency reduction at the next billing date", async () => {
     const subscriptionId = `sub_${randomUUID()}`;
     const subscriptionItemId = `si_${randomUUID()}`;

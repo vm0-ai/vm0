@@ -2003,7 +2003,7 @@ async function applyConcurrencyToPreparedSchedule(
   };
 }
 
-export const applyStripeConcurrencySubscriptionChange$ = command(
+const applyStripeConcurrencySubscriptionChange$ = command(
   async (
     { get },
     args: StripeConcurrencySubscriptionChangeArgs,

@@ -29,7 +29,6 @@ import { getOrCreateStripeCustomer$ } from "./billing-customer.service";
 import { persistOrgAcquisitionAttribution$ } from "./acquisition-attribution.service";
 import {
   addStripeConcurrencySubscriptionItem$,
-  applyStripeConcurrencySubscriptionChange$,
   previewStripeConcurrencySubscriptionChange$,
 } from "./billing-concurrency-subscription.service";
 import { stripePreviewMetadata } from "./stripe-preview-metadata.service";
