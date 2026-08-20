@@ -1014,6 +1014,17 @@ async function openModelPickerAndReadGeometry(
   const listbox = page.getByRole("listbox");
   await expect(listbox).toBeVisible();
   return listbox.evaluate((element) => {
+    let scrollContainer = element.parentElement;
+    while (scrollContainer) {
+      const overflowY = getComputedStyle(scrollContainer).overflowY;
+      if (overflowY === "auto" || overflowY === "scroll") {
+        break;
+      }
+      scrollContainer = scrollContainer.parentElement;
+    }
+    if (!scrollContainer) {
+      throw new Error("Model picker scroll container unavailable");
+    }
     const options = Array.from(
       element.querySelectorAll<HTMLElement>('[role="option"]'),
     ).filter((option) => {
@@ -1025,10 +1036,10 @@ async function openModelPickerAndReadGeometry(
       throw new Error("Model picker row geometry unavailable");
     }
     return {
-      clientHeight: element.clientHeight,
+      clientHeight: scrollContainer.clientHeight,
       optionCount: options.length,
       rowStep: second.top - first.top,
-      scrollHeight: element.scrollHeight,
+      scrollHeight: scrollContainer.scrollHeight,
     };
   });
 }
