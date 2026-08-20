@@ -1,10 +1,9 @@
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
-use tokio::sync::Mutex;
 use tokio::sync::mpsc::error::TrySendError;
 #[cfg(test)]
-use tokio::sync::{Notify, Semaphore};
+use tokio::sync::{Barrier, Notify, Semaphore};
 use tracing::warn;
 
 use crate::ids::RunId;
@@ -35,7 +34,7 @@ pub struct NetworkLogManager {
 #[derive(Default)]
 struct Inner {
     state: Arc<NetworkLogState>,
-    writers: Mutex<Option<WriterPool>>,
+    writers: OnceLock<WriterPool>,
     writer_config: WriterConfig,
     #[cfg(test)]
     write_gate: Option<WriteGate>,
@@ -186,7 +185,7 @@ impl NetworkLogManager {
         Self {
             inner: Arc::new(Inner {
                 state: Arc::new(NetworkLogState::default()),
-                writers: Mutex::new(None),
+                writers: OnceLock::new(),
                 writer_config,
                 write_gate,
                 close_gate,
@@ -256,7 +255,7 @@ impl NetworkLogManager {
         let Some(snapshot) = self.inner.state.source_snapshot(source_ip).await else {
             return false;
         };
-        let writer_pool = self.writer_pool().await;
+        let writer_pool = self.writer_pool();
         let Some(sender) = writer_pool.sender_for_path(&snapshot.path) else {
             warn!("network log writer pool has no shards");
             return false;
@@ -300,19 +299,15 @@ impl NetworkLogManager {
         true
     }
 
-    async fn writer_pool(&self) -> WriterPool {
-        let mut writers = self.inner.writers.lock().await;
-        if let Some(pool) = writers.as_ref() {
-            return pool.clone();
-        }
-        let pool = WriterPool::start(
-            self.inner.state.completion_handle(),
-            self.inner.writer_config.normalized(),
-            #[cfg(test)]
-            self.inner.write_gate.clone(),
-        );
-        *writers = Some(pool.clone());
-        pool
+    fn writer_pool(&self) -> &WriterPool {
+        self.inner.writers.get_or_init(|| {
+            WriterPool::start(
+                self.inner.state.completion_handle(),
+                self.inner.writer_config.normalized(),
+                #[cfg(test)]
+                self.inner.write_gate.clone(),
+            )
+        })
     }
 
     async fn begin_session_drain(&self, source_ip: &str, path: &Path, generation: u64) -> bool {
@@ -413,6 +408,48 @@ mod tests {
         assert_eq!(lines[0]["host"], "example.com");
         assert_eq!(lines[0]["port"], 53);
         assert_eq!(mode(&path), 0o600);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_first_use_accepts_every_row() {
+        const APPEND_COUNT: usize = 32;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("network.jsonl");
+        let manager = NetworkLogManager::new();
+        let barrier = Arc::new(Barrier::new(APPEND_COUNT));
+        let mut sessions = Vec::with_capacity(APPEND_COUNT);
+        let mut append_tasks = Vec::with_capacity(APPEND_COUNT);
+
+        for index in 0..APPEND_COUNT {
+            let source_ip = format!("10.200.0.{}", index + 1);
+            sessions.push(
+                manager
+                    .register_source_ip(source_ip.clone(), path.clone())
+                    .await,
+            );
+
+            let manager = manager.clone();
+            let barrier = barrier.clone();
+            append_tasks.push(tokio::spawn(async move {
+                barrier.wait().await;
+                manager
+                    .append_for_ip(&source_ip, json!({"type":"dns","index":index}))
+                    .await
+            }));
+        }
+
+        for task in append_tasks {
+            assert!(task.await.unwrap());
+        }
+        manager.flush_path(&path).await;
+
+        let mut indices: Vec<u64> = read_json_lines(&path)
+            .iter()
+            .map(|line| line["index"].as_u64().unwrap())
+            .collect();
+        indices.sort_unstable();
+        assert_eq!(indices, (0..APPEND_COUNT as u64).collect::<Vec<_>>());
     }
 
     #[tokio::test]
