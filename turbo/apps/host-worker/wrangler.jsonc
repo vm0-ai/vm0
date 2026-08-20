@@ -8,9 +8,14 @@
       "pattern": "*.sites.vm0.io/*",
       "zone_name": "vm0.io",
     },
+    {
+      "pattern": "*.okou.app/*",
+      "zone_name": "okou.app",
+    },
   ],
   "vars": {
     "HOST_DOMAIN": "sites.vm0.io",
+    "OKOU_HOST_DOMAIN": "okou.app",
   },
   "r2_buckets": [
     {
@@ -28,6 +33,7 @@
       ],
       "vars": {
         "HOST_DOMAIN": "sites.vm7.io",
+        "OKOU_HOST_DOMAIN": "sites.vm7.io",
       },
       "r2_buckets": [
         {

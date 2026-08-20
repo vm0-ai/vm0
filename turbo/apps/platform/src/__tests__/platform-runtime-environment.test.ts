@@ -170,6 +170,15 @@ describe("portable platform runtime environment", () => {
       sentryDsn: SENTRY_DSN,
       vapidPublicKey: PRODUCTION_VAPID_KEY,
     });
+    expect(runtime.platformHost.resolveHostedSiteDomains()).toStrictEqual([
+      "sites.vm0.io",
+      "okou.app",
+    ]);
+    const storedOkouArtifactUrl =
+      "https://cdn.okou.io/artifacts/user_1/artifact_1/report.html";
+    expect(
+      runtime.attachmentUrl.publicAttachmentUrl(storedOkouArtifactUrl),
+    ).toBe(storedOkouArtifactUrl);
 
     const plausibleController = new AbortController();
     await runtime.plausible.initPlausible(plausibleController.signal);
@@ -316,6 +325,9 @@ describe("portable platform runtime environment", () => {
       clerkPublishableKey: PREVIEW_CLERK_KEY,
       vapidPublicKey: PREVIEW_VAPID_KEY,
     });
+    expect(runtime.platformHost.resolveHostedSiteDomains()).toStrictEqual([
+      "sites.vm7.io",
+    ]);
     expect(
       runtime.attachmentUrl.publicAttachmentUrl(
         "/artifacts/user_1/artifact_1/report.html",

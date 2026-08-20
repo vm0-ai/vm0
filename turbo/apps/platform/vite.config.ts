@@ -24,7 +24,11 @@ function isAllowedDevArtifactFetchUrl(url: URL): boolean {
   }
   return (
     url.hostname === "cdn.vm0.io" ||
+    url.hostname === "cdn.okou.io" ||
     url.hostname === "cdn.vm7.io" ||
+    url.hostname === "static.vm0.io" ||
+    url.hostname === "static.okou.io" ||
+    url.hostname.endsWith(".okou.app") ||
     url.hostname.endsWith(".sites.vm0.io") ||
     url.hostname.endsWith(".sites.vm7.io")
   );

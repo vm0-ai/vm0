@@ -11,10 +11,14 @@ interface R2Bucket {
 interface Env {
   readonly HOSTED_SITES_BUCKET: R2Bucket;
   readonly HOST_DOMAIN: string;
+  readonly OKOU_HOST_DOMAIN: string;
 }
+
+type PublicBrand = "vm0" | "okou";
 
 interface ActiveSitePointer {
   readonly version: 1;
+  readonly publicBrand?: PublicBrand;
   readonly publicSlug: string;
   readonly siteId: string;
   readonly deploymentId: string;
@@ -36,6 +40,7 @@ interface ManifestFile {
 
 interface HostedSiteManifest {
   readonly version: 1;
+  readonly publicBrand?: PublicBrand;
   readonly deploymentId: string;
   readonly siteId: string;
   readonly publicSlug: string;
@@ -156,16 +161,28 @@ function defaultRobotsResponse(request: Request): Response {
   });
 }
 
-function activePointerKey(publicSlug: string): string {
-  return `sites/${publicSlug}/active.json`;
+function pointerNamespace(publicBrand: PublicBrand): string {
+  // Keep VM0 on its legacy keys. Okou uses a separate discovery namespace so
+  // rolling back to a brand-unaware Worker cannot expose Okou content on VM0.
+  return publicBrand === "okou" ? "sites/brands/okou" : "sites";
 }
 
-function immutableDeploymentPointerKey(deploymentId: string): string {
-  return `sites/deployments/${deploymentId}.json`;
+function activePointerKey(
+  publicBrand: PublicBrand,
+  publicSlug: string,
+): string {
+  return `${pointerNamespace(publicBrand)}/${publicSlug}/active.json`;
+}
+
+function immutableDeploymentPointerKey(
+  publicBrand: PublicBrand,
+  deploymentId: string,
+): string {
+  return `${pointerNamespace(publicBrand)}/deployments/${deploymentId}.json`;
 }
 
 function siteSlugFromHost(hostname: string, hostDomain: string): string | null {
-  const suffix = `.${hostDomain}`;
+  const suffix = `.${hostDomain.toLowerCase()}`;
   if (!hostname.endsWith(suffix)) {
     return null;
   }
@@ -174,6 +191,88 @@ function siteSlugFromHost(hostname: string, hostDomain: string): string | null {
     return null;
   }
   return slug;
+}
+
+interface HostedSiteRequestTarget {
+  readonly publicSlug: string;
+  readonly publicBrands: readonly PublicBrand[];
+}
+
+function hostedSiteRequestTarget(
+  hostname: string,
+  env: Env,
+): HostedSiteRequestTarget | null {
+  const normalizedHostname = hostname.toLowerCase();
+  const candidates = [
+    { publicBrand: "vm0", hostDomain: env.HOST_DOMAIN },
+    { publicBrand: "okou", hostDomain: env.OKOU_HOST_DOMAIN },
+  ] as const;
+  const matches = candidates.flatMap(({ publicBrand, hostDomain }) => {
+    const publicSlug = siteSlugFromHost(normalizedHostname, hostDomain);
+    return publicSlug ? [{ publicBrand, publicSlug }] : [];
+  });
+  const publicSlug = matches[0]?.publicSlug;
+  if (
+    !publicSlug ||
+    matches.some((match) => {
+      return match.publicSlug !== publicSlug;
+    })
+  ) {
+    return null;
+  }
+  return {
+    publicSlug,
+    publicBrands: matches.map((match) => {
+      return match.publicBrand;
+    }),
+  };
+}
+
+function storedPublicBrand(
+  value: ActiveSitePointer | HostedSiteManifest,
+): PublicBrand {
+  // Payloads written before publicBrand existed are historical VM0 content.
+  return value.publicBrand ?? "vm0";
+}
+
+interface ResolvedPointer {
+  readonly publicBrand: PublicBrand;
+  readonly pointer: ActiveSitePointer;
+}
+
+async function resolvePointerForBrand(
+  bucket: R2Bucket,
+  publicBrand: PublicBrand,
+  publicSlug: string,
+  deploymentId: string | undefined,
+): Promise<ResolvedPointer | null> {
+  let pointer = deploymentId
+    ? await readJson<ActiveSitePointer>(
+        bucket,
+        immutableDeploymentPointerKey(publicBrand, deploymentId),
+      )
+    : null;
+  if (
+    pointer &&
+    (pointer.deploymentId !== deploymentId ||
+      storedPublicBrand(pointer) !== publicBrand)
+  ) {
+    return null;
+  }
+  if (!pointer) {
+    pointer = await readJson<ActiveSitePointer>(
+      bucket,
+      activePointerKey(publicBrand, publicSlug),
+    );
+    if (
+      !pointer ||
+      pointer.publicSlug !== publicSlug ||
+      storedPublicBrand(pointer) !== publicBrand
+    ) {
+      return null;
+    }
+  }
+  return { publicBrand, pointer };
 }
 
 function safeDecodePath(pathname: string): string | null {
@@ -261,8 +360,8 @@ async function serveHostedSite(request: Request, env: Env): Promise<Response> {
   }
 
   const url = new URL(request.url);
-  const publicSlug = siteSlugFromHost(url.hostname, env.HOST_DOMAIN);
-  if (!publicSlug) {
+  const target = hostedSiteRequestTarget(url.hostname, env);
+  if (!target) {
     return notFoundResponse();
   }
 
@@ -271,30 +370,36 @@ async function serveHostedSite(request: Request, env: Env): Promise<Response> {
     return new Response("Bad path", { status: 400 });
   }
 
-  const deploymentId = IMMUTABLE_DEPLOYMENT_HOST_PATTERN.exec(publicSlug)?.[1];
-  let pointer = deploymentId
-    ? await readJson<ActiveSitePointer>(
-        env.HOSTED_SITES_BUCKET,
-        immutableDeploymentPointerKey(deploymentId),
-      )
-    : null;
-  if (pointer && pointer.deploymentId !== deploymentId) {
+  const deploymentId = IMMUTABLE_DEPLOYMENT_HOST_PATTERN.exec(
+    target.publicSlug,
+  )?.[1];
+  const pointers = (
+    await Promise.all(
+      target.publicBrands.map((publicBrand) => {
+        return resolvePointerForBrand(
+          env.HOSTED_SITES_BUCKET,
+          publicBrand,
+          target.publicSlug,
+          deploymentId,
+        );
+      }),
+    )
+  ).filter((pointer): pointer is ResolvedPointer => {
+    return pointer !== null;
+  });
+  if (pointers.length !== 1) {
     return notFoundResponse();
   }
-  if (!pointer) {
-    pointer = await readJson<ActiveSitePointer>(
-      env.HOSTED_SITES_BUCKET,
-      activePointerKey(publicSlug),
-    );
-    if (!pointer || pointer.publicSlug !== publicSlug) {
-      return notFoundResponse();
-    }
-  }
+  const { pointer, publicBrand } = pointers[0]!;
   const manifest = await readJson<HostedSiteManifest>(
     env.HOSTED_SITES_BUCKET,
     pointer.manifestKey,
   );
-  if (!manifest || manifest.deploymentId !== pointer.deploymentId) {
+  if (
+    !manifest ||
+    manifest.deploymentId !== pointer.deploymentId ||
+    storedPublicBrand(manifest) !== publicBrand
+  ) {
     return notFoundResponse();
   }
 
