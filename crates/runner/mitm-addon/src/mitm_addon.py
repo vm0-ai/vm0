@@ -27,7 +27,8 @@ from mitmproxy.addonmanager import Loader
 # --- Sub-module imports ---
 #
 # auth_base_forwarder/body_capture/connector_diagnostics/connector_intent/content_length/
-# matching/model_websocket_usage/registry/response_encoding_negotiation/response_streaming/
+# http_header_syntax/matching/model_websocket_usage/registry/response_encoding_negotiation/
+# response_streaming/
 # runner_flush_lifecycle/terminal_usage/upstream_admission/usage/websocket_framing/
 # websocket_retention are imported
 # by module (not selective `from X import ...`) so that:
@@ -54,6 +55,7 @@ import connector_intent
 import content_length
 import flow_metadata
 import flow_metadata_keys as metadata_keys
+import http_header_syntax
 import http_local_responses
 import http_network_log
 import matching
@@ -111,8 +113,6 @@ from request_authority import AuthorityValidationError, TrustedAuthority, get_tr
 _HTTP_STATUS_UNAUTHORIZED = 401
 _HTTP_STATUS_BAD_GATEWAY = 502
 _HTTP_STATUS_ERROR_MIN = 400  # inclusive: start of 4xx/5xx error range
-_HTTP_OWS_CHARS = " \t"
-
 # Request-header phase state.
 # Creator: requestheaders() and header-phase stream/auth helpers.
 # Consumer: request() and terminal cleanup.
@@ -1527,31 +1527,24 @@ def _is_websocket_upgrade_request(flow: http.HTTPFlow) -> bool:
         return False
     if flow.request.http_version != "HTTP/1.1":
         return False
-    if not _header_values_contain_token(flow.request.headers, "Upgrade", "websocket"):
+    if not http_header_syntax.header_values_contain_token(
+        flow.request.headers.get_all("Upgrade"), "websocket"
+    ):
         return False
-    websocket_key = _single_header_value(flow.request.headers, "Sec-WebSocket-Key")
+    websocket_key = http_header_syntax.single_header_value(
+        flow.request.headers.get_all("Sec-WebSocket-Key")
+    )
     if websocket_key is None or not _is_valid_websocket_key(websocket_key):
         return False
-    websocket_version = _single_header_value(flow.request.headers, "Sec-WebSocket-Version")
+    websocket_version = http_header_syntax.single_header_value(
+        flow.request.headers.get_all("Sec-WebSocket-Version")
+    )
     if websocket_version != "13":
         return False
 
-    return _header_values_contain_token(flow.request.headers, "Connection", "upgrade")
-
-
-def _header_values_contain_token(headers: http.Headers, name: str, expected: str) -> bool:
-    return any(
-        token.strip(_HTTP_OWS_CHARS).lower() == expected
-        for value in headers.get_all(name)
-        for token in value.split(",")
+    return http_header_syntax.header_values_contain_token(
+        flow.request.headers.get_all("Connection"), "upgrade"
     )
-
-
-def _single_header_value(headers: http.Headers, name: str) -> str | None:
-    values = headers.get_all(name)
-    if len(values) != 1:
-        return None
-    return values[0].strip(_HTTP_OWS_CHARS)
 
 
 def _is_valid_websocket_key(value: str) -> bool:
