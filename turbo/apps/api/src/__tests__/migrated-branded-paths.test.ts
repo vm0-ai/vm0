@@ -265,19 +265,78 @@ describe("branded paths for migrated neutral routes", () => {
     expect(movedWithRow).toStrictEqual([]);
   });
 
-  // The table ships empty, so this slice adds a capability and no route.
-  it("changes no registration while the shipped table is empty", () => {
-    const beforeTable = withApiNamespaceAliases(
-      withFinalProviderConsolePaths(ROUTES),
-    );
-    const afterTable = withMigratedBrandedPaths(beforeTable);
+  // The five routes #28420 moved off `/api/okou/**`. Their contracts declare
+  // the neutral path now, so the blanket expansion derives no branded form for
+  // them and every branded path below exists only because of a table row.
+  // Written out here rather than read from the contracts or from
+  // `MIGRATED_BRANDED_PATHS`, so dropping a contract path or a row fails the
+  // test that uses this instead of changing what it asserts.
+  const MIGRATED_SLICE_ROUTES = [
+    {
+      method: "POST",
+      neutral: "/api/attribution/signup",
+      branded: ["/api/okou/attribution/signup", "/api/zero/attribution/signup"],
+    },
+    {
+      method: "GET",
+      neutral: "/api/chat-thread-drafts",
+      branded: ["/api/okou/chat-thread-drafts", "/api/zero/chat-thread-drafts"],
+    },
+    {
+      method: "GET",
+      neutral: "/api/chat-thread-unreads",
+      branded: [
+        "/api/okou/chat-thread-unreads",
+        "/api/zero/chat-thread-unreads",
+      ],
+    },
+    {
+      method: "POST",
+      neutral: "/api/chat-thread-unreads/mark-read",
+      branded: [
+        "/api/okou/chat-thread-unreads/mark-read",
+        "/api/zero/chat-thread-unreads/mark-read",
+      ],
+    },
+    {
+      method: "GET",
+      neutral: "/api/indicators",
+      branded: ["/api/okou/indicators", "/api/zero/indicators"],
+    },
+  ] as const;
 
-    expect(afterTable).toHaveLength(beforeTable.length);
-    expect(
-      afterTable.filter((entry, index) => {
-        return entry !== beforeTable[index];
-      }),
-    ).toStrictEqual([]);
+  it("serves the #28420 routes on neutral and branded paths", () => {
+    const registered = withMigratedBrandedPaths(
+      withApiNamespaceAliases(withFinalProviderConsolePaths(ROUTES)),
+    );
+
+    function requireRoute(method: string, path: string): RouteEntry {
+      const matches = registered.filter((entry) => {
+        return entry.route.method === method && entry.route.path === path;
+      });
+      const match = matches[0];
+      if (!match) {
+        throw new Error(`Missing migrated registration for ${method} ${path}`);
+      }
+      expect(matches).toHaveLength(1);
+      return match;
+    }
+
+    for (const route of MIGRATED_SLICE_ROUTES) {
+      const neutral = requireRoute(route.method, route.neutral);
+
+      // One contract route behind all three paths, so a branded form cannot
+      // drift into a second handler or a stale schema.
+      for (const brandedPath of route.branded) {
+        const branded = requireRoute(route.method, brandedPath);
+
+        expect(branded.handler).toBe(neutral.handler);
+        expect(branded.route).toStrictEqual({
+          ...neutral.route,
+          path: brandedPath,
+        });
+      }
+    }
   });
 
   // Hono keeps both registrations for a duplicated path and answers with the

@@ -268,7 +268,7 @@ test("reveal the default agent unread action from the whole row", async ({
     throw new Error("Could not resolve the default agent from the sidebar");
   }
 
-  await page.route("**/api/okou/indicators", async (route) => {
+  await page.route("**/api/indicators", async (route) => {
     await route.fulfill({
       json: {
         agents: { [defaultAgentId]: "unread" },
