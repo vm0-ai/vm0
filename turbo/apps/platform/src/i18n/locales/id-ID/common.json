@@ -615,6 +615,8 @@
       "htmlPreview": "pratinjau HTML {{title}}",
       "illustration": "Ilustrasi",
       "illustrationPreview": "pratinjau ilustrasi {{title}}",
+      "importDeck": "Impor dek Anda sendiri",
+      "importDeckHint": "PPTX atau PDF",
       "multiAccent": "Multi-aksen",
       "nextSlide": "Pratinjau slide berikutnya",
       "noMatches": "Tidak ada hasil",

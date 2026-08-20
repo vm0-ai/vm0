@@ -615,6 +615,8 @@
       "htmlPreview": "{{title}} HTML पूर्वावलोकन",
       "illustration": "चित्रण",
       "illustrationPreview": "{{title}} चित्रण पूर्वावलोकन",
+      "importDeck": "अपना डेक इंपोर्ट करें",
+      "importDeckHint": "PPTX या PDF",
       "multiAccent": "बहु-उच्चारण",
       "nextSlide": "अगली स्लाइड का पूर्वावलोकन करें",
       "noMatches": "कोई मेल नहीं",

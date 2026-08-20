@@ -632,6 +632,8 @@
       "htmlPreview": "Aperçu HTML de {{title}}",
       "illustration": "Illustration",
       "illustrationPreview": "Aperçu de l'illustration {{title}}",
+      "importDeck": "Importer votre propre présentation",
+      "importDeckHint": "PPTX ou PDF",
       "multiAccent": "Multi-accents",
       "nextSlide": "Aperçu de la diapositive suivante",
       "noMatches": "Aucun résultat",

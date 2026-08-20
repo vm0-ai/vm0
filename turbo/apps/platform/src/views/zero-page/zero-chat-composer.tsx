@@ -18,6 +18,11 @@ import {
 import { useTranslation } from "react-i18next";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { i18n } from "../../i18n/index.ts";
+import {
+  importPresentationTemplateDeck$,
+  presentationTemplateImportEnabled$,
+  PRESENTATION_TEMPLATE_IMPORT_ACCEPT,
+} from "../../signals/zero-page/presentation-template-import.ts";
 import { desktopProductDisplayName } from "../../i18n/desktop-product.ts";
 import { equalArrays } from "../../lib/equality.ts";
 import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
@@ -36,6 +41,7 @@ import {
   Monitor,
   Paperclip,
   Palette,
+  FileUp,
   Play,
   Plug,
   Plus,
@@ -4802,12 +4808,63 @@ function IllustrationTemplateGrid({
   );
 }
 
+/**
+ * Hands the chosen deck to the composer, which attaches it, sends it, and
+ * navigates into the new thread. Importing is the ordinary chat path with the
+ * message written for the user, not a separate upload flow.
+ */
+function PptImportCard({
+  signals,
+  onImported,
+}: {
+  signals: ComposerSignals;
+  onImported: () => void;
+}) {
+  const { t } = useTranslation();
+  const pageSignal = useGet(pageSignal$);
+  const importDeck = useSet(importPresentationTemplateDeck$);
+  const label = t(($) => {
+    return $.artifacts.templates.importDeck;
+  });
+  return (
+    <label
+      data-presentation-template-import=""
+      className="flex aspect-video cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-muted/30 text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground"
+    >
+      <FileUp className="size-6" aria-hidden="true" />
+      <span className="text-sm font-medium">{label}</span>
+      <span className="text-xs">
+        {t(($) => {
+          return $.artifacts.templates.importDeckHint;
+        })}
+      </span>
+      <input
+        type="file"
+        className="sr-only"
+        accept={PRESENTATION_TEMPLATE_IMPORT_ACCEPT}
+        aria-label={label}
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          // Clear the input so choosing the same deck again still fires.
+          event.currentTarget.value = "";
+          if (!file) {
+            return;
+          }
+          onImported();
+          detach(importDeck({ signals, file }, pageSignal), Reason.DomCallback);
+        }}
+      />
+    </label>
+  );
+}
+
 function PptTemplateGrid({
   items,
   runtime,
   value,
   onSelect,
   onPreview,
+  onImported,
   signals,
 }: {
   items: readonly PresentationTemplateItem[];
@@ -4815,10 +4872,15 @@ function PptTemplateGrid({
   value: GenerationTemplateRequest | undefined;
   onSelect: (item: PresentationTemplateItem, colorSystemId?: string) => void;
   onPreview: (item: PresentationTemplateItem, slideIndex?: number) => void;
+  onImported: () => void;
   signals: ComposerSignals;
 }) {
+  const importEnabled = useGet(presentationTemplateImportEnabled$);
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {importEnabled ? (
+        <PptImportCard signals={signals} onImported={onImported} />
+      ) : null}
       {items.map((item) => {
         return (
           <PptCard
@@ -5230,6 +5292,7 @@ function TemplatePickerDialog({
                   }
                   onSelectPresentation={handleSelectPresentation}
                   onPreviewPresentation={handlePreview}
+                  onImportedPresentation={closeTemplatePicker}
                   onSelectWebsite={handleSelectWebsite}
                   onPreviewWebsite={handlePreviewWebsite}
                   onSelectIllustration={handleSelectIllustration}
@@ -5267,6 +5330,7 @@ function TemplatePickerCategoryContent({
   onRestorePresentationScroll,
   onSelectPresentation,
   onPreviewPresentation,
+  onImportedPresentation,
   onSelectWebsite,
   onPreviewWebsite,
   onSelectIllustration,
@@ -5300,6 +5364,7 @@ function TemplatePickerCategoryContent({
     item: PresentationTemplateItem,
     slideIndex?: number,
   ) => void;
+  onImportedPresentation: () => void;
   onSelectWebsite: (item: WebsiteTemplateItem) => void;
   onPreviewWebsite: (item: WebsiteTemplateItem) => void;
   onSelectIllustration: (item: IllustrationTemplateItem) => void;
@@ -5330,6 +5395,7 @@ function TemplatePickerCategoryContent({
             value={value}
             onSelect={onSelectPresentation}
             onPreview={onPreviewPresentation}
+            onImported={onImportedPresentation}
             runtime={runtime}
             signals={signals}
           />
