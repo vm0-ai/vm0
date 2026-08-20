@@ -46,6 +46,23 @@ safety, moderation, and ordinary fictional discussion.
 
 _Avoid_: 18+ content, adult content
 
+# Goal Automation Context
+
+This context defines the persistent goal lifecycle used by chat-triggered
+workflow automations.
+
+## Language
+
+**Active thread goal**:
+A persistent autonomous objective whose current status is `active` for a chat
+thread.
+_Avoid_: Active run, running automation
+
+**Goal stop**:
+The boundary where an active thread goal becomes `paused`, `blocked`, or
+`complete`.
+_Avoid_: Run finish, goal iteration finish
+
 # Billing Context
 
 The billing context decides whether a purchase can be reviewed and confirmed inside vm0 or must continue on a Stripe-hosted page.

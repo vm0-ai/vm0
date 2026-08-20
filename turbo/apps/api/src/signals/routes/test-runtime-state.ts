@@ -550,6 +550,34 @@ type ConnectorPermissionBaselineMutationAction = Extract<
   { action: "mutate-runner-job-connector-permission-baseline" }
 >;
 
+type ConnectorRuntimeTargetsMutationAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "set-runner-job-connector-runtime-targets" }
+>;
+
+async function setRunnerJobConnectorRuntimeTargets(
+  db: Db,
+  body: ConnectorRuntimeTargetsMutationAction,
+  signal: AbortSignal,
+): Promise<void> {
+  const [updated] = await db
+    .update(runnerJobQueue)
+    .set({
+      executionContext: sql`jsonb_set(
+        ${runnerJobQueue.executionContext},
+        '{connectorRuntimeTargets}',
+        ${JSON.stringify(body.connector_runtime_targets)}::jsonb,
+        true
+      )`,
+    })
+    .where(eq(runnerJobQueue.runId, body.run_id))
+    .returning({ runId: runnerJobQueue.runId });
+  signal.throwIfAborted();
+  if (!updated) {
+    throw new Error("Expected a queued runner job for runtime targets");
+  }
+}
+
 async function mutateRunnerJobConnectorPermissionBaseline(
   db: Db,
   body: ConnectorPermissionBaselineMutationAction,
@@ -1523,6 +1551,10 @@ const postRuntimeStateAction$ = command(
           body.mode,
           signal,
         );
+        return { status: 200 as const, body: { ok: true as const } };
+      }
+      case "set-runner-job-connector-runtime-targets": {
+        await setRunnerJobConnectorRuntimeTargets(db, body, signal);
         return { status: 200 as const, body: { ok: true as const } };
       }
       case "hold-org-admission-lock": {
