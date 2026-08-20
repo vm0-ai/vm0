@@ -251,8 +251,8 @@ export function withApiNamespaceAliases(
  * A migrated route generally owes both branded forms, so a value is a list
  * rather than a single path.
  *
- * The table ships empty. Each #28278 slice adds the rows for the paths it
- * moves, so a move and the compatibility it owes land in one commit.
+ * Each #28278 slice adds the rows for the paths it moves, so a move and the
+ * compatibility it owes land in one commit.
  *
  * Every row is compatibility debt under the same removal gate as
  * `LEGACY_ZERO_PATHS`: a row is removed only under #26701's evidence rules. The
@@ -262,7 +262,48 @@ export function withApiNamespaceAliases(
 type MigratedBrandedPathTable = Readonly<Record<string, readonly string[]>>;
 
 const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
-  // Empty until the first #28278 migration slice moves a contract path.
+  // #28422: artifact catalog, logs, push subscriptions, the platform realtime
+  // token, and the run reads.
+  "/api/artifacts/catalog": [
+    "/api/okou/artifacts/catalog",
+    "/api/zero/artifacts/catalog",
+  ],
+  "/api/artifacts/catalog/:artifactId": [
+    "/api/okou/artifacts/catalog/:artifactId",
+    "/api/zero/artifacts/catalog/:artifactId",
+  ],
+  "/api/logs": ["/api/okou/logs", "/api/zero/logs"],
+  "/api/logs/:id": ["/api/okou/logs/:id", "/api/zero/logs/:id"],
+  "/api/push-subscriptions": [
+    "/api/okou/push-subscriptions",
+    "/api/zero/push-subscriptions",
+  ],
+  "/api/realtime/token": [
+    "/api/okou/realtime/token",
+    "/api/zero/realtime/token",
+  ],
+  "/api/runs/:id": ["/api/okou/runs/:id", "/api/zero/runs/:id"],
+  "/api/runs/:id/cancel": [
+    "/api/okou/runs/:id/cancel",
+    "/api/zero/runs/:id/cancel",
+  ],
+  "/api/runs/:id/context": [
+    "/api/okou/runs/:id/context",
+    "/api/zero/runs/:id/context",
+  ],
+  "/api/runs/:id/network": [
+    "/api/okou/runs/:id/network",
+    "/api/zero/runs/:id/network",
+  ],
+  "/api/runs/:id/runner": [
+    "/api/okou/runs/:id/runner",
+    "/api/zero/runs/:id/runner",
+  ],
+  "/api/runs/:id/telemetry/agent": [
+    "/api/okou/runs/:id/telemetry/agent",
+    "/api/zero/runs/:id/telemetry/agent",
+  ],
+  "/api/runs/queue": ["/api/okou/runs/queue", "/api/zero/runs/queue"],
 };
 
 /**

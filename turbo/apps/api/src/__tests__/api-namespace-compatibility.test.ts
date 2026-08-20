@@ -129,7 +129,13 @@ function requireBrandedRoute(): RouteEntry {
 // table owes on purpose, and which exist only because the fallback derived
 // them.
 describe("API namespace compatibility", () => {
-  const registeredRoutes = withApiNamespaceAliases(ROUTES);
+  // Composed the way production does, because #28278 moves listed contracts to
+  // neutral paths: once a contract declares one, the expansion alone produces
+  // neither branded path and `MIGRATED_BRANDED_PATHS` is what still serves the
+  // legacy callers this file is about.
+  const registeredRoutes = withMigratedBrandedPaths(
+    withApiNamespaceAliases(ROUTES),
+  );
 
   function registrationsFor(path: string): readonly RouteEntry[] {
     return registeredRoutes.filter((entry) => {
@@ -251,11 +257,13 @@ describe("API namespace compatibility", () => {
   // every mechanism assertion in this file still passes. This pins that the
   // literal list is what fails, so such a migration cannot go green and then
   // 404 in production. Removing the path from the list is the way out, and it
-  // has to be deliberate.
+  // has to be deliberate. The subject is a path a provider console holds, so
+  // #28278 leaves it branded and this guard keeps a contract to move
+  // hypothetically.
   it("reports the branded registrations a neutral contract migration would drop", () => {
-    const canonical = "/api/okou/realtime/token";
-    const legacy = "/api/zero/realtime/token";
-    const neutral = "/api/realtime/token";
+    const canonical = "/api/okou/slack/events";
+    const legacy = "/api/zero/slack/events";
+    const neutral = "/api/slack/events";
     expect(
       LEGACY_ZERO_PATHS[canonical],
       `${canonical} must stay in the compatibility list for this guard to mean anything`,
@@ -291,8 +299,11 @@ describe("API namespace compatibility", () => {
   });
 
   it("keeps every listed legacy path backed by a declared contract", () => {
+    // A migrated contract declares its neutral path, so the canonical branded
+    // path it still answers on comes from `MIGRATED_BRANDED_PATHS` rather than
+    // from the declaration. Both count as backing the listed legacy path.
     const declaredCanonicalPaths = new Set(
-      ROUTES.map(({ route }) => {
+      withMigratedBrandedPaths(ROUTES).map(({ route }) => {
         return canonicalPath(route.path);
       }),
     );

@@ -108,17 +108,17 @@ export const runnerRealtimeTokenContract = c.router({
 export type RunnerRealtimeTokenContract = typeof runnerRealtimeTokenContract;
 
 /**
- * Platform realtime token contract for /api/okou/realtime/token
+ * Platform realtime token contract for /api/realtime/token
  * Used by the frontend to get an Ably token for subscribing to user-scoped push signals.
  */
 export const platformRealtimeTokenContract = c.router({
   /**
-   * POST /api/okou/realtime/token
+   * POST /api/realtime/token
    * Get an Ably token to subscribe to the authenticated user's push channel
    */
   create: {
     method: "POST",
-    path: "/api/okou/realtime/token",
+    path: "/api/realtime/token",
     headers: authHeadersSchema,
     body: z.object({}),
     responses: {

@@ -1092,7 +1092,7 @@ export function createRunsApi(context: TestContext) {
         signal,
         routes: runRoutes,
       });
-      const response = await app.request(`/api/zero/runs/${runId}/cancel`, {
+      const response = await app.request(`/api/runs/${runId}/cancel`, {
         method: "POST",
         headers: authorization === undefined ? {} : { authorization },
       });

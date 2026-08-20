@@ -454,7 +454,7 @@ function scopedZeroToken(
   });
 }
 
-describe("GET /api/zero/artifacts/catalog", () => {
+describe("GET /api/artifacts/catalog", () => {
   it("lists an uploaded file as one artifact and hides other callers", async () => {
     const owner = await catalogActor("Artifact catalog owner");
     const outsider = await catalogActor("Artifact catalog outsider");
@@ -1243,7 +1243,7 @@ describe("shared thread routes", () => {
     expect(detail.kind).toBe("shared-thread");
 
     const directCatalogResponse = await sharedThreadTestApp().request(
-      "/api/zero/artifacts/catalog",
+      "/api/artifacts/catalog",
       { headers: authenticateSharedThread(owner.actor) },
     );
     expect(directCatalogResponse.status).toBe(200);
@@ -1254,7 +1254,7 @@ describe("shared thread routes", () => {
       ]),
     );
     const directDetailResponse = await sharedThreadTestApp().request(
-      `/api/zero/artifacts/catalog/${artifactId}`,
+      `/api/artifacts/catalog/${artifactId}`,
       { headers: authenticateSharedThread(owner.actor) },
     );
     expect(directDetailResponse.status).toBe(200);

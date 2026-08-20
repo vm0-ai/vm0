@@ -16,9 +16,10 @@ import { testContext } from "./test-context";
 const c = initContract();
 const REQUEST_ORIGIN = "http://api.test";
 
-// Synthetic contracts rather than real ones. `MIGRATED_BRANDED_PATHS` ships
-// empty, so no real route can exercise the mechanism yet, and a fixture keeps a
-// later migration slice from quietly changing what these tests assert.
+// Synthetic contracts rather than real ones, so the mechanism assertions keep
+// asserting the same thing as #28278 slices move real contracts in and out of
+// `MIGRATED_BRANDED_PATHS`. The real table is covered separately at the end of
+// this file, against a literal list of the paths that have moved.
 const migrationContract = c.router({
   // The shape a migrated contract has: the neutral path it declares after
   // #28278 moves it off `/api/okou/**`.
@@ -116,9 +117,100 @@ const MIGRATED_CONSOLE_TABLE: Readonly<Record<string, readonly string[]>> = {
   ],
 };
 
+// Every path #28278 has moved off the brand namespace, with the two branded
+// forms released callers still hold. Written out rather than read back from
+// `MIGRATED_BRANDED_PATHS` or expanded through `apiNamespaceAliasPaths`, which
+// returns a neutral path unchanged and so cannot name what a moved route owes.
+// Each migration slice appends its own paths here.
+const MIGRATED_PRODUCTION_PATHS = [
+  // #28422
+  {
+    neutral: "/api/artifacts/catalog",
+    okou: "/api/okou/artifacts/catalog",
+    zero: "/api/zero/artifacts/catalog",
+  },
+  {
+    neutral: "/api/artifacts/catalog/:artifactId",
+    okou: "/api/okou/artifacts/catalog/:artifactId",
+    zero: "/api/zero/artifacts/catalog/:artifactId",
+  },
+  {
+    neutral: "/api/logs",
+    okou: "/api/okou/logs",
+    zero: "/api/zero/logs",
+  },
+  {
+    neutral: "/api/logs/:id",
+    okou: "/api/okou/logs/:id",
+    zero: "/api/zero/logs/:id",
+  },
+  {
+    neutral: "/api/push-subscriptions",
+    okou: "/api/okou/push-subscriptions",
+    zero: "/api/zero/push-subscriptions",
+  },
+  {
+    neutral: "/api/realtime/token",
+    okou: "/api/okou/realtime/token",
+    zero: "/api/zero/realtime/token",
+  },
+  {
+    neutral: "/api/runs/:id",
+    okou: "/api/okou/runs/:id",
+    zero: "/api/zero/runs/:id",
+  },
+  {
+    neutral: "/api/runs/:id/cancel",
+    okou: "/api/okou/runs/:id/cancel",
+    zero: "/api/zero/runs/:id/cancel",
+  },
+  {
+    neutral: "/api/runs/:id/context",
+    okou: "/api/okou/runs/:id/context",
+    zero: "/api/zero/runs/:id/context",
+  },
+  {
+    neutral: "/api/runs/:id/network",
+    okou: "/api/okou/runs/:id/network",
+    zero: "/api/zero/runs/:id/network",
+  },
+  {
+    neutral: "/api/runs/:id/runner",
+    okou: "/api/okou/runs/:id/runner",
+    zero: "/api/zero/runs/:id/runner",
+  },
+  {
+    neutral: "/api/runs/:id/telemetry/agent",
+    okou: "/api/okou/runs/:id/telemetry/agent",
+    zero: "/api/zero/runs/:id/telemetry/agent",
+  },
+  {
+    neutral: "/api/runs/queue",
+    okou: "/api/okou/runs/queue",
+    zero: "/api/zero/runs/queue",
+  },
+] as const;
+
+// The composition `createAppWithRoutes` applies, so the assertions below run
+// over the registrations production actually serves.
+function productionRegistrations(): readonly RouteEntry[] {
+  return withMigratedBrandedPaths(
+    withApiNamespaceAliases(withFinalProviderConsolePaths(ROUTES)),
+  );
+}
+
 function registeredPaths(entries: readonly RouteEntry[]): readonly string[] {
   return entries.map((entry) => {
     return entry.route.path;
+  });
+}
+
+function registrationsForPath(
+  entries: readonly RouteEntry[],
+  path: string,
+): readonly RouteEntry[] {
+  return entries.filter((entry) => {
+    return entry.route.path === path;
   });
 }
 
@@ -265,21 +357,6 @@ describe("branded paths for migrated neutral routes", () => {
     expect(movedWithRow).toStrictEqual([]);
   });
 
-  // The table ships empty, so this slice adds a capability and no route.
-  it("changes no registration while the shipped table is empty", () => {
-    const beforeTable = withApiNamespaceAliases(
-      withFinalProviderConsolePaths(ROUTES),
-    );
-    const afterTable = withMigratedBrandedPaths(beforeTable);
-
-    expect(afterTable).toHaveLength(beforeTable.length);
-    expect(
-      afterTable.filter((entry, index) => {
-        return entry !== beforeTable[index];
-      }),
-    ).toStrictEqual([]);
-  });
-
   // Hono keeps both registrations for a duplicated path and answers with the
   // first, so a colliding row would take a handler over instead of failing.
   // The synthetic case above proves the error is raised; this one runs the real
@@ -290,12 +367,47 @@ describe("branded paths for migrated neutral routes", () => {
   // assertion for reasons that have nothing to do with the table.
   it("keeps the production route table free of colliding registrations", () => {
     expect(() => {
-      assertUniqueRouteRegistrations(
-        withMigratedBrandedPaths(
-          withApiNamespaceAliases(withFinalProviderConsolePaths(ROUTES)),
-        ),
-      );
+      assertUniqueRouteRegistrations(productionRegistrations());
     }).not.toThrow();
+  });
+
+  it("registers every migrated route at its neutral path", () => {
+    const registered = new Set(registeredPaths(productionRegistrations()));
+    const missing = MIGRATED_PRODUCTION_PATHS.filter(({ neutral }) => {
+      return !registered.has(neutral);
+    });
+
+    expect(missing).toStrictEqual([]);
+  });
+
+  // The failure #28278 would otherwise ship: a released CLI or browser build
+  // still requests the branded path, so both forms have to keep answering with
+  // the handler the neutral path now declares.
+  it("keeps every migrated route answering on both branded paths", () => {
+    const registrations = productionRegistrations();
+
+    for (const { neutral, okou, zero } of MIGRATED_PRODUCTION_PATHS) {
+      const sources = registrationsForPath(registrations, neutral);
+      expect(sources, `Expected one route serving ${neutral}`).toHaveLength(1);
+      const source = sources[0];
+      if (!source) {
+        throw new Error(`Expected one route serving ${neutral}`);
+      }
+
+      for (const branded of [okou, zero]) {
+        const matches = registrationsForPath(registrations, branded);
+        expect(matches, `Missing registration for ${branded}`).toHaveLength(1);
+        const match = matches[0];
+        if (!match) {
+          throw new Error(`Missing registration for ${branded}`);
+        }
+        expect(match.handler).toBe(source.handler);
+        expect(match.route).toStrictEqual({ ...source.route, path: branded });
+        // A row is compatibility promised on purpose, so it must not reach the
+        // unlisted-legacy-path report.
+        expect(match.viaNamespaceAliasFallback).toBeUndefined();
+      }
+    }
   });
 
   it("builds an app that serves every path it registers", async () => {

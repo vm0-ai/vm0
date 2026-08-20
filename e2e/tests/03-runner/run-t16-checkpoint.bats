@@ -34,7 +34,7 @@ teardown() {
     echo "$output"
     assert_success
 
-    run runner_api_curl "/api/zero/runs/${RUN_ID}"
+    run runner_api_curl "/api/runs/${RUN_ID}"
     echo "$output"
     assert_success
     run jq -e '

@@ -280,7 +280,7 @@ runner_wait_for_run() {
     local response="" run_status=""
 
     while (( SECONDS - start < timeout )); do
-        if response="$(runner_api_curl "/api/okou/runs/$run_id" 2>&1)"; then
+        if response="$(runner_api_curl "/api/runs/$run_id" 2>&1)"; then
             run_status="$(jq -r '.status // empty' <<< "$response")"
             case "$run_status" in
                 completed)
@@ -310,7 +310,7 @@ runner_wait_for_run_running() {
     local response="" run_status=""
 
     while (( SECONDS - start < timeout )); do
-        if response="$(runner_api_curl "/api/okou/runs/$run_id" 2>&1)"; then
+        if response="$(runner_api_curl "/api/runs/$run_id" 2>&1)"; then
             run_status="$(jq -r '.status // empty' <<< "$response")"
             case "$run_status" in
                 running)
