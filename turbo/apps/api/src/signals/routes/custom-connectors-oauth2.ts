@@ -42,6 +42,7 @@ import {
   clearConnectorOAuthCookies,
 } from "../../lib/connector-oauth-state";
 import { env } from "../../lib/env";
+import { parseStoredConnectorAccountMutationIntent } from "../services/connector-account-mutation.service";
 
 const CUSTOM_CONNECTOR_OAUTH_CALLBACK_PATH = "/connectors/custom/callback";
 
@@ -126,6 +127,7 @@ const startOAuth2Inner$ = command(async ({ get, set }, signal: AbortSignal) => {
       redirectUri,
       publicBrand: get(publicBrand$),
       agentId: body.data.agentId,
+      account: body.data.account,
     },
     signal,
   );
@@ -215,18 +217,25 @@ async function persistCustomConnectorOAuth2Connection(
     readonly storageVersion: number;
     readonly token: OAuthTokenResult;
     readonly featureContext: FeatureSwitchContext;
+    readonly account?: ReturnType<
+      typeof parseStoredConnectorAccountMutationIntent
+    >;
   },
   signal: AbortSignal,
-): Promise<void> {
+): Promise<boolean> {
   const connectionStorage = storeCustomConnectorOAuth2Connection(args, signal);
-  await commitConnectorRuntimeMutation(connectionStorage, () => {
+  const result = await commitConnectorRuntimeMutation(connectionStorage, () => {
     return {
       db: args.db,
       scope: { orgId: args.orgId, userId: args.userId },
       targets: [{ kind: "custom", customConnectorId: args.connectorId }],
     };
   });
+  if (result.kind !== "stored") {
+    return false;
+  }
   await publishCustomUserInvalidation(args.userId, signal);
+  return true;
 }
 
 async function codeLessCustomOAuthCallbackResponse(
@@ -336,7 +345,7 @@ const completeOAuth2Callback$ = command(
           signal,
         );
         signal.throwIfAborted();
-        await persistCustomConnectorOAuth2Connection(
+        return await persistCustomConnectorOAuth2Connection(
           {
             db: set(writeDb$),
             orgId: claimed.state.orgId,
@@ -345,10 +354,12 @@ const completeOAuth2Callback$ = command(
             storageVersion: connector.storageVersion,
             token,
             featureContext,
+            account: parseStoredConnectorAccountMutationIntent(
+              claimed.state.accountMutation,
+            ),
           },
           signal,
         );
-        return true;
       })(),
     );
     signal.throwIfAborted();

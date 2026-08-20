@@ -285,6 +285,100 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
     });
   });
 
+  it("adds the first account, reconnects it exactly, and rejects a sibling", async () => {
+    const fixture = await seedFixture();
+    const client = setupApp({ context, routes: connectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
+
+    const added = await accept(
+      client.connect({
+        params: { connectorSlug: "openai" },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "add", displayName: "Work" },
+          values: { apiKey: "sk-first" },
+        },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    const reconnected = await accept(
+      client.connect({
+        params: { connectorSlug: "openai" },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "reconnect", connectionId: added.body.id },
+          values: { apiKey: "sk-reconnected" },
+        },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(reconnected.body.id).toBe(added.body.id);
+
+    const sibling = await accept(
+      client.connect({
+        params: { connectorSlug: "openai" },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "add", displayName: "Personal" },
+          values: { apiKey: "sk-sibling" },
+        },
+        headers: authHeaders(),
+      }),
+      [409],
+    );
+    expect(sibling.body.error.message).toBe(
+      "Additional connector accounts are not enabled yet",
+    );
+
+    const missing = await accept(
+      client.connect({
+        params: { connectorSlug: "openai" },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "reconnect", connectionId: randomUUID() },
+          values: { apiKey: "sk-missing" },
+        },
+        headers: authHeaders(),
+      }),
+      [404],
+    );
+    expect(missing.body.error.message).toBe("Connector account not found");
+
+    const stored = await readConnector(fixture, "openai");
+    expect(stored.body.id).toBe(added.body.id);
+  });
+
+  it("serializes concurrent first-account adds", async () => {
+    await seedFixture();
+    const client = setupApp({ context, routes: connectorsRoutes })(
+      zeroConnectorManualGrantContract,
+    );
+    const requests = ["First", "Second"].map((displayName) => {
+      return client.connect({
+        params: { connectorSlug: "openai" },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "add", displayName },
+          values: { apiKey: `sk-${displayName.toLowerCase()}` },
+        },
+        headers: authHeaders(),
+      });
+    });
+
+    const responses = await Promise.all(requests);
+    expect(
+      responses
+        .map((response) => {
+          return response.status;
+        })
+        .sort(),
+    ).toStrictEqual([200, 409]);
+  });
+
   it("connects Zendesk manual grant fields through the API", async () => {
     const fixture = await seedFixture();
     const client = setupApp({ context, routes: connectorsRoutes })(

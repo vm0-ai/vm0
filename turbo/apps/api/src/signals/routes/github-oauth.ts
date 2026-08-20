@@ -128,6 +128,43 @@ async function resolveGithubOauthMethodForNewAction(
   return resolved.ok ? resolved : null;
 }
 
+const writeGithubConnectorConnection$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly method: ResolvedConnectorActionMethod;
+      readonly outputs: Readonly<Record<string, string | null | undefined>>;
+      readonly userInfo: {
+        readonly id: string;
+        readonly username: string | null;
+        readonly email: string | null;
+      };
+      readonly oauthScopes: readonly string[];
+      readonly extraConnectorSecrets?: Readonly<Record<string, string>>;
+    },
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    const result = await set(
+      upsertConnectorTokenConnection$,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        runtimeMethod: args.method.runtimeMethod,
+        snapshot: args.method.snapshot,
+        outputs: args.outputs,
+        userInfo: args.userInfo,
+        oauthScopes: args.oauthScopes,
+        extraConnectorSecrets: args.extraConnectorSecrets,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    return result.status === "connected";
+  },
+);
+
 function githubAppUserOauthCredentials():
   | { readonly clientId: string; readonly clientSecret: string }
   | undefined {
@@ -219,6 +256,13 @@ type GithubSetupUserConnectionResolution =
       readonly ok: false;
       readonly response: Response;
     };
+
+function githubSetupUserConnectionError(
+  message: string,
+  publicBrand: PublicBrand,
+): GithubSetupUserConnectionResolution {
+  return { ok: false, response: worksErrorRedirect(message, publicBrand) };
+}
 
 type GithubSetupUserConnectionArgs = {
   readonly db: Db;
@@ -412,13 +456,10 @@ const connectGithubUserAfterSetup$ = command(
             ...codeExchangeLogContext,
           },
         );
-        return {
-          ok: false,
-          response: worksErrorRedirect(
-            "GitHub App OAuth is not configured",
-            args.state.publicBrand,
-          ),
-        };
+        return githubSetupUserConnectionError(
+          "GitHub App OAuth is not configured",
+          args.state.publicBrand,
+        );
       }
 
       L.warn("Starting GitHub setup code exchange", {
@@ -432,13 +473,10 @@ const connectGithubUserAfterSetup$ = command(
       const resolvedMethod = await resolveGithubOauthMethod(resolver);
       signal.throwIfAborted();
       if (!resolvedMethod || resolvedMethod.method.grant.kind !== "auth-code") {
-        return {
-          ok: false,
-          response: worksErrorRedirect(
-            "GitHub OAuth is not available",
-            args.state.publicBrand,
-          ),
-        };
+        return githubSetupUserConnectionError(
+          "GitHub OAuth is not available",
+          args.state.publicBrand,
+        );
       }
       const authCodeGrant = resolvedMethod.method.grant;
       const tokenResult = await settle(
@@ -462,13 +500,10 @@ const connectGithubUserAfterSetup$ = command(
           ...codeExchangeLogContext,
           error: errorMessageFromUnknown(tokenResult.error),
         });
-        return {
-          ok: false,
-          response: worksErrorRedirect(
-            errorMessageFromUnknown(tokenResult.error),
-            args.state.publicBrand,
-          ),
-        };
+        return githubSetupUserConnectionError(
+          errorMessageFromUnknown(tokenResult.error),
+          args.state.publicBrand,
+        );
       }
       const { accessToken, scopes, userInfo } = tokenResult.value;
       L.warn("GitHub setup code exchange succeeded", {
@@ -478,13 +513,12 @@ const connectGithubUserAfterSetup$ = command(
         scopes,
       });
 
-      await set(
-        upsertConnectorTokenConnection$,
+      const connectorConnected = await set(
+        writeGithubConnectorConnection$,
         {
           orgId: args.orgId,
-          userId: userId,
-          runtimeMethod: resolvedMethod.runtimeMethod,
-          snapshot: resolvedMethod.snapshot,
+          userId,
+          method: resolvedMethod,
           outputs: { accessToken },
           userInfo,
           oauthScopes:
@@ -494,7 +528,12 @@ const connectGithubUserAfterSetup$ = command(
         },
         signal,
       );
-      signal.throwIfAborted();
+      if (!connectorConnected) {
+        return githubSetupUserConnectionError(
+          "Connector account could not be selected",
+          args.state.publicBrand,
+        );
+      }
 
       const githubUserId = await linkGithubUser(
         {
@@ -508,13 +547,10 @@ const connectGithubUserAfterSetup$ = command(
       signal.throwIfAborted();
 
       if (!githubUserId) {
-        return {
-          ok: false,
-          response: worksErrorRedirect(
-            "This GitHub account is already linked to the installation",
-            args.state.publicBrand,
-          ),
-        };
+        return githubSetupUserConnectionError(
+          "This GitHub account is already linked to the installation",
+          args.state.publicBrand,
+        );
       }
 
       await publishUserSignal([userId], "github:changed");
@@ -950,13 +986,12 @@ const callbackGithubUserOauth$ = command(
       );
     }
 
-    await set(
-      upsertConnectorTokenConnection$,
+    const connectorConnected = await set(
+      writeGithubConnectorConnection$,
       {
         orgId: state.orgId,
         userId: state.userId,
-        runtimeMethod: resolvedMethod.runtimeMethod,
-        snapshot: resolvedMethod.snapshot,
+        method: resolvedMethod,
         outputs: token.outputs,
         userInfo: token.userInfo,
         oauthScopes: connectorGrantScopes(resolvedMethod.method.grant),
@@ -964,7 +999,12 @@ const callbackGithubUserOauth$ = command(
       },
       signal,
     );
-    signal.throwIfAborted();
+    if (!connectorConnected) {
+      return worksErrorRedirect(
+        "Connector account could not be selected",
+        state.publicBrand,
+      );
+    }
 
     const githubUserId = await linkGithubUser(
       {

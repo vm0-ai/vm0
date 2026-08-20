@@ -38,6 +38,7 @@ export const connectorOauthDeviceAuthorizationSessions = pgTable(
       .notNull(),
     sessionTokenHash: varchar("session_token_hash", { length: 128 }).notNull(),
     encryptedProviderState: text("encrypted_provider_state").notNull(),
+    accountMutation: text("account_mutation"),
     userCode: varchar("user_code", { length: 255 }).notNull(),
     verificationUri: text("verification_uri").notNull(),
     verificationUriComplete: text("verification_uri_complete"),

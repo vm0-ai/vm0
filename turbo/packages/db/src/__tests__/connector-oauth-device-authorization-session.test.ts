@@ -99,6 +99,12 @@ describe("connectorOauthDeviceAuthorizationSessions schema", () => {
     expect(
       connectorOauthDeviceAuthorizationSessions.encryptedProviderState.name,
     ).toBe("encrypted_provider_state");
+    expect(connectorOauthDeviceAuthorizationSessions.accountMutation.name).toBe(
+      "account_mutation",
+    );
+    expect(
+      connectorOauthDeviceAuthorizationSessions.accountMutation.notNull,
+    ).toBe(false);
     expect(connectorOauthDeviceAuthorizationSessions.userCode.name).toBe(
       "user_code",
     );

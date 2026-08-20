@@ -58,6 +58,11 @@ import {
   buildConnectorOpenIdAuthUrlWithMethod,
   prepareConnectorOpenIdAuthStartWithMethod,
 } from "./connector-openid-auth-start";
+import {
+  normalizeConnectorAccountMutation,
+  serializeConnectorAccountMutation,
+} from "../services/connector-account-mutation.service";
+import { resolveConnectorConnectionMutation } from "../services/connector-connection-write.service";
 
 const connectorReadAuth = {
   requireOrganization: true,
@@ -92,6 +97,24 @@ function internalServerError(message: string) {
       },
     },
   };
+}
+
+function connectorAccountMutationFailureResponse(
+  kind:
+    | "missing"
+    | "ambiguous"
+    | "sibling-disabled"
+    | "accountNotFound"
+    | "accountAmbiguous"
+    | "siblingDisabled",
+) {
+  if (kind === "missing" || kind === "accountNotFound") {
+    return notFound("Connector account not found");
+  }
+  if (kind === "ambiguous" || kind === "accountAmbiguous") {
+    return conflict("Multiple connector accounts require an exact choice");
+  }
+  return conflict("Additional connector accounts are not enabled yet");
 }
 
 type ActionGrantKind =
@@ -258,6 +281,14 @@ const connectManualGrantConnectorInner$ = command(
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
+    if (
+      bodyResult.data.account?.intent === "add" &&
+      bodyResult.data.account.displayName === undefined
+    ) {
+      return badRequestMessage(
+        "Account display name is required when adding a manual connector account",
+      );
+    }
 
     const agentTarget = await set(
       validateConnectorAuthorizationTarget$,
@@ -297,6 +328,7 @@ const connectManualGrantConnectorInner$ = command(
         runtimeMethod: resolved.runtimeMethod,
         snapshot: resolved.snapshot,
         values: bodyResult.data.values,
+        account: bodyResult.data.account,
       },
       signal,
     );
@@ -304,6 +336,9 @@ const connectManualGrantConnectorInner$ = command(
 
     if (result.status === "invalid") {
       return badRequestMessage(result.message);
+    }
+    if (result.status !== "connected") {
+      return connectorAccountMutationFailureResponse(result.status);
     }
 
     if (connectorAgentAuthorizationRequested(bodyResult.data)) {
@@ -336,6 +371,14 @@ const connectNoAuthConnectorInner$ = command(
     signal.throwIfAborted();
     if (!bodyResult.ok) {
       return bodyResult.response;
+    }
+    if (
+      bodyResult.data.account?.intent === "add" &&
+      bodyResult.data.account.displayName === undefined
+    ) {
+      return badRequestMessage(
+        "Account display name is required when adding a no-auth connector account",
+      );
     }
 
     const agentTarget = await set(
@@ -375,10 +418,15 @@ const connectNoAuthConnectorInner$ = command(
         userId: auth.userId,
         runtimeMethod: resolved.runtimeMethod,
         snapshot: resolved.snapshot,
+        account: bodyResult.data.account,
       },
       signal,
     );
     signal.throwIfAborted();
+
+    if (result.status !== "connected") {
+      return connectorAccountMutationFailureResponse(result.status);
+    }
 
     if (connectorAgentAuthorizationRequested(bodyResult.data)) {
       const authorization = await set(
@@ -483,21 +531,39 @@ const startConnectorOauthInner$ = command(
     signal.throwIfAborted();
 
     const writeDb = set(writeDb$);
-    await writeDb.insert(connectorOauthStates).values({
-      state: prepared.state,
-      connectorSlug: resolved.connectorSlug,
-      authMethod: resolved.authMethodId,
-      userId: auth.userId,
-      orgId: auth.orgId,
-      agentId: bodyResult.data.agentId,
-      authorizeAgent: connectorAgentAuthorizationRequested(bodyResult.data),
-      redirectUri: prepared.redirectUri,
-      authorizationUrl: authResult.url,
-      codeVerifier: authResult.codeVerifier,
-      oauthContext: authResult.oauthContext,
-      expiresAt: connectorOAuthStateExpiresAt(),
+    const mutationResolution = await writeDb.transaction(async (tx) => {
+      const resolution = await resolveConnectorConnectionMutation(tx, {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        target: { kind: "builtin", connectorSlug: resolved.connectorSlug },
+        mutation: normalizeConnectorAccountMutation(bodyResult.data.account),
+      });
+      if (resolution.kind !== "ready") {
+        return resolution;
+      }
+      await tx.insert(connectorOauthStates).values({
+        state: prepared.state,
+        connectorSlug: resolved.connectorSlug,
+        authMethod: resolved.authMethodId,
+        userId: auth.userId,
+        orgId: auth.orgId,
+        agentId: bodyResult.data.agentId,
+        authorizeAgent: connectorAgentAuthorizationRequested(bodyResult.data),
+        redirectUri: prepared.redirectUri,
+        authorizationUrl: authResult.url,
+        codeVerifier: authResult.codeVerifier,
+        oauthContext: authResult.oauthContext,
+        accountMutation: serializeConnectorAccountMutation(
+          bodyResult.data.account,
+        ),
+        expiresAt: connectorOAuthStateExpiresAt(),
+      });
+      return resolution;
     });
     signal.throwIfAborted();
+    if (mutationResolution.kind !== "ready") {
+      return connectorAccountMutationFailureResponse(mutationResolution.kind);
+    }
 
     return {
       status: 200 as const,
@@ -584,20 +650,38 @@ const startConnectorOpenIdInner$ = command(
     signal.throwIfAborted();
 
     const writeDb = set(writeDb$);
-    await writeDb.insert(connectorOauthStates).values({
-      state: prepared.state,
-      connectorSlug: resolved.connectorSlug,
-      authMethod: resolved.authMethodId,
-      userId: auth.userId,
-      orgId: auth.orgId,
-      agentId: bodyResult.data.agentId,
-      authorizeAgent: connectorAgentAuthorizationRequested(bodyResult.data),
-      redirectUri: prepared.expectedReturnTo,
-      codeVerifier: authResult.codeVerifier,
-      oauthContext: JSON.stringify({ realm: prepared.realm }),
-      expiresAt: connectorOAuthStateExpiresAt(),
+    const mutationResolution = await writeDb.transaction(async (tx) => {
+      const resolution = await resolveConnectorConnectionMutation(tx, {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        target: { kind: "builtin", connectorSlug: resolved.connectorSlug },
+        mutation: normalizeConnectorAccountMutation(bodyResult.data.account),
+      });
+      if (resolution.kind !== "ready") {
+        return resolution;
+      }
+      await tx.insert(connectorOauthStates).values({
+        state: prepared.state,
+        connectorSlug: resolved.connectorSlug,
+        authMethod: resolved.authMethodId,
+        userId: auth.userId,
+        orgId: auth.orgId,
+        agentId: bodyResult.data.agentId,
+        authorizeAgent: connectorAgentAuthorizationRequested(bodyResult.data),
+        redirectUri: prepared.expectedReturnTo,
+        codeVerifier: authResult.codeVerifier,
+        oauthContext: JSON.stringify({ realm: prepared.realm }),
+        accountMutation: serializeConnectorAccountMutation(
+          bodyResult.data.account,
+        ),
+        expiresAt: connectorOAuthStateExpiresAt(),
+      });
+      return resolution;
     });
     signal.throwIfAborted();
+    if (mutationResolution.kind !== "ready") {
+      return connectorAccountMutationFailureResponse(mutationResolution.kind);
+    }
 
     return {
       status: 200 as const,

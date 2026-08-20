@@ -574,6 +574,60 @@ describe("CONN-02: OAuth start and callback", () => {
     expect(failedConnector.body.error.code).toBe("NOT_FOUND");
   });
 
+  it("restores an explicit reconnect target across the OAuth callback", async () => {
+    mockGitHubConnectorOAuth();
+
+    const bdd = createBddApi(context);
+    const actor = bdd.user();
+    const initialStart = await connectorsApi.startOauth(
+      actor,
+      "github",
+      "oauth",
+    );
+    await connectorsApi.completeOauthCallback("github", {
+      code: "github-initial-account-code",
+      state: stateFromAuthorizationUrl(initialStart.authorizationUrl),
+    });
+    const initialConnection = await connectorsApi.readConnectorBySlug(
+      actor,
+      "github",
+    );
+
+    const reconnectStart = await connectorsApi.startOauth(
+      actor,
+      "github",
+      "oauth",
+      undefined,
+      {
+        intent: "reconnect",
+        connectionId: initialConnection.id,
+      },
+    );
+    await connectorsApi.completeOauthCallback("github", {
+      code: "github-reconnected-account-code",
+      state: stateFromAuthorizationUrl(reconnectStart.authorizationUrl),
+    });
+
+    const reconnected = await connectorsApi.readConnectorBySlug(
+      actor,
+      "github",
+    );
+    expect(reconnected.id).toBe(initialConnection.id);
+
+    const siblingAdd = await connectorsApi.requestOauthStart(
+      actor,
+      "github",
+      "oauth",
+      {
+        statuses: [409],
+        authorizeAgent: true,
+        account: { intent: "add", displayName: "Personal" },
+      },
+    );
+    expectApiError(siblingAdd.body);
+    expect(siblingAdd.body.error.code).toBe("CONFLICT");
+  });
+
   it("persists the callback-selected Datadog site through the public OAuth flow", async () => {
     const provider = mockDatadogConnectorOAuth();
 
@@ -1901,6 +1955,56 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       connectorsApi.readCustomConnector(admin, created.id),
     ).resolves.toMatchObject({ connected: false });
     await connectorsApi.deleteCustomConnector(admin, created.id);
+  });
+
+  it("uses the same first-account and sibling gate for HTTP and MCP custom connectors", async () => {
+    const admin = createBddApi(context).user({ orgRole: "org:admin" });
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorMcp]: true,
+    });
+    const definitions = [
+      manualHttpCustomConnectorCreateBody({
+        displayName: "BDD HTTP Account Mutation",
+        prefixTemplates: [
+          `https://${randomUUID()}.account-mutation.example.test/v1/`,
+        ],
+      }),
+      manualMcpConnectorBody({
+        displayName: "BDD MCP Account Mutation",
+        endpoint: `https://${randomUUID()}.account-mutation.example.test/mcp`,
+      }),
+    ];
+
+    for (const definition of definitions) {
+      const connector = await connectorsApi.createCustomConnector(
+        admin,
+        definition,
+      );
+      const connected = await connectorsApi.requestSetCustomConnectorValues(
+        admin,
+        connector.id,
+        [{ key: "secret", kind: "secret", value: "first-secret" }],
+        [200],
+        { intent: "add", displayName: "Work" },
+      );
+      expect(connected.body).toMatchObject({ connected: true });
+
+      const sibling = await connectorsApi.requestSetCustomConnectorValues(
+        admin,
+        connector.id,
+        [{ key: "secret", kind: "secret", value: "sibling-secret" }],
+        [409],
+        { intent: "add", displayName: "Personal" },
+      );
+      expectApiError(sibling.body);
+      expect(sibling.body.error.message).toBe(
+        "Additional connector accounts are not enabled yet",
+      );
+      await expect(
+        connectorsApi.readCustomConnector(admin, connector.id),
+      ).resolves.toMatchObject({ connected: true });
+      await connectorsApi.deleteCustomConnector(admin, connector.id);
+    }
   });
 
   it("stores an OAuth app config and lets members authorize", async () => {

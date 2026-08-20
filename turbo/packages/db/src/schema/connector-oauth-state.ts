@@ -32,6 +32,7 @@ export const connectorOauthStates = pgTable(
     authorizationUrl: text("authorization_url"),
     codeVerifier: text("code_verifier"),
     oauthContext: text("oauth_context"),
+    accountMutation: text("account_mutation"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     expiresAt: timestamp("expires_at").notNull(),
     consumedAt: timestamp("consumed_at"),
