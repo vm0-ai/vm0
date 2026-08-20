@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   useGet,
   useLastLoadable,
@@ -177,7 +176,6 @@ function useGrowthActions() {
  * always has something to say.
  */
 function GrowthEntry() {
-  const [creditsRequested, setCreditsRequested] = useState(false);
   const { t } = useTranslation();
   const assistantName = useGet(assistantName$);
   const slackInstalled = useSlackInstalled();
@@ -186,13 +184,7 @@ function GrowthEntry() {
   const leadIsSlack = !slackInstalled;
 
   return (
-    <DropdownMenu
-      onOpenChange={(open) => {
-        if (open) {
-          setCreditsRequested(true);
-        }
-      }}
-    >
+    <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
           type="button"
@@ -287,9 +279,8 @@ function GrowthEntry() {
           </span>
         </DropdownMenuModalItem>
 
-        {creditsRequested ? (
-          <GrowthCreditMenuItem openCredits={openCredits} />
-        ) : null}
+        {/* Content is unmounted while closed, so credit requests stay lazy. */}
+        <GrowthCreditMenuItem openCredits={openCredits} />
       </DropdownMenuContent>
     </DropdownMenu>
   );
