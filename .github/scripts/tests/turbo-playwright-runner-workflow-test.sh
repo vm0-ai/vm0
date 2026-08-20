@@ -89,33 +89,50 @@ end
 unless playwright.dig("strategy", "fail-fast") == false
   raise "Playwright project lanes must not fail fast"
 end
-expected_playwright_projects = %w[features paid-onboarding billing-transitions]
-unless playwright.dig("strategy", "matrix", "project") ==
-    expected_playwright_projects
-  raise "Playwright matrix must contain the three independent projects"
+expected_playwright_lanes = [
+  { "lane" => "features", "project" => "features" },
+  { "lane" => "paid-onboarding", "project" => "paid-onboarding" },
+  {
+    "lane" => "billing-transitions-1",
+    "project" => "billing-transitions",
+    "shard" => "1/2",
+  },
+  {
+    "lane" => "billing-transitions-2",
+    "project" => "billing-transitions",
+    "shard" => "2/2",
+  },
+]
+unless playwright.dig("strategy", "matrix", "include") ==
+    expected_playwright_lanes
+  raise "Playwright matrix must shard the measured billing bottleneck"
 end
 expected_playwright_group =
-  "cli-e2e-02-playwright-${{ matrix.project }}-${{ needs.prepare.outputs.job-ref }}"
+  "cli-e2e-02-playwright-${{ matrix.lane }}-${{ needs.prepare.outputs.job-ref }}"
 unless playwright.dig("concurrency", "group") == expected_playwright_group
-  raise "each Playwright project must keep an independent concurrency group"
+  raise "each Playwright lane must keep an independent concurrency group"
 end
 unless playwright.dig("concurrency", "cancel-in-progress") == true
-  raise "superseding runs must cancel only their matching Playwright project"
+  raise "superseding runs must cancel only their matching Playwright lane"
 end
 playwright_run = playwright.fetch("steps").find do |step|
   step["name"] == "Run Playwright E2E tests"
 end
-unless playwright_run&.fetch("run", "")&.include?(
-    '--project="${{ matrix.project }}"',
-  )
-  raise "each Playwright lane must select only its matrix project"
+unless playwright_run&.fetch("shell") == "bash" &&
+    playwright_run.fetch("run").include?('--project="$PLAYWRIGHT_PROJECT"') &&
+    playwright_run.fetch("run").include?('--shard="$PLAYWRIGHT_SHARD"') &&
+    playwright_run.dig("env", "PLAYWRIGHT_PROJECT") ==
+      "${{ matrix.project }}" &&
+    playwright_run.dig("env", "PLAYWRIGHT_SHARD") ==
+      "${{ matrix.shard || '' }}"
+  raise "each Playwright lane must select its matrix project and optional shard"
 end
 playwright_blob_upload = playwright.fetch("steps").find do |step|
   step["name"] == "Upload Playwright blob report"
 end
 unless playwright_blob_upload && playwright_blob_upload.fetch("if") == "always()" &&
     playwright_blob_upload.dig("with", "name") ==
-      "playwright-blob-${{ matrix.project }}" &&
+      "playwright-blob-${{ matrix.lane }}" &&
     playwright_blob_upload.dig("with", "path") ==
       "e2e/playwright/blob-report/"
   raise "each Playwright lane must always upload its uniquely named blob report"
