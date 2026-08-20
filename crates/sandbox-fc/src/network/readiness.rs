@@ -170,8 +170,9 @@ pub(super) fn production_dns_readiness_probe() -> DnsReadinessProbe {
 ///
 /// The outer timeout bounds the async wait. If it expires, dropping that wait
 /// does not cancel a blocking probe that is already running on its one-shot OS
-/// thread. The inner probe deadline, per-attempt socket timeout, and thread
-/// grace keep that detached operation bounded.
+/// thread. The inner probe deadline and per-attempt socket timeout keep that
+/// detached operation bounded; thread grace only extends the async wait for
+/// the thread's result.
 pub(super) async fn run_dns_readiness_probe(
     namespace: String,
     probe: DnsReadinessProbe,
