@@ -258,6 +258,12 @@ export function withApiNamespaceAliases(
  * `LEGACY_ZERO_PATHS`: a row is removed only under #26701's evidence rules. The
  * request log retains about three days, which by itself cannot prove a row is
  * drained — it cannot tell a caller that left from one that calls weekly.
+ *
+ * The surfaces a row protects are an open web or app page holding the previous
+ * build for about two days, and released CLI and desktop builds, which no
+ * rollout window bounds at all — a user can run a months-old CLI. That second
+ * surface is why removal waits on #26701's evidence rather than on a deploy
+ * window elapsing.
  */
 type MigratedBrandedPathTable = Readonly<Record<string, readonly string[]>>;
 
