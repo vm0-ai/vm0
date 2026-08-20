@@ -44,10 +44,11 @@ pub struct GcArgs {
     /// Show what would be deleted without actually deleting
     #[arg(long)]
     dry_run: bool,
-    /// Keep the N newest eligible items across managed runner versions (by semantic version),
-    /// image snapshots (by modification time), and stable debootstrap tarballs (by modification
-    /// time). Recent, active, locked, referenced, incomplete, and temporary artifacts follow their
-    /// own safety rules; temporary debootstrap tarballs do not consume a stable retention slot.
+    /// Keep the N newest eligible items in each independent retention policy: managed runner
+    /// versions (by semantic version), image snapshots (by modification time), and stable
+    /// debootstrap tarballs (by modification time). Recent, active, locked, referenced, incomplete,
+    /// and temporary artifacts follow their own safety rules; temporary debootstrap tarballs do not
+    /// consume a stable retention slot.
     /// Omit this option or set it to 0 to disable top-N retention.
     #[arg(long)]
     keep_latest: Option<usize>,
@@ -117,6 +118,7 @@ mod tests {
             .to_string()
             .to_ascii_lowercase();
         for phrase in [
+            "each independent retention policy",
             "managed runner versions",
             "semantic version",
             "image snapshots",
