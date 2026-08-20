@@ -7,8 +7,9 @@ usable when the reference is resolved.
 
 The boundary is defined by authority, not transport or storage:
 
-- A provider account ID is externally managed even when it is persisted in our
-  database.
+- A provider-issued account ID is externally managed even when it is persisted
+  in our database; an application-generated ID for a locally owned account row
+  is not.
 - A built-in connector slug is externally managed by the accepted connector
   catalog even when a local row contains the slug.
 - A request body is external input, but it is not necessarily an externally
