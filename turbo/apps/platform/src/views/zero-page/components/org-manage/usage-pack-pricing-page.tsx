@@ -1,4 +1,4 @@
-import { ArrowLeft, CalendarDays, X } from "lucide-react";
+import { ArrowLeft, CalendarDays, Check, X } from "lucide-react";
 import {
   Button,
   Dialog,
@@ -785,11 +785,20 @@ function PlanPrice({
 }
 
 /* Both plans list the same rows in the same order, so the two columns can be
-   read across rather than compared item by item between two unequal lists. */
+   read across rather than compared item by item between two unequal lists.
+   Only what actually differs between the plans earns a row here: a row that
+   prints the same value twice costs a reader a comparison and returns nothing.
+   Everything both plans carry is stated once, under the columns, by
+   PlanIncludedBand. */
 function planComparisonRows(
   tier: UsagePackPlanTier,
 ): readonly { readonly label: string; readonly value: string }[] {
   const voice = planVoiceInput(tier);
+  const teamOnly = tier === "team";
+  const notIncluded = "—";
+  const available = i18n.t(($) => {
+    return $.billing.plans.comparison.available;
+  });
   return [
     {
       label: i18n.t(($) => {
@@ -801,26 +810,24 @@ function planComparisonRows(
       label: i18n.t(($) => {
         return $.billing.plans.comparison.addOnConcurrency;
       }),
-      value:
-        tier === "team"
-          ? i18n.t(($) => {
-              return $.billing.plans.comparison.available;
-            })
-          : "—",
+      value: teamOnly ? available : notIncluded,
     },
     {
       label: i18n.t(($) => {
-        return $.billing.plans.comparison.sharedAgents;
+        return $.billing.plans.comparison.agents;
       }),
-      value: formatLocalizedNumber(SHARED_AGENT_COUNT),
+      value: i18n.t(
+        ($) => {
+          return $.billing.plans.comparison.agentsValue;
+        },
+        { shared: formatLocalizedNumber(SHARED_AGENT_COUNT) },
+      ),
     },
     {
       label: i18n.t(($) => {
-        return $.billing.plans.comparison.privateAgents;
+        return $.billing.plans.comparison.webhookAutomations;
       }),
-      value: i18n.t(($) => {
-        return $.billing.plans.comparison.unlimited;
-      }),
+      value: teamOnly ? available : notIncluded,
     },
     {
       label: i18n.t(($) => {
@@ -838,26 +845,94 @@ function planComparisonRows(
     },
     {
       label: i18n.t(($) => {
-        return $.billing.plans.comparison.ownLlmKeys;
-      }),
-      value: i18n.t(($) => {
-        return $.billing.plans.comparison.included;
-      }),
-    },
-    {
-      label: i18n.t(($) => {
         return $.billing.plans.comparison.support;
       }),
-      value:
-        tier === "team"
-          ? i18n.t(($) => {
-              return $.billing.plans.comparison.supportPriority;
-            })
-          : i18n.t(($) => {
-              return $.billing.plans.comparison.supportEmail;
-            }),
+      value: teamOnly
+        ? i18n.t(($) => {
+            return $.billing.plans.comparison.supportPriority;
+          })
+        : i18n.t(($) => {
+            return $.billing.plans.comparison.supportEmail;
+          }),
     },
   ];
+}
+
+/* What Pro and Team both unlock over a free workspace. These are the reasons
+   to upgrade at all, as opposed to the reasons to pick one plan over the
+   other, so they are stated once across the full width instead of twice down
+   the columns. The credit range is read from the catalog rather than written
+   into the copy: the packages the columns price are the packages this line
+   describes. */
+function planIncludedItems(
+  catalog: readonly UsagePackCatalogItem[],
+): readonly string[] {
+  const packCredits = catalog.map((item) => {
+    return item.totalCredits;
+  });
+  return [
+    i18n.t(($) => {
+      return $.billing.plans.included.allModels;
+    }),
+    i18n.t(($) => {
+      return $.billing.plans.included.automations;
+    }),
+    i18n.t(($) => {
+      return $.billing.plans.included.byok;
+    }),
+    i18n.t(($) => {
+      return $.billing.plans.included.videoGeneration;
+    }),
+    i18n.t(
+      ($) => {
+        return $.billing.plans.included.packageCredits;
+      },
+      {
+        highest: formatLocalizedNumber(Math.max(...packCredits)),
+        lowest: formatLocalizedNumber(Math.min(...packCredits)),
+      },
+    ),
+    i18n.t(($) => {
+      return $.billing.plans.included.credits;
+    }),
+  ];
+}
+
+function PlanIncludedBand({
+  catalog,
+  className = "",
+}: {
+  readonly catalog: readonly UsagePackCatalogItem[];
+  readonly className?: string;
+}) {
+  const title = i18n.t(($) => {
+    return $.billing.plans.included.title;
+  });
+  return (
+    <section
+      aria-label={title}
+      className={`border-t-[0.7px] border-[hsl(var(--gray-200))] bg-[hsl(var(--gray-0))] px-6 py-5 ${className}`}
+    >
+      <p className="text-xs font-medium text-muted-foreground">{title}</p>
+      <ul className="mt-3 grid gap-x-8 gap-y-2 sm:grid-cols-2">
+        {planIncludedItems(catalog).map((item) => {
+          return (
+            <li
+              key={item}
+              className="flex items-start gap-2 text-sm leading-snug text-foreground"
+            >
+              <Check
+                size={14}
+                aria-hidden
+                className="mt-[3px] shrink-0 text-muted-foreground"
+              />
+              <span className="min-w-0">{item}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
 }
 
 function PlanComparison({ tier }: { readonly tier: UsagePackPlanTier }) {
@@ -1307,25 +1382,31 @@ function PlanSelectionStep({
     /* No panel border inside the dialog frame -- the only rule between the two
        plans is the hairline the second column carries, and it runs the full
        height of the body so the frame reads as two columns, not two cards.
-       The columns take the scroll; the note stays pinned to the frame. */
+       The columns and the band under them take the scroll; the note stays
+       pinned to the frame. The columns still claim the free height first, so
+       the two actions stay above the fold and the band is what a reader
+       scrolls to. */
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="dialog-scrollable grid min-h-0 flex-1 grid-cols-1 overflow-y-auto sm:grid-cols-2">
-        {USAGE_PACK_PLANS.map((plan, index) => {
-          const action = resolveAction(plan.tier);
-          return (
-            <PlanSelectionCard
-              key={plan.tier}
-              action={action}
-              busy={false}
-              catalog={catalog}
-              divided={index > 0}
-              plan={plan}
-              onAction={() => {
-                onAction(plan.tier, action);
-              }}
-            />
-          );
-        })}
+      <div className="dialog-scrollable flex min-h-0 flex-1 flex-col overflow-y-auto">
+        <div className="grid flex-1 grid-cols-1 sm:grid-cols-2">
+          {USAGE_PACK_PLANS.map((plan, index) => {
+            const action = resolveAction(plan.tier);
+            return (
+              <PlanSelectionCard
+                key={plan.tier}
+                action={action}
+                busy={false}
+                catalog={catalog}
+                divided={index > 0}
+                plan={plan}
+                onAction={() => {
+                  onAction(plan.tier, action);
+                }}
+              />
+            );
+          })}
+        </div>
+        <PlanIncludedBand catalog={catalog} />
       </div>
       <p className="shrink-0 border-t-[0.7px] border-[hsl(var(--gray-200))] bg-[hsl(var(--gray-0))] px-6 py-5 text-sm leading-snug text-muted-foreground">
         {i18n.t(($) => {
@@ -3158,6 +3239,7 @@ export function UsagePackMigrationPlanSelectionPage({
               />
             );
           })}
+          <PlanIncludedBand catalog={catalog} className="sm:col-span-2" />
         </PlanSelectionPanel>
       )}
     </div>

@@ -917,18 +917,16 @@
       "compareAll": "Confronta tutti i piani",
       "comparison": {
         "addOnConcurrency": "Concorrenza aggiuntiva",
+        "agents": "Agenti",
+        "agentsValue": "{{shared}} condivisi · privati illimitati",
         "available": "Disponibile",
         "concurrentRuns": "Esecuzioni simultanee",
-        "included": "Sì",
-        "ownLlmKeys": "Le tue chiavi LLM",
-        "privateAgents": "Agenti privati",
-        "sharedAgents": "Agenti condivisi",
         "support": "Assistenza",
         "supportEmail": "E-mail",
         "supportPriority": "Prioritaria",
-        "unlimited": "Illimitati",
         "voiceInput": "Input vocale",
-        "voiceInputValue": "{{requests}}/giorno · {{minutes}} min"
+        "voiceInputValue": "{{requests}}/giorno · {{minutes}} min",
+        "webhookAutomations": "Automazioni webhook"
       },
       "currentPlan": "Piano attuale",
       "custom": {
@@ -961,6 +959,15 @@
         "description": "Accesso gratuito precedente per le aree di lavoro esistenti.",
         "name": "Gratuito"
       },
+      "included": {
+        "allModels": "Tutti i modelli sbloccati",
+        "automations": "Automazioni di workflow pianificate e su eventi delle app",
+        "byok": "Usa le tue chiavi LLM",
+        "credits": "Ricarica automatica e crediti a consumo",
+        "packageCredits": "Pacchetti per membro da {{lowest}} a {{highest}} crediti",
+        "title": "Incluso in entrambi i piani",
+        "videoGeneration": "Generazione di video e avatar"
+      },
       "legacy": "Precedente",
       "limitedFree": {
         "name": "Gratuito limitato"
@@ -977,7 +984,7 @@
       "popular": "Popolare",
       "pricePerMonth": "{{price}}/mese",
       "pro": {
-        "description": "Più crediti e concorrenza per i team che eseguono agenti IA ogni giorno.",
+        "description": "Per una persona o un piccolo spazio di lavoro che usa agenti ogni giorno. Ogni membro ha i propri crediti.",
         "name": "Pro"
       },
       "renews": "Rinnova {{date}}",
@@ -985,7 +992,7 @@
       "sectionTitle": "Piano",
       "selectedPlan": "il piano selezionato",
       "team": {
-        "description": "Spazio per un team di dipendenti IA: molti crediti e 10 agent in esecuzione contemporaneamente.",
+        "description": "Per team che usano agenti tutto il giorno. Acquista concorrenza extra e attiva workflow dai tuoi sistemi.",
         "name": "Team"
       },
       "upgrade": "Aggiorna",

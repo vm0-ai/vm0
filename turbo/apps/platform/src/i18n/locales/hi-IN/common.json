@@ -896,18 +896,16 @@
       "compareAll": "सभी योजनाओं की तुलना करें",
       "comparison": {
         "addOnConcurrency": "अतिरिक्त समवर्तिता",
+        "agents": "एजेंट",
+        "agentsValue": "{{shared}} साझा · असीमित निजी",
         "available": "उपलब्ध",
         "concurrentRuns": "समवर्ती रन",
-        "included": "हाँ",
-        "ownLlmKeys": "अपनी LLM कुंजियाँ",
-        "privateAgents": "निजी एजेंट",
-        "sharedAgents": "साझा एजेंट",
         "support": "सहायता",
         "supportEmail": "ईमेल",
         "supportPriority": "प्राथमिकता",
-        "unlimited": "असीमित",
         "voiceInput": "वॉइस इनपुट",
-        "voiceInputValue": "{{requests}}/दिन · {{minutes}} मिनट"
+        "voiceInputValue": "{{requests}}/दिन · {{minutes}} मिनट",
+        "webhookAutomations": "वेबहुक ऑटोमेशन"
       },
       "currentPlan": "वर्तमान योजना",
       "custom": {
@@ -940,6 +938,15 @@
         "description": "मौजूदा वर्कस्पेस के लिए विरासती निःशुल्क पहुंच।",
         "name": "फ्री"
       },
+      "included": {
+        "allModels": "सभी मॉडल अनलॉक",
+        "automations": "शेड्यूल और ऐप-इवेंट वर्कफ़्लो ऑटोमेशन",
+        "byok": "अपनी LLM कुंजियाँ इस्तेमाल करें",
+        "credits": "ऑटो-रिचार्ज और पे-ऐज़-यू-गो क्रेडिट",
+        "packageCredits": "{{lowest}} से {{highest}} क्रेडिट तक के सदस्य पैकेज",
+        "title": "दोनों प्लान में शामिल",
+        "videoGeneration": "वीडियो और अवतार जनरेशन"
+      },
       "legacy": "पुराना",
       "limitedFree": {
         "name": "लिमिटेड फ्री"
@@ -956,7 +963,7 @@
       "popular": "लोकप्रिय",
       "pricePerMonth": "{{price}}/माह",
       "pro": {
-        "description": "हर दिन AI एजेंट चलाने वाली टीमों के लिए अधिक क्रेडिट और समवर्ती रन।",
+        "description": "एक व्यक्ति या छोटे वर्कस्पेस के लिए जो रोज़ एजेंट चलाता है। हर सदस्य को अपने क्रेडिट मिलते हैं।",
         "name": "प्रो"
       },
       "renews": "{{date}} को नवीनीकृत होगा",
@@ -964,7 +971,7 @@
       "sectionTitle": "योजना",
       "selectedPlan": "चयनित योजना",
       "team": {
-        "description": "AI कर्मचारियों की टीम के लिए जगह: अधिक क्रेडिट और एक साथ चलने वाले 10 एजेंट।",
+        "description": "दिनभर एजेंट चलाने वाली टीमों के लिए। अतिरिक्त समवर्तिता खरीदें और अपने सिस्टम से वर्कफ़्लो ट्रिगर करें।",
         "name": "टीम"
       },
       "upgrade": "अपग्रेड",

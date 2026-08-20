@@ -466,14 +466,14 @@ describe("organization billing settings", () => {
 
     expect(
       within(proPlan).getByText(
-        "More credits and concurrency for teams running AI agents every day.",
+        "For one person or a small workspace running agents every day. Each member gets their own credits.",
       ),
     ).toBeInTheDocument();
     expect(within(proPlan).queryByText("20,000 credits / month")).toBeNull();
     expect(within(proPlan).queryByText("Pay as you go after that")).toBeNull();
     expect(
       within(teamPlan).getByText(
-        "Room for a team of AI employees: high credit volume and 10 agents running at once.",
+        "For teams running agents all day. Buy extra concurrency and trigger workflows from your own systems.",
       ),
     ).toBeInTheDocument();
     expect(within(teamPlan).queryByText("120,000 credits / month")).toBeNull();
@@ -483,10 +483,9 @@ describe("organization billing settings", () => {
       for (const label of [
         "Concurrent runs",
         "Add-on concurrency",
-        "Shared agents",
-        "Private agents",
+        "Agents",
+        "Webhook automations",
         "Voice input",
-        "Your own LLM keys",
         "Support",
       ]) {
         expect(within(plan).getByText(label)).toBeInTheDocument();
@@ -494,12 +493,33 @@ describe("organization billing settings", () => {
     }
     expect(proPlan).toHaveTextContent("Concurrent runs2");
     expect(proPlan).toHaveTextContent("Add-on concurrency—");
+    expect(proPlan).toHaveTextContent("Agents7 shared · unlimited private");
+    expect(proPlan).toHaveTextContent("Webhook automations—");
     expect(proPlan).toHaveTextContent("Voice input300/day · 200 min");
     expect(proPlan).toHaveTextContent("SupportEmail");
     expect(teamPlan).toHaveTextContent("Concurrent runs10");
     expect(teamPlan).toHaveTextContent("Add-on concurrencyAvailable");
+    expect(teamPlan).toHaveTextContent("Agents7 shared · unlimited private");
+    expect(teamPlan).toHaveTextContent("Webhook automationsAvailable");
     expect(teamPlan).toHaveTextContent("Voice input500/day · 500 min");
     expect(teamPlan).toHaveTextContent("SupportPriority");
+
+    /* What both plans unlock is stated once under the columns rather than
+       repeated down each of them, and the credit range comes from the same
+       catalog the columns price. */
+    const includedBand = screen.getByRole("region", {
+      name: "Included on both plans",
+    });
+    for (const item of [
+      "Every model unlocked",
+      "Scheduled and app-event workflow automations",
+      "Bring your own LLM keys",
+      "Video and avatar generation",
+      "Member packages from 21,234 to 230,000 credits",
+      "Auto-recharge and pay-as-you-go credits",
+    ]) {
+      expect(within(includedBand).getByText(item)).toBeInTheDocument();
+    }
 
     click(buttonByText("Start with Team", teamPlan));
 

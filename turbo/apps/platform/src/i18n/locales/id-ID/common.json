@@ -896,18 +896,16 @@
       "compareAll": "Bandingkan semua paket",
       "comparison": {
         "addOnConcurrency": "Konkurensi tambahan",
+        "agents": "Agen",
+        "agentsValue": "{{shared}} bersama · privat tanpa batas",
         "available": "Tersedia",
         "concurrentRuns": "Proses bersamaan",
-        "included": "Ya",
-        "ownLlmKeys": "Kunci LLM Anda sendiri",
-        "privateAgents": "Agen privat",
-        "sharedAgents": "Agen bersama",
         "support": "Dukungan",
         "supportEmail": "Email",
         "supportPriority": "Prioritas",
-        "unlimited": "Tanpa batas",
         "voiceInput": "Input suara",
-        "voiceInputValue": "{{requests}}/hari · {{minutes}} mnt"
+        "voiceInputValue": "{{requests}}/hari · {{minutes}} mnt",
+        "webhookAutomations": "Otomatisasi webhook"
       },
       "currentPlan": "Paket saat ini",
       "custom": {
@@ -940,6 +938,15 @@
         "description": "Akses gratis lama untuk ruang kerja yang sudah ada.",
         "name": "Gratis"
       },
+      "included": {
+        "allModels": "Semua model terbuka",
+        "automations": "Otomatisasi alur kerja terjadwal dan berbasis event aplikasi",
+        "byok": "Gunakan kunci LLM Anda sendiri",
+        "credits": "Isi ulang otomatis dan kredit bayar sesuai pemakaian",
+        "packageCredits": "Paket anggota dari {{lowest}} hingga {{highest}} kredit",
+        "title": "Termasuk di kedua paket",
+        "videoGeneration": "Pembuatan video dan avatar"
+      },
       "legacy": "Lama",
       "limitedFree": {
         "name": "Gratis terbatas"
@@ -956,7 +963,7 @@
       "popular": "Populer",
       "pricePerMonth": "{{price}}/bulan",
       "pro": {
-        "description": "Lebih banyak kredit dan konkurensi untuk tim yang menjalankan agen AI setiap hari.",
+        "description": "Untuk satu orang atau ruang kerja kecil yang menjalankan agen setiap hari. Tiap anggota punya kredit sendiri.",
         "name": "Pro"
       },
       "renews": "Memperbarui {{date}}",
@@ -964,7 +971,7 @@
       "sectionTitle": "Paket",
       "selectedPlan": "paket yang dipilih",
       "team": {
-        "description": "Ruang untuk tim pekerja AI: volume kredit tinggi dan 10 agen berjalan bersamaan.",
+        "description": "Untuk tim yang menjalankan agen sepanjang hari. Beli konkurensi tambahan dan picu alur kerja dari sistem Anda.",
         "name": "Tim"
       },
       "upgrade": "Tingkatkan",

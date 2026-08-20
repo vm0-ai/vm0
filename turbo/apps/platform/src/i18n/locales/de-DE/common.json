@@ -896,18 +896,16 @@
       "compareAll": "Vergleichen Sie alle Pläne",
       "comparison": {
         "addOnConcurrency": "Zusätzliche Parallelität",
+        "agents": "Agents",
+        "agentsValue": "{{shared}} geteilt · unbegrenzt privat",
         "available": "Verfügbar",
         "concurrentRuns": "Parallele Läufe",
-        "included": "Ja",
-        "ownLlmKeys": "Eigene LLM-Schlüssel",
-        "privateAgents": "Private Agents",
-        "sharedAgents": "Geteilte Agents",
         "support": "Support",
         "supportEmail": "E-Mail",
         "supportPriority": "Priorität",
-        "unlimited": "Unbegrenzt",
         "voiceInput": "Spracheingabe",
-        "voiceInputValue": "{{requests}}/Tag · {{minutes}} Min."
+        "voiceInputValue": "{{requests}}/Tag · {{minutes}} Min.",
+        "webhookAutomations": "Webhook-Automationen"
       },
       "currentPlan": "Aktueller Plan",
       "custom": {
@@ -940,6 +938,15 @@
         "description": "Kostenloser Legacy-Zugriff für bestehende Arbeitsbereiche.",
         "name": "Frei"
       },
+      "included": {
+        "allModels": "Alle Modelle freigeschaltet",
+        "automations": "Zeitgesteuerte und ereignisbasierte Workflow-Automationen",
+        "byok": "Eigene LLM-Schlüssel verwenden",
+        "credits": "Automatisches Aufladen und Pay-as-you-go-Credits",
+        "packageCredits": "Mitgliederpakete von {{lowest}} bis {{highest}} Credits",
+        "title": "In beiden Tarifen enthalten",
+        "videoGeneration": "Video- und Avatar-Generierung"
+      },
       "legacy": "Legacy",
       "limitedFree": {
         "name": "Begrenzt kostenlos"
@@ -956,7 +963,7 @@
       "popular": "Beliebt",
       "pricePerMonth": "{{price}}/Monat",
       "pro": {
-        "description": "Mehr Credits und Parallelität für Teams, die täglich KI-Agents einsetzen.",
+        "description": "Für Einzelpersonen oder kleine Workspaces, die täglich Agents einsetzen. Jedes Mitglied erhält eigene Credits.",
         "name": "Pro"
       },
       "renews": "Erneuert {{date}}",
@@ -964,7 +971,7 @@
       "sectionTitle": "Planen",
       "selectedPlan": "den ausgewählten Plan",
       "team": {
-        "description": "Platz für ein Team aus KI-Mitarbeitern: hohes Credit-Volumen und 10 gleichzeitig laufende Agents.",
+        "description": "Für Teams, die Agents ganztägig einsetzen. Zusätzliche Parallelität kaufen und Workflows aus eigenen Systemen auslösen.",
         "name": "Team"
       },
       "upgrade": "Upgrade",

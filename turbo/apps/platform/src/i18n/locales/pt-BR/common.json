@@ -917,18 +917,16 @@
       "compareAll": "Comparar todos os planos",
       "comparison": {
         "addOnConcurrency": "Concorrência adicional",
+        "agents": "Agentes",
+        "agentsValue": "{{shared}} compartilhados · privados ilimitados",
         "available": "Disponível",
         "concurrentRuns": "Execuções simultâneas",
-        "included": "Sim",
-        "ownLlmKeys": "Suas próprias chaves LLM",
-        "privateAgents": "Agentes privados",
-        "sharedAgents": "Agentes compartilhados",
         "support": "Suporte",
         "supportEmail": "E-mail",
         "supportPriority": "Prioritário",
-        "unlimited": "Ilimitados",
         "voiceInput": "Entrada de voz",
-        "voiceInputValue": "{{requests}}/dia · {{minutes}} min"
+        "voiceInputValue": "{{requests}}/dia · {{minutes}} min",
+        "webhookAutomations": "Automações por webhook"
       },
       "currentPlan": "Plano atual",
       "custom": {
@@ -961,6 +959,15 @@
         "description": "Acesso gratuito legado para workspaces existentes.",
         "name": "Grátis"
       },
+      "included": {
+        "allModels": "Todos os modelos liberados",
+        "automations": "Automações de fluxo agendadas e por eventos de apps",
+        "byok": "Use suas próprias chaves LLM",
+        "credits": "Recarga automática e créditos pré-pagos por uso",
+        "packageCredits": "Pacotes por membro de {{lowest}} a {{highest}} créditos",
+        "title": "Incluído nos dois planos",
+        "videoGeneration": "Geração de vídeo e avatares"
+      },
       "legacy": "Legado",
       "limitedFree": {
         "name": "Grátis limitado"
@@ -977,7 +984,7 @@
       "popular": "Popular",
       "pricePerMonth": "{{price}}/mês",
       "pro": {
-        "description": "Mais créditos e simultaneidade para equipes que executam agentes de IA todos os dias.",
+        "description": "Para uma pessoa ou um espaço pequeno que usa agentes todos os dias. Cada membro tem os próprios créditos.",
         "name": "Pro"
       },
       "renews": "Renova em {{date}}",
@@ -985,7 +992,7 @@
       "sectionTitle": "Plano",
       "selectedPlan": "o plano selecionado",
       "team": {
-        "description": "Espaço para uma equipe de funcionários de IA: alto volume de créditos e 10 agentes executando ao mesmo tempo.",
+        "description": "Para equipes que usam agentes o dia todo. Compre concorrência extra e dispare fluxos a partir dos seus sistemas.",
         "name": "Team"
       },
       "upgrade": "Fazer upgrade",

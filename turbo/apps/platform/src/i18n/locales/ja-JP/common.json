@@ -896,18 +896,16 @@
       "compareAll": "すべてのプランを比較する",
       "comparison": {
         "addOnConcurrency": "同時実行の追加購入",
+        "agents": "エージェント",
+        "agentsValue": "共有 {{shared}} · プライベート無制限",
         "available": "購入可能",
         "concurrentRuns": "同時実行数",
-        "included": "対応",
-        "ownLlmKeys": "独自の LLM キー",
-        "privateAgents": "プライベートエージェント",
-        "sharedAgents": "共有エージェント",
         "support": "サポート",
         "supportEmail": "メール",
         "supportPriority": "優先",
-        "unlimited": "無制限",
         "voiceInput": "音声入力",
-        "voiceInputValue": "{{requests}} 回/日 · {{minutes}} 分"
+        "voiceInputValue": "{{requests}} 回/日 · {{minutes}} 分",
+        "webhookAutomations": "Webhook 自動化"
       },
       "currentPlan": "現在の計画",
       "custom": {
@@ -940,6 +938,15 @@
         "description": "既存のワークスペースへの従来の無料アクセス。",
         "name": "無料"
       },
+      "included": {
+        "allModels": "すべてのモデルを利用可能",
+        "automations": "スケジュールとアプリイベントによるワークフロー自動化",
+        "byok": "独自の LLM キーを利用可能",
+        "credits": "自動チャージと従量課金クレジット",
+        "packageCredits": "メンバーパッケージは {{lowest}}〜{{highest}} クレジット",
+        "title": "両プラン共通",
+        "videoGeneration": "動画とアバターの生成"
+      },
       "legacy": "旧プラン",
       "limitedFree": {
         "name": "限定無料"
@@ -956,7 +963,7 @@
       "popular": "人気のある",
       "pricePerMonth": "{{price}}/月",
       "pro": {
-        "description": "AIエージェントを毎日実行するチーム向けに、より多くのクレジットと同時実行数を提供します。",
+        "description": "個人または少人数のワークスペースで毎日エージェントを実行する方に。メンバーごとにクレジットを保有します。",
         "name": "プロ"
       },
       "renews": "{{date}} を更新します",
@@ -964,7 +971,7 @@
       "sectionTitle": "計画",
       "selectedPlan": "選択したプラン",
       "team": {
-        "description": "AI従業員チームのための余裕：大容量のクレジットと10エージェントの同時実行。",
+        "description": "終日エージェントを実行するチームに。同時実行を追加購入し、自社システムからワークフローを起動できます。",
         "name": "チーム"
       },
       "upgrade": "アップグレード",

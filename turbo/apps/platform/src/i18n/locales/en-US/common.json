@@ -896,18 +896,16 @@
       "compareAll": "Compare all plans",
       "comparison": {
         "addOnConcurrency": "Add-on concurrency",
+        "agents": "Agents",
+        "agentsValue": "{{shared}} shared · unlimited private",
         "available": "Available",
         "concurrentRuns": "Concurrent runs",
-        "included": "Yes",
-        "ownLlmKeys": "Your own LLM keys",
-        "privateAgents": "Private agents",
-        "sharedAgents": "Shared agents",
         "support": "Support",
         "supportEmail": "Email",
         "supportPriority": "Priority",
-        "unlimited": "Unlimited",
         "voiceInput": "Voice input",
-        "voiceInputValue": "{{requests}}/day · {{minutes}} min"
+        "voiceInputValue": "{{requests}}/day · {{minutes}} min",
+        "webhookAutomations": "Webhook automations"
       },
       "currentPlan": "Current plan",
       "custom": {
@@ -940,6 +938,15 @@
         "description": "Legacy free access for existing workspaces.",
         "name": "Free"
       },
+      "included": {
+        "allModels": "Every model unlocked",
+        "automations": "Scheduled and app-event workflow automations",
+        "byok": "Bring your own LLM keys",
+        "credits": "Auto-recharge and pay-as-you-go credits",
+        "packageCredits": "Member packages from {{lowest}} to {{highest}} credits",
+        "title": "Included on both plans",
+        "videoGeneration": "Video and avatar generation"
+      },
       "legacy": "Legacy",
       "limitedFree": {
         "name": "Limited free"
@@ -956,7 +963,7 @@
       "popular": "Popular",
       "pricePerMonth": "{{price}}/month",
       "pro": {
-        "description": "More credits and concurrency for teams running AI agents every day.",
+        "description": "For one person or a small workspace running agents every day. Each member gets their own credits.",
         "name": "Pro"
       },
       "renews": "Renews {{date}}",
@@ -964,7 +971,7 @@
       "sectionTitle": "Plan",
       "selectedPlan": "the selected plan",
       "team": {
-        "description": "Room for a team of AI employees: high credit volume and 10 agents running at once.",
+        "description": "For teams running agents all day. Buy extra concurrency and trigger workflows from your own systems.",
         "name": "Team"
       },
       "upgrade": "Upgrade",
