@@ -146,6 +146,7 @@ const PATHS: readonly SocialKitPathConfig[] = [
   {
     path: "/tiktok/channel-videos",
     queryNames: URL_LIMIT_QUERY_NAMES,
+    maxLimit: 50,
   },
   {
     path: "/tiktok/search",

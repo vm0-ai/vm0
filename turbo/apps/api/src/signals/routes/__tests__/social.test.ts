@@ -86,7 +86,11 @@ const EXPECTED_PAIRED_SOCIALKIT_PATHS = [
   { path: "/tiktok/comments", queryNames: ["url", "limit"], maxLimit: 50 },
   { path: "/tiktok/transcript", queryNames: ["url"] },
   { path: "/tiktok/channel-stats", queryNames: ["url"] },
-  { path: "/tiktok/channel-videos", queryNames: ["url", "limit"] },
+  {
+    path: "/tiktok/channel-videos",
+    queryNames: ["url", "limit"],
+    maxLimit: 50,
+  },
   { path: "/tiktok/search", queryNames: ["query", "limit"], maxLimit: 50 },
   {
     path: "/tiktok/hashtag-search",
@@ -638,6 +642,14 @@ describe("managed SocialKit route", () => {
         method: "GET",
         path: "/youtube/comments",
         query: { url: "https://youtu.be/id", limit: "51" },
+      },
+    },
+    {
+      caseName: "a video-list limit above one provider credit",
+      body: {
+        method: "GET",
+        path: "/tiktok/channel-videos",
+        query: { url: "https://tiktok.com/@example", limit: "51" },
       },
     },
     {
