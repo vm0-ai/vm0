@@ -20,7 +20,7 @@ import {
   pgBooleanDecoder,
 } from "../../lib/db-structured-result";
 import type { Db, ReadonlyDb } from "../external/db";
-import { hasIncompatibleVm0ModelRuntimeRoute } from "./vm0-model-runtime-route.service";
+import { hasIncompatibleBuiltInModelRuntimeRoute } from "./built-in-model-runtime-route.service";
 
 export interface ChatThreadSessionRoute {
   readonly selectedModel: string | null;
@@ -294,7 +294,7 @@ function shouldRotateCanonicalSession(args: {
   readonly nextRoute: ChatThreadSessionRoute;
 }): boolean {
   if (
-    hasIncompatibleVm0ModelRuntimeRoute({
+    hasIncompatibleBuiltInModelRuntimeRoute({
       previous: args.previousRoute,
       next: args.nextRoute,
     })
