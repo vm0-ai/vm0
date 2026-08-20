@@ -58,6 +58,8 @@ pub(crate) enum HttpAttemptOutcome {
     Failure {
         kind: HttpAttemptFailureKind,
         http_status: Option<u16>,
+        timeout_observed: Option<bool>,
+        connect_observed: Option<bool>,
     },
 }
 
@@ -402,6 +404,8 @@ where
                     HttpAttemptOutcome::Failure {
                         kind: HttpAttemptFailureKind::HttpStatus,
                         http_status: Some(status.as_u16()),
+                        timeout_observed: None,
+                        connect_observed: None,
                     },
                 )?;
                 // 4xx errors are deterministic except for rate limits.
@@ -414,9 +418,11 @@ where
                 );
             }
             Err(error) => {
-                let failure_kind = if error.is_timeout() {
+                let timeout_observed = error.is_timeout();
+                let connect_observed = error.is_connect();
+                let failure_kind = if timeout_observed {
                     HttpAttemptFailureKind::Timeout
-                } else if error.is_connect() {
+                } else if connect_observed {
                     HttpAttemptFailureKind::Connect
                 } else {
                     HttpAttemptFailureKind::Transport
@@ -427,6 +433,8 @@ where
                     HttpAttemptOutcome::Failure {
                         kind: failure_kind,
                         http_status: None,
+                        timeout_observed: Some(timeout_observed),
+                        connect_observed: Some(connect_observed),
                     },
                 )?;
                 let error = format_reqwest_error(error);

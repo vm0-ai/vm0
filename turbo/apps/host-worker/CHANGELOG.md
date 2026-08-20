@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/vm0-ai/vm0/compare/host-worker-v1.1.2...host-worker-v1.2.0) (2026-08-20)
+
+
+### Features
+
+* **host:** prepare okou public domains ([#28359](https://github.com/vm0-ai/vm0/issues/28359)) ([853415c](https://github.com/vm0-ai/vm0/commit/853415cbe56481d6e2c44c8cbd73ee50c6064902))
+
 ## [1.1.2](https://github.com/vm0-ai/vm0/compare/host-worker-v1.1.1...host-worker-v1.1.2) (2026-08-13)
 
 

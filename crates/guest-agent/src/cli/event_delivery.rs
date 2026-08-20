@@ -430,7 +430,13 @@ impl HttpAttemptObserver for DeliveryAttemptObserver {
             )
         })?;
         active_batch.active_attempt = None;
-        if let HttpAttemptOutcome::Failure { kind, http_status } = attempt.outcome {
+        if let HttpAttemptOutcome::Failure {
+            kind,
+            http_status,
+            timeout_observed,
+            connect_observed,
+        } = attempt.outcome
+        {
             active_batch
                 .completed_attempts
                 .push(EventDeliveryCompletedAttemptDiagnostic {
@@ -439,6 +445,8 @@ impl HttpAttemptObserver for DeliveryAttemptObserver {
                     elapsed_ms: attempt.elapsed_ms,
                     failure_kind: event_attempt_failure_kind(kind),
                     http_status,
+                    timeout_observed,
+                    connect_observed,
                 });
         }
         Ok(())

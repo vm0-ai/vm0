@@ -5,13 +5,7 @@ import {
 } from "@okouai/api-contracts/contracts/github-oauth";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { appUrlForPublicBrand } from "@okouai/core/public-brand";
-import {
-  connectorGrantScopes,
-  resolveConnectorAuthClient,
-  isStaticConfidentialConnectorAuthClient,
-  type StaticConfidentialConnectorAuthClient,
-} from "@okouai/connectors/connector-auth-method";
-import { exchangeConnectorAuthCodeWithMethod } from "@okouai/connectors/auth-providers";
+import { connectorGrantScopes } from "@okouai/connectors/connector-auth-method";
 import {
   exchangeGitHubCode,
   fetchGitHubUserInfo,
@@ -38,7 +32,6 @@ import {
   getGithubInstallationAccessToken,
   getGithubInstallationInfo,
   getGithubOAuthAuthMethod,
-  githubUserConnectCallbackRedirectUri,
   isGithubOauthStateSignatureValid,
   linkGithubUser,
   loadActiveGithubInstallationForOrg,
@@ -85,25 +78,6 @@ function jsonErrorResponse(error: string, status: number): Response {
 
 function appUrl(path: string, publicBrand: PublicBrand): string {
   return `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}${path}`;
-}
-
-function githubUserOauthClient(
-  method: ResolvedConnectorActionMethod,
-): StaticConfidentialConnectorAuthClient | undefined {
-  if (method.method.grant.kind !== "auth-code" || !method.method.client) {
-    return undefined;
-  }
-  const authClient = resolveConnectorAuthClient(
-    method.method.client,
-    optionalEnv,
-  );
-  if (!authClient) {
-    return undefined;
-  }
-  if (!isStaticConfidentialConnectorAuthClient(authClient)) {
-    return undefined;
-  }
-  return authClient;
 }
 
 async function resolveGithubOauthMethod(
@@ -207,23 +181,6 @@ const GITHUB_INSTALL_GITHUB_ADMIN_REQUIRED =
 type ParsedGithubOauthState = NonNullable<
   ReturnType<typeof parseGithubOauthState>
 >;
-
-async function verifiedGithubOauthState(args: {
-  readonly stateString: string | undefined;
-  readonly secretsEncryptionKey: string;
-}): Promise<ParsedGithubOauthState | null> {
-  const state = parseGithubOauthState(args.stateString);
-  if (
-    !state ||
-    !(await isGithubOauthStateSignatureValid({
-      state,
-      secretsEncryptionKey: args.secretsEncryptionKey,
-    }))
-  ) {
-    return null;
-  }
-  return state;
-}
 
 type GithubCallbackStateResolution =
   | {
@@ -901,136 +858,6 @@ const connectGithubUserOauth$ = command(
   },
 );
 
-const callbackGithubUserOauth$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const request = get(request$).raw;
-    const canonicalRedirectUrl = getOAuthCanonicalRedirectUrl(request);
-    if (canonicalRedirectUrl) {
-      return noStoreRedirect(canonicalRedirectUrl);
-    }
-
-    const query = get(queryOf(githubOauthContract.connectCallback));
-    const secretsEncryptionKey = env("SECRETS_ENCRYPTION_KEY");
-    const verifiedState = await verifiedGithubOauthState({
-      stateString: query.state,
-      secretsEncryptionKey,
-    });
-    signal.throwIfAborted();
-    const callbackPublicBrand = verifiedState?.publicBrand ?? "vm0";
-    if (query.error) {
-      return worksErrorRedirect(
-        query.error_description || query.error || "GitHub authorization failed",
-        callbackPublicBrand,
-      );
-    }
-    if (!query.code) {
-      return worksErrorRedirect(
-        "Missing authorization code from GitHub",
-        callbackPublicBrand,
-      );
-    }
-
-    const state = verifiedState;
-    if (!state?.userId || !state.orgId) {
-      return worksErrorRedirect(
-        "Invalid OAuth state. Please try connecting again from the Platform.",
-        callbackPublicBrand,
-      );
-    }
-
-    const resolver = await get(connectorActionResolver());
-    signal.throwIfAborted();
-    const resolvedMethod = await resolveGithubOauthMethod(resolver);
-    signal.throwIfAborted();
-    if (!resolvedMethod) {
-      return worksErrorRedirect(
-        "GitHub OAuth is not available",
-        state.publicBrand,
-      );
-    }
-    const authClient = githubUserOauthClient(resolvedMethod);
-    if (!authClient) {
-      return worksErrorRedirect(
-        "GitHub OAuth is not configured",
-        state.publicBrand,
-      );
-    }
-
-    const origin = getOAuthWebOrigin(request);
-    const redirectUri = githubUserConnectCallbackRedirectUri(origin);
-    const token = await exchangeConnectorAuthCodeWithMethod({
-      connectorSlug: resolvedMethod.connectorSlug,
-      authMethodId: resolvedMethod.authMethodId,
-      method: resolvedMethod.method,
-      authClient,
-      code: query.code,
-      redirectUri,
-      state: query.state,
-      codeVerifier: undefined,
-      oauthContext: undefined,
-    });
-    signal.throwIfAborted();
-
-    const db = set(writeDb$);
-    const installation = await loadActiveGithubInstallationForOrg(
-      {
-        db,
-        orgId: state.orgId,
-      },
-      signal,
-    );
-    if (!installation) {
-      return worksErrorRedirect(
-        "No GitHub installation found",
-        state.publicBrand,
-      );
-    }
-
-    const connectorConnected = await set(
-      writeGithubConnectorConnection$,
-      {
-        orgId: state.orgId,
-        userId: state.userId,
-        method: resolvedMethod,
-        outputs: token.outputs,
-        userInfo: token.userInfo,
-        oauthScopes: connectorGrantScopes(resolvedMethod.method.grant),
-        extraConnectorSecrets: token.extraConnectorSecrets,
-      },
-      signal,
-    );
-    if (!connectorConnected) {
-      return worksErrorRedirect(
-        "Connector account could not be selected",
-        state.publicBrand,
-      );
-    }
-
-    const githubUserId = await linkGithubUser(
-      {
-        db,
-        installRecordId: installation.id,
-        userId: state.userId,
-        knownGithubUserId: token.userInfo.id,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    if (!githubUserId) {
-      return worksErrorRedirect(
-        "This GitHub account is already linked to the installation",
-        state.publicBrand,
-      );
-    }
-
-    await publishUserSignal([state.userId], "github:changed");
-    signal.throwIfAborted();
-
-    return redirectResponse(appUrl("/workflows", state.publicBrand));
-  },
-);
-
 const callbackGithubOauth$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const request = get(request$).raw;
@@ -1175,10 +1002,6 @@ export const githubOauthRoutes: readonly RouteEntry[] = [
   {
     route: githubOauthContract.connect,
     handler: connectGithubUserOauth$,
-  },
-  {
-    route: githubOauthContract.connectCallback,
-    handler: callbackGithubUserOauth$,
   },
   {
     route: githubOauthContract.setupCallback,

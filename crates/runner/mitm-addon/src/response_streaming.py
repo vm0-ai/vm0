@@ -24,6 +24,7 @@ import body_decoding
 import claude_output_timing
 import flow_metadata
 import flow_metadata_keys as metadata_keys
+import http_header_syntax
 import model_websocket_usage
 import runtime_url_parsing
 import stream_capture
@@ -376,13 +377,21 @@ def _is_confirmed_websocket_upgrade_response(flow: http.HTTPFlow) -> bool:
         return False
     if flow.metadata.get(metadata_keys.WEBSOCKET_UPGRADE_REQUEST) is not True:
         return False
-    if not _header_values_contain_token(response.headers, "Upgrade", "websocket"):
+    if not http_header_syntax.header_values_contain_token(
+        response.headers.get_all("Upgrade"), "websocket"
+    ):
         return False
-    if not _header_values_contain_token(response.headers, "Connection", "upgrade"):
+    if not http_header_syntax.header_values_contain_token(
+        response.headers.get_all("Connection"), "upgrade"
+    ):
         return False
 
-    request_key = _single_header_value(flow.request.headers, "Sec-WebSocket-Key")
-    response_accept = _single_header_value(response.headers, "Sec-WebSocket-Accept")
+    request_key = http_header_syntax.single_header_value(
+        flow.request.headers.get_all("Sec-WebSocket-Key")
+    )
+    response_accept = http_header_syntax.single_header_value(
+        response.headers.get_all("Sec-WebSocket-Accept")
+    )
     if request_key is None or response_accept is None:
         return False
     try:
@@ -390,21 +399,6 @@ def _is_confirmed_websocket_upgrade_response(flow: http.HTTPFlow) -> bool:
     except UnicodeEncodeError:
         return False
     return response_accept == expected_accept
-
-
-def _header_values_contain_token(headers: http.Headers, name: str, expected: str) -> bool:
-    return any(
-        token.strip(_HTTP_OWS_CHARS).lower() == expected
-        for value in headers.get_all(name)
-        for token in value.split(",")
-    )
-
-
-def _single_header_value(headers: http.Headers, name: str) -> str | None:
-    values = headers.get_all(name)
-    if len(values) != 1:
-        return None
-    return values[0].strip(_HTTP_OWS_CHARS)
 
 
 def configure_response_stream(flow: http.HTTPFlow) -> None:

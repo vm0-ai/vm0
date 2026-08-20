@@ -1,4 +1,4 @@
-import { ArrowLeft, CalendarDays, X } from "lucide-react";
+import { ArrowLeft, CalendarDays, Check, X } from "lucide-react";
 import {
   Button,
   Dialog,
@@ -207,13 +207,10 @@ function planConcurrentSlots(tier: UsagePackPlanTier): number {
 // voice input and support on top of it.
 const SHARED_AGENT_COUNT = 7;
 
-function planVoiceInput(tier: UsagePackPlanTier): {
-  readonly minutes: number;
-  readonly requests: number;
-} {
-  return tier === "pro"
-    ? { minutes: 200, requests: 300 }
-    : { minutes: 500, requests: 500 };
+// The daily minute cap differs too, but a plan column that prints both caps
+// spends a line on a distinction nobody picks a plan on.
+function planVoiceRequests(tier: UsagePackPlanTier): number {
+  return tier === "pro" ? 300 : 500;
 }
 
 function legacyPlanMonthlyCredits(tier: UsagePackPlanTier): number {
@@ -784,100 +781,123 @@ function PlanPrice({
   );
 }
 
-/* Both plans list the same rows in the same order, so the two columns can be
-   read across rather than compared item by item between two unequal lists. */
-function planComparisonRows(
-  tier: UsagePackPlanTier,
-): readonly { readonly label: string; readonly value: string }[] {
-  const voice = planVoiceInput(tier);
+/* Each plan keeps its complete value story in one list. Concurrency leads both
+   lists, so 2 against 10 is still the first comparison without becoming a
+   second visual hierarchy between the price and the bullets. Pro names three
+   flagship models rather than asking "Every model" to carry the claim, then
+   keeps BYOK as its own value prop.
+
+   Team keeps Pro's baseline implicit, then spells out the scale upgrades and
+   built-in data capabilities a team can put to work. Those APIs also exist on
+   Pro, so the label says "built for teams" rather than claiming every line
+   after it is a Team-only entitlement.
+
+   Team's webhook line names both the mechanism and the outcome. "Trigger
+   agents from any system via webhook" makes its difference from scheduled and
+   app-event automations visible without exposing an internal entitlement key. */
+function planHighlights(tier: UsagePackPlanTier): readonly string[] {
+  const concurrentAgents = i18n.t(
+    ($) => {
+      return $.billing.plans.highlights.concurrentAgents;
+    },
+    { slots: formatLocalizedNumber(planConcurrentSlots(tier)) },
+  );
+  const voiceInput = i18n.t(
+    ($) => {
+      return $.billing.plans.highlights.voiceInput;
+    },
+    { requests: formatLocalizedNumber(planVoiceRequests(tier)) },
+  );
+  if (tier === "team") {
+    return [
+      concurrentAgents,
+      i18n.t(($) => {
+        return $.billing.plans.highlights.addOnConcurrency;
+      }),
+      i18n.t(($) => {
+        return $.billing.plans.highlights.webhookAutomations;
+      }),
+      i18n.t(($) => {
+        return $.billing.plans.highlights.builtInSeoResearch;
+      }),
+      i18n.t(($) => {
+        return $.billing.plans.highlights.builtInLeadGeneration;
+      }),
+      i18n.t(($) => {
+        return $.billing.plans.highlights.builtInWebMarketData;
+      }),
+      voiceInput,
+      i18n.t(($) => {
+        return $.billing.plans.highlights.supportPriority;
+      }),
+    ];
+  }
   return [
-    {
-      label: i18n.t(($) => {
-        return $.billing.plans.comparison.concurrentRuns;
-      }),
-      value: formatLocalizedNumber(planConcurrentSlots(tier)),
-    },
-    {
-      label: i18n.t(($) => {
-        return $.billing.plans.comparison.addOnConcurrency;
-      }),
-      value:
-        tier === "team"
-          ? i18n.t(($) => {
-              return $.billing.plans.comparison.available;
-            })
-          : "—",
-    },
-    {
-      label: i18n.t(($) => {
-        return $.billing.plans.comparison.sharedAgents;
-      }),
-      value: formatLocalizedNumber(SHARED_AGENT_COUNT),
-    },
-    {
-      label: i18n.t(($) => {
-        return $.billing.plans.comparison.privateAgents;
-      }),
-      value: i18n.t(($) => {
-        return $.billing.plans.comparison.unlimited;
-      }),
-    },
-    {
-      label: i18n.t(($) => {
-        return $.billing.plans.comparison.voiceInput;
-      }),
-      value: i18n.t(
-        ($) => {
-          return $.billing.plans.comparison.voiceInputValue;
-        },
-        {
-          minutes: formatLocalizedNumber(voice.minutes),
-          requests: formatLocalizedNumber(voice.requests),
-        },
-      ),
-    },
-    {
-      label: i18n.t(($) => {
-        return $.billing.plans.comparison.ownLlmKeys;
-      }),
-      value: i18n.t(($) => {
-        return $.billing.plans.comparison.included;
-      }),
-    },
-    {
-      label: i18n.t(($) => {
-        return $.billing.plans.comparison.support;
-      }),
-      value:
-        tier === "team"
-          ? i18n.t(($) => {
-              return $.billing.plans.comparison.supportPriority;
-            })
-          : i18n.t(($) => {
-              return $.billing.plans.comparison.supportEmail;
-            }),
-    },
+    concurrentAgents,
+    i18n.t(($) => {
+      return $.billing.plans.highlights.models;
+    }),
+    i18n.t(($) => {
+      return $.billing.plans.features.byok;
+    }),
+    i18n.t(
+      ($) => {
+        return $.billing.plans.highlights.agents;
+      },
+      { shared: formatLocalizedNumber(SHARED_AGENT_COUNT) },
+    ),
+    i18n.t(($) => {
+      return $.billing.plans.highlights.automations;
+    }),
+    i18n.t(($) => {
+      return $.billing.plans.highlights.videoGeneration;
+    }),
+    voiceInput,
+    i18n.t(($) => {
+      return $.billing.plans.highlights.supportEmail;
+    }),
   ];
 }
 
-function PlanComparison({ tier }: { readonly tier: UsagePackPlanTier }) {
+function planHighlightsLabel(tier: UsagePackPlanTier): string {
+  return tier === "team"
+    ? i18n.t(
+        ($) => {
+          return $.billing.plans.highlights.everythingInBuiltForTeams;
+        },
+        { plan: planName("pro") },
+      )
+    : i18n.t(($) => {
+        return $.billing.plans.highlights.included;
+      });
+}
+
+/* Both columns open this block at the same y with a label of the same weight,
+   so the lists start on one line even though Team's is shorter. Team's tail is
+   slack the CTA takes up, not a hole to pad with "—" rows. */
+function PlanHighlights({ tier }: { readonly tier: UsagePackPlanTier }) {
   return (
-    <div className="mt-5 flex flex-1 flex-col text-muted-foreground">
-      {planComparisonRows(tier).map((row, index) => {
-        return (
-          <div
-            key={row.label}
-            className={`flex flex-1 items-center justify-between gap-4 text-sm font-medium leading-snug ${
-              index > 0 ? "border-t-[0.7px] border-[hsl(var(--gray-50))]" : ""
-            }`}
-          >
-            <span>{row.label}</span>
-            <span className="text-right font-normal tabular-nums">
-              {row.value}
-            </span>
-          </div>
-        );
-      })}
+    <div className="mt-6">
+      <p className="text-xs font-medium text-muted-foreground">
+        {planHighlightsLabel(tier)}
+      </p>
+      <ul className="mt-3 flex flex-col gap-2.5">
+        {planHighlights(tier).map((item) => {
+          return (
+            <li
+              key={item}
+              className="flex items-start gap-2.5 text-sm leading-snug text-foreground"
+            >
+              <Check
+                size={15}
+                aria-hidden
+                className="mt-px shrink-0 text-muted-foreground"
+              />
+              <span className="min-w-0">{item}</span>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
@@ -958,13 +978,15 @@ function PlanSelectionCard({
           {name}
         </h3>
       </div>
-      <p className="mt-2 min-h-[42px] text-sm leading-normal text-muted-foreground">
+      {/* One line, so the price band under it starts at the same y in both
+          columns without reserving a second line neither description needs. */}
+      <p className="mt-2 min-h-[21px] text-sm leading-normal text-muted-foreground">
         {planDescription(plan.tier)}
       </p>
 
       <PlanPrice basePriceUsd={plan.basePriceUsd} catalog={catalog} />
 
-      <PlanComparison tier={plan.tier} />
+      <PlanHighlights tier={plan.tier} />
 
       {/* The action closes the column, under everything it buys. */}
       <div className="mt-auto pt-6">
@@ -1120,8 +1142,10 @@ function pricingStepTitle(step: PricingStep): string {
    the outer edges hold still. That is also why the review is a step and not a
    dialog of its own: stacking a third modal on the flow would bury both the
    billing tab and the packages the review is about. The height is the tallest
-   step's (plan selection), and the body insets its content so no rule, tint or
-   column runs into the frame.
+   step's (plan selection) measured against its content, so it has to come down
+   whenever that step gets shorter -- left at the old figure it would hold a
+   band of empty column open above both actions. The body insets its content so
+   no rule, tint or column runs into the frame.
 
    The dialog is mounted only while the flow is open, so the plan catalog and
    the subscription it loads stay owned by the flow rather than by every visit
@@ -1156,7 +1180,7 @@ function PricingStepDialog({
       <DialogContent
         aria-describedby={undefined}
         showCloseButton={false}
-        className="flex h-[min(46rem,calc(100dvh-4rem))] w-[calc(100vw-2rem)] max-w-[860px] flex-col gap-0 overflow-hidden p-0"
+        className="flex h-[min(43rem,calc(100dvh-4rem))] w-[calc(100vw-2rem)] max-w-[860px] flex-col gap-0 overflow-hidden p-0"
       >
         {/* The close button is an item in this row rather than a box pinned to
             the frame, so the title, the step counter and the close glyph share

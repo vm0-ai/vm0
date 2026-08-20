@@ -30,7 +30,6 @@ import { integrationsGithubContract } from "@okouai/api-contracts/contracts/inte
 import {
   githubOauthContract,
   type GithubAppSetupCallbackQuery,
-  type GithubOauthConnectCallbackQuery,
   type GithubOauthConnectQuery,
   type GithubOauthInstallQuery,
 } from "@okouai/api-contracts/contracts/github-oauth";
@@ -682,25 +681,6 @@ export function createBddIntegrationApi(context: TestContext) {
               : {}),
           },
           query,
-        }),
-        statuses,
-      );
-    },
-
-    async requestGithubOauthConnectCallback(
-      query: GithubOauthConnectCallbackQuery,
-      statuses: readonly 307[],
-      publicBrand: PublicBrand = "vm0",
-    ) {
-      const client = setupApp({ context, routes: githubOauthRoutes })(
-        githubOauthContract,
-      );
-      return await accept(
-        client.connectCallback({
-          query,
-          ...(publicBrand === "okou"
-            ? { extraHeaders: { origin: "https://app.okou.ai" } }
-            : {}),
         }),
         statuses,
       );

@@ -27,6 +27,7 @@ import {
 } from "../../contracts/client-headers";
 import {
   ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES,
+  BUILTIN_FIREWALL_CATALOG_MAX_BYTES,
   CANONICAL_CLAUDE_CONFIG_DIR,
   CANONICAL_CODEX_HOME_DIR,
   CANONICAL_CODEX_SESSIONS_DIR,
@@ -99,6 +100,10 @@ const resumeSessionHistoryMaxBytesDoc = [
 const activeInputControlPayloadMaxBytesDoc = [
   "Maximum serialized active-input control payload accepted by runner and guest process control.",
   "The API validates the materialized prompt against this shared limit before committing claimed chat events.",
+] as const;
+const builtinFirewallCatalogMaxBytesDoc = [
+  "Maximum builtin firewall catalog response and cache size accepted by runners.",
+  "This is generated from the TypeScript connector catalog raw-byte contract so source ingestion and runner delivery stay aligned.",
 ] as const;
 const runnerCancellationRecoveryGraceMsDoc = [
   "Maximum cooperative user-cancellation recovery window enforced by runners.",
@@ -237,6 +242,12 @@ const expectedBindings = [
     rustConstName: "ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES",
     value: rustU64(ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES),
     rustDoc: activeInputControlPayloadMaxBytesDoc,
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "BUILTIN_FIREWALL_CATALOG_MAX_BYTES",
+    value: rustU64(BUILTIN_FIREWALL_CATALOG_MAX_BYTES),
+    rustDoc: builtinFirewallCatalogMaxBytesDoc,
   },
   {
     rustModulePath: ["runners"],
@@ -537,6 +548,9 @@ describe("Rust constant bindings", () => {
     );
     expect(firstRender).toContain(
       `pub const ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES: u64 = ${ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES};`,
+    );
+    expect(firstRender).toContain(
+      `pub const BUILTIN_FIREWALL_CATALOG_MAX_BYTES: u64 = ${BUILTIN_FIREWALL_CATALOG_MAX_BYTES};`,
     );
     expect(firstRender).toContain(
       `pub const RESUME_SESSION_HISTORY_MAX_BYTES: u64 = ${RESUME_SESSION_HISTORY_MAX_BYTES};`,

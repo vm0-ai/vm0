@@ -151,8 +151,6 @@ const LEGACY_ZERO_PATHS: Readonly<Record<string, string>> = {
     "/api/zero/billing/concurrency-checkout/preview",
   "/api/okou/feishu/events/:installationId":
     "/api/zero/feishu/events/:installationId",
-  "/api/okou/github/oauth/connect/callback":
-    "/api/zero/github/oauth/connect/callback",
   "/api/okou/computer-use/hosts/start": "/api/zero/computer-use/hosts/start",
   "/api/okou/logs/:id": "/api/zero/logs/:id",
   "/api/okou/mail/drafts/:mailDraftId": "/api/zero/mail/drafts/:mailDraftId",
@@ -233,5 +231,133 @@ export function withApiNamespaceAliases(
       }
       return { ...alias, viaNamespaceAliasFallback: true };
     });
+  });
+}
+
+/**
+ * The branded paths a migrated route still answers on, keyed by the neutral
+ * canonical path its contract now declares.
+ *
+ * `LEGACY_ZERO_PATHS` cannot express this, which is why this is a second table
+ * rather than more rows in that one. That table classifies which of the
+ * `/api/zero/**` registrations the expansion above already produced are
+ * intentional; this one decides which branded registrations exist at all.
+ * `apiNamespaceAliasPaths` returns a neutral path unchanged, so once #28278
+ * moves a contract off `/api/okou/**` the expansion produces no branded path
+ * for it and neither branded path is registered any more — published CLI builds
+ * still calling the branded path would get a 404 with nothing in either table
+ * able to say otherwise.
+ *
+ * A migrated route generally owes both branded forms, so a value is a list
+ * rather than a single path.
+ *
+ * The table ships empty. Each #28278 slice adds the rows for the paths it
+ * moves, so a move and the compatibility it owes land in one commit.
+ *
+ * Every row is compatibility debt under the same removal gate as
+ * `LEGACY_ZERO_PATHS`: a row is removed only under #26701's evidence rules. The
+ * request log retains about three days, which by itself cannot prove a row is
+ * drained — it cannot tell a caller that left from one that calls weekly.
+ */
+type MigratedBrandedPathTable = Readonly<Record<string, readonly string[]>>;
+
+const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
+  // #28417. Published CLI builds post to the `okou` form — `callMaps` builds
+  // the URL by hand rather than from the contract, so the path it holds shipped
+  // independently of this table — and the `zero` form was reachable through the
+  // blanket expansion until the contract moved. Both are owed.
+  //
+  // Surface: commit-addressed CLI packages, not web clients. A run execution
+  // context pins `CLI_PKG_URL` when it is created and keeps that artifact after
+  // a later API deploy, so the exposure is the context drain described in
+  // `docs/deployment-compatibility.md` — maximum queue lifetime plus maximum
+  // claimed execution and finalization lifetime, with execution bounded by the
+  // runner's 2h `JOB_TIMEOUT` — rather than the ~2 day web-client window. That
+  // drain is the floor for removal, not the condition: these rows retire under
+  // #26701's evidence rules like every other row in this file.
+  "/api/maps/geocode": ["/api/okou/maps/geocode", "/api/zero/maps/geocode"],
+  "/api/maps/reverse-geocode": [
+    "/api/okou/maps/reverse-geocode",
+    "/api/zero/maps/reverse-geocode",
+  ],
+  "/api/maps/directions": [
+    "/api/okou/maps/directions",
+    "/api/zero/maps/directions",
+  ],
+  "/api/maps/places/search": [
+    "/api/okou/maps/places/search",
+    "/api/zero/maps/places/search",
+  ],
+  "/api/maps/places/details": [
+    "/api/okou/maps/places/details",
+    "/api/zero/maps/places/details",
+  ],
+  "/api/maps/osm/download": [
+    "/api/okou/maps/osm/download",
+    "/api/zero/maps/osm/download",
+  ],
+  "/api/maps/osm/render": [
+    "/api/okou/maps/osm/render",
+    "/api/zero/maps/osm/render",
+  ],
+  // #28357, the first #28278 slice. Published CLI builds post to the `okou`
+  // form (`callWeather` built it by hand rather than from the contract, so it
+  // shipped independently of this path), and the `zero` form was reachable
+  // through the blanket expansion until the contract moved. Both are owed.
+  //
+  // Surface: commit-addressed CLI packages pinned by run contexts created
+  // before this deploy, so the branded form outlives the deploy by the queue
+  // and claimed-execution drain — up to the 2h runner/sandbox window — plus any
+  // external holder of the `zero` brand path, which has no time box. Removal
+  // therefore follows the table's #26701 evidence gate above, not a clock.
+  "/api/weather/current": [
+    "/api/okou/weather/current",
+    "/api/zero/weather/current",
+  ],
+  "/api/weather/forecast/hourly": [
+    "/api/okou/weather/forecast/hourly",
+    "/api/zero/weather/forecast/hourly",
+  ],
+  "/api/weather/forecast/daily": [
+    "/api/okou/weather/forecast/daily",
+    "/api/zero/weather/forecast/daily",
+  ],
+  "/api/weather/history/hourly": [
+    "/api/okou/weather/history/hourly",
+    "/api/zero/weather/history/hourly",
+  ],
+  "/api/weather/air-quality/current": [
+    "/api/okou/weather/air-quality/current",
+    "/api/zero/weather/air-quality/current",
+  ],
+};
+
+/**
+ * Registers the branded paths named in `MIGRATED_BRANDED_PATHS`, so a contract
+ * that has moved to its neutral path keeps serving the branded paths released
+ * callers still hold.
+ *
+ * Applied after `withApiNamespaceAliases` and never before it: these paths are
+ * finished registrations, and passing them back through the blanket expansion
+ * would derive each one's sibling namespace a second time and register it
+ * twice. Nothing produced here is marked `viaNamespaceAliasFallback` — a row is
+ * a declared commitment rather than a gap the compatibility table missed, so it
+ * must not reach the fallback report in `createAppWithRoutes`.
+ */
+export function withMigratedBrandedPaths(
+  routes: readonly RouteEntry[],
+  brandedPaths: MigratedBrandedPathTable = MIGRATED_BRANDED_PATHS,
+): readonly RouteEntry[] {
+  return routes.flatMap((entry) => {
+    const migrated = brandedPaths[entry.route.path];
+    if (migrated === undefined) {
+      return [entry];
+    }
+    return [
+      entry,
+      ...migrated.map((path) => {
+        return routeEntryWithPath(entry, path);
+      }),
+    ];
   });
 }

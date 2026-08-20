@@ -31,6 +31,7 @@ import {
   isUsagePackPlanPriceId,
   knownBillingPlanPriceItem,
 } from "./billing-checkout.service";
+import { isConcurrencyPriceId } from "./org-concurrency-entitlements.service";
 import {
   BILLING_DOWNGRADE_PURPOSE,
   billingDefaultPaymentMethodStatus,
@@ -274,7 +275,7 @@ function supersededConcurrencyChanges(
   return { cancel: cancelSuperseded, scheduled: scheduledChangeSuperseded };
 }
 
-async function clearConcurrencyChangeSupersededByPlanCancellation(
+async function clearConcurrencyChangeSupersededByPlanEnd(
   context: DowngradeContext,
   concurrency: ConcurrencyChangeState | null,
   effectiveDate: Date,
@@ -438,7 +439,7 @@ async function scheduleCancellationAtPeriodEnd(
   }
   signal?.throwIfAborted();
 
-  await clearConcurrencyChangeSupersededByPlanCancellation(
+  await clearConcurrencyChangeSupersededByPlanEnd(
     context,
     concurrency,
     effectiveDate,
@@ -502,9 +503,7 @@ async function scheduleDowngradeToPro(
   const currentPriceId = currentItem.price.id;
   const quantity = currentItem.quantity;
   const discounts = subscriptionSchedulePhaseDiscounts(subscription);
-  const concurrency = existingScheduleId
-    ? await concurrencyChangeState(context)
-    : null;
+  const concurrency = await concurrencyChangeState(context);
   signal?.throwIfAborted();
   const existingAddOnSchedule =
     existingScheduleId &&
@@ -514,47 +513,68 @@ async function scheduleDowngradeToPro(
       : null;
   signal?.throwIfAborted();
 
+  const phases = existingAddOnSchedule
+    ? subscriptionSchedulePhasesReplacingPriceAt(existingAddOnSchedule, {
+        effectiveAt: endDate,
+        sourcePriceId: currentPriceId,
+        targetPriceId: proPriceId,
+        targetQuantity: quantity ?? 1,
+      }).map((phase) => {
+        return phase.start_date !== undefined && phase.start_date >= endDate
+          ? {
+              ...phase,
+              items: phase.items.filter((item) => {
+                return !isConcurrencyPriceId(item.price);
+              }),
+            }
+          : phase;
+      })
+    : [
+        phaseWithDiscounts(
+          {
+            start_date: startDate,
+            end_date: endDate,
+            items: subscriptionPhaseItems(subscription),
+            proration_behavior: "none",
+          },
+          discounts,
+        ),
+        phaseWithDiscounts(
+          {
+            start_date: endDate,
+            duration: phaseDuration(currentItem.price),
+            items: subscription.items.data.flatMap((item) => {
+              if (isConcurrencyPriceId(item.price.id)) {
+                return [];
+              }
+              return [
+                schedulePhaseItem(
+                  item.price.id === currentPriceId ? proPriceId : item.price.id,
+                  item.price.id === currentPriceId ? quantity : item.quantity,
+                ),
+              ];
+            }),
+            proration_behavior: "none",
+          },
+          discounts,
+        ),
+      ];
+
   await context.stripe.subscriptionSchedules.update(scheduleId, {
     end_behavior: "release",
     proration_behavior: "none",
-    phases: existingAddOnSchedule
-      ? [
-          ...subscriptionSchedulePhasesReplacingPriceAt(existingAddOnSchedule, {
-            effectiveAt: endDate,
-            sourcePriceId: currentPriceId,
-            targetPriceId: proPriceId,
-            targetQuantity: quantity ?? 1,
-          }),
-        ]
-      : [
-          phaseWithDiscounts(
-            {
-              start_date: startDate,
-              end_date: endDate,
-              items: subscriptionPhaseItems(subscription),
-              proration_behavior: "none",
-            },
-            discounts,
-          ),
-          phaseWithDiscounts(
-            {
-              start_date: endDate,
-              duration: phaseDuration(currentItem.price),
-              items: subscription.items.data.map((item) => {
-                return schedulePhaseItem(
-                  item.price.id === currentPriceId ? proPriceId : item.price.id,
-                  item.price.id === currentPriceId ? quantity : item.quantity,
-                );
-              }),
-              proration_behavior: "none",
-            },
-            discounts,
-          ),
-        ],
+    phases,
   });
   signal?.throwIfAborted();
 
   const effectiveDate = new Date(endDate * 1000);
+  await clearConcurrencyChangeSupersededByPlanEnd(
+    context,
+    concurrency,
+    effectiveDate,
+  );
+  signal?.throwIfAborted();
+
   await context.db
     .update(orgMetadata)
     .set({

@@ -3,7 +3,7 @@
 import type { ReactNode, SyntheticEvent } from "react";
 import { useGet, useSet, useLastResolved, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import { ChevronRight, Loader2, Search, X, Pin, PinOff } from "lucide-react";
+import { Loader2, Search, X, Pin, PinOff } from "lucide-react";
 import type { ChatSearchResult } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   Button,
@@ -19,6 +19,8 @@ import {
   RunningIndicator,
 } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
+import { formatRelativeTimestamp } from "../../i18n/format.ts";
+import { emptySearchImg } from "./platform-assets.ts";
 import {
   chatListQuery$,
   pinAgentDialogQuery$,
@@ -871,13 +873,39 @@ function ChatMessageCommandItem({
   );
 }
 
-function SpotlightResultType({ children }: { readonly children: ReactNode }) {
+/**
+ * Trailing metadata for a spotlight row: the state dot sits in a fixed-width
+ * slot ahead of the timestamp so the timestamps line up on the same rail as the
+ * filter row above, whether or not a row is unread.
+ */
+function SpotlightRowMeta({
+  indicator,
+  timestamp,
+}: {
+  readonly indicator: ChatThreadCommandIndicatorValue;
+  readonly timestamp: string;
+}) {
   return (
-    <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-      {children}
+    <span className="ml-auto flex shrink-0 items-center gap-2.5">
+      {/* w-3.5 fits the widest indicator (RunningIndicator is 0.86rem) so the
+          running dot is not squashed and the timestamp never shifts. */}
+      <span className="flex w-3.5 shrink-0 justify-center">
+        <ChatThreadCommandIndicator indicator={indicator} />
+      </span>
+      <span className="text-xs text-[hsl(var(--gray-700))]">{timestamp}</span>
     </span>
   );
 }
+
+/**
+ * `pl-1` rather than the usual `pl-2`: the agent avatar art carries ~4px of its
+ * own margin, so the tighter box padding lands the avatar's ink on the same
+ * rail as the filter row and the search field's left border.
+ */
+const SPOTLIGHT_ROW_CLASS = "group w-full gap-3.5 py-2 pl-1 pr-2";
+
+const SPOTLIGHT_AVATAR_CLASS =
+  "h-8 w-8 shrink-0 rounded-lg object-cover object-top";
 
 function SpotlightThreadCommandItem({
   thread,
@@ -888,33 +916,24 @@ function SpotlightThreadCommandItem({
   readonly indicator: ChatThreadCommandIndicatorValue;
   readonly onSelect: () => void;
 }) {
-  const { t } = useTranslation("agents");
-
   return (
     <CommandItem
       value={`spotlight-thread-${thread.id}`}
       onSelect={onSelect}
-      className="group w-full gap-3 px-2 py-2.5"
+      className={SPOTLIGHT_ROW_CLASS}
     >
       <AgentAvatarImg
         name={thread.agentId}
         alt=""
-        className="h-9 w-9 shrink-0 rounded-xl object-cover object-top"
+        className={SPOTLIGHT_AVATAR_CLASS}
       />
-      <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
-        <span className="truncate text-sm font-medium text-foreground">
-          {thread.title}
-        </span>
-        <SpotlightResultType>
-          {t(($) => {
-            return $.sidebar.chatResult;
-          })}
-        </SpotlightResultType>
+      <span className="min-w-0 flex-1 truncate text-left text-sm text-foreground">
+        {thread.title}
       </span>
-      <span className="ml-auto flex shrink-0 items-center gap-2 text-muted-foreground">
-        <ChatThreadCommandIndicator indicator={indicator} />
-        <ChevronRight size={15} aria-hidden="true" />
-      </span>
+      <SpotlightRowMeta
+        indicator={indicator}
+        timestamp={formatRelativeTimestamp(thread.sortAt)}
+      />
     </CommandItem>
   );
 }
@@ -930,37 +949,31 @@ function SpotlightMessageCommandItem({
   readonly indicator: ChatThreadCommandIndicatorValue;
   readonly onSelect: () => void;
 }) {
-  const { t } = useTranslation("agents");
   const title = thread?.title ?? message.agentName;
 
   return (
     <CommandItem
       value={`spotlight-message-${message.matchedMessage.chatThreadId}:${message.matchedMessage.seqId}`}
       onSelect={onSelect}
-      className="group w-full gap-3 px-2 py-2.5"
+      className={SPOTLIGHT_ROW_CLASS}
     >
       <AgentAvatarImg
         name={thread?.agentId ?? message.agentName}
         alt=""
-        className="h-9 w-9 shrink-0 rounded-xl object-cover object-top"
+        className={SPOTLIGHT_AVATAR_CLASS}
       />
+      {/*
+        A message result needs no type label: it is the only row that carries a
+        second line, so the snippet already tells the two kinds apart.
+      */}
       <span className="min-w-0 flex-1 text-left">
-        <span className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-sm font-medium text-foreground">
-            {title}
-          </span>
-          <SpotlightResultType>
-            {t(($) => {
-              return $.sidebar.messageResult;
-            })}
-          </SpotlightResultType>
-        </span>
+        <span className="block truncate text-sm text-foreground">{title}</span>
         <ChatMessageSnippet message={message} />
       </span>
-      <span className="ml-auto flex shrink-0 items-center gap-2 text-muted-foreground">
-        <ChatThreadCommandIndicator indicator={indicator} />
-        <ChevronRight size={15} aria-hidden="true" />
-      </span>
+      <SpotlightRowMeta
+        indicator={indicator}
+        timestamp={formatRelativeTimestamp(message.matchedMessage.createdAt)}
+      />
     </CommandItem>
   );
 }
@@ -975,13 +988,15 @@ function SpotlightFilterButton({
   readonly onSelect: () => void;
 }) {
   return (
+    // No className: `outline` / `quiet` at size `xs` already draw exactly this
+    // filter. The previous `rounded-full px-3 text-xs font-normal` override put
+    // the control off the shared radius, padding, and type scale for no gain.
     <Button
       type="button"
       role="tab"
       aria-selected={active}
       variant={active ? "outline" : "quiet"}
       size="xs"
-      className="h-7 rounded-full px-3 text-xs font-normal"
       onClick={onSelect}
     >
       {label}
@@ -999,7 +1014,9 @@ function SpotlightSearchInput({
   const { t } = useTranslation("agents");
 
   return (
-    <div className="px-5 pb-4 pt-5">
+    // `p-5` all round: the 20px bottom padding is what balances the air above
+    // and below the filter row (see SpotlightSearchFilterBar's `mb-3`).
+    <div className="p-5">
       <div className="relative">
         <CommandInput
           value={query}
@@ -1007,10 +1024,11 @@ function SpotlightSearchInput({
           placeholder={t(($) => {
             return $.sidebar.searchChatsAndMessages;
           })}
-          wrapperClassName="h-12 rounded-xl"
-          className="pr-12 text-[15px] placeholder:text-[15px]"
+          wrapperClassName="h-10"
+          className="pr-12"
         />
-        <kbd className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded-md border-[0.7px] border-[hsl(var(--gray-300))] bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+        {/* Same keycap as the chat feedback toolbar's shortcut hints. */}
+        <kbd className='pointer-events-none absolute right-3 top-1/2 inline-flex h-5 min-w-5 -translate-y-1/2 items-center justify-center rounded-md bg-background px-1 text-[10px] font-medium leading-none text-muted-foreground shadow-[inset_0_-1px_0_hsl(var(--border)),0_0_0_1px_hsl(var(--border))] font-["-apple-system",BlinkMacSystemFont,"Segoe_UI",system-ui,sans-serif]'>
           {t(($) => {
             return $.sidebar.escapeShortcut;
           })}
@@ -1055,7 +1073,9 @@ function SpotlightSearchFilterBar({
   ];
 
   return (
-    <div className="flex items-center justify-between border-y-[0.7px] border-[hsl(var(--gray-300))] px-5 py-3">
+    // No divider: the search field and the list are already separated by their
+    // own padding, and a full-bleed rule ran into the dialog's 24px corners.
+    <div className="mb-3 flex h-7 items-center justify-between px-5">
       <div role="tablist" className="flex items-center gap-1">
         {options.map((option) => {
           return (
@@ -1110,13 +1130,15 @@ function SpotlightSearchResults({
   const { t } = useTranslation("agents");
 
   return (
-    <CommandList className="min-h-[300px] max-h-[min(560px,65vh)] pb-3 pt-2">
-      <CommandGroup
-        heading={t(($) => {
-          return $.sidebar.bestMatches;
-        })}
-        className="px-5 [&_[cmdk-group-items]]:mt-1 [&_[cmdk-group-items]]:flex [&_[cmdk-group-items]]:flex-col"
-      >
+    // `px-3` pairs with each row's `pl-1` / `pr-2` to put row content on the
+    // same 20px rail as the search field and the filter row, while the row's
+    // hover fill still bleeds past it.
+    <CommandList className="min-h-[300px] max-h-[min(560px,65vh)] px-3 pb-4">
+      {/*
+        No group heading: the filter row above already names what is listed, and
+        "Best matches" was labelling the only group there is.
+      */}
+      <CommandGroup className="[&_[cmdk-group-items]]:flex [&_[cmdk-group-items]]:flex-col">
         {showThreads
           ? threads.map((thread) => {
               return (
@@ -1156,7 +1178,7 @@ function SpotlightSearchResults({
           : null}
         {searching ? (
           <div
-            className="flex items-center gap-2 px-2 py-2.5 text-xs text-muted-foreground"
+            className="flex items-center gap-2 py-2 pl-1 text-xs text-muted-foreground"
             role="status"
           >
             <Loader2 size={14} className="animate-spin" aria-hidden="true" />
@@ -1167,11 +1189,23 @@ function SpotlightSearchResults({
         ) : null}
       </CommandGroup>
       {showNoResults ? (
-        <p className="px-7 py-8 text-center text-sm text-muted-foreground">
-          {t(($) => {
-            return $.sidebar.noResults;
-          })}
-        </p>
+        // Same empty-state shape as the artifacts and workflows lists: a 96px
+        // spot illustration over a single line, centred in the list's minimum
+        // height so the dialog does not resize as results come and go.
+        <div className="flex min-h-[268px] flex-col items-center justify-center px-6 text-center">
+          <img
+            src={emptySearchImg}
+            alt=""
+            role="presentation"
+            loading="lazy"
+            className="h-24 w-24 object-contain opacity-80"
+          />
+          <p className="mt-3 text-sm font-medium text-foreground">
+            {t(($) => {
+              return $.sidebar.noResults;
+            })}
+          </p>
+        </div>
       ) : null}
     </CommandList>
   );
