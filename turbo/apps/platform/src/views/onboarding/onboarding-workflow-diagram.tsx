@@ -295,11 +295,14 @@ export function WorkflowPreviewDiagram({
   );
   const firstStep = workflow.detailSteps[1] ?? workflow.detailSteps[0];
   const lastStep = workflow.detailSteps.at(-1) ?? firstStep;
+  const hasSource = diagram.sourceConnectorSlugs.length > 0;
   const destinationCurvePath =
     "M485 112V148.65C485 166.79 469.17 175.85 437.51 175.85H352.59C325.19 175.85 311.5 183.7 311.5 199.4V223";
-  const beamPath = diagram.destinationConnectorSlug
-    ? "M170 81H485V148.65C485 166.79 469.17 175.85 437.51 175.85H352.59C325.19 175.85 311.5 183.7 311.5 199.4V356"
-    : "M170 81H311.5V223H312.5V356";
+  const beamPath = hasSource
+    ? diagram.destinationConnectorSlug
+      ? "M170 81H485V148.65C485 166.79 469.17 175.85 437.51 175.85H352.59C325.19 175.85 311.5 183.7 311.5 199.4V356"
+      : "M170 81H311.5V223H312.5V356"
+    : "M311.5 112V356";
 
   return (
     <div className="owf-diagram-wrap">
@@ -311,7 +314,7 @@ export function WorkflowPreviewDiagram({
           fill="none"
           aria-hidden="true"
         >
-          <path d="M170 81H277" />
+          {hasSource ? <path d="M170 81H277" /> : null}
           {diagram.destinationConnectorSlug ? (
             <>
               <path d="M349 81H451" />
@@ -326,7 +329,9 @@ export function WorkflowPreviewDiagram({
           aria-hidden="true"
           style={{ offsetPath: `path("${beamPath}")` } satisfies CSSProperties}
         />
-        <span className="owf-diagram-dot-source" aria-hidden="true" />
+        {hasSource ? (
+          <span className="owf-diagram-dot-source" aria-hidden="true" />
+        ) : null}
         {diagram.destinationConnectorSlug ? (
           <>
             <span

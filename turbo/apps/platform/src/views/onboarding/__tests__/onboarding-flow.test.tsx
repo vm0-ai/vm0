@@ -207,7 +207,6 @@ async function openGithubWorkflowRun(): Promise<void> {
 
 function chooseMakeOption(name: string): void {
   click(screen.getByRole("radio", { name: new RegExp(name, "u") }));
-  click(buttonByText("Continue"));
 }
 
 function buttonByText(
@@ -278,7 +277,6 @@ describe("onboarding flow", () => {
         name: /Automação de fluxo de trabalho/u,
       }),
     );
-    click(buttonByText("Continuar"));
 
     await expect(
       screen.findByRole("heading", {
@@ -478,8 +476,57 @@ describe("onboarding flow", () => {
       click(buttonByAriaLabel("Preview workflow details"));
       const preview = await screen.findByRole("dialog", { name: title });
       expect(within(preview).getByText(evidence)).toBeVisible();
+      expect(preview.querySelector(".owf-diagram-node-source")).toBeNull();
+      expect(preview.querySelector(".owf-diagram-dot-source")).toBeNull();
+      expect(preview.querySelector('path[d="M170 81H277"]')).toBeNull();
     },
   );
+
+  it("uses card actions throughout workflow onboarding", async () => {
+    mockCatalogItem({
+      slug: "github",
+      label: "Catalog GitHub",
+      icon: {
+        url: "https://icons.example.test/onboarding-github.svg",
+        invertInDarkMode: true,
+      },
+    });
+    await openMakePage();
+    expect(queryButtonByText("Continue")).toBeNull();
+
+    click(screen.getByRole("radio", { name: /Workflow automation/u }));
+    await expect(
+      screen.findByRole("heading", { name: "What do you work on?" }),
+    ).resolves.toBeInTheDocument();
+    expect(queryButtonByText("Continue")).toBeNull();
+
+    const engineerCard = buttonByText("Engineer");
+    expect(
+      engineerCard.querySelector(
+        'img[src="https://icons.example.test/onboarding-github.svg"]',
+      ),
+    ).not.toBeNull();
+    click(buttonByText("Marketing"));
+
+    await expect(
+      screen.findByRole("heading", { name: "Marketing workflows" }),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByText("No connector required")).toBeNull();
+    expect(queryButtonByText("Continue")).toBeNull();
+
+    const workflowButton = queryAllByRoleFast("button").find((candidate) => {
+      return candidate
+        .getAttribute("aria-label")
+        ?.startsWith("Audit a website's technical SEO");
+    });
+    if (!workflowButton) {
+      throw new Error("Expected technical SEO workflow card");
+    }
+    click(workflowButton);
+    await expect(
+      screen.findByRole("heading", { name: "Review your workflow draft" }),
+    ).resolves.toBeInTheDocument();
+  });
 
   it("moves from workflow selection to a connector-aware first run", async () => {
     await openMakePage();
@@ -514,7 +561,6 @@ describe("onboarding flow", () => {
     });
     expect(within(preview).getByText("How it works")).toBeVisible();
     click(buttonByText("Select this template", preview));
-    click(buttonByText("Continue"));
 
     await expect(
       screen.findByRole("heading", {
@@ -602,7 +648,6 @@ describe("onboarding flow", () => {
     ).resolves.toBeInTheDocument();
 
     click(buttonByText("Talk to Zero and make my own"));
-    click(buttonByText("Continue"));
 
     await waitFor(() => {
       expect(pathname()).not.toMatch(/^\/onboarding/u);
