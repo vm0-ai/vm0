@@ -262,6 +262,44 @@ export function withApiNamespaceAliases(
 type MigratedBrandedPathTable = Readonly<Record<string, readonly string[]>>;
 
 const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
+  // #28417. Published CLI builds post to the `okou` form — `callMaps` builds
+  // the URL by hand rather than from the contract, so the path it holds shipped
+  // independently of this table — and the `zero` form was reachable through the
+  // blanket expansion until the contract moved. Both are owed.
+  //
+  // Surface: commit-addressed CLI packages, not web clients. A run execution
+  // context pins `CLI_PKG_URL` when it is created and keeps that artifact after
+  // a later API deploy, so the exposure is the context drain described in
+  // `docs/deployment-compatibility.md` — maximum queue lifetime plus maximum
+  // claimed execution and finalization lifetime, with execution bounded by the
+  // runner's 2h `JOB_TIMEOUT` — rather than the ~2 day web-client window. That
+  // drain is the floor for removal, not the condition: these rows retire under
+  // #26701's evidence rules like every other row in this file.
+  "/api/maps/geocode": ["/api/okou/maps/geocode", "/api/zero/maps/geocode"],
+  "/api/maps/reverse-geocode": [
+    "/api/okou/maps/reverse-geocode",
+    "/api/zero/maps/reverse-geocode",
+  ],
+  "/api/maps/directions": [
+    "/api/okou/maps/directions",
+    "/api/zero/maps/directions",
+  ],
+  "/api/maps/places/search": [
+    "/api/okou/maps/places/search",
+    "/api/zero/maps/places/search",
+  ],
+  "/api/maps/places/details": [
+    "/api/okou/maps/places/details",
+    "/api/zero/maps/places/details",
+  ],
+  "/api/maps/osm/download": [
+    "/api/okou/maps/osm/download",
+    "/api/zero/maps/osm/download",
+  ],
+  "/api/maps/osm/render": [
+    "/api/okou/maps/osm/render",
+    "/api/zero/maps/osm/render",
+  ],
   // #28357, the first #28278 slice. Published CLI builds post to the `okou`
   // form (`callWeather` built it by hand rather than from the contract, so it
   // shipped independently of this path), and the `zero` form was reachable

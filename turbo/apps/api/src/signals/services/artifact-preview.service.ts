@@ -123,14 +123,20 @@ async function renderArtifactSnapshot(
   signal: AbortSignal,
 ): Promise<Buffer> {
   const previewUrl = new URL(url);
-  const hostDomain = env("OKOU_HOST_DOMAIN");
+  // API/config rollout fallback (bounded by the ~102-minute API rollout
+  // exposure): accept the legacy Okou host setting until every supported API
+  // environment provides OKOU_PUBLIC_HOST_DOMAIN; remove under #27750.
+  const hostDomains = [
+    env("ZERO_HOST_DOMAIN"),
+    env("OKOU_PUBLIC_HOST_DOMAIN") ?? env("OKOU_HOST_DOMAIN"),
+  ];
   if (
     previewUrl.protocol !== "https:" ||
-    !previewUrl.hostname.endsWith(`.${hostDomain}`)
+    !hostDomains.some((hostDomain) => {
+      return previewUrl.hostname.endsWith(`.${hostDomain}`);
+    })
   ) {
-    throw new Error(
-      `artifact preview URL must be a subdomain of ${hostDomain}`,
-    );
+    throw new Error("artifact preview URL must use a hosted-site domain");
   }
 
   const accountId = env("R2_ACCOUNT_ID");

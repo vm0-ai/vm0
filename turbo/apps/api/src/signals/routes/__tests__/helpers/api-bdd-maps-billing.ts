@@ -4,7 +4,10 @@ import {
 } from "@okouai/api-contracts/contracts/billing";
 import { mapsContract } from "@okouai/api-contracts/contracts/maps";
 
-import { setupAppWithRoutes } from "../../../../__tests__/test-app";
+import {
+  setupAppWithRoutes,
+  setupRawAppRequestWithRoutes,
+} from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { mockEnv } from "../../../../lib/env";
 import type { RouteEntry } from "../../../route-entry";
@@ -53,8 +56,10 @@ const mapsBillingRoutes: readonly RouteEntry[] = [
   ...mapsRoutes,
 ];
 
+const CLERK_SESSION_AUTHORIZATION = "Bearer clerk-session";
+
 function authHeaders(actor: ApiTestUser | null): AuthHeaders {
-  return actor ? { authorization: "Bearer clerk-session" } : {};
+  return actor ? { authorization: CLERK_SESSION_AUTHORIZATION } : {};
 }
 
 function authenticate(context: TestContext, actor: ApiTestUser | null) {
@@ -81,6 +86,32 @@ export function createMapsBillingApi(context: TestContext) {
   return {
     configureMapsProvider(): void {
       mockEnv("OKOU_MAPS_GOOGLE_MAPS_TOKEN", "test-google-maps-key");
+    },
+
+    /**
+     * Geocodes through a path the typed client cannot express. `mapsContract`
+     * declares only the neutral path, so the branded paths that
+     * `MIGRATED_BRANDED_PATHS` keeps alive for released CLI builds are
+     * unreachable through `mapsContract` by construction.
+     */
+    async requestMapsGeocodeAtPath(
+      actor: ApiTestUser,
+      path: string,
+      body: { readonly address: string },
+    ): Promise<{ readonly status: number; readonly body: unknown }> {
+      authenticate(context, actor);
+      const request = setupRawAppRequestWithRoutes({
+        context,
+        routes: mapsBillingRoutes,
+      });
+      return await request(path, {
+        method: "POST",
+        headers: {
+          authorization: CLERK_SESSION_AUTHORIZATION,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
     },
 
     async readBillingStatus(
