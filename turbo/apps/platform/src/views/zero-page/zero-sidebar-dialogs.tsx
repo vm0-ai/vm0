@@ -20,6 +20,7 @@ import {
 } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import { formatRelativeTimestamp } from "../../i18n/format.ts";
+import { emptySearchImg } from "./platform-assets.ts";
 import {
   chatListQuery$,
   pinAgentDialogQuery$,
@@ -1188,11 +1189,23 @@ function SpotlightSearchResults({
         ) : null}
       </CommandGroup>
       {showNoResults ? (
-        <p className="px-7 py-8 text-center text-sm text-muted-foreground">
-          {t(($) => {
-            return $.sidebar.noResults;
-          })}
-        </p>
+        // Same empty-state shape as the artifacts and workflows lists: a 96px
+        // spot illustration over a single line, centred in the list's minimum
+        // height so the dialog does not resize as results come and go.
+        <div className="flex min-h-[268px] flex-col items-center justify-center px-6 text-center">
+          <img
+            src={emptySearchImg}
+            alt=""
+            role="presentation"
+            loading="lazy"
+            className="h-24 w-24 object-contain opacity-80"
+          />
+          <p className="mt-3 text-sm font-medium text-foreground">
+            {t(($) => {
+              return $.sidebar.noResults;
+            })}
+          </p>
+        </div>
       ) : null}
     </CommandList>
   );
