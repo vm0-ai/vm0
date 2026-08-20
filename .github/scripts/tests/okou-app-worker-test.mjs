@@ -359,8 +359,8 @@ assert.ok(
   ),
 );
 assert.ok(
-  tagAttributeValues(okouPage.html, "link", "href").includes(
-    "https://static.okou.io",
+  tagAttributeValues(okouPage.html, "link", "href").some(
+    (href) => href === "https://static.okou.io",
   ),
 );
 assert.equal(
