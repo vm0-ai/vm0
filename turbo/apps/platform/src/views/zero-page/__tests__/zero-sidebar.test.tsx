@@ -3987,7 +3987,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("shows a drag handle on reorderable pinned agents but not on the lead agent", async () => {
+  it("shows drag handles only while a reorder drag is in flight", async () => {
     const pinnedAgentIds = prepareOverflowingPinnedAgents();
     context.mocks.data.userPreferences({ pinnedAgentIds });
 
@@ -4005,10 +4005,23 @@ describe("zero sidebar", () => {
     });
 
     expect(
-      within(pinnedAgentLink(grid, "Support Agent")).getByTestId(
+      within(grid).queryAllByTestId("pinned-agent-drag-handle"),
+    ).toHaveLength(0);
+
+    fireEvent.dragStart(pinnedAgentLink(grid, "Support Agent"), {
+      dataTransfer: createDataTransferStub(),
+    });
+
+    expect(
+      within(pinnedAgentLink(grid, "Operations Agent")).getByTestId(
         "pinned-agent-drag-handle",
       ),
     ).toBeInTheDocument();
+    expect(
+      within(pinnedAgentLink(grid, "Support Agent")).queryByTestId(
+        "pinned-agent-drag-handle",
+      ),
+    ).toBeNull();
     expect(
       within(pinnedAgentLink(grid, "Zero")).queryByTestId(
         "pinned-agent-drag-handle",
