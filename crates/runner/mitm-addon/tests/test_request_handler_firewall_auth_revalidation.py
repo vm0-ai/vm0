@@ -3,7 +3,7 @@
 import asyncio
 import json
 from pathlib import Path
-from typing import Literal, cast
+from typing import Literal, cast, get_args
 from unittest.mock import AsyncMock
 
 import pytest
@@ -13,8 +13,12 @@ import auth
 import auth_base_forwarder
 import connector_intent
 import flow_metadata_keys as metadata_keys
+import matching
 import mitm_addon
+import registry
+import request_authority
 import request_classification
+import terminal_usage
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
 from tests.firewall_helpers import cancel_pending_task
@@ -34,6 +38,175 @@ _RESOLVED_AUTH_BASE = "https://webhook.example.com/deliver"
 _CUSTOM_CONNECTOR_ID = "550e8400-e29b-41d4-a716-446655440000"
 _CANDIDATE_BUILTIN_NAME = "github"
 _CANDIDATE_CUSTOM_NAME = "custom_connector_550e8400e29b41d4a716446655440000"
+_BLOCKING_CLASSIFICATIONS: tuple[request_classification.BlockingRequestClassification, ...] = (
+    request_classification.RegistryUnavailable(
+        registry.RegistryUnavailable(
+            reason="registry_read_failed",
+            message="Proxy registry could not be read",
+        )
+    ),
+    request_classification.StaleTlsAdmission(
+        stale_tls_reason="registry_entry_missing",
+    ),
+    request_classification.InvalidRegistryVm(
+        registry.InvalidVmEntry(
+            reason="invalid_vm_entry",
+            message="Proxy registry VM entry is invalid",
+        )
+    ),
+    request_classification.AuthorityDenied(
+        vm_info={},
+        authority_error=request_authority.AuthorityValidationError(
+            "authority_mismatch",
+            message="Request authority does not match TLS SNI",
+            sni="api.example.com",
+            request_host="other.example.com",
+            host_header="other.example.com",
+            request_port=443,
+            fallback_url="https://other.example.com/items",
+        ),
+    ),
+    request_classification.PlatformPathDenied(vm_info={}),
+    request_classification.FirewallAmbiguous(
+        vm_info={},
+        firewall_ambiguous=matching.FirewallAmbiguous(
+            method="POST",
+            path="/items/123",
+            candidates=("primary", "secondary"),
+            reason="connector_intent_required",
+        ),
+    ),
+    request_classification.FirewallBlock(
+        vm_info={},
+        firewall_block=matching.FirewallBlock(
+            base="https://api.example.com",
+            name="example",
+            method="POST",
+            path="/items/123",
+            permissions=("items-write",),
+            reason="permission_denied",
+        ),
+    ),
+    request_classification.PublicDestinationDenied(
+        vm_info={},
+        public_destination_denial=request_classification.PublicDestinationDenial(
+            name="example",
+            base="https://api.example.com",
+            trusted_authority_host="api.example.com",
+            destination_host="127.0.0.1",
+            reason="non_public_destination",
+        ),
+    ),
+)
+_BLOCKING_RESPONSE_METADATA_KEYS = (
+    metadata_keys.ORIGINAL_URL,
+    metadata_keys.FIREWALL_ACTION,
+    metadata_keys.FIREWALL_ERROR,
+    metadata_keys.FIREWALL_BASE,
+    metadata_keys.FIREWALL_NAME,
+    metadata_keys.FIREWALL_PERMISSION,
+    metadata_keys.CONNECTOR_ROUTE_REASON,
+    metadata_keys.CONNECTOR_ROUTE_CANDIDATES,
+)
+_BLOCKING_RESPONSE_STATUS_AND_ERROR = {
+    "registry_unavailable": (503, "registry_unavailable"),
+    "stale_tls_admission": (503, "stale_tls_admission"),
+    "invalid_registry_vm": (503, "invalid_registry_vm"),
+    "authority_denied": (403, "authority_mismatch"),
+    "platform_path_denied": (403, "unsafe_platform_path"),
+    "firewall_ambiguous": (409, "ambiguous_connector_route"),
+    "firewall_block": (403, "permission_denied"),
+    "public_destination_denied": (403, "unsafe_public_destination"),
+}
+
+
+def _blocking_dispatch_flow(real_flow) -> http.HTTPFlow:
+    flow = real_flow(
+        with_response=False,
+        client_ip=_CLIENT_IP,
+        host="api.example.com",
+        method="POST",
+        path="/items/123?visible=1",
+    )
+    flow.metadata[metadata_keys.ORIGINAL_URL] = flow.request.pretty_url
+    return flow
+
+
+def _blocking_response_snapshot(flow: http.HTTPFlow) -> tuple[object, ...]:
+    assert flow.response is not None
+    assert flow.response.content is not None
+    return (
+        flow.response.status_code,
+        json.loads(flow.response.content),
+        {
+            key: flow.metadata[key]
+            for key in _BLOCKING_RESPONSE_METADATA_KEYS
+            if key in flow.metadata
+        },
+        flow.request.stream,
+    )
+
+
+def test_blocking_dispatch_cases_cover_runtime_union() -> None:
+    assert {type(classification) for classification in _BLOCKING_CLASSIFICATIONS} == set(
+        get_args(request_classification.BlockingRequestClassification)
+    )
+
+
+@pytest.mark.parametrize(
+    "classification",
+    _BLOCKING_CLASSIFICATIONS,
+    ids=[classification.kind for classification in _BLOCKING_CLASSIFICATIONS],
+)
+async def test_blocking_dispatch_matches_primary_and_revalidation(
+    real_flow,
+    monkeypatch,
+    classification: request_classification.BlockingRequestClassification,
+) -> None:
+    primary_flow = _blocking_dispatch_flow(real_flow)
+    revalidation_flow = _blocking_dispatch_flow(real_flow)
+    revalidation_flow.metadata[metadata_keys.AUTH_URL_REWRITE] = "stale"
+
+    if isinstance(classification, request_classification.PublicDestinationDenied):
+        terminal_usage.track_flow_if_needed(primary_flow, True, False)
+        terminal_usage.track_flow_if_needed(revalidation_flow, True, False)
+
+    monkeypatch.setattr(
+        mitm_addon,
+        "_request_classification_for_flow",
+        lambda _flow: classification,
+    )
+    await mitm_addon.request(primary_flow)
+    mitm_addon._block_current_firewall_authorization(revalidation_flow, classification)
+
+    assert primary_flow.response is not None
+    assert primary_flow.response.content is not None
+    expected_status, expected_error = _BLOCKING_RESPONSE_STATUS_AND_ERROR[classification.kind]
+    assert primary_flow.response.status_code == expected_status
+    assert json.loads(primary_flow.response.content)["error"] == expected_error
+    assert _blocking_response_snapshot(primary_flow) == _blocking_response_snapshot(
+        revalidation_flow
+    )
+    assert metadata_keys.AUTH_URL_REWRITE not in revalidation_flow.metadata
+    if isinstance(classification, request_classification.FirewallAmbiguous):
+        assert primary_flow.metadata[metadata_keys.CONNECTOR_ROUTE_REASON] == (
+            "connector_intent_required"
+        )
+        assert primary_flow.metadata[metadata_keys.CONNECTOR_ROUTE_CANDIDATES] == [
+            "primary",
+            "secondary",
+        ]
+    if isinstance(classification, request_classification.FirewallBlock):
+        assert primary_flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.example.com"
+        assert primary_flow.metadata[metadata_keys.FIREWALL_NAME] == "example"
+        assert primary_flow.metadata[metadata_keys.FIREWALL_PERMISSION] == "items-write"
+    if isinstance(classification, request_classification.PublicDestinationDenied):
+        assert primary_flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.example.com"
+        assert primary_flow.metadata[metadata_keys.FIREWALL_NAME] == "example"
+        assert primary_flow.request.stream is False
+        assert "_usage_flow_tracked" not in primary_flow.metadata
+        assert revalidation_flow.metadata["_usage_flow_tracked"] is True
+        terminal_usage.release_tracked_flow(revalidation_flow)
 
 
 def _registry_vm(
