@@ -13,7 +13,7 @@
 //! - runtime-file paths are scoped to the current run ID
 
 pub use api_contracts::generated::constants::runners::paths::{
-    CANONICAL_GUEST_HOME_DIR, CANONICAL_WORKING_DIR,
+    CANONICAL_CODEX_HOME_DIR, CANONICAL_GUEST_HOME_DIR, CANONICAL_WORKING_DIR,
 };
 #[doc(inline)]
 pub use guest_contracts::runtime_paths::{ensure_parent_dir, write_private};

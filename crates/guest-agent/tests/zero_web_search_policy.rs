@@ -87,7 +87,7 @@ fn build_runtime(
         ]),
     )?;
     let is_claude = framework == "claude-code";
-    let config = guest_agent::env::GuestConfig::from_raw(guest_agent::env::GuestConfigRaw {
+    let mut config = guest_agent::env::GuestConfig::from_raw(guest_agent::env::GuestConfigRaw {
         run_id,
         api_url: "http://127.0.0.1:1".to_string(),
         sandbox_id: "00000000-0000-4000-8000-000000000abc".to_string(),
@@ -104,6 +104,7 @@ fn build_runtime(
         ..guest_agent::env::GuestConfigRaw::default()
     })
     .map_err(std::io::Error::other)?;
+    config.codex_home_dir = root.join("codex-home").to_string_lossy().into_owned();
     let paths = guest_agent::paths::GuestPaths::from_runtime_dir(runtime_dir);
     let http = guest_agent::http::HttpClient::for_config(&config)?;
 

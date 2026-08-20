@@ -49,15 +49,14 @@ impl SessionHistoryLaunchSource {
                     working_dir: paths::CANONICAL_WORKING_DIR.to_string(),
                 }
             }
-            Framework::Codex => {
-                let codex_home = crate::codex_auth::codex_home_path(Path::new(&config.home_dir));
-                Self::Codex {
-                    sessions_dir: normalized_absolute_launch_path(
-                        &codex_home.join("sessions").to_string_lossy(),
-                        paths::CANONICAL_WORKING_DIR,
-                    ),
-                }
-            }
+            Framework::Codex => Self::Codex {
+                sessions_dir: normalized_absolute_launch_path(
+                    &Path::new(&config.codex_home_dir)
+                        .join("sessions")
+                        .to_string_lossy(),
+                    paths::CANONICAL_WORKING_DIR,
+                ),
+            },
             Framework::Pi => Self::Pi,
         }
     }
@@ -348,12 +347,12 @@ mod tests {
     }
 
     #[test]
-    fn codex_source_uses_guest_controlled_home_and_canonical_thread_id() {
+    fn codex_source_preserves_launch_path_and_canonical_thread_id() {
         let temp = tempfile::tempdir().unwrap();
         let store = SessionMetadataStore::default();
         let capture = SessionMetadataCapture::new(
             SessionHistoryLaunchSource::Codex {
-                sessions_dir: Some("/home/custom/.codex/sessions".to_string()),
+                sessions_dir: Some("/home/user/.codex/sessions".to_string()),
             },
             store.clone(),
             temp.path().join("session-id").to_str().unwrap(),
@@ -366,7 +365,7 @@ mod tests {
                 .captured()
                 .and_then(CapturedSessionMetadata::history_source),
             Some(&SessionHistorySourceRef::Codex {
-                sessions_dir: "/home/custom/.codex/sessions".to_string(),
+                sessions_dir: "/home/user/.codex/sessions".to_string(),
                 thread_id: "0193abcd-ef01-7234-89ab-cdef01234567".to_string(),
             })
         );

@@ -23,6 +23,7 @@ async fn codex_setup_writes_model_catalog_before_cli_start() -> TestResult {
     let observed_argv = tmp.path().join("observed-argv");
     let observed_catalog = tmp.path().join("observed-models.json");
     let runtime_dir = tmp.path().join("runtime");
+    let codex_home = tmp.path().join("codex-home");
     write_recording_codex(
         &recording_codex,
         &mock_codex,
@@ -75,6 +76,7 @@ async fn codex_setup_writes_model_catalog_before_cli_start() -> TestResult {
         .env("VM0_API_TOKEN", "")
         .env("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc")
         .env("VM0_SANDBOX_REUSE_RESULT", "reused")
+        .env("VM0_TEST_CODEX_HOME_DIR", &codex_home)
         .env(
             guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
             &runtime_dir,
@@ -99,7 +101,7 @@ async fn codex_setup_writes_model_catalog_before_cli_start() -> TestResult {
 
     let argv = std::fs::read_to_string(&observed_argv)?;
     let argv = argv.lines().collect::<Vec<_>>();
-    let catalog_path = tmp.path().join(".codex/models.json");
+    let catalog_path = codex_home.join("models.json");
     let expected_override = format!("model_catalog_json=\"{}\"", catalog_path.to_string_lossy());
     assert!(
         argv.windows(2)

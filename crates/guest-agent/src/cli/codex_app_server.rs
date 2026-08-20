@@ -68,7 +68,7 @@ struct CodexAppServerChildEnv {
 }
 
 impl CodexAppServerConfig {
-    /// Build a config for a Codex binary and per-run `CODEX_HOME`.
+    /// Build a config for a Codex binary and explicit `CODEX_HOME`.
     ///
     /// `binary` is executed with `app-server --listen stdio://`. `codex_home`
     /// is created before spawn and is always passed to the child as
@@ -110,7 +110,7 @@ impl CodexAppServerConfig {
     /// Add an extra child environment value.
     ///
     /// Extra values are applied before the final `CODEX_HOME` value, so callers
-    /// cannot override the per-run Codex home through this method.
+    /// cannot override the configured Codex home through this method.
     pub fn with_env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.extra_env.push((key.into(), value.into()));
         self

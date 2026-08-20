@@ -28,7 +28,7 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 /// Three mutually-exclusive states are supported:
 ///
 /// - **ChatGPT-OAuth mode** (`CHATGPT_ACCOUNT_ID` set): write a fabricated
-///   `~/.codex/auth.json` containing placeholder JWTs that put Codex into
+///   canonical `auth.json` containing placeholder JWTs that put Codex into
 ///   ChatGPT mode without ever holding real OAuth credentials inside the
 ///   sandbox. The firewall replaces placeholder bytes on egress. See the
 ///   `codex_auth` module and issue #11877.
@@ -50,20 +50,20 @@ pub async fn setup_codex_for_config(
         .get("OPENAI_API_KEY")
         .map(String::as_str)
         .unwrap_or("");
-    setup_codex_with_values(codex_oauth_mode, &config.home_dir, api_key)?;
+    setup_codex_with_values(codex_oauth_mode, &config.codex_home_dir, api_key)?;
     codex_runtime_config::write_model_catalog_from_raw(
-        &config.home_dir,
+        &config.codex_home_dir,
         &config.codex_runtime_config,
     )
 }
 
 fn setup_codex_with_values(
     codex_oauth_mode: bool,
-    home_dir: &str,
+    codex_home_dir: &str,
     api_key: &str,
 ) -> Result<(), AgentError> {
     let setup_start = Instant::now();
-    let home = std::path::PathBuf::from(home_dir);
+    let codex_home = std::path::PathBuf::from(codex_home_dir);
     let (desired, mode_label) = if codex_oauth_mode {
         (
             DesiredCodexAuth::ChatGpt {
@@ -77,7 +77,7 @@ fn setup_codex_with_values(
         (DesiredCodexAuth::ApiKey { api_key }, "apikey")
     };
 
-    let result = reconcile_codex_auth_state(&home, desired);
+    let result = reconcile_codex_auth_state(&codex_home, desired);
     let success = result.is_ok();
     let err_msg = result.as_ref().err().map(ToString::to_string);
     record_sandbox_op(

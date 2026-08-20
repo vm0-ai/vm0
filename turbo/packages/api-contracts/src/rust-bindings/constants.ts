@@ -16,6 +16,8 @@ import {
 } from "../contracts/client-headers";
 import {
   ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES,
+  CANONICAL_CODEX_HOME_DIR,
+  CANONICAL_CODEX_SESSIONS_DIR,
   CANONICAL_GUEST_HOME_DIR,
   CANONICAL_PI_SESSION_DIR,
   CANONICAL_WORKING_DIR,
@@ -393,6 +395,23 @@ export const rustConstantBindings = [
     rustDoc: [
       "Canonical home directory path expected for the sandbox user inside runner guests.",
       "Rust and TypeScript components use this shared contract value when building runner guest paths.",
+    ],
+  },
+  {
+    rustModulePath: runnerPathsModule,
+    rustConstName: "CANONICAL_CODEX_HOME_DIR",
+    value: rustString(CANONICAL_CODEX_HOME_DIR),
+    rustDoc: [
+      "Canonical directory for VM0-managed Codex state inside runner guests.",
+      "Guest auth, runtime configuration, session capture, and runner restore use this shared path independently of the user HOME environment.",
+    ],
+  },
+  {
+    rustModulePath: runnerPathsModule,
+    rustConstName: "CANONICAL_CODEX_SESSIONS_DIR",
+    value: rustString(CANONICAL_CODEX_SESSIONS_DIR),
+    rustDoc: [
+      "Canonical directory for Codex session histories inside runner guests.",
     ],
   },
   {
