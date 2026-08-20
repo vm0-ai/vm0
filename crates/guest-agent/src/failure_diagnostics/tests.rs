@@ -45,6 +45,10 @@ fn classify_cli_failure_reason(
 }
 
 const CLAUDE_PROVIDER_SERVER_ERROR_MESSAGE: &str = "API Error: 500 Internal server error. This is a server-side issue, usually temporary - try again in a moment. If it persists, check https://status.claude.com.";
+const CLAUDE_MID_RESPONSE_SERVER_ERROR_MESSAGE: &str =
+    "API Error: Server error mid-response. The response above may be incomplete.";
+const CLAUDE_MID_RESPONSE_CONNECTION_LOST_MESSAGE: &str =
+    "API Error: Connection lost mid-response. The response above may be incomplete.";
 
 #[test]
 fn cli_failure_message_logs_stderr_to_system_log() {
@@ -838,6 +842,89 @@ fn cli_failure_reason_classifies_claude_result_provider_server_error_diagnostic(
         diagnostic.failure_detail_source,
         Some(FailureDetailSource::ClaudeResult)
     );
+}
+
+#[test]
+fn cli_failure_reason_classifies_claude_result_mid_response_failures() {
+    for (message, expected_reason) in [
+        (
+            CLAUDE_MID_RESPONSE_SERVER_ERROR_MESSAGE,
+            FailureReason::ProviderServerError,
+        ),
+        (
+            CLAUDE_MID_RESPONSE_CONNECTION_LOST_MESSAGE,
+            FailureReason::ResponseConnectionLost,
+        ),
+    ] {
+        let reason = super::classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            FailureDetailSource::ClaudeResult,
+            message,
+        );
+
+        assert_eq!(reason, Some(expected_reason), "message: {message}");
+    }
+}
+
+#[test]
+fn cli_failure_reason_classifies_claude_result_mid_response_diagnostics() {
+    for (message, expected_reason) in [
+        (
+            CLAUDE_MID_RESPONSE_SERVER_ERROR_MESSAGE,
+            FailureReason::ProviderServerError,
+        ),
+        (
+            CLAUDE_MID_RESPONSE_CONNECTION_LOST_MESSAGE,
+            FailureReason::ResponseConnectionLost,
+        ),
+    ] {
+        let msg = cli_failure_message(
+            1,
+            &["background stderr noise".to_string()],
+            Some(&cli_diagnostic(message, FailureDetailSource::ClaudeResult)),
+        );
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_detail_source(msg.source);
+        let diagnostic = with_cli_failure_reason(diagnostic, &msg);
+
+        assert_eq!(msg.source, FailureDetailSource::ClaudeResult);
+        assert_eq!(diagnostic.failure_reason, Some(expected_reason));
+        assert_eq!(
+            diagnostic.failure_detail_source,
+            Some(FailureDetailSource::ClaudeResult)
+        );
+    }
+}
+
+#[test]
+fn cli_failure_reason_rejects_untrusted_mid_response_failure_contexts() {
+    for message in [
+        CLAUDE_MID_RESPONSE_SERVER_ERROR_MESSAGE,
+        CLAUDE_MID_RESPONSE_CONNECTION_LOST_MESSAGE,
+    ] {
+        for (framework, source) in [
+            (AgentFramework::ClaudeCode, FailureDetailSource::Stderr),
+            (AgentFramework::Codex, FailureDetailSource::ClaudeResult),
+        ] {
+            let reason = super::classify_cli_failure_reason(framework, source, message);
+
+            assert_eq!(reason, None, "message: {message}");
+        }
+
+        let explanatory_message = format!("Observed {message} in an earlier run");
+        let reason = super::classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            FailureDetailSource::ClaudeResult,
+            &explanatory_message,
+        );
+
+        assert_eq!(reason, None, "message: {explanatory_message}");
+    }
 }
 
 #[test]
