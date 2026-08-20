@@ -985,6 +985,7 @@
       "pricePerMonth": "{{price}}/mois",
       "pro": {
         "description": "Pour une personne ou un petit espace de travail qui utilise des agents chaque jour. Chaque membre a ses propres crédits.",
+        "legacyDescription": "Plus de crédits et de simultanéité pour les équipes qui utilisent des agents IA au quotidien.",
         "name": "Pro"
       },
       "renews": "Renouvelle le {{date}}",
@@ -993,6 +994,7 @@
       "selectedPlan": "le forfait sélectionné",
       "team": {
         "description": "Pour les équipes qui utilisent des agents toute la journée. Achetez de la simultanéité et déclenchez des workflows depuis vos systèmes.",
+        "legacyDescription": "De la place pour une équipe d’employés IA : un volume élevé de crédits et 10 agents exécutés simultanément.",
         "name": "Team"
       },
       "upgrade": "Mettre à niveau",

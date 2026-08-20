@@ -964,6 +964,7 @@
       "pricePerMonth": "{{price}}/bulan",
       "pro": {
         "description": "Untuk satu orang atau ruang kerja kecil yang menjalankan agen setiap hari. Tiap anggota punya kredit sendiri.",
+        "legacyDescription": "Lebih banyak kredit dan konkurensi untuk tim yang menjalankan agen AI setiap hari.",
         "name": "Pro"
       },
       "renews": "Memperbarui {{date}}",
@@ -972,6 +973,7 @@
       "selectedPlan": "paket yang dipilih",
       "team": {
         "description": "Untuk tim yang menjalankan agen sepanjang hari. Beli konkurensi tambahan dan picu alur kerja dari sistem Anda.",
+        "legacyDescription": "Ruang untuk tim pekerja AI: volume kredit tinggi dan 10 agen berjalan bersamaan.",
         "name": "Tim"
       },
       "upgrade": "Tingkatkan",

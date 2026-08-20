@@ -964,6 +964,7 @@
       "pricePerMonth": "{{price}}/Monat",
       "pro": {
         "description": "Für Einzelpersonen oder kleine Workspaces, die täglich Agents einsetzen. Jedes Mitglied erhält eigene Credits.",
+        "legacyDescription": "Mehr Credits und Parallelität für Teams, die täglich KI-Agents einsetzen.",
         "name": "Pro"
       },
       "renews": "Erneuert {{date}}",
@@ -972,6 +973,7 @@
       "selectedPlan": "den ausgewählten Plan",
       "team": {
         "description": "Für Teams, die Agents ganztägig einsetzen. Zusätzliche Parallelität kaufen und Workflows aus eigenen Systemen auslösen.",
+        "legacyDescription": "Platz für ein Team aus KI-Mitarbeitern: hohes Credit-Volumen und 10 gleichzeitig laufende Agents.",
         "name": "Team"
       },
       "upgrade": "Upgrade",

@@ -964,6 +964,7 @@
       "pricePerMonth": "{{price}}/month",
       "pro": {
         "description": "For one person or a small workspace running agents every day. Each member gets their own credits.",
+        "legacyDescription": "More credits and concurrency for teams running AI agents every day.",
         "name": "Pro"
       },
       "renews": "Renews {{date}}",
@@ -972,6 +973,7 @@
       "selectedPlan": "the selected plan",
       "team": {
         "description": "For teams running agents all day. Buy extra concurrency and trigger workflows from your own systems.",
+        "legacyDescription": "Room for a team of AI employees: high credit volume and 10 agents running at once.",
         "name": "Team"
       },
       "upgrade": "Upgrade",

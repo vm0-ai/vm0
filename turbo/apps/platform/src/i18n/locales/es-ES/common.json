@@ -985,6 +985,7 @@
       "pricePerMonth": "{{price}}/mes",
       "pro": {
         "description": "Para una persona o un espacio pequeño que usa agentes a diario. Cada miembro tiene sus propios créditos.",
+        "legacyDescription": "Más créditos y concurrencia para equipos que usan agentes de IA todos los días.",
         "name": "Pro"
       },
       "renews": "Renueva {{date}}",
@@ -993,6 +994,7 @@
       "selectedPlan": "El plan seleccionado",
       "team": {
         "description": "Para equipos que usan agentes todo el día. Compra concurrencia extra y activa flujos desde tus sistemas.",
+        "legacyDescription": "Espacio para un equipo de empleados de IA: gran volumen de créditos y 10 agentes ejecutándose a la vez.",
         "name": "Equipo"
       },
       "upgrade": "Actualización",

@@ -161,15 +161,18 @@ function planName(tier: BillingPlan["tier"] | BillingTier): string {
   });
 }
 
+/* The legacy plan cards need their own copy. A legacy plan pools its credits
+   in the organization, so the usage-pack description -- which is about each
+   member holding their own -- is not true of the plan this card sells. */
 function planDescription(tier: BillingPlan["tier"]): string {
   if (tier === "pro") {
     return i18n.t(($) => {
-      return $.billing.plans.pro.description;
+      return $.billing.plans.pro.legacyDescription;
     });
   }
   if (tier === "team") {
     return i18n.t(($) => {
-      return $.billing.plans.team.description;
+      return $.billing.plans.team.legacyDescription;
     });
   }
   return i18n.t(($) => {

@@ -985,6 +985,7 @@
       "pricePerMonth": "{{price}}/mese",
       "pro": {
         "description": "Per una persona o un piccolo spazio di lavoro che usa agenti ogni giorno. Ogni membro ha i propri crediti.",
+        "legacyDescription": "Più crediti e concorrenza per i team che eseguono agenti IA ogni giorno.",
         "name": "Pro"
       },
       "renews": "Rinnova {{date}}",
@@ -993,6 +994,7 @@
       "selectedPlan": "il piano selezionato",
       "team": {
         "description": "Per team che usano agenti tutto il giorno. Acquista concorrenza extra e attiva workflow dai tuoi sistemi.",
+        "legacyDescription": "Spazio per un team di dipendenti IA: molti crediti e 10 agent in esecuzione contemporaneamente.",
         "name": "Team"
       },
       "upgrade": "Aggiorna",
