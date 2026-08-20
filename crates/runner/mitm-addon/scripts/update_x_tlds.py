@@ -20,6 +20,7 @@ SOURCE_HOST = "data.iana.org"
 SOURCE_PATH = "/TLD/tlds-alpha-by-domain.txt"
 SOURCE_URL = f"https://{SOURCE_HOST}{SOURCE_PATH}"
 FETCH_TIMEOUT_SECONDS = 30
+MAX_SOURCE_BYTES = 64 * 1024
 ADDON_ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_PATH = ADDON_ROOT / "src/usage/providers/connectors/x_tlds.py"
 VERSION_RE = re.compile(r"^# Version (?P<version>\d+), Last Updated (?P<timestamp>.+)$")
@@ -72,7 +73,12 @@ def fetch_source() -> str:
         with opener.open(request, timeout=FETCH_TIMEOUT_SECONDS) as response:
             if response.status != HTTPStatus.OK:
                 raise TldFetchError(f"failed to fetch {SOURCE_URL}: HTTP {response.status}")
-            return response.read().decode("utf-8")
+            body = response.read(MAX_SOURCE_BYTES + 1)
+            if len(body) > MAX_SOURCE_BYTES:
+                raise TldFetchError(
+                    f"failed to fetch {SOURCE_URL}: response body exceeds {MAX_SOURCE_BYTES} bytes"
+                )
+            return body.decode("utf-8")
     except urllib.error.HTTPError as exc:
         with exc:
             raise TldFetchError(f"failed to fetch {SOURCE_URL}: HTTP {exc.code}") from exc

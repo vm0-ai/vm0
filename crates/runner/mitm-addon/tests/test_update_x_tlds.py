@@ -52,7 +52,7 @@ class _ReadFailureResponse:
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
         return None
 
-    def read(self) -> bytes:
+    def read(self, amount: int) -> bytes:
         raise http.client.IncompleteRead(b"partial")
 
 
@@ -70,13 +70,39 @@ class _InvalidUtf8Response:
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
         return None
 
-    def read(self) -> bytes:
+    def read(self, amount: int) -> bytes:
         return b"\xff"
 
 
 class _InvalidUtf8Opener:
     def open(self, request: object, timeout: int) -> _InvalidUtf8Response:
         return _InvalidUtf8Response()
+
+
+class _BodyResponse:
+    status = update_x_tlds.HTTPStatus.OK
+
+    def __init__(self, body: bytes) -> None:
+        self._body = io.BytesIO(body)
+        self.read_amounts: list[int] = []
+
+    def __enter__(self) -> _BodyResponse:
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        return None
+
+    def read(self, amount: int) -> bytes:
+        self.read_amounts.append(amount)
+        return self._body.read(amount)
+
+
+class _BodyOpener:
+    def __init__(self, response: _BodyResponse) -> None:
+        self._response = response
+
+    def open(self, request: object, timeout: int) -> _BodyResponse:
+        return self._response
 
 
 def _build_failing_opener(*handlers: object) -> _FailingOpener:
@@ -97,6 +123,13 @@ def _build_invalid_utf8_opener(*handlers: object) -> _InvalidUtf8Opener:
 
 def _source_text(version: str, tlds: Iterable[str]) -> str:
     return f"# Version {version}, Last Updated test\n" + "\n".join(sorted(tlds)) + "\n"
+
+
+def _source_body_at_limit() -> bytes:
+    prefix = b"# Version 1, Last Updated test\nCOM\n#"
+    suffix = b"\n"
+    padding_size = update_x_tlds.MAX_SOURCE_BYTES - len(prefix) - len(suffix)
+    return prefix + b"x" * padding_size + suffix
 
 
 def _write_generated_snapshot(path: Path) -> None:
@@ -182,6 +215,48 @@ def test_update_generated_rejects_malformed_source_without_replacing_output(tmp_
     with pytest.raises(ValueError, match="version header"):
         update_x_tlds.update_generated(source)
 
+    assert output.read_text(encoding="utf-8") == original
+
+
+def test_update_generated_accepts_network_source_at_limit(tmp_path, monkeypatch):
+    response = _BodyResponse(_source_body_at_limit())
+    opener = _BodyOpener(response)
+    output = tmp_path / "x_tlds.py"
+    monkeypatch.setattr(update_x_tlds, "OUTPUT_PATH", output)
+    monkeypatch.setattr(
+        update_x_tlds.urllib.request,
+        "build_opener",
+        lambda *handlers: opener,
+    )
+
+    assert update_x_tlds.update_generated(None) == 0
+
+    assert response.read_amounts == [update_x_tlds.MAX_SOURCE_BYTES + 1]
+    assert output.read_text(encoding="utf-8") == update_x_tlds.render_module("1", ("com",))
+
+
+def test_update_generated_rejects_oversized_network_source_without_replacing_output(
+    tmp_path, monkeypatch
+):
+    response = _BodyResponse(_source_body_at_limit() + b"x")
+    opener = _BodyOpener(response)
+    output = tmp_path / "x_tlds.py"
+    original = "# existing generated snapshot\n"
+    output.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(update_x_tlds, "OUTPUT_PATH", output)
+    monkeypatch.setattr(
+        update_x_tlds.urllib.request,
+        "build_opener",
+        lambda *handlers: opener,
+    )
+
+    with pytest.raises(
+        update_x_tlds.TldFetchError,
+        match=rf"response body exceeds {update_x_tlds.MAX_SOURCE_BYTES} bytes",
+    ):
+        update_x_tlds.update_generated(None)
+
+    assert response.read_amounts == [update_x_tlds.MAX_SOURCE_BYTES + 1]
     assert output.read_text(encoding="utf-8") == original
 
 
