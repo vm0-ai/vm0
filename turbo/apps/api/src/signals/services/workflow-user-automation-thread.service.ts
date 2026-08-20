@@ -14,7 +14,7 @@ import {
   appendChatThreadEvent,
   type ChatThreadEventTransaction,
 } from "./chat-thread-event.service";
-import { resolveNewChatThreadMediaModels } from "./chat-thread-media-model.service";
+import { loadNewChatThreadMediaModels } from "./chat-thread-media-model.service";
 
 export async function loadWorkflowUserAutomationThreadId(
   db: ReadonlyDb,
@@ -110,7 +110,7 @@ export async function createAutomationChatThread(
     orgId: args.orgId,
     userId: args.userId,
   });
-  const mediaModels = await resolveNewChatThreadMediaModels(db, {
+  const mediaModels = await loadNewChatThreadMediaModels(db, {
     orgId: args.orgId,
     userId: args.userId,
   });

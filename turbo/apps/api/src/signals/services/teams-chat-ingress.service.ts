@@ -6,7 +6,7 @@ import { and, eq } from "drizzle-orm";
 import type { Db } from "../external/db";
 import { appendChatThreadEvent } from "./chat-thread-event.service";
 import {
-  resolveNewChatThreadMediaModels,
+  loadNewChatThreadMediaModels,
   type NewChatThreadMediaModels,
 } from "./chat-thread-media-model.service";
 import type { Tx } from "../../lib/db-types";
@@ -86,7 +86,7 @@ async function createCanonicalTeamsChatThread(
   },
   computerUseHostId: string | null = null,
 ): Promise<CreatedTeamsChatThread> {
-  const mediaModels = await resolveNewChatThreadMediaModels(tx, {
+  const mediaModels = await loadNewChatThreadMediaModels(tx, {
     orgId: args.orgId,
     userId: args.userId,
   });

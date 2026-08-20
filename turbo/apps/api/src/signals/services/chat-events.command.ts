@@ -130,7 +130,10 @@ import {
   type WebChatSessionPromptContext,
 } from "./web-chat-session-prompt.service";
 import { bestEffort } from "../utils";
-import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import {
+  isFeatureEnabled,
+  type FeatureSwitchContext,
+} from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { buildGenerationTemplatePrompt } from "../../lib/generation-template-prompt";
 import { resolveThreadGenerationTemplatePrompt } from "../../lib/thread-generation-template";
@@ -416,6 +419,11 @@ interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
   readonly latestWebsiteTemplatesEnabled: boolean;
   readonly videoModelSelectionEnabled: boolean;
+  /**
+   * Carried whole so thread creation can resolve its media pins without
+   * reloading the switches this request already read.
+   */
+  readonly featureSwitchContext: FeatureSwitchContext;
 }
 
 interface RuntimeNormalSendBody extends Omit<
@@ -1018,6 +1026,7 @@ async function resolveNormalSendFeatureSwitches(
       FeatureSwitchKey.VideoModelSelection,
       context,
     ),
+    featureSwitchContext: context,
   };
 }
 
@@ -1309,12 +1318,14 @@ async function createChatThread(
     readonly chatThreadEventId: string | undefined;
     readonly pin: ThreadModelPin;
     readonly codexServiceTier: CodexServiceTier | null;
+    readonly featureSwitchContext: FeatureSwitchContext;
   },
 ): Promise<CreateChatThreadResult> {
   return await db.transaction(async (tx) => {
     const mediaModels = await resolveNewChatThreadMediaModels(tx, {
       orgId: args.orgId,
       userId: args.userId,
+      featureSwitchContext: args.featureSwitchContext,
     });
     if (args.clientThreadId) {
       const [thread] = await tx
@@ -1455,6 +1466,7 @@ async function resolveThread(params: {
   readonly requestedCodexServiceTier: CodexServiceTier | undefined;
   readonly persistRequestedCodexServiceTier: boolean;
   readonly codexFastModeEnabled: boolean;
+  readonly featureSwitchContext: FeatureSwitchContext;
   readonly timing?: ApiDispatchTimingCollector;
 }): Promise<ResolvedThreadAndRunConfiguration | NormalSendFailure> {
   if (!params.existingThreadId) {
@@ -1470,6 +1482,7 @@ async function resolveThread(params: {
       pin: params.initialPin,
       codexServiceTier:
         params.explicitRunConfiguration.codexServiceTier ?? null,
+      featureSwitchContext: params.featureSwitchContext,
     });
     if ("status" in thread) {
       return thread;
@@ -2256,6 +2269,7 @@ function resolveTimedThread(
           args.body.modelSelection !== undefined ||
           args.body.runOptions !== undefined,
         codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
+        featureSwitchContext: featureSwitches.featureSwitchContext,
         timing: args.timing,
       });
       if (!("status" in resolved)) {

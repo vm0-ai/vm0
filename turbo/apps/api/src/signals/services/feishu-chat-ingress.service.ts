@@ -10,7 +10,7 @@ import { and, eq, sql } from "drizzle-orm";
 
 import type { Db } from "../external/db";
 import { appendChatThreadEvent } from "./chat-thread-event.service";
-import { resolveNewChatThreadMediaModels } from "./chat-thread-media-model.service";
+import { loadNewChatThreadMediaModels } from "./chat-thread-media-model.service";
 
 interface FeishuChatThreadRouteKey {
   readonly connectionId: string;
@@ -68,7 +68,7 @@ export async function ensureFeishuChatThreadRoute(
       return existing;
     }
 
-    const mediaModels = await resolveNewChatThreadMediaModels(tx, {
+    const mediaModels = await loadNewChatThreadMediaModels(tx, {
       orgId: args.orgId,
       userId: args.userId,
     });

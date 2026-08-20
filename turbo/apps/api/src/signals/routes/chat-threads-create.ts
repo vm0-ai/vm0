@@ -20,7 +20,7 @@ import { publishThreadListChanged } from "../external/realtime";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { createChatThread$ } from "../services/chat-thread.service";
 import { agentComposeExists } from "../services/compose-data.service";
-import { resolveNewChatThreadMediaModels } from "../services/chat-thread-media-model.service";
+import { loadNewChatThreadMediaModels } from "../services/chat-thread-media-model.service";
 import {
   resolveModelSelectionPin,
   validateCodexServiceTier,
@@ -121,7 +121,7 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   // Explicit request, then what the caller's own thread pinned, then the
   // member and catalog defaults. The last step is what keeps a thread from
   // following a default the member changes after this thread exists.
-  const mediaDefaults = await resolveNewChatThreadMediaModels(writeDb, {
+  const mediaDefaults = await loadNewChatThreadMediaModels(writeDb, {
     orgId: auth.orgId,
     userId: auth.userId,
   });

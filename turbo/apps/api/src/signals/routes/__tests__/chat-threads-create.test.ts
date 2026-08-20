@@ -7,7 +7,6 @@ import {
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import { userModelPreferenceContract } from "@okouai/api-contracts/contracts/user-model-preference";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { DEFAULT_VIDEO_MODEL } from "@okouai/core/video-model-catalog";
 import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
 
@@ -315,8 +314,9 @@ describe("POST /api/zero/chat-threads", () => {
     });
   });
 
-  it("pins the catalog video default when nothing else supplies one", async () => {
+  it("leaves media models unpinned while neither picker is enabled", async () => {
     const fixture = await seedAgent();
+    await setMemberMediaDefaults(fixture);
     const token = zeroToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
@@ -328,21 +328,54 @@ describe("POST /api/zero/chat-threads", () => {
         headers: { authorization: `Bearer ${token}` },
         body: {
           agentId: fixture.agentId,
-          title: "No media models requested",
+          title: "No media pickers enabled",
           model: OTHER_WORKSPACE_MODEL,
         },
       }),
       [201],
     );
 
-    // Pinned at creation rather than left null, so a member default written
-    // after this point cannot retarget the thread.
+    // A member who cannot reach either picker has no choice worth freezing, so
+    // the thread keeps following the live defaults. A written pin would also
+    // outlive a revert of this behavior.
     await expect(
       readCreatedThreadEvent(response.body.id, token),
     ).resolves.toMatchObject({
-      selectedVideoModel: DEFAULT_VIDEO_MODEL,
-      // The image picker does not exist while ImageModelSelection is off, so
-      // there is no member choice worth freezing yet.
+      selectedVideoModel: null,
+      selectedImageModel: null,
+    });
+  });
+
+  it("pins each media model whose picker is enabled", async () => {
+    const fixture = await seedAgent();
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.VideoModelSelection]: true,
+    });
+    await setMemberMediaDefaults(fixture);
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      capabilities: ["chat-thread:read", "chat-thread:write"],
+    });
+
+    const response = await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          agentId: fixture.agentId,
+          title: "Video picker only",
+          model: OTHER_WORKSPACE_MODEL,
+        },
+      }),
+      [201],
+    );
+
+    // Each switch gates its own pin: the video default freezes, the image one
+    // stays null until its picker ships.
+    await expect(
+      readCreatedThreadEvent(response.body.id, token),
+    ).resolves.toMatchObject({
+      selectedVideoModel: MEMBER_VIDEO_MODEL,
       selectedImageModel: null,
     });
   });
@@ -350,6 +383,7 @@ describe("POST /api/zero/chat-threads", () => {
   it("pins the member media defaults when the request omits them", async () => {
     const fixture = await seedAgent();
     await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.VideoModelSelection]: true,
       [FeatureSwitchKey.ImageModelSelection]: true,
     });
     await setMemberMediaDefaults(fixture);

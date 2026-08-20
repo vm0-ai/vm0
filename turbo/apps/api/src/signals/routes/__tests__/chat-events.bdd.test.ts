@@ -11685,13 +11685,67 @@ describe("CHAT-02: shared user message queue", () => {
   }, 90_000);
 });
 
+/**
+ * Creation-time pinning follows the picker's own switch, so a video test has to
+ * say which side of that switch it is on.
+ */
+async function videoModelSelectionActor(args: {
+  readonly selectionEnabled: boolean;
+}): Promise<{
+  readonly actor: ApiTestUser;
+  readonly agentId: string;
+  readonly orgId: string;
+}> {
+  const { actor, agentId } = await entitledChatActor();
+  const orgId = actor.orgId;
+  if (!orgId) {
+    throw new Error("Expected an entitled chat actor to own an org");
+  }
+  await updateFeatureSwitchesForUser(
+    context,
+    { ...actor, orgId },
+    { [FeatureSwitchKey.VideoModelSelection]: args.selectionEnabled },
+  );
+  return { actor, agentId, orgId };
+}
+
 describe("CHAT-02: run video model snapshot", () => {
+  it("leaves a thread unpinned while video model selection is disabled", async () => {
+    const { actor, agentId, orgId } = await videoModelSelectionActor({
+      selectionEnabled: false,
+    });
+
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "no video picker means nothing to freeze at creation",
+    });
+    await expect(readRunVideoModelFixture(anchor.runId)).resolves.toBe(
+      DEFAULT_VIDEO_MODEL,
+    );
+    await cancelChatRun(actor, anchor.runId);
+
+    // Without a pin the thread keeps following the live default, so a member
+    // default written later still reaches it.
+    await setOrgMemberVideoModelFixture({
+      orgId,
+      userId: actor.userId,
+      selectedVideoModel: "MiniMax-H3",
+    });
+    const followsDefault = await sendChatRun(actor, {
+      agentId,
+      threadId: anchor.threadId,
+      prompt: "an unpinned thread still follows the member default",
+    });
+    await expect(readRunVideoModelFixture(followsDefault.runId)).resolves.toBe(
+      "MiniMax-H3",
+    );
+    await cancelChatRun(actor, followsDefault.runId);
+  }, 90_000);
+
   it("pins a thread at creation and resolves later runs through that pin", async () => {
-    const { actor, agentId } = await entitledChatActor();
-    const orgId = actor.orgId;
-    if (!orgId) {
-      throw new Error("Expected an entitled chat actor to own an org");
-    }
+    const { actor, agentId, orgId } = await videoModelSelectionActor({
+      selectionEnabled: true,
+    });
 
     const catalogDefault = await sendChatRun(actor, {
       agentId,
@@ -11768,11 +11822,9 @@ describe("CHAT-02: run video model snapshot", () => {
   }, 90_000);
 
   it("still follows the member default for a thread that predates the pin", async () => {
-    const { actor, agentId } = await entitledChatActor();
-    const orgId = actor.orgId;
-    if (!orgId) {
-      throw new Error("Expected an entitled chat actor to own an org");
-    }
+    const { actor, agentId, orgId } = await videoModelSelectionActor({
+      selectionEnabled: true,
+    });
 
     const anchor = await sendChatRun(actor, {
       agentId,
@@ -11780,9 +11832,10 @@ describe("CHAT-02: run video model snapshot", () => {
     });
     await cancelChatRun(actor, anchor.runId);
 
-    // Threads created before creation-time pinning still hold null and were
-    // deliberately left alone, so they keep reading the live member default.
-    await setChatThreadVideoModelFixture(anchor.threadId, null);
+    // Clearing the pin reproduces the state of a thread created before
+    // creation-time pinning. Those rows were deliberately left alone, so they
+    // keep reading the live member default.
+    await chat.updateThreadVideoModel(actor, anchor.threadId, null);
     await setOrgMemberVideoModelFixture({
       orgId,
       userId: actor.userId,

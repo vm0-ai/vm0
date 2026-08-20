@@ -30,7 +30,7 @@ import {
   chatThreadModelPinColumns,
   resolveRequiredDefaultChatThreadModelPin,
 } from "./chat-thread-model.service";
-import { resolveNewChatThreadMediaModels } from "./chat-thread-media-model.service";
+import { loadNewChatThreadMediaModels } from "./chat-thread-media-model.service";
 import { childAutonomyBudget } from "./autonomy-budget.service";
 import { threadGoalColumns } from "./autonomy-budget-schema.service";
 
@@ -232,7 +232,7 @@ async function createGoalThread(
     orgId: args.orgId,
     userId: args.userId,
   });
-  const mediaModels = await resolveNewChatThreadMediaModels(tx, {
+  const mediaModels = await loadNewChatThreadMediaModels(tx, {
     orgId: args.orgId,
     userId: args.userId,
   });

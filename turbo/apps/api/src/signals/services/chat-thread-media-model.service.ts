@@ -7,10 +7,19 @@
  * had already started. Threads created before this pin existed still hold null
  * and keep falling through the member default in video-model.service and
  * image-model.service.
+ *
+ * Each model is pinned only while its own picker exists. A member who cannot
+ * reach the picker has no default of their own to freeze, so pinning would
+ * only capture whichever catalog default happened to be current and stop that
+ * thread from following the catalog. Written pins also survive a revert of this
+ * code, so the switch is the containment for that too.
  */
 import { isImageModelId } from "@okouai/api-contracts/contracts/image-models";
 import { isVideoModelId } from "@okouai/api-contracts/contracts/video-models";
-import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import {
+  isFeatureEnabled,
+  type FeatureSwitchContext,
+} from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   DEFAULT_IMAGE_MODEL,
@@ -27,14 +36,14 @@ import type { ReadonlyDb } from "../external/db";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 
 export interface NewChatThreadMediaModels {
-  readonly selectedVideoModel: VideoModel;
-  /**
-   * Null while `ImageModelSelection` is off: the member cannot reach the image
-   * picker yet, so there is no choice worth freezing. Those threads keep
-   * resolving through the member default once the switch is turned on.
-   */
+  readonly selectedVideoModel: VideoModel | null;
   readonly selectedImageModel: ImageModel | null;
 }
+
+const UNPINNED: NewChatThreadMediaModels = {
+  selectedVideoModel: null,
+  selectedImageModel: null,
+};
 
 /**
  * A stored id that has left its catalog counts as unset, matching how dispatch
@@ -74,23 +83,52 @@ async function memberMediaModels(
   };
 }
 
-/** Member default, then catalog default. */
+/**
+ * Member default, then catalog default, for each picker that is switched on.
+ * For callers that already resolved this request's feature switches.
+ */
 export async function resolveNewChatThreadMediaModels(
   db: Pick<ReadonlyDb, "select">,
-  args: { readonly orgId: string; readonly userId: string },
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly featureSwitchContext: FeatureSwitchContext;
+  },
 ): Promise<NewChatThreadMediaModels> {
-  const [member, featureSwitchContext] = await Promise.all([
-    memberMediaModels(db, args),
-    loadUserFeatureSwitchContext(db, args.orgId, args.userId),
-  ]);
-  const imageModelSelectionEnabled = isFeatureEnabled(
-    FeatureSwitchKey.ImageModelSelection,
-    featureSwitchContext,
+  const videoEnabled = isFeatureEnabled(
+    FeatureSwitchKey.VideoModelSelection,
+    args.featureSwitchContext,
   );
+  const imageEnabled = isFeatureEnabled(
+    FeatureSwitchKey.ImageModelSelection,
+    args.featureSwitchContext,
+  );
+  if (!videoEnabled && !imageEnabled) {
+    return UNPINNED;
+  }
+
+  const member = await memberMediaModels(db, args);
   return {
-    selectedVideoModel: catalogedVideoModel(member.selectedVideoModel),
-    selectedImageModel: imageModelSelectionEnabled
+    selectedVideoModel: videoEnabled
+      ? catalogedVideoModel(member.selectedVideoModel)
+      : null,
+    selectedImageModel: imageEnabled
       ? catalogedImageModel(member.selectedImageModel)
       : null,
   };
+}
+
+/** For creation paths that carry no feature-switch context of their own. */
+export async function loadNewChatThreadMediaModels(
+  db: Pick<ReadonlyDb, "select">,
+  args: { readonly orgId: string; readonly userId: string },
+): Promise<NewChatThreadMediaModels> {
+  return await resolveNewChatThreadMediaModels(db, {
+    ...args,
+    featureSwitchContext: await loadUserFeatureSwitchContext(
+      db,
+      args.orgId,
+      args.userId,
+    ),
+  });
 }
