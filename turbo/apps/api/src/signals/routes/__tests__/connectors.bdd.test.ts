@@ -2027,6 +2027,18 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
         admin,
         definition,
       );
+      const unlabeled = await connectorsApi.requestSetCustomConnectorValues(
+        admin,
+        connector.id,
+        [{ key: "secret", kind: "secret", value: "unlabeled-secret" }],
+        [400],
+        { intent: "add" },
+      );
+      expectApiError(unlabeled.body);
+      expect(unlabeled.body.error.message).toBe(
+        "Account display name is required when adding a custom connector account",
+      );
+
       const connected = await connectorsApi.requestSetCustomConnectorValues(
         admin,
         connector.id,
@@ -2133,6 +2145,18 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       agent.agentId,
       [expectedGrant],
       [200],
+    );
+
+    const unlabeledAdd = await connectorsApi.requestStartCustomConnectorOAuth2(
+      member,
+      created.id,
+      [400],
+      agent.agentId,
+      { intent: "add" },
+    );
+    expectApiError(unlabeledAdd.body);
+    expect(unlabeledAdd.body.error.message).toBe(
+      "Account display name is required when adding a custom connector account",
     );
 
     const authorizationUrl = await connectorsApi.startCustomConnectorOAuth2(
