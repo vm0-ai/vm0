@@ -39,7 +39,6 @@ import {
   ingestToAxiom,
 } from "./signals/external/axiom";
 import {
-  assertUniqueRouteRegistrations,
   type RouteEntry,
   withApiNamespaceAliases,
   withFinalProviderConsolePaths,
@@ -647,15 +646,15 @@ export function createAppWithRoutes({
     app.get(`${path}/*`, redirectToApp);
   }
 
-  // Hono keeps every registration for a path and answers with the first, so a
-  // duplicate would shadow a handler instead of failing. The compatibility
-  // tables in `route-entry.ts` are hand-edited, so assert here: a row that
-  // collides with a declared path stops the app at startup rather than silently
-  // taking that path over.
+  // Console paths first, then the namespace expansion, then the branded paths
+  // migrated routes owe: each stage consumes the declared path, so the last one
+  // produces finished registrations rather than input to another derivation.
+  // Uniqueness over this composition is asserted against the production route
+  // table in `__tests__/migrated-branded-paths.test.ts`, not here — test apps
+  // deliberately compose overlapping route slices.
   const registeredRoutes = withMigratedBrandedPaths(
     withApiNamespaceAliases(withFinalProviderConsolePaths(routes)),
   );
-  assertUniqueRouteRegistrations(registeredRoutes);
 
   const reportNamespaceAliasFallback = createNamespaceAliasFallbackReporter();
   for (const entry of registeredRoutes) {

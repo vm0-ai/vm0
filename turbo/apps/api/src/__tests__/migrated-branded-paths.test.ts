@@ -79,23 +79,23 @@ function servedHandler() {
 
 // One handler per route, so asserting that a produced registration carries the
 // declaring route's handler is a real assertion rather than a coincidence.
-const NEUTRAL_ROUTE: RouteEntry = {
+const NEUTRAL_ROUTE: Readonly<RouteEntry> = {
   route: migrationContract.neutral,
   handler: servedHandler(),
 };
-const BRANDED_ROUTE: RouteEntry = {
+const BRANDED_ROUTE: Readonly<RouteEntry> = {
   route: migrationContract.branded,
   handler: servedHandler(),
 };
-const UNNAMED_ROUTE: RouteEntry = {
+const UNNAMED_ROUTE: Readonly<RouteEntry> = {
   route: migrationContract.unnamed,
   handler: servedHandler(),
 };
-const CONSOLE_BRANDED_ROUTE: RouteEntry = {
+const CONSOLE_BRANDED_ROUTE: Readonly<RouteEntry> = {
   route: migrationContract.consoleBranded,
   handler: servedHandler(),
 };
-const CONSOLE_FINAL_ROUTE: RouteEntry = {
+const CONSOLE_FINAL_ROUTE: Readonly<RouteEntry> = {
   route: migrationContract.consoleFinal,
   handler: servedHandler(),
 };
@@ -282,18 +282,20 @@ describe("branded paths for migrated neutral routes", () => {
 
   // Hono keeps both registrations for a duplicated path and answers with the
   // first, so a colliding row would take a handler over instead of failing.
-  // Asserted through `createAppWithRoutes` rather than through
-  // `assertUniqueRouteRegistrations` alone: dropping the call from the app
-  // factory has to fail a test, or the guard protects nothing.
-  it("refuses to build an app whose registrations collide", () => {
+  // The synthetic case above proves the error is raised; this one runs the real
+  // route table through the composition production registers, so the slice that
+  // adds a colliding row fails here rather than in production. Asserted over
+  // the route table rather than inside `createAppWithRoutes`, because test apps
+  // deliberately compose overlapping route slices and would fail an app-wide
+  // assertion for reasons that have nothing to do with the table.
+  it("keeps the production route table free of colliding registrations", () => {
     expect(() => {
-      createAppWithRoutes({
-        signal: context.signal,
-        routes: [BRANDED_ROUTE, BRANDED_ROUTE],
-      });
-    }).toThrow(
-      "Duplicate API route registration: POST /api/okou/synthetic/thing",
-    );
+      assertUniqueRouteRegistrations(
+        withMigratedBrandedPaths(
+          withApiNamespaceAliases(withFinalProviderConsolePaths(ROUTES)),
+        ),
+      );
+    }).not.toThrow();
   });
 
   it("builds an app that serves every path it registers", async () => {

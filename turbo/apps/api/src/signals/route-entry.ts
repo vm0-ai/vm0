@@ -263,7 +263,7 @@ export function withApiNamespaceAliases(
  */
 type MigratedBrandedPathTable = Readonly<Record<string, readonly string[]>>;
 
-const MIGRATED_BRANDED_PATHS: MigratedBrandedPathTable = {
+const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // Empty until the first #28278 migration slice moves a contract path.
 };
 
