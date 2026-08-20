@@ -18,6 +18,15 @@ const LEGACY_PREFIX = "/api/zero";
 // issue's measured table rather than against the map the production code
 // reads: the first group is the traffic measured in `vm0-request-log-prod`,
 // the second is seeded because a provider console holds the URL.
+//
+// This literal list is the only non-tautological expectation in this file. The
+// mechanism tests below derive their expectation from `apiNamespaceAliasPaths`,
+// the same function that produces the registration, so they cannot notice a
+// path disappearing: when #28278 migrates a contract from `/api/okou/x` to a
+// neutral path, `apiNamespaceAliasPaths` returns the neutral path unchanged,
+// every mechanism assertion still holds, and both branded registrations vanish
+// silently. Only a literal list catches that, and editing this list is meant to
+// be the friction that forces the migration to be a conscious decision.
 const LEGACY_ZERO_PATHS: Readonly<Record<string, string>> = {
   "/api/okou/realtime/token": "/api/zero/realtime/token",
   "/api/okou/computer-use/host/commands/next":
@@ -78,6 +87,27 @@ function legacyPath(path: string): string {
     return path;
   }
   return `${LEGACY_PREFIX}${path.slice(CANONICAL_PREFIX.length)}`;
+}
+
+// Both branded forms of every compatibility path, taken from the literal list
+// above rather than from `apiNamespaceAliasPaths` or the production table.
+function compatibilityPaths(): readonly string[] {
+  return Object.entries(LEGACY_ZERO_PATHS).flat();
+}
+
+function missingCompatibilityPaths(
+  routes: readonly RouteEntry[],
+): readonly string[] {
+  const registeredPaths = new Set(
+    withApiNamespaceAliases(routes).map((entry) => {
+      return entry.route.path;
+    }),
+  );
+  return compatibilityPaths()
+    .filter((path) => {
+      return !registeredPaths.has(path);
+    })
+    .sort();
 }
 
 function requireBrandedRoute(): RouteEntry {
@@ -207,6 +237,54 @@ describe("API namespace compatibility", () => {
         expect(match.viaNamespaceAliasFallback).toBeUndefined();
       }
     }
+  });
+
+  it("registers both branded forms of every listed compatibility path", () => {
+    expect(missingCompatibilityPaths(ROUTES)).toStrictEqual([]);
+  });
+
+  // The regression #28278 will hit ~354 times: a contract moves off
+  // `/api/okou/**` to a neutral path, both branded registrations disappear, and
+  // every mechanism assertion in this file still passes. This pins that the
+  // literal list is what fails, so such a migration cannot go green and then
+  // 404 in production. Removing the path from the list is the way out, and it
+  // has to be deliberate.
+  it("fails when a contract migrates to a neutral path and drops its branded registrations", () => {
+    const canonical = "/api/okou/realtime/token";
+    const legacy = "/api/zero/realtime/token";
+    const neutral = "/api/realtime/token";
+    expect(
+      LEGACY_ZERO_PATHS[canonical],
+      `${canonical} must stay in the compatibility list for this guard to mean anything`,
+    ).toBe(legacy);
+
+    const migratedRoutes = ROUTES.map((entry): RouteEntry => {
+      if (entry.route.path !== canonical) {
+        return entry;
+      }
+      return {
+        route: { ...entry.route, path: neutral },
+        handler: entry.handler,
+      };
+    });
+    const migratedRegistrations = withApiNamespaceAliases(migratedRoutes);
+
+    // The mechanism stays internally consistent, which is exactly why it cannot
+    // be the thing that catches this.
+    expect(
+      migratedRegistrations.some((entry) => {
+        return entry.route.path === neutral;
+      }),
+    ).toBe(true);
+    expect(apiNamespaceAliasPaths(neutral)).toStrictEqual([neutral]);
+    expect(() => {
+      assertUniqueRouteRegistrations(migratedRegistrations);
+    }).not.toThrow();
+
+    // The literal list is what notices.
+    expect(missingCompatibilityPaths(migratedRoutes)).toStrictEqual(
+      [canonical, legacy].sort(),
+    );
   });
 
   it("keeps every listed legacy path backed by a declared contract", () => {
