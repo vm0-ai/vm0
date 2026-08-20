@@ -262,7 +262,30 @@ export function withApiNamespaceAliases(
 type MigratedBrandedPathTable = Readonly<Record<string, readonly string[]>>;
 
 const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
-  // Empty until the first #28278 migration slice moves a contract path.
+  // #28357, the first #28278 slice. Published CLI builds post to the `okou`
+  // form (`callWeather` built it by hand rather than from the contract, so it
+  // shipped independently of this path), and the `zero` form was reachable
+  // through the blanket expansion until the contract moved. Both are owed.
+  "/api/weather/current": [
+    "/api/okou/weather/current",
+    "/api/zero/weather/current",
+  ],
+  "/api/weather/forecast/hourly": [
+    "/api/okou/weather/forecast/hourly",
+    "/api/zero/weather/forecast/hourly",
+  ],
+  "/api/weather/forecast/daily": [
+    "/api/okou/weather/forecast/daily",
+    "/api/zero/weather/forecast/daily",
+  ],
+  "/api/weather/history/hourly": [
+    "/api/okou/weather/history/hourly",
+    "/api/zero/weather/history/hourly",
+  ],
+  "/api/weather/air-quality/current": [
+    "/api/okou/weather/air-quality/current",
+    "/api/zero/weather/air-quality/current",
+  ],
 };
 
 /**

@@ -116,6 +116,17 @@ const MIGRATED_CONSOLE_TABLE: Readonly<Record<string, readonly string[]>> = {
   ],
 };
 
+// The five operations #28357 moved off `/api/okou/weather/**`, written out
+// rather than read from `weatherContract` or `MIGRATED_BRANDED_PATHS`, so
+// dropping a contract path or a table row fails the test that uses this.
+const WEATHER_OPERATIONS = [
+  "current",
+  "forecast/hourly",
+  "forecast/daily",
+  "history/hourly",
+  "air-quality/current",
+] as const;
+
 function registeredPaths(entries: readonly RouteEntry[]): readonly string[] {
   return entries.map((entry) => {
     return entry.route.path;
@@ -265,19 +276,45 @@ describe("branded paths for migrated neutral routes", () => {
     expect(movedWithRow).toStrictEqual([]);
   });
 
-  // The table ships empty, so this slice adds a capability and no route.
-  it("changes no registration while the shipped table is empty", () => {
-    const beforeTable = withApiNamespaceAliases(
-      withFinalProviderConsolePaths(ROUTES),
+  // Weather is the first #28278 slice to fill the table (#28357). Its contract
+  // declares the neutral paths, so the blanket expansion no longer derives a
+  // branded form for them and every branded weather path below exists only
+  // because of a table row. The paths are written out here rather than derived
+  // from the table, so deleting a row fails this test instead of changing what
+  // it asserts.
+  it("serves the migrated weather routes on neutral and branded paths", () => {
+    const registered = withMigratedBrandedPaths(
+      withApiNamespaceAliases(withFinalProviderConsolePaths(ROUTES)),
     );
-    const afterTable = withMigratedBrandedPaths(beforeTable);
 
-    expect(afterTable).toHaveLength(beforeTable.length);
-    expect(
-      afterTable.filter((entry, index) => {
-        return entry !== beforeTable[index];
-      }),
-    ).toStrictEqual([]);
+    function requireRoute(path: string): RouteEntry {
+      const matches = registered.filter((entry) => {
+        return entry.route.method === "POST" && entry.route.path === path;
+      });
+      const match = matches[0];
+      if (!match) {
+        throw new Error(`Missing weather registration for POST ${path}`);
+      }
+      expect(matches).toHaveLength(1);
+      return match;
+    }
+
+    for (const operation of WEATHER_OPERATIONS) {
+      const neutral = requireRoute(`/api/weather/${operation}`);
+
+      // One contract route behind all three paths, so a branded form cannot
+      // drift into a second handler or a stale schema.
+      for (const namespace of ["okou", "zero"]) {
+        const brandedPath = `/api/${namespace}/weather/${operation}`;
+        const branded = requireRoute(brandedPath);
+
+        expect(branded.handler).toBe(neutral.handler);
+        expect(branded.route).toStrictEqual({
+          ...neutral.route,
+          path: brandedPath,
+        });
+      }
+    }
   });
 
   // Hono keeps both registrations for a duplicated path and answers with the
