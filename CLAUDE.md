@@ -46,22 +46,23 @@
 - Don't wrap every async operation in try/catch
 - Only use try/catch when you have specific error recovery logic
 
-### External Data Boundaries
-**Externally owned data is not a local invariant.** Remote catalogs, provider
-payloads, webhook metadata, imported manifests, and persisted references to
-those values may be missing, removed, stale, or malformed.
+### Externally Managed References
+**Reference ownership follows the referenced entity's authority, not where the
+identifier is stored.** A local row can contain an identifier for an entity
+whose identity and lifecycle are managed by a provider, catalog, or another
+bounded context.
 
-- Validate external values where they enter the domain
-- Treat an unrecognized or invalid external entity as absent or unavailable;
-  it must not cause an otherwise valid operation to return 500
-- Fail closed: invalid external data must never grant capabilities,
+- Distinguish untrusted input, externally managed references, required remote
+  operations, and local invariants; they do not share one failure policy
+- Resolve a well-formed external reference against its current authority and
+  represent an expected miss as unavailable rather than an internal error
+- Fail closed: an unresolved reference must never grant capabilities,
   credentials, targets, or ownership
-- Do not use broad `try/catch` blocks to hide database failures, programmer
-  errors, or violated local invariants
-- Test malformed, unknown, and removed external entities through real entry
-  points
+- Do not turn database failures, programmer errors, or violated local
+  invariants into "external entity unavailable"
+- Test syntax validation and current existence as separate boundaries
 
-See `docs/external-data.md` for the full rules and examples.
+See `docs/externally-managed-references.md` for the full rules and examples.
 
 ### Strict Type Checking
 **Maintain type safety throughout the codebase.** Never compromise on type checking.
