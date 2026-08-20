@@ -2594,6 +2594,7 @@ async function resolveQueuedMessageModelRoute(args: {
   readonly orgId: string;
   readonly contextType: QueuedUserMessageContextType;
   readonly timing?: ChatCallbackPreCreateTimingCollector;
+  readonly fallbackEnabled: boolean;
 }): Promise<QueuedMessageModelRouteResolution> {
   const modelContext = await measureChatCallbackPreCreateTiming(
     args.timing,
@@ -2619,14 +2620,21 @@ async function resolveQueuedMessageModelRoute(args: {
   const selectedModel = modelContext.pin.selectedModel;
   const builtInModelRuntimeRoute =
     effectiveModelProvider === "vm0" && selectedModel
-      ? await resolveBuiltInModelRuntimeRoute(args.db, selectedModel)
+      ? await resolveBuiltInModelRuntimeRoute(
+          args.db,
+          selectedModel,
+          args.fallbackEnabled,
+        )
       : undefined;
   if (effectiveModelProvider === "vm0" && !builtInModelRuntimeRoute) {
     return {
       error: {
-        code: "PROVIDER_UNAVAILABLE",
-        message:
-          "No model provider configured: no VM0 managed model key is configured",
+        code: args.fallbackEnabled
+          ? "MODEL_PROVIDER_UNAVAILABLE"
+          : "PROVIDER_UNAVAILABLE",
+        message: args.fallbackEnabled
+          ? "Every managed route for this model is temporarily unavailable"
+          : "No model provider configured: no VM0 managed model key is configured",
       },
     };
   }
@@ -3076,17 +3084,23 @@ async function buildCreateQueuedChatRunInput(
   args: CreateQueuedChatRunInputArgs,
   signal: AbortSignal,
 ): Promise<CreateQueuedChatRunInput | QueuedMessageAdmissionFailure> {
-  const [featureSwitchContext, modelRouteResolution] = await Promise.all([
-    loadUserFeatureSwitchContext(args.db, args.agent.orgId, args.userId),
-    resolveQueuedMessageModelRoute({
-      db: args.db,
-      threadId: args.threadId,
-      userId: args.userId,
-      orgId: args.agent.orgId,
-      contextType: args.queuedMessage.contextType,
-      timing: args.timing,
-    }),
-  ]);
+  const featureSwitchContext = await loadUserFeatureSwitchContext(
+    args.db,
+    args.agent.orgId,
+    args.userId,
+  );
+  const modelRouteResolution = await resolveQueuedMessageModelRoute({
+    db: args.db,
+    threadId: args.threadId,
+    userId: args.userId,
+    orgId: args.agent.orgId,
+    contextType: args.queuedMessage.contextType,
+    timing: args.timing,
+    fallbackEnabled: isFeatureEnabled(
+      FeatureSwitchKey.ManagedModelProviderFallback,
+      featureSwitchContext,
+    ),
+  });
   const userMessageProjection = queuedUserMessageProjection(
     args.queuedMessage.userMessage,
   );

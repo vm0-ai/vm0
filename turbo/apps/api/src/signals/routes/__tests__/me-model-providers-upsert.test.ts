@@ -99,7 +99,7 @@ function makeAuthJson(overrides?: { planType?: string }): string {
   });
 }
 
-describe("POST /api/zero/me/model-providers (upsert)", () => {
+describe("POST /api/me/model-providers (upsert)", () => {
   it("returns 401 when unauthenticated", async () => {
     const client = setupApp({
       context,

@@ -550,6 +550,9 @@ export {
   type SupportedRunModel,
   type ModelProviderCredentialScope,
   type DefaultOrgModelPolicySeed,
+  type Vm0ManagedRouteCandidate,
+  type Vm0ManagedRouteProviderType,
+  type Vm0ManagedRouteTarget,
   // Multi-auth provider types
   type SecretFieldConfig,
   type AuthMethodConfig,
@@ -558,7 +561,10 @@ export {
   getModelProviderFirewall,
   // VM0 managed provider
   VM0_MODEL_TO_PROVIDER,
+  VM0_MANAGED_ROUTE_PROVIDERS,
   VM0_MODEL_ALIAS_TO_MODEL,
+  getVm0ManagedRouteCandidates,
+  getVm0ManagedRouteVendors,
   getVm0ConcreteProviderType,
   getVm0Vendor,
   getVm0ApiModel,

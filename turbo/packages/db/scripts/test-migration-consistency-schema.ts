@@ -2469,6 +2469,15 @@ const EXPECTED_PERMANENT_TRIGGERS = [
     tableName: "users",
     triggerName: "users_clerk_cleanup_transition_guard",
   },
+  // DB/API rollout bridge for #28304. Remove in #28372 after all pre-0954
+  // pending snapshots and Checkout Sessions have drained or reconciled.
+  {
+    definition:
+      "CREATE TRIGGER sync_usage_pack_pending_snapshot_guard_0954 AFTER INSERT OR DELETE OR UPDATE OF org_id, subscription_status ON public.usage_pack_subscriptions FOR EACH ROW EXECUTE FUNCTION sync_usage_pack_pending_snapshot_guard_0954()",
+    schemaName: "public",
+    tableName: "usage_pack_subscriptions",
+    triggerName: "sync_usage_pack_pending_snapshot_guard_0954",
+  },
   // DB/API rollout fallback; observed maximum version-skew window: ~102 minutes.
   // Previous API revisions explicitly insert NULL for omitted avatars. Remove
   // in #27356 after those writers and their rollback window drain.
@@ -2500,6 +2509,14 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
   {
     bodyHash: "b93914b9cf86141a4b0b4b803a3bfe6f",
     functionName: "bridge_zero_agent_default_avatar_0927",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  // Same #28304 DB/API rollout bridge and #28372 removal gate as its trigger.
+  {
+    bodyHash: "ced36d9b55fb6907880d545aa7f36dbe",
+    functionName: "sync_usage_pack_pending_snapshot_guard_0954",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
@@ -11550,6 +11567,139 @@ async function validateChatEventSnapshotContraction(): Promise<void> {
   }
 }
 
+async function validateUsagePackPendingSnapshotSerializationMigration(): Promise<void> {
+  console.log(
+    "=== Phase 1.30: Validate usage-pack pending snapshot serialization ===\n",
+  );
+  const testDb = "migration_test_usage_pack_pending_serialization";
+  await createDatabase(testDb);
+  const client = new Client({ connectionString: createTestDbUrl(testDb) });
+  const competingClient = new Client({
+    connectionString: createTestDbUrl(testDb),
+  });
+  await client.connect();
+  await competingClient.connect();
+
+  const firstId = "00000000-0000-4000-8000-000000002831";
+  const secondId = "00000000-0000-4000-8000-000000002832";
+  const replacementId = "00000000-0000-4000-8000-000000002833";
+  const orgId = "org_usage_pack_pending_serialization_28304";
+  try {
+    await applyMigrationsUpToTag(client, "0951_cool_bill_hollister");
+    await client.query(
+      `
+        INSERT INTO "usage_pack_subscriptions" (
+          "id",
+          "org_id",
+          "tier",
+          "stripe_plan_price_id",
+          "stripe_customer_id",
+          "stripe_checkout_session_id",
+          "subscription_status",
+          "updated_at"
+        )
+        VALUES
+          ($1, $3, 'pro', 'price_plan', 'cus_dirty', 'cs_dirty_first', 'checkout_pending', '2026-08-20 00:00:00'),
+          ($2, $3, 'pro', 'price_plan', 'cus_dirty', 'cs_dirty_second', 'checkout_pending', '2026-08-20 00:01:00')
+      `,
+      [firstId, secondId, orgId],
+    );
+
+    await applyMigrationsUpToTag(client, "0954_icy_bulldozer");
+    const seededGuards = await client.query<{
+      orgId: string;
+      pendingSnapshotCount: number;
+    }>(
+      `
+        SELECT
+          "org_id" AS "orgId",
+          "pending_snapshot_count" AS "pendingSnapshotCount"
+        FROM "usage_pack_pending_snapshot_guards"
+        WHERE "org_id" = $1
+      `,
+      [orgId],
+    );
+    assert.deepEqual(seededGuards.rows, [{ orgId, pendingSnapshotCount: 2 }]);
+
+    await assert.rejects(
+      client.query(
+        `
+          INSERT INTO "usage_pack_subscriptions" (
+            "id",
+            "org_id",
+            "tier",
+            "stripe_plan_price_id",
+            "stripe_customer_id",
+            "subscription_status"
+          )
+          VALUES ($1, $2, 'pro', 'price_plan', 'cus_dirty', 'purchase_pending')
+        `,
+        [replacementId, orgId],
+      ),
+      (error: unknown) => {
+        return (
+          typeof error === "object" &&
+          error !== null &&
+          Reflect.get(error, "code") === "23505" &&
+          Reflect.get(error, "constraint") ===
+            "uq_usage_pack_subscriptions_pending_org"
+        );
+      },
+    );
+
+    await Promise.all([
+      client.query(
+        `UPDATE "usage_pack_subscriptions" SET "subscription_status" = 'checkout_expired' WHERE "id" = $1`,
+        [secondId],
+      ),
+      competingClient.query(
+        `UPDATE "usage_pack_subscriptions" SET "subscription_status" = 'checkout_expired' WHERE "id" = $1`,
+        [firstId],
+      ),
+    ]);
+    const reconciledGuards = await client.query<{
+      pendingSnapshotCount: number;
+    }>(
+      `SELECT "pending_snapshot_count" AS "pendingSnapshotCount" FROM "usage_pack_pending_snapshot_guards" WHERE "org_id" = $1`,
+      [orgId],
+    );
+    assert.deepEqual(reconciledGuards.rows, [{ pendingSnapshotCount: 0 }]);
+
+    await client.query(
+      `
+        INSERT INTO "usage_pack_subscriptions" (
+          "id",
+          "org_id",
+          "tier",
+          "stripe_plan_price_id",
+          "stripe_customer_id",
+          "subscription_status"
+        )
+        VALUES ($1, $2, 'pro', 'price_plan', 'cus_dirty', 'purchase_pending')
+      `,
+      [replacementId, orgId],
+    );
+    const replacementGuards = await client.query<{
+      pendingSnapshotCount: number;
+    }>(
+      `SELECT "pending_snapshot_count" AS "pendingSnapshotCount" FROM "usage_pack_pending_snapshot_guards" WHERE "org_id" = $1`,
+      [orgId],
+    );
+    assert.deepEqual(replacementGuards.rows, [{ pendingSnapshotCount: 1 }]);
+
+    console.log(
+      "   ✅ Dirty pre-0954 snapshots retain their exact pending count",
+    );
+    console.log(
+      "   ✅ Concurrent reconciliation reaches zero before replacement\n",
+    );
+  } finally {
+    await competingClient.end();
+    await client.end();
+    await dropDatabase(testDb);
+  }
+}
+
 async function main(): Promise<void> {
   console.log("🧪 Testing Migration Consistency (Schema Comparison)\n");
 
@@ -11598,6 +11748,7 @@ async function main(): Promise<void> {
     await validateFeishuConnectorOwnershipCleanup();
     await validateConnectorAccountExpansion();
     await validateCustomGatewayProviderTypes();
+    await validateUsagePackPendingSnapshotSerializationMigration();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();

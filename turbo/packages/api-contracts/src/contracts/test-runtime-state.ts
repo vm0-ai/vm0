@@ -9,6 +9,12 @@ export const testRuntimeStateErrorSchema = z.object({
   error: z.string(),
 });
 
+const managedModelRuntimeRouteSchema = z.object({
+  provider_type: z.string(),
+  upstream_model: z.string(),
+  model_key_id: z.uuid(),
+});
+
 export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("seed-vm0-managed-default-model-key"),
@@ -24,10 +30,36 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     fixture_id: z.uuid(),
   }),
   z.object({
+    action: z.literal("seed-vm0-managed-model-candidate-keys"),
+    fixture_id: z.uuid(),
+    selected_model: z.string(),
+  }),
+  z.object({
+    action: z.literal("resolve-vm0-managed-model-route"),
+    selected_model: z.string(),
+    fallback_enabled: z.boolean(),
+  }),
+  z.object({
+    action: z.literal("set-vm0-managed-candidate-cooldown"),
+    selected_model: z.string(),
+    provider_type: z.string(),
+    upstream_model: z.string(),
+    unavailable_until: z.iso.datetime(),
+  }),
+  z.object({
+    action: z.literal("delete-vm0-managed-candidate-cooldown"),
+    selected_model: z.string(),
+    provider_type: z.string(),
+    upstream_model: z.string(),
+  }),
+  z.object({
     action: z.literal("read-browser-screenshot-schema-state"),
   }),
   z.object({
     action: z.literal("read-usage-pack-invitation-schema-state"),
+  }),
+  z.object({
+    action: z.literal("read-usage-pack-purchase-serialization-schema-state"),
   }),
   z.object({
     action: z.literal("set-run-autonomy-budget"),
@@ -207,8 +239,10 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
 export const testRuntimeStateActionResponseSchema = z.object({
   ok: z.literal(true),
   selected_model: z.string().optional(),
+  managed_model_route: managedModelRuntimeRouteSchema.nullable().optional(),
   browser_screenshot_schema_available: z.boolean().optional(),
   usage_pack_invitation_schema_available: z.boolean().optional(),
+  usage_pack_purchase_serialization_schema_available: z.boolean().optional(),
   autonomy_budget: z.int().min(0).max(10).nullable().optional(),
   workflow_automation_state: z
     .object({

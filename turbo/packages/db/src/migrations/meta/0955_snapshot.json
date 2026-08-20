@@ -1,6 +1,6 @@
 {
-  "id": "24c83962-a75d-430b-a000-97350c12599d",
-  "prevId": "1016ff5f-0f30-4c99-92da-546f78af57c9",
+  "id": "1b310aef-5416-47ec-b205-3902ca194b59",
+  "prevId": "6cf575ac-364e-4f14-b6ee-e123b2149c42",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4068,6 +4068,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "public_brand": {
+          "name": "public_brand",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'vm0'"
         },
         "name": {
           "name": "name",
@@ -24815,6 +24822,52 @@
         "chk_usage_pack_invoice_fulfillments_period": {
           "name": "chk_usage_pack_invoice_fulfillments_period",
           "value": "\"usage_pack_invoice_fulfillments\".\"period_start\" IS NULL OR \"usage_pack_invoice_fulfillments\".\"period_end\" > \"usage_pack_invoice_fulfillments\".\"period_start\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.usage_pack_pending_snapshot_guards": {
+      "name": "usage_pack_pending_snapshot_guards",
+      "schema": "",
+      "columns": {
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pending_snapshot_count": {
+          "name": "pending_snapshot_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "uq_usage_pack_subscriptions_pending_org": {
+          "name": "uq_usage_pack_subscriptions_pending_org",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "chk_usage_pack_pending_snapshot_guard_count": {
+          "name": "chk_usage_pack_pending_snapshot_guard_count",
+          "value": "\"usage_pack_pending_snapshot_guards\".\"pending_snapshot_count\" >= 0"
         }
       },
       "isRLSEnabled": false

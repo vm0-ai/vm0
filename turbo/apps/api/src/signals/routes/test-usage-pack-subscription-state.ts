@@ -11,20 +11,25 @@ import {
   usagePackAllocations,
   usagePackInvitationPurchases,
   usagePackInvoiceFulfillments,
+  usagePackPendingSnapshotGuards,
   usagePackSubscriptionMigrations,
   usagePackSubscriptions,
 } from "@okouai/db/schema/usage-pack-subscription";
 import { command } from "ccstate";
-import { and, asc, count, eq, sql } from "drizzle-orm";
+import { and, asc, count, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 
+import { executeRawRows } from "../../lib/db-raw-rows";
+import { testOverride } from "../../lib/singleton";
 import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { type Db, writeDb$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
+import { lockBillingPurchaseOrg } from "../services/billing-purchase-lock.service";
 import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
 import { upsertOrgPlanEntitlement } from "../services/org-plan-entitlements.service";
 import { prepareUsagePackMemberCreditRefunds } from "../services/usage-pack-credit-refund.service";
+import { createDeferredPromise, onRejection } from "../utils";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -60,7 +65,8 @@ const actionBodySchema = z.discriminatedUnion("action", [
     tier: z.enum(["pro", "team"]),
     stripePlanPriceId: z.string().min(1),
     stripeCustomerId: z.string().min(1),
-    stripeCheckoutSessionId: z.string().min(1),
+    stripeCheckoutSessionId: z.string().min(1).nullable(),
+    preSerializationCutover: z.boolean().optional(),
     allocations: z.array(seedAllocationSchema).min(1),
   }),
   z.object({
@@ -73,6 +79,28 @@ const actionBodySchema = z.discriminatedUnion("action", [
     orgId: z.string().min(1),
     usagePackSubscriptionId: z.string().uuid(),
     updatedAt: z.iso.datetime(),
+  }),
+  z.object({
+    action: z.literal("correlate-legacy-checkout-session"),
+    orgId: z.string().min(1),
+    usagePackSubscriptionId: z.string().uuid(),
+    stripeCheckoutSessionId: z.string().min(1),
+    updatedAt: z.iso.datetime(),
+  }),
+  z.object({
+    action: z.literal("hold-billing-purchase-lock"),
+    orgId: z.string().min(1),
+    usagePackSubscriptionId: z.string().uuid(),
+    stripeCheckoutSessionId: z.string().min(1),
+    updatedAt: z.iso.datetime(),
+  }),
+  z.object({
+    action: z.literal("read-billing-purchase-lock-state"),
+    orgId: z.string().min(1),
+  }),
+  z.object({
+    action: z.literal("release-billing-purchase-lock"),
+    orgId: z.string().min(1),
   }),
   z.object({
     action: z.literal("set-grant-remaining"),
@@ -114,10 +142,16 @@ const actionBodySchema = z.discriminatedUnion("action", [
     deleteOrgMetadata: z.boolean(),
   }),
 ]);
+type ActionBody = z.infer<typeof actionBodySchema>;
+type SetGrantRemainingBody = Extract<
+  ActionBody,
+  { action: "set-grant-remaining" }
+>;
 
 const nullableDateSchema = z.iso.datetime().nullable();
 const readStateSchema = z.object({
   subscriptionCount: z.number().int().nonnegative(),
+  subscriptionIds: z.array(z.string().uuid()),
   subscription: z
     .object({
       id: z.string().uuid(),
@@ -252,6 +286,11 @@ const actionResponseSchema = z.discriminatedUnion("action", [
   }),
   z.object({ action: z.literal("read"), state: readStateSchema }),
   z.object({
+    action: z.literal("billing-purchase-lock-state"),
+    held: z.boolean(),
+    waiterCount: z.number().int().nonnegative(),
+  }),
+  z.object({
     action: z.literal("pre-migration-compatibility"),
     memberInviteUsagePackRequired: z.boolean(),
     preMemberInvitationMigration: z.object({
@@ -295,6 +334,186 @@ type SeedLegacyMigrationAction = Extract<
   TestUsagePackSubscriptionStateAction,
   { readonly action: "seed-legacy-migration" }
 >;
+type HoldBillingPurchaseLockAction = Extract<
+  TestUsagePackSubscriptionStateAction,
+  { readonly action: "hold-billing-purchase-lock" }
+>;
+type CorrelateLegacyCheckoutSessionAction = Extract<
+  TestUsagePackSubscriptionStateAction,
+  { readonly action: "correlate-legacy-checkout-session" }
+>;
+
+interface BillingPurchaseLockGate {
+  readonly orgId: string;
+  holderPid: number | null;
+  readonly released: ReturnType<typeof createDeferredPromise<void>>;
+  readonly release: () => void;
+}
+
+const billingPurchaseLockGate = testOverride<BillingPurchaseLockGate | null>(
+  () => {
+    return null;
+  },
+);
+
+const lockHolderRowSchema = z.object({ holderPid: z.int() });
+const lockStateRowSchema = z.object({
+  held: z.boolean(),
+  waiterCount: z.int().nonnegative(),
+});
+
+function clearBillingPurchaseLockGate(gate: BillingPurchaseLockGate): void {
+  if (billingPurchaseLockGate.get() === gate) {
+    billingPurchaseLockGate.clear();
+  }
+}
+
+async function correlateLegacyCheckoutSession(
+  db: Db,
+  body: CorrelateLegacyCheckoutSessionAction,
+  signal: AbortSignal,
+): Promise<void> {
+  // The previous production writer correlates after releasing the organization
+  // lock and only filters by snapshot ID. Production has no endpoint that can
+  // pause and resume that deployed flow, so this test-only action reproduces
+  // its unconditional update exactly while retaining org scoping for cleanup.
+  const correlated = await db
+    .update(usagePackSubscriptions)
+    .set({
+      stripeCheckoutSessionId: body.stripeCheckoutSessionId,
+      updatedAt: new Date(body.updatedAt),
+    })
+    .where(
+      and(
+        eq(usagePackSubscriptions.id, body.usagePackSubscriptionId),
+        eq(usagePackSubscriptions.orgId, body.orgId),
+      ),
+    )
+    .returning({ id: usagePackSubscriptions.id });
+  signal.throwIfAborted();
+  if (correlated.length !== 1) {
+    throw new Error("Failed to correlate the legacy Checkout Session");
+  }
+}
+
+async function holdBillingPurchaseLock(
+  db: Db,
+  body: HoldBillingPurchaseLockAction,
+  signal: AbortSignal,
+): Promise<void> {
+  if (billingPurchaseLockGate.get()) {
+    throw new Error("A billing purchase lock gate is already active");
+  }
+  const released = createDeferredPromise<void>(signal);
+  const gate: BillingPurchaseLockGate = {
+    orgId: body.orgId,
+    holderPid: null,
+    released,
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+  };
+  billingPurchaseLockGate.set(gate);
+  await onRejection(
+    db.transaction(async (tx) => {
+      await lockBillingPurchaseOrg(tx, body.orgId);
+      signal.throwIfAborted();
+      const rows = await executeRawRows(
+        tx,
+        sql`SELECT pg_backend_pid() AS "holderPid"`,
+        lockHolderRowSchema,
+      );
+      signal.throwIfAborted();
+      const holder = rows[0];
+      if (!holder) {
+        throw new Error("Failed to read billing purchase lock holder");
+      }
+      gate.holderPid = holder.holderPid;
+      await gate.released.promise;
+      const correlated = await tx
+        .update(usagePackSubscriptions)
+        .set({
+          stripeCheckoutSessionId: body.stripeCheckoutSessionId,
+          updatedAt: new Date(body.updatedAt),
+        })
+        .where(
+          and(
+            eq(usagePackSubscriptions.id, body.usagePackSubscriptionId),
+            eq(usagePackSubscriptions.orgId, body.orgId),
+            eq(usagePackSubscriptions.subscriptionStatus, "checkout_pending"),
+            isNull(usagePackSubscriptions.stripeCheckoutSessionId),
+            isNull(usagePackSubscriptions.stripeSubscriptionId),
+          ),
+        )
+        .returning({ id: usagePackSubscriptions.id });
+      if (correlated.length !== 1) {
+        throw new Error("Failed to correlate the usage pack Checkout Session");
+      }
+    }),
+    () => {
+      clearBillingPurchaseLockGate(gate);
+    },
+  );
+  clearBillingPurchaseLockGate(gate);
+}
+
+async function readBillingPurchaseLockState(
+  db: Db,
+  orgId: string,
+  signal: AbortSignal,
+): Promise<{ readonly held: boolean; readonly waiterCount: number }> {
+  const gate = billingPurchaseLockGate.get();
+  const holderPid = gate?.orgId === orgId ? gate.holderPid : null;
+  if (holderPid === null || holderPid === undefined) {
+    return { held: false, waiterCount: 0 };
+  }
+  const rows = await executeRawRows(
+    db,
+    sql`
+      SELECT
+        EXISTS (
+          SELECT 1
+          FROM pg_locks held
+          WHERE
+            held.pid = ${holderPid}
+            AND held.locktype = 'advisory'
+            AND held.granted
+        ) AS "held",
+        (
+          SELECT ${count()}::int
+          FROM pg_locks held
+          INNER JOIN pg_locks waiting
+            ON waiting.locktype = held.locktype
+            AND waiting.database IS NOT DISTINCT FROM held.database
+            AND waiting.classid IS NOT DISTINCT FROM held.classid
+            AND waiting.objid IS NOT DISTINCT FROM held.objid
+            AND waiting.objsubid IS NOT DISTINCT FROM held.objsubid
+          WHERE
+            held.pid = ${holderPid}
+            AND held.locktype = 'advisory'
+            AND held.granted
+            AND NOT waiting.granted
+        ) AS "waiterCount"
+    `,
+    lockStateRowSchema,
+  );
+  signal.throwIfAborted();
+  const state = rows[0];
+  if (!state) {
+    throw new Error("Failed to read billing purchase lock state");
+  }
+  return state;
+}
+
+function releaseBillingPurchaseLock(orgId: string): void {
+  const gate = billingPurchaseLockGate.get();
+  if (!gate || gate.orgId !== orgId) {
+    throw new Error(`No billing purchase lock gate for ${orgId}`);
+  }
+  gate.release();
+}
 
 // Stripe callbacks and cron are production ingress surfaces, but production
 // deliberately has no API for constructing a pending local correlation row or
@@ -314,6 +533,13 @@ async function seedUsagePackState(
     if (orgRows.length !== 1) {
       throw new Error(`Missing organization fixture ${body.orgId}`);
     }
+    if (body.preSerializationCutover === true) {
+      // Let this test-only write bypass the post-0952 claim, then reconstruct
+      // the exact count that the migration would have backfilled.
+      await tx
+        .delete(usagePackPendingSnapshotGuards)
+        .where(eq(usagePackPendingSnapshotGuards.orgId, body.orgId));
+    }
     const [subscription] = await tx
       .insert(usagePackSubscriptions)
       .values({
@@ -326,6 +552,24 @@ async function seedUsagePackState(
       .returning({ id: usagePackSubscriptions.id });
     if (!subscription) {
       throw new Error("Failed to seed usage pack subscription state");
+    }
+    if (body.preSerializationCutover === true) {
+      const [pendingState] = await tx
+        .select({ pendingSnapshotCount: count() })
+        .from(usagePackSubscriptions)
+        .where(
+          and(
+            eq(usagePackSubscriptions.orgId, body.orgId),
+            sql`${usagePackSubscriptions.subscriptionStatus} IN ('checkout_pending', 'purchase_pending')`,
+          ),
+        );
+      if (!pendingState) {
+        throw new Error("Failed to reconstruct pre-0954 pending state");
+      }
+      await tx
+        .update(usagePackPendingSnapshotGuards)
+        .set({ pendingSnapshotCount: pendingState.pendingSnapshotCount })
+        .where(eq(usagePackPendingSnapshotGuards.orgId, body.orgId));
     }
     await tx.insert(usagePackAllocations).values(
       body.allocations.map((allocation) => {
@@ -525,14 +769,12 @@ async function readUsagePackState(
   usagePackSubscriptionId: string | undefined,
   signal: AbortSignal,
 ) {
-  const [countRow] = await db
-    .select({ value: count() })
+  const subscriptions = await db
+    .select({ id: usagePackSubscriptions.id })
     .from(usagePackSubscriptions)
-    .where(eq(usagePackSubscriptions.orgId, orgId));
-  if (!countRow) {
-    throw new Error("Failed to count usage pack subscriptions");
-  }
-  const subscriptionCount = countRow.value;
+    .where(eq(usagePackSubscriptions.orgId, orgId))
+    .orderBy(asc(usagePackSubscriptions.createdAt));
+  const subscriptionCount = subscriptions.length;
   const [subscription] = usagePackSubscriptionId
     ? await db
         .select()
@@ -555,6 +797,9 @@ async function readUsagePackState(
 
   return {
     subscriptionCount,
+    subscriptionIds: subscriptions.map((row) => {
+      return row.id;
+    }),
     subscription: subscription
       ? {
           id: subscription.id,
@@ -825,6 +1070,28 @@ async function preparePreMigrationPurchasedRefund(db: Db): Promise<void> {
   });
 }
 
+async function setGrantRemaining(
+  db: Db,
+  body: SetGrantRemainingBody,
+  signal: AbortSignal,
+): Promise<void> {
+  const rows = await db
+    .update(usagePackCreditGrants)
+    .set({ remainingAmount: body.remainingAmount })
+    .where(
+      and(
+        eq(usagePackCreditGrants.orgId, body.orgId),
+        eq(usagePackCreditGrants.userId, body.userId),
+        eq(usagePackCreditGrants.grantType, body.grantType),
+      ),
+    )
+    .returning({ id: usagePackCreditGrants.id });
+  signal.throwIfAborted();
+  if (rows.length !== 1) {
+    throw new Error("Expected one usage pack credit grant to update");
+  }
+}
+
 const actionBody$ = bodyResultOf(testUsagePackSubscriptionStateContract.action);
 
 const mutateTestUsagePackSubscriptionState$ = command(
@@ -877,22 +1144,34 @@ const mutateTestUsagePackSubscriptionState$ = command(
         signal.throwIfAborted();
         return { status: 200 as const, body: { action: "ok" as const } };
       }
+      case "correlate-legacy-checkout-session": {
+        await correlateLegacyCheckoutSession(db, body, signal);
+        return { status: 200 as const, body: { action: "ok" as const } };
+      }
+      case "hold-billing-purchase-lock": {
+        await holdBillingPurchaseLock(db, body, signal);
+        return { status: 200 as const, body: { action: "ok" as const } };
+      }
+      case "read-billing-purchase-lock-state": {
+        const state = await readBillingPurchaseLockState(
+          db,
+          body.orgId,
+          signal,
+        );
+        return {
+          status: 200 as const,
+          body: {
+            action: "billing-purchase-lock-state" as const,
+            ...state,
+          },
+        };
+      }
+      case "release-billing-purchase-lock": {
+        releaseBillingPurchaseLock(body.orgId);
+        return { status: 200 as const, body: { action: "ok" as const } };
+      }
       case "set-grant-remaining": {
-        const rows = await db
-          .update(usagePackCreditGrants)
-          .set({ remainingAmount: body.remainingAmount })
-          .where(
-            and(
-              eq(usagePackCreditGrants.orgId, body.orgId),
-              eq(usagePackCreditGrants.userId, body.userId),
-              eq(usagePackCreditGrants.grantType, body.grantType),
-            ),
-          )
-          .returning({ id: usagePackCreditGrants.id });
-        signal.throwIfAborted();
-        if (rows.length !== 1) {
-          throw new Error("Expected one usage pack credit grant to update");
-        }
+        await setGrantRemaining(db, body, signal);
         return { status: 200 as const, body: { action: "ok" as const } };
       }
       case "delete-refund-source": {

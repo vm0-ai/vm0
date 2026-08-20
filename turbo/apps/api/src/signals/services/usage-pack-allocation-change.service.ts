@@ -35,6 +35,7 @@ import {
   getStripeClient,
   type StripeClient,
   type StripeInvoice,
+  type StripeInvoiceAutomaticTaxParam,
   type StripeInvoiceLine,
   type StripePriceRecurring,
   type StripeRef,
@@ -813,12 +814,49 @@ async function listCompleteInvoiceLines(
   }
 }
 
-function usagePackAllocationAdditionAmount(
+function invoiceAutomaticTaxParam(
+  invoice: StripeInvoice,
+): StripeInvoiceAutomaticTaxParam | null {
+  if (invoice.automatic_tax?.enabled !== true) {
+    return null;
+  }
+  const liability = invoice.automatic_tax.liability;
+  if (!liability) {
+    return { enabled: true };
+  }
+  if (liability.type === "self") {
+    return { enabled: true, liability: { type: "self" } };
+  }
+  const account = stripeObjectId(liability.account);
+  if (!account) {
+    throw new Error("Stripe automatic tax liability has no account");
+  }
+  return { enabled: true, liability: { type: "account", account } };
+}
+
+function invoiceLineTaxRateIds(line: StripeInvoiceLine): readonly string[] {
+  return [
+    ...new Set(
+      (line.taxes ?? []).map((tax) => {
+        const taxRateId = tax.tax_rate_details?.tax_rate;
+        if (!taxRateId) {
+          throw new Error("Stripe invitation preview tax has no Tax Rate");
+        }
+        return taxRateId;
+      }),
+    ),
+  ];
+}
+
+function usagePackAllocationAdditionCharge(
   invoice: StripeInvoice,
   lines: readonly StripeInvoiceLine[],
   stripePriceId: string,
   prorationTimestamp: number,
-): number {
+): Pick<
+  UsagePackAllocationAdditionChargePreview,
+  "amountCents" | "automaticTax" | "invoiceItems"
+> {
   const prorationLines = lines.filter((line) => {
     return (
       invoiceLinePriceId(line) === stripePriceId &&
@@ -826,17 +864,39 @@ function usagePackAllocationAdditionAmount(
       line.period.start === prorationTimestamp
     );
   });
+  const automaticTax = invoiceAutomaticTaxParam(invoice);
+  const invoiceItems = prorationLines.map((line) => {
+    if (!Number.isSafeInteger(line.amount)) {
+      throw new Error("Stripe invitation preview line has an invalid amount");
+    }
+    return {
+      amountCents: line.amount,
+      taxRateIds: automaticTax ? [] : invoiceLineTaxRateIds(line),
+    };
+  });
+  const netAmountCents = invoiceItems.reduce((total, item) => {
+    return total + item.amountCents;
+  }, 0);
   const amount = prorationLines.reduce((total, line) => {
     return total + invoiceLineAmountWithTax(line);
   }, 0);
   if (
     invoice.currency.length !== 3 ||
     prorationLines.length === 0 ||
+    !Number.isSafeInteger(netAmountCents) ||
     !Number.isSafeInteger(amount)
   ) {
     throw new Error("Stripe invitation preview has an invalid amount");
   }
-  return Math.max(0, amount);
+  return {
+    amountCents: Math.max(0, amount),
+    automaticTax,
+    invoiceItems: automaticTax
+      ? netAmountCents > 0
+        ? [{ amountCents: netAmountCents, taxRateIds: [] }]
+        : []
+      : invoiceItems,
+  };
 }
 
 export async function lockUsagePackBillingOrg(
@@ -1366,14 +1426,23 @@ export interface UsagePackAllocationAdditionPreview {
   readonly prorationTimestamp: number;
 }
 
+export interface UsagePackAllocationAdditionChargePreview extends UsagePackAllocationAdditionPreview {
+  readonly automaticTax: StripeInvoiceAutomaticTaxParam | null;
+  readonly invoiceItems: readonly {
+    readonly amountCents: number;
+    readonly taxRateIds: readonly string[];
+  }[];
+}
+
 export async function previewUsagePackAllocationAddition(
   db: Pick<Db, "select">,
   args: {
     readonly usagePackSubscriptionId: string;
     readonly stripePriceId: string;
+    readonly prorationTimestamp?: number;
   },
   signal: AbortSignal,
-): Promise<UsagePackAllocationAdditionPreview> {
+): Promise<UsagePackAllocationAdditionChargePreview> {
   const context = await loadUsagePackChangeContextBySubscriptionId(
     db,
     args.usagePackSubscriptionId,
@@ -1391,7 +1460,15 @@ export async function previewUsagePackAllocationAddition(
     throw new Error("Usage pack subscription has a pending payment update");
   }
   const period = usagePackItemPeriod(subscription);
-  const requestedTimestamp = Math.floor(nowDate().getTime() / 1000);
+  const requestedTimestamp =
+    args.prorationTimestamp ?? Math.floor(nowDate().getTime() / 1000);
+  if (
+    !Number.isSafeInteger(requestedTimestamp) ||
+    (args.prorationTimestamp !== undefined &&
+      (requestedTimestamp < period.start || requestedTimestamp >= period.end))
+  ) {
+    throw new Error("Usage pack invitation proration timestamp is invalid");
+  }
   const prorationTimestamp = Math.min(
     Math.max(requestedTimestamp, period.start),
     period.end - 1,
@@ -1422,13 +1499,14 @@ export async function previewUsagePackAllocationAddition(
   signal.throwIfAborted();
   const previewLines = await listCompleteInvoiceLines(stripe, preview, signal);
   signal.throwIfAborted();
+  const charge = usagePackAllocationAdditionCharge(
+    preview,
+    previewLines,
+    args.stripePriceId,
+    prorationTimestamp,
+  );
   return {
-    amountCents: usagePackAllocationAdditionAmount(
-      preview,
-      previewLines,
-      args.stripePriceId,
-      prorationTimestamp,
-    ),
+    ...charge,
     currency: preview.currency,
     currentPeriodStart: new Date(period.start * 1000),
     currentPeriodEnd: new Date(period.end * 1000),

@@ -36,7 +36,6 @@ import {
   getProvidersForModel,
   isCodexFastModeModel,
   isSupportedRunModel,
-  VM0_MODEL_TO_PROVIDER,
   type ModelProviderType,
   type OrgModelPolicy,
   type SupportedRunModel,
@@ -284,10 +283,6 @@ function stripInteractiveClasses(cls: string | undefined): string | undefined {
 function getModelFirstIconType(model: string): ModelProviderType | undefined {
   if (isSupportedRunModel(model)) {
     return getModelBrandIconType(model);
-  }
-  const vm0Entry = VM0_MODEL_TO_PROVIDER[model];
-  if (vm0Entry) {
-    return vm0Entry.concreteType as ModelProviderType;
   }
   return getProvidersForModel(model).find((type) => {
     return type !== "vm0";
