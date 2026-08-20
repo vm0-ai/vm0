@@ -614,8 +614,15 @@ interface EffectiveConnectorScope {
 }
 
 interface ThreadConnectorSelectionIds {
-  readonly connectorIdsBySlug: ReadonlyMap<ConnectorSlug, string>;
-  readonly connectorIdsByCustomConnectorId: ReadonlyMap<string, string>;
+  /** Candidates are ordered from run-scoped source to persisted preference. */
+  readonly connectorIdCandidatesBySlug: ReadonlyMap<
+    ConnectorSlug,
+    readonly string[]
+  >;
+  readonly connectorIdCandidatesByCustomConnectorId: ReadonlyMap<
+    string,
+    readonly string[]
+  >;
 }
 
 export type RunConnectorCatalogSelection =
@@ -3792,7 +3799,9 @@ async function loadStoredConnectorMaterializationPlan(
     readonly orgId: string;
     readonly userId: string;
     readonly allowedConnectorSlugs: readonly ConnectorSlug[];
-    readonly connectorIdsBySlug: ReadonlyMap<ConnectorSlug, string> | undefined;
+    readonly connectorIdCandidatesBySlug:
+      | ReadonlyMap<ConnectorSlug, readonly string[]>
+      | undefined;
     readonly scopeSource: ConnectorScopeSource;
     readonly connectorCatalogSnapshot: ConnectorRuntimeSelection;
   },
@@ -3810,7 +3819,7 @@ async function loadStoredConnectorMaterializationPlan(
       orgId: args.orgId,
       userId: args.userId,
       allowedConnectorSlugs,
-      connectorIdsBySlug: args.connectorIdsBySlug,
+      connectorIdCandidatesBySlug: args.connectorIdCandidatesBySlug,
       scopeSource: args.scopeSource,
       connectorCatalogSnapshot: args.connectorCatalogSnapshot,
     },
@@ -4064,15 +4073,41 @@ function materializeStoredConnectorSnapshotRows(
   return snapshot;
 }
 
-function retainMaterializedConnectorSelections<TKey>(
-  selections: ReadonlyMap<TKey, string>,
+function firstConnectorId<TKey>(
+  candidates: ReadonlyMap<TKey, readonly string[]> | undefined,
+  key: TKey,
+): string | undefined {
+  return candidates?.get(key)?.[0];
+}
+
+function advanceUnavailableConnectorCandidates<TKey>(
+  candidates: ReadonlyMap<TKey, readonly string[]> | undefined,
   materializedConnectorIds: ReadonlySet<string>,
-): ReadonlyMap<TKey, string> {
-  return new Map(
-    [...selections].filter(([, connectorId]) => {
-      return materializedConnectorIds.has(connectorId);
-    }),
-  );
+): ReadonlyMap<TKey, readonly string[]> | undefined {
+  if (candidates === undefined) {
+    return undefined;
+  }
+  let changed = false;
+  const remaining = new Map<TKey, readonly string[]>();
+  for (const [key, connectorIds] of candidates) {
+    const current = connectorIds[0];
+    if (current === undefined) {
+      throw new Error("Expected at least one connector account candidate");
+    }
+    if (materializedConnectorIds.has(current)) {
+      remaining.set(key, connectorIds);
+      continue;
+    }
+    changed = true;
+    const fallbacks = connectorIds.slice(1);
+    if (fallbacks.length > 0) {
+      remaining.set(key, fallbacks);
+    }
+  }
+  if (!changed) {
+    return candidates;
+  }
+  return remaining.size > 0 ? remaining : undefined;
 }
 
 async function loadStoredConnectorMaterializationSnapshot(
@@ -4081,7 +4116,9 @@ async function loadStoredConnectorMaterializationSnapshot(
     readonly orgId: string;
     readonly userId: string;
     readonly allowedConnectorSlugs: readonly ConnectorSlug[];
-    readonly connectorIdsBySlug: ReadonlyMap<ConnectorSlug, string> | undefined;
+    readonly connectorIdCandidatesBySlug:
+      | ReadonlyMap<ConnectorSlug, readonly string[]>
+      | undefined;
     readonly scopeSource: ConnectorScopeSource;
     readonly connectorCatalogSnapshot: ConnectorRuntimeSelection;
   },
@@ -4094,7 +4131,10 @@ async function loadStoredConnectorMaterializationSnapshot(
     orgId: args.orgId,
     userId: args.userId,
     requests: args.allowedConnectorSlugs.map((connectorSlug) => {
-      const connectorId = args.connectorIdsBySlug?.get(connectorSlug);
+      const connectorId = firstConnectorId(
+        args.connectorIdCandidatesBySlug,
+        connectorSlug,
+      );
       return {
         target: { kind: "builtin" as const, connectorSlug },
         selection:
@@ -4113,10 +4153,14 @@ async function loadStoredConnectorMaterializationSnapshot(
       : [];
   });
   if (connectorIds.length === 0) {
-    if (args.connectorIdsBySlug && args.connectorIdsBySlug.size > 0) {
+    const remainingCandidates = advanceUnavailableConnectorCandidates(
+      args.connectorIdCandidatesBySlug,
+      new Set(),
+    );
+    if (remainingCandidates !== args.connectorIdCandidatesBySlug) {
       return await loadStoredConnectorMaterializationSnapshot(
         db,
-        { ...args, connectorIdsBySlug: undefined },
+        { ...args, connectorIdCandidatesBySlug: remainingCandidates },
         timing,
       );
     }
@@ -4133,10 +4177,14 @@ async function loadStoredConnectorMaterializationSnapshot(
     timing,
   );
   if (rows.length === 0) {
-    if (args.connectorIdsBySlug && args.connectorIdsBySlug.size > 0) {
+    const remainingCandidates = advanceUnavailableConnectorCandidates(
+      args.connectorIdCandidatesBySlug,
+      new Set(),
+    );
+    if (remainingCandidates !== args.connectorIdCandidatesBySlug) {
       return await loadStoredConnectorMaterializationSnapshot(
         db,
-        { ...args, connectorIdsBySlug: undefined },
+        { ...args, connectorIdCandidatesBySlug: remainingCandidates },
         timing,
       );
     }
@@ -4152,23 +4200,22 @@ async function loadStoredConnectorMaterializationSnapshot(
     },
     timing,
   );
-  if (args.connectorIdsBySlug !== undefined) {
+  if (args.connectorIdCandidatesBySlug !== undefined) {
     const materializedConnectorIds = new Set(
       (snapshot?.allowedConnectorRows ?? []).map((row) => {
         return row.access.connectorId;
       }),
     );
-    const availableSelections = retainMaterializedConnectorSelections(
-      args.connectorIdsBySlug,
+    const remainingCandidates = advanceUnavailableConnectorCandidates(
+      args.connectorIdCandidatesBySlug,
       materializedConnectorIds,
     );
-    if (availableSelections.size !== args.connectorIdsBySlug.size) {
+    if (remainingCandidates !== args.connectorIdCandidatesBySlug) {
       return await loadStoredConnectorMaterializationSnapshot(
         db,
         {
           ...args,
-          connectorIdsBySlug:
-            availableSelections.size > 0 ? availableSelections : undefined,
+          connectorIdCandidatesBySlug: remainingCandidates,
         },
         timing,
       );
@@ -4792,6 +4839,46 @@ interface CustomConnectorRuntimeExecutionState {
   readonly networkPolicy: NetworkPolicy;
 }
 
+async function resolveCustomConnectorMemberIds(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly allowedCustomConnectorIds: readonly string[];
+    readonly connectorIdCandidatesByCustomConnectorId:
+      | ReadonlyMap<string, readonly string[]>
+      | undefined;
+  },
+): Promise<ReadonlyMap<string, string>> {
+  const accountResolutions = await resolveConnectorAccounts(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    requests: args.allowedCustomConnectorIds.map((customConnectorId) => {
+      const connectorId = firstConnectorId(
+        args.connectorIdCandidatesByCustomConnectorId,
+        customConnectorId,
+      );
+      return {
+        target: { kind: "custom" as const, customConnectorId },
+        selection:
+          connectorId === undefined
+            ? ({ kind: "default" } as const)
+            : ({ kind: "exact", sourceId: connectorId } as const),
+      };
+    }),
+  });
+  const connectorIds = new Map<string, string>();
+  for (const customConnectorId of args.allowedCustomConnectorIds) {
+    const resolution = accountResolutions.get(
+      connectorAccountTargetKey({ kind: "custom", customConnectorId }),
+    );
+    if (resolution?.kind === "resolved") {
+      connectorIds.set(customConnectorId, resolution.account.connectorId);
+    }
+  }
+  return connectorIds;
+}
+
 export function customConnectorRuntimeExecutionState(args: {
   readonly context: CustomConnectorRuntimeContext;
   readonly connectorId: string;
@@ -4829,8 +4916,8 @@ async function loadCustomConnectorContext(
     readonly orgId: string;
     readonly userId: string;
     readonly allowedCustomConnectorIds: readonly string[];
-    readonly connectorIdsByCustomConnectorId:
-      | ReadonlyMap<string, string>
+    readonly connectorIdCandidatesByCustomConnectorId:
+      | ReadonlyMap<string, readonly string[]>
       | undefined;
     readonly customConnectorGrants:
       | readonly AgentCustomConnectorGrant[]
@@ -4845,33 +4932,8 @@ async function loadCustomConnectorContext(
     return emptyCustomConnectorRuntimeContext();
   }
 
-  const accountResolutions = await resolveConnectorAccounts(db, {
-    orgId: args.orgId,
-    userId: args.userId,
-    requests: args.allowedCustomConnectorIds.map((customConnectorId) => {
-      const connectorId =
-        args.connectorIdsByCustomConnectorId?.get(customConnectorId);
-      return {
-        target: { kind: "custom" as const, customConnectorId },
-        selection:
-          connectorId === undefined
-            ? ({ kind: "default" } as const)
-            : ({ kind: "exact", sourceId: connectorId } as const),
-      };
-    }),
-  });
-  const memberConnectorIdsByCustomConnectorId = new Map<string, string>();
-  for (const customConnectorId of args.allowedCustomConnectorIds) {
-    const resolution = accountResolutions.get(
-      connectorAccountTargetKey({ kind: "custom", customConnectorId }),
-    );
-    if (resolution?.kind === "resolved") {
-      memberConnectorIdsByCustomConnectorId.set(
-        customConnectorId,
-        resolution.account.connectorId,
-      );
-    }
-  }
+  const memberConnectorIdsByCustomConnectorId =
+    await resolveCustomConnectorMemberIds(db, args);
   const rows = await loadCustomConnectorRuntimeData(db, {
     orgId: args.orgId,
     userId: args.userId,
@@ -4891,13 +4953,17 @@ async function loadCustomConnectorContext(
     },
   });
   if (rows.length === 0) {
-    if (
-      args.connectorIdsByCustomConnectorId &&
-      args.connectorIdsByCustomConnectorId.size > 0
-    ) {
+    const remainingCandidates = advanceUnavailableConnectorCandidates(
+      args.connectorIdCandidatesByCustomConnectorId,
+      new Set(),
+    );
+    if (remainingCandidates !== args.connectorIdCandidatesByCustomConnectorId) {
       return await loadCustomConnectorContext(
         db,
-        { ...args, connectorIdsByCustomConnectorId: undefined },
+        {
+          ...args,
+          connectorIdCandidatesByCustomConnectorId: remainingCandidates,
+        },
         signal,
         timing,
       );
@@ -4928,20 +4994,17 @@ async function loadCustomConnectorContext(
       });
     },
   );
-  if (args.connectorIdsByCustomConnectorId !== undefined) {
-    const availableSelections = retainMaterializedCustomConnectorSelections(
+  if (args.connectorIdCandidatesByCustomConnectorId !== undefined) {
+    const remainingCandidates = advanceMaterializedCustomConnectorCandidates(
       context,
-      args.connectorIdsByCustomConnectorId,
+      args.connectorIdCandidatesByCustomConnectorId,
     );
-    if (
-      availableSelections.size !== args.connectorIdsByCustomConnectorId.size
-    ) {
+    if (remainingCandidates !== args.connectorIdCandidatesByCustomConnectorId) {
       return await loadCustomConnectorContext(
         db,
         {
           ...args,
-          connectorIdsByCustomConnectorId:
-            availableSelections.size > 0 ? availableSelections : undefined,
+          connectorIdCandidatesByCustomConnectorId: remainingCandidates,
         },
         signal,
         timing,
@@ -4951,16 +5014,16 @@ async function loadCustomConnectorContext(
   return context;
 }
 
-function retainMaterializedCustomConnectorSelections(
+function advanceMaterializedCustomConnectorCandidates(
   context: CustomConnectorRuntimeContext,
-  selections: ReadonlyMap<string, string>,
-): ReadonlyMap<string, string> {
+  candidates: ReadonlyMap<string, readonly string[]>,
+): ReadonlyMap<string, readonly string[]> | undefined {
   const sourceIds = new Set(
     context.targets.flatMap((target) => {
       return target.sourceId === undefined ? [] : [target.sourceId];
     }),
   );
-  return retainMaterializedConnectorSelections(selections, sourceIds);
+  return advanceUnavailableConnectorCandidates(candidates, sourceIds);
 }
 
 function collectPermissionNames(
@@ -8263,8 +8326,8 @@ async function loadRunConnectorContexts(
             orgId: args.orgId,
             userId: args.userId,
             allowedConnectorSlugs: args.connectorScope.allowedConnectorSlugs,
-            connectorIdsBySlug:
-              args.threadConnectorSelectionIds?.connectorIdsBySlug,
+            connectorIdCandidatesBySlug:
+              args.threadConnectorSelectionIds?.connectorIdCandidatesBySlug,
             scopeSource: args.connectorScope.source,
             connectorCatalogSnapshot: args.connectorCatalogSnapshot,
           },
@@ -8287,8 +8350,9 @@ async function loadRunConnectorContexts(
             userId: args.userId,
             allowedCustomConnectorIds:
               args.connectorScope.allowedCustomConnectorIds,
-            connectorIdsByCustomConnectorId:
-              args.threadConnectorSelectionIds?.connectorIdsByCustomConnectorId,
+            connectorIdCandidatesByCustomConnectorId:
+              args.threadConnectorSelectionIds
+                ?.connectorIdCandidatesByCustomConnectorId,
             customConnectorGrants: args.connectorScope.customConnectorGrants,
             featureSwitchContext: args.featureSwitchContext,
             connectorCatalogSnapshot: args.connectorCatalogSnapshot,
@@ -8794,8 +8858,9 @@ async function resolvePreparedThreadConnectorSelections(
     return badRequestMessage(resolved.message);
   }
   return {
-    connectorIdsBySlug: resolved.connectorIdsBySlug,
-    connectorIdsByCustomConnectorId: resolved.connectorIdsByCustomConnectorId,
+    connectorIdCandidatesBySlug: resolved.connectorIdCandidatesBySlug,
+    connectorIdCandidatesByCustomConnectorId:
+      resolved.connectorIdCandidatesByCustomConnectorId,
   };
 }
 
@@ -8987,7 +9052,7 @@ function preparedRuntimeConnectorScope(args: {
       (connectorSlug) => {
         return (
           filtered.allowedConnectorSlugs.includes(connectorSlug) ||
-          args.threadConnectorSelectionIds?.connectorIdsBySlug.has(
+          args.threadConnectorSelectionIds?.connectorIdCandidatesBySlug.has(
             connectorSlug,
           )
         );

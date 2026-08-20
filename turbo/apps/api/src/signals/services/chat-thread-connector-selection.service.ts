@@ -54,22 +54,22 @@ type ClearChatThreadConnectorSelectionResult =
 type ResolveChatThreadConnectorSelectionsResult =
   | {
       readonly kind: "resolved";
-      readonly connectorIdsBySlug: ReadonlyMap<ConnectorSlug, string>;
-      readonly connectorIdsByCustomConnectorId: ReadonlyMap<string, string>;
+      readonly connectorIdCandidatesBySlug: ReadonlyMap<
+        ConnectorSlug,
+        readonly string[]
+      >;
+      readonly connectorIdCandidatesByCustomConnectorId: ReadonlyMap<
+        string,
+        readonly string[]
+      >;
     }
   | { readonly kind: "invalid"; readonly message: string };
 
-function targetFromRow(
-  row: ConnectorSelectionRow,
-): ConnectorAccountTarget | undefined {
+function targetFromRow(row: ConnectorSelectionRow): ConnectorAccountTarget {
   if (row.connectorSlug !== null && row.customConnectorId === null) {
-    const connectorSlug = connectorSlugSchema.safeParse(row.connectorSlug);
-    if (!connectorSlug.success) {
-      return undefined;
-    }
     return {
       kind: "builtin",
-      connectorSlug: connectorSlug.data,
+      connectorSlug: connectorSlugSchema.parse(row.connectorSlug),
     };
   }
   if (row.customConnectorId !== null && row.connectorSlug === null) {
@@ -80,14 +80,10 @@ function targetFromRow(
 
 function selectionFromRow(
   row: ConnectorSelectionRow,
-): ConnectorAccountSelection | undefined {
-  const target = targetFromRow(row);
-  if (!target) {
-    return undefined;
-  }
+): ConnectorAccountSelection {
   return {
     connectionId: row.connectorId,
-    target,
+    target: targetFromRow(row),
   };
 }
 
@@ -194,10 +190,7 @@ export async function listChatThreadConnectorSelections(
     return null;
   }
   const rows = await loadSelectionRows(db, args.chatThreadId);
-  return rows.flatMap((row) => {
-    const selection = selectionFromRow(row);
-    return selection ? [selection] : [];
-  });
+  return rows.map(selectionFromRow);
 }
 
 export async function prepareChatThreadConnectorSelections(
@@ -413,14 +406,16 @@ export async function resolveChatThreadConnectorSelections(
     };
   }
   const rows = await loadSelectionRows(db, args.chatThreadId);
-  const activeSelections = new Map<string, ConnectorAccountSelection>();
+  const selectionCandidates = new Map<
+    string,
+    readonly ConnectorAccountSelection[]
+  >();
   for (const row of rows) {
     const selection = selectionFromRow(row);
-    if (selection && targetIsAuthorized(args.scope, selection.target)) {
-      activeSelections.set(
-        connectorAccountTargetKey(selection.target),
+    if (targetIsAuthorized(args.scope, selection.target)) {
+      selectionCandidates.set(connectorAccountTargetKey(selection.target), [
         selection,
-      );
+      ]);
     }
   }
   if (args.connectorSourceId !== undefined) {
@@ -431,48 +426,49 @@ export async function resolveChatThreadConnectorSelections(
     });
     if (target && targetIsAuthorized(args.scope, target)) {
       const key = connectorAccountTargetKey(target);
-      activeSelections.set(key, {
+      const sourceSelection = {
         connectionId: args.connectorSourceId,
         target,
-      });
+      } satisfies ConnectorAccountSelection;
+      const threadSelection = selectionCandidates.get(key)?.[0];
+      selectionCandidates.set(
+        key,
+        threadSelection &&
+          threadSelection.connectionId !== sourceSelection.connectionId
+          ? [sourceSelection, threadSelection]
+          : [sourceSelection],
+      );
     }
   }
 
-  const exact = await resolveConnectorAccounts(db, {
-    orgId: args.orgId,
-    userId: args.userId,
-    requests: [...activeSelections.values()].map((selection) => {
-      return {
-        target: selection.target,
-        selection: {
-          kind: "exact" as const,
-          sourceId: selection.connectionId,
-        },
-      };
-    }),
-  });
-  const connectorIdsBySlug = new Map<ConnectorSlug, string>();
-  const connectorIdsByCustomConnectorId = new Map<string, string>();
-  for (const selection of activeSelections.values()) {
-    const resolution = exact.get(connectorAccountTargetKey(selection.target));
-    if (resolution?.kind !== "resolved") {
+  const connectorIdCandidatesBySlug = new Map<
+    ConnectorSlug,
+    readonly string[]
+  >();
+  const connectorIdCandidatesByCustomConnectorId = new Map<
+    string,
+    readonly string[]
+  >();
+  for (const candidates of selectionCandidates.values()) {
+    const first = candidates[0];
+    if (!first) {
       continue;
     }
-    if (selection.target.kind === "builtin") {
-      connectorIdsBySlug.set(
-        selection.target.connectorSlug,
-        resolution.account.connectorId,
-      );
+    const connectorIds = candidates.map((candidate) => {
+      return candidate.connectionId;
+    });
+    if (first.target.kind === "builtin") {
+      connectorIdCandidatesBySlug.set(first.target.connectorSlug, connectorIds);
     } else {
-      connectorIdsByCustomConnectorId.set(
-        selection.target.customConnectorId,
-        resolution.account.connectorId,
+      connectorIdCandidatesByCustomConnectorId.set(
+        first.target.customConnectorId,
+        connectorIds,
       );
     }
   }
   return {
     kind: "resolved",
-    connectorIdsBySlug,
-    connectorIdsByCustomConnectorId,
+    connectorIdCandidatesBySlug,
+    connectorIdCandidatesByCustomConnectorId,
   };
 }
