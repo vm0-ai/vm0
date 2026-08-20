@@ -53,6 +53,8 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
+use api_contracts::generated::constants::runners::BUILTIN_FIREWALL_CATALOG_MAX_BYTES;
+
 use super::api::ApiClient;
 use crate::error::{RunnerError, RunnerResult};
 use crate::lock;
@@ -427,10 +429,10 @@ async fn write_catalog_cache(
     let content = serde_json::to_vec(&cache).map_err(|e| {
         RunnerError::Internal(format!("serialize builtin firewall catalog cache: {e}"))
     })?;
-    if content.len() as u64 > crate::state_file::BUILTIN_FIREWALL_CATALOG_MAX_BYTES {
+    if content.len() as u64 > BUILTIN_FIREWALL_CATALOG_MAX_BYTES {
         return Err(RunnerError::Internal(format!(
             "builtin firewall catalog cache exceeds {} bytes",
-            crate::state_file::BUILTIN_FIREWALL_CATALOG_MAX_BYTES
+            BUILTIN_FIREWALL_CATALOG_MAX_BYTES
         )));
     }
 
@@ -474,7 +476,7 @@ async fn read_catalog_cache(
 ) -> RunnerResult<Option<BuiltinFirewallCatalogCache>> {
     let Some(content) = crate::state_file::read_to_string(
         cache_path,
-        crate::state_file::BUILTIN_FIREWALL_CATALOG_MAX_BYTES,
+        BUILTIN_FIREWALL_CATALOG_MAX_BYTES,
         crate::state_file::OwnerCheck::CurrentEuid,
     )
     .await?
@@ -561,9 +563,8 @@ mod tests {
 
     fn oversized_catalog() -> BuiltinFirewallCatalog {
         let mut catalog = catalog("github");
-        catalog.catalog_version = "x".repeat(
-            usize::try_from(crate::state_file::BUILTIN_FIREWALL_CATALOG_MAX_BYTES).unwrap(),
-        );
+        catalog.catalog_version =
+            "x".repeat(usize::try_from(BUILTIN_FIREWALL_CATALOG_MAX_BYTES).unwrap());
         catalog
             .validate_for_api_response()
             .expect("oversized catalog should remain schema-valid");
@@ -992,7 +993,7 @@ mod tests {
         let lock_path = dir.path().join("builtin-firewall-catalog-cache.json.lock");
         let expected_error = format!(
             "builtin firewall catalog cache exceeds {} bytes",
-            crate::state_file::BUILTIN_FIREWALL_CATALOG_MAX_BYTES
+            BUILTIN_FIREWALL_CATALOG_MAX_BYTES
         );
 
         let error = write_catalog_cache(&cache_path, &lock_path, oversized_catalog())

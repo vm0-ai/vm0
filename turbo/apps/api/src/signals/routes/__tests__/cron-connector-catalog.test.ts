@@ -14,7 +14,10 @@ import {
   zeroConnectorOpenIdStartContract,
   zeroConnectorsSearchContract,
 } from "@okouai/api-contracts/contracts/zero-connectors";
-import { connectorCatalogContract } from "@okouai/api-contracts/contracts/connector-catalog";
+import {
+  connectorCatalogContract,
+  CONNECTOR_CATALOG_MAX_RAW_BYTES,
+} from "@okouai/api-contracts/contracts/connector-catalog";
 import { connectorCheckContract } from "@okouai/api-contracts/contracts/connector-check";
 import { zeroFeatureSwitchesContract } from "@okouai/api-contracts/contracts/zero-feature-switches";
 import { zeroUserPermissionGrantsContract } from "@okouai/api-contracts/contracts/zero-user-permission-grants";
@@ -5974,19 +5977,23 @@ describe("connector catalog executable compatibility", () => {
 });
 
 describe("connector catalog rejection and latest-valid retention", () => {
-  it("accepts catalogs between eight and sixteen MiB and rejects larger catalogs", async () => {
+  it("accepts catalogs below the shared byte limit and rejects larger catalogs", async () => {
     configureSource();
     const accepted = buildRelease({
       version: "2026-07-15.sixteen-mib-limit",
       mutateCatalog: (artifact) => {
         firstRecord(artifact.connectors, "connectors").description = "x".repeat(
-          8 * 1024 * 1024,
+          CONNECTOR_CATALOG_MAX_RAW_BYTES / 2,
         );
       },
     });
     const acceptedBytes = releaseCatalogBytes(accepted);
-    expect(acceptedBytes.byteLength).toBeGreaterThan(8 * 1024 * 1024);
-    expect(acceptedBytes.byteLength).toBeLessThanOrEqual(16 * 1024 * 1024);
+    expect(acceptedBytes.byteLength).toBeGreaterThan(
+      CONNECTOR_CATALOG_MAX_RAW_BYTES / 2,
+    );
+    expect(acceptedBytes.byteLength).toBeLessThanOrEqual(
+      CONNECTOR_CATALOG_MAX_RAW_BYTES,
+    );
     serveObjects(catalogObjects([accepted], accepted));
 
     expect((await syncCatalog()).body).toMatchObject({
@@ -5996,7 +6003,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
 
     const rejected = buildRelease({
       version: "2026-07-15.over-sixteen-mib-limit",
-      catalogBytes: Buffer.alloc(16 * 1024 * 1024 + 1),
+      catalogBytes: Buffer.alloc(CONNECTOR_CATALOG_MAX_RAW_BYTES + 1),
     });
     serveObjects(catalogObjects([rejected], rejected));
 

@@ -2198,7 +2198,7 @@ describe("CHAT-03 run usage events", () => {
     ]);
   }, 60_000);
 
-  it("emits one immutable usage event per run", async () => {
+  it("revises run usage when later usage settles", async () => {
     const { actor, agentId } = await entitledChatActorWithoutRunner(
       "Usage message agent",
     );
@@ -2259,11 +2259,11 @@ describe("CHAT-03 run usage events", () => {
 
     let usageEvents = await usageEventsForRun(actor, threadId, runId);
     expect(usageEvents).toHaveLength(1);
-    const usageEvent = usageEvents[0];
-    if (!usageEvent) {
+    const initialUsageEvent = usageEvents[0];
+    if (!initialUsageEvent) {
       throw new Error("Expected one usage event");
     }
-    expect(usageEvent).toMatchObject({
+    expect(initialUsageEvent).toMatchObject({
       eventType: "usage.recorded",
       content: null,
       usage: {
@@ -2307,7 +2307,7 @@ describe("CHAT-03 run usage events", () => {
     mockNow(new Date("2030-01-01T00:00:00.000Z"));
     await billing.processOrgUsageEvents(actor);
     usageEvents = await usageEventsForRun(actor, threadId, runId);
-    expect(usageEvents).toStrictEqual([usageEvent]);
+    expect(usageEvents).toStrictEqual([initialUsageEvent]);
 
     clearMockNow();
     await webhooks.requestAgentUsageEvent(
@@ -2329,7 +2329,73 @@ describe("CHAT-03 run usage events", () => {
     mockNow(new Date("2030-01-01T00:00:01.000Z"));
     await billing.processOrgUsageEvents(actor);
     usageEvents = await usageEventsForRun(actor, threadId, runId);
-    expect(usageEvents).toStrictEqual([usageEvent]);
+    expect(usageEvents).toHaveLength(2);
+    const firstRevision = usageEvents[1];
+    if (!firstRevision) {
+      throw new Error("Expected the first usage revision");
+    }
+    expect(firstRevision).toMatchObject({
+      eventType: "usage.recorded",
+      content: null,
+      revokesEventId: initialUsageEvent.id,
+      usage: {
+        version: 1,
+        totalCredits: 29,
+        settledAt: initialUsageEvent.usage.settledAt,
+        breakdown: [
+          {
+            kind: "connector",
+            credits: 29,
+            providers: expect.arrayContaining([
+              { provider, credits: 29 },
+              { provider: missingProvider, credits: 0 },
+            ]),
+          },
+        ],
+      },
+    });
+
+    clearMockNow();
+    await webhooks.requestAgentUsageEvent(
+      {
+        runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            kind: "connector",
+            provider,
+            category,
+            quantity: 2,
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    mockNow(new Date("2030-01-01T00:00:02.000Z"));
+    await billing.processOrgUsageEvents(actor);
+    usageEvents = await usageEventsForRun(actor, threadId, runId);
+    expect(usageEvents).toHaveLength(3);
+    expect(usageEvents[2]).toMatchObject({
+      eventType: "usage.recorded",
+      content: null,
+      revokesEventId: firstRevision.id,
+      usage: {
+        version: 1,
+        totalCredits: 36,
+        settledAt: initialUsageEvent.usage.settledAt,
+        breakdown: [
+          {
+            kind: "connector",
+            credits: 36,
+            providers: expect.arrayContaining([
+              { provider, credits: 36 },
+              { provider: missingProvider, credits: 0 },
+            ]),
+          },
+        ],
+      },
+    });
   }, 60_000);
 
   it("emits complete allowance-covered usage in one event", async () => {

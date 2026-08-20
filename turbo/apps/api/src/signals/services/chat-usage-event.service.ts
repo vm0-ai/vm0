@@ -1,5 +1,16 @@
+import { isDeepStrictEqual } from "node:util";
 import { command } from "ccstate";
-import { and, count, eq, exists, isNotNull, max, sql, sum } from "drizzle-orm";
+import {
+  and,
+  count,
+  desc,
+  eq,
+  exists,
+  isNotNull,
+  max,
+  sql,
+  sum,
+} from "drizzle-orm";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import {
   chatEvents,
@@ -20,7 +31,7 @@ import { logger } from "../../lib/log";
 import { writeDb$ } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { chatEventTypeIn } from "./chat-event-type.service";
-import { insertChatEvent } from "./chat-event.service";
+import { insertChatEvent, replaceLoadedChatEvent } from "./chat-event.service";
 import {
   buildFinalizedUsageRelation,
   type FinalizedUsageRelation,
@@ -154,19 +165,6 @@ export const maybeEmitRunUsageEvent$ = command(
         return null;
       }
 
-      const [existingUsageEvent] = await tx
-        .select({ id: chatEvents.id })
-        .from(chatEvents)
-        .where(
-          and(eq(chatEvents.runId, runId), chatEventTypeIn(["usage.recorded"])),
-        )
-        .limit(1);
-      signal.throwIfAborted();
-
-      if (existingUsageEvent) {
-        return null;
-      }
-
       const breakdownRows = await loadUsageBreakdownRows(tx, runId);
       signal.throwIfAborted();
 
@@ -177,15 +175,45 @@ export const maybeEmitRunUsageEvent$ = command(
         breakdown: buildUsageBreakdown(breakdownRows),
       };
 
-      const inserted = await insertChatEvent(tx, {
+      const [existingUsageEvent] = await tx
+        .select({
+          id: chatEvents.id,
+          chatThreadId: chatEvents.chatThreadId,
+          createdAt: chatEvents.createdAt,
+          eventType: chatEvents.eventType,
+          contextType: chatEvents.contextType,
+          contextId: chatEvents.contextId,
+          payload: chatEvents.payload,
+        })
+        .from(chatEvents)
+        .where(
+          and(eq(chatEvents.runId, runId), chatEventTypeIn(["usage.recorded"])),
+        )
+        .orderBy(desc(chatEvents.seqId))
+        .limit(1);
+      signal.throwIfAborted();
+
+      if (
+        existingUsageEvent &&
+        isDeepStrictEqual(existingUsageEvent.payload?.usage, payload)
+      ) {
+        return null;
+      }
+
+      const event = {
         chatThreadId: context.chatThreadId,
-        eventType: "usage.recorded",
+        eventType: "usage.recorded" as const,
         content: null,
         runId,
         runGroupId: context.goalId,
         usagePayload: payload,
-        createdAt: new Date(payload.settledAt),
-      });
+      };
+      const inserted = existingUsageEvent
+        ? await replaceLoadedChatEvent(tx, existingUsageEvent, event)
+        : await insertChatEvent(tx, {
+            ...event,
+            createdAt: new Date(payload.settledAt),
+          });
       signal.throwIfAborted();
 
       if (!inserted) {
@@ -193,6 +221,9 @@ export const maybeEmitRunUsageEvent$ = command(
       }
 
       return {
+        action: existingUsageEvent
+          ? ("revised" as const)
+          : ("emitted" as const),
         chatThreadId: context.chatThreadId,
         userId: context.userId,
         totalCredits: payload.totalCredits,
@@ -210,11 +241,16 @@ export const maybeEmitRunUsageEvent$ = command(
     );
     signal.throwIfAborted();
 
-    L.debug("Emitted chat usage message", {
-      runId,
-      chatThreadId: emitted.chatThreadId,
-      totalCredits: emitted.totalCredits,
-    });
+    L.debug(
+      emitted.action === "emitted"
+        ? "Emitted chat usage message"
+        : "Revised chat usage message",
+      {
+        runId,
+        chatThreadId: emitted.chatThreadId,
+        totalCredits: emitted.totalCredits,
+      },
+    );
 
     return true;
   },
