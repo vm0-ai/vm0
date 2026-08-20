@@ -151,8 +151,6 @@ const LEGACY_ZERO_PATHS: Readonly<Record<string, string>> = {
     "/api/zero/billing/concurrency-checkout/preview",
   "/api/okou/feishu/events/:installationId":
     "/api/zero/feishu/events/:installationId",
-  "/api/okou/github/oauth/connect/callback":
-    "/api/zero/github/oauth/connect/callback",
   "/api/okou/computer-use/hosts/start": "/api/zero/computer-use/hosts/start",
   "/api/okou/logs/:id": "/api/zero/logs/:id",
   "/api/okou/mail/drafts/:mailDraftId": "/api/zero/mail/drafts/:mailDraftId",

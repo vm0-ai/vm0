@@ -21,13 +21,6 @@ export const githubOauthConnectQuerySchema = z.object({
   sig: z.string().optional(),
 });
 
-export const githubOauthConnectCallbackQuerySchema = z.object({
-  code: z.string().optional(),
-  state: z.string().optional(),
-  error: z.string().optional(),
-  error_description: z.string().optional(),
-});
-
 export const githubAppSetupCallbackQuerySchema = z.object({
   code: z.string().optional(),
   error: z.string().optional(),
@@ -61,15 +54,6 @@ export const githubOauthContract = c.router({
     },
     summary: "Start GitHub user OAuth for the GitHub App",
   },
-  connectCallback: {
-    method: "GET",
-    path: "/api/okou/github/oauth/connect/callback",
-    query: githubOauthConnectCallbackQuerySchema,
-    responses: {
-      307: c.noBody(),
-    },
-    summary: "Handle GitHub user OAuth for the GitHub App",
-  },
   setupCallback: {
     method: "GET",
     path: "/api/github/app/setup/callback",
@@ -87,9 +71,6 @@ export type GithubOauthInstallQuery = z.infer<
 >;
 export type GithubOauthConnectQuery = z.infer<
   typeof githubOauthConnectQuerySchema
->;
-export type GithubOauthConnectCallbackQuery = z.infer<
-  typeof githubOauthConnectCallbackQuerySchema
 >;
 export type GithubAppSetupCallbackQuery = z.infer<
   typeof githubAppSetupCallbackQuerySchema
