@@ -283,7 +283,7 @@ describe("POST /api/zero/uploads/complete", () => {
     expect(response.body).toMatchObject({
       id: prepared.id,
       filename: "okou-report.pdf",
-      url: expect.stringMatching(/^https:\/\/cdn\.okou\.test\//u),
+      url: expect.stringMatching(/^https:\/\/cdn\.okou\.io\//u),
     });
   });
 

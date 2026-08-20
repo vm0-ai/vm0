@@ -23,8 +23,11 @@ export async function removeBuiltInGenerationPublicBrandFixture(
     throw new Error("Expected one active branded built-in generation job");
   }
 
-  const legacyInternal = { ...internal };
-  delete legacyInternal.publicBrand;
+  const legacyInternal = Object.fromEntries(
+    Object.entries(internal).filter(([key]) => {
+      return key !== "publicBrand";
+    }),
+  );
   const updated = await db()
     .update(builtInGenerationJobs)
     .set({
