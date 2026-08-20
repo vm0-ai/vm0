@@ -84,7 +84,6 @@ export async function startVideoOnboardingCheckout(
 ): Promise<void> {
   await openOnboarding(page, options);
   await chooseMakeOption(page, "Video production");
-  await clickOnboardingButton(page, /^Continue$/i);
   await expect(
     page.getByRole("heading", {
       name: /pick a video template to start from/i,
@@ -164,15 +163,10 @@ async function submitExploreOnboarding(page: Page): Promise<void> {
     page.getByRole("heading", { name: "What do you want to make first" }),
   ).toBeVisible({ timeout: 60_000 });
   await chooseMakeOption(page, "I will explore on my own");
-  await clickOnboardingButton(page, /^Continue$/i);
 }
 
 async function chooseMakeOption(page: Page, name: string): Promise<void> {
   await page.getByRole("radio", { name }).click();
-  await expect(page.getByRole("radio", { name })).toHaveAttribute(
-    "aria-checked",
-    "true",
-  );
 }
 
 async function clickOnboardingButton(page: Page, name: RegExp): Promise<void> {
