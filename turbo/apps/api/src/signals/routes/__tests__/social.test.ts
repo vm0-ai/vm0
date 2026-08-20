@@ -47,6 +47,81 @@ const SOCIALKIT_BASE = "https://api.socialkit.dev";
 const MAX_PROVIDER_RESPONSE_BYTES = 4 * 1024 * 1024;
 const DEFAULT_CATEGORY = "youtube.transcripts.extract";
 
+const EXPECTED_PAIRED_SOCIALKIT_PATHS = [
+  ["/linkedin/profile", "linkedin.profiles.extract", ["url"]],
+  ["/linkedin/company", "linkedin.companies.extract", ["url"]],
+  [
+    "/linkedin/company-posts",
+    "linkedin.company-posts.extract",
+    ["url", "limit"],
+  ],
+  ["/linkedin/post", "linkedin.posts.extract", ["url"]],
+  ["/linkedin/transcript", "linkedin.transcripts.extract", ["url"]],
+  ["/twitter/profile", "twitter.profiles.extract", ["url"]],
+  ["/twitter/tweets", "twitter.timelines.extract", ["url", "limit", "cursor"]],
+  ["/twitter/tweet", "twitter.posts.extract", ["url"]],
+  ["/twitter/thread", "twitter.threads.extract", ["url"]],
+  ["/twitter/transcript", "twitter.transcripts.extract", ["url"]],
+  ["/facebook/stats", "facebook.post-stats.extract", ["url"]],
+  ["/facebook/channel-stats", "facebook.page-stats.extract", ["url"]],
+  ["/facebook/transcript", "facebook.transcripts.extract", ["url"]],
+  ["/facebook/comments", "facebook.comments.extract", ["url", "limit"]],
+  ["/facebook/summarize", "facebook.summaries.generate", ["url"]],
+  ["/instagram/stats", "instagram.post-stats.extract", ["url"]],
+  ["/instagram/channel-stats", "instagram.channel-stats.extract", ["url"]],
+  ["/instagram/transcript", "instagram.transcripts.extract", ["url"]],
+  ["/instagram/comments", "instagram.comments.extract", ["url", "limit"]],
+  [
+    "/instagram/channel-posts",
+    "instagram.channel-posts.extract",
+    ["url", "limit"],
+  ],
+  [
+    "/instagram/channel-reels",
+    "instagram.channel-reels.extract",
+    ["url", "limit"],
+  ],
+  ["/instagram/reels-search", "instagram.reels-search", ["query", "limit"]],
+  ["/instagram/summarize", "instagram.summaries.generate", ["url"]],
+  ["/tiktok/stats", "tiktok.video-stats.extract", ["url"]],
+  ["/tiktok/comments", "tiktok.comments.extract", ["url", "limit"]],
+  ["/tiktok/transcript", "tiktok.transcripts.extract", ["url"]],
+  ["/tiktok/channel-stats", "tiktok.channel-stats.extract", ["url"]],
+  ["/tiktok/channel-videos", "tiktok.channel-videos.extract", ["url", "limit"]],
+  ["/tiktok/search", "tiktok.search", ["query", "limit"]],
+  ["/tiktok/hashtag-search", "tiktok.hashtag-search", ["hashtag", "limit"]],
+  ["/tiktok/summarize", "tiktok.summaries.generate", ["url"]],
+  ["/youtube/transcript", "youtube.transcripts.extract", ["url"]],
+  ["/youtube/stats", "youtube.video-stats.extract", ["url"]],
+  ["/youtube/comments", "youtube.comments.extract", ["url", "limit"]],
+  ["/youtube/channel-stats", "youtube.channel-stats.extract", ["url"]],
+  ["/youtube/search", "youtube.search", ["query", "limit"]],
+  [
+    "/youtube/videos",
+    "youtube.videos.extract",
+    ["url", "limit", "full_details"],
+  ],
+  ["/youtube/summarize", "youtube.summaries.generate", ["url"]],
+  ["/video/transcript", "video.transcripts.extract", ["url"]],
+  ["/video/summarize", "video.summaries.generate", ["url"]],
+] as const;
+
+const EXPECTED_BULK_SOCIALKIT_PATHS = [
+  ["/youtube/transcript/bulk", "youtube.transcripts.extract"],
+  ["/youtube/comments/bulk", "youtube.comments.extract"],
+  ["/youtube/stats/bulk", "youtube.video-stats.extract"],
+  ["/youtube/summarize/bulk", "youtube.summaries.generate"],
+  ["/tiktok/transcript/bulk", "tiktok.transcripts.extract"],
+  ["/tiktok/comments/bulk", "tiktok.comments.extract"],
+  ["/tiktok/stats/bulk", "tiktok.video-stats.extract"],
+  ["/tiktok/channel-stats/bulk", "tiktok.channel-stats.extract"],
+  ["/tiktok/summarize/bulk", "tiktok.summaries.generate"],
+  ["/instagram/transcript/bulk", "instagram.transcripts.extract"],
+  ["/instagram/stats/bulk", "instagram.post-stats.extract"],
+  ["/instagram/channel-stats/bulk", "instagram.channel-stats.extract"],
+  ["/instagram/summarize/bulk", "instagram.summaries.generate"],
+] as const;
+
 const socialTestRoutes: readonly RouteEntry[] = [
   ...billingStatusRoutes,
   ...socialRoutes,
@@ -153,8 +228,7 @@ async function credits(actor: ApiTestUser): Promise<number> {
 }
 
 function configureProvider(): void {
-  mockEnv("OKOU_SOCIAL_SOCIALKIT_ACCESS_KEY", undefined);
-  mockEnv("ZERO_SOCIAL_SOCIALKIT_ACCESS_KEY", "test-socialkit-key");
+  mockEnv("OKOU_SOCIAL_SOCIALKIT_ACCESS_KEY", "test-socialkit-key");
 }
 
 function socialPricingKey(category: string): UsagePricingKey {
@@ -212,15 +286,39 @@ function providerHandler(
 
 describe("managed SocialKit route", () => {
   it("pins the reviewed 93-operation and 40-category inventory", () => {
-    expect(MANAGED_SOCIALKIT_OPERATIONS).toHaveLength(93);
-    expect(MANAGED_SOCIALKIT_BILLING_CATEGORIES).toHaveLength(40);
-    expect(
-      new Set(
-        MANAGED_SOCIALKIT_OPERATIONS.map((operation) => {
-          return `${operation.method} ${operation.path}`;
+    const expectedOperations = [
+      ...EXPECTED_PAIRED_SOCIALKIT_PATHS.flatMap(
+        ([path, category, queryNames]) => {
+          return [
+            { method: "GET", path, category, bulk: false, queryNames },
+            { method: "POST", path, category, bulk: false, queryNames },
+          ];
+        },
+      ),
+      ...EXPECTED_BULK_SOCIALKIT_PATHS.map(([path, category]) => {
+        return {
+          method: "POST",
+          path,
+          category,
+          bulk: true,
+          queryNames: [],
+        };
+      }),
+    ];
+    const expectedCategories = [
+      ...new Set(
+        EXPECTED_PAIRED_SOCIALKIT_PATHS.map(([, category]) => {
+          return category;
         }),
-      ).size,
-    ).toBe(93);
+      ),
+    ];
+
+    expect(MANAGED_SOCIALKIT_OPERATIONS).toStrictEqual(expectedOperations);
+    expect(MANAGED_SOCIALKIT_BILLING_CATEGORIES).toStrictEqual(
+      expectedCategories,
+    );
+    expect(expectedOperations).toHaveLength(93);
+    expect(expectedCategories).toHaveLength(40);
     for (const operation of MANAGED_SOCIALKIT_OPERATIONS) {
       const request = operation.bulk
         ? {
@@ -641,7 +739,6 @@ describe("managed SocialKit route", () => {
     const actor = createBddApi(context).user();
     await enableSocialKit(actor);
     mockEnv("OKOU_SOCIAL_SOCIALKIT_ACCESS_KEY", undefined);
-    mockEnv("ZERO_SOCIAL_SOCIALKIT_ACCESS_KEY", undefined);
 
     const response = await accept(
       client()(socialContract).request({

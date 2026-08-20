@@ -276,6 +276,7 @@ describe("okou social command", () => {
     expect(request?.helpInformation()).toContain("--body");
     expect(request?.helpInformation()).toContain("--json");
     expect(socialHelp).toContain("all 93 data and analysis");
+    expect(socialHelp).toContain("/video/summarize");
     expect(socialHelp).toContain("download operations are rejected");
     expect(socialHelp).toContain("bulk operations are billed");
   });

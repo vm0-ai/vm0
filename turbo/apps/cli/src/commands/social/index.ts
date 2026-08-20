@@ -100,6 +100,7 @@ Examples:
   Transcript:       okou social request /youtube/transcript --query 'url=https://www.youtube.com/watch?v=<id>'
   Search:           okou social request /tiktok/search --query 'query=product launch' --query limit=10
   Profile:          okou social request /linkedin/profile --query 'url=https://www.linkedin.com/in/<name>'
+  Summary:          okou social request /video/summarize --query 'url=https://cdn.example.com/public-video.mp4'
   Bulk stats:       okou social request /youtube/stats/bulk -X POST --body '{"urls":["https://youtu.be/<first>","https://youtu.be/<second>"]}'
   Compact JSON:     okou social request /instagram/comments --query 'url=https://www.instagram.com/p/<id>/' --json
 
