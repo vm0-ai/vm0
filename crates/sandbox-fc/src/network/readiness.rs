@@ -18,6 +18,12 @@ use crate::guest_dns_probe::{
     DNS_PROBE_DESTINATION_PORT, DNS_READINESS_HOSTNAME, DNS_READINESS_IPV4,
 };
 
+/// Maximum time allowed for the complete asynchronous namespace readiness operation.
+///
+/// The production probe's two-second `PROBE_TIMEOUT` plus its
+/// `PROBE_THREAD_GRACE` totals 2.25 seconds. This outer three-second bound
+/// must remain longer than that inner wait. Each socket read is separately
+/// bounded by `PROBE_ATTEMPT_TIMEOUT`, capped by the remaining probe deadline.
 pub(super) const DNS_READINESS_OPERATION_TIMEOUT: Duration = Duration::from_secs(3);
 
 pub(super) type DnsReadinessFuture =
@@ -30,9 +36,17 @@ const DNS_RESPONSE_FLAG: u16 = 0x8000;
 const DNS_RESPONSE_CODE_MASK: u16 = 0x000f;
 const DNS_TYPE_A: u16 = 1;
 const DNS_CLASS_IN: u16 = 1;
+/// Deadline for the blocking UDP probe on the candidate namespace.
+///
+/// The async wait adds `PROBE_THREAD_GRACE` so the one-shot thread can publish
+/// a result after the blocking deadline. The endpoint caps each socket read
+/// at `PROBE_ATTEMPT_TIMEOUT` and retries until this deadline.
 const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
+/// Grace period for receiving the one-shot thread's result after `PROBE_TIMEOUT`.
 const PROBE_THREAD_GRACE: Duration = Duration::from_millis(250);
+/// Maximum read wait for one UDP probe attempt; the remaining probe deadline can make it shorter.
 const PROBE_ATTEMPT_TIMEOUT: Duration = Duration::from_millis(200);
+/// Delay between probe attempts, capped by the remaining probe deadline.
 const PROBE_RETRY_DELAY: Duration = Duration::from_millis(25);
 const NETNS_DIR: &str = "/var/run/netns";
 
@@ -152,6 +166,13 @@ pub(super) fn production_dns_readiness_probe() -> DnsReadinessProbe {
     Arc::new(|namespace| Box::pin(probe_namespace_dns(namespace)))
 }
 
+/// Runs a namespace DNS probe under the caller-facing readiness timeout.
+///
+/// The outer timeout bounds the async wait. If it expires, dropping that wait
+/// does not cancel a blocking probe that is already running on its one-shot OS
+/// thread. The inner probe deadline and per-attempt socket timeout keep that
+/// detached operation bounded; thread grace only extends the async wait for
+/// the thread's result.
 pub(super) async fn run_dns_readiness_probe(
     namespace: String,
     probe: DnsReadinessProbe,
@@ -185,6 +206,19 @@ pub(super) async fn probe_namespace_dns(namespace: String) -> Result<u16, DnsRea
     probe_namespace_dns_for_hostname(namespace, PROBE_TIMEOUT, DNS_READINESS_HOSTNAME).await
 }
 
+/// Waits for a blocking DNS probe performed by a fresh one-shot OS thread.
+///
+/// Linux network namespace membership is thread-local: `setns` changes the
+/// namespace of the calling thread. This operation therefore cannot use a
+/// Tokio task or a reusable blocking-pool worker. If namespace restoration
+/// fails, a reusable worker could return to its pool while still attached to
+/// the target namespace; a fresh thread can exit instead.
+///
+/// The oneshot channel transports the result but does not own the blocking
+/// operation. Timing out or dropping the receiver stops waiting for the result,
+/// not the OS thread. The blocking probe remains bounded by its deadline and
+/// per-attempt socket timeout, and this wait allows `PROBE_THREAD_GRACE` for
+/// the thread to publish its result.
 async fn probe_namespace_dns_for_hostname(
     namespace: String,
     probe_timeout: Duration,
@@ -206,6 +240,13 @@ async fn probe_namespace_dns_for_hostname(
     }
 }
 
+/// Enters the target namespace, performs the blocking probe, and restores the
+/// original namespace before returning its result.
+///
+/// The current namespace descriptor is opened before `setns` changes this
+/// one-shot thread's namespace. Restoration is attempted after the DNS probe
+/// regardless of the probe result. A restoration failure is returned before
+/// the probe result can be published, after which the one-shot thread exits.
 fn probe_namespace_dns_blocking(
     namespace: &str,
     probe_timeout: Duration,

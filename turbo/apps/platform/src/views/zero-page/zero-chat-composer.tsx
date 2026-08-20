@@ -242,6 +242,10 @@ import {
 } from "./avatar-template-picker.tsx";
 import { ComposerVideoOptionsChip } from "./composer-video-options.tsx";
 import {
+  localizedWorkflowTemplate,
+  localizedWorkflowTemplateCategory,
+} from "./workflow-template-copy.ts";
+import {
   DEFAULT_IMAGE_MODEL,
   IMAGE_MODEL_CONFIGS,
   IMAGE_MODEL_VARIANT_GROUPS,
@@ -826,7 +830,10 @@ function selectedTemplateTitle(
     );
   }
   if (value?.type === "workflow") {
-    return selectedWorkflowTemplateItem(value)?.title;
+    const workflowItem = selectedWorkflowTemplateItem(value);
+    return workflowItem
+      ? localizedWorkflowTemplate(workflowItem).title
+      : undefined;
   }
   if (value?.type === "website") {
     return selectedWebsiteTemplateItem(value)?.title;
@@ -951,10 +958,15 @@ function workflowTemplateMatchesSearch(
   if (!normalizedQuery) {
     return true;
   }
+  // Both wordings are searchable: the reader types in their own language, and
+  // connector names stay English in every locale.
+  const copy = localizedWorkflowTemplate(item);
   const searchable = [
     item.title,
     item.id,
     item.description,
+    copy.title,
+    copy.description,
     item.connectorSlugs.join(" "),
   ].join(" ");
   return searchable.toLowerCase().includes(normalizedQuery);
@@ -1432,6 +1444,7 @@ function WorkflowTemplateCard({
   onSelect: (item: WorkflowTemplateItem) => void;
 }) {
   const { t } = useTranslation();
+  const copy = localizedWorkflowTemplate(item);
   return (
     <div
       className={cn(
@@ -1441,9 +1454,9 @@ function WorkflowTemplateCard({
         selected && TEMPLATE_TILE_RING_SELECTED,
       )}
     >
-      <p className="text-sm font-semibold text-foreground">{item.title}</p>
+      <p className="text-sm font-semibold text-foreground">{copy.title}</p>
       <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-        {item.description}
+        {copy.description}
       </p>
       <div className="mt-auto flex items-center gap-2 pt-3.5">
         <WorkflowTemplateConnectorIcons
@@ -1457,7 +1470,7 @@ function WorkflowTemplateCard({
               return $.artifacts.templates.selectWorkflow;
             },
             {
-              title: item.title,
+              title: copy.title,
             },
           )}
           aria-pressed={selected}
@@ -1545,7 +1558,7 @@ function WorkflowTemplatePillRow({
               ? t(($) => {
                   return $.artifacts.templates.all;
                 })
-              : pill}
+              : localizedWorkflowTemplateCategory(pill)}
           </button>
         );
       })}
@@ -5589,7 +5602,7 @@ function selectedComposerTemplateAttachment(
   if (workflowItem) {
     return {
       type: "workflow",
-      title: workflowItem.title,
+      title: localizedWorkflowTemplate(workflowItem).title,
       category: "workflow",
     };
   }

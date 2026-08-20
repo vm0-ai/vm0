@@ -385,10 +385,6 @@ async function buildGithubOauthState(args: {
   return Object.keys(state).length > 0 ? JSON.stringify(state) : "";
 }
 
-export function githubUserConnectCallbackRedirectUri(origin: string): string {
-  return `${origin}/api/zero/github/oauth/connect/callback`;
-}
-
 function githubAppSetupCallbackRedirectUri(origin: string): string {
   return `${origin}/api/github/app/setup/callback`;
 }

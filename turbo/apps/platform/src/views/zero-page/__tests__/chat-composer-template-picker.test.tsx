@@ -3156,6 +3156,38 @@ describe("chat composer templates", () => {
     });
   });
 
+  it("localizes the workflow catalog in the picker", async () => {
+    const workflowTemplate = WORKFLOW_TEMPLATE_ITEMS[0]!;
+    context.mocks.data.userPreferences({ locale: "pt-BR" });
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Modelo");
+      }),
+    );
+    await waitFor(() => {
+      expect(tabByText("Fluxo de trabalho")).toBeInTheDocument();
+    });
+    click(tabByText("Fluxo de trabalho"));
+
+    // The catalog ships English copy; the card and the persona pills read the
+    // reader's language instead.
+    await waitFor(() => {
+      expect(
+        screen.getByText("Marcador automático da caixa de entrada"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText(workflowTemplate.title)).toBeNull();
+    expect(screen.queryByText(workflowTemplate.description)).toBeNull();
+    expect(screen.getByText("Engenharia")).toBeInTheDocument();
+  });
+
   it("selects and sends a website template", async () => {
     const user = userEvent.setup({ delay: null });
     const websiteTemplate = WEBSITE_TEMPLATE_ITEMS[0]!;
@@ -3371,6 +3403,10 @@ describe("chat composer templates", () => {
     });
     await waitFor(() => {
       expect(sentPrompt).toContain("reusable presentation template");
+      // The guide is not a mounted skill, so the message has to carry the
+      // pointer; without it the thread opens with nothing to follow.
+      expect(sentPrompt).toContain("vm0-ai/Template-artifact");
+      expect(sentPrompt).toContain("reverse-template");
       expect(sentMessage?.parts).toContainEqual(
         expect.objectContaining({
           type: "file",

@@ -188,12 +188,13 @@ impl LocalQueue {
                 if self.discovery_candidate_ineligible(&candidate, snapshot.as_ref()) {
                     continue;
                 }
-                let metadata =
-                    super::read_private_file(&candidate.path, "local job discovery metadata")
-                        .ok()
-                        .and_then(|bytes| {
-                            serde_json::from_slice::<LocalDiscoveryMetadata>(&bytes).ok()
-                        });
+                let metadata = super::read_private_file_with_max(
+                    &candidate.path,
+                    "local job discovery metadata",
+                    super::LOCAL_JOB_MAX_BYTES,
+                )
+                .ok()
+                .and_then(|bytes| serde_json::from_slice::<LocalDiscoveryMetadata>(&bytes).ok());
                 let reuse_key = metadata.and_then(|metadata| metadata.reuse_key);
                 return Some(LocalDiscoveredJob {
                     run_id: candidate.run_id,
@@ -398,7 +399,11 @@ impl LocalQueue {
             return LocalClaimResult::NotClaimed;
         }
 
-        let buf = match super::read_private_file(job_file, "local job file") {
+        let buf = match super::read_private_file_with_max(
+            job_file,
+            "local job file",
+            super::LOCAL_JOB_MAX_BYTES,
+        ) {
             Ok(b) => b,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 warn!(run_id = %run_id, error = %e, "local: failed to read job file");

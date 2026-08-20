@@ -335,15 +335,6 @@ export function createGithubBddApi(context: TestContext) {
     );
   }
 
-  async function requestConnectCallback(
-    query: string,
-  ): Promise<RawRouteResponse> {
-    return await rawRequest(
-      `/api/zero/github/oauth/connect/callback${query ? `?${query}` : ""}`,
-      { method: "GET" },
-    );
-  }
-
   async function requestSetupCallback(
     query: string,
     options: { readonly origin?: string } = {},
@@ -357,7 +348,6 @@ export function createGithubBddApi(context: TestContext) {
   return {
     requestInstall,
     requestConnect,
-    requestConnectCallback,
     requestSetupCallback,
 
     async readInstallation(
