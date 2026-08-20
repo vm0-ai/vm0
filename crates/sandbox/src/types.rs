@@ -824,6 +824,9 @@ pub enum ProcessOutputMode {
         chunk_limit_bytes: u32,
         /// Capacity of the host-side stdout delivery queue.
         ///
+        /// This must be positive and no larger than
+        /// [`MAX_QUEUE_CAPACITY`](ProcessOutputMode::MAX_QUEUE_CAPACITY).
+        ///
         /// This bounds host buffering for delivered chunks. It is not a
         /// guarantee that a slow caller applies backpressure to the guest; host
         /// delivery overflow is reported through [`ProcessExit::stream_overflowed`].
@@ -854,8 +857,10 @@ impl ProcessOutputMode {
     pub const DEFAULT_STREAM_LIMIT_BYTES: u32 = 64 * 1024 * 1024;
     /// Default maximum size of each streamed process stdout chunk.
     pub const DEFAULT_CHUNK_LIMIT_BYTES: u32 = 64 * 1024;
+    /// Maximum supported host queue capacity for process stdout chunks.
+    pub const MAX_QUEUE_CAPACITY: usize = 8192;
     /// Default bounded host queue capacity for process stdout chunks.
-    pub const DEFAULT_QUEUE_CAPACITY: usize = 8192;
+    pub const DEFAULT_QUEUE_CAPACITY: usize = Self::MAX_QUEUE_CAPACITY;
 
     /// Return buffered output mode with the supplied capture limits.
     pub const fn buffered(output_limits: ExecOutputLimits) -> Self {
@@ -883,6 +888,41 @@ impl ProcessOutputMode {
             chunk_limit_bytes: Self::DEFAULT_CHUNK_LIMIT_BYTES,
             queue_capacity: Self::DEFAULT_QUEUE_CAPACITY,
             stderr_capture_limit_bytes: Some(stderr_capture_limit_bytes),
+        }
+    }
+
+    /// Validate this mode for [`Sandbox::start_process`](crate::Sandbox::start_process).
+    ///
+    /// Stream chunk limits and queue capacities must be positive, and queue
+    /// capacities must not exceed [`MAX_QUEUE_CAPACITY`](Self::MAX_QUEUE_CAPACITY).
+    pub fn validate(self) -> crate::Result<()> {
+        match self {
+            Self::Stream {
+                chunk_limit_bytes: 0,
+                ..
+            } => Err(crate::SandboxError::Operation {
+                operation: crate::SandboxOperation::StartProcess,
+                reason: crate::SandboxOperationReason::Other,
+                message: "process stream chunk limit must be positive".into(),
+            }),
+            Self::Stream {
+                queue_capacity: 0, ..
+            } => Err(crate::SandboxError::Operation {
+                operation: crate::SandboxOperation::StartProcess,
+                reason: crate::SandboxOperationReason::Other,
+                message: "process stream queue capacity must be positive".into(),
+            }),
+            Self::Stream { queue_capacity, .. } if queue_capacity > Self::MAX_QUEUE_CAPACITY => {
+                Err(crate::SandboxError::Operation {
+                    operation: crate::SandboxOperation::StartProcess,
+                    reason: crate::SandboxOperationReason::Other,
+                    message: format!(
+                        "process stream queue capacity must be at most {}",
+                        Self::MAX_QUEUE_CAPACITY
+                    ),
+                })
+            }
+            Self::Buffered { .. } | Self::Stream { .. } => Ok(()),
         }
     }
 
