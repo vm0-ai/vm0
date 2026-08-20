@@ -42,6 +42,8 @@ import {
   clearConnectorOAuthCookies,
 } from "../../lib/connector-oauth-state";
 import { env } from "../../lib/env";
+import { parseStoredConnectorAccountMutationIntent } from "../services/connector-account-mutation.service";
+import { connectorConnectionWriteFailureMessage } from "../services/connector-data.service";
 
 const CUSTOM_CONNECTOR_OAUTH_CALLBACK_PATH = "/connectors/custom/callback";
 
@@ -126,6 +128,7 @@ const startOAuth2Inner$ = command(async ({ get, set }, signal: AbortSignal) => {
       redirectUri,
       publicBrand: get(publicBrand$),
       agentId: body.data.agentId,
+      account: body.data.account,
     },
     signal,
   );
@@ -215,18 +218,47 @@ async function persistCustomConnectorOAuth2Connection(
     readonly storageVersion: number;
     readonly token: OAuthTokenResult;
     readonly featureContext: FeatureSwitchContext;
+    readonly account?: ReturnType<
+      typeof parseStoredConnectorAccountMutationIntent
+    >;
   },
   signal: AbortSignal,
-): Promise<void> {
+): Promise<
+  { readonly ok: true } | { readonly ok: false; readonly message: string }
+> {
   const connectionStorage = storeCustomConnectorOAuth2Connection(args, signal);
-  await commitConnectorRuntimeMutation(connectionStorage, () => {
+  const result = await commitConnectorRuntimeMutation(connectionStorage, () => {
     return {
       db: args.db,
       scope: { orgId: args.orgId, userId: args.userId },
       targets: [{ kind: "custom", customConnectorId: args.connectorId }],
     };
   });
+  if (result.kind !== "stored") {
+    const status =
+      result.kind === "missing"
+        ? "accountNotFound"
+        : result.kind === "ambiguous"
+          ? "accountAmbiguous"
+          : "siblingDisabled";
+    return {
+      ok: false,
+      message: connectorConnectionWriteFailureMessage(status),
+    };
+  }
   await publishCustomUserInvalidation(args.userId, signal);
+  return { ok: true };
+}
+
+function customConnectorOAuthPersistenceFailure(
+  result:
+    | Awaited<ReturnType<typeof persistCustomConnectorOAuth2Connection>>
+    | undefined,
+): string | null {
+  if (!result) {
+    return "OAuth token exchange failed - please try again";
+  }
+  return result.ok ? null : result.message;
 }
 
 async function codeLessCustomOAuthCallbackResponse(
@@ -336,7 +368,7 @@ const completeOAuth2Callback$ = command(
           signal,
         );
         signal.throwIfAborted();
-        await persistCustomConnectorOAuth2Connection(
+        return await persistCustomConnectorOAuth2Connection(
           {
             db: set(writeDb$),
             orgId: claimed.state.orgId,
@@ -345,18 +377,19 @@ const completeOAuth2Callback$ = command(
             storageVersion: connector.storageVersion,
             token,
             featureContext,
+            account: parseStoredConnectorAccountMutationIntent(
+              claimed.state.accountMutation,
+            ),
           },
           signal,
         );
-        return true;
       })(),
     );
     signal.throwIfAborted();
-    if (!completed) {
-      return callbackError(
-        origin,
-        "OAuth token exchange failed - please try again",
-      );
+    const persistenceFailure =
+      customConnectorOAuthPersistenceFailure(completed);
+    if (persistenceFailure) {
+      return callbackError(origin, persistenceFailure);
     }
     const authorizationError = await authorizeCustomConnectorAgent(
       {

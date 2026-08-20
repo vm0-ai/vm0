@@ -24,6 +24,7 @@ const setValuesInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       userId: auth.userId,
       connectorId: params.id,
       values: bodyResult.data.values,
+      account: bodyResult.data.account,
     },
     signal,
   );

@@ -23,12 +23,12 @@ import {
   type CustomConnectorValueInput,
   type UpdateCustomConnectorBody,
 } from "@okouai/api-contracts/contracts/zero-custom-connectors";
+import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   canonicalizeFirewallBaseUrl,
   expandHostWildcardsInBaseUrl,
   validateBaseUrlHostPolicy,
 } from "@okouai/connectors/firewall-types";
-import { connectors } from "@okouai/db/schema/connector";
 import {
   orgCustomConnectorOauthConfigs,
   type OrgCustomConnectorOAuthPkceMethod,
@@ -84,10 +84,13 @@ import {
 } from "./connector-client-invalidation.service";
 import { isCustomConnectorMcpEnabled } from "./custom-connector-mcp-feature.service";
 import {
+  type ConnectorConnectionMetadataArgs,
   replaceConnectorConnection,
-  type UpsertConnectorConnectionMetadataArgs,
-  upsertConnectorConnectionMetadata,
+  resolveConnectorConnectionMutation,
+  type ReadyConnectorConnectionMutation,
+  writeConnectorConnectionMetadata,
 } from "./connector-connection-write.service";
+import { normalizeConnectorAccountMutation } from "./connector-account-mutation.service";
 import type { Tx } from "../../lib/db-types";
 
 const L = logger("CustomConnectorService");
@@ -2650,12 +2653,14 @@ interface SetCustomConnectorValuesArgs {
   readonly userId: string;
   readonly connectorId: string;
   readonly values: readonly CustomConnectorValueInput[];
+  readonly account?: ConnectorAccountMutationIntent;
 }
 
 interface CustomConnectorValueWriteState {
   readonly connector: CustomConnectorRow;
   readonly preservesStoredValues: boolean;
   readonly runtimeRecovered: boolean;
+  readonly resolution: ReadyConnectorConnectionMutation;
 }
 
 async function prepareCustomConnectorValueWrite(args: {
@@ -2664,7 +2669,10 @@ async function prepareCustomConnectorValueWrite(args: {
   readonly expectedConnector: CustomConnectorRow;
   readonly expectedValues: readonly CustomConnectorValueInput[];
 }): Promise<
-  CustomConnectorValueWriteState | BadRequestResponse | NotFoundResponse
+  | CustomConnectorValueWriteState
+  | BadRequestResponse
+  | NotFoundResponse
+  | ConflictResponse
 > {
   const [lockedDefinition] = await args.tx
     .select(customConnectorDefinitionSelection())
@@ -2702,22 +2710,28 @@ async function prepareCustomConnectorValueWrite(args: {
     );
   }
 
-  const [storedConnector] = await args.tx
-    .select({
-      id: connectors.id,
-      authMethod: connectors.authMethod,
-      storageVersion: connectors.storageVersion,
-    })
-    .from(connectors)
-    .where(
-      and(
-        eq(connectors.customConnectorId, args.request.connectorId),
-        eq(connectors.userId, args.request.userId),
-        eq(connectors.orgId, args.request.orgId),
-      ),
-    )
-    .for("update")
-    .limit(1);
+  const resolution = await resolveConnectorConnectionMutation(args.tx, {
+    orgId: args.request.orgId,
+    userId: args.request.userId,
+    target: {
+      kind: "custom",
+      customConnectorId: args.request.connectorId,
+    },
+    mutation: normalizeConnectorAccountMutation(args.request.account),
+  });
+  if (resolution.kind !== "ready") {
+    return resolution.kind === "missing"
+      ? notFound("Connector account not found")
+      : conflict(
+          resolution.kind === "ambiguous"
+            ? "Multiple connector accounts require an exact choice"
+            : "Additional connector accounts are not enabled yet",
+        );
+  }
+  const storedConnector =
+    resolution.mutation.kind === "update"
+      ? resolution.mutation.existing
+      : undefined;
   const missingRequired = customConnectorMissingRequiredFieldKeys({
     fields: connector.fields,
     markers: currentValues,
@@ -2745,6 +2759,7 @@ async function prepareCustomConnectorValueWrite(args: {
   return {
     connector,
     preservesStoredValues,
+    resolution: resolution.mutation,
     runtimeRecovered: !preservesStoredValues,
   };
 }
@@ -2766,6 +2781,7 @@ async function persistCustomConnectorValues(
     }
   | BadRequestResponse
   | NotFoundResponse
+  | ConflictResponse
 > {
   const state = await prepareCustomConnectorValueWrite(args);
   if ("status" in state) {
@@ -2788,7 +2804,7 @@ async function persistCustomConnectorValues(
       writeSignal,
     );
   };
-  const connectionArgs: UpsertConnectorConnectionMetadataArgs = {
+  const connectionArgs: ConnectorConnectionMetadataArgs = {
     orgId: args.request.orgId,
     userId: args.request.userId,
     authMethod: "manual",
@@ -2800,10 +2816,10 @@ async function persistCustomConnectorValues(
     },
   };
   if (state.preservesStoredValues) {
-    const connection = await upsertConnectorConnectionMetadata(
-      args.tx,
-      connectionArgs,
-    );
+    const connection = await writeConnectorConnectionMetadata(args.tx, {
+      ...connectionArgs,
+      resolution: state.resolution,
+    });
     signal.throwIfAborted();
     await writeValues(args.tx, connection.id, signal);
   } else {
@@ -2811,6 +2827,7 @@ async function persistCustomConnectorValues(
       args.tx,
       {
         ...connectionArgs,
+        resolution: state.resolution,
         writeCredentials: async ({ db, connectorId }, writeSignal) => {
           await writeValues(db, connectorId, writeSignal);
         },
@@ -2833,6 +2850,7 @@ export const setCustomConnectorValues$ = command(
       readonly userId: string;
       readonly connectorId: string;
       readonly values: readonly CustomConnectorValueInput[];
+      readonly account?: ConnectorAccountMutationIntent;
     },
     signal: AbortSignal,
   ): Promise<
@@ -2840,6 +2858,7 @@ export const setCustomConnectorValues$ = command(
     | BadRequestResponse
     | NotFoundResponse
     | ForbiddenResponse
+    | ConflictResponse
   > => {
     const connector = await get(
       getCustomConnectorById({
@@ -2857,6 +2876,14 @@ export const setCustomConnectorValues$ = command(
     if (connector.authMode !== "manual") {
       return badRequestMessage(
         "OAuth custom connectors must be connected through OAuth",
+      );
+    }
+    if (
+      args.account?.intent === "add" &&
+      args.account.displayName === undefined
+    ) {
+      return badRequestMessage(
+        "Account display name is required when adding a custom connector account",
       );
     }
     const featureSwitchContext = await get(
@@ -3426,7 +3453,9 @@ export const saveCustomConnectorProposal$ = command(
         signal,
       );
       if ("status" in valueResult) {
-        return valueResult;
+        return valueResult.status === 409
+          ? badRequestMessage(valueResult.body.error.message)
+          : valueResult;
       }
     }
 

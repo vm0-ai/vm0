@@ -6,6 +6,7 @@ import type {
   ConnectorOauthDeviceAuthSessionPollResponse,
   ConnectorOauthDeviceAuthSessionStartResponse,
 } from "@okouai/api-contracts/contracts/connector-schemas";
+import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   connectorAuthMethodIdSchema,
   type ConnectorAuthMethodId,
@@ -27,7 +28,7 @@ import { connectorOauthDeviceAuthorizationSessions } from "@okouai/db/schema/con
 import { command } from "ccstate";
 import { and, eq, inArray, lt, or, sql } from "drizzle-orm";
 
-import { badRequestMessage, notFound } from "../../lib/error";
+import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
@@ -47,8 +48,9 @@ import {
   type ResolvedConnectorActionMethod,
 } from "./connector-action-resolver.service";
 import {
-  upsertConnectorTokenConnection$,
   connectorBySlug,
+  connectorConnectionWriteRejection,
+  upsertConnectorTokenConnection$,
 } from "./connector-data.service";
 import { normalizeDeviceAuthStartOptionsWithMethod } from "./connector-catalog-form-fields.service";
 import {
@@ -56,6 +58,13 @@ import {
   connectorAgentAuthorizationRequested,
   validateConnectorAuthorizationTarget$,
 } from "./connected-connector-authorization.service";
+import {
+  normalizeConnectorAccountMutation,
+  parseStoredConnectorAccountMutationIntent,
+  storedConnectorAccountMutationSelection,
+  storedConnectorAccountMutationWrite,
+} from "./connector-account-mutation.service";
+import { resolveConnectorConnectionMutation } from "./connector-connection-write.service";
 
 const DEFAULT_POLL_INTERVAL_SECONDS = 5;
 const SLOW_DOWN_INCREMENT_SECONDS = 5;
@@ -80,6 +89,9 @@ const deviceAuthSessionSelection = Object.freeze({
   sessionTokenHash: connectorOauthDeviceAuthorizationSessions.sessionTokenHash,
   encryptedProviderState:
     connectorOauthDeviceAuthorizationSessions.encryptedProviderState,
+  accountMutation: storedConnectorAccountMutationSelection(
+    connectorOauthDeviceAuthorizationSessions,
+  ),
   userCode: connectorOauthDeviceAuthorizationSessions.userCode,
   verificationUri: connectorOauthDeviceAuthorizationSessions.verificationUri,
   verificationUriComplete:
@@ -162,7 +174,10 @@ type PollClaimedSessionArgs = ResolvedDeviceAuthClient & {
   readonly claimStartedAt: Date;
   readonly persistConnector: (args: {
     readonly result: OAuthDeviceAuthCompleteResultBase;
-  }) => Promise<ConnectorResponse>;
+  }) => Promise<
+    | { readonly ok: true; readonly connector: ConnectorResponse }
+    | { readonly ok: false; readonly message: string }
+  >;
 };
 
 type DeviceAuthSessionOwner = {
@@ -729,7 +744,10 @@ async function completeClaimedSession(
     readonly result: OAuthDeviceAuthCompleteResultBase;
     readonly persistConnector: (args: {
       readonly result: OAuthDeviceAuthCompleteResultBase;
-    }) => Promise<ConnectorResponse>;
+    }) => Promise<
+      | { readonly ok: true; readonly connector: ConnectorResponse }
+      | { readonly ok: false; readonly message: string }
+    >;
   },
   signal: AbortSignal,
 ): Promise<PollSuccess> {
@@ -757,15 +775,30 @@ async function completeClaimedSession(
       );
     }
 
-    const connector = await args.persistConnector({ result: args.result });
+    const persisted = await args.persistConnector({ result: args.result });
     signal.throwIfAborted();
+    if (!persisted.ok) {
+      return await markClaimTerminal(
+        {
+          writeDb: tx,
+          session: args.session,
+          claimStartedAt: args.claimStartedAt,
+          result: {
+            status: "error",
+            error: "connector_account_rejected",
+            errorDescription: persisted.message,
+          },
+        },
+        signal,
+      );
+    }
 
     return await markClaimComplete(
       {
         writeDb: tx,
         session: args.session,
         claimStartedAt: args.claimStartedAt,
-        connector,
+        connector: persisted.connector,
       },
       signal,
     );
@@ -958,6 +991,82 @@ async function pollClaimedSession(
   throw result.error;
 }
 
+async function createDeviceAuthSession(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly agentId: string | undefined;
+    readonly authorizeAgent: true | undefined;
+    readonly connectorSlug: ConnectorSlug;
+    readonly authMethod: ConnectorAuthMethodId;
+    readonly account?: ConnectorAccountMutationIntent;
+    readonly sessionToken: string;
+    readonly encryptedProviderState: string;
+    readonly userCode: string;
+    readonly verificationUri: string;
+    readonly verificationUriComplete: string | undefined;
+    readonly intervalSeconds: number;
+    readonly now: Date;
+    readonly expiresAt: Date;
+  },
+  signal: AbortSignal,
+) {
+  return await db.transaction(async (tx) => {
+    await lockDeviceAuthSessionOwner({
+      connectorSlug: args.connectorSlug,
+      authMethod: args.authMethod,
+      writeDb: tx,
+      orgId: args.orgId,
+      userId: args.userId,
+    });
+    const mutationResolution = await resolveConnectorConnectionMutation(tx, {
+      orgId: args.orgId,
+      userId: args.userId,
+      target: { kind: "builtin", connectorSlug: args.connectorSlug },
+      mutation: normalizeConnectorAccountMutation(args.account),
+    });
+    signal.throwIfAborted();
+    if (mutationResolution.kind !== "ready") {
+      return mutationResolution;
+    }
+    await markActiveSessionsSuperseded({
+      connectorSlug: args.connectorSlug,
+      authMethod: args.authMethod,
+      writeDb: tx,
+      orgId: args.orgId,
+      userId: args.userId,
+      now: args.now,
+    });
+    const [session] = await tx
+      .insert(connectorOauthDeviceAuthorizationSessions)
+      .values({
+        orgId: args.orgId,
+        userId: args.userId,
+        agentId: args.agentId,
+        authorizeAgent: connectorAgentAuthorizationRequested(args),
+        connectorSlug: args.connectorSlug,
+        authMethod: args.authMethod,
+        status: "awaiting_user_authorization",
+        sessionTokenHash: sessionTokenHash(args.sessionToken),
+        encryptedProviderState: args.encryptedProviderState,
+        ...storedConnectorAccountMutationWrite(args.account),
+        userCode: args.userCode,
+        verificationUri: args.verificationUri,
+        verificationUriComplete: args.verificationUriComplete,
+        intervalSeconds: args.intervalSeconds,
+        createdAt: args.now,
+        updatedAt: args.now,
+        expiresAt: args.expiresAt,
+      })
+      .returning({ id: connectorOauthDeviceAuthorizationSessions.id });
+    if (!session) {
+      throw new Error("Failed to create OAuth device authorization session");
+    }
+    return { kind: "created" as const, session };
+  });
+}
+
 export const startConnectorOauthDeviceAuthSession$ = command(
   async (
     { get, set },
@@ -969,6 +1078,7 @@ export const startConnectorOauthDeviceAuthSession$ = command(
       readonly connectorSlug: ConnectorSlug;
       readonly authMethod: ConnectorAuthMethodId;
       readonly options?: Readonly<Record<string, string>>;
+      readonly account?: ConnectorAccountMutationIntent;
     },
     signal: AbortSignal,
   ) => {
@@ -1036,54 +1146,41 @@ export const startConnectorOauthDeviceAuthSession$ = command(
     );
     signal.throwIfAborted();
 
-    const [session] = await set(writeDb$).transaction(async (tx) => {
-      await lockDeviceAuthSessionOwner({
-        connectorSlug: resolvedMethod.connectorSlug,
-        authMethod: resolvedMethod.authMethodId,
-        writeDb: tx,
+    const sessionResult = await createDeviceAuthSession(
+      set(writeDb$),
+      {
         orgId: args.orgId,
         userId: args.userId,
-      });
-      await markActiveSessionsSuperseded({
         connectorSlug: resolvedMethod.connectorSlug,
         authMethod: resolvedMethod.authMethodId,
-        writeDb: tx,
-        orgId: args.orgId,
-        userId: args.userId,
+        agentId: args.agentId,
+        authorizeAgent: args.authorizeAgent,
+        account: args.account,
+        sessionToken,
+        encryptedProviderState,
+        userCode: startResult.userCode,
+        verificationUri: startResult.verificationUri,
+        verificationUriComplete: startResult.verificationUriComplete,
+        intervalSeconds,
         now,
-      });
-      return await tx
-        .insert(connectorOauthDeviceAuthorizationSessions)
-        .values({
-          orgId: args.orgId,
-          userId: args.userId,
-          agentId: args.agentId,
-          authorizeAgent: connectorAgentAuthorizationRequested(args),
-          connectorSlug: resolvedMethod.connectorSlug,
-          authMethod: resolvedMethod.authMethodId,
-          status: "awaiting_user_authorization",
-          sessionTokenHash: sessionTokenHash(sessionToken),
-          encryptedProviderState,
-          userCode: startResult.userCode,
-          verificationUri: startResult.verificationUri,
-          verificationUriComplete: startResult.verificationUriComplete,
-          intervalSeconds,
-          createdAt: now,
-          updatedAt: now,
-          expiresAt,
-        })
-        .returning({
-          id: connectorOauthDeviceAuthorizationSessions.id,
-        });
-    });
+        expiresAt,
+      },
+      signal,
+    );
     signal.throwIfAborted();
 
-    if (!session) {
-      throw new Error("Failed to create OAuth device authorization session");
+    if (sessionResult.kind !== "created") {
+      return sessionResult.kind === "missing"
+        ? notFound("Connector account not found")
+        : conflict(
+            sessionResult.kind === "ambiguous"
+              ? "Multiple connector accounts require an exact choice"
+              : "Additional connector accounts are not enabled yet",
+          );
     }
 
     const body = deviceAuthStartResponse({
-      sessionId: session.id,
+      sessionId: sessionResult.session.id,
       sessionToken,
       connectorSlug: resolvedMethod.connectorSlug,
       startResult,
@@ -1201,10 +1298,16 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
               oauthScopes: result.token.scopes,
               expiresIn: result.token.expiresIn,
               extraConnectorSecrets: result.token.extraConnectorSecrets,
+              account: parseStoredConnectorAccountMutationIntent(
+                claimedSession.accountMutation,
+              ),
             },
             signal,
           );
-          return connectorResult.connector;
+          if (connectorResult.status !== "connected") {
+            return connectorConnectionWriteRejection(connectorResult.status);
+          }
+          return { ok: true, connector: connectorResult.connector };
         },
       },
       signal,

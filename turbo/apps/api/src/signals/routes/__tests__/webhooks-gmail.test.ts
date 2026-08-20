@@ -6,6 +6,7 @@ import {
   sign as signData,
 } from "node:crypto";
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@okouai/api-contracts/contracts/model-providers";
+import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   workflowAutomationsContract,
   type WorkflowAutomationSummary,
@@ -453,13 +454,20 @@ async function connectGmail(
   actor: ApiTestUser,
   gmailEmail: string,
   subject = "bdd-gmail-user-id",
+  account?: ConnectorAccountMutationIntent,
 ): Promise<void> {
   mockGmailConnectorOAuth({
     accessToken: "gmail-access-token",
     email: gmailEmail,
     subject,
   });
-  const start = await connectorsApi.startOauth(actor, "gmail", "oauth");
+  const start = await connectorsApi.startOauth(
+    actor,
+    "gmail",
+    "oauth",
+    undefined,
+    account,
+  );
   const state = new URL(start.authorizationUrl).searchParams.get("state");
   if (!state) {
     throw new Error("Expected Gmail OAuth start URL to include state");
@@ -660,7 +668,10 @@ describe("POST /api/webhooks/gmail", () => {
     expect(watch.calls).toBe(1);
 
     const renamedGmailEmail = `renamed-${gmailEmail}`;
-    await connectGmail(actor, renamedGmailEmail, "gmail-account-one");
+    await connectGmail(actor, renamedGmailEmail, "gmail-account-one", {
+      intent: "reconnect",
+      connectionId: initialConnection.id,
+    });
     const sameAccountConnection = await connectorsApi.readConnectorBySlug(
       actor,
       "gmail",
