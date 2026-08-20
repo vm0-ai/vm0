@@ -1,9 +1,11 @@
 import { command } from "ccstate";
 import { eq } from "drizzle-orm";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { runUploadedFiles } from "@okouai/db/schema/run-uploaded-file";
 import { z } from "zod";
 
 import { env } from "../../lib/env";
+import { publicArtifactsBaseUrlForBrand } from "../../lib/file-url";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { waitUntil } from "../context/wait-until";
@@ -57,6 +59,7 @@ export interface RenderArtifactPreviewArgs {
   // Discriminates the renderer: `video/*` extracts a poster frame, otherwise a
   // Browser Rendering page screenshot.
   readonly contentType: string | null;
+  readonly publicBrand: PublicBrand;
   // Versions the preview key so each deployment gets a fresh, CDN-cache-busting
   // URL instead of overwriting a stale object at a fixed key.
   readonly deploymentId?: string;
@@ -80,9 +83,10 @@ function isVideoContentType(contentType: string | null): boolean {
 // sibling of the `/cdn-cgi/image/` resizing already used for images.
 async function extractVideoPoster(
   videoUrl: string,
+  publicBrand: PublicBrand,
   signal: AbortSignal,
 ): Promise<Buffer> {
-  const base = env("PUBLIC_ARTIFACTS_BASE_URL").replace(/\/+$/, "");
+  const base = publicArtifactsBaseUrlForBrand(publicBrand);
   const transformUrl = `${base}/cdn-cgi/media/mode=frame,time=1s,width=640,format=jpg/${videoUrl}`;
   const response = await fetch(transformUrl, { signal });
   if (!response.ok) {
@@ -207,7 +211,7 @@ const renderAndStoreArtifactPreview$ = command(
     let filename: string;
     let contentType: string;
     if (isVideo) {
-      image = await extractVideoPoster(args.url, signal);
+      image = await extractVideoPoster(args.url, args.publicBrand, signal);
       filename = VIDEO_POSTER_FILENAME;
       contentType = VIDEO_POSTER_CONTENT_TYPE;
     } else {
@@ -234,6 +238,7 @@ const renderAndStoreArtifactPreview$ = command(
         id: args.id,
         filename,
         variant: filename,
+        publicBrand: args.publicBrand,
       },
       signal,
     );

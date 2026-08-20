@@ -9419,6 +9419,56 @@ describe("CHAT-02: generation templates and attachments", () => {
     });
     await cancelChatRun(actor, run.runId);
   }, 60_000);
+
+  it("keeps a legacy VM0 attachment on the VM0 CDN for an Okou send", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const fileId = randomUUID();
+    const filename = "legacy-brand.txt";
+    chat.mockCompletedUploadObject(actor, fileId, filename, 24);
+
+    const run = await sendChatRun(
+      actor,
+      {
+        agentId,
+        prompt: "read the legacy attachment",
+        userMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "file",
+              fileId,
+              filenameSnapshot: filename,
+              contentType: "text/plain",
+            },
+            { type: "text", text: "read the legacy attachment" },
+          ],
+        },
+      },
+      "okou",
+    );
+    await flushWaitUntilForTest();
+
+    const catalog = await chat.listArtifactCatalog(actor, {
+      chatThreadId: run.threadId,
+      kind: "file",
+      limit: 20,
+    });
+    const summary = catalog.artifacts.find((artifact) => {
+      return artifact.title === filename;
+    });
+    if (!summary) {
+      throw new Error("Expected the legacy attachment in the artifact catalog");
+    }
+    const detail = await chat.getArtifactCatalogEntry(actor, summary.id);
+    if (detail.kind !== "file") {
+      throw new Error("Expected a file artifact for the legacy attachment");
+    }
+    expect(detail.file.url).toMatch(/^https:\/\/cdn\.vm7\.io\//);
+    expect(detail.file.url).not.toMatch(/^https:\/\/cdn\.okou\.io\//);
+
+    await cancelChatRun(actor, run.runId);
+  }, 60_000);
 });
 
 describe("CHAT-02: queued attachments on auto-send", () => {
