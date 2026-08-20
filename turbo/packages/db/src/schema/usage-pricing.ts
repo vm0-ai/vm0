@@ -32,7 +32,6 @@ import {
  *   scrape     firecrawl                 standard.markdown 4        1          fixed per-request scrape pricing
  *   web-search perplexity                request        5           1          $0.005 per search request
  *   people-search perplexity             request        20          1          fixed per-request people search pricing
- *   social     socialkit                  <permission>   5           1          fixed per-success managed SocialKit item pricing
  */
 export const usagePricing = pgTable(
   "usage_pricing",
