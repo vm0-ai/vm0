@@ -93,8 +93,14 @@ export function withFinalProviderConsolePaths(
  * The legacy `/api/zero/**` paths this service owes callers, keyed by the
  * canonical `/api/okou/**` path of the contract that serves them. This table
  * is the source of truth for Phase A compatibility from #26487: an entry here
- * is deliberately kept reachable, and #26701 retires one by deleting a line
- * rather than by narrowing a derivation nobody can audit.
+ * is compatibility kept deliberately, rather than a derivation nobody can
+ * audit.
+ *
+ * While the fallback below is still in place, a row is what separates a
+ * deliberate legacy path from a reported one — removing a row makes that path
+ * start reporting, not start 404ing. Reachability follows the table only once
+ * #26701 removes the fallback; that is the slice where a deleted row also
+ * retires the path.
  *
  * Keyed by path alone rather than by `METHOD path` like
  * `FINAL_PROVIDER_CONSOLE_PATHS`: the evidence below is a path template with

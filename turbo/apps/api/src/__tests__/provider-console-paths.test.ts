@@ -115,6 +115,11 @@ describe("final provider console paths", () => {
         const match = requireRegistration(registeredRoutes, key);
         expect(match.handler).toBe(source.handler);
         expect(match.route).toStrictEqual({ ...source.route, path });
+        // A provider console, not a client we control, decides when these stop
+        // being called, so none of the three forms may depend on the blanket
+        // namespace fallback: every branded path here is listed in the #28356
+        // compatibility table, and the final paths are outside the mechanism.
+        expect(match.viaNamespaceAliasFallback).toBeUndefined();
       }
     }
   });
