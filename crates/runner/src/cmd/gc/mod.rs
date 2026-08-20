@@ -44,7 +44,11 @@ pub struct GcArgs {
     /// Show what would be deleted without actually deleting
     #[arg(long)]
     dry_run: bool,
-    /// Keep the N most recent unused versions (by modification time)
+    /// Keep the N newest eligible items across managed runner versions (by semantic version),
+    /// image snapshots (by modification time), and stable debootstrap tarballs (by modification
+    /// time). Recent, active, locked, referenced, incomplete, and temporary artifacts follow their
+    /// own safety rules; temporary debootstrap tarballs do not consume a stable retention slot.
+    /// Omit this option or set it to 0 to disable top-N retention.
     #[arg(long)]
     keep_latest: Option<usize>,
     /// Version name to protect from GC (e.g. "v0.78.3").
@@ -90,7 +94,7 @@ pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use clap::Parser;
+    use clap::{CommandFactory, Parser};
 
     #[derive(Parser)]
     struct GcCli {
@@ -104,5 +108,40 @@ mod tests {
         assert!(r.is_ok(), "--protect-version must be accepted");
         let cli = r.unwrap();
         assert_eq!(cli.args.protect_version.as_deref(), Some("v0.78.3"));
+    }
+
+    #[test]
+    fn gc_keep_latest_help_describes_retention_policy() {
+        let help = GcCli::command()
+            .render_help()
+            .to_string()
+            .to_ascii_lowercase();
+        for phrase in [
+            "managed runner versions",
+            "semantic version",
+            "image snapshots",
+            "stable debootstrap tarballs",
+            "modification time",
+            "recent, active, locked, referenced, incomplete, and temporary artifacts",
+            "temporary debootstrap tarballs do not consume a stable retention slot",
+            "omit this option or set it to 0 to disable top-n retention",
+        ] {
+            assert!(
+                help.contains(phrase),
+                "runner gc help is missing {phrase:?}:\n{help}"
+            );
+        }
+
+        assert_eq!(
+            GcCli::try_parse_from(["gc"]).unwrap().args.keep_latest,
+            None
+        );
+        assert_eq!(
+            GcCli::try_parse_from(["gc", "--keep-latest", "0"])
+                .unwrap()
+                .args
+                .keep_latest,
+            Some(0)
+        );
     }
 }
