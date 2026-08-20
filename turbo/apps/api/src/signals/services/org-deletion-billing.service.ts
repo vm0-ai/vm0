@@ -299,10 +299,19 @@ function proratedLineAmount(
   if (end <= start || deletionTimestamp >= end) {
     return 0;
   }
+  const discountAmount = (line.discount_amounts ?? []).reduce(
+    (total, discount) => {
+      return total + discount.amount;
+    },
+    0,
+  );
   const exclusiveTax = (line.taxes ?? []).reduce((total, tax) => {
     return tax.tax_behavior === "exclusive" ? total + tax.amount : total;
   }, 0);
-  const amount = line.amount + exclusiveTax;
+  const amount =
+    line.amount +
+    (line.amount < 0 ? discountAmount : -discountAmount) +
+    exclusiveTax;
   if (!Number.isSafeInteger(amount)) {
     throw new Error("Stripe invoice line has an invalid amount");
   }

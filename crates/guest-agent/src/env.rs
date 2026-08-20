@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use api_contracts::generated::{
-    constants::runners::paths::CANONICAL_CODEX_HOME_DIR,
+    constants::runners::paths::{CANONICAL_CLAUDE_CONFIG_DIR, CANONICAL_CODEX_HOME_DIR},
     types::runners::storage::ArtifactEntryMissingRootPolicy,
 };
 
@@ -20,6 +20,8 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 const USER_ENV_FILE_ENV_KEY: &str = guest_contracts::env::USER_ENV_FILE_ENV;
 const RUN_PAYLOAD_FILE_ENV_KEY: &str = guest_contracts::env::RUN_PAYLOAD_FILE_ENV;
 const POST_RESULT_CLEANUP_MAX_SECS: u64 = 60 * 60;
+#[cfg(debug_assertions)]
+const TEST_CLAUDE_CONFIG_DIR_ENV_KEY: &str = "VM0_TEST_CLAUDE_CONFIG_DIR";
 #[cfg(debug_assertions)]
 const TEST_CODEX_HOME_DIR_ENV_KEY: &str = "VM0_TEST_CODEX_HOME_DIR";
 
@@ -195,6 +197,8 @@ pub struct GuestConfigRaw {
     pub runtime_home: Option<PathBuf>,
     pub guest_runtime_dir: Option<PathBuf>,
     #[cfg(debug_assertions)]
+    pub test_claude_config_dir: Option<PathBuf>,
+    #[cfg(debug_assertions)]
     pub test_codex_home_dir: Option<PathBuf>,
     pub stuck_tool_timeout_secs: String,
     pub post_result_sigterm_grace_secs: String,
@@ -233,6 +237,10 @@ impl GuestConfigRaw {
             home: std::env::var("HOME").ok(),
             runtime_home: std::env::var_os("HOME").map(PathBuf::from),
             guest_runtime_dir,
+            #[cfg(debug_assertions)]
+            test_claude_config_dir: std::env::var_os(TEST_CLAUDE_CONFIG_DIR_ENV_KEY)
+                .filter(|value| !value.is_empty())
+                .map(PathBuf::from),
             #[cfg(debug_assertions)]
             test_codex_home_dir: std::env::var_os(TEST_CODEX_HOME_DIR_ENV_KEY)
                 .filter(|value| !value.is_empty())
@@ -287,6 +295,7 @@ pub struct GuestConfig {
     pub use_mock_codex: bool,
     pub mock_codex_path: String,
     pub home_dir: String,
+    pub claude_config_dir: String,
     pub codex_home_dir: String,
     pub artifacts: Vec<ArtifactEnv>,
     pub feature_flags: HashMap<String, bool>,
@@ -331,6 +340,7 @@ impl GuestConfig {
         user_env: HashMap<String, String>,
     ) -> Result<Self, String> {
         let home_dir = resolve_home_dir(&user_env, raw.home.as_deref())?;
+        let claude_config_dir = resolve_claude_config_dir(&raw);
         let codex_home_dir = resolve_codex_home_dir(&raw);
         let artifacts = parse_artifacts_value(&payload.artifacts)
             .map_err(|e| format!("parse {} JSON: {e}", guest_contracts::env::ARTIFACTS_ENV))?;
@@ -375,6 +385,7 @@ impl GuestConfig {
                 DEFAULT_MOCK_CODEX_PATH,
             ),
             home_dir,
+            claude_config_dir,
             codex_home_dir,
             artifacts,
             feature_flags,
@@ -655,6 +666,24 @@ fn resolve_home_dir(
 }
 
 #[cfg(debug_assertions)]
+fn resolve_claude_config_dir(raw: &GuestConfigRaw) -> String {
+    if let Some(path) = raw
+        .test_claude_config_dir
+        .as_deref()
+        .filter(|path| !path.as_os_str().is_empty())
+    {
+        return path.to_string_lossy().into_owned();
+    }
+
+    CANONICAL_CLAUDE_CONFIG_DIR.to_string()
+}
+
+#[cfg(not(debug_assertions))]
+fn resolve_claude_config_dir(_raw: &GuestConfigRaw) -> String {
+    CANONICAL_CLAUDE_CONFIG_DIR.to_string()
+}
+
+#[cfg(debug_assertions)]
 fn resolve_codex_home_dir(raw: &GuestConfigRaw) -> String {
     if let Some(path) = raw
         .test_codex_home_dir
@@ -896,6 +925,7 @@ mod tests {
         assert!(config.use_mock_codex);
         assert_eq!(config.mock_codex_path, DEFAULT_MOCK_CODEX_PATH);
         assert_eq!(config.home_dir, "/home/vm0");
+        assert_eq!(config.claude_config_dir, CANONICAL_CLAUDE_CONFIG_DIR);
         assert_eq!(config.codex_home_dir, CANONICAL_CODEX_HOME_DIR);
         assert_eq!(config.stuck_tool_timeout_secs, 7);
         assert_eq!(config.post_result_sigterm_grace, Duration::from_secs(8));
@@ -934,6 +964,7 @@ mod tests {
         let config = GuestConfig::from_raw(raw).unwrap();
 
         assert_eq!(config.home_dir, "/home/from-user-env");
+        assert_eq!(config.claude_config_dir, CANONICAL_CLAUDE_CONFIG_DIR);
         assert_eq!(config.codex_home_dir, CANONICAL_CODEX_HOME_DIR);
         assert_eq!(
             config.user_env.get("OPENAI_MODEL").map(String::as_str),
@@ -941,6 +972,20 @@ mod tests {
         );
         assert!(!user_env_path.exists());
         assert!(!user_env_dir.exists());
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn guest_config_from_raw_uses_captured_test_claude_config_dir() {
+        let (_tmp, raw) = raw_config_fixture_with_default_run_payload();
+        let raw = GuestConfigRaw {
+            test_claude_config_dir: Some(PathBuf::from("/tmp/captured-claude-config")),
+            ..raw
+        };
+
+        let config = GuestConfig::from_raw(raw).unwrap();
+
+        assert_eq!(config.claude_config_dir, "/tmp/captured-claude-config");
     }
 
     #[cfg(debug_assertions)]
@@ -1091,6 +1136,7 @@ mod tests {
         let config = GuestConfig::from_raw(raw).unwrap();
 
         assert_eq!(config.home_dir, "/home/from-user-env");
+        assert_eq!(config.claude_config_dir, CANONICAL_CLAUDE_CONFIG_DIR);
         assert_eq!(
             config.user_env.get("OPENAI_MODEL").map(String::as_str),
             Some("gpt-runtime-home")
@@ -1115,6 +1161,7 @@ mod tests {
         let config = GuestConfig::from_raw(raw).unwrap();
 
         assert_eq!(config.home_dir, "");
+        assert_eq!(config.claude_config_dir, CANONICAL_CLAUDE_CONFIG_DIR);
         assert_eq!(config.codex_home_dir, CANONICAL_CODEX_HOME_DIR);
     }
 

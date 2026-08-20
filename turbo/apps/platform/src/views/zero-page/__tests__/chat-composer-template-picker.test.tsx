@@ -3322,4 +3322,139 @@ describe("chat composer templates", () => {
       expect(composerInlineTemplates()).toHaveLength(0);
     });
   });
+  it("imports an uploaded deck as an ordinary chat message", async () => {
+    const user = userEvent.setup({ delay: null });
+    let sentPrompt: string | undefined;
+    let sentMessage: UserMessageDocument | undefined;
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      onRunCreate(body) {
+        sentPrompt = body.prompt;
+        sentMessage = body.userMessage;
+      },
+    });
+    context.mocks.upload.success({
+      id: "upload-deck",
+      filename: "brand-system.pptx",
+      contentType:
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      size: 2048,
+      url: "https://cdn.vm7.io/artifacts/test/upload-deck/brand-system.pptx",
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.PresentationTemplates]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    const importInput = await waitFor(() => {
+      return screen.getByLabelText("Import your own deck");
+    });
+
+    await user.upload(
+      importInput,
+      new File(["deck"], "brand-system.pptx", {
+        type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      }),
+    );
+
+    // Choosing a deck closes the picker and sends it: the import is a chat
+    // message with the deck attached, not a separate upload flow.
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(sentPrompt).toContain("reusable presentation template");
+      expect(sentMessage?.parts).toContainEqual(
+        expect.objectContaining({
+          type: "file",
+          fileId: "upload-deck",
+          filenameSnapshot: "brand-system.pptx",
+        }),
+      );
+    });
+  });
+
+  it("does not send the import message when the deck upload fails", async () => {
+    const user = userEvent.setup({ delay: null });
+    const sentPrompts: (string | undefined)[] = [];
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      onRunCreate(body) {
+        sentPrompts.push(body.prompt);
+      },
+    });
+    context.mocks.upload.success({
+      id: "upload-deck",
+      filename: "brand-system.pptx",
+      contentType:
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      size: 2048,
+      url: "https://cdn.vm7.io/artifacts/test/upload-deck/brand-system.pptx",
+    });
+    context.mocks.http.put("https://mock-upload.r2.test/upload-deck", () => {
+      return new Response(null, { status: 500 });
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.PresentationTemplates]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    const importInput = await waitFor(() => {
+      return screen.getByLabelText("Import your own deck");
+    });
+
+    await user.upload(
+      importInput,
+      new File(["deck"], "brand-system.pptx", {
+        type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Failed to upload brand-system.pptx"),
+      ).toBeInTheDocument();
+    });
+
+    // The deck never arrived, so nothing is sent on the user's behalf. A plain
+    // message afterwards is the only run, which pins that the import stopped at
+    // the upload error instead of asking for an analysis of a missing file.
+    const composer = await screen.findByRole("textbox", { name: "Message" });
+    await sendMessageInUI(user, composer, "Never mind the deck");
+
+    await waitFor(() => {
+      expect(sentPrompts).toStrictEqual(["Never mind the deck"]);
+    });
+  });
+
+  it("hides the deck import entry when the switch is off", async () => {
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByLabelText("Import your own deck"),
+    ).not.toBeInTheDocument();
+  });
 });

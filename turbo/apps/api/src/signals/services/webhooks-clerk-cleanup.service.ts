@@ -39,7 +39,7 @@ import {
   sharedThreadArtifactAuthorUserId,
   SHARED_THREAD_ARTIFACT_LOGICAL_KEY_PREFIX,
 } from "../../lib/shared-thread-artifact";
-import { clerk$ } from "../external/clerk";
+import { clerk$, createClerkReadContext } from "../external/clerk";
 import { writeDb$, type Db } from "../external/db";
 import {
   deleteS3Objects,
@@ -573,13 +573,19 @@ async function isClerkOrgEmptyAfterDeletingUser(
   userId: string,
   signal: AbortSignal,
 ): Promise<boolean> {
+  const readContext = createClerkReadContext();
   for (let offset = 0; ; offset += CLERK_ORG_MEMBERSHIP_PAGE_SIZE) {
     const memberships = await settle(
-      clerk.organizations.getOrganizationMembershipList({
-        organizationId: orgId,
-        limit: CLERK_ORG_MEMBERSHIP_PAGE_SIZE,
-        offset,
-      }),
+      clerk.organizations.getOrganizationMembershipList(
+        {
+          organizationId: orgId,
+          limit: CLERK_ORG_MEMBERSHIP_PAGE_SIZE,
+          offset,
+        },
+        readContext,
+        signal,
+      ),
+      signal,
     );
     signal.throwIfAborted();
 

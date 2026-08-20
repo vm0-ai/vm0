@@ -1,4 +1,5 @@
 import {
+  CANONICAL_CLAUDE_CONFIG_DIR,
   CANONICAL_CODEX_HOME_DIR,
   PI_AGENT_DIR,
   type StoredStorageMountEntry,
@@ -975,7 +976,7 @@ function instructionsMountPath(framework: SupportedFramework | "pi"): string {
   }
   return framework === "codex"
     ? CANONICAL_CODEX_HOME_DIR
-    : "/home/user/.claude";
+    : CANONICAL_CLAUDE_CONFIG_DIR;
 }
 
 function instructionsFilename(framework: SupportedFramework | "pi"): string {

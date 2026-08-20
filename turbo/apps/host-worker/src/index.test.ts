@@ -63,7 +63,7 @@ function env(options: TestEnvOptions = {}): WorkerEnv {
       body: "<!doctype html>ok",
       contentType: "text/html; charset=utf-8",
     },
-    ...(options.files ?? {}),
+    ...options.files,
   };
   const manifestFiles = Object.fromEntries(
     Object.entries(files).map(([path, file]) => {

@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { get as httpsGet } from "node:https";
+import https from "node:https";
 import type { PluginOption } from "vite";
 
 import { isAllowedDevArtifactFetchUrl } from "./src/lib/dev-artifact-fetch-url.ts";
@@ -50,7 +50,7 @@ function handleDevArtifactFetchProxyRequest(
       return;
     }
 
-    const upstreamRequest = httpsGet(target, (upstream) => {
+    const upstreamRequest = https.get(target, (upstream) => {
       res.statusCode = upstream.statusCode ?? 502;
       for (const header of DEV_ARTIFACT_FETCH_PROXY_HEADERS) {
         const value = upstream.headers[header];

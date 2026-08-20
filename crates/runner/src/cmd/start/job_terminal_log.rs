@@ -639,6 +639,55 @@ mod tests {
     }
 
     #[test]
+    fn claude_result_mid_response_failures_log_structured_outcomes() {
+        for (reason, error, expected_level) in [
+            (
+                FailureReason::ProviderServerError,
+                "API Error: Server error mid-response. The response above may be incomplete.",
+                Level::INFO,
+            ),
+            (
+                FailureReason::ResponseConnectionLost,
+                "API Error: Connection lost mid-response. The response above may be incomplete.",
+                Level::ERROR,
+            ),
+        ] {
+            let diagnostic = FailureDiagnostic::new(
+                FailureClass::CliNonzero,
+                AgentFramework::ClaudeCode,
+                PromptMetadata::from_prompt("plain prompt"),
+            )
+            .with_cli_exit_code(1)
+            .with_cli_observed_exit(CliObservedExitDiagnostic::from_exit_code(1))
+            .with_claude_num_turns(Some(48))
+            .with_failure_detail_source(FailureDetailSource::ClaudeResult)
+            .with_session_history_status(SessionHistoryStatus::Present)
+            .with_failure_reason(reason);
+            let failure = executor::ExecutionFailure::new(1, error, Some(diagnostic));
+
+            let event = capture_job_failure_log(&failure);
+
+            assert_eq!(event.level, expected_level);
+            assert_eq!(
+                event.fields.get("message").map(String::as_str),
+                Some("job execution failed")
+            );
+            assert_field_eq(&event, "error", error);
+            assert_field_eq(&event, "failure_reason", reason.as_str());
+            assert_field_eq(&event, "failure_class", "cli_nonzero");
+            assert_field_eq(&event, "failure_framework", "claude_code");
+            assert_field_eq(&event, "failure_detail_source", "claude_result");
+            assert_field_eq(&event, "failure_claude_num_turns", "48");
+            assert_field_eq(&event, "cli_observed_exit_kind", "exit");
+            assert_field_eq(&event, "cli_observed_exit_code", "1");
+            assert!(!event.fields.contains_key("cli_termination_initiator"));
+            assert!(!event.fields.contains_key("cli_termination_reason"));
+            assert!(!event.fields.contains_key("cli_observed_signal_number"));
+            assert!(!event.fields.contains_key("cli_observed_signal_name"));
+        }
+    }
+
+    #[test]
     fn claude_zero_turn_no_history_logs_job_execution_failed_at_info() {
         let diagnostic = FailureDiagnostic::new(
             FailureClass::ClaudeZeroTurnNoHistory,

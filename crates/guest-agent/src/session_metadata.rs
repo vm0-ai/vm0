@@ -29,26 +29,13 @@ impl SessionHistoryLaunchSource {
     /// finalized CLI child environment and explicit working directory.
     pub(crate) fn for_config(config: &GuestConfig) -> Self {
         match config.framework {
-            Framework::ClaudeCode => {
-                let config_dir = config
-                    .user_env
-                    .get("CLAUDE_CONFIG_DIR")
-                    .filter(|value| !value.is_empty())
-                    .cloned()
-                    .unwrap_or_else(|| {
-                        Path::new(&config.home_dir)
-                            .join(".claude")
-                            .to_string_lossy()
-                            .into_owned()
-                    });
-                Self::ClaudeCode {
-                    config_dir: normalized_absolute_launch_path(
-                        &config_dir,
-                        paths::CANONICAL_WORKING_DIR,
-                    ),
-                    working_dir: paths::CANONICAL_WORKING_DIR.to_string(),
-                }
-            }
+            Framework::ClaudeCode => Self::ClaudeCode {
+                config_dir: normalized_absolute_launch_path(
+                    &config.claude_config_dir,
+                    paths::CANONICAL_WORKING_DIR,
+                ),
+                working_dir: paths::CANONICAL_WORKING_DIR.to_string(),
+            },
             Framework::Codex => Self::Codex {
                 sessions_dir: normalized_absolute_launch_path(
                     &Path::new(&config.codex_home_dir)

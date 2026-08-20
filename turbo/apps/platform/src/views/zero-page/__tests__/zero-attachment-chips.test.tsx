@@ -16,7 +16,11 @@ import { logsListContract } from "@okouai/api-contracts/contracts/logs";
 import { HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  click,
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { canonicalUserMessageFileUrl } from "../../../signals/chat-page/user-message-files.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 import { mockChatEventRows } from "./chat-event-test-helpers.ts";
@@ -3010,9 +3014,10 @@ describe("zero attachment chips", () => {
     expect(
       screen.queryByLabelText("Open html preview for Lookalike site"),
     ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "Lookalike site" }),
-    ).toHaveAttribute("href", lookalikeSiteUrl);
+    const lookalikeLink = queryAllByRoleFast("link").find((candidate) => {
+      return candidate.textContent === "Lookalike site";
+    });
+    expect(lookalikeLink).toHaveAttribute("href", lookalikeSiteUrl);
 
     click(screen.getByLabelText("Open pdf preview for report.pdf"));
 

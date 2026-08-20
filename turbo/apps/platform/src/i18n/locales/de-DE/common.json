@@ -615,6 +615,8 @@
       "htmlPreview": "{{title}} HTML-Vorschau",
       "illustration": "Illustration",
       "illustrationPreview": "{{title}} Illustrationsvorschau",
+      "importDeck": "Eigenes Deck importieren",
+      "importDeckHint": "(.pptx, .pdf)",
       "multiAccent": "Multi-Akzent",
       "nextSlide": "Vorschau der nächsten Folie",
       "noMatches": "Keine Übereinstimmungen",

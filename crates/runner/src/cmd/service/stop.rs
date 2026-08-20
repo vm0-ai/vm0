@@ -5,17 +5,15 @@ use tracing::{info, warn};
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::HomePaths;
 
-use super::drain_override::{remove_drain_restart_override, write_drain_restart_override};
+use super::drain_override_cleanup::{
+    DrainOverrideReloadPolicy, reconcile_drain_restart_override_removal,
+};
 use super::gate::check_active_jobs_gate;
-use super::reload::{SystemdReloadRequirement, coordinate_systemd_reload_bounded};
 use super::systemctl::{
     BoundedSystemctlOutcome, CleanupUnitActiveState, cleanup_unit_active_state_bounded,
     is_unit_active, is_unit_enabled_bounded, run_systemctl, run_systemctl_bounded,
 };
-use super::{
-    RunnerServiceUnit, ServiceFuture, acquire_service_lock, drain_override_cleanup_reload_error,
-    reload_systemd_if_drain_restart_override_removed,
-};
+use super::{RunnerServiceUnit, ServiceFuture, acquire_service_lock};
 
 const CLEANUP_LOCK_TIMEOUT: TokioDuration = TokioDuration::from_secs(20);
 const CLEANUP_LOCK_POLL_INTERVAL: TokioDuration = TokioDuration::from_millis(250);
@@ -145,71 +143,6 @@ async fn run_cleanup_systemctl(args: &[&str], duration: TokioDuration) -> Runner
     }
 }
 
-async fn reload_systemd_if_drain_restart_override_removed_bounded(
-    unit: &RunnerServiceUnit,
-) -> RunnerResult<bool> {
-    let remove_result = remove_drain_restart_override(unit);
-    let removed = matches!(&remove_result, Ok(true));
-
-    let reload_result = coordinate_systemd_reload_bounded(
-        unit,
-        SystemdReloadRequirement::dirty().with_drain_override(false),
-        CLEANUP_LOCK_TIMEOUT,
-        CLEANUP_ACTION_TIMEOUT,
-    )
-    .await;
-
-    if let Err(reload_error) = reload_result {
-        let reload_error = if removed {
-            match restore_drain_restart_override_after_failed_cleanup_bounded(unit, "remove_reload")
-                .await
-            {
-                Ok(()) => reload_error,
-                Err(restore_error) => {
-                    drain_override_cleanup_reload_error(unit, reload_error, restore_error)
-                }
-            }
-        } else {
-            reload_error
-        };
-        return match remove_result {
-            Ok(_) => Err(reload_error),
-            Err(remove_error) => Err(RunnerError::Internal(format!(
-                "failed to remove drain restart override for {} during cleanup: {remove_error}; additionally failed to reload systemd: {reload_error}",
-                unit.unit_name()
-            ))),
-        };
-    }
-
-    remove_result.map(|_| removed)
-}
-
-async fn restore_drain_restart_override_after_failed_cleanup_bounded(
-    unit: &RunnerServiceUnit,
-    context: &str,
-) -> RunnerResult<()> {
-    if let Err(e) = write_drain_restart_override(unit) {
-        return Err(RunnerError::Internal(format!(
-            "failed to restore drain restart override for {} after cleanup reload failure ({context}): {e}",
-            unit.unit_name()
-        )));
-    }
-    if let Err(e) = coordinate_systemd_reload_bounded(
-        unit,
-        SystemdReloadRequirement::dirty().with_drain_override(true),
-        CLEANUP_LOCK_TIMEOUT,
-        CLEANUP_ACTION_TIMEOUT,
-    )
-    .await
-    {
-        return Err(RunnerError::Internal(format!(
-            "failed to reload systemd after restoring drain restart override for {} ({context}): {e}",
-            unit.unit_name()
-        )));
-    }
-    Ok(())
-}
-
 impl ServiceStopOps for RealServiceStopOps {
     type LockGuard = nix::fcntl::Flock<std::fs::File>;
 
@@ -327,9 +260,8 @@ impl ServiceStopOps for RealServiceStopOps {
         unit: &'a RunnerServiceUnit,
     ) -> ServiceFuture<'a, ()> {
         Box::pin(async move {
-            reload_systemd_if_drain_restart_override_removed(unit)
+            reconcile_drain_restart_override_removal(unit, DrainOverrideReloadPolicy::Unbounded)
                 .await
-                .map(|_| ())
         })
     }
 
@@ -338,9 +270,14 @@ impl ServiceStopOps for RealServiceStopOps {
         unit: &'a RunnerServiceUnit,
     ) -> ServiceFuture<'a, ()> {
         Box::pin(async move {
-            reload_systemd_if_drain_restart_override_removed_bounded(unit)
-                .await
-                .map(|_| ())
+            reconcile_drain_restart_override_removal(
+                unit,
+                DrainOverrideReloadPolicy::Bounded {
+                    lock_timeout: CLEANUP_LOCK_TIMEOUT,
+                    command_timeout: CLEANUP_ACTION_TIMEOUT,
+                },
+            )
+            .await
         })
     }
 

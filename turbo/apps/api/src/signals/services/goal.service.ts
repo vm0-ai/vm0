@@ -30,6 +30,7 @@ import {
   chatThreadModelPinColumns,
   resolveRequiredDefaultChatThreadModelPin,
 } from "./chat-thread-model.service";
+import { loadNewChatThreadMediaModels } from "./chat-thread-media-model.service";
 import { childAutonomyBudget } from "./autonomy-budget.service";
 import { threadGoalColumns } from "./autonomy-budget-schema.service";
 
@@ -231,6 +232,10 @@ async function createGoalThread(
     orgId: args.orgId,
     userId: args.userId,
   });
+  const mediaModels = await loadNewChatThreadMediaModels(tx, {
+    orgId: args.orgId,
+    userId: args.userId,
+  });
   const [thread] = await tx
     .insert(chatThreads)
     .values({
@@ -242,6 +247,7 @@ async function createGoalThread(
       lastMessageAt: args.createdAt,
       createdAt: args.createdAt,
       updatedAt: args.createdAt,
+      ...mediaModels,
     })
     .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
   if (!thread) {
@@ -256,6 +262,7 @@ async function createGoalThread(
     title: args.objective,
     selectedModel: pin.selectedModel,
     serviceTier: pin.serviceTier,
+    ...mediaModels,
     createdAt: thread.createdAt,
   });
   return thread.id;

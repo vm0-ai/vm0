@@ -181,6 +181,7 @@ function paidInvoice(
     readonly paidPeriod: { readonly start: number; readonly end: number };
     readonly quantities: ReadonlyMap<string, number>;
     readonly fraction?: number;
+    readonly fullyDiscounted?: boolean;
     readonly linePeriodEnd?: number;
   },
 ) {
@@ -206,6 +207,7 @@ function paidInvoice(
         return {
           id: `il_${randomUUID()}`,
           amount,
+          discount_amounts: args.fullyDiscounted ? [{ amount }] : [],
           subtotal: amount,
           quantity,
           price: { id: priceId },
@@ -549,6 +551,62 @@ describe("usage pack subscription Stripe lifecycle", () => {
         expiresAt: new Date(paidPeriod.end * 1000).toISOString(),
       },
     ]);
+  });
+
+  it("grants fully discounted renewal credits without a refundable amount", async () => {
+    const userId = `user_${randomUUID()}`;
+    const fixture = await seedUsagePackLifecycle([
+      { userId, usagePackUsd: 20 },
+    ]);
+    const quantities = new Map([[TEST_PRICE_PACK_20, 1]]);
+    const paidPeriod = period(0);
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      stripeSubscription(fixture, paidPeriod, quantities),
+    );
+
+    await postStripeEvent(
+      stripeEvent(
+        "customer.subscription.created",
+        stripeSubscription(fixture, paidPeriod, quantities),
+      ),
+      200,
+    );
+    await postStripeEvent(
+      stripeEvent(
+        "invoice.paid",
+        paidInvoice(fixture, {
+          invoiceId: `in_discounted_${randomUUID()}`,
+          paidPeriod,
+          quantities,
+          fullyDiscounted: true,
+        }),
+      ),
+      200,
+    );
+
+    const state = await readUsagePackState(fixture);
+    expect(state.grants).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          userId,
+          grantType: "purchased",
+          originalAmount: 20_000,
+        }),
+        expect.objectContaining({
+          userId,
+          grantType: "bonus",
+          originalAmount: 400,
+        }),
+      ]),
+    );
+    expect(state.refunds).toContainEqual(
+      expect.objectContaining({
+        userId,
+        sourceType: "invoice",
+        sourceAmountCents: 0,
+        status: "available",
+      }),
+    );
   });
 
   it("grants independent one-time Atom member credits for Atom and subscribed plans", async () => {

@@ -615,6 +615,8 @@
       "htmlPreview": "{{title}} HTML プレビュー",
       "illustration": "イラストレーション",
       "illustrationPreview": "{{title}} イラストのプレビュー",
+      "importDeck": "自分のデッキをインポート",
+      "importDeckHint": "(.pptx, .pdf)",
       "multiAccent": "マルチアクセント",
       "nextSlide": "次のスライドをプレビューする",
       "noMatches": "一致しません",

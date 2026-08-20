@@ -2202,6 +2202,137 @@ WHERE "compose"."head_version_id" IS NOT NULL
 ORDER BY "compose"."id"
 `;
 
+// Build both reference catalogs once before expanding checkpoint mounts. A
+// direct relational join leaves PostgreSQL free to choose one catalog probe per
+// mount, which is unbounded under a cold cache. These materialized JSONB maps
+// preserve the exact identity/version predicates while making catalog access
+// independent of join-plan selection.
+export const CHECKPOINT_STORAGE_REFERENCE_QUERY = `
+WITH
+"storageCatalog" AS MATERIALIZED (
+  SELECT coalesce(
+    jsonb_object_agg(
+      "storage"."id"::text,
+      jsonb_build_object(
+        'orgId', "storage"."org_id",
+        'userId', "storage"."user_id",
+        'name', "storage"."name"
+      )
+    ),
+    '{}'::jsonb
+  ) AS "entries"
+  FROM "storages" AS "storage"
+),
+"storageVersionCatalog" AS MATERIALIZED (
+  SELECT coalesce(
+    jsonb_object_agg(
+      "storage_version"."id",
+      to_jsonb("storage_version"."storage_id"::text)
+    ),
+    '{}'::jsonb
+  ) AS "entries"
+  FROM "storage_versions" AS "storage_version"
+),
+"invalidCheckpointStorageReferences" AS (
+  SELECT "checkpoint"."id"
+  FROM "checkpoints" AS "checkpoint"
+  WHERE
+    "checkpoint"."storage_mounts" IS NOT NULL AND
+    jsonb_typeof("checkpoint"."storage_mounts") <> 'array'
+  UNION
+  SELECT "checkpoint"."id"
+  FROM "checkpoints" AS "checkpoint"
+  CROSS JOIN LATERAL jsonb_array_elements(
+    CASE
+      WHEN jsonb_typeof("checkpoint"."storage_mounts") = 'array'
+        THEN "checkpoint"."storage_mounts"
+      ELSE '[]'::jsonb
+    END
+  ) AS "entry"("mount")
+  CROSS JOIN "storageCatalog"
+  CROSS JOIN "storageVersionCatalog"
+  WHERE
+    jsonb_typeof("entry"."mount") <> 'object' OR
+    NOT (
+      "entry"."mount" ?& ARRAY[
+        'orgId',
+        'userId',
+        'name',
+        'storageId',
+        'version',
+        'mountPath'
+      ]
+    ) OR
+    (
+      "entry"."mount" -
+      'orgId' -
+      'userId' -
+      'name' -
+      'storageId' -
+      'version' -
+      'mountPath' -
+      'optional' -
+      'writeback' -
+      'instructionsTargetFilename' -
+      'missingRootPolicy'
+    ) <> '{}'::jsonb OR
+    jsonb_typeof("entry"."mount" -> 'orgId') <> 'string' OR
+    jsonb_typeof("entry"."mount" -> 'userId') <> 'string' OR
+    jsonb_typeof("entry"."mount" -> 'name') <> 'string' OR
+    jsonb_typeof("entry"."mount" -> 'storageId') <> 'string' OR
+    jsonb_typeof("entry"."mount" -> 'version') <> 'string' OR
+    jsonb_typeof("entry"."mount" -> 'mountPath') <> 'string' OR
+    (
+      "entry"."mount" ? 'optional' AND
+      jsonb_typeof("entry"."mount" -> 'optional') <> 'boolean'
+    ) OR
+    (
+      "entry"."mount" ? 'writeback' AND
+      jsonb_typeof("entry"."mount" -> 'writeback') <> 'boolean'
+    ) OR
+    (
+      "entry"."mount" ? 'instructionsTargetFilename' AND
+      jsonb_typeof(
+        "entry"."mount" -> 'instructionsTargetFilename'
+      ) <> 'string'
+    ) OR
+    (
+      "entry"."mount" ? 'missingRootPolicy' AND
+      (
+        jsonb_typeof(
+          "entry"."mount" -> 'missingRootPolicy'
+        ) <> 'string' OR
+        "entry"."mount" ->> 'missingRootPolicy' NOT IN (
+          'fail',
+          'preserveParentVersion'
+        )
+      )
+    ) OR
+    (
+      "storageCatalog"."entries" ->
+      ("entry"."mount" ->> 'storageId') ->>
+      'orgId'
+    ) IS DISTINCT FROM "entry"."mount" ->> 'orgId' OR
+    (
+      "storageCatalog"."entries" ->
+      ("entry"."mount" ->> 'storageId') ->>
+      'userId'
+    ) IS DISTINCT FROM "entry"."mount" ->> 'userId' OR
+    (
+      "storageCatalog"."entries" ->
+      ("entry"."mount" ->> 'storageId') ->>
+      'name'
+    ) IS DISTINCT FROM "entry"."mount" ->> 'name' OR
+    (
+      "storageVersionCatalog"."entries" ->>
+      ("entry"."mount" ->> 'version')
+    ) IS DISTINCT FROM "entry"."mount" ->> 'storageId'
+)
+SELECT "invalid"."id"::text AS "id"
+FROM "invalidCheckpointStorageReferences" AS "invalid"
+ORDER BY "invalid"."id"
+`;
+
 async function collectDatabaseInventory(
   client: Client,
   signal: AbortSignal | undefined,
@@ -2417,93 +2548,7 @@ async function collectDatabaseInventory(
       signal,
       phaseRecorder,
       "checkpointStorageReferences",
-      `WITH "invalidCheckpointStorageReferences" AS (
-         SELECT "checkpoint"."id"
-         FROM "checkpoints" AS "checkpoint"
-         WHERE
-           "checkpoint"."storage_mounts" IS NOT NULL AND
-           jsonb_typeof("checkpoint"."storage_mounts") <> 'array'
-         UNION
-         SELECT "checkpoint"."id"
-         FROM "checkpoints" AS "checkpoint"
-         CROSS JOIN LATERAL jsonb_array_elements(
-           CASE
-             WHEN jsonb_typeof("checkpoint"."storage_mounts") = 'array'
-               THEN "checkpoint"."storage_mounts"
-             ELSE '[]'::jsonb
-           END
-         ) AS "entry"("mount")
-         LEFT JOIN "storages" AS "storage"
-           ON "storage"."id"::text = "entry"."mount" ->> 'storageId'
-             AND "storage"."org_id" = "entry"."mount" ->> 'orgId'
-             AND "storage"."user_id" = "entry"."mount" ->> 'userId'
-             AND "storage"."name" = "entry"."mount" ->> 'name'
-         LEFT JOIN "storage_versions" AS "storage_version"
-           ON "storage_version"."id" = "entry"."mount" ->> 'version'
-           AND "storage_version"."storage_id" = "storage"."id"
-         WHERE
-           jsonb_typeof("entry"."mount") <> 'object' OR
-           NOT (
-             "entry"."mount" ?& ARRAY[
-               'orgId',
-               'userId',
-               'name',
-               'storageId',
-               'version',
-               'mountPath'
-             ]
-           ) OR
-           (
-             "entry"."mount" -
-             'orgId' -
-             'userId' -
-             'name' -
-             'storageId' -
-             'version' -
-             'mountPath' -
-             'optional' -
-             'writeback' -
-             'instructionsTargetFilename' -
-             'missingRootPolicy'
-           ) <> '{}'::jsonb OR
-           jsonb_typeof("entry"."mount" -> 'orgId') <> 'string' OR
-           jsonb_typeof("entry"."mount" -> 'userId') <> 'string' OR
-           jsonb_typeof("entry"."mount" -> 'name') <> 'string' OR
-           jsonb_typeof("entry"."mount" -> 'storageId') <> 'string' OR
-           jsonb_typeof("entry"."mount" -> 'version') <> 'string' OR
-           jsonb_typeof("entry"."mount" -> 'mountPath') <> 'string' OR
-           (
-             "entry"."mount" ? 'optional' AND
-             jsonb_typeof("entry"."mount" -> 'optional') <> 'boolean'
-           ) OR
-           (
-             "entry"."mount" ? 'writeback' AND
-             jsonb_typeof("entry"."mount" -> 'writeback') <> 'boolean'
-           ) OR
-           (
-             "entry"."mount" ? 'instructionsTargetFilename' AND
-             jsonb_typeof(
-               "entry"."mount" -> 'instructionsTargetFilename'
-             ) <> 'string'
-           ) OR
-           (
-             "entry"."mount" ? 'missingRootPolicy' AND
-             (
-               jsonb_typeof(
-                 "entry"."mount" -> 'missingRootPolicy'
-               ) <> 'string' OR
-               "entry"."mount" ->> 'missingRootPolicy' NOT IN (
-                 'fail',
-                 'preserveParentVersion'
-               )
-             )
-           ) OR
-           "storage"."id" IS NULL OR
-           "storage_version"."id" IS NULL
-       )
-       SELECT "invalid"."id"::text AS "id"
-       FROM "invalidCheckpointStorageReferences" AS "invalid"
-       ORDER BY "invalid"."id"`,
+      CHECKPOINT_STORAGE_REFERENCE_QUERY,
     );
   const invalidCheckpointStorageReferenceIds = new Set(
     invalidCheckpointStorageReferences.map((row) => {
