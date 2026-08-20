@@ -35,8 +35,8 @@ import {
   onboardingWorkflowCategories,
   type OnboardingWorkflow,
   type OnboardingWorkflowCategory,
-  type OnboardingWorkflowCategoryId,
 } from "./onboarding-data.ts";
+import type { OnboardingWorkflowCategoryId } from "./onboarding-workflow-specs.ts";
 import { WorkflowPreviewDiagram } from "./onboarding-workflow-diagram.tsx";
 import { useOnboardingNavigation } from "./onboarding-navigation.ts";
 import {

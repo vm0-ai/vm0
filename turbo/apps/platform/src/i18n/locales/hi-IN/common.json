@@ -2931,1030 +2931,1030 @@
     },
     "workflows": {
       "alert-metric-moves-slack": {
-        "description": "अपने प्रमुख मेट्रिक्स देखें और जब कोई तेजी से आगे बढ़े तो Slack को सचेत करें।",
-        "scenario": "जब तक कोई मीट्रिक समस्या साप्ताहिक समीक्षा में दिखाई देती है, तब तक वह कई दिन पुरानी हो चुकी होती है। {{assistantName}} हर घंटे एक प्रमुख मीट्रिक देखता है और जैसे ही यह अपनी सामान्य सीमा से बाहर जाता है तो Slack को पिंग करता है।",
+        "description": "Find material website changes and explain likely causes.",
+        "scenario": "A sharp metric change matters most when the context arrives with it. {{assistantName}} monitors Google Analytics and adds search or paid-channel evidence when connected.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} हर घंटे मीट्रिक पढ़ता है।",
-            "title": "{{assistantName}} मीट्रिक की जाँच करता है"
+            "description": "{{assistantName}} reads the selected traffic and conversion measures.",
+            "title": "Key metrics are checked"
           },
           "three": {
-            "description": "{{assistantName}} विचलन के साथ एक चेतावनी पोस्ट करता है।",
-            "title": "अलर्ट Slack पर पोस्ट किया गया"
+            "description": "{{assistantName}} returns likely causes and the next diagnostic step.",
+            "title": "The shift is explained"
           },
           "two": {
-            "description": "{{assistantName}} मानों को अपेक्षित बैंड से बाहर फ़्लैग करता है।",
-            "title": "सामान्य श्रेणी की तुलना में"
+            "description": "{{assistantName}} compares current values with the expected range.",
+            "title": "Unusual movement is found"
           }
         },
-        "title": "जब कोई मीट्रिक बदलता है तो अलर्ट करें"
+        "title": "Alert on traffic and conversion shifts"
       },
       "auto-merge-github-prs": {
-        "description": "विलय के लिए तैयार लेबल वाले पीआर की समीक्षा करें, CI की प्रतीक्षा करें, फिर विलय करें और Slack पर पोस्ट करें।",
-        "scenario": "PR को मर्ज करने का अर्थ है CI की देखभाल करना, अंतर की दोबारा जांच करना और यह पोस्ट करना याद रखना कि इसे भेज दिया गया है। {{assistantName}} रेडी-टू-मर्ज लेबल पर नजर रखता है, बदलाव की समीक्षा करता है, चेक के ग्रीन होने का इंतजार करता है, मर्ज करता है और चैनल को बताता है।",
+        "description": "Review ready pull requests, wait for CI, and merge approved changes.",
+        "scenario": "Merging a pull request means watching checks and rereading the diff. {{assistantName}} picks up your ready-to-merge label, reviews the change, waits for CI, and merges only under the rule you approve.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} आपके मर्ज लेबल को लगते ही पुल रिक्वेस्ट को उठा लेता है।",
-            "title": "एक PR को रेडी-टू-मर्ज लेबल किया गया है"
+            "description": "{{assistantName}} detects the ready-to-merge label.",
+            "title": "A PR is ready"
           },
           "three": {
-            "description": "{{assistantName}} PR को मर्ज करता है और परिणाम को आपके चैनल पर पोस्ट करता है।",
-            "title": "मर्ज किया गया और Slack पर पोस्ट किया गया"
+            "description": "{{assistantName}} merges only after the approved safety conditions pass.",
+            "title": "Merged under your rule"
           },
           "two": {
-            "description": "{{assistantName}} अंतर को पढ़ता है और तब तक होल्ड करता है जब तक कि प्रत्येक आवश्यक चेक पास नहीं हो जाता।",
-            "title": "{{assistantName}} समीक्षा करता है और CI पर प्रतीक्षा करता है"
+            "description": "{{assistantName}} checks the diff and waits for required CI.",
+            "title": "{{assistantName}} reviews the change"
           }
         },
-        "title": "ऑटो-मर्ज GitHub PRs"
+        "title": "Auto-merge GitHub PRs"
       },
       "blog-posts-to-x": {
-        "description": "हर दिन {{assistantName}} नए प्रकाशित ब्लॉग पोस्ट को सोशल वेरिएंट में बदल देता है और उन्हें बफ़र के माध्यम से एक्स में कतारबद्ध कर देता है।",
-        "scenario": "एक ब्लॉग पोस्ट में दस सामाजिक पोस्ट हो सकते हैं, लेकिन किसी के पास उन्हें काटने का समय नहीं है। {{assistantName}} नई प्रकाशित पोस्टों को देखता है, एक्स वेरिएंट का एक सेट ड्राफ्ट करता है, और अनुमोदन के लिए उन्हें बफ़र के माध्यम से कतारबद्ध करता है।",
+        "description": "Find decaying pages and turn them into prioritized update briefs.",
+        "scenario": "Existing content often has more upside than a new article. {{assistantName}} uses built-in Firecrawl and DataForSEO to find underperforming pages, map current demand, and recommend focused updates.",
         "steps": {
           "one": {
-            "description": "{{assistantName}}, Strapi में नई प्रकाशित पोस्ट का पता लगाता है।",
-            "title": "{{assistantName}} को नई पोस्ट मिलीं"
+            "description": "{{assistantName}} crawls the site and identifies likely refresh candidates.",
+            "title": "Existing pages are reviewed"
           },
           "three": {
-            "description": "{{assistantName}} समीक्षा के लिए वेरिएंट शेड्यूल करता है।",
-            "title": "बफ़र में कतारबद्ध"
+            "description": "{{assistantName}} prioritizes pages and specifies the needed updates.",
+            "title": "Refresh briefs are created"
           },
           "two": {
-            "description": "{{assistantName}} प्रत्येक लेख से कई एक्स पोस्ट ड्राफ्ट करता है।",
-            "title": "सामाजिक रूपों में काटें"
+            "description": "{{assistantName}} checks search results, keywords, and competitive coverage.",
+            "title": "Current demand is mapped"
           }
         },
-        "title": "ब्लॉग पोस्ट को सोशल पोस्ट में बदलें"
+        "title": "Build an SEO content refresh plan"
       },
       "build-weekly-deck-gamma": {
-        "description": "सप्ताह के मेट्रिक्स को गामा में प्रस्तुत करने के लिए तैयार डेक में बदलें।",
-        "scenario": "साप्ताहिक मेट्रिक्स डेक हर बार नए नंबरों के साथ एक ही स्लाइड है। {{assistantName}} डेटा खींचता है, गामा में डेक बनाता है, और इसे Slack पर पोस्ट करता है ताकि बैठक से पहले समीक्षा तैयार हो जाए।",
+        "description": "Track revenue, expenses, receivables, and cash flow in Sheets.",
+        "scenario": "Financial reviews slow down when the numbers must be rebuilt by hand. {{assistantName}} pulls the approved QuickBooks metrics and maintains a decision-ready dashboard in Google Sheets.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} शीट्स और एनालिटिक्स से मेट्रिक्स पढ़ता है।",
-            "title": "{{assistantName}} संख्याएँ एकत्रित करता है"
+            "description": "{{assistantName}} reads revenue, expenses, receivables, and cash flow.",
+            "title": "Financial data is collected"
           },
           "three": {
-            "description": "{{assistantName}} तैयार डेक साझा करता है।",
-            "title": "Slack पर पोस्ट किया गया"
+            "description": "{{assistantName}} writes the current finance view to Google Sheets.",
+            "title": "The dashboard is refreshed"
           },
           "two": {
-            "description": "{{assistantName}} आवर्ती मेट्रिक्स डेक को असेंबल करता है।",
-            "title": "गामा में निर्मित डेक"
+            "description": "{{assistantName}} calculates trends, exceptions, and reporting totals.",
+            "title": "Metrics are organized"
           }
         },
-        "title": "गामा में साप्ताहिक डेक बनाएं"
+        "title": "Build a QuickBooks finance dashboard"
       },
       "business-review-gamma": {
-        "description": "महीने के मेट्रिक्स को गामा में व्यावसायिक समीक्षा डेक में बदलें।",
-        "scenario": "साप्ताहिक व्यवसाय समीक्षा एक आवर्ती डेक है जिसे कोई व्यक्ति हाथ से पुनर्निर्माण करता है। {{assistantName}} राजस्व और विकास को खींचता है, गामा में डेक बनाता है, और बैठक से पहले इसे तैयार करता है।",
+        "description": "Combine financial, growth, and operating data into one review.",
+        "scenario": "A monthly review should explain the business, not just repeat dashboards. {{assistantName}} combines QuickBooks, Google Analytics, and Google Sheets and adds HubSpot context when available.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} स्ट्राइप और क्लर्क से MRR, बर्न और ग्रोथ पढ़ता है।",
-            "title": "{{assistantName}} संख्याएँ खींचता है"
+            "description": "{{assistantName}} reads financial, growth, and operating metrics.",
+            "title": "Business data is collected"
           },
           "three": {
-            "description": "{{assistantName}} तैयार डेक साझा करता है।",
-            "title": "प्रस्तुत करने के लिए तैयार"
+            "description": "{{assistantName}} returns a concise decision-ready monthly review.",
+            "title": "The review is prepared"
           },
           "two": {
-            "description": "{{assistantName}} आवर्ती व्यवसाय समीक्षा को एकत्रित करता है।",
-            "title": "गामा में निर्मित डेक"
+            "description": "{{assistantName}} connects trends, plan variance, wins, and risks.",
+            "title": "Performance is analyzed"
           }
         },
-        "title": "गामा में व्यवसाय समीक्षा बनाएं"
+        "title": "Build a monthly business review"
       },
       "catch-calendar-conflicts": {
-        "description": "डबल-बुकिंग के लिए अपने कैलेंडर को स्कैन करें और आपको पहले ही सचेत कर दें।",
-        "scenario": "डबल-बुकिंग का पता तभी चलता है जब दो मीटिंग एक साथ शुरू होती हैं। {{assistantName}} आपके कैलेंडर और Cal.com की उपलब्धता के अनुसार प्रत्येक नई घटना की जाँच करता है और टकराव होने से पहले आपको सचेत करता है।",
+        "description": "Detect double-bookings and difficult scheduling windows early.",
+        "scenario": "Calendar conflicts are easiest to solve before the meeting day. {{assistantName}} checks new events for overlap, travel, and preparation conflicts and explains the options.",
         "steps": {
           "one": {
-            "description": "जब कोई नया ईवेंट आपके कैलेंडर पर आता है तो {{assistantName}} ट्रिगर हो जाता है।",
-            "title": "एक इवेंट बनाया गया है"
+            "description": "{{assistantName}} reads the event and surrounding Calendar schedule.",
+            "title": "A new event is checked"
           },
           "three": {
-            "description": "{{assistantName}} आपको टकराव और विकल्पों के बारे में सचेत करता है।",
-            "title": "Slack में संघर्ष को चिह्नित किया गया"
+            "description": "{{assistantName}} explains the conflict and can draft a Gmail note.",
+            "title": "Resolution options are returned"
           },
           "two": {
-            "description": "{{assistantName}} मौजूदा घटनाओं और उपलब्धता से तुलना करता है।",
-            "title": "विरोधों के लिए जाँच की गई"
+            "description": "{{assistantName}} detects overlaps and impossible transition windows.",
+            "title": "Conflicts are identified"
           }
         },
-        "title": "Google Calendar संघर्षों को पकड़ें"
+        "title": "Catch Google Calendar conflicts"
       },
       "catch-leads-gmail": {
-        "description": "नए ईमेल में स्पॉट खरीदारी संकेत और योग्य लीड लॉग करें।",
-        "scenario": "गर्म लीड व्यस्त इनबॉक्स में छिप जाते हैं और ठंडे हो जाते हैं। {{assistantName}} सिग्नल खरीदने के लिए आने वाले मेल को पढ़ता है, प्रेषक को अपोलो से समृद्ध करता है, लीड को एक शीट में लॉग करता है, और Slack में अगले कदम का सुझाव देता है।",
+        "description": "Summarize stage movement, stale deals, risks, and forecast changes.",
+        "scenario": "Pipeline reviews are clearer when changes arrive before the meeting. {{assistantName}} compares the current HubSpot pipeline with the prior snapshot and returns a concise weekly digest.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} सिग्नल खरीदने के लिए आने वाले Gmail को पढ़ता है।",
-            "title": "{{assistantName}} नये मेल को स्कैन करता है"
+            "description": "{{assistantName}} collects deals, stages, owners, dates, and activity.",
+            "title": "The pipeline is read"
           },
           "three": {
-            "description": "{{assistantName}} लीड और अनुशंसित अगला चरण Slack पर पोस्ट करता है।",
-            "title": "अगला कदम सुझाया गया"
+            "description": "{{assistantName}} returns next actions and optionally updates Google Sheets.",
+            "title": "The digest is created"
           },
           "two": {
-            "description": "{{assistantName}} अपोलो से समृद्ध होता है और आपकी शीट में एक पंक्ति जोड़ता है।",
-            "title": "सीसा समृद्ध और लॉग किया गया"
+            "description": "{{assistantName}} finds changes, stale deals, blockers, and forecast drift.",
+            "title": "Movement and risk are analyzed"
           }
         },
-        "title": "Gmail से लीड पकड़ें"
+        "title": "Create a weekly HubSpot pipeline digest"
       },
       "chase-overdue-asana-tasks": {
-        "description": "अतिदेय आसन कार्यों को खोजें और Slack पर उनके मालिकों को प्रेरित करें।",
-        "scenario": "अतिदेय कार्यों के लिए किसी का पीछा करने की आवश्यकता होती है, और कोई न कोई हमेशा व्यस्त रहता है। {{assistantName}} पिछले देय किसी भी चीज़ के लिए प्रतिदिन आसन को स्कैन करता है और Slack में प्रत्येक मालिक को संकेत देता है।",
+        "description": "Prepare owner-specific reminders without sending automatically.",
+        "scenario": "Overdue work needs context, not generic nudges. {{assistantName}} groups past-due Asana tasks by owner and drafts a concise Gmail reminder for each person.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} उन कार्यों को पढ़ता है जो अपनी नियत तिथि से आगे निकल चुके हैं।",
-            "title": "{{assistantName}} आसन को स्कैन करता है"
+            "description": "{{assistantName}} reads Asana tasks that are past due.",
+            "title": "Overdue work is found"
           },
           "three": {
-            "description": "{{assistantName}} प्रत्येक मालिक को उनकी अतिदेय सूची डीएम करता है।",
-            "title": "Slack में नज भेजे गए"
+            "description": "{{assistantName}} creates reminders for human review and never sends them.",
+            "title": "Gmail drafts are prepared"
           },
           "two": {
-            "description": "{{assistantName}} असाइनी द्वारा अतिदेय कार्य को समूहित करता है।",
-            "title": "मालिकों की पहचान की गई"
+            "description": "{{assistantName}} prepares the relevant project and blocker context.",
+            "title": "Tasks are grouped by owner"
           }
         },
-        "title": "अतिदेय Asana कार्यों का पीछा करें"
+        "title": "Draft Gmail reminders for overdue Asana tasks"
       },
       "check-posthog-signup-funnel": {
-        "description": "साइनअप फ़नल को ट्रैक करें और Slack पर सबसे बड़ा ड्रॉप-ऑफ़ पोस्ट करें।",
-        "scenario": "फ़नल केवल तभी मदद करते हैं जब कोई उन्हें चलाता है। {{assistantName}} साप्ताहिक रूप से साइनअप फ़नल चलाता है, सबसे अधिक लोगों को खोने वाले चरण का पता लगाता है, और इसे Slack पर पोस्ट करता है ताकि टीम को पता हो कि कहाँ ध्यान केंद्रित करना है।",
+        "description": "Compare Google Ads and Meta Ads on the same performance basis.",
+        "scenario": "Paid channels are hard to compare when each platform reports differently. {{assistantName}} normalizes spend, conversions, CPA, and ROAS across Google Ads and Meta Ads.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} सप्ताह के लिए PostHog में साइनअप फ़नल निष्पादित करता है।",
-            "title": "{{assistantName}} फ़नल चलाता है"
+            "description": "{{assistantName}} reads both platforms for the same reporting window.",
+            "title": "Ad data is collected"
           },
           "three": {
-            "description": "{{assistantName}} लीक और रुझान पोस्ट करता है।",
-            "title": "Slack पर पोस्ट किया गया"
+            "description": "{{assistantName}} highlights efficiency, pacing, and optionally updates Sheets.",
+            "title": "Channel differences are explained"
           },
           "two": {
-            "description": "{{assistantName}} को सबसे बड़ी गिरावट वाला कदम मिला।",
-            "title": "सबसे बड़ी गिरावट की पहचान की गई"
+            "description": "{{assistantName}} calculates comparable spend, conversion, CPA, and ROAS metrics.",
+            "title": "Performance is normalized"
           }
         },
-        "title": "PostHog साइनअप फ़नल की जाँच करें"
+        "title": "Compare paid acquisition channels"
       },
       "compare-google-ads-last-month": {
-        "description": "हर दिन {{assistantName}}, Google विज्ञापनों और Meta विज्ञापनों पर खर्च, CPA और ROAS की तुलना पिछली अवधि से करता है और Slack में विसंगतियों को चिह्नित करता है।",
-        "scenario": "विज्ञापन गति संबंधी समस्याओं पर हर दिन पैसे खर्च होते हैं और उन पर किसी का ध्यान नहीं जाता। {{assistantName}} प्रतिदिन खर्च, CPA और ROAS की पिछली अवधि से तुलना करता है और Slack में किसी भी प्रकार की गड़बड़ी को चिह्नित करता है।",
+        "description": "Track paid-media efficiency, pacing, and performance drift.",
+        "scenario": "Budget can drift before a campaign owner notices. {{assistantName}} compares Google Ads and Meta Ads on spend, conversions, CPA, and ROAS and highlights where action is needed.",
         "steps": {
           "one": {
-            "description": "{{assistantName}}, Google और Meta विज्ञापनों से खर्च, CPA और रूपांतरण खींचता है।",
-            "title": "{{assistantName}} विज्ञापन प्रदर्शन पढ़ता है"
+            "description": "{{assistantName}} reads both ad platforms for the selected period.",
+            "title": "Campaign data is collected"
           },
           "three": {
-            "description": "{{assistantName}} तुलना पोस्ट करता है और बहाव पर प्रकाश डालता है।",
-            "title": "Slack में विसंगतियाँ चिह्नित की गईं"
+            "description": "{{assistantName}} returns the comparison and optionally updates Sheets.",
+            "title": "Actions are recommended"
           },
           "two": {
-            "description": "{{assistantName}} डेल्टा और गति की गणना करता है।",
-            "title": "पूर्व अवधि की तुलना में"
+            "description": "{{assistantName}} normalizes performance and identifies material drift.",
+            "title": "Efficiency is compared"
           }
         },
-        "title": "Google विज्ञापनों की तुलना पिछले महीने से करें"
+        "title": "Compare Google Ads and Meta Ads"
       },
       "daily-company-brief-slack": {
-        "description": "Slack पर उत्पाद, विकास और राजस्व को दैनिक संक्षिप्त में शामिल करें।",
-        "scenario": "पूरी तस्वीर पाँच उपकरणों में रहती है जिन्हें कोई भी एक साथ जाँच नहीं करता है। {{assistantName}} प्रत्येक सुबह विकास, राजस्व, उत्पाद स्वास्थ्य और इंजीनियरिंग को खींचता है और एक कंपनी की पल्स को Slack पर पोस्ट करता है: जीत, जोखिम, और किस पर ध्यान देने की आवश्यकता है।",
+        "description": "Combine growth, pipeline, and optional financial context.",
+        "scenario": "The company picture is spread across several systems. {{assistantName}} combines Google Analytics and HubSpot, adds QuickBooks context when available, and returns the wins, risks, and decisions that matter.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} आपके स्टैक में वृद्धि, राजस्व, त्रुटियाँ और शिपिंग पढ़ता है।",
-            "title": "{{assistantName}} सिग्नल एकत्रित करता है"
+            "description": "{{assistantName}} reads growth, pipeline, and available financial data.",
+            "title": "Company signals are gathered"
           },
           "three": {
-            "description": "{{assistantName}} दैनिक कंपनी संक्षिप्त पोस्ट करता है।",
-            "title": "Slack पर पोस्ट किया गया"
+            "description": "{{assistantName}} summarizes priorities in the automation thread.",
+            "title": "The pulse is returned"
           },
           "two": {
-            "description": "{{assistantName}} जीत, जोखिम और किन बातों पर ध्यान देने की जरूरत है, लिखता है।",
-            "title": "एक नाड़ी में एकत्रित"
+            "description": "{{assistantName}} connects movement across the business.",
+            "title": "Wins and risks are identified"
           }
         },
-        "title": "Slack पर दैनिक कंपनी संक्षिप्त पोस्ट करें"
+        "title": "Create a daily company pulse"
       },
       "daily-industry-news-slack": {
-        "description": "दिन भर की प्रासंगिक उद्योग समाचारों को Slack संक्षिप्त में सारांशित करें।",
-        "scenario": "चालू रहने का मतलब है एक दर्जन टैब जिन्हें आप कभी नहीं खोलते। {{assistantName}} हर दिन AI और प्रतिस्पर्धी समाचारों के पिछले 24 घंटों को स्कैन करता है और Slack पर एक संक्षिप्त विवरण पोस्ट करता है ताकि आप इसके बजाय एक सारांश पढ़ सकें।",
+        "description": "Monitor QuickBooks cash position and receivables risk.",
+        "scenario": "Cash-flow issues are cheaper to handle before they become urgent. {{assistantName}} checks QuickBooks cash flow and overdue invoices, explains material risk, and can draft follow-up emails for review.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} Exa के साथ अंतिम दिन से AI और प्रतिस्पर्धी कवरेज की खोज करता है।",
-            "title": "{{assistantName}} समाचार को स्कैन करता है"
+            "description": "{{assistantName}} reads cash flow, receivables, and overdue invoices.",
+            "title": "Financial risk is checked"
           },
           "three": {
-            "description": "{{assistantName}} दैनिक समाचार संक्षिप्त पोस्ट करता है।",
-            "title": "Slack पर पोस्ट किया गया"
+            "description": "{{assistantName}} explains the risk and can prepare Gmail follow-ups.",
+            "title": "The alert is returned"
           },
           "two": {
-            "description": "{{assistantName}} संक्षेप में बताता है कि वास्तव में क्या मायने रखता है।",
-            "title": "संक्षेप में आसुत"
+            "description": "{{assistantName}} flags aging balances and cash-pressure signals.",
+            "title": "Material changes are identified"
           }
         },
-        "title": "Slack पर दैनिक उद्योग समाचार पोस्ट करें"
+        "title": "Alert on cash flow and overdue invoices"
       },
       "draft-github-release-notes-notion": {
-        "description": "पिछली रिलीज के बाद से मर्ज किए गए पीआर को Notion में साफ नोट्स में बदलें।",
-        "scenario": "रिलीज़ नोट्स लिखने का अर्थ है PR इतिहास को स्क्रॉल करना और कमिट को सादे भाषा में अनुवाद करना। {{assistantName}} ऐसा तब करता है जब आप भेजे गए PR को लेबल करते हैं: यह अंतिम टैग के बाद से मर्ज की गई सभी चीज़ों को इकट्ठा करता है और Notion में पढ़ने योग्य नोट्स को ड्राफ्ट करता है।",
+        "description": "Turn merged pull requests into clear, user-facing release notes.",
+        "scenario": "Release notes should not require translating a commit log by hand. {{assistantName}} gathers the pull requests merged since the last release and turns them into a concise changelog in Notion.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} आपके रिलीज़ लेबल पर ट्रिगर होता है।",
-            "title": "एक PR को शिप किया गया लेबल दिया गया है"
+            "description": "{{assistantName}} collects pull requests since the previous release.",
+            "title": "Merged work is gathered"
           },
           "three": {
-            "description": "{{assistantName}} एक Notion पृष्ठ पर साफ़, समूहीकृत रिलीज़ नोट ड्राफ्ट करता है।",
-            "title": "रिलीज़ नोट Notion में सहेजे गए"
+            "description": "{{assistantName}} writes the release-note draft in Notion.",
+            "title": "Notes are saved"
           },
           "two": {
-            "description": "{{assistantName}} अंतिम रिलीज़ टैग के बाद से मर्ज की गई सभी चीज़ों को एकत्रित करता है।",
-            "title": "{{assistantName}} मर्ज किए गए पीआर को इकट्ठा करता है"
+            "description": "{{assistantName}} groups the work and explains the user impact.",
+            "title": "Changes are translated"
           }
         },
-        "title": "Notion में GitHub रिलीज़ नोट का ड्राफ्ट तैयार करें"
+        "title": "Draft GitHub release notes in Notion"
       },
       "draft-newsletter-mailchimp": {
-        "description": "हर महीने {{assistantName}} भेजे गए फीचर्स से एक न्यूज़लेटर इकट्ठा करता है और Mailchimp में एक ड्राफ्ट तैयार करता है।",
-        "scenario": "मासिक समाचार पत्र हमेशा एक खाली पृष्ठ से शुरू होता है। {{assistantName}}, GitHub से भेजे गए को इकट्ठा करता है, मुद्दे का मसौदा तैयार करता है, और इसे Mailchimp में रखता है ताकि आप लेखक के बजाय संपादित कर सकें।",
+        "description": "Combine Analytics and Search Console into one organic report.",
+        "scenario": "Organic growth lives across traffic and search data. {{assistantName}} combines Google Analytics with Search Console, explains movement and opportunities, and optionally records follow-up work in Notion.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} GitHub से मर्ज किए गए फीचर्स और हाइलाइट्स को पढ़ता है।",
-            "title": "{{assistantName}} जो भेजा गया है उसे एकत्रित करता है"
+            "description": "{{assistantName}} reads site behavior and search performance.",
+            "title": "Organic data is collected"
           },
           "three": {
-            "description": "{{assistantName}} एक रेडी-टू-एडिट ड्राफ्ट अभियान बनाता है।",
-            "title": "Mailchimp में मंचन किया गया"
+            "description": "{{assistantName}} returns priorities and optionally saves them in Notion.",
+            "title": "The brief is created"
           },
           "two": {
-            "description": "{{assistantName}} आपकी आवाज़ में समस्या लिखता है।",
-            "title": "न्यूज़लेटर का मसौदा तैयार किया गया"
+            "description": "{{assistantName}} connects landing pages, queries, conversions, and trends.",
+            "title": "Growth is analyzed"
           }
         },
-        "title": "Mailchimp में न्यूज़लेटर का ड्राफ्ट तैयार करें"
+        "title": "Create an organic growth brief"
       },
       "draft-replies-notion-faq": {
-        "description": "ड्राफ्ट टिकट के उत्तर आपके Notion FAQ पर आधारित हैं।",
-        "scenario": "अधिकांश प्रश्नों का उत्तर दस्तावेज़ों में पहले ही दिया जा चुका है। {{assistantName}} आने वाले प्रश्न को पढ़ता है, Notion में FAQ को देखता है, और एक एजेंट के अनुमोदन के लिए आपके दस्तावेज़ों में आधारित एक उत्तर का मसौदा तैयार करता है।",
+        "description": "Ground support email drafts in an approved Notion FAQ.",
+        "scenario": "Most support questions already have an approved answer somewhere. {{assistantName}} reads the email, finds the relevant Notion guidance, and drafts a grounded reply for review.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} इंटरकॉम या Gmail में नई बातचीत पढ़ता है।",
-            "title": "एक प्रश्न आता है"
+            "description": "{{assistantName}} reads the Gmail conversation and customer context.",
+            "title": "A support question arrives"
           },
           "three": {
-            "description": "{{assistantName}} ऑन-ब्रांड प्रतिक्रिया का मंचन करता है।",
-            "title": "समीक्षा के लिए उत्तर तैयार किया गया"
+            "description": "{{assistantName}} prepares a response and never sends automatically.",
+            "title": "A reply is drafted"
           },
           "two": {
-            "description": "{{assistantName}} आपके दस्तावेज़ों में प्रासंगिक उत्तर ढूंढता है।",
-            "title": "{{assistantName}}, Notion FAQ की जाँच करता है"
+            "description": "{{assistantName}} finds the relevant approved guidance in Notion.",
+            "title": "The FAQ is checked"
           }
         },
-        "title": "आपके Notion FAQ से ड्राफ्ट उत्तर तैयार करें"
+        "title": "Draft replies from the FAQ"
       },
       "file-gmail-invoices-drive": {
-        "description": "इनवॉइस ईमेल को ड्राइव में फ़ाइल करें और प्रत्येक को एक शीट में लॉग करें।",
-        "scenario": "इनबॉक्स में चालानों का अंबार लग जाता है और सुलह कराने में मारामारी मच जाती है। {{assistantName}} प्रत्येक लेबल वाले चालान को सही ड्राइव फ़ोल्डर में फ़ाइल करता है और आपके व्यय पत्रक में राशि और देय तिथि आने पर उसे लॉग करता है।",
+        "description": "Store invoice files and record the corresponding accounting item.",
+        "scenario": "Invoices create cleanup work when files and accounting records drift apart. {{assistantName}} files Gmail attachments in Drive, records the bill or expense in QuickBooks, and can update a reconciliation sheet.",
         "steps": {
           "one": {
-            "description": "Gmail में आपके इनवॉइस लेबल पर {{assistantName}} ट्रिगर होता है।",
-            "title": "एक चालान लेबल किया गया है"
+            "description": "{{assistantName}} reads selected Gmail messages and attachments.",
+            "title": "Invoice emails are identified"
           },
           "three": {
-            "description": "{{assistantName}} व्यय पत्रक में राशि और देय तिथि दर्ज करता है।",
-            "title": "एक शीट में लॉग इन किया गया"
+            "description": "{{assistantName}} records the item and optionally updates Google Sheets.",
+            "title": "QuickBooks is updated"
           },
           "two": {
-            "description": "{{assistantName}} अनुलग्नक को सही फ़ोल्डर में सहेजता है।",
-            "title": "Google Drive पर दायर किया गया"
+            "description": "{{assistantName}} saves the document in Drive and extracts accounting data.",
+            "title": "Files and details are captured"
           }
         },
-        "title": "Gmail चालान को Google Drive पर फ़ाइल करें"
+        "title": "File Gmail invoices in Drive and QuickBooks"
       },
       "file-sentry-crashes-github": {
-        "description": "उपयोगकर्ता प्रभाव के आधार पर नई सेंट्री त्रुटियों को रैंक करें और सबसे खराब को GitHub इश्यू के रूप में दर्ज करें।",
-        "scenario": "नए क्रैश सेंट्री में तब तक छुपे रहते हैं जब तक कोई तलाश नहीं करता। {{assistantName}} हर घंटे जाँच करता है, त्रुटियों को इस आधार पर रैंक करता है कि वे कितने उपयोगकर्ताओं तक पहुँचे हैं, जो मायने रखता है उसके लिए एक GitHub इश्यू खोलता है, और जिसके पास भी वह कोड है उसे पिंग करता है।",
+        "description": "Rank new crashes by impact and file the most actionable issues.",
+        "scenario": "High-impact crashes can sit unnoticed in an error feed. {{assistantName}} reviews new Sentry failures, ranks them by severity and affected users, and files the ones that need engineering work.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} अनसुलझे त्रुटियों को पढ़ता है और अंतिम घंटे के लिए उनकी घटना की गणना करता है।",
-            "title": "{{assistantName}} नई सेंट्री त्रुटियाँ खींचता है"
+            "description": "{{assistantName}} collects unresolved errors and impact signals from Sentry.",
+            "title": "{{assistantName}} reads new crashes"
           },
           "three": {
-            "description": "{{assistantName}} स्टैक ट्रेस के साथ एक GitHub इश्यू खोलता है और Slack में मालिक को सूचित करता है।",
-            "title": "इश्यू दायर किए गए और स्वामी को पिंग किया गया"
+            "description": "{{assistantName}} creates actionable issues and optionally links them in Linear.",
+            "title": "GitHub issues are filed"
           },
           "two": {
-            "description": "{{assistantName}} प्रभावित उपयोगकर्ताओं के अनुसार क्रमबद्ध करता है और कम प्रभाव वाले शोर को फ़िल्टर करता है।",
-            "title": "उपयोगकर्ता प्रभाव के आधार पर रैंक किया गया"
+            "description": "{{assistantName}} separates urgent regressions from lower-impact noise.",
+            "title": "Impact is ranked"
           }
         },
-        "title": "सेंट्री क्रैश को GitHub इश्यू के रूप में फ़ाइल करें"
+        "title": "File Sentry crashes as GitHub issues"
       },
       "fixes-to-notion-help-docs": {
-        "description": "जब किसी टिकट को समाधान के रूप में चिह्नित किया जाता है, तो {{assistantName}} सुधार को Notion में पुन: प्रयोज्य सहायता लेख में बदल देता है।",
-        "scenario": "वही प्रश्न वापस आता है क्योंकि सुधार का कभी दस्तावेजीकरण नहीं किया गया। {{assistantName}} प्रत्येक हल किए गए टिकट को Notion में एक स्वच्छ, पुन: प्रयोज्य सहायता लेख में बदल देता है ताकि अगली बार उत्तर मौजूद रहे।",
+        "description": "Convert confirmed GitHub fixes into reusable Notion guidance.",
+        "scenario": "The same support question returns when the fix is never documented. {{assistantName}} reads resolved GitHub issues and turns the approved resolution into a clear Notion help article.",
         "steps": {
           "one": {
-            "description": "टिकट बंद होने पर {{assistantName}} ट्रिगर हो जाता है।",
-            "title": "एक टिकट का समाधान हो गया है"
+            "description": "{{assistantName}} reads the GitHub issue, fix, and user impact.",
+            "title": "A resolved bug is selected"
           },
           "three": {
-            "description": "{{assistantName}} लेख को आपके सहायता केंद्र में जोड़ता है।",
-            "title": "Notion में सहेजा गया"
+            "description": "{{assistantName}} writes the reusable draft in Notion.",
+            "title": "The help article is saved"
           },
           "two": {
-            "description": "{{assistantName}} संकल्प से एक स्पष्ट तरीके का मसौदा तैयार करता है।",
-            "title": "ठीक लिखा हुआ है"
+            "description": "{{assistantName}} turns the resolution into clear troubleshooting steps.",
+            "title": "Guidance is drafted"
           }
         },
-        "title": "सुधारों को Notion सहायता दस्तावेज़ में बदलें"
+        "title": "Turn resolved bugs into help docs"
       },
       "flag-figma-designs-no-task": {
-        "description": "फिग्मा डिज़ाइनों को फ़्लैग करें जिनमें अभी तक कोई रैखिक कार्य नहीं जुड़ा है।",
-        "scenario": "डिज़ाइन कभी भी बिल्ड टिकट बने बिना चुपचाप समाप्त हो जाते हैं। {{assistantName}} प्रतिदिन फिग्मा को तैयार चिह्नित फ़्रेमों के लिए स्कैन करता है जिनमें कोई लिंक्ड रैखिक कार्य नहीं है और उनके फिसलने से पहले Slack में अंतराल को चिह्नित करता है।",
+        "description": "Convert an approved product spec into scoped Linear work.",
+        "scenario": "Approved specs still need to become executable work. {{assistantName}} reads a Notion spec and creates a Linear project with milestones, scoped issues, dependencies, and acceptance criteria.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} फ़्रेम और उनसे जुड़े कार्यों को पढ़ता है।",
-            "title": "{{assistantName}} फिग्मा फ्रेम को स्कैन करता है"
+            "description": "{{assistantName}} reads the approved Notion product specification.",
+            "title": "The spec is reviewed"
           },
           "three": {
-            "description": "{{assistantName}} आपके चैनल में अनलिंक किए गए डिज़ाइनों को सूचीबद्ध करता है।",
-            "title": "अंतराल को Slack पर पोस्ट किया गया"
+            "description": "{{assistantName}} creates the project and optionally links GitHub context.",
+            "title": "The Linear project is created"
           },
           "two": {
-            "description": "{{assistantName}} फ़्लैग तैयार डिज़ाइन में बिल्ड टिकट नहीं है।",
-            "title": "बिना किसी कार्य के फ़्रेम ढूँढता है"
+            "description": "{{assistantName}} identifies milestones, issues, dependencies, and criteria.",
+            "title": "Work is structured"
           }
         },
-        "title": "बिना किसी कार्य के फिग्मा डिज़ाइन को फ़्लैग करें"
+        "title": "Turn a Notion spec into a Linear project"
       },
       "flagged-gmail-todoist-tasks": {
-        "description": "आपके द्वारा फ़्लैग किए गए ईमेल को स्वचालित रूप से टोडोइस्ट कार्यों में बदल दें।",
-        "scenario": "किसी ईमेल को फ़्लैग करने से निर्णय बाद में हो जाता है। {{assistantName}} ध्वज उठाता है, विषय और पिछले थ्रेड पर शोध करता है, और पहले से ही संलग्न संदर्भ के साथ एक टोडोइस्ट कार्य फ़ाइल करता है।",
+        "description": "Create actionable tasks from messages with a selected label.",
+        "scenario": "Important emails become easier to finish when they leave the inbox as clear tasks. {{assistantName}} turns labeled Gmail messages into Todoist items with due dates and source context.",
         "steps": {
           "one": {
-            "description": "{{assistantName}}, Gmail में आपके टू-डू लेबल पर ट्रिगर होता है।",
-            "title": "आप किसी ईमेल को फ़्लैग करें"
+            "description": "{{assistantName}} detects the selected label and reads the message.",
+            "title": "A Gmail message is flagged"
           },
           "three": {
-            "description": "{{assistantName}} लिंक के साथ एक रेडी-टू-डू कार्य बनाता है।",
-            "title": "टोडोइस्ट में कार्य दायर किया गया"
+            "description": "{{assistantName}} creates the task with a source link.",
+            "title": "A Todoist task is created"
           },
           "two": {
-            "description": "{{assistantName}} Exa के साथ पूर्व थ्रेड संदर्भ और वेब जानकारी एकत्र करता है।",
-            "title": "{{assistantName}} इस पर शोध करता है"
+            "description": "{{assistantName}} identifies the task, due date, and supporting context.",
+            "title": "The action is extracted"
           }
         },
-        "title": "ध्वजांकित Gmail को टोडोइस्ट कार्यों में बदलें"
+        "title": "Turn flagged Gmail into Todoist tasks"
       },
       "github-idea-to-notion-spec": {
-        "description": "Notion में एक संरचित उत्पाद स्पेक में लेबल किए गए GitHub इश्यू का विस्तार करें।",
-        "scenario": "किसी इश्यू में एक पंक्ति का विचार कोई स्पेक नहीं है। {{assistantName}} आवश्यकताओं-स्पेक लेबल को चुनता है और समस्या, उपयोगकर्ताओं, आवश्यकताओं और स्वीकृति मानदंडों को परिष्कृत करने के लिए तैयार Notion में एक संरचित PRD में इश्यू का विस्तार करता है।",
+        "description": "Expand a labeled GitHub idea into a structured product spec.",
+        "scenario": "Good ideas often stop at a short issue description. {{assistantName}} turns a labeled GitHub idea into a clear Notion spec with the problem, evidence, scope, metrics, risks, and open questions.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} लेबल पर ट्रिगर होता है और समस्या को पढ़ता है।",
-            "title": "किसी इश्यू को आवश्यकता-स्पेक का लेबल दिया गया है"
+            "description": "{{assistantName}} reads the labeled GitHub issue and related context.",
+            "title": "An idea is selected"
           },
           "three": {
-            "description": "{{assistantName}}, Notion में संरचित PRD पृष्ठ बनाता है।",
-            "title": "Notion में सहेजा गया"
+            "description": "{{assistantName}} writes the structured draft in Notion.",
+            "title": "The spec is saved"
           },
           "two": {
-            "description": "{{assistantName}} ड्राफ्ट समस्या, उपयोगकर्ता, आवश्यकताएँ और स्वीकृति मानदंड।",
-            "title": "{{assistantName}} इसे PRD में विस्तारित करता है"
+            "description": "{{assistantName}} expands the problem, scope, success criteria, and risks.",
+            "title": "The spec is developed"
           }
         },
-        "title": "एक GitHub विचार को Notion स्पेक में बदलें"
+        "title": "Turn a GitHub idea into a Notion spec"
       },
       "gmail-followups-auto": {
-        "description": "उन संपर्कों को ढूंढें जिन्होंने उत्तर नहीं दिया और अगली अनुवर्ती कार्रवाई का मसौदा तैयार करें।",
-        "scenario": "फॉलो-अप वह है जहां सौदे जीते जाते हैं और जहां उन्हें भुला दिया जाता है। {{assistantName}} आपके अनुक्रमों को प्रतिदिन आगे बढ़ाता है और प्रत्येक गैर-उत्तर के लिए अगले स्पर्श का मसौदा तैयार करता है ताकि कुछ भी पुराना न हो।",
+        "description": "Prepare contextual sales follow-ups for human review.",
+        "scenario": "Good follow-ups need the deal record and the conversation. {{assistantName}} combines HubSpot context with the related Gmail thread and drafts a concise response without sending it.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} पढ़ता है जिसने इंस्टेंटली और अपोलो में उत्तर नहीं दिया है।",
-            "title": "{{assistantName}} अनुक्रम स्थिति की जाँच करता है"
+            "description": "{{assistantName}} reads the HubSpot record and recent activity.",
+            "title": "Deal context is reviewed"
           },
           "three": {
-            "description": "{{assistantName}} आपकी मंजूरी के लिए ड्राफ्ट तैयार करता है।",
-            "title": "Gmail में तैयार"
+            "description": "{{assistantName}} prepares a Gmail draft for human review.",
+            "title": "A follow-up is drafted"
           },
           "two": {
-            "description": "{{assistantName}} प्रत्येक संपर्क के लिए अनुवर्ती लिखता है।",
-            "title": "अगला स्पर्श ड्राफ्ट किया गया"
+            "description": "{{assistantName}} identifies open questions, commitments, and timing.",
+            "title": "The email thread is checked"
           }
         },
-        "title": "Gmail फॉलो-अप स्वचालित रूप से भेजें"
+        "title": "Draft Gmail follow-ups from HubSpot"
       },
       "gmail-reconnect-reminders": {
-        "description": "उन महत्वपूर्ण संपर्कों को सामने लाएँ जिन्हें आपने कुछ समय से ईमेल नहीं किया है।",
-        "scenario": "जब आप झुक जाते हैं तो रिश्ते फीके पड़ जाते हैं। {{assistantName}} आपके इनबॉक्स और कैलेंडर की साप्ताहिक समीक्षा करता है, उन सार्थक संपर्कों को सामने लाता है जिनके साथ आप शांत हो गए हैं, और फिर से जुड़ने के लिए एक प्राकृतिक ओपनर का सुझाव देता है।",
+        "description": "Find important contacts who have gone quiet and draft outreach.",
+        "scenario": "Important relationships fade when no one notices the silence. {{assistantName}} reviews Gmail and Google Contacts, adds Calendar history when available, and drafts thoughtful reconnect notes.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} हालिया ईमेल और कैलेंडर इतिहास पढ़ता है।",
-            "title": "{{assistantName}} आपके संपर्कों की समीक्षा करता है"
+            "description": "{{assistantName}} checks recent Gmail activity and contact context.",
+            "title": "Relationship history is reviewed"
           },
           "three": {
-            "description": "{{assistantName}} प्रत्येक संपर्क को एक सुझाए गए ओपनर के साथ पोस्ट करता है।",
-            "title": "सलामी बल्लेबाजों ने सुझाव दिया"
+            "description": "{{assistantName}} drafts personal messages for human review.",
+            "title": "Reconnect drafts are prepared"
           },
           "two": {
-            "description": "{{assistantName}} उन सार्थक संपर्कों को ढूंढता है जिन्हें आपने हाल ही में नहीं छुआ है।",
-            "title": "शांत रिश्ते सामने आए"
+            "description": "{{assistantName}} identifies valuable contacts with no recent interaction.",
+            "title": "Quiet relationships are ranked"
           }
         },
-        "title": "Gmail पुन: कनेक्ट अनुस्मारक प्राप्त करें"
+        "title": "Surface relationships to reconnect with"
       },
       "highlight-key-emails-gmail": {
-        "description": "कुछ ऐसे ईमेल सामने लाएँ जिन पर वास्तव में आपका ध्यान चाहिए।",
-        "scenario": "एक भरा हुआ इनबॉक्स महत्वपूर्ण तीन ईमेल को ख़त्म कर देता है। {{assistantName}} हर सुबह आपका मेल पढ़ता है और केवल उन्हीं मेल को सामने लाता है जिन्हें वास्तव में आपकी जरूरत है, Slack पर पोस्ट किया गया।",
+        "description": "Find the Gmail messages that most need an executive response.",
+        "scenario": "An executive inbox mixes important decisions with routine traffic. {{assistantName}} identifies the messages that matter, explains why, and drafts responses without sending them.",
         "steps": {
           "one": {
-            "description": "{{assistantName}}, Gmail में रात भर के मेल को स्कैन करता है।",
-            "title": "{{assistantName}} इनबॉक्स पढ़ता है"
+            "description": "{{assistantName}} reads recent Gmail messages and available calendar context.",
+            "title": "The inbox is reviewed"
           },
           "three": {
-            "description": "{{assistantName}} शॉर्टलिस्ट पोस्ट करता है कि प्रत्येक क्यों मायने रखता है।",
-            "title": "Slack पर पोस्ट किया गया"
+            "description": "{{assistantName}} summarizes each item and drafts replies for review.",
+            "title": "Responses are prepared"
           },
           "two": {
-            "description": "{{assistantName}} उन कुछ फ़िल्टर को फ़िल्टर करता है जिन पर आपका ध्यान चाहिए।",
-            "title": "प्राथमिकताओं की पहचान की गई"
+            "description": "{{assistantName}} prioritizes decisions, commitments, and sensitive requests.",
+            "title": "Important messages are ranked"
           }
         },
-        "title": "Gmail में प्रमुख ईमेल हाइलाइट करें"
+        "title": "Highlight key emails"
       },
       "investor-update-google-docs": {
-        "description": "डॉक्स में निवेशक अपडेट में मेट्रिक्स और हाइलाइट्स को इकट्ठा करें।",
-        "scenario": "मासिक निवेशक अपडेट हमेशा देर से और शून्य से शुरू होता है। {{assistantName}} KPI को इकट्ठा करता है और Google डॉक्स में अपडेट को हाइलाइट और ड्राफ्ट करता है ताकि आप असेंबल करने के बजाय परिष्कृत कर सकें।",
+        "description": "Combine financial and growth data into a Google Docs draft.",
+        "scenario": "Investor updates take time because the story and the numbers live apart. {{assistantName}} combines QuickBooks and Google Analytics, adds HubSpot context when available, and drafts the update in Google Docs.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} स्ट्राइप और शीट्स से राजस्व और विकास खींचता है।",
-            "title": "{{assistantName}} KPI एकत्रित करता है"
+            "description": "{{assistantName}} reads financial, growth, and available pipeline data.",
+            "title": "Current metrics are gathered"
           },
           "three": {
-            "description": "{{assistantName}} एक रेडी-टू-एडिट ड्राफ्ट छोड़ता है।",
-            "title": "Google डॉक्स में संपादन योग्य"
+            "description": "{{assistantName}} writes the investor update in Google Docs.",
+            "title": "The update is drafted"
           },
           "two": {
-            "description": "{{assistantName}} कथा और मेट्रिक्स लिखता है।",
-            "title": "अद्यतन मसौदा तैयार किया गया"
+            "description": "{{assistantName}} connects progress, lessons, risks, and next priorities.",
+            "title": "The narrative is developed"
           }
         },
-        "title": "Google डॉक्स में निवेशक अपडेट ड्राफ्ट करें"
+        "title": "Draft an investor update"
       },
       "log-gong-calls-hubspot": {
-        "description": "HubSpot डील में गोंग कॉल से नोट्स और अगले चरण निकालें।",
-        "scenario": "कॉल नोट कभी भी CRM में शामिल नहीं होते, जबकि वे ताज़ा होते हैं। {{assistantName}} प्रत्येक कॉल के बाद गोंग प्रतिलेख पढ़ता है और HubSpot सौदे पर सारांश और अगले चरण स्वचालित रूप से लिखता है।",
+        "description": "Turn meeting transcripts into CRM decisions and next actions.",
+        "scenario": "Important call details disappear when notes stay outside the CRM. {{assistantName}} turns Google Meet transcripts into decisions, objections, commitments, and action items in HubSpot.",
         "steps": {
           "one": {
-            "description": "कॉल के बाद, {{assistantName}} गोंग से रिकॉर्डिंग नोट्स खींचता है।",
-            "title": "{{assistantName}} प्रतिलेख पढ़ता है"
+            "description": "{{assistantName}} reads the latest transcript and meeting context.",
+            "title": "A Meet transcript arrives"
           },
           "three": {
-            "description": "{{assistantName}} डील रिकॉर्ड पर नोट्स लिखता है।",
-            "title": "HubSpot पर लॉग इन किया गया"
+            "description": "{{assistantName}} logs the recap and can draft a Gmail follow-up.",
+            "title": "HubSpot is updated"
           },
           "two": {
-            "description": "{{assistantName}} निर्णय और अनुवर्ती कार्रवाई निकालता है।",
-            "title": "सारांश और अगले चरणों का मसौदा तैयार किया गया"
+            "description": "{{assistantName}} identifies decisions, objections, commitments, and owners.",
+            "title": "Sales signals are extracted"
           }
         },
-        "title": "गोंग कॉल को HubSpot पर लॉग करें"
+        "title": "Log Google Meet action items in HubSpot"
       },
       "meeting-notes-asana-tasks": {
-        "description": "मीटिंग नोट्स को असाइन किए गए, नियत तिथियों वाले कार्यों में Asana में बदलें।",
-        "scenario": "एक्शन आइटम मीटिंग नोट्स में खो जाते हैं। {{assistantName}} प्रत्येक बैठक के बाद प्रतिलेख पढ़ता है, कार्यों को निकालता है, और असाइन किए गए Asana कार्यों को बनाता है ताकि निर्णय वास्तव में कार्य में बदल जाएं।",
+        "description": "Create assigned project work from meeting transcripts.",
+        "scenario": "Meeting actions disappear when they remain inside notes. {{assistantName}} reads Google Meet transcripts, identifies commitments and owners, and creates clear Asana tasks.",
         "steps": {
           "one": {
-            "description": "बैठक के बाद, {{assistantName}} ने फ़ायरफ्लाइज़ से नोट निकाले।",
-            "title": "{{assistantName}} प्रतिलेख पढ़ता है"
+            "description": "{{assistantName}} reads the meeting transcript and Calendar context.",
+            "title": "A Meet transcript arrives"
           },
           "three": {
-            "description": "{{assistantName}} नियत तिथियों के साथ असाइन किए गए कार्यों को फ़ाइल करता है।",
-            "title": "आसन में बनाए गए कार्य"
+            "description": "{{assistantName}} creates assigned work with source context.",
+            "title": "Asana tasks are created"
           },
           "two": {
-            "description": "{{assistantName}} कार्यों और स्वामियों की पहचान करता है।",
-            "title": "कार्रवाई आइटम निकाले गए"
+            "description": "{{assistantName}} identifies tasks, owners, due dates, and dependencies.",
+            "title": "Actions are extracted"
           }
         },
-        "title": "मीटिंग नोट्स को Asana कार्यों में बदलें"
+        "title": "Turn Google Meet notes into Asana tasks"
       },
       "meeting-recaps-slack": {
-        "description": "प्रत्येक बैठक के बाद निर्णयों और कार्रवाई मदों का सारांश साझा करें।",
-        "scenario": "एक बैठक का विवरण अगली बैठक तक फीका पड़ जाता है। {{assistantName}} बाद में प्रतिलेख पढ़ता है और निर्णयों और कार्रवाई आइटमों का एक साफ़ पुनर्कथन भेजता है ताकि कुछ भी खो न जाए।",
+        "description": "Turn meeting transcripts into concise recaps and action items.",
+        "scenario": "Meeting decisions are lost when the transcript is never processed. {{assistantName}} reads Google Meet transcripts and writes the key decisions, actions, and owners in Google Docs.",
         "steps": {
           "one": {
-            "description": "बैठक के बाद, {{assistantName}} ने फ़ायरफ्लाइज़ से नोट निकाले।",
-            "title": "{{assistantName}} प्रतिलेख पढ़ता है"
+            "description": "{{assistantName}} reads the transcript and available Calendar context.",
+            "title": "A Meet transcript arrives"
           },
           "three": {
-            "description": "{{assistantName}}, Gmail या Slack को पुनर्कथन वितरित करता है।",
-            "title": "आपके पास भेजा गया"
+            "description": "{{assistantName}} writes the structured recap in Google Docs.",
+            "title": "The recap is saved"
           },
           "two": {
-            "description": "{{assistantName}} निर्णयों और कार्रवाई मदों का सारांश प्रस्तुत करता है।",
-            "title": "पुनर्कथन लिखा है"
+            "description": "{{assistantName}} identifies outcomes, owners, due dates, and open questions.",
+            "title": "Decisions and actions are extracted"
           }
         },
-        "title": "Slack में मीटिंग पुनर्कथन प्राप्त करें"
+        "title": "Save Google Meet recaps to Google Docs"
       },
       "morning-brief-slack": {
-        "description": "हर सुबह {{assistantName}} आपके शेड्यूल और आपके लिए आवश्यक ईमेल के साथ एक संक्षिप्त जानकारी भेजता है और इसे Slack पर पोस्ट करता है।",
-        "scenario": "दिन के पहले दस मिनट यह पता लगाने में चले जाते हैं कि दिन कैसा है। {{assistantName}} आपके शेड्यूल और उन ईमेल को इकट्ठा करता है जिनकी आपको आवश्यकता है और आपके बैठने से पहले Slack पर एक सुबह की जानकारी पोस्ट करता है।",
+        "description": "Combine important email, today's schedule, and optional Notion context.",
+        "scenario": "A useful morning plan needs both the inbox and the calendar. {{assistantName}} reviews Gmail and Google Calendar, adds Notion context when available, and returns a short daily brief.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} आज का कैलेंडर और प्राथमिकता ईमेल खींचता है।",
-            "title": "{{assistantName}} आपका दिन पढ़ता है"
+            "description": "{{assistantName}} reads important email and the day's calendar.",
+            "title": "Today's inputs are gathered"
           },
           "three": {
-            "description": "{{assistantName}} सुबह की संक्षिप्त जानकारी भेजता है।",
-            "title": "Slack पर पोस्ट किया गया"
+            "description": "{{assistantName}} creates a focused plan in the automation thread.",
+            "title": "The brief is returned"
           },
           "two": {
-            "description": "{{assistantName}} आपका शेड्यूल और किस चीज़ पर ध्यान देने की आवश्यकता है, लिखता है।",
-            "title": "संक्षेप में इकट्ठा किया गया"
+            "description": "{{assistantName}} identifies commitments, preparation, and follow-up.",
+            "title": "Priorities are connected"
           }
         },
-        "title": "Slack में सुबह की संक्षिप्त जानकारी प्राप्त करें"
+        "title": "Create a morning brief"
       },
       "new-gmail-contacts-hubspot": {
-        "description": "अज्ञात ईमेल प्रेषकों को HubSpot संपर्कों के रूप में जोड़ें और समृद्ध करें।",
-        "scenario": "जब कोई उन्हें लॉग नहीं करता तो संपर्क खिसक जाते हैं। {{assistantName}} किसी ऐसे व्यक्ति के ईमेल को नोटिस करता है जो अभी तक HubSpot में नहीं है, रिकॉर्ड बनाता है, और इसे अपोलो के साथ समृद्ध करता है ताकि CRM मैन्युअल प्रविष्टि के बिना पूर्ण रहे।",
+        "description": "Create or enrich CRM contacts from relevant email conversations.",
+        "scenario": "New relationships often stay trapped in the inbox. {{assistantName}} identifies relevant Gmail correspondents, checks HubSpot for duplicates, and creates or enriches the contact record.",
         "steps": {
           "one": {
-            "description": "{{assistantName}}, CRM के विरुद्ध आने वाले मेल की जाँच करता है।",
-            "title": "{{assistantName}} ने एक अज्ञात प्रेषक को देखा"
+            "description": "{{assistantName}} reviews relevant Gmail conversations.",
+            "title": "New correspondents are identified"
           },
           "three": {
-            "description": "{{assistantName}} टाइमलाइन पर संपर्क और स्रोत को रिकॉर्ड करता है।",
-            "title": "अनुवर्ती कार्रवाई के लिए लॉग इन किया गया"
+            "description": "{{assistantName}} creates or enriches HubSpot and optionally Google Contacts.",
+            "title": "The contact is updated"
           },
           "two": {
-            "description": "{{assistantName}} व्यक्ति को HubSpot से जोड़ता है और अपोलो से समृद्ध करता है।",
-            "title": "संपर्क बनाया और समृद्ध किया गया"
+            "description": "{{assistantName}} finds existing records and missing details.",
+            "title": "HubSpot is checked"
           }
         },
-        "title": "HubSpot में नए Gmail संपर्क जोड़ें"
+        "title": "Add new Gmail contacts to HubSpot"
       },
       "onboard-new-hires-asana": {
-        "description": "आसन में प्रत्येक नए कर्मचारी के लिए ऑनबोर्डिंग कार्य चेकलिस्ट बनाएं।",
-        "scenario": "ऑनबोर्डिंग हर बार एक ही चेकलिस्ट होती है, जो हर बार मैन्युअल रूप से की जाती है। {{assistantName}} एक नई नियुक्ति का पता लगाता है, आसन में ऑनबोर्डिंग प्रोजेक्ट को शुरू करता है, और ड्राइव में उनके स्टार्टर डॉक्स सेट करता है।",
+        "description": "Turn approved intake submissions into an Asana onboarding plan.",
+        "scenario": "New-hire setup is more reliable when every approved intake follows the same plan. {{assistantName}} reads Google Forms submissions, creates the Asana tasks, and can file documents in Drive.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} ने डील में नए रिकॉर्ड का पता लगाया।",
-            "title": "एक नया किराया जोड़ा गया है"
+            "description": "{{assistantName}} reads the new-hire form and required details.",
+            "title": "A submission is approved"
           },
           "three": {
-            "description": "{{assistantName}}, Google Drive में स्टार्टर दस्तावेज़ सेट करता है।",
-            "title": "दस्तावेज़ प्रावधानित"
+            "description": "{{assistantName}} creates the plan and optionally files Drive documents.",
+            "title": "Asana is updated"
           },
           "two": {
-            "description": "{{assistantName}} असाइन किए गए कार्यों के साथ ऑनबोर्डिंग प्रोजेक्ट को सक्रिय करता है।",
-            "title": "आसन में चेकलिस्ट बनाई गई"
+            "description": "{{assistantName}} maps the role and start date to tasks and owners.",
+            "title": "The onboarding plan is built"
           }
         },
-        "title": "Asana में नए कर्मचारियों को शामिल करें"
+        "title": "Onboard new hires from Google Forms"
       },
       "post-daily-metrics-slack": {
-        "description": "Slack पर दैनिक विज़िटर, साइनअप और सक्रियण संख्या पोस्ट करें।",
-        "scenario": "कॉफ़ी से पहले तीन डैशबोर्ड की जाँच करना किसी का पसंदीदा अनुष्ठान नहीं है। {{assistantName}} प्रत्येक सुबह आगंतुकों, साइनअप और सक्रियण को खींचता है और संख्याओं को Slack पर पोस्ट करता है ताकि दिन की शुरुआत चैनल में पहले से मौजूद KPI के साथ हो।",
+        "description": "Summarize traffic, acquisition, conversion, and notable changes.",
+        "scenario": "Daily website movement should not require opening several reports. {{assistantName}} reads Google Analytics, adds Search Console context when available, and returns a concise brief in the automation thread.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} आपके एनालिटिक्स टूल से ट्रैफ़िक, साइनअप और सक्रियण को पढ़ता है।",
-            "title": "{{assistantName}} मेट्रिक्स खींचता है"
+            "description": "{{assistantName}} reads traffic, acquisition, and conversion metrics.",
+            "title": "Website data is collected"
           },
           "three": {
-            "description": "{{assistantName}} सुबह का KPI अपडेट पोस्ट करता है।",
-            "title": "Slack पर पोस्ट किया गया"
+            "description": "{{assistantName}} summarizes what changed and what deserves attention.",
+            "title": "The brief is returned"
           },
           "two": {
-            "description": "{{assistantName}} दिन-प्रतिदिन के संदर्भ में प्रमुख संख्याओं को प्रारूपित करता है।",
-            "title": "एक KPI स्नैपशॉट में संयोजित"
+            "description": "{{assistantName}} compares performance and highlights meaningful movement.",
+            "title": "Changes are identified"
           }
         },
-        "title": "Slack पर दैनिक मेट्रिक्स पोस्ट करें"
+        "title": "Create a daily website metrics brief"
       },
       "post-github-updates-slack": {
-        "description": "प्रत्येक कार्यदिवस की सुबह {{assistantName}} आपके मर्ज किए गए और प्रगति पर काम को GitHub और लीनियर से Slack के लिए प्रगति अद्यतन में संकलित करता है।",
-        "scenario": "स्टैंडअप समय खा जाते हैं और इसका आधा हिस्सा सिर्फ यह याद करने में होता है कि आपने क्या किया। {{assistantName}} प्रत्येक सुबह आपके मर्ज किए गए PRs और इन-प्रोग्रेस लीनियर टिकटों को संकलित करता है और एक सुव्यवस्थित प्रगति अपडेट पोस्ट करता है ताकि एसिंक स्टैंडअप स्वयं लिख सके।",
+        "description": "Review cloud access, service accounts, and exposed services.",
+        "scenario": "Cloud permissions drift as projects grow. {{assistantName}} reviews Google Cloud IAM, service accounts, keys, enabled services, and public exposure, then returns a read-only risk report with clear remediation.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} आपके मर्ज किए गए और खुले कार्य को GitHub और लीनियर से पढ़ता है।",
-            "title": "{{assistantName}} आपकी गतिविधि एकत्र करता है"
+            "description": "{{assistantName}} inventories IAM bindings, accounts, keys, and services.",
+            "title": "Cloud access is reviewed"
           },
           "three": {
-            "description": "{{assistantName}} प्रत्येक सप्ताह के दिन आपके स्टैंडअप चैनल पर अपडेट पोस्ट करता है।",
-            "title": "Slack पर पोस्ट किया गया"
+            "description": "{{assistantName}} recommends fixes and optionally drafts approved GitHub issues.",
+            "title": "Remediation is prepared"
           },
           "two": {
-            "description": "{{assistantName}} एक संक्षिप्त, पठनीय प्रगति सारांश लिखता है।",
-            "title": "एक अद्यतन में संक्षेपित"
+            "description": "{{assistantName}} flags excess privilege, stale credentials, and public exposure.",
+            "title": "Risk is assessed"
           }
         },
-        "title": "Slack पर GitHub अपडेट पोस्ट करें"
+        "title": "Audit Google Cloud IAM and services"
       },
       "post-release-notes-slack": {
-        "description": "हाल ही में भेजे गए कार्य से एक चेंजलॉग ड्राफ्ट करें और इसे Slack पर पोस्ट करें।",
-        "scenario": "उपयोगकर्ता जो चेंजलॉग देखते हैं वह कमिट लॉग से भिन्न होता है। {{assistantName}} रिलीज लेबल पर ट्रिगर करता है, जो भेजा गया है उसका एक अनुकूल उपयोगकर्ता-सामना सारांश तैयार करता है, और इसे Slack और Notion पर पोस्ट करता है।",
+        "description": "Turn recently shipped GitHub work into an approved changelog.",
+        "scenario": "Shipped work is easy to lose inside pull requests. {{assistantName}} gathers recent GitHub changes, drafts readable release notes, and publishes the approved version in Notion.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} रिलीज़ लेबल पर ट्रिगर होता है।",
-            "title": "एक PR को रिलीज़ लेबल किया गया है"
+            "description": "{{assistantName}} collects recently merged GitHub changes.",
+            "title": "Shipped work is gathered"
           },
           "three": {
-            "description": "{{assistantName}} दोनों स्थानों पर घोषणा साझा करता है।",
-            "title": "Slack और Notion पर पोस्ट किया गया"
+            "description": "{{assistantName}} saves the final release notes in Notion.",
+            "title": "The approved draft is published"
           },
           "two": {
-            "description": "{{assistantName}} जो परिवर्तन हुआ उसका उपयोगकर्ता-सामना सारांश लिखता है।",
-            "title": "{{assistantName}} चेंजलॉग का मसौदा तैयार करता है"
+            "description": "{{assistantName}} groups changes and explains their user impact.",
+            "title": "Release notes are drafted"
           }
         },
-        "title": "Slack पर रिलीज़ नोट्स पोस्ट करें"
+        "title": "Publish release notes in Notion"
       },
       "prep-google-calendar-meetings": {
-        "description": "बाहरी उपस्थित लोगों पर शोध करें और बैठकों से पहले तैयारी का विवरण भेजें।",
-        "scenario": "कॉल कोल्ड में चलने का अर्थ है उसे बिना तैयारी के करना। {{assistantName}} नई बाहरी बैठकों को नोटिस करता है, अपोलो के साथ सहभागी और कंपनी पर शोध करता है, गोंग से पूर्व कॉल संदर्भ खींचता है, और शुरू होने से पहले आपको एक पृष्ठ का संक्षिप्त विवरण भेजता है।",
+        "description": "Create a focused briefing for upcoming external meetings.",
+        "scenario": "Meeting preparation should not start five minutes before the call. {{assistantName}} reviews the calendar event and adds contact and CRM context when available.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} तब ट्रिगर होता है जब कोई बाहरी सहभागी आपके कैलेंडर में शामिल होता है।",
-            "title": "एक मीटिंग जोड़ी गई है"
+            "description": "{{assistantName}} reads the selected Google Calendar window.",
+            "title": "Upcoming meetings are found"
           },
           "three": {
-            "description": "{{assistantName}} कॉल से पहले आपको एक पेज का डोजियर डीएम करता है।",
-            "title": "तैयारी का संक्षिप्त विवरण Slack को भेजा गया"
+            "description": "{{assistantName}} returns goals, context, risks, and suggested questions.",
+            "title": "The briefing is prepared"
           },
           "two": {
-            "description": "{{assistantName}} अपोलो और गोंग के साथ व्यक्ति और कंपनी को समृद्ध करता है।",
-            "title": "सहभागी ने शोध किया"
+            "description": "{{assistantName}} checks Google Contacts and HubSpot when connected.",
+            "title": "Attendee context is gathered"
           }
         },
-        "title": "Google Calendar बैठकों के लिए तैयारी"
+        "title": "Prepare for Google Calendar meetings"
       },
       "publish-scheduled-posts-buffer": {
-        "description": "हर दिन {{assistantName}} आज के लिए निर्धारित सामग्री को Notion कैलेंडर से Strapi पर प्रकाशित करता है और बफ़र में सामाजिक पोस्ट को कतारबद्ध करता है।",
-        "scenario": "एक कंटेंट कैलेंडर केवल तभी काम करता है जब कोई प्रकाशित करता है। {{assistantName}}, Notion से आज के निर्धारित आइटम पढ़ता है, उन्हें Strapi पर प्रकाशित करता है, और बफ़र में मेल खाने वाले सामाजिक पोस्ट को कतारबद्ध करता है।",
+        "description": "Compare a site with competitors and rank organic opportunities.",
+        "scenario": "Content plans improve when they start from real search gaps. {{assistantName}} uses built-in Firecrawl and DataForSEO to compare the user's site with named competitors and rank missing topics by intent and value.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} आज के लिए निर्धारित आइटम को Notion से खींचता है।",
-            "title": "{{assistantName}} आज का कैलेंडर पढ़ता है"
+            "description": "{{assistantName}} crawls the user's site and selected competitors.",
+            "title": "Sites are compared"
           },
           "three": {
-            "description": "{{assistantName}} बफ़र में प्रोमो पोस्ट शेड्यूल करता है।",
-            "title": "बफ़र में सामाजिक पंक्तिबद्ध"
+            "description": "{{assistantName}} returns a prioritized content opportunity list.",
+            "title": "Opportunities are ranked"
           },
           "two": {
-            "description": "{{assistantName}} सामग्री को Strapi में लाइव करता है।",
-            "title": "CMS पर प्रकाशित"
+            "description": "{{assistantName}} finds missing keywords, topics, and intent coverage.",
+            "title": "Search gaps are identified"
           }
         },
-        "title": "बफ़र पर निर्धारित पोस्ट प्रकाशित करें"
+        "title": "Find keyword and content gaps"
       },
       "report-ai-model-costs-slack": {
-        "description": "हर दिन {{assistantName}} लैंगफ्यूज से Slack तक प्रति मॉडल और मार्ग पर LLM टोकन खर्च और p95 विलंबता की रिपोर्ट करता है।",
-        "scenario": "मॉडल खर्च चुपचाप मार्गों और मॉडलों में बढ़ता है। {{assistantName}} हर दिन लैंगफ्यूज को पढ़ता है और प्रति मॉडल और रूट पर टोकन खर्च और p95 विलंबता का विवरण पोस्ट करता है ताकि लागत आश्चर्य कभी भी इनवॉइस तक इंतजार न करें।",
+        "description": "Explain traffic or security incidents and the next response.",
+        "scenario": "Cloudflare incidents need context before they need noise. {{assistantName}} reviews traffic, security events, and service health, explains likely impact, and returns the next actions in the automation thread.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} दिन के लिए टोकन खर्च और विलंबता निशान खींचता है।",
-            "title": "{{assistantName}} लैंगफ्यूज पढ़ता है"
+            "description": "{{assistantName}} reviews service health, traffic shifts, and security events.",
+            "title": "Cloudflare is checked"
           },
           "three": {
-            "description": "{{assistantName}} दैनिक लागत और विलंबता रिपोर्ट पोस्ट करता है।",
-            "title": "Slack पर पोस्ट किया गया"
+            "description": "{{assistantName}} recommends a response and can draft a GitHub issue.",
+            "title": "Next actions are returned"
           },
           "two": {
-            "description": "{{assistantName}} कुल खर्च और p95 प्रति मॉडल और प्रति रूट।",
-            "title": "मॉडल और मार्ग के अनुसार विभाजित"
+            "description": "{{assistantName}} separates confirmed incidents from normal variation.",
+            "title": "Impact is explained"
           }
         },
-        "title": "AI मॉडल की लागत Slack को रिपोर्ट करें"
+        "title": "Alert on Cloudflare incidents"
       },
       "research-calendar-meetings": {
-        "description": "प्रत्येक कैलेंडर ईवेंट से पहले उन लोगों पर शोध करें जिनसे आप मिल रहे हैं।",
-        "scenario": "तैयार रहने का मतलब है कि शोध के लिए आपके पास शायद ही समय हो। {{assistantName}} नई बैठकों को नोटिस करता है, उपस्थित लोगों और उनकी कंपनी को देखता है, और शुरू होने से पहले आपको एक पेज का डोजियर भेजता है।",
+        "description": "Build concise briefings from Calendar, contacts, and email context.",
+        "scenario": "Meeting preparation is faster when attendee and conversation history are already connected. {{assistantName}} reviews upcoming Calendar events and adds Contacts and Gmail context when available.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} नए कैलेंडर ईवेंट पर ट्रिगर होता है।",
-            "title": "एक मीटिंग जोड़ी गई है"
+            "description": "{{assistantName}} reads the selected Google Calendar window.",
+            "title": "Upcoming meetings are found"
           },
           "three": {
-            "description": "{{assistantName}} कॉल से पहले Slack को एक पेज की संक्षिप्त जानकारी भेजता है।",
-            "title": "डोजियर वितरित किया गया"
+            "description": "{{assistantName}} returns goals, context, and suggested questions.",
+            "title": "Briefings are prepared"
           },
           "two": {
-            "description": "{{assistantName}} Exa के साथ लोगों और कंपनी को देखता है।",
-            "title": "उपस्थित लोगों ने शोध किया"
+            "description": "{{assistantName}} checks Google Contacts and related Gmail threads.",
+            "title": "Attendee context is gathered"
           }
         },
-        "title": "अपनी कैलेंडर बैठकों पर शोध करें"
+        "title": "Prepare for upcoming meetings"
       },
       "research-new-signups-apollo": {
-        "description": "प्रत्येक नए साइनअप पर शोध करें और एक त्वरित स्नैपशॉट पोस्ट करें।",
-        "scenario": "एक नया साइनअप एक अवसर है केवल अगर कोई समय पर ध्यान दे। {{assistantName}} प्रति घंटा क्लर्क की जाँच करता है, अपोलो के साथ प्रत्येक नए उपयोगकर्ता और उनकी कंपनी पर शोध करता है, और Slack पर एक पृष्ठभूमि स्नैपशॉट पोस्ट करता है।",
+        "description": "Add public company and role context to new CRM leads.",
+        "scenario": "A new CRM record rarely contains enough context for a useful first move. {{assistantName}} researches public company and role information, summarizes the findings, and enriches the HubSpot lead.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} प्रत्येक घंटे क्लर्क से नए उपयोगकर्ताओं को खींचता है।",
-            "title": "{{assistantName}} नए साइनअप पढ़ता है"
+            "description": "{{assistantName}} reads recently added HubSpot leads.",
+            "title": "New leads are found"
           },
           "three": {
-            "description": "{{assistantName}} प्रत्येक साइनअप की प्रोफ़ाइल को चैनल पर पोस्ट करता है।",
-            "title": "स्नैपशॉट Slack पर पोस्ट किया गया"
+            "description": "{{assistantName}} adds the summary and suggested next step to the lead.",
+            "title": "HubSpot is enriched"
           },
           "two": {
-            "description": "{{assistantName}} पृष्ठभूमि और कंपनी के संदर्भ को समृद्ध करता है।",
-            "title": "अपोलो के साथ शोध किया"
+            "description": "{{assistantName}} gathers relevant company, role, and product signals from the web.",
+            "title": "Public context is researched"
           }
         },
-        "title": "नए साइनअप पर शोध करें"
+        "title": "Research new HubSpot leads"
       },
       "run-daily-query-sheets": {
-        "description": "अपने सहेजे गए SQL को एक शेड्यूल पर चलाएं और परिणामों को एक शीट में जोड़ें।",
-        "scenario": "आप हर सुबह जो रिपोर्ट दोबारा बनाते हैं वह वही क्वेरी होती है और वही एक शीट में चिपका दी जाती है। {{assistantName}} प्रत्येक दिन आपके लिए क्वेरी चलाता है और स्वरूपित परिणामों को सीधे Google शीट्स में लिखता है।",
+        "description": "Write search visibility and query movement to Google Sheets.",
+        "scenario": "Organic performance is easier to act on when it has a consistent history. {{assistantName}} pulls Search Console metrics, adds Analytics context when available, and refreshes a reporting sheet.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} वेयरहाउस के विरुद्ध आपकी सहेजी गई रीड-ओनली क्वेरी निष्पादित करता है।",
-            "title": "{{assistantName}} क्वेरी चलाता है"
+            "description": "{{assistantName}} reads clicks, impressions, CTR, position, and queries.",
+            "title": "Search data is collected"
           },
           "three": {
-            "description": "{{assistantName}} परिणामों को आपकी ट्रैकिंग शीट में जोड़ता है।",
-            "title": "Google शीट्स को लिखा गया"
+            "description": "{{assistantName}} writes the normalized results to Google Sheets.",
+            "title": "The sheet is refreshed"
           },
           "two": {
-            "description": "{{assistantName}} आउटपुट को साफ़ कॉलम में आकार देता है।",
-            "title": "परिणाम स्वरूपित"
+            "description": "{{assistantName}} identifies winning, declining, and emerging search demand.",
+            "title": "Movement is analyzed"
           }
         },
-        "title": "Google शीट्स में दैनिक क्वेरी चलाएँ"
+        "title": "Log organic search performance in Sheets"
       },
       "send-bugs-github-slack": {
-        "description": "GitHub इश्यू के रूप में बग-टैग की गई रिपोर्ट दर्ज करें और Slack पर टीम को सचेत करें।",
-        "scenario": "बग रिपोर्ट इंजीनियरों के लिए केवल तभी उपयोगी होती है जब वह पूर्ण हो। {{assistantName}} बग लेबल उठाता है, रिप्रो स्टेप्स और ग्राहक प्रभाव को इकट्ठा करता है, इसे साफ-सुथरा फाइल करता है, और इंजीनियरिंग चैनल पर पोस्ट करता है।",
+        "description": "Convert reproducible bug reports into structured engineering work.",
+        "scenario": "Bug reports lose value when evidence stays in the inbox. {{assistantName}} identifies reproducible support issues, extracts impact and steps, and files a structured GitHub issue.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} बग लेबल पर ट्रिगर होता है।",
-            "title": "किसी समस्या को बग लेबल किया गया है"
+            "description": "{{assistantName}} reviews support emails for reproducible product failures.",
+            "title": "Bug reports are identified"
           },
           "three": {
-            "description": "{{assistantName}} संरचित रिपोर्ट को Slack पर पोस्ट करता है।",
-            "title": "इंजीनियरिंग के लिए भेजा गया"
+            "description": "{{assistantName}} creates the issue and can link it in Linear.",
+            "title": "A GitHub issue is filed"
           },
           "two": {
-            "description": "{{assistantName}} कदम, प्रभाव और संदर्भ को इकट्ठा करता है।",
-            "title": "रेप्रो और प्रभाव पैक किया गया"
+            "description": "{{assistantName}} extracts impact, steps, expected behavior, and context.",
+            "title": "Evidence is structured"
           }
         },
-        "title": "GitHub और Slack पर बग भेजें"
+        "title": "Turn support emails into GitHub issues"
       },
       "sort-gmail-draft-replies": {
-        "description": "अपने इनबॉक्स को क्रमबद्ध करें और उन ईमेल के उत्तर ड्राफ्ट करें जिन्हें उनकी आवश्यकता है।",
-        "scenario": "एक पूर्ण इनबॉक्स एक पूर्णकालिक नौकरी है। {{assistantName}} आने वाले मेल को तात्कालिकता के आधार पर क्रमबद्ध करता है और आपकी आवाज़ में उत्तरों को ड्राफ्ट करता है ताकि आप शुरू से टाइप करने के बजाय स्किम करें और स्वीकृत करें।",
+        "description": "Triage new mail and prepare responses for human review.",
+        "scenario": "A busy inbox hides both urgent requests and easy replies. {{assistantName}} groups new Gmail messages by urgency and action, then drafts responses without sending them.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} आने वाले Gmail संदेशों को स्कैन करता है।",
-            "title": "{{assistantName}} नया मेल पढ़ता है"
+            "description": "{{assistantName}} reads the selected Gmail inbox or label.",
+            "title": "New mail is reviewed"
           },
           "three": {
-            "description": "{{assistantName}} आपके अनुमोदन के लिए प्रतिक्रियाएँ चरणबद्ध करता है।",
-            "title": "उत्तर तैयार किये गये"
+            "description": "{{assistantName}} prepares responses for human review.",
+            "title": "Replies are drafted"
           },
           "two": {
-            "description": "{{assistantName}} लेबल करता है कि आपको अभी बनाम बाद में क्या चाहिए।",
-            "title": "तात्कालिकता के अनुसार क्रमबद्ध"
+            "description": "{{assistantName}} groups mail by urgency, request, and next action.",
+            "title": "Messages are triaged"
           }
         },
-        "title": "Gmail को क्रमबद्ध करें और उत्तरों का मसौदा तैयार करें"
+        "title": "Sort Gmail and draft replies"
       },
       "sort-route-zendesk-tickets": {
-        "description": "जब एक समर्थन टिकट आता है, तो {{assistantName}} इसकी गंभीरता निर्धारित करता है, इसे सही टीम तक पहुंचाता है, और पहले उत्तर का मसौदा तैयार करता है।",
-        "scenario": "प्रत्येक टिकट का उत्तर देने से पहले ट्रायज की आवश्यकता होती है। {{assistantName}} प्रत्येक नए टिकट को पढ़ता है, गंभीरता निर्दिष्ट करता है, उसे सही कतार में ले जाता है, और पहला उत्तर ड्राफ्ट करता है ताकि एजेंट ड्राफ्ट से शुरू करें, न कि खाली बॉक्स से।",
+        "description": "Classify support mail and create actionable Linear issues.",
+        "scenario": "Support mail needs consistent priority and ownership. {{assistantName}} reads new Gmail conversations, identifies the issue type and urgency, and creates Linear work for items that need action.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} नया ज़ेनडेस्क टिकट पढ़ता है।",
-            "title": "एक टिकट आता है"
+            "description": "{{assistantName}} reviews new conversations and available context.",
+            "title": "Support emails are read"
           },
           "three": {
-            "description": "{{assistantName}} ऑन-ब्रांड प्रथम प्रतिक्रिया का मंचन करता है।",
-            "title": "पहला उत्तर तैयार किया गया"
+            "description": "{{assistantName}} creates actionable issues and links supporting evidence.",
+            "title": "Linear work is created"
           },
           "two": {
-            "description": "{{assistantName}} तात्कालिकता को वर्गीकृत करता है और इसे सही टीम को भेजता है।",
-            "title": "गंभीरता सेट और रूट की गई"
+            "description": "{{assistantName}} classifies urgency, topic, and responsible team.",
+            "title": "Priority and ownership are set"
           }
         },
-        "title": "ज़ेंडेस्क टिकटों को क्रमबद्ध और रूट करें"
+        "title": "Triage support emails into Linear"
       },
       "spot-churn-risk-stripe-zendesk": {
-        "description": "मंथन के जोखिम वाले खातों को चिह्नित करें और एक पुनर्प्राप्ति ईमेल का मसौदा तैयार करें।",
-        "scenario": "मंथन तभी स्पष्ट होता है जब यह हो चुका हो। {{assistantName}} बिलिंग समस्या या टिकट स्पाइक्स के लिए प्रतिदिन स्ट्राइप और ज़ेंडेस्क की जाँच करता है, जोखिम वाले खातों को चिह्नित करता है, और एक पुनर्प्राप्ति ईमेल का मसौदा तैयार करता है ताकि कोई व्यक्ति जल्दी कदम उठा सके।",
+        "description": "Summarize support volume, risk, themes, and unresolved work.",
+        "scenario": "A support queue is easier to manage when the important changes are visible. {{assistantName}} reviews Gmail conversations, highlights urgent or recurring issues, and links related Linear or GitHub work.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} स्ट्राइप से बिलिंग स्थिति और ज़ेंडेस्क से टिकट की मात्रा पढ़ता है।",
-            "title": "{{assistantName}} खातों को स्कैन करता है"
+            "description": "{{assistantName}} reads new and unresolved Gmail conversations.",
+            "title": "Support activity is gathered"
           },
           "three": {
-            "description": "{{assistantName}} समीक्षा के लिए एक आउटरीच ईमेल का मसौदा तैयार करता है।",
-            "title": "पुनर्प्राप्ति ईमेल का मसौदा तैयार किया गया"
+            "description": "{{assistantName}} summarizes priorities in the automation thread.",
+            "title": "The digest is returned"
           },
           "two": {
-            "description": "{{assistantName}} खातों में मंथन संकेत दिखा रहा है।",
-            "title": "जोखिम वाले खातों को चिह्नित किया गया"
+            "description": "{{assistantName}} groups recurring issues and flags urgent follow-up.",
+            "title": "Risk and themes are identified"
           }
         },
-        "title": "स्ट्राइप और ज़ेंडेस्क में मंथन जोखिम को पहचानें"
+        "title": "Create a daily support digest"
       },
       "summarize-gmail-newsletters": {
-        "description": "अपने इनबॉक्स में मौजूद न्यूज़लेटर्स को एक संक्षिप्त सारांश में समेटें।",
-        "scenario": "आप बीस न्यूज़लेटर्स की सदस्यता लेते हैं और एक भी नहीं पढ़ते हैं। {{assistantName}} वह सब कुछ एकत्र करता है जिसे आपने न्यूज़लेटर के रूप में लेबल किया है और एक साफ साप्ताहिक डाइजेस्ट पोस्ट करता है ताकि आपको ढेर के बिना संकेत मिल सके।",
+        "description": "Turn selected newsletters into one useful recurring digest.",
+        "scenario": "Newsletter value disappears when every issue competes for inbox attention. {{assistantName}} summarizes selected Gmail newsletters into themes, useful links, and recommended reads.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} आपके न्यूज़लेटर लेबल के अंतर्गत संदेश पढ़ता है।",
-            "title": "{{assistantName}} समाचारपत्रिकाएँ एकत्र करता है"
+            "description": "{{assistantName}} reads messages from the selected senders or label.",
+            "title": "Newsletters are collected"
           },
           "three": {
-            "description": "{{assistantName}} साप्ताहिक डाइजेस्ट भेजता है।",
-            "title": "Slack पर पोस्ट किया गया"
+            "description": "{{assistantName}} returns the summary and can save it in Notion.",
+            "title": "The digest is created"
           },
           "two": {
-            "description": "{{assistantName}} प्रत्येक से मुख्य बिंदु खींचता है।",
-            "title": "एक सारांश में पचा हुआ"
+            "description": "{{assistantName}} groups themes and identifies the strongest links.",
+            "title": "Useful content is distilled"
           }
         },
-        "title": "Gmail न्यूज़लेटर्स का सारांश प्रस्तुत करें"
+        "title": "Summarize Gmail newsletters"
       },
       "summarize-user-feedback-notion": {
-        "description": "हर हफ्ते {{assistantName}} प्रोडक्टलेन, टाइपफॉर्म, इंटरकॉम और GitHub से फीडबैक इकट्ठा करता है, इसे थीम में क्लस्टर करता है और इसे Notion में रैंक करता है।",
-        "scenario": "फीडबैक चार उपकरणों में बिखरा हुआ है और किसी के पास इसे पढ़ने का समय नहीं है। {{assistantName}} साप्ताहिक रूप से प्रत्येक स्रोत से खींचता है, टिप्पणियों को थीम में समूहित करता है, और Notion में एक रैंक सारांश लिखता है ताकि शीर्ष प्रश्न स्पष्ट हों।",
+        "description": "Cluster new form responses into ranked product insights.",
+        "scenario": "Feedback becomes useful when patterns are visible. {{assistantName}} reviews Google Forms responses, groups recurring pain points and requests, ranks the findings, and writes the summary in Notion.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} प्रोडक्टलेन, टाइपफॉर्म, इंटरकॉम और GitHub से नई प्रतिक्रिया पढ़ता है।",
-            "title": "{{assistantName}} फीडबैक खींचता है"
+            "description": "{{assistantName}} reads the latest Google Forms submissions.",
+            "title": "Responses are collected"
           },
           "three": {
-            "description": "{{assistantName}} रैंक किए गए डाइजेस्ट को Notion पेज पर लिखता है।",
-            "title": "सारांश Notion में सहेजा गया"
+            "description": "{{assistantName}} writes a prioritized summary in Notion.",
+            "title": "Insights are saved"
           },
           "two": {
-            "description": "{{assistantName}} संबंधित फीडबैक को समूहित करता है और थीम को आवृत्ति के आधार पर रैंक करता है।",
-            "title": "विषयों में संकुलित"
+            "description": "{{assistantName}} clusters pain points, requests, and sentiment.",
+            "title": "Themes are ranked"
           }
         },
-        "title": "Notion में उपयोगकर्ता प्रतिक्रिया को सारांशित करें"
+        "title": "Summarize Google Forms feedback in Notion"
       },
       "summarize-zendesk-tickets-daily": {
-        "description": "ज़ेंडेस्क टिकटों के अंतिम दिन का सारांश बनाएं और इसे Slack पर पोस्ट करें।",
-        "scenario": "जब तक आग न लगी हो, समर्थन बैकलॉग को देखना कठिन है। {{assistantName}} प्रत्येक सुबह गंभीरता और उम्र के आधार पर टिकटों के अंतिम दिन का सारांश देता है और इसे Slack पर पोस्ट करता है ताकि कुछ भी अनदेखा न रह जाए।",
+        "description": "Create approved support videos with the built-in avatar capability.",
+        "scenario": "Some support answers are easier to follow as a short presenter video. {{assistantName}} turns approved FAQ content into a script and storyboard, then uses the built-in avatar-video capability after review.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} ज़ेंडेस्क टिकटों के अंतिम 24 घंटे खींचता है।",
-            "title": "{{assistantName}} कतार को पढ़ता है"
+            "description": "{{assistantName}} identifies the approved answer and target audience.",
+            "title": "FAQ content is selected"
           },
           "three": {
-            "description": "{{assistantName}} दैनिक समर्थन डाइजेस्ट पोस्ट करता है।",
-            "title": "Slack पर पोस्ट किया गया"
+            "description": "{{assistantName}} generates only after the user approves the draft.",
+            "title": "The avatar video is generated"
           },
           "two": {
-            "description": "{{assistantName}} खुले टिकटों और बासी टिकटों का आयोजन करता है।",
-            "title": "गंभीरता और उम्र के आधार पर समूहीकृत"
+            "description": "{{assistantName}} creates a concise, accurate support-video plan.",
+            "title": "A script and storyboard are drafted"
           }
         },
-        "title": "प्रतिदिन ज़ेंडेस्क टिकटों का सारांश बनाएं"
+        "title": "Turn FAQs into digital-human support videos"
       },
       "sync-asana-projects-notion": {
-        "description": "आसन परियोजना की स्थिति को Notion में एक ही बोर्ड में रोल अप करें।",
-        "scenario": "स्थिति आसन में होती है लेकिन नेतृत्व Notion पढ़ता है। {{assistantName}} प्रतिदिन कार्य स्थिति को एक Notion बोर्ड में रोल करता है और एक डाइजेस्ट पोस्ट करता है ताकि हर कोई स्टेटस मीटिंग के बिना एक ही तस्वीर देख सके।",
+        "description": "Keep a Notion project overview current with Asana.",
+        "scenario": "Project summaries drift when task status changes elsewhere. {{assistantName}} reads selected Asana projects and keeps the corresponding Notion overview current.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} टीमों में कार्य और परियोजना की स्थिति खींचता है।",
-            "title": "{{assistantName}} आसन पढ़ता है"
+            "description": "{{assistantName}} reviews status, owners, due dates, and blockers.",
+            "title": "Asana projects are read"
           },
           "three": {
-            "description": "{{assistantName}} Slack पर एक सारांश पोस्ट करता है।",
-            "title": "डाइजेस्ट पोस्ट किया गया"
+            "description": "{{assistantName}} updates the overview and highlights changes.",
+            "title": "Notion is synchronized"
           },
           "two": {
-            "description": "{{assistantName}} एकल Notion स्टेटस बोर्ड को अपडेट करता है।",
-            "title": "एक बोर्ड में लुढ़का हुआ"
+            "description": "{{assistantName}} compares the current project state with the prior view.",
+            "title": "Meaningful changes are identified"
           }
         },
-        "title": "आसन परियोजनाओं को Notion में सिंक करें"
+        "title": "Sync Asana projects to Notion"
       },
       "sync-linear-roadmap-notion": {
-        "description": "Notion रोडमैप को अपनी रैखिक समस्या स्थिति के साथ समन्वयित रखें।",
-        "scenario": "जैसे ही टिकट बदलते हैं, रोडमैप बासी हो जाते हैं। {{assistantName}} हर दिन Notion में रैखिक स्थिति को अभी / अगले / बाद वाले बोर्ड में सिंक करता है ताकि हितधारकों द्वारा पढ़ा गया रोडमैप हमेशा वास्तविकता से मेल खाता हो।",
+        "description": "Keep a Now, Next, and Later roadmap current in Notion.",
+        "scenario": "Roadmaps drift when delivery status changes elsewhere. {{assistantName}} reads selected Linear projects and issues, maps them into Now, Next, and Later, and keeps the Notion roadmap current.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} वर्तमान टिकट स्थिति और मील के पत्थर खींचता है।",
-            "title": "{{assistantName}} Linear स्थिति पढ़ता है"
+            "description": "{{assistantName}} reviews selected projects, issues, and milestones.",
+            "title": "Linear status is read"
           },
           "three": {
-            "description": "{{assistantName}} Notion रोडमैप बोर्ड को अद्यतन करता है।",
-            "title": "बोर्ड को Notion में अद्यतन किया गया"
+            "description": "{{assistantName}} refreshes the roadmap and highlights meaningful changes.",
+            "title": "Notion is updated"
           },
           "two": {
-            "description": "{{assistantName}} काम को रोडमैप कॉलम में बकेट करता है।",
-            "title": "अभी/अगले/बाद में मैप किया गया"
+            "description": "{{assistantName}} converts delivery status into Now, Next, and Later.",
+            "title": "Roadmap stages are mapped"
           }
         },
-        "title": "Linear रोडमैप को Notion में सिंक करें"
+        "title": "Sync the Linear roadmap to Notion"
       },
       "track-feature-usage-posthog": {
-        "description": "PostHog से फीचर उपयोग में सबसे बड़ा साप्ताहिक बदलाव सामने आया।",
-        "scenario": "कोई भी किसी सुविधा के चुपचाप उपयोग खोने पर तब तक ध्यान नहीं देता जब तक कि वह कोई समस्या न हो। {{assistantName}} साप्ताहिक रूप से PostHog की जाँच करता है और पोस्ट करता है कि कौन सी सुविधाएँ चढ़ रही हैं या फिसल रही हैं ताकि टीम को गोद लेने में बदलाव जल्दी दिखें।",
+        "description": "Surface the largest weekly changes in product adoption.",
+        "scenario": "Feature adoption changes before a dashboard review catches it. {{assistantName}} compares the latest Google Analytics usage signals, identifies meaningful movement, and optionally records decisions in Notion.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} सप्ताह के लिए फीचर उपयोग को खींचता है।",
-            "title": "{{assistantName}} पढ़ता है PostHog"
+            "description": "{{assistantName}} collects the selected feature and audience signals.",
+            "title": "Adoption data is read"
           },
           "three": {
-            "description": "{{assistantName}} आपके चैनल में अपनाए गए परिवर्तनों को पोस्ट करता है।",
-            "title": "शिफ्ट को Slack पर पोस्ट किया गया"
+            "description": "{{assistantName}} explains what moved and what to investigate next.",
+            "title": "Insights are returned"
           },
           "two": {
-            "description": "{{assistantName}} सबसे बड़े उछाल और गिरावट का पता लगाता है।",
-            "title": "सप्ताह दर सप्ताह तुलना की गई"
+            "description": "{{assistantName}} finds the largest gains, drops, and segment differences.",
+            "title": "Changes are compared"
           }
         },
-        "title": "PostHog के साथ फीचर उपयोग को ट्रैक करें"
+        "title": "Track feature adoption with Google Analytics"
       },
       "track-keyword-ranks-ahrefs": {
-        "description": "हर हफ्ते {{assistantName}} Ahrefs में लक्षित कीवर्ड रैंकिंग को ट्रैक करता है और Notion में मूवर्स की रिपोर्ट करता है।",
-        "scenario": "रैंक ट्रैकिंग एक मैन्युअल निर्यात-और-तुलना कार्य है। {{assistantName}} आपके लक्षित कीवर्ड को साप्ताहिक रूप से खींचता है, स्थितियों की तुलना करता है, और Notion के लिए सबसे बड़े मूवर्स को लिखता है ताकि SEO की जीत और गिरावट स्पष्ट हो।",
+        "description": "Crawl a site and return a prioritized technical SEO issue list.",
+        "scenario": "Technical SEO issues hide across hundreds of pages. {{assistantName}} uses built-in Firecrawl and DataForSEO to inspect crawlability, indexability, internal links, and live search visibility without requiring a connector.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} Ahrefs से वर्तमान रैंकिंग खींचता है।",
-            "title": "{{assistantName}} कीवर्ड पोजीशन पढ़ता है"
+            "description": "{{assistantName}} uses Firecrawl to inspect pages and internal links.",
+            "title": "The site is crawled"
           },
           "three": {
-            "description": "{{assistantName}} Notion को मूवर्स और ट्रेंड लिखता है।",
-            "title": "Notion में रिपोर्ट किया गया"
+            "description": "{{assistantName}} returns the highest-impact fixes with supporting evidence.",
+            "title": "Issues are prioritized"
           },
           "two": {
-            "description": "{{assistantName}} ने पिछले सप्ताह की तुलना की और सबसे बड़े बदलाव पाए।",
-            "title": "मूवर्स की पहचान की गई"
+            "description": "{{assistantName}} uses DataForSEO to validate visibility and indexation signals.",
+            "title": "Search evidence is checked"
           }
         },
-        "title": "Ahrefs के साथ कीवर्ड रैंक ट्रैक करें"
+        "title": "Audit a website's technical SEO"
       },
       "track-signup-sources-sheets": {
-        "description": "ट्रैकिंग शीट में प्रत्येक नए साइनअप को उसके स्रोत से जोड़ें।",
-        "scenario": "यह जानने का मतलब है कि साइनअप कहाँ से आते हैं, क्लर्क को हाथ से एनालिटिक्स में शामिल करना। {{assistantName}} प्रतिदिन प्रत्येक नए साइनअप का श्रेय अपने चैनल और अभियान को देता है और इसे Google शीट पर लॉग करता है जिसे आप पिवोट कर सकते हैं।",
+        "description": "Query Google Cloud data and publish a refreshable analysis.",
+        "scenario": "Important operational data often sits in BigQuery without a usable recurring view. {{assistantName}} runs the approved query, identifies trends and anomalies, and writes a result table and summary to Google Sheets.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} नए उपयोगकर्ताओं को क्लर्क से खींचता है।",
-            "title": "{{assistantName}} नए साइनअप पढ़ता है"
+            "description": "{{assistantName}} confirms the BigQuery scope and analysis question.",
+            "title": "A dataset and query are selected"
           },
           "three": {
-            "description": "{{assistantName}} आपकी शीट में निर्दिष्ट पंक्तियों को जोड़ता है।",
-            "title": "Google शीट्स में लॉग इन किया गया"
+            "description": "{{assistantName}} publishes a refreshable table and decision-ready summary.",
+            "title": "Results are written to Sheets"
           },
           "two": {
-            "description": "{{assistantName}} Plausible के माध्यम से प्रत्येक साइनअप को उसके स्रोत और अभियान से मिलाता है।",
-            "title": "एक चैनल को जिम्मेदार ठहराया गया"
+            "description": "{{assistantName}} runs the query and checks trends, segments, and anomalies.",
+            "title": "Cloud data is analyzed"
           }
         },
-        "title": "Google शीट्स में साइनअप स्रोत ट्रैक करें"
+        "title": "Analyze BigQuery data in Sheets"
       },
       "watch-brand-mentions": {
-        "description": "हर घंटे {{assistantName}} आपके उत्पाद के उल्लेख के लिए वेब, हैकर न्यूज़ और X खोजता है और उन्हें Slack पर पोस्ट करता है।",
-        "scenario": "जब तक आपको अपने उत्पाद के बारे में थ्रेड मिलता है, तब तक बातचीत आगे बढ़ चुकी होती है। {{assistantName}} हर घंटे वेब, Reddit और X पर खोज करता है और Slack पर नए उल्लेख पोस्ट करता है ताकि आप इसके लाइव होने पर इसमें शामिल हो सकें।",
+        "description": "Turn approved videos into platform-native posts and threads.",
+        "scenario": "A strong video can support more than one channel. {{assistantName}} reviews a selected YouTube video, drafts X posts and threads, and optionally saves the approved plan in Notion.",
         "steps": {
           "one": {
-            "description": "{{assistantName}} Exa के साथ वेब, Reddit और X को स्कैन करता है।",
-            "title": "{{assistantName}} उल्लेख खोजता है"
+            "description": "{{assistantName}} reads the YouTube video, transcript, and context.",
+            "title": "A video is selected"
           },
           "three": {
-            "description": "{{assistantName}} प्रत्येक उल्लेख को एक लिंक और संदर्भ के साथ पोस्ट करता है।",
-            "title": "Slack पर पोस्ट किया गया"
+            "description": "{{assistantName}} saves the plan and never publishes without approval.",
+            "title": "Content is prepared for approval"
           },
           "two": {
-            "description": "{{assistantName}} केवल ताज़ा, प्रासंगिक हिट्स रखता है।",
-            "title": "नये उल्लेख फ़िल्टर किये गये"
+            "description": "{{assistantName}} creates concise X posts and thread options.",
+            "title": "Social variants are drafted"
           }
         },
-        "title": "ब्रांड उल्लेख के लिए HN और X देखें"
+        "title": "Repurpose YouTube videos for X"
       },
       "watch-sentry-after-release": {
-        "description": "प्रत्येक रिलीज़ के बाद {{assistantName}} बेसलाइन के विरुद्ध नए संस्करण की क्रैश-मुक्त दर की तुलना करता है और रोलबैक सुझाव के साथ एक प्रतिगमन को चिह्नित करता है।",
-        "scenario": "तैनाती के ठीक बाद सबसे जोखिम भरी खिड़की होती है। {{assistantName}} पूर्व बेसलाइन के मुकाबले नई रिलीज की क्रैश-मुक्त और त्रुटि दरों पर नज़र रखता है, और यदि चीजें बदतर होती हैं तो यह प्रतिगमन को चिह्नित करता है और वापस रोल करने का सुझाव देता है।",
+        "description": "Compare post-release stability with the previous baseline.",
+        "scenario": "A release can look healthy while regressions build quietly. {{assistantName}} compares the latest Sentry signals with the previous baseline and explains whether to keep watching, fix forward, or roll back.",
         "steps": {
           "one": {
-            "description": "तैनाती के बाद, {{assistantName}} सेंट्री में रिलीज की क्रैश-मुक्त और त्रुटि दर को ट्रैक करता है।",
-            "title": "{{assistantName}} नई रिलीज़ देखता है"
+            "description": "{{assistantName}} finds the latest release and its comparison window.",
+            "title": "A release is identified"
           },
           "three": {
-            "description": "यदि रिलीज़ वापस आती है, तो {{assistantName}} Slack को सचेत करता है और रोलबैक का सुझाव देता है।",
-            "title": "प्रतिगमन को रोलबैक टिप के साथ चिह्नित किया गया"
+            "description": "{{assistantName}} summarizes impact and the safest next action.",
+            "title": "A response is recommended"
           },
           "two": {
-            "description": "{{assistantName}} लाइव नंबरों की तुलना पिछली रिलीज़ की बेसलाइन से करता है।",
-            "title": "बेसलाइन से तुलना की गई"
+            "description": "{{assistantName}} checks crash-free rate and new regressions against baseline.",
+            "title": "Stability is compared"
           }
         },
-        "title": "रिलीज के बाद सेंट्री देखें"
+        "title": "Watch Sentry after a release"
       }
     }
   },
