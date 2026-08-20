@@ -35,7 +35,9 @@ describe("development artifact fetch proxy", () => {
 
       const address = proxyServer.address();
       if (!address || typeof address === "string") {
-        throw new Error("Expected the proxy test server to listen on a TCP port");
+        throw new Error(
+          "Expected the proxy test server to listen on a TCP port",
+        );
       }
       const proxyOrigin = `http://127.0.0.1:${address.port}`;
 
