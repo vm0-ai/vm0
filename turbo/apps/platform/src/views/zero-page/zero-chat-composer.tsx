@@ -41,7 +41,6 @@ import {
   Monitor,
   Paperclip,
   Palette,
-  FileUp,
   Play,
   Plug,
   Plus,
@@ -4829,31 +4828,48 @@ function PptImportCard({
   return (
     <label
       data-presentation-template-import=""
-      className="flex aspect-video cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-muted/30 text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground"
+      className={TEMPLATE_TILE_WRAPPER}
     >
-      <FileUp className="size-6" aria-hidden="true" />
-      <span className="text-sm font-medium">{label}</span>
-      <span className="text-xs">
-        {t(($) => {
-          return $.artifacts.templates.importDeckHint;
-        })}
+      <span
+        className={cn(
+          TEMPLATE_TILE_MEDIA,
+          TEMPLATE_TILE_RING,
+          "block aspect-video bg-muted/40 transition-colors duration-150 group-hover/tile:bg-muted/60 group-active/tile:bg-muted/80 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-inset has-[:focus-visible]:ring-ring",
+        )}
+      >
+        <Plus
+          className="absolute left-1/2 top-1/2 size-10 -translate-x-1/2 -translate-y-1/2 text-muted-foreground transition-colors duration-150 group-hover/tile:text-foreground"
+          strokeWidth={1.5}
+          aria-hidden
+        />
+        <input
+          type="file"
+          className="sr-only"
+          accept={PRESENTATION_TEMPLATE_IMPORT_ACCEPT}
+          aria-label={label}
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0];
+            // Clear the input so choosing the same deck again still fires.
+            event.currentTarget.value = "";
+            if (!file) {
+              return;
+            }
+            onImported();
+            detach(
+              importDeck({ signals, file }, pageSignal),
+              Reason.DomCallback,
+            );
+          }}
+        />
       </span>
-      <input
-        type="file"
-        className="sr-only"
-        accept={PRESENTATION_TEMPLATE_IMPORT_ACCEPT}
-        aria-label={label}
-        onChange={(event) => {
-          const file = event.currentTarget.files?.[0];
-          // Clear the input so choosing the same deck again still fires.
-          event.currentTarget.value = "";
-          if (!file) {
-            return;
-          }
-          onImported();
-          detach(importDeck({ signals, file }, pageSignal), Reason.DomCallback);
-        }}
-      />
+      <span className={TEMPLATE_TILE_CAPTION}>
+        <span className={TEMPLATE_TILE_NAME}>
+          {label}
+          {t(($) => {
+            return $.artifacts.templates.importDeckHint;
+          })}
+        </span>
+      </span>
     </label>
   );
 }

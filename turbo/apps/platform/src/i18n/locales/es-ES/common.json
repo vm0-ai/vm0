@@ -633,7 +633,7 @@
       "illustration": "Ilustración",
       "illustrationPreview": "Vista previa de la ilustración {{title}}",
       "importDeck": "Importa tu propia presentación",
-      "importDeckHint": "PPTX o PDF",
+      "importDeckHint": "(.pptx, .pdf)",
       "multiAccent": "Multiacentos",
       "nextSlide": "Vista previa de la diapositiva siguiente",
       "noMatches": "Sin coincidencias",
