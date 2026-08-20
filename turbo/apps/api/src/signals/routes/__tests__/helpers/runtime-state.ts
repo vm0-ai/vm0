@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import type { ConnectorRuntimeTargetRegistration } from "@okouai/api-contracts/contracts/runners";
 import type {
   TestRuntimeStateActionBody,
   TestRuntimeStateActionResponse,
@@ -317,6 +318,18 @@ export async function mutateRunnerJobConnectorPermissionBaseline(
     action: "mutate-runner-job-connector-permission-baseline",
     run_id: runId,
     mode,
+  });
+}
+
+export async function setRunnerJobConnectorRuntimeTargets(
+  context: TestContext,
+  runId: string,
+  connectorRuntimeTargets: readonly ConnectorRuntimeTargetRegistration[],
+): Promise<void> {
+  await postAction(context, {
+    action: "set-runner-job-connector-runtime-targets",
+    run_id: runId,
+    connector_runtime_targets: [...connectorRuntimeTargets],
   });
 }
 

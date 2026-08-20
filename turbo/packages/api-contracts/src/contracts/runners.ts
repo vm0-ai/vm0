@@ -250,7 +250,7 @@ function uniqueConnectorRuntimeTargets(
   }
 }
 
-const connectorRuntimeTargetsSchema = z
+export const connectorRuntimeTargetsSchema = z
   .array(connectorRuntimeTargetRegistrationSchema)
   .superRefine(uniqueConnectorRuntimeTargets);
 

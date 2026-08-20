@@ -350,6 +350,36 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/user-preferences",
     "/api/zero/user-preferences",
   ],
+  // #28357, the first #28278 slice. Published CLI builds post to the `okou`
+  // form (`callWeather` built it by hand rather than from the contract, so it
+  // shipped independently of this path), and the `zero` form was reachable
+  // through the blanket expansion until the contract moved. Both are owed.
+  //
+  // Surface: commit-addressed CLI packages pinned by run contexts created
+  // before this deploy, so the branded form outlives the deploy by the queue
+  // and claimed-execution drain — up to the 2h runner/sandbox window — plus any
+  // external holder of the `zero` brand path, which has no time box. Removal
+  // therefore follows the table's #26701 evidence gate above, not a clock.
+  "/api/weather/current": [
+    "/api/okou/weather/current",
+    "/api/zero/weather/current",
+  ],
+  "/api/weather/forecast/hourly": [
+    "/api/okou/weather/forecast/hourly",
+    "/api/zero/weather/forecast/hourly",
+  ],
+  "/api/weather/forecast/daily": [
+    "/api/okou/weather/forecast/daily",
+    "/api/zero/weather/forecast/daily",
+  ],
+  "/api/weather/history/hourly": [
+    "/api/okou/weather/history/hourly",
+    "/api/zero/weather/history/hourly",
+  ],
+  "/api/weather/air-quality/current": [
+    "/api/okou/weather/air-quality/current",
+    "/api/zero/weather/air-quality/current",
+  ],
 };
 
 /**
