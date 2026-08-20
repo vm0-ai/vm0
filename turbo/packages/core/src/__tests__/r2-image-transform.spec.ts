@@ -24,6 +24,17 @@ describe("r2ImageTransformUrl", () => {
     );
   });
 
+  it("supports Okou CDN artifact URLs", () => {
+    expect(
+      r2ImageTransformUrl("https://cdn.okou.io/artifacts/user/id/image.jpg", {
+        width: 96,
+        height: 96,
+      }),
+    ).toBe(
+      "https://cdn.okou.io/cdn-cgi/image/width=96,height=96,fit=scale-down,format=auto,quality=85,metadata=none/artifacts/user/id/image.jpg",
+    );
+  });
+
   it("supports static vm0 asset URLs", () => {
     expect(
       r2ImageTransformUrl(
@@ -32,6 +43,17 @@ describe("r2ImageTransformUrl", () => {
       ),
     ).toBe(
       "https://static.vm0.io/cdn-cgi/image/width=480,height=270,fit=scale-down,format=auto,quality=85,metadata=none/vm0/artifact-templates/video/id/image.jpg",
+    );
+  });
+
+  it("supports static Okou asset URLs", () => {
+    expect(
+      r2ImageTransformUrl(
+        "https://static.okou.io/okou/artifact-templates/video/id/image.jpg",
+        { width: 480, height: 270 },
+      ),
+    ).toBe(
+      "https://static.okou.io/cdn-cgi/image/width=480,height=270,fit=scale-down,format=auto,quality=85,metadata=none/okou/artifact-templates/video/id/image.jpg",
     );
   });
 

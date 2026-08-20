@@ -221,7 +221,7 @@ async function claimChatRun(
 
 async function setupBrowserScenario() {
   mockNow(STARTED_AT_MS);
-  mockEnv("ZERO_BROWSER_USE_API_KEY", "test-browser-use-key");
+  mockEnv("OKOU_BROWSER_USE_API_KEY", "test-browser-use-key");
   mockEnv("APP_URL", "https://app.vm0.ai");
   server.use(
     http.delete(`${BROWSER_USE_API_URL}/profiles/:id`, () => {

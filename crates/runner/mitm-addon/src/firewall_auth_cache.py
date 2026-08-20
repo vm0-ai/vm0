@@ -1,7 +1,6 @@
 """Firewall auth cache, fetch admission, and force-refresh lifecycle."""
 
 import asyncio
-import math
 import time
 from dataclasses import dataclass, field
 
@@ -10,6 +9,7 @@ from firewall_auth_client import (
     FirewallAuthPayload,
     FirewallAuthRequest,
     fetch_firewall_headers,
+    is_supported_expiry,
 )
 
 
@@ -295,9 +295,7 @@ def auth_state_is_empty_for_tests() -> bool:
 
 
 def _has_valid_expiry(value: object, now: float | None = None) -> bool:
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        return False
-    if not math.isfinite(value):
+    if not is_supported_expiry(value):
         return False
     return (time.time() if now is None else now) < value
 

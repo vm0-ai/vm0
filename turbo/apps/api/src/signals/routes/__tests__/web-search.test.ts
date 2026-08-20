@@ -143,7 +143,7 @@ async function credits(actor: ApiTestUser): Promise<number> {
 }
 
 function configureProvider(): void {
-  mockEnv("ZERO_WEB_SEARCH_PERPLEXITY_TOKEN", "test-perplexity-token");
+  mockEnv("OKOU_WEB_SEARCH_PERPLEXITY_TOKEN", "test-perplexity-token");
 }
 
 function webSearchPricingKey(): UsagePricingKey {
@@ -346,7 +346,7 @@ describe("okou web-search route", () => {
 
   it("rejects requests when the provider is not configured", async () => {
     const actor = createBddApi(context).user();
-    mockEnv("ZERO_WEB_SEARCH_PERPLEXITY_TOKEN", undefined);
+    mockEnv("OKOU_WEB_SEARCH_PERPLEXITY_TOKEN", undefined);
 
     const response = await accept(
       client()(webSearchContract).search({

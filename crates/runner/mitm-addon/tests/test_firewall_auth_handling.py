@@ -1110,6 +1110,12 @@ class TestHandleFirewallRequest:
                 id="expires-at-negative-infinity",
             ),
             pytest.param(
+                "expiresAt",
+                10**400,
+                "expiresAt must be a finite number or null",
+                id="expires-at-oversized-integer",
+            ),
+            pytest.param(
                 "resolvedSecrets",
                 _MISSING_FIELD,
                 "resolvedSecrets is required",

@@ -135,7 +135,7 @@ function allowExampleDotCom(): void {
 }
 
 function configureProvider(): void {
-  mockEnv("ZERO_SCRAPE_FIRECRAWL_TOKEN", "test-firecrawl-token");
+  mockEnv("OKOU_SCRAPE_FIRECRAWL_TOKEN", "test-firecrawl-token");
 }
 
 async function createScrapePricingFixture(): Promise<UsagePricingFixture> {
@@ -217,7 +217,7 @@ describe("okou scrape route", () => {
   it("rejects scrape requests when the provider is not configured", async () => {
     const actor = createBddApi(context).user();
     allowExampleDotCom();
-    mockEnv("ZERO_SCRAPE_FIRECRAWL_TOKEN", undefined);
+    mockEnv("OKOU_SCRAPE_FIRECRAWL_TOKEN", undefined);
 
     const response = await accept(
       client()(scrapeContract).scrape({

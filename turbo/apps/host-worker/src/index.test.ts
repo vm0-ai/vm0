@@ -12,8 +12,14 @@ interface TestFile {
   readonly contentType: string;
 }
 
+type PublicBrand = "vm0" | "okou";
+
 interface TestEnvOptions {
   readonly files?: Record<string, TestFile>;
+  readonly publicBrand?: PublicBrand;
+  readonly manifestPublicBrand?: PublicBrand;
+  readonly hostDomain?: string;
+  readonly okouHostDomain?: string;
   readonly immutableDeployment?: {
     readonly deploymentId: string;
     readonly body: string;
@@ -48,6 +54,8 @@ function byteLength(value: string): number {
 function env(options: TestEnvOptions = {}): WorkerEnv {
   const publicSlug = "demo";
   const deploymentId = "00000000-0000-4000-8000-000000000001";
+  const pointerRoot =
+    options.publicBrand === "okou" ? "sites/brands/okou" : "sites";
   const prefix = `sites/${publicSlug}/deployments/${deploymentId}`;
   const manifestKey = `${prefix}/manifest.json`;
   const files: Record<string, TestFile> = {
@@ -55,7 +63,7 @@ function env(options: TestEnvOptions = {}): WorkerEnv {
       body: "<!doctype html>ok",
       contentType: "text/html; charset=utf-8",
     },
-    ...(options.files ?? {}),
+    ...options.files,
   };
   const manifestFiles = Object.fromEntries(
     Object.entries(files).map(([path, file]) => {
@@ -77,10 +85,11 @@ function env(options: TestEnvOptions = {}): WorkerEnv {
   );
   const objects = new Map<string, R2Object>([
     [
-      `sites/${publicSlug}/active.json`,
+      `${pointerRoot}/${publicSlug}/active.json`,
       objectBody(
         JSON.stringify({
           version: 1,
+          ...(options.publicBrand ? { publicBrand: options.publicBrand } : {}),
           publicSlug,
           siteId: "site_1",
           deploymentId,
@@ -96,6 +105,11 @@ function env(options: TestEnvOptions = {}): WorkerEnv {
       objectBody(
         JSON.stringify({
           version: 1,
+          ...((options.manifestPublicBrand ?? options.publicBrand)
+            ? {
+                publicBrand: options.manifestPublicBrand ?? options.publicBrand,
+              }
+            : {}),
           deploymentId,
           siteId: "site_1",
           publicSlug,
@@ -113,15 +127,18 @@ function env(options: TestEnvOptions = {}): WorkerEnv {
     const immutablePrefix = `sites/orgs/org_test/demo/versions/1`;
     const immutableManifestKey = `${immutablePrefix}/manifest.json`;
     objects.set(
-      `sites/deployments/${immutable.deploymentId}.json`,
+      `${pointerRoot}/deployments/${immutable.deploymentId}.json`,
       objectBody(
         JSON.stringify({
           version: 1,
+          ...(options.publicBrand ? { publicBrand: options.publicBrand } : {}),
           publicSlug,
           siteId: "site_1",
           deploymentId: immutable.deploymentId,
           deploymentVersion: 1,
-          artifactUrl: `https://dpl-${immutable.deploymentId}.sites.vm0.io`,
+          artifactUrl: `https://dpl-${immutable.deploymentId}.${
+            options.publicBrand === "okou" ? "okou.app" : "sites.vm0.io"
+          }`,
           prefix: immutablePrefix,
           manifestKey: immutableManifestKey,
           spaFallback: false,
@@ -134,6 +151,11 @@ function env(options: TestEnvOptions = {}): WorkerEnv {
       objectBody(
         JSON.stringify({
           version: 1,
+          ...((options.manifestPublicBrand ?? options.publicBrand)
+            ? {
+                publicBrand: options.manifestPublicBrand ?? options.publicBrand,
+              }
+            : {}),
           deploymentId: immutable.deploymentId,
           deploymentVersion: 1,
           siteId: "site_1",
@@ -159,7 +181,8 @@ function env(options: TestEnvOptions = {}): WorkerEnv {
   }
 
   return {
-    HOST_DOMAIN: "sites.vm0.io",
+    HOST_DOMAIN: options.hostDomain ?? "sites.vm0.io",
+    OKOU_HOST_DOMAIN: options.okouHostDomain ?? "okou.app",
     HOSTED_SITES_BUCKET: {
       get(key: string): Promise<R2Object | null> {
         return Promise.resolve(objects.get(key) ?? null);
@@ -244,6 +267,55 @@ describe("hosted site worker", () => {
     expect(response.headers.get("X-Robots-Tag")).toBe("noindex");
   });
 
+  it("does not expose legacy unbranded sites on the Okou domain", async () => {
+    const response = await worker.fetch(
+      new Request("https://demo.okou.app/"),
+      env(),
+    );
+
+    expect(response.status).toBe(404);
+  });
+
+  it("serves Okou pointers only on the Okou domain", async () => {
+    const workerEnv = env({ publicBrand: "okou" });
+
+    const okouResponse = await worker.fetch(
+      new Request("https://demo.okou.app/"),
+      workerEnv,
+    );
+    const vm0Response = await worker.fetch(
+      new Request("https://demo.sites.vm0.io/"),
+      workerEnv,
+    );
+
+    expect(okouResponse.status).toBe(200);
+    expect(await okouResponse.text()).toBe("<!doctype html>ok");
+    expect(vm0Response.status).toBe(404);
+  });
+
+  it("rejects a manifest whose brand disagrees with its pointer", async () => {
+    const response = await worker.fetch(
+      new Request("https://demo.okou.app/"),
+      env({ publicBrand: "okou", manifestPublicBrand: "vm0" }),
+    );
+
+    expect(response.status).toBe(404);
+  });
+
+  it("allows branded pointers on the shared preview host", async () => {
+    const response = await worker.fetch(
+      new Request("https://demo.sites.vm7.io/"),
+      env({
+        publicBrand: "okou",
+        hostDomain: "sites.vm7.io",
+        okouHostDomain: "sites.vm7.io",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("<!doctype html>ok");
+  });
+
   it("serves default robots.txt when the active deployment omits it", async () => {
     const response = await worker.fetch(
       new Request("https://demo.sites.vm0.io/robots.txt"),
@@ -301,5 +373,29 @@ describe("hosted site worker", () => {
     expect(await immutableResponse.text()).toBe("<!doctype html>version one");
     expect(aliasResponse.status).toBe(200);
     expect(await aliasResponse.text()).toBe("<!doctype html>ok");
+  });
+
+  it("serves immutable Okou deployments only on the Okou domain", async () => {
+    const immutableDeploymentId = "00000000-0000-4000-8000-000000000003";
+    const workerEnv = env({
+      publicBrand: "okou",
+      immutableDeployment: {
+        deploymentId: immutableDeploymentId,
+        body: "<!doctype html>okou version",
+      },
+    });
+
+    const okouResponse = await worker.fetch(
+      new Request(`https://dpl-${immutableDeploymentId}.okou.app/`),
+      workerEnv,
+    );
+    const vm0Response = await worker.fetch(
+      new Request(`https://dpl-${immutableDeploymentId}.sites.vm0.io/`),
+      workerEnv,
+    );
+
+    expect(okouResponse.status).toBe(200);
+    expect(await okouResponse.text()).toBe("<!doctype html>okou version");
+    expect(vm0Response.status).toBe(404);
   });
 });

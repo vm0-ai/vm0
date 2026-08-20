@@ -27,8 +27,8 @@ import {
 import { isTrustedPlatformHostname } from "./trusted-platform-url.ts";
 
 import {
+  resolveHostedSiteDomains,
   resolvePublicArtifactsBaseUrl,
-  resolveZeroHostDomain,
 } from "../../lib/platform-host.ts";
 
 // ---------------------------------------------------------------------------
@@ -113,7 +113,11 @@ interface ParseBodyBlocksOptions {
 const LEGACY_PLATFORM_FILE_PATH_PATTERN =
   /^\/(?:f|artifacts)\/[^/]+\/[^/]+\/[^/]+$/;
 const SHORT_ARTIFACT_FILE_PATH_PATTERN = /^\/artifacts\/[0-9a-z]{10}\.[^/]+$/;
-const PLATFORM_FILE_CDN_HOSTS = ["cdn.vm0.io", "cdn.vm7.io"] as const;
+const PLATFORM_FILE_CDN_HOSTS = [
+  "cdn.vm0.io",
+  "cdn.okou.io",
+  "cdn.vm7.io",
+] as const;
 const HOSTED_SITE_SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u;
 const URL_TOKEN_PATTERN = String.raw`(?:https?:\/\/|\/(?:f|artifacts|browsers)\/|\/mail\/drafts\/|\/\?settings=billing&billingView=)[^\s<>"'()（）【】《》「」『』“”‘’，。；：！？、]+`;
 const URL_TOKEN_OPENING_PREFIX_PATTERN = /^[({<"'“‘（【《「『[]*$/u;
@@ -425,15 +429,18 @@ function isPlatformFileUrl(url: string): boolean {
 }
 
 function hostedSitePublicSlug(hostname: string): string | null {
-  const domain = resolveZeroHostDomain();
   const normalizedHostname = hostname.toLowerCase();
-  const suffix = `.${domain}`;
-  if (!normalizedHostname.endsWith(suffix)) {
-    return null;
+  for (const domain of resolveHostedSiteDomains()) {
+    const suffix = `.${domain}`;
+    if (!normalizedHostname.endsWith(suffix)) {
+      continue;
+    }
+    const slug = normalizedHostname.slice(0, -suffix.length);
+    if (HOSTED_SITE_SLUG_PATTERN.test(slug)) {
+      return slug;
+    }
   }
-
-  const slug = normalizedHostname.slice(0, -suffix.length);
-  return HOSTED_SITE_SLUG_PATTERN.test(slug) ? slug : null;
+  return null;
 }
 
 function isHostedSiteUrl(url: string): boolean {
