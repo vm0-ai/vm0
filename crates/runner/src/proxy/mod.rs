@@ -61,7 +61,8 @@ mod runtime;
 mod stderr;
 
 pub use flush::{
-    MitmJsonlFlushHandle, USAGE_FLUSH_TIMEOUT, wait_usage_flush_requesting,
+    MitmJsonlFlushHandle, RunUsageFlushOutcome, USAGE_FLUSH_TIMEOUT, discard_run_usage_flush,
+    wait_run_usage_flush, wait_usage_flush_requesting, write_run_usage_flush_request,
     write_usage_flush_request,
 };
 pub(crate) use managed_process::ManagedMitmdump;

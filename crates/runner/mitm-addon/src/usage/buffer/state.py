@@ -93,6 +93,7 @@ from .models import (
     USAGE_EVENT_BATCH_SIZE,
     ModelUsageObservation,
     ResourceFieldName,
+    RunUsageBufferState,
     UsageEvent,
     UsageFlushTrigger,
     _AggregateBucket,
@@ -143,6 +144,8 @@ class _UsageBufferState:
         self._active_enqueue_count = 0
         self._pending_flushes: list[_PendingFlush] = []
         self._delivering_flushes: dict[int, _DeliveringFlush] = {}
+        self._pending_usage_events_by_run: dict[str, int] = {}
+        self._delivery_lost_run_ids: set[str] = set()
 
     def clear(self) -> None:
         self._buckets = {}
@@ -154,6 +157,8 @@ class _UsageBufferState:
         self._active_enqueue_count = 0
         self._pending_flushes = []
         self._delivering_flushes = {}
+        self._pending_usage_events_by_run = {}
+        self._delivery_lost_run_ids = set()
 
     def add_events(
         self,
@@ -229,6 +234,10 @@ class _UsageBufferState:
         # insertion-order lifetime covers the entire group.
         if atomic_source_key is not None and accepted_count > 0:
             self._seen_source_keys[atomic_source_key] = None
+        if log_type == "usage_event" and accepted_count > 0:
+            self._pending_usage_events_by_run[run_id] = (
+                self._pending_usage_events_by_run.get(run_id, 0) + accepted_count
+            )
         self._evict_source_keys()
         return accepted_count
 
@@ -483,6 +492,11 @@ class _UsageBufferState:
 
         if outcome == "retryable_failure":
             delivering_flush.retryable_batches.append(pending_batch)
+        else:
+            self._complete_usage_batch(
+                pending_batch,
+                delivery_lost=outcome == "permanent_failure",
+            )
         delivering_flush.remaining_batch_count -= 1
         if delivering_flush.remaining_batch_count > 0:
             return None
@@ -584,6 +598,8 @@ class _UsageBufferState:
                     break
             else:
                 self._pending_flushes.append(retained_flush)
+        for pending_batch in dropped_batches:
+            self._complete_usage_batch(pending_batch, delivery_lost=True)
         return _RetainBatchesResult(
             retained_batches=retained_batches,
             dropped_batches=dropped_batches,
@@ -598,6 +614,33 @@ class _UsageBufferState:
                 for delivering_flush in self._delivering_flushes.values()
             )
         )
+
+    def run_usage_buffer_state(self, run_id: str) -> RunUsageBufferState:
+        return RunUsageBufferState(
+            pending_events=self._pending_usage_events_by_run.get(run_id, 0),
+            delivery_lost=run_id in self._delivery_lost_run_ids,
+        )
+
+    def _complete_usage_batch(
+        self,
+        pending_batch: _PendingBatch,
+        *,
+        delivery_lost: bool,
+    ) -> None:
+        batch = pending_batch.batch
+        if batch.log_type != "usage_event":
+            return
+        run_id = batch.payload.get("runId")
+        if not isinstance(run_id, str):
+            return
+        remaining = self._pending_usage_events_by_run.get(run_id, 0)
+        completed = min(remaining, batch.source_event_count)
+        if completed == remaining:
+            self._pending_usage_events_by_run.pop(run_id, None)
+        else:
+            self._pending_usage_events_by_run[run_id] = remaining - completed
+        if delivery_lost:
+            self._delivery_lost_run_ids.add(run_id)
 
     def _build_flush_batches(
         self,

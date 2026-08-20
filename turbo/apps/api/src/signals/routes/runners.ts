@@ -1000,6 +1000,7 @@ function buildClaimTransitionSql(
   runId: string,
   runnerId: string | null,
   runnerHeartbeatGeneration: number | null,
+  usageFinalizationRequired: boolean,
 ): SQL {
   // Materialized outputs make the row locks depend on run, then queue.
   return sql`
@@ -1040,6 +1041,13 @@ function buildClaimTransitionSql(
               started_at = claim_clock."claimedAt",
               last_heartbeat_at = claim_clock."claimedAt",
               cancellation_recovery_completed = false,
+              usage_finalization_state = CASE
+                WHEN ${agentRuns.usageFinalizationState} = 'finalized'
+                  THEN 'finalized'
+                WHEN ${usageFinalizationRequired}
+                  THEN 'pending'
+                ELSE NULL
+              END,
               runner_id = ${runnerId},
               runner_heartbeat_generation = ${runnerHeartbeatGeneration}
             FROM locked_run
@@ -1104,14 +1112,18 @@ function buildClaimTransitionSql(
 async function transitionClaimedJobToRunning(
   db: Db,
   runId: string,
-  runnerIdentity: RunnerClaimIdentity | undefined,
+  claim: {
+    readonly runnerIdentity: RunnerClaimIdentity | undefined;
+    readonly usageFinalizationRequired: boolean;
+  },
   signal: AbortSignal,
   timing: ClaimRouteTimingCollector,
 ): Promise<ClaimTransitionResult> {
   const query = buildClaimTransitionSql(
     runId,
-    runnerIdentity?.runnerId ?? null,
-    runnerIdentity?.heartbeatGeneration ?? null,
+    claim.runnerIdentity?.runnerId ?? null,
+    claim.runnerIdentity?.heartbeatGeneration ?? null,
+    claim.usageFinalizationRequired,
   );
   return await db.transaction(async (tx) => {
     const result = await timing.measure(
@@ -2383,6 +2395,7 @@ const claimAuthorizedJob$ = command(
       readonly runId: string;
       readonly authType: RunnerAuthContext["type"];
       readonly runnerIdentity: RunnerClaimIdentity | undefined;
+      readonly usageFinalizationRequired: boolean;
       readonly jobWithRun: ClaimableJob;
       readonly telemetry: ClaimTimingTelemetry | undefined;
       readonly claimRequestStartedAtMs: number;
@@ -2467,7 +2480,10 @@ const claimAuthorizedJob$ = command(
         return await transitionClaimedJobToRunning(
           db,
           runId,
-          args.runnerIdentity,
+          {
+            runnerIdentity: args.runnerIdentity,
+            usageFinalizationRequired: args.usageFinalizationRequired,
+          },
           signal,
           claimRouteTiming,
         );
@@ -2548,6 +2564,7 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       authType: auth.type,
       runnerIdentity:
         auth.type === "official-runner" ? body.data.runnerIdentity : undefined,
+      usageFinalizationRequired: body.data.usageFinalizationRequired === true,
       jobWithRun,
       telemetry: body.data.telemetry,
       claimRequestStartedAtMs,

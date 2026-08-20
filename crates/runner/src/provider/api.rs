@@ -61,6 +61,7 @@ fn supports_thread_active_input(reuse_key: Option<&str>) -> bool {
 struct ClaimRequestBody<'a> {
     runner_identity: &'a RunnerProcessIdentity,
     telemetry: ClaimRequestTelemetry,
+    usage_finalization_required: bool,
 }
 
 #[derive(Serialize)]
@@ -89,6 +90,21 @@ struct ClaimRequestTelemetry {
     runner_preference: Option<RunnerPreference>,
     #[serde(skip_serializing_if = "Option::is_none")]
     runner_preference_claim_state: Option<RunnerPreferenceClaimState>,
+}
+
+#[derive(Clone, Copy)]
+enum TerminalReport<'a> {
+    Completion(&'a CompleteRequest),
+    UsageFinalized { run_id: RunId },
+}
+
+impl TerminalReport<'_> {
+    async fn send(&self, api: &ApiClient, sandbox_token: &str) -> RunnerResult<()> {
+        match self {
+            Self::Completion(request) => api.complete(sandbox_token, request).await,
+            Self::UsageFinalized { run_id } => api.finalize_usage(sandbox_token, *run_id).await,
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -754,77 +770,134 @@ impl JobProvider for ApiProvider {
             }
         };
 
-        const MAX_ATTEMPTS: usize = 2;
-        const RETRY_DELAY: Duration = Duration::from_secs(2);
+        report_terminal_with_retry(
+            &self.api,
+            &token,
+            run_id,
+            TerminalReport::Completion(&request),
+        )
+        .await;
+    }
 
-        for attempt in 1..=MAX_ATTEMPTS {
-            match self.api.complete(&token, &request).await {
-                Ok(()) => return,
-                Err(e) => {
-                    let (retryable, status, failure_kind) = match &e {
-                        RunnerError::ApiStatus(api_error) => {
-                            let status = api_error.status;
-                            (
-                                matches!(
-                                    status,
-                                    StatusCode::REQUEST_TIMEOUT
-                                        | StatusCode::MISDIRECTED_REQUEST
-                                        | StatusCode::TOO_EARLY
-                                        | StatusCode::TOO_MANY_REQUESTS
-                                ) || status.is_server_error(),
-                                api_error.status.as_str(),
-                                "http_status",
-                            )
-                        }
-                        RunnerError::ApiTransport(api_error) => {
-                            (true, "", api_error.failure_kind.as_str())
-                        }
-                        _ => (false, "", "local"),
-                    };
-                    let will_retry = retryable && attempt < MAX_ATTEMPTS;
+    async fn finalize_usage(&self, run_id: RunId, sandbox_token: &str) {
+        report_terminal_with_retry(
+            &self.api,
+            sandbox_token,
+            run_id,
+            TerminalReport::UsageFinalized { run_id },
+        )
+        .await;
+    }
+}
 
-                    if will_retry {
-                        warn!(
+async fn report_terminal_with_retry(
+    api: &ApiClient,
+    sandbox_token: &str,
+    run_id: RunId,
+    report: TerminalReport<'_>,
+) {
+    const MAX_ATTEMPTS: usize = 2;
+    const RETRY_DELAY: Duration = Duration::from_secs(2);
+
+    for attempt in 1..=MAX_ATTEMPTS {
+        match report.send(api, sandbox_token).await {
+            Ok(()) => return,
+            Err(error) => {
+                let (retryable, status, failure_kind) = classify_terminal_report_failure(&error);
+                let will_retry = retryable && attempt < MAX_ATTEMPTS;
+                if will_retry {
+                    match report {
+                        TerminalReport::Completion(_) => warn!(
                             run_id = %run_id,
-                            error = %e,
+                            error = %error,
                             attempt,
                             max_attempts = MAX_ATTEMPTS,
                             will_retry,
                             status,
                             failure_kind,
                             "completion report failed, retrying"
-                        );
-                        tokio::time::sleep(RETRY_DELAY).await;
-                        continue;
-                    }
-
-                    if attempt > 1 {
-                        error!(
+                        ),
+                        TerminalReport::UsageFinalized { .. } => warn!(
                             run_id = %run_id,
-                            error = %e,
+                            error = %error,
                             attempt,
                             max_attempts = MAX_ATTEMPTS,
                             will_retry,
                             status,
                             failure_kind,
-                            "failed to report completion after retry"
-                        );
-                    } else {
-                        error!(
-                            run_id = %run_id,
-                            error = %e,
-                            attempt,
-                            max_attempts = MAX_ATTEMPTS,
-                            will_retry,
-                            status,
-                            failure_kind,
-                            "failed to report completion"
-                        );
+                            "usage finalization report failed, retrying"
+                        ),
                     }
-                    return;
+                    tokio::time::sleep(RETRY_DELAY).await;
+                    continue;
                 }
+
+                match (report, attempt > 1) {
+                    (TerminalReport::Completion(_), true) => error!(
+                        run_id = %run_id,
+                        error = %error,
+                        attempt,
+                        max_attempts = MAX_ATTEMPTS,
+                        will_retry,
+                        status,
+                        failure_kind,
+                        "failed to report completion after retry"
+                    ),
+                    (TerminalReport::Completion(_), false) => error!(
+                        run_id = %run_id,
+                        error = %error,
+                        attempt,
+                        max_attempts = MAX_ATTEMPTS,
+                        will_retry,
+                        status,
+                        failure_kind,
+                        "failed to report completion"
+                    ),
+                    (TerminalReport::UsageFinalized { .. }, true) => error!(
+                        run_id = %run_id,
+                        error = %error,
+                        attempt,
+                        max_attempts = MAX_ATTEMPTS,
+                        will_retry,
+                        status,
+                        failure_kind,
+                        "failed to report usage finalization after retry"
+                    ),
+                    (TerminalReport::UsageFinalized { .. }, false) => error!(
+                        run_id = %run_id,
+                        error = %error,
+                        attempt,
+                        max_attempts = MAX_ATTEMPTS,
+                        will_retry,
+                        status,
+                        failure_kind,
+                        "failed to report usage finalization"
+                    ),
+                }
+                return;
             }
         }
+    }
+}
+
+fn classify_terminal_report_failure(error: &RunnerError) -> (bool, &str, &str) {
+    match error {
+        RunnerError::ApiStatus(api_error) => {
+            let status = api_error.status;
+            (
+                matches!(
+                    status,
+                    StatusCode::REQUEST_TIMEOUT
+                        | StatusCode::MISDIRECTED_REQUEST
+                        | StatusCode::TOO_EARLY
+                        | StatusCode::TOO_MANY_REQUESTS
+                ) || status.is_server_error(),
+                api_error.status.as_str(),
+                "http_status",
+            )
+        }
+        RunnerError::ApiTransport(api_error) => (true, "", api_error.failure_kind.as_str()),
+        _ => (false, "", "local"),
     }
 }
 
@@ -1119,6 +1192,22 @@ impl ApiClient {
         Ok(())
     }
 
+    async fn finalize_usage(&self, sandbox_token: &str, run_id: RunId) -> RunnerResult<()> {
+        let resp = send_api(
+            self.http
+                .request_route(
+                    routes::webhooks::agent::usage_finalized::FINALIZE,
+                    sandbox_token,
+                )
+                .json(&serde_json::json!({ "runId": run_id })),
+            "usage finalization",
+        )
+        .await?;
+
+        check_api_status(resp, "usage finalization").await?;
+        Ok(())
+    }
+
     /// Fetch an Ably token for subscribing to runner group notifications.
     pub(super) async fn realtime_token(
         &self,
@@ -1239,6 +1328,7 @@ fn claim_request_body<'a>(
 
     ClaimRequestBody {
         runner_identity,
+        usage_finalization_required: true,
         telemetry: ClaimRequestTelemetry {
             discovery_source: candidate.discovery_source().map(JobDiscoverySource::as_str),
             job_discovered_to_claim_request_ms: claim_telemetry_duration_ms(
@@ -1905,6 +1995,7 @@ mod tests {
         CompleteRequest {
             run_id,
             exit_code: 0,
+            usage_finalization_required: true,
             error: None,
             sandbox_id: None,
             sandbox_reuse_result: None,
@@ -3850,6 +3941,7 @@ mod tests {
                 &CompleteRequest {
                     run_id: RunId::nil(),
                     exit_code: 1,
+                    usage_finalization_required: true,
                     error: Some("boom".to_string()),
                     sandbox_id: None,
                     sandbox_reuse_result: None,
@@ -3881,6 +3973,7 @@ mod tests {
                     .json_body(serde_json::json!({
                         "runId": run_id,
                         "exitCode": 0,
+                        "usageFinalizationRequired": true,
                         "sandboxReuseResult": "noReuseKey",
                         "workspaceReuseResult": "noReuseKey",
                     }));
@@ -3894,6 +3987,7 @@ mod tests {
             &CompleteRequest {
                 run_id,
                 exit_code: 0,
+                usage_finalization_required: true,
                 error: None,
                 sandbox_id: None,
                 sandbox_reuse_result: Some(SandboxReuseResult::NoReuseKey),
@@ -4303,7 +4397,8 @@ mod tests {
                     .header("authorization", "Bearer sandbox-token-a")
                     .json_body(serde_json::json!({
                         "runId": run_id_a,
-                        "exitCode": 0
+                        "exitCode": 0,
+                        "usageFinalizationRequired": true
                     }));
                 then.status(200);
             })
@@ -4315,7 +4410,8 @@ mod tests {
                     .header("authorization", "Bearer sandbox-token-b")
                     .json_body(serde_json::json!({
                         "runId": run_id_b,
-                        "exitCode": 0
+                        "exitCode": 0,
+                        "usageFinalizationRequired": true
                     }));
                 then.status(200);
             })
@@ -4382,6 +4478,30 @@ mod tests {
                 CompletionAuth::sandbox_token(run_id, "sandbox-token".to_string()),
             )
             .await;
+
+        mock.assert_calls_async(1).await;
+    }
+
+    #[tokio::test]
+    async fn api_provider_finalizes_usage_with_run_sandbox_auth() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::new_v4();
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path(routes::webhooks::agent::usage_finalized::FINALIZE.path)
+                    .header("authorization", "Bearer sandbox-token")
+                    .json_body(serde_json::json!({ "runId": run_id }));
+                then.status(200);
+            })
+            .await;
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+        );
+
+        provider.finalize_usage(run_id, "sandbox-token").await;
 
         mock.assert_calls_async(1).await;
     }

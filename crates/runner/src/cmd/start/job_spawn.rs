@@ -10,10 +10,11 @@ use std::time::{Duration, Instant};
 
 use futures_util::FutureExt;
 use sandbox::SandboxId;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinSet;
 use tracing::{error, warn};
 
+use super::RunUsageFlushMessage;
 use super::active_runs::{ActiveRunGuard, ActiveRunReusePublisher, ActiveRuns};
 use super::factory_lifecycle::SharedFactory;
 use super::heartbeat::WorkspaceCacheStateSnapshot;
@@ -79,8 +80,8 @@ pub(super) struct SpawnContext {
     /// the server does not know which runner holds a reusable sandbox or
     /// workspace image cache.
     pub(super) reuse_state_notify: Arc<tokio::sync::Notify>,
-    /// Best-effort signal for the main loop to ask mitmproxy to flush usage.
-    pub(super) usage_flush_tx: mpsc::Sender<()>,
+    /// Per-run request for the main loop to drain credit-bearing proxy usage.
+    pub(super) usage_flush_tx: mpsc::Sender<RunUsageFlushMessage>,
     pub(super) active_runs: ActiveRuns,
     pub(super) budget: Arc<ResourceBudget>,
     pub(super) workspace_cache_snapshot: WorkspaceCacheStateSnapshot,
@@ -710,9 +711,10 @@ pub(super) async fn run_job(
     };
     let deferred_upload = DeferredUploadPhase {
         run_id,
-        sandbox_token,
+        sandbox_token: sandbox_token.clone(),
         exec_config: Arc::clone(&exec_config),
     };
+    let usage_sandbox_token = sandbox_token;
 
     executor
         .pre_spawn_timing
@@ -744,7 +746,6 @@ pub(super) async fn run_job(
         ))
         .with_workspace_reuse_result(executor_result.outcome.workspace_reuse_result);
         // Structural guarantee: claim (in provider) is always paired with complete.
-        signal_usage_flush(run_id, &usage_flush_tx);
         let (completion_report, finalized) = match provider.completion_report_timing() {
             CompletionReportTiming::ConcurrentWithFinalization => tokio::join!(
                 completion_payload.report(provider.as_ref()),
@@ -756,15 +757,24 @@ pub(super) async fn run_job(
                 (completion_report, finalized)
             }
         };
-        let FinalizedJob {
-            finalization_ready,
-            mut telemetry,
-        } = finalized;
-        completion_report.record(&mut telemetry);
-        completion_settlement
-            .settle(finalization_ready, &mut telemetry)
-            .await;
-        deferred_upload.flush(telemetry).await;
+        let usage_finalization = finalize_run_usage(
+            run_id,
+            Arc::clone(&provider),
+            usage_sandbox_token,
+            usage_flush_tx,
+        );
+        let completion = async move {
+            let FinalizedJob {
+                finalization_ready,
+                mut telemetry,
+            } = finalized;
+            completion_report.record(&mut telemetry);
+            completion_settlement
+                .settle(finalization_ready, &mut telemetry)
+                .await;
+            deferred_upload.flush(telemetry).await;
+        };
+        tokio::join!(completion, usage_finalization);
     };
 
     match AssertUnwindSafe(body).catch_unwind().await {
@@ -791,11 +801,28 @@ pub(super) async fn run_job(
     }
 }
 
-fn signal_usage_flush(run_id: RunId, usage_flush_tx: &mpsc::Sender<()>) {
-    match usage_flush_tx.try_send(()) {
-        Ok(()) | Err(mpsc::error::TrySendError::Full(())) => {}
-        Err(mpsc::error::TrySendError::Closed(())) => {
-            warn!(run_id = %run_id, "proxy usage flush signal channel closed before completion");
+async fn finalize_run_usage(
+    run_id: RunId,
+    provider: Arc<dyn JobProvider>,
+    sandbox_token: String,
+    usage_flush_tx: mpsc::Sender<RunUsageFlushMessage>,
+) {
+    let (result_tx, result_rx) = oneshot::channel();
+    if usage_flush_tx
+        .send(RunUsageFlushMessage { run_id, result_tx })
+        .await
+        .is_err()
+    {
+        warn!(run_id = %run_id, "proxy usage flush channel closed before completion");
+        return;
+    }
+    match result_rx.await {
+        Ok(crate::proxy::RunUsageFlushOutcome::Ready) => {
+            provider.finalize_usage(run_id, &sandbox_token).await;
+        }
+        Ok(crate::proxy::RunUsageFlushOutcome::DeliveryLost) => {}
+        Ok(crate::proxy::RunUsageFlushOutcome::Failed) | Err(_) => {
+            warn!(run_id = %run_id, "proxy usage did not reach a finalizable delivery state");
         }
     }
 }

@@ -114,6 +114,7 @@ const mapsAuth = {
   requireOrganization: true,
   missingOrganizationStatus: 401,
   requiredCapability: "maps:read",
+  runUsageBarrier: true,
 } as const;
 
 export const mapsRoutes: readonly RouteEntry[] = [

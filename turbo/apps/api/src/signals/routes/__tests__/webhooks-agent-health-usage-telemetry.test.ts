@@ -1,21 +1,77 @@
 import { randomUUID } from "node:crypto";
 
+import { createStore } from "ccstate";
 import { webhookUsageEventContract } from "@okouai/api-contracts/contracts/webhooks";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { generateSandboxToken } from "../../auth/tokens";
 import { webhooksAgentHealthUsageTelemetryRoutes } from "../webhooks-agent-health-usage-telemetry";
+import {
+  deleteUsageStateFixture$,
+  seedCompose$,
+  seedRun$,
+  seedUsageStateFixture$,
+} from "./helpers/usage-state";
 
 const context = testContext();
+const store = createStore();
 
 beforeEach(() => {
   mockEnv("SECRETS_ENCRYPTION_KEY", "a".repeat(64));
 });
 
 describe("agent usage event webhook", () => {
+  it("accepts usage for a legacy run without a trigger source", async () => {
+    const fixture = await store.set(
+      seedUsageStateFixture$,
+      undefined,
+      context.signal,
+    );
+    onTestFinished(async () => {
+      await store.set(deleteUsageStateFixture$, fixture, context.signal);
+    });
+    const compose = await store.set(seedCompose$, fixture, context.signal);
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        ...fixture,
+        composeId: compose.composeId,
+        status: "running",
+        lifecycleOnly: true,
+      },
+      context.signal,
+    );
+    const sandboxToken = generateSandboxToken(
+      fixture.userId,
+      runId,
+      fixture.orgId,
+    );
+
+    await accept(
+      setupApp({ context, routes: webhooksAgentHealthUsageTelemetryRoutes })(
+        webhookUsageEventContract,
+      ).send({
+        headers: { authorization: `Bearer ${sandboxToken}` },
+        body: {
+          runId,
+          events: [
+            {
+              idempotencyKey: randomUUID(),
+              kind: "connector",
+              provider: "legacy-provider",
+              category: "legacy.read",
+              quantity: 1,
+            },
+          ],
+        },
+      }),
+      [200],
+    );
+  });
+
   it("returns not found and logs underbilling when a usage event targets a missing run", async () => {
     const runId = randomUUID();
     const orgId = `org_usage_missing_${randomUUID().slice(0, 8)}`;

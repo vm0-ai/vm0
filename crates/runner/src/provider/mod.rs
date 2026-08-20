@@ -779,6 +779,10 @@ pub trait JobProvider: Send + Sync {
     /// carried by the claimed job lifecycle until completion.
     async fn complete(&self, request: CompleteRequest, completion_auth: CompletionAuth);
 
+    /// Confirm that all credit-bearing proxy usage for a completed run reached
+    /// the API. Local providers have no server-side usage publication state.
+    async fn finalize_usage(&self, _run_id: RunId, _sandbox_token: &str) {}
+
     /// Report runner state to the server as a best-effort operation.
     ///
     /// Delivery failures do not affect runner operation, but callers retain

@@ -30,6 +30,7 @@ async fn complete_report_success_posts_full_payload_when_metadata_present() {
             .json_body(json!({
                 "runId": TEST_RUN_ID,
                 "exitCode": 0,
+                "usageFinalizationRequired": true,
                 "lastEventSequence": 7,
                 "sandboxId": TEST_SANDBOX_ID,
                 "sandboxReuseResult": TEST_SANDBOX_REUSE_RESULT,
@@ -58,9 +59,9 @@ async fn complete_report_success_posts_full_payload_when_metadata_present() {
 
 /// Unset runner metadata (guest launched without `VM0_SANDBOX_ID` /
 /// `VM0_SANDBOX_REUSE_RESULT`, e.g. a pre-#10787 runner): empty strings
-/// must serialize as absent so the payload carries only `runId` +
-/// `exitCode`. Matches the `skip_serializing_if = "Option::is_none"`
-/// contract end-to-end.
+/// must serialize as absent so the payload carries only the required run,
+/// exit, and usage-finalization capability fields. Matches the
+/// `skip_serializing_if = "Option::is_none"` contract end-to-end.
 #[tokio::test]
 async fn complete_report_success_omits_metadata_when_env_absent() {
     let api = SharedApiMock::new().await;
@@ -72,6 +73,7 @@ async fn complete_report_success_omits_metadata_when_env_absent() {
             .json_body(json!({
                 "runId": TEST_RUN_ID,
                 "exitCode": 0,
+                "usageFinalizationRequired": true,
             }));
         then.status(200).json_body(json!({"success": true}));
     });
@@ -158,6 +160,7 @@ async fn complete_report_user_cancellation_posts_nonzero_and_swallows_server_err
             .json_body(json!({
                 "runId": TEST_RUN_ID,
                 "exitCode": 1,
+                "usageFinalizationRequired": true,
                 "lastEventSequence": 9,
                 "sandboxId": TEST_SANDBOX_ID,
                 "sandboxReuseResult": TEST_SANDBOX_REUSE_RESULT,

@@ -33,6 +33,7 @@ type WriteTx = Tx;
 const TERMINAL_RUN_STATUSES = ["completed", "failed", "cancelled"] as const;
 const USAGE_CONTEXT_GROUP_BY_COLUMNS = [
   agentRuns.status,
+  agentRuns.usageFinalizationState,
   agentRuns.chatThreadId,
   agentRuns.goalId,
   chatThreads.userId,
@@ -72,6 +73,7 @@ async function loadUsageEventContext(tx: WriteTx, runId: string) {
   return await tx
     .select({
       status: agentRuns.status,
+      usageFinalizationState: agentRuns.usageFinalizationState,
       chatThreadId: agentRuns.chatThreadId,
       goalId: agentRuns.goalId,
       userId: chatThreads.userId,
@@ -124,79 +126,116 @@ async function loadUsageBreakdownRows(tx: WriteTx, runId: string) {
     .orderBy(usage.kind, usage.provider);
 }
 
+export interface InsertedRunUsageEvent {
+  readonly chatThreadId: string;
+  readonly userId: string;
+  readonly totalCredits: number;
+}
+
+export async function insertRunUsageEvent(
+  tx: WriteTx,
+  runId: string,
+  signal: AbortSignal,
+): Promise<InsertedRunUsageEvent | null> {
+  // Multiple terminal side effects can attempt emission for the same run.
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtext('chat_usage_message:' || ${runId}))`,
+  );
+  signal.throwIfAborted();
+
+  const [context] = await loadUsageEventContext(tx, runId);
+  signal.throwIfAborted();
+
+  if (!context) {
+    return null;
+  }
+  if (
+    !TERMINAL_RUN_STATUSES.includes(
+      context.status as (typeof TERMINAL_RUN_STATUSES)[number],
+    )
+  ) {
+    return null;
+  }
+  if (
+    context.usageFinalizationState !== null &&
+    context.usageFinalizationState !== "finalized"
+  ) {
+    return null;
+  }
+  if (!context.chatThreadId || !context.userId) {
+    return null;
+  }
+  if (context.hasPending || context.finalizedCount === 0) {
+    return null;
+  }
+
+  const [existingUsageEvent] = await tx
+    .select({ id: chatEvents.id })
+    .from(chatEvents)
+    .where(
+      and(eq(chatEvents.runId, runId), chatEventTypeIn(["usage.recorded"])),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+
+  if (existingUsageEvent) {
+    return null;
+  }
+
+  const breakdownRows = await loadUsageBreakdownRows(tx, runId);
+  signal.throwIfAborted();
+
+  const payload: ChatEventUsagePayload = {
+    version: 1,
+    totalCredits: Math.max(0, context.totalCredits),
+    settledAt: context.settledAt.toISOString(),
+    breakdown: buildUsageBreakdown(breakdownRows),
+  };
+
+  const inserted = await insertChatEvent(tx, {
+    chatThreadId: context.chatThreadId,
+    eventType: "usage.recorded",
+    content: null,
+    runId,
+    runGroupId: context.goalId,
+    usagePayload: payload,
+    createdAt: new Date(payload.settledAt),
+  });
+  signal.throwIfAborted();
+
+  if (!inserted) {
+    return null;
+  }
+
+  return {
+    chatThreadId: context.chatThreadId,
+    userId: context.userId,
+    totalCredits: payload.totalCredits,
+  };
+}
+
+export async function publishRunUsageEvent(
+  runId: string,
+  emitted: InsertedRunUsageEvent,
+  signal: AbortSignal,
+): Promise<void> {
+  await publishUserSignal(
+    [emitted.userId],
+    `chatThreadMessageCreated:${emitted.chatThreadId}`,
+  );
+  signal.throwIfAborted();
+
+  L.debug("Emitted chat usage message", {
+    runId,
+    chatThreadId: emitted.chatThreadId,
+    totalCredits: emitted.totalCredits,
+  });
+}
+
 export const maybeEmitRunUsageEvent$ = command(
   async ({ set }, runId: string, signal: AbortSignal): Promise<boolean> => {
-    const db = set(writeDb$);
-    const emitted = await db.transaction(async (tx) => {
-      // Multiple terminal side effects can attempt emission for the same run.
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtext('chat_usage_message:' || ${runId}))`,
-      );
-      signal.throwIfAborted();
-
-      const [context] = await loadUsageEventContext(tx, runId);
-      signal.throwIfAborted();
-
-      if (!context) {
-        return null;
-      }
-      if (
-        !TERMINAL_RUN_STATUSES.includes(
-          context.status as (typeof TERMINAL_RUN_STATUSES)[number],
-        )
-      ) {
-        return null;
-      }
-      if (!context.chatThreadId || !context.userId) {
-        return null;
-      }
-      if (context.hasPending || context.finalizedCount === 0) {
-        return null;
-      }
-
-      const [existingUsageEvent] = await tx
-        .select({ id: chatEvents.id })
-        .from(chatEvents)
-        .where(
-          and(eq(chatEvents.runId, runId), chatEventTypeIn(["usage.recorded"])),
-        )
-        .limit(1);
-      signal.throwIfAborted();
-
-      if (existingUsageEvent) {
-        return null;
-      }
-
-      const breakdownRows = await loadUsageBreakdownRows(tx, runId);
-      signal.throwIfAborted();
-
-      const payload: ChatEventUsagePayload = {
-        version: 1,
-        totalCredits: Math.max(0, context.totalCredits),
-        settledAt: context.settledAt.toISOString(),
-        breakdown: buildUsageBreakdown(breakdownRows),
-      };
-
-      const inserted = await insertChatEvent(tx, {
-        chatThreadId: context.chatThreadId,
-        eventType: "usage.recorded",
-        content: null,
-        runId,
-        runGroupId: context.goalId,
-        usagePayload: payload,
-        createdAt: new Date(payload.settledAt),
-      });
-      signal.throwIfAborted();
-
-      if (!inserted) {
-        return null;
-      }
-
-      return {
-        chatThreadId: context.chatThreadId,
-        userId: context.userId,
-        totalCredits: payload.totalCredits,
-      };
+    const emitted = await set(writeDb$).transaction(async (tx) => {
+      return await insertRunUsageEvent(tx, runId, signal);
     });
     signal.throwIfAborted();
 
@@ -204,18 +243,7 @@ export const maybeEmitRunUsageEvent$ = command(
       return false;
     }
 
-    await publishUserSignal(
-      [emitted.userId],
-      `chatThreadMessageCreated:${emitted.chatThreadId}`,
-    );
-    signal.throwIfAborted();
-
-    L.debug("Emitted chat usage message", {
-      runId,
-      chatThreadId: emitted.chatThreadId,
-      totalCredits: emitted.totalCredits,
-    });
-
+    await publishRunUsageEvent(runId, emitted, signal);
     return true;
   },
 );

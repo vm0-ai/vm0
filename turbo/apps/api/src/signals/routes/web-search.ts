@@ -27,6 +27,7 @@ export const webSearchRoutes: readonly RouteEntry[] = [
         requireOrganization: true,
         missingOrganizationStatus: 401,
         requiredCapability: "web-search:read",
+        runUsageBarrier: true,
       },
       webSearchInner$,
     ),

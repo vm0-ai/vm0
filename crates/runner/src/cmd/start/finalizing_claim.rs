@@ -791,10 +791,12 @@ async fn complete_claimed_without_sandbox(
 ) -> RunCancellationRegistration {
     let (context, completion_auth, active_input_source) = claimed.into_parts();
     drop(active_input_source);
+    let run_id = context.run_id;
+    let sandbox_token = context.sandbox_token.clone();
     let telemetry = handoff_outcome.map(|outcome| {
         let mut telemetry = JobTelemetry::new(
             ctx.exec_config.http.clone(),
-            context.run_id,
+            run_id,
             context.sandbox_token.clone(),
             ctx.exec_config.runner_name.clone(),
         );
@@ -804,8 +806,9 @@ async fn complete_claimed_without_sandbox(
     ctx.provider
         .complete(
             CompleteRequest {
-                run_id: context.run_id,
+                run_id,
                 exit_code: failure.exit_code,
+                usage_finalization_required: true,
                 error: Some(failure.error),
                 sandbox_id: None,
                 sandbox_reuse_result: reuse_result,
@@ -815,6 +818,7 @@ async fn complete_claimed_without_sandbox(
             completion_auth,
         )
         .await;
+    ctx.provider.finalize_usage(run_id, &sandbox_token).await;
     if let Some(telemetry) = telemetry {
         telemetry.flush().await;
     }

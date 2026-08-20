@@ -32,6 +32,12 @@ class ModelUsageObservation(TypedDict):
     cacheCreationInputTokens: int
 
 
+@dataclass(frozen=True)
+class RunUsageBufferState:
+    pending_events: int
+    delivery_lost: bool
+
+
 UsageFlushTrigger = Literal["timer", "threshold", "runner", "shutdown", "test"]
 ResourceFieldName = Literal["provider", "model"]
 

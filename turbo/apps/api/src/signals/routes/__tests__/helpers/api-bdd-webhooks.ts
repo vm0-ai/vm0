@@ -16,6 +16,7 @@ import {
   webhookStripeContract,
   webhookTelemetryContract,
   webhookUsageEventContract,
+  webhookUsageFinalizedContract,
 } from "@okouai/api-contracts/contracts/webhooks";
 import { HttpResponse, http } from "msw";
 import type StripeSDK from "stripe";
@@ -74,6 +75,9 @@ type AgentTelemetryBody = z.infer<
 >;
 type AgentUsageEventBody = z.infer<
   (typeof webhookUsageEventContract.send)["body"]
+>;
+type AgentUsageFinalizedBody = z.infer<
+  (typeof webhookUsageFinalizedContract.finalize)["body"]
 >;
 type AgentModelUsageObservationV2Body = z.infer<
   (typeof webhookModelUsageObservationContract.send)["body"]
@@ -607,6 +611,19 @@ export function createWebhookCallbackApi(context: TestContext) {
       );
     },
 
+    async requestAgentUsageFinalized(
+      body: AgentUsageFinalizedBody,
+      headers: SandboxWebhookHeaders,
+      statuses: readonly (200 | 400 | 401 | 404 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context, routes: webhooksAgentCompleteRoutes })(
+          webhookUsageFinalizedContract,
+        ).finalize({ headers, body }),
+        statuses,
+      );
+    },
+
     async requestAgentCheckpoint(
       body: AgentCheckpointBody,
       headers: SandboxWebhookHeaders,
@@ -763,7 +780,7 @@ export function createWebhookCallbackApi(context: TestContext) {
     async requestAgentUsageEvent(
       body: AgentUsageEventBody,
       headers: SandboxWebhookHeaders,
-      statuses: readonly (200 | 400 | 401 | 404 | 500)[],
+      statuses: readonly (200 | 400 | 401 | 404 | 409 | 500)[],
     ) {
       return await accept(
         setupApp({ context, routes: webhooksAgentHealthUsageTelemetryRoutes })(
@@ -779,7 +796,7 @@ export function createWebhookCallbackApi(context: TestContext) {
     async requestAgentUsageEventUnchecked(
       body: unknown,
       headers: SandboxWebhookHeaders,
-      statuses: readonly (400 | 401 | 404 | 500)[],
+      statuses: readonly (400 | 401 | 404 | 409 | 500)[],
     ) {
       return await accept(
         setupApp({ context, routes: webhooksAgentHealthUsageTelemetryRoutes })(

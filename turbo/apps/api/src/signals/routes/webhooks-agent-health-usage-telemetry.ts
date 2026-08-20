@@ -10,15 +10,15 @@ import {
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { modelUsageObservation } from "@okouai/db/schema/model-usage-observation";
 import { usageEvent } from "@okouai/db/schema/usage-event";
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
+import type { z } from "zod";
 import {
   isSupportedRunModel,
   normalizeRunModelId,
 } from "@okouai/api-contracts/contracts/model-providers";
 
-import { notFound } from "../../lib/error";
+import { conflict, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
-import { isForeignKeyViolation } from "../../lib/pg-errors";
 import { nowDate } from "../../lib/time";
 import { authorization$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
@@ -28,7 +28,6 @@ import { getDatasetName, ingestAxiomDirect } from "../external/axiom";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
 import type { RouteEntry } from "../route-entry";
 import { dispatchProgressCallbacks$ } from "../services/agent-run-callbacks.service";
-import { settle } from "../utils";
 import {
   getSandboxAuthForRun,
   resolveSandboxAuthForRun,
@@ -43,6 +42,21 @@ const MODEL_USAGE_KIND = "model";
 const TELEMETRY_INGEST_TIMEOUT_MS = 10_000;
 
 const L = logger("webhooks:agent");
+
+type AgentUsageEvent = z.infer<
+  (typeof webhookUsageEventContract.send)["body"]
+>["events"][number];
+
+function usageEventAppliesToRun(
+  event: AgentUsageEvent,
+  modelProvider: string | null,
+): boolean {
+  return (
+    event.kind !== MODEL_USAGE_KIND ||
+    modelProvider === null ||
+    modelProvider === "vm0"
+  );
+}
 
 interface SandboxOperationDimensionInput {
   readonly error?: string;
@@ -180,66 +194,117 @@ const usageEvent$ = command(async ({ get, set }, signal: AbortSignal) => {
     return unauthorizedRunMismatch;
   }
 
-  const db = set(writeDb$);
-  const hasModelEvents = body.events.some((event) => {
-    return event.kind === MODEL_USAGE_KIND;
-  });
-  const [runModelContext] = hasModelEvents
-    ? await db
-        .select({
-          modelProvider: agentRuns.modelProvider,
-        })
-        .from(agentRuns)
-        .where(
-          and(eq(agentRuns.id, body.runId), isNotNull(agentRuns.triggerSource)),
-        )
-        .limit(1)
-    : [];
-  signal.throwIfAborted();
-
-  const modelProviderType = runModelContext?.modelProvider ?? null;
-  const usageEventValues = body.events
-    .filter((event) => {
-      return (
-        event.kind !== MODEL_USAGE_KIND ||
-        modelProviderType === null ||
-        modelProviderType === "vm0"
-      );
-    })
-    .map((event) => {
-      return {
-        runId: body.runId,
-        orgId: auth.orgId,
-        userId: auth.userId,
-        kind: event.kind,
-        provider: event.provider,
-        category: event.category,
-        quantity: event.quantity,
-        idempotencyKey: event.idempotencyKey,
-      };
-    });
-  const insertResult = await settle(
-    (async () => {
-      if (usageEventValues.length > 0) {
-        await db
-          .insert(usageEvent)
-          .values(usageEventValues)
-          .onConflictDoNothing({ target: [usageEvent.idempotencyKey] });
-      }
-    })(),
-  );
-  signal.throwIfAborted();
-  if (!insertResult.ok) {
-    if (isForeignKeyViolation(insertResult.error)) {
-      L.error("Run not found for usage event, dropping", {
-        ...usageUnderbillingFields("run_not_found", "confirmed"),
-        runId: body.runId,
-        orgId: auth.orgId,
-        eventCount: body.events.length,
-      });
-      return notFound("Run not found");
+  const result = await set(writeDb$).transaction(async (tx) => {
+    const [run] = await tx
+      .select({
+        modelProvider: agentRuns.modelProvider,
+        triggerSource: agentRuns.triggerSource,
+        usageFinalizationState: agentRuns.usageFinalizationState,
+      })
+      .from(agentRuns)
+      .where(
+        and(eq(agentRuns.id, body.runId), eq(agentRuns.userId, auth.userId)),
+      )
+      .for("update", { of: agentRuns })
+      .limit(1);
+    signal.throwIfAborted();
+    if (!run) {
+      return "not-found" as const;
     }
-    throw insertResult.error;
+
+    const usageEventValues = body.events
+      .filter((event) => {
+        return usageEventAppliesToRun(
+          event,
+          run.triggerSource === null ? null : run.modelProvider,
+        );
+      })
+      .map((event) => {
+        return {
+          runId: body.runId,
+          orgId: auth.orgId,
+          userId: auth.userId,
+          kind: event.kind,
+          provider: event.provider,
+          category: event.category,
+          quantity: event.quantity,
+          idempotencyKey: event.idempotencyKey,
+        };
+      });
+
+    if (
+      run.usageFinalizationState === "deliveryFinalized" ||
+      run.usageFinalizationState === "finalized"
+    ) {
+      if (usageEventValues.length === 0) {
+        return "accepted" as const;
+      }
+      const persisted = await tx
+        .select({
+          runId: usageEvent.runId,
+          orgId: usageEvent.orgId,
+          userId: usageEvent.userId,
+          kind: usageEvent.kind,
+          provider: usageEvent.provider,
+          category: usageEvent.category,
+          quantity: usageEvent.quantity,
+          idempotencyKey: usageEvent.idempotencyKey,
+        })
+        .from(usageEvent)
+        .where(
+          inArray(
+            usageEvent.idempotencyKey,
+            usageEventValues.map((event) => {
+              return event.idempotencyKey;
+            }),
+          ),
+        );
+      signal.throwIfAborted();
+      const persistedByKey = new Map<string, (typeof persisted)[number]>();
+      for (const event of persisted) {
+        persistedByKey.set(event.idempotencyKey, event);
+      }
+      const exactRetry = usageEventValues.every((event) => {
+        const stored = persistedByKey.get(event.idempotencyKey);
+        return (
+          stored?.runId === event.runId &&
+          stored.orgId === event.orgId &&
+          stored.userId === event.userId &&
+          stored.kind === event.kind &&
+          stored.provider === event.provider &&
+          stored.category === event.category &&
+          stored.quantity === event.quantity
+        );
+      });
+      return exactRetry ? ("accepted" as const) : ("sealed" as const);
+    }
+
+    if (usageEventValues.length > 0) {
+      await tx
+        .insert(usageEvent)
+        .values(usageEventValues)
+        .onConflictDoNothing({ target: [usageEvent.idempotencyKey] });
+    }
+    return "accepted" as const;
+  });
+  signal.throwIfAborted();
+  if (result === "not-found") {
+    L.error("Run not found for usage event, dropping", {
+      ...usageUnderbillingFields("run_not_found", "confirmed"),
+      runId: body.runId,
+      orgId: auth.orgId,
+      eventCount: body.events.length,
+    });
+    return notFound("Run not found");
+  }
+  if (result === "sealed") {
+    L.error("Fresh usage event rejected after run usage delivery finalized", {
+      ...usageUnderbillingFields("post_finalization_usage", "confirmed"),
+      runId: body.runId,
+      orgId: auth.orgId,
+      eventCount: body.events.length,
+    });
+    return conflict("Run usage is finalized");
   }
 
   return {

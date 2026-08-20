@@ -17,6 +17,7 @@ from .models import (
     MAX_RETAINED_USAGE_BATCH_RETRIES,
     ModelUsageObservation,
     ResourceFieldName,
+    RunUsageBufferState,
     UsageEvent,
     UsageFlushTrigger,
     _BatchAdmissionResult,
@@ -237,6 +238,11 @@ class UsageEventBuffer:
             self._sync_buffered_counter_locked()
         if timer is not None:
             timer.cancel()
+
+    def run_usage_buffer_state(self, run_id: str) -> RunUsageBufferState:
+        """Return credit-bearing delivery state for one run."""
+        with self._lock:
+            return self._state.run_usage_buffer_state(run_id)
 
     def _flush_usage_events(self, *, trigger: UsageFlushTrigger) -> int:
         if not self._acquire_flush_ownership(trigger):

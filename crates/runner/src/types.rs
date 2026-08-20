@@ -1650,6 +1650,7 @@ pub struct HeartbeatState {
 pub struct CompleteRequest {
     pub run_id: RunId,
     pub exit_code: i32,
+    pub usage_finalization_required: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
     /// Sandbox the run executed against. `None` when the run failed before
@@ -2110,6 +2111,7 @@ mod tests {
                 .parse::<RunId>()
                 .unwrap(),
             exit_code: 0,
+            usage_finalization_required: true,
             error: None,
             sandbox_id: None,
             sandbox_reuse_result: None,
@@ -2119,6 +2121,7 @@ mod tests {
         let json = serde_json::to_value(&req).unwrap();
         assert!(json.get("runId").is_some());
         assert!(json.get("exitCode").is_some());
+        assert_eq!(json["usageFinalizationRequired"], true);
         // optionals omitted when None
         assert!(json.get("error").is_none());
         assert!(json.get("sandboxId").is_none());
@@ -2134,6 +2137,7 @@ mod tests {
                 .parse::<RunId>()
                 .unwrap(),
             exit_code: 1,
+            usage_finalization_required: true,
             error: Some("timeout".into()),
             sandbox_id: None,
             sandbox_reuse_result: None,
@@ -2155,6 +2159,7 @@ mod tests {
                 .parse::<RunId>()
                 .unwrap(),
             exit_code: 0,
+            usage_finalization_required: true,
             error: None,
             sandbox_id: Some(sid),
             sandbox_reuse_result: Some(SandboxReuseResult::Reused),

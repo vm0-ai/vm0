@@ -446,6 +446,7 @@ const webhookCompleteBodySchema = z
     sandboxReuseResult: sandboxReuseResultSchema.optional(),
     workspaceReuseResult: workspaceReuseResultSchema.optional(),
     activeInputDeliveryIds: activeInputDeliveryIdsSchema.optional(),
+    usageFinalizationRequired: z.literal(true).optional(),
   })
   .superRefine((body, context) => {
     const workspaceResult = body.workspaceReuseResult;
@@ -658,6 +659,34 @@ export const webhookCompleteContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Handle agent run completion",
+  },
+});
+
+/**
+ * Runner acknowledgement that all proxy-delivered credit usage for a run has
+ * reached the API. API-managed asynchronous built-ins may still defer sealing.
+ */
+export const webhookUsageFinalizedContract = c.router({
+  finalize: {
+    method: "POST",
+    path: "/api/webhooks/agent/usage-finalized",
+    headers: authHeadersSchema,
+    body: z
+      .object({
+        runId: z.string().min(1, "runId is required"),
+      })
+      .strict(),
+    responses: {
+      200: z.object({
+        success: z.literal(true),
+        finalized: z.boolean(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Finalize billing usage delivery for an agent run",
   },
 });
 
@@ -1029,6 +1058,8 @@ export type WebhookBuiltInGenerationJoggAiContract =
   typeof webhookBuiltInGenerationJoggAiContract;
 export type WebhookFirewallAuthContract = typeof webhookFirewallAuthContract;
 export type WebhookCompleteContract = typeof webhookCompleteContract;
+export type WebhookUsageFinalizedContract =
+  typeof webhookUsageFinalizedContract;
 export type WebhookCheckpointsContract = typeof webhookCheckpointsContract;
 export type WebhookCheckpointsPrepareHistoryContract =
   typeof webhookCheckpointsPrepareHistoryContract;
@@ -1074,6 +1105,7 @@ export const webhookUsageEventContract = c.router({
       400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema,
       500: apiErrorSchema,
     },
     summary: "Receive billing usage event data from sandbox",
