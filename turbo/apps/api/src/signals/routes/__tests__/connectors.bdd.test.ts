@@ -2038,6 +2038,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       expect(unlabeled.body.error.message).toBe(
         "Account display name is required when adding a custom connector account",
       );
+      await expect(
+        connectorsApi.readCustomConnector(admin, connector.id),
+      ).resolves.toMatchObject({ connected: false });
 
       const connected = await connectorsApi.requestSetCustomConnectorValues(
         admin,
@@ -2158,6 +2161,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expect(unlabeledAdd.body.error.message).toBe(
       "Account display name is required when adding a custom connector account",
     );
+    await expect(
+      connectorsApi.readCustomConnector(member, created.id),
+    ).resolves.toMatchObject({ connected: false });
 
     const authorizationUrl = await connectorsApi.startCustomConnectorOAuth2(
       member,
