@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.776.0](https://github.com/vm0-ai/vm0/compare/app-v0.775.1...app-v0.776.0) (2026-08-20)
+
+
+### Features
+
+* **host:** prepare okou public domains ([#28359](https://github.com/vm0-ai/vm0/issues/28359)) ([853415c](https://github.com/vm0-ai/vm0/commit/853415cbe56481d6e2c44c8cbd73ee50c6064902))
+* **platform:** import a deck as a presentation template from the picker ([#28344](https://github.com/vm0-ai/vm0/issues/28344)) ([e7efc60](https://github.com/vm0-ai/vm0/commit/e7efc606a87a71da3e81eeabf62710af8f0617e7))
+* point runs at the deck reverse-engineering guide ([#28362](https://github.com/vm0-ai/vm0/issues/28362)) ([8022cb6](https://github.com/vm0-ai/vm0/commit/8022cb61be52befefacfd44e1d758bd1a54f7584))
+
+
+### Bug Fixes
+
+* **platform:** fit seven models without scrolling ([#28260](https://github.com/vm0-ai/vm0/issues/28260)) ([98f9ac8](https://github.com/vm0-ai/vm0/commit/98f9ac831b6a64d31618ec6bdf22a6b95bbf2e5f))
+* **platform:** localize workflow template copy ([#28360](https://github.com/vm0-ai/vm0/issues/28360)) ([b07bcba](https://github.com/vm0-ai/vm0/commit/b07bcbae9b26fa46c0f5a75e417ce9478ef50b77))
+* **platform:** show pinned agent drag handle only while dragging ([#28320](https://github.com/vm0-ai/vm0/issues/28320)) ([f359c07](https://github.com/vm0-ai/vm0/commit/f359c07355b7fab1a1c959a0f7ac97ea9b1d5826))
+* project support and VAPID contacts by public brand ([#28312](https://github.com/vm0-ai/vm0/issues/28312)) ([4d3848a](https://github.com/vm0-ai/vm0/commit/4d3848ad76a64ddc0c52d9497fb4886b94854fe9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.343.0
+    * @okouai/core bumped to 8.574.0
+
 ## [0.775.1](https://github.com/vm0-ai/vm0/compare/app-v0.775.0...app-v0.775.1) (2026-08-20)
 
 
