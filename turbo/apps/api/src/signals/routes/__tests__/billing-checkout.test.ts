@@ -10993,6 +10993,93 @@ describe("usage pack allocation management", () => {
     expect(state.org?.cancelAtPeriodEnd).toBeTruthy();
   });
 
+  it("removes a member when a legacy invoice has no refundable amount", async () => {
+    mockNow(new Date("2035-04-20T00:00:00.000Z"));
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    const targetUserId = `user_${randomUUID()}`;
+    const targetEmail = `${targetUserId}@example.test`;
+    const fixture = await seedManagedUsagePack([
+      { userId: targetUserId, usagePackUsd: 20 },
+    ]);
+    await usagePackStateAction({
+      action: "delete-refund-source",
+      orgId: fixture.orgId,
+      userId: targetUserId,
+    });
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.UsagePackPlans]: false,
+    });
+    context.mocks.clerk.users.getUserList.mockResolvedValue({
+      data: [{ id: targetUserId }],
+    });
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
+      {
+        data: [
+          { publicUserData: { userId: fixture.userId } },
+          { publicUserData: { userId: targetUserId } },
+        ],
+      },
+    );
+    context.mocks.clerk.organizations.deleteOrganizationMembership.mockResolvedValue(
+      {},
+    );
+    const currentSubscription = managedUsagePackSubscription(
+      fixture,
+      new Map([[TEST_PRICE_USAGE_PACK_20, 1]]),
+    );
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      currentSubscription,
+    );
+    context.mocks.stripe.subscriptions.update.mockResolvedValue(
+      currentSubscription,
+    );
+    context.mocks.stripe.creditNotes.preview.mockResolvedValue({
+      id: "cn_preview_zero_usage_pack_removal",
+      status: "issued",
+      pre_payment_amount: 0,
+      post_payment_amount: 0,
+      refunds: [],
+    });
+
+    await accept(
+      setupApp({ context, routes: orgMembersRoutes })(
+        orgMembersContract,
+      ).removeMember({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { email: targetEmail },
+      }),
+      [200],
+    );
+
+    const state = await readUsagePackState(
+      fixture.orgId,
+      fixture.usagePackSubscriptionId,
+    );
+    expect(state.remainingCredits).toContainEqual({
+      userId: targetUserId,
+      amount: 0,
+    });
+    expect(state.refunds).toContainEqual(
+      expect.objectContaining({
+        userId: targetUserId,
+        sourceType: "invoice",
+        sourceAmountCents: 2000,
+        status: "succeeded",
+        requestedAmountCents: 2000,
+        refundedAmountCents: 0,
+        stripeCreditNoteId: null,
+        stripeRefundId: null,
+      }),
+    );
+    expect(context.mocks.stripe.creditNotes.create).not.toHaveBeenCalled();
+    expect(context.mocks.stripe.refunds.retrieve).not.toHaveBeenCalled();
+    expect(state.changes[0]).toStrictEqual(
+      expect.objectContaining({ kind: "removal", status: "scheduled" }),
+    );
+  });
+
   it.each(["pro", "team"] as const)(
     "requires a usage pack for managed %s invitation entitlements",
     async (tier) => {
