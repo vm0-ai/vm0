@@ -2693,6 +2693,37 @@ describe("Feishu integration", () => {
     );
   });
 
+  it("verifies the Feishu signature on the final console path", async () => {
+    const fixture = await setupFeishuRunFixture();
+    // The stored callback URL still points at the branded path: #28278 step 1
+    // only makes the final path routable and switches no producer.
+    expect(new URL(fixture.callbackUrl).pathname).toBe(
+      `/api/okou/feishu/events/${fixture.installationId}`,
+    );
+    const event = v2Event(fixture.appId, "unknown.event", {});
+    const eventPaths = [
+      `/api/okou/feishu/events/${fixture.installationId}`,
+      `/api/zero/feishu/events/${fixture.installationId}`,
+      `/api/webhooks/feishu/events/${fixture.installationId}`,
+    ];
+
+    for (const path of eventPaths) {
+      const url = new URL(path, fixture.callbackUrl).toString();
+      const accepted = await postEvent(url, event, { encrypted: true });
+      expect(accepted.status).toBe(200);
+      await expect(accepted.text()).resolves.toBe("OK");
+
+      const rejected = await postEvent(url, event, {
+        encrypted: true,
+        validSignature: false,
+      });
+      expect(rejected.status).toBe(401);
+      await expect(rejected.json()).resolves.toStrictEqual({
+        error: "Invalid Feishu signature",
+      });
+    }
+  });
+
   it("retries a durably admitted Feishu event after dispatch fails", async () => {
     const fixture = await setupFeishuRunFixture();
     const { appId, callbackUrl } = fixture;

@@ -41,6 +41,7 @@ import {
 import {
   type RouteEntry,
   withApiNamespaceAliases,
+  withFinalProviderConsolePaths,
 } from "./signals/route-entry";
 import { configureChatRunFinishedEventDispatcher } from "./signals/services/chat-run-finished-event-registration.service";
 import type { UsagePricingResolution } from "./signals/context/usage-pricing-resolution";
@@ -605,7 +606,9 @@ export function createAppWithRoutes({
     app.get(`${path}/*`, redirectToApp);
   }
 
-  for (const { route, handler } of withApiNamespaceAliases(routes)) {
+  for (const { route, handler } of withApiNamespaceAliases(
+    withFinalProviderConsolePaths(routes),
+  )) {
     app.on(
       route.method,
       route.path,

@@ -1,0 +1,394 @@
+import { createHmac } from "node:crypto";
+
+import { beforeEach, describe, expect, it } from "vitest";
+
+import { createAppWithRoutes } from "../../../app-factory-core";
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { now } from "../../../lib/time";
+import { testContext } from "../../../__tests__/test-context";
+import type { RouteEntry } from "../../route-entry";
+import { feishuOauthRoutes } from "../feishu-oauth";
+import { slackCommandsRoutes } from "../slack-commands";
+import { slackEventsRoutes } from "../slack-events";
+import { slackInteractiveRoutes } from "../slack-interactive";
+import { slackOauthRoutes } from "../slack-oauth";
+import { teamsOauthRoutes } from "../teams-oauth";
+
+const context = testContext();
+const REQUEST_ORIGIN = "http://api.test";
+const APP_ORIGIN = "https://app.vm0.test";
+const WEB_ORIGIN = "https://www.vm0.test";
+const SLACK_SIGNING_SECRET = "provider-console-slack-signing-secret";
+const FORM_CONTENT_TYPE = "application/x-www-form-urlencoded";
+
+interface ResponseSnapshot {
+  readonly status: number;
+  readonly location: string | null;
+  readonly body: string;
+}
+
+// Every request below is replayed on the branded paths that serve it today and
+// on the final console path from #28278, so the assertion is that all three
+// produce the same response rather than merely that the final path is routed.
+function namespacePaths(
+  brandedSuffix: string,
+  finalPath: string,
+): readonly string[] {
+  return [`/api/okou${brandedSuffix}`, `/api/zero${brandedSuffix}`, finalPath];
+}
+
+async function snapshot(response: Response): Promise<ResponseSnapshot> {
+  return {
+    status: response.status,
+    location: response.headers.get("location"),
+    body: await response.text(),
+  };
+}
+
+async function snapshotEachPath(
+  paths: readonly string[],
+  send: (path: string) => Promise<Response>,
+): Promise<readonly ResponseSnapshot[]> {
+  const snapshots: ResponseSnapshot[] = [];
+  for (const path of paths) {
+    snapshots.push(await snapshot(await send(path)));
+  }
+  return snapshots;
+}
+
+function repeated(
+  expected: ResponseSnapshot,
+  paths: readonly string[],
+): readonly ResponseSnapshot[] {
+  return paths.map(() => {
+    return expected;
+  });
+}
+
+function jsonBody(body: unknown): string {
+  return JSON.stringify(body);
+}
+
+function getRequest(routes: readonly RouteEntry[]) {
+  return async (path: string): Promise<Response> => {
+    const app = createAppWithRoutes({ signal: context.signal, routes });
+    return await app.request(`${REQUEST_ORIGIN}${path}`, { method: "GET" });
+  };
+}
+
+function signedSlackHeaders(body: string): Record<string, string> {
+  const timestamp = String(Math.floor(now() / 1000));
+  return {
+    "x-slack-request-timestamp": timestamp,
+    "x-slack-signature": `v0=${createHmac("sha256", SLACK_SIGNING_SECRET)
+      .update(`v0:${timestamp}:${body}`)
+      .digest("hex")}`,
+  };
+}
+
+function slackIngressRequest(args: {
+  readonly routes: readonly RouteEntry[];
+  readonly body: string;
+  readonly contentType: string;
+  readonly signed: boolean;
+}) {
+  return async (path: string): Promise<Response> => {
+    const app = createAppWithRoutes({
+      signal: context.signal,
+      routes: args.routes,
+    });
+    return await app.request(`${REQUEST_ORIGIN}${path}`, {
+      method: "POST",
+      headers: {
+        "content-type": args.contentType,
+        ...(args.signed ? signedSlackHeaders(args.body) : {}),
+      },
+      body: args.body,
+    });
+  };
+}
+
+describe("final provider console paths", () => {
+  beforeEach(() => {
+    mockEnv("APP_URL", APP_ORIGIN);
+    mockEnv("VM0_WEB_URL", WEB_ORIGIN);
+    mockEnv("SLACK_OAUTH_CLIENT_ID", "slack-client-id");
+    mockOptionalEnv("SLACK_OAUTH_CLIENT_SECRET", "slack-client-secret");
+    mockOptionalEnv("SLACK_SIGNING_SECRET", SLACK_SIGNING_SECRET);
+    mockEnv("MICROSOFT_OAUTH_CLIENT_ID", "microsoft-client-id");
+    mockEnv("MICROSOFT_OAUTH_CLIENT_SECRET", "microsoft-client-secret");
+  });
+
+  describe("GET /api/integrations/slack/oauth/callback", () => {
+    const paths = namespacePaths(
+      "/slack/oauth/callback",
+      "/api/integrations/slack/oauth/callback",
+    );
+
+    it("rejects a callback without an authorization code identically", async () => {
+      const snapshots = await snapshotEachPath(
+        paths,
+        getRequest(slackOauthRoutes),
+      );
+
+      expect(snapshots).toStrictEqual(
+        repeated(
+          {
+            status: 400,
+            location: null,
+            body: jsonBody({ error: "Missing authorization code" }),
+          },
+          paths,
+        ),
+      );
+    });
+
+    it("builds the same failure redirect for a denied authorization", async () => {
+      const send = getRequest(slackOauthRoutes);
+      const snapshots = await snapshotEachPath(paths, (path) => {
+        return send(`${path}?error=access_denied`);
+      });
+
+      expect(snapshots).toStrictEqual(
+        repeated(
+          {
+            status: 307,
+            location: `${APP_ORIGIN}/slack/failed?error=access_denied`,
+            body: "",
+          },
+          paths,
+        ),
+      );
+    });
+  });
+
+  describe("GET /api/integrations/teams/oauth/callback", () => {
+    const paths = namespacePaths(
+      "/teams/oauth/callback",
+      "/api/integrations/teams/oauth/callback",
+    );
+
+    it("rejects a callback without an authorization code identically", async () => {
+      const snapshots = await snapshotEachPath(
+        paths,
+        getRequest(teamsOauthRoutes),
+      );
+
+      expect(snapshots).toStrictEqual(
+        repeated(
+          {
+            status: 400,
+            location: null,
+            body: jsonBody({ error: "Missing authorization code" }),
+          },
+          paths,
+        ),
+      );
+    });
+
+    it("builds the same failure redirect for a denied authorization", async () => {
+      const send = getRequest(teamsOauthRoutes);
+      const snapshots = await snapshotEachPath(paths, (path) => {
+        return send(`${path}?error=access_denied`);
+      });
+
+      expect(snapshots).toStrictEqual(
+        repeated(
+          {
+            status: 307,
+            location: `${APP_ORIGIN}/settings/teams?error=access_denied`,
+            body: "",
+          },
+          paths,
+        ),
+      );
+    });
+  });
+
+  describe("GET /api/integrations/feishu/oauth/callback", () => {
+    const paths = namespacePaths(
+      "/feishu/oauth/callback",
+      "/api/integrations/feishu/oauth/callback",
+    );
+
+    it("rejects a callback without connect state identically", async () => {
+      const snapshots = await snapshotEachPath(
+        paths,
+        getRequest(feishuOauthRoutes),
+      );
+
+      expect(snapshots).toStrictEqual(
+        repeated(
+          {
+            status: 400,
+            location: null,
+            body: jsonBody({ error: "Invalid or expired connect state" }),
+          },
+          paths,
+        ),
+      );
+    });
+  });
+
+  describe("POST /api/webhooks/slack/events", () => {
+    const paths = namespacePaths("/slack/events", "/api/webhooks/slack/events");
+    const body = jsonBody({
+      type: "url_verification",
+      challenge: "provider-console-challenge",
+    });
+
+    it("verifies the Slack signature and answers URL verification", async () => {
+      const snapshots = await snapshotEachPath(
+        paths,
+        slackIngressRequest({
+          routes: slackEventsRoutes,
+          body,
+          contentType: "application/json",
+          signed: true,
+        }),
+      );
+
+      expect(snapshots).toStrictEqual(
+        repeated(
+          {
+            status: 200,
+            location: null,
+            body: jsonBody({ challenge: "provider-console-challenge" }),
+          },
+          paths,
+        ),
+      );
+    });
+
+    it("rejects an unsigned request identically", async () => {
+      const snapshots = await snapshotEachPath(
+        paths,
+        slackIngressRequest({
+          routes: slackEventsRoutes,
+          body,
+          contentType: "application/json",
+          signed: false,
+        }),
+      );
+
+      expect(snapshots).toStrictEqual(
+        repeated(
+          {
+            status: 401,
+            location: null,
+            body: jsonBody({ error: "Missing Slack signature headers" }),
+          },
+          paths,
+        ),
+      );
+    });
+  });
+
+  describe("POST /api/webhooks/slack/commands", () => {
+    const paths = namespacePaths(
+      "/slack/commands",
+      "/api/webhooks/slack/commands",
+    );
+    const body = "command=%2Fzero&text=help";
+
+    it("verifies the Slack signature before parsing the command", async () => {
+      const snapshots = await snapshotEachPath(
+        paths,
+        slackIngressRequest({
+          routes: slackCommandsRoutes,
+          body,
+          contentType: FORM_CONTENT_TYPE,
+          signed: true,
+        }),
+      );
+
+      expect(snapshots).toStrictEqual(
+        repeated(
+          {
+            status: 400,
+            location: null,
+            body: jsonBody({ error: "Missing required Slack command fields" }),
+          },
+          paths,
+        ),
+      );
+    });
+
+    it("rejects an unsigned request identically", async () => {
+      const snapshots = await snapshotEachPath(
+        paths,
+        slackIngressRequest({
+          routes: slackCommandsRoutes,
+          body,
+          contentType: FORM_CONTENT_TYPE,
+          signed: false,
+        }),
+      );
+
+      expect(snapshots).toStrictEqual(
+        repeated(
+          {
+            status: 401,
+            location: null,
+            body: jsonBody({ error: "Missing Slack signature headers" }),
+          },
+          paths,
+        ),
+      );
+    });
+  });
+
+  describe("POST /api/webhooks/slack/interactive", () => {
+    const paths = namespacePaths(
+      "/slack/interactive",
+      "/api/webhooks/slack/interactive",
+    );
+    const body = "not_a_payload=1";
+
+    it("verifies the Slack signature before parsing the payload", async () => {
+      const snapshots = await snapshotEachPath(
+        paths,
+        slackIngressRequest({
+          routes: slackInteractiveRoutes,
+          body,
+          contentType: FORM_CONTENT_TYPE,
+          signed: true,
+        }),
+      );
+
+      expect(snapshots).toStrictEqual(
+        repeated(
+          {
+            status: 400,
+            location: null,
+            body: jsonBody({ error: "Missing payload" }),
+          },
+          paths,
+        ),
+      );
+    });
+
+    it("rejects an unsigned request identically", async () => {
+      const snapshots = await snapshotEachPath(
+        paths,
+        slackIngressRequest({
+          routes: slackInteractiveRoutes,
+          body,
+          contentType: FORM_CONTENT_TYPE,
+          signed: false,
+        }),
+      );
+
+      expect(snapshots).toStrictEqual(
+        repeated(
+          {
+            status: 401,
+            location: null,
+            body: jsonBody({ error: "Missing Slack signature headers" }),
+          },
+          paths,
+        ),
+      );
+    });
+  });
+});
