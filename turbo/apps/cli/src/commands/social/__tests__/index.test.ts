@@ -31,7 +31,7 @@ vi.mock("os", async (importOriginal) => {
 const responseBody = {
   provider: "socialkit",
   operation: { method: "GET", path: "/youtube/comments" },
-  billingCategory: "youtube.comments.extract",
+  billingCategory: "request",
   billingQuantity: 1,
   creditsCharged: 5,
   result: {
@@ -61,7 +61,6 @@ describe("okou social command", () => {
     for (const command of socialCommand.commands) {
       command.setOptionValue("method", "GET");
       command.setOptionValue("query", undefined);
-      command.setOptionValue("body", undefined);
       command.setOptionValue("json", undefined);
     }
   });
@@ -128,22 +127,19 @@ describe("okou social command", () => {
     expect(mockConsoleLog).toHaveBeenCalledWith(JSON.stringify(responseBody));
   });
 
-  it("parses a POST bulk body and prints formatted JSON", async () => {
+  it("posts a reviewed operation and prints formatted JSON", async () => {
     let requestBody: unknown;
-    const bulkResponse = {
+    const postResponse = {
       ...responseBody,
-      operation: { method: "POST", path: "/youtube/stats/bulk" },
-      billingCategory: "youtube.video-stats.extract",
-      billingQuantity: 2,
-      creditsCharged: 10,
-      result: { processed: 2 },
+      operation: { method: "POST", path: "/youtube/stats" },
+      result: { views: 100 },
     } as const;
     server.use(
       http.post(
         "http://localhost:3000/api/okou/social/request",
         async ({ request }) => {
           requestBody = (await request.json()) as unknown;
-          return HttpResponse.json(bulkResponse);
+          return HttpResponse.json(postResponse);
         },
       ),
     );
@@ -152,21 +148,19 @@ describe("okou social command", () => {
       "node",
       "cli",
       "request",
-      "/youtube/stats/bulk",
+      "/youtube/stats",
       "-X",
       "post",
-      "--body",
-      '{"urls":["https://youtu.be/first","https://youtu.be/second"]}',
+      "--query",
+      "url=https://youtu.be/video123",
     ]);
 
     expect(requestBody).toStrictEqual({
       method: "POST",
-      path: "/youtube/stats/bulk",
-      body: {
-        urls: ["https://youtu.be/first", "https://youtu.be/second"],
-      },
+      path: "/youtube/stats",
+      query: { url: "https://youtu.be/video123" },
     });
-    expect(output()).toBe(JSON.stringify(bulkResponse, null, 2));
+    expect(output()).toBe(JSON.stringify(postResponse, null, 2));
   });
 
   it.each([
@@ -191,14 +185,14 @@ describe("okou social command", () => {
       message: "not reviewed for this operation",
     },
     {
-      caseName: "an invalid JSON body",
-      args: ["request", "/youtube/transcript", "-X", "POST", "--body", "{"],
-      message: "valid JSON",
+      caseName: "a bulk operation",
+      args: ["request", "/youtube/stats/bulk", "-X", "POST"],
+      message: "reviewed SocialKit operation",
     },
     {
-      caseName: "a missing bulk URL array",
-      args: ["request", "/youtube/stats/bulk", "-X", "POST"],
-      message: "urls array",
+      caseName: "a direct-video operation",
+      args: ["request", "/video/transcript"],
+      message: "reviewed SocialKit operation",
     },
   ])("rejects $caseName before calling the API", async ({ args, message }) => {
     let apiRequests = 0;
@@ -273,11 +267,12 @@ describe("okou social command", () => {
     socialCommand.outputHelp();
 
     expect(request?.helpInformation()).toContain("--query");
-    expect(request?.helpInformation()).toContain("--body");
+    expect(request?.helpInformation()).not.toContain("--body");
     expect(request?.helpInformation()).toContain("--json");
-    expect(socialHelp).toContain("all 93 data and analysis");
-    expect(socialHelp).toContain("/video/summarize");
-    expect(socialHelp).toContain("download operations are rejected");
-    expect(socialHelp).toContain("bulk operations are billed");
+    expect(socialHelp).toContain("76 fixed-cost");
+    expect(socialHelp).toContain("/youtube/summarize");
+    expect(socialHelp).toContain(
+      "download, bulk, and direct-video operations are rejected",
+    );
   });
 });

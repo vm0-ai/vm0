@@ -1,5 +1,6 @@
 import {
   findManagedSocialKitOperation,
+  MANAGED_SOCIALKIT_BILLING_CATEGORY,
   type ManagedSocialKitOperation,
   type SocialKitRequest,
   type SocialKitResponse,
@@ -70,7 +71,6 @@ interface CompleteSocialKitArgs {
   readonly accessKey: string;
   readonly request: SocialKitRequest;
   readonly operation: ManagedSocialKitOperation;
-  readonly quantity: number;
   readonly recordUsage: () => Promise<number>;
 }
 
@@ -112,7 +112,7 @@ function logProviderFailure(
   httpStatus?: number,
 ): void {
   L.warn("Managed SocialKit request failed", {
-    operation: operation.category,
+    operation: `${operation.method} ${operation.path}`,
     failureKind,
     ...(httpStatus === undefined ? {} : { httpStatus }),
   });
@@ -172,14 +172,9 @@ function providerRequestInit(
   request: SocialKitRequest,
   signal: AbortSignal,
 ): RequestInit {
-  const body = request.method === "POST" ? request.body : undefined;
   return {
     method: request.method,
-    headers: {
-      "x-access-key": accessKey,
-      ...(body === undefined ? {} : { "content-type": "application/json" }),
-    },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    headers: { "x-access-key": accessKey },
     signal: AbortSignal.any([
       signal,
       AbortSignal.timeout(SOCIALKIT_TIMEOUT_MS),
@@ -277,20 +272,6 @@ function providerResult(
   return { ok: true, result: body.data };
 }
 
-function billingQuantity(
-  operation: ManagedSocialKitOperation,
-  request: SocialKitRequest,
-): number {
-  if (!operation.bulk) {
-    return 1;
-  }
-  const urls = request.body?.urls;
-  if (!Array.isArray(urls)) {
-    throw new Error("Validated SocialKit bulk request has no urls array");
-  }
-  return urls.length;
-}
-
 function runIdForUsage(auth: AuthContext): string | undefined {
   return auth.tokenType === "zero" || auth.tokenType === "sandbox"
     ? auth.runId
@@ -327,8 +308,8 @@ async function completeSocialKitRequest(
         method: args.operation.method,
         path: args.operation.path,
       },
-      billingCategory: args.operation.category,
-      billingQuantity: args.quantity,
+      billingCategory: MANAGED_SOCIALKIT_BILLING_CATEGORY,
+      billingQuantity: 1,
       creditsCharged,
       result: parsed.result,
     },
@@ -357,14 +338,13 @@ export const socialKitRequest$ = command(
     if (!operation) {
       throw new Error("Validated SocialKit request has no reviewed operation");
     }
-    const quantity = billingQuantity(operation, args.body);
     const requestSignal = AbortSignal.any([signal, get(requestSignal$)]);
     requestSignal.throwIfAborted();
     const resource = {
       kind: USAGE_KIND,
       provider: PROVIDER,
-      category: operation.category,
-      quantity,
+      category: MANAGED_SOCIALKIT_BILLING_CATEGORY,
+      quantity: 1,
     };
     const creditError = await set(
       checkManagedCredits$,
@@ -388,7 +368,6 @@ export const socialKitRequest$ = command(
         accessKey,
         request: args.body,
         operation,
-        quantity,
         recordUsage: () => {
           return set(
             recordManagedUsage$,

@@ -4,9 +4,8 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import {
-  MANAGED_SOCIALKIT_BILLING_CATEGORIES,
+  MANAGED_SOCIALKIT_BILLING_CATEGORY,
   MANAGED_SOCIALKIT_OPERATIONS,
-  SOCIALKIT_MAX_REQUEST_BODY_BYTES,
   socialContract,
   socialKitRequestSchema,
 } from "@okouai/api-contracts/contracts/social";
@@ -45,81 +44,67 @@ import { createRouteMocks } from "./helpers/route-test";
 const context = testContext();
 const SOCIALKIT_BASE = "https://api.socialkit.dev";
 const MAX_PROVIDER_RESPONSE_BYTES = 4 * 1024 * 1024;
-const DEFAULT_CATEGORY = "youtube.transcripts.extract";
+const DEFAULT_CATEGORY = MANAGED_SOCIALKIT_BILLING_CATEGORY;
 
 const EXPECTED_PAIRED_SOCIALKIT_PATHS = [
-  ["/linkedin/profile", "linkedin.profiles.extract", ["url"]],
-  ["/linkedin/company", "linkedin.companies.extract", ["url"]],
-  [
-    "/linkedin/company-posts",
-    "linkedin.company-posts.extract",
-    ["url", "limit"],
-  ],
-  ["/linkedin/post", "linkedin.posts.extract", ["url"]],
-  ["/linkedin/transcript", "linkedin.transcripts.extract", ["url"]],
-  ["/twitter/profile", "twitter.profiles.extract", ["url"]],
-  ["/twitter/tweets", "twitter.timelines.extract", ["url", "limit", "cursor"]],
-  ["/twitter/tweet", "twitter.posts.extract", ["url"]],
-  ["/twitter/thread", "twitter.threads.extract", ["url"]],
-  ["/twitter/transcript", "twitter.transcripts.extract", ["url"]],
-  ["/facebook/stats", "facebook.post-stats.extract", ["url"]],
-  ["/facebook/channel-stats", "facebook.page-stats.extract", ["url"]],
-  ["/facebook/transcript", "facebook.transcripts.extract", ["url"]],
-  ["/facebook/comments", "facebook.comments.extract", ["url", "limit"]],
-  ["/facebook/summarize", "facebook.summaries.generate", ["url"]],
-  ["/instagram/stats", "instagram.post-stats.extract", ["url"]],
-  ["/instagram/channel-stats", "instagram.channel-stats.extract", ["url"]],
-  ["/instagram/transcript", "instagram.transcripts.extract", ["url"]],
-  ["/instagram/comments", "instagram.comments.extract", ["url", "limit"]],
-  [
-    "/instagram/channel-posts",
-    "instagram.channel-posts.extract",
-    ["url", "limit"],
-  ],
-  [
-    "/instagram/channel-reels",
-    "instagram.channel-reels.extract",
-    ["url", "limit"],
-  ],
-  ["/instagram/reels-search", "instagram.reels-search", ["query", "limit"]],
-  ["/instagram/summarize", "instagram.summaries.generate", ["url"]],
-  ["/tiktok/stats", "tiktok.video-stats.extract", ["url"]],
-  ["/tiktok/comments", "tiktok.comments.extract", ["url", "limit"]],
-  ["/tiktok/transcript", "tiktok.transcripts.extract", ["url"]],
-  ["/tiktok/channel-stats", "tiktok.channel-stats.extract", ["url"]],
-  ["/tiktok/channel-videos", "tiktok.channel-videos.extract", ["url", "limit"]],
-  ["/tiktok/search", "tiktok.search", ["query", "limit"]],
-  ["/tiktok/hashtag-search", "tiktok.hashtag-search", ["hashtag", "limit"]],
-  ["/tiktok/summarize", "tiktok.summaries.generate", ["url"]],
-  ["/youtube/transcript", "youtube.transcripts.extract", ["url"]],
-  ["/youtube/stats", "youtube.video-stats.extract", ["url"]],
-  ["/youtube/comments", "youtube.comments.extract", ["url", "limit"]],
-  ["/youtube/channel-stats", "youtube.channel-stats.extract", ["url"]],
-  ["/youtube/search", "youtube.search", ["query", "limit"]],
-  [
-    "/youtube/videos",
-    "youtube.videos.extract",
-    ["url", "limit", "full_details"],
-  ],
-  ["/youtube/summarize", "youtube.summaries.generate", ["url"]],
-  ["/video/transcript", "video.transcripts.extract", ["url"]],
-  ["/video/summarize", "video.summaries.generate", ["url"]],
-] as const;
-
-const EXPECTED_BULK_SOCIALKIT_PATHS = [
-  ["/youtube/transcript/bulk", "youtube.transcripts.extract"],
-  ["/youtube/comments/bulk", "youtube.comments.extract"],
-  ["/youtube/stats/bulk", "youtube.video-stats.extract"],
-  ["/youtube/summarize/bulk", "youtube.summaries.generate"],
-  ["/tiktok/transcript/bulk", "tiktok.transcripts.extract"],
-  ["/tiktok/comments/bulk", "tiktok.comments.extract"],
-  ["/tiktok/stats/bulk", "tiktok.video-stats.extract"],
-  ["/tiktok/channel-stats/bulk", "tiktok.channel-stats.extract"],
-  ["/tiktok/summarize/bulk", "tiktok.summaries.generate"],
-  ["/instagram/transcript/bulk", "instagram.transcripts.extract"],
-  ["/instagram/stats/bulk", "instagram.post-stats.extract"],
-  ["/instagram/channel-stats/bulk", "instagram.channel-stats.extract"],
-  ["/instagram/summarize/bulk", "instagram.summaries.generate"],
+  { path: "/linkedin/profile", queryNames: ["url"] },
+  { path: "/linkedin/company", queryNames: ["url"] },
+  { path: "/linkedin/company-posts", queryNames: ["url", "limit"] },
+  { path: "/linkedin/post", queryNames: ["url"] },
+  { path: "/linkedin/transcript", queryNames: ["url"] },
+  { path: "/twitter/profile", queryNames: ["url"] },
+  { path: "/twitter/tweets", queryNames: ["url", "limit", "cursor"] },
+  { path: "/twitter/tweet", queryNames: ["url"] },
+  { path: "/twitter/thread", queryNames: ["url"] },
+  { path: "/twitter/transcript", queryNames: ["url"] },
+  { path: "/facebook/stats", queryNames: ["url"] },
+  { path: "/facebook/channel-stats", queryNames: ["url"] },
+  { path: "/facebook/transcript", queryNames: ["url"] },
+  { path: "/facebook/comments", queryNames: ["url", "limit"], maxLimit: 50 },
+  { path: "/facebook/summarize", queryNames: ["url"] },
+  { path: "/instagram/stats", queryNames: ["url"] },
+  { path: "/instagram/channel-stats", queryNames: ["url"] },
+  { path: "/instagram/transcript", queryNames: ["url"] },
+  {
+    path: "/instagram/comments",
+    queryNames: ["url", "limit"],
+    maxLimit: 50,
+  },
+  {
+    path: "/instagram/channel-posts",
+    queryNames: ["url", "limit"],
+    maxLimit: 20,
+  },
+  {
+    path: "/instagram/channel-reels",
+    queryNames: ["url", "limit"],
+    maxLimit: 20,
+  },
+  { path: "/instagram/reels-search", queryNames: ["query", "limit"] },
+  { path: "/instagram/summarize", queryNames: ["url"] },
+  { path: "/tiktok/stats", queryNames: ["url"] },
+  { path: "/tiktok/comments", queryNames: ["url", "limit"], maxLimit: 50 },
+  { path: "/tiktok/transcript", queryNames: ["url"] },
+  { path: "/tiktok/channel-stats", queryNames: ["url"] },
+  { path: "/tiktok/channel-videos", queryNames: ["url", "limit"] },
+  { path: "/tiktok/search", queryNames: ["query", "limit"], maxLimit: 50 },
+  {
+    path: "/tiktok/hashtag-search",
+    queryNames: ["hashtag", "limit"],
+    maxLimit: 50,
+  },
+  { path: "/tiktok/summarize", queryNames: ["url"] },
+  { path: "/youtube/transcript", queryNames: ["url"] },
+  { path: "/youtube/stats", queryNames: ["url"] },
+  { path: "/youtube/comments", queryNames: ["url", "limit"], maxLimit: 50 },
+  { path: "/youtube/channel-stats", queryNames: ["url"] },
+  { path: "/youtube/search", queryNames: ["query", "limit"], maxLimit: 50 },
+  {
+    path: "/youtube/videos",
+    queryNames: ["url", "limit", "full_details"],
+    maxLimit: 50,
+  },
+  { path: "/youtube/summarize", queryNames: ["url"] },
 ] as const;
 
 const socialTestRoutes: readonly RouteEntry[] = [
@@ -231,25 +216,23 @@ function configureProvider(): void {
   mockEnv("OKOU_SOCIAL_SOCIALKIT_TOKEN", "test-socialkit-key");
 }
 
-function socialPricingKey(category: string): UsagePricingKey {
+function socialPricingKey(): UsagePricingKey {
   return {
     kind: "social",
     provider: "socialkit",
-    category,
+    category: DEFAULT_CATEGORY,
   };
 }
 
-async function setupConfiguredPricing(
-  categories: readonly string[] = [DEFAULT_CATEGORY],
-): Promise<UsagePricingFixture> {
+async function setupConfiguredPricing(): Promise<UsagePricingFixture> {
   const fixture = await createUsagePricingFixture({
-    configured: categories.map((category) => {
-      return {
-        ...socialPricingKey(category),
+    configured: [
+      {
+        ...socialPricingKey(),
         unitPrice: 5,
         unitSize: 1,
-      };
-    }),
+      },
+    ],
   });
   onTestFinished(async () => {
     await fixture.cleanup();
@@ -257,11 +240,9 @@ async function setupConfiguredPricing(
   return fixture;
 }
 
-async function setupMissingPricing(
-  category = DEFAULT_CATEGORY,
-): Promise<UsagePricingFixture> {
+async function setupMissingPricing(): Promise<UsagePricingFixture> {
   const fixture = await createUsagePricingFixture({
-    missing: [socialPricingKey(category)],
+    missing: [socialPricingKey()],
   });
   onTestFinished(async () => {
     await fixture.cleanup();
@@ -285,48 +266,21 @@ function providerHandler(
 }
 
 describe("managed SocialKit route", () => {
-  it("pins the reviewed 93-operation and 40-category inventory", () => {
-    const expectedOperations = [
-      ...EXPECTED_PAIRED_SOCIALKIT_PATHS.flatMap(
-        ([path, category, queryNames]) => {
-          return [
-            { method: "GET", path, category, bulk: false, queryNames },
-            { method: "POST", path, category, bulk: false, queryNames },
-          ];
-        },
-      ),
-      ...EXPECTED_BULK_SOCIALKIT_PATHS.map(([path, category]) => {
-        return {
-          method: "POST",
-          path,
-          category,
-          bulk: true,
-          queryNames: [],
-        };
-      }),
-    ];
-    const expectedCategories = [
-      ...new Set(
-        EXPECTED_PAIRED_SOCIALKIT_PATHS.map(([, category]) => {
-          return category;
-        }),
-      ),
-    ];
+  it("pins the reviewed 76-operation fixed-cost inventory", () => {
+    const expectedOperations = EXPECTED_PAIRED_SOCIALKIT_PATHS.flatMap(
+      (operation) => {
+        return [
+          { ...operation, method: "GET" },
+          { ...operation, method: "POST" },
+        ];
+      },
+    );
 
     expect(MANAGED_SOCIALKIT_OPERATIONS).toStrictEqual(expectedOperations);
-    expect(MANAGED_SOCIALKIT_BILLING_CATEGORIES).toStrictEqual(
-      expectedCategories,
-    );
-    expect(expectedOperations).toHaveLength(93);
-    expect(expectedCategories).toHaveLength(40);
+    expect(MANAGED_SOCIALKIT_BILLING_CATEGORY).toBe("request");
+    expect(expectedOperations).toHaveLength(76);
     for (const operation of MANAGED_SOCIALKIT_OPERATIONS) {
-      const request = operation.bulk
-        ? {
-            method: operation.method,
-            path: operation.path,
-            body: { urls: ["https://example.com/video.mp4"] },
-          }
-        : { method: operation.method, path: operation.path };
+      const request = { method: operation.method, path: operation.path };
       expect(socialKitRequestSchema.safeParse(request).success).toBeTruthy();
     }
     for (const request of [
@@ -335,6 +289,9 @@ describe("managed SocialKit route", () => {
       { method: "GET", path: "/instagram/download" },
       { method: "POST", path: "/v2/youtube/download" },
       { method: "GET", path: "/v2/downloads/job-123" },
+      { method: "POST", path: "/youtube/transcript/bulk" },
+      { method: "GET", path: "/video/transcript" },
+      { method: "POST", path: "/video/summarize" },
     ]) {
       expect(socialKitRequestSchema.safeParse(request).success).toBeFalsy();
     }
@@ -482,13 +439,12 @@ describe("managed SocialKit route", () => {
   it("forwards representative GET operations with only managed auth", async () => {
     const actor = createBddApi(context).user();
     const cases = [
-      ["/youtube/transcript", "youtube.transcripts.extract", "url"],
-      ["/tiktok/search", "tiktok.search", "query"],
-      ["/instagram/comments", "instagram.comments.extract", "url"],
-      ["/facebook/stats", "facebook.post-stats.extract", "url"],
-      ["/twitter/profile", "twitter.profiles.extract", "url"],
-      ["/linkedin/company", "linkedin.companies.extract", "url"],
-      ["/video/transcript", "video.transcripts.extract", "url"],
+      ["/youtube/transcript", "url"],
+      ["/tiktok/search", "query"],
+      ["/instagram/comments", "url"],
+      ["/facebook/stats", "url"],
+      ["/twitter/profile", "url"],
+      ["/linkedin/company", "url"],
     ] as const;
     const observed: {
       path: string;
@@ -498,11 +454,7 @@ describe("managed SocialKit route", () => {
     }[] = [];
     configureProvider();
     await fundActor(actor);
-    const pricing = await setupConfiguredPricing(
-      cases.map(([, category]) => {
-        return category;
-      }),
-    );
+    const pricing = await setupConfiguredPricing();
     for (const [path] of cases) {
       server.use(
         providerHandler("GET", path, () => {
@@ -525,7 +477,7 @@ describe("managed SocialKit route", () => {
     );
     const beforeCredits = await credits(actor);
 
-    for (const [path, category, queryName] of cases) {
+    for (const [path, queryName] of cases) {
       const response = await accept(
         client(pricing.resolution)(socialContract).request({
           headers: authenticate(actor),
@@ -545,7 +497,7 @@ describe("managed SocialKit route", () => {
       expect(response.body).toMatchObject({
         provider: "socialkit",
         operation: { method: "GET", path },
-        billingCategory: category,
+        billingCategory: DEFAULT_CATEGORY,
         billingQuantity: 1,
         creditsCharged: 5,
         result: { path },
@@ -553,7 +505,7 @@ describe("managed SocialKit route", () => {
     }
 
     expect(observed).toStrictEqual(
-      cases.map(([path, , queryName]) => {
+      cases.map(([path, queryName]) => {
         return {
           path,
           queryName,
@@ -568,25 +520,19 @@ describe("managed SocialKit route", () => {
     expect(beforeCredits - (await credits(actor))).toBe(cases.length * 5);
   });
 
-  it("forwards POST JSON and bills bulk operations by URL count", async () => {
+  it("forwards reviewed POST operations without a request body", async () => {
     const actor = createBddApi(context).user();
-    const category = "youtube.video-stats.extract";
-    const urls = [
-      "https://youtu.be/first",
-      "https://youtu.be/second",
-      "https://youtu.be/third",
-    ];
-    let observedBody: unknown;
+    let observedUrl = "";
     let observedAccessKey: string | null = null;
     configureProvider();
     await fundActor(actor);
-    const pricing = await setupConfiguredPricing([category]);
+    const pricing = await setupConfiguredPricing();
     const beforeCredits = await credits(actor);
     server.use(
-      http.post(`${SOCIALKIT_BASE}/youtube/stats/bulk`, async ({ request }) => {
-        observedBody = (await request.json()) as unknown;
+      http.post(`${SOCIALKIT_BASE}/youtube/stats`, ({ request }) => {
+        observedUrl = request.url;
         observedAccessKey = request.headers.get("x-access-key");
-        return HttpResponse.json(providerResponse({ processed: urls.length }));
+        return HttpResponse.json(providerResponse({ views: 100 }));
       }),
     );
 
@@ -595,22 +541,24 @@ describe("managed SocialKit route", () => {
         headers: authenticate(actor),
         body: {
           method: "POST",
-          path: "/youtube/stats/bulk",
-          body: { urls },
+          path: "/youtube/stats",
+          query: { url: "https://youtu.be/video123" },
         },
       }),
       [200],
     );
 
-    expect(observedBody).toStrictEqual({ urls });
+    expect(observedUrl).toBe(
+      `${SOCIALKIT_BASE}/youtube/stats?url=https%3A%2F%2Fyoutu.be%2Fvideo123`,
+    );
     expect(observedAccessKey).toBe("test-socialkit-key");
     expect(response.body).toMatchObject({
-      billingCategory: category,
-      billingQuantity: 3,
-      creditsCharged: 15,
-      result: { processed: 3 },
+      billingCategory: DEFAULT_CATEGORY,
+      billingQuantity: 1,
+      creditsCharged: 5,
+      result: { views: 100 },
     });
-    expect(beforeCredits - (await credits(actor))).toBe(15);
+    expect(beforeCredits - (await credits(actor))).toBe(5);
   });
 
   it.each([
@@ -670,48 +618,42 @@ describe("managed SocialKit route", () => {
       },
     },
     {
-      caseName: "a bulk request without urls",
+      caseName: "a bulk operation with unknown provider billing",
       body: {
         method: "POST",
         path: "/youtube/stats/bulk",
-        body: { limit: 2 },
       },
     },
     {
-      caseName: "urls on a single-item operation",
+      caseName: "a direct-video operation with duration-based billing",
       body: {
-        method: "POST",
-        path: "/youtube/stats",
-        body: { urls: ["https://youtu.be/id"] },
+        method: "GET",
+        path: "/video/transcript",
+        query: { url: "https://example.com/video.mp4" },
       },
     },
     {
-      caseName: "extra bulk input",
+      caseName: "a result limit above one provider credit",
       body: {
-        method: "POST",
-        path: "/youtube/stats/bulk",
-        body: { urls: ["https://youtu.be/id"], limit: 1 },
+        method: "GET",
+        path: "/youtube/comments",
+        query: { url: "https://youtu.be/id", limit: "51" },
       },
     },
     {
-      caseName: "overlapping query and body input",
+      caseName: "a result limit above the smaller provider credit unit",
       body: {
-        method: "POST",
-        path: "/youtube/transcript",
-        query: { url: "https://youtu.be/query" },
-        body: { url: "https://youtu.be/body" },
+        method: "GET",
+        path: "/instagram/channel-posts",
+        query: { url: "https://instagram.com/example", limit: "21" },
       },
     },
     {
-      caseName: "an oversized body",
+      caseName: "a non-integer result limit",
       body: {
-        method: "POST",
-        path: "/youtube/transcript/bulk",
-        body: {
-          urls: [
-            `https://example.com/${"x".repeat(SOCIALKIT_MAX_REQUEST_BODY_BYTES)}`,
-          ],
-        },
+        method: "GET",
+        path: "/tiktok/search",
+        query: { query: "launch", limit: "1.5" },
       },
     },
   ])("rejects $caseName before provider work", async ({ body }) => {
@@ -778,17 +720,16 @@ describe("managed SocialKit route", () => {
     expect(providerRequests).toBe(0);
   });
 
-  it("returns insufficient bulk credits before provider work", async () => {
+  it("returns insufficient credits before provider work", async () => {
     const actor = createBddApi(context).user();
-    const category = "youtube.video-stats.extract";
     let providerRequests = 0;
     configureProvider();
-    const pricing = await setupConfiguredPricing([category]);
+    const pricing = await setupConfiguredPricing();
     await bootstrapOnboarding(actor);
-    await setActorCredits(actor, 10);
+    await setActorCredits(actor, 4);
     await enableSocialKit(actor);
     server.use(
-      providerHandler("POST", "/youtube/stats/bulk", () => {
+      providerHandler("GET", "/youtube/transcript", () => {
         providerRequests += 1;
         return HttpResponse.json(providerResponse());
       }),
@@ -798,15 +739,8 @@ describe("managed SocialKit route", () => {
       client(pricing.resolution)(socialContract).request({
         headers: authenticate(actor),
         body: {
-          method: "POST",
-          path: "/youtube/stats/bulk",
-          body: {
-            urls: [
-              "https://youtu.be/first",
-              "https://youtu.be/second",
-              "https://youtu.be/third",
-            ],
-          },
+          method: "GET",
+          path: "/youtube/transcript",
         },
       }),
       [402],
