@@ -44,6 +44,7 @@ export const CAPABILITIES = [
   "file:write",
   "host:read",
   "host:write",
+  "presentation-template:write",
 ] as const;
 
 /** Inferred union type of all zero capability strings. */
@@ -186,4 +187,8 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
   "file:write": { group: "Files", label: "Upload files" },
   "host:read": { group: "Hosting", label: "View hosted sites" },
   "host:write": { group: "Hosting", label: "Publish hosted sites" },
+  "presentation-template:write": {
+    group: "Presentation Templates",
+    label: "Publish a presentation template",
+  },
 };
